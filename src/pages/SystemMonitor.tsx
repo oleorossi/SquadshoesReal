@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { useQuery } from '@tanstack/react-query';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -42,6 +43,12 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 };
 
 export default function SystemMonitor() {
+  // A aba mora na URL (contrato do lote L6): antes era <Tabs defaultValue>, então
+  // F5 e o botão Voltar devolviam o usuário à primeira aba.
+  const { value: abaUrl, setValue: setAbaUrl } = useUrlTabState({
+    values: ['performance', 'audit', 'cache'] as const,
+    defaultValue: 'performance',
+  });
   const [auditSearch, setAuditSearch] = useState('');
   const [auditFilter, setAuditFilter] = useState('all');
 
@@ -120,7 +127,7 @@ export default function SystemMonitor() {
         <p><strong>Demonstração:</strong> latência, uptime, taxa de erro, usuários ativos e gráficos de performance não representam telemetria real.</p>
       </div>
 
-      <Tabs defaultValue="performance" className="space-y-4">
+      <Tabs value={abaUrl} onValueChange={setAbaUrl} className="space-y-4">
         <TabsList>
           <TabsTrigger value="performance" className="gap-1.5">
             <Cpu className="h-3.5 w-3.5" />Performance

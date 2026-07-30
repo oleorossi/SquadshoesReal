@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
@@ -20,13 +21,20 @@ import {
 const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
 export default function FinanceConfigPanel() {
+  // Painel renderizado DENTRO de um hub que já é dono de `tab` — usa `subtab`
+  // pra não disputar o mesmo parâmetro com a tela hospedeira.
+  const { value: abaUrl, setValue: setAbaUrl } = useUrlTabState({
+    values: ['banks', 'chart', 'centers'] as const,
+    defaultValue: 'banks',
+    param: 'subtab',
+  });
   return (
     <div className="space-y-4">
       <div>
         <h3 className="text-base font-semibold">Configurações Financeiras</h3>
         <p className="text-xs text-muted-foreground">Cadastros base: plano de contas, centros de custo e bancos</p>
       </div>
-      <Tabs defaultValue="banks">
+      <Tabs value={abaUrl} onValueChange={setAbaUrl}>
         <TabsList>
           <TabsTrigger value="banks" className="gap-1.5"><Wallet className="h-3.5 w-3.5" /> Bancos</TabsTrigger>
           <TabsTrigger value="chart" className="gap-1.5"><Landmark className="h-3.5 w-3.5" /> Plano de Contas</TabsTrigger>

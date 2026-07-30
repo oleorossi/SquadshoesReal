@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { useQuery } from '@tanstack/react-query';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { Panel } from '@/components/ui/panel';
@@ -70,6 +71,12 @@ function CheckRow({ row }: { row: ConsistencyRow }) {
 }
 
 export default function SystemDiagnostics() {
+  // A aba mora na URL (contrato do lote L6): antes era <Tabs defaultValue>, então
+  // F5 e o botão Voltar devolviam o usuário à primeira aba.
+  const { value: abaUrl, setValue: setAbaUrl } = useUrlTabState({
+    values: ['diagnostics', 'schema', 'migrations', 'consumo'] as const,
+    defaultValue: 'diagnostics',
+  });
   const [diag, setDiag] = useState<DiagnosticItem[]>([]);
   const [running, setRunning] = useState(false);
 
@@ -414,7 +421,7 @@ export default function SystemDiagnostics() {
         </Alert>
       )}
 
-      <Tabs defaultValue="diagnostics" className="w-full">
+      <Tabs value={abaUrl} onValueChange={setAbaUrl} className="w-full">
         <TabsList>
           <TabsTrigger value="diagnostics"><Stethoscope className="h-4 w-4 mr-1.5" />Diagnóstico</TabsTrigger>
           <TabsTrigger value="schema"><Database className="h-4 w-4 mr-1.5" />Schema</TabsTrigger>

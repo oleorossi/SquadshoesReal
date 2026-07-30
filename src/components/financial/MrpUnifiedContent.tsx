@@ -1,4 +1,5 @@
 import { useState, useMemo, lazy, Suspense } from 'react';
+import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { Warning as AlertTriangle, Package, ShoppingCart, Clock } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -28,6 +29,13 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export default function MrpUnifiedContent() {
+  // Painel renderizado DENTRO de um hub que já é dono de `tab` — usa `subtab`
+  // pra não disputar o mesmo parâmetro com a tela hospedeira.
+  const { value: abaUrl, setValue: setAbaUrl } = useUrlTabState({
+    values: ['projections', 'alerts', 'suggestions'] as const,
+    defaultValue: 'projections',
+    param: 'subtab',
+  });
   const { data: suggestions = [], isLoading } = useMrpSuggestions();
   const { data: orders = [] } = useOrders();
   const { data: products = [] } = useProducts();
@@ -123,7 +131,7 @@ export default function MrpUnifiedContent() {
         </Card>
       </div>
 
-      <Tabs defaultValue="projections">
+      <Tabs value={abaUrl} onValueChange={setAbaUrl}>
         <TabsList>
           <TabsTrigger value="projections">Projeções</TabsTrigger>
           <TabsTrigger value="alerts">Alertas de Estoque ({stockAlerts.length})</TabsTrigger>

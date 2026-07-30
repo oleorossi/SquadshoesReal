@@ -1,4 +1,5 @@
 import AppLayout from "@/components/layout/AppLayout";
+import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useOrders, useUpdateOrderStatus } from '@/hooks/useOrders';
 import { useAllOrderStages, useUpdateOrderStage, useRealtimeOrderStages } from '@/hooks/useOrderStages';
@@ -55,6 +56,12 @@ const SECTORS = [
 ];
 
 export default function OrderEdit() {
+  // A aba mora na URL (contrato do lote L6): antes era <Tabs defaultValue>, então
+  // F5 e o botão Voltar devolviam o usuário à primeira aba.
+  const { value: abaUrl, setValue: setAbaUrl } = useUrlTabState({
+    values: ['production', 'transport'] as const,
+    defaultValue: 'production',
+  });
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { data: orders = [], isLoading: ordersLoading } = useOrders();
@@ -209,7 +216,7 @@ export default function OrderEdit() {
 
         <ProductionPipeline orderId={id || ''} currentStep={currentPipelineStep} />
 
-        <Tabs defaultValue="production" className="space-y-4">
+        <Tabs value={abaUrl} onValueChange={setAbaUrl} className="space-y-4">
           <TabsList>
             <TabsTrigger value="production" className="gap-2">
               <Factory className="h-4 w-4" /> Produção

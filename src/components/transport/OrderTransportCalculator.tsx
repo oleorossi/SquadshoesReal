@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -318,6 +319,13 @@ function TransportResults({
   destinationState,
   companies,
 }: TransportResultsProps) {
+  // Painel renderizado dentro do cálculo de transporte de um pedido — usa
+  // `subtab` pra não disputar `tab` com a tela hospedeira.
+  const { value: abaUrl, setValue: setAbaUrl } = useUrlTabState({
+    values: ['packing', 'vehicle', 'metrics', 'carriers'] as const,
+    defaultValue: 'packing',
+    param: 'subtab',
+  });
   return (
     <div className="space-y-4">
       {/* Summary Cards */}
@@ -348,7 +356,7 @@ function TransportResults({
       </div>
 
       {/* Tabs for detailed info */}
-      <Tabs defaultValue="packing" className="space-y-3">
+      <Tabs value={abaUrl} onValueChange={setAbaUrl} className="space-y-3">
         <TabsList className="w-full">
           <TabsTrigger value="packing" className="flex-1 gap-1">
             <Package className="h-3.5 w-3.5" /> Embalagens

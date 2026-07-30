@@ -1,4 +1,5 @@
 import { useMemo, useState, useEffect } from 'react';
+import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -119,6 +120,12 @@ interface HeatmapCell {
 // ─── Main page ─────────────────────────────────────────────────────────────
 
 export default function ProductionControlCenter() {
+  // A aba mora na URL (contrato do lote L6): antes era <Tabs defaultValue>, então
+  // F5 e o botão Voltar devolviam o usuário à primeira aba.
+  const { value: abaUrl, setValue: setAbaUrl } = useUrlTabState({
+    values: ['dashboard', 'alertas', 'historico'] as const,
+    defaultValue: 'dashboard',
+  });
   const [outsourceTarget, setOutsourceTarget] = useState<BottleneckRow | null>(null);
   const [confirmDeadlineFor, setConfirmDeadlineFor] = useState<any>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -356,7 +363,7 @@ export default function ProductionControlCenter() {
         }
       />
 
-      <Tabs defaultValue="dashboard">
+      <Tabs value={abaUrl} onValueChange={setAbaUrl}>
         <TabsList>
           <TabsTrigger value="dashboard" className="gap-1.5">
             <Activity className="h-3.5 w-3.5" /> Visão geral

@@ -1,4 +1,5 @@
 import AppLayout from "@/components/layout/AppLayout";
+import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { useMemo, useState } from 'react';
  import { ShieldCheck, Warning as AlertTriangle, XCircle, CheckCircle as CheckCircle2, Clock, MagnifyingGlass as Search, Funnel as Filter, ClipboardText as ClipboardCheck } from '@phosphor-icons/react';
 import { Badge } from '@/components/ui/badge';
@@ -25,6 +26,12 @@ const SEVERITY_CONFIG: Record<string, { label: string; variant: 'default' | 'sec
 };
 
 export default function Quality() {
+  // A aba mora na URL (contrato do lote L6): antes era <Tabs defaultValue>, então
+  // F5 e o botão Voltar devolviam o usuário à primeira aba.
+  const { value: abaUrl, setValue: setAbaUrl } = useUrlTabState({
+    values: ['defects', 'batch-test'] as const,
+    defaultValue: 'defects',
+  });
   const { data: records = [], isLoading } = useAllQualityRecords();
   const resolve = useResolveQualityRecord();
   const [search, setSearch] = useState('');
@@ -75,7 +82,7 @@ export default function Quality() {
           description="Defeitos registrados por setor — rastreamento por OP e plano de ação"
         />
 
-         <Tabs defaultValue="defects" className="space-y-5">
+         <Tabs value={abaUrl} onValueChange={setAbaUrl} className="space-y-5">
            <TabsList>
              <TabsTrigger value="defects" className="gap-2">
                <AlertTriangle className="h-4 w-4" /> Ocorrências de Produção

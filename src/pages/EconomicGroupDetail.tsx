@@ -6,6 +6,7 @@
  * proposta. Inspirada em TOTVS Protheus SIGAFAT, Omie e Sankhya.
  */
 import { useMemo, useState } from 'react';
+import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -53,6 +54,12 @@ const fmtDateTime = (s: string | null | undefined) => s ? format(new Date(s), "d
 // ═══════════════════════════════════════════════════════════════════════
 
 export default function EconomicGroupDetail() {
+  // A aba mora na URL (contrato do lote L6): antes era <Tabs defaultValue>, então
+  // F5 e o botão Voltar devolviam o usuário à primeira aba.
+  const { value: abaUrl, setValue: setAbaUrl } = useUrlTabState({
+    values: ['resumo', 'comercial', 'clientes', 'pedidos', 'financeiro', 'contatos', 'notas', 'historico'] as const,
+    defaultValue: 'resumo',
+  });
   const { id = '' } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { data: group, isLoading } = useEconomicGroupById(id);
@@ -75,7 +82,7 @@ export default function EconomicGroupDetail() {
     <div className="space-y-4 page-enter">
       <Header group={group} />
 
-      <Tabs defaultValue="resumo" className="w-full">
+      <Tabs value={abaUrl} onValueChange={setAbaUrl} className="w-full">
         <TabsList className="flex w-full max-w-6xl overflow-x-auto justify-start">
           <TabsTrigger value="resumo" className="gap-1.5 shrink-0"><TrendingUp className="h-4 w-4" /> Resumo</TabsTrigger>
           <TabsTrigger value="comercial" className="gap-1.5 shrink-0"><DollarSign className="h-4 w-4" /> Comercial</TabsTrigger>

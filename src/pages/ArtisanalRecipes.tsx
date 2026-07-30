@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { Sparkle as Sparkles, Plus, PencilSimple as Pencil, Trash as Trash2, MagnifyingGlass as Search, CircleNotch as Loader2, Calculator, ArrowRight, Users, Warning as AlertTriangle, Scissors, X } from '@phosphor-icons/react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -67,6 +68,14 @@ interface BaseRow {
 const emptyBaseRow = (): BaseRow => ({ base_product_name: '', yield_per_meter: 1, labor_cost_per_meter: 0 });
 
 export default function ArtisanalRecipes({ embedded = false }: { embedded?: boolean } = {}) {
+  // A aba mora na URL (contrato do lote L6): antes era <Tabs defaultValue>, então
+  // F5 e o botão Voltar devolviam o usuário à primeira aba.
+  const { value: abaUrl, setValue: setAbaUrl } = useUrlTabState({
+    values: ['recipes', 'optimizer'] as const,
+    defaultValue: 'recipes',
+    // Renderizada embutida no hub Terceirizados, que já usa `tab`.
+    param: 'subtab',
+  });
   const qc = useQueryClient();
    const { data: recipes = [], isLoading, isError } = useArtisanalRecipes();
    const { data: contractors = [] } = useContractors();
@@ -270,7 +279,7 @@ export default function ArtisanalRecipes({ embedded = false }: { embedded?: bool
         />
       )}
 
-      <Tabs defaultValue="recipes" className="space-y-4">
+      <Tabs value={abaUrl} onValueChange={setAbaUrl} className="space-y-4">
         <TabsList>
           <TabsTrigger value="recipes" className="gap-1.5">
             <Sparkles className="h-4 w-4" /> Receitas

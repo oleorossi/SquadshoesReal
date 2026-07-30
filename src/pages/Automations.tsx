@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -182,6 +183,12 @@ const EMPTY_FORM: WorkflowInsert = {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function Automations() {
+  // A aba mora na URL (contrato do lote L6): antes era <Tabs defaultValue>, então
+  // F5 e o botão Voltar devolviam o usuário à primeira aba.
+  const { value: abaUrl, setValue: setAbaUrl } = useUrlTabState({
+    values: ['workflows', 'history'] as const,
+    defaultValue: 'workflows',
+  });
   const { data: workflows = [], isLoading, error } = useAutomationWorkflows();
   const { data: executions = [] } = useAutomationExecutions();
 
@@ -333,7 +340,7 @@ export default function Automations() {
       </StatGrid>
 
       {/* Tabs */}
-      <Tabs defaultValue="workflows" className="space-y-4">
+      <Tabs value={abaUrl} onValueChange={setAbaUrl} className="space-y-4">
         <TabsList>
           <TabsTrigger value="workflows" className="gap-1.5">
             <Layers className="h-3.5 w-3.5" />Workflows

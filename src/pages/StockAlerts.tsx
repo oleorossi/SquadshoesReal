@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { Warning as AlertTriangle, BellRinging as BellRing, Package, Footprints, MagnifyingGlass as Search, ArrowsClockwise as RefreshCw } from '@phosphor-icons/react';
 import AppLayout from '@/components/layout/AppLayout';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -24,6 +25,12 @@ import { searchMatchesAllTerms } from '@/lib/searchUtils';
  * de cada produto.
  */
 export default function StockAlerts() {
+  // A aba mora na URL (contrato do lote L6): antes era <Tabs defaultValue>, então
+  // F5 e o botão Voltar devolviam o usuário à primeira aba.
+  const { value: abaUrl, setValue: setAbaUrl } = useUrlTabState({
+    values: ['products', 'soles'] as const,
+    defaultValue: 'products',
+  });
   const { data, isLoading, refetch, isFetching } = useLowStockAlerts();
   const [search, setSearch] = useState('');
   const qc = useQueryClient();
@@ -98,7 +105,7 @@ export default function StockAlerts() {
                 <Skeleton className="h-9 w-full" />
               </div>
             ) : (
-              <Tabs defaultValue="products">
+              <Tabs value={abaUrl} onValueChange={setAbaUrl}>
                 <TabsList>
                   <TabsTrigger value="products" className="text-xs gap-1.5">
                     <Package className="h-3.5 w-3.5" />

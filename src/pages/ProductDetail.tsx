@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -53,6 +54,12 @@ const normalizeCalculationMethod = (value?: string | null): 'weight' | 'meter' |
 };
 
 export default function ProductDetail() {
+  // A aba mora na URL (contrato do lote L6): antes era <Tabs defaultValue>, então
+  // F5 e o botão Voltar devolviam o usuário à primeira aba.
+  const { value: abaUrl, setValue: setAbaUrl } = useUrlTabState({
+    values: ['details', 'history'] as const,
+    defaultValue: 'details',
+  });
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -364,7 +371,7 @@ export default function ProductDetail() {
            }
          />
 
-         <Tabs defaultValue="details" className="w-full">
+         <Tabs value={abaUrl} onValueChange={setAbaUrl} className="w-full">
            <TabsList className="grid w-full grid-cols-2 mb-6">
              <TabsTrigger value="details">Informações e Dados</TabsTrigger>
              <TabsTrigger value="history" className="gap-2">

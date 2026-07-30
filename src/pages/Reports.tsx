@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { ShoppingCart, TrendUp as TrendingUp, CurrencyDollar as DollarSign, Percent, Package, Warning as AlertTriangle, Clock, FileText, Download, Funnel as Filter, Calendar, ChartBar as BarChart3, ChartPie as PieChartIcon, MapTrifold as Map, Users, ArrowUpRight, ArrowDownRight, CircleNotch as Loader2, ArrowsClockwise as RefreshCw, FileXls as FileSpreadsheet, Printer, Envelope as Mail, CaretRight as ChevronRight, Pulse as Activity, Stack as Layers, MagnifyingGlassMinus as SearchX } from '@phosphor-icons/react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -78,6 +79,12 @@ const REPORT_TEMPLATES = [
 ];
 
 export default function Reports() {
+  // A aba mora na URL (contrato do lote L6): antes era <Tabs defaultValue>, então
+  // F5 e o botão Voltar devolviam o usuário à primeira aba.
+  const { value: abaUrl, setValue: setAbaUrl } = useUrlTabState({
+    values: ['dashboard', 'reports'] as const,
+    defaultValue: 'dashboard',
+  });
   const { data: orders = [], isLoading: l1, isError: e1, refetch: r1 } = useOrders();
   const { data: saleOrders = [], isLoading: l2, isError: e2, refetch: r2 } = useSaleOrders();
   const { data: products = [], isLoading: l3, isError: e3, refetch: r3 } = useProducts();
@@ -253,7 +260,7 @@ export default function Reports() {
         }
       />
 
-      <Tabs defaultValue="dashboard" className="space-y-4">
+      <Tabs value={abaUrl} onValueChange={setAbaUrl} className="space-y-4">
         <TabsList>
           <TabsTrigger value="dashboard" className="gap-1.5">
             <BarChart3 className="h-3.5 w-3.5" />Painel

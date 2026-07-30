@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -218,6 +219,12 @@ function LogFormDialog({ equipmentList, plans, children }: { equipmentList: Equi
 
 // ─── Main Page ───
 export default function MaintenancePage() {
+  // A aba mora na URL (contrato do lote L6): antes era <Tabs defaultValue>, então
+  // F5 e o botão Voltar devolviam o usuário à primeira aba.
+  const { value: abaUrl, setValue: setAbaUrl } = useUrlTabState({
+    values: ['equipamentos', 'planos', 'historico'] as const,
+    defaultValue: 'equipamentos',
+  });
   // Espelha a RLS de manutenção (admin+gerente escrevem): esconde os controles
   // de criar/editar/excluir pra quem não pode, evitando botão que só dá erro.
   const { isAdmin, roles } = useAccessControl();
@@ -269,7 +276,7 @@ export default function MaintenancePage() {
         <StatCard label="Próximos 7 dias" value={upcomingCount} icon={Clock} tone="warning" />
       </StatGrid>
 
-      <Tabs defaultValue="equipamentos">
+      <Tabs value={abaUrl} onValueChange={setAbaUrl}>
         <TabsList>
           <TabsTrigger value="equipamentos"><Settings2 className="h-3.5 w-3.5 mr-1" />Equipamentos</TabsTrigger>
           <TabsTrigger value="planos"><ClipboardList className="h-3.5 w-3.5 mr-1" />Planos</TabsTrigger>

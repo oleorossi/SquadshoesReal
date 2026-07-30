@@ -368,6 +368,12 @@ function scanTabs(file) {
   // escreve por definição. Sem reconhecê-lo aqui, migrar uma tela pro hook
   // faria o inventário reportá-la como REGRESSÃO — some o `searchParams.get`
   // literal do arquivo.
+  // Aba de DIÁLOGO não entra no contrato de deep-link — e não é lacuna, é
+  // regra: a URL representa a NAVEGAÇÃO, e um modal é estado efêmero de uma
+  // tela. Sincronizar levaria a links que abrem um formulário no meio do nada.
+  // Marcamos como 'n/a' pra não inflar a métrica com trabalho que não existe.
+  const ehDialogo = /Dialog\.tsx$/.test(file);
+
   const usaContrato = /useUrlTabState/.test(src);
   const readsTab = usaContrato || /searchParams\.get\(\s*["'](tab|view|sub|subtab)["']/.test(src);
   const writesTab = usaContrato || /setSearchParams\s*\(/.test(src);
@@ -382,7 +388,7 @@ function scanTabs(file) {
     triggerCount,
     labels: labels.slice(0, 20),
     system: usesHubTabs ? 'HubTabsList' : indicatorNone ? 'shadcn+pill-manual' : 'shadcn-default',
-    urlSync: readsTab && writesTab ? 'full' : readsTab ? 'read-only' : 'none',
+    urlSync: ehDialogo ? 'n/a' : readsTab && writesTab ? 'full' : readsTab ? 'read-only' : 'none',
     persistsLocalStorage: usesLocalStorage,
     heights,
     overloaded: triggerCount > 5,
@@ -561,6 +567,20 @@ const bottomNavFindings = (() => {
  * produziria ruído permanente que ninguém pode resolver.
  */
 const ROLES_QUE_VEEM_TUDO = new Set(['admin', 'gerente', 'consulta']);
+
+/**
+ * Exceções ao limite, decididas pelo dono — não são dívida esquecida.
+ *
+ * Produção: as 6 telas do grupo (Planejamento, Kanban, Estouro, Apontamento,
+ * Imprimir Fichas, Análises) são todas de uso diário do chão de fábrica. O uso
+ * real do banco confirma: todas são views sobre tabelas com atividade na
+ * semana. Tirar qualquer uma da barra empurraria trabalho diário pra busca.
+ * Decisão de 30/07/2026 — o limite existe pra evitar catálogo, não pra
+ * esconder ferramenta que a pessoa abre todo dia.
+ */
+const LIMITE_DISPENSADO = new Map([
+  ['Produção', 'as 6 telas são de uso diário do chão de fábrica (dono, 30/07/2026)'],
+]);
 const groupOverflow = (() => {
   const pior = new Map();
   for (const [role, mods] of Object.entries(access.roleModules)) {
@@ -572,7 +592,7 @@ const groupOverflow = (() => {
         if (mod && access.adminOnly.includes(mod)) return false;
         return mod ? set.has(mod) : true;
       }).length;
-      if (visiveis <= GROUP_LIMIT) continue;
+      if (visiveis <= GROUP_LIMIT || LIMITE_DISPENSADO.has(g.label)) continue;
       const atual = pior.get(g.label);
       if (!atual || visiveis > atual.count) {
         pior.set(g.label, { group: g.label, count: visiveis, limit: GROUP_LIMIT, excess: visiveis - GROUP_LIMIT, role });

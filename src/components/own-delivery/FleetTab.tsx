@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { Plus, PencilSimple as Pencil, Trash as Trash2, GasPump as Fuel, Truck, User } from '@phosphor-icons/react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -32,10 +33,17 @@ const formatBrl = (n: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 3 }).format(n);
 
 export default function FleetTab() {
+  // Painel renderizado DENTRO de um hub que já é dono de `tab` — usa `subtab`
+  // pra não disputar o mesmo parâmetro com a tela hospedeira.
+  const { value: abaUrl, setValue: setAbaUrl } = useUrlTabState({
+    values: ['vehicles', 'drivers'] as const,
+    defaultValue: 'vehicles',
+    param: 'subtab',
+  });
   return (
     <div className="space-y-4">
       <FuelPriceCard />
-      <Tabs defaultValue="vehicles">
+      <Tabs value={abaUrl} onValueChange={setAbaUrl}>
         <TabsList>
           <TabsTrigger value="vehicles" className="gap-1.5"><Truck className="h-3.5 w-3.5" />Veículos</TabsTrigger>
           <TabsTrigger value="drivers" className="gap-1.5"><User className="h-3.5 w-3.5" />Motoristas</TabsTrigger>
