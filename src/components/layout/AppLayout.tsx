@@ -352,8 +352,14 @@ export default function AppLayout({ children, printMode = false }: { children: R
   // Industrial Editorial Pro 2.0: border-left ativo bump 2px → 3px pra
   // statement editorial mais decisivo. Padding interno compensado pra
   // manter alinhamento visual com itens não-ativos.
+  /**
+   * ⚠ A estrela de favorito NÃO pode viver dentro do NavLink: `<button>` dentro
+   * de `<a>` é HTML inválido e cria uma parada de teclado ambígua — ativar a
+   * estrela podia disparar a navegação junto (achado F16 da auditoria de IA).
+   * Ela é irmã, posicionada em cima; por isso o `pr-9` reserva o espaço dela.
+   */
   const navItemClass = (isActive: boolean) => cn(
-    "group flex items-center justify-between rounded-sm text-[13px] font-medium transition-all duration-150 relative",
+    "group flex items-center justify-between rounded-sm text-[13px] font-medium transition-all duration-150 relative pr-9",
     isActive
       ? "border-l-[3px] border-primary pl-[10px] pr-3 py-1.5 text-sidebar-foreground font-semibold bg-sidebar-foreground/[0.04]"
       : "border-l-2 border-transparent px-3 py-1.5 text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-foreground/[0.04]"
@@ -479,8 +485,8 @@ export default function AppLayout({ children, printMode = false }: { children: R
                     {filteredFavorites.map((item) => {
                       const Icon = iconForPath(item.path);
                       return (
+                        <div key={item.path} className="relative">
                         <NavLink
-                          key={item.path}
                           to={item.path}
                           draggable={!mobile}
                           onDragStart={!mobile ? handleFavDragStart(item.path) : undefined}
@@ -498,14 +504,15 @@ export default function AppLayout({ children, printMode = false }: { children: R
                             <Icon className="h-4 w-4 shrink-0" />
                             <span className="truncate">{item.name}</span>
                           </div>
-                          <button
-                            onClick={(e) => toggleFavorite(e, item.name, item.path)}
-                            className="p-1 opacity-100 text-primary hover:text-primary/60 transition-all duration-200"
-                            aria-label={`Remover ${item.name} dos favoritos`}
-                          >
-                            <Star className="h-3 w-3 fill-current" />
-                          </button>
                         </NavLink>
+                        <button
+                          onClick={(e) => toggleFavorite(e, item.name, item.path)}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-sm opacity-100 text-primary hover:text-primary/60 transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          aria-label={`Remover ${item.name} dos favoritos`}
+                        >
+                          <Star className="h-3 w-3 fill-current" />
+                        </button>
+                        </div>
                       );
                     })}
                   </div>
@@ -644,8 +651,8 @@ export default function AppLayout({ children, printMode = false }: { children: R
                           const isFavorite = favorites.some(f => f.path === item.path);
                           const isSubItem = !!(item as any).parent;
                           return (
+                            <div key={item.path} className="relative">
                             <NavLink
-                              key={item.path}
                               to={item.path}
                               draggable={!mobile}
                               onDragStart={!mobile ? handleItemDragStart(group.label, item.path) : undefined}
@@ -663,23 +670,25 @@ export default function AppLayout({ children, printMode = false }: { children: R
                                 <item.icon className={cn("shrink-0", isSubItem ? "h-3.5 w-3.5" : "h-4 w-4")} />
                                 <span className={cn("truncate", isSubItem && "text-sm")}>{item.label}</span>
                               </div>
-                              <button
-                                onClick={(e) => toggleFavorite(e, item.label, item.path)}
-                                className={cn(
-                                  // Estrela de adicionar/remover favorito. Não-favorito
-                                  // ficava em opacity-40 (quase invisível, "fácil de não
-                                  // achar"): subido pra opacity-70 + cor com tom de primary
-                                  // pra deixar claro que é clicável. Favorito = cheio/primary.
-                                  "p-1 transition-all duration-200",
-                                  isFavorite
-                                    ? "opacity-100 text-primary"
-                                    : "opacity-70 hover:opacity-100 text-sidebar-muted hover:text-primary"
-                                )}
-                                aria-label={isFavorite ? `Remover ${item.label} dos favoritos` : `Adicionar ${item.label} aos favoritos`}
-                              >
-                                <Star className={cn("h-3.5 w-3.5", isFavorite && "fill-current")} />
-                              </button>
                             </NavLink>
+                            <button
+                              onClick={(e) => toggleFavorite(e, item.label, item.path)}
+                              className={cn(
+                                // Estrela de adicionar/remover favorito. Não-favorito
+                                // ficava em opacity-40 (quase invisível, "fácil de não
+                                // achar"): subido pra opacity-70 + cor com tom de primary
+                                // pra deixar claro que é clicável. Favorito = cheio/primary.
+                                "absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-sm transition-all duration-200",
+                                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                                isFavorite
+                                  ? "opacity-100 text-primary"
+                                  : "opacity-70 hover:opacity-100 text-sidebar-muted hover:text-primary"
+                              )}
+                              aria-label={isFavorite ? `Remover ${item.label} dos favoritos` : `Adicionar ${item.label} aos favoritos`}
+                            >
+                              <Star className={cn("h-3.5 w-3.5", isFavorite && "fill-current")} />
+                            </button>
+                            </div>
                           );
                         })}
                       </div>
