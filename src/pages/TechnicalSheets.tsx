@@ -133,6 +133,7 @@
  }
  
 import React, { useState, useMemo, useEffect } from 'react';
+import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { useSearchParams, Link } from 'react-router-dom';
 import { SignedImage } from '@/components/ui/signed-image';
 import { useDisplaySizeKeys } from '@/lib/soleGradeKeys';
@@ -1310,6 +1311,12 @@ function SheetCompleteness({ sheet }: { sheet: any }) {
 
 /* ===== SHEET DETAIL (all tabs) ===== */
 function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () => void }) {
+  // A aba mora na URL (contrato do lote L6a). São 9 abas: quem estava em Custos
+  // ou Variantes e dava F5 voltava pra Identificação e perdia o lugar.
+  const { value: abaAtiva, setValue: setAbaAtiva } = useUrlTabState({
+    values: ['id', 'engineering', 'range-aviamento', 'production', 'costs', 'variants', 'media', 'ficha-corte', 'terceirizados'] as const,
+    defaultValue: 'id',
+  });
   const queryClient = useQueryClient();
   const updateSheet = useUpdateSheet();
   const { data: shoeCategories = [] } = useShoeCategories();
@@ -2001,7 +2008,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
         </div>
       </div>
 
-      <Tabs defaultValue="id">
+      <Tabs value={abaAtiva} onValueChange={setAbaAtiva}>
         <TabsList indicator="none" className="flex flex-nowrap overflow-x-auto sm:flex-wrap sm:overflow-visible h-auto gap-1 bg-muted/50 p-1.5 rounded-lg border">
           {/* Cada tab agora mostra um indicador discreto de "completude" ou
               contagem (badge) pro usuário saber onde tem trabalho pendente. */}

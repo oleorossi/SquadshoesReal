@@ -9,7 +9,7 @@
     "grantableDestinations": 79,
     "menuGroups": 9,
     "pagesWithTabs": 62,
-    "tabsWithoutUrl": 45,
+    "tabsWithoutUrl": 44,
     "tabsOverloaded": 13
   },
   "findings": {
@@ -3343,7 +3343,7 @@
         "Terceirizados"
       ],
       "system": "shadcn+pill-manual",
-      "urlSync": "none",
+      "urlSync": "full",
       "persistsLocalStorage": false,
       "heights": [
         "h-auto"
@@ -3726,7 +3726,7 @@
         "Mão de Obra"
       ],
       "system": "shadcn+pill-manual",
-      "urlSync": "read-only",
+      "urlSync": "full",
       "persistsLocalStorage": false,
       "heights": [
         "h-auto"

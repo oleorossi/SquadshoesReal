@@ -11,6 +11,7 @@
  *   Útil pra abrir do PV: linha do item → "Simular markup" → cai direto na ficha.
  */
 import { useState, useEffect } from 'react';
+import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { useSearchParams } from 'react-router-dom';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Calculator, FileText, Clock } from '@phosphor-icons/react';
@@ -24,18 +25,21 @@ export default function PricingCalculator() {
   const requestedTab = searchParams.get('tab');
   const requestedSheet = searchParams.get('sheet');
 
-  // 'labor' (aba antiga "Mão de Obra" em horas/par) foi unificada na 'sector'
-  // (pares/hora) — links/legado com ?tab=labor caem na aba unificada.
-  const initialTab =
-    requestedTab === 'by-sheet' || requestedSheet ? 'by-sheet'
-      : requestedTab === 'labor' || requestedTab === 'sector' ? 'sector'
-      : 'manual';
-  const [activeTab, setActiveTab] = useState<string>(initialTab);
+  // A aba mora na URL (contrato do lote L6a). Esta tela já LIA o parâmetro no
+  // carregamento, mas nunca ESCREVIA: trocar de aba não mudava o endereço, então
+  // o deep-link só funcionava na ida. 'labor' (aba antiga "Mão de Obra" em
+  // horas/par) segue aceito como alias da 'sector' unificada (pares/hora).
+  const { value: activeTab, setValue: setActiveTab } = useUrlTabState({
+    values: ['manual', 'by-sheet', 'sector'] as const,
+    defaultValue: 'manual',
+    aliases: { labor: 'sector' },
+  });
 
+  // `?sheet=<uuid>` implica a aba da ficha, mesmo sem `?tab=`: o link vem de
+  // fora (custeio do PV) apontando pra uma ficha específica.
   useEffect(() => {
-    if (requestedTab === 'by-sheet' || requestedSheet) setActiveTab('by-sheet');
-    else if (requestedTab === 'labor' || requestedTab === 'sector') setActiveTab('sector');
-  }, [requestedTab, requestedSheet]);
+    if (requestedSheet && activeTab !== 'by-sheet') setActiveTab('by-sheet', { history: 'replace' });
+  }, [requestedSheet, activeTab, setActiveTab]);
 
   return (
     <div className="space-y-5 page-enter">
