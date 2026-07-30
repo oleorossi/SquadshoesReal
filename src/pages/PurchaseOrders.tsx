@@ -1,4 +1,5 @@
 import CreatePurchaseOrderDialog from "@/components/purchase/CreatePurchaseOrderDialog";
+import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { LancamentoAvulsoDialog } from "@/components/avulso/LancamentoAvulsoDialog";
 import { Plus, Receipt } from '@phosphor-icons/react';
 import { adjustStockSafe } from '@/lib/stockAdjustments';
@@ -187,6 +188,12 @@ const PO_STATUS_OPTIONS: { value: string; label: string }[] = [
 ];
 
 export default function PurchaseOrders() {
+  // A aba mora na URL (contrato do lote L6a): antes era <Tabs defaultValue>, então
+  // F5 e o botão Voltar devolviam o usuário à primeira aba.
+  const { value: abaAtiva, setValue: setAbaAtiva } = useUrlTabState({
+    values: ['all', 'solados'] as const,
+    defaultValue: 'all',
+  });
   const { data: orders = [], isLoading } = usePurchaseOrders();
   const { data: itemSummaries } = usePurchaseOrderItemSummaries(orders.map(o => o.id));
   const { data: paymentsMap } = usePurchaseOrderPayments();
@@ -431,7 +438,7 @@ export default function PurchaseOrders() {
           }
         />
 
-        <Tabs defaultValue="all" className="space-y-4">
+        <Tabs value={abaAtiva} onValueChange={setAbaAtiva} className="space-y-4">
           <TabsList>
             <TabsTrigger value="all" className="gap-2"><ShoppingCart className="h-4 w-4" /> Geral</TabsTrigger>
             <TabsTrigger value="solados" className="gap-2"><Footprints className="h-4 w-4" /> Solados</TabsTrigger>

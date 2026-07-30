@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { useAllNfeEmitidas, useEmitNfe, useCheckNfeStatus, useCancelNfe, useCompanies, useSyncNfeFromProvider, useDownloadNfeFile, usePreviewNfe, NfeEmitida, type NfePreviewResponse } from '@/hooks/useNfe';
 import { useAccessControl, useCan } from '@/hooks/useAccessControl';
 import { Button } from '@/components/ui/button';
@@ -409,6 +410,12 @@ function NfeRow({ nfe, onCancel, onView, canCancel }: { nfe: any; onCancel: (n: 
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function NfePage() {
+  // A aba mora na URL (contrato do lote L6a): antes era <Tabs defaultValue>, então
+  // F5 e o botão Voltar devolviam o usuário à primeira aba.
+  const { value: abaAtiva, setValue: setAbaAtiva } = useUrlTabState({
+    values: ['nfes', 'avulsa', 'empresas', 'tributacao', 'cce', 'diagnostico'] as const,
+    defaultValue: 'nfes',
+  });
   const [statusFilter, setStatusFilter] = useState('');
   const [companyFilter, setCompanyFilter] = useState('');
   // ?q= da URL: a busca global (⌘K) navega pra cá com o nº/chave da NF
@@ -525,7 +532,7 @@ export default function NfePage() {
       {/* M2: PVs com inconsistência fiscal (Faturado sem NF, NF sem Faturado, etc.) */}
       <NfeBillingHealthCard />
 
-      <Tabs defaultValue="nfes">
+      <Tabs value={abaAtiva} onValueChange={setAbaAtiva}>
         <TabsList>
           <TabsTrigger value="nfes" className="gap-2">
             <FileText className="h-4 w-4" /> NF-es Emitidas

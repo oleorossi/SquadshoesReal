@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -136,6 +137,15 @@ export default function CRM() {
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
   const overdueCount = scheduled.filter((s: any) => new Date(s.scheduled_for) < today).length;
+  // A aba mora na URL (contrato do lote L6a). O default DEPENDE dos dados — a
+  // tela abria em "Agendados" só quando havia agendamento — então ele é passado
+  // dinamicamente; "default" aqui significa a aba que a ausência de parâmetro
+  // representa, e ela pode mudar quando a consulta responde.
+  const { value: abaAtiva, setValue: setAbaAtiva } = useUrlTabState({
+    values: ['scheduled', 'interactions', 'inactive', 'birthdays', 'repurchase', 'nps'] as const,
+    defaultValue: scheduled.length > 0 ? 'scheduled' : 'interactions',
+  });
+
   const todayCount = scheduled.filter((s: any) => {
     const d = new Date(s.scheduled_for);
     return d >= today && d < tomorrow;
@@ -343,7 +353,7 @@ export default function CRM() {
         />
       </StatGrid>
 
-      <Tabs defaultValue={scheduled.length > 0 ? 'scheduled' : 'interactions'}>
+      <Tabs value={abaAtiva} onValueChange={setAbaAtiva}>
         <TabsList>
           <TabsTrigger value="scheduled" className="gap-1.5">
             <Bell className="h-3 w-3" />

@@ -9,7 +9,7 @@
     "grantableDestinations": 79,
     "menuGroups": 9,
     "pagesWithTabs": 62,
-    "tabsWithoutUrl": 50,
+    "tabsWithoutUrl": 45,
     "tabsOverloaded": 13
   },
   "findings": {
@@ -3423,7 +3423,7 @@
         "Analytics"
       ],
       "system": "shadcn-default",
-      "urlSync": "none",
+      "urlSync": "full",
       "persistsLocalStorage": false,
       "heights": [],
       "overloaded": true
@@ -3439,7 +3439,7 @@
         "NPS"
       ],
       "system": "shadcn-default",
-      "urlSync": "none",
+      "urlSync": "full",
       "persistsLocalStorage": false,
       "heights": [],
       "overloaded": true
@@ -3456,7 +3456,7 @@
         "Diagnóstico"
       ],
       "system": "shadcn-default",
-      "urlSync": "none",
+      "urlSync": "full",
       "persistsLocalStorage": false,
       "heights": [],
       "overloaded": true
@@ -3983,7 +3983,7 @@
         "Solados"
       ],
       "system": "shadcn-default",
-      "urlSync": "none",
+      "urlSync": "full",
       "persistsLocalStorage": true,
       "heights": [],
       "overloaded": false
@@ -4011,7 +4011,7 @@
         "Recall de Lote"
       ],
       "system": "shadcn-default",
-      "urlSync": "none",
+      "urlSync": "full",
       "persistsLocalStorage": false,
       "heights": [],
       "overloaded": false

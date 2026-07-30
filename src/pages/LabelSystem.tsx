@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Tag, Printer, Gear as Settings2, Sparkle as Sparkles, Cpu, ChartBar as BarChart3, PencilLine as PenLine } from '@phosphor-icons/react';
 import { LabelTemplatesTab } from '@/components/label-system/LabelTemplatesTab';
@@ -24,7 +25,12 @@ const DEMO_TEMPLATE: LabelTemplate = {
 };
 
 export default function LabelSystem() {
-  const [activeTab, setActiveTab] = useState('production');
+  // A aba mora na URL (contrato do lote L6a): o useState local não sobrevivia
+  // ao F5 nem ao botão Voltar.
+  const { value: activeTab, setValue: setActiveTab } = useUrlTabState({
+    values: ['production', 'manual', 'templates', 'dashboard', 'printers', 'optimization', 'analytics'] as const,
+    defaultValue: 'production',
+  });
   const [optimizationTemplate, setOptimizationTemplate] = useState<LabelTemplate>(DEMO_TEMPLATE);
 
   return (

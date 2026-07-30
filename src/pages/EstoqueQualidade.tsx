@@ -8,6 +8,7 @@
  * dado um lote, lista quem comprou (cliente/NF/pares).
  */
 import { useMemo, useState } from 'react';
+import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { format, parseISO } from 'date-fns';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { Panel } from '@/components/ui/panel';
@@ -288,6 +289,12 @@ function RecallTab() {
 }
 
 export default function EstoqueQualidade() {
+  // A aba mora na URL (contrato do lote L6a): antes era <Tabs defaultValue>, então
+  // F5 e o botão Voltar devolviam o usuário à primeira aba.
+  const { value: abaAtiva, setValue: setAbaAtiva } = useUrlTabState({
+    values: ['quarentena', 'recall'] as const,
+    defaultValue: 'quarentena',
+  });
   return (
     <div className="space-y-6 pb-12">
       <EditorialPageHeader
@@ -296,7 +303,7 @@ export default function EstoqueQualidade() {
         title="Qualidade de Estoque"
         description="Quarentena, bloqueio e descarte de estoque, e recall de lote (rastreabilidade de quem comprou)."
       />
-      <Tabs defaultValue="quarentena">
+      <Tabs value={abaAtiva} onValueChange={setAbaAtiva}>
         <TabsList>
           <TabsTrigger value="quarentena" className="gap-1.5"><ShieldWarning className="size-4" /> Quarentena & Bloqueio</TabsTrigger>
           <TabsTrigger value="recall" className="gap-1.5"><Recycle className="size-4" /> Recall de Lote</TabsTrigger>
