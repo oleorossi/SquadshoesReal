@@ -5,7 +5,8 @@ import { QueryClient, QueryClientProvider, QueryCache, MutationCache } from "@ta
 import { toast } from "sonner";
 import { createBrowserRouter, RouterProvider, Navigate, Outlet, useLocation, useParams, useRouteError, type RouteObject } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
-import { useCurrentProfile } from "@/hooks/useUserManagement";
+import { useCurrentProfile, useUserRoleNames } from "@/hooks/useUserManagement";
+import { resolveRoleHome } from "@/data/navigation";
 import { resolveModuleForPath, useAccessControl } from "@/hooks/useAccessControl";
 import { CircleNotch as Loader2, ShieldWarning as ShieldAlert, ArrowsClockwise as RefreshCw, SignIn as LogIn } from '@phosphor-icons/react';
 import { Button } from "@/components/ui/button";
@@ -459,12 +460,17 @@ function RootRedirect() {
   // 1 requisição em vez de 2 e, em navegações seguintes, o redirect é instantâneo
   // porque o cache já está quente.
   const { data: profile, isPending, isError } = useCurrentProfile();
+  const { data: roleNames = [] } = useUserRoleNames(user?.id);
 
   if (loading) return <PageLoader />;
   if (user && isPending && !isError) return <PageLoader />;
   // `is_sales_rep` não está na interface Profile (types gerados) — mesmo cast que o
   // código anterior fazia. Erro ao ler o profile cai no desktop, igual ao catch antigo.
-  const destination = (profile as any)?.is_sales_rep ? '/m' : '/dashboard';
+  // Round-7 (30/07/2026): a tela inicial passou a ser do PERFIL. Antes todo
+  // mundo caía em /dashboard — faz sentido pro gerente, não pra quem aponta
+  // produção no chão de fábrica e começa o dia apontando, nem pro RH, que via
+  // um painel de KPIs e 8 grupos vazios.
+  const destination = (profile as any)?.is_sales_rep ? '/m' : resolveRoleHome(roleNames);
   return <Navigate to={`${destination}${location.search}${location.hash}`} replace />;
 }
 

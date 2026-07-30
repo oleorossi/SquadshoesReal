@@ -262,3 +262,71 @@ export function getMenuItemsGrouped(): Record<string, NavigationResource[]> {
   }
   return out;
 }
+
+// ════════════════════════════════════════════════════════════════════════
+// APRESENTAÇÃO POR PERFIL (Round-7, 30/07/2026)
+//
+// Até aqui todo perfil recebia a MESMA estrutura de menu, só com itens
+// ocultos pelo filtro de acesso. O resultado medido: `rh` abria o sistema e
+// encontrava 3 itens espalhados em 9 grupos, 8 deles vazios; `almoxarifado`,
+// 6 itens em 2 grupos. Do outro lado, `consulta` — um perfil SOMENTE-LEITURA —
+// via os mesmos 54 itens de um gerente. Nenhum desses extremos foi desenhado
+// por alguém: os dois são efeito colateral do filtro.
+//
+// ⚠ O que mora aqui é SÓ apresentação: por onde a pessoa entra e em que ordem
+// as áreas aparecem. QUAIS itens ela pode ver continua sendo decidido por
+// `ROLE_MODULES` + `user_permissions` em useAccessControl — uma regra só, num
+// lugar só. Repetir a visibilidade aqui recriaria exatamente os bugs F1–F4 da
+// auditoria, que existem porque a mesma decisão morava em dois lugares.
+// ════════════════════════════════════════════════════════════════════════
+
+export interface RoleMenuPresentation {
+  /** Tela onde a pessoa cai ao entrar. */
+  home: string;
+  /** Ordem das áreas na sidebar — as que ela não acessa somem pelo filtro. */
+  groupOrder: string[];
+}
+
+const ORDEM_COMPLETA = [
+  'Comercial', 'Engenharia', 'Produção', 'Estoque',
+  'Compras', 'Logística', 'Financeiro', 'Fiscal', 'RH',
+];
+
+export const ROLE_MENU_PRESENTATION: Record<string, RoleMenuPresentation> = {
+  admin:   { home: '/dashboard', groupOrder: ORDEM_COMPLETA },
+  gerente: { home: '/dashboard', groupOrder: ORDEM_COMPLETA },
+  consulta:{ home: '/dashboard', groupOrder: ORDEM_COMPLETA },
+
+  // Quem aponta produção não começa o dia olhando KPI: começa apontando.
+  producao:     { home: '/producao/apontamento', groupOrder: ['Produção', 'Estoque', 'Logística', 'Engenharia', 'RH'] },
+  comercial:    { home: '/comercial',            groupOrder: ['Comercial'] },
+  nfe_operator: { home: '/nfe',                  groupOrder: ['Fiscal', 'Comercial'] },
+  almoxarifado: { home: '/estoque',              groupOrder: ['Estoque'] },
+  rh:           { home: '/rh',                   groupOrder: ['RH'] },
+};
+
+/**
+ * Tela inicial do perfil. Com múltiplos papéis vence o de MAIOR alcance —
+ * nunca a ordem incidental das linhas no banco, que mudaria a experiência da
+ * pessoa sem ninguém ter decidido nada.
+ */
+const PRIORIDADE_DE_PAPEL = ['admin', 'gerente', 'consulta', 'producao', 'comercial', 'nfe_operator', 'almoxarifado', 'rh'];
+
+export function resolveRoleHome(roles: readonly string[]): string {
+  const papel = PRIORIDADE_DE_PAPEL.find((r) => roles.includes(r));
+  return (papel && ROLE_MENU_PRESENTATION[papel]?.home) || '/dashboard';
+}
+
+/** Ordena as áreas conforme o perfil. Grupo fora da lista vai pro fim, estável. */
+export function orderGroupsForRoles<T extends { label: string }>(groups: T[], roles: readonly string[]): T[] {
+  const papel = PRIORIDADE_DE_PAPEL.find((r) => roles.includes(r));
+  const ordem = (papel && ROLE_MENU_PRESENTATION[papel]?.groupOrder) || ORDEM_COMPLETA;
+  const rank = (label: string) => {
+    const i = ordem.indexOf(label);
+    return i === -1 ? Number.MAX_SAFE_INTEGER : i;
+  };
+  return [...groups]
+    .map((g, i) => ({ g, i }))
+    .sort((a, b) => rank(a.g.label) - rank(b.g.label) || a.i - b.i)
+    .map(({ g }) => g);
+}

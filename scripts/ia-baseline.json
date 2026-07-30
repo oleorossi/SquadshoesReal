@@ -1,6 +1,6 @@
 {
   "_comentario": "Dívida de arquitetura de informação congelada. O build falha só em violação NOVA. Cada lote de correção deve DIMINUIR estas listas — regrave com --update-baseline. Quando tudo zerar, apague este arquivo: o guard vira falha dura sozinho.",
-  "_atualizadoEm": "2026-07-29",
+  "_atualizadoEm": "2026-07-30",
   "checks": {
     "orphan-route": [],
     "ghost-nav-entry": [],
@@ -17,7 +17,6 @@
   "groupOverflow": {
     "Comercial": 8,
     "Produção": 7,
-    "Compras": 8,
     "Logística": 9
   }
 }

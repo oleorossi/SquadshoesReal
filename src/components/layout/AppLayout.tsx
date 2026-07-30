@@ -1,6 +1,6 @@
 import React, { useState, useEffect, createContext, useContext } from 'react';
 import { SignOut as LogOut, List as Menu, X, CaretDown as ChevronDown, SidebarSimple as PanelLeftClose, SidebarSimple as PanelLeftOpen, Gear as Settings, ArrowLeft, Plus, ShoppingCart, Package, Star, House as Home } from '@phosphor-icons/react';
-import { menuGroups, systemItems, topItem } from '@/data/navigation';
+import { menuGroups, systemItems, topItem, orderGroupsForRoles } from '@/data/navigation';
 import logoImg from '@/assets/logo-squad-shoes.jpg';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
@@ -93,6 +93,10 @@ export default function AppLayout({ children, printMode = false }: { children: R
   const { isAdmin, canAccessRoute } = useAccessControl();
   const { data: currentProfile } = useCurrentProfile();
   const { data: currentRoles = [] } = useCurrentUserRoles();
+  // `useCurrentUserRoles` devolve objetos; a apresentação por perfil trabalha
+  // com nomes. Memo pra não recriar o array a cada render e invalidar os memos
+  // que dependem dele.
+  const roleNames = React.useMemo(() => currentRoles.map((r) => r.role), [currentRoles]);
   const [mobileOpen, setMobileOpen] = useState(false);
   // O drawer mobile é um aside artesanal (não usa o primitive Sheet): Escape
   // e foco inicial são responsabilidade nossa.
@@ -156,11 +160,19 @@ export default function AppLayout({ children, printMode = false }: { children: R
     return Star;
   };
 
+  // Round-7 (30/07/2026): a ORDEM das áreas passou a ser do perfil. A ordem
+  // canônica segue o fluxo da fábrica e serve pra quem enxerga tudo; pra quem
+  // enxerga uma fatia, a área do próprio trabalho vem primeiro — o operador não
+  // deveria rolar até achar Produção. QUAIS itens ele vê continua vindo só do
+  // controle de acesso; aqui é apresentação.
   const filteredMenuGroups = React.useMemo(() =>
-    menuGroups
-      .map(group => ({ ...group, items: group.items.filter(item => canAccessRoute(item.path)) }))
-      .filter(group => group.items.length > 0),
-    [canAccessRoute]
+    orderGroupsForRoles(
+      menuGroups
+        .map(group => ({ ...group, items: group.items.filter(item => canAccessRoute(item.path)) }))
+        .filter(group => group.items.length > 0),
+      roleNames,
+    ),
+    [canAccessRoute, roleNames]
   );
 
   // Ordem customizada (arrastar-e-soltar) — aplica a preferência salva sobre
@@ -574,6 +586,18 @@ export default function AppLayout({ children, printMode = false }: { children: R
             </div>
           ) : (
             <div className="px-2 space-y-0.5">
+              {/* Perfil sem nenhuma área liberada: antes a sidebar simplesmente
+                  ficava vazia, sem dizer por quê — a pessoa achava que o sistema
+                  tinha quebrado. Agora explica e diz o que fazer. */}
+              {orderedGroups.length === 0 && (
+                <div className="mx-1 mt-2 rounded-md border border-sidebar-border/60 bg-sidebar-accent/30 p-3">
+                  <p className="text-xs font-semibold text-sidebar-foreground">Nenhuma área liberada</p>
+                  <p className="mt-1 text-[11px] leading-relaxed text-sidebar-foreground/70">
+                    Sua conta ainda não tem permissão para nenhuma área do sistema.
+                    Peça a um administrador para liberar os acessos em Configurações.
+                  </p>
+                </div>
+              )}
               {orderedGroups.map((group) => {
                 const active = isGroupActive(group);
                 // Respeita o recolhimento manual do grupo MESMO quando a rota

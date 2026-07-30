@@ -507,9 +507,41 @@ const bottomNavFindings = (() => {
     }));
 })();
 
-const groupOverflow = nav.groups
-  .filter((g) => g.count > GROUP_LIMIT)
-  .map((g) => ({ group: g.label, count: g.count, limit: GROUP_LIMIT, excess: g.count - GROUP_LIMIT }));
+/**
+ * Estouro de grupo — medido POR PERFIL desde o Round-7 (30/07/2026).
+ *
+ * O limite de 5 é sobre o que uma PESSOA vê, não sobre o tamanho do array: a
+ * sidebar é ponto de entrada por contexto de trabalho, não catálogo. Medir no
+ * array cru punia o sistema por conter ferramenta que cada perfil não vê —
+ * e empurrava pra esconder tela de quem precisa dela.
+ *
+ * Admin, gerente e consulta enxergam o catálogo inteiro POR DESENHO (matriz do
+ * Round-7): o trabalho deles é ter visão de tudo. O limite protege quem tem um
+ * contexto de trabalho estreito — operador, almoxarife, comercial, RH — de
+ * receber um catálogo em vez de um ponto de entrada. Medir os três aqui só
+ * produziria ruído permanente que ninguém pode resolver.
+ */
+const ROLES_QUE_VEEM_TUDO = new Set(['admin', 'gerente', 'consulta']);
+const groupOverflow = (() => {
+  const pior = new Map();
+  for (const [role, mods] of Object.entries(access.roleModules)) {
+    if (ROLES_QUE_VEEM_TUDO.has(role) || mods.includes('*')) continue;
+    const set = new Set(mods);
+    for (const g of nav.groups) {
+      const visiveis = g.items.filter((i) => {
+        const mod = resolveModule(i.path, access.routeModule);
+        if (mod && access.adminOnly.includes(mod)) return false;
+        return mod ? set.has(mod) : true;
+      }).length;
+      if (visiveis <= GROUP_LIMIT) continue;
+      const atual = pior.get(g.label);
+      if (!atual || visiveis > atual.count) {
+        pior.set(g.label, { group: g.label, count: visiveis, limit: GROUP_LIMIT, excess: visiveis - GROUP_LIMIT, role });
+      }
+    }
+  }
+  return [...pior.values()];
+})();
 
 // Módulos referenciados no mapa de rotas que NENHUM perfil não-admin concede.
 // Admin tem '*' e enxerga tudo, então não conta — o que interessa é o módulo
