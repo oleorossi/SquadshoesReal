@@ -97,15 +97,45 @@ export default function AppLayout({ children, printMode = false }: { children: R
   // que dependem dele.
   const roleNames = React.useMemo(() => currentRoles.map((r) => r.role), [currentRoles]);
   const [mobileOpen, setMobileOpen] = useState(false);
-  // O drawer mobile é um aside artesanal (não usa o primitive Sheet): Escape
-  // e foco inicial são responsabilidade nossa.
+  // O drawer mobile é um aside artesanal (não usa o primitive Sheet): prender o
+  // foco, fechar no Escape e DEVOLVER o foco ao gatilho são responsabilidade
+  // nossa. Antes só o foco inicial e o Escape estavam feitos (achado F17): o Tab
+  // escapava e ia navegar a página ATRÁS do drawer, e ao fechar o foco caía no
+  // <body> — quem usa teclado perdia o lugar.
   const mobileDrawerRef = React.useRef<HTMLElement>(null);
+  const gatilhoMenuRef = React.useRef<HTMLElement | null>(null);
   useEffect(() => {
     if (!mobileOpen) return;
+
+    gatilhoMenuRef.current = document.activeElement as HTMLElement | null;
     mobileDrawerRef.current?.querySelector<HTMLElement>('button, a, [tabindex]')?.focus();
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setMobileOpen(false); };
+
+    const focaveis = () => Array.from(
+      mobileDrawerRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    ).filter((el) => el.offsetParent !== null);
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setMobileOpen(false); return; }
+      if (e.key !== 'Tab') return;
+      const els = focaveis();
+      if (els.length === 0) return;
+      const primeiro = els[0];
+      const ultimo = els[els.length - 1];
+      const atual = document.activeElement;
+      if (e.shiftKey && (atual === primeiro || !mobileDrawerRef.current?.contains(atual))) {
+        e.preventDefault(); ultimo.focus();
+      } else if (!e.shiftKey && atual === ultimo) {
+        e.preventDefault(); primeiro.focus();
+      }
+    };
+
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      gatilhoMenuRef.current?.focus?.();
+    };
   }, [mobileOpen]);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => {
     try {

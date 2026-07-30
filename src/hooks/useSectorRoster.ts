@@ -66,10 +66,21 @@ const fromView = (view: string) => (supabase as unknown as {
   };
 }).from(view);
 
-/** Setores de produção, na ordem do fluxo de fábrica. */
+/** Setores de produção, na ordem do fluxo de fábrica.
+ *
+ *  ⚠ A queryKey é ['production-sectors', 'detail'] e NÃO ['production-sectors']:
+ *  `SectorSelectField` (cadastro de Funcionários) já ocupa a chave curta
+ *  devolvendo `string[]` (só os nomes). Duas queries com a mesma chave e
+ *  formatos diferentes se sobrescrevem no cache global — quem carregasse
+ *  primeiro entregaria o formato errado pra outra tela, e o caminho
+ *  Funcionários → Ficha de Montadores dispara isso.
+ *
+ *  O segmento extra preserva a invalidação: `invalidateQueries` com a chave
+ *  curta casa por PREFIXO, então criar um setor novo no cadastro continua
+ *  atualizando as abas desta tela. */
 export function useProductionSectors() {
   return useQuery({
-    queryKey: ['production-sectors'],
+    queryKey: ['production-sectors', 'detail'],
     queryFn: async (): Promise<ProductionSector[]> => {
       const { data, error } = await fromView('v_production_sectors')
         .select('sector_key, sector_label, flow_order, headcount')

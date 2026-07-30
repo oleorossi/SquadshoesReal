@@ -1,5 +1,5 @@
-import { lazy, Suspense } from 'react';
-import { Navigate, useSearchParams } from 'react-router-dom';
+import { lazy, Suspense, useRef } from 'react';
+import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { CircleNotch as Loader2 } from '@phosphor-icons/react';
 import { useEnsureFreshSchedule } from '@/hooks/useProductionEngine';
@@ -56,12 +56,36 @@ const VIEWS: { value: string; label: string; render: () => JSX.Element }[] = [
  */
 export default function ProducaoAnalises() {
   useEnsureFreshSchedule();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const view = searchParams.get('view') || 'dashboard';
-  if (view === 'capacidade') {
-    return <Navigate to="/producao/analises?view=tempos-padrao" replace />;
-  }
+
+  // Estas 16 "abas" eram <button> cru: sem role="tab", sem aria-selected e sem
+  // navegação por setas. Quem usa teclado atravessava os 16 um a um, e o leitor
+  // de tela não dizia qual estava ativa — é o maior conjunto do sistema (F/T7).
+  //
+  // E o `setSearchParams({ view })` de antes DESCARTAVA todo o resto da query:
+  // qualquer filtro na URL morria ao trocar de visão. O hook preserva.
+  const { value: view, setValue: setView } = useUrlTabState({
+    values: VIEWS.map(v => v.value),
+    defaultValue: 'dashboard',
+    param: 'view',
+    aliases: { capacidade: 'tempos-padrao' },
+  });
   const active = VIEWS.find(v => v.value === view) ?? VIEWS[0];
+
+  const listaRef = useRef<HTMLDivElement>(null);
+  const aoTeclar = (e: React.KeyboardEvent) => {
+    const i = VIEWS.findIndex(v => v.value === view);
+    let alvo = -1;
+    if (e.key === 'ArrowRight') alvo = (i + 1) % VIEWS.length;
+    else if (e.key === 'ArrowLeft') alvo = (i - 1 + VIEWS.length) % VIEWS.length;
+    else if (e.key === 'Home') alvo = 0;
+    else if (e.key === 'End') alvo = VIEWS.length - 1;
+    if (alvo < 0) return;
+    e.preventDefault();
+    setView(VIEWS[alvo].value);
+    // Roving tabindex: o foco acompanha a seleção, senão o teclado navega uma
+    // aba e o foco fica na anterior.
+    listaRef.current?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[alvo]?.focus();
+  };
 
   return (
     <div className="space-y-4 page-enter">
@@ -71,25 +95,42 @@ export default function ProducaoAnalises() {
         description="Diagnóstico e visões analíticas da produção — todos os números vêm do mesmo motor das telas de operação."
       />
       <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0 pb-1">
-        <div className="inline-flex w-max gap-1 bg-muted/50 p-1 rounded-lg">
-          {VIEWS.map(v => (
-            <button
-              key={v.value}
-              onClick={() => setSearchParams({ view: v.value }, { replace: true })}
-              className={`text-xs whitespace-nowrap px-3 py-1.5 rounded-md transition-colors ${
-                active.value === v.value
-                  ? 'bg-background shadow-sm font-semibold'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              {v.label}
-            </button>
-          ))}
+        <div
+          ref={listaRef}
+          role="tablist"
+          aria-label="Visões de análise"
+          onKeyDown={aoTeclar}
+          className="inline-flex w-max gap-1 bg-muted/50 p-1 rounded-lg"
+        >
+          {VIEWS.map(v => {
+            const ativa = active.value === v.value;
+            return (
+              <button
+                key={v.value}
+                type="button"
+                role="tab"
+                id={`aba-${v.value}`}
+                aria-selected={ativa}
+                aria-controls="painel-analise"
+                tabIndex={ativa ? 0 : -1}
+                onClick={() => setView(v.value)}
+                className={`text-xs whitespace-nowrap px-3 py-1.5 rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                  ativa
+                    ? 'bg-background shadow-sm font-semibold'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {v.label}
+              </button>
+            );
+          })}
         </div>
       </div>
-      <Suspense fallback={<Loader />}>
-        {active.render()}
-      </Suspense>
+      <div role="tabpanel" id="painel-analise" aria-labelledby={`aba-${active.value}`} tabIndex={0}>
+        <Suspense fallback={<Loader />}>
+          {active.render()}
+        </Suspense>
+      </div>
     </div>
   );
 }

@@ -44,15 +44,50 @@ export function BottomNav() {
 
   useEffect(() => { setMoreOpen(false); }, [location.pathname]);
 
-  // O sheet "Mais" é um div artesanal (não usa o primitive Dialog): fechar no
-  // Escape e mover o foco pra dentro são responsabilidade nossa.
+  // O sheet "Mais" é um div artesanal (não usa o primitive Dialog): prender o
+  // foco, fechar no Escape e DEVOLVER o foco ao gatilho são responsabilidade
+  // nossa. Antes só o foco inicial e o Escape estavam feitos (achado F17):
+  //   • o Tab escapava do sheet e ia navegar o conteúdo ATRÁS do modal;
+  //   • ao fechar, o foco caía no <body> — quem usa teclado ou leitor de tela
+  //     perdia o lugar e tinha que percorrer a página inteira de novo.
   const closeBtnRef = useRef<HTMLButtonElement>(null);
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const gatilhoRef = useRef<HTMLElement | null>(null);
+
   useEffect(() => {
     if (!moreOpen) return;
+
+    // Guarda quem abriu, pra devolver o foco na hora de fechar.
+    gatilhoRef.current = document.activeElement as HTMLElement | null;
     closeBtnRef.current?.focus();
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setMoreOpen(false); };
+
+    const focaveis = () => Array.from(
+      sheetRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    ).filter((el) => el.offsetParent !== null);
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setMoreOpen(false); return; }
+      if (e.key !== 'Tab') return;
+      const els = focaveis();
+      if (els.length === 0) return;
+      const primeiro = els[0];
+      const ultimo = els[els.length - 1];
+      const atual = document.activeElement;
+      // Ciclo fechado: do último volta pro primeiro e vice-versa.
+      if (e.shiftKey && (atual === primeiro || !sheetRef.current?.contains(atual))) {
+        e.preventDefault(); ultimo.focus();
+      } else if (!e.shiftKey && atual === ultimo) {
+        e.preventDefault(); primeiro.focus();
+      }
+    };
+
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      gatilhoRef.current?.focus?.();
+    };
   }, [moreOpen]);
 
   const isActive = (path: string) =>
@@ -76,6 +111,7 @@ export function BottomNav() {
           role="dialog"
           aria-modal="true"
           aria-label="Navegação"
+          ref={sheetRef}
           className="md:hidden fixed bottom-16 inset-x-0 z-50 bg-background/98 backdrop-blur-md border-t border-border rounded-t-2xl shadow-elevated safe-bot"
         >
           <div className="flex items-center justify-between px-4 pt-3 pb-2">
