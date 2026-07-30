@@ -349,8 +349,13 @@ function scanTabs(file) {
     .filter(Boolean);
 
   const usesHubTabs = /HubTabsList/.test(src);
-  const readsTab = /searchParams\.get\(\s*["'](tab|view|sub|subtab)["']/.test(src);
-  const writesTab = /setSearchParams\s*\(/.test(src);
+  // `useUrlTabState` É o contrato de deep-link (lote L6a): quem o usa lê E
+  // escreve por definição. Sem reconhecê-lo aqui, migrar uma tela pro hook
+  // faria o inventário reportá-la como REGRESSÃO — some o `searchParams.get`
+  // literal do arquivo.
+  const usaContrato = /useUrlTabState/.test(src);
+  const readsTab = usaContrato || /searchParams\.get\(\s*["'](tab|view|sub|subtab)["']/.test(src);
+  const writesTab = usaContrato || /setSearchParams\s*\(/.test(src);
   const usesLocalStorage = /usePersistedState\s*\(/.test(src);
   const indicatorNone = /indicator\s*=\s*["']none["']/.test(src);
 
