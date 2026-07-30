@@ -6,6 +6,7 @@
  * classe, registra o contado por item e reconcilia o saldo (adjust_stock).
  */
 import { useMemo, useState } from 'react';
+import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { format, parseISO } from 'date-fns';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { Panel } from '@/components/ui/panel';
@@ -230,6 +231,12 @@ function ContagensTab() {
 }
 
 export default function InventarioABC() {
+  // A aba mora na URL (contrato do lote L6a): antes era <Tabs defaultValue>, então
+  // F5 e o botão Voltar devolviam o usuário à primeira aba.
+  const { value: abaAtiva, setValue: setAbaAtiva } = useUrlTabState({
+    values: ['abc', 'contagens'] as const,
+    defaultValue: 'abc',
+  });
   return (
     <div className="space-y-6 pb-12">
       <EditorialPageHeader
@@ -238,7 +245,7 @@ export default function InventarioABC() {
         title="Inventário ABC"
         description="Classificação ABC por valor de estoque e contagem cíclica com reconciliação automática do saldo."
       />
-      <Tabs defaultValue="abc">
+      <Tabs value={abaAtiva} onValueChange={setAbaAtiva}>
         <TabsList>
           <TabsTrigger value="abc" className="gap-1.5"><ChartBar className="size-4" /> Curva ABC</TabsTrigger>
           <TabsTrigger value="contagens" className="gap-1.5"><ClipboardText className="size-4" /> Contagens</TabsTrigger>

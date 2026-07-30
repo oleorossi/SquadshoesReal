@@ -14,6 +14,7 @@ import { useVehicles, useDrivers } from '@/hooks/useFleet';
 import RoutePlannerOwn from '@/components/own-delivery/RoutePlannerOwn';
 import FleetTab from '@/components/own-delivery/FleetTab';
 import { Link } from 'react-router-dom';
+import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { useCan } from '@/hooks/useAccessControl';
 
@@ -42,6 +43,12 @@ const STATUS_COLOR: Record<RouteStatus, string> = {
 };
 
 export default function OwnDeliveriesPage() {
+  // A aba mora na URL (contrato do lote L6a): antes era <Tabs defaultValue>, então
+  // F5 e o botão Voltar devolviam o usuário à primeira aba.
+  const { value: abaAtiva, setValue: setAbaAtiva } = useUrlTabState({
+    values: ['orders', 'routes', 'fleet'] as const,
+    defaultValue: 'orders',
+  });
   return (
     <div className="container mx-auto p-4 lg:p-6 space-y-4">
       <EditorialPageHeader
@@ -50,7 +57,7 @@ export default function OwnDeliveriesPage() {
         description="Planeje rotas com a frota da empresa, otimize ordem de paradas e veja a projeção de combustível e desgaste."
       />
 
-      <Tabs defaultValue="orders">
+      <Tabs value={abaAtiva} onValueChange={setAbaAtiva}>
         <TabsList>
           <TabsTrigger value="orders" className="gap-1.5"><ListChecks className="h-3.5 w-3.5" />Pedidos prontos</TabsTrigger>
           <TabsTrigger value="routes" className="gap-1.5"><RouteIcon className="h-3.5 w-3.5" />Rotas</TabsTrigger>

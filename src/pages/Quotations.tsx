@@ -20,6 +20,7 @@ import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { cn, formatCurrency } from '@/lib/utils';
 import { useCan } from '@/hooks/useAccessControl';
+import { useUrlTabState } from '@/hooks/useUrlTabState';
 
 type QuotationStatus = 'aberta' | 'enviada' | 'recebida' | 'analisada' | 'aprovada' | 'cancelada' | 'expirada';
 
@@ -134,6 +135,12 @@ function QuotationsList({ onOpen, onCreate }: { onOpen: (id: string) => void; on
 }
 
 function QuotationDetail({ id, onBack }: { id: string; onBack: () => void }) {
+  // A aba mora na URL (contrato do lote L6a): antes era <Tabs defaultValue>, então
+  // F5 e o botão Voltar devolviam o usuário à primeira aba.
+  const { value: abaAtiva, setValue: setAbaAtiva } = useUrlTabState({
+    values: ['items', 'responses', 'comparison'] as const,
+    defaultValue: 'items',
+  });
   const qc = useQueryClient();
 
   const { data: q } = useQuery({
@@ -286,7 +293,7 @@ function QuotationDetail({ id, onBack }: { id: string; onBack: () => void }) {
         }
       />
 
-      <Tabs defaultValue="items">
+      <Tabs value={abaAtiva} onValueChange={setAbaAtiva}>
         <TabsList>
           <TabsTrigger value="items" className="gap-1.5"><Package className="h-3.5 w-3.5" /> Itens ({items.length})</TabsTrigger>
           <TabsTrigger value="responses" className="gap-1.5"><Users className="h-3.5 w-3.5" /> Respostas ({responses.length})</TabsTrigger>

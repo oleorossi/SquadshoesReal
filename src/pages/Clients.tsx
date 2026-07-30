@@ -2,6 +2,7 @@ import AppLayout from "@/components/layout/AppLayout";
 import { useState, useMemo } from 'react';
 import { Users, Plus, CircleNotch as Loader2, PencilSimple as Pencil, Trash as Trash2, MagnifyingGlass as Search, Buildings as Building2, CaretDown as ChevronDown, FileArrowUp as FileUp, Storefront as Store, Check, Star, ArrowsClockwise as RefreshCw, ArrowSquareOut as ExternalLink } from '@phosphor-icons/react';
 import { useNavigate } from 'react-router-dom';
+import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -52,6 +53,12 @@ const emptyClient: ClientFormData = {
 };
 
 export default function Clients() {
+  // A aba mora na URL (contrato do lote L6a): antes era <Tabs defaultValue>, então
+  // F5 e o botão Voltar devolviam o usuário à primeira aba.
+  const { value: abaAtiva, setValue: setAbaAtiva } = useUrlTabState({
+    values: ['clients', 'groups'] as const,
+    defaultValue: 'clients',
+  });
   const navigate = useNavigate();
   const { data: clients = [], isLoading, isError, error } = useClients();
   const { data: economicGroups = [] } = useEconomicGroups();
@@ -315,7 +322,7 @@ export default function Clients() {
           }
         />
 
-        <Tabs defaultValue="clients">
+        <Tabs value={abaAtiva} onValueChange={setAbaAtiva}>
           <TabsList>
             <TabsTrigger value="clients" className="gap-1.5"><Users className="h-4 w-4" />Clientes</TabsTrigger>
             <TabsTrigger value="groups" className="gap-1.5"><Building2 className="h-4 w-4" />Grupos Econômicos</TabsTrigger>

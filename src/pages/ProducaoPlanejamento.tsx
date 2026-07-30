@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { format } from 'date-fns';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { Card, CardContent } from '@/components/ui/card';
@@ -53,6 +54,12 @@ const toISO = (d: Date) => format(d, 'yyyy-MM-dd');
  *  • Fila: ordem real de produção (pin > prazo > criação) com drag = pin (R2.5).
  */
 export default function ProducaoPlanejamento() {
+  // A aba mora na URL (contrato do lote L6a): antes era <Tabs defaultValue>, então
+  // F5 e o botão Voltar devolviam o usuário à primeira aba.
+  const { value: abaAtiva, setValue: setAbaAtiva } = useUrlTabState({
+    values: ['grade', 'fila'] as const,
+    defaultValue: 'grade',
+  });
   useEnsureFreshSchedule();
   // Apontamento em outro terminal → realtime invalida as views do motor
   useRealtimeOrderStages();
@@ -135,7 +142,7 @@ export default function ProducaoPlanejamento() {
         </p>
       )}
 
-      <Tabs defaultValue="grade">
+      <Tabs value={abaAtiva} onValueChange={setAbaAtiva}>
         <TabsList>
           <TabsTrigger value="grade" className="gap-1.5"><CalendarIcon className="h-3.5 w-3.5" /> Grade setor × dia</TabsTrigger>
           <TabsTrigger value="fila" className="gap-1.5"><ListChecks className="h-3.5 w-3.5" /> Fila ({queue.length})</TabsTrigger>

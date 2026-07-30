@@ -9,7 +9,7 @@
     "grantableDestinations": 79,
     "menuGroups": 9,
     "pagesWithTabs": 62,
-    "tabsWithoutUrl": 55,
+    "tabsWithoutUrl": 50,
     "tabsOverloaded": 13
   },
   "findings": {
@@ -3509,7 +3509,7 @@
         "Representante"
       ],
       "system": "shadcn-default",
-      "urlSync": "none",
+      "urlSync": "full",
       "persistsLocalStorage": false,
       "heights": [],
       "overloaded": true
@@ -3756,7 +3756,7 @@
         "Comparativo"
       ],
       "system": "shadcn-default",
-      "urlSync": "none",
+      "urlSync": "full",
       "persistsLocalStorage": false,
       "heights": [],
       "overloaded": false
@@ -3799,7 +3799,7 @@
         "Frota"
       ],
       "system": "shadcn-default",
-      "urlSync": "none",
+      "urlSync": "full",
       "persistsLocalStorage": false,
       "heights": [],
       "overloaded": false
@@ -3853,7 +3853,7 @@
         "Contagens"
       ],
       "system": "shadcn-default",
-      "urlSync": "none",
+      "urlSync": "full",
       "persistsLocalStorage": false,
       "heights": [],
       "overloaded": false
@@ -3943,7 +3943,7 @@
         "Fila ( )"
       ],
       "system": "shadcn-default",
-      "urlSync": "none",
+      "urlSync": "full",
       "persistsLocalStorage": false,
       "heights": [],
       "overloaded": false
