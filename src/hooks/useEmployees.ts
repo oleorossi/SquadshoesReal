@@ -239,24 +239,43 @@ export function useSetAdvanceStatus() {
   });
 }
 
-/** Dá baixa em TODOS os vales pendentes de um funcionário de uma vez (após a
- *  folha descontar o saldo). Retorna quantos foram baixados. */
+/** 'YYYY-MM' → intervalo [1º dia do mês, 1º dia do mês seguinte).
+ *  Meio-aberto de propósito: montar 'YYYY-MM-31' geraria data inválida em fevereiro. */
+export function periodDateRange(period: string): { from: string; before: string } {
+  const [y, m] = period.split('-').map(Number);
+  const next = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`;
+  return { from: `${period}-01`, before: `${next}-01` };
+}
+
+/** Dá baixa nos vales pendentes de um funcionário DENTRO do período liquidado.
+ *
+ *  O filtro de data é o ponto todo: a folha só desconta vale `pending` cujo
+ *  `advance_date` cai no intervalo calculado (Payroll.tsx, query de `calculateAll`).
+ *  Antes esta mutation marcava como `paid` TODOS os pendentes do funcionário, sem
+ *  período — então um vale lançado para a competência seguinte era quitado hoje e
+ *  nunca era descontado, porque a folha do mês seguinte procura `status='pending'`.
+ *  Perda direta. (D15, auditoria RH 2026-07-29)
+ *
+ *  Retorna quantos foram baixados. */
 export function useSettleEmployeeAdvances() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (employeeId: string) => {
+    mutationFn: async ({ employeeId, period }: { employeeId: string; period: string }) => {
+      const { from, before } = periodDateRange(period);
       const { data, error } = await supabase
         .from('employee_advances')
         .update({ status: 'paid', updated_at: new Date().toISOString() } as any)
         .eq('employee_id', employeeId)
         .eq('status', 'pending')
+        .gte('advance_date', from)
+        .lt('advance_date', before)
         .select('id');
       if (error) throw error;
-      return (data || []).length;
+      return { baixados: (data || []).length, period };
     },
-    onSuccess: (n) => {
+    onSuccess: ({ baixados: n, period }) => {
       qc.invalidateQueries({ queryKey: ['employee_advances'] });
-      toast.success(`${n} ${n === 1 ? 'vale baixado' : 'vales baixados'} (descontados em folha).`);
+      toast.success(`${n} ${n === 1 ? 'vale baixado' : 'vales baixados'} de ${period} (descontados em folha).`);
     },
     onError: (e: Error) => toast.error(e.message),
   });

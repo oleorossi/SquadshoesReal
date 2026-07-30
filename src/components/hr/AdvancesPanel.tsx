@@ -37,7 +37,9 @@ export default function AdvancesPanel() {
   });
   const [search, setSearch] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [settleTarget, setSettleTarget] = useState<{ id: string; name: string; pending: number; pendingCount: number } | null>(null);
+  // `period` fica congelado no clique: se o usuário trocar o filtro com o diálogo
+  // aberto, o número exibido e o que será baixado continuam sendo do mesmo mês.
+  const [settleTarget, setSettleTarget] = useState<{ id: string; name: string; pending: number; pendingCount: number; period: string } | null>(null);
   const [form, setForm] = useState({
     employee_id: '',
     amount: 0,
@@ -72,14 +74,24 @@ export default function AdvancesPanel() {
   // Saldo aberto por funcionário (todos os adiantamentos pendentes) — fonte única
   // reaproveitada pela tabela de saldos, pelo combobox e pelo card de contexto do modal.
   const balanceMap = useMemo(() => {
-    const map = new Map<string, { pending: number; pendingCount: number; thisMonth: number }>();
+    const map = new Map<string, {
+      pending: number; pendingCount: number; thisMonth: number;
+      /** Pendentes SÓ do mês filtrado — é exatamente o que "Dar baixa" vai quitar (D15). */
+      pendingInPeriod: number; pendingCountInPeriod: number;
+    }>();
     for (const a of allAdvances) {
-      const cur = map.get(a.employee_id) || { pending: 0, pendingCount: 0, thisMonth: 0 };
+      const cur = map.get(a.employee_id)
+        || { pending: 0, pendingCount: 0, thisMonth: 0, pendingInPeriod: 0, pendingCountInPeriod: 0 };
+      const noPeriodo = a.advance_date.startsWith(filterPeriod);
       if (a.status === 'pending') {
         cur.pending += Number(a.amount) || 0;
         cur.pendingCount++;
+        if (noPeriodo) {
+          cur.pendingInPeriod += Number(a.amount) || 0;
+          cur.pendingCountInPeriod++;
+        }
       }
-      if (a.advance_date.startsWith(filterPeriod)) {
+      if (noPeriodo) {
         cur.thisMonth += Number(a.amount) || 0;
       }
       map.set(a.employee_id, cur);
@@ -306,13 +318,17 @@ export default function AdvancesPanel() {
                         >
                           <Plus className="h-3 w-3" /> Vale
                         </Button>
-                        {b.pendingCount > 0 && (
+                        {b.pendingCountInPeriod > 0 && (
                           <Button
                             size="sm" variant="outline"
                             className="h-7 text-xs gap-1 border-emerald-500/30 text-emerald-600 hover:bg-emerald-500/10"
-                            onClick={() => setSettleTarget({ id: b.id, name: b.name, pending: b.pending, pendingCount: b.pendingCount })}
+                            onClick={() => setSettleTarget({
+                              id: b.id, name: b.name,
+                              pending: b.pendingInPeriod, pendingCount: b.pendingCountInPeriod,
+                              period: filterPeriod,
+                            })}
                             disabled={settleEmployee.isPending}
-                            title="Dar baixa em todos os vales pendentes deste funcionário"
+                            title={`Dar baixa nos vales pendentes de ${filterPeriod} deste funcionário`}
                           >
                             <Check className="h-3 w-3" /> Dar baixa
                           </Button>
@@ -438,11 +454,13 @@ export default function AdvancesPanel() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              Dar baixa em {settleTarget?.pendingCount ?? 0} vale{(settleTarget?.pendingCount ?? 0) === 1 ? '' : 's'}?
+              Dar baixa em {settleTarget?.pendingCount ?? 0} vale{(settleTarget?.pendingCount ?? 0) === 1 ? '' : 's'} de {settleTarget?.period ?? ''}?
             </AlertDialogTitle>
             <AlertDialogDescription>
               {settleTarget
-                ? `${settleTarget.name} — ${fmt(settleTarget.pending)} em aberto. Use depois que a folha já descontou o saldo.`
+                ? `${settleTarget.name} — ${fmt(settleTarget.pending)} em aberto em ${settleTarget.period}. `
+                  + 'Use depois que a folha desse período já descontou o saldo. '
+                  + 'Vales de outras competências não são afetados.'
                 : ''}
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -450,7 +468,10 @@ export default function AdvancesPanel() {
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction
               disabled={settleEmployee.isPending}
-              onClick={() => { if (settleTarget) settleEmployee.mutate(settleTarget.id); setSettleTarget(null); }}
+              onClick={() => {
+                if (settleTarget) settleEmployee.mutate({ employeeId: settleTarget.id, period: settleTarget.period });
+                setSettleTarget(null);
+              }}
             >
               Dar baixa
             </AlertDialogAction>

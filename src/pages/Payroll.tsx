@@ -236,7 +236,13 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
         .from('employee_advances')
         .select('employee_id, amount, advance_date, status, payroll_run_id')
         .gte('advance_date', appliedFrom).lte('advance_date', appliedTo)
-        .or('payroll_run_id.is.null,status.eq.pending');
+        // Mesmo critério de calculateAll (~:565): as DUAS condições, não uma OU outra.
+        // Com `.or(...)` entrava vale já pago (status≠pending) e vale já amarrado a
+        // outra folha (payroll_run_id preenchido) — o comparativo/Excel mostrava líquido
+        // diferente da folha gravada. Ex.: vale de R$ 500 pending já vinculado a uma run
+        // anterior → folha R$ 2.200, comparativo R$ 1.700 (D18, auditoria 2026-07-29).
+        .is('payroll_run_id', null)
+        .eq('status', 'pending');
       if (error) throw error;
       return (data || []) as any[];
     },

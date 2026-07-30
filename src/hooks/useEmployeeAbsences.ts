@@ -75,11 +75,12 @@ export function useCreateAbsence() {
       return data as EmployeeAbsence;
     },
     onSuccess: () => {
+      // ['employee_absences'] agora também atinge o useAbsences de useRH (key unificada,
+      // D9) — é o que faz o abono chegar em RelatorioFaltas/Atrasos e no Espelho.
       qc.invalidateQueries({ queryKey: ['employee_absences'] });
       qc.invalidateQueries({ queryKey: ['v_time_pendings'] });
-      qc.invalidateQueries({ queryKey: ['bank_hours_balance'] });
       qc.invalidateQueries({ queryKey: ['get_pending_count_by_employee'] });
-      toast.success('Ausência cadastrada — dias isentados do cálculo do banco.');
+      toast.success('Ausência cadastrada — dias isentados do cálculo.');
     },
     onError: (err: any) => {
       toast.error(err?.message || 'Falha ao cadastrar ausência.');
@@ -97,7 +98,6 @@ export function useDeleteAbsence() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['employee_absences'] });
       qc.invalidateQueries({ queryKey: ['v_time_pendings'] });
-      qc.invalidateQueries({ queryKey: ['bank_hours_balance'] });
       toast.success('Ausência removida — dias voltam a contar.');
     },
     onError: (err: any) => {

@@ -102,7 +102,13 @@ export interface Absence {
 
 export function useAbsences(filters?: { employeeId?: string; from?: string; to?: string }) {
   return useQuery({
-    queryKey: ['absences', filters],
+    // Key unificada com useEmployeeAbsences: os DOIS hooks leem `employee_absences`,
+    // mas cada um invalidava a sua própria key — registrar atestado numa tela deixava
+    // RelatorioFaltas/RelatorioAtrasos/EspelhoPontoPage exibindo falta já abonada por
+    // até 30s. O 'range' distingue esta query da que é por funcionário (queryFns
+    // diferentes não podem dividir key idêntica) e o prefixo comum faz a invalidação
+    // de qualquer um dos lados atingir o outro. (D9, auditoria RH 2026-07-29)
+    queryKey: ['employee_absences', 'range', filters],
     queryFn: async () => {
       let q = (supabase as any).from('employee_absences').select('*').order('start_date', { ascending: false });
       if (filters?.employeeId) q = q.eq('employee_id', filters.employeeId);
@@ -131,7 +137,7 @@ export function useUpsertAbsence() {
       }
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['absences'] });
+      qc.invalidateQueries({ queryKey: ['employee_absences'] });
       toast.success('Ausência salva.');
     },
     onError: (err: any) => toast.error(`Erro: ${err.message}`),
@@ -152,7 +158,7 @@ export function useDeleteAbsence() {
       if (error) throw error;
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['absences'] });
+      qc.invalidateQueries({ queryKey: ['employee_absences'] });
       toast.success('Ausência removida.');
     },
     onError: (err: any) => toast.error(`Erro: ${err.message}`),
