@@ -14,10 +14,14 @@
 import { describe, it, expect } from 'vitest';
 import { sumProducaoRows, ratesOfRow, type FichaMontadorRow } from './montadorProduction';
 
+/** Lançamento com o vínculo de folha — `dia` deixa de ser opcional, porque toda
+ *  reivindicação é por janela de datas. */
+type LinhaComFolha = FichaMontadorRow & { dia: string; payroll_run_id: string | null };
+
 /** Linha de produção diária (modelo 'chamada'), como a tela grava. */
 const linha = (
   p: { dia: string; medio: number; dificil: number; vm: number; vd: number; pago?: boolean },
-): FichaMontadorRow & { payroll_run_id: string | null } => ({
+): LinhaComFolha => ({
   montador_id: 'emp-1',
   dia: p.dia,
   origem: 'chamada',
@@ -29,6 +33,20 @@ const linha = (
   valor_par_dificil: p.vd,
   payroll_run_id: p.pago ? 'run-1' : null,
 });
+
+/** Reivindicação como o trigger tg_ficha_claim_production faz: a folha leva os
+ *  dias da janela que ainda estão LIVRES e valem mais que zero. */
+function reivindicar(
+  rows: LinhaComFolha[], runId: string, de: string, ate: string,
+): { claimed: LinhaComFolha[]; conflito: LinhaComFolha[]; zerados: LinhaComFolha[] } {
+  const naJanela = rows.filter(r => r.dia >= de && r.dia <= ate);
+  const conflito = naJanela.filter(r => r.payroll_run_id !== null && r.payroll_run_id !== runId);
+  const livres = naJanela.filter(r => r.payroll_run_id === null);
+  const zerados = livres.filter(r => sumProducaoRows([r]).bruto <= 0);
+  const claimed = livres.filter(r => sumProducaoRows([r]).bruto > 0);
+  claimed.forEach(r => { r.payroll_run_id = runId; });
+  return { claimed, conflito, zerados };
+}
 
 describe('Ficha de Montadores — split pago x a pagar', () => {
   // Junho pago a R$ 1,00/1,50; julho ainda aberto e já com taxa reajustada.
@@ -84,5 +102,76 @@ describe('Ficha de Montadores — split pago x a pagar', () => {
     const agg = sumProducaoRows([semTaxa]);
     expect(agg.pares).toBe(120);
     expect(agg.bruto).toBe(0);
+  });
+});
+
+// A trava de duplicidade: duas folhas com janelas SOBREPOSTAS não podem somar o
+// mesmo dia. O banco tem períodos assim de verdade ('2026-06' cruza
+// '2026-06-16_2026-06-30'), então isto não é hipótese.
+describe('Ficha de Montadores — reivindicação impede pagar o mesmo dia duas vezes', () => {
+  const novoMes = () => [
+    linha({ dia: '2026-06-15', medio: 264, dificil: 0, vm: 1, vd: 2 }),
+    linha({ dia: '2026-06-20', medio: 300, dificil: 10, vm: 1, vd: 2 }),
+    linha({ dia: '2026-06-25', medio: 156, dificil: 0, vm: 1, vd: 2 }),
+  ];
+
+  it('a 2ª folha só leva o que sobrou — a soma nunca passa da produção real', () => {
+    const rows = novoMes();
+    const producaoTotal = sumProducaoRows(rows).bruto;
+
+    // Folha A (16–30/06) aprova primeiro: pega 20/06 e 25/06.
+    const a = reivindicar(rows, 'run-A', '2026-06-16', '2026-06-30');
+    // Folha B (junho inteiro) aprova depois: sobrou só 15/06.
+    const b = reivindicar(rows, 'run-B', '2026-06-01', '2026-06-30');
+
+    expect(a.claimed.map(r => r.dia)).toEqual(['2026-06-20', '2026-06-25']);
+    expect(b.claimed.map(r => r.dia)).toEqual(['2026-06-15']);
+    expect(b.conflito.map(r => r.dia)).toEqual(['2026-06-20', '2026-06-25']);
+
+    const brutoA = sumProducaoRows(a.claimed).bruto;
+    const brutoB = sumProducaoRows(b.claimed).bruto;
+
+    // O invariante que vale dinheiro.
+    expect(brutoA + brutoB).toBeCloseTo(producaoTotal, 6);
+    // Sem a trava, B teria somado junho inteiro e pago a produção 2× menos o dia 15.
+    expect(brutoB).toBeLessThan(producaoTotal);
+  });
+
+  it('nenhum lançamento fica com duas folhas ao mesmo tempo', () => {
+    const rows = novoMes();
+    reivindicar(rows, 'run-A', '2026-06-16', '2026-06-30');
+    reivindicar(rows, 'run-B', '2026-06-01', '2026-06-30');
+    const donos = rows.map(r => r.payroll_run_id);
+    expect(donos).toEqual(['run-B', 'run-A', 'run-A']);
+    expect(new Set(donos).size).toBe(2);
+  });
+
+  it('lançamento valendo zero NÃO é reivindicado — segue livre pra quando a taxa for corrigida', () => {
+    // Exatamente o estado de hoje: produção lançada antes de existir R$/par.
+    const rows = [
+      linha({ dia: '2026-06-20', medio: 264, dificil: 0, vm: 0, vd: 0 }),
+      linha({ dia: '2026-06-21', medio: 100, dificil: 0, vm: 1, vd: 0 }),
+    ];
+    const r = reivindicar(rows, 'run-A', '2026-06-01', '2026-06-30');
+
+    expect(r.zerados.map(x => x.dia)).toEqual(['2026-06-20']);
+    expect(r.claimed.map(x => x.dia)).toEqual(['2026-06-21']);
+    // O de valor zero continua livre: queimá-lo numa folha que pagou nada por
+    // ele exigiria UPDATE manual no banco pra destravar.
+    expect(rows[0].payroll_run_id).toBeNull();
+  });
+
+  it('liberar (cancelamento da folha) devolve tudo pro pool', () => {
+    const rows = novoMes();
+    reivindicar(rows, 'run-A', '2026-06-01', '2026-06-30');
+    expect(rows.every(r => r.payroll_run_id === 'run-A')).toBe(true);
+
+    // tg_ficha_claim_production no ramo 'cancelado'
+    rows.filter(r => r.payroll_run_id === 'run-A').forEach(r => { r.payroll_run_id = null; });
+
+    // E uma folha nova consegue reivindicar de novo — se não, a produção ficaria
+    // impagável pra sempre, que é o efeito de copiar a lacuna dos adiantamentos.
+    const novo = reivindicar(rows, 'run-C', '2026-06-01', '2026-06-30');
+    expect(novo.claimed).toHaveLength(3);
   });
 });

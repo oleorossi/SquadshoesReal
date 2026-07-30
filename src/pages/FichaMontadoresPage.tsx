@@ -61,9 +61,16 @@ const OFICIO: Record<string, { sing: string; plural: string }> = {
 const oficioOf = (key: string) => OFICIO[key] ?? { sing: "funcionário", plural: "funcionários" };
 type ChamadaView = "dia" | "semana";
 type PeriodMode = "hoje" | "semana" | "q1" | "q2" | "mes" | "custom";
-/** Filtro de quitação (ficha_montadores.payroll_run_id). */
-type PagStatus = "todos" | "pago" | "aberto";
-const PAG_LABEL: Record<PagStatus, string> = { todos: "Tudo", pago: "Pago", aberto: "A pagar" };
+/** Estado de quitação de um lançamento. A folha REIVINDICA na aprovação
+ *  (payroll_run_id) e DATA no pagamento (pago_em) — são momentos diferentes, e o
+ *  do meio é justamente onde não se pode relançar nem incluir em outra folha.
+ *  'na' = não se aplica: o funcionário não é regime por par, então a produção
+ *  dele é medição de produtividade e nunca vira pagamento por par. */
+type PagEstado = "pago" | "folha" | "aberto" | "na";
+type PagStatus = "todos" | PagEstado;
+const PAG_LABEL: Record<PagStatus, string> = {
+  todos: "Tudo", pago: "Pago", folha: "Na folha", aberto: "A pagar", na: "Sem regime por par",
+};
 
 /** Tamanhos de ficha (pares por ficha). */
 const SIZES = [12, 15, 18] as const;
@@ -112,7 +119,6 @@ interface Ficha {
  *  espaço pra tela e folha divergirem, em silêncio, no valor do MESMO
  *  lançamento — e é a tela que o gestor usa pra conferir a folha. */
 const ratesOf = ratesOfRow;
-const isPago = (f: Ficha) => !!f.payroll_run_id;
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const todayISO = () => {
@@ -241,19 +247,26 @@ function imprimirRelatorio(p: {
     table{width:100%;border-collapse:collapse;font-size:12px} th,td{border:1px solid #333;padding:6px 8px}
     th{background:#f1f0ed;text-align:left;font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:#444}
     td.n{text-align:right;font-variant-numeric:tabular-nums} tfoot td{font-weight:800;background:#f6f5f2}
-    .med{color:#b45309} .dif{color:#c81e2e} .pg{color:#15803d} .ab{color:#b45309}
+    .med{color:#b45309} .dif{color:#c81e2e} .pg{color:#15803d} .ab{color:#b45309} .fl{color:#1d4ed8}
+    td.na{text-align:center;color:#888;font-size:10px}
     @page{size:A4 portrait;margin:12mm}`;
   const body = rows.map((r, i) => `<tr><td>${i + 1}. ${esc(r.nome)}</td><td class="n">${r.fichas}</td>`
     + `<td class="n med">${r.paresMedio}</td><td class="n dif">${r.paresDificil}</td>`
     + `<td class="n">${r.pares}</td>`
-    + `<td class="n pg">${r.valorPago > 0 ? fmtBRL(r.valorPago) : "—"}</td>`
-    + `<td class="n ab">${r.valorAberto > 0 ? fmtBRL(r.valorAberto) : "—"}</td>`
-    + `<td class="n">${fmtBRL(r.valorTotal)}</td></tr>`).join("");
-  const filtro = p.pagStatus === "todos"
-    ? "Mostrando produção paga e em aberto."
-    : p.pagStatus === "pago"
-      ? "Filtrado: SOMENTE produção já quitada pela folha."
-      : "Filtrado: SOMENTE produção ainda NÃO paga.";
+    + (r.porPar
+      ? `<td class="n ab">${r.valorAberto > 0 ? fmtBRL(r.valorAberto) : "—"}</td>`
+        + `<td class="n fl">${r.valorFolha > 0 ? fmtBRL(r.valorFolha) : "—"}</td>`
+        + `<td class="n pg">${r.valorPago > 0 ? fmtBRL(r.valorPago) : "—"}</td>`
+        + `<td class="n">${fmtBRL(r.valorTotal)}</td>`
+      : `<td class="n na" colspan="4">não é regime por par</td>`)
+    + `</tr>`).join("");
+  const filtro = {
+    todos: "Mostrando toda a produção do período.",
+    aberto: "Filtrado: SOMENTE produção ainda livre, que nenhuma folha reivindicou.",
+    folha: "Filtrado: SOMENTE produção reivindicada por folha aprovada e ainda não paga.",
+    pago: "Filtrado: SOMENTE produção já paga.",
+    na: "Filtrado: SOMENTE quem não é regime por par (produção como medição).",
+  }[p.pagStatus];
   openPrint(`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>Produtividade — ${esc(p.setorLabel)}</title><style>${css}</style></head><body>
     <h1>Produtividade — ${esc(p.setorLabel)}</h1>
     <div class="sub">${esc(p.label)} · ${esc(p.intervalo)} — gerado em ${fmtDia(todayISO())}</div>
@@ -261,13 +274,15 @@ function imprimirRelatorio(p: {
     <table><thead><tr><th>${esc(p.oficioPlural.replace(/^./, (c) => c.toUpperCase()))}</th><th style="text-align:right">Fichas</th>
       <th style="text-align:right" class="med">Pares méd</th><th style="text-align:right" class="dif">Pares dif</th>
       <th style="text-align:right">Pares</th>
-      <th style="text-align:right" class="pg">Pago</th><th style="text-align:right" class="ab">A pagar</th>
+      <th style="text-align:right" class="ab">A pagar</th><th style="text-align:right" class="fl">Na folha</th>
+      <th style="text-align:right" class="pg">Pago</th>
       <th style="text-align:right">Total</th></tr></thead>
-    <tbody>${body || '<tr><td colspan="8" style="text-align:center;color:#888">Sem dados no período.</td></tr>'}</tbody>
+    <tbody>${body || '<tr><td colspan="9" style="text-align:center;color:#888">Sem dados no período.</td></tr>'}</tbody>
     <tfoot><tr><td>TOTAL (${rows.length})</td><td class="n">${totals.fichas}</td>
       <td class="n med">${totals.medio}</td><td class="n dif">${totals.dificil}</td>
       <td class="n">${totals.pares}</td>
-      <td class="n pg">${fmtBRL(totals.valorPago)}</td><td class="n ab">${fmtBRL(totals.valorAberto)}</td>
+      <td class="n ab">${fmtBRL(totals.valorAberto)}</td><td class="n fl">${fmtBRL(totals.valorFolha)}</td>
+      <td class="n pg">${fmtBRL(totals.valorPago)}</td>
       <td class="n">${fmtBRL(totals.valorTotal)}</td></tr></tfoot></table>
     <script>window.onload=function(){window.focus();window.print();};<\/script></body></html>`);
 }
@@ -345,12 +360,16 @@ interface AggRow {
    *  NÃO entra no cálculo: o valor sai do snapshot de cada linha. Divergência
    *  entre as duas colunas significa reajuste depois do apontamento. */
   taxaMedio: number; taxaDificil: number;
-  /** Valorado linha a linha pelo snapshot, separado por quitação. */
-  valorPago: number; valorAberto: number; valorTotal: number;
+  /** Regime por par? Se não, os valores abaixo ficam zerados de propósito:
+   *  a produção do mensalista é medição, e somá-la em "a pagar" inventaria uma
+   *  dívida que nunca será paga por par. */
+  porPar: boolean;
+  /** Valorado linha a linha pelo snapshot, separado por estado de quitação. */
+  valorPago: number; valorFolha: number; valorAberto: number; valorTotal: number;
 }
 interface AggTotals {
   fichas: number; pares: number; medio: number; dificil: number;
-  valorPago: number; valorAberto: number; valorTotal: number;
+  valorPago: number; valorFolha: number; valorAberto: number; valorTotal: number;
 }
 
 /* ---------- Componente ---------- */
@@ -614,12 +633,27 @@ export default function FichaMontadoresPage() {
   const [pagStatus, setPagStatus] = useState<PagStatus>("todos");
   const range = useMemo(() => periodRange(pMode, cFrom, cTo), [pMode, cFrom, cTo]);
 
+  // Regime de cada pessoa — decide se a produção dela é PAGAMENTO ou só medição.
+  // Vem de employees (não do roster do setor) pra cobrir também quem lançou
+  // produção num setor e depois foi transferido pra outro.
+  const regimePor = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const e of employees) m.set(e.id, String(e.payment_type || "mensalista").toLowerCase());
+    return m;
+  }, [employees]);
+  const estadoDe = useCallback((f: Ficha): PagEstado => {
+    if (!f.montador_id || regimePor.get(f.montador_id) !== "producao") return "na";
+    if (f.pago_em) return "pago";
+    if (f.payroll_run_id) return "folha";
+    return "aberto";
+  }, [regimePor]);
+
   const fichasFiltradas = useMemo(
     () => fichas.filter((f) =>
       f.dia >= range.from && f.dia <= range.to
       && (filtroMontador === "__all__" || f.montador_id === filtroMontador)
-      && (pagStatus === "todos" || (pagStatus === "pago" ? isPago(f) : !isPago(f)))),
-    [fichas, range, filtroMontador, pagStatus],
+      && (pagStatus === "todos" || estadoDe(f) === pagStatus)),
+    [fichas, range, filtroMontador, pagStatus, estadoDe],
   );
 
   // Pares e VALOR por pessoa. O valor sai do R$/par de CADA linha (snapshot),
@@ -636,15 +670,22 @@ export default function FichaMontadoresPage() {
         : { medio: paresDaFicha(f), dificil: 0, total: paresDaFicha(f) }; // legado = tudo médio
       const { vm, vd } = ratesOf(f);
       const valor = pd.medio * vm + pd.dificil * vd;
+      const estado = estadoDe(f);
       const cur = m.get(key) || {
         key, nome: f.montador || "(sem montador)", fichas: 0,
         paresMedio: 0, paresDificil: 0, pares: 0,
-        taxaMedio: 0, taxaDificil: 0, valorPago: 0, valorAberto: 0, valorTotal: 0,
+        taxaMedio: 0, taxaDificil: 0, porPar: estado !== "na",
+        valorPago: 0, valorFolha: 0, valorAberto: 0, valorTotal: 0,
       };
       cur.fichas += fichasContrib;
       cur.paresMedio += pd.medio; cur.paresDificil += pd.dificil; cur.pares += pd.medio + pd.dificil;
-      if (isPago(f)) cur.valorPago += valor; else cur.valorAberto += valor;
-      cur.valorTotal += valor;
+      // Só quem é regime por par entra nos baldes de dinheiro.
+      if (estado !== "na") {
+        if (estado === "pago") cur.valorPago += valor;
+        else if (estado === "folha") cur.valorFolha += valor;
+        else cur.valorAberto += valor;
+        cur.valorTotal += valor;
+      }
       m.set(key, cur);
     }
     const rows = Array.from(m.values());
@@ -653,15 +694,16 @@ export default function FichaMontadoresPage() {
       r.taxaMedio = t?.vm ?? 0; r.taxaDificil = t?.vd ?? 0;
     }
     return rows.sort((a, b) => b.pares - a.pares);
-  }, [fichasFiltradas, taxaCadastro]);
+  }, [fichasFiltradas, taxaCadastro, estadoDe]);
   const totals = useMemo<AggTotals>(
     () => agg.reduce((s, r) => ({
       fichas: s.fichas + r.fichas, pares: s.pares + r.pares,
       medio: s.medio + r.paresMedio, dificil: s.dificil + r.paresDificil,
       valorPago: s.valorPago + r.valorPago,
+      valorFolha: s.valorFolha + r.valorFolha,
       valorAberto: s.valorAberto + r.valorAberto,
       valorTotal: s.valorTotal + r.valorTotal,
-    }), { fichas: 0, pares: 0, medio: 0, dificil: 0, valorPago: 0, valorAberto: 0, valorTotal: 0 }),
+    }), { fichas: 0, pares: 0, medio: 0, dificil: 0, valorPago: 0, valorFolha: 0, valorAberto: 0, valorTotal: 0 }),
     [agg],
   );
 
@@ -683,18 +725,20 @@ export default function FichaMontadoresPage() {
       const fich = isChamada(f) ? fichasDiaOf(f) : 1;
       const { vm, vd } = ratesOf(f);
       const valor = pd.medio * vm + pd.dificil * vd;
-      const quitado = isPago(f);
+      const estado = estadoDe(f);
       let r = map.get(key);
       if (!r) { r = { key, nome: f.montador || "(sem montador)", cells: {}, medio: 0, dificil: 0, pares: 0, fichas: 0, valorPago: 0, valorAberto: 0, valorTotal: 0 }; map.set(key, r); }
       const c = r.cells[f.dia] || { pares: 0, medio: 0, dificil: 0, fichas: 0, pago: true };
       c.pares += pd.total; c.medio += pd.medio; c.dificil += pd.dificil; c.fichas += fich;
-      // Dia com QUALQUER lançamento em aberto conta como não pago — a marca do
-      // calendário existe pra cobrar, então erra pro lado de sinalizar.
-      c.pago = c.pago && quitado;
+      // Dia com QUALQUER lançamento ainda não pago conta como não pago — a marca
+      // do calendário existe pra cobrar, então erra pro lado de sinalizar.
+      c.pago = c.pago && estado === "pago";
       r.cells[f.dia] = c;
       r.pares += pd.total; r.medio += pd.medio; r.dificil += pd.dificil; r.fichas += fich;
-      if (quitado) r.valorPago += valor; else r.valorAberto += valor;
-      r.valorTotal += valor;
+      if (estado !== "na") {
+        if (estado === "pago") r.valorPago += valor; else r.valorAberto += valor;
+        r.valorTotal += valor;
+      }
     }
     const rows = Array.from(map.values()).sort((a, b) => b.pares - a.pares);
     if (!rows.length) { toast.error("Sem lançamentos no período pra gerar o calendário."); return; }
@@ -1035,11 +1079,15 @@ export default function FichaMontadoresPage() {
           <div>
             <label className={lbl}>Pagamento</label>
             <div className="flex overflow-hidden rounded-md border border-border">
-              {(["todos", "pago", "aberto"] as PagStatus[]).map((s) => (
+              {(["todos", "aberto", "folha", "pago"] as PagStatus[]).map((s) => (
                 <button key={s} type="button" onClick={() => setPagStatus(s)}
+                  title={s === "folha" ? "Reivindicado por uma folha aprovada, ainda não pago" : undefined}
                   className={`h-9 px-3 text-xs font-semibold uppercase tracking-wide transition-colors ${
                     pagStatus === s
-                      ? (s === "pago" ? "bg-green-600 text-white" : s === "aberto" ? "bg-amber-500 text-white" : "bg-foreground text-background")
+                      ? (s === "pago" ? "bg-green-600 text-white"
+                        : s === "folha" ? "bg-blue-600 text-white"
+                        : s === "aberto" ? "bg-amber-500 text-white"
+                        : "bg-foreground text-background")
                       : "bg-card text-muted-foreground hover:bg-muted/40"}`}>
                   {PAG_LABEL[s]}
                 </button>
@@ -1058,10 +1106,10 @@ export default function FichaMontadoresPage() {
               hint={`${totals.fichas.toLocaleString("pt-BR")} fichas`} />
             <StatCard label="Pares" value={totals.pares.toLocaleString("pt-BR")} icon={Package}
               hint={`${totals.medio.toLocaleString("pt-BR")} méd · ${totals.dificil.toLocaleString("pt-BR")} dif`} />
-            <StatCard label="Já pago" value={fmtBRL(totals.valorPago)} icon={CheckCircle}
-              hint="quitado pela folha" />
+            <StatCard label="Na folha / pago" value={fmtBRL(totals.valorFolha + totals.valorPago)} icon={CheckCircle}
+              hint={`${fmtBRL(totals.valorFolha)} aprovado · ${fmtBRL(totals.valorPago)} pago`} />
             <StatCard label="A pagar" value={fmtBRL(totals.valorAberto)} icon={Clock} tone="primary"
-              hint={`total do período ${fmtBRL(totals.valorTotal)}`} />
+              hint={`ainda livre · total ${fmtBRL(totals.valorTotal)}`} />
           </StatGrid>
 
           <Panel
@@ -1084,13 +1132,14 @@ export default function FichaMontadoresPage() {
                     <th className="px-3 py-2 text-right text-red-600">Pares dif</th>
                     <th className="px-3 py-2 text-right">Pares</th>
                     <th className="px-3 py-2 text-right border-l border-border">R$/par cadastro</th>
-                    <th className="px-3 py-2 text-right text-green-600 border-l border-border">Pago</th>
-                    <th className="px-3 py-2 text-right text-amber-600">A pagar</th>
+                    <th className="px-3 py-2 text-right text-amber-600 border-l border-border">A pagar</th>
+                    <th className="px-3 py-2 text-right text-blue-600">Na folha</th>
+                    <th className="px-3 py-2 text-right text-green-600">Pago</th>
                     <th className="px-3 py-2 text-right">Total</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {agg.length === 0 && <tr><td colSpan={9} className="px-3 py-8 text-center text-muted-foreground">Sem lançamentos no período.</td></tr>}
+                  {agg.length === 0 && <tr><td colSpan={10} className="px-3 py-8 text-center text-muted-foreground">Sem lançamentos no período.</td></tr>}
                   {agg.map((r, i) => (
                     <tr key={r.key} className="border-t border-border">
                       <td className="px-3 py-2 text-muted-foreground tabular-nums">{i + 1}</td>
@@ -1101,11 +1150,21 @@ export default function FichaMontadoresPage() {
                       <td className="px-3 py-2 text-right tabular-nums text-[12px] text-muted-foreground border-l border-border">
                         {r.taxaMedio > 0 || r.taxaDificil > 0
                           ? <><span className="text-amber-600">{fmtBRL(r.taxaMedio)}</span> · <span className="text-red-600">{fmtBRL(r.taxaDificil)}</span></>
-                          : <span className="text-amber-600" title="Sem R$/par cadastrado — a produção fica valorada em zero.">não cadastrado</span>}
+                          : <span className="text-amber-600" title="Sem R$/par cadastrado — a produção fica valorada em zero e a folha não a reivindica.">não cadastrado</span>}
                       </td>
-                      <td className="px-3 py-2 text-right tabular-nums font-semibold text-green-600 border-l border-border">{r.valorPago > 0 ? fmtBRL(r.valorPago) : "—"}</td>
-                      <td className="px-3 py-2 text-right tabular-nums font-semibold text-amber-600">{r.valorAberto > 0 ? fmtBRL(r.valorAberto) : "—"}</td>
-                      <td className="px-3 py-2 text-right tabular-nums font-bold">{fmtBRL(r.valorTotal)}</td>
+                      {r.porPar ? (
+                        <>
+                          <td className="px-3 py-2 text-right tabular-nums font-semibold text-amber-600 border-l border-border">{r.valorAberto > 0 ? fmtBRL(r.valorAberto) : "—"}</td>
+                          <td className="px-3 py-2 text-right tabular-nums font-semibold text-blue-600">{r.valorFolha > 0 ? fmtBRL(r.valorFolha) : "—"}</td>
+                          <td className="px-3 py-2 text-right tabular-nums font-semibold text-green-600">{r.valorPago > 0 ? fmtBRL(r.valorPago) : "—"}</td>
+                          <td className="px-3 py-2 text-right tabular-nums font-bold">{fmtBRL(r.valorTotal)}</td>
+                        </>
+                      ) : (
+                        <td colSpan={4} className="px-3 py-2 text-center text-[11px] text-muted-foreground border-l border-border"
+                          title="Recebe salário — a produção aqui é medição de produtividade, não pagamento por par.">
+                          não se aplica · não é regime por par
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
@@ -1117,8 +1176,9 @@ export default function FichaMontadoresPage() {
                       <td className="px-3 py-2 text-right tabular-nums text-red-600">{totals.dificil.toLocaleString("pt-BR")}</td>
                       <td className="px-3 py-2 text-right tabular-nums">{totals.pares.toLocaleString("pt-BR")}</td>
                       <td className="px-3 py-2 border-l border-border" />
-                      <td className="px-3 py-2 text-right tabular-nums text-green-600 border-l border-border">{fmtBRL(totals.valorPago)}</td>
-                      <td className="px-3 py-2 text-right tabular-nums text-amber-600">{fmtBRL(totals.valorAberto)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-amber-600 border-l border-border">{fmtBRL(totals.valorAberto)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-blue-600">{fmtBRL(totals.valorFolha)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-green-600">{fmtBRL(totals.valorPago)}</td>
                       <td className="px-3 py-2 text-right tabular-nums">{fmtBRL(totals.valorTotal)}</td>
                     </tr>
                   </tfoot>
@@ -1182,7 +1242,7 @@ export default function FichaMontadoresPage() {
                             : (f.referencia || f.solado || "—");
                           const { vm, vd } = ratesOf(f);
                           const valor = pd.medio * vm + pd.dificil * vd;
-                          const quitado = isPago(f);
+                          const estado = estadoDe(f);
                           return (
                             <tr key={f.id} className="border-t border-border">
                               <td className="px-3 py-2 font-medium text-foreground">{f.montador || "—"}</td>
@@ -1195,15 +1255,23 @@ export default function FichaMontadoresPage() {
                                 {valor > 0 ? fmtBRL(valor) : <span className="text-amber-600" title="Lançamento sem R$/par gravado.">R$ 0,00</span>}
                               </td>
                               <td className="px-3 py-2 text-center">
-                                {quitado ? (
+                                {estado === "pago" ? (
                                   <span className="inline-flex items-center gap-1 rounded bg-green-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-green-600"
-                                    title={f.pago_em ? `Quitado pela folha em ${fmtDia(f.pago_em)}` : "Quitado pela folha"}>
-                                    <CheckCircle className="h-3 w-3" /> {f.pago_em ? fmtDia(f.pago_em) : "Pago"}
+                                    title={`Pago em ${fmtDia(f.pago_em!)}`}>
+                                    <CheckCircle className="h-3 w-3" /> {fmtDia(f.pago_em!)}
                                   </span>
-                                ) : (
+                                ) : estado === "folha" ? (
+                                  <span className="inline-flex items-center gap-1 rounded bg-blue-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-600"
+                                    title="Reivindicado por uma folha aprovada, ainda não pago. Não pode entrar em outra folha.">
+                                    <ClipboardText className="h-3 w-3" /> Na folha
+                                  </span>
+                                ) : estado === "aberto" ? (
                                   <span className="inline-flex items-center gap-1 rounded bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-600">
                                     <Clock className="h-3 w-3" /> A pagar
                                   </span>
+                                ) : (
+                                  <span className="text-[10px] uppercase tracking-wide text-muted-foreground"
+                                    title="Recebe salário — esta produção é medição de produtividade, não pagamento por par.">—</span>
                                 )}
                               </td>
                               <td className="px-3 py-2 text-right">
