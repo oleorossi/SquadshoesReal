@@ -35,6 +35,7 @@ import { StatGrid, StatCard } from "@/components/ui/stat-card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useEmployees } from "@/hooks/useEmployees";
 import { useProductionSectors, useEmployeeSectors } from "@/hooks/useSectorRoster";
+import { ratesOfRow } from "@/lib/montadorProduction";
 import { searchMatchesAllTerms } from "@/lib/searchUtils";
 import { toast } from "sonner";
 import { Printer, ChartBar, ClipboardText, ListChecks, Users, Package, CurrencyDollar, FloppyDisk, CaretLeft, CaretRight, Warning, CheckCircle, Clock } from "@phosphor-icons/react";
@@ -106,11 +107,11 @@ interface Ficha {
 }
 
 /** R$/par gravado NA LINHA (snapshot do cadastro na hora do apontamento).
- *  Mesma leitura de `ratesOfRow` em montadorProduction.ts — é o que a folha usa. */
-const ratesOf = (f: Ficha) => ({
-  vm: Number(f.valor_par_medio ?? f.valor_par) || 0,
-  vd: Number(f.valor_par_dificil) || 0,
-});
+ *  Reusa `ratesOfRow` de montadorProduction.ts DE PROPÓSITO: é exatamente a
+ *  função que a FOLHA usa pra valorar. Reimplementar a leitura aqui abriria
+ *  espaço pra tela e folha divergirem, em silêncio, no valor do MESMO
+ *  lançamento — e é a tela que o gestor usa pra conferir a folha. */
+const ratesOf = ratesOfRow;
 const isPago = (f: Ficha) => !!f.payroll_run_id;
 
 const pad = (n: number) => String(n).padStart(2, "0");
