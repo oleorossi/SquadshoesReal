@@ -200,7 +200,8 @@ function parseRoutes(appSrc) {
 // ════════════════════════════════════════════════════════════════════════
 
 function sliceExport(src, name) {
-  const start = src.indexOf(`export const ${name}`);
+  let start = src.indexOf(`export const ${name}`);
+  if (start < 0) start = src.indexOf(`const ${name}`);
   if (start < 0) return '';
   const open = src.search(new RegExp(`export const ${name}[^=]*=\\s*[\\[{]`));
   const from = src.indexOf(src[src.indexOf('=', start) + 1] === ' ' ? '' : '', start);
@@ -248,7 +249,16 @@ function parseNavigation(navSrc) {
   const topMatch = navSrc.match(/export const topItem\s*=\s*resource\(\s*["']([^"']+)["']\s*\)/);
   const topItem = resolveResource(topMatch?.[1] || '', 'topItem');
 
-  const groupsBlock = sliceExport(navSrc, 'menuGroups');
+  // A sidebar é o catálogo FILTRADO por `surfaces` desde 30/07/2026: a lista
+  // `menuGroupsDeclarados` define só agrupamento e ordem, e quem entra é
+  // `surfaces.includes('sidebar')`. Ler a lista crua contaria itens que a barra
+  // não desenha.
+  const superficiesPorPath = new Map(
+    [...navSrc.matchAll(/path:\s*'([^']+)'[^\n]*?surfaces:\s*\[([^\]]*)\]/g)]
+      .map((m) => [m[1], m[2]]),
+  );
+  const naSidebar = (path) => (superficiesPorPath.get(path) || '').includes("'sidebar'");
+  const groupsBlock = sliceExport(navSrc, 'menuGroupsDeclarados') || sliceExport(navSrc, 'menuGroups');
   const groupsAbs = navSrc.indexOf(groupsBlock);
   const groups = [];
   const groupRe = /label\s*:\s*["']([^"']+)["'][\s\S]*?items\s*:\s*\[/g;
@@ -262,8 +272,13 @@ function parseNavigation(navSrc) {
       else if (groupsBlock[e] === ']') { depth--; if (depth === 0) break; }
     }
     const body = groupsBlock.slice(groupRe.lastIndex, e);
-    const items = pathsFromRefs(body).map((path) => resolveResource(path, 'menuGroups'));
-    groups.push({ label: g[1], items, count: items.length, line: lineOf(groupsAbs + g.index) });
+    const items = pathsFromRefs(body)
+      .filter(naSidebar)
+      .map((path) => resolveResource(path, 'menuGroups'));
+    // Grupo que ficou sem item não é desenhado — não pode contar como grupo.
+    if (items.length > 0) {
+      groups.push({ label: g[1], items, count: items.length, line: lineOf(groupsAbs + g.index) });
+    }
     groupRe.lastIndex = e;
   }
 
@@ -389,6 +404,15 @@ const access = parseAccess(accessSrc);
 const GROUP_LIMIT = 5;
 
 // Superfícies de navegação achatadas
+/**
+ * Uma tela tem "entrada de navegação" se aparece em QUALQUER superfície — não
+ * só na sidebar. Desde 30/07/2026 o catálogo declara isso em `surfaces`, e
+ * `['command']` (achável no Cmd+K, concedível na matriz de permissões) conta.
+ *
+ * Sem isso, mover uma tela pouco usada da barra pra busca — a decisão exata
+ * que o uso real do banco recomendou — seria reportada como "tela órfã", e o
+ * guard puniria justamente a arrumação que ele existe pra incentivar.
+ */
 const navEntries = [
   nav.topItem,
   ...nav.groups.flatMap((g) => g.items.map((i) => ({ ...i, surface: 'menuGroups', group: g.label }))),
@@ -396,7 +420,22 @@ const navEntries = [
   ...nav.secondaryRoutes,
 ].filter((e) => e.path);
 
-const navPaths = new Set(navEntries.map((e) => e.path));
+/**
+ * Paths com ALGUMA entrada de navegação — usado só pra detectar tela órfã.
+ *
+ * Inclui o catálogo inteiro: `surfaces: ['command']` significa achável no Cmd+K
+ * e concedível na matriz de permissões, o que é entrada legítima. Sem isso,
+ * mover uma tela pouco usada da barra pra busca — a arrumação que o uso real do
+ * banco recomendou — seria reportada como órfã, e o guard puniria justamente o
+ * que existe pra incentivar.
+ *
+ * ⚠ Só aqui. `navEntries` continua sendo a lista por SUPERFÍCIE, senão o check
+ * de path duplicado passa a acusar todo item duas vezes.
+ */
+const navPaths = new Set([
+  ...navEntries.map((e) => e.path),
+  ...(nav.resources || []).filter((r) => Array.isArray(r.surfaces) && r.surfaces.length > 0).map((r) => r.path),
+]);
 const routeByPath = new Map(routes.map((r) => [r.path, r]));
 
 // Telas = rota real: não é redirect, nem detalhe (:id / *), nem moldura.

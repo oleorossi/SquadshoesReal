@@ -4,8 +4,8 @@
     "routesDeclared": 180,
     "screens": 96,
     "redirects": 76,
-    "navEntries": 79,
-    "menuItems": 54,
+    "navEntries": 71,
+    "menuItems": 46,
     "grantableDestinations": 79,
     "menuGroups": 9,
     "pagesWithTabs": 62,
@@ -108,24 +108,10 @@
     "duplicateRouteDefs": [],
     "groupOverflow": [
       {
-        "group": "Comercial",
-        "count": 8,
-        "limit": 5,
-        "excess": 3,
-        "role": "comercial"
-      },
-      {
         "group": "Produção",
-        "count": 7,
+        "count": 6,
         "limit": 5,
-        "excess": 2,
-        "role": "producao"
-      },
-      {
-        "group": "Logística",
-        "count": 9,
-        "limit": 5,
-        "excess": 4,
+        "excess": 1,
         "role": "producao"
       }
     ],
@@ -160,7 +146,7 @@
     "groups": [
       {
         "label": "Comercial",
-        "count": 8,
+        "count": 5,
         "items": [
           {
             "path": "/comercial",
@@ -207,17 +193,6 @@
             "surface": "menuGroups"
           },
           {
-            "path": "/crm",
-            "label": "CRM",
-            "group": "Comercial",
-            "surfaces": [
-              "sidebar",
-              "command"
-            ],
-            "line": 42,
-            "surface": "menuGroups"
-          },
-          {
             "path": "/tarefas",
             "label": "Tarefas",
             "group": "Comercial",
@@ -226,28 +201,6 @@
               "command"
             ],
             "line": 43,
-            "surface": "menuGroups"
-          },
-          {
-            "path": "/price-lists",
-            "label": "Tabelas de Preço",
-            "group": "Comercial",
-            "surfaces": [
-              "sidebar",
-              "command"
-            ],
-            "line": 44,
-            "surface": "menuGroups"
-          },
-          {
-            "path": "/notas",
-            "label": "Anotações",
-            "group": "Comercial",
-            "surfaces": [
-              "sidebar",
-              "command"
-            ],
-            "line": 45,
             "surface": "menuGroups"
           }
         ]
@@ -315,7 +268,7 @@
       },
       {
         "label": "Produção",
-        "count": 7,
+        "count": 6,
         "items": [
           {
             "path": "/producao/planejamento",
@@ -348,17 +301,6 @@
               "command"
             ],
             "line": 60,
-            "surface": "menuGroups"
-          },
-          {
-            "path": "/producao/setores",
-            "label": "Setores",
-            "group": "Produção",
-            "surfaces": [
-              "sidebar",
-              "command"
-            ],
-            "line": 61,
             "surface": "menuGroups"
           },
           {
@@ -553,7 +495,7 @@
       },
       {
         "label": "Logística",
-        "count": 9,
+        "count": 5,
         "items": [
           {
             "path": "/expedicao",
@@ -589,17 +531,6 @@
             "surface": "menuGroups"
           },
           {
-            "path": "/transporte",
-            "label": "Transporte",
-            "group": "Logística",
-            "surfaces": [
-              "sidebar",
-              "command"
-            ],
-            "line": 95,
-            "surface": "menuGroups"
-          },
-          {
             "path": "/picking",
             "label": "Separação · Materiais",
             "group": "Logística",
@@ -619,39 +550,6 @@
               "command"
             ],
             "line": 97,
-            "surface": "menuGroups"
-          },
-          {
-            "path": "/manifests",
-            "label": "Romaneios",
-            "group": "Logística",
-            "surfaces": [
-              "sidebar",
-              "command"
-            ],
-            "line": 98,
-            "surface": "menuGroups"
-          },
-          {
-            "path": "/entregas",
-            "label": "Entregas",
-            "group": "Logística",
-            "surfaces": [
-              "sidebar",
-              "command"
-            ],
-            "line": 99,
-            "surface": "menuGroups"
-          },
-          {
-            "path": "/transporters",
-            "label": "Transportadoras",
-            "group": "Logística",
-            "surfaces": [
-              "sidebar",
-              "command"
-            ],
-            "line": 100,
             "surface": "menuGroups"
           }
         ]
@@ -1065,18 +963,18 @@
   },
   "roleVisibility": {
     "admin": {
-      "visibleCount": 54,
-      "totalMenuItems": 54,
+      "visibleCount": 46,
+      "totalMenuItems": 46,
       "emptyGroups": []
     },
     "gerente": {
-      "visibleCount": 54,
-      "totalMenuItems": 54,
+      "visibleCount": 46,
+      "totalMenuItems": 46,
       "emptyGroups": []
     },
     "producao": {
-      "visibleCount": 36,
-      "totalMenuItems": 54,
+      "visibleCount": 28,
+      "totalMenuItems": 46,
       "emptyGroups": [
         "Financeiro",
         "Fiscal"
@@ -1084,7 +982,7 @@
     },
     "almoxarifado": {
       "visibleCount": 6,
-      "totalMenuItems": 54,
+      "totalMenuItems": 46,
       "emptyGroups": [
         "Comercial",
         "Engenharia",
@@ -1096,8 +994,8 @@
       ]
     },
     "comercial": {
-      "visibleCount": 8,
-      "totalMenuItems": 54,
+      "visibleCount": 5,
+      "totalMenuItems": 46,
       "emptyGroups": [
         "Engenharia",
         "Produção",
@@ -1110,13 +1008,13 @@
       ]
     },
     "consulta": {
-      "visibleCount": 54,
-      "totalMenuItems": 54,
+      "visibleCount": 46,
+      "totalMenuItems": 46,
       "emptyGroups": []
     },
     "nfe_operator": {
-      "visibleCount": 9,
-      "totalMenuItems": 54,
+      "visibleCount": 6,
+      "totalMenuItems": 46,
       "emptyGroups": [
         "Engenharia",
         "Produção",
@@ -1129,7 +1027,7 @@
     },
     "rh": {
       "visibleCount": 3,
-      "totalMenuItems": 54,
+      "totalMenuItems": 46,
       "emptyGroups": [
         "Comercial",
         "Engenharia",

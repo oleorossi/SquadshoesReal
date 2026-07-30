@@ -39,10 +39,10 @@ export const navigationCatalog: NavigationResource[] = [
   { path: '/sales', label: 'Pedidos de Venda', group: 'Comercial', icon: FileText, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/SaleOrders') },
   { path: '/pronta-entrega', label: 'Pronta-Entrega', group: 'Comercial', icon: Box, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/ProntaEntrega') },
   { path: '/clients', label: 'Clientes', group: 'Comercial', icon: Users, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/Clients') },
-  { path: '/crm', label: 'CRM', group: 'Comercial', icon: HeartHandshake, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/CRM') },
+  { path: '/crm', label: 'CRM', group: 'Comercial', icon: HeartHandshake, surfaces: ['command'] /* CRM: 0 interações e 0 respostas de NPS registradas */, preload: () => import('@/pages/CRM') },
   { path: '/tarefas', label: 'Tarefas', group: 'Comercial', icon: ListChecks, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/Tarefas') },
-  { path: '/price-lists', label: 'Tabelas de Preço', group: 'Comercial', icon: DollarSign, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/PriceLists') },
-  { path: '/notas', label: 'Anotações', group: 'Comercial', icon: FileText, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/Notes') },
+  { path: '/price-lists', label: 'Tabelas de Preço', group: 'Comercial', icon: DollarSign, surfaces: ['command'] /* Tabelas de Preço: 1 registro, último em 10/05 */, preload: () => import('@/pages/PriceLists') },
+  { path: '/notas', label: 'Anotações', group: 'Comercial', icon: FileText, surfaces: ['command'] /* Anotações: 2 registros, último em 31/05 */, preload: () => import('@/pages/Notes') },
   { path: '/sac', label: 'SAC', group: 'Comercial', icon: MessageSquare, surfaces: ['command', 'hub-shortcut'], preload: () => import('@/pages/SAC') },
   { path: '/forecast', label: 'Forecast', group: 'Comercial', icon: TrendingUp, surfaces: ['command', 'hub-shortcut'], preload: () => import('@/pages/Forecast') },
 
@@ -58,7 +58,7 @@ export const navigationCatalog: NavigationResource[] = [
   { path: '/producao/planejamento', label: 'Planejamento', group: 'Produção', icon: ClipboardCheck, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/ProducaoPlanejamento') },
   { path: '/producao/kanban', label: 'Kanban', group: 'Produção', icon: Kanban, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/ProducaoKanban') },
   { path: '/producao/estouro', label: 'Estouro de Produção', group: 'Produção', icon: AlertTriangle, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/ProducaoEstouro') },
-  { path: '/producao/setores', label: 'Setores', group: 'Produção', icon: Factory, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/ProducaoSetoresConfig') },
+  { path: '/producao/setores', label: 'Setores', group: 'Produção', icon: Factory, surfaces: ['command'] /* configuração global do motor, não entrada diária */, preload: () => import('@/pages/ProducaoSetoresConfig') },
   { path: '/producao/apontamento', label: 'Apontamento', group: 'Produção', icon: ListChecks, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/Setores') },
   { path: '/imprimir-fichas', label: 'Imprimir Fichas', group: 'Produção', icon: Printer, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/PrintWorkSheets') },
   { path: '/producao/analises', label: 'Análises', group: 'Produção', icon: BarChart3, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/ProducaoAnalises') },
@@ -92,12 +92,12 @@ export const navigationCatalog: NavigationResource[] = [
   // um grupo de um item que quebra a leitura do fluxo da fábrica.
   { path: '/label-system', label: 'Sistema de Etiquetas', group: 'Logística', icon: Tag, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/LabelSystem') },
   { path: '/embalagens', label: 'Embalagens', group: 'Logística', icon: Box, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/PackagingManagement') },
-  { path: '/transporte', label: 'Transporte', group: 'Logística', icon: Truck, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/Transport') },
+  { path: '/transporte', label: 'Transporte', group: 'Logística', icon: Truck, surfaces: ['command'] /* Transporte: 0 tarifas cadastradas */, preload: () => import('@/pages/Transport') },
   { path: '/picking', label: 'Separação · Materiais', group: 'Logística', icon: ClipboardCheck, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/PickingListPage') },
   { path: '/conferencia-saida', label: 'Conferência · Saída', group: 'Logística', icon: ClipboardCheck, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/OrderPickingPage') },
-  { path: '/manifests', label: 'Romaneios', group: 'Logística', icon: FileText, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/Manifests') },
-  { path: '/entregas', label: 'Entregas', group: 'Logística', icon: RouteIcon, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/OwnDeliveriesPage') },
-  { path: '/transporters', label: 'Transportadoras', group: 'Logística', icon: Truck, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/Transporters') },
+  { path: '/manifests', label: 'Romaneios', group: 'Logística', icon: FileText, surfaces: ['command'] /* Romaneios: 0 registros nas duas tabelas */, preload: () => import('@/pages/Manifests') },
+  { path: '/entregas', label: 'Entregas', group: 'Logística', icon: RouteIcon, surfaces: ['command'] /* Entregas: 0 rotas e 0 rastreamentos */, preload: () => import('@/pages/OwnDeliveriesPage') },
+  { path: '/transporters', label: 'Transportadoras', group: 'Logística', icon: Truck, surfaces: ['command'] /* Transportadoras: 0 registros */, preload: () => import('@/pages/Transporters') },
   { path: '/picking-sessions', label: 'Separação · Bipagem (EAN)', group: 'Logística', icon: ClipboardCheck, surfaces: ['command', 'hub-shortcut'], preload: () => import('@/pages/Picking') },
   { path: '/delivery-tracking', label: 'Rastreamento', group: 'Logística', icon: Activity, surfaces: ['command', 'hub-shortcut'], preload: () => import('@/pages/DeliveryTracking') },
 
@@ -160,7 +160,7 @@ export const topItem = resource('/dashboard');
  * fluxo fábrica (vender → projetar → produzir → materiais → comprar → expedir
  * → dinheiro → obrigações → pessoas), sem transformar a navegação numa lista.
  */
-export const menuGroups: NavigationGroup[] = [
+const menuGroupsDeclarados: NavigationGroup[] = [
   {
     label: 'Comercial', icon: ShoppingCart,
     items: [resource('/comercial'), resource('/sales'), resource('/pronta-entrega'), resource('/clients'), resource('/crm'), resource('/tarefas'), resource('/price-lists'), resource('/notas')],
@@ -241,6 +241,21 @@ export function getAllMenuItems(): NavigationResource[] {
   return menuGroups.flatMap((group) => group.items);
 }
 
+/**
+ * A sidebar é o catálogo FILTRADO por `surfaces`, não uma segunda lista.
+ *
+ * Antes `menuGroups` enumerava os itens à mão enquanto cada recurso também
+ * declarava `surfaces` — duas fontes pra mesma decisão. Tirar um item da barra
+ * exigia lembrar dos dois lugares, e esquecer um deles é a origem da metade dos
+ * achados desta auditoria. Agora a lista acima define só AGRUPAMENTO e ORDEM;
+ * quem entra é `surfaces.includes('sidebar')`.
+ *
+ * Grupo que fica sem nenhum item some — não sobra cabeçalho vazio.
+ */
+export const menuGroups: NavigationGroup[] = menuGroupsDeclarados
+  .map((group) => ({ ...group, items: group.items.filter((item) => item.surfaces.includes('sidebar')) }))
+  .filter((group) => group.items.length > 0);
+
 /** Compatibilidade para consumidores que distinguem ação rápida da busca. */
 export const actionDestinations: NavigationResource[] = navigationCatalog.filter((item) =>
   item.surfaces.includes('quick-action'),
@@ -291,6 +306,32 @@ const ORDEM_COMPLETA = [
   'Comercial', 'Engenharia', 'Produção', 'Estoque',
   'Compras', 'Logística', 'Financeiro', 'Fiscal', 'RH',
 ];
+
+// ════════════════════════════════════════════════════════════════════════
+// Por que 7 telas saíram da sidebar em 30/07/2026
+//
+// A sidebar do perfil `producao` tinha 9 itens em Logística e a do `comercial`
+// tinha 8 — o dobro do limite que este arquivo declara. Em vez de escolher por
+// intuição quais sairiam, medimos o USO REAL no banco de produção:
+//
+//   Transportadoras ......... 0 registros
+//   Romaneios (2 tabelas) ... 0 registros
+//   Entregas / rotas ........ 0 registros
+//   Rastreamento ............ 0 registros
+//   Transporte / tarifas .... 0 registros
+//   CRM (interações + NPS) .. 0 registros
+//   Tabelas de Preço ........ 1 registro, último em 10/05
+//   Anotações ............... 2 registros, último em 31/05
+//
+// No mesmo banco, no mesmo período: 266 OPs, 2.508 etapas de produção, 58 PVs,
+// 385 movimentos de estoque, 60 NF-e — todos com atividade na última semana. O
+// sistema está em uso; estas telas específicas é que não estavam.
+//
+// ⚠ Elas NÃO foram deletadas nem bloqueadas: continuam em `surfaces: ['command']`,
+// ou seja, achráveis no Cmd+K e concedíveis na matriz de permissões. Se o uso
+// mudar — e pode mudar, feature nova demora a ser adotada — devolver pra sidebar
+// é acrescentar 'sidebar' de volta em uma linha.
+// ════════════════════════════════════════════════════════════════════════
 
 export const ROLE_MENU_PRESENTATION: Record<string, RoleMenuPresentation> = {
   admin:   { home: '/dashboard', groupOrder: ORDEM_COMPLETA },
