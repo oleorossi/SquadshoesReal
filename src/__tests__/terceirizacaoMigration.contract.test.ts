@@ -16,7 +16,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const SQL = readFileSync(
-  resolve(__dirname, '../../supabase/migrations/20260818120000_terceirizacao-integrada-pv-os.sql'),
+  resolve(__dirname, '../../supabase/migrations/20260818120001_terceirizacao-integrada-pv-os.sql'),
   'utf8',
 );
 

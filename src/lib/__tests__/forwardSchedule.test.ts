@@ -195,7 +195,7 @@ describe('motor de cascata — forward × backward (D4)', () => {
 // Paridade com o SQL: veio da sessão concorrente que escreveu a migration.
   // Preservado na resolução do conflito porque independe do helper local.
   it('migration: os nove setores agregam carga fracionária e preservam o buffer', () => {
-    const sql = readFileSync('supabase/migrations/20261010120000_wave-timeline-aggregate-sector-load.sql', 'utf8');
+    const sql = readFileSync('supabase/migrations/20261010120001_wave-timeline-aggregate-sector-load.sql', 'utf8');
 
     const sectorAggregates = sql.slice(
       sql.indexOf('  SELECT\n    COALESCE(GREATEST('),
