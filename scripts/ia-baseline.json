@@ -14,7 +14,5 @@
     "route-without-module": [],
     "nav-without-menu-owner": []
   },
-  "groupOverflow": {
-    "Produção": 6
-  }
+  "groupOverflow": {}
 }
