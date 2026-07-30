@@ -20,16 +20,30 @@ describe('splitDayMinutes', () => {
     expect(r.incomplete).toBe(true);
   });
 
-  it('batida EXTRA (5 marcações): última batida = saída, calcula span − almoço (08..20 → 11h)', () => {
-    // 08:00,12:00,13:00,18:00,20:00 → span 08→20 (12h) − 1h almoço = 11h:
-    // 9h normal (até 18h) + 2h premium (18→20). Não vira pendência.
-    const r = splitDayMinutes(['08:00', '12:00', '13:00', '18:00', '20:00'], WED, false);
-    expect(r).toEqual({ normal: 540, premium: 120, incomplete: false });
+  it('QUALQUER nº ímpar de batidas vira pendência — inclusive n=5', () => {
+    // ⚠ Decisão do dono 2026-07-30 (auditoria RH, D1/P2) SUPERSEDE a de
+    // 2026-06-21, que tratava a última batida como saída quando n ≥ 5. A regra
+    // antiga pagava o span 1º→último e produziu jornadas de 13h a 21h32 num
+    // único dia. Pior: o motor SQL `calculate_day_summary` marcava esses mesmos
+    // dias como 'irregular' e a tela de Pendências os listava — o dia aparecia
+    // como pendência A RESOLVER e era pago integralmente ao mesmo tempo.
+    // 62 dias assim em produção. Alinhar o TS com o SQL é o que faz o dia cair
+    // na fila e não ser pago até alguém corrigir as batidas.
+    const cincoBatidas = splitDayMinutes(['08:00', '12:00', '13:00', '18:00', '20:00'], WED, false);
+    expect(cincoBatidas).toEqual({ normal: 0, premium: 0, incomplete: true });
+
+    expect(splitDayMinutes(['08:00', '13:00', '18:00'], WED, false).incomplete).toBe(true);
+    expect(splitDayMinutes(['08:06', '12:01', '12:59', '18:09', '20:09'], WED, false).incomplete).toBe(true);
   });
 
-  it('nº ímpar n=3 continua pendente; n=5 (extra) não', () => {
-    expect(splitDayMinutes(['08:00', '13:00', '18:00'], WED, false).incomplete).toBe(true);
-    expect(splitDayMinutes(['08:06', '12:01', '12:59', '18:09', '20:09'], WED, false).incomplete).toBe(false);
+  it('hora que não existe no relógio vira pendência, nunca pagamento', () => {
+    // `timeToMin` só soma h*60+m, sem checar faixa: '29:59' virava 1.799 min e
+    // ['08:00','29:59'] era PAGO como 20h59. O regex da RPC `complete_punches`
+    // aceita '29:59', então o valor chega do banco.
+    expect(splitDayMinutes(['08:00', '29:59'], WED, false)).toEqual({ normal: 0, premium: 0, incomplete: true });
+    expect(splitDayMinutes(['08:00', '12:75'], WED, false).incomplete).toBe(true);
+    // A anotação '*' (batida lançada à mão pelo RH) continua sendo tolerada.
+    expect(splitDayMinutes(['08:00', '18:00*'], WED, false).incomplete).toBe(false);
   });
 
   it('só entrada+saída longa (08/18): deduz 1h almoço não-batido → 9h', () => {

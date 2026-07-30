@@ -60,12 +60,27 @@ export interface HourlyPayrollResult {
 }
 
 function timeToMin(t: string): number {
-  // Tolera anotações do relógio de ponto: '18:00*' marca batida ASSUMIDA/inferida
-  // pelo sistema antigo (e há minutos ≠ 0, ex.: '12:37*'). Sem descartar o '*',
+  // Tolera anotações do relógio de ponto: '18:00*' marca batida lançada À MÃO pelo
+  // RH (e há minutos ≠ 0, ex.: '12:37*'). Sem descartar o '*',
   // Number('37*')=NaN zeraria os minutos. Remove tudo que não for dígito/':'.
   const clean = String(t).replace(/[^\d:]/g, '');
   const [h, m] = clean.split(':').map(Number);
   return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
+}
+
+/**
+ * Batida com hora que não existe no relógio (auditoria RH 2026-07-29, D5).
+ * `timeToMin` só soma h*60+m, sem checar faixa — então '29:59' virava 1.799 min e
+ * ['08:00','29:59'] era PAGO como 20h59. O regex da RPC `complete_punches`
+ * (`^[0-2][0-9]:[0-5][0-9]$`) aceita '29:59', então o valor chega do banco.
+ * Fora da faixa → o dia vira PENDÊNCIA (não paga, não desconta), coerente com a
+ * decisão de mandar toda exceção pro fluxo manual.
+ */
+function isPunchOutOfRange(t: string): boolean {
+  const clean = String(t).replace(/[^\d:]/g, '');
+  const [h, m] = clean.split(':').map(Number);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return true;
+  return h < 0 || h > 23 || m < 0 || m > 59;
 }
 
 /**
@@ -101,20 +116,27 @@ export function splitDayMinutes(
 ): { normal: number; premium: number; incomplete: boolean } {
   const n = punches.length;
   if (n < 2) return { normal: 0, premium: 0, incomplete: n === 1 };
+  // Hora inexistente (ex.: '29:59') → PENDÊNCIA, nunca pagamento. Ver isPunchOutOfRange.
+  if (punches.some(isPunchOutOfRange)) return { normal: 0, premium: 0, incomplete: true };
   // Ordena as batidas numericamente antes de parear: o relógio pode entregar fora de
   // ordem e, sem ordenar, os pares saem trocados e o almoço deixa de ser deduzido
   // (ex.: 08,18,12,13 → [08→18]+[12→13] = 11h em vez de 9h). A validação já ordena
   // (timeValidationRules), mas o motor não — contrato silencioso. Numérico, não lexical
   // (tolera '12:37*'). Idempotente em batidas já ordenadas.
   const ps = [...punches].sort((a, b) => timeToMin(a) - timeToMin(b));
-  // Nº ÍMPAR de batidas:
-  //  • n = 3 (FALTOU uma batida) → INCONSISTENTE: 0h + incomplete, resolve manual
-  //    em Pendências (não dá pra inferir com segurança qual batida faltou).
-  //  • n ≥ 5 (BATIDA EXTRA) → calcula tratando a ÚLTIMA batida como SAÍDA: se ele
-  //    bateu naquele último horário, foi quando foi embora (decisão do dono
-  //    2026-06-21). Cai no ramo de span 1º→último abaixo + desconto de almoço, em
-  //    vez de virar pendência. Antes qualquer ímpar zerava (decisão 2026-06).
-  if (n % 2 !== 0 && n < 5) return { normal: 0, premium: 0, incomplete: true };
+  // Nº ÍMPAR de batidas → SEMPRE pendência (0h + incomplete), resolve manual em
+  // Pendências. Não dá pra inferir com segurança qual batida faltou nem qual sobrou.
+  //
+  // ⚠ Decisão do dono 2026-07-30 (auditoria RH, D1/P2) — SUPERSEDE a de 2026-06-21,
+  // que mandava tratar a ÚLTIMA batida como saída quando n ≥ 5. A regra antiga pagava
+  // o span 1º→último e produziu, nos dados reais, jornadas de 13h a 21h32 num único
+  // dia (Thais Batista 26/02/2026: ['00:00','08:00','16:23','17:26','22:32'] → 1.292
+  // min). Pior: o motor SQL `calculate_day_summary` marca esses mesmos dias como
+  // 'irregular' e a tela de Pendências os lista — ou seja, o dia aparecia como
+  // pendência A RESOLVER e era pago integralmente ao mesmo tempo. 62 dias em produção.
+  // Alinhar aqui com o SQL é o que faz o dia cair na fila de pendências e não ser pago
+  // até alguém corrigir as batidas.
+  if (n % 2 !== 0) return { normal: 0, premium: 0, incomplete: true };
   const allPremium = !forceNormalDay && (isHoliday || dayOfWeek === 0 || dayOfWeek === 6);
 
   // Intervalos trabalhados: pares reais (par 4+) ou span do 1º ao último (2 batidas
