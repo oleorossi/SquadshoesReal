@@ -13,7 +13,6 @@ import { Button } from "@/components/ui/button";
  import { lazy, Suspense, useState, useEffect } from "react";
 import ScrollRestorationComponent from "@/components/ScrollRestoration";
 import { GlobalErrorBoundary } from "@/components/GlobalErrorBoundary";
-import { TabsProvider } from "@/contexts/TabsContext";
 import { VersionChecker, manualVersionCheck } from "@/components/VersionChecker";
 import PageSkeleton, { DashboardSkeleton } from "@/components/layout/PageSkeleton";
 
@@ -21,8 +20,8 @@ import PageSkeleton, { DashboardSkeleton } from "@/components/layout/PageSkeleto
 import Auth from "./pages/Auth";
 
 // ⚠ PERF (2026-07-26): AppLayout é lazy DE PROPÓSITO. Como import estático ele
-// arrastava a casca inteira do ERP desktop (sidebar, GlobalSearch, NotificationBell,
-// TabBar e os ~49 ícones de src/data/navigation.ts) pro chunk de ENTRADA — ou seja,
+// arrastava a casca inteira do ERP desktop (sidebar, GlobalSearch, NotificationBell
+// e os ~49 ícones de src/data/navigation.ts) pro chunk de ENTRADA — ou seja,
 // /auth e o PWA mobile /m, que nunca renderizam o layout desktop, baixavam tudo isso
 // antes de pintar. Quem está logado não paga nada: o chunk vem em paralelo com as
 // queries da rota, sob o <Suspense fallback={<PageSkeleton />}> da rota "/".
@@ -697,20 +696,18 @@ const router = createBrowserRouter([
     path: "/",
     element: (
       <ProtectedRoute>
-        <TabsProvider>
-          {/* Suspense externo: AppLayout agora é lazy, então precisa de um boundary
-              ACIMA dele. O interno continua cobrindo a troca de rota (Outlet). */}
-          <Suspense fallback={<PageSkeleton />}>
-            <AppLayout>
-              <ScrollRestorationComponent />
-              <Suspense fallback={<InlinePageLoader />}>
-                <RouteGuard>
-                  <Outlet />
-                </RouteGuard>
-              </Suspense>
-            </AppLayout>
-          </Suspense>
-        </TabsProvider>
+        {/* Suspense externo: AppLayout é lazy, então precisa de um boundary
+            ACIMA dele. O interno continua cobrindo a troca de rota (Outlet). */}
+        <Suspense fallback={<PageSkeleton />}>
+          <AppLayout>
+            <ScrollRestorationComponent />
+            <Suspense fallback={<InlinePageLoader />}>
+              <RouteGuard>
+                <Outlet />
+              </RouteGuard>
+            </Suspense>
+          </AppLayout>
+        </Suspense>
       </ProtectedRoute>
     ),
     errorElement: <RouteErrorFallback />,

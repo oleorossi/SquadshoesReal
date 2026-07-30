@@ -17,7 +17,6 @@ import {
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { ModeToggle } from './ModeToggle';
 import PageHeader from './PageHeader';
-import { TabBar } from './TabBar';
 import { BottomNav } from './BottomNav';
 import { usePrefetchRoute } from '@/hooks/usePrefetchRoute';
 import { useNavOrder, reorderKeys, insertKey } from '@/hooks/useNavOrder';
@@ -918,12 +917,6 @@ export default function AppLayout({ children, printMode = false }: { children: R
                 <div className="w-full h-11 flex items-center px-4 md:px-6 lg:px-8 xl:px-10 gap-3">
                   <PageHeader compact />
                 </div>
-              </div>
-            )}
-
-            {!printMode && (
-              <div className="hidden md:block sticky top-11 z-10 bg-background print:hidden">
-                <TabBar />
               </div>
             )}
 

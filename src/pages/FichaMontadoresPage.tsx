@@ -1,55 +1,68 @@
 // FichaMontadoresPage.tsx — Squad Shoes
-// "Ficha de Montadores" → CHAMADA DO DIA: produção diária dos montadores.
-// O montador lança os PARES produzidos por TAMANHO DE FICHA (12 / 15 / 18 pares).
+// "Ficha de Montadores" → CHAMADA DO DIA: produção diária por setor.
+// O trabalhador lança os PARES produzidos por TAMANHO DE FICHA (12 / 15 / 18).
 //   · fichas = Σ (pares ÷ tamanho)   · pares = Σ pares
-// Roster do setor Montagem numa tela (visão Dia) + matriz montadores × Seg–Sex
-// por tamanho (visão Semana). Um único "Salvar" (upsert em lote por dia/montador).
+// Roster do setor numa tela (visão Dia) + matriz pessoas × Seg–Sex por tamanho
+// (visão Semana). Um único "Salvar" (upsert em lote por dia/pessoa).
 //
 // Cada par tem DIFICULDADE (Médio âmbar / Difícil vermelho) que paga R$/par
-// diferente: valor_par_medio / valor_par_dificil por montador.
+// diferente: valor_par_medio / valor_par_dificil por pessoa.
 // Modelo 'chamada' em public.ficha_montadores: 1 linha por (dia, montador_id) com
 //   detalhe = [{tamanho, medio, dificil}], total = Σ (medio+dificil),
 //   fichas_dia = Σ round((medio+dificil)/tamanho). Legado [{tamanho, pares}] é lido
-//   como tudo MÉDIO; fichas de grade = origem='legacy'. Pagamento =
-//   Σ pares_medio×valor_medio + Σ pares_dificil×valor_dificil.
+//   como tudo MÉDIO; fichas de grade = origem='legacy'.
+//
+// SETOR E ROSTER VÊM DO BANCO (v_production_sectors / v_employee_sector). A lista
+// hard-coded com uma REGEX por setor foi removida: ela deixava 11 de 20 ativos
+// invisíveis (não casavam com padrão nenhum) e usava uma taxonomia própria, com
+// 'costura' onde o fluxo real tem Costura Palmilha e Costura Cabedal separadas.
+// Agora o roster desta tela e o headcount do PCP saem da MESMA regra.
+//
+// PAGAMENTO = Σ por LINHA (pares × R$/par gravado NA PRÓPRIA LINHA), espelhando
+// `sumProducaoRows` de montadorProduction.ts, que é o que a folha usa. O R$/par é
+// snapshot do cadastro no momento do apontamento — a tela NÃO edita taxa (editar
+// aqui reescrevia todo o histórico, inclusive de folha já calculada).
 import { supabase } from "@/integrations/supabase/client";
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { EditorialPageHeader } from "@/components/layout/EditorialPageHeader";
 import { Panel } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SearchInput } from "@/components/ui/search-input";
-import { CurrencyInput } from "@/components/ui/currency-input";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { StatGrid, StatCard } from "@/components/ui/stat-card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useEmployees } from "@/hooks/useEmployees";
+import { useProductionSectors, useEmployeeSectors } from "@/hooks/useSectorRoster";
 import { searchMatchesAllTerms } from "@/lib/searchUtils";
 import { toast } from "sonner";
-import { Printer, ChartBar, ClipboardText, ListChecks, Users, Package, CurrencyDollar, FloppyDisk, CaretLeft, CaretRight } from "@phosphor-icons/react";
+import { Printer, ChartBar, ClipboardText, ListChecks, Users, Package, CurrencyDollar, FloppyDisk, CaretLeft, CaretRight, Warning, CheckCircle, Clock } from "@phosphor-icons/react";
 
 type Grade = "adulto" | "infantil";
 type Tab = "lancamento" | "produtividade" | "fichas";
-type Setor =
-  | "corte_palmilha" | "corte_forracao" | "aviamento" | "costura" | "silk"
-  | "colagem" | "montagem" | "solagem" | "acabamento" | "expedicao";
-/** Setores com chamada do dia INDEPENDENTE (mesma dinâmica, dados + relatórios
- *  separados por `ficha_montadores.setor`). Pra adicionar um setor novo é só
- *  incluir aqui — a tela ganha a aba automaticamente. */
-const SETORES: { id: Setor; label: string; sing: string; plural: string; pattern: RegExp }[] = [
-  { id: "corte_palmilha", label: "Corte Palmilha", sing: "cortador",  plural: "cortadores",  pattern: /corte\s*palmilha|palmilh/i },
-  { id: "corte_forracao", label: "Corte Forração", sing: "cortador",  plural: "cortadores",  pattern: /corte\s*forra|forra/i },
-  { id: "aviamento",      label: "Aviamento",      sing: "aviador",   plural: "aviadores",   pattern: /aviamento|mesa/i },
-  { id: "costura",        label: "Costura",        sing: "costureiro", plural: "costureiros", pattern: /costura|costurei/i },
-  { id: "silk",           label: "Silk",           sing: "silkeiro",  plural: "silkeiros",   pattern: /silk|serigraf/i },
-  { id: "colagem",        label: "Colagem",        sing: "colador",   plural: "coladores",   pattern: /colagem|colador/i },
-  { id: "montagem",       label: "Montadores",     sing: "montador",  plural: "montadores",  pattern: /montagem|montador/i },
-  { id: "solagem",        label: "Soladores",      sing: "solador",   plural: "soladores",   pattern: /solagem|solador/i },
-  { id: "acabamento",     label: "Acabamento",     sing: "acabador",  plural: "acabadores",  pattern: /acabamento|acabador/i },
-  { id: "expedicao",      label: "Expedição",      sing: "expedidor", plural: "expedidores", pattern: /expedi/i },
-];
+/** Nome do ofício por setor, indexado pela CHAVE CANÔNICA do banco.
+ *  Atenção: Aviamento tem chave 'mesa' (herança do nome antigo do setor) — por
+ *  isso a chave nunca é derivada do rótulo aqui no TS. */
+const OFICIO: Record<string, { sing: string; plural: string }> = {
+  corte_palmilha:   { sing: "cortador",   plural: "cortadores" },
+  corte_forracao:   { sing: "cortador",   plural: "cortadores" },
+  costura_palmilha: { sing: "costureiro", plural: "costureiros" },
+  costura_cabedal:  { sing: "costureiro", plural: "costureiros" },
+  mesa:             { sing: "aviador",    plural: "aviadores" },
+  silk:             { sing: "silkeiro",   plural: "silkeiros" },
+  colagem:          { sing: "colador",    plural: "coladores" },
+  montagem:         { sing: "montador",   plural: "montadores" },
+  solagem:          { sing: "solador",    plural: "soladores" },
+  acabamento:       { sing: "acabador",   plural: "acabadores" },
+  expedicao:        { sing: "expedidor",  plural: "expedidores" },
+};
+const oficioOf = (key: string) => OFICIO[key] ?? { sing: "funcionário", plural: "funcionários" };
 type ChamadaView = "dia" | "semana";
 type PeriodMode = "hoje" | "semana" | "q1" | "q2" | "mes" | "custom";
+/** Filtro de quitação (ficha_montadores.payroll_run_id). */
+type PagStatus = "todos" | "pago" | "aberto";
+const PAG_LABEL: Record<PagStatus, string> = { todos: "Tudo", pago: "Pago", aberto: "A pagar" };
 
 /** Tamanhos de ficha (pares por ficha). */
 const SIZES = [12, 15, 18] as const;
@@ -86,8 +99,19 @@ interface Ficha {
   fichas_dia?: number | null;  // modelo 'chamada' = qtd de fichas
   detalhe?: DetItem[] | null;  // [{tamanho, medio, dificil}]
   origem?: string | null;      // 'chamada' | 'legacy'
+  /** Folha que quitou o lançamento. NULL = produção ainda NÃO paga. */
+  payroll_run_id?: string | null;
+  pago_em?: string | null;
   criado_em?: string;
 }
+
+/** R$/par gravado NA LINHA (snapshot do cadastro na hora do apontamento).
+ *  Mesma leitura de `ratesOfRow` em montadorProduction.ts — é o que a folha usa. */
+const ratesOf = (f: Ficha) => ({
+  vm: Number(f.valor_par_medio ?? f.valor_par) || 0,
+  vd: Number(f.valor_par_dificil) || 0,
+});
+const isPago = (f: Ficha) => !!f.payroll_run_id;
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const todayISO = () => {
@@ -205,40 +229,57 @@ function openPrint(html: string) {
   if (!w) { alert("Permita pop-ups neste site para imprimir."); return; }
   w.document.write(html); w.document.close();
 }
-function imprimirRelatorio(rows: AggRow[], label: string, intervalo: string, totals: AggTotals) {
-  const css = `*{box-sizing:border-box}body{margin:0;font-family:'Helvetica Neue',Arial,sans-serif;color:#111}
-    h1{font-size:18px;margin:0 0 2px} .sub{font-size:11px;color:#555;margin-bottom:14px}
+function imprimirRelatorio(p: {
+  rows: AggRow[]; totals: AggTotals; setorLabel: string; oficioPlural: string;
+  label: string; intervalo: string; pagStatus: PagStatus;
+}) {
+  const { rows, totals } = p;
+  const css = `*{box-sizing:border-box}body{margin:0;font-family:'Helvetica Neue',Arial,sans-serif;color:#111;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    h1{font-size:18px;margin:0 0 2px} .sub{font-size:11px;color:#555;margin-bottom:4px}
+    .filtro{font-size:10px;color:#555;margin-bottom:12px}
     table{width:100%;border-collapse:collapse;font-size:12px} th,td{border:1px solid #333;padding:6px 8px}
     th{background:#f1f0ed;text-align:left;font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:#444}
     td.n{text-align:right;font-variant-numeric:tabular-nums} tfoot td{font-weight:800;background:#f6f5f2}
-    .med{color:#b45309} .dif{color:#c81e2e}
+    .med{color:#b45309} .dif{color:#c81e2e} .pg{color:#15803d} .ab{color:#b45309}
     @page{size:A4 portrait;margin:12mm}`;
   const body = rows.map((r, i) => `<tr><td>${i + 1}. ${esc(r.nome)}</td><td class="n">${r.fichas}</td>`
-    + `<td class="n med">${r.paresMedio}</td><td class="n med">${fmtBRL(r.valorMedio)}</td>`
-    + `<td class="n dif">${r.paresDificil}</td><td class="n dif">${fmtBRL(r.valorDificil)}</td>`
-    + `<td class="n">${r.pares}</td><td class="n">${fmtBRL(r.pago)}</td></tr>`).join("");
-  openPrint(`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>Produtividade — Montadores</title><style>${css}</style></head><body>
-    <h1>Produtividade dos Montadores</h1>
-    <div class="sub">${esc(label)} · ${esc(intervalo)} — gerado em ${fmtDia(todayISO())}</div>
-    <table><thead><tr><th>Montador</th><th style="text-align:right">Fichas</th>
-      <th style="text-align:right" class="med">Pares méd</th><th style="text-align:right" class="med">R$/par méd</th>
-      <th style="text-align:right" class="dif">Pares dif</th><th style="text-align:right" class="dif">R$/par dif</th>
-      <th style="text-align:right">Pares</th><th style="text-align:right">Pagamento</th></tr></thead>
+    + `<td class="n med">${r.paresMedio}</td><td class="n dif">${r.paresDificil}</td>`
+    + `<td class="n">${r.pares}</td>`
+    + `<td class="n pg">${r.valorPago > 0 ? fmtBRL(r.valorPago) : "—"}</td>`
+    + `<td class="n ab">${r.valorAberto > 0 ? fmtBRL(r.valorAberto) : "—"}</td>`
+    + `<td class="n">${fmtBRL(r.valorTotal)}</td></tr>`).join("");
+  const filtro = p.pagStatus === "todos"
+    ? "Mostrando produção paga e em aberto."
+    : p.pagStatus === "pago"
+      ? "Filtrado: SOMENTE produção já quitada pela folha."
+      : "Filtrado: SOMENTE produção ainda NÃO paga.";
+  openPrint(`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>Produtividade — ${esc(p.setorLabel)}</title><style>${css}</style></head><body>
+    <h1>Produtividade — ${esc(p.setorLabel)}</h1>
+    <div class="sub">${esc(p.label)} · ${esc(p.intervalo)} — gerado em ${fmtDia(todayISO())}</div>
+    <div class="filtro">${esc(filtro)} Valores calculados pelo R$/par gravado em cada lançamento.</div>
+    <table><thead><tr><th>${esc(p.oficioPlural.replace(/^./, (c) => c.toUpperCase()))}</th><th style="text-align:right">Fichas</th>
+      <th style="text-align:right" class="med">Pares méd</th><th style="text-align:right" class="dif">Pares dif</th>
+      <th style="text-align:right">Pares</th>
+      <th style="text-align:right" class="pg">Pago</th><th style="text-align:right" class="ab">A pagar</th>
+      <th style="text-align:right">Total</th></tr></thead>
     <tbody>${body || '<tr><td colspan="8" style="text-align:center;color:#888">Sem dados no período.</td></tr>'}</tbody>
-    <tfoot><tr><td>TOTAL (${rows.length} montador${rows.length === 1 ? "" : "es"})</td><td class="n">${totals.fichas}</td>
-      <td class="n med">${totals.medio}</td><td class="n"></td>
-      <td class="n dif">${totals.dificil}</td><td class="n"></td>
-      <td class="n">${totals.pares}</td><td class="n">${fmtBRL(totals.pago)}</td></tr></tfoot></table>
+    <tfoot><tr><td>TOTAL (${rows.length})</td><td class="n">${totals.fichas}</td>
+      <td class="n med">${totals.medio}</td><td class="n dif">${totals.dificil}</td>
+      <td class="n">${totals.pares}</td>
+      <td class="n pg">${fmtBRL(totals.valorPago)}</td><td class="n ab">${fmtBRL(totals.valorAberto)}</td>
+      <td class="n">${fmtBRL(totals.valorTotal)}</td></tr></tfoot></table>
     <script>window.onload=function(){window.focus();window.print();};<\/script></body></html>`);
 }
 
 /* ---------- Impressão do CALENDÁRIO de produção (montador × dia, A4 paisagem) ---------- */
-interface CalCell { pares: number; medio: number; dificil: number; fichas: number; }
+/** `pago` na célula = o dia já foi quitado por uma folha (payroll_run_id). */
+interface CalCell { pares: number; medio: number; dificil: number; fichas: number; pago: boolean; }
 interface CalRow {
   key: string; nome: string; cells: Record<string, CalCell>;
-  medio: number; dificil: number; pares: number; fichas: number; pago: number;
+  medio: number; dificil: number; pares: number; fichas: number;
+  valorPago: number; valorAberto: number; valorTotal: number;
 }
-function imprimirCalendario(p: { rows: CalRow[]; days: string[]; setorLabel: string; periodo: string; intervalo: string }) {
+function imprimirCalendario(p: { rows: CalRow[]; days: string[]; setorLabel: string; oficioLabel: string; periodo: string; intervalo: string }) {
   const { rows, days } = p;
   const nf = (n: number) => (Number(n) || 0).toLocaleString("pt-BR");
   const dayHead = days.map((d) => {
@@ -250,11 +291,14 @@ function imprimirCalendario(p: { rows: CalRow[]; days: string[]; setorLabel: str
       const c = r.cells[d]; const we = dowIdx(d) >= 5;
       if (!c || c.pares <= 0) return `<td class="c${we ? " we" : ""}">·</td>`;
       const sp = [c.medio > 0 ? `<span class="med">${c.medio}</span>` : "", c.dificil > 0 ? `<span class="dif">${c.dificil}</span>` : ""].filter(Boolean).join("<span class='x'>·</span>");
-      return `<td class="c has${we ? " we" : ""}"><b>${c.pares}</b><div class="sp">${sp}</div></td>`;
+      // Dia ainda não quitado ganha marca — o gestor lê a coluna e sabe o que deve.
+      return `<td class="c has${we ? " we" : ""}${c.pago ? "" : " ab"}"><b>${c.pares}</b><div class="sp">${sp}</div></td>`;
     }).join("");
     return `<tr><td class="mont">${esc(r.nome)}</td>${cells}`
       + `<td class="n med">${r.medio || "—"}</td><td class="n dif">${r.dificil || "—"}</td>`
-      + `<td class="n b">${nf(r.pares)}</td><td class="n f">${r.fichas}</td><td class="n pg">${fmtBRL(r.pago)}</td></tr>`;
+      + `<td class="n b">${nf(r.pares)}</td><td class="n f">${r.fichas}</td>`
+      + `<td class="n pgo">${r.valorPago > 0 ? fmtBRL(r.valorPago) : "—"}</td>`
+      + `<td class="n abt">${r.valorAberto > 0 ? fmtBRL(r.valorAberto) : "—"}</td></tr>`;
   }).join("");
   const dayTot = days.map((d) => {
     const s = rows.reduce((a, r) => a + (r.cells[d]?.pares || 0), 0);
@@ -262,7 +306,8 @@ function imprimirCalendario(p: { rows: CalRow[]; days: string[]; setorLabel: str
   }).join("");
   const tMed = rows.reduce((s, r) => s + r.medio, 0), tDif = rows.reduce((s, r) => s + r.dificil, 0);
   const tPar = rows.reduce((s, r) => s + r.pares, 0), tFic = rows.reduce((s, r) => s + r.fichas, 0);
-  const tPag = rows.reduce((s, r) => s + r.pago, 0);
+  const tPago = rows.reduce((s, r) => s + r.valorPago, 0);
+  const tAberto = rows.reduce((s, r) => s + r.valorAberto, 0);
   const css = `*{box-sizing:border-box}body{margin:0;font-family:'Helvetica Neue',Arial,sans-serif;color:#111;-webkit-print-color-adjust:exact;print-color-adjust:exact}
     h1{font-size:16px;margin:0 0 2px} .sub{font-size:10px;color:#555;margin-bottom:10px}
     .lg{font-size:9px;color:#555;margin:2px 0 10px} .lg b.med{color:#b45309} .lg b.dif{color:#c81e2e}
@@ -272,20 +317,22 @@ function imprimirCalendario(p: { rows: CalRow[]; days: string[]; setorLabel: str
     th.day{width:22px;line-height:1.05} th.day.we,td.c.we{background:#f4f2ee}
     td.mont,th.mont{text-align:left;font-weight:700;white-space:nowrap;width:96px;background:#fafafa}
     td.c{color:#bbb} td.c.has{color:#111} td.c b{font-size:9px;font-weight:800} td.c .sp{font-size:6.5px;line-height:1}
+    td.c.ab{background:#fff7ed} td.c.ab.we{background:#f7efe4}
     td.c .med{color:#b45309;font-weight:700} td.c .dif{color:#c81e2e;font-weight:700} td.c .x{color:#bbb;margin:0 1px}
     td.n{text-align:right;font-variant-numeric:tabular-nums;width:34px} td.n.med{color:#b45309;font-weight:700} td.n.dif{color:#c81e2e;font-weight:700}
-    td.n.b{font-weight:800} td.n.pg{font-weight:800;width:56px} td.n.f{color:#c81e2e;font-weight:700;width:28px}
+    td.n.b{font-weight:800} td.n.pgo{font-weight:800;width:56px;color:#15803d} td.n.abt{font-weight:800;width:56px;color:#b45309}
+    td.n.f{color:#c81e2e;font-weight:700;width:28px}
     th.sum{background:#e9e7e2}
     tfoot td{font-weight:800;background:#f6f5f2} tfoot td.c{color:#111}
     @page{size:A4 landscape;margin:8mm}`;
   openPrint(`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>Calendário — ${esc(p.setorLabel)}</title><style>${css}</style></head><body>
     <h1>Calendário de Produção — ${esc(p.setorLabel)}</h1>
     <div class="sub">${esc(p.periodo)} · ${esc(p.intervalo)} — gerado em ${fmtDia(todayISO())}</div>
-    <div class="lg">Cada célula = <b>pares do dia</b>; embaixo o split <b class="med">médio</b> · <b class="dif">difícil</b>. Colunas cinza = fim de semana.</div>
+    <div class="lg">Cada célula = <b>pares do dia</b>; embaixo o split <b class="med">médio</b> · <b class="dif">difícil</b>. Célula com fundo claro = dia <b>ainda não pago</b>. Colunas cinza = fim de semana.</div>
     <table>
-      <thead><tr><th class="mont">Montador</th>${dayHead}<th class="sum">Méd</th><th class="sum">Dif</th><th class="sum">Pares</th><th class="sum">Fichas</th><th class="sum">Pagto</th></tr></thead>
-      <tbody>${body || `<tr><td colspan="${days.length + 6}" style="text-align:center;color:#888;padding:12px">Sem lançamentos no período.</td></tr>`}</tbody>
-      <tfoot><tr><td class="mont">TOTAL (${rows.length})</td>${dayTot}<td class="n med">${nf(tMed)}</td><td class="n dif">${nf(tDif)}</td><td class="n b">${nf(tPar)}</td><td class="n f">${tFic}</td><td class="n pg">${fmtBRL(tPag)}</td></tr></tfoot>
+      <thead><tr><th class="mont">${esc(p.oficioLabel)}</th>${dayHead}<th class="sum">Méd</th><th class="sum">Dif</th><th class="sum">Pares</th><th class="sum">Fichas</th><th class="sum">Pago</th><th class="sum">A pagar</th></tr></thead>
+      <tbody>${body || `<tr><td colspan="${days.length + 7}" style="text-align:center;color:#888;padding:12px">Sem lançamentos no período.</td></tr>`}</tbody>
+      <tfoot><tr><td class="mont">TOTAL (${rows.length})</td>${dayTot}<td class="n med">${nf(tMed)}</td><td class="n dif">${nf(tDif)}</td><td class="n b">${nf(tPar)}</td><td class="n f">${tFic}</td><td class="n pgo">${fmtBRL(tPago)}</td><td class="n abt">${fmtBRL(tAberto)}</td></tr></tfoot>
     </table>
     <script>window.onload=function(){window.focus();window.print();};<\/script></body></html>`);
 }
@@ -293,17 +340,32 @@ function imprimirCalendario(p: { rows: CalRow[]; days: string[]; setorLabel: str
 interface AggRow {
   key: string; nome: string; fichas: number;
   paresMedio: number; paresDificil: number; pares: number;
-  valorMedio: number; valorDificil: number; pago: number;
+  /** Taxa vigente no CADASTRO do funcionário — referência de conferência.
+   *  NÃO entra no cálculo: o valor sai do snapshot de cada linha. Divergência
+   *  entre as duas colunas significa reajuste depois do apontamento. */
+  taxaMedio: number; taxaDificil: number;
+  /** Valorado linha a linha pelo snapshot, separado por quitação. */
+  valorPago: number; valorAberto: number; valorTotal: number;
 }
-interface AggTotals { fichas: number; pares: number; pago: number; medio: number; dificil: number; pagoMedio: number; pagoDificil: number; }
+interface AggTotals {
+  fichas: number; pares: number; medio: number; dificil: number;
+  valorPago: number; valorAberto: number; valorTotal: number;
+}
 
 /* ---------- Componente ---------- */
 export default function FichaMontadoresPage() {
   const db = supabase as any;
   const [tab, setTab] = useState<Tab>("lancamento");
-  // Setor ativo (Montadores / Soladores / …) — abas independentes na mesma tela.
-  const [setor, setSetor] = useState<Setor>("montagem");
-  const cfgSetor = useMemo(() => SETORES.find((s) => s.id === setor) ?? SETORES[0], [setor]);
+  // Setores oficiais do fluxo (v_production_sectors, em flow_order) — a tela não
+  // mantém mais lista própria: quem manda é o sector_settings do PCP.
+  const { data: sectors = [] } = useProductionSectors();
+  // Setor ativo — abas independentes na mesma tela, dados separados por
+  // ficha_montadores.setor (que guarda a CHAVE canônica).
+  const [setor, setSetor] = useState<string>("montagem");
+  const cfgSetor = useMemo(() => {
+    const s = sectors.find((x) => x.key === setor);
+    return { id: setor, label: s?.label ?? "Setor", ...oficioOf(setor) };
+  }, [sectors, setor]);
 
   // ── chamada do dia / semana ──
   const [chamadaView, setChamadaView] = useState<ChamadaView>("dia");
@@ -326,13 +388,34 @@ export default function FichaMontadoresPage() {
   const [loading, setLoading] = useState(false);
 
   const { data: employees = [] } = useEmployees();
-  // Trabalhadores do SETOR ativo (montadores p/ montagem, soladores p/ solagem…).
+  const { data: employeeSectors = [] } = useEmployeeSectors();
+
+  // Trabalhadores do SETOR ativo, pela view canônica (department + alocação
+  // explícita, normalizados por capacity_sector_key). Carrega junto o R$/par do
+  // cadastro, que é a fonte do snapshot no apontamento.
   const montadores = useMemo(
-    () => [...(employees as any[])]
-      .filter((e) => e.active && cfgSetor.pattern.test(`${e.role || ""} ${e.department || ""}`))
+    () => employeeSectors
+      .filter((r) => r.sector_key === setor)
+      .map((r) => ({
+        id: r.employee_id, name: r.name, role: r.role, department: r.department,
+        external_id: r.external_id, payment_type: r.payment_type,
+        valor_par_medio: r.valor_par_medio, valor_par_dificil: r.valor_par_dificil,
+      }))
       .sort((a, b) => a.name.localeCompare(b.name, "pt-BR")),
-    [employees, cfgSetor],
+    [employeeSectors, setor],
   );
+
+  // Ativos que não estão em NENHUM setor de produção. Antes eles simplesmente
+  // não apareciam — some da tela, ninguém descobre que não dá pra lançar a
+  // produção deles. Agora viram pendência visível com o destino do conserto.
+  const semSetor = useMemo(() => {
+    const comProducao = new Set(employeeSectors.filter((r) => r.setor_produtivo).map((r) => r.employee_id));
+    const lotacao = new Map(employeeSectors.map((r) => [r.employee_id, r.sector_label]));
+    return employees
+      .filter((e) => e.active && !comProducao.has(e.id))
+      .map((e) => ({ id: e.id, name: e.name, lotacao: lotacao.get(e.id) || null }))
+      .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+  }, [employees, employeeSectors]);
 
   const carregar = useCallback(async () => {
     setLoading(true);
@@ -418,22 +501,27 @@ export default function FichaMontadoresPage() {
       .filter((sz) => (dm.medio[sz] || 0) > 0 || (dm.dificil[sz] || 0) > 0)
       .map((sz) => ({ tamanho: sz, medio: dm.medio[sz] || 0, dificil: dm.dificil[sz] || 0 }));
     const fichasCount = det.reduce((s, d) => s + Math.round(((d.medio || 0) + (d.dificil || 0)) / d.tamanho), 0);
-    // SNAPSHOT do R$/par: fonte única = cadastro do funcionário (payment_type='producao').
-    // Congela o valor da época em cada apontamento — reajustar o cadastro não reescreve
-    // folha passada. Não-producao (ou sem valor cadastrado) mantém o valor existente da
-    // linha (fluxo legado da aba Produtividade via persistRateMontador).
-    const emp = (employees as any[]).find((x) => x.id === e.id);
-    const isProducao = String(emp?.payment_type || "").toLowerCase() === "producao";
+    // SNAPSHOT do R$/par: fonte única = cadastro do funcionário. Congela o valor
+    // da época em cada apontamento, então reajustar o cadastro não reescreve
+    // produção já apontada (nem folha já calculada em cima dela).
+    //
+    // Grava sempre que houver valor cadastrado, INDEPENDENTE do regime. Antes
+    // exigia payment_type='producao' e, como ninguém estava nesse regime, o
+    // snapshot nunca era escrito — os 33 lançamentos existentes ficaram todos
+    // com R$/par 0,00. Quem é mensalista também merece a produção valorada:
+    // serve de medição, e quem decide se isso vira pagamento é a folha, pelo
+    // regime — não esta tela.
+    const emp = montadores.find((x) => x.id === e.id);
     const vmCad = Number(emp?.valor_par_medio) || 0;
     const vdCad = Number(emp?.valor_par_dificil) || 0;
-    const vmSnap = isProducao && vmCad > 0 ? vmCad : (existing?.valor_par_medio ?? existing?.valor_par ?? null);
-    const vdSnap = isProducao && vdCad > 0 ? vdCad : (existing?.valor_par_dificil ?? null);
+    const vmSnap = vmCad > 0 ? vmCad : (existing?.valor_par_medio ?? existing?.valor_par ?? null);
+    const vdSnap = vdCad > 0 ? vdCad : (existing?.valor_par_dificil ?? null);
     const payload: any = {
       dia, montador: e.name, montador_id: e.id, setor,
       fichas_dia: fichasCount, total: totalP, copias: 1, grade: "adulto", numeracoes: [], quantidades: [],
       cor: null, referencia: null, reference_id: null, detalhe: det, origem: "chamada",
       valor_par_medio: vmSnap, valor_par_dificil: vdSnap,
-      valor_par: (isProducao && vmCad > 0) ? vmCad : (existing?.valor_par ?? 0),
+      valor_par: vmCad > 0 ? vmCad : (existing?.valor_par ?? 0),
       atualizado_em: new Date().toISOString(),
     };
     const write = (pl: any) => existing
@@ -465,7 +553,7 @@ export default function FichaMontadoresPage() {
     await carregar();
     setSavingDia(false);
     if (erros.length) toast.error(`Falha em ${erros.length}: ${erros.join(", ")}`);
-    if (ok) toast.success(`Dia salvo — ${ok} montador${ok === 1 ? "" : "es"}.`);
+    if (ok) toast.success(`Dia salvo — ${ok} ${ok === 1 ? cfgSetor.sing : cfgSetor.plural}.`);
     if (!ok && !erros.length) toast.message("Nada para salvar.");
   }
 
@@ -499,87 +587,80 @@ export default function FichaMontadoresPage() {
     if (error) toast.error("Erro ao excluir: " + error.message);
     else await carregar();
   }
-  // Grava a taxa (R$/par) de UMA dificuldade em TODAS as fichas do montador.
-  async function persistRateMontador(key: string, diff: Diff, valor: number) {
-    if (key.startsWith("txt:")) return;
-    const col = diff === "medio" ? "valor_par_medio" : "valor_par_dificil";
-    const patch: any = { [col]: valor };
-    if (diff === "medio") patch.valor_par = valor; // mantém a coluna legada sincronizada
-    let { error } = await db.from("ficha_montadores").update(patch).eq("montador_id", key);
-    if (error && /column|could not find/i.test(error.message || "")) {
-      // migration ainda não aplicada — cai na coluna legada (só médio).
-      ({ error } = await db.from("ficha_montadores").update({ valor_par: valor }).eq("montador_id", key));
-    }
-    if (error) { toast.error("Erro ao salvar valor/par: " + error.message); return; }
-    setFichas((fs) => fs.map((f) => (f.montador_id === key
-      ? { ...f, [col]: valor, ...(diff === "medio" ? { valor_par: valor } : {}) } : f)));
-  }
-
-  // ── valor/par por montador × dificuldade (Produtividade) ──
+  // A aba Produtividade NÃO edita mais o R$/par. O caminho antigo
+  // (persistRateMontador) fazia UPDATE em TODAS as fichas do montador sem filtro
+  // de data nem de setor: um ajuste de centavo revalorizava o histórico inteiro
+  // e mudava folha já calculada — o oposto do "snapshot congelado" que o próprio
+  // apontamento promete. A taxa agora se cadastra em Funcionários → Remuneração
+  // e entra congelada em cada lançamento novo.
   const aggKeyOf = (f: { montador_id?: string | null; montador?: string | null }) =>
     f.montador_id || `txt:${(f.montador || "—").toLowerCase()}`;
-  const seedValores = useMemo(() => {
-    const med: Record<string, number> = {}, dif: Record<string, number> = {};
-    for (const f of fichas) {
-      const key = aggKeyOf(f);
-      const vm = Number(f.valor_par_medio ?? f.valor_par) || 0; // médio = base histórica
-      const vd = Number(f.valor_par_dificil) || 0;
-      if (vm > (med[key] || 0)) med[key] = vm;
-      if (vd > (dif[key] || 0)) dif[key] = vd;
+  /** Taxa VIGENTE no cadastro (só referência de conferência na tela). */
+  const taxaCadastro = useMemo(() => {
+    const m = new Map<string, { vm: number; vd: number }>();
+    for (const e of montadores) {
+      m.set(e.id, { vm: Number(e.valor_par_medio) || 0, vd: Number(e.valor_par_dificil) || 0 });
     }
-    return { med, dif };
-  }, [fichas]);
-  const [valorMedioPor, setValorMedioPor] = useState<Record<string, number>>({});
-  const [valorDificilPor, setValorDificilPor] = useState<Record<string, number>>({});
-  useEffect(() => {
-    const merge = (prev: Record<string, number>, seed: Record<string, number>) => {
-      let changed = false; const next = { ...prev };
-      for (const k in seed) { if (next[k] == null) { next[k] = seed[k]; changed = true; } }
-      return changed ? next : prev;
-    };
-    setValorMedioPor((p) => merge(p, seedValores.med));
-    setValorDificilPor((p) => merge(p, seedValores.dif));
-  }, [seedValores]);
+    return m;
+  }, [montadores]);
 
   // ── filtro de período (Produtividade + Fichas) ──
   const [pMode, setPMode] = useState<PeriodMode>("q1");
   const [cFrom, setCFrom] = useState(todayISO());
   const [cTo, setCTo] = useState(todayISO());
   const [filtroMontador, setFiltroMontador] = useState<string>("__all__");
+  // Quitação: separa o que a folha já pagou do que ainda está em aberto.
+  const [pagStatus, setPagStatus] = useState<PagStatus>("todos");
   const range = useMemo(() => periodRange(pMode, cFrom, cTo), [pMode, cFrom, cTo]);
 
   const fichasFiltradas = useMemo(
-    () => fichas.filter((f) => f.dia >= range.from && f.dia <= range.to && (filtroMontador === "__all__" || f.montador_id === filtroMontador)),
-    [fichas, range, filtroMontador],
+    () => fichas.filter((f) =>
+      f.dia >= range.from && f.dia <= range.to
+      && (filtroMontador === "__all__" || f.montador_id === filtroMontador)
+      && (pagStatus === "todos" || (pagStatus === "pago" ? isPago(f) : !isPago(f)))),
+    [fichas, range, filtroMontador, pagStatus],
   );
 
+  // Pares e VALOR por pessoa. O valor sai do R$/par de CADA linha (snapshot),
+  // nunca de "pares do período × taxa de hoje" — senão um reajuste reescreveria
+  // retroativamente o que já foi pago. Mesma conta de sumProducaoRows, que é a
+  // que a folha executa.
   const agg = useMemo<AggRow[]>(() => {
     const m = new Map<string, AggRow>();
     for (const f of fichasFiltradas) {
       const key = aggKeyOf(f);
       const fichasContrib = isChamada(f) ? fichasDiaOf(f) : 1; // chamada = nº de fichas; legado = 1 ficha/linha
-      let pMed: number, pDif: number;
-      if (isChamada(f)) { const pd = paresDiffOf(f); pMed = pd.medio; pDif = pd.dificil; }
-      else { pMed = paresDaFicha(f); pDif = 0; } // legado não tinha dificuldade → tudo médio
-      const cur = m.get(key) || { key, nome: f.montador || "(sem montador)", fichas: 0, paresMedio: 0, paresDificil: 0, pares: 0, valorMedio: 0, valorDificil: 0, pago: 0 };
-      cur.fichas += fichasContrib; cur.paresMedio += pMed; cur.paresDificil += pDif; cur.pares += pMed + pDif;
+      const pd = isChamada(f)
+        ? paresDiffOf(f)
+        : { medio: paresDaFicha(f), dificil: 0, total: paresDaFicha(f) }; // legado = tudo médio
+      const { vm, vd } = ratesOf(f);
+      const valor = pd.medio * vm + pd.dificil * vd;
+      const cur = m.get(key) || {
+        key, nome: f.montador || "(sem montador)", fichas: 0,
+        paresMedio: 0, paresDificil: 0, pares: 0,
+        taxaMedio: 0, taxaDificil: 0, valorPago: 0, valorAberto: 0, valorTotal: 0,
+      };
+      cur.fichas += fichasContrib;
+      cur.paresMedio += pd.medio; cur.paresDificil += pd.dificil; cur.pares += pd.medio + pd.dificil;
+      if (isPago(f)) cur.valorPago += valor; else cur.valorAberto += valor;
+      cur.valorTotal += valor;
       m.set(key, cur);
     }
     const rows = Array.from(m.values());
     for (const r of rows) {
-      r.valorMedio = valorMedioPor[r.key] ?? 0;
-      r.valorDificil = valorDificilPor[r.key] ?? 0;
-      r.pago = r.paresMedio * r.valorMedio + r.paresDificil * r.valorDificil;
+      const t = taxaCadastro.get(r.key);
+      r.taxaMedio = t?.vm ?? 0; r.taxaDificil = t?.vd ?? 0;
     }
     return rows.sort((a, b) => b.pares - a.pares);
-  }, [fichasFiltradas, valorMedioPor, valorDificilPor]);
+  }, [fichasFiltradas, taxaCadastro]);
   const totals = useMemo<AggTotals>(
     () => agg.reduce((s, r) => ({
-      fichas: s.fichas + r.fichas, pares: s.pares + r.pares, pago: s.pago + r.pago,
+      fichas: s.fichas + r.fichas, pares: s.pares + r.pares,
       medio: s.medio + r.paresMedio, dificil: s.dificil + r.paresDificil,
-      pagoMedio: s.pagoMedio + r.paresMedio * r.valorMedio,
-      pagoDificil: s.pagoDificil + r.paresDificil * r.valorDificil,
-    }), { fichas: 0, pares: 0, pago: 0, medio: 0, dificil: 0, pagoMedio: 0, pagoDificil: 0 }),
+      valorPago: s.valorPago + r.valorPago,
+      valorAberto: s.valorAberto + r.valorAberto,
+      valorTotal: s.valorTotal + r.valorTotal,
+    }), { fichas: 0, pares: 0, medio: 0, dificil: 0, valorPago: 0, valorAberto: 0, valorTotal: 0 }),
     [agg],
   );
 
@@ -599,18 +680,28 @@ export default function FichaMontadoresPage() {
       const key = aggKeyOf(f);
       const pd = isChamada(f) ? paresDiffOf(f) : { medio: paresDaFicha(f), dificil: 0, total: paresDaFicha(f) };
       const fich = isChamada(f) ? fichasDiaOf(f) : 1;
+      const { vm, vd } = ratesOf(f);
+      const valor = pd.medio * vm + pd.dificil * vd;
+      const quitado = isPago(f);
       let r = map.get(key);
-      if (!r) { r = { key, nome: f.montador || "(sem montador)", cells: {}, medio: 0, dificil: 0, pares: 0, fichas: 0, pago: 0 }; map.set(key, r); }
-      const c = r.cells[f.dia] || { pares: 0, medio: 0, dificil: 0, fichas: 0 };
+      if (!r) { r = { key, nome: f.montador || "(sem montador)", cells: {}, medio: 0, dificil: 0, pares: 0, fichas: 0, valorPago: 0, valorAberto: 0, valorTotal: 0 }; map.set(key, r); }
+      const c = r.cells[f.dia] || { pares: 0, medio: 0, dificil: 0, fichas: 0, pago: true };
       c.pares += pd.total; c.medio += pd.medio; c.dificil += pd.dificil; c.fichas += fich;
+      // Dia com QUALQUER lançamento em aberto conta como não pago — a marca do
+      // calendário existe pra cobrar, então erra pro lado de sinalizar.
+      c.pago = c.pago && quitado;
       r.cells[f.dia] = c;
       r.pares += pd.total; r.medio += pd.medio; r.dificil += pd.dificil; r.fichas += fich;
+      if (quitado) r.valorPago += valor; else r.valorAberto += valor;
+      r.valorTotal += valor;
     }
-    const rows = Array.from(map.values())
-      .map((r) => ({ ...r, pago: r.medio * (valorMedioPor[r.key] ?? 0) + r.dificil * (valorDificilPor[r.key] ?? 0) }))
-      .sort((a, b) => b.pares - a.pares);
+    const rows = Array.from(map.values()).sort((a, b) => b.pares - a.pares);
     if (!rows.length) { toast.error("Sem lançamentos no período pra gerar o calendário."); return; }
-    imprimirCalendario({ rows, days, setorLabel: cfgSetor.label, periodo: periodLabel[pMode], intervalo: `${fmtDia(range.from)} a ${fmtDia(range.to)}` });
+    imprimirCalendario({
+      rows, days, setorLabel: cfgSetor.label,
+      oficioLabel: cfgSetor.sing.replace(/^./, (c) => c.toUpperCase()),
+      periodo: periodLabel[pMode], intervalo: `${fmtDia(range.from)} a ${fmtDia(range.to)}`,
+    });
   }
 
   const lbl = "block text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1";
@@ -634,16 +725,48 @@ export default function FichaMontadoresPage() {
         meta={<><span className="font-bold">{montadores.length}</span> {(montadores.length === 1 ? cfgSetor.sing : cfgSetor.plural).toUpperCase()} · <span className="font-bold">{fichasHoje}</span> FICHA{fichasHoje === 1 ? "" : "S"} HOJE</>}
       />
 
-      {/* Setor — abas INDEPENDENTES (Montadores / Soladores). Mesma dinâmica;
-          dados e relatórios separados por ficha_montadores.setor. */}
-      <div className="flex overflow-hidden rounded-lg border border-border w-fit">
-        {SETORES.map((s) => (
-          <button key={s.id} type="button" onClick={() => setSetor(s.id)}
-            className={`px-5 py-2 text-sm font-bold uppercase tracking-wide transition-colors ${setor === s.id ? "bg-foreground text-background" : "bg-card text-muted-foreground hover:bg-muted/40"}`}>
-            {s.label}
-          </button>
-        ))}
+      {/* Setor — abas INDEPENDENTES, uma por etapa do fluxo (v_production_sectors,
+          em flow_order). Mesma dinâmica em todas; dados e relatórios separados
+          por ficha_montadores.setor. São 11, então a faixa rola no lugar de
+          estourar a largura em tela estreita. */}
+      <div className="-mx-1 overflow-x-auto px-1 pb-1">
+        <div className="flex w-max overflow-hidden rounded-lg border border-border">
+          {sectors.map((s) => {
+            const gente = employeeSectors.filter((r) => r.sector_key === s.key).length;
+            return (
+              <button key={s.key} type="button" onClick={() => setSetor(s.key)}
+                title={`${s.label} — ${gente} ${gente === 1 ? "pessoa" : "pessoas"} no setor`}
+                className={`whitespace-nowrap border-r border-border px-4 py-2 text-sm font-bold uppercase tracking-wide transition-colors last:border-r-0 ${setor === s.key ? "bg-foreground text-background" : "bg-card text-muted-foreground hover:bg-muted/40"}`}>
+                {s.label}
+                <span className={`ml-1.5 font-mono text-[10px] ${setor === s.key ? "text-background/70" : "text-muted-foreground/60"}`}>{gente}</span>
+              </button>
+            );
+          })}
+        </div>
       </div>
+
+      {/* Pendência de cadastro. Sem isto o funcionário sem setor simplesmente
+          não aparece em aba nenhuma — e ninguém descobre que a produção dele
+          não tem onde ser lançada. */}
+      {semSetor.length > 0 && (
+        <div className="flex flex-wrap items-start gap-3 rounded-lg border border-amber-500/40 bg-amber-500/5 px-4 py-3">
+          <Warning className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+          <div className="min-w-[200px] flex-1">
+            <p className="text-sm font-semibold text-foreground">
+              {semSetor.length} funcionário{semSetor.length === 1 ? "" : "s"} ativo{semSetor.length === 1 ? "" : "s"} sem setor de produção
+            </p>
+            <p className="mt-0.5 text-[12px] text-muted-foreground">
+              Não aparece{semSetor.length === 1 ? "" : "m"} em nenhuma aba e não d{semSetor.length === 1 ? "á" : "ão"} para lançar produção. Defina o setor em Funcionários.
+            </p>
+            <p className="mt-1.5 text-[11px] text-muted-foreground">
+              {semSetor.map((e) => `${e.name}${e.lotacao ? ` (${e.lotacao})` : ""}`).join(" · ")}
+            </p>
+          </div>
+          <Button asChild type="button" variant="outline" size="sm" className="h-8">
+            <Link to="/rh?tab=funcionarios">Abrir Funcionários</Link>
+          </Button>
+        </div>
+      )}
 
       {/* abas */}
       <div className="flex flex-wrap gap-1 border-b border-border">
@@ -696,8 +819,8 @@ export default function FichaMontadoresPage() {
 
           {montadores.length === 0 ? (
             <Panel>
-              <EmptyState icon={Users} title={`Nenhum ${cfgSetor.sing} cadastrado`}
-                description={`Defina funcionários com cargo ou setor "${cfgSetor.id.charAt(0).toUpperCase()}${cfgSetor.id.slice(1)}" em Funcionários para lançar a produção.`} />
+              <EmptyState icon={Users} title={`Nenhum ${cfgSetor.sing} no setor`}
+                description={`Defina o setor "${cfgSetor.label}" no cadastro do funcionário (Funcionários → Setor) para lançar a produção dele aqui.`} />
             </Panel>
           ) : chamadaView === "dia" ? (
             <Panel
@@ -711,7 +834,7 @@ export default function FichaMontadoresPage() {
                 <table className="w-full border-collapse" style={{ minWidth: 760 }}>
                   <thead>
                     <tr className="bg-muted/40 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                      <th rowSpan={2} className="px-4 py-2 text-left align-bottom" style={{ minWidth: 180 }}>Montador</th>
+                      <th rowSpan={2} className="px-4 py-2 text-left align-bottom" style={{ minWidth: 180 }}>{cfgSetor.sing.replace(/^./, (c) => c.toUpperCase())}</th>
                       {SIZES.map((sz) => (
                         <th key={sz} colSpan={2} className="border-l border-border px-1 py-1.5 text-center" style={{ width: 120 }}>{sz}<span className="ml-1 font-mono text-[9px] normal-case text-muted-foreground/70">pares</span></th>
                       ))}
@@ -822,7 +945,7 @@ export default function FichaMontadoresPage() {
                 <table className="w-full border-collapse text-center">
                   <thead>
                     <tr className="border-b-2 border-border/80 bg-muted/40">
-                      <th className="sticky left-0 z-10 bg-muted/40 px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground" style={{ minWidth: 150 }}>Montador <span className={`font-mono normal-case ${semDiff === "medio" ? "text-amber-600" : "text-red-600"}`}>· {DIFF_LABEL[semDiff]} de {semSize}</span></th>
+                      <th className="sticky left-0 z-10 bg-muted/40 px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground" style={{ minWidth: 150 }}>{cfgSetor.sing.replace(/^./, (c) => c.toUpperCase())} <span className={`font-mono normal-case ${semDiff === "medio" ? "text-amber-600" : "text-red-600"}`}>· {DIFF_LABEL[semDiff]} de {semSize}</span></th>
                       {weekDays.map((d, i) => (
                         <th key={d} className="px-1 py-2.5 font-mono text-[10px] uppercase tracking-wide text-muted-foreground" style={{ minWidth: 60 }}>{WD_SHORT[i]} {d.slice(8)}</th>
                       ))}
@@ -897,15 +1020,30 @@ export default function FichaMontadoresPage() {
             </div>
           )}
           <div className="min-w-[220px]">
-            <label className={lbl}>Montador</label>
+            <label className={lbl}>{cfgSetor.sing.replace(/^./, (c) => c.toUpperCase())}</label>
             <SearchableSelect
               value={filtroMontador}
               onChange={setFiltroMontador}
-              options={[{ value: "__all__", label: "Todos os montadores" }, ...montadores.map((e) => ({ value: e.id, label: e.name, description: [e.role, e.department].filter(Boolean).join(" · ") || undefined }))]}
-              placeholder="Todos os montadores"
-              searchPlaceholder="Buscar montador..."
-              emptyText="Nenhum montador encontrado."
+              options={[{ value: "__all__", label: `Todos os ${cfgSetor.plural}` }, ...montadores.map((e) => ({ value: e.id, label: e.name, description: [e.role, e.department].filter(Boolean).join(" · ") || undefined }))]}
+              placeholder={`Todos os ${cfgSetor.plural}`}
+              searchPlaceholder={`Buscar ${cfgSetor.sing}...`}
+              emptyText={`Nenhum ${cfgSetor.sing} encontrado.`}
             />
+          </div>
+          {/* Quitação — o que a folha já pagou x o que ainda está em aberto. */}
+          <div>
+            <label className={lbl}>Pagamento</label>
+            <div className="flex overflow-hidden rounded-md border border-border">
+              {(["todos", "pago", "aberto"] as PagStatus[]).map((s) => (
+                <button key={s} type="button" onClick={() => setPagStatus(s)}
+                  className={`h-9 px-3 text-xs font-semibold uppercase tracking-wide transition-colors ${
+                    pagStatus === s
+                      ? (s === "pago" ? "bg-green-600 text-white" : s === "aberto" ? "bg-amber-500 text-white" : "bg-foreground text-background")
+                      : "bg-card text-muted-foreground hover:bg-muted/40"}`}>
+                  {PAG_LABEL[s]}
+                </button>
+              ))}
+            </div>
           </div>
           <div className="ml-auto text-xs text-muted-foreground">{fmtDia(range.from)} – {fmtDia(range.to)}</div>
         </div>
@@ -915,53 +1053,58 @@ export default function FichaMontadoresPage() {
       {tab === "produtividade" && (
         <div className="space-y-4">
           <StatGrid>
-            <StatCard label="Montadores" value={String(agg.length)} icon={Users} />
-            <StatCard label="Fichas" value={totals.fichas.toLocaleString("pt-BR")} icon={ClipboardText} tone="primary" />
+            <StatCard label={cfgSetor.plural.replace(/^./, (c) => c.toUpperCase())} value={String(agg.length)} icon={Users}
+              hint={`${totals.fichas.toLocaleString("pt-BR")} fichas`} />
             <StatCard label="Pares" value={totals.pares.toLocaleString("pt-BR")} icon={Package}
               hint={`${totals.medio.toLocaleString("pt-BR")} méd · ${totals.dificil.toLocaleString("pt-BR")} dif`} />
-            <StatCard label="Pagamento" value={fmtBRL(totals.pago)} icon={CurrencyDollar}
-              hint={`méd ${fmtBRL(totals.pagoMedio)} · dif ${fmtBRL(totals.pagoDificil)}`} />
+            <StatCard label="Já pago" value={fmtBRL(totals.valorPago)} icon={CheckCircle}
+              hint="quitado pela folha" />
+            <StatCard label="A pagar" value={fmtBRL(totals.valorAberto)} icon={Clock} tone="primary"
+              hint={`total do período ${fmtBRL(totals.valorTotal)}`} />
           </StatGrid>
 
           <Panel
-            eyebrow={`${periodLabel[pMode]} · ${fmtDia(range.from)}–${fmtDia(range.to)}`}
-            title="Rendimento por montador"
-            actions={<Button type="button" variant="outline" size="sm" className="gap-1.5" disabled={agg.length === 0} onClick={() => imprimirRelatorio(agg, periodLabel[pMode], `${fmtDia(range.from)} a ${fmtDia(range.to)}`, totals)}><Printer className="h-4 w-4" /> Imprimir relatório</Button>}
+            eyebrow={`${periodLabel[pMode]} · ${fmtDia(range.from)}–${fmtDia(range.to)}${pagStatus === "todos" ? "" : ` · ${PAG_LABEL[pagStatus]}`}`}
+            title={`Rendimento por ${cfgSetor.sing}`}
+            subtitle="Valor calculado pelo R$/par gravado em cada lançamento. A taxa se cadastra em Funcionários → Remuneração e entra congelada no apontamento."
+            actions={<Button type="button" variant="outline" size="sm" className="gap-1.5" disabled={agg.length === 0}
+              onClick={() => imprimirRelatorio({
+                rows: agg, totals, setorLabel: cfgSetor.label, oficioPlural: cfgSetor.plural,
+                label: periodLabel[pMode], intervalo: `${fmtDia(range.from)} a ${fmtDia(range.to)}`, pagStatus,
+              })}><Printer className="h-4 w-4" /> Imprimir relatório</Button>}
           >
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm" style={{ minWidth: 720 }}>
+              <table className="w-full text-left text-sm" style={{ minWidth: 760 }}>
                 <thead className="bg-muted/50 text-[11px] uppercase tracking-wider text-muted-foreground">
                   <tr>
                     <th className="px-3 py-2 w-8">#</th>
-                    <th className="px-3 py-2">Montador</th>
+                    <th className="px-3 py-2">{cfgSetor.sing.replace(/^./, (c) => c.toUpperCase())}</th>
                     <th className="px-3 py-2 text-right text-amber-600 border-l border-border">Pares méd</th>
-                    <th className="px-3 py-2 text-right text-amber-600">R$/par méd</th>
-                    <th className="px-3 py-2 text-right text-red-600 border-l border-border">Pares dif</th>
-                    <th className="px-3 py-2 text-right text-red-600">R$/par dif</th>
-                    <th className="px-3 py-2 text-right border-l border-border">Pares</th>
-                    <th className="px-3 py-2 text-right">Pagamento</th>
+                    <th className="px-3 py-2 text-right text-red-600">Pares dif</th>
+                    <th className="px-3 py-2 text-right">Pares</th>
+                    <th className="px-3 py-2 text-right border-l border-border">R$/par cadastro</th>
+                    <th className="px-3 py-2 text-right text-green-600 border-l border-border">Pago</th>
+                    <th className="px-3 py-2 text-right text-amber-600">A pagar</th>
+                    <th className="px-3 py-2 text-right">Total</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {agg.length === 0 && <tr><td colSpan={8} className="px-3 py-8 text-center text-muted-foreground">Sem lançamentos no período.</td></tr>}
+                  {agg.length === 0 && <tr><td colSpan={9} className="px-3 py-8 text-center text-muted-foreground">Sem lançamentos no período.</td></tr>}
                   {agg.map((r, i) => (
                     <tr key={r.key} className="border-t border-border">
                       <td className="px-3 py-2 text-muted-foreground tabular-nums">{i + 1}</td>
                       <td className="px-3 py-2 font-medium text-foreground">{r.nome}</td>
                       <td className="px-3 py-2 text-right tabular-nums font-semibold text-amber-600 border-l border-border">{r.paresMedio.toLocaleString("pt-BR")}</td>
-                      <td className="px-3 py-2 text-right">
-                        <div className="ml-auto w-24" onBlur={() => persistRateMontador(r.key, "medio", valorMedioPor[r.key] ?? 0)}>
-                          <CurrencyInput value={valorMedioPor[r.key] ?? 0} onChange={(v) => setValorMedioPor((p) => ({ ...p, [r.key]: v }))} className="h-8 text-right" />
-                        </div>
+                      <td className="px-3 py-2 text-right tabular-nums font-semibold text-red-600">{r.paresDificil.toLocaleString("pt-BR")}</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{r.pares.toLocaleString("pt-BR")}</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-[12px] text-muted-foreground border-l border-border">
+                        {r.taxaMedio > 0 || r.taxaDificil > 0
+                          ? <><span className="text-amber-600">{fmtBRL(r.taxaMedio)}</span> · <span className="text-red-600">{fmtBRL(r.taxaDificil)}</span></>
+                          : <span className="text-amber-600" title="Sem R$/par cadastrado — a produção fica valorada em zero.">não cadastrado</span>}
                       </td>
-                      <td className="px-3 py-2 text-right tabular-nums font-semibold text-red-600 border-l border-border">{r.paresDificil.toLocaleString("pt-BR")}</td>
-                      <td className="px-3 py-2 text-right">
-                        <div className="ml-auto w-24" onBlur={() => persistRateMontador(r.key, "dificil", valorDificilPor[r.key] ?? 0)}>
-                          <CurrencyInput value={valorDificilPor[r.key] ?? 0} onChange={(v) => setValorDificilPor((p) => ({ ...p, [r.key]: v }))} className="h-8 text-right" />
-                        </div>
-                      </td>
-                      <td className="px-3 py-2 text-right tabular-nums text-muted-foreground border-l border-border">{r.pares.toLocaleString("pt-BR")}</td>
-                      <td className="px-3 py-2 text-right tabular-nums font-bold">{fmtBRL(r.pago)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums font-semibold text-green-600 border-l border-border">{r.valorPago > 0 ? fmtBRL(r.valorPago) : "—"}</td>
+                      <td className="px-3 py-2 text-right tabular-nums font-semibold text-amber-600">{r.valorAberto > 0 ? fmtBRL(r.valorAberto) : "—"}</td>
+                      <td className="px-3 py-2 text-right tabular-nums font-bold">{fmtBRL(r.valorTotal)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -970,11 +1113,12 @@ export default function FichaMontadoresPage() {
                     <tr className="border-t-2 font-semibold bg-muted/30">
                       <td className="px-3 py-2" /><td className="px-3 py-2">Total ({agg.length})</td>
                       <td className="px-3 py-2 text-right tabular-nums text-amber-600 border-l border-border">{totals.medio.toLocaleString("pt-BR")}</td>
-                      <td className="px-3 py-2" />
-                      <td className="px-3 py-2 text-right tabular-nums text-red-600 border-l border-border">{totals.dificil.toLocaleString("pt-BR")}</td>
-                      <td className="px-3 py-2" />
-                      <td className="px-3 py-2 text-right tabular-nums border-l border-border">{totals.pares.toLocaleString("pt-BR")}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{fmtBRL(totals.pago)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-red-600">{totals.dificil.toLocaleString("pt-BR")}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{totals.pares.toLocaleString("pt-BR")}</td>
+                      <td className="px-3 py-2 border-l border-border" />
+                      <td className="px-3 py-2 text-right tabular-nums text-green-600 border-l border-border">{fmtBRL(totals.valorPago)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-amber-600">{fmtBRL(totals.valorAberto)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{fmtBRL(totals.valorTotal)}</td>
                     </tr>
                   </tfoot>
                 )}
@@ -995,7 +1139,7 @@ export default function FichaMontadoresPage() {
               type="button" size="sm" className="ml-auto gap-1.5"
               disabled={fichasFiltradas.length === 0}
               onClick={gerarCalendario}
-              title="Gera um PDF em calendário: o que cada montador fez em cada dia do período (com médio/difícil e pagamento)."
+              title={`Gera um PDF em calendário: o que cada ${cfgSetor.sing} fez em cada dia do período, com médio/difícil e o que já foi pago.`}
             >
               <Printer className="h-4 w-4" /> Calendário em PDF
             </Button>
@@ -1016,12 +1160,14 @@ export default function FichaMontadoresPage() {
                     <table className="w-full text-left text-sm">
                       <thead className="bg-muted/50 text-[11px] uppercase tracking-wider text-muted-foreground">
                         <tr>
-                          <th className="px-3 py-2">Montador</th>
+                          <th className="px-3 py-2">{cfgSetor.sing.replace(/^./, (c) => c.toUpperCase())}</th>
                           <th className="px-3 py-2">Tamanhos (pares)</th>
                           <th className="px-3 py-2 text-right text-amber-600 border-l border-border">Méd</th>
                           <th className="px-3 py-2 text-right text-red-600">Dif</th>
                           <th className="px-3 py-2 text-center border-l border-border">Fichas</th>
                           <th className="px-3 py-2 text-center">Pares</th>
+                          <th className="px-3 py-2 text-right border-l border-border">Valor</th>
+                          <th className="px-3 py-2 text-center">Pagamento</th>
                           <th className="px-3 py-2 text-right">Ações</th>
                         </tr>
                       </thead>
@@ -1033,6 +1179,9 @@ export default function FichaMontadoresPage() {
                           const tamLabel = chamada
                             ? (SIZES.filter((sz) => (m[sz] || 0) > 0).map((sz) => `${m[sz]}×${sz}`).join("  ") || "—")
                             : (f.referencia || f.solado || "—");
+                          const { vm, vd } = ratesOf(f);
+                          const valor = pd.medio * vm + pd.dificil * vd;
+                          const quitado = isPago(f);
                           return (
                             <tr key={f.id} className="border-t border-border">
                               <td className="px-3 py-2 font-medium text-foreground">{f.montador || "—"}</td>
@@ -1041,6 +1190,21 @@ export default function FichaMontadoresPage() {
                               <td className="px-3 py-2 text-right tabular-nums font-semibold text-red-600">{pd.dificil ? pd.dificil.toLocaleString("pt-BR") : "—"}</td>
                               <td className="px-3 py-2 text-center font-semibold tabular-nums text-primary border-l border-border">{chamada ? fichasDiaOf(f) : 1}</td>
                               <td className="px-3 py-2 text-center tabular-nums text-foreground">{pd.total.toLocaleString("pt-BR")}</td>
+                              <td className="px-3 py-2 text-right tabular-nums font-semibold border-l border-border">
+                                {valor > 0 ? fmtBRL(valor) : <span className="text-amber-600" title="Lançamento sem R$/par gravado.">R$ 0,00</span>}
+                              </td>
+                              <td className="px-3 py-2 text-center">
+                                {quitado ? (
+                                  <span className="inline-flex items-center gap-1 rounded bg-green-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-green-600"
+                                    title={f.pago_em ? `Quitado pela folha em ${fmtDia(f.pago_em)}` : "Quitado pela folha"}>
+                                    <CheckCircle className="h-3 w-3" /> {f.pago_em ? fmtDia(f.pago_em) : "Pago"}
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 rounded bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-600">
+                                    <Clock className="h-3 w-3" /> A pagar
+                                  </span>
+                                )}
+                              </td>
                               <td className="px-3 py-2 text-right">
                                 <button onClick={() => abrirDia(f)} className="mr-3 text-xs font-medium text-primary hover:underline">Abrir o dia</button>
                                 <button onClick={() => excluir(f)} className="text-xs font-medium text-muted-foreground hover:text-red-600 dark:hover:text-red-400">Excluir</button>
