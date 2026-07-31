@@ -1024,6 +1024,17 @@ describe('orderConsumption — motor canônico', () => {
           lining_material_product_id: null, lining_material_group_id: null, lining_consumption_override: null,
           insole_material_product_id: null, insole_material_group_id: null, insole_consumption_override: null,
           sole_material_product_id: null, sole_consumption_override: null,
+          main_material_group_id: null,
+        }],
+        // Variante que NÃO pina slot nenhum: só o material principal. É a forma
+        // das 63 variantes de produção depois do backfill da mig 20261027120000.
+        ['var-main', {
+          id: 'var-main', reference_id: 'sheet-1',
+          upper_material_product_id: null, upper_material_group_id: null, upper_consumption_override: null,
+          lining_material_product_id: null, lining_material_group_id: null, lining_consumption_override: null,
+          insole_material_product_id: null, insole_material_group_id: null, insole_consumption_override: null,
+          sole_material_product_id: null, sole_consumption_override: null,
+          main_material_group_id: 'g-glow',
         }],
       ]);
       return ctx;
@@ -1041,6 +1052,51 @@ describe('orderConsumption — motor canônico', () => {
       const forr = rows.find(r => r.componentType === 'Forração')!;
       expect(forr.groupName).toBe('NAPA FORRO');
       expect(forr.totalQuantity).toBeCloseTo(1.92, 6);
+    });
+
+    // ── Material PRINCIPAL da variante (mig 20261027120000) ──────────────────
+    // A variante só trocava o SLOT pinado; como as 63 variantes de produção
+    // pinaram só o forro, o CABEDAL nunca trocava de família (I110 vendido em
+    // GLOW METALIC saía com cabedal NAPA SOFT). O material principal cascateia,
+    // mas SÓ nos slots que a ficha liberou — senão a PALHA do cabedal do DS21
+    // viraria napa.
+    it('material principal troca o cabedal quando a ficha libera o slot', () => {
+      const item = buildItem({
+        material_variant_id: 'var-main',
+        technical_sheets: buildSheet({ variant_drives_upper: true }),
+      });
+      const rows = computeConsumptionForItems([item], buildVariantContext());
+      const cabedal = rows.find(r => r.componentType === 'Cabedal')!;
+      expect(cabedal.groupName).toBe('GLOW METALIC');
+      expect(cabedal.totalQuantity).toBeCloseTo(144 / 140, 6);
+    });
+
+    it('material principal NÃO toca o slot que a ficha não liberou (protege material de identidade)', () => {
+      const item = buildItem({
+        material_variant_id: 'var-main',
+        technical_sheets: buildSheet({ variant_drives_upper: false }),
+      });
+      const rows = computeConsumptionForItems([item], buildVariantContext());
+      const cabedal = rows.find(r => r.componentType === 'Cabedal')!;
+      expect(cabedal.groupName).toBe('NAPA SOFT');
+      expect(cabedal.totalQuantity).toBeCloseTo(1.44, 6);
+    });
+
+    it('pino do slot vence o material principal (precedência dos resolvers SQL)', () => {
+      const ctx = buildVariantContext();
+      ctx.productGroups.push({ id: 'g-sudani', name: 'NAPA SUDANI', dimensions_length: null, dimensions_width: null, dimensions_unit: null } as any);
+      ctx.materialVariantsById.set('var-both', {
+        ...ctx.materialVariantsById.get('var-main')!,
+        id: 'var-both',
+        upper_material_group_id: 'g-glow',   // pino do slot
+        main_material_group_id: 'g-sudani',  // material principal (perde)
+      } as any);
+      const item = buildItem({
+        material_variant_id: 'var-both',
+        technical_sheets: buildSheet({ variant_drives_upper: true }),
+      });
+      const cabedal = computeConsumptionForItems([item], ctx).find(r => r.componentType === 'Cabedal')!;
+      expect(cabedal.groupName).toBe('GLOW METALIC');
     });
 
     it('item SEM variante no mesmo cálculo mantém o material da ficha (não contamina)', () => {

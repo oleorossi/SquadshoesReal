@@ -132,7 +132,7 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
   ] = await Promise.all([
     supabase
       .from('technical_sheets')
-      .select('id, upper_material, upper_material_product_id, upper_consumption, upper_consumption_per_size, lining_material, lining_material_product_id, lining_consumption, lining_consumption_per_size, insole_material, insole_consumption, insole_consumption_per_size, insole_ready_made, insole_has_lining, insole_lining_consumption, insole_lining_consumption_per_size, sole_material, sole_consumption, sole_color, sole_group_id, primary_sole_id, lining_accessories, components_accessories, strap_colors, sole_drives_consumption, direct_components, component_colors_enabled')
+      .select('id, upper_material, upper_material_product_id, upper_consumption, upper_consumption_per_size, lining_material, lining_material_product_id, lining_consumption, lining_consumption_per_size, insole_material, insole_consumption, insole_consumption_per_size, insole_ready_made, insole_has_lining, insole_lining_consumption, insole_lining_consumption_per_size, sole_material, sole_consumption, sole_color, sole_group_id, primary_sole_id, lining_accessories, components_accessories, strap_colors, sole_drives_consumption, direct_components, component_colors_enabled, variant_drives_upper, variant_drives_lining, variant_drives_insole')
       .in('id', refIds),
     supabase
       .from('sheet_materials')
@@ -177,7 +177,7 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
     if (variantIds.length > 0) {
       const { data: variantRows } = await (supabase as any)
         .from('reference_material_variants')
-        .select('id, reference_id, upper_material_product_id, upper_material_group_id, lining_material_product_id, lining_material_group_id, insole_material_product_id, insole_material_group_id, insole_consumption_override, sole_material_product_id, sole_consumption_override')
+        .select('id, reference_id, upper_material_product_id, upper_material_group_id, lining_material_product_id, lining_material_group_id, insole_material_product_id, insole_material_group_id, insole_consumption_override, sole_material_product_id, sole_consumption_override, main_material_group_id')
         .in('id', variantIds);
       for (const v of (variantRows || []) as any[]) variantsById.set(v.id, v);
     }
@@ -502,13 +502,18 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
     const variant = saleItem?.material_variant_id ? variantsById.get(saleItem.material_variant_id) : undefined;
     const groupNameById = (gid: string | null | undefined): string =>
       gid ? (((productGroups || []).find((g: any) => g.id === gid) as any)?.name || '') : '';
-    const variantGroupName = (pid: string | null | undefined, gid: string | null | undefined): string => {
+    // `drives`: a ficha liberou o slot pro MATERIAL PRINCIPAL da variante
+    // (technical_sheets.variant_drives_*, mig 20261027120000). Mesma cascata do
+    // motor canônico e dos resolvers SQL.
+    const variantGroupName = (pid: string | null | undefined, gid: string | null | undefined, drives?: boolean): string => {
       const pin = pid ? (allProducts || []).find((p: any) => p.id === pid) || null : null;
-      return pin ? groupNameById((pin as any).group_id) : groupNameById(gid);
+      const name = pin ? groupNameById((pin as any).group_id) : groupNameById(gid);
+      if (!pin && !name && drives) return groupNameById(variant?.main_material_group_id);
+      return name;
     };
-    const upperVariantGroup = variant ? variantGroupName(variant.upper_material_product_id, variant.upper_material_group_id) : '';
-    const liningVariantGroup = variant ? variantGroupName(variant.lining_material_product_id, variant.lining_material_group_id) : '';
-    const insoleVariantGroup = variant ? variantGroupName(variant.insole_material_product_id, variant.insole_material_group_id) : '';
+    const upperVariantGroup = variant ? variantGroupName(variant.upper_material_product_id, variant.upper_material_group_id, (sheet as any)?.variant_drives_upper) : '';
+    const liningVariantGroup = variant ? variantGroupName(variant.lining_material_product_id, variant.lining_material_group_id, (sheet as any)?.variant_drives_lining) : '';
+    const insoleVariantGroup = variant ? variantGroupName(variant.insole_material_product_id, variant.insole_material_group_id, (sheet as any)?.variant_drives_insole) : '';
     const variantSolePid: string | null = variant?.sole_material_product_id
       && (allProducts || []).some((p: any) => p.id === variant.sole_material_product_id)
       ? variant.sole_material_product_id

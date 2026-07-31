@@ -15648,6 +15648,7 @@ export type Database = {
           reference_id: string
           sku: string | null
           sole_consumption_override: number | null
+          main_material_group_id: string | null
           sole_material_product_id: string | null
           unit_price_override: number | null
           updated_at: string
@@ -15674,6 +15675,7 @@ export type Database = {
           reference_id: string
           sku?: string | null
           sole_consumption_override?: number | null
+          main_material_group_id?: string | null
           sole_material_product_id?: string | null
           unit_price_override?: number | null
           updated_at?: string
@@ -15700,6 +15702,7 @@ export type Database = {
           reference_id?: string
           sku?: string | null
           sole_consumption_override?: number | null
+          main_material_group_id?: string | null
           sole_material_product_id?: string | null
           unit_price_override?: number | null
           updated_at?: string
@@ -21848,6 +21851,10 @@ export type Database = {
           sole_color: string | null
           sole_consumption: number | null
           sole_drives_consumption: boolean | null
+          variant_drives_upper: boolean
+          variant_drives_lining: boolean
+          variant_drives_insole: boolean
+          variant_drives_fachete: boolean
           sole_group_id: string | null
           sole_material: string | null
           sole_process: string | null
@@ -21975,6 +21982,10 @@ export type Database = {
           sole_color?: string | null
           sole_consumption?: number | null
           sole_drives_consumption?: boolean | null
+          variant_drives_upper?: boolean
+          variant_drives_lining?: boolean
+          variant_drives_insole?: boolean
+          variant_drives_fachete?: boolean
           sole_group_id?: string | null
           sole_material?: string | null
           sole_process?: string | null
@@ -22102,6 +22113,10 @@ export type Database = {
           sole_color?: string | null
           sole_consumption?: number | null
           sole_drives_consumption?: boolean | null
+          variant_drives_upper?: boolean
+          variant_drives_lining?: boolean
+          variant_drives_insole?: boolean
+          variant_drives_fachete?: boolean
           sole_group_id?: string | null
           sole_material?: string | null
           sole_process?: string | null

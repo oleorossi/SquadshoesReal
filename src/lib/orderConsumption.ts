@@ -140,6 +140,9 @@ export type MaterialVariantResolution = {
   insole_consumption_override: number | null;
   sole_material_product_id: string | null;
   sole_consumption_override: number | null;
+  /** Material PRINCIPAL da variante (mig 20261027120000): cascateia pros slots
+   *  que a ficha liberou em `variant_drives_*`. Perde pro pino do slot. */
+  main_material_group_id: string | null;
 };
 
 /** Contexto compartilhado: as consultas e mapas que o cálculo precisa. */
@@ -262,7 +265,11 @@ export const TECHNICAL_SHEET_CONSUMPTION_COLUMNS = `
   lining_accessories,
   components_accessories,
   direct_components,
-  component_colors_enabled
+  component_colors_enabled,
+  variant_drives_upper,
+  variant_drives_lining,
+  variant_drives_insole,
+  variant_drives_fachete
 `;
 
 /**
@@ -606,7 +613,7 @@ export async function fetchConsumptionContext(refIds: string[]): Promise<Consump
     // (item.material_variant_id) com a MESMA precedência dos resolvers SQL.
     (supabase as any)
       .from('reference_material_variants')
-      .select('id, reference_id, upper_material_product_id, upper_material_group_id, upper_consumption_override, lining_material_product_id, lining_material_group_id, lining_consumption_override, insole_material_product_id, insole_material_group_id, insole_consumption_override, sole_material_product_id, sole_consumption_override')
+      .select('id, reference_id, upper_material_product_id, upper_material_group_id, upper_consumption_override, lining_material_product_id, lining_material_group_id, lining_consumption_override, insole_material_product_id, insole_material_group_id, insole_consumption_override, sole_material_product_id, sole_consumption_override, main_material_group_id')
       .in('reference_id', unique),
     // Padrões GLOBAIS por cor (component_color_defaults) — regra por GRUPO,
     // não por ficha: carrega tudo que está ativo (tabela pequena, sem .in()).
@@ -1078,23 +1085,30 @@ export function computeConsumptionForItems(
       : undefined;
     const groupNameById = (gid: string | null | undefined): string =>
       gid ? ((productGroups || []).find((g: any) => g.id === gid)?.name || '') : '';
-    /** Pin de produto da variante (se ativo em allProducts) + nome do grupo efetivo. */
+    /** Pin de produto da variante (se ativo em allProducts) + nome do grupo efetivo.
+     *  `drives` = a ficha liberou este slot pro MATERIAL PRINCIPAL da variante
+     *  (`technical_sheets.variant_drives_*`, mig 20261027120000). Quando o slot
+     *  não tem pino próprio e a trava está ligada, cai no material principal —
+     *  é o que faz o CABEDAL finalmente trocar de família. Com a trava desligada
+     *  o slot fica com o cadastro da ficha (protege a PALHA do DS21/DS19). */
     const variantComponent = (
       pid: string | null | undefined,
       gid: string | null | undefined,
+      drives?: boolean,
     ): { pin: any | null; groupName: string } => {
       const pin = pid ? (allProducts || []).find((p: any) => p.id === pid) || null : null;
-      const groupName = pin ? groupNameById(pin.group_id) : groupNameById(gid);
+      let groupName = pin ? groupNameById(pin.group_id) : groupNameById(gid);
+      if (!pin && !groupName && drives) groupName = groupNameById(variant?.main_material_group_id);
       return { pin, groupName };
     };
     const upperVariant = variant
-      ? variantComponent(variant.upper_material_product_id, variant.upper_material_group_id)
+      ? variantComponent(variant.upper_material_product_id, variant.upper_material_group_id, sheet?.variant_drives_upper)
       : { pin: null, groupName: '' };
     const liningVariant = variant
-      ? variantComponent(variant.lining_material_product_id, variant.lining_material_group_id)
+      ? variantComponent(variant.lining_material_product_id, variant.lining_material_group_id, sheet?.variant_drives_lining)
       : { pin: null, groupName: '' };
     const insoleVariant = variant
-      ? variantComponent(variant.insole_material_product_id, variant.insole_material_group_id)
+      ? variantComponent(variant.insole_material_product_id, variant.insole_material_group_id, sheet?.variant_drives_insole)
       : { pin: null, groupName: '' };
     const upperVariantDriven = !!(upperVariant.pin || upperVariant.groupName);
     const liningVariantDriven = !!(liningVariant.pin || liningVariant.groupName);
