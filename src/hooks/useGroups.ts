@@ -70,6 +70,10 @@ export function useAddGroup() {
       description: string;
       sector: string;
       auto_component_sheet?: boolean;
+      /** Largura útil do material (mm). O GRUPO é a fonte: o item herda na
+       *  criação e só diverge de propósito. Sem ela o dm²/par não vira metro. */
+      dimensions_width?: number | null;
+      dimensions_unit?: string | null;
       parent_group_id?: string | null;
       pairs_per_box_individual?: number | null;
       pairs_per_box_master?: number | null;

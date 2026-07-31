@@ -30,6 +30,10 @@ interface GroupCreateDialogProps {
   titleText?: string;
 }
 
+/** Setores cujo material é cortado de bobina/placa e tem consumo em dm²/par: sem
+ *  largura o motor não converte dm²→metro e o consumo sai ~100× inflado. */
+const AREA_SECTORS = new Set(['Cabedal', 'Forração da Palmilha', 'Palmilha']);
+
 const parseIntOrNull = (v: string): number | null => {
   if (v === '') return null;
   const n = parseInt(v, 10);
@@ -42,6 +46,11 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
     description: "",
     sector: (initialSector ?? "") as string,
     auto_component_sheet: false,
+    // Largura útil do material (mm). É o GRUPO que manda: o item herda ao ser
+    // criado (ProductFormDialog já propaga dimensions_* do grupo) e só diverge
+    // de propósito. Sem isso a mesma napa nascia em larguras diferentes, e
+    // largura errada infla o consumo linear.
+    dimensions_width: null as number | null,
     parent_group_id: (initialParentId ?? "") as string,
     pairs_per_box_individual: null as number | null,
     pairs_per_box_master: null as number | null,
@@ -97,6 +106,7 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
       description: "",
       sector: initialSector ?? "",
       auto_component_sheet: false,
+      dimensions_width: null,
       parent_group_id: initialParentId ?? "",
       pairs_per_box_individual: null,
       pairs_per_box_master: null,
@@ -119,6 +129,12 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
     if (!form.sector) {
       return;
     }
+    // Material de ÁREA cortado de bobina (napa/forro/palmilha) sem largura fica
+    // com o consumo ~100× inflado: o dm²/par não tem como virar metro. Bloqueia
+    // na criação em vez de deixar o erro aparecer lá na frente, no PV.
+    if (AREA_SECTORS.has(form.sector) && !(Number(form.dimensions_width) > 0)) {
+      return;
+    }
 
     try {
       await addGroup.mutateAsync({
@@ -126,6 +142,8 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
         description: form.description,
         sector: form.sector,
         auto_component_sheet: form.auto_component_sheet,
+        dimensions_width: form.dimensions_width,
+        dimensions_unit: form.dimensions_width ? 'mm' : null,
         parent_group_id: form.parent_group_id || null,
         pairs_per_box_individual: form.pairs_per_box_individual,
         pairs_per_box_master: form.pairs_per_box_master,
@@ -233,6 +251,34 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
                 Define a categoria dos produtos deste grupo. Sugerido pelo nome — confira antes de criar.
               </p>
             </div>
+            {AREA_SECTORS.has(form.sector) && (
+              <div>
+                <Label htmlFor="group-width">Largura útil (mm) *</Label>
+                <Input
+                  id="group-width"
+                  type="number"
+                  min="1"
+                  step="1"
+                  className="mt-1"
+                  value={form.dimensions_width ?? ''}
+                  onChange={(e) => setForm((f) => ({
+                    ...f,
+                    dimensions_width: e.target.value ? Number(e.target.value) : null,
+                  }))}
+                  placeholder="Ex: 1370"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Cada item criado neste grupo herda esta largura. É ela que converte
+                  dm²/par em metros — <strong>sem largura o consumo sai ~100× inflado</strong>.
+                  Um item só diverge se aquele rolo for realmente de outra largura.
+                </p>
+                {!(Number(form.dimensions_width) > 0) && (
+                  <p className="text-xs text-destructive mt-1">
+                    Obrigatória para material de {SECTOR_OPTIONS.find(o => o.value === form.sector)?.label ?? form.sector}.
+                  </p>
+                )}
+              </div>
+            )}
             <div>
               <Label htmlFor="group-desc">Descrição</Label>
               <Textarea
@@ -341,7 +387,16 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancelar
             </Button>
-            <Button type="submit" disabled={addGroup.isPending || !form.sector}>Criar Grupo</Button>
+            <Button
+              type="submit"
+              disabled={
+                addGroup.isPending
+                || !form.sector
+                || (AREA_SECTORS.has(form.sector) && !(Number(form.dimensions_width) > 0))
+              }
+            >
+              Criar Grupo
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>
