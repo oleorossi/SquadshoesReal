@@ -731,12 +731,30 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
     const nFichas = cg.fichas || 0;
     const showPerFicha = !cg.mixedGrades && nFichas > 1;
     const totalMeters = rows.reduce((s, r) => s + (Number(r.required) || 0), 0);
-    const meterCell = (v: number, px: number) => (
+    // O "Total tiras" só faz sentido quando TODAS as linhas estão na mesma
+    // unidade. Como o componente 'Tiras' também vem do BOM (que carrega a
+    // unidade do produto), um maço pode misturar metro e `un` — somar aí
+    // produziria um número sem significado físico.
+    const strapUnits = new Set(rows.map(r => (r.source === 'width_missing' ? 'dm2' : (r.unit || 'metro'))));
+    const strapUnitUniform = strapUnits.size === 1 ? rows[0]?.unit : null;
+    const strapTotalValid = strapUnits.size === 1;
+    // ⚠ A unidade vem da LINHA, não é 'm' fixo (fix 31/07/2026). O caminho
+    // direto de straps emite `productUnit: 'metro'` (orderConsumption.ts), mas
+    // `classifyBomMaterial` também devolve componente 'Tiras' pra QUALQUER linha
+    // de BOM cujo grupo/produto contenha "tira" — e essa carrega a unidade do
+    // próprio produto (`product.unit || 'un'`), ou 'dm2' com width_missing
+    // quando falta largura na ficha de componente. Com o 'm' hardcoded, uma
+    // tira cadastrada em `un` saía como "24 m" e uma sem largura saía com o
+    // valor em dm² cru (~100× inflado) rotulado "m" e SEM o aviso âmbar que o
+    // bloco irmão (renderConsumoCorte) já tem.
+    const meterCell = (v: number, px: number, unit?: string, widthMissing = false) => (
       <>
         <span style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: `${px}px`, letterSpacing: '-0.02em', color: '#C00000', lineHeight: 1 }}>
           {fmtConsumoQty(v)}
         </span>
-        <span className="font-mono" style={{ fontSize: '9px', fontWeight: 700, color: '#000', marginLeft: 3 }}>m</span>
+        <span className="font-mono" style={{ fontSize: '9px', fontWeight: 700, color: '#000', marginLeft: 3 }}>
+          {widthMissing ? 'dm²' : consumoUnitLabel(unit)}
+        </span>
       </>
     );
 
@@ -763,14 +781,14 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
             {showPerFicha && (
               <>
                 <span className="font-mono uppercase" style={{ fontSize: '8px', letterSpacing: '0.1em', color: '#333', marginRight: 4 }}>por ficha</span>
-                {meterCell(req / (nFichas || 1), 15)}
+                {meterCell(req / (nFichas || 1), 15, r.unit, r.source === 'width_missing')}
                 <span className="font-mono uppercase" style={{ fontSize: '8px', letterSpacing: '0.1em', color: '#333', margin: '0 4px 0 10px' }}>total</span>
               </>
             )}
             {!showPerFicha && (
               <span className="font-mono uppercase" style={{ fontSize: '8px', letterSpacing: '0.1em', color: '#333', marginRight: 4 }}>total</span>
             )}
-            {meterCell(req, 18)}
+            {meterCell(req, 18, r.unit, r.source === 'width_missing')}
           </span>
         </div>
       );
@@ -813,11 +831,11 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                   </td>
                   {showPerFicha && (
                     <td className="px-2 py-1 text-right align-middle" style={{ whiteSpace: 'nowrap' }}>
-                      {meterCell(req / (nFichas || 1), 15)}
+                      {meterCell(req / (nFichas || 1), 15, r.unit, r.source === 'width_missing')}
                     </td>
                   )}
                   <td className="px-2 py-1 text-right align-middle" style={{ whiteSpace: 'nowrap' }}>
-                    {meterCell(req, 18)}
+                    {meterCell(req, 18, r.unit, r.source === 'width_missing')}
                   </td>
                 </tr>
               );
@@ -831,11 +849,15 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                 </td>
                 {showPerFicha && (
                   <td className="px-2 py-1 text-right align-middle" style={{ whiteSpace: 'nowrap' }}>
-                    {meterCell(totalMeters / (nFichas || 1), 15)}
+                    {strapTotalValid
+                      ? meterCell(totalMeters / (nFichas || 1), 15, strapUnitUniform)
+                      : <span className="font-mono" style={{ fontSize: '9px', color: '#333' }}>—</span>}
                   </td>
                 )}
                 <td className="px-2 py-1 text-right align-middle" style={{ whiteSpace: 'nowrap' }}>
-                  {meterCell(totalMeters, 18)}
+                  {strapTotalValid
+                    ? meterCell(totalMeters, 18, strapUnitUniform)
+                    : <span className="font-mono" style={{ fontSize: '8.5px', fontWeight: 700, color: '#C00000' }}>unidades mistas</span>}
                 </td>
               </tr>
             )}

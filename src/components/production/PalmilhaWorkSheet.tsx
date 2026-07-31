@@ -133,6 +133,14 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, pairsPerCard = 12, sizeBan
             // Base da conversão dm²→placa (ex.: 150 dm²/placa) — só pra mostrar
             // de onde vem o nº de placas. 0 quando o grupo não tem dimensões.
             const plateArea = (group.plateOps ?? []).reduce((mx, p) => Math.max(mx, p.areaDm2 || 0), 0);
+            // ⚠ Sem a área da placa cadastrada, `convertDm2ToPlates` devolve o
+            // dm² CRU sem converter (materialConsumption.ts:324) — mas a linha
+            // continua com unit 'placa' e passa pelo filtro do chamador. O
+            // número estampado aqui em Anton 30px seria dm², não placas, e
+            // mandaria o operador cortar ~100× a mais. Espelha o tratamento de
+            // `width_missing` do bloco de consumo do Corte: avisa em vez de
+            // afirmar uma unidade que não se sustenta.
+            const plateAreaMissing = (group.plateOps ?? []).some(p => !((p.areaDm2 || 0) > 0));
             const tallyPerCard = grpBgs > 0 ? grpBgs : pairsPerCard;
             const cards = grpNf > 0 ? grpNf : Math.max(1, Math.ceil(group.totalPairs / tallyPerCard));
             const tallyTitle = group.corrugadosMistos ? 'Controle de Fichas · corrugados mistos' : undefined;
