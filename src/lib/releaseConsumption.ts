@@ -30,6 +30,21 @@ import { toast } from 'sonner';
  *
  * Idempotência: rodar duas vezes é inofensivo — a segunda passada não encontra
  * mais nada em 'reserved' e volta com `picked_count = 0`.
+ *
+ * ── Escopo: PV inteiro, não "as OPs que estão sendo liberadas" ────────────────
+ * `commit_picking_for_sale_order` consome a reserva de TODA OP do PV que esteja
+ * em 'reserved', independente do status da própria OP (o filtro é
+ * `orders.sale_order_id`, não `orders.status`). Hoje isso é equivalente, porque
+ * as OPs de um PV sobem para 'Em Produção' juntas — mas é uma armadilha se um
+ * dia existir liberação PARCIAL (por item, por setor ou por onda): a baixa
+ * pegaria material de OP que ainda não foi liberada. Ao construir liberação
+ * parcial, trocar esta RPC por uma variante que receba os order_ids liberados.
+ *
+ * ── O que entra na baixa ──────────────────────────────────────────────────────
+ * Tudo que está reservado: componente (napa, forro, palmilha, cola), tira e
+ * SOLADO — este último com baixa parcial por numeração. Embalagem NÃO entra:
+ * ela é baixa dura na própria promoção (`debit_packaging_for_order`) e não
+ * cria linha em `material_reservations`, então não há risco de dobrar.
  */
 
 export interface ReleaseConsumptionResult {

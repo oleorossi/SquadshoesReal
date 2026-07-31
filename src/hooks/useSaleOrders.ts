@@ -2919,16 +2919,28 @@ export function useBulkSyncFinancial() {
   });
 }
 
-// ─── Picking realizado (PV) ──────────────────────────────────────────────────
+// ─── Baixa de material do PV ─────────────────────────────────────────────────
 //
-// Confirma em massa o picking de todas as reservas SOFT (status='reserved')
-// das OPs de um PV — debita products.quantity, registra stock_movement('out')
-// e marca reservation como consumed. Use case: cliente quer rodar pedido a
-// pedido sem esperar a onda semanal processar o débito.
+// Confirma em massa a baixa de todas as reservas SOFT (status='reserved') das
+// OPs de um PV — debita products.quantity, registra stock_movement('out') e
+// marca a reservation como consumed.
 //
-// Soles já vêm com status='consumed' da criação da OP (debit_sole_stock_by_grade
-// marca direto) então não são re-debitados aqui. Itens com estoque insuficiente
-// são pulados (resto continua) e listados no `insufficient` pra UI mostrar.
+// Desde 31/07/2026 este NÃO é mais o caminho principal: a baixa sai sozinha na
+// liberação pra produção (`consumeReservationsOnRelease`, que chama esta mesma
+// RPC). Este hook ficou como FALLBACK — PV liberado antes da regra, ou
+// liberação em que a baixa automática falhou. Ver `src/lib/releaseConsumption.ts`.
+//
+// ⚠ SOLADO ENTRA na baixa, sim. O comentário anterior aqui afirmava que solados
+// "já vêm com status='consumed' da criação da OP" — é FALSO e enganava: isso só
+// vale no ramo de baixa DURA de `debit_sole_stock_by_grade`. A criação/promoção
+// de OP chama com `p_force_soft => true`, e esse ramo apenas INSERE a reserva
+// (`status='reserved'`) sem tocar em stock_grade. Conferido no banco em
+// 31/07/2026: 43 linhas `sole_grade` em 'reserved'. Ou seja, a baixa do solado
+// acontece AQUI (parcial por numeração, via LEAST(disponível, necessário)) —
+// não antes. Não "otimizar" excluindo solado daqui.
+//
+// Itens com estoque insuficiente são pulados (resto continua) e listados no
+// `insufficient` pra UI mostrar.
 
 export interface PickingResult {
   sale_order_id: string;
