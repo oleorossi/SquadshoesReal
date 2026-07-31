@@ -201,3 +201,38 @@ Ver [[project_cola_consumption_inflated_bom]] — a cola já tinha histórico de
 - [ ] Índice único impedindo OS duplicada por PV+setor+ref+cor
 - [ ] Diálogo de criação de tira exige napa-base e acusa receita faltando
 - [ ] Checagem de duplicata normalizada na criação de tira
+
+---
+
+## 7. Cadastro das napas-base — FEITO em 31/07/2026
+
+Sem napa na família+cor, o motor bloqueia (§2.4). Estavam faltando 25 tiras em
+6 grupos. Resolvido direto no banco (dados, não schema):
+
+| O quê | Detalhe |
+|---|---|
+| **13 napas NAPA SOFT** | AMARELO, AZUL, BEGE, CARAMELO, CARVALHO, COBRE, MINT, NUDE, ROSADO, ROSE, ROXO, TAN, VERDE — R$ 24,90, largura 1000 mm, unidade `m`, estoque 0 |
+| **1 napa GLOW METALIC** | OURO LIGHT — R$ 20,90, estoque 0 |
+| **4 receitas GLOW METALIC** | Tira chata 8mm (60 m/m), Costurada 11mm (44), Overlock 5mm (61), TRANÇA (30) — clonadas das de NAPA SOFT, mesmo `cut_width_mm` |
+
+**GLOW METALIC é a 3ª família**, ao lado de NAPA SOFT e NAPA MADRID. O dono
+definiu quais cores saem dela: **CHAMPAGNE, OURO LIGHT e PRATA**; todo o resto é
+NAPA SOFT. Champagne (32,46 m) e Prata (70 m) **já existiam com estoque real** —
+o que faltava para elas nunca foi o produto, era a receita.
+
+> ⚠ A largura da TIRA está no nome dela ("Tira chata 8mm" = 8 mm) e já vive em
+> `artisanal_recipes.cut_width_mm` (a de 8 mm consome 20 mm de napa). A largura
+> que o cadastro de napa pede é outra coisa — a da BOBINA (1000 mm), usada na
+> conversão dm²→m de cabedal/forração. Não confundir as duas.
+
+Resultado: **52 tiras artesanais resolvem, 0 bloqueiam** (7 pela GLOW METALIC,
+45 pela NAPA SOFT). Como as napas novas nascem com estoque 0, a falta que
+aparecer agora é VERDADEIRA e comprável — a OC compra exatamente a mesma napa.
+
+### Pendências de cadastro
+
+- **NAPA MADRID com `dimensions_width = 0`** nos 4 produtos. Não afeta tira (a
+  conversão usa o rendimento), mas quebra a conversão dm²→m de cabedal/forração
+  — é o bug de inflar consumo ~100× descrito no CLAUDE.md. Falta a largura real.
+- **COBRE** foi criada em NAPA SOFT, mas é cor metálica como as três que o dono
+  corrigiu para GLOW METALIC. Confirmar de qual família ela sai.
