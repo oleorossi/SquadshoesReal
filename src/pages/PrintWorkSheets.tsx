@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { SearchInput } from '@/components/ui/search-input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Printer, MagnifyingGlass as Search, CircleNotch as Loader2, FileText, Funnel as Filter, Baby, Warning as AlertTriangle } from '@phosphor-icons/react';
+import { Printer, MagnifyingGlass as Search, CircleNotch as Loader2, FileText, Funnel as Filter, Baby, Warning as AlertTriangle, Cards } from '@phosphor-icons/react';
 import { EmptyState } from '@/components/ui/empty-state';
 import { toast } from 'sonner';
 import { printOperatorFichasFromRows } from '@/lib/printOperatorFichas';
@@ -105,6 +105,11 @@ export default function PrintWorkSheets() {
   const [search, setSearch] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set(deepLinkIds));
   const [showPrintView, setShowPrintView] = useState(false);
+  // Atalho "Cartões de lote": entra na tela de impressão JÁ em modo cartão, mas
+  // ainda passando pelo preview (o dono escolheu isso em vez de imprimir direto
+  // — uma tiragem pode sair com dezenas de cartões e os setores ainda não foram
+  // escolhidos neste ponto).
+  const [openAsCartao, setOpenAsCartao] = useState(false);
 
   const { data: rows = [], isLoading, isError, refetch } = useQuery({
     queryKey: ['print_worksheets_orders', statusFilter],
@@ -252,6 +257,7 @@ export default function PrintWorkSheets() {
         orders={selectedOrders}
         onBack={() => setShowPrintView(false)}
         initialSectors={deepLinkSectors ?? undefined}
+        initialCartao={openAsCartao}
       />
     );
   }
@@ -275,6 +281,7 @@ export default function PrintWorkSheets() {
             disabled={filtered.length === 0}
             onClick={() => {
               setSelectedIds(new Set(filtered.map(r => r.id)));
+              setOpenAsCartao(false);
               setShowPrintView(true);
             }}
             className="gap-2"
@@ -301,12 +308,26 @@ export default function PrintWorkSheets() {
           </Button>
           <Button
             disabled={selectedOrders.length === 0}
-            onClick={() => setShowPrintView(true)}
+            onClick={() => { setOpenAsCartao(false); setShowPrintView(true); }}
             className="gap-2"
             title="Abre a tela com os setores das fichas — você marca/desmarca quais entram no arquivo final"
           >
             <FileText className="h-4 w-4" />
             Gerar fichas ({selectedOrders.length} OP{selectedOrders.length === 1 ? '' : 's'})
+          </Button>
+          {/* Atalho pro modo CARTÃO — abre a mesma tela de impressão já
+              mostrando os cartões recortáveis (95,5 × ~43mm, 12 por folha A4
+              na horizontal). Você ainda marca/desmarca setores e vê o preview
+              antes de mandar imprimir. */}
+          <Button
+            variant="outline"
+            disabled={selectedOrders.length === 0}
+            onClick={() => { setOpenAsCartao(true); setShowPrintView(true); }}
+            className="gap-2"
+            title="Abre a tela de impressão já em modo cartão: 1 cartão recortável por lote de setor, 12 por folha A4 na horizontal"
+          >
+            <Cards className="h-4 w-4" />
+            Cartões de lote ({selectedOrders.length})
           </Button>
         </div>
         }
