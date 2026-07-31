@@ -29,58 +29,70 @@ function gcHeaders() {
   };
 }
 
-async function gcFetch(path: string, init: RequestInit = {}) {
-  const res = await fetch(`${CLICKNOTAS_BASE}${path}`, {
-    ...init,
-    headers: { ...gcHeaders(), ...(init.headers || {}) },
-    signal: AbortSignal.timeout(30_000),
+// ── Throttle: a API ClickNotas limita a 3 requisições/segundo por empresa ──
+// (doc §"Limite de requisições"; estourar devolve 429 "O limite de requisicoes
+// foi atingido"). Uma emissão de 8 itens dispara ~30 chamadas — cidades,
+// cliente (PUT+GET), 2 por produto, lojas, transportadoras, POST da NF e o
+// poll do detalhe. Sem serialização isso estoura o teto no meio da emissão e
+// o operador leva um 502 genérico. Serializamos numa cadeia única com
+// intervalo mínimo e fazemos backoff no 429 em vez de abortar.
+// Auditoria 31/07/2026 (docs/AUDITORIA_NFE_2026-07-31.md).
+const GC_MIN_INTERVAL_MS = 350; // ~2,8 req/s, com folga sob o teto de 3
+let _gcChain: Promise<unknown> = Promise.resolve();
+let _gcLastCallAt = 0;
+
+function gcThrottle<T>(fn: () => Promise<T>): Promise<T> {
+  const run = _gcChain.then(async () => {
+    const wait = GC_MIN_INTERVAL_MS - (Date.now() - _gcLastCallAt);
+    if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+    try {
+      return await fn();
+    } finally {
+      _gcLastCallAt = Date.now();
+    }
   });
-  const text = await res.text();
-  let json: any;
-  try { json = JSON.parse(text); } catch { json = { mensagem: text }; }
-  return { ok: res.ok, status: res.status, json };
+  // A cadeia NUNCA pode rejeitar: uma falha propagada travaria todas as
+  // chamadas seguintes do isolate. O erro segue pro caller via `run`.
+  _gcChain = run.catch(() => {});
+  return run as Promise<T>;
 }
 
-// Busca o MAIOR número de NF-e já emitido no ClickNotas (por série) pra a
-// próxima sair como (maior + 1). Pedido do dono 2026-06-20: a NF deve seguir a
-// sequência REAL do GC — inclui notas emitidas manualmente no portal que o nosso
-// banco pode não ter (o sync-nfe-from-provider está com 401) — e não um "próximo
-// número" que o GC possa ter desconfigurado. Pagina TUDO pra pegar o máximo
-// GLOBAL (a base de NFs é pequena). Retorna null em QUALQUER falha → o caller não
-// manda `numero` (GC auto-atribui = comportamento atual) e a emissão nunca quebra
-// por causa disto. Se o GC ignorar o `numero` enviado, lemos o real de volta no
-// detalhe — então mandar é, no pior caso, inofensivo.
-async function gcMaxNfNumber(serie: string): Promise<number | null> {
-  const MAX_PAGES = 30;
-  let max = 0;
-  let found = false;
-  try {
-    for (let page = 1; page <= MAX_PAGES; page++) {
-      const r = await gcFetch(`/notas_fiscais_produtos?page=${page}`);
-      if (!r.ok || r.json?.status === "error") break;
-      const list: any[] = Array.isArray(r.json?.data)
-        ? r.json.data
-        : Array.isArray(r.json?.data?.data)
-        ? r.json.data.data
-        : [];
-      if (list.length === 0) break;
-      for (const it of list) {
-        // Numeração é por SÉRIE. Se o item traz série diferente, ignora; se não
-        // traz série, conta mesmo assim (best-effort p/ quem tem 1 série só).
-        const itSerie = it?.serie != null ? String(it.serie).trim() : null;
-        if (itSerie !== null && itSerie !== String(serie).trim()) continue;
-        const nRaw = it?.numero ?? it?.numero_nf ?? "";
-        const n = Number(String(nRaw).replace(/\D/g, ""));
-        if (Number.isFinite(n) && n > 0) { found = true; if (n > max) max = n; }
-      }
-      const totalPages = r.json?.meta?.total_pages || r.json?.meta?.pagination?.total_pages;
-      if (totalPages && page >= Number(totalPages)) break;
-    }
-  } catch {
-    return found ? max : null;
+async function gcFetch(path: string, init: RequestInit = {}) {
+  const MAX_429_RETRIES = 3;
+  for (let attempt = 0; ; attempt++) {
+    const r = await gcThrottle(async () => {
+      const res = await fetch(`${CLICKNOTAS_BASE}${path}`, {
+        ...init,
+        headers: { ...gcHeaders(), ...(init.headers || {}) },
+        signal: AbortSignal.timeout(30_000),
+      });
+      const text = await res.text();
+      let json: any;
+      try { json = JSON.parse(text); } catch { json = { mensagem: text }; }
+      return { ok: res.ok, status: res.status, json };
+    });
+    // 429 = requisição RECUSADA, não processada — repetir é seguro inclusive
+    // no POST da NF (nada foi criado do outro lado).
+    if (r.status !== 429 || attempt >= MAX_429_RETRIES) return r;
+    console.warn(`[emit-nfe] 429 em ${path} — backoff ${1000 * 2 ** attempt}ms (tentativa ${attempt + 1}/${MAX_429_RETRIES})`);
+    await new Promise((res) => setTimeout(res, 1000 * 2 ** attempt));
   }
-  return found ? max : null;
 }
+
+// ── NUMERAÇÃO DA NF: deixamos o ClickNotas atribuir ─────────────────────────
+// Existiu aqui um gcMaxNfNumber() que buscava o maior número já emitido pra
+// mandar (maior + 1). REMOVIDO em 31/07/2026 (docs/AUDITORIA_NFE_2026-07-31.md)
+// por três motivos, todos verificados contra a spec e contra os dados:
+//   1. Paginava com `?page=` — a API usa `pagina` (doc §"Introdução"). Toda
+//      iteração relia a MESMA página 1.
+//   2. A condição de parada lia `meta.total_pages` — o retorno traz
+//      `total_paginas`. Nunca disparava: 30 requisições idênticas.
+//   3. Isso rodava ANTES de cada emissão, contra um teto de 3 req/s → 429.
+// `numero` também não é campo documentado do POST, e nas 3 NFs com payload
+// gravado ele está null (nunca foi exercido de fato). Evidência de que o GC
+// numera certo sozinho: as 9 notas emitidas no painel saíram 279→287 sem
+// buraco. O número real é lido de volta no detalhe (readDetail → numero_nf).
+// NÃO reintroduzir sem confirmar `numero` com o suporte ClickNotas.
 
 // Quando clients.endereco vem concatenado tipo "Rua X, PARTE GALPAO" (vírgula
 // como separador entre logradouro e complemento), o XML SEFAZ saía com o
@@ -108,29 +120,50 @@ function splitAddress(addr: string | null | undefined, manualComplemento?: strin
 // "matriz ou loja que o usuário tem permissão" — funciona, mas explícito
 // é mais seguro (e cumpre o contrato da doc). Cache em memória do isolate
 // — válido enquanto o edge function fica quente. Reseta a cada cold start.
-let _gcLojaIdCache: string | null = null;
-async function resolveGcLojaId(preferredLojaId?: string | null): Promise<string | null> {
-  // Empresa (ex.: 2º CNPJ) com loja mapeada em companies.gestaoclick_loja_id →
-  // usa direto, garantindo que a NF saia sob o CNPJ certo em vez da matriz.
-  // NULL/vazio = comportamento atual (resolve matriz/primeira ativa).
-  if (preferredLojaId != null && String(preferredLojaId).trim() !== "") {
-    return String(preferredLojaId).trim();
+// ⚠ `GET /lojas` devolve APENAS { id, nome } — sem CNPJ, sem flag de matriz,
+// sem situação (spec §Lojas). Logo NÃO existe forma automática de descobrir
+// qual loja corresponde a qual CNPJ: o fallback só consegue chutar a primeira.
+// Por isso, empresa NÃO-primária é OBRIGADA a ter companies.gestaoclick_loja_id
+// mapeado — sem isso a NF sairia sob o CNPJ da matriz, com o registro local
+// dizendo outra coisa (erro fiscal silencioso). Auditoria 31/07/2026.
+let _gcLojaListCache: Array<{ id?: string; nome?: string }> | null = null;
+async function resolveGcLojaId(fiscal: any): Promise<{ lojaId: string | null; blockReason: string | null }> {
+  // Loja mapeada explicitamente → usa direto. É o único caminho correto pra
+  // um 2º CNPJ.
+  const mapped = fiscal?.gestaoclick_loja_id;
+  if (mapped != null && String(mapped).trim() !== "") {
+    return { lojaId: String(mapped).trim(), blockReason: null };
   }
-  if (_gcLojaIdCache) return _gcLojaIdCache;
+
+  const nomeEmpresa = fiscal?.razao_social || fiscal?.nome_fantasia || "esta empresa";
+  if (fiscal?.is_primary !== true) {
+    return {
+      lojaId: null,
+      blockReason:
+        `A empresa "${nomeEmpresa}" não tem a loja do ClickNotas mapeada e não é a empresa principal. ` +
+        `Emitir assim faria a NF sair sob o CNPJ da matriz. ` +
+        `Abra Configurações → Empresas e preencha o "ID da loja no ClickNotas" ` +
+        `(o id vem de GET /lojas no painel).`,
+    };
+  }
+
+  // Empresa principal: mantém o fallback histórico (primeira loja da conta).
+  // Os predicados de matriz/situação ficam por defesa — a doc não documenta
+  // esses campos, mas se a API real os devolver, eles melhoram o palpite.
   try {
-    const r = await gcFetch("/lojas");
-    const list = Array.isArray(r.json?.data) ? r.json.data : [];
-    if (list.length === 0) return null;
-    // Prefere matriz (situacao=1 ativa + matriz=1 quando disponível),
-    // senão pega a primeira ativa, senão a primeira.
+    if (!_gcLojaListCache) {
+      const r = await gcFetch("/lojas");
+      _gcLojaListCache = Array.isArray(r.json?.data) ? r.json.data : [];
+    }
+    const list = _gcLojaListCache;
+    if (!list || list.length === 0) return { lojaId: null, blockReason: null };
     const matriz = list.find((l: any) => l.matriz === 1 || l.matriz === "1" || l.matriz === true);
     const ativa = list.find((l: any) => l.situacao === 1 || l.situacao === "1" || l.situacao === true);
     const pick = matriz || ativa || list[0];
-    _gcLojaIdCache = pick?.id ? String(pick.id) : null;
-    return _gcLojaIdCache;
+    return { lojaId: pick?.id ? String(pick.id) : null, blockReason: null };
   } catch (e) {
     console.warn("[emit-nfe] resolveGcLojaId falhou:", e instanceof Error ? e.message : String(e));
-    return null;
+    return { lojaId: null, blockReason: null };
   }
 }
 
@@ -846,10 +879,17 @@ Deno.serve(async (req) => {
       const qty = Number(it.quantity) || 0;
       produtosGC.push({
         produto_id: gcProductId,
-        // Código do produto na linha da NF = nosso SKU/Código (ficha.code). Alguns
-        // endpoints do ClickNotas herdam o código do produto cadastrado; mandar na
-        // linha tb cobre o caso de a NF aceitar override por item.
-        ...(codigoNf ? { codigo: codigoNf } : {}),
+        // Código do produto na linha da NF = nosso SKU/Código (ficha.code).
+        // ⚠ O nome do campo é `codigo_produto` — a spec lista, como campos do
+        // item que sobrescrevem o cadastro: produto_id, codigo_produto,
+        // nome_produto, unidade, quantidade, valor_venda, valor_custo, NCM.
+        // Até 31/07/2026 mandávamos `codigo` (inexistente) e o DANFE saía com o
+        // EAN auto do ClickNotas (ex.: 4715271514130 na NF #255) em vez do nosso
+        // SKU — o pedido do dono de 2026-06-20 nunca chegou a funcionar.
+        ...(codigoNf ? { codigo_produto: codigoNf } : {}),
+        // nome_produto: trava a descrição da linha no que o preview mostrou,
+        // em vez de herdar silenciosamente o nome do cadastro no GC.
+        nome_produto: nomeProduto,
         quantidade: qty.toFixed(2),
         // valor_venda é o preço UNITÁRIO — o ClickNotas multiplica por
         // quantidade internamente. Antes mandávamos (qtd × preço) e o
@@ -1067,12 +1107,30 @@ Deno.serve(async (req) => {
     const livrePart = order.informacoes_complementares_nf
       ? String(order.informacoes_complementares_nf).trim()
       : null;
-    const informacoesComplementares = [
+    // Simples Nacional (companies.regime_tributario = '1'): o aviso da
+    // LC 123/2006 é OBRIGATÓRIO no campo de informações complementares.
+    // O ClickNotas injeta esse texto quando NÃO mandamos o campo — mas quando
+    // mandamos, ele SUBSTITUI: a NF #278 saiu só com "OC do Cliente: 300102" e
+    // perdeu o aviso legal (auditoria 31/07/2026). E o comportamento sem o
+    // campo não é determinístico (#256 veio com o texto, #255 veio vazio).
+    // Então prefixamos nós mesmos, com o texto exato que o painel usa.
+    const avisoSimplesNacional = String(fiscal.regime_tributario ?? "") === "1"
+      ? "I - DOCUMENTO EMITIDO POR ME OU EPP OPTANTE PELO SIMPLES NACIONAL.\r\n"
+        + "II - NAO GERA DIREITO A CREDITO FISCAL DE IPI."
+      : null;
+    // ⚠ O trecho "Pedido de Venda: <numero>" precisa continuar íntegro: o
+    // sync-nfe-from-provider usa exatamente esse texto (extractPvNumber) pra
+    // religar a nota ao PV. Não reformatar sem ajustar o regex de lá.
+    const complementoOperacional = [
       ocPart,
       livrePart,
       order.numero_pv ? `Pedido de Venda: ${order.numero_pv}` : null,
       weightWarning,
-    ].filter(Boolean).join(" · ") || undefined;
+    ].filter(Boolean).join(" · ");
+    // Aviso legal e texto operacional separados por quebra de linha (o " · "
+    // fica ilegível depois de um bloco legal de 2 linhas).
+    const informacoesComplementares = [avisoSimplesNacional, complementoOperacional]
+      .filter(Boolean).join("\r\n") || undefined;
 
     // ---------- Monta as duplicatas (campo `pagamento` da NF) ----------
     // A NF-e precisa da fatura/duplicata pra ficar completa (a NF de
@@ -1166,9 +1224,13 @@ Deno.serve(async (req) => {
     if (fiscal.uf) transportadorBlock.estado = fiscal.uf;
 
     // Resolve loja_id do ClickNotas — obrigatório segundo a doc da API.
-    // Usa a loja mapeada na empresa (companies.gestaoclick_loja_id) quando houver
-    // — essencial pra NF sair sob o 2º CNPJ; senão cai na matriz.
-    const gcLojaId = await resolveGcLojaId(fiscal?.gestaoclick_loja_id);
+    // Empresa não-primária SEM loja mapeada é bloqueada aqui: a NF sairia sob o
+    // CNPJ da matriz enquanto o registro local diria outra empresa. Vale também
+    // no dry_run — o operador precisa ver isso no preview, não na emissão.
+    const { lojaId: gcLojaId, blockReason: lojaBlockReason } = await resolveGcLojaId(fiscal);
+    if (lojaBlockReason) {
+      return new Response(JSON.stringify({ error: lojaBlockReason }), { status: 400, headers: corsHeaders });
+    }
 
     // Resolve (cria se preciso) transportadora "Squad Shoes" no ClickNotas.
     const gcTransportadoraId = await resolveGcTransportadoraEmitenteId(fiscal);
@@ -1219,26 +1281,13 @@ Deno.serve(async (req) => {
       transporteBlock.transportador = transportadorBlock;
     }
 
-    // ---------- Próximo número da NF = (maior número da série no GC) + 1 -------
-    // Em vez de deixar o GC auto-atribuir (que pode estar desconfigurado e gerar
-    // número errado/duplicado), buscamos o ÚLTIMO número emitido no ClickNotas e
-    // mandamos o próximo. Best-effort: se a busca falhar, não mandamos `numero` e
-    // o GC auto-atribui (comportamento atual). O número real volta no detalhe.
+    // ---------- Numeração da NF: atribuída pelo ClickNotas ----------
+    // Não enviamos `numero` (ver bloco no topo do arquivo). O número real é
+    // lido de volta no detalhe (readDetail → numero_nf) e gravado em
+    // nfe_emitidas.numero.
     const serieAtual = String(fiscal.serie_nfe || "1");
-    let numeroProximo: string | null = null;
-    let numeroWarning: string | undefined;
-    try {
-      const maxGc = await gcMaxNfNumber(serieAtual);
-      if (maxGc && maxGc > 0) {
-        numeroProximo = String(maxGc + 1);
-        numeroWarning = `NF será emitida como nº ${numeroProximo} (próximo após o último nº ${maxGc} da série ${serieAtual} no ClickNotas).`;
-      } else {
-        numeroWarning = `Não foi possível ler o último número no ClickNotas — o número será atribuído automaticamente pelo provedor.`;
-      }
-      console.log(`[emit-nfe] número: maxGc(série ${serieAtual})=${maxGc ?? '∅'} → numero=${numeroProximo ?? 'auto (GC)'}`);
-    } catch (e) {
-      console.warn("[emit-nfe] falha ao buscar último número no GC — GC auto-atribui:", e instanceof Error ? e.message : String(e));
-    }
+    const numeroWarning: string | undefined =
+      `O número da NF (série ${serieAtual}) é atribuído pelo ClickNotas na emissão e confirmado depois pelo detalhe da nota.`;
 
     const nfePayload = {
       // tipo_nf como INT (doc especifica int; antes mandávamos string "1").
@@ -1258,9 +1307,8 @@ Deno.serve(async (req) => {
       codigo_cfop: resolvedCfop,
       modelo: "55",
       serie: fiscal.serie_nfe || "1",
-      // Número explícito = último da série no GC + 1 (gcMaxNfNumber acima). Quando
-      // null (busca falhou), omitimos e o GC auto-atribui.
-      ...(numeroProximo ? { numero: numeroProximo } : {}),
+      // `numero` NÃO é enviado: não é campo documentado do POST e a busca do
+      // último número estava quebrada (ver bloco no topo do arquivo).
       finalidade_nf: "1",
       // tipo_emissao=1 ("Normal") — pedido em 16/05/2026. Antes não era
       // enviado; ClickNotas assumia default mas explícito blinda contra

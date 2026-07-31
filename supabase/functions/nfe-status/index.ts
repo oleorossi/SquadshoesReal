@@ -111,9 +111,13 @@ Deno.serve(async (req) => {
     if (d.serie) updateData.serie = String(d.serie);
     if (d.protocolo) updateData.protocolo = d.protocolo;
 
-    // ClickNotas retorna URLs do DANFE/XML em campos variáveis — tenta os
-    // nomes mais comuns. Antes ficavam vazios no DB e o user não tinha como
-    // baixar PDF/XML pelo menu da NF (botões não apareciam).
+    // ⚠ NENHUM destes campos existe na API do ClickNotas — a spec não traz
+    // URL de arquivo em lugar nenhum, e `danfe_url`/`xml_url` estão vazios em
+    // 100% das notas do banco (auditoria 31/07/2026). O DANFE é renderizado no
+    // app (lib/danfe.ts) e o XML fica no viewer meudanfe.com.br/consulta/{chave}
+    // — ver nfe-download, já descontinuada. As tentativas ficam por defesa,
+    // caso o provedor passe a expor: não custam requisição, é só leitura do
+    // detalhe que já foi buscado. Não gastar tempo "consertando" isso.
     const danfeUrl = d.url_danfe || d.danfe_url || d.url_pdf || d.link_pdf || d.url_pdf_danfe || d.link_danfe || '';
     const xmlUrl = d.url_xml || d.xml_url || d.link_xml || d.url_xml_nfe || '';
     if (danfeUrl) updateData.danfe_url = String(danfeUrl);

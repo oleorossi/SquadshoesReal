@@ -156,7 +156,18 @@ Deno.serve(async (req) => {
     let pagesFetched = 0;
     for (let page = 1; page <= MAX_PAGES; page++) {
       pagesFetched = page;
-      const r = await gcFetch(`/notas_fiscais_produtos?page=${page}`);
+      // ⚠ O parâmetro de paginação da API é `pagina`, NÃO `page` (doc
+      // §"Introdução": "&pagina=10"). Com `page` o provedor devolvia sempre a
+      // MESMA página 1 — 20 buscas idênticas + 20× os GETs de detalhe, e as
+      // notas fora da 1ª página nunca chegavam ao banco (buracos 259-263 e
+      // 275-277 na numeração). Auditoria 31/07/2026.
+      const r = await gcFetch(`/notas_fiscais_produtos?pagina=${page}`);
+      // 429 = teto de 3 req/s. Não aborta o sync inteiro: para de paginar e
+      // processa o que já veio; o cron pega o resto na próxima rodada.
+      if (r.status === 429) {
+        console.warn(`[sync-nfe] 429 na página ${page} — parando a paginação e processando ${collected.length} registros`);
+        break;
+      }
       if (!r.ok || r.json?.status === "error") {
         return new Response(JSON.stringify({
           error: `ClickNotas retornou ${r.status}: ${r.json?.message || r.json?.mensagem || JSON.stringify(r.json)}`,
@@ -169,8 +180,11 @@ Deno.serve(async (req) => {
         : [];
       if (list.length === 0) break;
       collected.push(...list);
-      // Heurística de parada: se o provedor retorna meta.total_pages, respeita.
-      const totalPages = r.json?.meta?.total_pages || r.json?.meta?.pagination?.total_pages;
+      // Parada: o retorno traz `meta.total_paginas` (doc §Listar NF). O nome
+      // `total_pages` (inglês) nunca existiu — a condição jamais disparava.
+      const totalPages = r.json?.meta?.total_paginas
+        || r.json?.meta?.total_pages
+        || r.json?.meta?.pagination?.total_pages;
       if (totalPages && page >= Number(totalPages)) break;
     }
 
@@ -245,7 +259,12 @@ Deno.serve(async (req) => {
       // NF-e padrão (tpNF/finalidade/natureza) + candidatos do ClickNotas; em dúvida,
       // mantém o comportamento atual (importa como saída).
       const _tipoNf = String(d?.tipo_nf ?? d?.tipo ?? d?.tipo_operacao ?? d?.tpNF ?? "").toLowerCase().trim();
-      const _finalidade = String(d?.finalidade ?? d?.finalidade_nfe ?? d?.finNFe ?? "").toLowerCase().trim();
+      // ⚠ O campo real é `finalidade_nf` (doc §Listar NF, ao lado de
+      // `tipo_nf`/`tipo_emissao`). Lendo só `finalidade`/`finalidade_nfe`/
+      // `finNFe` — que não existem — a devolução só era filtrada quando a
+      // natureza continha "devol", e as demais entravam em nfe_emitidas como
+      // SAÍDA, duplicando receita com nfe_devolucoes. Auditoria 31/07/2026.
+      const _finalidade = String(d?.finalidade_nf ?? d?.finalidade ?? d?.finalidade_nfe ?? d?.finNFe ?? "").toLowerCase().trim();
       const _natureza = String(d?.natureza_operacao ?? d?.natureza ?? "").toLowerCase();
       const _isEntrada = _tipoNf === "0" || _tipoNf === "entrada" || _tipoNf === "e";
       const _isDevolucao = _finalidade === "4" || _finalidade.includes("devol") || _natureza.includes("devol");
