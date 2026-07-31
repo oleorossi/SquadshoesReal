@@ -20,11 +20,14 @@ function gcHeaders() {
   };
 }
 
+// Espelha mapSituacao de emit-nfe / sync-nfe-from-provider — ver o comentário
+// completo lá. "Reprovada" (rejeição SEFAZ) e "Corrigida" (autorizada com
+// CC-e) são valores reais da conta que caíam no default "processando".
 function mapSituacao(situacao: string): string {
   const s = (situacao || "").toLowerCase();
-  if (s.includes("aprovada") || s.includes("autorizada")) return "autorizada";
+  if (s.includes("reprovada") || s.includes("rejeitada") || s.includes("denegada") || s.includes("erro")) return "rejeitada";
+  if (s.includes("aprovada") || s.includes("autorizada") || s.includes("corrigida")) return "autorizada";
   if (s.includes("cancelada")) return "cancelada";
-  if (s.includes("rejeitada") || s.includes("denegada") || s.includes("erro")) return "rejeitada";
   if (s.includes("processando") || s.includes("aberta") || s.includes("aguardando")) return "processando";
   return "processando";
 }

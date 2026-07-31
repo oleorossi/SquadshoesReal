@@ -40,12 +40,18 @@ async function gcFetch(path: string) {
   return { ok: res.ok, status: res.status, json };
 }
 
+// Valores REAIS de situacao_nf na conta (varredura das 64 notas em
+// 31/07/2026): Aprovada, Cancelada, Reprovada, Corrigida, Em aberto.
+//   ⚠ "Reprovada" é rejeição da SEFAZ e não casa com "aprovada" nem com
+//   "rejeitada" — caía no default "processando", deixando NF rejeitada
+//   eternamente "em andamento". Testada PRIMEIRO agora.
+//   "Corrigida" = autorizada com CC-e aplicada.
 function mapSituacao(situacao: string, motivoRej?: string): string {
   const s = (situacao || "").toLowerCase();
   const m = (motivoRej || "").toLowerCase();
-  if (s.includes("aprovada") || s.includes("autorizada")) return "autorizada";
+  if (s.includes("reprovada") || s.includes("rejeitada") || s.includes("denegada") || s.includes("erro")) return "rejeitada";
+  if (s.includes("aprovada") || s.includes("autorizada") || s.includes("corrigida")) return "autorizada";
   if (s.includes("cancelada")) return "cancelada";
-  if (s.includes("rejeitada") || s.includes("denegada") || s.includes("erro")) return "rejeitada";
   // SEFAZ pode devolver situacao_nf vazia mas com motivo_rejeicao_sefaz/mensagem
   // preenchido — sem este check, NF rejeitada ficava eternamente "processando"
   // (bug encontrado em 2026-05-15, 7 NFs do PV-00104 com "Rejeição 696").
@@ -156,11 +162,10 @@ Deno.serve(async (req) => {
     let pagesFetched = 0;
     for (let page = 1; page <= MAX_PAGES; page++) {
       pagesFetched = page;
-      // ⚠ O parâmetro de paginação da API é `pagina`, NÃO `page` (doc
-      // §"Introdução": "&pagina=10"). Com `page` o provedor devolvia sempre a
-      // MESMA página 1 — 20 buscas idênticas + 20× os GETs de detalhe, e as
-      // notas fora da 1ª página nunca chegavam ao banco (buracos 259-263 e
-      // 275-277 na numeração). Auditoria 31/07/2026.
+      // `pagina` é o nome documentado (doc §"Introdução": "&pagina=10").
+      // Verificado ao vivo em 31/07/2026: a API aceita `page` E `pagina` com
+      // resultado idêntico — usamos o documentado por segurança, caso o alias
+      // não-documentado saia do ar.
       const r = await gcFetch(`/notas_fiscais_produtos?pagina=${page}`);
       // 429 = teto de 3 req/s. Não aborta o sync inteiro: para de paginar e
       // processa o que já veio; o cron pega o resto na próxima rodada.
@@ -180,8 +185,10 @@ Deno.serve(async (req) => {
         : [];
       if (list.length === 0) break;
       collected.push(...list);
-      // Parada: o retorno traz `meta.total_paginas` (doc §Listar NF). O nome
-      // `total_pages` (inglês) nunca existiu — a condição jamais disparava.
+      // Parada: o retorno traz `meta.total_paginas` (confirmado ao vivo:
+      // total_paginas=4, total_registros=64). O nome `total_pages` (inglês)
+      // nunca existiu, então a condição jamais disparava e o loop só parava na
+      // primeira página VAZIA — uma requisição extra por rodada.
       const totalPages = r.json?.meta?.total_paginas
         || r.json?.meta?.total_pages
         || r.json?.meta?.pagination?.total_pages;
@@ -259,11 +266,12 @@ Deno.serve(async (req) => {
       // NF-e padrão (tpNF/finalidade/natureza) + candidatos do ClickNotas; em dúvida,
       // mantém o comportamento atual (importa como saída).
       const _tipoNf = String(d?.tipo_nf ?? d?.tipo ?? d?.tipo_operacao ?? d?.tpNF ?? "").toLowerCase().trim();
-      // ⚠ O campo real é `finalidade_nf` (doc §Listar NF, ao lado de
-      // `tipo_nf`/`tipo_emissao`). Lendo só `finalidade`/`finalidade_nfe`/
-      // `finNFe` — que não existem — a devolução só era filtrada quando a
-      // natureza continha "devol", e as demais entravam em nfe_emitidas como
-      // SAÍDA, duplicando receita com nfe_devolucoes. Auditoria 31/07/2026.
+      // ⚠ O campo real é `finalidade_nf` (doc §Listar NF). O código lia
+      // `finalidade`/`finalidade_nfe`/`finNFe`, que não existem no retorno.
+      // Na prática nenhuma devolução escapou, porque todas as 11 da conta têm
+      // também `tipo_nf=0` (pego por _isEntrada) — mas era redundância cega:
+      // uma devolução de SAÍDA (tipo_nf=1, finalidade_nf=4) passaria direto e
+      // entraria como receita. Endurecido em 31/07/2026.
       const _finalidade = String(d?.finalidade_nf ?? d?.finalidade ?? d?.finalidade_nfe ?? d?.finNFe ?? "").toLowerCase().trim();
       const _natureza = String(d?.natureza_operacao ?? d?.natureza ?? "").toLowerCase();
       const _isEntrada = _tipoNf === "0" || _tipoNf === "entrada" || _tipoNf === "e";

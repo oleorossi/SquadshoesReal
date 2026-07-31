@@ -82,12 +82,14 @@ async function gcFetch(path: string, init: RequestInit = {}) {
 // ── NUMERAÇÃO DA NF: deixamos o ClickNotas atribuir ─────────────────────────
 // Existiu aqui um gcMaxNfNumber() que buscava o maior número já emitido pra
 // mandar (maior + 1). REMOVIDO em 31/07/2026 (docs/AUDITORIA_NFE_2026-07-31.md)
-// por três motivos, todos verificados contra a spec e contra os dados:
-//   1. Paginava com `?page=` — a API usa `pagina` (doc §"Introdução"). Toda
-//      iteração relia a MESMA página 1.
-//   2. A condição de parada lia `meta.total_pages` — o retorno traz
-//      `total_paginas`. Nunca disparava: 30 requisições idênticas.
-//   3. Isso rodava ANTES de cada emissão, contra um teto de 3 req/s → 429.
+// pelos motivos abaixo (verificados ao vivo contra a API em 31/07/2026):
+//   1. A condição de parada lia `meta.total_pages`; o retorno traz
+//      `total_paginas`. O loop só parava na 1ª página VAZIA — hoje são 4
+//      páginas de dados, então eram 5 requisições ANTES de cada emissão,
+//      contra um teto de 3 req/s.
+//   2. `numero` não é campo documentado do POST.
+//   (A paginação em si funcionava: a API aceita `page` e `pagina`. A versão
+//   anterior deste comentário afirmava o contrário — estava errada.)
 // `numero` também não é campo documentado do POST, e nas 3 NFs com payload
 // gravado ele está null (nunca foi exercido de fato). Evidência de que o GC
 // numera certo sozinho: as 9 notas emitidas no painel saíram 279→287 sem
@@ -246,11 +248,20 @@ async function resolveGcTransportadoraEmitenteId(fiscal: any): Promise<string | 
 // Mapeia situacao_nf do ClickNotas → status canônico interno. Mesma lógica
 // de nfe-status / sync-nfe-from-provider (evita drift entre os caminhos).
 // Cobre múltiplas situações que a SEFAZ pode retornar.
+// Valores REAIS de situacao_nf observados na conta em 31/07/2026 (varredura
+// das 64 notas via GET /notas_fiscais_produtos): Aprovada, Cancelada,
+// Reprovada, Corrigida, Em aberto.
+//   ⚠ "Reprovada" (rejeição da SEFAZ) NÃO casava com nenhum predicado — não
+//   contém "aprovada" nem "rejeitada" — e caía no default "processando": NF
+//   rejeitada ficava eternamente "em andamento" pro operador. Por isso a
+//   rejeição é testada PRIMEIRO.
+//   "Corrigida" = autorizada com CC-e aplicada (só se emite carta de correção
+//   sobre nota já autorizada).
 function mapSituacao(situacao: string): string {
   const s = (situacao || "").toLowerCase();
-  if (s.includes("aprovada") || s.includes("autorizada")) return "autorizada";
+  if (s.includes("reprovada") || s.includes("rejeitada") || s.includes("denegada") || s.includes("erro")) return "rejeitada";
+  if (s.includes("aprovada") || s.includes("autorizada") || s.includes("corrigida")) return "autorizada";
   if (s.includes("cancelada")) return "cancelada";
-  if (s.includes("rejeitada") || s.includes("denegada") || s.includes("erro")) return "rejeitada";
   if (s.includes("processando") || s.includes("aberta") || s.includes("aguardando")) return "processando";
   return "processando";
 }
@@ -1608,8 +1619,11 @@ Deno.serve(async (req) => {
     // NF chegou a um desfecho (autorizada / rejeitada / cancelada)?
     const isTerminal = () => {
       const s = situacao.toLowerCase();
+      // "reprovada" e "corrigida" são situações REAIS da conta que faltavam
+      // aqui — sem elas a NF rejeitada seguia dando volta no poll até o fim.
       return !!chave || motivoRejeicaoSefaz.trim() !== "" ||
         s.includes("autoriz") || s.includes("aprovada") || s.includes("rejeit") ||
+        s.includes("reprovada") || s.includes("corrigida") ||
         s.includes("denegada") || s.includes("cancel");
     };
     // NF ainda só cadastrada, sem transmitir.
@@ -1647,9 +1661,15 @@ Deno.serve(async (req) => {
     // transmitida pelo envio automático.
     const msg = (emitMsg || "").toLowerCase();
     const sLow = situacao.toLowerCase();
+    // "reprovada" é como a SEFAZ/ClickNotas devolve a rejeição nesta conta —
+    // e NÃO casa com "rejeit" nem com "aprovada". Sem ela, uma NF rejeitada
+    // caía em mapSituacao() e virava "processando": o operador ficava
+    // esperando uma autorização que nunca vinha. Testada ANTES de authorized.
     const sefazRejected = motivoRejeicaoSefaz.trim() !== "" ||
-      sLow.includes("rejeit") || sLow.includes("denegada") || msg.includes("rejei");
-    const authorized = !!chave || sLow.includes("autoriz") || sLow.includes("aprovada");
+      sLow.includes("rejeit") || sLow.includes("reprovada") ||
+      sLow.includes("denegada") || msg.includes("rejei") || msg.includes("reprovad");
+    const authorized = !!chave || sLow.includes("autoriz") || sLow.includes("aprovada")
+      || sLow.includes("corrigida");
     const finalStatus = sefazRejected ? "rejeitada" : (authorized ? "autorizada" : mapSituacao(situacao));
     // Cadastrada mas NÃO transmitida após todas as tentativas (envio automático
     // ignorado E /emitir sem permissão) → avisa o operador; não é autorizada.
