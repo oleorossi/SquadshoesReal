@@ -5,9 +5,29 @@ Auditoria do fluxo de emissão de NF-e (`emit-nfe`, `cancel-nfe`, `nfe-status`,
 (`clicknotas.apib`, 3.814 linhas) e contra os **payloads/respostas reais**
 gravados em `nfe_emitidas.gc_request_payload` / `gc_detail_response`.
 
-> **Status deste documento:** diagnóstico + plano. **Nenhuma correção foi
-> aplicada** — decisão do dono em 31/07. Os diffs abaixo estão prontos para
-> execução numa segunda rodada.
+> **Status deste documento:** correções **aplicadas e deployadas** em 31/07
+> (commits `a66be8c` e seguinte). As seções abaixo já refletem a verificação
+> **ao vivo contra a API** feita depois da 1ª rodada.
+>
+> ### ⚠ Errata da 1ª versão (corrigida em 31/07, após acesso à API)
+>
+> A primeira versão deste relatório afirmou duas coisas **erradas**, ambas
+> derivadas de ler a spec sem poder testar:
+>
+> 1. **"A paginação está quebrada porque a API usa `pagina`, não `page`."**
+>    Falso. A API aceita **os dois** — `?page=2` e `?pagina=2` devolvem
+>    `pagina_atual: 2` idêntico. O que existia de real era só a condição de
+>    parada (`total_pages` × `total_paginas`), que fazia o loop terminar
+>    apenas na primeira página vazia: **5 requisições, não 30**.
+> 2. **"Os buracos de numeração são notas que o sync nunca alcançou."**
+>    Falso. `257, 259, 260, 262, 263` são **devoluções** (`tipo_nf=0`,
+>    `finalidade_nf=4`) e são **corretamente puladas** pelo sync;
+>    `261, 275-277, 239-242, 233, 234, 226-231` **não existem na API**.
+>    Não há nota perdida — o comportamento estava certo.
+>
+> Em compensação, o acesso à API revelou um bug **mais grave** que a leitura da
+> spec não podia mostrar: `situacao_nf = "Reprovada"` virava `processando`
+> (ver P0-4).
 
 ---
 
@@ -94,6 +114,26 @@ comportamento **não é determinístico**.
 | Buracos na numeração | `226–231, 233, 234, 239–242, 257, 259–263, 275–277` |
 | NFs em status `erro` (estado legado, nenhum `mapSituacao` produz) | 10 (`208, 210, 222–225, 232, 235, 236, 238`) |
 
+**Os buracos NÃO são um defeito** (verificado contra a API em 31/07). A conta
+tem **64 notas em 4 páginas**. Dessas:
+
+- `257, 259, 260, 262, 263` — **devoluções** (`tipo_nf=0`, `finalidade_nf=4`,
+  natureza "Devolução de venda de produção do estabelecimento"). O sync as pula
+  de propósito, para não lançá-las como receita de saída. Correto.
+- `261, 275–277, 239–242, 233, 234, 226–231` — **não existem na API**. Números
+  nunca usados ou rascunhos deletados no painel.
+
+**Situações reais de `situacao_nf` na conta** (varredura das 64 notas) —
+importante porque duas delas não eram tratadas:
+
+| `situacao_nf` | Notas |
+|---|---|
+| `Aprovada` | maioria |
+| `Cancelada` | 209, 237, 243–247, 259, 260, 278, 284 |
+| **`Reprovada`** | 222, 223, 224, 225, 232, 235, 236 |
+| **`Corrigida`** | 208, 238 |
+| `Em aberto` | 210 |
+
 ---
 
 ## 2. Achados contra a spec ClickNotas
@@ -127,17 +167,21 @@ Mesmo diagnóstico para `unidade`: é campo documentado do item, mas o valor
 enviado em #255 (`PAR`) foi descartado. Vale reenviar junto com
 `codigo_produto` e conferir no teste.
 
-### P0-2 · Remover `gcMaxNfNumber` — 3 bugs empilhados
+### P0-2 · Remover `gcMaxNfNumber`
 
 **Arquivo:** `supabase/functions/emit-nfe/index.ts:44-83` (função),
 `:1227-1241` (chamada), `:1261-1263` (payload), `:1314` (warning do preview)
 
-1. Pagina com `?page=N` — **a spec usa `pagina`** (linha 14). Toda iteração lê a
-   mesma página 1.
-2. A parada lê `meta.total_pages` — **o retorno traz `total_paginas`**
-   (linha 1136). A condição nunca dispara.
-3. Até **30 requisições em rajada** contra o teto de **3 req/s** (linha 21),
-   antes de cada emissão.
+1. A parada lê `meta.total_pages` — **o retorno traz `total_paginas`**
+   (confirmado ao vivo: `total_paginas: 4`, `total_registros: 64`). A condição
+   nunca dispara, então o loop só para na primeira página **vazia**: hoje são
+   **5 requisições** antes de cada emissão, contra o teto de 3 req/s.
+2. `numero` não é campo documentado do POST.
+
+> A 1ª versão deste relatório dizia que a paginação estava quebrada
+> (`page` × `pagina`) e falava em 30 requisições. **Errado** — a API aceita os
+> dois nomes e o loop terminava na página vazia. A remoção continua certa, mas
+> pelo motivo mais modesto acima.
 
 Além disso, `numero` **não é campo documentado do POST** — nas 3 notas com
 payload gravado ele está `null`, então nunca foi exercido.
@@ -263,28 +307,64 @@ evidência para quem ler depois:
 > `companies.gestaoclick_transportadora_id`, opcional) e manter o resto do
 > bloco como decidido. **Pendente de decisão.**
 
-### P2-1 · `sync-nfe-from-provider` — mesma paginação quebrada
+### P0-4 · `situacao_nf = "Reprovada"` virava `processando` ⭐ *(achado da verificação ao vivo)*
+
+**Arquivos:** `emit-nfe`, `nfe-status` e `sync-nfe-from-provider` — as três
+cópias de `mapSituacao`, mais `sefazRejected`/`isTerminal` em `emit-nfe`.
+
+A conta usa **`Reprovada`** para rejeição da SEFAZ e **`Corrigida`** para nota
+autorizada com CC-e aplicada. Nenhuma das duas casava com os predicados:
+
+```
+"reprovada".includes("aprovada")  →  false   ← não é substring!
+"reprovada".includes("rejeitada") →  false
+```
+
+Ambas caíam no `return "processando"` final. Ou seja: **uma NF-e rejeitada pela
+SEFAZ ficava eternamente "em processamento"** — o operador esperava uma
+autorização que nunca viria, e o `emit-nfe` ainda dava 4 voltas de poll
+desnecessárias porque `isTerminal()` também não reconhecia o valor.
+
+Há **7 notas `Reprovada`** e **2 `Corrigida`** na conta.
+
+```diff
+ function mapSituacao(situacao: string): string {
+   const s = (situacao || "").toLowerCase();
+-  if (s.includes("aprovada") || s.includes("autorizada")) return "autorizada";
+-  if (s.includes("cancelada")) return "cancelada";
+-  if (s.includes("rejeitada") || s.includes("denegada") || s.includes("erro")) return "rejeitada";
++  // rejeição PRIMEIRO — "reprovada" não casa com nenhum predicado antigo
++  if (s.includes("reprovada") || s.includes("rejeitada") || s.includes("denegada") || s.includes("erro")) return "rejeitada";
++  if (s.includes("aprovada") || s.includes("autorizada") || s.includes("corrigida")) return "autorizada";
++  if (s.includes("cancelada")) return "cancelada";
+   if (s.includes("processando") || s.includes("aberta") || s.includes("aguardando")) return "processando";
+   return "processando";
+ }
+```
+
+⚠ **Efeito no próximo sync:** as 10 notas hoje em `erro` serão reclassificadas —
+`222, 223, 224, 225, 232, 235, 236` → `rejeitada`; `208` e `238` → `autorizada`
+(são `Corrigida`, isto é, autorizadas com CC-e). O guard anti-ressurreição do
+sync só bloqueia `erro → processando`, então não impede essas transições. Não há
+efeito financeiro automático (a receita é reconhecida pelo frontend na emissão,
+não pelo sync), mas **`208` e `238` passam a contar como notas válidas na lista**
+— conferir com a contabilidade.
+
+### P2-1 · `sync-nfe-from-provider` — condição de parada e 429
 
 **Arquivo:** `supabase/functions/sync-nfe-from-provider/index.ts`
 
 ```diff
--      const r = await gcFetch(`/notas_fiscais_produtos?page=${page}`);
-+      const r = await gcFetch(`/notas_fiscais_produtos?pagina=${page}`);
-...
 -      const totalPages = r.json?.meta?.total_pages || r.json?.meta?.pagination?.total_pages;
 +      const totalPages = r.json?.meta?.total_paginas || r.json?.meta?.total_pages;
 ```
 
-Hoje: `MAX_PAGES = 20` × mesma página 1 = 20 buscas idênticas, seguidas de um
-`GET` de detalhe por item **repetido 20×**. Contra o teto de 3 req/s, os
-detalhes degradam silenciosamente (o código só faz merge `if (detail.ok)`) —
-notas ficam sem `chave`/`protocolo`.
+A paginação em si **funcionava** — a API aceita `page` e `pagina`. Padronizamos
+no nome documentado (`pagina`) por segurança, mas o defeito real era só a
+condição de parada, que fazia o loop rodar uma página vazia extra por rodada.
 
-Isso também explica os buracos `259–263` e `275–277`: notas fora da primeira
-página nunca são alcançadas.
-
-Adicionalmente, o `if (!r.ok) return 502` no meio do loop faz **um 429 abortar o
-sync inteiro**. Vale tratar 429 com backoff em vez de abortar.
+O `if (!r.ok) return 502` no meio do loop fazia **um 429 abortar o sync
+inteiro**; agora o 429 apenas interrompe a paginação e processa o que já veio.
 
 ### P2-2 · Filtro de devolução lê campo inexistente
 
@@ -295,9 +375,12 @@ sync inteiro**. Vale tratar 429 com backoff em vez de abortar.
 +const _finalidade = String(d?.finalidade_nf ?? d?.finalidade ?? d?.finNFe ?? "")
 ```
 
-O campo real no retorno é **`finalidade_nf`** (spec linha 1822). Hoje a
-devolução só é filtrada quando a natureza contém "devol" — caso contrário entra
-em `nfe_emitidas` como saída e **duplica receita** com `nfe_devolucoes`.
+O campo real no retorno é **`finalidade_nf`** (spec linha 1822).
+
+⚠ **Na prática nenhuma devolução escapou**: todas as 11 da conta têm também
+`tipo_nf = 0`, capturado por `_isEntrada`. Era redundância cega, não bug vivo —
+mas uma devolução de **saída** (`tipo_nf=1` + `finalidade_nf=4`) passaria direto
+e entraria como receita. Corrigido por robustez.
 
 ### P2-3 · Sem throttle — 3 req/s
 
@@ -369,18 +452,19 @@ o que vai sair na nota**. Vale ou remover do preview ou marcar como
 Ordem importa: as correções de código precisam preceder o teste real, e o teste
 real precisa preceder qualquer emissão em volume.
 
-| # | Ação | Onde | Risco |
+| # | Ação | Onde | Status |
 |---|---|---|---|
-| 1 | Preencher `companies.gestaoclick_loja_id` das 2 empresas via `GET /lojas` | dados | baixo |
-| 2 | Confirmar que `forma_pagamento_id = 6519268` ainda existe na conta ClickNotas (`GET /formas_pagamentos`) — hardcoded em `:1084`, **nunca revalidado após o cutover de 09/07** | dados | **médio** |
-| 3 | Remover `gcMaxNfNumber` (P0-2) | `emit-nfe` | baixo |
-| 4 | `codigo` → `codigo_produto` + `nome_produto` (P0-1) | `emit-nfe` | baixo |
-| 5 | Aviso do Simples Nacional (P0-3), preservando o `Pedido de Venda:` | `emit-nfe` | baixo |
-| 6 | Throttle + backoff no `gcFetch` (P2-3) | `emit-nfe` | baixo |
-| 7 | **`dry_run` contra um PV real** — conferir payload, duplicatas, IE, NCM | — | zero |
-| 8 | **Emitir 1 PV real de valor baixo**, conferir DANFE, cancelar em <24h se divergir | produção | **alto** |
-| 9 | Paginação + `finalidade_nf` no sync (P2-1, P2-2) | `sync` | baixo |
-| 10 | Reconciliação (seção 5) | dados | médio |
+| 1 | Preencher `companies.gestaoclick_loja_id` das 2 empresas via `GET /lojas` | dados | ✅ **feito** — Matriz `565099` (Squad Shoes), LRMS `565120` |
+| 2 | Confirmar `forma_pagamento_id = 6519268` (hardcoded em `:1084`, nunca revalidado após o cutover de 09/07) | dados | ✅ **existe** — "Boleto Bancário", `tipo: BB`, 12 parcelas, intervalo 30 dias |
+| 3 | Remover `gcMaxNfNumber` (P0-2) | `emit-nfe` | ✅ aplicado |
+| 4 | `codigo` → `codigo_produto` + `nome_produto` (P0-1) | `emit-nfe` | ✅ aplicado |
+| 5 | Aviso do Simples Nacional (P0-3), preservando o `Pedido de Venda:` | `emit-nfe` | ✅ aplicado |
+| 6 | Throttle + backoff no `gcFetch` (P2-3) | `emit-nfe` | ✅ aplicado |
+| 7 | `Reprovada`/`Corrigida` no `mapSituacao` (P0-4) | 3 funções | ✅ aplicado |
+| 8 | `total_paginas` + 429 + `finalidade_nf` no sync (P2-1, P2-2) | `sync` | ✅ aplicado |
+| 9 | **`dry_run` contra um PV real** — conferir payload, duplicatas, IE, NCM | — | ⬜ **pendente** |
+| 10 | **Emitir 1 PV real de valor baixo**, conferir DANFE, cancelar em <24h se divergir | produção | ⬜ **pendente** |
+| 11 | Reconciliação (seção 5) | dados | ⬜ pendente |
 
 **Checklist do passo 8** — conferir no detalhe da nota emitida:
 
