@@ -2224,9 +2224,15 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
         cg.pvNumbers.push(order.sale_order_number);
       }
       // Acumula refs (sandálias) dessa cor+solado pra exibir o REF code no card.
+      // A chave é code OU name (31/07/2026): há ficha cadastrada com
+      // `code` VAZIO — a DS20 do PV-00147 é uma delas. Com a guarda antiga
+      // (`if (refCode)`) ela era descartada em silêncio, e o card de OFF WHITE
+      // saía identificando 2 das 3 referências que o cortador tem na mão.
       const refCode = order.reference_code || '';
-      if (refCode && !cg.refs!.some((r: any) => r.code === refCode)) {
-        cg.refs!.push({ code: refCode, name: order.reference_name || '' });
+      const refName = order.reference_name || '';
+      const refKey = refCode || refName;
+      if (refKey && !cg.refs!.some((r: any) => (r.code || r.name) === refKey)) {
+        cg.refs!.push({ code: refCode, name: refName });
       }
       // Foto POR REFERÊNCIA (2026-07-22): uma entrada por ficha técnica distinta
       // que compartilha esta cor, pra a faixa de miniaturas do Corte Forração
