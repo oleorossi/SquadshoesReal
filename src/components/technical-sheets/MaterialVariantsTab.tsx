@@ -1,4 +1,5 @@
  import { useState, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
   import { Plus, CircleNotch as Loader2, Package, Tag, Barcode, Trash as Trash2, DotsSixVertical as GripVertical, PencilSimple as Pencil, Check, X, ToggleLeft, ToggleRight, Hash, ShoppingCart, CurrencyDollar as DollarSign, Info, CaretUpDown as ChevronsUpDown, MagnifyingGlass as Search, Copy, CaretUp as ChevronUp, CaretDown as ChevronDown, Sparkle as Sparkles } from '@phosphor-icons/react';
  import { Button } from '@/components/ui/button';
  import { Input } from '@/components/ui/input';
@@ -124,6 +125,40 @@ function GroupCombobox({
    const { data: variants = [], isLoading } = useReferenceMaterialVariants(sheetId);
    const { data: products = [] } = useProducts();
    const { data: groups = [] } = useGroups();
+
+   // Material que a ficha usa hoje. Serve pra avisar quando NENHUMA variante o
+   // representa: nesse caso quem vender sem escolher variante recebe um material
+   // diferente do que qualquer variante promete, em silêncio. Foi assim que o
+   // PV-00141 (EC23) vendeu NAPA SOFT e a produção cortou NAPA SUDANI.
+   const { data: sheetMaterials } = useQuery({
+     queryKey: ['sheet_materials_for_variant_warning', sheetId],
+     queryFn: async () => {
+       const { data, error } = await (supabase as any)
+         .from('technical_sheets')
+         .select('upper_material, lining_material')
+         .eq('id', sheetId)
+         .maybeSingle();
+       if (error) throw error;
+       return data as { upper_material: string | null; lining_material: string | null } | null;
+     },
+     enabled: !!sheetId,
+     staleTime: 60_000,
+   });
+
+   /** Material da ficha não coberto por nenhuma variante ativa. */
+   const materialDaFichaSemVariante = useMemo(() => {
+     const alvo = (sheetMaterials?.upper_material?.trim() || sheetMaterials?.lining_material?.trim() || '');
+     if (!alvo || variants.length === 0) return '';
+     const key = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().trim();
+     const cobertos = new Set(
+       variants.filter(v => v.active).map(v => {
+         const gid = v.main_material_group_id || v.upper_material_group_id
+           || v.lining_material_group_id || v.insole_material_group_id;
+         return key(groups.find(g => g.id === gid)?.name || v.material_name || '');
+       }),
+     );
+     return cobertos.has(key(alvo)) ? '' : alvo;
+   }, [sheetMaterials, variants, groups]);
 
    // Grupos por componente (Cabedal / Forro / Palmilha), filtrados pelo setor.
    const cabedalGroups  = useMemo(() => groups.filter(g => sectorOfGroup(g) === SECTOR_CABEDAL), [groups]);
@@ -481,6 +516,21 @@ function GroupCombobox({
            escolher a variante.
          </p>
        </div>
+
+       {materialDaFichaSemVariante && (
+         <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs">
+           <p className="font-medium text-amber-700 dark:text-amber-400 mb-1">
+             O material da ficha não tem variante
+           </p>
+           <p className="text-amber-700 dark:text-amber-400">
+             A ficha usa <strong>{materialDaFichaSemVariante}</strong>, mas nenhuma variante ativa
+             representa esse material. Quem vender esta referência <strong>sem escolher variante</strong> vai
+             produzir em {materialDaFichaSemVariante} — sem que nada no PV diga isso. Cadastre uma variante
+             para {materialDaFichaSemVariante} (ou corrija o material da ficha, se ele estiver errado).
+           </p>
+         </div>
+       )}
+
        <div className="flex justify-between items-center">
          <div className="space-y-0.5">
            <h3 className="text-sm font-semibold flex items-center gap-2">
