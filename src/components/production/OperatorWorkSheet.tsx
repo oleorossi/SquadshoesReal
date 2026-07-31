@@ -230,7 +230,11 @@ const OperatorWorkSheet = ({ sector, sectorLabel, items, pvNumbers = [], clientN
     const noteParts = [
       order.sale_order_number || (order as any).pv_number || null,
       clientName || null,
-      order.due_date ? `Entrega ${new Date(order.due_date).toLocaleDateString('pt-BR')}` : null,
+      // `orders.due_date` é coluna DATE — o PostgREST devolve 'YYYY-MM-DD' e
+      // `new Date('2026-08-03')` é meia-noite UTC, que em America/Sao_Paulo (UTC−3)
+      // volta pro dia ANTERIOR: a ficha imprimia 02/08 pra uma entrega em 03/08.
+      // O sufixo 'T00:00:00' força meia-noite LOCAL (mesmo idioma de absenteeism.ts:33).
+      order.due_date ? `Entrega ${new Date(`${String(order.due_date).slice(0, 10)}T00:00:00`).toLocaleDateString('pt-BR')}` : null,
     ].filter(Boolean) as string[];
     const subHeaderBlock = (
       <GroupSubHeader

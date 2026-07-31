@@ -2784,9 +2784,17 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
         silk_url: silkInfo?.silk_url || null,
         silk_name: silkInfo?.silk_name || null,
         grade: Object.keys(scaledGrade).length > 0 ? scaledGrade : null,
-        // Fichas (lógica Corte de Forração): pares ÷ corrugado base. baseSum é o
-        // corrugado (soma da grade base); mult = orderTotal/baseSum = nº fichas.
-        fichas: baseSum > 0 ? Math.round(orderTotal / baseSum) : null,
+        // Fichas: MESMO motor canônico dos demais setores (resolveFicha). A conta
+        // antiga (`Math.round(orderTotal / baseSum)`) assumia que a grade sempre
+        // chega como CURVA-BASE — mas em 239 das 266 OPs ela chega como GRADE TOTAL
+        // (Σgrade == quantity), e aí baseSum === orderTotal e o relatório estampava
+        // "1 ficha" pra uma OP de 120 pares que o Corte conta como 10 corrugados.
+        // É exatamente o bug que fichaSize.ts documenta no 7º passe; só este bloco
+        // tinha ficado pra trás. O round também arredondava pra baixo (350/12 → 29).
+        fichas: (() => {
+          const f = resolveFicha(orderTotal, baseGrid);
+          return f.fichas > 0 ? f.fichas : null;
+        })(),
         straps,
         upper_material: mats.upper,
         lining_material: mats.lining,
@@ -2824,12 +2832,18 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
     // quando tem ao menos um grupo válido.
     if (activeSectors.has('Corte Forração') && smGroups.some(g =>
       g.colorGroups.some(cg => cg.requiresLiningCut === true && opsInRoteiro(cg.opNumbers, 'Corte Forração')))) total += 1;
-    // Mapeamento de roteiro: Costura Palmilha testa 'Costura'; Costura
-    // Cabedal testa 'Corte Cabedal' + requiresUpperSewing.
+    // Mapeamento de roteiro: Costura Palmilha testa 'Costura'.
+    // Costura Cabedal testava 'Corte Cabedal' — resíduo da era do proxy, quando os
+    // dois setores de costura ainda não existiam separados (split na migration
+    // 20261001120000). O RENDER já usa a identidade (`roteiroSectorFor = s => s`);
+    // só esta contagem ficou pra trás. Medido no banco: das 52 fichas técnicas
+    // NENHUMA tem 'Corte Cabedal' em production_sectors e 16 têm 'Costura Cabedal'
+    // sem ele — o teste era FALSE pra 100% das fichas, então o setor nunca somava e
+    // `sheetCount === 0` desabilitava os dois botões de imprimir (2921/2924).
     if (activeSectors.has('Costura Palmilha') && smGroups.some(g =>
       g.colorGroups.some(cg => opsInRoteiro(cg.opNumbers, 'Costura')))) total += 1;
     if (activeSectors.has('Costura Cabedal') && smGroups.some(g =>
-      g.colorGroups.some(cg => cg.requiresUpperSewing === true && opsInRoteiro(cg.opNumbers, 'Corte Cabedal')))) total += 1;
+      g.colorGroups.some(cg => cg.requiresUpperSewing === true && opsInRoteiro(cg.opNumbers, 'Costura Cabedal')))) total += 1;
     if (activeSectors.has('Aviamento') && (aviamentoGroups || []).some(g =>
       g.colorGroups.some(cg => opsInRoteiro(cg.opNumbers, 'Aviamento')))) total += 1;
     if (activeSectors.has('Silk') && smGroups.some(g =>
