@@ -3,10 +3,9 @@ import { flushSync } from 'react-dom';
 import { useQuery, useIsFetching, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
-import { Printer, ArrowLeft, Stack as Layers, Rows, Cards } from '@phosphor-icons/react';
+import { Printer, ArrowLeft, Stack as Layers, Cards } from '@phosphor-icons/react';
 import OperatorWorkSheet from '@/components/production/OperatorWorkSheet';
 import { PalmilhaWorkSheet, type PalmilhaGroup } from '@/components/production/PalmilhaWorkSheet';
-import { ReducedWorkSheet } from '@/components/production/ReducedWorkSheet';
 import { CartaoLote } from '@/components/production/CartaoLote';
 import { SilkMontageWorkSheet, type SoleSilkGroup, type SilkColorGroup, type GroupedSector } from '@/components/production/SilkMontageWorkSheet';
 import type { SectorAlert } from '@/components/production/worksheet/SectorAlerts';
@@ -300,30 +299,6 @@ const printStyles = `
     .page-break:last-child {
       page-break-after: auto;
       break-after: auto;
-    }
-    /* Ficha REDUZIDA: NÃO força 1 por página. Fichas pequenas FLUEM e empacotam
-       VÁRIAS por A4 — no lugar do branco já começa a próxima. Cada ficha fica
-       INTEIRA (break-inside: avoid) e tem um traço pontilhado de corte entre elas.
-       Só quebra de página quando a próxima não cabe mais no resto da folha.
-       Com @page margin 0 (2026-06-12), o card compensa a margem por conta
-       própria: 8mm nas laterais + 5mm de padding-top (o card que abre cada
-       página fica fora da zona não-imprimível da impressora). O fluxo
-       reduzido continua no fragmentador do browser — não usa PaginatedSheet. */
-    .reduced-card {
-      break-inside: avoid !important;
-      page-break-inside: avoid !important;
-      break-after: auto !important;
-      page-break-after: auto !important;
-      border-bottom: 1.5px dashed #999 !important;
-      padding-top: 3mm !important;
-      padding-bottom: 3mm !important;
-      margin-bottom: 3mm !important;
-      margin-left: 6mm !important;
-      margin-right: 6mm !important;
-    }
-    .reduced-card:last-child {
-      border-bottom: none !important;
-      margin-bottom: 0 !important;
     }
     /* Filho direto do .page-break = container raiz da ficha. SEM flex/height
        forçados — conteúdo flui livremente em múltiplas A4 se necessário.
@@ -742,8 +717,6 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
     () => new Set(initialSectors ?? SECTORS),
   );
 
-  // Layout da ficha: false = completa (padrão), true = reduzida (só foto + grade + qty).
-  const [reduced, setReduced] = useState(false);
   // Modo CARTÃO (31/07/2026): em vez das fichas A4, emite um cartão de 99mm por
   // LOTE DE SETOR, 12 por folha A4 paisagem. O recorte do lote é exatamente o
   // que `buildColorGroupedSheets` já produz (com as peculiaridades de cada
@@ -860,8 +833,8 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
   // fotos por thumbs de OUTRA largura (cache frio) e sem o await o snapshot
   // do print saía com fotos em branco. decode() também força o load de
   // imagens lazy fora do viewport (Firefox/Safari não carregam no print).
-  const printWith = async (asReduced: boolean, asCartao = false) => {
-    flushSync(() => { setReduced(asReduced); setCartao(asCartao); });
+  const printWith = async (asCartao = false) => {
+    flushSync(() => setCartao(asCartao));
     const imgs = Array.from(document.querySelectorAll<HTMLImageElement>('.print-area img'));
     const waits: Promise<unknown>[] = imgs.map(img =>
       img.complete ? Promise.resolve() : img.decode().catch(() => undefined)
@@ -876,7 +849,6 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
     // Restaura o layout completo no preview — sem isso, depois do "Relatório
     // simplificado" um Ctrl+P manual sairia na versão reduzida sem pedir.
     // Vale igual pro modo cartão, que ainda troca a orientação do @page.
-    setReduced(false);
     setCartao(false);
   };
 
@@ -2971,9 +2943,8 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
             </button>
             {/* Saída invertida: emite as páginas da última pra primeira SÓ no
                 print (preview em tela não muda) — compensa impressora que
-                empilha face pra cima. Vale também no Relatório simplificado:
-                Expedição/Relatório Gerencial imprimem a ficha completa lá e
-                precisam inverter; os cards recortáveis reordenados não fazem
+                empilha face pra cima. Vale também no modo cartão: os cartões
+                recortáveis reordenados não fazem
                 diferença (vão pra tesoura). */}
             <button
               type="button"
@@ -2994,15 +2965,12 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                 erro zera sheetById e o filtro de roteiro/flags falha ABERTO —
                 OPs entram em setores errados e Corte Forração some. O banner
                 vermelho acima explica e pede recarga. */}
-            <Button onClick={() => printWith(false)} className="gap-2" disabled={activeSectors.size === 0 || sheetCount === 0 || initialQueriesLoading || failedQueries > 0} title={failedQueries > 0 ? 'Consultas de dados falharam — recarregue a página antes de imprimir' : undefined}>
+            <Button onClick={() => printWith()} className="gap-2" disabled={activeSectors.size === 0 || sheetCount === 0 || initialQueriesLoading || failedQueries > 0} title={failedQueries > 0 ? 'Consultas de dados falharam — recarregue a página antes de imprimir' : undefined}>
               <Printer className="h-4 w-4" /> Imprimir
-            </Button>
-            <Button variant="outline" onClick={() => printWith(true)} className="gap-2" disabled={activeSectors.size === 0 || sheetCount === 0 || initialQueriesLoading || failedQueries > 0} title={failedQueries > 0 ? 'Consultas de dados falharam — recarregue a página antes de imprimir' : 'Mesma seleção, mas as fichas de operador saem na versão reduzida (foto + grade + quantidades)'}>
-              <Rows className="h-4 w-4" /> Relatório simplificado
             </Button>
             {/* Cartões de lote (31/07/2026): 1 cartão de 99mm por lote de setor,
                 12 por folha A4 paisagem. O recorte do lote é o mesmo das fichas. */}
-            <Button variant="outline" onClick={() => printWith(false, true)} className="gap-2" disabled={activeSectors.size === 0 || sheetCount === 0 || initialQueriesLoading || failedQueries > 0} title={failedQueries > 0 ? 'Consultas de dados falharam — recarregue a página antes de imprimir' : 'Um cartão recortável por lote de setor (99 × ~51mm) — 12 por folha A4 na horizontal'}>
+            <Button variant="outline" onClick={() => printWith(true)} className="gap-2" disabled={activeSectors.size === 0 || sheetCount === 0 || initialQueriesLoading || failedQueries > 0} title={failedQueries > 0 ? 'Consultas de dados falharam — recarregue a página antes de imprimir' : 'Um cartão recortável por lote de setor (99 × ~51mm) — 12 por folha A4 na horizontal'}>
               <Cards className="h-4 w-4" /> Cartões de lote
             </Button>
           </div>
@@ -3101,14 +3069,9 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
       {/* Saída invertida (2026-07-24): durante o print, o provider liga a
           inversão nas páginas de cada PaginatedSheet e o ReversibleStack
           inverte a ordem dos maços de setor — juntos, reversão completa do
-          documento página a página.
-          SEM gate `!reduced` (fix da revisão 2026-07-24): Expedição e
-          Relatório Gerencial NÃO têm variante reduzida — no "Relatório
-          simplificado" imprimem a ficha COMPLETA (PaginatedSheet multi-página,
-          grampeada/entregue inteira) e precisam inverter também, senão esse
-          trecho do maço sai de trás pra frente com o toggle ligado. Os
-          .reduced-card invertidos são inofensivos: as fichas são recortadas
-          na tesoura (ordem de folha irrelevante). */}
+          documento página a página. Sem gate por modo: vale para as fichas e
+          para os cartões de lote (nestes a ordem é irrelevante, vão pra
+          tesoura, mas inverter não atrapalha). */}
       <ReversePrintContext.Provider value={printReversing}>
       <ReversibleStack reverse={printReversing}>
 
@@ -3118,35 +3081,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
             distintas, conteúdo flui naturalmente. Blocos atômicos
             (.keep-together) evitam quebra no meio de uma seção. */}
         {includesSector('Corte Palmilha') && palmilhaGroups.length > 0 && (
-          reduced ? (
-            palmilhaGroups.map((g, i) => (
-              <div key={`palmilha-red-${g.soleName}-${i}`} className="reduced-card">
-                <ReducedWorkSheet
-                  sectorLabel="Corte de Placa de Fibra"
-                  title={g.soleName || 'Placa de Fibra'}
-                  meta={[
-                    ...(g.lotInfo ? [{ label: 'Lote', value: `${g.lotInfo.number}/${g.lotInfo.total}` }] : []),
-                    ...(g.fichas ? [{ label: 'Fichas', value: String(g.fichas) }] : []),
-                    ...(g.opNumbers && g.opNumbers.length ? [{ label: 'OPs', value: String(g.opNumbers.length) }] : []),
-                  ]}
-                  imageUrl={g.refs?.[0]?.image_url}
-                  grade={g.grade}
-                  allSizes={palmilhaAllSizes}
-                  totalPairs={g.totalPairs}
-                  totalNote={g.fichas
-                    ? g.corrugadosMistos
-                      ? `${g.fichas} fichas · corrugados mistos`
-                      : `${g.fichasAproximadas ? '≈ ' : ''}${g.fichas} ficha(s) de ${g.baseGradeSum}`
-                    : undefined}
-                  fichas={g.fichas || undefined}
-                  pairsPerFicha={!g.corrugadosMistos && g.baseGradeSum ? g.baseGradeSum : undefined}
-                  consumption={consumptionForOpNumbers(g.opNumbers, g.totalPairs)}
-                  consumptionSector="Corte Palmilha"
-                />
-              </div>
-            ))
-          ) : (
-            <div className="page-break">
+          <div className="page-break">
               <PalmilhaWorkSheet
                 sectorLabel="Corte de Placa de Fibra"
                 groups={palmilhaGroups.map(g => ({
@@ -3168,7 +3103,6 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                 sizeBand={bandForOps(palmilhaGroups.flatMap(g => g.opNumbers || []))}
               />
             </div>
-          )
         )}
 
         {/* ── Setores agrupados (Corte Forração, Corte Cabedal, Costura Palmilha,
@@ -3429,45 +3363,6 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
 
           // Ficha REDUZIDA do SoleSilk: 1 por solado, POR COR (cada cor = total +
           // mini-grade por número), grade agregada = soma das cores.
-          const reducedSilkNode = (group: SoleSilkGroup, sectorName: GroupedSector, key: string) => {
-            const grade: Record<string, number> = {};
-            for (const cg of group.colorGroups) {
-              for (const [size, qty] of Object.entries(cg.combinedGrid)) grade[size] = (grade[size] || 0) + qty;
-            }
-            const sizes = Object.keys(grade).sort((a, b) => (Number(a) || 0) - (Number(b) || 0));
-            const img = group.colorGroups.flatMap(cg => cg.alternateVariants || []).find(v => v.image_url)?.image_url || null;
-            // Corte Forração: cor + napa (liningMaterial só é setado lá) pra a
-            // ficha reduzida também não confundir 2 napas de mesma cor (PV-00148).
-            const colors = group.colorGroups.map(cg => ({ name: cg.liningMaterial ? `${cg.color} · ${cg.liningMaterial}` : cg.color, qty: cg.totalPairs, grade: cg.combinedGrid }));
-            // Agrega OPs do grupo inteiro pra puxar o consumo filtrado pelo setor.
-            const allOpNumbers = group.colorGroups.flatMap(cg => cg.opNumbers);
-            // Tally do grupo (7º passe): fichas = soma dos corrugados de TODAS
-            // as cores (sempre). pairsPerFicha só quando o corrugado é único
-            // entre as cores — senão omite e o título avisa "corrugados mistos".
-            const groupFichas = group.colorGroups.reduce((s, cg) => s + (cg.fichas || 0), 0);
-            const groupCorrugados = new Set(
-              group.colorGroups.map(cg => cg.baseGradeSum).filter((n): n is number => (n ?? 0) > 0),
-            );
-            const uniformCorrugado = groupCorrugados.size === 1
-              && !group.colorGroups.some(cg => cg.corrugadosMistos);
-            return (
-              <div key={key} className="reduced-card">
-                <ReducedWorkSheet
-                  sectorLabel={sectorName}
-                  title={group.soleName}
-                  imageUrl={img}
-                  grade={grade}
-                  allSizes={sizes}
-                  totalPairs={group.totalPairs}
-                  colors={colors}
-                  fichas={groupFichas > 0 ? groupFichas : undefined}
-                  pairsPerFicha={uniformCorrugado ? Array.from(groupCorrugados)[0] : undefined}
-                  consumption={consumptionForOpNumbers(allOpNumbers, group.totalPairs)}
-                  consumptionSector={sectorName}
-                />
-              </div>
-            );
-          };
 
           // ── Fluxo contínuo por setor (2026-06-12, pedido do dono) ──
           // Em vez de 1 ficha (.page-break + header gigante) POR GRUPO, cada
@@ -3577,10 +3472,6 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                 );
               });
             }
-            if (reduced) {
-              return groupsForSector.map((g, gi) =>
-                reducedSilkNode(withClientNames(g), sectorName, `${sectorName}-red-${gi}-${g.soleName}`));
-            }
             // Enriquecimento por grupo: clientes + faixa etária (selo do
             // sub-header). Faixa agregada do setor vai no header.
             // Consumo (motor canônico = modal do PV) anexado nos setores de
@@ -3655,30 +3546,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
         {includesSector('Colagem') && (() => {
           const data = solagemData?.colagem;
           if (!data || data.bands.length === 0) return null;
-          return reduced ? (
-            data.bands.map((b, i) => (
-              <div key={`col-red-${b.soleColor}-${i}`} className="reduced-card">
-                <ReducedWorkSheet
-                  sectorLabel="Colagem"
-                  title={b.soleColor || 'Colagem'}
-                  imageUrl={b.refs?.[0]?.image_url}
-                  grade={b.grade}
-                  allSizes={data.allSizes}
-                  totalPairs={b.totalPairs}
-                  totalNote={b.fichas
-                    ? b.corrugadosMistos
-                      ? `${b.fichas} fichas · corrugados mistos`
-                      : `${b.fichasAproximadas ? '≈ ' : ''}${b.fichas} ficha(s) de ${b.baseGradeSum}`
-                    : undefined}
-                  fichas={b.fichas || undefined}
-                  pairsPerFicha={!b.corrugadosMistos && b.baseGradeSum ? b.baseGradeSum : undefined}
-                  consumption={consumptionForOpNumbers(b.opNumbers, b.totalPairs)}
-                  consumptionSector="Colagem"
-                />
-              </div>
-            ))
-          ) : (
-            <div className="page-break">
+          return <div className="page-break">
               <SolagemWorkSheet
                 sector="Colagem"
                 bands={data.bands}
@@ -3687,8 +3555,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                 sizeBand={bandForOps(data.bands.flatMap(b => b.opNumbers || []))}
                 clientNames={clientNamesForPvs(data.bands.flatMap(b => b.pvNumbers || []))}
               />
-            </div>
-          );
+            </div>;
         })()}
 
         {/* ── Setores agrupados por Ref + Cor: Montagem ──
@@ -3714,34 +3581,6 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
             const tsImage = tsImageByRef.get(representative.reference_id) || null;
             return { resolvedImageUrl: exactVariant?.image_url || pretoVariant?.image_url || tsImage, tsImage };
           };
-          if (reduced) {
-            return sectorGroups.map((group) => {
-              const { representative } = group;
-              const { resolvedImageUrl } = resolveGroupImage(representative);
-              const baseSum = Object.values(group.baseGrid || {}).reduce((s, v) => s + (Number(v) || 0), 0);
-              // Grades mistas: a base da 1ª OP não representa o grupo — usa a
-              // grade combinada (já escalada por OP com largest remainder).
-              const g = group.mixedGrades
-                ? group.combinedGrid
-                : scaleGradeWithLargestRemainder(group.baseGrid, baseSum > 0 ? group.totalPairs / baseSum : 1, group.totalPairs);
-              return (
-                <div key={`${sectorName.toLowerCase()}-red-${representative.reference_id}::${representative.color}`} className="reduced-card">
-                  <ReducedWorkSheet
-                    sectorLabel={sectorName}
-                    title={`${representative.reference_name || representative.reference_code || '—'}${representative.color ? ' · ' + representative.color : ''}`}
-                    imageUrl={resolvedImageUrl}
-                    grade={g}
-                    allSizes={Object.keys(g).sort((a, b) => (Number(a) || 0) - (Number(b) || 0))}
-                    totalPairs={group.totalPairs}
-                    fichas={group.fichas > 0 ? group.fichas : undefined}
-                    pairsPerFicha={!group.corrugadosMistos && group.baseGradeSum > 0 ? group.baseGradeSum : undefined}
-                    consumption={consumptionForOpNumbers(group.opNumbers, group.totalPairs)}
-                    consumptionSector={sectorName}
-                  />
-                </div>
-              );
-            });
-          }
           // ── Maço contínuo (2026-06-12): UM OperatorWorkSheet pro setor
           // inteiro — header agregado 1× + sub-header por grupo ref+cor. ──
           const items = sectorGroups.map((group) => {
@@ -3829,32 +3668,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
         {includesSector('Solagem') && (() => {
           const data = solagemData?.solagem;
           if (!data || data.bands.length === 0) return null;
-          return reduced ? (
-            data.bands.map((b, i) => (
-              <div key={`sol-red-${b.soleColor}-${i}`} className="reduced-card">
-                <ReducedWorkSheet
-                  sectorLabel="Solagem"
-                  // Referência do solado (modelo) + cor, ambos no título vermelho.
-                  // Operador da Solagem precisa identificar QUAL solado, não só a cor.
-                  title={b.soleType ? `${b.soleType} · ${b.soleColor}` : (b.soleColor || 'Solagem')}
-                  imageUrl={b.refs?.[0]?.image_url}
-                  grade={b.grade}
-                  allSizes={data.allSizes}
-                  totalPairs={b.totalPairs}
-                  totalNote={b.fichas
-                    ? b.corrugadosMistos
-                      ? `${b.fichas} fichas · corrugados mistos`
-                      : `${b.fichasAproximadas ? '≈ ' : ''}${b.fichas} ficha(s) de ${b.baseGradeSum}`
-                    : undefined}
-                  fichas={b.fichas || undefined}
-                  pairsPerFicha={!b.corrugadosMistos && b.baseGradeSum ? b.baseGradeSum : undefined}
-                  consumption={consumptionForOpNumbers(b.opNumbers, b.totalPairs)}
-                  consumptionSector="Solagem"
-                />
-              </div>
-            ))
-          ) : (
-            <div className="page-break">
+          return <div className="page-break">
               <SolagemWorkSheet
                 bands={data.bands}
                 allSizes={data.allSizes}
@@ -3862,8 +3676,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                 sizeBand={bandForOps(data.bands.flatMap(b => b.opNumbers || []))}
                 clientNames={clientNamesForPvs(data.bands.flatMap(b => b.pvNumbers || []))}
               />
-            </div>
-          );
+            </div>;
         })()}
 
         {/* ── Acabamento: pedido individual cliente-a-cliente, em maço único ──
@@ -3886,34 +3699,6 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
             const tsImage = tsImageByRef.get(order.reference_id) || null;
             return { resolvedImageUrl: exactVariant?.image_url || pretoVariant?.image_url || tsImage, tsImage };
           };
-          if (reduced) {
-            return acabamentoOrders.map((order) => {
-              const { resolvedImageUrl } = resolveOrderImage(order);
-              const tot = Number((order as any).total_pairs) || 0;
-              const baseG = ((order as any).grid || {}) as Record<string, number>;
-              const baseSum = Object.values(baseG).reduce((s, v) => s + (Number(v) || 0), 0);
-              const g = scaleGradeWithLargestRemainder(baseG, baseSum > 0 ? tot / baseSum : 1, tot);
-              // Corrugado físico derivado (7º passe) — grid pode ser curva-base
-              // ou grade total; nunca exibir "ficha de 120p".
-              const fichaRes = resolveFicha(tot, baseG);
-              return (
-                <div key={`acab-red-${order.id}`} className="reduced-card">
-                  <ReducedWorkSheet
-                    sectorLabel="Acabamento"
-                    title={`${order.reference_name || order.reference_code || '—'}${order.color ? ' · ' + order.color : ''}`}
-                    imageUrl={resolvedImageUrl}
-                    grade={g}
-                    allSizes={Object.keys(g).sort((a, b) => (Number(a) || 0) - (Number(b) || 0))}
-                    totalPairs={tot}
-                    fichas={fichaRes.fichas > 0 ? fichaRes.fichas : undefined}
-                    pairsPerFicha={fichaRes.corrugado}
-                    consumption={consumptionForOpNumbers([(order as any).op_number].filter(Boolean), tot)}
-                    consumptionSector="Acabamento"
-                  />
-                </div>
-              );
-            });
-          }
           // Pares/caixa do solado pra contagem de caixas no Acabamento.
           // Reusa EXATAMENTE a mesma fonte/lógica da Expedição (resolveSoleInfo):
           // grupo do solado RESOLVIDO (A1) + tipo de caixa do packaging_mode do PV

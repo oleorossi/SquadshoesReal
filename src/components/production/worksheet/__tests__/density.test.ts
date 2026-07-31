@@ -102,7 +102,11 @@ describe('canUseSlimConsumo', () => {
 describe('guard — toda ficha de operador segue a densidade', () => {
   it('encontra as fichas (o guard não pode passar por varrer zero arquivo)', () => {
     const files = worksheetFiles();
-    expect(files.length).toBeGreaterThanOrEqual(6);
+    // 5 desde 31/07/2026: a ReducedWorkSheet foi REMOVIDA junto com o botão
+    // "Relatório simplificado" (pedido do dono) — o layout compacto agora é o
+    // cartão de lote (CartaoLote.tsx), que não usa TallyBox nem foto de faixa
+    // e por isso fica fora deste guard.
+    expect(files.length).toBeGreaterThanOrEqual(5);
   });
 
   it('nenhum <TallyBox> usa tamanho literal — todos puxam TALLY_SIZE', () => {
