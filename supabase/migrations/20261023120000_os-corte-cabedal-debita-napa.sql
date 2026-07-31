@@ -219,20 +219,20 @@ BEGIN
     v_required := (v_agg #>> ARRAY[v_key, 'required'])::numeric;
     v_unit     := COALESCE(v_agg #>> ARRAY[v_key, 'unit'], '');
 
-    SELECT p.id, p.name, COALESCE(p.quantity, 0) AS quantity
+    SELECT p.id, p.name, GREATEST(0, COALESCE(p.quantity, 0)) AS quantity
       INTO v_prod
       FROM public.products p
      WHERE p.id = v_key::uuid
      FOR UPDATE;
     CONTINUE WHEN NOT FOUND;
 
-    v_debit := LEAST(v_required, GREATEST(0, v_prod.quantity));
+    v_debit := LEAST(v_required, v_prod.quantity);
 
     IF v_prod.quantity < v_required THEN
       v_shortfall := v_shortfall || jsonb_build_object(
         'product_id', v_key, 'product_name', v_prod.name,
         'required',  round(v_required, 4),
-        'available', round(GREATEST(0, v_prod.quantity), 4),
+        'available', round(v_prod.quantity, 4),
         'debited',   round(v_debit, 4),
         'unit',      v_unit);
       RAISE WARNING '[corte_cabedal] OS %: estoque insuficiente de "%" — disponível %, necessário % (debitando %)',
@@ -265,11 +265,11 @@ BEGIN
 
   -- (7) Falta registrada na própria OS — o operador vê o furo no papel.
   IF jsonb_array_length(v_shortfall) > 0 THEN
-    SELECT string_agg('⚠ Estoque insuficiente de ' || (s ->> 'product_name')
-                      || ': necessário ' || (s ->> 'required') || ' ' || COALESCE(s ->> 'unit', '')
-                      || ', debitado ' || (s ->> 'debited') || '.', E'\n')
+    SELECT string_agg('⚠ Estoque insuficiente de ' || (t.s ->> 'product_name')
+                      || ': necessário ' || (t.s ->> 'required') || ' ' || COALESCE(t.s ->> 'unit', '')
+                      || ', debitado ' || (t.s ->> 'debited') || '.', E'\n')
       INTO v_note
-      FROM jsonb_array_elements(v_shortfall) AS s;
+      FROM jsonb_array_elements(v_shortfall) AS t(s);
     UPDATE public.service_orders
        SET notes = COALESCE(NULLIF(notes, '') || E'\n', '') || v_note
      WHERE id = v_os_id;

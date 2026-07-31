@@ -23,6 +23,7 @@
  */
 
 import { supabase } from '@/integrations/supabase/client';
+import { napaDisplayName } from '@/lib/strapSourcing';
 
 export interface StrapPickingLine {
   /** Nome do material PRONTO (a tira) — o que aparece em destaque. */
@@ -84,7 +85,12 @@ export function indexStrapPickingLines(
       existing.strapRequiredM += strapRequiredM;
       existing.napaRequired += napaRequired;
     } else {
-      byKey.set(key, { strapName, color, strapRequiredM, napaRequired, napaName, yieldPerMeter });
+      // A napa vive como 1 produto por COR sob o mesmo nome — sem a cor, o
+      // separador procuraria "NAPA SOFT" numa prateleira com 20 variações.
+      byKey.set(key, {
+        strapName, color, strapRequiredM, napaRequired, yieldPerMeter,
+        napaName: napaDisplayName(napaName, color),
+      });
     }
     // Rótulo da ficha ("TIRA 1") aponta pra mesma linha.
     const label = (md.label || '').toString().trim();

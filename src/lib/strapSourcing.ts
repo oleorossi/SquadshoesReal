@@ -33,6 +33,23 @@ export function normalizeStrapColorKey(color: string | null | undefined): string
     .toUpperCase();
 }
 
+/**
+ * Nome da napa como o separador precisa ler: **material + cor**.
+ *
+ * A napa é um grupo com uma variação por cor (`products.name` = "NAPA SOFT" pra
+ * todas, cor em `products.color`) — ver project_material_color_variation_pattern.
+ * Mostrar só o nome do produto mandaria o separador procurar "NAPA SOFT" numa
+ * prateleira com 20 cores. Alguns cadastros já embutem a cor no nome
+ * ("NAPA SOFT: CAPUCCINO"); nesses, não repete.
+ */
+export function napaDisplayName(name: string | null | undefined, color: string | null | undefined): string {
+  const base = (name || '').toString().trim();
+  const c = (color || '').toString().trim();
+  if (!c) return base;
+  if (!base) return c;
+  return normalizeStrapColorKey(base).includes(normalizeStrapColorKey(c)) ? base : `${base} ${c}`;
+}
+
 /** Chave canônica da linha de tira: `"<group_id>|<COR>"`. */
 export function strapSourcingKey(groupId: string | null | undefined, color: string | null | undefined): string | null {
   const gid = (groupId || '').toString().trim();

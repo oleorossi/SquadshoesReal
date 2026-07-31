@@ -226,8 +226,17 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
     }
   };
 
-  /** Cria a OS de corte de cabedal pro grupo (ref+cor) — espelha o payload do
-   *  ServiceOrderFormDialog (criação manual canônica). */
+  /** Cria a OS de corte de cabedal pro grupo (ref+cor) e DEBITA a napa do
+   *  cabedal na mesma transação (spec §4.1).
+   *
+   *  A criação inteira mora na RPC `create_upper_cut_service_order` porque o
+   *  insert e a baixa de estoque têm que ser atômicos: OS criada sem débito
+   *  passaria a exibir "OS já gerada" e o furo ficaria escondido pra sempre.
+   *  A RPC também é quem garante a idempotência (advisory lock por PV+ref+cor
+   *  + marcador na descrição), então duas abas não geram dois débitos.
+   *
+   *  Modelo só de tiras (ficha sem cabedal) continua sem débito — a RPC
+   *  simplesmente não acha linha 'Cabedal' no motor de consumo. */
   const handleCreateUpperCutOS = async (g: UpperCutGroup) => {
     const contractorId = contractorByKey[g.key];
     if (!saleOrderId || !contractorId || creatingKey) return;
@@ -246,34 +255,56 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
       } catch { /* sem tarifa — OS nasce com preço 0, definir depois */ }
       const refLabel = [g.refCode, g.refName].filter(Boolean).join(' ');
       const colorPart = g.color !== '—' ? ` · cor ${g.color}` : '';
-      const payload = {
-        contractor_id: contractorId,
-        order_number,
-        description: `Corte de cabedal — REF ${refLabel}${colorPart} · ${g.pairs} pares (PV ${orderNumber})`,
-        service_date: new Date().toISOString().slice(0, 10),
-        target_sector: UPPER_CUT_SECTOR,
-        sale_order_id: saleOrderId,
-        linked_sale_order_ids: [saleOrderId],
-        quantity: g.pairs,
-        unit_price: unitPrice,
-        total_value: unitPrice > 0 ? unitPrice * g.pairs : 0,
-        status: 'Pendente',
-      };
-      const { data: inserted, error } = await (supabase as any)
-        .from('service_orders')
-        .insert(payload)
-        .select('id, order_number')
-        .single();
+
+      const { data: res, error } = await (supabase as any).rpc('create_upper_cut_service_order', {
+        p_sale_order_id: saleOrderId,
+        p_reference_id: g.refId,
+        // '—' é o rótulo de "sem cor" da tabela; o servidor casa itens por cor
+        // normalizada, então tem que virar string vazia de novo.
+        p_color: g.color === '—' ? '' : g.color,
+        p_contractor_id: contractorId,
+        p_pairs: g.pairs,
+        p_description: `Corte de cabedal — REF ${refLabel}${colorPart} · ${g.pairs} pares (PV ${orderNumber})`,
+        p_order_number: order_number,
+        p_unit_price: unitPrice,
+        p_service_date: new Date().toISOString().slice(0, 10),
+      });
       if (error) throw new Error(error.message);
 
-      setExistingOsByKey((prev) => ({ ...prev, [g.key]: inserted.order_number as string }));
+      const osNumber = String(res?.order_number ?? order_number);
+      setExistingOsByKey((prev) => ({ ...prev, [g.key]: osNumber }));
       qc.invalidateQueries({ queryKey: ['service_orders'] });
       qc.invalidateQueries({ queryKey: ['contractors'] });
       qc.invalidateQueries({ queryKey: ['v_contractor_metrics'] });
-      if (unitPrice > 0) {
-        toast.success(`OS ${inserted.order_number} criada (R$ ${unitPrice.toFixed(2)}/par pela tabela) — visível no menu Terceirizados.`);
+      // O débito mexe em estoque: as telas de material precisam recarregar.
+      qc.invalidateQueries({ queryKey: ['products'] });
+      qc.invalidateQueries({ queryKey: ['stock_movements'] });
+
+      if (res?.status === 'already_exists') {
+        toast.info(`OS ${osNumber} já existia para esta referência/cor — nada foi debitado de novo.`);
+        return;
+      }
+
+      const debited: Array<{ product_name: string; quantity: number; unit: string }> = res?.debited ?? [];
+      const shortfall: Array<{ product_name: string; required: number; available: number; unit: string }> = res?.shortfall ?? [];
+
+      if (debited.length > 0) {
+        const resumo = debited.map((d) => `${d.quantity} ${d.unit} de ${d.product_name}`).join(', ');
+        toast.success(`OS ${osNumber} criada — baixa de ${resumo}.`);
+      } else if (res?.upper_material === false) {
+        toast.success(`OS ${osNumber} criada — modelo sem cabedal na ficha, nenhum material debitado.`);
       } else {
-        toast.warning(`OS ${inserted.order_number} criada SEM preço — cadastre a tarifa da prestadora ou defina o valor na OS.`);
+        toast.success(`OS ${osNumber} criada — visível no menu Terceirizados.`);
+      }
+
+      for (const s of shortfall) {
+        toast.warning(
+          `Estoque insuficiente de ${s.product_name}: necessário ${s.required} ${s.unit}, disponível ${s.available}. ` +
+          'A OS saiu e o disponível foi debitado — acerte a entrada dessa napa.',
+        );
+      }
+      if (unitPrice <= 0) {
+        toast.warning(`OS ${osNumber} está SEM preço — cadastre a tarifa da prestadora ou defina o valor na OS.`);
       }
     } catch (err: any) {
       toast.error(err?.message || 'Falha ao criar a OS de corte de cabedal.');
@@ -315,7 +346,8 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
             <p className="text-xs text-muted-foreground">
               Referências deste pedido com corte de cabedal (modelo sem tiras). Selecione a terceirizada e
               gere a Ordem de Serviço direto daqui — ela entra como <strong>Pendente</strong> nas listas do
-              menu Terceirizados.
+              menu Terceirizados. Quando a ficha tem cabedal, gerar a OS <strong>dá baixa na napa do
+              cabedal</strong> na metragem deste lote (o material sai da fábrica com a terceirizada).
             </p>
             <div className="rounded-lg border overflow-hidden overflow-x-auto">
               <Table>

@@ -3313,8 +3313,19 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
                   // ref pertence a uma única napa (lining_material da ficha), então
                   // o card de cada napa só mostra os modelos dela.
                   const lbMatKey = (lb.material || '').trim().toUpperCase();
-                  const matRefImages = (cg.refImages || []).filter((ri: any) =>
+                  const allRefImages = cg.refImages || [];
+                  const scoped = allRefImages.filter((ri: any) =>
                     (sheetMaterialsByRef.get(ri.sheetId || '')?.lining || '').trim().toUpperCase() === lbMatKey);
+                  // Rede de segurança (31/07/2026): se o escopo por napa zerar a
+                  // lista — ficha sem lining_material cadastrado, id ausente do
+                  // lookup —, NÃO deixar cair na lista vazia. `collectCompactThumbs`
+                  // trataria isso como "sem fotos por referência" e cairia no
+                  // fallback escalar: UMA foto, sem legenda, num card que cobre
+                  // vários modelos. Era exatamente o sintoma reportado no
+                  // PV-00148 (OFF WHITE · NAPA SOFT, 132 pares = 3 refs, 1 foto).
+                  // Mostrar as refs todas da cor erra por excesso e é visível;
+                  // mostrar uma foto anônima erra por omissão e engana o cortador.
+                  const matRefImages = scoped.length > 0 ? scoped : allRefImages;
                   expanded.push({
                     ...cg,
                     liningMaterial: lb.material || undefined,

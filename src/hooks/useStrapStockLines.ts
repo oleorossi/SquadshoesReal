@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { strapSourcingKey, type StrapSourcing } from '@/lib/strapSourcing';
+import { napaDisplayName, strapSourcingKey, type StrapSourcing } from '@/lib/strapSourcing';
 
 /**
  * O que o motor único de tira artesanal diz sobre as tiras de um item do PV.
@@ -108,7 +108,10 @@ export function useStrapStockLines(input: StrapStockLinesInput, enabled = true) 
           strapRequiredM,
           inheritedSourcing: r.sourcing === 'in_house' ? 'in_house' : 'purchased',
           baseFamily: r.base_family ?? null,
-          napaProductName: napa?.base_product_name ?? null,
+          // Nome + COR: a napa tem uma variação por cor sob o mesmo nome.
+          napaProductName: napa?.base_product_name
+            ? napaDisplayName(napa.base_product_name, r.strap_color)
+            : null,
           yieldPerMeter,
           napaRequiredM: yieldPerMeter ? strapRequiredM / yieldPerMeter : null,
           // O bloqueio do próprio motor (tira não resolvida no PV) vem em

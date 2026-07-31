@@ -310,23 +310,57 @@ const sortSizes = (sizes: string[]): string[] =>
  */
 /** Miniaturas a exibir na faixa compacta do Corte Forração: uma por referência
  *  distinta da cor, resolvendo a melhor foto (variante da cor exata → fallback
- *  Preto → ficha técnica) e descartando placeholder e duplicatas (2+ refs que
- *  caem na mesma foto). Cai nos campos escalares quando refImages não foi
- *  populado (retrocompat com fontes que não coletam por referência). */
-export function collectCompactThumbs(cg: SilkColorGroup): Array<RefImageEntry & { resolvedUrl: string }> {
+ *  Preto → ficha técnica) e descartando placeholder. Cai nos campos escalares
+ *  quando refImages não foi populado (retrocompat com fontes que não coletam
+ *  por referência).
+ *
+ *  ⚠ Duas refs que caem na MESMA foto continuam virando UMA miniatura (não
+ *  adianta imprimir a mesma sandália duas vezes) — mas os NOMES das duas são
+ *  preservados em `refNames` e saem juntos na legenda. Antes o nome da segunda
+ *  ref era descartado com a foto, e o cortador ficava sem saber que o card
+ *  cobria dois modelos (pedido do dono 31/07/2026: "a referência de todas
+ *  elas"). Pares e fichas também somam na miniatura sobrevivente, senão a
+ *  faixa vermelha mentiria a quantidade. */
+export function collectCompactThumbs(
+  cg: SilkColorGroup,
+): Array<RefImageEntry & { resolvedUrl: string; refNames: string[] }> {
   const source: RefImageEntry[] = (cg.refImages && cg.refImages.length > 0)
     ? cg.refImages
     : [{ variantImageUrl: cg.variantImageUrl, alternateVariants: cg.alternateVariants, technicalSheetImageUrl: cg.technicalSheetImageUrl }];
-  const seen = new Set<string>();
-  const out: Array<RefImageEntry & { resolvedUrl: string }> = [];
+  const byUrl = new Map<string, RefImageEntry & { resolvedUrl: string; refNames: string[] }>();
+  const out: Array<RefImageEntry & { resolvedUrl: string; refNames: string[] }> = [];
   for (const ri of source) {
     const { url } = resolveImage(ri.variantImageUrl, ri.alternateVariants, ri.technicalSheetImageUrl);
     if (!url || url === '/placeholder.svg') continue;
-    if (seen.has(url)) continue;
-    seen.add(url);
-    out.push({ ...ri, resolvedUrl: url });
+    const hit = byUrl.get(url);
+    if (hit) {
+      const nm = ri.refName || ri.refCode;
+      if (nm && !hit.refNames.includes(nm)) hit.refNames.push(nm);
+      hit.pairs = (hit.pairs || 0) + (ri.pairs || 0);
+      hit.fichas = (hit.fichas || 0) + (ri.fichas || 0);
+      continue;
+    }
+    const nm = ri.refName || ri.refCode;
+    const entry = { ...ri, resolvedUrl: url, refNames: nm ? [nm] : [] };
+    byUrl.set(url, entry);
+    out.push(entry);
   }
   return out;
+}
+
+/** Largura da miniatura na faixa do Corte Forração, em função de QUANTOS
+ *  modelos o card agrupa (Opção A, decisão do dono 31/07/2026).
+ *
+ *  Uma ref sozinha mantém os 92px de sempre. A partir de duas, a foto encolhe
+ *  pra caber lado a lado na largura do card (3 por linha em A4) — o card não
+ *  cresce e a folha continua levando 12. O piso de 52px é deliberado: é
+ *  conferência visual do modelo, quem manda no corte é o código e a grade.
+ *  Abaixo disso a sandália vira borrão, e a regra da casa é remover conteúdo
+ *  antes de encolher além do legível (CLAUDE.md, "Tamanho de fonte em print"). */
+export function compactThumbPx(count: number): number {
+  if (count <= 1) return 92;
+  if (count === 2) return 68;
+  return 52;
 }
 
 export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBand, sectorLabel, knives, facaRanges }: Props) => {
@@ -1184,11 +1218,18 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                 {theme.showCompactImages && (() => {
                   const thumbs = collectCompactThumbs(cg);
                   if (thumbs.length === 0) return null;
-                  const withCaption = thumbs.length > 1;
+                  // Legenda aparece quando o card cobre mais de um MODELO — não
+                  // "mais de uma foto". Duas refs que compartilham a mesma foto
+                  // viram 1 miniatura, e sem isso o cortador não saberia que ali
+                  // moram dois modelos (pedido do dono 31/07/2026).
+                  const distinctRefs = thumbs.reduce((s, t) => s + Math.max(1, t.refNames.length), 0);
+                  const withCaption = distinctRefs > 1;
                   // Imagem MAIOR (pedido user 2026-07-22): o total do modelo saiu
                   // de cima da foto (cobria a sandália) pra uma faixa ABAIXO da
                   // imagem — o operador vê o modelo inteiro. 92px (era 54).
-                  const IMG = 92;
+                  // Encolhe conforme o nº de modelos pra caber lado a lado sem
+                  // engordar o card (Opção A, 31/07/2026) — ver compactThumbPx.
+                  const IMG = compactThumbPx(thumbs.length);
                   return (
                     <div className="keep-together keep-with-next flex flex-wrap gap-2 mt-1 mb-1">
                       {thumbs.map((t, ti) => (
@@ -1218,13 +1259,13 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                               </div>
                             )}
                           </div>
-                          {withCaption && t.refName && (
+                          {withCaption && t.refNames.length > 0 && (
                             <span
                               className="block truncate text-center uppercase font-bold"
                               style={{ fontFamily: "'Fira Code', monospace", fontSize: '8.5px', letterSpacing: '0.06em', color: '#C00000', maxWidth: IMG }}
-                              title={t.refName}
+                              title={t.refNames.join(' · ')}
                             >
-                              {t.refName}
+                              {t.refNames.join(' · ')}
                             </span>
                           )}
                         </div>
