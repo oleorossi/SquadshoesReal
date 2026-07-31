@@ -178,6 +178,30 @@ const printStyles = `
        de novo em 2026-06-12 com a paginação explícita. */
     margin: 0;
   }
+    /* Linha de corte na EMENDA entre dois maços de setor (31/07/2026).
+     FORA do @media print de propósito: a regra WYSIWYG do PRINT_SPEC §0.2-1
+     diz que nada que mude ALTURA pode viver só no print — e além disso o dono
+     precisa VER a emenda no preview antes de mandar imprimir.
+     Só a partir do 2º maço ('+'), nunca no topo da 1ª folha. */
+  .print-area .page-break + .page-break::before {
+    content: "✂  — — — — — — — —  CORTAR AQUI · MUDA DE SETOR  — — — — — — — —";
+    display: block;
+    border-top: 1.5px dashed #000;
+    margin: 4mm 0 3mm;
+    padding-top: 1.5mm;
+    font-family: 'Fira Code', monospace;
+    font-size: 8px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #000;
+    text-align: center;
+    break-inside: avoid;
+    page-break-inside: avoid;
+    /* Não pode ficar órfã no pé da folha sem o setor que ela anuncia. */
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+
   @media print {
     /* BUG ANTIGO 1: usávamos position:absolute na print-area pra tirar o app
        chrome (sidebar/header) do caminho. Mas position:absolute remove o
@@ -289,9 +313,21 @@ const printStyles = `
        (page-break-after: always). Dentro da ficha, browser quebra
        livremente, mas .keep-together evita partir blocos atômicos
        (header, card de cor, tabela, footer) no meio. */
+    /* FLUXO CONTÍNUO ENTRE SETORES (31/07/2026, decisão do dono).
+       Antes: 'page-break-after: always' — cada maço de setor abria FOLHA NOVA,
+       e o resto da última folha do maço anterior saía em branco. Com os 9
+       setores marcados isso desperdiçava ~4,5 folhas (meia por maço, medido no
+       print que o dono enviou: Corte Forração terminava no 1/3 superior e o
+       Corte Cabedal só começava na folha seguinte).
+       Agora os maços FLUEM: a última página lógica de cada PaginatedSheet já
+       tem 'break-after: auto' (regra .pagi-page:last-child), então o setor
+       seguinte começa no espaço que sobrou.
+       ⚠ A folha de emenda contém DOIS setores, que vão pra bancadas
+       diferentes — por isso a linha de corte logo abaixo é obrigatória, não
+       decorativa: é por ela que a separação corta a folha compartilhada. */
     .page-break {
-      page-break-after: always;
-      break-after: page;
+      page-break-after: auto;
+      break-after: auto;
       /* SEM page-break-inside: avoid aqui — ficha pode ocupar várias A4.
          Caso queira força total 1-pg-por-ficha, criar classe .single-page. */
     }
