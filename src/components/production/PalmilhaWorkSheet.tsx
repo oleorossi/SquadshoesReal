@@ -88,6 +88,7 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, pairsPerCard = 12, sizeBan
   const headerBlock = (
       <WorksheetHeader
         sector="Corte de Placa de Fibra"
+        flowSector="Corte Palmilha"
         icon={Scissors}
         sizeBand={sizeBand}
         identification={(() => {

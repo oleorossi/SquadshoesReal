@@ -3,11 +3,16 @@ import { QrCode } from '@phosphor-icons/react';
 import { QRCodeSVG } from 'qrcode.react';
 import { cn } from '@/lib/utils';
 import { adaptiveFontSize } from '@/lib/adaptiveFontSize';
+import { SECTOR_FLOW } from '@/lib/sectors';
 import { SizeBandTags, type SizeBand } from './InfantilTag';
 
 interface Props {
   /** Nome do setor pra título principal. */
   sector: string;
+  /** Nome CANÔNICO do setor (SECTOR_FLOW) quando o título exibido difere —
+   *  ex.: a ficha de palmilha rotula "Corte de Placa de Fibra" mas o setor do
+   *  fluxo é "Corte Palmilha". Sem isto o trilho não acha o passo. */
+  flowSector?: string;
   /** Ícone do setor (Phosphor — aceita className + weight). */
   icon: React.ComponentType<{ className?: string; weight?: string }>;
   /** [LEGACY] Cor de fundo do header. Mantido pra compat com chamadores, mas ignorado
@@ -108,12 +113,26 @@ const FlowRail = ({ current }: { current: number }) => (
  * a 50cm na fábrica.
  */
 export const WorksheetHeader = ({
-  sector, icon: Icon,
+  sector, flowSector, icon: Icon,
   imageSlot, identification, qrLabel, qrValue, alerts, index, lotInfo, sizeBand,
 }: Props) => {
   const editorialIndex = index || `01 / ${sector.toUpperCase()}`;
-  // Passo do fluxo (1–10) pro trilho: lê o nº à frente do index ("03 / SILK" → 3).
-  const flowStep = parseInt(editorialIndex, 10);
+  // Passo do fluxo (1–11) pro trilho.
+  //
+  // ⚠ FIX 31/07/2026 — o trilho e a faixa de cor NUNCA renderizaram em produção.
+  // Antes o passo saía de `parseInt(editorialIndex, 10)`, mas as CINCO fichas
+  // passam `index={`OP ${nº} / ${SETOR}`}` — começa em "OP", logo `parseInt`
+  // devolvia NaN, `hasFlow` era sempre false e sumiam a faixa de 7px do topo, o
+  // trilho C.PLM→EXP e a cor-assinatura (o nome do setor caía pra #000). O
+  // default do componente ("01 / SILK") funcionaria, mas nenhum chamador usa.
+  //
+  // Agora o passo vem do NOME do setor contra a ordem canônica (SECTOR_FLOW),
+  // que é a mesma dos FLOW_RAIL_STEPS. `flowSector` existe para as fichas cujo
+  // título não é o nome canônico (a Palmilha rotula "Corte de Placa de Fibra").
+  // O parseInt fica só como último fallback, pra não quebrar chamador legado.
+  const flowName = flowSector || sector;
+  const canonicalIdx = SECTOR_FLOW.indexOf(flowName);
+  const flowStep = canonicalIdx >= 0 ? canonicalIdx + 1 : parseInt(editorialIndex, 10);
   const hasFlow = Number.isFinite(flowStep) && flowStep >= 1 && flowStep <= 11;
   // Cor-assinatura do setor (faixa do topo + nome). Fora do fluxo 1–10 → preto.
   const sectorColor = hasFlow ? SECTOR_COLORS[flowStep - 1] : '#000';

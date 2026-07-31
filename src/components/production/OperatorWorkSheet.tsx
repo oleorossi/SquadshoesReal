@@ -647,7 +647,19 @@ const OperatorWorkSheet = ({ sector, sectorLabel, items, pvNumbers = [], clientN
         )}
         {isAcabamento && (
           <div className="keep-with-next">
-            <TallyBox count={boxes} pairsPerCard={pairsPerBox} totalUnits={totalPairs} title={`Caixas · ${boxes} × ${pairsPerBox} pares`} size={TALLY_SIZE} />
+            {/* `boxes` é ceil, então `boxes × pairsPerBox` ultrapassa o total
+                quando a última caixa é parcial: 90 pares em caixas de 12 saía
+                como "8 × 12 pares" (=96) ao lado de um rodapé de 90 no MESMO
+                bloco. Só afirma a multiplicação quando ela fecha. */}
+            <TallyBox
+              count={boxes}
+              pairsPerCard={pairsPerBox}
+              totalUnits={totalPairs}
+              title={boxes * pairsPerBox === totalPairs
+                ? `Caixas · ${boxes} × ${pairsPerBox} pares`
+                : `Caixas · ${boxes} (última parcial)`}
+              size={TALLY_SIZE}
+            />
           </div>
         )}
         </div>

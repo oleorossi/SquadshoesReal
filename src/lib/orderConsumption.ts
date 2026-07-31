@@ -1001,14 +1001,19 @@ export function computeConsumptionForItems(
   // Helper: o grupo (por nome) contém algum produto que casa na cor?
   const groupHasColor = (groupName: string, color: string): boolean => {
     if (!groupName || !color || color === '—') return false;
-    const normalizedColor = color.toLowerCase().trim();
+    // Acento-insensitive (fix 31/07/2026): usava toLowerCase() puro, então
+    // "Café" do pedido não casava com "CAFE" do produto e o grupo era dado
+    // como SEM a cor — divergindo do `group_covers_color` do SQL, que já
+    // normaliza. Sintoma: consumo caía no fallback do grupo em vez de achar
+    // o produto da cor certa.
+    const normalizedColor = normColorCanonical(color);
     const group = (productGroups || []).find((g: any) => g.name === groupName);
     if (!group) return false;
 
     return (allProducts || []).some((p: any) => {
       if (p.group_id !== group.id) return false;
-      const pName = (p.name || '').toLowerCase();
-      const pColor = (p.color || '').toLowerCase();
+      const pName = normColorCanonical(p.name);
+      const pColor = normColorCanonical(p.color);
 
       if (pColor === normalizedColor || pName === normalizedColor) return true;
       const afterDelimiter = pName.includes(':') ? pName.split(':').pop()?.trim() : pName.includes('-') ? pName.split('-').pop()?.trim() : '';
