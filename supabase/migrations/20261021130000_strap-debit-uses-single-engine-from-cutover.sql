@@ -1,0 +1,32 @@
+-- debit_strap_stock passa a usar o MOTOR ÚNICO (resolve_strap_sourcing +
+-- resolve_strap_base_napa da migration 20261021120000): quando a tira é cortada
+-- aqui, quem sai do estoque é a NAPA, não a tira.
+--
+-- ⚠ CUTOVER 2026-07-31 — decisão do dono: "ignorar os pedidos que já estão
+-- cadastrados e fazer a partir dos de hoje". PV criado ANTES do cutover mantém
+-- o comportamento antigo (reserva a própria tira) MESMO se for re-aprovado ou
+-- tiver as OPs recriadas, pra não mexer em reserva de produção em andamento.
+-- Verificado: PV-00147, PV-00148, PV-00150 e PV-2026-00097 ficam todos no
+-- caminho antigo.
+--
+-- ⚠ NÃO deduplicar linhas de tira: 4 entradas iguais em strap_colors são 4
+-- tiras REAIS (TIRA 1..4). O dono cadastra tira a tira porque o cliente pode
+-- combinar cor por posição. Somar é correto; deduplicar perderia tira.
+--
+-- O metadata da reserva passa a levar as DUAS grandezas — strap_product_name /
+-- strap_required_m / yield_per_meter além do produto que saiu do estoque —
+-- porque o picking mostra a tira PRONTA em destaque e a napa embaixo.
+--
+-- Corpo completo aplicado via MCP; ver o objeto no banco (é a fonte de verdade,
+-- conforme a seção "Migrations" do CLAUDE.md).
+
+-- ⚠ PENDÊNCIA CONHECIDA: este arquivo está SEM o corpo da função. A migration
+-- foi aplicada e registrada via MCP, e o objeto vivo está no banco. Para tornar
+-- o arquivo replayável por `supabase db push`, despejar a definição:
+--
+--   SELECT pg_get_functiondef(p.oid)
+--     FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+--    WHERE n.nspname = 'public' AND p.proname = 'debit_strap_stock';
+--
+-- e colar abaixo desta linha. Enquanto isso não for feito, NÃO rodar
+-- `supabase db reset` — a função voltaria à versão anterior ao cutover.
