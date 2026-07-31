@@ -2543,10 +2543,14 @@ export default function SaleOrders() {
                       <ShoppingCart className="h-3.5 w-3.5" /> Gerar OCs
                     </Button>
                   )}
-                  {/* Picking individual — esconde quando já foi feito (badge no
-                      header já indica). Isso evita: (a) duplicar UI redundante,
-                      (b) confundir operador achando que pode re-rodar. Pra
-                      reverter, usar release_order_reservations por OP ou cancelar. */}
+                  {/* Picking individual — desde 31/07/2026 a baixa sai sozinha na
+                      LIBERAÇÃO PRA PRODUÇÃO (consumeReservationsOnRelease), que
+                      também marca picking_individually_done_at. Como este botão só
+                      aparece enquanto essa marca está vazia, ele deixou de ser o
+                      gesto principal e virou FALLBACK: PV liberado antes da mudança,
+                      ou liberação em que a baixa automática falhou (o toast avisa).
+                      Manter — é a única forma de repetir a baixa sem esperar o
+                      faturamento. Pra reverter, release_order_reservations por OP. */}
                   {!(selectedOrder as any).picking_individually_done_at && (
                     <Button
                       variant="outline"
@@ -2555,18 +2559,18 @@ export default function SaleOrders() {
                       disabled={commitPicking.isPending}
                       onClick={() => {
                         if (!confirm(
-                          `Confirmar picking de TODOS os materiais reservados deste PV?\n\n` +
-                          `Isso vai dar baixa em estoque de cada item (subtrai products.quantity, registra stock_movement '\''out'\''). ` +
-                          `Use quando quiser rodar pedido a pedido em vez de aguardar a onda semanal.\n\n` +
-                          `Após confirmar, este PV é EXCLUÍDO do Picking Semanal pra evitar débito em duplicidade. ` +
-                          `Itens com estoque insuficiente serão pulados (resto continua). Operação registrada por usuário no histórico.`
+                          `Baixar agora o material reservado deste PV?\n\n` +
+                          `Normalmente isso acontece sozinho quando o pedido é liberado pra produção. ` +
+                          `Use aqui se o pedido foi liberado antes dessa regra existir, ou se a baixa automática falhou.\n\n` +
+                          `Cada item sai do estoque (subtrai products.quantity e registra movimento de saída). ` +
+                          `Itens sem saldo são pulados e o resto continua — o que faltar ainda sai no faturamento.`
                         )) return;
                         commitPicking.mutate(selectedOrder.id);
                       }}
-                      title="Debita em massa todas as reservas soft das OPs deste PV e exclui do Picking Semanal"
+                      title="Fallback: baixa as reservas deste PV agora, caso a baixa automática da liberação pra produção não tenha rodado"
                     >
                       {commitPicking.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Hand className="h-3.5 w-3.5" />}
-                      Picking Realizado
+                      Baixar material
                     </Button>
                   )}
                   <Button variant="outline" size="sm" className="gap-2" onClick={() => setMarginDialogOpen(true)}><TrendingUp className="h-3.5 w-3.5" /> Margem</Button>

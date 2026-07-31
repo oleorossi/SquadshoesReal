@@ -9,6 +9,7 @@ import { syncFinancialRecordsCore } from '@/lib/financialSync';
 import { isValidStatusTransition } from '@/lib/saleOrderStateMachine';
 import { logAuditEvent } from '@/services/auditService';
 import { recomputeMaterialGate } from '@/hooks/useMaterialGate';
+import { consumeReservationsOnRelease } from '@/lib/releaseConsumption';
 import { canonicalStageOrder } from '@/components/production/worksheet/stageOrder';
 
 // Setores default de uma OP — nomes CANÔNICOS ('Aviamento', não o legado 'Mesa';
@@ -752,6 +753,11 @@ export function useUpdateSaleOrderStatus() {
           }
         }
 
+        // Liberou pra produção = material sai da prateleira. Consome as reservas
+        // que a RPC acabou de criar (ver `releaseConsumption.ts`). Best-effort:
+        // falta de estoque não trava a promoção, e o faturamento segue como rede.
+        await consumeReservationsOnRelease(id);
+
         // Gate de material: as OPs acabaram de nascer/entrar em produção, então
         // o início do Corte tem que refletir quando o material tem como chegar
         // (auditoria Crítico #1). Silencioso — não pode derrubar a promoção.
@@ -1371,6 +1377,12 @@ export function useUpdateSaleOrderStatus() {
             }
           }
         }
+
+        // Caminho Aprovado → Em Produção: as OPs já estavam reservadas desde a
+        // aprovação; liberar pra produção é o gesto em que o material sai da
+        // prateleira, então consome as reservas agora (ver `releaseConsumption.ts`).
+        // Espelha a promoção direta acima — os dois caminhos baixam no mesmo ponto.
+        await consumeReservationsOnRelease(id);
       }
 
       // Quando "Aprovado", criar OPs, debitar materiais com estoque e gerar MRP para faltas
