@@ -204,20 +204,13 @@ export const CartaoLote = ({
       )}
 
       {/* Rodapé: campo manuscrito + código do lote */}
+      {/* Rodapé só com o código do lote — a linha de assinatura foi RETIRADA a
+          pedido do dono (31/07/2026): quem assina é a ficha do setor, não cada
+          cartão. Devolveu ~6mm de altura, o que tirou a 4ª linha da margem. */}
       <div style={{
         borderTop: '1.5px solid #000', paddingTop: '1mm',
-        display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: '2mm',
+        display: 'flex', justifyContent: 'flex-end', alignItems: 'flex-end', gap: '2mm',
       }}>
-        {/* RUBRICA, não campo de nome. A tabela de pisos do CLAUDE.md separa os
-            dois: "campo manuscrito (nome, qtd, data)" tem piso 20px (~5,3mm),
-            "linha só de rubrica/visto" tem piso 15px (~4mm). Num cartão de lote
-            o operador dá o visto, não escreve o nome inteiro — então 4mm está
-            no piso correto. A 1ª versão rotulava "Executado por" com 4,5mm:
-            prometia campo de nome num espaço abaixo do piso dele. */}
-        <div style={{ flex: 1, maxWidth: '55%' }}>
-          <span style={lbl}>Visto</span>
-          <div style={{ borderBottom: '1.5px solid #000', height: '4mm' }} />
-        </div>
         {lotCode && (
           <span style={{ fontFamily: DISPLAY, fontSize: 14, lineHeight: 1, flex: 'none' }}>
             {lotCode}
