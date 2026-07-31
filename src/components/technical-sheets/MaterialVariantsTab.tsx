@@ -176,6 +176,7 @@ function GroupCombobox({
       description_override: '',
       unit_price_override: null,
       active: true,
+      main_material_group_id: null,
       upper_material_product_id: null,
       upper_material_group_id: null,
       upper_consumption_override: null,
@@ -296,6 +297,7 @@ function GroupCombobox({
           description_override: '',
           unit_price_override: null,
           active: true,
+          main_material_group_id: null,
           upper_material_product_id: null,
           upper_material_group_id: null,
           lining_material_group_id: null,
@@ -306,22 +308,31 @@ function GroupCombobox({
      setIsDialogOpen(true);
    };
 
-   // Seleção de grupo de Cabedal: aponta o grupo, LIMPA o pin de produto legado
-   // (pra o motor resolver por grupo+cor) e auto-preenche identidade fiscal a
-   // partir do grupo/produto representativo — só nos campos ainda vazios, pra
-   // não sobrescrever o que o usuário já digitou.
-   const handlePickCabedalGroup = (groupId: string | null) => {
+   // MATERIAL PRINCIPAL: é o que a variante É. Cascateia pros componentes que a
+   // ficha liberou (variant_drives_*), então define nome/SKU/NCM da variante.
+   // NÃO auto-preenche `unit_price_override`: esse campo é o PREÇO DE VENDA do
+   // par, e o `unit_price` do grupo é o custo por dm² da napa — foi assim que o
+   // EC23 ficou com "R$ 0,8668" de preço.
+   const handlePickMainGroup = (groupId: string | null) => {
      const group = groupId ? cabedalGroups.find(g => g.id === groupId) : null;
      const rep = repProduct(groupId);
+     setFormData(prev => ({
+       ...prev,
+       main_material_group_id: groupId,
+       material_name: group?.name ?? prev.material_name ?? '',
+       sku: prev.sku && prev.sku.trim() ? prev.sku : (group ? `${sheetCode ? sheetCode + '-' : ''}${skuSlug(group.name)}` : prev.sku),
+       ncm: prev.ncm && prev.ncm.trim() ? prev.ncm : ((rep as any)?.ncm ?? prev.ncm ?? ''),
+     }));
+   };
+
+   // Exceção por componente: aponta o grupo daquele slot e LIMPA o pin de
+   // produto legado (pra o motor resolver por grupo+cor). Vence o principal.
+   const handlePickCabedalGroup = (groupId: string | null) => {
      setFormData(prev => ({
        ...prev,
        upper_material_group_id: groupId,
        upper_material_product_id: null,
        upper_consumption_override: null,
-       material_name: group?.name ?? prev.material_name ?? '',
-       sku: prev.sku && prev.sku.trim() ? prev.sku : (group ? `${sheetCode ? sheetCode + '-' : ''}${skuSlug(group.name)}` : prev.sku),
-       ncm: prev.ncm && prev.ncm.trim() ? prev.ncm : ((rep as any)?.ncm ?? prev.ncm ?? ''),
-       unit_price_override: prev.unit_price_override != null ? prev.unit_price_override : ((rep?.unit_price as number | undefined) ?? null),
      }));
    };
    const handlePickLiningGroup = (groupId: string | null) =>
@@ -340,6 +351,7 @@ function GroupCombobox({
        description_override: source.description_override,
        unit_price_override: source.unit_price_override,
        active: source.active,
+       main_material_group_id: source.main_material_group_id,
        upper_material_product_id: source.upper_material_product_id,
        upper_material_group_id: source.upper_material_group_id,
        lining_material_group_id: source.lining_material_group_id,
@@ -352,6 +364,20 @@ function GroupCombobox({
    const handleSave = async () => {
      if (!formData.material_name?.trim()) {
        toast.error('O nome do material é obrigatório');
+       return;
+     }
+
+     // Sem material principal a variante não troca material nenhum — vira um
+     // rótulo com SKU próprio. Foi exatamente esse no-op silencioso que fez o
+     // PV-00141 (EC23) vender NAPA SOFT e debitar NAPA SUDANI.
+     if (!formData.main_material_group_id
+         && !formData.upper_material_group_id
+         && !formData.lining_material_group_id
+         && !formData.insole_material_group_id
+         && !formData.upper_material_product_id) {
+       toast.error('Escolha o material principal da variante', {
+         description: 'Sem ele a variante não troca material nenhum: o PV mostra um nome/SKU diferente, mas a produção continua cortando o material da ficha.',
+       });
        return;
      }
 
@@ -380,7 +406,7 @@ function GroupCombobox({
          // mandássemos `undefined` explícito aqui, o spread `{...sourceData,
          // ...overrides}` zeraria (clobber → NULL) os overrides/pins da origem.
          const { material_name, sku, barcode, ncm, description_override,
-                 unit_price_override, active, upper_material_product_id,
+                 unit_price_override, active, main_material_group_id, upper_material_product_id,
                  upper_material_group_id, lining_material_group_id, insole_material_group_id } = formData;
          await duplicateVariant.mutateAsync({
            source_variant_id: duplicatingFromId,
@@ -393,6 +419,7 @@ function GroupCombobox({
              description_override,
              unit_price_override,
              active,
+             main_material_group_id,
              upper_material_product_id,
              upper_material_group_id,
              lining_material_group_id,
@@ -594,46 +621,78 @@ function GroupCombobox({
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-medium">Cabedal (napa) <span className="text-destructive">*</span></Label>
+                  <Label className="text-xs font-medium">Material principal <span className="text-destructive">*</span></Label>
                   <GroupCombobox
-                    value={formData.upper_material_group_id}
-                    onChange={handlePickCabedalGroup}
+                    value={formData.main_material_group_id}
+                    onChange={handlePickMainGroup}
                     groups={cabedalGroups}
                     describe={describeGroup}
                     placeholder="Selecionar grupo de napa…"
-                    ariaLabel="Grupo de cabedal"
+                    ariaLabel="Material principal da variante"
                   />
                   <p className="text-xs text-muted-foreground">
-                    A área (dm²/par) é a da ficha — muda só o material, o SKU e o valor de consumo.
+                    É o que esta variante É. Substitui o material da ficha em todos os
+                    componentes que a ficha liberar (Cabedal, Forração, Palmilha, Fachete e a
+                    base da tira artesanal). A área (dm²/par) continua sendo a da ficha.
                   </p>
+                  {formData.main_material_group_id && (
+                    <p className="text-xs text-muted-foreground">
+                      Quais componentes seguem é definido na aba <strong>Materiais</strong> da ficha.
+                      Componente não liberado mantém o material cadastrado na ficha — é o que
+                      preserva material de identidade (ex.: cabedal de palha).
+                    </p>
+                  )}
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-medium">Forro</Label>
-                    <GroupCombobox
-                      value={formData.lining_material_group_id}
-                      onChange={handlePickLiningGroup}
-                      groups={forroGroups}
-                      describe={describeGroup}
-                      placeholder="Herda a ficha"
-                      allowInherit
-                      ariaLabel="Grupo de forro"
-                    />
+                <details className="rounded-md border border-border/60 bg-muted/20 px-3 py-2">
+                  <summary className="cursor-pointer text-xs font-medium text-muted-foreground">
+                    Exceção por componente (opcional)
+                  </summary>
+                  <div className="mt-3 space-y-3">
+                    <p className="text-xs text-muted-foreground">
+                      Use só quando um componente sai de um material <em>diferente</em> do principal.
+                      Preenchido aqui, vence o material principal.
+                    </p>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-medium">Cabedal</Label>
+                      <GroupCombobox
+                        value={formData.upper_material_group_id}
+                        onChange={handlePickCabedalGroup}
+                        groups={cabedalGroups}
+                        describe={describeGroup}
+                        placeholder="Segue o material principal"
+                        allowInherit
+                        ariaLabel="Grupo de cabedal"
+                      />
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-medium">Forro</Label>
+                        <GroupCombobox
+                          value={formData.lining_material_group_id}
+                          onChange={handlePickLiningGroup}
+                          groups={forroGroups}
+                          describe={describeGroup}
+                          placeholder="Segue o material principal"
+                          allowInherit
+                          ariaLabel="Grupo de forro"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-medium">Palmilha</Label>
+                        <GroupCombobox
+                          value={formData.insole_material_group_id}
+                          onChange={handlePickInsoleGroup}
+                          groups={palmilhaGroups}
+                          describe={describeGroup}
+                          placeholder="Segue o material principal"
+                          allowInherit
+                          ariaLabel="Grupo de palmilha"
+                        />
+                      </div>
+                    </div>
                   </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-medium">Palmilha</Label>
-                    <GroupCombobox
-                      value={formData.insole_material_group_id}
-                      onChange={handlePickInsoleGroup}
-                      groups={palmilhaGroups}
-                      describe={describeGroup}
-                      placeholder="Herda a ficha"
-                      allowInherit
-                      ariaLabel="Grupo de palmilha"
-                    />
-                  </div>
-                </div>
+                </details>
               </section>
 
               {/* SEÇÃO — Identidade fiscal (auto-preenchida do grupo, editável) */}
@@ -643,7 +702,7 @@ function GroupCombobox({
                     <Tag className="h-3.5 w-3.5 text-primary" />
                     <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Identidade fiscal</h4>
                   </div>
-                  {formData.upper_material_group_id && (
+                  {formData.main_material_group_id && (
                     <span className="text-[10px] text-muted-foreground">Auto-preenchido · editável</span>
                   )}
                 </div>
@@ -720,8 +779,8 @@ function GroupCombobox({
 
                 <div className="space-y-1.5">
                   <Label htmlFor="price" className="text-xs font-medium flex items-center gap-1.5">
-                    Preço unitário <span className="font-normal text-muted-foreground">(opcional)</span>
-                    <span title="Se preenchido, substitui o custo calculado da ficha técnica na NF-e/pedido.">
+                    Preço de venda do par <span className="font-normal text-muted-foreground">(opcional)</span>
+                    <span title="Preço sugerido ao escolher esta variante no PV. A tabela de preço do cliente continua tendo prioridade. Não é custo — o custo vem do custeio da ficha.">
                       <Info className="h-3.5 w-3.5 text-muted-foreground" />
                     </span>
                   </Label>
@@ -733,8 +792,12 @@ function GroupCombobox({
                     className="h-9 tabular-nums"
                     value={formData.unit_price_override ?? ''}
                     onChange={e => setFormData(prev => ({ ...prev, unit_price_override: e.target.value ? parseFloat(e.target.value) : null }))}
-                    placeholder="Herda o custo da ficha"
+                    placeholder="Sem preço próprio"
                   />
+                  <p className="text-xs text-muted-foreground">
+                    Sugerido no PV quando o preço do item ainda está zerado. Prioridade:
+                    tabela do cliente &gt; preço da variante &gt; preço da ficha.
+                  </p>
                 </div>
 
                 <div className="space-y-1.5">

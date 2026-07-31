@@ -790,14 +790,20 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     const currentStraps = Array.isArray(item.strap_colors) ? (item.strap_colors as any[]) : [];
     const { index: idx, onUpdate: update } = latestRef.current;
 
-    // Auto-popula o preço quando está 0 e a ref carregou/mudou. Prioridade: preço
-    // da TABELA do cliente (price_list_items via priceLookup); sem tabela/sem preço
-    // pra ref+cor, cai no sale_price da ficha (comportamento legado). priceLookup
-    // entra nas deps deste effect p/ reaplicar quando o pricing do cliente carrega.
+    // Auto-popula o preço quando está 0 e a ref carregou/mudou. Prioridade:
+    // TABELA do cliente (price_list_items via priceLookup) > preço da VARIANTE
+    // (unit_price_override) > sale_price da ficha (comportamento legado).
+    // priceLookup entra nas deps deste effect p/ reaplicar quando o pricing do
+    // cliente carrega.
     if (selectedRef && item.unit_price === 0) {
       const qty = Number(item.quantity) || 0;
       const tablePrice = priceLookup ? resolvePrice(priceLookup, selectedRef.id, item.color || '', qty) : 0;
-      const autoPrice = tablePrice > 0 ? tablePrice : selectedRef.sale_price;
+      const variantPrice = item.material_variant_id
+        ? Number(activeMaterialVariants.find(v => v.id === item.material_variant_id)?.unit_price_override) || 0
+        : 0;
+      const autoPrice = tablePrice > 0 ? tablePrice
+        : variantPrice > 0 ? variantPrice
+        : selectedRef.sale_price;
       if (autoPrice != null) update(idx, 'unit_price', autoPrice);
       if (tablePrice > 0) lastAppliedTablePrice.current = tablePrice;
     }
@@ -920,6 +926,20 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
       update(idx, 'material_variant_id', activeMaterialVariants[0].id);
     }
   }, [item.reference_id, activeMaterialVariants.length]);
+
+  // Preço próprio da variante: aplica ao ESCOLHER a variante, e só com o campo
+  // zerado — a tabela do cliente e o preço digitado à mão continuam ganhando.
+  // Effect separado de propósito: o de cima roda por troca de referência e
+  // carrega o sync de tiras junto; pendurar a variante lá reexecutaria aquilo.
+  useEffect(() => {
+    if (!item.material_variant_id || item.unit_price !== 0) return;
+    const variantPrice = Number(
+      activeMaterialVariants.find(v => v.id === item.material_variant_id)?.unit_price_override,
+    ) || 0;
+    if (variantPrice <= 0) return;
+    const { index: idx, onUpdate: update } = latestRef.current;
+    update(idx, 'unit_price', variantPrice);
+  }, [item.material_variant_id, item.unit_price, activeMaterialVariants]);
 
   // Auto-sincroniza cor das tiras com a cor principal do item. Regra de negócio
   // (user em 2026-05): "cor da sandália = cor da forração; em modelos com tiras,

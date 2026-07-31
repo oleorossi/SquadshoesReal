@@ -14,6 +14,12 @@ const ALL_ACTIVE_KEY = ['reference_material_variants', 'all_active'] as const;
    barcode: string;
    ncm: string;
    description_override: string;
+   /** Material PRINCIPAL da variante (grupo). É o que a variante É — cascateia
+    *  pros componentes que a ficha liberou em `technical_sheets.variant_drives_*`
+    *  (mig 20261027120000). Os pinos por componente abaixo são EXCEÇÃO e vencem
+    *  este campo. Sem ele a variante só trocava o slot pinado, e o cabedal nunca
+    *  mudava de família. */
+   main_material_group_id: string | null;
    upper_material_product_id: string | null;
    /** Grupo de cabedal (napa) da variação. Resolve produto por grupo+cor do PV.
     *  NULL = herda a ficha. Precedência no motor: product_id (legado) > este grupo
@@ -269,6 +275,7 @@ export type VariantSummary = { id: string; material_name: string; sku: string | 
  *  omitidos, o UPDATE não toca neles (preserva valores existentes) e o INSERT
  *  cai no default do banco (NULL). NÃO enviar null explícito num edit parcial. */
 type VariantOverrideKeys =
+  | 'main_material_group_id'
   | 'upper_material_group_id' | 'upper_consumption_override'
   | 'lining_material_product_id' | 'lining_material_group_id' | 'lining_consumption_override'
   | 'insole_material_product_id' | 'insole_material_group_id' | 'insole_consumption_override'
