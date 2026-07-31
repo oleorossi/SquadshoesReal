@@ -5,7 +5,7 @@ import { thumbUrl } from '@/lib/imageThumb';
 import { ProductionOrder } from '@/types/inventory';
 import { scaleGradeWithLargestRemainder } from '@/lib/scaleGrade';
 import { adaptiveFontSize } from '@/lib/adaptiveFontSize';
-import { gradeTableFont } from './worksheet/adaptiveFont';
+import { gradeTableFont, floorSafeScale } from './worksheet/adaptiveFont';
 import { resolveFicha } from './worksheet/fichaSize';
 import { TallyBox } from './worksheet/TallyBox';
 import { TALLY_SIZE } from './worksheet/density';
@@ -697,7 +697,16 @@ const OperatorWorkSheet = ({ sector, sectorLabel, items, pvNumbers = [], clientN
     ...items.flatMap((item, gi) => buildItemBlocks(item, gi)),
   ];
 
-  return <PaginatedSheet sectorLabel={sectorLabel || sector} blocks={blocks} />;
+  // Piso do auto-fit vindo do CONTEÚDO: o bucket mais denso desta ficha decide
+  // o quanto o PaginatedSheet pode encolher sem furar os pisos tipográficos.
+  // Sem isto o AUTO_FIT_FLOOR global (0.80) encolhia por cima de fontes que já
+  // estavam no piso. Decisão do dono 31/07/2026: legibilidade vence densidade.
+  const minScale = items.reduce((mx, it) => {
+    const sizes = Object.keys(it.order.grid || {});
+    const cols = sizes.length <= 12 ? sizes.length : 12;
+    return Math.max(mx, floorSafeScale(gradeTableFont(sizes.slice(0, cols))));
+  }, 0);
+  return <PaginatedSheet sectorLabel={sectorLabel || sector} blocks={blocks} minScale={minScale} />;
 };
 
 export default OperatorWorkSheet;

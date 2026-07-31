@@ -83,3 +83,46 @@ export function gradeTableFont(sizeKeys: ReadonlyArray<string>, dense = false): 
   const longestKey = sizeKeys.reduce((m, s) => Math.max(m, String(s).length), 0);
   return { ...adaptiveTableFont(sizeKeys.length + 2, longestKey, dense ? 1 : 0), longestKey };
 }
+
+/**
+ * PISOS TIPOGRÁFICOS por papel de célula (CLAUDE.md → "Tamanho de fonte em
+ * print"). Em px, que é a unidade real dos componentes de print.
+ */
+export const FONT_FLOORS = {
+  /** Rótulo mono UPPERCASE (cabeçalho de numeração). */
+  headerPx: 6.5,
+  /** Célula de dados / mono. */
+  cellPx: 8,
+  /** Número de grade em Anton. */
+  displayPx: 12,
+  /** Texto corrido (referência, material). */
+  textPx: 7.5,
+} as const;
+
+/**
+ * Menor escala que o auto-fit do `PaginatedSheet` pode aplicar sobre este
+ * bucket SEM levar nenhum elemento abaixo do seu piso.
+ *
+ * Existe porque o auto-fit e a tabela de pisos não se conheciam: o
+ * `AUTO_FIT_FLOOR = 0.80` aplicava zoom por cima de fontes que já estavam NO
+ * piso. No bucket 4 (grade densa) isso levava célula de 8px → 6,4px e número
+ * de grade de 12px → 9,6px — abaixo do mínimo legível no chão de fábrica.
+ *
+ * O dono decidiu em 31/07/2026: **legibilidade vence densidade**. O auto-fit
+ * passa a parar antes de furar o piso, gastando uma folha a mais.
+ *
+ * Como cada elemento tem piso próprio, a escala mínima é o MAIOR dos
+ * `piso ÷ valor` — basta um elemento chegar no piso pra travar o conjunto:
+ *   bucket 0 e 1 → 0,75 (o 0.80 global segue mandando)
+ *   bucket 2     → 0,833
+ *   bucket 3     → 0,938
+ *   bucket 4     → 1,000 (já está todo no piso: NÃO pode encolher)
+ */
+export function floorSafeScale(font: AdaptiveTableFont): number {
+  return Math.max(
+    FONT_FLOORS.headerPx / font.headerPx,
+    FONT_FLOORS.cellPx / font.cellPx,
+    FONT_FLOORS.displayPx / font.displayPx,
+    FONT_FLOORS.textPx / font.textPx,
+  );
+}

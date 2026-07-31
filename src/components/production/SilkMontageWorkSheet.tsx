@@ -1,7 +1,7 @@
 import React from 'react';
 import { PaintBrush as Paintbrush, Hammer, Pen, Paperclip, Sparkle as Sparkles, Cloud, Scissors, Warning as AlertTriangle } from '@phosphor-icons/react';
 import { adaptiveLabelFontSize } from '@/lib/adaptiveFontSize';
-import { gradeTableFont } from './worksheet/adaptiveFont';
+import { gradeTableFont, floorSafeScale } from './worksheet/adaptiveFont';
 import { TallyBox } from './worksheet/TallyBox';
 import { WorksheetHeader } from './worksheet/WorksheetHeader';
 import { HeaderIdentification } from './worksheet/HeaderIdentification';
@@ -1572,5 +1572,13 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
     ...(strapTrailingBlock ? [{ node: strapTrailingBlock, keepWithPrev: true }] : []),
   ];
 
-  return <PaginatedSheet sectorLabel={sectorLabel || sector} blocks={blocks} />;
+  // Piso do auto-fit vindo do CONTEÚDO: o bucket mais denso desta ficha decide
+  // o quanto o PaginatedSheet pode encolher sem furar os pisos tipográficos.
+  // Sem isto o AUTO_FIT_FLOOR global (0.80) encolhia por cima de fontes que já
+  // estavam no piso. Decisão do dono 31/07/2026: legibilidade vence densidade.
+  // `theme.compact` rebaixa um bucket — precisa entrar na conta, senão o piso
+  // sai otimista justo no layout mais denso (Corte Forração / Silk).
+  const minScale = groups.reduce((mx, g) => g.colorGroups.reduce((m2, cg) => Math.max(m2,
+    floorSafeScale(gradeTableFont(Object.keys(cg.combinedGrid || {}), theme.compact))), mx), 0);
+  return <PaginatedSheet sectorLabel={sectorLabel || sector} blocks={blocks} minScale={minScale} />;
 };

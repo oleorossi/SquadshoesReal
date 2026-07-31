@@ -1,7 +1,7 @@
 import React from 'react';
 import { Scissors } from '@phosphor-icons/react';
 import { adaptiveLabelFontSize } from '@/lib/adaptiveFontSize';
-import { gradeTableFont } from './worksheet/adaptiveFont';
+import { gradeTableFont, floorSafeScale } from './worksheet/adaptiveFont';
 import { thumbUrl } from '@/lib/imageThumb';
 import { TallyBox } from './worksheet/TallyBox';
 import { TALLY_SIZE } from './worksheet/density';
@@ -453,5 +453,11 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, pairsPerCard = 12, sizeBan
     { node: <CompletionFooter />, keepWithPrev: true },
   ];
 
-  return <PaginatedSheet sectorLabel={sectorLabel || 'Corte de Placa de Fibra'} blocks={blocks} />;
+  // Piso do auto-fit vindo do CONTEÚDO: o bucket mais denso desta ficha decide
+  // o quanto o PaginatedSheet pode encolher sem furar os pisos tipográficos.
+  // Sem isto o AUTO_FIT_FLOOR global (0.80) encolhia por cima de fontes que já
+  // estavam no piso. Decisão do dono 31/07/2026: legibilidade vence densidade.
+  const minScale = groups.reduce((mx, g) => Math.max(mx,
+    floorSafeScale(gradeTableFont(Object.keys(g.grade || {})))), 0);
+  return <PaginatedSheet sectorLabel={sectorLabel || 'Corte de Placa de Fibra'} blocks={blocks} minScale={minScale} />;
 };

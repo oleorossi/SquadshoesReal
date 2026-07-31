@@ -1,6 +1,6 @@
 import React from 'react';
 import { Truck, Package, MapPin, Phone, Receipt } from '@phosphor-icons/react';
-import { adaptiveTableFont } from './worksheet/adaptiveFont';
+import { adaptiveTableFont, floorSafeScale } from './worksheet/adaptiveFont';
 import { thumbUrl } from '@/lib/imageThumb';
 import { TallyBox } from './worksheet/TallyBox';
 import { TALLY_SIZE } from './worksheet/density';
@@ -409,5 +409,10 @@ export const ExpedicaoWorkSheet = ({ group, sizeBand, sectorLabel }: Props) => {
     { node: checklistBlock, keepWithPrev: true },
   ];
 
-  return <PaginatedSheet sectorLabel={sectorLabel || `Expedição · ${group.client_name}`} blocks={blocks} />;
+  // Piso do auto-fit vindo do CONTEÚDO: o bucket mais denso desta ficha decide
+  // o quanto o PaginatedSheet pode encolher sem furar os pisos tipográficos.
+  // Sem isto o AUTO_FIT_FLOOR global (0.80) encolhia por cima de fontes que já
+  // estavam no piso. Decisão do dono 31/07/2026: legibilidade vence densidade.
+  const minScale = floorSafeScale(ft);
+  return <PaginatedSheet sectorLabel={sectorLabel || `Expedição · ${group.client_name}`} blocks={blocks} minScale={minScale} />;
 };

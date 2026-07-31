@@ -198,9 +198,16 @@ interface PaginatedSheetProps {
   blocks: SheetBlock[];
   /** Estilo extra aplicado a cada página (ex.: fontSize 10pt do relatório). */
   pageStyle?: React.CSSProperties;
+  /** Menor escala que o auto-fit pode aplicar NESTE documento, por causa dos
+   *  pisos tipográficos do conteúdo (`floorSafeScale` do adaptiveFont).
+   *  O auto-fit e a tabela de pisos não se conheciam: o AUTO_FIT_FLOOR global
+   *  encolhia por cima de fontes que já estavam no piso (bucket 4: célula
+   *  8px → 6,4px). Decisão do dono 31/07/2026: legibilidade vence densidade.
+   *  Sem valor, mantém o comportamento antigo (só o piso global). */
+  minScale?: number;
 }
 
-export const PaginatedSheet = ({ sectorLabel, blocks, pageStyle }: PaginatedSheetProps) => {
+export const PaginatedSheet = ({ sectorLabel, blocks, pageStyle, minScale }: PaginatedSheetProps) => {
   const nodes = blocks.map(b => (isWrappedBlock(b) ? b.node : b));
   const keepFlags = blocks.map(b => (isWrappedBlock(b) ? !!b.keepWithPrev : false));
   const keepNextFlags = blocks.map(b => (isWrappedBlock(b) ? !!b.keepWithNext : false));
@@ -316,7 +323,12 @@ export const PaginatedSheet = ({ sectorLabel, blocks, pageStyle }: PaginatedShee
         // à toa). O gate antigo de <15% da última página foi removido em
         // 2026-06-19 (deixava passar última-página meia-cheia).
         const target = baseTotal - 1;
-        for (let s = 1 - AUTO_FIT_STEP; s >= AUTO_FIT_FLOOR - 1e-9; s -= AUTO_FIT_STEP) {
+        // Piso EFETIVO: o global (densidade) OU o do conteúdo (legibilidade),
+        // o que for mais restritivo. Num bucket denso o `minScale` chega a 1,0
+        // e o auto-fit simplesmente não encolhe — a ficha ganha uma folha em
+        // vez de números ilegíveis.
+        const effectiveFloor = Math.max(AUTO_FIT_FLOOR, minScale ?? 0);
+        for (let s = 1 - AUTO_FIT_STEP; s >= effectiveFloor - 1e-9; s -= AUTO_FIT_STEP) {
           // mesma previsão de impressão (× PRINT_INFLATE) que a base
           const scaled = heights.map(h => h * s * PRINT_INFLATE);
           const p = packBlocks(scaled, PAGE_CAPACITY_PX, BLOCK_GAP_PX, keepFlags, keepNextFlags);
