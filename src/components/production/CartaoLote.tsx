@@ -40,8 +40,15 @@ export interface CartaoLoteProps {
   lotLabel?: string;
   /** Identificador curto impresso no rodapé ("S-03/05"). */
   lotCode?: string;
-  /** Foto da referência (miniatura ao lado do texto). */
+  /** Foto da referência (miniatura ao lado do texto). Fallback de `images`. */
   imageUrl?: string | null;
+  /** Fotos POR REFERÊNCIA (31/07/2026). Quando o cartão junta vários modelos
+   *  na mesma cor — Corte Forração, PV-00147: DS20 + DS22 + S-039 numa napa só
+   *  — uma foto apenas mostrava o primeiro modelo e escondia os outros dois do
+   *  cortador. Com 2+ entradas cada foto ganha o código da ref e as fichas
+   *  DELA, que é o número que ele confere na bancada. Vazio/ausente ⇒ cai em
+   *  `imageUrl` e nada muda pros demais setores. */
+  images?: Array<{ url: string; refLabel?: string; fichas?: number; refCount?: number }>;
   /** DESTAQUE em vermelho — cor do lote (identidade nº 1 do chão de fábrica). */
   title: string;
   /** Linha neutra sob o destaque (solado, napa, referência…). */
@@ -68,15 +75,31 @@ const lbl: React.CSSProperties = {
   textTransform: 'uppercase', color: '#555', display: 'block', lineHeight: 1.2,
 };
 
+/** Lado da miniatura no cartão, por nº de modelos. Espelha a lógica do
+ *  `compactThumbPx` da ficha, em mm: o cartão tem 95,5mm e o título usa
+ *  ellipsis — três fotos de 9mm comeriam a cor. Piso de 7mm: abaixo disso a
+ *  sandália vira borrão e a foto deixa de servir pra conferir. */
+export function cartaoThumbMm(count: number): number {
+  if (count <= 1) return 9;
+  if (count === 2) return 8;
+  return 7;
+}
+
 export const CartaoLote = ({
   sectorIndex, sectorName, pvLabel, dueLabel, lotLabel, lotCode,
-  imageUrl, title, subtitle, sizes, grade, totalPairs, refs, note,
+  imageUrl, images, title, subtitle, sizes, grade, totalPairs, refs, note,
 }: CartaoLoteProps) => {
   // A grade é o bloco que define a largura mínima do cartão: 8 colunas
   // (7 numerações + total) em 94mm úteis ≈ 11.7mm cada. Abaixo de 93mm de
   // largura o `table-layout: fixed` do CSS de print CORTA o número (o operador
   // lê "18" onde estava "180") — por isso o cartão não estreita além de 99mm.
   const cols = sizes.length + 1;
+  const thumbs = (images || []).filter(t => !!t.url);
+  const thumbMm = cartaoThumbMm(thumbs.length);
+  // Rotula por nº de MODELOS, não de fotos: duas refs que compartilham a mesma
+  // imagem viram 1 miniatura, e sem contar `refCount` o cartão esconderia que
+  // ali moram dois modelos — exatamente o que se quer evitar.
+  const multi = thumbs.reduce((s, t) => s + Math.max(1, t.refCount ?? 1), 0) > 1;
 
   return (
     <div
@@ -113,7 +136,46 @@ export const CartaoLote = ({
       {/* Identidade do lote: foto + cor em VERMELHO + quantidade */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '2.5mm' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '2mm', minWidth: 0 }}>
-          {imageUrl && (
+          {thumbs.length > 0 ? (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1mm', flex: 'none' }}>
+              {thumbs.map((t, i) => (
+                <div key={t.url + i} style={{ flex: 'none' }}>
+                  <img
+                    src={t.url}
+                    alt=""
+                    style={{
+                      width: `${thumbMm}mm`, height: `${thumbMm}mm`, objectFit: 'cover',
+                      border: '1px solid #000', background: '#F2F0EB', display: 'block',
+                    }}
+                  />
+                  {/* Só com 2+ modelos: sem isso o cortador não sabe de quem é
+                      cada foto nem quanto cortar de cada uma. Com 1 modelo o
+                      total do cartão JÁ é o dele — repetir só polui. */}
+                  {multi && (
+                    <div style={{ width: `${thumbMm}mm`, textAlign: 'center', lineHeight: 1.1 }}>
+                      {t.fichas != null && t.fichas > 0 && (
+                        <span style={{ fontFamily: DISPLAY, fontSize: 9, color: RED, display: 'block' }}>
+                          {t.fichas}
+                        </span>
+                      )}
+                      {t.refLabel && (
+                        <span
+                          style={{
+                            fontFamily: MONO, fontSize: 6.5, letterSpacing: '0.04em',
+                            textTransform: 'uppercase', color: RED, display: 'block',
+                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                          }}
+                          title={t.refLabel}
+                        >
+                          {t.refLabel}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : imageUrl ? (
             <img
               src={imageUrl}
               alt=""
@@ -122,7 +184,7 @@ export const CartaoLote = ({
                 border: '1px solid #000', background: '#F2F0EB', display: 'block',
               }}
             />
-          )}
+          ) : null}
           <div style={{ minWidth: 0 }}>
             {/* Vermelho + Anton grande: o destaque sobrevive mesmo quando o
                 laser P&B da fábrica converte o vermelho em cinza. */}

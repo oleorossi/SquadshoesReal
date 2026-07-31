@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { render } from '@testing-library/react';
 import { collectCompactThumbs, compactThumbPx, SilkMontageWorkSheet, type SilkColorGroup, type SoleSilkGroup } from '../SilkMontageWorkSheet';
+import { CartaoLote, cartaoThumbMm } from '../CartaoLote';
 
 // PaginatedSheet observa cada bloco com ResizeObserver — inexistente no jsdom.
 beforeAll(() => {
@@ -207,5 +208,96 @@ describe('SilkMontageWorkSheet · faixa de fotos no Corte Forração', () => {
     const imgs = Array.from(container.querySelectorAll('img'))
       .filter(i => /ref-a\.jpg/.test(i.getAttribute('src') || ''));
     expect(imgs).toHaveLength(0);
+  });
+});
+
+/**
+ * CARTÃO DE LOTE — o artefato que a fábrica realmente imprime no Corte Forração.
+ *
+ * Regressão de 31/07/2026: o cartão do PV-00147 ("OFF WHITE · NAPA SUDANI",
+ * 1.008 pares) junta DS20 + DS22 + S-039 e saía com UMA foto. A causa não estava
+ * no motor nem na ficha — ambos corretos e já cobertos acima — mas no fato de o
+ * CartaoLote aceitar só `imageUrl` escalar, derivado do spread da PRIMEIRA ref
+ * fundida. Duas correções minhas anteriores erraram o alvo por isso; estes
+ * testes existem pra que ninguém volte a olhar só pro lado da ficha.
+ */
+describe('CartaoLote · fotos por referência', () => {
+  const baseProps = {
+    sectorName: 'Corte Forração',
+    title: 'OFF WHITE · NAPA SUDANI',
+    sizes: ['34', '35'],
+    grade: { '34': 12, '35': 12 },
+    totalPairs: 24,
+  };
+
+  const imgsOf = (container: HTMLElement, re: RegExp) =>
+    Array.from(container.querySelectorAll('img')).filter(i => re.test(i.getAttribute('src') || ''));
+
+  it('renderiza uma foto por referência quando o cartão junta 3 modelos', () => {
+    const { container } = render(
+      <CartaoLote
+        {...baseProps}
+        images={[
+          { url: IMG_A, refLabel: 'DS20', fichas: 24 },
+          { url: IMG_B, refLabel: 'DS22', fichas: 24 },
+          { url: IMG_C, refLabel: 'S-039', fichas: 36 },
+        ]}
+      />,
+    );
+    expect(imgsOf(container, /ref-[abc]\.jpg/)).toHaveLength(3);
+    // o cortador precisa saber de quem é cada foto E quanto cortar de cada uma
+    expect(container.textContent).toContain('DS20');
+    expect(container.textContent).toContain('DS22');
+    expect(container.textContent).toContain('S-039');
+    expect(container.textContent).toContain('36');
+  });
+
+  it('mantém o imageUrl escalar quando não há fotos por referência', () => {
+    const { container } = render(<CartaoLote {...baseProps} imageUrl={IMG_A} />);
+    expect(imgsOf(container, /ref-a\.jpg/)).toHaveLength(1);
+  });
+
+  it('ignora images vazio e cai no imageUrl (retrocompat dos outros setores)', () => {
+    const { container } = render(<CartaoLote {...baseProps} imageUrl={IMG_A} images={[]} />);
+    expect(imgsOf(container, /ref-a\.jpg/)).toHaveLength(1);
+  });
+
+  it('não rotula quando há um modelo só — o total do cartão já é dele', () => {
+    const { container } = render(
+      <CartaoLote {...baseProps} images={[{ url: IMG_A, refLabel: 'DS20', fichas: 24 }]} />,
+    );
+    expect(imgsOf(container, /ref-a\.jpg/)).toHaveLength(1);
+    expect(container.textContent).not.toContain('DS20');
+  });
+
+  it('duas refs na MESMA foto: uma miniatura, os dois códigos (via collectCompactThumbs)', () => {
+    const thumbs = collectCompactThumbs(baseCg({
+      refImages: [
+        { sheetId: 'a', refName: 'DS20', fichas: 24, variantImageUrl: IMG_A },
+        { sheetId: 'b', refName: 'DS22', fichas: 24, variantImageUrl: IMG_A },
+      ],
+    }));
+    const { container } = render(
+      <CartaoLote
+        {...baseProps}
+        images={thumbs.map(t => ({ url: t.resolvedUrl, refLabel: t.refNames.join(' · '), fichas: t.fichas, refCount: t.refNames.length }))}
+      />,
+    );
+    expect(imgsOf(container, /ref-a\.jpg/)).toHaveLength(1);
+    expect(container.textContent).toContain('DS20 · DS22');
+    expect(container.textContent).toContain('48'); // fichas somadas
+  });
+});
+
+describe('cartaoThumbMm', () => {
+  it('9mm com um modelo, encolhendo até o piso de 7mm', () => {
+    expect(cartaoThumbMm(1)).toBe(9);
+    expect(cartaoThumbMm(2)).toBe(8);
+    expect(cartaoThumbMm(3)).toBe(7);
+  });
+
+  it('nunca fura o piso nem cresce com mais modelos', () => {
+    for (let n = 1; n <= 24; n++) expect(cartaoThumbMm(n)).toBeGreaterThanOrEqual(7);
+    for (let n = 1; n < 24; n++) expect(cartaoThumbMm(n + 1)).toBeLessThanOrEqual(cartaoThumbMm(n));
   });
 });

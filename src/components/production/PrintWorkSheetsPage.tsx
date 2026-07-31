@@ -7,7 +7,7 @@ import { Printer, ArrowLeft, Stack as Layers, Cards } from '@phosphor-icons/reac
 import OperatorWorkSheet from '@/components/production/OperatorWorkSheet';
 import { PalmilhaWorkSheet, type PalmilhaGroup } from '@/components/production/PalmilhaWorkSheet';
 import { CartaoLote } from '@/components/production/CartaoLote';
-import { SilkMontageWorkSheet, type SoleSilkGroup, type SilkColorGroup, type GroupedSector } from '@/components/production/SilkMontageWorkSheet';
+import { SilkMontageWorkSheet, collectCompactThumbs, type SoleSilkGroup, type SilkColorGroup, type GroupedSector } from '@/components/production/SilkMontageWorkSheet';
 import type { SectorAlert } from '@/components/production/worksheet/SectorAlerts';
 import { SolagemWorkSheet, type SoleColorBand } from '@/components/production/SolagemWorkSheet';
 import { ExpedicaoWorkSheet, type ExpedicaoCustomerGroup, type ExpedicaoOrder } from '@/components/production/ExpedicaoWorkSheet';
@@ -3535,6 +3535,26 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
                   || (cg.alternateVariants || []).find(v => v.image_url)?.image_url
                   || cg.technicalSheetImageUrl
                   || null;
+                // Fotos POR REFERÊNCIA no Corte Forração (31/07/2026). O `img`
+                // acima é escalar e vem do spread da PRIMEIRA ref fundida — num
+                // cartão que junta 3 modelos (PV-00147: DS20 + DS22 + S-039 em
+                // OFF WHITE · NAPA SUDANI) ele mostrava um e escondia dois.
+                // `collectCompactThumbs` é a MESMA função da ficha: dedup por
+                // foto, descarte de placeholder e a cascata de resolução
+                // completa (variante da cor → alternativa → ficha técnica), que
+                // a cascata manual acima nem tem. Gate no setor porque os
+                // outros cartões não têm por que mudar — e o Corte Cabedal em
+                // particular NÃO pode: o `mergeColorsAcrossSoles` dele não
+                // acumula refImages no ramo de fusão, então sairiam fotos
+                // incompletas (só as do 1º solado). Sem thumbs, cai no `img`.
+                const cardThumbs = sectorName === 'Corte Forração'
+                  ? collectCompactThumbs(cg).map(t => ({
+                      url: t.resolvedUrl,
+                      refLabel: t.refNames.join(' · '),
+                      fichas: t.fichas,
+                      refCount: t.refNames.length,
+                    }))
+                  : [];
                 // Corte Forração separa por cor + NAPA: sem o material no
                 // título, duas napas da mesma cor viram cartões idênticos.
                 const titulo = cg.liningMaterial ? `${cg.color} · ${cg.liningMaterial}` : cg.color;
@@ -3547,6 +3567,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
                     lotLabel={`${i + 1} de ${lotes.length}`}
                     lotCode={`${i + 1}/${lotes.length}`}
                     imageUrl={img}
+                    images={cardThumbs.length > 0 ? cardThumbs : undefined}
                     title={titulo}
                     subtitle={g.groupKind === 'reference' ? undefined : g.soleName}
                     sizes={sizes}
