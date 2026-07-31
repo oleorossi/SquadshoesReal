@@ -268,7 +268,6 @@ export const TECHNICAL_SHEET_CONSUMPTION_COLUMNS = `
   component_colors_enabled,
   variant_drives_upper,
   variant_drives_lining,
-  variant_drives_insole,
   variant_drives_fachete
 `;
 
@@ -1108,7 +1107,9 @@ export function computeConsumptionForItems(
       ? variantComponent(variant.lining_material_product_id, variant.lining_material_group_id, sheet?.variant_drives_lining)
       : { pin: null, groupName: '' };
     const insoleVariant = variant
-      ? variantComponent(variant.insole_material_product_id, variant.insole_material_group_id, sheet?.variant_drives_insole)
+      // Palmilha NÃO cascateia o material principal: o slot aponta a PLACA (EVA)
+      // e o principal é sempre napa (mig 20261027120800). Só pino do slot vale.
+      ? variantComponent(variant.insole_material_product_id, variant.insole_material_group_id)
       : { pin: null, groupName: '' };
     const upperVariantDriven = !!(upperVariant.pin || upperVariant.groupName);
     const liningVariantDriven = !!(liningVariant.pin || liningVariant.groupName);

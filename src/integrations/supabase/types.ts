@@ -21853,7 +21853,6 @@ export type Database = {
           sole_drives_consumption: boolean | null
           variant_drives_upper: boolean
           variant_drives_lining: boolean
-          variant_drives_insole: boolean
           variant_drives_fachete: boolean
           sole_group_id: string | null
           sole_material: string | null
@@ -21984,7 +21983,6 @@ export type Database = {
           sole_drives_consumption?: boolean | null
           variant_drives_upper?: boolean
           variant_drives_lining?: boolean
-          variant_drives_insole?: boolean
           variant_drives_fachete?: boolean
           sole_group_id?: string | null
           sole_material?: string | null
@@ -22115,7 +22113,6 @@ export type Database = {
           sole_drives_consumption?: boolean | null
           variant_drives_upper?: boolean
           variant_drives_lining?: boolean
-          variant_drives_insole?: boolean
           variant_drives_fachete?: boolean
           sole_group_id?: string | null
           sole_material?: string | null

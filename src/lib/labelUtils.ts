@@ -85,16 +85,20 @@ export async function resolveMaterialLabels(
       .in('id', refIds),
     supabase
       .from('reference_material_variants')
-      .select('id, reference_id, material_name, upper_material_group_id, lining_material_group_id, insole_material_group_id')
+      .select('id, reference_id, material_name, main_material_group_id, upper_material_group_id, lining_material_group_id, insole_material_group_id')
       .in('reference_id', refIds)
       .eq('active', true),
   ]);
   const sheetById = new Map((sheets || []).map(s => [s.id, s]));
 
   // Grupos das variantes → nome (group_covers_color trabalha por NOME).
+  // main_material_group_id entra junto: variante criada pelo diálogo novo
+  // costuma ter SÓ ele preenchido, e sem isso ela era descartada abaixo
+  // (groupNames vazio) — a etiqueta caía no material da FICHA, imprimindo a napa
+  // que a variante justamente substituiu.
   const variantGroupIds = [...new Set(
     (variants || []).flatMap(v => [
-      v.upper_material_group_id, v.lining_material_group_id, v.insole_material_group_id,
+      v.main_material_group_id, v.upper_material_group_id, v.lining_material_group_id, v.insole_material_group_id,
     ]).filter(Boolean) as string[],
   )];
   const groupNameById = new Map<string, string>();
@@ -109,7 +113,7 @@ export async function resolveMaterialLabels(
   const variantsByRef = new Map<string, VariantCandidate[]>();
   for (const v of variants || []) {
     const groupNames = [
-      v.upper_material_group_id, v.lining_material_group_id, v.insole_material_group_id,
+      v.main_material_group_id, v.upper_material_group_id, v.lining_material_group_id, v.insole_material_group_id,
     ].map(id => (id ? groupNameById.get(id) : '')).filter(Boolean) as string[];
     if (groupNames.length === 0) continue;
     const list = variantsByRef.get(v.reference_id) || [];

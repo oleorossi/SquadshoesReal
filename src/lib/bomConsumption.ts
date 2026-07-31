@@ -132,7 +132,7 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
   ] = await Promise.all([
     supabase
       .from('technical_sheets')
-      .select('id, upper_material, upper_material_product_id, upper_consumption, upper_consumption_per_size, lining_material, lining_material_product_id, lining_consumption, lining_consumption_per_size, insole_material, insole_consumption, insole_consumption_per_size, insole_ready_made, insole_has_lining, insole_lining_consumption, insole_lining_consumption_per_size, sole_material, sole_consumption, sole_color, sole_group_id, primary_sole_id, lining_accessories, components_accessories, strap_colors, sole_drives_consumption, direct_components, component_colors_enabled, variant_drives_upper, variant_drives_lining, variant_drives_insole')
+      .select('id, upper_material, upper_material_product_id, upper_consumption, upper_consumption_per_size, lining_material, lining_material_product_id, lining_consumption, lining_consumption_per_size, insole_material, insole_consumption, insole_consumption_per_size, insole_ready_made, insole_has_lining, insole_lining_consumption, insole_lining_consumption_per_size, sole_material, sole_consumption, sole_color, sole_group_id, primary_sole_id, lining_accessories, components_accessories, strap_colors, sole_drives_consumption, direct_components, component_colors_enabled, variant_drives_upper, variant_drives_lining')
       .in('id', refIds),
     supabase
       .from('sheet_materials')
@@ -513,7 +513,7 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
     };
     const upperVariantGroup = variant ? variantGroupName(variant.upper_material_product_id, variant.upper_material_group_id, (sheet as any)?.variant_drives_upper) : '';
     const liningVariantGroup = variant ? variantGroupName(variant.lining_material_product_id, variant.lining_material_group_id, (sheet as any)?.variant_drives_lining) : '';
-    const insoleVariantGroup = variant ? variantGroupName(variant.insole_material_product_id, variant.insole_material_group_id, (sheet as any)?.variant_drives_insole) : '';
+    const insoleVariantGroup = variant ? variantGroupName(variant.insole_material_product_id, variant.insole_material_group_id) : '';
     const variantSolePid: string | null = variant?.sole_material_product_id
       && (allProducts || []).some((p: any) => p.id === variant.sole_material_product_id)
       ? variant.sole_material_product_id

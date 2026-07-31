@@ -176,7 +176,10 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from('technical_sheets')
-        .select('upper_material, lining_material, insole_material, lining_accessories, components_accessories, sole_group_id, sole_material')
+        // variant_drives_*: quais componentes seguem o MATERIAL PRINCIPAL da
+        // variante (mig 20261027120000). Sem eles a tela não consegue espelhar a
+        // cascata do motor e ofereceria as cores do grupo errado.
+        .select('upper_material, lining_material, insole_material, lining_accessories, components_accessories, sole_group_id, sole_material, variant_drives_upper, variant_drives_lining')
         .eq('id', item.reference_id!)
         .single();
       if (error) throw error;
@@ -488,9 +491,14 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
   const mainGroupForNewColor = useMemo<{ id: string; name: string } | null>(() => {
     if (item.material_variant_id) {
       const variant = activeMaterialVariants.find(v => v.id === item.material_variant_id);
-      // NOVO (variante por grupo): a variante aponta upper_material_group_id direto.
-      if (variant?.upper_material_group_id) {
-        const group = (productGroups as any[]).find((g: any) => g.id === variant.upper_material_group_id);
+      // Variante por grupo: pino do slot de cabedal, e — quando a ficha libera o
+      // slot — o MATERIAL PRINCIPAL. Mesma precedência de
+      // resolve_upper_material_for_variant (mig 20261027120000): variante criada
+      // só com material principal (o padrão do diálogo novo) cai aqui.
+      const upperGid = variant?.upper_material_group_id
+        || ((sheetSpecs as any)?.variant_drives_upper ? variant?.main_material_group_id : null);
+      if (upperGid) {
+        const group = (productGroups as any[]).find((g: any) => g.id === upperGid);
         if (group) return { id: group.id, name: group.name };
       }
       // Legado: variante que fixava um produto de cabedal
@@ -550,19 +558,27 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
       ? activeMaterialVariants.find(v => v.id === item.material_variant_id)
       : undefined;
     type ColorTarget = { name?: string; groupId?: string };
+    // Espelha a precedência dos resolvers SQL: pin de produto legado > grupo do
+    // slot > MATERIAL PRINCIPAL da variante (só nos slots que a ficha liberou) >
+    // grupo da ficha. Sem o material principal aqui, variante criada só com ele
+    // caía no grupo da FICHA e a tela avisava a cor errada.
     const resolveTarget = (
       pinProductId: string | null | undefined,
       variantGroupId: string | null | undefined,
+      drivenByMain: boolean,
       sheetName: string | null | undefined,
     ): ColorTarget | null => {
       if (pinProductId) return null; // pin legado: produto fixo, sem resolução por cor
       if (variantGroupId) return { groupId: variantGroupId };
+      if (drivenByMain && sel?.main_material_group_id) return { groupId: sel.main_material_group_id };
       const nm = (sheetName || '').trim();
       return nm ? { name: nm } : null;
     };
     const targets = [
-      resolveTarget(sel?.upper_material_product_id, sel?.upper_material_group_id, sheetSpecs?.upper_material),
-      resolveTarget(sel?.lining_material_product_id, sel?.lining_material_group_id, sheetSpecs?.lining_material),
+      resolveTarget(sel?.upper_material_product_id, sel?.upper_material_group_id,
+        !!(sheetSpecs as any)?.variant_drives_upper, sheetSpecs?.upper_material),
+      resolveTarget(sel?.lining_material_product_id, sel?.lining_material_group_id,
+        !!(sheetSpecs as any)?.variant_drives_lining, sheetSpecs?.lining_material),
     ].filter(Boolean) as ColorTarget[];
     const out: { name: string; groupId: string }[] = [];
     const seen = new Set<string>();
@@ -654,8 +670,14 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
       // Só para variante PURA por grupo (sem pin de produto legado): variantes
       // antigas (com upper_material_product_id, agora com group_id via backfill)
       // mantêm o pool UNIÃO de antes — não estreita o dropdown delas.
-      if (sel?.upper_material_group_id && !sel?.upper_material_product_id) {
-        const groupColors = getColorsFromGroupId(sel.upper_material_group_id);
+      // O grupo efetivo do cabedal é o pino do slot ou, quando a ficha libera o
+      // slot, o MATERIAL PRINCIPAL — que no diálogo novo costuma ser o ÚNICO
+      // preenchido. Sem ele aqui, variante nova não estreitava o dropdown e o
+      // operador escolhia cor que o material da variante não tem.
+      const upperGid = sel?.upper_material_group_id
+        || ((sheetSpecs as any)?.variant_drives_upper ? sel?.main_material_group_id : null);
+      if (upperGid && !sel?.upper_material_product_id) {
+        const groupColors = getColorsFromGroupId(upperGid);
         if (groupColors.length) return uniqueSortedColors(groupColors);
       }
     }
@@ -676,8 +698,12 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
       : activeMaterialVariants;
     variantsForColors.forEach(v => {
       (v.available_colors || []).forEach(color => colorSet.add(color));
-      // NOVO: grupos apontados pela variante (por grupo) → cores dos produtos do grupo.
-      [v.upper_material_group_id, v.lining_material_group_id, v.insole_material_group_id]
+      // Grupos apontados pela variante → cores dos produtos do grupo. O
+      // `main_material_group_id` entra aqui SEM depender de variant_drives_*:
+      // este pool é a UNIÃO de cores possíveis (alimenta o fallback de cor das
+      // tiras), então incluir a mais é seguro; omitir deixaria variante criada
+      // só com material principal sem cor nenhuma.
+      [v.main_material_group_id, v.upper_material_group_id, v.lining_material_group_id, v.insole_material_group_id]
         .filter(Boolean)
         .forEach(groupId => getColorsFromGroupId(groupId as string).forEach(color => colorSet.add(color)));
       // Legado: variante que fixava produto → cores do grupo do produto.

@@ -159,11 +159,13 @@ export type SheetFormData = {
    /** Quais componentes seguem o MATERIAL PRINCIPAL da variante do item do PV
     *  (mig 20261027120000). Desligado = o componente usa sempre o material
     *  cadastrado na ficha — é o que protege material de identidade (ex.: a PALHA
-    *  do cabedal do DS21/DS19). `variant_drives_insole` existe mas não tem UI:
-    *  o slot da palmilha aponta a PLACA (EVA), e cascatear napa ali seria errado. */
+    *  do cabedal do DS21/DS19).
+    *  Não existe equivalente pra PALMILHA de propósito: aquele slot aponta a
+    *  PLACA (EVA) e o material principal é sempre napa, então a cascata seria
+    *  erro de categoria — a flag foi removida na mig 20261027120800. Variante que
+    *  usa outra placa continua usando `insole_material_group_id`. */
    variant_drives_upper: boolean;
    variant_drives_lining: boolean;
-   variant_drives_insole: boolean;
    variant_drives_fachete: boolean;
    custom_overhead?: number | null;
    /** Whether insole (palmilha) has a lining (forração). true = follows cabedal color; false = use palmilha color mapping. */
@@ -230,7 +232,6 @@ export const emptySheetForm: SheetFormData = {
    sole_drives_consumption: true,
    variant_drives_upper: false,
    variant_drives_lining: false,
-   variant_drives_insole: false,
    variant_drives_fachete: false,
    custom_overhead: null,
    insole_has_lining: true,

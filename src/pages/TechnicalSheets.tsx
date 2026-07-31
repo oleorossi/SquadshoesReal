@@ -2578,6 +2578,26 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                          </p>
                        )}
                      </div>
+                     {/* Trava do fachete: o grupo acima vem do SOLADO, que é
+                         compartilhado entre referências e cores. Ligado, o fachete
+                         segue o material da variante vendida em vez do cadastro do
+                         solado (mig 20261027120000). Só aparece com variante. */}
+                     {((materialVariantsBySheet as any)?.get?.(sheet?.id) || []).length > 0 && (
+                       <label className="flex items-start gap-2 rounded-md border border-border/60 bg-background/60 px-2 py-1.5 cursor-pointer">
+                         <input
+                           type="checkbox"
+                           className="mt-0.5 h-3.5 w-3.5 accent-primary"
+                           checked={!!(form as any).variant_drives_fachete}
+                           onChange={e => updateField('variant_drives_fachete' as any, e.target.checked)}
+                         />
+                         <span className="text-[11px] leading-snug text-muted-foreground">
+                           <strong className="text-foreground">Fachete segue o material da variante</strong>
+                           {(form as any).variant_drives_fachete
+                             ? ' — o salto sai da napa da variante vendida, não do grupo cadastrado no solado.'
+                             : ' — desligado: o salto usa sempre o grupo de fachete do solado, mesmo vendendo outra variante.'}
+                         </span>
+                       </label>
+                     )}
                    </div>
                  )}
               {(() => {
@@ -2662,7 +2682,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                 // vendeu a variante GLOW METALIC.
                 const sheetHasVariants = ((materialVariantsBySheet as any)?.get?.(sheet?.id) || []).length > 0;
                 const renderVariantDrivesToggle = (
-                  field: 'variant_drives_upper' | 'variant_drives_lining' | 'variant_drives_insole',
+                  field: 'variant_drives_upper' | 'variant_drives_lining',
                   componentLabel: string,
                 ) => {
                   if (!sheetHasVariants) return null;
