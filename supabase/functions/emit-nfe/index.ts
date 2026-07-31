@@ -1020,6 +1020,14 @@ Deno.serve(async (req) => {
     // + technical_sheet_box_types + box_types.pairs_per_box_default. Substituiu
     // o cálculo antigo que sempre dividia por pairs_per_box_individual, ignorando
     // o modo do PV (gerava NFs com volumes errados no modo master/colmeia).
+    // volumesWarning: a RPC devolve unconfigured=true quando o modo do PV exige
+    // uma caixa (colmeia/master) que NÃO existe no cadastro e o nº de volumes
+    // saiu do default de 12 pares/caixa embutido no SQL. Auditoria de volumes
+    // 31/07/2026: isso vale HOJE pra 52 dos 58 PVs — nenhum box_type do tipo
+    // 'colmeia'/'master' está cadastrado, então TODO volume de NF-e é um chute.
+    // Não bloqueamos (volume é campo obrigatório e travar a emissão por falta de
+    // cadastro seria pior), mas o operador tem que ver.
+    let volumesWarning: string | undefined;
     try {
       const { data: volRow, error: volErr } = await adminClient
         .rpc("compute_sale_order_nfe_volumes", { p_sale_order_id: sale_order_id });
@@ -1031,11 +1039,19 @@ Deno.serve(async (req) => {
         const row = Array.isArray(volRow) ? volRow[0] : volRow;
         const v = Number((row as any)?.volumes) || 0;
         const mode = (row as any)?.mode || "?";
+        const unconfigured = (row as any)?.unconfigured === true;
         if (v > 0) {
           qtdVolumesStr = String(v);
-          console.log(`[emit-nfe] volumes=${v} (mode=${mode}) PV ${sale_order_id}`);
+          console.log(`[emit-nfe] volumes=${v} (mode=${mode}, unconfigured=${unconfigured}) PV ${sale_order_id}`);
         } else {
           console.warn(`[emit-nfe] compute_sale_order_nfe_volumes retornou v=${v} (mode=${mode}). Fallback=1.`);
+        }
+        if (unconfigured) {
+          volumesWarning =
+            `Volumes (${v || "?"}) calculados com o DEFAULT de 12 pares por caixa — não há caixa do tipo `
+            + `"${mode}" cadastrada para as referências deste pedido. Se a caixa real levar outra quantidade, `
+            + `o número de volumes da NF está errado. Cadastre em Estoque → Grupos → editar o solado → aba Embalagem.`;
+          console.warn(`[emit-nfe] PV ${sale_order_id}: volumes vindos de fallback (nenhum box_type '${mode}' cadastrado)`);
         }
       }
     } catch (e) {
@@ -1373,6 +1389,7 @@ Deno.serve(async (req) => {
       if (numeroWarning) previewWarnings.push(numeroWarning);
       if (weightWarning) previewWarnings.push(weightWarning);
       if (packagingModeWarning) previewWarnings.push(packagingModeWarning);
+      if (volumesWarning) previewWarnings.push(volumesWarning);
       if (!gcClientId) {
         previewWarnings.push(
           `Cliente ainda não está cadastrado no ClickNotas — será criado automaticamente na emissão.`,
@@ -1443,12 +1460,23 @@ Deno.serve(async (req) => {
             qtd_pares: produtosPreview.reduce((s, p) => s + p.quantidade, 0),
           },
           transporte: {
+            // ⚠ NADA deste bloco chega na NF-e: a API do ClickNotas não tem
+            // campo de transporte/volume/peso/frete (0 ocorrências na spec, 0
+            // chaves em todas as respostas reais). O que sai no DANFE é o que o
+            // ClickNotas decide sozinho. Mantido no preview porque é o número
+            // que a EXPEDIÇÃO usa pra montar a carga — mas a flag abaixo evita
+            // que o operador confira aqui achando que confere a nota.
+            enviado_a_sefaz: false,
+            observacao: 'Calculado para a expedição. Estes campos NÃO são aceitos pela API do ClickNotas — o DANFE traz o volume que o provedor calcula.',
             modalidade_frete: '3 (Transporte próprio por conta do remetente)',
             transportadora_id_gc: gcTransportadoraId,
             transportador: Object.keys(transportadorBlock).length > 0
               ? transportadorBlock
               : null,
             qtd_volumes: qtdVolumesStr ? Math.max(1, Math.trunc(Number(qtdVolumesStr)) || 1) : null,
+            // true = o nº de volumes veio do default de 12 pares/caixa, não de
+            // cadastro (nenhum box_type do tipo do modo existe).
+            volumes_estimado_cego: !!volumesWarning,
             especie: 'VOLUME',
             marca: '',
             peso_bruto_kg: pesoBrutoStr || null,

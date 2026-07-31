@@ -150,10 +150,30 @@ export function NfePreviewPanel({ preview }: { preview: NfePreviewResponse['prev
         <Card>
           <CardContent className="pt-4 space-y-1">
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Transporte</p>
+            {/* Auditoria 31/07/2026: a API do ClickNotas não aceita nenhum campo
+                de transporte/volume/peso — o DANFE traz o volume que o provedor
+                calcula. Estes números servem à EXPEDIÇÃO; deixar isso explícito
+                evita que o operador "confira a nota" por aqui. */}
+            {(transporte as { enviado_a_sefaz?: boolean }).enviado_a_sefaz === false && (
+              <p className="text-[11px] text-amber-600 dark:text-amber-500 leading-snug">
+                Referência para a expedição — estes campos não são enviados à SEFAZ.
+                Confira os volumes no DANFE.
+              </p>
+            )}
             <div className="text-xs space-y-0.5">
               <div><span className="text-muted-foreground">Modalidade:</span> {transporte.modalidade_frete}</div>
-              <div><span className="text-muted-foreground">Volumes:</span> {transporte.qtd_volumes} {transporte.especie}{Number(transporte.qtd_volumes) > 1 ? 'S' : ''}</div>
-              <div><span className="text-muted-foreground">Peso bruto:</span> {transporte.peso_bruto_kg ? `${transporte.peso_bruto_kg} kg` : '—'}</div>
+              <div>
+                <span className="text-muted-foreground">Volumes:</span> {transporte.qtd_volumes} {transporte.especie}{Number(transporte.qtd_volumes) > 1 ? 'S' : ''}
+                {(transporte as { volumes_estimado_cego?: boolean }).volumes_estimado_cego && (
+                  <span className="ml-1 text-amber-600 dark:text-amber-500">· estimado (12 pares/caixa — sem caixa cadastrada)</span>
+                )}
+              </div>
+              <div>
+                <span className="text-muted-foreground">Peso bruto:</span> {transporte.peso_bruto_kg ? `${transporte.peso_bruto_kg} kg` : '—'}
+                {transporte.peso_estimado_cego && (
+                  <span className="ml-1 text-amber-600 dark:text-amber-500">· estimado (0,5 kg/par)</span>
+                )}
+              </div>
               <div><span className="text-muted-foreground">Peso líquido:</span> {transporte.peso_liquido_kg ? `${transporte.peso_liquido_kg} kg` : '—'}</div>
             </div>
             {transporte.transportador && (

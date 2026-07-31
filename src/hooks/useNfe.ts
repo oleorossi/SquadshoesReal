@@ -473,6 +473,14 @@ export interface NfePreviewResponse {
       especie: string;
       peso_bruto_kg: string | null;
       peso_liquido_kg: string | null;
+      /** false = bloco calculado só pra expedição; a API do ClickNotas não
+       *  aceita campo de transporte/volume/peso (auditoria 31/07/2026). */
+      enviado_a_sefaz?: boolean;
+      observacao?: string;
+      /** nº de volumes veio do default de 12 pares/caixa, sem caixa cadastrada */
+      volumes_estimado_cego?: boolean;
+      /** peso veio do fallback cego de 0,5 kg/par */
+      peso_estimado_cego?: boolean;
     };
     pagamento: Array<{
       numero: string;
