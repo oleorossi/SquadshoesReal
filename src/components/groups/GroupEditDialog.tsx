@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { PencilSimple as Pencil, Palette, FloppyDisk as Save, Package, Plus, MagnifyingGlass as Search, Ruler, CircleNotch as Loader2, Cube as BoxIcon, Flask as FlaskConical, Stack as Layers, X, LinkSimple as Link2, ArrowRight, Check, Warning as AlertTriangle, ArrowsLeftRight, Rows, Info } from '@phosphor-icons/react';
 import { ProductGroup, useUpdateGroup, useGroups } from '@/hooks/useGroups';
 import { useProducts } from '@/hooks/useProducts';
+import GroupColorsTab from './GroupColorsTab';
 import { useForceDeleteProductFlow } from '@/components/inventory/ForceDeleteProductDialog';
 import { supabase } from '@/integrations/supabase/client';
 import { createGroupColorProduct } from '@/lib/groupColorProducts';
@@ -801,11 +802,12 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
           )}
 
           <Tabs defaultValue={showYieldTab ? "specs" : "general"} className="mt-2">
-            <TabsList className="grid w-full" style={{ gridTemplateColumns: `repeat(${3 + (showYieldTab ? 1 : 0) + (show.packaging ? 1 : 0)}, 1fr)` }}>
+            <TabsList className="grid w-full" style={{ gridTemplateColumns: `repeat(${4 + (showYieldTab ? 1 : 0) + (show.packaging ? 1 : 0)}, 1fr)` }}>
               <TabsTrigger value="general">Geral</TabsTrigger>
               <TabsTrigger value="hierarchy">Hierarquia</TabsTrigger>
               {showYieldTab && <TabsTrigger value="specs">Dimensões</TabsTrigger>}
               {show.packaging && <TabsTrigger value="packaging">Embalagem</TabsTrigger>}
+              <TabsTrigger value="colors">Cores</TabsTrigger>
               <TabsTrigger value="items">Itens ({products.length})</TabsTrigger>
             </TabsList>
 
@@ -1324,6 +1326,17 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                 ))}
               </TabsContent>
             )}
+
+            {/* Tab: Cores — único lugar que vê as cores do grupo como CONJUNTO
+                (duplicata, typo, largura divergente) e permite fundir. */}
+            <TabsContent value="colors" className="space-y-4 mt-4">
+              <GroupColorsTab
+                groupId={group.id}
+                groupName={group.name}
+                products={products}
+                groupWidth={(group as any).dimensions_width}
+              />
+            </TabsContent>
 
             {/* Tab: Items */}
             <TabsContent value="items" className="space-y-4 mt-4">
