@@ -7,17 +7,23 @@
 - React + TypeScript
 - Tailwind CSS
 - Recharts (gráficos)
-- lucide-react (ícones)
+- @phosphor-icons/react (ícones)
 
 ---
 
 ## Dependências necessárias
 
-No Lovable, solicite as instalações ou adicione ao `package.json`:
+O package manager do projeto é o **Bun** (`bun.lock` é a fonte de verdade; o
+`package-lock.json` é obsoleto). `npm` não está instalado na máquina de
+desenvolvimento.
 
 ```bash
-npm install recharts lucide-react
+bun add recharts
 ```
+
+⚠ Ícones: o projeto usa **`@phosphor-icons/react`**, não `lucide-react` —
+importar de `lucide-react` vira ReferenceError em runtime. Ver CLAUDE.md,
+seção "Componentes".
 
 Fontes (adicione no `index.html` ou `globals.css`):
 ```html

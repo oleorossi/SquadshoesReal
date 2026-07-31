@@ -58,7 +58,12 @@ supabase db push → DB live
    Vite/esbuild também **não** type-checa. Logo, símbolo não-definido (ex.: `sharedSpecs`)
    ou import de export inexistente (ex.: ícone lucide importado do phosphor) passa direto
    e vira **ReferenceError em produção**. O typecheck de verdade é só com `-p tsconfig.app.json`.
-5. **Após edits visuais** — run `npm run check:tokens` to detect hardcoded colors that should be design tokens.
+5. **Após edits visuais** — run `bun run check:tokens` to detect hardcoded colors that should be design tokens.
+   ⚠ **`npm` NÃO existe nesta máquina** (verificado 31/07/2026: `npm -v` →
+   "command not found"). O package manager é o **Bun** — use sempre `bun run <script>`
+   / `bunx`. E `node` é um *symlink pro próprio bun* (`~/.bun/bin/node -> bun`), então
+   `node -v` imprime o help do `bun run` em vez da versão; os scripts `.mjs` do build
+   rodam sob o shim, mas não confie no `node` como se fosse Node.js de verdade.
 6. **Fonte em fichas/etiquetas/cartões** — sempre a **MAIOR que couber** na moldura, nunca
    abaixo dos pisos. Quando não couber, remova conteúdo antes de reduzir. Ver
    "Tamanho de fonte em print" na seção *Design Token System*.
@@ -413,7 +418,7 @@ de redesign do Industrial Editorial Pro nos primitives shadcn.
 
 ### Check for violations
 ```bash
-npm run check:tokens
+bun run check:tokens
 ```
 
 ### Height conventions (Tailwind h-*)
