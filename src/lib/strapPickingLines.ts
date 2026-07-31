@@ -56,13 +56,13 @@ export const strapPickingKey = (label: string | null | undefined, color: string 
  * errar o casamento aqui apaga a napa da ficha de separação em silêncio.
  */
 export function indexStrapPickingLines(
-  reservations: Array<{ metadata: any; quantity_reserved?: number | null }> | null | undefined,
+  reservations: Array<{ metadata: unknown; quantity_reserved?: number | null }> | null | undefined,
 ): Map<string, StrapPickingLine> {
   const byKey = new Map<string, StrapPickingLine>();
   const alias = new Map<string, string>();
 
   for (const r of reservations || []) {
-    const md = r?.metadata;
+    const md = r?.metadata as Record<string, unknown> | null | undefined;
     if (!md || typeof md !== 'object') continue;
     if (md.kind !== 'strap') continue;
     const strapName = (md.strap_product_name || '').toString().trim();
@@ -113,7 +113,7 @@ export async function fetchStrapPickingLines(orderIds: string[]): Promise<Map<st
     .in('order_id', orderIds)
     .in('status', ['reserved', 'partially_consumed']);
   if (error) throw error;
-  return indexStrapPickingLines((data || []) as any[]);
+  return indexStrapPickingLines(data || []);
 }
 
 /** "consome 2,32 m de NAPA SOFT CAPUCCINO (rend. 60 m/m)" */

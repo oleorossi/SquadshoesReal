@@ -6,6 +6,7 @@ import {
   resolveStrapSourcing,
   setStrapSourcing,
   strapSourcingKey,
+  type StrapSourcingMap,
 } from '@/lib/strapSourcing';
 
 const GID = '11111111-2222-3333-4444-555555555555';
@@ -49,7 +50,7 @@ describe('strapSourcing — precedência override > cadastro', () => {
   });
 
   it('valor fora do domínio do SQL é tratado como ausência', () => {
-    expect(getStrapSourcingOverride({ [`${GID}|BEGE`]: 'talvez' } as any, GID, 'BEGE')).toBeNull();
+    expect(getStrapSourcingOverride({ [`${GID}|BEGE`]: 'talvez' } as unknown as StrapSourcingMap, GID, 'BEGE')).toBeNull();
   });
 });
 

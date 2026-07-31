@@ -3,6 +3,7 @@ import {
   buildPerPvPurchaseOrders,
   summarizePerPvDrafts,
   isPerPvPurchaseOrder,
+  collectPvNeedWarnings,
   NO_SUPPLIER_LABEL,
   type PvMaterialNeed,
 } from '@/lib/perPvPurchasing';
@@ -273,5 +274,46 @@ describe('isPerPvPurchaseOrder', () => {
     expect(isPerPvPurchaseOrder({ source_type: null })).toBe(false);
     expect(isPerPvPurchaseOrder({})).toBe(false);
     expect(isPerPvPurchaseOrder(null)).toBe(false);
+  });
+});
+
+/**
+ * GATE do aviso do motor. A tira artesanal bloqueada (sem napa na família+cor)
+ * volta da RPC com needed_qty 0 + conversion_warning: o item é descartado da OC
+ * — corretamente, não se compra 0 — mas a mensagem PRECISA sobreviver, senão o
+ * material some da tela e a OC sai comprando a menos em silêncio. Foi assim que
+ * a divergência compra × reserva do PV-00148 passou despercebida.
+ */
+describe('collectPvNeedWarnings', () => {
+  const BLOCK = 'Tira chata 8mm está marcada como cortada aqui, mas não existe NAPA SOFT na cor BEGE no estoque — cadastre a napa ou marque a tira como comprada pronta.';
+
+  it('a linha bloqueada não vira item de OC, mas o aviso sobrevive', () => {
+    const needs = [need({ material_id: 'tira-8', product_name: 'Tira chata 8mm', color: 'BEGE', needed_qty: 0, conversion_warning: BLOCK })];
+    expect(buildPerPvPurchaseOrders(needs)).toHaveLength(0);
+    const warnings = collectPvNeedWarnings(needs);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].message).toBe(BLOCK);
+    expect(warnings[0].needed_qty).toBe(0);
+  });
+
+  it('linha que ENTRA na OC com aviso carrega a mensagem até o item', () => {
+    const needs = [need({ material_id: 'napa-1', product_name: 'NAPA SOFT', needed_qty: 30, conversion_warning: 'largura faltando' })];
+    const item = buildPerPvPurchaseOrders(needs)[0].items[0];
+    expect(item.conversion_warning).toBe('largura faltando');
+    expect(collectPvNeedWarnings(needs)[0].needed_qty).toBe(30);
+  });
+
+  it('não inventa aviso quando não há', () => {
+    expect(collectPvNeedWarnings([need({})])).toEqual([]);
+    expect(collectPvNeedWarnings([need({ conversion_warning: '   ' })])).toEqual([]);
+  });
+
+  it('deduplica o mesmo aviso repetido e põe o bloqueio total na frente', () => {
+    const warnings = collectPvNeedWarnings([
+      need({ material_id: 'a', product_name: 'A', needed_qty: 5, conversion_warning: 'aviso A' }),
+      need({ material_id: 'b', product_name: 'B', needed_qty: 0, conversion_warning: BLOCK }),
+      need({ material_id: 'b', product_name: 'B', needed_qty: 0, conversion_warning: BLOCK }),
+    ]);
+    expect(warnings.map((w) => w.product_name)).toEqual(['B', 'A']);
   });
 });
