@@ -3368,7 +3368,15 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
                   knifeGrid: cg.knifeGrid ? { ...cg.knifeGrid } : undefined,
                   opNumbers: [...cg.opNumbers],
                   pvNumbers: cg.pvNumbers ? [...cg.pvNumbers] : [],
-                  refs: [],
+                  // PRESERVA as referências (31/07/2026). Isto era `refs: []`, e
+                  // como o card compacto tira os chips de referência daqui, NENHUM
+                  // card de Corte Forração jamais mostrou referência — em nenhum PV.
+                  // O `refs: []` veio do agregado do Corte Cabedal (22/05/2026),
+                  // onde o cortador corta a cor e a ref é indiferente; aqui é o
+                  // oposto: o card funde N modelos e o operador precisa saber
+                  // quais são pra conferir o que tem na mão (PV-00147: DS20 +
+                  // DS22 + S-039 na mesma cor).
+                  refs: [...(cg.refs || [])],
                   // Cópia PROFUNDA — as entradas de foto são mutadas (soma de
                   // pares no dedup abaixo); copiar os objetos evita corromper o
                   // array de origem (compartilhado com outros setores/renders).
@@ -3387,6 +3395,18 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
                 for (const op of cg.opNumbers) if (!existing.opNumbers.includes(op)) existing.opNumbers.push(op);
                 if (cg.pvNumbers && existing.pvNumbers) {
                   for (const pv of cg.pvNumbers) if (!existing.pvNumbers.includes(pv)) existing.pvNumbers.push(pv);
+                }
+                // Junta as REFERÊNCIAS das cores fundidas (31/07/2026). Sem isto,
+                // só as refs da primeira cor fundida sobreviveriam — e o card
+                // ficaria identificando parte dos modelos que ele cobre.
+                // Dedup por code-ou-name, mesma chave do acúmulo no builder
+                // (há ficha com `code` vazio; ver o comentário lá).
+                existing.refs = existing.refs || [];
+                for (const r of (cg.refs || [])) {
+                  const key = r.code || r.name;
+                  if (key && !existing.refs.some((x: any) => (x.code || x.name) === key)) {
+                    existing.refs.push({ ...r });
+                  }
                 }
                 // Junta as fotos por referência das cores fundidas (dedup por
                 // sheetId) — a faixa mostra 1 foto por ref da cor no card.
