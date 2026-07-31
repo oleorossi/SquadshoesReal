@@ -1,7 +1,8 @@
 import React from 'react';
 
 /**
- * Cartão de Lote de Setor — 99 × ~51mm, 3 colunas por A4 PAISAGEM (12 por folha).
+ * Cartão de Lote de Setor — 95,5 × ~49mm, 3 colunas × 4 linhas por A4 PAISAGEM
+ * (12 por folha, folha praticamente cheia).
  *
  * É a "Opção B" aprovada pelo dono em 31/07/2026: o cartão pertence ao TRABALHO
  * DO POSTO, não ao pacote que viaja. Ele descreve o lote daquele setor (o mesmo
@@ -81,9 +82,9 @@ export const CartaoLote = ({
     <div
       className="cartao-lote"
       style={{
-        width: '99mm', background: '#fff', color: '#000',
-        border: '1.5px solid #000', padding: '2.5mm',
-        display: 'flex', flexDirection: 'column', gap: '1mm',
+        width: '95.5mm', background: '#fff', color: '#000',
+        border: '1.5px solid #000', padding: '2mm',
+        display: 'flex', flexDirection: 'column', gap: '0.8mm',
         fontFamily: SANS,
       }}
     >
@@ -207,9 +208,15 @@ export const CartaoLote = ({
         borderTop: '1.5px solid #000', paddingTop: '1mm',
         display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: '2mm',
       }}>
+        {/* RUBRICA, não campo de nome. A tabela de pisos do CLAUDE.md separa os
+            dois: "campo manuscrito (nome, qtd, data)" tem piso 20px (~5,3mm),
+            "linha só de rubrica/visto" tem piso 15px (~4mm). Num cartão de lote
+            o operador dá o visto, não escreve o nome inteiro — então 4mm está
+            no piso correto. A 1ª versão rotulava "Executado por" com 4,5mm:
+            prometia campo de nome num espaço abaixo do piso dele. */}
         <div style={{ flex: 1, maxWidth: '55%' }}>
-          <span style={lbl}>Executado por</span>
-          <div style={{ borderBottom: '1.5px solid #000', height: '4.5mm' }} />
+          <span style={lbl}>Visto</span>
+          <div style={{ borderBottom: '1.5px solid #000', height: '4mm' }} />
         </div>
         {lotCode && (
           <span style={{ fontFamily: DISPLAY, fontSize: 14, lineHeight: 1, flex: 'none' }}>

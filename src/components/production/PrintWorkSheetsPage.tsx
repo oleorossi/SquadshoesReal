@@ -60,8 +60,8 @@ const cartaoStyles = `
       display: flex !important;
       flex-wrap: wrap !important;
       align-content: flex-start !important;
-      gap: 3mm !important;
-      padding: 4mm !important;
+      gap: 2mm !important;
+      padding: 3mm !important;
       width: auto !important;
     }
     /* Cartão inteiro ou nada — nunca parte entre duas folhas. */
@@ -76,8 +76,8 @@ const cartaoStyles = `
     display: flex;
     flex-wrap: wrap;
     align-content: flex-start;
-    gap: 3mm;
-    padding: 4mm;
+    gap: 2mm;
+    padding: 3mm;
     width: 297mm;
     margin: 0 auto;
     background: #fff;
@@ -486,6 +486,9 @@ interface PrintWorkSheetsPageProps {
   /** Sub-conjunto inicial de setores marcados. Default = todos. O usuário
    *  pode marcar/desmarcar pelos chips na própria toolbar. */
   initialSectors?: ReadonlySet<string>;
+  /** Abre já no modo CARTÃO (atalho "Cartões de lote" da tela de seleção).
+   *  O modo é de VISUALIZAÇÃO — o preview mostra os cartões antes de imprimir. */
+  initialCartao?: boolean;
 }
 
 // 'Corte Cabedal' adicionado em 2026-05-12 como 3ª sub-etapa de Corte
@@ -744,7 +747,7 @@ const PRINT_OWNED_QUERY_KEY_ROOTS = new Set<string>([
   'sole_group_packaging_v3',
 ]);
 
-const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheetsPageProps) => {
+const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: PrintWorkSheetsPageProps) => {
   // Fluxo unificado (2026-05-18): chips toggleáveis com state interno —
   // substitui o antigo dropdown single + bool printAll + prop selectedSectors.
   // Default = todos os setores marcados (equivalente ao antigo "Imprimir tudo").
@@ -757,7 +760,11 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
   // LOTE DE SETOR, 12 por folha A4 paisagem. O recorte do lote é exatamente o
   // que `buildColorGroupedSheets` já produz (com as peculiaridades de cada
   // setor) — o cartão não reagrupa nada por conta própria.
-  const [cartao, setCartao] = useState(false);
+  // ⚠ É modo de VISUALIZAÇÃO, não só de impressão (31/07/2026). Antes ele só
+  // ligava dentro do `printWith` e desligava logo depois, então NUNCA havia
+  // preview dos cartões — o dono mandava imprimir às cegas. Agora o preview
+  // reflete o modo e o `printWith` só imprime o que está na tela.
+  const [cartao, setCartao] = useState(!!initialCartao);
 
   // ── Saída invertida (2026-07-24, pedido do dono) ──
   // A impressora da fábrica empilha com a face pra CIMA: a 1ª página emitida
@@ -869,8 +876,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
   // fotos por thumbs de OUTRA largura (cache frio) e sem o await o snapshot
   // do print saía com fotos em branco. decode() também força o load de
   // imagens lazy fora do viewport (Firefox/Safari não carregam no print).
-  const printWith = async (asCartao = false) => {
-    flushSync(() => setCartao(asCartao));
+  const printWith = async () => {
     const imgs = Array.from(document.querySelectorAll<HTMLImageElement>('.print-area img'));
     const waits: Promise<unknown>[] = imgs.map(img =>
       img.complete ? Promise.resolve() : img.decode().catch(() => undefined)
@@ -885,7 +891,6 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
     // Restaura o layout completo no preview — sem isso, depois do "Relatório
     // simplificado" um Ctrl+P manual sairia na versão reduzida sem pedir.
     // Vale igual pro modo cartão, que ainda troca a orientação do @page.
-    setCartao(false);
   };
 
   const referenceIds = useMemo(() => [...new Set(orders.map(o => o.reference_id).filter(Boolean))], [orders]);
@@ -3002,12 +3007,20 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                 OPs entram em setores errados e Corte Forração some. O banner
                 vermelho acima explica e pede recarga. */}
             <Button onClick={() => printWith()} className="gap-2" disabled={activeSectors.size === 0 || sheetCount === 0 || initialQueriesLoading || failedQueries > 0} title={failedQueries > 0 ? 'Consultas de dados falharam — recarregue a página antes de imprimir' : undefined}>
-              <Printer className="h-4 w-4" /> Imprimir
+              <Printer className="h-4 w-4" /> Imprimir {cartao ? 'cartões' : 'fichas'}
             </Button>
-            {/* Cartões de lote (31/07/2026): 1 cartão de 99mm por lote de setor,
-                12 por folha A4 paisagem. O recorte do lote é o mesmo das fichas. */}
-            <Button variant="outline" onClick={() => printWith(true)} className="gap-2" disabled={activeSectors.size === 0 || sheetCount === 0 || initialQueriesLoading || failedQueries > 0} title={failedQueries > 0 ? 'Consultas de dados falharam — recarregue a página antes de imprimir' : 'Um cartão recortável por lote de setor (99 × ~51mm) — 12 por folha A4 na horizontal'}>
-              <Cards className="h-4 w-4" /> Cartões de lote
+            {/* Alternador de MODO (não imprime). O preview passa a refletir o
+                modo — antes o cartão só existia durante o window.print() e o
+                dono mandava imprimir sem nunca ter visto o resultado. */}
+            <Button
+              variant={cartao ? 'default' : 'outline'}
+              onClick={() => setCartao(v => !v)}
+              className="gap-2"
+              title={cartao
+                ? 'Voltar pras fichas A4 por setor'
+                : 'Ver como cartões recortáveis por lote de setor (99 × ~51mm, 12 por folha A4 na horizontal)'}
+            >
+              <Cards className="h-4 w-4" /> {cartao ? 'Ver fichas' : 'Ver cartões'}
             </Button>
           </div>
         </div>
