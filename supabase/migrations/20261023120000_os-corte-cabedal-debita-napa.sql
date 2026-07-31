@@ -57,7 +57,10 @@ CREATE OR REPLACE FUNCTION public.create_upper_cut_service_order(
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path TO 'public, extensions'
+-- ⚠ DOIS literais. `SET search_path TO 'public, extensions'` (um literal só)
+-- grava o schema de nome LITERAL "public, extensions", que não existe — e aí
+-- unaccent() estoura 42883 em runtime (o plpgsql não acusa na criação).
+SET search_path TO 'public', 'extensions'
 AS $function$
 DECLARE
   v_os_id      uuid := gen_random_uuid();
@@ -292,6 +295,24 @@ IS 'Cria a OS de corte de cabedal e debita a napa do cabedal na MESMA transaçã
 
 REVOKE ALL ON FUNCTION public.create_upper_cut_service_order(uuid, uuid, text, uuid, integer, text, text, numeric, date) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.create_upper_cut_service_order(uuid, uuid, text, uuid, integer, text, text, numeric, date) TO authenticated;
+
+
+-- CORREÇÃO DE PRODUÇÃO: debit_strap_stock estava estourando 42883
+-- -----------------------------------------------------------------
+-- `20261021130000_strap-debit-uses-single-engine-from-cutover.sql` criou
+-- debit_strap_stock com `SET search_path TO 'public, extensions'` — UM literal
+-- só. O parser de search_path lê isso como o schema de nome literal
+-- "public, extensions", que não existe; extensions fica FORA do caminho e
+-- `unaccent()` (que mora lá) estoura
+--   ERROR 42883: function unaccent(text) does not exist
+-- na primeira linha que normaliza cor. Ou seja: TODA reserva/baixa de tira
+-- estava quebrada em produção desde aquele deploy. O plpgsql não valida isso na
+-- criação, então a migration passou verde.
+--
+-- ALTER em vez de CREATE OR REPLACE de propósito: só o search_path muda, o
+-- corpo continua sendo o do arquivo do cutover (que é a fonte de verdade dele).
+ALTER FUNCTION public.debit_strap_stock(jsonb, integer, uuid, jsonb, boolean)
+  SET search_path TO 'public', 'extensions';
 
 
 -- Cancelar a OS devolve a napa ao estoque
