@@ -1319,6 +1319,10 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
   });
   const queryClient = useQueryClient();
   const updateSheet = useUpdateSheet();
+  // Mesma queryKey do componente pai — React Query dedupa, não é request extra.
+  // Serve pra só mostrar as travas de "segue o material da variante" quando a
+  // ficha realmente tem variante cadastrada.
+  const { data: materialVariantsBySheet } = useAllActiveReferenceMaterialVariants();
   const { data: shoeCategories = [] } = useShoeCategories();
   const shoeCategoryOptions = shoeCategories.length > 0 ? shoeCategories : SHOE_CATEGORIES;
   const { data: products = [] } = useProducts();
@@ -2650,6 +2654,36 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                       </span>
                     </div>
                   ) : null;
+
+                // Trava por componente do MATERIAL PRINCIPAL da variante
+                // (mig 20261027120000). Só aparece quando a ficha tem variante —
+                // sem variante é ruído. Desligado protege material de IDENTIDADE:
+                // a PALHA do cabedal do DS21 não deve virar napa porque o PV
+                // vendeu a variante GLOW METALIC.
+                const sheetHasVariants = ((materialVariantsBySheet as any)?.get?.(sheet?.id) || []).length > 0;
+                const renderVariantDrivesToggle = (
+                  field: 'variant_drives_upper' | 'variant_drives_lining' | 'variant_drives_insole',
+                  componentLabel: string,
+                ) => {
+                  if (!sheetHasVariants) return null;
+                  const on = !!(form as any)[field];
+                  return (
+                    <label className="mt-1.5 flex items-start gap-2 rounded-md border border-border/60 bg-muted/20 px-2 py-1.5 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        className="mt-0.5 h-3.5 w-3.5 accent-primary"
+                        checked={on}
+                        onChange={e => updateField(field as any, e.target.checked)}
+                      />
+                      <span className="text-[11px] leading-snug text-muted-foreground">
+                        <strong className="text-foreground">{componentLabel} segue o material da variante</strong>
+                        {on
+                          ? ' — ao vender uma variante, este componente sai do material principal dela.'
+                          : ' — desligado: este componente usa sempre o material cadastrado aqui, mesmo vendendo outra variante.'}
+                      </span>
+                    </label>
+                  );
+                };
                 // Tamanhos numéricos individuais (35, 36, 37...) e a versão
                 // com conjugações aplicadas (substitui 23,24 → "23/24" quando
                 // o solado tem conjugação cadastrada). Usar a lista conjugada
@@ -2797,6 +2831,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                       </div>
 
                       {renderWidthWarn(form.upper_material)}
+                      {renderVariantDrivesToggle('variant_drives_upper', 'Cabedal')}
 
                       {/* Item específico (pin de SKU) do Cabedal Material 1 — opcional.
                           Fixa o produto exato pro débito (vence a cor do PV; perde só pra
@@ -3179,6 +3214,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                       </div>
 
                       {renderWidthWarn(form.lining_material)}
+                      {renderVariantDrivesToggle('variant_drives_lining', 'Forração')}
 
                       {/* Item específico (pin de SKU) da Forração — opcional (mesma lógica do Cabedal). */}
                       {form.lining_material && (() => {

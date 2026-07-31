@@ -156,6 +156,15 @@ export type SheetFormData = {
   insole_color_mode: 'single' | 'follows_lining' | 'restricted_palette' | 'free';
   max_insole_colors: number;
    sole_drives_consumption: boolean;
+   /** Quais componentes seguem o MATERIAL PRINCIPAL da variante do item do PV
+    *  (mig 20261027120000). Desligado = o componente usa sempre o material
+    *  cadastrado na ficha — é o que protege material de identidade (ex.: a PALHA
+    *  do cabedal do DS21/DS19). `variant_drives_insole` existe mas não tem UI:
+    *  o slot da palmilha aponta a PLACA (EVA), e cascatear napa ali seria errado. */
+   variant_drives_upper: boolean;
+   variant_drives_lining: boolean;
+   variant_drives_insole: boolean;
+   variant_drives_fachete: boolean;
    custom_overhead?: number | null;
    /** Whether insole (palmilha) has a lining (forração). true = follows cabedal color; false = use palmilha color mapping. */
    insole_has_lining: boolean;
@@ -219,6 +228,10 @@ export const emptySheetForm: SheetFormData = {
   insole_color_mode: 'free',
   max_insole_colors: 3,
    sole_drives_consumption: true,
+   variant_drives_upper: false,
+   variant_drives_lining: false,
+   variant_drives_insole: false,
+   variant_drives_fachete: false,
    custom_overhead: null,
    insole_has_lining: true,
    insole_ready_made: false,
