@@ -137,6 +137,7 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
       | 'sku'             // SKU idêntico (mesmo cross-grupo)
       | 'normalized'      // mesmo nome após remover acento/caps/espaços
       | 'cross_group'     // nome igual mas grupo diferente
+      | 'fuzzy_color'     // COR quase igual no mesmo grupo (CAPUCCINO × CAPPUCCINO)
       | 'fuzzy'           // typo curto (Levenshtein ≤ 2)
       | 'two_words';      // 2+ palavras significativas em comum
   } | null>(null);
@@ -549,6 +550,10 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
     if (!form.name.trim()) errs.name = true;
     if (!form.sku.trim()) errs.sku = true;
     if (!form.group_id) errs.group_id = true;
+    // Cor obrigatória quando o grupo é varia-por-cor: sem ela o débito não sabe
+    // qual rolo baixar e o item some das resoluções por cor. No modo multi-cor
+    // as cores vêm dos chips, então o campo único nem é exibido.
+    if (!multiColorMode && colorRequired && !(form.color || '').trim()) errs.color = true;
     if (hasGrade && (sizeFrom == null || sizeTo == null || sizeTo < sizeFrom)) errs.sizeRange = true;
     const purchaseUnit = normalizeUnit(form.purchase_unit || form.purchase_order_unit);
     const stockUnit = normalizeUnit(form.unit);
@@ -559,7 +564,19 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
     return errs;
   };
 
-  const isFormValid = form.name.trim() !== '' && form.sku.trim() !== '' && !!form.group_id;
+  /** O grupo varia por cor? Sim quando NÃO é `is_color_agnostic` (EVA, cola…) e
+   *  já existe algum irmão ativo com cor preenchida. Deriva do dado em vez de
+   *  pedir mais um flag: se o grupo tem itens por cor, o novo também precisa. */
+  const colorRequired = useMemo(() => {
+    if (!form.group_id) return false;
+    const g = groups.find(x => x.id === form.group_id) as any;
+    if (g?.is_color_agnostic) return false;
+    return allProducts.some(p =>
+      p.group_id === form.group_id && p.id !== product?.id && p.active && (p.color || '').trim() !== '');
+  }, [form.group_id, groups, allProducts, product?.id]);
+
+  const isFormValid = form.name.trim() !== '' && form.sku.trim() !== '' && !!form.group_id
+    && (multiColorMode || !colorRequired || (form.color || '').trim() !== '');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -575,6 +592,7 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
         name: 'Nome',
         sku: 'SKU',
         group_id: 'Grupo',
+        color: 'Cor',
         sizeRange: 'Grade de Tamanhos',
         conversion_rate: 'Fator de Conversão',
       };
@@ -617,6 +635,11 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
       baseData.dimensions_thickness = plateThickness;
       baseData.dimensions_unit = plateUnit;
     }
+
+    // Nome sem a cor: a cor é fonte única em `products.color`. O strip já rodava
+    // ao ABRIR o form, mas não ao salvar — então quem digitasse "NAPA SOFT: NUDE"
+    // gravava a cor no nome de novo. É a origem dos 92 itens com cor no nome.
+    baseData.name = stripColorFromName(baseData.name || '', baseData.color) || baseData.name;
 
     const hasYieldData = Object.values(yieldPerSize).some(v => v > 0);
     const saveComponentSheet = async (productId: string) => {
@@ -742,7 +765,9 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
           onSubmit({
             ...baseData,
             color,
-            name: form.name,
+            // Nome compartilhado entre as cores, sempre SEM a cor — cada item se
+            // distingue por `color`, não pelo nome.
+            name: stripColorFromName(form.name || '', color) || form.name,
             sku: multiColors.length > 1 ? `${form.sku}-${String(idx + 1).padStart(2, '0')}` : form.sku,
           }, createComponentSheet)
         ));
@@ -958,12 +983,34 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
       if (skuMatch) { setDuplicateMatch({ product: skuMatch, reason: 'sku' }); return; }
     }
 
+    // 2b. COR quase igual no mesmo grupo (typo de cor). Vem ANTES do match por
+    //     nome porque num grupo que varia por cor o nome é sempre o mesmo — é a
+    //     cor que distingue. Pega CAPUCCINO × CAPPUCCINO e COGUMELO duplicado,
+    //     que hoje existem no NAPA SOFT.
+    if (normalizedColor.length >= 4) {
+      const colorTypo = allProducts.find(p => {
+        if (isSelf(p) || !sameGroup(p)) return false;
+        const existing = normalizeForCompare(p.color || '');
+        if (existing.length < 4 || existing === normalizedColor) return false;
+        if (Math.abs(existing.length - normalizedColor.length) > 2) return false;
+        return levenshtein(existing, normalizedColor) <= 2;
+      });
+      if (colorTypo) { setDuplicateMatch({ product: colorTypo, reason: 'fuzzy_color' }); return; }
+    }
+
     // 3. Nome NORMALIZADO igual (sem acento, sem pontuação, espaço colapsado)
     //    Pega "Café com Leite" vs "cafe-com-leite", "NAPA SOFT" vs "napa  soft".
+    //    ⚠ Num grupo que varia por cor o nome REPETE de propósito (a cor é que
+    //    distingue), então cor diferente aqui não é duplicata — avisar disso
+    //    treinava o operador a clicar por cima do alerta, e aí a duplicata de
+    //    verdade (typo de cor, acima) passava batido.
     const normalizedMatch = allProducts.find(p => {
       if (isSelf(p)) return false;
       if (!sameGroup(p)) return false;
-      return normalizeForCompare(p.name) === normalizedName;
+      if (normalizeForCompare(p.name) !== normalizedName) return false;
+      const existingColor = normalizeForCompare(p.color || '');
+      if (normalizedColor && existingColor && normalizedColor !== existingColor) return false;
+      return true;
     });
     if (normalizedMatch) { setDuplicateMatch({ product: normalizedMatch, reason: 'normalized' }); return; }
 
@@ -1109,6 +1156,7 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
                   sku: 'Já existe um item com o MESMO SKU',
                   normalized: 'Já existe um item igual (variação de acento/maiúscula/espaço)',
                   cross_group: 'Já existe um item com este nome em OUTRO grupo',
+                  fuzzy_color: 'Já existe uma COR quase idêntica neste grupo (possível erro de digitação)',
                   fuzzy: 'Já existe um item com nome muito parecido (possível erro de digitação)',
                   two_words: 'Já existe um item com palavras em comum no nome',
                 };
@@ -1167,9 +1215,41 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
                />
              </div>
 
-            {/* Removidos em 2026-05: "Item Padrão de Solado" (vive em outro
-                fluxo agora) e bloco "Cor" (gerenciado via GroupColorsManager
-                no GroupEditDialog). */}
+            {/* Cor do item. Voltou em 2026-07-31: tinha sido removida daqui
+                apontando pra um "GroupColorsManager" que nunca foi construído —
+                resultado, não havia NENHUM lugar pra corrigir a cor de um item
+                já criado. Daí os 92 produtos com a cor escrita no nome e os 11
+                sem cor. A cor é fonte única em `products.color`: o débito casa
+                por ela, então cor errada baixa o rolo errado.
+                Escondida no modo multi-cor (criação em lote), onde as cores vêm
+                dos chips abaixo. */}
+            {!multiColorMode && (
+              <div className="col-span-1">
+                <Label htmlFor="color" className={attempted && errors.color ? 'text-destructive' : ''}>
+                  Cor {colorRequired && '*'}
+                </Label>
+                <Input
+                  id="color"
+                  value={form.color || ''}
+                  onChange={e => {
+                    update('color', e.target.value);
+                    if (attempted) setErrors(prev => ({ ...prev, color: colorRequired && !e.target.value.trim() }));
+                  }}
+                  className={`mt-1 h-10 ${attempted && errors.color ? 'border-destructive ring-destructive' : ''}`}
+                  placeholder={colorRequired ? 'Ex: PRETO' : 'Sem cor (material único)'}
+                />
+                {attempted && errors.color ? (
+                  <p className="text-xs text-destructive mt-1">
+                    Este grupo tem itens por cor — sem cor o débito não consegue escolher o rolo certo.
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Não repita a cor no nome — o nome é do material, a cor é deste campo.
+                  </p>
+                )}
+              </div>
+            )}
+            {/* Removido em 2026-05: "Item Padrão de Solado" (vive em outro fluxo agora). */}
             <div className="col-span-1">
               <Label htmlFor="sku" className={attempted && errors.sku ? 'text-destructive' : ''}>Código (SKU) *</Label>
               <Input id="sku" value={form.sku} onChange={e => { update('sku', e.target.value); if (attempted) setErrors(prev => ({ ...prev, sku: !e.target.value.trim() })); }} className={`mt-1 h-10 font-mono text-sm ${attempted && errors.sku ? 'border-destructive ring-destructive' : ''}`} placeholder="Ex: CAB-001" />
