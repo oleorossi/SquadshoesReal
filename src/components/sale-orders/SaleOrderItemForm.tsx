@@ -1771,9 +1771,11 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
         groupId={pendingStrapGroupId}
         groupName={pendingStrapGroupName}
         color={pendingStrapColor}
-        // A família da napa-base sai da ficha deste item (cabedal, ou forração
-        // quando o modelo é só de tiras) — mesma fonte da reserva e do débito.
+        // A família da napa-base sai da VARIANTE de material deste item, caindo
+        // na ficha quando não há variante (cabedal, ou forração quando o modelo
+        // é só de tiras) — mesma fonte da reserva e do débito.
         referenceId={item.reference_id || null}
+        materialVariantId={item.material_variant_id || null}
         onCreated={() => {
           qc.invalidateQueries({ queryKey: ['products_for_colors'] });
           qc.invalidateQueries({ queryKey: ['group_supplier_materials_for_colors'] });

@@ -37,6 +37,14 @@ interface Props {
    * ex.: Estoque → Grupos).
    */
   referenceId?: string | null;
+  /**
+   * Variante de material do item do PV. A MESMA ficha vende em NAPA SOFT, GLOW
+   * METALIC e NAPA SUDANI — a variante é quem diz de qual napa a tira sai, e
+   * ela VENCE o material da ficha (mig 20261026120000). Sem isso o diálogo
+   * mostrava a família da ficha e acusava o usuário de divergir, enquanto o
+   * débito travava a OP procurando napa numa família que o item não usa.
+   */
+  materialVariantId?: string | null;
 }
 
 type SimilarProduct = {
@@ -147,7 +155,7 @@ const resolveUniqueSku = async (preferredSku: string, groupName: string, color: 
   return `${normalizeSkuPart(groupName, 'TIRA', 6)}-${normalizeSkuPart(color, 'COR', 4)}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
 };
 
-export default function CreateStrapProductDialog({ open, onOpenChange, groupId, groupName, color, onCreated, referenceId }: Props) {
+export default function CreateStrapProductDialog({ open, onOpenChange, groupId, groupName, color, onCreated, referenceId, materialVariantId }: Props) {
   const qc = useQueryClient();
   const { data: groups = [] } = useGroups();
   const { data: contractors = [] } = useContractors();
@@ -162,8 +170,10 @@ export default function CreateStrapProductDialog({ open, onOpenChange, groupId, 
   const [catalog, setCatalog] = useState<ProductWithGroup[]>([]);
   /** Segundo clique libera a criação mesmo com duplicata (aviso, não bloqueio). */
   const [dupAck, setDupAck] = useState(false);
-  /** Família da napa segundo a FICHA do modelo (cabedal, ou forração se só tiras). */
+  /** Família da napa que a PRODUÇÃO vai usar (variante do item > ficha). */
   const [sheetFamily, setSheetFamily] = useState('');
+  /** true quando a família acima veio da VARIANTE do item, não da ficha crua. */
+  const [familyFromVariant, setFamilyFromVariant] = useState(false);
   /** Produto-sonda do grupo: resolve_strap_base_napa lê o GRUPO dele, não a cor. */
   const [probeProductId, setProbeProductId] = useState<string | null>(null);
   const [napa, setNapa] = useState<NapaResolution | null>(null);
@@ -328,16 +338,34 @@ export default function CreateStrapProductDialog({ open, onOpenChange, groupId, 
 
       setSimilarProducts(similar as ProductWithGroup[]);
 
-      // Família da napa segundo a FICHA do modelo — MESMA fonte que a reserva e
-      // o débito usam (strap_base_family_for_sheet: cabedal, ou forração quando
-      // o modelo é só de tiras). Sem isso o cadastro escolhe uma família e a
-      // produção procura outra — a origem do furo da spec §1.
+      // Família da napa — MESMA fonte que a reserva e o débito usam
+      // (strap_base_family_for_sheet). Precedência: grupo de cabedal da VARIANTE
+      // do item > grupo de forração da variante > cabedal da ficha > forração da
+      // ficha. Sem isso o cadastro escolhe uma família e a produção procura
+      // outra — a origem do furo da spec §1.
       let fichaFamily = '';
       if (referenceId) {
-        const { data: famData } = await (supabase as any)
-          .rpc('strap_base_family_for_sheet', { p_reference_id: referenceId });
-        fichaFamily = (typeof famData === 'string' ? famData : '').trim();
+        const sb = supabase as any;
+        const askFamily = async (variantId: string | null) => {
+          const { data } = await sb.rpc('strap_base_family_for_sheet',
+            variantId
+              ? { p_reference_id: referenceId, p_variant_id: variantId }
+              : { p_reference_id: referenceId });
+          return (typeof data === 'string' ? data : '').trim();
+        };
+
+        fichaFamily = await askFamily(materialVariantId || null);
         setSheetFamily(fichaFamily);
+
+        // A família mudou por causa da variante? Só pra escrever o aviso na
+        // linguagem certa ("a variante deste item usa X", não "a ficha usa X").
+        // Sem variante nem chama de novo — a resposta seria a mesma.
+        if (materialVariantId) {
+          const bare = await askFamily(null);
+          setFamilyFromVariant(!!fichaFamily && normKey(bare) !== normKey(fichaFamily));
+        } else {
+          setFamilyFromVariant(false);
+        }
       }
 
       // ── Defaults da produção artesanal ────────────────────────────────────
@@ -374,7 +402,9 @@ export default function CreateStrapProductDialog({ open, onOpenChange, groupId, 
 
       setPrefilling(false);
     })();
-  }, [open, groupId, groupName, color]);
+    // referenceId/materialVariantId entram aqui porque a família da napa sai
+    // deles: trocar a variante do item sem re-rodar deixaria a base velha.
+  }, [open, groupId, groupName, color, referenceId, materialVariantId]);
 
   // Aplica uma cor (chip do grupo ou digitada) e re-deriva Nome + SKU.
   const applyColor = (c: string) => {
@@ -830,6 +860,21 @@ export default function CreateStrapProductDialog({ open, onOpenChange, groupId, 
                         ))}
                       </div>
                     )}
+                    {/* Cor travada na do item: a napa-base é resolvida por
+                        família + COR DA TIRA. Divergir aqui manda a produção
+                        procurar napa numa cor que a tira não usa. Aviso, não
+                        bloqueio — tira de cor contrastante é legítima. */}
+                    {color.trim() && colorInput.trim()
+                      && normKey(colorInput) !== normKey(color) && (
+                      <div className="mt-1.5 flex items-start gap-2 rounded-md bg-amber-500/10 px-2.5 py-2 text-xs text-amber-700 dark:text-amber-400">
+                        <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                        <span>
+                          A tira do PV é <strong>{color.trim().toUpperCase()}</strong>, mas você está cadastrando{' '}
+                          <strong>{colorInput.trim().toUpperCase()}</strong>. A produção procura a napa na cor da TIRA —
+                          se for de propósito (tira em cor contrastante), pode seguir.
+                        </span>
+                      </div>
+                    )}
                     <p className="text-xs text-muted-foreground mt-1">
                       Escolha uma cor do grupo ou digite uma nova — vira a cor do produto no estoque e atualiza Nome e SKU.
                     </p>
@@ -983,15 +1028,20 @@ export default function CreateStrapProductDialog({ open, onOpenChange, groupId, 
                         />
                       </div>
 
-                      {/* A ficha do modelo é quem define a família na produção —
-                          divergir aqui é o que faz a compra ir numa napa e a
-                          reserva noutra (spec §1). */}
+                      {/* Quem define a família na produção é a VARIANTE do item
+                          (caindo na ficha quando não há variante) — divergir
+                          aqui é o que faz a compra ir numa napa e a reserva
+                          noutra (spec §1). O aviso só aparece quando o usuário
+                          troca a base à mão: com a variante lida corretamente,
+                          o default já nasce igual. */}
                       {sheetFamily && normKey(sheetFamily) !== normKey(baseMaterial) && (
                         <div className="flex items-start gap-2 rounded-md bg-amber-500/10 px-2.5 py-2 text-xs text-amber-700 dark:text-amber-400">
                           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                           <span>
-                            A ficha deste modelo usa <strong>{sheetFamily}</strong> no cabedal/forração — é nessa família
-                            que a produção vai procurar a receita. Cadastrar a base como <strong>{baseMaterial || '(vazia)'}</strong> faz
+                            {familyFromVariant
+                              ? <>A <strong>variante de material deste item</strong> é <strong>{sheetFamily}</strong> — é nessa família</>
+                              : <>A ficha deste modelo usa <strong>{sheetFamily}</strong> no cabedal/forração — é nessa família</>}
+                            {' '}que a produção vai procurar a receita. Cadastrar a base como <strong>{baseMaterial || '(vazia)'}</strong> faz
                             compra e reserva discordarem.
                           </span>
                         </div>
