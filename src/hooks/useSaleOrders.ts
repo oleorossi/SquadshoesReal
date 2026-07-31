@@ -11,6 +11,7 @@ import { logAuditEvent } from '@/services/auditService';
 import { recomputeMaterialGate } from '@/hooks/useMaterialGate';
 import { consumeReservationsOnRelease } from '@/lib/releaseConsumption';
 import { canonicalStageOrder } from '@/components/production/worksheet/stageOrder';
+import { pruneStrapSourcing } from '@/lib/strapSourcing';
 
 // Setores default de uma OP — nomes CANÔNICOS ('Aviamento', não o legado 'Mesa';
 // inclui 'Costura' desde o PR 2). A numeração vem de CANONICAL_STAGE_ORDER
@@ -27,6 +28,44 @@ export const DEFAULT_OP_STAGES = [
   'Acabamento',
   'Expedição',
 ].map((name) => ({ name, order: canonicalStageOrder(name) }));
+
+/**
+ * Grava `sale_order_items.strap_sourcing` (origem "corto aqui" × "compro pronta"
+ * por linha de tira) nos itens recém-inseridos/atualizados, casando por ÍNDICE —
+ * a mesma convenção que os RPCs atômicos usam pra devolver os ids.
+ *
+ * Existe porque nem `create_sale_order_atomic` nem `update_sale_order_atomic`
+ * listam essa coluna: o create não a insere e o update não a toca. Só o item
+ * cujo mapa mudou é escrito (inclusive pra `{}`, que é como se LIMPA um override
+ * — voltar a herdar `products.is_artisanal` é uma decisão, não um no-op).
+ *
+ * Falha aqui não derruba o salvamento do PV: o motor cai no default do produto,
+ * que é o comportamento anterior a esta feature.
+ */
+async function persistStrapSourcing(
+  items: SaleOrderItemFormData[],
+  itemIds: string[],
+  logPrefix: string,
+): Promise<void> {
+  try {
+    for (let idx = 0; idx < items.length; idx++) {
+      const newId = itemIds[idx];
+      if (!newId) continue;
+      const raw = (items[idx] as any)?.strap_sourcing;
+      if (!raw || typeof raw !== 'object') continue;
+      // Poda chaves de cores que não existem mais nas tiras do item — trocar a
+      // cor deixaria o override antigo pendurado, pronto pra ressuscitar.
+      const map = pruneStrapSourcing(raw, (items[idx] as any)?.strap_colors);
+      const { error } = await supabase
+        .from('sale_order_items')
+        .update({ strap_sourcing: map } as any)
+        .eq('id', newId);
+      if (error) console.warn(`${logPrefix} falha ao gravar origem das tiras:`, error.message);
+    }
+  } catch (e: any) {
+    console.warn(`${logPrefix} persistência da origem das tiras falhou:`, e?.message || e);
+  }
+}
 
 /**
  * stage_order canônico pro setor; nomes legados ('Mesa', 'Expedicao') resolvem
@@ -454,6 +493,13 @@ export type SaleOrderItemFormData = {
   quantity: number;
   fichas?: number;
   strap_colors?: { id: string; label: string; color: string }[];
+  /** Origem POR LINHA DE TIRA: `{ "<group_id>|<COR>": "in_house" | "purchased" }`.
+   *  Chave ausente = herda `products.is_artisanal`. `in_house` faz sair NAPA do
+   *  estoque; `purchased`, a própria tira. Lido pelo motor único
+   *  (`resolve_strap_sourcing`), que compras E reserva/débito consultam.
+   *  ⚠ Nenhum dos dois RPCs atômicos lista esta coluna — é gravada por UPDATE
+   *  direcionado depois do RPC (mesmo padrão de selected_terceirizacao_ids). */
+  strap_sourcing?: Record<string, 'in_house' | 'purchased'> | null;
   observation?: string | null;
   material_variant_id?: string | null;
   /** Terceirização integrada: IDs das reference_terceirizacoes marcadas pra
@@ -605,6 +651,14 @@ export function useCreateSaleOrder() {
         ? (atomicResult as { item_ids: string[] }).item_ids
         : [];
       const data = { id: orderId };
+
+      // Origem da tira (corto aqui × compro pronta) — `create_sale_order_atomic`
+      // insere uma lista EXPLÍCITA de colunas e não inclui strap_sourcing, então
+      // grava-se aqui, como já se faz com selected_terceirizacao_ids.
+      // ⚠ ANTES de qualquer criação de OP/reserva: debit_strap_stock resolve o
+      // sourcing lendo esta coluna via orders.sale_order_item_id — gravar depois
+      // faria a primeira reserva sair pelo default do produto.
+      await persistStrapSourcing(items, insertedItemIds, '[useCreateSaleOrder]');
 
       // Auto-sync financial records
       await syncFinancialRecords(data.id);
@@ -1979,6 +2033,12 @@ export function useUpdateSaleOrder() {
           color: items[idx]?.color ?? null,
           quantity: items[idx]?.quantity ?? null,
         }));
+
+      // Origem da tira: o RPC também não lista strap_sourcing (nem no UPDATE, nem
+      // no INSERT), então nem clobbera a coluna do item que ficou, nem preenche a
+      // do item novo — o UPDATE direcionado abaixo cobre os dois casos. Vem antes
+      // da recriação das OPs, que é quem dispara reserva/débito da tira.
+      await persistStrapSourcing(items, insertedIds, '[useUpdateSaleOrder]');
 
       // Terceirização integrada: o RPC update_sale_order_atomic recria os itens SEM a
       // coluna selected_terceirizacao_ids — re-grava a INTENÇÃO nos itens novos (por

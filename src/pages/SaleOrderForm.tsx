@@ -84,6 +84,10 @@ export function mapLoadedSaleOrderItem(
     quantity: qty,
     fichas,
     strap_colors: (i.strap_colors as any[]) || [],
+    // Origem por linha de tira ("corto aqui" × "compro pronta"). Sem copiar na
+    // carga, reabrir o PV pra editar apagaria a escolha — e a tira voltaria a
+    // seguir products.is_artisanal sem ninguém perceber.
+    strap_sourcing: ((i as any).strap_sourcing as Record<string, 'in_house' | 'purchased'>) ?? null,
     observation: (i as any).observation || null,
     // Sem copiar na carga, editar o PV gravava null (o payload de update e o
     // RPC update_sale_order_atomic JÁ persistem a coluna) → perda silenciosa

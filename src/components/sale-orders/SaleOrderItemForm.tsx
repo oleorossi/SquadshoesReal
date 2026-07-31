@@ -27,6 +27,13 @@ import { useReferenceMaterialVariants, useAllActiveReferenceMaterialVariants, Va
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { normalizeForSearch, searchMatchesAllTerms } from '@/lib/searchUtils';
 import { shouldSyncStrapColorsToMain } from '@/lib/strapColorSync';
+import {
+  getStrapSourcingOverride,
+  setStrapSourcing,
+  strapSourcingKey,
+  type StrapSourcingMap,
+} from '@/lib/strapSourcing';
+import { useStrapStockLines } from '@/hooks/useStrapStockLines';
 import { SearchInput } from '@/components/ui/search-input';
 interface ReferenceOption {
   id: string;
@@ -596,6 +603,29 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
       return hasProduct ? null : { idx, color: s.color, group_name: s.group_name || '', group_id: s.group_id };
     }).filter(Boolean) as any;
   }, [item.strap_colors, allProducts, productGroups, modelHasCabedal]);
+
+  // ── Origem da tira: "corto aqui" × "compro pronta" (spec §2.1) ─────────────
+  // A escolha é POR LINHA DE TIRA e mora em sale_order_items.strap_sourcing; o
+  // default vem de products.is_artisanal. Um PV pode ter tira chata, meia cana e
+  // strass ao mesmo tempo em situações de estoque diferentes — "corto a chata,
+  // compro a meia cana" precisa ser possível.
+  const strapSourcingMap = (((item as any).strap_sourcing) || {}) as StrapSourcingMap;
+  const { data: strapLines = [], isLoading: strapLinesLoading } = useStrapStockLines(
+    {
+      referenceId: item.reference_id,
+      strapColors: item.strap_colors,
+      quantity: item.quantity,
+      grade: item.grade,
+    },
+    !modelHasCabedal,
+  );
+  const strapLineByKey = useMemo(
+    () => new Map(strapLines.map((l) => [l.key, l])),
+    [strapLines],
+  );
+  const setStrapOrigin = (groupId: string, color: string, value: 'in_house' | 'purchased' | null) => {
+    onUpdate(index, 'strap_sourcing', setStrapSourcing(strapSourcingMap, groupId, color, value));
+  };
 
   const hasColorIssue = coverColorIssues.length > 0 || strapMissing.length > 0;
   const colorIssueKey = hasColorIssue
@@ -1604,6 +1634,87 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                       {isMissing && (
                         <p className="text-xs text-amber-700 leading-tight">sem produto no estoque</p>
                       )}
+                      {/* Origem da tira: corto aqui (sai NAPA) × compro pronta
+                          (sai a própria tira). Só aparece com cor definida —
+                          sem cor não há napa-base a resolver. */}
+                      {!!strap.color && !!strap.group_id && (() => {
+                        const key = strapSourcingKey(strap.group_id, strap.color);
+                        const line = key ? strapLineByKey.get(key) : undefined;
+                        const override = getStrapSourcingOverride(strapSourcingMap, strap.group_id, strap.color);
+                        const inherited = line?.inheritedSourcing ?? 'purchased';
+                        const effective = override ?? inherited;
+                        const blocked = effective === 'in_house' && !!line?.blockReason;
+                        const fmt = (v: number | null | undefined, d = 2) =>
+                          v == null ? '—' : v.toLocaleString('pt-BR', { minimumFractionDigits: d, maximumFractionDigits: d });
+                        return (
+                          <div className={cn(
+                            'rounded-md border px-2 py-1.5 space-y-1',
+                            blocked ? 'border-amber-500/50 bg-amber-500/10' : 'border-border/60 bg-muted/20',
+                          )}>
+                            <div className="flex items-center justify-between gap-1">
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Origem</span>
+                              {override ? (
+                                <button
+                                  type="button"
+                                  className="text-[10px] text-muted-foreground underline underline-offset-2 hover:text-foreground"
+                                  onClick={() => setStrapOrigin(strap.group_id, strap.color, null)}
+                                  title="Volta a seguir a marca de material artesanal do cadastro do produto"
+                                >
+                                  escolhido · usar padrão
+                                </button>
+                              ) : (
+                                <span className="text-[10px] italic text-muted-foreground" title="Vem da marca de material artesanal no cadastro do produto">
+                                  herdado do cadastro
+                                </span>
+                              )}
+                            </div>
+                            <div className="grid grid-cols-2 gap-1">
+                              {([
+                                ['in_house', 'Corto aqui'],
+                                ['purchased', 'Compro pronta'],
+                              ] as const).map(([opt, label]) => (
+                                <button
+                                  key={opt}
+                                  type="button"
+                                  onClick={() => setStrapOrigin(strap.group_id, strap.color, opt)}
+                                  className={cn(
+                                    'h-7 rounded-md border px-1 text-[11px] font-medium transition-colors',
+                                    effective === opt
+                                      ? 'border-primary bg-primary/10 text-primary'
+                                      : 'border-border bg-card text-muted-foreground hover:bg-muted/40',
+                                  )}
+                                >
+                                  {label}
+                                </button>
+                              ))}
+                            </div>
+                            {strapLinesLoading && !line ? (
+                              <p className="text-[10px] leading-tight text-muted-foreground">resolvendo a napa-base…</p>
+                            ) : effective === 'in_house' ? (
+                              blocked ? (
+                                <p className="text-[10px] leading-snug text-amber-700 dark:text-amber-400">
+                                  {line?.blockReason}
+                                </p>
+                              ) : line?.napaProductName ? (
+                                <p className="text-[10px] leading-snug text-muted-foreground">
+                                  Sai <strong className="text-foreground">{fmt(line.napaRequiredM)} m</strong> de{' '}
+                                  <strong className="text-foreground">{line.napaProductName}</strong>{' '}
+                                  (rend. {fmt(line.yieldPerMeter, 0)} m/m) para {fmt(line.strapRequiredM, 1)} m de tira.
+                                </p>
+                              ) : (
+                                <p className="text-[10px] leading-snug text-muted-foreground">
+                                  Napa-base ainda não resolvida para esta cor.
+                                </p>
+                              )
+                            ) : (
+                              <p className="text-[10px] leading-snug text-muted-foreground">
+                                Sai do estoque a própria tira
+                                {line ? <> — <strong className="text-foreground">{fmt(line.strapRequiredM, 1)} m</strong></> : null}.
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
                   );
                 })}
@@ -1660,6 +1771,9 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
         groupId={pendingStrapGroupId}
         groupName={pendingStrapGroupName}
         color={pendingStrapColor}
+        // A família da napa-base sai da ficha deste item (cabedal, ou forração
+        // quando o modelo é só de tiras) — mesma fonte da reserva e do débito.
+        referenceId={item.reference_id || null}
         onCreated={() => {
           qc.invalidateQueries({ queryKey: ['products_for_colors'] });
           qc.invalidateQueries({ queryKey: ['group_supplier_materials_for_colors'] });

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -30,6 +30,13 @@ interface Props {
   groupName: string;
   color: string;
   onCreated: () => void;
+  /**
+   * Ficha técnica do item do PV. Quando informada, a FAMÍLIA da napa-base sai
+   * dela (`strap_base_family_for_sheet`) — a mesma fonte que reserva/débito
+   * usam. Sem ela o diálogo cai na família escolhida à mão (uso fora do PV,
+   * ex.: Estoque → Grupos).
+   */
+  referenceId?: string | null;
 }
 
 type SimilarProduct = {
@@ -42,6 +49,18 @@ type SimilarProduct = {
   unit: string;
   sku?: string;
   unit_price?: number;
+};
+
+/** Produto + nome do grupo — base da checagem de duplicata ENTRE grupos. */
+type ProductWithGroup = SimilarProduct & { groupName: string };
+
+/** Resolução da napa-base (RPC resolve_strap_base_napa) exibida na criação. */
+type NapaResolution = {
+  base_product_id: string | null;
+  base_product_name: string | null;
+  yield_per_meter: number | null;
+  recipe_id: string | null;
+  block_reason: string | null;
 };
 
 const normalizeForComparison = (value: string) =>
@@ -128,7 +147,7 @@ const resolveUniqueSku = async (preferredSku: string, groupName: string, color: 
   return `${normalizeSkuPart(groupName, 'TIRA', 6)}-${normalizeSkuPart(color, 'COR', 4)}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
 };
 
-export default function CreateStrapProductDialog({ open, onOpenChange, groupId, groupName, color, onCreated }: Props) {
+export default function CreateStrapProductDialog({ open, onOpenChange, groupId, groupName, color, onCreated, referenceId }: Props) {
   const qc = useQueryClient();
   const { data: groups = [] } = useGroups();
   const { data: contractors = [] } = useContractors();
@@ -136,9 +155,19 @@ export default function CreateStrapProductDialog({ open, onOpenChange, groupId, 
   const group = groups.find(g => g.id === groupId);
   const [loading, setLoading] = useState(false);
   const [prefilling, setPrefilling] = useState(true);
-  const [similarProducts, setSimilarProducts] = useState<SimilarProduct[]>([]);
+  const [similarProducts, setSimilarProducts] = useState<ProductWithGroup[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editingProduct, setEditingProduct] = useState<SimilarProduct | null>(null);
+  /** Catálogo ativo (≈200 linhas) com o nome do grupo — duplicata ENTRE grupos. */
+  const [catalog, setCatalog] = useState<ProductWithGroup[]>([]);
+  /** Segundo clique libera a criação mesmo com duplicata (aviso, não bloqueio). */
+  const [dupAck, setDupAck] = useState(false);
+  /** Família da napa segundo a FICHA do modelo (cabedal, ou forração se só tiras). */
+  const [sheetFamily, setSheetFamily] = useState('');
+  /** Produto-sonda do grupo: resolve_strap_base_napa lê o GRUPO dele, não a cor. */
+  const [probeProductId, setProbeProductId] = useState<string | null>(null);
+  const [napa, setNapa] = useState<NapaResolution | null>(null);
+  const [napaLoading, setNapaLoading] = useState(false);
 
   const [name, setName] = useState('');
   const [sku, setSku] = useState('');
@@ -205,7 +234,14 @@ export default function CreateStrapProductDialog({ open, onOpenChange, groupId, 
     if (!open || !groupId) return;
     setPrefilling(true);
     setSimilarProducts([]);
-    setShowForm(false);
+    // Sem tela-interstício: o formulário abre DIRETO e os similares viram um
+    // aviso no topo dele. Antes todo cadastro de cor que tivesse qualquer
+    // similar exigia um clique extra em "Cadastrar novo mesmo assim".
+    setShowForm(true);
+    setDupAck(false);
+    setNapa(null);
+    setSheetFamily('');
+    setProbeProductId(null);
     setColorInput(color);
 
     (async () => {
@@ -243,7 +279,7 @@ export default function CreateStrapProductDialog({ open, onOpenChange, groupId, 
       }
       setInitialStock(0);
 
-      const proposedName = `${groupName}: ${color}`;
+      const proposedName = color.trim() ? `${groupName}: ${color.trim()}` : '';
       setName(proposedName);
 
       const normalizedColor = color.trim().toLowerCase();
@@ -256,30 +292,52 @@ export default function CreateStrapProductDialog({ open, onOpenChange, groupId, 
       // FIX: filtrar similares APENAS dentro do mesmo group_id da tira
       // selecionada. Se a cor não existe nesse grupo específico, vai
       // direto pro form de criação (sem desvio).
-      const { data: allMatches } = await supabase
+      // Catálogo inteiro (≈200 ativos) numa tacada: serve pros similares do
+      // grupo E pra checagem de duplicata ENTRE grupos (o cadastro tem a mesma
+      // "Tira Strass 6mm" escrita de 4 jeitos, em grupos diferentes).
+      const { data: catalogRows } = await supabase
         .from('products')
-        .select('id, name, color, category, group_id, quantity, unit, sku, unit_price')
-        .eq('active', true)
-        .eq('group_id', groupId);
+        .select('id, name, color, category, group_id, quantity, unit, sku, unit_price, product_groups(name)')
+        .eq('active', true);
+      const fullCatalog: ProductWithGroup[] = (catalogRows || []).map((p: any) => ({
+        ...p,
+        groupName: (p.product_groups?.name || '').trim(),
+      }));
+      setCatalog(fullCatalog);
 
-      setGroupColors(Array.from(new Set((allMatches || []).map((p: any) => (p.color || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'pt-BR')));
+      const allMatches = fullCatalog.filter(p => p.group_id === groupId);
+      // Sonda pro resolve_strap_base_napa: ele lê o GRUPO do produto (pra achar
+      // a receita) e recebe a cor por parâmetro — qualquer irmão do grupo serve,
+      // inclusive de outra cor. Grupo vazio (1ª cor) fica sem sonda.
+      setProbeProductId(allMatches[0]?.id ?? null);
 
-      const similar = (allMatches || []).filter((p: any) => {
-        const pName = p.name?.trim().toLowerCase() || '';
-        const pColor = p.color?.trim().toLowerCase() || '';
-        // Match exato da cor dentro do MESMO grupo (já filtrado no SQL)
-        if (pColor === normalizedColor) return true;
-        if (fuzzyMatch(pColor, color)) return true;
-        if (fuzzyMatch(pName, proposedName)) return true;
-        if (pName.endsWith(`: ${normalizedColor}`) || pName.endsWith(` - ${normalizedColor}`) || pName.endsWith(` ${normalizedColor}`)) return true;
-        return false;
-      });
+      setGroupColors(Array.from(new Set(allMatches.map((p: any) => (p.color || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'pt-BR')));
 
-      if (similar.length > 0) {
-        setSimilarProducts(similar as SimilarProduct[]);
-        setShowForm(false);
-      } else {
-        setShowForm(true);
+      const similar = normalizedColor
+        ? allMatches.filter((p: any) => {
+            const pName = p.name?.trim().toLowerCase() || '';
+            const pColor = p.color?.trim().toLowerCase() || '';
+            // Match exato da cor dentro do MESMO grupo (já filtrado acima)
+            if (pColor === normalizedColor) return true;
+            if (fuzzyMatch(pColor, color)) return true;
+            if (proposedName && fuzzyMatch(pName, proposedName)) return true;
+            if (pName.endsWith(`: ${normalizedColor}`) || pName.endsWith(` - ${normalizedColor}`) || pName.endsWith(` ${normalizedColor}`)) return true;
+            return false;
+          })
+        : [];
+
+      setSimilarProducts(similar as ProductWithGroup[]);
+
+      // Família da napa segundo a FICHA do modelo — MESMA fonte que a reserva e
+      // o débito usam (strap_base_family_for_sheet: cabedal, ou forração quando
+      // o modelo é só de tiras). Sem isso o cadastro escolhe uma família e a
+      // produção procura outra — a origem do furo da spec §1.
+      let fichaFamily = '';
+      if (referenceId) {
+        const { data: famData } = await (supabase as any)
+          .rpc('strap_base_family_for_sheet', { p_reference_id: referenceId });
+        fichaFamily = (typeof famData === 'string' ? famData : '').trim();
+        setSheetFamily(fichaFamily);
       }
 
       // ── Defaults da produção artesanal ────────────────────────────────────
@@ -296,10 +354,13 @@ export default function CreateStrapProductDialog({ open, onOpenChange, groupId, 
       const preferBase = (names: string[]) => names.find(n => normKey(n) === normKey('NAPA MADRID')) || names[0] || '';
       const recipeBasesCovering = forType.map((r: any) => r.base_product_name).filter((b: string) => coveredNorm.has(normKey(b)));
       const napaCovering = colorBases.filter((n) => /napa|couro|dublagem/i.test(n));
-      const defBase = recipeBasesCovering.length ? preferBase(recipeBasesCovering)
+      // A ficha MANDA: se o modelo declara a família do cabedal/forração, é dela
+      // que a tira sai — o palpite por cobertura de cor só vale sem ficha.
+      const defBase = fichaFamily
+        || (recipeBasesCovering.length ? preferBase(recipeBasesCovering)
         : napaCovering.length ? preferBase(napaCovering)
         : forType.length ? forType[0].base_product_name
-        : '';
+        : '');
       const recForDefaults = forType.find((r: any) => normKey(r.base_product_name) === normKey(defBase)) || forType[0];
 
       const artisanalGroup = isStrapLikeGroup || forType.length > 0 || (lastProduct as any)?.is_artisanal === true;
@@ -318,12 +379,75 @@ export default function CreateStrapProductDialog({ open, onOpenChange, groupId, 
   // Aplica uma cor (chip do grupo ou digitada) e re-deriva Nome + SKU.
   const applyColor = (c: string) => {
     setColorInput(c);
+    setDupAck(false); // cor nova ⇒ duplicata nova: exige novo "criar mesmo assim"
     const t = c.trim();
-    setName(`${groupName}: ${t}`);
+    setName(t ? `${groupName}: ${t}` : '');
     setSku(skuBase ? deriveSkuFromBase(skuBase, t) : `${normalizeSkuPart(groupName, 'TIRA', 6)}-${normalizeSkuPart(t, 'COR', 4)}`);
     // Recalcula a cobertura da base pra nova cor (aviso âmbar ✓/⚠).
     void loadColorBases(t);
   };
+
+  // ── De qual napa a tira sai (spec §3.1 e §3.2) ─────────────────────────────
+  // Roda a MESMA função que reserva/débito rodam (resolve_strap_base_napa), com
+  // a família da ficha e a cor digitada. Devolve napa-base + rendimento, ou o
+  // `block_reason` pronto quando falta receita/rendimento/napa na cor — que sem
+  // isso viraria consumo 0 em silêncio, já com o PV em produção.
+  useEffect(() => {
+    if (!open || !isArtisanal) { setNapa(null); return; }
+    const family = (baseMaterial || '').trim();
+    const col = colorInput.trim();
+    if (!probeProductId || !family || !col) { setNapa(null); return; }
+    let cancelled = false;
+    setNapaLoading(true);
+    (async () => {
+      try {
+        const { data, error } = await (supabase as any).rpc('resolve_strap_base_napa', {
+          p_strap_product_id: probeProductId,
+          p_family: family,
+          p_color: col,
+        });
+        if (cancelled) return;
+        const row = Array.isArray(data) ? data[0] : data;
+        setNapa((row as NapaResolution) ?? null);
+        if (error) setNapa(null);
+      } catch {
+        if (!cancelled) setNapa(null);
+      } finally {
+        if (!cancelled) setNapaLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [open, isArtisanal, probeProductId, baseMaterial, colorInput]);
+
+  // ── Duplicata normalizada (spec §3.3) ──────────────────────────────────────
+  // No espírito do índice único de product_groups.name (lower(trim(name))), mas
+  // ignorando também acento e pontuação/espaço: "Tira Strass 6mm",
+  // "TIRA STRASS 6 MM" e "Tira-Strass 6MM" são o MESMO conceito. Olha o catálogo
+  // INTEIRO, não só o grupo atual — as 4 grafias da Tira Strass vivem em grupos
+  // diferentes, então uma busca escopada no grupo nunca as acharia.
+  const duplicates = useMemo(() => {
+    const col = colorInput.trim();
+    if (!col || catalog.length === 0) return [] as ProductWithGroup[];
+    const targetPair = normalizeForComparison(`${groupName} ${col}`);
+    const targetName = normalizeForComparison(name || `${groupName}: ${col}`);
+    return catalog.filter((p) => {
+      const pPair = normalizeForComparison(`${p.groupName} ${p.color || ''}`);
+      const pName = normalizeForComparison(p.name || '');
+      return (!!targetPair && pPair === targetPair) || (!!targetName && pName === targetName);
+    });
+  }, [catalog, groupName, colorInput, name]);
+
+  /** Duplicata em OUTRO grupo — o caso que a busca escopada nunca pegava. */
+  const crossGroupDuplicates = useMemo(
+    () => duplicates.filter((p) => p.group_id !== groupId),
+    [duplicates, groupId],
+  );
+
+  /** Duplicatas exatas primeiro, depois os parecidos do grupo (sem repetir). */
+  const existingCandidates = useMemo(() => {
+    const seen = new Set(duplicates.map(p => p.id));
+    return [...duplicates, ...similarProducts.filter(p => !seen.has(p.id))];
+  }, [duplicates, similarProducts]);
 
   // Cobertura da base escolhida: a napa base tem produto na cor selecionada?
   const baseCovered = !!baseMaterial && colorBaseNorm.has(normKey(baseMaterial));
@@ -425,6 +549,26 @@ export default function CreateStrapProductDialog({ open, onOpenChange, groupId, 
     }
     if (!trimmedName) {
       toast.error('Nome é obrigatório');
+      return;
+    }
+
+    // Rendimento é o que converte metro de tira em metro de napa. Zerado, a
+    // receita nasce inútil e o consumo da tira sai 0 sem ninguém perceber —
+    // exatamente o silêncio que a spec §3.2 manda acabar.
+    if (isArtisanal && !(Number(recipeYield) > 0)) {
+      toast.error('Informe o rendimento (m de tira por m de napa) — sem ele o consumo desta tira sai ZERO no PV.');
+      return;
+    }
+
+    // Duplicata: AVISA e exige confirmação, não bloqueia (spec §3.3).
+    if (duplicates.length > 0 && !dupAck) {
+      setDupAck(true);
+      const first = duplicates[0];
+      toast.warning(
+        `Já existe "${first.name}"${first.groupName && first.group_id !== groupId ? ` no grupo ${first.groupName}` : ''}` +
+        `${duplicates.length > 1 ? ` (e mais ${duplicates.length - 1})` : ''}. ` +
+        'Use o item existente ou clique de novo em "Criar mesmo assim".',
+      );
       return;
     }
 
@@ -531,63 +675,6 @@ export default function CreateStrapProductDialog({ open, onOpenChange, groupId, 
           </div>
         ) : (
           <>
-            {similarProducts.length > 0 && !showForm && (
-              <div className="space-y-3">
-                <div className="flex items-start gap-2 rounded-lg border border-border bg-muted/40 p-3 text-sm text-foreground">
-                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
-                  <div>
-                    <p className="font-semibold">Itens similares encontrados no estoque</p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Encontramos {similarProducts.length} item(ns) que pode(m) ser o mesmo produto.
-                      Deseja usar um existente ou cadastrar novo?
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Badge variant="secondary">{groupName}</Badge>
-                  <span>•</span>
-                  <Badge variant="outline">{colorInput}</Badge>
-                </div>
-
-                <div className="max-h-48 space-y-2 overflow-y-auto">
-                  {similarProducts.map(p => (
-                    <div key={p.id} className="flex items-center justify-between rounded-lg border p-3 transition-colors hover:bg-muted/30">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium">{p.name}</p>
-                        <div className="mt-1 flex items-center gap-2">
-                          {p.color && <Badge variant="outline" className="text-xs">{p.color}</Badge>}
-                          {p.category && <Badge variant="secondary" className="text-xs">{p.category}</Badge>}
-                          <span className="text-xs text-muted-foreground">
-                            Estoque: {p.quantity} {p.unit}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="flex gap-1 shrink-0">
-                        <Button size="sm" variant="outline" className="gap-1" onClick={() => handleUseExisting(p, false)}>
-                          <Check className="h-3 w-3" />
-                          Usar
-                        </Button>
-                        <Button size="sm" variant="ghost" className="gap-1" onClick={() => handleUseExisting(p, true)}>
-                          <Pencil className="h-3 w-3" />
-                          Editar
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                <DialogFooter className="flex-col gap-2 sm:flex-row">
-                  <Button variant="outline" onClick={() => onOpenChange(false)}>
-                    Cancelar
-                  </Button>
-                  <Button variant="secondary" onClick={() => setShowForm(true)}>
-                    Cadastrar novo mesmo assim
-                  </Button>
-                </DialogFooter>
-              </div>
-            )}
-
             {editingProduct && (
               <div className="space-y-4">
                 <div className="flex items-start gap-2 rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm">
@@ -654,6 +741,65 @@ export default function CreateStrapProductDialog({ open, onOpenChange, groupId, 
                   <span>•</span>
                   <Badge variant="outline">{colorInput}</Badge>
                 </div>
+
+                {/* Já existe? Duplicata normalizada (exata) primeiro, similares
+                    aproximados do grupo depois — tudo no MESMO formulário, sem
+                    tela intermediária. */}
+                {existingCandidates.length > 0 && (
+                  <div className={cn(
+                    'rounded-lg border p-3',
+                    duplicates.length > 0 ? 'border-amber-500/40 bg-amber-500/10' : 'border-border bg-muted/40',
+                  )}>
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle className={cn(
+                        'mt-0.5 h-4 w-4 shrink-0',
+                        duplicates.length > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground',
+                      )} />
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold">
+                          {duplicates.length > 0
+                            ? 'Este item JÁ EXISTE no estoque'
+                            : 'Itens parecidos já cadastrados'}
+                        </p>
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          {duplicates.length > 0
+                            ? 'Mesmo grupo + cor ignorando acento, caixa e espaço. Use o existente em vez de criar outra grafia da mesma tira.'
+                            : 'Confira se não é o mesmo produto antes de cadastrar mais uma cor.'}
+                          {crossGroupDuplicates.length > 0 && ' Há duplicata em OUTRO grupo — o cadastro tem a mesma tira escrita de vários jeitos.'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-2 max-h-40 space-y-2 overflow-y-auto">
+                      {existingCandidates.map(p => (
+                        <div key={p.id} className="flex items-center justify-between gap-2 rounded-lg border border-border bg-card p-2.5">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium">{p.name}</p>
+                            <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                              {p.groupName && p.group_id !== groupId && (
+                                <Badge variant="secondary" className="text-xs">{p.groupName}</Badge>
+                              )}
+                              {p.color && <Badge variant="outline" className="text-xs">{p.color}</Badge>}
+                              <span className="text-xs text-muted-foreground">
+                                Estoque: {p.quantity} {p.unit}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="flex shrink-0 gap-1">
+                            <Button size="sm" variant="outline" className="h-7 gap-1 text-xs" onClick={() => handleUseExisting(p, false)}>
+                              <Check className="h-3 w-3" />
+                              Usar
+                            </Button>
+                            <Button size="sm" variant="ghost" className="h-7 gap-1 text-xs" onClick={() => handleUseExisting(p, true)}>
+                              <Pencil className="h-3 w-3" />
+                              Editar
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="col-span-2">
@@ -837,9 +983,55 @@ export default function CreateStrapProductDialog({ open, onOpenChange, groupId, 
                         />
                       </div>
 
-                      {/* Cobertura da base na cor */}
+                      {/* A ficha do modelo é quem define a família na produção —
+                          divergir aqui é o que faz a compra ir numa napa e a
+                          reserva noutra (spec §1). */}
+                      {sheetFamily && normKey(sheetFamily) !== normKey(baseMaterial) && (
+                        <div className="flex items-start gap-2 rounded-md bg-amber-500/10 px-2.5 py-2 text-xs text-amber-700 dark:text-amber-400">
+                          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                          <span>
+                            A ficha deste modelo usa <strong>{sheetFamily}</strong> no cabedal/forração — é nessa família
+                            que a produção vai procurar a receita. Cadastrar a base como <strong>{baseMaterial || '(vazia)'}</strong> faz
+                            compra e reserva discordarem.
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Napa-base resolvida — MESMA RPC que reserva e débito
+                          usam. Sem ela o cadastro nasce sem vínculo e o consumo
+                          da tira sai 0 calado (spec §3.1 e §3.2). */}
                       {baseMaterial && colorInput.trim() && (
-                        baseCovered ? (
+                        napaLoading ? (
+                          <div className="flex items-center gap-2 rounded-md bg-muted/40 px-2.5 py-2 text-xs text-muted-foreground">
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            Resolvendo a napa-base…
+                          </div>
+                        ) : !probeProductId ? (
+                          <div className="flex items-start gap-2 rounded-md bg-muted/40 px-2.5 py-2 text-xs text-muted-foreground">
+                            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                            <span>
+                              Primeira cor do grupo — a napa-base só pode ser conferida depois deste cadastro.
+                              A receita <strong>{groupName} → {baseMaterial}</strong> será criada com o rendimento abaixo.
+                            </span>
+                          </div>
+                        ) : napa?.block_reason ? (
+                          <div className="flex items-start gap-2 rounded-md bg-amber-500/10 px-2.5 py-2 text-xs text-amber-700 dark:text-amber-400">
+                            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                            <span>
+                              <strong>Não dá pra saber de qual napa esta tira sai.</strong> {napa.block_reason}
+                              {' '}Preencha rendimento e base abaixo — a receita é criada junto com o produto.
+                            </span>
+                          </div>
+                        ) : napa?.base_product_id ? (
+                          <div className="flex items-start gap-2 rounded-md bg-emerald-500/10 px-2.5 py-2 text-xs text-emerald-700 dark:text-emerald-400">
+                            <Check className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                            <span>
+                              Sai de <strong>{napa.base_product_name}</strong>
+                              {' '}(família {baseMaterial} · cor {colorInput.trim().toUpperCase()}) —
+                              rendimento <strong>{Number(napa.yield_per_meter)} m</strong> de tira por metro de napa.
+                            </span>
+                          </div>
+                        ) : baseCovered ? (
                           <div className="flex items-start gap-2 rounded-md bg-emerald-500/10 px-2.5 py-2 text-xs text-emerald-700 dark:text-emerald-400">
                             <Check className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                             <span><strong>{baseMaterial}</strong> tem a cor <strong>{colorInput.trim().toUpperCase()}</strong> — a produção não trava por falta de matéria-prima.</span>
@@ -856,6 +1048,11 @@ export default function CreateStrapProductDialog({ open, onOpenChange, groupId, 
                         <div>
                           <Label className="text-xs">Rend. (m/m base)</Label>
                           <NumberInput value={recipeYield} onChange={setRecipeYield} min={0} step="0.01" className="h-9 text-sm" />
+                          {!(Number(recipeYield) > 0) && (
+                            <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-400">
+                              Obrigatório — sem rendimento o consumo da tira sai ZERO.
+                            </p>
+                          )}
                         </div>
                         <div>
                           <Label className="text-xs">Largura corte (mm)</Label>
@@ -896,7 +1093,7 @@ export default function CreateStrapProductDialog({ open, onOpenChange, groupId, 
                   </Button>
                   <Button onClick={handleSubmit} disabled={loading || prefilling}>
                     {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    Criar Produto
+                    {dupAck && duplicates.length > 0 ? 'Criar mesmo assim' : 'Criar Produto'}
                   </Button>
                 </DialogFooter>
               </div>

@@ -27,6 +27,12 @@ import {
   formatUnit,
 } from '@/lib/bomConsumption';
 import { type ArtisanalStrapCutRow, ROLO_COMPRIMENTO_M, ROLO_LARGURA_MM, rollFillLabel, strapRollBarHtml } from '@/lib/strapRollCut';
+import {
+  fetchStrapPickingLines,
+  strapPickingKey,
+  strapNapaSubline,
+  type StrapPickingLine,
+} from '@/lib/strapPickingLines';
 import ArtisanalStrapRollCutBlock from '@/components/sale-orders/ArtisanalStrapRollCutBlock';
 import { toast } from 'sonner';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
@@ -109,6 +115,9 @@ export default function PickingListPage() {
   const [rows, setRows] = useState<ConsumptionRow[]>([]);
   const [soleBreakdown, setSoleBreakdown] = useState<SoleBreakdownResult>({ rows: [], allSizes: [], grandTotal: 0 });
   const [strapCut, setStrapCut] = useState<ArtisanalStrapCutRow[]>([]);
+  // Tira artesanal cortada AQUI: a linha da tira ganha embaixo a napa que sai do
+  // estoque (spec §2.5). Vem do metadata da reserva — ver strapPickingLines.ts.
+  const [strapNapa, setStrapNapa] = useState<Map<string, StrapPickingLine>>(new Map());
   const [reportTitle, setReportTitle] = useState('');
   const [reportOrderCount, setReportOrderCount] = useState(0);
   // Números dos pedidos (PV ou OP) que compõem o relatório atual — exibidos no
@@ -243,6 +252,7 @@ export default function PickingListPage() {
       setRows([]);
       setSoleBreakdown({ rows: [], allSizes: [], grandTotal: 0 });
       setStrapCut([]);
+      setStrapNapa(new Map());
       setReportTitle(title);
       setReportOrderCount(0);
       setReportOrderNumbers(orderNumbers);
@@ -250,14 +260,17 @@ export default function PickingListPage() {
     }
     setIsCalculating(true);
     try {
-      const [bomResult, soleResult, strapCutResult] = await Promise.all([
+      const [bomResult, soleResult, strapCutResult, strapNapaResult] = await Promise.all([
         calculateBomForOrders(orderIds),
         calculateSoleBreakdownByGrade(orderIds),
         calculateArtisanalStrapRollCut(orderIds),
+        // Falha aqui não pode derrubar a separação inteira: é enriquecimento.
+        fetchStrapPickingLines(orderIds).catch(() => new Map<string, StrapPickingLine>()),
       ]);
       setRows(bomResult);
       setSoleBreakdown(soleResult);
       setStrapCut(strapCutResult);
+      setStrapNapa(strapNapaResult);
       setReportTitle(title);
       setReportOrderCount(orderIds.length);
       setReportOrderNumbers(orderNumbers);
@@ -266,6 +279,7 @@ export default function PickingListPage() {
       setRows([]);
       setSoleBreakdown({ rows: [], allSizes: [], grandTotal: 0 });
       setStrapCut([]);
+      setStrapNapa(new Map());
     } finally {
       setIsCalculating(false);
     }
@@ -349,6 +363,15 @@ export default function PickingListPage() {
   const rowKey = (row: ConsumptionRow) =>
     `${row.componentType}||${row.groupName}||${row.materialName}||${row.color}||${row.productUnit}`;
 
+  // A napa que sai do estoque por causa desta tira, quando ela é cortada aqui.
+  // A Lista de Separação nomeia a linha de tira ora pelo grupo, ora pelo rótulo
+  // da ficha — tenta os dois antes de desistir.
+  const napaForRow = useCallback((row: ConsumptionRow): StrapPickingLine | undefined => {
+    if (row.componentType !== 'Tiras' || strapNapa.size === 0) return undefined;
+    return strapNapa.get(strapPickingKey(row.materialName, row.color))
+        || strapNapa.get(strapPickingKey(row.groupName, row.color));
+  }, [strapNapa]);
+
   const grouped = useMemo(() => {
     const map = new Map<string, ConsumptionRow[]>();
     for (const row of rows) {
@@ -381,7 +404,12 @@ export default function PickingListPage() {
       return `<tr${done ? ' style="background:#f0fdf4"' : ''}>
         <td style="text-align:center;font-size:16px;padding:4px 8px">${done ? '✅' : '☐'}</td>
         <td style="padding:4px 8px;font-weight:600;color:#6b7280;font-size:11px;text-transform:uppercase">${escapeHtml(row.componentType)}</td>
-        <td style="padding:4px 8px;font-weight:500">${escapeHtml(row.groupName)}</td>
+        <td style="padding:4px 8px;font-weight:500">${escapeHtml(row.groupName)}${(() => {
+          const napa = napaForRow(row);
+          return napa
+            ? `<div style="font-size:10px;font-weight:400;color:#6b7280">↳ ${escapeHtml(strapNapaSubline(napa))}</div>`
+            : '';
+        })()}</td>
         <td style="padding:4px 8px">${row.materialName !== row.groupName ? escapeHtml(row.materialName) : ''}</td>
         <td style="padding:4px 8px">${escapeHtml(row.color)}</td>
         <td style="padding:4px 8px;text-align:right;font-family:monospace;font-weight:700">${row.totalQuantity.toFixed(2)}${row.plateEquivalent ? `<div style="font-size:9px;font-weight:400;color:#6b7280">≈ ${row.plateEquivalent.toFixed(2)} placas</div>` : ''}</td>
@@ -506,7 +534,7 @@ export default function PickingListPage() {
 
     const w = window.open('', '_blank');
     if (w) { w.document.write(html); w.document.close(); setTimeout(() => w.print(), 300); }
-  }, [rows, pickedSet, totalsByUnit, reportTitle, totalItems, reportOrderCount, reportOrderNumbers, reportKind, soleBreakdown, strapCut]);
+  }, [rows, pickedSet, totalsByUnit, reportTitle, totalItems, reportOrderCount, reportOrderNumbers, reportKind, soleBreakdown, strapCut, napaForRow]);
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -995,6 +1023,18 @@ export default function PickingListPage() {
                             </TableCell>
                             <TableCell className={cn('py-2 font-medium', isPicked && 'line-through text-muted-foreground')}>
                               {row.groupName}
+                              {/* Tira cortada aqui: quem sai do estoque é a NAPA.
+                                  Fica na MESMA linha, embaixo — em duas linhas o
+                                  separador procuraria uma tira que não existe. */}
+                              {(() => {
+                                const napa = napaForRow(row);
+                                if (!napa) return null;
+                                return (
+                                  <div className="mt-0.5 text-[11px] font-normal leading-snug text-muted-foreground">
+                                    ↳ {strapNapaSubline(napa)}
+                                  </div>
+                                );
+                              })()}
                             </TableCell>
                             <TableCell className={cn('py-2 text-sm', isPicked && 'line-through text-muted-foreground')}>
                               {row.materialName !== row.groupName ? row.materialName : '—'}

@@ -23,7 +23,7 @@ import { useGroups } from '@/hooks/useGroups';
 import { effectivePurchaseMultiple } from '@/lib/purchaseMultiple';
 import { effectiveConversionFactorStrict } from '@/lib/purchaseConversion';
 import { normalizeUnit } from '@/lib/unitConversion';
-import { buildPerPvPurchaseOrders, summarizePerPvDrafts, NO_SUPPLIER_LABEL } from '@/lib/perPvPurchasing';
+import { buildPerPvPurchaseOrders, summarizePerPvDrafts, collectPvNeedWarnings, NO_SUPPLIER_LABEL } from '@/lib/perPvPurchasing';
 import { printPerPvMaterials } from '@/lib/printPerPvMaterials';
 import { printPerPvOcPdf } from '@/lib/printPerPvOcPdf';
 import CreateStrapProductDialog from '@/components/sale-orders/CreateStrapProductDialog';
@@ -58,6 +58,9 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
   const [netOfStock, setNetOfStock] = useState(true);
   // GUARD: cor não cadastrada bloqueia gerar OC; override consciente p/ casos benignos.
   const [overrideColorMismatch, setOverrideColorMismatch] = useState(false);
+  // GUARD: aviso da RPC (tira sem napa, largura faltando) bloqueia gerar — a OC
+  // sairia comprando A MENOS. Override consciente pelo mesmo padrão da cor.
+  const [overrideNeedWarnings, setOverrideNeedWarnings] = useState(false);
   const { data: needs = [], isLoading, isError, error } = useMaterialsPerPv(open ? pvIds : null);
   const { data: products = [] } = useProducts();
   const { data: groups = [] } = useGroups();
@@ -121,6 +124,16 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
       .filter((warning): warning is string => !!warning))],
     [needs, conversionByProduct],
   );
+
+  // Avisos que vêm do BANCO (compute_materials_per_pv → conversion_warning),
+  // não do cadastro lido aqui. Ficavam ignorados: a linha bloqueada chega com
+  // needed_qty 0, buildPerPvPurchaseOrders descarta item de quantidade 0 e o
+  // material sumia da tela sem explicação — exatamente o silêncio que o motor
+  // único de tira artesanal existe pra acabar (spec §2.4). A mensagem já vem
+  // pronta e acionável do banco; aqui só a exibimos.
+  const needWarnings = useMemo(() => collectPvNeedWarnings(needs as any[]), [needs]);
+  /** Bloqueio TOTAL: nada dessa linha entra na OC (needed_qty 0). */
+  const blockedWarnings = useMemo(() => needWarnings.filter((w) => w.needed_qty <= 0), [needWarnings]);
 
   // Identificação do item pro fornecedor: código (SKU) + descrição técnica. Nos
   // materiais comprados o SKU já É o código do fornecedor, e a technical_name
@@ -238,6 +251,10 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
       toast.error('Corrija os cadastros de conversão indicados antes de gerar as OCs.');
       return;
     }
+    if (needWarnings.length > 0 && !overrideNeedWarnings) {
+      toast.error('Há materiais que não entram na compra — resolva o cadastro ou confirme o override.');
+      return;
+    }
     try {
       const res = await generate.mutateAsync({ pvIds, pvNumbers, drafts });
       onGenerated?.(res.createdIds);
@@ -304,13 +321,55 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
           </div>
         )}
 
+        {/* Avisos do MOTOR (banco). Tira artesanal marcada como "corto aqui" sem
+            napa na família+cor, receita ausente/zerada, largura faltando na ficha
+            de componente — em todos a parcela afetada fica FORA da compra. Sem
+            este bloco a linha simplesmente sumia da tela. */}
+        {!isLoading && !isError && needWarnings.length > 0 && (
+          <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-400 space-y-2">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+              <div className="min-w-0">
+                <strong>
+                  {blockedWarnings.length > 0
+                    ? `${blockedWarnings.length} material(is) fora desta compra${needWarnings.length > blockedWarnings.length ? ` (+${needWarnings.length - blockedWarnings.length} comprado(s) a menos)` : ''}.`
+                    : `${needWarnings.length} material(is) sendo comprado(s) a menos.`}
+                </strong>{' '}
+                O cálculo do pedido deixou parte da necessidade de fora por falta de
+                cadastro. Enquanto não resolver, a compra <strong>não cobre</strong> o que a
+                produção vai reservar.
+                <ul className="mt-1.5 space-y-1.5">
+                  {needWarnings.map((w) => (
+                    <li key={`${w.material_id}-${w.color ?? ''}-${w.message}`} className="text-xs leading-snug">
+                      <span className="font-mono">
+                        {w.product_name} · <strong>{w.color || '—'}</strong>
+                        {' · '}
+                        {w.needed_qty > 0
+                          ? `${formatBaseQty(w.needed_qty)} ${w.unit} na OC`
+                          : 'nada na OC'}
+                      </span>
+                      <div className="mt-0.5">{w.message}</div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+            <label className="flex items-center gap-2 cursor-pointer text-xs font-medium">
+              <Checkbox checked={overrideNeedWarnings} onCheckedChange={(v) => setOverrideNeedWarnings(!!v)} />
+              Gerar mesmo assim (entendo que estes materiais ficarão de fora da compra)
+            </label>
+          </div>
+        )}
+
         {!isLoading && !isError && drafts.length === 0 && (
           <div className="flex flex-col items-center gap-2 py-12 text-muted-foreground">
             <Package className="h-8 w-8" />
             <p className="text-sm">
-              {netOfStock
-                ? 'Nenhum material em falta — o estoque cobre este(s) pedido(s).'
-                : 'Nenhum material necessário encontrado para este(s) pedido(s).'}
+              {needWarnings.length > 0
+                ? 'Nada a comprar: o que este pedido precisa está bloqueado pelos avisos acima.'
+                : netOfStock
+                  ? 'Nenhum material em falta — o estoque cobre este(s) pedido(s).'
+                  : 'Nenhum material necessário encontrado para este(s) pedido(s).'}
             </p>
           </div>
         )}
@@ -345,8 +404,8 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
               )}
               <div className="bg-card p-2.5">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Precisam atenção</p>
-                <p className={`text-xl font-bold tabular-nums leading-tight ${(summary.noSupplierItemCount + summary.colorMismatchCount) > 0 ? 'text-amber-600 dark:text-amber-500' : ''}`}>
-                  {summary.noSupplierItemCount + summary.colorMismatchCount}
+                <p className={`text-xl font-bold tabular-nums leading-tight ${(summary.noSupplierItemCount + summary.colorMismatchCount + needWarnings.length) > 0 ? 'text-amber-600 dark:text-amber-500' : ''}`}>
+                  {summary.noSupplierItemCount + summary.colorMismatchCount + needWarnings.length}
                 </p>
               </div>
             </div>
@@ -505,6 +564,14 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
                               && it.technical_name.toLowerCase() !== (it.sku || '').trim().toLowerCase() && (
                               <div className="mt-0.5 text-[11px] font-normal leading-snug text-muted-foreground">{it.technical_name}</div>
                             )}
+                            {/* Linha que ENTROU na OC mas com parte da necessidade
+                                de fora — comprar isto sem ler o aviso é comprar a menos. */}
+                            {it.conversion_warning && (
+                              <div className="mt-0.5 flex items-start gap-1 text-[11px] font-normal leading-snug text-amber-600 dark:text-amber-500">
+                                <AlertTriangle className="h-3 w-3 mt-[2px] shrink-0" />
+                                <span>{it.conversion_warning}</span>
+                              </div>
+                            )}
                           </TableCell>
                           <TableCell className={it.color_mismatch ? 'text-destructive font-semibold' : 'text-muted-foreground'}>{it.color || '—'}</TableCell>
                           <TableCell className="text-right tabular-nums text-muted-foreground">
@@ -580,8 +647,8 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
             )}
             <Button
               onClick={handleGenerate}
-              disabled={generate.isPending || drafts.length === 0 || conversionWarnings.length > 0 || (summary.colorMismatchCount > 0 && !overrideColorMismatch)}
-              title={conversionWarnings.length > 0 ? 'Há materiais com conversão inválida' : summary.colorMismatchCount > 0 && !overrideColorMismatch ? 'Há itens com cor não cadastrada — cadastre a cor ou marque o override' : undefined}
+              disabled={generate.isPending || drafts.length === 0 || conversionWarnings.length > 0 || (summary.colorMismatchCount > 0 && !overrideColorMismatch) || (needWarnings.length > 0 && !overrideNeedWarnings)}
+              title={conversionWarnings.length > 0 ? 'Há materiais com conversão inválida' : summary.colorMismatchCount > 0 && !overrideColorMismatch ? 'Há itens com cor não cadastrada — cadastre a cor ou marque o override' : needWarnings.length > 0 && !overrideNeedWarnings ? 'Há materiais fora da compra por falta de cadastro — resolva ou marque o override' : undefined}
               className="gap-2"
             >
               {generate.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShoppingCart className="h-4 w-4" />}

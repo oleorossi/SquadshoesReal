@@ -23,6 +23,15 @@ import GroupStockTree, { type ProductLite } from '@/components/groups/GroupStock
 import MoveGroupsDialog from '@/components/groups/MoveGroupsDialog';
 import FamilySuggestionsDialog from '@/components/groups/FamilySuggestionsDialog';
 import { ProductFormDialog } from '@/components/inventory/ProductFormDialog';
+import CreateStrapProductDialog from '@/components/sale-orders/CreateStrapProductDialog';
+
+/**
+ * Grupo de tira/elástico/trança: o item novo aqui é uma COR de tira, que precisa
+ * de napa-base + receita de corte. O ProductFormDialog genérico não pede nada
+ * disso e deixava a tira nascer sem vínculo (consumo 0 calado). Encaminhar pro
+ * diálogo de tira encurta o caminho — antes ele só existia dentro de um PV.
+ */
+const isStrapLikeGroup = (name?: string | null) => /tira|el[áa]stic|tran[çc]/i.test(name || '');
 
 type CreateCtx = { key: number; sector?: string; parentId?: string | null; lock?: boolean; title?: string };
 
@@ -65,6 +74,7 @@ export default function GroupOrganizationPanel({ permPath, extraActions }: Props
   const [debouncedSearch] = useDebounce(search, 300);
   const [addOpen, setAddOpen] = useState(false);
   const [addGroupId, setAddGroupId] = useState<string | undefined>(undefined);
+  const [strapGroup, setStrapGroup] = useState<ProductGroup | null>(null);
   const keyRef = useRef(0);
 
   const toggleLeaf = (id: string) => setSelectedLeafIds(prev => {
@@ -105,7 +115,10 @@ export default function GroupOrganizationPanel({ permPath, extraActions }: Props
   };
 
   const openAddGlobal = () => { setAddGroupId(undefined); setAddOpen(true); };
-  const openAddToGroup = (g: ProductGroup) => { setAddGroupId(g.id); setAddOpen(true); };
+  const openAddToGroup = (g: ProductGroup) => {
+    if (isStrapLikeGroup(g.name)) { setStrapGroup(g); return; }
+    setAddGroupId(g.id); setAddOpen(true);
+  };
   const openEditItem = (item: ProductLite) => navigate(`/estoque/${item.id}`);
 
   const handleBulkDelete = async () => {
@@ -224,6 +237,17 @@ export default function GroupOrganizationPanel({ permPath, extraActions }: Props
         onEditProduct={(p) => navigate(`/estoque/${p.id}`)}
         defaultGroupId={addGroupId}
       />
+
+      {strapGroup && (
+        <CreateStrapProductDialog
+          open
+          onOpenChange={(o) => { if (!o) setStrapGroup(null); }}
+          groupId={strapGroup.id}
+          groupName={strapGroup.name}
+          color=""
+          onCreated={() => setStrapGroup(null)}
+        />
+      )}
 
       {selectedLeafIds.size > 0 && (
         <BulkActionsBar

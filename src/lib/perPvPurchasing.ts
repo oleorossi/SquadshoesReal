@@ -90,6 +90,10 @@ export interface DraftPurchaseOrderItem {
   grade?: Record<string, number> | null;
   /** Cor pedida sem produto cadastrado (caiu noutra cor). Bloqueia a OC. */
   color_mismatch?: boolean;
+  /** Aviso acionável vindo da RPC (ver PvMaterialNeed.conversion_warning).
+   *  Presente ⇒ parte da necessidade ficou FORA de `needed_qty`: esta linha
+   *  compra A MENOS do que o pedido consome até o cadastro ser corrigido. */
+  conversion_warning?: string | null;
 }
 
 /** Soma duas grades por numeração (chaves = números/conjugados). */
@@ -181,6 +185,9 @@ export function buildPerPvPurchaseOrders(
       existing.unit_price = Math.max(existing.unit_price, price);
       existing.grade = mergeGrade(existing.grade, n.grade);
       existing.color_mismatch = !!existing.color_mismatch || !!n.color_mismatch;
+      // Basta UM aviso pra linha estar comprometida — guarda o primeiro (a RPC
+      // já agrega por (produto, cor), então na prática só há um).
+      existing.conversion_warning = existing.conversion_warning || (n.conversion_warning ?? null);
     } else {
       merged.set(key, {
         material_id: n.material_id,
@@ -198,6 +205,7 @@ export function buildPerPvPurchaseOrders(
         conversion_factor: Number(n.conversion_factor) > 0 ? Number(n.conversion_factor) : 1,
         grade: n.grade ?? null,
         color_mismatch: !!n.color_mismatch,
+        conversion_warning: n.conversion_warning ?? null,
         supplier_id: n.supplier_id ?? null,
         supplier_name: n.supplier_name ?? null,
       });
@@ -224,6 +232,14 @@ export function buildPerPvPurchaseOrders(
     let qty = roundUpToPurchaseMultiple(qtyRaw, it.purchase_multiple);
     // Unidade contável (un/par/placa…): não dá pra comprar fração → inteiro.
     if (isDiscretePurchaseUnit(displayUnit)) qty = Math.ceil(round3(qty));
+    // Linha zerada NÃO vira item de OC: uma ordem com quantidade 0 não é
+    // comprável — o fornecedor não tem o que separar e o recebimento não tem o
+    // que creditar. É o caso da tira artesanal BLOQUEADA pelo motor único
+    // (`resolve_strap_stock_lines.block_reason` sobe em `conversion_warning`
+    // com needed_qty 0): não se compra nada até o cadastro ser resolvido.
+    // ⚠ Por isso a linha some daqui — e some CALADA se a UI não ler
+    // `conversion_warning` do `needs` cru. `collectPvNeedWarnings` existe pra
+    // esse fim: é a UI que mostra a linha bloqueada como AVISO, não como item.
     if (qty <= 0) continue;
     // Excedente do arredondamento — exibido em azul na coluna "A comprar".
     const rounding_surplus = round3(Math.max(0, qty - qtyRaw));
@@ -267,6 +283,7 @@ export function buildPerPvPurchaseOrders(
       rounding_surplus: it.rounding_surplus,
       grade: it.grade ?? null,
       color_mismatch: !!it.color_mismatch,
+      conversion_warning: it.conversion_warning ?? null,
     });
   }
 
@@ -282,6 +299,55 @@ export function buildPerPvPurchaseOrders(
     return a.supplier_name.localeCompare(b.supplier_name, 'pt-BR');
   });
   return result;
+}
+
+/** Uma necessidade que a RPC devolveu com aviso — a UI precisa mostrar. */
+export interface PvNeedWarning {
+  material_id: string;
+  product_name: string;
+  color: string | null;
+  unit: string;
+  /** Quanto ainda entra na OC. 0 ⇒ a linha nem vira item (bloqueio total). */
+  needed_qty: number;
+  message: string;
+}
+
+/**
+ * Extrai os avisos acionáveis que a RPC `compute_materials_per_pv` devolve em
+ * `conversion_warning` — a MESMA mensagem já formatada pelo banco.
+ *
+ * Existe porque `buildPerPvPurchaseOrders` descarta a linha de quantidade 0 (ver
+ * comentário lá): sem isto, a tira artesanal bloqueada por falta de napa
+ * desaparecia da tela sem UMA palavra de explicação, e a OC saía comprando a
+ * menos. Duas origens hoje:
+ *   • tira artesanal `in_house` sem napa na família+cor / sem receita /
+ *     rendimento zerado (`resolve_strap_stock_lines.block_reason`);
+ *   • conversão dm²→unidade física sem largura na ficha de componente.
+ *
+ * Ordena pelo mais grave (bloqueio total primeiro) e depois por nome.
+ */
+export function collectPvNeedWarnings(needs: PvMaterialNeed[]): PvNeedWarning[] {
+  const seen = new Set<string>();
+  const out: PvNeedWarning[] = [];
+  for (const n of needs || []) {
+    const message = (n?.conversion_warning ?? '').trim();
+    if (!message) continue;
+    const key = `${n.material_id}::${colorKey(n.color)}::${message}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      material_id: n.material_id,
+      product_name: n.product_name,
+      color: (n.color ?? null) || null,
+      unit: n.unit || 'un',
+      needed_qty: round3(Number(n.needed_qty) || 0),
+      message,
+    });
+  }
+  out.sort((a, b) =>
+    (a.needed_qty > 0 ? 1 : 0) - (b.needed_qty > 0 ? 1 : 0)
+    || a.product_name.localeCompare(b.product_name, 'pt-BR'));
+  return out;
 }
 
 export interface PerPvDraftSummary {
