@@ -457,12 +457,23 @@ sobreviver em monocromático.
 Escolhido sobre A6 retrato/paisagem e A5 por geometria: a grade e o trajeto são
 horizontais por natureza. Ver `CartaoLote.tsx`.
 
-**7. Pendente de implementação (decidido, não feito):** clampar o auto-fit do
-`PaginatedSheet` pelo piso do bucket em uso. Hoje `AUTO_FIT_FLOOR = 0.80` aplica
-zoom sobre fontes que já estão no piso (célula 8px → 6,4px; grade 12px → 9,6px).
-O dono decidiu **legibilidade vence** — o zoom deve parar antes de furar o piso,
-gastando uma folha a mais. Enquanto não for feito, os pisos da tabela acima
-valem **antes** do auto-fit, não depois.
+**7. O auto-fit NUNCA fura o piso — legibilidade vence densidade.**
+`floorSafeScale()` (`worksheet/adaptiveFont.ts`) devolve a menor escala que um
+bucket suporta sem levar nenhum elemento abaixo do piso, e cada ficha passa isso
+ao `PaginatedSheet` via `minScale`. O piso efetivo é
+`max(AUTO_FIT_FLOOR, minScale)`:
+
+| bucket | grade | escala mínima | efeito |
+|---|---|---|---|
+| 0–1 | ≤ 12 colunas | 0,750 | o 0.80 global manda |
+| 2 | 13–16 | 0,833 | encolhe menos |
+| 3 | 17–20 | 0,938 | quase não encolhe |
+| 4 | > 20 | **1,000** | **não encolhe** — ganha folha |
+
+Antes o `AUTO_FIT_FLOOR = 0.80` aplicava zoom sobre fontes que já estavam no
+piso (bucket 4: célula 8px → 6,4px; grade 12px → 9,6px). Travado por
+`__tests__/floorSafeScale.test.ts`. **Ao criar bucket novo em `BUCKETS`, o teste
+já cobre** — ele varre a tabela inteira, não valores fixos.
 
 ### Check for violations
 ```bash
