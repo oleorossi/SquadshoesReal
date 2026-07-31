@@ -212,7 +212,7 @@ export function ServiceOrderFormDialog({
           <DialogDescription>
             {pvItems && pvItems.length
               ? 'Selecione os itens deste pedido, o prestador e o setor. A OS nasce amarrada ao pedido.'
-              : 'Lance qtd × valor por par (total calculado automaticamente) e os materiais a entregar ao prestador — o estoque é debitado automaticamente quando a OS é criada.'}
+              : 'Lance qtd × valor por par (total calculado automaticamente). A OS não movimenta estoque — o material baixa na liberação do pedido pra produção.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -406,7 +406,7 @@ export function ServiceOrderFormDialog({
             {create.isPending ? 'Criando...' : (
               <>
                 <FlaskConical className="h-3.5 w-3.5 mr-1" />
-                Criar OS e debitar estoque
+                Criar OS
               </>
             )}
           </Button>
