@@ -3,10 +3,11 @@ import { flushSync } from 'react-dom';
 import { useQuery, useIsFetching, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
-import { Printer, ArrowLeft, Stack as Layers, Rows } from '@phosphor-icons/react';
+import { Printer, ArrowLeft, Stack as Layers, Rows, Cards } from '@phosphor-icons/react';
 import OperatorWorkSheet from '@/components/production/OperatorWorkSheet';
 import { PalmilhaWorkSheet, type PalmilhaGroup } from '@/components/production/PalmilhaWorkSheet';
 import { ReducedWorkSheet } from '@/components/production/ReducedWorkSheet';
+import { CartaoLote } from '@/components/production/CartaoLote';
 import { SilkMontageWorkSheet, type SoleSilkGroup, type SilkColorGroup, type GroupedSector } from '@/components/production/SilkMontageWorkSheet';
 import type { SectorAlert } from '@/components/production/worksheet/SectorAlerts';
 import { SolagemWorkSheet, type SoleColorBand } from '@/components/production/SolagemWorkSheet';
@@ -33,6 +34,56 @@ import { facaLabelForSize, expandFacasByBoundaries } from '@/lib/knifeFacas';
 import { useKnifeFacasDefault } from '@/hooks/useKnifeFacasDefault';
 import { pmgLabelForSize } from '@/lib/aviamentoSizeRanges';
 import { useAviamentoPmgDefault } from '@/hooks/useAviamentoPmgDefault';
+
+/**
+ * CSS do modo CARTÃO (aprovado pelo dono 31/07/2026 — "Opção B, 3 colunas").
+ *
+ * Cartões de 99mm em A4 PAISAGEM: 3 colunas × 4 linhas = 12 por folha. Os 45
+ * cartões de um PV como o PV-00148 saem em 4 folhas contra 12 do formato A6
+ * travado (−67% de papel).
+ *
+ * Por que 99mm e não menos: a grade de 7 numerações precisa de ~93mm pra sair
+ * legível (8 colunas com número de 3 dígitos). Abaixo disso o
+ * `table-layout: fixed` do print CORTA o número — o operador lê "18" onde
+ * estava "180". 84mm e 74mm cabem mais cartões, mas com a grade truncada.
+ *
+ * A altura é do CONTEÚDO (o cartão não tem height fixa) e varia por setor —
+ * Corte Forração tem consumo e fica mais alto que Corte Palmilha. O
+ * empacotamento é do fragmentador do browser, igual à ficha reduzida:
+ * `break-inside: avoid` mantém o cartão inteiro e a folha enche até o fim.
+ */
+const cartaoStyles = `
+  @media print {
+    @page { size: A4 landscape; margin: 0; }
+    /* O paginador explícito e os maços de ficha não participam deste modo. */
+    .print-area .pagi-sheet, .print-area .page-break { display: none !important; }
+    .cartao-grid {
+      display: flex !important;
+      flex-wrap: wrap !important;
+      align-content: flex-start !important;
+      gap: 3mm !important;
+      padding: 4mm !important;
+      width: auto !important;
+    }
+    /* Cartão inteiro ou nada — nunca parte entre duas folhas. */
+    .cartao-lote {
+      break-inside: avoid !important;
+      page-break-inside: avoid !important;
+    }
+  }
+  /* Preview em TELA no mesmo empacotamento do papel (regra WYSIWYG do
+     PRINT_SPEC §0.2-1: nada que mude altura pode viver só em @media print). */
+  .cartao-grid {
+    display: flex;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    gap: 3mm;
+    padding: 4mm;
+    width: 297mm;
+    margin: 0 auto;
+    background: #fff;
+  }
+`;
 
 const printStyles = `
   /* ─────────────────────────────────────────────────────────────
@@ -693,6 +744,11 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
 
   // Layout da ficha: false = completa (padrão), true = reduzida (só foto + grade + qty).
   const [reduced, setReduced] = useState(false);
+  // Modo CARTÃO (31/07/2026): em vez das fichas A4, emite um cartão de 99mm por
+  // LOTE DE SETOR, 12 por folha A4 paisagem. O recorte do lote é exatamente o
+  // que `buildColorGroupedSheets` já produz (com as peculiaridades de cada
+  // setor) — o cartão não reagrupa nada por conta própria.
+  const [cartao, setCartao] = useState(false);
 
   // ── Saída invertida (2026-07-24, pedido do dono) ──
   // A impressora da fábrica empilha com a face pra CIMA: a 1ª página emitida
@@ -804,8 +860,8 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
   // fotos por thumbs de OUTRA largura (cache frio) e sem o await o snapshot
   // do print saía com fotos em branco. decode() também força o load de
   // imagens lazy fora do viewport (Firefox/Safari não carregam no print).
-  const printWith = async (asReduced: boolean) => {
-    flushSync(() => setReduced(asReduced));
+  const printWith = async (asReduced: boolean, asCartao = false) => {
+    flushSync(() => { setReduced(asReduced); setCartao(asCartao); });
     const imgs = Array.from(document.querySelectorAll<HTMLImageElement>('.print-area img'));
     const waits: Promise<unknown>[] = imgs.map(img =>
       img.complete ? Promise.resolve() : img.decode().catch(() => undefined)
@@ -819,7 +875,9 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
     window.print();
     // Restaura o layout completo no preview — sem isso, depois do "Relatório
     // simplificado" um Ctrl+P manual sairia na versão reduzida sem pedir.
+    // Vale igual pro modo cartão, que ainda troca a orientação do @page.
     setReduced(false);
+    setCartao(false);
   };
 
   const referenceIds = useMemo(() => [...new Set(orders.map(o => o.reference_id).filter(Boolean))], [orders]);
@@ -2873,6 +2931,10 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
        → a 1ª página de TODO maço vazava o pé pra uma folha em branco. */
     <div className="p-6 space-y-6 print:p-0 print:space-y-0">
       <style>{printStyles}</style>
+      {/* Modo CARTÃO: A4 PAISAGEM com 3 colunas de cartões de 99mm — 12 por
+          folha. Injetado SÓ nesse modo porque troca a orientação do @page,
+          que é global. Ver CartaoLote.tsx pro racional do formato. */}
+      {cartao && <style>{cartaoStyles}</style>}
 
       {/* ── Toolbar (no-print) ── */}
       <div className="no-print bg-muted/40 p-4 rounded-lg border space-y-3">
@@ -2937,6 +2999,11 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
             </Button>
             <Button variant="outline" onClick={() => printWith(true)} className="gap-2" disabled={activeSectors.size === 0 || sheetCount === 0 || initialQueriesLoading || failedQueries > 0} title={failedQueries > 0 ? 'Consultas de dados falharam — recarregue a página antes de imprimir' : 'Mesma seleção, mas as fichas de operador saem na versão reduzida (foto + grade + quantidades)'}>
               <Rows className="h-4 w-4" /> Relatório simplificado
+            </Button>
+            {/* Cartões de lote (31/07/2026): 1 cartão de 99mm por lote de setor,
+                12 por folha A4 paisagem. O recorte do lote é o mesmo das fichas. */}
+            <Button variant="outline" onClick={() => printWith(false, true)} className="gap-2" disabled={activeSectors.size === 0 || sheetCount === 0 || initialQueriesLoading || failedQueries > 0} title={failedQueries > 0 ? 'Consultas de dados falharam — recarregue a página antes de imprimir' : 'Um cartão recortável por lote de setor (99 × ~51mm) — 12 por folha A4 na horizontal'}>
+              <Cards className="h-4 w-4" /> Cartões de lote
             </Button>
           </div>
         </div>
@@ -3030,7 +3097,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
       </div>
 
       {/* ── Print area ── */}
-      <div className="print-area space-y-0">
+      <div className={`print-area space-y-0${cartao ? ' cartao-grid' : ''}`}>
       {/* Saída invertida (2026-07-24): durante o print, o provider liga a
           inversão nas páginas de cada PaginatedSheet e o ReversibleStack
           inverte a ordem dos maços de setor — juntos, reversão completa do
@@ -3467,6 +3534,49 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                   return out;
                 })()
               : undefined;
+            // Modo CARTÃO (31/07/2026): 1 cartão por LOTE DE SETOR. O lote é o
+            // colorGroup que o `buildColorGroupedSheets` já montou e que o
+            // `filterGroupForSector` acima já filtrou — o cartão NÃO reagrupa
+            // nada por conta própria, então herda todas as peculiaridades de
+            // cada setor (napa do Corte Forração, requiresUpperSewing da
+            // Costura Cabedal, roteiro, assinatura de tiras, lote…).
+            if (cartao) {
+              const lotes = groupsForSector.flatMap(g =>
+                g.colorGroups.map(cg => ({ g, cg })));
+              return lotes.map(({ g, cg }, i) => {
+                const grid = (cg.combinedGrid || {}) as Record<string, number>;
+                const sizes = Object.keys(grid)
+                  .filter(s => (Number(grid[s]) || 0) > 0)
+                  .sort((a, b) => (Number(a) || 0) - (Number(b) || 0));
+                // Mesma cascata de foto do card completo: variante exata →
+                // alternativa com imagem → imagem mestre da ficha técnica.
+                const img = cg.variantImageUrl
+                  || (cg.alternateVariants || []).find(v => v.image_url)?.image_url
+                  || cg.technicalSheetImageUrl
+                  || null;
+                // Corte Forração separa por cor + NAPA: sem o material no
+                // título, duas napas da mesma cor viram cartões idênticos.
+                const titulo = cg.liningMaterial ? `${cg.color} · ${cg.liningMaterial}` : cg.color;
+                const refs = (cg.refs || []).map(r => r.name || r.code).filter(Boolean);
+                return (
+                  <CartaoLote
+                    key={`${sectorName}-cartao-${i}-${g.soleName}-${cg.color}`}
+                    sectorName={sectorName}
+                    pvLabel={(cg.pvNumbers || []).join(' · ') || undefined}
+                    lotLabel={`${i + 1} de ${lotes.length}`}
+                    lotCode={`${i + 1}/${lotes.length}`}
+                    imageUrl={img}
+                    title={titulo}
+                    subtitle={g.groupKind === 'reference' ? undefined : g.soleName}
+                    sizes={sizes}
+                    grade={grid}
+                    totalPairs={cg.totalPairs}
+                    refs={refs.length > 0 ? refs : undefined}
+                    note={cg.fichas ? `${cg.fichas} fichas` : undefined}
+                  />
+                );
+              });
+            }
             if (reduced) {
               return groupsForSector.map((g, gi) =>
                 reducedSilkNode(withClientNames(g), sectorName, `${sectorName}-red-${gi}-${g.soleName}`));

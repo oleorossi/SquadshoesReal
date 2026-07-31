@@ -334,6 +334,7 @@ unified visual system and makes dark mode impossible.
 - `ExpedicaoWorkSheet.tsx`
 - `ManagementReport.tsx`
 - `worksheet/*.tsx` (SignatureFooter, WorksheetHeader, TallyBox, ProductImageBlock, SectorAlerts)
+- `CartaoOP.tsx` e `CartaoLote.tsx` (cartões de posto/lote — 12 por A4 paisagem)
 - Qualquer componente em `src/components/label-system/`
 
 ### ⚠ Regras críticas pra componentes de print
