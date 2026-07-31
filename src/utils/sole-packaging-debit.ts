@@ -1,6 +1,6 @@
 /**
  * Espelho puro da RPC `debit_packaging_for_order`
- * (migration atual: 20260706180000_fix-packaging-debit-idempotency-and-fallback-defaults).
+ * (migration atual: 20261025120000_packaging-debit-partial-instead-of-abort).
  *
  * A RPC real lê `product_groups` (solado da ficha técnica) e debita estoque em
  * `box_types` + `stock_movements`. Esta função reproduz APENAS a lógica de
@@ -43,11 +43,15 @@ export interface BoxTypeRow {
 
 export interface DebitEntry {
   packaging_type: PackagingType;
-  status: "debited_box_types" | "skipped";
+  status: "debited_box_types" | "partial" | "insufficient_stock" | "skipped";
   reason?: string;
   box_type_id?: string;
   box_name?: string;
   boxes_needed?: number;
+  /** Quanto efetivamente sairia do estoque: LEAST(necessário, disponível). */
+  debited_qty?: number;
+  /** O que faltou: necessário − debitado. 0 quando cobriu tudo. */
+  shortfall?: number;
 }
 
 /** Mapeia o modo trimodal aos tipos de caixa que devem ser debitados. */
@@ -100,7 +104,17 @@ export function boxesNeeded(orderQuantity: number, pairsPerBox: number | null): 
 
 /**
  * Simula `debit_packaging_for_order`. Não muta as entradas; retorna o plano
- * de débito + lança erro se algum estoque é insuficiente (igual à RPC).
+ * de débito.
+ *
+ * Falta de estoque NÃO lança mais erro (migration `20261025120000`): a RPC passou
+ * a debitar `LEAST(necessário, disponível)` e a reportar o buraco, porque o
+ * `RAISE EXCEPTION` antigo derrubava o lançamento do Pedido de Venda inteiro —
+ * o caller (`useSaleOrders.ts`) liberava as reservas e CANCELAVA a OP. Estourou
+ * em produção em 31/07/2026, quando a caixa colmeia (estoque 0) foi vinculada aos
+ * grupos de solado e ligou o débito de embalagem pela primeira vez.
+ *
+ * Status: 'debited_box_types' (cobriu tudo), 'partial' (debitou parte),
+ * 'insufficient_stock' (disponível 0 — não gera movimento).
  */
 export function planPackagingDebit(args: {
   sole: SoleGroupPackaging | null;
@@ -126,18 +140,17 @@ export function planPackagingDebit(args: {
     const needed = boxesNeeded(orderQuantity, pairs);
     const stock = box?.quantity ?? 0;
 
-    if (!box || stock < needed) {
-      throw new Error(
-        `Estoque insuficiente para embalagem "${box?.nome ?? "?"}": disponível ${stock}, necessário ${needed}`
-      );
-    }
+    const debited = Math.min(needed, Math.max(0, stock));
+    const shortfall = Math.max(0, needed - debited);
 
     result.push({
       packaging_type: t,
-      status: "debited_box_types",
+      status: shortfall === 0 ? "debited_box_types" : debited > 0 ? "partial" : "insufficient_stock",
       box_type_id: boxId,
-      box_name: box.nome,
+      box_name: box?.nome,
       boxes_needed: needed,
+      debited_qty: debited,
+      shortfall,
     });
   }
 

@@ -122,11 +122,36 @@ describe("planPackagingDebit — skips e erros", () => {
     ]);
   });
 
-  it("lança erro de estoque insuficiente (espelha RAISE EXCEPTION da RPC)", () => {
+  // Estoque insuficiente NÃO lança mais (mig 20261025120000): a RPC debita
+  // LEAST(necessário, disponível) e reporta o buraco, senão o PV inteiro cai e a
+  // OP é cancelada — bug de produção de 31/07/2026 (caixa colmeia com estoque 0).
+  it("estoque parcial → debita o disponível e reporta o shortfall (não lança)", () => {
     const lowStock = { ...fullStock(1000), "box-mas": { id: "box-mas", nome: "Caixa Master 12", quantity: 2 } };
-    expect(() =>
-      planPackagingDebit({ sole, boxes: lowStock, orderQuantity: 60, mode: "individual_master" })
-    ).toThrow(/Estoque insuficiente para embalagem "Caixa Master 12"/);
+    const r = planPackagingDebit({ sole, boxes: lowStock, orderQuantity: 60, mode: "individual_master" });
+    expect(r).toEqual([
+      expect.objectContaining({ packaging_type: "individual", status: "debited_box_types", shortfall: 0 }),
+      expect.objectContaining({
+        packaging_type: "master",
+        status: "partial",
+        boxes_needed: 5, // CEIL(60/12)
+        debited_qty: 2,
+        shortfall: 3,
+      }),
+    ]);
+  });
+
+  it("estoque zero → insufficient_stock, nada debitado (não lança)", () => {
+    const noStock = { ...fullStock(1000), "box-mas": { id: "box-mas", nome: "Caixa Master 12", quantity: 0 } };
+    const r = planPackagingDebit({ sole, boxes: noStock, orderQuantity: 60, mode: "individual_master" });
+    expect(r).toEqual([
+      expect.objectContaining({ packaging_type: "individual", status: "debited_box_types" }),
+      expect.objectContaining({
+        packaging_type: "master",
+        status: "insufficient_stock",
+        debited_qty: 0,
+        shortfall: 5,
+      }),
+    ]);
   });
 
   it("pairs=0 no solado → fallback para o default canônico 12 (#4)", () => {

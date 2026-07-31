@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { warnPackagingDebit } from '@/lib/packagingDebitWarnings';
+import { warnPackagingDebit, isPackagingStockShortage } from '@/lib/packagingDebitWarnings';
 import { autoCreateSolePO, autoCreateSolePOFromShortfall } from '@/lib/soleAutoPO';
 import { autoCreateMaterialPO } from '@/lib/materialAutoPO';
 import { syncFinancialRecordsCore } from '@/lib/financialSync';
@@ -1335,7 +1335,15 @@ export function useUpdateSaleOrderStatus() {
                   } as any);
                   if (pkgErr) {
                     console.error('Erro embalagem:', pkgErr.message);
-                    secondaryDebitErrors.push(`embalagem: ${pkgErr.message}`);
+                    // Falta de EMBALAGEM não cancela a OP (ver isPackagingStockShortage).
+                    if (isPackagingStockShortage(pkgErr.message)) {
+                      toast.warning(`Embalagem em falta — a OP seguiu sem o débito. ${pkgErr.message}`, {
+                        description: 'Reponha em Logística → Embalagens.',
+                        duration: 12000,
+                      });
+                    } else {
+                      secondaryDebitErrors.push(`embalagem: ${pkgErr.message}`);
+                    }
                   } else {
                     warnPackagingDebit(pkgData2);
                   }
@@ -1619,7 +1627,15 @@ export function useUpdateSaleOrderStatus() {
               } as any);
               if (pkgErrAprov) {
                 console.error('Erro ao debitar embalagem (Aprovado):', pkgErrAprov.message);
-                secondaryDebitErrorsAprov.push(`embalagem: ${pkgErrAprov.message}`);
+                // Falta de EMBALAGEM não cancela a OP (ver isPackagingStockShortage).
+                if (isPackagingStockShortage(pkgErrAprov.message)) {
+                  toast.warning(`Embalagem em falta — a OP seguiu sem o débito. ${pkgErrAprov.message}`, {
+                    description: 'Reponha em Logística → Embalagens.',
+                    duration: 12000,
+                  });
+                } else {
+                  secondaryDebitErrorsAprov.push(`embalagem: ${pkgErrAprov.message}`);
+                }
               } else {
                 warnPackagingDebit(pkgDataAprov);
               }
