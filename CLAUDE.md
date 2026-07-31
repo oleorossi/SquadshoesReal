@@ -417,6 +417,53 @@ Auditoria de 22/05/2026 confirmou que TODOS os worksheets seguem esse padrão
 (inline styles + cores hardcoded), por isso sobreviveram intactos às 6 fases
 de redesign do Industrial Editorial Pro nos primitives shadcn.
 
+### Preferências de impressão (CANÔNICO, 31/07/2026 — decisões do dono)
+
+Regras de produto, não de implementação. Valem pra QUALQUER ficha, cartão ou
+etiqueta nova. Quando contradisserem `docs/PRINT_SPEC.md`, **esta seção vence**
+(o PRINT_SPEC é histórico de decisão; ver a errata do §3-B item 6).
+
+**1. Densidade vem de tirar espaço morto, NUNCA de reduzir fonte.**
+Foi a regra que conciliou dois pedidos que pareciam opostos ("mais informação
+por folha" + "legibilidade vence o auto-fit"). Ordem de ataque, nesta sequência:
+repetição → espaço vazio → largura desperdiçada → só então repensar o conteúdo.
+Reduzir corpo de letra não está na lista.
+
+**2. Altura é do CONTEÚDO. Nunca trave um formato.**
+Travar o cartão em A6 (`aspect-ratio: 148/105`) com o rodapé empurrado por
+`margin-top: auto` gerou 45mm de papel morto — 43% do cartão. O bloco termina
+onde o conteúdo termina; quem empacota é o `PaginatedSheet` (fichas) ou o
+fragmentador do browser com `break-inside: avoid` (cartões, ficha reduzida).
+
+**3. Maços de setor FLUEM contínuos + linha de corte na emenda.**
+Sem folha nova por setor. A folha compartilhada é dividida na tesoura pela marca
+`✂ CORTAR AQUI · MUDA DE SETOR`. A linha é **obrigatória**: sem ela a separação
+entrega trabalho de uma bancada para outra. Ver PRINT_SPEC §3-B item 6.
+
+**4. Largura mínima antes de estreitar qualquer coisa: a GRADE manda.**
+Grade de 7 numerações precisa de **~93mm** (8 colunas com número de 3 dígitos +
+rótulo). Abaixo disso o `table-layout: fixed` do CSS de print **CORTA** o número
+— o operador lê "18" onde estava "180". Por isso o cartão de lote é 99mm e não
+84mm (que caberia mais por folha). **Nunca troque legibilidade da grade por
+densidade**: o corte é silencioso, não vaza.
+
+**5. Destaque = vermelho `#C00000` PAREADO com corpo grande (Anton).**
+Referência e cor são identidade e vão em vermelho. Mas a fábrica imprime **laser
+P&B** (`WorksheetHeader.tsx:44`), onde o vermelho vira cinza — então o vermelho
+nunca pode ser o ÚNICO sinal. Sempre acompanhado de peso/tamanho, pra o realce
+sobreviver em monocromático.
+
+**6. Formato do cartão de lote: 99 × ~51mm, 3 colunas em A4 PAISAGEM (12/folha).**
+Escolhido sobre A6 retrato/paisagem e A5 por geometria: a grade e o trajeto são
+horizontais por natureza. Ver `CartaoLote.tsx`.
+
+**7. Pendente de implementação (decidido, não feito):** clampar o auto-fit do
+`PaginatedSheet` pelo piso do bucket em uso. Hoje `AUTO_FIT_FLOOR = 0.80` aplica
+zoom sobre fontes que já estão no piso (célula 8px → 6,4px; grade 12px → 9,6px).
+O dono decidiu **legibilidade vence** — o zoom deve parar antes de furar o piso,
+gastando uma folha a mais. Enquanto não for feito, os pisos da tabela acima
+valem **antes** do auto-fit, não depois.
+
 ### Check for violations
 ```bash
 bun run check:tokens

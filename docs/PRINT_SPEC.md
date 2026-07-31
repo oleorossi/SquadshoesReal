@@ -305,10 +305,23 @@ fragmentação por um paginador determinístico.
    hairline preto inferior, Fira Code mono uppercase — nome do setor à
    esquerda + **"N/TOTAL"** (ex.: 3/8) à direita. A contagem é **dentro
    da ficha** (cada `PaginatedSheet` numera as próprias páginas).
-6. **Mudança de setor/ficha = nova página**: cada ficha continua dentro
-   de um `.page-break` próprio; a última página explícita da ficha tem
-   `break-after: auto` e o `.page-break` pai força a quebra (evita breaks
-   duplos virarem folha em branco).
+6. ~~**Mudança de setor/ficha = nova página**~~ — **REVOGADO em 31/07/2026.**
+   Era: cada ficha dentro de um `.page-break` com `page-break-after: always`.
+   O dono reportou (print de `/imprimir-fichas`) que o Corte Forração terminava
+   no terço superior da folha e o Corte Cabedal só começava na folha seguinte —
+   ~4,5 folhas desperdiçadas com os 9 setores marcados, meia por maço.
+   **Hoje:** `.page-break` usa `page-break-after: auto` e os maços **fluem
+   contínuos** — o setor seguinte começa no espaço que sobrou. A última página
+   explícita de cada `PaginatedSheet` já tinha `break-after: auto`
+   (`.pagi-page:last-child`), então o wrapper era o único forçando a folha.
+   ⚠ A folha de emenda contém DOIS setores, que vão pra bancadas diferentes —
+   por isso `.page-break + .page-break::before` imprime a linha
+   "✂ CORTAR AQUI · MUDA DE SETOR". Ela é **obrigatória, não decorativa**: é por
+   ela que a separação divide a folha compartilhada. Fica FORA do `@media print`
+   (regra WYSIWYG §0.2-1 + a emenda precisa ser visível no preview).
+   **Custo aceito pelo dono:** um passo manual de tesoura na separação, e o
+   conteúdo de um maço pode ser fragmentado pelo browser na virada da folha (os
+   blocos internos são `.keep-together`, então a quebra cai ENTRE blocos).
 7. **Saída invertida (2026-07-24, `worksheet/printOrder.tsx`)**: a impressora
    da fábrica empilha face pra cima (1ª página emitida fica no fundo → maço
    sai de trás pra frente). Com o toggle **"Saída invertida"** da toolbar
