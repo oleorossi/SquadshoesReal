@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Buildings, Plus, Trash, Flask as FlaskConical, Calendar, CurrencyDollar, Package,
-  CheckCircle, Warning,
+  Buildings, Flask as FlaskConical, Calendar, CurrencyDollar,
 } from '@phosphor-icons/react';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -19,11 +18,7 @@ import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useContractors } from '@/hooks/useContractors';
-import { useProducts } from '@/hooks/useProducts';
-import {
-  debitStockForServiceOrder, resolveMaterialProduct, generateServiceOrderNumber,
-  type MaterialSentItem,
-} from '@/lib/serviceOrderStock';
+import { generateServiceOrderNumber } from '@/lib/serviceOrderStock';
 import { formatCurrency, cn } from '@/lib/utils';
 
 /**
@@ -31,14 +26,20 @@ import { formatCurrency, cn } from '@/lib/utils';
  *
  * Fluxo:
  *  1. Coleta contractor + setor + descrição + qty × unit_price (= total auto)
- *  2. Lista de materiais a entregar (material/cor/metros) com preview de match
- *     no estoque (badge verde "produto encontrado" vs vermelho "não encontrado")
- *  3. Submit: INSERT em service_orders + dispara baixa de estoque pra cada item
- *     com produto resolvido (via adjustStockSafe RPC, concurrency-safe)
- *  4. Re-invalida caches relevantes
+ *  2. Submit: INSERT em service_orders
+ *  3. Re-invalida caches relevantes
  *
  * Substitui o form bugado em Contractors.tsx (que gravava total_value=unit_price
  * sem multiplicar pela quantidade) e é reusável no hub /terceiros (aba Na Rua).
+ *
+ * ⚠ A OS **não debita estoque** (decisão do dono, 31/07/2026). O consumo de
+ * material tem UM dono: o ledger da OP (reserva na liberação pra produção →
+ * `commit_picking_for_sale_order`; faturamento como rede via
+ * `convert_reservation_to_out`). O débito que existia aqui escrevia direto em
+ * `products.quantity` com `order_id` NULL, sem linha em `material_reservations`
+ * e sem enxergar o que a OP já tinha reservado — a mesma napa sairia duas vezes.
+ * Nunca foi disparado em produção (0 movimentos em 4 meses) e foi removido antes
+ * de virar furo de estoque. Não reintroduzir aqui.
  *
  * Edit mode pode ser implementado depois — MVP foca em CREATE.
  */
@@ -71,27 +72,12 @@ const SECTORS = [
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
 
-interface MaterialRow extends MaterialSentItem {
-  _id: string; // chave local pra controlled array
-}
-
 export function ServiceOrderFormDialog({
   open, onOpenChange, initialContractorId, initialSector, onCreated,
   saleOrderId, saleOrderLabel, pvItems,
 }: ServiceOrderFormDialogProps) {
   const qc = useQueryClient();
   const { data: contractors = [] } = useContractors();
-  const { data: products = [] } = useProducts();
-
-  // Grupos pra ajudar resolução nome+cor
-  const { data: productGroups = [] } = useQuery({
-    queryKey: ['product_groups_for_so_form'],
-    queryFn: async () => {
-      const { data } = await supabase.from('product_groups').select('id, name');
-      return data || [];
-    },
-    staleTime: 5 * 60_000,
-  });
 
   // Form state
   const [contractorId, setContractorId] = useState<string>('');
@@ -102,7 +88,6 @@ export function ServiceOrderFormDialog({
   const [quantity, setQuantity] = useState<number>(0);
   const [unitPrice, setUnitPrice] = useState<number>(0);
   const [notes, setNotes] = useState<string>('');
-  const [materials, setMaterials] = useState<MaterialRow[]>([]);
   // Seleção dos itens do PV (atalho do pedido). Default: todos marcados.
   const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
 
@@ -137,7 +122,6 @@ export function ServiceOrderFormDialog({
       setQuotedDeadline('');
       setUnitPrice(0);
       setNotes('');
-      setMaterials([]);
       // Atalho do PV: pré-marca todos os itens, soma os pares na Quantidade e
       // sugere a descrição a partir do pedido + itens.
       if (pvItems && pvItems.length) {
@@ -169,34 +153,6 @@ export function ServiceOrderFormDialog({
   const selectedContractor = contractors.find((c: any) => c.id === contractorId);
   const paymentDays = Number((selectedContractor as any)?.payment_days ?? 30) || 30;
 
-  const addMaterial = () => {
-    setMaterials((prev) => [
-      ...prev,
-      { _id: crypto.randomUUID(), material: '', color: '', meters: 0 },
-    ]);
-  };
-
-  const removeMaterial = (id: string) => {
-    setMaterials((prev) => prev.filter((m) => m._id !== id));
-  };
-
-  const updateMaterial = (id: string, patch: Partial<MaterialRow>) => {
-    setMaterials((prev) => prev.map((m) => (m._id === id ? { ...m, ...patch } : m)));
-  };
-
-  // Preview de match no estoque pra cada linha
-  const matchedProducts = useMemo(() => {
-    const map = new Map<string, ReturnType<typeof resolveMaterialProduct>>();
-    for (const m of materials) {
-      map.set(m._id, resolveMaterialProduct(m.material, m.color, products as any, productGroups as any));
-    }
-    return map;
-  }, [materials, products, productGroups]);
-
-  const validMaterials = materials.filter((m) => m.material && m.color && m.meters > 0);
-  const unresolvedCount = validMaterials.filter((m) => !matchedProducts.get(m._id)).length;
-  const totalMeters = validMaterials.reduce((s, m) => s + Number(m.meters || 0), 0);
-
   const create = useMutation({
     mutationFn: async () => {
       if (!contractorId) throw new Error('Selecione uma contratada.');
@@ -214,7 +170,6 @@ export function ServiceOrderFormDialog({
         quantity,
         unit_price: unitPrice,
         total_value: totalValue,
-        materials_sent: validMaterials.map(({ _id, ...rest }) => rest),
         status: 'Pendente',
         notes: notes.trim() || null,
         quoted_at: quotedDeadline ? new Date().toISOString() : null,
@@ -230,35 +185,10 @@ export function ServiceOrderFormDialog({
         .single();
       if (error) throw new Error(error.message);
 
-      // Baixa de estoque (best-effort: surface warnings mas não bloqueia)
-      if (validMaterials.length > 0) {
-        const result = await debitStockForServiceOrder(
-          validMaterials.map((m) => ({
-            material: m.material, color: m.color, meters: m.meters,
-            product_id: matchedProducts.get(m._id)?.id,
-          })),
-          {
-            service_order_id: inserted.id,
-            order_number: inserted.order_number,
-            sale_order_label: saleOrderLabel || null,
-            products: products as any,
-            product_groups: productGroups as any,
-          },
-        );
-        const failed = result.items.filter((i) => i.status !== 'ok');
-        if (failed.length > 0) {
-          toast.warning(
-            `${failed.length} ${failed.length === 1 ? 'material não foi debitado' : 'materiais não foram debitados'}: ${failed.map((f) => `${f.material}/${f.color}`).join(', ')}. OS criada mesmo assim.`,
-            { duration: 8000 },
-          );
-        }
-      }
-
       return inserted.id as string;
     },
     onSuccess: (id) => {
       qc.invalidateQueries({ queryKey: ['service_orders'] });
-      qc.invalidateQueries({ queryKey: ['products'] });
       qc.invalidateQueries({ queryKey: ['v_contractor_metrics'] });
       toast.success('Ordem de serviço criada.');
       onCreated?.(id);
@@ -451,107 +381,6 @@ export function ServiceOrderFormDialog({
                     </strong>
                   </span>
                 )}
-              </div>
-            )}
-          </section>
-
-          {/* ── Bloco 4: Materiais entregues ─────────────────────────── */}
-          <section className="space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="text-[10px] tracking-[0.18em] uppercase font-bold text-muted-foreground flex items-center gap-1.5">
-                <Package className="h-3 w-3" />
-                Materiais entregues ao prestador ({materials.length})
-              </div>
-              <Button type="button" variant="outline" size="sm" onClick={addMaterial} className="h-7 text-xs gap-1">
-                <Plus className="h-3 w-3" />
-                Adicionar
-              </Button>
-            </div>
-
-            {materials.length === 0 ? (
-              <div className="text-center py-6 text-xs text-muted-foreground border border-dashed border-border rounded-md">
-                Nenhum material adicionado. Clique <strong>Adicionar</strong> pra incluir materiais que serão entregues ao prestador
-                — o estoque será debitado automaticamente.
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {materials.map((m) => {
-                  const matched = matchedProducts.get(m._id);
-                  const isResolved = m.material && m.color && !!matched;
-                  const isUnresolved = m.material && m.color && !matched;
-                  return (
-                    <div
-                      key={m._id}
-                      className={cn(
-                        'grid grid-cols-[1fr_1fr_100px_140px_32px] gap-2 items-end p-2 rounded-md border',
-                        isResolved ? 'border-green-500/30 bg-green-500/5' : isUnresolved ? 'border-red-500/30 bg-red-500/5' : 'border-border bg-muted/30',
-                      )}
-                    >
-                      <div>
-                        <Label className="text-[10px] text-muted-foreground">Material</Label>
-                        <Input
-                          value={m.material}
-                          onChange={(e) => updateMaterial(m._id, { material: e.target.value })}
-                          placeholder="Ex.: NAPA SOFT"
-                          className="h-8 text-xs mt-0.5"
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-[10px] text-muted-foreground">Cor</Label>
-                        <Input
-                          value={m.color}
-                          onChange={(e) => updateMaterial(m._id, { color: e.target.value })}
-                          placeholder="Ex.: Preto"
-                          className="h-8 text-xs mt-0.5"
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-[10px] text-muted-foreground">Metros</Label>
-                        <NumberInput
-                          value={m.meters}
-                          onChange={(v) => updateMaterial(m._id, { meters: v })}
-                          step="0.1"
-                          min={0}
-                          className="h-8 text-xs mt-0.5"
-                        />
-                      </div>
-                      <div className="pb-0.5">
-                        {isResolved && matched ? (
-                          <Badge variant="outline" className="text-[10px] gap-1 bg-green-500/10 text-green-700 border-green-500/40 dark:text-green-400">
-                            <CheckCircle className="h-3 w-3" />
-                            <span className="truncate">est: {(matched.quantity || 0).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}m</span>
-                          </Badge>
-                        ) : isUnresolved ? (
-                          <Badge variant="outline" className="text-[10px] gap-1 bg-red-500/10 text-red-700 border-red-500/40 dark:text-red-400">
-                            <Warning className="h-3 w-3" />
-                            Não encontrado
-                          </Badge>
-                        ) : (
-                          <span className="text-[10px] text-muted-foreground">preencha material+cor</span>
-                        )}
-                      </div>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7"
-                        onClick={() => removeMaterial(m._id)}
-                        aria-label="Remover material"
-                      >
-                        <Trash className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  );
-                })}
-                <div className="flex items-center justify-between text-xs text-muted-foreground px-2 pt-1">
-                  <span>{validMaterials.length} {validMaterials.length === 1 ? 'material válido' : 'materiais válidos'} · {totalMeters.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} m totais</span>
-                  {unresolvedCount > 0 && (
-                    <span className="text-amber-700 dark:text-amber-400 flex items-center gap-1">
-                      <Warning className="h-3 w-3" />
-                      {unresolvedCount} sem produto no estoque — não será debitado
-                    </span>
-                  )}
-                </div>
               </div>
             )}
           </section>

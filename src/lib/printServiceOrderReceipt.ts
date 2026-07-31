@@ -5,10 +5,15 @@ import { applyPrintSandbox } from '@/lib/htmlUtils';
 /**
  * Recibo profissional de Ordem de Serviço — A4 com cabeçalho da empresa,
  * dados do prestador, tabela de materiais enviados (se houver),
- * descrição/quantidade/valor e linhas de assinatura.
+ * descrição/quantidade e linhas de assinatura.
  *
  * Substitui o printReceipt inline de Contractors.tsx (que usava window.open).
  * Mesmo padrão dos outros prints do projeto: iframe escondido + srcdoc + print().
+ *
+ * ⚠ SEM VALOR (decisão do dono, 31/07/2026): nem preço unitário, nem total.
+ * O papel que vai pra rua comprova entrega e QUANTIDADE — preço é assunto do
+ * contas a pagar, não do prestador no balcão. Vale igual pra
+ * `printServiceOrderRemessa.ts`. Não reintroduzir coluna de R$ aqui.
  */
 
 export interface ReceiptContractor {
@@ -73,8 +78,6 @@ const SECTOR_LABEL: Record<string, string> = {
   acabamento: 'Acabamento',
 };
 
-const fmtMoney = (v: number | null | undefined) =>
-  (Number(v ?? 0)).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const fmtNum = (v: number | null | undefined, digits = 0) =>
   (Number(v ?? 0)).toLocaleString('pt-BR', { minimumFractionDigits: digits, maximumFractionDigits: digits });
 const fmtDate = (iso: string | null | undefined) => {
@@ -99,8 +102,6 @@ export function printServiceOrderReceipt(
     : `OS ${order.order_number || order.id.slice(0, 8)}`;
 
   const qty = Number(order.quantity || 0);
-  const unitPrice = Number(order.unit_price || 0);
-  const totalValue = Number(order.total_value || qty * unitPrice);
   const hasMaterials = (order.materials_sent || []).length > 0;
   const totalMeters = (order.materials_sent || []).reduce((s, m) => s + Number(m.meters || 0), 0);
 
@@ -274,16 +275,12 @@ export function printServiceOrderReceipt(
         <tr>
           <th class="left">Descrição</th>
           <th class="right">Quantidade</th>
-          <th class="right">Valor unitário</th>
-          <th class="right">Total</th>
         </tr>
       </thead>
       <tbody>
         <tr>
           <td>${escapeHtml(order.description || '—')}</td>
-          <td class="right mono">${fmtNum(qty, 0)}${qty > 0 ? ' pares' : ''}</td>
-          <td class="right mono">${fmtMoney(unitPrice)}</td>
-          <td class="right mono strong">${fmtMoney(qty * unitPrice)}</td>
+          <td class="right mono strong">${fmtNum(qty, 0)}${qty > 0 ? ' pares' : ''}</td>
         </tr>
       </tbody>
     </table>
@@ -293,15 +290,11 @@ export function printServiceOrderReceipt(
 
   <div class="totals">
     <table>
-      <tr>
-        <td class="label">Subtotal</td>
-        <td class="value">${fmtMoney(qty * unitPrice)}</td>
-      </tr>
       ${order.quoted_deadline ? `<tr><td class="label">Prazo prometido</td><td class="value">${fmtDate(order.quoted_deadline)}</td></tr>` : ''}
       ${order.service_date ? `<tr><td class="label">Data do envio</td><td class="value">${fmtDate(order.service_date)}</td></tr>` : ''}
       <tr class="total">
-        <td>Valor total</td>
-        <td class="value">${fmtMoney(totalValue)}</td>
+        <td>Quantidade total</td>
+        <td class="value">${fmtNum(qty, 0)}${qty > 0 ? ' pares' : ''}</td>
       </tr>
     </table>
   </div>

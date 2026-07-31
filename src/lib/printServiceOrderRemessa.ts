@@ -73,8 +73,6 @@ const SECTOR_LABEL: Record<string, string> = {
   acabamento: 'Acabamento',
 };
 
-const fmtMoney = (v: number | null | undefined) =>
-  Number(v ?? 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const fmtInt = (v: number | null | undefined) =>
   Number(v ?? 0).toLocaleString('pt-BR', { maximumFractionDigits: 0 });
 const fmtMeters = (v: number | null | undefined) =>
@@ -106,8 +104,6 @@ export function printServiceOrderRemessa(
   const paymentDays = Number(contractor?.payment_days ?? 0);
 
   const qty = Number(order.quantity || 0);
-  const unitPrice = Number(order.unit_price || 0);
-  const totalValue = Number(order.total_value || qty * unitPrice);
 
   // Itens do PV (cartões). Fallback: 1 cartão a partir da descrição quando não há
   // itens vinculados, pra a guia nunca sair vazia de conteúdo.
@@ -134,9 +130,9 @@ export function printServiceOrderRemessa(
 
   const pvLine = [order.sale_order_number, order.client_order_number].filter(Boolean).join(' · ');
 
-  const valueNote = unitPrice > 0
-    ? `Valor da OS <b>${fmtMoney(totalValue)}</b> (${fmtInt(qty)} × ${fmtMoney(unitPrice)}).`
-    : `Valor da OS <b>${fmtMoney(totalValue)}</b>.`;
+  // Remessa e recibo saem SEM valor (decisão do dono, 31/07/2026): o papel que
+  // vai pra rua comprova entrega e quantidade, não preço. Quantidade fica —
+  // é a âncora da conferência na volta.
 
   const html = `<!doctype html>
 <html lang="pt-BR">
@@ -220,7 +216,7 @@ export function printServiceOrderRemessa(
     ${order.notes ? `<div class="notes"><strong>Obs.:</strong> ${esc(order.notes)}</div>` : ''}
 
     <div class="ackband">
-      <div class="txt">Recebi os <b>${fmtInt(qty)} pares</b>${materials.length > 0 ? ` e os materiais acima (<b>${fmtMeters(totalMeters)} m</b>)` : ''}, conferidos conforme esta guia de remessa. ${valueNote}</div>
+      <div class="txt">Recebi os <b>${fmtInt(qty)} pares</b>${materials.length > 0 ? ` e os materiais acima (<b>${fmtMeters(totalMeters)} m</b>)` : ''}, conferidos conforme esta guia de remessa.</div>
       <div class="sg"><div class="ln"></div><div class="l">Assinatura do prestador · data</div></div>
     </div>
 
