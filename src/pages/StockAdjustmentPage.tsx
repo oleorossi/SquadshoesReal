@@ -1,4 +1,4 @@
- import { useState, useMemo, useRef, useCallback, useEffect } from "react";
+import { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useDebounce } from "use-debounce";
 import { supabase } from "@/integrations/supabase/client";
@@ -6,9 +6,9 @@ import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
- import { FloppyDisk as Save, CircleNotch as Loader2, X, Warning as AlertTriangle, Sliders as SlidersHorizontal, CaretDown as ChevronDown, CaretRight as ChevronRight, ClockCounterClockwise as History } from '@phosphor-icons/react';
- import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
- import StockHistory from "./StockHistory";
+import { FloppyDisk as Save, CircleNotch as Loader2, X, Warning as AlertTriangle, Sliders as SlidersHorizontal, CaretDown as ChevronDown, CaretRight as ChevronRight, ClockCounterClockwise as History } from '@phosphor-icons/react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import StockHistory from "./StockHistory";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
@@ -16,6 +16,8 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { SearchInput } from '@/components/ui/search-input';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { useCan } from '@/hooks/useAccessControl';
+import { StockPasteRejectedPanel } from '@/components/inventory/StockPasteRejectedPanel';
+import { normalizeSku, parseStockPaste, type PasteReject, type SkuIndexEntry } from '@/lib/stockPasteImport';
 
 interface Product {
   id: string;
@@ -29,6 +31,7 @@ interface Product {
   stock_grade: Record<string, any> | null;
   group_id: string | null;
   active: boolean;
+  reserved_stock: number;
 }
 
 interface SoleConjugationRow {
@@ -123,7 +126,7 @@ function gradeTotal(grade: Record<string, number>): number {
 
 // E3 (audit): presets de motivo padronizados. Antes era texto livre — análises
 // posteriores ficavam difíceis (cada operador escrevia "ajuste do invent." de
-// um jeito). Categoria estruturada vai pro stock_movements.reason já formatada
+// um jeito). Categoria estruturada vai pro stock_movements.description já formatada
 // e ainda permite texto adicional.
 const REASON_PRESETS: Array<{ key: string; label: string; needsDetail?: boolean }> = [
   { key: 'inventario',   label: 'Inventário (contagem física)', needsDetail: false },
@@ -206,6 +209,7 @@ export default function StockAdjustmentPage() {
 
   // Regular products: productId → raw string
   const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [lastPaste, setLastPaste] = useState<{ appliedIds: string[]; rejected: PasteReject[] } | null>(null);
   // Soles: productId → sizeStr → raw string
   const [soleDrafts, setSoleDrafts] = useState<Record<string, Record<string, string>>>({});
   // Expanded sole rows
@@ -220,7 +224,7 @@ export default function StockAdjustmentPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("products")
-        .select("id, name, sku, category, color, quantity, unit, min_stock, stock_grade, group_id, active")
+        .select("id, name, sku, category, color, quantity, unit, min_stock, stock_grade, group_id, active, reserved_stock")
         .order("category")
         .order("name")
         .order("color");
@@ -237,6 +241,7 @@ export default function StockAdjustmentPage() {
         stock_grade: p.stock_grade ?? null,
         group_id: p.group_id ?? null,
         active: p.active !== false,
+        reserved_stock: Number(p.reserved_stock ?? 0),
       }));
     },
   });
@@ -406,7 +411,7 @@ export default function StockAdjustmentPage() {
   // ── Pending changes ────────────────────────────────────────────────────
 
   const pendingRegular = useMemo(() =>
-    filtered.filter((p) => !isSole(p)).filter((p) => {
+    products.filter((p) => !isSole(p)).filter((p) => {
       const raw = drafts[p.id];
       if (!raw && raw !== "0") return false;
       const val = parseFloat(raw.replace(",", "."));
@@ -415,11 +420,11 @@ export default function StockAdjustmentPage() {
       const newQty = parseFloat(drafts[p.id].replace(",", "."));
       return { product: p, newQty, delta: newQty - p.quantity };
     }),
-    [filtered, drafts]
+    [products, drafts]
   );
 
   const pendingSoles = useMemo(() =>
-    filtered.filter(isSole).filter((p) => {
+    products.filter(isSole).filter((p) => {
       const sd = soleDrafts[p.id];
       if (!sd) return false;
       return Object.keys(sd).some((k) => {
@@ -447,10 +452,61 @@ export default function StockAdjustmentPage() {
       const newTotal = gradeTotal(newGrade);
       return { product: p, newGrade, newTotal, delta: newTotal - p.quantity };
     }),
-    [filtered, soleDrafts, getConjugationsFor]
+    [products, soleDrafts, getConjugationsFor]
   );
 
   const totalPending = pendingRegular.length + pendingSoles.length;
+  const visibleIds = useMemo(() => new Set(filtered.map((p) => p.id)), [filtered]);
+  const hiddenPendingCount = useMemo(
+    () => [...pendingRegular, ...pendingSoles].filter(({ product }) => !visibleIds.has(product.id)).length,
+    [pendingRegular, pendingSoles, visibleIds],
+  );
+
+  const skuIndex = useMemo(() => {
+    const index = new Map<string, SkuIndexEntry | 'ambiguous'>();
+    for (const product of products) {
+      if (!product.sku) continue;
+      const key = normalizeSku(product.sku);
+      if (!product.active) {
+        if (!index.has(key)) index.set(key, { id: product.id, isSole: isSole(product), active: false });
+        continue;
+      }
+      const previous = index.get(key);
+      if (previous && previous !== 'ambiguous' && previous.active) index.set(key, 'ambiguous');
+      else index.set(key, { id: product.id, isSole: isSole(product), active: true });
+    }
+    return index;
+  }, [products]);
+
+  useEffect(() => {
+    const onPaste = (event: ClipboardEvent) => {
+      if (!perm.canEdit || isHistoryOpen) return;
+      const text = event.clipboardData?.getData('text/plain') ?? '';
+      if (!text.includes('\t')) return;
+
+      event.preventDefault();
+      const result = parseStockPaste(text, skuIndex);
+      if (result.matched.length > 0) {
+        setDrafts((previous) => {
+          const next = { ...previous };
+          for (const match of result.matched) next[match.productId] = String(match.qty).replace('.', ',');
+          return next;
+        });
+      }
+      setLastPaste({
+        appliedIds: result.matched.map((match) => match.productId),
+        rejected: result.rejected,
+      });
+      toast[result.rejected.length ? 'warning' : 'success'](
+        `${result.matched.length} linha(s) aplicada(s) como rascunho` +
+        (result.rejected.length ? ` · ${result.rejected.length} rejeitada(s)` : '') +
+        '. Nada foi salvo ainda — revise e clique em Salvar.',
+      );
+    };
+
+    document.addEventListener('paste', onPaste);
+    return () => document.removeEventListener('paste', onPaste);
+  }, [skuIndex, perm.canEdit, isHistoryOpen]);
 
   // ── Keyboard navigation ────────────────────────────────────────────────
 
@@ -552,80 +608,115 @@ export default function StockAdjustmentPage() {
       );
       return;
     }
-    setSaving(true);
-    try {
-      // Process Regular Products via RPC
-      for (const { product, newQty, delta } of pendingRegular) {
-        if (newQty < 0) {
-          toast.error(`Novo estoque de "${product.name}" seria negativo (${newQty}). Corrija o valor.`);
-          setSaving(false);
+
+    for (const { product, newQty } of pendingRegular) {
+      if (newQty < 0) {
+        toast.error(`Novo estoque de "${product.name}" seria negativo (${newQty}). Corrija o valor.`);
+        return;
+      }
+    }
+    for (const { product, newGrade, newTotal } of pendingSoles) {
+      for (const key of Object.keys(newGrade)) {
+        if (key.startsWith('_')) continue;
+        if ((newGrade[key] as number) < 0) {
+          toast.error(`Tamanho ${key} de "${product.name}" ficaria negativo. Corrija o valor.`);
           return;
-        }
-        const { data, error: rpcErr } = await supabase.rpc("adjust_stock", {
-          p_product_id: product.id,
-          p_expected_previous_qty: product.quantity,
-          p_new_qty: newQty,
-          p_delta: delta,
-          p_reason: `Ajuste manual — ${reason.trim()}`,
-        });
-
-        if (rpcErr) throw rpcErr;
-
-        const result = Array.isArray(data) ? data[0] : data;
-        if (!result.success) {
-          if (result.error_message === "CONCURRENCY_ERROR") {
-            toast.error(
-              `Conflito: O estoque de "${product.name}" mudou para ${result.current_db_qty} enquanto você editava. Por favor, revise os valores.`,
-              { duration: 6000 }
-            );
-            setSaving(false);
-            qc.invalidateQueries({ queryKey: ["stock-adjustment-products"] });
-            return;
-          }
-          throw new Error(result.error_message || "Erro desconhecido no ajuste.");
         }
       }
+      if (newTotal < 0) {
+        toast.error(`Novo estoque total de "${product.name}" seria negativo (${newTotal}). Corrija.`);
+        return;
+      }
+    }
 
-      // Process Soles via RPC
-      for (const { product, newGrade, newTotal, delta } of pendingSoles) {
-        // Validate: no per-size bucket may be negative
-        for (const k of Object.keys(newGrade)) {
-          if (k.startsWith('_')) continue; // metadata keys
-          if ((newGrade[k] as number) < 0) {
-            toast.error(`Tamanho ${k} de "${product.name}" ficaria negativo. Corrija o valor.`);
-            setSaving(false);
-            return;
-          }
-        }
-        if (newTotal < 0) {
-          toast.error(`Novo estoque total de "${product.name}" seria negativo (${newTotal}). Corrija.`);
-          setSaving(false);
-          return;
-        }
-        const { data, error: rpcErr } = await supabase.rpc("adjust_stock", {
-          p_product_id: product.id,
-          p_expected_previous_qty: product.quantity,
-          p_new_qty: newTotal,
-          p_delta: delta,
-          p_reason: `Ajuste grade solado — ${reason.trim()}`,
-          p_new_grade: newGrade,
-        });
+    const items = [
+      ...pendingRegular.map(({ product, newQty }) => ({
+        product_id: product.id,
+        expected_previous_qty: product.quantity,
+        new_qty: newQty,
+        new_grade: null,
+        reason: `Ajuste manual — ${reason.trim()}`,
+      })),
+      ...pendingSoles.map(({ product, newGrade, newTotal }) => ({
+        product_id: product.id,
+        expected_previous_qty: product.quantity,
+        new_qty: newTotal,
+        new_grade: newGrade,
+        reason: `Ajuste grade solado — ${reason.trim()}`,
+      })),
+    ];
 
-        if (rpcErr) throw rpcErr;
+    setSaving(true);
+    try {
+      // types.ts é gerado e ainda não conhece a RPC aditiva; o cast é o padrão do projeto.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error: rpcErr } = await supabase.rpc('adjust_stock_batch' as any, { p_items: items });
+      if (rpcErr) throw rpcErr;
 
-        const result = Array.isArray(data) ? data[0] : data;
-        if (!result.success) {
-          if (result.error_message === "CONCURRENCY_ERROR") {
-            toast.error(
-              `Conflito: O estoque de "${product.name}" mudou para ${result.current_db_qty} enquanto você editava. Por favor, revise os valores.`,
-              { duration: 6000 }
-            );
-            setSaving(false);
-            qc.invalidateQueries({ queryKey: ["stock-adjustment-products"] });
-            return;
-          }
-          throw new Error(result.error_message || "Erro desconhecido no ajuste.");
+      type BatchError = {
+        product_id: string | null;
+        error: string;
+        current_db_qty: number | null;
+      };
+      const result = (Array.isArray(data) ? data[0] : data) as {
+        success: boolean;
+        applied: number;
+        errors: BatchError[];
+      } | null;
+      if (!result) throw new Error('Resposta vazia da RPC adjust_stock_batch.');
+
+      if (!result.success) {
+        const errors = result.errors ?? [];
+        const concurrencyErrors = errors.filter((item) => item.error === 'CONCURRENCY_ERROR');
+        const negativeErrors = errors.filter((item) =>
+          item.error === 'NEGATIVE_QTY_NOT_ALLOWED' || item.error === 'NEGATIVE_GRADE_BUCKET'
+        );
+
+        if (concurrencyErrors.length > 0) {
+          setConflictedIds((previous) => {
+            const next = new Set(previous);
+            concurrencyErrors.forEach((item) => {
+              if (item.product_id) next.add(item.product_id);
+            });
+            return next;
+          });
+          const details = concurrencyErrors.slice(0, 3).map((item) => {
+            const name = item.product_id ? productsById.get(item.product_id)?.name ?? item.product_id : 'produto inválido';
+            const current = item.current_db_qty == null
+              ? 'estoque atual indisponível'
+              : `agora ${Number(item.current_db_qty).toLocaleString('pt-BR')}`;
+            return `"${name}" (${current})`;
+          }).join('; ');
+          const remaining = concurrencyErrors.length - 3;
+          toast.error(
+            `Conflito de estoque: ${details}${remaining > 0 ? ` … e mais ${remaining}` : ''}. Nenhum ajuste foi salvo.`,
+            { duration: 8000 },
+          );
+        } else if (negativeErrors.length > 0) {
+          const names = negativeErrors.slice(0, 3).map((item) =>
+            item.product_id ? productsById.get(item.product_id)?.name ?? item.product_id : 'produto inválido'
+          );
+          const remaining = negativeErrors.length - 3;
+          toast.error(
+            `Quantidade negativa não permitida em ${names.map((name) => `"${name}"`).join(', ')}` +
+            `${remaining > 0 ? ` … e mais ${remaining}` : ''}. Nenhum ajuste foi salvo.`,
+            { duration: 8000 },
+          );
+        } else {
+          const details = errors.slice(0, 3).map((item) => {
+            const name = item.product_id ? productsById.get(item.product_id)?.name ?? item.product_id : 'produto inválido';
+            return `"${name}" (${item.error})`;
+          }).join('; ');
+          const remaining = errors.length - 3;
+          toast.error(
+            `O lote foi rejeitado${details ? `: ${details}` : ''}${remaining > 0 ? ` … e mais ${remaining}` : ''}. Nenhum ajuste foi salvo.`,
+            { duration: 8000 },
+          );
         }
+
+        qc.invalidateQueries({ queryKey: ['stock-adjustment-products'] });
+        setSaving(false);
+        return;
       }
 
       toast.success(
@@ -637,6 +728,7 @@ export default function StockAdjustmentPage() {
        setReasonDetail("");
        setStaleSnapshot(new Map());
        setConflictedIds(new Set());
+       setLastPaste(null);
        qc.invalidateQueries({ queryKey: ["products"] });
        qc.invalidateQueries({ queryKey: ["stock-adjustment-products"] });
      } catch (err: any) {
@@ -645,6 +737,32 @@ export default function StockAdjustmentPage() {
        setSaving(false);
      }
    };
+
+  const copyRejectedPaste = async () => {
+    if (!lastPaste) return;
+    const tsv = [
+      'linha\tsku\tqtd\tmotivo',
+      ...lastPaste.rejected.map((item) =>
+        [item.line, item.sku, item.rawQty, item.reason].join('\t')
+      ),
+    ].join('\n');
+    try {
+      await navigator.clipboard.writeText(tsv);
+      toast.success('Linhas rejeitadas copiadas.');
+    } catch {
+      toast.error('Não foi possível copiar as linhas rejeitadas.');
+    }
+  };
+
+  const discardLastPaste = () => {
+    if (!lastPaste) return;
+    setDrafts((previous) => {
+      const next = { ...previous };
+      lastPaste.appliedIds.forEach((id) => delete next[id]);
+      return next;
+    });
+    setLastPaste(null);
+  };
 
   // ── Render ─────────────────────────────────────────────────────────────
 
@@ -771,7 +889,7 @@ export default function StockAdjustmentPage() {
                 </TooltipTrigger>
                 <TooltipContent side="bottom" className="max-w-xs">
                   <p className="text-xs">
-                    O motivo selecionado é registrado em <span className="font-mono">stock_movements.reason</span>
+                    O motivo selecionado é registrado em <span className="font-mono">stock_movements.description</span>
                     {' '}junto com seu usuário e data/hora. Detalhes ajudam auditoria posterior.
                     Veja o histórico completo no botão <span className="font-semibold">Hist.</span> da linha.
                   </p>
@@ -820,11 +938,21 @@ export default function StockAdjustmentPage() {
 
         {totalPending > 0 && (
           <Button size="sm" variant="ghost" className="h-8 text-xs text-muted-foreground shrink-0"
-            onClick={() => { setDrafts({}); setSoleDrafts({}); setConflictedIds(new Set()); setStaleSnapshot(new Map()); }}>
+            onClick={() => { setDrafts({}); setSoleDrafts({}); setConflictedIds(new Set()); setStaleSnapshot(new Map()); setLastPaste(null); }}>
             <X className="h-3 w-3 mr-1" /> Limpar
           </Button>
         )}
       </div>
+
+      {lastPaste && lastPaste.rejected.length > 0 && (
+        <StockPasteRejectedPanel
+          rejected={lastPaste.rejected}
+          appliedCount={lastPaste.appliedIds.length}
+          onCopy={copyRejectedPaste}
+          onDiscardPaste={discardLastPaste}
+          onDismiss={() => setLastPaste(null)}
+        />
+      )}
 
       {/* Spreadsheet */}
       {isLoading ? (
@@ -835,16 +963,17 @@ export default function StockAdjustmentPage() {
         <div className="flex-1 overflow-auto border-x border-b border-border rounded-b-lg">
           <table className="w-full border-collapse text-sm" style={{ tableLayout: "fixed" }}>
             <colgroup>
-               <col style={{ width: 44 }} />
+              <col style={{ width: 44 }} />
+              <col style={{ width: 44 }} />
               <col style={{ width: "26%" }} />
               <col style={{ width: "12%" }} />
               <col style={{ width: 88 }} />
               <col style={{ width: "14%" }} />
               <col style={{ width: 48 }} />
               <col style={{ width: 96 }} />
+              <col style={{ width: 72 }} />
               <col style={{ width: 108 }} />
-               <col style={{ width: 44 }} />
-               <col style={{ width: 76 }} />
+              <col style={{ width: 76 }} />
             </colgroup>
             <thead className="sticky top-0 z-10">
               <tr className="bg-muted/40 backdrop-blur-sm border-b border-border [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
@@ -856,6 +985,7 @@ export default function StockAdjustmentPage() {
                 <th className="text-left px-2 py-2 border-r border-border/40">Categoria</th>
                 <th className="text-center py-2 border-r border-border/40">Un.</th>
                 <th className="text-right px-3 py-2 border-r border-border/40">Atual</th>
+                <th className="text-right px-3 py-2 border-r border-border/40">Reservado</th>
                 <th className="!text-primary text-right px-3 py-2 border-r border-border/40">Nova Qtd ✎</th>
                 <th className="text-right px-3 py-2">Variação</th>
               </tr>
@@ -864,7 +994,7 @@ export default function StockAdjustmentPage() {
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={10}>
+                  <td colSpan={11}>
                     {/* E8 (audit): empty state distingue "nenhum produto cadastrado"
                         de "filtros zeraram resultado". Hint pra reset rápido se for filtro. */}
                     {(search || categoryFilter !== 'all' || groupFilter !== 'all' || statusFilter !== 'all') ? (
@@ -977,6 +1107,11 @@ export default function StockAdjustmentPage() {
                         <td className="px-3 py-1.5 text-right font-mono text-base border-r border-border/30 tabular-nums select-none">
                           <span className={isLow ? "text-amber-600 font-semibold" : "text-foreground"}>{product.quantity.toLocaleString("pt-BR")}</span>
                         </td>
+                        <td className="px-3 py-1.5 text-right font-mono tabular-nums text-muted-foreground border-r border-border/30 select-none">
+                          {product.reserved_stock > 0
+                            ? product.reserved_stock.toLocaleString('pt-BR')
+                            : <span className="text-muted-foreground/25">—</span>}
+                        </td>
                         {/* Sole: toggle expand instead of a quantity input */}
                         <td className="py-0 border-r border-border/30">
                           <button
@@ -1050,7 +1185,7 @@ export default function StockAdjustmentPage() {
                             hasSoleDraft ? "bg-amber-50/40 dark:bg-amber-950/15" : isEven ? "bg-muted/10" : "bg-muted/25"
                           )}
                         >
-                          <td colSpan={10} className="px-4 py-3">
+                          <td colSpan={11} className="px-4 py-3">
                             <div className="flex items-center gap-1 flex-wrap">
                               {keys.map((key, sizeIndex) => {
                                 const raw = sd[key];
@@ -1185,6 +1320,11 @@ export default function StockAdjustmentPage() {
                             : product.quantity.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
                         </span>
                       </td>
+                      <td className="px-3 py-1.5 text-right font-mono tabular-nums text-muted-foreground border-r border-border/30 select-none">
+                        {product.reserved_stock > 0
+                          ? product.reserved_stock.toLocaleString('pt-BR')
+                          : <span className="text-muted-foreground/25">—</span>}
+                      </td>
                       <td className="py-0 border-r border-border/30 p-0">
                         <input
                           ref={(el) => { cellRefs.current[rowIndex] = el; }}
@@ -1229,12 +1369,33 @@ export default function StockAdjustmentPage() {
         <span>
           {filtered.length.toLocaleString("pt-BR")} produto{filtered.length !== 1 ? "s" : ""}
           {products.length !== filtered.length && ` (de ${products.length.toLocaleString("pt-BR")})`}
-          {" · "}Tab/Enter próxima linha · ↑↓ navegar · ↔ entre numerações · Esc cancelar célula
+          {" · "}Tab/Enter próxima linha · ↑↓ navegar · ↔ entre numerações · Esc cancelar célula · Ctrl+V cola bloco SKU/Qtd do Excel
         </span>
         {totalPending > 0 && (
-          <span className="text-amber-600 dark:text-amber-400 font-medium">
-            {totalPending} ajuste{totalPending > 1 ? "s" : ""} não salvo{totalPending > 1 ? "s" : ""}
-          </span>
+          <div className="flex items-center gap-1 text-amber-600 dark:text-amber-400 font-medium">
+            <span>
+              {totalPending} ajuste{totalPending > 1 ? "s" : ""} não salvo{totalPending > 1 ? "s" : ""}
+            </span>
+            {hiddenPendingCount > 0 && (
+              <span>
+                · {hiddenPendingCount} pendente{hiddenPendingCount !== 1 ? "s" : ""} fora do filtro atual{' '}
+                <button
+                  type="button"
+                  className="underline underline-offset-2 hover:text-foreground transition-colors"
+                  onClick={() => {
+                    setSearch('');
+                    setCategoryFilter('all');
+                    setGroupFilter('all');
+                    setUnitFilter('all');
+                    setTypeFilter('all');
+                    setStatusFilter('pending');
+                  }}
+                >
+                  mostrar
+                </button>
+              </span>
+            )}
+          </div>
         )}
       </div>
 
