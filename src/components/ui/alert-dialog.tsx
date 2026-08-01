@@ -16,7 +16,7 @@ const AlertDialogOverlay = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <AlertDialogPrimitive.Overlay
     className={cn(
-      "fixed inset-0 z-50 bg-black/80 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+      "fixed inset-0 z-modal bg-black/80 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
       className,
     )}
     {...props}
@@ -67,7 +67,7 @@ const AlertDialogContent = React.forwardRef<
       className={cn(
         // Industrial Editorial Pro: espelha o DialogContent (borda 2px INK,
         // rounded-sm, sem shadow, fade-only) + margem lateral e scroll no mobile.
-        "fixed left-[50%] top-[50%] z-50 grid w-[95vw] max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border-[2px] border-foreground bg-background p-6 duration-150 max-h-[90vh] overflow-y-auto data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 rounded-sm",
+        "fixed left-[50%] top-[50%] z-modal grid w-[95vw] max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border-[2px] border-foreground bg-background p-6 duration-150 max-h-[90dvh] overflow-y-auto data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 rounded-sm",
         className,
       )}
       onKeyDown={(e) => {

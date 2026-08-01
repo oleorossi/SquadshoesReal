@@ -12,7 +12,8 @@ export default function Forecast() {
   const { data: summary = [] } = useQuery({
     queryKey: ['sku_forecast_summary'],
     queryFn: async () => {
-      const { data } = await (supabase as any).from('v_sku_forecast_summary').select('*').limit(100);
+      const { data, error } = await (supabase as any).from('v_sku_forecast_summary').select('*').limit(100);
+      if (error) throw error;
       return data || [];
     },
   });
@@ -20,7 +21,8 @@ export default function Forecast() {
   const { data: detailed = [] } = useQuery({
     queryKey: ['sku_forecast_detail'],
     queryFn: async () => {
-      const { data } = await (supabase as any).from('v_sku_forecast').select('*').limit(200);
+      const { data, error } = await (supabase as any).from('v_sku_forecast').select('*').limit(200);
+      if (error) throw error;
       return data || [];
     },
   });

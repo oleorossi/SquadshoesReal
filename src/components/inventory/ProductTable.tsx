@@ -61,8 +61,11 @@ function ProductImageThumb({ src, alt, size = 'sm', onClick }: { src?: string | 
     <img
       src={src}
       alt={alt}
-      className={cn(sizeClass, 'rounded object-cover cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all shrink-0')}
+      role="button"
+      tabIndex={0}
+      className={cn(sizeClass, 'rounded object-cover cursor-pointer hover:ring-2 hover:ring-primary/50 focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:outline-none transition-all shrink-0')}
       onClick={(e) => { e.stopPropagation(); onClick?.(); }}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); onClick?.(); } }}
     />
   );
 }
@@ -200,7 +203,7 @@ function ProductRows({ products, onEdit, onDelete, onStockOut, onGrade, onArtisa
         const isInactive = !product.active;
         const isSelected = selectedIds?.has(product.id);
         return (
-          <TableRow key={product.id} data-row-index={product.id} className={cn("group cursor-pointer hover:bg-muted/60 transition-colors", isInactive && "opacity-50", isSelected && "bg-primary/10", indent && "bg-muted/20")} onClick={() => navigate(`/estoque/${product.id}`)}>
+          <TableRow key={product.id} data-row-index={product.id} tabIndex={0} className={cn("group cursor-pointer hover:bg-muted/60 transition-colors focus-visible:outline-none focus-visible:bg-muted/60", isInactive && "opacity-50", isSelected && "bg-primary/10", indent && "bg-muted/20")} onClick={() => navigate(`/estoque/${product.id}`)} onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); navigate(`/estoque/${product.id}`); } }}>
             <TableCell className={cn("font-medium", dCls.cell)}>
               <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
                 {indent && (
@@ -306,7 +309,7 @@ function ProductRows({ products, onEdit, onDelete, onStockOut, onGrade, onArtisa
               })()}
             </TableCell>
             {isVisible('sku') && (
-              <TableCell className={cn("font-mono text-sm", dCls.cell, indent ? "text-muted-foreground/70" : "text-muted-foreground")}>
+              <TableCell className={cn("font-mono text-sm text-muted-foreground", dCls.cell)}>
                 {product.sku}
               </TableCell>
             )}
@@ -420,10 +423,10 @@ function ProductRows({ products, onEdit, onDelete, onStockOut, onGrade, onArtisa
             )}
             {isVisible('actions') && (
             <TableCell className={cn("text-right", dCls.cell)}>
-              <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
+              <div className="flex justify-end gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 group-focus-within:opacity-100 focus-within:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => onStockOut(product)}>
+                    <Button variant="ghost" size="icon" aria-label="Baixa manual" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => onStockOut(product)}>
                       <PackageMinus className="h-4 w-4" />
                     </Button>
                   </TooltipTrigger>
@@ -432,7 +435,7 @@ function ProductRows({ products, onEdit, onDelete, onStockOut, onGrade, onArtisa
                 {product.category.toLowerCase().includes('solado') && (
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 text-primary hover:text-primary" onClick={() => onGrade(product)}>
+                      <Button variant="ghost" size="icon" aria-label="Estoque por numeração" className="h-8 w-8 text-primary hover:text-primary" onClick={() => onGrade(product)}>
                         <Grid3X3 className="h-4 w-4" />
                       </Button>
                     </TooltipTrigger>
@@ -444,6 +447,7 @@ function ProductRows({ products, onEdit, onDelete, onStockOut, onGrade, onArtisa
                     <Button
                       variant="ghost"
                       size="icon"
+                      aria-label={(product as any).is_artisanal ? 'Configurar produção artesanal' : 'Marcar como artesanal'}
                       className={cn(
                         'h-8 w-8',
                         (product as any).is_artisanal
@@ -459,7 +463,7 @@ function ProductRows({ products, onEdit, onDelete, onStockOut, onGrade, onArtisa
                     {(product as any).is_artisanal ? 'Configurar produção artesanal' : 'Marcar como artesanal'}
                   </TooltipContent>
                 </Tooltip>
-                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onEdit(product)}>
+                <Button variant="ghost" size="icon" aria-label="Editar material" className="h-8 w-8" onClick={() => onEdit(product)}>
                   <Pencil className="h-4 w-4" />
                 </Button>
                 <DeleteConfirmButton onConfirm={() => onDelete(product.id)} title="Excluir material?" size="h-8 w-8" iconSize="h-4 w-4" />
@@ -690,42 +694,42 @@ export function ProductTable({ products, onEdit, onDelete, externalSort }: Produ
   const tableHeader = (
     <TableHeader>
       <TableRow className="bg-muted/50 hover:bg-muted/50">
-        <TableHead className={cn("font-semibold cursor-pointer select-none", density === 'compact' && 'py-1.5')} onClick={() => handleSort('name')}>
-          <span className="flex items-center">Material <SortIcon col="name" /></span>
+        <TableHead className={cn("font-semibold", density === 'compact' && 'py-1.5')} aria-sort={sortKey === 'name' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}>
+          <button type="button" className="flex w-full items-center select-none hover:text-foreground" onClick={() => handleSort('name')}>Material <SortIcon col="name" /></button>
         </TableHead>
         {isVisible('sku') && (
-          <TableHead className={cn("font-semibold cursor-pointer select-none", density === 'compact' && 'py-1.5')} onClick={() => handleSort('sku')}>
-            <span className="flex items-center">SKU <SortIcon col="sku" /></span>
+          <TableHead className={cn("font-semibold", density === 'compact' && 'py-1.5')} aria-sort={sortKey === 'sku' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}>
+            <button type="button" className="flex w-full items-center select-none hover:text-foreground" onClick={() => handleSort('sku')}>SKU <SortIcon col="sku" /></button>
           </TableHead>
         )}
         {isVisible('category') && (
-          <TableHead className={cn("font-semibold cursor-pointer select-none", density === 'compact' && 'py-1.5')} onClick={() => handleSort('category')}>
-            <span className="flex items-center">Categoria <SortIcon col="category" /></span>
+          <TableHead className={cn("font-semibold", density === 'compact' && 'py-1.5')} aria-sort={sortKey === 'category' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}>
+            <button type="button" className="flex w-full items-center select-none hover:text-foreground" onClick={() => handleSort('category')}>Categoria <SortIcon col="category" /></button>
           </TableHead>
         )}
         {isVisible('quantity') && (
-          <TableHead className={cn("font-semibold text-right cursor-pointer select-none", density === 'compact' && 'py-1.5')} onClick={() => handleSort('quantity')}>
-            <span className="flex items-center justify-end">Qtd. <SortIcon col="quantity" /></span>
+          <TableHead className={cn("font-semibold text-right", density === 'compact' && 'py-1.5')} aria-sort={sortKey === 'quantity' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}>
+            <button type="button" className="flex w-full items-center justify-end select-none hover:text-foreground" onClick={() => handleSort('quantity')}>Qtd. <SortIcon col="quantity" /></button>
           </TableHead>
         )}
         {isVisible('est_pairs') && (
-          <TableHead className={cn("font-semibold text-right cursor-pointer select-none", density === 'compact' && 'py-1.5')} onClick={() => handleSort('est_pairs')}>
-            <span className="flex items-center justify-end">Pares <SortIcon col="est_pairs" /></span>
+          <TableHead className={cn("font-semibold text-right", density === 'compact' && 'py-1.5')} aria-sort={sortKey === 'est_pairs' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}>
+            <button type="button" className="flex w-full items-center justify-end select-none hover:text-foreground" onClick={() => handleSort('est_pairs')}>Pares <SortIcon col="est_pairs" /></button>
           </TableHead>
         )}
         {isVisible('status') && (
-          <TableHead className={cn("font-semibold cursor-pointer select-none", density === 'compact' && 'py-1.5')} onClick={() => handleSort('status')}>
-            <span className="flex items-center">Status <SortIcon col="status" /></span>
+          <TableHead className={cn("font-semibold", density === 'compact' && 'py-1.5')} aria-sort={sortKey === 'status' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}>
+            <button type="button" className="flex w-full items-center select-none hover:text-foreground" onClick={() => handleSort('status')}>Status <SortIcon col="status" /></button>
           </TableHead>
         )}
         {isVisible('unit_price') && (
-          <TableHead className={cn("font-semibold text-right cursor-pointer select-none", density === 'compact' && 'py-1.5')} onClick={() => handleSort('unit_price')}>
-            <span className="flex items-center justify-end">Custo Unit. <SortIcon col="unit_price" /></span>
+          <TableHead className={cn("font-semibold text-right", density === 'compact' && 'py-1.5')} aria-sort={sortKey === 'unit_price' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}>
+            <button type="button" className="flex w-full items-center justify-end select-none hover:text-foreground" onClick={() => handleSort('unit_price')}>Custo Unit. <SortIcon col="unit_price" /></button>
           </TableHead>
         )}
         {isVisible('total_value') && (
-          <TableHead className={cn("font-semibold text-right cursor-pointer select-none", density === 'compact' && 'py-1.5')} onClick={() => handleSort('total_value')}>
-            <span className="flex items-center justify-end">Total em Estoque <SortIcon col="total_value" /></span>
+          <TableHead className={cn("font-semibold text-right", density === 'compact' && 'py-1.5')} aria-sort={sortKey === 'total_value' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}>
+            <button type="button" className="flex w-full items-center justify-end select-none hover:text-foreground" onClick={() => handleSort('total_value')}>Total em Estoque <SortIcon col="total_value" /></button>
           </TableHead>
         )}
         {isVisible('actions') && (
@@ -777,6 +781,7 @@ export function ProductTable({ products, onEdit, onDelete, externalSort }: Produ
                      <Button
                        variant="ghost"
                        size="icon"
+                       aria-label="Editar variantes"
                        className="h-6 w-6 ml-1"
                        onClick={(e) => { e.stopPropagation(); setMasterVariant({ baseName: sub.baseName, groupId: sub.products[0]?.group_id ?? null, baseKey: sub.baseName }); }}
                      >
@@ -790,6 +795,7 @@ export function ProductTable({ products, onEdit, onDelete, externalSort }: Produ
                      <Button
                        variant="ghost"
                        size="icon"
+                       aria-label="Marcar grupo como artesanal"
                        className="h-6 w-6 ml-1 text-muted-foreground hover:text-primary"
                        onClick={(e) => { e.stopPropagation(); setArtisanalProducts(sub.products); }}
                      >
@@ -967,6 +973,7 @@ export function ProductTable({ products, onEdit, onDelete, externalSort }: Produ
                          <Button
                            variant="ghost"
                            size="icon"
+                           aria-label="Marcar todo o grupo como artesanal"
                            className="h-7 w-7 text-muted-foreground hover:text-primary"
                            onClick={() => setArtisanalProducts(groupProds)}
                          >
@@ -981,6 +988,7 @@ export function ProductTable({ products, onEdit, onDelete, externalSort }: Produ
                            <Button
                              variant="ghost"
                              size="icon"
+                             aria-label="Editar grupo"
                              className="h-7 w-7"
                              onClick={() => {
                                const g = groups.find(gr => gr.id === groupId);

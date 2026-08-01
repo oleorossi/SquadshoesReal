@@ -73,14 +73,16 @@ export function ReferenceTerceirizacoesPanel({ sheetId }: { sheetId: string }) {
         />
       ) : (
         <div className="rounded-lg border border-border overflow-hidden">
-          <table className="w-full text-sm">
+          {/* Audit A8: scroll horizontal interno — overflow-hidden clipava colunas em 360px */}
+          <div className="overflow-x-auto">
+          <table className="w-full min-w-[520px] text-sm">
             <thead className="bg-muted/50 text-muted-foreground">
               <tr className="text-left text-xs uppercase tracking-wide">
-                <th className="px-3 py-2 font-semibold">Contratada</th>
-                <th className="px-3 py-2 font-semibold">Descrição</th>
-                <th className="px-3 py-2 font-semibold text-right">Valor/par</th>
-                <th className="px-3 py-2 font-semibold text-center">Ativa</th>
-                <th className="px-3 py-2 font-semibold text-right">Ações</th>
+                <th scope="col" className="px-3 py-2 font-semibold">Contratada</th>
+                <th scope="col" className="px-3 py-2 font-semibold">Descrição</th>
+                <th scope="col" className="px-3 py-2 font-semibold text-right">Valor/par</th>
+                <th scope="col" className="px-3 py-2 font-semibold text-center">Ativa</th>
+                <th scope="col" className="px-3 py-2 font-semibold text-right">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -118,6 +120,7 @@ export function ReferenceTerceirizacoesPanel({ sheetId }: { sheetId: string }) {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 

@@ -74,8 +74,9 @@ export default function PriceLists() {
   const { data: clients = [] } = useQuery({
     queryKey: ['clients_for_price_list'],
     queryFn: async () => {
-      const { data } = await (supabase as any)
+      const { data, error } = await (supabase as any)
         .from('clients').select('id, razao_social').eq('active', true).order('razao_social').limit(500);
+      if (error) throw error;
       return data || [];
     },
   });

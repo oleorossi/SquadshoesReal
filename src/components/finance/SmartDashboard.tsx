@@ -2,6 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { StatNumber } from '@/components/ui/stat-number';
 import { Warning as AlertTriangle, TrendUp as TrendingUp, TrendDown as TrendingDown, CurrencyDollar as DollarSign, Wallet, ArrowUpRight, ArrowDownRight, WarningCircle as AlertCircle, Info, Sparkle as Sparkles, CaretRight as ChevronRight, CheckCircle, CircleNotch as Loader2 } from '@phosphor-icons/react';
 import { useFinanceAlerts, useFinanceKPIs, useCashFlowProjection } from '@/hooks/useFinanceIntelligence';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart, ReferenceLine } from 'recharts';
@@ -43,7 +44,7 @@ export function SmartDashboard({ onNavigate }: { onNavigate?: (tab: string) => v
     return (
       <div className="space-y-4">
         <Skeleton className="h-32" />
-        <div className="grid grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-24" />)}
         </div>
       </div>
@@ -155,7 +156,9 @@ export function SmartDashboard({ onNavigate }: { onNavigate?: (tab: string) => v
                     </span>
                   </p>
                 ) : (
-                  <p className={cn('text-lg font-bold', balanceColor)}>{fmt(kpis.totalBalance)}</p>
+                  // Auditoria visual 01/08/2026 (M29): número de KPI usa o
+                  // StatNumber canônico (Anton adaptativo) em vez de <p> ad-hoc.
+                  <StatNumber value={fmt(kpis.totalBalance)} base={26} min={14} className={balanceColor} />
                 )}
               </div>
             </div>
@@ -169,7 +172,7 @@ export function SmartDashboard({ onNavigate }: { onNavigate?: (tab: string) => v
               </div>
               <div className="min-w-0">
                 <p className="text-xs text-muted-foreground">A Receber</p>
-                <p className="text-lg font-bold text-success">{fmt(kpis.totalReceivable)}</p>
+                <StatNumber value={fmt(kpis.totalReceivable)} base={26} min={14} className="text-success" />
               </div>
             </div>
           </CardContent>
@@ -182,7 +185,7 @@ export function SmartDashboard({ onNavigate }: { onNavigate?: (tab: string) => v
               </div>
               <div className="min-w-0">
                 <p className="text-xs text-muted-foreground">A Pagar</p>
-                <p className="text-lg font-bold text-destructive">{fmt(kpis.totalPayable)}</p>
+                <StatNumber value={fmt(kpis.totalPayable)} base={26} min={14} className="text-destructive" />
               </div>
             </div>
           </CardContent>
@@ -198,7 +201,7 @@ export function SmartDashboard({ onNavigate }: { onNavigate?: (tab: string) => v
               </div>
               <div className="min-w-0">
                 <p className="text-xs text-muted-foreground">Posição Líquida</p>
-                <p className={cn('text-lg font-bold', projectedColor)}>{fmt(kpis.netPosition)}</p>
+                <StatNumber value={fmt(kpis.netPosition)} base={26} min={14} className={projectedColor} />
               </div>
             </div>
           </CardContent>

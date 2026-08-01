@@ -108,11 +108,13 @@ export const RECOMMENDATION_LABEL: Record<Recommendation, string> = {
   INATIVO:       'Sem consumo',
 };
 
+// ⚠ Classes de cor em arquivo .ts: o check:tokens NÃO varre src/services/ —
+// manter o par dark: manualmente (tom 700 sem par ficava ilegível no escuro).
 export const RECOMMENDATION_CLASS: Record<Recommendation, string> = {
-  CRITICO_REPOR: 'bg-red-500/10 text-red-700 border-red-500/30',
-  REPOR:         'bg-amber-500/10 text-amber-700 border-amber-500/30',
-  OK:            'bg-green-500/10 text-green-700 border-green-500/30',
-  ESTOQUE_ALTO:  'bg-blue-500/10 text-blue-700 border-blue-500/30',
+  CRITICO_REPOR: 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/30',
+  REPOR:         'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30',
+  OK:            'bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/30',
+  ESTOQUE_ALTO:  'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/30',
   INATIVO:       'bg-muted text-muted-foreground border-border',
 };
 

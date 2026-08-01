@@ -158,7 +158,7 @@ export default function PayrollPaymentsHistory() {
                   <TableCell>
                     {p.receipt_path
                       ? <Button size="sm" variant="ghost" className="h-7 gap-1.5 text-emerald-600" onClick={() => openReceipt(p.receipt_path)}><FileArrowDown className="h-4 w-4" /> Baixar</Button>
-                      : <span className="text-[11px] text-muted-foreground/70">—</span>}
+                      : <span className="text-xs text-muted-foreground">—</span>}
                   </TableCell>
                   <TableCell>
                     <div className="flex justify-end gap-1">

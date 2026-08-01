@@ -255,12 +255,12 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
     // inclui is_color_agnostic pra não colidir com a MESMA queryKey no PV
     // (SaleOrderItemForm), cujo guard de cor lê essa flag — selects divergentes
     // sob a mesma key faziam o campo sumir do cache conforme a navegação.
-    queryFn: async () => { const { data } = await supabase.from('product_groups').select('id, name, colors, is_color_agnostic'); return data || []; },
+    queryFn: async () => { const { data, error } = await supabase.from('product_groups').select('id, name, colors, is_color_agnostic'); if (error) throw error; return data || []; },
     staleTime: 0, gcTime: 30_000,
   });
   const { data: groupSupplierMaterials = [] } = useQuery({
     queryKey: ['group_supplier_materials_for_colors'],
-    queryFn: async () => { const { data } = await supabase.from('group_supplier_materials').select('group_id, color, material_name').eq('active', true); return data || []; },
+    queryFn: async () => { const { data, error } = await supabase.from('group_supplier_materials').select('group_id, color, material_name').eq('active', true); if (error) throw error; return data || []; },
     staleTime: 0, gcTime: 30_000,
   });
 
@@ -270,10 +270,11 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
     queryKey: ['os_dialog_pv_items', editingOrder.sale_order_id],
     enabled: orderDialog && !!editingOrder.sale_order_id,
     queryFn: async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('sale_order_items')
         .select('id, color, quantity, reference_id, technical_sheets(code, name)')
         .eq('sale_order_id', editingOrder.sale_order_id as string);
+      if (error) throw error;
       return data || [];
     },
     staleTime: 60_000,

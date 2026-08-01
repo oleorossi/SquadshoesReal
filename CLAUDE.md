@@ -480,16 +480,29 @@ já cobre** — ele varre a tabela inteira, não valores fixos.
 bun run check:tokens
 ```
 
+⚠ **Pontos cegos do check:tokens:** ele NÃO valida se uma `var(--x)` referenciada
+existe no CSS, e só varre `*.tsx` em `src/components` + `src/pages` — classes de cor
+em `src/services/`, `src/lib/`, `src/data/` e `src/hooks/` passam sem acusar. Foi
+assim que os tokens `--chart-*` ficaram meses sendo usados sem definição e as classes
+de `purchaseProjectionService.ts` escaparam. Ao mexer em cor fora desses diretórios
+(ou criar token novo), confira manualmente.
+
 ### Height conventions (Tailwind h-*)
 Padrão de altura por contexto pra manter consistência visual:
 
 | Classe | px | Uso |
 |--------|----|----|
-| `h-7`  | 28 | Toolbars dentro de tabelas, ações inline em listas densas |
-| `h-8`  | 32 | Tamanho `size="sm"` do shadcn — uso geral em filtros/sub-actions |
-| `h-9`  | 36 | Tamanho default — header de página, formulários principais |
-| `h-10` | 40 | CTAs primários, botões em modais |
-| `h-11` | 44 | Apenas hero CTAs (rara, não usar em UI normal) |
+| `h-7`  | 28 | Toolbars dentro de tabelas, ações inline em listas densas (via `className`) |
+| `h-8`  | 32 | Filtros/sub-actions densos (via `className` — **NÃO** é o `size="sm"`) |
+| `h-9`  | 36 | Tamanho `size="sm"` do shadcn (`button.tsx`) — header de página, formulários |
+| `h-10` | 40 | Tamanho **default** do shadcn — CTAs primários, botões em modais |
+| `h-11`+ | 44+ | Apenas hero CTAs (`size="lg"` = h-12; raro, não usar em UI normal) |
+
+> **Nota (auditoria 01/08/2026):** esta tabela dizia `size="sm"` = h-8 e default = h-9,
+> mas `src/components/ui/button.tsx` sempre implementou `sm: h-9` / `default: h-10`.
+> A divergência foi resolvida **a favor do código**: `size="sm"` tem ~969 call-sites e
+> mudar o primitive reflowaria o app inteiro. Não "corrija" o button.tsx pra tabela
+> antiga — quem quiser h-8/h-7 usa override explícito de `className`.
 
 Em cards de OP / linhas de tabela, prefira `h-7`. Em toolbars de página
 top-level, use `h-9`. Mistura entre h-7/h-8/h-9 numa MESMA toolbar é

@@ -1013,11 +1013,12 @@ function OutsourceDialog({ target, onClose }: { target: BottleneckRow | null; on
   const { data: contractors = [] } = useQuery({
     queryKey: ['contractors_active'],
     queryFn: async () => {
-      const { data } = await (supabase as any)
+      const { data, error } = await (supabase as any)
         .from('contractors')
         .select('id, name, service_type')
         .eq('active', true)
         .order('name');
+      if (error) throw error;
       return data || [];
     },
   });

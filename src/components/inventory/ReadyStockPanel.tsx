@@ -11,6 +11,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -414,10 +418,21 @@ ${cardsHtml}
     }
   };
 
+  // M18: confirmação estruturada (AlertDialog) no lugar do confirm() nativo
+  const [confirmRemove, setConfirmRemove] = useState<{ type: 'item'; id: string } | { type: 'group'; items: { id: string }[] } | null>(null);
+
   const handleDelete = (id: string) => {
-    if (confirm('Remover este item do estoque de pronta entrega?')) {
-      deleteStock.mutate(id);
+    setConfirmRemove({ type: 'item', id });
+  };
+
+  const executeConfirmedRemove = async () => {
+    if (!confirmRemove) return;
+    if (confirmRemove.type === 'item') {
+      deleteStock.mutate(confirmRemove.id);
+    } else {
+      await Promise.allSettled(confirmRemove.items.map(i => deleteStock.mutateAsync(i.id)));
     }
+    setConfirmRemove(null);
   };
 
   if (isLoading) {

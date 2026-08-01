@@ -15,6 +15,7 @@ import {
   ListChecks,
   Flag,
   DotsThree as MoreHorizontal,
+  Circle,
 } from '@phosphor-icons/react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -411,7 +412,7 @@ export default function Notes() {
           'grid grid-cols-1 gap-0 surface-sharp overflow-hidden',
           sidebarCollapsed ? 'md:grid-cols-1' : 'md:grid-cols-[160px_220px_1fr]',
         )}
-        style={{ minHeight: 'calc(100vh - 220px)' }}
+        style={{ minHeight: 'calc(100dvh - 220px)' }}
       >
 
         {/* ═══════════════ COL 1 · PASTAS (esconde quando sidebar collapsed) ═══════════════ */}
@@ -868,7 +869,7 @@ function FolderRow({ label, count, active, onClick, icon, onDelete }: {
             e.stopPropagation();
             onDelete();
           }}
-          className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity shrink-0"
+          className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100 text-muted-foreground hover:text-destructive transition-opacity shrink-0"
           aria-label={`Excluir pasta ${label}`}
         >
           <Trash2 className="h-3.5 w-3.5" />
@@ -948,7 +949,7 @@ function NoteTreeRow({
         </span>
 
         {/* Ações inline */}
-        <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 shrink-0 transition-opacity">
+        <div className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100 flex items-center gap-0.5 shrink-0 transition-opacity">
           <Tooltip>
             <TooltipTrigger asChild>
               <button
@@ -1081,9 +1082,9 @@ function NoteTasksPanel({ noteId }: { noteId: string }) {
           <Select value={newPriority} onValueChange={v => setNewPriority(v as NoteTaskPriority)}>
             <SelectTrigger className="h-8 w-32 text-xs"><SelectValue /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="alta">🔴 Alta</SelectItem>
-              <SelectItem value="media">🟡 Média</SelectItem>
-              <SelectItem value="baixa">⚪ Baixa</SelectItem>
+              <SelectItem value="alta"><span className="inline-flex items-center gap-1.5"><Circle weight="fill" className="h-2.5 w-2.5 text-red-600" aria-hidden="true" />Alta</span></SelectItem>
+              <SelectItem value="media"><span className="inline-flex items-center gap-1.5"><Circle weight="fill" className="h-2.5 w-2.5 text-amber-500" aria-hidden="true" />Média</span></SelectItem>
+              <SelectItem value="baixa"><span className="inline-flex items-center gap-1.5"><Circle weight="fill" className="h-2.5 w-2.5 text-muted-foreground/40" aria-hidden="true" />Baixa</span></SelectItem>
             </SelectContent>
           </Select>
           {lineCount > 0 && (
@@ -1276,13 +1277,13 @@ function TaskRow({ task, onToggle, onChangePriority, onChangeText, onDelete }: {
       </div>
 
       {/* Ações inline (hover) */}
-      <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+      <div className="flex items-center gap-1 shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100 transition-opacity">
         <Select value={task.priority} onValueChange={(v) => onChangePriority(v as NoteTaskPriority)}>
           <SelectTrigger className="h-7 w-[88px] text-xs"><SelectValue /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="alta">🔴 Alta</SelectItem>
-            <SelectItem value="media">🟡 Média</SelectItem>
-            <SelectItem value="baixa">⚪ Baixa</SelectItem>
+            <SelectItem value="alta"><span className="inline-flex items-center gap-1.5"><Circle weight="fill" className="h-2.5 w-2.5 text-red-600" aria-hidden="true" />Alta</span></SelectItem>
+            <SelectItem value="media"><span className="inline-flex items-center gap-1.5"><Circle weight="fill" className="h-2.5 w-2.5 text-amber-500" aria-hidden="true" />Média</span></SelectItem>
+            <SelectItem value="baixa"><span className="inline-flex items-center gap-1.5"><Circle weight="fill" className="h-2.5 w-2.5 text-muted-foreground/40" aria-hidden="true" />Baixa</span></SelectItem>
           </SelectContent>
         </Select>
         <DeleteConfirmButton

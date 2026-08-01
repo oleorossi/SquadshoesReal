@@ -100,11 +100,14 @@ export function BottomRow({ period = 'current_month' }: { period?: DashboardPeri
             Ver todos <ArrowRight className="h-3 w-3" />
           </button>
         </div>
-        <table className="w-full border-collapse">
+        {/* Auditoria visual 01/08/2026 (A8): wrapper overflow-x-auto pra tabela
+            não estourar a viewport em 360px. */}
+        <div className="overflow-x-auto">
+        <table className="w-full min-w-[420px] border-collapse">
           <thead>
             <tr>
               {["Modelo", "Referência", "Qtd", "Volume"].map((h, i) => (
-                <th key={h} className={cn(
+                <th key={h} scope="col" className={cn(
                   "text-xs font-bold uppercase tracking-[0.07em] text-muted-foreground py-2.5 border-b border-border/60 bg-muted/30",
                   i === 0 ? "pl-5 text-left" : i === 3 ? "pr-5 text-right" : "px-4 text-left"
                 )}>
@@ -125,6 +128,9 @@ export function BottomRow({ period = 'current_month' }: { period?: DashboardPeri
                 key={m.id}
                 className="hover:bg-primary/[0.03] transition-colors cursor-pointer border-b border-border/40 last:border-0"
                 onClick={() => navigate("/fichas-tecnicas")}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate("/fichas-tecnicas"); } }}
               >
                 <td className="py-2.5 pl-5 text-[12.5px] font-medium text-foreground">{m.name}</td>
                 <td className="py-2.5 px-4 text-sm font-mono text-muted-foreground">{m.ref}</td>
@@ -141,6 +147,7 @@ export function BottomRow({ period = 'current_month' }: { period?: DashboardPeri
             ))}
           </tbody>
         </table>
+        </div>
       </div>
 
       {/* ── OPs Recentes ── */}
@@ -164,6 +171,9 @@ export function BottomRow({ period = 'current_month' }: { period?: DashboardPeri
               key={op.id}
               className="flex items-center gap-3 px-5 py-2.5 border-b border-border/40 last:border-0 hover:bg-primary/[0.03] transition-colors cursor-pointer"
               onClick={() => navigate("/orders")}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate("/orders"); } }}
             >
               <span className={cn("w-2 h-2 rounded-full shrink-0", STATUS_DOT[op.status as OPStatus])} />
               <span className="flex-1 text-sm font-medium text-foreground font-mono">{op.id}</span>

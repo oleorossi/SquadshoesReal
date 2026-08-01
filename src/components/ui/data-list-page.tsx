@@ -1,7 +1,8 @@
 import { ReactNode, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -171,10 +172,7 @@ export function DataListPage({
             <Loader2 className="h-5 w-5 animate-spin mr-2" /> Carregando...
           </div>
         ) : rows.length === 0 ? (
-          <div className="py-10 text-center space-y-2">
-            <Inbox className="h-10 w-10 mx-auto text-muted-foreground/30" />
-            <p className="text-sm text-muted-foreground">{emptyText}</p>
-          </div>
+          <EmptyState icon={Inbox} title={emptyText} size="sm" />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -284,13 +282,12 @@ export function EmptyModulePage({
         </div>
       </div>
       <Card>
-        <CardContent className="py-12 text-center space-y-3">
-          {Icon && <Icon className="h-12 w-12 mx-auto text-muted-foreground/30" />}
-          <p className="text-sm text-muted-foreground max-w-md mx-auto">
-            {message || 'Módulo recém-implantado — nenhum registro ainda. Os cadastros aparecerão aqui conforme forem criados.'}
-          </p>
-          <Badge variant="outline">Estrutura pronta · DB tabelas criadas</Badge>
-        </CardContent>
+        <EmptyState
+          icon={Icon}
+          title="Nenhum registro ainda"
+          description={message || 'Módulo recém-implantado — os cadastros aparecerão aqui conforme forem criados.'}
+          action={<Badge variant="outline">Estrutura pronta · DB tabelas criadas</Badge>}
+        />
       </Card>
     </div>
   );

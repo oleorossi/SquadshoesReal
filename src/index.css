@@ -137,7 +137,7 @@
   --warning-soft:          38 84% 92%;
   --warning-soft-foreground: 28 80% 22%;
 
-  --destructive:           347 71% 50%;           /* #D9264E squad red */
+  --destructive:           347 71% 50%;           /* #D9264E squad red — ⚠ MESMA cor do --primary (identidade da marca = cor de perigo, decisão de design; NÃO mudar nenhum dos dois). Nunca usar primary+destructive como séries distintas de gráfico: são indistinguíveis — use --chart-* */
   --destructive-foreground: 45 33% 99%;
   --destructive-soft:      347 60% 94%;
   --destructive-soft-foreground: 347 80% 30%;
@@ -154,6 +154,28 @@
   --stage-fin-bg:    173 60% 92%;  --stage-fin-fg:    173 70% 50%;  /* teal Acabamento */
   --stage-pack-bg:   354 80% 95%;  --stage-pack-fg:   354 78% 60%;  /* rosa Embalagem */
   --stage-qc-bg:     354 78% 95%;  --stage-qc-fg:     354 78% 50%;  /* vermelho QC (Squad) */
+
+  /* ═══════════════════════════════════════════════════════════════
+     ▼ GRÁFICOS · paleta categórica (--chart-1..8)
+     Consumida pelo recharts via hsl(var(--chart-N)) (CostAnalyticsPanel,
+     LabelAnalyticsDashboard, ui/chart.tsx). Ordem pensada pra daltonismo:
+     séries vizinhas alternam quente/frio e NUNCA formam par verde/vermelho —
+     o verde fica no slot 7, longe do vermelho do slot 1. Os slots 2..5
+     reaproveitam os stage-*-fg: tons médios que já contrastam nos dois temas
+     (ver comentário dos stage no .dark).
+     ⚠ NUNCA montar gráfico com --primary e --destructive como séries
+     distintas: são a MESMA cor (347 71% 50% no claro; vermelhos quase
+     idênticos no escuro) — as barras e os swatches da legenda saem iguais.
+     Pra categóricas, use sempre --chart-*.
+     ═════════════════════════════════════════════════════════════ */
+  --chart-1: var(--primary);          /* vermelho Squad — série principal */
+  --chart-2: var(--stage-cut-fg);     /* azul */
+  --chart-3: var(--stage-assy-fg);    /* laranja */
+  --chart-4: var(--stage-sew-fg);     /* roxo */
+  --chart-5: var(--stage-fin-fg);     /* teal */
+  --chart-6: 45 85% 47%;              /* dourado */
+  --chart-7: 148 45% 42%;             /* verde médio (não usar --success: 26% de luz some no dark) */
+  --chart-8: var(--muted-foreground); /* cinza neutro — série "outros" */
 
   /* ═══════════════════════════════════════════════════════════════
      ▼ SIDEBAR (grafite editorial · destaque vermelho Squad · permanente)
@@ -413,6 +435,20 @@
   --stage-fin-bg:    173 40% 13%;
   --stage-pack-bg:   354 40% 16%;
   --stage-qc-bg:     354 40% 15%;
+
+  /* Gráficos (dark) — 1..5 e 8 repetem os refs do :root de propósito:
+     --chart-1 e --chart-8 apontam pra tokens que já trocam com o tema
+     (--primary / --muted-foreground) e 2..5 são os stage-*-fg de tom médio
+     que contrastam nos dois fundos (mesma razão do bloco de stage acima).
+     Só 6 e 7 clareiam pra não sumir sobre o card escuro. */
+  --chart-1: var(--primary);
+  --chart-2: var(--stage-cut-fg);
+  --chart-3: var(--stage-assy-fg);
+  --chart-4: var(--stage-sew-fg);
+  --chart-5: var(--stage-fin-fg);
+  --chart-6: 45 90% 55%;
+  --chart-7: 148 50% 52%;
+  --chart-8: var(--muted-foreground);
 
   /* Sidebar (dark — mantém o mesmo do :root pq sempre é dark) */
   --sidebar-background:           0 0% 15%;            /* #262626 — cinza escuro, não preto */

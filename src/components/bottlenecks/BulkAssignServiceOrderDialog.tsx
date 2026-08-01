@@ -181,14 +181,15 @@ export function BulkAssignServiceOrderDialog({ open, onOpenChange, sector, weekS
             )}
           </div>
 
+          {/* Audit A8: overflow-auto (X e Y) pra tabela não estourar a viewport em 360px */}
           {pendingOrders.length > 0 && (
-            <div className="rounded-md border border-border max-h-32 overflow-y-auto">
-              <table className="w-full text-xs">
+            <div className="rounded-md border border-border max-h-32 overflow-auto">
+              <table className="w-full min-w-[320px] text-xs">
                 <thead className="bg-muted/30 sticky top-0">
                   <tr>
-                    <th className="text-left p-2">OP</th>
-                    <th className="text-left p-2">Modelo / Cor</th>
-                    <th className="text-right p-2">Pares</th>
+                    <th scope="col" className="text-left p-2">OP</th>
+                    <th scope="col" className="text-left p-2">Modelo / Cor</th>
+                    <th scope="col" className="text-right p-2">Pares</th>
                   </tr>
                 </thead>
                 <tbody>

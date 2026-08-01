@@ -74,7 +74,7 @@ const SelectContent = React.forwardRef<
         // de shadow-md, rounded-sm. Animations só fade (sem zoom/slide).
         // max-h respeita a altura disponível calculada pelo Radix (teclado
         // virtual/landscape), com teto de 24rem no desktop.
-        "relative z-50 max-h-[min(24rem,var(--radix-select-content-available-height))] min-w-[8rem] overflow-hidden rounded-sm border-[1.5px] border-foreground bg-popover text-popover-foreground data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+        "relative z-popover max-h-[min(24rem,var(--radix-select-content-available-height))] min-w-[8rem] overflow-hidden rounded-sm border-[1.5px] border-foreground bg-popover text-popover-foreground data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
         position === "popper" &&
           "data-[side=bottom]:translate-y-1 data-[side=top]:-translate-y-1",
         className,

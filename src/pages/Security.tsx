@@ -33,7 +33,8 @@ export default function Security() {
   const { data: sensitive = [] } = useQuery({
     queryKey: ['sensitive_field_registry'],
     queryFn: async () => {
-      const { data } = await (supabase as any).from('sensitive_field_registry').select('*').order('sensitivity_level');
+      const { data, error } = await (supabase as any).from('sensitive_field_registry').select('*').order('sensitivity_level');
+      if (error) throw error;
       return data || [];
     },
   });

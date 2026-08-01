@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import {
   Plus, CircleNotch as Loader2, ListChecks, MagnifyingGlass as Search,
   CaretRight as ChevronRight, Rows, CalendarBlank, Kanban, Tag as TagIcon,
+  Circle,
 } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
@@ -206,9 +207,9 @@ export default function Tarefas() {
             <Select value={newPriority} onValueChange={v => setNewPriority(v as NoteTaskPriority)}>
               <SelectTrigger className="h-8 w-32 text-xs"><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="alta">🔴 Alta</SelectItem>
-                <SelectItem value="media">🟡 Média</SelectItem>
-                <SelectItem value="baixa">⚪ Baixa</SelectItem>
+                <SelectItem value="alta"><span className="inline-flex items-center gap-1.5"><Circle weight="fill" className="h-2.5 w-2.5 text-red-600" aria-hidden="true" />Alta</span></SelectItem>
+                <SelectItem value="media"><span className="inline-flex items-center gap-1.5"><Circle weight="fill" className="h-2.5 w-2.5 text-amber-500" aria-hidden="true" />Média</span></SelectItem>
+                <SelectItem value="baixa"><span className="inline-flex items-center gap-1.5"><Circle weight="fill" className="h-2.5 w-2.5 text-muted-foreground/40" aria-hidden="true" />Baixa</span></SelectItem>
               </SelectContent>
             </Select>
             <DueDatePicker value={newDueDate} onChange={setNewDueDate} compact />
@@ -436,9 +437,9 @@ function TaskRow({ task, subtasks, canDelete, onOpen, onToggle, onChangePriority
         <Select value={task.priority} onValueChange={(v) => onChangePriority(v as NoteTaskPriority)}>
           <SelectTrigger className="h-7 w-[88px] text-xs"><SelectValue /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="alta">🔴 Alta</SelectItem>
-            <SelectItem value="media">🟡 Média</SelectItem>
-            <SelectItem value="baixa">⚪ Baixa</SelectItem>
+            <SelectItem value="alta"><span className="inline-flex items-center gap-1.5"><Circle weight="fill" className="h-2.5 w-2.5 text-red-600" aria-hidden="true" />Alta</span></SelectItem>
+            <SelectItem value="media"><span className="inline-flex items-center gap-1.5"><Circle weight="fill" className="h-2.5 w-2.5 text-amber-500" aria-hidden="true" />Média</span></SelectItem>
+            <SelectItem value="baixa"><span className="inline-flex items-center gap-1.5"><Circle weight="fill" className="h-2.5 w-2.5 text-muted-foreground/40" aria-hidden="true" />Baixa</span></SelectItem>
           </SelectContent>
         </Select>
         {canDelete && <DeleteConfirmButton onConfirm={onDelete} title="Excluir tarefa?" description="Esta ação não pode ser desfeita." />}

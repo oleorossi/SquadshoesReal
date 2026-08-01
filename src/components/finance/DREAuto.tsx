@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import { StatNumber } from '@/components/ui/stat-number';
 import { useDREAuto, useDREInventoryVariation } from '@/hooks/useFinanceIntelligence';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, LineChart, Line } from 'recharts';
@@ -131,39 +132,42 @@ export function DREAuto() {
         </CardContent>
       </Card>
 
+      {/* Auditoria visual 01/08/2026 (M29): números dos KPIs usam o StatNumber
+          canônico (Anton adaptativo) em vez de <p className="text-base"> ad-hoc
+          — o número volta a dominar o card, como no resto do sistema. */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card>
           <CardContent className="pt-4 pb-3">
             <p className="text-xs text-muted-foreground">Receita Total</p>
-            <p className="text-base font-bold text-success">{fmt(totalReceita)}</p>
+            <StatNumber value={fmt(totalReceita)} base={24} min={14} className="text-success" />
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-4 pb-3">
             <p className="text-xs text-muted-foreground">CMV Total</p>
-            <p className="text-base font-bold text-destructive">{fmt(totalCMV)}</p>
+            <StatNumber value={fmt(totalCMV)} base={24} min={14} className="text-destructive" />
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-4 pb-3">
             <p className="text-xs text-muted-foreground">EBITDA Acumulado</p>
-            <p className={cn(
-              'text-base font-bold',
-              totalEbitda >= 0 ? 'text-success' : 'text-destructive'
-            )}>
-              {fmt(totalEbitda)}
-            </p>
+            <StatNumber
+              value={fmt(totalEbitda)}
+              base={24}
+              min={14}
+              className={totalEbitda >= 0 ? 'text-success' : 'text-destructive'}
+            />
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-4 pb-3">
             <p className="text-xs text-muted-foreground">Margem Bruta Média</p>
-            <p className={cn(
-              'text-base font-bold',
-              avgMargem >= 30 ? 'text-success' : avgMargem >= 15 ? 'text-warning' : 'text-destructive'
-            )}>
-              {fmtPct(avgMargem)}
-            </p>
+            <StatNumber
+              value={fmtPct(avgMargem)}
+              base={24}
+              min={14}
+              className={avgMargem >= 30 ? 'text-success' : avgMargem >= 15 ? 'text-warning' : 'text-destructive'}
+            />
           </CardContent>
         </Card>
       </div>
@@ -249,10 +253,14 @@ export function DREAuto() {
                 }}
               />
               <Legend wrapperStyle={{ fontSize: 11 }} />
-              <Bar dataKey="receita" fill="hsl(var(--success))" name="Receita" radius={[3, 3, 0, 0]} />
+              {/* Auditoria visual 01/08/2026 (A15+A16): EBITDA usava --primary,
+                  que é a MESMA cor de --destructive (CMV) — barras idênticas; e
+                  Receita verde vs CMV vermelho era par ilegível pra daltônico.
+                  Receita azul / saída vermelha (padrão bancário) + EBITDA roxo. */}
+              <Bar dataKey="receita" fill="hsl(var(--chart-2))" name="Receita" radius={[3, 3, 0, 0]} />
               <Bar dataKey="cmv" fill="hsl(var(--destructive))" name="CMV" radius={[3, 3, 0, 0]} />
               <Bar dataKey="despOperacionais" fill="hsl(var(--warning))" name="Desp. Operacionais" radius={[3, 3, 0, 0]} />
-              <Bar dataKey="ebitda" fill="hsl(var(--primary))" name="EBITDA" radius={[3, 3, 0, 0]} />
+              <Bar dataKey="ebitda" fill="hsl(var(--chart-4))" name="EBITDA" radius={[3, 3, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </CardContent>

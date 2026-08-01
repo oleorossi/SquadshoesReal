@@ -1342,15 +1342,16 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
             </DialogDescription>
           </DialogHeader>
 
-          <div className="max-h-[400px] overflow-y-auto border rounded-md p-2">
-            <table className="w-full text-sm">
+          {/* Audit A8: overflow-auto (X e Y) — headers largos estouravam a viewport em 360px */}
+          <div className="max-h-[400px] overflow-auto border rounded-md p-2">
+            <table className="w-full min-w-[560px] text-sm">
               <thead>
                 <tr className="border-b bg-muted/50">
-                  <th className="text-center py-2">TAM</th>
-                  <th className="text-right py-2 px-4">Forro Cabedal (dm²)</th>
-                  {!isPalmilhaPronta && <th className="text-right py-2 px-4">Palmilha · Placa (dm²)</th>}
-                  {!isPalmilhaPronta && <th className="text-right py-2 px-4">Palmilha · Forração (dm²)</th>}
-                  {isFachetado && <th className="text-right py-2 px-4">Fachete (dm²)</th>}
+                  <th scope="col" className="text-center py-2">TAM</th>
+                  <th scope="col" className="text-right py-2 px-4">Forro Cabedal (dm²)</th>
+                  {!isPalmilhaPronta && <th scope="col" className="text-right py-2 px-4">Palmilha · Placa (dm²)</th>}
+                  {!isPalmilhaPronta && <th scope="col" className="text-right py-2 px-4">Palmilha · Forração (dm²)</th>}
+                  {isFachetado && <th scope="col" className="text-right py-2 px-4">Fachete (dm²)</th>}
                 </tr>
               </thead>
               <tbody>

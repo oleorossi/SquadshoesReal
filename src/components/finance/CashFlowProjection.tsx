@@ -11,6 +11,7 @@ import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { TrendUp as TrendingUp, TrendDown as TrendingDown, Warning as AlertTriangle, Calendar } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
+import { StatNumber } from '@/components/ui/stat-number';
 
 const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const fmtShort = (v: number) => {
@@ -53,12 +54,13 @@ export function CashFlowProjection() {
         <Skeleton className="h-[400px]" />
       ) : (
         <>
-          {/* KPIs do horizonte */}
+          {/* KPIs do horizonte — Auditoria visual 01/08/2026 (M29): números
+              via StatNumber canônico (Anton adaptativo) em vez de <p> ad-hoc. */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <Card>
               <CardContent className="pt-4 pb-3">
                 <p className="text-xs text-muted-foreground">Saldo Inicial</p>
-                <p className="text-base font-bold">{fmt(data.initialBalance)}</p>
+                <StatNumber value={fmt(data.initialBalance)} base={24} min={14} />
               </CardContent>
             </Card>
             <Card>
@@ -66,7 +68,7 @@ export function CashFlowProjection() {
                 <p className="text-xs text-muted-foreground flex items-center gap-1">
                   <TrendingUp className="h-3 w-3 text-success" /> Entradas Previstas
                 </p>
-                <p className="text-base font-bold text-success">{fmt(data.totalInflow)}</p>
+                <StatNumber value={fmt(data.totalInflow)} base={24} min={14} className="text-success" />
               </CardContent>
             </Card>
             <Card>
@@ -74,7 +76,7 @@ export function CashFlowProjection() {
                 <p className="text-xs text-muted-foreground flex items-center gap-1">
                   <TrendingDown className="h-3 w-3 text-destructive" /> Saídas Previstas
                 </p>
-                <p className="text-base font-bold text-destructive">{fmt(data.totalOutflow)}</p>
+                <StatNumber value={fmt(data.totalOutflow)} base={24} min={14} className="text-destructive" />
               </CardContent>
             </Card>
             <Card className={cn(
@@ -82,12 +84,12 @@ export function CashFlowProjection() {
             )}>
               <CardContent className="pt-4 pb-3">
                 <p className="text-xs text-muted-foreground">Saldo Final</p>
-                <p className={cn(
-                  'text-base font-bold',
-                  data.finalBalance >= 0 ? 'text-success' : 'text-destructive'
-                )}>
-                  {fmt(data.finalBalance)}
-                </p>
+                <StatNumber
+                  value={fmt(data.finalBalance)}
+                  base={24}
+                  min={14}
+                  className={data.finalBalance >= 0 ? 'text-success' : 'text-destructive'}
+                />
               </CardContent>
             </Card>
           </div>
@@ -134,13 +136,18 @@ export function CashFlowProjection() {
                   />
                   <Legend wrapperStyle={{ fontSize: 11 }} />
                   <ReferenceLine yAxisId="right" y={0} stroke="hsl(var(--destructive))" strokeDasharray="3 3" />
-                  <Bar yAxisId="left" dataKey="inflow" fill="hsl(var(--success))" name="Entradas" radius={[2, 2, 0, 0]} />
+                  {/* Auditoria visual 01/08/2026 (A15+A16): Entradas azul /
+                      Saídas vermelha (padrão bancário — o par verde/vermelho
+                      era ilegível pra daltônico) e a linha de saldo em
+                      foreground: antes usava --primary, a MESMA cor de
+                      --destructive, camuflando o saldo nas barras de saída. */}
+                  <Bar yAxisId="left" dataKey="inflow" fill="hsl(var(--chart-2))" name="Entradas" radius={[2, 2, 0, 0]} />
                   <Bar yAxisId="left" dataKey="outflow" fill="hsl(var(--destructive))" name="Saídas" radius={[2, 2, 0, 0]} />
                   <Line
                     yAxisId="right"
                     type="monotone"
                     dataKey="balance"
-                    stroke="hsl(var(--primary))"
+                    stroke="hsl(var(--foreground))"
                     strokeWidth={2.5}
                     dot={false}
                     name="Saldo Acumulado"

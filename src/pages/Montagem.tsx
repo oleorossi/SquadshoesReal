@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react';
 import { SignedImage } from '@/components/ui/signed-image';
 import { useNavigate } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { Printer, Funnel as Filter, CheckSquare, Stack as Layers, ClipboardText, DotsThreeVertical, CaretRight, Package, Palette, ListBullets } from '@phosphor-icons/react';
+import { Printer, Funnel as Filter, CheckSquare, Stack as Layers, ClipboardText, DotsThreeVertical, CaretRight, Package, Palette, ListBullets, Warning as AlertTriangle, CircleNotch as Loader2 } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuLabel } from '@/components/ui/dropdown-menu';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -29,6 +29,7 @@ import OrderSearchBar from '@/components/production/OrderSearchBar';
 import { normalizeForSearch, searchMatchesAllTerms } from '@/lib/searchUtils';
 import { useOrderStraps } from '@/hooks/useOrderStraps';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { TableSkeleton } from '@/components/layout/PageSkeleton';
 import { safeUrlAttr } from '@/lib/htmlUtils';
 
 const SIZES = ['17','18','19','20','21','22','23','24','25','26','27','28','29','30','31','32','33','34','35','36','37','38','39','40','41','42','43','44','45'];
@@ -37,7 +38,7 @@ const STAGE_NAME = 'Montagem';
 
 export default function Montagem() {
   const navigate = useNavigate();
-  const { data: orders = [] } = useOrders();
+  const { data: orders = [], isLoading: ordersLoading, isError: ordersError, refetch: refetchOrders, isFetching: ordersFetching } = useOrders();
   const { data: references = [] } = useTechnicalSheets();
   const orderIds = useMemo(() => orders.map(o => o.id), [orders]);
   const { data: allStages = [] } = useAllOrderStages(orderIds.length > 0 ? orderIds : undefined);
@@ -228,6 +229,35 @@ export default function Montagem() {
 
     printHtml(`Montagem - ${order.order_number}`, html);
   };
+
+  // Estado de carga/erro ANTES do EmptyState: sem isto, o "nenhuma OP pendente"
+  // mentia durante a carga e virava permanente no erro (auditoria 2026-08-01).
+  if (ordersLoading) {
+    return (
+      <div className="space-y-5 page-enter">
+        <EditorialPageHeader
+          sectionLabel="PRODUÇÃO · MONTAGEM"
+          title="Setor de Montagem"
+          description="Gestão e controle das ordens de produção na etapa de montagem"
+        />
+        <TableSkeleton rows={8} />
+      </div>
+    );
+  }
+
+  if (ordersError) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 gap-3 text-center">
+        <AlertTriangle className="h-10 w-10 text-destructive" />
+        <p className="font-semibold text-foreground">Falha ao carregar as OPs do setor</p>
+        <p className="text-sm text-muted-foreground">Pode ser uma instabilidade momentânea de conexão. Tente novamente sem recarregar a página.</p>
+        <Button onClick={() => refetchOrders()} disabled={ordersFetching} className="mt-1 gap-1.5">
+          {ordersFetching ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+          {ordersFetching ? 'Carregando…' : 'Tentar novamente'}
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5 page-enter">

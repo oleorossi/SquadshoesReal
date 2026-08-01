@@ -4,6 +4,7 @@ import {
   ResponsiveContainer, PieChart, Pie, Cell, Legend
 } from "recharts";
 import { useQuery } from "@tanstack/react-query";
+import { WarningCircle } from "@phosphor-icons/react";
 import { supabase } from "@/integrations/supabase/client";
 import { Skeleton } from "@/components/ui/skeleton";
 import { subMonths, format, startOfMonth, endOfMonth } from "date-fns";
@@ -26,6 +27,17 @@ const DONUT_COLORS = [
 
 const formatK   = (v: number) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v);
 const formatBRL = (v: number) => `R$ ${v.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+
+// Auditoria visual 01/08/2026 (B11): bloco de erro do card de gráfico —
+// antes a falha de query renderizava o gráfico zerado como se fosse dado real.
+function ChartErrorState({ message }: { message: string }) {
+  return (
+    <div className="flex items-center justify-center gap-2 h-[160px] text-xs text-destructive" role="alert">
+      <WarningCircle className="h-4 w-4 shrink-0" aria-hidden="true" />
+      {message}
+    </div>
+  );
+}
 
 const CARD_TOOLTIP_STYLE = {
   fontSize: 12,
@@ -55,7 +67,10 @@ export function ChartsRow({ period = 'current_month' }: { period?: DashboardPeri
     });
   }, [range.cacheKey]);
 
-  const { data: salesData = [], isLoading: salesLoading } = useQuery({
+  // Auditoria visual 01/08/2026 (B11): isError das 3 queries é lido e vira
+  // aviso no card — antes o erro renderizava gráfico zerado (indistinguível
+  // de "mês sem venda").
+  const { data: salesData = [], isLoading: salesLoading, isError: salesError } = useQuery({
     queryKey: ["dashboard-charts-sales", range.cacheKey],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -70,7 +85,7 @@ export function ChartsRow({ period = 'current_month' }: { period?: DashboardPeri
     staleTime: 5 * 60_000,
   });
 
-  const { data: productionData = [], isLoading: prodLoading } = useQuery({
+  const { data: productionData = [], isLoading: prodLoading, isError: prodError } = useQuery({
     queryKey: ["dashboard-charts-production", range.cacheKey],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -85,7 +100,7 @@ export function ChartsRow({ period = 'current_month' }: { period?: DashboardPeri
     staleTime: 5 * 60_000,
   });
 
-  const { data: stockByCategory = [], isLoading: stockLoading } = useQuery({
+  const { data: stockByCategory = [], isLoading: stockLoading, isError: stockError } = useQuery({
     queryKey: ["dashboard-charts-stock"],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -143,18 +158,24 @@ export function ChartsRow({ period = 'current_month' }: { period?: DashboardPeri
             </h3>
             <p className="text-xs text-muted-foreground mt-0.5 capitalize">{range.label}</p>
           </div>
+          {/* Auditoria visual 01/08/2026 (M27): unidade explícita na legenda e
+              swatch da Produção reutiliza a MESMA constante da série (antes era
+              bg-blue-500, dessincronizado do token CHART_BLUE). */}
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <span className="w-2 h-2 rounded-full" style={{ background: PRIMARY }} />
-              Vendas
+              Vendas (R$)
             </div>
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <span className="w-2 h-2 rounded-full bg-blue-500" />
-              Produção
+              <span className="w-2 h-2 rounded-full" style={{ background: CHART_BLUE }} />
+              Produção (pares)
             </div>
           </div>
         </div>
         <div className="px-4 pt-3 pb-4">
+          {(salesError || prodError) ? (
+            <ChartErrorState message="Falha ao carregar vendas/produção. Recarregue a página." />
+          ) : (
           <ResponsiveContainer width="100%" height={160}>
             <AreaChart data={areaData} margin={{ top: 4, right: 0, left: -10, bottom: 0 }}>
               <defs>
@@ -175,8 +196,11 @@ export function ChartsRow({ period = 'current_month' }: { period?: DashboardPeri
                   vendas (~200k BRL). Margin right=0 + width auto deixa
                   espaço pro eixo direito sem cortar. Solid line (sem
                   dasharray) facilita ver a linha de produção. */}
-              <YAxis yAxisId="vendas" tickFormatter={formatK} tick={{ fontSize: 10, fill: PRIMARY }} axisLine={false} tickLine={false} width={36} />
-              <YAxis yAxisId="producao" orientation="right" tickFormatter={formatK} tick={{ fontSize: 10, fill: CHART_BLUE }} axisLine={false} tickLine={false} width={36} />
+              {/* Auditoria visual 01/08/2026 (M27): unidade no próprio tick —
+                  antes os dois eixos imprimiam "200k" e a associação era só
+                  pela cor do número (falha pra daltônico e em P&B). */}
+              <YAxis yAxisId="vendas" tickFormatter={(v: number) => `R$${formatK(v)}`} tick={{ fontSize: 10, fill: PRIMARY }} axisLine={false} tickLine={false} width={48} />
+              <YAxis yAxisId="producao" orientation="right" tickFormatter={(v: number) => `${formatK(v)} par`} tick={{ fontSize: 10, fill: CHART_BLUE }} axisLine={false} tickLine={false} width={52} />
               <Tooltip
                 formatter={(v: number, name: string) => name === "Vendas" ? formatBRL(v) : `${v} pares`}
                 labelFormatter={(l) => `Mês: ${l}`}
@@ -186,6 +210,7 @@ export function ChartsRow({ period = 'current_month' }: { period?: DashboardPeri
               <Area yAxisId="producao" type="monotone" dataKey="producao" name="Produção" stroke={CHART_BLUE} strokeWidth={2} fill="url(#gradProd)" dot={{ r: 3, fill: CHART_BLUE, strokeWidth: 0 }} activeDot={{ r: 4, strokeWidth: 0 }} />
             </AreaChart>
           </ResponsiveContainer>
+          )}
         </div>
       </div>
 
@@ -198,7 +223,9 @@ export function ChartsRow({ period = 'current_month' }: { period?: DashboardPeri
           <p className="text-xs text-muted-foreground mt-0.5">por categoria</p>
         </div>
         <div className="px-2 pt-2 pb-4">
-          {donutData.length === 0 ? (
+          {stockError ? (
+            <ChartErrorState message="Falha ao carregar estoque. Recarregue a página." />
+          ) : donutData.length === 0 ? (
             <div className="flex items-center justify-center h-[160px] text-muted-foreground text-xs">
               Sem dados de estoque
             </div>

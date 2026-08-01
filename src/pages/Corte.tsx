@@ -3,7 +3,7 @@ import { useMemo, useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { SignedImage } from '@/components/ui/signed-image';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { Printer, Funnel as Filter, CheckCircle as CheckCircle2, Stack as Layers, DotsThreeVertical } from '@phosphor-icons/react';
+import { Printer, Funnel as Filter, CheckCircle as CheckCircle2, Stack as Layers, DotsThreeVertical, Package, ClipboardText, Needle, Warning as AlertTriangle, CircleNotch as Loader2 } from '@phosphor-icons/react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
@@ -30,6 +30,7 @@ import { useOrderStraps } from '@/hooks/useOrderStraps';
 import { getGradeTotal, getOrderTotalPairs } from '@/lib/cuttingCounts';
 import { scaleGradeWithLargestRemainder } from '@/lib/scaleGrade';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { TableSkeleton } from '@/components/layout/PageSkeleton';
 import { RefChip } from '@/components/ui/ref-chip';
 import { normalizeForSearch, searchMatchesAllTerms } from '@/lib/searchUtils';
 import { normalizeSector } from '@/lib/sectors';
@@ -75,7 +76,7 @@ type CuttingRow = {
 export default function Corte() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { data: orders = [] } = useOrders();
+  const { data: orders = [], isLoading: ordersLoading, isError: ordersError, refetch: refetchOrders, isFetching: ordersFetching } = useOrders();
   const { data: references = [] } = useTechnicalSheets();
   const orderIds = useMemo(() => orders.map(o => o.id), [orders]);
   const { data: allStages = [] } = useAllOrderStages(orderIds.length > 0 ? orderIds : undefined);
@@ -607,7 +608,7 @@ if (totalPairsAll !== palmTotal) {
                         const so = saleOrders?.find((s: any) => s.id === order.sale_order_id);
                         return so ? (
                           <p className="text-xs text-muted-foreground ml-5 mt-0.5">
-                            📦 <span className="font-semibold">{so.order_number}</span>
+                            <Package className="inline h-3.5 w-3.5 mr-1 align-[-2px]" aria-hidden="true" /><span className="font-semibold">{so.order_number}</span>
                             {so.client_order_number ? <> | Ped. Cliente: <span className="font-semibold">{so.client_order_number}</span></> : null}
                             {so.client_name ? <> | {so.client_name}</> : null}
                           </p>
@@ -657,7 +658,7 @@ if (totalPairsAll !== palmTotal) {
 
                   {grade && activeSizes.length > 0 && (
                     <div className="space-y-3">
-                      <p className="text-xs font-semibold">📋 Grade por ficha ({gradeSum} pares/ficha)</p>
+                      <p className="text-xs font-semibold"><ClipboardText className="inline h-3.5 w-3.5 mr-1 align-[-2px]" aria-hidden="true" />Grade por ficha ({gradeSum} pares/ficha)</p>
                       <div className="overflow-x-auto">
                         <Table>
                           <TableHeader>
@@ -716,7 +717,7 @@ if (totalPairsAll !== palmTotal) {
                   )}
                   {forro.length > 0 && (
                     <div>
-                      <p className="text-xs font-semibold mb-1">🧵 Forração</p>
+                      <p className="text-xs font-semibold mb-1"><Needle className="inline h-3.5 w-3.5 mr-1 align-[-2px]" aria-hidden="true" />Forração</p>
                       {forro.map((r, i) => (
                         <p key={i} className="text-xs text-muted-foreground">
                           {r.materialName} ({r.color}) — {activeSizes.map(s => `${s}:${(r.sizes[s] || 0)}`).join(' | ')} = <strong>{r.totalPairs}</strong>
@@ -918,8 +919,37 @@ if (totalPairsAll !== palmTotal) {
     printHtml('Lista de Corte Completa', fullHtml);
   };
 
+  // Estado de carga/erro ANTES do EmptyState: sem isto, "Nenhuma OP com corte
+  // pendente" mentia durante a carga e virava permanente no erro (auditoria 2026-08-01).
+  if (ordersLoading) {
+    return (
+      <div className="space-y-6 page-enter">
+        <EditorialPageHeader
+          sectionLabel="PRODUÇÃO · CORTE PALMILHA"
+          title="Setor de Corte Palmilha"
+          description="Demanda de corte por material, cor e numeração"
+        />
+        <TableSkeleton rows={8} />
+      </div>
+    );
+  }
+
+  if (ordersError) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 gap-3 text-center">
+        <AlertTriangle className="h-10 w-10 text-destructive" />
+        <p className="font-semibold text-foreground">Falha ao carregar as OPs do setor</p>
+        <p className="text-sm text-muted-foreground">Pode ser uma instabilidade momentânea de conexão. Tente novamente sem recarregar a página.</p>
+        <Button onClick={() => refetchOrders()} disabled={ordersFetching} className="mt-1 gap-1.5">
+          {ordersFetching ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+          {ordersFetching ? 'Carregando…' : 'Tentar novamente'}
+        </Button>
+      </div>
+    );
+  }
+
   return (
-    
+
       <div className="space-y-6">
         {/* Header */}
         <EditorialPageHeader

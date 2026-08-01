@@ -173,7 +173,7 @@ function ModelCard({ active, onClick, icon, title, subtitle, routing, children }
             {active && <Badge className="text-xs h-4 px-1.5">Selecionado</Badge>}
           </div>
           <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{subtitle}</p>
-          <p className="text-xs text-muted-foreground/70 mt-1">
+          <p className="text-xs text-muted-foreground mt-1">
             <span className="font-medium">Roteiro:</span> {routing}
           </p>
         </div>

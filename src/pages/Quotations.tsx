@@ -406,7 +406,8 @@ function ItemsTab({ quotationId, items, disabled }: { quotationId: string; items
   const { data: products = [] } = useQuery({
     queryKey: ['products_for_quotation'],
     queryFn: async () => {
-      const { data } = await (supabase as any).from('products').select('id, name, unit').eq('active', true).order('name').limit(2000);
+      const { data, error } = await (supabase as any).from('products').select('id, name, unit').eq('active', true).order('name').limit(2000);
+      if (error) throw error;
       return data || [];
     },
   });
@@ -529,7 +530,8 @@ function ResponsesTab({
   const { data: suppliers = [] } = useQuery({
     queryKey: ['suppliers_for_quotation'],
     queryFn: async () => {
-      const { data } = await (supabase as any).from('suppliers').select('id, name, active').eq('active', true).order('name').limit(500);
+      const { data, error } = await (supabase as any).from('suppliers').select('id, name, active').eq('active', true).order('name').limit(500);
+      if (error) throw error;
       return data || [];
     },
   });

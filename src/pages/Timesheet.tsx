@@ -356,9 +356,7 @@ function HolidaysTab() {
                     <TableCell className="font-mono text-sm">{new Date(h.holiday_date + 'T12:00:00').toLocaleDateString('pt-BR')}</TableCell>
                     <TableCell>{h.recurring ? <Badge variant="outline" className="text-xs">Sim</Badge> : '—'}</TableCell>
                     <TableCell>
-                      <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => deleteHoliday.mutate(h.id)}>
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
+                      <DeleteConfirmButton onConfirm={() => deleteHoliday.mutate(h.id)} title="Excluir feriado?" description={`O feriado "${h.name}" será removido. Esta ação não pode ser desfeita.`} />
                     </TableCell>
                   </TableRow>
                 ))}
@@ -456,9 +454,7 @@ function WorkdaySwapsTab() {
                     <TableCell className="font-mono text-sm">{fmtDate(s.work_date)}</TableCell>
                     <TableCell className="font-mono text-sm text-muted-foreground">{fmtDate(s.off_date)}</TableCell>
                     <TableCell>
-                      <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => deleteSwap.mutate(s.id)}>
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
+                      <DeleteConfirmButton onConfirm={() => deleteSwap.mutate(s.id)} title="Excluir troca de dia?" description="O registro de troca será removido. Esta ação não pode ser desfeita." />
                     </TableCell>
                   </TableRow>
                 ))}

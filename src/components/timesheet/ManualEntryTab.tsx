@@ -358,7 +358,7 @@ export default function ManualEntryTab() {
                             onClick={() => openCell(empName, dateStr)}
                           >
                             {cleanPunches.length === 0 ? (
-                              <div className="text-muted-foreground/40 text-xs py-1">—</div>
+                              <div className="text-muted-foreground text-xs py-1">—</div>
                             ) : (
                               <div className="space-y-0.5">
                                 {cleanPunches.map((p, i) => (

@@ -6,7 +6,7 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import {
   Plus, X, Eye, Code, File as FileIcon, Tag as TagIcon,
-  CircleNotch as Loader2,
+  CircleNotch as Loader2, Circle,
 } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -133,9 +133,9 @@ export function TaskDetailSheet({ task, subtasks, onClose }: {
             <Select value={task.priority} onValueChange={v => save({ priority: v as NoteTaskPriority })}>
               <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="alta">🔴 Alta</SelectItem>
-                <SelectItem value="media">🟡 Média</SelectItem>
-                <SelectItem value="baixa">⚪ Baixa</SelectItem>
+                <SelectItem value="alta"><span className="inline-flex items-center gap-1.5"><Circle weight="fill" className="h-3 w-3 text-red-600 dark:text-red-400" aria-hidden /> Alta</span></SelectItem>
+                <SelectItem value="media"><span className="inline-flex items-center gap-1.5"><Circle weight="fill" className="h-3 w-3 text-amber-500" aria-hidden /> Média</span></SelectItem>
+                <SelectItem value="baixa"><span className="inline-flex items-center gap-1.5"><Circle className="h-3 w-3 text-muted-foreground" aria-hidden /> Baixa</span></SelectItem>
               </SelectContent>
             </Select>
             <DueDatePicker value={task.due_date} onChange={due => save({ due_date: due })} />
@@ -359,7 +359,7 @@ function SubtaskRow({ subtask, onToggle, onChangeText, onDelete }: {
       {perm.canEdit && <button
         type="button"
         onClick={onDelete}
-        className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity shrink-0"
+        className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-within:opacity-100 text-muted-foreground hover:text-destructive transition-opacity shrink-0"
         aria-label="Excluir subtarefa"
       >
         <X className="h-3.5 w-3.5" />

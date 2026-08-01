@@ -55,7 +55,8 @@ export default function SAC() {
         .select('*, clients(razao_social), technical_sheets(name, code)')
         .order('opened_at', { ascending: false });
       if (filterStatus !== 'todos') q = q.eq('status', filterStatus);
-      const { data } = await q;
+      const { data, error } = await q;
+      if (error) throw error;
       return data || [];
     },
   });
@@ -64,9 +65,10 @@ export default function SAC() {
   const { data: countsRaw = [] } = useQuery({
     queryKey: ['sac_tickets_counts'],
     queryFn: async () => {
-      const { data } = await (supabase as any)
+      const { data, error } = await (supabase as any)
         .from('sac_tickets')
         .select('status');
+      if (error) throw error;
       return data || [];
     },
   });
@@ -156,11 +158,12 @@ function TicketCard({ t, onStatusChange }: { t: any; onStatusChange: (newStatus:
     queryKey: ['sac_history', t.id],
     enabled: historyOpen,
     queryFn: async () => {
-      const { data } = await (supabase as any)
+      const { data, error } = await (supabase as any)
         .from('sac_ticket_history')
         .select('*, profiles:changed_by(full_name)')
         .eq('ticket_id', t.id)
         .order('changed_at', { ascending: false });
+      if (error) throw error;
       return data || [];
     },
   });
@@ -276,7 +279,8 @@ function NewSACDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v:
   const { data: clients = [] } = useQuery({
     queryKey: ['clients_for_sac'],
     queryFn: async () => {
-      const { data } = await (supabase as any).from('clients').select('id, razao_social').eq('active', true).limit(500);
+      const { data, error } = await (supabase as any).from('clients').select('id, razao_social').eq('active', true).limit(500);
+      if (error) throw error;
       return data || [];
     },
   });

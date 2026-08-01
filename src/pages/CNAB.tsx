@@ -46,12 +46,13 @@ export default function CNAB() {
     queryKey: ['cnab_ar_pendentes'],
     enabled: open,
     queryFn: async () => {
-      const { data } = await (supabase as any)
+      const { data, error } = await (supabase as any)
         .from('accounts_receivable')
         .select('id, amount, due_date, customer_name, description')
         .eq('status', 'pendente')
         .order('due_date', { ascending: true })
         .limit(100);
+      if (error) throw error;
       return data || [];
     },
   });

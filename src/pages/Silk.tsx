@@ -5,7 +5,8 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { addDays, endOfMonth, startOfWeek, endOfWeek, isWithinInterval, parseISO, startOfMonth } from 'date-fns';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { Footprints, Printer, Funnel as Filter, Stack as Layers, ListChecks, CheckCircle as CheckCircle2, CircleNotch as Loader2, DotsThreeVertical } from '@phosphor-icons/react';
+import { Footprints, Printer, Funnel as Filter, Stack as Layers, ListChecks, CheckCircle as CheckCircle2, CircleNotch as Loader2, DotsThreeVertical, Warning as AlertTriangle, Package } from '@phosphor-icons/react';
+import { TableSkeleton } from '@/components/layout/PageSkeleton';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuLabel } from '@/components/ui/dropdown-menu';
 import { Panel } from '@/components/ui/panel';
@@ -70,7 +71,7 @@ function getGradeForOrder(order: { grade?: unknown; quantity?: number | null }):
 
 export default function Silk() {
   const navigate = useNavigate();
-  const { data: orders = [], refetch: refetchOrders, isFetching: isFetchingOrders } = useOrders();
+  const { data: orders = [], refetch: refetchOrders, isFetching: isFetchingOrders, isLoading: isLoadingOrders, isError: isErrorOrders } = useOrders();
   const { data: references = [] } = useTechnicalSheets();
   const orderIds = useMemo(() => orders.map(o => o.id), [orders]);
   const { data: allStages = [] } = useAllOrderStages(orderIds.length > 0 ? orderIds : undefined);
@@ -421,8 +422,37 @@ export default function Silk() {
     printHtml('Demanda de Solados', html);
   };
 
+  // Estados de carga/erro ANTES do EmptyState — senão "nenhuma demanda" mente
+  // durante o fetch e vira permanente se a query falhar (auditoria 2026-08-01, A12).
+  if (isLoadingOrders) {
+    return (
+      <div className="space-y-5 page-enter">
+        <EditorialPageHeader
+          sectionLabel="PRODUÇÃO · SILK"
+          title="Setor de Silk"
+          description="Demanda de silks por arte e cor de solado"
+        />
+        <TableSkeleton rows={8} />
+      </div>
+    );
+  }
+
+  if (isErrorOrders) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 gap-3 text-center">
+        <AlertTriangle className="h-10 w-10 text-destructive" />
+        <p className="font-semibold text-foreground">Falha ao carregar as OPs do setor</p>
+        <p className="text-sm text-muted-foreground">Pode ser uma instabilidade momentânea de conexão. Tente novamente — sem precisar recarregar a página.</p>
+        <Button onClick={() => refetchOrders()} disabled={isFetchingOrders} className="mt-1 gap-1.5">
+          {isFetchingOrders ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+          {isFetchingOrders ? 'Carregando…' : 'Tentar novamente'}
+        </Button>
+      </div>
+    );
+  }
+
   return (
-    
+
       <div className="space-y-5 page-enter">
         <EditorialPageHeader
           sectionLabel="PRODUÇÃO · SILK"
@@ -712,7 +742,7 @@ export default function Silk() {
                           const so = saleOrders.find((s: any) => s.id === order.sale_order_id);
                           return so ? (
                             <p className="text-xs text-muted-foreground ml-7">
-                              📦 <span className="font-semibold">{so.order_number}</span>
+                              <Package className="inline h-3.5 w-3.5 mr-1 align-text-bottom" aria-hidden="true" /><span className="font-semibold">{so.order_number}</span>
                               {so.client_order_number ? <> | Ped. Cliente: <span className="font-semibold">{so.client_order_number}</span></> : null}
                               {so.client_name ? <> | {so.client_name}</> : null}
                             </p>

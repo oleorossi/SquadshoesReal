@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react';
 import { SignedImage } from '@/components/ui/signed-image';
 import { useNavigate } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { Scissors, Printer, Funnel as Filter, CheckCircle as CheckCircle2, CaretDown as ChevronDown, CaretRight as ChevronRight, Storefront as Store, Buildings as Building2, Stack as Layers, DotsThreeVertical } from '@phosphor-icons/react';
+import { Scissors, Printer, Funnel as Filter, CheckCircle as CheckCircle2, CaretDown as ChevronDown, CaretRight as ChevronRight, Storefront as Store, Buildings as Building2, Stack as Layers, DotsThreeVertical, Package, ClipboardText, Warning as AlertTriangle, CircleNotch as Loader2 } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuLabel } from '@/components/ui/dropdown-menu';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -30,6 +30,7 @@ import { getClientLogoUrl } from '@/lib/getClientLogo';
 import OrderSearchBar from '@/components/production/OrderSearchBar';
 import { useOrderStraps } from '@/hooks/useOrderStraps';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { TableSkeleton } from '@/components/layout/PageSkeleton';
 import { resolveFicha } from '@/components/production/worksheet/fichaSize';
 import { safeUrlAttr } from '@/lib/htmlUtils';
 
@@ -41,7 +42,7 @@ const SECTOR_EMOJI = '🧷';
 export default function Aviamento() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { data: orders = [] } = useOrders();
+  const { data: orders = [], isLoading: ordersLoading, isError: ordersError, refetch: refetchOrders, isFetching: ordersFetching } = useOrders();
   const { data: references = [] } = useTechnicalSheets();
   const orderIds = useMemo(() => orders.map(o => o.id), [orders]);
   const { data: allStages = [] } = useAllOrderStages(orderIds.length > 0 ? orderIds : undefined);
@@ -269,8 +270,37 @@ export default function Aviamento() {
     printHtml(`Aviamento - ${order.order_number}`, html);
   };
 
+  // Estado de carga/erro ANTES do EmptyState: sem isto, o "nenhuma OP pendente"
+  // mentia durante a carga e virava permanente no erro (auditoria 2026-08-01).
+  if (ordersLoading) {
+    return (
+      <div className="space-y-5 page-enter">
+        <EditorialPageHeader
+          sectionLabel="PRODUÇÃO · AVIAMENTO"
+          title="Setor de Aviamento"
+          description="Fichas de controle com checklist de pares para aviamento"
+        />
+        <TableSkeleton rows={8} />
+      </div>
+    );
+  }
+
+  if (ordersError) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 gap-3 text-center">
+        <AlertTriangle className="h-10 w-10 text-destructive" />
+        <p className="font-semibold text-foreground">Falha ao carregar as OPs do setor</p>
+        <p className="text-sm text-muted-foreground">Pode ser uma instabilidade momentânea de conexão. Tente novamente sem recarregar a página.</p>
+        <Button onClick={() => refetchOrders()} disabled={ordersFetching} className="mt-1 gap-1.5">
+          {ordersFetching ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+          {ordersFetching ? 'Carregando…' : 'Tentar novamente'}
+        </Button>
+      </div>
+    );
+  }
+
   return (
-    
+
       <div className="space-y-5 page-enter">
         <EditorialPageHeader
           sectionLabel="PRODUÇÃO · AVIAMENTO"
@@ -695,7 +725,7 @@ export default function Aviamento() {
                               const so = saleOrders.find((s: any) => s.id === order.sale_order_id);
                               return so ? (
                                 <p className="text-xs text-muted-foreground ml-5 mt-0.5">
-                                  📦 <span className="font-semibold">{so.order_number}</span>
+                                  <Package className="inline h-3.5 w-3.5 mr-1 align-[-2px]" aria-hidden="true" /><span className="font-semibold">{so.order_number}</span>
                                   {so.client_order_number ? <> | Ped. Cliente: <span className="font-semibold">{so.client_order_number}</span></> : null}
                                   {so.client_name ? <> | {so.client_name}</> : null}
                                 </p>
@@ -746,7 +776,7 @@ export default function Aviamento() {
 
                         {grade && activeSizes.length > 0 && (
                           <div>
-                            <p className="text-xs font-semibold mb-2">📋 Grade</p>
+                            <p className="text-xs font-semibold mb-2"><ClipboardText className="inline h-3.5 w-3.5 mr-1 align-[-2px]" aria-hidden="true" />Grade</p>
                             <div className="overflow-x-auto">
                               <Table>
                                 <TableHeader>
@@ -857,7 +887,7 @@ export default function Aviamento() {
                           {isSOCollapsed ? <ChevronRight className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
                           <div className="flex items-center gap-2 flex-1 flex-wrap">
                             <Badge variant="secondary" className="text-xs">
-                              📦 Pedido {soGroup.saleOrder?.order_number || ''} — {soGroup.orders.length} OPs
+                              <Package className="inline h-3 w-3 mr-1 align-[-1px]" aria-hidden="true" />Pedido {soGroup.saleOrder?.order_number || ''} — {soGroup.orders.length} OPs
                             </Badge>
                             {clientName && (
                               <span className="text-xs text-muted-foreground flex items-center gap-1">

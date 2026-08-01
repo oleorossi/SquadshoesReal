@@ -45,8 +45,9 @@ export default function CRM() {
   const { data: clientsList = [] } = useQuery({
     queryKey: ['crm_clients_select'],
     queryFn: async () => {
-      const { data } = await (supabase as any)
+      const { data, error } = await (supabase as any)
         .from('clients').select('id, razao_social').eq('active', true).order('razao_social').limit(500);
+      if (error) throw error;
       return data || [];
     },
   });
@@ -108,12 +109,13 @@ export default function CRM() {
   const { data: interactions = [] } = useQuery({
     queryKey: ['crm_interactions'],
     queryFn: async () => {
-      const { data } = await (supabase as any)
+      const { data, error } = await (supabase as any)
         .from('crm_interactions')
         .select('*, clients(razao_social)')
         .not('completed_at', 'is', null)
         .order('completed_at', { ascending: false })
         .limit(50);
+      if (error) throw error;
       return data || [];
     },
   });
@@ -122,13 +124,14 @@ export default function CRM() {
   const { data: scheduled = [] } = useQuery({
     queryKey: ['crm_scheduled'],
     queryFn: async () => {
-      const { data } = await (supabase as any)
+      const { data, error } = await (supabase as any)
         .from('crm_interactions')
         .select('*, clients(razao_social)')
         .is('completed_at', null)
         .not('scheduled_for', 'is', null)
         .order('scheduled_for', { ascending: true })
         .limit(50);
+      if (error) throw error;
       return data || [];
     },
     refetchInterval: 5 * 60 * 1000, // refresca a cada 5min (sino também)
@@ -154,7 +157,8 @@ export default function CRM() {
   const { data: inactive = [] } = useQuery({
     queryKey: ['crm_inactive'],
     queryFn: async () => {
-      const { data } = await (supabase as any).from('v_crm_inactive_clients').select('*').limit(30);
+      const { data, error } = await (supabase as any).from('v_crm_inactive_clients').select('*').limit(30);
+      if (error) throw error;
       return data || [];
     },
   });
@@ -162,7 +166,8 @@ export default function CRM() {
   const { data: birthdays = [] } = useQuery({
     queryKey: ['crm_birthdays'],
     queryFn: async () => {
-      const { data } = await (supabase as any).from('v_crm_birthdays_month').select('*');
+      const { data, error } = await (supabase as any).from('v_crm_birthdays_month').select('*');
+      if (error) throw error;
       return data || [];
     },
   });
@@ -170,11 +175,12 @@ export default function CRM() {
   const { data: repurchase = [] } = useQuery({
     queryKey: ['crm_repurchase'],
     queryFn: async () => {
-      const { data } = await (supabase as any)
+      const { data, error } = await (supabase as any)
         .from('v_crm_expected_repurchase')
         .select('*')
         .order('days_until_expected', { ascending: true })
         .limit(30);
+      if (error) throw error;
       return data || [];
     },
   });
@@ -182,9 +188,10 @@ export default function CRM() {
   const { data: nps = [] } = useQuery({
     queryKey: ['crm_nps'],
     queryFn: async () => {
-      const { data } = await (supabase as any)
+      const { data, error } = await (supabase as any)
         .from('crm_nps_responses').select('*, clients(razao_social)')
         .order('responded_at', { ascending: false }).limit(30);
+      if (error) throw error;
       return data || [];
     },
   });

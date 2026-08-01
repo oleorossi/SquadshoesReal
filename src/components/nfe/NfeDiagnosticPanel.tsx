@@ -237,7 +237,7 @@ export default function NfeDiagnosticPanel() {
                   <p className="text-sm font-medium">{d.label}</p>
                   <p className="text-xs text-muted-foreground">{d.description}</p>
                   {d.detail && (
-                    <p className="text-xs text-muted-foreground/70 mt-0.5">{d.detail}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{d.detail}</p>
                   )}
                 </div>
               </div>

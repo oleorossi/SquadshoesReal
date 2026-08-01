@@ -266,14 +266,16 @@ function ComercialTab({ group }: { group: any }) {
   const { data: priceLists = [] } = useQuery({
     queryKey: ['price_lists_active_for_group_select'],
     queryFn: async () => {
-      const { data } = await (supabase as any).from('price_lists').select('id, name').eq('active', true).order('name');
+      const { data, error } = await (supabase as any).from('price_lists').select('id, name').eq('active', true).order('name');
+      if (error) throw error;
       return data || [];
     },
   });
   const { data: factoringConfigs = [] } = useQuery({
     queryKey: ['factoring_config_active_for_group_select'],
     queryFn: async () => {
-      const { data } = await (supabase as any).from('factoring_config').select('id, name').eq('active', true).order('name');
+      const { data, error } = await (supabase as any).from('factoring_config').select('id, name').eq('active', true).order('name');
+      if (error) throw error;
       return data || [];
     },
   });
@@ -281,7 +283,8 @@ function ComercialTab({ group }: { group: any }) {
     queryKey: ['transport_companies_active_for_group_select'],
     queryFn: async () => {
       // Transportadora canônica = transporters (consolidação 2026-06-28).
-      const { data } = await (supabase as any).from('transporters').select('id, name').eq('active', true).order('name');
+      const { data, error } = await (supabase as any).from('transporters').select('id, name').eq('active', true).order('name');
+      if (error) throw error;
       return data || [];
     },
   });

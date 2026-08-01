@@ -46,9 +46,18 @@ const CardHeader = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDiv
 );
 CardHeader.displayName = "CardHeader";
 
-const CardTitle = React.forwardRef<HTMLParagraphElement, React.HTMLAttributes<HTMLHeadingElement>>(
-  ({ className, ...props }, ref) => (
-    <h3 ref={ref} className={cn("text-base font-semibold leading-none tracking-tight", className)} {...props} />
+interface CardTitleProps extends React.HTMLAttributes<HTMLHeadingElement> {
+  /**
+   * Nível semântico do heading (default h3, sem mudança visual). Use as="h2"
+   * quando o card é a seção de topo logo abaixo do h1 da página, pra não
+   * furar o outline de leitor de tela (salto h1→h3).
+   */
+  as?: 'h2' | 'h3' | 'h4';
+}
+
+const CardTitle = React.forwardRef<HTMLHeadingElement, CardTitleProps>(
+  ({ className, as: Tag = 'h3', ...props }, ref) => (
+    <Tag ref={ref} className={cn("text-base font-semibold leading-none tracking-tight", className)} {...props} />
   ),
 );
 CardTitle.displayName = "CardTitle";

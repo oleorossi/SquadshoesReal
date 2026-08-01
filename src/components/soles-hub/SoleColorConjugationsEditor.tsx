@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { ArrowRight, Plus, Trash as Trash2, CircleNotch as Loader2 } from '@phosphor-icons/react';
+import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { toast } from 'sonner';
 
 interface ConjugationRule {
@@ -252,15 +253,13 @@ export function SoleColorConjugationsEditor({ soleGroupId }: Props) {
                 ))}
               </SelectContent>
             </Select>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => remove.mutate(rule.id)}
-              className="h-8 w-8 p-0"
-              title="Remover regra"
-            >
-              <Trash2 className="h-3.5 w-3.5 text-destructive" />
-            </Button>
+            {/* Audit A9: mutate direto no onClick → confirmação antes de excluir */}
+            <DeleteConfirmButton
+              title="Remover regra?"
+              description={`A cor ${rule.cabedal_color} deixa de conjugar palmilha automaticamente.`}
+              size="h-8 w-8"
+              onConfirm={() => remove.mutate(rule.id)}
+            />
           </div>
         ))}
       </div>

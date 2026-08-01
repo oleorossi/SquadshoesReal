@@ -698,7 +698,7 @@ export function RouteOptimizerPanel() {
                                 <p className="text-xs text-muted-foreground truncate">
                                   {[client.cidade, client.estado].filter(Boolean).join(' - ') || 'Cidade/UF pendente'}
                                 </p>
-                                <p className="text-xs text-muted-foreground/70 truncate">{client.street || client.address || 'Endereço pendente'}</p>
+                                <p className="text-xs text-muted-foreground truncate" title={client.street || client.address || 'Endereço pendente'}>{client.street || client.address || 'Endereço pendente'}</p>
                                 {!client.routeReady && (
                                   <p className="text-xs text-destructive truncate flex items-center gap-1 mt-0.5">
                                     <AlertTriangle className="h-3 w-3 shrink-0" />

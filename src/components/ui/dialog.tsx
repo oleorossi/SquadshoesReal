@@ -19,7 +19,7 @@ const DialogOverlay = React.forwardRef<
   <DialogPrimitive.Overlay
     ref={ref}
     className={cn(
-      "fixed inset-0 z-50 bg-black/80 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+      "fixed inset-0 z-modal bg-black/80 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
       className,
     )}
     {...props}
@@ -74,7 +74,9 @@ const DialogContent = React.forwardRef<
         // Industrial Editorial Pro (22/05/2026): dialog com borda 2px decisive
         // INK em vez de shadow-lg, rounded-sm (era lg). Bg PAPER (background).
         // Sem zoom/slide animations excessivas — só fade.
-        "fixed left-[50%] top-[50%] z-50 grid w-[95vw] max-w-3xl translate-x-[-50%] translate-y-[-50%] gap-3 sm:gap-4 border-[2px] border-foreground bg-background p-4 sm:p-6 duration-150 max-h-[90vh] overflow-y-auto data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 rounded-sm",
+        // max-h em dvh (não vh): no mobile o vh inclui a barra do browser e o
+        // rodapé do dialog (botões de confirmação) ficaria escondido sob ela.
+        "fixed left-[50%] top-[50%] z-modal grid w-[95vw] max-w-3xl translate-x-[-50%] translate-y-[-50%] gap-3 sm:gap-4 border-[2px] border-foreground bg-background p-4 sm:p-6 duration-150 max-h-[90dvh] overflow-y-auto data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 rounded-sm",
         className,
       )}
       onKeyDown={(e) => {

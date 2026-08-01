@@ -70,7 +70,7 @@ function RepCard({ rep, onEdit, onDelete, onTiers }: { rep: Representative; onEd
                     <span className="font-medium text-foreground">Obs: </span>{rep.notes}
                   </div>
                 )}
-                <div className="text-muted-foreground/70">
+                <div className="text-muted-foreground">
                   Cadastrado em: {new Date(rep.created_at).toLocaleDateString('pt-BR')}
                 </div>
               </div>

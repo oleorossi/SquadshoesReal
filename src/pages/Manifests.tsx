@@ -446,12 +446,13 @@ function AddVolumeDialog({
       // PVs aptos a manifesto: 'Pronto'/'Faturado' (fluxo formal com NF) OU
       // 'Em Produção' com nfe_required=false (fluxo informal, vai pra
       // 'Finalizado s/ NF' quando register_order_shipment for chamado).
-      const { data } = await (supabase as any)
+      const { data, error } = await (supabase as any)
         .from('sale_orders')
         .select('id, order_number, client_name, delivery_city, delivery_state, status, nfe_required')
         .or('status.in.(Pronto,pronto,Faturado,faturado),and(status.eq.Em Produção,nfe_required.eq.false)')
         .order('created_at', { ascending: false })
         .limit(200);
+      if (error) throw error;
       return data || [];
     },
   });
@@ -608,7 +609,8 @@ function NewManifestDialog({
   const { data: transporters = [] } = useQuery({
     queryKey: ['transporters_active'],
     queryFn: async () => {
-      const { data } = await (supabase as any).from('transporters').select('id, name').eq('active', true).order('name');
+      const { data, error } = await (supabase as any).from('transporters').select('id, name').eq('active', true).order('name');
+      if (error) throw error;
       return data || [];
     },
   });

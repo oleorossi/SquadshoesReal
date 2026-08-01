@@ -141,14 +141,16 @@ export function PackagingDecision({ order }: PackagingDecisionProps) {
           <>
             {/* Breakdown table */}
             <div className="rounded-lg border overflow-hidden">
-              <table className="w-full text-sm">
+              {/* Audit A8: scroll horizontal interno — overflow-hidden do card clipava as colunas finais em 360px */}
+              <div className="overflow-x-auto">
+              <table className="w-full min-w-[520px] text-sm">
                 <thead>
                   <tr className="bg-muted/30 text-left">
-                    <th className="p-2 pl-3 font-medium text-xs">Embalagem</th>
-                    <th className="p-2 text-center font-medium text-xs">Pares/cx</th>
-                    <th className="p-2 text-center font-medium text-xs">Qtd. Caixas</th>
-                    <th className="p-2 text-center font-medium text-xs">Estoque</th>
-                    <th className="p-2 text-right font-medium text-xs pr-3">Custo</th>
+                    <th scope="col" className="p-2 pl-3 font-medium text-xs">Embalagem</th>
+                    <th scope="col" className="p-2 text-center font-medium text-xs">Pares/cx</th>
+                    <th scope="col" className="p-2 text-center font-medium text-xs">Qtd. Caixas</th>
+                    <th scope="col" className="p-2 text-center font-medium text-xs">Estoque</th>
+                    <th scope="col" className="p-2 text-right font-medium text-xs pr-3">Custo</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
@@ -180,6 +182,7 @@ export function PackagingDecision({ order }: PackagingDecisionProps) {
                   ))}
                 </tbody>
               </table>
+              </div>
             </div>
 
             {/* Summary row */}

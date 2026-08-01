@@ -49,6 +49,9 @@ const TableHead = React.forwardRef<HTMLTableCellElement, React.ThHTMLAttributes<
   ({ className, ...props }, ref) => (
     <th
       ref={ref}
+      // Acessibilidade: scope="col" por padrão (leitor de tela associa célula ao
+      // header). Sobrescrever com scope="row" em headers de linha.
+      scope="col"
       className={cn(
         "h-10 px-4 text-left align-middle text-[10px] font-bold uppercase tracking-wider text-foreground font-mono [&:has([role=checkbox])]:pr-0",
         className,
@@ -59,9 +62,21 @@ const TableHead = React.forwardRef<HTMLTableCellElement, React.ThHTMLAttributes<
 );
 TableHead.displayName = "TableHead";
 
-const TableCell = React.forwardRef<HTMLTableCellElement, React.TdHTMLAttributes<HTMLTableCellElement>>(
-  ({ className, ...props }, ref) => (
-    <td ref={ref} className={cn("p-4 align-middle [&:has([role=checkbox])]:pr-0", className)} {...props} />
+interface TableCellProps extends React.TdHTMLAttributes<HTMLTableCellElement> {
+  /**
+   * Célula numérica (R$, quantidades): text-right + tabular-nums pra coluna
+   * não "dançar" entre linhas. Use em toda célula de valor/moeda.
+   */
+  numeric?: boolean;
+}
+
+const TableCell = React.forwardRef<HTMLTableCellElement, TableCellProps>(
+  ({ className, numeric, ...props }, ref) => (
+    <td
+      ref={ref}
+      className={cn("p-4 align-middle [&:has([role=checkbox])]:pr-0", numeric && "text-right tabular-nums", className)}
+      {...props}
+    />
   ),
 );
 TableCell.displayName = "TableCell";

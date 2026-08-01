@@ -149,7 +149,7 @@ export function RegistrarPagamentoDialog({ open, onOpenChange, run, employeeName
                 </div>
                 {p.receipt_path
                   ? <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Abrir recibo anexado" onClick={() => openReceipt(p.receipt_path)}><FileArrowDown className="h-4 w-4 text-emerald-600" /></Button>
-                  : <span className="text-[10px] text-muted-foreground/70 px-1" title="Sem recibo anexado">sem recibo</span>}
+                  : <span className="text-xs text-muted-foreground px-1" title="Sem recibo anexado">sem recibo</span>}
                 <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Imprimir recibo pra assinar" onClick={() => printFor(p)}><Printer className="h-4 w-4" /></Button>
                 <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-red-600 hover:text-red-700" title="Remover pagamento" aria-label="Remover pagamento"
                   disabled={del.isPending}

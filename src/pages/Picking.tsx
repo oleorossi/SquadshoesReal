@@ -19,6 +19,7 @@ import { ClipboardText as ClipboardCheck, Plus, ArrowLeft, Scan as ScanLine, Cir
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 
 type PickingStatus = 'aberta' | 'em_separacao' | 'conferida' | 'divergencia' | 'concluida' | 'cancelada';
 
@@ -618,10 +619,7 @@ function PickingItemsTable({
                       </td>
                       <td className="p-2 text-right">
                         {editable && (
-                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive"
-                            onClick={() => delItem.mutate(it.id)}>
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
+                          <DeleteConfirmButton onConfirm={() => delItem.mutate(it.id)} title="Remover item da separação?" description="O item sai da lista de picking. Esta ação não pode ser desfeita." />
                         )}
                       </td>
                     </tr>
@@ -652,7 +650,8 @@ function AddItemDialog({ sessionId, open, onClose }: { sessionId: string; open: 
   const { data: products = [] } = useQuery({
     queryKey: ['products_for_picking'],
     queryFn: async () => {
-      const { data } = await (supabase as any).from('products').select('id, name, code, ean, unit').eq('active', true).order('name').limit(2000);
+      const { data, error } = await (supabase as any).from('products').select('id, name, code, ean, unit').eq('active', true).order('name').limit(2000);
+      if (error) throw error;
       return data || [];
     },
     enabled: open,
@@ -740,7 +739,7 @@ function NewSessionDialog({
   const { data: saleOrders = [] } = useQuery({
     queryKey: ['sale_orders_for_picking'],
     queryFn: async () => {
-      const { data } = await (supabase as any)
+      const { data, error } = await (supabase as any)
         .from('sale_orders')
         .select('id, order_number, client_name, status')
         // sale_orders canonical statuses (saleOrderStateMachine): só 'Em Produção'
@@ -749,6 +748,7 @@ function NewSessionDialog({
         .in('status', ['Em Produção', 'Aprovado'])
         .order('created_at', { ascending: false })
         .limit(200);
+      if (error) throw error;
       return data || [];
     },
     enabled: open,

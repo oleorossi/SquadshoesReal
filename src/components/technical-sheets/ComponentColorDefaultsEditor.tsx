@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { ArrowRight, Plus, Trash as Trash2, CircleNotch as Loader2 } from '@phosphor-icons/react';
+import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { toast } from 'sonner';
 import {
   useComponentColorDefaults,
@@ -118,13 +119,13 @@ export function ComponentColorDefaultsEditor({ groupId }: Props) {
               {productSelect(defaultRule.product_id, (pid) => {
                 if (pid && pid !== defaultRule.product_id) updateRule.mutate({ id: defaultRule.id, productId: pid });
               })}
-              <Button
-                size="sm" variant="ghost"
-                onClick={() => deleteRule.mutate({ id: defaultRule.id })}
-                className="h-8 w-8 p-0 shrink-0" title="Remover regra padrão"
-              >
-                <Trash2 className="h-3.5 w-3.5 text-destructive" />
-              </Button>
+              {/* Audit A9: mutate direto no onClick → confirmação antes de excluir */}
+              <DeleteConfirmButton
+                title="Remover regra padrão?"
+                description="O grupo fica sem produto padrão pra cores não listadas."
+                size="h-8 w-8 shrink-0"
+                onConfirm={() => deleteRule.mutate({ id: defaultRule.id })}
+              />
             </>
           ) : (
             <>
@@ -165,13 +166,13 @@ export function ComponentColorDefaultsEditor({ groupId }: Props) {
             {productSelect(rule.product_id, (pid) => {
               if (pid && pid !== rule.product_id) updateRule.mutate({ id: rule.id, productId: pid });
             })}
-            <Button
-              size="sm" variant="ghost"
-              onClick={() => deleteRule.mutate({ id: rule.id })}
-              className="h-8 w-8 p-0 shrink-0" title="Remover regra"
-            >
-              <Trash2 className="h-3.5 w-3.5 text-destructive" />
-            </Button>
+            {/* Audit A9: mutate direto no onClick → confirmação antes de excluir */}
+            <DeleteConfirmButton
+              title="Remover regra?"
+              description={`A cor ${rule.cabedal_color} volta a usar a regra padrão do grupo.`}
+              size="h-8 w-8 shrink-0"
+              onConfirm={() => deleteRule.mutate({ id: rule.id })}
+            />
           </div>
         ))}
       </div>

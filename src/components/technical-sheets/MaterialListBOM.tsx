@@ -61,14 +61,16 @@ export function MaterialListBOM({ materials, onAddMaterial, onRemoveMaterial }: 
       </div>
 
       <div className="border rounded-lg overflow-hidden bg-card shadow-sm">
-        <table className="w-full text-sm">
+        {/* Audit A8: scroll horizontal interno — overflow-hidden clipava colunas em 360px */}
+        <div className="overflow-x-auto">
+        <table className="w-full min-w-[560px] text-sm">
           <thead>
             <tr className="bg-muted/50 border-b text-muted-foreground uppercase text-xs font-bold">
-              <th className="px-4 py-3 text-left">Componente</th>
-              <th className="px-4 py-3 text-left">Material / Insumo</th>
-              <th className="px-4 py-3 text-center">Unid.</th>
-              <th className="px-4 py-3 text-right">Consumo/Par (bruto)</th>
-              <th className="px-4 py-3 text-center">Ação</th>
+              <th scope="col" className="px-4 py-3 text-left">Componente</th>
+              <th scope="col" className="px-4 py-3 text-left">Material / Insumo</th>
+              <th scope="col" className="px-4 py-3 text-center">Unid.</th>
+              <th scope="col" className="px-4 py-3 text-right">Consumo/Par (bruto)</th>
+              <th scope="col" className="px-4 py-3 text-center">Ação</th>
             </tr>
           </thead>
           <tbody className="divide-y">
@@ -117,6 +119,7 @@ export function MaterialListBOM({ materials, onAddMaterial, onRemoveMaterial }: 
             )}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   );

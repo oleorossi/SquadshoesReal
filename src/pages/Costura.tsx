@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react';
 import { SignedImage } from '@/components/ui/signed-image';
 import { useNavigate } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { Printer, Funnel as Filter, CheckCircle as CheckCircle2, CaretDown as ChevronDown, CaretRight as ChevronRight, Storefront as Store, Buildings as Building2, Stack as Layers, Scissors, DotsThreeVertical, LinkSimple, Clock, ArrowsClockwise, MagnifyingGlass } from '@phosphor-icons/react';
+import { Printer, Funnel as Filter, CheckCircle as CheckCircle2, CaretDown as ChevronDown, CaretRight as ChevronRight, Storefront as Store, Buildings as Building2, Stack as Layers, Scissors, DotsThreeVertical, LinkSimple, Clock, ArrowsClockwise, MagnifyingGlass, Warning as AlertTriangle, CircleNotch as Loader2 } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuLabel } from '@/components/ui/dropdown-menu';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -31,6 +31,7 @@ import { getClientLogoUrl } from '@/lib/getClientLogo';
 import { SearchInput } from '@/components/ui/search-input';
 import { useOrderStraps } from '@/hooks/useOrderStraps';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { TableSkeleton } from '@/components/layout/PageSkeleton';
 import { resolveFicha } from '@/components/production/worksheet/fichaSize';
 import { RefChip } from '@/components/ui/ref-chip';
 import { safeUrlAttr } from '@/lib/htmlUtils';
@@ -43,7 +44,7 @@ const SECTOR_EMOJI = '🧵';
 export default function Costura() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { data: orders = [] } = useOrders();
+  const { data: orders = [], isLoading: ordersLoading, isError: ordersError, refetch: refetchOrders, isFetching: ordersFetching } = useOrders();
   const { data: references = [] } = useTechnicalSheets();
   const orderIds = useMemo(() => orders.map(o => o.id), [orders]);
   const { data: allStages = [] } = useAllOrderStages(orderIds.length > 0 ? orderIds : undefined);
@@ -291,6 +292,35 @@ export default function Costura() {
 
     printHtml(`${SECTOR_NAME} - ${order.order_number}`, html);
   };
+
+  // Estado de carga/erro ANTES do EmptyState: sem isto, o "nenhuma OP pendente"
+  // mentia durante a carga e virava permanente no erro (auditoria 2026-08-01).
+  if (ordersLoading) {
+    return (
+      <div className="space-y-5 page-enter">
+        <EditorialPageHeader
+          sectionLabel="PRODUÇÃO · CORTE FORRAÇÃO"
+          title={`Setor de ${SECTOR_NAME}`}
+          description="Fichas de controle com checklist de pares para corte de forração"
+        />
+        <TableSkeleton rows={8} />
+      </div>
+    );
+  }
+
+  if (ordersError) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 gap-3 text-center">
+        <AlertTriangle className="h-10 w-10 text-destructive" />
+        <p className="font-semibold text-foreground">Falha ao carregar as OPs do setor</p>
+        <p className="text-sm text-muted-foreground">Pode ser uma instabilidade momentânea de conexão. Tente novamente sem recarregar a página.</p>
+        <Button onClick={() => refetchOrders()} disabled={ordersFetching} className="mt-1 gap-1.5">
+          {ordersFetching ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+          {ordersFetching ? 'Carregando…' : 'Tentar novamente'}
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5 page-enter">

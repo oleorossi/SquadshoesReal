@@ -66,9 +66,10 @@ export function SearchableSelect({
         >
           {selected ? (
             <span className="flex min-w-0 items-center gap-2">
-              <span className="truncate">{selected.label}</span>
+              {/* title: recurso de hover pra ler o dado completo quando truncar */}
+              <span className="truncate" title={selected.label}>{selected.label}</span>
               {selected.description && (
-                <span className="hidden truncate text-xs text-muted-foreground sm:inline">{selected.description}</span>
+                <span className="hidden truncate text-xs text-muted-foreground sm:inline" title={selected.description}>{selected.description}</span>
               )}
             </span>
           ) : (
@@ -93,8 +94,8 @@ export function SearchableSelect({
                 >
                   <Check className={cn('h-4 w-4 shrink-0', value === o.value ? 'opacity-100' : 'opacity-0')} />
                   <div className="flex min-w-0 flex-col">
-                    <span className="truncate text-sm">{o.label}</span>
-                    {o.description && <span className="truncate text-xs text-muted-foreground">{o.description}</span>}
+                    <span className="truncate text-sm" title={o.label}>{o.label}</span>
+                    {o.description && <span className="truncate text-xs text-muted-foreground" title={o.description}>{o.description}</span>}
                   </div>
                 </CommandItem>
               ))}

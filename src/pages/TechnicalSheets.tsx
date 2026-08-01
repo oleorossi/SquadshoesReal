@@ -5086,10 +5086,7 @@ function InsolePlateProductSelect({ label, value, onChange }: { label: string; v
                            onChange={v => updateRow.mutate({ id: r.id, sheetId, quantityPerUnit: v })}
                            className="mt-1 h-8 text-sm" placeholder="0" step={unit === 'un' ? '1' : '0.01'} />
                        </div>
-                       <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-destructive hover:text-destructive"
-                         onClick={() => deleteRow.mutate({ id: r.id, sheetId })}>
-                         <Trash2 className="h-3.5 w-3.5" />
-                       </Button>
+                       <DeleteConfirmButton onConfirm={() => deleteRow.mutate({ id: r.id, sheetId })} title="Remover componente?" description="O componente sai da lista de materiais desta cor. Esta ação não pode ser desfeita." size="h-8 w-8 shrink-0" />
                      </div>
                    );
                  })}
