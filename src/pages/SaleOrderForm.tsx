@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, CircleNotch as Loader2, FileMagnifyingGlass as FileSearch, ArrowCounterClockwise as RotateCcw, Handshake, CheckCircle, Warning as AlertTriangle } from '@phosphor-icons/react';
+import { ArrowLeft, CircleNotch as Loader2, FileMagnifyingGlass as FileSearch, ArrowCounterClockwise as RotateCcw, Handshake, CheckCircle, Warning as AlertTriangle, PaperPlaneTilt } from '@phosphor-icons/react';
+import { SendSectorToContractorDialog } from '@/components/sale-orders/SendSectorToContractorDialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
@@ -63,6 +64,7 @@ const emptyItem: SaleOrderItemFormData = {
   reference_id: '', color: '', grade: {}, unit_price: 0, quantity: 0, fichas: 1, observation: null,
   selected_terceirizacao_ids: [],
   terceirizacao_quantities: {},
+  outsourced_sectors: {},
 };
 
 const SALE_ORDER_DRAFT_KEY = 'sale_order_draft';
@@ -110,6 +112,10 @@ export function mapLoadedSaleOrderItem(
     selected_terceirizacao_ids: ((i as any).selected_terceirizacao_ids as string[]) ?? [],
     // ...e a quantidade parcial por serviço (split fábrica × rua).
     terceirizacao_quantities: ((i as any).terceirizacao_quantities as Record<string, number>) ?? {},
+    // Terceirização por setor: sem copiar na carga, reabrir o PV pra editar
+    // gravaria mapa vazio por cima (a edição grava o vazio de propósito, pra
+    // desmarcar funcionar) e os setores marcados sumiriam em silêncio.
+    outsourced_sectors: ((i as any).outsourced_sectors as Record<string, string>) ?? {},
   };
 }
 
@@ -367,6 +373,7 @@ export default function SaleOrderForm() {
   // Dialog de terceirização da costura: abre após save quando o PV foi
   // salvo com manual_billing_override=true. saleOrderId fica setado pra
   // o dialog buscar as OPs criadas e disparar a RPC.
+  const [sendSectorOpen, setSendSectorOpen] = useState(false);
   const [outsourceCosturaOpen, setOutsourceCosturaOpen] = useState(false);
   const [outsourceCosturaPvId, setOutsourceCosturaPvId] = useState<string | null>(null);
   const [outsourceCosturaPendingNav, setOutsourceCosturaPendingNav] = useState<boolean>(false);
@@ -1274,6 +1281,17 @@ export default function SaleOrderForm() {
                   <Handshake className="h-4 w-4" /> Gerar OS
                 </Button>
               )}
+              {/* Envio POSTERIOR: setor que não foi marcado nos itens antes da OP
+                  nascer, ou OS que falhou na criação automática (o trigger engole
+                  o erro de propósito — falhar a OS não pode travar a OP). */}
+              {isEdit && id && (
+                <Button
+                  variant="outline" size="sm" className="h-9 gap-1.5"
+                  onClick={() => setSendSectorOpen(true)}
+                >
+                  <PaperPlaneTilt className="h-4 w-4" /> Enviar pra prestador
+                </Button>
+              )}
             </>
           }
         />
@@ -1314,6 +1332,15 @@ export default function SaleOrderForm() {
           <div className="mt-4">
             <PvServiceOrdersCard saleOrderId={id} />
           </div>
+        )}
+
+        {isEdit && id && (
+          <SendSectorToContractorDialog
+            open={sendSectorOpen}
+            onOpenChange={setSendSectorOpen}
+            saleOrderId={id}
+            saleOrderLabel={form?.order_number || null}
+          />
         )}
       </div>
 

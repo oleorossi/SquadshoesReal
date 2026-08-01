@@ -19,6 +19,7 @@ import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useContractors } from '@/hooks/useContractors';
 import { generateServiceOrderNumber } from '@/lib/serviceOrderStock';
+import { SERVICE_ORDER_SECTORS } from '@/lib/serviceOrderSectors';
 import { formatCurrency, cn } from '@/lib/utils';
 
 /**
@@ -57,18 +58,10 @@ export interface ServiceOrderFormDialogProps {
   pvItems?: { id: string; label: string; pairs: number }[];
 }
 
-const SECTORS = [
-  { value: 'costura',        label: 'Costura' },
-  { value: 'mesa',           label: 'Aviamento' },
-  { value: 'corte_palmilha', label: 'Corte Palmilha' },
-  { value: 'corte_forracao', label: 'Corte Forração' },
-  { value: 'corte_cabedal',  label: 'Corte Cabedal' },
-  { value: 'silk',           label: 'Silk' },
-  { value: 'colagem',        label: 'Colagem' },
-  { value: 'montagem',       label: 'Montagem' },
-  { value: 'solagem',        label: 'Solagem' },
-  { value: 'acabamento',     label: 'Acabamento' },
-];
+// Lista canônica compartilhada — era uma cópia local aqui, divergente da de
+// `serviceOrderSectors.ts` (que não tinha `mesa` nem `colagem`). Duas listas =
+// tarifa por setor silenciosamente sem match. Consolidado em 01/08/2026.
+const SECTORS = SERVICE_ORDER_SECTORS;
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
 

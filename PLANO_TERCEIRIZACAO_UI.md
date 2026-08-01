@@ -1,5 +1,12 @@
 # Plano — terceirização por SETOR × ITEM na tela do pedido
 
+> **Quem executou:** o plano foi escrito pro Codex, mas as duas runs de
+> `codex exec` (01/08/2026) morreram com `502 Bad Gateway` no upstream do
+> `avellogateway.online`, sem produzir nenhum arquivo — e retornando exit code 0
+> nas duas. A implementação foi feita direto, contra esta especificação, por
+> decisão do dono. O documento fica versionado pra a comparação
+> especificado × executado continuar auditável.
+
 Implemente EXATAMENTE o que está aqui. Não refatore nada fora do escopo, não
 crie arquivo novo além dos listados, não mexa em impressão/OS existente.
 

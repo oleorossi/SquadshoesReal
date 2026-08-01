@@ -35,6 +35,7 @@ import {
 } from '@/lib/strapSourcing';
 import { useStrapStockLines } from '@/hooks/useStrapStockLines';
 import { SearchInput } from '@/components/ui/search-input';
+import { ItemSectorOutsourcingSection } from '@/components/sale-orders/ItemSectorOutsourcingSection';
 interface ReferenceOption {
   id: string;
   code: string;
@@ -1809,6 +1810,16 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
             </Button>
           )}
         </div>
+
+        {/* Terceirização por setor deste item (intenção; a OS nasce na entrada
+            em produção). Só aparece com referência escolhida — sem ela não há
+            OP futura pra receber a OS. */}
+        {item.reference_id && (
+          <ItemSectorOutsourcingSection
+            value={item.outsourced_sectors}
+            onChange={(next) => onUpdate(index, 'outsourced_sectors', next)}
+          />
+        )}
       </div>
 
       <CreateStrapProductDialog

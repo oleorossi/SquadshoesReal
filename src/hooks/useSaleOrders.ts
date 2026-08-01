@@ -509,6 +509,16 @@ export type SaleOrderItemFormData = {
   /** Quantidade PARCIAL a enviar por serviço terceirizado: { terceirizacao_id: pares }.
    *  Ausente/vazio = envia o total do item (compat). Persistido junto da intenção. */
   terceirizacao_quantities?: Record<string, number>;
+  /** Terceirização por SETOR deste item: `{ "costura": "<contractor_id>" }`.
+   *  Mapa vazio = tudo interno. É só INTENÇÃO — a OS nasce quando a OP é criada
+   *  (trigger `tg_orders_generate_outsourcing_os`, migration 20261030120000),
+   *  nunca no save do PV: gerar no save foi o que produziu 276 OS canceladas de
+   *  279 na era do transbordo automático.
+   *  ⚠ Nenhum dos 2 RPCs atômicos lista esta coluna — é gravada por UPDATE
+   *  direcionado depois do RPC, mesmo padrão de `strap_sourcing`.
+   *  ⚠ Só entra par setor→prestador COMPLETO: um trigger no banco rejeita chave
+   *  de setor desconhecida ou valor que não seja uuid, e o save estoura. */
+  outsourced_sectors?: Record<string, string> | null;
 };
 
 export function useSaleOrders() {
@@ -634,7 +644,14 @@ export function useCreateSaleOrder() {
         }
       }
 
-      const itemPayload = items.map(({ selected_terceirizacao_ids: _sel, terceirizacao_quantities: _tq, ...item }) => ({
+      const itemPayload = items.map(({
+        selected_terceirizacao_ids: _sel,
+        terceirizacao_quantities: _tq,
+        // `create_sale_order_atomic` insere uma lista EXPLÍCITA de colunas e não
+        // conhece esta — mandar junto quebra o RPC. Gravada logo abaixo.
+        outsourced_sectors: _outs,
+        ...item
+      }) => ({
         ...item,
         grade: item.grade,
       }));
@@ -663,25 +680,37 @@ export function useCreateSaleOrder() {
       // Auto-sync financial records
       await syncFinancialRecords(data.id);
 
-      // Terceirização integrada: persiste só a INTENÇÃO (selected_terceirizacao_ids).
-      // A OS NÃO nasce aqui — é criada no envio explícito (card de Terceirizações do
-      // PV). Passo separado e guardado pra não quebrar a criação do PV se a coluna
-      // ainda não existir (migration aplicada à parte do deploy do front).
+      // Terceirização: persiste só a INTENÇÃO — nem `selected_terceirizacao_ids`
+      // (por serviço da ficha) nem `outsourced_sectors` (por setor do item) criam
+      // OS aqui. A OS por setor nasce quando a OP é criada, pelo trigger
+      // `tg_orders_generate_outsourcing_os`. Passo separado e guardado pra não
+      // quebrar a criação do PV se a coluna ainda não existir no ambiente.
+      const hasSectorIntent = (i: SaleOrderItemFormData) =>
+        !!i.outsourced_sectors && Object.keys(i.outsourced_sectors).length > 0;
       const anyTerceirizacao = items.some(
-        (i) => Array.isArray(i.selected_terceirizacao_ids) && i.selected_terceirizacao_ids.length > 0,
+        (i) => (Array.isArray(i.selected_terceirizacao_ids) && i.selected_terceirizacao_ids.length > 0)
+          || hasSectorIntent(i),
       );
       if (anyTerceirizacao && insertedItemIds.length === items.length) {
         try {
           for (let idx = 0; idx < items.length; idx++) {
+            const patch: Record<string, unknown> = {};
             const sel = items[idx].selected_terceirizacao_ids;
             if (Array.isArray(sel) && sel.length > 0) {
               const tq = items[idx].terceirizacao_quantities;
-              const { error: selErr } = await supabase
-                .from('sale_order_items')
-                .update({ selected_terceirizacao_ids: sel, terceirizacao_quantities: (tq && typeof tq === 'object') ? tq : {} } as any)
-                .eq('id', insertedItemIds[idx]);
-              if (selErr) throw selErr;
+              patch.selected_terceirizacao_ids = sel;
+              patch.terceirizacao_quantities = (tq && typeof tq === 'object') ? tq : {};
             }
+            // Na CRIAÇÃO, mapa vazio é o default da coluna — não precisa gravar.
+            if (hasSectorIntent(items[idx])) {
+              patch.outsourced_sectors = items[idx].outsourced_sectors;
+            }
+            if (Object.keys(patch).length === 0) continue;
+            const { error: selErr } = await supabase
+              .from('sale_order_items')
+              .update(patch as any)
+              .eq('id', insertedItemIds[idx]);
+            if (selErr) throw selErr;
           }
         } catch (e: any) {
           console.warn('[useCreateSaleOrder] falha ao persistir intenção de terceirização:', e?.message || e);
@@ -2066,13 +2095,23 @@ export function useUpdateSaleOrder() {
           const sel = items[idx]?.selected_terceirizacao_ids;
           const tq = items[idx]?.terceirizacao_quantities;
           const newId = insertedIds[idx];
-          if (newId && Array.isArray(sel) && sel.length > 0) {
-            const { error: selErr } = await supabase
-              .from('sale_order_items')
-              .update({ selected_terceirizacao_ids: sel, terceirizacao_quantities: (tq && typeof tq === 'object') ? tq : {} } as any)
-              .eq('id', newId);
-            if (selErr) console.warn('[useUpdateSaleOrder] falha ao gravar terceirização:', selErr.message);
+          if (!newId) continue;
+          const patch: Record<string, unknown> = {};
+          if (Array.isArray(sel) && sel.length > 0) {
+            patch.selected_terceirizacao_ids = sel;
+            patch.terceirizacao_quantities = (tq && typeof tq === 'object') ? tq : {};
           }
+          // ⚠ Diferente da CRIAÇÃO: aqui o mapa VAZIO também é gravado. O item foi
+          // recriado pelo RPC, então "vazio" pode ser o usuário tendo DESMARCADO
+          // todos os setores — pular o vazio faria a desmarcação não ter efeito.
+          const outs = items[idx]?.outsourced_sectors;
+          if (outs && typeof outs === 'object') patch.outsourced_sectors = outs;
+          if (Object.keys(patch).length === 0) continue;
+          const { error: selErr } = await supabase
+            .from('sale_order_items')
+            .update(patch as any)
+            .eq('id', newId);
+          if (selErr) console.warn('[useUpdateSaleOrder] falha ao gravar terceirização:', selErr.message);
         }
       } catch (e: any) {
         console.warn('[useUpdateSaleOrder] persistência da intenção de terceirização falhou:', e?.message || e);
