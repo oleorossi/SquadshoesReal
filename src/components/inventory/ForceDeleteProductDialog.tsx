@@ -94,8 +94,22 @@ export function useForceDeleteProductFlow(opts: ForceDeleteFlowOptions = {}) {
                   {state.links.stock_movements > 0 && (
                     <li>{state.links.stock_movements} {state.links.stock_movements === 1 ? 'movimentação de estoque (perde histórico)' : 'movimentações de estoque (perde histórico)'}</li>
                   )}
+                  {state.links.direct_components > 0 && (
+                    <li>
+                      <strong>
+                        {state.links.direct_components} {state.links.direct_components === 1 ? 'ficha técnica leva' : 'fichas técnicas levam'} este produto como componente
+                      </strong>{' '}
+                      — o componente sai {state.links.direct_components === 1 ? 'dela' : 'delas'} e o par deixa de custá-lo
+                    </li>
+                  )}
                 </ul>
               </div>
+              {state.links.direct_components > 0 && (
+                <p className="text-xs text-amber-700 dark:text-amber-400">
+                  Se o produto foi cadastrado errado e você vai recriá-lo, <strong>desative em vez de excluir</strong>:
+                  produto novo nasce com ID novo e o vínculo das fichas não se refaz sozinho.
+                </p>
+              )}
               <p className="text-xs text-muted-foreground">
                 Esta ação é <strong>irreversível</strong>. Recomendamos apenas para produtos cadastrados errado por engano.
                 Pra desligar o produto preservando histórico, prefira <strong>desativar</strong>.

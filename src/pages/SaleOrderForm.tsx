@@ -1240,7 +1240,6 @@ export default function SaleOrderForm() {
                   <Handshake className="h-4 w-4" /> Gerar OS
                 </Button>
               )}
-              <Button variant="ghost" size="sm" className="h-9" onClick={() => navigate('/sales')}>Cancelar</Button>
             </>
           }
         />

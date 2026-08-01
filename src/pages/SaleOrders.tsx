@@ -1,5 +1,5 @@
 import { parseDateOnly } from '@/lib/dateOnly';
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo } from 'react';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -9,7 +9,7 @@ import { getSignedUrl } from '@/lib/getSignedUrl';
 import { resolveMaterialLabel } from '@/lib/labelUtils';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { Baby, Buildings, ShoppingCart, Plus, CircleNotch as Loader2, Copy, Printer, Factory, PencilSimple as Pencil, FileText, Funnel as Filter, X, MagnifyingGlass as Search, Package, CurrencyDollar as DollarSign, Clock, CaretDown as ChevronDown, ChartBar as BarChart3, ClipboardText as ClipboardList, ArrowsClockwise as RefreshCw, Tag, SquaresFour as LayoutDashboard, Lightning as Zap, FileXls as FileSpreadsheet, Receipt, XCircle, CheckCircle, Check, Download, TrendUp as TrendingUp, Warning as AlertTriangle, ArrowCounterClockwise as RotateCcw, HandPalm as Hand, UploadSimple as Upload, Trash as Trash2, ListChecks, ArrowSquareOut as ExternalLink } from '@phosphor-icons/react';
+import { Baby, Buildings, ShoppingCart, Plus, CircleNotch as Loader2, Copy, Printer, Factory, PencilSimple as Pencil, FileText, Funnel as Filter, X, MagnifyingGlass as Search, Package, CurrencyDollar as DollarSign, Clock, CaretDown, ChartBar as BarChart3, ClipboardText as ClipboardList, ArrowsClockwise as RefreshCw, Tag, SquaresFour as LayoutDashboard, Lightning as Zap, FileXls as FileSpreadsheet, Receipt, XCircle, CheckCircle, Check, Download, TrendUp as TrendingUp, Warning as AlertTriangle, ArrowCounterClockwise as RotateCcw, HandPalm as Hand, UploadSimple as Upload, Trash as Trash2, ListChecks, ArrowSquareOut as ExternalLink } from '@phosphor-icons/react';
 import { useMarqueeSelection } from '@/hooks/useMarqueeSelection';
 import { BulkActionsBar, MarqueeOverlay } from '@/components/ui/bulk-actions-bar';
 import { cn } from "@/lib/utils";
@@ -36,12 +36,11 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { MaterialReservationErrorBadge } from '@/components/orders/MaterialReservationErrorBadge';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { useSaleOrders, useSaleOrderAllItems, useCreateSaleOrder, useDeleteSaleOrder, useUpdateSaleOrder, useUpdateSaleOrderStatus, useResyncOPsFromSheets, useResyncOPsFromPV, useCommitPickingForSaleOrder, useRealtimeSaleOrders, SaleOrderFormData, SaleOrderItemFormData, PackagingMode, ORDER_TYPE_LABELS, DEFAULT_OP_STAGES, opStageOrder, listarTirasSemCor } from '@/hooks/useSaleOrders';
+import { useSaleOrders, useSaleOrderAllItems, useCreateSaleOrder, useDeleteSaleOrder, useUpdateSaleOrderStatus, useResyncOPsFromSheets, useResyncOPsFromPV, useCommitPickingForSaleOrder, useRealtimeSaleOrders, SaleOrderFormData, SaleOrderItemFormData, PackagingMode, ORDER_TYPE_LABELS, DEFAULT_OP_STAGES, opStageOrder, listarTirasSemCor } from '@/hooks/useSaleOrders';
 import { useTechnicalSheets } from '@/hooks/useTechnicalSheets';
 import { useClients, useEconomicGroups } from '@/hooks/useClients';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import SaleOrderFormPanel from '@/components/sale-orders/SaleOrderFormPanel';
 import { ImportClientsDialog } from '@/components/clients/ImportClientsDialog';
 import { BulkNfeDialog } from '@/components/nfe/BulkNfeDialog';
 import { useAuth } from '@/hooks/useAuth';
@@ -123,26 +122,14 @@ const STATUS_BAND: Record<string, string> = {
 
 const TERMINAL_BILLED_STATUSES = ['Faturado', 'Finalizado s/ NF'];
 
-const emptyForm: SaleOrderFormData = {
-  company_id: null,
-  client_name: '', client_cnpj: '', client_contact: '', client_order_number: '',
-  representative: '', payment_condition: '', delivery_deadline: '', delivery_week: '', delivery_month: '',
-  notes: '', status: 'Rascunho',
-  nfe: '', remessa: '', is_factoring: false, factoring_config_id: '', packaging_mode: 'individual_master',
-};
-
-const emptyItem: SaleOrderItemFormData = {
-  reference_id: '', color: '', grade: {}, unit_price: 0, quantity: 0, fichas: 1, observation: null,
-};
-
 const formatCurrency = (v: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 
 const formatDate = (d: string | null) =>
-  d ? new Date(d).toLocaleDateString('pt-BR') : '—';
+  d ? parseDateOnly(d).toLocaleDateString('pt-BR') : '—';
 
 const formatDateShort = (d: string) =>
-  new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+  parseDateOnly(d).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
 
 // Lookup batch de min_billing_date pra todos os PVs ativos da view sale_order_min_billing.
 // Usado pra marcar em vermelho linhas com delivery_deadline < min_billing_date.
@@ -202,7 +189,6 @@ export default function SaleOrders() {
   const { data: economicGroups = [] } = useEconomicGroups();
   const { data: representatives = [] } = useRepresentatives();
   const createOrder = useCreateSaleOrder();
-  const updateOrder = useUpdateSaleOrder();
   const deleteOrder = useDeleteSaleOrder();
   const updateStatus = useUpdateSaleOrderStatus();
   // Subscribe Realtime: outros users veem mudanças/exclusões em ~200ms via WS.
@@ -307,16 +293,6 @@ export default function SaleOrders() {
   // usuários explicitamente restritos; admins/sem-grant continuam vendo tudo.
   const perm = useCan('/sales');
 
-  // Dialog states
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [form, setForm] = useState<SaleOrderFormData>(emptyForm);
-  const [selectedClientId, setSelectedClientId] = useState<string>('');
-  const [items, setItems] = useState<SaleOrderItemFormData[]>([{ ...emptyItem }]);
-
-  // Guard de descarte: Esc/clique fora não pode apagar um form longo em
-  // silêncio — se há dados digitados, pede confirmação antes de resetar.
-  const [confirmDiscard, setConfirmDiscard] = useState<null | 'create' | 'edit'>(null);
-
   // Confirmação estruturada genérica (AlertDialog) — substitui os confirm()
   // nativos de ações de alto impacto da página.
   const [pendingConfirm, setPendingConfirm] = useState<null | {
@@ -325,23 +301,6 @@ export default function SaleOrders() {
     actionLabel: string;
     onConfirm: () => void | Promise<void>;
   }>(null);
-
-  const resetCreateForm = () => {
-    setDialogOpen(false);
-    setForm(emptyForm);
-    setItems([{ ...emptyItem }]);
-    setSelectedClientId('');
-  };
-  const createDirty = () =>
-    selectedClientId !== '' ||
-    JSON.stringify(form) !== JSON.stringify(emptyForm) ||
-    JSON.stringify(items) !== JSON.stringify([emptyItem]);
-
-  const closeCreateDialog = (open: boolean) => {
-    if (open) { setDialogOpen(true); return; }
-    if (createDirty()) { setConfirmDiscard('create'); return; }
-    resetCreateForm();
-  };
 
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
@@ -369,33 +328,6 @@ export default function SaleOrders() {
   const [quickConsumptionId, setQuickConsumptionId] = useState<string | null>(null);
   const [quickConsumptionNumber, setQuickConsumptionNumber] = useState('');
 
-  const [editDialogOpen, setEditDialogOpen] = useState(false);
-  const [editOrderId, setEditOrderId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState<SaleOrderFormData>(emptyForm);
-  const [editItems, setEditItems] = useState<SaleOrderItemFormData[]>([{ ...emptyItem }]);
-  const [editSelectedClientId, setEditSelectedClientId] = useState<string>('');
-
-  // Snapshot do estado carregado no openEditDialog — dirty = difere do snapshot.
-  const editInitialRef = useRef<string>('');
-  const editSnapshot = (f: SaleOrderFormData, i: SaleOrderItemFormData[], c: string) =>
-    JSON.stringify({ f, i, c });
-
-  const resetEditForm = () => {
-    setEditDialogOpen(false);
-    setEditForm(emptyForm);
-    setEditItems([{ ...emptyItem }]);
-    setEditSelectedClientId('');
-    setEditOrderId(null);
-  };
-  const editDirty = () =>
-    editInitialRef.current !== '' &&
-    editSnapshot(editForm, editItems, editSelectedClientId) !== editInitialRef.current;
-
-  const closeEditDialog = (open: boolean) => {
-    if (open) { setEditDialogOpen(true); return; }
-    if (editDirty()) { setConfirmDiscard('edit'); return; }
-    resetEditForm();
-  };
   // Busca NÃO persiste: reseta ao sair e voltar pra tela (useState remonta
   // limpo). Antes usava usePersistedState com a chave 'searchTerm' — a MESMA
   // de Orders, então o termo vazava entre PVs e OPs.
@@ -1020,101 +952,6 @@ export default function SaleOrders() {
     setFilterSegment('all');
     setFilterMonth('all');
     setSearchTerm('');
-  };
-
-  // Form handlers
-  const handleClientSelect = (clientId: string) => {
-    setSelectedClientId(clientId);
-    const client = clients.find(c => c.id === clientId);
-    if (client) {
-      setForm(f => ({ ...f, client_name: client.razao_social, client_cnpj: client.cnpj || '', client_contact: client.contato || '' }));
-    }
-  };
-
-  const handleEditClientSelect = (clientId: string) => {
-    setEditSelectedClientId(clientId);
-    const client = clients.find(c => c.id === clientId);
-    if (client) {
-      setEditForm(f => ({ ...f, client_name: client.razao_social, client_cnpj: client.cnpj || '', client_contact: client.contato || '' }));
-    }
-  };
-
-  const openEditDialog = async (order: any) => {
-    setEditOrderId(order.id);
-    const rep = representatives.find(r => r.name === order.representative);
-    const nextForm: SaleOrderFormData = {
-      company_id: (order as any).company_id ?? null,
-      client_name: order.client_name || '', client_cnpj: order.client_cnpj || '',
-      client_contact: order.client_contact || '', client_order_number: order.client_order_number || '',
-      representative: rep?.id || order.representative_id || '',
-      payment_condition: order.payment_condition || '', delivery_deadline: order.delivery_deadline || '',
-      delivery_week: order.delivery_week || '', delivery_month: order.delivery_month || '',
-      notes: order.notes || '', status: order.status || 'Rascunho',
-      nfe: order.nfe || '', remessa: order.remessa || '',
-      is_factoring: order.is_factoring || false,
-      factoring_config_id: order.factoring_config_id || '',
-      packaging_mode: (order.packaging_mode || 'individual_amarrado') as PackagingMode,
-    };
-    setEditForm(nextForm);
-    const client = clients.find(c => c.id === order.client_id)
-      || clients.find(c => c.razao_social === order.client_name);
-    setEditSelectedClientId(client?.id || '');
-
-    const { data: orderItems } = await supabase.from('sale_order_items').select('*').eq('sale_order_id', order.id);
-    let nextItems: SaleOrderItemFormData[];
-    if (orderItems && orderItems.length > 0) {
-      nextItems = orderItems.map(i => {
-        const grade = (i.grade as Record<string, number>) || {};
-        const gradeTotal = Object.values(grade).reduce((s, v) => s + (Number(v) || 0), 0);
-        const qty = Number(i.quantity) || 0;
-        const fichas = gradeTotal > 0 ? Math.max(1, Math.round(qty / gradeTotal)) : 1;
-        // `id` viaja junto: é ele que faz o salvamento ATUALIZAR a linha em vez
-        // de apagar e recriar — o que rompia o vínculo de OP/OS/alocação e
-        // duplicava as OPs (incidente PV-00146, migration 20260919120000).
-        return { id: i.id, reference_id: i.reference_id, color: i.color || '', grade, unit_price: Number(i.unit_price) || 0, quantity: qty, fichas, strap_colors: (i.strap_colors as any[]) || [], material_variant_id: (i as any).material_variant_id || null };
-      });
-    } else {
-      nextItems = [{ ...emptyItem }];
-    }
-    setEditItems(nextItems);
-    editInitialRef.current = editSnapshot(nextForm, nextItems, client?.id || '');
-    setEditDialogOpen(true);
-    setDetailDialogOpen(false);
-  };
-
-  const handleEditSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editOrderId) return;
-    // Trava de duplo-submit: `mutate` é disparado e o dialog fecha na sequência,
-    // então um clique duplo rápido cabe ANTES do re-render que desabilita o
-    // botão. Foi o gatilho do incidente PV-00146 — dois salvamentos com 18 ms de
-    // diferença. Hoje o salvamento é idempotente (upsert), mas o desmonte de OP
-    // de item removido NÃO é: dois em paralelo estornariam estoque duas vezes
-    // (restore_sole_grade_for_order credita a grade toda vez que roda).
-    if (updateOrder.isPending) return;
-    const validItems = editItems.filter(i => i.reference_id);
-    if (validItems.some(i => !i.color?.trim())) { toast.error('Selecione uma cor para todos os itens.'); return; }
-    const total = validItems.reduce((s, i) => s + i.unit_price * i.quantity, 0);
-    const rep = representatives.find(r => r.id === editForm.representative);
-    const commission_value = rep ? total * rep.commission_pct / 100 : 0;
-    updateOrder.mutate({ id: editOrderId, order: { ...editForm, representative: rep?.name || editForm.representative }, items: validItems, client_id: editSelectedClientId || null, representative_id: editForm.representative || null, commission_value });
-    setEditDialogOpen(false);
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const validItems = items.filter(i => i.reference_id);
-    if (validItems.some(i => !i.color?.trim())) { toast.error('Selecione uma cor para todos os itens.'); return; }
-    const total = validItems.reduce((s, i) => s + i.unit_price * i.quantity, 0);
-    const rep = representatives.find(r => r.id === form.representative);
-    const commission_value = rep ? total * rep.commission_pct / 100 : 0;
-    // Idempotência: UUID por submit — se o insert for retentado/duplicado,
-    // o UNIQUE de sale_orders.client_request_id bloqueia o PV em dobro.
-    createOrder.mutate({ order: { ...form, representative: rep?.name || form.representative }, items: validItems, client_id: selectedClientId || null, representative_id: form.representative || null, commission_value, client_request_id: crypto.randomUUID() });
-    setDialogOpen(false);
-    setForm(emptyForm);
-    setSelectedClientId('');
-    setItems([{ ...emptyItem }]);
   };
 
   const openDupDialog = (orderId: string) => {
@@ -1902,7 +1739,7 @@ export default function SaleOrders() {
             icon={ShoppingCart}
           />
           <StatCard
-            label="Pendentes"
+            label="Rascunhos"
             value={kpis.pending}
             icon={Clock}
             tone="warning"
@@ -2156,6 +1993,11 @@ export default function SaleOrders() {
                             >
                               {order.order_number || '—'}
                             </button>
+                            {hasEmittedNfe && (
+                              <Badge variant="outline" className="h-4 px-1.5 text-xs uppercase font-bold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/40">
+                                NF
+                              </Badge>
+                            )}
                             {isInformal && (
                               <Badge variant="outline" className="h-4 px-1.5 text-xs uppercase font-bold bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/40">
                                 Sem NF
@@ -2209,10 +2051,11 @@ export default function SaleOrders() {
                             toast.error(`Erro ao atualizar status: ${err.message}`);
                           }
                         }}>
-                          <SelectTrigger className="h-7 w-[130px] text-xs border-0 bg-transparent p-0 shadow-none">
-                            <Badge variant="outline" className={`${STATUS_COLORS[order.status] || ''} text-xs`}>
+                          <SelectTrigger className="h-7 w-[130px] text-xs border-0 bg-transparent p-0 shadow-none hover:ring-1 hover:ring-border [&>svg]:hidden">
+                            <Badge variant="outline" className={`${STATUS_COLORS[order.status] || ''} text-xs gap-1`}>
                               <span className={`h-1.5 w-1.5 rounded-full mr-1.5 ${STATUS_DOT[order.status]}`} />
                               {order.status}
+                              <CaretDown className="h-3 w-3 opacity-50" />
                             </Badge>
                           </SelectTrigger>
                           <SelectContent>
@@ -2251,7 +2094,7 @@ export default function SaleOrders() {
                         <div className="flex flex-col">
                           <span>
                             {formatDate(order.delivery_deadline)}
-                            {(isOverdue || isInfeasible) && <span className="ml-1 text-xs">⚠</span>}
+                            {(isOverdue || isInfeasible) && <AlertTriangle className="ml-1 inline h-3.5 w-3.5 align-text-bottom" />}
                           </span>
                           {isInfeasible && minBilling && (
                             <span className="text-xs font-mono text-destructive font-bold">
@@ -2266,7 +2109,7 @@ export default function SaleOrders() {
                         </div>
                       </TableCell>
                       <TableCell className="text-right">
-                        <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div className="flex justify-end gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100 transition-opacity">
                           <Button variant="ghost" size="icon" className="h-7 w-7" title="Gerar pedido (PDF)" onClick={() => { void printSaleOrderPdf(order); }}>
                             <Printer className="h-3.5 w-3.5" />
                           </Button>
@@ -2425,14 +2268,6 @@ export default function SaleOrders() {
 
       {/* IMPORT CLIENTS DIALOG */}
       <ImportClientsDialog open={importClientsOpen} onOpenChange={setImportClientsOpen} />
-
-      {/* NEW ORDER DIALOG */}
-      <Dialog open={dialogOpen} onOpenChange={closeCreateDialog}>
-        <DialogContent className="w-[95vw] max-w-5xl max-h-[92vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>Novo Pedido de Venda</DialogTitle></DialogHeader>
-          <SaleOrderFormPanel form={form} setForm={setForm} items={items} setItems={setItems} clients={clients} representatives={representatives} references={references} isAdmin={isAdmin} selectedClientId={selectedClientId} onClientSelect={handleClientSelect} onSubmit={handleSubmit} onCancel={() => closeCreateDialog(false)} isPending={createOrder.isPending} submitLabel="Criar Pedido" />
-        </DialogContent>
-      </Dialog>
 
       {/* ORDER DETAILS DIALOG */}
       <Dialog open={detailDialogOpen} onOpenChange={setDetailDialogOpen}>
@@ -2614,7 +2449,7 @@ export default function SaleOrders() {
                     { label: 'Contato', value: selectedOrder.client_contact || '—' },
                     ...(selectedOrder.client_order_number ? [{ label: 'Nº Pedido Cliente', value: selectedOrder.client_order_number, mono: true }] : []),
                     { label: 'Pagamento', value: selectedOrder.payment_condition || '—' },
-                    { label: 'Entrega', value: selectedOrder.delivery_deadline ? new Date(selectedOrder.delivery_deadline).toLocaleDateString('pt-BR') : '—' },
+                    { label: 'Entrega', value: selectedOrder.delivery_deadline ? parseDateOnly(selectedOrder.delivery_deadline).toLocaleDateString('pt-BR') : '—' },
                     ...(canSeeFinancialValues && Number(selectedOrder.commission_value) > 0 ? [{ label: 'Comissão', value: formatCurrency(Number(selectedOrder.commission_value)), mono: true }] : []),
                     { label: 'Criado em', value: new Date(selectedOrder.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) },
                   ] as { label: string; value: string; mono?: boolean }[]).map((f) => (
@@ -2636,21 +2471,17 @@ export default function SaleOrders() {
                 {loadingOrderItems ? (
                   <div className="text-center py-12 text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin inline mr-2" /> Carregando...</div>
                 ) : selectedOrderItems.length === 0 ? (
-                  <div className="flex flex-col items-center gap-2 py-12 text-muted-foreground">
-                    <Package className="h-8 w-8 opacity-40" />
-                    <p className="text-sm">Nenhum item neste pedido</p>
-                  </div>
+                  <EmptyState icon={Package} title="Nenhum item neste pedido" />
                 ) : (
                   <div className="divide-y">
                     <div className={cn(
                       'grid items-center bg-muted/60 px-4 py-2 text-xs font-semibold text-muted-foreground',
                       canSeeFinancialValues
-                        ? 'grid-cols-[1fr_auto_auto_auto_auto_auto]'
-                        : 'grid-cols-[1fr_auto_auto_auto]'
+                        ? 'grid-cols-[1fr_auto_auto_auto_auto]'
+                        : 'grid-cols-[1fr_auto_auto]'
                     )}>
                       <span>Ref. / Descrição</span>
-                      <span className="w-20 text-right">PDV</span>
-                      <span className="w-[220px] text-center">Grade</span>
+                      <span className="w-[300px] text-center">Grade</span>
                       <span className="w-16 text-center">Qtd</span>
                       {canSeeFinancialValues && <span className="w-20 text-right">Unitário</span>}
                       {canSeeFinancialValues && <span className="w-24 text-right">Total</span>}
@@ -2725,8 +2556,8 @@ export default function SaleOrders() {
                                     className={cn(
                                       'grid items-start px-4 py-3 gap-2 pl-6 hover:bg-muted/20 transition-colors',
                                       canSeeFinancialValues
-                                        ? 'grid-cols-[1fr_auto_auto_auto_auto_auto]'
-                                        : 'grid-cols-[1fr_auto_auto_auto]',
+                                        ? 'grid-cols-[1fr_auto_auto_auto_auto]'
+                                        : 'grid-cols-[1fr_auto_auto]',
                                     )}
                                   >
                                     <div className="min-w-0">
@@ -2752,8 +2583,7 @@ export default function SaleOrders() {
                                         </div>
                                       )}
                                     </div>
-                                    <div className="w-20 text-right text-sm font-mono pt-1" />
-                                    <div className="w-[220px] text-center space-y-1 pt-0.5">
+                                    <div className="w-[300px] text-center space-y-1 pt-0.5">
                                       {gradeEntries.length > 0 ? (
                                         <>
                                           <p className="text-xs text-muted-foreground">Grade: {gradePairs} pares × {fichas} fichas</p>
@@ -3125,38 +2955,6 @@ export default function SaleOrders() {
           </div>
         </DialogContent>
       </Dialog>
-
-      {/* EDIT DIALOG */}
-      <Dialog open={editDialogOpen} onOpenChange={closeEditDialog}>
-        <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>Editar Pedido de Venda</DialogTitle></DialogHeader>
-          <SaleOrderFormPanel form={editForm} setForm={setEditForm} items={editItems} setItems={setEditItems} clients={clients} representatives={representatives} references={references} isAdmin={isAdmin} selectedClientId={editSelectedClientId} onClientSelect={handleEditClientSelect} onSubmit={handleEditSubmit} onCancel={() => closeEditDialog(false)} isPending={updateOrder.isPending} submitLabel="Salvar Alterações" />
-        </DialogContent>
-      </Dialog>
-
-      {/* Confirmação de descarte — criar/editar PV com dados não salvos */}
-      <AlertDialog open={confirmDiscard !== null} onOpenChange={(o) => { if (!o) setConfirmDiscard(null); }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Descartar alterações?</AlertDialogTitle>
-            <AlertDialogDescription>
-              O formulário tem dados não salvos. Fechar agora descarta tudo que foi preenchido.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Continuar editando</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={() => {
-                if (confirmDiscard === 'create') resetCreateForm(); else resetEditForm();
-                setConfirmDiscard(null);
-              }}
-            >
-              Descartar
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
 
       {/* Confirmação estruturada genérica (substitui confirm() nativo) */}
       <AlertDialog open={pendingConfirm !== null} onOpenChange={(o) => { if (!o) setPendingConfirm(null); }}>

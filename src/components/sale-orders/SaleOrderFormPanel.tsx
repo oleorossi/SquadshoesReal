@@ -1,5 +1,5 @@
  import { useMemo, useEffect, useRef, useState, useCallback, Fragment } from 'react';
-import { Plus, CircleNotch as Loader2, User, Truck, ClipboardText as ClipboardList, Info, Percent, CaretUpDown as ChevronsUpDown, Check, ClockCounterClockwise as History, Warning as AlertTriangle, CheckCircle as CheckCircle2, Calculator, Money as Banknote, Receipt } from '@phosphor-icons/react';
+import { Plus, CircleNotch as Loader2, User, Truck, ClipboardText as ClipboardList, Info, Percent, CaretUpDown as ChevronsUpDown, Check, ClockCounterClockwise as History, Warning as AlertTriangle, CheckCircle as CheckCircle2, Calculator, Money as Banknote, Receipt, Package, Phone, EnvelopeSimple } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -272,7 +272,7 @@ function FactoringField({ form, setForm, totalValue }: {
             /* Audit visual: hint pra completar condição pagamento — sem ela o
                cálculo cai no fallback de receiving_days, subestimando o desconto. */
             <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-2 flex items-start gap-2">
-              <span className="text-amber-600 mt-0.5">⚠</span>
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-600 mt-0.5" />
               <div className="text-xs text-amber-700 dark:text-amber-300">
                 <span className="font-semibold">Informe a condição de pagamento</span> (ex: 30/60/90 DIAS)
                 no campo correspondente — sem ela o desconto factoring é calculado por estimativa
@@ -1413,7 +1413,9 @@ export default function SaleOrderFormPanel({
                   {/* Show packaging configs from technical sheets */}
                   {sheetPackagingConfigs.length > 0 && (
                     <div className="space-y-2">
-                      <Label className="text-xs text-muted-foreground uppercase font-bold">📦 Embalagens das Fichas Técnicas</Label>
+                      <Label className="inline-flex items-center gap-1.5 text-xs text-muted-foreground uppercase font-bold">
+                        <Package className="h-3.5 w-3.5" /> Embalagens das Fichas Técnicas
+                      </Label>
                       {(() => {
                         const mode = form.packaging_mode;
                         // Filter configs based on packaging mode
@@ -1427,8 +1429,9 @@ export default function SaleOrderFormPanel({
 
                         if (relevantConfigs.length === 0) {
                           return (
-                            <p className="text-xs text-amber-500">
-                              ⚠ Nenhuma embalagem do tipo selecionado configurada nas fichas técnicas.
+                            <p className="flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-300">
+                              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                              <span>Nenhuma embalagem do tipo selecionado configurada nas fichas técnicas.</span>
                             </p>
                           );
                         }
@@ -1490,8 +1493,9 @@ export default function SaleOrderFormPanel({
                   )}
 
                   {sheetPackagingConfigs.length === 0 && selectedSheetIds.length > 0 && (
-                    <p className="text-xs text-amber-500">
-                      ⚠ Nenhuma embalagem configurada nas fichas técnicas das referências selecionadas.
+                    <p className="flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-300">
+                      <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                      <span>Nenhuma embalagem configurada nas fichas técnicas das referências selecionadas.</span>
                     </p>
                   )}
                 </div>
@@ -1538,8 +1542,8 @@ export default function SaleOrderFormPanel({
                 <div className="p-3 rounded-lg bg-primary/5 border border-primary/10">
                   <p className="text-xs font-bold text-primary uppercase mb-1">Dados do Representante</p>
                   <p className="text-xs font-medium truncate">{selectedRep.name}</p>
-                  {selectedRep.phone && <p className="text-xs text-muted-foreground">📞 {selectedRep.phone}</p>}
-                  {selectedRep.email && <p className="text-xs text-muted-foreground truncate">✉️ {selectedRep.email}</p>}
+                  {selectedRep.phone && <p className="flex items-center gap-1.5 text-xs text-muted-foreground"><Phone className="h-3.5 w-3.5 shrink-0" /> {selectedRep.phone}</p>}
+                  {selectedRep.email && <p className="flex items-center gap-1.5 text-xs text-muted-foreground truncate"><EnvelopeSimple className="h-3.5 w-3.5 shrink-0" /> {selectedRep.email}</p>}
                 </div>
               )}
             </CardContent>

@@ -4,7 +4,7 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Trash as Trash2, Lock, CaretUpDown as ChevronsUpDown, Check, Package, ArrowSquareOut as ExternalLink, Palette, Plus, X, ChatText as MessageSquare } from '@phosphor-icons/react';
+import { Trash as Trash2, Lock, CaretUpDown as ChevronsUpDown, Check, Package, ArrowSquareOut as ExternalLink, Palette, Plus, X, ChatText as MessageSquare, Warning } from '@phosphor-icons/react';
 import { Badge } from '@/components/ui/badge';
 import { ReferenceLink } from '@/components/ui/reference-link';
 import { cn } from '@/lib/utils';
@@ -1093,14 +1093,14 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                   const valid = ncm && /^\d{8}$/.test(ncm);
                   if (!ncm) {
                     return (
-                      <Badge variant="outline" className="h-4 text-xs bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-800" title="Ficha sem NCM — NF-e será bloqueada">
-                        ⚠ NCM
+                      <Badge variant="outline" className="h-4 gap-1 text-xs bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/40" title="Ficha sem NCM — NF-e será bloqueada">
+                        <Warning className="h-3.5 w-3.5" /> NCM
                       </Badge>
                     );
                   }
                   if (!valid) {
                     return (
-                      <Badge variant="outline" className="h-4 text-xs bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-800 font-mono" title="NCM precisa de 8 dígitos">
+                      <Badge variant="outline" className="h-4 text-xs bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/40 font-mono" title="NCM precisa de 8 dígitos">
                         NCM {ncm}
                       </Badge>
                     );

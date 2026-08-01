@@ -257,6 +257,8 @@ export interface ProductLinksSummary {
   reservations: number;
   purchase_items: number;
   stock_movements: number;
+  /** Fichas que levam o produto como COMPONENTE DIRETO (jsonb, sem FK). */
+  direct_components: number;
   hasAny: boolean;
 }
 
@@ -267,21 +269,30 @@ export async function fetchProductLinks(id: string): Promise<ProductLinksSummary
     { count: resCount, error: e2 },
     { count: poiCount, error: e3 },
     { count: movCount, error: e4 },
+    { count: dcCount, error: e5 },
   ] = await Promise.all([
     supabase.from('sheet_materials').select('id', { count: 'exact', head: true }).eq('product_id', id),
     supabase.from('material_reservations').select('id', { count: 'exact', head: true })
       .eq('product_id', id).in('status', ['reserved', 'partially_consumed']),
     supabase.from('purchase_order_items').select('id', { count: 'exact', head: true }).eq('product_id', id),
     supabase.from('stock_movements').select('id', { count: 'exact', head: true }).eq('product_id', id),
+    // direct_components é jsonb DENTRO de technical_sheets — não há FK, então o
+    // DELETE não falha e sem esta contagem o produto era apagado sem nenhum
+    // aviso, deixando a ficha apontando pro nada (bug 31/07/2026: 25 linhas
+    // mortas em 24 fichas, 5.400 corações somem do custo e da compra do PV).
+    supabase.from('technical_sheets').select('id', { count: 'exact', head: true })
+      .contains('direct_components', [{ product_id: id }]),
   ]);
-  if (e1 || e2 || e3 || e4) throw new Error('Erro ao verificar vínculos do produto.');
+  if (e1 || e2 || e3 || e4 || e5) throw new Error('Erro ao verificar vínculos do produto.');
   const sheet_materials = smCount ?? 0;
   const reservations = resCount ?? 0;
   const purchase_items = poiCount ?? 0;
   const stock_movements = movCount ?? 0;
+  const direct_components = dcCount ?? 0;
   return {
-    sheet_materials, reservations, purchase_items, stock_movements,
-    hasAny: sheet_materials > 0 || reservations > 0 || purchase_items > 0 || stock_movements > 0,
+    sheet_materials, reservations, purchase_items, stock_movements, direct_components,
+    hasAny: sheet_materials > 0 || reservations > 0 || purchase_items > 0
+      || stock_movements > 0 || direct_components > 0,
   };
 }
 
@@ -312,6 +323,7 @@ export function useDeleteProduct() {
         if (links.reservations > 0)    msgs.push(`${links.reservations} ${links.reservations === 1 ? 'reserva ativa' : 'reservas ativas'}`);
         if (links.purchase_items > 0)  msgs.push(`${links.purchase_items} ${links.purchase_items === 1 ? 'item' : 'itens'} de OC`);
         if (links.stock_movements > 0) msgs.push(`${links.stock_movements} ${links.stock_movements === 1 ? 'movimentação' : 'movimentações'} de estoque`);
+        if (links.direct_components > 0) msgs.push(`${links.direct_components} ${links.direct_components === 1 ? 'ficha que leva ele como componente' : 'fichas que levam ele como componente'}`);
         // Lança erro que carrega flag `_canForce` — UI pode interceptar e mostrar
         // dialog de exclusão forçada em vez do toast genérico.
         const err: any = new Error(`Produto vinculado a ${msgs.join(', ')}. Desative-o em vez de excluir.`);
@@ -335,6 +347,7 @@ export function useDeleteProduct() {
         if (s.reservations_count > 0)    parts.push(`${s.reservations_count} reserva(s)`);
         if (s.purchase_items_count > 0)  parts.push(`${s.purchase_items_count} OC`);
         if (s.stock_movements_count > 0) parts.push(`${s.stock_movements_count} movimentação(ões)`);
+        if (s.direct_components_count > 0) parts.push(`${s.direct_components_count} ficha(s) de componente`);
         toast.success(`Produto "${s.product_name}" excluído. Removidos: ${parts.join(', ') || 'nenhum vínculo'}.`);
       } else {
         toast.success('Produto excluído com sucesso!');
