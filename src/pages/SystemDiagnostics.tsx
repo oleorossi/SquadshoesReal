@@ -14,6 +14,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { manualVersionCheck } from '@/components/VersionChecker';
 import { CabedalParPeAuditPanel } from '@/components/technical-sheets/CabedalParPeAuditPanel';
+import OrphanDirectComponentsPanel from '@/components/technical-sheets/OrphanDirectComponentsPanel';
 import { useStockDebitHoles, summarizeStockDebitHoles, useReconcileStockDebitHole } from '@/hooks/useStockDebitHoles';
 
 type SchemaObject = {
@@ -544,6 +545,17 @@ export default function SystemDiagnostics() {
         <TabsContent value="consumo" className="space-y-4">
           {/* Normalização assistida pé×par do cabedal (spec consumo-cabedal-padrao-par). */}
           <CabedalParPeAuditPanel />
+
+          {/* Componente direto cujo produto foi apagado: jsonb sem FK, então o
+              vínculo morre calado e o material some do custo e da compra.
+              Recadastrar não reata (ID novo) — daí o religamento assistido. */}
+          <Panel
+            eyebrow="FICHA TÉCNICA · COMPONENTES"
+            title="Componente direto órfão"
+            subtitle="Ficha aponta pra produto que não existe mais — não é reservado nem debitado"
+          >
+            <OrphanDirectComponentsPanel />
+          </Panel>
 
           {consChecksError && (
             <Alert variant="destructive">
