@@ -1,5 +1,5 @@
 import { parseDateOnly } from '@/lib/dateOnly';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, type ReactNode } from 'react';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -9,7 +9,7 @@ import { getSignedUrl } from '@/lib/getSignedUrl';
 import { resolveMaterialLabel } from '@/lib/labelUtils';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { Baby, Buildings, ShoppingCart, Plus, CircleNotch as Loader2, Copy, Printer, Factory, PencilSimple as Pencil, FileText, Funnel as Filter, X, MagnifyingGlass as Search, Package, CurrencyDollar as DollarSign, Clock, CaretDown, ChartBar as BarChart3, ClipboardText as ClipboardList, ArrowsClockwise as RefreshCw, Tag, SquaresFour as LayoutDashboard, Lightning as Zap, FileXls as FileSpreadsheet, Receipt, XCircle, CheckCircle, Check, Download, TrendUp as TrendingUp, Warning as AlertTriangle, ArrowCounterClockwise as RotateCcw, HandPalm as Hand, UploadSimple as Upload, Trash as Trash2, ListChecks, ArrowSquareOut as ExternalLink } from '@phosphor-icons/react';
+import { Baby, Buildings, ShoppingCart, Plus, CircleNotch as Loader2, Copy, Printer, Factory, PencilSimple as Pencil, FileText, Funnel as Filter, X, MagnifyingGlass as Search, Package, CurrencyDollar as DollarSign, Clock, CaretDown, ChartBar as BarChart3, ClipboardText as ClipboardList, ArrowsClockwise as RefreshCw, Tag, SquaresFour as LayoutDashboard, Lightning as Zap, FileXls as FileSpreadsheet, Receipt, XCircle, CheckCircle, Check, Download, TrendUp as TrendingUp, Warning as AlertTriangle, ArrowCounterClockwise as RotateCcw, HandPalm as Hand, UploadSimple as Upload, Trash as Trash2, ListChecks, ArrowSquareOut as ExternalLink, DotsThree } from '@phosphor-icons/react';
 import { useMarqueeSelection } from '@/hooks/useMarqueeSelection';
 import { BulkActionsBar, MarqueeOverlay } from '@/components/ui/bulk-actions-bar';
 import { cn } from "@/lib/utils";
@@ -36,6 +36,13 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { MaterialReservationErrorBadge } from '@/components/orders/MaterialReservationErrorBadge';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { useSaleOrders, useSaleOrderAllItems, useCreateSaleOrder, useDeleteSaleOrder, useUpdateSaleOrderStatus, useResyncOPsFromSheets, useResyncOPsFromPV, useCommitPickingForSaleOrder, useRealtimeSaleOrders, SaleOrderFormData, SaleOrderItemFormData, PackagingMode, ORDER_TYPE_LABELS, DEFAULT_OP_STAGES, opStageOrder, listarTirasSemCor } from '@/hooks/useSaleOrders';
 import { useTechnicalSheets } from '@/hooks/useTechnicalSheets';
 import { useClients, useEconomicGroups } from '@/hooks/useClients';
@@ -210,8 +217,8 @@ export default function SaleOrders() {
   const [previewNfeOrder, setPreviewNfeOrder] = useState<{ id: string; orderNumber: string } | null>(null);
   const resyncOPs = useResyncOPsFromSheets();
   const resyncPVOPs = useResyncOPsFromPV();
-  // Picking pedido-a-pedido (alternativa à onda semanal) — debita em massa
-  // todas as reservas soft das OPs do PV. Confirmação inline via window.confirm.
+  // O fallback de picking pode debitar muitos itens de uma vez; a confirmação
+  // estruturada mantém o impacto visível antes de tocar nas reservas das OPs.
   const commitPicking = useCommitPickingForSaleOrder();
   // bulkSyncFinancial removido em 2026-05 — sync acontece automaticamente no faturamento
   const navigate = useNavigate();
@@ -297,7 +304,7 @@ export default function SaleOrders() {
   // nativos de ações de alto impacto da página.
   const [pendingConfirm, setPendingConfirm] = useState<null | {
     title: string;
-    description: string;
+    description: ReactNode;
     actionLabel: string;
     onConfirm: () => void | Promise<void>;
   }>(null);
@@ -593,6 +600,29 @@ export default function SaleOrders() {
     return Array.from(reps).sort();
   }, [orders]);
 
+  const activeFilterChips = useMemo(() => {
+    const chips: { key: string; label: string; onRemove: () => void }[] = [];
+    if (filterStatus !== 'all') chips.push({ key: 'status', label: `Status: ${filterStatus}`, onRemove: () => setFilterStatus('all') });
+    if (filterRep !== 'all') chips.push({ key: 'representante', label: `Rep: ${filterRep}`, onRemove: () => setFilterRep('all') });
+    if (filterGroup !== 'all') {
+      const groupName = economicGroups.find(g => g.id === filterGroup)?.name || filterGroup;
+      chips.push({ key: 'grupo', label: `Grupo: ${groupName}`, onRemove: () => setFilterGroup('all') });
+    }
+    if (filterSegment !== 'all') chips.push({ key: 'segmento', label: `Segmento: ${filterSegment}`, onRemove: () => setFilterSegment('all') });
+    if (filterMonth !== 'all') {
+      const [year, month] = filterMonth.split('-').map(Number);
+      const formattedMonth = year && month
+        ? new Date(year, month - 1, 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
+        : filterMonth;
+      chips.push({
+        key: 'mes',
+        label: `Mês: ${formattedMonth.charAt(0).toUpperCase()}${formattedMonth.slice(1)}`,
+        onRemove: () => setFilterMonth('all'),
+      });
+    }
+    return chips;
+  }, [economicGroups, filterGroup, filterMonth, filterRep, filterSegment, filterStatus, setFilterGroup, setFilterMonth, setFilterRep, setFilterSegment, setFilterStatus]);
+
   const dupSourceClientId = useMemo(() => {
     if (!dupOrderId) return null;
     const order = orders.find(o => o.id === dupOrderId);
@@ -680,7 +710,7 @@ export default function SaleOrders() {
     }
   };
 
-  const handleBulkStatusChange = async (status: string) => {
+  const handleBulkStatusChange = async (status: string, viabilityConfirmed = false) => {
     const ids = Array.from(selectedIds);
     // Pré-check só se o status alvo é Aprovado/Em Produção (estados que
     // disparam o pipeline produtivo). Cancelar/Rascunho não precisam de
@@ -691,17 +721,31 @@ export default function SaleOrders() {
         const min = minBillingMap.get(o.id);
         return min && o.delivery_deadline && o.delivery_deadline < min;
       });
-      if (infeasibleOrders.length > 0) {
-        const list = infeasibleOrders
-          .slice(0, 5)
-          .map((o) => `• ${o.order_number} (${formatDate(o.delivery_deadline)} → mín ${formatDate(minBillingMap.get(o.id) || null)})`)
-          .join('\n');
-        const more = infeasibleOrders.length > 5 ? `\n... e mais ${infeasibleOrders.length - 5}` : '';
-        const ok = window.confirm(
-          `${infeasibleOrders.length} pedido(s) com data INVIÁVEL — produção não cabe no prazo:\n\n${list}${more}\n\n` +
-          'Mover para "' + status + '" mesmo assim? (Recomendado: ajustar a data primeiro)'
-        );
-        if (!ok) return;
+      if (infeasibleOrders.length > 0 && !viabilityConfirmed) {
+        setPendingConfirm({
+          title: `${infeasibleOrders.length} pedido(s) com data inviável`,
+          description: (
+            <div className="space-y-3">
+              <p>A produção não cabe no prazo informado para estes PVs:</p>
+              <div className="space-y-1.5 rounded-md border border-border/60 bg-muted/30 p-3">
+                {infeasibleOrders.slice(0, 5).map(order => (
+                  <div key={order.id} className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 text-xs">
+                    <span className="truncate font-mono font-semibold text-foreground">{order.order_number}</span>
+                    <span className="font-mono tabular-nums">{formatDate(order.delivery_deadline)}</span>
+                    <span className="font-mono tabular-nums text-destructive">mín. {formatDate(minBillingMap.get(order.id) || null)}</span>
+                  </div>
+                ))}
+                {infeasibleOrders.length > 5 && (
+                  <p className="pt-1 text-xs">... e mais {infeasibleOrders.length - 5}</p>
+                )}
+              </div>
+              <p>Recomendado: ajuste as datas antes de mover para “{status}”.</p>
+            </div>
+          ),
+          actionLabel: `Mover para ${status}`,
+          onConfirm: () => handleBulkStatusChange(status, true),
+        });
+        return;
       }
     }
     const results = await Promise.allSettled(ids.map(id => updateStatus.mutateAsync({ id, status })));
@@ -820,14 +864,105 @@ export default function SaleOrders() {
     printHtml(`Pedidos de Venda (${selectedOrders.length})`, combinedHtml);
   };
 
-  // Atalhos pra BulkActionsBar — apenas re-empacotam handlers existentes.
-  // Preservar `handleBulkStatusChange` continua disponível pro popover
-  // "Alterar Status" (que mantém todos os 6 destinos).
+  // Aprovar e cancelar delegam ao mesmo fluxo do diálogo de status para não
+  // contornar guards de viabilidade nem o tratamento parcial de falhas.
   const handleBulkApprove = () => handleBulkStatusChange('Aprovado');
   const handleBulkCancel = () => handleBulkStatusChange('Cancelado');
   const handleBulkExport = () => {
     const list = selectedIds.size > 0 ? filteredOrders.filter(o => selectedIds.has(o.id)) : filteredOrders;
     handleExportSaleOrdersExcel(list);
+  };
+
+  const handleBulkConsumption = () => {
+    if (selectedIds.size === 0) return;
+    navigate(`/sales?view=consumo&ids=${Array.from(selectedIds).join(',')}`);
+  };
+
+  const handleBulkPurchaseOrders = () => {
+    const selected = orders.filter(o => selectedIds.has(o.id));
+    if (selected.length === 0) return;
+    setPoGenTarget({ ids: selected.map(o => o.id), numbers: selected.map(o => o.order_number) });
+  };
+
+  const handleBulkLabels = async () => {
+    if (selectedIds.size === 0) return;
+    const pw = openPrintWindow('Etiquetas térmicas');
+    try {
+      const selectedOrders = orders.filter(o => selectedIds.has(o.id));
+      const labels: Parameters<typeof buildThermalLabelsHtml>[0] = [];
+      for (const order of selectedOrders) {
+        const displayOrderNumber = order.client_order_number || order.order_number || '';
+        const { data: linkedOps } = await supabase.from('orders').select('id, order_number, reference_id, color, grade, quantity, sale_order_item_id').eq('sale_order_id', order.id);
+        if (!linkedOps || linkedOps.length === 0) continue;
+        for (const op of linkedOps) {
+          const { data: refData } = await supabase.from('technical_sheets').select('image_url, images, shoe_category, code, name').eq('id', op.reference_id).single();
+          const rawRefImageUrl = ((refData as any)?.images as string[] | null)?.[0] || refData?.image_url || '';
+          const refImageUrl = await getSignedUrl(rawRefImageUrl);
+          const color = op.color || '';
+          // O código de barras varia por cor; usar o da referência faria etiquetas
+          // visualmente corretas apontarem para o produto errado no leitor.
+          const { data: variant } = await supabase.from('reference_color_variants').select('image_url, barcode').eq('reference_id', op.reference_id).eq('color', color).maybeSingle();
+          const labelBarcode = variant?.barcode || op.order_number || '';
+          const imgUrl = variant?.image_url ? await getSignedUrl(variant.image_url) : refImageUrl;
+          let itemVariantId: string | null = null;
+          if ((op as any).sale_order_item_id) {
+            const { data: soi } = await (supabase as any)
+              .from('sale_order_items')
+              .select('material_variant_id')
+              .eq('id', (op as any).sale_order_item_id)
+              .maybeSingle();
+            itemVariantId = soi?.material_variant_id || null;
+          }
+          const mainMaterial = await resolveMaterialLabel({
+            referenceId: op.reference_id,
+            materialVariantId: itemVariantId,
+            color,
+          }).catch(() => '');
+          const grade = op.grade as Record<string, number> | null;
+          if (grade && Object.keys(grade).length > 0) {
+            for (const [size, qty] of Object.entries(grade)) {
+              const count = Number(qty) || 0;
+              for (let i = 0; i < count; i++) {
+                labels.push({
+                  refCode: refData?.code || '',
+                  refName: refData?.name || '',
+                  mainMaterial,
+                  color,
+                  size,
+                  barcode: labelBarcode,
+                  imageUrl: imgUrl,
+                  shoeCategory: refData?.shoe_category || '',
+                  clientOrderNumber: displayOrderNumber,
+                });
+              }
+            }
+          } else {
+            const opQty = Number(op.quantity) || 0;
+            for (let i = 0; i < opQty; i++) {
+              labels.push({
+                refCode: refData?.code || '',
+                refName: refData?.name || '',
+                mainMaterial,
+                color,
+                size: '—',
+                barcode: labelBarcode,
+                imageUrl: imgUrl,
+                shoeCategory: refData?.shoe_category || '',
+                clientOrderNumber: displayOrderNumber,
+              });
+            }
+          }
+        }
+      }
+      if (labels.length === 0) { toast.info('Nenhuma etiqueta para gerar.'); return; }
+      const logoUrl = new URL(logoImg, window.location.origin).href;
+      const senderCnpj = resolveSenderCnpj(companies, (selectedOrders[0] as any)?.company_id);
+      const html = buildThermalLabelsHtml(labels, logoUrl, { width: 100, height: 30 }, undefined, senderCnpj);
+      writeRawPrintWindow(pw, html);
+      toast.success(`${labels.length} etiqueta(s) gerada(s)`);
+    } catch (err: any) {
+      toast.error(err.message);
+    }
   };
 
   /** Abre BulkNfeDialog com os PVs selecionados.
@@ -1080,7 +1215,7 @@ export default function SaleOrders() {
     setLoadingOrderItems(false);
   };
 
-  const handleBulkGenerateOPs = async () => {
+  const handleBulkGenerateOPs = async (viabilityConfirmed = false) => {
     if (pendingOrders.length === 0) { toast.info('Nenhum pedido pendente.'); return; }
 
     // Pré-check de viabilidade: bloqueia approval em massa de PVs com
@@ -1092,17 +1227,31 @@ export default function SaleOrders() {
       const min = minBillingMap.get(o.id);
       return min && o.delivery_deadline && o.delivery_deadline < min;
     });
-    if (infeasibleOrders.length > 0) {
-      const list = infeasibleOrders
-        .slice(0, 5)
-        .map((o) => `• ${o.order_number} (${formatDate(o.delivery_deadline)} → mín ${formatDate(minBillingMap.get(o.id) || null)})`)
-        .join('\n');
-      const more = infeasibleOrders.length > 5 ? `\n... e mais ${infeasibleOrders.length - 5}` : '';
-      const ok = window.confirm(
-        `${infeasibleOrders.length} pedido(s) com data INVIÁVEL — produção não cabe no prazo:\n\n${list}${more}\n\n` +
-        'Aprovar mesmo assim? (Recomendado: ajustar a data primeiro)'
-      );
-      if (!ok) return;
+    if (infeasibleOrders.length > 0 && !viabilityConfirmed) {
+      setPendingConfirm({
+        title: `${infeasibleOrders.length} pedido(s) com data inviável`,
+        description: (
+          <div className="space-y-3">
+            <p>A geração de OPs aprovará pedidos cujo prazo não comporta a produção:</p>
+            <div className="space-y-1.5 rounded-md border border-border/60 bg-muted/30 p-3">
+              {infeasibleOrders.slice(0, 5).map(order => (
+                <div key={order.id} className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 text-xs">
+                  <span className="truncate font-mono font-semibold text-foreground">{order.order_number}</span>
+                  <span className="font-mono tabular-nums">{formatDate(order.delivery_deadline)}</span>
+                  <span className="font-mono tabular-nums text-destructive">mín. {formatDate(minBillingMap.get(order.id) || null)}</span>
+                </div>
+              ))}
+              {infeasibleOrders.length > 5 && (
+                <p className="pt-1 text-xs">... e mais {infeasibleOrders.length - 5}</p>
+              )}
+            </div>
+            <p>Recomendado: ajuste as datas antes de continuar.</p>
+          </div>
+        ),
+        actionLabel: 'Aprovar e gerar OPs',
+        onConfirm: () => handleBulkGenerateOPs(true),
+      });
+      return;
     }
 
     setGeneratingOPs(true);
@@ -1483,188 +1632,62 @@ export default function SaleOrders() {
           description="Gestão comercial e geração de ordens de produção"
           actions={
             <>
-            {perm.canCreate && (
-            <Button onClick={() => navigate('/sales/new')} className="gap-2">
-              <Plus className="h-4 w-4" />
-              <span className="hidden sm:inline">Novo Pedido</span>
-            </Button>
-            )}
-            <Button variant="outline" onClick={() => setImportClientsOpen(true)} className="gap-2" title="Importar lojistas de arquivo (Excel/PDF/Word/Imagem)">
-              <Upload className="h-4 w-4" />
-              <span className="hidden sm:inline">Importar Clientes</span>
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => {
-                if (selectedIds.size === 0) { toast.info('Selecione pelo menos um pedido.'); return; }
-                const ids = Array.from(selectedIds).join(',');
-                navigate(`/sales?view=consumo&ids=${ids}`);
-              }}
-              className="gap-2"
-            >
-              <BarChart3 className="h-4 w-4" />
-              <span className="hidden sm:inline">Consumo</span>
-              {selectedIds.size > 0 && <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-xs">{selectedIds.size}</Badge>}
-            </Button>
-            {/* "Sync Financeiro" removido em 2026-05: a sincronização
-                financeira já acontece automaticamente ao faturar (via
-                syncFinancialRecords no auto_bill_sale_order_on_finishing).
-                Botão manual confundia usuários e abria espaço pra duplo-debit. */}
-            <Button
-              variant="outline"
-              onClick={() => handleExportSaleOrdersExcel(selectedIds.size > 0 ? filteredOrders.filter(o => selectedIds.has(o.id)) : filteredOrders)}
-              className="gap-2"
-              title="Exportar Excel com todos os pedidos visíveis (ou selecionados)"
-            >
-              <FileSpreadsheet className="h-4 w-4" />
-              <span className="hidden sm:inline">Excel</span>
-              {selectedIds.size > 0 && <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-xs">{selectedIds.size}</Badge>}
-            </Button>
-            {selectedIds.size > 0 && (
-              <>
-                {canBuy && (
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      const selected = orders.filter(o => selectedIds.has(o.id));
-                      if (selected.length === 0) { toast.info('Selecione pelo menos um pedido.'); return; }
-                      setPoGenTarget({ ids: selected.map(o => o.id), numbers: selected.map(o => o.order_number) });
-                    }}
-                    className="gap-2"
-                    title="Gera Ordens de Compra para os pedidos selecionados (canal Compras por Pedido)"
-                  >
-                    <ShoppingCart className="h-4 w-4" />
-                    <span className="hidden sm:inline">Gerar OCs</span>
-                    <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-xs">{selectedIds.size}</Badge>
-                  </Button>
-                )}
-                <Button variant="default" onClick={() => setOverviewOpen(true)} className="gap-2">
-                  <LayoutDashboard className="h-4 w-4" />
-                  <span className="hidden sm:inline">Visão Geral</span>
-                  <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-xs">{selectedIds.size}</Badge>
+              {perm.canCreate && (
+                <Button size="sm" onClick={() => navigate('/sales/new')} className="h-9 gap-2">
+                  <Plus className="h-4 w-4" />
+                  <span className="hidden sm:inline">Novo Pedido</span>
                 </Button>
-                <Button variant="outline" onClick={handleOpenSummary} className="gap-2">
-                  <ClipboardList className="h-4 w-4" />
-                  <span className="hidden sm:inline">Resumo</span>
-                  <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-xs">{selectedIds.size}</Badge>
-                </Button>
-                <Button variant="outline" onClick={handleBulkPrint} className="gap-2">
-                  <Printer className="h-4 w-4" />
-                  <span className="hidden sm:inline">Imprimir</span>
-                  <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-xs">{selectedIds.size}</Badge>
-                </Button>
-                <Button variant="outline" onClick={async () => {
-                  if (selectedIds.size === 0) return;
-                  const pw = openPrintWindow('Etiquetas térmicas');
-                  try {
-                    const selectedOrders = orders.filter(o => selectedIds.has(o.id));
-                    const labels: Parameters<typeof buildThermalLabelsHtml>[0] = [];
-                    for (const order of selectedOrders) {
-                      const displayOrderNumber = order.client_order_number || order.order_number || '';
-                      const { data: linkedOps } = await supabase.from('orders').select('id, order_number, reference_id, color, grade, quantity, sale_order_item_id').eq('sale_order_id', order.id);
-                      if (!linkedOps || linkedOps.length === 0) continue;
-                      for (const op of linkedOps) {
-                        const { data: refData } = await supabase.from('technical_sheets').select('image_url, images, shoe_category, code, name').eq('id', op.reference_id).single();
-                        const rawRefImageUrl = ((refData as any)?.images as string[] | null)?.[0] || refData?.image_url || '';
-                        const refImageUrl = await getSignedUrl(rawRefImageUrl);
-                        const color = op.color || '';
-                        // barcode mora em reference_color_variants (por cor) — technical_sheets não tem a coluna
-                        const { data: variant } = await supabase.from('reference_color_variants').select('image_url, barcode').eq('reference_id', op.reference_id).eq('color', color).maybeSingle();
-                        const labelBarcode = variant?.barcode || op.order_number || '';
-                        const imgUrl = variant?.image_url ? await getSignedUrl(variant.image_url) : refImageUrl;
-                        // MATERIAL: cascata única (variação do PV > cabedal > tiras/forração)
-                        // — antes lia a 1ª linha arbitrária da BOM e divergia das demais etiquetas.
-                        let itemVariantId: string | null = null;
-                        if ((op as any).sale_order_item_id) {
-                          const { data: soi } = await (supabase as any)
-                            .from('sale_order_items')
-                            .select('material_variant_id')
-                            .eq('id', (op as any).sale_order_item_id)
-                            .maybeSingle();
-                          itemVariantId = soi?.material_variant_id || null;
-                        }
-                        const mainMaterial = await resolveMaterialLabel({
-                          referenceId: op.reference_id,
-                          materialVariantId: itemVariantId,
-                          color,
-                        }).catch(() => '');
-                        const grade = op.grade as Record<string, number> | null;
-                        if (grade && Object.keys(grade).length > 0) {
-                          for (const [size, qty] of Object.entries(grade)) {
-                            const count = Number(qty) || 0;
-                            for (let i = 0; i < count; i++) {
-                              labels.push({ 
-                                refCode: refData?.code || '', 
-                                refName: refData?.name || '', 
-                                mainMaterial, 
-                                color, 
-                                size, 
-                                barcode: labelBarcode, 
-                                imageUrl: imgUrl, 
-                                shoeCategory: refData?.shoe_category || '', 
-                                clientOrderNumber: displayOrderNumber 
-                              });
-                            }
-                          }
-                        } else {
-                          const opQty = Number(op.quantity) || 0;
-                          for (let i = 0; i < opQty; i++) {
-                            labels.push({ 
-                              refCode: refData?.code || '', 
-                              refName: refData?.name || '', 
-                              mainMaterial, 
-                              color, 
-                              size: '—', 
-                              barcode: labelBarcode, 
-                              imageUrl: imgUrl, 
-                              shoeCategory: refData?.shoe_category || '', 
-                              clientOrderNumber: displayOrderNumber 
-                            });
-                          }
-                        }
-                      }
-                    }
-                    if (labels.length === 0) { toast.info('Nenhuma etiqueta para gerar.'); return; }
-                    const logoUrl = new URL(logoImg, window.location.origin).href;
-                    // CNPJ do remetente/fabricante (INMETRO 576/2014). Resolve a
-                    // partir da empresa (company_id) do 1º PV selecionado; cai na
-                    // primária/padrão quando ausente.
-                    const senderCnpj = resolveSenderCnpj(companies, (selectedOrders[0] as any)?.company_id);
-                    const html = buildThermalLabelsHtml(labels, logoUrl, { width: 100, height: 30 }, undefined, senderCnpj);
-                    writeRawPrintWindow(pw, html);
-                    toast.success(`${labels.length} etiqueta(s) gerada(s)`);
-                  } catch (err: any) { toast.error(err.message); }
-                }} className="gap-2">
-                  <Tag className="h-4 w-4" />
-                  <span className="hidden sm:inline">Etiquetas</span>
-                  <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-xs">{selectedIds.size}</Badge>
-                </Button>
-              </>
-            )}
-            {pendingOrders.length > 0 && (
-              <Button variant="outline" onClick={handleBulkGenerateOPs} disabled={generatingOPs} className="gap-2" title={`Aprovar ${pendingOrders.length} pendente(s)`}>
-                {generatingOPs ? <Loader2 className="h-4 w-4 animate-spin" /> : <Factory className="h-4 w-4" />}
-                <span className="hidden sm:inline">Gerar OPs</span>
-                <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-xs">{pendingOrders.length}</Badge>
-              </Button>
-            )}
-            {isAdmin && (
+              )}
               <Button
                 variant="outline"
-                onClick={() => setPendingConfirm({
-                  title: 'Resincronizar OPs com as fichas?',
-                  description: 'Isso irá estornar e re-debitar o estoque de TODAS as OPs ativas com base nas fichas técnicas atualizadas.',
-                  actionLabel: 'Resincronizar',
-                  onConfirm: () => resyncOPs.mutate(),
-                })}
-                disabled={resyncOPs.isPending}
-                className="gap-2"
-                title="Resincronizar OPs com fichas técnicas atualizadas"
+                size="sm"
+                onClick={() => { void handleBulkGenerateOPs(); }}
+                disabled={generatingOPs}
+                className="h-9 gap-2"
+                title={pendingOrders.length > 0 ? `Aprovar ${pendingOrders.length} pendente(s)` : 'Não há pedidos pendentes'}
               >
-                {resyncOPs.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                <span className="hidden sm:inline">Resync Fichas</span>
+                {generatingOPs ? <Loader2 className="h-4 w-4 animate-spin" /> : <Factory className="h-4 w-4" />}
+                <span className="hidden sm:inline">Gerar OPs</span>
+                {pendingOrders.length > 0 && (
+                  <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-xs">{pendingOrders.length}</Badge>
+                )}
               </Button>
-            )}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-9 gap-2">
+                    <DotsThree className="h-4 w-4" weight="bold" />
+                    <span className="hidden sm:inline">Mais</span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="min-w-56">
+                  <DropdownMenuItem onSelect={() => setImportClientsOpen(true)} className="gap-2">
+                    <Upload className="h-4 w-4" />
+                    Importar Clientes
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => { void handleExportSaleOrdersExcel(filteredOrders); }} className="gap-2">
+                    <FileSpreadsheet className="h-4 w-4" />
+                    Exportar Excel
+                  </DropdownMenuItem>
+                  {isAdmin && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        disabled={resyncOPs.isPending}
+                        onSelect={() => setPendingConfirm({
+                          title: 'Resincronizar OPs com as fichas?',
+                          description: 'Isso irá estornar e re-debitar o estoque de TODAS as OPs ativas com base nas fichas técnicas atualizadas.',
+                          actionLabel: 'Resincronizar',
+                          onConfirm: () => resyncOPs.mutate(),
+                        })}
+                        className="gap-2"
+                      >
+                        {resyncOPs.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                        Resync Fichas
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
             </>
           }
         />
@@ -1763,7 +1786,7 @@ export default function SaleOrders() {
 
         {/* Search & Filter Bar */}
         <div className="flex flex-col gap-3">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <div className="relative flex-1 max-w-md">
               <SmartSearch
                 value={searchTerm}
@@ -1784,6 +1807,23 @@ export default function SaleOrders() {
                 <Badge variant="default" className="ml-1 h-5 px-1.5 text-xs">{activeFiltersCount}</Badge>
               )}
             </Button>
+            {!showFilters && activeFilterChips.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5">
+                {activeFilterChips.map(chip => (
+                  <Badge key={chip.key} variant="outline" className="h-7 gap-1 pl-2 pr-1 text-xs font-medium">
+                    {chip.label}
+                    <button
+                      type="button"
+                      onClick={chip.onRemove}
+                      className="rounded-sm p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                      aria-label={`Remover filtro ${chip.label}`}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                ))}
+              </div>
+            )}
             {activeFiltersCount > 0 && (
               <Button variant="ghost" size="sm" className="h-9 text-xs text-muted-foreground" onClick={clearFilters}>
                 <X className="h-3 w-3 mr-1" /> Limpar
@@ -1877,13 +1917,6 @@ export default function SaleOrders() {
             </div>
           )}
         </div>
-
-        {/* Bulk Actions movida pra <BulkActionsBar/> renderizado no final do
-            componente — slide-up overlay no rodapé com Aprovar/Cancelar/
-            Imprimir/Exportar. Popovers avançados (bulk mês/semana, status
-            arbitrário, delete em massa) permanecem disponíveis em handlers
-            (handleBulkUpdateDelivery, handleBulkStatusChange, handleBulkDelete)
-            mas precisam de re-attach se quisermos expor de novo na UI. */}
 
         {/* Table */}
         {filteredOrders.length === 0 ? (
@@ -2190,25 +2223,28 @@ export default function SaleOrders() {
         )}
       </div>
 
-      {/* Bulk actions overlay — slide-up no rodapé quando há seleção.
-          Substitui a antiga barra inline acima da tabela (que continha o
-          painel de "Mês/Semana", "Alterar Status", Excluir, Cancelar).
-          Os 4 atalhos abaixo são os de uso mais frequente; ações secundárias
-          (mês/semana, set status arbitrário) seguem disponíveis via toolbar
-          do header e dialog de detalhes. */}
+      {/* O header permanece estável; todo comando que depende da seleção nasce
+          aqui, junto do contador que deixa explícito quais PVs serão afetados. */}
       <BulkActionsBar
         selectedIds={sel.selectedIds}
         onClear={sel.clear}
         itemLabel={sel.count === 1 ? 'PV selecionado' : 'PVs selecionados'}
         actions={[
           { label: 'Aprovar', icon: <Check className="h-3.5 w-3.5" />, onClick: handleBulkApprove },
-          { label: 'Alterar Status', icon: <ListChecks className="h-3.5 w-3.5" />, variant: 'outline', onClick: () => { setBulkStatusTarget(''); setBulkStatusOpen(true); } },
-          { label: 'Pré-visualizar NF-e', icon: <Receipt className="h-3.5 w-3.5" />, variant: 'outline', onClick: () => openBulkNfe('preview') },
+          ...(canBuy ? [{ label: 'Gerar OCs', icon: <ShoppingCart className="h-3.5 w-3.5" />, variant: 'outline' as const, onClick: handleBulkPurchaseOrders }] : []),
           { label: 'Emitir NF-e', icon: <Receipt className="h-3.5 w-3.5" />, onClick: () => openBulkNfe('emit') },
           { label: 'Cancelar', icon: <X className="h-3.5 w-3.5" />, variant: 'destructive', onClick: handleBulkCancel },
-          ...(perm.canDelete ? [{ label: 'Excluir', icon: <Trash2 className="h-3.5 w-3.5" />, variant: 'destructive' as const, onClick: handleBulkDelete }] : []),
+        ]}
+        secondaryActions={[
+          { label: 'Alterar Status', icon: <ListChecks className="h-3.5 w-3.5" />, variant: 'outline', onClick: () => { setBulkStatusTarget(''); setBulkStatusOpen(true); } },
+          { label: 'Pré-visualizar NF-e', icon: <Receipt className="h-3.5 w-3.5" />, variant: 'outline', onClick: () => openBulkNfe('preview') },
+          { label: 'Consumo', icon: <BarChart3 className="h-3.5 w-3.5" />, variant: 'outline', onClick: handleBulkConsumption },
+          { label: 'Visão Geral', icon: <LayoutDashboard className="h-3.5 w-3.5" />, variant: 'outline', onClick: () => setOverviewOpen(true) },
+          { label: 'Resumo', icon: <ClipboardList className="h-3.5 w-3.5" />, variant: 'outline', onClick: handleOpenSummary },
+          { label: 'Etiquetas', icon: <Tag className="h-3.5 w-3.5" />, variant: 'outline', onClick: handleBulkLabels },
           { label: 'Imprimir Fichas', icon: <Printer className="h-3.5 w-3.5" />, variant: 'outline', onClick: handleBulkPrint },
-          { label: 'Exportar', icon: <Download className="h-3.5 w-3.5" />, variant: 'outline', onClick: handleBulkExport },
+          { label: 'Exportar Excel', icon: <Download className="h-3.5 w-3.5" />, variant: 'outline', onClick: handleBulkExport },
+          ...(perm.canDelete ? [{ label: 'Excluir', icon: <Trash2 className="h-3.5 w-3.5" />, variant: 'destructive' as const, onClick: handleBulkDelete }] : []),
         ]}
       />
 
@@ -2392,16 +2428,17 @@ export default function SaleOrders() {
                       size="sm"
                       className="gap-2"
                       disabled={commitPicking.isPending}
-                      onClick={() => {
-                        if (!confirm(
-                          `Baixar agora o material reservado deste PV?\n\n` +
-                          `Normalmente isso acontece sozinho quando o pedido é liberado pra produção. ` +
-                          `Use aqui se o pedido foi liberado antes dessa regra existir, ou se a baixa automática falhou.\n\n` +
-                          `Cada item sai do estoque (subtrai products.quantity e registra movimento de saída). ` +
-                          `Itens sem saldo são pulados e o resto continua — o que faltar ainda sai no faturamento.`
-                        )) return;
-                        commitPicking.mutate(selectedOrder.id);
-                      }}
+                      onClick={() => setPendingConfirm({
+                        title: `Baixar material do pedido ${selectedOrder.order_number}?`,
+                        description: (
+                          <div className="space-y-2">
+                            <p>Normalmente a baixa acontece sozinha quando o pedido é liberado para produção. Use este fallback se o pedido foi liberado antes dessa regra existir ou se a baixa automática falhou.</p>
+                            <p>Cada item será subtraído do estoque e registrado como saída. Itens sem saldo serão pulados; o restante continuará, e o que faltar ainda sairá no faturamento.</p>
+                          </div>
+                        ),
+                        actionLabel: 'Baixar material',
+                        onConfirm: () => commitPicking.mutate(selectedOrder.id),
+                      })}
                       title="Fallback: baixa as reservas deste PV agora, caso a baixa automática da liberação pra produção não tenha rodado"
                     >
                       {commitPicking.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Hand className="h-3.5 w-3.5" />}
@@ -2411,25 +2448,38 @@ export default function SaleOrders() {
                   <Button variant="outline" size="sm" className="gap-2" onClick={() => setMarginDialogOpen(true)}><TrendingUp className="h-3.5 w-3.5" /> Margem</Button>
                 </div>
                 <div className="hidden sm:block w-px self-stretch bg-border mx-1" aria-hidden="true" />
-                <div className="flex items-center gap-2 flex-wrap" role="group" aria-label="Impressão e documentos">
-                  <Button variant="outline" size="sm" className="gap-2" onClick={async () => { try { await printAllSectorsForSaleOrder(selectedOrder.id, selectedOrder.order_number); } catch (err: any) { toast.error(err.message); } }}><FileText className="h-3.5 w-3.5" /> OPs</Button>
-                  <Button variant="outline" size="sm" className="gap-2" onClick={() => setOperatorFichasOpen(true)} title="Abre a seleção de OPs — marque quais entram na impressão. Fichas de operador (Corte Forração / Aviamento / Montagem): N fichas por fornada de 12 pares, 2 vias; pula setor que a referência não tem"><Printer className="h-3.5 w-3.5" /> Ficha Montagem</Button>
-                  <Button variant="outline" size="sm" className="gap-2" onClick={() => { void printSaleOrderPdf(selectedOrder); }}><FileText className="h-3.5 w-3.5" /> Gerar Pedido</Button>
-                  {/* Botão "Etiquetas" — abre /etiquetas pré-filtrado pelo PV.
-                      Antes printava térmica direto (perdia acesso a caixa externa,
-                      hangtag, etc). Agora navega pra página completa de etiquetas
-                      com sale_order na URL — todas as opções continuam disponíveis
-                      mas só dos itens deste pedido. (19/05/2026, pedido user) */}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="gap-2"
-                    onClick={() => {
-                      navigate(`/label-system?sale_order=${selectedOrder.id}`);
-                    }}
-                  >
-                    <Tag className="h-3.5 w-3.5" /> Etiquetas
-                  </Button>
+                <div role="group" aria-label="Impressão e documentos">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="sm" className="h-8 gap-2">
+                        <Printer className="h-3.5 w-3.5" />
+                        Imprimir / Documentos
+                        <CaretDown className="h-3 w-3 text-muted-foreground" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="min-w-56">
+                      <DropdownMenuItem
+                        className="gap-2"
+                        onSelect={() => {
+                          void printAllSectorsForSaleOrder(selectedOrder.id, selectedOrder.order_number)
+                            .catch((err: any) => toast.error(err.message));
+                        }}
+                      >
+                        <FileText className="h-4 w-4" /> OPs
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onSelect={() => setOperatorFichasOpen(true)} className="gap-2">
+                        <Printer className="h-4 w-4" /> Ficha Montagem
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onSelect={() => { void printSaleOrderPdf(selectedOrder); }} className="gap-2">
+                        <FileText className="h-4 w-4" /> Gerar Pedido (PDF)
+                      </DropdownMenuItem>
+                      {/* A página completa preserva caixa externa, hangtag e os
+                          demais formatos vinculados ao PV, além da etiqueta térmica. */}
+                      <DropdownMenuItem onSelect={() => navigate(`/label-system?sale_order=${selectedOrder.id}`)} className="gap-2">
+                        <Tag className="h-4 w-4" /> Etiquetas
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
                 <div className="hidden sm:block w-px self-stretch bg-border mx-1" aria-hidden="true" />
                 {/* Atalho: cria uma Ordem de Serviço com os itens deste pedido
@@ -2961,7 +3011,9 @@ export default function SaleOrders() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{pendingConfirm?.title}</AlertDialogTitle>
-            <AlertDialogDescription>{pendingConfirm?.description}</AlertDialogDescription>
+            <AlertDialogDescription asChild>
+              <div>{pendingConfirm?.description}</div>
+            </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>

@@ -1,8 +1,13 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, CircleNotch as Loader2, FileMagnifyingGlass as FileSearch, ArrowCounterClockwise as RotateCcw, Handshake, CheckCircle } from '@phosphor-icons/react';
+import { ArrowLeft, CircleNotch as Loader2, FileMagnifyingGlass as FileSearch, ArrowCounterClockwise as RotateCcw, Handshake, CheckCircle, Warning as AlertTriangle } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '@/components/ui/dialog';
@@ -61,6 +66,14 @@ const emptyItem: SaleOrderItemFormData = {
 };
 
 const SALE_ORDER_DRAFT_KEY = 'sale_order_draft';
+
+interface SubmitOptions {
+  skipMinBillingCheck?: boolean;
+  skipCreditCheck?: boolean;
+}
+
+const formatCurrency = (value: number) =>
+  value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
 // Extraída pra ser testável de fora do componente (guard de regressão do
 // incidente PV-00146). O `id` PRECISA viajar junto: é ele que faz o save
@@ -338,6 +351,19 @@ export default function SaleOrderForm() {
   const [minBillingDialogOpen, setMinBillingDialogOpen] = useState(false);
   const [minBillingSuggestion, setMinBillingSuggestion] = useState<MinBillingResult | null>(null);
   const [computingMinBilling, setComputingMinBilling] = useState(false);
+  const [creditLimitConfirm, setCreditLimitConfirm] = useState<null | {
+    clientName: string;
+    exposure: number;
+    orderTotal: number;
+    projected: number;
+    limit: number;
+    submitOptions: SubmitOptions;
+  }>(null);
+  const [billingOverrideConfirm, setBillingOverrideConfirm] = useState<null | {
+    newISO: string;
+    minDateISO: string;
+  }>(null);
+  const [billingOverrideReason, setBillingOverrideReason] = useState('');
   // Dialog de terceirização da costura: abre após save quando o PV foi
   // salvo com manual_billing_override=true. saleOrderId fica setado pra
   // o dialog buscar as OPs criadas e disparar a RPC.
@@ -755,7 +781,7 @@ export default function SaleOrderForm() {
 
   const handleSubmit = async (
     e: React.FormEvent,
-    opts: { skipMinBillingCheck?: boolean } = {},
+    opts: SubmitOptions = {},
   ) => {
     e.preventDefault();
     const f = formLatestRef.current;
@@ -793,7 +819,7 @@ export default function SaleOrderForm() {
 
     // 0) Em pedidos NOVOS com cliente cadastrado, valida limite de crédito.
     //    Permite seguir mediante confirmação, mas avisa explicitamente.
-    if (!isEdit && selectedClientId) {
+    if (!isEdit && selectedClientId && !opts.skipCreditCheck) {
       try {
         const { data: client } = await supabase
           .from('clients')
@@ -816,15 +842,15 @@ export default function SaleOrderForm() {
           );
           const projected = exposure + orderTotal;
           if (projected > limit) {
-            const ok = window.confirm(
-              `Limite de crédito do cliente "${client.name}" será ULTRAPASSADO:\n\n` +
-              `  • Em aberto: ${exposure.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}\n` +
-              `  • Este PV:   ${orderTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}\n` +
-              `  • Total:     ${projected.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}\n` +
-              `  • Limite:    ${limit.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}\n\n` +
-              `Deseja PROSSEGUIR mesmo assim?`,
-            );
-            if (!ok) return;
+            setCreditLimitConfirm({
+              clientName: client.name || f.client_name || 'Cliente',
+              exposure,
+              orderTotal,
+              projected,
+              limit,
+              submitOptions: opts,
+            });
+            return;
           }
         }
       } catch (err) {
@@ -1060,29 +1086,12 @@ export default function SaleOrderForm() {
     }, 50);
   };
 
-  const handleMinBillingManual = (newISO: string) => {
+  const applyMinBillingManual = (newISO: string, reason: string | null) => {
     if (!minBillingSuggestion) {
       setMinBillingDialogOpen(false);
       return;
     }
     const isOverride = isBeforeMinDate(newISO, minBillingSuggestion.minDateISO);
-    let reason: string | null = null;
-    if (isOverride) {
-      // Captura motivo do override pra audit trail. Cancelar = não persiste o override.
-      reason = window.prompt(
-        `Você está escolhendo uma data ANTERIOR à mínima calculada (${minBillingSuggestion.minDateISO}). ` +
-        `Por que está antecipando? (será registrado no log de auditoria)`,
-        '',
-      );
-      if (reason === null) {
-        // Usuário cancelou — não fecha o dialog
-        return;
-      }
-      if (!reason.trim()) {
-        toast.error('Motivo do override é obrigatório para datas abaixo da mínima.');
-        return;
-      }
-    }
     // Recompõe month + week (formato "Sn") junto — sem isso o submit subsequente
     // tropeça no `if (!f.delivery_month)` ou na auto-derivação que reescreve o
     // deadline a partir de campos vazios, e o pedido nunca salva (override admin
@@ -1107,6 +1116,31 @@ export default function SaleOrderForm() {
       const fakeEvent = { preventDefault: () => {} } as React.FormEvent;
       handleSubmit(fakeEvent, { skipMinBillingCheck: true });
     }, 50);
+  };
+
+  const handleMinBillingManual = (newISO: string) => {
+    if (!minBillingSuggestion) {
+      setMinBillingDialogOpen(false);
+      return;
+    }
+    if (isBeforeMinDate(newISO, minBillingSuggestion.minDateISO)) {
+      setBillingOverrideReason('');
+      setBillingOverrideConfirm({ newISO, minDateISO: minBillingSuggestion.minDateISO });
+      return;
+    }
+    applyMinBillingManual(newISO, null);
+  };
+
+  const handleBillingOverrideConfirm = () => {
+    const reason = billingOverrideReason.trim();
+    if (!billingOverrideConfirm || !reason) {
+      toast.error('Motivo do override é obrigatório para datas abaixo da mínima.');
+      return;
+    }
+    const { newISO } = billingOverrideConfirm;
+    setBillingOverrideConfirm(null);
+    setBillingOverrideReason('');
+    applyMinBillingManual(newISO, reason);
   };
 
   const runCapacityCheck = async (validItems: SaleOrderItemFormData[]) => {
@@ -1363,6 +1397,110 @@ export default function SaleOrderForm() {
         isAdmin={isAdmin}
         userPickedDateISO={form.delivery_deadline || null}
       />
+
+      <AlertDialog
+        open={creditLimitConfirm !== null}
+        onOpenChange={(open) => { if (!open) setCreditLimitConfirm(null); }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+              Limite de crédito ultrapassado
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>O novo pedido de <strong className="text-foreground">{creditLimitConfirm?.clientName}</strong> elevará a exposição acima do limite cadastrado.</p>
+                <dl className="space-y-1.5 rounded-md border border-border/60 bg-muted/30 p-3 text-sm tabular-nums">
+                  {([
+                    ['Em aberto', creditLimitConfirm?.exposure],
+                    ['Este PV', creditLimitConfirm?.orderTotal],
+                    ['Total projetado', creditLimitConfirm?.projected],
+                    ['Limite de crédito', creditLimitConfirm?.limit],
+                  ] as const).map(([label, value]) => (
+                    <div key={label} className="grid grid-cols-[1fr_auto] items-center gap-4">
+                      <dt>{label}</dt>
+                      <dd className="font-mono font-semibold text-foreground">{formatCurrency(value || 0)}</dd>
+                    </div>
+                  ))}
+                </dl>
+                <p>Confirme somente se a venda acima do limite já foi autorizada.</p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Revisar pedido</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                const pending = creditLimitConfirm;
+                setCreditLimitConfirm(null);
+                if (!pending) return;
+                setTimeout(() => {
+                  const fakeEvent = { preventDefault: () => {} } as React.FormEvent;
+                  void handleSubmit(fakeEvent, { ...pending.submitOptions, skipCreditCheck: true });
+                }, 0);
+              }}
+            >
+              Prosseguir mesmo assim
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={billingOverrideConfirm !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setBillingOverrideConfirm(null);
+            setBillingOverrideReason('');
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Justificar antecipação do faturamento</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2">
+                <p>A data escolhida é anterior à mínima calculada e exige um motivo para o log de auditoria.</p>
+                <div className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-1 rounded-md border border-border/60 bg-muted/30 p-3 text-sm">
+                  <span>Data escolhida</span>
+                  <span className="font-mono tabular-nums text-foreground">{billingOverrideConfirm?.newISO || '—'}</span>
+                  <span>Data mínima</span>
+                  <span className="font-mono tabular-nums text-foreground">{billingOverrideConfirm?.minDateISO || '—'}</span>
+                </div>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-1.5">
+            <label htmlFor="billing-override-reason" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+              Motivo obrigatório
+            </label>
+            <Textarea
+              id="billing-override-reason"
+              value={billingOverrideReason}
+              onChange={(event) => setBillingOverrideReason(event.target.value)}
+              placeholder="Explique por que este pedido precisa ser antecipado"
+              className="min-h-24 resize-none"
+              autoFocus
+            />
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Voltar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                if (!billingOverrideReason.trim()) {
+                  event.preventDefault();
+                  toast.error('Motivo do override é obrigatório para datas abaixo da mínima.');
+                  return;
+                }
+                handleBillingOverrideConfirm();
+              }}
+            >
+              Confirmar antecipação
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <OverrideOutsourceCosturaDialog
         open={outsourceCosturaOpen}

@@ -1,5 +1,5 @@
  import { useMemo, useEffect, useRef, useState, useCallback, Fragment } from 'react';
-import { Plus, CircleNotch as Loader2, User, Truck, ClipboardText as ClipboardList, Info, Percent, CaretUpDown as ChevronsUpDown, Check, ClockCounterClockwise as History, Warning as AlertTriangle, CheckCircle as CheckCircle2, Calculator, Money as Banknote, Receipt, Package, Phone, EnvelopeSimple } from '@phosphor-icons/react';
+import { Plus, CircleNotch as Loader2, User, Truck, ClipboardText as ClipboardList, Info, Percent, CaretUpDown as ChevronsUpDown, CaretDown, Check, ClockCounterClockwise as History, Warning as AlertTriangle, CheckCircle as CheckCircle2, Calculator, Money as Banknote, Receipt, Package, Phone, EnvelopeSimple } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -30,6 +30,7 @@ import {
 } from '@/lib/factoringCalc';
 import { computeARSchedule } from '@/lib/saleOrderAR';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
  import { cn } from '@/lib/utils';
  import { toast } from 'sonner';
@@ -680,6 +681,34 @@ export default function SaleOrderFormPanel({
     initialRate > 0 ? initialRate.toFixed(2).replace('.', ',') : '0'
   );
   const estimatedShippingCost = totalPairs * shippingRate;
+  const [shippingCalculatorOpen, setShippingCalculatorOpen] = useState(initialRate > 0);
+  const [packagingDetailsOpen, setPackagingDetailsOpen] = useState(form.packaging_mode !== 'colmeia');
+
+  const packagingVolumeSummary = useMemo(() => {
+    const mode = form.packaging_mode || 'colmeia';
+    const byRef = new Map<string, number>();
+    items.forEach(item => {
+      if (item.reference_id && item.quantity > 0) {
+        byRef.set(item.reference_id, (byRef.get(item.reference_id) || 0) + item.quantity);
+      }
+    });
+    const configByRef = new Map<string, number>();
+    const collectiveType = collectiveTypeForMode(mode);
+    sheetPackagingConfigs.forEach((config: any) => {
+      if (config.packaging_type === collectiveType && Number(config.pairs_per_box) > 0) {
+        configByRef.set(config.sheet_id, Number(config.pairs_per_box));
+      }
+    });
+    let volumes = 0;
+    for (const [referenceId, pairs] of byRef) {
+      volumes += volumesForPairs(mode, pairs, configByRef.get(referenceId));
+    }
+    return {
+      pairMode: isPairAsVolumeMode(mode),
+      pairsPerVolume: pairsPerVolumeForMode(mode),
+      volumes,
+    };
+  }, [form.packaging_mode, items, sheetPackagingConfigs]);
 
   // Sync de volta pro form quando user digita — assim o save (handleSubmit do
   // SaleOrderForm) já manda shipping_rate_per_pair no payload. Trigger no DB
@@ -1259,18 +1288,33 @@ export default function SaleOrderFormPanel({
                 </div>
               </div>
 
-              {/* Shipping Calculator — aceita decimal (0.33, 1,50) via parse manual */}
-              <div className="p-3 rounded-lg border border-border bg-muted/20 space-y-3">
-                <div className="flex items-center justify-between">
-                  <Label className="text-xs font-bold flex items-center gap-1.5 text-foreground">
-                    <Calculator className="h-3.5 w-3.5 text-primary" />
-                    Calculadora de Frete (Estimativa)
-                  </Label>
-                  <Badge variant="secondary" className="text-xs">
-                    {totalPairs} pares
-                  </Badge>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {/* O campo aceita vírgula ou ponto porque type="number" rejeita
+                  valores decimais válidos no teclado pt-BR. */}
+              <Collapsible
+                open={shippingCalculatorOpen}
+                onOpenChange={setShippingCalculatorOpen}
+                className="rounded-lg border border-border bg-muted/20"
+              >
+                <CollapsibleTrigger asChild>
+                  <button type="button" className="flex w-full items-center justify-between gap-3 p-3 text-left">
+                    <span className="flex items-center gap-1.5 text-xs font-bold text-foreground">
+                      <Calculator className="h-3.5 w-3.5 text-primary" />
+                      Calculadora de Frete (Estimativa)
+                    </span>
+                    <span className="ml-auto flex min-w-0 items-center gap-2">
+                      {shippingCalculatorOpen ? (
+                        <Badge variant="secondary" className="text-xs">{totalPairs} pares</Badge>
+                      ) : (
+                        <span className="truncate text-xs text-muted-foreground">
+                          Frete: {formatCurrency(shippingRate)}/par · {formatCurrency(estimatedShippingCost)}
+                        </span>
+                      )}
+                      <CaretDown className={cn('h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform', shippingCalculatorOpen && 'rotate-180')} />
+                    </span>
+                  </button>
+                </CollapsibleTrigger>
+                <CollapsibleContent className="space-y-3 px-3 pb-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
                     <Label className="text-xs uppercase font-bold text-muted-foreground">Taxa por Par (R$)</Label>
                     {/* type="text" + inputMode="decimal" aceita "," ou "." e
@@ -1333,11 +1377,36 @@ export default function SaleOrderFormPanel({
                     </p>
                   </div>
                 </div>
-              </div>
+                </CollapsibleContent>
+              </Collapsible>
 
               {onPackagingProductChange && (
-                <div className="mt-4 p-3 rounded-lg bg-muted/20 border border-border/50 space-y-4">
-                  <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Modo de Embalagem</Label>
+                <Collapsible
+                  open={packagingDetailsOpen}
+                  onOpenChange={setPackagingDetailsOpen}
+                  className="mt-4 rounded-lg border border-border/50 bg-muted/20"
+                >
+                  <CollapsibleTrigger asChild>
+                    <button type="button" className="flex w-full items-center justify-between gap-3 p-3 text-left">
+                      <span className="flex items-center gap-1.5 text-xs font-bold text-foreground">
+                        <Package className="h-3.5 w-3.5 text-primary" />
+                        Embalagens das Fichas Técnicas
+                      </span>
+                      <span className="ml-auto flex min-w-0 items-center gap-2">
+                        {!packagingDetailsOpen && (
+                          <span className="truncate text-xs text-muted-foreground">
+                            {packagingVolumeSummary.pairMode
+                              ? '1 par/volume'
+                              : `${packagingVolumeSummary.pairsPerVolume} pares/caixa`}
+                            {' · '}{packagingVolumeSummary.volumes} {packagingVolumeSummary.volumes === 1 ? 'volume' : 'volumes'}
+                          </span>
+                        )}
+                        <CaretDown className={cn('h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform', packagingDetailsOpen && 'rotate-180')} />
+                      </span>
+                    </button>
+                </CollapsibleTrigger>
+                  <CollapsibleContent className="space-y-4 px-3 pb-3">
+                    <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Modo de Embalagem</Label>
                   <RadioGroup
                     value={form.packaging_mode}
                     onValueChange={(v) => setForm(f => ({ ...f, packaging_mode: v as PackagingMode }))}
@@ -1414,7 +1483,7 @@ export default function SaleOrderFormPanel({
                   {sheetPackagingConfigs.length > 0 && (
                     <div className="space-y-2">
                       <Label className="inline-flex items-center gap-1.5 text-xs text-muted-foreground uppercase font-bold">
-                        <Package className="h-3.5 w-3.5" /> Embalagens das Fichas Técnicas
+                        <Package className="h-3.5 w-3.5" /> Configurações por referência
                       </Label>
                       {(() => {
                         const mode = form.packaging_mode;
@@ -1498,7 +1567,8 @@ export default function SaleOrderFormPanel({
                       <span>Nenhuma embalagem configurada nas fichas técnicas das referências selecionadas.</span>
                     </p>
                   )}
-                </div>
+                  </CollapsibleContent>
+                </Collapsible>
               )}
             </CardContent>
           </Card>

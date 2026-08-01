@@ -1,7 +1,13 @@
 import { ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { X } from '@phosphor-icons/react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { DotsThree, X } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 
 export interface BulkAction {
@@ -21,6 +27,8 @@ interface BulkActionsBarProps {
   selectedIds: Set<string>;
   onClear: () => void;
   actions: BulkAction[];
+  /** Ações menos frequentes agrupadas sem perder o contexto da seleção. */
+  secondaryActions?: BulkAction[];
   /** Sobrescreve o label "X selecionado(s)" — útil pra contexto (ex: "3 OPs selecionadas") */
   itemLabel?: string;
   /** Esconde a barra (override externo). Padrão: mostra se há seleção. */
@@ -42,6 +50,7 @@ export function BulkActionsBar({
   selectedIds,
   onClear,
   actions,
+  secondaryActions = [],
   itemLabel,
   hidden,
   className,
@@ -89,6 +98,32 @@ export function BulkActionsBar({
               {action.label}
             </Button>
           ))}
+          {secondaryActions.length > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs">
+                  <DotsThree className="h-3.5 w-3.5" weight="bold" />
+                  Mais
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" side="top" sideOffset={8} className="min-w-52">
+                {secondaryActions.map((action, idx) => (
+                  <DropdownMenuItem
+                    key={idx}
+                    disabled={action.disabled}
+                    onSelect={() => { void action.onClick(selectedIds); }}
+                    className={cn(
+                      'gap-2',
+                      action.variant === 'destructive' && 'text-destructive focus:text-destructive',
+                    )}
+                  >
+                    {action.icon}
+                    {action.label}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
 
         {/* Cancel */}
