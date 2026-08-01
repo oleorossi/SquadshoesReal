@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -109,6 +109,27 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
   const [referenceInfo, setReferenceInfo] = useState<{ id: string; name: string; date: string } | null>(null);
   const [copyAnyOpen, setCopyAnyOpen] = useState(false);
   const [soleGroupId, setSoleGroupId] = useState<string | null>(null);
+  /**
+   * Faixa de numeração do PRÓPRIO solado (stock_grade._size_from/_to) — a mesma
+   * fonte que alimenta a grade do PV. É a régua correta destas specs.
+   *
+   * Bug 01/08/2026: `confirmPull` copiava os tamanhos da REFERÊNCIA sem olhar
+   * esta faixa, então solado infantil que puxou de um adulto ficou com specs em
+   * 34–40. Os 11 solados com specs do sistema estavam TODOS em 34–40 por isso —
+   * todos descendem do mesmo molde. No SOLADO INFANTIL (faixa 23–36) sobrava
+   * um único número em comum, e o consumo dos outros caía na média escalar ou
+   * contava ZERO, silenciosamente.
+   */
+  const [soleRange, setSoleRange] = useState<{ from: number; to: number } | null>(null);
+  /** Espelho em ref: `fetchAll` corre em paralelo com a query que lê a faixa. */
+  const soleRangeRef = useRef<{ from: number; to: number } | null>(null);
+  /** Expande a faixa do solado em números individuais. */
+  const rangeSizes = (r: { from: number; to: number } | null): number[] => {
+    if (!r) return [];
+    const out: number[] = [];
+    for (let s = r.from; s <= r.to; s++) out.push(s);
+    return out;
+  };
   const [soleClassification, setSoleClassification] = useState<'tradicional' | 'palmilha_pronta' | 'conjugado' | null>(null);
   const [isFachetado, setIsFachetado] = useState<boolean>(false);
   // Solado de palmilha pronta vem forrado do fornecedor — palmilha conta como
@@ -277,13 +298,17 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
             const from = Number(grade._size_from);
             const to = Number(grade._size_to);
             if (Number.isFinite(from) && Number.isFinite(to) && from <= to) {
+              setSoleRange({ from, to });
+              soleRangeRef.current = { from, to };
+              // A faixa do solado SEMPRE aparece — mesmo quando já existem specs
+              // em outra régua. Antes o guard `prev.length > 0` fazia a tela
+              // mostrar só os tamanhos das specs, então um solado 23–36 com
+              // specs herdadas em 34–40 nunca exibia 23–33: não havia onde
+              // digitar o consumo dos números que a fábrica realmente vende.
               setSizes(prev => {
-                // Só auto-popula se ainda não há sizes carregados de specs.
-                // Não sobrescreve dados existentes — só preenche o vazio.
-                if (prev.length > 0) return prev;
-                const all: number[] = [];
-                for (let s = from; s <= to; s++) all.push(s);
-                return all;
+                const all = new Set<number>(prev);
+                for (let s = from; s <= to; s++) all.add(s);
+                return Array.from(all).sort((a, b) => a - b);
               });
             }
           }
@@ -323,7 +348,12 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
     }
 
     const loadedSizes = (specsData || []).map((r: any) => Number(r.size)).sort((a, b) => a - b);
-    setSizes(loadedSizes);
+    // União com a faixa do solado: quem tem spec aparece (mesmo fora da faixa,
+    // pra poder ser removido) e quem está na faixa aparece (mesmo sem spec, pra
+    // poder ser preenchido). Antes era `setSizes(loadedSizes)` puro, e com specs
+    // herdadas de outra régua a tela nunca mostrava os números reais do solado.
+    setSizes(Array.from(new Set([...loadedSizes, ...rangeSizes(soleRangeRef.current)]))
+      .sort((a, b) => a - b));
 
     const specsMap: Record<number, SoleSpec> = {};
     const loadedOverrides = emptyPerSizeOverrides();
@@ -419,10 +449,45 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
   const confirmPull = async () => {
     if (!referencePreview) return;
 
-    const { specs: filteredSpecs, soleId: refSoleId, name: refName, date: refDate } = referencePreview;
+    const { specs: allRefSpecs, soleId: refSoleId, name: refName, date: refDate } = referencePreview;
 
-    const loadedSizes = filteredSpecs.map((r: any) => Number(r.size)).sort((a, b) => a - b);
+    // A numeração da REFERÊNCIA não é a deste solado. Copiar a régua junto com
+    // os valores foi o que espalhou 34–40 por todos os solados do sistema —
+    // inclusive os infantis, cuja faixa real é 23–36 (bug 01/08/2026).
+    // Importa só o que cai dentro da faixa DESTE solado; sem faixa cadastrada,
+    // mantém o comportamento antigo (não há régua pra respeitar).
+    const range = soleRangeRef.current;
+    const filteredSpecs = range
+      ? allRefSpecs.filter((r: any) => {
+          const s = Number(r.size);
+          return Number.isFinite(s) && s >= range.from && s <= range.to;
+        })
+      : allRefSpecs;
+    const descartados = allRefSpecs.length - filteredSpecs.length;
+
+    if (range && filteredSpecs.length === 0) {
+      toast.error(
+        `"${refName}" tem consumo só de ${Math.min(...allRefSpecs.map((r: any) => Number(r.size)))}` +
+        `–${Math.max(...allRefSpecs.map((r: any) => Number(r.size)))}, fora da faixa deste solado ` +
+        `(${range.from}–${range.to}). Nada foi copiado.`,
+      );
+      return;
+    }
+
+    // Faixa do solado sempre visível: os números sem valor na referência ficam
+    // em branco pra preencher, em vez de sumirem da tela.
+    const loadedSizes = Array.from(new Set([
+      ...filteredSpecs.map((r: any) => Number(r.size)),
+      ...rangeSizes(range),
+    ])).sort((a, b) => a - b);
     setSizes(loadedSizes);
+
+    if (descartados > 0) {
+      toast.warning(
+        `${descartados} ${descartados === 1 ? 'numeração ficou' : 'numerações ficaram'} de fora: ` +
+        `estão além da faixa ${range!.from}–${range!.to} deste solado.`,
+      );
+    }
 
     const specsMap: Record<number, SoleSpec> = {};
     const loadedOverrides = emptyPerSizeOverrides();
@@ -1111,6 +1176,26 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
                 <AlertTriangle className="h-4 w-4" />
                 <span className="font-semibold">Solado Fachetado</span>
                 <span className="text-amber-600/70">— preencha o consumo de fachete por numeração</span>
+              </div>
+            )}
+            {/* Numeração fora da faixa do solado: veio de cópia de referência de
+                outra régua (bug 01/08/2026, ver soleRange). Não some sozinha —
+                o valor pode ser legítimo — mas precisa ser visto, porque o PV
+                nunca vende esses números e o consumo deles nunca é usado. */}
+            {soleRange && sizes.some(s => s < soleRange.from || s > soleRange.to) && (
+              <div className="mb-3 flex items-start gap-2 rounded-md bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>
+                  <strong>
+                    {sizes.filter(s => s < soleRange.from || s > soleRange.to).join(', ')}
+                  </strong>{' '}
+                  {sizes.filter(s => s < soleRange.from || s > soleRange.to).length === 1
+                    ? 'está fora' : 'estão fora'} da faixa deste solado
+                  (<strong>{soleRange.from}–{soleRange.to}</strong>, definida na aba Cadastro).
+                  O PV não vende {sizes.filter(s => s < soleRange.from || s > soleRange.to).length === 1 ? 'esse número' : 'esses números'},
+                  então o consumo cadastrado {sizes.filter(s => s < soleRange.from || s > soleRange.to).length === 1 ? 'nele' : 'neles'} nunca é usado —
+                  costuma ser resquício de cópia de outro solado. Remova a linha, ou corrija a faixa no Cadastro.
+                </span>
               </div>
             )}
             {/* Audit visual S9: wrapper overflow-x-auto pra tabela não espremer
