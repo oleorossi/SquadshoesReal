@@ -3,7 +3,8 @@ import ServiceOrderReturnDialog from '@/components/contractors/ServiceOrderRetur
 import ServiceOrderDispatchDialog from '@/components/contractors/ServiceOrderDispatchDialog';
 import { GenerateServiceOrdersWizard } from '@/components/contractors/GenerateServiceOrdersWizard';
 import ConsolidatedServiceOrders from '@/components/contractors/ConsolidatedServiceOrders';
-import { printServiceOrderRemessa } from '@/lib/printServiceOrderRemessa';
+import { printServiceOrderReceipt, expandBaseGrade } from '@/lib/printServiceOrderReceipt';
+import { thumbUrl } from '@/lib/imageThumb';
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
@@ -270,9 +271,12 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
     queryKey: ['os_dialog_pv_items', editingOrder.sale_order_id],
     enabled: orderDialog && !!editingOrder.sale_order_id,
     queryFn: async () => {
+      // `grade` e `image_url` entram pro papel da OS: o canhoto confere por
+      // NUMERAÇÃO e a foto identifica o modelo na bancada. Sem eles o papel
+      // ainda sai, mas só com o total (ver printServiceOrderReceipt).
       const { data, error } = await supabase
         .from('sale_order_items')
-        .select('id, color, quantity, reference_id, technical_sheets(code, name)')
+        .select('id, color, quantity, grade, reference_id, technical_sheets(code, name, image_url)')
         .eq('sale_order_id', editingOrder.sale_order_id as string);
       if (error) throw error;
       return data || [];
@@ -284,7 +288,21 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
       const ts = it.technical_sheets;
       const code = ts?.code || ts?.name || '';
       const label = [code, it.color || '—'].filter(Boolean).join(' · ');
-      return { id: it.id as string, label, pairs: Number(it.quantity) || 0 };
+      const pairs = Number(it.quantity) || 0;
+      return {
+        id: it.id as string,
+        label,
+        pairs,
+        ref_code: code || null,
+        ref_name: ts?.name || null,
+        color: it.color || null,
+        // `grade` do item é a grade BASE (1 ficha, ~12 pares) — expandir pro
+        // total do item antes de imprimir.
+        size_breakdown: expandBaseGrade(it.grade as Record<string, number> | null, pairs),
+        // 80px de exibição (quadro de 20mm); o dpr 3 default já entrega
+        // nitidez pra A4 a 300dpi sem inflar o arquivo.
+        photo_url: ts?.image_url ? thumbUrl(ts.image_url, 80) || null : null,
+      };
     }).filter((i) => i.pairs > 0),
     [osPvItemsRaw],
   );
@@ -545,30 +563,30 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-44">
             <DropdownMenuItem onClick={() => openEditOrder(o)}><Pencil className="mr-2 h-3.5 w-3.5" /> Editar</DropdownMenuItem>
-            {o.receipt_number && (
-              <DropdownMenuItem onClick={() => {
-                const so = (saleOrders as any[]).find(s => s.id === o.sale_order_id);
-                printServiceOrderRemessa(
-                  {
-                    order_number: o.order_number,
-                    target_sector: o.target_sector || null,
-                    description: o.description || '',
-                    service_date: o.service_date || '',
-                    quantity: Number(o.quantity || 0),
-                    unit_price: Number(o.unit_price || 0),
-                    total_value: Number(o.total_value || 0),
-                    notes: o.notes || '',
-                    materials_sent: getMaterials(o),
-                    sale_order_number: so?.order_number || null,
-                    client_order_number: so?.client_order_number || null,
-                    client_name: so?.client_name || null,
-                  },
-                  contractors.find(c => c.id === o.contractor_id),
-                );
-              }}>
-                <Printer className="mr-2 h-3.5 w-3.5" /> Recibo {o.receipt_number}
-              </DropdownMenuItem>
-            )}
+            {/* Impressão do papel da OS. O guard antigo era `o.receipt_number &&`,
+                mas 385 das 386 OS têm essa coluna como string VAZIA (falsy) —
+                o item de menu nunca aparecia. Quem identifica a OS é o
+                order_number, que sempre existe. */}
+            <DropdownMenuItem onClick={() => {
+              const so = (saleOrders as any[]).find(s => s.id === o.sale_order_id);
+              printServiceOrderReceipt(
+                {
+                  order_number: o.order_number,
+                  target_sector: o.target_sector || null,
+                  description: o.description || '',
+                  service_date: o.service_date || '',
+                  quoted_deadline: o.quoted_deadline || null,
+                  quantity: Number(o.quantity || 0),
+                  notes: o.notes || '',
+                  materials_sent: getMaterials(o),
+                  sale_order_number: so?.order_number || null,
+                  client_name: so?.client_name || null,
+                },
+                contractors.find(c => c.id === o.contractor_id),
+              );
+            }}>
+              <Printer className="mr-2 h-3.5 w-3.5" /> Imprimir OS
+            </DropdownMenuItem>
             {osPerm.canDelete && <>
               <DropdownMenuSeparator />
               <DropdownMenuItem
@@ -2694,30 +2712,28 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
               const so = (saleOrders as any[]).find(s => s.id === editingOrder.sale_order_id);
               const validMats = (editingOrder.materials_sent || []).filter(m => m.material?.trim());
               const qtyVal = Number(editingOrder.quantity || 1);
-              const unitVal = Number(editingOrder.unit_price || 0);
-              printServiceOrderRemessa(
+              // Papel único (Modelo A): sem preço nem total. Os itens marcados
+              // levam grade por numeração e foto — é o que alimenta o canhoto.
+              printServiceOrderReceipt(
                 {
                   order_number: isEditing ? (orders.find(o => o.id === editingOrder.id)?.order_number || 'NOVA') : 'NOVA',
                   target_sector: editingOrder.target_sector || null,
                   description: editingOrder.description || '',
                   service_date: editingOrder.service_date || format(new Date(), 'yyyy-MM-dd'),
-                  service_time: editingOrder.service_time || '',
+                  quoted_deadline: editingOrder.quoted_deadline || null,
                   quantity: qtyVal,
-                  unit_price: isArtisanal ? 0 : unitVal,
-                  total_value: isArtisanal ? Number(editingOrder.total_value || editingOrder.unit_price || 0) : qtyVal * unitVal,
                   notes: editingOrder.notes || '',
                   materials_sent: validMats,
                   sale_order_number: so?.order_number || null,
-                  client_order_number: so?.client_order_number || null,
                   client_name: so?.client_name || null,
                 },
                 contractor ? {
                   name: contractor.name, trade_name: (contractor as any).trade_name,
-                  cnpj_cpf: contractor.cnpj_cpf, phone: contractor.phone, payment_days: contractor.payment_days,
+                  cnpj_cpf: contractor.cnpj_cpf, phone: contractor.phone,
                 } : undefined,
                 { items: osSelItems },
               );
-            }}><Printer className="h-4 w-4" /> Gerar PDF</Button>
+            }}><Printer className="h-4 w-4" /> Imprimir OS</Button>
             <Button onClick={handleSaveOrder} disabled={!manualOsValid || createOrder.isPending || updateOrder.isPending} className="h-9">Salvar</Button>
           </DialogFooter>
         </DialogContent>
