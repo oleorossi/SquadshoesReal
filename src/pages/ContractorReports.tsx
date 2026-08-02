@@ -193,19 +193,18 @@ export default function ContractorReportsPage({ embedded }: { embedded?: boolean
 
   const handlePrintReceipt = (o: ContractorHistoryOrder) => {
     const contractor = contractors.find((c: any) => c.id === o.contractor_id) as any;
+    // Papel único (Modelo A): sem preço nem total — só quantidade. Ver
+    // printServiceOrderReceipt.ts. Aqui não há itens do PV à mão, então o papel
+    // sai pela descrição e o canhoto confere pelo total.
     printServiceOrderReceipt(
       {
         id: o.id,
         order_number: o.order_number,
-        receipt_number: o.receipt_number,
         description: o.description,
         service_date: o.service_date,
         quoted_deadline: o.quoted_deadline,
         quantity: o.quantity,
-        unit_price: o.unit_price,
-        total_value: o.total_value,
         target_sector: o.sector,
-        status: o.status,
         materials_sent: Array.isArray(o.materials_sent) ? o.materials_sent : [],
       },
       {
@@ -213,10 +212,6 @@ export default function ContractorReportsPage({ embedded }: { embedded?: boolean
         trade_name: contractor?.trade_name,
         cnpj_cpf: contractor?.cnpj_cpf,
         phone: contractor?.phone,
-        email: contractor?.email,
-        address: contractor?.address,
-        city: contractor?.city,
-        state: contractor?.state,
       },
     );
   };

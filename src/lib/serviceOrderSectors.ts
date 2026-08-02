@@ -13,6 +13,13 @@ export const SERVICE_ORDER_SECTORS: ReadonlyArray<{ value: string; label: string
   { value: 'corte_palmilha', label: 'Corte Palmilha' },
   { value: 'corte_forracao', label: 'Corte Forração' },
   { value: 'silk', label: 'Silk' },
+  // `mesa` (Aviamento) e `colagem` estavam FORA desta lista mas dentro da cópia
+  // local do ServiceOrderFormDialog — exatamente a divergência que o cabeçalho
+  // acima diz que a lista existe pra evitar. Consolidados aqui em 01/08/2026;
+  // o dialog passou a importar daqui. Os 10 valores batem com o CHECK de
+  // `sale_order_items.outsourced_sectors` (migration 20261030120000).
+  { value: 'mesa', label: 'Aviamento' },
+  { value: 'colagem', label: 'Colagem' },
   { value: 'montagem', label: 'Montagem' },
   { value: 'solagem', label: 'Solagem' },
   { value: 'acabamento', label: 'Acabamento' },
