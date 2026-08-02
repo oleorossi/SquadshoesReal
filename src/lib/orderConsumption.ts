@@ -222,6 +222,19 @@ export type ConsumptionContext = {
    *  (produto coberto pelo item-padrão sai do BOM/direct). Opcional (testes
    *  antigos não constroem). Auditoria F2-01. */
   soleStandardItemsBySole?: Map<string, Array<{ standardItemId: string; size: number; consumption: number; unit: string | null }>>;
+  /** sole_product_id → itens-padrão do MODELO (grupo) de solado, cadastro
+   *  vigente desde 02/08/2026 (`sole_group_standard_items`). Diferença pro mapa
+   *  acima: a quantidade é POR PAR (`perPair`), com grade opcional (`perSize`)
+   *  só pros itens que escalam com o tamanho — o cadastro antigo obrigava uma
+   *  célula por numeração até pra cola, e ficou parado por isso.
+   *
+   *  VÍNCULO VIVO: a ficha NÃO guarda cópia destes materiais. Eles entram no
+   *  cálculo direto da origem, então corrigir a gramagem no solado corrige em
+   *  todas as referências que o usam. O dedup anti-BOM é o mesmo
+   *  (`stdCoveredProductIds`), o que faz a linha viva SUPRIMIR eventuais cópias
+   *  antigas do mesmo produto no BOM da ficha. Opcional (testes antigos não
+   *  constroem). */
+  soleGroupStandardItemsBySole?: Map<string, Array<{ standardItemId: string; perPair: number; perSize: Record<string, number>; unit: string | null }>>;
 };
 
 /**
@@ -820,6 +833,7 @@ export async function fetchConsumptionContext(refIds: string[]): Promise<Consump
   // (mappings explícitos, primary, produtos dos grupos de solado, pins de
   // variante) — mesma população que resolveSoleProductIdCanonical enxerga.
   const soleStandardItemsBySole = new Map<string, Array<{ standardItemId: string; size: number; consumption: number; unit: string | null }>>();
+  const soleGroupStandardItemsBySole = new Map<string, Array<{ standardItemId: string; perPair: number; perSize: Record<string, number>; unit: string | null }>>();
   {
     const candidateIds = new Set<string>();
     for (const pid of soleColorMap.values()) candidateIds.add(pid);
@@ -846,6 +860,47 @@ export async function fetchConsumptionContext(refIds: string[]): Promise<Consump
         const arr = soleStandardItemsBySole.get(r.sole_product_id) || [];
         arr.push({ standardItemId: r.standard_item_id, size: Number(r.size), consumption: cons, unit: r.unit ?? null });
         soleStandardItemsBySole.set(r.sole_product_id, arr);
+      }
+
+      // Cadastro vigente: itens padrão POR MODELO (grupo) de solado. Expandimos
+      // grupo → produtos-solado do grupo, porque o resto do motor resolve tudo
+      // por sole_product_id. A quantidade é por par; `perSize` só existe pros
+      // itens que variam com o tamanho.
+      const groupIdsForStd = new Set<string>();
+      for (const p of (allProducts || []) as any[]) {
+        if (candidateIds.has(p.id) && p.group_id) groupIdsForStd.add(p.group_id);
+      }
+      if (groupIdsForStd.size > 0) {
+        const { data: groupItems } = await (supabase as any)
+          .from('sole_group_standard_items')
+          .select('sole_group_id, material_product_id, consumption_per_pair, consumption_per_size, unit')
+          .in('sole_group_id', [...groupIdsForStd]);
+        const byGroup = new Map<string, any[]>();
+        for (const r of (groupItems || []) as any[]) {
+          const arr = byGroup.get(r.sole_group_id) || [];
+          arr.push(r);
+          byGroup.set(r.sole_group_id, arr);
+        }
+        for (const p of (allProducts || []) as any[]) {
+          if (!candidateIds.has(p.id) || !p.group_id) continue;
+          const rows = byGroup.get(p.group_id);
+          if (!rows || rows.length === 0) continue;
+          const arr = soleGroupStandardItemsBySole.get(p.id) || [];
+          for (const r of rows) {
+            const perPair = Number(r.consumption_per_pair) || 0;
+            const perSize = (r.consumption_per_size || {}) as Record<string, number>;
+            // Linha zerada sem grade não gera consumo — item recém-adicionado
+            // que ainda não recebeu valor não deve poluir o cálculo.
+            if (perPair <= 0 && Object.keys(perSize).length === 0) continue;
+            arr.push({
+              standardItemId: r.material_product_id,
+              perPair,
+              perSize,
+              unit: r.unit ?? null,
+            });
+          }
+          if (arr.length > 0) soleGroupStandardItemsBySole.set(p.id, arr);
+        }
       }
     }
   }
@@ -877,6 +932,7 @@ export async function fetchConsumptionContext(refIds: string[]): Promise<Consump
     componentColorDefaultMap,
     materialVariantsById,
     soleStandardItemsBySole,
+    soleGroupStandardItemsBySole,
   };
 }
 
@@ -922,6 +978,8 @@ export function computeConsumptionForItems(
   const materialVariantsById = ctx.materialVariantsById ?? new Map<string, MaterialVariantResolution>();
   const soleStandardItemsBySole = ctx.soleStandardItemsBySole
     ?? new Map<string, Array<{ standardItemId: string; size: number; consumption: number; unit: string | null }>>();
+  const soleGroupStandardItemsBySole = ctx.soleGroupStandardItemsBySole
+    ?? new Map<string, Array<{ standardItemId: string; perPair: number; perSize: Record<string, number>; unit: string | null }>>();
 
   // Normalização case/acento-insensitive ("Caramelo" = "CARAMELO", "Café" = "Cafe").
   const normColor = (s: string | null | undefined): string =>
@@ -1717,7 +1775,15 @@ export function computeConsumptionForItems(
       const stdItemsForSole = soleProductIdResolved
         ? (soleStandardItemsBySole.get(soleProductIdResolved) || [])
         : [];
-      if (stdItemsForSole.length > 0 && Object.keys(scaledBreakdown).length > 0) {
+      // Cadastro vigente (`sole_group_standard_items`, por MODELO de solado):
+      // vínculo vivo, quantidade por par com grade opcional. Convive com o
+      // legado por numeração acima — quando o mesmo produto está nos dois, o
+      // do MODELO vence, porque é o que a tela de hoje edita.
+      const groupStdItemsForSole = soleProductIdResolved
+        ? (soleGroupStandardItemsBySole.get(soleProductIdResolved) || [])
+        : [];
+      const groupStdProductIds = new Set(groupStdItemsForSole.map((s) => s.standardItemId));
+      if ((stdItemsForSole.length > 0 || groupStdItemsForSole.length > 0) && Object.keys(scaledBreakdown).length > 0) {
         const stdAcc = new Map<string, { required: number; unit: string | null }>();
         for (const [sizeKey, pairs] of Object.entries(scaledBreakdown)) {
           // Numeração conjugada ("33/34") casa pelo primeiro número — mesmo
@@ -1726,8 +1792,20 @@ export function computeConsumptionForItems(
           if (!Number.isFinite(sizeInt) || !(pairs > 0)) continue;
           for (const std of stdItemsForSole) {
             if (std.size !== sizeInt) continue;
+            // O cadastro por modelo substitui o legado para o mesmo produto.
+            if (groupStdProductIds.has(std.standardItemId)) continue;
             const a = stdAcc.get(std.standardItemId) || { required: 0, unit: std.unit };
             a.required += std.consumption * pairs;
+            stdAcc.set(std.standardItemId, a);
+          }
+          for (const std of groupStdItemsForSole) {
+            // Grade preenchida vence o valor por par nesta numeração; sem
+            // entrada na grade, o valor por par vale para todos os tamanhos.
+            const fromGrid = Number(std.perSize?.[String(sizeInt)]);
+            const consumption = Number.isFinite(fromGrid) && fromGrid > 0 ? fromGrid : std.perPair;
+            if (!(consumption > 0)) continue;
+            const a = stdAcc.get(std.standardItemId) || { required: 0, unit: std.unit };
+            a.required += consumption * pairs;
             stdAcc.set(std.standardItemId, a);
           }
         }

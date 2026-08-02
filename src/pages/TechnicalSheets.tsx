@@ -1786,10 +1786,18 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
        // TODOS os solados e componentes do estoque no BOM da nova ficha
        // (centenas de produtos), o que não fazia sentido nenhum.
        // Critério correto: só items explicitamente marcados como "padrão global".
+       // BUG 02/08/2026: a flag estava marcada em 7 SOLADOS (não em cola/linha),
+       // e o loop abaixo despejava os 7 no BOM de toda ficha nova a 1 par/par —
+       // 56 linhas em 8 fichas, inflando custeio e MRP. O solado da referência
+       // vem de `technical_sheets.sole_group_id`, nunca de linha de BOM, então
+       // filtramos a categoria aqui além do CHECK do banco
+       // (chk_standard_sole_item_not_a_sole, mig 20261102120000).
       const { data: globalStandardItems, error: globalError } = await supabase.from('products')
         .select('id, name, group_id, unit_price, unit, category')
         .eq('is_standard_sole_item', true)
-        .eq('active', true);
+        .eq('active', true)
+        .not('category', 'ilike', '%solado%')
+        .not('category', 'ilike', 'sola');
 
        if (globalError) throw globalError;
 
