@@ -9,7 +9,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { CircleNotch as Loader2, CurrencyDollar as DollarSign, Calculator, CheckCircle as CheckCircle2, Receipt, Warning as AlertTriangle, Wallet, Clock, Printer, DownloadSimple, IdentificationCard, CalendarBlank, Paperclip, FilePdf } from '@phosphor-icons/react';
+import { CircleNotch as Loader2, CurrencyDollar as DollarSign, Calculator, CheckCircle as CheckCircle2, Receipt, Warning as AlertTriangle, Wallet, Clock, Printer, DownloadSimple, IdentificationCard, CalendarBlank, Paperclip, FilePdf, Package } from '@phosphor-icons/react';
 import { printRhReport, type RhCell } from '@/lib/printRhReport';
 import { useQuery } from '@tanstack/react-query';
 import { useEmployees } from '@/hooks/useEmployees';
@@ -17,7 +17,7 @@ import { useHolidays, useSwapSets, useTimesheetCoverage, useWorkSchedules } from
 import { usePayrollRuns, useUpsertPayrollRun, useUpdatePayrollStatus } from '@/hooks/useRH';
 import { usePayrollPaymentSummaries } from '@/hooks/usePayrollPayments';
 import { RegistrarPagamentoDialog } from '@/components/hr/RegistrarPagamentoDialog';
-import { computePeriodFolha, getDaysInRange } from '@/lib/salaryPayroll';
+import { computePeriodFolha, getDaysInRange, type SalaryPayrollResult } from '@/lib/salaryPayroll';
 import { computeComparativoRows } from '@/lib/payrollComparativo';
 import { aggregateProducaoByMontador, fetchMontadorProducaoInRange } from '@/lib/montadorProduction';
 import { fetchTimeRecordsInRange } from '@/lib/ponto/fetchTimeRecords';
@@ -264,6 +264,22 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
     maxCovered: coverage?.maxCovered || null,
   }), [employees, schedules, defaultSchedule, holidaysSet, swapWorkedSet, swapOffSet, compRecords, compAdvances, compProducao, appliedFrom, appliedTo, compPeriod, coverage]);
 
+  /** Detalhe de PRODUÇÃO por funcionário (dias produtivos, fichas, pares) para
+   *  quem é regime por par. Sai do comparativo, que roda exatamente na mesma
+   *  janela de `runs` (ambos em appliedFrom..appliedTo) — por isso os números da
+   *  tela batem com os do PDF sem recalcular nada aqui.
+   *
+   *  A tabela guarda só o dinheiro (payroll_runs); pares e dias produtivos não
+   *  têm coluna própria lá. Sem este mapa, a linha de quem é por par mostrava o
+   *  bruto embaixo do rótulo "Salário" e mais nada — parecia mensalista. */
+  const porParByEmp = useMemo(() => {
+    const m = new Map<string, SalaryPayrollResult>();
+    for (const r of comparativo.rows) {
+      if (r.result?.payment_type === 'producao') m.set(r.id, r.result);
+    }
+    return m;
+  }, [comparativo]);
+
   const handleExportExcel = () => {
     if (comparativo.rows.length === 0) { toast.error('Nada pra exportar.'); return; }
     exportFolhaExcel(
@@ -415,13 +431,21 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
     const src = comparativo.rows.filter(r => setorFilter === 'all' || setorOf(r.id) === setorFilter);
     if (src.length === 0) { toast.error('Nenhum funcionário na folha do período.'); return; }
 
-    let tSal = 0, tHe = 0, tFalta = 0, tAtraso = 0, tLiq = 0, tWork = 0, tHeMin = 0;
-    const bodyRows = src.map((r): RhCell[] => {
-      const res: any = r.result;
+    // Duas formas de pagar, dois blocos: quem é medido pelo RELÓGIO DE PONTO
+    // (mensalista/remoto/diarista) e quem é pago POR PAR, cujos números vêm da
+    // Ficha de Montadores e não do ponto. Numa tabela só, cada linha teria metade
+    // das colunas em "—". Bloco sem ninguém não é impresso.
+    const isPorPar = (r: { result: SalaryPayrollResult }) => r.result?.payment_type === 'producao';
+    const srcPonto = src.filter(r => !isPorPar(r));
+    const srcPorPar = src.filter(r => isPorPar(r));
+
+    let tSal = 0, tHe = 0, tFalta = 0, tAtraso = 0, tLiqPonto = 0, tWork = 0, tHeMin = 0;
+    const rowsPonto = srcPonto.map((r): RhCell[] => {
+      const res = r.result;
       const sal = Number(res.base_salary) || 0, he = Number(res.he_value) || 0;
       const falta = Number(res.falta_desconto) || 0, atraso = Number(res.atraso_desconto) || 0;
       tSal += sal; tHe += he; tFalta += falta; tAtraso += atraso;
-      tLiq += Number(res.net_value) || 0; tWork += Number(res.worked_minutes) || 0; tHeMin += Number(res.he_minutes) || 0;
+      tLiqPonto += Number(res.net_value) || 0; tWork += Number(res.worked_minutes) || 0; tHeMin += Number(res.he_minutes) || 0;
       return [
         { v: r.name },
         { v: setorOf(r.id) || '—' },
@@ -436,38 +460,106 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
       ];
     });
 
+    let tDias = 0, tFichas = 0, tPMed = 0, tPDif = 0, tBruto = 0, tVale = 0, tLiqPar = 0;
+    let algumaFichaDerivada = false;
+    const rowsPorPar = srcPorPar.map((r): RhCell[] => {
+      const res = r.result;
+      const dias = Number(res.paid_days) || 0;
+      const fichas = Number(res.fichas) || 0;
+      const pMed = Number(res.pares_medio) || 0, pDif = Number(res.pares_dificil) || 0;
+      const bruto = Number(res.total_proventos) || 0, vale = Number(res.advances_total) || 0;
+      if (res.fichas_derivadas) algumaFichaDerivada = true;
+      tDias += dias; tFichas += fichas; tPMed += pMed; tPDif += pDif;
+      tBruto += bruto; tVale += vale; tLiqPar += Number(res.net_value) || 0;
+      // R$/par MÉDIO efetivo do período: o valor gravado varia por lançamento
+      // (é snapshot), então mostrar "a taxa" seria mentira quando houve reajuste.
+      // Aqui sai o que o período efetivamente pagou por par.
+      const taxaEfetiva = pMed + pDif > 0 ? bruto / (pMed + pDif) : 0;
+      return [
+        { v: r.name },
+        { v: setorOf(r.id) || '—' },
+        { v: String(dias), align: 'r' },
+        { v: fichas > 0 ? `${fichas}${res.fichas_derivadas ? ' *' : ''}` : '—', align: 'r' },
+        { v: pMed.toLocaleString('pt-BR'), align: 'r' },
+        { v: pDif > 0 ? pDif.toLocaleString('pt-BR') : '—', align: 'r' },
+        { v: taxaEfetiva > 0 ? fmt(taxaEfetiva) : '—', align: 'r' },
+        { v: fmt(bruto), align: 'r' },
+        { v: vale > 0 ? `− ${fmt(vale)}` : '—', align: 'r', neg: vale > 0 },
+        { v: fmt(Number(res.net_value) || 0), align: 'r', strong: true },
+      ];
+    });
+
+    const notas = [
+      srcPonto.length > 0 ? 'Faltas e atrasos conforme dias úteis e jornada da escala · H.E. conforme taxa cadastrada.' : '',
+      srcPorPar.length > 0 ? 'Por par: valor de cada lançamento pelo R$/par gravado nele — o relógio de ponto não entra na conta.' : '',
+      algumaFichaDerivada ? '* Fichas inferidas (lote de 12): o lançamento é anterior ao registro de tamanho. Os PARES, que são a base do pagamento, não dependem disso.' : '',
+    ].filter(Boolean).join(' ');
+
     printRhReport({
       title: 'Folha — Relatório por Funcionário',
       subtitle: setorFilter !== 'all' ? `Setor: ${setorFilter}` : 'Todos os setores',
       periodo: `${dfmt(appliedFrom)} – ${dfmt(appliedTo)}`,
       generatedAt,
       kpis: [
-        { label: 'Funcionários', value: String(bodyRows.length) },
+        { label: 'Funcionários', value: String(rowsPonto.length + rowsPorPar.length) },
         { label: 'Horas trab.', value: fmtHm(tWork) },
-        { label: 'Horas extras', value: fmtHm(tHeMin) },
-        { label: 'Proventos', value: fmt(tSal + tHe) },
-        { label: 'Descontos', value: fmt(tFalta + tAtraso) },
-        { label: 'Líquido', value: fmt(tLiq) },
+        { label: 'Pares produzidos', value: (tPMed + tPDif).toLocaleString('pt-BR') },
+        { label: 'Proventos', value: fmt(tSal + tHe + tBruto) },
+        { label: 'Descontos', value: fmt(tFalta + tAtraso + tVale) },
+        { label: 'Líquido', value: fmt(tLiqPonto + tLiqPar) },
       ],
-      headers: [
-        { label: 'Funcionário' }, { label: 'Setor' }, { label: 'Dias', align: 'r' },
-        { label: 'H. trab.', align: 'r' }, { label: 'H. extra', align: 'r' },
-        { label: 'Salário', align: 'r' }, { label: 'H.E. (R$)', align: 'r' },
-        { label: 'Faltas', align: 'r' }, { label: 'Atrasos', align: 'r' }, { label: 'Líquido', align: 'r' },
+      sections: [
+        {
+          title: 'Mensalistas, remotos e diaristas · pelo relógio de ponto',
+          note: 'Salário do período, ajustado por faltas, atrasos e horas extras medidos contra a escala.',
+          headers: [
+            { label: 'Funcionário' }, { label: 'Setor' }, { label: 'Dias', align: 'r' },
+            { label: 'H. trab.', align: 'r' }, { label: 'H. extra', align: 'r' },
+            { label: 'Salário', align: 'r' }, { label: 'H.E. (R$)', align: 'r' },
+            { label: 'Faltas', align: 'r' }, { label: 'Atrasos', align: 'r' }, { label: 'Líquido', align: 'r' },
+          ],
+          rows: rowsPonto,
+          totals: [
+            { v: `Subtotal · ${rowsPonto.length} func.`, strong: true },
+            { v: '' }, { v: '', align: 'r' },
+            { v: fmtHm(tWork), align: 'r', strong: true },
+            { v: fmtHm(tHeMin), align: 'r', strong: true },
+            { v: fmt(tSal), align: 'r', strong: true },
+            { v: fmt(tHe), align: 'r', strong: true },
+            { v: `− ${fmt(tFalta)}`, align: 'r', neg: true, strong: true },
+            { v: `− ${fmt(tAtraso)}`, align: 'r', neg: true, strong: true },
+            { v: fmt(tLiqPonto), align: 'r', strong: true },
+          ],
+        },
+        {
+          title: 'Por par · Ficha de Montadores',
+          note: 'Pares apontados no período, valorados pelo R$/par gravado em cada lançamento. Dias = dias produtivos (com pares lançados), não dias de ponto.',
+          headers: [
+            { label: 'Funcionário' }, { label: 'Setor' }, { label: 'Dias prod.', align: 'r' },
+            { label: 'Fichas', align: 'r' }, { label: 'Pares méd', align: 'r' }, { label: 'Pares dif', align: 'r' },
+            { label: 'R$/par', align: 'r' }, { label: 'Produção', align: 'r' },
+            { label: 'Adiant.', align: 'r' }, { label: 'Líquido', align: 'r' },
+          ],
+          rows: rowsPorPar,
+          totals: [
+            { v: `Subtotal · ${rowsPorPar.length} func.`, strong: true },
+            { v: '' },
+            { v: String(tDias), align: 'r', strong: true },
+            { v: String(tFichas), align: 'r', strong: true },
+            { v: tPMed.toLocaleString('pt-BR'), align: 'r', strong: true },
+            { v: tPDif > 0 ? tPDif.toLocaleString('pt-BR') : '—', align: 'r', strong: true },
+            { v: '', align: 'r' },
+            { v: fmt(tBruto), align: 'r', strong: true },
+            { v: `− ${fmt(tVale)}`, align: 'r', neg: true, strong: true },
+            { v: fmt(tLiqPar), align: 'r', strong: true },
+          ],
+        },
       ],
-      rows: bodyRows,
-      totals: [
-        { v: `Total · ${bodyRows.length} func.`, strong: true },
-        { v: '' }, { v: '', align: 'r' },
-        { v: fmtHm(tWork), align: 'r', strong: true },
-        { v: fmtHm(tHeMin), align: 'r', strong: true },
-        { v: fmt(tSal), align: 'r', strong: true },
-        { v: fmt(tHe), align: 'r', strong: true },
-        { v: `− ${fmt(tFalta)}`, align: 'r', neg: true, strong: true },
-        { v: `− ${fmt(tAtraso)}`, align: 'r', neg: true, strong: true },
-        { v: fmt(tLiq), align: 'r', strong: true },
-      ],
-      footNote: 'Faltas e atrasos conforme dias úteis e jornada da escala · H.E. conforme taxa cadastrada.',
+      grandTotal: {
+        label: `Total geral · ${rowsPonto.length + rowsPorPar.length} funcionário(s)`,
+        value: fmt(tLiqPonto + tLiqPar),
+      },
+      footNote: notas,
     });
   };
 
@@ -641,6 +733,9 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
           producaoBruto: prod?.bruto || 0,
           producaoParesMedio: prod?.paresMedio || 0,
           producaoParesDificil: prod?.paresDificil || 0,
+          producaoDias: prod?.dias || 0,
+          producaoFichas: prod?.fichas || 0,
+          producaoFichasDerivadas: prod?.fichasDerivadas || false,
           // HE em R$/h ABSOLUTO por funcionário (spec 2026-07-09) — dia útil/sábado/noturno
           // e domingo/feriado. Falta/atraso passam a usar dias úteis do mês (motor).
           heNormalRate: Number((emp as any).he_normal_rate) || 0,
@@ -662,9 +757,15 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
           premium_value: result.he_value,
           expected_minutes: result.expected_minutes,
           business_days: result.workdays,
-          business_days_worked: result.worked_days,
+          // Por par: "dias trabalhados" = DIAS PRODUTIVOS (dias com pares
+          // lançados), não dias com batida — o ponto não paga neste regime.
+          business_days_worked: regime === 'producao' ? result.paid_days : result.worked_days,
           absent_days: result.falta_days,
           absence_discount: result.falta_desconto,
+          // Pares do período (por par): congelados na folha para holerite e
+          // recibo não dependerem de reprocessar a Ficha meses depois.
+          pares_medio: result.pares_medio || 0,
+          pares_dificil: result.pares_dificil || 0,
           // Minutos de HE que geraram overtime_amount (o holerite exibe esta
           // coluna; premium_minutes é outro conceito — pós-18h/fds).
           overtime_50_minutes: result.he_minutes,
@@ -676,7 +777,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
           total_liquido: result.net_value,
           net_salary: result.net_value,
           notes: regime === 'producao'
-            ? `Por par: ${paresTot} pares (${result.pares_medio || 0} méd + ${result.pares_dificil || 0} dif)`
+            ? `Por par: ${paresTot} pares (${result.pares_medio || 0} méd + ${result.pares_dificil || 0} dif) · ${result.paid_days} dia(s) produtivo(s)`
             : (result.pending_days > 0 ? `${result.pending_days} dia(s) pendente(s) — resolver no Pendências` : null),
           status: 'rascunho',
         });
@@ -1025,6 +1126,13 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
               const hasAdvance = (r.advances_total || 0) > 0;
               const sum = paySummaries[r.id];
               const parcial = r.status === 'aprovado' && !!sum && sum.paidTotal > 0.005 && sum.paidTotal < (r.total_liquido || 0) - 0.005;
+              // Regime por par: as colunas de ponto (Faltas/Atrasos/Hora extra)
+              // não existem pra ele. Em vez de três "—" mudos, a linha usa o
+              // espaço delas pra mostrar o que REALMENTE define o pagamento:
+              // dias produtivos, pares e o R$/par efetivo do período.
+              const prod = porParByEmp.get(r.employee_id);
+              const prodPares = prod ? (Number(prod.pares_medio) || 0) + (Number(prod.pares_dificil) || 0) : 0;
+              const prodTaxa = prodPares > 0 ? (Number(prod.total_proventos) || 0) / prodPares : 0;
               return (
                 <TableRow key={r.id} className={hasAdvance ? 'hover:bg-muted/30 bg-amber-500/5' : 'hover:bg-muted/30'}>
                   <TableCell className="font-medium">
@@ -1032,23 +1140,46 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
                       {emp?.name || '—'}
                       {hasAdvance && <Wallet className="h-3.5 w-3.5 text-amber-600" aria-label="Possui adiantamento" />}
                     </div>
+                    {prod && (
+                      <span className="mt-0.5 inline-block rounded bg-muted px-1.5 py-px font-mono text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+                        Por par
+                      </span>
+                    )}
                   </TableCell>
-                  <TableCell className="text-right font-mono text-muted-foreground tabular-nums" title={`Salário mensal ${fmt(r.base_salary)}`}>{fmt((r.total_proventos || 0) - (r.overtime_amount || 0))}</TableCell>
-                  <TableCell className="text-right font-mono tabular-nums">
-                    {(r.absent_days || 0) > 0
-                      ? <span className="text-red-600 font-semibold">{r.absent_days}d · −{fmt(r.absence_discount)}</span>
-                      : <span className="text-muted-foreground">—</span>}
-                  </TableCell>
-                  <TableCell className="text-right font-mono tabular-nums">
-                    {(r.deductions_amount || 0) > 0
-                      ? <span className="text-red-600">−{fmt(r.deductions_amount)}</span>
-                      : <span className="text-muted-foreground">—</span>}
-                  </TableCell>
-                  <TableCell className="text-right font-mono tabular-nums">
-                    {(r.overtime_amount || 0) > 0
-                      ? <span className="text-emerald-600 font-semibold">+{fmt(r.overtime_amount)}</span>
-                      : <span className="text-muted-foreground">—</span>}
-                  </TableCell>
+                  <TableCell
+                    className="text-right font-mono text-muted-foreground tabular-nums"
+                    title={prod ? `Produção do período — ${prodPares.toLocaleString('pt-BR')} pares` : `Salário mensal ${fmt(r.base_salary)}`}
+                  >{fmt((r.total_proventos || 0) - (r.overtime_amount || 0))}</TableCell>
+                  {prod ? (
+                    <TableCell colSpan={3} className="text-right font-mono text-xs tabular-nums">
+                      <span className="text-foreground font-semibold">{Number(prod.paid_days) || 0}</span>
+                      <span className="text-muted-foreground"> dias prod. · </span>
+                      <span className="text-foreground font-semibold">{prodPares.toLocaleString('pt-BR')}</span>
+                      <span className="text-muted-foreground"> pares</span>
+                      {(Number(prod.fichas) || 0) > 0 && (
+                        <span className="text-muted-foreground"> · {prod.fichas} fichas{prod.fichas_derivadas ? '*' : ''}</span>
+                      )}
+                      {prodTaxa > 0 && <span className="text-muted-foreground"> · {fmt(prodTaxa)}/par</span>}
+                    </TableCell>
+                  ) : (
+                    <>
+                      <TableCell className="text-right font-mono tabular-nums">
+                        {(r.absent_days || 0) > 0
+                          ? <span className="text-red-600 font-semibold">{r.absent_days}d · −{fmt(r.absence_discount)}</span>
+                          : <span className="text-muted-foreground">—</span>}
+                      </TableCell>
+                      <TableCell className="text-right font-mono tabular-nums">
+                        {(r.deductions_amount || 0) > 0
+                          ? <span className="text-red-600">−{fmt(r.deductions_amount)}</span>
+                          : <span className="text-muted-foreground">—</span>}
+                      </TableCell>
+                      <TableCell className="text-right font-mono tabular-nums">
+                        {(r.overtime_amount || 0) > 0
+                          ? <span className="text-emerald-600 font-semibold">+{fmt(r.overtime_amount)}</span>
+                          : <span className="text-muted-foreground">—</span>}
+                      </TableCell>
+                    </>
+                  )}
                   <TableCell className="text-right font-mono tabular-nums font-bold">{fmt(r.total_liquido)}</TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1.5">
@@ -1234,8 +1365,8 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
       <Dialog open={!!detailRun} onOpenChange={(o) => !o && setDetailRun(null)}>
         <DialogContent className="max-w-xl">
           <DialogHeader>
-            <DialogTitle>Holerite — salário − descontos</DialogTitle>
-            <DialogDescription>Proventos, descontos e líquido a receber do funcionário no período.</DialogDescription>
+            <DialogTitle>Holerite do período</DialogTitle>
+            <DialogDescription>Proventos, descontos e líquido a receber. Quem é pago por par tem a produção discriminada no lugar do salário.</DialogDescription>
           </DialogHeader>
           {(() => {
             const r = runs.find(x => x.id === detailRun);
@@ -1246,28 +1377,52 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
             const pdays = daysBetween(pr.from, pr.to);
             const periodBase = (r.total_proventos || 0) - (r.overtime_amount || 0);
             const isFullMonth = /^\d{4}-\d{2}$/.test(r.period); // período "YYYY-MM" = mês cheio
-            const lines = [
-              {
-                label: isFullMonth ? 'Salário base' : `Salário do período (${pdays} dia(s) proporcional)`,
-                value: periodBase, type: 'p' as const, always: true,
-              },
-              { label: `Horas extras 1,5× (${fmtHoras(r.overtime_50_minutes || 0)})`, value: r.overtime_amount || 0, type: 'p' as const },
-              { label: `Faltas (${r.absent_days || 0} dia(s))`, value: r.absence_discount || 0, type: 'd' as const, highlight: (r.absent_days || 0) > 0 },
-              { label: 'Atrasos / saídas cedo', value: r.deductions_amount || 0, type: 'd' as const },
-              { label: 'Adiantamentos do período', value: r.advances_total || 0, type: 'd' as const, highlight: true },
-            ].filter(l => l.value > 0 || (l as any).always);
+            // Regime POR PAR: o holerite não fala de salário, falta nem hora
+            // extra — nada disso entra na conta dele. Discrimina a produção que
+            // gerou o bruto: dias produtivos, pares por dificuldade e R$/par.
+            const hp = porParByEmp.get(r.employee_id);
+            const hpMed = hp ? Number(hp.pares_medio) || 0 : 0;
+            const hpDif = hp ? Number(hp.pares_dificil) || 0 : 0;
+            const hpTaxa = hpMed + hpDif > 0 ? periodBase / (hpMed + hpDif) : 0;
+            const lines = hp
+              ? [
+                  { label: `Pares médios (${hpMed.toLocaleString('pt-BR')})`, value: hpMed * hpTaxa, type: 'p' as const, always: hpMed > 0 },
+                  { label: `Pares difíceis (${hpDif.toLocaleString('pt-BR')})`, value: hpDif * hpTaxa, type: 'p' as const },
+                  { label: 'Adiantamentos do período', value: r.advances_total || 0, type: 'd' as const, highlight: true },
+                ].filter(l => l.value > 0 || (l as any).always)
+              : [
+                  {
+                    label: isFullMonth ? 'Salário base' : `Salário do período (${pdays} dia(s) proporcional)`,
+                    value: periodBase, type: 'p' as const, always: true,
+                  },
+                  { label: `Horas extras 1,5× (${fmtHoras(r.overtime_50_minutes || 0)})`, value: r.overtime_amount || 0, type: 'p' as const },
+                  { label: `Faltas (${r.absent_days || 0} dia(s))`, value: r.absence_discount || 0, type: 'd' as const, highlight: (r.absent_days || 0) > 0 },
+                  { label: 'Atrasos / saídas cedo', value: r.deductions_amount || 0, type: 'd' as const },
+                  { label: 'Adiantamentos do período', value: r.advances_total || 0, type: 'd' as const, highlight: true },
+                ].filter(l => l.value > 0 || (l as any).always);
 
             return (
               <div className="space-y-3">
                 <div className="text-sm">
                   <p className="font-bold text-base">{emp?.name}</p>
                   <p className="text-muted-foreground">{emp?.role || '—'} • {emp?.department || '—'} • Período {periodLabel(periodToRange(r.period).from, periodToRange(r.period).to)}</p>
-                  <p className="text-muted-foreground flex items-center gap-1 mt-1">
-                    <Clock className="h-3.5 w-3.5" />
-                    Total trabalhado: <span className="font-mono font-semibold text-foreground">{fmtHoras(r.worked_minutes)}</span>
-                    {' '}· valor-hora <span className="font-mono font-semibold text-foreground">{fmt(r.hourly_rate)}</span>
-                    {' '}· salário mensal <span className="font-mono font-semibold text-foreground">{fmt(r.base_salary)}</span>
-                  </p>
+                  {hp ? (
+                    <p className="text-muted-foreground flex flex-wrap items-center gap-1 mt-1">
+                      <Package className="h-3.5 w-3.5" />
+                      Pagamento por par ·
+                      {' '}<span className="font-mono font-semibold text-foreground">{Number(hp.paid_days) || 0}</span> dias produtivos
+                      {' '}· <span className="font-mono font-semibold text-foreground">{(hpMed + hpDif).toLocaleString('pt-BR')}</span> pares
+                      {(Number(hp.fichas) || 0) > 0 && <> · <span className="font-mono font-semibold text-foreground">{hp.fichas}</span> fichas{hp.fichas_derivadas ? '*' : ''}</>}
+                      {hpTaxa > 0 && <> · <span className="font-mono font-semibold text-foreground">{fmt(hpTaxa)}</span>/par</>}
+                    </p>
+                  ) : (
+                    <p className="text-muted-foreground flex items-center gap-1 mt-1">
+                      <Clock className="h-3.5 w-3.5" />
+                      Total trabalhado: <span className="font-mono font-semibold text-foreground">{fmtHoras(r.worked_minutes)}</span>
+                      {' '}· valor-hora <span className="font-mono font-semibold text-foreground">{fmt(r.hourly_rate)}</span>
+                      {' '}· salário mensal <span className="font-mono font-semibold text-foreground">{fmt(r.base_salary)}</span>
+                    </p>
+                  )}
                 </div>
                 <Table>
                   <TableHeader>

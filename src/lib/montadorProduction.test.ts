@@ -91,3 +91,60 @@ describe('isChamadaRow', () => {
     expect(isChamadaRow(row({ origem: 'legacy', numeracoes: ['34'] }))).toBe(false);
   });
 });
+
+// ── Dias produtivos e fichas (base do relatório do RH, 02/08/2026) ───────────
+describe('dias produtivos', () => {
+  it('conta dias DISTINTOS com pares lançados', () => {
+    const agg = sumProducaoRows([
+      row({ dia: '2026-07-01', detalhe: [{ tamanho: 12, medio: 12, dificil: 0 }], valor_par_medio: 1 }),
+      row({ dia: '2026-07-02', detalhe: [{ tamanho: 12, medio: 24, dificil: 0 }], valor_par_medio: 1 }),
+      row({ dia: '2026-07-02', detalhe: [{ tamanho: 12, medio: 12, dificil: 0 }], valor_par_medio: 1 }),
+    ]);
+    // 3 lançamentos, 2 dias: quem lança em dois setores no MESMO dia não pode
+    // aparecer com o dobro de dias trabalhados na folha.
+    expect(agg.dias).toBe(2);
+    expect(agg.pares).toBe(48);
+  });
+
+  it('dia sem pares não é dia produtivo', () => {
+    const agg = sumProducaoRows([
+      row({ dia: '2026-07-01', detalhe: [{ tamanho: 12, medio: 0, dificil: 0 }], valor_par_medio: 1 }),
+      row({ dia: '2026-07-02', detalhe: [{ tamanho: 12, medio: 12, dificil: 0 }], valor_par_medio: 1 }),
+    ]);
+    expect(agg.dias).toBe(1);
+  });
+
+  it('linha legado (por-grade) não conta dia — não entra no regime por par', () => {
+    const agg = sumProducaoRows([
+      row({ dia: '2026-07-01', origem: 'legacy', numeracoes: ['34'], total: 100, valor_par_medio: 1 }),
+    ]);
+    expect(agg.dias).toBe(0);
+  });
+});
+
+describe('fichas', () => {
+  it('soma round(pares ÷ tamanho) por tamanho quando há detalhe', () => {
+    const agg = sumProducaoRows([
+      row({ detalhe: [{ tamanho: 12, medio: 24, dificil: 0 }, { tamanho: 15, medio: 15, dificil: 15 }], valor_par_medio: 1 }),
+    ]);
+    expect(agg.fichas).toBe(2 + 2); // 24/12 = 2 · (15+15)/15 = 2
+    expect(agg.fichasDerivadas).toBe(false);
+  });
+
+  it('sem detalhe, INFERE lote de 12 e marca como derivada', () => {
+    const agg = sumProducaoRows([row({ detalhe: null, total: 240, valor_par_medio: 1 })]);
+    expect(agg.fichas).toBe(20);
+    expect(agg.fichasDerivadas).toBe(true);
+    // Os PARES, que são a base do pagamento, NÃO dependem da inferência.
+    expect(agg.pares).toBe(240);
+    expect(agg.bruto).toBeCloseTo(240, 5);
+  });
+
+  it('a marca de derivada contamina o agregado inteiro (o relatório precisa avisar)', () => {
+    const agg = sumProducaoRows([
+      row({ dia: '2026-07-01', detalhe: [{ tamanho: 12, medio: 12, dificil: 0 }], valor_par_medio: 1 }),
+      row({ dia: '2026-07-02', detalhe: null, total: 12, valor_par_medio: 1 }),
+    ]);
+    expect(agg.fichasDerivadas).toBe(true);
+  });
+});

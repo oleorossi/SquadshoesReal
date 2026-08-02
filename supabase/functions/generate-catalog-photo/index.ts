@@ -1,13 +1,15 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // generate-catalog-photo — foto de estúdio do produto em uma cor da cartela.
 //
-// Recebe a foto CRUA (bucket público reference-images) + cor alvo, chama a
-// OpenAI (gpt-image-1, images/edits) com prompt que preserva solado e peças
-// metálicas, salva o PNG em reference-images/catalog/ e registra em
-// catalog_photos. Segurança espelha a recolor-image: JWT + papel admin/gerente
-// (gasto de créditos de IA), SSRF allowlist no imageUrl, validação de inputs.
+// Recebe a foto CRUA (bucket público reference-images) + cor alvo, chama o
+// Google Gemini (nano banana — gemini-3.1-flash-image) com prompt que
+// preserva solado e peças metálicas, salva o PNG em reference-images/catalog/
+// e registra em catalog_photos. Segurança espelha a recolor-image: JWT +
+// papel admin/gerente (gasto de créditos de IA), SSRF allowlist, validação.
 //
-// Secrets necessários: OPENAI_API_KEY (Dashboard → Edge Functions → Secrets).
+// Secrets: GEMINI_API_KEY (obrigatório) · GEMINI_IMAGE_MODEL (opcional,
+// default gemini-3.1-flash-image). Trocado de OpenAI pra Gemini em 02/08/2026
+// a pedido do dono (chave OpenAI de revendedor não funcionou).
 // ═══════════════════════════════════════════════════════════════════════════
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -94,7 +96,7 @@ serve(async (req) => {
     }
     if (parsedUrl.search) return json({ error: "imageUrl não pode conter query string." }, 400);
 
-    // --- Baixa a foto crua ---
+    // --- Baixa a foto crua e converte pra base64 ---
     const imgResp = await fetch(imageUrl, { signal: AbortSignal.timeout(15_000) });
     if (!imgResp.ok) throw new Error(`Falha ao baixar imagem: ${imgResp.status}`);
     const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
@@ -103,38 +105,55 @@ serve(async (req) => {
       throw new Error(`Imagem muito grande (${imgBuffer.byteLength} bytes). Máximo: 15 MB.`);
     }
     const contentType = imgResp.headers.get("content-type") || "image/jpeg";
+    const uint8 = new Uint8Array(imgBuffer);
+    let binary = "";
+    const chunkSize = 8192;
+    for (let i = 0; i < uint8.length; i += chunkSize) {
+      binary += String.fromCharCode(...uint8.subarray(i, i + chunkSize));
+    }
+    const base64Image = btoa(binary);
 
-    // --- OpenAI images/edits (gpt-image-1) ---
-    const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
-    if (!OPENAI_API_KEY) throw new Error("OPENAI_API_KEY não configurada nos secrets da função.");
+    // --- Google Gemini (nano banana) ---
+    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+    if (!GEMINI_API_KEY) throw new Error("GEMINI_API_KEY não configurada nos secrets da função.");
+    const model = Deno.env.get("GEMINI_IMAGE_MODEL") || "gemini-3.1-flash-image";
 
-    const form = new FormData();
-    form.append("model", "gpt-image-1");
-    form.append("image", new Blob([imgBuffer], { type: contentType }), "foto-crua.png");
-    form.append("prompt", PROMPT_TEMPLATE(colorName, colorHex, extra));
-    form.append("size", "1536x1024");
-    form.append("quality", "high");
-    form.append("n", "1");
-
-    console.log(`Gerando cor ${colorName} (${colorHex}) ref=${referenceCode || "-"}`);
-    const aiResp = await fetch("https://api.openai.com/v1/images/edits", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${OPENAI_API_KEY}` },
-      body: form,
-      signal: AbortSignal.timeout(120_000),
-    });
+    console.log(`Gerando cor ${colorName} (${colorHex}) ref=${referenceCode || "-"} modelo=${model}`);
+    const aiResp = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+      {
+        method: "POST",
+        headers: { "x-goog-api-key": GEMINI_API_KEY, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{
+            parts: [
+              { inlineData: { mimeType: contentType, data: base64Image } },
+              { text: PROMPT_TEMPLATE(colorName, colorHex, extra) },
+            ],
+          }],
+          generationConfig: { responseModalities: ["IMAGE", "TEXT"] },
+        }),
+        signal: AbortSignal.timeout(120_000),
+      },
+    );
 
     if (!aiResp.ok) {
       const errText = await aiResp.text();
-      console.error("OpenAI error:", aiResp.status, errText.slice(0, 500));
-      if (aiResp.status === 429) return json({ error: "Limite de requisições da OpenAI excedido. Tente em alguns minutos." }, 429);
-      if (aiResp.status === 401) return json({ error: "Chave da OpenAI inválida. Confira o secret OPENAI_API_KEY." }, 502);
-      if (aiResp.status === 402) return json({ error: "Créditos insuficientes na conta OpenAI." }, 502);
+      console.error("Gemini error:", aiResp.status, errText.slice(0, 500));
+      if (aiResp.status === 429) return json({ error: "Limite de requisições do Gemini excedido. Tente em alguns minutos." }, 429);
+      if (aiResp.status === 400 && errText.includes("API_KEY_INVALID")) {
+        return json({ error: "Chave do Gemini inválida. Confira o secret GEMINI_API_KEY." }, 502);
+      }
+      if (aiResp.status === 403) return json({ error: "Chave do Gemini sem permissão pra este modelo." }, 502);
+      if (aiResp.status === 404) return json({ error: `Modelo ${model} não encontrado. Ajuste o secret GEMINI_IMAGE_MODEL.` }, 502);
       return json({ error: "Erro ao gerar imagem com IA" }, 502);
     }
 
     const aiData = await aiResp.json();
-    const b64: string | undefined = aiData?.data?.[0]?.b64_json;
+    const parts = aiData?.candidates?.[0]?.content?.parts || [];
+    const imgPart = parts.find((p: { inlineData?: { data?: string } }) => p.inlineData?.data);
+    const b64: string | undefined = imgPart?.inlineData?.data;
+    const outMime: string = imgPart?.inlineData?.mimeType || "image/png";
     if (!b64) {
       console.error("Sem imagem na resposta:", JSON.stringify(aiData).slice(0, 400));
       return json({ error: "A IA não retornou imagem. Tente novamente." }, 502);
@@ -146,11 +165,12 @@ serve(async (req) => {
     for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
 
     const slug = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-    const fileName = `catalog/${slug(referenceCode || "ref")}-${slug(colorName)}-${Date.now()}.png`;
+    const ext = outMime.includes("png") ? "png" : outMime.includes("webp") ? "webp" : "jpg";
+    const fileName = `catalog/${slug(referenceCode || "ref")}-${slug(colorName)}-${Date.now()}.${ext}`;
 
     const { error: uploadError } = await adminClient.storage
       .from("reference-images")
-      .upload(fileName, bytes, { contentType: "image/png", upsert: true });
+      .upload(fileName, bytes, { contentType: outMime, upsert: true });
     if (uploadError) throw new Error(`Erro ao salvar imagem: ${uploadError.message}`);
 
     const { data: { publicUrl } } = adminClient.storage.from("reference-images").getPublicUrl(fileName);
@@ -170,7 +190,6 @@ serve(async (req) => {
       .single();
     if (insertError) {
       console.error("Insert catalog_photos:", insertError);
-      // A imagem existe no Storage; devolve mesmo sem registro pra não perder o custo da geração.
       return json({ url: publicUrl, id: null, warning: "Imagem gerada, mas falhou o registro no banco." });
     }
 

@@ -12,18 +12,18 @@
 //   fichas_dia = Σ round((medio+dificil)/tamanho). Legado [{tamanho, pares}] é lido
 //   como tudo MÉDIO; fichas de grade = origem='legacy'.
 //
-// SETOR E ROSTER VÊM DO BANCO (v_production_sectors / v_employee_sector). A lista
-// hard-coded com uma REGEX por setor foi removida: ela deixava 11 de 20 ativos
-// invisíveis (não casavam com padrão nenhum) e usava uma taxonomia própria, com
-// 'costura' onde o fluxo real tem Costura Palmilha e Costura Cabedal separadas.
-// Agora o roster desta tela e o headcount do PCP saem da MESMA regra.
+// SETORES: só MONTAGEM e SOLAGEM (SETORES_POR_PAR) — os dois ofícios pagos por
+// produção; os outros 9 do fluxo nunca receberam um lançamento. O ROSTER e os
+// RÓTULOS continuam vindo do banco (v_production_sectors / v_employee_sector),
+// então o headcount desta tela e o do PCP saem da MESMA regra; esta tela só
+// escolhe QUAIS setores exibir.
 //
 // PAGAMENTO = Σ por LINHA (pares × R$/par gravado NA PRÓPRIA LINHA), espelhando
 // `sumProducaoRows` de montadorProduction.ts, que é o que a folha usa. O R$/par é
 // snapshot do cadastro no momento do apontamento — a tela NÃO edita taxa (editar
 // aqui reescrevia todo o histórico, inclusive de folha já calculada).
 import { supabase } from "@/integrations/supabase/client";
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { EditorialPageHeader } from "@/components/layout/EditorialPageHeader";
 import { Panel } from "@/components/ui/panel";
@@ -42,6 +42,12 @@ import { Printer, ChartBar, ClipboardText, ListChecks, Users, Package, CurrencyD
 
 type Grade = "adulto" | "infantil";
 type Tab = "lancamento" | "produtividade" | "fichas";
+/** Setores pagos por PRODUÇÃO — os únicos que esta tela atende (decisão do dono
+ *  02/08/2026). Antes a faixa listava os 11 setores de v_production_sectors, mas
+ *  9 deles nunca receberam um lançamento: o pagamento por par existe só em
+ *  Montagem (montador) e Solagem (solador). Se outro ofício virar por-par um dia,
+ *  basta acrescentar a chave canônica aqui. */
+const SETORES_POR_PAR = ["montagem", "solagem"] as const;
 /** Nome do ofício por setor, indexado pela CHAVE CANÔNICA do banco.
  *  Atenção: Aviamento tem chave 'mesa' (herança do nome antigo do setor) — por
  *  isso a chave nunca é derivada do rótulo aqui no TS. */
@@ -376,9 +382,18 @@ interface AggTotals {
 export default function FichaMontadoresPage() {
   const db = supabase as any;
   const [tab, setTab] = useState<Tab>("lancamento");
-  // Setores oficiais do fluxo (v_production_sectors, em flow_order) — a tela não
-  // mantém mais lista própria: quem manda é o sector_settings do PCP.
-  const { data: sectors = [] } = useProductionSectors();
+  // Setores do fluxo (v_production_sectors, em flow_order) filtrados pelos que são
+  // pagos por par. O RÓTULO continua vindo do banco (não hard-coded); só a seleção
+  // de QUAIS setores aparecem é desta tela — ela cobre pagamento por produção, e
+  // não o fluxo inteiro. Fallback se a view não trouxer um deles: mostra assim
+  // mesmo, com o rótulo capitalizado, pra a aba nunca sumir por falha de cadastro.
+  const { data: allSectors = [] } = useProductionSectors();
+  const sectors = useMemo(() => {
+    const byKey = new Map(allSectors.map((s) => [s.key, s]));
+    return SETORES_POR_PAR.map((key) =>
+      byKey.get(key) ?? { key, label: key.replace(/^./, (c) => c.toUpperCase()) },
+    );
+  }, [allSectors]);
   // Setor ativo — abas independentes na mesma tela, dados separados por
   // ficha_montadores.setor (que guarda a CHAVE canônica).
   const [setor, setSetor] = useState<string>("montagem");
@@ -393,6 +408,13 @@ export default function FichaMontadoresPage() {
   const [semanaAnchor, setSemanaAnchor] = useState(todayISO());
   const [semSize, setSemSize] = useState<number>(12);
   const [semDiff, setSemDiff] = useState<Diff>("medio"); // dificuldade ativa na matriz semanal
+  // Mostrar as 6 combinações (3 tamanhos × 2 dificuldades) na visão Dia. Fica
+  // FECHADO por padrão: ficha 15/18 e par difícil existem, mas são raros — em
+  // todo o histórico nenhum foi lançado. Deixá-los sempre à vista cobrava 6
+  // campos por pessoa/dia pra preencher 1. Ver `colunasDia` abaixo: a coluna
+  // rara aparece sozinha quando JÁ tem número, mesmo com o detalhe fechado, pra
+  // nenhum lançamento existente ficar invisível.
+  const [detalharDia, setDetalharDia] = useState(false);
   const [busca, setBusca] = useState("");
   // Dia: pares por montador por dificuldade × tamanho
   const [pares, setPares] = useState<Record<string, DiffSizeMap>>({});
@@ -403,9 +425,30 @@ export default function FichaMontadoresPage() {
   const [savingDia, setSavingDia] = useState(false);
   const [savingSem, setSavingSem] = useState(false);
 
+  // ── filtro de período (Produtividade + Relatórios) ──
+  // Declarado aqui em cima, antes do carregamento, porque a busca no banco é
+  // recortada por data: o intervalo que a tela consegue exibir sai da união
+  // destes filtros com o dia/semana da Chamada.
+  const [pMode, setPMode] = useState<PeriodMode>("q1");
+  const [cFrom, setCFrom] = useState(todayISO());
+  const [cTo, setCTo] = useState(todayISO());
+  const range = useMemo(() => periodRange(pMode, cFrom, cTo), [pMode, cFrom, cTo]);
+
   // ── dados ──
   const [fichas, setFichas] = useState<Ficha[]>([]);
   const [loading, setLoading] = useState(false);
+
+  /** Intervalo a buscar = união do que TODAS as abas podem mostrar (dia da
+   *  chamada, semana ancorada e período dos relatórios). Uma folga de 1 dia em
+   *  cada ponta evita que a navegação por dia/semana dispare uma busca a cada
+   *  clique de seta. */
+  const dataRange = useMemo(() => {
+    const wd = weekDaysOf(semanaAnchor);
+    const cands = [chamadaDia, wd[0], wd[4], range.from, range.to].filter(Boolean) as string[];
+    const shift = (iso: string, days: number) =>
+      isoOf(new Date(new Date(iso + "T00:00:00").getTime() + days * 864e5));
+    return { from: shift(cands.reduce((a, b) => (a < b ? a : b)), -1), to: shift(cands.reduce((a, b) => (a > b ? a : b)), 1) };
+  }, [chamadaDia, semanaAnchor, range.from, range.to]);
 
   const { data: employees = [] } = useEmployees();
   const { data: employeeSectors = [] } = useEmployeeSectors();
@@ -425,26 +468,43 @@ export default function FichaMontadoresPage() {
     [employeeSectors, setor],
   );
 
-  // Ativos que não estão em NENHUM setor de produção. Antes eles simplesmente
-  // não apareciam — some da tela, ninguém descobre que não dá pra lançar a
-  // produção deles. Agora viram pendência visível com o destino do conserto.
-  const semSetor = useMemo(() => {
-    const comProducao = new Set(employeeSectors.filter((r) => r.setor_produtivo).map((r) => r.employee_id));
-    const lotacao = new Map(employeeSectors.map((r) => [r.employee_id, r.sector_label]));
+  // Pendências de CADASTRO de quem é regime por par. A tela cobre só Montagem e
+  // Solagem, então o alerta antigo ("sem setor de produção") virava ruído: ele
+  // acusava toda a fábrica. O que importa aqui é quem é PAGO POR PAR e mesmo
+  // assim não consegue receber — ou porque está lotado fora dos dois setores
+  // (não há aba onde lançar a produção dele), ou porque não tem R$/par
+  // cadastrado (o lançamento fica bloqueado, e antes virava produção valendo
+  // R$ 0,00 — foi assim que 33 apontamentos ficaram zerados).
+  const pendencias = useMemo(() => {
+    const lotacao = new Map(employeeSectors.map((r) => [r.employee_id, { key: r.sector_key, label: r.sector_label }]));
     return employees
-      .filter((e) => e.active && !comProducao.has(e.id))
-      .map((e) => ({ id: e.id, name: e.name, lotacao: lotacao.get(e.id) || null }))
+      .filter((e) => e.active && String((e as any).payment_type || "").toLowerCase() === "producao")
+      .map((e) => {
+        const lot = lotacao.get(e.id);
+        const foraDosSetores = !lot || !(SETORES_POR_PAR as readonly string[]).includes(lot.key);
+        const semTaxa = !(Number((e as any).valor_par_medio) > 0);
+        return { id: e.id, name: e.name, lotacao: lot?.label || null, foraDosSetores, semTaxa };
+      })
+      .filter((p) => p.foraDosSetores || p.semTaxa)
       .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
   }, [employees, employeeSectors]);
 
   const carregar = useCallback(async () => {
     setLoading(true);
-    // Escopo por SETOR — cada aba (Montadores/Soladores) lê só os seus dados.
-    const { data, error } = await db.from("ficha_montadores").select("*").eq("setor", setor).order("dia", { ascending: false }).order("criado_em", { ascending: false });
+    // Escopo por SETOR e por INTERVALO. Antes a tela baixava o histórico inteiro
+    // do setor a cada troca de aba — cresce sem teto e o PostgREST corta em 1.000
+    // linhas em silêncio, então um dia a produção antiga simplesmente sumiria dos
+    // relatórios. Agora busca só o que as três abas conseguem exibir.
+    const { data, error } = await db.from("ficha_montadores").select("*")
+      .eq("setor", setor)
+      .gte("dia", dataRange.from)
+      .lte("dia", dataRange.to)
+      .order("dia", { ascending: false })
+      .order("criado_em", { ascending: false });
     if (error) toast.error("Erro ao carregar: " + error.message);
     else setFichas((data ?? []) as Ficha[]);
     setLoading(false);
-  }, [db, setor]);
+  }, [db, setor, dataRange.from, dataRange.to]);
   useEffect(() => { carregar(); }, [carregar]);
 
   // Semeia a contagem do dia a partir do banco.
@@ -491,6 +551,25 @@ export default function FichaMontadoresPage() {
     [montadores, busca],
   );
 
+  /** Colunas de lançamento da visão Dia (tamanho × dificuldade). Sempre a
+   *  combinação padrão (12 · médio); as demais entram quando o detalhe está
+   *  aberto OU quando alguém do roster já tem número ali — assim abrir a tela
+   *  nunca esconde um lançamento que existe. */
+  const colunasDia = useMemo(() => {
+    const cols: { sz: number; diff: Diff }[] = [];
+    for (const sz of SIZES) {
+      for (const diff of DIFFS) {
+        const padrao = sz === 12 && diff === "medio";
+        const temDado = montadores.some((e) => ((pares[e.id] || emptyDiffMap())[diff][sz] || 0) > 0);
+        if (padrao || detalharDia || temDado) cols.push({ sz, diff });
+      }
+    }
+    return cols;
+  }, [montadores, pares, detalharDia]);
+  /** Combinação rara com número lançado, mas com o detalhe FECHADO — a coluna
+   *  aparece e ganha um rótulo explícito pra não parecer a coluna padrão. */
+  const temColunaRara = colunasDia.some((c) => !(c.sz === 12 && c.diff === "medio"));
+
   const totalDiaPares = useMemo(() => montadores.reduce((s, e) => s + paresMontador(e.id), 0), [montadores, pares]);
   const totalDiaFichas = useMemo(() => montadores.reduce((s, e) => s + fichasMontador(e.id), 0), [montadores, pares]);
   const dirtyDia = useMemo(
@@ -508,34 +587,51 @@ export default function FichaMontadoresPage() {
     return fichas.filter((f) => isChamada(f) && f.dia === t).reduce((s, f) => s + fichasDiaOf(f), 0);
   }, [fichas]);
 
-  // Persiste 1 montador num dia a partir do mapa de pares por tamanho.
-  async function persistChamada(dia: string, e: { id: string; name: string }, dm: DiffSizeMap): Promise<string | null> {
+  // Regime de cada pessoa — decide se a produção dela é PAGAMENTO ou só medição.
+  // Vem de employees (não do roster do setor) pra cobrir também quem lançou
+  // produção num setor e depois foi transferido pra outro.
+  const regimePor = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const e of employees) m.set(e.id, String((e as any).payment_type || "mensalista").toLowerCase());
+    return m;
+  }, [employees]);
+
+  /** Monta a linha de um (dia, pessoa). Retorna a ação a executar em LOTE:
+   *  `delete` (zerou os pares), `update` (já existia) ou `insert`.
+   *  Devolve `bloqueio` quando é regime por par sem R$/par cadastrado — salvar
+   *  assim gravaria produção valendo R$ 0,00, que é exatamente como 33 registros
+   *  antigos nasceram (ver docs/adr/0001). O banco também barra (trigger
+   *  trg_ficha_montadores_require_rate); aqui o erro chega antes e com o nome. */
+  function montarLinha(dia: string, e: { id: string; name: string }, dm: DiffSizeMap):
+    | { acao: "delete"; id: string }
+    | { acao: "update"; id: string; payload: any }
+    | { acao: "insert"; payload: any }
+    | { acao: "nada" }
+    | { acao: "bloqueio"; nome: string } {
     const existing = fichas.find((f) => isChamada(f) && f.montador_id === e.id && f.dia === dia);
     const totalP = paresOfDiffMap(dm);
-    if (totalP <= 0) {
-      if (!existing) return null;
-      const { error } = await db.from("ficha_montadores").delete().eq("id", existing.id);
-      return error ? error.message : null;
+    if (totalP <= 0) return existing ? { acao: "delete", id: existing.id } : { acao: "nada" };
+
+    const emp = montadores.find((x) => x.id === e.id);
+    const vmCad = Number(emp?.valor_par_medio) || 0;
+    const vdCad = Number(emp?.valor_par_dificil) || 0;
+    // SNAPSHOT do R$/par: fonte única = cadastro do funcionário. Congela o valor
+    // da época em cada apontamento, então reajustar o cadastro não reescreve
+    // produção já apontada (nem folha já calculada em cima dela).
+    const vmSnap = vmCad > 0 ? vmCad : (existing?.valor_par_medio ?? existing?.valor_par ?? null);
+    const vdSnap = vdCad > 0 ? vdCad : (existing?.valor_par_dificil ?? null);
+    // Trava: por par sem R$/par MÉDIO não salva. Só o médio é obrigatório —
+    // há gente (Solagem) sem taxa de difícil cadastrada, e par difícil é raro;
+    // a difícil só é exigida quando o lançamento tem pares difíceis.
+    if (regimePor.get(e.id) === "producao") {
+      if (!(Number(vmSnap) > 0)) return { acao: "bloqueio", nome: e.name };
+      if (paresOfMap(dm.dificil) > 0 && !(Number(vdSnap) > 0)) return { acao: "bloqueio", nome: e.name };
     }
+
     const det: DetItem[] = SIZES
       .filter((sz) => (dm.medio[sz] || 0) > 0 || (dm.dificil[sz] || 0) > 0)
       .map((sz) => ({ tamanho: sz, medio: dm.medio[sz] || 0, dificil: dm.dificil[sz] || 0 }));
     const fichasCount = det.reduce((s, d) => s + Math.round(((d.medio || 0) + (d.dificil || 0)) / d.tamanho), 0);
-    // SNAPSHOT do R$/par: fonte única = cadastro do funcionário. Congela o valor
-    // da época em cada apontamento, então reajustar o cadastro não reescreve
-    // produção já apontada (nem folha já calculada em cima dela).
-    //
-    // Grava sempre que houver valor cadastrado, INDEPENDENTE do regime. Antes
-    // exigia payment_type='producao' e, como ninguém estava nesse regime, o
-    // snapshot nunca era escrito — os 33 lançamentos existentes ficaram todos
-    // com R$/par 0,00. Quem é mensalista também merece a produção valorada:
-    // serve de medição, e quem decide se isso vira pagamento é a folha, pelo
-    // regime — não esta tela.
-    const emp = montadores.find((x) => x.id === e.id);
-    const vmCad = Number(emp?.valor_par_medio) || 0;
-    const vdCad = Number(emp?.valor_par_dificil) || 0;
-    const vmSnap = vmCad > 0 ? vmCad : (existing?.valor_par_medio ?? existing?.valor_par ?? null);
-    const vdSnap = vdCad > 0 ? vdCad : (existing?.valor_par_dificil ?? null);
     const payload: any = {
       dia, montador: e.name, montador_id: e.id, setor,
       fichas_dia: fichasCount, total: totalP, copias: 1, grade: "adulto", numeracoes: [], quantidades: [],
@@ -544,55 +640,88 @@ export default function FichaMontadoresPage() {
       valor_par: vmCad > 0 ? vmCad : (existing?.valor_par ?? 0),
       atualizado_em: new Date().toISOString(),
     };
-    const write = (pl: any) => existing
-      ? db.from("ficha_montadores").update(pl).eq("id", existing.id)
-      : db.from("ficha_montadores").insert(pl);
-    let { error } = await write(payload);
-    if (error && /column|could not find/i.test(error.message || "")) {
-      const msg = (error.message || "").toLowerCase();
-      const retry: any = { ...payload };
-      if (msg.includes("fichas_dia")) delete retry.fichas_dia;
-      if (msg.includes("detalhe")) delete retry.detalhe;
-      if (msg.includes("origem")) delete retry.origem;
-      if (msg.includes("setor")) delete retry.setor;
-      if (msg.includes("valor_par_medio")) delete retry.valor_par_medio;
-      if (msg.includes("valor_par_dificil")) delete retry.valor_par_dificil;
-      ({ error } = await write(retry));
+    return existing ? { acao: "update", id: existing.id, payload } : { acao: "insert", payload };
+  }
+
+  /** Grava um conjunto de (dia, pessoa) em LOTE. Antes era uma ida ao banco por
+   *  célula, em fila: a Semana com 5 pessoas × 5 dias disparava 25 requisições
+   *  sequenciais e o botão ficava travado o tempo todo. Agora são no MÁXIMO 3
+   *  (delete + update + insert), independente do tamanho do roster.
+   *  Os updates ainda são um por linha porque cada um tem id próprio — mas vão
+   *  em paralelo, não em fila. */
+  async function persistirLote(itens: { dia: string; e: { id: string; name: string }; dm: DiffSizeMap }[]) {
+    const bloqueados: string[] = [];
+    const aExcluir: string[] = [];
+    const aInserir: any[] = [];
+    const aAtualizar: { id: string; payload: any }[] = [];
+    for (const it of itens) {
+      const r = montarLinha(it.dia, it.e, it.dm);
+      if (r.acao === "bloqueio") bloqueados.push(r.nome);
+      else if (r.acao === "delete") aExcluir.push(r.id);
+      else if (r.acao === "insert") aInserir.push(r.payload);
+      else if (r.acao === "update") aAtualizar.push({ id: r.id, payload: r.payload });
     }
-    return error ? error.message : null;
+
+    const erros: string[] = [];
+    if (aExcluir.length) {
+      const { error } = await db.from("ficha_montadores").delete().in("id", aExcluir);
+      if (error) erros.push(error.message);
+    }
+    if (aInserir.length) {
+      const { error } = await db.from("ficha_montadores").insert(aInserir);
+      if (error) erros.push(error.message);
+    }
+    if (aAtualizar.length) {
+      const res = await Promise.all(
+        aAtualizar.map((u) => db.from("ficha_montadores").update(u.payload).eq("id", u.id)),
+      );
+      for (const r of res) if (r.error) erros.push(r.error.message);
+    }
+
+    const gravados = aExcluir.length + aInserir.length + aAtualizar.length;
+    return { gravados, erros: Array.from(new Set(erros)), bloqueados: Array.from(new Set(bloqueados)) };
+  }
+
+  /** Avisa o que a trava barrou, com o caminho do conserto. */
+  function avisarBloqueio(bloqueados: string[]) {
+    if (!bloqueados.length) return;
+    toast.error(
+      `R$/par não cadastrado: ${bloqueados.join(", ")}. A produção não foi salva porque valeria R$ 0,00 na folha — cadastre em Funcionários → Remuneração.`,
+      { duration: 8000 },
+    );
   }
 
   async function salvarDia() {
     setSavingDia(true);
     const changed = montadores.filter((e) => JSON.stringify(mapOf(e.id)) !== JSON.stringify(origPares[e.id] || emptyDiffMap()));
-    let ok = 0; const erros: string[] = [];
-    for (const e of changed) {
-      const err = await persistChamada(chamadaDia, e, mapOf(e.id));
-      if (err) erros.push(e.name); else ok++;
-    }
+    const { gravados, erros, bloqueados } = await persistirLote(
+      changed.map((e) => ({ dia: chamadaDia, e, dm: mapOf(e.id) })),
+    );
     await carregar();
     setSavingDia(false);
-    if (erros.length) toast.error(`Falha em ${erros.length}: ${erros.join(", ")}`);
-    if (ok) toast.success(`Dia salvo — ${ok} ${ok === 1 ? cfgSetor.sing : cfgSetor.plural}.`);
-    if (!ok && !erros.length) toast.message("Nada para salvar.");
+    avisarBloqueio(bloqueados);
+    if (erros.length) toast.error(`Erro ao salvar: ${erros.join(" · ")}`);
+    if (gravados) toast.success(`Dia salvo — ${gravados} ${gravados === 1 ? "lançamento" : "lançamentos"}.`);
+    if (!gravados && !erros.length && !bloqueados.length) toast.message("Nada para salvar.");
   }
 
   async function salvarSemana() {
     setSavingSem(true);
-    let ok = 0, err = 0;
+    const itens: { dia: string; e: { id: string; name: string }; dm: DiffSizeMap }[] = [];
     for (const e of montadores) {
       for (const day of weekDays) {
         const k = `${e.id}|${day}`;
         if (JSON.stringify(week[k] || emptyDiffMap()) === JSON.stringify(origWeek[k] || emptyDiffMap())) continue;
-        const m = await persistChamada(day, e, week[k] || emptyDiffMap());
-        if (m) err++; else ok++;
+        itens.push({ dia: day, e, dm: week[k] || emptyDiffMap() });
       }
     }
+    const { gravados, erros, bloqueados } = await persistirLote(itens);
     await carregar();
     setSavingSem(false);
-    if (err) toast.error(`Falha em ${err} célula(s).`);
-    if (ok) toast.success(`Semana salva — ${ok} lançamento${ok === 1 ? "" : "s"}.`);
-    if (!ok && !err) toast.message("Nada para salvar.");
+    avisarBloqueio(bloqueados);
+    if (erros.length) toast.error(`Erro ao salvar: ${erros.join(" · ")}`);
+    if (gravados) toast.success(`Semana salva — ${gravados} lançamento${gravados === 1 ? "" : "s"}.`);
+    if (!gravados && !erros.length && !bloqueados.length) toast.message("Nada para salvar.");
   }
 
   function zerarDia() { setPares({}); }
@@ -624,23 +753,12 @@ export default function FichaMontadoresPage() {
     return m;
   }, [montadores]);
 
-  // ── filtro de período (Produtividade + Fichas) ──
-  const [pMode, setPMode] = useState<PeriodMode>("q1");
-  const [cFrom, setCFrom] = useState(todayISO());
-  const [cTo, setCTo] = useState(todayISO());
+  // pMode/cFrom/cTo e `range` ficam lá em cima (antes de `carregar`) — a busca
+  // no banco depende deles. Aqui só os filtros que não afetam o intervalo.
   const [filtroMontador, setFiltroMontador] = useState<string>("__all__");
   // Quitação: separa o que a folha já pagou do que ainda está em aberto.
   const [pagStatus, setPagStatus] = useState<PagStatus>("todos");
-  const range = useMemo(() => periodRange(pMode, cFrom, cTo), [pMode, cFrom, cTo]);
 
-  // Regime de cada pessoa — decide se a produção dela é PAGAMENTO ou só medição.
-  // Vem de employees (não do roster do setor) pra cobrir também quem lançou
-  // produção num setor e depois foi transferido pra outro.
-  const regimePor = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const e of employees) m.set(e.id, String(e.payment_type || "mensalista").toLowerCase());
-    return m;
-  }, [employees]);
   const estadoDe = useCallback((f: Ficha): PagEstado => {
     if (!f.montador_id || regimePor.get(f.montador_id) !== "producao") return "na";
     if (f.pago_em) return "pago";
@@ -766,16 +884,14 @@ export default function FichaMontadoresPage() {
       <EditorialPageHeader
         sectionLabel={`PRODUÇÃO · ${cfgSetor.label.toUpperCase()}`}
         title={`Ficha de ${cfgSetor.label}`}
-        description="Lance os PARES produzidos por tamanho de ficha (12 / 15 / 18). O sistema calcula a quantidade de fichas."
+        description="Lance os PARES produzidos no dia. O sistema calcula as fichas (lotes) e o valor a pagar pelo R$/par de cada pessoa."
         meta={<><span className="font-bold">{montadores.length}</span> {(montadores.length === 1 ? cfgSetor.sing : cfgSetor.plural).toUpperCase()} · <span className="font-bold">{fichasHoje}</span> FICHA{fichasHoje === 1 ? "" : "S"} HOJE</>}
       />
 
-      {/* Setor — abas INDEPENDENTES, uma por etapa do fluxo (v_production_sectors,
-          em flow_order). Mesma dinâmica em todas; dados e relatórios separados
-          por ficha_montadores.setor. São 11, então a faixa rola no lugar de
-          estourar a largura em tela estreita. */}
-      <div className="-mx-1 overflow-x-auto px-1 pb-1">
-        <div className="flex w-max overflow-hidden rounded-lg border border-border">
+      {/* Setor — só Montagem e Solagem, os dois ofícios pagos por par. Dados e
+          relatórios separados por ficha_montadores.setor. Com 2 abas a faixa cabe
+          inteira: não precisa mais da rolagem horizontal que os 11 setores exigiam. */}
+      <div className="flex flex-wrap gap-0 overflow-hidden rounded-lg border border-border w-fit">
           {sectors.map((s) => {
             const gente = employeeSectors.filter((r) => r.sector_key === s.key).length;
             return (
@@ -787,25 +903,33 @@ export default function FichaMontadoresPage() {
               </button>
             );
           })}
-        </div>
       </div>
 
-      {/* Pendência de cadastro. Sem isto o funcionário sem setor simplesmente
-          não aparece em aba nenhuma — e ninguém descobre que a produção dele
-          não tem onde ser lançada. */}
-      {semSetor.length > 0 && (
+      {/* Pendência de CADASTRO de quem é por par: sem setor válido ou sem R$/par,
+          a produção da pessoa não vira pagamento — e antes isso acontecia calado. */}
+      {pendencias.length > 0 && (
         <div className="flex flex-wrap items-start gap-3 rounded-lg border border-amber-500/40 bg-amber-500/5 px-4 py-3">
-          <Warning className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+          <Warning className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" aria-hidden />
           <div className="min-w-[200px] flex-1">
             <p className="text-sm font-semibold text-foreground">
-              {semSetor.length} funcionário{semSetor.length === 1 ? "" : "s"} ativo{semSetor.length === 1 ? "" : "s"} sem setor de produção
+              {pendencias.length} funcionário{pendencias.length === 1 ? "" : "s"} por par com cadastro incompleto
             </p>
             <p className="mt-0.5 text-[12px] text-muted-foreground">
-              Não aparece{semSetor.length === 1 ? "" : "m"} em nenhuma aba e não d{semSetor.length === 1 ? "á" : "ão"} para lançar produção. Defina o setor em Funcionários.
+              Sem isso a produção não vira pagamento na folha. Corrija em Funcionários → Remuneração.
             </p>
-            <p className="mt-1.5 text-[11px] text-muted-foreground">
-              {semSetor.map((e) => `${e.name}${e.lotacao ? ` (${e.lotacao})` : ""}`).join(" · ")}
-            </p>
+            <ul className="mt-1.5 space-y-0.5 text-[11px] text-muted-foreground">
+              {pendencias.map((p) => (
+                <li key={p.id}>
+                  <span className="font-semibold text-foreground">{p.name}</span>
+                  {p.semTaxa && <span className="ml-1.5 text-amber-700 dark:text-amber-500">· sem R$/par cadastrado</span>}
+                  {p.foraDosSetores && (
+                    <span className="ml-1.5 text-amber-700 dark:text-amber-500">
+                      · lotado em {p.lotacao || "nenhum setor"} (fora de Montagem/Solagem)
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
           </div>
           <Button asChild type="button" variant="outline" size="sm" className="h-8">
             <Link to="/rh?tab=funcionarios">Abrir Funcionários</Link>
@@ -872,27 +996,34 @@ export default function FichaMontadoresPage() {
               flush
               eyebrow="CONTAGEM DO DIA"
               title={`${weekdayName(chamadaDia)} · ${fmtDia(chamadaDia)}`}
-              subtitle="Pares por tamanho (12/15/18) e por dificuldade — Médio (âmbar) e Difícil (vermelho), que pagam valores diferentes."
-              actions={<Button type="button" variant="outline" size="sm" className="h-8" onClick={zerarDia}>Zerar tudo</Button>}
+              subtitle={detalharDia || temColunaRara
+                ? "Pares por tamanho de ficha (12/15/18) e por dificuldade — Médio (âmbar) e Difícil (vermelho) pagam R$/par diferentes."
+                : "Pares produzidos no dia. Ficha de 12 e dificuldade média — abra “Todos os tamanhos” para lançar ficha 15/18 ou par difícil."}
+              actions={
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button type="button" variant={detalharDia ? "default" : "outline"} size="sm" className="h-8"
+                    aria-pressed={detalharDia} onClick={() => setDetalharDia((v) => !v)}>
+                    {detalharDia ? "Só o padrão" : "Todos os tamanhos"}
+                  </Button>
+                  <Button type="button" variant="outline" size="sm" className="h-8" onClick={zerarDia}>Zerar tudo</Button>
+                </div>
+              }
             >
               <div className="overflow-x-auto">
-                <table className="w-full border-collapse" style={{ minWidth: 760 }}>
+                <table className="w-full border-collapse" style={{ minWidth: colunasDia.length > 1 ? 760 : 480 }}>
                   <thead>
-                    <tr className="bg-muted/40 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                      <th rowSpan={2} className="px-4 py-2 text-left align-bottom" style={{ minWidth: 180 }}>{cfgSetor.sing.replace(/^./, (c) => c.toUpperCase())}</th>
-                      {SIZES.map((sz) => (
-                        <th key={sz} colSpan={2} className="border-l border-border px-1 py-1.5 text-center" style={{ width: 120 }}>{sz}<span className="ml-1 font-mono text-[9px] normal-case text-muted-foreground/70">pares</span></th>
+                    <tr className="border-b-2 border-border/80 bg-muted/40 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      <th className="px-4 py-2 text-left align-bottom" style={{ minWidth: 180 }}>{cfgSetor.sing.replace(/^./, (c) => c.toUpperCase())}</th>
+                      {colunasDia.map(({ sz, diff }) => (
+                        <th key={`${sz}-${diff}`} className="border-l border-border px-1 py-1.5 text-center align-bottom" style={{ width: 72 }}>
+                          <span className="block text-[11px] leading-tight">{sz}<span className="ml-0.5 font-mono text-[9px] normal-case text-muted-foreground/70">pares</span></span>
+                          {/* Rótulo da dificuldade sempre presente: cor sozinha não
+                              informa (daltonismo / impressão em P&B). */}
+                          <span className={`block text-[10px] font-bold leading-tight ${diff === "medio" ? "text-amber-600" : "text-red-600"}`}>{DIFF_LABEL[diff]}</span>
+                        </th>
                       ))}
-                      <th rowSpan={2} className="border-l border-border px-3 py-2 text-right align-bottom" style={{ width: 64 }}>Pares</th>
-                      <th rowSpan={2} className="px-3 py-2 text-right align-bottom text-primary" style={{ width: 58 }}>Fichas</th>
-                    </tr>
-                    <tr className="border-b-2 border-border/80 bg-muted/40 text-[10px] font-bold uppercase tracking-wide">
-                      {SIZES.map((sz) => (
-                        <Fragment key={sz}>
-                          <th className="border-l border-border px-1 py-1 text-center text-amber-600">Méd</th>
-                          <th className="px-1 py-1 text-center text-red-600">Dif</th>
-                        </Fragment>
-                      ))}
+                      <th className="border-l border-border px-3 py-2 text-right align-bottom" style={{ width: 64 }}>Pares</th>
+                      <th className="px-3 py-2 text-right align-bottom text-primary" style={{ width: 58 }}>Fichas</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -905,21 +1036,14 @@ export default function FichaMontadoresPage() {
                             <div className="truncate text-sm font-semibold text-foreground">{e.name}</div>
                             <div className="truncate text-[11px] text-muted-foreground">{[e.role, e.department].filter(Boolean).join(" · ") || "Montagem"}</div>
                           </td>
-                          {SIZES.map((sz) => (
-                            <Fragment key={sz}>
-                              <td className="border-l border-border px-1 py-1.5 text-center">
-                                <input inputMode="numeric" value={dm.medio[sz] || ""} placeholder="0"
-                                  onFocus={(ev) => ev.target.select()}
-                                  onChange={(ev) => setPS(e.id, "medio", sz, numOf(ev.target.value))}
-                                  className={cellM} aria-label={`Médio · ficha ${sz} — ${e.name}`} />
-                              </td>
-                              <td className="px-1 py-1.5 text-center">
-                                <input inputMode="numeric" value={dm.dificil[sz] || ""} placeholder="0"
-                                  onFocus={(ev) => ev.target.select()}
-                                  onChange={(ev) => setPS(e.id, "dificil", sz, numOf(ev.target.value))}
-                                  className={cellD} aria-label={`Difícil · ficha ${sz} — ${e.name}`} />
-                              </td>
-                            </Fragment>
+                          {colunasDia.map(({ sz, diff }) => (
+                            <td key={`${sz}-${diff}`} className="border-l border-border px-1 py-1.5 text-center">
+                              <input inputMode="numeric" value={dm[diff][sz] || ""} placeholder="0"
+                                onFocus={(ev) => ev.target.select()}
+                                onChange={(ev) => setPS(e.id, diff, sz, numOf(ev.target.value))}
+                                className={diff === "medio" ? cellM : cellD}
+                                aria-label={`${DIFF_LABEL[diff]} · ficha de ${sz} pares — ${e.name}`} />
+                            </td>
                           ))}
                           <td className="border-l border-border px-3 py-2 text-right text-sm font-semibold tabular-nums text-foreground">{pp.toLocaleString("pt-BR")}</td>
                           <td className="px-3 py-2 text-right text-base font-bold tabular-nums text-primary">{ff}</td>
@@ -927,7 +1051,7 @@ export default function FichaMontadoresPage() {
                       );
                     })}
                     {rosterFiltrado.length === 0 && (
-                      <tr><td colSpan={SIZES.length * 2 + 3} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                      <tr><td colSpan={colunasDia.length + 3} className="px-4 py-8 text-center text-sm text-muted-foreground">
                         Nenhum resultado para "{busca}".
                         <Button type="button" variant="outline" size="sm" className="ml-2 h-7" onClick={() => setBusca("")}>Limpar busca</Button>
                       </td></tr>
@@ -936,14 +1060,10 @@ export default function FichaMontadoresPage() {
                   <tfoot>
                     <tr className="border-t-2 border-foreground bg-muted/30 text-sm font-bold tabular-nums">
                       <td className="px-4 py-2.5 text-left text-[11px] uppercase tracking-wider text-muted-foreground">Total do dia</td>
-                      {SIZES.map((sz) => {
-                        const colM = rosterFiltrado.reduce((s, e) => s + (mapOf(e.id).medio[sz] || 0), 0);
-                        const colD = rosterFiltrado.reduce((s, e) => s + (mapOf(e.id).dificil[sz] || 0), 0);
+                      {colunasDia.map(({ sz, diff }) => {
+                        const col = rosterFiltrado.reduce((s, e) => s + (mapOf(e.id)[diff][sz] || 0), 0);
                         return (
-                          <Fragment key={sz}>
-                            <td className="border-l border-border px-1 py-2.5 text-center text-amber-600">{colM || ""}</td>
-                            <td className="px-1 py-2.5 text-center text-red-600">{colD || ""}</td>
-                          </Fragment>
+                          <td key={`${sz}-${diff}`} className={`border-l border-border px-1 py-2.5 text-center ${diff === "medio" ? "text-amber-600" : "text-red-600"}`}>{col || ""}</td>
                         );
                       })}
                       <td className="border-l border-border px-3 py-2.5 text-right text-foreground">{totalDiaPares.toLocaleString("pt-BR")}</td>
@@ -967,7 +1087,7 @@ export default function FichaMontadoresPage() {
               flush
               eyebrow={`SEMANA ${weekLabel}`}
               title="Matriz · Seg a Sex"
-              subtitle="Pares por dia. Escolha a dificuldade e o tamanho para preencher — os totais somam as duas."
+              subtitle="Pares por dia. Você edita uma combinação por vez (dificuldade × tamanho); a marca +N na célula avisa quantos pares daquele dia estão fora da combinação atual."
               actions={
                 <div className="flex flex-wrap items-center gap-2">
                   <div className="flex overflow-hidden rounded-md border border-border">
@@ -1004,17 +1124,36 @@ export default function FichaMontadoresPage() {
                       return (
                         <tr key={e.id} className="border-b border-border/50">
                           <td className="sticky left-0 z-10 bg-card px-4 py-1.5 text-left"><span className="whitespace-nowrap text-sm font-semibold text-foreground">{e.name}</span></td>
-                          {weekDays.map((d) => (
-                            <td key={d} className="px-1 py-1">
-                              <input inputMode="numeric"
-                                value={weekMap(e.id, d)[semDiff][semSize] || ""}
-                                placeholder="·"
-                                onFocus={(ev) => ev.target.select()}
-                                onChange={(ev) => setWeekCell(e.id, d, semDiff, semSize, numOf(ev.target.value))}
-                                className={`h-8 w-full rounded border bg-card text-center text-sm font-semibold tabular-nums text-foreground outline-none transition-colors placeholder:text-muted-foreground/40 ${semDiff === "medio" ? "border-amber-500/40 focus:border-amber-600" : "border-red-500/40 focus:border-red-600"}`}
-                                aria-label={`${e.name} ${fmtDia(d)} — ${DIFF_LABEL[semDiff]} de ${semSize}`} />
-                            </td>
-                          ))}
+                          {weekDays.map((d) => {
+                            const cel = weekMap(e.id, d);
+                            const naFatia = cel[semDiff][semSize] || 0;
+                            const totalDoDia = paresOfDiffMap(cel);
+                            // A matriz edita UMA fatia (dificuldade × tamanho) por vez, mas
+                            // o dia pode ter pares em outras. Sem mostrar isso, a célula
+                            // vazia parece "não produziu" quando na verdade produziu fora
+                            // da fatia atual — e o lançamento seguinte sobrescreveria a
+                            // leitura de quem confia no que está vendo.
+                            const foraDaFatia = totalDoDia - naFatia;
+                            return (
+                              <td key={d} className="px-1 py-1">
+                                <div className="relative">
+                                  <input inputMode="numeric"
+                                    value={naFatia || ""}
+                                    placeholder="·"
+                                    onFocus={(ev) => ev.target.select()}
+                                    onChange={(ev) => setWeekCell(e.id, d, semDiff, semSize, numOf(ev.target.value))}
+                                    className={`h-8 w-full rounded border bg-card text-center text-sm font-semibold tabular-nums text-foreground outline-none transition-colors placeholder:text-muted-foreground/40 ${foraDaFatia > 0 ? "border-dashed" : ""} ${semDiff === "medio" ? "border-amber-500/40 focus:border-amber-600" : "border-red-500/40 focus:border-red-600"}`}
+                                    aria-label={`${e.name} ${fmtDia(d)} — ${DIFF_LABEL[semDiff]} de ${semSize}${foraDaFatia > 0 ? `; mais ${foraDaFatia} pares em outras combinações neste dia` : ""}`} />
+                                  {foraDaFatia > 0 && (
+                                    <span
+                                      className="pointer-events-none absolute -bottom-0.5 right-0.5 font-mono text-[9px] font-bold leading-none text-muted-foreground"
+                                      title={`${totalDoDia} pares no dia — ${foraDaFatia} fora de ${DIFF_LABEL[semDiff]} de ${semSize}`}
+                                    >+{foraDaFatia}</span>
+                                  )}
+                                </div>
+                              </td>
+                            );
+                          })}
                           <td className="border-l-2 border-border px-2 text-center font-mono text-xs font-bold tabular-nums text-foreground whitespace-nowrap">{rowPares.toLocaleString("pt-BR")} · <span className="text-primary">{rowFichas}</span></td>
                         </tr>
                       );

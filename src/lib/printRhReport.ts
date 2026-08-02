@@ -9,6 +9,24 @@ import { escapeHtml } from './htmlUtils';
 
 export type RhCell = { v: string; align?: 'r' | 'l'; neg?: boolean; strong?: boolean };
 
+/** Bloco com colunas PRÓPRIAS dentro do mesmo documento.
+ *
+ *  Existe porque a folha tem duas formas de pagar que não cabem na mesma linha:
+ *  quem é pago pelo relógio de ponto (salário, faltas, atrasos, hora extra) e
+ *  quem é pago por par (dias produtivos, pares, R$/par). Numa tabela única,
+ *  metade das colunas de cada linha sairia "—" e o papel ficaria mais largo sem
+ *  informar mais. Bloco vazio não é renderizado — então filtrar o relatório só
+ *  para os montadores devolve uma folha só com o bloco deles. */
+export interface RhSection {
+  /** Cabeçalho do bloco (ex.: "Por par · Ficha de Montadores"). */
+  title: string;
+  /** Uma linha de contexto abaixo do título (o que este bloco significa). */
+  note?: string;
+  headers: { label: string; align?: 'r' | 'l' }[];
+  rows: RhCell[][];
+  totals?: RhCell[];
+}
+
 export interface PrintRhReportOptions {
   /** Título grande do documento (ex.: "Folha — Relatório por Funcionário"). */
   title: string;
@@ -18,10 +36,15 @@ export interface PrintRhReportOptions {
   /** dd/MM/yyyy — data de emissão. */
   generatedAt?: string;
   kpis?: { label: string; value: string }[];
-  headers: { label: string; align?: 'r' | 'l' }[];
-  rows: RhCell[][];
+  /** Tabela única (Faltas, Atrasos). Ignorado quando `sections` vem preenchido. */
+  headers?: { label: string; align?: 'r' | 'l' }[];
+  rows?: RhCell[][];
   /** Linha de total (destacada). */
   totals?: RhCell[];
+  /** Blocos com colunas próprias. Quando presente, substitui headers/rows/totals. */
+  sections?: RhSection[];
+  /** Fecho do documento somando os blocos (ex.: "Total geral · R$ 34.604,00"). */
+  grandTotal?: { label: string; value: string };
   footNote?: string;
 }
 
@@ -34,15 +57,34 @@ function cellHtml(c: RhCell, tag: 'td' | 'th' = 'td'): string {
   return `<${tag}${cls ? ` class="${cls}"` : ''}>${escapeHtml(c.v ?? '')}</${tag}>`;
 }
 
-export function printRhReport(o: PrintRhReportOptions): void {
-  const head = `<tr>${o.headers
+/** Uma tabela completa (cabeçalho + corpo + total). */
+function tableHtml(t: { headers: { label: string; align?: 'r' | 'l' }[]; rows: RhCell[][]; totals?: RhCell[] }): string {
+  const head = `<tr>${t.headers
     .map(h => `<th class="${h.align === 'r' ? 'text-right' : ''}">${escapeHtml(h.label)}</th>`)
     .join('')}</tr>`;
-  const body = o.rows
+  const body = t.rows
     .map(r => `<tr>${r.map(c => cellHtml(c)).join('')}</tr>`)
     .join('');
-  const foot = o.totals
-    ? `<tfoot><tr class="total-row">${o.totals.map(c => cellHtml(c)).join('')}</tr></tfoot>`
+  const foot = t.totals
+    ? `<tfoot><tr class="total-row">${t.totals.map(c => cellHtml(c)).join('')}</tr></tfoot>`
+    : '';
+  return `<table><thead>${head}</thead><tbody>${body}</tbody>${foot}</table>`;
+}
+
+export function printRhReport(o: PrintRhReportOptions): void {
+  // Blocos vazios são descartados: um relatório em que só existem montadores sai
+  // com um bloco só, sem cabeçalho órfão de uma seção sem ninguém.
+  const secs = (o.sections ?? []).filter(s => s.rows.length > 0);
+  const corpo = secs.length
+    ? secs.map(s => `
+        <div class="rh-sec">
+          <h2 class="rh-sec-t">${escapeHtml(s.title)}</h2>
+          ${s.note ? `<p class="rh-sec-n">${escapeHtml(s.note)}</p>` : ''}
+          ${tableHtml(s)}
+        </div>`).join('')
+    : tableHtml({ headers: o.headers ?? [], rows: o.rows ?? [], totals: o.totals });
+  const grand = o.grandTotal
+    ? `<div class="rh-grand"><span>${escapeHtml(o.grandTotal.label)}</span><b>${escapeHtml(o.grandTotal.value)}</b></div>`
     : '';
   const kpis = o.kpis?.length
     ? `<div class="rh-kpis">${o.kpis
@@ -61,15 +103,22 @@ export function printRhReport(o: PrintRhReportOptions): void {
   .rh-kpi:last-child { border-right: none; }
   .rh-kl { display: block; font-size: 8px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; color: #555; }
   .rh-kv { display: block; font-size: 12px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  /* Blocos: a barra preta à esquerda separa as duas formas de pagar sem depender
+     de cor — a fábrica imprime em laser P&B. */
+  .rh-sec { margin: 10px 0 4px; break-inside: auto; }
+  .rh-sec-t { font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.6px;
+              margin: 0 0 1px; padding-left: 6px; border-left: 4px solid #000; }
+  .rh-sec-n { font-size: 8.5px; color: #444; margin: 0 0 4px; padding-left: 10px; }
+  .rh-grand { display: flex; justify-content: space-between; align-items: baseline;
+              border-top: 2px solid #000; margin-top: 8px; padding-top: 5px;
+              font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; }
+  .rh-grand b { font-size: 15px; font-variant-numeric: tabular-nums; }
 </style>
 <h1>${escapeHtml(o.title)}</h1>
 <div class="subtitle">${escapeHtml(subtitle)}</div>
 ${kpis}
-<table>
-  <thead>${head}</thead>
-  <tbody>${body}</tbody>
-  ${foot}
-</table>
+${corpo}
+${grand}
 ${o.footNote ? `<div class="footer">${escapeHtml(o.footNote)}</div>` : ''}
 `;
   printHtml(o.title, bodyHtml);

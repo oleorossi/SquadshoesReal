@@ -797,7 +797,13 @@ function evaluationEmployeeInnerHtml(emp: EmployeeTimesheetData, periodLabel: st
     </table>
     <p class="note">Valor-dia = salário ÷ 30 = ${formatMoney(e.valorDia)} · Valor-hora = salário ÷ 220 = ${formatMoney(e.vh)} · Hora extra a 1,5×.
       Valores <b>líquidos do período</b> (mesma conta da Folha): fim de semana / após-18h abatem o déficit antes de virar HE; falta = −1 dia.</p>
-  ` : `<p class="note">⚠ Salário não cadastrado para este funcionário — folha não calculada (apenas a jornada abaixo).</p>`;
+  ` : e.paymentType === 'producao'
+    // Por par não tem holerite baseado em ponto: ele é pago por pares na Folha,
+    // e o registro de jornada existe só como presença. O aviso genérico de
+    // "salário não cadastrado" era falso alarme — sugeria cadastro incompleto
+    // onde na verdade o regime não usa salário.
+    ? `<p class="note">Pagamento <b>por par (produção)</b> — o valor a receber sai da Ficha de Montadores e consta na Folha, não aqui. O registro abaixo é de <b>presença</b>: não gera falta, atraso nem hora extra.</p>`
+    : `<p class="note">⚠ Salário não cadastrado para este funcionário — folha não calculada (apenas a jornada abaixo).</p>`;
 
   // ── Faltas e dias fora do horário (abaixo do esperado) ──
   const probRows = e.dayRows.filter(d => d.kind === 'falta' || d.kind === 'curto');

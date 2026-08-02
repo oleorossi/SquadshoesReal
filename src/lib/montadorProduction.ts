@@ -34,6 +34,16 @@ export interface ProducaoAgg {
   pares: number;
   /** R$ bruto = Σ (paresMedio×valor_par_medio + paresDificil×valor_par_dificil) por linha. */
   bruto: number;
+  /** DIAS PRODUTIVOS: dias distintos em que a pessoa lançou pares (> 0). É o
+   *  "quantos dias trabalhou" de quem é regime por par — não é dia útil da escala
+   *  nem dia com batida de ponto (ver CONTEXT.md). Linha sem `dia` não conta. */
+  dias: number;
+  /** Fichas (lotes de 12/15/18 pares) = Σ round(pares_da_linha ÷ tamanho). Medida
+   *  de RITMO, não de pagamento — o RH paga por par. */
+  fichas: number;
+  /** true quando alguma linha do agregado não tinha `detalhe` e as fichas dela
+   *  foram INFERIDAS assumindo lote de 12. O relatório marca esses números. */
+  fichasDerivadas: boolean;
 }
 
 /** Produção diária (modelo novo) — mesma heurística de isChamada da Ficha de Montadores. */
@@ -72,9 +82,39 @@ export function ratesOfRow(f: FichaMontadorRow): { vm: number; vd: number } {
   };
 }
 
+/** Tamanho de ficha assumido quando a linha não tem `detalhe` (lote padrão). */
+const DEFAULT_FICHA_SIZE = 12;
+
+/** Fichas de UMA linha. Com `detalhe`, soma round(pares÷tamanho) por tamanho; sem
+ *  ele, INFERE lote de 12 e marca `derivada` — o mesmo fallback de paresDiffOfRow.
+ *  Espelha fichasOfMap/fichasDiaOf da Ficha de Montadores. */
+export function fichasOfRow(f: FichaMontadorRow): { fichas: number; derivada: boolean } {
+  if (Array.isArray(f.detalhe) && f.detalhe.length) {
+    let n = 0;
+    for (const d of f.detalhe) {
+      const t = Number(d?.tamanho);
+      if (!t) continue;
+      const pares = d.medio != null || d.dificil != null
+        ? (Number(d.medio) || 0) + (Number(d.dificil) || 0)
+        : (Number(d.pares) || 0);
+      n += Math.round(pares / t);
+    }
+    return { fichas: n, derivada: false };
+  }
+  const tot = Number(f.total) || 0;
+  return { fichas: tot > 0 ? Math.round(tot / DEFAULT_FICHA_SIZE) : 0, derivada: tot > 0 };
+}
+
 /** Soma a produção de uma LISTA de linhas já filtradas (um montador / um período). */
 export function sumProducaoRows(rows: FichaMontadorRow[]): ProducaoAgg {
-  const agg: ProducaoAgg = { paresMedio: 0, paresDificil: 0, pares: 0, bruto: 0 };
+  const agg: ProducaoAgg = {
+    paresMedio: 0, paresDificil: 0, pares: 0, bruto: 0,
+    dias: 0, fichas: 0, fichasDerivadas: false,
+  };
+  // Dias PRODUTIVOS por data distinta: duas linhas no mesmo dia (ex.: setores
+  // diferentes) contam UM dia. Sem o Set, quem lança montagem e solagem no mesmo
+  // dia apareceria com o dobro de dias trabalhados na folha.
+  const dias = new Set<string>();
   for (const f of rows) {
     if (!isChamadaRow(f)) continue;
     const { medio, dificil } = paresDiffOfRow(f);
@@ -83,7 +123,12 @@ export function sumProducaoRows(rows: FichaMontadorRow[]): ProducaoAgg {
     agg.paresDificil += dificil;
     agg.pares += medio + dificil;
     agg.bruto += medio * vm + dificil * vd;
+    const fi = fichasOfRow(f);
+    agg.fichas += fi.fichas;
+    if (fi.derivada) agg.fichasDerivadas = true;
+    if (f.dia && medio + dificil > 0) dias.add(String(f.dia));
   }
+  agg.dias = dias.size;
   return agg;
 }
 

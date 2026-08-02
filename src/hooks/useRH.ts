@@ -183,8 +183,15 @@ export interface PayrollRun {
   premium_value: number;
   expected_minutes: number;
   business_days: number;
+  /** Dias trabalhados. No regime POR PAR guarda os DIAS PRODUTIVOS (dias com
+   *  pares lançados na Ficha de Montadores), não dias com batida de ponto. */
   business_days_worked: number;
   absent_days: number;
+  /** Pares do período (regime por par) — base do bruto. 0 nos demais regimes.
+   *  Ficam gravados na folha porque holerite e recibo têm de mostrar o que foi
+   *  PAGO, mesmo emitidos meses depois (mig 20261102120100). */
+  pares_medio?: number;
+  pares_dificil?: number;
   overtime_50_minutes: number;
   overtime_100_minutes: number;
   /** R$ de HE (colunas de 20260705120000 — existem no banco). */

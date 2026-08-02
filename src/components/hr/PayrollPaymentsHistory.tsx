@@ -66,7 +66,11 @@ export default function PayrollPaymentsHistory() {
     catch { toast.error('Falha ao abrir o recibo.'); }
   };
 
-  const printFor = (p: PayrollPaymentWithRefs) =>
+  const printFor = (p: PayrollPaymentWithRefs) => {
+    // Pares gravados na folha ⇒ pagamento por produção: o recibo reimpresso
+    // descreve pares e dias produtivos, não salário.
+    const pMed = Number(p.run?.pares_medio) || 0;
+    const pDif = Number(p.run?.pares_dificil) || 0;
     printPayrollReceipt({
       employeeName: p.employee?.name || '—',
       cpf: p.employee?.cpf,
@@ -77,7 +81,11 @@ export default function PayrollPaymentsHistory() {
       method: p.method,
       reference: p.reference,
       liquido: p.run?.total_liquido,
+      producao: pMed + pDif > 0
+        ? { diasProdutivos: Number(p.run?.business_days_worked) || 0, paresMedio: pMed, paresDificil: pDif }
+        : null,
     });
+  };
 
   const hasFilters = employeeId !== 'all' || !!from || !!to || !!q;
   const clearFilters = () => { setEmployeeId('all'); setFrom(''); setTo(''); setQ(''); };

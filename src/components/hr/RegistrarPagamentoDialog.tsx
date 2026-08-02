@@ -94,11 +94,22 @@ export function RegistrarPagamentoDialog({ open, onOpenChange, run, employeeName
     catch { toast.error('Falha ao abrir o recibo.'); }
   };
 
+  // Pares gravados na folha ⇒ regime por par: o recibo assinado descreve
+  // PRODUÇÃO (dias produtivos + pares), não "salário". Ler da folha, e não da
+  // Ficha de Montadores, é o que garante que o recibo emitido meses depois
+  // mostre o que foi efetivamente pago.
+  const paresMedio = Number(run.pares_medio) || 0;
+  const paresDificil = Number(run.pares_dificil) || 0;
+  const producaoDoRecibo = paresMedio + paresDificil > 0
+    ? { diasProdutivos: run.business_days_worked || 0, paresMedio, paresDificil }
+    : null;
+
   const printFor = (p: typeof payments[number]) =>
     printPayrollReceipt({
       employeeName, cpf: employeeCpf, role: employeeRole,
       period: run.period, amount: p.amount, paidOn: p.paid_on,
       method: p.method, reference: p.reference, liquido: run.total_liquido,
+      producao: producaoDoRecibo,
     });
 
   return (
