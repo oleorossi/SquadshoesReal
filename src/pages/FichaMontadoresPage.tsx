@@ -35,7 +35,7 @@ import { StatGrid, StatCard } from "@/components/ui/stat-card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useEmployees } from "@/hooks/useEmployees";
 import { useProductionSectors, useEmployeeSectors } from "@/hooks/useSectorRoster";
-import { ratesOfRow } from "@/lib/montadorProduction";
+import { ratesOfRow, sumProducaoRows } from "@/lib/montadorProduction";
 import { searchMatchesAllTerms } from "@/lib/searchUtils";
 import { toast } from "sonner";
 import { Printer, ChartBar, ClipboardText, ListChecks, Users, Package, CurrencyDollar, FloppyDisk, CaretLeft, CaretRight, Warning, CheckCircle, Clock } from "@phosphor-icons/react";
@@ -775,6 +775,49 @@ export default function FichaMontadoresPage() {
     [fichas, range, filtroMontador, pagStatus, estadoDe],
   );
 
+  /**
+   * RESUMO DO PERÍODO (spec `resumo-e-calendario-montadores.md` R1).
+   *
+   * Delega a `sumProducaoRows` — o MESMO motor que a folha executa. Recalcular
+   * aqui faria o resumo poder divergir do holerite, e aí o operador perde a
+   * confiança nos dois números.
+   *
+   * Respeita os filtros porque parte de `fichasFiltradas`: com "A pagar"
+   * marcado, o total é o que ainda se deve, que é o que vai pra folha.
+   */
+  const resumoPeriodo = useMemo(() => {
+    const base = sumProducaoRows(fichasFiltradas as any);
+    // Lançamento sem `detalhe` tem o total contado como MÉDIO pelo fallback do
+    // motor. São 33 de 50 na base — o relatório avisa em vez de fingir precisão.
+    const semDetalhe = fichasFiltradas.filter(
+      (f) => isChamada(f) && !(Array.isArray(f.detalhe) && f.detalhe.length),
+    ).length;
+    return { ...base, semDetalhe };
+  }, [fichasFiltradas]);
+
+  /**
+   * CALENDÁRIO em grade de mês (R2): pares por DIA, somando todos os montadores
+   * que passaram no filtro. Semana começa na SEGUNDA (`dowIdx`), igual ao PDF.
+   */
+  const calendario = useMemo(() => {
+    const porDia = new Map<string, { pares: number; medio: number; dificil: number; pago: boolean }>();
+    for (const f of fichasFiltradas) {
+      const pd = isChamada(f)
+        ? paresDiffOf(f)
+        : { medio: paresDaFicha(f), dificil: 0, total: paresDaFicha(f) };
+      if (pd.total <= 0) continue;
+      const c = porDia.get(f.dia) || { pares: 0, medio: 0, dificil: 0, pago: true };
+      c.pares += pd.total; c.medio += pd.medio; c.dificil += pd.dificil;
+      // Dia com QUALQUER lançamento em aberto conta como não pago — a marca
+      // existe pra cobrar, então erra pro lado de sinalizar (igual ao PDF).
+      c.pago = c.pago && estadoDe(f) === "pago";
+      porDia.set(f.dia, c);
+    }
+    const dias = daysInRange(range.from, range.to);
+    const meses = [...new Set(dias.map((d) => d.slice(0, 7)))];
+    return { porDia, dias, meses, temDificil: [...porDia.values()].some((c) => c.dificil > 0) };
+  }, [fichasFiltradas, range, estadoDe]);
+
   // Pares e VALOR por pessoa. O valor sai do R$/par de CADA linha (snapshot),
   // nunca de "pares do período × taxa de hoje" — senão um reajuste reescreveria
   // retroativamente o que já foi pago. Mesma conta de sumProducaoRows, que é a
@@ -1347,6 +1390,122 @@ export default function FichaMontadoresPage() {
           </div>
           {!loading && fichasFiltradas.length === 0 && (
             <p className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">Nenhum lançamento no período selecionado.</p>
+          )}
+
+          {/* ══ RESUMO DO PERÍODO (R1) ══ */}
+          {!loading && fichasFiltradas.length > 0 && (
+            <div className="mb-5 overflow-hidden rounded-lg border border-border bg-card">
+              <div className="flex flex-wrap">
+                <div className="flex min-w-0 flex-1 basis-[340px] flex-col gap-2 p-4">
+                  <div className="grid grid-cols-[74px_1fr_auto] items-baseline gap-2.5">
+                    <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-center text-[10px] font-bold uppercase tracking-wider text-amber-600">Médio</span>
+                    <span className="font-mono text-[13px] tabular-nums text-muted-foreground">
+                      <b className="font-semibold text-foreground">{resumoPeriodo.paresMedio.toLocaleString("pt-BR")}</b> pares × {fmtBRL(resumoPeriodo.taxaMedio)}
+                    </span>
+                    <span className="text-right font-mono text-sm font-semibold tabular-nums">{fmtBRL(resumoPeriodo.brutoMedio)}</span>
+                  </div>
+                  {/* R1.4 — sem par difícil no período, a linha nem existe: seria
+                      uma linha de zeros em todo relatório de montagem comum. */}
+                  {resumoPeriodo.paresDificil > 0 && (
+                    <div className="grid grid-cols-[74px_1fr_auto] items-baseline gap-2.5">
+                      <span className="rounded bg-red-500/10 px-1.5 py-0.5 text-center text-[10px] font-bold uppercase tracking-wider text-red-600">Difícil</span>
+                      <span className="font-mono text-[13px] tabular-nums text-muted-foreground">
+                        <b className="font-semibold text-foreground">{resumoPeriodo.paresDificil.toLocaleString("pt-BR")}</b> pares × {fmtBRL(resumoPeriodo.taxaDificil)}
+                      </span>
+                      <span className="text-right font-mono text-sm font-semibold tabular-nums">{fmtBRL(resumoPeriodo.brutoDificil)}</span>
+                    </div>
+                  )}
+                </div>
+                <div className="flex basis-[226px] flex-col justify-center gap-0.5 border-l border-border bg-muted/40 px-5 py-4">
+                  <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">Total do período</span>
+                  <span className="font-mono text-[29px] font-bold leading-tight tracking-tight tabular-nums">{fmtBRL(resumoPeriodo.bruto)}</span>
+                  <span className="font-mono text-xs tabular-nums text-muted-foreground">{resumoPeriodo.pares.toLocaleString("pt-BR")} pares</span>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-3.5 border-t border-border px-4 py-2 font-mono text-[11.5px] tabular-nums text-muted-foreground">
+                <span><b className="font-semibold text-foreground/80">{resumoPeriodo.fichas.toLocaleString("pt-BR")}</b> fichas</span>
+                <span><b className="font-semibold text-foreground/80">{resumoPeriodo.dias}</b> dias produtivos</span>
+                <span><b className="font-semibold text-foreground/80">{Math.round(resumoPeriodo.pares / (resumoPeriodo.dias || 1)).toLocaleString("pt-BR")}</b> pares/dia</span>
+              </div>
+              {resumoPeriodo.taxaVariou && (
+                <p className="flex gap-2 border-t border-border bg-amber-500/10 px-4 py-2 text-xs text-amber-600">
+                  <Warning className="h-4 w-4 shrink-0" />
+                  O R$/par mudou dentro do período — a taxa exibida é média ponderada. Cada lançamento manteve a sua.
+                </p>
+              )}
+              {resumoPeriodo.semDetalhe > 0 && (
+                <p className="flex gap-2 border-t border-border bg-amber-500/10 px-4 py-2 text-xs text-amber-600">
+                  <Warning className="h-4 w-4 shrink-0" />
+                  <span><b>{resumoPeriodo.semDetalhe}</b> lançamento(s) sem quebra por tamanho — o total deles entra como <b>médio</b>, igual ao motor da folha.</span>
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* ══ CALENDÁRIO em grade de mês (R2) ══ */}
+          {!loading && fichasFiltradas.length > 0 && (
+            <div className="mb-5 space-y-4">
+              {calendario.meses.map((mes) => {
+                const [ano, m] = mes.split("-").map(Number);
+                const primeiro = new Date(ano, m - 1, 1);
+                const ultimo = new Date(ano, m, 0);
+                // dowIdx é 0=Seg … 6=Dom (convenção do projeto, igual ao PDF).
+                const offset = (primeiro.getDay() + 6) % 7;
+                const celulas: JSX.Element[] = [];
+                for (let i = 0; i < offset; i++) {
+                  celulas.push(<div key={`v${i}`} className="invisible" aria-hidden />);
+                }
+                for (let dd = 1; dd <= ultimo.getDate(); dd++) {
+                  const iso = `${ano}-${String(m).padStart(2, "0")}-${String(dd).padStart(2, "0")}`;
+                  const dentro = calendario.dias.includes(iso);
+                  const c = calendario.porDia.get(iso);
+                  const fds = dowIdx(iso) >= 5;
+                  if (!dentro) { celulas.push(<div key={iso} className="invisible" aria-hidden />); continue; }
+                  if (!c) {
+                    // R2.4 — dia vazio DENTRO do período fica visível: a falta é informação.
+                    celulas.push(
+                      <div key={iso} className={`min-h-[58px] rounded-md border border-dashed border-border p-1.5 ${fds ? "bg-muted/40" : ""}`}>
+                        <span className="font-mono text-[10px] tabular-nums text-muted-foreground">{dd}</span>
+                      </div>,
+                    );
+                    continue;
+                  }
+                  celulas.push(
+                    <div key={iso}
+                      className={`flex min-h-[58px] flex-col rounded-md border p-1.5 ${c.pago ? "border-border bg-card" : "border-amber-500/40 bg-amber-500/10"} ${fds && c.pago ? "bg-muted/40" : ""}`}
+                      title={`${fmtDia(iso)} — ${c.pares.toLocaleString("pt-BR")} pares${c.pago ? "" : " · ainda não pago"}`}>
+                      <span className="font-mono text-[10px] tabular-nums text-muted-foreground">{dd}</span>
+                      <span className="mt-auto font-mono text-[17px] font-bold leading-none tracking-tight tabular-nums text-foreground">{c.pares.toLocaleString("pt-BR")}</span>
+                      <span className="font-mono text-[8.5px] uppercase tracking-wider text-muted-foreground">pares</span>
+                      {calendario.temDificil && (
+                        <span className="font-mono text-[9px] leading-tight">
+                          <span className="font-bold text-amber-600">{c.medio}</span>
+                          {c.dificil > 0 && <> · <span className="font-bold text-red-600">{c.dificil}</span></>}
+                        </span>
+                      )}
+                    </div>,
+                  );
+                }
+                return (
+                  <div key={mes}>
+                    <h3 className="mb-1.5 font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
+                      {primeiro.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}
+                    </h3>
+                    <div className="grid grid-cols-7 gap-1">
+                      {WD_SHORT7.map((w) => (
+                        <span key={w} className="pb-0.5 text-center font-mono text-[9.5px] uppercase tracking-wider text-muted-foreground">{w}</span>
+                      ))}
+                    </div>
+                    <div className="grid grid-cols-7 gap-1">{celulas}</div>
+                  </div>
+                );
+              })}
+              <div className="flex flex-wrap gap-3.5 font-mono text-[11px] text-muted-foreground">
+                <span><i className="mr-1 inline-block h-2.5 w-2.5 rounded-sm border border-amber-500/40 bg-amber-500/10 align-[-1px]" />dia ainda não pago</span>
+                <span><i className="mr-1 inline-block h-2.5 w-2.5 rounded-sm border border-border bg-muted/40 align-[-1px]" />fim de semana</span>
+                <span><i className="mr-1 inline-block h-2.5 w-2.5 rounded-sm border border-dashed border-border align-[-1px]" />sem lançamento</span>
+              </div>
+            </div>
           )}
           <div className="space-y-5">
             {grupos.map(([d, lista]) => {

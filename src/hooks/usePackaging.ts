@@ -3,42 +3,61 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import type { IndividualPackaging } from '@/types/packaging';
 
+/**
+ * Números do topo da tela de Embalagens.
+ *
+ * Reordenado em 02/08/2026 (R3 do sistema de telas): o trilho responde
+ * "preciso agir?" ANTES de "o que tem aqui?", então as PENDÊNCIAS vêm primeiro
+ * e os totais informativos depois. Foi a cegueira a esses números que deixou a
+ * embalagem passar meses sem debitar sem ninguém perceber.
+ */
 export interface PackagingStats {
-  total_individual: number;
-  total_master: number;
-  total_linked_products: number;
+  // ── pendências (o que exige ação) ──
+  /** Caixas ativas com estoque <= mínimo (mínimo > 0). */
   low_stock_alerts: number;
-  products_without_packaging: number;
+  /** Caixas ativas com unit_price 0/nulo — zeram o custo de embalagem no custeio. */
+  boxes_without_price: number;
+  /** Caixas sem tara (empty_weight_kg) — peso bruto da NF-e sai errado. */
+  boxes_without_tare: number;
+  /** Grupos de solado sem NENHUM dos 3 modos montado — PV entra e não debita. */
+  soles_without_packaging: number;
+  // ── totais (informativo) ──
+  total_boxes: number;
+  total_units: number;
 }
 
 export function usePackagingStats() {
   return useQuery<PackagingStats>({
     queryKey: ['packagingStats'],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from('box_types')
-        .select('id, interno, quantity, min_stock, active')
+        .select('id, quantity, min_stock, unit_price, empty_weight_kg, active')
         .eq('active', true);
       if (error) throw error;
-      const boxes = data ?? [];
-      const individual = boxes.filter(b => b.interno);
-      const master = boxes.filter(b => !b.interno);
-      const lowStock = boxes.filter(b =>
-        Number(b.min_stock || 0) > 0 && Number(b.quantity || 0) <= Number(b.min_stock || 0)
-      );
+      const boxes = (data ?? []) as Array<{
+        quantity: number | null; min_stock: number | null;
+        unit_price: number | null; empty_weight_kg: number | null;
+      }>;
 
-      // Count packaging_configs linked
-      const { count: linkedCount, error: linkedErr } = await supabase
-        .from('packaging_configs')
-        .select('sheet_id', { count: 'exact', head: true });
-      if (linkedErr) throw new Error(`Falha ao contar configurações de embalagem: ${linkedErr.message}`);
+      // Prontidão dos 3 modos por modelo de solado — a view nasceu com a
+      // migration 20261110120000, junto com a fonte única no solado.
+      const { data: soles, error: solesErr } = await (supabase as any)
+        .from('v_solados_sem_embalagem')
+        .select('modo_tradicional_ok, modo_amarrado_ok, modo_colmeia_ok');
+      if (solesErr) throw new Error(`Falha ao ler prontidão de embalagem dos solados: ${solesErr.message}`);
+
+      const semNenhumModo = ((soles ?? []) as Array<Record<string, boolean>>)
+        .filter(s => !s.modo_tradicional_ok && !s.modo_amarrado_ok && !s.modo_colmeia_ok).length;
 
       return {
-        total_individual: individual.length,
-        total_master: master.length,
-        total_linked_products: linkedCount ?? 0,
-        low_stock_alerts: lowStock.length,
-        products_without_packaging: 0,
+        low_stock_alerts: boxes.filter(b =>
+          Number(b.min_stock || 0) > 0 && Number(b.quantity || 0) <= Number(b.min_stock || 0)).length,
+        boxes_without_price: boxes.filter(b => !(Number(b.unit_price || 0) > 0)).length,
+        boxes_without_tare: boxes.filter(b => !(Number(b.empty_weight_kg || 0) > 0)).length,
+        soles_without_packaging: semNenhumModo,
+        total_boxes: boxes.length,
+        total_units: boxes.reduce((s, b) => s + Number(b.quantity || 0), 0),
       };
     },
     staleTime: 2 * 60_000,

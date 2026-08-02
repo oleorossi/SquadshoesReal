@@ -51,10 +51,12 @@ describe('embalagem tem uma fonte só: o modelo de solado', () => {
   it('nenhuma tela viva lê technical_sheet_box_types', () => {
     // A tabela continua existindo (histórico), mas ninguém pode voltar a ler
     // dela — é o que reintroduz a precedência invertida e o débito em dobro.
+    // PackagingLinksPanel saiu da lista porque foi APAGADO em 02/08/2026 (R5 do
+    // sistema de telas): só espelhava o que Solados edita, então a tela exibia o
+    // mesmo dado duas vezes e nenhuma das duas era a fonte.
     const telas = [
       'src/components/technical-sheets/PackagingTab.tsx',
       'src/components/packaging/PackagingDecision.tsx',
-      'src/components/packaging/PackagingLinksPanel.tsx',
       'src/components/packaging/PackagingStockPanel.tsx',
       'src/components/soles-hub/SolePackagingPanel.tsx',
     ];

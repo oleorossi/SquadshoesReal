@@ -1,12 +1,13 @@
-import { Package, Cube as Box, Link as LinkIcon, Calculator, Warning as AlertTriangle, Warehouse } from '@phosphor-icons/react';
-import { StatsCard } from '@/components/inventory/StatsCard';
+import { Package, Warehouse, Calculator, Warning as AlertTriangle } from '@phosphor-icons/react';
+import { Tabs, TabsContent } from '@/components/ui/tabs';
+import { HubTabsList } from '@/components/layout/HubTabs';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { usePackagingStats } from '@/hooks/usePackaging';
-import PackagingLinksPanel from '@/components/packaging/PackagingLinksPanel';
 import PackagingAlerts from '@/components/packaging/PackagingAlerts';
 import PackagingStockPanel from '@/components/packaging/PackagingStockPanel';
 import { PackagingDecision } from '@/components/packaging/PackagingDecision';
+import { usePersistedState } from '@/hooks/usePersistedState';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -14,6 +15,26 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
+/**
+ * Gestão de Embalagens — piloto do sistema de telas (02/08/2026).
+ *
+ * O que mudou e por quê, pra não voltar atrás sem querer:
+ *
+ * R1 — A página era a ÚNICA do app com rolagem por âncora (`scroll-mt` +
+ *      barra fixa que rolava até a seção). Quatro seções empilhadas viraram
+ *      ABAS: o que não cabe na dobra é outra faceta, não mais rolagem.
+ *
+ * R3 — O trilho do topo mostra PENDÊNCIA primeiro (moldura de alerta), totais
+ *      depois, neutros. Antes eram 4 cards iguais — "Tipos cadastrados" tinha
+ *      o mesmo peso visual de "Alertas de Estoque".
+ *
+ * R5 — A seção "Vínculos com fichas" FOI APAGADA. Desde a migration
+ *      20261110120000 ela só espelhava o que Solados → Consumos → Embalagem
+ *      edita; a tela mostrava o mesmo dado duas vezes e nenhuma das duas era a
+ *      fonte. Quem precisa ver o vínculo vê no lugar que o edita.
+ */
+
+/** Seleciona uma OP e mostra a sugestão de embalagem daquele pedido. */
 const OrderPackagingDecision = () => {
   const [selectedOrderId, setSelectedOrderId] = useState<string>('');
 
@@ -50,7 +71,7 @@ const OrderPackagingDecision = () => {
   return (
     <div className="space-y-4">
       <Card>
-        <CardHeader>
+        <CardHeader className="pb-3">
           <CardTitle className="text-base">Selecionar pedido</CardTitle>
         </CardHeader>
         <CardContent>
@@ -58,7 +79,7 @@ const OrderPackagingDecision = () => {
             <div className="space-y-2">
               <Label>Pedido (OP)</Label>
               <Select value={selectedOrderId} onValueChange={setSelectedOrderId}>
-                <SelectTrigger>
+                <SelectTrigger className="h-9">
                   <SelectValue placeholder="Selecione um pedido..." />
                 </SelectTrigger>
                 <SelectContent>
@@ -90,20 +111,22 @@ const OrderPackagingDecision = () => {
   );
 };
 
-const SECTIONS = [
-  { id: 'stock', label: 'Cadastro & Estoque', icon: Warehouse },
-  { id: 'links', label: 'Vínculos com fichas', icon: LinkIcon },
-  { id: 'decision', label: 'Sugestão por pedido', icon: Calculator },
-  { id: 'alerts', label: 'Alertas', icon: AlertTriangle },
-];
-
-const scrollTo = (id: string) => {
-  const el = document.getElementById(id);
-  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-};
+/** Card do trilho de atenção. `alert` muda a moldura E o texto — cor sozinha
+ *  não sobrevive ao tema escuro nem ao daltonismo (R2). */
+function RailStat({ label, value, alert }: { label: string; value: number | string; alert?: boolean }) {
+  return (
+    <Card className={`px-3 py-2 ${alert ? 'border-red-500/40 bg-red-500/10' : ''}`}>
+      <p className={`text-xs uppercase tracking-wider ${alert ? 'text-red-600' : 'text-muted-foreground'}`}>
+        {label}
+      </p>
+      <p className={`text-lg font-bold font-mono ${alert ? 'text-red-600' : ''}`}>{value}</p>
+    </Card>
+  );
+}
 
 const PackagingManagementPage = ({ embedded = false }: { embedded?: boolean }) => {
   const { data: stats, isLoading } = usePackagingStats();
+  const [tab, setTab] = usePersistedState<string>('packaging-tab', 'stock');
 
   if (isLoading) {
     return (
@@ -119,117 +142,62 @@ const PackagingManagementPage = ({ embedded = false }: { embedded?: boolean }) =
   }
 
   const alertsCount = stats?.low_stock_alerts ?? 0;
+  const semPreco = stats?.boxes_without_price ?? 0;
+  const semTara = stats?.boxes_without_tare ?? 0;
+  const semEmbalagem = stats?.soles_without_packaging ?? 0;
+  // Tudo que exige ação — vira o ponto na aba Alertas.
+  const pendencias = alertsCount + semPreco + semTara + semEmbalagem;
 
   return (
-    <div className="space-y-8 pb-12">
-      {/* Header */}
+    <div className="space-y-4 pb-12">
       {!embedded && (
-        <div>
-          <h1 className="display text-3xl flex items-center gap-3">
-            <Package className="h-8 w-8 text-primary" />
-            Gestão de Embalagens
-          </h1>
-          <p className="text-muted-foreground mt-1">
-            Cadastro, estoque, vínculos com fichas técnicas e sugestão automática por pedido.
-          </p>
-        </div>
+        <EditorialPageHeader
+          sectionLabel="LOGÍSTICA · EMBALAGENS"
+          title="Embalagens"
+          description="Cadastro, estoque e sugestão por pedido. O vínculo com o solado é feito em Solados → Consumos → Embalagem."
+          actions={
+            <div className="flex items-center gap-3 flex-wrap">
+              {/* Pendência primeiro: o trilho responde "preciso agir?" antes de
+                  "o que tem aqui?". Card de alerta só existe quando há o quê. */}
+              {semEmbalagem > 0 && <RailStat label="Solados sem caixa" value={semEmbalagem} alert />}
+              {semPreco > 0 && <RailStat label="Caixa sem preço" value={semPreco} alert />}
+              {alertsCount > 0 && <RailStat label="Abaixo do mínimo" value={alertsCount} alert />}
+              {semTara > 0 && <RailStat label="Caixa sem tara" value={semTara} alert />}
+              <RailStat label="Caixas" value={stats?.total_boxes ?? 0} />
+              <RailStat label="Em estoque" value={(stats?.total_units ?? 0).toLocaleString('pt-BR')} />
+            </div>
+          }
+        />
       )}
 
-      {/* Dashboard cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatsCard
-          title="Embalagens Individuais"
-          value={stats?.total_individual ?? 0}
-          icon={Package}
-          subtitle="Tipos cadastrados"
+      <Tabs value={tab} onValueChange={setTab} className="w-full">
+        <HubTabsList
+          tabs={[
+            { value: 'stock', label: 'Cadastro & Estoque', icon: Warehouse },
+            { value: 'alerts', label: 'Alertas', icon: AlertTriangle, badge: pendencias > 0 ? pendencias : undefined },
+            { value: 'decision', label: 'Sugestão por pedido', icon: Calculator },
+          ]}
         />
-        <StatsCard
-          title="Caixas Master"
-          value={stats?.total_master ?? 0}
-          icon={Box}
-          subtitle="Tipos cadastrados"
-        />
-        <StatsCard
-          title="Vínculos com Fichas"
-          value={stats?.total_linked_products ?? 0}
-          icon={LinkIcon}
-          subtitle="Embalagens vinculadas"
-        />
-        <StatsCard
-          title="Alertas de Estoque"
-          value={alertsCount}
-          icon={AlertTriangle}
-          variant={alertsCount > 0 ? 'warning' : 'default'}
-          subtitle="Abaixo do mínimo"
-        />
-      </div>
 
-      {/* Quick nav */}
-      <div className="sticky top-0 z-10 -mx-2 px-2 py-2 bg-background/80 backdrop-blur-sm border-b">
-        <div className="flex flex-wrap gap-2">
-          {SECTIONS.map((s) => {
-            const Icon = s.icon;
-            return (
-              <Button
-                key={s.id}
-                variant="outline"
-                size="sm"
-                onClick={() => scrollTo(s.id)}
-                className="gap-1.5"
-              >
-                <Icon className="h-4 w-4" />
-                {s.label}
-                {s.id === 'alerts' && alertsCount > 0 && (
-                  <span className="ml-1 rounded-full bg-destructive px-1.5 py-0.5 text-xs font-bold text-destructive-foreground">
-                    {alertsCount > 99 ? '99+' : alertsCount}
-                  </span>
-                )}
-              </Button>
-            );
-          })}
-        </div>
-      </div>
+        <TabsContent value="stock" className="mt-4">
+          <PackagingStockPanel />
+        </TabsContent>
 
-      {/* Section: Cadastro & Estoque */}
-      <section id="stock" className="space-y-4 scroll-mt-20">
-        <div className="flex items-center gap-2 border-b pb-2">
-          <Warehouse className="h-5 w-5 text-primary" />
-          <h2 className="text-xl font-semibold">Cadastro & Estoque</h2>
-        </div>
-        <PackagingStockPanel />
-      </section>
+        <TabsContent value="alerts" className="mt-4">
+          <PackagingAlerts />
+        </TabsContent>
 
-      {/* Section: Vínculos */}
-      <section id="links" className="space-y-4 scroll-mt-20">
-        <div className="flex items-center gap-2 border-b pb-2">
-          <LinkIcon className="h-5 w-5 text-primary" />
-          <h2 className="text-xl font-semibold">Vínculos com fichas técnicas</h2>
-        </div>
-        <PackagingLinksPanel />
-      </section>
+        <TabsContent value="decision" className="mt-4">
+          <OrderPackagingDecision />
+        </TabsContent>
+      </Tabs>
 
-      {/* Section: Sugestão por pedido */}
-      <section id="decision" className="space-y-4 scroll-mt-20">
-        <div className="flex items-center gap-2 border-b pb-2">
-          <Calculator className="h-5 w-5 text-primary" />
-          <h2 className="text-xl font-semibold">Sugestão de embalagem por pedido</h2>
-        </div>
-        <OrderPackagingDecision />
-      </section>
-
-      {/* Section: Alertas */}
-      <section id="alerts" className="space-y-4 scroll-mt-20">
-        <div className="flex items-center gap-2 border-b pb-2">
-          <AlertTriangle className="h-5 w-5 text-destructive" />
-          <h2 className="text-xl font-semibold">Alertas de estoque</h2>
-          {alertsCount > 0 && (
-            <span className="rounded-full bg-destructive px-2 py-0.5 text-xs font-bold text-destructive-foreground">
-              {alertsCount}
-            </span>
-          )}
-        </div>
-        <PackagingAlerts />
-      </section>
+      {embedded && stats && pendencias === 0 && (
+        <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+          <Package className="h-3.5 w-3.5" />
+          Nenhuma pendência de embalagem.
+        </p>
+      )}
     </div>
   );
 };
