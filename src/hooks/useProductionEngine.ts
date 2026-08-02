@@ -57,6 +57,11 @@ export interface QueueDetailRow {
   sale_order_id: string | null;
   sale_order_number: string | null;
   client_name: string | null;
+  /** Nome fantasia e grupo econômico do cliente — existem pra BUSCA (mig
+   *  `20261101120000`). A razão social (`client_name`) segue sendo o que
+   *  etiqueta/ficha exibem; estes dois só ampliam o que a busca acha. */
+  client_fantasia: string | null;
+  client_group_name: string | null;
   due_date: string | null;
   pinned_position: number | null;
   pinned_by: string | null;

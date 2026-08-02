@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -186,9 +186,21 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
     const s = new Set<string>();
     for (const c of allCards) {
       const q = c.q;
+      // Cliente entra pelos TRÊS nomes (mig `20261101120000`): razão social,
+      // nome fantasia e grupo econômico. Medido em 01/08/2026 com 22 dos 27
+      // clientes do quadro em grupo — só a razão social achava 8 das 27 lojas
+      // do grupo Raquel Calçados e NENHUMA das 4 de VIVIAN FERREIRA (a razão
+      // social "ALCINEU DE MADUREIRA CALCADOS" não tem letra em comum com o
+      // nome do grupo). A fantasia cobre o nome pelo qual a fábrica chama a
+      // loja ("LOJAS NALIN" para "LNG 10 CONFECCOES LTDA").
       const hit = scanTerms
         ? scanTerms.some(t => searchMatchesAny(t, q.sale_order_number))
-        : searchMatchesAllTerms(search, q.order_number, q.reference_name, q.color, q.client_name, q.sale_order_number);
+        : searchMatchesAllTerms(
+            search,
+            q.order_number, q.reference_name, q.color,
+            q.client_name, q.client_fantasia, q.client_group_name,
+            q.sale_order_number,
+          );
       if (hit) s.add(q.order_id);
     }
     return s;
@@ -199,13 +211,15 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
     [matchedIds, allCards],
   );
 
-  // Setor comum a TODAS as OPs achadas (null quando estão espalhadas). Permite
-  // dizer o destino uma vez no rótulo em vez de repeti-lo em cada chip.
-  const uniformMatchColumn = useMemo(() => {
-    if (matches.length === 0) return null;
-    const first = matches[0].column;
-    return matches.every(c => c.column === first) ? first : null;
-  }, [matches]);
+  // Onde as OPs achadas estão, agrupadas por setor e na ordem do fluxo — é o
+  // mapa que a faixa de resultados mostra (um botão por setor).
+  const matchSummary = useMemo(() => {
+    const n = new Map<string, number>();
+    for (const c of matches) n.set(c.column, (n.get(c.column) || 0) + 1);
+    return [...n.entries()]
+      .map(([sector, count]) => ({ sector, n: count }))
+      .sort((a, b) => (flowOrder.get(a.sector) ?? 999) - (flowOrder.get(b.sector) ?? 999));
+  }, [matches, flowOrder]);
 
   // Achou → leva o olho até o card (a coluna certa pode estar fora da viewport)
   useEffect(() => {
@@ -267,15 +281,29 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
     return { n, pior };
   }, [gateMap, allCards]);
 
-  // Busca ativa em modo filtrar: o quadro mostra SÓ o que casou.
+  // Busca ativa em modo filtrar: dentro da coluna ficam SÓ os cards que casaram.
   const filtering = viewMode === 'filtrar' && !!matchedIds;
 
-  // Setor que ficou sem OP casada sai do quadro — no celular cada coluna ocupa
-  // uma tela inteira e passar por 9 vazias é ruído puro.
-  const visibleColumns = useMemo(() => {
-    if (!filtering || !matchedIds) return columns;
-    return columns.filter(sector => allCards.some(c => c.column === sector && matchedIds.has(c.q.order_id)));
-  }, [columns, filtering, matchedIds, allCards]);
+  /**
+   * Setores com ao menos uma OP da busca.
+   *
+   * ⚠ Filtrar CARD e esconder COLUNA eram a mesma decisão até 02/08/2026, e
+   * isso quebrava o gesto principal do quadro: buscar uma referência e ARRASTAR
+   * a OP pro próximo setor. Some com o destino, some com o arraste. Agora as
+   * duas coisas são independentes — o setor sem match continua no quadro (como
+   * trilho fino, ver `isRail` no render) e segue sendo alvo de soltar.
+   *
+   * No CELULAR o setor sem match continua saindo (decisão do dono 26/07/2026:
+   * cada coluna ocupa uma tela e passar por 9 vazias é ruído puro) — mas isso
+   * é feito por CSS (`hidden md:flex`), não aqui, pra não precisar medir
+   * viewport em JS nem duplicar a lista de colunas.
+   */
+  const matchedColumns = useMemo(() => {
+    if (!filtering || !matchedIds) return null;
+    const s = new Set<string>();
+    for (const c of allCards) if (matchedIds.has(c.q.order_id)) s.add(c.column);
+    return s;
+  }, [filtering, matchedIds, allCards]);
 
   const selectedCards = useMemo(
     () => allCards.filter(c => selectedIds.has(c.q.order_id)),
@@ -306,14 +334,29 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
    * (`buildPointingPlan`) que o diálogo aplica ao soltar — assim o realce da
    * coluna nunca promete um destino que o diálogo vai recusar.
    */
-  const dropEligibility = (card: KanbanCardData, target: string): {
+  const dropEligibility = useCallback((card: KanbanCardData, target: string): {
     ok: boolean; kind: 'frente' | 'pulo' | 'estorno'; reason?: string;
   } => {
     const plan = buildPointingPlan(card, target, flowOrder);
     if (!plan.available) return { ok: false, kind: 'frente', reason: plan.unavailableReason };
     if (plan.isBackward) return { ok: true, kind: 'estorno' };
     return { ok: true, kind: plan.skipped.length > 0 ? 'pulo' : 'frente' };
-  };
+  }, [flowOrder]);
+
+  /**
+   * Elegibilidade do card EM ARRASTE por setor, calculada uma vez por arraste.
+   *
+   * O render pedia isto 3× por coluna (borda, tom e `aria-dropeffect`) e cada
+   * chamada remonta a rota da OP — 11 setores × 3 = 33 `buildPointingPlan` a
+   * cada coluna cruzada, sempre com a MESMA resposta enquanto o card na mão não
+   * muda. Agora é um mapa por arraste.
+   */
+  const dragEligibilityBySector = useMemo(() => {
+    if (!dragCard) return null;
+    const m = new Map<string, ReturnType<typeof dropEligibility>>();
+    for (const sector of columns) m.set(sector, dropEligibility(dragCard, sector));
+    return m;
+  }, [dragCard, columns, dropEligibility]);
 
   const handleDrop = (target: string) => {
     if (!dragCard) return;
@@ -358,7 +401,7 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
 
   useEffect(() => {
     boardEl.current?.querySelectorAll<HTMLElement>('[data-kb-list]').forEach(syncColumnFade);
-  }, [visibleColumns, allCards.length, matchedIds]);
+  }, [columns, allCards.length, matchedIds]);
 
   /**
    * A RODA DO MOUSE PERTENCE À COLUNA SOB O CURSOR — nunca à página.
@@ -391,7 +434,55 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
     };
     board.addEventListener('wheel', onWheel, { passive: false });
     return () => board.removeEventListener('wheel', onWheel);
-  }, [isLoading, allCards.length, visibleColumns.length]);
+  }, [isLoading, allCards.length, columns.length]);
+
+  /**
+   * AUTO-ROLAGEM NA BORDA DURANTE O ARRASTE.
+   *
+   * São 11 setores ativos a `min-w-[185px]` = 2035px de quadro — sempre mais
+   * largo que a tela. Sem isto, arrastar pra um setor fora da viewport era
+   * IMPOSSÍVEL: o arraste HTML5 não emite `wheel`, e o handler acima ainda
+   * chama `preventDefault()` e joga a rolagem pra dentro da coluna. Ou seja,
+   * manter todos os setores no quadro só entrega o gesto junto com isto.
+   *
+   * Segurar o card na faixa de `EDGE_PX` de cada borda rola o quadro; a
+   * velocidade cresce conforme chega na borda (0 → `MAX_SPEED` px/frame), pra
+   * dar controle fino perto do alvo e travessia rápida quando o destino está
+   * longe. O rAF só existe enquanto há card na mão.
+   */
+  useEffect(() => {
+    const board = boardEl.current;
+    if (!board || !dragCard) return;
+    const EDGE_PX = 72;
+    const MAX_SPEED = 22;
+    let raf = 0;
+    let speed = 0;
+
+    const step = () => {
+      if (speed !== 0) board.scrollLeft += speed;
+      raf = requestAnimationFrame(step);
+    };
+    const onDragOver = (e: DragEvent) => {
+      const r = board.getBoundingClientRect();
+      const fromLeft = e.clientX - r.left;
+      const fromRight = r.right - e.clientX;
+      if (fromLeft < EDGE_PX) speed = -MAX_SPEED * (1 - Math.max(fromLeft, 0) / EDGE_PX);
+      else if (fromRight < EDGE_PX) speed = MAX_SPEED * (1 - Math.max(fromRight, 0) / EDGE_PX);
+      else speed = 0;
+    };
+    const stop = () => { speed = 0; };
+
+    board.addEventListener('dragover', onDragOver);
+    board.addEventListener('dragleave', stop);
+    board.addEventListener('drop', stop);
+    raf = requestAnimationFrame(step);
+    return () => {
+      cancelAnimationFrame(raf);
+      board.removeEventListener('dragover', onDragOver);
+      board.removeEventListener('dragleave', stop);
+      board.removeEventListener('drop', stop);
+    };
+  }, [dragCard]);
 
   /** Apontou → a OP ganha halo de pouso na coluna nova por ~1,6s. */
   const markLanded = (orderId: string) => {
@@ -573,22 +664,25 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
             </span>
           ) : (
             <>
-              {/* Quando TODAS as OPs achadas estão no mesmo setor, o destino é
-                  dito uma vez aqui — antes cada chip repetia "→ Corte Palmilha"
-                  12 vezes, enchendo a tela de ruído. */}
+              {/* Um botão por SETOR, não por OP: com 22 achadas isto era uma
+                  fileira de 22 chips que estourava a largura e repetia o mesmo
+                  destino. O que a faixa precisa responder é "onde está o que eu
+                  procuro", e isso são 2 botões, não 22. Clicar rola até lá. */}
               <span className="text-muted-foreground shrink-0">
-                {matches.length} OP{matches.length > 1 ? 's' : ''}
-                {uniformMatchColumn ? <> em <strong className="text-foreground">{uniformMatchColumn}</strong></> : null}:
+                {matches.length} OP{matches.length > 1 ? 's' : ''} em {matchSummary.length} setor{matchSummary.length > 1 ? 'es' : ''}:
               </span>
-              {matches.map(c => (
+              {matchSummary.map(({ sector, n }) => (
                 <button
-                  key={c.q.order_id}
+                  key={sector}
                   type="button"
-                  className="shrink-0 font-mono rounded-md border border-border bg-card px-2.5 py-1.5 md:px-2 md:py-0.5 hover:bg-muted/60 transition-colors"
-                  onClick={() => cardEls.current.get(c.q.order_id)?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' })}
+                  className="shrink-0 rounded-md border border-border bg-card px-2.5 py-1.5 md:px-2 md:py-0.5 hover:bg-muted/60 transition-colors"
+                  onClick={() => boardEl.current
+                    ?.querySelector<HTMLElement>(`[data-kb-col="${CSS.escape(sector)}"]`)
+                    ?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' })}
+                  title={`Rolar o quadro até ${sector}`}
                 >
-                  <strong>{c.q.order_number}</strong>
-                  {!uniformMatchColumn && <span className="text-muted-foreground"> → {c.column}</span>}
+                  <strong className="uppercase tracking-wide">{sector}</strong>
+                  <span className="text-muted-foreground font-mono"> {n}</span>
                 </button>
               ))}
             </>
@@ -678,7 +772,7 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
             description="OPs criadas a partir dos PVs entram aqui automaticamente."
           />
         </div>
-      ) : visibleColumns.length === 0 ? (
+      ) : filtering && matches.length === 0 ? (
         /* Filtrando e nada casou: o quadro fica vazio de propósito */
         <div className="flex-1 flex items-center justify-center">
           <EmptyState
@@ -692,7 +786,7 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
           ref={boardEl}
           className="flex-1 min-h-0 flex gap-2 overflow-x-auto overscroll-x-contain px-3 py-3 snap-x snap-mandatory md:snap-none"
         >
-          {visibleColumns.map((sector, colIdx) => {
+          {columns.map((sector, colIdx) => {
             const colAll = allCards.filter(c => c.column === sector);
             // Atrasadas primeiro (a mais atrasada no topo) — o que trava o prazo
             // salta aos olhos. Sort estável: mantém a ordem entre iguais.
@@ -713,6 +807,14 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
             // Coluna ociosa (0 OP e sem busca ativa) colapsa em faixa fina no
             // desktop — abre no hover. No celular (swipe) mantém largura normal.
             const isIdle = colWip === 0 && !filtering;
+            // Setor com ao menos uma OP da busca. Sem busca, todos "casam".
+            const hasMatch = !filtering || !!matchedColumns?.has(sector);
+            /* TRILHO FINO: setor ocioso, OU setor que tem OP mas nenhuma desta
+               busca. Nos dois casos o setor CONTINUA no quadro e continua alvo
+               de soltar — é isso que devolve o arraste entre setores durante a
+               busca. Abre ao passar o card por cima. */
+            const isRail = isIdle || (filtering && !hasMatch);
+            const railOpen = isRail && dragOverSector === sector;
             return (
               /* Celular: uma coluna por swipe (85vw + snap-center); iPad/desktop:
                  colunas fluidas lado a lado como antes. */
@@ -720,9 +822,14 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
                 key={sector}
                 data-kb-col={sector}
                 style={{ animationDelay: `${colIdx * 45}ms` }}
-                className={`kb-col-in flex flex-col min-h-0 snap-center md:snap-align-none transition-[min-width,max-width,opacity] duration-300 ${
-                  isIdle
-                    ? 'flex-1 basis-0 min-w-[85vw] md:flex-none md:min-w-[7.5rem] md:max-w-[7.5rem] md:opacity-60 md:hover:opacity-100'
+                /* `hidden md:flex` = a regra do celular (26/07/2026: setor sem
+                   OP da busca sai, pra não passar o dedo por telas em branco)
+                   vive SÓ no CSS. O desktop nunca perde o setor. */
+                className={`kb-col-in flex-col min-h-0 snap-center md:snap-align-none transition-[min-width,max-width,opacity] duration-200 ${
+                  filtering && !hasMatch ? 'hidden md:flex' : 'flex'
+                } ${
+                  isRail && !railOpen
+                    ? 'flex-1 basis-0 min-w-[85vw] md:flex-none md:min-w-[3.5rem] md:max-w-[3.5rem] md:opacity-70 md:hover:opacity-100'
                     : 'flex-1 basis-0 min-w-[85vw] md:min-w-[185px] max-w-none md:max-w-[300px]'
                 }`}
                 onDragOver={e => {
@@ -732,7 +839,40 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
                 }}
                 onDrop={e => { e.preventDefault(); setDragOverSector(null); handleDrop(sector); }}
               >
+                {/* ── Trilho fechado (só desktop) ──────────────────────────
+                    Traz a CONTAGEM REAL do setor, não a da busca: um trilho
+                    com "48" diz "aqui tem trabalho, só não desta busca", e um
+                    com "0" diz "setor parado". Sem esse número dava pra soltar
+                    uma OP num setor achando que estava livre quando havia 48
+                    na frente dela. */}
+                {isRail && !railOpen && (
+                  <div
+                    className={`hidden md:flex flex-1 min-h-0 flex-col items-center gap-2 rounded-md border py-2 transition-colors ${
+                      isConstraint ? 'bg-amber-500/10 border-amber-500/50' : 'bg-muted/40 border-border'
+                    } ${dragCard && dragEligibilityBySector?.get(sector)?.ok ? 'border-primary/60 bg-primary/5' : ''}`}
+                    title={`${sector} — ${colWip} OP${colWip === 1 ? '' : 's'} no setor${
+                      filtering ? ', nenhuma desta busca' : ''
+                    }. Arraste um card até aqui pra abrir.`}
+                  >
+                    <Badge
+                      variant="outline"
+                      className={`text-[10px] font-mono shrink-0 px-1.5 ${
+                        overWip ? 'border-red-500/50 bg-red-500/10 text-red-600 dark:text-red-400' : ''
+                      }`}
+                    >
+                      {colWip}
+                    </Badge>
+                    <span
+                      className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground whitespace-nowrap overflow-hidden"
+                      style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}
+                    >
+                      {sector}
+                    </span>
+                  </div>
+                )}
                 <div className={`shrink-0 rounded-t-md px-2.5 py-1.5 border ${
+                  isRail && !railOpen ? 'md:hidden' : ''
+                } ${
                   isConstraint ? 'bg-amber-500/10 border-amber-500/50' : 'bg-muted border-border'
                 }`}>
                   <div className="flex items-center justify-between gap-1">
@@ -774,7 +914,7 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
                 </div>
                 {/* kb-fade: as máscaras de rolagem moram no WRAPPER, não no
                     scroller — senão elas rolariam junto com as OPs. */}
-                <div className="kb-fade flex-1 min-h-0">
+                <div className={`kb-fade flex-1 min-h-0 ${isRail && !railOpen ? 'md:hidden' : ''}`}>
                 <div
                   data-kb-list={sector}
                   onScroll={e => syncColumnFade(e.currentTarget)}
@@ -784,8 +924,8 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
                       // pode ir pra cá. Antes qualquer coluna diferente da atual
                       // acendia como destino válido e o operador só descobria a
                       // recusa depois de soltar ("Esta OP não passa por X").
-                      ? (dropEligibility(dragCard, sector).ok
-                          ? (dropEligibility(dragCard, sector).kind === 'pulo'
+                      ? (dragEligibilityBySector?.get(sector)?.ok
+                          ? (dragEligibilityBySector.get(sector)?.kind === 'pulo'
                               ? 'kb-drop-target border-amber-500 bg-amber-500/10'
                               : 'kb-drop-target border-primary bg-primary/5')
                           : 'border-dashed border-muted-foreground/40 bg-muted/40 opacity-60 cursor-no-drop')
@@ -793,7 +933,7 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
                   }`}
                   aria-dropeffect={
                     dragOverSector === sector && dragCard && dragCard.column !== sector
-                      ? (dropEligibility(dragCard, sector).ok ? 'move' : 'none')
+                      ? (dragEligibilityBySector?.get(sector)?.ok ? 'move' : 'none')
                       : undefined
                   }
                 >
