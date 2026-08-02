@@ -1409,3 +1409,73 @@ describe('orderConsumption — componente não resolvido vira AVISO (CONS-8)', (
     expect(palmForr.warning).toContain('34');
   });
 });
+
+/**
+ * Consumo padrão POR MODELO de solado (`sole_group_standard_items`, 02/08/2026).
+ *
+ * Contrato: vínculo VIVO — a ficha não guarda cópia. O item entra no cálculo a
+ * partir do cadastro do solado, com quantidade por par (grade opcional), e
+ * SUPRIME a linha do mesmo produto no BOM da ficha (dedup anti-BOM), pra que
+ * corrigir na origem não conviva com uma cópia velha.
+ */
+describe('orderConsumption — itens padrão por MODELO de solado (vínculo vivo)', () => {
+  function ctxWithSole() {
+    const ctx = buildContext();
+    ctx.sheetPrimarySoleMap = new Map([['sheet-1', 'p-solado']]);
+    ctx.allProducts = [
+      ...ctx.allProducts,
+      { id: 'p-solado', name: 'SOLADO 204 PRETO', color: 'PRETO', group_id: 'g-solado', quantity: 0, reserved_stock: 0, stock_grade: null, sole_classification: null },
+      { id: 'p-cola', name: 'COLA PVC', color: null, group_id: 'g-cola', quantity: 0, reserved_stock: 0, stock_grade: null, sole_classification: null, unit: 'g', category: 'Quimicos' },
+    ];
+    return ctx;
+  }
+
+  it('quantidade por par vale para TODAS as numerações, sem grade cadastrada', () => {
+    const ctx = ctxWithSole();
+    ctx.soleGroupStandardItemsBySole = new Map([
+      ['p-solado', [{ standardItemId: 'p-cola', perPair: 20, perSize: {}, unit: 'g' }]],
+    ]);
+    const rows = computeConsumptionForItems([buildItem()], ctx);
+    const cola = rows.find(r => r.materialName === 'COLA PVC')!;
+    // 24 pares × 20 g/par = 480 g — o valor único cobre as 6 numerações.
+    expect(cola.totalQuantity).toBeCloseTo(480, 6);
+  });
+
+  it('grade por numeração vence o valor por par naquele tamanho', () => {
+    const ctx = ctxWithSole();
+    ctx.soleGroupStandardItemsBySole = new Map([
+      ['p-solado', [{ standardItemId: 'p-cola', perPair: 10, perSize: { '39': 30 }, unit: 'g' }]],
+    ]);
+    const rows = computeConsumptionForItems([buildItem()], ctx);
+    const cola = rows.find(r => r.materialName === 'COLA PVC')!;
+    // 5 numerações × 4 pares × 10 g + 4 pares (39) × 30 g = 200 + 120 = 320 g.
+    expect(cola.totalQuantity).toBeCloseTo(320, 6);
+  });
+
+  it('cadastro por modelo SUBSTITUI o legado por numeração do mesmo produto', () => {
+    const ctx = ctxWithSole();
+    // Legado diria 1 g/par em cada numeração (24 g no total).
+    ctx.soleStandardItemsBySole = new Map([
+      ['p-solado', ['34', '35', '36', '37', '38', '39'].map(s => ({
+        standardItemId: 'p-cola', size: Number(s), consumption: 1, unit: 'g',
+      }))],
+    ]);
+    ctx.soleGroupStandardItemsBySole = new Map([
+      ['p-solado', [{ standardItemId: 'p-cola', perPair: 20, perSize: {}, unit: 'g' }]],
+    ]);
+    const rows = computeConsumptionForItems([buildItem()], ctx);
+    const colaRows = rows.filter(r => r.materialName === 'COLA PVC');
+    expect(colaRows).toHaveLength(1);
+    // 480, não 504 — o legado não soma por cima.
+    expect(colaRows[0].totalQuantity).toBeCloseTo(480, 6);
+  });
+
+  it('linha zerada e sem grade não gera consumo', () => {
+    const ctx = ctxWithSole();
+    ctx.soleGroupStandardItemsBySole = new Map([
+      ['p-solado', [{ standardItemId: 'p-cola', perPair: 0, perSize: {}, unit: 'g' }]],
+    ]);
+    const rows = computeConsumptionForItems([buildItem()], ctx);
+    expect(rows.find(r => r.materialName === 'COLA PVC')).toBeUndefined();
+  });
+});
