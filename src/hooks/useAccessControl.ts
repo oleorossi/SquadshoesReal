@@ -44,6 +44,7 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/entregas': 'expedicao',
   '/sales': 'vendas',
   '/pronta-entrega': 'vendas',
+  '/catalogo': 'vendas',
   '/sales-report': 'relatorios',
   '/suppliers': 'fornecedores',
   '/clients': 'clientes',
