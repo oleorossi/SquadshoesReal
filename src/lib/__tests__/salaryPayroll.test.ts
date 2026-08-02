@@ -457,6 +457,37 @@ describe('computePeriodFolha — regime PRODUÇÃO (por par, 2026-07-18)', () =>
     expect(r.gross_value).toBe(0);
     expect(r.net_value).toBeCloseTo(-50, 2);
   });
+
+  // paid_days = DIAS PRODUTIVOS (dias com pares lançados), não dias com batida.
+  // É o número que a folha grava em business_days_worked e que o relatório do RH
+  // imprime como "Dias prod." — antes saía 0 pra quem produziu o mês inteiro.
+  it('paid_days = dias produtivos, mesmo com o ponto batido todos os dias', () => {
+    const punches = new Map<string, string[]>();
+    for (const d of ['2026-05-04', '2026-05-05', '2026-05-06', '2026-05-07', '2026-05-08']) punches.set(d, full);
+    const r = computePeriodFolha({
+      salary: 3000, from: '2026-05-04', to: '2026-05-08', schedule: SCHED, holidaysSet: NO_HOL,
+      punchesByDate: punches, payRegime: 'producao',
+      producaoBruto: 240, producaoParesMedio: 300, producaoParesDificil: 0,
+      producaoDias: 3, producaoFichas: 25, producaoFichasDerivadas: true,
+    });
+    expect(r.paid_days).toBe(3);          // 3 dias produtivos, apesar das 5 batidas
+    expect(r.worked_days).toBe(0);        // presença não é dia trabalhado aqui
+    expect(r.worked_minutes).toBe(0);
+    expect(r.fichas).toBe(25);
+    expect(r.fichas_derivadas).toBe(true);
+  });
+
+  it('sem produção informada, dias produtivos e fichas ficam zerados (não herdam do ponto)', () => {
+    const punches = new Map<string, string[]>();
+    for (const d of ['2026-05-04', '2026-05-05']) punches.set(d, full);
+    const r = computePeriodFolha({
+      salary: 3000, from: '2026-05-04', to: '2026-05-08', schedule: SCHED, holidaysSet: NO_HOL,
+      punchesByDate: punches, payRegime: 'producao', producaoBruto: 0,
+    });
+    expect(r.paid_days).toBe(0);
+    expect(r.fichas).toBe(0);
+    expect(r.fichas_derivadas).toBe(false);
+  });
 });
 
 describe('computePeriodFolha — SEM tolerância (todo minuto conta, 2026-06-30) e ordenação de batidas (D18)', () => {

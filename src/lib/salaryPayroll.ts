@@ -189,6 +189,11 @@ export interface SalaryPayrollResult {
   /** Pares valorados (só producao): base do bruto = pares × R$/par snapshot. */
   pares_medio?: number;
   pares_dificil?: number;
+  /** Fichas (lotes de 12/15/18) do período — só producao. Medida de RITMO; o
+   *  pagamento é por par. `fichas_derivadas` = alguma linha não tinha detalhe e
+   *  o lote foi inferido como 12 (o relatório marca com asterisco). */
+  fichas?: number;
+  fichas_derivadas?: boolean;
 }
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -528,6 +533,13 @@ export interface PeriodFolhaInput {
   producaoBruto?: number;
   producaoParesMedio?: number;
   producaoParesDificil?: number;
+  /** DIAS PRODUTIVOS do período (dias distintos com pares lançados). É o
+   *  "dias trabalhados" de quem é por par — substitui worked_days, que mede
+   *  presença no relógio e não se aplica a este regime. */
+  producaoDias?: number;
+  /** Fichas (lotes) do período e se alguma foi inferida por falta de detalhe. */
+  producaoFichas?: number;
+  producaoFichasDerivadas?: boolean;
   /** HE em R$/hora ABSOLUTO (spec 2026-07-09): dia útil/sábado/noturno. Default 0. */
   heNormalRate?: number;
   /** HE em R$/hora ABSOLUTO domingo/feriado. undefined/0 ⇒ usa heNormalRate. */
@@ -648,8 +660,13 @@ export function computePeriodFolha(inp: PeriodFolhaInput): SalaryPayrollResult {
   // ponto do funcionário serve só pra presença (spec funcionarios-pagamento-por-par).
   if (regime === 'producao') {
     const bruto = round2(Number(inp.producaoBruto) || 0);
+    const diasProd = Number(inp.producaoDias) || 0;
     return {
-      ...base, payment_type: 'producao', daily_rate: 0, paid_days: 0,
+      // paid_days = DIAS PRODUTIVOS. É a única leitura de "dias trabalhados" que
+      // faz sentido aqui: worked_days conta dia com batida, e o ponto não paga
+      // nada neste regime. Sem isto o relatório do RH imprimia "0 dias" pra quem
+      // produziu o mês inteiro.
+      ...base, payment_type: 'producao', daily_rate: 0, paid_days: diasProd,
       base_salary: 0, valor_dia: 0, valor_hora: 0,
       expected_minutes: 0, worked_minutes: 0, normal_minutes: 0, premium_minutes: 0,
       workdays: 0, worked_days: 0,
@@ -658,6 +675,8 @@ export function computePeriodFolha(inp: PeriodFolhaInput): SalaryPayrollResult {
       he_normal_minutes: 0, he_holiday_minutes: 0, he_rate_missing: false, he_value: 0, pending_days: 0,
       pares_medio: Number(inp.producaoParesMedio) || 0,
       pares_dificil: Number(inp.producaoParesDificil) || 0,
+      fichas: Number(inp.producaoFichas) || 0,
+      fichas_derivadas: !!inp.producaoFichasDerivadas,
       period_base: bruto, total_proventos: bruto, total_descontos: adv,
       gross_value: bruto, net_value: round2(bruto - adv),
     };

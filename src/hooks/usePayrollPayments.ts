@@ -75,7 +75,13 @@ export interface PayrollPayment {
 /** Linha da histórico com o funcionário e o período da folha embutidos. */
 export interface PayrollPaymentWithRefs extends PayrollPayment {
   employee: { id: string; name: string; role: string | null; department: string | null; cpf: string | null } | null;
-  run: { id: string; period: string; total_liquido: number; status: string } | null;
+  run: {
+    id: string; period: string; total_liquido: number; status: string;
+    /** Regime por par: pares do período e dias produtivos — base do recibo. */
+    pares_medio?: number | null;
+    pares_dificil?: number | null;
+    business_days_worked?: number | null;
+  } | null;
 }
 
 /** Pagamentos de UMA folha (usado no dialog de registro). */
@@ -143,7 +149,9 @@ export function usePayrollPaymentsHistory(filters?: { employeeId?: string | null
     queryFn: async () => {
       let q = (supabase as any)
         .from('payroll_payments')
-        .select('*, employee:employees(id, name, role, department, cpf), run:payroll_runs(id, period, total_liquido, status)')
+        // pares_* e business_days_worked entram porque o recibo reimpresso daqui
+        // precisa descrever PRODUÇÃO pra quem é pago por par (mig 20261102120100).
+        .select('*, employee:employees(id, name, role, department, cpf), run:payroll_runs(id, period, total_liquido, status, pares_medio, pares_dificil, business_days_worked)')
         .order('paid_on', { ascending: false })
         .limit(1000);
       if (employeeId) q = q.eq('employee_id', employeeId);

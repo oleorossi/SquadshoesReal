@@ -67,6 +67,15 @@ export interface PayrollReceiptData {
   reference?: string | null;
   liquido?: number | null;
   city?: string;
+  /** Produção do período (só regime POR PAR). Quando presente, o recibo diz que
+   *  o pagamento é por produção — não "salário" — e discrimina a base: dias
+   *  produtivos e pares. É o que o funcionário assina; descrever como salário
+   *  quem é pago por par descreveria errado o que está sendo quitado. */
+  producao?: {
+    diasProdutivos: number;
+    paresMedio: number;
+    paresDificil: number;
+  } | null;
 }
 
 const esc = (s: string) =>
@@ -79,9 +88,24 @@ export function printPayrollReceipt(d: PayrollReceiptData) {
   const dataPgto = formatDateBR(d.paidOn);
   const cidade = d.city || 'Nova Serrana';
   const refLinha = d.reference ? ` (ref.: ${esc(d.reference)})` : '';
+  const prod = d.producao;
+  const paresTot = prod ? prod.paresMedio + prod.paresDificil : 0;
+  const nf = (n: number) => n.toLocaleString('pt-BR');
+  // "salário" vs "produção por par": o que está sendo quitado muda o texto do
+  // recibo, o título do documento e os campos da grade.
+  const tituloDoc = prod ? 'Recibo de Pagamento por Produção' : 'Recibo de Pagamento de Salário';
+  const naturezaTxt = prod
+    ? `<b>pagamento por produção</b> (${nf(paresTot)} pares montados em ${nf(prod.diasProdutivos)} dia(s) produtivo(s))`
+    : '<b>pagamento de salário</b>';
+  const camposProducao = prod
+    ? `<div><div class="k">Dias produtivos</div><div class="v">${nf(prod.diasProdutivos)}</div></div>`
+      + `<div><div class="k">Pares produzidos</div><div class="v">${nf(paresTot)}`
+      + (prod.paresDificil > 0 ? ` (${nf(prod.paresMedio)} méd + ${nf(prod.paresDificil)} dif)` : '')
+      + `</div></div>`
+    : '';
 
   const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
-<title>Recibo de pagamento — ${esc(d.employeeName)}</title>
+<title>${esc(tituloDoc)} — ${esc(d.employeeName)}</title>
 <style>
   * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   html, body { margin: 0; padding: 0; background: #fff; color: #111; }
@@ -112,11 +136,11 @@ export function printPayrollReceipt(d: PayrollReceiptData) {
       <div class="empresa">${esc(NOME_EMPRESA)}</div>
       <div class="doc-meta">RECIBO Nº ____________<br>PERÍODO: ${esc(periodo).toUpperCase()}</div>
     </div>
-    <div class="title">Recibo de Pagamento de Salário</div>
+    <div class="title">${esc(tituloDoc)}</div>
     <div style="text-align:center"><span class="valor">${formatCurrency(d.amount)}</span></div>
     <p class="corpo">
       Recebi de <b>${esc(NOME_EMPRESA)}</b> a importância de <b>${esc(extenso)}</b>
-      (<b>${formatCurrency(d.amount)}</b>), referente ao <b>pagamento de salário</b>
+      (<b>${formatCurrency(d.amount)}</b>), referente ao ${naturezaTxt}
       do período de <b>${esc(periodo)}</b>, efetuado por <b>${esc(metodo)}</b>${refLinha},
       dando plena e geral quitação pelo valor recebido.
     </p>
@@ -124,6 +148,7 @@ export function printPayrollReceipt(d: PayrollReceiptData) {
       <div><div class="k">Funcionário</div><div class="v">${esc(d.employeeName)}</div></div>
       <div><div class="k">CPF</div><div class="v">${esc(d.cpf || '—')}</div></div>
       ${d.role ? `<div><div class="k">Função</div><div class="v">${esc(d.role)}</div></div>` : ''}
+      ${camposProducao}
       ${d.liquido != null ? `<div><div class="k">Líquido da folha</div><div class="v">${formatCurrency(d.liquido)}</div></div>` : ''}
     </div>
     <div class="local">${esc(cidade)}, ${dataPgto}.</div>
