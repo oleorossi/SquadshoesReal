@@ -227,7 +227,8 @@ export default function PurchasePlanningWizard() {
             conversion_rate,
             purchase_multiple,
             is_artisanal,
-            supplier_ref:suppliers!products_supplier_id_fkey(name, trade_name)
+            supplier_ref:suppliers!products_supplier_id_fkey(name, trade_name),
+            product_groups!products_group_id_fkey(purchase_multiple)
           `),
         soiIds.length > 0
           ? supabase.from('sale_order_items').select('id, material_variant_id').in('id', soiIds)

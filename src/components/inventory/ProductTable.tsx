@@ -139,7 +139,15 @@ function getStockStatus(product: Product) {
  *  (Binóculo, Fivela, Ilhós…). NÃO usa o corte-de-última-palavra do
  *  `getBaseName`, que produzia rótulos falsos como "NAPA". */
 function materialIdentity(product: Product): string {
-  return stripColorFromName(product.name, product.color).trim().toUpperCase();
+  // `stripColorFromName` só corta o sufixo se ele bater com a cor ATUAL. Como
+  // trocar a cor deixou de renomear o produto (R0.1), um nome antigo tipo
+  // "NAPA SOFT - PRETO" com cor AZUL manteria o sufixo velho e viraria uma
+  // segunda identidade do mesmo material — jogando o grupo pra heterogêneo e
+  // fazendo toda linha exibir o nome com a cor errada. Cortar qualquer sufixo
+  // " - X" é inócuo hoje (nenhum produto ativo usa esse padrão no nome) e
+  // fecha o caso.
+  const semCor = stripColorFromName(product.name, product.color).trim();
+  return semCor.replace(/\s+-\s+.*$/, '').trim().toUpperCase() || semCor.toUpperCase();
 }
 
 type GroupStats = {
@@ -151,6 +159,13 @@ type GroupStats = {
   unidade: string;
   /** Mais de um material no grupo ⇒ a sub-linha precisa mostrar o nome (R1.1a). */
   heterogeneo: boolean;
+  /**
+   * Grupo com unidades incompatíveis — hoje 3: COMPONENTES DIVERSOS (cm|un),
+   * LINHANYL (kg|un) e PALMILHA (dm²|m). Somar 5000 un com 12 kg e rotular
+   * com a unidade do primeiro item produz um número que não significa nada,
+   * então o cabeçalho para de exibir total nesses casos.
+   */
+  unidadesMistas: boolean;
   severidade: 'alarm' | 'warn' | 'dead' | 'ok';
 };
 
@@ -159,6 +174,7 @@ type GroupStats = {
 function computeGroupStats(items: Product[]): GroupStats {
   let bruto = 0, disponivel = 0, valor = 0, zeradas = 0, emFalta = 0, abaixoMin = 0;
   const materiais = new Set<string>();
+  const unidades = new Set<string>();
   for (const p of items) {
     const qty = grossQty(p);
     const disp = availableQty(p);
@@ -169,6 +185,7 @@ function computeGroupStats(items: Product[]): GroupStats {
     if (disp < 0) emFalta += 1;
     if (qty > 0 && Number(p.min_stock) > 0 && qty <= Number(p.min_stock)) abaixoMin += 1;
     materiais.add(materialIdentity(p));
+    if (p.unit) unidades.add(p.unit);
   }
   const severidade: GroupStats['severidade'] =
     emFalta > 0 ? 'alarm'
@@ -179,6 +196,7 @@ function computeGroupStats(items: Product[]): GroupStats {
     bruto, disponivel, valor, zeradas, emFalta,
     unidade: items[0]?.unit || '',
     heterogeneo: materiais.size > 1,
+    unidadesMistas: unidades.size > 1,
     severidade,
   };
 }
@@ -366,7 +384,11 @@ function ProductRows({ products, onEdit, onDelete, onStockOut, onGrade, onArtisa
                   >
                     {/* Grupo homogêneo: as N linhas repetiriam o mesmo nome, então a
                         COR é o rótulo. Heterogêneo: nome + selo de cor (R1.1a). */}
-                    {showName ? stripColorFromName(product.name, product.color) : (product.color || '—')}
+                    {/* Sem cor não pode virar linha anônima: cai pro nome. Um
+                        grupo homogêneo com item sem cor renderizava só "—". */}
+                    {showName || !product.color
+                      ? stripColorFromName(product.name, product.color)
+                      : product.color}
                   </span>
                 </ProductHoverPreview>
                 {showName && product.color && (
@@ -1049,13 +1071,24 @@ export function ProductTable({ products, onEdit, onDelete, externalSort, searchT
                   {/* Números do conjunto: disponível manda, bruto abaixo (R1.5/R1.7). */}
                   <div className="ml-auto flex items-center gap-4 shrink-0">
                     <div className="text-right font-mono leading-tight hidden sm:block">
-                      <div className={cn('text-base font-bold tabular-nums', stats.disponivel < 0 && 'text-destructive')}>
-                        {stats.disponivel.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}
-                        <span className="text-xs font-normal text-muted-foreground ml-1">{stats.unidade}</span>
-                      </div>
-                      <div className="text-[11px] text-muted-foreground tabular-nums">
-                        bruto {stats.bruto.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} · {formatCurrency(stats.valor)}
-                      </div>
+                      {stats.unidadesMistas ? (
+                        <>
+                          <div className="text-xs text-muted-foreground">unidades diferentes</div>
+                          <div className="text-[11px] text-muted-foreground tabular-nums">
+                            {formatCurrency(stats.valor)}
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className={cn('text-base font-bold tabular-nums', stats.disponivel < 0 && 'text-destructive')}>
+                            {stats.disponivel.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}
+                            <span className="text-xs font-normal text-muted-foreground ml-1">{stats.unidade}</span>
+                          </div>
+                          <div className="text-[11px] text-muted-foreground tabular-nums">
+                            bruto {stats.bruto.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} · {formatCurrency(stats.valor)}
+                          </div>
+                        </>
+                      )}
                     </div>
 
                     {/* R1.16 — ações do CONJUNTO, sempre visíveis. Baixa manual e
@@ -1067,15 +1100,23 @@ export function ProductTable({ products, onEdit, onDelete, externalSort, searchT
                           piscar e nada mais. */}
                       {groupId && (
                         <>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-8 gap-1.5 px-2.5"
-                            onClick={() => setMasterVariant({ baseName: groupName, groupId, baseKey: null, tab: 'add' })}
-                          >
-                            <Plus className="h-3.5 w-3.5" />
-                            <span className="hidden md:inline">Cor</span>
-                          </Button>
+                          {/* Só em grupo que varia por COR: em grupo com vários
+                              materiais (COMPONENTES DIVERSOS tem 8), "adicionar
+                              cor" herdaria os dados de um irmão arbitrário —
+                              a cor VERMELHO de uma Fivela sairia com nome,
+                              unidade e conversão de Binóculo. Ali o caminho é
+                              "Adicionar material", pelo formulário completo. */}
+                          {!stats.heterogeneo && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-8 gap-1.5 px-2.5"
+                              onClick={() => setMasterVariant({ baseName: groupName, groupId, baseKey: null, tab: 'add' })}
+                            >
+                              <Plus className="h-3.5 w-3.5" />
+                              <span className="hidden md:inline">Cor</span>
+                            </Button>
+                          )}
                           <Button
                             variant="outline"
                             size="sm"

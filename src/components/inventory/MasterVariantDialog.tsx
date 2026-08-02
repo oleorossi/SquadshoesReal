@@ -703,10 +703,16 @@ export function MasterVariantDialog({
       if (payload.conversion_rate != null) payload.conversion_rate = safeNum(payload.conversion_rate, 1) || 1;
       if (payload.yield_per_meter != null) payload.yield_per_meter = safeNum(payload.yield_per_meter) || null;
 
-      for (const v of variants) {
-        const { error } = await supabase.from('products').update(payload).eq('id', v.id);
-        if (error) throw new Error(`Variante "${v.color || v.sku}": ${error.message}`);
-      }
+      // UMA declaração pra todas as cores. Antes era um UPDATE por variante num
+      // laço sequencial: agora que o payload é idêntico (o `name` saiu), o laço
+      // só multiplicava a latência — e se a cor 12 de 20 batesse numa RLS ou
+      // num CHECK, as 11 primeiras já estavam gravadas e as 8 seguintes não,
+      // deixando o grupo meio aplicado. Em uma declaração, ou vai tudo ou nada.
+      const { error } = await supabase
+        .from('products')
+        .update(payload)
+        .in('id', variants.map(v => v.id));
+      if (error) throw new Error(error.message);
       queryClient.invalidateQueries({ queryKey: ['products'] });
       // Invalida caches dependentes — fichas técnicas, BOM, consumo
       queryClient.invalidateQueries({ queryKey: ['technical_sheets'] });

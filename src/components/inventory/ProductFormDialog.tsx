@@ -284,6 +284,25 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
     };
   }, [groups, form.group_id]);
 
+  /**
+   * Dimensão do GRUPO é a fonte (R3.3): quando ela existe, o item herda — é
+   * assim que a divergência 1370-no-grupo × 1000-no-item para de crescer, sem
+   * precisar de backfill nas 189 linhas. Grupo sem dimensão continua deixando
+   * o item cadastrar a própria, senão material novo ficaria sem largura e a
+   * conversão dm²→m quebraria.
+   */
+  useEffect(() => {
+    const g = dimensoesDoGrupo;
+    if (!g || !(g.width > 0)) return;
+    setPlateLength(g.length);
+    setPlateWidth(g.width);
+    setPlateThickness(g.thickness);
+    setPlateUnit(g.unit);
+    if (Number(form.dimensions_width) !== g.width) update('dimensions_width', g.width);
+    if (form.dimensions_unit !== g.unit) update('dimensions_unit', g.unit);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dimensoesDoGrupo?.width, dimensoesDoGrupo?.unit]);
+
   // Invariante do CLAUDE.md: `purchase_unit == unit` ⇒ `conversion_rate = 1`.
   // O campo já fica escondido nesse caso, mas escondê-lo não zerava um fator
   // antigo — o valor herdado continuava no payload e distorcia a entrada de NF (R4.6).
@@ -1425,7 +1444,7 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
 
               </div>
             </FormSection>
-            <FormSection title="Dimensões" summary={`${form.dimensions_width || 0} ${form.dimensions_unit || 'mm'}`}>
+            <FormSection title="Dimensões" summary={dimensoesDoGrupo && dimensoesDoGrupo.width > 0 ? `${dimensoesDoGrupo.width} ${dimensoesDoGrupo.unit} (do grupo)` : `${form.dimensions_width || 0} ${form.dimensions_unit || 'mm'}`}>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* R4.5 — dimensão passou a ser cadastrada SÓ no grupo de estoque.
                 Aqui ela aparece em leitura: duas portas gravando o mesmo conceito
@@ -1607,6 +1626,16 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
                       <div className="grid grid-cols-2 gap-2 mt-2">
                         <div>
                           <Label className="text-xs text-muted-foreground">Largura</Label>
+                          {/* Segunda porta de escrita FECHADA: com largura no
+                              grupo, aqui é leitura — antes a seção acima exibia
+                              1370 (do grupo) e este campo gravava 1000 (do item),
+                              contradizendo um ao outro na mesma tela. */}
+                          {dimensoesDoGrupo && dimensoesDoGrupo.width > 0 ? (
+                            <div className="mt-0.5 h-8 flex items-center gap-1.5 rounded-md border bg-background px-2.5">
+                              <span className="font-mono text-xs tabular-nums">{dimensoesDoGrupo.width.toLocaleString('pt-BR')}</span>
+                              <span className="text-[11px] text-muted-foreground">{dimensoesDoGrupo.unit} · do grupo</span>
+                            </div>
+                          ) : (
                           <NumberInput
                             value={form.dimensions_width ?? 0}
                             onChange={v => {
@@ -1626,6 +1655,7 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
                             className="mt-0.5 h-8 text-xs"
                             placeholder="Ex: 1.400 (mm)"
                           />
+                          )}
                         </div>
                         <div>
                           <Label className="text-xs text-muted-foreground">Unidade da largura</Label>
