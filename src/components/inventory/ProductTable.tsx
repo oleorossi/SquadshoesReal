@@ -653,12 +653,11 @@ export function ProductTable({ products, onEdit, onDelete, externalSort, searchT
       setSoleEditProduct(product);
       return;
     }
-    // Variantes de cor = mesmo NOME-BASE dentro do grupo, NÃO todo o group_id.
-    // Grupos de estoque (ex.: COMPONENTES) guardam materiais heterogêneos
-    // (Binóculo, Fivela, Ilhós) — agrupar pelo group_id inteiro fazia o lápis de
-    // uma linha abrir os vizinhos como se fossem "variantes de cor" do item
-    // clicado. Escopar por nome-base espelha o subagrupamento que a própria lista
-    // já usa (createSubGroups + o lápis do cabeçalho de subgrupo).
+    // O LÁPIS DA LINHA continua escopado por nome-base, não pelo group_id: em
+    // grupo heterogêneo (COMPONENTES DIVERSOS tem 8 materiais) abrir por
+    // group_id faria o lápis do Binóculo trazer Fivela e Ilhós como se fossem
+    // cores dele. Diferente do COLAPSO da lista, que é por group_id de propósito
+    // — ali o objetivo é espelhar a unidade que o débito usa pra resolver cor.
     if (product.group_id) {
       const baseKey = getBaseName(product) || product.name.toUpperCase();
       const colorVariants = products.filter(p =>
