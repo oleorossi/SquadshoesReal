@@ -28,6 +28,20 @@ interface SoleTechnicalDetailsProps {
   soleId: string;
   soleName?: string;
   /**
+   * Bloqueia a edição das 4 colunas de consumo (forro do cabedal, placa e
+   * forração da palmilha, fachete).
+   *
+   * Desde 02/08/2026 a fonte da verdade é `sole_group_standard_items` (linhas
+   * PAPEL, por MODELO de solado) e `sole_technical_specs` virou ESPELHO
+   * derivado, mantido pelo trigger `tg_sgsi_mirror_papel`. Editar aqui geraria
+   * um valor que o próximo salvamento na tela "Consumo Padrão" sobrescreve sem
+   * avisar — exatamente a deriva que a consolidação foi feita pra acabar.
+   *
+   * A grade de numerações continua sendo gerenciada nesta tela: só o consumo
+   * mudou de dono.
+   */
+  consumptionReadOnly?: boolean;
+  /**
    * @deprecated Não é mais usado internamente (alimentava os presets de
    * numeração removidos do Passo 2). Mantido só pra não quebrar o caller
    * em ComponentSheets.tsx que ainda passa `shoeCategory`. A grade hoje vem
@@ -73,7 +87,7 @@ const emptyPerSizeOverrides = (): Record<ConsumptionField, Record<number, number
 // A grade hoje vem do range (size_from/size_to) definido na aba Cadastro — ver o
 // comentário do Passo 2 abaixo. Mantê-los aqui era código morto.
 
-export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnicalDetailsProps) {
+export function SoleTechnicalDetails({ soleId, soleName, onClose, consumptionReadOnly = false }: SoleTechnicalDetailsProps) {
   const qc = useQueryClient();
   const [saving, setSaving] = useState(false);
   // Audit visual S8: troca window.confirm() nativo por Dialog estilizado.
@@ -223,6 +237,8 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
   };
 
   const handleRowInputChange = (row: DisplayRow, field: ConsumptionField, value: string) => {
+    // Espelho derivado: o consumo é editado em "Consumo Padrão" (por modelo).
+    if (consumptionReadOnly) return;
     // Guarda o texto cru enquanto edita (deixa o user digitar "4," → "4,6" →
     // "4,68" sem a vírgula sumir no round-trip número→string).
     setRawCellEdits(prev => ({ ...prev, [cellEditKey(row, field)]: value }));
@@ -1171,6 +1187,18 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
             </div>
           </CardHeader>
           <CardContent>
+            {consumptionReadOnly && (
+              <div className="mb-3 flex items-start gap-2 rounded-md border border-border/60 bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                <Layers className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>
+                  Estes números são <strong>somente leitura</strong> aqui. O consumo passou a ser
+                  cadastrado por <strong>modelo</strong> de solado, na aba{' '}
+                  <strong>Consumo Padrão</strong> — vale para todas as cores de uma vez. Esta
+                  tabela mostra o resultado por cor e continua sendo o lugar de gerenciar a{' '}
+                  <strong>grade de numerações</strong>.
+                </span>
+              </div>
+            )}
             {isFachetado && (
               <div className="flex items-center gap-2 mb-3 px-3 py-2 bg-amber-500/5 border border-amber-500/20 rounded text-xs text-amber-700 dark:text-amber-400">
                 <AlertTriangle className="h-4 w-4" />
@@ -1278,6 +1306,8 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
                           type="text"
                           inputMode="decimal"
                           className="h-8 text-right font-mono"
+                          readOnly={consumptionReadOnly}
+                          tabIndex={consumptionReadOnly ? -1 : undefined}
                           value={getRowInputValue(row, "lining_consumption_dm2")}
                           onChange={(e) => handleRowInputChange(row, "lining_consumption_dm2", e.target.value)}
                           onBlur={() => handleRowInputBlur(row, "lining_consumption_dm2")}
@@ -1290,6 +1320,8 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
                             type="text"
                             inputMode="decimal"
                             className="h-8 text-right font-mono"
+                            readOnly={consumptionReadOnly}
+                            tabIndex={consumptionReadOnly ? -1 : undefined}
                             value={getRowInputValue(row, "insole_consumption_dm2")}
                             onChange={(e) => handleRowInputChange(row, "insole_consumption_dm2", e.target.value)}
                             onBlur={() => handleRowInputBlur(row, "insole_consumption_dm2")}
@@ -1303,6 +1335,8 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
                             type="text"
                             inputMode="decimal"
                             className="h-8 text-right font-mono"
+                            readOnly={consumptionReadOnly}
+                            tabIndex={consumptionReadOnly ? -1 : undefined}
                             value={getRowInputValue(row, "insole_lining_consumption_dm2")}
                             onChange={(e) => handleRowInputChange(row, "insole_lining_consumption_dm2", e.target.value)}
                             onBlur={() => handleRowInputBlur(row, "insole_lining_consumption_dm2")}
@@ -1316,6 +1350,8 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
                             type="text"
                             inputMode="decimal"
                             className="h-8 text-right font-mono border-amber-500/30 focus-visible:ring-amber-500/30"
+                            readOnly={consumptionReadOnly}
+                            tabIndex={consumptionReadOnly ? -1 : undefined}
                             value={getRowInputValue(row, "fachete_lining_consumption_dm2")}
                             onChange={(e) => handleRowInputChange(row, "fachete_lining_consumption_dm2", e.target.value)}
                             onBlur={() => handleRowInputBlur(row, "fachete_lining_consumption_dm2")}

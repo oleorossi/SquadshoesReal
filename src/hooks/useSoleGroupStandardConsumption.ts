@@ -12,12 +12,17 @@ import { toast } from 'sonner';
  *
  *  PAPEL — o solado manda só na quantidade; QUAL material entra é decidido pela
  *          ficha do modelo / PV (forro do cabedal, placa e forração da palmilha,
- *          fachete). Continua em `sole_technical_specs` — é a fonte canônica que
- *          o motor TS (orderConsumption.ts) e o SQL (calculate_order_consumption*)
- *          já leem. Aqui só mudamos a ESCRITA: passa a ser por grupo, espelhada
- *          em todas as cores pelo RPC `set_sole_group_role_consumption`.
+ *          fachete). Mora na MESMA tabela, com `role` preenchido e
+ *          `material_product_id` nulo.
  *
- * Ver migrations 20261102120000 / 20261102120100.
+ * `sole_technical_specs` continua existindo, mas como ESPELHO DERIVADO: o
+ * trigger `tg_sgsi_mirror_papel` replica as linhas PAPEL nas colunas de consumo
+ * de todas as cores × numerações do grupo. É o que mantém corretos os 12
+ * consumidores SQL e o motor TS sem precisar migrar leitor a leitor. Por isso a
+ * aba "Forração / Palmilha" é somente leitura no consumo — escrever lá geraria
+ * um valor que o próximo salvamento daqui sobrescreve.
+ *
+ * Ver migrations 20261102120000 / 20261102120100 / 20261102120200.
  */
 
 export type SoleRole = 'forro_cabedal' | 'placa_palmilha' | 'forracao_palmilha' | 'fachete';
@@ -96,6 +101,8 @@ export function useSoleGroupItems(soleGroupId: string | null | undefined) {
         .from('sole_group_standard_items')
         .select('*, products!material_product_id(name, sku, unit, category, color)')
         .eq('sole_group_id', soleGroupId)
+        // PAPEL (role preenchido) é renderizado no bloco próprio da tela.
+        .is('role', null)
         .order('display_order')
         .order('created_at');
       if (error) throw error;
@@ -106,11 +113,10 @@ export function useSoleGroupItems(soleGroupId: string | null | undefined) {
 }
 
 /**
- * Linhas do tipo PAPEL, derivadas de `sole_technical_specs` de TODAS as cores
- * do grupo. Auditoria de 02/08/2026: os valores são idênticos entre variantes
- * de cor nos 5 grupos, então colapsar por numeração é sem perda. Se um dia
- * divergirem, vence a primeira variante e `variesBySize` acusa a diferença
- * entre numerações (não entre cores).
+ * Linhas do tipo PAPEL — lidas de `sole_group_standard_items` (fonte da verdade
+ * desde a migration 20261102120200). `sole_technical_specs` continua existindo
+ * como ESPELHO derivado, mantido pelo trigger `tg_sgsi_mirror_papel`, e é dele
+ * que vem a lista de NUMERAÇÕES da grade — a grade é do solado, não do consumo.
  */
 export function useSoleGroupRoles(soleGroupId: string | null | undefined) {
   return useQuery({
@@ -126,34 +132,29 @@ export function useSoleGroupRoles(soleGroupId: string | null | undefined) {
       const soleIds = (soles || []).map((s: any) => s.id);
       if (soleIds.length === 0) return { byRole: {} as Record<SoleRole, RoleValue>, sizes: [] as number[] };
 
-      const cols = Object.values(ROLE_COLUMNS).map((c) => c.scalar).join(', ');
-      const { data, error } = await (supabase as any)
-        .from('sole_technical_specs')
-        .select(`sole_id, size, ${cols}`)
-        .in('sole_id', soleIds)
-        .order('size');
-      if (error) throw error;
+      const [{ data: gradeRows, error: gradeErr }, { data: roleRows, error: roleErr }] = await Promise.all([
+        (supabase as any).from('sole_technical_specs').select('size').in('sole_id', soleIds).order('size'),
+        (supabase as any)
+          .from('sole_group_standard_items')
+          .select('role, consumption_per_pair, consumption_per_size')
+          .eq('sole_group_id', soleGroupId)
+          .not('role', 'is', null),
+      ]);
+      if (gradeErr) throw gradeErr;
+      if (roleErr) throw roleErr;
 
-      const rows = (data || []) as any[];
-      const sizes = Array.from(new Set(rows.map((r) => Number(r.size)))).sort((a, b) => a - b);
+      const sizes = Array.from(new Set(((gradeRows || []) as any[]).map((r) => Number(r.size))))
+        .sort((a, b) => a - b);
 
       const byRole = {} as Record<SoleRole, RoleValue>;
       (Object.keys(ROLE_COLUMNS) as SoleRole[]).forEach((role) => {
-        const col = ROLE_COLUMNS[role].scalar;
-        const perSize: Record<string, number> = {};
-        sizes.forEach((s) => {
-          // Primeira variante de cor que tiver valor para esta numeração.
-          const hit = rows.find((r) => Number(r.size) === s && r[col] != null);
-          if (hit) perSize[String(s)] = Number(hit[col]);
-        });
-        const values = Object.values(perSize);
-        const variesBySize = values.length > 1 && new Set(values).size > 1;
-        const perPair = values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : 0;
+        const row = ((roleRows || []) as any[]).find((r) => r.role === role);
+        const perSize = (row?.consumption_per_size || {}) as Record<string, number>;
         byRole[role] = {
           role,
-          perPair: Number(perPair.toFixed(4)),
+          perPair: Number(row?.consumption_per_pair) || 0,
           perSize,
-          variesBySize,
+          variesBySize: Object.keys(perSize).length > 0,
           sizes,
         };
       });
@@ -164,7 +165,11 @@ export function useSoleGroupRoles(soleGroupId: string | null | undefined) {
   });
 }
 
-/** Grava um PAPEL em todas as cores e numerações do grupo. */
+/**
+ * Grava um PAPEL na tabela de origem. O espelho em `sole_technical_specs`
+ * (todas as cores × todas as numerações) é responsabilidade do trigger — o
+ * cliente não replica nada à mão.
+ */
 export function useSetSoleGroupRole() {
   const qc = useQueryClient();
   return useMutation({
@@ -174,19 +179,29 @@ export function useSetSoleGroupRole() {
       perPair: number;
       perSize?: Record<string, number>;
     }) => {
-      const { data, error } = await (supabase as any).rpc('set_sole_group_role_consumption', {
-        p_sole_group_id: params.soleGroupId,
-        p_role: params.role,
-        p_per_pair: params.perPair,
-        p_per_size: params.perSize && Object.keys(params.perSize).length > 0 ? params.perSize : {},
-      });
+      const { error } = await (supabase as any)
+        .from('sole_group_standard_items')
+        .upsert(
+          {
+            sole_group_id: params.soleGroupId,
+            role: params.role,
+            material_product_id: null,
+            consumption_per_pair: params.perPair,
+            consumption_per_size:
+              params.perSize && Object.keys(params.perSize).length > 0 ? params.perSize : {},
+            unit: 'dm²',
+          },
+          { onConflict: 'sole_group_id,role' },
+        );
       if (error) throw error;
-      return Number(data) || 0;
     },
-    onSuccess: (rows, vars) => {
+    onSuccess: (_d, vars) => {
       qc.invalidateQueries({ queryKey: ['sole_group_roles', vars.soleGroupId] });
+      qc.invalidateQueries({ queryKey: ['sole_group_standard_items', vars.soleGroupId] });
+      // O espelho mudou em todas as cores do grupo — quem lê specs recarrega.
       qc.invalidateQueries({ queryKey: ['sole_technical_specs'] });
-      toast.success(`${ROLE_LABEL[vars.role]} salvo em ${rows} ${rows === 1 ? 'numeração' : 'numerações'} do modelo.`);
+      qc.invalidateQueries({ queryKey: ['soleSpecs'] });
+      toast.success(`${ROLE_LABEL[vars.role]} salvo para todas as cores do modelo.`);
     },
     onError: (err: Error) => toast.error(`Erro ao salvar: ${err.message}`),
   });
@@ -257,7 +272,8 @@ export function useCopySoleGroupItems() {
       const { data: source, error: srcErr } = await (supabase as any)
         .from('sole_group_standard_items')
         .select('material_product_id, consumption_per_pair, consumption_per_size, unit, applies_to, notes, display_order')
-        .eq('sole_group_id', params.fromGroupId);
+        .eq('sole_group_id', params.fromGroupId)
+        .is('role', null);
       if (srcErr) throw srcErr;
       if (!source || source.length === 0) throw new Error('O modelo de origem não tem itens cadastrados.');
 
@@ -265,13 +281,15 @@ export function useCopySoleGroupItems() {
         await (supabase as any)
           .from('sole_group_standard_items')
           .delete()
-          .eq('sole_group_id', params.toGroupId);
+          .eq('sole_group_id', params.toGroupId)
+          .is('role', null);
       }
 
       const { data: existing } = await (supabase as any)
         .from('sole_group_standard_items')
         .select('material_product_id, applies_to')
-        .eq('sole_group_id', params.toGroupId);
+        .eq('sole_group_id', params.toGroupId)
+        .is('role', null);
       const seen = new Set((existing || []).map((r: any) => `${r.material_product_id}|${r.applies_to}`));
 
       const rows = (source as any[])
@@ -299,7 +317,8 @@ export function useSoleGroupsWithItems(exceptGroupId?: string | null) {
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from('sole_group_standard_items')
-        .select('sole_group_id, product_groups!sole_group_id(id, name)');
+        .select('sole_group_id, product_groups!sole_group_id(id, name)')
+        .is('role', null);
       if (error) throw error;
       const uniq = new Map<string, { id: string; name: string; count: number }>();
       ((data || []) as any[]).forEach((r) => {

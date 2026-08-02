@@ -57,12 +57,15 @@ export default function SolesConsumosTab({ sole, soleLabel }: Props) {
           />
         </TabsContent>
 
-        {/* Grade completa por numeração e por SKU de cor — mantida como visão
-            detalhada/auditoria. O cadastro do dia a dia é a aba anterior. */}
+        {/* Grade de numerações + visão por SKU de cor. Desde 02/08/2026 o
+            consumo aqui é SOMENTE LEITURA: a fonte da verdade virou
+            sole_group_standard_items (linhas PAPEL) e esta tabela é o espelho
+            mantido pelo trigger tg_sgsi_mirror_papel. */}
         <TabsContent value="forracao" className="mt-4">
           <SoleTechnicalDetails
             soleId={sole.id}
             soleName={sole.name}
+            consumptionReadOnly
           />
         </TabsContent>
 
