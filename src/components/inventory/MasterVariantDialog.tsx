@@ -22,7 +22,9 @@ import { BulkApplyPreview, buildBulkImpact, type BulkImpact } from './BulkApplyP
 
  import { Plus, PencilSimple as Pencil, FloppyDisk as Save, CircleNotch as Loader2, X, Image as ImageIcon, Package, Stack as Layers, Gear as SettingsIcon, ArrowsLeftRight as ArrowRightLeft } from '@phosphor-icons/react';
 import { Product, ProductFormData, CATEGORIES, UNITS, LOCATIONS } from '@/types/inventory';
-import { useAddProduct } from '@/hooks/useProducts';
+import { useAddProduct, useProducts } from '@/hooks/useProducts';
+import { findDuplicate, type DuplicateHit } from '@/lib/duplicateDetection';
+import { DuplicateSuggestion } from './DuplicateSuggestion';
 import { useGroups } from '@/hooks/useGroups';
 import { useSuppliers } from '@/hooks/useSuppliers';
 import { supabase } from '@/integrations/supabase/client';
@@ -441,6 +443,12 @@ export function MasterVariantDialog({
   const { data: suppliers = [] } = useSuppliers();
 
   const addProduct = useAddProduct();
+  // Lista COMPLETA — nunca `variants`, que já vem filtrada pelo chip de zeradas
+  // da lista: comparar contra ela deixaria recadastrar cor escondida (R1.4).
+  const { data: todosOsProdutos = [] } = useProducts();
+  const [dupAddVariant, setDupAddVariant] = useState<DuplicateHit | null>(null);
+  const [dupAddConfirmado, setDupAddConfirmado] = useState(false);
+  const [dupColorInline, setDupColorInline] = useState<DuplicateHit | null>(null);
   const queryClient = useQueryClient();
 
   const isSolado = useMemo(() => variants.some(v => v.category === 'Solado'), [variants]);
@@ -566,14 +574,21 @@ export function MasterVariantDialog({
   const handleAddVariant = async () => {
     if (!newColor.trim()) { toast.error('Informe a cor da variante'); return; }
     if (!newSku.trim()) { toast.error('Informe o SKU da variante'); return; }
-    const exists = variants.some(v => (v.color || '').toLowerCase().trim() === newColor.toLowerCase().trim());
-    if (exists) { toast.error('Já existe uma variante com esta cor'); return; }
+    // R4.2 — cascata compartilhada, contra o estoque inteiro.
+    const nomeHerdado = stripColorFromName(template.name, template.color).trim() || template.name;
+    if (!dupAddConfirmado) {
+      const hit = findDuplicate(
+        { name: nomeHerdado, color: newColor.trim(), sku: newSku.trim(), group_id: template.group_id },
+        todosOsProdutos,
+      );
+      if (hit) { setDupAddVariant(hit); return; }
+    }
 
     const newProduct: ProductFormData = {
       // A cor nova herda o NOME do material das irmãs, sem sufixo de cor: a cor
       // mora em `products.color`, que é o que o débito lê. 189 dos 195 nomes
       // ativos são "crus" — o sufixo " - cor" só criaria um padrão novo.
-      name: stripColorFromName(template.name, template.color).trim() || template.name,
+      name: nomeHerdado,
       technical_name: template.technical_name || '',
       sku: newSku.trim(),
       category: template.category || '',
@@ -735,8 +750,12 @@ export function MasterVariantDialog({
     const newVal = editingColorValue.trim();
     if (!newVal) { toast.error('Informe a cor'); return; }
     if (newVal.toLowerCase() === (v.color || '').toLowerCase()) { cancelEditColor(); return; }
-    const duplicate = variants.some(x => x.id !== v.id && (x.color || '').toLowerCase().trim() === newVal.toLowerCase());
-    if (duplicate) { toast.error('Já existe uma variante com esta cor'); return; }
+    // R4.3 — mesma cascata do cadastro, contra o estoque inteiro.
+    const hit = findDuplicate(
+      { id: v.id, name: v.name, color: newVal, sku: v.sku, group_id: v.group_id },
+      todosOsProdutos,
+    );
+    if (hit) { setDupColorInline(hit); return; }
     setSavingColorId(v.id);
     try {
       // Grava SÓ a cor. O rename que existia aqui ("<base> - <cor>") violava o
@@ -787,6 +806,16 @@ export function MasterVariantDialog({
 
             {/* ─── ABA: Variantes ─── */}
             <TabsContent value="variants" className="space-y-4 mt-4">
+              {/* R4.3 — trocar a cor de uma variante passa pela mesma cascata.
+                  "Não é o mesmo" aqui não grava sozinho: fecha a sugestão e o
+                  usuário confirma a cor de novo, agora ciente do vizinho. */}
+              {dupColorInline && (
+                <DuplicateSuggestion
+                  hit={dupColorInline}
+                  onSameProduct={() => { setDupColorInline(null); cancelEditColor(); }}
+                  onDifferent={() => setDupColorInline(null)}
+                />
+              )}
               <div className="rounded-lg border overflow-hidden">
                 <Table>
                   <TableHeader>
@@ -1142,12 +1171,12 @@ export function MasterVariantDialog({
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <Label htmlFor="new-color" className="text-xs">Cor *</Label>
-                    <Input id="new-color" value={newColor} onChange={e => setNewColor(e.target.value)}
+                    <Input id="new-color" value={newColor} onChange={e => { setNewColor(e.target.value); setDupAddConfirmado(false); setDupAddVariant(null); }}
                       placeholder="Ex: Preto, Caramelo" className="mt-1 h-9" />
                   </div>
                   <div>
                     <Label htmlFor="new-sku" className="text-xs">SKU *</Label>
-                    <Input id="new-sku" value={newSku} onChange={e => setNewSku(e.target.value)}
+                    <Input id="new-sku" value={newSku} onChange={e => { setNewSku(e.target.value); setDupAddConfirmado(false); setDupAddVariant(null); }}
                       placeholder="Ex: DUB-PRETO-001" className="mt-1 h-9 font-mono" />
                   </div>
                 </div>
@@ -1155,6 +1184,13 @@ export function MasterVariantDialog({
                   Dados técnicos (categoria, grupo, dimensões, custo, fornecedor) serão copiados das variantes existentes.
                   Você pode ajustá-los depois clicando em <strong>Editar completo</strong>.
                 </p>
+                {dupAddVariant && !dupAddConfirmado && (
+                  <DuplicateSuggestion
+                    hit={dupAddVariant}
+                    onSameProduct={() => { setDupAddVariant(null); setActiveTab('variants'); toast.info(`"${dupAddVariant.product.color || dupAddVariant.product.name}" já está na lista de cores.`); }}
+                    onDifferent={() => { setDupAddConfirmado(true); setDupAddVariant(null); }}
+                  />
+                )}
                 <Button onClick={handleAddVariant} disabled={adding} size="sm" className="gap-1">
                   <Plus className="h-3.5 w-3.5" />
                   {adding ? 'Adicionando...' : 'Adicionar Variante'}

@@ -15,6 +15,11 @@ import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import { UNITS, LOCATIONS } from '@/types/inventory';
 import { sectorOfGroup, sectorLabel } from '@/lib/categoryFromGroup';
+// Normalizador ESTRITO agora vem da fonte única — era a TERCEIRA cópia no
+// projeto (spec `duplicata-no-cadastro.md` R1.2). Implementação idêntica: a
+// regra de duplicata desta tela, que já trava por confirmação e conhece
+// particularidades da tira, NÃO mudou.
+import { normalizeStrict as normalizeForComparison } from '@/lib/duplicateDetection';
 import { useGroups } from '@/hooks/useGroups';
 import { useContractors } from '@/hooks/useContractors';
 import { useCreateArtisanalRecipe } from '@/hooks/useArtisanalRecipes';
@@ -71,13 +76,6 @@ type NapaResolution = {
   block_reason: string | null;
 };
 
-const normalizeForComparison = (value: string) =>
-  (value || '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, '');
 
 const fuzzyMatch = (a: string, b: string) => {
   const na = normalizeForComparison(a);

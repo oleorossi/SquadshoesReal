@@ -11,7 +11,7 @@
  * fichas técnicas não funcionam), mas pro usuário fica simples: "família de
  * tira chata" em vez de "grupo + 5 produtos".
  */
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,6 +23,9 @@ import { RequiredMark } from '@/components/ui/required-mark';
 import { Stack as Layers, Plus, X, CircleNotch as Loader2, Sparkle as Sparkles } from '@phosphor-icons/react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { useProducts } from '@/hooks/useProducts';
+import { findDuplicate, type DuplicateHit } from '@/lib/duplicateDetection';
+import { DuplicateSuggestion } from './DuplicateSuggestion';
 import { useGroups } from '@/hooks/useGroups';
 import { useSuppliers } from '@/hooks/useSuppliers';
 import { useQueryClient } from '@tanstack/react-query';
@@ -60,6 +63,10 @@ export function QuickFamilyDialog({ open, onOpenChange, defaultGroupId }: Props)
   const [supplierId, setSupplierId] = useState<string>('');
   const [supplierLeadDays, setSupplierLeadDays] = useState(10);
   const [colors, setColors] = useState<string[]>(['Preto']);
+  // R4.5 — cada cor da fila é checada; a suspeita não entra no insert até ser
+  // resolvida, e as demais seguem.
+  const { data: todosOsProdutos = [] } = useProducts();
+  const [coresLiberadas, setCoresLiberadas] = useState<Set<string>>(new Set());
   const [colorInput, setColorInput] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -95,11 +102,23 @@ export function QuickFamilyDialog({ open, onOpenChange, defaultGroupId }: Props)
     }
   };
 
+  /** Cor da fila que bate com algo já cadastrado e ainda não foi liberada. */
+  const suspeitas = useMemo(() => {
+    const nome = familyName.trim();
+    if (!nome) return [] as { cor: string; hit: DuplicateHit }[];
+    const grupoAlvo = groupMode === 'existing' ? selectedGroupId : null;
+    return colors
+      .filter(c => !coresLiberadas.has(c))
+      .map(cor => ({ cor, hit: findDuplicate({ name: nome, color: cor, group_id: grupoAlvo }, todosOsProdutos) }))
+      .filter((x): x is { cor: string; hit: DuplicateHit } => x.hit != null);
+  }, [colors, familyName, groupMode, selectedGroupId, todosOsProdutos, coresLiberadas]);
+
   const handleSubmit = async () => {
     // Validações
     if (!familyName.trim()) { toast.error('Nome da família é obrigatório'); return; }
     if (colors.length === 0) { toast.error('Adicione ao menos 1 cor'); return; }
     if (groupMode === 'existing' && !selectedGroupId) { toast.error('Selecione um grupo'); return; }
+    if (suspeitas.length > 0) { toast.error('Resolva as cores marcadas como possíveis duplicatas'); return; }
 
     setSubmitting(true);
     try {
@@ -296,15 +315,31 @@ export function QuickFamilyDialog({ open, onOpenChange, defaultGroupId }: Props)
             {/* Cores selecionadas */}
             {colors.length > 0 && (
               <div className="flex flex-wrap gap-1.5 pt-2 border-t border-border/40">
-                {colors.map(c => (
-                  <Badge key={c} variant="secondary" className="gap-1 pr-1">
-                    {c}
-                    <button type="button" onClick={() => removeColor(c)} className="hover:bg-muted rounded-full p-0.5">
-                      <X className="h-3 w-3" />
-                    </button>
-                  </Badge>
-                ))}
+                {colors.map(c => {
+                  const suspeita = suspeitas.some(x => x.cor === c);
+                  return (
+                    <Badge
+                      key={c}
+                      variant="secondary"
+                      className={`gap-1 pr-1 ${suspeita ? 'bg-warning/15 text-warning border-warning/30' : ''}`}
+                    >
+                      {c}
+                      <button type="button" onClick={() => removeColor(c)} className="hover:bg-muted rounded-full p-0.5">
+                        <X className="h-3 w-3" />
+                      </button>
+                    </Badge>
+                  );
+                })}
               </div>
+            )}
+
+            {/* Uma sugestão por vez — a primeira cor suspeita da fila (R4.5). */}
+            {suspeitas[0] && (
+              <DuplicateSuggestion
+                hit={suspeitas[0].hit}
+                onSameProduct={() => removeColor(suspeitas[0].cor)}
+                onDifferent={() => setCoresLiberadas(prev => new Set(prev).add(suspeitas[0].cor))}
+              />
             )}
 
             <p className="text-xs text-muted-foreground">

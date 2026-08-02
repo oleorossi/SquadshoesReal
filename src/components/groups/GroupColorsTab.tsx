@@ -10,6 +10,9 @@ import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import type { Product } from '@/types/inventory';
+import { useProducts } from '@/hooks/useProducts';
+import { findDuplicate, levenshtein, type DuplicateHit } from '@/lib/duplicateDetection';
+import { DuplicateSuggestion } from '@/components/inventory/DuplicateSuggestion';
 
 interface Props {
   groupId: string;
@@ -24,20 +27,6 @@ const norm = (s: string) =>
   (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
 
 /** Distância de edição — mesma régua do detector de duplicata do item. */
-function levenshtein(a: string, b: string): number {
-  if (a === b) return 0;
-  const m = a.length, n = b.length;
-  if (!m || !n) return m || n;
-  let prev = Array.from({ length: n + 1 }, (_, i) => i);
-  for (let i = 1; i <= m; i++) {
-    const cur = [i];
-    for (let j = 1; j <= n; j++) {
-      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
-    }
-    prev = cur;
-  }
-  return prev[n];
-}
 
 /**
  * Aba "Cores" do grupo: o único lugar que enxerga as cores como CONJUNTO.
@@ -69,7 +58,10 @@ export default function GroupColorsTab({ groupId, groupName, products, groupWidt
     staleTime: 60_000,
   });
   const [bulk, setBulk] = useState('');
-  const [pending, setPending] = useState<string[]>([]);
+  /** Fila de cores a criar. Cada linha carrega o próprio veredito: linha
+   *  suspeita não entra no insert até ser resolvida, e as demais seguem (R4.4). */
+  const [pending, setPending] = useState<{ cor: string; hit: DuplicateHit | null; liberada: boolean }[]>([]);
+  const { data: todosOsProdutos = [] } = useProducts();
   const [creating, setCreating] = useState(false);
   const [mergeSource, setMergeSource] = useState<string>('');
   const [mergeTarget, setMergeTarget] = useState<string>('');
@@ -113,20 +105,27 @@ export default function GroupColorsTab({ groupId, groupName, products, groupWidt
   const addPending = () => {
     const novas = bulk.split(/[,;\n]/).map(c => c.trim().toUpperCase()).filter(Boolean);
     const jaExiste = new Set(colored.map(p => norm(p.color || '')));
-    const jaNaFila = new Set(pending.map(norm));
+    const jaNaFila = new Set(pending.map(x => norm(x.cor)));
     const aceitas = novas.filter(c => !jaExiste.has(norm(c)) && !jaNaFila.has(norm(c)));
     const recusadas = novas.length - aceitas.length;
-    if (aceitas.length) setPending(prev => [...prev, ...aceitas]);
+    if (aceitas.length) {
+      setPending(prev => [...prev, ...aceitas.map(cor => ({
+        cor,
+        hit: findDuplicate({ name: groupName, color: cor, group_id: groupId }, todosOsProdutos),
+        liberada: false,
+      }))]);
+    }
     if (recusadas > 0) toast.info(`${recusadas} cor(es) já existem neste grupo — ignoradas`);
     setBulk('');
   };
 
   const criar = async () => {
-    if (!pending.length) return;
+    if (!pending.some(x => !x.hit || x.liberada)) { toast.info('Resolva as cores marcadas antes de criar'); return; }
     setCreating(true);
     try {
       const modelo = colored[0] || products[0];
-      const rows = pending.map(cor => ({
+      const aCriar = pending.filter(x => !x.hit || x.liberada);
+      const rows = aCriar.map(({ cor }) => ({
         name: groupName,
         color: cor,
         sku: `${groupName.replace(/\s+/g, '').slice(0, 8).toUpperCase()}-${cor.replace(/\s+/g, '').slice(0, 6).toUpperCase()}`,
@@ -143,7 +142,8 @@ export default function GroupColorsTab({ groupId, groupName, products, groupWidt
       const { error } = await (supabase as any).from('products').insert(rows);
       if (error) throw error;
       toast.success(`${rows.length} cor(es) criada(s) em ${groupName}`);
-      setPending([]);
+      // Suspeita não resolvida permanece na fila.
+      setPending(prev => prev.filter(x => x.hit && !x.liberada));
       qc.invalidateQueries({ queryKey: ['products'] });
     } catch (e: any) {
       toast.error('Não foi possível criar as cores', { description: e?.message });
@@ -199,18 +199,36 @@ export default function GroupColorsTab({ groupId, groupName, products, groupWidt
         {pending.length > 0 && (
           <>
             <div className="flex flex-wrap gap-1.5 pt-1">
-              {pending.map(c => (
-                <Badge key={c} variant="secondary" className="gap-1 text-[11px]">
-                  {c}
-                  <button type="button" onClick={() => setPending(prev => prev.filter(x => x !== c))}>
+              {pending.map(({ cor, hit, liberada }) => (
+                <Badge
+                  key={cor}
+                  variant="secondary"
+                  className={`gap-1 text-[11px] ${hit && !liberada ? 'bg-warning/15 text-warning border-warning/30' : ''}`}
+                >
+                  {cor}
+                  <button type="button" aria-label={`Remover ${cor}`} onClick={() => setPending(prev => prev.filter(x => x.cor !== cor))}>
                     <X className="h-3 w-3" />
                   </button>
                 </Badge>
               ))}
             </div>
+
+            {/* Uma sugestão por vez: a primeira linha suspeita ainda não resolvida. */}
+            {(() => {
+              const suspeita = pending.find(x => x.hit && !x.liberada);
+              if (!suspeita?.hit) return null;
+              return (
+                <DuplicateSuggestion
+                  hit={suspeita.hit}
+                  onSameProduct={() => setPending(prev => prev.filter(x => x.cor !== suspeita.cor))}
+                  onDifferent={() => setPending(prev => prev.map(x => x.cor === suspeita.cor ? { ...x, liberada: true } : x))}
+                />
+              );
+            })()}
+
             <Button type="button" size="sm" className="h-8 gap-1" disabled={creating} onClick={criar}>
               {creating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
-              Criar {pending.length} cor(es)
+              Criar {pending.filter(x => !x.hit || x.liberada).length} cor(es)
             </Button>
           </>
         )}
