@@ -53,6 +53,9 @@ const ProductDetail = lazy(() => import("./pages/ProductDetail"));
 const Orders = lazy(() => import("./pages/Orders"));
 const OrderEdit = lazy(() => import("./pages/OrderEdit"));
 const SaleOrders = lazy(() => import("./pages/SaleOrders"));
+// Catálogo — foto crua → foto de estúdio por IA em cada cor da cartela →
+// lâmina do catálogo montada no navegador (Edge Function generate-catalog-photo).
+const Catalogo = lazy(() => import("./pages/Catalogo"));
 const SaleOrderForm = lazy(() => import("./pages/SaleOrderForm"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const Groups = lazy(() => import("./pages/Groups"));
@@ -757,6 +760,10 @@ const router = createBrowserRouter([
       {
         path: "pronta-entrega",
         element: <ProntaEntrega />,
+      },
+      {
+        path: "catalogo",
+        element: <Catalogo />,
       },
        {
          path: "estoque",

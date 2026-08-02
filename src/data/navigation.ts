@@ -38,6 +38,7 @@ export const navigationCatalog: NavigationResource[] = [
   { path: '/comercial', label: 'Visão Geral', group: 'Comercial', icon: BarChart3, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/ComercialDashboard') },
   { path: '/sales', label: 'Pedidos de Venda', group: 'Comercial', icon: FileText, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/SaleOrders') },
   { path: '/pronta-entrega', label: 'Pronta-Entrega', group: 'Comercial', icon: Box, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/ProntaEntrega') },
+  { path: '/catalogo', label: 'Catálogo', group: 'Comercial', icon: Sparkles, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/Catalogo') },
   { path: '/clients', label: 'Clientes', group: 'Comercial', icon: Users, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/Clients') },
   { path: '/crm', label: 'CRM', group: 'Comercial', icon: HeartHandshake, surfaces: ['command'] /* CRM: 0 interações e 0 respostas de NPS registradas */, preload: () => import('@/pages/CRM') },
   { path: '/tarefas', label: 'Tarefas', group: 'Comercial', icon: ListChecks, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/Tarefas') },
