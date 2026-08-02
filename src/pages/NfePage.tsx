@@ -7,7 +7,8 @@ import { Input } from '@/components/ui/input';
 import { SearchInput } from '@/components/ui/search-input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsContent } from '@/components/ui/tabs';
+import { HubTabsList } from '@/components/layout/HubTabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
@@ -533,26 +534,16 @@ export default function NfePage() {
       <NfeBillingHealthCard />
 
       <Tabs value={abaAtiva} onValueChange={setAbaAtiva}>
-        <TabsList>
-          <TabsTrigger value="nfes" className="gap-2">
-            <FileText className="h-4 w-4" /> NF-es Emitidas
-          </TabsTrigger>
-          <TabsTrigger value="avulsa" className="gap-2">
-            <Plus className="h-4 w-4" /> NF Avulsa
-          </TabsTrigger>
-          <TabsTrigger value="empresas" className="gap-2">
-            <Building2 className="h-4 w-4" /> Empresas / CNPJs
-          </TabsTrigger>
-          <TabsTrigger value="tributacao" className="gap-2">
-            <Calculator className="h-4 w-4" /> Tributação
-          </TabsTrigger>
-          <TabsTrigger value="cce" className="gap-2">
-            <FileEdit className="h-4 w-4" /> Cartas de Correção
-          </TabsTrigger>
-          <TabsTrigger value="diagnostico" className="gap-2">
-            <Activity className="h-4 w-4" /> Diagnóstico
-          </TabsTrigger>
-        </TabsList>
+        <HubTabsList
+          tabs={[
+            { value: 'nfes', label: 'NF-es Emitidas', icon: FileText },
+            { value: 'avulsa', label: 'NF Avulsa', icon: Plus },
+            { value: 'empresas', label: 'Empresas / CNPJs', icon: Building2 },
+            { value: 'tributacao', label: 'Tributação', icon: Calculator },
+            { value: 'cce', label: 'Cartas de Correção', icon: FileEdit },
+            { value: 'diagnostico', label: 'Diagnóstico', icon: Activity },
+          ]}
+        />
 
         <TabsContent value="nfes" className="mt-4">
           {/* Filters */}

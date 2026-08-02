@@ -5,7 +5,8 @@ import { Button } from '@/components/ui/button';
 import { SearchInput } from '@/components/ui/search-input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Tabs, TabsContent } from '@/components/ui/tabs';
+import { HubTabsList } from '@/components/layout/HubTabs';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { CheckCircle as CheckCircle2, XCircle, Warning as AlertTriangle, MagnifyingGlass as Search, ArrowsClockwise as RefreshCw, CaretDown as ChevronDown, CaretUp as ChevronUp, ShoppingCart, ClipboardText as ClipboardList, Package, Factory, Sparkle as Sparkles, CurrencyDollar as DollarSign, FileText, CircleNotch as Loader2, ClockCounterClockwise as History, Stack as Layers } from '@phosphor-icons/react';
@@ -504,14 +505,12 @@ export default function OrderFlowAudit({ embedded = false }: { embedded?: boolea
         )}
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList indicator="none" className="bg-muted/50 p-1 h-12 inline-flex">
-            <TabsTrigger value="flow" className="gap-2 px-6 font-bold uppercase text-xs data-[state=active]:bg-background shadow-none">
-              <Layers className="h-4 w-4" /> Fluxo de Pedidos
-            </TabsTrigger>
-            <TabsTrigger value="production" className="gap-2 px-6 font-bold uppercase text-xs data-[state=active]:bg-background shadow-none">
-              <Factory className="h-4 w-4" /> Auditoria de Produção
-            </TabsTrigger>
-          </TabsList>
+          <HubTabsList
+            tabs={[
+              { value: 'flow', label: 'Fluxo de Pedidos', icon: Layers },
+              { value: 'production', label: 'Auditoria de Produção', icon: Factory },
+            ]}
+          />
 
           <TabsContent value="flow" className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
             {/* Summary Cards */}

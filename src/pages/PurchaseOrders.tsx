@@ -20,7 +20,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Label } from '@/components/ui/label';
 import { ShoppingCart, Eye, Trash as Trash2, CheckCircle as CheckCircle2, XCircle, PaperPlaneRight as Send, Lightning as Zap, MagnifyingGlass as Search, ClipboardText as ClipboardList, FileText, Warning as AlertTriangle, CalendarBlank as CalendarClock, CircleNotch as Loader2, Footprints, FileArrowDown as FileDown, Package, Funnel, X as XIcon } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsContent } from '@/components/ui/tabs';
+import { HubTabsList } from '@/components/layout/HubTabs';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import SolePurchaseTab from '@/components/purchase/SolePurchaseTab';
 import { printPurchaseOrderGrouped, printSupplierPOs } from '@/lib/printPurchaseOrder';
@@ -439,10 +440,12 @@ export default function PurchaseOrders() {
         />
 
         <Tabs value={abaAtiva} onValueChange={setAbaAtiva} className="space-y-4">
-          <TabsList>
-            <TabsTrigger value="all" className="gap-2"><ShoppingCart className="h-4 w-4" /> Geral</TabsTrigger>
-            <TabsTrigger value="solados" className="gap-2"><Footprints className="h-4 w-4" /> Solados</TabsTrigger>
-          </TabsList>
+          <HubTabsList
+            tabs={[
+              { value: 'all', label: 'Geral', icon: ShoppingCart },
+              { value: 'solados', label: 'Solados', icon: Footprints },
+            ]}
+          />
 
           <TabsContent value="all" className="space-y-4">
             <div className="flex items-center gap-2">

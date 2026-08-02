@@ -3,7 +3,8 @@ import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { useQuery } from '@tanstack/react-query';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsContent } from '@/components/ui/tabs';
+import { HubTabsList } from '@/components/layout/HubTabs';
 import { SearchInput } from '@/components/ui/search-input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -128,17 +129,13 @@ export default function SystemMonitor() {
       </div>
 
       <Tabs value={abaUrl} onValueChange={setAbaUrl} className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="performance" className="gap-1.5">
-            <Cpu className="h-3.5 w-3.5" />Performance
-          </TabsTrigger>
-          <TabsTrigger value="audit" className="gap-1.5">
-            <Shield className="h-3.5 w-3.5" />Auditoria
-          </TabsTrigger>
-          <TabsTrigger value="cache" className="gap-1.5">
-            <Database className="h-3.5 w-3.5" />Cache
-          </TabsTrigger>
-        </TabsList>
+        <HubTabsList
+          tabs={[
+            { value: 'performance', label: 'Performance', icon: Cpu },
+            { value: 'audit', label: 'Auditoria', icon: Shield },
+            { value: 'cache', label: 'Cache', icon: Database },
+          ]}
+        />
 
         {/* ═══ PERFORMANCE TAB ═══ */}
         <TabsContent value="performance" className="space-y-4">

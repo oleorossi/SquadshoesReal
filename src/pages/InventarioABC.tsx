@@ -15,7 +15,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Tabs, TabsContent } from '@/components/ui/tabs';
+import { HubTabsList } from '@/components/layout/HubTabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -246,10 +247,12 @@ export default function InventarioABC() {
         description="Classificação ABC por valor de estoque e contagem cíclica com reconciliação automática do saldo."
       />
       <Tabs value={abaAtiva} onValueChange={setAbaAtiva}>
-        <TabsList>
-          <TabsTrigger value="abc" className="gap-1.5"><ChartBar className="size-4" /> Curva ABC</TabsTrigger>
-          <TabsTrigger value="contagens" className="gap-1.5"><ClipboardText className="size-4" /> Contagens</TabsTrigger>
-        </TabsList>
+        <HubTabsList
+          tabs={[
+            { value: 'abc', label: 'Curva ABC', icon: ChartBar },
+            { value: 'contagens', label: 'Contagens', icon: ClipboardText },
+          ]}
+        />
         <TabsContent value="abc" className="mt-4"><AbcTab /></TabsContent>
         <TabsContent value="contagens" className="mt-4"><ContagensTab /></TabsContent>
       </Tabs>

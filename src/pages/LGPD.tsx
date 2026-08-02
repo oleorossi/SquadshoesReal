@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsContent } from '@/components/ui/tabs';
+import { HubTabsList } from '@/components/layout/HubTabs';
 import { DataListPage } from '@/components/ui/data-list-page';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -70,10 +71,12 @@ export default function LGPD() {
       />
 
       <Tabs value={tab} onValueChange={setTab}>
-        <TabsList>
-          <TabsTrigger value="requests">Solicitações</TabsTrigger>
-          <TabsTrigger value="consents">Consentimentos</TabsTrigger>
-        </TabsList>
+        <HubTabsList
+          tabs={[
+            { value: 'requests', label: 'Solicitações' },
+            { value: 'consents', label: 'Consentimentos' },
+          ]}
+        />
         <TabsContent value="requests" className="mt-3">
           <DataListPage
             title=""

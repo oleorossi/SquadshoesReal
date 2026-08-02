@@ -15,7 +15,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ArrowLeft, CircleNotch as Loader2, CheckCircle as CheckCircle2, Scissors, Footprints, Sparkle as Sparkles, Package, ArrowSquareOut as ExternalLink, ClipboardText as ClipboardList, Calendar, Factory, User, PaintBrush as Paintbrush, Flame, Wrench, Image as ImageIcon, Truck } from '@phosphor-icons/react';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsContent } from '@/components/ui/tabs';
+import { HubTabsList } from '@/components/layout/HubTabs';
 import { OrderTransportCalculator } from '@/components/transport/OrderTransportCalculator';
 import { ProductionPipeline } from '@/components/production/ProductionPipeline';
 import { toast } from 'sonner';
@@ -217,14 +218,12 @@ export default function OrderEdit() {
         <ProductionPipeline orderId={id || ''} currentStep={currentPipelineStep} />
 
         <Tabs value={abaUrl} onValueChange={setAbaUrl} className="space-y-4">
-          <TabsList>
-            <TabsTrigger value="production" className="gap-2">
-              <Factory className="h-4 w-4" /> Produção
-            </TabsTrigger>
-            <TabsTrigger value="transport" className="gap-2">
-              <Truck className="h-4 w-4" /> Transporte
-            </TabsTrigger>
-          </TabsList>
+          <HubTabsList
+            tabs={[
+              { value: 'production', label: 'Produção', icon: Factory },
+              { value: 'transport', label: 'Transporte', icon: Truck },
+            ]}
+          />
 
           <TabsContent value="production" className="space-y-6">
             {/* Summary Card */}

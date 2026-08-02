@@ -14,7 +14,8 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
 
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsContent } from '@/components/ui/tabs';
+import { HubTabsList } from '@/components/layout/HubTabs';
 import { Card, CardContent } from '@/components/ui/card';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { Panel } from '@/components/ui/panel';
@@ -83,16 +84,18 @@ export default function EconomicGroupDetail() {
       <Header group={group} />
 
       <Tabs value={abaUrl} onValueChange={setAbaUrl} className="w-full">
-        <TabsList className="flex w-full max-w-6xl overflow-x-auto justify-start">
-          <TabsTrigger value="resumo" className="gap-1.5 shrink-0"><TrendingUp className="h-4 w-4" /> Resumo</TabsTrigger>
-          <TabsTrigger value="comercial" className="gap-1.5 shrink-0"><DollarSign className="h-4 w-4" /> Comercial</TabsTrigger>
-          <TabsTrigger value="clientes" className="gap-1.5 shrink-0"><Users className="h-4 w-4" /> Clientes</TabsTrigger>
-          <TabsTrigger value="pedidos" className="gap-1.5 shrink-0"><ShoppingCart className="h-4 w-4" /> Pedidos</TabsTrigger>
-          <TabsTrigger value="financeiro" className="gap-1.5 shrink-0"><DollarSign className="h-4 w-4" /> Financeiro</TabsTrigger>
-          <TabsTrigger value="contatos" className="gap-1.5 shrink-0"><Phone className="h-4 w-4" /> Contatos</TabsTrigger>
-          <TabsTrigger value="notas" className="gap-1.5 shrink-0"><StickyNote className="h-4 w-4" /> Notas</TabsTrigger>
-          <TabsTrigger value="historico" className="gap-1.5 shrink-0"><HistoryIcon className="h-4 w-4" /> Histórico</TabsTrigger>
-        </TabsList>
+        <HubTabsList
+          tabs={[
+            { value: 'resumo', label: 'Resumo', icon: TrendingUp },
+            { value: 'comercial', label: 'Comercial', icon: DollarSign },
+            { value: 'clientes', label: 'Clientes', icon: Users },
+            { value: 'pedidos', label: 'Pedidos', icon: ShoppingCart },
+            { value: 'financeiro', label: 'Financeiro', icon: DollarSign },
+            { value: 'contatos', label: 'Contatos', icon: Phone },
+            { value: 'notas', label: 'Notas', icon: StickyNote },
+            { value: 'historico', label: 'Histórico', icon: HistoryIcon },
+          ]}
+        />
 
         <TabsContent value="resumo"><ResumoTab groupId={id} group={group} /></TabsContent>
         <TabsContent value="comercial"><ComercialTab group={group} /></TabsContent>

@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsContent } from '@/components/ui/tabs';
+import { HubTabsList } from '@/components/layout/HubTabs';
 import { Scissors, Footprints, Sparkle as Sparkles, Wrench, Paperclip, Palette, Package, Flame, Cloud, Pen } from '@phosphor-icons/react';
 import { CircleNotch as Loader2 } from '@phosphor-icons/react';
 import { usePersistedState } from '@/hooks/usePersistedState';
@@ -86,41 +87,21 @@ export default function Setores() {
        />
        <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
           <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0 pb-2">
-            <TabsList indicator="none" className="inline-flex w-max h-auto gap-1 bg-muted/50 p-1 rounded-lg">
-             <TabsTrigger value="corte" className="text-xs whitespace-nowrap gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm px-3 py-1.5 rounded-md">
-               <Scissors className="h-4 w-4" /> Corte Palmilha
-             </TabsTrigger>
-              <TabsTrigger value="forracao" className="text-xs whitespace-nowrap gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm px-3 py-1.5 rounded-md">
-                <Cloud className="h-4 w-4" /> Corte Forração
-              </TabsTrigger>
-              <TabsTrigger value="costura-palmilha" className="text-xs whitespace-nowrap gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm px-3 py-1.5 rounded-md">
-                <Pen className="h-4 w-4" /> Costura Palmilha
-              </TabsTrigger>
-              <TabsTrigger value="costura-cabedal" className="text-xs whitespace-nowrap gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm px-3 py-1.5 rounded-md">
-                <Pen className="h-4 w-4" /> Costura Cabedal
-              </TabsTrigger>
-              <TabsTrigger value="aviamento" className="text-xs whitespace-nowrap gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm px-3 py-1.5 rounded-md">
-                <Paperclip className="h-4 w-4" /> Aviamento
-              </TabsTrigger>
-              <TabsTrigger value="silk" className="text-xs whitespace-nowrap gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm px-3 py-1.5 rounded-md">
-                <Palette className="h-4 w-4" /> Silk
-              </TabsTrigger>
-              <TabsTrigger value="colagem" className="text-xs whitespace-nowrap gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm px-3 py-1.5 rounded-md">
-                <Flame className="h-4 w-4" /> Colagem
-              </TabsTrigger>
-              <TabsTrigger value="montagem" className="text-xs whitespace-nowrap gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm px-3 py-1.5 rounded-md">
-                <Wrench className="h-4 w-4" /> Montagem
-              </TabsTrigger>
-              <TabsTrigger value="solagem" className="text-xs whitespace-nowrap gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm px-3 py-1.5 rounded-md">
-                <Footprints className="h-4 w-4" /> Solagem
-              </TabsTrigger>
-              <TabsTrigger value="acabamento" className="text-xs whitespace-nowrap gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm px-3 py-1.5 rounded-md">
-                <Sparkles className="h-4 w-4" /> Acabamento
-              </TabsTrigger>
-              <TabsTrigger value="expedicao" className="text-xs whitespace-nowrap gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm px-3 py-1.5 rounded-md">
-                <Package className="h-4 w-4" /> Expedição
-              </TabsTrigger>
-           </TabsList>
+            <HubTabsList
+              tabs={[
+                { value: 'corte', label: 'Corte Palmilha', icon: Scissors },
+                { value: 'forracao', label: 'Corte Forração', icon: Cloud },
+                { value: 'costura-palmilha', label: 'Costura Palmilha', icon: Pen },
+                { value: 'costura-cabedal', label: 'Costura Cabedal', icon: Pen },
+                { value: 'aviamento', label: 'Aviamento', icon: Paperclip },
+                { value: 'silk', label: 'Silk', icon: Palette },
+                { value: 'colagem', label: 'Colagem', icon: Flame },
+                { value: 'montagem', label: 'Montagem', icon: Wrench },
+                { value: 'solagem', label: 'Solagem', icon: Footprints },
+                { value: 'acabamento', label: 'Acabamento', icon: Sparkles },
+                { value: 'expedicao', label: 'Expedição', icon: Package },
+              ]}
+            />
           </div>
 
          <TabsContent value="corte">

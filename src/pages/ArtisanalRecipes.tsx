@@ -27,7 +27,8 @@ import {
 import { useContractors } from '@/hooks/useContractors';
  import { useProducts, getBaseName } from '@/hooks/useProducts';
  import { useGroups } from '@/hooks/useGroups';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsContent } from '@/components/ui/tabs';
+import { HubTabsList } from '@/components/layout/HubTabs';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -280,14 +281,12 @@ export default function ArtisanalRecipes({ embedded = false }: { embedded?: bool
       )}
 
       <Tabs value={abaUrl} onValueChange={setAbaUrl} className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="recipes" className="gap-1.5">
-            <Sparkles className="h-4 w-4" /> Receitas
-          </TabsTrigger>
-          <TabsTrigger value="optimizer" className="gap-1.5">
-            <Scissors className="h-4 w-4" /> Otimização de Corte de Rolo
-          </TabsTrigger>
-        </TabsList>
+        <HubTabsList
+          tabs={[
+            { value: 'recipes', label: 'Receitas', icon: Sparkles },
+            { value: 'optimizer', label: 'Otimização de Corte de Rolo', icon: Scissors },
+          ]}
+        />
 
         <TabsContent value="recipes" className="space-y-4 mt-0">
       {/* How-to card */}

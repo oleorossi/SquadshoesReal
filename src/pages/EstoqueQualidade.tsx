@@ -17,7 +17,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Tabs, TabsContent } from '@/components/ui/tabs';
+import { HubTabsList } from '@/components/layout/HubTabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -304,10 +305,12 @@ export default function EstoqueQualidade() {
         description="Quarentena, bloqueio e descarte de estoque, e recall de lote (rastreabilidade de quem comprou)."
       />
       <Tabs value={abaAtiva} onValueChange={setAbaAtiva}>
-        <TabsList>
-          <TabsTrigger value="quarentena" className="gap-1.5"><ShieldWarning className="size-4" /> Quarentena & Bloqueio</TabsTrigger>
-          <TabsTrigger value="recall" className="gap-1.5"><Recycle className="size-4" /> Recall de Lote</TabsTrigger>
-        </TabsList>
+        <HubTabsList
+          tabs={[
+            { value: 'quarentena', label: 'Quarentena & Bloqueio', icon: ShieldWarning },
+            { value: 'recall', label: 'Recall de Lote', icon: Recycle },
+          ]}
+        />
         <TabsContent value="quarentena" className="space-y-4 mt-4">
           <MoveForm />
           <Panel eyebrow="RETIDO" title="Em quarentena / bloqueado" flush><HeldTable /></Panel>

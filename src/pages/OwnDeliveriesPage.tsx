@@ -5,7 +5,8 @@ import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Tabs, TabsContent } from '@/components/ui/tabs';
+import { HubTabsList } from '@/components/layout/HubTabs';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -58,11 +59,13 @@ export default function OwnDeliveriesPage() {
       />
 
       <Tabs value={abaAtiva} onValueChange={setAbaAtiva}>
-        <TabsList>
-          <TabsTrigger value="orders" className="gap-1.5"><ListChecks className="h-3.5 w-3.5" />Pedidos prontos</TabsTrigger>
-          <TabsTrigger value="routes" className="gap-1.5"><RouteIcon className="h-3.5 w-3.5" />Rotas</TabsTrigger>
-          <TabsTrigger value="fleet" className="gap-1.5"><Truck className="h-3.5 w-3.5" />Frota</TabsTrigger>
-        </TabsList>
+        <HubTabsList
+          tabs={[
+            { value: 'orders', label: 'Pedidos prontos', icon: ListChecks },
+            { value: 'routes', label: 'Rotas', icon: RouteIcon },
+            { value: 'fleet', label: 'Frota', icon: Truck },
+          ]}
+        />
         <TabsContent value="orders" className="mt-4"><OrdersTab /></TabsContent>
         <TabsContent value="routes" className="mt-4"><RoutesTab /></TabsContent>
         <TabsContent value="fleet" className="mt-4"><FleetTab /></TabsContent>

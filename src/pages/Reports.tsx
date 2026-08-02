@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
-import { ShoppingCart, TrendUp as TrendingUp, CurrencyDollar as DollarSign, Percent, Package, Warning as AlertTriangle, Clock, FileText, Download, Funnel as Filter, Calendar, ChartBar as BarChart3, ChartPie as PieChartIcon, MapTrifold as Map, Users, ArrowUpRight, ArrowDownRight, CircleNotch as Loader2, ArrowsClockwise as RefreshCw, FileXls as FileSpreadsheet, Printer, Envelope as Mail, CaretRight as ChevronRight, Pulse as Activity, Stack as Layers, MagnifyingGlassMinus as SearchX } from '@phosphor-icons/react';
+import { ShoppingCart, TrendUp as TrendingUp, CurrencyDollar as DollarSign, Percent, Package, Warning as AlertTriangle, Clock, FileText, Download, Funnel as Filter, Calendar, ChartBar as BarChart3, ChartPie as PieChartIcon, MapTrifold as Map, Users, CircleNotch as Loader2, ArrowsClockwise as RefreshCw, FileXls as FileSpreadsheet, Printer, Envelope as Mail, CaretRight as ChevronRight, Pulse as Activity, Stack as Layers, MagnifyingGlassMinus as SearchX } from '@phosphor-icons/react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsContent } from '@/components/ui/tabs';
+import { HubTabsList } from '@/components/layout/HubTabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { useOrders } from '@/hooks/useOrders';
@@ -261,14 +262,12 @@ export default function Reports() {
       />
 
       <Tabs value={abaUrl} onValueChange={setAbaUrl} className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="dashboard" className="gap-1.5">
-            <BarChart3 className="h-3.5 w-3.5" />Painel
-          </TabsTrigger>
-          <TabsTrigger value="reports" className="gap-1.5">
-            <FileText className="h-3.5 w-3.5" />Relatórios
-          </TabsTrigger>
-        </TabsList>
+        <HubTabsList
+          tabs={[
+            { value: 'dashboard', label: 'Painel', icon: BarChart3 },
+            { value: 'reports', label: 'Relatórios', icon: FileText },
+          ]}
+        />
 
         {/* ========== DASHBOARD TAB ========== */}
         <TabsContent value="dashboard" className="space-y-6">

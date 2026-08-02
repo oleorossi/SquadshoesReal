@@ -13,7 +13,8 @@
 import { useState, useEffect } from 'react';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { useSearchParams } from 'react-router-dom';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Tabs, TabsContent } from '@/components/ui/tabs';
+import { HubTabsList } from '@/components/layout/HubTabs';
 import { Calculator, FileText, Clock } from '@phosphor-icons/react';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import PricingCalculatorPanel from '@/components/financial/PricingCalculatorPanel';
@@ -50,29 +51,13 @@ export default function PricingCalculator() {
       />
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList indicator="none" className="h-auto gap-1 bg-muted/50 p-1 rounded-lg">
-          <TabsTrigger
-            value="manual"
-            className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm px-3 py-1.5 rounded-md"
-          >
-            <Calculator className="h-3.5 w-3.5" />
-            Manual
-          </TabsTrigger>
-          <TabsTrigger
-            value="by-sheet"
-            className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm px-3 py-1.5 rounded-md"
-          >
-            <FileText className="h-3.5 w-3.5" />
-            Por Ficha Técnica
-          </TabsTrigger>
-          <TabsTrigger
-            value="sector"
-            className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm px-3 py-1.5 rounded-md"
-          >
-            <Clock className="h-3.5 w-3.5" />
-            Mão de Obra
-          </TabsTrigger>
-        </TabsList>
+        <HubTabsList
+          tabs={[
+            { value: 'manual', label: 'Manual', icon: Calculator },
+            { value: 'by-sheet', label: 'Por Ficha Técnica', icon: FileText },
+            { value: 'sector', label: 'Mão de Obra', icon: Clock },
+          ]}
+        />
 
         <TabsContent value="manual">
           <PricingCalculatorPanel />

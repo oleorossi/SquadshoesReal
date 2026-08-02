@@ -8,7 +8,8 @@ import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { EmptyState } from '@/components/ui/empty-state';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsContent } from '@/components/ui/tabs';
+import { HubTabsList } from '@/components/layout/HubTabs';
 import { CheckCircle as CheckCircle2, XCircle, ArrowsClockwise as RefreshCw, Database, Stethoscope, Copy, Warning as AlertTriangle, HardDrive, WifiHigh as Wifi, FileCode, CircleNotch as Loader2 } from '@phosphor-icons/react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -432,12 +433,14 @@ export default function SystemDiagnostics() {
       )}
 
       <Tabs value={abaUrl} onValueChange={setAbaUrl} className="w-full">
-        <TabsList>
-          <TabsTrigger value="diagnostics"><Stethoscope className="h-4 w-4 mr-1.5" />Diagnóstico</TabsTrigger>
-          <TabsTrigger value="schema"><Database className="h-4 w-4 mr-1.5" />Schema</TabsTrigger>
-          <TabsTrigger value="migrations"><FileCode className="h-4 w-4 mr-1.5" />Migrations</TabsTrigger>
-          <TabsTrigger value="consumo"><Database className="h-4 w-4 mr-1.5" />Consumo</TabsTrigger>
-        </TabsList>
+        <HubTabsList
+          tabs={[
+            { value: 'diagnostics', label: 'Diagnóstico', icon: Stethoscope },
+            { value: 'schema', label: 'Schema', icon: Database },
+            { value: 'migrations', label: 'Migrations', icon: FileCode },
+            { value: 'consumo', label: 'Consumo', icon: Database },
+          ]}
+        />
 
         {/* DIAGNÓSTICO */}
         <TabsContent value="diagnostics" className="space-y-4">

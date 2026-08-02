@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsContent } from '@/components/ui/tabs';
+import { HubTabsList } from '@/components/layout/HubTabs';
  import { Button } from '@/components/ui/button';
  import { Panel } from '@/components/ui/panel';
  import { EmptyState } from '@/components/ui/empty-state';
@@ -14,7 +15,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Textarea } from '@/components/ui/textarea';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
- import { Truck, Package, Cube as Box, Plus, Calculator, PencilSimple as Pencil, Trash as Trash2, Buildings as Building2, MagnifyingGlass as Search, MapPin, TrendUp as TrendingUp, NavigationArrow as Navigation } from '@phosphor-icons/react';
+ import { Package, Cube as Box, Plus, PencilSimple as Pencil, Trash as Trash2, Buildings as Building2, MagnifyingGlass as Search, MapPin, TrendUp as TrendingUp, NavigationArrow as Navigation } from '@phosphor-icons/react';
 import { OrderTransportCalculator } from '@/components/transport/OrderTransportCalculator';
 import { RouteOptimizerPanel } from '@/components/logistics/RouteOptimizerPanel';
 import { RoutePlanner } from '@/components/logistics/RoutePlanner';
@@ -51,32 +52,16 @@ export default function Transport() {
         />
 
         <Tabs value={currentTab} onValueChange={handleTabChange} className="space-y-4">
-          <TabsList>
-            <TabsTrigger value="capacity" className="gap-2">
-              <Box className="h-4 w-4" />
-              Capacidade do Baú
-            </TabsTrigger>
-            <TabsTrigger value="packaging" className="gap-2">
-              <Package className="h-4 w-4" />
-              Embalagens
-            </TabsTrigger>
-            <TabsTrigger value="carriers" className="gap-2">
-              <Building2 className="h-4 w-4" />
-              Transportadoras
-            </TabsTrigger>
-            <TabsTrigger value="simulator" className="gap-2">
-              <TrendingUp className="h-4 w-4" />
-              Simulador de Pedido
-            </TabsTrigger>
-            <TabsTrigger value="routes" className="gap-2">
-              <Navigation className="h-4 w-4" />
-              Rota de Entrega
-            </TabsTrigger>
-            <TabsTrigger value="route-planner" className="gap-2">
-              <MapPin className="h-4 w-4" />
-              Roteirização
-            </TabsTrigger>
-          </TabsList>
+          <HubTabsList
+            tabs={[
+              { value: 'capacity', label: 'Capacidade do Baú', icon: Box },
+              { value: 'packaging', label: 'Embalagens', icon: Package },
+              { value: 'carriers', label: 'Transportadoras', icon: Building2 },
+              { value: 'simulator', label: 'Simulador de Pedido', icon: TrendingUp },
+              { value: 'routes', label: 'Rota de Entrega', icon: Navigation },
+              { value: 'route-planner', label: 'Roteirização', icon: MapPin },
+            ]}
+          />
 
           <TabsContent value="capacity">
             <CapacityTab perm={perm} />

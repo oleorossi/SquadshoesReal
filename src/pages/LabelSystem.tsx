@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsContent } from '@/components/ui/tabs';
+import { HubTabsList } from '@/components/layout/HubTabs';
 import { Tag, Printer, Gear as Settings2, Sparkle as Sparkles, Cpu, ChartBar as BarChart3, PencilLine as PenLine } from '@phosphor-icons/react';
 import { LabelTemplatesTab } from '@/components/label-system/LabelTemplatesTab';
 import { LabelProductionTab } from '@/components/label-system/LabelProductionTab';
@@ -42,29 +43,17 @@ export default function LabelSystem() {
       />
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="flex-wrap">
-          <TabsTrigger value="production" className="gap-2">
-            <Tag className="h-4 w-4" /> Geração & Impressão
-          </TabsTrigger>
-          <TabsTrigger value="manual" className="gap-2">
-            <PenLine className="h-4 w-4" /> Manual
-          </TabsTrigger>
-          <TabsTrigger value="templates" className="gap-2">
-            <Settings2 className="h-4 w-4" /> Templates
-          </TabsTrigger>
-          <TabsTrigger value="dashboard" className="gap-2">
-            <Printer className="h-4 w-4" /> Fila
-          </TabsTrigger>
-          <TabsTrigger value="printers" className="gap-2">
-            <Cpu className="h-4 w-4" /> Impressoras
-          </TabsTrigger>
-          <TabsTrigger value="optimization" className="gap-2">
-            <Sparkles className="h-4 w-4" /> Otimização
-          </TabsTrigger>
-          <TabsTrigger value="analytics" className="gap-2">
-            <BarChart3 className="h-4 w-4" /> Analytics
-          </TabsTrigger>
-        </TabsList>
+        <HubTabsList
+          tabs={[
+            { value: 'production', label: 'Geração & Impressão', icon: Tag },
+            { value: 'manual', label: 'Manual', icon: PenLine },
+            { value: 'templates', label: 'Templates', icon: Settings2 },
+            { value: 'dashboard', label: 'Fila', icon: Printer },
+            { value: 'printers', label: 'Impressoras', icon: Cpu },
+            { value: 'optimization', label: 'Otimização', icon: Sparkles },
+            { value: 'analytics', label: 'Analytics', icon: BarChart3 },
+          ]}
+        />
 
         <TabsContent value="production">
           <LabelProductionTab />
