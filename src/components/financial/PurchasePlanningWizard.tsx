@@ -19,7 +19,7 @@ import { toast } from 'sonner';
 import { format, addDays, startOfWeek, endOfWeek, isAfter, isBefore } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { normalizeForSearch } from '@/lib/searchUtils';
-import { roundUpToPurchaseMultiple } from '@/lib/purchaseMultiple';
+import { roundUpToPurchaseMultiple, applyPurchaseMultiple } from '@/lib/purchaseMultiple';
 
 const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const fmtQty = (v: number) => v.toLocaleString('pt-BR', { maximumFractionDigits: 2 });
@@ -124,7 +124,12 @@ export default function PurchasePlanningWizard() {
     const moq = Number(prod?.min_order_quantity) || 0;
     let qty = Math.ceil(Math.max(0, deficit));
     if (moq > 1) qty = Math.ceil(qty / moq) * moq;
-    return roundUpToPurchaseMultiple(qty, prod?.purchase_multiple);
+    // Fallback pro múltiplo do GRUPO: desde 02/08/2026 o múltiplo de compra é
+    // cadastrado só em `product_groups` (a aplicação em massa nos itens saiu do
+    // editor de grupo). Ler só `products.purchase_multiple` fazia o
+    // planejamento comprar 187 enquanto a geração de OC — que já usava o
+    // fallback — comprava 200.
+    return applyPurchaseMultiple(qty, prod?.purchase_multiple, prod?.product_groups?.purchase_multiple);
   };
   const [selectedMaterials, setSelectedMaterials] = useState<AggregatedMaterial[]>([]);
   const [creating, setCreating] = useState(false);

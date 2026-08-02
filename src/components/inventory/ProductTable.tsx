@@ -97,7 +97,26 @@ function getBaseName(product: Product): string {
  *  "dá pra fechar o pedido?", e desde 02/08/2026 é o que a lista mostra em
  *  destaque (spec `estoque-cores-e-editores.md` R1.6). */
 function availableQty(product: Product): number {
-  return (Number(product.quantity) || 0) - (Number((product as any).reserved_stock) || 0);
+  return grossQty(product) - (Number((product as any).reserved_stock) || 0);
+}
+
+/**
+ * Saldo BRUTO. Solado não guarda o total em `quantity`: o estoque dele é por
+ * numeração, em `stock_grade` — a própria célula de quantidade já somava a
+ * grade por isso. Ler `quantity` cru aqui fazia um solado com 400 pares na
+ * grade e 120 reservados aparecer como disponível −120, pintando o trilho do
+ * grupo de vermelho e o selo de "Crítico", enquanto a linha logo abaixo exibia
+ * "Disp.: 280".
+ */
+function grossQty(product: Product): number {
+  const grade = (product as any).stock_grade as Record<string, number> | null | undefined;
+  if (product.category?.toLowerCase().includes('solado') && grade) {
+    return Object.entries(grade)
+      // `_size_from`/`_size_to` são metadados de faixa, não pares.
+      .filter(([k]) => !k.startsWith('_'))
+      .reduce((s, [, v]) => s + (Number(v) || 0), 0);
+  }
+  return Number(product.quantity) || 0;
 }
 
 /** Status compara o DISPONÍVEL com o mínimo, não o bruto (R1.6). Sem isso o selo
@@ -141,7 +160,7 @@ function computeGroupStats(items: Product[]): GroupStats {
   let bruto = 0, disponivel = 0, valor = 0, zeradas = 0, emFalta = 0, abaixoMin = 0;
   const materiais = new Set<string>();
   for (const p of items) {
-    const qty = Number(p.quantity) || 0;
+    const qty = grossQty(p);
     const disp = availableQty(p);
     bruto += qty;
     disponivel += disp;
@@ -613,6 +632,15 @@ interface ProductTableProps {
   externalSort?: { key: SortKey; dir: SortDir } | null;
   /** Termo de busca ativo — decide se a linha do material abre sozinha (R1.14). */
   searchTerm?: string;
+  /**
+   * População COMPLETA do estoque, sem os chips de filtro aplicados.
+   *
+   * `products` é o que RENDERIZA; este é o que CONTA. Sem a separação, esconder
+   * as zeradas fazia o selo "N zeradas" ser sempre 0 (ele conta justamente o que
+   * o filtro tirou) e, pior, a edição em massa disparada pela linha operava só
+   * nas cores visíveis — gravando em 12 de 20 sem avisar.
+   */
+  allProducts?: Product[];
 }
 
 /** Uma linha colapsável da lista = um grupo de estoque. É a mesma unidade que o
@@ -625,7 +653,7 @@ type GroupRow = {
   stats: GroupStats;
 };
 
-export function ProductTable({ products, onEdit, onDelete, externalSort, searchTerm }: ProductTableProps) {
+export function ProductTable({ products, onEdit, onDelete, externalSort, searchTerm, allProducts }: ProductTableProps) {
   const { data: groups = [] } = useGroups();
   const { density, isVisible, visibleCount } = useTableView();
   // Material column always shown; +1 for it.
@@ -689,9 +717,11 @@ export function ProductTable({ products, onEdit, onDelete, externalSort, searchT
         (getBaseName(p) || p.name.toUpperCase()) === baseKey &&
         (groupId == null || p.group_id === groupId));
     }
-    if (groupId) return products.filter(p => p.group_id === groupId);
+    // Sem filtro: gravar em massa tem que atingir TODAS as cores do grupo,
+    // inclusive as que o chip de zeradas escondeu.
+    if (groupId) return (allProducts ?? products).filter(p => p.group_id === groupId);
     return [] as Product[];
-  }, [masterVariant, products]);
+  }, [masterVariant, products, allProducts]);
   // Se todas as variantes do grupo aberto sumirem (ex.: excluiu a última), fecha o modal.
   useEffect(() => {
     if (masterVariant && masterVariantProducts.length === 0) setMasterVariant(null);
@@ -774,6 +804,18 @@ export function ProductTable({ products, onEdit, onDelete, externalSort, searchT
     return sortDir === 'desc' ? sorted.reverse() : sorted;
   }, [products, sortKey, sortDir, avgConsumptionMap]);
 
+  /** Todas as cores de cada grupo, ignorando os chips — base dos números da
+   *  linha e do alvo da edição em massa. */
+  const fullByGroup = useMemo(() => {
+    const m = new Map<string | null, Product[]>();
+    for (const p of (allProducts ?? products)) {
+      const k = p.group_id || null;
+      if (!m.has(k)) m.set(k, []);
+      m.get(k)!.push(p);
+    }
+    return m;
+  }, [allProducts, products]);
+
   const grouped = useMemo<GroupRow[]>(() => {
     const source = sortKey ? sortedProducts : products;
     const groupMap = new Map<string | null, Product[]>();
@@ -787,18 +829,17 @@ export function ProductTable({ products, onEdit, onDelete, externalSort, searchT
     groups.forEach(g => {
       const items = groupMap.get(g.id);
       if (items && items.length > 0) {
-        result.push({ groupId: g.id, groupName: g.name, products: items, stats: computeGroupStats(items) });
+        result.push({ groupId: g.id, groupName: g.name, products: items, stats: computeGroupStats(fullByGroup.get(g.id) ?? items) });
       }
     });
     const ungrouped = groupMap.get(null);
     if (ungrouped && ungrouped.length > 0) {
-      result.push({ groupId: null, groupName: 'Sem Grupo', products: ungrouped, stats: computeGroupStats(ungrouped) });
+      result.push({ groupId: null, groupName: 'Sem Grupo', products: ungrouped, stats: computeGroupStats(fullByGroup.get(null) ?? ungrouped) });
     }
     return result;
-  }, [sortedProducts, products, sortKey, groups]);
+  }, [sortedProducts, products, sortKey, groups, fullByGroup]);
 
   const hasGroups = grouped.some(g => g.groupId !== null);
-  const toggle = (key: string) => setOpenGroups(prev => ({ ...prev, [key]: !prev[key] }));
 
   // R1.13/R1.14 — busca que casa o NOME do grupo mantém a linha fechada (todos os
   // itens dele casariam de qualquer jeito). Busca que só casou por cor/SKU abre o
@@ -816,6 +857,11 @@ export function ProductTable({ products, onEdit, onDelete, externalSort, searchT
   }, [searchTerm, grouped]);
 
   const isGroupOpen = (key: string) => openGroups[key] ?? autoOpen.has(key);
+
+  // Parte do estado EFETIVO: grupo aberto pela busca não tem chave em
+  // `openGroups`, então `!prev[key]` dava `!undefined` = true e o primeiro
+  // clique no chevron não fechava nada (nem mudava o aria-expanded).
+  const toggle = (key: string) => setOpenGroups(prev => ({ ...prev, [key]: !(prev[key] ?? autoOpen.has(key)) }));
 
   // When ANY sort is active (header click or external preset), bypass grouping and show a flat sorted list.
   const isFlatSortMode = !!sortKey;
@@ -1015,24 +1061,32 @@ export function ProductTable({ products, onEdit, onDelete, externalSort, searchT
                     {/* R1.16 — ações do CONJUNTO, sempre visíveis. Baixa manual e
                         excluir NÃO existem aqui: só na cor (R1.18). */}
                     <div className="flex items-center gap-1">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-8 gap-1.5 px-2.5"
-                        onClick={() => setMasterVariant({ baseName: groupName, groupId, baseKey: null, tab: 'add' })}
-                      >
-                        <Plus className="h-3.5 w-3.5" />
-                        <span className="hidden md:inline">Cor</span>
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-8 gap-1.5 px-2.5"
-                        onClick={() => setMasterVariant({ baseName: groupName, groupId, baseKey: null, tab: 'group' })}
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                        <span className="hidden md:inline">Editar {contador}</span>
-                      </Button>
+                      {/* Só com grupo: `masterVariantProducts` deriva por
+                          `group_id`, então em "Sem Grupo" o diálogo abriria
+                          vazio e o guard o fecharia no mesmo frame — um
+                          piscar e nada mais. */}
+                      {groupId && (
+                        <>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 gap-1.5 px-2.5"
+                            onClick={() => setMasterVariant({ baseName: groupName, groupId, baseKey: null, tab: 'add' })}
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                            <span className="hidden md:inline">Cor</span>
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 gap-1.5 px-2.5"
+                            onClick={() => setMasterVariant({ baseName: groupName, groupId, baseKey: null, tab: 'group' })}
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                            <span className="hidden md:inline">Editar {contador}</span>
+                          </Button>
+                        </>
+                      )}
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Mais ações do material">

@@ -352,6 +352,9 @@ const BULK_LABELS: Record<BulkField, string> = {
   min_order_quantity: 'Qtd mínima de compra',
 };
 
+/** Valor que representa "limpar este campo" — ver comentário em `dirty`. */
+const LIMPAR = '__none__';
+
 const NUMERIC_BULK_FIELDS = new Set<BulkField>([
   'yield_per_meter', 'conversion_rate', 'lead_time_days', 'unit_price',
   'price_wholesale', 'price_retail', 'min_stock', 'max_stock', 'safety_stock',
@@ -479,6 +482,13 @@ export function MasterVariantDialog({
     min_order_quantity: number | null;
   };
   const [groupForm, setGroupForm] = useState<GroupForm | null>(null);
+  /**
+   * Sentinela de LIMPAR. `null` no form significa "não preencher" e é descartado
+   * do payload — o que tornava impossível escolher "Sem grupo"/"Sem fornecedor":
+   * a escolha virava null, era filtrada fora, e o Select voltava sozinho pro
+   * placeholder. Com o sentinela, limpar é uma intenção explícita que sobrevive
+   * até virar `null` no payload.
+   */
   /** Só o que o usuário mexeu é gravado (R2.6). */
   const [dirty, setDirty] = useState<Set<BulkField>>(new Set());
   const [savingGroup, setSavingGroup] = useState(false);
@@ -685,6 +695,10 @@ export function MasterVariantDialog({
       for (const f of camposAlterados) {
         const valor = (groupForm as any)[f];
         payload[f] = NUMERIC_BULK_FIELDS.has(f) ? safeNum(valor) : valor;
+      }
+      // O sentinela vira NULL de verdade só aqui, na borda do banco.
+      for (const k of ['group_id', 'supplier_id']) {
+        if (payload[k] === LIMPAR) payload[k] = null;
       }
       if (payload.conversion_rate != null) payload.conversion_rate = safeNum(payload.conversion_rate, 1) || 1;
       if (payload.yield_per_meter != null) payload.yield_per_meter = safeNum(payload.yield_per_meter) || null;
@@ -982,20 +996,20 @@ export function MasterVariantDialog({
                           </div>
                           <div>
                             <BulkLabel field="group_id" divergence={divergence}>Grupo de produtos</BulkLabel>
-                            <Select value={groupForm.group_id ?? ''} onValueChange={v => updateGroup('group_id', v === '__none__' ? null : v)}>
+                            <Select value={groupForm.group_id ?? ''} onValueChange={v => updateGroup('group_id', v)}>
                               <SelectTrigger className="mt-1 h-9"><SelectValue placeholder="Manter valor de cada cor" /></SelectTrigger>
                               <SelectContent>
-                                <SelectItem value="__none__">— Sem grupo —</SelectItem>
+                                <SelectItem value={LIMPAR}>— Sem grupo —</SelectItem>
                                 {groups.map((g: any) => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}
                               </SelectContent>
                             </Select>
                           </div>
                           <div>
                             <BulkLabel field="supplier_id" divergence={divergence}>Fornecedor padrão</BulkLabel>
-                            <Select value={groupForm.supplier_id ?? ''} onValueChange={v => updateGroup('supplier_id', v === '__none__' ? null : v)}>
+                            <Select value={groupForm.supplier_id ?? ''} onValueChange={v => updateGroup('supplier_id', v)}>
                               <SelectTrigger className="mt-1 h-9"><SelectValue placeholder="Manter valor de cada cor" /></SelectTrigger>
                               <SelectContent>
-                                <SelectItem value="__none__">— Sem fornecedor —</SelectItem>
+                                <SelectItem value={LIMPAR}>— Sem fornecedor —</SelectItem>
                                 {suppliers.map((s: any) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
                               </SelectContent>
                             </Select>

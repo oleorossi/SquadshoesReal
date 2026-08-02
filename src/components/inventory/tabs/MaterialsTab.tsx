@@ -264,9 +264,15 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
   );
 
   const paginatedProducts = useMemo(() => {
-    let list = rawProducts as any[];
-    if (hideZeradas) list = list.filter(p => (Number(p.quantity) || 0) > 0);
-    if (onlyFalta) list = list.filter(p => (Number(p.quantity) || 0) - (Number(p.reserved_stock) || 0) < 0);
+    const list = rawProducts as any[];
+    // "Só com falta" TEM QUE vencer o "esconder zeradas": falta é reserva sobre
+    // saldo, e das 51 cores em falta a maioria tem saldo 0 — aplicar o esconde
+    // antes esvaziava justamente o que o chip promete mostrar. O contador dizia
+    // 51 e a lista vinha vazia.
+    if (onlyFalta) {
+      return list.filter(p => (Number(p.quantity) || 0) - (Number(p.reserved_stock) || 0) < 0);
+    }
+    if (hideZeradas) return list.filter(p => (Number(p.quantity) || 0) > 0);
     return list;
   }, [rawProducts, hideZeradas, onlyFalta]);
   const totalPages = paginatedData?.totalPages || 1;
@@ -565,6 +571,7 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
       ) : (
         <ProductTable
           products={paginatedProducts as any}
+          allProducts={rawProducts as any}
           searchTerm={debouncedSearch}
           onEdit={openEdit}
           onDelete={handleDelete}
