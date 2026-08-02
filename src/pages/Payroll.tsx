@@ -462,6 +462,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
 
     let tDias = 0, tFichas = 0, tPMed = 0, tPDif = 0, tBruto = 0, tVale = 0, tLiqPar = 0;
     let algumaFichaDerivada = false;
+    let algumaTaxaVariou = false;
     const rowsPorPar = srcPorPar.map((r): RhCell[] => {
       const res = r.result;
       const dias = Number(res.paid_days) || 0;
@@ -469,20 +470,24 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
       const pMed = Number(res.pares_medio) || 0, pDif = Number(res.pares_dificil) || 0;
       const bruto = Number(res.total_proventos) || 0, vale = Number(res.advances_total) || 0;
       if (res.fichas_derivadas) algumaFichaDerivada = true;
+      if (res.taxa_variou) algumaTaxaVariou = true;
       tDias += dias; tFichas += fichas; tPMed += pMed; tPDif += pDif;
       tBruto += bruto; tVale += vale; tLiqPar += Number(res.net_value) || 0;
-      // R$/par MÉDIO efetivo do período: o valor gravado varia por lançamento
-      // (é snapshot), então mostrar "a taxa" seria mentira quando houve reajuste.
-      // Aqui sai o que o período efetivamente pagou por par.
-      const taxaEfetiva = pMed + pDif > 0 ? bruto / (pMed + pDif) : 0;
+      // A taxa vai COLADA nos pares que ela multiplica ("2.364 × 0,80"), e não
+      // numa coluna "R$/par" solta. Duas razões: médio e difícil têm taxas
+      // diferentes (uma coluna só teria de misturar as duas num número que não é
+      // taxa de nenhum dos dois), e assim o conferente refaz a conta na própria
+      // folha — pares × taxa tem de dar a coluna Produção.
+      const marca = res.taxa_variou ? '†' : '';
+      const cel = (pares: number, taxa: number) =>
+        pares > 0 ? `${pares.toLocaleString('pt-BR')} × ${fmt(taxa)}${marca}` : '—';
       return [
         { v: r.name },
         { v: setorOf(r.id) || '—' },
         { v: String(dias), align: 'r' },
         { v: fichas > 0 ? `${fichas}${res.fichas_derivadas ? ' *' : ''}` : '—', align: 'r' },
-        { v: pMed.toLocaleString('pt-BR'), align: 'r' },
-        { v: pDif > 0 ? pDif.toLocaleString('pt-BR') : '—', align: 'r' },
-        { v: taxaEfetiva > 0 ? fmt(taxaEfetiva) : '—', align: 'r' },
+        { v: cel(pMed, Number(res.taxa_medio) || 0), align: 'r' },
+        { v: cel(pDif, Number(res.taxa_dificil) || 0), align: 'r' },
         { v: fmt(bruto), align: 'r' },
         { v: vale > 0 ? `− ${fmt(vale)}` : '—', align: 'r', neg: vale > 0 },
         { v: fmt(Number(res.net_value) || 0), align: 'r', strong: true },
@@ -491,8 +496,9 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
 
     const notas = [
       srcPonto.length > 0 ? 'Faltas e atrasos conforme dias úteis e jornada da escala · H.E. conforme taxa cadastrada.' : '',
-      srcPorPar.length > 0 ? 'Por par: valor de cada lançamento pelo R$/par gravado nele — o relógio de ponto não entra na conta.' : '',
+      srcPorPar.length > 0 ? 'Por par: cada lançamento vale o R$/par gravado nele — o relógio de ponto não entra na conta. Pares × R$/par deve fechar com a coluna Produção.' : '',
       algumaFichaDerivada ? '* Fichas inferidas (lote de 12): o lançamento é anterior ao registro de tamanho. Os PARES, que são a base do pagamento, não dependem disso.' : '',
+      algumaTaxaVariou ? '† O R$/par mudou dentro do período (reajuste): a taxa exibida é a média das gravadas em cada lançamento. A coluna Produção continua exata.' : '',
     ].filter(Boolean).join(' ');
 
     printRhReport({
@@ -536,8 +542,9 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
           note: 'Pares apontados no período, valorados pelo R$/par gravado em cada lançamento. Dias = dias produtivos (com pares lançados), não dias de ponto.',
           headers: [
             { label: 'Funcionário' }, { label: 'Setor' }, { label: 'Dias prod.', align: 'r' },
-            { label: 'Fichas', align: 'r' }, { label: 'Pares méd', align: 'r' }, { label: 'Pares dif', align: 'r' },
-            { label: 'R$/par', align: 'r' }, { label: 'Produção', align: 'r' },
+            { label: 'Fichas', align: 'r' },
+            { label: 'Pares méd × R$', align: 'r' }, { label: 'Pares dif × R$', align: 'r' },
+            { label: 'Produção', align: 'r' },
             { label: 'Adiant.', align: 'r' }, { label: 'Líquido', align: 'r' },
           ],
           rows: rowsPorPar,
@@ -546,9 +553,8 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
             { v: '' },
             { v: String(tDias), align: 'r', strong: true },
             { v: String(tFichas), align: 'r', strong: true },
-            { v: tPMed.toLocaleString('pt-BR'), align: 'r', strong: true },
-            { v: tPDif > 0 ? tPDif.toLocaleString('pt-BR') : '—', align: 'r', strong: true },
-            { v: '', align: 'r' },
+            { v: `${tPMed.toLocaleString('pt-BR')} pares`, align: 'r', strong: true },
+            { v: tPDif > 0 ? `${tPDif.toLocaleString('pt-BR')} pares` : '—', align: 'r', strong: true },
             { v: fmt(tBruto), align: 'r', strong: true },
             { v: `− ${fmt(tVale)}`, align: 'r', neg: true, strong: true },
             { v: fmt(tLiqPar), align: 'r', strong: true },
@@ -736,6 +742,11 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
           producaoDias: prod?.dias || 0,
           producaoFichas: prod?.fichas || 0,
           producaoFichasDerivadas: prod?.fichasDerivadas || false,
+          producaoBrutoMedio: prod?.brutoMedio || 0,
+          producaoBrutoDificil: prod?.brutoDificil || 0,
+          producaoTaxaMedio: prod?.taxaMedio || 0,
+          producaoTaxaDificil: prod?.taxaDificil || 0,
+          producaoTaxaVariou: prod?.taxaVariou || false,
           // HE em R$/h ABSOLUTO por funcionário (spec 2026-07-09) — dia útil/sábado/noturno
           // e domingo/feriado. Falta/atraso passam a usar dias úteis do mês (motor).
           heNormalRate: Number((emp as any).he_normal_rate) || 0,
@@ -1131,8 +1142,13 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
               // espaço delas pra mostrar o que REALMENTE define o pagamento:
               // dias produtivos, pares e o R$/par efetivo do período.
               const prod = porParByEmp.get(r.employee_id);
-              const prodPares = prod ? (Number(prod.pares_medio) || 0) + (Number(prod.pares_dificil) || 0) : 0;
-              const prodTaxa = prodPares > 0 ? (Number(prod.total_proventos) || 0) / prodPares : 0;
+              const prodMed = Number(prod?.pares_medio) || 0;
+              const prodDif = Number(prod?.pares_dificil) || 0;
+              const prodPares = prodMed + prodDif;
+              // Taxa por dificuldade, nunca o bruto rateado: quando há par
+              // difícil, a "média" não é o R$/par de ninguém.
+              const prodTxM = Number(prod?.taxa_medio) || 0;
+              const prodTxD = Number(prod?.taxa_dificil) || 0;
               return (
                 <TableRow key={r.id} className={hasAdvance ? 'hover:bg-muted/30 bg-amber-500/5' : 'hover:bg-muted/30'}>
                   <TableCell className="font-medium">
@@ -1154,12 +1170,18 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
                     <TableCell colSpan={3} className="text-right font-mono text-xs tabular-nums">
                       <span className="text-foreground font-semibold">{Number(prod.paid_days) || 0}</span>
                       <span className="text-muted-foreground"> dias prod. · </span>
-                      <span className="text-foreground font-semibold">{prodPares.toLocaleString('pt-BR')}</span>
-                      <span className="text-muted-foreground"> pares</span>
+                      <span className="text-foreground font-semibold">{prodMed.toLocaleString('pt-BR')}</span>
+                      <span className="text-muted-foreground"> méd × {fmt(prodTxM)}</span>
+                      {prodDif > 0 && (
+                        <>
+                          <span className="text-muted-foreground"> · </span>
+                          <span className="text-foreground font-semibold">{prodDif.toLocaleString('pt-BR')}</span>
+                          <span className="text-muted-foreground"> dif × {fmt(prodTxD)}</span>
+                        </>
+                      )}
                       {(Number(prod.fichas) || 0) > 0 && (
                         <span className="text-muted-foreground"> · {prod.fichas} fichas{prod.fichas_derivadas ? '*' : ''}</span>
                       )}
-                      {prodTaxa > 0 && <span className="text-muted-foreground"> · {fmt(prodTaxa)}/par</span>}
                     </TableCell>
                   ) : (
                     <>
@@ -1383,11 +1405,23 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
             const hp = porParByEmp.get(r.employee_id);
             const hpMed = hp ? Number(hp.pares_medio) || 0 : 0;
             const hpDif = hp ? Number(hp.pares_dificil) || 0 : 0;
-            const hpTaxa = hpMed + hpDif > 0 ? periodBase / (hpMed + hpDif) : 0;
+            // Cada dificuldade tem R$/par PRÓPRIO — usar o bruto de cada uma, e
+            // nunca ratear o bruto total pelo nº de pares: com 100 méd a 0,80 e
+            // 20 dif a 1,00, a taxa "média" (0,833) faz as duas linhas saírem
+            // erradas, mesmo que a soma feche.
+            const hpTxM = hp ? Number(hp.taxa_medio) || 0 : 0;
+            const hpTxD = hp ? Number(hp.taxa_dificil) || 0 : 0;
+            const asterisco = hp?.taxa_variou ? ' *' : '';
             const lines = hp
               ? [
-                  { label: `Pares médios (${hpMed.toLocaleString('pt-BR')})`, value: hpMed * hpTaxa, type: 'p' as const, always: hpMed > 0 },
-                  { label: `Pares difíceis (${hpDif.toLocaleString('pt-BR')})`, value: hpDif * hpTaxa, type: 'p' as const },
+                  {
+                    label: `Pares médios — ${hpMed.toLocaleString('pt-BR')} × ${fmt(hpTxM)}${asterisco}`,
+                    value: Number(hp.bruto_medio) || 0, type: 'p' as const, always: hpMed > 0,
+                  },
+                  {
+                    label: `Pares difíceis — ${hpDif.toLocaleString('pt-BR')} × ${fmt(hpTxD)}${asterisco}`,
+                    value: Number(hp.bruto_dificil) || 0, type: 'p' as const,
+                  },
                   { label: 'Adiantamentos do período', value: r.advances_total || 0, type: 'd' as const, highlight: true },
                 ].filter(l => l.value > 0 || (l as any).always)
               : [
@@ -1413,7 +1447,6 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
                       {' '}<span className="font-mono font-semibold text-foreground">{Number(hp.paid_days) || 0}</span> dias produtivos
                       {' '}· <span className="font-mono font-semibold text-foreground">{(hpMed + hpDif).toLocaleString('pt-BR')}</span> pares
                       {(Number(hp.fichas) || 0) > 0 && <> · <span className="font-mono font-semibold text-foreground">{hp.fichas}</span> fichas{hp.fichas_derivadas ? '*' : ''}</>}
-                      {hpTaxa > 0 && <> · <span className="font-mono font-semibold text-foreground">{fmt(hpTaxa)}</span>/par</>}
                     </p>
                   ) : (
                     <p className="text-muted-foreground flex items-center gap-1 mt-1">
@@ -1443,6 +1476,12 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
                     ))}
                   </TableBody>
                 </Table>
+                {hp?.taxa_variou && (
+                  <p className="text-[11px] text-muted-foreground">
+                    * O R$/par mudou dentro do período (reajuste). O valor exibido é a média das taxas
+                    efetivamente gravadas em cada lançamento — o total continua exato.
+                  </p>
+                )}
                 <div className="flex justify-between border-t pt-3 text-sm">
                   <div>
                     <p className="text-muted-foreground">Bruto</p>

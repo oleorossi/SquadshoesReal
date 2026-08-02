@@ -190,6 +190,11 @@ export function computeComparativoRows(args: ComparativoArgs): ComparativoResult
           producaoDias: prod.dias,
           producaoFichas: prod.fichas,
           producaoFichasDerivadas: prod.fichasDerivadas,
+          producaoBrutoMedio: prod.brutoMedio,
+          producaoBrutoDificil: prod.brutoDificil,
+          producaoTaxaMedio: prod.taxaMedio,
+          producaoTaxaDificil: prod.taxaDificil,
+          producaoTaxaVariou: prod.taxaVariou,
           // HE em R$/h por funcionário — comparativo/holerite bate com a Folha (spec req.15).
           heNormalRate: Number((emp as any).he_normal_rate) || 0,
           heSundayHolidayRate: Number((emp as any).he_sunday_holiday_rate) || 0,
