@@ -490,8 +490,9 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
   const [sharedSpecs, setSharedSpecs] = useState<boolean>(group.shared_specs ?? false);
   // Material base sem cor (EVA, cola): desliga o color_mismatch no consumo/débito.
   const [isColorAgnostic, setIsColorAgnostic] = useState<boolean>(group.is_color_agnostic ?? false);
-  // Abre a edição em massa das cores — porta única para os campos de `products`.
-  const [openBulkColors, setOpenBulkColors] = useState(false);
+  // Aba de abertura do MasterVariantDialog: o link "Editar N cores" cai direto
+  // na edição em massa, que é a porta única dos campos de `products` (R3.2).
+  const [variantsDialogTab, setVariantsDialogTab] = useState<'variants' | 'group' | 'add'>('variants');
   const [saving, setSaving] = useState(false);
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
   const [editProductName, setEditProductName] = useState('');
@@ -1112,23 +1113,44 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                     Dados dos itens
                   </CardTitle>
                 </CardHeader>
-                <CardContent className="flex flex-wrap items-center justify-between gap-3">
-                  <p className="text-xs text-muted-foreground max-w-md">
-                    Custo, localização, estoque mínimo, unidades e fornecedor são de cada
-                    cor. A edição em massa mostra onde as cores têm valor diferente e pede
-                    confirmação antes de sobrescrever.
-                  </p>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="h-9 gap-1.5 shrink-0"
-                    onClick={() => setOpenBulkColors(true)}
-                    disabled={products.length === 0}
-                  >
-                    <Palette className="h-4 w-4" />
-                    Editar {products.length} {products.length === 1 ? 'cor' : 'cores'}
-                  </Button>
+                <CardContent className="space-y-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <p className="text-xs text-muted-foreground max-w-md">
+                      Custo, localização, estoque mínimo, unidades e fornecedor são de cada
+                      cor. A edição em massa mostra onde as cores têm valor diferente e pede
+                      confirmação antes de sobrescrever.
+                    </p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-9 gap-1.5 shrink-0"
+                      onClick={() => { setVariantsDialogTab('group'); setVariantsDialogOpen(true); }}
+                      disabled={products.length === 0}
+                    >
+                      <Palette className="h-4 w-4" />
+                      Editar {products.length} {products.length === 1 ? 'cor' : 'cores'}
+                    </Button>
+                  </div>
+
+                  {/* Múltiplo de compra fica AQUI: a coluna existe em
+                      `product_groups` e é propriedade da embalagem do grupo,
+                      não da cor (R2.11). */}
+                  <div className="space-y-1.5 border-t pt-3">
+                    <Label className="text-xs font-semibold">Múltiplo de Compra (embalagem)</Label>
+                    <NumberInput
+                      value={purchaseMultiple}
+                      onChange={v => setPurchaseMultiple(v || 0)}
+                      min={0}
+                      step="1"
+                      placeholder="Ex: 50"
+                      className="h-9 max-w-[220px]"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Só vende em pacote fechado? Ao gerar a OC, a quantidade arredonda
+                      pra cima (187 → 200 com 50). 0 = não arredonda.
+                    </p>
+                  </div>
                 </CardContent>
               </Card>
 
@@ -1468,8 +1490,9 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
       {variantsDialogOpen && (
         <MasterVariantDialog
           open={variantsDialogOpen}
-          onOpenChange={setVariantsDialogOpen}
+          onOpenChange={(o) => { setVariantsDialogOpen(o); if (!o) setVariantsDialogTab('variants'); }}
           baseName={group.name}
+          initialTab={variantsDialogTab}
           variants={products}
           onEditVariant={() => { /* no-op: o usuário já está no GroupEditDialog */ }}
           onDeleteVariant={(id: string) => { forceDeleteFlow.tryDelete(id); }}

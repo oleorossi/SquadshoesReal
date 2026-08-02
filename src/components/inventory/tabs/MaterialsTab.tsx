@@ -249,7 +249,7 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
     limit: 9999,
   });
   
-  const rawProducts = paginatedData?.items || [];
+  const rawProducts = useMemo(() => paginatedData?.items || [], [paginatedData]);
 
   // Metade da lista é cor zerada (95 de 189 em 02/08/2026). Esconder por padrão
   // é o maior ganho isolado de densidade — mas a contagem fica sempre visível no

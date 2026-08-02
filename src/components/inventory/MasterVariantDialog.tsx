@@ -18,6 +18,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { stripColorFromName } from '@/lib/utils';
 import GroupDialog from '@/components/groups/GroupDialog';
+import { BulkApplyPreview, buildBulkImpact, type BulkImpact } from './BulkApplyPreview';
 
  import { Plus, PencilSimple as Pencil, FloppyDisk as Save, CircleNotch as Loader2, X, Image as ImageIcon, Package, Stack as Layers, Gear as SettingsIcon, ArrowsLeftRight as ArrowRightLeft } from '@phosphor-icons/react';
 import { Product, ProductFormData, CATEGORIES, UNITS, LOCATIONS } from '@/types/inventory';
@@ -143,13 +144,11 @@ function VariantDetailSheet({ open, onOpenChange, product, otherVariants }: {
 
     setSaving(true);
     try {
+      // Trocar a cor NÃO renomeia mais o produto: o nome é a única pista de cor
+      // que o `partial_name` do `resolve_material_product` tem nos itens de cor
+      // vazia, e mexer nele muda quem o PV debita (spec R0.1/R2.1). A cor mora
+      // em `products.color`, que é o que a cascata lê primeiro.
       const updates: any = { ...form };
-      // Sync product name with the new color (keep the part before " - ")
-      const fullName = product.name || '';
-      const dashIdx = fullName.lastIndexOf(' - ');
-      const baseName = dashIdx > 0 ? fullName.slice(0, dashIdx) : fullName;
-      updates.name = `${baseName} - ${newColor}`;
-
       const { error } = await supabase.from('products').update(updates).eq('id', product.id);
       if (error) throw error;
       queryClient.invalidateQueries({ queryKey: ['products'] });
@@ -555,15 +554,10 @@ export function MasterVariantDialog({
 
   /** Quantas cores perdem valor PRÓPRIO em cada campo alterado — é o que a
    *  prévia mostra antes de gravar (R2.8). */
-  const impacto = useMemo(() => {
-    if (!groupForm) return [] as { campo: BulkField; label: string; novo: string; perdem: { cor: string; valor: string }[] }[];
-    return camposAlterados.map(f => {
-      const novo = String((groupForm as any)[f] ?? '');
-      const perdem = variants
-        .map(v => ({ cor: v.color || v.sku, valor: String((v as any)[f] ?? '') }))
-        .filter(x => x.valor !== novo && x.valor !== '');
-      return { campo: f, label: BULK_LABELS[f], novo, perdem };
-    });
+  const impacto = useMemo<BulkImpact[]>(() => {
+    if (!groupForm) return [];
+    const diff = Object.fromEntries(camposAlterados.map(f => [f, (groupForm as any)[f]]));
+    return buildBulkImpact(diff, BULK_LABELS, variants, (v, campo) => (v as any)[campo], v => v.color || v.sku);
   }, [camposAlterados, groupForm, variants]);
 
   const formatCurrency = (value: number) =>
@@ -745,12 +739,12 @@ export function MasterVariantDialog({
     if (duplicate) { toast.error('Já existe uma variante com esta cor'); return; }
     setSavingColorId(v.id);
     try {
-      // Also rename the product so the suffix stays in sync
-      const fullName = v.name || '';
-      const dashIdx = fullName.lastIndexOf(' - ');
-      const baseN = dashIdx > 0 ? fullName.slice(0, dashIdx) : fullName;
+      // Grava SÓ a cor. O rename que existia aqui ("<base> - <cor>") violava o
+      // mesmo invariante do salvar em massa: `products.name` é a pista que o
+      // `partial_name` do `resolve_material_product` usa nos itens de cor vazia,
+      // e o nome não deve mudar como efeito colateral (spec R0.1/R2.1).
       const { error } = await supabase.from('products')
-        .update({ color: newVal, name: `${baseN} - ${newVal}` })
+        .update({ color: newVal })
         .eq('id', v.id);
       if (error) throw error;
       queryClient.invalidateQueries({ queryKey: ['products'] });
@@ -1209,29 +1203,7 @@ export function MasterVariantDialog({
               Os nomes dos produtos não são alterados. Campos não preenchidos ficam como estão.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <div className="max-h-[46vh] overflow-y-auto space-y-3 text-sm">
-            {impacto.map(({ campo, label, novo, perdem }) => (
-              <div key={campo} className="rounded-md border px-3 py-2">
-                <div className="flex items-baseline justify-between gap-2">
-                  <span className="font-medium">{label}</span>
-                  <span className="font-mono text-xs">{novo === '' ? '(vazio)' : novo}</span>
-                </div>
-                {perdem.length > 0 && (
-                  <div className="mt-1.5 text-xs text-warning">
-                    <p className="font-medium">
-                      {perdem.length} cor{perdem.length === 1 ? '' : 'es'} {perdem.length === 1 ? 'perde' : 'perdem'} valor próprio:
-                    </p>
-                    <ul className="mt-0.5 space-y-0.5 text-muted-foreground">
-                      {perdem.slice(0, 6).map(x => (
-                        <li key={x.cor}>• {x.cor}: <span className="font-mono">{x.valor}</span> → <span className="font-mono">{novo}</span></li>
-                      ))}
-                      {perdem.length > 6 && <li>• … e mais {perdem.length - 6}</li>}
-                    </ul>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
+          <BulkApplyPreview impacto={impacto} />
           <AlertDialogFooter>
             <AlertDialogCancel disabled={savingGroup}>Cancelar</AlertDialogCancel>
             <AlertDialogAction onClick={(e) => { e.preventDefault(); void doSaveGroupForm(); }} disabled={savingGroup}>

@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { stripColorFromName } from '@/lib/utils';
+import { stripColorFromName, cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
@@ -25,6 +25,7 @@ import { Badge } from '@/components/ui/badge';
 import { Product, ProductFormData, UNITS, UNIT_LABELS, LOCATIONS } from '@/types/inventory';
 import { CONVERSION_TEMPLATES, suggestConversionRate, effectiveConversionFactor, effectiveConversionFactorStrict, describeConversion, needsWidthForConversion, purchasePriceToUnitPrice } from '@/lib/purchaseConversion';
 import { PROPAGABLE_LABELS, computePropagableDiff } from '@/hooks/useVariantPropagation';
+import { BulkApplyPreview, buildBulkImpact } from './BulkApplyPreview';
 import { sectorOfGroup, sectorLabel, SECTOR_OPTIONS } from '@/lib/categoryFromGroup';
 import { useGroups } from '@/hooks/useGroups';
 import { useSuppliers } from '@/hooks/useSuppliers';
@@ -32,7 +33,7 @@ import { useProducts } from '@/hooks/useProducts';
 import { useComponentSheets, useAddComponentSheet, useUpdateComponentSheet } from '@/hooks/useComponentSheets';
 import { NumberInput } from '@/components/ui/number-input';
 import { toast } from 'sonner';
-import { X, Stack as Layers, ArrowsLeftRight as ArrowRightLeft, Footprints, Cube as Box, CircleNotch as Loader2 } from '@phosphor-icons/react';
+import { X, Stack as Layers, ArrowsLeftRight as ArrowRightLeft, Footprints, Cube as Box, CircleNotch as Loader2, CaretDown } from '@phosphor-icons/react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import React from 'react';
 import { SoleSizeConjugationsEditor } from './SoleSizeConjugationsEditor';
@@ -101,6 +102,44 @@ const emptyForm: ProductFormData = {
 // heel_height (próprios da variante).
 // PROPAGABLE_FIELDS / PROPAGABLE_LABELS / computePropagableDiff foram movidos para
 // a fonte única src/hooks/useVariantPropagation.ts (importados acima).
+
+/**
+ * Seção do formulário de item. Um scroll só: o que se usa sempre nasce aberto,
+ * o resto vem fechado com o valor atual no cabeçalho — pra que o dado seja
+ * legível sem precisar abrir (spec `estoque-cores-e-editores.md` R4.1/R4.3).
+ *
+ * `forceOpen` atende o R4.4: seção com campo inválido abre sozinha, senão o
+ * erro ficaria escondido atrás de um cabeçalho fechado.
+ */
+function FormSection({
+  title, summary, defaultOpen = false, forceOpen = false, children,
+}: {
+  title: string;
+  summary?: React.ReactNode;
+  defaultOpen?: boolean;
+  forceOpen?: boolean;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  const aberto = open || forceOpen;
+  return (
+    <section className="rounded-lg border border-border/60 bg-card overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        aria-expanded={aberto}
+        className="w-full flex items-center gap-2 px-3 py-2.5 text-left hover:bg-muted/40 transition-colors"
+      >
+        <CaretDown className={cn('h-3.5 w-3.5 text-muted-foreground transition-transform', !aberto && '-rotate-90')} />
+        <span className="text-xs font-semibold uppercase tracking-wide">{title}</span>
+        {!aberto && summary && (
+          <span className="ml-auto text-xs text-muted-foreground font-mono truncate max-w-[55%]">{summary}</span>
+        )}
+      </button>
+      {aberto && <div className="px-3 pb-3 pt-1">{children}</div>}
+    </section>
+  );
+}
 
 function getBaseName(name: string): string {
   const colonIdx = name.lastIndexOf(':');
@@ -227,6 +266,30 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
   const isCabedal = form.category === 'Cabedal';
   const hasPlate = isPalmilha || isForro || isCabedal;
   const hasGrade = isSolado;
+  /** Dimensões vindas de `product_groups` — fonte única desde 02/08/2026 (R3.3).
+   *  O item só exibe; divergência com o valor próprio dele fica marcada. */
+  const dimensoesDoGrupo = useMemo(() => {
+    const g: any = groups.find(x => x.id === form.group_id);
+    if (!g) return null;
+    return {
+      nome: g.name as string,
+      length: Number(g.dimensions_length) || 0,
+      width: Number(g.dimensions_width) || 0,
+      thickness: Number(g.dimensions_thickness) || 0,
+      unit: (g.dimensions_unit || 'mm') as string,
+    };
+  }, [groups, form.group_id]);
+
+  // Invariante do CLAUDE.md: `purchase_unit == unit` ⇒ `conversion_rate = 1`.
+  // O campo já fica escondido nesse caso, mas escondê-lo não zerava um fator
+  // antigo — o valor herdado continuava no payload e distorcia a entrada de NF (R4.6).
+  useEffect(() => {
+    if (form.purchase_unit && form.purchase_unit === form.unit && Number(form.conversion_rate) !== 1) {
+      update('conversion_rate', 1);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.purchase_unit, form.unit]);
+
   const [plateLength, setPlateLength] = useState(0);
   const [plateWidth, setPlateWidth] = useState(0);
   const [plateThickness, setPlateThickness] = useState(0);
@@ -1133,7 +1196,9 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
                 inteira (sm:col-span-2) pra acomodar textos longos. SKU/Grupo lado-a-lado;
                 Fornecedor span 2 também. Removidos: "Item Padrão de Solado", "Cor"
                 e "Rendimento Técnico" — viram parte de outros fluxos. */}
-           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+            <div className="space-y-3 mt-4">
+            <FormSection title="Identidade" defaultOpen forceOpen={attempted && (errors.name || errors.sku || errors.color)}>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
              <div className="sm:col-span-2">
               <Label htmlFor="name" className={attempted && errors.name ? 'text-destructive' : ''}>Nome *</Label>
               <Input
@@ -1389,6 +1454,10 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
               </Dialog>
             )}
 
+              </div>
+            </FormSection>
+            <FormSection title="Solado" forceOpen={isSolado} defaultOpen={isSolado}>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {isSolado && (
               <div className="sm:col-span-2">
                 <Label>Cor do Solado</Label>
@@ -1514,57 +1583,55 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
               </div>
             )}
 
+              </div>
+            </FormSection>
+            <FormSection title="Dimensões" summary={`${form.dimensions_width || 0} ${form.dimensions_unit || 'mm'}`}>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* R4.5 — dimensão passou a ser cadastrada SÓ no grupo de estoque.
+                Aqui ela aparece em leitura: duas portas gravando o mesmo conceito
+                foi o que produziu 1370 no grupo × 1000 nos itens da napa. */}
             <div className="sm:col-span-2 p-3 rounded-lg border bg-muted/30">
-              <Label className="text-sm font-semibold">Dimensões do Material</Label>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-2">
-                <div>
-                  <Label className="text-xs text-muted-foreground">Altura</Label>
-                  <NumberInput
-                    value={plateLength}
-                    onChange={setPlateLength}
-                    min={0}
-                    step="0.1"
-                    className="mt-1 h-9"
-                    placeholder="0"
-                  />
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <Label className="text-sm font-semibold">Dimensões do Material</Label>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Vêm do grupo de estoque. A largura é o que converte dm² em metro.
+                  </p>
                 </div>
-                <div>
-                  <Label className="text-xs text-muted-foreground">Largura</Label>
-                  <NumberInput
-                    value={plateWidth}
-                    onChange={setPlateWidth}
-                    min={0}
-                    step="0.1"
-                    className="mt-1 h-9"
-                    placeholder="0"
-                  />
-                </div>
-                <div>
-                  <Label className="text-xs text-muted-foreground">Espessura</Label>
-                  <NumberInput
-                    value={plateThickness}
-                    onChange={setPlateThickness}
-                    min={0}
-                    step="0.01"
-                    className="mt-1 h-9"
-                    placeholder="0"
-                  />
-                </div>
+                {dimensoesDoGrupo && (
+                  <span className="text-xs text-muted-foreground shrink-0">
+                    grupo <span className="font-medium text-foreground">{dimensoesDoGrupo.nome}</span>
+                  </span>
+                )}
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3">
+                {([
+                  ['Altura', dimensoesDoGrupo?.length, plateLength],
+                  ['Largura', dimensoesDoGrupo?.width, plateWidth],
+                  ['Espessura', dimensoesDoGrupo?.thickness, plateThickness],
+                ] as [string, number | undefined, number][]).map(([rotulo, doGrupo, doItem]) => {
+                  const valor = doGrupo ?? 0;
+                  const diverge = doItem > 0 && doGrupo != null && doItem !== doGrupo;
+                  return (
+                    <div key={rotulo}>
+                      <Label className="text-xs text-muted-foreground">{rotulo}</Label>
+                      <div className="mt-1 h-9 flex items-center gap-1.5 rounded-md border bg-background px-3">
+                        <span className="font-mono text-sm tabular-nums">{valor.toLocaleString('pt-BR')}</span>
+                        <span className="text-xs text-muted-foreground">{dimensoesDoGrupo?.unit || plateUnit}</span>
+                      </div>
+                      {diverge && (
+                        <p className="text-[11px] text-warning mt-0.5">item tem {doItem.toLocaleString('pt-BR')}</p>
+                      )}
+                    </div>
+                  );
+                })}
                 <div>
                   <Label className="text-xs text-muted-foreground">Unidade</Label>
-                  <Select value={plateUnit} onValueChange={setPlateUnit}>
-                    <SelectTrigger className="mt-1 h-9"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="mm">mm</SelectItem>
-                      <SelectItem value="cm">cm</SelectItem>
-                      <SelectItem value="m">m</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <div className="mt-1 h-9 flex items-center rounded-md border bg-background px-3">
+                    <span className="font-mono text-sm">{dimensoesDoGrupo?.unit || plateUnit}</span>
+                  </div>
                 </div>
               </div>
-              <p className="text-xs text-muted-foreground mt-2">
-                Dimensões da placa, rolo ou folha do material.
-              </p>
             </div>
 
             {isSolado && (
@@ -1584,6 +1651,10 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
             {/* "Rendimento Técnico (dm²/par por numeração)" removido em 2026-05
                 — agora vive em outra tela específica de consumo. */}
 
+              </div>
+            </FormSection>
+            <FormSection title="Unidades e conversão" summary={`${form.unit || '—'} · compra ${form.purchase_unit || form.unit || '—'} · ${form.conversion_rate ?? 1}×`}>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="sm:col-span-2 p-3 rounded-lg border bg-muted/30 space-y-3">
               <div className="flex items-center justify-between gap-2 flex-wrap">
                 <Label className="text-sm font-semibold">Unidades de Medida</Label>
@@ -1745,6 +1816,10 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
                 </>
               )}
             </div>
+              </div>
+            </FormSection>
+            <FormSection title="Estoque" defaultOpen>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {!hasGrade && (
               <div>
                 <Label htmlFor="quantity">Quantidade Atual</Label>
@@ -1788,6 +1863,10 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
                 e Segurança duplicava conceitualmente o Mínimo no olhar do
                 operador. As colunas continuam no DB (default 0) — lógica de
                 MRP/projeção/try_reserve segue funcionando. */}
+              </div>
+            </FormSection>
+            <FormSection title="Custo" defaultOpen>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {(() => {
               const selectedGroup = groups.find(g => g.name === form.category);
               const hasGroupPrice = selectedGroup && selectedGroup.package_price > 0 && selectedGroup.package_weight_kg > 0;
@@ -1874,6 +1953,10 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
                 </div>
               );
             })()}
+              </div>
+            </FormSection>
+            <FormSection title="Avançado" summary={`${form.is_chemical ? 'químico · ' : ''}${form.active ? 'ativo' : 'inativo'}`}>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <Label>Lead Time Fornecedor (dias)</Label>
               <NumberInput value={form.supplier_lead_time_days ?? 10} onChange={v => update('supplier_lead_time_days', v)} min={0} step="1" className="mt-1" placeholder="10" />
@@ -1916,6 +1999,8 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
                 Ao ativar, este item (e todo o grupo) será adicionado automaticamente à lista de Fichas de Componentes.
               </p>
             )}
+              </div>
+            </FormSection>
           </div>
             </TabsContent>
 
@@ -2017,21 +2102,17 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
                 </p>
                 {propagationPrompt && (
                   <>
-                    <div className="rounded-md border bg-muted/30 p-2.5">
-                      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">
-                        Campos alterados
-                      </p>
-                      <ul className="text-xs space-y-0.5">
-                        {Object.entries(propagationPrompt.diff).map(([key, val]) => (
-                          <li key={key} className="flex justify-between gap-2">
-                            <span className="text-muted-foreground">
-                              {PROPAGABLE_LABELS[key] || key}:
-                            </span>
-                            <span className="font-mono">{String(val ?? '—')}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
+                    {/* Mesma prévia da edição em massa (R4.8): além do valor
+                        novo, nomeia a cor que perde valor próprio. */}
+                    <BulkApplyPreview
+                      impacto={buildBulkImpact(
+                        propagationPrompt.diff,
+                        PROPAGABLE_LABELS,
+                        propagationPrompt.siblings,
+                        (irma: any, campo) => irma[campo],
+                        (irma: any) => irma.color || irma.name,
+                      )}
+                    />
                     <div className="rounded-md border bg-muted/30 p-2.5">
                       <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">
                         Variações que serão atualizadas
