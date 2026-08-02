@@ -82,6 +82,16 @@ BEGIN
     RAISE EXCEPTION 'calculate_order_cost_item não existe — abortando';
   END IF;
 
+  -- IDEMPOTÊNCIA: numa segunda execução o texto antigo já não existe (virou
+  -- v_fix), então a checagem literal abaixo abortaria. Como este projeto aplica
+  -- migration via MCP — que grava carimbo próprio e faz o `db push` reexecutar
+  -- o arquivo (ver CLAUDE.md) — reexecutar é o caso ESPERADO, e abortar
+  -- derrubaria o job inteiro do supabase-migrate.yml.
+  IF position(v_fix in v_def) > 0 THEN
+    RAISE NOTICE 'calculate_order_cost_item: correção já aplicada — nada a fazer';
+    RETURN;
+  END IF;
+
   IF position(v_old in v_def) = 0 THEN
     RAISE EXCEPTION
       'A leitura do snapshot não bateu literalmente — a função mudou desde 03/08/2026. Reveja à mão.';
@@ -139,11 +149,21 @@ BEGIN
     FROM public.order_costs oc
     JOIN public.sale_orders so ON so.id = oc.sale_order_id
    WHERE oc.breakdown ->> 'consumption_source' = 'snapshot'
+     -- Existir snapshot desatualizado NÃO basta: depois de um re-freeze o item
+     -- tem legitimamente um desatualizado e um válido, e a função corrigida —
+     -- que ordena por frozen_at DESC entre os `outdated_at IS NULL` — usou o
+     -- válido. Só é problema quando NÃO sobrou nenhum válido, aí o custo de
+     -- fato só pode ter vindo do desatualizado.
      AND EXISTS (
        SELECT 1 FROM public.technical_sheet_snapshots s
         WHERE s.sale_order_id = oc.sale_order_id
           AND (s.sale_order_item_id IS NOT DISTINCT FROM oc.sale_order_item_id)
           AND s.outdated_at IS NOT NULL)
+     AND NOT EXISTS (
+       SELECT 1 FROM public.technical_sheet_snapshots s
+        WHERE s.sale_order_id = oc.sale_order_id
+          AND (s.sale_order_item_id IS NOT DISTINCT FROM oc.sale_order_item_id)
+          AND s.outdated_at IS NULL)
   HAVING count(*) > 0;
 
   -- 3. Linha repetida na ficha (ver aviso acima sobre o agrupamento estreito).
