@@ -148,3 +148,54 @@ describe('fichas', () => {
     expect(agg.fichasDerivadas).toBe(true);
   });
 });
+
+// ── Bruto separado por dificuldade (02/08/2026) ──────────────────────────────
+// Médio e difícil pagam R$/par diferentes. Ratear o bruto total pelo nº de pares
+// produz uma taxa que não é a de nenhum dos dois — e faz cada linha do holerite
+// sair errada, mesmo com a soma fechando.
+describe('bruto e taxa por dificuldade', () => {
+  it('separa o bruto e devolve a taxa REAL de cada dificuldade', () => {
+    const agg = sumProducaoRows([
+      row({ detalhe: [{ tamanho: 12, medio: 100, dificil: 20 }], valor_par_medio: 0.8, valor_par_dificil: 1 }),
+    ]);
+    expect(agg.brutoMedio).toBeCloseTo(80, 5);
+    expect(agg.brutoDificil).toBeCloseTo(20, 5);
+    expect(agg.bruto).toBeCloseTo(100, 5);
+    expect(agg.taxaMedio).toBeCloseTo(0.8, 5);
+    expect(agg.taxaDificil).toBeCloseTo(1, 5);
+    // A média ponderada (0,8333) NÃO é a taxa de nenhuma das duas.
+    expect(agg.bruto / agg.pares).toBeCloseTo(0.8333, 3);
+    expect(agg.taxaMedio).not.toBeCloseTo(agg.bruto / agg.pares, 3);
+    expect(agg.taxaVariou).toBe(false);
+  });
+
+  it('reajuste no meio do período: taxa vira média e taxaVariou avisa', () => {
+    const agg = sumProducaoRows([
+      row({ dia: '2026-07-01', detalhe: [{ tamanho: 12, medio: 100, dificil: 0 }], valor_par_medio: 0.8 }),
+      row({ dia: '2026-07-02', detalhe: [{ tamanho: 12, medio: 100, dificil: 0 }], valor_par_medio: 1.0 }),
+    ]);
+    expect(agg.brutoMedio).toBeCloseTo(180, 5);
+    expect(agg.taxaMedio).toBeCloseTo(0.9, 5);  // média das duas gravadas
+    expect(agg.taxaVariou).toBe(true);
+    // O TOTAL continua exato mesmo com a taxa exibida sendo média.
+    expect(agg.bruto).toBeCloseTo(180, 5);
+  });
+
+  it('taxa igual repetida em vários lançamentos NÃO conta como reajuste', () => {
+    const agg = sumProducaoRows([
+      row({ dia: '2026-07-01', detalhe: [{ tamanho: 12, medio: 12, dificil: 0 }], valor_par_medio: 0.8 }),
+      row({ dia: '2026-07-02', detalhe: [{ tamanho: 12, medio: 24, dificil: 0 }], valor_par_medio: 0.8 }),
+    ]);
+    expect(agg.taxaVariou).toBe(false);
+    expect(agg.taxaMedio).toBeCloseTo(0.8, 5);
+  });
+
+  it('dificuldade sem par não define taxa nem dispara o aviso', () => {
+    const agg = sumProducaoRows([
+      row({ detalhe: [{ tamanho: 12, medio: 12, dificil: 0 }], valor_par_medio: 0.8, valor_par_dificil: 1 }),
+    ]);
+    expect(agg.taxaDificil).toBe(0);
+    expect(agg.brutoDificil).toBe(0);
+    expect(agg.taxaVariou).toBe(false);
+  });
+});

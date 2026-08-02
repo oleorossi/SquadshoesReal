@@ -34,6 +34,21 @@ export interface ProducaoAgg {
   pares: number;
   /** R$ bruto = Σ (paresMedio×valor_par_medio + paresDificil×valor_par_dificil) por linha. */
   bruto: number;
+  /** Bruto SEPARADO por dificuldade. Existe pra ninguém precisar de uma taxa
+   *  "média" do período: médio e difícil pagam valores diferentes, então
+   *  `bruto ÷ pares` devolve um número que não é a taxa de nenhum dos dois
+   *  (100 méd a 0,80 + 20 dif a 1,00 → 0,833, que não existe em lugar nenhum).
+   *  Com o bruto separado, cada linha do holerite fecha com a sua própria taxa. */
+  brutoMedio: number;
+  brutoDificil: number;
+  /** Taxa EFETIVA por dificuldade = brutoX ÷ paresX. Com uma única taxa no
+   *  período (o caso normal) é exatamente o R$/par gravado. Só vira média
+   *  ponderada se houve reajuste no meio do período — e aí `taxaVariou` avisa. */
+  taxaMedio: number;
+  taxaDificil: number;
+  /** true quando o período usou MAIS DE UM R$/par para a mesma dificuldade
+   *  (reajuste no meio). Aí a taxa exibida é média e o relatório marca. */
+  taxaVariou: boolean;
   /** DIAS PRODUTIVOS: dias distintos em que a pessoa lançou pares (> 0). É o
    *  "quantos dias trabalhou" de quem é regime por par — não é dia útil da escala
    *  nem dia com batida de ponto (ver CONTEXT.md). Linha sem `dia` não conta. */
@@ -109,12 +124,17 @@ export function fichasOfRow(f: FichaMontadorRow): { fichas: number; derivada: bo
 export function sumProducaoRows(rows: FichaMontadorRow[]): ProducaoAgg {
   const agg: ProducaoAgg = {
     paresMedio: 0, paresDificil: 0, pares: 0, bruto: 0,
+    brutoMedio: 0, brutoDificil: 0, taxaMedio: 0, taxaDificil: 0, taxaVariou: false,
     dias: 0, fichas: 0, fichasDerivadas: false,
   };
   // Dias PRODUTIVOS por data distinta: duas linhas no mesmo dia (ex.: setores
   // diferentes) contam UM dia. Sem o Set, quem lança montagem e solagem no mesmo
   // dia apareceria com o dobro de dias trabalhados na folha.
   const dias = new Set<string>();
+  // Taxas distintas efetivamente usadas — só conta a que valorou par de verdade
+  // (linha sem par daquela dificuldade não define taxa nenhuma).
+  const taxasM = new Set<number>();
+  const taxasD = new Set<number>();
   for (const f of rows) {
     if (!isChamadaRow(f)) continue;
     const { medio, dificil } = paresDiffOfRow(f);
@@ -122,12 +142,19 @@ export function sumProducaoRows(rows: FichaMontadorRow[]): ProducaoAgg {
     agg.paresMedio += medio;
     agg.paresDificil += dificil;
     agg.pares += medio + dificil;
-    agg.bruto += medio * vm + dificil * vd;
+    agg.brutoMedio += medio * vm;
+    agg.brutoDificil += dificil * vd;
+    if (medio > 0) taxasM.add(vm);
+    if (dificil > 0) taxasD.add(vd);
     const fi = fichasOfRow(f);
     agg.fichas += fi.fichas;
     if (fi.derivada) agg.fichasDerivadas = true;
     if (f.dia && medio + dificil > 0) dias.add(String(f.dia));
   }
+  agg.bruto = agg.brutoMedio + agg.brutoDificil;
+  agg.taxaMedio = agg.paresMedio > 0 ? agg.brutoMedio / agg.paresMedio : 0;
+  agg.taxaDificil = agg.paresDificil > 0 ? agg.brutoDificil / agg.paresDificil : 0;
+  agg.taxaVariou = taxasM.size > 1 || taxasD.size > 1;
   agg.dias = dias.size;
   return agg;
 }

@@ -189,6 +189,16 @@ export interface SalaryPayrollResult {
   /** Pares valorados (só producao): base do bruto = pares × R$/par snapshot. */
   pares_medio?: number;
   pares_dificil?: number;
+  /** Bruto SEPARADO por dificuldade. Holerite e relatório usam isto em vez de
+   *  ratear o bruto total: médio e difícil pagam R$/par diferentes, então
+   *  `bruto ÷ pares` não é a taxa de nenhum dos dois. */
+  bruto_medio?: number;
+  bruto_dificil?: number;
+  /** R$/par efetivo por dificuldade. Com uma taxa só no período (o normal), é o
+   *  próprio valor gravado; `taxa_variou` marca quando houve reajuste no meio. */
+  taxa_medio?: number;
+  taxa_dificil?: number;
+  taxa_variou?: boolean;
   /** Fichas (lotes de 12/15/18) do período — só producao. Medida de RITMO; o
    *  pagamento é por par. `fichas_derivadas` = alguma linha não tinha detalhe e
    *  o lote foi inferido como 12 (o relatório marca com asterisco). */
@@ -533,6 +543,12 @@ export interface PeriodFolhaInput {
   producaoBruto?: number;
   producaoParesMedio?: number;
   producaoParesDificil?: number;
+  /** Bruto separado por dificuldade + taxas efetivas (ver ProducaoAgg). */
+  producaoBrutoMedio?: number;
+  producaoBrutoDificil?: number;
+  producaoTaxaMedio?: number;
+  producaoTaxaDificil?: number;
+  producaoTaxaVariou?: boolean;
   /** DIAS PRODUTIVOS do período (dias distintos com pares lançados). É o
    *  "dias trabalhados" de quem é por par — substitui worked_days, que mede
    *  presença no relógio e não se aplica a este regime. */
@@ -675,6 +691,11 @@ export function computePeriodFolha(inp: PeriodFolhaInput): SalaryPayrollResult {
       he_normal_minutes: 0, he_holiday_minutes: 0, he_rate_missing: false, he_value: 0, pending_days: 0,
       pares_medio: Number(inp.producaoParesMedio) || 0,
       pares_dificil: Number(inp.producaoParesDificil) || 0,
+      bruto_medio: round2(Number(inp.producaoBrutoMedio) || 0),
+      bruto_dificil: round2(Number(inp.producaoBrutoDificil) || 0),
+      taxa_medio: Number(inp.producaoTaxaMedio) || 0,
+      taxa_dificil: Number(inp.producaoTaxaDificil) || 0,
+      taxa_variou: !!inp.producaoTaxaVariou,
       fichas: Number(inp.producaoFichas) || 0,
       fichas_derivadas: !!inp.producaoFichasDerivadas,
       period_base: bruto, total_proventos: bruto, total_descontos: adv,
