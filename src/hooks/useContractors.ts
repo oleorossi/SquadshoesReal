@@ -82,6 +82,16 @@ export interface ServiceOrder {
   source_sale_order_item_id?: string | null;
   source_terceirizacao_id?: string | null;
   source_item_key?: string | null;
+  /**
+   * Itens do PV que esta OS cobre (migration 20261103120000). Delas derivam as
+   * ORDENS DE PRODUÇÃO da OS, resolvidas na leitura via `orders.sale_order_item_id`
+   * — ver `src/lib/serviceOrderOps.ts`.
+   *
+   * `null`/ausente = OS sem registro (anterior à migration ou criada fora do
+   * atalho "Gerar OS" do PV) → os consumidores caem em todas as OPs do pedido.
+   * Array vazio é diferente: é uma seleção vazia gravada de propósito.
+   */
+  selected_sale_order_item_ids?: string[] | null;
   payment_due_date?: string | null;
   is_avulsa?: boolean | null;
   /** OS dividida entre prestadores — paga por RECEBIMENTO, não pelo fluxo normal. */

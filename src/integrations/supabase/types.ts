@@ -17928,6 +17928,7 @@ export type Database = {
           sale_order_id: string | null
           search_norm: string | null
           sector: string | null
+          selected_sale_order_item_ids: string[] | null
           service_date: string
           service_time: string | null
           signed_photo_url: string | null
@@ -17981,6 +17982,7 @@ export type Database = {
           sale_order_id?: string | null
           search_norm?: string | null
           sector?: string | null
+          selected_sale_order_item_ids?: string[] | null
           service_date?: string
           service_time?: string | null
           signed_photo_url?: string | null
@@ -18034,6 +18036,7 @@ export type Database = {
           sale_order_id?: string | null
           search_norm?: string | null
           sector?: string | null
+          selected_sale_order_item_ids?: string[] | null
           service_date?: string
           service_time?: string | null
           signed_photo_url?: string | null

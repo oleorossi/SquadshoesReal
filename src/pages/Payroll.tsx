@@ -294,14 +294,33 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
   const bundleEmps = useMemo(() => runs.map(r => {
     const emp = employeeMap.get(r.employee_id);
     const crow = comparativo.rows.find(cr => cr.id === r.employee_id) as any;
+    // Regime por par: o bundle recebe a produção junto do run financeiro. Sem
+    // isso, o holerite IMPRESSO descrevia o bruto como "Salário base" e exibia
+    // "trabalhado 0h · valor-hora R$ 0,00" — o mesmo defeito que a tela já não
+    // tem. O bruto separado por dificuldade vem do comparativo (mesma janela
+    // dos runs), não de rateio.
+    const pp = porParByEmp.get(r.employee_id);
     return {
       id: r.employee_id,
       name: emp?.name || (r as any).employee_name || '—',
       role: (emp as any)?.role, department: (emp as any)?.department,
-      run: r as any,
+      run: (pp ? {
+        ...r,
+        por_par: true,
+        dias_produtivos: Number(pp.paid_days) || 0,
+        fichas: Number(pp.fichas) || 0,
+        fichas_derivadas: !!pp.fichas_derivadas,
+        pares_medio: Number(pp.pares_medio) || 0,
+        pares_dificil: Number(pp.pares_dificil) || 0,
+        bruto_medio: Number(pp.bruto_medio) || 0,
+        bruto_dificil: Number(pp.bruto_dificil) || 0,
+        taxa_medio: Number(pp.taxa_medio) || 0,
+        taxa_dificil: Number(pp.taxa_dificil) || 0,
+        taxa_variou: !!pp.taxa_variou,
+      } : r) as any,
       days: (crow?.printData?.days || []) as any[],
     };
-  }), [runs, employeeMap, comparativo.rows]);
+  }), [runs, employeeMap, comparativo.rows, porParByEmp]);
 
   // Espelho relógio de ponto: registro BRUTO das batidas importadas, agrupado por
   // matrícula (employee_external_id). Independe da folha calculada — usa direto o
@@ -595,7 +614,12 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
       company: { name: (typeof window !== 'undefined' && (window as any).COMPANY_NAME) || 'Empresa' },
       period: compPeriod,
       days,
-      monthlySalary: Number((emp as any).salary) || 0,
+      // Por par: NÃO alimentar o espelho com o salário do cadastro. O espelho usa
+      // salário÷220×1,5 pra estimar o "Valor HE" — e quem é pago por par não
+      // recebe hora extra nenhuma. Com o salário preenchido, o documento LEGAL
+      // exibia um valor de HE que não será pago. Sem ele, o campo sai "—" e o
+      // espelho fica sendo o que deve ser aqui: registro de presença.
+      monthlySalary: porParByEmp.has(empId) ? 0 : Number((emp as any).salary) || 0,
     });
   };
 

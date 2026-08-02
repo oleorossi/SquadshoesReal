@@ -439,9 +439,10 @@ export default function FichaMontadoresPage() {
   const [loading, setLoading] = useState(false);
 
   /** Intervalo a buscar = união do que TODAS as abas podem mostrar (dia da
-   *  chamada, semana ancorada e período dos relatórios). Uma folga de 1 dia em
-   *  cada ponta evita que a navegação por dia/semana dispare uma busca a cada
-   *  clique de seta. */
+   *  chamada, semana ancorada e período dos relatórios), com 1 dia de folga em
+   *  cada ponta. Navegar para um dia JÁ dentro do intervalo não muda a união e
+   *  não refaz a busca; sair dele (passar do fim do período, por exemplo) refaz
+   *  — que é o correto, senão a tela mostraria um dia sem os lançamentos dele. */
   const dataRange = useMemo(() => {
     const wd = weekDaysOf(semanaAnchor);
     const cands = [chamadaDia, wd[0], wd[4], range.from, range.to].filter(Boolean) as string[];
