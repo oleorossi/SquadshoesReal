@@ -114,6 +114,11 @@ export default function SystemDiagnostics() {
   const [staleResRows, setStaleResRows] = useState<
     Array<{ order_number: string; sale_order_number: string; reference_name: string; product_name: string; required_qty: number; consumption_source: string }> | null
   >(null);
+  // Custeio (auditoria 2026-08-03): o custo saía errado em silêncio — solado a
+  // R$ 0,00 desde 11/07 e custo apoiado em snapshot já marcado desatualizado
+  // (97% deles). cost_consistency_report() lista as lacunas de cadastro que
+  // reproduzem isso, no mesmo formato do relatório de consumo.
+  const [costChecks, setCostChecks] = useState<ConsistencyRow[] | null>(null);
   const [consRunning, setConsRunning] = useState(false);
   const [consChecksError, setConsChecksError] = useState<string | null>(null);
 
@@ -143,8 +148,9 @@ export default function SystemDiagnostics() {
     setCapacityChecks(null);
     setLinkChecks(null);
     setStaleResRows(null);
+    setCostChecks(null);
     try {
-      const [consRes, parRes, freshRes, cpcRes, debitRes, guardRes, capRes, linkRes, staleResRes] = await Promise.all([
+      const [consRes, parRes, freshRes, cpcRes, debitRes, guardRes, capRes, linkRes, staleResRes, costRes] = await Promise.all([
         supabase.rpc('consumption_consistency_report'),
         supabase.rpc('run_consumption_parity_tests'),
         // pcp_freshness_report é função nova (ainda não nos tipos gerados) → cast.
@@ -162,9 +168,11 @@ export default function SystemDiagnostics() {
         (supabase as any).rpc('broken_sale_order_links_report'),
         // list_ops_with_stale_reservations — reserva defasada vs ficha atual.
         (supabase as any).rpc('list_ops_with_stale_reservations'),
+        // cost_consistency_report — lacunas que fazem o custo sair errado (mig 20261104120200).
+        (supabase as any).rpc('cost_consistency_report'),
       ]);
 
-      const queryError = [consRes, parRes, freshRes, cpcRes, debitRes, guardRes, capRes, linkRes, staleResRes]
+      const queryError = [consRes, parRes, freshRes, cpcRes, debitRes, guardRes, capRes, linkRes, staleResRes, costRes]
         .map((result) => result.error)
         .find(Boolean);
       if (queryError) throw queryError;
@@ -175,6 +183,7 @@ export default function SystemDiagnostics() {
       setDebitRows((debitRes.data ?? []) as DebitRow[]);
       setDebitGuards((guardRes.data ?? []) as ParityRow[]);
       setCapacityChecks(capRes.data ?? []);
+      setCostChecks((costRes.data ?? []) as ConsistencyRow[]);
       setLinkChecks(linkRes.data ?? []);
       setStaleResRows(staleResRes.data ?? []);
       setParityChecks((parRes.data ?? []) as ParityRow[]);
@@ -584,6 +593,27 @@ export default function SystemDiagnostics() {
               <div className="flex items-center gap-2 text-sm text-success"><CheckCircle2 className="h-4 w-4" /> Nenhuma inconsistência de cadastro encontrada.</div>
             )}
             {(consChecks ?? []).slice().sort((a, b) => b.item_count - a.item_count).map((c, i) => (
+              <CheckRow key={i} row={c} />
+            ))}
+          </Panel>
+
+          {/* Custeio — auditoria 03/08/2026. A margem armazenada estava em −59,3%
+              (custo R$ 45,65/par contra preço R$ 24,93/par) e nada na tela dizia
+              por quê: o custeio usava snapshot já marcado como desatualizado e o
+              solado INFANTIL/CARAMELO entrava a R$ 0,00 desde 11/07. */}
+          <Panel
+            eyebrow="FINANCEIRO · CUSTO"
+            title="Consistência do custeio"
+            subtitle="Lacunas que fazem o custo sair errado em silêncio: material sem preço, custo apoiado em snapshot desatualizado, linha repetida na ficha, ficha sem operação de mão de obra, custo acima do preço de venda e unidade não convertida. Fonte: cost_consistency_report(). Use o botão acima pra rodar."
+            bodyClassName="space-y-2"
+          >
+            {costChecks === null && !consRunning && (
+              <p className="text-sm text-muted-foreground">Rode a verificação acima pra incluir a consistência do custeio.</p>
+            )}
+            {costChecks !== null && costChecks.length === 0 && !consRunning && (
+              <div className="flex items-center gap-2 text-sm text-success"><CheckCircle2 className="h-4 w-4" /> Custo íntegro — nenhuma lacuna de cadastro encontrada.</div>
+            )}
+            {(costChecks ?? []).slice().sort((a, b) => b.item_count - a.item_count).map((c, i) => (
               <CheckRow key={i} row={c} />
             ))}
           </Panel>
