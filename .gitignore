@@ -55,3 +55,6 @@ graphify-out/
 *.skill
 /custo-producao-squadshoes/
 /zix92Yv2
+
+# Scratch de sessões (patches de backup, locks git movidos pra fora do .git/)
+_to_delete/
