@@ -100,11 +100,18 @@ uma versão ANTERIOR.** Alguém escreveu a correção e ela não está no ar.
 ### Os três que merecem decisão imediata
 
 **(a) `20260522120003_tighten-wave-rpcs` — migration de SEGURANÇA que não pegou.**
-Cinco RPCs de wave (`advance_wave_stage`, `start_wave`, `create_production_wave`,
-`auto_start_due_waves`, `split_wave_to_finishing`) continuam na versão **anterior
-ao endurecimento**. É exatamente a mecânica que produziu o P0 de auto-aprovação em
-`profiles` (guarda escrita, guarda nunca efetivada). Verificar o que o "tighten"
-adicionava antes de concluir se há exposição.
+✅ **CORRIGIDO em 01/08/2026** — ver §8.
+
+A migration adicionava guarda `is_approved_user()` a 9 funções. Medição mostrou que
+**pegou em 3 e não pegou em 6**: `resync_op_atomic`, `process_resync_queue` e
+`debit_packaging_for_order_atomic` tinham a guarda; `start_wave`,
+`advance_wave_stage`, `create_production_wave` (2 overloads), `sync_wave_from_kanban`,
+`split_wave_to_finishing` e `auto_start_due_waves` **não**. As 6 eram
+`SECURITY DEFINER` com `GRANT EXECUTE TO authenticated` e só checavam
+`auth.uid() IS NULL`. Como `profiles.approved` nasce `false` no signup e porteia
+297 policies RLS, qualquer usuário autenticado **não aprovado** podia iniciar onda,
+pular etapa de produção e corromper planejamento. Não expostas a `anon`.
+É a mesma mecânica do P0 de `profiles`: guarda escrita, guarda nunca efetivada.
 
 **(b) `20261027120000_variant-main-material-cascade` — a memória do projeto registra
 esta migration como APLICADA.** `strap_base_family_for_sheet` prova que ao menos
@@ -209,8 +216,56 @@ voltar — as demais correções seriam pontuais e o drift as engoliria de novo.
 
 ## 7. Ordem sugerida de ataque
 
-1. **Decidir sobre `20260522120003_tighten-wave-rpcs`** — é segurança e não está no ar.
-2. **Limpar os 25 `direct_components` órfãos** — medido, escopo fechado, sem decisão de design.
-3. **Reconciliar as 23 da categoria B** — cada uma é "alguém escreveu e não entrou".
+1. ~~**Decidir sobre `20260522120003_tighten-wave-rpcs`**~~ ✅ **FEITO** — ver §8.
+2. **Limpar os 25 `direct_components` órfãos** — medido, escopo fechado, sem decisão
+   de design. Já existe `20261028120200_list-and-relink-orphan-direct-components`
+   no repo; verificar se a ferramenta de relink cobre estes 25.
+3. **Reconciliar as 18 restantes da categoria B** — cada uma é "alguém escreveu e não entrou".
 4. **Ligar o guard de drift no CI** antes de qualquer tentativa de `db push`.
 5. **Rodar o sweep do Codex** com os snapshots de §5 quando o gateway voltar.
+
+---
+
+## 8. Correção aplicada — guarda nas RPCs de wave
+
+Migration `20261031140000_wave-rpcs-approved-user-guard.sql`, aplicada em produção
+em 01/08/2026.
+
+**Abordagem: não reaplicar a migration de maio.** O corpo vivo dessas funções é de
+**abril** — o corpo de maio nunca rodou. Reaplicá-lo introduziria 3 meses de lógica
+jamais exercitada em produção, além de `DROP ... CASCADE`. A migration adiciona
+**somente a guarda**, via `DO` block que lê `pg_get_functiondef()` e insere o bloco
+após o `BEGIN` de topo — assim não há risco de transcrição errada de assinatura
+(há `DEFAULT`s e tipos enum envolvidos). Idempotente: só toca função cujo `prosrc`
+ainda não cita `is_approved_user`.
+
+**Risco descartado antes de aplicar:** nenhum dos 9 jobs em `cron.job` chama estas
+funções. Todos os chamadores vivos estão em `src/services/productionWavesService.ts`,
+ou seja sessão de browser autenticada — inclusive `auto_start_due_waves`, apesar do
+nome sugerir job. Um chamador com `service_role` teria `auth.uid()` NULL e passaria
+a falhar; não existe nenhum. (`split_wave_to_finishing` não tem chamador algum no
+frontend, mas segue concedida a `authenticated`, então foi guardada também.)
+
+**Verificação — corpo preservado byte a byte.** Para as 7 assinaturas, o md5 do
+`prosrc` com o bloco da guarda removido é **idêntico** ao md5 original medido antes
+da mudança:
+
+| função | len antes | len depois | md5 sem guarda == original |
+|---|---:|---:|:--:|
+| `advance_wave_stage` | 3385 | 3499 | ✅ |
+| `auto_start_due_waves` | 747 | 861 | ✅ |
+| `create_production_wave` (3 args) | 2476 | 2590 | ✅ |
+| `create_production_wave` (2 args) | 3599 | 3713 | ✅ |
+| `split_wave_to_finishing` | 2115 | 2229 | ✅ |
+| `start_wave` | 1022 | 1136 | ✅ |
+| `sync_wave_from_kanban` | 3595 | 3709 | ✅ |
+
+**Efeito no drift (contabilidade honesta):** as 6 saíram de B e entraram em C, porque
+agora o corpo vivo tem a guarda e nenhum arquivo o reproduz — a migration é um `DO`
+block, não materializa os corpos. **B 23 → 18, C 204 → 209.** Materializar os corpos
+em arquivo é trabalho separado, junto com as outras da categoria C.
+
+**Registro:** o `apply_migration` do MCP gravou carimbo próprio (`20260801211734`),
+como o `CLAUDE.md` adverte. Foi realinhado para `20261031140000`, batendo com o nome
+do arquivo. O carimbo teve de ser `140000` e não `120000` porque uma sessão
+concorrente registrou `20261031130000_catalogo-fotos-ia` durante esta auditoria.
