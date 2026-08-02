@@ -792,7 +792,13 @@ export default function FichaMontadoresPage() {
     const semDetalhe = fichasFiltradas.filter(
       (f) => isChamada(f) && !(Array.isArray(f.detalhe) && f.detalhe.length),
     ).length;
-    return { ...base, semDetalhe };
+    // `sumProducaoRows` PULA linha legado por grade — regra da folha, pra não
+    // contar produção duas vezes. Mas a lista de dias logo abaixo EXIBE essas
+    // linhas, então o total do resumo ficaria menor que a soma visível na mesma
+    // tela. Zero ocorrências hoje (50/50 são 'chamada'); o aviso existe pra que,
+    // se voltar, o operador saiba por que os dois números não batem.
+    const legado = fichasFiltradas.filter((f) => !isChamada(f)).length;
+    return { ...base, semDetalhe, legado };
   }, [fichasFiltradas]);
 
   /**
@@ -1431,6 +1437,12 @@ export default function FichaMontadoresPage() {
                 <p className="flex gap-2 border-t border-border bg-amber-500/10 px-4 py-2 text-xs text-amber-600">
                   <Warning className="h-4 w-4 shrink-0" />
                   O R$/par mudou dentro do período — a taxa exibida é média ponderada. Cada lançamento manteve a sua.
+                </p>
+              )}
+              {resumoPeriodo.legado > 0 && (
+                <p className="flex gap-2 border-t border-border bg-amber-500/10 px-4 py-2 text-xs text-amber-600">
+                  <Warning className="h-4 w-4 shrink-0" />
+                  <span><b>{resumoPeriodo.legado}</b> lançamento(s) no formato antigo (por grade) aparecem na lista abaixo mas <b>não entram neste total</b> — a folha não paga por eles.</span>
                 </p>
               )}
               {resumoPeriodo.semDetalhe > 0 && (
