@@ -490,8 +490,8 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
   const [sharedSpecs, setSharedSpecs] = useState<boolean>(group.shared_specs ?? false);
   // Material base sem cor (EVA, cola): desliga o color_mismatch no consumo/débito.
   const [isColorAgnostic, setIsColorAgnostic] = useState<boolean>(group.is_color_agnostic ?? false);
-  const [unitPrice, setUnitPrice] = useState<number>(0);
-  const [location, setLocation] = useState<string>('');
+  // Abre a edição em massa das cores — porta única para os campos de `products`.
+  const [openBulkColors, setOpenBulkColors] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
   const [editProductName, setEditProductName] = useState('');
@@ -580,19 +580,23 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
     setPpbColmeia(group.pairs_per_box_colmeia || 0);
     setPpbFitilho(group.pairs_per_box_fitilho || 0);
 
-    // If all products in group share the same price/location, set them as defaults
-    if (products.length > 0) {
-      const firstP = products[0];
-      const allSamePrice = products.every(p => Number(p.unit_price) === Number(firstP.unit_price));
-      const allSameLocation = products.every(p => p.location === firstP.location);
-      
-      if (allSamePrice) setUnitPrice(Number(firstP.unit_price) || 0);
-      else setUnitPrice(0);
-      
-      if (allSameLocation) setLocation(firstP.location || '');
-      else setLocation('');
-    }
   }, [group, products.length]);
+
+  /** Largura do grupo × largura dos itens (R3.4). Divergência viva: a napa tem
+   *  1370 no grupo e 1000 nos itens. Não quebra consumo — os motores usam
+   *  GREATEST(comprimento, largura) — mas é sinal de que ninguém sabia qual dos
+   *  dois campos mandava. */
+  const larguraDivergente = useMemo(() => {
+    const doGrupo = Number((group as any).dimensions_width) || 0;
+    if (!doGrupo || products.length === 0) return null;
+    const dosItens = [...new Set(
+      products
+        .map(p => Number((p as any).dimensions_width) || 0)
+        .filter(w => w > 0 && w !== doGrupo),
+    )];
+    if (dosItens.length === 0) return null;
+    return { grupo: doGrupo, itens: dosItens };
+  }, [group, products]);
 
   // Load artisanal recipe for this group whenever recipes or products change
   useEffect(() => {
@@ -680,11 +684,11 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
         // de consumo é dm² mas a de estoque é m/placa — sobrescrever corromperia o estoque.
         if (unitChanged || sharedSpecs) updateData.consumption_unit = finalUnit;
 
-        // Mass update price and location if provided
-        if (unitPrice > 0) updateData.unit_price = unitPrice;
-        if (location.trim()) updateData.location = location.trim();
-        // Múltiplo de compra: aplica a todos os itens do grupo (igual preço).
-        if (purchaseMultiple > 0) updateData.purchase_multiple = purchaseMultiple;
+        // Preço, localização e múltiplo de compra saíram daqui em 02/08/2026:
+        // eram uma SEGUNDA porta gravando `products`, sem selo de divergência e
+        // sem prévia, então achatavam valor próprio em silêncio. Porta única
+        // agora é a aba "Aplicar a todas as cores" do MasterVariantDialog
+        // (spec `estoque-cores-e-editores.md` R3.1).
 
         if (Object.keys(updateData).length > 0) {
           const { error } = await supabase
@@ -699,9 +703,6 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
             queryClient.invalidateQueries({ queryKey: ['paginated_products'] });
             if (unitChanged) {
               toast.success(`Unidade de consumo aplicada em ${products.length} ${products.length === 1 ? 'item' : 'itens'}.`);
-            }
-            if (unitPrice > 0 || location.trim() || purchaseMultiple > 0) {
-              toast.success(`Dados financeiros/estoque aplicados a ${products.length} ${products.length === 1 ? 'item' : 'itens'}.`);
             }
           }
         }
@@ -1101,54 +1102,51 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
 
               </div>
 
+              {/* Preço, localização e múltiplo de compra eram editados aqui E na
+                  aba de cores — duas portas na mesma coluna de `products`, e esta
+                  não tinha selo de divergência nem prévia. Virou link (R3.2). */}
               <Card className="border-2 border-primary/10">
-                <CardHeader>
+                <CardHeader className="pb-3">
                   <CardTitle className="text-sm font-bold flex items-center gap-2">
                     <Package className="h-4 w-4 text-primary" />
-                    Configurações de Itens (Em Massa)
+                    Dados dos itens
                   </CardTitle>
                 </CardHeader>
-                <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">Preço Unitário (R$)</Label>
-                    <CurrencyInput
-                      value={unitPrice}
-                      onChange={v => setUnitPrice(v || 0)}
-                      className="h-9"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Se preenchido, aplicará este preço a TODOS os itens do grupo.
-                    </p>
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">Localização Física</Label>
-                    <Input
-                      value={location}
-                      onChange={e => setLocation(e.target.value)}
-                      placeholder="Ex: Prateleira A1"
-                      className="h-9"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Se preenchido, aplicará esta localização a TODOS os itens.
-                    </p>
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">Múltiplo de Compra (embalagem)</Label>
-                    <NumberInput
-                      value={purchaseMultiple}
-                      onChange={v => setPurchaseMultiple(v || 0)}
-                      min={0}
-                      step="1"
-                      placeholder="Ex: 50"
-                      className="h-9"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Só vende em pacote fechado? Ao gerar a OC, a quantidade arredonda
-                      pra cima (187 → 200 com 50). Aplica a TODOS os itens do grupo. 0 = não arredonda.
-                    </p>
-                  </div>
+                <CardContent className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-xs text-muted-foreground max-w-md">
+                    Custo, localização, estoque mínimo, unidades e fornecedor são de cada
+                    cor. A edição em massa mostra onde as cores têm valor diferente e pede
+                    confirmação antes de sobrescrever.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-9 gap-1.5 shrink-0"
+                    onClick={() => setOpenBulkColors(true)}
+                    disabled={products.length === 0}
+                  >
+                    <Palette className="h-4 w-4" />
+                    Editar {products.length} {products.length === 1 ? 'cor' : 'cores'}
+                  </Button>
                 </CardContent>
               </Card>
+
+              {/* R3.4 — divergência de largura entre o grupo e seus itens. Aviso,
+                  não bloqueio: os motores usam GREATEST(comprimento, largura),
+                  então o valor menor não está cortando consumo hoje. */}
+              {larguraDivergente && (
+                <div className="rounded-md border border-warning/40 bg-warning/10 px-3 py-2.5 text-xs">
+                  <p className="font-semibold text-warning">Largura divergente entre grupo e itens</p>
+                  <p className="text-muted-foreground mt-0.5">
+                    O grupo tem <span className="font-mono">{larguraDivergente.grupo}</span> e
+                    {' '}{larguraDivergente.itens.length === 1 ? 'um item tem' : `${larguraDivergente.itens.length} itens têm`}
+                    {' '}<span className="font-mono">{larguraDivergente.itens.join(', ')}</span>.
+                    A partir de agora a dimensão do grupo é a fonte; os valores dos itens
+                    não são mais editáveis e continuam como estão.
+                  </p>
+                </div>
+              )}
             </TabsContent>
 
             {/* Tab: Hierarquia (Grupo Pai + Subgrupos da família) */}

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { useDebounce } from 'use-debounce';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { toast } from 'sonner';
@@ -139,6 +139,9 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
   const [groupFilter] = usePersistedState('groupFilter', 'all');
   const [supplierFilter] = usePersistedState('supplierFilter', 'all');
   const [statusFilter, setStatusFilter] = useState('all');
+  // Cor sem saldo sai da lista por padrão (R1.10).
+  const [hideZeradas, setHideZeradas] = useState(true);
+  const [onlyFalta, setOnlyFalta] = useState(false);
   const [sortPreset, setSortPreset] = usePersistedState<string>('materialsSortPreset', 'none');
   
   
@@ -246,7 +249,26 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
     limit: 9999,
   });
   
-  const paginatedProducts = paginatedData?.items || [];
+  const rawProducts = paginatedData?.items || [];
+
+  // Metade da lista é cor zerada (95 de 189 em 02/08/2026). Esconder por padrão
+  // é o maior ganho isolado de densidade — mas a contagem fica sempre visível no
+  // chip, pra que nada suma em silêncio (R1.10/R1.11).
+  const zeradasCount = useMemo(
+    () => rawProducts.filter((p: any) => (Number(p.quantity) || 0) <= 0).length,
+    [rawProducts],
+  );
+  const faltaCount = useMemo(
+    () => rawProducts.filter((p: any) => (Number(p.quantity) || 0) - (Number(p.reserved_stock) || 0) < 0).length,
+    [rawProducts],
+  );
+
+  const paginatedProducts = useMemo(() => {
+    let list = rawProducts as any[];
+    if (hideZeradas) list = list.filter(p => (Number(p.quantity) || 0) > 0);
+    if (onlyFalta) list = list.filter(p => (Number(p.quantity) || 0) - (Number(p.reserved_stock) || 0) < 0);
+    return list;
+  }, [rawProducts, hideZeradas, onlyFalta]);
   const totalPages = paginatedData?.totalPages || 1;
   const totalFiltered = paginatedData?.total || 0;
 
@@ -454,8 +476,34 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
         </div>
 
         {/* Status filters as pill chips */}
-        <div className="mt-3 pt-3 border-t border-border/60">
+        <div className="mt-3 pt-3 border-t border-border/60 flex flex-wrap items-center gap-2">
           <InventoryStatusFilters onFilterChange={setStatusFilter} />
+          <button
+            type="button"
+            aria-pressed={hideZeradas}
+            onClick={() => setHideZeradas(v => !v)}
+            className={
+              hideZeradas
+                ? 'h-8 px-3 rounded-full text-xs font-semibold bg-foreground text-background transition-colors'
+                : 'h-8 px-3 rounded-full text-xs font-medium border border-border bg-background text-muted-foreground hover:text-foreground hover:border-foreground/40 transition-colors'
+            }
+          >
+            {hideZeradas ? 'Zeradas ocultas' : 'Cores zeradas'}
+            <span className="ml-1.5 font-mono tabular-nums opacity-75">{zeradasCount}</span>
+          </button>
+          <button
+            type="button"
+            aria-pressed={onlyFalta}
+            onClick={() => setOnlyFalta(v => !v)}
+            className={
+              onlyFalta
+                ? 'h-8 px-3 rounded-full text-xs font-semibold bg-destructive text-destructive-foreground transition-colors'
+                : 'h-8 px-3 rounded-full text-xs font-medium border border-border bg-background text-muted-foreground hover:text-foreground hover:border-foreground/40 transition-colors'
+            }
+          >
+            Só com falta
+            <span className="ml-1.5 font-mono tabular-nums opacity-75">{faltaCount}</span>
+          </button>
         </div>
       </div>
 
@@ -517,6 +565,7 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
       ) : (
         <ProductTable
           products={paginatedProducts as any}
+          searchTerm={debouncedSearch}
           onEdit={openEdit}
           onDelete={handleDelete}
           externalSort={(() => {

@@ -15,6 +15,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { stripColorFromName } from '@/lib/utils';
+import GroupDialog from '@/components/groups/GroupDialog';
 
  import { Plus, PencilSimple as Pencil, FloppyDisk as Save, CircleNotch as Loader2, X, Image as ImageIcon, Package, Stack as Layers, Gear as SettingsIcon, ArrowsLeftRight as ArrowRightLeft } from '@phosphor-icons/react';
 import { Product, ProductFormData, CATEGORIES, UNITS, LOCATIONS } from '@/types/inventory';
@@ -307,6 +310,102 @@ interface MasterVariantDialogProps {
   variants: Product[];
   onEditVariant: (product: Product) => void;
   onDeleteVariant: (id: string) => void;
+  /** Aba de abertura — a lista abre direto em "Aplicar a todas as cores" ou
+   *  "Adicionar" conforme a ação clicada (R1.16). */
+  initialTab?: 'variants' | 'group' | 'add';
+}
+
+/** Campos que a edição em massa grava. Dimensões, `calculation_method` e
+ *  `purchase_multiple` saíram daqui em 02/08/2026: moram em `product_groups` e
+ *  agora têm porta única no GroupEditDialog (spec R2.11 / R3.3). */
+const BULK_FIELDS = [
+  'technical_name', 'category', 'group_id', 'supplier_id',
+  'yield_per_meter', 'yield_unit',
+  'purchase_unit', 'production_unit', 'conversion_rate', 'purchase_order_unit',
+  'lead_time_days', 'unit_price', 'price_wholesale', 'price_retail',
+  'min_stock', 'max_stock', 'safety_stock', 'location', 'active',
+  'min_order_quantity',
+] as const;
+type BulkField = (typeof BULK_FIELDS)[number];
+
+const BULK_LABELS: Record<BulkField, string> = {
+  technical_name: 'Nome técnico',
+  category: 'Categoria',
+  group_id: 'Grupo de produtos',
+  supplier_id: 'Fornecedor padrão',
+  yield_per_meter: 'Rendimento por metro',
+  yield_unit: 'Unidade de rendimento',
+  purchase_unit: 'Unidade de compra',
+  production_unit: 'Unidade de produção',
+  conversion_rate: 'Taxa de conversão',
+  purchase_order_unit: 'Unidade de OC',
+  lead_time_days: 'Lead time padrão',
+  unit_price: 'Custo unitário',
+  price_wholesale: 'Atacado',
+  price_retail: 'Varejo',
+  min_stock: 'Estoque mínimo',
+  max_stock: 'Estoque máximo',
+  safety_stock: 'Segurança',
+  location: 'Localização física',
+  active: 'Status ativo',
+  min_order_quantity: 'Qtd mínima de compra',
+};
+
+const NUMERIC_BULK_FIELDS = new Set<BulkField>([
+  'yield_per_meter', 'conversion_rate', 'lead_time_days', 'unit_price',
+  'price_wholesale', 'price_retail', 'min_stock', 'max_stock', 'safety_stock',
+  'min_order_quantity',
+]);
+
+/** Valores distintos por campo entre as variantes. Campo com mais de um valor é
+ *  DIVERGENTE: nasce vazio no form e só é gravado se o usuário preencher, senão
+ *  salvar achataria valor próprio em silêncio (R2.5/R2.6). Hoje
+ *  `COMPONENTES DIVERSOS` tem 6 custos distintos em 8 itens. */
+function computeDivergence(variants: Product[]): Record<string, { valores: Map<string, number>; divergente: boolean }> {
+  const out: Record<string, { valores: Map<string, number>; divergente: boolean }> = {};
+  for (const f of BULK_FIELDS) {
+    const valores = new Map<string, number>();
+    for (const v of variants) {
+      const raw = (v as any)[f];
+      const key = raw == null || raw === '' ? '' : String(raw);
+      valores.set(key, (valores.get(key) || 0) + 1);
+    }
+    out[f] = { valores, divergente: valores.size > 1 };
+  }
+  return out;
+}
+
+/** Rótulo de campo da edição em massa. Quando as cores têm valores diferentes,
+ *  mostra quantos são e quais — o campo fica vazio até alguém preencher, então
+ *  o selo é o único aviso de que existe valor próprio em jogo (R2.5). */
+function BulkLabel({ field, divergence, children }: {
+  field: BulkField;
+  divergence: Record<string, { valores: Map<string, number>; divergente: boolean }>;
+  children: React.ReactNode;
+}) {
+  const info = divergence[field];
+  if (!info?.divergente) return <Label className="text-xs">{children}</Label>;
+  const lista = [...info.valores.entries()].sort((a, b) => b[1] - a[1]);
+  return (
+    <Label className="text-xs flex items-center gap-1.5 flex-wrap">
+      {children}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Badge variant="outline" className="h-4 px-1 text-[10px] font-medium bg-warning/10 text-warning border-warning/30 cursor-help">
+            {info.valores.size} valores diferentes
+          </Badge>
+        </TooltipTrigger>
+        <TooltipContent className="text-xs max-w-xs">
+          <p className="font-semibold mb-1">Deixe vazio para preservar</p>
+          <ul className="space-y-0.5">
+            {lista.map(([valor, n]) => (
+              <li key={valor}>• {valor === '' ? '(vazio)' : valor} — {n} cor{n === 1 ? '' : 'es'}</li>
+            ))}
+          </ul>
+        </TooltipContent>
+      </Tooltip>
+    </Label>
+  );
 }
 
 export function MasterVariantDialog({
@@ -316,8 +415,9 @@ export function MasterVariantDialog({
   variants,
   onEditVariant: _onEditVariant, // legacy escape-hatch (full ProductFormDialog)
   onDeleteVariant,
+  initialTab = 'variants',
 }: MasterVariantDialogProps) {
-  const [activeTab, setActiveTab] = useState<'variants' | 'group' | 'add'>('variants');
+  const [activeTab, setActiveTab] = useState<'variants' | 'group' | 'add'>(initialTab);
 
   // ── add new variant
   const [newColor, setNewColor] = useState('');
@@ -347,39 +447,58 @@ export function MasterVariantDialog({
   const isSolado = useMemo(() => variants.some(v => v.category === 'Solado'), [variants]);
   const template = variants[0];
 
-  // Group form state — initialised from the first variant; saving propagates to all.
+  // Form da edição em massa. `null` num campo = "não preencher" — é assim que
+  // campo divergente nasce, e campo não preenchido nunca entra no payload.
   type GroupForm = {
-    baseName: string;
-    technical_name: string;
-    category: string;
+    technical_name: string | null;
+    category: string | null;
     group_id: string | null;
     supplier_id: string | null;
-    dimensions_length: number;
-    dimensions_width: number;
-    dimensions_height: number;
-    dimensions_thickness: number;
-    dimensions_unit: string;
-    yield_per_meter: number;
-    yield_unit: string;
-    purchase_unit: string;
-    production_unit: string;
-    conversion_rate: number;
-     purchase_order_unit: string;
-     calculation_method: 'weight' | 'meter' | 'unit';
-     lead_time_days: number;
-     unit_price: number;
-     price_wholesale: number;
-     price_retail: number;
-     min_stock: number;
-     max_stock: number;
-     safety_stock: number;
-     location: string;
-     active: boolean;
-     min_order_quantity: number;
-   };
+    yield_per_meter: number | null;
+    yield_unit: string | null;
+    purchase_unit: string | null;
+    production_unit: string | null;
+    conversion_rate: number | null;
+    purchase_order_unit: string | null;
+    lead_time_days: number | null;
+    unit_price: number | null;
+    price_wholesale: number | null;
+    price_retail: number | null;
+    min_stock: number | null;
+    max_stock: number | null;
+    safety_stock: number | null;
+    location: string | null;
+    active: boolean | null;
+    min_order_quantity: number | null;
+  };
   const [groupForm, setGroupForm] = useState<GroupForm | null>(null);
+  /** Só o que o usuário mexeu é gravado (R2.6). */
+  const [dirty, setDirty] = useState<Set<BulkField>>(new Set());
   const [savingGroup, setSavingGroup] = useState(false);
   const [confirmUnitOpen, setConfirmUnitOpen] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
+
+  const divergence = useMemo(() => computeDivergence(variants), [variants]);
+  const [openGroupEditor, setOpenGroupEditor] = useState(false);
+  const groupOfVariants = useMemo(
+    () => groups.find((g: any) => g.id === variants[0]?.group_id) ?? null,
+    [groups, variants],
+  );
+
+  /** Invariante do CLAUDE.md: `purchase_unit == unit` ⇒ `conversion_rate = 1`.
+   *  Com o fator travado, o campo não aceita o 0 que zeraria consumo (R2.13). */
+  const conversionTravada = useMemo(() => {
+    const compra = groupForm?.purchase_unit ?? variants[0]?.purchase_unit ?? '';
+    const estoque = variants[0]?.unit ?? '';
+    return !!compra && compra === estoque;
+  }, [groupForm?.purchase_unit, variants]);
+
+  useEffect(() => {
+    if (conversionTravada && groupForm && groupForm.conversion_rate !== 1) {
+      updateGroup('conversion_rate', 1);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversionTravada]);
 
   // Helper compartilhado: NaN/null/undefined → fallback (0 por default).
   // Usado nos onChange dos inputs numéricos pra evitar que o state segure
@@ -391,42 +510,61 @@ export function MasterVariantDialog({
     if (open && variants.length > 0) {
       setActiveGradeTab(variants[0].id);
       setRangeChanges({});
-      setActiveTab('variants');
+      setActiveTab(initialTab);
+      setDirty(new Set());
       const t = variants[0];
+      const div = computeDivergence(variants);
+      // Campo homogêneo nasce com o valor comum (R2.7); divergente nasce vazio
+      // (R2.6), pra que salvar não achate o valor próprio de cada cor.
+      const comum = <T,>(f: BulkField, valor: T): T | null => (div[f].divergente ? null : valor);
       setGroupForm({
-        baseName,
-        technical_name: t.technical_name || '',
-        category: t.category || '',
-        group_id: t.group_id || null,
-        supplier_id: t.supplier_id || null,
-        dimensions_length: Number(t.dimensions_length) || 0,
-        dimensions_width: Number(t.dimensions_width) || 0,
-        dimensions_height: Number(t.dimensions_height) || 0,
-        dimensions_thickness: Number(t.dimensions_thickness) || 0,
-        dimensions_unit: t.dimensions_unit || 'mm',
-        yield_per_meter: Number(t.yield_per_meter) || 0,
-        yield_unit: t.yield_unit || 'dm²',
-        purchase_unit: t.purchase_unit || 'un',
-        production_unit: t.production_unit || 'un',
-        conversion_rate: Number(t.conversion_rate) || 1,
-         purchase_order_unit: t.purchase_order_unit || 'un',
-         calculation_method: ((t.calculation_method as any) || 'weight') as 'weight' | 'meter' | 'unit',
-         lead_time_days: Number(t.lead_time_days) || 0,
-         unit_price: Number(t.unit_price) || 0,
-         price_wholesale: Number(t.price_wholesale) || 0,
-         price_retail: Number(t.price_retail) || 0,
-         min_stock: Number(t.min_stock) || 0,
-         max_stock: Number(t.max_stock) || 0,
-         safety_stock: Number(t.safety_stock) || 0,
-         location: t.location || '',
-         active: t.active ?? true,
-         min_order_quantity: Number(t.min_order_quantity) || 0,
-       });
+        technical_name: comum('technical_name', t.technical_name || ''),
+        category: comum('category', t.category || ''),
+        group_id: comum('group_id', t.group_id || null),
+        supplier_id: comum('supplier_id', t.supplier_id || null),
+        yield_per_meter: comum('yield_per_meter', Number(t.yield_per_meter) || 0),
+        yield_unit: comum('yield_unit', t.yield_unit || 'dm²'),
+        purchase_unit: comum('purchase_unit', t.purchase_unit || 'un'),
+        production_unit: comum('production_unit', t.production_unit || 'un'),
+        conversion_rate: comum('conversion_rate', Number(t.conversion_rate) || 1),
+        purchase_order_unit: comum('purchase_order_unit', t.purchase_order_unit || 'un'),
+        lead_time_days: comum('lead_time_days', Number(t.lead_time_days) || 0),
+        unit_price: comum('unit_price', Number(t.unit_price) || 0),
+        price_wholesale: comum('price_wholesale', Number(t.price_wholesale) || 0),
+        price_retail: comum('price_retail', Number(t.price_retail) || 0),
+        min_stock: comum('min_stock', Number(t.min_stock) || 0),
+        max_stock: comum('max_stock', Number(t.max_stock) || 0),
+        safety_stock: comum('safety_stock', Number(t.safety_stock) || 0),
+        location: comum('location', t.location || ''),
+        active: comum('active', t.active ?? true),
+        min_order_quantity: comum('min_order_quantity', Number(t.min_order_quantity) || 0),
+      });
     }
-  }, [open, variants, baseName]);
+  }, [open, variants, initialTab]);
 
-  const updateGroup = <K extends keyof GroupForm>(k: K, v: GroupForm[K]) =>
+  const updateGroup = <K extends keyof GroupForm>(k: K, v: GroupForm[K]) => {
     setGroupForm(prev => (prev ? { ...prev, [k]: v } : prev));
+    setDirty(prev => new Set(prev).add(k as BulkField));
+  };
+
+  /** Campos que o usuário mexeu e que vão pro payload. */
+  const camposAlterados = useMemo<BulkField[]>(() => {
+    if (!groupForm) return [];
+    return BULK_FIELDS.filter(f => dirty.has(f) && (groupForm as any)[f] != null);
+  }, [groupForm, dirty]);
+
+  /** Quantas cores perdem valor PRÓPRIO em cada campo alterado — é o que a
+   *  prévia mostra antes de gravar (R2.8). */
+  const impacto = useMemo(() => {
+    if (!groupForm) return [] as { campo: BulkField; label: string; novo: string; perdem: { cor: string; valor: string }[] }[];
+    return camposAlterados.map(f => {
+      const novo = String((groupForm as any)[f] ?? '');
+      const perdem = variants
+        .map(v => ({ cor: v.color || v.sku, valor: String((v as any)[f] ?? '') }))
+        .filter(x => x.valor !== novo && x.valor !== '');
+      return { campo: f, label: BULK_LABELS[f], novo, perdem };
+    });
+  }, [camposAlterados, groupForm, variants]);
 
   const formatCurrency = (value: number) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 4 }).format(value);
@@ -438,7 +576,10 @@ export function MasterVariantDialog({
     if (exists) { toast.error('Já existe uma variante com esta cor'); return; }
 
     const newProduct: ProductFormData = {
-      name: `${groupForm?.baseName ?? baseName} - ${newColor.trim()}`,
+      // A cor nova herda o NOME do material das irmãs, sem sufixo de cor: a cor
+      // mora em `products.color`, que é o que o débito lê. 189 dos 195 nomes
+      // ativos são "crus" — o sufixo " - cor" só criaria um padrão novo.
+      name: stripColorFromName(template.name, template.color).trim() || template.name,
       technical_name: template.technical_name || '',
       sku: newSku.trim(),
       category: template.category || '',
@@ -482,22 +623,28 @@ export function MasterVariantDialog({
 
   const handleSaveGroupForm = async () => {
     if (!groupForm) return;
-    const newBase = groupForm.baseName.trim();
-    if (!newBase) { toast.error('Nome do modelo não pode ser vazio'); return; }
+
+    if (camposAlterados.length === 0) {
+      toast.info('Nenhuma alteração para aplicar');
+      return;
+    }
 
     // ─── Validações de consistência ───────────────────────────────────
-    if (!groupForm.category || !groupForm.category.trim()) {
+    // Só validam campo que o usuário mexeu — campo intocado mantém o valor
+    // próprio de cada cor e não precisa passar por aqui.
+    if (dirty.has('category') && !(groupForm.category || '').trim()) {
       toast.error('Categoria é obrigatória'); return;
     }
-    if ((groupForm.conversion_rate ?? 0) <= 0) {
+    if (dirty.has('conversion_rate') && (groupForm.conversion_rate ?? 0) <= 0) {
       toast.error('Taxa de conversão deve ser maior que 0 — caso contrário o cálculo de consumo quebra');
       return;
     }
-    if (groupForm.lead_time_days < 0) {
+    if (dirty.has('lead_time_days') && (groupForm.lead_time_days ?? 0) < 0) {
       toast.error('Lead time não pode ser negativo'); return;
     }
-    // Cores únicas entre variantes (case-insensitive). Se houver duplicata o
-    // rename "<base> - <cor>" geraria nomes idênticos no banco.
+    // Cores duplicadas continuam sendo bloqueio: duas linhas com a mesma cor no
+    // mesmo grupo fazem o `resolve_material_product` escolher por maior saldo,
+    // não pela intenção de quem digitou o PV.
     const colorMap = new Map<string, number>();
     for (const v of variants) {
       const k = (v.color || '').toLowerCase().trim();
@@ -509,57 +656,31 @@ export function MasterVariantDialog({
       return;
     }
     // Confirmação para mudança crítica de unidade
-    const tpl = variants[0];
-    const unitChanged =
-      groupForm.purchase_unit !== (tpl.purchase_unit || 'un') ||
-      groupForm.production_unit !== (tpl.production_unit || 'un');
-    if (unitChanged) {
+    if (dirty.has('purchase_unit') || dirty.has('production_unit')) {
       setConfirmUnitOpen(true);
       return;
     }
-    await doSaveGroupForm();
+    setPreviewOpen(true);
   };
 
-  // Persistência de fato — direto (sem mudança de unidade) ou via confirmação
-  // do AlertDialog de mudança crítica de unidade.
+  // Persistência de fato. Grava SÓ os campos preenchidos pelo usuário
+  // (`camposAlterados`) — campo intocado preserva o valor próprio de cada cor.
+  // NÃO grava `name`: renomear mudaria a pista que o `partial_name` do
+  // `resolve_material_product` usa nos 21 produtos de cor vazia (spec R2.1).
   const doSaveGroupForm = async () => {
     if (!groupForm) return;
-    const newBase = groupForm.baseName.trim();
 
     setSavingGroup(true);
     try {
-      // Apply shared fields to every variant; rename keeps " - cor".
+      const payload: any = {};
+      for (const f of camposAlterados) {
+        const valor = (groupForm as any)[f];
+        payload[f] = NUMERIC_BULK_FIELDS.has(f) ? safeNum(valor) : valor;
+      }
+      if (payload.conversion_rate != null) payload.conversion_rate = safeNum(payload.conversion_rate, 1) || 1;
+      if (payload.yield_per_meter != null) payload.yield_per_meter = safeNum(payload.yield_per_meter) || null;
+
       for (const v of variants) {
-        const newFullName = v.color ? `${newBase} - ${v.color}` : newBase;
-        const payload: any = {
-          name: newFullName,
-          technical_name: groupForm.technical_name || null,
-          category: groupForm.category || v.category,
-          group_id: groupForm.group_id,
-          supplier_id: groupForm.supplier_id,
-          dimensions_length: safeNum(groupForm.dimensions_length),
-          dimensions_width: safeNum(groupForm.dimensions_width),
-          dimensions_height: safeNum(groupForm.dimensions_height),
-          dimensions_thickness: safeNum(groupForm.dimensions_thickness),
-          dimensions_unit: groupForm.dimensions_unit,
-          yield_per_meter: safeNum(groupForm.yield_per_meter) || null,
-          yield_unit: groupForm.yield_unit,
-          purchase_unit: groupForm.purchase_unit,
-          production_unit: groupForm.production_unit,
-          conversion_rate: safeNum(groupForm.conversion_rate, 1) || 1,
-           purchase_order_unit: groupForm.purchase_order_unit,
-           calculation_method: groupForm.calculation_method,
-           lead_time_days: safeNum(groupForm.lead_time_days),
-           unit_price: safeNum(groupForm.unit_price),
-           price_wholesale: safeNum(groupForm.price_wholesale),
-           price_retail: safeNum(groupForm.price_retail),
-           min_stock: safeNum(groupForm.min_stock),
-           max_stock: safeNum(groupForm.max_stock),
-           safety_stock: safeNum(groupForm.safety_stock),
-           location: groupForm.location,
-           active: groupForm.active,
-           min_order_quantity: safeNum(groupForm.min_order_quantity, 1),
-         };
         const { error } = await supabase.from('products').update(payload).eq('id', v.id);
         if (error) throw new Error(`Variante "${v.color || v.sku}": ${error.message}`);
       }
@@ -568,7 +689,11 @@ export function MasterVariantDialog({
       queryClient.invalidateQueries({ queryKey: ['technical_sheets'] });
       queryClient.invalidateQueries({ queryKey: ['order-consumption'] });
       queryClient.invalidateQueries({ queryKey: ['sole_standard_items'] });
-      toast.success('Dados do grupo aplicados a todas as variantes');
+      toast.success(
+        `${camposAlterados.length} campo${camposAlterados.length === 1 ? '' : 's'} aplicado${camposAlterados.length === 1 ? '' : 's'} a ${variants.length} cor${variants.length === 1 ? '' : 'es'}`,
+      );
+      setDirty(new Set());
+      setPreviewOpen(false);
     } catch (err: any) {
       toast.error(`Erro ao salvar grupo: ${err.message}`);
     } finally {
@@ -645,20 +770,24 @@ export function MasterVariantDialog({
           <DialogHeader>
             <DialogTitle className="text-lg font-bold flex items-center gap-2">
               <Package className="h-5 w-5 text-primary" />
-              {baseName}
+              {/* Nome do GRUPO de estoque — não o nome-base derivado por corte
+                  de palavra, que exibia "NAPA" para a NAPA SOFT (R2.3). */}
+              {groupOfVariants?.name || baseName}
               <Badge variant="outline" className="font-normal text-xs">
-                {variants.length} variante{variants.length === 1 ? '' : 's'}
+                {variants.length} cor{variants.length === 1 ? '' : 'es'}
               </Badge>
             </DialogTitle>
             <DialogDescription>
-              Edite cores individuais, ajuste dados compartilhados do grupo ou adicione novas variantes.
+              Edite cores individuais, aplique um valor a todas de uma vez ou adicione novas cores.
             </DialogDescription>
           </DialogHeader>
 
           <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="mt-2">
             <TabsList className="grid grid-cols-3 w-full">
               <TabsTrigger value="variants" className="gap-1.5"><Layers className="h-3.5 w-3.5" /> Variantes</TabsTrigger>
-              <TabsTrigger value="group" className="gap-1.5"><SettingsIcon className="h-3.5 w-3.5" /> Dados do Grupo</TabsTrigger>
+              {/* "Dados do Grupo" era enganoso: esta aba nunca tocou
+                  `product_groups` — grava nos PRODUTOS, todos de uma vez (R2.4). */}
+              <TabsTrigger value="group" className="gap-1.5"><SettingsIcon className="h-3.5 w-3.5" /> Aplicar a todas as cores</TabsTrigger>
               <TabsTrigger value="add" className="gap-1.5"><Plus className="h-3.5 w-3.5" /> Adicionar</TabsTrigger>
             </TabsList>
 
@@ -807,8 +936,9 @@ export function MasterVariantDialog({
                   <div className="overflow-y-auto pr-2 sm:pr-4 max-h-[calc(92vh-260px)]">
                     <div className="space-y-6 pb-32 sm:pb-8">
                       <div className="rounded-md border-l-4 border-l-primary bg-primary/5 p-3 text-xs text-muted-foreground">
-                        Os campos abaixo são <strong>compartilhados por todas as variantes</strong>. Salvar aqui aplica
-                        em <strong>{variants.length} variante{variants.length === 1 ? '' : 's'}</strong> de uma vez.
+                        Preencha só o que deve valer para <strong>todas as {variants.length} cor{variants.length === 1 ? '' : 'es'}</strong>.
+                        Campo deixado <strong>vazio não é gravado</strong> — cada cor mantém o valor próprio.
+                        O nome dos produtos nunca é alterado aqui.
                       </div>
 
                       <section className="space-y-3">
@@ -817,34 +947,30 @@ export function MasterVariantDialog({
                         </h4>
                         <div className="grid grid-cols-2 gap-3">
                           <div>
-                            <Label className="text-xs">Nome do modelo *</Label>
-                            <Input value={groupForm.baseName} onChange={e => updateGroup('baseName', e.target.value)} className="mt-1 h-9" />
+                            <BulkLabel field="technical_name" divergence={divergence}>Nome técnico</BulkLabel>
+                            <Input value={groupForm.technical_name ?? ''} onChange={e => updateGroup('technical_name', e.target.value)} className="mt-1 h-9" placeholder={divergence.technical_name.divergente ? 'Manter valor de cada cor' : ''} />
                           </div>
                           <div>
-                            <Label className="text-xs">Nome técnico</Label>
-                            <Input value={groupForm.technical_name} onChange={e => updateGroup('technical_name', e.target.value)} className="mt-1 h-9" />
-                          </div>
-                          <div>
-                            <Label className="text-xs">Categoria</Label>
-                            <Select value={groupForm.category} onValueChange={v => updateGroup('category', v)}>
-                              <SelectTrigger className="mt-1 h-9"><SelectValue /></SelectTrigger>
+                            <BulkLabel field="category" divergence={divergence}>Categoria</BulkLabel>
+                            <Select value={groupForm.category ?? ''} onValueChange={v => updateGroup('category', v)}>
+                              <SelectTrigger className="mt-1 h-9"><SelectValue placeholder="Manter valor de cada cor" /></SelectTrigger>
                               <SelectContent>{CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
                             </Select>
                           </div>
                           <div>
-                            <Label className="text-xs">Grupo de produtos</Label>
-                            <Select value={groupForm.group_id ?? '__none__'} onValueChange={v => updateGroup('group_id', v === '__none__' ? null : v)}>
-                              <SelectTrigger className="mt-1 h-9"><SelectValue placeholder="Sem grupo" /></SelectTrigger>
+                            <BulkLabel field="group_id" divergence={divergence}>Grupo de produtos</BulkLabel>
+                            <Select value={groupForm.group_id ?? ''} onValueChange={v => updateGroup('group_id', v === '__none__' ? null : v)}>
+                              <SelectTrigger className="mt-1 h-9"><SelectValue placeholder="Manter valor de cada cor" /></SelectTrigger>
                               <SelectContent>
                                 <SelectItem value="__none__">— Sem grupo —</SelectItem>
                                 {groups.map((g: any) => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}
                               </SelectContent>
                             </Select>
                           </div>
-                          <div className="col-span-2">
-                            <Label className="text-xs">Fornecedor padrão</Label>
-                            <Select value={groupForm.supplier_id ?? '__none__'} onValueChange={v => updateGroup('supplier_id', v === '__none__' ? null : v)}>
-                              <SelectTrigger className="mt-1 h-9"><SelectValue placeholder="Sem fornecedor" /></SelectTrigger>
+                          <div>
+                            <BulkLabel field="supplier_id" divergence={divergence}>Fornecedor padrão</BulkLabel>
+                            <Select value={groupForm.supplier_id ?? ''} onValueChange={v => updateGroup('supplier_id', v === '__none__' ? null : v)}>
+                              <SelectTrigger className="mt-1 h-9"><SelectValue placeholder="Manter valor de cada cor" /></SelectTrigger>
                               <SelectContent>
                                 <SelectItem value="__none__">— Sem fornecedor —</SelectItem>
                                 {suppliers.map((s: any) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
@@ -858,76 +984,65 @@ export function MasterVariantDialog({
                         <h4 className="text-xs font-semibold uppercase text-muted-foreground tracking-wide">Preços Base</h4>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                           <div>
-                            <Label className="text-xs">Custo unitário (R$)</Label>
-                            <NumberInput value={groupForm.unit_price} onChange={v => updateGroup('unit_price', v)} step="0.0001" className="mt-1 h-9" />
+                            <BulkLabel field="unit_price" divergence={divergence}>Custo unitário (R$ por {template?.unit || 'un'})</BulkLabel>
+                            <NumberInput value={groupForm.unit_price ?? undefined} onChange={v => updateGroup('unit_price', v)} step="0.0001" className="mt-1 h-9" />
                           </div>
                           <div>
-                            <Label className="text-xs">Atacado (R$)</Label>
-                            <NumberInput value={groupForm.price_wholesale} onChange={v => updateGroup('price_wholesale', v)} step="0.01" className="mt-1 h-9" />
+                            <BulkLabel field="price_wholesale" divergence={divergence}>Atacado (R$)</BulkLabel>
+                            <NumberInput value={groupForm.price_wholesale ?? undefined} onChange={v => updateGroup('price_wholesale', v)} step="0.01" className="mt-1 h-9" />
                           </div>
                           <div>
-                            <Label className="text-xs">Varejo (R$)</Label>
-                            <NumberInput value={groupForm.price_retail} onChange={v => updateGroup('price_retail', v)} step="0.01" className="mt-1 h-9" />
+                            <BulkLabel field="price_retail" divergence={divergence}>Varejo (R$)</BulkLabel>
+                            <NumberInput value={groupForm.price_retail ?? undefined} onChange={v => updateGroup('price_retail', v)} step="0.01" className="mt-1 h-9" />
                           </div>
                         </div>
                       </section>
 
                       <section className="space-y-3">
-                        <h4 className="text-xs font-semibold uppercase text-muted-foreground tracking-wide">Estoque & Localização</h4>
+                        <h4 className="text-xs font-semibold uppercase text-muted-foreground tracking-wide">Estoque &amp; Localização</h4>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                           <div>
-                            <Label className="text-xs">Estoque Mínimo</Label>
-                            <NumberInput value={groupForm.min_stock} onChange={v => updateGroup('min_stock', v)} className="mt-1 h-9" />
+                            <BulkLabel field="min_stock" divergence={divergence}>Estoque mínimo ({template?.unit || 'un'})</BulkLabel>
+                            <NumberInput value={groupForm.min_stock ?? undefined} onChange={v => updateGroup('min_stock', v)} className="mt-1 h-9" />
                           </div>
                           <div>
-                            <Label className="text-xs">Estoque Máximo</Label>
-                            <NumberInput value={groupForm.max_stock} onChange={v => updateGroup('max_stock', v)} className="mt-1 h-9" />
+                            <BulkLabel field="max_stock" divergence={divergence}>Estoque máximo ({template?.unit || 'un'})</BulkLabel>
+                            <NumberInput value={groupForm.max_stock ?? undefined} onChange={v => updateGroup('max_stock', v)} className="mt-1 h-9" />
                           </div>
                           <div>
-                            <Label className="text-xs">Segurança</Label>
-                            <NumberInput value={groupForm.safety_stock} onChange={v => updateGroup('safety_stock', v)} className="mt-1 h-9" />
+                            <BulkLabel field="safety_stock" divergence={divergence}>Segurança ({template?.unit || 'un'})</BulkLabel>
+                            <NumberInput value={groupForm.safety_stock ?? undefined} onChange={v => updateGroup('safety_stock', v)} className="mt-1 h-9" />
                           </div>
-                          <div className="col-span-3">
-                            <Label className="text-xs">Localização física</Label>
-                            <Select value={groupForm.location} onValueChange={v => updateGroup('location', v)}>
-                              <SelectTrigger className="mt-1 h-9"><SelectValue placeholder="Selecione localização" /></SelectTrigger>
+                          <div className="col-span-full">
+                            <BulkLabel field="location" divergence={divergence}>Localização física</BulkLabel>
+                            <Select value={groupForm.location ?? ''} onValueChange={v => updateGroup('location', v)}>
+                              <SelectTrigger className="mt-1 h-9"><SelectValue placeholder="Manter valor de cada cor" /></SelectTrigger>
                               <SelectContent>{LOCATIONS.map(l => <SelectItem key={l} value={l}>{l}</SelectItem>)}</SelectContent>
                             </Select>
                           </div>
                         </div>
                       </section>
 
-                      <section className="space-y-3">
-                        <h4 className="text-xs font-semibold uppercase text-muted-foreground tracking-wide flex items-center gap-2">
-                          <Layers className="h-3 w-3" /> Dimensões
-                        </h4>
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                          <div>
-                            <Label className="text-xs">Comprimento</Label>
-                            <NumberInput value={groupForm.dimensions_length} onChange={v => updateGroup('dimensions_length', v)} className="mt-1 h-9" />
-                          </div>
-                          <div>
-                            <Label className="text-xs">Largura</Label>
-                            <NumberInput value={groupForm.dimensions_width} onChange={v => updateGroup('dimensions_width', v)} className="mt-1 h-9" />
-                          </div>
-                          <div>
-                            <Label className="text-xs">Altura</Label>
-                            <NumberInput value={groupForm.dimensions_height} onChange={v => updateGroup('dimensions_height', v)} className="mt-1 h-9" />
-                          </div>
-                          <div>
-                            <Label className="text-xs">Espessura</Label>
-                            <NumberInput value={groupForm.dimensions_thickness} onChange={v => updateGroup('dimensions_thickness', v)} className="mt-1 h-9" />
-                          </div>
-                          <div className="col-span-4">
-                            <Label className="text-xs">Unidade dimensional</Label>
-                            <Select value={groupForm.dimensions_unit} onValueChange={v => updateGroup('dimensions_unit', v)}>
-                              <SelectTrigger className="mt-1 h-9 max-w-xs"><SelectValue /></SelectTrigger>
-                              <SelectContent>
-                                {['mm', 'cm', 'm'].map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
-                              </SelectContent>
-                            </Select>
-                          </div>
+                      {/* Dimensões saíram daqui em 02/08/2026: moram em
+                          `product_groups` e são cadastradas no grupo de estoque
+                          (spec R2.11 / R3.3). Duas portas gravando o mesmo
+                          conceito era a origem do 1370 no grupo × 1000 nos itens. */}
+                      <section className="rounded-md border border-dashed px-3 py-2.5 flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-xs font-medium">Dimensões, embalagem e múltiplo de compra</p>
+                          <p className="text-xs text-muted-foreground">
+                            Pertencem ao grupo de estoque, não à cor — inclusive a largura que converte dm² em metro.
+                          </p>
                         </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 shrink-0 gap-1.5"
+                          disabled={!groupForm.group_id && !template?.group_id}
+                          onClick={() => setOpenGroupEditor(true)}
+                        >
+                          <SettingsIcon className="h-3.5 w-3.5" /> Editar no grupo
+                        </Button>
                       </section>
 
                       <section className="space-y-3">
@@ -936,38 +1051,48 @@ export function MasterVariantDialog({
                         </h4>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                           <div>
-                            <Label className="text-xs">Unidade de compra</Label>
-                            <Select value={groupForm.purchase_unit} onValueChange={v => updateGroup('purchase_unit', v)}>
-                              <SelectTrigger className="mt-1 h-9"><SelectValue /></SelectTrigger>
+                            <BulkLabel field="purchase_unit" divergence={divergence}>Unidade de compra</BulkLabel>
+                            <Select value={groupForm.purchase_unit ?? ''} onValueChange={v => updateGroup('purchase_unit', v)}>
+                              <SelectTrigger className="mt-1 h-9"><SelectValue placeholder="Manter" /></SelectTrigger>
                               <SelectContent>{UNITS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
                             </Select>
                           </div>
                           <div>
-                            <Label className="text-xs">Unidade de produção</Label>
-                            <Select value={groupForm.production_unit} onValueChange={v => updateGroup('production_unit', v)}>
-                              <SelectTrigger className="mt-1 h-9"><SelectValue /></SelectTrigger>
+                            <BulkLabel field="production_unit" divergence={divergence}>Unidade de produção</BulkLabel>
+                            <Select value={groupForm.production_unit ?? ''} onValueChange={v => updateGroup('production_unit', v)}>
+                              <SelectTrigger className="mt-1 h-9"><SelectValue placeholder="Manter" /></SelectTrigger>
                               <SelectContent>{UNITS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
                             </Select>
                           </div>
                           <div>
-                            <Label className="text-xs">Taxa de conversão</Label>
-                            <NumberInput value={groupForm.conversion_rate} onChange={v => updateGroup('conversion_rate', v)} step="0.0001" className="mt-1 h-9" />
+                            <BulkLabel field="conversion_rate" divergence={divergence}>Taxa de conversão</BulkLabel>
+                            {/* Invariante do CLAUDE.md: unidade de compra igual à de
+                                estoque ⇒ fator 1. Travado em leitura pra não voltar
+                                o `conversion_rate = 0`, que zera consumo (R2.13). */}
+                            {conversionTravada ? (
+                              <div className="mt-1 h-9 flex items-center gap-2 rounded-md border bg-muted/40 px-3">
+                                <span className="font-mono text-sm">1×</span>
+                                <span className="text-xs text-muted-foreground">compra = estoque</span>
+                              </div>
+                            ) : (
+                              <NumberInput value={groupForm.conversion_rate ?? undefined} onChange={v => updateGroup('conversion_rate', v)} step="0.0001" className="mt-1 h-9" />
+                            )}
                           </div>
                           <div>
-                            <Label className="text-xs">Rendimento por metro</Label>
-                            <NumberInput value={groupForm.yield_per_meter} onChange={v => updateGroup('yield_per_meter', v)} step="0.0001" className="mt-1 h-9" />
+                            <BulkLabel field="yield_per_meter" divergence={divergence}>Rendimento por metro</BulkLabel>
+                            <NumberInput value={groupForm.yield_per_meter ?? undefined} onChange={v => updateGroup('yield_per_meter', v)} step="0.0001" className="mt-1 h-9" />
                           </div>
                           <div>
-                            <Label className="text-xs">Unidade de rendimento</Label>
-                            <Select value={groupForm.yield_unit} onValueChange={v => updateGroup('yield_unit', v)}>
-                              <SelectTrigger className="mt-1 h-9"><SelectValue /></SelectTrigger>
+                            <BulkLabel field="yield_unit" divergence={divergence}>Unidade de rendimento</BulkLabel>
+                            <Select value={groupForm.yield_unit ?? ''} onValueChange={v => updateGroup('yield_unit', v)}>
+                              <SelectTrigger className="mt-1 h-9"><SelectValue placeholder="Manter" /></SelectTrigger>
                               <SelectContent>{['dm²', 'cm²', 'm²', 'cm', 'm'].map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
                             </Select>
                           </div>
                           <div>
-                            <Label className="text-xs">Unidade de OC</Label>
-                            <Select value={groupForm.purchase_order_unit} onValueChange={v => updateGroup('purchase_order_unit', v)}>
-                              <SelectTrigger className="mt-1 h-9"><SelectValue /></SelectTrigger>
+                            <BulkLabel field="purchase_order_unit" divergence={divergence}>Unidade de OC</BulkLabel>
+                            <Select value={groupForm.purchase_order_unit ?? ''} onValueChange={v => updateGroup('purchase_order_unit', v)}>
+                              <SelectTrigger className="mt-1 h-9"><SelectValue placeholder="Manter" /></SelectTrigger>
                               <SelectContent>{UNITS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
                             </Select>
                           </div>
@@ -975,47 +1100,39 @@ export function MasterVariantDialog({
                       </section>
 
                       <section className="space-y-3">
-                        <h4 className="text-xs font-semibold uppercase text-muted-foreground tracking-wide">Cálculo & Logística</h4>
+                        <h4 className="text-xs font-semibold uppercase text-muted-foreground tracking-wide">Reposição</h4>
                         <div className="grid grid-cols-2 gap-3">
                           <div>
-                            <Label className="text-xs">Método de cálculo</Label>
-                            <Select value={groupForm.calculation_method} onValueChange={v => updateGroup('calculation_method', v as 'weight' | 'meter' | 'unit')}>
-                              <SelectTrigger className="mt-1 h-9"><SelectValue /></SelectTrigger>
-                              <SelectContent>
-                                {CALC_METHODS.map(m => (
-                                  <SelectItem key={m} value={m}>
-                                    {m === 'weight' ? 'Peso' : m === 'meter' ? 'Metro' : 'Unidade'}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
+                            <BulkLabel field="lead_time_days" divergence={divergence}>Lead time padrão (dias)</BulkLabel>
+                            <NumberInput value={groupForm.lead_time_days ?? undefined} onChange={v => updateGroup('lead_time_days', v)} className="mt-1 h-9" />
                           </div>
                           <div>
-                            <Label className="text-xs">Lead time padrão (dias)</Label>
-                            <NumberInput value={groupForm.lead_time_days} onChange={v => updateGroup('lead_time_days', v)} className="mt-1 h-9" />
-                          </div>
-                          <div className="col-span-2">
-                            <Label className="text-xs">Qtd mínima de compra</Label>
-                            <NumberInput value={groupForm.min_order_quantity} onChange={v => updateGroup('min_order_quantity', v)} className="mt-1 h-9" />
+                            <BulkLabel field="min_order_quantity" divergence={divergence}>Qtd mínima de compra ({groupForm.purchase_unit ?? template?.purchase_unit ?? 'un'})</BulkLabel>
+                            <NumberInput value={groupForm.min_order_quantity ?? undefined} onChange={v => updateGroup('min_order_quantity', v)} className="mt-1 h-9" />
                           </div>
                         </div>
                       </section>
 
                       <section className="flex items-center justify-between rounded-md border px-3 py-2">
                         <div>
-                          <Label className="text-xs font-medium">Status Ativo (Grupo)</Label>
-                          <p className="text-xs text-muted-foreground">Desativar remove todas as variantes de novos pedidos.</p>
+                          <BulkLabel field="active" divergence={divergence}>Status ativo</BulkLabel>
+                          <p className="text-xs text-muted-foreground">Desativar remove todas as cores de novos pedidos.</p>
                         </div>
-                        <Switch checked={groupForm.active} onCheckedChange={v => updateGroup('active', v)} />
+                        <Switch checked={groupForm.active ?? false} onCheckedChange={v => updateGroup('active', v)} />
                       </section>
                     </div>
                   </div>
 
-                  <div className="flex justify-end gap-2 pt-4 border-t bg-background">
+                  <div className="flex items-center justify-end gap-2 pt-4 border-t bg-background">
+                    <span className="mr-auto text-xs text-muted-foreground">
+                      {camposAlterados.length === 0
+                        ? 'Nenhum campo preenchido'
+                        : `${camposAlterados.length} campo${camposAlterados.length === 1 ? '' : 's'} para aplicar`}
+                    </span>
                     <Button variant="ghost" onClick={() => setActiveTab('variants')} disabled={savingGroup}>Cancelar</Button>
-                    <Button onClick={handleSaveGroupForm} disabled={savingGroup} className="gap-1 min-w-[200px]">
+                    <Button onClick={handleSaveGroupForm} disabled={savingGroup || camposAlterados.length === 0} className="gap-1 min-w-[200px]">
                       {savingGroup ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                      Salvar Dados do Grupo
+                      Revisar e aplicar
                     </Button>
                   </div>
                 </div>
@@ -1072,12 +1189,66 @@ export function MasterVariantDialog({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={() => { setConfirmUnitOpen(false); void doSaveGroupForm(); }}>
-              Continuar e salvar
+            <AlertDialogAction onClick={() => { setConfirmUnitOpen(false); setPreviewOpen(true); }}>
+              Continuar
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Prévia obrigatória antes de gravar (R2.8). Nomeia a cor que perde valor
+          próprio — sem isso o achatamento era invisível até alguém notar o custo
+          errado no custeio. */}
+      <AlertDialog open={previewOpen} onOpenChange={setPreviewOpen}>
+        <AlertDialogContent className="max-w-lg">
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Aplicar {camposAlterados.length} campo{camposAlterados.length === 1 ? '' : 's'} a {variants.length} cor{variants.length === 1 ? '' : 'es'}?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Os nomes dos produtos não são alterados. Campos não preenchidos ficam como estão.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="max-h-[46vh] overflow-y-auto space-y-3 text-sm">
+            {impacto.map(({ campo, label, novo, perdem }) => (
+              <div key={campo} className="rounded-md border px-3 py-2">
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="font-medium">{label}</span>
+                  <span className="font-mono text-xs">{novo === '' ? '(vazio)' : novo}</span>
+                </div>
+                {perdem.length > 0 && (
+                  <div className="mt-1.5 text-xs text-warning">
+                    <p className="font-medium">
+                      {perdem.length} cor{perdem.length === 1 ? '' : 'es'} {perdem.length === 1 ? 'perde' : 'perdem'} valor próprio:
+                    </p>
+                    <ul className="mt-0.5 space-y-0.5 text-muted-foreground">
+                      {perdem.slice(0, 6).map(x => (
+                        <li key={x.cor}>• {x.cor}: <span className="font-mono">{x.valor}</span> → <span className="font-mono">{novo}</span></li>
+                      ))}
+                      {perdem.length > 6 && <li>• … e mais {perdem.length - 6}</li>}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={savingGroup}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={(e) => { e.preventDefault(); void doSaveGroupForm(); }} disabled={savingGroup}>
+              {savingGroup ? 'Aplicando…' : 'Aplicar'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Dimensões e embalagem vivem no grupo de estoque (R2.11). */}
+      {openGroupEditor && groupOfVariants && (
+        <GroupDialog
+          open={openGroupEditor}
+          onOpenChange={setOpenGroupEditor}
+          group={groupOfVariants}
+        />
+      )}
     </>
   );
 }

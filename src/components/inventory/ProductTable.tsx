@@ -13,7 +13,9 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { PencilSimple as Pencil, Warning as AlertTriangle, FolderOpen, CaretDown as ChevronDown, ArrowsDownUp as ArrowUpDown, ArrowUp, ArrowDown, Stack as Layers, Package as PackageMinus, GridFour as Grid3X3, Gear as Settings2, Package, Image as ImageIcon, X, Flask as FlaskConical, WarningCircle } from '@phosphor-icons/react';
+import { PencilSimple as Pencil, Warning as AlertTriangle, FolderOpen, CaretDown as ChevronDown, ArrowsDownUp as ArrowUpDown, ArrowUp, ArrowDown, Stack as Layers, Package as PackageMinus, GridFour as Grid3X3, Gear as Settings2, Package, Image as ImageIcon, X, Flask as FlaskConical, WarningCircle, Plus, DotsThree } from '@phosphor-icons/react';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { useMaterialsConfigIssuesByProduct, ISSUE_LABELS } from '@/hooks/useMaterialsConfigIssues';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { cn, getSoleModelName, stripColorFromName } from '@/lib/utils';
@@ -91,15 +93,115 @@ function getBaseName(product: Product): string {
   return words.slice(0, -1).join(' ').toUpperCase();
 }
 
+/** Saldo LÍQUIDO — o que sobra depois das reservas de OP. É o número que responde
+ *  "dá pra fechar o pedido?", e desde 02/08/2026 é o que a lista mostra em
+ *  destaque (spec `estoque-cores-e-editores.md` R1.6). */
+function availableQty(product: Product): number {
+  return (Number(product.quantity) || 0) - (Number((product as any).reserved_stock) || 0);
+}
+
+/** Status compara o DISPONÍVEL com o mínimo, não o bruto (R1.6). Sem isso o selo
+ *  "Normal" apareceria ao lado de um disponível negativo — hoje 51 cores estão
+ *  nessa situação (reserva viva sobre saldo zerado). */
 function getStockStatus(product: Product) {
-  const qty = Number(product.quantity) || 0;
+  const qty = availableQty(product);
   const min = Number(product.min_stock) || 0;
+  if (qty < 0) return { label: 'Crítico', variant: 'destructive' as const };
   if (min === 0) return { label: 'Normal', variant: 'success' as const };
   const ratio = qty / min;
   if (ratio <= 0.5) return { label: 'Crítico', variant: 'destructive' as const };
   if (ratio <= 1) return { label: 'Baixo', variant: 'warning' as const };
   return { label: 'Normal', variant: 'success' as const };
 }
+
+/** Identidade do MATERIAL dentro do grupo: o nome sem o sufixo de cor. Serve só
+ *  pra decidir se o grupo é homogêneo (só variações de cor) ou heterogêneo —
+ *  9 dos 32 grupos guardam materiais diferentes, e `COMPONENTES DIVERSOS` tem 8
+ *  (Binóculo, Fivela, Ilhós…). NÃO usa o corte-de-última-palavra do
+ *  `getBaseName`, que produzia rótulos falsos como "NAPA". */
+function materialIdentity(product: Product): string {
+  return stripColorFromName(product.name, product.color).trim().toUpperCase();
+}
+
+type GroupStats = {
+  bruto: number;
+  disponivel: number;
+  valor: number;
+  zeradas: number;
+  emFalta: number;
+  unidade: string;
+  /** Mais de um material no grupo ⇒ a sub-linha precisa mostrar o nome (R1.1a). */
+  heterogeneo: boolean;
+  severidade: 'alarm' | 'warn' | 'dead' | 'ok';
+};
+
+/** Agregados da linha colapsada. Soma bruta e líquida convivem: a conferência
+ *  física conta prateleira, o pedido consome disponível. */
+function computeGroupStats(items: Product[]): GroupStats {
+  let bruto = 0, disponivel = 0, valor = 0, zeradas = 0, emFalta = 0, abaixoMin = 0;
+  const materiais = new Set<string>();
+  for (const p of items) {
+    const qty = Number(p.quantity) || 0;
+    const disp = availableQty(p);
+    bruto += qty;
+    disponivel += disp;
+    valor += qty * (Number(p.unit_price) || 0);
+    if (qty <= 0) zeradas += 1;
+    if (disp < 0) emFalta += 1;
+    if (qty > 0 && Number(p.min_stock) > 0 && qty <= Number(p.min_stock)) abaixoMin += 1;
+    materiais.add(materialIdentity(p));
+  }
+  const severidade: GroupStats['severidade'] =
+    emFalta > 0 ? 'alarm'
+    : zeradas === items.length ? 'dead'
+    : abaixoMin > 0 ? 'warn'
+    : 'ok';
+  return {
+    bruto, disponivel, valor, zeradas, emFalta,
+    unidade: items[0]?.unit || '',
+    heterogeneo: materiais.size > 1,
+    severidade,
+  };
+}
+
+const RAIL_CLASSES: Record<GroupStats['severidade'], string> = {
+  alarm: 'bg-destructive',
+  warn: 'bg-warning',
+  dead: 'bg-muted-foreground/40',
+  ok: 'bg-success',
+};
+
+/** Amostra de cor da sub-linha (R1.8). A fonte é a tabela `colors`
+ *  (`referencia_hex`), NÃO um mapa inventado no front — cor sem padrão
+ *  cadastrado simplesmente não ganha amostra. */
+function useColorSwatches(): (color?: string | null) => string | null {
+  const { data: colors = [] } = useQuery({
+    queryKey: ['colors', 'swatches'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('colors')
+        .select('nome, referencia_hex')
+        .not('referencia_hex', 'is', null);
+      if (error) throw error;
+      return data as { nome: string; referencia_hex: string }[];
+    },
+    staleTime: 10 * 60 * 1000,
+  });
+  const map = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const c of colors) {
+      if (c.nome && c.referencia_hex) m.set(normalizeColorKey(c.nome), c.referencia_hex);
+    }
+    return m;
+  }, [colors]);
+  return useCallback((color?: string | null) => {
+    if (!color) return null;
+    return map.get(normalizeColorKey(color)) ?? null;
+  }, [map]);
+}
+
+const normalizeColorKey = (s: string) =>
+  s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toUpperCase();
 
 const badgeVariantClasses = {
   destructive: 'bg-destructive/15 text-destructive border-destructive/30',
@@ -174,7 +276,7 @@ function ProductHoverPreview({ product, formatCurrency, children }: {
   );
 }
 
-function ProductRows({ products, onEdit, onDelete, onStockOut, onGrade, onArtisanal, formatCurrency, indent = false, avgConsumptionMap, selectedIds }: {
+function ProductRows({ products, onEdit, onDelete, onStockOut, onGrade, onArtisanal, formatCurrency, indent = false, avgConsumptionMap, selectedIds, showName = true }: {
   products: Product[];
   onEdit: (product: Product) => void;
   onDelete: (id: string) => void;
@@ -185,9 +287,13 @@ function ProductRows({ products, onEdit, onDelete, onStockOut, onGrade, onArtisa
   indent?: boolean;
   avgConsumptionMap: Record<string, number>;
   selectedIds?: Set<string>;
+  /** false em grupo homogêneo: as N linhas repetiriam o mesmo nome, então a COR
+   *  vira o rótulo da linha. true em grupo heterogêneo (R1.1a). */
+  showName?: boolean;
 }) {
   const navigate = useNavigate();
   const [zoomImg, setZoomImg] = useState<{ src: string; alt: string } | null>(null);
+  const swatchOf = useColorSwatches();
   const { density, isVisible } = useTableView();
   const dCls = densityClasses(density);
   const isCompact = density === 'compact';
@@ -222,15 +328,29 @@ function ProductRows({ products, onEdit, onDelete, onStockOut, onGrade, onArtisa
                 {status.variant === 'destructive' && (
                   <AlertTriangle className="h-4 w-4 text-destructive animate-pulse-slow" />
                 )}
+                {/* Amostra da cor — só quando a cor tem padrão cadastrado em `colors`. */}
+                {(() => {
+                  const hex = swatchOf(product.color);
+                  if (!hex) return null;
+                  return (
+                    <span
+                      className="h-2.5 w-2.5 rounded-sm border border-border shrink-0"
+                      style={{ backgroundColor: hex }}
+                      aria-hidden
+                    />
+                  );
+                })()}
                 <ProductHoverPreview product={product} formatCurrency={formatCurrency}>
-                  <span 
+                  <span
                     className={cn("cursor-pointer hover:text-primary hover:underline transition-colors", indent && "text-muted-foreground text-sm")}
                     onClick={() => navigate(`/estoque/${product.id}`)}
                   >
-                    {stripColorFromName(product.name, product.color)}
+                    {/* Grupo homogêneo: as N linhas repetiriam o mesmo nome, então a
+                        COR é o rótulo. Heterogêneo: nome + selo de cor (R1.1a). */}
+                    {showName ? stripColorFromName(product.name, product.color) : (product.color || '—')}
                   </span>
                 </ProductHoverPreview>
-                {product.color && (
+                {showName && product.color && (
                   <Badge variant="secondary" className={cn("text-xs font-normal", indent && "bg-primary/10 text-primary border-primary/20")}>{product.color}</Badge>
                 )}
                  {isInactive && (
@@ -332,7 +452,10 @@ function ProductRows({ products, onEdit, onDelete, onStockOut, onGrade, onArtisa
                  const inProd = Number((product as any).in_production_quantity) || 0;
                  const reserved = Number((product as any).reserved_stock) || 0;
                  const totalQty = freeQty + inProd;
-                 const available = Math.max(0, freeQty - reserved);
+                 // SEM clamp em 0: reserva viva sobre saldo zerado é furo de
+                 // material e precisa aparecer como negativo (R1.8). 51 cores
+                 // estão nessa situação hoje — o clamp as mostrava como "0".
+                 const available = freeQty - reserved;
 
                  // Aproximação em unidade de compra (ex: ≈ 5 placas) quando há conversão configurada
                  const purchaseUnit = (product as any).purchase_unit;
@@ -367,7 +490,13 @@ function ProductRows({ products, onEdit, onDelete, onStockOut, onGrade, onArtisa
                        </div>
                      )}
                      {(reserved > 0 || inProd > 0) && (
-                       <div className="text-xs text-emerald-700 font-semibold whitespace-nowrap" title="Estoque livre para alocação">
+                       <div
+                         className={cn(
+                           'text-xs font-semibold whitespace-nowrap',
+                           available < 0 ? 'text-destructive' : 'text-success',
+                         )}
+                         title={available < 0 ? 'Reservado além do saldo — material em falta' : 'Estoque livre para alocação'}
+                       >
                          Disp.: {available.toLocaleString('pt-BR')} {product.unit}
                        </div>
                      )}
@@ -482,22 +611,28 @@ interface ProductTableProps {
   onEdit: (product: Product) => void;
   onDelete: (id: string) => void;
   externalSort?: { key: SortKey; dir: SortDir } | null;
+  /** Termo de busca ativo — decide se a linha do material abre sozinha (R1.14). */
+  searchTerm?: string;
 }
 
-type SubGroup = {
-  baseName: string;
+/** Uma linha colapsável da lista = um grupo de estoque. É a mesma unidade que o
+ *  `resolve_material_product` usa pra resolver cor (ele disputa entre TODOS os
+ *  itens do grupo, ignorando o nome), então a tela espelha o que o débito vê. */
+type GroupRow = {
+  groupId: string | null;
+  groupName: string;
   products: Product[];
-  totalQty: number;
-  totalValue: number;
+  stats: GroupStats;
 };
 
-export function ProductTable({ products, onEdit, onDelete, externalSort }: ProductTableProps) {
+export function ProductTable({ products, onEdit, onDelete, externalSort, searchTerm }: ProductTableProps) {
   const { data: groups = [] } = useGroups();
   const { density, isVisible, visibleCount } = useTableView();
   // Material column always shown; +1 for it.
   const colCount = visibleCount + 1;
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
-  const [collapsedSubs, setCollapsedSubs] = useState<Record<string, boolean>>({});
+  // A linha do material nasce FECHADA (R1.2). Estado de sessão, não persistido:
+  // ausência da chave = fechado, invertendo o `collapsed` anterior.
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
   const [internalSortKey, setInternalSortKey] = useState<SortKey>(null);
   const [internalSortDir, setInternalSortDir] = useState<SortDir>('asc');
   const sortKey: SortKey = externalSort?.key ?? internalSortKey;
@@ -546,7 +681,7 @@ export function ProductTable({ products, onEdit, onDelete, externalSort }: Produ
   // mostrando o valor antigo ("aparece que salvou, porém não altera").
   // baseKey != null ⇒ aberto por SUBGRUPO (deriva por nome-base, escopado ao group_id);
   // senão ⇒ aberto pela linha (deriva por group_id, igual ao comportamento anterior).
-  const [masterVariant, setMasterVariant] = useState<{ baseName: string; groupId: string | null; baseKey: string | null } | null>(null);
+  const [masterVariant, setMasterVariant] = useState<{ baseName: string; groupId: string | null; baseKey: string | null; tab?: 'variants' | 'group' | 'add' } | null>(null);
   const masterVariantProducts = useMemo(() => {
     if (!masterVariant) return [] as Product[];
     const { groupId, baseKey } = masterVariant;
@@ -640,28 +775,7 @@ export function ProductTable({ products, onEdit, onDelete, externalSort }: Produ
     return sortDir === 'desc' ? sorted.reverse() : sorted;
   }, [products, sortKey, sortDir, avgConsumptionMap]);
 
-  /** Create subgroups by base name */
-  const createSubGroups = (items: Product[]): SubGroup[] => {
-    const map = new Map<string, Product[]>();
-    items.forEach(p => {
-      const base = getBaseName(p);
-      // Empty base = single-word name, use the full name as key (no sub-grouping)
-      const key = base || p.name.toUpperCase();
-      if (!map.has(key)) map.set(key, []);
-      map.get(key)!.push(p);
-    });
-
-    return Array.from(map.entries())
-      .map(([baseName, prods]) => ({
-        baseName,
-        products: prods,
-        totalQty: prods.reduce((s, p) => s + (Number(p.quantity) || 0), 0),
-        totalValue: prods.reduce((s, p) => s + (Number(p.quantity) || 0) * (Number(p.unit_price) || 0), 0),
-      }))
-      .sort((a, b) => a.baseName.localeCompare(b.baseName, 'pt-BR'));
-  };
-
-  const grouped = useMemo(() => {
+  const grouped = useMemo<GroupRow[]>(() => {
     const source = sortKey ? sortedProducts : products;
     const groupMap = new Map<string | null, Product[]>();
     source.forEach(p => {
@@ -670,23 +784,39 @@ export function ProductTable({ products, onEdit, onDelete, externalSort }: Produ
       groupMap.get(key)!.push(p);
     });
 
-    const result: { groupId: string | null; groupName: string; products: Product[]; subGroups: SubGroup[] }[] = [];
+    const result: GroupRow[] = [];
     groups.forEach(g => {
       const items = groupMap.get(g.id);
       if (items && items.length > 0) {
-        result.push({ groupId: g.id, groupName: g.name, products: items, subGroups: createSubGroups(items) });
+        result.push({ groupId: g.id, groupName: g.name, products: items, stats: computeGroupStats(items) });
       }
     });
     const ungrouped = groupMap.get(null);
     if (ungrouped && ungrouped.length > 0) {
-      result.push({ groupId: null, groupName: 'Sem Grupo', products: ungrouped, subGroups: createSubGroups(ungrouped) });
+      result.push({ groupId: null, groupName: 'Sem Grupo', products: ungrouped, stats: computeGroupStats(ungrouped) });
     }
     return result;
   }, [sortedProducts, products, sortKey, groups]);
 
   const hasGroups = grouped.some(g => g.groupId !== null);
-  const toggle = (key: string) => setCollapsed(prev => ({ ...prev, [key]: !prev[key] }));
-  const toggleSub = (key: string) => setCollapsedSubs(prev => ({ ...prev, [key]: !prev[key] }));
+  const toggle = (key: string) => setOpenGroups(prev => ({ ...prev, [key]: !prev[key] }));
+
+  // R1.13/R1.14 — busca que casa o NOME do grupo mantém a linha fechada (todos os
+  // itens dele casariam de qualquer jeito). Busca que só casou por cor/SKU abre o
+  // grupo, porque a lista já veio filtrada e mostrar 1 linha fechada seria um
+  // clique inútil. A filtragem em si é do `usePaginatedProducts` (searchMatchesAny
+  // já cobre `color`), aqui é só a decisão de abrir.
+  const autoOpen = useMemo(() => {
+    const term = (searchTerm || '').trim();
+    if (!term) return new Set<string>();
+    const abrir = new Set<string>();
+    for (const g of grouped) {
+      if (!searchMatchesAllTerms(term, g.groupName)) abrir.add(g.groupId || 'ungrouped');
+    }
+    return abrir;
+  }, [searchTerm, grouped]);
+
+  const isGroupOpen = (key: string) => openGroups[key] ?? autoOpen.has(key);
 
   // When ANY sort is active (header click or external preset), bypass grouping and show a flat sorted list.
   const isFlatSortMode = !!sortKey;
@@ -739,93 +869,6 @@ export function ProductTable({ products, onEdit, onDelete, externalSort }: Produ
     </TableHeader>
   );
 
-  /** Render subgroups inside table body */
-  const renderSubGroups = (subGroups: SubGroup[], parentKey: string) => {
-    return subGroups.map(sub => {
-      // If only 1 product in subgroup, render directly without header — EXCEPT for Solado which needs the MasterVariantDialog for size range editing
-      const isSoladoSub = sub.products.some(p => p.category === 'Solado');
-       if (sub.products.length === 1 && !isSoladoSub) {
-         return <ProductRows key={sub.baseName} products={sub.products} onEdit={handleEditIntercepted} onDelete={onDelete} onStockOut={setStockOutProduct} onGrade={setGradeProduct} onArtisanal={setArtisanalProducts} formatCurrency={formatCurrency} avgConsumptionMap={avgConsumptionMap} />;
-       }
-
-      const subKey = `${parentKey}__${sub.baseName}`;
-      const isSubCollapsed = collapsedSubs[subKey];
-
-      // Bug fix 23/05/2026: era `<tr className="contents">` envolvendo
-      // outro <tr>, o que viola HTML (tr dentro de tr). React reportava
-      // "validateDOMNesting: tr cannot appear as a child of tr". Trocado
-      // por React.Fragment — mesma semântica sem o wrapper inválido.
-      return (
-        <React.Fragment key={sub.baseName}>
-          <TableRow
-            className="bg-muted/40 hover:bg-muted/60 cursor-pointer border-y border-border/40"
-            onClick={() => toggleSub(subKey)}
-          >
-            <TableCell colSpan={colCount} className="py-2">
-              <div className="flex items-center gap-2 pl-2 flex-wrap">
-                <ChevronDown className={cn("h-3.5 w-3.5 text-muted-foreground transition-transform", isSubCollapsed && "-rotate-90")} />
-                <div className="flex h-6 w-6 items-center justify-center rounded-md bg-primary/10 text-primary shrink-0">
-                  <Layers className="h-3 w-3" />
-                </div>
-                <button
-                  className="font-semibold text-sm text-foreground hover:text-primary transition-colors"
-                  onClick={(e) => { e.stopPropagation(); setMasterVariant({ baseName: sub.baseName, groupId: sub.products[0]?.group_id ?? null, baseKey: sub.baseName }); }}
-                >
-                  {sub.baseName}
-                </button>
-                <Badge variant="outline" className="text-xs px-1.5 bg-primary/5 text-primary border-primary/20 font-medium">
-                  {sub.products.length} {sub.products.length === 1 ? 'variante' : 'variantes'}
-                </Badge>
-                 <Tooltip>
-                   <TooltipTrigger asChild>
-                     <Button
-                       variant="ghost"
-                       size="icon"
-                       aria-label="Editar variantes"
-                       className="h-6 w-6 ml-1"
-                       onClick={(e) => { e.stopPropagation(); setMasterVariant({ baseName: sub.baseName, groupId: sub.products[0]?.group_id ?? null, baseKey: sub.baseName }); }}
-                     >
-                       <Pencil className="h-3 w-3" />
-                     </Button>
-                   </TooltipTrigger>
-                   <TooltipContent>Editar variantes</TooltipContent>
-                 </Tooltip>
-                 <Tooltip>
-                   <TooltipTrigger asChild>
-                     <Button
-                       variant="ghost"
-                       size="icon"
-                       aria-label="Marcar grupo como artesanal"
-                       className="h-6 w-6 ml-1 text-muted-foreground hover:text-primary"
-                       onClick={(e) => { e.stopPropagation(); setArtisanalProducts(sub.products); }}
-                     >
-                       <FlaskConical className="h-3 w-3" />
-                     </Button>
-                   </TooltipTrigger>
-                   <TooltipContent>Marcar grupo como artesanal</TooltipContent>
-                 </Tooltip>
-                  <span className="ml-auto flex items-center gap-3 text-xs font-mono">
-                    {isVisible('quantity') && (
-                      <span className="text-muted-foreground">
-                        Qtd.: <span className="font-semibold text-foreground">{sub.totalQty.toLocaleString('pt-BR')}</span>
-                      </span>
-                    )}
-                    {isVisible('total_value') && (
-                      <span className="text-muted-foreground">
-                        Total: <span className="font-semibold text-foreground">{formatCurrency(sub.totalValue)}</span>
-                      </span>
-                    )}
-                  </span>
-               </div>
-            </TableCell>
-          </TableRow>
-           {!isSubCollapsed && (
-             <ProductRows products={sub.products} onEdit={handleEditIntercepted} onDelete={onDelete} onStockOut={setStockOutProduct} onGrade={setGradeProduct} onArtisanal={setArtisanalProducts} formatCurrency={formatCurrency} indent avgConsumptionMap={avgConsumptionMap} />
-           )}
-        </React.Fragment>
-      );
-    });
-  };
 
   // Flat sorted view — used when an external sort preset is active so the chosen order is preserved.
   if (isFlatSortMode) {
@@ -862,45 +905,13 @@ export function ProductTable({ products, onEdit, onDelete, externalSort }: Produ
         <ManualStockOutDialog open={!!stockOutProduct} onOpenChange={(o) => { if (!o) setStockOutProduct(null); }} product={stockOutProduct} />
         <SoladoGradeDialog open={!!gradeProduct} onOpenChange={(o) => { if (!o) setGradeProduct(null); }} product={gradeProduct} />
         <SoleTechnicalEditDialog open={!!soleEditProduct} onOpenChange={(o) => { if (!o) setSoleEditProduct(null); }} product={soleEditProduct} />
-        {masterVariant && <MasterVariantDialog open={!!masterVariant} onOpenChange={(o) => { if (!o) setMasterVariant(null); }} baseName={masterVariant.baseName} variants={masterVariantProducts} onEditVariant={handleEditIntercepted} onDeleteVariant={onDelete} />}
+        {masterVariant && <MasterVariantDialog open={!!masterVariant} onOpenChange={(o) => { if (!o) setMasterVariant(null); }} baseName={masterVariant.baseName} variants={masterVariantProducts} initialTab={masterVariant.tab} onEditVariant={handleEditIntercepted} onDeleteVariant={onDelete} />}
       </>
     );
   }
 
-  // No product groups at all — use subgroups directly
+  // Sem nenhum grupo de estoque: não há o que colapsar — lista plana.
   if (!hasGroups) {
-    const allSubGroups = createSubGroups(sortKey ? sortedProducts : products);
-    const hasAnySub = allSubGroups.some(s => s.products.length > 1);
-
-    if (!hasAnySub) {
-      return (
-        <>
-          <SelectionMarquee containerRef={containerRef} onSelectionChange={handleMarqueeSelection}>
-            <div ref={containerRef} className="rounded-lg border bg-card overflow-hidden">
-              <Table>
-                {tableHeader}
-                <TableBody>
-                  {products.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={colCount} className="text-center py-12 text-muted-foreground">
-                        Nenhum material encontrado
-                      </TableCell>
-                    </TableRow>
-                   ) : (
-                     <ProductRows products={sortedProducts} onEdit={handleEditIntercepted} onDelete={onDelete} onStockOut={setStockOutProduct} onGrade={setGradeProduct} onArtisanal={setArtisanalProducts} formatCurrency={formatCurrency} avgConsumptionMap={avgConsumptionMap} selectedIds={selectedIds} />
-                   )}
-                </TableBody>
-              </Table>
-            </div>
-          </SelectionMarquee>
-          <ManualStockOutDialog open={!!stockOutProduct} onOpenChange={(o) => { if (!o) setStockOutProduct(null); }} product={stockOutProduct} />
-          <SoladoGradeDialog open={!!gradeProduct} onOpenChange={(o) => { if (!o) setGradeProduct(null); }} product={gradeProduct} /><SoleTechnicalEditDialog open={!!soleEditProduct} onOpenChange={(o) => { if (!o) setSoleEditProduct(null); }} product={soleEditProduct} />
-       {masterVariant && <MasterVariantDialog open={!!masterVariant} onOpenChange={(o) => { if (!o) setMasterVariant(null); }} baseName={masterVariant.baseName} variants={masterVariantProducts} onEditVariant={handleEditIntercepted} onDeleteVariant={onDelete} />}
-       <ArtisanalProductDialog products={artisanalProducts || []} open={!!artisanalProducts} onOpenChange={(o) => { if (!o) setArtisanalProducts(null); }} />
-     </>
-      );
-    }
-
     return (
       <>
         <SelectionMarquee containerRef={containerRef} onSelectionChange={handleMarqueeSelection}>
@@ -915,7 +926,7 @@ export function ProductTable({ products, onEdit, onDelete, externalSort }: Produ
                     </TableCell>
                   </TableRow>
                 ) : (
-                  renderSubGroups(allSubGroups, 'all')
+                  <ProductRows products={sortedProducts} onEdit={handleEditIntercepted} onDelete={onDelete} onStockOut={setStockOutProduct} onGrade={setGradeProduct} onArtisanal={setArtisanalProducts} formatCurrency={formatCurrency} avgConsumptionMap={avgConsumptionMap} selectedIds={selectedIds} />
                 )}
               </TableBody>
             </Table>
@@ -923,8 +934,8 @@ export function ProductTable({ products, onEdit, onDelete, externalSort }: Produ
         </SelectionMarquee>
         <ManualStockOutDialog open={!!stockOutProduct} onOpenChange={(o) => { if (!o) setStockOutProduct(null); }} product={stockOutProduct} />
         <SoladoGradeDialog open={!!gradeProduct} onOpenChange={(o) => { if (!o) setGradeProduct(null); }} product={gradeProduct} /><SoleTechnicalEditDialog open={!!soleEditProduct} onOpenChange={(o) => { if (!o) setSoleEditProduct(null); }} product={soleEditProduct} />
-        {masterVariant && <MasterVariantDialog open={!!masterVariant} onOpenChange={(o) => { if (!o) setMasterVariant(null); }} baseName={masterVariant.baseName} variants={masterVariantProducts} onEditVariant={handleEditIntercepted} onDeleteVariant={onDelete} />}
-         <ArtisanalProductDialog products={artisanalProducts || []} open={!!artisanalProducts} onOpenChange={(o) => { if (!o) setArtisanalProducts(null); }} />
+        {masterVariant && <MasterVariantDialog open={!!masterVariant} onOpenChange={(o) => { if (!o) setMasterVariant(null); }} baseName={masterVariant.baseName} variants={masterVariantProducts} initialTab={masterVariant.tab} onEditVariant={handleEditIntercepted} onDeleteVariant={onDelete} />}
+        <ArtisanalProductDialog products={artisanalProducts || []} open={!!artisanalProducts} onOpenChange={(o) => { if (!o) setArtisanalProducts(null); }} />
       </>
     );
   }
@@ -933,81 +944,135 @@ export function ProductTable({ products, onEdit, onDelete, externalSort }: Produ
     <>
       <SelectionMarquee containerRef={containerRef} onSelectionChange={handleMarqueeSelection}>
         <div ref={containerRef} className="space-y-4">
-           {grouped.map(({ groupId, groupName, subGroups, products: groupProds }) => {
+           {grouped.map(({ groupId, groupName, products: groupProds, stats }) => {
             const key = groupId || 'ungrouped';
-            const isCollapsed = collapsed[key];
-            const totalProducts = subGroups.reduce((s, sg) => s + sg.products.length, 0);
+            const isOpen = isGroupOpen(key);
+            const totalProducts = groupProds.length;
+            // Contador honesto: "cores" só quando o grupo é mesmo variação de cor.
+            // 9 dos 32 grupos guardam materiais diferentes (R1.1a).
+            const contador = stats.heterogeneo
+              ? `${totalProducts} ${totalProducts === 1 ? 'item' : 'itens'}`
+              : `${totalProducts} ${totalProducts === 1 ? 'cor' : 'cores'}`;
             return (
               <div key={key} className="rounded-xl border border-border/60 bg-card overflow-hidden shadow-sm">
                 <div className={cn(
                   "w-full flex items-center gap-3 px-4 py-3 text-left transition-colors",
                   "bg-gradient-to-r from-muted/40 via-muted/20 to-transparent",
-                  "border-l-4 border-l-primary/60",
-                  !isCollapsed && "border-b border-border/60",
+                  isOpen && "border-b border-border/60",
                 )}>
-                  <button onClick={() => toggle(key)} className="shrink-0 rounded p-0.5 hover:bg-muted transition-colors" aria-label={isCollapsed ? "Expandir grupo" : "Recolher grupo"}>
-                    <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform", isCollapsed && "-rotate-90")} />
+                  {/* Trilho de severidade (R1.5): a pior condição entre as cores do
+                      grupo, legível antes de qualquer número. */}
+                  <span
+                    className={cn('w-1 self-stretch rounded-full shrink-0 -ml-1', RAIL_CLASSES[stats.severidade])}
+                    aria-hidden
+                  />
+                  <button onClick={() => toggle(key)} className="shrink-0 rounded p-0.5 hover:bg-muted transition-colors" aria-label={isOpen ? "Recolher material" : "Expandir material"} aria-expanded={isOpen}>
+                    <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform", !isOpen && "-rotate-90")} />
                   </button>
                   <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary shrink-0">
                     <FolderOpen className="h-4 w-4" />
                   </div>
-                  {groupId ? (
-                    <button
-                      className="font-semibold text-base text-foreground hover:text-primary transition-colors"
-                      onClick={() => {
-                        const g = groups.find(gr => gr.id === groupId);
-                        if (g) setEditingGroup(g);
-                      }}
-                    >
-                      {groupName}
-                    </button>
-                  ) : (
-                    <span className="font-semibold text-base text-muted-foreground italic">{groupName}</span>
-                  )}
-                  <Badge variant="secondary" className="text-xs font-medium">
-                    {totalProducts} {totalProducts === 1 ? 'item' : 'itens'}
-                  </Badge>
-                   <div className="ml-auto flex items-center gap-1">
-                     <Tooltip>
-                       <TooltipTrigger asChild>
-                         <Button
-                           variant="ghost"
-                           size="icon"
-                           aria-label="Marcar todo o grupo como artesanal"
-                           className="h-7 w-7 text-muted-foreground hover:text-primary"
-                           onClick={() => setArtisanalProducts(groupProds)}
-                         >
-                           <FlaskConical className="h-4 w-4" />
-                         </Button>
-                       </TooltipTrigger>
-                       <TooltipContent>Marcar todo o grupo como artesanal</TooltipContent>
-                     </Tooltip>
-                     {groupId && (
-                       <Tooltip>
-                         <TooltipTrigger asChild>
-                           <Button
-                             variant="ghost"
-                             size="icon"
-                             aria-label="Editar grupo"
-                             className="h-7 w-7"
-                             onClick={() => {
-                               const g = groups.find(gr => gr.id === groupId);
-                               if (g) setEditingGroup(g);
-                             }}
-                           >
-                             <Settings2 className="h-4 w-4" />
-                           </Button>
-                         </TooltipTrigger>
-                         <TooltipContent>Editar grupo</TooltipContent>
-                       </Tooltip>
-                     )}
-                   </div>
+                  <div className="min-w-0 flex flex-col gap-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {groupId ? (
+                        <button
+                          className="font-semibold text-base text-foreground hover:text-primary transition-colors truncate"
+                          onClick={() => {
+                            const g = groups.find(gr => gr.id === groupId);
+                            if (g) setEditingGroup(g);
+                          }}
+                        >
+                          {groupName}
+                        </button>
+                      ) : (
+                        <span className="font-semibold text-base text-muted-foreground italic">{groupName}</span>
+                      )}
+                      <Badge variant="secondary" className="text-xs font-medium">{contador}</Badge>
+                      {stats.emFalta > 0 && (
+                        <Badge variant="outline" className="text-xs bg-destructive/10 text-destructive border-destructive/30">
+                          {stats.emFalta} em falta
+                        </Badge>
+                      )}
+                      {stats.zeradas > 0 && (
+                        <Badge variant="outline" className="text-xs text-muted-foreground">
+                          {stats.zeradas} zerada{stats.zeradas === 1 ? '' : 's'}
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Números do conjunto: disponível manda, bruto abaixo (R1.5/R1.7). */}
+                  <div className="ml-auto flex items-center gap-4 shrink-0">
+                    <div className="text-right font-mono leading-tight hidden sm:block">
+                      <div className={cn('text-base font-bold tabular-nums', stats.disponivel < 0 && 'text-destructive')}>
+                        {stats.disponivel.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}
+                        <span className="text-xs font-normal text-muted-foreground ml-1">{stats.unidade}</span>
+                      </div>
+                      <div className="text-[11px] text-muted-foreground tabular-nums">
+                        bruto {stats.bruto.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} · {formatCurrency(stats.valor)}
+                      </div>
+                    </div>
+
+                    {/* R1.16 — ações do CONJUNTO, sempre visíveis. Baixa manual e
+                        excluir NÃO existem aqui: só na cor (R1.18). */}
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 gap-1.5 px-2.5"
+                        onClick={() => setMasterVariant({ baseName: groupName, groupId, baseKey: null, tab: 'add' })}
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                        <span className="hidden md:inline">Cor</span>
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 gap-1.5 px-2.5"
+                        onClick={() => setMasterVariant({ baseName: groupName, groupId, baseKey: null, tab: 'group' })}
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                        <span className="hidden md:inline">Editar {contador}</span>
+                      </Button>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Mais ações do material">
+                            <DotsThree className="h-4 w-4" weight="bold" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          {groupId && (
+                            <DropdownMenuItem onClick={() => {
+                              const g = groups.find(gr => gr.id === groupId);
+                              if (g) setEditingGroup(g);
+                            }}>
+                              <Settings2 className="h-4 w-4 mr-2" /> Abrir grupo de estoque
+                            </DropdownMenuItem>
+                          )}
+                          <DropdownMenuItem onClick={() => setArtisanalProducts(groupProds)}>
+                            <FlaskConical className="h-4 w-4 mr-2" /> Marcar as {totalProducts} como artesanais
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </div>
                 </div>
-                {!isCollapsed && (
+                {isOpen && (
                   <Table>
                     {tableHeader}
                     <TableBody>
-                      {renderSubGroups(subGroups, key)}
+                      <ProductRows
+                        products={groupProds}
+                        onEdit={handleEditIntercepted}
+                        onDelete={onDelete}
+                        onStockOut={setStockOutProduct}
+                        onGrade={setGradeProduct}
+                        onArtisanal={setArtisanalProducts}
+                        formatCurrency={formatCurrency}
+                        avgConsumptionMap={avgConsumptionMap}
+                        selectedIds={selectedIds}
+                        showName={stats.heterogeneo}
+                      />
                     </TableBody>
                   </Table>
                 )}
@@ -1026,7 +1091,7 @@ export function ProductTable({ products, onEdit, onDelete, externalSort }: Produ
       {editingGroup && (
         <GroupDialog open={!!editingGroup} onOpenChange={(o) => { if (!o) setEditingGroup(null); }} group={editingGroup} />
       )}
-      {masterVariant && <MasterVariantDialog open={!!masterVariant} onOpenChange={(o) => { if (!o) setMasterVariant(null); }} baseName={masterVariant.baseName} variants={masterVariantProducts} onEditVariant={handleEditIntercepted} onDeleteVariant={onDelete} />}
+      {masterVariant && <MasterVariantDialog open={!!masterVariant} onOpenChange={(o) => { if (!o) setMasterVariant(null); }} baseName={masterVariant.baseName} variants={masterVariantProducts} initialTab={masterVariant.tab} onEditVariant={handleEditIntercepted} onDeleteVariant={onDelete} />}
        <ArtisanalProductDialog products={artisanalProducts || []} open={!!artisanalProducts} onOpenChange={(o) => { if (!o) setArtisanalProducts(null); }} />
     </>
   );

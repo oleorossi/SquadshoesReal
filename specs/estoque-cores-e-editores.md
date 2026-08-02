@@ -47,9 +47,25 @@ cor deles só existe dentro do nome (`NAPA ONÇA`). Qualquer renomeação apaga 
 ### 1.1 Colapso por material
 
 **R1.1** — Remover o nível de subgrupo por nome-base do caminho de renderização.
-A hierarquia passa a ser: **grupo de estoque → linha do material → sub-linhas de
-cor**. `getBaseName` continua existindo para o `handleEditIntercepted`, mas deixa
-de gerar cabeçalho visual.
+A hierarquia passa a ser **grupo de estoque → sub-linhas**, com a linha do grupo
+virando a linha colapsável. `getBaseName` continua existindo para o
+`handleEditIntercepted`, mas deixa de gerar cabeçalho visual.
+
+O colapso é por `group_id` porque essa é a mesma unidade que o
+`resolve_material_product` usa para resolver cor — ele ignora o nome do produto e
+disputa entre todos os itens do grupo. A tela passa a espelhar o que o débito
+enxerga.
+
+**R1.1a** — 9 dos 32 grupos guardam mais de um material (`COMPONENTES DIVERSOS`
+tem 8: Binóculo, Fivela, Ilhós, ABS…). A sub-linha se adapta:
+
+| Grupo | Contador | Sub-linha mostra |
+|---|---|---|
+| Homogêneo (1 nome) | `N cores` | cor · SKU |
+| Heterogêneo (2+ nomes) | `N itens` | nome · cor · SKU |
+
+A identidade de material é o `name` normalizado (uppercase, sem o sufixo `: COR`
+e sem a cor repetida no fim) — **não** o `getBaseName` de corte de palavra.
 
 **R1.2** — A linha do material nasce **fechada**, exceto quando a busca a abre
 (R1.6). O estado de aberto/fechado é por sessão, em memória, não persistido.
