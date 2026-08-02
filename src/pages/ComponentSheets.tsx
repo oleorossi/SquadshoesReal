@@ -25,7 +25,6 @@ import { supabase } from '@/integrations/supabase/client';
 import { cn, getSoleModelName } from "@/lib/utils";
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { SoleTechnicalDetails } from "@/components/technical-sheets/SoleTechnicalDetails";
 import { SolesComponentSheetTab } from "@/components/technical-sheets/SolesComponentSheetTab";
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
@@ -919,7 +918,7 @@ function ComponentSheetDetail({ sheet, siblingIds = [], groupItems = [], onDelet
   const bulkUpdate = useBulkUpdateComponentSheets();
   const groupInfo = sheet.product_groups;
   const groupId = sheet.group_id || sheet.products?.group_id;
-  const [activeTab, setActiveTab] = useState<'specs' | 'yield' | 'consumption' | 'notes' | 'colors' | 'sole_specs'>('specs');
+  const [activeTab, setActiveTab] = useState<'specs' | 'yield' | 'consumption' | 'notes' | 'colors'>('specs');
   const [currentSheet, setCurrentSheet] = useState(sheet);
   const [allColorsSelected, setAllColorsSelected] = useState(true);
   const prod = currentSheet.products;
@@ -1206,12 +1205,6 @@ function ComponentSheetDetail({ sheet, siblingIds = [], groupItems = [], onDelet
             <Pencil className="h-4 w-4 mr-1.5" />
             Observações
           </TabsTrigger>
-          {(normalizeForSearch(prod?.category).includes('solado') || normalizeForSearch(prod?.category).includes('sola')) && (
-            <TabsTrigger value="sole_specs" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-3 text-sm">
-              <Footprints className="h-4 w-4 mr-1.5" />
-              Specs Técnicas
-            </TabsTrigger>
-          )}
           {groupId && (
             <TabsTrigger value="colors" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-3 text-sm">
               <Palette className="h-4 w-4 mr-1.5" />
@@ -1536,15 +1529,6 @@ function ComponentSheetDetail({ sheet, siblingIds = [], groupItems = [], onDelet
           />
         </TabsContent>
 
-        {(normalizeForSearch(prod?.category).includes('solado') || normalizeForSearch(prod?.category).includes('sola')) && (
-          <TabsContent value="sole_specs" className="p-6 mt-0">
-            <SoleTechnicalDetails 
-              soleId={currentSheet.product_id} 
-              soleName={baseName} 
-              shoeCategory={shoeType}
-            />
-          </TabsContent>
-        )}
 
         {/* Colors / Group Tab */}
         {groupId && (

@@ -288,45 +288,12 @@ export default function SolesCadastroTab({ sole }: Props) {
     enabled: isFachetado,
   });
 
-  // sole_technical_specs (consumo dm²/par por tamanho deste solado)
-  const { data: soleSpecs = [] } = useQuery({
-    queryKey: ['sole_technical_specs', sole.id],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('sole_technical_specs')
-        .select('size, fachete_lining_consumption_dm2')
-        .eq('sole_id', sole.id);
-      if (error) throw error;
-      return (data || []) as Array<{ size: number; fachete_lining_consumption_dm2: number | null }>;
-    },
-    enabled: isFachetado,
+  // O consumo do fachete NÃO é lido aqui desde 03/08/2026 — mora em
+  // sole_group_standard_items (Consumo Padrão, por modelo). Esta tela guarda só
+  // o MATERIAL do fachete, que é cadastro do solado.
+  const [facheteForm, setFacheteForm] = useState<{ material_group_id: string | null }>({
+    material_group_id: ((sole as any).fachete_material_group_id as string | null) || null,
   });
-  const facheteDm2BySize = useMemo<Record<number, number>>(() => {
-    const map: Record<number, number> = {};
-    for (const r of soleSpecs) {
-      map[r.size] = Number(r.fachete_lining_consumption_dm2 || 0);
-    }
-    return map;
-  }, [soleSpecs]);
-
-  // Estado local pra editar fachete (material + qts por tamanho)
-  const [facheteForm, setFacheteForm] = useState<{
-    material_group_id: string | null;
-    bySize: Record<number, number>;
-  }>({ material_group_id: ((sole as any).fachete_material_group_id as string | null) || null, bySize: {} });
-  // Sync facheteForm.bySize quando soleSpecs carrega.
-  // useEffect (não useMemo!) — setState em useMemo roda no render e causa loop
-  // infinito (React #301). A guarda retorna `prev` quando nada mudou, pra evitar
-  // re-render desnecessário (a referência de facheteDm2BySize é instável enquanto
-  // a query não carregou, por causa do default `= []`).
-  useEffect(() => {
-    setFacheteForm(prev => {
-      const sizes = Object.keys(facheteDm2BySize);
-      const same = sizes.length === Object.keys(prev.bySize).length
-        && sizes.every(k => prev.bySize[Number(k)] === facheteDm2BySize[Number(k)]);
-      return same ? prev : { ...prev, bySize: { ...facheteDm2BySize } };
-    });
-  }, [facheteDm2BySize]);
 
   const updateFacheteMaterial = useMutation({
     mutationFn: async (groupIdSel: string | null) => {
@@ -345,54 +312,6 @@ export default function SolesCadastroTab({ sole }: Props) {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const updateFacheteDm2 = useMutation({
-    mutationFn: async (rows: Array<{ size: number; dm2: number }>) => {
-      // Consumo (fachete dm²/par por numeração) é do MODELO do solado → vale pra
-      // TODAS as cores (variação de cor é irrelevante pro consumo técnico; só o
-      // estoque é por cor). Replica em cada variante do grupo. UPSERT manual por
-      // (sole_id, size) pra NÃO zerar as outras colunas de consumo da linha
-      // (lining/insole_consumption_dm2).
-      let targetIds = [sole.id];
-      if (groupId) {
-        const { data: sibs } = await supabase.from('products').select('id').eq('group_id', groupId);
-        const ids = (sibs || []).map((s: any) => s.id);
-        if (ids.length > 0) targetIds = ids;
-      }
-      for (const sid of targetIds) {
-        for (const r of rows) {
-          const { data: existing } = await supabase
-            .from('sole_technical_specs')
-            .select('id')
-            .eq('sole_id', sid)
-            .eq('size', r.size)
-            .maybeSingle();
-          if (existing) {
-            const { error } = await supabase
-              .from('sole_technical_specs')
-              .update({ fachete_lining_consumption_dm2: r.dm2 } as any)
-              .eq('id', (existing as any).id);
-            if (error) throw error;
-          } else {
-            const { error } = await supabase
-              .from('sole_technical_specs')
-              .insert({ sole_id: sid, size: r.size, fachete_lining_consumption_dm2: r.dm2 } as any);
-            if (error) throw error;
-          }
-        }
-      }
-      return { count: targetIds.length };
-    },
-    onSuccess: ({ count }) => {
-      // Prefixo invalida todas as variantes (['sole_technical_specs', <qualquer sole_id>]).
-      qc.invalidateQueries({ queryKey: ['sole_technical_specs'] });
-      toast.success(
-        count > 1
-          ? `Consumo de fachete salvo · propagado para ${count} cores.`
-          : 'Consumo de fachete por numeração salvo',
-      );
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
 
   // Atualiza sole_classification em TODAS as variantes do grupo (mantém consistência).
   // Se virar palmilha_pronta e ainda não existir regra default de coligação, cria.
@@ -728,10 +647,9 @@ export default function SolesCadastroTab({ sole }: Props) {
           {isFachetado && (
             <div className="rounded-md border border-violet-300/60 bg-violet-50/30 dark:bg-violet-950/10 p-3 space-y-3">
               <p className="text-xs text-violet-900 dark:text-violet-200 leading-relaxed">
-                <strong>Salto fachetado ativado.</strong> Preencha aqui o material que reveste o
-                fachete e quanto consome por par em <span className="font-mono">dm²</span> por
-                numeração — esses dois campos viram débito de estoque automático quando o PV
-                gerar a OP.
+                <strong>Salto fachetado ativado.</strong> Escolha aqui o material que reveste o
+                fachete. A quantidade consumida por par vira débito automático de estoque quando
+                o PV gerar a OP.
               </p>
 
               {/* Material do fachete */}
@@ -761,75 +679,15 @@ export default function SolesCadastroTab({ sole }: Props) {
                 </p>
               </div>
 
-              {/* Grid dm²/par por numeração */}
-              <div>
-                <div className="flex items-end justify-between gap-2 mb-1">
-                  <Label className="text-xs uppercase tracking-wider font-bold text-violet-700 dark:text-violet-300">
-                    Consumo por par <span className="text-violet-600/70 font-mono">(dm²)</span>
-                  </Label>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 text-xs"
-                    disabled={updateFacheteDm2.isPending}
-                    onClick={() => {
-                      // Pega o primeiro valor > 0 e replica pra todos vazios.
-                      const first = baseSizes.map(s => facheteForm.bySize[s] || 0).find(v => v > 0);
-                      if (!first || first <= 0) {
-                        toast.info('Preencha um valor primeiro pra replicar.');
-                        return;
-                      }
-                      const nextBySize: Record<number, number> = { ...facheteForm.bySize };
-                      for (const s of baseSizes) {
-                        if (!nextBySize[s] || nextBySize[s] === 0) nextBySize[s] = first;
-                      }
-                      setFacheteForm(prev => ({ ...prev, bySize: nextBySize }));
-                    }}
-                  >
-                    Replicar 1º valor
-                  </Button>
-                </div>
-                <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-1.5">
-                  {baseSizes.map(s => (
-                    <div key={s} className="text-center">
-                      <div className="text-[10px] font-mono font-bold text-violet-700 dark:text-violet-300 mb-0.5">{s}</div>
-                      <Input
-                        type="text"
-                        inputMode="decimal"
-                        value={(facheteForm.bySize[s] ?? '').toString()}
-                        onChange={(e) => {
-                          const raw = e.target.value.replace(',', '.');
-                          const n = Number(raw);
-                          setFacheteForm(prev => ({
-                            ...prev,
-                            bySize: { ...prev.bySize, [s]: Number.isFinite(n) ? n : 0 },
-                          }));
-                        }}
-                        className="h-8 text-xs text-right font-mono px-1.5"
-                        placeholder="0.00"
-                      />
-                    </div>
-                  ))}
-                </div>
-                <div className="mt-2 flex justify-end">
-                  <Button
-                    size="sm"
-                    className="h-8 text-xs gap-1.5 bg-violet-600 hover:bg-violet-700 text-white"
-                    disabled={updateFacheteDm2.isPending}
-                    onClick={() => {
-                      const rows = baseSizes
-                        .map(s => ({ size: s, dm2: Number(facheteForm.bySize[s] || 0) }))
-                        .filter(r => r.dm2 > 0);
-                      if (rows.length === 0) {
-                        toast.error('Preencha o consumo de pelo menos uma numeração.');
-                        return;
-                      }
-                      updateFacheteDm2.mutate(rows);
-                    }}
-                  >
-                    <Save className="h-3.5 w-3.5" /> Salvar consumo do fachete
-                  </Button>
-                </div>
+              {/* Grid dm²/par por numeração saiu em 03/08/2026.
+                  Gravava direto em sole_technical_specs — o ESPELHO — então o
+                  próximo salvamento em Consumo Padrão apagava sem avisar. O
+                  material do fachete continua aqui (é cadastro do solado, não
+                  consumo); a quantidade é do MODELO. */}
+              <div className="rounded-md border border-border/60 bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                O <strong>consumo do fachete</strong> (dm²/par por numeração) é cadastrado em{' '}
+                <strong>Consumos → Consumo Padrão</strong>, junto com o resto do consumo deste
+                modelo de solado — vale pra todas as cores de uma vez.
               </div>
             </div>
           )}

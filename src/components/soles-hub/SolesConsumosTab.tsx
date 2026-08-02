@@ -30,8 +30,10 @@ export default function SolesConsumosTab({ sole, soleLabel }: Props) {
             <strong>Consumo é por MODELO de solado, não por cor.</strong> O que você cadastrar
             em <strong>Consumo Padrão</strong> vale pra todas as cores deste solado e pra todas
             as referências que o usam — sem cópia no BOM da ficha, então corrigir aqui corrige
-            em todas. A ficha técnica lista só o que é exclusivo da referência. Conjugadas
-            (ex.: 33/34) entram como uma única linha. <strong>Silk</strong> tem menu próprio.
+            em todas. É a <strong>única</strong> tela que cadastra consumo; a aba{' '}
+            <strong>Numerações</strong> cuida só da grade. A ficha técnica lista só o que é
+            exclusivo da referência. Conjugadas (ex.: 33/34) entram como uma única linha.{' '}
+            <strong>Silk</strong> tem menu próprio.
           </p>
         </CardContent>
       </Card>
@@ -39,7 +41,7 @@ export default function SolesConsumosTab({ sole, soleLabel }: Props) {
       <Tabs value={safeTab} onValueChange={setTab} className="w-full">
         <HubTabsList tabs={[
           { value: 'padrao',    label: 'Consumo Padrão',      icon: Package2 },
-          { value: 'forracao',  label: 'Forração / Palmilha', icon: Layers },
+          { value: 'forracao',  label: 'Numerações',          icon: Layers },
           { value: 'silk',      label: 'Silk / Arte',         icon: ImageIcon },
           { value: 'embalagem', label: 'Embalagem',            icon: Box },
         ]} />
@@ -57,16 +59,13 @@ export default function SolesConsumosTab({ sole, soleLabel }: Props) {
           />
         </TabsContent>
 
-        {/* Grade de numerações + visão por SKU de cor. Desde 02/08/2026 o
-            consumo aqui é SOMENTE LEITURA: a fonte da verdade virou
-            sole_group_standard_items (linhas PAPEL) e esta tabela é o espelho
-            mantido pelo trigger tg_sgsi_mirror_papel. */}
+        {/* SÓ a grade de numerações. As colunas de consumo saíram em 03/08/2026:
+            a fonte da verdade é sole_group_standard_items (linhas PAPEL) e esta
+            tabela é o espelho mantido pelo trigger tg_sgsi_mirror_papel. O
+            `readOnly` anterior cobria só os inputs — Replicar/Puxar de Família/
+            Copiar e o Salvar seguiam gravando no espelho. */}
         <TabsContent value="forracao" className="mt-4">
-          <SoleTechnicalDetails
-            soleId={sole.id}
-            soleName={sole.name}
-            consumptionReadOnly
-          />
+          <SoleTechnicalDetails soleId={sole.id} soleName={sole.name} />
         </TabsContent>
 
         {/* Estes painéis vinham da rota /consumo-base. Reutilizá-los aqui mantém

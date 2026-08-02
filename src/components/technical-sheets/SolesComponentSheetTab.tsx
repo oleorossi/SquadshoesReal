@@ -1,6 +1,5 @@
 import { useState, useMemo } from 'react';
 import { Footprints, MagnifyingGlass, CircleNotch as Loader2, FloppyDisk as Save, CheckCircle as CheckCircle2, WarningCircle as AlertCircle, Package, CaretRight as ChevronRight, CaretDown as ChevronDown, Cube as Box } from '@phosphor-icons/react';
-import { SoleStandardItemsPanel } from './SoleStandardItemsPanel';
 import { PackagingTab } from './PackagingTab';
 import { SearchInput } from '@/components/ui/search-input';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -405,10 +404,11 @@ export function SolesComponentSheetTab() {
                       {isExpanded && (
                         <TableRow key={`${group.key}-expanded`} className="bg-muted/10 hover:bg-muted/10 border-b">
                           <TableCell colSpan={7} className="p-4">
-                            <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 items-start">
-                              <PackagingTab soleGroupId={primary.group_id} />
-                              <SoleStandardItemsPanel soleProductId={primary.id} />
-                            </div>
+                            {/* Itens Padrão por Numeração saiu em 03/08/2026:
+                                escrevia em sole_standard_items_consumption, tabela
+                                aposentada em 07/06 e já suprimida no custeio. O
+                                cadastro de consumo é Solados → Consumo Padrão. */}
+                            <PackagingTab soleGroupId={primary.group_id} />
                           </TableCell>
                         </TableRow>
                       )}

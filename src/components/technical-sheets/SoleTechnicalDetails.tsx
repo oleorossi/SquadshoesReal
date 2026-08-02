@@ -1,12 +1,9 @@
 import { useState, useEffect, useMemo, useRef } from "react";
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Footprints, FloppyDisk as Save, CircleNotch as Loader2, ArrowsClockwise as RefreshCw, Stack as Layers, Shield, Plus, X, Copy, Info, Link as Link2, Warning as AlertTriangle, CaretDown as ChevronDown, Calculator } from '@phosphor-icons/react';
+import { Footprints, FloppyDisk as Save, CircleNotch as Loader2, Stack as Layers, Shield, Plus, X, Copy, Info, Link as Link2, Warning as AlertTriangle, CaretDown as ChevronDown } from '@phosphor-icons/react';
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { searchMatchesAllTerms } from "@/lib/searchUtils";
@@ -21,93 +18,39 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { safeToFixed } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
 
+/**
+ * Grade de numerações do solado + materiais default.
+ *
+ * ⚠ ESTA TELA NÃO CADASTRA CONSUMO. Desde 02/08/2026 a fonte da verdade é
+ * `sole_group_standard_items` (linhas PAPEL, por MODELO de solado), editada em
+ * **Solados → Consumo Padrão**; `sole_technical_specs` é ESPELHO derivado,
+ * mantido pelo trigger `tg_sgsi_mirror_papel`.
+ *
+ * Em 03/08/2026 as 4 colunas de consumo saíram daqui de vez. O `readOnly` que
+ * existia antes cobria só os `<input>` — "Replicar 1º valor", "Puxar de
+ * Família", "Copiar de Qualquer Solado" e o próprio Salvar continuavam
+ * gravando no espelho, e o próximo salvamento em Consumo Padrão apagava sem
+ * avisar. Tela única de consumo = Consumo Padrão; aqui mora só a GRADE.
+ *
+ * Uma trava no banco (migration 20261104120000) rejeita alteração dessas
+ * colunas vinda de fora do espelho — a guarda não depende mais só desta tela.
+ */
 interface SoleTechnicalDetailsProps {
   soleId: string;
   soleName?: string;
-  /**
-   * Bloqueia a edição das 4 colunas de consumo (forro do cabedal, placa e
-   * forração da palmilha, fachete).
-   *
-   * Desde 02/08/2026 a fonte da verdade é `sole_group_standard_items` (linhas
-   * PAPEL, por MODELO de solado) e `sole_technical_specs` virou ESPELHO
-   * derivado, mantido pelo trigger `tg_sgsi_mirror_papel`. Editar aqui geraria
-   * um valor que o próximo salvamento na tela "Consumo Padrão" sobrescreve sem
-   * avisar — exatamente a deriva que a consolidação foi feita pra acabar.
-   *
-   * A grade de numerações continua sendo gerenciada nesta tela: só o consumo
-   * mudou de dono.
-   */
-  consumptionReadOnly?: boolean;
-  /**
-   * @deprecated Não é mais usado internamente (alimentava os presets de
-   * numeração removidos do Passo 2). Mantido só pra não quebrar o caller
-   * em ComponentSheets.tsx que ainda passa `shoeCategory`. A grade hoje vem
-   * do range size_from/size_to da aba Cadastro.
-   */
-  shoeCategory?: string;
   onClose?: () => void;
 }
-
-interface SoleSpec {
-  size: number;
-  // Forro do CABEDAL por numeração (dm²/par). Voltou pro solado em 2026-07-01
-  // (a pedido do dono): o CONSUMO do forro é por solado/número (fonte única
-  // aqui); a ficha do modelo escolhe só o GRUPO/cor do material. A conversão
-  // dm²→metros usa a largura da ficha de componente do material no motor.
-  // Aplica a QUALQUER solado (inclusive palmilha pronta — todo cabedal tem forro).
-  lining_consumption_dm2: number | null;
-  insole_consumption_dm2: number | null;
-  insole_lining_consumption_dm2: number | null;
-  fachete_lining_consumption_dm2: number | null;
-}
-
-type ConsumptionField = Exclude<keyof SoleSpec, 'size'>;
-
-const PER_SIZE_COLUMN_BY_FIELD: Record<ConsumptionField, string> = {
-  lining_consumption_dm2: 'lining_consumption_per_size',
-  insole_consumption_dm2: 'insole_consumption_per_size',
-  insole_lining_consumption_dm2: 'insole_lining_consumption_per_size',
-  fachete_lining_consumption_dm2: 'fachete_lining_consumption_per_size',
-};
-
-const CONSUMPTION_FIELDS = Object.keys(PER_SIZE_COLUMN_BY_FIELD) as ConsumptionField[];
-
-const emptyPerSizeOverrides = (): Record<ConsumptionField, Record<number, number>> => ({
-  lining_consumption_dm2: {},
-  insole_consumption_dm2: {},
-  insole_lining_consumption_dm2: {},
-  fachete_lining_consumption_dm2: {},
-});
 
 // NOTA (auditoria 2026-06-29): os presets de numeração (Adulto/Infantil/Baby) e a
 // função getSortedPresets foram removidos junto com os botões de preset do Passo 2.
 // A grade hoje vem do range (size_from/size_to) definido na aba Cadastro — ver o
 // comentário do Passo 2 abaixo. Mantê-los aqui era código morto.
 
-export function SoleTechnicalDetails({ soleId, soleName, onClose, consumptionReadOnly = false }: SoleTechnicalDetailsProps) {
+export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnicalDetailsProps) {
   const qc = useQueryClient();
   const [saving, setSaving] = useState(false);
-  // Audit visual S8: troca window.confirm() nativo por Dialog estilizado.
-  // Antes o prompt do browser era ilegível em dark mode e quebrava o design system.
-  const [missingDialogOpen, setMissingDialogOpen] = useState(false);
-  const [missingWarnings, setMissingWarnings] = useState<string[]>([]);
-  const [specs, setSpecs] = useState<Record<number, SoleSpec>>({});
-  // Os campos `*_consumption_per_size` são o padrão canônico do TIPO de
-  // solado. Mantemos os escalares legados em `specs` intactos para que um mapa
-  // vazio continue caindo neles como fallback no motor SQL/TS.
-  const [perSizeOverrides, setPerSizeOverrides] = useState<Record<ConsumptionField, Record<number, number>>>(emptyPerSizeOverrides);
-  // Buffer de texto cru por célula EM EDIÇÃO. Sem isto o input controlado
-  // re-renderizava o NÚMERO armazenado (`toString()`) a cada tecla: digitar
-  // "4," reparsa pra 4 → exibe "4" e a vírgula some na hora, impossibilitando
-  // casas decimais. Mantendo o texto cru enquanto a célula está focada, o user
-  // digita "4,68" livremente; o número é parseado em paralelo pro `specs` e o
-  // buffer é descartado no blur (volta a exibir o canônico). Preserva null pra
-  // vazio (a SQL cai na média escalar quando o tamanho não tem valor).
-  // (Bug 2026-06-07: não aceitava numeração após a vírgula.)
-  const [rawCellEdits, setRawCellEdits] = useState<Record<string, string>>({});
   const [sizes, setSizes] = useState<number[]>([]);
   const [newSize, setNewSize] = useState("");
   const [groups, setGroups] = useState<any[]>([]);
@@ -147,12 +90,11 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose, consumptionRea
   const [soleClassification, setSoleClassification] = useState<'tradicional' | 'palmilha_pronta' | 'conjugado' | null>(null);
   const [isFachetado, setIsFachetado] = useState<boolean>(false);
   // Solado de palmilha pronta vem forrado do fornecedor — palmilha conta como
-  // UN, não dm². A grade não cobra "placa" nem "forração da palmilha", só
-  // a forração do CABEDAL (e fachete se aplicável).
+  // UN, não dm². Usado só pra rotular a UI; o consumo em si é do Consumo Padrão.
   const isPalmilhaPronta = soleClassification === 'palmilha_pronta';
   // Passo 3 (Materiais padrão) é opcional — escondemos por default pra não
-  // competir visualmente com o Passo 4 (onde o consumo de verdade é definido).
-  // User pode expandir se quiser configurar material default.
+  // competir visualmente com a grade. User pode expandir se quiser configurar
+  // material default.
   const [showDefaultMaterials, setShowDefaultMaterials] = useState<boolean>(false);
 
   // Conjugações vinculadas ao GRUPO do solado
@@ -169,121 +111,6 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose, consumptionRea
     }
     return m;
   }, [conjugations]);
-
-  /**
-   * Linhas EXIBIDAS na tabela de consumo (Passo 4). Agrupa numerações
-   * conjugadas em UMA linha (ex: 33/34 = 1 linha que edita os dois tamanhos
-   * simultaneamente). Tamanhos não conjugados ficam em linhas individuais.
-   *
-   * Ordenado pelo MENOR tamanho de cada grupo, pra manter ordem natural
-   * (33/34 antes de 35, 35 antes de 39/40, etc.).
-   */
-  type DisplayRow = { key: string; sizes: number[]; isConjugated: boolean };
-  const displayRows = useMemo<DisplayRow[]>(() => {
-    if (sizes.length === 0) return [];
-
-    const seen = new Set<number>();
-    const rows: DisplayRow[] = [];
-
-    for (const s of sizes) {
-      if (seen.has(s)) continue;
-      const conjKey = sizeToConjKey.get(s);
-      if (conjKey) {
-        const conj = conjugations.find(c => c.size_key === conjKey);
-        if (conj) {
-          // Agrupa todos os tamanhos da conjugação que estão na grade atual
-          const sizesInRow = conj.sizes.filter(x => sizes.includes(x)).sort((a, b) => a - b);
-          for (const x of sizesInRow) seen.add(x);
-          rows.push({ key: conjKey, sizes: sizesInRow, isConjugated: sizesInRow.length > 1 });
-          continue;
-        }
-      }
-      seen.add(s);
-      rows.push({ key: String(s), sizes: [s], isConjugated: false });
-    }
-
-    return rows.sort((a, b) => a.sizes[0] - b.sizes[0]);
-  }, [sizes, sizeToConjKey, conjugations]);
-
-  /**
-   * Lê o valor "representativo" de uma linha (primeiro size com valor
-   * preenchido, ou null se nenhum tem). Numa linha conjugada os valores
-   * dos N sizes deveriam ser iguais — se divergem, mostra o do primeiro.
-   */
-  const getSizeValue = (size: number, field: ConsumptionField): number | null =>
-    perSizeOverrides[field][size] ?? specs[size]?.[field] ?? null;
-
-  const getRowValue = (row: DisplayRow, field: ConsumptionField): number | null => {
-    for (const s of row.sizes) {
-      const v = getSizeValue(s, field);
-      if (v != null) return v as number;
-    }
-    return null;
-  };
-
-  /**
-   * Setter de valor pra uma linha — escreve em TODOS os sizes da linha
-   * (mantendo conjugação sincronizada).
-   */
-  const cellEditKey = (row: DisplayRow, field: ConsumptionField) => `${row.key}::${String(field)}`;
-
-  /** Valor exibido no input: o texto cru se a célula está em edição; senão o
-   *  número canônico armazenado (string vazia quando null). */
-  const getRowInputValue = (row: DisplayRow, field: ConsumptionField): string => {
-    const k = cellEditKey(row, field);
-    if (k in rawCellEdits) return rawCellEdits[k];
-    const v = getRowValue(row, field);
-    return v != null ? String(v) : "";
-  };
-
-  const handleRowInputChange = (row: DisplayRow, field: ConsumptionField, value: string) => {
-    // Espelho derivado: o consumo é editado em "Consumo Padrão" (por modelo).
-    if (consumptionReadOnly) return;
-    // Guarda o texto cru enquanto edita (deixa o user digitar "4," → "4,6" →
-    // "4,68" sem a vírgula sumir no round-trip número→string).
-    setRawCellEdits(prev => ({ ...prev, [cellEditKey(row, field)]: value }));
-    const parsed = parseFloat(value.replace(",", "."));
-    const numValue = value.trim() === "" ? null : (Number.isFinite(parsed) ? parsed : null);
-    setPerSizeOverrides(prev => {
-      const next = { ...prev, [field]: { ...prev[field] } };
-      for (const s of row.sizes) {
-        if (numValue == null) delete next[field][s];
-        else next[field][s] = numValue;
-      }
-      return next;
-    });
-  };
-
-  /** Ao sair da célula, descarta o buffer cru → volta a exibir o canônico. */
-  const handleRowInputBlur = (row: DisplayRow, field: ConsumptionField) => {
-    const k = cellEditKey(row, field);
-    setRawCellEdits(prev => {
-      if (!(k in prev)) return prev;
-      const next = { ...prev };
-      delete next[k];
-      return next;
-    });
-  };
-
-  /**
-   * Remove uma linha inteira — se conjugada, remove todos os sizes.
-   */
-  const removeRow = (row: DisplayRow) => {
-    setSizes(prev => prev.filter(s => !row.sizes.includes(s)));
-    setSpecs(prev => {
-      const next = { ...prev };
-      for (const s of row.sizes) delete next[s];
-      return next;
-    });
-    setPerSizeOverrides(prev => {
-      const next = emptyPerSizeOverrides();
-      for (const field of CONSUMPTION_FIELDS) {
-        next[field] = { ...prev[field] };
-        for (const s of row.sizes) delete next[field][s];
-      }
-      return next;
-    });
-  };
 
   useEffect(() => {
     if (soleId) {
@@ -371,25 +198,9 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose, consumptionRea
     setSizes(Array.from(new Set([...loadedSizes, ...rangeSizes(soleRangeRef.current)]))
       .sort((a, b) => a - b));
 
-    const specsMap: Record<number, SoleSpec> = {};
-    const loadedOverrides = emptyPerSizeOverrides();
-    (specsData || []).forEach((item: any) => {
-      specsMap[item.size] = {
-        size: item.size,
-        lining_consumption_dm2: item.lining_consumption_dm2 ?? null,
-        insole_consumption_dm2: item.insole_consumption_dm2,
-        insole_lining_consumption_dm2: item.insole_lining_consumption_dm2 ?? null,
-        fachete_lining_consumption_dm2: item.fachete_lining_consumption_dm2 ?? null,
-      };
-      for (const field of CONSUMPTION_FIELDS) {
-        for (const [size, rawValue] of Object.entries(item[PER_SIZE_COLUMN_BY_FIELD[field]] || {})) {
-          const value = Number(rawValue);
-          if (Number.isFinite(value) && value > 0) loadedOverrides[field][Number(size)] = value;
-        }
-      }
-    });
-    setSpecs(specsMap);
-    setPerSizeOverrides(loadedOverrides);
+    // As colunas de consumo não são lidas nem escritas aqui — pertencem ao
+    // Consumo Padrão (por modelo). Desta tabela só interessa quais numerações
+    // existem, pra montar a grade.
 
     if (structData) {
       const lining = structData.find((d: any) => d.component_type === "Forro");
@@ -505,25 +316,9 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose, consumptionRea
       );
     }
 
-    const specsMap: Record<number, SoleSpec> = {};
-    const loadedOverrides = emptyPerSizeOverrides();
-    filteredSpecs.forEach((item: any) => {
-      specsMap[item.size] = {
-        size: item.size,
-        lining_consumption_dm2: item.lining_consumption_dm2 ?? null,
-        insole_consumption_dm2: item.insole_consumption_dm2,
-        insole_lining_consumption_dm2: item.insole_lining_consumption_dm2 ?? null,
-        fachete_lining_consumption_dm2: item.fachete_lining_consumption_dm2 ?? null,
-      };
-      for (const field of CONSUMPTION_FIELDS) {
-        for (const [size, rawValue] of Object.entries(item[PER_SIZE_COLUMN_BY_FIELD[field]] || {})) {
-          const value = Number(rawValue);
-          if (Number.isFinite(value) && value > 0) loadedOverrides[field][Number(size)] = value;
-        }
-      }
-    });
-    setSpecs(specsMap);
-    setPerSizeOverrides(loadedOverrides);
+    // Só a RÉGUA é copiada. Os valores de consumo da referência ficam de fora
+    // desde 03/08/2026: quem os cadastra é Consumo Padrão, por modelo. Copiar
+    // aqui gravava no espelho e era apagado no salvamento seguinte.
 
     const { data: structData } = await supabase
       .from("sole_structures")
@@ -545,114 +340,33 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose, consumptionRea
 
     setReferenceInfo({ id: refSoleId, name: refName, date: refDate });
     setReferencePreview(null);
-    toast.success(`Consumos carregados da referência: ${refName}`);
+    toast.success(`Numerações carregadas da referência: ${refName}`);
   };
 
   const addSize = () => {
     const n = parseInt(newSize.trim(), 10);
     if (!n || n < 10 || n > 60) { toast.error("Numeração inválida (10–60)"); return; }
     if (sizes.includes(n)) { toast.error("Numeração já adicionada"); return; }
-    const next = [...sizes, n].sort((a, b) => a - b);
-    setSizes(next);
-    setSpecs((prev) => ({
-      ...prev,
-      [n]: { size: n, lining_consumption_dm2: null, insole_consumption_dm2: null, insole_lining_consumption_dm2: null, fachete_lining_consumption_dm2: null },
-    }));
+    setSizes([...sizes, n].sort((a, b) => a - b));
     setNewSize("");
   };
 
   const removeSize = (size: number) => {
     setSizes((prev) => prev.filter((s) => s !== size));
-    setSpecs((prev) => {
-      const next = { ...prev };
-      delete next[size];
-      return next;
-    });
-    setPerSizeOverrides(prev => {
-      const next = emptyPerSizeOverrides();
-      for (const field of CONSUMPTION_FIELDS) {
-        next[field] = { ...prev[field] };
-        delete next[field][size];
-      }
-      return next;
-    });
   };
 
-  // handleInputChange + fillConjugatedFromSize foram substituídos pelo
-  // novo modelo de displayRows (linhas conjugadas atômicas) — handleRowInputChange
-  // já escreve em todos os sizes da linha em uma chamada.
-
-  const fillRemaining = (field: ConsumptionField) => {
-    const firstValue = sizes.map(size => getSizeValue(size, field)).find((value) => value != null);
-    if (firstValue === undefined || firstValue === null) return;
-    setPerSizeOverrides(prev => {
-      const next = { ...prev, [field]: { ...prev[field] } };
-      sizes.forEach((size) => {
-        if (next[field][size] == null) next[field][size] = firstValue;
-      });
-      return next;
-    });
-  };
-
-  /**
-   * Validação pré-salvar: lista campos vazios (forro, palmilha, fachete se aplicável).
-   * Mostra dialog/confirmação se houver. Evita o fallback escalar silencioso na RPC.
-   */
-  const validateSpecs = (): { ok: boolean; warnings: string[] } => {
-    const warnings: string[] = [];
-    const missingInsole: number[] = [];
-    const missingFachete: number[] = [];
-
-    for (const s of sizes) {
-      if (!isPalmilhaPronta && (getSizeValue(s, 'insole_consumption_dm2') ?? 0) <= 0) {
-        missingInsole.push(s);
-      }
-      if (isFachetado && (getSizeValue(s, 'fachete_lining_consumption_dm2') ?? 0) <= 0) {
-        missingFachete.push(s);
-      }
-    }
-
-    if (missingInsole.length > 0) warnings.push(`Palmilha: ${missingInsole.join(', ')}`);
-    if (missingFachete.length > 0) warnings.push(`Fachete: ${missingFachete.join(', ')}`);
-
-    return { ok: warnings.length === 0, warnings };
-  };
-
-  const handleSave = async (skipMissingCheck = false) => {
+  const handleSave = async () => {
     if (sizes.length === 0) { toast.error("Defina ao menos uma numeração"); return; }
-
-    if (!skipMissingCheck) {
-      const { ok, warnings } = validateSpecs();
-      if (!ok) {
-        // Audit visual S8: abre dialog estilizado em vez de window.confirm.
-        setMissingWarnings(warnings);
-        setMissingDialogOpen(true);
-        return;
-      }
-    }
 
     setSaving(true);
     try {
-      const perSizeMaps = Object.fromEntries(
-        CONSUMPTION_FIELDS.map(field => [
-          field,
-          Object.fromEntries(
-            Object.entries(perSizeOverrides[field]).filter(([, value]) => Number(value) > 0),
-          ),
-        ]),
-      ) as Record<ConsumptionField, Record<string, number>>;
+      // Só a GRADE é gravada. As colunas de consumo ficam de fora do payload:
+      // pertencem ao Consumo Padrão e são preenchidas pelo trigger de espelho.
+      // Enviá-las aqui — mesmo com o valor atual — colidiria com a trava
+      // `tg_sole_specs_freeze_consumption` no primeiro arredondamento.
       const dataToUpsert = sizes.map((size) => ({
         sole_id: soleId,
         size,
-        // Forro do cabedal voltou pro solado (2026-07-01): consumo por número aqui.
-        lining_consumption_dm2: specs[size]?.lining_consumption_dm2 ?? null,
-        insole_consumption_dm2: specs[size]?.insole_consumption_dm2 ?? null,
-        insole_lining_consumption_dm2: specs[size]?.insole_lining_consumption_dm2 ?? null,
-        fachete_lining_consumption_dm2: specs[size]?.fachete_lining_consumption_dm2 ?? null,
-        lining_consumption_per_size: perSizeMaps.lining_consumption_dm2,
-        insole_consumption_per_size: perSizeMaps.insole_consumption_dm2,
-        insole_lining_consumption_per_size: perSizeMaps.insole_lining_consumption_dm2,
-        fachete_lining_consumption_per_size: perSizeMaps.fachete_lining_consumption_dm2,
         reference_sole_id: referenceInfo?.id || null,
         reference_date: referenceInfo ? new Date().toISOString() : null
       }));
@@ -661,13 +375,13 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose, consumptionRea
         .upsert(dataToUpsert, { onConflict: "sole_id,size" });
       if (specsError) throw specsError;
 
-      // ── Espelha consumo pra TODAS as cores do mesmo solado ──
+      // ── Espelha a GRADE pra TODAS as cores do mesmo solado ──
       // Conforme decisão do usuário: "Pasta de solados, para consumo e
       // definições técnicas é indiferente a cor do solado, isso só faz
       // diferença pra combinação de cabedal".
       // Buscamos todos products com o mesmo group_id (variantes de cor do
-      // mesmo solado) e replicamos os specs pra cada um. Cor é só pra
-      // estoque/expedição — consumo técnico é por referência.
+      // mesmo solado) e replicamos as numerações pra cada um. Cor é só pra
+      // estoque/expedição — a régua é do modelo.
       if (soleGroupId) {
         const { data: siblings } = await supabase
           .from("products")
@@ -679,14 +393,6 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose, consumptionRea
           const siblingData = sizes.map(size => ({
             sole_id: sibling.id,
             size,
-            lining_consumption_dm2: specs[size]?.lining_consumption_dm2 ?? null,
-            insole_consumption_dm2: specs[size]?.insole_consumption_dm2 ?? null,
-            insole_lining_consumption_dm2: specs[size]?.insole_lining_consumption_dm2 ?? null,
-            fachete_lining_consumption_dm2: specs[size]?.fachete_lining_consumption_dm2 ?? null,
-            lining_consumption_per_size: perSizeMaps.lining_consumption_dm2,
-            insole_consumption_per_size: perSizeMaps.insole_consumption_dm2,
-            insole_lining_consumption_per_size: perSizeMaps.insole_lining_consumption_dm2,
-            fachete_lining_consumption_per_size: perSizeMaps.fachete_lining_consumption_dm2,
             reference_sole_id: referenceInfo?.id || null,
             reference_date: referenceInfo ? new Date().toISOString() : null
           }));
@@ -767,7 +473,7 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose, consumptionRea
       }
 
       qc.invalidateQueries({ queryKey: ["sole_size_grade", soleId] });
-      toast.success("Grade e consumos salvos!");
+      toast.success("Grade de numerações salva!");
       if (onClose) onClose(); else window.history.back();
     } catch (error: any) {
       toast.error("Erro ao salvar: " + error.message);
@@ -800,9 +506,9 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose, consumptionRea
         <div className="flex items-center gap-2">
           <Footprints className="h-5 w-5 text-primary" />
           <div>
-            <h2 className="text-lg font-semibold">Grade de Numerações e Consumos</h2>
+            <h2 className="text-lg font-semibold">Grade de Numerações</h2>
             <p className="text-sm text-muted-foreground">
-              {soleName || "Solado"} — siga os passos abaixo
+              {soleName || "Solado"} — o consumo por par fica em <strong>Consumo Padrão</strong>
             </p>
           </div>
         </div>
@@ -812,7 +518,7 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose, consumptionRea
             onClick={() => soleName && tryLoadReferenceSpecs(soleName)}
             disabled={saving || isReferenceLoading || !soleName}
             className="gap-2 shrink-0 border-blue-500/30 hover:border-blue-500/60 text-blue-600 bg-blue-500/10"
-            title="Tenta achar specs em outro solado com nome similar (mesma família)"
+            title="Tenta achar a régua de numerações de outro solado com nome similar (mesma família)"
           >
             {isReferenceLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Copy className="h-4 w-4" />}
             Puxar de Família
@@ -822,16 +528,12 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose, consumptionRea
             onClick={() => setCopyAnyOpen(true)}
             disabled={saving}
             className="gap-2 shrink-0 border-purple-500/30 hover:border-purple-500/60 text-purple-600 bg-purple-500/10"
-            title="Escolhe qualquer solado já cadastrado como base — você ajusta depois"
+            title="Usa a régua de qualquer solado já cadastrado como base — você ajusta depois"
           >
             <Copy className="h-4 w-4" />
-            Copiar de Qualquer Solado
+            Copiar Numerações de Outro Solado
           </Button>
-          {/* NOTA (typecheck 2026-06-10): antes era onClick={handleSave} — o MouseEvent
-              caía em skipMissingCheck como truthy, ou seja, o check de numerações
-              faltantes JÁ era pulado no Save direto. `true` explícito preserva esse
-              comportamento; pra reativar a validação, troque por () => handleSave(). */}
-          <Button onClick={() => handleSave(true)} disabled={saving} className="gap-2 shrink-0">
+          <Button onClick={handleSave} disabled={saving} className="gap-2 shrink-0">
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
             Salvar
           </Button>
@@ -896,10 +598,31 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose, consumptionRea
           <CardDescription className="text-xs">
             Numerações que o solado trabalha — derivadas automaticamente do range
             (numeração inicial → final) definido na aba <strong>Cadastro</strong>.
-            Aqui você só configura o consumo individual de cada uma.
+            O consumo por par de cada uma fica em <strong>Consumo Padrão</strong>,
+            cadastrado por modelo e válido pra todas as cores.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
+          {/* Numeração fora da faixa do solado: veio de cópia de referência de
+              outra régua (bug 01/08/2026, ver soleRange). Não some sozinha —
+              o valor pode ser legítimo — mas precisa ser visto, porque o PV
+              nunca vende esses números. */}
+          {soleRange && sizes.some(s => s < soleRange.from || s > soleRange.to) && (
+            <div className="flex items-start gap-2 rounded-md bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>
+                <strong>
+                  {sizes.filter(s => s < soleRange.from || s > soleRange.to).join(', ')}
+                </strong>{' '}
+                {sizes.filter(s => s < soleRange.from || s > soleRange.to).length === 1
+                  ? 'está fora' : 'estão fora'} da faixa deste solado
+                (<strong>{soleRange.from}–{soleRange.to}</strong>, definida na aba Cadastro).
+                O PV não vende {sizes.filter(s => s < soleRange.from || s > soleRange.to).length === 1 ? 'esse número' : 'esses números'} —
+                costuma ser resquício de cópia de outro solado. Remova a numeração, ou corrija a faixa no Cadastro.
+              </span>
+            </div>
+          )}
+
           {sizes.length > 0 && (
             <div className="flex flex-wrap gap-1.5">
               {sizes.map((s) => {
@@ -942,8 +665,8 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose, consumptionRea
 
       {/* ─── Passo 3: Materiais padrão — OPCIONAL (colapsável fechado) ───
           Renomeado pra "Material default" + Badge "Opcional" + colapsável fechado.
-          O consumo de verdade é definido no Passo 4 — esse passo é só sugestão
-          de qual produto usar quando o PV não escolher.
+          É só sugestão de qual produto usar quando o PV não escolher — a
+          QUANTIDADE consumida vive em Consumo Padrão, por modelo.
       */}
       <Card className="border-dashed">
         <button
@@ -962,7 +685,7 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose, consumptionRea
             </CardTitle>
             <CardDescription className="text-xs">
               Material sugerido pra forração/palmilha QUANDO o PV não trouxer um override.
-              {' '}<strong>Não afeta consumo</strong> — o cálculo de dm² vem do Passo 4 abaixo.
+              {' '}<strong>Não afeta consumo</strong> — o cálculo de dm² vem da aba <strong>Consumo Padrão</strong>.
             </CardDescription>
           </CardHeader>
         </button>
@@ -1103,319 +826,47 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose, consumptionRea
         )}
       </Card>
 
-      {/* ─── Passo 4: Tabela de consumos por numeração ─────────────
-          Card destacado com border primary + bg gradient — é AQUI que
-          o consumo de verdade vai. Banner explicativo no topo deixa
-          isso visualmente óbvio (resolve confusão do user com Passo 3).
-
-          Palmilha pronta SEM fachete não tem nenhuma coluna pra preencher
-          (forro do cabedal saiu daqui em 2026-06-30, placa/forração de
-          palmilha não se aplicam a solado pronto) → mostra só uma nota.
-      */}
-      {sizes.length > 0 && (
-        <Card className="border-2 border-primary/40 bg-gradient-to-br from-primary/5 to-primary/10 shadow-sm">
-          <div className="px-4 pt-4 pb-2 flex items-start gap-3">
-            <div className="bg-primary/15 p-1.5 rounded-md shrink-0">
-              <Calculator className="h-5 w-5 text-primary" />
-            </div>
-            <div className="flex-1">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-base font-bold text-foreground">Consumo por numeração</span>
-                <Badge className="bg-primary/15 text-primary border-primary/30 text-xs h-5">
-                  ★ Fonte do cálculo
-                </Badge>
-              </div>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Define o padrão canônico por numeração — quantos <strong>dm²/par</strong> são consumidos de
-                {` Forro do cabedal${!isPalmilhaPronta ? ' + Palmilha (placa + forração)' : ''}${isFachetado ? ' + fachete' : ''}`} por tamanho.
-                <strong className="text-foreground"> Vale pra QUALQUER material</strong> que o PV escolher
-                (couro, lona, sintético, etc.) — independe da seleção do Passo 3.
-                <span className="block mt-1 text-[11px] text-muted-foreground">
-                  A ficha do modelo pode sobrescrever uma numeração específica; com este campo vazio,
-                  o motor mantém o <strong>consumo escalar do solado</strong> como fallback. A ficha do
-                  modelo escolhe só o <strong>grupo/cor</strong> do material.
-                </span>
-                {isPalmilhaPronta && (
-                  <span className="block mt-1 text-[11px] text-violet-700 dark:text-violet-300">
-                    <strong>Palmilha pronta</strong>: o solado vem forrado de fábrica — sem placa
-                    nem forração de palmilha.{isFachetado ? ' Aqui você define só o fachete.' : ''}
-                  </span>
-                )}
-              </p>
-            </div>
-          </div>
-          <CardHeader className="pb-2 pt-2">
-            <div className="flex items-start justify-between gap-3 flex-wrap">
-              <div>
-                {/* Título consolidado no banner acima — aqui só sublabel com dica */}
-                <CardDescription className="text-xs">
-                  Preencha {`forro do cabedal${!isPalmilhaPronta ? ' + palmilha (placa + forração)' : ''}${isFachetado ? ' + fachete' : ''}`} por tamanho. Conjugadas (🔗) aparecem como UMA
-                  linha. O mapa por numeração é o padrão compartilhado do tipo de solado; tamanhos sem
-                  valor caem no <span className="text-amber-700 dark:text-amber-400 font-semibold">consumo escalar</span>.
-                </CardDescription>
-              </div>
-              {/* Modo simplificado: 1 input que replica pra TODOS — útil quando o consumo é
-                  igual em todas as numerações do solado. */}
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    // Pega o primeiro valor não-vazio de cada coluna e replica
-                    const replicate = (field: ConsumptionField) => {
-                      const v = sizes.map(size => getSizeValue(size, field)).find(value => value != null);
-                      if (v == null) return;
-                      setPerSizeOverrides(prev => {
-                        const next = { ...prev, [field]: { ...prev[field] } };
-                        for (const s of sizes) next[field][s] = v;
-                        return next;
-                      });
-                    };
-                    replicate('lining_consumption_dm2');
-                    if (!isPalmilhaPronta) {
-                      replicate('insole_consumption_dm2');
-                      replicate('insole_lining_consumption_dm2');
-                    }
-                    if (isFachetado) replicate('fachete_lining_consumption_dm2');
-                    toast.success('Valor do primeiro tamanho replicado para todas as numerações.');
-                  }}
-                  className="text-xs px-3 py-1.5 rounded-md border border-primary/30 text-primary hover:bg-primary/10 transition-colors flex items-center gap-1.5"
-                  title="Pega o primeiro valor preenchido de cada coluna e replica em todas as numerações"
-                >
-                  <Copy className="h-3 w-3" /> Replicar 1º valor em todos
-                </button>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {consumptionReadOnly && (
-              <div className="mb-3 flex items-start gap-2 rounded-md border border-border/60 bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-                <Layers className="mt-0.5 h-4 w-4 shrink-0" />
-                <span>
-                  Estes números são <strong>somente leitura</strong> aqui. O consumo passou a ser
-                  cadastrado por <strong>modelo</strong> de solado, na aba{' '}
-                  <strong>Consumo Padrão</strong> — vale para todas as cores de uma vez. Esta
-                  tabela mostra o resultado por cor e continua sendo o lugar de gerenciar a{' '}
-                  <strong>grade de numerações</strong>.
-                </span>
-              </div>
-            )}
-            {isFachetado && (
-              <div className="flex items-center gap-2 mb-3 px-3 py-2 bg-amber-500/5 border border-amber-500/20 rounded text-xs text-amber-700 dark:text-amber-400">
-                <AlertTriangle className="h-4 w-4" />
-                <span className="font-semibold">Solado Fachetado</span>
-                <span className="text-amber-600/70">— preencha o consumo de fachete por numeração</span>
-              </div>
-            )}
-            {/* Numeração fora da faixa do solado: veio de cópia de referência de
-                outra régua (bug 01/08/2026, ver soleRange). Não some sozinha —
-                o valor pode ser legítimo — mas precisa ser visto, porque o PV
-                nunca vende esses números e o consumo deles nunca é usado. */}
-            {soleRange && sizes.some(s => s < soleRange.from || s > soleRange.to) && (
-              <div className="mb-3 flex items-start gap-2 rounded-md bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
-                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                <span>
-                  <strong>
-                    {sizes.filter(s => s < soleRange.from || s > soleRange.to).join(', ')}
-                  </strong>{' '}
-                  {sizes.filter(s => s < soleRange.from || s > soleRange.to).length === 1
-                    ? 'está fora' : 'estão fora'} da faixa deste solado
-                  (<strong>{soleRange.from}–{soleRange.to}</strong>, definida na aba Cadastro).
-                  O PV não vende {sizes.filter(s => s < soleRange.from || s > soleRange.to).length === 1 ? 'esse número' : 'esses números'},
-                  então o consumo cadastrado {sizes.filter(s => s < soleRange.from || s > soleRange.to).length === 1 ? 'nele' : 'neles'} nunca é usado —
-                  costuma ser resquício de cópia de outro solado. Remova a linha, ou corrija a faixa no Cadastro.
-                </span>
-              </div>
-            )}
-            {/* Audit visual S9: wrapper overflow-x-auto pra tabela não espremer
-                em mobile. Antes overflow-hidden cortava colunas em < 640px. */}
-            <div className="rounded-md border overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-muted/50">
-                    <TableHead className="w-20 text-center font-bold">TAM</TableHead>
-                    <TableHead>
-                      <div className="flex items-center justify-between">
-                        <span title="Área do forro que reveste o cabedal — a napa/cor vem do grupo escolhido na ficha do modelo">Forro do Cabedal (dm²/par)</span>
-                        <Button variant="ghost" size="icon" className="h-6 w-6" title="Replicar primeiro valor para tamanhos vazios" onClick={() => fillRemaining("lining_consumption_dm2")}>
-                          <RefreshCw className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    </TableHead>
-                    {!isPalmilhaPronta && (
-                      <TableHead>
-                        <div className="flex items-center justify-between">
-                          <span>Palmilha · Placa (dm²/par)</span>
-                          <Button variant="ghost" size="icon" className="h-6 w-6" title="Replicar primeiro valor para tamanhos vazios" onClick={() => fillRemaining("insole_consumption_dm2")}>
-                            <RefreshCw className="h-3 w-3" />
-                          </Button>
-                        </div>
-                      </TableHead>
-                    )}
-                    {!isPalmilhaPronta && (
-                      <TableHead>
-                        <div className="flex items-center justify-between">
-                          <span title="Área da napa que forra a palmilha (usa a napa da Forração)">Palmilha · Forração (dm²/par)</span>
-                          <Button variant="ghost" size="icon" className="h-6 w-6" title="Replicar primeiro valor para tamanhos vazios" onClick={() => fillRemaining("insole_lining_consumption_dm2")}>
-                            <RefreshCw className="h-3 w-3" />
-                          </Button>
-                        </div>
-                      </TableHead>
-                    )}
-                    {isFachetado && (
-                      <TableHead className="bg-amber-500/5">
-                        <div className="flex items-center justify-between">
-                          <span className="text-amber-700 dark:text-amber-400">Fachete (dm²/par)</span>
-                          <Button variant="ghost" size="icon" className="h-6 w-6" title="Replicar primeiro valor" onClick={() => fillRemaining("fachete_lining_consumption_dm2")}>
-                            <RefreshCw className="h-3 w-3" />
-                          </Button>
-                        </div>
-                      </TableHead>
-                    )}
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {displayRows.map((row) => (
-                    <TableRow
-                      key={row.key}
-                      /* Audit visual S7: bg-blue-500/5 + text-blue-700 caía abaixo
-                         do contraste WCAG em dark mode. Aumentado pra dark:bg-blue-500/15
-                         e dark:text-blue-300 — paleta de alerta visual mantida. */
-                      className={
-                        row.isConjugated
-                          ? 'bg-blue-500/5 dark:bg-blue-500/15 hover:bg-blue-500/10 dark:hover:bg-blue-500/25 border-l-2 border-l-blue-500/40 focus-within:bg-blue-500/15 dark:focus-within:bg-blue-500/30 focus-within:ring-2 focus-within:ring-inset focus-within:ring-blue-500/50 transition-colors'
-                          : 'hover:bg-muted/30'
-                      }
-                    >
-                      <TableCell className={`text-center p-2 ${row.isConjugated ? 'bg-blue-500/10 dark:bg-blue-500/25' : 'bg-muted/20'}`}>
-                        <div className="flex items-center justify-center gap-1">
-                          {row.isConjugated ? (
-                            <Badge
-                              className="text-xs gap-1 px-1.5 py-0.5 font-mono font-bold bg-blue-500/15 text-blue-700 dark:text-blue-300 dark:bg-blue-500/25 border-blue-500/40"
-                              title={`Conjugação: ${row.sizes.join(' + ')} — alterar 1 valor sincroniza ${row.sizes.length} tamanhos`}
-                            >
-                              <Link2 className="h-3 w-3" />
-                              {row.key}
-                            </Badge>
-                          ) : (
-                            <span className="font-bold">{row.key}</span>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell className="p-1.5">
-                        <Input
-                          type="text"
-                          inputMode="decimal"
-                          className="h-8 text-right font-mono"
-                          readOnly={consumptionReadOnly}
-                          tabIndex={consumptionReadOnly ? -1 : undefined}
-                          value={getRowInputValue(row, "lining_consumption_dm2")}
-                          onChange={(e) => handleRowInputChange(row, "lining_consumption_dm2", e.target.value)}
-                          onBlur={() => handleRowInputBlur(row, "lining_consumption_dm2")}
-                          placeholder="0.00"
-                        />
-                      </TableCell>
-                      {!isPalmilhaPronta && (
-                        <TableCell className="p-1.5">
-                          <Input
-                            type="text"
-                            inputMode="decimal"
-                            className="h-8 text-right font-mono"
-                            readOnly={consumptionReadOnly}
-                            tabIndex={consumptionReadOnly ? -1 : undefined}
-                            value={getRowInputValue(row, "insole_consumption_dm2")}
-                            onChange={(e) => handleRowInputChange(row, "insole_consumption_dm2", e.target.value)}
-                            onBlur={() => handleRowInputBlur(row, "insole_consumption_dm2")}
-                            placeholder="0.00"
-                          />
-                        </TableCell>
-                      )}
-                      {!isPalmilhaPronta && (
-                        <TableCell className="p-1.5">
-                          <Input
-                            type="text"
-                            inputMode="decimal"
-                            className="h-8 text-right font-mono"
-                            readOnly={consumptionReadOnly}
-                            tabIndex={consumptionReadOnly ? -1 : undefined}
-                            value={getRowInputValue(row, "insole_lining_consumption_dm2")}
-                            onChange={(e) => handleRowInputChange(row, "insole_lining_consumption_dm2", e.target.value)}
-                            onBlur={() => handleRowInputBlur(row, "insole_lining_consumption_dm2")}
-                            placeholder="0.00"
-                          />
-                        </TableCell>
-                      )}
-                      {isFachetado && (
-                        <TableCell className="bg-amber-500/5 p-1.5">
-                          <Input
-                            type="text"
-                            inputMode="decimal"
-                            className="h-8 text-right font-mono border-amber-500/30 focus-visible:ring-amber-500/30"
-                            readOnly={consumptionReadOnly}
-                            tabIndex={consumptionReadOnly ? -1 : undefined}
-                            value={getRowInputValue(row, "fachete_lining_consumption_dm2")}
-                            onChange={(e) => handleRowInputChange(row, "fachete_lining_consumption_dm2", e.target.value)}
-                            onBlur={() => handleRowInputBlur(row, "fachete_lining_consumption_dm2")}
-                            placeholder="0.00"
-                          />
-                        </TableCell>
-                      )}
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* ─── Reference preview dialog ────────────────────────────── */}
+      {/* ─── Reference preview dialog ──────────────────────────────
+          Mostra só a RÉGUA da referência. As colunas de consumo saíram em
+          03/08/2026 junto com a tabela do Passo 4 — copiar consumo aqui
+          gravava no espelho e era apagado no próximo salvamento do
+          Consumo Padrão. */}
       <Dialog open={!!referencePreview} onOpenChange={(open) => !open && setReferencePreview(null)}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Revisar Consumos do Solado de Referência</DialogTitle>
+            <DialogTitle>Revisar Numerações do Solado de Referência</DialogTitle>
             <DialogDescription>
-              Valores encontrados em: {referencePreview?.name} ({referencePreview?.date})
+              Numerações encontradas em: {referencePreview?.name} ({referencePreview?.date})
             </DialogDescription>
           </DialogHeader>
 
-          {/* Audit A8: overflow-auto (X e Y) — headers largos estouravam a viewport em 360px */}
-          <div className="max-h-[400px] overflow-auto border rounded-md p-2">
-            <table className="w-full min-w-[560px] text-sm">
-              <thead>
-                <tr className="border-b bg-muted/50">
-                  <th scope="col" className="text-center py-2">TAM</th>
-                  <th scope="col" className="text-right py-2 px-4">Forro Cabedal (dm²)</th>
-                  {!isPalmilhaPronta && <th scope="col" className="text-right py-2 px-4">Palmilha · Placa (dm²)</th>}
-                  {!isPalmilhaPronta && <th scope="col" className="text-right py-2 px-4">Palmilha · Forração (dm²)</th>}
-                  {isFachetado && <th scope="col" className="text-right py-2 px-4">Fachete (dm²)</th>}
-                </tr>
-              </thead>
-              <tbody>
-                {referencePreview?.specs.map((spec: any, i: number) => (
-                  <tr key={i} className="border-b last:border-0 hover:bg-muted/30">
-                    <td className="text-center py-2 font-bold">{spec.size}</td>
-                    <td className="text-right py-2 px-4 font-mono">
-                      {spec.lining_consumption_dm2 != null ? safeToFixed(spec.lining_consumption_dm2, 2) : "-"}
-                    </td>
-                    {!isPalmilhaPronta && (
-                      <td className="text-right py-2 px-4 font-mono">
-                        {spec.insole_consumption_dm2 !== null ? safeToFixed(spec.insole_consumption_dm2, 2) : "-"}
-                      </td>
-                    )}
-                    {!isPalmilhaPronta && (
-                      <td className="text-right py-2 px-4 font-mono">
-                        {spec.insole_lining_consumption_dm2 != null ? safeToFixed(spec.insole_lining_consumption_dm2, 2) : "-"}
-                      </td>
-                    )}
-                    {isFachetado && (
-                      <td className="text-right py-2 px-4 font-mono">
-                        {spec.fachete_lining_consumption_dm2 != null ? safeToFixed(spec.fachete_lining_consumption_dm2, 2) : "-"}
-                      </td>
-                    )}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="max-h-[400px] overflow-auto border rounded-md p-3">
+            <div className="flex flex-wrap gap-1.5">
+              {referencePreview?.specs.map((spec: any, i: number) => {
+                const s = Number(spec.size);
+                const fora = soleRange && (s < soleRange.from || s > soleRange.to);
+                return (
+                  <span
+                    key={i}
+                    className={`inline-flex items-center rounded px-2 py-1 text-xs font-mono border ${
+                      fora
+                        ? 'bg-amber-500/10 border-amber-500/40 text-amber-700 dark:text-amber-400 line-through'
+                        : 'bg-background border-border'
+                    }`}
+                    title={fora ? 'Fora da faixa deste solado — não será copiada' : 'Será copiada'}
+                  >
+                    {spec.size}
+                  </span>
+                );
+              })}
+            </div>
+            {soleRange && (
+              <p className="mt-3 text-xs text-muted-foreground">
+                Só entram as numerações dentro da faixa deste solado
+                (<strong>{soleRange.from}–{soleRange.to}</strong>). O consumo por par
+                não é copiado — ele é do modelo, em <strong>Consumo Padrão</strong>.
+              </p>
+            )}
           </div>
 
           <DialogFooter>
@@ -1423,7 +874,7 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose, consumptionRea
               Cancelar
             </Button>
             <Button onClick={confirmPull}>
-              Substituir Grade e Consumos Atuais
+              Substituir Grade Atual
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1435,7 +886,7 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose, consumptionRea
         onOpenChange={setCopyAnyOpen}
         targetSoleId={soleId}
         targetSoleName={soleName}
-        hasExistingSpecs={Object.keys(specs).length > 0}
+        hasExistingSpecs={sizes.length > 0}
         onCopied={() => {
           // Recarrega dados após cópia
           fetchAll();
@@ -1445,47 +896,6 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose, consumptionRea
         }}
       />
 
-      {/* Audit visual S8: dialog estilizado pra confirmação de save com tamanhos
-          incompletos. Substitui window.confirm() nativo. */}
-      <Dialog open={missingDialogOpen} onOpenChange={setMissingDialogOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
-              <AlertTriangle className="h-5 w-5" />
-              Tamanhos sem consumo preenchido
-            </DialogTitle>
-            <DialogDescription className="space-y-2 pt-2">
-              <p className="text-sm text-foreground">
-                Os tamanhos abaixo vão usar a média escalar da ficha técnica como fallback,
-                o que pode <strong>subdimensionar a ordem de produção</strong>:
-              </p>
-              <ul className="rounded-md border border-amber-500/30 bg-amber-500/5 p-3 text-xs space-y-1">
-                {missingWarnings.map((w, i) => (
-                  <li key={i} className="font-mono">• {w}</li>
-                ))}
-              </ul>
-              <p className="text-xs text-muted-foreground">
-                Recomendado preencher os valores corretos antes de salvar.
-              </p>
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="outline" onClick={() => setMissingDialogOpen(false)}>
-              Voltar e revisar
-            </Button>
-            <Button
-              variant="default"
-              className="bg-amber-600 hover:bg-amber-700 text-white"
-              onClick={() => {
-                setMissingDialogOpen(false);
-                handleSave(true);
-              }}
-            >
-              Salvar mesmo assim
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

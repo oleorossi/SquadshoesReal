@@ -30,8 +30,6 @@ import { z } from 'zod';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { adjustStockSafe } from '@/lib/stockAdjustments';
 import { PURCHASE_UNITS, PRODUCTION_UNITS, normalizePurchaseUnit, normalizeProductionUnit } from '@/lib/productUnits';
-import { SoleTechnicalDetails } from "@/components/technical-sheets/SoleTechnicalDetails";
- import { SoleStandardItemsPanel } from "@/components/technical-sheets/SoleStandardItemsPanel";
  import { SoleSilkPanel } from "@/components/technical-sheets/SoleSilkPanel";
  import StockHistory from './StockHistory';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
@@ -673,24 +671,20 @@ export default function ProductDetail() {
             </div>
         </Panel>
 
+        {/* Grade + consumo do solado saíram desta tela em 03/08/2026.
+            Eram dois editores paralelos do mesmo dado (sole_technical_specs e
+            sole_standard_items_consumption) e nenhum era a fonte da verdade —
+            gravavam por cima do que a tela de Solados define por MODELO. Aqui
+            fica só o atalho. */}
         {isSolado && (
           <Panel
-            title={<span className="flex items-center gap-2"><Footprints className="h-4 w-4 text-primary" /> Grade e Consumos de Forração / Palmilha</span>}
-            subtitle="Define as numerações deste solado e os consumos de forração e palmilha por par."
+            title={<span className="flex items-center gap-2"><Footprints className="h-4 w-4 text-primary" /> Grade e Consumo do Solado</span>}
+            subtitle="Numerações e consumo por par são cadastrados por MODELO de solado — valem pra todas as cores de uma vez."
           >
-              <SoleTechnicalDetails
-                soleId={product.id}
-                soleName={stripColorFromName(product.name, product.color)}
-              />
-          </Panel>
-        )}
-
-        {isSolado && (
-          <Panel
-            title={<span className="flex items-center gap-2"><Footprints className="h-4 w-4 text-primary" /> Itens Padrão por Numeração</span>}
-            subtitle="Configure o consumo de cola, EVA, linha, solado, palmilha e outros itens comuns a todos os calçados com este solado. Esses valores são usados automaticamente como base na ficha técnica."
-          >
-              <SoleStandardItemsPanel soleProductId={product.id} />
+            <Button variant="outline" className="gap-2" onClick={() => navigate('/solados')}>
+              <Footprints className="h-4 w-4" />
+              Gerenciar em Solados
+            </Button>
           </Panel>
         )}
 
