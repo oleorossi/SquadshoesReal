@@ -21,6 +21,12 @@ export interface OpRef {
   status?: string | null;
 }
 
+/** OP com referência e cor embutidas — alimenta o rótulo "OP-00231 · I901 · OFF WHITE". */
+export interface OpRefWithReference extends OpRef {
+  color?: string | null;
+  technical_sheets?: { code?: string | null; name?: string | null } | null;
+}
+
 /**
  * OP "ativa" — mesma definição do UNIQUE parcial do banco: `status <> 'Cancelada'`.
  * Manter as duas alinhadas: é isso que garante 1 OP por item do PV e, portanto,

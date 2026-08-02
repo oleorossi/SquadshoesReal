@@ -44,7 +44,7 @@ import {
   Contractor, ServiceOrder, MaterialSent, ServiceOrderOverview,
 } from '@/hooks/useContractors';
 import { SERVICE_ORDER_SECTORS } from '@/lib/serviceOrderSectors';
-import { opNumberByPvItem, opNumbersForServiceOrder, type OpRef } from '@/lib/serviceOrderOps';
+import { opNumberByPvItem, opNumbersForServiceOrder, type OpRefWithReference } from '@/lib/serviceOrderOps';
 import { OsPaymentBadge, OsBalanceLine } from '@/components/contractors/OsStatusIndicators';
 import {
   OS_DONE_STATUSES, OS_CANCELLED_STATUSES, OS_PENDING_STATUSES, OS_STATUS,
@@ -141,6 +141,45 @@ function getMaterials(order: ServiceOrder): MaterialSent[] {
   if (order.materials_sent && Array.isArray(order.materials_sent) && order.materials_sent.length > 0) return order.materials_sent;
   if (order.material_name || Number(order.material_meters) > 0) return [{ material: order.material_name || '', color: order.material_color || '', meters: Number(order.material_meters) || 0 }];
   return [];
+}
+
+/** Colunas de `sale_order_items` que o papel da OS precisa (grade + foto). */
+const OS_PV_ITEM_COLUMNS = 'id, color, quantity, grade, reference_id, technical_sheets(code, name, image_url)';
+
+interface PvItemRow {
+  id: string;
+  color?: string | null;
+  quantity?: number | null;
+  grade?: unknown;
+  reference_id?: string | null;
+  technical_sheets?: { code?: string | null; name?: string | null; image_url?: string | null } | null;
+}
+
+/**
+ * Linhas de `sale_order_items` → itens do papel da OS. Compartilhado entre o
+ * seletor do dialog e a impressão pelo menu da lista, pra que os dois papéis
+ * saiam idênticos (era só o dialog que montava isso).
+ */
+function mapPvItemsForReceipt(rows: PvItemRow[]) {
+  return (rows || []).map((it) => {
+    const ts = it.technical_sheets;
+    const code = ts?.code || ts?.name || '';
+    const pairs = Number(it.quantity) || 0;
+    return {
+      id: it.id as string,
+      label: [code, it.color || '—'].filter(Boolean).join(' · '),
+      pairs,
+      ref_code: code || null,
+      ref_name: ts?.name || null,
+      color: it.color || null,
+      // `grade` do item é a grade BASE (1 ficha, ~12 pares) — expandir pro
+      // total do item antes de imprimir.
+      size_breakdown: expandBaseGrade(it.grade as Record<string, number> | null, pairs),
+      // 80px de exibição (quadro de 20mm); o dpr 3 default já entrega
+      // nitidez pra A4 a 300dpi sem inflar o arquivo.
+      photo_url: ts?.image_url ? thumbUrl(ts.image_url, 80) || null : null,
+    };
+  }).filter((i) => i.pairs > 0);
 }
 
 export default function Contractors({ embedded = false, activeTab, onActiveTabChange, openCreateOS, onCreateOSConsumed }: { embedded?: boolean; activeTab?: string; onActiveTabChange?: (v: string) => void; openCreateOS?: { contractorId?: string } | null; onCreateOSConsumed?: () => void } = {}) {
@@ -277,36 +316,14 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
       // ainda sai, mas só com o total (ver printServiceOrderReceipt).
       const { data, error } = await supabase
         .from('sale_order_items')
-        .select('id, color, quantity, grade, reference_id, technical_sheets(code, name, image_url)')
+        .select(OS_PV_ITEM_COLUMNS)
         .eq('sale_order_id', editingOrder.sale_order_id as string);
       if (error) throw error;
       return data || [];
     },
     staleTime: 60_000,
   });
-  const osPvItems = useMemo(
-    () => (osPvItemsRaw as any[]).map((it) => {
-      const ts = it.technical_sheets;
-      const code = ts?.code || ts?.name || '';
-      const label = [code, it.color || '—'].filter(Boolean).join(' · ');
-      const pairs = Number(it.quantity) || 0;
-      return {
-        id: it.id as string,
-        label,
-        pairs,
-        ref_code: code || null,
-        ref_name: ts?.name || null,
-        color: it.color || null,
-        // `grade` do item é a grade BASE (1 ficha, ~12 pares) — expandir pro
-        // total do item antes de imprimir.
-        size_breakdown: expandBaseGrade(it.grade as Record<string, number> | null, pairs),
-        // 80px de exibição (quadro de 20mm); o dpr 3 default já entrega
-        // nitidez pra A4 a 300dpi sem inflar o arquivo.
-        photo_url: ts?.image_url ? thumbUrl(ts.image_url, 80) || null : null,
-      };
-    }).filter((i) => i.pairs > 0),
-    [osPvItemsRaw],
-  );
+  const osPvItems = useMemo(() => mapPvItemsForReceipt(osPvItemsRaw as any[]), [osPvItemsRaw]);
   const osSelItems = useMemo(() => osPvItems.filter((i) => osPvItemSel.has(i.id)), [osPvItems, osPvItemSel]);
   const osSelPares = osSelItems.reduce((s, i) => s + i.pairs, 0);
 
@@ -315,30 +332,86 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
   // no seletor de itens do dialog. Derivadas SEMPRE na leitura (nunca gravadas
   // na OS), pra que uma OS criada antes de "Gerar OPs" ganhe o número sozinha.
   const osSaleOrderIds = useMemo(
-    () => Array.from(new Set((orders as any[]).map((o) => o.sale_order_id).filter(Boolean))).sort(),
+    () => Array.from(new Set(orders.map((o) => o.sale_order_id).filter(Boolean))).sort() as string[],
     [orders],
   );
   const { data: opsForOs = [] } = useQuery({
     queryKey: ['ops_for_service_orders', osSaleOrderIds],
     enabled: osSaleOrderIds.length > 0,
     queryFn: async () => {
+      // `color` + referência vêm junto: a própria OP sabe de qual modelo/cor é,
+      // então o rótulo "OP-00231 · I901 · OFF WHITE" da lista sai daqui, sem
+      // uma segunda consulta a sale_order_items.
       const { data, error } = await supabase
         .from('orders')
-        .select('id, order_number, sale_order_item_id, sale_order_id, status')
-        .in('sale_order_id', osSaleOrderIds as string[]);
+        .select('id, order_number, sale_order_item_id, sale_order_id, status, color, technical_sheets(code, name)')
+        .in('sale_order_id', osSaleOrderIds);
       if (error) throw error;
-      return (data || []) as OpRef[];
+      return (data || []) as unknown as OpRefWithReference[];
     },
     staleTime: 60_000,
   });
-  /** Nºs de OP de uma OS. Sem seleção gravada (OS antiga) → todas as OPs do PV. */
+  // Pré-computa OS → nºs de OP e rótulo UMA vez. A busca roda a cada tecla sobre
+  // ~380 OS; resolver por OS ali dentro varreria a lista de OPs a cada linha.
+  const opInfoByOsId = useMemo(() => {
+    const opsByPv = new Map<string, OpRefWithReference[]>();
+    const byNumber = new Map<string, OpRefWithReference>();
+    for (const op of opsForOs) {
+      if (op?.order_number) byNumber.set(op.order_number, op);
+      if (!op?.sale_order_id) continue;
+      const list = opsByPv.get(op.sale_order_id);
+      list ? list.push(op) : opsByPv.set(op.sale_order_id, [op]);
+    }
+
+    const out = new Map<string, { numbers: string[]; label: string | null }>();
+    for (const o of orders) {
+      const pvOps = o.sale_order_id ? opsByPv.get(o.sale_order_id) || [] : [];
+      // Sem seleção gravada (OS antiga) → todas as OPs do PV.
+      const numbers = opNumbersForServiceOrder(pvOps, o.selected_sale_order_item_ids ?? null, o.sale_order_id);
+      const label = numbers.length > 0
+        ? numbers.map((n) => {
+            const op = byNumber.get(n);
+            const ref = op?.technical_sheets?.code || op?.technical_sheets?.name || '';
+            return [n, ref, op?.color].filter(Boolean).join(' · ');
+          }).join(' — ')
+        : null;
+      out.set(o.id, { numbers, label });
+    }
+    return out;
+  }, [orders, opsForOs]);
   const opNumbersOf = useCallback(
-    (o: any): string[] => opNumbersForServiceOrder(
-      opsForOs, o?.selected_sale_order_item_ids ?? null, o?.sale_order_id || null,
-    ),
-    [opsForOs],
+    (o: Pick<ServiceOrder, 'id'> | null | undefined): string[] => (o?.id ? opInfoByOsId.get(o.id)?.numbers || [] : []),
+    [opInfoByOsId],
+  );
+  /**
+   * Linha descritiva da OS na lista. O que VOCÊ escreveu vence sempre; só quando
+   * não há descrição (padrão das OS novas desde 02/08/2026) cai no derivado
+   * "OP-00231 · I901 · OFF WHITE".
+   */
+  const osListLine = useCallback(
+    (o: ServiceOrder): string => (o?.description?.trim() || o?.artisanal_output_name?.trim()
+      || (o?.id ? opInfoByOsId.get(o.id)?.label : null) || '—'),
+    [opInfoByOsId],
   );
   const osOpByItem = useMemo(() => opNumberByPvItem(opsForOs), [opsForOs]);
+
+  /**
+   * Itens do papel da OS, buscados na hora de imprimir pelo menu da lista.
+   * Devolve `[]` quando a OS não tem seleção gravada — OS anterior à migration
+   * 20261103120000. Nesse caso o papel segue exatamente como sempre foi: curto,
+   * caindo no texto da descrição que ela já tem. Imprimir "todos os itens do PV"
+   * ali seria pior que nada: sairiam 3 cores num papel cujo total diz 180 pares.
+   */
+  const fetchReceiptItemsForOs = useCallback(async (o: ServiceOrder) => {
+    const ids = o?.selected_sale_order_item_ids;
+    if (!o?.sale_order_id || !Array.isArray(ids) || ids.length === 0) return [];
+    const { data, error } = await supabase
+      .from('sale_order_items')
+      .select(OS_PV_ITEM_COLUMNS)
+      .in('id', ids);
+    if (error) { toast.error('Não foi possível carregar os itens do pedido para o papel.'); return []; }
+    return mapPvItemsForReceipt(data as unknown as PvItemRow[]);
+  }, []);
 
   // Ao carregar os itens do PV: pré-marca a seleção GRAVADA na OS; sem registro
   // (OS anterior à migration 20261103120000 ou criada fora do atalho do PV),
@@ -611,8 +684,14 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                 mas 385 das 386 OS têm essa coluna como string VAZIA (falsy) —
                 o item de menu nunca aparecia. Quem identifica a OS é o
                 order_number, que sempre existe. */}
-            <DropdownMenuItem onClick={() => {
+            <DropdownMenuItem onClick={async () => {
               const so = (saleOrders as any[]).find(s => s.id === o.sale_order_id);
+              // Itens do papel: buscados sob demanda (o dialog só carrega os do
+              // PV aberto). Só saem os que a OS realmente cobre — sem a seleção
+              // gravada isso imprimiria as 3 cores do pedido com o total de
+              // pares de uma. OS antiga (sem registro) segue no papel curto,
+              // caindo no texto da descrição que ela já tem.
+              const items = await fetchReceiptItemsForOs(o);
               printServiceOrderReceipt(
                 {
                   order_number: o.order_number,
@@ -624,9 +703,12 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                   notes: o.notes || '',
                   materials_sent: getMaterials(o),
                   sale_order_number: so?.order_number || null,
+                  client_order_number: so?.client_order_number || null,
+                  op_numbers: opNumbersOf(o),
                   client_name: so?.client_name || null,
                 },
                 contractors.find(c => c.id === o.contractor_id),
+                { items },
               );
             }}>
               <Printer className="mr-2 h-3.5 w-3.5" /> Imprimir OS
@@ -1313,8 +1395,12 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
       }
     }
 
+    // Descrição é OPCIONAL (02/08/2026) e a coluna é NOT NULL → grava ''.
+    // ⚠ Havia aqui um `if (!descFinal.trim()) return;` — early return SILENCIOSO.
+    // Com a descrição nascendo vazia, ele transformaria "Salvar" num clique sem
+    // efeito e sem mensagem em toda OS nova. O que o form realmente exige está
+    // em `manualOsValid` (prestador + setor + preço), que nunca cobrou descrição.
     const descFinal = (artPayload.description as string) || editingOrder.description || '';
-    if (!descFinal.trim()) return;
 
     // Fix do bug: total = qty × unit_price (não copia unit_price pra total).
     // Artesanal mantém override via laborCost da receita (artPayload.total_value).
@@ -1341,6 +1427,13 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
       material_color: validMaterials[0]?.color || '',
       material_meters: validMaterials[0]?.meters || 0,
       sale_order_id: editingOrder.sale_order_id || null,
+      // Regrava a seleção de itens que está na tela. Sem isto, o spread de
+      // `editingOrder` devolveria o valor antigo e — pior — a OS abriria com
+      // "todos marcados" e salvaria isso por cima do escopo real. Sem PV, não
+      // há o que registrar.
+      selected_sale_order_item_ids: editingOrder.sale_order_id
+        ? osPvItems.filter((i) => osPvItemSel.has(i.id)).map((i) => i.id)
+        : null,
     };
 
     const originalOrder = orders.find(o => o.id === editingOrder.id);
@@ -1809,7 +1902,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                         {/* Corpo: descrição + PV + materiais + gargalo */}
                         <div className="mt-2.5 flex-1 space-y-2">
                           <div className="flex items-start justify-between gap-2">
-                            <p className="line-clamp-2 text-sm text-muted-foreground">{o.description || '—'}</p>
+                            <p className="line-clamp-2 text-sm text-muted-foreground">{osListLine(o)}</p>
                             {so && (
                               <div className="shrink-0 text-right leading-tight">
                                 <span className="font-mono text-xs font-semibold text-primary">{so.order_number}</span>
@@ -1924,7 +2017,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                                 : <span className="text-xs text-muted-foreground">—</span>}
                             </TableCell>
                             <TableCell className="max-w-[260px]">
-                              <p className="truncate text-sm text-muted-foreground">{o.description || o.artisanal_output_name || '—'}</p>
+                              <p className="truncate text-sm text-muted-foreground" title={osListLine(o)}>{osListLine(o)}</p>
                               {mats.length > 0 && <span className="text-[11px] text-muted-foreground tabular-nums">{doneCount}/{mats.length} {mats.length === 1 ? 'material' : 'materiais'}</span>}
                             </TableCell>
                             <TableCell className="hidden lg:table-cell">{renderDeadlineInline(o)}</TableCell>
@@ -2286,7 +2379,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                   </Select>
                 </div>
                 <div className="sm:col-span-2 space-y-1.5">
-                  <Label className="text-xs font-medium text-muted-foreground">Descrição do Serviço *</Label>
+                  <Label className="text-xs font-medium text-muted-foreground">Descrição do Serviço (opcional)</Label>
                   <Input value={editingOrder.description || ''} onChange={e => setEditingOrder(p => ({ ...p, description: e.target.value }))} className="h-9" />
                 </div>
                 <div className="sm:col-span-2 space-y-1.5">
@@ -2372,6 +2465,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                     <div className="space-y-1.5">
                       {osPvItems.map((it) => {
                         const on = osPvItemSel.has(it.id);
+                        const opNo = osOpByItem.get(it.id);
                         return (
                           <button
                             type="button" key={it.id} onClick={() => toggleOsPvItem(it.id)}
@@ -2382,12 +2476,15 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                           >
                             <span className={cn('h-4 w-4 rounded border grid place-items-center text-[10px] leading-none text-primary-foreground', on ? 'bg-primary border-primary' : 'border-muted-foreground/40')}>{on ? '✓' : ''}</span>
                             <span className="text-sm font-medium text-foreground flex-1 truncate">{it.label}</span>
+                            {opNo
+                              ? <span className="mono shrink-0 text-[11px] font-semibold text-primary">{opNo}</span>
+                              : <span className="shrink-0 text-[11px] text-muted-foreground">sem OP</span>}
                             <span className="text-xs tabular-nums text-muted-foreground">{it.pairs.toLocaleString('pt-BR')} pares</span>
                           </button>
                         );
                       })}
                     </div>
-                    <p className="text-[11px] text-muted-foreground">Marque os itens desta OS — a soma dos pares vira a <b className="text-foreground">Quantidade</b> e alimenta a guia de remessa.</p>
+                    <p className="text-[11px] text-muted-foreground">Marque os itens desta OS — a soma dos pares vira a <b className="text-foreground">Quantidade</b>, define as <b className="text-foreground">OPs</b> da OS e alimenta a guia de remessa.</p>
                   </div>
                 )}
 
@@ -2769,6 +2866,12 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                   notes: editingOrder.notes || '',
                   materials_sent: validMats,
                   sale_order_number: so?.order_number || null,
+                  client_order_number: so?.client_order_number || null,
+                  // OPs dos itens marcados AGORA na tela (não os gravados) — o
+                  // papel tem que refletir o que está sendo impresso.
+                  op_numbers: opNumbersForServiceOrder(
+                    opsForOs, osSelItems.map((i) => i.id), editingOrder.sale_order_id || null,
+                  ),
                   client_name: so?.client_name || null,
                 },
                 contractor ? {
