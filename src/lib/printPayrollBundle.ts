@@ -12,6 +12,24 @@ export type BundleRun = {
   overtime_50_minutes?: number; absent_days?: number; absence_discount?: number;
   deductions_amount?: number; advances_total?: number; total_descontos?: number;
   total_liquido: number; worked_minutes?: number; hourly_rate?: number; period: string;
+  /** Regime POR PAR (produção). Quando true, salário/faltas/atrasos/HE não se
+   *  aplicam: o bruto vem de pares × R$/par da Ficha de Montadores, e o
+   *  relógio de ponto é só presença. Sem isto o holerite impresso chamava o
+   *  bruto de "Salário base" e mostrava valor-hora R$ 0,00. */
+  por_par?: boolean;
+  dias_produtivos?: number;
+  fichas?: number;
+  fichas_derivadas?: boolean;
+  pares_medio?: number;
+  pares_dificil?: number;
+  /** Bruto SEPARADO por dificuldade — médio e difícil pagam R$/par diferentes,
+   *  então não se rateia o bruto total pelo nº de pares. */
+  bruto_medio?: number;
+  bruto_dificil?: number;
+  taxa_medio?: number;
+  taxa_dificil?: number;
+  /** Houve mais de um R$/par para a mesma dificuldade no período (reajuste). */
+  taxa_variou?: boolean;
 };
 export type BundleDay = {
   date: string; expectedMinutes?: number; workedMinutes?: number;
@@ -102,8 +120,25 @@ function sectorSummarySection(emps: BundleEmployee[], periodTitle: string): stri
 
 // ── Folha: uma tabela com todos os funcionários do escopo ────────────────────
 function folhaSection(emps: BundleEmployee[], periodTitle: string): string {
-  const rows = emps.map(e => {
+  const nf = (n: number) => (Number(n) || 0).toLocaleString('pt-BR');
+  // Por par não tem salário, falta, atraso nem hora extra. Em vez de imprimir
+  // quatro colunas mudas com "—", a linha usa o espaço delas pra mostrar o que
+  // define o pagamento: dias produtivos e pares × R$/par.
+  const linha = (e: BundleEmployee) => {
     const r = e.run;
+    if (r.por_par) {
+      const det = [`${nf(r.dias_produtivos || 0)} dia(s) produtivo(s)`,
+        (r.pares_medio || 0) > 0 ? `${nf(r.pares_medio || 0)} méd × ${fmt(r.taxa_medio || 0)}` : '',
+        (r.pares_dificil || 0) > 0 ? `${nf(r.pares_dificil || 0)} dif × ${fmt(r.taxa_dificil || 0)}` : '',
+      ].filter(Boolean).join(' · ');
+      return `<tr>
+        <td style="text-align:left;font-weight:600;">${esc(e.name)}
+          <span style="font-size:8px;font-weight:700;color:#555;border:1px solid #999;padding:0 3px;margin-left:4px;">POR PAR</span></td>
+        <td>${fmt(r.total_proventos || 0)}</td>
+        <td colspan="3" style="font-size:9px;color:#333;">${esc(det)}</td>
+        <td style="font-weight:700;">${fmt(r.total_liquido)}</td>
+      </tr>`;
+    }
     const salario = (r.total_proventos || 0) - (r.overtime_amount || 0);
     const faltas = (r.absent_days || 0) > 0 ? `${r.absent_days}d · −${fmt(r.absence_discount || 0)}` : '—';
     const atrasos = (r.deductions_amount || 0) > 0 ? `−${fmt(r.deductions_amount || 0)}` : '—';
@@ -116,13 +151,15 @@ function folhaSection(emps: BundleEmployee[], periodTitle: string): string {
       <td style="color:${(r.overtime_amount || 0) > 0 ? '#047857' : '#9ca3af'};">${he}</td>
       <td style="font-weight:700;">${fmt(r.total_liquido)}</td>
     </tr>`;
-  }).join('');
+  };
+  const rows = emps.map(linha).join('');
   const totLiq = emps.reduce((s, e) => s + (e.run.total_liquido || 0), 0);
+  const temPorPar = emps.some(e => e.run.por_par);
   return `<section class="doc">
     <h2>Folha · ${esc(periodTitle)}</h2>
     <table class="grid">
       <thead><tr>
-        <th style="text-align:left;">Funcionário</th><th>Salário</th><th>Faltas</th>
+        <th style="text-align:left;">Funcionário</th><th>Salário / Produção</th><th>Faltas</th>
         <th>Atrasos</th><th>Hora extra</th><th>Líquido</th>
       </tr></thead>
       <tbody>${rows}</tbody>
@@ -131,6 +168,7 @@ function folhaSection(emps: BundleEmployee[], periodTitle: string): string {
         <td colspan="4"></td><td style="font-weight:800;">${fmt(totLiq)}</td>
       </tr></tfoot>
     </table>
+    ${temPorPar ? `<p class="legend">POR PAR = pago por produção (Ficha de Montadores): sem salário, falta, atraso ou hora extra. O relógio de ponto não entra na conta.</p>` : ''}
   </section>`;
 }
 
@@ -170,13 +208,31 @@ function holeriteSection(e: BundleEmployee, periodTitle: string): string {
   const r = e.run;
   const isFullMonth = /^\d{4}-\d{2}$/.test(r.period);
   const periodBase = (r.total_proventos || 0) - (r.overtime_amount || 0);
-  const lines = ([
-    { label: isFullMonth ? 'Salário base' : 'Salário do período (proporcional)', value: periodBase, type: 'p' as const, always: true, hi: false },
-    { label: `Horas extras 1,5× (${fmtH(r.overtime_50_minutes || 0)})`, value: r.overtime_amount || 0, type: 'p' as const, always: false, hi: false },
-    { label: `Faltas (${r.absent_days || 0} dia(s))`, value: r.absence_discount || 0, type: 'd' as const, always: false, hi: (r.absent_days || 0) > 0 },
-    { label: 'Atrasos / saídas cedo', value: r.deductions_amount || 0, type: 'd' as const, always: false, hi: false },
-    { label: 'Adiantamentos do período', value: r.advances_total || 0, type: 'd' as const, always: false, hi: true },
-  ]).filter(l => l.value > 0 || l.always);
+  const nf = (n: number) => (Number(n) || 0).toLocaleString('pt-BR');
+  const marca = r.taxa_variou ? ' †' : '';
+  // POR PAR: nada de salário, falta, atraso ou hora extra — nenhum deles entra
+  // na conta deste regime. Cada dificuldade usa o SEU bruto, nunca o total
+  // rateado (a média de 0,80 e 1,00 não é o R$/par de nenhum dos dois).
+  const lines = (r.por_par
+    ? [
+        {
+          label: `Pares médios — ${nf(r.pares_medio || 0)} × ${fmt(r.taxa_medio || 0)}${marca}`,
+          value: r.bruto_medio || 0, type: 'p' as const, always: (r.pares_medio || 0) > 0, hi: false,
+        },
+        {
+          label: `Pares difíceis — ${nf(r.pares_dificil || 0)} × ${fmt(r.taxa_dificil || 0)}${marca}`,
+          value: r.bruto_dificil || 0, type: 'p' as const, always: false, hi: false,
+        },
+        { label: 'Adiantamentos do período', value: r.advances_total || 0, type: 'd' as const, always: false, hi: true },
+      ]
+    : [
+        { label: isFullMonth ? 'Salário base' : 'Salário do período (proporcional)', value: periodBase, type: 'p' as const, always: true, hi: false },
+        { label: `Horas extras 1,5× (${fmtH(r.overtime_50_minutes || 0)})`, value: r.overtime_amount || 0, type: 'p' as const, always: false, hi: false },
+        { label: `Faltas (${r.absent_days || 0} dia(s))`, value: r.absence_discount || 0, type: 'd' as const, always: false, hi: (r.absent_days || 0) > 0 },
+        { label: 'Atrasos / saídas cedo', value: r.deductions_amount || 0, type: 'd' as const, always: false, hi: false },
+        { label: 'Adiantamentos do período', value: r.advances_total || 0, type: 'd' as const, always: false, hi: true },
+      ]
+  ).filter(l => l.value > 0 || l.always);
   const body = lines.map(l => `<tr${l.hi ? ' style="background:#fef3c7;"' : ''}>
     <td style="text-align:left;${l.hi ? 'color:#b45309;font-weight:600;' : ''}">${esc(l.label)}</td>
     <td>${l.type === 'p' ? fmt(l.value) : ''}</td>
@@ -185,7 +241,15 @@ function holeriteSection(e: BundleEmployee, periodTitle: string): string {
   return `<section class="doc">
     <h2>Holerite · ${esc(periodTitle)}</h2>
     <p class="sub">${esc(e.name)}${e.role ? ' · ' + esc(e.role) : ''}${e.department ? ' · ' + esc(e.department) : ''}
-      · trabalhado ${fmtH(r.worked_minutes || 0)} · valor-hora ${fmt(r.hourly_rate || 0)} · salário mensal ${fmt(r.base_salary || 0)}</p>
+      ${r.por_par
+        ? `· pagamento POR PAR · ${nf(r.dias_produtivos || 0)} dia(s) produtivo(s) · ${nf((r.pares_medio || 0) + (r.pares_dificil || 0))} pares`
+          + ((r.fichas || 0) > 0 ? ` · ${nf(r.fichas || 0)} fichas${r.fichas_derivadas ? ' *' : ''}` : '')
+        : `· trabalhado ${fmtH(r.worked_minutes || 0)} · valor-hora ${fmt(r.hourly_rate || 0)} · salário mensal ${fmt(r.base_salary || 0)}`}</p>
+    ${r.por_par ? `<p class="sub" style="font-size:9px;color:#555;">O relógio de ponto não influencia este pagamento — os pares vêm da Ficha de Montadores.${
+        r.fichas_derivadas ? ' * fichas inferidas (lote de 12); os PARES, base do pagamento, não dependem disso.' : ''
+      }${
+        r.taxa_variou ? ' † o R$/par mudou no período; a taxa exibida é a média das gravadas — o total continua exato.' : ''
+      }</p>` : ''}
     <table class="grid">
       <thead><tr><th style="text-align:left;">Descrição</th><th>Provento</th><th>Desconto</th></tr></thead>
       <tbody>${body}</tbody>

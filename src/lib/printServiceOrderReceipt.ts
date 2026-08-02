@@ -87,7 +87,20 @@ export interface ReceiptServiceOrder {
   quantity?: number | null;
   notes?: string | null;
   target_sector?: string | null;
+  /** Nº do pedido no SISTEMA (PV-00151). Usado como fallback do do cliente. */
   sale_order_number?: string | null;
+  /**
+   * Nº do pedido do CLIENTE, quando cadastrado. É ele que vai no cabeçalho —
+   * o do sistema entra só quando este não existe (mesma precedência já usada
+   * na etiqueta e na lista de pedidos).
+   */
+  client_order_number?: string | null;
+  /**
+   * Nºs das ordens de produção que a OS cobre (`OP-00231`). Derivados dos itens
+   * do PV gravados na OS — ver `serviceOrderOps.ts`. Vazio quando as OPs ainda
+   * não foram geradas: nesse caso a linha simplesmente não sai no papel.
+   */
+  op_numbers?: string[] | null;
   client_name?: string | null;
   materials_sent?: ReceiptMaterialSent[] | null;
 }
@@ -325,12 +338,26 @@ export function printServiceOrderReceipt(
 
   const docTitle = stubOnly ? `Canhoto ${osNo}` : `OS ${osNo}`;
 
+  // Pedido do CLIENTE manda; o do sistema é o fallback. Mesma precedência já
+  // usada na etiqueta e na lista de PVs — o prestador e o cliente conversam pelo
+  // número do cliente quando ele existe.
+  const pedidoNo = order.client_order_number?.trim() || order.sale_order_number?.trim() || null;
+  // OPs no cabeçalho, em destaque, TODAS listadas (a regra do projeto manda
+  // remover conteúdo antes de reduzir fonte — nenhum número é escondido atrás
+  // de um "+2"). Corpo abaixo do nº da OS, que segue sendo a identidade do papel.
+  const opNumbers = (order.op_numbers || []).filter(Boolean);
+
   const headerHtml = `
     <header class="head">
       <div class="ident">
         <span class="eyebrow">${stubOnly ? 'Canhoto de devolução · reimpressão' : 'Ordem de serviço'} · ${esc(company.name)}</span>
         <div class="os">${esc(osNo)}</div>
         ${sector ? `<div class="sector">${esc(sector)}</div>` : ''}
+        ${opNumbers.length > 0 || pedidoNo ? `
+          <div class="idrefs">
+            ${opNumbers.length > 0 ? `<span class="idref"><span class="k">${opNumbers.length === 1 ? 'OP' : 'OPs'}</span>${esc(opNumbers.join(' · '))}</span>` : ''}
+            ${pedidoNo ? `<span class="idref"><span class="k">Pedido</span>${esc(pedidoNo)}</span>` : ''}
+          </div>` : ''}
       </div>
       <div class="totalbox">
         <span class="n">${fmtInt(totalPairs)}</span>
@@ -340,7 +367,6 @@ export function printServiceOrderReceipt(
 
     <div class="meta">
       <div><span class="k">Prestador</span><span class="v">${esc(contractorName)}</span></div>
-      ${order.sale_order_number ? `<div><span class="k">Pedido</span><span class="v mono">${esc(order.sale_order_number)}</span></div>` : ''}
       <div><span class="k">Envio</span><span class="v mono">${fmtDate(order.service_date)}</span></div>
       <div><span class="k">Prazo</span><span class="v mono">${fmtDate(order.quoted_deadline)}</span></div>
     </div>
@@ -400,7 +426,7 @@ export function printServiceOrderReceipt(
     color: #000; font-size: 10pt; line-height: 1.4;
   }
   .mono { font-family: 'Fira Code', ui-monospace, 'SF Mono', monospace; font-variant-numeric: tabular-nums; }
-  .os, .sector, .ref, .pairs, .totalbox .n, .sectitle,
+  .os, .sector, .ref, .pairs, .totalbox .n, .sectitle, .idref,
   table.grade thead th, table.grade tbody td {
     font-family: 'Anton', 'Arial Narrow', Impact, sans-serif;
   }
@@ -419,7 +445,17 @@ export function printServiceOrderReceipt(
   .totalbox .l { display: block; font-family: 'Fira Code', ui-monospace, monospace;
                  font-size: 7.5pt; letter-spacing: .16em; text-transform: uppercase; }
 
-  .meta { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px;
+  /* OP e Pedido: identidade secundária do papel. Abaixo do nº da OS (30pt) e do
+     setor (20pt), acima de tudo o mais — é o que a bancada usa pra amarrar o
+     serviço à produção. 14pt (~18.7px) fica acima do piso de identidade (14px)
+     do PRINT_SPEC. Quebra linha com 2+ OPs em vez de encolher. */
+  .idrefs { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 4px; }
+  .idref { font-size: 14pt; line-height: 1.15; letter-spacing: .01em; }
+  .idref .k { font-family: 'Fira Code', ui-monospace, monospace;
+              font-size: 7pt; letter-spacing: .12em; text-transform: uppercase;
+              color: #333; margin-right: 5px; }
+
+  .meta { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px;
           border: 1.5px solid #000; padding: 6px 9px; margin-top: 7px; }
   .meta .k { display: block; font-family: 'Fira Code', ui-monospace, monospace;
              font-size: 7pt; letter-spacing: .12em; text-transform: uppercase; color: #333; }

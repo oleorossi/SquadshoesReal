@@ -20,6 +20,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useContractors } from '@/hooks/useContractors';
 import { generateServiceOrderNumber } from '@/lib/serviceOrderStock';
 import { SERVICE_ORDER_SECTORS } from '@/lib/serviceOrderSectors';
+import { opNumberByPvItem, opNumbersForServiceOrder, type OpRef } from '@/lib/serviceOrderOps';
 import { formatCurrency, cn } from '@/lib/utils';
 
 /**
@@ -115,16 +116,19 @@ export function ServiceOrderFormDialog({
       setQuotedDeadline('');
       setUnitPrice(0);
       setNotes('');
-      // Atalho do PV: pré-marca todos os itens, soma os pares na Quantidade e
-      // sugere a descrição a partir do pedido + itens.
+      // A descrição nasce SEMPRE vazia (decisão do dono, 02/08/2026). Antes ela
+      // vinha com "PV-00151 — ref · cor, ref · cor, ..." e listava TODOS os itens
+      // do pedido mesmo com um só marcado — texto errado que ainda precisava ser
+      // limpo à mão pra mandar uma referência sozinha. Quem identifica o escopo
+      // da OS agora é a seleção gravada + o nº da OP derivado dela, não texto.
+      setDescription('');
+      // Atalho do PV: pré-marca todos os itens e soma os pares na Quantidade.
       if (pvItems && pvItems.length) {
         setSelectedItemIds(new Set(pvItems.map((i) => i.id)));
         setQuantity(pvItems.reduce((s, i) => s + (Number(i.pairs) || 0), 0));
-        setDescription(saleOrderLabel ? `${saleOrderLabel} — ${pvItems.map((i) => i.label).join(', ')}` : '');
       } else {
         setSelectedItemIds(new Set());
         setQuantity(0);
-        setDescription('');
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -142,6 +146,32 @@ export function ServiceOrderFormDialog({
     [pvItems, selectedItemIds],
   );
 
+  // OPs do pedido, pra mostrar o nº da ordem de produção ao lado de cada item.
+  // A OS pode ser criada ANTES de "Gerar OPs" rodar — nesse caso a query volta
+  // vazia, o aviso aparece e o número surge sozinho depois (é derivado na
+  // leitura a partir do item gravado, nunca congelado na OS).
+  const { data: pvOps = [] } = useQuery({
+    queryKey: ['pv_ops_for_os', saleOrderId],
+    enabled: open && !!saleOrderId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('orders')
+        .select('id, order_number, sale_order_item_id, sale_order_id, status')
+        .eq('sale_order_id', saleOrderId as string);
+      if (error) throw error;
+      return (data || []) as OpRef[];
+    },
+    staleTime: 60_000,
+  });
+  const opByItem = useMemo(() => opNumberByPvItem(pvOps), [pvOps]);
+  const selectedOpNumbers = useMemo(
+    () => opNumbersForServiceOrder(pvOps, selectedPvItems.map((i) => i.id), saleOrderId),
+    [pvOps, selectedPvItems, saleOrderId],
+  );
+  // Aviso só quando há item marcado e NENHUM deles tem OP — o caso "ainda não
+  // gerei as OPs". Item a item, a ausência já aparece na própria linha.
+  const opsMissing = selectedPvItems.length > 0 && selectedOpNumbers.length === 0;
+
   const totalValue = useMemo(() => quantity * unitPrice, [quantity, unitPrice]);
   const selectedContractor = contractors.find((c: any) => c.id === contractorId);
   const paymentDays = Number((selectedContractor as any)?.payment_days ?? 30) || 30;
@@ -149,7 +179,10 @@ export function ServiceOrderFormDialog({
   const create = useMutation({
     mutationFn: async () => {
       if (!contractorId) throw new Error('Selecione uma contratada.');
-      if (!description.trim()) throw new Error('Informe uma descrição do serviço.');
+      // Descrição é OPCIONAL (02/08/2026) — a coluna é NOT NULL, então grava ''.
+      // O que identifica a OS é o nº dela, o PV e a OP derivada dos itens
+      // gravados; descrição é campo livre pra quem quiser anotar. O form legado
+      // da aba Ordens de Serviço já não a exigia (Contractors.tsx:manualOsValid).
       if (quantity <= 0 || unitPrice <= 0) throw new Error('Quantidade e valor unitário devem ser maiores que zero.');
 
       const order_number = await generateServiceOrderNumber();
@@ -169,7 +202,15 @@ export function ServiceOrderFormDialog({
       };
       // Atalho do PV: amarra a OS ao pedido (aparece no card de OS do PV, via
       // sale_order_id/source_sale_order_id — mesma consulta do PvServiceOrdersCard).
-      if (saleOrderId) { payload.sale_order_id = saleOrderId; payload.source_sale_order_id = saleOrderId; }
+      if (saleOrderId) {
+        payload.sale_order_id = saleOrderId;
+        payload.source_sale_order_id = saleOrderId;
+        // Registra QUAIS itens do pedido esta OS cobre. Antes isso só existia
+        // como texto na descrição — e o texto listava todos os itens mesmo com
+        // um marcado. Daqui saem as OPs da OS (derivadas na leitura) e a
+        // pré-marcação correta ao reabrir a OS pra editar.
+        payload.selected_sale_order_item_ids = selectedPvItems.map((i) => i.id);
+      }
 
       const { data: inserted, error } = await (supabase as any)
         .from('service_orders')
@@ -192,7 +233,7 @@ export function ServiceOrderFormDialog({
     },
   });
 
-  const canSubmit = !!contractorId && !!description.trim() && quantity > 0 && unitPrice > 0;
+  const canSubmit = !!contractorId && quantity > 0 && unitPrice > 0;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -219,6 +260,7 @@ export function ServiceOrderFormDialog({
               <div className="space-y-1.5">
                 {pvItems.map((it) => {
                   const on = selectedItemIds.has(it.id);
+                  const opNo = opByItem.get(it.id);
                   return (
                     <button
                       type="button" key={it.id} onClick={() => toggleItem(it.id)}
@@ -229,6 +271,12 @@ export function ServiceOrderFormDialog({
                     >
                       <span className={cn('h-4 w-4 rounded border grid place-items-center text-[10px] leading-none text-white', on ? 'bg-primary border-primary' : 'border-muted-foreground/40')}>{on ? '✓' : ''}</span>
                       <span className="text-sm font-medium text-foreground flex-1 truncate">{it.label}</span>
+                      {/* Nº da OP por item: mostra de qual ordem de produção é
+                          cada cor e deixa visível, item a item, qual ainda não
+                          foi gerada. */}
+                      {opNo
+                        ? <span className="mono shrink-0 text-[11px] font-semibold text-primary">{opNo}</span>
+                        : <span className="shrink-0 text-[11px] text-muted-foreground">sem OP</span>}
                       <span className="text-xs tabular-nums text-muted-foreground">{it.pairs.toLocaleString('pt-BR')} pares</span>
                     </button>
                   );
@@ -236,7 +284,15 @@ export function ServiceOrderFormDialog({
               </div>
               <p className="text-[11px] text-muted-foreground">
                 {selectedPvItems.length} de {pvItems.length} selecionado(s) · <b className="text-foreground">{selectedPvItems.reduce((s, i) => s + i.pairs, 0).toLocaleString('pt-BR')} pares</b> → vira a Quantidade da OS.
+                {selectedOpNumbers.length > 0 && (
+                  <> · <span className="mono font-semibold text-primary">{selectedOpNumbers.join(', ')}</span></>
+                )}
               </p>
+              {opsMissing && (
+                <p className="text-[11px] text-muted-foreground">
+                  OPs ainda não geradas para este pedido. A OS pode ser criada normalmente — o número aparece sozinho assim que você gerar as OPs.
+                </p>
+              )}
             </section>
           )}
 
@@ -291,11 +347,11 @@ export function ServiceOrderFormDialog({
               Detalhes do serviço
             </div>
             <div>
-              <Label className="text-xs">Descrição *</Label>
+              <Label className="text-xs">Descrição (opcional)</Label>
               <Textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="Ex.: Costura de cabedal modelo X cor preto (lote PV-1234)"
+                placeholder="Nasce vazia de propósito — escreva só se tiver algo a dizer além do pedido, da OP e dos itens."
                 rows={2}
                 className="mt-1 text-sm"
               />

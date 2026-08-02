@@ -44,6 +44,7 @@ import {
   Contractor, ServiceOrder, MaterialSent, ServiceOrderOverview,
 } from '@/hooks/useContractors';
 import { SERVICE_ORDER_SECTORS } from '@/lib/serviceOrderSectors';
+import { opNumberByPvItem, opNumbersForServiceOrder, type OpRef } from '@/lib/serviceOrderOps';
 import { OsPaymentBadge, OsBalanceLine } from '@/components/contractors/OsStatusIndicators';
 import {
   OS_DONE_STATUSES, OS_CANCELLED_STATUSES, OS_PENDING_STATUSES, OS_STATUS,
@@ -309,14 +310,51 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
   const osSelItems = useMemo(() => osPvItems.filter((i) => osPvItemSel.has(i.id)), [osPvItems, osPvItemSel]);
   const osSelPares = osSelItems.reduce((s, i) => s + i.pairs, 0);
 
-  // Ao carregar os itens do PV: pré-marca todos. Só sobrescreve a Quantidade da OS
-  // quando o usuário TROCA o PV ativamente (não na abertura de uma OS existente —
-  // aí preserva a quantidade já gravada).
+  // ── OPs dos pedidos ligados às OS ──────────────────────────────────────────
+  // Alimentam o nº de ordem de produção na lista, na busca, no papel impresso e
+  // no seletor de itens do dialog. Derivadas SEMPRE na leitura (nunca gravadas
+  // na OS), pra que uma OS criada antes de "Gerar OPs" ganhe o número sozinha.
+  const osSaleOrderIds = useMemo(
+    () => Array.from(new Set((orders as any[]).map((o) => o.sale_order_id).filter(Boolean))).sort(),
+    [orders],
+  );
+  const { data: opsForOs = [] } = useQuery({
+    queryKey: ['ops_for_service_orders', osSaleOrderIds],
+    enabled: osSaleOrderIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('orders')
+        .select('id, order_number, sale_order_item_id, sale_order_id, status')
+        .in('sale_order_id', osSaleOrderIds as string[]);
+      if (error) throw error;
+      return (data || []) as OpRef[];
+    },
+    staleTime: 60_000,
+  });
+  /** Nºs de OP de uma OS. Sem seleção gravada (OS antiga) → todas as OPs do PV. */
+  const opNumbersOf = useCallback(
+    (o: any): string[] => opNumbersForServiceOrder(
+      opsForOs, o?.selected_sale_order_item_ids ?? null, o?.sale_order_id || null,
+    ),
+    [opsForOs],
+  );
+  const osOpByItem = useMemo(() => opNumberByPvItem(opsForOs), [opsForOs]);
+
+  // Ao carregar os itens do PV: pré-marca a seleção GRAVADA na OS; sem registro
+  // (OS anterior à migration 20261103120000 ou criada fora do atalho do PV),
+  // cai em todos — o comportamento de sempre. Isso fecha um furo real: antes
+  // remarcava todos incondicionalmente, então abrir a OS só pra corrigir o
+  // prazo e salvar trocava silenciosamente o escopo (e as OPs) da OS.
+  // Só sobrescreve a Quantidade quando o usuário TROCA o PV ativamente (não na
+  // abertura de uma OS existente — aí preserva a quantidade já gravada).
   useEffect(() => {
     if (!orderDialog) return;
     const pv = editingOrder.sale_order_id || null;
     if (pv && osPvItems.length > 0) {
-      setOsPvItemSel(new Set(osPvItems.map((i) => i.id)));
+      const saved = (editingOrder as any).selected_sale_order_item_ids as string[] | null | undefined;
+      const known = new Set(osPvItems.map((i) => i.id));
+      const restored = Array.isArray(saved) ? saved.filter((id) => known.has(id)) : null;
+      setOsPvItemSel(new Set(restored ?? osPvItems.map((i) => i.id)));
       if (osPvPrevRef.current !== null && osPvPrevRef.current !== pv) {
         const sum = osPvItems.reduce((s, i) => s + i.pairs, 0);
         if (sum > 0) setEditingOrder((p) => ({ ...p, quantity: sum }));
@@ -422,13 +460,19 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
     return orders.filter(o => {
       // Arquivadas (triagem P0.3) ficam fora das listas por default.
       if (!showArchivedOs && o.archived_at) return false;
+      // Pedido e OP entram na busca: com a descrição nascendo vazia (02/08/2026),
+      // procurar por "I901" deixou de achar OS — o que repõe isso são códigos
+      // estáveis (PV-00151, OP-00231), que não dependem de alguém ter digitado.
+      const so = (saleOrders as any[]).find(s => s.id === o.sale_order_id);
       return searchMatchesAllTerms(
         search,
         o.description, o.order_number, o.contractors?.name,
         o.receipt_number, o.artisanal_output_name,
+        so?.order_number, so?.client_order_number,
+        ...opNumbersOf(o),
       );
     });
-  }, [orders, search, showArchivedOs]);
+  }, [orders, search, showArchivedOs, saleOrders, opNumbersOf]);
 
   // ── Operacional "Na rua" (fundido da antiga aba, 2026-06-30) ──────────────
   // "Na rua" = OS com pares ainda em campo (overview.qty_in_field > 0).
