@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent } from '@/components/ui/card';
@@ -132,15 +132,39 @@ export default function SolePackagingPanel({ soleGroupId, soleGroupName }: Props
     staleTime: 60_000,
   });
 
+  /**
+   * Hidratação dos slots a partir do banco.
+   *
+   * ⚠ NÃO pode atropelar edição pendente. Salvar uma caixa pelo dialog dispara
+   * `invalidateBoxQueries`, que invalida `sole_packaging` — se este efeito
+   * re-hidratasse aqui, o slot que o operador acabou de mexer voltaria ao valor
+   * do banco E o `setDirty(false)` desabilitaria o botão Salvar junto, tornando
+   * a perda silenciosa. Hoje o structural sharing do React Query mascara isso
+   * (mesma referência quando o dado não muda), mas basta a linha do grupo mudar
+   * de verdade — outra aba salvando, refetch com dado novo — pra estourar.
+   *
+   * `dirty` vive também num ref porque ele não pode entrar nas dependências:
+   * ao salvar, `dirty` vira false ANTES do refetch chegar, e o efeito
+   * re-hidrataria com o `group` velho, piscando os valores antigos na tela.
+   */
+  const dirtyRef = useRef(false);
+  const hydratedFor = useRef<string | null>(null);
+
+  const markDirty = (v: boolean) => { dirtyRef.current = v; setDirty(v); };
+
   useEffect(() => {
     if (!group) return;
+    // Trocar de solado sempre re-hidrata; refetch do MESMO solado só quando
+    // não há nada pendente pra perder.
+    if (hydratedFor.current === group.id && dirtyRef.current) return;
+    hydratedFor.current = group.id;
     setSlots({
       individual: { boxId: group.box_type_id || NO_BOX, pairs: Number(group.pairs_per_box_individual || 0) },
       master: { boxId: group.box_type_master_id || NO_BOX, pairs: Number(group.pairs_per_box_master || 0) },
       colmeia: { boxId: group.box_type_colmeia_id || NO_BOX, pairs: Number(group.pairs_per_box_colmeia || 0) },
       fitilho: { boxId: group.box_type_fitilho_id || NO_BOX, pairs: Number(group.pairs_per_box_fitilho || 0) },
     });
-    setDirty(false);
+    markDirty(false);
   }, [group]);
 
   const boxById = useMemo(() => {
@@ -157,7 +181,7 @@ export default function SolePackagingPanel({ soleGroupId, soleGroupName }: Props
 
   const setSlot = (kind: BoxKind, patch: Partial<SlotState>) => {
     setSlots(prev => ({ ...prev, [kind]: { ...prev[kind], ...patch } }));
-    setDirty(true);
+    markDirty(true);
   };
 
   /** Pares/caixa efetivo: valor do solado > padrão da caixa > 12 (espelha a RPC). */
@@ -209,7 +233,7 @@ export default function SolePackagingPanel({ soleGroupId, soleGroupName }: Props
       qc.invalidateQueries({ queryKey: ['sole_packaging', soleGroupId] });
       qc.invalidateQueries({ queryKey: ['packaging_links_overview_by_sole'] });
       qc.invalidateQueries({ queryKey: ['soles_without_packaging'] });
-      setDirty(false);
+      markDirty(false);
     } catch (err: any) {
       toast.error(err?.message || 'Erro ao salvar embalagem');
     } finally {

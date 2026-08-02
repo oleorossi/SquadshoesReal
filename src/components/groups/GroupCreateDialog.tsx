@@ -10,7 +10,6 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { MagnifyingGlass as Search, CircleNotch as Loader2, Check, FileText, Stack as Layers, Truck, Package } from '@phosphor-icons/react';
  import { useAddGroup, useGroups } from "@/hooks/useGroups";
-import { useIndividualPackaging } from "@/hooks/usePackaging";
 import { useAddGroupSupplier } from "@/hooks/useGroupSuppliers";
 import { useAddSupplier, useSuppliers, type Supplier } from "@/hooks/useSuppliers";
 import { flattenGroupTree } from "@/lib/groupHierarchy";
@@ -33,12 +32,6 @@ interface GroupCreateDialogProps {
 /** Setores cujo material é cortado de bobina/placa e tem consumo em dm²/par: sem
  *  largura o motor não converte dm²→metro e o consumo sai ~100× inflado. */
 const AREA_SECTORS = new Set(['Cabedal', 'Forração da Palmilha', 'Palmilha']);
-
-const parseIntOrNull = (v: string): number | null => {
-  if (v === '') return null;
-  const n = parseInt(v, 10);
-  return Number.isFinite(n) && n > 0 ? n : null;
-};
 
 export default function GroupCreateDialog({ open, onOpenChange, initialSector, initialParentId, lockHierarchy, titleText }: GroupCreateDialogProps) {
   const [form, setForm] = useState({
@@ -89,8 +82,6 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
  
 
   const addGroup = useAddGroup();
-  const { data: boxOptions = [] } = useIndividualPackaging({ is_active: true });
-  const NO_BOX = "__none__";
 
   const reset = () => {
     setForm({
