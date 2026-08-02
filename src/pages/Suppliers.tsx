@@ -23,6 +23,7 @@ import type { ParsedNFeDuplicata } from '@/lib/nfeParser';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import { useProducts } from '@/hooks/useProducts';
+import { findDuplicate } from '@/lib/duplicateDetection';
 import { CATEGORIES } from '@/types/inventory';
 import SupplierFormDialog from '@/components/suppliers/SupplierFormDialog';
 import XmlImportDialog from '@/components/suppliers/XmlImportDialog';
@@ -110,6 +111,23 @@ function InvoiceItemsRow({ invoice, supplierName }: { invoice: Invoice; supplier
 
             productId = match.id;
           } else {
+            // Antes de criar produto novo pela NF, passa pela MESMA cascata do
+            // cadastro manual. Aqui não há formulário pra perguntar "é o mesmo?",
+            // então a linha é BLOQUEADA e listada — criar às cegas era como
+            // duplicata entrava sem ninguém ver (spec `duplicata-no-cadastro.md`).
+            const parecido = findDuplicate(
+              { name: item.product_name, sku: item.product_code || undefined },
+              products as any,
+            );
+            if (parecido) {
+              skippedItems.push(
+                `${item.product_name}: parece já cadastrado como "${parecido.product.name}"` +
+                `${parecido.product.color ? ` (${parecido.product.color})` : ''} — SKU ${parecido.product.sku || '—'}. ` +
+                `Vincule o item a esse produto ou ajuste o cadastro antes de importar.`,
+              );
+              continue;
+            }
+
             // Produto NOVO criado a partir da NF — sem cadastro prévio não
             // dá pra resolver conversão. Salva com a unit/qty crua da NF
             // (operador depois ajusta unit + conversion_rate). Avisa via
