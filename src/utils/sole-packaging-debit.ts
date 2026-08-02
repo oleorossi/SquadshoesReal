@@ -1,11 +1,17 @@
 /**
  * Espelho puro da RPC `debit_packaging_for_order`
- * (migration atual: 20261025120000_packaging-debit-partial-instead-of-abort).
+ * (migration atual: 20261110120000_packaging-single-source-sole-group).
  *
  * A RPC real lê `product_groups` (solado da ficha técnica) e debita estoque em
  * `box_types` + `stock_movements`. Esta função reproduz APENAS a lógica de
  * cálculo (quais tipos debitar, quantas caixas e validação de estoque), para
  * que possamos testá-la sem ir ao Postgres.
+ *
+ * Desde 20261110120000 o solado é a ÚNICA fonte: o caminho por ficha técnica
+ * (`technical_sheet_box_types`), que tinha precedência e podia debitar duas
+ * caixas do mesmo tipo, foi aposentado. Este espelho já modelava só o caminho
+ * do solado — o que mudou é que agora ele descreve o comportamento inteiro, e
+ * não mais o fallback.
  *
  * Fora do escopo deste espelho (são efeitos de estado no banco): a idempotência
  * por `order_id` (#5) e os avisos `skipped_no_box_linked`/`no_packaging_configured`

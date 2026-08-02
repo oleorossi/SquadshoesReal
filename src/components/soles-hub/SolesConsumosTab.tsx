@@ -6,7 +6,7 @@ import { usePersistedState } from '@/hooks/usePersistedState';
 import { SoleTechnicalDetails } from '@/components/technical-sheets/SoleTechnicalDetails';
 import SoleStandardConsumptionPanel from './SoleStandardConsumptionPanel';
 import { SoleSilkPanel } from '@/components/technical-sheets/SoleSilkPanel';
-import { PackagingTab } from '@/components/technical-sheets/PackagingTab';
+import SolePackagingPanel from './SolePackagingPanel';
 import type { SoleProduct } from './types';
 
 interface Props {
@@ -74,8 +74,15 @@ export default function SolesConsumosTab({ sole, soleLabel }: Props) {
           <SoleSilkPanel soleProductId={sole.id} soleName={soleLabel ?? sole.name} />
         </TabsContent>
 
+        {/* Fonte ÚNICA da embalagem desde 02/08/2026: grava em
+            `product_groups.box_type_*`, que é o que o débito, os volumes da NF e
+            o MRP leem. O caminho antigo por ficha (`technical_sheet_box_types`)
+            foi aposentado — ver migration 20261110120000. */}
         <TabsContent value="embalagem" className="mt-4">
-          <PackagingTab soleGroupId={sole.group_id} />
+          <SolePackagingPanel
+            soleGroupId={sole.group_id}
+            soleGroupName={soleLabel ?? sole.name}
+          />
         </TabsContent>
       </Tabs>
     </div>

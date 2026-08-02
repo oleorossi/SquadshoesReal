@@ -5,12 +5,16 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
-/** packaging modes → which packaging_type rows are consumed */
+/** packaging modes → which packaging_type rows are consumed.
+ *  Espelha `resolveTypesForMode` (utils/sole-packaging-debit.ts) e a RPC viva:
+ *  'individual_amarrado' é sinônimo de 'individual_fitilho' e debita os DOIS
+ *  tipos — antes esta tabela listava só 'individual' e a sugestão escondia o
+ *  fitilho que o débito consome. */
 const MODE_TYPES: Record<string, string[]> = {
   colmeia:            ['colmeia'],
   individual_master:  ['individual', 'master'],
   individual_fitilho: ['individual', 'fitilho'],
-  individual_amarrado:['individual'],
+  individual_amarrado:['individual', 'fitilho'],
 };
 
 interface PackagingDecisionProps {
@@ -36,30 +40,59 @@ export function PackagingDecision({ order }: PackagingDecisionProps) {
     queryKey: ['packaging_configs_decision', order.sheetId],
     enabled: !!order.sheetId,
     queryFn: async () => {
-      // Fonte canônica do débito: vínculos da própria ficha, não os slots
-      // legados de product_groups.
-      const { data, error } = await (supabase as any)
-        .from('technical_sheet_box_types')
-        .select(`
-          box_type_id,
-          box_types(id, nome, tipo, pairs_per_box_default, comprimento_cm, largura_cm, altura_cm, quantity, unit_price)
-        `)
-        .eq('sheet_id', order.sheetId!);
-      if (error) throw error;
+      // Fonte canônica desde 02/08/2026: os slots do MODELO DE SOLADO
+      // (`product_groups.box_type_*`), que é o que `debit_packaging_for_order`
+      // debita. O caminho antigo por ficha (`technical_sheet_box_types`) foi
+      // aposentado — se esta tela continuasse lendo de lá, a sugestão mostraria
+      // caixa diferente da que sai do estoque.
+      const { data: sheet, error: sheetErr } = await supabase
+        .from('technical_sheets')
+        .select('sole_group_id')
+        .eq('id', order.sheetId!)
+        .maybeSingle();
+      if (sheetErr) throw sheetErr;
 
-      return (data ?? []).flatMap((row: any) => {
-        const box = Array.isArray(row.box_types) ? row.box_types[0] : row.box_types;
-        if (!box) return [];
+      const soleGroupId = (sheet as any)?.sole_group_id as string | null;
+      if (!soleGroupId) return [];
+
+      const { data, error } = await (supabase as any)
+        .from('product_groups')
+        .select(`
+          pairs_per_box_individual, pairs_per_box_master, pairs_per_box_colmeia, pairs_per_box_fitilho,
+          box_individual:box_type_id(id, nome, tipo, pairs_per_box_default, metros_per_amarrado_default, comprimento_cm, largura_cm, altura_cm, quantity, unit_price),
+          box_master:box_type_master_id(id, nome, tipo, pairs_per_box_default, metros_per_amarrado_default, comprimento_cm, largura_cm, altura_cm, quantity, unit_price),
+          box_colmeia:box_type_colmeia_id(id, nome, tipo, pairs_per_box_default, metros_per_amarrado_default, comprimento_cm, largura_cm, altura_cm, quantity, unit_price),
+          box_fitilho:box_type_fitilho_id(id, nome, tipo, pairs_per_box_default, metros_per_amarrado_default, comprimento_cm, largura_cm, altura_cm, quantity, unit_price)
+        `)
+        .eq('id', soleGroupId)
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) return [];
+
+      const slots: Array<{ key: string; box: any; pairs: number | null }> = [
+        { key: 'individual', box: data.box_individual, pairs: data.pairs_per_box_individual },
+        { key: 'master', box: data.box_master, pairs: data.pairs_per_box_master },
+        { key: 'colmeia', box: data.box_colmeia, pairs: data.pairs_per_box_colmeia },
+        { key: 'fitilho', box: data.box_fitilho, pairs: data.pairs_per_box_fitilho },
+      ];
+
+      return slots.flatMap(({ key, box, pairs }) => {
+        const b = Array.isArray(box) ? box[0] : box;
+        if (!b) return [];
         return [{
-          packaging_type: box.tipo ?? 'individual',
-          nome: box.nome ?? 'Embalagem',
-          pairs_per_box: box.pairs_per_box_default ?? 1,
-          comprimento_cm: box.comprimento_cm ?? 0,
-          largura_cm: box.largura_cm ?? 0,
-          altura_cm: box.altura_cm ?? 0,
-          cost_per_unit: box.unit_price ?? 0,
-          box_type_id: row.box_type_id,
-          box_types: { nome: box.nome, quantity: box.quantity },
+          packaging_type: (b.tipo ?? key) as string,
+          nome: b.nome ?? 'Embalagem',
+          // Precedência igual à da RPC: valor do solado > padrão da caixa > 12.
+          pairs_per_box: Number(pairs || 0) > 0 ? Number(pairs) : Number(b.pairs_per_box_default || 12),
+          comprimento_cm: b.comprimento_cm ?? 0,
+          largura_cm: b.largura_cm ?? 0,
+          altura_cm: b.altura_cm ?? 0,
+          // Fitilho é linear: o preço é por metro e cada amarrado gasta N metros.
+          cost_per_unit: b.tipo === 'fitilho'
+            ? Number(b.unit_price ?? 0) * Number(b.metros_per_amarrado_default ?? 1)
+            : Number(b.unit_price ?? 0),
+          box_type_id: b.id,
+          box_types: { nome: b.nome, quantity: b.quantity },
         }];
       });
     },
@@ -134,8 +167,8 @@ export function PackagingDecision({ order }: PackagingDecisionProps) {
         ) : relevant.length === 0 ? (
           <div className="text-muted-foreground text-sm flex items-center gap-2">
             <Package className="h-4 w-4" />
-            Nenhuma embalagem configurada na ficha técnica para o modo <strong>{modeLabel[mode] || mode}</strong>.
-            Configure embalagens na aba Embalagem da ficha técnica.
+            Nenhuma caixa configurada no solado desta referência para o modo <strong>{modeLabel[mode] || mode}</strong>.
+            Configure em Solados → Consumos → Embalagem. Sem isso, o pedido entra mas nada é debitado.
           </div>
         ) : (
           <>

@@ -119,7 +119,8 @@ export default function PackagingLinksPanel() {
           <div className="text-center py-8">
             <Package className="h-10 w-10 mx-auto mb-2 text-muted-foreground/30" />
             <p className="text-muted-foreground text-sm">
-              Nenhum vínculo configurado. Vincule embalagens na aba Embalagem da Ficha Técnica — a configuração é por solado.
+              Nenhum vínculo configurado. Cadastre em <strong>Solados → escolha o solado → Consumos →
+              Embalagem</strong> — a configuração é por modelo de solado e vale pras referências que o usam.
             </p>
           </div>
         ) : (

@@ -8,7 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
-import { MagnifyingGlass as Search, CircleNotch as Loader2, Check, FileText, Stack as Layers, Truck } from '@phosphor-icons/react';
+import { MagnifyingGlass as Search, CircleNotch as Loader2, Check, FileText, Stack as Layers, Truck, Package } from '@phosphor-icons/react';
  import { useAddGroup, useGroups } from "@/hooks/useGroups";
 import { useIndividualPackaging } from "@/hooks/usePackaging";
 import { useAddGroupSupplier } from "@/hooks/useGroupSuppliers";
@@ -52,14 +52,6 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
     // largura errada infla o consumo linear.
     dimensions_width: null as number | null,
     parent_group_id: (initialParentId ?? "") as string,
-    pairs_per_box_individual: null as number | null,
-    pairs_per_box_master: null as number | null,
-    pairs_per_box_colmeia: null as number | null,
-    pairs_per_box_fitilho: null as number | null,
-    box_type_id: "" as string,
-    box_type_master_id: "" as string,
-    box_type_colmeia_id: "" as string,
-    box_type_fitilho_id: "" as string,
   });
   // Setor segue a sugestão automática pelo nome até o usuário escolher manualmente.
   // Se veio pré-preenchido (família/subgrupo), considera "tocado" pra não sobrescrever.
@@ -108,14 +100,6 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
       auto_component_sheet: false,
       dimensions_width: null,
       parent_group_id: initialParentId ?? "",
-      pairs_per_box_individual: null,
-      pairs_per_box_master: null,
-      pairs_per_box_colmeia: null,
-      pairs_per_box_fitilho: null,
-      box_type_id: "",
-      box_type_master_id: "",
-      box_type_colmeia_id: "",
-      box_type_fitilho_id: "",
     });
     setSectorTouched(!!initialSector);
   };
@@ -145,14 +129,8 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
         dimensions_width: form.dimensions_width,
         dimensions_unit: form.dimensions_width ? 'mm' : null,
         parent_group_id: form.parent_group_id || null,
-        pairs_per_box_individual: form.pairs_per_box_individual,
-        pairs_per_box_master: form.pairs_per_box_master,
-        pairs_per_box_colmeia: form.pairs_per_box_colmeia,
-        pairs_per_box_fitilho: form.pairs_per_box_fitilho,
-        box_type_id: form.box_type_id || null,
-        box_type_master_id: form.box_type_master_id || null,
-        box_type_colmeia_id: form.box_type_colmeia_id || null,
-        box_type_fitilho_id: form.box_type_fitilho_id || null,
+        // Embalagem NÃO entra: grupo de solado nasce sem caixa e a configuração
+        // dos 3 modos é feita em Solados → Consumos → Embalagem (02/08/2026).
       });
       reset();
       onOpenChange(false);
@@ -328,47 +306,20 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
             </Label>
           </div>
 
-          <div className="rounded-lg border p-3 bg-muted/30 space-y-3">
+          {/* Embalagem saiu daqui em 02/08/2026: grupo de solado NASCE VAZIO e a
+              pendência fica visível na tela de Solados (decisão do dono — nada é
+              herdado em silêncio). A edição é porta única em
+              Solados → Consumos → Embalagem. */}
+          <div className="rounded-md border border-dashed bg-muted/20 p-3 flex items-start gap-2 text-xs text-muted-foreground">
+            <Package className="h-4 w-4 text-primary shrink-0 mt-0.5" />
             <div>
-              <Label className="text-sm font-medium">Embalagem (opcional)</Label>
-              <p className="text-xs text-muted-foreground">
-                Vincule a caixa e os pares/caixa por tipo — o débito de embalagem lê isto do
-                grupo do solado. Use só os tipos aplicáveis. Pode ajustar depois na edição.
+              <p className="font-medium text-foreground">Embalagem</p>
+              <p>
+                Grupo de solado nasce <strong>sem caixa</strong>. Configure os três modos
+                (Tradicional, Amarrado e Colméia) em <strong>Solados → Consumos → Embalagem</strong> —
+                enquanto não configurar, o pedido entra mas nenhuma caixa é debitada.
               </p>
             </div>
-            {([
-              { key: 'individual', label: 'Individual', ph: '1', pairsField: 'pairs_per_box_individual', boxField: 'box_type_id' },
-              { key: 'master', label: 'Master', ph: '12', pairsField: 'pairs_per_box_master', boxField: 'box_type_master_id' },
-              { key: 'colmeia', label: 'Colmeia', ph: '24', pairsField: 'pairs_per_box_colmeia', boxField: 'box_type_colmeia_id' },
-              { key: 'fitilho', label: 'Fitilho', ph: '2', pairsField: 'pairs_per_box_fitilho', boxField: 'box_type_fitilho_id' },
-            ] as const).map((row) => (
-              <div key={row.key} className="grid grid-cols-[1fr_auto] gap-2 items-end">
-                <div>
-                  <Label className="text-xs">{row.label} — caixa</Label>
-                  <Select
-                    value={(form as any)[row.boxField] || NO_BOX}
-                    onValueChange={(v) => setForm((f) => ({ ...f, [row.boxField]: v === NO_BOX ? "" : v }))}
-                  >
-                    <SelectTrigger className="mt-1 h-8"><SelectValue placeholder="Sem caixa" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={NO_BOX}>Sem caixa</SelectItem>
-                      {boxOptions.map((b) => (
-                        <SelectItem key={b.id} value={b.id}>{b.product_name || b.internal_code}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="w-20">
-                  <Label className="text-xs">Pares/cx</Label>
-                  <Input
-                    type="number" min={1} step={1}
-                    value={(form as any)[row.pairsField] ?? ''}
-                    onChange={(e) => setForm((f) => ({ ...f, [row.pairsField]: parseIntOrNull(e.target.value) }))}
-                    className="mt-1 h-8" placeholder={row.ph}
-                  />
-                </div>
-              </div>
-            ))}
           </div>
 
           <div className="rounded-md border border-dashed bg-muted/20 p-3 flex items-start gap-2 text-xs text-muted-foreground">

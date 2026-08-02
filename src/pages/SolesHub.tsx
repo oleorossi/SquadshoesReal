@@ -137,6 +137,29 @@ export default function SolesHub() {
       .sort((a, b) => a.base.localeCompare(b.base, 'pt-BR'));
   }, [filtered]);
 
+  // Prontidão de embalagem por MODELO de solado. Um modo sem caixa significa
+  // que um PV naquele modo entra e NÃO debita caixa nenhuma — pendência que era
+  // invisível até 02/08/2026 (zero movimentos 'Débito embalagem' na história do
+  // banco). Aqui ela aparece na própria lista, ao lado do "abaixo do mínimo".
+  const { data: packagingGaps = new Map<string, string[]>() } = useQuery({
+    queryKey: ['soles_without_packaging'],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).from('v_solados_sem_embalagem').select('*');
+      if (error) throw error;
+      const gaps = new Map<string, string[]>();
+      for (const row of (data || []) as any[]) {
+        const faltando = [
+          !row.modo_tradicional_ok && 'Tradicional',
+          !row.modo_amarrado_ok && 'Amarrado',
+          !row.modo_colmeia_ok && 'Colméia',
+        ].filter(Boolean) as string[];
+        if (faltando.length > 0) gaps.set(row.sole_group_id, faltando);
+      }
+      return gaps;
+    },
+    staleTime: 60_000,
+  });
+
   const selected = useMemo(() =>
     selectedId ? soles.find(p => p.id === selectedId) || null : null,
     [selectedId, soles]
@@ -287,9 +310,25 @@ export default function SolesHub() {
                           <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground truncate">
                             {group.base}
                           </span>
-                          <Badge variant="secondary" className="text-xs h-4 px-1 leading-none">
-                            {group.items.length} {group.items.length === 1 ? 'cor' : 'cores'}
-                          </Badge>
+                          <div className="flex items-center gap-1 shrink-0">
+                            {(() => {
+                              const gid = group.items[0]?.group_id;
+                              const faltando = gid ? packagingGaps.get(gid) : undefined;
+                              if (!faltando?.length) return null;
+                              return (
+                                <Badge
+                                  variant="outline"
+                                  className="text-xs h-4 px-1 leading-none bg-red-500/10 text-red-600 border-red-500/30"
+                                  title={`Sem caixa para: ${faltando.join(', ')}. PV nesses modos não debita embalagem.`}
+                                >
+                                  sem embalagem
+                                </Badge>
+                              );
+                            })()}
+                            <Badge variant="secondary" className="text-xs h-4 px-1 leading-none">
+                              {group.items.length} {group.items.length === 1 ? 'cor' : 'cores'}
+                            </Badge>
+                          </div>
                         </div>
                         {/* Lista de cores do grupo */}
                         {group.items

@@ -8,6 +8,8 @@ type DebitEntry = {
   needed_qty?: number | string;
   debited_qty?: number | string;
   shortfall?: number | string;
+  /** 'sheet_without_sole_group' | 'box_inactive_or_missing' (migration 20261110120000) */
+  reason?: string;
 };
 
 const nf = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 });
@@ -87,12 +89,26 @@ export function warnPackagingDebit(data: unknown, contextLabel?: string): void {
   }
 
   if (noConfig) {
-    toast.warning(`${prefix}Embalagem não debitada — nenhuma caixa configurada no grupo do solado.`, {
-      description: 'Cadastre em Estoque → Grupos → editar o solado → aba Embalagem.',
-    });
+    // Duas causas MUITO diferentes, e o conserto de cada uma é em outra tela:
+    // ficha sem solado → vincular o solado NA FICHA; solado sem caixa → cadastrar
+    // a caixa em Solados. Mandar o operador pro lugar errado é como o aviso
+    // antigo apontava pra Estoque → Grupos, que desde 02/08/2026 nem edita mais.
+    const semSolado = data.some(
+      (e: DebitEntry) => e?.status === 'no_packaging_configured' && e?.reason === 'sheet_without_sole_group',
+    );
+    toast.warning(
+      semSolado
+        ? `${prefix}Embalagem não debitada — a ficha desta referência não tem solado vinculado.`
+        : `${prefix}Embalagem não debitada — nenhuma caixa configurada no solado.`,
+      {
+        description: semSolado
+          ? 'A embalagem é definida pelo modelo de solado. Vincule o solado na ficha técnica (aba Solado).'
+          : 'Cadastre em Solados → escolha o solado → Consumos → Embalagem.',
+      },
+    );
   } else if (skipped.length > 0) {
     toast.warning(`${prefix}Sem caixa vinculada para: ${skipped.join(', ')}.`, {
-      description: 'Vincule em Estoque → Grupos → editar o solado → aba Embalagem.',
+      description: 'Vincule em Solados → escolha o solado → Consumos → Embalagem.',
     });
   }
 }
