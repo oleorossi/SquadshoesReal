@@ -663,6 +663,15 @@ interface ProductTableProps {
    * nas cores visíveis — gravando em 12 de 20 sem avisar.
    */
   allProducts?: Product[];
+  /**
+   * Avisa o pai que o usuário clicou num cabeçalho pra ordenar.
+   *
+   * Com paginação server-side, ordenar aqui dentro ordenaria só as 50 linhas da
+   * página — o "maior valor" seria o maior DA PÁGINA. Quando este callback é
+   * fornecido, a ordenação sobe pro pai, que a repassa ao banco. `key: null`
+   * significa "voltar à ordem padrão" (3º clique no mesmo cabeçalho).
+   */
+  onSortChange?: (key: SortKey, dir: SortDir) => void;
 }
 
 /** Uma linha colapsável da lista = um grupo de estoque. É a mesma unidade que o
@@ -675,7 +684,7 @@ type GroupRow = {
   stats: GroupStats;
 };
 
-export function ProductTable({ products, onEdit, onDelete, externalSort, searchTerm, allProducts }: ProductTableProps) {
+export function ProductTable({ products, onEdit, onDelete, externalSort, searchTerm, allProducts, onSortChange }: ProductTableProps) {
   const { data: groups = [] } = useGroups();
   const { density, isVisible, visibleCount } = useTableView();
   // Material column always shown; +1 for it.
@@ -789,13 +798,20 @@ export function ProductTable({ products, onEdit, onDelete, externalSort, searchT
   };
 
   const handleSort = (key: SortKey) => {
-    if (sortKey === key) {
-      if (sortDir === 'asc') setSortDir('desc');
-      else { setSortKey(null); setSortDir('asc'); }
-    } else {
-      setSortKey(key);
-      setSortDir('asc');
+    // Ciclo: asc → desc → sem ordenação.
+    const next: { key: SortKey; dir: SortDir } =
+      sortKey === key
+        ? (sortDir === 'asc' ? { key, dir: 'desc' } : { key: null, dir: 'asc' })
+        : { key, dir: 'asc' };
+
+    // Quem pagina no servidor precisa ordenar no servidor — senão a ordem vale
+    // só pra página visível. Nesse caso o pai é a fonte da verdade.
+    if (onSortChange) {
+      onSortChange(next.key, next.dir);
+      return;
     }
+    setSortKey(next.key);
+    setSortDir(next.dir);
   };
 
   const SortIcon = ({ col }: { col: SortKey }) => {

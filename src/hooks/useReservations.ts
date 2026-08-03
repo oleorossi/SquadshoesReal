@@ -18,18 +18,43 @@ export function useOrderReservations(orderId?: string) {
   });
 }
 
-export function useAllReservations() {
+/**
+ * Contagem de reservas por status — agregada NO BANCO (2026-08-03).
+ *
+ * Substitui o antigo `useAllReservations`, que baixava até 500 linhas
+ * (`material_reservations` tem 1.472) só pra o PCPDashboard fazer
+ * `.filter(...).length`. Dois defeitos no caminho antigo:
+ *
+ * 1. **O card "consumido" vivia zerado.** A query filtrava
+ *    `.in('status', ['reserved','partially_consumed'])` e a tela contava
+ *    `status === 'consumed'` — status que, por construção, nunca chegava. Havia
+ *    86 reservas consumidas no banco e o painel mostrava 0. De quebra,
+ *    `partially_consumed` não existe: os status reais são `cancelled` (922),
+ *    `reserved` (324), `converted` (140) e `consumed` (86).
+ * 2. **Teto de 500** — `reserved` cabia hoje (324), mas era questão de tempo.
+ *
+ * Agora são contagens exatas com `head: true`: o Postgres conta e **nenhuma
+ * linha trafega**. Contar não é listar — por isso este hook não pagina.
+ */
+export function useReservationStatusCounts() {
   return useQuery({
-    queryKey: ['material_reservations'],
+    queryKey: ['material_reservations', 'status-counts'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('material_reservations')
-        .select('*, products(name, sku, color, unit, category)')
-        .in('status', ['reserved', 'partially_consumed'])
-        .order('created_at', { ascending: false })
-        .limit(500);
-      if (error) throw error;
-      return data;
+      const countByStatus = async (status: string) => {
+        const { count, error } = await supabase
+          .from('material_reservations')
+          .select('id', { count: 'exact', head: true })
+          .eq('status', status);
+        if (error) throw error;
+        return count ?? 0;
+      };
+
+      const [pending, consumed] = await Promise.all([
+        countByStatus('reserved'),
+        countByStatus('consumed'),
+      ]);
+
+      return { pending, consumed, total: pending + consumed };
     },
     staleTime: 2 * 60 * 1000,
   });

@@ -40,6 +40,7 @@ import {
 } from '@/hooks/useProducts';
 import { useForceDeleteProductFlow } from '@/components/inventory/ForceDeleteProductDialog';
 import { usePaginatedProducts } from '@/hooks/usePaginatedProducts';
+import { ListPagination } from '@/components/ui/list-pagination';
 import { Product, ProductFormData } from '@/types/inventory';
 import { z } from 'zod';
 import { useAddComponentSheet } from '@/hooks/useComponentSheets';
@@ -143,6 +144,30 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
   const [hideZeradas, setHideZeradas] = useState(true);
   const [onlyFalta, setOnlyFalta] = useState(false);
   const [sortPreset, setSortPreset] = usePersistedState<string>('materialsSortPreset', 'none');
+  // Ordenação por clique no cabeçalho da tabela. Mora aqui (e não dentro da
+  // ProductTable) porque precisa chegar ao banco junto com a página.
+  const [headerSort, setHeaderSort] = useState<{ key: string; dir: 'asc' | 'desc' } | null>(null);
+
+  // Presets do seletor "Ordenar por". As chaves batem com SORT_COLUMNS do hook,
+  // que as traduz pra coluna de v_products_list.
+  const PRESET_SORTS: Record<string, { key: string; dir: 'asc' | 'desc' } | null> = {
+    none: null,
+    price_desc: { key: 'unit_price', dir: 'desc' },
+    price_asc: { key: 'unit_price', dir: 'asc' },
+    total_value_desc: { key: 'total_value', dir: 'desc' },
+    total_value_asc: { key: 'total_value', dir: 'asc' },
+    qty_desc: { key: 'quantity', dir: 'desc' },
+    qty_asc: { key: 'quantity', dir: 'asc' },
+    pairs_desc: { key: 'est_pairs', dir: 'desc' },
+    pairs_asc: { key: 'est_pairs', dir: 'asc' },
+    status_asc: { key: 'status', dir: 'asc' },
+    name_asc: { key: 'name', dir: 'asc' },
+    name_desc: { key: 'name', dir: 'desc' },
+    category_asc: { key: 'category', dir: 'asc' },
+    sku_asc: { key: 'sku', dir: 'asc' },
+  };
+  // O clique no cabeçalho vence o preset — foi a última coisa que o usuário fez.
+  const sort = headerSort ?? PRESET_SORTS[sortPreset] ?? null;
   
   
   const [dialogOpen, setDialogOpen] = useState(returnTo === 'sale-order');
@@ -245,36 +270,28 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
     // Solado vive em /solados (SolesHub). Filtra na fonte — antes o filter
     // em allProducts era inútil porque a UI lê paginatedProducts.
     excludeCategory: 'Solado',
+    // Chips agora filtram NO BANCO — antes o `limit: 9999` baixava a lista toda
+    // só pra o JS esconder linha, e a contagem do chip via de uma fatia.
+    hideZeradas,
+    onlyFalta,
+    // Ordenação também é server-side: com página de 50 sobre 187 materiais,
+    // ordenar na tela ordenaria só a página — "maior valor" apontaria o maior
+    // da página, não do estoque.
+    sortKey: sort?.key ?? null,
+    sortDir: sort?.dir ?? 'asc',
     page,
-    limit: 9999,
   });
-  
-  const rawProducts = useMemo(() => paginatedData?.items || [], [paginatedData]);
+
+  const paginatedProducts = useMemo(() => paginatedData?.items || [], [paginatedData]);
 
   // Metade da lista é cor zerada (95 de 189 em 02/08/2026). Esconder por padrão
   // é o maior ganho isolado de densidade — mas a contagem fica sempre visível no
   // chip, pra que nada suma em silêncio (R1.10/R1.11).
-  const zeradasCount = useMemo(
-    () => rawProducts.filter((p: any) => (Number(p.quantity) || 0) <= 0).length,
-    [rawProducts],
-  );
-  const faltaCount = useMemo(
-    () => rawProducts.filter((p: any) => (Number(p.quantity) || 0) - (Number(p.reserved_stock) || 0) < 0).length,
-    [rawProducts],
-  );
-
-  const paginatedProducts = useMemo(() => {
-    const list = rawProducts as any[];
-    // "Só com falta" TEM QUE vencer o "esconder zeradas": falta é reserva sobre
-    // saldo, e das 51 cores em falta a maioria tem saldo 0 — aplicar o esconde
-    // antes esvaziava justamente o que o chip promete mostrar. O contador dizia
-    // 51 e a lista vinha vazia.
-    if (onlyFalta) {
-      return list.filter(p => (Number(p.quantity) || 0) - (Number(p.reserved_stock) || 0) < 0);
-    }
-    if (hideZeradas) return list.filter(p => (Number(p.quantity) || 0) > 0);
-    return list;
-  }, [rawProducts, hideZeradas, onlyFalta]);
+  // Contagens dos chips vêm do banco (count exact, sem baixar linha) e cobrem o
+  // conjunto filtrado INTEIRO — não só a página visível. A precedência
+  // "falta vence esconder-zeradas" mora no hook, junto do filtro.
+  const zeradasCount = paginatedData?.zeradasCount ?? 0;
+  const faltaCount = paginatedData?.faltaCount ?? 0;
   const totalPages = paginatedData?.totalPages || 1;
   const totalFiltered = paginatedData?.total || 0;
 
@@ -283,10 +300,12 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
   const forceDeleteFlow = useForceDeleteProductFlow();
   const addComponentSheet = useAddComponentSheet();
 
-  // Reset page when filters change
+  // Reset page when filters change. Os chips entraram na lista (2026-08-03):
+  // agora eles filtram no banco e mudam o total, então ficar na página 4 ao
+  // ligar "só com falta" deixava a tela vazia sem explicação.
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearch, effectiveGroup, supplierFilter]);
+  }, [debouncedSearch, effectiveGroup, supplierFilter, statusFilter, hideZeradas, onlyFalta]);
 
   const handleAdd = async (data: ProductFormData, createSheet?: boolean) => {
     const toastId = toast.loading('Adicionando material...');
@@ -571,48 +590,29 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
       ) : (
         <ProductTable
           products={paginatedProducts as any}
-          allProducts={rawProducts as any}
+          // Universo COMPLETO (useProducts), não a página: a tabela usa isto
+          // pra montar as cores irmãs de cada grupo e o alvo da edição em
+          // massa. Passar a página faria o grupo "perder" variantes que
+          // caíram na página seguinte.
+          allProducts={allProducts as any}
           searchTerm={debouncedSearch}
           onEdit={openEdit}
           onDelete={handleDelete}
-          externalSort={(() => {
-            const map: Record<string, { key: any; dir: 'asc' | 'desc' } | null> = {
-              none: null,
-              price_desc: { key: 'unit_price', dir: 'desc' },
-              price_asc: { key: 'unit_price', dir: 'asc' },
-              total_value_desc: { key: 'total_value', dir: 'desc' },
-              total_value_asc: { key: 'total_value', dir: 'asc' },
-              qty_desc: { key: 'quantity', dir: 'desc' },
-              qty_asc: { key: 'quantity', dir: 'asc' },
-              pairs_desc: { key: 'est_pairs', dir: 'desc' },
-              pairs_asc: { key: 'est_pairs', dir: 'asc' },
-              status_asc: { key: 'status', dir: 'asc' },
-              name_asc: { key: 'name', dir: 'asc' },
-              name_desc: { key: 'name', dir: 'desc' },
-              category_asc: { key: 'category', dir: 'asc' },
-              sku_asc: { key: 'sku', dir: 'asc' },
-            };
-            return map[sortPreset] || null;
-          })()}
+          externalSort={sort as any}
+          onSortChange={(key, dir) => { setHeaderSort(key ? { key, dir } : null); setPage(1); }}
         />
       )}
 
 
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between pt-2">
-          <p className="text-sm text-muted-foreground">
-            Página {page} de {totalPages} ({totalFiltered} itens)
-          </p>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>
-              <ChevronLeft className="h-4 w-4 mr-1" /> Anterior
-            </Button>
-            <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>
-              Próxima <ChevronRight className="h-4 w-4 ml-1" />
-            </Button>
-          </div>
-        </div>
-      )}
+      <ListPagination
+        page={paginatedData?.page ?? 1}
+        total={totalFiltered}
+        totalPages={totalPages}
+        showPager={paginatedData?.showPager ?? false}
+        onPageChange={setPage}
+        itemLabel="materiais"
+      />
+
 
       <ProductFormDialog
         open={dialogOpen}

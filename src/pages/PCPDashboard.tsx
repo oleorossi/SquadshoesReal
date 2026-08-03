@@ -7,7 +7,7 @@ import { Panel } from '@/components/ui/panel';
 import { useOrders } from '@/hooks/useOrders';
 import { useAllOrderStages } from '@/hooks/useOrderStages';
 import { useAllQualityRecords } from '@/hooks/useQualityRecords';
-import { useAllReservations } from '@/hooks/useReservations';
+import { useReservationStatusCounts } from '@/hooks/useReservations';
 import { useTechnicalSheets } from '@/hooks/useTechnicalSheets';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 import { differenceInHours, parseISO } from 'date-fns';
@@ -47,7 +47,7 @@ export default function PCPDashboard() {
   const orderIds = useMemo(() => orders.map(o => o.id), [orders]);
   const { data: allStages = [] } = useAllOrderStages(orderIds.length > 0 ? orderIds : undefined);
   const { data: qualityRecords = [] } = useAllQualityRecords();
-  const { data: reservations = [] } = useAllReservations();
+  const { data: reservationCounts } = useReservationStatusCounts();
 
   const productionOrders = useMemo(() =>
     orders.filter(o => {
@@ -100,12 +100,10 @@ export default function PCPDashboard() {
     return times.length > 0 ? Math.round(times.reduce((a, b) => a + b, 0) / times.length) : 0;
   }, [orders]);
 
-  // Material availability
-  const materialStats = useMemo(() => {
-    const pending = reservations.filter(r => (r as any).status === 'reserved').length;
-    const consumed = reservations.filter(r => (r as any).status === 'consumed').length;
-    return { pending, consumed, total: pending + consumed };
-  }, [reservations]);
+  // Material availability — contado no BANCO (ver useReservationStatusCounts).
+  // A contagem client-side anterior lia uma fatia de 500 linhas já filtrada por
+  // status, então "consumido" nunca podia ser diferente de zero.
+  const materialStats = reservationCounts ?? { pending: 0, consumed: 0, total: 0 };
 
   // Apontamento (adoção do sinal real — keystone): % das OPs em produção cuja
   // etapa corrente está apontada como em_andamento COM started_at. Mede se o chão

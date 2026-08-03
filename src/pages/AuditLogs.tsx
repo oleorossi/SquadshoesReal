@@ -1,5 +1,5 @@
 import AppLayout from "@/components/layout/AppLayout";
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { ClockCounterClockwise as History, CheckCircle as CheckCircle2, XCircle, Calendar, User, ArrowRight } from '@phosphor-icons/react';
@@ -14,6 +14,8 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { searchNormOrFilter } from '@/lib/searchUtils';
+import { ListPagination } from '@/components/ui/list-pagination';
+import { fetchPage, PAGE_SIZE } from '@/lib/pagination';
 
 // Mapas para humanizar recursos e ações vindas direto do banco.
 // O log original guarda os nomes em snake_case (ex: manual_billing_override_create);
@@ -79,31 +81,47 @@ export default function AuditLogs() {
   const [search, setSearch] = useState('');
   const [resourceFilter, setResourceFilter] = useState('all');
   const [actionFilter, setActionFilter] = useState('all');
+  const [page, setPage] = useState(1);
+
+  // Mudou busca/filtro ⇒ volta pra página 1. Sem isto, quem está na página 8 e
+  // digita uma busca que devolve 2 páginas fica olhando uma tela vazia.
+  useEffect(() => {
+    setPage(1);
+  }, [search, resourceFilter, actionFilter]);
 
   // Busca SERVER-SIDE via search_norm (spec melhorias-busca-sistema R6):
   // audit_logs já passa de 1000 linhas — filtrar só o que foi carregado
   // escondia registros que existem. O banco filtra (acento/caixa/espaço-AND
   // idênticos ao client, mig 20260911180000) e devolve a página relevante.
-  const { data: logs = [], isLoading, isFetching } = useQuery({
-    queryKey: ['system-audit-logs', search.trim(), resourceFilter, actionFilter],
+  //
+  // 2026-08-03: o `.limit(500)` daqui ainda cortava — 1.414 linhas na tabela,
+  // 500 chegavam. Agora é `.range()` + `count: 'exact'`, então o total do
+  // cabeçalho é o total REAL do banco, não o tamanho do que coube.
+  const { data: pageResult, isLoading, isFetching } = useQuery({
+    queryKey: ['system-audit-logs', search.trim(), resourceFilter, actionFilter, page],
     placeholderData: keepPreviousData,
-    queryFn: async () => {
-      // Inclui o nome do usuário por LEFT JOIN com profiles, quando disponível,
-      // para não exibir só o UUID truncado na tabela.
-      let q = supabase
-        .from('audit_logs')
-        .select('*, user:profiles(full_name, email)')
-        .order('created_at', { ascending: false })
-        .limit(500);
-      if (resourceFilter !== 'all') q = q.eq('resource', resourceFilter);
-      if (actionFilter !== 'all') q = q.eq('action', actionFilter);
-      const orFilter = searchNormOrFilter(search);
-      if (orFilter) q = q.or(orFilter) as typeof q;
-      const { data, error } = await q;
-      if (error) throw error;
-      return data;
-    },
+    queryFn: () =>
+      fetchPage<any>((from, to) => {
+        // Inclui o nome do usuário por LEFT JOIN com profiles, quando disponível,
+        // para não exibir só o UUID truncado na tabela.
+        let q = supabase
+          .from('audit_logs')
+          .select('*, user:profiles(full_name, email)', { count: 'exact' })
+          .order('created_at', { ascending: false })
+          // Desempate determinístico: `created_at` repete em ações do mesmo
+          // lote, e sem 2ª chave o Postgres pode repetir/pular linha entre
+          // páginas.
+          .order('id', { ascending: false });
+        if (resourceFilter !== 'all') q = q.eq('resource', resourceFilter);
+        if (actionFilter !== 'all') q = q.eq('action', actionFilter);
+        const orFilter = searchNormOrFilter(search);
+        if (orFilter) q = q.or(orFilter) as typeof q;
+        return q.range(from, to);
+      }, { page }),
   });
+
+  const logs = pageResult?.items ?? [];
+  const total = pageResult?.total ?? 0;
 
   // Facetas (recursos/ações) vêm de uma consulta própria SEM busca — senão as
   // opções dos dropdowns sumiriam enquanto o usuário digita.
@@ -142,7 +160,9 @@ export default function AuditLogs() {
           description="Rastreamento completo de todas as alterações e ações realizadas no sistema."
           actions={
             <Badge variant="outline" className="px-3 py-1">
-              {isFetching ? 'Buscando…' : `${filteredLogs.length} ${filteredLogs.length === 1 ? 'registro exibido' : 'registros exibidos'}`}
+              {/* Total do BANCO (count exact), não o tamanho da página — antes
+                  dizia "500 registros exibidos" sendo que existiam 1.414. */}
+              {isFetching ? 'Buscando…' : `${total.toLocaleString('pt-BR')} ${total === 1 ? 'registro' : 'registros'}`}
             </Badge>
           }
         />
@@ -284,6 +304,16 @@ export default function AuditLogs() {
             </TableBody>
           </Table>
         </Panel>
+
+        <ListPagination
+          page={pageResult?.page ?? 1}
+          total={total}
+          totalPages={pageResult?.totalPages ?? 1}
+          showPager={pageResult?.showPager ?? false}
+          onPageChange={setPage}
+          pageSize={PAGE_SIZE}
+          itemLabel="registros"
+        />
       </div>
     </AppLayout>
   );
