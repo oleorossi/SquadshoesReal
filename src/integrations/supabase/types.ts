@@ -2061,7 +2061,6 @@ export type Database = {
           notes: string | null
           product_id: string
           updated_at: string
-          waste_pct: number | null
           yield_per_size: Json | null
           yield_per_sole: Json | null
         }
@@ -2077,7 +2076,6 @@ export type Database = {
           notes?: string | null
           product_id: string
           updated_at?: string
-          waste_pct?: number | null
           yield_per_size?: Json | null
           yield_per_sole?: Json | null
         }
@@ -2093,7 +2091,6 @@ export type Database = {
           notes?: string | null
           product_id?: string
           updated_at?: string
-          waste_pct?: number | null
           yield_per_size?: Json | null
           yield_per_sole?: Json | null
         }
@@ -21765,7 +21762,6 @@ export type Database = {
           component_colors_enabled: boolean
           components_accessories: Json | null
           construction_type: string
-          consumption_loss_pct: number | null
           cor_predominante_id: string | null
           cor_solado_id: string | null
           cost_price: number | null
@@ -21895,7 +21891,6 @@ export type Database = {
           component_colors_enabled?: boolean
           components_accessories?: Json | null
           construction_type?: string
-          consumption_loss_pct?: number | null
           cor_predominante_id?: string | null
           cor_solado_id?: string | null
           cost_price?: number | null
@@ -22025,7 +22020,6 @@ export type Database = {
           component_colors_enabled?: boolean
           components_accessories?: Json | null
           construction_type?: string
-          consumption_loss_pct?: number | null
           cor_predominante_id?: string | null
           cor_solado_id?: string | null
           cost_price?: number | null
@@ -27895,7 +27889,6 @@ export type Database = {
           conversion_warning: string
           dm2_per_unit: number
           target_unit: string
-          waste_pct: number
         }[]
       }
       get_ncm_from_last_sheet_for_sole: {
