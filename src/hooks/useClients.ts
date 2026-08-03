@@ -1,7 +1,9 @@
-import { useQuery, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, keepPreviousData, type QueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { sanitizeUuidFields } from '@/lib/utils';
+import { searchNormOrFilter } from '@/lib/searchUtils';
+import { fetchPage } from '@/lib/pagination';
 
 /**
  * Invalida TODAS as queries cuja queryKey começa com 'clients' (em qualquer
@@ -88,6 +90,45 @@ export function useClients() {
       if (error) throw error;
       return (data || []) as unknown as Client[];
     },
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+  });
+}
+
+/**
+ * Listagem de clientes com busca NO BANCO (2026-08-03).
+ *
+ * `useClients()` continua existindo e devolvendo a carteira inteira — os
+ * seletores de cliente, o editor de grupo econômico e os KPIs precisam do
+ * universo completo, não de uma página. Este hook é só pra LISTA.
+ *
+ * A busca usa `clients.search_norm`, ampliada na migration `20261112120200`
+ * pra cobrir os mesmos campos que o filtro em JS cobria (inclusive CNPJ,
+ * cidade, estado, telefone e email) — sem isso, procurar cliente por CNPJ
+ * teria parado de funcionar ao mover a busca pro servidor.
+ *
+ * Com 43 clientes o total fica abaixo do limiar, então `fetchPage` devolve a
+ * carteira inteira e o pager nem aparece. A paginação entra sozinha se a
+ * carteira crescer.
+ */
+export function usePaginatedClients(params: { search?: string; page?: number } = {}) {
+  const { search = '', page = 1 } = params;
+  return useQuery({
+    queryKey: ['clients', 'paginated', search.trim(), page],
+    placeholderData: keepPreviousData,
+    queryFn: () =>
+      fetchPage<Client>((from, to) => {
+        let q = supabase
+          .from('clients')
+          .select('*', { count: 'exact' })
+          .order('razao_social')
+          // Desempate: há razão social repetida (matriz/filial) — sem 2ª chave
+          // a mesma linha pode repetir ou sumir entre páginas.
+          .order('id');
+        const orFilter = searchNormOrFilter(search);
+        if (orFilter) q = q.or(orFilter) as typeof q;
+        return q.range(from, to) as any;
+      }, { page }),
     staleTime: 5 * 60 * 1000,
     gcTime: 10 * 60 * 1000,
   });

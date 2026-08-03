@@ -18,7 +18,7 @@ import { useMarqueeSelection } from '@/hooks/useMarqueeSelection';
 import { confirmAndBulkDelete } from '@/lib/bulkConfirm';
 import { cn } from '@/lib/utils';
 import {
-  useClients, useCreateClient, useUpdateClient, useDeleteClient,
+  useClients, usePaginatedClients, useCreateClient, useUpdateClient, useDeleteClient,
   useEconomicGroups, useCreateEconomicGroup, useUpdateEconomicGroup, useDeleteEconomicGroup,
   Client, ClientFormData, EconomicGroup,
 } from '@/hooks/useClients';
@@ -37,6 +37,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { validateCnpj } from '@/lib/validateCnpj';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { SearchInput } from '@/components/ui/search-input';
+import { ListPagination } from '@/components/ui/list-pagination';
 import { useCan } from '@/hooks/useAccessControl';
 
 const emptyClient: ClientFormData = {
@@ -83,6 +84,9 @@ export default function Clients() {
   // (ex: "sarja") fazia a página abrir "Nenhum cliente encontrado" com 42
   // clientes cadastrados. ?q= da URL continua funcionando.
   const [search, setSearch] = useState(initialSearch);
+  // Página da listagem. Com 43 clientes fica sempre em 1 e o pager nem
+  // aparece (limiar 75); existe pra a carteira poder crescer sem retrabalho.
+  const [clientsPage, setClientsPage] = useState(1);
   const [clientDialog, setClientDialog] = useState(false);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [form, setForm] = useState<ClientFormData>(emptyClient);
@@ -123,13 +127,14 @@ export default function Clients() {
     }
   };
 
-  const filteredClients = useMemo(() => {
-    return clients.filter(c => searchMatchesAllTerms(
-      search,
-      c.razao_social, c.nome_fantasia, c.cnpj, c.cidade, c.estado,
-      c.telefone, c.email, (c as any).client_number,
-    ));
-  }, [clients, search]);
+  // Busca NO BANCO (2026-08-03). A coluna clients.search_norm foi ampliada na
+  // migration 20261112120200 pra cobrir exatamente os campos que este filtro
+  // cobria em JS — razão social, fantasia, número, CNPJ, cidade, estado,
+  // telefone e email. Sem isso, buscar cliente por CNPJ pararia de funcionar.
+  const { data: clientPage } = usePaginatedClients({ search, page: clientsPage });
+  // Buscar volta pra página 1 — senão quem está na página 3 digita e vê vazio.
+  const handleSearchChange = (v: string) => { setSearch(v); setClientsPage(1); };
+  const filteredClients = (clientPage?.items ?? []) as Client[];
 
   // Seleção múltipla pra bulk delete. Marquee + checkbox + ctrl/cmd+click.
   const sel = useMarqueeSelection(filteredClients, (c) => c.id);
@@ -359,7 +364,7 @@ export default function Clients() {
               <SearchInput
                 className="flex-1 max-w-md"
                 value={search}
-                onChange={setSearch}
+                onChange={handleSearchChange}
                 placeholder="Buscar por razão social, nome fantasia, CNPJ, cidade, telefone…"
                 resultCount={filteredClients.length}
                 totalCount={clients.length}
@@ -519,6 +524,15 @@ export default function Clients() {
                 })}
               </div>
             )}
+
+            <ListPagination
+              page={clientPage?.page ?? 1}
+              total={clientPage?.total ?? 0}
+              totalPages={clientPage?.totalPages ?? 1}
+              showPager={clientPage?.showPager ?? false}
+              onPageChange={setClientsPage}
+              itemLabel="clientes"
+            />
           </TabsContent>
 
           <TabsContent value="groups" className="space-y-4 mt-4">
