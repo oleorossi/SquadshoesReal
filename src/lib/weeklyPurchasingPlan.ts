@@ -81,15 +81,14 @@ export interface WeeklyPlanResult {
  * consumo armazenado em dm²/par e precisa ser convertido pela LARGURA da ficha de
  * componente (regra canônica) — antes o valor cru era multiplicado pelo preço (R$/m),
  * inflando ~137×. Item linear DIRETO sem ficha (tira/elástico) já está na unidade
- * nativa e NÃO converte. As funções convertDm2To* aplicam a perda (waste_pct da ficha).
+ * nativa e NÃO converte. O sistema NÃO acrescenta perda de corte em nenhum caminho —
+ * o valor cadastrado já considera o rendimento real do material.
  */
 function calculateRequiredAmount(
   mat: SheetMaterial,
   order: WeeklyOrder,
   cs: ComponentSheetCandidate | null
 ): number {
-  const wastePct = Number(cs?.waste_pct) || 0;
-
   // Total bruto na unidade de CONSUMO armazenada (dm²/par p/ material de área)
   const rawTotal = order.quantity * (Number(mat.quantity_per_unit) || 0);
 
@@ -105,8 +104,8 @@ function calculateRequiredAmount(
   if (isPlate && cs) {
     return convertDm2ToPlates(rawTotal, cs);
   }
-  // Linear direto / contagem / sem ficha: já na unidade nativa, só aplica perda.
-  return rawTotal * (1 + wastePct / 100);
+  // Linear direto / contagem / sem ficha: já está na unidade nativa.
+  return rawTotal;
 }
 
 export function generateWeeklyPurchasingPlan(

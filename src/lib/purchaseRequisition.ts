@@ -8,7 +8,6 @@ export interface RequisitionItem {
   quantityToBuy: number;
   stockAvailable: number;
   unit: string;
-  wastePct: number;
   unitPrice: number;
   totalCost: number;
 }
@@ -72,19 +71,12 @@ export async function generatePurchaseRequisition(
   // 3. Get the material details + component sheet waste data
   const materialIds = bomEntries.map(b => b.material_id).filter(Boolean) as string[];
 
-  const [{ data: materials = [] }, { data: compSheets = [] }] = await Promise.all([
-    supabase
-      .from('products')
-      .select('id, name, sku, quantity, unit, unit_price, reserved_stock, safety_stock')
-      .in('id', materialIds),
-    supabase
-      .from('component_sheets')
-      .select('product_id, waste_pct')
-      .in('product_id', materialIds),
-  ]);
+  const { data: materials = [] } = await supabase
+    .from('products')
+    .select('id, name, sku, quantity, unit, unit_price, reserved_stock, safety_stock')
+    .in('id', materialIds);
 
   const materialMap = new Map(materials.map(m => [m.id, m]));
-  const wasteMap = new Map(compSheets.map(cs => [cs.product_id, cs.waste_pct ?? 0]));
 
   // 4. Calculate needs
   const requisitionItems: RequisitionItem[] = [];
@@ -94,9 +86,7 @@ export async function generatePurchaseRequisition(
     const material = materialMap.get(bom.material_id);
     if (!material) continue;
 
-    const wastePct = wasteMap.get(bom.material_id) ?? 0;
-    const rawNeed = (bom.quantity_required ?? 0) * totalPairs;
-    const needWithWaste = rawNeed * (1 + wastePct / 100);
+    const needed = (bom.quantity_required ?? 0) * totalPairs;
 
     const available = Math.max(
       0,
@@ -105,18 +95,17 @@ export async function generatePurchaseRequisition(
         (Number(material.safety_stock) || 0)
     );
 
-    const quantityToBuy = Math.max(0, needWithWaste - available);
+    const quantityToBuy = Math.max(0, needed - available);
 
     if (quantityToBuy > 0) {
       requisitionItems.push({
         materialId: material.id,
         materialName: material.name,
         materialSku: material.sku,
-        quantityNeeded: needWithWaste,
+        quantityNeeded: needed,
         quantityToBuy,
         stockAvailable: available,
         unit: material.unit,
-        wastePct,
         unitPrice: Number(material.unit_price) || 0,
         totalCost: quantityToBuy * (Number(material.unit_price) || 0),
       });

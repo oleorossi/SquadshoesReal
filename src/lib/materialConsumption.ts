@@ -13,7 +13,6 @@ export type ComponentSheetCandidate = {
   dimensions_length?: number | null;
   dimensions_unit?: string | null;
   dimensions_width?: number | null;
-  waste_pct?: number | null;
   yield_per_size?: NumericRecordLike;
   yield_per_sole?: NumericRecordLike;
   products?: ComponentSheetProduct | null;
@@ -299,8 +298,7 @@ export const convertDm2ToLinearMeters = (totalDm2: number, componentSheet: Compo
   if (linearWidthMm <= 0) return totalDm2;
 
   const dm2PerMeter = linearWidthMm / 10;
-  const wastePct = Number(componentSheet?.waste_pct) || 0;
-  return (totalDm2 / dm2PerMeter) * (1 + wastePct / 100);
+  return totalDm2 / dm2PerMeter;
 };
 
 /**
@@ -323,8 +321,7 @@ export const convertDm2ToPlates = (totalDm2: number, componentSheet: ComponentSh
   const plateAreaDm2 = getPlateAreaDm2(componentSheet);
   if (plateAreaDm2 <= 0) return totalDm2;
 
-  const wastePct = Number(componentSheet?.waste_pct) || 0;
-  return (totalDm2 / plateAreaDm2) * (1 + wastePct / 100);
+  return totalDm2 / plateAreaDm2;
 };
 
 /**
@@ -352,8 +349,7 @@ export function bomMaterialCostPerPair(
   const qty = Number(quantityPerUnit) || 0;
   const price = Number(unitPrice) || 0;
   const unit = normalizeText(productUnit);
-  const wastePct = Number(componentSheet?.waste_pct) || 0;
-  const direct = () => ({ cost: qty * price * (1 + wastePct / 100), converted: false, widthMissing: false });
+  const direct = () => ({ cost: qty * price, converted: false, widthMissing: false });
 
   if (qty <= 0 || price <= 0) return direct();
 
@@ -474,10 +470,8 @@ export const calculateConsumptionWithUnit = (
     }
     const rawTotal = calculateGradeBasedDm2(item, linearFallback, componentSheet, overridePerSize, soleProductId, useGradeMultipliers);
 
-    const wastePct = Number(componentSheet?.waste_pct) || 0;
-    const withWaste = rawTotal * (1 + wastePct / 100);
     // Convert cm to meters if unit is cm
-    const inMeters = sheetUnit === 'cm' ? withWaste / 100 : withWaste;
+    const inMeters = sheetUnit === 'cm' ? rawTotal / 100 : rawTotal;
     return { total: inMeters, unit: 'metro' };
   }
 

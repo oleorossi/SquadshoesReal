@@ -611,7 +611,7 @@ export async function fetchConsumptionContext(refIds: string[]): Promise<Consump
       .select('id, name, dimensions_length, dimensions_width, dimensions_unit'),
     supabase
       .from('component_sheets')
-      .select('product_id, dimensions_width, dimensions_length, dimensions_unit, yield_per_size, yield_per_sole, waste_pct, products!inner(group_id, name, color, unit)'),
+      .select('product_id, dimensions_width, dimensions_length, dimensions_unit, yield_per_size, yield_per_sole, products!inner(group_id, name, color, unit)'),
     supabase
       .from('technical_sheets')
       .select('id, strap_colors')
@@ -1481,19 +1481,17 @@ export function computeConsumptionForItems(
           warning: `A ficha tem consumo de palmilha (${computeInsoleDm2().toFixed(2)} dm² no total) mas NÃO tem Material da Palmilha cadastrado — a linha inteira fica fora do consumo, da reserva e do débito. Cadastre em Ficha Técnica → Palmilha.`,
         });
       } else if (isAreaStockUnit(palmStockUnit)) {
-        // Estoque em ÁREA: emite em dm² COM a perda de corte (waste_pct) da
-        // ficha de conversão — contrato do SQL (que aplica ×(1+waste) na linha
-        // Palmilha incondicionalmente) e da Lista de Separação. Antes o modal
-        // emitia CRU e divergia dos dois na primeira ficha com waste>0 (F2-08).
+        // Estoque em ÁREA: emite em dm² CRU. O sistema NÃO acrescenta perda de
+        // corte em nenhum caminho — o valor cadastrado na ficha já considera o
+        // rendimento real do material (decisão do dono, 03/08/2026).
         const insoleDm2 = computeInsoleDm2();
-        const insoleWastePct = Number((insoleSheet as any)?.waste_pct) || 0;
         addConsumptionRow(consumptionMap, {
           componentType: 'Palmilha',
           groupName: insoleGroupName,
           materialName: resolvedPalmProduct?.name || 'Palmilha',
           productUnit: 'dm2',
           color: palmRowColor,
-          totalQuantity: insoleDm2 * (1 + insoleWastePct / 100),
+          totalQuantity: insoleDm2,
           warning: insoleWarning || insoleNoProductWarning,
         });
       } else if (palmStockUnit && LINEAR_UNITS.has(palmStockUnit.toLowerCase().trim())) {
@@ -1531,13 +1529,8 @@ export function computeConsumptionForItems(
       } else {
         const insoleDm2 = computeInsoleDm2();
         const groupPlateArea = calcGroupPlateAreaDm2(insoleGroup);
-        // Aplica waste_pct também no caminho que usa dimensões do grupo, p/ paridade
-        // com convertDm2ToPlates() (fallback) e com bomConsumption.ts (Lista de
-        // Separação) — antes o modal divergia da Lista no nº de placas (auditoria
-        // 2026-06-14, Área 2).
-        const insoleWastePct = Number(insoleSheet?.waste_pct) || 0;
         const insolePlates = groupPlateArea > 0
-          ? (insoleDm2 / groupPlateArea) * (1 + insoleWastePct / 100)
+          ? insoleDm2 / groupPlateArea
           : convertDm2ToPlates(insoleDm2, insoleSheet);
 
         addConsumptionRow(consumptionMap, {

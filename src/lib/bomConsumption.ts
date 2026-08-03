@@ -148,7 +148,7 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
     supabase.from('product_groups').select('id, name, dimensions_length, dimensions_width, dimensions_unit'),
     supabase
       .from('component_sheets')
-      .select('product_id, dimensions_width, dimensions_length, dimensions_unit, yield_per_size, yield_per_sole, waste_pct, products!inner(group_id, name, color, unit)'),
+      .select('product_id, dimensions_width, dimensions_length, dimensions_unit, yield_per_size, yield_per_sole, products!inner(group_id, name, color, unit)'),
     saleOrderItemIds.length > 0
       ? supabase.from('sale_order_items').select('id, strap_colors, fichas, material_variant_id').in('id', saleOrderItemIds)
       : Promise.resolve({ data: [] }),
@@ -695,14 +695,11 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
         ? fallbackAverageWarning(insoleMissing)
         : undefined;
       const groupPlateArea = calcGroupPlateAreaDm2(insoleGroup);
-      // Aplica waste_pct também no caminho que usa dimensões do grupo, para
-      // manter paridade com convertDm2ToPlates() (fallback).
-      const insoleWastePct = Number(insoleSheet?.waste_pct) || 0;
       // Área da placa: dimensões do GRUPO prevalecem; fallback = dimensões da
       // própria ficha de componente (mesma conta do convertDm2ToPlates).
       const insolePlateAreaDm2 = groupPlateArea > 0 ? groupPlateArea : calcGroupPlateAreaDm2(insoleSheet);
       const insolePlates = insolePlateAreaDm2 > 0
-        ? (insoleDm2 / insolePlateAreaDm2) * (1 + insoleWastePct / 100)
+        ? insoleDm2 / insolePlateAreaDm2
         : convertDm2ToPlates(insoleDm2, insoleSheet);
       // Unidade de ESTOQUE = a do produto resolvido (F2-03); fallback: unidade
       // do produto da ficha de componente escolhida. Quando o produto é
@@ -717,9 +714,7 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
           componentType: 'Palmilha', groupName: insoleGroupName,
           materialName: resolvedPalmProd?.name || 'Palmilha',
           productUnit: insoleStockUnit, color: resolvedPalmProd?.color || '—',
-          // Perda aplicada igual ao caminho de placas (paridade convertDm2ToPlates
-          // e com o SQL, que aplica ×(1+waste) incondicionalmente — F2-08).
-          totalQuantity: insoleDm2 * (1 + insoleWastePct / 100),
+          totalQuantity: insoleDm2,
           plateEquivalent: insolePlateAreaDm2 > 0 ? insolePlates : undefined,
           warning: insoleWarning,
         });
