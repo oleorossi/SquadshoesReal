@@ -120,8 +120,15 @@ export function businessDaysBetween(start: Date, end: Date, holidays?: Set<strin
 // Fonte única das colunas + do fetch, pra nenhuma tela selecionar um subset
 // diferente e reintroduzir a divergência.
 
+// ⚠ Fix 2026-08-03: faltavam `costura_cabedal_capacity_per_day` e
+// `costura_palmilha_capacity_per_day` — colunas criadas quando a Costura foi
+// dividida em dois setores (migs 20261001120000 / 20261015120000). O SQL
+// (compute_wave_timeline, compute_min_billing_dates) já lia as duas; o TS não,
+// então caía no legado `costura_capacity_per_day` e divergia do motor de ondas
+// (Rasteirinha: onda usava 600, Gargalo Diário usava 550). Guard auto-derivado
+// em `__tests__/sectorCapacity.columns.test.ts` — deriva do SECTOR_CONFIG.
 export const DEFAULT_LEAD_TIME_COLUMNS =
-  'shoe_category, cutting_capacity_per_day, sewing_capacity_per_day, mesa_daily_capacity, costura_capacity_per_day, silk_capacity_per_day, gluing_capacity_per_day, soling_capacity_per_day, assembly_capacity_per_day, finishing_capacity_per_day, expedition_capacity_per_day, lead_time_corte_dias, lead_time_costura_dias, lead_time_montagem_dias, lead_time_acabamento_dias, lead_time_expedicao_dias';
+  'shoe_category, cutting_capacity_per_day, sewing_capacity_per_day, mesa_daily_capacity, costura_capacity_per_day, costura_cabedal_capacity_per_day, costura_palmilha_capacity_per_day, silk_capacity_per_day, gluing_capacity_per_day, soling_capacity_per_day, assembly_capacity_per_day, finishing_capacity_per_day, expedition_capacity_per_day, lead_time_corte_dias, lead_time_costura_dias, lead_time_montagem_dias, lead_time_acabamento_dias, lead_time_expedicao_dias';
 
 /**
  * Carrega default_lead_times e devolve Map<shoe_category, row>.

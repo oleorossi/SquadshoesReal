@@ -17,6 +17,11 @@ function Controlled({ onVal, initial = 0 }: { onVal: (n: number) => void; initia
   return <NumberInput value={v} onChange={(n) => { setV(n); onVal(n); }} />;
 }
 
+function ControlledInt({ onVal, initial = 0 }: { onVal?: (n: number) => void; initial?: number }) {
+  const [v, setV] = useState(initial);
+  return <NumberInput value={v} decimals={0} onChange={(n) => { setV(n); onVal?.(n); }} />;
+}
+
 const inputOf = (c: HTMLElement) => c.querySelector('input') as HTMLInputElement;
 
 describe('NumberInput', () => {
@@ -66,5 +71,50 @@ describe('NumberInput', () => {
     const input = inputOf(container);
     fireEvent.change(input, { target: { value: '' } });
     expect(onVal).toHaveBeenLastCalledWith(0);
+  });
+
+  /**
+   * Regressão 2026-08-03 — a tela "Tempos-Padrão por Setor" mostrava "6 pares/dia"
+   * onde o banco tinha 600, "35" onde tinha 350 e "5" onde tinha 500. Causa: o
+   * formatValue usava /\.?0+$/ com o ponto OPCIONAL, então em decimals={0} (sem
+   * ponto no toFixed) ele comia os zeros do próprio inteiro. Atingia os 29
+   * call-sites com decimals={0} — capacidade por setor, matriz do PV, grade de
+   * solado, apontamento do Kanban, reservas de estoque.
+   */
+  describe('inteiros terminados em zero (decimals={0})', () => {
+    it.each([
+      [600, '600'],
+      [350, '350'],
+      [500, '500'],
+      [10, '10'],
+      [1000, '1000'],
+      [120, '120'],
+      [7, '7'],
+    ])('valor %i renderiza "%s"', (initial, esperado) => {
+      const { container } = render(<ControlledInt initial={initial} />);
+      expect(inputOf(container).value).toBe(esperado);
+    });
+
+    it('mantém o inteiro intacto depois do blur (era aí que truncava)', () => {
+      const { container } = render(<ControlledInt initial={0} />);
+      const input = inputOf(container);
+      fireEvent.change(input, { target: { value: '600' } });
+      fireEvent.blur(input);
+      expect(input.value).toBe('600');
+    });
+  });
+
+  it('ainda tira zero à direita de DECIMAL (não regride o caso que o regex resolvia)', () => {
+    const cases: [number, number, string][] = [
+      [1.5, 6, '1.5'],    // 1.500000 → 1.5
+      [1.0, 6, '1'],      // 1.000000 → 1  (sem ponto órfão)
+      [0.05, 6, '0.05'],
+      [2.25, 2, '2.25'],
+      [600.5, 2, '600.5'], // inteiro grande COM decimal: nem trunca nem sobra zero
+    ];
+    for (const [value, decimals, esperado] of cases) {
+      const { container } = render(<NumberInput value={value} decimals={decimals} onChange={() => {}} />);
+      expect(inputOf(container).value).toBe(esperado);
+    }
   });
 });

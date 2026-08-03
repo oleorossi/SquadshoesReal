@@ -89,7 +89,10 @@ interface CategoryDefaultsRow {
 // migração destrutiva de dados em fichas técnicas existentes. Os nomes de
 // coluna parecem invertidos mas refletem a evolução do schema. Não renomear
 // sem migração de dados.
-const SECTOR_CONFIG: Record<SectorKey, {
+// Exportado para o guard de contrato em sectorCapacity.test.ts: o teste deriva
+// deste mapa TODAS as colunas que o motor lê e trava que estão no
+// DEFAULT_LEAD_TIME_COLUMNS do fetch. Setor/coluna nova entra na cobertura sozinha.
+export const SECTOR_CONFIG: Record<SectorKey, {
   capField: keyof SheetCapacityRow;
   /** Coluna de capacidade alternativa quando a principal não está cadastrada
    *  (ex.: Expedição usa expedition_capacity_per_day, mas cai pra

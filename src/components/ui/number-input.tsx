@@ -32,8 +32,18 @@ export function NumberInput({ value, onChange, id, className, required, min = 0,
     const safeNum = parseSafeNumber(num);
     // Guard: only finite numbers reach toFixed. Anything else renders as empty.
     if (!Number.isFinite(safeNum) || safeNum === 0) return "";
-    // Show up to `decimals` decimal places, removing trailing zeros
-    const str = safeToFixed(safeNum, decimals).replace(/\.?0+$/, "");
+    // Mostra até `decimals` casas, tirando zeros à direita SÓ da parte decimal.
+    //
+    // ⚠ Bug 2026-08-03: o regex antigo era /\.?0+$/, com o ponto OPCIONAL — em
+    // `decimals={0}` o toFixed não produz ponto nenhum, então ele comia os zeros
+    // do INTEIRO: 600 virava "6", 350 virava "35", 500 virava "5". Pegou os 29
+    // call-sites com decimals={0} (capacidade por setor, matriz do PV, grade de
+    // solado, apontamento do Kanban…) — o valor gravado seguia certo, mas a tela
+    // mostrava outro número, então ninguém confiava no que estava cadastrado.
+    // Agora o ponto é OBRIGATÓRIO no match: inteiro nunca é tocado.
+    const str = safeToFixed(safeNum, decimals)
+      .replace(/(\.\d*?)0+$/, "$1")  // 1.500 → 1.5   |  600 → 600 (não casa)
+      .replace(/\.$/, "");           // 1.000 → "1." → "1"
     return str;
   };
 

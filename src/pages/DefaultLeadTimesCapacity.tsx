@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Check, CircleNotch as Loader2, FloppyDisk, GearSix, Info, PencilSimple as Pencil, Plus, Trash, X } from '@phosphor-icons/react';
+import { ArrowsClockwise, Check, CircleNotch as Loader2, FloppyDisk, GearSix, Info, PencilSimple as Pencil, Plus, Trash, Warning, X } from '@phosphor-icons/react';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -25,6 +25,8 @@ import {
   type DefaultLeadTimesCapacity,
   useDefaultLeadTimeCategories,
   useDefaultLeadTimes,
+  useRecalcWavesForCategory,
+  useShoeCategoriesInUse,
   useUpsertDefaultLeadTimes,
 } from '@/hooks/useDefaultLeadTimes';
 import {
@@ -71,7 +73,9 @@ export default function DefaultLeadTimesCapacity() {
   const { data: defaultLeadTimes, isLoading } = useDefaultLeadTimes(shoeCategory);
   const { data: configuredCategories = [] } = useDefaultLeadTimeCategories();
   const { data: shoeCategories = [], isLoading: isLoadingShoeCategories } = useShoeCategories();
+  const { data: categoriesInUse = [] } = useShoeCategoriesInUse();
   const upsertDefaultLeadTimes = useUpsertDefaultLeadTimes();
+  const recalcWaves = useRecalcWavesForCategory();
   const createShoeCategory = useCreateShoeCategory();
   const renameShoeCategory = useRenameShoeCategory();
   const deleteShoeCategory = useDeleteShoeCategory();
@@ -82,6 +86,15 @@ export default function DefaultLeadTimesCapacity() {
     ])).sort((a, b) => a.localeCompare(b, 'pt-BR')),
     [configuredCategories, shoeCategories],
   );
+
+  // Categorias que alguma ficha técnica usa mas que ainda não têm padrão salvo.
+  // Sem linha aqui E sem capacidade própria na ficha, o motor cai nas constantes
+  // hard-coded (1-2 dias por setor, ignorando a quantidade) — o volume diário
+  // some do cálculo sem nenhum aviso. Auto-derivado: categoria nova aparece só.
+  const categoriesMissingStandard = useMemo(() => {
+    const configured = new Set(configuredCategories);
+    return categoriesInUse.filter(({ category }) => !configured.has(category));
+  }, [categoriesInUse, configuredCategories]);
 
   useEffect(() => {
     setCapacities(valuesFromRow(defaultLeadTimes));
@@ -145,9 +158,36 @@ export default function DefaultLeadTimesCapacity() {
           <p>
             Estes valores são aplicados quando a Ficha Técnica da referência não possui capacidade própria.
             Eles alimentam a produção diária, o cronograma de ondas e o cálculo da data faturável.
+            Salvar vale para o que for calculado daqui em diante — ondas já montadas só mudam
+            com o botão <strong>Recalcular ondas</strong>.
           </p>
         </CardContent>
       </Card>
+
+      {categoriesMissingStandard.length > 0 && (
+        <Card className="border-amber-500/30 bg-amber-500/10">
+          <CardContent className="flex gap-3 pt-5 text-sm">
+            <Warning className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+            <div className="space-y-1">
+              <p className="font-medium text-foreground">
+                Categoria em uso sem padrão salvo
+              </p>
+              <p className="text-muted-foreground">
+                Estas categorias têm ficha técnica mas nenhuma capacidade padrão. Sem isso, e sem
+                capacidade própria na ficha, o motor usa um lead time fixo por setor e ignora a
+                quantidade do pedido:{' '}
+                {categoriesMissingStandard.map(({ category, sheets }, index) => (
+                  <span key={category || '__sem_categoria__'}>
+                    {index > 0 && ', '}
+                    <strong className="text-foreground">{category || 'ficha sem categoria'}</strong>
+                    {' '}({sheets} ficha{sheets > 1 ? 's' : ''})
+                  </span>
+                ))}.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader className="gap-4 sm:flex-row sm:items-end sm:justify-between">
@@ -205,7 +245,23 @@ export default function DefaultLeadTimesCapacity() {
                   </div>
                 ))}
               </div>
-              <div className="flex justify-end border-t pt-4">
+              <div className="flex flex-col gap-2 border-t pt-4 sm:flex-row sm:justify-end">
+                {/* Repropagação EXPLÍCITA: default_lead_times não tem trigger de
+                    recálculo (ao contrário de technical_sheets), então onda já
+                    montada segue com a capacidade de quando foi criada. */}
+                <Button
+                  variant="outline"
+                  onClick={() => recalcWaves.mutate(shoeCategory)}
+                  disabled={recalcWaves.isPending || upsertDefaultLeadTimes.isPending}
+                  title="Reaplica a capacidade atual às ondas já montadas desta categoria"
+                >
+                  {recalcWaves.isPending ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <ArrowsClockwise className="mr-2 h-4 w-4" />
+                  )}
+                  Recalcular ondas desta categoria
+                </Button>
                 <Button onClick={handleSave} disabled={upsertDefaultLeadTimes.isPending}>
                   {upsertDefaultLeadTimes.isPending ? (
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
