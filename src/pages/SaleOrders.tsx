@@ -1,5 +1,5 @@
 import { parseDateOnly } from '@/lib/dateOnly';
-import { useState, useMemo, type ReactNode } from 'react';
+import { useState, useMemo, useEffect, type ReactNode } from 'react';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -152,33 +152,68 @@ const formatDateShort = (d: string) =>
 //
 // NÃO voltar a ler a view aqui: ela materializa TODOS os PVs não-cancelados antes de
 // qualquer filtro — o `.in(...)` do PostgREST não empurra o predicado pra dentro do
-// argumento da função, então filtrar depois não economiza nada. A RPC recebe os ids
-// exatos e é o único caminho que respeita o recorte da UI.
+// argumento da função, então filtrar depois não economiza nada.
+//
+// ⚠ PERF (2026-08-03, fase 1a da spec): nem a RPC em lote roda mais aqui. Medido:
+// `compute_min_billing_dates` levava 1.058 ms pra 58 linhas tocando 37.035 buffers, e
+// era a consulta mais cara do banco inteiro (1.225 s acumulados em pg_stat_statements).
+// Bater o N+1 resolveu a QUANTIDADE de chamadas, não o custo de cada uma.
+//
+// Agora a lista lê o cache (`get_min_billing_cached`): 0,888 ms / 18 buffers. O
+// recálculo mora em `refresh_min_billing_cache` e roda em SEGUNDO PLANO — requisito 25
+// da spec: nunca no caminho crítico da lista.
+// Referências estáveis: um `new Map()` / `[]` inline como default de hook muda de
+// identidade a cada render e faz o efeito de recálculo disparar em loop.
+const EMPTY_MIN_BILLING_MAP: Map<string, string> = new Map();
+const EMPTY_STALE_IDS: string[] = [];
+
 function useMinBillingMap(activeIds: string[]) {
   // Ordena pra estabilizar a queryKey — a ordem de `orders` varia entre refetches
   // e uma key instável refaria a query cara sem necessidade.
   const ids = useMemo(() => [...activeIds].sort(), [activeIds]);
-  return useQuery<Map<string, string>>({
+  return useQuery<{ map: Map<string, string>; staleIds: string[] }>({
     queryKey: ['sale_order_min_billing_map', ids],
     queryFn: async () => {
-      const out = new Map<string, string>();
-      if (ids.length === 0) return out;
+      const map = new Map<string, string>();
+      const staleIds: string[] = [];
+      if (ids.length === 0) return { map, staleIds };
       const { data, error } = await supabase
-        .rpc('compute_min_billing_dates' as any, { p_sale_order_ids: ids });
-      if (error || !data) return out;
+        .rpc('get_min_billing_cached' as any, { p_sale_order_ids: ids });
+      if (error || !data) return { map, staleIds };
       for (const row of data as any[]) {
         if (row.sale_order_id && row.min_billing_date) {
-          out.set(row.sale_order_id, row.min_billing_date);
+          map.set(row.sale_order_id, row.min_billing_date);
         }
+        if (row.sale_order_id && row.stale) staleIds.push(row.sale_order_id);
       }
-      return out;
+      return { map, staleIds };
     },
     enabled: ids.length > 0,
     // Alinhado ao staleTime de useSaleOrders (5min), a lista que este map decora.
-    // A data mínima é função de lead time de setor e capacidade — não muda a cada
-    // minuto. Mudanças reais em sale_orders ainda invalidam via canal realtime.
     staleTime: 5 * 60 * 1000,
   });
+}
+
+// Recalcula em segundo plano o que o cache marcou como velho e invalida o map quando
+// terminar. Roda DEPOIS da lista já ter renderizado — não bloqueia nada.
+function useRefreshMinBillingInBackground(staleIds: string[]) {
+  const qc = useQueryClient();
+  const key = staleIds.join(',');
+  useEffect(() => {
+    if (!staleIds.length) return;
+    let cancelled = false;
+    (async () => {
+      const { error } = await supabase.rpc('refresh_min_billing_cache' as any, {
+        p_sale_order_ids: staleIds,
+      });
+      if (!cancelled && !error) {
+        qc.invalidateQueries({ queryKey: ['sale_order_min_billing_map'] });
+      }
+    })();
+    return () => { cancelled = true; };
+    // `key` estabiliza a lista de ids; `staleIds` muda de referência a cada render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, qc]);
 }
 
 export default function SaleOrders() {
@@ -193,7 +228,9 @@ export default function SaleOrders() {
       .map(o => o.id),
     [orders],
   );
-  const { data: minBillingMap = new Map<string, string>() } = useMinBillingMap(activeSaleOrderIds);
+  const { data: minBillingData } = useMinBillingMap(activeSaleOrderIds);
+  const minBillingMap = minBillingData?.map ?? EMPTY_MIN_BILLING_MAP;
+  useRefreshMinBillingInBackground(minBillingData?.staleIds ?? EMPTY_STALE_IDS);
   const { data: references = [] } = useTechnicalSheets();
   const { data: clients = [] } = useClients();
   const { data: economicGroups = [] } = useEconomicGroups();

@@ -30,41 +30,40 @@ export const DEFAULT_OP_STAGES = [
 ].map((name) => ({ name, order: canonicalStageOrder(name) }));
 
 /**
- * Grava `sale_order_items.strap_sourcing` (origem "corto aqui" × "compro pronta"
- * por linha de tira) nos itens recém-inseridos/atualizados, casando por ÍNDICE —
- * a mesma convenção que os RPCs atômicos usam pra devolver os ids.
+ * Monta o item pro payload das RPCs atômicas incluindo as 4 colunas que ANTES
+ * eram gravadas por UPDATEs seriais depois da RPC (fase 1b da spec
+ * `pv-producao-performance-e-pendencias`): origem das tiras e a intenção de
+ * terceirização (por serviço e por setor).
  *
- * Existe porque nem `create_sale_order_atomic` nem `update_sale_order_atomic`
- * listam essa coluna: o create não a insere e o update não a toca. Só o item
- * cujo mapa mudou é escrito (inclusive pra `{}`, que é como se LIMPA um override
- * — voltar a herdar `products.is_artisanal` é uma decisão, não um no-op).
+ * Eram até 24 idas e voltas extras num PV de 12 itens — e, pior, uma janela em
+ * que o PV ficava salvo pela metade se a rede caísse entre a RPC e os updates.
+ * `create_sale_order_atomic` / `update_sale_order_atomic` agora gravam tudo na
+ * mesma transação.
  *
- * Falha aqui não derruba o salvamento do PV: o motor cai no default do produto,
- * que é o comportamento anterior a esta feature.
+ * ⚠ Devolve SÓ estas 4 chaves, nunca o item inteiro. Espalhar o item aqui e
+ * mesclar por cima do payload explícito da edição sobrescreveria `color`,
+ * `quantity`, `grade` etc. com `undefined` quando o formulário não os preencheu.
+ *
+ * Vazio é sempre gravado explicitamente (`[]` / `{}` / `null`), nos dois fluxos:
+ * na criação isso é idêntico ao default da coluna, e na edição é o que faz a
+ * DESMARCAÇÃO de todos os setores ter efeito. A guarda por presença de chave
+ * segue existindo no SQL para proteger chamadores que não mandem estas colunas.
  */
-async function persistStrapSourcing(
-  items: SaleOrderItemFormData[],
-  itemIds: string[],
-  logPrefix: string,
-): Promise<void> {
-  try {
-    for (let idx = 0; idx < items.length; idx++) {
-      const newId = itemIds[idx];
-      if (!newId) continue;
-      const raw = (items[idx] as any)?.strap_sourcing;
-      if (!raw || typeof raw !== 'object') continue;
-      // Poda chaves de cores que não existem mais nas tiras do item — trocar a
-      // cor deixaria o override antigo pendurado, pronto pra ressuscitar.
-      const map = pruneStrapSourcing(raw, (items[idx] as any)?.strap_colors);
-      const { error } = await supabase
-        .from('sale_order_items')
-        .update({ strap_sourcing: map } as any)
-        .eq('id', newId);
-      if (error) console.warn(`${logPrefix} falha ao gravar origem das tiras:`, error.message);
-    }
-  } catch (e: any) {
-    console.warn(`${logPrefix} persistência da origem das tiras falhou:`, e?.message || e);
-  }
+function buildExtraItemColumns(item: SaleOrderItemFormData): Record<string, unknown> {
+  const raw = (item as any)?.strap_sourcing;
+  const sel = item.selected_terceirizacao_ids;
+  const tq = item.terceirizacao_quantities;
+  const outs = item.outsourced_sectors;
+  return {
+    // Poda chaves de cores que não existem mais nas tiras do item — trocar a cor
+    // deixaria o override antigo pendurado, pronto pra ressuscitar.
+    strap_sourcing: (raw && typeof raw === 'object')
+      ? pruneStrapSourcing(raw, (item as any)?.strap_colors)
+      : null,
+    selected_terceirizacao_ids: Array.isArray(sel) ? sel : [],
+    terceirizacao_quantities: (tq && typeof tq === 'object') ? tq : {},
+    outsourced_sectors: (outs && typeof outs === 'object') ? outs : {},
+  };
 }
 
 /**
@@ -644,17 +643,14 @@ export function useCreateSaleOrder() {
         }
       }
 
-      const itemPayload = items.map(({
-        selected_terceirizacao_ids: _sel,
-        terceirizacao_quantities: _tq,
-        // `create_sale_order_atomic` insere uma lista EXPLÍCITA de colunas e não
-        // conhece esta — mandar junto quebra o RPC. Gravada logo abaixo.
-        outsourced_sectors: _outs,
-        ...item
-      }) => ({
+      // Fase 1b: as 4 colunas extras (origem da tira + intenção de terceirização)
+      // vão DENTRO do payload — `create_sale_order_atomic` agora as grava na mesma
+      // transação. Antes eram até 24 UPDATEs seriais depois da RPC.
+      const itemPayload = items.map((item) => ({
         ...item,
         grade: item.grade,
-      }));
+        ...buildExtraItemColumns(item),
+      })) as any;
       const { data: atomicResult, error } = await supabase.rpc('create_sale_order_atomic', {
         p_header: insertData,
         p_items: itemPayload,
@@ -664,58 +660,16 @@ export function useCreateSaleOrder() {
 
       const orderId = (atomicResult as { order_id?: string } | null)?.order_id;
       if (!orderId) throw new Error('A criação atômica do pedido não retornou o identificador do PV.');
-      const insertedItemIds = Array.isArray((atomicResult as { item_ids?: string[] } | null)?.item_ids)
-        ? (atomicResult as { item_ids: string[] }).item_ids
-        : [];
       const data = { id: orderId };
 
-      // Origem da tira (corto aqui × compro pronta) — `create_sale_order_atomic`
-      // insere uma lista EXPLÍCITA de colunas e não inclui strap_sourcing, então
-      // grava-se aqui, como já se faz com selected_terceirizacao_ids.
-      // ⚠ ANTES de qualquer criação de OP/reserva: debit_strap_stock resolve o
-      // sourcing lendo esta coluna via orders.sale_order_item_id — gravar depois
-      // faria a primeira reserva sair pelo default do produto.
-      await persistStrapSourcing(items, insertedItemIds, '[useCreateSaleOrder]');
+      // A origem da tira e a intenção de terceirização já foram gravadas pela RPC
+      // acima (fase 1b). ⚠ Ordem load-bearing preservada: `debit_strap_stock`
+      // resolve o sourcing lendo `sale_order_items.strap_sourcing` via
+      // `orders.sale_order_item_id`, e agora ele é gravado ANTES de qualquer
+      // criação de OP por construção — está na mesma transação do item.
 
       // Auto-sync financial records
       await syncFinancialRecords(data.id);
-
-      // Terceirização: persiste só a INTENÇÃO — nem `selected_terceirizacao_ids`
-      // (por serviço da ficha) nem `outsourced_sectors` (por setor do item) criam
-      // OS aqui. A OS por setor nasce quando a OP é criada, pelo trigger
-      // `tg_orders_generate_outsourcing_os`. Passo separado e guardado pra não
-      // quebrar a criação do PV se a coluna ainda não existir no ambiente.
-      const hasSectorIntent = (i: SaleOrderItemFormData) =>
-        !!i.outsourced_sectors && Object.keys(i.outsourced_sectors).length > 0;
-      const anyTerceirizacao = items.some(
-        (i) => (Array.isArray(i.selected_terceirizacao_ids) && i.selected_terceirizacao_ids.length > 0)
-          || hasSectorIntent(i),
-      );
-      if (anyTerceirizacao && insertedItemIds.length === items.length) {
-        try {
-          for (let idx = 0; idx < items.length; idx++) {
-            const patch: Record<string, unknown> = {};
-            const sel = items[idx].selected_terceirizacao_ids;
-            if (Array.isArray(sel) && sel.length > 0) {
-              const tq = items[idx].terceirizacao_quantities;
-              patch.selected_terceirizacao_ids = sel;
-              patch.terceirizacao_quantities = (tq && typeof tq === 'object') ? tq : {};
-            }
-            // Na CRIAÇÃO, mapa vazio é o default da coluna — não precisa gravar.
-            if (hasSectorIntent(items[idx])) {
-              patch.outsourced_sectors = items[idx].outsourced_sectors;
-            }
-            if (Object.keys(patch).length === 0) continue;
-            const { error: selErr } = await supabase
-              .from('sale_order_items')
-              .update(patch as any)
-              .eq('id', insertedItemIds[idx]);
-            if (selErr) throw selErr;
-          }
-        } catch (e: any) {
-          console.warn('[useCreateSaleOrder] falha ao persistir intenção de terceirização:', e?.message || e);
-        }
-      }
 
       // Audit trail: registra override manual de data de faturamento
       if (order.manual_billing_override) {
@@ -2043,6 +1997,11 @@ export function useUpdateSaleOrder() {
         // banco ficava com '[]' → StrapShortageDialog acusava "sem cor" falsamente.
         // O RPC update_sale_order_atomic também grava esta coluna (migration de jun/26).
         strap_colors: (i as any).strap_colors ?? [],
+        // Fase 1b: origem da tira + intenção de terceirização entram na MESMA
+        // transação. Eram 2 laços de UPDATE serial logo abaixo desta chamada.
+        // Sempre presentes (mesmo vazias) — é assim que "desmarquei todos os
+        // setores" chega ao banco.
+        ...buildExtraItemColumns(i),
       }));
       // Strip status from p_header: status transitions must go through
       // useUpdateSaleOrderStatus which enforces the state machine. Including
@@ -2079,43 +2038,11 @@ export function useUpdateSaleOrder() {
           quantity: items[idx]?.quantity ?? null,
         }));
 
-      // Origem da tira: o RPC também não lista strap_sourcing (nem no UPDATE, nem
-      // no INSERT), então nem clobbera a coluna do item que ficou, nem preenche a
-      // do item novo — o UPDATE direcionado abaixo cobre os dois casos. Vem antes
-      // da recriação das OPs, que é quem dispara reserva/débito da tira.
-      await persistStrapSourcing(items, insertedIds, '[useUpdateSaleOrder]');
-
-      // Terceirização integrada: o RPC update_sale_order_atomic recria os itens SEM a
-      // coluna selected_terceirizacao_ids — re-grava a INTENÇÃO nos itens novos (por
-      // índice). NÃO cria/atualiza OS aqui: o envio é explícito (card de Terceirizações).
-      // O card casa as OS já enviadas pela chave estável (PV, ref::cor, terceirização)
-      // e avisa divergência de qty pra atualizar sob demanda.
-      try {
-        for (let idx = 0; idx < items.length; idx++) {
-          const sel = items[idx]?.selected_terceirizacao_ids;
-          const tq = items[idx]?.terceirizacao_quantities;
-          const newId = insertedIds[idx];
-          if (!newId) continue;
-          const patch: Record<string, unknown> = {};
-          if (Array.isArray(sel) && sel.length > 0) {
-            patch.selected_terceirizacao_ids = sel;
-            patch.terceirizacao_quantities = (tq && typeof tq === 'object') ? tq : {};
-          }
-          // ⚠ Diferente da CRIAÇÃO: aqui o mapa VAZIO também é gravado. O item foi
-          // recriado pelo RPC, então "vazio" pode ser o usuário tendo DESMARCADO
-          // todos os setores — pular o vazio faria a desmarcação não ter efeito.
-          const outs = items[idx]?.outsourced_sectors;
-          if (outs && typeof outs === 'object') patch.outsourced_sectors = outs;
-          if (Object.keys(patch).length === 0) continue;
-          const { error: selErr } = await supabase
-            .from('sale_order_items')
-            .update(patch as any)
-            .eq('id', newId);
-          if (selErr) console.warn('[useUpdateSaleOrder] falha ao gravar terceirização:', selErr.message);
-        }
-      } catch (e: any) {
-        console.warn('[useUpdateSaleOrder] persistência da intenção de terceirização falhou:', e?.message || e);
-      }
+      // Origem da tira e intenção de terceirização já vieram gravadas pela RPC
+      // (fase 1b) — eram 2 laços de UPDATE serial aqui, até 24 idas e voltas num
+      // PV de 12 itens. A ordem load-bearing continua garantida por construção:
+      // ambas estão gravadas ANTES da recriação das OPs logo abaixo, que é quem
+      // dispara reserva/débito da tira.
 
       // 4. Recreate OPs if status is Aprovado or Em Produção (regardless of whether OPs existed before)
       if (order.status === 'Aprovado' || order.status === 'Em Produção') {
