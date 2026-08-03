@@ -344,25 +344,24 @@ AS $function$
       FROM public.get_wave_material_needs_core(p_sale_order_ids, NULL, true) n
      GROUP BY n.sale_order_id
   )
-  SELECT l.so_id,
+  -- GREATEST(cost_palm, cost_cab) e depois GREATEST(costura, mesa): espelha os dois
+  -- blocos SEQUENCIAIS de preparo do motor antigo (A6/M8, computeForwardSchedule).
+  totals AS (
+    SELECT l.so_id,
+           COALESCE(s.lead_supplier, 0) + COALESCE(l.lead_buffer, 2)
+           + GREATEST(l.lead_palmilha, l.lead_forracao)
+           + GREATEST(GREATEST(l.lead_cost_palm, l.lead_cost_cab), l.lead_mesa)
+           + COALESCE(l.lead_silk, 0) + COALESCE(l.lead_colagem, 0)
+           + COALESCE(l.lead_montagem, 2) + COALESCE(l.lead_solagem, 0) + COALESCE(l.lead_acab, 1) AS total_days
+      FROM leads l
+      LEFT JOIN supplier_leads s ON s.so_id = l.so_id
+  )
+  SELECT t.so_id,
          LEAST(
-           public.next_dow(public.add_business_days(CURRENT_DATE, (
-             COALESCE(s.lead_supplier, 0) + COALESCE(l.lead_buffer, 2)
-             + GREATEST(l.lead_palmilha, l.lead_forracao)
-             + GREATEST(GREATEST(l.lead_cost_palm, l.lead_cost_cab), l.lead_mesa)
-             + COALESCE(l.lead_silk, 0) + COALESCE(l.lead_colagem, 0)
-             + COALESCE(l.lead_montagem, 2) + COALESCE(l.lead_solagem, 0) + COALESCE(l.lead_acab, 1)
-           ))::date, 2),
-           public.next_dow(public.add_business_days(CURRENT_DATE, (
-             COALESCE(s.lead_supplier, 0) + COALESCE(l.lead_buffer, 2)
-             + GREATEST(l.lead_palmilha, l.lead_forracao)
-             + GREATEST(GREATEST(l.lead_cost_palm, l.lead_cost_cab), l.lead_mesa)
-             + COALESCE(l.lead_silk, 0) + COALESCE(l.lead_colagem, 0)
-             + COALESCE(l.lead_montagem, 2) + COALESCE(l.lead_solagem, 0) + COALESCE(l.lead_acab, 1)
-           ))::date, 5)
+           public.next_dow(public.add_business_days(CURRENT_DATE, t.total_days)::date, 2),
+           public.next_dow(public.add_business_days(CURRENT_DATE, t.total_days)::date, 5)
          )::date
-    FROM leads l
-    LEFT JOIN supplier_leads s ON s.so_id = l.so_id;
+    FROM totals t;
 $function$;
 
 REVOKE ALL ON FUNCTION public.compute_min_billing_dates(uuid[]) FROM PUBLIC;

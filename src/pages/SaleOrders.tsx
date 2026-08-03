@@ -138,17 +138,22 @@ const formatDate = (d: string | null) =>
 const formatDateShort = (d: string) =>
   parseDateOnly(d).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
 
-// Lookup batch de min_billing_date pra todos os PVs ativos da view sale_order_min_billing.
+// Lookup batch de min_billing_date pra todos os PVs ativos.
 // Usado pra marcar em vermelho linhas com delivery_deadline < min_billing_date.
 //
-// ⚠ PERF (2026-07-26): esta é a query mais cara do app — a view roda
-// `compute_min_billing_date(id)` POR LINHA (plpgsql pesada: jsonb_array_elements sobre
-// production_sectors + joins em technical_sheets/default_lead_times/sale_order_items).
-// Antes buscava a view INTEIRA: 1422ms medidos p/ 56 PVs, dos quais ~82% eram
-// Faturado/Finalizado — status que `isInfeasible` descarta de qualquer jeito (ver o
-// uso no render e nos dois gates de aprovação). Filtrando pelos ids ativos o predicado
-// desce pro scan da base e a função só executa nas linhas que a UI usa.
-// NÃO remover o `.in(...)`: sem ele a tela de PVs volta a custar >1s por visita.
+// ⚠ PERF (2026-08-03): chama a RPC `compute_min_billing_dates(uuid[])` — motor em
+// LOTE — em vez de ler a view `sale_order_min_billing`.
+//
+// Histórico: a view rodava `compute_min_billing_date(id)` POR LINHA, e 87% do custo
+// de cada chamada era uma segunda query escondida (`get_wave_material_needs_core`,
+// necessidade de material por cor/variante/grade). Medido: 160,6ms por pedido, dos
+// quais 139,9ms eram essa chamada. A versão em lote faz UMA chamada pra todos os
+// pedidos (~1,8× mais rápido no total).
+//
+// NÃO voltar a ler a view aqui: ela materializa TODOS os PVs não-cancelados antes de
+// qualquer filtro — o `.in(...)` do PostgREST não empurra o predicado pra dentro do
+// argumento da função, então filtrar depois não economiza nada. A RPC recebe os ids
+// exatos e é o único caminho que respeita o recorte da UI.
 function useMinBillingMap(activeIds: string[]) {
   // Ordena pra estabilizar a queryKey — a ordem de `orders` varia entre refetches
   // e uma key instável refaria a query cara sem necessidade.
@@ -159,9 +164,7 @@ function useMinBillingMap(activeIds: string[]) {
       const out = new Map<string, string>();
       if (ids.length === 0) return out;
       const { data, error } = await supabase
-        .from('sale_order_min_billing' as any)
-        .select('sale_order_id, min_billing_date')
-        .in('sale_order_id', ids);
+        .rpc('compute_min_billing_dates' as any, { p_sale_order_ids: ids });
       if (error || !data) return out;
       for (const row of data as any[]) {
         if (row.sale_order_id && row.min_billing_date) {
