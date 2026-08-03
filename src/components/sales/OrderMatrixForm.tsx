@@ -16,7 +16,6 @@ import {
 interface MaterialSpec {
   id: string;
   baseConsumption: number;
-  wastePct?: number;
   material: {
     id: string;
     name: string;
@@ -70,8 +69,7 @@ export function OrderMatrixForm({
       const { totalNeeded } = calculateGradedConsumption(
         spec.baseConsumption,
         grid,
-        sizeMultipliers ?? DEFAULT_SIZE_MULTIPLIERS,
-        spec.wastePct ?? 1.0
+        sizeMultipliers ?? DEFAULT_SIZE_MULTIPLIERS
       );
       const atp = getAvailableToPromise({
         physical: spec.material.quantity,

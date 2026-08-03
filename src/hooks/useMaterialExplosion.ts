@@ -16,7 +16,6 @@ interface SpecificationItem {
     safety_stock?: number;
   };
   baseConsumption: number;
-  wastePct?: number;
 }
 
 interface OrderInput {
@@ -46,13 +45,10 @@ export function useMaterialExplosion(selectedOrders: OrderInput[]) {
     selectedOrders.forEach(order => {
       order.specifications.forEach(spec => {
         const material = spec.material;
-        const wastePct = spec.wastePct ?? 1.0;
-
         const { totalNeeded } = calculateGradedConsumption(
           spec.baseConsumption,
           order.pairsBySizes,
-          order.sizeMultipliers,
-          wastePct
+          order.sizeMultipliers
         );
 
         if (!explosion[material.id]) {

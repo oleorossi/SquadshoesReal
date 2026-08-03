@@ -2,33 +2,36 @@ import { describe, it, expect } from 'vitest';
 import { bomMaterialCostPerPair, areaToStockDivisor } from './materialConsumption';
 
 // Ficha de componente mínima (só o que o custo usa).
-const sheet = (width: number | null, wastePct = 0, unit = 'mm') => ({
+// NÃO tem waste_pct: perda de corte não existe no sistema (03/08/2026) — o valor
+// de consumo cadastrado já considera o rendimento real do material.
+const sheet = (width: number | null, unit = 'mm') => ({
   dimensions_width: width,
   dimensions_unit: unit,
-  waste_pct: wastePct,
 } as any);
 
 describe('bomMaterialCostPerPair — regra canônica de consumo no custo', () => {
   it('NAPA (área dm²/par, produto linear m, ficha com largura) → converte pela largura', () => {
-    // 30 dm²/par, R$ 17,34/m, largura 1370mm, perda 8%
-    // metros/par = 30 / (1370/10) = 0,21898 ; × 1,08 × 17,34 ≈ 4,10
-    const r = bomMaterialCostPerPair(30, 17.34, 'm', sheet(1370, 8));
+    // 30 dm²/par, R$ 17,34/m, largura 1370mm
+    // metros/par = 30 / (1370/10) = 0,21898 ; × 17,34 ≈ 3,797
+    // TRAVA ANTI-REGRESSÃO: NENHUMA perda é somada. Se alguém reintroduzir um
+    // ×(1+waste/100) na conversão, isto vira 4,10 e o teste quebra.
+    const r = bomMaterialCostPerPair(30, 17.34, 'm', sheet(1370));
     expect(r.converted).toBe(true);
-    expect(r.cost).toBeCloseTo(4.10, 1);
+    expect(r.cost).toBeCloseTo(3.797, 2);
     // sem conversão seria ~561,82 (≈137×) — o bug que isto corrige
     expect(r.cost).toBeLessThan(10);
   });
 
   it('PLACA EVA (área, produto em placa) → converte pela área da placa', () => {
     // placa precisa de dimensions_length também; com só width não tem área → cai no direto
-    const withArea = { dimensions_width: 100, dimensions_length: 150, dimensions_unit: 'cm', waste_pct: 0 } as any;
+    const withArea = { dimensions_width: 100, dimensions_length: 150, dimensions_unit: 'cm' } as any;
     const r = bomMaterialCostPerPair(300, 2, 'placa', withArea);
     expect(r.converted).toBe(true);
     expect(r.cost).toBeGreaterThan(0);
   });
 
-  it('COLA (massa kg) → direto qty × preço × (1+perda), sem conversão', () => {
-    const r = bomMaterialCostPerPair(0.25, 18.21, 'kg', sheet(0, 0));
+  it('COLA (massa kg) → direto qty × preço, sem conversão e sem perda', () => {
+    const r = bomMaterialCostPerPair(0.25, 18.21, 'kg', sheet(0));
     expect(r.converted).toBe(false);
     expect(r.cost).toBeCloseTo(4.5525, 3);
   });
@@ -47,7 +50,7 @@ describe('bomMaterialCostPerPair — regra canônica de consumo no custo', () =>
   });
 
   it('material de área linear COM ficha mas SEM largura → mantém valor atual + widthMissing', () => {
-    const r = bomMaterialCostPerPair(30, 17.34, 'm', sheet(0, 0));
+    const r = bomMaterialCostPerPair(30, 17.34, 'm', sheet(0));
     expect(r.converted).toBe(false);
     expect(r.widthMissing).toBe(true); // ficha existe mas largura 0 → custo pode inflar, avisa
   });
@@ -88,7 +91,7 @@ describe('areaToStockDivisor — divisor dm²→unidade física (planejamento de
   });
 
   it('produto PLACA com área → divisor = área da placa (dm²)', () => {
-    const placa = { dimensions_width: 100, dimensions_length: 150, dimensions_unit: 'cm', waste_pct: 0 } as any;
+    const placa = { dimensions_width: 100, dimensions_length: 150, dimensions_unit: 'cm' } as any;
     expect(areaToStockDivisor('placa', placa)).toBeGreaterThan(0);
   });
 

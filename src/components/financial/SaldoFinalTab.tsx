@@ -65,7 +65,7 @@ export default function SaldoFinalTab() {
       if (refIds.length === 0) { setBalances([]); setLoading(false); return; }
 
       const [sheetsRes, productsRes] = await Promise.all([
-        supabase.from('technical_sheets').select('id, name, upper_material, upper_consumption, lining_material, lining_consumption, insole_material, insole_consumption, sole_material, sole_consumption, sole_type, direct_components, consumption_loss_pct').in('id', refIds),
+        supabase.from('technical_sheets').select('id, name, upper_material, upper_consumption, lining_material, lining_consumption, insole_material, insole_consumption, sole_material, sole_consumption, sole_type, direct_components').in('id', refIds),
         supabase.from('products').select('id, name, quantity, unit, group_id'),
       ]);
 
@@ -135,15 +135,7 @@ export default function SaldoFinalTab() {
         weekLabelsSet.add(weekLabel);
 
         const qty = Number(order.quantity) || 0;
-        // Perda de corte NÃO é aplicada (decisão do dono, 03/08/2026): o consumo
-        // digitado na ficha já vem com a perda embutida, então acrescentar um
-        // percentual conta a mesma perda duas vezes. Fator fixo em 1 — e não
-        // `Number(consumption_loss_pct) || 5`, que era uma armadilha: com o campo
-        // zerado o `||` caía no 5 e esta tela aplicaria 5% sozinha, divergindo de
-        // todos os outros motores.
-        const lossFactor = 1;
-
-        const addMaterial = (materialName: string, type: string, consumptionPerPair: number, applyLoss: boolean, productId?: string | null) => {
+        const addMaterial = (materialName: string, type: string, consumptionPerPair: number, productId?: string | null) => {
           if (!materialName || consumptionPerPair <= 0) return;
 
           let resolved: { stock: number; unit: string };
@@ -166,7 +158,7 @@ export default function SaldoFinalTab() {
           const key = productId ? `pid:${productId}_${type}` : `${materialName.toLowerCase()}_${type}`;
 
           // Consumption in same unit as stock (technical sheet unit = stock unit)
-          const totalConsumption = consumptionPerPair * qty * (applyLoss ? lossFactor : 1);
+          const totalConsumption = consumptionPerPair * qty;
 
           if (!materialWeeklyMap.has(key)) {
             materialWeeklyMap.set(key, {
@@ -179,14 +171,14 @@ export default function SaldoFinalTab() {
           entry.weeks.set(weekLabel, (entry.weeks.get(weekLabel) || 0) + totalConsumption);
         };
 
-        if (sheet.upper_consumption > 0) addMaterial(sheet.upper_material || 'Cabedal', 'Cabedal', sheet.upper_consumption, true);
-        if (sheet.lining_consumption > 0) addMaterial(sheet.lining_material || 'Forração', 'Forração', sheet.lining_consumption, true);
-        if (sheet.insole_consumption > 0) addMaterial(sheet.insole_material || 'Palmilha', 'Palmilha', sheet.insole_consumption, true);
-        if (sheet.sole_consumption > 0) addMaterial(sheet.sole_material || sheet.sole_type || 'Solado', 'Solado', sheet.sole_consumption, false);
+        if (sheet.upper_consumption > 0) addMaterial(sheet.upper_material || 'Cabedal', 'Cabedal', sheet.upper_consumption);
+        if (sheet.lining_consumption > 0) addMaterial(sheet.lining_material || 'Forração', 'Forração', sheet.lining_consumption);
+        if (sheet.insole_consumption > 0) addMaterial(sheet.insole_material || 'Palmilha', 'Palmilha', sheet.insole_consumption);
+        if (sheet.sole_consumption > 0) addMaterial(sheet.sole_material || sheet.sole_type || 'Solado', 'Solado', sheet.sole_consumption);
 
         if (Array.isArray(sheet.direct_components)) {
           for (const comp of sheet.direct_components as any[]) {
-            addMaterial(comp.product_name || 'Componente', 'Componente', Number(comp.quantity) || 0, false, comp.product_id);
+            addMaterial(comp.product_name || 'Componente', 'Componente', Number(comp.quantity) || 0, comp.product_id);
           }
         }
       }

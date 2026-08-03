@@ -283,7 +283,6 @@ export function SolesComponentSheetTab() {
                   <TableHead className="w-[160px] text-center">
                     Consumo (par/par)
                   </TableHead>
-                  <TableHead className="w-[120px] text-center">Perda %</TableHead>
                   <TableHead className="w-[140px]"></TableHead>
                 </TableRow>
               </TableHeader>
@@ -353,19 +352,6 @@ export function SolesComponentSheetTab() {
                               className="h-8 w-20 text-center text-sm"
                             />
                             <span className="text-xs text-muted-foreground font-mono">par</span>
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <div className="flex items-center justify-center gap-1">
-                            <NumberInput
-                              value={row.waste_pct}
-                              onChange={(v) => updateDraft(primary.id, { waste_pct: Number(v) || 0 })}
-                              step="0.5"
-                              min={0}
-                              decimals={2}
-                              className="h-8 w-16 text-center text-sm"
-                            />
-                            <span className="text-xs text-muted-foreground">%</span>
                           </div>
                         </TableCell>
                         <TableCell className="text-right pr-3">

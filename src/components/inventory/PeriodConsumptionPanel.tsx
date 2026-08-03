@@ -20,7 +20,6 @@ interface ConsumedMaterial {
   unitPrice: number;
   totalCost: number;
   deficit: number;
-  wasteUsed: number;
 }
 
 function useOrdersInPeriod(from: string, to: string) {
@@ -141,7 +140,6 @@ export default function PeriodConsumptionPanel({ products }: { products: Product
             unitPrice,
             totalCost: totalNeeded * unitPrice,
             deficit: Math.max(0, totalNeeded - stock),
-            wasteUsed: individualWaste,
           });
         }
       });
@@ -221,7 +219,6 @@ export default function PeriodConsumptionPanel({ products }: { products: Product
                   <TableRow className="bg-muted/50 hover:bg-muted/50">
                     <TableHead>Material</TableHead>
                     <TableHead>Cor</TableHead>
-                    <TableHead className="text-right">Perda</TableHead>
                     <TableHead className="text-right">Necessário</TableHead>
                     <TableHead className="text-right">Estoque</TableHead>
                     <TableHead className="text-right">Saldo</TableHead>
@@ -239,9 +236,6 @@ export default function PeriodConsumptionPanel({ products }: { products: Product
                         <TableCell className="font-medium">{item.name}</TableCell>
                         <TableCell>
                           {item.color ? <Badge variant="secondary" className="text-xs">{item.color}</Badge> : '—'}
-                        </TableCell>
-                        <TableCell className="text-right font-mono text-xs text-muted-foreground">
-                          {item.wasteUsed}%
                         </TableCell>
                         <TableCell className="text-right font-mono">
                           {item.totalNeeded.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} {item.unit}

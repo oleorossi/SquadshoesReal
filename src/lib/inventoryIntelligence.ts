@@ -117,13 +117,14 @@ export const DEFAULT_SIZE_MULTIPLIERS: Record<string, number> = {
  * @param baseConsumption - consumption per pair at base size (dm²/par)
  * @param pairsBySizes - grade: { "34": 100, "37": 250, ... }
  * @param sizeMultipliers - optional overrides per size
- * @param wastePct - waste multiplier (default 1.0 = 0%)
+ *
+ * NÃO recebe perda de corte: o sistema não acrescenta perda a nada — o consumo
+ * cadastrado já considera o rendimento real do material (03/08/2026).
  */
 export function calculateGradedConsumption(
   baseConsumption: number,
   pairsBySizes: Record<string, number>,
-  sizeMultipliers?: Record<string, number>,
-  wastePct = 1.0
+  sizeMultipliers?: Record<string, number>
 ): { totalNeeded: number; breakdown: Record<string, number> } {
   const multipliers = sizeMultipliers || DEFAULT_SIZE_MULTIPLIERS;
   const breakdown: Record<string, number> = {};
@@ -132,7 +133,7 @@ export function calculateGradedConsumption(
   for (const [size, pairs] of Object.entries(pairsBySizes)) {
     if (!pairs || pairs <= 0) continue;
     const mult = multipliers[size] ?? 1.0;
-    const consumption = baseConsumption * mult * pairs * wastePct;
+    const consumption = baseConsumption * mult * pairs;
     breakdown[size] = consumption;
     totalNeeded += consumption;
   }

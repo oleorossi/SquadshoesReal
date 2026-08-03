@@ -127,7 +127,6 @@ export type SheetFormData = {
   version_number: string;
   images: any[];
   color_images: any[];
-  consumption_loss_pct: number;
   safety_margin_pct: number;
   components_accessories: any[];
   upper_consumption: number;
@@ -212,7 +211,7 @@ export const emptySheetForm: SheetFormData = {
   heel_height: '',
   fit_type: 'normal',
   version_number: 'v1',
-  images: [], color_images: [], consumption_loss_pct: 0, safety_margin_pct: 5, components_accessories: [], component_colors_enabled: false,
+  images: [], color_images: [], safety_margin_pct: 5, components_accessories: [], component_colors_enabled: false,
   upper_consumption: 0, lining_consumption: 0, lining_accessories: [], insole_consumption: 0, sole_consumption: 0,
   direct_components: [],
   default_silk_url: '',

@@ -541,7 +541,6 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
       setDuplicateConfirmed(false);
       setGroupConflict(null);
       setYieldPerSize({});
-      setWastePct(8);
     }
   }, [product, open, groups]);
 

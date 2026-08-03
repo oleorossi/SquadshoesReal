@@ -252,9 +252,6 @@ const formatCurrency = (v: number) =>
   // Stats
   const totalSheets = sheets.length;
   const totalGroups = filtered.length;
-  const avgWaste = sheets.length > 0
-    ? (sheets.reduce((s: number, sh: any) => s + (sh.waste_pct || 0), 0) / sheets.length).toFixed(1)
-    : '0';
 
   // Removed inline Wrapper component that was causing focus loss on every re-render
 
@@ -316,7 +313,6 @@ const formatCurrency = (v: number) =>
           <StatGrid>
             <StatCard icon={Package} label="Fichas Cadastradas" value={totalSheets} />
             <StatCard icon={Layers} label="Grupos de Materiais" value={totalGroups} />
-            <StatCard icon={Percent} label="Perda Média" value={avgWaste} unit="%" tone="destructive" />
           </StatGrid>
         )}
 
@@ -432,7 +428,7 @@ const formatCurrency = (v: number) =>
                     </div>
 
                     {/* Metrics Row */}
-                    <div className="grid grid-cols-3 border-t border-border/40 divide-x divide-border/40">
+                    <div className="grid grid-cols-2 border-t border-border/40 divide-x divide-border/40">
                       <div className="px-3 py-2.5 text-center">
                         <p className="text-xs text-muted-foreground">Dimensões</p>
                         <p className="text-xs font-mono font-medium text-foreground mt-0.5">
@@ -440,10 +436,6 @@ const formatCurrency = (v: number) =>
                             ? `${sheet.dimensions_length}×${sheet.dimensions_width}`
                             : '—'}
                         </p>
-                      </div>
-                      <div className="px-3 py-2.5 text-center">
-                        <p className="text-xs text-muted-foreground">Perda</p>
-                        <p className="text-xs font-mono font-medium text-foreground mt-0.5">{sheet.waste_pct}%</p>
                       </div>
                       <div className="px-3 py-2.5 text-center">
                         <p className="text-xs text-muted-foreground">Consumo/par</p>
@@ -657,7 +649,6 @@ function CreateComponentForm({ onCreated }: { onCreated: (id: string) => void })
     dimensions_thickness: 0,
     dimensions_unit: 'mm',
     yield_per_size: {},
-    waste_pct: 8,
     notes: '',
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -937,7 +928,6 @@ function ComponentSheetDetail({ sheet, siblingIds = [], groupItems = [], onDelet
     dimensions_thickness: sheet.dimensions_thickness || 0,
     dimensions_unit: sheet.dimensions_unit || (sheet.dimensions_width ? '' : 'mm'),
     yield_per_size: sheet.yield_per_size || {},
-    waste_pct: sheet.waste_pct ?? 0,
     notes: sheet.notes || '',
   }));
   const [dirty, setDirty] = useState(false);
@@ -953,7 +943,6 @@ function ComponentSheetDetail({ sheet, siblingIds = [], groupItems = [], onDelet
         dimensions_thickness: currentSheet.dimensions_thickness || 0,
         dimensions_unit: currentSheet.dimensions_unit || (currentSheet.dimensions_width ? '' : 'mm'),
         yield_per_size: currentSheet.yield_per_size || {},
-        waste_pct: currentSheet.waste_pct ?? 0,
         notes: currentSheet.notes || '',
       });
       setDirty(false);
@@ -991,11 +980,11 @@ function ComponentSheetDetail({ sheet, siblingIds = [], groupItems = [], onDelet
       const consumption = Number(consumptionPerPair);
       if (consumption > 0) {
         const rawCost = unitPrice * consumption;
-        result[size] = rawCost * (1 + form.waste_pct / 100);
+        result[size] = rawCost;
       }
     });
     return result;
-  }, [form.yield_per_size, form.waste_pct, prod?.unit_price]);
+  }, [form.yield_per_size, prod?.unit_price]);
 
   // Derive base name
   let baseName = prod?.name || '—';
@@ -1223,11 +1212,6 @@ function ComponentSheetDetail({ sheet, siblingIds = [], groupItems = [], onDelet
               <p className="text-xs text-muted-foreground">{prod?.unit}</p>
             </div>
             <div className="rounded-lg border border-border/40 bg-muted/20 p-3">
-              <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Perda</p>
-              <p className="text-sm font-mono font-bold text-foreground mt-1">{form.waste_pct}%</p>
-              <p className="text-xs text-muted-foreground">estimada</p>
-            </div>
-            <div className="rounded-lg border border-border/40 bg-muted/20 p-3">
               <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Variantes</p>
               <p className="text-sm font-mono font-bold text-foreground mt-1">{colors.length || 1}</p>
               <p className="text-xs text-muted-foreground">{colors.length === 1 ? 'cor' : 'cores'}</p>
@@ -1275,15 +1259,6 @@ function ComponentSheetDetail({ sheet, siblingIds = [], groupItems = [], onDelet
                 Largura positiva e unidade linear são obrigatórias para material consumido por área.
               </p>
             )}
-          </div>
-
-          {/* Waste */}
-          <div>
-            <Label className="text-xs text-muted-foreground flex items-center gap-1.5">
-              <Percent className="h-3.5 w-3.5" />
-              Perda estimada no corte (%)
-            </Label>
-            <Input type="number" step="0.1" value={form.waste_pct} onChange={e => updateField('waste_pct', Number(e.target.value))} className="mt-1 h-9 w-28 text-sm font-mono" />
           </div>
 
           {/* Default Sole */}
@@ -1436,7 +1411,7 @@ function ComponentSheetDetail({ sheet, siblingIds = [], groupItems = [], onDelet
                   </div>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  * Custo/par = preço unitário × consumo dm² × (1 + {form.waste_pct}% perda)
+                  * Custo/par = preço unitário × consumo dm²
                   {form.dimensions_length > 0 && form.dimensions_width > 0 && ' | Pares/placa = área da placa ÷ consumo dm²'}
                 </p>
 
@@ -1504,11 +1479,10 @@ function ComponentSheetDetail({ sheet, siblingIds = [], groupItems = [], onDelet
               <div className="rounded-lg border border-border/40 bg-muted/20 p-4">
                 <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Custo por Par</p>
                 <p className="text-lg font-mono font-bold text-foreground mt-1">
-                  {formatCurrency((prod?.unit_price || 0) * (form.yield_per_size['unit'] || 0) * (1 + form.waste_pct / 100))}
+                  {formatCurrency((prod?.unit_price || 0) * (form.yield_per_size['unit'] || 0))}
                 </p>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  {formatCurrency(prod?.unit_price || 0)}/{isUnitCategory(prod?.category) ? 'un' : getConsumptionUnit(prod?.category)} × {form.yield_per_size['unit']} {isUnitCategory(prod?.category) ? 'un' : getConsumptionUnit(prod?.category)} × (1 + {form.waste_pct}% perda)
-                </p>
+                  {formatCurrency(prod?.unit_price || 0)}/{isUnitCategory(prod?.category) ? 'un' : getConsumptionUnit(prod?.category)} × {form.yield_per_size['unit']} {isUnitCategory(prod?.category) ? 'un' : getConsumptionUnit(prod?.category)}                </p>
               </div>
             )}
           </TabsContent>
@@ -1547,7 +1521,6 @@ function ComponentSheetDetail({ sheet, siblingIds = [], groupItems = [], onDelet
               dimensions_thickness: sheet.dimensions_thickness || 0,
               dimensions_unit: sheet.dimensions_unit || 'mm',
               yield_per_size: sheet.yield_per_size || {},
-              waste_pct: sheet.waste_pct ?? 0,
               notes: sheet.notes || '',
             });
             setDirty(false);
@@ -1632,7 +1605,7 @@ function GroupColorsPanel({ groupId, groupColors }: {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('component_sheets')
-        .select('id, product_id, yield_per_size, waste_pct')
+        .select('id, product_id, yield_per_size')
         .in('product_id', productIds);
       if (error) throw error;
       return data || [];
@@ -1651,18 +1624,14 @@ function GroupColorsPanel({ groupId, groupColors }: {
 
   const [savingItemId, setSavingItemId] = useState<string | null>(null);
 
-  const updateItemConsumption = async (productId: string, value: number, wastePct?: number) => {
+  const updateItemConsumption = async (productId: string, value: number) => {
     if (!Number.isFinite(value) || value < 0) { toast.error('Consumo deve ser um número não-negativo.'); return; }
-    if (wastePct !== undefined && (!Number.isFinite(wastePct) || wastePct < 0 || wastePct > 100)) { toast.error('Perda (%) deve ser entre 0 e 100.'); return; }
     setSavingItemId(productId);
     try {
       const existing = sheetByProduct.get(productId);
       const newYield = { ...(existing?.yield_per_size || {}), unit: value };
       if (!value || value <= 0) delete newYield.unit;
-      const payload: any = {
-        yield_per_size: newYield,
-        ...(wastePct !== undefined ? { waste_pct: wastePct } : {}),
-      };
+      const payload: any = { yield_per_size: newYield };
       if (existing) {
         const { error } = await supabase.from('component_sheets').update(payload).eq('id', existing.id);
         if (error) throw error;
@@ -1670,7 +1639,6 @@ function GroupColorsPanel({ groupId, groupColors }: {
         const { error } = await supabase.from('component_sheets').insert({
           product_id: productId,
           yield_per_size: newYield,
-          waste_pct: wastePct ?? 8,
         } as any);
         if (error) throw error;
       }
@@ -1924,9 +1892,6 @@ function GroupColorsPanel({ groupId, groupColors }: {
                     <TableHead className="h-8 text-xs font-bold uppercase tracking-wider w-44">
                       Consumo / par ({consumptionUnit})
                     </TableHead>
-                    <TableHead className="h-8 text-xs font-bold uppercase tracking-wider w-32">
-                      Perda (%)
-                    </TableHead>
                     <TableHead className="h-8 text-xs font-bold uppercase tracking-wider text-right px-4">Custo / par</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -1934,8 +1899,7 @@ function GroupColorsPanel({ groupId, groupColors }: {
                   {groupProducts.map((p: any) => {
                     const sheet = sheetByProduct.get(p.id);
                     const consumption = Number(sheet?.yield_per_size?.unit || 0);
-                    const wastePct = Number(sheet?.waste_pct ?? 8);
-                    const costPerPair = (p.unit_price || 0) * consumption * (1 + wastePct / 100);
+                    const costPerPair = (p.unit_price || 0) * consumption;
                     return (
                       <TableRow key={p.id} className="hover:bg-muted/20">
                         <TableCell className="py-2 px-4">
@@ -1952,18 +1916,7 @@ function GroupColorsPanel({ groupId, groupColors }: {
                             step="0.0001"
                             placeholder="0,0050"
                             onCommit={(v) => {
-                              if (v !== consumption) updateItemConsumption(p.id, v, wastePct);
-                            }}
-                          />
-                        </TableCell>
-                        <TableCell className="py-2">
-                          <ConsumptionEditCell
-                            initialValue={wastePct}
-                            disabled={savingItemId === p.id}
-                            step="1"
-                            placeholder="8"
-                            onCommit={(v) => {
-                              if (v !== wastePct) updateItemConsumption(p.id, consumption, v);
+                              if (v !== consumption) updateItemConsumption(p.id, v);
                             }}
                           />
                         </TableCell>

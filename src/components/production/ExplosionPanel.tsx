@@ -20,7 +20,6 @@ interface OrderInput {
       safety_stock?: number;
     };
     baseConsumption: number;
-    wastePct?: number;
   }[];
   sizeMultipliers?: Record<string, number>;
 }

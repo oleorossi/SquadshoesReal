@@ -1947,7 +1947,6 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
     sheetMaterials.forEach((m: any) => {
       const cs = csMap[m.product_id];
       const unitPrice = Number(m.products?.unit_price || 0);
-      const wastePct = cs ? (cs.waste_pct || 0) : 0;
       // Use average from per-size consumption when available
       const perSize = m.consumption_per_size as Record<string, number> | null;
       let avgConsumption = Number(m.quantity_per_unit);
@@ -1957,7 +1956,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
           avgConsumption = vals.reduce((a, b) => a + Number(b), 0) / vals.length;
         }
       }
-      total += avgConsumption * unitPrice * (1 + wastePct / 100);
+      total += avgConsumption * unitPrice;
     });
     return total;
   }, [sheetMaterials, componentSheets]);
@@ -3610,8 +3609,8 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
 
           {/* ═══ SECTION 3: BOM (Bill of Materials) ═══ */}
           <div className="rounded-lg border bg-card p-4">
-            <SheetBOM sheetId={sheet.id} lossPct={form.consumption_loss_pct} safetyPct={form.safety_margin_pct}
-              onLossChange={v => updateField('consumption_loss_pct', v)} onSafetyChange={v => updateField('safety_margin_pct', v)} shoeCategory={form.shoe_category} />
+            <SheetBOM sheetId={sheet.id} safetyPct={form.safety_margin_pct}
+              onSafetyChange={v => updateField('safety_margin_pct', v)} shoeCategory={form.shoe_category} />
           </div>
 
           {/* ═══ SECTION 4: Consumos Técnicos de Componentes ═══ */}
@@ -5982,9 +5981,9 @@ function NcmInlineEditor({ productId, currentNcm }: { productId: string; current
   );
 }
 
-function SheetBOM({ sheetId, lossPct, safetyPct, onLossChange, onSafetyChange, shoeCategory }: {
-  sheetId: string; lossPct: number; safetyPct: number;
-  onLossChange: (v: number) => void; onSafetyChange: (v: number) => void; shoeCategory?: string;
+function SheetBOM({ sheetId, safetyPct, onSafetyChange, shoeCategory }: {
+  sheetId: string; safetyPct: number;
+  onSafetyChange: (v: number) => void; shoeCategory?: string;
 }) {
   const MATERIAL_SIZES = getSizesForCategory(shoeCategory);
   const { data: materials = [], isLoading } = useSheetMaterials(sheetId);
@@ -6110,7 +6109,6 @@ function SheetBOM({ sheetId, lossPct, safetyPct, onLossChange, onSafetyChange, s
       if (cs.dimensions_width) dims.push(`${cs.dimensions_width}`);
       if (cs.dimensions_thickness) dims.push(`${cs.dimensions_thickness}`);
       const dimStr = dims.length > 0 ? `${dims.join(' × ')} ${cs.dimensions_unit || 'mm'}` : '';
-      const weightStr = cs.waste_pct ? `Perda: ${cs.waste_pct}%` : '';
 
       // Build per-size consumption from yield_per_size
       const yieldEntries = Object.entries(cs.yield_per_size || {});
@@ -6128,7 +6126,7 @@ function SheetBOM({ sheetId, lossPct, safetyPct, onLossChange, onSafetyChange, s
         product_id: rep.id,
         group_id: groupId,
         width: dimStr || f.width,
-        weight: weightStr || f.weight,
+        weight: f.weight,
         quantity_per_unit: avgConsumption > 0 ? Math.round(avgConsumption * 10000) / 10000 : f.quantity_per_unit,
         consumption_per_size: Object.keys(yieldPerSize).length > 0 ? yieldPerSize : f.consumption_per_size,
       }));
@@ -6438,7 +6436,6 @@ function SheetBOM({ sheetId, lossPct, safetyPct, onLossChange, onSafetyChange, s
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
                     <div><span className="text-muted-foreground">Preço un.:</span> <span className="font-mono font-semibold">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(prod.unit_price || 0)}</span></div>
                     <div><span className="text-muted-foreground">Estoque:</span> <span className="font-mono">{(prod.quantity ?? 0).toLocaleString('pt-BR')}</span></div>
-                    {cs && cs.waste_pct > 0 && <div><span className="text-muted-foreground">Perda:</span> <span className="font-mono">{cs.waste_pct}%</span></div>}
                     {cs && cs.dimensions_length > 0 && (
                       <div><span className="text-muted-foreground">Dim.:</span> <span className="font-mono">{cs.dimensions_length}×{cs.dimensions_width} {cs.dimensions_unit}</span></div>
                     )}
@@ -6930,8 +6927,7 @@ function CostsTab({ sheetId, form, groups }: {
       if (specsCoveredCategories.has(cat)) { skipped.push(rawCat); return; }
       const cs = componentSheetMap[m.product_id];
       const unitPrice = Number((m as any).products?.unit_price || 0);
-      const wastePct = cs ? (cs.waste_pct || 0) : 0;
-      const cost = Number(m.quantity_per_unit) * unitPrice * (1 + wastePct / 100);
+      const cost = Number(m.quantity_per_unit) * unitPrice;
       costs[cat] = (costs[cat] || 0) + cost;
       total += cost;
     });

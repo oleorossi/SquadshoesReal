@@ -31,7 +31,6 @@ interface Props {
   }[];
   pairsBySizes: Record<string, number>;
   sizeMultipliers?: Record<string, number>;
-  wastePct?: number;
   onReserve?: (reservations: { materialId: string; quantity: number }[]) => void;
   disabled?: boolean;
 }
@@ -40,7 +39,6 @@ export function OrderReservationForm({
   materials,
   pairsBySizes,
   sizeMultipliers,
-  wastePct = 1.0,
   onReserve,
   disabled,
 }: Props) {
@@ -50,8 +48,7 @@ export function OrderReservationForm({
     const { totalNeeded } = calculateGradedConsumption(
       baseConsumption,
       pairsBySizes,
-      sizeMultipliers,
-      wastePct
+      sizeMultipliers
     );
 
     const availability = validateMaterialAvailability(totalNeeded, material as ProductStock);
