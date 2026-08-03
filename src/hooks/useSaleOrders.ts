@@ -705,6 +705,90 @@ export function useCreateSaleOrder() {
   });
 }
 
+/**
+ * CHAVE DE DESLIGAMENTO do motor de promoção (fase 3d da spec
+ * `pv-producao-performance-e-pendencias`).
+ *
+ * `true`  → uma chamada a `promote_sale_order_to_production` faz o PV inteiro.
+ * `false` → volta pro caminho antigo, item a item, no navegador.
+ *
+ * Existe pra que um problema em produção se resolva com UM commit em vez de um
+ * revert de migration. Some na fase 5, junto com o caminho antigo.
+ */
+const USE_PROMOTION_ENGINE = true;
+
+/** O que o motor devolve. Campos em pt-BR porque vêm do SQL. */
+interface PromotionEngineResult {
+  ops_criadas: number;
+  order_ids: string[];
+  itens_falha: Array<{ item_id: string; sqlstate: string | null; message: string }>;
+  shortages: Array<{ product_id: string | null; product_name: string; shortage: number }>;
+  sole_shortfall_order_ids: string[];
+}
+
+/**
+ * Promove o PV pelo motor do banco: UMA ida e volta no lugar de até 85.
+ *
+ * O que continua no cliente, de propósito: a criação automática de OC
+ * (`autoCreateSolePOFromShortfall`, `autoCreateMaterialPO`) é lógica TS já
+ * testada e só roda quando há falta — caminho de exceção, zero chamada extra
+ * quando está tudo em estoque.
+ *
+ * Devolve `null` quando o motor não pôde rodar, e aí o chamador cai no caminho
+ * antigo em vez de deixar o PV sem OP.
+ */
+async function runPromotionEngine(
+  saleOrderId: string,
+  targetStatus: 'Aprovado' | 'Em Produção',
+  soNumber: string,
+): Promise<PromotionEngineResult | null> {
+  const { data, error } = await (supabase as any).rpc('promote_sale_order_to_production', {
+    p_sale_order_id: saleOrderId,
+    p_target_status: targetStatus,
+  });
+  if (error) {
+    console.error('[promotionEngine] falhou, caindo no caminho antigo:', error.message);
+    toast.warning(`Motor de promoção indisponível (${error.message}). Usando o caminho antigo.`);
+    return null;
+  }
+
+  const res = data as PromotionEngineResult;
+
+  // Déficit de solado por numeração → OC automática, só nas OPs que realmente faltaram.
+  for (const opId of res.sole_shortfall_order_ids || []) {
+    try {
+      const po = await autoCreateSolePOFromShortfall({ orderId: opId, orderRef: soNumber });
+      if (po) {
+        toast.warning(
+          `Solado em falta (parcial) — OC ${po.poNumber} ${po.accumulated ? 'acumulada' : 'criada'} (${po.supplierName}).`,
+          { duration: 8000 },
+        );
+      }
+    } catch (e: any) {
+      console.error('[promotionEngine] OC de solado por déficit falhou:', e?.message);
+    }
+  }
+
+  // Falta de material → OC automática, uma por produto (dedup igual ao caminho antigo).
+  const vistos = new Set<string>();
+  for (const s of res.shortages || []) {
+    if (!s.product_id || vistos.has(s.product_id)) continue;
+    vistos.add(s.product_id);
+    try {
+      await autoCreateMaterialPO({
+        productId: s.product_id,
+        productName: s.product_name || 'Material',
+        shortageQty: Number(s.shortage) || 0,
+        orderRef: soNumber,
+      });
+    } catch (e: any) {
+      console.error('[promotionEngine] OC de material falhou:', e?.message);
+    }
+  }
+
+  return res;
+}
+
 export function useUpdateSaleOrderStatus() {
   const qc = useQueryClient();
   return useMutation({
@@ -1131,8 +1215,27 @@ export function useUpdateSaleOrderStatus() {
         }
       }
 
+      // ─── Motor de promoção (fase 3d) ──────────────────────────────────────
+      // UMA chamada faz o PV inteiro: cria OP, debita, gera estágios e MRP, com
+      // savepoint por item. Substitui os dois blocos gigantes abaixo, que ficam
+      // como rede de segurança enquanto USE_PROMOTION_ENGINE puder ser desligado.
+      let engineResult: PromotionEngineResult | null = null;
+      if (USE_PROMOTION_ENGINE && (status === 'Aprovado' || status === 'Em Produção')) {
+        const { data: soForEngine } = await supabase
+          .from('sale_orders').select('order_number').eq('id', id).single();
+        engineResult = await runPromotionEngine(
+          id, status as 'Aprovado' | 'Em Produção', soForEngine?.order_number || id,
+        );
+        if (engineResult && status === 'Em Produção') {
+          // Mesmo gesto do caminho antigo: liberar pra produção é quando o
+          // material sai da prateleira (ver `releaseConsumption.ts`).
+          await consumeReservationsOnRelease(id);
+        }
+      }
+      const engineHandled = engineResult !== null;
+
       // Quando "Em Produção", sincronizar OPs vinculadas
-      if (status === 'Em Produção') {
+      if (status === 'Em Produção' && !engineHandled) {
         const { data: allLinkedOps, error: allLinkedOpsErr } = await supabase
           .from('orders')
           .select('id, reference_id, quantity, status, sale_order_item_id')
@@ -1431,7 +1534,7 @@ export function useUpdateSaleOrderStatus() {
       }
 
       // Quando "Aprovado", criar OPs, debitar materiais com estoque e gerar MRP para faltas
-      if (status === 'Aprovado') {
+      if (status === 'Aprovado' && !engineHandled) {
         const { data: soData } = await supabase.from('sale_orders').select('order_number').eq('id', id).single();
         const soNumber = soData?.order_number || id;
 
@@ -1842,8 +1945,11 @@ export function useUpdateSaleOrderStatus() {
 
       // Auto-sync financial records
       await syncFinancialRecords(id);
+
+      // Devolve o resumo do motor pro onSuccess montar o toast (requisito 31).
+      return engineResult;
     },
-    onSuccess: (_, vars) => {
+    onSuccess: (engineResult, vars) => {
       qc.invalidateQueries({ queryKey: ['sale_orders'] });
       qc.invalidateQueries({ queryKey: ['orders'] });
       qc.invalidateQueries({ queryKey: ['order_stages'] });
@@ -1857,9 +1963,28 @@ export function useUpdateSaleOrderStatus() {
       qc.invalidateQueries({ queryKey: ['sale_order_items'] });
       qc.invalidateQueries({ queryKey: ['sale_order_items_all'] });
       qc.invalidateQueries({ queryKey: ['production_consumptions'] });
+      qc.invalidateQueries({ queryKey: ['sale_order_pendencias'] });
       if (vars.status === 'Em Produção') {
         qc.invalidateQueries({ queryKey: ['waves'] });
       }
+
+      // Requisito 31/32: o toast resume o que REALMENTE aconteceu — e nada do que
+      // ele diz existe só nele; tudo está registrado na aba de pendências.
+      if (engineResult) {
+        const falhas = engineResult.itens_falha?.length ?? 0;
+        const partes = [`${engineResult.ops_criadas} OP(s) criada(s)`];
+        if (falhas > 0) partes.push(`${falhas} item(ns) com falha`);
+        if (falhas > 0) {
+          toast.error(partes.join(' · '), {
+            description: 'Veja o motivo em Pedidos de Venda → Pendências.',
+            duration: 12000,
+          });
+        } else {
+          toast.success(partes.join(' · '));
+        }
+        return;
+      }
+
       const msg = vars.status === 'Aprovado'
         ? 'Pedido aprovado — OPs criadas e estoque processado!'
         : vars.status === 'Em Produção'
@@ -2045,7 +2170,31 @@ export function useUpdateSaleOrder() {
       // dispara reserva/débito da tira.
 
       // 4. Recreate OPs if status is Aprovado or Em Produção (regardless of whether OPs existed before)
-      if (order.status === 'Aprovado' || order.status === 'Em Produção') {
+      //
+      // Fase 3e (requisito 29): a recriação passa pelo MESMO motor da promoção.
+      // Ter duas implementações de "criar OP + debitar" é exatamente o padrão que
+      // já custou caro neste projeto (3 sistemas de PCP isolados, terceiro motor
+      // do Consumo Consolidado). O bloco antigo abaixo só roda com a chave
+      // desligada, e sai na fase 5.
+      let editEngineHandled = false;
+      if (USE_PROMOTION_ENGINE && (order.status === 'Aprovado' || order.status === 'Em Produção')) {
+        // O status canônico vem do BANCO, nunca do formulário — o form poderia
+        // injetar um status e pular as guardas da máquina de estados.
+        const { data: soCanon } = await supabase
+          .from('sale_orders').select('status, order_number').eq('id', id).single();
+        const canon = (soCanon as any)?.status;
+        if (canon === 'Aprovado' || canon === 'Em Produção') {
+          const res = await runPromotionEngine(id, canon, (soCanon as any)?.order_number || id);
+          editEngineHandled = res !== null;
+          if (editEngineHandled && (res?.itens_falha?.length ?? 0) > 0) {
+            toast.error(`${res!.itens_falha.length} item(ns) não geraram OP — veja em Pendências.`, {
+              duration: 12000,
+            });
+          }
+        }
+      }
+
+      if (!editEngineHandled && (order.status === 'Aprovado' || order.status === 'Em Produção')) {
         // Fetch billing_week, packaging_mode AND canonical status from the DB.
         // Using order.status (form state) for opStatus would allow the form to inject
         // a different status (e.g. Em Produção) while the DB is still at Aprovado.

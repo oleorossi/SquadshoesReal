@@ -9,6 +9,7 @@ import { getSignedUrl } from '@/lib/getSignedUrl';
 import { resolveMaterialLabel } from '@/lib/labelUtils';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
+import PendenciasView from '@/components/sale-orders/PendenciasView';
 import { Baby, Buildings, ShoppingCart, Plus, CircleNotch as Loader2, Copy, Printer, Factory, PencilSimple as Pencil, FileText, Funnel as Filter, X, MagnifyingGlass as Search, Package, CurrencyDollar as DollarSign, Clock, CaretDown, ChartBar as BarChart3, ClipboardText as ClipboardList, ArrowsClockwise as RefreshCw, Tag, SquaresFour as LayoutDashboard, Lightning as Zap, FileXls as FileSpreadsheet, Receipt, XCircle, CheckCircle, Check, Download, TrendUp as TrendingUp, Warning as AlertTriangle, ArrowCounterClockwise as RotateCcw, HandPalm as Hand, UploadSimple as Upload, Trash as Trash2, ListChecks, ArrowSquareOut as ExternalLink, DotsThree } from '@phosphor-icons/react';
 import { useMarqueeSelection } from '@/hooks/useMarqueeSelection';
 import { BulkActionsBar, MarqueeOverlay } from '@/components/ui/bulk-actions-bar';
@@ -595,6 +596,7 @@ export default function SaleOrders() {
     return (searchParams.get('ids') || '').split(',').map((id) => id.trim()).filter(Boolean);
   }, [searchParams]);
   const isConsumptionView = searchParams.get('view') === 'consumo';
+  const isPendenciasView = searchParams.get('view') === 'pendencias';
   const consumptionViewOrders = useMemo(
     () => orders.filter((order) => consumptionViewIds.includes(order.id)),
     [orders, consumptionViewIds],
@@ -1679,6 +1681,27 @@ export default function SaleOrders() {
     );
   }
 
+  // Aba de Pendências — mesma troca de visão por URL que o `?view=consumo` já usa,
+  // sem rota nova (requisito 13 de specs/pv-producao-performance-e-pendencias.md).
+  if (isPendenciasView) {
+    return (
+      <div className="w-full space-y-6 page-enter">
+        <EditorialPageHeader
+          sectionLabel="COMERCIAL · PV"
+          title="Pendências de lançamento"
+          description="Itens que não viraram OP, material que faltou e prazos inviáveis"
+          actions={
+            <Button variant="outline" size="sm" className="h-9 gap-2" onClick={() => navigate('/sales')}>
+              <ClipboardList className="h-4 w-4" />
+              Voltar aos pedidos
+            </Button>
+          }
+        />
+        <PendenciasView />
+      </div>
+    );
+  }
+
   return (
     <>
       <div className="w-full space-y-6 page-enter editorial-stagger">
@@ -1688,6 +1711,16 @@ export default function SaleOrders() {
           description="Gestão comercial e geração de ordens de produção"
           actions={
             <>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9 gap-2"
+                onClick={() => navigate('/sales?view=pendencias')}
+                title="Falhas de lançamento, baixa parcial e datas inviáveis"
+              >
+                <AlertTriangle className="h-4 w-4" />
+                <span className="hidden sm:inline">Pendências</span>
+              </Button>
               {perm.canCreate && (
                 <Button size="sm" onClick={() => navigate('/sales/new')} className="h-9 gap-2">
                   <Plus className="h-4 w-4" />
