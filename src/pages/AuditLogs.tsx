@@ -125,17 +125,19 @@ export default function AuditLogs() {
 
   // Facetas (recursos/ações) vêm de uma consulta própria SEM busca — senão as
   // opções dos dropdowns sumiriam enquanto o usuário digita.
+  //
+  // 2026-08-03: antes isto baixava as 1.000 linhas MAIS RECENTES e fazia
+  // `new Set()` em JS. Com 1.414 linhas na tabela, recurso/ação que parou de
+  // ser usado caía fora da janela e sumia do filtro — o usuário não conseguia
+  // mais filtrar por ele. Medido: faltava 1 de 7 recursos e 2 de 10 ações.
+  // O DISTINCT agora roda no banco (view v_audit_log_facets, mig 20261112120100).
   const { data: facets = [] } = useQuery({
     queryKey: ['system-audit-logs-facets'],
     staleTime: 300_000,
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('audit_logs')
-        .select('resource, action')
-        .order('created_at', { ascending: false })
-        .limit(1000);
+      const { data, error } = await supabase.from('v_audit_log_facets' as any).select('resource, action');
       if (error) throw error;
-      return data ?? [];
+      return (data ?? []) as unknown as Array<{ resource: string; action: string }>;
     },
   });
 

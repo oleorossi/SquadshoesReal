@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { fetchAllPages } from '@/lib/supabasePaginate';
 import { format, addDays, parseISO, startOfWeek } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -169,13 +170,21 @@ export default function CapacityPlanning() {
   const { data: stages = [] } = useQuery({
     queryKey: ['cap_stages_v4'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('order_stages')
-        .select('order_id, stage_name, stage_order, status, quantity_total, quantity_processed')
-        .not('status', 'in', '("concluido","cancelado")')
-        .order('stage_order');
-      if (error) throw error;
-      return (data || []) as any[];
+      // Leitura de MOTOR, não listagem: a timeline soma carga por setor, então
+      // precisa das etapas TODAS — paginar aqui daria capacidade errada.
+      // `fetchAllPages` em vez de query nua porque o PostgREST corta em 1.000
+      // sem avisar; hoje esta query devolve 805 linhas (order_stages tem 2.548
+      // e cresce), ou seja, estava a uma safra de OPs de começar a planejar
+      // capacidade em cima de dado incompleto — e nada denunciaria.
+      return await fetchAllPages<any>((from, to) =>
+        supabase
+          .from('order_stages')
+          .select('order_id, stage_name, stage_order, status, quantity_total, quantity_processed')
+          .not('status', 'in', '("concluido","cancelado")')
+          .order('stage_order')
+          .order('order_id')
+          .range(from, to),
+      );
     },
     staleTime: 30_000,
   });
