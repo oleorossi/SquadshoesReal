@@ -374,6 +374,37 @@ reescrever o motor.
 
 ## Plano de execução
 
+> **STATUS: as 6 fases foram construídas em 03/08/2026.** Commits `395d3c4` (fases 0/1a/1b),
+> `04b5453` (3a/3b), `4dee10b` (3c/3d/3e + 2 + 4) e `9b268ef` (fase 5).
+>
+> **Medido, não estimado:**
+>
+> | | Antes | Depois |
+> |---|---|---|
+> | Promover PV (8 itens, dentro do banco) | ~56 chamadas em série | **1 chamada · 546 ms** |
+> | Abrir `/sales` (min_billing) | 1.058 ms · 37.035 buffers | **0,888 ms · 18 buffers** |
+> | Salvar PV de 12 itens | ~26 idas e voltas | **≤ 3** |
+> | `useUpdateSaleOrderStatus` | 1.168 linhas / 68 `await` | motor SQL + ponte de ~90 linhas |
+> | `useSaleOrders.ts` | 3.241 linhas | **2.375** |
+>
+> A aba de pendências, no primeiro dia, já expôs **35 linhas de baixa parcial em 5 PVs** e
+> **8 PVs com data inviável** — tudo invisível antes.
+>
+> **Descobertas que mudaram o desenho durante a execução** (a spec original errava nelas):
+> 1. A promoção **não gera `stock_movements`, gera `material_reservations`**. PV-00148: 102
+>    reservas, zero movimentos. Um gabarito olhando só movimentos daria "0 = 0".
+> 2. `compute_min_billing_dates` termina em `add_business_days(CURRENT_DATE, n)` — **o
+>    resultado muda sozinho todo dia**. Cache sem `computed_on` serviria a data de ontem
+>    para sempre.
+> 3. Já existia `uq_orders_active_per_sale_order_item`: o banco garante 1 OP ativa por item.
+> 4. `is_approved_user()` é avaliado pelo **JWT em runtime**, não pelo dono da função —
+>    `SECURITY DEFINER` não fura o guard das funções chamadas.
+> 5. O bulk de status disparava as promoções em **paralelo** (`Promise.allSettled`) — o
+>    deadlock que o requisito 2 manda evitar já estava lá. Serializado.
+>
+> **Faltam duas verificações que só rodando dá pra fechar:** cronometrar no navegador um PV
+> de 12 itens (meta ≤ 3 s) e o teste de deadlock com duas abas sobre a mesma napa.
+
 Seis fases. A ordem não é arbitrária: entrega valor cedo, isola o risco grande numa fase só, e
 constrói o detector de regressão **antes** da reescrita que ele precisa vigiar.
 
