@@ -760,7 +760,7 @@ async function runPromotionEngine(
     }
   }
 
-  // Falta de material → OC automática, uma por produto (dedup igual ao caminho antigo).
+  // Falta de material → OC automática, uma por produto (dedup por product_id).
   const vistos = new Set<string>();
   for (const s of res.shortages || []) {
     if (!s.product_id || vistos.has(s.product_id)) continue;
@@ -1558,11 +1558,10 @@ export function useUpdateSaleOrder() {
 
       // 4. Recreate OPs if status is Aprovado or Em Produção (regardless of whether OPs existed before)
       //
-      // Fase 3e (requisito 29): a recriação passa pelo MESMO motor da promoção.
-      // Ter duas implementações de "criar OP + debitar" é exatamente o padrão que
-      // já custou caro neste projeto (3 sistemas de PCP isolados, terceiro motor
-      // do Consumo Consolidado). O bloco antigo abaixo só roda com a chave
-      // desligada, e sai na fase 5.
+      // Requisito 29: a recriação passa pelo MESMO motor da promoção. Ter duas
+      // implementações de "criar OP + debitar" é exatamente o padrão que já custou
+      // caro neste projeto (3 sistemas de PCP isolados, terceiro motor do Consumo
+      // Consolidado, modal × ficha de operador).
       if (order.status === 'Aprovado' || order.status === 'Em Produção') {
         // O status canônico vem do BANCO, nunca do formulário — o form poderia
         // injetar um status e pular as guardas da máquina de estados.
@@ -1571,8 +1570,8 @@ export function useUpdateSaleOrder() {
         const canon = (soCanon as any)?.status;
         if (canon === 'Aprovado' || canon === 'Em Produção') {
           const res = await runPromotionEngine(id, canon, (soCanon as any)?.order_number || id);
-          if ((res?.itens_falha?.length ?? 0) > 0) {
-            toast.error(`${res!.itens_falha.length} item(ns) não geraram OP — veja em Pendências.`, {
+          if (res.itens_falha.length > 0) {
+            toast.error(`${res.itens_falha.length} item(ns) não geraram OP — veja em Pendências.`, {
               duration: 12000,
             });
           }
