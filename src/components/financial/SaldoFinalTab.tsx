@@ -135,8 +135,13 @@ export default function SaldoFinalTab() {
         weekLabelsSet.add(weekLabel);
 
         const qty = Number(order.quantity) || 0;
-        const lossPct = Number(sheet.consumption_loss_pct) || 5;
-        const lossFactor = 1 + lossPct / 100;
+        // Perda de corte NÃO é aplicada (decisão do dono, 03/08/2026): o consumo
+        // digitado na ficha já vem com a perda embutida, então acrescentar um
+        // percentual conta a mesma perda duas vezes. Fator fixo em 1 — e não
+        // `Number(consumption_loss_pct) || 5`, que era uma armadilha: com o campo
+        // zerado o `||` caía no 5 e esta tela aplicaria 5% sozinha, divergindo de
+        // todos os outros motores.
+        const lossFactor = 1;
 
         const addMaterial = (materialName: string, type: string, consumptionPerPair: number, applyLoss: boolean, productId?: string | null) => {
           if (!materialName || consumptionPerPair <= 0) return;

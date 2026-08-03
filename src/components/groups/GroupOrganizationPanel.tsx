@@ -11,7 +11,7 @@ import { BulkActionsBar } from '@/components/ui/bulk-actions-bar';
 import { confirmAndBulkDelete } from '@/lib/bulkConfirm';
 import { useGroups, useDeleteGroup, ProductGroup } from '@/hooks/useGroups';
 import { useProducts, useAddProduct, ProductSchema } from '@/hooks/useProducts';
-import { useAddComponentSheet } from '@/hooks/useComponentSheets';
+import { useAddComponentSheet, DEFAULT_WASTE_PCT } from '@/hooks/useComponentSheets';
 import { useGroupStockRollups } from '@/hooks/useGroupOrganization';
 import { useCan } from '@/hooks/useAccessControl';
 import { sectorLabel } from '@/lib/categoryFromGroup';
@@ -100,7 +100,7 @@ export default function GroupOrganizationPanel({ permPath, extraActions }: Props
             dimensions_width: data.dimensions_width || 0,
             dimensions_thickness: data.dimensions_thickness || 0,
             dimensions_unit: data.dimensions_unit || 'mm',
-            yield_per_size: {}, waste_pct: 8, notes: '',
+            yield_per_size: {}, waste_pct: DEFAULT_WASTE_PCT, notes: '',
           });
         } catch {
           toast.error('Material criado, mas erro ao criar ficha técnica automática');

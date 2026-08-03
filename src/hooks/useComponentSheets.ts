@@ -15,14 +15,21 @@ export type ComponentSheetFormData = {
   notes: string;
 };
 
-/** Perda de corte padrão (%) de material de área. Espelha o DEFAULT da coluna
- *  `component_sheets.waste_pct` no banco. Todo caminho que semeia o estado de um
- *  formulário de ficha de componente DEVE usar esta constante — semear 0 grava 0
- *  ao salvar e atropela o default do banco, zerando a perda de um material que
- *  ninguém pediu pra zerar (achado da auditoria do PV-00150: 39 das 44 fichas da
- *  NAPA SOFT vieram a 0 por esse caminho, e a mesma napa saía com consumo 8%
- *  menor no preto do que nas outras cores da MESMA grade). */
-export const DEFAULT_WASTE_PCT = 8;
+/** Perda de corte padrão (%) — ZERO por decisão do dono (03/08/2026).
+ *
+ *  REGRA DE NEGÓCIO: os valores de consumo cadastrados na ficha (dm²/par) JÁ
+ *  incluem a perda de corte. Aplicar um percentual por cima conta a mesma perda
+ *  DUAS vezes e infla o consumo, a reserva, o débito e o custeio. Nada no
+ *  sistema deve acrescentar perda ao que foi digitado.
+ *
+ *  Por que a constante continua existindo em vez de o campo sumir: a perda é
+ *  aplicada em 6 pontos do TS e 7 funções SQL, sempre como `× (1 + waste/100)`.
+ *  Mantendo o valor em 0 o fator vira × 1 em todos eles de uma vez, sem tocar em
+ *  nenhuma linha de cálculo e sem risco de dessincronizar TS e SQL. Todo caminho
+ *  que semeia ou grava `waste_pct` DEVE usar esta constante — um `8` solto
+ *  reintroduz a duplicidade num material só, e o sintoma é sutil: mesma grade e
+ *  mesma quantidade saindo com consumos diferentes (bug do PV-00150). */
+export const DEFAULT_WASTE_PCT = 0;
 
 export const emptyComponentForm: ComponentSheetFormData = {
   product_id: '',

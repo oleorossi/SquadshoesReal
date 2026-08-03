@@ -509,9 +509,6 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
         setWastePct(sheet.waste_pct ?? DEFAULT_WASTE_PCT);
       } else {
         setYieldPerSize({});
-        // Produto SEM ficha de componente: semear a perda PADRÃO, nunca 0. Salvar
-        // grava `waste_pct: wastePct` e o 0 daqui atropelava o DEFAULT 8 do banco
-        // — cada visita ao cadastro zerava a perda de corte do material calada.
         setWastePct(DEFAULT_WASTE_PCT);
       }
     } else {
