@@ -35,7 +35,7 @@ export function SolesComponentSheetTab() {
   const updateSheet = useUpdateComponentSheet();
 
   const [search, setSearch] = useState('');
-  const [drafts, setDrafts] = useState<Record<string, { consumption: number; waste_pct: number }>>({});
+  const [drafts, setDrafts] = useState<Record<string, { consumption: number }>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
@@ -114,22 +114,19 @@ export function SolesComponentSheetTab() {
     const sheet = sheetByProductId.get(productId);
     const draft = drafts[productId];
     const baseConsumption = sheet?.yield_per_size?.par ?? sheet?.yield_per_size?.['par'] ?? 1;
-    const baseWaste = sheet?.waste_pct ?? 0;
     return {
       sheet,
       consumption: draft?.consumption ?? Number(baseConsumption) ?? 1,
-      waste_pct: draft?.waste_pct ?? Number(baseWaste) ?? 0,
       dirty: !!draft,
     };
   };
 
-  const updateDraft = (productId: string, patch: Partial<{ consumption: number; waste_pct: number }>) => {
+  const updateDraft = (productId: string, patch: Partial<{ consumption: number }>) => {
     const current = getRow(productId);
     setDrafts((prev) => ({
       ...prev,
       [productId]: {
         consumption: patch.consumption ?? current.consumption,
-        waste_pct: patch.waste_pct ?? current.waste_pct,
       },
     }));
   };
@@ -153,7 +150,6 @@ export function SolesComponentSheetTab() {
           id: row.sheet.id,
           data: {
             yield_per_size,
-            waste_pct: row.waste_pct,
             dimensions_unit: 'par',
           },
         });
@@ -167,7 +163,6 @@ export function SolesComponentSheetTab() {
           dimensions_thickness: 0,
           dimensions_unit: 'par',
           yield_per_size,
-          waste_pct: row.waste_pct,
           notes: '',
         });
       }

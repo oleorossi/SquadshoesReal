@@ -234,7 +234,7 @@ function GroupDimensionsEditor({ groupId }: { groupId: string }) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('component_sheets')
-        .select('id, waste_pct, dimensions_length, dimensions_width, dimensions_thickness, dimensions_unit')
+        .select('id, dimensions_length, dimensions_width, dimensions_thickness, dimensions_unit')
         .eq('group_id', groupId);
       if (error) throw error;
       return data;
@@ -244,7 +244,6 @@ function GroupDimensionsEditor({ groupId }: { groupId: string }) {
   // Use the first sheet as the canonical one for group-level editing
   const sheet = sheets[0] as any;
 
-  const [wastePct, setWastePct] = useState(8);
   const [dimLength, setDimLength] = useState(0);
   const [dimWidth, setDimWidth] = useState(0);
   const [dimThickness, setDimThickness] = useState(0);
@@ -254,8 +253,6 @@ function GroupDimensionsEditor({ groupId }: { groupId: string }) {
   // Init dimensions from sheet
   useEffect(() => {
     if (sheet) {
-      const wp = Number(sheet.waste_pct);
-      setWastePct(Number.isFinite(wp) ? wp : 8);
       setDimLength(Number(sheet.dimensions_length) || 0);
       setDimWidth(Number(sheet.dimensions_width) || 0);
       setDimThickness(Number(sheet.dimensions_thickness) || 0);
@@ -271,7 +268,6 @@ function GroupDimensionsEditor({ groupId }: { groupId: string }) {
       const { error } = await supabase
         .from('component_sheets')
         .update({
-          waste_pct: wastePct,
           dimensions_length: dimLength,
           dimensions_width: dimWidth,
           dimensions_thickness: dimThickness,
@@ -342,10 +338,6 @@ function GroupDimensionsEditor({ groupId }: { groupId: string }) {
                   <SelectItem value="m">metro</SelectItem>
                 </SelectContent>
               </Select>
-            </div>
-            <div>
-              <Label className="text-xs">Perda (%)</Label>
-              <NumberInput min={0} value={wastePct} onChange={n => setWastePct(n)} className="h-8 text-xs mt-1" />
             </div>
           </div>
           <div className="flex justify-end mt-3">

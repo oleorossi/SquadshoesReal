@@ -92,26 +92,17 @@ function useConsumptionFromSheets() {
       const refIds = [...new Set(orders.map(o => o.reference_id).filter(Boolean))];
 
       let materials: any[] = [];
-      let componentSheets: any[] = [];
       if (refIds.length > 0) {
-        const [matsRes, csRes] = await Promise.all([
-          supabase
-            .from('sheet_materials')
-            .select('sheet_id, product_id, group_id, quantity_per_unit, color, sizes, products(name, unit, category, unit_price, group_id, color), product_groups(id, name)')
-            .in('sheet_id', refIds),
-          supabase
-            .from('component_sheets')
-            .select('id, product_id, waste_pct')
-        ]);
+        const matsRes = await supabase
+          .from('sheet_materials')
+          .select('sheet_id, product_id, group_id, quantity_per_unit, color, sizes, products(name, unit, category, unit_price, group_id, color), product_groups(id, name)')
+          .in('sheet_id', refIds);
         if (!matsRes.error) {
           materials = matsRes.data || [];
         }
-        if (!csRes.error) {
-          componentSheets = csRes.data || [];
-        }
       }
 
-      return { orders, groups, materials, componentSheets };
+      return { orders, groups, materials };
     },
   });
 }
@@ -134,12 +125,6 @@ export default function MaterialConsumptionTab() {
       byGroup: [] as GroupData[], byColor: [] as ColorData[], byProduct: [] as ProductData[],
       consumptionRows: [] as ConsumptionRow[],
     };
-
-    // Key by product_id so material lookups (which carry product_id, not the
-    // component_sheets row UUID) actually hit. Without this, waste_pct was
-    // silently dropped and the consumption display ignored quebra entirely.
-    const csMap = new Map<string, number>();
-    (data.componentSheets || []).forEach((cs: any) => csMap.set(cs.product_id, Number(cs.waste_pct) || 0));
 
     const now = new Date();
     let start: Date | null = null;
@@ -290,8 +275,6 @@ export default function MaterialConsumptionTab() {
         const groupName = group?.name || product.category || product.name || 'Outros';
         const unitPrice = Number(product.unit_price) || 0;
 
-        const wastePct = csMap.get(material.product_id) || 0;
-        const totalQtyWithWaste = totalQty * (1 + wastePct / 100);
 
         addRow({
           groupName,
@@ -299,8 +282,8 @@ export default function MaterialConsumptionTab() {
           materialName: product.name || groupName,
           unit: productUnit,
           color: material.color || orderColor,
-          quantity: totalQtyWithWaste,
-          cost: totalQtyWithWaste * unitPrice,
+          quantity: totalQty,
+          cost: totalQty * unitPrice,
         });
       }
     }

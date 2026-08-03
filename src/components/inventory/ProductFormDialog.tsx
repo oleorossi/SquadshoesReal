@@ -33,7 +33,7 @@ import { sectorOfGroup, sectorLabel, SECTOR_OPTIONS } from '@/lib/categoryFromGr
 import { useGroups } from '@/hooks/useGroups';
 import { useSuppliers } from '@/hooks/useSuppliers';
 import { useProducts } from '@/hooks/useProducts';
-import { useComponentSheets, useAddComponentSheet, useUpdateComponentSheet, DEFAULT_WASTE_PCT } from '@/hooks/useComponentSheets';
+import { useComponentSheets, useAddComponentSheet, useUpdateComponentSheet } from '@/hooks/useComponentSheets';
 import { NumberInput } from '@/components/ui/number-input';
 import { toast } from 'sonner';
 import { X, Stack as Layers, ArrowsLeftRight as ArrowRightLeft, Footprints, Cube as Box, CircleNotch as Loader2, CaretDown } from '@phosphor-icons/react';
@@ -258,7 +258,6 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
   });
 
   const [yieldPerSize, setYieldPerSize] = useState<Record<string, number>>({});
-  const [wastePct, setWastePct] = useState(8);
   const existingSheet = useMemo(() => {
     if (!product) return null;
     return (componentSheets as any[]).find((s: any) => s.product_id === product.id) || null;
@@ -506,10 +505,8 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
       if (sheet) {
         const yps = sheet.yield_per_size && typeof sheet.yield_per_size === 'object' ? sheet.yield_per_size as Record<string, number> : {};
         setYieldPerSize(yps);
-        setWastePct(sheet.waste_pct ?? DEFAULT_WASTE_PCT);
       } else {
         setYieldPerSize({});
-        setWastePct(DEFAULT_WASTE_PCT);
       }
     } else {
       const defaultGroup = defaultGroupId ? groups.find(g => g.id === defaultGroupId) : null;
@@ -738,7 +735,6 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
         dimensions_thickness: plateThickness,
         dimensions_unit: plateUnit,
         yield_per_size: yieldPerSize,
-        waste_pct: wastePct,
       };
       if (existingSheet) {
         await updateComponentSheet.mutateAsync({ id: existingSheet.id, data: sheetData });
@@ -2032,7 +2028,6 @@ function SendToComponentSheetButton({ productId }: { productId: string }) {
       dimensions_thickness: 0,
       dimensions_unit: 'mm',
       yield_per_size: {},
-      waste_pct: DEFAULT_WASTE_PCT,
       notes: '',
     });
   };

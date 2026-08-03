@@ -60,7 +60,7 @@ function useSheetMaterialsForReferences(referenceIds: string[]) {
 
       const matsResult: any = await supabase
         .from('sheet_materials')
-        .select('sheet_id, product_id, quantity_per_unit, color, group_id, products(id, name, unit, sku, quantity, unit_price, color, waste_pct)')
+        .select('sheet_id, product_id, quantity_per_unit, color, group_id, products(id, name, unit, sku, quantity, unit_price, color)')
         .in('sheet_id', sheetIds);
       const materials = (matsResult.data || []) as any[];
 
@@ -120,10 +120,7 @@ export default function PeriodConsumptionPanel({ products }: { products: Product
         const qtyPerUnit = Number(mat.quantity_per_unit) || 0;
         const prod = mat.products || productMap.get(productId);
         
-        // Use individual waste_pct from the product master record (default 0%)
-        const individualWaste = Number(prod?.waste_pct) || 0;
-        const multiplier = 1 + (individualWaste / 100);
-        const totalNeeded = qtyPerUnit * (Number(order.quantity) || 0) * multiplier;
+        const totalNeeded = qtyPerUnit * (Number(order.quantity) || 0);
 
         const unitPrice = Number(prod?.unit_price) || 0;
         const stock = Number(prod?.quantity) || 0;

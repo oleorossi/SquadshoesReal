@@ -20,7 +20,7 @@ import CreateStrapProductDialog from './CreateStrapProductDialog';
 import { createGroupColorProducts } from '@/lib/groupColorProducts';
 import { ProductFormDialog } from '@/components/inventory/ProductFormDialog';
 import { useAddProduct, ProductSchema } from '@/hooks/useProducts';
-import { useAddComponentSheet, DEFAULT_WASTE_PCT } from '@/hooks/useComponentSheets';
+import { useAddComponentSheet } from '@/hooks/useComponentSheets';
 import type { ProductFormData } from '@/types/inventory';
 import { toast } from 'sonner';
 import { useReferenceMaterialVariants, useAllActiveReferenceMaterialVariants, VariantSummary } from '@/hooks/useReferenceMaterialVariants';
@@ -129,7 +129,6 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
           dimensions_thickness: data.dimensions_thickness || 0,
           dimensions_unit: data.dimensions_unit || 'mm',
           yield_per_size: {},
-          waste_pct: DEFAULT_WASTE_PCT,
           notes: '',
         });
       } catch (err) {

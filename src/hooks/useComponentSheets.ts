@@ -11,25 +11,19 @@ export type ComponentSheetFormData = {
   dimensions_thickness: number;
   dimensions_unit: string;
   yield_per_size: Record<string, number>;
-  waste_pct: number;
   notes: string;
 };
 
-/** Perda de corte padrão (%) — ZERO por decisão do dono (03/08/2026).
+/* PERDA DE CORTE NÃO EXISTE NESTE SISTEMA (decisão do dono, 03/08/2026).
  *
- *  REGRA DE NEGÓCIO: os valores de consumo cadastrados na ficha (dm²/par) JÁ
- *  incluem a perda de corte. Aplicar um percentual por cima conta a mesma perda
- *  DUAS vezes e infla o consumo, a reserva, o débito e o custeio. Nada no
- *  sistema deve acrescentar perda ao que foi digitado.
+ * O valor de consumo cadastrado na ficha (dm²/par) JÁ considera o rendimento
+ * real do material. Acrescentar um percentual por cima conta a mesma perda
+ * DUAS vezes e infla consumo, reserva, débito, custeio e compra.
  *
- *  Por que a constante continua existindo em vez de o campo sumir: a perda é
- *  aplicada em 6 pontos do TS e 7 funções SQL, sempre como `× (1 + waste/100)`.
- *  Mantendo o valor em 0 o fator vira × 1 em todos eles de uma vez, sem tocar em
- *  nenhuma linha de cálculo e sem risco de dessincronizar TS e SQL. Todo caminho
- *  que semeia ou grava `waste_pct` DEVE usar esta constante — um `8` solto
- *  reintroduz a duplicidade num material só, e o sintoma é sutil: mesma grade e
- *  mesma quantidade saindo com consumos diferentes (bug do PV-00150). */
-export const DEFAULT_WASTE_PCT = 0;
+ * A coluna `component_sheets.waste_pct`, a `technical_sheets.consumption_loss_pct`
+ * e todo o `× (1 + waste/100)` foram REMOVIDOS do TS e do SQL. Não reintroduzir
+ * campo de perda: o sintoma da volta é sutil — mesma grade e mesma quantidade
+ * saindo com consumos diferentes por cor (bug do PV-00150, 81,09 × 87,57 m). */
 
 export const emptyComponentForm: ComponentSheetFormData = {
   product_id: '',
@@ -39,7 +33,6 @@ export const emptyComponentForm: ComponentSheetFormData = {
   dimensions_thickness: 0,
   dimensions_unit: 'mm',
   yield_per_size: {},
-  waste_pct: DEFAULT_WASTE_PCT,
   notes: '',
 };
 

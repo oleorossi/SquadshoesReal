@@ -817,11 +817,6 @@ function CreateComponentForm({ onCreated }: { onCreated: (id: string) => void })
         </p>
       </div>
 
-      <div>
-        <Label className="text-xs">Perda estimada (%)</Label>
-        <Input type="number" step="0.1" value={form.waste_pct} onChange={e => setForm(f => ({ ...f, waste_pct: Number(e.target.value) }))} className="mt-1 w-24" />
-      </div>
-
       {/* Consumo por par (para COLA e similares) */}
       {!hasGrade && isConsumptionCategory(representativeProduct?.category) && (
         <div className="space-y-2">

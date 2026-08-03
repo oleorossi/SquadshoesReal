@@ -43,7 +43,7 @@ import { usePaginatedProducts } from '@/hooks/usePaginatedProducts';
 import { ListPagination } from '@/components/ui/list-pagination';
 import { Product, ProductFormData } from '@/types/inventory';
 import { z } from 'zod';
-import { useAddComponentSheet, DEFAULT_WASTE_PCT } from '@/hooks/useComponentSheets';
+import { useAddComponentSheet } from '@/hooks/useComponentSheets';
 import { useGroups } from '@/hooks/useGroups';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
@@ -323,7 +323,6 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
             dimensions_thickness: data.dimensions_thickness || 0,
             dimensions_unit: data.dimensions_unit || 'mm',
             yield_per_size: {},
-            waste_pct: DEFAULT_WASTE_PCT,
             notes: '',
           });
         } catch (err) {
