@@ -349,9 +349,132 @@ débito que já existem.
   setor** (hoje o cálculo lê os 9 setores)? Marcar todos os PVs como sujos a cada mudança de
   capacidade pode ser caro — decidir na implementação se vale um recálculo em lote
   agendado nesse caso específico.
-- A baixa parcial precisa comparar planejado × debitado por material. Verificar na
-  implementação se `production_consumptions` já guarda o planejado com granularidade
-  suficiente, ou se o número precisa vir do motor de consumo na hora da leitura.
+
+### Resolvida em 03/08/2026 — fonte da baixa parcial
+
+A dúvida era se `production_consumptions` serviria de fonte. **Não serve**: a tabela tem
+1.295 linhas, mas só **123 (9%) têm `actual_quantity`** preenchida, e o último registro é de
+**22/07/2026** — está parada. (O fato de ela ter parado é um problema à parte, fora do escopo
+desta spec, mas vale investigar.)
+
+A fonte correta **já existe**: `debit_consistency_report(p_start, p_end, p_include_open)`
+devolve, por OP e produto, exatamente `esperado · debitado · delta · delta_pct · classe · obs`
+— recalculando o esperado por ficha × grade e comparando com `stock_movements`, com tolerância
+de 1% + piso de 0,01. É `STABLE SECURITY DEFINER` com guard `is_approved_user()`.
+
+O mesmo vale para o segmento de cadastro: `consumption_consistency_report()` já existe.
+
+**As duas já estão ligadas na tela `/diagnostics`**
+([SystemDiagnostics.tsx:155](../src/pages/SystemDiagnostics.tsx#L155) e
+[:164](../src/pages/SystemDiagnostics.tsx#L164)). Ou seja: o sistema **já sabe** apontar a
+baixa parcial e os buracos de cadastro — só mostra isso numa tela técnica de auditoria, longe
+de onde o trabalho acontece. A aba de pendências é, em boa parte, um problema de **lugar**,
+não de cálculo. Isso muda a ordem do plano abaixo: dá pra entregar a visibilidade **antes** de
+reescrever o motor.
+
+## Plano de execução
+
+Seis fases. A ordem não é arbitrária: entrega valor cedo, isola o risco grande numa fase só, e
+constrói o detector de regressão **antes** da reescrita que ele precisa vigiar.
+
+Tamanho relativo: **P** pequeno · **M** médio · **G** grande.
+
+### Fase 0 — Rede de segurança · P · bloqueia todo o resto
+
+Nada visível pro usuário. Sem isso, o requisito 6 ("comportamento idêntico") não tem como ser
+provado, e a Fase 3 vira aposta.
+
+1. Rodar e **arquivar o baseline** de `run_consumption_parity_tests()`,
+   `run_consumption_integration_tests()` e `debit_consistency_report()` sobre a base atual.
+2. Congelar, para 3 a 5 PVs reais já promovidos, o retrato do resultado: OPs criadas,
+   `stock_movements` gerados, `order_stages`, consumo por material.
+3. Esse retrato é o gabarito contra o qual o motor novo será comparado.
+
+> Por que primeiro: depois que o motor novo entrar, não existe mais "como era antes".
+
+### Fase 1 — Ganhos independentes do motor · P a M · três entregas separadas
+
+Nenhuma toca na lógica de débito. Cada uma é revertível sozinha.
+
+| # | Entrega | Tam. | Efeito medível |
+|---|---|---|---|
+| 1a | Cache de `min_billing` + gatilho de sujo; lista lê valor gravado | M | Abrir `/sales` cai de ~1 s pra ~0 |
+| 1b | Dobrar `strap_sourcing`, `selected_terceirizacao_ids`, `terceirizacao_quantities`, `outsourced_sectors` nas RPCs atômicas de criar e editar | P | Salvar PV de 12 itens: ~26 → ≤ 3 chamadas |
+| 1c | Botão de status desabilitado com indicador durante a operação | P | Elimina o duplo-clique que hoje dispara duas orquestrações concorrentes |
+
+> A 1c é pequena e conserta um bug real de hoje — vale entrar já, antes de qualquer coisa
+> grande.
+
+### Fase 2 — Visibilidade · M · **antes** da reescrita, de propósito
+
+Monta a aba `/sales?view=pendencias` com os **três segmentos derivados**, alimentados por
+motores que já existem:
+
+- **baixa parcial** ← `debit_consistency_report()`
+- **cadastro faltando** ← `consumption_consistency_report()`
+- **data inviável** ← cache da Fase 1a
+
+Trabalho real: agrupar por PV (hoje os relatórios são por OP/produto), classificar severidade,
+desenhar a tela, e ligar o segmento de OP de volta ao PV.
+
+Duas razões para vir antes da Fase 3:
+
+1. **Entrega o maior valor com o menor risco.** O problema silencioso — item em produção sem
+   material baixado — fica visível já, sem tocar em nada crítico.
+2. **Vira o detector de regressão da Fase 3.** Com a aba viva antes da reescrita, qualquer
+   mudança de comportamento do motor aparece como mudança na lista. Sem ela, a reescrita é
+   validada só por testes.
+
+### Fase 3 — O motor · G · a obra, isolada numa fase só
+
+| # | Passo | Nota |
+|---|---|---|
+| 3a | Tabela de eventos de falha | O log vai **dentro do handler** do `EXCEPTION`. No PL/pgSQL o handler roda *depois* do rollback ao savepoint, então o `INSERT` dele persiste — resolve o requisito 10 sem transação autônoma |
+| 3b | `promote_sale_order_to_production`, reusando as funções de débito atuais | Envelope, não reimplementação. As funções de débito não mudam |
+| 3c | Validação contra o baseline da Fase 0 | Em branch do Supabase (custo pago) ou em transação com `ROLLBACK` no fim |
+| 3d | Cutover do hook, com o caminho antigo atrás de chave de desligamento | Permite voltar em um commit se algo escapar |
+| 3e | Edição do PV passa a chamar o mesmo motor | Requisito 29 — evita nascer um segundo motor |
+
+> Esta é a única fase que pode quebrar produção. Todas as outras são aditivas.
+
+### Fase 4 — Fechar o ciclo · M
+
+- Quarto segmento da aba: **eventos** de falha, severidade crítica.
+- Botão **"Tentar de novo"** + RPC de retry que reingressa no lote original (requisito 19).
+- Toast de resumo com atalho pra aba.
+
+### Fase 5 — Limpeza · P · não é opcional
+
+Remover as ~700 linhas do cliente que a Fase 3 aposentou.
+
+> Se ficarem, o projeto ganha um **segundo motor** de promoção — exatamente o padrão que já
+> custou caro três vezes aqui (os 3 sistemas de PCP isolados, o terceiro motor do Consumo
+> Consolidado, o modal × ficha de operador). Código morto que ainda compila é o jeito mais
+> comum de reintroduzir o bug que se acabou de corrigir.
+
+### Ordem de dependência
+
+```
+Fase 0 ──┬─→ Fase 1a ─┐
+         │            ├─→ Fase 2 ──→ Fase 3 ──→ Fase 4 ──→ Fase 5
+         ├─→ Fase 1b  │
+         └─→ Fase 1c ─┘
+```
+
+1a, 1b e 1c são paralelas entre si. A Fase 2 depende da 1a (o segmento de data inviável lê o
+cache). A Fase 3 depende da 0 (gabarito) e se beneficia da 2 (detector).
+
+### Onde o plano pode dar errado
+
+| Risco | Onde aparece | Trava |
+|---|---|---|
+| Motor novo calcula diferente do antigo | Fase 3 | Gabarito da Fase 0 + `run_consumption_parity_tests()` |
+| Deadlock entre PVs concorrentes | Fase 3 | Laço serial ordenado por `sale_order_items.id`; teste de duas abas simultâneas |
+| RPC executável sem login | Fase 3 | Guard `auth.uid()`/`is_approved_user()`; teste com a chave anon |
+| Carimbo de migration colidindo | Fases 1a, 3a | Reconsultar `max(version)` na hora de aplicar — worktree é compartilhado |
+| Aba nasce com centenas de linhas e vira ruído | Fase 2 | Abre só no crítico; atenção e informativo atrás de filtro com contador |
+| Duas telas discordando sobre a mesma falha | Fase 2 | `/diagnostics` e a aba precisam ler a **mesma** função, nunca uma cópia |
+| Código morto reintroduzindo o bug | Fase 5 | Remoção é entrega, não faxina opcional |
 
 ## Definition of Done
 
