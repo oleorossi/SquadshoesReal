@@ -238,6 +238,10 @@ export default function SaleOrders() {
   const createOrder = useCreateSaleOrder();
   const deleteOrder = useDeleteSaleOrder();
   const updateStatus = useUpdateSaleOrderStatus();
+  // Qual PV está sendo promovido agora — alimenta o indicador da linha (req. 30).
+  const statusPendingId = updateStatus.isPending
+    ? (updateStatus.variables as { id?: string } | undefined)?.id ?? null
+    : null;
   // Subscribe Realtime: outros users veem mudanças/exclusões em ~200ms via WS.
   useRealtimeSaleOrders();
   const queryClient = useQueryClient();
@@ -788,7 +792,19 @@ export default function SaleOrders() {
         return;
       }
     }
-    const results = await Promise.allSettled(ids.map(id => updateStatus.mutateAsync({ id, status })));
+    // ⚠ EM SÉRIE, não Promise.allSettled. Promover N PVs em paralelo faz dois
+    // pedidos que compartilham o mesmo material (napa, solado) disputarem a MESMA
+    // linha de `products` ao mesmo tempo — deadlock ou débito perdido. É o mesmo
+    // motivo pelo qual o motor de promoção percorre os itens em série lá dentro.
+    // (requisito 2 de specs/pv-producao-performance-e-pendencias.md)
+    const results: PromiseSettledResult<unknown>[] = [];
+    for (const id of ids) {
+      try {
+        results.push({ status: 'fulfilled', value: await updateStatus.mutateAsync({ id, status }) });
+      } catch (e) {
+        results.push({ status: 'rejected', reason: e });
+      }
+    }
     const failed = results.filter(r => r.status === 'rejected').length;
     setSelectedIds(new Set());
     if (failed === 0) {
@@ -2117,16 +2133,23 @@ export default function SaleOrders() {
                         </TableCell>
                       )}
                       <TableCell onClick={(e) => e.stopPropagation()}>
-                        <Select value={order.status} onValueChange={async (v) => {
+                        {/* Requisito 30: enquanto a promoção roda, o controle fica
+                            desabilitado com indicador. Antes um duplo-clique
+                            disparava DUAS orquestrações concorrentes sobre o mesmo
+                            PV. Desabilita a coluna inteira, não só a linha: duas
+                            promoções simultâneas disputam as mesmas linhas de estoque. */}
+                        <Select value={order.status} disabled={updateStatus.isPending} onValueChange={async (v) => {
                           try {
                             await updateStatus.mutateAsync({ id: order.id, status: v });
                           } catch (err: any) {
                             toast.error(`Erro ao atualizar status: ${err.message}`);
                           }
                         }}>
-                          <SelectTrigger className="h-7 w-[130px] text-xs border-0 bg-transparent p-0 shadow-none hover:ring-1 hover:ring-border [&>svg]:hidden">
+                          <SelectTrigger className="h-7 w-[130px] text-xs border-0 bg-transparent p-0 shadow-none hover:ring-1 hover:ring-border [&>svg]:hidden disabled:opacity-60">
                             <Badge variant="outline" className={`${STATUS_COLORS[order.status] || ''} text-xs gap-1`}>
-                              <span className={`h-1.5 w-1.5 rounded-full mr-1.5 ${STATUS_DOT[order.status]}`} />
+                              {statusPendingId === order.id
+                                ? <Loader2 className="h-3 w-3 mr-1 animate-spin" aria-label="Processando" />
+                                : <span className={`h-1.5 w-1.5 rounded-full mr-1.5 ${STATUS_DOT[order.status]}`} />}
                               {order.status}
                               <CaretDown className="h-3 w-3 opacity-50" />
                             </Badge>
