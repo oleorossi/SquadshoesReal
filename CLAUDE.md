@@ -608,7 +608,24 @@ trigger em nome de "simplificar"**.
 ### Migration nova — carimbo
 
 O carimbo é uma **sequência sintética**, não a data de hoje: use um valor **maior que a
-maior versão já registrada** (hoje `20261019120000`). Usar a data corrente gera um carimbo
-menor que o topo e trava o pipeline. Ao aplicar via MCP, o `apply_migration` grava um
-carimbo próprio (`AAAAMMDDHHMMSS` real) — **alinhe o registro ao nome do arquivo** depois,
-senão o `db push` re-executa o arquivo.
+maior versão já registrada**. Usar a data corrente gera um carimbo menor que o topo e trava
+o pipeline. **Não confie em número escrito aqui** — esta linha já ficou desatualizada uma vez
+(dizia `20261019120000` quando o banco estava em `20261110120000`, auditoria de 03/08/2026).
+Consulte antes de nomear o arquivo:
+
+```sql
+select max(version) from supabase_migrations.schema_migrations;
+```
+
+⚠ **Worktree compartilhado:** outra sessão pode registrar um carimbo mais alto enquanto você
+trabalha. Reconsulte na hora de aplicar, não só na hora de criar o arquivo.
+
+Ao aplicar via MCP, o `apply_migration` grava um carimbo próprio com a **data real de hoje** —
+que hoje é MENOR que o topo da sequência sintética, então o registro sai fora de ordem.
+**Alinhe o registro ao nome do arquivo** depois, senão o `db push` re-executa o arquivo:
+
+```sql
+update supabase_migrations.schema_migrations
+set version = '<carimbo_do_arquivo>', name = '<nome-do-arquivo-sem-carimbo>'
+where version = '<carimbo_que_o_MCP_gravou>';
+```
