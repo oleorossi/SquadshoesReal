@@ -33,7 +33,7 @@ import { sectorOfGroup, sectorLabel, SECTOR_OPTIONS } from '@/lib/categoryFromGr
 import { useGroups } from '@/hooks/useGroups';
 import { useSuppliers } from '@/hooks/useSuppliers';
 import { useProducts } from '@/hooks/useProducts';
-import { useComponentSheets, useAddComponentSheet, useUpdateComponentSheet } from '@/hooks/useComponentSheets';
+import { useComponentSheets, useAddComponentSheet, useUpdateComponentSheet, DEFAULT_WASTE_PCT } from '@/hooks/useComponentSheets';
 import { NumberInput } from '@/components/ui/number-input';
 import { toast } from 'sonner';
 import { X, Stack as Layers, ArrowsLeftRight as ArrowRightLeft, Footprints, Cube as Box, CircleNotch as Loader2, CaretDown } from '@phosphor-icons/react';
@@ -506,10 +506,13 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
       if (sheet) {
         const yps = sheet.yield_per_size && typeof sheet.yield_per_size === 'object' ? sheet.yield_per_size as Record<string, number> : {};
         setYieldPerSize(yps);
-        setWastePct(sheet.waste_pct ?? 0);
+        setWastePct(sheet.waste_pct ?? DEFAULT_WASTE_PCT);
       } else {
         setYieldPerSize({});
-        setWastePct(0);
+        // Produto SEM ficha de componente: semear a perda PADRÃO, nunca 0. Salvar
+        // grava `waste_pct: wastePct` e o 0 daqui atropelava o DEFAULT 8 do banco
+        // — cada visita ao cadastro zerava a perda de corte do material calada.
+        setWastePct(DEFAULT_WASTE_PCT);
       }
     } else {
       const defaultGroup = defaultGroupId ? groups.find(g => g.id === defaultGroupId) : null;
@@ -2032,7 +2035,7 @@ function SendToComponentSheetButton({ productId }: { productId: string }) {
       dimensions_thickness: 0,
       dimensions_unit: 'mm',
       yield_per_size: {},
-      waste_pct: 8,
+      waste_pct: DEFAULT_WASTE_PCT,
       notes: '',
     });
   };

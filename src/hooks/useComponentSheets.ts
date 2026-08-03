@@ -15,6 +15,15 @@ export type ComponentSheetFormData = {
   notes: string;
 };
 
+/** Perda de corte padrão (%) de material de área. Espelha o DEFAULT da coluna
+ *  `component_sheets.waste_pct` no banco. Todo caminho que semeia o estado de um
+ *  formulário de ficha de componente DEVE usar esta constante — semear 0 grava 0
+ *  ao salvar e atropela o default do banco, zerando a perda de um material que
+ *  ninguém pediu pra zerar (achado da auditoria do PV-00150: 39 das 44 fichas da
+ *  NAPA SOFT vieram a 0 por esse caminho, e a mesma napa saía com consumo 8%
+ *  menor no preto do que nas outras cores da MESMA grade). */
+export const DEFAULT_WASTE_PCT = 8;
+
 export const emptyComponentForm: ComponentSheetFormData = {
   product_id: '',
   default_sole_group_id: null,
@@ -23,7 +32,7 @@ export const emptyComponentForm: ComponentSheetFormData = {
   dimensions_thickness: 0,
   dimensions_unit: 'mm',
   yield_per_size: {},
-  waste_pct: 8,
+  waste_pct: DEFAULT_WASTE_PCT,
   notes: '',
 };
 
