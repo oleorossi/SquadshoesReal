@@ -149,7 +149,14 @@ export function useDeleteGroup() {
       const { error } = await supabase.from('product_groups').delete().eq('id', id);
       if (error) throw new Error(`Grupo possui referências ativas — desvincule produtos e fichas técnicas antes de excluir. Detalhe: ${error.message}`);
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['product_groups'] }); toast.success('Grupo excluído!'); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['product_groups'] });
+      // A exclusão desvincula produtos (group_id = null) e fichas no banco —
+      // sem invalidar estes, os itens continuavam exibidos sob o grupo apagado.
+      qc.invalidateQueries({ queryKey: ['products'] });
+      qc.invalidateQueries({ queryKey: ['technical_sheets'] });
+      toast.success('Grupo excluído!');
+    },
     onError: (err: Error) => toast.error(`Erro: ${err.message}`),
   });
 }

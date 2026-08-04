@@ -891,6 +891,14 @@ export function useCancelNfe() {
     onSuccess: (data: any) => {
       qc.invalidateQueries({ queryKey: ['nfe_emitidas'] });
       qc.invalidateQueries({ queryKey: ['nfe_emitidas_all'] });
+      // O cancelamento reverte PV + duplicatas + lançamentos financeiros no
+      // servidor, mas só as queries de NF-e eram invalidadas: o PV seguia
+      // exibido como "Faturado" e as duplicatas canceladas continuavam somando
+      // no financeiro. Mesma lista de `useRevertInvoicedSaleOrder.onSuccess`.
+      qc.invalidateQueries({ queryKey: ['sale_orders'] });
+      qc.invalidateQueries({ queryKey: ['accounts_receivable'] });
+      qc.invalidateQueries({ queryKey: ['financial_entries'] });
+      qc.invalidateQueries({ queryKey: ['nfe_devolucoes'] });
       if (data?.partial_cleanup_warning) {
         toast.warning(`NF-e cancelada, mas houve aviso financeiro: ${data.partial_cleanup_warning}`);
       } else {

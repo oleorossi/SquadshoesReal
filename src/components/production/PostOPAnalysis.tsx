@@ -15,6 +15,23 @@ import { FileText as FileBarChart, MagnifyingGlass, TrendUp as TrendingUp, Trend
 import { Download, FileText } from '@phosphor-icons/react';
 import { exportCSV, exportPDF } from "@/lib/exportUtils";
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
+import { parseDateOnly } from '@/lib/dateOnly';
+
+/**
+ * OP concluída DENTRO do prazo?
+ *
+ * `last_sector_finished_at` é `timestamptz` (instante exato) e `planned_delivery`
+ * é `date` ('YYYY-MM-DD'). Comparar os dois com `new Date()` puro pegava a
+ * meia-noite UTC do prazo — 21h da VÉSPERA em BRT — então toda OP concluída no
+ * próprio dia do prazo (o caso normal numa fábrica) contava como ATRASADA e o
+ * KPI "Entrega no Prazo %" saía sistematicamente pior que a realidade.
+ * O prazo vale até o FIM do seu dia, em hora local.
+ */
+function finishedOnTime(finishedAt: string, plannedDelivery: string): boolean {
+  const deadlineEnd = parseDateOnly(plannedDelivery);
+  deadlineEnd.setHours(23, 59, 59, 999);
+  return new Date(finishedAt).getTime() <= deadlineEnd.getTime();
+}
 import { SearchInput } from '@/components/ui/search-input';
 import { EmptyState } from '@/components/ui/empty-state';
 
@@ -113,7 +130,7 @@ export default function PostOPAnalysis() {
 
     // On-time delivery
     const withTime = dateFiltered.filter(o => o.planned_delivery && o.last_sector_finished_at);
-    const onTimeCount = withTime.filter(o => new Date(o.last_sector_finished_at!) <= new Date(o.planned_delivery!)).length;
+    const onTimeCount = withTime.filter(o => finishedOnTime(o.last_sector_finished_at!, o.planned_delivery!)).length;
     const onTimeRate = withTime.length > 0 ? (onTimeCount / withTime.length) * 100 : 0;
 
     // Average lead time (days)
@@ -406,7 +423,7 @@ export default function PostOPAnalysis() {
                     : null;
                   const leadTimeDays = leadTimeHours !== null ? Math.round(leadTimeHours / 24) : null;
                   const onTime = op.planned_delivery && op.last_sector_finished_at
-                    ? new Date(op.last_sector_finished_at) <= new Date(op.planned_delivery)
+                    ? finishedOnTime(op.last_sector_finished_at, op.planned_delivery)
                     : null;
                   const hasDefects = op.stages.some(s => s.defects && s.defects.trim());
 

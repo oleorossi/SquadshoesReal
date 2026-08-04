@@ -93,6 +93,12 @@ export function useMoveStockStatus() {
       qc.invalidateQueries({ queryKey: ['held_stock'] });
       qc.invalidateQueries({ queryKey: ['quarantine_history'] });
       qc.invalidateQueries({ queryKey: ['product_search_quality'] });
+      // `move_stock_status` mexe no saldo do produto e gera movimento — sem
+      // invalidar estes dois, as telas de estoque seguiam com saldo velho até o
+      // staleTime expirar. É o mesmo par que as demais mutations de estoque já
+      // invalidam (o prefixo 'products' cobre ['products','paginated',…]).
+      qc.invalidateQueries({ queryKey: ['products'] });
+      qc.invalidateQueries({ queryKey: ['stock_movements'] });
       toast.success('Movimentação de estoque registrada.');
     },
     onError: (err: Error) => toast.error(`Erro: ${err.message}`),

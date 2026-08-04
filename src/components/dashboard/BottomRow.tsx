@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { ArrowRight } from '@phosphor-icons/react';
 import { cn } from "@/lib/utils";
 import { getDashboardPeriodRange, type DashboardPeriod } from "@/lib/dashboardPeriod";
+import { parseDateOnly } from "@/lib/dateOnly";
 
 type OPStatus = "ok" | "warn" | "err";
 
@@ -43,7 +44,14 @@ export function BottomRow({ period = 'current_month' }: { period?: DashboardPeri
         .limit(6);
       if (error) throw error;
       return (data || []).map((op: any) => {
-        const isLate = op.planned_delivery && new Date(op.planned_delivery) < new Date() && op.status !== "completed";
+        // `planned_delivery` é coluna `date`: `new Date(iso)` parseia UTC e, em
+        // BRT, o card pintava vermelho desde as 21h da véspera e durante todo o
+        // dia do prazo. Atrasada só a partir de D+1 (meia-noite local).
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+        const isLate = op.planned_delivery
+          && parseDateOnly(op.planned_delivery) < todayStart
+          && op.status !== "completed";
         let status: OPStatus = "ok";
         if (isLate) status = "err";
         else if (op.status === "pending" || op.status === "awaiting") status = "warn";

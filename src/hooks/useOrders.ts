@@ -342,6 +342,9 @@ export function useUpdateOrderStatus() {
       qc.invalidateQueries({ queryKey: ['production_consumptions'] });
       qc.invalidateQueries({ queryKey: ['production_waves'] });
       qc.invalidateQueries({ queryKey: ['accounts_receivable'] });
+      // Cancelar OP libera as reservas no servidor; sem invalidar isto as telas
+      // de reserva seguiam mostrando material reservado por OP já cancelada.
+      qc.invalidateQueries({ queryKey: ['material_reservations'] });
       toast.success('Status da OP atualizado!');
     },
     onError: (err: Error) => toast.error(`Erro: ${err.message}`),

@@ -20,6 +20,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { OrderStage } from '@/hooks/useOrderStages';
 import { MaterialReservationErrorBadge } from '@/components/orders/MaterialReservationErrorBadge';
+import { parseDateOnly } from '@/lib/dateOnly';
 
 type Order = {
   id: string;
@@ -137,14 +138,23 @@ function isLate(order: Order): boolean {
   if (!due) return false;
   const status = (order.status || '').toLowerCase();
   if (status.includes('finaliz') || status.includes('cancel')) return false;
-  const dueDate = new Date(due);
-  return dueDate.getTime() < Date.now();
+  // `due_date`/`planned_delivery` são colunas `date` → chegam 'YYYY-MM-DD'.
+  // `new Date(iso)` parseia UTC = 21h da VÉSPERA em BRT, então a OP virava
+  // "ATRASADA" desde as 21h do dia anterior ao prazo e durante todo o dia do
+  // prazo. Atrasada só a partir de D+1, comparando meia-noite local com
+  // meia-noite local.
+  const dueDate = parseDateOnly(due);
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  return dueDate.getTime() < todayStart.getTime();
 }
 
 function formatDeadline(order: Order): string {
   const due = order.due_date || order.planned_delivery;
   if (!due) return 'sem prazo';
-  const d = new Date(due);
+  // Mesmo motivo do isLate: sem parseDateOnly, "Hoje"/"Amanhã"/"Ontem" saíam
+  // todos deslocados um dia para trás.
+  const d = parseDateOnly(due);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const dDate = new Date(d.getFullYear(), d.getMonth(), d.getDate());

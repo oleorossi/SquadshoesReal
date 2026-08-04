@@ -2,6 +2,9 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, CircleNotch as Loader2, FileMagnifyingGlass as FileSearch, ArrowCounterClockwise as RotateCcw, Handshake, CheckCircle, Warning as AlertTriangle, PaperPlaneTilt } from '@phosphor-icons/react';
 import { SendSectorToContractorDialog } from '@/components/sale-orders/SendSectorToContractorDialog';
+// `newISO` é date-only: `new Date(iso)` parseia UTC e o toast confirmava o dia
+// ANTERIOR ao que era gravado em `delivery_deadline`.
+import { formatDateBR } from '@/lib/dateOnly';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
@@ -1086,7 +1089,7 @@ export default function SaleOrderForm() {
       delivery_week: mw?.week ?? f.delivery_week,
     }));
     setMinBillingDialogOpen(false);
-    toast.success(`Faturamento ajustado para ${new Date(newISO).toLocaleDateString('pt-BR')} (${newWeek}).`);
+    toast.success(`Faturamento ajustado para ${formatDateBR(newISO)} (${newWeek}).`);
     setTimeout(() => {
       const fakeEvent = { preventDefault: () => {} } as React.FormEvent;
       handleSubmit(fakeEvent, { skipMinBillingCheck: true });
@@ -1203,7 +1206,7 @@ export default function SaleOrderForm() {
   const handleCapacityPostpone = (newISO: string) => {
     setCapacityDialogOpen(false);
     setForm((f) => ({ ...f, delivery_deadline: newISO }));
-    toast.info(`Data de faturamento ajustada para ${new Date(newISO).toLocaleDateString('pt-BR')}.`);
+    toast.info(`Data de faturamento ajustada para ${formatDateBR(newISO)}.`);
     setTimeout(() => doSubmit(), 100);
   };
 

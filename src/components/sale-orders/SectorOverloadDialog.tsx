@@ -9,6 +9,10 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { CapacityCheckResult, SECTOR_LABELS, SectorKey } from '@/lib/sectorCapacity';
 import { SubmitFlowStepper } from './SubmitFlowStepper';
 import { useAccessControl } from '@/hooks/useAccessControl';
+// `billingDateISO`/`suggestedISO` são date-only ('YYYY-MM-DD'): `new Date(iso)`
+// parseia em UTC e, em BRT, RENDERIZA o dia anterior. O valor gravado sempre
+// esteve certo — quem mentia era o rótulo, inclusive o do botão "Adiar para X".
+import { formatDateBR } from '@/lib/dateOnly';
 
 const SECTOR_ICONS: Record<SectorKey, React.ComponentType<any>> = {
   corte_palmilha:   Scissors,
@@ -70,7 +74,7 @@ export function SectorOverloadDialog({ open, onOpenChange, result, onKeepDateAnd
           </DialogTitle>
           <DialogDescription>
             Os setores abaixo não conseguirão entregar a quantidade solicitada até{' '}
-            <strong>{new Date(result.billingDateISO).toLocaleDateString('pt-BR')}</strong>.
+            <strong>{formatDateBR(result.billingDateISO)}</strong>.
           </DialogDescription>
         </DialogHeader>
 
@@ -122,7 +126,7 @@ export function SectorOverloadDialog({ open, onOpenChange, result, onKeepDateAnd
               para cobrir o excedente, garantindo a entrega.
             </p>
             <p>
-              <strong>Adiar para {new Date(suggestedISO).toLocaleDateString('pt-BR')}:</strong> ajusta a data de
+              <strong>Adiar para {formatDateBR(suggestedISO)}:</strong> ajusta a data de
               faturamento para uma janela viável internamente.
             </p>
             {isAdmin && onAdminOverride && (
@@ -141,7 +145,7 @@ export function SectorOverloadDialog({ open, onOpenChange, result, onKeepDateAnd
               <span className="text-xs font-bold uppercase tracking-wide">Confirmar override</span>
             </div>
             <p className="text-xs text-foreground">
-              Você está assumindo responsabilidade por entregar este pedido em <strong>{new Date(result.billingDateISO).toLocaleDateString('pt-BR')}</strong>,
+              Você está assumindo responsabilidade por entregar este pedido em <strong>{formatDateBR(result.billingDateISO)}</strong>,
               mesmo com capacidade interna insuficiente. O pedido será marcado como override manual.
             </p>
             <div className="space-y-1.5">
@@ -187,7 +191,7 @@ export function SectorOverloadDialog({ open, onOpenChange, result, onKeepDateAnd
                 Cancelar
               </Button>
               <Button variant="secondary" onClick={() => onPostponeDate(suggestedISO)}>
-                Adiar para {new Date(suggestedISO).toLocaleDateString('pt-BR')}
+                Adiar para {formatDateBR(suggestedISO)}
               </Button>
               {isAdmin && onAdminOverride && (
                 <Button

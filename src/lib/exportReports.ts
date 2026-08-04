@@ -3,6 +3,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { parseDateOnly } from '@/lib/dateOnly';
 
 export interface ReportData {
   saleOrders: any[];
@@ -202,17 +203,22 @@ export function exportClientRankingExcel(data: ReportData) {
 
 export function exportDelayedOrdersExcel(data: ReportData) {
   const wb = XLSX.utils.book_new();
+  // Prazos são colunas `date` ('YYYY-MM-DD'): `new Date(iso)` parseia UTC = 21h
+  // da véspera em BRT, então o relatório listava como ATRASADO quem ainda estava
+  // no prazo e inflava a contagem de dias em 1. Ambos os lados na meia-noite
+  // LOCAL: atrasado só a partir de D+1, e o delta vira dias inteiros exatos.
   const today = new Date();
+  today.setHours(0, 0, 0, 0);
 
   const delayedSales = data.saleOrders.filter(s => {
     const dead = s.delivery_deadline;
     if (!dead) return false;
     const done = ['concluído', 'concluída', 'completed', 'faturado', 'cancelado', 'cancelada'];
     if (done.includes((s.status || '').toLowerCase())) return false;
-    return new Date(dead) < today;
+    return parseDateOnly(dead) < today;
   }).map(s => {
-    const dead = new Date(s.delivery_deadline!);
-    const days = Math.ceil((today.getTime() - dead.getTime()) / 86400000);
+    const dead = parseDateOnly(s.delivery_deadline!);
+    const days = Math.round((today.getTime() - dead.getTime()) / 86400000);
     return [s.order_number || '', s.client_name || '', fmtDate(s.delivery_deadline), days, s.status || ''];
   });
 
@@ -221,10 +227,10 @@ export function exportDelayedOrdersExcel(data: ReportData) {
     if (!dead) return false;
     const done = ['concluído', 'concluída', 'completed', 'finalizado', 'cancelado'];
     if (done.includes((o.status || '').toLowerCase())) return false;
-    return new Date(dead) < today;
+    return parseDateOnly(dead) < today;
   }).map(o => {
-    const dead = new Date((o.due_date || o.delivery_deadline)!);
-    const days = Math.ceil((today.getTime() - dead.getTime()) / 86400000);
+    const dead = parseDateOnly((o.due_date || o.delivery_deadline)!);
+    const days = Math.round((today.getTime() - dead.getTime()) / 86400000);
     return [o.order_number || o.op_number || '', (o as any).technical_sheets?.name || '', o.color || '', o.quantity || 0, fmtDate(o.due_date || o.delivery_deadline), days, o.status || ''];
   });
 
