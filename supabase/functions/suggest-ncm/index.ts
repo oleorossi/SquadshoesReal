@@ -1,10 +1,20 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.0";
+import {
+  callGemini,
+  extractText,
+  geminiErrorResponse,
+  getGeminiApiKey,
+  textModels,
+} from "../_shared/gemini.ts";
 
-// Suggest-ncm: agora chama Google Gemini API direto (sem Lovable middleware).
+// Suggest-ncm: chama a API do Google Gemini direto (sem Lovable middleware).
 // Migrado 2026-05-19 — Lovable AI Gateway descontinuado quando projeto saiu
-// pra Vercel. Gemini 2.0 Flash é gratuito até 60 req/min em
-// https://ai.google.dev. A chave fica em GEMINI_API_KEY (secret do Supabase).
+// pra Vercel. A chave fica em GEMINI_API_KEY (secret do Supabase).
+//
+// 04/08/2026: chamada movida pro _shared/gemini.ts e modelo deixou de ser
+// hardcoded (`gemini-2.0-flash`) — agora vem de textModels(), com cascata de
+// 404 pra sobreviver a renomeação do Google. Ver ADR 0002.
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": Deno.env.get("ALLOWED_ORIGIN") || "https://squadshoes-real.vercel.app",
@@ -56,14 +66,7 @@ serve(async (req) => {
       );
     }
 
-    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
-    if (!GEMINI_API_KEY) {
-      return new Response(JSON.stringify({
-        error: "GEMINI_API_KEY não configurada. Cadastre o secret em Supabase → Project Settings → Edge Functions → Secrets. Pegue a chave grátis em https://ai.google.dev"
-      }), {
-        status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    const GEMINI_API_KEY = getGeminiApiKey();
 
     const prompt = `Você é um especialista em classificação fiscal NCM (Nomenclatura Comum do Mercosul) para a indústria calçadista brasileira.
 
@@ -81,13 +84,15 @@ Responda APENAS com um JSON no formato:
 
 Se não conseguir determinar com certeza, sugira o mais provável e indique confiança "baixa".`;
 
-    // Gemini API REST direta — usa responseMimeType=json + responseSchema pra
-    // garantir saída JSON parseável sem precisar de regex/fallback.
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`;
-    const response = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+    // responseMimeType=json + responseSchema garantem saída JSON parseável sem
+    // precisar de regex/fallback.
+    const data = await callGemini({
+      apiKey: GEMINI_API_KEY,
+      models: textModels(),
+      modality: "text",
+      label: "suggest-ncm",
+      timeoutMs: 30_000,
+      body: {
         systemInstruction: {
           parts: [{ text: "Você é um classificador fiscal NCM especializado em calçados e seus componentes (couros, solados, palmilhas, adesivos, etc). Responda sempre em JSON válido conforme o schema." }],
         },
@@ -105,29 +110,10 @@ Se não conseguir determinar com certeza, sugira o mais provável e indique conf
             required: ["ncm", "description", "confidence"],
           },
         },
-      }),
+      },
     });
 
-    if (!response.ok) {
-      const t = await response.text();
-      console.error("Gemini API error:", response.status, t);
-      if (response.status === 429) {
-        return new Response(JSON.stringify({ error: "Limite de requisições do Gemini excedido. Tente novamente em alguns segundos." }), {
-          status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      if (response.status === 400) {
-        return new Response(JSON.stringify({ error: "Requisição inválida ao Gemini. Verifique GEMINI_API_KEY." }), {
-          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      return new Response(JSON.stringify({ error: `Erro ao consultar IA (HTTP ${response.status})` }), {
-        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const data = await response.json();
-    const content = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    const content = extractText(data) || "";
 
     try {
       // responseSchema garante JSON puro, mas vou tentar regex de fallback
@@ -158,9 +144,6 @@ Se não conseguir determinar com certeza, sugira o mais provável e indique conf
     });
   } catch (e) {
     console.error("suggest-ncm error:", e);
-    return new Response(
-      JSON.stringify({ error: e instanceof Error ? e.message : "Erro desconhecido" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return geminiErrorResponse(e, corsHeaders);
   }
 });

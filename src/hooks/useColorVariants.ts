@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { edgeFunctionError } from '@/lib/edgeFunctionError';
 
 export type ColorVariant = {
   id: string;
@@ -164,7 +165,9 @@ export async function recolorImage(imageUrl: string, targetColor: string, refere
   const { data, error } = await supabase.functions.invoke('recolor-image', {
     body: { imageUrl, targetColor, referenceCode },
   });
-  if (error) throw error;
+  // Sem desembrulhar o corpo, um 429 chegaria como "non-2xx status code" e a
+  // mensagem de cota do Gemini (ADR 0002) morreria aqui.
+  if (error) throw await edgeFunctionError(error, 'Falha ao recolorir a imagem');
   if (data?.error) throw new Error(data.error);
   return data.url;
 }

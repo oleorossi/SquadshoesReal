@@ -1,5 +1,26 @@
+// ═══════════════════════════════════════════════════════════════════════════
+// recolor-image — troca a cor do calçado de uma foto de referência.
+//
+// 04/08/2026: migrada do gateway `ai.gateway.lovable.dev` (LOVABLE_API_KEY)
+// para chamada direta ao Gemini com a GEMINI_API_KEY do projeto, encerrando a
+// última dependência de runtime da fase Lovable. Ver
+// docs/adr/0002-chave-gemini-propria-e-saida-do-gateway-lovable.md.
+//
+// O gateway falava dialeto OpenAI (choices[].message.images, data URL); a API
+// direta usa inlineData na ida e na volta — daí a troca do bloco de extração.
+//
+// Secrets: GEMINI_API_KEY (obrigatório) · GEMINI_IMAGE_MODEL (opcional,
+// compartilhado com generate-catalog-photo).
+// ═══════════════════════════════════════════════════════════════════════════
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  callGemini,
+  extractInlineImage,
+  geminiErrorResponse,
+  getGeminiApiKey,
+  imageModels,
+} from "../_shared/gemini.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": Deno.env.get("ALLOWED_ORIGIN") || "https://squadshoes-real.vercel.app",
@@ -38,7 +59,7 @@ serve(async (req) => {
     }
 
     // Authorization: only admin/manager roles can spend AI credits.
-    // Without this, any authenticated user could drain LOVABLE_API_KEY budget.
+    // Sem isto, qualquer autenticado consumiria a cota paga da GEMINI_API_KEY.
     const userId = claimsData.claims.sub;
     const adminClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "");
     const { data: roles, error: rolesError } = await adminClient
@@ -120,8 +141,7 @@ serve(async (req) => {
       );
     }
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
+    const GEMINI_API_KEY = getGeminiApiKey();
 
     // Download the original image and convert to base64
     console.log("Downloading image:", imageUrl);
@@ -146,110 +166,40 @@ serve(async (req) => {
     const base64Image = btoa(binary);
 
     const contentType = imgResp.headers.get("content-type") || "image/jpeg";
-    const dataUrl = `data:${contentType};base64,${base64Image}`;
 
-    console.log("Sending to AI for recoloring to:", targetColor);
+    console.log("Enviando pro Gemini — recolorir para:", targetColor);
 
-    // Call AI gateway with the image model
-    const aiResp = await fetch(
-      "https://ai.gateway.lovable.dev/v1/chat/completions",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-3.1-flash-image-preview",
-          modalities: ["image", "text"],
-          messages: [
+    // Chamada direta ao Gemini. A política de erro (404 cascateia, 429 falha
+    // alto) vive no _shared/gemini.ts e é a mesma das outras três funções.
+    const aiData = await callGemini({
+      apiKey: GEMINI_API_KEY,
+      models: imageModels(),
+      modality: "image",
+      label: "recolor-image",
+      timeoutMs: 120_000,
+      body: {
+        contents: [{
+          parts: [
+            { inlineData: { mimeType: contentType, data: base64Image } },
             {
-              role: "user",
-              content: [
-                {
-                  type: "image_url",
-                  image_url: { url: dataUrl },
-                },
-                {
-                  type: "text",
-                  text: `Change the color of this shoe/footwear to "${targetColor}". Keep the exact same shoe design, shape, style, details, textures and proportions. Only change the main color to ${targetColor}. Keep the background and lighting the same. The result must look like a professional product photo.`,
-                },
-              ],
+              text: `Change the color of this shoe/footwear to "${targetColor}". Keep the exact same shoe design, shape, style, details, textures and proportions. Only change the main color to ${targetColor}. Keep the background and lighting the same. The result must look like a professional product photo.`,
             },
           ],
-        }),
-        signal: AbortSignal.timeout(45_000),
-      }
-    );
+        }],
+        generationConfig: { responseModalities: ["IMAGE", "TEXT"] },
+      },
+    });
 
-    if (!aiResp.ok) {
-      const errText = await aiResp.text();
-      console.error("AI gateway error:", aiResp.status, errText);
-
-      if (aiResp.status === 429) {
-        return new Response(
-          JSON.stringify({ error: "Limite de requisições excedido. Tente novamente em alguns minutos." }),
-          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-      if (aiResp.status === 402) {
-        return new Response(
-          JSON.stringify({ error: "Créditos insuficientes. Adicione créditos ao seu workspace." }),
-          { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
-      return new Response(
-        JSON.stringify({ error: "Erro ao processar imagem com IA" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    const aiData = await aiResp.json();
-    console.log("AI response received, extracting image...");
-
-    // Extract image from response
-    let resultBase64: string | null = null;
-    let resultMimeType = "image/png";
-
-    const choice = aiData.choices?.[0];
-
-    // Helper to extract base64 from a data URL string
-    const extractFromDataUrl = (url: string): boolean => {
-      const prefix = "base64,";
-      const idx = url.indexOf(prefix);
-      if (idx === -1) return false;
-      const mimeMatch = url.match(/^data:([^;]+);/);
-      if (mimeMatch) resultMimeType = mimeMatch[1];
-      resultBase64 = url.substring(idx + prefix.length).replace(/\s/g, '');
-      return true;
-    };
-
-    // Check choice.message.images array (primary location for image models)
-    if (choice?.message?.images && Array.isArray(choice.message.images)) {
-      for (const img of choice.message.images) {
-        if (img.type === "image_url" && img.image_url?.url) {
-          if (extractFromDataUrl(img.image_url.url)) break;
-        }
-      }
-    }
-
-    // Fallback: check content array
-    if (!resultBase64 && choice?.message?.content && Array.isArray(choice.message.content)) {
-      for (const part of choice.message.content) {
-        if (part.type === "image_url" && part.image_url?.url) {
-          if (extractFromDataUrl(part.image_url.url)) break;
-        }
-      }
-    }
-
-    if (!resultBase64) {
-      console.error("No image in AI response:", JSON.stringify(aiData).slice(0, 500));
+    const image = extractInlineImage(aiData);
+    if (!image) {
+      console.error("Sem imagem na resposta:", JSON.stringify(aiData).slice(0, 500));
       return new Response(
         JSON.stringify({ error: "A IA não retornou uma imagem. Tente novamente." }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+    const resultBase64 = image.base64;
+    const resultMimeType = image.mimeType;
 
     // Upload to Supabase Storage
     const ext = resultMimeType.includes("png") ? "png" : "jpg";
@@ -288,14 +238,8 @@ serve(async (req) => {
     );
   } catch (e) {
     console.error("recolor-image error:", e);
-    return new Response(
-      JSON.stringify({
-        error: e instanceof Error ? e.message : "Erro desconhecido",
-      }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
-    );
+    // GeminiError sai com status e mensagem pt-BR próprios (cota, chave,
+    // modelo); qualquer outro erro vira 500 genérico.
+    return geminiErrorResponse(e, corsHeaders);
   }
 });

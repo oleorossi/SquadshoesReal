@@ -10,9 +10,20 @@
 // Secrets: GEMINI_API_KEY (obrigatório) · GEMINI_IMAGE_MODEL (opcional,
 // default gemini-3.1-flash-image). Trocado de OpenAI pra Gemini em 02/08/2026
 // a pedido do dono (chave OpenAI de revendedor não funcionou).
+//
+// 04/08/2026: a chamada passou pro _shared/gemini.ts, que centraliza a política
+// de erro das 4 funções de IA (ADR 0002). GEMINI_IMAGE_MODEL agora vale também
+// pra recolor-image — um secret controla as duas funções de imagem.
 // ═══════════════════════════════════════════════════════════════════════════
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  callGemini,
+  extractInlineImage,
+  geminiErrorResponse,
+  getGeminiApiKey,
+  imageModels,
+} from "../_shared/gemini.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": Deno.env.get("ALLOWED_ORIGIN") || "https://squadshoes-real.vercel.app",
@@ -114,50 +125,31 @@ serve(async (req) => {
     const base64Image = btoa(binary);
 
     // --- Google Gemini (nano banana) ---
-    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
-    if (!GEMINI_API_KEY) throw new Error("GEMINI_API_KEY não configurada nos secrets da função.");
-    const model = Deno.env.get("GEMINI_IMAGE_MODEL") || "gemini-3.1-flash-image";
-
-    console.log(`Gerando cor ${colorName} (${colorHex}) ref=${referenceCode || "-"} modelo=${model}`);
-    const aiResp = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
-      {
-        method: "POST",
-        headers: { "x-goog-api-key": GEMINI_API_KEY, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{
-            parts: [
-              { inlineData: { mimeType: contentType, data: base64Image } },
-              { text: PROMPT_TEMPLATE(colorName, colorHex, extra) },
-            ],
-          }],
-          generationConfig: { responseModalities: ["IMAGE", "TEXT"] },
-        }),
-        signal: AbortSignal.timeout(120_000),
+    console.log(`Gerando cor ${colorName} (${colorHex}) ref=${referenceCode || "-"}`);
+    const aiData = await callGemini({
+      apiKey: getGeminiApiKey(),
+      models: imageModels(),
+      modality: "image",
+      label: "generate-catalog-photo",
+      timeoutMs: 120_000,
+      body: {
+        contents: [{
+          parts: [
+            { inlineData: { mimeType: contentType, data: base64Image } },
+            { text: PROMPT_TEMPLATE(colorName, colorHex, extra) },
+          ],
+        }],
+        generationConfig: { responseModalities: ["IMAGE", "TEXT"] },
       },
-    );
+    });
 
-    if (!aiResp.ok) {
-      const errText = await aiResp.text();
-      console.error("Gemini error:", aiResp.status, errText.slice(0, 500));
-      if (aiResp.status === 429) return json({ error: "Limite de requisições do Gemini excedido. Tente em alguns minutos." }, 429);
-      if (aiResp.status === 400 && errText.includes("API_KEY_INVALID")) {
-        return json({ error: "Chave do Gemini inválida. Confira o secret GEMINI_API_KEY." }, 502);
-      }
-      if (aiResp.status === 403) return json({ error: "Chave do Gemini sem permissão pra este modelo." }, 502);
-      if (aiResp.status === 404) return json({ error: `Modelo ${model} não encontrado. Ajuste o secret GEMINI_IMAGE_MODEL.` }, 502);
-      return json({ error: "Erro ao gerar imagem com IA" }, 502);
-    }
-
-    const aiData = await aiResp.json();
-    const parts = aiData?.candidates?.[0]?.content?.parts || [];
-    const imgPart = parts.find((p: { inlineData?: { data?: string } }) => p.inlineData?.data);
-    const b64: string | undefined = imgPart?.inlineData?.data;
-    const outMime: string = imgPart?.inlineData?.mimeType || "image/png";
-    if (!b64) {
+    const image = extractInlineImage(aiData);
+    if (!image) {
       console.error("Sem imagem na resposta:", JSON.stringify(aiData).slice(0, 400));
       return json({ error: "A IA não retornou imagem. Tente novamente." }, 502);
     }
+    const b64 = image.base64;
+    const outMime = image.mimeType;
 
     // --- Upload no Storage + registro ---
     const binaryStr = atob(b64);
@@ -196,6 +188,6 @@ serve(async (req) => {
     return json({ url: publicUrl, id: row.id, colorName });
   } catch (e) {
     console.error("generate-catalog-photo error:", e);
-    return json({ error: e instanceof Error ? e.message : "Erro desconhecido" }, 500);
+    return geminiErrorResponse(e, corsHeaders);
   }
 });
