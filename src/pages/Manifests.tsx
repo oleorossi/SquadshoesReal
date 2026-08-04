@@ -448,7 +448,10 @@ function AddVolumeDialog({
       // 'Finalizado s/ NF' quando register_order_shipment for chamado).
       const { data, error } = await (supabase as any)
         .from('sale_orders')
-        .select('id, order_number, client_name, delivery_city, delivery_state, status, nfe_required')
+        // ⚠ `sale_orders` NÃO tem delivery_city/delivery_state — pedi-las derrubava
+        // a query inteira (42703) e o seletor de PV ficava sempre vazio. Cidade/UF
+        // do destino vêm do cliente (clients.cidade / clients.estado).
+        .select('id, order_number, client_name, status, nfe_required, clients(cidade, estado)')
         .or('status.in.(Pronto,pronto,Faturado,faturado),and(status.eq.Em Produção,nfe_required.eq.false)')
         .order('created_at', { ascending: false })
         .limit(200);
@@ -467,8 +470,8 @@ function AddVolumeDialog({
         volume_type: volumeType,
         total_pairs: totalPairs,
         weight_kg: weight,
-        destination_city: city || so?.delivery_city || '',
-        destination_uf: uf || so?.delivery_state || '',
+        destination_city: city || so?.clients?.cidade || '',
+        destination_uf: uf || so?.clients?.estado || '',
         ean,
       });
       if (error) throw error;
@@ -503,8 +506,8 @@ function AddVolumeDialog({
               setAutoFilled(false);
               const so = saleOrders.find((s: any) => s.id === v);
               if (so) {
-                if (!city && so.delivery_city) setCity(so.delivery_city);
-                if (!uf && so.delivery_state) setUf(so.delivery_state);
+                if (!city && so.clients?.cidade) setCity(so.clients.cidade);
+                if (!uf && so.clients?.estado) setUf(so.clients.estado);
               }
             }}>
               <SelectTrigger><SelectValue placeholder="Selecionar..." /></SelectTrigger>

@@ -1285,6 +1285,41 @@ describe('orderConsumption — contrato de colunas do fetch', () => {
     ).toEqual([]);
   });
 
+  /**
+   * MESMA classe de bug, outro `.select()`: o de `products` (`allProducts`).
+   *
+   * O guard acima só cobre `sheet.*` (technical_sheets) — e foi por essa fresta
+   * que passou o `p.active`: o select de `products` aplica `.eq('active', true)`
+   * mas NÃO projeta `active`, então `(p) => p.id === pin && p.active` lia
+   * `undefined` em toda linha e o pin de SKU da ficha (Material 1 / Forro 1)
+   * NUNCA disparava — anulando o F2-04 em silêncio, com modal/ficha de operador
+   * resolvendo por GRUPO enquanto custeio/reserva/débito usavam o SKU pinado.
+   * (Auditoria 04/08/2026 — achado independente por dois motores.)
+   *
+   * Auto-derivado como os demais: qualquer campo novo lido de um produto passa a
+   * ser exigido no `.select()` automaticamente.
+   */
+  it('busca TODA coluna que o motor lê de allProducts via p.* (auto-derivado)', () => {
+    const src = readFileSync(resolve(process.cwd(), 'src/lib/orderConsumption.ts'), 'utf8');
+    const code = src
+      .replace(/\/\*[\s\S]*?\*\//g, ' ')
+      .replace(/(^|[^:])\/\/.*$/gm, '$1');
+    const selectMatch = code.match(/\.from\('products'\)[\s\S]{0,400}?\.select\('([^']+)'\)/);
+    expect(selectMatch, "select de products não encontrado em orderConsumption.ts").toBeTruthy();
+    const productCols = new Set(selectMatch![1].split(',').map(c => c.trim()).filter(Boolean));
+    // `p` é o identificador usado em todos os callbacks sobre allProducts.
+    const re = /\bp\s*\??\.\s*([a-zA-Z_][a-zA-Z0-9_]*)/g;
+    const read = new Set<string>();
+    for (const m of code.matchAll(re)) read.add(m[1]);
+    // Sanidade: se a regex quebrar, o guard passaria vazio (falso verde).
+    expect(read.size).toBeGreaterThan(3);
+    const missing = [...read].filter(c => !productCols.has(c)).sort();
+    expect(
+      missing,
+      `campos lidos de allProducts via p.* mas AUSENTES do .select() de products: ${missing.join(', ')}`,
+    ).toEqual([]);
+  });
+
   // Travas dos fixes da auditoria 2026-07-19 (specs/auditoria-debito-ficha-grade.md):
   // BOM-1 — Lista de Separação emite a Forração da Palmilha (napa da placa);
   // BOM-3 — e aplica a supressão anti-duplicidade cabedal×palmilha;

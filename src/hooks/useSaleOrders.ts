@@ -12,6 +12,7 @@ import { recomputeMaterialGate } from '@/hooks/useMaterialGate';
 import { consumeReservationsOnRelease } from '@/lib/releaseConsumption';
 import { canonicalStageOrder } from '@/components/production/worksheet/stageOrder';
 import { pruneStrapSourcing } from '@/lib/strapSourcing';
+import { resolveGroupSuppliers } from '@/lib/groupSupplierResolution';
 
 // Setores default de uma OP — nomes CANÔNICOS ('Aviamento', não o legado 'Mesa';
 // inclui 'Costura' desde o PR 2). A numeração vem de CANONICAL_STAGE_ORDER
@@ -178,16 +179,10 @@ async function generateAutoPurchaseOrders(saleOrderNumber: string, systemOrderNu
     const { data: sups } = await supabase.from('suppliers').select('id, name').in('id', prodSupplierIds);
     for (const s of (sups || []) as any[]) supplierNameById.set(s.id, s.name);
   }
-  const groupSupplier = new Map<string, { supplier_id: string | null; supplier_name: string }>();
-  if (groupIds.length > 0) {
-    const { data: gs } = await (supabase as any).from('group_suppliers')
-      .select('group_id, supplier_id, supplier_name')
-      .in('group_id', groupIds)
-      .order('created_at', { ascending: false });
-    for (const g of (gs || []) as any[]) {
-      if (!groupSupplier.has(g.group_id)) groupSupplier.set(g.group_id, { supplier_id: g.supplier_id || null, supplier_name: g.supplier_name });
-    }
-  }
+  // ⚠ `group_suppliers` não tem `supplier_id` — o SELECT antigo pedia a coluna
+  // inexistente e o erro não capturado virava `data: null`: todo produto sem
+  // `products.supplier_id` caía em "Sem Fornecedor". Ver groupSupplierResolution.
+  const groupSupplier = await resolveGroupSuppliers(groupIds);
   const resolveSupplier = (p: any): { key: string; supplier_id: string | null; supplier_name: string } => {
     if (p.supplier_id && supplierNameById.has(p.supplier_id)) {
       return { key: p.supplier_id, supplier_id: p.supplier_id, supplier_name: supplierNameById.get(p.supplier_id)! };

@@ -1,6 +1,7 @@
 import { supabase } from '@/integrations/supabase/client';
 
 import { roundUpToPurchaseMultiple, effectivePurchaseMultiple } from '@/lib/purchaseMultiple';
+import { resolveGroupSupplier } from '@/lib/groupSupplierResolution';
 
 export interface MaterialAutoPOResult {
   poNumber: string;
@@ -77,18 +78,15 @@ export async function autoCreateMaterialPO(params: {
     }
   }
 
-  // Priority 2: group_suppliers (most recent supplier for the product's group)
+  // Priority 2: group_suppliers (most recent supplier for the product's group).
+  // ⚠ `group_suppliers` não tem `supplier_id` — antes esse SELECT pedia a coluna
+  // inexistente e, sem capturar o erro, o 42703 virava `data: null`: esta
+  // prioridade nunca valia e a OC nascia "A definir". Ver groupSupplierResolution.
   if (supplierName === 'A definir' && product.group_id) {
-    const { data: gs } = await (supabase as any)
-      .from('group_suppliers')
-      .select('supplier_name, supplier_id')
-      .eq('group_id', product.group_id)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    const gs = await resolveGroupSupplier(product.group_id);
     if (gs?.supplier_name) {
       supplierName = gs.supplier_name;
-      supplierId = gs.supplier_id || null;
+      supplierId = gs.supplier_id;
     }
   }
 

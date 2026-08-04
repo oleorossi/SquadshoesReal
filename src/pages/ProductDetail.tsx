@@ -102,7 +102,6 @@ export default function ProductDetail() {
   const [minStockGrade, setMinStockGrade] = useState<Record<string, number>>({});
   const [shoeCategory, setShoeCategory] = useState<'adulto' | 'infantil'>('adulto');
   const [yieldPerSize, setYieldPerSize] = useState<Record<string, number>>({});
-  const [wastePct, setWastePct] = useState(8);
   const [plateLength, setPlateLength] = useState(0);
   const [plateWidth, setPlateWidth] = useState(0);
   const [plateThickness, setPlateThickness] = useState(0);
@@ -173,7 +172,6 @@ export default function ProductDetail() {
     const sheet = (componentSheets as any[]).find((s: any) => s.product_id === product.id);
     if (sheet) {
       setYieldPerSize(sheet.yield_per_size && typeof sheet.yield_per_size === 'object' ? sheet.yield_per_size as Record<string, number> : {});
-      setWastePct(sheet.waste_pct ?? 0);
     }
   }, [product, componentSheets]);
 
@@ -276,8 +274,10 @@ export default function ProductDetail() {
         dimensions_width: plateWidth,
         dimensions_thickness: plateThickness,
         dimensions_unit: plateUnit,
+        // Sem `waste_pct`: a coluna foi DROPADA em 20261115120300 (perda de corte
+        // saiu do sistema). Mandá-la aqui derrubava o upsert da ficha com 42703 —
+        // e o produto já tinha sido salvo acima, deixando os dois fora de sincronia.
         yield_per_size: yieldPerSize,
-        waste_pct: wastePct,
       };
       if (existingSheet) {
         await updateComponentSheet.mutateAsync({ id: existingSheet.id, data: sheetData });
@@ -656,10 +656,6 @@ export default function ProductDetail() {
               ))}
             </div>
             <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label className="text-xs text-muted-foreground">Perda / Desperdício (%)</Label>
-                <NumberInput value={wastePct} onChange={setWastePct} min={0} step="0.5" className="mt-1" />
-              </div>
               <div className="flex items-end">
                 {existingSheet
                   ? <Badge variant="secondary" className="text-xs">Ficha existente</Badge>

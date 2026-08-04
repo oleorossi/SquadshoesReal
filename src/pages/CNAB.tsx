@@ -48,7 +48,7 @@ export default function CNAB() {
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from('accounts_receivable')
-        .select('id, amount, due_date, customer_name, description')
+        .select('id, amount, due_date, client_name, description')
         .eq('status', 'pendente')
         .order('due_date', { ascending: true })
         .limit(100);
@@ -163,7 +163,7 @@ export default function CNAB() {
                     <label key={ar.id} className="flex items-center gap-2 px-3 py-2 border-b last:border-0 hover:bg-muted/30 cursor-pointer text-sm">
                       <Checkbox checked={form.selected_ar.has(ar.id)} onCheckedChange={() => toggleAr(ar.id)} />
                       <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-xs truncate">{ar.customer_name || ar.description || '—'}</p>
+                        <p className="font-semibold text-xs truncate">{ar.client_name || ar.description || '—'}</p>
                         <p className="text-xs text-muted-foreground">
                           Venc.: {ar.due_date ? format(new Date(ar.due_date), 'dd/MM/yy') : '—'}
                         </p>

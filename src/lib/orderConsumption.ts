@@ -1206,9 +1206,14 @@ export function computeConsumptionForItems(
       const isPrincipal = upperVariantDriven || upperMatch.group === (sheet?.upper_material || '');
       // Pin de SKU calculado ANTES da ficha de conversão: a cs do produto
       // pinado dirige largura/perda quando existir (ordem do SQL — F2-04).
+      // ⚠ SEM `&& p.active`: `allProducts` já vem de um `.select()` com
+      // `.eq('active', true)`, mas `active` NÃO está projetado — o guard lia
+      // `undefined` em toda linha e o pin da ficha NUNCA disparava, anulando o
+      // F2-04 em silêncio (TS loose não acusa). O pin da variante (upperVariant.pin),
+      // o do solado e o motor irmão bomConsumption.ts nunca testaram `active`.
       const upperPin = upperVariant.pin
         || (isPrincipal && (sheet as any)?.upper_material_product_id
-          ? (allProducts || []).find((p: any) => p.id === (sheet as any).upper_material_product_id && p.active)
+          ? (allProducts || []).find((p: any) => p.id === (sheet as any).upper_material_product_id)
           : null);
       const upperSheet = getConversionSheetForProduct(upperPin?.id, upperMatch.group, { color: orderColor, mode: 'linear', preferYield: true });
       const altRecord = isPrincipal ? null : upperAlts.find((a: any) => a.material === upperMatch.group);
@@ -1304,9 +1309,10 @@ export function computeConsumptionForItems(
     // Pin de SKU do forro (variante > ficha) — hoisted: dirige a ficha de
     // conversão (F2-04) do Forro E da Forração Palmilha abaixo.
     const isPrincipalLining = !!liningMatch && (liningVariantDriven || liningMatch.group === (sheet?.lining_material || ''));
+    // ⚠ SEM `&& p.active` — mesma razão do upperPin acima (F2-04 virava no-op).
     const liningPin = liningVariant.pin
       || (isPrincipalLining && (sheet as any)?.lining_material_product_id
-        ? (allProducts || []).find((p: any) => p.id === (sheet as any).lining_material_product_id && p.active)
+        ? (allProducts || []).find((p: any) => p.id === (sheet as any).lining_material_product_id)
         : null);
     if (liningMatch && !suppressCabedalForracao) {
       const mappedLiningColor = liningColorMap.get(`${item.reference_id}::${normalizeColorKey(orderColor)}`) || liningDefaultMap.get(item.reference_id) || orderColor;
@@ -1694,7 +1700,16 @@ export function computeConsumptionForItems(
       const facheteGroupName = facheteGroupId
         ? ((productGroups || []).find((g: any) => g.id === facheteGroupId)?.name || '')
         : '';
-      const facheteMaterialName = facheteGroupName || (sheet?.lining_material || '');
+      // Cascata da variante (mig 20261027120000): quando a ficha liga
+      // `variant_drives_fachete`, o material PRINCIPAL da variante vence o grupo
+      // de fachete do solado — é a precedência de `resolve_fachete_material_for_variant`
+      // (variant_main primeiro, senão o grupo passado). O motor TS ignorava a flag,
+      // então modal/Lista de Separação mandavam cortar a napa da FICHA enquanto
+      // custeio/MRP resolviam pela variante.
+      const facheteVariantGroup = variant
+        ? variantComponent(null, null, sheet?.variant_drives_fachete).groupName
+        : '';
+      const facheteMaterialName = facheteVariantGroup || facheteGroupName || (sheet?.lining_material || '');
       const fachetePerSize = mergePerSizeConsumption(
         facheteSpecBySole.get(soleProductIdResolved),
         facheteConsumptionPerSizeBySole.get(soleProductIdResolved),

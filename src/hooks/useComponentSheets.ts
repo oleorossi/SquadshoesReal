@@ -57,8 +57,11 @@ export function useSoleGroups() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('product_groups')
-        .select('id, name, category, colors')
-        .ilike('category', '%solado%')
+        // A coluna é `sector` (SECTOR_OPTIONS + CHECK da mig 20260901140000);
+        // `category` não existe em product_groups — o filtro antigo derrubava a
+        // query inteira e o seletor "Solado Padrão" nunca carregava.
+        .select('id, name, sector, colors')
+        .ilike('sector', '%solado%')
         .order('name');
       if (error) throw error;
       return data || [];

@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { resolveGroupSupplier } from '@/lib/groupSupplierResolution';
 
 export interface SoleAutoPOResult {
   poNumber: string;
@@ -232,17 +233,14 @@ async function criarOuAcumularOCDeSolado(ctx: SolePOContext): Promise<SoleAutoPO
   let supplierName = 'A definir';
   let supplierId: string | null = null;
 
+  // ⚠ `group_suppliers` não tem `supplier_id` — o SELECT antigo pedia a coluna
+  // inexistente e, sem capturar o erro, caía em `data: null` silencioso: toda OC
+  // de solado nascia "A definir". Ver groupSupplierResolution.
   if (soleProductGroupId) {
-    const { data: gs } = await (supabase as any)
-      .from('group_suppliers')
-      .select('supplier_name, supplier_id')
-      .eq('group_id', soleProductGroupId)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    const gs = await resolveGroupSupplier(soleProductGroupId);
     if (gs?.supplier_name) {
       supplierName = gs.supplier_name;
-      supplierId = gs.supplier_id || null;
+      supplierId = gs.supplier_id;
     }
   }
 

@@ -132,7 +132,7 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
   ] = await Promise.all([
     supabase
       .from('technical_sheets')
-      .select('id, upper_material, upper_material_product_id, upper_consumption, upper_consumption_per_size, lining_material, lining_material_product_id, lining_consumption, lining_consumption_per_size, insole_material, insole_consumption, insole_consumption_per_size, insole_ready_made, insole_has_lining, insole_lining_consumption, insole_lining_consumption_per_size, sole_material, sole_consumption, sole_color, sole_group_id, primary_sole_id, lining_accessories, components_accessories, strap_colors, sole_drives_consumption, direct_components, component_colors_enabled, variant_drives_upper, variant_drives_lining')
+      .select('id, upper_material, upper_material_product_id, upper_consumption, upper_consumption_per_size, lining_material, lining_material_product_id, lining_consumption, lining_consumption_per_size, insole_material, insole_consumption, insole_consumption_per_size, insole_ready_made, insole_has_lining, insole_lining_consumption, insole_lining_consumption_per_size, sole_material, sole_consumption, sole_color, sole_group_id, primary_sole_id, lining_accessories, components_accessories, strap_colors, sole_drives_consumption, direct_components, component_colors_enabled, variant_drives_upper, variant_drives_lining, variant_drives_fachete')
       .in('id', refIds),
     supabase
       .from('sheet_materials')
@@ -347,6 +347,12 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
   // canônico/SQL ("Item padrão (solado)"). Candidatos = produtos que a cascata
   // de solado destas fichas pode resolver.
   const soleStandardItemsBySole = new Map<string, Array<{ standardItemId: string; size: number; consumption: number; unit: string | null }>>();
+  // Cadastro VIGENTE (`sole_group_standard_items`, por MODELO/grupo de solado,
+  // desde 02/08/2026). A Lista de Separação lia SÓ a tabela legada por numeração
+  // — que a mig 20261104120100 já tirou do custeio e marcou como aposentada —
+  // então divergia do modal, da ficha de operador e do débito SQL, e ainda
+  // suprimia as linhas equivalentes do BOM via `stdCoveredProductIds`.
+  const soleGroupStandardItemsBySole = new Map<string, Array<{ standardItemId: string; perPair: number; perSize: Record<string, number>; unit: string | null }>>();
   {
     const candidateIds = new Set<string>();
     for (const pid of soleColorMap.values()) candidateIds.add(pid);
@@ -373,6 +379,39 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
         const arr = soleStandardItemsBySole.get(r.sole_product_id) || [];
         arr.push({ standardItemId: r.standard_item_id, size: Number(r.size), consumption: cons, unit: r.unit ?? null });
         soleStandardItemsBySole.set(r.sole_product_id, arr);
+      }
+    }
+
+    // Cadastro vigente por MODELO (grupo) — expandido grupo → produtos-solado,
+    // porque o resto do motor resolve tudo por sole_product_id. Espelha
+    // orderConsumption.ts (mesma projeção e mesma regra de linha zerada).
+    const groupIdsForStd = new Set<string>();
+    for (const p of (allProducts || []) as any[]) {
+      if (candidateIds.has(p.id) && p.group_id) groupIdsForStd.add(p.group_id);
+    }
+    if (groupIdsForStd.size > 0) {
+      const { data: groupItems } = await (supabase as any)
+        .from('sole_group_standard_items')
+        .select('sole_group_id, material_product_id, consumption_per_pair, consumption_per_size, unit')
+        .in('sole_group_id', [...groupIdsForStd]);
+      const byGroup = new Map<string, any[]>();
+      for (const r of (groupItems || []) as any[]) {
+        const arr = byGroup.get(r.sole_group_id) || [];
+        arr.push(r);
+        byGroup.set(r.sole_group_id, arr);
+      }
+      for (const p of (allProducts || []) as any[]) {
+        if (!candidateIds.has(p.id) || !p.group_id) continue;
+        const rows = byGroup.get(p.group_id);
+        if (!rows || rows.length === 0) continue;
+        const arr = soleGroupStandardItemsBySole.get(p.id) || [];
+        for (const r of rows) {
+          const perPair = Number(r.consumption_per_pair) || 0;
+          const perSize = (r.consumption_per_size || {}) as Record<string, number>;
+          if (perPair <= 0 && Object.keys(perSize).length === 0) continue;
+          arr.push({ standardItemId: r.material_product_id, perPair, perSize, unit: r.unit ?? null });
+        }
+        if (arr.length > 0) soleGroupStandardItemsBySole.set(p.id, arr);
       }
     }
   }
@@ -809,7 +848,14 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
     if ((insoleSoleProd as any)?.is_fachetado && resolvedSolePid) {
       const facheteGroupId = (insoleSoleProd as any).fachete_material_group_id;
       const facheteGroupName = facheteGroupId ? (groupNameById(facheteGroupId) || '') : '';
-      const facheteMaterialName = facheteGroupName || (sheet?.lining_material || '');
+      // Cascata da variante: com `variant_drives_fachete` ligado, o material
+      // PRINCIPAL da variante vence o grupo de fachete do solado — precedência de
+      // `resolve_fachete_material_for_variant` (variant_main primeiro). Sem isto
+      // o picking mandava cortar a napa da FICHA e o custeio usava a da variante.
+      const facheteVariantGroup = variant
+        ? variantGroupName(null, null, (sheet as any)?.variant_drives_fachete)
+        : '';
+      const facheteMaterialName = facheteVariantGroup || facheteGroupName || (sheet?.lining_material || '');
       const fachetePerSize = mergePerSizeConsumption(
         facheteSpecBySole.get(resolvedSolePid),
         facheteConsumptionPerSizeBySole.get(resolvedSolePid),
@@ -864,13 +910,19 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
       const stdItemsForSole = resolvedSolePid
         ? (soleStandardItemsBySole.get(resolvedSolePid) || [])
         : [];
+      // Cadastro por MODELO convive com o legado por numeração; quando o mesmo
+      // produto está nos dois, o do MODELO vence (é o que a tela de hoje edita).
+      const groupStdItemsForSole = resolvedSolePid
+        ? (soleGroupStandardItemsBySole.get(resolvedSolePid) || [])
+        : [];
+      const groupStdProductIds = new Set(groupStdItemsForSole.map((s) => s.standardItemId));
       const gradeRaw = (item.grade || {}) as Record<string, number>;
       const baseGrade: Record<string, number> = {};
       for (const [k, v] of Object.entries(gradeRaw)) {
         if (!k.startsWith('_') && (Number(v) || 0) > 0) baseGrade[k] = Number(v) || 0;
       }
       const baseSum = Object.values(baseGrade).reduce((s, v) => s + v, 0);
-      if (stdItemsForSole.length > 0 && baseSum > 0 && itemQuantity > 0) {
+      if ((stdItemsForSole.length > 0 || groupStdItemsForSole.length > 0) && baseSum > 0 && itemQuantity > 0) {
         // Grade escalada pro total REAL (largest remainder — mesma regra do
         // motor canônico/matriz de solado).
         const scaledStd = scaleGradeWithLargestRemainder(baseGrade, itemQuantity / baseSum, itemQuantity);
@@ -880,8 +932,20 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
           if (!Number.isFinite(sizeInt) || !(pairs > 0)) continue;
           for (const std of stdItemsForSole) {
             if (std.size !== sizeInt) continue;
+            // O cadastro por modelo substitui o legado para o mesmo produto.
+            if (groupStdProductIds.has(std.standardItemId)) continue;
             const a = stdAcc.get(std.standardItemId) || { required: 0, unit: std.unit };
             a.required += std.consumption * pairs;
+            stdAcc.set(std.standardItemId, a);
+          }
+          for (const std of groupStdItemsForSole) {
+            // Grade preenchida vence o valor por par nesta numeração; sem
+            // entrada na grade, o valor por par vale para todos os tamanhos.
+            const fromGrid = Number(std.perSize?.[String(sizeInt)]);
+            const consumption = Number.isFinite(fromGrid) && fromGrid > 0 ? fromGrid : std.perPair;
+            if (!(consumption > 0)) continue;
+            const a = stdAcc.get(std.standardItemId) || { required: 0, unit: std.unit };
+            a.required += consumption * pairs;
             stdAcc.set(std.standardItemId, a);
           }
         }
