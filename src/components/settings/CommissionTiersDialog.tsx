@@ -17,6 +17,7 @@ import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Plus, Stairs, PencilSimple as Pencil, Check, X } from '@phosphor-icons/react';
 import { formatCurrency } from '@/lib/utils';
+import { parseBrlNumberNonNeg } from '@/lib/parseBrlNumber';
 import {
   useCommissionTiers, useAddCommissionTier, useUpdateCommissionTier, useDeleteCommissionTier,
   calcTieredCommission, TRIGGER_EVENTS, type TriggerEvent, type CommissionTier,
@@ -48,16 +49,19 @@ export function CommissionTiersDialog({ representative, open, onOpenChange }: Pr
   );
 
   const preview = useMemo(() => {
-    const total = parseFloat(previewTotal.replace(',', '.')) || 0;
+    const total = parseBrlNumberNonNeg(previewTotal);
     return { total, commission: calcTieredCommission(total, tiers), effPct: total > 0 ? (calcTieredCommission(total, tiers) / total) * 100 : 0 };
   }, [previewTotal, tiers]);
 
   if (!representative) return null;
 
   function submitNew() {
-    const min = parseFloat(newRow.min_value.replace(',', '.')) || 0;
-    const max = newRow.max_value.trim() ? parseFloat(newRow.max_value.replace(',', '.')) : null;
-    const pct = parseFloat(newRow.commission_pct.replace(',', '.')) || 0;
+    // `parseFloat(s.replace(',', '.'))` troca só a PRIMEIRA vírgula e não remove
+    // o ponto de milhar: "50.000" virava 50 — exatamente o formato que o próprio
+    // diálogo ensina no placeholder. parseBrlNumber é a fonte canônica.
+    const min = parseBrlNumberNonNeg(newRow.min_value);
+    const max = newRow.max_value.trim() ? parseBrlNumberNonNeg(newRow.max_value) : null;
+    const pct = parseBrlNumberNonNeg(newRow.commission_pct);
     add.mutate(
       { representative_id: representative!.id, min_value: min, max_value: max, commission_pct: pct, trigger_event: event, active: true },
       { onSuccess: () => setNewRow(emptyRow) },
@@ -71,9 +75,9 @@ export function CommissionTiersDialog({ representative, open, onOpenChange }: Pr
 
   function submitEdit() {
     if (!editId) return;
-    const min = parseFloat(editRow.min_value.replace(',', '.')) || 0;
-    const max = editRow.max_value.trim() ? parseFloat(editRow.max_value.replace(',', '.')) : null;
-    const pct = parseFloat(editRow.commission_pct.replace(',', '.')) || 0;
+    const min = parseBrlNumberNonNeg(editRow.min_value);
+    const max = editRow.max_value.trim() ? parseBrlNumberNonNeg(editRow.max_value) : null;
+    const pct = parseBrlNumberNonNeg(editRow.commission_pct);
     update.mutate({ id: editId, data: { min_value: min, max_value: max, commission_pct: pct, trigger_event: event } }, { onSuccess: () => setEditId(null) });
   }
 

@@ -27,6 +27,7 @@ import { ptBR } from 'date-fns/locale';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { SearchInput } from '@/components/ui/search-input';
 import { useCan } from '@/hooks/useAccessControl';
+import { parseBrlNumber } from '@/lib/parseBrlNumber';
 
 const fmt = (v: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 4, maximumFractionDigits: 4 }).format(v);
@@ -56,7 +57,11 @@ function PriceCell({
   };
 
   const commit = useCallback(async () => {
-    const parsed = parseFloat(draft.replace(',', '.'));
+    // Campo de custo em pt-BR — ver parseBrlNumber. String vazia/inválida vira 0,
+    // então preservamos a rejeição checando o texto antes de converter.
+    const parsed = draft.trim() === '' || !/^-?[\d.,]+$/.test(draft.trim())
+      ? NaN
+      : parseBrlNumber(draft);
     if (isNaN(parsed) || parsed < 0) {
       setEditing(false);
       return;

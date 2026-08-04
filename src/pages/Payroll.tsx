@@ -461,7 +461,11 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
     let tSal = 0, tHe = 0, tFalta = 0, tAtraso = 0, tLiqPonto = 0, tWork = 0, tHeMin = 0;
     const rowsPonto = srcPonto.map((r): RhCell[] => {
       const res = r.result;
-      const sal = Number(res.base_salary) || 0, he = Number(res.he_value) || 0;
+      // `base_salary` é o salário MENSAL cheio (referência p/ valor-dia/valor-hora);
+      // o provento do período é `period_base` (= total_proventos − he_value). Sob o
+      // rótulo "Salário do período" o mensal saía ~2× numa folha quinzenal e o bloco
+      // não fechava com o Líquido. A tela já faz essa distinção (linha ~1453).
+      const sal = Number(res.period_base) || 0, he = Number(res.he_value) || 0;
       const falta = Number(res.falta_desconto) || 0, atraso = Number(res.atraso_desconto) || 0;
       tSal += sal; tHe += he; tFalta += falta; tAtraso += atraso;
       tLiqPonto += Number(res.net_value) || 0; tWork += Number(res.worked_minutes) || 0; tHeMin += Number(res.he_minutes) || 0;

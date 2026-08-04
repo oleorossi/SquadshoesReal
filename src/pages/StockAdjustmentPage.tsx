@@ -18,6 +18,27 @@ import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { useCan } from '@/hooks/useAccessControl';
 import { StockPasteRejectedPanel } from '@/components/inventory/StockPasteRejectedPanel';
 import { normalizeSku, parseStockPaste, type PasteReject, type SkuIndexEntry } from '@/lib/stockPasteImport';
+import { parseBrlNumber } from '@/lib/parseBrlNumber';
+
+/**
+ * Lê o valor digitado num campo de quantidade desta tela.
+ *
+ * Bug corrigido (auditoria 04/08/2026): usava `parseFloat(raw.replace(",", "."))`,
+ * que troca só a PRIMEIRA vírgula e NÃO remove o ponto de milhar — então "10.500"
+ * virava 10,5. A MESMA coluna renderiza o saldo em pt-BR ("10.500"), ou seja, o
+ * usuário reeditava exatamente o texto que a tela mostrou e gravava ~1000× menos.
+ *
+ * `NaN` é sentinela LOAD-BEARING aqui: distingue "não digitado / inválido" de
+ * "zero digitado" (parseBrlNumber devolveria 0 nos dois casos, o que zeraria
+ * saldo sem o usuário ter pedido). Por isso o wrapper em vez do parser cru.
+ */
+function parseQtyDraft(raw: string | undefined | null): number {
+  if (raw === undefined || raw === null) return NaN;
+  const s = String(raw).trim();
+  if (s === '') return NaN;
+  if (!/^-?[\d.,]+$/.test(s)) return NaN;
+  return parseBrlNumber(s);
+}
 
 interface Product {
   id: string;
@@ -414,10 +435,10 @@ export default function StockAdjustmentPage() {
     products.filter((p) => !isSole(p)).filter((p) => {
       const raw = drafts[p.id];
       if (!raw && raw !== "0") return false;
-      const val = parseFloat(raw.replace(",", "."));
+      const val = parseQtyDraft(raw);
       return !isNaN(val) && val !== p.quantity;
     }).map((p) => {
-      const newQty = parseFloat(drafts[p.id].replace(",", "."));
+      const newQty = parseQtyDraft(drafts[p.id]);
       return { product: p, newQty, delta: newQty - p.quantity };
     }),
     [products, drafts]
@@ -428,7 +449,7 @@ export default function StockAdjustmentPage() {
       const sd = soleDrafts[p.id];
       if (!sd) return false;
       return Object.keys(sd).some((k) => {
-        const v = parseFloat((sd[k] ?? "").replace(",", "."));
+        const v = parseQtyDraft(sd[k]);
         if (isNaN(v)) return false;
         const orig = Number((p.stock_grade as any)?.[k] ?? 0);
         return v !== orig;
@@ -443,9 +464,30 @@ export default function StockAdjustmentPage() {
       const keys = getSoleEffectiveKeys(p.stock_grade, conjs);
       keys.forEach((key) => {
         const raw = sd[key];
-        const val = raw !== undefined ? parseFloat(raw.replace(",", ".")) : NaN;
+        const val = parseQtyDraft(raw);
         newGrade[key] = isNaN(val) ? getQtyForKey(existing, key) : val;
       });
+      // Preserva baldes que existem no estoque mas estão FORA das chaves efetivas
+      // (numeração fora de _size_from.._size_to). Sem isto o save montava a grade
+      // só com as chaves do range e APAGAVA esses pares — e como `newTotal` sai
+      // da mesma grade, o saldo sumia junto, coerente com o trigger de coerência.
+      // Chave conjugada ("33/34") já absorve as individuais via getQtyForKey, então
+      // elas contam como cobertas e não podem ser re-somadas aqui.
+      const covered = new Set<string>();
+      for (const key of keys) {
+        covered.add(key);
+        if (key.includes('/')) {
+          for (const part of key.split('/')) {
+            const n = Number(part);
+            if (Number.isFinite(n)) covered.add(String(n));
+          }
+        }
+      }
+      for (const [k, v] of Object.entries(existing)) {
+        if (k.startsWith('_') || covered.has(k)) continue;
+        const n = Number(v);
+        if (Number.isFinite(n) && n !== 0) newGrade[k] = n;
+      }
       // Preserve metadata keys
       const range = resolveSizeRange(p.stock_grade);
       if (range) { newGrade._size_from = range.from as any; newGrade._size_to = range.to as any; }
@@ -1046,7 +1088,7 @@ export default function StockAdjustmentPage() {
                       let t = 0;
                       keys.forEach((key) => {
                         const raw = sd[key];
-                        const val = raw !== undefined ? parseFloat(raw.replace(",", ".")) : NaN;
+                        const val = parseQtyDraft(raw);
                         t += isNaN(val) ? getQtyForKey(existing, key) : val;
                       });
                       draftTotal = t;
@@ -1190,7 +1232,7 @@ export default function StockAdjustmentPage() {
                               {keys.map((key, sizeIndex) => {
                                 const raw = sd[key];
                                 const origVal = getQtyForKey(existing, key);
-                                const draftVal = raw !== undefined ? parseFloat(raw.replace(",", ".")) : NaN;
+                                const draftVal = parseQtyDraft(raw);
                                 const isDirtyCell = raw !== undefined && !isNaN(draftVal) && draftVal !== origVal;
                                 const isConjugated = key.includes('/');
 
@@ -1269,7 +1311,7 @@ export default function StockAdjustmentPage() {
 
                   // ── Regular product row ───────────────────────────────
                   const raw = drafts[product.id];
-                  const draftNum = raw !== undefined ? parseFloat(raw.replace(",", ".")) : NaN;
+                  const draftNum = parseQtyDraft(raw);
                   const hasDraft = raw !== undefined && raw !== "" && !isNaN(draftNum);
                   const isDirty = hasDraft && draftNum !== product.quantity;
                   const delta = isDirty ? draftNum - product.quantity : 0;

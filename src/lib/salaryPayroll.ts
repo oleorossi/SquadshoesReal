@@ -417,6 +417,13 @@ export function calculateSalaryPayroll(
   );
   const adv = Number(advancesTotal) || 0;
   const gross = periodBase - faltaDesconto - atrasoDesconto + heValue;
+  // O holerite impresso mostra Proventos, Descontos e Líquido. Cada um era
+  // arredondado por um caminho diferente (`round2(pb+he)`, `round2(f+a+adv)` e
+  // `round2(gross-adv)`), então Bruto − Descontos podia divergir do Líquido em
+  // 1 centavo e o holerite não fechava. O Líquido passa a SAIR dos dois totais
+  // já arredondados — a identidade vale por construção.
+  const totalProventos = round2(periodBase + heValue);
+  const totalDescontos = round2(faltaDesconto + atrasoDesconto + adv);
 
   return {
     base_salary: round2(sal),
@@ -445,10 +452,10 @@ export function calculateSalaryPayroll(
     he_value: round2(heValue),
     pending_days: pendingDays,
     advances_total: round2(adv),
-    total_descontos: round2(faltaDesconto + atrasoDesconto + adv),
-    total_proventos: round2(periodBase + heValue),
+    total_descontos: totalDescontos,
+    total_proventos: totalProventos,
     gross_value: round2(gross),
-    net_value: round2(gross - adv),
+    net_value: round2(totalProventos - totalDescontos),
     payment_type: 'mensalista',
     daily_rate: 0,
     paid_days: workedDays,

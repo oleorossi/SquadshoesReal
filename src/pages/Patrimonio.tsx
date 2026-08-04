@@ -24,6 +24,9 @@ import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Buildings, Plus, PencilSimple as Pencil, ArrowBendDownLeft as Revert, SignOut as Dispose } from '@phosphor-icons/react';
 import { formatCurrency } from '@/lib/utils';
+// Campo de valor em pt-BR: `parseFloat(s.replace(',','.'))` lia "12.500,00" como
+// 12,5 (troca só a 1ª vírgula e mantém o ponto de milhar).
+import { parseBrlNumber } from '@/lib/parseBrlNumber';
 import {
   useFixedAssets, useAddFixedAsset, useUpdateFixedAsset, useDeleteFixedAsset,
   useDisposeFixedAsset, useReactivateFixedAsset, deriveDepreciation,
@@ -119,7 +122,7 @@ export default function Patrimonio() {
     await dispose.mutateAsync({
       id: disposeAsset.id,
       disposal_date: disposeForm.disposal_date,
-      disposal_value: parseFloat(disposeForm.disposal_value.replace(',', '.')) || 0,
+      disposal_value: parseBrlNumber(disposeForm.disposal_value),
       disposal_reason: disposeForm.disposal_reason,
     });
     setDisposeAsset(null);
@@ -127,7 +130,7 @@ export default function Patrimonio() {
 
   const saving = add.isPending || update.isPending;
   const disposeBook = disposeAsset ? disposeAsset.book_value : 0;
-  const disposeGainLoss = (parseFloat(disposeForm.disposal_value.replace(',', '.')) || 0) - disposeBook;
+  const disposeGainLoss = (parseBrlNumber(disposeForm.disposal_value)) - disposeBook;
 
   return (
     <div className="space-y-6 pb-12">
