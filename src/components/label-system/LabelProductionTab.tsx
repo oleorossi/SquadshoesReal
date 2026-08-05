@@ -38,6 +38,7 @@ import { buildBoxIdentificationHtml, buildThermalLabelsHtml, buildThermalLabelsP
 import { DEFAULT_MANUFACTURER_NAME, DEFAULT_MANUFACTURER_CNPJ } from '@/lib/companySender';
 import { cn } from '@/lib/utils';
 import { isCancelledOrDraftOrder } from '@/lib/orderStatus';
+import { packSaleOrderItem } from '@/lib/boxPacking';
 import { toast } from 'sonner';
 import { useOrders } from '@/hooks/useOrders';
 import { useLabelTemplates, SQUAD_THERMAL_DEFAULT_ID, SQUAD_BOX_DEFAULT_ID } from '@/hooks/useLabelTemplates';
@@ -728,7 +729,6 @@ export function LabelProductionTab() {
   const [billingWeekFilter, setBillingWeekFilter] = useState<string>('__all__');
   const [showScanner, setShowScanner] = useState(false);
   const [pairsPerFicha, setPairsPerFicha] = useState(12);
-  const [fichasPerBox, setFichasPerBox] = useState(1);
   const [thermalMode, setThermalMode] = useState<'quantity' | 'ficha'>('quantity');
   const [printMode, setPrintMode] = useState<'batch' | 'per_op'>('batch');
   const [selectedThermalTemplateId, setSelectedThermalTemplateId] = useState(SQUAD_THERMAL_DEFAULT_ID);
@@ -1338,6 +1338,73 @@ export function LabelProductionTab() {
         } catch { brandMap.set(k, 'Squad Shoes'); }
       }));
 
+      // ── CAPACIDADE DA CAIXA por PV — fonte única do servidor ────────────
+      // `compute_sale_order_box_breakdown` é a MESMA função que a NF-e usa pra
+      // contar volumes: ela resolve solado → `product_groups.pairs_per_box_<tipo>`
+      // e ainda devolve `pairs_per_box_source`. Ler daqui, em vez de repetir a
+      // cascata no front, é o que impede a etiqueta de divergir da NF.
+      //
+      // ⚠ Limite conhecido: o breakdown agrega por TIPO de caixa, não por item.
+      // Num PV com dois solados cujas caixas tenham capacidades diferentes,
+      // pegamos a linha coletiva de maior volume. Não morde hoje (um PV = uma
+      // família de solado); o aviso em DEV registra o dia em que morder.
+      // ── GRADE DA FICHA vem do PV, não da OP ─────────────────────────────
+      // `sale_order_items.grade` é a grade de UMA ficha (Σ = pares por ficha) e
+      // `fichas` é quantas delas o item tem. A OP guarda a convenção OPOSTA:
+      // `orders.grade` já vem MULTIPLICADA (Σ = quantity).
+      //
+      // O caminho legado desta tela partia da grade da OP e a reescalava por um
+      // campo de UI ("Pares por Ficha", default 12). O arredondamento dessa
+      // escala distorce a curva: no PV-00151, 180 pares × (12/180) devolvia
+      // `28:2 … 32:2 … 34:2` = 14 pares, quando a ficha real tem 15 (o nº 32
+      // tem 3). Empacotar sobre 14 muda quem vai pra sobra e quantas caixas
+      // saem — 18 por OP em vez de 15. Por isso a ficha real manda.
+      type SaleOrderItemGrade = {
+        sale_order_id: string;
+        reference_id: string;
+        color: string | null;
+        grade: Record<string, number> | null;
+        fichas: number | null;
+      };
+      const fichaKey = (soId: string, refId: string, color: string | null | undefined) =>
+        `${soId}|${refId}|${(color || '').toUpperCase().trim()}`;
+      const fichaFromPv = new Map<string, { grade: Record<string, number>; fichas: number }>();
+
+      type BoxBreakdownRow = { tipo: string | null; pairs_per_box: number | null; total_pairs: number | null };
+      const capacityBySaleOrder = new Map<string, number>();
+      const saleOrderIdsForBoxes = [...new Set(
+        boxGroups.flatMap(g => g.orders.map(o => o.sale_order_id)).filter(Boolean),
+      )];
+      if (saleOrderIdsForBoxes.length > 0) {
+        const { data: pvItems } = await supabase
+          .from('sale_order_items')
+          .select('sale_order_id, reference_id, color, grade, fichas')
+          .in('sale_order_id', saleOrderIdsForBoxes);
+        for (const it of (pvItems || []) as unknown as SaleOrderItemGrade[]) {
+          const grade = it.grade && typeof it.grade === 'object' ? it.grade : null;
+          const fichas = Number(it.fichas) || 0;
+          if (!grade || fichas <= 0) continue;
+          fichaFromPv.set(fichaKey(it.sale_order_id, it.reference_id, it.color), { grade, fichas });
+        }
+      }
+      await Promise.all(saleOrderIdsForBoxes.map(async (soId) => {
+        try {
+          const { data } = await (supabase as any).rpc('compute_sale_order_box_breakdown', {
+            p_sale_order_id: soId,
+          });
+          const coletivas = ((data || []) as BoxBreakdownRow[])
+            .filter(r => r.tipo !== 'fitilho' && Number(r.pairs_per_box) > 0)
+            .sort((a, b) => Number(b.total_pairs) - Number(a.total_pairs));
+          if (import.meta.env.DEV && coletivas.length > 1) {
+            console.warn('[LabelProductionTab] PV com mais de uma caixa coletiva — usando a dominante:', soId, coletivas);
+          }
+          if (coletivas[0]) capacityBySaleOrder.set(soId, Number(coletivas[0].pairs_per_box) || 0);
+        } catch {
+          // Sem capacidade resolvida → cai no caminho legado (1 etiqueta por
+          // ficha). Nunca inventar capacidade: caixa errada é volume errado.
+        }
+      }));
+
       const boxItems: BoxIdentificationData[] = [];
       for (const group of boxGroups) {
         const refData = refDataMap.get(group.referenceId);
@@ -1362,7 +1429,6 @@ export function LabelProductionTab() {
           const fichas = pairsPerFicha > 0
             ? Math.ceil(order.quantity / pairsPerFicha)
             : (pairsInOneFicha > 0 ? Math.max(1, Math.round(order.quantity / pairsInOneFicha)) : 1);
-          const totalMasterBoxes = Math.ceil(fichas / (fichasPerBox || 1));
           const so = saleOrdersMap.get(order.sale_order_id);
           const finalImageUrl = imageMap.get(`${group.referenceId}|${order.color || ''}`) || logoUrl;
           // Cada ficha imprime a grade COMPLETA (não dividir por fichas — a grade
@@ -1387,13 +1453,48 @@ export function LabelProductionTab() {
               order_number: order.order_number, rawGrade, gradeItems,
             });
           }
+
+          // A ficha real do PV vence a grade escalada da OP sempre que existir.
+          const pvFicha = fichaFromPv.get(fichaKey((order as { sale_order_id: string }).sale_order_id, group.referenceId, order.color));
+          const effFichas = pvFicha ? pvFicha.fichas : fichas;
+          const effGradePerFicha = pvFicha
+            ? Object.entries(pvFicha.grade)
+                .map(([size, qty]) => ({ size, qty: Number(qty) || 0 }))
+                .filter(g => g.qty > 0)
+                .sort((a, b) => Number(a.size) - Number(b.size))
+            : gradePerFicha;
+
+          // ── PLANO DE CAIXAS (regra canônica em `src/lib/boxPacking.ts`) ──
+          // A colmeia leva a capacidade cadastrada no solado; o excedente da
+          // ficha sai das numerações do MENOR pro maior e é consolidado, no
+          // item inteiro, em caixas de UMA numeração só. Uma etiqueta por
+          // CAIXA — antes era uma por ficha, e a caixa de sobra não existia.
+          //
+          // Sem capacidade resolvida no servidor, mantém o comportamento
+          // legado (1 etiqueta por ficha com a grade cheia). Degradar é melhor
+          // que assumir 12 e imprimir volume que não corresponde à carga.
+          const capacity = capacityBySaleOrder.get(order.sale_order_id) || 0;
+          const pairsInPlannedFicha = effGradePerFicha.reduce((s, g) => s + g.qty, 0);
+          const plannedBoxes: { contents: { size: string; qty: number }[]; pairs: number }[] =
+            capacity > 0 && pairsInPlannedFicha > 0
+              ? packSaleOrderItem({ grade: effGradePerFicha, fichas: effFichas, capacity })
+              : Array.from({ length: Math.max(1, effFichas) }, () => ({
+                  contents: effGradePerFicha.map(g => ({ ...g })),
+                  pairs: pairsInPlannedFicha,
+                }));
           // Calcula o "range" do tamanho para o destaque grande no canto da
           // etiqueta — ex.: 29-36, ou só "36" se houver um tamanho só.
-          const sizeKeys = gradePerFicha.map(g => g.size).filter(s => s && !isNaN(Number(s)));
-          const sizeNumbers = sizeKeys.map(Number).sort((a, b) => a - b);
-          const sizeRangeLabel = sizeNumbers.length > 1
-            ? `${sizeNumbers[0]}-${sizeNumbers[sizeNumbers.length - 1]}`
-            : (sizeNumbers.length === 1 ? String(sizeNumbers[0]) : '');
+          // Por CAIXA (não pela ficha): a caixa de sobra tem uma numeração só,
+          // e tem que mostrar "28", não o range inteiro da grade.
+          const rangeLabelFor = (contents: { size: string; qty: number }[]): string => {
+            const nums = contents
+              .map(g => Number(g.size))
+              .filter(n => Number.isFinite(n))
+              .sort((a, b) => a - b);
+            if (nums.length === 0) return '';
+            if (nums.length === 1) return String(nums[0]);
+            return `${nums[0]}-${nums[nums.length - 1]}`;
+          };
 
           // Resolve client: prefere o JOIN (so.clients) e cai pra busca por
           // CNPJ quando o PV legado tem client_id=null mas tem o CNPJ texto.
@@ -1412,8 +1513,12 @@ export function LabelProductionTab() {
           const recipientBranchName = client?.branch_name || undefined;
           const transporter = so?.transporters?.name || undefined;
 
-          for (let f = 0; f < fichas; f++) {
-            const currentBoxNumber = Math.ceil((f + 1) / (fichasPerBox || 1));
+          for (let f = 0; f < plannedBoxes.length; f++) {
+            const plannedBox = plannedBoxes[f];
+            // Placeholders: a numeração real do volume é reescrita depois do
+            // loop, porque ela corre no PV inteiro (= NF), não por OP.
+            const currentBoxNumber = f + 1;
+            const totalMasterBoxes = plannedBoxes.length;
             // Effective ref/color usam overrides quando definidos — propaga
             // a edição manual da etiqueta TÉRMICA pra caixa externa também.
             const effRefCode = getEffectiveRefCode(group) || refData?.code || '';
@@ -1439,16 +1544,16 @@ export function LabelProductionTab() {
               shoeCategory: refData?.shoe_category || '',
               mainMaterial,
               marca: brandMap.get(brandKeyFor(group.referenceId, order.color || '', client?.id || null)) || 'Squad Shoes',
-              grade: gradePerFicha,
+              grade: plannedBox.contents,
               barcode: order.order_number,
               imageUrl: finalImageUrl,
               imageIsFallback: imageFallbackMap.get(`${group.referenceId}|${order.color || ''}`) ?? false,
               nfe: so?.nfe || '',
               remessa: so?.remessa || '',
               strapsLabel: getEffectiveStrapsLabel(group),
-              sizeRangeLabel,
+              sizeRangeLabel: rangeLabelFor(plannedBox.contents),
               totalPairsInRemessa: order.quantity,
-              taloes: fichas,
+              taloes: effFichas,
               lote: order.order_number,
               pageNumber: undefined, // computado abaixo, depois do loop
               pageTotal: undefined,
@@ -1456,6 +1561,27 @@ export function LabelProductionTab() {
           }
         }
       }
+      // ── VOLUME n/N corre no PV (= NF), não por OP ───────────────────────
+      // Decisão do dono: tudo que está no pedido sai em uma NF só, então o
+      // conferente na doca conta os volumes do documento. Numerar por OP fazia
+      // o mesmo caminhão receber vários "1 de N".
+      //
+      // ⚠ O N reflete as etiquetas DESTE job: imprimir só parte do PV numera
+      // sobre o subconjunto selecionado.
+      const volumeTotalByPv = new Map<string, number>();
+      for (const it of boxItems) {
+        const pv = it.saleOrderNumber || it.orderNumber || '';
+        volumeTotalByPv.set(pv, (volumeTotalByPv.get(pv) || 0) + 1);
+      }
+      const volumeSeqByPv = new Map<string, number>();
+      for (const it of boxItems) {
+        const pv = it.saleOrderNumber || it.orderNumber || '';
+        const seq = (volumeSeqByPv.get(pv) || 0) + 1;
+        volumeSeqByPv.set(pv, seq);
+        it.boxNumber = seq;
+        it.totalBoxes = volumeTotalByPv.get(pv) || seq;
+      }
+
       // Preenche pageNumber/pageTotal agora que conhecemos o total de etiquetas
       const totalItems = boxItems.length;
       for (let i = 0; i < boxItems.length; i++) {
@@ -1719,16 +1845,14 @@ export function LabelProductionTab() {
                     <Label className="text-xs">Pares por Ficha (Etiqueta)</Label>
                     <div className="flex items-center gap-3">
                       <Input type="number" value={pairsPerFicha} onChange={e => setPairsPerFicha(Number(e.target.value))} className="h-8 text-xs font-mono w-24" />
-                      <span className="text-xs text-muted-foreground italic">Gera 1 etiqueta p/ ficha</span>
+                      <span className="text-xs text-muted-foreground italic">Divide o pedido em fichas</span>
                     </div>
                   </div>
-                  <div className="space-y-2">
-                    <Label className="text-xs">Fichas por Caixa Master</Label>
-                    <div className="flex items-center gap-3">
-                      <Input type="number" value={fichasPerBox} onChange={e => setFichasPerBox(Number(e.target.value))} className="h-8 text-xs font-mono w-24" />
-                      <span className="text-xs text-muted-foreground italic">Quantas fichas p/ caixa</span>
-                    </div>
-                  </div>
+                  {/* "Fichas por Caixa Master" saiu em 05/08/2026: os pares por
+                      caixa passaram a vir do SOLADO (product_groups.pairs_per_box_*,
+                      via compute_sale_order_box_breakdown — a mesma fonte da NF).
+                      O campo virou controle morto, e controle morto é pior que
+                      campo ausente: alguém mexe e nada muda. */}
                 </div>
               </div>
             </div>
