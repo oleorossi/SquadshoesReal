@@ -131,6 +131,38 @@ supabase db push → DB live
 - `react-hook-form` + `zod` (`zodResolver`, wrapper `ui/form.tsx`) **existe mas é exceção** (poucos
   arquivos). Use-o só se o formulário for genuinamente complexo; não migrar forms simples pra RHF.
 
+### Rotas e controle de acesso (auditado 05/08/2026)
+
+Rota autenticada precisa dos **dois** invólucros: `ProtectedRoute` (exige login +
+`profiles.approved`) **e** `RouteGuard` (exige o módulo em `ROUTE_MODULE_MAP`,
+`src/hooks/useAccessControl.ts`). `ProtectedRoute` sozinho **não** checa papel nem permissão —
+rota que fica só com ele está aberta a qualquer usuário aprovado. Ao criar rota nova, copie o
+encadeamento de `/producao/kanban/gestao`: `ProtectedRoute → Suspense → RouteGuard`.
+
+- **PWA `/m/*` estava fora do `RouteGuard`.** As 4 rotas mobile ficavam só sob
+  `ProtectedRoute`, e `MobileLayout` não checa nada → qualquer aprovado criava PV por
+  `/m/new` (a policy de `sale_orders` só exige `is_approved_user()`), contornando a
+  allow-list que valia pra ele no desktop. ⚠ `profiles.is_sales_rep` **não é portão**: só escolhe
+  o destino do redirect pós-login (`AuthRoute`/`RootRedirect`), nunca bloqueia URL digitada.
+  Fechado com `'/m': 'vendas'` no `ROUTE_MODULE_MAP` — o match é por prefixo **com fronteira**
+  (`/` ou `?`), então uma entrada cobre as 4 rotas e não casa `/mrp`, `/mdfe`, `/montagem` —
+  mais `<RouteGuard>` em volta do `<MobileLayout />`.
+  ⚠ **Lacuna em aberto:** `/m` não é destino concedível em `src/data/navigation.ts`, então no
+  modo granular por PATH um representante com grant em `/sales` é **negado** no `/m`. Hoje não
+  afeta ninguém (ninguém tem `is_sales_rep`), e o comportamento está travado em
+  `src/hooks/__tests__/isRouteAllowed.test.ts`. Decisão de produto pendente: dar um destino
+  concedível ao `/m`, ou fazer o dono de `/m` resolver pra `/sales`.
+- **`/design-preview` só existe em DEV.** Era declarada no mesmo nível de `/auth` (sem
+  `ProtectedRoute`, sem `RouteGuard`, sem módulo) → abria em produção **sem login**. Agora vem
+  de `DESIGN_PREVIEW_ROUTES` sob `import.meta.env.DEV`: em produção o array é vazio, a URL cai
+  no `NotFound` do catch-all e o chunk não entra no bundle. Carregada pela propriedade `lazy`
+  **do router**, não por `React.lazy` no topo do arquivo — um const no topo continuaria retido
+  pelo bundler mesmo com a rota removida.
+- ⚠ **`scripts/ia-inventory.mjs` porteia o build e varre `App.tsx` com regex que NÃO pula
+  comentários.** Escrever nome de propriedade de rota seguido de dois-pontos dentro de um
+  comentário do `App.tsx` corrompe o inventário e quebra o build com dezenas de violações
+  falsas ("ghost-nav-entry") que não apontam pra causa.
+
 ### Nomenclatura / idioma (regra load-bearing)
 - **Domínio em português, framework em inglês.** Entidades, colunas de banco, nomes de página,
   strings de UI e comentários → **pt-BR** (`razao_social`, `nfe_emitidas`, `'Cliente cadastrado!'`).
@@ -141,7 +173,23 @@ supabase db push → DB live
 ### Testes
 - **Vitest** (`vitest/globals`). Colocar em `__tests__/` ao lado do módulo, ou `*.test.ts` direto
   ao lado do fonte. Sufixos usados: `.units.test.ts`, `.integration.test.ts`, `.edge-cases.test.ts`.
-- Rodar: `bun run test` (exclui suítes pesadas) / `bun run test:units`.
+- Rodar: `bun run test` / `bun run test:units`.
+
+⚠ **`bun run test` verde NÃO significa suíte verde** (armadilha confirmada em 05/08/2026).
+Os dois scripts são **complementares e disjuntos**: `test` roda tudo **MENOS** 4 arquivos,
+que ele exclui por nome no próprio comando (`--exclude`), e `test:units` roda **exatamente
+esses 4**:
+
+| Script | O que roda |
+|---|---|
+| `bun run test` | tudo, **exceto** `conversao.units`, `rpc-parity.units`, `units.edge-cases`, `materialConsumption.units` |
+| `bun run test:units` | **só** esses 4 |
+
+Por que isso morde: durante a exclusão da perda de corte, 6 testes desses 4 arquivos
+ficaram vermelhos por vários pushes enquanto `bun run test` seguia reportando **1.535
+verdes** — ele excluía, por construção, o único lugar onde o problema aparecia. Antes de
+concluir "está tudo passando", **rode os dois**. Se um dia o CI chamar só `test`, esses 4
+arquivos nunca rodam.
 
 ## Regra de cálculo de consumo de materiais (CANÔNICA)
 
@@ -157,13 +205,54 @@ componente** (`component_sheets`).
 ### Conversões
 - **Material de ÁREA cortado de bobina** (napa, couro, forro): `quantity_per_unit` /
   `*_consumption` está em **dm²/par**.
-  - → **metros lineares** = `dm² ÷ (largura_mm / 10) × (1 + perda%)` quando o produto é
+  - → **metros lineares** = `dm² ÷ (largura_mm / 10)` quando o produto é
     unidade linear (m/cm) e a ficha tem largura. (`convertDm2ToLinearMeters`)
   - → **placas** = `dm² ÷ área_da_placa_dm²` quando a unidade é placa.
     (`convertDm2ToPlates`)
 - **Item linear DIRETO sem ficha de componente** (tiras, elásticos): `quantity_per_unit`
   já está na unidade nativa (metro/contagem) → **NÃO converter**.
 - **Solado**: por par, segmentado por **numeração** (`sizeBreakdown`), nunca por área.
+
+### ⚠ Perda de corte NÃO existe neste sistema (decisão do dono, 03/08/2026)
+
+A fórmula acima já terminou em `× (1 + perda%)`. **Esse fator foi arrancado de propósito**
+— não é dívida nem esquecimento. **Nenhum caminho de consumo aplica perda**: nem os 5
+motores TS (`materialConsumption`, `bomConsumption`, `orderConsumption`,
+`weeklyPurchasingPlan`, `purchaseRequisition`), nem o SQL, nem custeio, MRP ou compra.
+
+**Por quê:** os valores cadastrados na ficha (dm²/par, g/par, un/par) **já consideram o
+rendimento real do material**. Somar um percentual por cima conta a mesma perda **duas
+vezes** e infla, em cascata, consumo → reserva → débito → custeio → compra.
+
+**O sintoma que expôs o bug (PV-00150):** itens de **mesma grade e mesma quantidade**
+saíam com consumos **diferentes por COR** na ficha de Corte Forração — a mesma napa
+fechava **81,09 m** no PRETO e **87,57 m** no NEW WHISKY/OFF WHITE, razão exata **1,08**,
+porque a perda estava cadastrada por cor (0 no PRETO, 8 nas outras).
+
+**Como foi feito** — em duas etapas, de propósito, pra TS e SQL pararem juntos sem janela
+de drift (o drift de 8% entre os dois lados está em `docs/AUDITORIA_MOTORES_2026-07-21.md`):
+
+| Etapa | Onde | O que fez |
+|---|---|---|
+| `20261112120800_remover-perda-de-corte-do-sistema` | dado | zerou `waste_pct` em todas as linhas e trocou o **DEFAULT 8** (herdado da criação da tabela na fase Lovable) por 0 |
+| `20261115120300_excluir-perda-de-corte-do-sistema` (commit `2fde316`, 03/08/2026) | conceito, lado SQL | arrancou o `× (1 + waste/100)` das funções/views e **dropou as colunas** |
+| commits `9a0ea69` + `ad1cc18` | lado TS | tirou a perda dos 5 motores, da UI, dos hooks e do caminho legado |
+| commit `d69b725` | testes | rebaselinou os 6 testes que ainda cobravam a perda (ver a armadilha do `bun run test` em *Testes*) |
+
+**Colunas que deixaram de existir** (verificado no banco em 05/08/2026):
+`component_sheets.waste_pct` e `technical_sheets.consumption_loss_pct`. Se um código novo
+referenciar qualquer uma das duas, ele está reintroduzindo a regra morta.
+
+⚠ **Ao repetir um expurgo desse tipo, varra `pg_views` também.** A varredura original achou
+7 pontos de aplicação; o 8º só apareceu durante a migration e era a **VIEW**
+`purchase_projection_timeline` — view não aparece em varredura de `pg_proc`.
+
+⚠ **Sobrevivente conhecido, NÃO uniformize sem o dono:**
+`technical_reference_materials.waste_factor` é outra tabela (módulo **Referências
+Técnicas**, fora dos 5 motores de consumo) e ainda multiplica `× (1 + waste_factor / 100)`
+em `TechnicalReferencePanel.tsx:623`, `useTechnicalReferenceValidation.ts:193` e `:236`.
+Pode ser deliberado ou um ponto esquecido — está **em aberto**. Não decida sozinho pelos
+dois lados: nem apagar "por coerência", nem ressuscitar a perda nos motores por analogia.
 
 ### Variante de material do item do PV (2026-07-11)
 O item do PV pode apontar uma **variante de material** (`sale_order_items.material_variant_id`
@@ -560,7 +649,16 @@ concluir que algo está pendente, **verifique o objeto no banco** (função, vie
 2. **Registro retroativo de 365 migrations** já aplicadas, verificadas objeto a objeto no
    banco (371 checagens: funções, views, tabelas, colunas, índices, triggers, policies).
    Toda ausência foi rastreada até um `DROP` deliberado posterior.
-3. **Backlog atual: 4 arquivos** — ver abaixo. Todos os outros 1.298 estão registrados.
+3. **Backlog daquela auditoria: 4 arquivos** — ver abaixo.
+
+⚠ **Contagem não prova estado — nem então, nem hoje.** Este item dizia "todos os outros
+**1.298** estão registrados" e envelheceu em uma semana. Medido em **05/08/2026**:
+`schema_migrations` tem **2.191 linhas** e o repo tem **1.361 arquivos** `.sql`. Os dois
+números **não se comparam**, e a diferença não é backlog — existem as duas direções:
+**registro sem arquivo** (o `apply_migration` grava um carimbo com a data real; vários
+nunca viraram arquivo no repo) e **arquivo sem registro** (aplicado por MCP/SQL Editor sob
+outro carimbo). Vale a Regra de ouro acima: **verifique o objeto no banco**, não a
+aritmética.
 
 ### ⚠ As 4 que NUNCA aplicaram (não registrar sem decidir)
 
@@ -599,26 +697,40 @@ trigger em nome de "simplificar"**.
 
 1. **Resolver as 4 acima** (aplicar via migration nova, ou registrar com justificativa).
    Enquanto o `20260518120002` estiver pendente, o push **falha** no CNPJ duplicado.
-2. Cadastrar os 3 secrets em GitHub Settings > Secrets and variables > Actions:
+2. **Decidir o destino dos 4 renomeados em 05/08/2026** (`20261116120000`–`20261116120300`):
+   já aplicados no banco, mas sem registro sob o carimbo novo → um push os re-executa. Ver
+   *Regressão de carimbo duplicado* abaixo.
+3. Cadastrar os 3 secrets em GitHub Settings > Secrets and variables > Actions:
    - `SUPABASE_ACCESS_TOKEN` — PAT de https://supabase.com/dashboard/account/tokens
    - `SUPABASE_DB_PASSWORD` — Database > Settings > Connect > "Reset database password"
    - `SUPABASE_PROJECT_ID` = `ssvxfoybzmjlypnipqzn`
-3. Primeira execução manual com `dry_run: true` (Actions tab > Run workflow).
+4. Primeira execução manual com `dry_run: true` (Actions tab > Run workflow).
 
 ### Migration nova — carimbo
 
 O carimbo é uma **sequência sintética**, não a data de hoje: use um valor **maior que a
 maior versão já registrada**. Usar a data corrente gera um carimbo menor que o topo e trava
-o pipeline. **Não confie em número escrito aqui** — esta linha já ficou desatualizada uma vez
-(dizia `20261019120000` quando o banco estava em `20261110120000`, auditoria de 03/08/2026).
-Consulte antes de nomear o arquivo:
+o pipeline. **Não confie em número escrito aqui** — esta linha já ficou desatualizada duas
+vezes (dizia `20261019120000` com o banco em `20261110120000`, auditoria de 03/08/2026; em
+05/08/2026 o topo registrado já era `20261120120000`).
+
+⚠ **`max(version)` sozinho NÃO basta — consulte as DUAS fontes.** O topo do banco ignora
+arquivo que existe no repo mas ainda não foi registrado; se houver um acima do topo, pegar
+`max(version) + 1` recria uma colisão de PK. Use sempre o **maior dos dois**:
 
 ```sql
+-- fonte 1: topo REGISTRADO
 select max(version) from supabase_migrations.schema_migrations;
 ```
 
-⚠ **Worktree compartilhado:** outra sessão pode registrar um carimbo mais alto enquanto você
-trabalha. Reconsulte na hora de aplicar, não só na hora de criar o arquivo.
+```bash
+# fonte 2: maior ARQUIVO local (pode estar ACIMA do topo registrado)
+ls supabase/migrations/*.sql | tail -1
+```
+
+⚠ **Worktree compartilhado:** outra sessão pode registrar um carimbo mais alto — ou criar um
+arquivo mais alto — enquanto você trabalha. Reconsulte na hora de aplicar, não só na hora de
+criar o arquivo.
 
 Ao aplicar via MCP, o `apply_migration` grava um carimbo próprio com a **data real de hoje** —
 que hoje é MENOR que o topo da sequência sintética, então o registro sai fora de ordem.
@@ -629,3 +741,33 @@ update supabase_migrations.schema_migrations
 set version = '<carimbo_do_arquivo>', name = '<nome-do-arquivo-sem-carimbo>'
 where version = '<carimbo_que_o_MCP_gravou>';
 ```
+
+### ⚠ Regressão de carimbo duplicado — aconteceu DE NOVO em 08/2026
+
+A deduplicação de 30/07 (92 versões / 114 arquivos) não imunizou nada: em **05/08/2026**
+havia **4 novas colisões**, todas geradas por **sessões paralelas em worktrees diferentes**
+trabalhando sobre o mesmo repo e o mesmo banco.
+
+**A mecânica** (caso `20261115120400`, o mais didático): o arquivo `pv-pendencias-report`
+foi criado em 03/08 e **não** chegou a ser registrado. Em 05/08 outra sessão consultou
+`max(version)` no banco — que não conhecia esse arquivo —, leu o carimbo como "livre" e
+criou `contractor-metrics-open-balance-parity` com ele. Ninguém errou o procedimento
+escrito; **o procedimento é que era incompleto**, por olhar só o banco. Daí a regra das duas
+fontes acima. Os outros 3 pares (`20261102120000`, `20261102120100`, `20261115120300`)
+vieram da mesma raiz.
+
+**Como foi resolvido:** de cada par colidido, o arquivo **já registrado no banco manteve o
+carimbo** e só o **não registrado** foi renomeado (`git mv`, conteúdo SQL intacto), para uma
+faixa nova acima do topo real — `20261116120000`–`20261116120300`, espaçados de 100 e
+deixando a faixa do dia 15 livre pra sessão que ainda estava criando migrations. A ordem
+relativa foi preservada onde importava (`pv-promotion-engine-mrp` continua depois de
+`pv-promotion-engine`, que ele faz `CREATE OR REPLACE`; o backfill continua antes de
+`payroll-runs-pares-produzidos`). As referências a carimbo no código foram reapontadas
+(`useRH.ts`, `usePayrollPayments.ts`); as que citavam o arquivo **que ficou** não mudaram.
+
+⚠ **Renomear resolve a colisão de PK, mas NÃO destrava o `db push`:** os 4 renomeados já
+estão **aplicados** no banco e agora estão **sem registro** sob o carimbo novo — um push os
+**re-executaria**. Antes de ligar o GitHub Action, decidir por arquivo: registrar
+retroativamente ou aceitar a re-execução. O de maior risco é o backfill
+`20261116120000`, que recalcula valor/par de folha a partir da agregação atual da Ficha de
+Montadores (folha em rascunho ajustada à mão voltaria ao valor recalculado).
