@@ -15,11 +15,14 @@ import {
 // A API suporta PDF + imagem nativamente e responseSchema pra JSON estruturado
 // garantido (equivalente ao tool_use do Claude).
 //
-// 04/08/2026 (ADR 0002): a lista de 7 modelos que morava aqui existia porque a
-// chave era de plano Free e batia 429 imediato — a cascata mascarava cota. Com
-// a chave paga isso deixou de ser verdade: a cascata virou do _shared/gemini.ts
-// e cobre APENAS 404 (renomeação de modelo). 429 agora falha alto, de
-// propósito, com mensagem de cota. Não reintroduza fallback de 429 aqui.
+// 04/08/2026 (ADR 0002): a lista de 7 modelos que morava aqui virou a cascata
+// central do _shared/gemini.ts, compartilhada pelas 4 funções de IA.
+//
+// 05/08/2026: a cascata cobre 404 (modelo renomeado) E 429 (cota). O ADR 0002
+// tinha decidido que 429 falharia alto, partindo de que a chave estava num
+// projeto pago; medido contra a chave real, a quota veio marcada `-FreeTier` e
+// 4 de 6 modelos deram 429 imediato. A premissa era falsa e a decisão foi
+// revertida — ver a errata no fim do ADR antes de mexer nisso de novo.
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": Deno.env.get("ALLOWED_ORIGIN") || "https://squadshoes-real.vercel.app",

@@ -1,7 +1,9 @@
 # 0002. Centralizar as chamadas de IA numa chave Gemini própria e sair do gateway Lovable
 
 - **Data:** 04/08/2026
-- **Status:** aceita
+- **Status:** aceita, com **errata de 05/08/2026** (ver o fim do documento) —
+  a decisão sobre `429` foi revertida porque a premissa de faturamento ativo
+  não se confirmou.
 
 ## Contexto
 
@@ -96,3 +98,51 @@ consistência da política de erro, perde-se o isolamento entre deploys.
 O pacote `lovable-tagger` segue em `devDependencies` por compatibilidade de lockfile
 (ver `CLAUDE.md`) — esta decisão remove a última dependência **de runtime** da
 Lovable, não a de build.
+
+## Errata — 05/08/2026: o `429` volta a cascatear
+
+A decisão acima de fazer o `429` **falhar alto** está revertida. Tudo o mais
+neste ADR — credencial única, saída do gateway Lovable, `_shared/gemini.ts`,
+cascata de `404` — permanece em vigor.
+
+**O que era premissa.** O texto acima afirma "o dono passou a dispor de uma
+chave em projeto Cloud **com billing ativo**". Isso veio de uma resposta em
+conversa, não de medição. Todo o argumento do `429` dependia dela: num projeto
+pago, `429` é cota real e mascará-lo esconde informação acionável.
+
+**O que a medição mostrou.** Testada a chave de fato, contra
+`generativelanguage.googleapis.com`:
+
+- 4 dos 6 primeiros modelos retornaram `429` na **primeira** requisição;
+- o corpo do erro traz `quotaId: GenerateRequestsPerMinutePerProjectPerModel-**FreeTier**`
+  e `generate_content_free_tier_requests`;
+- `gemini-2.5-flash` retorna `404` — *"no longer available to new users"*.
+
+A chave é de free tier. A premissa era falsa, e com ela cai a decisão que
+dependia dela.
+
+**Por que a reversão é a correção certa, e não "ativar o billing".** Ativar
+faturamento também tornaria o ADR verdadeiro, e continua sendo uma opção aberta.
+Mas o `429` do free tier é **por modelo e por minuto** — não é escassez global.
+O modelo seguinte da lista responde na hora, o que faz da cascata a resposta
+tecnicamente correta para essa classe de erro, independente de plano. Falhar
+alto entregaria ao usuário um erro que o sistema sabia contornar.
+
+**Consequência.** O `extract-clients` volta a sobreviver ao free tier: o usuário
+que sobe uma lista de clientes não vê erro porque um modelo específico estourou
+a cota do minuto. Em troca, uma cota **realmente** esgotada demora mais a
+aparecer — só quando todos os modelos falharem, e aí a mensagem diz isso com
+todas as letras.
+
+**Para quem for mexer nisto no futuro.** Esta decisão já foi tomada nos dois
+sentidos em dois dias. Antes de mudar de novo, **meça o tier da chave em uso**
+— não pergunte, não presuma:
+
+```bash
+curl -s -H "x-goog-api-key: $GEMINI_API_KEY" \
+  -H 'Content-Type: application/json' -d '{"contents":[{"parts":[{"text":"oi"}]}]}' \
+  https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent \
+  | grep -o 'quotaId[^,]*'
+```
+
+Se aparecer `FreeTier`, a cascata de `429` tem que continuar existindo.

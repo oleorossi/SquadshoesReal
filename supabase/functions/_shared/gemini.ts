@@ -13,12 +13,17 @@
 //         modelos ao menos duas vezes em três meses; nome alternativo resolve
 //         sozinho, sem deploy.
 //
-//   429 → FALHA ALTO. Não cascateia.
-//         A chave vive num projeto com billing ativo, então 429 é cota REAL.
-//         Trocar de modelo aqui esconderia do dono a única informação que ele
-//         precisa ver. Sob o plano Free antigo o 429 era rotina e a cascata
-//         fazia sentido — não faz mais. Quem for "consertar" um 429
-//         reintroduzindo fallback está revertendo o ADR 0002 sem saber.
+//   429 → CASCATEIA também, e só falha quando acabam os modelos.
+//         A cota do free tier é POR MODELO
+//         (`GenerateRequestsPerMinutePerProjectPerModel-FreeTier`), então o
+//         modelo seguinte da lista costuma responder na hora.
+//         ⚠ Isto foi decidido duas vezes. Em 04/08/2026 o ADR 0002 mandou o
+//         429 falhar alto, partindo de que a chave estava num projeto pago.
+//         A premissa não se confirmou: medido contra a chave real, 4 de 6
+//         modelos deram 429 imediato e a quota veio marcada `-FreeTier`.
+//         Não volte a "falhar alto" sem antes CONFERIR o tier da chave em uso
+//         — é o mesmo erro, e o sintoma é o extract-clients quebrando na cara
+//         do usuário no primeiro upload do dia.
 //
 //   400/401/403 → falha imediata. É chave ou request errado; outro modelo não
 //         muda nada.
@@ -31,7 +36,15 @@ const API_BASE = "https://generativelanguage.googleapis.com/v1beta";
 
 // Nomes-padrão. O secret correspondente tem precedência e é o caminho de
 // conserto sem deploy quando o Google renomeia algo.
-const DEFAULT_TEXT_MODELS = ["gemini-2.5-flash", "gemini-2.5-flash-lite"];
+// Medido em 05/08/2026 contra a chave real: `gemini-2.5-flash` retorna 404
+// ("no longer available to new users") e os `gemini-2.0-flash*` retornam 429
+// no free tier. Os aliases `-latest` seguem o modelo corrente do Google, então
+// resistem a renomeação — por isso vêm primeiro.
+const DEFAULT_TEXT_MODELS = [
+  "gemini-flash-latest",
+  "gemini-2.5-flash-lite",
+  "gemini-flash-lite-latest",
+];
 const DEFAULT_IMAGE_MODELS = ["gemini-3.1-flash-image"];
 
 export type GeminiErrorKind =
@@ -149,12 +162,12 @@ function errorFor(
   attempts: GeminiAttempt[],
 ): GeminiError {
   if (status === 429) {
-    // A mensagem específica de cota é decisão de produto: o usuário precisa
-    // saber que é limite de uso real, não falha transitória a "tentar de novo".
+    // Defensivo: no fluxo normal o 429 cascateia e nunca chega aqui (ver
+    // política no topo). Fica para quem chamar errorFor de outro caminho.
     return new GeminiError(
       "quota",
-      "Cota do Gemini esgotada. O projeto tem faturamento ativo, então isto é limite real de uso — " +
-        "confira consumo e limites em https://console.cloud.google.com/billing antes de tentar de novo.",
+      "Cota do Gemini esgotada neste modelo. No free tier o limite é por modelo e por minuto; " +
+        "aguarde alguns minutos ou habilite faturamento no projeto.",
       429,
       attempts,
     );
@@ -225,15 +238,21 @@ export async function callGemini(opts: CallGeminiOptions): Promise<any> {
     attempts.push({ model, status: r.status, detail });
     console.warn(`[${label}] ${model} → ${r.status}: ${detail.slice(0, 200)}`);
 
-    // Só 404 continua a cascata. Todo o resto para aqui — ver política no topo.
-    if (r.status !== 404) throw errorFor(r.status, detail, model, attempts);
+    // 404 (modelo renomeado) e 429 (cota do free tier, que é por modelo)
+    // continuam a cascata. Todo o resto para aqui — ver política no topo.
+    if (r.status !== 404 && r.status !== 429) {
+      throw errorFor(r.status, detail, model, attempts);
+    }
   }
 
-  // Chegou aqui ⇒ todos os nomes configurados retornaram 404. O Google
-  // provavelmente renomeou de novo: pergunta o que a chave tem e tenta uma vez.
+  // Chegou aqui ⇒ todos os nomes configurados deram 404 (renomeados) ou 429
+  // (cota estourada naquele modelo). Pergunta o que a chave tem, e tenta um
+  // nome que não esteja entre os já queimados nesta chamada.
   const available = await listAvailableModels(apiKey);
-  console.log(`[${label}] Todos 404. Modelos disponíveis pra chave: ${available.join(", ") || "(nenhum)"}`);
-  const candidate = pickCandidate(available, modality);
+  const tried = new Set(attempts.map((a) => a.model));
+  const statuses = attempts.map((a) => a.status).join("/");
+  console.log(`[${label}] Cascata esgotada (${statuses}). Disponíveis: ${available.join(", ") || "(nenhum)"}`);
+  const candidate = pickCandidate(available.filter((m) => !tried.has(m)), modality);
 
   if (candidate) {
     const r = await post(candidate);
@@ -243,12 +262,28 @@ export async function callGemini(opts: CallGeminiOptions): Promise<any> {
     }
     const detail = await readError(r);
     attempts.push({ model: candidate, status: r.status, detail });
-    if (r.status !== 404) throw errorFor(r.status, detail, candidate, attempts);
+    if (r.status !== 404 && r.status !== 429) {
+      throw errorFor(r.status, detail, candidate, attempts);
+    }
+  }
+
+  // Esgotou tudo. A mensagem depende de POR QUE esgotou: cota estourada em
+  // todos os modelos é problema de plano; 404 em todos é nome de modelo.
+  const allQuota = attempts.length > 0 && attempts.every((a) => a.status === 429);
+  if (allQuota) {
+    throw new GeminiError(
+      "quota",
+      "Cota do Gemini esgotada em todos os modelos disponíveis. No free tier o limite é por modelo e " +
+        "por minuto — costuma liberar sozinho em alguns minutos. Se for constante, habilite faturamento " +
+        "no projeto em https://aistudio.google.com/apikey.",
+      429,
+      attempts,
+    );
   }
 
   throw new GeminiError(
     "model",
-    `Nenhum modelo de ${modality === "image" ? "imagem" : "texto"} respondeu — os nomes configurados retornaram 404. ` +
+    `Nenhum modelo de ${modality === "image" ? "imagem" : "texto"} respondeu (${attempts.map((a) => `${a.model}=${a.status}`).join(", ")}). ` +
       `Modelos disponíveis pra esta chave: ${available.join(", ") || "(nenhum)"}. ` +
       `Ajuste o secret ${modality === "image" ? "GEMINI_IMAGE_MODEL" : "GEMINI_TEXT_MODEL"}.`,
     502,
