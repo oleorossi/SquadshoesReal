@@ -248,9 +248,9 @@ referenciar qualquer uma das duas, ele está reintroduzindo a regra morta.
 7 pontos de aplicação; o 8º só apareceu durante a migration e era a **VIEW**
 `purchase_projection_timeline` — view não aparece em varredura de `pg_proc`.
 
-⚠ **Sobrevivente conhecido — meio-termo aplicado em 05/08/2026, destino AINDA em aberto:**
-`technical_reference_materials.waste_factor` é outra tabela (módulo **Referências
-Técnicas**, fora dos 5 motores de consumo) e **continua multiplicando**
+⚠ **Sobrevivente conhecido — DEFAULT 0 RATIFICADO pelo dono, destino do módulo AINDA em
+aberto:** `technical_reference_materials.waste_factor` é outra tabela (módulo
+**Referências Técnicas**, fora dos 5 motores de consumo) e **continua multiplicando**
 `× (1 + waste_factor / 100)` em `TechnicalReferencePanel.tsx`,
 `useTechnicalReferenceValidation.ts:193` e `:236`.
 
@@ -265,10 +265,19 @@ algum cálculo a duplicidade voltaria sozinha, sem ninguém ter decidido nada.
 O que **NÃO** mudou, de propósito: a coluna fica, as multiplicações ficam, e não houve
 `UPDATE` de backfill (tabela vazia — se um dia houver linha legada com `waste_factor > 0`,
 ela precisa de decisão explícita, não de um UPDATE escondido numa migration de DEFAULT).
-**O destino do módulo Referências Técnicas segue sendo decisão de produto não tomada.**
-Continua valendo: não decida sozinho pelos dois lados — nem apagar as multiplicações "por
-coerência", nem ressuscitar a perda nos motores por analogia. E ⚠ **não "restaure" os
-percentuais achando que zero é bug**: zero é a regra vigente.
+
+**Decisão do dono, 05/08/2026: MANTER em 0.** O zero deixou de ser um meio-termo aplicado
+por engenharia à espera de revisão — foi levado ao dono, com a alternativa de voltar o
+DEFAULT para 5, e ele optou por manter. Então isto está **fechado** e não precisa ser
+reaberto: ⚠ **não "restaure" os percentuais achando que zero é bug**, e não reabra a
+pergunta a cada sessão.
+
+**O que continua em aberto é OUTRA coisa:** o destino do módulo Referências Técnicas —
+se as multiplicações `× (1 + waste_factor / 100)` e a própria coluna devem sumir, ou se o
+módulo volta a ter um conceito de perda próprio. Isso é decisão de produto **não tomada**,
+e vale a regra de sempre: não decida sozinho pelos dois lados — nem apagar as
+multiplicações "por coerência" (com DEFAULT 0 elas são no-op hoje, então não há pressa),
+nem ressuscitar a perda nos 5 motores de consumo por analogia com este módulo.
 
 ### Variante de material do item do PV (2026-07-11)
 O item do PV pode apontar uma **variante de material** (`sale_order_items.material_variant_id`
