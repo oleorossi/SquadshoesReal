@@ -388,6 +388,47 @@ regra segura, **bloqueia o item** (`needsConfig`) em vez de gravar qtd errada. A
 adicionar unidade nova, atualizar `toCanonical` E `src/lib/materialConsumption.ts`
 (`LINEAR_UNITS`/`PLATE_UNITS`).
 
+## Regra de empacotamento em caixas (CANÔNICA, 05/08/2026)
+
+> Fonte: `src/lib/boxPacking.ts` (TS) e `packing_boxes_for_grade()` (SQL, migration
+> `20261208120000`). Os dois lados são espelho — mexer em um sem o outro quebra os testes.
+
+A ficha rende mais pares do que a colmeia comporta. O excedente **não viaja solto**:
+
+```
+sobra = Σgrade − capacidade, retirada das numerações do MENOR para o MAIOR
+      → consolidada por (item do PV, numeração) → caixas de UMA numeração só
+```
+
+PV-00151 (curva `28:2 29:2 30:2 31:2 32:3 33:2 34:2` = 15, colmeia 12), por cor: sobra da
+ficha = `28:2 · 29:1`; × 12 fichas → **2 caixas do nº 28 + 1 do nº 29** + 12 colmeias = 15
+volumes. 45 no PV inteiro.
+
+⚠ **"do menor pro maior" é quem vai pra SOBRA, não quem fica na colmeia.** Inverter dá um
+resultado plausível e errado (sairia o nº 32, que é a numeração de contagem ímpar). Essa
+inversão passou por duas rodadas de revisão antes de ser pega.
+
+⚠ **A caixa de numeração única NÃO nasce na ficha** — a ficha sobra DUAS numerações (28 e
+29). Ela nasce na **consolidação do item**. Cálculo por ficha isolada nunca chega lá.
+
+⚠ **A regra só vale quando a grade É uma ficha** (`Σgrade < 2 × capacidade`). PVs antigos
+gravaram `fichas = 1` com a grade somando o pedido inteiro (PV-2026-00013: 120 pares numa
+"ficha"); ali a regra fabricaria caixa quase vazia — o PV-2026-00097 (24 pares, caixa 12)
+viraria 1 colmeia + 3 caixas de 4 pares em vez de 2 cheias. Fora da guarda, os dois lados
+devolvem vazio/0 linhas e o chamador cai no legado `CEIL(pares / capacidade)`.
+
+**Capacidade vem do SOLADO** (`product_groups.pairs_per_box_<tipo>` pela tela de solado),
+resolvida por `compute_sale_order_box_breakdown` — a MESMA função que a NF usa pra contar
+volumes. Etiqueta, NF e débito de embalagem leem daí, então não podem divergir.
+
+**Grade da ficha vem de `sale_order_items.grade`** (Σ = pares por ficha). ⚠ `orders.grade`
+usa a convenção OPOSTA (já multiplicada, Σ = quantity) — usar a da OP e reescalar
+distorce a curva por arredondamento (15 pares viravam 14 no PV-00151) e muda quem vai pra
+sobra.
+
+**Peso:** par sempre de `technical_sheets.weight_per_pair_kg`, default 238 g só quando a
+ficha não tem; tara da caixa em `box_types.empty_weight_kg`.
+
 ## Organização de Grupos de Estoque (product_groups)
 
 > Reorganizado em 2026-07-01: os dois fluxos de criação de grupo (tela **Estoque →

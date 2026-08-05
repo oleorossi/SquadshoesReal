@@ -131,6 +131,26 @@ export function splitFicha(
   return { colmeia, sobra };
 }
 
+/**
+ * A regra só vale quando a grade É uma ficha.
+ *
+ * Ficha é 12/15/18 pares (constante do projeto, `worksheet/fichaSize.ts`) e a
+ * sobra é o excedente PEQUENO sobre a caixa. PVs antigos gravaram `fichas = 1`
+ * com a grade somando o pedido inteiro — PV-2026-00013 tem 120 pares numa
+ * "ficha". Ali a sobra seria maior que uma caixa inteira e a regra fabricaria
+ * caixas quase vazias: o PV-2026-00097 (24 pares, caixa de 12) viraria
+ * 1 colmeia + 3 caixas de 4 pares, em vez de 2 caixas cheias.
+ *
+ * Quando não vale, `packSaleOrderItem` devolve `[]` e o chamador cai no cálculo
+ * legado (CEIL(pares / capacidade)) — o mesmo contrato do lado SQL, onde a
+ * função devolve 0 linhas e o `COALESCE(NULLIF(count,0), CEIL(...))` assume.
+ */
+export function packingApplies(grade: GradeInput, capacity: number): boolean {
+  if (!Number.isFinite(capacity) || capacity <= 0) return false;
+  const total = gradeTotal(grade);
+  return total > 0 && total < capacity * 2;
+}
+
 export interface PackItemInput {
   /** Grade de UMA ficha (é assim que `sale_order_items.grade` guarda). */
   grade: GradeInput;
@@ -149,6 +169,7 @@ export interface PackItemInput {
 export function packSaleOrderItem({ grade, fichas, capacity }: PackItemInput): PackedBox[] {
   const sorted = normalizeGrade(grade);
   if (!sorted.length || !Number.isFinite(fichas) || fichas <= 0) return [];
+  if (!packingApplies(sorted, capacity)) return [];
 
   const { colmeia, sobra } = splitFicha(sorted, capacity);
   const boxes: PackedBox[] = [];

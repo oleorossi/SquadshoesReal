@@ -1475,9 +1475,15 @@ export function LabelProductionTab() {
           // que assumir 12 e imprimir volume que não corresponde à carga.
           const capacity = capacityBySaleOrder.get(order.sale_order_id) || 0;
           const pairsInPlannedFicha = effGradePerFicha.reduce((s, g) => s + g.qty, 0);
+          const packed = capacity > 0 && pairsInPlannedFicha > 0
+            ? packSaleOrderItem({ grade: effGradePerFicha, fichas: effFichas, capacity })
+            : [];
+          // Plano vazio = a regra declinou (grade que não é ficha) ou não há
+          // capacidade resolvida. Nos dois casos cai no legado — 1 etiqueta por
+          // ficha com a grade cheia. Nunca ficar sem etiqueta nenhuma.
           const plannedBoxes: { contents: { size: string; qty: number }[]; pairs: number }[] =
-            capacity > 0 && pairsInPlannedFicha > 0
-              ? packSaleOrderItem({ grade: effGradePerFicha, fichas: effFichas, capacity })
+            packed.length > 0
+              ? packed
               : Array.from({ length: Math.max(1, effFichas) }, () => ({
                   contents: effGradePerFicha.map(g => ({ ...g })),
                   pairs: pairsInPlannedFicha,

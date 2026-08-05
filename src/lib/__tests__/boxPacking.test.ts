@@ -4,6 +4,7 @@ import {
   gradeTotal,
   splitFicha,
   packSaleOrderItem,
+  packingApplies,
   boxWeightKg,
   DEFAULT_PAIR_WEIGHT_KG,
   type GradeInput,
@@ -133,7 +134,7 @@ describe('packSaleOrderItem — invariantes gerais', () => {
     { nome: 'ficha 18', grade: { '34': 3, '35': 3, '36': 3, '37': 3, '38': 3, '39': 3 }, capacity: 12, fichas: 5 },
     { nome: 'ficha 12 exata', grade: { '34': 2, '35': 2, '36': 2, '37': 2, '38': 2, '39': 2 }, capacity: 12, fichas: 7 },
     { nome: 'menor que a caixa', grade: { '38': 4 }, capacity: 12, fichas: 3 },
-    { nome: 'numeração única grande', grade: { '40': 30 }, capacity: 12, fichas: 1 },
+    { nome: 'numeração única', grade: { '40': 20 }, capacity: 12, fichas: 1 },
     { nome: 'curva irregular', grade: { '28': 1, '29': 4, '30': 2, '31': 5, '32': 2 }, capacity: 10, fichas: 9 },
   ];
 
@@ -178,6 +179,26 @@ describe('packSaleOrderItem — invariantes gerais', () => {
     expect(singles.reduce((s, b) => s + b.pairs, 0)).toBe(6);
     expect(singles.every((b) => b.partial)).toBe(true);
     expect(singles.length).toBe(2); // 28:4 e 29:2 — uma caixa por numeração
+  });
+
+  it('grade que NÃO é ficha declina, pra não fabricar caixa quase vazia', () => {
+    // PV-2026-00097: fichas=1 com a grade somando o pedido inteiro (24 pares,
+    // caixa de 12). Aplicar a regra daria 1 colmeia + 3 caixas de 4 pares em
+    // vez de 2 caixas cheias — por isso ela declina e o chamador usa CEIL.
+    const grade00097 = { '25': 4, '26': 4, '27': 4, '28': 4, '29': 2, '30': 2, '31': 2, '32': 2 };
+    expect(gradeTotal(grade00097)).toBe(24);
+    expect(packingApplies(grade00097, 12)).toBe(false);
+    expect(packSaleOrderItem({ grade: grade00097, fichas: 1, capacity: 12 })).toEqual([]);
+
+    // PV-2026-00013: 120 pares numa única "ficha".
+    expect(packingApplies({ '34': 10, '35': 20, '36': 30, '37': 30, '38': 20, '39': 10 }, 12)).toBe(false);
+  });
+
+  it('a fronteira da guarda é 2× a capacidade', () => {
+    expect(packingApplies({ '38': 23 }, 12)).toBe(true);   // 23 < 24
+    expect(packingApplies({ '38': 24 }, 12)).toBe(false);  // 24 não é < 24
+    expect(packingApplies(PV151_GRADE, 12)).toBe(true);    // 15 < 24
+    expect(packingApplies({ '38': 18 }, 12)).toBe(true);   // ficha de 18
   });
 
   it('sem fichas ou sem grade não gera caixa', () => {
