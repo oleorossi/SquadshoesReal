@@ -631,9 +631,13 @@ const resolveOwner = (path) =>
  * pra fora em silêncio. Alias legado conta — ele não renderiza tela, mas passa
  * pelo guard antes de redirecionar.
  *
- * Fora do RouteGuard (login, PWA do representante, showcase) não entra na conta.
+ * Fora do RouteGuard (login, showcase) não entra na conta.
+ *
+ * O PWA do representante (/m/*) SAIU desta lista em 05/08/2026: passou a ser
+ * guardado como as demais telas, então voltar a deixá-lo sem módulo tem que
+ * quebrar o build igual a qualquer outra rota.
  */
-const OUTSIDE_ROUTE_GUARD = /^\/(auth|login|m(\/|$)|design-preview|producao\/kanban\/gestao)/;
+const OUTSIDE_ROUTE_GUARD = /^\/(auth|login|design-preview|producao\/kanban\/gestao)/;
 const routesWithoutModule = [...new Map(
   routes
     .filter((r) => r.path !== '/' && r.path !== '/*' && !OUTSIDE_ROUTE_GUARD.test(r.path))

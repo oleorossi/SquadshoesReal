@@ -36,7 +36,8 @@ const MobileHome = lazy(() => import("./pages/mobile/MobileHome"));
 const MobileNewOrder = lazy(() => import("./pages/mobile/MobileNewOrder"));
 const MobilePending = lazy(() => import("./pages/mobile/MobilePending"));
 const MobileProfile = lazy(() => import("./pages/mobile/MobileProfile"));
-const DesignPreview = lazy(() => import("./pages/DesignPreview"));
+// DesignPreview NÃO é declarado aqui de propósito — ver DESIGN_PREVIEW_ROUTES,
+// logo acima do createBrowserRouter: a rota (e o import) só existem em DEV.
 // References removido em 2026-05 — página estava zerada e o menu apontava
 // pra ela sem uso. /references agora redireciona pra /fichas-tecnicas.
 // ColorImagesPage removido — duplicava a aba "Fotos & Histórico" da ficha técnica.
@@ -639,6 +640,37 @@ const RouteErrorFallback = () => {
   );
 };
 
+/**
+ * /design-preview — showcase do design system: 810 linhas 100% mock, zero
+ * chamada ao Supabase, autodeclarado "VERSÃO PREVIEW · NÃO PRODUTIVA".
+ *
+ * ⚠ SEGURANÇA: era declarada no mesmo nível de /auth — sem ProtectedRoute, sem
+ * RouteGuard e sem entrada em ROUTE_MODULE_MAP —, então qualquer pessoa abria
+ * /design-preview em produção SEM LOGIN. Agora a rota só EXISTE em
+ * desenvolvimento: em produção o array é vazio e a URL cai no catch-all "*" do
+ * layout "/" (quem não está logado é mandado pro /auth pelo ProtectedRoute;
+ * quem está vê o NotFound) — nunca uma tela em branco.
+ *
+ * Carrega pela propriedade de rota do próprio router — mesmo padrão de
+ * /reports, /patrimonio e das 18 irmãs — em vez de um React.lazy no topo do
+ * arquivo: assim o import dinâmico mora DENTRO do ramo morto e o chunk da
+ * página não entra no bundle de produção. Um const no topo continuaria sendo
+ * retido pelo bundler mesmo com a rota removida.
+ *
+ * ⚠ Não escreva os nomes de propriedade de rota seguidos de dois-pontos neste
+ * comentário: `scripts/ia-inventory.mjs` varre o arquivo inteiro com uma regex
+ * que não pula comentários, e um deles aqui corrompe o inventário de rotas.
+ */
+const DESIGN_PREVIEW_ROUTES: RouteObject[] = import.meta.env.DEV
+  ? [
+      {
+        path: "/design-preview",
+        lazy: () => import("./pages/DesignPreview").then(m => ({ Component: m.default })),
+        errorElement: <RouteErrorFallback />,
+      },
+    ]
+  : [];
+
 const router = createBrowserRouter([
   ...LEGACY_ALIAS_ROUTES.permanent.public,
   {
@@ -646,15 +678,7 @@ const router = createBrowserRouter([
     element: <AuthRoute />,
     errorElement: <RouteErrorFallback />,
   },
-  {
-    path: "/design-preview",
-    element: (
-      <Suspense fallback={<InlinePageLoader />}>
-        <DesignPreview />
-      </Suspense>
-    ),
-    errorElement: <RouteErrorFallback />,
-  },
+  ...DESIGN_PREVIEW_ROUTES,
   {
     // Central de Produção — o Kanban como "programa dedicado de gestão":
     // TELA CHEIA fora do AppLayout (sem sidebar/tabs), pro analista deixar
@@ -678,12 +702,25 @@ const router = createBrowserRouter([
   // (IndexedDB + syncEngine) tolera ficar sem sinal e sincroniza ao voltar; o
   // SW de cache offline está desligado (selfDestroying) — o app não carrega a
   // frio totalmente offline (ver vite.config.ts / CLAUDE.md sobre o cache-trap).
+  //
+  // ⚠ SEGURANÇA: até 05/08/2026 este ramo tinha só o ProtectedRoute, que checa
+  // login + `profiles.approved` e mais nada. `profiles.is_sales_rep` NÃO é um
+  // portão — ele só decide o DESTINO do redirect em AuthRoute/RootRedirect, ou
+  // seja, onde a pessoa CAI ao logar, nunca o que ela ALCANÇA digitando a URL.
+  // Resultado: qualquer usuário aprovado abria /m/new e criava PV, inclusive
+  // quem a allow-list granular nega em /sales (o RLS de sale_orders também só
+  // exige `is_approved_user()`, então o insert passava). Agora as 4 rotas /m/*
+  // herdam o módulo 'vendas' pelo prefixo '/m' em ROUTE_MODULE_MAP — mesmo
+  // módulo das telas de PV do desktop. Mesmo encadeamento do
+  // /producao/kanban/gestao acima: ProtectedRoute → Suspense → RouteGuard.
   {
     path: "/m",
     element: (
       <ProtectedRoute>
         <Suspense fallback={<div className="p-8 text-center text-sm text-muted-foreground">Carregando...</div>}>
-          <MobileLayout />
+          <RouteGuard>
+            <MobileLayout />
+          </RouteGuard>
         </Suspense>
       </ProtectedRoute>
     ),

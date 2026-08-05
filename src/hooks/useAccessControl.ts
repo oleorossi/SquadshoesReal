@@ -43,6 +43,13 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/label-system': 'expedicao',
   '/entregas': 'expedicao',
   '/sales': 'vendas',
+  // PWA do representante (/m, /m/new, /m/pending, /m/profile). Cria PV, então
+  // recebe o MESMO módulo das telas de PV do desktop. Uma entrada cobre as 4:
+  // resolveModuleForPath casa por prefixo com fronteira '/' ou '?' — igual a
+  // '/sales' cobrir '/sales/new'. Sem colisão com '/mrp', '/mdfe', '/manifests'
+  // etc.: a fronteira impede '/m' de casar '/mrp', e chaves mais longas são
+  // testadas antes.
+  '/m': 'vendas',
   '/pronta-entrega': 'vendas',
   '/catalogo': 'vendas',
   '/sales-report': 'relatorios',

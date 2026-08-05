@@ -180,3 +180,80 @@ describe('isActionAllowed — ações CRUD por área', () => {
     expect(isActionAllowed('/estoque', 'delete', o)).toBe(true);
   });
 });
+
+// ════════════════════════════════════════════════════════════════════════
+// PWA do representante (/m/*) — 05/08/2026
+//
+// Até esta data o ramo /m tinha só o ProtectedRoute (login + `approved`) e
+// nenhuma entrada em ROUTE_MODULE_MAP: qualquer usuário aprovado abria /m/new
+// e criava PV. `profiles.is_sales_rep` NÃO barrava nada — ele só escolhe o
+// destino do redirect pós-login. Agora /m herda o módulo 'vendas', o mesmo das
+// telas de PV do desktop.
+// ════════════════════════════════════════════════════════════════════════
+describe('PWA /m/* — herda o módulo de vendas', () => {
+  it('as 4 rotas do PWA resolvem pro módulo vendas', () => {
+    expect(resolveModuleForPath('/m')).toBe('vendas');
+    expect(resolveModuleForPath('/m/new')).toBe('vendas');
+    expect(resolveModuleForPath('/m/pending')).toBe('vendas');
+    expect(resolveModuleForPath('/m/profile')).toBe('vendas');
+  });
+
+  it('o prefixo curto "/m" não sequestra rotas que só COMEÇAM com m', () => {
+    // A fronteira exigida ('/' ou '?') é o que impede a colisão; chaves mais
+    // longas também são testadas antes. Sem isso, /mrp viraria 'vendas'.
+    expect(resolveModuleForPath('/mrp')).toBe('producao');
+    expect(resolveModuleForPath('/mdfe')).toBe('financeiro');
+    expect(resolveModuleForPath('/manifests')).toBe('expedicao');
+    expect(resolveModuleForPath('/montagem')).toBe('producao');
+    expect(resolveModuleForPath('/modules/reports')).toBe('vendas'); // já era 'vendas' por conta própria
+  });
+
+  it('RBAC: perfis sem vendas NÃO alcançam mais o /m/new', () => {
+    const almox = { isAdmin: false, roles: ['almoxarifado'], perms: [], allMenuPaths: MENU };
+    const rh = { isAdmin: false, roles: ['rh'], perms: [], allMenuPaths: MENU };
+    expect(isRouteAllowed('/m', almox)).toBe(false);
+    expect(isRouteAllowed('/m/new', almox)).toBe(false);
+    expect(isRouteAllowed('/m/new', rh)).toBe(false);
+  });
+
+  it('RBAC: perfis com vendas continuam entrando', () => {
+    const comercial = { isAdmin: false, roles: ['comercial'], perms: [], allMenuPaths: MENU };
+    expect(isRouteAllowed('/m', comercial)).toBe(true);
+    expect(isRouteAllowed('/m/new', comercial)).toBe(true);
+    expect(isRouteAllowed('/m/new', { isAdmin: true, roles: ['admin'], perms: [], allMenuPaths: MENU })).toBe(true);
+  });
+
+  it('allow-list granular que não concede vendas fecha o /m/new', () => {
+    // Caso REAL em produção (perfil eaedb95d…, roles consulta+producao+rh com 20
+    // grants por PATH, nenhum deles /sales): pelo RBAC ele teria 'vendas', mas a
+    // allow-list manda — e antes do fix ele criava PV pelo celular assim mesmo.
+    const granular = {
+      isAdmin: false,
+      roles: ['consulta', 'producao', 'rh'],
+      perms: [perm('/estoque'), perm('/orders'), perm('/imprimir-fichas')],
+      allMenuPaths: MENU,
+    };
+    expect(isRouteAllowed('/orders', granular)).toBe(true);
+    expect(isRouteAllowed('/m/new', granular)).toBe(false);
+  });
+
+  it('grant legado por MÓDULO "vendas" cobre o PWA', () => {
+    const o = { isAdmin: false, roles: ['consulta'], perms: [perm('vendas')], allMenuPaths: MENU };
+    expect(isRouteAllowed('/m/new', o)).toBe(true);
+  });
+
+  // ⚠ LACUNA CONHECIDA, não é o comportamento desejado a longo prazo.
+  // `/m` não é um destino concedível (não existe em navigation.ts), então
+  // resolveMenuOwner('/m/new') → null e o grant por PATH de '/sales' não o
+  // alcança. Hoje isso não afeta ninguém (nenhum profile tem is_sales_rep e o
+  // PWA não é usado), mas o dia em que um representante for configurado pela
+  // matriz granular ele fica trancado fora do próprio app. Fechar dando um
+  // destino concedível ao /m, ou fazendo o dono de /m ser '/sales'.
+  it('LACUNA: grant granular por PATH de /sales NÃO cobre o /m', () => {
+    const repGranular = {
+      isAdmin: false, roles: ['comercial'], perms: [perm('/sales')], allMenuPaths: MENU,
+    };
+    expect(isRouteAllowed('/sales/new', repGranular)).toBe(true);
+    expect(isRouteAllowed('/m/new', repGranular)).toBe(false); // ← trava a decisão até ser revisada
+  });
+});
