@@ -27,6 +27,7 @@ import { useReferenceMaterialVariants, useAllActiveReferenceMaterialVariants, Va
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { normalizeForSearch, searchMatchesAllTerms } from '@/lib/searchUtils';
 import { shouldSyncStrapColorsToMain } from '@/lib/strapColorSync';
+import { productColorAliases, groupHasProductForColor } from '@/lib/productColorAliases';
 import {
   getStrapSourcingOverride,
   setStrapSourcing,
@@ -422,24 +423,15 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     )).sort((a, b) => a.localeCompare(b, 'pt-BR'));
   };
 
-  const getDerivedProductColor = (product: any) => {
-    const explicitColor = product.color?.trim() || '';
-    const productName = product.name?.trim() || '';
-    if (productName.includes(':')) return productName.split(':').pop()?.trim() || '';
-    if (productName.includes(' - ')) return productName.split(' - ').pop()?.trim() || '';
-    return explicitColor ? '' : productName;
-  };
-
+  // `getDerivedProductColor` / `productColorAliases` vêm de '@/lib/productColorAliases'
+  // — MESMA fonte usada pela validação `strapMissing` abaixo. Ver o cabeçalho daquele
+  // módulo: montar as opções por uma regra e validá-las por outra foi o que fez a tira
+  // de strass sumir do seletor nos PV-00148/149/150/151.
   const getColorsFromProducts = (groupId: string) => {
     return uniqueSortedColors(
       allProducts.flatMap((product: any) => {
         if (product.group_id !== groupId || product.active === false) return [];
-        const colors = new Set<string>();
-        const explicitColor = product.color?.trim();
-        const derivedColor = getDerivedProductColor(product);
-        if (explicitColor) colors.add(explicitColor);
-        if (derivedColor) colors.add(derivedColor);
-        return Array.from(colors);
+        return productColorAliases(product);
       })
     );
   };
@@ -606,6 +598,12 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
   const modelHasCabedal = !!String(sheetSpecs?.upper_material || '').trim();
 
   // Tiras com cor escolhida mas SEM produto no grupo (group_id + color).
+  //
+  // ⚠ Usa `groupHasProductForColor` — a MESMA regra de alias que monta o dropdown
+  // logo acima. Antes comparava só `products.color`, enquanto o dropdown já aceitava
+  // a cor derivada do NOME: num grupo cadastrado com `color` vazio (a cor mora no
+  // nome, caso do TIRA STRASS 15MM) o seletor oferecia 3 cores e esta validação
+  // reprovava as 3 com "sem produto no estoque". Ver '@/lib/productColorAliases'.
   const strapMissing = useMemo<{ idx: number; color: string; group_name: string; group_id: string }[]>(() => {
     if (modelHasCabedal) return [];
     const straps = (item.strap_colors as any[]) || [];
@@ -613,9 +611,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
       if (!s?.color || !s?.group_id) return null;
       const grp = (productGroups as any[]).find((g: any) => g.id === s.group_id);
       if (grp?.is_color_agnostic) return null; // material base: cor não se aplica
-      const target = s.color.trim().toLowerCase();
-      const hasProduct = (allProducts as any[]).some((p: any) =>
-        p.group_id === s.group_id && (p.color || '').trim().toLowerCase() === target && p.active !== false);
+      const hasProduct = groupHasProductForColor(allProducts as any[], s.group_id, s.color);
       return hasProduct ? null : { idx, color: s.color, group_name: s.group_name || '', group_id: s.group_id };
     }).filter(Boolean) as any;
   }, [item.strap_colors, allProducts, productGroups, modelHasCabedal]);
@@ -754,10 +750,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     if (colorSet.size === 0) {
       const forracaoProducts = allProducts.filter((p: any) => p.category === 'Forração da Palmilha' && p.active !== false);
       forracaoProducts.forEach((product: any) => {
-        const explicitColor = product.color?.trim();
-        const derivedColor = getDerivedProductColor(product);
-        if (explicitColor) colorSet.add(explicitColor);
-        if (derivedColor) colorSet.add(derivedColor);
+        productColorAliases(product).forEach((alias) => colorSet.add(alias));
       });
     }
 
