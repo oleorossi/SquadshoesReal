@@ -189,7 +189,7 @@ export interface PayrollRun {
   absent_days: number;
   /** Pares do período (regime por par) — base do bruto. 0 nos demais regimes.
    *  Ficam gravados na folha porque holerite e recibo têm de mostrar o que foi
-   *  PAGO, mesmo emitidos meses depois (mig 20261102120100). */
+   *  PAGO, mesmo emitidos meses depois (mig 20261116120100). */
   pares_medio?: number;
   pares_dificil?: number;
   overtime_50_minutes: number;

@@ -43,8 +43,11 @@ não comprar.
 ## 3. Modelo de dados
 
 Carimbo de migration: consultar `select max(version) from
-supabase_migrations.schema_migrations` na hora de criar (em 05/08/2026 o topo era
-`20261115120300`; outra sessão pode ter avançado).
+supabase_migrations.schema_migrations` na hora de criar (em 05/08/2026 o topo
+REGISTRADO era `20261115120400`; outra sessão pode ter avançado). Confira também
+o maior ARQUIVO em `supabase/migrations/` — hoje `20261116120300` — porque existe
+arquivo ainda não registrado acima do topo do banco, e usar só o `max(version)`
+recria uma colisão de carimbo.
 
 ### 3.1 `v_purchase_needs` — necessidade líquida unificada
 

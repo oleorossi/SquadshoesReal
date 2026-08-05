@@ -150,7 +150,7 @@ export function usePayrollPaymentsHistory(filters?: { employeeId?: string | null
       let q = (supabase as any)
         .from('payroll_payments')
         // pares_* e business_days_worked entram porque o recibo reimpresso daqui
-        // precisa descrever PRODUÇÃO pra quem é pago por par (mig 20261102120100).
+        // precisa descrever PRODUÇÃO pra quem é pago por par (mig 20261116120100).
         .select('*, employee:employees(id, name, role, department, cpf), run:payroll_runs(id, period, total_liquido, status, pares_medio, pares_dificil, business_days_worked)')
         .order('paid_on', { ascending: false })
         .limit(1000);
