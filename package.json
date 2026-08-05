@@ -13,7 +13,7 @@
     "verify:no-branding": "node scripts/verify-no-branding.mjs",
     "check:navigation": "node scripts/check-navigation-access.mjs",
     "preview": "vite preview",
-    "test": "vitest run --exclude src/services/__tests__/conversao.units.test.ts --exclude src/services/__tests__/rpc-parity.units.test.ts --exclude src/services/__tests__/units.edge-cases.test.ts --exclude src/lib/__tests__/materialConsumption.units.test.ts",
+    "test": "vitest run",
     "test:watch": "vitest",
     "test:units": "vitest run src/services/__tests__/conversao.units.test.ts src/services/__tests__/rpc-parity.units.test.ts src/services/__tests__/units.edge-cases.test.ts src/lib/__tests__/materialConsumption.units.test.ts"
   },
