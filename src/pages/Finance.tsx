@@ -22,6 +22,7 @@ import { Input } from '@/components/ui/input';
 import { SearchInput } from '@/components/ui/search-input';
 import { EmptyState } from '@/components/ui/empty-state';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
+import { isSettled, openBalanceOf, sumOpenBalance, type LedgerKind, type LedgerRow } from '@/lib/ledgerBalance';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { SearchableSelect } from '@/components/ui/searchable-select';
@@ -96,52 +97,13 @@ function getEffectiveStatus(status: string, dueDate: string | null | undefined) 
 }
 
 /**
- * Regra CANÔNICA de "em aberto" — o que ainda se deve / se tem a receber.
- * Cancelada não é obrigação; liquidada já passou pelo caixa; parcial conta só o
- * que falta. Card do topo E subtítulo dos painéis usam esta função, para não
- * poderem divergir.
- *
- * Foi exatamente essa divergência que fez o painel exibir "Total: R$ 3.521,99"
- * ao lado do card "TOTAL A PAGAR R$ 0,00" para a MESMA e única conta: o painel
- * somava `amount` bruto de todas as linhas (inclusive a paga), o card somava o
- * saldo das não liquidadas. Dois números para o mesmo conceito na mesma tela.
- *
- * ⚠ Não confundir com as visões de VOLUME (ranking de clientes/fornecedores,
- * despesa por categoria em Relatórios): lá somar `amount` bruto de linha já
- * liquidada é o certo — o que se quer é quanto girou, não quanto falta. Só
- * cancelada sai. São conceitos diferentes, não uma inconsistência a unificar.
- */
-const SETTLED_STATUSES = {
-  payable: ['paid', 'cancelled'],
-  receivable: ['received', 'cancelled'],
-} as const;
-
-type LedgerKind = keyof typeof SETTLED_STATUSES;
-
-function isSettled(row: { status: string }, kind: LedgerKind): boolean {
-  return (SETTLED_STATUSES[kind] as readonly string[]).includes(row.status);
-}
-
-function openBalanceOf(row: AccountPayable | AccountReceivable, kind: LedgerKind): number {
-  if (isSettled(row, kind)) return 0;
-  const settled = kind === 'payable'
-    ? (row as AccountPayable).amount_paid
-    : (row as AccountReceivable).amount_received;
-  return Math.max(0, (row.amount || 0) - (settled || 0));
-}
-
-function sumOpenBalance(rows: (AccountPayable | AccountReceivable)[], kind: LedgerKind): number {
-  return rows.reduce((s, r) => s + openBalanceOf(r, kind), 0);
-}
-
-/**
  * Subtotais do subtítulo de um painel, sobre a lista JÁ FILTRADA.
  * `open` casa com o card do topo quando não há filtro ativo — é o contrato que
  * mantém as duas leituras alinhadas. `settledCount` existe para explicar a
  * diferença entre "N conta(s)" e o valor em aberto: sem ele o usuário vê 72
  * linhas listadas e um total que só cobre 32, sem nenhuma pista do porquê.
  */
-function panelSums(rows: (AccountPayable | AccountReceivable)[], kind: LedgerKind) {
+function panelSums(rows: LedgerRow[], kind: LedgerKind) {
   return rows.reduce(
     (acc, row) => {
       if (isSettled(row, kind)) {

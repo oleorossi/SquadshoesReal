@@ -4,6 +4,7 @@ import autoTable from 'jspdf-autotable';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { parseDateOnly } from '@/lib/dateOnly';
+import { isCancelledOrDraftOrder } from '@/lib/orderStatus';
 
 export interface ReportData {
   saleOrders: any[];
@@ -183,6 +184,10 @@ export function exportFinancialSummaryExcel(data: ReportData) {
 export function exportClientRankingExcel(data: ReportData) {
   const ranking: Record<string, { name: string; orders: number; total: number }> = {};
   for (const s of data.saleOrders) {
+    // PV cancelado e rascunho NÃO são faturamento. Sem esta linha o ranking
+    // somava os dois e divergia do "Ranking de Clientes" do Financeiro (que já
+    // excluía cancelados) — dois relatórios de mesmo nome, números diferentes.
+    if (isCancelledOrDraftOrder(s.status)) continue;
     const key = s.client_id || s.client_name || 'desconhecido';
     const name = s.client_name || 'Desconhecido';
     if (!ranking[key]) ranking[key] = { name, orders: 0, total: 0 };

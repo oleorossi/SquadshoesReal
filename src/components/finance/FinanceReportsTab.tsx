@@ -17,6 +17,35 @@ import { useAccountsPayable, useAccountsReceivable } from '@/hooks/useFinance';
 import { DREAuto } from '@/components/finance/DREAuto';
 import { CashFlowProjection } from '@/components/finance/CashFlowProjection';
 import { cn } from '@/lib/utils';
+import {
+  isCancelled, openBalanceOf, volumeOf, settledAmountOf,
+  LEDGER_VIEW_LABELS, type LedgerView,
+} from '@/lib/ledgerBalance';
+
+/**
+ * Alternador entre as duas leituras legítimas de AP/AR (ver `ledgerBalance.ts`).
+ * Vive aqui porque só os Relatórios oferecem as duas — os cards do Financeiro
+ * mostram sempre saldo em aberto, que é o número operacional.
+ */
+function LedgerViewToggle({ value, onChange }: { value: LedgerView; onChange: (v: LedgerView) => void }) {
+  return (
+    <div className="inline-flex rounded-md border border-border p-0.5 gap-0.5">
+      {(Object.keys(LEDGER_VIEW_LABELS) as LedgerView[]).map(v => (
+        <Button
+          key={v}
+          size="sm"
+          variant={value === v ? 'default' : 'ghost'}
+          className="h-7 px-3 text-xs"
+          aria-pressed={value === v}
+          title={LEDGER_VIEW_LABELS[v].hint}
+          onClick={() => onChange(v)}
+        >
+          {LEDGER_VIEW_LABELS[v].label}
+        </Button>
+      ))}
+    </div>
+  );
+}
 
 const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const fmtShort = (v: number) => {
@@ -257,21 +286,24 @@ function CategoriesTab() {
   const { data: payables = [] } = useAccountsPayable();
   const { data: receivables = [] } = useAccountsReceivable();
   const [months, setMonths] = useState('3');
+  const [view, setView] = useState<LedgerView>('volume');
 
   const cutoff = useMemo(() => subMonths(new Date(), Number(months)), [months]);
+  const viewCfg = LEDGER_VIEW_LABELS[view];
 
   const expenseByCategory = useMemo(() => {
     const map: Record<string, number> = {};
     payables.forEach(p => {
-      if (p.status === 'cancelled') return;
+      if (isCancelled(p)) return;
       if (p.due_date && parseISO(p.due_date) < cutoff) return;
       const cat = p.category || 'outro';
-      map[cat] = (map[cat] || 0) + (p.amount || 0);
+      map[cat] = (map[cat] || 0) + (view === 'volume' ? volumeOf(p) : openBalanceOf(p, 'payable'));
     });
     return Object.entries(map)
+      .filter(([, value]) => value > 0)
       .map(([key, value]) => ({ name: CATEGORY_LABELS[key] || key, value, key }))
       .sort((a, b) => b.value - a.value);
-  }, [payables, cutoff]);
+  }, [payables, cutoff, view]);
 
   const monthlyTrend = useMemo(() => {
     const periods: Record<string, { period: string; receita: number; despesa: number }> = {};
@@ -281,23 +313,23 @@ function CategoriesTab() {
       periods[key] = { period: format(d, 'MMM/yy', { locale: ptBR }), receita: 0, despesa: 0 };
     }
     receivables.forEach(r => {
-      if (r.status === 'cancelled' || !r.due_date) return;
+      if (isCancelled(r) || !r.due_date) return;
       const key = r.due_date.slice(0, 7);
-      if (periods[key]) periods[key].receita += (r.amount || 0);
+      if (periods[key]) periods[key].receita += view === 'volume' ? volumeOf(r) : openBalanceOf(r, 'receivable');
     });
     payables.forEach(p => {
-      if (p.status === 'cancelled' || !p.due_date) return;
+      if (isCancelled(p) || !p.due_date) return;
       const key = p.due_date.slice(0, 7);
-      if (periods[key]) periods[key].despesa += (p.amount || 0);
+      if (periods[key]) periods[key].despesa += view === 'volume' ? volumeOf(p) : openBalanceOf(p, 'payable');
     });
     return Object.values(periods);
-  }, [payables, receivables, months]);
+  }, [payables, receivables, months, view]);
 
   const totalExpense = expenseByCategory.reduce((s, c) => s + c.value, 0);
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Select value={months} onValueChange={setMonths}>
           <SelectTrigger className="w-40">
             <SelectValue />
@@ -309,13 +341,15 @@ function CategoriesTab() {
             <SelectItem value="12">Últimos 12 meses</SelectItem>
           </SelectContent>
         </Select>
+        <LedgerViewToggle value={view} onChange={setView} />
+        <span className="text-xs text-muted-foreground">{viewCfg.hint}</span>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Expense by category — bar chart */}
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Despesas por Categoria</CardTitle>
+            <CardTitle className="text-sm">Despesas por Categoria · {viewCfg.payableColumn}</CardTitle>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={220}>
@@ -424,44 +458,65 @@ function CategoriesTab() {
 function RankingTab() {
   const { data: receivables = [] } = useAccountsReceivable();
   const { data: payables = [] } = useAccountsPayable();
+  /* Volume por padrão: a pergunta natural de um ranking é "quem é meu maior
+     cliente/fornecedor", e no modo Em aberto quem já quitou tudo desaparece. */
+  const [view, setView] = useState<LedgerView>('volume');
 
   const clientRanking = useMemo(() => {
-    const map: Record<string, { name: string; total: number; received: number; count: number }> = {};
+    const map: Record<string, { name: string; value: number; settled: number; count: number }> = {};
     receivables.forEach(r => {
-      if (r.status === 'cancelled') return;
+      if (isCancelled(r)) return;
       const key = r.client_name || 'Sem nome';
-      if (!map[key]) map[key] = { name: key, total: 0, received: 0, count: 0 };
-      map[key].total += (r.amount || 0);
-      map[key].received += (r.amount_received || 0);
+      if (!map[key]) map[key] = { name: key, value: 0, settled: 0, count: 0 };
+      map[key].value += view === 'volume' ? volumeOf(r) : openBalanceOf(r, 'receivable');
+      map[key].settled += settledAmountOf(r, 'receivable');
       map[key].count++;
     });
-    return Object.values(map).sort((a, b) => b.total - a.total).slice(0, 15);
-  }, [receivables]);
+    // Em "Em aberto", quem não deve nada zera — some da lista em vez de ocupar
+    // as primeiras posições com R$ 0,00.
+    return Object.values(map)
+      .filter(c => c.value > 0)
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 15);
+  }, [receivables, view]);
 
   const supplierRanking = useMemo(() => {
-    const map: Record<string, { name: string; total: number; paid: number; count: number }> = {};
+    const map: Record<string, { name: string; value: number; settled: number; count: number }> = {};
     payables.forEach(p => {
-      if (p.status === 'cancelled') return;
+      if (isCancelled(p)) return;
       const key = p.suppliers?.name || 'Sem fornecedor';
-      if (!map[key]) map[key] = { name: key, total: 0, paid: 0, count: 0 };
-      map[key].total += (p.amount || 0);
-      map[key].paid += (p.amount_paid || 0);
+      if (!map[key]) map[key] = { name: key, value: 0, settled: 0, count: 0 };
+      map[key].value += view === 'volume' ? volumeOf(p) : openBalanceOf(p, 'payable');
+      map[key].settled += settledAmountOf(p, 'payable');
       map[key].count++;
     });
-    return Object.values(map).sort((a, b) => b.total - a.total).slice(0, 15);
-  }, [payables]);
+    return Object.values(map)
+      .filter(s => s.value > 0)
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 15);
+  }, [payables, view]);
 
-  const topClientsChart = clientRanking.slice(0, 8).map(c => ({ name: c.name.split(' ')[0], value: c.total }));
-  const topSuppliersChart = supplierRanking.slice(0, 8).map(s => ({ name: s.name.split(' ')[0], value: s.total }));
+  const viewCfg = LEDGER_VIEW_LABELS[view];
+
+  const topClientsChart = clientRanking.slice(0, 8).map(c => ({ name: c.name.split(' ')[0], value: c.value }));
+  const topSuppliersChart = supplierRanking.slice(0, 8).map(s => ({ name: s.name.split(' ')[0], value: s.value }));
 
   return (
     <div className="space-y-4">
+      {/* O alternador vale para os 4 blocos abaixo — por isso fica no topo da aba
+          e não dentro de cada card, senão daria para deixar gráfico e tabela em
+          visões diferentes e comparar maçã com laranja. */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <LedgerViewToggle value={view} onChange={setView} />
+        <span className="text-xs text-muted-foreground">{viewCfg.hint}</span>
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Clients chart */}
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm flex items-center gap-2">
-              <Users className="h-4 w-4 text-primary" /> Top Clientes por Faturamento
+              <Users className="h-4 w-4 text-primary" /> Top Clientes · {viewCfg.receivableColumn}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -481,7 +536,7 @@ function RankingTab() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm flex items-center gap-2">
-              <Building2 className="h-4 w-4 text-primary" /> Top Fornecedores por Gasto
+              <Building2 className="h-4 w-4 text-primary" /> Top Fornecedores · {viewCfg.payableColumn}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -510,19 +565,26 @@ function RankingTab() {
                 <TableRow className="bg-muted/30">
                   <TableHead className="w-8">#</TableHead>
                   <TableHead>Cliente</TableHead>
-                  <TableHead className="text-right">Total</TableHead>
+                  <TableHead className="text-right">{viewCfg.receivableColumn}</TableHead>
                   <TableHead className="text-right">Recebido</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {clientRanking.map((c, i) => (
+                {clientRanking.length === 0 ? (
+                  <TableRow><TableCell colSpan={4} className="text-center text-muted-foreground text-sm py-6">
+                    {view === 'open' ? 'Nenhum cliente com saldo em aberto' : 'Nenhum título a receber'}
+                  </TableCell></TableRow>
+                ) : clientRanking.map((c, i) => (
                   <TableRow key={c.name}>
                     <TableCell className="text-muted-foreground text-xs">{i + 1}</TableCell>
                     <TableCell className="font-medium text-sm">{c.name}</TableCell>
-                    <TableCell className="text-right font-mono text-sm">{fmtShort(c.total)}</TableCell>
+                    <TableCell className="text-right font-mono text-sm">{fmtShort(c.value)}</TableCell>
                     <TableCell className="text-right">
-                      <span className={cn('text-xs font-mono', c.received >= c.total ? 'text-green-600' : 'text-muted-foreground')}>
-                        {fmtShort(c.received)}
+                      {/* Verde só faz sentido comparando com o VOLUME (quitou tudo).
+                          Em "Em aberto" a coluna da esquerda é o que falta, então
+                          a comparação seria contra o número errado. */}
+                      <span className={cn('text-xs font-mono', view === 'volume' && c.settled >= c.value ? 'text-green-600' : 'text-muted-foreground')}>
+                        {fmtShort(c.settled)}
                       </span>
                     </TableCell>
                   </TableRow>
@@ -543,19 +605,23 @@ function RankingTab() {
                 <TableRow className="bg-muted/30">
                   <TableHead className="w-8">#</TableHead>
                   <TableHead>Fornecedor</TableHead>
-                  <TableHead className="text-right">Total</TableHead>
+                  <TableHead className="text-right">{viewCfg.payableColumn}</TableHead>
                   <TableHead className="text-right">Pago</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {supplierRanking.map((s, i) => (
+                {supplierRanking.length === 0 ? (
+                  <TableRow><TableCell colSpan={4} className="text-center text-muted-foreground text-sm py-6">
+                    {view === 'open' ? 'Nenhum fornecedor com saldo em aberto' : 'Nenhum título a pagar'}
+                  </TableCell></TableRow>
+                ) : supplierRanking.map((s, i) => (
                   <TableRow key={s.name}>
                     <TableCell className="text-muted-foreground text-xs">{i + 1}</TableCell>
                     <TableCell className="font-medium text-sm">{s.name}</TableCell>
-                    <TableCell className="text-right font-mono text-sm">{fmtShort(s.total)}</TableCell>
+                    <TableCell className="text-right font-mono text-sm">{fmtShort(s.value)}</TableCell>
                     <TableCell className="text-right">
-                      <span className={cn('text-xs font-mono', s.paid >= s.total ? 'text-green-600' : 'text-muted-foreground')}>
-                        {fmtShort(s.paid)}
+                      <span className={cn('text-xs font-mono', view === 'volume' && s.settled >= s.value ? 'text-green-600' : 'text-muted-foreground')}>
+                        {fmtShort(s.settled)}
                       </span>
                     </TableCell>
                   </TableRow>
