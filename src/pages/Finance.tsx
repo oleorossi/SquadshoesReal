@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { useCan } from '@/hooks/useAccessControl';
-import { CurrencyDollar as DollarSign, TrendUp as TrendingUp, TrendDown as TrendingDown, Warning as AlertTriangle, Plus, PencilSimple as Pencil, Trash as Trash2, CheckCircle, Clock, CircleNotch as Loader2, FileText, Buildings as Building2, ChartBar as BarChart3, Calculator, Bank as Landmark, FileArrowUp as FileUp, FileArrowDown as FileDown, UserCheck, MagnifyingGlass, Percent } from '@phosphor-icons/react';
+import { CurrencyDollar as DollarSign, TrendUp as TrendingUp, TrendDown as TrendingDown, Warning as AlertTriangle, Plus, PencilSimple as Pencil, Trash as Trash2, CheckCircle, ArrowCounterClockwise as Undo2, Clock, CircleNotch as Loader2, FileText, Buildings as Building2, ChartBar as BarChart3, Calculator, Bank as Landmark, FileArrowUp as FileUp, FileArrowDown as FileDown, UserCheck, MagnifyingGlass, Percent } from '@phosphor-icons/react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { format, parseISO, isAfter, isBefore, addDays, startOfMonth, endOfMonth, eachDayOfInterval, subMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -34,6 +34,7 @@ import {
   useCreateAccountPayable, useCreateAccountReceivable,
   useUpdateAccountPayable, useUpdateAccountReceivable,
   useDeleteAccountPayable, useDeleteAccountReceivable,
+  useReverseAccountPayable, useReverseAccountReceivable,
   type AccountPayable, type AccountReceivable,
 } from '@/hooks/useFinance';
 import {
@@ -92,6 +93,20 @@ function getEffectiveStatus(status: string, dueDate: string | null | undefined) 
   if (status === 'paid' || status === 'received' || status === 'cancelled') return status;
   if (dueDate && isBefore(parseISO(dueDate), todayMidnight())) return 'overdue';
   return status;
+}
+
+/**
+ * Motivo da primeira rejeição de um `Promise.allSettled`, para o toast de lote.
+ * Os handlers em massa reportavam só "N falha(s)" e descartavam o `Error.message`
+ * do hook — o usuário via a contagem e nenhuma causa. A causa é justamente o
+ * único texto acionável ("Conta já paga não pode ser excluída..."), que só
+ * aparecia num segundo toast do `onError`, empilhado atrás do genérico.
+ */
+function firstRejectionReason(results: PromiseSettledResult<unknown>[]): string {
+  const rejected = results.find((r): r is PromiseRejectedResult => r.status === 'rejected');
+  if (!rejected) return '';
+  const reason = rejected.reason;
+  return (reason instanceof Error ? reason.message : String(reason ?? '')).trim();
 }
 
 /**
@@ -739,6 +754,8 @@ export default function Finance() {
   const updateReceivable = useUpdateAccountReceivable();
   const deletePayable = useDeleteAccountPayable();
   const deleteReceivable = useDeleteAccountReceivable();
+  const reversePayable = useReverseAccountPayable();
+  const reverseReceivable = useReverseAccountReceivable();
   // Gates de ação por área (referência de adoção do controle CRUD). Admin e
   // usuários sem permissão granular sempre passam — não restringe quem já podia.
   // ⚠ Usa o path do ITEM DE MENU ('/financeiro'), não a rota-redirect '/finance':
@@ -807,8 +824,10 @@ export default function Finance() {
     const results = await Promise.allSettled(ids.map(id => deleteReceivable.mutateAsync(id)));
     const failed = results.filter(r => r.status === 'rejected').length;
     const ok = ids.length - failed;
-    if (failed > 0) toast.error(`${ok} excluída(s), ${failed} falha(s)`);
-    else toast.success(`${ok} conta(s) excluída(s)`);
+    if (failed > 0) {
+      const reason = firstRejectionReason(results);
+      toast.error(`${ok} excluída(s), ${failed} falha(s)${reason ? ` — ${reason}` : ''}`);
+    } else toast.success(`${ok} conta(s) excluída(s)`);
   };
   const handleBulkMarkReceived = async () => {
     const todayStr = format(todayMidnight(), 'yyyy-MM-dd');
@@ -843,8 +862,10 @@ export default function Finance() {
     const results = await Promise.allSettled(ids.map(id => deletePayable.mutateAsync(id)));
     const failed = results.filter(r => r.status === 'rejected').length;
     const ok = ids.length - failed;
-    if (failed > 0) toast.error(`${ok} excluída(s), ${failed} falha(s)`);
-    else toast.success(`${ok} conta(s) excluída(s)`);
+    if (failed > 0) {
+      const reason = firstRejectionReason(results);
+      toast.error(`${ok} excluída(s), ${failed} falha(s)${reason ? ` — ${reason}` : ''}`);
+    } else toast.success(`${ok} conta(s) excluída(s)`);
   };
   const handleBulkMarkPaid = async () => {
     const todayStr = format(todayMidnight(), 'yyyy-MM-dd');
@@ -1307,6 +1328,16 @@ export default function Finance() {
                                         </AlertDialogContent>
                                       </AlertDialog>
                                     )}
+                                    {/* Estorno: única saída de uma AP paga. Sem ele a linha fica
+                                        congelada — não exclui, não edita valor/status. */}
+                                    {p.status === 'paid' && (
+                                      <AlertDialog>
+                                        <AlertDialogTrigger asChild><Button size="icon" variant="ghost" className="h-7 w-7" title="Estornar pagamento" aria-label="Estornar pagamento"><Undo2 className="h-3.5 w-3.5 text-amber-600" /></Button></AlertDialogTrigger>
+                                        <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Estornar pagamento?</AlertDialogTitle><AlertDialogDescription>A conta de {fmt(p.amount)} volta para "À Vencer", com o valor pago zerado e a data de pagamento apagada. Depois disso ela pode ser editada, excluída ou paga de novo.</AlertDialogDescription></AlertDialogHeader>
+                                          <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={() => reversePayable.mutate(p.id)}>Estornar</AlertDialogAction></AlertDialogFooter>
+                                        </AlertDialogContent>
+                                      </AlertDialog>
+                                    )}
                                     <Button size="icon" variant="ghost" className="h-7 w-7" aria-label="Editar conta" onClick={() => { setEditingPayable(p); setPayableDialog(true); }}><Pencil className="h-3.5 w-3.5" /></Button>
                                     <AlertDialog>
                                       <AlertDialogTrigger asChild><Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" aria-label="Excluir conta"><Trash2 className="h-3.5 w-3.5" /></Button></AlertDialogTrigger>
@@ -1446,6 +1477,15 @@ export default function Finance() {
                                         <AlertDialogTrigger asChild><Button size="icon" variant="ghost" className="h-7 w-7" title="Marcar Recebido"><CheckCircle className="h-3.5 w-3.5 text-green-600" /></Button></AlertDialogTrigger>
                                         <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Marcar como Recebido?</AlertDialogTitle><AlertDialogDescription>Registrar recebimento de {fmt(r.amount)} na data de hoje?</AlertDialogDescription></AlertDialogHeader>
                                           <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={() => markReceived(r)}>Confirmar</AlertDialogAction></AlertDialogFooter>
+                                        </AlertDialogContent>
+                                      </AlertDialog>
+                                    )}
+                                    {/* Espelho do estorno da AP — mesmo beco sem saída do lado a receber. */}
+                                    {r.status === 'received' && (
+                                      <AlertDialog>
+                                        <AlertDialogTrigger asChild><Button size="icon" variant="ghost" className="h-7 w-7" title="Estornar recebimento" aria-label="Estornar recebimento"><Undo2 className="h-3.5 w-3.5 text-amber-600" /></Button></AlertDialogTrigger>
+                                        <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Estornar recebimento?</AlertDialogTitle><AlertDialogDescription>A conta de {fmt(r.amount)} volta para "À Vencer", com o valor recebido zerado e a data de pagamento apagada. O reconhecimento de CMV do PV vinculado é recalculado.</AlertDialogDescription></AlertDialogHeader>
+                                          <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={() => reverseReceivable.mutate(r.id)}>Estornar</AlertDialogAction></AlertDialogFooter>
                                         </AlertDialogContent>
                                       </AlertDialog>
                                     )}

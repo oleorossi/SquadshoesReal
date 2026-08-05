@@ -185,11 +185,48 @@ export function useDeleteAccountPayable() {
         .neq('status', 'paid')
         .select('id');
       if (error) throw error;
-      if (!data || data.length === 0) throw new Error('Conta já paga não pode ser excluída. Cancele-a se necessário.');
+      if (!data || data.length === 0) throw new Error('Conta já paga não pode ser excluída. Estorne o pagamento antes de excluir.');
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['accounts_payable'] });
       toast.success('Conta excluída!');
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+}
+
+/**
+ * Estorno de pagamento — a ÚNICA saída para uma AP marcada como paga por engano.
+ * Sem ele a linha ficava congelada para sempre: `useDeleteAccountPayable` recusa
+ * `status='paid'` e `useUpdateAccountPayable` recusa edição de amount/status, e
+ * não existia nenhuma ação de cancelar na UI. O estorno devolve a conta para
+ * 'pending', de onde ela pode ser editada, excluída ou paga de novo.
+ *
+ * ⚠ `amount_paid` TEM que ir a zero no MESMO update. O trigger `trg_auto_close_ap`
+ * (BEFORE UPDATE OF amount_paid, amount) reabre a conta como 'paid' sempre que
+ * `amount_paid >= amount` — mexer só no status devolveria 'paid' na mesma
+ * transação, silenciosamente. Vale para pagamento parcial também.
+ *
+ * Predicado atômico `.eq('status','paid')` (mesmo padrão do markPaid): dois
+ * estornos concorrentes → o segundo não casa linha e falha explícito, em vez de
+ * zerar um pagamento que outra sessão acabou de registrar.
+ */
+export function useReverseAccountPayable() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { data, error } = await supabase
+        .from('accounts_payable')
+        .update({ status: 'pending', amount_paid: 0, payment_date: null })
+        .eq('id', id)
+        .eq('status', 'paid')
+        .select('id');
+      if (error) throw error;
+      if (!data || data.length === 0) throw new Error('Conta não está paga — nada a estornar.');
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['accounts_payable'] });
+      toast.success('Pagamento estornado. A conta voltou para "À Vencer".');
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -207,11 +244,42 @@ export function useDeleteAccountReceivable() {
         .not('status', 'in', '("received","cancelled")')
         .select('id');
       if (error) throw error;
-      if (!data || data.length === 0) throw new Error('Conta já recebida ou cancelada não pode ser excluída.');
+      if (!data || data.length === 0) throw new Error('Conta já recebida ou cancelada não pode ser excluída. Estorne o recebimento antes de excluir.');
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['accounts_receivable'] });
       toast.success('Conta excluída!');
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+}
+
+/**
+ * Espelho de `useReverseAccountPayable` para o lado a receber — mesmo beco sem
+ * saída (delete e update recusam `status='received'`), mesma trava do trigger
+ * `trg_auto_close_ar`, que reabre como 'received' se `amount_received >= amount`.
+ *
+ * Colateral esperado: `trg_ar_recompute_cmv` dispara em UPDATE OF status /
+ * amount_received / payment_date e recalcula o reconhecimento de CMV do PV
+ * vinculado. Isso é o comportamento correto de um estorno — o CMV reconhecido
+ * some junto com o recebimento —, não um efeito a suprimir.
+ */
+export function useReverseAccountReceivable() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { data, error } = await supabase
+        .from('accounts_receivable')
+        .update({ status: 'pending', amount_received: 0, payment_date: null })
+        .eq('id', id)
+        .eq('status', 'received')
+        .select('id');
+      if (error) throw error;
+      if (!data || data.length === 0) throw new Error('Conta não está recebida — nada a estornar.');
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['accounts_receivable'] });
+      toast.success('Recebimento estornado. A conta voltou para "À Vencer".');
     },
     onError: (e: Error) => toast.error(e.message),
   });
