@@ -34,6 +34,7 @@ function finishedOnTime(finishedAt: string, plannedDelivery: string): boolean {
 }
 import { SearchInput } from '@/components/ui/search-input';
 import { EmptyState } from '@/components/ui/empty-state';
+import { ErrorState } from '@/components/ui/ErrorState';
 
 interface FinishedOP {
   id: string;
@@ -102,7 +103,10 @@ function fmtBRL(v: number | null) {
 }
 
 export default function PostOPAnalysis() {
-  const { data: ops = [], isLoading } = useFinishedOPs();
+  // ⚠ `isError` não é decorativo: sem ele, falha de rede/RLS caía no default
+  // `[]` e a tela dizia "0 OPs finalizadas · 0 pares", 0% de entrega no prazo e
+  // R$ 0,00 de desvio — indistinguível de uma fábrica que não fechou nada.
+  const { data: ops = [], isLoading, isError, error, refetch } = useFinishedOPs();
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState<"date" | "variance" | "leadtime">("date");
   const [dateFrom, setDateFrom] = useState(() => format(subMonths(new Date(), 6), "yyyy-MM-dd"));
@@ -167,7 +171,11 @@ export default function PostOPAnalysis() {
     const totalOvh = dateFiltered.reduce((s, o) => s + (o.overhead_cost || 0), 0);
 
     return {
-      totalOPs: ops.length,
+      // MESMO universo dos outros KPIs (`dateFiltered`). Com `ops.length` a
+      // frase do cabeçalho somava as 300 OPs trazidas pela query contra os
+      // pares de um recorte de datas bem menor — dois números que nunca se
+      // dividem um pelo outro.
+      totalOPs: dateFiltered.length,
       totalPairs,
       avgVariance,
       onTimeRate,
@@ -227,6 +235,17 @@ export default function PostOPAnalysis() {
   });
 
   if (isLoading) return <div className="text-center py-8 text-muted-foreground">Carregando análise...</div>;
+  if (isError) {
+    return (
+      <ErrorState
+        title="Não foi possível carregar a análise pós-OP"
+        description={`Os KPIs sairiam zerados por falha de consulta, não por ausência de OP finalizada. ${
+          (error as Error)?.message || ''
+        }`.trim()}
+        onRetry={() => void refetch()}
+      />
+    );
+  }
 
   return (
     <TooltipProvider>

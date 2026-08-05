@@ -97,9 +97,13 @@ function useConsumptionFromSheets() {
           .from('sheet_materials')
           .select('sheet_id, product_id, group_id, quantity_per_unit, color, sizes, products(name, unit, category, unit_price, group_id, color), product_groups(id, name)')
           .in('sheet_id', refIds);
-        if (!matsRes.error) {
-          materials = matsRes.data || [];
-        }
+        // ⚠ O erro daqui era ENGOLIDO (`if (!matsRes.error)`): a BOM ficava
+        // vazia e a tela seguia somando SÓ cabedal/forro/palmilha/solado — que
+        // não têm custo (`cost: 0`) —, exibindo "Custo Estimado R$ 0,00" e uma
+        // lista de materiais incompleta com cara de completa. Falha de consulta
+        // agora sobe pro `isError` da query, que já é renderizado abaixo.
+        if (matsRes.error) throw matsRes.error;
+        materials = matsRes.data || [];
       }
 
       return { orders, groups, materials };

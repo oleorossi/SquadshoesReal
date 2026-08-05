@@ -11,6 +11,7 @@ import { useConsumptionSchemaError } from "@/hooks/useConsumptionSchemaError";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { getDashboardPeriodRange, PERIOD_OPTIONS, type DashboardPeriod } from "@/lib/dashboardPeriod";
+import { countCriticalStock, type StockAlertProduct } from "@/lib/stockAlerts";
 import { EditorialPageHeader } from "@/components/layout/EditorialPageHeader";
 
 export default function Dashboard() {
@@ -30,7 +31,7 @@ export default function Dashboard() {
     queryFn: async () => {
       const [
         { count: productsCount },
-        { count: criticalCount },
+        { data: stockRows, count: activeProductsCount },
         { count: ordersCount },
         { count: pendingSalesCount }
       ] = await Promise.all([
@@ -39,7 +40,17 @@ export default function Dashboard() {
         // Pra contagem, basta selecionar uma coluna única ('id').
         // Estoque é estado atual — não filtra por período
         supabase.from('products').select('id', { count: 'exact', head: true }),
-        supabase.from('products').select('id', { count: 'exact', head: true }).lt('quantity', 10),
+        // Estoque crítico: MESMA regra da tela que este card abre
+        // (/estoque?tab=alerts) — o predicado canônico mora em
+        // '@/lib/stockAlerts'. Antes era `.lt('quantity', 10)`: número mágico
+        // que ignorava `active`, `min_stock` e solado, e mostrava 142 no card
+        // contra 126 na tela. Não dá pra contar no servidor porque PostgREST
+        // não compara duas colunas (`quantity=lte.min_stock` → 22P02), então
+        // vem a projeção mínima dos ativos e conta-se aqui (mesmo desenho de
+        // useLowStockAlerts.ts).
+        supabase.from('products')
+          .select('quantity, min_stock, category, active', { count: 'exact' })
+          .eq('active', true),
         // OPs ativas e PVs pendentes filtram por created_at do período
         supabase.from('orders').select('id', { count: 'exact', head: true })
           .in('status', ['Reservado', 'Em Produção', 'Em produção'])
@@ -49,9 +60,17 @@ export default function Dashboard() {
           .gte('created_at', range.startISO).lte('created_at', range.endISO)
       ]);
 
+      // Guarda contra corte silencioso: se o PostgREST truncar a projeção
+      // (max-rows), o card passa a contar menos do que a tela lista.
+      if (import.meta.env.DEV && stockRows && (activeProductsCount ?? 0) > stockRows.length) {
+        console.warn(
+          `[Dashboard] Estoque Crítico: vieram ${stockRows.length} de ${activeProductsCount} produtos ativos — contagem truncada, pagine a query.`,
+        );
+      }
+
       return {
         products: productsCount || 0,
-        critical: criticalCount || 0,
+        critical: countCriticalStock((stockRows ?? []) as StockAlertProduct[]),
         activeOps: ordersCount || 0,
         pendingSales: pendingSalesCount || 0
       };
@@ -196,7 +215,7 @@ export default function Dashboard() {
         <StatCard
           label="Estoque Crítico"
           value={productionStats?.critical ?? "..."}
-          hint="Itens abaixo do mín."
+          hint="Zerados ou no/abaixo do mín."
           tone="destructive"
           icon={AlertTriangle}
           onClick={() => navigate('/estoque?tab=alerts')}

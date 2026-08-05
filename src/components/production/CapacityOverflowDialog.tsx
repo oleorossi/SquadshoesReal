@@ -3,7 +3,10 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { CircleNotch as Loader2, Warning as AlertTriangle, Factory, Handshake, CheckCircle } from '@phosphor-icons/react';
+import {
+  CircleNotch as Loader2, Warning as AlertTriangle, Factory, Handshake, CheckCircle,
+  ArrowsClockwise as RefreshCw,
+} from '@phosphor-icons/react';
 import { useContractors } from '@/hooks/useContractors';
 import { useCapacityOverflow, useCommitOutsourcing, type CapacityOverflowRow, type OutsourcingAssignment } from '@/hooks/useCapacityOverflow';
 
@@ -43,7 +46,11 @@ interface Props {
  * interno mesmo estourado (vai atrasar).
  */
 export function CapacityOverflowDialog({ open, onClose, orderIds, onComplete }: Props) {
-  const { data: overflow = [], isLoading } = useCapacityOverflow(orderIds);
+  // ⚠ `isError` aqui é o mais caro do fluxo. `overflow` cai em `[]` quando a
+  // detecção falha, e `[]` é EXATAMENTE o formato de "não há transbordo" — daí
+  // o diálogo se auto-fechava e a onda entrava na fábrica com o carimbo de
+  // "capacidade interna comporta". Falha de detecção NÃO é bill of health.
+  const { data: overflow = [], isLoading, isError, error, refetch, isFetching } = useCapacityOverflow(orderIds);
   const { data: contractors = [] } = useContractors();
   const commit = useCommitOutsourcing();
 
@@ -110,13 +117,19 @@ export function CapacityOverflowDialog({ open, onClose, orderIds, onComplete }: 
     onComplete?.();
   };
 
-  // Auto-fecha quando não há overflow (defensive — WaveBuilder não deveria abrir nesse caso)
+  // Auto-fecha quando não há overflow (defensive — WaveBuilder não deveria abrir nesse caso).
+  //
+  // ⚠ `!isError` é OBRIGATÓRIO na guarda: sem ele, falha da RPC de detecção
+  // fechava o diálogo sozinha e chamava `onComplete()` — o fluxo seguia como se
+  // a capacidade tivesse sido conferida e coubesse. Em erro o diálogo FICA
+  // aberto mostrando a falha; sair dali passa a ser decisão explícita de quem
+  // está na tela, não um efeito colateral silencioso.
   useEffect(() => {
-    if (open && !isLoading && overflow.length === 0) {
+    if (open && !isLoading && !isError && overflow.length === 0) {
       onComplete?.();
       onClose();
     }
-  }, [open, isLoading, overflow.length, onClose, onComplete]);
+  }, [open, isLoading, isError, overflow.length, onClose, onComplete]);
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) handleSkip(); }}>
@@ -127,14 +140,34 @@ export function CapacityOverflowDialog({ open, onClose, orderIds, onComplete }: 
             Capacidade extrapolada — transbordo para terceiros
           </DialogTitle>
           <DialogDescription className="text-xs mt-1">
-            {overflow.length} {overflow.length === 1 ? 'OP em setor' : 'OPs em setores'} com utilização superior a 100% nesta onda.
-            Selecione um terceiro pra cada OP que você quer transferir, ou deixe "Manter interno" pra produzir aqui mesmo (vai atrasar).
+            {isError ? (
+              <>A verificação de capacidade desta onda <strong>não rodou</strong> — não dá pra afirmar que a produção interna comporta.</>
+            ) : (
+              <>
+                {overflow.length} {overflow.length === 1 ? 'OP em setor' : 'OPs em setores'} com utilização superior a 100% nesta onda.
+                Selecione um terceiro pra cada OP que você quer transferir, ou deixe "Manter interno" pra produzir aqui mesmo (vai atrasar).
+              </>
+            )}
           </DialogDescription>
         </DialogHeader>
 
         {isLoading ? (
           <div className="flex justify-center py-12">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : isError ? (
+          <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-4 space-y-2">
+            <p className="text-sm font-semibold text-destructive flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 shrink-0" />
+              Não foi possível verificar a capacidade
+            </p>
+            <p className="text-xs text-muted-foreground">
+              A detecção de transbordo falhou. <strong>Isto não é o mesmo que "cabe tudo internamente"</strong> —
+              pode haver OP em setor acima de 100% sem aparecer aqui. Recarregue antes de liberar a onda.
+            </p>
+            <p className="font-mono text-xs text-muted-foreground break-words">
+              {(error as Error)?.message || 'Falha ao consultar o servidor.'}
+            </p>
           </div>
         ) : overflow.length === 0 ? (
           <p className="text-center py-8 text-muted-foreground text-sm">
@@ -214,18 +247,31 @@ export function CapacityOverflowDialog({ open, onClose, orderIds, onComplete }: 
 
         <DialogFooter className="flex items-center justify-between sm:justify-between gap-2">
           <p className="text-xs text-muted-foreground">
-            {outsourcedCount > 0
-              ? `${outsourcedCount} ${outsourcedCount === 1 ? 'OP será terceirizada' : 'OPs serão terceirizadas'}`
-              : 'Nenhuma OP selecionada — produção continua interna'}
+            {isError
+              ? 'Capacidade não verificada — nada foi conferido nesta onda'
+              : outsourcedCount > 0
+                ? `${outsourcedCount} ${outsourcedCount === 1 ? 'OP será terceirizada' : 'OPs serão terceirizadas'}`
+                : 'Nenhuma OP selecionada — produção continua interna'}
           </p>
           <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+            {/* Em erro o rótulo de sair diz o que sair significa. "Continuar sem
+                transbordo" prometia uma conferência que não aconteceu. */}
             <Button variant="outline" onClick={handleSkip} disabled={commit.isPending}>
-              Pular (manter tudo interno)
+              {isError ? 'Seguir sem verificar' : 'Pular (manter tudo interno)'}
             </Button>
-            <Button onClick={handleConfirm} disabled={commit.isPending || isLoading}>
-              {commit.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CheckCircle className="h-4 w-4 mr-2" />}
-              {outsourcedCount > 0 ? `Confirmar transbordo (${outsourcedCount})` : 'Continuar sem transbordo'}
-            </Button>
+            {isError ? (
+              <Button onClick={() => void refetch()} disabled={isFetching}>
+                {isFetching
+                  ? <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  : <RefreshCw className="h-4 w-4 mr-2" />}
+                Tentar de novo
+              </Button>
+            ) : (
+              <Button onClick={handleConfirm} disabled={commit.isPending || isLoading}>
+                {commit.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CheckCircle className="h-4 w-4 mr-2" />}
+                {outsourcedCount > 0 ? `Confirmar transbordo (${outsourcedCount})` : 'Continuar sem transbordo'}
+              </Button>
+            )}
           </div>
         </DialogFooter>
       </DialogContent>

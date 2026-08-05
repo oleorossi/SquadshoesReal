@@ -3,6 +3,16 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { sanitizeUuidFields } from '@/lib/utils';
 import { searchNormOrFilter } from '@/lib/searchUtils';
+import { SALE_ORDER_STATUS } from '@/lib/saleOrderStateMachine';
+
+/**
+ * Teto do recorte de `useOrders`. Exportado de propósito: quem renderiza a
+ * lista compara `orders.length >= ORDERS_QUERY_LIMIT` pra AVISAR o usuário de
+ * que o recorte mordeu — antes o único sinal era um console.warn em DEV, então
+ * a pill "Todas" mentia em silêncio em produção (filtros, contagens e pills são
+ * calculados sobre este recorte, não sobre a tabela inteira).
+ */
+export const ORDERS_QUERY_LIMIT = 1000;
 
 type CreateOrderData = {
   reference_id: string;
@@ -18,7 +28,28 @@ type CreateOrderData = {
   packaging_product_id?: string;
   packaging_quantity?: number;
   grade?: Record<string, number>;
+  /** OBRIGATÓRIO: `orders.sale_order_id` é NOT NULL sem default e nenhum
+   *  trigger BEFORE INSERT o preenche. Sem este campo no payload o INSERT
+   *  estoura 23502 e a criação manual de OP nunca completa. */
+  sale_order_id?: string;
 };
+
+/**
+ * PVs cujo ciclo comercial já saiu do estoque: cancelar/excluir uma OP filha
+ * devolveria material de mercadoria já faturada ou já entregue (receita
+ * fantasma / estoque inflado).
+ *
+ * 'Finalizado s/ NF' entra aqui porque é TERMINAL no state machine
+ * (`VALID_TRANSITIONS['Finalizado s/ NF'] === []`) — é o pedido informal
+ * concluído, com mercadoria entregue e sem NF. Ficava de fora quando a lista
+ * era escrita como três literais soltos.
+ */
+const PV_STATUSES_BLOCKING_OP_REVERSAL: string[] = [
+  SALE_ORDER_STATUS.FATURADO,
+  SALE_ORDER_STATUS.EXPEDIDO,
+  SALE_ORDER_STATUS.CONCLUIDO,
+  SALE_ORDER_STATUS.FINALIZADO_SEM_NF,
+];
 
 export function useOrders() {
   return useQuery({
@@ -28,9 +59,9 @@ export function useOrders() {
         .from('orders')
         .select('*, technical_sheets(name, code, image_url, reference_color_variants(color, image_url))')
         .order('created_at', { ascending: false })
-        .limit(1000);
+        .limit(ORDERS_QUERY_LIMIT);
       if (error) throw error;
-      if (data && data.length === 1000 && import.meta.env.DEV) console.warn('useOrders: hit 1000-row ceiling — some orders may be missing');
+      if (data && data.length >= ORDERS_QUERY_LIMIT && import.meta.env.DEV) console.warn(`useOrders: hit ${ORDERS_QUERY_LIMIT}-row ceiling — some orders may be missing`);
       return data;
     },
     staleTime: 2 * 60 * 1000,
@@ -84,6 +115,10 @@ export function useCreateOrder() {
   return useMutation({
     mutationFn: async (form: CreateOrderData) => {
       if (!Number.isFinite(form.quantity) || form.quantity <= 0) throw new Error('Quantidade deve ser um número positivo.');
+      // `orders.sale_order_id` é NOT NULL no banco: OP avulsa não existe por
+      // schema. Validar aqui troca o erro cru do Postgres (23502) por uma
+      // mensagem acionável antes de qualquer débito de estoque.
+      if (!form.sale_order_id) throw new Error('Selecione o Pedido de Venda — toda OP precisa estar vinculada a um PV.');
       const status = form.status_override || 'Reservado';
       const shouldDebit = status === 'Reservado';
 
@@ -91,6 +126,7 @@ export function useCreateOrder() {
         .from('orders')
         .insert(sanitizeUuidFields({
           reference_id: form.reference_id,
+          sale_order_id: form.sale_order_id,
           quantity: form.quantity,
           notes: form.notes,
           status,
@@ -175,25 +211,14 @@ export function useCreateOrder() {
         'Corte Palmilha', 'Corte Forração', 'Aviamento', 'Costura', 'Silk',
         'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição',
       ];
-      const { data: sheet } = await supabase
-        .from('technical_sheets')
-        .select('production_sectors')
-        .eq('id', form.reference_id)
-        .single();
-      const sectorNames = (Array.isArray(sheet?.production_sectors) && sheet.production_sectors.length > 0)
-        ? sheet.production_sectors.map(String)
-        : DEFAULT_SECTOR_NAMES;
-      const stageRows = sectorNames.map((name: string, idx: number) => ({
-        order_id: data.id, stage_name: name, stage_order: idx + 1,
-        status: 'pendente', quantity_total: form.quantity, quantity_processed: 0,
-      }));
-      const { error: stagesErr } = await supabase.from('order_stages').insert(stageRows);
-      if (stagesErr) {
-        // Stage insert failed — run full canonical cleanup so OP never lingers stageless.
-        // CRITICAL: cannot swallow restore errors. If a restore fails AND we delete the
-        // order, stock is debited with no order to restore against — permanent inventory
-        // loss. Track failures and refuse to delete the order if any restore failed,
-        // so the operator can investigate manually.
+      // Cleanup canônico compartilhado: roda quando algo entre "OP inserida" e
+      // "etapas criadas" falha, pra que a OP nunca fique parada sem etapas com
+      // estoque debitado.
+      // CRITICAL: cannot swallow restore errors. If a restore fails AND we delete the
+      // order, stock is debited with no order to restore against — permanent inventory
+      // loss. Track failures and refuse to delete the order if any restore failed,
+      // so the operator can investigate manually.
+      const rollbackAndFail = async (reason: string): Promise<never> => {
         const restoreFailures: string[] = [];
 
         const { error: relErr } = await (supabase.rpc as any)('release_order_reservations', { p_order_id: data.id });
@@ -209,20 +234,42 @@ export function useCreateOrder() {
 
         if (restoreFailures.length === 0) {
           await supabase.from('orders').delete().eq('id', data.id);
-          throw new Error(`Falha ao criar etapas de produção: ${stagesErr.message}`);
+          throw new Error(reason);
         }
 
         // Restore failed — leave OP in 'Cancelada' state with notes for manual recovery.
         // Do NOT delete: the order_id is the only handle to retry restoration.
         await supabase.from('orders').update({
           status: 'Cancelada',
-          notes: `Falha ao criar etapas (${stagesErr.message}); estorno parcial: ${restoreFailures.join('; ')}. Investigação manual necessária.`,
+          notes: `${reason}; estorno parcial: ${restoreFailures.join('; ')}. Investigação manual necessária.`,
         }).eq('id', data.id);
         throw new Error(
-          `Falha ao criar etapas e estorno parcial falhou — OP ${data.id} marcada como Cancelada para investigação. ` +
-          `Etapas: ${stagesErr.message}. Estorno: ${restoreFailures.join('; ')}.`
+          `${reason} — e o estorno parcial falhou: OP ${data.id} marcada como Cancelada para investigação. ` +
+          `Estorno: ${restoreFailures.join('; ')}.`
         );
-      }
+      };
+
+      // CRITICAL: capturar o erro. Sem isto uma falha de RLS/rede aqui caía
+      // silenciosamente no DEFAULT_SECTOR_NAMES e a OP nascia roteada pelos
+      // setores errados (o default tem 'Costura', que não existe em
+      // `v_production_sectors` — o fluxo real é 'Costura Palmilha' /
+      // 'Costura Cabedal'). Roteamento errado no chão de fábrica é pior que
+      // OP não criada, então falha e estorna em vez de adivinhar.
+      const { data: sheet, error: sheetErr } = await supabase
+        .from('technical_sheets')
+        .select('production_sectors')
+        .eq('id', form.reference_id)
+        .single();
+      if (sheetErr) await rollbackAndFail(`Falha ao carregar os setores da ficha técnica: ${sheetErr.message}`);
+      const sectorNames = (Array.isArray(sheet?.production_sectors) && sheet.production_sectors.length > 0)
+        ? sheet.production_sectors.map(String)
+        : DEFAULT_SECTOR_NAMES;
+      const stageRows = sectorNames.map((name: string, idx: number) => ({
+        order_id: data.id, stage_name: name, stage_order: idx + 1,
+        status: 'pendente', quantity_total: form.quantity, quantity_processed: 0,
+      }));
+      const { error: stagesErr } = await supabase.from('order_stages').insert(stageRows);
+      if (stagesErr) await rollbackAndFail(`Falha ao criar etapas de produção: ${stagesErr.message}`);
 
       return data;
     },
@@ -271,8 +318,8 @@ export function useUpdateOrderStatus() {
         if (current?.sale_order_id) {
           const { data: parentSo, error: parentErr } = await supabase.from('sale_orders').select('status').eq('id', current.sale_order_id).single();
           if (parentErr) throw new Error(`Falha ao verificar PV vinculado: ${parentErr.message}`);
-          if (parentSo?.status && ['Faturado', 'Expedido', 'Concluído'].includes(parentSo.status)) {
-            throw new Error('OP vinculada a PV faturado — cancele a NF-e e o PV antes de cancelar a OP.');
+          if (parentSo?.status && PV_STATUSES_BLOCKING_OP_REVERSAL.includes(parentSo.status)) {
+            throw new Error('OP vinculada a PV faturado/finalizado — cancele a NF-e e o PV antes de cancelar a OP.');
           }
         }
 
@@ -443,8 +490,8 @@ export function useDeleteOrder() {
       if (opRow?.sale_order_id) {
         const { data: parentSo, error: parentErr } = await supabase.from('sale_orders').select('status').eq('id', opRow.sale_order_id).single();
         if (parentErr) throw new Error(`Falha ao verificar PV vinculado: ${parentErr.message}`);
-        if (parentSo?.status && ['Faturado', 'Expedido', 'Concluído'].includes(parentSo.status)) {
-          throw new Error('OP vinculada a PV faturado — cancele a NF-e e o PV antes de excluir a OP.');
+        if (parentSo?.status && PV_STATUSES_BLOCKING_OP_REVERSAL.includes(parentSo.status)) {
+          throw new Error('OP vinculada a PV faturado/finalizado — cancele a NF-e e o PV antes de excluir a OP.');
         }
       }
 

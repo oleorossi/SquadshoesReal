@@ -24,6 +24,7 @@ import {
 } from '@/hooks/useSectorDistribution';
 import { cn } from '@/lib/utils';
 import { EmptyState } from '@/components/ui/empty-state';
+import { ErrorState } from '@/components/ui/ErrorState';
 
 const DAY_LABELS = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex'] as const;
 
@@ -54,6 +55,11 @@ export default function SectorDistributionPlanner() {
   const autoFill = useAutoFillSectorDistribution();
   const upsert = useUpsertDistributionCell();
 
+  // ⚠ Os dois `?? []` abaixo são o default de CONVENIÊNCIA, não de verdade:
+  // quando a consulta falha eles produzem exatamente a mesma tela de "semana
+  // sem nada planejado". Por isso `isError` é lido nos dois — a carga bloqueia
+  // a tela com erro, e o plano salvo bloqueia a EDIÇÃO (célula vazia por falha
+  // não pode ser confundida com célula zerada de propósito).
   const loads = loadQ.data ?? [];
   const plan = planQ.data ?? [];
 
@@ -93,6 +99,21 @@ export default function SectorDistributionPlanner() {
 
   const overallBottleneck = Array.from(sectorStats.values()).some(s => s.daysNeededSum > 5);
 
+  /**
+   * Duas falhas DIFERENTES do plano salvo, com consequências diferentes:
+   *
+   *  • `planNeverLoaded` — erro sem nenhum sucesso antes: `planQ.data` é
+   *    `undefined`, o `planMap` nasce vazio e TODA célula do editor lê
+   *    `0 / destravada`. Editar aí grava zero por cima do que está no banco e
+   *    destrava célula travada (o upsert manda `is_locked: locked`, lido do
+   *    mapa fantasma). Por isso a edição fica bloqueada.
+   *  • `planStale` — o refetch falhou mas o react-query preservou o último
+   *    `data` bom: as células mostram valores REAIS, só velhos. Aqui basta
+   *    avisar; bloquear seria alarme falso.
+   */
+  const planNeverLoaded = planQ.isError && planQ.data === undefined;
+  const planStale = planQ.isError && planQ.data !== undefined;
+
   return (
     <Card className="border-border/60 shadow-sm">
       <CardHeader className="py-3 px-4 bg-muted/30 border-b flex flex-row items-center gap-3 flex-wrap">
@@ -126,6 +147,15 @@ export default function SectorDistributionPlanner() {
       <CardContent className="p-0">
         {loadQ.isLoading ? (
           <div className="p-8 text-center text-sm text-muted-foreground">Carregando…</div>
+        ) : loadQ.isError ? (
+          <ErrorState
+            size="sm"
+            title="Não foi possível carregar a carga da semana"
+            description={`A consulta falhou — isto NÃO quer dizer semana sem OP planejada. ${
+              (loadQ.error as Error)?.message || ''
+            }`.trim()}
+            onRetry={() => void loadQ.refetch()}
+          />
         ) : loads.length === 0 ? (
           <EmptyState
             icon={ChartBar}
@@ -142,6 +172,38 @@ export default function SectorDistributionPlanner() {
           />
         ) : (
           <>
+            {/* A matriz abaixo vem da CARGA (loads), não do plano — segue válida
+                e visível mesmo quando o plano salvo falha. O que o plano quebra
+                é só o editor por dia. */}
+            {(planNeverLoaded || planStale) && (
+              <div
+                className={cn(
+                  'px-4 py-2 border-b text-xs flex items-center gap-2 flex-wrap',
+                  planNeverLoaded
+                    ? 'bg-destructive/10 border-destructive/30 text-destructive'
+                    : 'bg-amber-500/10 border-amber-500/30 text-amber-700 dark:text-amber-500',
+                )}
+              >
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                <span className="flex-1 min-w-[220px]">
+                  {planNeverLoaded ? (
+                    <>
+                      O plano já salvo desta semana <strong>não carregou</strong> — as células do editor
+                      mostrariam 0 por falha de consulta, não por estarem vazias. Edição bloqueada até recarregar.
+                    </>
+                  ) : (
+                    <>
+                      A última atualização do plano <strong>falhou</strong> — os dias abaixo são a leitura
+                      anterior, podem estar desatualizados.
+                    </>
+                  )}
+                </span>
+                <Button size="sm" variant="outline" className="h-7 text-xs shrink-0" onClick={() => void planQ.refetch()}>
+                  Tentar de novo
+                </Button>
+              </div>
+            )}
+
             {overallBottleneck && (
               <div className="px-4 py-2 bg-destructive/10 border-b border-destructive/30 text-xs text-destructive flex items-center gap-2">
                 <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
@@ -199,13 +261,15 @@ export default function SectorDistributionPlanner() {
                               size="sm"
                               variant="ghost"
                               className="h-7 text-xs"
+                              disabled={planNeverLoaded}
+                              title={planNeverLoaded ? 'O plano salvo não carregou — recarregue antes de editar os dias' : undefined}
                               onClick={() => setExpandedSector(isExpanded ? null : sector)}
                             >
                               {isExpanded ? 'Ocultar' : 'Editar dias'}
                             </Button>
                           </td>
                         </tr>
-                        {isExpanded && (
+                        {isExpanded && !planNeverLoaded && (
                           <tr>
                             <td colSpan={7} className="p-0 bg-muted/10 border-t border-border/40">
                               <SectorDayEditor

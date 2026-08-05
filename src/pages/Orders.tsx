@@ -31,7 +31,8 @@ import { StatusPill, canonicalStatusToKey } from '@/components/ui/badges';
 import { Checkbox } from '@/components/ui/checkbox';
 import { MaterialReservationErrorBadge } from '@/components/orders/MaterialReservationErrorBadge';
 
-import { useOrders, useCreateOrder, useDeleteOrder, useCheckStockAvailability, useUpdateOrderStatus } from '@/hooks/useOrders';
+import { useOrders, useCreateOrder, useDeleteOrder, useCheckStockAvailability, useUpdateOrderStatus, ORDERS_QUERY_LIMIT } from '@/hooks/useOrders';
+import { isInactiveOrder } from '@/lib/orderStatus';
 import { useTechnicalSheets, useSheetMaterials } from '@/hooks/useTechnicalSheets';
 import { useProducts } from '@/hooks/useProducts';
 import { useAllOrderStages, useCreateOrderStages, useRealtimeOrderStages, OrderStage } from '@/hooks/useOrderStages';
@@ -406,9 +407,13 @@ function getWeekOptions() {
 
     const statusGate = (canonicalStatus: string, gate: string): boolean => {
       if (gate === 'active') {
-        // "Abertas / em produção": tudo exceto Finalizado e Cancelada.
-        // Não depende do status do PV vinculado — um OP Em Produção NUNCA some.
-        return canonicalStatus !== 'Finalizado' && canonicalStatus !== 'Cancelada';
+        // "Abertas / em produção" = carga ativa, pelo domínio central
+        // (`@/lib/orderStatus`): fora Finalizado, Cancelada E Rascunho.
+        // A lista antiga era reimplementada aqui com dois literais e deixava
+        // RASCUNHO entrar na carga — mas rascunho não debitou estoque nem tem
+        // etapas, então nunca participa de contagem de trabalho.
+        // Não depende do status do PV vinculado — uma OP Em Produção NUNCA some.
+        return !isInactiveOrder(canonicalStatus);
       }
       if (gate === 'all') return true;
       return canonicalStatus === gate;
@@ -1029,6 +1034,13 @@ function getWeekOptions() {
 
   const handlePrepareOrder = async (e: React.FormEvent) => {
     e.preventDefault();
+    // `orders.sale_order_id` é NOT NULL no banco — OP avulsa não existe por
+    // schema. Barrar aqui evita rodar a checagem de estoque pra um lançamento
+    // que o INSERT vai recusar de qualquer jeito.
+    if (!form.sale_order_id) {
+      toast.error('Selecione o Cliente / Pedido de Venda antes de lançar a OP.');
+      return;
+    }
     setChecking(true);
     try {
       const result = await checkStock(form.reference_id, form.quantity, form.color);
@@ -1108,6 +1120,21 @@ function getWeekOptions() {
              description="Gestão de OPs com controle por setor de produção"
            />
          )}
+
+        {/* Teto do recorte: filtros, contagens e pills (inclusive "Todas") são
+            calculados sobre as OPs carregadas, não sobre a tabela inteira.
+            Quando o limite morde, isso PRECISA ficar visível — senão "Todas"
+            mente em silêncio. */}
+        {orders.length >= ORDERS_QUERY_LIMIT && (
+          <div className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-300">
+            <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+            <span>
+              Exibindo apenas as <strong className="font-semibold tabular-nums">{ORDERS_QUERY_LIMIT}</strong> OPs mais recentes.
+              Filtros, contagens e a pill "Todas" valem só sobre esse recorte — OPs mais antigas não aparecem aqui.
+              Use os filtros de referência/semana ou o relatório de OPs para alcançá-las.
+            </span>
+          </div>
+        )}
 
         {/* ── Toolbar principal ── */}
         <div className="flex items-center gap-2 flex-wrap">
@@ -1679,7 +1706,11 @@ function getWeekOptions() {
                                 const due = new Date(dueRaw.getFullYear(), dueRaw.getMonth(), dueRaw.getDate());
                                 const today = new Date(); today.setHours(0,0,0,0);
                                 const diffDays = Math.round((due.getTime() - today.getTime()) / 86400000);
-                                const isLate = diffDays < 0 && order.status !== 'Finalizado' && order.status !== 'Cancelada' && order.status !== 'finalizado' && order.status !== 'cancelado';
+                                // Status NORMALIZADO: comparar o cru contra 4
+                                // literais deixava 'Concluída'/'Concluído' (que
+                                // a própria página normaliza pra 'Finalizado')
+                                // passar como atrasada.
+                                const isLate = diffDays < 0 && !isInactiveOrder(statusMeta.canonicalStatus);
                                 const isDue = diffDays >= 0 && diffDays <= 3;
                                 if (!isLate && !isDue) return null;
                                 return (
@@ -1993,7 +2024,7 @@ function getWeekOptions() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {/* Cliente / Pedido de Venda */}
               <div className="sm:col-span-2">
-                <Label>Cliente / Pedido de Venda</Label>
+                <Label>Cliente / Pedido de Venda *</Label>
                 <Popover>
                   <PopoverTrigger asChild>
                     <Button
@@ -2017,7 +2048,11 @@ function getWeekOptions() {
                         <CommandEmpty>Nenhum pedido encontrado.</CommandEmpty>
                         <CommandGroup>
                           {saleOrders
-                            .filter((s: any) => s.status !== 'cancelado')
+                            // Canônico do PV é 'Cancelado' (maiúsculo) — o
+                            // filtro comparava só o minúsculo, então PV
+                            // cancelado continuava selecionável. Normaliza
+                            // acento/caixa pelo helper local da página.
+                            .filter((s: any) => normalizeStatusValue(s.status) !== 'cancelado')
                             .map((s: any) => (
                               <CommandItem
                                 key={s.id}

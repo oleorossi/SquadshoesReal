@@ -8,7 +8,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   ArrowLeft, ArrowsInSimple, ArrowsOutSimple, CheckSquare, Funnel, Highlighter,
-  Info, Kanban as KanbanIcon, Package, QrCode, X,
+  Info, Kanban as KanbanIcon, Package, QrCode, Warning as AlertTriangle, X,
 } from '@phosphor-icons/react';
 import {
   useSectorSettings, useProductionQueueDetail, useProductionScheduleGrid,
@@ -86,11 +86,17 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
     data: allStages = [], isLoading: stagesLoading, isError: stagesError,
     error: stagesErrObj, refetch: refetchStages,
   } = useAllOrderStages(orderIds);
-  const { data: todayGrid = [] } = useProductionScheduleGrid(todayISO(), todayISO());
+  // ⚠ MESMO raciocínio das duas queries acima, pras duas consultas de APOIO:
+  // sem `isError` a agenda do dia caía em `[]` e o cabeçalho da coluna dizia
+  // "hoje: 0" (lido como "capacidade zerada"), e o gate de material caía em
+  // `undefined` fazendo "0 OPs travadas" — a faixa azul sumia inteira. Nos dois
+  // casos "não consegui buscar" virava um zero legítimo na tela. O erro agora
+  // aparece na faixa de fluxo e o "hoje:" sai como "—", não como 0.
+  const { data: todayGrid = [], isError: gridError } = useProductionScheduleGrid(todayISO(), todayISO());
   // Foto da referência: a view manda reference_photo_url vazio (ver o hook)
   const { data: refThumbs } = useReferenceThumbs(queue.map(q => q.reference_id));
   // Gate de material (auditoria Crítico #1): OP sem matéria-prima pra arrancar.
-  const { data: gateMap } = useOrdersMaterialGate(orderIds);
+  const { data: gateMap, isError: gateError } = useOrdersMaterialGate(orderIds);
   const apontar = useApontarProducao();
   const canEdit = useCan('/producao/kanban').canEdit;
   // Touch (celular E iPad): sem autofocus (o teclado pularia na cara ao abrir)
@@ -697,7 +703,7 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
       )}
 
       {/* ── Faixa de fluxo: gargalo + atraso em primeiro plano ───────────── */}
-      {!isLoading && allCards.length > 0 && (constraintSector || kpis.atrasadas > 0 || travadasMaterial.n > 0) && (
+      {!isLoading && allCards.length > 0 && (constraintSector || kpis.atrasadas > 0 || travadasMaterial.n > 0 || gridError || gateError) && (
         <div className="shrink-0 border-b border-border px-3 py-1.5 flex items-center gap-2 md:gap-3 flex-wrap text-xs">
           {constraintSector && (
             <div className="flex items-center gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1">
@@ -737,6 +743,34 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
                     </span>
                   </span>
                 )}
+              </span>
+            </div>
+          )}
+          {/* Consulta de APOIO que falhou: o número correspondente na tela não é
+              zero, é ausência de resposta. Sem estes dois avisos o quadro seguia
+              afirmando "hoje: 0" e "nenhuma OP travada" com a mesma cara de
+              quando a fábrica está de fato em dia. */}
+          {gridError && (
+            <div className="flex items-center gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1">
+              <AlertTriangle className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+              <span>
+                <strong>Agenda de hoje indisponível</strong>
+                <span className="text-muted-foreground">
+                  {' '}— o <span className="font-mono">hoje:</span> das colunas sai como{' '}
+                  <span className="font-mono">—</span>. Não é capacidade zerada: a consulta falhou.
+                </span>
+              </span>
+            </div>
+          )}
+          {gateError && (
+            <div className="flex items-center gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1">
+              <Package className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+              <span>
+                <strong>Gate de material indisponível</strong>
+                <span className="text-muted-foreground">
+                  {' '}— nenhuma OP aparece marcada como sem matéria-prima porque a consulta falhou,
+                  não porque todas têm material.
+                </span>
               </span>
             </div>
           )}
@@ -794,7 +828,11 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
               ? colAll.filter(c => matchedIds.has(c.q.order_id))
               : colAll.slice()
             ).sort((a, b) => (b.q.late_days || 0) - (a.q.late_days || 0));
-            const colPares = colAll.reduce((s, c) => s + (c.columnStage?.quantity_total || c.q.quantity), 0);
+            // Σ pares do MESMO conjunto que a contagem do badge (`colCards`).
+            // Com `colAll` o cabeçalho misturava dois universos durante a busca:
+            // "3" OPs ao lado de "Σ 4.120 pares" (o setor inteiro) — quem lia
+            // dividia 4.120 por 3 e planejava com um número que não existe.
+            const colPares = colCards.reduce((s, c) => s + (c.columnStage?.quantity_total || c.q.quantity), 0);
             const g = gridToday.get(sector);
             const cap = g && g.utilization > 0 ? capacityTone(g.utilization) : null;
             // Denominador honesto: capacidade do MIX real do dia. Igual à global
@@ -892,16 +930,20 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
                       marca quando ela veio da ficha técnica e não do global. */}
                   <p
                     className="text-[10px] text-muted-foreground font-mono mt-0.5 truncate"
-                    title={
-                      g
-                        ? `${g.planned_pairs} pares agendados hoje · capacidade ${capDenom}/dia${
-                            capFromFicha ? ` (ficha técnica, ${g.ops_ficha_override} OP(s); global ${g.capacity_pairs})` : ' (global do setor)'
-                          }${g.carryover_pairs > 0 ? ` · ${g.carryover_pairs} pares rolados de dias anteriores` : ''}`
-                        : 'Sem agenda pra hoje neste setor'
-                    }
+                    title={`${
+                      gridError
+                        ? 'Agenda de hoje NÃO carregou — número indisponível, não é zero agendado.'
+                        : g
+                          ? `${g.planned_pairs} pares agendados hoje · capacidade ${capDenom}/dia${
+                              capFromFicha ? ` (ficha técnica, ${g.ops_ficha_override} OP(s); global ${g.capacity_pairs})` : ' (global do setor)'
+                            }${g.carryover_pairs > 0 ? ` · ${g.carryover_pairs} pares rolados de dias anteriores` : ''}`
+                          : 'Sem agenda pra hoje neste setor'
+                    } · Σ ${colPares.toLocaleString('pt-BR')} pares ${
+                      filtering ? `das ${colCards.length} OP(s) desta busca` : 'no setor'
+                    }`}
                   >
-                    hoje: {g ? `${g.planned_pairs}/${capDenom}${capFromFicha ? '*' : ''}` : '0'}
-                    {g && g.carryover_pairs > 0 ? ` +${g.carryover_pairs}` : ''} · Σ {colPares.toLocaleString('pt-BR')} pares
+                    hoje: {gridError ? '—' : g ? `${g.planned_pairs}/${capDenom}${capFromFicha ? '*' : ''}` : '0'}
+                    {!gridError && g && g.carryover_pairs > 0 ? ` +${g.carryover_pairs}` : ''} · Σ {colPares.toLocaleString('pt-BR')} pares
                   </p>
                   {/* Barra de capacidade: verde/âmbar/vermelho num relance; o traço
                       vermelho à direita marca o estouro (>100%). */}

@@ -599,14 +599,23 @@ function MaterialsSection({ refId, products }: { refId: string; products: any[] 
   );
 }
 
-function getDefaultWaste(category?: string): number {
-  switch (category?.toLowerCase()) {
-    case 'cabedal': return 8;
-    case 'solado': return 3;
-    case 'palmilha': return 5;
-    case 'cola / químico': return 10;
-    default: return 5;
-  }
+// REGRA DE NEGÓCIO (decisão do dono, 03/08/2026): a perda de corte NÃO EXISTE
+// neste sistema — os valores de consumo cadastrados (dm²/par, g/par, un/par) já
+// consideram o rendimento REAL do material, e somar um percentual por cima conta
+// a mesma perda duas vezes. O conceito foi arrancado do consumo/custeio/MRP/compra
+// pelas migrations `20261112120800` e `20261115120300` (leia o cabeçalho da segunda:
+// o sintoma era item de MESMA grade saindo com consumo diferente por cor, razão 1,08).
+//
+// Este painel é o último lugar que ainda pré-preenchia perda (8% cabedal / 3% solado
+// / 5% palmilha / 10% cola). O valor morre na própria tela — não alimenta consumo,
+// custeio, MRP nem compra — mas um padrão > 0 aqui é a semente pra alguém reintroduzir
+// a duplicidade quando esse módulo for religado a algum cálculo.
+//
+// ⚠ NÃO "restaure" os percentuais achando que zero é bug: zero é a regra. Se um dia
+// a perda voltar a ser um conceito do negócio, isso é decisão de produto — e volta
+// junto com o lado SQL, não sozinho aqui.
+function getDefaultWaste(_category?: string): number {
+  return 0;
 }
 
 function MaterialRow({

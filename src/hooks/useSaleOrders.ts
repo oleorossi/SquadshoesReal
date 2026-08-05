@@ -1154,26 +1154,35 @@ export function useUpdateSaleOrderStatus() {
         // receber material que ninguém mais precisa e terceirizado produzir tira órfã.
         try {
           // OCs: linked_sale_order_ids @> [id] e ainda não recebidas/canceladas
-          const { data: linkedPOs } = await supabase
+          const { data: linkedPOs, error: linkedPOsErr } = await supabase
             .from('purchase_orders')
             .select('id, status')
             .contains('linked_sale_order_ids', [id])
             .not('status', 'in', '(received,cancelled,closed)');
+          if (linkedPOsErr) throw linkedPOsErr;
           for (const po of (linkedPOs || [])) {
-            await supabase.from('purchase_orders')
+            const { error: poCancelErr } = await supabase.from('purchase_orders')
               .update({ status: 'cancelled', notes: `Cancelada — PV vinculado cancelado`, updated_at: new Date().toISOString() })
               .eq('id', po.id);
+            if (poCancelErr) throw poCancelErr;
           }
-          // OSs: linked_sale_order_ids @> [id] OU sale_order_id = id, e não concluídas
-          const { data: linkedSOs } = await supabase
+          // OSs: linked_sale_order_ids @> [id] OU sale_order_id = id, e não concluídas.
+          // ⚠ Grafias CANÔNICAS de service_orders.status: 'Pendente', 'Em Andamento',
+          // 'Concluído', 'Cancelado' (capitalizadas, com acento). A lista de exclusão
+          // espelha `tg_cancel_service_orders_on_pv_cancel` (mig 20260818120001):
+          // OS já finalizada/entregue NÃO é cancelada — trabalho feito é pagamento
+          // devido. As grafias minúsculas seguem na lista só como defesa de legado.
+          const { data: linkedSOs, error: linkedSOsErr } = await supabase
             .from('service_orders')
             .select('id, status, sale_order_id, linked_sale_order_ids')
             .or(`sale_order_id.eq.${id},linked_sale_order_ids.cs.{${id}}`)
-            .not('status', 'in', '(concluido,concluida,finalizado,cancelado,cancelled)');
+            .not('status', 'in', '("Concluído","concluido","concluida","received","finalizado","Finalizado","Cancelado","cancelado","cancelled")');
+          if (linkedSOsErr) throw linkedSOsErr;
           for (const so of (linkedSOs || [])) {
-            await supabase.from('service_orders')
-              .update({ status: 'cancelado', notes: `Cancelada — PV vinculado cancelado`, updated_at: new Date().toISOString() })
+            const { error: soCancelErr } = await supabase.from('service_orders')
+              .update({ status: 'Cancelado', notes: `Cancelada — PV vinculado cancelado`, updated_at: new Date().toISOString() })
               .eq('id', so.id);
+            if (soCancelErr) throw soCancelErr;
           }
           if ((linkedPOs?.length ?? 0) + (linkedSOs?.length ?? 0) > 0) {
             toast.warning(

@@ -13,6 +13,7 @@ import { CircleNotch as Loader2, ShoppingCart, Package, CurrencyDollar as Dollar
 import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { useSaleOrderAllItems } from '@/hooks/useSaleOrders';
 import { fetchMinBillingDates, isBeforeMinDate } from '@/lib/minBillingDate';
 import { MinBillingDateConfirmDialog } from './MinBillingDateConfirmDialog';
 
@@ -86,10 +87,28 @@ export default function SaleOrdersOverviewDialog({ open, onOpenChange, orders }:
   const monthOptions = useMemo(buildMonthOptions, []);
   const weekOptions = useMemo(() => buildWeekOptions(bulkMonth), [bulkMonth]);
 
+  // Pares vêm dos ITENS do PV — `sale_orders` NÃO tem coluna `total_quantity`
+  // (o KPI lia `o.total_quantity` e mostrava 0 sempre, sem erro, porque o TS é
+  // loose e `undefined` vira 0 no Number()). Mesma fonte que a lista de PVs usa
+  // (`pairsBySaleOrder` em SaleOrders.tsx): soma de `sale_order_items.quantity`,
+  // que já é o total de pares do item (grade × fichas). A query é a mesma
+  // queryKey do React Query (`sale_order_items_all`), então o cache é
+  // compartilhado com a página — nenhuma ida extra ao servidor.
+  const { data: allItems = [] } = useSaleOrderAllItems();
+  const pairsById = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const it of ((allItems || []) as any[])) {
+      const soId = it?.sale_order_id;
+      if (!soId) continue;
+      map.set(soId, (map.get(soId) || 0) + (Number(it.quantity) || 0));
+    }
+    return map;
+  }, [allItems]);
+
   // Aggregations
   const stats = useMemo(() => {
     const totalValue = orders.reduce((s, o) => s + Number(o.total || 0), 0);
-    const totalPairs = orders.reduce((s, o) => s + Number(o.total_quantity || 0), 0);
+    const totalPairs = orders.reduce((s, o) => s + (pairsById.get(o.id) || 0), 0);
     const byStatus = new Map<string, number>();
     const byClient = new Map<string, { count: number; value: number; pairs: number }>();
     const byRep = new Map<string, { count: number; value: number }>();
@@ -99,7 +118,7 @@ export default function SaleOrdersOverviewDialog({ open, onOpenChange, orders }:
     for (const o of orders) {
       byStatus.set(o.status || '—', (byStatus.get(o.status || '—') || 0) + 1);
       const c = byClient.get(o.client_name || '—') || { count: 0, value: 0, pairs: 0 };
-      c.count++; c.value += Number(o.total || 0); c.pairs += Number(o.total_quantity || 0);
+      c.count++; c.value += Number(o.total || 0); c.pairs += (pairsById.get(o.id) || 0);
       byClient.set(o.client_name || '—', c);
       const r = byRep.get(o.representative || '—') || { count: 0, value: 0 };
       r.count++; r.value += Number(o.total || 0);
@@ -115,7 +134,7 @@ export default function SaleOrdersOverviewDialog({ open, onOpenChange, orders }:
       }
     }
     return { totalValue, totalPairs, byStatus, byClient, byRep, byWeek, withoutWeek };
-  }, [orders]);
+  }, [orders, pairsById]);
 
   const handleApplyBulkSchedule = async () => {
     if (!bulkMonth && !bulkWeek && !bulkDeadline) {
@@ -387,7 +406,7 @@ export default function SaleOrdersOverviewDialog({ open, onOpenChange, orders }:
                           <TableRow key={client}>
                             <TableCell className="text-sm">{client}</TableCell>
                             <TableCell className="text-right font-mono">{c.count}</TableCell>
-                            <TableCell className="text-right font-mono">{c.pairs}</TableCell>
+                            <TableCell className="text-right font-mono">{c.pairs.toLocaleString('pt-BR')}</TableCell>
                             <TableCell className="text-right font-mono">{formatCurrency(c.value)}</TableCell>
                           </TableRow>
                         ))}
@@ -426,7 +445,7 @@ export default function SaleOrdersOverviewDialog({ open, onOpenChange, orders }:
                           <TableCell className="text-xs font-mono">
                             {o.delivery_deadline ? new Date(o.delivery_deadline).toLocaleDateString('pt-BR') : '—'}
                           </TableCell>
-                          <TableCell className="text-right font-mono">{o.total_quantity || 0}</TableCell>
+                          <TableCell className="text-right font-mono">{(pairsById.get(o.id) || 0).toLocaleString('pt-BR')}</TableCell>
                           <TableCell className="text-right font-mono">{formatCurrency(Number(o.total || 0))}</TableCell>
                         </TableRow>
                       ))}

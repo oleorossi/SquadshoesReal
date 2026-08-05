@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { apiService } from '@/lib/apiService';
 import { useProducts } from '@/hooks/useProducts';
+import { isSoleProduct, isZeroStock, isLowStock } from '@/lib/stockAlerts';
 import { SoleSizeStockAlertsPanel } from './SoleSizeStockAlertsPanel';
 
 export function NotificationsTab() {
@@ -19,16 +20,19 @@ export function NotificationsTab() {
   // de solado não fazem sentido aqui porque eles são gerenciados por grade
   // (stock_grade) e não por scalar quantity. Filtra na fonte (PR 2026-05-23).
   const productsArr = (Array.isArray(products) ? products : []).filter(
-    (p: any) => (p.category || '').toLowerCase() !== 'solado'
+    (p: any) => !isSoleProduct(p)
   );
+  // Predicados vêm de '@/lib/stockAlerts' — mesma fonte que o card "Estoque
+  // Crítico" do Painel usa pra contar. Duplicar a regra aqui foi o que fez o
+  // card mostrar 142 e esta lista 126 (05/08/2026).
   const zeroStockItems = useMemo(() =>
-    productsArr.filter(p => p.quantity === 0 && p.active),
+    productsArr.filter(isZeroStock),
     [productsArr]
   );
 
   // Exclude zero-stock items to avoid double-counting (they appear in zeroStockItems)
   const lowStockItems = useMemo(() =>
-    productsArr.filter(p => p.quantity > 0 && p.quantity <= p.min_stock && p.active).sort((a, b) => a.quantity - b.quantity),
+    productsArr.filter(isLowStock).sort((a, b) => a.quantity - b.quantity),
     [productsArr]
   );
 

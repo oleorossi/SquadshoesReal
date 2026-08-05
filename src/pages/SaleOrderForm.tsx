@@ -369,6 +369,20 @@ export default function SaleOrderForm() {
     limit: number;
     submitOptions: SubmitOptions;
   }>(null);
+  // Estado (c) das travas de venda: a checagem NÃO rodou (banco fora, rede caída,
+  // RPC com erro). Não é "checou e passou" nem "checou e reprovou" — e até
+  // 2026-08-05 se comportava como o primeiro: o erro ia pro console (ou era
+  // descartado no Promise.allSettled) e o PV salvava como se estivesse tudo em
+  // ordem, ou seja, indisponibilidade do banco virava "pode vender".
+  // Fail-closed cego também não serve (venda é o fluxo que paga a empresa), então
+  // o meio-termo é este: a UI DIZ o que não conseguiu verificar e o usuário
+  // confirma explicitamente. `resume` é o ponto exato onde o fluxo continua.
+  const [unverifiedConfirm, setUnverifiedConfirm] = useState<null | {
+    what: string;
+    consequence: string;
+    detail?: string;
+    resume: () => void;
+  }>(null);
   const [billingOverrideConfirm, setBillingOverrideConfirm] = useState<null | {
     newISO: string;
     minDateISO: string;
@@ -832,11 +846,15 @@ export default function SaleOrderForm() {
     //    Permite seguir mediante confirmação, mas avisa explicitamente.
     if (!isEdit && selectedClientId && !opts.skipCreditCheck) {
       try {
-        const { data: client } = await supabase
+        const { data: client, error: clientErr } = await supabase
           .from('clients')
           .select('credit_limit, name')
           .eq('id', selectedClientId)
           .maybeSingle() as any;
+        // O destructure ignorava `error`: consulta falhada devolve data=null, o
+        // limite virava 0 e a trava concluía "cliente sem limite cadastrado" —
+        // falha (c) DISFARÇADA de (a), sem nem passar pelo catch abaixo.
+        if (clientErr) throw clientErr;
         const limit = Number(client?.credit_limit || 0);
         if (limit > 0) {
           // Filtrava por `accounts_receivable.client_id`, NULO em 70 dos 72
@@ -860,8 +878,20 @@ export default function SaleOrderForm() {
             return;
           }
         }
-      } catch (err) {
-        console.warn('[handleSubmit] credit limit check falhou (ignorando):', err);
+      } catch (err: any) {
+        // (c) não deu pra checar. Antes seguia direto pro save — cliente estourado
+        // passava batido sempre que a consulta falhasse.
+        console.warn('[handleSubmit] credit limit check falhou:', err);
+        setUnverifiedConfirm({
+          what: 'o limite de crédito deste cliente',
+          consequence: 'O pedido pode ultrapassar o limite em aberto sem ninguém ser avisado.',
+          detail: err?.message,
+          resume: () => {
+            const fakeEvent = { preventDefault: () => {} } as React.FormEvent;
+            void handleSubmit(fakeEvent, { ...opts, skipCreditCheck: true });
+          },
+        });
+        return;
       }
     }
 
@@ -933,139 +963,190 @@ export default function SaleOrderForm() {
 
     // Check stock availability for all items in parallel
     setCheckingStock(true);
-    try {
-      // Run all stock checks concurrently
-      const stockResults = await Promise.allSettled(
-        validItems.map(async (item) => {
-          const ref = canonicalReferences.find((r: any) => r.id === item.reference_id);
-          const refLabel = ref ? `${(ref as any).code || ''} - ${(ref as any).name || ''}`.trim() : item.reference_id.substring(0, 8);
-          // Passa strap_colors + grade pra que a checagem detecte shortage
-          // de TIRAS (não só componentes regulares). Sem isso, tiras sem estoque
-          // passavam invisíveis pelo PV → OS pra terceiro nunca era criada.
-          const availability = await checkStock(
-            item.reference_id,
-            item.quantity,
-            item.color || '',
-            (item as any).grade ?? null,
-            (item as any).strap_colors ?? null,
-            // Modo de embalagem do PV: filtra a caixa do modo errado quando a
-            // ficha tem colmeia E individual no BOM (paridade com o custeio).
-            f.packaging_mode || null,
-            // Variante de material do item (CONS-4): sem ela a checagem
-            // avaliava o material da FICHA, não o da variante escolhida.
-            (item as any).material_variant_id ?? null,
-          );
-          return { availability, refLabel, color: item.color };
-        })
-      );
+    // Run all stock checks concurrently. `allSettled` nunca rejeita — quem diz se
+    // a consulta de cada item respondeu é o status do resultado, checado abaixo.
+    const stockResults = await Promise.allSettled(
+      validItems.map(async (item) => {
+        const ref = canonicalReferences.find((r: any) => r.id === item.reference_id);
+        const refLabel = ref ? `${(ref as any).code || ''} - ${(ref as any).name || ''}`.trim() : item.reference_id.substring(0, 8);
+        // Passa strap_colors + grade pra que a checagem detecte shortage
+        // de TIRAS (não só componentes regulares). Sem isso, tiras sem estoque
+        // passavam invisíveis pelo PV → OS pra terceiro nunca era criada.
+        const availability = await checkStock(
+          item.reference_id,
+          item.quantity,
+          item.color || '',
+          (item as any).grade ?? null,
+          (item as any).strap_colors ?? null,
+          // Modo de embalagem do PV: filtra a caixa do modo errado quando a
+          // ficha tem colmeia E individual no BOM (paridade com o custeio).
+          f.packaging_mode || null,
+          // Variante de material do item (CONS-4): sem ela a checagem
+          // avaliava o material da FICHA, não o da variante escolhida.
+          (item as any).material_variant_id ?? null,
+        );
+        return { availability, refLabel, color: item.color };
+      })
+    );
 
-      // Collect all insufficient materials
-      // Passa color + grade do item do PV pra cada shortage. A função
-      // enrichMaterialShortages decide se mantém esses campos (solados →
-      // agrupa por cor/grade) ou descarta (forros/tiras → agrega por
-      // product_id apenas).
-      const rawShortages: Array<{ product_id: string; product_name: string; required: number; available: number; referenceLabel: string; color?: string | null; grade?: Record<string, number> | null }> = [];
-      const validItemsList = validItems;
-      let resultIdx = 0;
-      for (const result of stockResults) {
-        const sourceItem = validItemsList[resultIdx];
-        resultIdx += 1;
-        if (result.status !== 'fulfilled' || !result.value.availability) continue;
-        const itemGrade = (sourceItem as any)?.grade ?? null;
-        const itemColor = result.value.color || null;
-        for (const mat of result.value.availability) {
-          if (!mat.sufficient) {
-            rawShortages.push({
-              product_id: mat.product_id,
-              product_name: mat.product_name,
-              required: mat.required,
-              available: mat.available,
-              referenceLabel: `${result.value.refLabel} (${itemColor || 'sem cor'})`,
-              color: itemColor,
-              grade: itemGrade,
-            });
+    // Segunda metade da checagem (materiais → solado → capacidade). Extraída pra
+    // poder ser RETOMADA depois que o usuário confirmar um "não consegui verificar"
+    // — assim os itens que RESPONDERAM continuam abrindo os diálogos de compra
+    // normais em vez de a falta virar save direto.
+    const continueAfterStockCheck = async () => {
+      try {
+        // Collect all insufficient materials
+        // Passa color + grade do item do PV pra cada shortage. A função
+        // enrichMaterialShortages decide se mantém esses campos (solados →
+        // agrupa por cor/grade) ou descarta (forros/tiras → agrega por
+        // product_id apenas).
+        const rawShortages: Array<{ product_id: string; product_name: string; required: number; available: number; referenceLabel: string; color?: string | null; grade?: Record<string, number> | null }> = [];
+        const validItemsList = validItems;
+        let resultIdx = 0;
+        for (const result of stockResults) {
+          const sourceItem = validItemsList[resultIdx];
+          resultIdx += 1;
+          if (result.status !== 'fulfilled' || !result.value.availability) continue;
+          const itemGrade = (sourceItem as any)?.grade ?? null;
+          const itemColor = result.value.color || null;
+          for (const mat of result.value.availability) {
+            if (!mat.sufficient) {
+              rawShortages.push({
+                product_id: mat.product_id,
+                product_name: mat.product_name,
+                required: mat.required,
+                available: mat.available,
+                referenceLabel: `${result.value.refLabel} (${itemColor || 'sem cor'})`,
+                color: itemColor,
+                grade: itemGrade,
+              });
+            }
           }
         }
-      }
 
-      // TIRAS são tratadas EXCLUSIVAMENTE pelo StrapShortageDialog (pós-save, escolha
-      // Artesanal/Comprar). Remove tiras deste caminho antigo pra NÃO gerar OC DUPLICADA.
-      // Exclui: (a) product_id nulo = tira de cor nova sem produto (check_stock_availability
-      // agora emite a falta, mas quem resolve é o dialog de tiras); (b) produtos cujo grupo
-      // é de tira — identificado pelos group_ids das strap_colors dos itens (autoritativo) +
-      // regex de nome de grupo como reforço.
-      const strapGroupIds = new Set<string>();
-      for (const it of validItems) {
-        const straps = Array.isArray((it as any).strap_colors) ? (it as any).strap_colors : [];
-        for (const s of straps) if (s?.group_id) strapGroupIds.add(String(s.group_id));
-      }
-      const STRAP_GROUP_RE = /tira|el[aá]stic|tran[çc]/i;
-
-      let materialShortages = rawShortages.filter((s) => s.product_id != null);
-      if (rawShortages.length > 0) {
-        // Enriquece solados: substitui cor do sapato pela cor real cadastrada do solado
-        // (check_stock_availability não retorna cor do solado). E identifica tiras pra excluir.
-        const productIds = [...new Set(rawShortages.map((s) => s.product_id).filter(Boolean))];
-        const { data: prodMeta } = await supabase
-          .from('products')
-          .select('id, category, color, group_id, product_groups(name)')
-          .in('id', productIds);
-        const strapProductIds = new Set(
-          (prodMeta || [])
-            .filter((p: any) =>
-              strapGroupIds.has(String(p.group_id)) || STRAP_GROUP_RE.test(p.product_groups?.name || ''))
-            .map((p: any) => p.id as string)
-        );
-        materialShortages = materialShortages.filter((s) => !strapProductIds.has(s.product_id));
-
-        const soleColor = new Map(
-          (prodMeta || [])
-            .filter((p: any) => p.category === 'Solado' && p.color)
-            .map((p: any) => [p.id, p.color as string])
-        );
-        for (const s of materialShortages) {
-          const realColor = soleColor.get(s.product_id);
-          if (realColor) s.color = realColor;
+        // TIRAS são tratadas EXCLUSIVAMENTE pelo StrapShortageDialog (pós-save, escolha
+        // Artesanal/Comprar). Remove tiras deste caminho antigo pra NÃO gerar OC DUPLICADA.
+        // Exclui: (a) product_id nulo = tira de cor nova sem produto (check_stock_availability
+        // agora emite a falta, mas quem resolve é o dialog de tiras); (b) produtos cujo grupo
+        // é de tira — identificado pelos group_ids das strap_colors dos itens (autoritativo) +
+        // regex de nome de grupo como reforço.
+        const strapGroupIds = new Set<string>();
+        for (const it of validItems) {
+          const straps = Array.isArray((it as any).strap_colors) ? (it as any).strap_colors : [];
+          for (const s of straps) if (s?.group_id) strapGroupIds.add(String(s.group_id));
         }
-      }
+        const STRAP_GROUP_RE = /tira|el[aá]stic|tran[çc]/i;
 
-      if (materialShortages.length > 0) {
-        const enriched = await enrichMaterialShortages(materialShortages);
-        if (enriched.shortages.length > 0) {
-          setMaterialResult(enriched);
-          setMaterialDialogOpen(true);
-          setCheckingStock(false);
+        let materialShortages = rawShortages.filter((s) => s.product_id != null);
+        if (rawShortages.length > 0) {
+          // Enriquece solados: substitui cor do sapato pela cor real cadastrada do solado
+          // (check_stock_availability não retorna cor do solado). E identifica tiras pra excluir.
+          const productIds = [...new Set(rawShortages.map((s) => s.product_id).filter(Boolean))];
+          const { data: prodMeta } = await supabase
+            .from('products')
+            .select('id, category, color, group_id, product_groups(name)')
+            .in('id', productIds);
+          const strapProductIds = new Set(
+            (prodMeta || [])
+              .filter((p: any) =>
+                strapGroupIds.has(String(p.group_id)) || STRAP_GROUP_RE.test(p.product_groups?.name || ''))
+              .map((p: any) => p.id as string)
+          );
+          materialShortages = materialShortages.filter((s) => !strapProductIds.has(s.product_id));
+
+          const soleColor = new Map(
+            (prodMeta || [])
+              .filter((p: any) => p.category === 'Solado' && p.color)
+              .map((p: any) => [p.id, p.color as string])
+          );
+          for (const s of materialShortages) {
+            const realColor = soleColor.get(s.product_id);
+            if (realColor) s.color = realColor;
+          }
+        }
+
+        if (materialShortages.length > 0) {
+          const enriched = await enrichMaterialShortages(materialShortages);
+          if (enriched.shortages.length > 0) {
+            setMaterialResult(enriched);
+            setMaterialDialogOpen(true);
+            setCheckingStock(false);
+            return;
+          }
+        }
+
+        // Material OK — check sole availability and offer to generate POs
+        const soleCheck = await checkSoleAvailability(
+          validItems.map((it) => {
+            const ref = canonicalReferences.find((r: any) => r.id === it.reference_id);
+            const refLabel = ref ? `${(ref as any).code || ''} - ${(ref as any).name || ''}`.trim() : it.reference_id.substring(0, 8);
+            return {
+              reference_id: it.reference_id,
+              color: it.color || '',
+              totalPairs: it.quantity,
+              referenceLabel: refLabel,
+              grade: (it as any).grade || null,
+              orderNumber: f.client_order_number || null,
+            };
+          })
+        );
+        setCheckingStock(false);
+        if (soleCheck.shortages.length > 0) {
+          setSoleResult(soleCheck);
+          setSoleDialogOpen(true);
           return;
         }
+        // Check de capacidade setorial
+        await runCapacityCheck(validItems);
+      } catch (err: any) {
+        // (c) a checagem de material/solado morreu no meio (RPC, rede, enriquecimento).
+        // Antes caía direto no doSubmit(): o PV era salvo sem ninguém saber que a
+        // verificação de compra nem terminou.
+        setCheckingStock(false);
+        setUnverifiedConfirm({
+          what: 'a disponibilidade de materiais e de solado deste pedido',
+          consequence: 'O pedido pode ser salvo com material ou solado em falta, sem a Ordem de Compra ser oferecida.',
+          detail: err?.message,
+          resume: () => { void runCapacityCheck(validItems); },
+        });
       }
+    };
 
-      // Material OK — check sole availability and offer to generate POs
-      const soleCheck = await checkSoleAvailability(
-        validItems.map((it) => {
-          const ref = canonicalReferences.find((r: any) => r.id === it.reference_id);
-          const refLabel = ref ? `${(ref as any).code || ''} - ${(ref as any).name || ''}`.trim() : it.reference_id.substring(0, 8);
-          return {
-            reference_id: it.reference_id,
-            color: it.color || '',
-            totalPairs: it.quantity,
-            referenceLabel: refLabel,
-            grade: (it as any).grade || null,
-            orderNumber: f.client_order_number || null,
-          };
-        })
-      );
+    // (c) por item: consulta que NÃO respondeu (RPC com erro, rede fora) ou que
+    // voltou sem payload. Antes essas falhas eram descartadas no mesmo `continue`
+    // dos itens sem falta, então "não consegui checar" saía do funil idêntico a
+    // "checou e está tudo em estoque".
+    const unverifiedItems: string[] = [];
+    stockResults.forEach((result, idx) => {
+      if (result.status === 'fulfilled' && result.value.availability) return;
+      const item = validItems[idx];
+      const ref = canonicalReferences.find((r: any) => r.id === item?.reference_id);
+      const refLabel = result.status === 'fulfilled'
+        ? result.value.refLabel
+        : (ref
+          ? `${(ref as any).code || ''} - ${(ref as any).name || ''}`.trim()
+          : String(item?.reference_id || '').substring(0, 8));
+      unverifiedItems.push(`${refLabel} (${item?.color || 'sem cor'})`);
+    });
+
+    if (unverifiedItems.length > 0) {
+      const failed = stockResults.find((r) => r.status === 'rejected') as PromiseRejectedResult | undefined;
+      // PV com muitos itens: lista os 5 primeiros pra não estourar o diálogo.
+      const listados = unverifiedItems.slice(0, 5).join('; ')
+        + (unverifiedItems.length > 5 ? ` e mais ${unverifiedItems.length - 5}` : '');
       setCheckingStock(false);
-      if (soleCheck.shortages.length > 0) {
-        setSoleResult(soleCheck);
-        setSoleDialogOpen(true);
-        return;
-      }
-      // Check de capacidade setorial
-      await runCapacityCheck(validItems);
-    } catch {
-      setCheckingStock(false);
-      doSubmit();
+      setUnverifiedConfirm({
+        what: unverifiedItems.length === 1
+          ? `o estoque de 1 item: ${unverifiedItems[0]}`
+          : `o estoque de ${unverifiedItems.length} itens: ${listados}`,
+        consequence: 'Pode faltar material na produção sem a Ordem de Compra ser oferecida. Os itens que responderam seguem sendo checados normalmente.',
+        detail: failed ? (failed.reason?.message ?? String(failed.reason)) : undefined,
+        resume: () => { setCheckingStock(true); void continueAfterStockCheck(); },
+      });
+      return;
     }
+
+    await continueAfterStockCheck();
   };
 
   const handleMinBillingConfirm = () => {
@@ -1169,8 +1250,15 @@ export default function SaleOrderForm() {
         return;
       }
       doSubmit();
-    } catch {
-      doSubmit();
+    } catch (err: any) {
+      // (c) não deu pra calcular a capacidade. Antes ia direto pro doSubmit(): o
+      // PV entrava numa semana possivelmente lotada e ninguém era avisado.
+      setUnverifiedConfirm({
+        what: 'a capacidade dos setores para a data de faturamento escolhida',
+        consequence: 'O pedido pode cair numa semana já lotada, sem OS de terceirização para o excedente.',
+        detail: err?.message,
+        resume: () => { void doSubmit(); },
+      });
     }
   };
 
@@ -1466,6 +1554,53 @@ export default function SaleOrderForm() {
                   const fakeEvent = { preventDefault: () => {} } as React.FormEvent;
                   void handleSubmit(fakeEvent, { ...pending.submitOptions, skipCreditCheck: true });
                 }, 0);
+              }}
+            >
+              Prosseguir mesmo assim
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Estado (c) das travas: a checagem não rodou. Nem salva calado (o que
+          fazia até 2026-08-05) nem bloqueia sozinho — diz o que ficou sem
+          verificar e exige confirmação explícita, no mesmo desenho do diálogo de
+          limite de crédito acima. */}
+      <AlertDialog
+        open={unverifiedConfirm !== null}
+        onOpenChange={(open) => { if (!open) setUnverifiedConfirm(null); }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-amber-600" />
+              Não foi possível verificar
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>
+                  O sistema não conseguiu verificar{' '}
+                  <strong className="text-foreground">{unverifiedConfirm?.what}</strong>.
+                  Isso <strong className="text-foreground">não</strong> quer dizer que está tudo certo — quer dizer que a consulta falhou.
+                </p>
+                {unverifiedConfirm?.detail && (
+                  <p className="rounded-md border border-border/60 bg-muted/30 p-3 font-mono text-xs break-words">
+                    {unverifiedConfirm.detail}
+                  </p>
+                )}
+                <p>{unverifiedConfirm?.consequence}</p>
+                <p>Prossiga somente se você já sabe que dá pra atender. Se preferir, volte e salve de novo em instantes.</p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Revisar pedido</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                const pending = unverifiedConfirm;
+                setUnverifiedConfirm(null);
+                if (!pending) return;
+                setTimeout(() => pending.resume(), 0);
               }}
             >
               Prosseguir mesmo assim

@@ -20,6 +20,7 @@ import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
+import { isOsActive, isOsCancelled, isOsDone } from '@/lib/osStatusMachine';
 
 // ─── Setores monitorados ───────────────────────────────────────────────────
 
@@ -47,6 +48,49 @@ const SECTOR_TO_LEAD_COLUMN: Record<MonitoredSector, string> = {
 };
 
 const WEEKS_TO_SHOW = 8;
+
+// ─── Limiares de carga (cadastrados em system_settings) ────────────────────
+//
+// Os defaults espelham o servidor: `detect_production_bottlenecks_and_alert`
+// faz COALESCE(alert_min_load_pct, 105) / COALESCE(alert_critical_load_pct, 130)
+// (migration 20260627140001). Só valem quando a chave não existe / não é numérica
+// — em produção as duas estão cadastradas (105 e 130).
+const ALERT_SETTING_KEYS = [
+  'alert_phone_whatsapp',
+  'alert_webhook_url',
+  'alert_min_load_pct',
+  'alert_critical_load_pct',
+] as const;
+
+const DEFAULT_MIN_LOAD_PCT = 105;
+const DEFAULT_CRITICAL_LOAD_PCT = 130;
+
+/** Query compartilhada entre o painel e o dialog de configurações (mesma queryKey
+ *  ⇒ salvar nas configurações reflete no painel sem reload). */
+function useAlertSettings(enabled = true) {
+  return useQuery({
+    queryKey: ['system_settings_alerts'],
+    enabled,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from('system_settings')
+        .select('*')
+        .in('key', ALERT_SETTING_KEYS as unknown as string[]);
+      if (error) throw error;
+      return data || [];
+    },
+  });
+}
+
+/** `value` é jsonb: pode chegar como number (105) ou string ("105"). */
+function settingToNumber(raw: any, fallback: number): number {
+  const n = Number(String(raw ?? '').replace(/^"|"$/g, ''));
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
+// Teto de leitura do histórico. Exposto porque a UI avisa quando ele morde
+// (hoje não morde: 387 OS no total, 32 com setor preenchido).
+const HISTORY_LIMIT = 1000;
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
@@ -104,6 +148,8 @@ interface BottleneckRow {
   fichaCapacity: number;
   dailyNeeded: number;
   loadPct: number;
+  /** Classificado com os limiares cadastrados, não com constantes locais. */
+  severity: 'critical' | 'warning';
   reason: string;
 }
 
@@ -133,7 +179,17 @@ export default function ProductionControlCenter() {
   const qc = useQueryClient();
 
   // ── Timeline (OPs ativas com datas planejadas e refs)
-  const { data: timelineRows = [], isLoading: loadingTimeline } = useQuery({
+  //
+  // ⚠ `isError` é obrigatório aqui: com o default `[]` e só `isLoading`, uma falha
+  // de leitura fazia o painel calcular 0 gargalos e anunciar "Sem gargalo" /
+  // "Capacidade folgada" — a UI afirmava o contrário do que sabia.
+  const {
+    data: timelineRows = [],
+    isLoading: loadingTimeline,
+    isError: timelineError,
+    refetch: refetchTimeline,
+    isFetching: fetchingTimeline,
+  } = useQuery({
     queryKey: ['production_control_timeline'],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -156,7 +212,13 @@ export default function ProductionControlCenter() {
   });
 
   // ── Capacidades por ficha (per-OP usa sua própria ficha)
-  const { data: sheetCapacities = [] as SheetCapacityRow[], isLoading: loadingCaps } = useQuery({
+  const {
+    data: sheetCapacities = [] as SheetCapacityRow[],
+    isLoading: loadingCaps,
+    isError: capsError,
+    refetch: refetchCaps,
+    isFetching: fetchingCaps,
+  } = useQuery({
     queryKey: ['sheets_capacities'],
     queryFn: async () => {
       const { data, error } = await (supabase as any)
@@ -167,6 +229,21 @@ export default function ProductionControlCenter() {
       return data || [];
     },
   });
+
+  // ── Limiares de alerta cadastrados (Configurações)
+  //
+  // O dialog de Configurações promete que "acima desse % dispara warning /
+  // vira critical", mas a detecção local ignorava os campos e usava 100/130
+  // fixos. Agora os dois lados leem a mesma fonte.
+  const { data: alertSettings = [] } = useAlertSettings();
+
+  const { minLoadPct, criticalLoadPct } = useMemo(() => {
+    const valueOf = (k: string) => (alertSettings as any[]).find(s => s.key === k)?.value;
+    return {
+      minLoadPct: settingToNumber(valueOf('alert_min_load_pct'), DEFAULT_MIN_LOAD_PCT),
+      criticalLoadPct: settingToNumber(valueOf('alert_critical_load_pct'), DEFAULT_CRITICAL_LOAD_PCT),
+    };
+  }, [alertSettings]);
 
   // Lookup map id → ficha
   const sheetById = useMemo(() => {
@@ -236,6 +313,13 @@ export default function ProductionControlCenter() {
   //      `order_id`. As duas colunas têm FK pra `orders`; aceitamos as duas.
   //   2. `sector` — só 1 linha preenchida. O setor da OS mora em
   //      `target_sector` (30 linhas).
+  //   3. `status` — a lista literal ['Pendente','pendente','em_andamento',
+  //      'aguardando_aceite'] não cobria o domínio real do banco, que grava
+  //      'Em Andamento' (com espaço e maiúsculas). Essas OS sumiam do card sem
+  //      erro. O vocabulário canônico é `osStatusMachine`: ativa = nem concluída
+  //      nem cancelada. Aplicado no cliente de propósito — o recorte por setor já
+  //      reduz a leitura a poucas dezenas de linhas, e assim nenhuma grafia nova
+  //      precisa ser replicada num `.in()` daqui pra frente.
   // Sem OP vinculada a OS ainda é comum (só 3 das 385 têm `order_id`), então o
   // painel não exige o vínculo: mostra a terceirização que existe de fato.
   const { data: activeOutsourceOses = [] } = useQuery({
@@ -245,10 +329,9 @@ export default function ProductionControlCenter() {
         .from('service_orders')
         .select('*, contractors(name), orders!service_orders_order_id_fkey(order_number, quantity, reference_id, technical_sheets:reference_id(name))')
         .or('target_sector.not.is.null,sector.not.is.null')
-        .in('status', ['Pendente', 'pendente', 'em_andamento', 'aguardando_aceite'])
         .order('created_at', { ascending: false });
       if (error) throw error;
-      return data || [];
+      return ((data || []) as any[]).filter(os => isOsActive(os.status));
     },
   });
 
@@ -310,7 +393,8 @@ export default function ProductionControlCenter() {
           if (fichaCapacity <= 0) continue;
           const dailyNeeded = row.op_quantity / leadDays;
           const loadPct = (dailyNeeded / fichaCapacity) * 100;
-          if (loadPct > 100 && cell) {
+          if (loadPct > minLoadPct && cell) {
+            const severity: 'critical' | 'warning' = loadPct > criticalLoadPct ? 'critical' : 'warning';
             perOpBottlenecks.push({
               orderId: row.order_id,
               orderNumber: row.pedido_ref,
@@ -323,7 +407,8 @@ export default function ProductionControlCenter() {
               fichaCapacity,
               dailyNeeded,
               loadPct,
-              reason: loadPct > 130
+              severity,
+              reason: severity === 'critical'
                 ? `Ficha precisa de ${Math.round(dailyNeeded)} pares/dia mas só faz ${Math.round(fichaCapacity)}/dia (${Math.round(loadPct)}%).`
                 : `Setor próximo do limite: ${Math.round(dailyNeeded)}/${Math.round(fichaCapacity)} pares/dia (${Math.round(loadPct)}%).`,
             });
@@ -339,7 +424,7 @@ export default function ProductionControlCenter() {
 
     perOpBottlenecks.sort((a, b) => b.loadPct - a.loadPct);
     return { heatmap, bottlenecks: perOpBottlenecks };
-  }, [timelineRows, weeks, avgCapacities, sheetById]);
+  }, [timelineRows, weeks, avgCapacities, sheetById, minLoadPct, criticalLoadPct]);
 
   const opsAtRisk = new Set(bottlenecks.map(b => b.orderId)).size;
   const worstCell = heatmap.reduce(
@@ -349,6 +434,9 @@ export default function ProductionControlCenter() {
   const criticalAlerts = activeAlerts.filter((a: any) => a.severity === 'critical').length;
 
   const isLoading = loadingTimeline || loadingCaps;
+  const planningError = timelineError || capsError;
+  const retryPlanning = () => { refetchTimeline(); refetchCaps(); };
+  const retryingPlanning = fetchingTimeline || fetchingCaps;
 
   return (
     <div className="space-y-4">
@@ -381,6 +469,22 @@ export default function ProductionControlCenter() {
 
         {/* ── Tab: Visão geral ── */}
         <TabsContent value="dashboard" className="mt-4 space-y-4">
+          {planningError && (
+            <div className="flex flex-col items-center justify-center py-16 gap-3 text-center rounded-lg border border-destructive/30 bg-destructive/5">
+              <AlertTriangle className="h-10 w-10 text-destructive" />
+              <p className="font-semibold text-foreground">Falha ao carregar o planejamento de capacidade</p>
+              <p className="text-sm text-muted-foreground max-w-md">
+                Sem os dados de OPs e fichas não dá pra saber se há gargalo — os indicadores ficam ocultos
+                em vez de mostrar zero. Pode ser instabilidade momentânea de conexão.
+              </p>
+              <Button onClick={retryPlanning} disabled={retryingPlanning} className="mt-1 gap-1.5">
+                {retryingPlanning ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                {retryingPlanning ? 'Carregando…' : 'Tentar novamente'}
+              </Button>
+            </div>
+          )}
+
+          {!planningError && (<>
           {/* KPIs */}
           <StatGrid>
             <StatCard
@@ -481,10 +585,10 @@ export default function ProductionControlCenter() {
                   {bottlenecks.slice(0, 50).map((b, i) => (
                     <div key={`${b.orderId}-${b.sector}-${i}`} className="p-3 flex items-center gap-3">
                       <Badge variant="outline" className={`text-xs capitalize ${
-                        b.loadPct > 130 ? 'bg-destructive/10 text-destructive border-destructive/30'
-                                        : 'bg-amber-500/10 text-amber-700 border-amber-500/30'
+                        b.severity === 'critical' ? 'bg-destructive/10 text-destructive border-destructive/30'
+                                                  : 'bg-amber-500/10 text-amber-700 border-amber-500/30'
                       }`}>
-                        {b.loadPct > 130 ? 'Crítico' : 'Atenção'}
+                        {b.severity === 'critical' ? 'Crítico' : 'Atenção'}
                       </Badge>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium">
@@ -509,6 +613,7 @@ export default function ProductionControlCenter() {
                 </div>
               )}
           </Panel>
+          </>)}
 
           {/* OSes terceirizadas ativas */}
           <Panel title={`OSes terceirizadas ativas (${activeOutsourceOses.length})`} flush>
@@ -573,9 +678,19 @@ function AlertsSection({ alerts }: { alerts: any[] }) {
     },
     onSuccess: (data: any) => {
       qc.invalidateQueries({ queryKey: ['production_alerts_active'] });
-      const created = data?.alerts_created ?? 0;
-      const notified = data?.alerts_notified ?? 0;
-      toast.success(`Detecção rodada: ${created} alertas novos, ${notified} notificados.`);
+      // As chaves são `created`/`notified`/`failed` — o RETURN jsonb_build_object
+      // de `detect_production_bottlenecks_and_alert` (mig 20260627140001). Lendo
+      // `alerts_created`/`alerts_notified` (nomes das variáveis PL/pgSQL, não das
+      // chaves) o toast dizia "0 alertas novos" mesmo tendo criado alertas.
+      const created = data?.created ?? 0;
+      const notified = data?.notified ?? 0;
+      const failed = data?.failed ?? 0;
+      const resumo = `Detecção rodada: ${created} alertas novos, ${notified} notificados.`;
+      if (failed > 0) {
+        toast.warning(`${resumo} ${failed} falharam no envio.`);
+      } else {
+        toast.success(resumo);
+      }
     },
     onError: (e: Error) => toast.error(`Falha: ${e.message}`),
   });
@@ -663,6 +778,7 @@ interface ContractorStats {
   onTimeCount: number;
   lateCount: number;
   inProgressCount: number;
+  cancelledCount: number;
   avgDelayDays: number;
 }
 
@@ -678,11 +794,15 @@ function OutsourceHistorySection() {
         .select('*, contractors(id, name)')
         .or('target_sector.not.is.null,sector.not.is.null')
         .order('created_at', { ascending: false })
-        .limit(1000);
+        .limit(HISTORY_LIMIT);
       if (error) throw error;
       return data || [];
     },
   });
+
+  // O teto de leitura corta em silêncio: batendo nele, o ranking passa a
+  // descrever só as OSes mais recentes sem dizer isso em lugar nenhum.
+  const historyCapped = history.length >= HISTORY_LIMIT;
 
   const stats = useMemo<ContractorStats[]>(() => {
     const map = new Map<string, ContractorStats>();
@@ -699,16 +819,28 @@ function OutsourceHistorySection() {
           onTimeCount: 0,
           lateCount: 0,
           inProgressCount: 0,
+          cancelledCount: 0,
           avgDelayDays: 0,
         });
       }
       const s = map.get(cid)!;
       s.totalOses += 1;
+
+      // Classificar ANTES de somar: pares e valor de OS cancelada não são
+      // produção entregue, e entravam no total do ranking.
+      if (isOsCancelled(os.status)) {
+        s.cancelledCount += 1;
+        continue;
+      }
+
       s.totalPairs += Number(os.quantity || 0);
       s.totalValue += Number(os.total_value || 0);
 
-      const status = String(os.status || '').toLowerCase();
-      if (status === 'concluido') {
+      // `isOsDone` cobre 'Concluído' (grafia canônica gravada pelo form) —
+      // o `String(status).toLowerCase() === 'concluido'` anterior comparava
+      // sem acento, então a OS concluída de verdade nunca entrava na
+      // pontualidade e o ranking mostrava 0% no prazo.
+      if (isOsDone(os.status)) {
         const promised = os.service_date ? parseISO(os.service_date) : null;
         const delivered = os.updated_at ? parseISO(os.updated_at) : null;
         if (promised && delivered) {
@@ -720,7 +852,9 @@ function OutsourceHistorySection() {
             s.avgDelayDays = (s.avgDelayDays * (s.lateCount - 1) + delta) / s.lateCount;
           }
         }
-      } else if (['em_andamento', 'pendente', 'aguardando_aceite'].includes(status)) {
+      } else {
+        // Nem concluída nem cancelada = ainda em andamento (inclui
+        // 'aguardando_aceite', que `normalizeOsStatus` trata como Pendente).
         s.inProgressCount += 1;
       }
     }
@@ -747,6 +881,16 @@ function OutsourceHistorySection() {
         <span className="text-xs text-muted-foreground">{history.length} OSes históricas</span>
       </div>
 
+      {historyCapped && (
+        <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 p-2.5 text-xs text-amber-700 dark:text-amber-300">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+          <span>
+            Leitura limitada às {HISTORY_LIMIT} OSes mais recentes — existem mais no banco.
+            O ranking abaixo descreve só esse recorte.
+          </span>
+        </div>
+      )}
+
       <div className="space-y-2">
         {stats.map((s, i) => {
           const totalConcluded = s.onTimeCount + s.lateCount;
@@ -761,6 +905,9 @@ function OutsourceHistorySection() {
                   <p className="font-semibold text-sm">{s.contractorName}</p>
                   <p className="text-xs text-muted-foreground">
                     {s.totalOses} OSes · {s.totalPairs} pares · R$ {s.totalValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    {s.cancelledCount > 0 && (
+                      <span className="ml-1">({s.cancelledCount} cancelada{s.cancelledCount > 1 ? 's' : ''}, fora do total)</span>
+                    )}
                   </p>
                 </div>
                 <div className="flex items-center gap-3 text-xs shrink-0">
@@ -801,18 +948,9 @@ function OutsourceHistorySection() {
 function SettingsDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const qc = useQueryClient();
 
-  const { data: settings = [] } = useQuery({
-    queryKey: ['system_settings_alerts'],
-    enabled: open,
-    queryFn: async () => {
-      const { data, error } = await (supabase as any)
-        .from('system_settings')
-        .select('*')
-        .in('key', ['alert_phone_whatsapp', 'alert_webhook_url', 'alert_min_load_pct', 'alert_critical_load_pct']);
-      if (error) throw error;
-      return data || [];
-    },
-  });
+  // Mesma queryKey do painel: salvar aqui invalida e o painel reclassifica os
+  // gargalos com os novos limiares sem reload.
+  const { data: settings = [] } = useAlertSettings(open);
 
   const settingsMap = useMemo(() => {
     const m = new Map<string, any>();
@@ -822,15 +960,15 @@ function SettingsDialog({ open, onClose }: { open: boolean; onClose: () => void 
 
   const [phone, setPhone] = useState('');
   const [webhook, setWebhook] = useState('');
-  const [minPct, setMinPct] = useState(105);
-  const [critPct, setCritPct] = useState(130);
+  const [minPct, setMinPct] = useState(DEFAULT_MIN_LOAD_PCT);
+  const [critPct, setCritPct] = useState(DEFAULT_CRITICAL_LOAD_PCT);
 
   useEffect(() => {
     if (open && settings.length > 0) {
       setPhone(String(settingsMap.get('alert_phone_whatsapp') ?? '').replace(/^"|"$/g, ''));
       setWebhook(String(settingsMap.get('alert_webhook_url') ?? '').replace(/^"|"$/g, ''));
-      setMinPct(Number(settingsMap.get('alert_min_load_pct') ?? 105));
-      setCritPct(Number(settingsMap.get('alert_critical_load_pct') ?? 130));
+      setMinPct(settingToNumber(settingsMap.get('alert_min_load_pct'), DEFAULT_MIN_LOAD_PCT));
+      setCritPct(settingToNumber(settingsMap.get('alert_critical_load_pct'), DEFAULT_CRITICAL_LOAD_PCT));
     }
   }, [open, settings.length, settingsMap]);
 
@@ -915,12 +1053,12 @@ function SettingsDialog({ open, onClose }: { open: boolean; onClose: () => void 
             <div>
               <Label className="text-xs font-bold uppercase">Carga mínima (% alerta)</Label>
               <Input type="number" min={100} max={200} value={minPct} onChange={e => setMinPct(+e.target.value)} className="mt-1" />
-              <p className="text-xs text-muted-foreground mt-1">Acima desse % dispara warning.</p>
+              <p className="text-xs text-muted-foreground mt-1">Acima desse % a OP entra na lista de gargalos como “Atenção”.</p>
             </div>
             <div>
               <Label className="text-xs font-bold uppercase">Carga crítica (% alerta)</Label>
               <Input type="number" min={100} max={300} value={critPct} onChange={e => setCritPct(+e.target.value)} className="mt-1" />
-              <p className="text-xs text-muted-foreground mt-1">Acima desse % vira critical.</p>
+              <p className="text-xs text-muted-foreground mt-1">Acima desse % o gargalo é marcado como “Crítico”.</p>
             </div>
           </div>
 

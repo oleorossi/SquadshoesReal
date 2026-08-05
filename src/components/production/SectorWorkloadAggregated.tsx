@@ -4,6 +4,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { CaretDown, CaretRight, Calendar, Package as Boxes } from '@phosphor-icons/react';
+import { ErrorState } from '@/components/ui/ErrorState';
 import { cn } from '@/lib/utils';
 
 interface Props {
@@ -13,7 +14,10 @@ interface Props {
 }
 
 export function SectorWorkloadAggregated({ stageName, groupByColor = true }: Props) {
-  const { data: rows = [], isLoading } = useSectorWorkload(stageName, { groupByColor });
+  // ⚠ Sem `isError`, falha de consulta caía no default `[]` e a tela mostrava
+  // "Nenhuma OP ativa neste setor no momento" — que na bancada se lê como
+  // "acabou o serviço", não como "o servidor não respondeu".
+  const { data: rows = [], isLoading, isError, error, refetch } = useSectorWorkload(stageName, { groupByColor });
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   const sorted = useMemo(
@@ -45,6 +49,23 @@ export function SectorWorkloadAggregated({ stageName, groupByColor = true }: Pro
 
   if (isLoading) {
     return <div className="py-10 text-center text-muted-foreground text-sm">Calculando carga agregada...</div>;
+  }
+
+  if (isError) {
+    return (
+      <Card>
+        <CardContent className="p-0">
+          <ErrorState
+            size="sm"
+            title="Não foi possível carregar a carga deste setor"
+            description={`A consulta falhou — isto NÃO quer dizer setor sem OP. ${
+              (error as Error)?.message || ''
+            }`.trim()}
+            onRetry={() => void refetch()}
+          />
+        </CardContent>
+      </Card>
+    );
   }
 
   if (sorted.length === 0) {
