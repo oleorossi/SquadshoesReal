@@ -1,0 +1,924 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Rótulo Caixa Externa · 198×132mm</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter+Tight:wght@400;600;700;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{background:#e8e6e1;font-family:'Inter Tight',sans-serif;color:#000;-webkit-font-smoothing:antialiased;}
+body{padding:24px;}
+
+@media print{
+  *{
+    -webkit-print-color-adjust:exact !important;
+    color-adjust:exact !important;
+    print-color-adjust:exact !important;
+  }
+  html,body{overflow:visible !important;background:#fff !important;}
+  body *{overflow:visible !important;max-height:none !important;}
+  img{image-rendering:-webkit-optimize-contrast;image-rendering:crisp-edges;}
+  *{animation:none !important;transition:none !important;}
+}
+
+/* A4 portrait — 210×297mm. Cada .page acomoda 2 .label-cx-ext empilhadas com
+   6mm de gap (margem de corte).
+   @page margin:0 — CRÍTICO: com margem > 0 o navegador desenha o cabeçalho/rodapé
+   automático (data/hora, "about:blank" e "N/N" das páginas) NA margem, sujando o
+   rótulo. Com margin:0 o Chrome NÃO desenha esse chrome. O recuo seguro de 9mm
+   passa a vir do padding do .page (abaixo), então a posição do rótulo não muda. */
+@page{size:A4 portrait;margin:0;}
+
+.page{
+  width:210mm;min-height:297mm;margin:0 auto;background:#fff;
+  box-shadow:0 18px 48px -16px rgba(0,0,0,0.25);
+  padding:9mm;display:flex;flex-direction:column;align-items:center;gap:6mm;
+  page-break-inside:avoid;break-inside:avoid;
+}
+.page.page-break{break-after:page;page-break-after:always;}
+.page:not(.page-break){break-after:avoid;page-break-after:avoid;}
+
+.label-cx-ext{
+  width:192mm;height:132mm;background:#fff;
+  border:3px solid #000;color:#000;
+  font-family:'Inter Tight',sans-serif;
+  display:flex;flex-direction:column;
+  page-break-inside:avoid;break-inside:avoid;
+  overflow:hidden;position:relative;
+}
+
+@media print{
+  body{padding:0;background:#fff;}
+  /* padding:9mm — recuo seguro (antes vinha do @page margin:9mm, agora zerado
+     pra remover o cabeçalho/rodapé do navegador). Mantém o rótulo na MESMA
+     posição de antes (192mm de largura dentro dos 210mm com 9mm de cada lado).
+     min-height:0 (era 297mm) — CRÍTICO com @page margin:0: um .page de 297mm
+     (border-box, já inclui o padding) fica EXATAMENTE do tamanho da folha A4 e o
+     Chrome transborda por arredondamento, gerando uma página EM BRANCO depois de
+     cada rótulo (184 = 92×2). Cada rótulo já quebra a folha sozinho (.page-break →
+     break-after), então o .page não precisa preencher a folha inteira: fica do
+     tamanho do conteúdo (~288mm com 2 rótulos), que cabe folgado em 1 folha. */
+  .page{box-shadow:none;padding:9mm;width:210mm;min-height:0;gap:6mm;}
+  /* Fix 2026-05-23: era 198mm — estourava 6mm em A4 com @page margin 9mm
+     (área útil = 192mm). Borda direita saía cortada. Manter 192mm em
+     print pra caber dentro da margem segura. */
+  .label-cx-ext{width:192mm;height:132mm;}
+  /* Fix 2026-06-22: o LABEL_PRINT_HARDENING global aplica em @media print
+     "body *{overflow:visible;max-height:none}" pra impedir que containers
+     ANCESTRAIS cortem a etiqueta — mas isso também remove o overflow:hidden
+     da moldura da foto e o teto max-height:100% da imagem. Sem o teto, a foto
+     cresce até max-width:100% (altura = largura/proporção) e VAZA pra baixo,
+     por cima da grade + código de barras + VOLUME (bug reportado: "foto grande
+     demais, cortando"). Reafirmamos a contenção com especificidade de classe +
+     !important (mesma prioridade do "body *", classe vence o seletor universal),
+     restaurando o comportamento que já valia em tela. */
+  .label-cx-ext,.photo-frame{overflow:hidden !important;}
+  .photo-frame img{max-width:100% !important;max-height:100% !important;}
+  .print-footer{display:none !important;}
+}
+
+/* HEADER NF / PEDIDO ─────────────────── */
+.nf-row{display:grid;grid-template-columns:1.4fr 1fr;border-bottom:3px solid #000;flex-shrink:0;}
+.nf-cell{padding:6px 14px;border-right:3px solid #000;display:flex;align-items:baseline;gap:8px;background:#fff;color:#000;}
+.nf-cell .nf-label{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:12px;letter-spacing:0.06em;color:#555;}
+/* Vermelho de conferência (spec variacao-material-pv): NF, pedido e cliente
+   em #D9264E (squad red) — os 3 campos que a expedição procura primeiro. */
+.nf-cell .nf-value{font-family:'Anton',sans-serif;font-size:40px;letter-spacing:0.02em;line-height:.92;color:#D9264E;}
+.prog-cell{padding:6px 14px;display:flex;flex-direction:column;justify-content:center;gap:1px;}
+.prog-cell .prog-label{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:11px;letter-spacing:0.06em;color:#555;}
+.prog-cell .prog-value{font-family:'Anton',sans-serif;font-size:24px;letter-spacing:0.02em;line-height:1;color:#D9264E;}
+
+/* REMETENTE (faixa fina) ───────────── */
+.remetente-row{display:flex;gap:6px;align-items:baseline;padding:3px 14px;border-bottom:1.5px solid #000;background:#fff;color:#000;flex-shrink:0;}
+.remetente-row .rem-label{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:9px;letter-spacing:0.06em;white-space:nowrap;}
+.remetente-row .rem-val{font-family:'Inter Tight',sans-serif;font-weight:700;font-size:9.5px;line-height:1.15;}
+
+/* CORPO 2 colunas ──────────────────── */
+.body{display:flex;flex:1;min-height:0;}
+.body-left{flex:1.3;border-right:3px solid #000;padding:8px 14px;display:flex;flex-direction:column;gap:3px;font-size:11px;font-weight:600;}
+/* Grid de 2 colunas: rótulo (largura fixa) + valor. Garante a coluna de
+   valores SEMPRE alinhada (fix do alinhamento "torto" 2026-06-30). */
+.body-left .field{display:grid;grid-template-columns:96px 1fr;gap:8px;align-items:baseline;border-bottom:0.5px solid #bbb;padding-bottom:2px;line-height:1.25;}
+.body-left .field .lbl{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:10px;letter-spacing:0.06em;color:#555;}
+.body-left .field .val{font-weight:700;font-size:12px;}
+.body-left .field.mono .val{font-family:'JetBrains Mono',monospace;}
+.body-left .field.big .val{font-family:'Anton',sans-serif;font-weight:400;font-size:19px;letter-spacing:0.01em;color:#D9264E;}
+.body-left .gap{height:4px;}
+
+.body-right{flex:1;display:flex;flex-direction:column;padding:8px 10px 6px;}
+.photo-frame{flex:1;border:3px solid #000;background:#fff;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;}
+.photo-frame img{max-width:100%;max-height:100%;object-fit:contain;}
+.photo-fallback-badge{position:absolute;top:6px;left:6px;z-index:2;background:#fff;color:#000;border:1px solid #000;font-size:8.5px;font-weight:800;padding:2px 5px;letter-spacing:0.5px;text-transform:uppercase;white-space:nowrap;line-height:1;font-family:'JetBrains Mono',monospace;}
+.cor-row{margin-top:4px;display:flex;justify-content:space-between;align-items:center;gap:6px;}
+.cor-row .cor-name{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:18px;letter-spacing:0.04em;text-transform:uppercase;line-height:1.1;color:#C00000;}
+
+/* TABELA grade ───────────────────── */
+/* Grade unificada num único grid: col 1 = rótulos, cols 2..N = valores.
+   Garante que cada rótulo (MARCA/REFERENCIA/TAMANHO/QUANTIDADE) compartilhe a
+   altura da sua linha de valores (antes eram 2 colunas flex independentes que
+   desalinhavam por terem alturas de linha calculadas separadamente). */
+.grade-table{display:grid;border-top:3px solid #000;flex-shrink:0;}
+.grade-table > .glabel{border-right:1.5px solid #000;border-bottom:1px solid #000;padding:4px 10px;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:10px;letter-spacing:0.06em;color:#555;display:flex;align-items:center;}
+.grade-table > .glabel.first{background:#fff;color:#000;}
+.grade-table > .glabel.last{border-bottom:none;}
+.grade-table > .cell{text-align:center;border-right:1px solid #000;border-bottom:1px solid #000;font-family:'Anton',sans-serif;font-weight:400;color:#000;font-size:18px;padding:2px 0;display:flex;align-items:center;justify-content:center;}
+.grade-table > .cell.tam-total{background:#fff;color:#000;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:11px;}
+.grade-table > .cell.qtd-total{background:#fff;color:#000;font-size:22px;border-bottom:none;}
+.grade-table > .row-marca{grid-column:2 / -1;background:#fff;color:#000;padding:3px 10px;text-align:left;display:flex;align-items:center;gap:8px;border-bottom:1px solid #000;}
+.grade-table > .row-marca .brand-mark{font-family:'Anton',sans-serif;font-size:20px;letter-spacing:0.06em;color:#000;line-height:1;}
+.grade-table > .row-ref{grid-column:2 / -1;text-align:left;padding:4px 10px;font-size:15px;border-bottom:1px solid #000;font-family:'JetBrains Mono',monospace;font-weight:700;color:#C00000;display:flex;align-items:center;}
+/* MATERIAL (spec variacao-material-pv): nome do grupo/variação de material
+   (ex.: NAPA SOFT). Linha só existe quando o valor foi resolvido — cascata
+   variação do PV > cabedal da ficha > (tiras) forração pick-one. */
+.grade-table > .row-mat{grid-column:2 / -1;text-align:left;padding:4px 10px;font-size:16px;border-bottom:1px solid #000;font-family:'Anton',sans-serif;letter-spacing:0.05em;text-transform:uppercase;color:#000;display:flex;align-items:center;}
+
+/* RODAPÉ PEDIDO + VOLUME ──────────── */
+.footer{display:flex;border-top:3px solid #000;background:#fff;color:#000;flex-shrink:0;}
+.footer .pedido{flex:1;padding:6px 14px;border-right:3px solid #000;display:flex;align-items:center;gap:8px;}
+.footer .volume{padding:6px 14px;display:flex;align-items:baseline;gap:8px;}
+.footer .lbl{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:12px;letter-spacing:0.06em;color:#555;}
+.footer .val{font-family:'Anton',sans-serif;font-size:28px;letter-spacing:0.02em;line-height:1;color:#000;}
+.footer .volume .sep{font-size:16px;}
+.footer .box-bc-wrap{flex:0 0 auto;display:flex;align-items:center;justify-content:center;padding:2px 12px;border-left:3px solid #000;}
+.footer .box-bc-wrap svg{height:11mm;width:auto;max-width:62mm;}
+
+/* Linha de corte entre as 2 etiquetas (visível só em tela, sumindo em print) */
+
+/* Print footer (botões "Imprimir" / "Voltar" — só em tela) */
+.print-footer{max-width:190mm;margin:24px auto 12px;padding:18px 24px;background:#fff;border:1px solid #d4d4d4;border-radius:6px;font-family:Arial,sans-serif;text-align:center;}
+.print-footer__title{font-size:12px;font-weight:700;color:#111;letter-spacing:0.5px;text-transform:uppercase;margin-bottom:4px;}
+.print-footer__sub{font-size:11px;color:#555;margin-bottom:14px;}
+.print-footer__btn{display:inline-block;padding:9px 22px;background:#0f172a;color:#fff;text-decoration:none;border-radius:4px;font-size:12px;font-weight:600;letter-spacing:0.3px;font-family:inherit;}
+.print-footer__btn--ghost{background:#fff;color:#0f172a;border:1px solid #0f172a;margin-left:8px;}
+</style>
+</head><body><section class="page page-break">
+      
+      <div class="label-cx-ext">
+        <div class="nf-row">
+          <div class="nf-cell">
+            <span class="nf-label">NF:</span>
+            <span class="nf-value"></span>
+          </div>
+          <div class="prog-cell">
+            <span class="prog-label">PEDIDO:</span>
+            <span class="prog-value">20189666</span>
+          </div>
+        </div>
+
+        <div class="remetente-row">
+          <span class="rem-label">REMET.:</span>
+          <span class="rem-val">SQUAD SHOES INDUSTRIA E COMERCIO DE CALCADOS LTDA</span>
+        </div>
+
+        <div class="body">
+          <div class="body-left">
+            <div class="field big">
+      <span class="lbl">CLIENTE:</span>
+      <span class="val">PONTO MIX CONFECCOES LTDA</span>
+    </div><div class="field">
+      <span class="lbl">CNPJ:</span>
+      <span class="val">32.168.100/0001-18</span>
+    </div><div class="field">
+      <span class="lbl">ENDEREÇO:</span>
+      <span class="val">Estrada do Mendanha</span>
+    </div><div class="field">
+      <span class="lbl">BAIRRO:</span>
+      <span class="val">Campo Grande</span>
+    </div><div class="field">
+      <span class="lbl">CIDADE:</span>
+      <span class="val">Rio de Janeiro</span>
+    </div><div class="field">
+      <span class="lbl">UF:</span>
+      <span class="val">RJ</span>
+    </div><div class="field">
+      <span class="lbl">CEP:</span>
+      <span class="val">23092-001</span>
+    </div>
+            <div class="gap"></div><div class="field mono">
+      <span class="lbl">CÓD. PRODUTO:</span>
+      <span class="val">I90I</span>
+    </div><div class="field mono">
+      <span class="lbl">PED. COMPRA:</span>
+      <span class="val">20189666</span>
+    </div>
+          </div>
+          <div class="body-right">
+            <div class="photo-frame"><img src="data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20200%20130%22%20preserveAspectRatio%3D%22xMidYMid%20meet%22%3E%3Cellipse%20cx%3D%22100%22%20cy%3D%22118%22%20rx%3D%2278%22%20ry%3D%226%22%20fill%3D%22%23000%22%20opacity%3D%220.18%22%2F%3E%3Cpath%20d%3D%22M%2024%20100%20Q%2026%2086%2040%2084%20L%20150%2084%20Q%20174%2084%20180%2096%20Q%20184%20104%20184%20110%20Q%20184%20114%20180%20114%20L%2032%20114%20Q%2024%20114%2024%20108%20Z%22%20fill%3D%22%231A1A1A%22%20stroke%3D%22%23000%22%20stroke-width%3D%220.8%22%2F%3E%3Cpath%20d%3D%22M%2040%2084%20Q%2044%2056%2070%2050%20L%20124%2050%20Q%20156%2052%20168%2070%20Q%20178%2080%20180%2096%20L%2040%2096%20Z%22%20fill%3D%22%232A2A2A%22%20stroke%3D%22%23000%22%20stroke-width%3D%220.8%22%2F%3E%3C%2Fsvg%3E" alt="" /></div>
+            <div class="cor-row"><span class="cor-name">OFF WHITE</span></div>
+          </div>
+        </div>
+
+        <div class="grade-table" style="grid-template-columns:110px repeat(2, 1fr);">
+          <div class="glabel first">MARCA:</div>
+          <div class="row-marca"><span class="brand-mark">Squad Shoes</span></div>
+          <div class="glabel">REFERENCIA</div>
+          <div class="row-ref">I90</div>
+          
+          <div class="glabel">TAMANHO</div>
+          <div class="cell">28</div><div class="cell total tam-total">TT</div>
+          <div class="glabel last">QUANTIDADE</div>
+          <div class="cell">12</div><div class="cell total qtd-total">12</div>
+        </div>
+
+        <div class="footer">
+          <div class="pedido">
+            <span class="lbl">OP:</span>
+            <span class="val">OP-2026-01257</span>
+          </div>
+          <div class="box-bc-wrap"><svg id="bx-0"></svg></div>
+          <div class="volume">
+            <span class="lbl">VOLUME:</span>
+            <span class="val">13<span class="sep">/</span>45</span>
+          </div>
+        </div>
+      </div>
+      
+      <div class="label-cx-ext">
+        <div class="nf-row">
+          <div class="nf-cell">
+            <span class="nf-label">NF:</span>
+            <span class="nf-value"></span>
+          </div>
+          <div class="prog-cell">
+            <span class="prog-label">PEDIDO:</span>
+            <span class="prog-value">20189666</span>
+          </div>
+        </div>
+
+        <div class="remetente-row">
+          <span class="rem-label">REMET.:</span>
+          <span class="rem-val">SQUAD SHOES INDUSTRIA E COMERCIO DE CALCADOS LTDA</span>
+        </div>
+
+        <div class="body">
+          <div class="body-left">
+            <div class="field big">
+      <span class="lbl">CLIENTE:</span>
+      <span class="val">PONTO MIX CONFECCOES LTDA</span>
+    </div><div class="field">
+      <span class="lbl">CNPJ:</span>
+      <span class="val">32.168.100/0001-18</span>
+    </div><div class="field">
+      <span class="lbl">ENDEREÇO:</span>
+      <span class="val">Estrada do Mendanha</span>
+    </div><div class="field">
+      <span class="lbl">BAIRRO:</span>
+      <span class="val">Campo Grande</span>
+    </div><div class="field">
+      <span class="lbl">CIDADE:</span>
+      <span class="val">Rio de Janeiro</span>
+    </div><div class="field">
+      <span class="lbl">UF:</span>
+      <span class="val">RJ</span>
+    </div><div class="field">
+      <span class="lbl">CEP:</span>
+      <span class="val">23092-001</span>
+    </div>
+            <div class="gap"></div><div class="field mono">
+      <span class="lbl">CÓD. PRODUTO:</span>
+      <span class="val">I90I</span>
+    </div><div class="field mono">
+      <span class="lbl">PED. COMPRA:</span>
+      <span class="val">20189666</span>
+    </div>
+          </div>
+          <div class="body-right">
+            <div class="photo-frame"><img src="data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20200%20130%22%20preserveAspectRatio%3D%22xMidYMid%20meet%22%3E%3Cellipse%20cx%3D%22100%22%20cy%3D%22118%22%20rx%3D%2278%22%20ry%3D%226%22%20fill%3D%22%23000%22%20opacity%3D%220.18%22%2F%3E%3Cpath%20d%3D%22M%2024%20100%20Q%2026%2086%2040%2084%20L%20150%2084%20Q%20174%2084%20180%2096%20Q%20184%20104%20184%20110%20Q%20184%20114%20180%20114%20L%2032%20114%20Q%2024%20114%2024%20108%20Z%22%20fill%3D%22%231A1A1A%22%20stroke%3D%22%23000%22%20stroke-width%3D%220.8%22%2F%3E%3Cpath%20d%3D%22M%2040%2084%20Q%2044%2056%2070%2050%20L%20124%2050%20Q%20156%2052%20168%2070%20Q%20178%2080%20180%2096%20L%2040%2096%20Z%22%20fill%3D%22%232A2A2A%22%20stroke%3D%22%23000%22%20stroke-width%3D%220.8%22%2F%3E%3C%2Fsvg%3E" alt="" /></div>
+            <div class="cor-row"><span class="cor-name">OFF WHITE</span></div>
+          </div>
+        </div>
+
+        <div class="grade-table" style="grid-template-columns:110px repeat(2, 1fr);">
+          <div class="glabel first">MARCA:</div>
+          <div class="row-marca"><span class="brand-mark">Squad Shoes</span></div>
+          <div class="glabel">REFERENCIA</div>
+          <div class="row-ref">I90</div>
+          
+          <div class="glabel">TAMANHO</div>
+          <div class="cell">28</div><div class="cell total tam-total">TT</div>
+          <div class="glabel last">QUANTIDADE</div>
+          <div class="cell">12</div><div class="cell total qtd-total">12</div>
+        </div>
+
+        <div class="footer">
+          <div class="pedido">
+            <span class="lbl">OP:</span>
+            <span class="val">OP-2026-01257</span>
+          </div>
+          <div class="box-bc-wrap"><svg id="bx-1"></svg></div>
+          <div class="volume">
+            <span class="lbl">VOLUME:</span>
+            <span class="val">14<span class="sep">/</span>45</span>
+          </div>
+        </div>
+      </div>
+    </section><section class="page page-break">
+      
+      <div class="label-cx-ext">
+        <div class="nf-row">
+          <div class="nf-cell">
+            <span class="nf-label">NF:</span>
+            <span class="nf-value"></span>
+          </div>
+          <div class="prog-cell">
+            <span class="prog-label">PEDIDO:</span>
+            <span class="prog-value">20189666</span>
+          </div>
+        </div>
+
+        <div class="remetente-row">
+          <span class="rem-label">REMET.:</span>
+          <span class="rem-val">SQUAD SHOES INDUSTRIA E COMERCIO DE CALCADOS LTDA</span>
+        </div>
+
+        <div class="body">
+          <div class="body-left">
+            <div class="field big">
+      <span class="lbl">CLIENTE:</span>
+      <span class="val">PONTO MIX CONFECCOES LTDA</span>
+    </div><div class="field">
+      <span class="lbl">CNPJ:</span>
+      <span class="val">32.168.100/0001-18</span>
+    </div><div class="field">
+      <span class="lbl">ENDEREÇO:</span>
+      <span class="val">Estrada do Mendanha</span>
+    </div><div class="field">
+      <span class="lbl">BAIRRO:</span>
+      <span class="val">Campo Grande</span>
+    </div><div class="field">
+      <span class="lbl">CIDADE:</span>
+      <span class="val">Rio de Janeiro</span>
+    </div><div class="field">
+      <span class="lbl">UF:</span>
+      <span class="val">RJ</span>
+    </div><div class="field">
+      <span class="lbl">CEP:</span>
+      <span class="val">23092-001</span>
+    </div>
+            <div class="gap"></div><div class="field mono">
+      <span class="lbl">CÓD. PRODUTO:</span>
+      <span class="val">I90I</span>
+    </div><div class="field mono">
+      <span class="lbl">PED. COMPRA:</span>
+      <span class="val">20189666</span>
+    </div>
+          </div>
+          <div class="body-right">
+            <div class="photo-frame"><img src="data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20200%20130%22%20preserveAspectRatio%3D%22xMidYMid%20meet%22%3E%3Cellipse%20cx%3D%22100%22%20cy%3D%22118%22%20rx%3D%2278%22%20ry%3D%226%22%20fill%3D%22%23000%22%20opacity%3D%220.18%22%2F%3E%3Cpath%20d%3D%22M%2024%20100%20Q%2026%2086%2040%2084%20L%20150%2084%20Q%20174%2084%20180%2096%20Q%20184%20104%20184%20110%20Q%20184%20114%20180%20114%20L%2032%20114%20Q%2024%20114%2024%20108%20Z%22%20fill%3D%22%231A1A1A%22%20stroke%3D%22%23000%22%20stroke-width%3D%220.8%22%2F%3E%3Cpath%20d%3D%22M%2040%2084%20Q%2044%2056%2070%2050%20L%20124%2050%20Q%20156%2052%20168%2070%20Q%20178%2080%20180%2096%20L%2040%2096%20Z%22%20fill%3D%22%232A2A2A%22%20stroke%3D%22%23000%22%20stroke-width%3D%220.8%22%2F%3E%3C%2Fsvg%3E" alt="" /></div>
+            <div class="cor-row"><span class="cor-name">OFF WHITE</span></div>
+          </div>
+        </div>
+
+        <div class="grade-table" style="grid-template-columns:110px repeat(2, 1fr);">
+          <div class="glabel first">MARCA:</div>
+          <div class="row-marca"><span class="brand-mark">Squad Shoes</span></div>
+          <div class="glabel">REFERENCIA</div>
+          <div class="row-ref">I90</div>
+          
+          <div class="glabel">TAMANHO</div>
+          <div class="cell">29</div><div class="cell total tam-total">TT</div>
+          <div class="glabel last">QUANTIDADE</div>
+          <div class="cell">12</div><div class="cell total qtd-total">12</div>
+        </div>
+
+        <div class="footer">
+          <div class="pedido">
+            <span class="lbl">OP:</span>
+            <span class="val">OP-2026-01257</span>
+          </div>
+          <div class="box-bc-wrap"><svg id="bx-2"></svg></div>
+          <div class="volume">
+            <span class="lbl">VOLUME:</span>
+            <span class="val">15<span class="sep">/</span>45</span>
+          </div>
+        </div>
+      </div>
+      
+      <div class="label-cx-ext">
+        <div class="nf-row">
+          <div class="nf-cell">
+            <span class="nf-label">NF:</span>
+            <span class="nf-value"></span>
+          </div>
+          <div class="prog-cell">
+            <span class="prog-label">PEDIDO:</span>
+            <span class="prog-value">20189666</span>
+          </div>
+        </div>
+
+        <div class="remetente-row">
+          <span class="rem-label">REMET.:</span>
+          <span class="rem-val">SQUAD SHOES INDUSTRIA E COMERCIO DE CALCADOS LTDA</span>
+        </div>
+
+        <div class="body">
+          <div class="body-left">
+            <div class="field big">
+      <span class="lbl">CLIENTE:</span>
+      <span class="val">PONTO MIX CONFECCOES LTDA</span>
+    </div><div class="field">
+      <span class="lbl">CNPJ:</span>
+      <span class="val">32.168.100/0001-18</span>
+    </div><div class="field">
+      <span class="lbl">ENDEREÇO:</span>
+      <span class="val">Estrada do Mendanha</span>
+    </div><div class="field">
+      <span class="lbl">BAIRRO:</span>
+      <span class="val">Campo Grande</span>
+    </div><div class="field">
+      <span class="lbl">CIDADE:</span>
+      <span class="val">Rio de Janeiro</span>
+    </div><div class="field">
+      <span class="lbl">UF:</span>
+      <span class="val">RJ</span>
+    </div><div class="field">
+      <span class="lbl">CEP:</span>
+      <span class="val">23092-001</span>
+    </div>
+            <div class="gap"></div><div class="field mono">
+      <span class="lbl">CÓD. PRODUTO:</span>
+      <span class="val">I90I</span>
+    </div><div class="field mono">
+      <span class="lbl">PED. COMPRA:</span>
+      <span class="val">20189666</span>
+    </div>
+          </div>
+          <div class="body-right">
+            <div class="photo-frame"><img src="data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20200%20130%22%20preserveAspectRatio%3D%22xMidYMid%20meet%22%3E%3Cellipse%20cx%3D%22100%22%20cy%3D%22118%22%20rx%3D%2278%22%20ry%3D%226%22%20fill%3D%22%23000%22%20opacity%3D%220.18%22%2F%3E%3Cpath%20d%3D%22M%2024%20100%20Q%2026%2086%2040%2084%20L%20150%2084%20Q%20174%2084%20180%2096%20Q%20184%20104%20184%20110%20Q%20184%20114%20180%20114%20L%2032%20114%20Q%2024%20114%2024%20108%20Z%22%20fill%3D%22%231A1A1A%22%20stroke%3D%22%23000%22%20stroke-width%3D%220.8%22%2F%3E%3Cpath%20d%3D%22M%2040%2084%20Q%2044%2056%2070%2050%20L%20124%2050%20Q%20156%2052%20168%2070%20Q%20178%2080%20180%2096%20L%2040%2096%20Z%22%20fill%3D%22%232A2A2A%22%20stroke%3D%22%23000%22%20stroke-width%3D%220.8%22%2F%3E%3C%2Fsvg%3E" alt="" /></div>
+            <div class="cor-row"><span class="cor-name">ROSADO</span></div>
+          </div>
+        </div>
+
+        <div class="grade-table" style="grid-template-columns:110px repeat(2, 1fr);">
+          <div class="glabel first">MARCA:</div>
+          <div class="row-marca"><span class="brand-mark">Squad Shoes</span></div>
+          <div class="glabel">REFERENCIA</div>
+          <div class="row-ref">I100</div>
+          
+          <div class="glabel">TAMANHO</div>
+          <div class="cell">28</div><div class="cell total tam-total">TT</div>
+          <div class="glabel last">QUANTIDADE</div>
+          <div class="cell">12</div><div class="cell total qtd-total">12</div>
+        </div>
+
+        <div class="footer">
+          <div class="pedido">
+            <span class="lbl">OP:</span>
+            <span class="val">OP-2026-01258</span>
+          </div>
+          <div class="box-bc-wrap"><svg id="bx-3"></svg></div>
+          <div class="volume">
+            <span class="lbl">VOLUME:</span>
+            <span class="val">28<span class="sep">/</span>45</span>
+          </div>
+        </div>
+      </div>
+    </section><section class="page page-break">
+      
+      <div class="label-cx-ext">
+        <div class="nf-row">
+          <div class="nf-cell">
+            <span class="nf-label">NF:</span>
+            <span class="nf-value"></span>
+          </div>
+          <div class="prog-cell">
+            <span class="prog-label">PEDIDO:</span>
+            <span class="prog-value">20189666</span>
+          </div>
+        </div>
+
+        <div class="remetente-row">
+          <span class="rem-label">REMET.:</span>
+          <span class="rem-val">SQUAD SHOES INDUSTRIA E COMERCIO DE CALCADOS LTDA</span>
+        </div>
+
+        <div class="body">
+          <div class="body-left">
+            <div class="field big">
+      <span class="lbl">CLIENTE:</span>
+      <span class="val">PONTO MIX CONFECCOES LTDA</span>
+    </div><div class="field">
+      <span class="lbl">CNPJ:</span>
+      <span class="val">32.168.100/0001-18</span>
+    </div><div class="field">
+      <span class="lbl">ENDEREÇO:</span>
+      <span class="val">Estrada do Mendanha</span>
+    </div><div class="field">
+      <span class="lbl">BAIRRO:</span>
+      <span class="val">Campo Grande</span>
+    </div><div class="field">
+      <span class="lbl">CIDADE:</span>
+      <span class="val">Rio de Janeiro</span>
+    </div><div class="field">
+      <span class="lbl">UF:</span>
+      <span class="val">RJ</span>
+    </div><div class="field">
+      <span class="lbl">CEP:</span>
+      <span class="val">23092-001</span>
+    </div>
+            <div class="gap"></div><div class="field mono">
+      <span class="lbl">CÓD. PRODUTO:</span>
+      <span class="val">I90I</span>
+    </div><div class="field mono">
+      <span class="lbl">PED. COMPRA:</span>
+      <span class="val">20189666</span>
+    </div>
+          </div>
+          <div class="body-right">
+            <div class="photo-frame"><img src="data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20200%20130%22%20preserveAspectRatio%3D%22xMidYMid%20meet%22%3E%3Cellipse%20cx%3D%22100%22%20cy%3D%22118%22%20rx%3D%2278%22%20ry%3D%226%22%20fill%3D%22%23000%22%20opacity%3D%220.18%22%2F%3E%3Cpath%20d%3D%22M%2024%20100%20Q%2026%2086%2040%2084%20L%20150%2084%20Q%20174%2084%20180%2096%20Q%20184%20104%20184%20110%20Q%20184%20114%20180%20114%20L%2032%20114%20Q%2024%20114%2024%20108%20Z%22%20fill%3D%22%231A1A1A%22%20stroke%3D%22%23000%22%20stroke-width%3D%220.8%22%2F%3E%3Cpath%20d%3D%22M%2040%2084%20Q%2044%2056%2070%2050%20L%20124%2050%20Q%20156%2052%20168%2070%20Q%20178%2080%20180%2096%20L%2040%2096%20Z%22%20fill%3D%22%232A2A2A%22%20stroke%3D%22%23000%22%20stroke-width%3D%220.8%22%2F%3E%3C%2Fsvg%3E" alt="" /></div>
+            <div class="cor-row"><span class="cor-name">ROSADO</span></div>
+          </div>
+        </div>
+
+        <div class="grade-table" style="grid-template-columns:110px repeat(2, 1fr);">
+          <div class="glabel first">MARCA:</div>
+          <div class="row-marca"><span class="brand-mark">Squad Shoes</span></div>
+          <div class="glabel">REFERENCIA</div>
+          <div class="row-ref">I100</div>
+          
+          <div class="glabel">TAMANHO</div>
+          <div class="cell">28</div><div class="cell total tam-total">TT</div>
+          <div class="glabel last">QUANTIDADE</div>
+          <div class="cell">12</div><div class="cell total qtd-total">12</div>
+        </div>
+
+        <div class="footer">
+          <div class="pedido">
+            <span class="lbl">OP:</span>
+            <span class="val">OP-2026-01258</span>
+          </div>
+          <div class="box-bc-wrap"><svg id="bx-4"></svg></div>
+          <div class="volume">
+            <span class="lbl">VOLUME:</span>
+            <span class="val">29<span class="sep">/</span>45</span>
+          </div>
+        </div>
+      </div>
+      
+      <div class="label-cx-ext">
+        <div class="nf-row">
+          <div class="nf-cell">
+            <span class="nf-label">NF:</span>
+            <span class="nf-value"></span>
+          </div>
+          <div class="prog-cell">
+            <span class="prog-label">PEDIDO:</span>
+            <span class="prog-value">20189666</span>
+          </div>
+        </div>
+
+        <div class="remetente-row">
+          <span class="rem-label">REMET.:</span>
+          <span class="rem-val">SQUAD SHOES INDUSTRIA E COMERCIO DE CALCADOS LTDA</span>
+        </div>
+
+        <div class="body">
+          <div class="body-left">
+            <div class="field big">
+      <span class="lbl">CLIENTE:</span>
+      <span class="val">PONTO MIX CONFECCOES LTDA</span>
+    </div><div class="field">
+      <span class="lbl">CNPJ:</span>
+      <span class="val">32.168.100/0001-18</span>
+    </div><div class="field">
+      <span class="lbl">ENDEREÇO:</span>
+      <span class="val">Estrada do Mendanha</span>
+    </div><div class="field">
+      <span class="lbl">BAIRRO:</span>
+      <span class="val">Campo Grande</span>
+    </div><div class="field">
+      <span class="lbl">CIDADE:</span>
+      <span class="val">Rio de Janeiro</span>
+    </div><div class="field">
+      <span class="lbl">UF:</span>
+      <span class="val">RJ</span>
+    </div><div class="field">
+      <span class="lbl">CEP:</span>
+      <span class="val">23092-001</span>
+    </div>
+            <div class="gap"></div><div class="field mono">
+      <span class="lbl">CÓD. PRODUTO:</span>
+      <span class="val">I90I</span>
+    </div><div class="field mono">
+      <span class="lbl">PED. COMPRA:</span>
+      <span class="val">20189666</span>
+    </div>
+          </div>
+          <div class="body-right">
+            <div class="photo-frame"><img src="data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20200%20130%22%20preserveAspectRatio%3D%22xMidYMid%20meet%22%3E%3Cellipse%20cx%3D%22100%22%20cy%3D%22118%22%20rx%3D%2278%22%20ry%3D%226%22%20fill%3D%22%23000%22%20opacity%3D%220.18%22%2F%3E%3Cpath%20d%3D%22M%2024%20100%20Q%2026%2086%2040%2084%20L%20150%2084%20Q%20174%2084%20180%2096%20Q%20184%20104%20184%20110%20Q%20184%20114%20180%20114%20L%2032%20114%20Q%2024%20114%2024%20108%20Z%22%20fill%3D%22%231A1A1A%22%20stroke%3D%22%23000%22%20stroke-width%3D%220.8%22%2F%3E%3Cpath%20d%3D%22M%2040%2084%20Q%2044%2056%2070%2050%20L%20124%2050%20Q%20156%2052%20168%2070%20Q%20178%2080%20180%2096%20L%2040%2096%20Z%22%20fill%3D%22%232A2A2A%22%20stroke%3D%22%23000%22%20stroke-width%3D%220.8%22%2F%3E%3C%2Fsvg%3E" alt="" /></div>
+            <div class="cor-row"><span class="cor-name">ROSADO</span></div>
+          </div>
+        </div>
+
+        <div class="grade-table" style="grid-template-columns:110px repeat(2, 1fr);">
+          <div class="glabel first">MARCA:</div>
+          <div class="row-marca"><span class="brand-mark">Squad Shoes</span></div>
+          <div class="glabel">REFERENCIA</div>
+          <div class="row-ref">I100</div>
+          
+          <div class="glabel">TAMANHO</div>
+          <div class="cell">29</div><div class="cell total tam-total">TT</div>
+          <div class="glabel last">QUANTIDADE</div>
+          <div class="cell">12</div><div class="cell total qtd-total">12</div>
+        </div>
+
+        <div class="footer">
+          <div class="pedido">
+            <span class="lbl">OP:</span>
+            <span class="val">OP-2026-01258</span>
+          </div>
+          <div class="box-bc-wrap"><svg id="bx-5"></svg></div>
+          <div class="volume">
+            <span class="lbl">VOLUME:</span>
+            <span class="val">30<span class="sep">/</span>45</span>
+          </div>
+        </div>
+      </div>
+    </section><section class="page page-break">
+      
+      <div class="label-cx-ext">
+        <div class="nf-row">
+          <div class="nf-cell">
+            <span class="nf-label">NF:</span>
+            <span class="nf-value"></span>
+          </div>
+          <div class="prog-cell">
+            <span class="prog-label">PEDIDO:</span>
+            <span class="prog-value">20189666</span>
+          </div>
+        </div>
+
+        <div class="remetente-row">
+          <span class="rem-label">REMET.:</span>
+          <span class="rem-val">SQUAD SHOES INDUSTRIA E COMERCIO DE CALCADOS LTDA</span>
+        </div>
+
+        <div class="body">
+          <div class="body-left">
+            <div class="field big">
+      <span class="lbl">CLIENTE:</span>
+      <span class="val">PONTO MIX CONFECCOES LTDA</span>
+    </div><div class="field">
+      <span class="lbl">CNPJ:</span>
+      <span class="val">32.168.100/0001-18</span>
+    </div><div class="field">
+      <span class="lbl">ENDEREÇO:</span>
+      <span class="val">Estrada do Mendanha</span>
+    </div><div class="field">
+      <span class="lbl">BAIRRO:</span>
+      <span class="val">Campo Grande</span>
+    </div><div class="field">
+      <span class="lbl">CIDADE:</span>
+      <span class="val">Rio de Janeiro</span>
+    </div><div class="field">
+      <span class="lbl">UF:</span>
+      <span class="val">RJ</span>
+    </div><div class="field">
+      <span class="lbl">CEP:</span>
+      <span class="val">23092-001</span>
+    </div>
+            <div class="gap"></div><div class="field mono">
+      <span class="lbl">CÓD. PRODUTO:</span>
+      <span class="val">I90I</span>
+    </div><div class="field mono">
+      <span class="lbl">PED. COMPRA:</span>
+      <span class="val">20189666</span>
+    </div>
+          </div>
+          <div class="body-right">
+            <div class="photo-frame"><img src="data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20200%20130%22%20preserveAspectRatio%3D%22xMidYMid%20meet%22%3E%3Cellipse%20cx%3D%22100%22%20cy%3D%22118%22%20rx%3D%2278%22%20ry%3D%226%22%20fill%3D%22%23000%22%20opacity%3D%220.18%22%2F%3E%3Cpath%20d%3D%22M%2024%20100%20Q%2026%2086%2040%2084%20L%20150%2084%20Q%20174%2084%20180%2096%20Q%20184%20104%20184%20110%20Q%20184%20114%20180%20114%20L%2032%20114%20Q%2024%20114%2024%20108%20Z%22%20fill%3D%22%231A1A1A%22%20stroke%3D%22%23000%22%20stroke-width%3D%220.8%22%2F%3E%3Cpath%20d%3D%22M%2040%2084%20Q%2044%2056%2070%2050%20L%20124%2050%20Q%20156%2052%20168%2070%20Q%20178%2080%20180%2096%20L%2040%2096%20Z%22%20fill%3D%22%232A2A2A%22%20stroke%3D%22%23000%22%20stroke-width%3D%220.8%22%2F%3E%3C%2Fsvg%3E" alt="" /></div>
+            <div class="cor-row"><span class="cor-name">PRETO</span></div>
+          </div>
+        </div>
+
+        <div class="grade-table" style="grid-template-columns:110px repeat(2, 1fr);">
+          <div class="glabel first">MARCA:</div>
+          <div class="row-marca"><span class="brand-mark">Squad Shoes</span></div>
+          <div class="glabel">REFERENCIA</div>
+          <div class="row-ref">I100</div>
+          
+          <div class="glabel">TAMANHO</div>
+          <div class="cell">28</div><div class="cell total tam-total">TT</div>
+          <div class="glabel last">QUANTIDADE</div>
+          <div class="cell">12</div><div class="cell total qtd-total">12</div>
+        </div>
+
+        <div class="footer">
+          <div class="pedido">
+            <span class="lbl">OP:</span>
+            <span class="val">OP-2026-01260</span>
+          </div>
+          <div class="box-bc-wrap"><svg id="bx-6"></svg></div>
+          <div class="volume">
+            <span class="lbl">VOLUME:</span>
+            <span class="val">43<span class="sep">/</span>45</span>
+          </div>
+        </div>
+      </div>
+      
+      <div class="label-cx-ext">
+        <div class="nf-row">
+          <div class="nf-cell">
+            <span class="nf-label">NF:</span>
+            <span class="nf-value"></span>
+          </div>
+          <div class="prog-cell">
+            <span class="prog-label">PEDIDO:</span>
+            <span class="prog-value">20189666</span>
+          </div>
+        </div>
+
+        <div class="remetente-row">
+          <span class="rem-label">REMET.:</span>
+          <span class="rem-val">SQUAD SHOES INDUSTRIA E COMERCIO DE CALCADOS LTDA</span>
+        </div>
+
+        <div class="body">
+          <div class="body-left">
+            <div class="field big">
+      <span class="lbl">CLIENTE:</span>
+      <span class="val">PONTO MIX CONFECCOES LTDA</span>
+    </div><div class="field">
+      <span class="lbl">CNPJ:</span>
+      <span class="val">32.168.100/0001-18</span>
+    </div><div class="field">
+      <span class="lbl">ENDEREÇO:</span>
+      <span class="val">Estrada do Mendanha</span>
+    </div><div class="field">
+      <span class="lbl">BAIRRO:</span>
+      <span class="val">Campo Grande</span>
+    </div><div class="field">
+      <span class="lbl">CIDADE:</span>
+      <span class="val">Rio de Janeiro</span>
+    </div><div class="field">
+      <span class="lbl">UF:</span>
+      <span class="val">RJ</span>
+    </div><div class="field">
+      <span class="lbl">CEP:</span>
+      <span class="val">23092-001</span>
+    </div>
+            <div class="gap"></div><div class="field mono">
+      <span class="lbl">CÓD. PRODUTO:</span>
+      <span class="val">I90I</span>
+    </div><div class="field mono">
+      <span class="lbl">PED. COMPRA:</span>
+      <span class="val">20189666</span>
+    </div>
+          </div>
+          <div class="body-right">
+            <div class="photo-frame"><img src="data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20200%20130%22%20preserveAspectRatio%3D%22xMidYMid%20meet%22%3E%3Cellipse%20cx%3D%22100%22%20cy%3D%22118%22%20rx%3D%2278%22%20ry%3D%226%22%20fill%3D%22%23000%22%20opacity%3D%220.18%22%2F%3E%3Cpath%20d%3D%22M%2024%20100%20Q%2026%2086%2040%2084%20L%20150%2084%20Q%20174%2084%20180%2096%20Q%20184%20104%20184%20110%20Q%20184%20114%20180%20114%20L%2032%20114%20Q%2024%20114%2024%20108%20Z%22%20fill%3D%22%231A1A1A%22%20stroke%3D%22%23000%22%20stroke-width%3D%220.8%22%2F%3E%3Cpath%20d%3D%22M%2040%2084%20Q%2044%2056%2070%2050%20L%20124%2050%20Q%20156%2052%20168%2070%20Q%20178%2080%20180%2096%20L%2040%2096%20Z%22%20fill%3D%22%232A2A2A%22%20stroke%3D%22%23000%22%20stroke-width%3D%220.8%22%2F%3E%3C%2Fsvg%3E" alt="" /></div>
+            <div class="cor-row"><span class="cor-name">PRETO</span></div>
+          </div>
+        </div>
+
+        <div class="grade-table" style="grid-template-columns:110px repeat(2, 1fr);">
+          <div class="glabel first">MARCA:</div>
+          <div class="row-marca"><span class="brand-mark">Squad Shoes</span></div>
+          <div class="glabel">REFERENCIA</div>
+          <div class="row-ref">I100</div>
+          
+          <div class="glabel">TAMANHO</div>
+          <div class="cell">28</div><div class="cell total tam-total">TT</div>
+          <div class="glabel last">QUANTIDADE</div>
+          <div class="cell">12</div><div class="cell total qtd-total">12</div>
+        </div>
+
+        <div class="footer">
+          <div class="pedido">
+            <span class="lbl">OP:</span>
+            <span class="val">OP-2026-01260</span>
+          </div>
+          <div class="box-bc-wrap"><svg id="bx-7"></svg></div>
+          <div class="volume">
+            <span class="lbl">VOLUME:</span>
+            <span class="val">44<span class="sep">/</span>45</span>
+          </div>
+        </div>
+      </div>
+    </section><section class="page">
+      
+      <div class="label-cx-ext">
+        <div class="nf-row">
+          <div class="nf-cell">
+            <span class="nf-label">NF:</span>
+            <span class="nf-value"></span>
+          </div>
+          <div class="prog-cell">
+            <span class="prog-label">PEDIDO:</span>
+            <span class="prog-value">20189666</span>
+          </div>
+        </div>
+
+        <div class="remetente-row">
+          <span class="rem-label">REMET.:</span>
+          <span class="rem-val">SQUAD SHOES INDUSTRIA E COMERCIO DE CALCADOS LTDA</span>
+        </div>
+
+        <div class="body">
+          <div class="body-left">
+            <div class="field big">
+      <span class="lbl">CLIENTE:</span>
+      <span class="val">PONTO MIX CONFECCOES LTDA</span>
+    </div><div class="field">
+      <span class="lbl">CNPJ:</span>
+      <span class="val">32.168.100/0001-18</span>
+    </div><div class="field">
+      <span class="lbl">ENDEREÇO:</span>
+      <span class="val">Estrada do Mendanha</span>
+    </div><div class="field">
+      <span class="lbl">BAIRRO:</span>
+      <span class="val">Campo Grande</span>
+    </div><div class="field">
+      <span class="lbl">CIDADE:</span>
+      <span class="val">Rio de Janeiro</span>
+    </div><div class="field">
+      <span class="lbl">UF:</span>
+      <span class="val">RJ</span>
+    </div><div class="field">
+      <span class="lbl">CEP:</span>
+      <span class="val">23092-001</span>
+    </div>
+            <div class="gap"></div><div class="field mono">
+      <span class="lbl">CÓD. PRODUTO:</span>
+      <span class="val">I90I</span>
+    </div><div class="field mono">
+      <span class="lbl">PED. COMPRA:</span>
+      <span class="val">20189666</span>
+    </div>
+          </div>
+          <div class="body-right">
+            <div class="photo-frame"><img src="data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20200%20130%22%20preserveAspectRatio%3D%22xMidYMid%20meet%22%3E%3Cellipse%20cx%3D%22100%22%20cy%3D%22118%22%20rx%3D%2278%22%20ry%3D%226%22%20fill%3D%22%23000%22%20opacity%3D%220.18%22%2F%3E%3Cpath%20d%3D%22M%2024%20100%20Q%2026%2086%2040%2084%20L%20150%2084%20Q%20174%2084%20180%2096%20Q%20184%20104%20184%20110%20Q%20184%20114%20180%20114%20L%2032%20114%20Q%2024%20114%2024%20108%20Z%22%20fill%3D%22%231A1A1A%22%20stroke%3D%22%23000%22%20stroke-width%3D%220.8%22%2F%3E%3Cpath%20d%3D%22M%2040%2084%20Q%2044%2056%2070%2050%20L%20124%2050%20Q%20156%2052%20168%2070%20Q%20178%2080%20180%2096%20L%2040%2096%20Z%22%20fill%3D%22%232A2A2A%22%20stroke%3D%22%23000%22%20stroke-width%3D%220.8%22%2F%3E%3C%2Fsvg%3E" alt="" /></div>
+            <div class="cor-row"><span class="cor-name">PRETO</span></div>
+          </div>
+        </div>
+
+        <div class="grade-table" style="grid-template-columns:110px repeat(2, 1fr);">
+          <div class="glabel first">MARCA:</div>
+          <div class="row-marca"><span class="brand-mark">Squad Shoes</span></div>
+          <div class="glabel">REFERENCIA</div>
+          <div class="row-ref">I100</div>
+          
+          <div class="glabel">TAMANHO</div>
+          <div class="cell">29</div><div class="cell total tam-total">TT</div>
+          <div class="glabel last">QUANTIDADE</div>
+          <div class="cell">12</div><div class="cell total qtd-total">12</div>
+        </div>
+
+        <div class="footer">
+          <div class="pedido">
+            <span class="lbl">OP:</span>
+            <span class="val">OP-2026-01260</span>
+          </div>
+          <div class="box-bc-wrap"><svg id="bx-8"></svg></div>
+          <div class="volume">
+            <span class="lbl">VOLUME:</span>
+            <span class="val">45<span class="sep">/</span>45</span>
+          </div>
+        </div>
+      </div>
+      
+    </section>
+<div class="print-footer">
+  <p class="print-footer__title">9 etiquetas · 5 folhas A4</p>
+  <p class="print-footer__sub">Cada folha A4 imprime 2 etiquetas (= 2 caixas). Confira o layout antes de mandar pra impressão.</p>
+  <a class="print-footer__btn" href="javascript:window.print()">Imprimir agora</a>
+  <a class="print-footer__btn print-footer__btn--ghost" href="javascript:window.close()">Voltar e ajustar</a>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+<script>
+var _bxRetry=0;
+function initBoxBC(){
+  if(typeof JsBarcode==='undefined'){_bxRetry++;if(_bxRetry>40){return;}setTimeout(initBoxBC,150);return;}
+  try{JsBarcode("#bx-0","PV-00151-013",{format:"CODE128",width:1.4,height:42,displayValue:true,fontSize:13,margin:0});}catch(e){}
+try{JsBarcode("#bx-1","PV-00151-014",{format:"CODE128",width:1.4,height:42,displayValue:true,fontSize:13,margin:0});}catch(e){}
+try{JsBarcode("#bx-2","PV-00151-015",{format:"CODE128",width:1.4,height:42,displayValue:true,fontSize:13,margin:0});}catch(e){}
+try{JsBarcode("#bx-3","PV-00151-028",{format:"CODE128",width:1.4,height:42,displayValue:true,fontSize:13,margin:0});}catch(e){}
+try{JsBarcode("#bx-4","PV-00151-029",{format:"CODE128",width:1.4,height:42,displayValue:true,fontSize:13,margin:0});}catch(e){}
+try{JsBarcode("#bx-5","PV-00151-030",{format:"CODE128",width:1.4,height:42,displayValue:true,fontSize:13,margin:0});}catch(e){}
+try{JsBarcode("#bx-6","PV-00151-043",{format:"CODE128",width:1.4,height:42,displayValue:true,fontSize:13,margin:0});}catch(e){}
+try{JsBarcode("#bx-7","PV-00151-044",{format:"CODE128",width:1.4,height:42,displayValue:true,fontSize:13,margin:0});}catch(e){}
+try{JsBarcode("#bx-8","PV-00151-045",{format:"CODE128",width:1.4,height:42,displayValue:true,fontSize:13,margin:0});}catch(e){}
+}
+initBoxBC();
+</script>
+<script>
+function waitForImages(){
+  var imgs=document.querySelectorAll('img');
+  var promises=[];
+  imgs.forEach(function(img){
+    if(!img.complete){
+      promises.push(new Promise(function(resolve){
+        img.onload=resolve;
+        img.onerror=resolve;
+        setTimeout(resolve,8000);
+      }));
+    }
+  });
+  return Promise.all(promises);
+}
+window._imagesReady=waitForImages();
+</script>
+</body></html>
