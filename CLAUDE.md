@@ -193,9 +193,10 @@ arquivos nunca rodam.
 
 ## Regra de cálculo de consumo de materiais (CANÔNICA)
 
-> Fonte de referência do cálculo exibido no modal **"Consumo de Materiais"** do PV
-> (`src/components/sale-orders/MaterialConsumptionDialog.tsx`) e na lib
-> `src/lib/materialConsumption.ts`. Toda mudança de consumo deve respeitar isto.
+> Fonte de referência do cálculo exibido na tela **"Consumo de Materiais"**
+> (`/sales?view=consumo&ids=…` → `SummaryConsumptionPanel` +
+> `MaterialConsumptionView`) e na lib `src/lib/materialConsumption.ts`. Toda
+> mudança de consumo deve respeitar isto.
 
 **Princípio central:** um valor de consumo armazenado como **dm²/par (área)** NUNCA pode
 ser exibido/usado cru como se fosse a unidade linear do produto. Ele tem que ser
@@ -287,7 +288,7 @@ Forração). A supressão (`suppressCabedalForracao` no TS `orderConsumption.ts`
 **Regra load-bearing (não repetir o bug 2026-07-15):** o motor TS lê essa flag + os
 campos de consumo via `sheet.*`. **TODO campo lido tem que estar em
 `TECHNICAL_SHEET_CONSUMPTION_COLUMNS`** (`orderConsumption.ts`) — a ficha de operador
-(`fetchTechnicalSheetsForConsumption`) E o modal do PV buscam por essa constante.
+(`fetchTechnicalSheetsForConsumption`) E a tela de consumo do PV buscam por essa constante.
 Faltava `sole_drives_consumption` lá → a supressão virou no-op silencioso (TS loose não
 acusa `undefined`) e o forro-cabedal fantasma reapareceu no Corte Forração. Guard em
 `orderConsumption.test.ts`: extrai os `sheet.*` lidos do próprio motor e trava que todos

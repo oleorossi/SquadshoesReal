@@ -18,10 +18,10 @@ import { caixaCollectiveTypeFromName, shouldShowCaixaForMode, type CollectiveTyp
 /**
  * Motor CANÔNICO de consumo de materiais.
  *
- * Extração FIEL do cálculo que vivia inline em
- * `src/components/sale-orders/MaterialConsumptionDialog.tsx` (`loadConsumption`).
- * Agora é a fonte única usada por:
- *   - o modal "Consumo de Materiais" (por PEDIDO/PV — agrega todos os itens), e
+ * Extração FIEL do cálculo que vivia inline no modal "Consumo de Materiais" do
+ * PV (`MaterialConsumptionDialog.loadConsumption`, aposentado em 05/08/2026 —
+ * hoje `SummaryConsumptionPanel`). Agora é a fonte única usada por:
+ *   - a tela "Consumo de Materiais" (por PEDIDO/PV ou lote — agrega os itens), e
  *   - a ficha do operador (por ORDEM DE PRODUÇÃO via `useBulkOrderConsumption`,
  *     onde 1 OP = 1 `sale_order_item` = referência + cor + grade).
  *

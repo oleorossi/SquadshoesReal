@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import {
   fetchConsumptionContext,
@@ -8,32 +9,62 @@ import {
 } from '@/lib/orderConsumption';
 import { annotateConsumptionAvailability, type ConsumptionRow } from '@/lib/consumptionRows';
 import MaterialConsumptionView, { type OrderHeader } from '@/components/sale-orders/MaterialConsumptionView';
+import UpperCutOutsourcingSection from '@/components/sale-orders/UpperCutOutsourcingSection';
 import type { ArtisanalStrapCutRow } from '@/lib/strapRollCut';
 
 /**
- * Consumo Consolidado (multi-PV). Roda o MOTOR CANÔNICO
- * (`computeConsumptionForItems`) sobre os itens agregados de todos os PVs
- * selecionados e apresenta pela MESMA tela/PDF do modal por-PV
- * (`MaterialConsumptionView`). Padronizado em 2026-07-22
- * (`specs/consumo-consolidado-padronizacao.md`) — antes reimplementava o motor
- * inline e divergia (variante, tira-base, supressão de forro, cor).
+ * Consumo de materiais de UM ou MAIS PVs. Roda o MOTOR CANÔNICO
+ * (`computeConsumptionForItems`) sobre os itens agregados dos pedidos e
+ * apresenta pela `MaterialConsumptionView` (tela + PDF).
+ *
+ * Padronizado em 2026-07-22 (`specs/consumo-consolidado-padronizacao.md`) — antes
+ * reimplementava o motor inline e divergia (variante, tira-base, supressão de
+ * forro, cor).
+ *
+ * Em 05/08/2026 absorveu também o caso de UM PV: o `MaterialConsumptionDialog`
+ * foi aposentado e a página `?view=consumo&ids=…` atende os dois escopos com o
+ * mesmo código. O modal duplicava esta busca inteira — duas cópias do mesmo
+ * carregamento é como as duas telas divergiam antes.
  */
-type Props = { saleOrderIds: string[] };
+type Props = {
+  saleOrderIds: string[];
+  /** Ação primária da tela (Gerar OC). Omitida ⇒ o botão não aparece. */
+  onGerarOC?: () => void;
+};
 
-export default function SummaryConsumptionPanel({ saleOrderIds }: Props) {
+export default function SummaryConsumptionPanel({ saleOrderIds, onGerarOC }: Props) {
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState<ConsumptionRow[]>([]);
   const [artisanalStrapRows, setArtisanalStrapRows] = useState<ArtisanalStrapCutRow[]>([]);
   const [orderHeaders, setOrderHeaders] = useState<OrderHeader[]>([]);
 
-  useEffect(() => {
-    if (saleOrderIds.length === 0) return;
-    let cancelled = false;
-    loadAll(() => cancelled);
-    return () => { cancelled = true; };
-  }, [saleOrderIds]);
+  // Chave ESTÁVEL do escopo. Depender do array cru refazia a carga a cada render
+  // do pai quando ele monta a lista com `.map()` (identidade nova toda vez).
+  const idsKey = useMemo(() => [...saleOrderIds].sort().join(','), [saleOrderIds]);
 
-  const loadAll = async (isCancelled: () => boolean = () => false) => {
+  // Gatilho de recálculo automático: invalidado pelo save do PV
+  // (useUpdateSaleOrder → invalidateQueries(['consumption-source'])).
+  const { dataUpdatedAt: pvTouchedAt } = useQuery({
+    queryKey: ['consumption-source', idsKey],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('sale_orders')
+        .select('id, updated_at')
+        .in('id', idsKey ? idsKey.split(',') : []);
+      return (data || []).map((r: any) => r.updated_at).join('|');
+    },
+    enabled: !!idsKey,
+    staleTime: 0,
+  });
+
+  useEffect(() => {
+    if (!idsKey) { setRows([]); setArtisanalStrapRows([]); setOrderHeaders([]); return; }
+    let cancelled = false;
+    loadAll(idsKey.split(','), () => cancelled);
+    return () => { cancelled = true; };
+  }, [idsKey, pvTouchedAt]);
+
+  const loadAll = async (ids: string[], isCancelled: () => boolean = () => false) => {
     setLoading(true);
     try {
       // Itens de TODOS os PVs + cabeçalhos/packaging por PV. O sub-select de
@@ -53,11 +84,11 @@ export default function SummaryConsumptionPanel({ saleOrderIds }: Props) {
             material_variant_id,
             technical_sheets(${TECHNICAL_SHEET_CONSUMPTION_COLUMNS})
           `)
-          .in('sale_order_id', saleOrderIds),
+          .in('sale_order_id', ids),
         supabase
           .from('sale_orders')
           .select('id, order_number, client_order_number, packaging_mode')
-          .in('id', saleOrderIds),
+          .in('id', ids),
       ]);
 
       if (itemsError) throw itemsError;
@@ -102,7 +133,7 @@ export default function SummaryConsumptionPanel({ saleOrderIds }: Props) {
       setArtisanalStrapRows(strapCut);
     } catch (err) {
       if (isCancelled()) return;
-      console.error('Erro ao carregar consumo consolidado:', err);
+      console.error('Erro ao carregar consumo:', err);
       setRows([]);
       setArtisanalStrapRows([]);
     } finally {
@@ -110,16 +141,30 @@ export default function SummaryConsumptionPanel({ saleOrderIds }: Props) {
     }
   };
 
+  // Escopo de UM PV: título nomeia o pedido e o Corte de Cabedal fica disponível
+  // (a OS amarra PV + referência + cor, então não existe pra um lote de PVs).
+  const singlePv = saleOrderIds.length === 1 ? saleOrderIds[0] : null;
+  const singlePvNumber = singlePv ? (orderHeaders[0]?.order_number ?? '') : '';
+
   return (
     <MaterialConsumptionView
       rows={rows}
       artisanalStrapRows={artisanalStrapRows}
-      title="Consumo Consolidado"
-      orderHeaders={orderHeaders}
+      title={singlePvNumber ? `Consumo de Materiais — ${singlePvNumber}` : 'Consumo Consolidado'}
+      orderHeaders={singlePv ? undefined : orderHeaders}
       loading={loading}
-      onRecalcular={() => loadAll()}
-      emptyMessage="Nenhum consumo de material encontrado para os pedidos selecionados."
-      stickyBleedClass=""
+      onRecalcular={() => loadAll(idsKey.split(','))}
+      onGerarOC={onGerarOC}
+      emptyMessage={
+        singlePv
+          ? 'Nenhum consumo de material encontrado para este pedido.'
+          : 'Nenhum consumo de material encontrado para os pedidos selecionados.'
+      }
+      extraSections={
+        singlePv && singlePvNumber
+          ? <UpperCutOutsourcingSection saleOrderId={singlePv} orderNumber={singlePvNumber} />
+          : null
+      }
     />
   );
 }

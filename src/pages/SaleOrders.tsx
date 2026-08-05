@@ -14,7 +14,6 @@ import { Baby, Buildings, ShoppingCart, Plus, CircleNotch as Loader2, Copy, Prin
 import { useMarqueeSelection } from '@/hooks/useMarqueeSelection';
 import { BulkActionsBar, MarqueeOverlay } from '@/components/ui/bulk-actions-bar';
 import { cn } from "@/lib/utils";
-import MaterialConsumptionDialog from '@/components/sale-orders/MaterialConsumptionDialog';
 import MarginDialog from '@/components/sale-orders/MarginDialog';
 import OperatorFichasDialog from '@/components/sale-orders/OperatorFichasDialog';
 import { ServiceOrderFormDialog } from '@/components/contractors/ServiceOrderFormDialog';
@@ -367,18 +366,12 @@ export default function SaleOrders() {
   const [dupGroupId, setDupGroupId] = useState<string>('');
   const [dupClientSearch, setDupClientSearch] = useState('');
   const [generatingOPs, setGeneratingOPs] = useState(false);
-  const [summaryDialogOpen, setSummaryDialogOpen] = useState(false);
-  const [summaryData, setSummaryData] = useState<{ items: any[]; totalQty: number; totalValue: number; orders: any[] }>({ items: [], totalQty: 0, totalValue: 0, orders: [] });
-  const [loadingSummary, setLoadingSummary] = useState(false);
   const [overviewOpen, setOverviewOpen] = useState(false);
-  const [consumptionDialogOpen, setConsumptionDialogOpen] = useState(false);
   const [marginDialogOpen, setMarginDialogOpen] = useState(false);
   // "Ficha Montagem": abre a seleção de OPs em vez de imprimir o PV inteiro.
   const [operatorFichasOpen, setOperatorFichasOpen] = useState(false);
   // Canal "Compras por Pedido" — alvo do modal de geração de OCs (1 ou N PVs).
   const [poGenTarget, setPoGenTarget] = useState<{ ids: string[]; numbers: string[] } | null>(null);
-  const [quickConsumptionId, setQuickConsumptionId] = useState<string | null>(null);
-  const [quickConsumptionNumber, setQuickConsumptionNumber] = useState('');
 
   // Busca NÃO persiste: reseta ao sair e voltar pra tela (useState remonta
   // limpo). Antes usava usePersistedState com a chave 'searchTerm' — a MESMA
@@ -604,6 +597,7 @@ export default function SaleOrders() {
   const closeConsumptionView = () => {
     const next = new URLSearchParams(searchParams);
     next.delete('view');
+    next.delete('ids');
     setSearchParams(next, { replace: true });
   };
   const toggleSelect = (id: string) => sel.toggle(id);
@@ -1042,101 +1036,6 @@ export default function SaleOrders() {
       client_name: o.client_name,
     }));
   }, [orders, selectedIds]);
-
-  const handleOpenSummary = async () => {
-    if (selectedIds.size === 0) { toast.info('Selecione pelo menos um pedido.'); return; }
-    setLoadingSummary(true);
-    setSummaryDialogOpen(true);
-    const selectedOrders = orders.filter(o => selectedIds.has(o.id));
-
-    // Batch query 1: all items for ALL selected orders in one request
-    const { data: allOI = [] } = await supabase
-      .from('sale_order_items')
-      .select('*, technical_sheets(name, code, image_url, images)')
-      .in('sale_order_id', selectedOrders.map(o => o.id));
-
-    // Batch query 2: all color variants for all reference IDs in one request
-    const refIds = [...new Set(allOI.map((i: any) => i.reference_id).filter(Boolean))];
-    const { data: colorVariants = [] } = refIds.length > 0
-      ? await supabase.from('reference_color_variants').select('reference_id, color, image_url').in('reference_id', refIds)
-      : { data: [] as any[] };
-
-    // Pre-build Maps for O(1) lookup
-    const orderMetaById = new Map(selectedOrders.map(o => [o.id, o]));
-    const variantByKey = new Map<string, string>();
-    const variantAnyByRef = new Map<string, string>();
-    for (const v of (colorVariants as any[])) {
-      if (!v.image_url) continue;
-      const key = `${v.reference_id}|${v.color}`;
-      if (!variantByKey.has(key)) variantByKey.set(key, v.image_url);
-      if (!variantAnyByRef.has(v.reference_id)) variantAnyByRef.set(v.reference_id, v.image_url);
-    }
-
-    const allItems = (allOI as any[]).map(item => {
-      const order = orderMetaById.get(item.sale_order_id);
-      const variantImg = variantByKey.get(`${item.reference_id}|${item.color}`)
-        || variantAnyByRef.get(item.reference_id)
-        || item.technical_sheets?.image_url
-        || (item.technical_sheets?.images as any)?.[0]
-        || '';
-      return { ...item, order_number: order?.order_number, client_name: order?.client_name, variant_image_url: variantImg };
-    });
-
-    const totalQty = allItems.reduce((s, i) => s + Number(i.quantity || 0), 0);
-    const totalValue = allItems.reduce((s, i) => s + Number(i.quantity || 0) * Number(i.unit_price || 0), 0);
-    setSummaryData({ items: allItems, totalQty, totalValue, orders: selectedOrders });
-    setLoadingSummary(false);
-  };
-
-  const printSummary = () => {
-    const rows = summaryData.items.map(item => {
-      const imgUrl = item.variant_image_url || item.technical_sheets?.image_url || (item.technical_sheets?.images as any)?.[0] || '';
-      const ref = item.technical_sheets?.code || item.technical_sheets?.name || '—';
-      const subtotal = Number(item.quantity) * Number(item.unit_price);
-      return `<tr>
-        <td style="padding:6px;border:1px solid #ccc;text-align:center">
-          ${imgUrl ? `<img src="${safeUrlAttr(imgUrl)}" style="width:50px;height:50px;object-fit:cover;border-radius:4px" />` : '—'}
-        </td>
-        <td style="padding:6px;border:1px solid #ccc;font-weight:bold">${ref}</td>
-        <td style="padding:6px;border:1px solid #ccc">${item.color || '—'}</td>
-        <td style="padding:6px;border:1px solid #ccc;font-family:monospace;font-size:11px">${item.order_number}</td>
-        <td style="padding:6px;border:1px solid #ccc">${item.client_name}</td>
-        <td style="padding:6px;border:1px solid #ccc;text-align:right;font-family:monospace">${item.quantity}</td>
-        <td style="padding:6px;border:1px solid #ccc;text-align:right;font-family:monospace">${formatCurrency(Number(item.unit_price))}</td>
-        <td style="padding:6px;border:1px solid #ccc;text-align:right;font-family:monospace;font-weight:bold">${formatCurrency(subtotal)}</td>
-      </tr>`;
-    }).join('');
-
-    const html = `
-      <div style="font-family:Arial,sans-serif;color:#111;font-weight:bold">
-        <h2 style="margin:0 0 4px;font-size:18px">Resumo de Pedidos</h2>
-        <p style="margin:0 0 12px;font-size:12px;color:#333">${summaryData.orders.length} pedido(s) | ${summaryData.totalQty} pares | ${formatCurrency(summaryData.totalValue)}</p>
-        <table style="width:100%;border-collapse:collapse;font-size:12px">
-          <thead>
-            <tr style="background:#f0f0f0">
-              <th style="padding:6px;border:1px solid #ccc;width:60px">Foto</th>
-              <th style="padding:6px;border:1px solid #ccc;text-align:left">Ref.</th>
-              <th style="padding:6px;border:1px solid #ccc;text-align:left">Cor</th>
-              <th style="padding:6px;border:1px solid #ccc;text-align:left">Pedido</th>
-              <th style="padding:6px;border:1px solid #ccc;text-align:left">Cliente</th>
-              <th style="padding:6px;border:1px solid #ccc;text-align:right">Qtd</th>
-              <th style="padding:6px;border:1px solid #ccc;text-align:right">Preço</th>
-              <th style="padding:6px;border:1px solid #ccc;text-align:right">Subtotal</th>
-            </tr>
-          </thead>
-          <tbody>${rows}</tbody>
-          <tfoot>
-            <tr style="background:#f0f0f0">
-              <td colspan="5" style="padding:8px;border:1px solid #ccc;font-weight:bold;text-align:right">TOTAL</td>
-              <td style="padding:8px;border:1px solid #ccc;text-align:right;font-family:monospace;font-weight:bold">${summaryData.totalQty}</td>
-              <td style="padding:8px;border:1px solid #ccc"></td>
-              <td style="padding:8px;border:1px solid #ccc;text-align:right;font-family:monospace;font-weight:bold;font-size:14px">${formatCurrency(summaryData.totalValue)}</td>
-            </tr>
-          </tfoot>
-        </table>
-      </div>`;
-    printHtml('Resumo de Pedidos', html);
-  };
 
   const clearFilters = () => {
     setFilterStatus('all');
@@ -1702,6 +1601,67 @@ export default function SaleOrders() {
     );
   }
 
+  // Consumo de Materiais — PÁGINA (1 ou N PVs pelo `?ids=`).
+  //
+  // Era um modal de 92vh: com os avisos de cadastro no topo, o primeiro número
+  // de consumo caía abaixo da dobra. Como página, o layout cabe em duas colunas
+  // (tabela + trilho de decisão), sobrevive a F5 e pode ser mandada por link.
+  // O escopo de UM PV usa o MESMO componente — antes tinha um modal só pra ele,
+  // com uma segunda cópia do carregamento.
+  if (isConsumptionView) {
+    return (
+      <>
+        <div className="w-full space-y-6 page-enter">
+          <EditorialPageHeader
+            sectionLabel="COMERCIAL · PV"
+            title="Consumo de Materiais"
+            description={
+              consumptionViewOrders.length === 1
+                ? `Pedido ${consumptionViewOrders[0].order_number} — o que comprar, quanto falta e a grade do solado`
+                : 'Demanda somada dos pedidos selecionados — o que comprar e quanto falta'
+            }
+            meta={
+              consumptionViewOrders.length > 1
+                ? <><strong>{consumptionViewOrders.length}</strong> PEDIDOS NO ESCOPO</>
+                : undefined
+            }
+            actions={
+              <Button variant="outline" size="sm" className="h-9 gap-2" onClick={closeConsumptionView}>
+                <ClipboardList className="h-4 w-4" />
+                Voltar aos pedidos
+              </Button>
+            }
+          />
+          {consumptionViewIds.length === 0 ? (
+            <EmptyState
+              icon={FileText}
+              title="Nenhum pedido no escopo"
+              description="Volte à lista e selecione os pedidos para ver o consumo."
+              action={<Button variant="outline" size="sm" onClick={closeConsumptionView}>Selecionar pedidos</Button>}
+            />
+          ) : (
+            <SummaryConsumptionPanel
+              saleOrderIds={consumptionViewIds}
+              onGerarOC={() => setPoGenTarget({
+                ids: consumptionViewIds,
+                numbers: consumptionViewOrders.map((o: any) => o.order_number),
+              })}
+            />
+          )}
+        </div>
+
+        {poGenTarget && (
+          <GeneratePurchaseOrdersDialog
+            open={!!poGenTarget}
+            onOpenChange={(v) => { if (!v) setPoGenTarget(null); }}
+            pvIds={poGenTarget.ids}
+            pvNumbers={poGenTarget.numbers}
+          />
+        )}
+      </>
+    );
+  }
+
   return (
     <>
       <div className="w-full space-y-6 page-enter editorial-stagger">
@@ -2248,7 +2208,7 @@ export default function SaleOrders() {
                           <Button variant="ghost" size="icon" className="h-7 w-7" title="Editar" onClick={() => navigate(`/sales/edit/${order.id}`)}>
                             <Pencil className="h-3.5 w-3.5" />
                           </Button>
-                          <Button variant="ghost" size="icon" className="h-7 w-7" title="Consumo de materiais" onClick={() => { setQuickConsumptionId(order.id); setQuickConsumptionNumber(order.order_number); }}>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" title="Consumo de materiais" onClick={() => navigate(`/sales?view=consumo&ids=${order.id}`)}>
                             <Package className="h-3.5 w-3.5" />
                           </Button>
                           {isAdmin && order.status === 'Faturado' && (
@@ -2336,7 +2296,7 @@ export default function SaleOrders() {
           { label: 'Pré-visualizar NF-e', icon: <Receipt className="h-3.5 w-3.5" />, variant: 'outline', onClick: () => openBulkNfe('preview') },
           { label: 'Consumo', icon: <BarChart3 className="h-3.5 w-3.5" />, variant: 'outline', onClick: handleBulkConsumption },
           { label: 'Visão Geral', icon: <LayoutDashboard className="h-3.5 w-3.5" />, variant: 'outline', onClick: () => setOverviewOpen(true) },
-          { label: 'Resumo', icon: <ClipboardList className="h-3.5 w-3.5" />, variant: 'outline', onClick: handleOpenSummary },
+          { label: 'Resumo', icon: <ClipboardList className="h-3.5 w-3.5" />, variant: 'outline', onClick: handleBulkConsumption },
           { label: 'Etiquetas', icon: <Tag className="h-3.5 w-3.5" />, variant: 'outline', onClick: handleBulkLabels },
           { label: 'Imprimir Fichas', icon: <Printer className="h-3.5 w-3.5" />, variant: 'outline', onClick: handleBulkPrint },
           { label: 'Exportar Excel', icon: <Download className="h-3.5 w-3.5" />, variant: 'outline', onClick: handleBulkExport },
@@ -2498,7 +2458,7 @@ export default function SaleOrders() {
                       {resyncPVOPs.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />} Resync OPs
                     </Button>
                   )}
-                  <Button variant="outline" size="sm" className="gap-2" onClick={() => setConsumptionDialogOpen(true)}><ClipboardList className="h-3.5 w-3.5" /> Consumo de materiais</Button>
+                  <Button variant="outline" size="sm" className="gap-2" onClick={() => navigate(`/sales?view=consumo&ids=${selectedOrder.id}`)}><ClipboardList className="h-3.5 w-3.5" /> Consumo de materiais</Button>
                   {canBuy && (
                     <Button
                       variant="outline"
@@ -3122,65 +3082,10 @@ export default function SaleOrders() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Summary Dialog */}
-      <Dialog
-        open={summaryDialogOpen || isConsumptionView}
-        onOpenChange={(open) => {
-          if (!open && isConsumptionView) {
-            closeConsumptionView();
-            return;
-          }
-          setSummaryDialogOpen(open);
-        }}
-      >
-        <DialogContent className="sm:max-w-5xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            {/* Nomeia os PVs do escopo: "N pedido(s)" era quase idêntico ao título
-                do modal por-PV e escondia de QUAIS pedidos era o consumo somado. */}
-            <DialogTitle>
-              Consumo de Materiais — {(() => {
-                const scopedOrders = isConsumptionView ? consumptionViewOrders : summaryData.orders;
-                const nums = scopedOrders.map((o: any) => o.order_number).filter(Boolean);
-                if (nums.length === 0) return `${isConsumptionView ? consumptionViewIds.length : scopedOrders.length} pedido(s)`;
-                return nums.length <= 4 ? nums.join(', ') : `${nums.slice(0, 4).join(', ')} +${nums.length - 4}`;
-              })()}
-            </DialogTitle>
-          </DialogHeader>
-          {isConsumptionView && consumptionViewIds.length === 0 ? (
-            <EmptyState
-              icon={FileText}
-              title="Nenhum pedido selecionado"
-              description="Volte à lista e selecione pedidos para ver o consumo consolidado."
-              action={<Button variant="outline" size="sm" onClick={closeConsumptionView}>Selecionar pedidos</Button>}
-            />
-          ) : loadingSummary && !isConsumptionView ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-            </div>
-          ) : (
-            <SummaryConsumptionPanel saleOrderIds={isConsumptionView ? consumptionViewIds : summaryData.orders.map((o: any) => o.id)} />
-          )}
-        </DialogContent>
-      </Dialog>
-
       <SaleOrdersOverviewDialog
         open={overviewOpen}
         onOpenChange={setOverviewOpen}
         orders={orders.filter(o => selectedIds.has(o.id))}
-      />
-
-      <MaterialConsumptionDialog
-        open={consumptionDialogOpen}
-        onOpenChange={setConsumptionDialogOpen}
-        saleOrderId={selectedOrder?.id || null}
-        orderNumber={selectedOrder?.order_number || ''}
-      />
-
-      <MaterialConsumptionDialog
-        open={!!quickConsumptionId}
-        onOpenChange={(v) => { if (!v) setQuickConsumptionId(null); }}
-        saleOrderId={quickConsumptionId}
-        orderNumber={quickConsumptionNumber}
       />
 
       <MarginDialog

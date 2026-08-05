@@ -1,4 +1,3 @@
-import { type ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import {
@@ -49,8 +48,6 @@ type Props = {
   onRecalcular?: () => void;
   onPrintPdf: () => void;
   loading?: boolean;
-  /** Blocos do wrapper (ex.: Corte de Cabedal — Terceirização do PV). */
-  extra?: ReactNode;
 };
 
 export default function ConsumptionDecisionRail({
@@ -68,7 +65,6 @@ export default function ConsumptionDecisionRail({
   onRecalcular,
   onPrintPdf,
   loading = false,
-  extra,
 }: Props) {
   return (
     <aside className="space-y-3 lg:sticky lg:top-3">
@@ -260,8 +256,6 @@ export default function ConsumptionDecisionRail({
           <FileText className="h-4 w-4" /> PDF
         </Button>
       </div>
-
-      {extra}
     </aside>
   );
 }

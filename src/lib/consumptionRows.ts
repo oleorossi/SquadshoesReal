@@ -1,8 +1,8 @@
 /**
  * Anotação de disponibilidade + tiras artesanais sobre as linhas do motor
- * canônico de consumo (`@/lib/orderConsumption`). FONTE ÚNICA compartilhada pelo
- * modal por-PV (`MaterialConsumptionDialog`) e pela tela multi-PV
- * (`SummaryConsumptionPanel`) — extraída do modal em 2026-07-22
+ * canônico de consumo (`@/lib/orderConsumption`). FONTE ÚNICA da tela de consumo
+ * (`SummaryConsumptionPanel`, que atende 1 PV e o Consolidado) — extraída do
+ * antigo modal por-PV em 2026-07-22
  * (`specs/consumo-consolidado-padronizacao.md`) pra os dois nunca mais divergirem.
  *
  * O motor (`computeConsumptionForItems`) só calcula o CONSUMO previsto. Aqui

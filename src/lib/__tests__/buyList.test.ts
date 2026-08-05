@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { buildBuyList, isBuyListRow, isDirectNapaRow } from '../buyList';
+import { computeBaseMaterialTotal } from '../baseMaterialTotal';
 import type { ConsumptionRow } from '../consumptionRows';
 
 /** Atalho pra montar linha do motor sem repetir os campos obrigatórios. */
@@ -84,5 +85,58 @@ describe('buildBuyList', () => {
   it('dm² não entra na lista de compra em metros', () => {
     const bl = buildBuyList([row({ productUnit: 'dm²', totalQuantity: 570 })]);
     expect(bl.families).toHaveLength(0);
+  });
+});
+
+/**
+ * PARIDADE com `computeBaseMaterialTotal`.
+ *
+ * A tela usa `computeBaseMaterialTotal` no número-herói ("material base a
+ * comprar") e `buildBuyList` na lista família→cor logo abaixo. São duas
+ * implementações da MESMA soma — se divergirem, o dono vê um total que não fecha
+ * com as parcelas visíveis, que é exatamente o que a nota de arredondamento de
+ * `baseMaterialTotal.ts` existe pra evitar. Este teste é o que impede a
+ * divergência silenciosa.
+ */
+describe('paridade buildBuyList × computeBaseMaterialTotal', () => {
+  const MIXED: ConsumptionRow[] = [
+    row({ componentType: 'Cabedal', groupName: 'NAPA SUDANI', color: 'CAFE', totalQuantity: 20.27 }),
+    row({ color: 'PRETO', totalQuantity: 1 }),
+    row({ color: 'OFF WHITE', totalQuantity: 1 }),
+    row({ color: 'ROSADO', totalQuantity: 1 }),
+    row({
+      componentType: 'Tiras', groupName: 'TIRA OVERLOCK 5MM', color: 'PRETO',
+      totalQuantity: 234.72,
+      artisanal: { baseName: 'NAPA SOFT', baseQty: 234.72 / 61, yieldPerMeter: 61 },
+    }),
+    row({
+      componentType: 'Tiras', groupName: 'TIRA CHATA 8MM', color: 'ROSADO',
+      totalQuantity: 120,
+      artisanal: { baseName: 'NAPA SOFT', baseQty: 0, yieldPerMeter: 0, pending: true },
+    }),
+    // Ruído que nenhuma das duas deve somar:
+    row({ componentType: 'Solado', groupName: 'SOLADO 01', productUnit: 'par', totalQuantity: 540 }),
+    row({ componentType: 'Palmilha', groupName: 'EVA 3MM', totalQuantity: 5.08 }),
+    row({ color: 'PRETO', totalQuantity: 508, widthMissing: true }),
+  ];
+
+  it('os dois chegam ao mesmo total de metros', () => {
+    const bl = buildBuyList(MIXED);
+    const base = computeBaseMaterialTotal(MIXED)!;
+    expect(bl.grandTotal).toBeCloseTo(base.total, 2);
+  });
+
+  it('e às mesmas famílias, com os mesmos metros por família', () => {
+    const bl = buildBuyList(MIXED);
+    const base = computeBaseMaterialTotal(MIXED)!;
+    const byName = (pairs: { name: string; qty: number }[]) =>
+      Object.fromEntries(pairs.map((p) => [p.name, Number(p.qty.toFixed(2))]));
+    expect(byName(bl.families.map((f) => ({ name: f.napa, qty: f.total }))))
+      .toEqual(byName(base.parts));
+  });
+
+  it('contam a mesma pendência (tira sem rendimento fica fora dos dois)', () => {
+    expect(buildBuyList(MIXED).pendingStraps).toHaveLength(1);
+    expect(computeBaseMaterialTotal(MIXED)!.skipped).toBeGreaterThanOrEqual(1);
   });
 });
