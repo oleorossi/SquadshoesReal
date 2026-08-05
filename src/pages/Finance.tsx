@@ -96,6 +96,69 @@ function getEffectiveStatus(status: string, dueDate: string | null | undefined) 
 }
 
 /**
+ * Regra CANÔNICA de "em aberto" — o que ainda se deve / se tem a receber.
+ * Cancelada não é obrigação; liquidada já passou pelo caixa; parcial conta só o
+ * que falta. Card do topo E subtítulo dos painéis usam esta função, para não
+ * poderem divergir.
+ *
+ * Foi exatamente essa divergência que fez o painel exibir "Total: R$ 3.521,99"
+ * ao lado do card "TOTAL A PAGAR R$ 0,00" para a MESMA e única conta: o painel
+ * somava `amount` bruto de todas as linhas (inclusive a paga), o card somava o
+ * saldo das não liquidadas. Dois números para o mesmo conceito na mesma tela.
+ *
+ * ⚠ Não confundir com as visões de VOLUME (ranking de clientes/fornecedores,
+ * despesa por categoria em Relatórios): lá somar `amount` bruto de linha já
+ * liquidada é o certo — o que se quer é quanto girou, não quanto falta. Só
+ * cancelada sai. São conceitos diferentes, não uma inconsistência a unificar.
+ */
+const SETTLED_STATUSES = {
+  payable: ['paid', 'cancelled'],
+  receivable: ['received', 'cancelled'],
+} as const;
+
+type LedgerKind = keyof typeof SETTLED_STATUSES;
+
+function isSettled(row: { status: string }, kind: LedgerKind): boolean {
+  return (SETTLED_STATUSES[kind] as readonly string[]).includes(row.status);
+}
+
+function openBalanceOf(row: AccountPayable | AccountReceivable, kind: LedgerKind): number {
+  if (isSettled(row, kind)) return 0;
+  const settled = kind === 'payable'
+    ? (row as AccountPayable).amount_paid
+    : (row as AccountReceivable).amount_received;
+  return Math.max(0, (row.amount || 0) - (settled || 0));
+}
+
+function sumOpenBalance(rows: (AccountPayable | AccountReceivable)[], kind: LedgerKind): number {
+  return rows.reduce((s, r) => s + openBalanceOf(r, kind), 0);
+}
+
+/**
+ * Subtotais do subtítulo de um painel, sobre a lista JÁ FILTRADA.
+ * `open` casa com o card do topo quando não há filtro ativo — é o contrato que
+ * mantém as duas leituras alinhadas. `settledCount` existe para explicar a
+ * diferença entre "N conta(s)" e o valor em aberto: sem ele o usuário vê 72
+ * linhas listadas e um total que só cobre 32, sem nenhuma pista do porquê.
+ */
+function panelSums(rows: (AccountPayable | AccountReceivable)[], kind: LedgerKind) {
+  return rows.reduce(
+    (acc, row) => {
+      if (isSettled(row, kind)) {
+        acc.settledCount++;
+        return acc;
+      }
+      const remaining = openBalanceOf(row, kind);
+      acc.open += remaining;
+      if (getEffectiveStatus(row.status, row.due_date) === 'overdue') acc.overdue += remaining;
+      else acc.upcoming += remaining;
+      return acc;
+    },
+    { open: 0, overdue: 0, upcoming: 0, settledCount: 0 },
+  );
+}
+
+/**
  * Motivo da primeira rejeição de um `Promise.allSettled`, para o toast de lote.
  * Os handlers em massa reportavam só "N falha(s)" e descartavam o `Error.message`
  * do hook — o usuário via a contagem e nenhuma causa. A causa é justamente o
@@ -803,6 +866,11 @@ export default function Finance() {
   const payableSort = useTableSort<AccountPayable & { supplier_name: string }>('due_date', 'asc');
   const receivableSort = useTableSort<AccountReceivable>('due_date', 'asc');
   const [receivableSearch, setReceivableSearch] = useState('');
+  // Espelham os filtros da AP. Sem eles não havia como tirar da lista as 40
+  // linhas canceladas por PV cancelado, que apareciam misturadas às vivas.
+  const [receivableStatusFilter, setReceivableStatusFilter] = useState<string[]>([]);
+  const [receivableDateFrom, setReceivableDateFrom] = useState('');
+  const [receivableDateTo, setReceivableDateTo] = useState('');
 
   const toggleReceivable = (id: string) => setSelectedReceivables(prev => {
     const next = new Set(prev);
@@ -1110,34 +1178,37 @@ export default function Finance() {
                 }));
                 const sortedP = payableSort.sortData(filteredPWithSupplier);
 
-                // ── Receivable filtering ───────────────────────────────────────
-                const filteredR = receivables.filter(r => searchMatchesAllTerms(
+                // ── Receivable filtering (espelha a AP) ────────────────────────
+                let filteredR = receivables.filter(r => searchMatchesAllTerms(
                   receivableSearch,
                   r.client_name, r.description, r.client_cnpj, r.category, r.notes,
                 ));
-
-                // ── Totals: saldo pendente real ────────────────────────────────
-                const pendingPayable = payables
-                  .filter(p => !['paid', 'cancelled'].includes(p.status))
-                  .reduce((s, p) => s + Math.max(0, (p.amount || 0) - (p.amount_paid || 0)), 0);
-                const pendingReceivable = receivables
-                  .filter(r => !['received', 'cancelled'].includes(r.status))
-                  .reduce((s, r) => s + Math.max(0, (r.amount || 0) - (r.amount_received || 0)), 0);
-
-                /* F7 + F9 (audit, partial): subtotais por status no header da AP.
-                   Usuário vê de cara quanto tem em aberto, vencido e total filtrado
-                   sem precisar somar mentalmente nas linhas. */
-                const filteredPSums = filteredP.reduce(
-                  (acc, p) => {
-                    const eff = getEffectiveStatus(p.status, p.due_date);
-                    const remaining = Math.max(0, (p.amount || 0) - (p.amount_paid || 0));
-                    if (eff === 'overdue') acc.overdue += remaining;
-                    else if (eff === 'pending') acc.pending += remaining;
-                    acc.total += p.amount || 0;
-                    return acc;
-                  },
-                  { overdue: 0, pending: 0, total: 0 },
+                if (receivableStatusFilter.length > 0) filteredR = filteredR.filter(r =>
+                  receivableStatusFilter.includes(getEffectiveStatus(r.status, r.due_date))
                 );
+                if (receivableDateFrom) filteredR = filteredR.filter(r => r.due_date >= receivableDateFrom);
+                if (receivableDateTo) filteredR = filteredR.filter(r => r.due_date <= receivableDateTo);
+
+                // ── Totals: saldo em aberto real ───────────────────────────────
+                // Mesma função do subtítulo dos painéis — ver sumOpenBalance.
+                const pendingPayable = sumOpenBalance(payables, 'payable');
+                const pendingReceivable = sumOpenBalance(receivables, 'receivable');
+
+                /* F7 + F9 (audit): subtotais por status no header dos painéis.
+                   Usuário vê de cara quanto está em aberto e vencido sem somar
+                   mentalmente nas linhas — e `open` bate com o card do topo. */
+                const filteredPSums = panelSums(filteredP, 'payable');
+                const filteredRSums = panelSums(filteredR, 'receivable');
+
+                /* Empty state honesto: "Nenhuma conta" só é verdade quando a
+                   tabela está de fato vazia. Com filtro ativo a lista zera tendo
+                   dezenas de linhas no banco — e o texto antigo ainda convidava a
+                   "Adicionar primeira conta", ou seja, a criar uma duplicata de
+                   algo que existe e está só escondido pelo filtro. */
+                const payableFiltersActive = !!(payableSearch.trim() || payableStatusFilter.length || payableDateFrom || payableDateTo);
+                const receivableFiltersActive = !!(receivableSearch.trim() || receivableStatusFilter.length || receivableDateFrom || receivableDateTo);
+                const clearPayableFilters = () => { setPayableSearch(''); setPayableStatusFilter([]); setPayableDateFrom(''); setPayableDateTo(''); };
+                const clearReceivableFilters = () => { setReceivableSearch(''); setReceivableStatusFilter([]); setReceivableDateFrom(''); setReceivableDateTo(''); };
 
                 const payableContent = (
                   <Panel
@@ -1149,10 +1220,19 @@ export default function Finance() {
                         {filteredPSums.overdue > 0 && (
                           <span className="text-destructive">Vencido: {fmt(filteredPSums.overdue)}</span>
                         )}
-                        {filteredPSums.pending > 0 && (
-                          <span>À vencer: {fmt(filteredPSums.pending)}</span>
+                        {filteredPSums.upcoming > 0 && (
+                          <span>À vencer: {fmt(filteredPSums.upcoming)}</span>
                         )}
-                        <span>Total: {fmt(filteredPSums.total)}</span>
+                        {/* "Em aberto" e não "Total": o card do topo mostra saldo em
+                            aberto, então um "Total" bruto ao lado gerava dois números
+                            para o mesmo conceito. O contador de liquidadas explica a
+                            diferença entre a contagem de linhas e o valor. */}
+                        <span>Em aberto: {fmt(filteredPSums.open)}</span>
+                        {filteredPSums.settledCount > 0 && (
+                          <span className="text-muted-foreground">
+                            {filteredPSums.settledCount} paga(s)/cancelada(s)
+                          </span>
+                        )}
                       </span>
                     }
                     actions={
@@ -1241,14 +1321,17 @@ export default function Finance() {
                         </TableRow></TableHeader>
                         <TableBody>
                           {sortedP.length === 0 ? (
-                            payableSearch.trim() ? (
+                            payableFiltersActive ? (
                               <TableRow>
                                 <TableCell colSpan={10} className="p-0">
                                   <EmptyState
                                     size="sm"
                                     icon={MagnifyingGlass}
-                                    title={`Nenhum resultado para "${payableSearch}"`}
-                                    action={<Button variant="outline" size="sm" onClick={() => setPayableSearch('')}>Limpar busca</Button>}
+                                    title={payableSearch.trim()
+                                      ? `Nenhum resultado para "${payableSearch}"`
+                                      : 'Nenhuma conta com os filtros atuais'}
+                                    description={`${payables.length} conta(s) a pagar no total.`}
+                                    action={<Button variant="outline" size="sm" onClick={clearPayableFilters}>Limpar filtros</Button>}
                                   />
                                 </TableCell>
                               </TableRow>
@@ -1360,6 +1443,23 @@ export default function Finance() {
                   <Panel
                     eyebrow="FINANCEIRO · CONTAS A RECEBER"
                     title="Contas a Receber"
+                    subtitle={
+                      <span className="flex flex-wrap items-center gap-x-3">
+                        <span>{filteredR.length} conta(s)</span>
+                        {filteredRSums.overdue > 0 && (
+                          <span className="text-destructive">Vencido: {fmt(filteredRSums.overdue)}</span>
+                        )}
+                        {filteredRSums.upcoming > 0 && (
+                          <span>A vencer: {fmt(filteredRSums.upcoming)}</span>
+                        )}
+                        <span>Em aberto: {fmt(filteredRSums.open)}</span>
+                        {filteredRSums.settledCount > 0 && (
+                          <span className="text-muted-foreground">
+                            {filteredRSums.settledCount} recebida(s)/cancelada(s)
+                          </span>
+                        )}
+                      </span>
+                    }
                     actions={
                       <>
                         {selectedReceivables.size > 0 && (<>
@@ -1388,15 +1488,34 @@ export default function Finance() {
                       </>
                     }
                   >
-                      <SearchInput
-                        value={receivableSearch}
-                        onChange={setReceivableSearch}
-                        placeholder="Buscar por cliente, descrição, CNPJ…"
-                        resultCount={filteredR.length}
-                        totalCount={receivables.length}
-                        className="mb-3 w-full max-w-sm"
-                        inputClassName="h-9 text-xs"
-                      />
+                      <div className="flex flex-wrap gap-2 mb-3">
+                        <SearchInput
+                          value={receivableSearch}
+                          onChange={setReceivableSearch}
+                          placeholder="Buscar por cliente, descrição, CNPJ…"
+                          resultCount={filteredR.length}
+                          totalCount={receivables.length}
+                          className="w-72"
+                          inputClassName="h-9 text-xs"
+                        />
+                        <Input type="date" value={receivableDateFrom} onChange={e => setReceivableDateFrom(e.target.value)} className="w-36 h-9 text-xs" title="Vencimento de" />
+                        <Input type="date" value={receivableDateTo} onChange={e => setReceivableDateTo(e.target.value)} className="w-36 h-9 text-xs" title="Vencimento até" />
+                        {/* Sentinel "all" — Radix Select.Item rejeita value="" (ver
+                            comentário equivalente na barra da AP). */}
+                        <Select
+                          value={receivableStatusFilter[0] || 'all'}
+                          onValueChange={v => setReceivableStatusFilter(v === 'all' ? [] : [v])}
+                        >
+                          <SelectTrigger className="w-36 h-9 text-xs"><SelectValue placeholder="Status" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">Todos</SelectItem>
+                            <SelectItem value="pending">A Vencer</SelectItem>
+                            <SelectItem value="overdue">Vencido</SelectItem>
+                            <SelectItem value="received">Recebido</SelectItem>
+                            <SelectItem value="cancelled">Cancelado</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
                       <Table>
                         <TableHeader><TableRow className="bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                           <TableHead className="w-10">
@@ -1418,14 +1537,17 @@ export default function Finance() {
                         </TableRow></TableHeader>
                         <TableBody>
                           {filteredR.length === 0 ? (
-                            receivableSearch.trim() ? (
+                            receivableFiltersActive ? (
                               <TableRow>
                                 <TableCell colSpan={8} className="p-0">
                                   <EmptyState
                                     size="sm"
                                     icon={MagnifyingGlass}
-                                    title={`Nenhum resultado para "${receivableSearch}"`}
-                                    action={<Button variant="outline" size="sm" onClick={() => setReceivableSearch('')}>Limpar busca</Button>}
+                                    title={receivableSearch.trim()
+                                      ? `Nenhum resultado para "${receivableSearch}"`
+                                      : 'Nenhuma conta com os filtros atuais'}
+                                    description={`${receivables.length} conta(s) a receber no total.`}
+                                    action={<Button variant="outline" size="sm" onClick={clearReceivableFilters}>Limpar filtros</Button>}
                                   />
                                 </TableCell>
                               </TableRow>
