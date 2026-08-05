@@ -888,9 +888,34 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
     },
   });
 
+  // Já existem parcelas de contas a pagar lançadas para esta OC?
+  // `createAPEntries` é idempotente pelo token `[OC#<id>]`: no segundo caminho
+  // ele detecta a parcela, avisa "Parcelas já lançadas anteriormente" e RETORNA
+  // — não recalcula valor. Como nem os hooks de update (que só bloqueiam
+  // received/receiving/cancelled) nem nenhum dos triggers vivos de
+  // purchase_orders/_items tocam accounts_payable, editar quantidade ou preço de
+  // uma OC já lançada mudava o valor da OC e deixava o financeiro com o antigo.
+  const { data: apRows } = useQuery({
+    queryKey: ['po_ap_exists', orderId],
+    enabled: !!orderId,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from('accounts_payable')
+        .select('id')
+        .ilike('notes', `%[OC#${orderId}]%`)
+        .limit(1);
+      if (error) throw error;
+      return (data || []) as Array<{ id: string }>;
+    },
+    staleTime: 30_000,
+  });
+  const hasLaunchedAP = (apRows?.length ?? 0) > 0;
+
   if (!order) return null;
 
-  const isEditable = order.status === 'pending' || order.status === 'approved';
+  // 'approved' segue editável enquanto NÃO houver parcela lançada — o caso
+  // perigoso é só o de OC que já virou contas a pagar.
+  const isEditable = (order.status === 'pending' || order.status === 'approved') && !hasLaunchedAP;
   // OC em estado em que dá pra receber (inclui 'parcial' p/ continuar de onde parou).
   const isReceivable = order.status === 'sent' || order.status === 'approved' || order.status === 'parcial';
 

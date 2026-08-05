@@ -638,9 +638,34 @@ export default function PurchasePlanningWizard() {
 
       let count = 0;
       for (const [supplierName, items] of Array.from(bySupplier)) {
+        // Linhas resolvidas ANTES do cabeçalho: a quantidade final passa por
+        // `computeBuyQty` (lote mínimo + múltiplo de compra), então o total tem
+        // que sair delas.
+        //
+        // ⚠ Antes o cabeçalho usava `Σ estimated_cost`, calculado sobre o déficit
+        // CRU — anterior ao arredondamento. `purchase_orders.total_value` ficava
+        // diferente da soma das linhas, e é o cabeçalho que vira contas a pagar
+        // (createAPEntries/buildInstallments). O projeto não tem trigger de
+        // recálculo: `recalc_purchase_order_total` nunca aplicou (CLAUDE.md, "As
+        // 4 que NUNCA aplicaram"), então nada corrigia isso no servidor.
+        const lines = items
+          .filter(item => item.product_id) // só itens com produto válido
+          .map(item => {
+            const deficit = Math.max(0, item.total_needed - item.current_stock);
+            // Lote mínimo (min_order_quantity) + múltiplo de compra (embalagem):
+            // mesma lógica da revisão (computeBuyQty) pra não divergir.
+            const qty = computeBuyQty(deficit, productsMap.get(item.product_id!));
+            return {
+              product_id: item.product_id!,
+              current_stock: item.current_stock,
+              qty,
+              unit_price: item.unit_price, // R$/unidade de COMPRA
+              unit: item.unit,
+            };
+          });
         // estimated_cost já está em R$ de unidade de COMPRA (preço convertido
         // pelo fator estoque→compra na montagem das linhas) — fix A3.2.
-        const totalValue = items.reduce((s, i) => s + i.estimated_cost, 0);
+        const totalValue = lines.reduce((s, l) => s + l.qty * l.unit_price, 0);
         // FK do fornecedor quando algum produto do grupo tem (fix A3.3b) —
         // sem ele a OC caía no default de prazo de pagamento.
         const supplierId = items.find(i => i.supplier_id)?.supplier_id ?? null;
@@ -674,25 +699,17 @@ export default function PurchasePlanningWizard() {
           .single();
         if (poErr) throw poErr;
 
-        const poItems = items
-          .filter(item => item.product_id) // Only include items with a valid product_id
-          .map(item => {
-          const deficit = Math.max(0, item.total_needed - item.current_stock);
-          // Lote mínimo (min_order_quantity) + múltiplo de compra (embalagem):
-          // mesma lógica da revisão (computeBuyQty) pra não divergir.
-          const qty = computeBuyQty(deficit, productsMap.get(item.product_id!));
-          return {
-            purchase_order_id: po.id,
-            product_id: item.product_id!,
-            current_stock: item.current_stock,
-            min_stock: 0,
-            max_stock: 0,
-            suggested_quantity: qty,
-            quantity: qty,
-            unit_price: item.unit_price, // R$/unidade de COMPRA (convenção de purchase_order_items)
-            unit: item.unit,
-          };
-        });
+        const poItems = lines.map(l => ({
+          purchase_order_id: po.id,
+          product_id: l.product_id,
+          current_stock: l.current_stock,
+          min_stock: 0,
+          max_stock: 0,
+          suggested_quantity: l.qty,
+          quantity: l.qty,
+          unit_price: l.unit_price, // R$/unidade de COMPRA (convenção de purchase_order_items)
+          unit: l.unit,
+        }));
 
         if (poItems.length === 0) {
           // No valid items — delete the empty PO
