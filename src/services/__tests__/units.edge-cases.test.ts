@@ -162,24 +162,26 @@ describe('calculateConsumptionWithUnit — edge cases', () => {
     const sheet = {
       products: { unit: 'm' },
       yield_per_size: { '36': 0.5 },
-      waste_pct: 5,
+      waste_pct: 5, // legado — ignorado desde 9a0ea69
     };
     const item = { grade: { '36': 1 }, fichas: 0, quantity: 1 };
     const { total } = calculateConsumptionWithUnit(item, 0.5, sheet, 'auto');
-    // 1 par × 0.5m × 1 ficha (fallback) × 1.05 waste = 0.525 m
-    expect(total).toBeCloseTo(0.525, 3);
+    // 1 par × 0.5m × 1 ficha (fallback) = 0.5 m
+    expect(total).toBeCloseTo(0.5, 3);
   });
 
-  it('waste_pct=100% dobra o consumo', () => {
+  // GUARDA da regra do dono (03/08/2026, commit 9a0ea69): o consumo cadastrado
+  // JÁ embute o rendimento real — o sistema NÃO acrescenta perda. Um waste_pct
+  // absurdo é o caso extremo: se voltar a multiplicar, quebra aqui primeiro.
+  it('waste_pct=100% NÃO altera o consumo', () => {
     const sheet = {
       products: { unit: 'm' },
       yield_per_size: { '36': 1 },
-      waste_pct: 100,
+      waste_pct: 100, // dobraria o consumo se ainda fosse aplicado
     };
     const item = { grade: { '36': 1 }, fichas: 1, quantity: 1 };
-    // 1m × 2 = 2m
     const { total } = calculateConsumptionWithUnit(item, 1, sheet, 'auto');
-    expect(total).toBeCloseTo(2, 3);
+    expect(total).toBeCloseTo(1, 3);
   });
 
   it('placa sem dimensões → não estoura, retorna 0 placas', () => {
@@ -212,10 +214,11 @@ describe('convertDm2ToLinearMeters — edge cases', () => {
     expect(convertDm2ToLinearMeters(0, sheet)).toBe(0);
   });
 
-  it('waste_pct negativo é aplicado matematicamente (reduz total)', () => {
-    // -10% = ×0.9 — caso de devolução com sobra recuperada (raro mas suportado)
+  it('waste_pct negativo também é ignorado — não reduz o total', () => {
+    // Antes de 9a0ea69, -10% virava ×0.9 e devolvia 1.8 m. Hoje o campo é
+    // inerte nos dois sentidos: nem acrescenta perda, nem desconta sobra.
     const sheet = { dimensions_width: 1.4, dimensions_unit: 'm', waste_pct: -10 };
-    expect(convertDm2ToLinearMeters(280, sheet)).toBeCloseTo(1.8, 3);
+    expect(convertDm2ToLinearMeters(280, sheet)).toBeCloseTo(2.0, 3);
   });
 });
 

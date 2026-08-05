@@ -332,13 +332,17 @@ export const convertDm2ToPlates = (totalDm2: number, componentSheet: ComponentSh
  * `quantity_per_unit(dm²) × unit_price(R$/m)` infla o custo ~100× (largura em dm).
  *
  * Itens DIRETOS (cola em kg, caixa em un, tira/elástico em m SEM ficha de largura)
- * já têm quantity_per_unit na mesma unidade do preço → custo = qty × preço × (1+perda).
+ * já têm quantity_per_unit na mesma unidade do preço → custo = qty × preço.
  *
- * ⚠ Os conversores dm²→físico JÁ aplicam a perda da ficha; por isso o ramo de
- * área NÃO re-multiplica waste. Quando a unidade é física mas a ficha não tem
- * largura/área cadastrada, mantém o cálculo direto (sem mudar o valor atual) e
- * marca `widthMissing` pra UI avisar (custo pode estar inflado) — igual ao modal
- * de Consumo de Materiais.
+ * ⚠ NENHUM ramo aplica perda de corte. Regra do dono (03/08/2026, commit
+ * 9a0ea69): o consumo cadastrado JÁ embute o rendimento real do material, então
+ * o sistema não acrescenta nada. `waste_pct` ainda existe em fichas antigas e é
+ * deliberadamente inerte — travado por `units.edge-cases.test.ts` e
+ * `materialConsumption.units.test.ts`.
+ *
+ * Quando a unidade é física mas a ficha não tem largura/área cadastrada, mantém
+ * o cálculo direto e marca `widthMissing` pra UI avisar (custo pode estar
+ * inflado) — igual ao modal de Consumo de Materiais.
  */
 export function bomMaterialCostPerPair(
   quantityPerUnit: number | null | undefined,
@@ -417,9 +421,11 @@ export function areaToStockDivisor(
 /**
  * Unit-aware consumption calculation.
  * If the component sheet's product unit is linear (metro, cm, m),
- * the yield_per_size values are already in that unit — only apply waste%.
+ * the yield_per_size values are already in that unit — emitted as-is.
  * If the unit is dm2/plate, calculate in dm2 then convert.
  * Returns { total, unit } where unit is the final output unit.
+ *
+ * Perda de corte NÃO é aplicada em nenhum caminho — ver o bloco de custo acima.
  */
 /**
  * Converts a fallback consumption value from dm²/par to linear meters/par

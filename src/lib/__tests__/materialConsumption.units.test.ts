@@ -17,22 +17,25 @@ import {
  */
 
 describe('calculateConsumptionWithUnit — sheet linear em metros', () => {
-  it('rendimento m/par com waste 5%', () => {
+  // GUARDA da regra do dono (03/08/2026, commit 9a0ea69): o consumo cadastrado
+  // JÁ embute o rendimento real do material — o sistema NÃO acrescenta perda.
+  // O campo waste_pct segue existindo em fichas antigas; o motor tem que
+  // ignorá-lo. Se alguém reintroduzir `× (1 + waste/100)`, estes testes quebram.
+  it('rendimento m/par ignora waste_pct da ficha', () => {
     const sheet = {
       products: { unit: 'm' },
       yield_per_size: { '34': 0.5, '36': 0.55, '38': 0.6 },
-      waste_pct: 5,
+      waste_pct: 5, // valor legado — deve ser ignorado
     };
     const item = {
       grade: { '34': 1, '36': 1, '38': 1 },
       fichas: 10,
       quantity: 30,
     };
-    // Total bruto = (1×0.5 + 1×0.55 + 1×0.6) × 10 = 16.5 m
-    // Com waste 5% = 17.325 m
+    // (1×0.5 + 1×0.55 + 1×0.6) × 10 = 16.5 m — cru, sem os 5%
     const { total, unit } = calculateConsumptionWithUnit(item, 0, sheet, 'auto');
     expect(unit).toBe('metro');
-    expect(total).toBeCloseTo(17.325, 3);
+    expect(total).toBeCloseTo(16.5, 3);
   });
 
   it('sheet em cm é convertido para metros na saída', () => {
@@ -80,25 +83,25 @@ describe('convertDm2ToLinearMeters / convertDm2ToPlates', () => {
     expect(convertDm2ToLinearMeters(280, sheet)).toBeCloseTo(2.0, 3);
   });
 
-  it('aplica waste% na conversão para metros lineares', () => {
+  it('IGNORA waste% na conversão para metros lineares', () => {
     const sheet = {
       dimensions_width: 1.4,
       dimensions_unit: 'm',
-      waste_pct: 10,
+      waste_pct: 10, // valor legado — deve ser ignorado
     };
-    // 2.0 m × 1.10 = 2.20 m
-    expect(convertDm2ToLinearMeters(280, sheet)).toBeCloseTo(2.2, 3);
+    // 280 dm² / 140 dm²/m = 2.0 m — os 10% NÃO entram
+    expect(convertDm2ToLinearMeters(280, sheet)).toBeCloseTo(2.0, 3);
   });
 
-  it('converte dm² → placas com waste%', () => {
+  it('IGNORA waste% na conversão dm² → placas', () => {
     const sheet = {
       dimensions_length: 100,
       dimensions_width: 50,
       dimensions_unit: 'cm',
-      waste_pct: 8,
+      waste_pct: 8, // valor legado — deve ser ignorado
     };
-    // placa = 50 dm²; 100 dm² / 50 = 2 placas × 1.08 = 2.16
-    expect(convertDm2ToPlates(100, sheet)).toBeCloseTo(2.16, 3);
+    // placa = 50 dm²; 100 dm² / 50 = 2 placas exatas, sem os 8%
+    expect(convertDm2ToPlates(100, sheet)).toBeCloseTo(2, 3);
   });
 });
 
