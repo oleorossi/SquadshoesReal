@@ -49,7 +49,7 @@ export default function CNAB() {
       const { data, error } = await (supabase as any)
         .from('accounts_receivable')
         .select('id, amount, due_date, client_name, description')
-        .eq('status', 'pendente')
+        .eq('status', 'pending')
         .order('due_date', { ascending: true })
         .limit(100);
       if (error) throw error;

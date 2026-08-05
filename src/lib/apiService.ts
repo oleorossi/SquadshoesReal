@@ -32,7 +32,10 @@ export const apiService = {
         .from('accounts_receivable')
         .select('id, amount, amount_received')
         .lt('due_date', today)
-        .not('status', 'eq', 'paid')
+        // AR liquidado é 'received' (não 'paid' — esse é o domínio de
+        // accounts_payable). Com 'paid' o filtro não excluía NADA e a
+        // notificação de vencidos contava recebidos e cancelados.
+        .not('status', 'in', '("received","cancelled")')
         .limit(20),
       supabase
         .from('purchase_orders')
@@ -68,7 +71,7 @@ export const apiService = {
       supabase
         .from('sale_orders')
         .select('id, order_number, client_name')
-        .in('status', ['Pendente', 'Em produção'])
+        .in('status', ['Pendente', 'Em Produção'])
         .lt('delivery_deadline', today)
         .limit(10),
     ]);

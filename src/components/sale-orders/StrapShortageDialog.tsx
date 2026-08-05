@@ -260,7 +260,11 @@ export function StrapShortageDialog({ open, saleOrderId, saleOrderNumber, onClos
         }
         const { data: poRow, error: poErr } = await supabase.from('purchase_orders').insert({
           supplier_id: sup.id,
-          status: 'Pendente',
+          // Domínio de purchase_orders.status é inglês ('pending' é o default
+          // da coluna). Gravar 'Pendente' criava OC invisível pros filtros de
+          // pendentes (.eq('status','pending')) e pra checagem anti-duplicata
+          // do materialAutoPO/soleAutoPO (.in(['pending','approved'])).
+          status: 'pending',
           notes: `Auto-gerada por PV ${saleOrderNumber || '?'} (tira ${r.shortage.strap_color}).`,
         } as any).select('id').single();
         if (poErr) throw new Error(`OC ${r.shortage.strap_color}: ${poErr.message}`);
