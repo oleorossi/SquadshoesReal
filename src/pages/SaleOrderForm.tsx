@@ -5,6 +5,7 @@ import { SendSectorToContractorDialog } from '@/components/sale-orders/SendSecto
 // `newISO` é date-only: `new Date(iso)` parseia UTC e o toast confirmava o dia
 // ANTERIOR ao que era gravado em `delivery_deadline`.
 import { formatDateBR } from '@/lib/dateOnly';
+import { fetchClientCreditExposure } from '@/lib/clientCreditExposure';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
@@ -838,14 +839,10 @@ export default function SaleOrderForm() {
           .maybeSingle() as any;
         const limit = Number(client?.credit_limit || 0);
         if (limit > 0) {
-          const { data: arRows } = await (supabase.from('accounts_receivable') as any)
-            .select('amount, amount_received, status')
-            .eq('client_id', selectedClientId)
-            .not('status', 'in', '("received","cancelled")');
-          const exposure = (arRows || []).reduce(
-            (s: number, r: any) => s + (Number(r.amount) - (Number(r.amount_received) || 0)),
-            0,
-          );
+          // Filtrava por `accounts_receivable.client_id`, NULO em 70 dos 72
+          // títulos: a exposição dava sempre 0 e a trava nunca disparava.
+          // Ver clientCreditExposure — o vínculo real é via sale_order_id.
+          const exposure = await fetchClientCreditExposure(selectedClientId);
           const orderTotal = validItems.reduce(
             (s, i) => s + (Number(i.unit_price) || 0) * (Number(i.quantity) || 0),
             0,

@@ -24,6 +24,7 @@ import { BulkApplyPreview, buildBulkImpact, type BulkImpact } from './BulkApplyP
 import { Product, ProductFormData, CATEGORIES, UNITS, LOCATIONS } from '@/types/inventory';
 import { useAddProduct, useProducts } from '@/hooks/useProducts';
 import { findDuplicate, type DuplicateHit } from '@/lib/duplicateDetection';
+import { adjustStockSafe } from '@/lib/stockAdjustments';
 import { DuplicateSuggestion } from './DuplicateSuggestion';
 import { useGroups } from '@/hooks/useGroups';
 import { useSuppliers } from '@/hooks/useSuppliers';
@@ -150,9 +151,31 @@ function VariantDetailSheet({ open, onOpenChange, product, otherVariants }: {
       // que o `partial_name` do `resolve_material_product` tem nos itens de cor
       // vazia, e mexer nele muda quem o PV debita (spec R0.1/R2.1). A cor mora
       // em `products.color`, que é o que a cascata lê primeiro.
-      const updates: any = { ...form };
+      // `quantity` e `reserved_stock` SAEM do update cru:
+      //  • quantity vai pela RPC atômica abaixo (o caminho antigo gravava o
+      //    absoluto carregado na abertura do diálogo — read-modify-write que
+      //    perdia qualquer movimento concorrente);
+      //  • reserved_stock é DERIVADO de material_reservations (trigger
+      //    tg_sync_reserved_stock). Nenhum dos triggers de `products` recalcula
+      //    a coluna, então um UPDATE direto passava livre e apagava reserva viva.
+      const { quantity: nextQty, reserved_stock: _ignored, ...rest } = form as any;
+      const updates: any = { ...rest };
       const { error } = await supabase.from('products').update(updates).eq('id', product.id);
       if (error) throw error;
+
+      // Ajuste físico só pela RPC (SELECT FOR UPDATE + compare-and-set + movimento
+      // na mesma transação), e só quando o número realmente mudou.
+      const prevQty = Number(product.quantity) || 0;
+      const desiredQty = Number(nextQty);
+      if (Number.isFinite(desiredQty) && desiredQty !== prevQty) {
+        const res = await adjustStockSafe({
+          productId: product.id,
+          expectedPrevious: prevQty,
+          newQty: desiredQty,
+          reason: `Ajuste manual — variante ${newColor}`,
+        });
+        if (!res.success) throw new Error(res.errorMessage || 'Falha ao ajustar o estoque da variante');
+      }
       queryClient.invalidateQueries({ queryKey: ['products'] });
       queryClient.invalidateQueries({ queryKey: ['technical_sheets'] });
       queryClient.invalidateQueries({ queryKey: ['order-consumption'] });
@@ -242,7 +265,15 @@ function VariantDetailSheet({ open, onOpenChange, product, otherVariants }: {
                   - "Estoque de segurança": duplicava conceitualmente o mínimo */}
               <div>
                 <Label className="text-xs">Reservado <span className="text-muted-foreground font-mono">({form.unit ?? 'un'})</span></Label>
-                <NumberInput value={form.reserved_stock ?? 0} onChange={v => update('reserved_stock', v)} min={0} step="0.01" className="mt-1 h-9" />
+                {/* SOMENTE LEITURA: `reserved_stock` é DERIVADO de material_reservations
+                    (trigger tg_sync_reserved_stock). Editá-lo aqui gravava um absoluto
+                    que o trigger não conhece — e, como o form carrega o valor na
+                    abertura, salvar qualquer outro campo reescrevia a reserva com o
+                    snapshot velho, apagando reserva criada nesse meio-tempo. */}
+                <NumberInput value={form.reserved_stock ?? 0} onChange={() => {}} disabled className="mt-1 h-9" />
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  Calculado das reservas de OP — não editável aqui.
+                </p>
               </div>
             </div>
             <div>

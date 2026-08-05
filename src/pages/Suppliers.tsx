@@ -23,6 +23,7 @@ import type { ParsedNFeDuplicata } from '@/lib/nfeParser';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import { useProducts } from '@/hooks/useProducts';
+import { adjustStockSafe } from '@/lib/stockAdjustments';
 import { findDuplicate } from '@/lib/duplicateDetection';
 import { CATEGORIES } from '@/types/inventory';
 import SupplierFormDialog from '@/components/suppliers/SupplierFormDialog';
@@ -91,23 +92,37 @@ function InvoiceItemsRow({ invoice, supplierName }: { invoice: Invoice; supplier
               ? ` (convertido ${item.quantity} ${item.unit} → ${addQty.toFixed(3)} ${match.unit})`
               : '';
 
-            const newQty = (Number(match.quantity) || 0) + addQty;
-            const totalValue = ((Number(match.quantity) || 0) * (Number(match.unit_price) || 0)) + (addQty * addPrice);
+            const oldQty = Number(match.quantity) || 0;
+            const newQty = oldQty + addQty;
+            const totalValue = (oldQty * (Number(match.unit_price) || 0)) + (addQty * addPrice);
             const newPrice = newQty > 0 ? totalValue / newQty : addPrice;
 
-            await supabase.from('products').update({
-              quantity: newQty,
-              unit_price: newPrice,
-            }).eq('id', match.id);
-
-            await supabase.from('stock_movements').insert({
-              product_id: match.id,
-              movement_type: 'in',
-              quantity: addQty,
-              previous_stock: Number(match.quantity) || 0,
-              new_stock: newQty,
-              description: `Entrada via NF (lote) - ${item.product_name}${convNote}`,
+            // RPC atômica (SELECT FOR UPDATE + compare-and-set + stock_movements na
+            // MESMA transação) — o mesmo caminho do AddToStockDialog.
+            //
+            // ⚠ O código antigo fazia UPDATE cru seguido de INSERT do movimento, sem
+            // checar o erro. Um UPDATE barrado pela RLS de `products` (escrita só
+            // admin|gerente, enquanto stock_movements/invoice_items aceitam qualquer
+            // usuário aprovado) casa ZERO linhas e o PostgREST devolve 204 com
+            // `error === null`: o saldo NÃO entrava, mas o movimento era gravado e o
+            // item marcado como lançado, com toast verde. Como `pendingItems` filtra
+            // `!added_to_stock`, o item sumia da lista e não dava nem pra retentar.
+            // Falhar aqui joga pro catch do laço, que reporta o item e NÃO o marca.
+            const stockResult = await adjustStockSafe({
+              productId: match.id,
+              expectedPrevious: oldQty,
+              newQty,
+              reason: `Entrada via NF (lote) - ${item.product_name}${convNote}`,
             });
+            if (!stockResult.success) throw new Error(stockResult.errorMessage);
+
+            // Custo médio ponderado à parte (a RPC não cobre unit_price) — erro
+            // capturado: falha silenciosa deixaria o saldo certo e o WAC velho.
+            const { error: priceErr } = await supabase
+              .from('products')
+              .update({ unit_price: newPrice })
+              .eq('id', match.id);
+            if (priceErr) throw new Error(`Estoque atualizado, mas o custo médio não foi salvo: ${priceErr.message}`);
 
             productId = match.id;
           } else {
@@ -148,7 +163,9 @@ function InvoiceItemsRow({ invoice, supplierName }: { invoice: Invoice; supplier
             if (error) throw error;
             productId = newProd.id;
 
-            await supabase.from('stock_movements').insert({
+            // Erro capturado: sem isso o produto nasceria com saldo mas sem o
+            // movimento correspondente, e a auditoria de estoque não fecharia.
+            const { error: mvErr } = await supabase.from('stock_movements').insert({
               product_id: productId,
               movement_type: 'in',
               quantity: item.quantity,
@@ -156,12 +173,17 @@ function InvoiceItemsRow({ invoice, supplierName }: { invoice: Invoice; supplier
               new_stock: item.quantity,
               description: `Entrada via NF (lote, novo) - ${item.product_name}`,
             });
+            if (mvErr) throw new Error(`Produto criado, mas o movimento de estoque não foi registrado: ${mvErr.message}`);
             // Marca como "skipped" no sentido de "precisa revisão", mas
             // continua entrando no estoque (não tem cadastro pra validar).
             skippedItems.push(`${item.product_name}: produto NOVO criado com unit "${item.unit}" — revise o cadastro pra ajustar conversion_rate antes da próxima NF.`);
           }
 
-          await supabase.from('invoice_items').update({ added_to_stock: true, product_id: productId }).eq('id', item.id);
+          const { error: markErr } = await supabase
+            .from('invoice_items')
+            .update({ added_to_stock: true, product_id: productId })
+            .eq('id', item.id);
+          if (markErr) throw new Error(`Estoque lançado, mas o item da NF não foi marcado: ${markErr.message}`);
           successItems.push(item.product_name);
         } catch (itemErr: any) {
           erroredItems.push(`${item.product_name}: ${itemErr.message || 'erro desconhecido'}`);

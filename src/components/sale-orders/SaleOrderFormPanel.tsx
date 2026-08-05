@@ -18,6 +18,7 @@ import SaleOrderItemForm from './SaleOrderItemForm';
 import { OrderStatusStepper } from '@/components/ui/order-status-stepper';
 import { useQuery } from '@tanstack/react-query';
 import { fetchClientPriceList, type PriceLookup } from '@/lib/mobile/clientContext';
+import { fetchClientCreditExposure } from '@/lib/clientCreditExposure';
 import { supabase } from '@/integrations/supabase/client';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
@@ -424,13 +425,10 @@ export default function SaleOrderFormPanel({
   const { data: creditExposure } = useQuery({
     queryKey: ['client_credit_exposure', selectedClientId],
     enabled: !!(selectedClientId && selectedClient?.credit_limit && selectedClient.credit_limit > 0),
-    queryFn: async () => {
-      const { data } = await (supabase.from('accounts_receivable') as any)
-        .select('amount, amount_received, status')
-        .eq('client_id', selectedClientId)
-        .not('status', 'in', '("received","cancelled")');
-      return (data || []).reduce((s, r) => s + (r.amount - (r.amount_received || 0)), 0);
-    },
+    // Filtrava por `accounts_receivable.client_id`, que é NULO em 70 dos 72
+    // títulos — a exposição vinha sempre R$ 0,00 e o aviso de limite nunca
+    // acendia. Ver clientCreditExposure (o vínculo real é via sale_order_id).
+    queryFn: () => fetchClientCreditExposure(selectedClientId),
     staleTime: 30_000,
   });
 
@@ -774,6 +772,29 @@ export default function SaleOrderFormPanel({
     // pairs_per_box defaults to 1 and the wrong qty is set.
   }, [totalPairs, packagingProductId, boxTypes]);
 
+   /**
+    * Identidade produtiva de um item para fins de duplicata.
+    *
+    * Antes era só `reference_id + color`, e isso quebrava de duas formas ao
+    * mesclar:
+    *  • `material_variant_id` fora da chave — dois itens da mesma ref/cor mas de
+    *    VARIANTES diferentes eram acusados de duplicados, e o merge herdava a
+    *    variante do primeiro (spread de `{...item}`). Os pares do outro passavam
+    *    a reservar, consumir e ser custeados no material errado.
+    *  • `fichas` fora da chave — `grade` é POR FICHA (`totalPairs = gradeTotal ×
+    *    fichas`), então somar grades de linhas com fichas diferentes é
+    *    aritmeticamente inválido. O cliente e o trigger
+    *    `tg_enforce_sale_order_item_qty` recalculam `quantity = fichas × Σgrade`
+    *    com o `fichas` herdado, e a diferença sumia (ou inflava, se o primeiro
+    *    item tivesse o `fichas` maior).
+    *
+    * Com os dois na chave, itens que diferem por variante ou por fichas deixam
+    * de ser reportados como duplicados e nunca chegam ao merge. Itens realmente
+    * idênticos continuam mesclando como antes.
+    */
+   const duplicateKey = (item: SaleOrderItemFormData) =>
+     `${item.reference_id}-${item.color || ''}-${(item as any).material_variant_id || ''}-${item.fichas ?? 1}`;
+
    const handlePreSubmit = (e: React.FormEvent) => {
      e.preventDefault();
      setSubmitAttempted(true);
@@ -790,7 +811,7 @@ export default function SaleOrderFormPanel({
 
      items.forEach(item => {
        if (!item.reference_id) return;
-       const key = `${item.reference_id}-${item.color || ''}`;
+       const key = duplicateKey(item);
        if (seen.has(key)) {
          const ref = references.find(r => r.id === item.reference_id);
          const label = `${ref?.code || 'Ref'} (${item.color || 'Sem cor'})`;
@@ -2060,10 +2081,13 @@ export default function SaleOrderFormPanel({
              Manter separado
            </Button>
            <AlertDialogAction onClick={() => {
-             // Mescla: soma quantities + mescla grades por (ref + cor)
+             // Mescla: soma quantities + mescla grades por identidade produtiva
+             // (ref + cor + variante de material + fichas — ver duplicateKey).
+             // A chave TEM que ser a mesma da detecção, senão o diálogo acusa uma
+             // duplicata que o merge não junta (ou junta o que não devia).
              const mergedMap = new Map<string, SaleOrderItemFormData>();
              items.forEach(item => {
-               const key = `${item.reference_id}-${item.color || ''}`;
+               const key = duplicateKey(item);
                if (!item.reference_id) {
                  mergedMap.set(`__nokey__${mergedMap.size}`, item);
                  return;
