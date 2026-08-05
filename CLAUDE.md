@@ -248,12 +248,27 @@ referenciar qualquer uma das duas, ele está reintroduzindo a regra morta.
 7 pontos de aplicação; o 8º só apareceu durante a migration e era a **VIEW**
 `purchase_projection_timeline` — view não aparece em varredura de `pg_proc`.
 
-⚠ **Sobrevivente conhecido, NÃO uniformize sem o dono:**
+⚠ **Sobrevivente conhecido — meio-termo aplicado em 05/08/2026, destino AINDA em aberto:**
 `technical_reference_materials.waste_factor` é outra tabela (módulo **Referências
-Técnicas**, fora dos 5 motores de consumo) e ainda multiplica `× (1 + waste_factor / 100)`
-em `TechnicalReferencePanel.tsx:623`, `useTechnicalReferenceValidation.ts:193` e `:236`.
-Pode ser deliberado ou um ponto esquecido — está **em aberto**. Não decida sozinho pelos
-dois lados: nem apagar "por coerência", nem ressuscitar a perda nos motores por analogia.
+Técnicas**, fora dos 5 motores de consumo) e **continua multiplicando**
+`× (1 + waste_factor / 100)` em `TechnicalReferencePanel.tsx`,
+`useTechnicalReferenceValidation.ts:193` e `:236`.
+
+O que mudou (migration `20261126120000` + commit `dd86998`): só o **DEFAULT da coluna**
+(5 → 0) e o **pré-preenchimento do painel** (8% cabedal / 3% solado / 5% palmilha / 10%
+cola → 0). É **prevenção, não conserto** — a tabela tem **0 linhas** e nenhuma função ou
+view de consumo, custeio, MRP ou compra a lê (a única que a referencia é `merge_product_into`,
+que só remapeia `product_id`), então hoje o valor morre na própria tela. O risco era futuro:
+com `DEFAULT 5`, toda linha nova nascia com perda, e no dia em que o módulo fosse religado a
+algum cálculo a duplicidade voltaria sozinha, sem ninguém ter decidido nada.
+
+O que **NÃO** mudou, de propósito: a coluna fica, as multiplicações ficam, e não houve
+`UPDATE` de backfill (tabela vazia — se um dia houver linha legada com `waste_factor > 0`,
+ela precisa de decisão explícita, não de um UPDATE escondido numa migration de DEFAULT).
+**O destino do módulo Referências Técnicas segue sendo decisão de produto não tomada.**
+Continua valendo: não decida sozinho pelos dois lados — nem apagar as multiplicações "por
+coerência", nem ressuscitar a perda nos motores por analogia. E ⚠ **não "restaure" os
+percentuais achando que zero é bug**: zero é a regra vigente.
 
 ### Variante de material do item do PV (2026-07-11)
 O item do PV pode apontar uma **variante de material** (`sale_order_items.material_variant_id`
@@ -650,25 +665,32 @@ concluir que algo está pendente, **verifique o objeto no banco** (função, vie
 2. **Registro retroativo de 365 migrations** já aplicadas, verificadas objeto a objeto no
    banco (371 checagens: funções, views, tabelas, colunas, índices, triggers, policies).
    Toda ausência foi rastreada até um `DROP` deliberado posterior.
-3. **Backlog daquela auditoria: 4 arquivos** — ver abaixo.
+3. **Backlog daquela auditoria: 4 arquivos** — hoje são **3**; ver abaixo.
 
 ⚠ **Contagem não prova estado — nem então, nem hoje.** Este item dizia "todos os outros
-**1.298** estão registrados" e envelheceu em uma semana. Medido em **05/08/2026**:
-`schema_migrations` tem **2.191 linhas** e o repo tem **1.361 arquivos** `.sql`. Os dois
-números **não se comparam**, e a diferença não é backlog — existem as duas direções:
+**1.298** estão registrados" e envelheceu em uma semana. Medido em **05/08/2026 (fim do
+dia)**: `schema_migrations` tem **2.196 linhas** e o repo tem **1.365 arquivos** `.sql` —
+e ambos os números já haviam mudado *dentro do mesmo dia* (eram 2.191 / 1.361 de manhã).
+Os dois **não se comparam**, e a diferença não é backlog — existem as duas direções:
 **registro sem arquivo** (o `apply_migration` grava um carimbo com a data real; vários
 nunca viraram arquivo no repo) e **arquivo sem registro** (aplicado por MCP/SQL Editor sob
 outro carimbo). Vale a Regra de ouro acima: **verifique o objeto no banco**, não a
 aritmética.
 
-### ⚠ As 4 que NUNCA aplicaram (não registrar sem decidir)
+### ⚠ As 3 que NUNCA aplicaram (não registrar sem decidir)
+
+> Eram 4 até 05/08/2026. O `20260517150001_purchase-order-total-trigger` **saiu da lista**:
+> a função `recalc_purchase_order_total` e o trigger passaram a existir no banco pela
+> migration `20261124120000` (commit `7033ca7`), que resolveu o mesmo problema por um
+> arquivo novo em vez de re-rodar o antigo — que é o caminho recomendado aqui. O arquivo
+> de 2026-05-17 continua sem registro e **deve continuar assim**: re-executá-lo hoje
+> recriaria objetos que já existem sob outra definição.
 
 | Arquivo | O que faltou | Consequência viva | Bloqueio |
 |---|---|---|---|
 | `20260515130000_payroll-runs-create-and-migrate` | as 2 views (`v_employee_fgts_provision`, `v_clt_provisions_summary`) — tabela e função aplicaram | nenhuma: **nenhum consumidor no frontend** | re-rodar o arquivo é perigoso (tem `DROP TABLE` + `UPDATE`). Se as views forem desejadas, criar em migration NOVA |
-| `20260517150001_purchase-order-total-trigger` | função `recalc_purchase_order_total` + trigger | `purchase_orders.total_value` só é mantido pelo **frontend** (`usePurchaseOrders.ts:404`); nada recalcula no servidor | nenhum técnico, mas o trigger pode brigar com o total gravado pelo app (frete/desconto) — decidir antes |
-| `20260518120002_clients-municipio-cnpj-unique` | o índice único de CNPJ (a coluna `codigo_municipio` aplicou) | duplicata de cliente **já aconteceu** (PONTO MIX CONFECCOES, recadastrada em 28/07) | 1 CNPJ duplicado precisa ser resolvido primeiro |
-| `20260518150001_wave-items-null-conflict-and-restore-idempotency` | o índice `idx_wave_items_unique` com `NULLS NOT DISTINCT` (a função aplicou) | **199 linhas duplicadas** em `production_wave_items` — o `ON CONFLICT` não dispara quando `sole_product_id` é NULL | as 199 duplicatas precisam ser limpas antes |
+| `20260518120002_clients-municipio-cnpj-unique` | o índice único de CNPJ (a coluna `codigo_municipio` aplicou) | duplicata de cliente **já aconteceu** (PONTO MIX CONFECCOES, recadastrada em 28/07) | **1 CNPJ duplicado** — `32168100000118`, 2 linhas com a MESMA `razao_social` (PONTO MIX CONFECCOES LTDA). Precisa de decisão de qual sobrevive + remapeamento das FKs antes do índice |
+| `20260518150001_wave-items-null-conflict-and-restore-idempotency` | o índice `idx_wave_items_unique` com `NULLS NOT DISTINCT` (a função aplicou) | **199 linhas excedentes** em `production_wave_items` — o `ON CONFLICT` não dispara quando `sole_product_id` é NULL | as duplicatas precisam ser limpas antes. Recorte medido em 05/08/2026: **34 grupos** `(wave_id, reference_id, sole_product_id, color)`, **todos com `sole_product_id` NULL** (confirma a causa raiz), todos de mai/2026 — 135 linhas em ondas `planning`, 36 em `running`, 18 `cancelled`, 8 `finished`, 2 `draft`. As 36 de onda `running` são as delicadas: a onda está no chão de fábrica |
 
 **`20260525120002_fix-profiles-self-approval-rls` também nunca aplicou** — mas está
 registrada como **SUPERSEDIDA**, porque aplicá-la hoje **reabriria** um furo de segurança
@@ -696,11 +718,12 @@ trigger em nome de "simplificar"**.
 `.github/workflows/supabase-migrate.yml` roda `supabase db push` quando
 `supabase/migrations/**` muda em `main`. Requisitos:
 
-1. **Resolver as 4 acima** (aplicar via migration nova, ou registrar com justificativa).
+1. **Resolver as 3 acima** (aplicar via migration nova, ou registrar com justificativa).
    Enquanto o `20260518120002` estiver pendente, o push **falha** no CNPJ duplicado.
 2. **Decidir o destino dos 4 renomeados em 05/08/2026** (`20261116120000`–`20261116120300`):
    já aplicados no banco, mas sem registro sob o carimbo novo → um push os re-executa. Ver
-   *Regressão de carimbo duplicado* abaixo.
+   *Regressão de carimbo duplicado* abaixo. ⚠ Reconferido em 05/08/2026 (fim do dia):
+   os 4 seguem com **0 registros**.
 3. Cadastrar os 3 secrets em GitHub Settings > Secrets and variables > Actions:
    - `SUPABASE_ACCESS_TOKEN` — PAT de https://supabase.com/dashboard/account/tokens
    - `SUPABASE_DB_PASSWORD` — Database > Settings > Connect > "Reset database password"
@@ -711,9 +734,10 @@ trigger em nome de "simplificar"**.
 
 O carimbo é uma **sequência sintética**, não a data de hoje: use um valor **maior que a
 maior versão já registrada**. Usar a data corrente gera um carimbo menor que o topo e trava
-o pipeline. **Não confie em número escrito aqui** — esta linha já ficou desatualizada duas
-vezes (dizia `20261019120000` com o banco em `20261110120000`, auditoria de 03/08/2026; em
-05/08/2026 o topo registrado já era `20261120120000`).
+o pipeline. **Não confie em número escrito aqui** — esta linha já ficou desatualizada três
+vezes (dizia `20261019120000` com o banco em `20261110120000`, auditoria de 03/08/2026; de
+manhã em 05/08/2026 o topo era `20261120120000`, e no fim do MESMO dia já era
+`20261202120000`).
 
 ⚠ **`max(version)` sozinho NÃO basta — consulte as DUAS fontes.** O topo do banco ignora
 arquivo que existe no repo mas ainda não foi registrado; se houver um acima do topo, pegar
@@ -772,3 +796,32 @@ estão **aplicados** no banco e agora estão **sem registro** sob o carimbo novo
 retroativamente ou aceitar a re-execução. O de maior risco é o backfill
 `20261116120000`, que recalcula valor/par de folha a partir da agregação atual da Ficha de
 Montadores (folha em rascunho ajustada à mão voltaria ao valor recalculado).
+
+### ⚠ Antes de auditar migration, rode `git worktree list`
+
+Terceira forma de drift, descoberta em **05/08/2026** e **não coberta** pelas duas
+direções descritas acima ("registro sem arquivo" / "arquivo sem registro"): a migration
+está **aplicada E registrada corretamente** no banco, sob o carimbo certo, e mesmo assim
+**não existe no repo** — porque o arquivo vive **não commitado numa worktree paralela**.
+
+Foi o caso de `20261126120000` (waste_factor) e `20261202120000` (exposição de crédito):
+ambas aplicadas via MCP e registradas, com `20261202120000` sendo inclusive o **topo da
+sequência**, enquanto os `.sql` estavam apenas como `??` no `git status` de
+`/Users/leonardomonnerat/Downloads/squadshoes-fix-conhecidos`. Uma auditoria feita só no
+diretório principal veria "topo registrado = `20261202120000`, arquivo inexistente" e
+concluiria **registro órfão** — quando na verdade era trabalho vivo por commitar.
+Commitá-las não reaplicou nada; só alinhou o repo ao banco.
+
+**Antes de concluir qualquer coisa sobre o estado das migrations:**
+
+```bash
+git worktree list                       # onde mais existe trabalho vivo
+git -C <cada-worktree> status --short   # inclusive os ?? de supabase/migrations/
+git stash list                          # há 6 stashes de sessões antigas neste repo
+```
+
+⚠ Uma worktree cujo **diretório não existe mais** continua listada se estiver `locked` —
+o `git worktree prune` a preserva de propósito. Confira com
+`git log --oneline main..<branch>` se ela ainda guarda commit não integrado antes de
+tratá-la como lixo (a `worktree-os-recibo-modelo-a` não guardava: zero commits à frente
+de `main`).
