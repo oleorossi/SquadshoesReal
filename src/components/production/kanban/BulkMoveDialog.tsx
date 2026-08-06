@@ -9,7 +9,7 @@ import { useCurrentProfile } from '@/hooks/useUserManagement';
 import ConfirmPointingWarnings from '@/components/production/ConfirmPointingWarnings';
 import { toast } from 'sonner';
 import { KanbanCardData } from './kanbanDerive';
-import { buildPointingPlan, applyPointing, PointingPlan } from './pointingPlan';
+import { buildPointingPlan, applyPointing, skipBlockedByPartial, PointingPlan } from './pointingPlan';
 
 interface StepResult {
   orderNumber: string;
@@ -92,6 +92,12 @@ export function BulkMoveDialog({
         setPendingWarnings(res.warnings);
         return;
       }
+      // Pulo com origem aberta: não avança sozinho — o operador decide entre
+      // fechar o setor ou tirar esta OP do lote.
+      if (res.status === 'blocked') {
+        setStepError(res.reason);
+        return;
+      }
       advance({
         orderNumber: card.q.order_number,
         status: 'ok',
@@ -102,6 +108,9 @@ export function BulkMoveDialog({
       setStepError((e as Error)?.message || 'Falha ao apontar. Tente de novo ou pule esta OP.');
     }
   };
+
+  // Mesma trava do diálogo de um card só: pular exige fechar a origem.
+  const stepSkipBlocked = !!current && skipBlockedByPartial(current.plan, qty);
 
   const totalOk = results.filter(r => r.status === 'ok').length;
   const totalPares = results.reduce((s, r) => s + r.quantity, 0);
@@ -191,10 +200,18 @@ export function BulkMoveDialog({
                   </p>
                 </div>
 
-                {current.plan.skipped.length > 0 && (
+                {current.plan.skipped.length > 0 && !stepSkipBlocked && (
                   <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2.5 text-xs text-amber-700 dark:text-amber-300">
                     <strong>Pulando setor{current.plan.skipped.length > 1 ? 'es' : ''}:</strong> {current.plan.skipped.join(', ')}.
                     Eles serão marcados como concluídos sem produção apontada — fica registrado.
+                  </div>
+                )}
+                {stepSkipBlocked && (
+                  <div className="rounded-md border border-red-500/50 bg-red-500/10 p-2.5 text-xs text-red-700 dark:text-red-300">
+                    <strong>Pra pular setor, {current.plan.pointedStage?.stage_name} tem que fechar.</strong>{' '}
+                    Com {qty} de {current.plan.remaining} pares, os{' '}
+                    <strong>{current.plan.remaining - qty} restantes</strong> ficariam sem passar por{' '}
+                    {current.plan.skipped.join(', ')}. Aponte o saldo cheio ou pule esta OP do lote.
                   </div>
                 )}
                 {current.plan.isBackward && (
@@ -253,7 +270,7 @@ export function BulkMoveDialog({
                     <Button variant="outline" className="h-11 md:h-10" onClick={onClose} disabled={apontar.isPending}>
                       Cancelar lote
                     </Button>
-                    <Button className="h-11 md:h-10" onClick={() => confirmStep()} disabled={apontar.isPending}>
+                    <Button className="h-11 md:h-10" onClick={() => confirmStep()} disabled={apontar.isPending || stepSkipBlocked}>
                       {idx + 1 === steps.length ? 'Confirmar e finalizar' : 'Confirmar e seguir'}
                     </Button>
                   </div>

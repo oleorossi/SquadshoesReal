@@ -111,9 +111,33 @@ export function buildPointingPlan(
   };
 }
 
+/**
+ * Pular setor exige fechar a ORIGEM. Regra load-bearing (auditoria 2026-08-06).
+ *
+ * Apontar 180 de 288 e mandar o card pra um setor lá na frente fechava os
+ * intermediários com 0 pares e deixava a OP em DOIS lugares ao mesmo tempo: a
+ * origem seguia `em_andamento` com 108 pares de saldo (invisível no quadro,
+ * porque o card já tinha ido embora) e o destino recebia ficha do lote inteiro.
+ * Aconteceu de verdade em OP-2026-01191 (108 pares) e OP-2026-01195 (24).
+ *
+ * Pior efeito colateral: setor fechado com 0 vira "entregou tudo" para as duas
+ * travas de quantidade do servidor, que passam a não disparar pelo resto da rota
+ * — foi assim que a OP-2026-01221 apontou 36 pares na Montagem sem nenhum aviso,
+ * com a Colagem zerada.
+ *
+ * Pular com o lote CHEIO continua permitido: é uma decisão legítima de fluxo
+ * (terceirizou, ou o setor não se aplica àquele lote). O que não pode é pular
+ * deixando saldo pendurado atrás.
+ */
+export function skipBlockedByPartial(plan: PointingPlan, qty: number): boolean {
+  if (plan.isBackward || plan.skipped.length === 0 || !plan.pointedStage) return false;
+  return qty < plan.remaining;
+}
+
 export type ApplyResult =
   | { status: 'ok'; quantity: number }
   | { status: 'needs_confirmation'; warnings: PointingWarning[] }
+  | { status: 'blocked'; reason: string }
   | { status: 'noop' };
 
 /**
@@ -142,6 +166,16 @@ export async function applyPointing(params: {
   const quantity = isBackward ? -Math.abs(qty) : qty;
   if (quantity === 0) return { status: 'noop' };
 
+  // Guarda de último recurso — os diálogos já barram antes de chegar aqui, mas
+  // esta é a porta única de gravação e ela não pode depender da tela.
+  if (skipBlockedByPartial(plan, qty)) {
+    return {
+      status: 'blocked',
+      reason: `Pra pular ${skipped.join(', ')} é preciso fechar ${norm(pointedStage.stage_name)} `
+        + `(${plan.remaining} pares). Com ${qty}, sobrariam ${plan.remaining - qty} pares sem passar por lá.`,
+    };
+  }
+
   const willComplete = !isBackward && pointedStage.quantity_processed + quantity >= pointedStage.quantity_total;
   const res = await apontar.mutateAsync({
     orderId: card.q.order_id,
@@ -159,7 +193,10 @@ export async function applyPointing(params: {
   }
 
   // Pulo confirmado (R5.5): conclui os setores intermediários com 0 pares
-  // (pulados de propósito — o motor os trata como entrega total)
+  // (pulados de propósito — o motor os trata como entrega total).
+  //
+  // Só chega aqui com a ORIGEM FECHADA — `skipBlockedByPartial` acima barra o
+  // pulo parcial, que era o que deixava saldo órfão atrás do card.
   for (const skippedSector of skipped) {
     await apontar.mutateAsync({
       orderId: card.q.order_id,

@@ -13,7 +13,7 @@ import ConfirmPointingWarnings from '@/components/production/ConfirmPointingWarn
 import { toast } from 'sonner';
 import { thumbUrl } from '@/lib/imageThumb';
 import { norm, fmtDate, KanbanCardData } from './kanbanDerive';
-import { buildPointingPlan, moveOptions, applyPointing } from './pointingPlan';
+import { buildPointingPlan, moveOptions, applyPointing, skipBlockedByPartial } from './pointingPlan';
 
 /** Valor-sentinela do select de mover (shadcn Select não aceita value vazio). */
 const MOVE_ATUAL = '__atual';
@@ -76,6 +76,10 @@ export function DropApontarDialog({
     ? Math.max(0, pointedStage.quantity_processed + qty - pointedStage.quantity_total)
     : 0;
 
+  // Pular setor com a origem ABERTA deixa saldo órfão atrás do card e desarma
+  // as travas de quantidade do resto da rota. Ver `skipBlockedByPartial`.
+  const skipBlocked = skipBlockedByPartial(plan, qty);
+
   const handleMoveChange = (v: string) => {
     const t = v === MOVE_ATUAL ? '' : v;
     setMoveTarget(t);
@@ -104,6 +108,10 @@ export function DropApontarDialog({
       const res = await applyPointing({ card, plan, target: effTarget, qty, apontar, confirmedWarnings: confirmed });
       if (res.status === 'needs_confirmation') {
         setPendingWarnings(res.warnings);
+        return;
+      }
+      if (res.status === 'blocked') {
+        toast.error(res.reason);
         return;
       }
       if (res.status === 'ok') {
@@ -229,10 +237,20 @@ export function DropApontarDialog({
               </div>
             )}
 
-            {skipped.length > 0 && (
+            {skipped.length > 0 && !skipBlocked && (
               <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2.5 text-xs text-amber-700 dark:text-amber-300">
                 <strong>Pulando setor{skipped.length > 1 ? 'es' : ''}:</strong> {skipped.join(', ')}.
                 Eles serão marcados como concluídos sem produção apontada — fica registrado.
+              </div>
+            )}
+            {skipBlocked && (
+              <div className="rounded-md border border-red-500/50 bg-red-500/10 p-2.5 text-xs text-red-700 dark:text-red-300">
+                <strong>Pra pular setor, {pointedStage.stage_name} tem que fechar.</strong>{' '}
+                Você está apontando {qty} de {remaining} pares — os{' '}
+                <strong>{remaining - qty} restantes</strong> ficariam sem passar por{' '}
+                {skipped.join(', ')}, e sem aparecer como pendência em lugar nenhum do quadro.
+                <br />
+                Aponte os {remaining} pares pra pular, ou mande a OP pro próximo setor da rota.
               </div>
             )}
             {isBackward && (
@@ -381,7 +399,7 @@ export function DropApontarDialog({
               <Button
                 className="h-11 md:h-10"
                 onClick={() => doApontar()}
-                disabled={apontar.isPending || qty === 0}
+                disabled={apontar.isPending || qty === 0 || skipBlocked}
               >
                 {isBackward ? 'Estornar' : 'Apontar'}
               </Button>
