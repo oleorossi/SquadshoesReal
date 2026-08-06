@@ -295,7 +295,12 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
       : `<img src="${FALLBACK_PHOTO_DATA_URL}" alt="" />`;
 
     // ─── GRADE (tabela rodapé) ─────────────────────────────
-    const gradeCols = item.grade.length + 1; // +1 para coluna TT
+    const gradeCols = item.grade.length + 1; // +1 para a coluna TOTAL
+    // "TOTAL" é ~2,5× mais largo que o antigo "TT" e a coluna é 1fr — numa grade
+    // larga ela estreita e o rótulo seria CORTADO em silêncio (o print não vaza,
+    // só some). Encolhe por faixa de colunas, sem furar o piso de 6,5px de
+    // rótulo mono do PRINT_SPEC.
+    const totalLabelPx = gradeCols <= 9 ? 11 : gradeCols <= 13 ? 9.5 : 8;
     const sizeCells = item.grade.map(g =>
       `<div class="cell">${escapeHtml(String(g.size))}</div>`,
     ).join('');
@@ -352,7 +357,7 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
           ${item.mainMaterial ? `<div class="glabel">MATERIAL</div>
           <div class="row-mat">${escapeHtml(item.mainMaterial)}</div>` : ''}
           <div class="glabel">TAMANHO</div>
-          ${sizeCells}<div class="cell total tam-total">TT</div>
+          ${sizeCells}<div class="cell total tam-total" style="font-size:${totalLabelPx}px;">TOTAL</div>
           <div class="glabel last">QUANTIDADE</div>
           ${qtyCells}<div class="cell total qtd-total">${totalQty}</div>
         </div>
