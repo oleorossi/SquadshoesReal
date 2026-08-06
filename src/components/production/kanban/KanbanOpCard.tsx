@@ -65,7 +65,7 @@ export function KanbanOpCard({
   selectable = false, selected = false, onToggleSelect, photoUrl, landed = false,
   materialGateDate = null, materialGateReason = null,
 }: Props) {
-  const { q, front, delivered, isPartial, columnStage, upstreamGap } = card;
+  const { q, front, delivered, isPartial, columnStage, upstreamGap, parallelSiblings } = card;
   const total = columnStage?.quantity_total || q.quantity;
   const idade = stageAge(columnStage);
   const thumbSize = compact ? 32 : 40;
@@ -175,6 +175,18 @@ export function KanbanOpCard({
               {/* Buraco deixado por um pulo de setor: pares que nunca passaram
                   por um setor lá atrás. O card mostra o que ESTE setor recebeu;
                   sem isto, o saldo órfão não aparecia em lugar nenhum. */}
+              {/* A MESMA OP também está em outra coluna, em paralelo. Sem este
+                  selo, ver "OP-2026-01191" em dois lugares parece duplicata ou
+                  erro de sistema — e alguém "conserta" apontando duas vezes. */}
+              {parallelSiblings.length > 0 && (
+                <Badge
+                  variant="outline"
+                  className="text-[9px] bg-muted text-muted-foreground border-border shrink-0"
+                  title={`Esta OP roda em paralelo e também tem card em: ${parallelSiblings.join(', ')}. Cada setor aponta o SEU trabalho — não é duplicata.`}
+                >
+                  ‖ {parallelSiblings.join(', ')}
+                </Badge>
+              )}
               {upstreamGap && (
                 <Badge
                   variant="outline"

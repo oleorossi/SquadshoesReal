@@ -22,7 +22,7 @@ import { useIsCoarsePointer } from '@/hooks/use-mobile';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { searchMatchesAllTerms, searchMatchesAny, splitSearchTerms, normalizeForSearch } from '@/lib/searchUtils';
 import { toast } from 'sonner';
-import { deriveCard, todayISO, KanbanCardData } from '@/components/production/kanban/kanbanDerive';
+import { deriveCards, todayISO, KanbanCardData } from '@/components/production/kanban/kanbanDerive';
 import { buildPointingPlan } from '@/components/production/kanban/pointingPlan';
 import { KanbanOpCard } from '@/components/production/kanban/KanbanOpCard';
 import { DropApontarDialog } from '@/components/production/kanban/DropApontarDialog';
@@ -182,6 +182,26 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
   };
 
   const flowOrder = useMemo(() => new Map(sectors.map(s => [s.sector, s.flow_order])), [sectors]);
+  /**
+   * Nível do MOTOR por setor. Setores do mesmo `parallel_group` colapsam no
+   * menor `flow_order` do grupo — é exatamente o `COALESCE(g.grp_order,
+   * ss.flow_order)` de `recompute_production_schedule`. Espelhar o servidor
+   * aqui é o que faz o quadro concordar com a agenda: hoje Corte Palmilha +
+   * Corte Forração são um nível, e Costura Palmilha + Costura Cabedal +
+   * Aviamento são outro.
+   */
+  const levelOf = useMemo(() => {
+    const grpMin = new Map<string, number>();
+    for (const s of sectors) {
+      if (!s.parallel_group) continue;
+      const cur = grpMin.get(s.parallel_group);
+      if (cur === undefined || s.flow_order < cur) grpMin.set(s.parallel_group, s.flow_order);
+    }
+    return new Map(sectors.map(s => [
+      s.sector,
+      (s.parallel_group ? grpMin.get(s.parallel_group) : undefined) ?? s.flow_order,
+    ]));
+  }, [sectors]);
   const stagesByOrder = useMemo(() => {
     const m = new Map<string, typeof allStages>();
     allStages.forEach(s => {
@@ -199,11 +219,10 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
     for (const q of queue) {
       const stages = stagesByOrder.get(q.order_id);
       if (!stages?.length) continue;
-      const card = deriveCard(q, stages, flowOrder);
-      if (card) out.push(card);
+      out.push(...deriveCards(q, stages, flowOrder, levelOf));
     }
     return out;
-  }, [queue, stagesByOrder, flowOrder]);
+  }, [queue, stagesByOrder, flowOrder, levelOf]);
 
   const searchActive = search.trim().length > 0;
 
@@ -259,7 +278,7 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
   // Achou → leva o olho até o card (a coluna certa pode estar fora da viewport)
   useEffect(() => {
     if (!matches.length) return;
-    const el = cardEls.current.get(matches[0].q.order_id);
+    const el = cardEls.current.get(matches[0].key);
     if (!el) return;
     const t = setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' }), 150);
     return () => clearTimeout(t);
@@ -275,12 +294,26 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
 
   const gridToday = useMemo(() => new Map(todayGrid.map(g => [g.sector, g])), [todayGrid]);
 
-  const kpis = useMemo(() => ({
-    ops: allCards.length,
-    pares: allCards.reduce((s, c) => s + (c.q.quantity || 0), 0),
-    atrasadas: allCards.filter(c => c.q.late_days > 0).length,
-    parciais: allCards.filter(c => c.isPartial).length,
-  }), [allCards]);
+  /**
+   * KPIs do topo contam OPs DISTINTAS, não cards.
+   *
+   * ⚠ Desde os setores em paralelo a mesma OP tem card em mais de uma coluna.
+   * Somar cards aqui contaria a OP (e os pares dela) duas vezes — é o mesmo
+   * erro de dupla contagem que a auditoria tirou do 'restam N pares'. O WIP por
+   * setor, esse sim, conta CARDS: lá a pergunta é 'quanto trabalho tem nesta
+   * bancada', e as duas bancadas têm trabalho de verdade.
+   */
+  const kpis = useMemo(() => {
+    const porOp = new Map<string, KanbanCardData>();
+    for (const c of allCards) if (!porOp.has(c.q.order_id)) porOp.set(c.q.order_id, c);
+    const ops = [...porOp.values()];
+    return {
+      ops: ops.length,
+      pares: ops.reduce((s, c) => s + (c.q.quantity || 0), 0),
+      atrasadas: ops.filter(c => c.q.late_days > 0).length,
+      parciais: allCards.filter(c => c.isPartial).length,
+    };
+  }, [allCards]);
 
   // WIP por setor + gargalo (o setor que MAIS acumulou OP acima do limite
   // saudável). A Central fica aberta o dia todo num monitor: guiar o olho pro
@@ -363,7 +396,7 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
   }, [filtering, matchedIds, allCards]);
 
   const selectedCards = useMemo(
-    () => allCards.filter(c => selectedIds.has(c.q.order_id)),
+    () => allCards.filter(c => selectedIds.has(c.key)),
     [allCards, selectedIds],
   );
   const selectedPares = useMemo(
@@ -558,6 +591,14 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
   }, [dragCard]);
 
   /** Apontou → a OP ganha halo de pouso na coluna nova por ~1,6s. */
+  /**
+   * Halo de pouso — segue chaveado por OP, não por card.
+   *
+   * ⚠ Não "corrigir" pra `card.key` junto com a seleção e as refs: depois do
+   * apontamento a OP MUDA de coluna, então a chave de origem não casaria com
+   * card nenhum e o realce simplesmente não apareceria. Com setores em paralelo
+   * os dois cards irmãos piscam — o que é verdade, a OP recebeu apontamento.
+   */
   const markLanded = (orderId: string) => {
     setLandedId(orderId);
     window.setTimeout(() => setLandedId(cur => (cur === orderId ? null : cur)), 1600);
@@ -1077,14 +1118,14 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
                   )}
                   {colCards.map((card, cardIdx) => (
                     <div
-                      key={card.q.order_id}
+                      key={card.key}
                       // Cascata com teto de 10: o 11º card já nasce pronto, senão
                       // uma coluna com 72 OPs levaria 1,6s pra terminar de entrar.
                       style={{ animationDelay: `${colIdx * 45 + 140 + Math.min(cardIdx, 10) * 22}ms` }}
                       className="kb-card-in"
                       ref={el => {
-                        if (el) cardEls.current.set(card.q.order_id, el);
-                        else cardEls.current.delete(card.q.order_id);
+                        if (el) cardEls.current.set(card.key, el);
+                        else cardEls.current.delete(card.key);
                       }}
                     >
                       <KanbanOpCard
@@ -1100,11 +1141,11 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
                         // inteiro parecia pré-selecionado.
                         highlighted={!selectMode && viewMode === 'destacar' && !!matchedIds && matchedIds.has(card.q.order_id)}
                         selectable={selectMode}
-                        selected={selectedIds.has(card.q.order_id)}
+                        selected={selectedIds.has(card.key)}
                         landed={landedId === card.q.order_id}
                         materialGateDate={gateMap?.get(card.q.order_id)?.ready_date ?? null}
                         materialGateReason={gateMap?.get(card.q.order_id)?.reason ?? null}
-                        onToggleSelect={() => toggleSelect(card.q.order_id)}
+                        onToggleSelect={() => toggleSelect(card.key)}
                         onDragStart={() => setDragCard(card)}
                         onDragEnd={() => { setDragCard(null); setDragOverSector(null); }}
                         onOpen={() => setDetailStage({ card })}

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { deriveCard } from '../kanbanDerive';
+import { deriveCard, deriveCards } from '../kanbanDerive';
 import type { OrderStage } from '@/hooks/useOrderStages';
 import type { QueueDetailRow } from '@/hooks/useProductionEngine';
 
@@ -155,5 +155,94 @@ describe('deriveCard — ordem da rota manda, não a config global', () => {
   it("normaliza 'Mesa' para 'Aviamento' na coluna do card", () => {
     const stages = [stage('Corte Palmilha', 1, done(288)), stage('Mesa', 4)];
     expect(deriveCard(queue(), stages, FLOW)!.column).toBe('Aviamento');
+  });
+});
+
+/**
+ * SETORES EM PARALELO (decisão do dono 06/08/2026, substitui a de 12/07).
+ *
+ * O motor agenda o mesmo `parallel_group` no mesmo nível — a OP roda em Corte
+ * Palmilha E Corte Forração no mesmo dia. O quadro serial deixava a coluna do
+ * par vazia: medido em 06/08, Corte Forração tinha 514 pares em 28 OPs e dizia
+ * "Sem OP aguardando".
+ */
+describe('deriveCards — setores em paralelo', () => {
+  // Espelha sector_settings de produção: grupo "corte" (10,20) colapsa em 10;
+  // grupo "costura_aviamento" (30,40,50) colapsa em 30; o resto é serial.
+  const LEVEL = new Map<string, number>([
+    ['Corte Palmilha', 10], ['Corte Forração', 10],
+    ['Costura Palmilha', 30], ['Costura Cabedal', 30], ['Aviamento', 30],
+    ['Silk', 60], ['Colagem', 70], ['Montagem', 80], ['Solagem', 90],
+    ['Acabamento', 100], ['Expedição', 110],
+  ]);
+
+  const rota = () => [
+    stage('Corte Palmilha', 1), stage('Corte Forração', 2),
+    stage('Costura Palmilha', 3), stage('Costura Cabedal', 4), stage('Aviamento', 5),
+    stage('Silk', 6), stage('Acabamento', 10),
+  ];
+
+  it('OP nova aparece nas DUAS colunas do grupo de corte', () => {
+    const cards = deriveCards(queue(), rota(), FLOW, LEVEL);
+    expect(cards.map(c => c.column)).toEqual(['Corte Palmilha', 'Corte Forração']);
+  });
+
+  it('cada card tem chave própria — seleção não vaza pro irmão', () => {
+    const cards = deriveCards(queue(), rota(), FLOW, LEVEL);
+    expect(new Set(cards.map(c => c.key)).size).toBe(2);
+    expect(cards[0].key).not.toBe(cards[1].key);
+  });
+
+  it('cada card aponta o irmão, pra não parecer duplicata', () => {
+    const cards = deriveCards(queue(), rota(), FLOW, LEVEL);
+    expect(cards[0].parallelSiblings).toEqual(['Corte Forração']);
+    expect(cards[1].parallelSiblings).toEqual(['Corte Palmilha']);
+  });
+
+  it('fechar UM setor do par deixa só o outro — não ressuscita o concluído', () => {
+    const stages = rota();
+    stages[0] = stage('Corte Palmilha', 1, done(288));
+    const cards = deriveCards(queue(), stages, FLOW, LEVEL);
+    expect(cards.map(c => c.column)).toEqual(['Corte Forração']);
+    expect(cards[0].parallelSiblings).toEqual([]);
+  });
+
+  it('grupo de 3 (costura + aviamento) gera 3 cards', () => {
+    const stages = rota();
+    stages[0] = stage('Corte Palmilha', 1, done(288));
+    stages[1] = stage('Corte Forração', 2, done(288));
+    const cards = deriveCards(queue(), stages, FLOW, LEVEL);
+    expect(cards.map(c => c.column)).toEqual(['Costura Palmilha', 'Costura Cabedal', 'Aviamento']);
+  });
+
+  it('setor serial continua com UM card só', () => {
+    const stages = rota();
+    for (let i = 0; i < 5; i++) stages[i] = stage(stages[i].stage_name, i + 1, done(288));
+    const cards = deriveCards(queue(), stages, FLOW, LEVEL);
+    expect(cards.map(c => c.column)).toEqual(['Silk']);
+  });
+
+  it('sem mapa de níveis, cai no comportamento serial antigo', () => {
+    expect(deriveCards(queue(), rota(), FLOW).map(c => c.column)).toEqual(['Corte Palmilha']);
+  });
+
+  it('OP terminada não gera card nenhum', () => {
+    const stages = rota().map(s => stage(s.stage_name, s.stage_order, done(288)));
+    expect(deriveCards(queue(), stages, FLOW, LEVEL)).toEqual([]);
+  });
+
+  it('o irmão herda a matemática de entrega — não inventa número próprio', () => {
+    const stages = rota();
+    // Corte Palmilha entregou parcial; ambos os cards do nível seguinte...
+    stages[0] = stage('Corte Palmilha', 1, done(288));
+    stages[1] = stage('Corte Forração', 2, done(0));   // pulado, fechado com zero
+    const cards = deriveCards(queue(), stages, FLOW, LEVEL);
+    // ...caem no grupo da costura, todos com o buraco do Corte Forração visível
+    expect(cards.map(c => c.column)).toEqual(['Costura Palmilha', 'Costura Cabedal', 'Aviamento']);
+    for (const c of cards) {
+      expect(c.delivered).toBe(0);
+      expect(c.isPartial).toBe(true);
+      expect(c.upstreamGap).toEqual({ sector: 'Corte Forração', missing: 288 });
+    }
   });
 });

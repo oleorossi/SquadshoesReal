@@ -328,3 +328,36 @@ O ceticismo pagou: **dois achados grandes foram derrubados** e não estão neste
 **Uma ressalva de método, para você saber o grau de confiança de cada item:** o revisor da lente do quadro falhou por erro de servidor. Os itens 9 e 10 vinham dessa lente e teriam sido descartados sem julgamento — **eu os verifiquei manualmente** (as consultas de estado da fila e a leitura direta de `ProducaoKanbanGestao.tsx:843-844`, `:923` e `:925`), e é por isso que estão aqui. Os itens 2 e 3, também dessa lente, sobreviveram porque a investigação de apontamento chegou às mesmas conclusões por outro caminho e **o cético dela confirmou** — achado encontrado duas vezes, por rotas independentes.
 
 Tudo foi apurado contra o banco de produção `ssvxfoybzmjlypnipqzn` em 06/08/2026, em modo somente leitura.
+
+---
+
+## Adendo — decisões tomadas pelo dono (06/08/2026)
+
+As quatro pendências da seção "DECISÃO DE PRODUTO" foram decididas no mesmo dia.
+Registrado aqui pra ninguém reabrir:
+
+| Pendência | Decisão | Onde foi feito |
+|---|---|---|
+| 240 pares de pedido morto na fila | **Excluir.** As 20 OPs viraram `Cancelada`; fila 54 → 34 OPs, 9.380 → 9.140 pares, 15 reservas devolvidas ao estoque | migration `20261212120000` |
+| OP reservada conta no gargalo? | **Sim, desde que o faturamento esteja chegando** — janela de 30 dias, e vencido conta (é o caso mais urgente, não o menos) | `countsForConstraint` em `ProducaoKanbanGestao.tsx` |
+| Pular setor pede confirmação humana? | **Sim.** Caixa de aceite nos dois diálogos; a porta de gravação recusa sem ela. No lote, o aceite reseta a cada OP | `applyPointing` + os dois diálogos |
+| Card em setor paralelo | **Opção C: card de verdade por setor.** Substitui a regra de 12/07/2026 ("um card por OP, na coluna mais avançada") | `deriveCards` em `kanbanDerive.ts` |
+
+⚠ **Duas armadilhas descobertas ao executar, que valem mais que as decisões:**
+
+**1. `Finalizado` fabrica produção fantasma.** Marcar as OPs do PV faturado como
+`Finalizado` dispara `tg_close_stages_on_op_finalize`, que fecha toda etapa
+pendente com `quantity_processed = quantity_total`. Nas 11 OPs sem produção
+nenhuma, isso criaria **132 pares fantasma em 11 setores** — a mesma mentira que
+este laudo tirou do Kanban, injetada direto no banco e contaminando
+produtividade e custo de mão de obra por setor. Quem barrou foi
+`fn_guard_manual_stage_transition`, e a transação inteira reverteu. Use
+`Cancelada` pra OP que nunca rodou.
+
+**2. Card por setor exige rechavear a tela.** Com a mesma OP em duas colunas,
+seleção em lote, refs de rolagem e halo tinham de deixar de ser chaveados por
+`order_id`. Ficaram por `card.key` (`order_id::setor`) — **menos o halo de
+pouso**, que segue por OP de propósito: depois do apontamento a OP muda de
+coluna, então a chave de origem não casaria com card nenhum e o realce sumiria.
+E os KPIs do topo passaram a contar OPs DISTINTAS, senão a OP em paralelo era
+contada duas vezes (a mesma dupla contagem que o laudo achou no "restam N pares").

@@ -36,6 +36,8 @@ function makeCard(over: {
 }): KanbanCardData {
   const columnStage = over.stages.find(s => s.stage_name === over.column) ?? null;
   return {
+    key: `op-1::${over.column}`,
+    parallelSiblings: [],
     q: { order_id: 'op-1', order_number: 'OP-1', quantity: 100 } as KanbanCardData['q'],
     stages: over.stages,
     column: over.column,
