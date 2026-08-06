@@ -24,6 +24,12 @@ export interface KanbanCardData {
   delivered: number;             // pares entregues pro setor do card
   isPartial: boolean;            // amarelo (R5.3)
   columnStage: OrderStage | null;
+  /**
+   * Primeiro setor ANTES da coluna do card que ficou com saldo aberto — o buraco
+   * que o pulo de setor deixa pra trás. `null` quando a rota até aqui está
+   * íntegra. Ver `deriveCard`.
+   */
+  upstreamGap: { sector: string; missing: number } | null;
 }
 
 /**
@@ -72,16 +78,45 @@ export function deriveCard(q: QueueDetailRow, stagesRaw: OrderStage[], flowOrder
   }
   if (!column) return null;
 
+  /**
+   * Pares ENTREGUES pro setor do card = o que o setor de trás de fato apontou.
+   *
+   * ⚠ Não voltar a ler `quantity_total` quando o front está `concluido`
+   * (auditoria 2026-08-06 contra o banco de produção): setor PULADO é fechado
+   * com `quantity_processed = 0`, então "concluído" NÃO implica "produzido".
+   * Trocar o número real (0) pelo nominal fazia o card da OP-2026-01191 anunciar
+   * `288/288` no Acabamento com 180 pares cortados — e, como `delivered` batia
+   * com o total, `isPartial` dava false: saía verde, sem o âmbar que existe
+   * exatamente pra esse caso (R5.3). Quem programa o turno alocava gente pra
+   * acabar 288 pares que não existiam.
+   *
+   * Setor concluído de verdade tem `quantity_processed == quantity_total`, então
+   * ler o processado não muda nada no caminho normal — só para de mentir no pulo.
+   */
   const delivered = !front ? 0
     : front === column ? column.quantity_processed
-    : (front.status === 'concluido' ? front.quantity_total : front.quantity_processed);
+    : front.quantity_processed;
   const total = column.quantity_total || q.quantity;
+
+  // Buraco deixado pra trás: primeiro setor ANTES da coluna que não fechou o
+  // total. É o saldo abandonado na origem quando se pula com quantidade parcial
+  // (OP-2026-01191: 108 pares nunca cortados; OP-2026-01195: 24).
+  const colIdx = stages.indexOf(column);
+  const gapStage = stages.slice(0, colIdx).find(s => s.quantity_processed < s.quantity_total) ?? null;
+  const upstreamGap = gapStage
+    ? { sector: norm(gapStage.stage_name), missing: gapStage.quantity_total - gapStage.quantity_processed }
+    : null;
+
   return {
     q, stages,
     column: norm(column.stage_name),
     front,
     delivered,
-    isPartial: !!front && delivered < total,
+    // Parcial também quando a rota ATRÁS ficou com saldo: o card pode ter
+    // recebido o lote cheio do setor imediatamente anterior e ainda assim haver
+    // pares que nunca passaram por um setor pulado lá atrás.
+    isPartial: !!front && (delivered < total || !!upstreamGap),
     columnStage: column,
+    upstreamGap,
   };
 }

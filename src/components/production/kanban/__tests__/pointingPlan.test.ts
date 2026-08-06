@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildPointingPlan, moveOptions } from '../pointingPlan';
+import { buildPointingPlan, moveOptions, skipBlockedByPartial } from '../pointingPlan';
 import { deriveCard, type KanbanCardData } from '../kanbanDerive';
 import type { OrderStage } from '@/hooks/useOrderStages';
 
@@ -43,6 +43,7 @@ function makeCard(over: {
     delivered: 0,
     isPartial: false,
     columnStage,
+    upstreamGap: null,
   };
 }
 
@@ -193,5 +194,50 @@ describe('moveOptions', () => {
     const opts = moveOptions(makeCard({ stages, column: 'Corte Palmilha', front: null }), FLOW);
     expect(opts.backOption).toBeNull();
     expect(opts.fwdOptions).toEqual(['Costura']);
+  });
+});
+
+/**
+ * Trava do PULO PARCIAL (auditoria 2026-08-06). Pular setor deixando saldo
+ * aberto na origem punha a OP em dois lugares ao mesmo tempo — o card ia
+ * embora e a origem ficava com pares pendurados, invisíveis no quadro — e,
+ * de quebra, desarmava as travas de quantidade do servidor pelo resto da rota
+ * (setor fechado com 0 vira "entregou tudo" pra elas).
+ */
+describe('skipBlockedByPartial', () => {
+  const stages = [
+    stage('Corte Palmilha', 1), stage('Corte Forração', 2),
+    stage('Costura', 3), stage('Aviamento', 4),
+  ];
+  const card = makeCard({ stages, column: 'Corte Palmilha' });
+
+  it('barra o pulo quando a origem não fecha', () => {
+    const plan = buildPointingPlan(card, 'Aviamento', FLOW);
+    expect(plan.skipped.length).toBeGreaterThan(0);
+    expect(skipBlockedByPartial(plan, 60)).toBe(true);   // 60 de 100
+  });
+
+  it('libera o pulo com o lote cheio', () => {
+    const plan = buildPointingPlan(card, 'Aviamento', FLOW);
+    expect(skipBlockedByPartial(plan, 100)).toBe(false);
+  });
+
+  it('não interfere em movimento sem pulo — parcial pro próximo setor é normal', () => {
+    const plan = buildPointingPlan(card, 'Corte Forração', FLOW);
+    expect(plan.skipped).toEqual([]);
+    expect(skipBlockedByPartial(plan, 60)).toBe(false);
+  });
+
+  it('não interfere em estorno', () => {
+    const comProgresso = [
+      stage('Corte Palmilha', 1, { status: 'concluido', quantity_processed: 100 }),
+      stage('Corte Forração', 2),
+    ];
+    const c = makeCard({
+      stages: comProgresso, column: 'Corte Forração', front: comProgresso[0],
+    });
+    const plan = buildPointingPlan(c, 'Corte Palmilha', FLOW);
+    expect(plan.isBackward).toBe(true);
+    expect(skipBlockedByPartial(plan, 10)).toBe(false);
   });
 });

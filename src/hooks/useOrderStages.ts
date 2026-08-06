@@ -366,9 +366,23 @@ export function useRealtimeOrderStages() {
       })
       .subscribe((status, err) => {
         if (status === 'CHANNEL_ERROR') console.warn('[realtime] order-stages:', err?.message);
+        // RE-SINCRONIZAR AO (RE)CONECTAR — não é redundante com a assinatura.
+        //
+        // Evento perdido é perdido: o Realtime não reentrega o que passou
+        // enquanto o canal estava caído. Sem isto, uma queda de rede de 20s no
+        // meio do turno deixava o quadro parado para SEMPRE (até alguém trocar
+        // de tela), mostrando a fábrica de antes da queda com cara de quadro
+        // vivo. Ao reassinar, buscamos o estado inteiro de novo.
+        if (status === 'SUBSCRIBED') invalidateProductionCaches(qc);
       });
+    // Aba volta do sono / máquina reconecta: o canal pode ter morrido em
+    // silêncio. O `online` do browser é o gatilho mais confiável que existe
+    // sem inventar heartbeat próprio.
+    const onOnline = () => invalidateProductionCaches(qc);
+    window.addEventListener('online', onOnline);
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
+      window.removeEventListener('online', onOnline);
       supabase.removeChannel(channel);
     };
   }, [qc]);

@@ -275,7 +275,12 @@ export default function ProducaoPlanejamento() {
                       <th className="text-left p-2">Referência</th>
                       <th className="text-left p-2">Cliente</th>
                       <th className="text-right p-2">Pares</th>
-                      <th className="text-right p-2">Restante</th>
+                      <th
+                        className="text-right p-2"
+                        title="Pares que ainda têm de sair da fábrica. Não é a soma do saldo de cada setor — isso contaria o mesmo par uma vez por setor (era o que a coluna mostrava até 06/08/2026: 15.552 numa OP de 1.728 pares)."
+                      >
+                        Restante
+                      </th>
                       <th className="text-left p-2">Prazo</th>
                       <th className="text-left p-2">Conclusão prevista</th>
                       <th className="text-left p-2">Sinais</th>
@@ -305,7 +310,7 @@ export default function ProducaoPlanejamento() {
                         <td className="p-2">{q.reference_name || '—'}{q.color ? ` · ${q.color}` : ''}</td>
                         <td className="p-2 text-muted-foreground">{q.client_name || '—'}</td>
                         <td className="p-2 text-right font-mono">{q.quantity}</td>
-                        <td className="p-2 text-right font-mono">{q.remaining_pairs}</td>
+                        <td className="p-2 text-right font-mono">{q.remaining_pairs_net}</td>
                         <td className="p-2">{fmtDate(q.due_date)}</td>
                         <td className="p-2">{fmtDate(q.projected_completion)}</td>
                         <td className="p-2">
@@ -321,9 +326,13 @@ export default function ProducaoPlanejamento() {
                                 <AlertTriangle className="h-2.5 w-2.5" /> +{q.late_days}d
                               </Badge>
                             )}
-                            {q.carryover_total > 0 && (
-                              <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-600 border-amber-500/30">
-                                {q.carryover_total} rolados
+                            {q.carryover_peak > 0 && (
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] bg-amber-500/10 text-amber-600 border-amber-500/30"
+                                title={`Maior saldo rolado num único setor. A soma entre setores dá ${q.carryover_total} pares·setor e conta o mesmo par várias vezes.`}
+                              >
+                                {q.carryover_peak} rolados
                               </Badge>
                             )}
                             {!q.due_date && (

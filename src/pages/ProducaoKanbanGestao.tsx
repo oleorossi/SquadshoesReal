@@ -79,7 +79,7 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
   // fábrica vazia. No chão de fábrica isso vira "não tem o que fazer hoje".
   const {
     data: queue = [], isLoading: queueLoading, isError: queueError,
-    error: queueErrObj, refetch: refetchQueue,
+    error: queueErrObj, refetch: refetchQueue, dataUpdatedAt: queueUpdatedAt,
   } = useProductionQueueDetail();
   const orderIds = useMemo(() => queue.map(q => q.order_id), [queue]);
   const {
@@ -266,11 +266,30 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
     for (const [s, n] of wipBySector) if (n > max) { max = n; best = s; }
     return best;
   }, [wipBySector]);
+  /**
+   * Setores REALMENTE ociosos abaixo do gargalo.
+   *
+   * ⚠ Coluna vazia não é setor parado. Setores do mesmo `parallel_group` rodam
+   * no mesmo nível do motor (Corte Palmilha + Corte Forração; Costura Palmilha +
+   * Costura Cabedal + Aviamento), mas o quadro é serial — UM card por OP, na
+   * coluna mais avançada (decisão do dono, entrevista 2026-07-12) —, então o par
+   * paralelo fica sem card enquanto o primeiro do grupo não fecha.
+   *
+   * Medido em 06/08/2026: Corte Forração tinha 514 pares em 28 OPs agendados
+   * PRA HOJE, coluna vazia, e a faixa anunciava "9 setores ociosos abaixo" —
+   * incluindo o segundo setor mais carregado do dia. O gestor lia isso e movia
+   * gente PARA FORA de um setor com o dia cheio. Agora quem tem pares agendados
+   * hoje não conta como ocioso.
+   */
   const idleBelowConstraint = useMemo(() => {
     if (!constraintSector) return 0;
     const cOrder = flowOrder.get(constraintSector) ?? 999;
-    return columns.filter(s => (flowOrder.get(s) ?? 999) > cOrder && !wipBySector.has(s)).length;
-  }, [constraintSector, columns, flowOrder, wipBySector]);
+    return columns.filter(s =>
+      (flowOrder.get(s) ?? 999) > cOrder
+      && !wipBySector.has(s)
+      && (gridToday.get(s)?.planned_pairs ?? 0) === 0,
+    ).length;
+  }, [constraintSector, columns, flowOrder, wipBySector, gridToday]);
 
   // OPs travadas por material: quantas e a data mais tardia em que o material
   // tem como chegar. É o que separa "atrasado porque a fábrica não deu conta"
@@ -393,7 +412,23 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
     || (stagesErrObj as Error | null)?.message
     || 'Falha ao consultar o servidor.';
   const retryLoad = () => { void refetchQueue(); void refetchStages(); };
-  const clock = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+
+  /**
+   * SELO DE FRESCOR — substitui o relógio nu.
+   *
+   * ⚠ O relógio andava sozinho, independente dos dados: quadro congelado ficava
+   * visualmente IDÊNTICO a quadro vivo (ponteiro andando, cards nas colunas,
+   * barras coloridas). E "parado" é o estado normal aqui — a produção aponta em
+   * rajadas curtas (em 14 dias medidos, apontamento em 7; num dia inteiro, zero
+   * até as 9h22). Sem o selo ninguém distingue "a fábrica não apontou" de
+   * "a conexão morreu". Agora a hora exibida é a do ÚLTIMO DADO que chegou.
+   */
+  const updatedAt = queueUpdatedAt ? new Date(queueUpdatedAt) : null;
+  const staleMin = updatedAt ? Math.floor((now.getTime() - updatedAt.getTime()) / 60_000) : null;
+  const stale = staleMin !== null && staleMin >= 5;
+  const updatedLabel = updatedAt
+    ? updatedAt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+    : '—';
 
   /** Máscaras de topo/pé da coluna: aparecem só quando há mais OP naquele
    *  sentido. É o aviso de "esta lista rola" antes de alguém tentar. */
@@ -595,7 +630,15 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
           <span className={kpis.parciais > 0 ? 'text-amber-600 dark:text-amber-400' : ''}>
             <strong className="text-sm">{kpis.parciais}</strong> <span className={kpis.parciais > 0 ? '' : 'text-muted-foreground'}>parciais</span>
           </span>
-          <span className="ed-display text-lg tabular-nums hidden lg:inline">{clock}</span>
+          <span
+            className={`hidden lg:inline tabular-nums ${stale ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}`}
+            title={stale
+              ? `Nenhum dado novo há ${staleMin} min. O quadro se atualiza sozinho a cada 90s e a cada apontamento — se este número continuar subindo, a conexão caiu.`
+              : 'Hora do último dado recebido do servidor (não é o relógio da máquina).'}
+          >
+            atualizado {updatedLabel}
+            {stale ? ` · há ${staleMin} min` : ''}
+          </span>
         </div>
       </div>
 
@@ -922,7 +965,15 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
                       className={`text-[10px] shrink-0 font-mono ${overWip ? 'border-red-500/50 bg-red-500/10 text-red-600 dark:text-red-400' : ''}`}
                       title={overWip ? `${colWip} OPs — acima do limite saudável de ${WIP_LIMIT}` : `${colWip} OPs`}
                     >
-                      {colCards.length}{overWip ? `/${WIP_LIMIT}` : ''}
+                      {/* ⚠ Numerador e denominador do MESMO universo.
+                          Antes o número vinha de `colCards` (filtrado pela busca)
+                          e o "/20" de `colWip` (o setor inteiro): buscar 1 OP no
+                          gargalo lia "1/20" — folga confortável — num setor com
+                          48 acumuladas, e a dica do mouse dizia 48. É o mesmo
+                          erro que o comentário do `colPares` acima já corrigiu
+                          no Σ pares; aqui tinha sobrado o híbrido. */}
+                      {filtering ? `${colCards.length} de ${colWip}` : colWip}
+                      {overWip && !filtering ? `/${WIP_LIMIT}` : ''}
                     </Badge>
                   </div>
                   {/* R2.7: MESMO número do Planejamento (v_production_schedule_grid).

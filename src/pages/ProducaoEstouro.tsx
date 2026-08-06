@@ -145,9 +145,13 @@ export default function ProducaoEstouro() {
                       <Badge variant="outline" className="text-[10px] bg-red-500/10 text-red-600 border-red-500/30">
                         +{o.late_days} dia{o.late_days > 1 ? 's' : ''} de atraso
                       </Badge>
-                      {o.carryover_total > 0 && (
-                        <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-600 border-amber-500/30">
-                          {o.carryover_total} rolados
+                      {o.carryover_peak > 0 && (
+                        <Badge
+                          variant="outline"
+                          className="text-[10px] bg-amber-500/10 text-amber-600 border-amber-500/30"
+                          title={`Maior saldo rolado num único setor. Somando todos os setores dá ${o.carryover_total} pares·setor — mas aí o mesmo par conta uma vez por setor.`}
+                        >
+                          {o.carryover_peak} rolados
                         </Badge>
                       )}
                     </div>
@@ -158,7 +162,7 @@ export default function ProducaoEstouro() {
                     <p className="text-xs mt-0.5">
                       Prazo: <strong>{fmtDate(o.due_date)}</strong> → previsto:{' '}
                       <strong className="text-red-600 dark:text-red-400">{fmtDate(o.projected_completion)}</strong>
-                      {' '}· restam {o.remaining_pairs} pares
+                      {' '}· restam {o.remaining_pairs_net} pares
                     </p>
                   </div>
                   {canEdit && (
@@ -240,7 +244,7 @@ export default function ProducaoEstouro() {
                       {o.order_number}
                     </Link>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      {o.reference_name}{o.color ? ` · ${o.color}` : ''} · restam {o.remaining_pairs} pares e o motor
+                      {o.reference_name}{o.color ? ` · ${o.color}` : ''} · restam {o.remaining_pairs_net} pares e o motor
                       não conseguiu agendar NENHUM dia — normalmente um setor anterior fora do fluxo
                       (ficha/configuração) sem ter entregue, ou setor 100% apontado sem finalizar.
                     </p>

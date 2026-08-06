@@ -65,7 +65,7 @@ export function KanbanOpCard({
   selectable = false, selected = false, onToggleSelect, photoUrl, landed = false,
   materialGateDate = null, materialGateReason = null,
 }: Props) {
-  const { q, front, delivered, isPartial, columnStage } = card;
+  const { q, front, delivered, isPartial, columnStage, upstreamGap } = card;
   const total = columnStage?.quantity_total || q.quantity;
   const idade = stageAge(columnStage);
   const thumbSize = compact ? 32 : 40;
@@ -156,6 +156,32 @@ export function KanbanOpCard({
               {isPartial && (
                 <Badge variant="outline" className="text-[9px] bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/40 shrink-0">
                   parcial
+                </Badge>
+              )}
+              {/* OP RESERVADA ainda não é trabalho liberado. Sem selo ela ficava
+                  idêntica a uma OP em produção: cai na primeira etapa (não tem
+                  apontamento), e como está atrasada há 59–94 dias, a ordenação
+                  "atrasadas primeiro" a jogava no TOPO da coluna com selo
+                  vermelho. Medido: 12 OPs / 548 pares, um quarto do gargalo. */}
+              {q.queue_status === 'na_fila' && (
+                <Badge
+                  variant="outline"
+                  className="text-[9px] bg-muted text-muted-foreground border-border shrink-0"
+                  title="OP reservada — ainda não liberada pra produção. Aparece aqui pra dar visibilidade, mas não é trabalho que a fábrica pode começar."
+                >
+                  reservada
+                </Badge>
+              )}
+              {/* Buraco deixado por um pulo de setor: pares que nunca passaram
+                  por um setor lá atrás. O card mostra o que ESTE setor recebeu;
+                  sem isto, o saldo órfão não aparecia em lugar nenhum. */}
+              {upstreamGap && (
+                <Badge
+                  variant="outline"
+                  className="text-[9px] bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/40 shrink-0"
+                  title={`${upstreamGap.missing} pares nunca passaram por ${upstreamGap.sector} — o setor ficou aberto quando a OP foi movida pra cá.`}
+                >
+                  −{upstreamGap.missing} em {upstreamGap.sector}
                 </Badge>
               )}
               {q.late_days > 0 && (

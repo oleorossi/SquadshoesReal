@@ -70,8 +70,17 @@ export interface QueueDetailRow {
   projected_completion: string | null;
   next_scheduled_date: string | null;
   has_ficha_override: boolean;
+  /** CARGA (pares·setor): o mesmo par conta uma vez por setor. É o que o MOTOR
+   *  usa pra dimensionar fila — não mostrar cru pra humano. Ver `carryover_peak`. */
   carryover_total: number;
+  /** CARGA (pares·setor). Pra tela, use `remaining_pairs_net`. */
   remaining_pairs: number;
+  /** PARES FÍSICOS que ainda têm de sair da fábrica (quantidade da OP menos o
+   *  que a última etapa da rota entregou). É o número honesto pra tela. */
+  remaining_pairs_net: number;
+  /** Maior saldo rolado num ÚNICO setor (a soma entre setores contava o mesmo
+   *  par várias vezes: "96 rolados" numa OP de 24 pares). */
+  carryover_peak: number;
   late_days: number;
   queue_position: number;
 }
@@ -89,8 +98,12 @@ export interface OverloadRow {
   due_date: string | null;
   projected_completion: string | null;
   late_days: number;
+  /** CARGA (pares·setor) — ver os comentários em `QueueDetailRow`. */
   carryover_total: number;
   remaining_pairs: number;
+  /** PARES FÍSICOS restantes / maior rolado num único setor. Use estes na tela. */
+  remaining_pairs_net: number;
+  carryover_peak: number;
 }
 
 export interface ScheduleOpRow {
@@ -112,6 +125,23 @@ export interface EngineRun {
   horizon_end: string | null;
   triggered_by: string | null;
 }
+
+/**
+ * PISO DE ATUALIZAÇÃO das telas do motor (auditoria 2026-08-06).
+ *
+ * O tempo real do quadro escuta `order_stages` — ou seja, cobre APONTAMENTO e
+ * mais nada. Tudo o que o motor reescreve sozinho passa longe dessa tabela e
+ * nunca chegava a um quadro já aberto:
+ *
+ *   • virada do dia (o recálculo automático das 00:05 reescreve a fila inteira)
+ *   • mudança de capacidade de setor  • reordenação/pin da fila
+ *   • mudança de ficha técnica que afeta capacidade
+ *
+ * A Central fica num monitor o dia todo, então ela atravessava a meia-noite
+ * mostrando a agenda de ONTEM: medido, 33 das 54 OPs mudam de data na virada.
+ * 90s é barato (são views pequenas) e fecha a janela sem inventar um canal novo.
+ */
+const ENGINE_REFETCH_MS = 90_000;
 
 export const ENGINE_QUERY_KEYS = [
   ['sector_settings'],
@@ -148,6 +178,7 @@ export function useSectorSettings() {
 export function useProductionScheduleGrid(fromISO: string, toISO: string) {
   return useQuery({
     queryKey: ['production_schedule_grid', fromISO, toISO],
+    refetchInterval: ENGINE_REFETCH_MS,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('v_production_schedule_grid')
@@ -199,6 +230,7 @@ export function useOpSchedule(orderId: string | null) {
 export function useProductionQueueDetail() {
   return useQuery({
     queryKey: ['production_queue_detail'],
+    refetchInterval: ENGINE_REFETCH_MS,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('v_production_queue_detail')
@@ -213,6 +245,7 @@ export function useProductionQueueDetail() {
 export function useProductionOverloads() {
   return useQuery({
     queryKey: ['production_overloads'],
+    refetchInterval: ENGINE_REFETCH_MS,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('v_production_overloads')
