@@ -1406,6 +1406,10 @@ export function LabelProductionTab() {
       }));
 
       const boxItems: BoxIdentificationData[] = [];
+      // Conjunto a que cada etiqueta pertence pra numerar o volume: PV +
+      // referência + cor. Guardado à parte porque BoxIdentificationData é o
+      // contrato do renderizador e não deve carregar chave de agrupamento.
+      const volumeSetKeys = new Map<BoxIdentificationData, string>();
       for (const group of boxGroups) {
         const refData = refDataMap.get(group.referenceId);
         for (const order of group.orders) {
@@ -1564,28 +1568,37 @@ export function LabelProductionTab() {
               pageNumber: undefined, // computado abaixo, depois do loop
               pageTotal: undefined,
             });
+            volumeSetKeys.set(
+              boxItems[boxItems.length - 1],
+              `${so?.order_number || ''}|${group.referenceId}|${(order.color || '').toUpperCase().trim()}`,
+            );
           }
         }
       }
-      // ── VOLUME n/N corre no PV (= NF), não por OP ───────────────────────
-      // Decisão do dono: tudo que está no pedido sai em uma NF só, então o
-      // conferente na doca conta os volumes do documento. Numerar por OP fazia
-      // o mesmo caminhão receber vários "1 de N".
+      // ── VOLUME n/N corre por REFERÊNCIA + COR ───────────────────────────
+      // Decisão do dono, revista em 05/08/2026 ao ver o maço impresso: numerar
+      // no PV inteiro fazia "15/45" e o conferente lia 45 caixas do MESMO
+      // produto. A carga é heterogênea — o que ele confere é "I100 PRETO: 15
+      // volumes", "I100 ROSADO: 15 volumes". Então cada conjunto se conta
+      // sozinho, 1/15 … 15/15.
       //
-      // ⚠ O N reflete as etiquetas DESTE job: imprimir só parte do PV numera
-      // sobre o subconjunto selecionado.
-      const volumeTotalByPv = new Map<string, number>();
+      // A chave inclui o PV: o mesmo par referência+cor em dois pedidos são
+      // duas cargas distintas e não podem compartilhar numeração.
+      //
+      // ⚠ O N reflete as etiquetas DESTE job: imprimir só parte de um conjunto
+      // numera sobre o subconjunto selecionado.
+      const volumeTotalBySet = new Map<string, number>();
       for (const it of boxItems) {
-        const pv = it.saleOrderNumber || it.orderNumber || '';
-        volumeTotalByPv.set(pv, (volumeTotalByPv.get(pv) || 0) + 1);
+        const k = volumeSetKeys.get(it) || '';
+        volumeTotalBySet.set(k, (volumeTotalBySet.get(k) || 0) + 1);
       }
-      const volumeSeqByPv = new Map<string, number>();
+      const volumeSeqBySet = new Map<string, number>();
       for (const it of boxItems) {
-        const pv = it.saleOrderNumber || it.orderNumber || '';
-        const seq = (volumeSeqByPv.get(pv) || 0) + 1;
-        volumeSeqByPv.set(pv, seq);
+        const k = volumeSetKeys.get(it) || '';
+        const seq = (volumeSeqBySet.get(k) || 0) + 1;
+        volumeSeqBySet.set(k, seq);
         it.boxNumber = seq;
-        it.totalBoxes = volumeTotalByPv.get(pv) || seq;
+        it.totalBoxes = volumeTotalBySet.get(k) || seq;
       }
 
       // Preenche pageNumber/pageTotal agora que conhecemos o total de etiquetas
