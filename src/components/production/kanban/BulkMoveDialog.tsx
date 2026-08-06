@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { NumberInput } from '@/components/ui/number-input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -58,6 +59,9 @@ export function BulkMoveDialog({
   const [results, setResults] = useState<StepResult[]>([]);
   const [pendingWarnings, setPendingWarnings] = useState<PointingWarning[] | null>(null);
   const [stepError, setStepError] = useState<string | null>(null);
+  /** Aceite do pulo de setor (decisão do dono 06/08/2026). Reseta a cada OP —
+   *  confirmar uma do lote NÃO confirma as seguintes. */
+  const [skipOk, setSkipOk] = useState(false);
   const finished = idx >= steps.length;
   const current = finished ? null : steps[idx];
 
@@ -66,6 +70,7 @@ export function BulkMoveDialog({
   useEffect(() => {
     if (!current) return;
     setStepError(null);
+    setSkipOk(false);
     setQty(current.plan.isBackward ? 0 : Math.max(0, current.plan.remaining));
   }, [current]);
 
@@ -85,7 +90,7 @@ export function BulkMoveDialog({
     try {
       const res = await applyPointing({
         card, plan, target, qty, apontar,
-        confirmedWarnings: confirmed,
+        confirmedWarnings: confirmed, skipAcknowledged: skipOk,
         origin: 'Via Kanban (lote)',
       });
       if (res.status === 'needs_confirmation') {
@@ -110,6 +115,7 @@ export function BulkMoveDialog({
   };
 
   // Mesma trava do diálogo de um card só: pular exige fechar a origem.
+  // O aceite reseta a cada OP do lote — confirmar uma não confirma as outras.
   const stepSkipBlocked = !!current && skipBlockedByPartial(current.plan, qty);
 
   const totalOk = results.filter(r => r.status === 'ok').length;
@@ -203,7 +209,16 @@ export function BulkMoveDialog({
                 {current.plan.skipped.length > 0 && !stepSkipBlocked && (
                   <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2.5 text-xs text-amber-700 dark:text-amber-300">
                     <strong>Pulando setor{current.plan.skipped.length > 1 ? 'es' : ''}:</strong> {current.plan.skipped.join(', ')}.
-                    Eles serão marcados como concluídos sem produção apontada — fica registrado.
+                    Eles serão marcados como concluídos <strong>sem produção apontada</strong> — fica
+                    registrado no histórico com o seu usuário.
+                    <label className="mt-2 flex items-start gap-2 font-medium cursor-pointer">
+                      <Checkbox
+                        checked={skipOk}
+                        onCheckedChange={v => setSkipOk(v === true)}
+                        className="mt-0.5 shrink-0"
+                      />
+                      <span>Confirmo que {current.plan.skipped.length > 1 ? 'esses setores não vão' : 'esse setor não vai'} produzir este lote.</span>
+                    </label>
                   </div>
                 )}
                 {stepSkipBlocked && (
@@ -270,7 +285,7 @@ export function BulkMoveDialog({
                     <Button variant="outline" className="h-11 md:h-10" onClick={onClose} disabled={apontar.isPending}>
                       Cancelar lote
                     </Button>
-                    <Button className="h-11 md:h-10" onClick={() => confirmStep()} disabled={apontar.isPending || stepSkipBlocked}>
+                    <Button className="h-11 md:h-10" onClick={() => confirmStep()} disabled={apontar.isPending || stepSkipBlocked || (current.plan.skipped.length > 0 && !skipOk)}>
                       {idx + 1 === steps.length ? 'Confirmar e finalizar' : 'Confirmar e seguir'}
                     </Button>
                   </div>
