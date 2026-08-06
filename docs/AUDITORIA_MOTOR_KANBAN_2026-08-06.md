@@ -338,7 +338,7 @@ Registrado aqui pra ninguém reabrir:
 
 | Pendência | Decisão | Onde foi feito |
 |---|---|---|
-| 240 pares de pedido morto na fila | **Excluir.** As 20 OPs viraram `Cancelada`; fila 54 → 34 OPs, 9.380 → 9.140 pares, 15 reservas devolvidas ao estoque | migration `20261212120000` |
+| 240 pares de pedido morto na fila | **Excluir.** As 20 OPs viraram `Cancelada`; fila 54 → 34 OPs, 9.380 → 9.140 pares, 15 reservas devolvidas ao estoque | migration `20261216120000` |
 | OP reservada conta no gargalo? | **Sim, desde que o faturamento esteja chegando** — janela de 30 dias, e vencido conta (é o caso mais urgente, não o menos) | `countsForConstraint` em `ProducaoKanbanGestao.tsx` |
 | Pular setor pede confirmação humana? | **Sim.** Caixa de aceite nos dois diálogos; a porta de gravação recusa sem ela. No lote, o aceite reseta a cada OP | `applyPointing` + os dois diálogos |
 | Card em setor paralelo | **Opção C: card de verdade por setor.** Substitui a regra de 12/07/2026 ("um card por OP, na coluna mais avançada") | `deriveCards` em `kanbanDerive.ts` |
@@ -361,3 +361,30 @@ pouso**, que segue por OP de propósito: depois do apontamento a OP muda de
 coluna, então a chave de origem não casaria com card nenhum e o realce sumiria.
 E os KPIs do topo passaram a contar OPs DISTINTAS, senão a OP em paralelo era
 contada duas vezes (a mesma dupla contagem que o laudo achou no "restam N pares").
+
+### Nota de migration — a colisão de carimbo aconteceu de novo (06/08/2026)
+
+As duas migrations desta auditoria nasceram como `20261210120000` e
+`20261212120000`. Na hora de criar, conferi as **duas** fontes que o CLAUDE.md
+manda conferir e elas concordavam (topo registrado = maior arquivo local =
+`20261208120000`). Ainda assim colidiu: **outra sessão registrou
+`20261210120000`** (`catalogo-recadastro-de-cor-e-rls`) enquanto este trabalho
+acontecia.
+
+⚠ **A regra das duas fontes não imuniza contra sessão paralela** — ela só fecha
+a janela entre repo e banco num instante. Em worktree compartilhado, reconsulte
+**na hora de aplicar**, não só na hora de criar o arquivo.
+
+Resolvido pela regra do projeto: o arquivo **já registrado** manteve o carimbo,
+e só os meus (não registrados sob ele) foram renomeados com `git mv`, conteúdo
+intacto, preservando a ordem relativa:
+
+| era | virou |
+|---|---|
+| `20261210120000_cascata-cancelamento-pv-e-metricas-honestas` | `20261214120000` |
+| `20261212120000_limpar-ops-de-pv-morto-na-fila` | `20261216120000` |
+
+E o registro foi alinhado ao nome do arquivo: aplicadas via MCP, elas tinham
+sido gravadas sob o carimbo da data real (`20260806170528` e `20260806174945`),
+que é MENOR que o topo da sequência sintética — um `db push` as re-executaria.
+Depois do alinhamento: zero carimbos duplicados nos arquivos e zero no banco.
