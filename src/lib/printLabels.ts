@@ -296,16 +296,32 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
 
     // ─── GRADE (tabela rodapé) ─────────────────────────────
     const gradeCols = item.grade.length + 1; // +1 para a coluna TOTAL
-    // "TOTAL" é ~2,5× mais largo que o antigo "TT" e a coluna é 1fr — numa grade
-    // larga ela estreita e o rótulo seria CORTADO em silêncio (o print não vaza,
-    // só some). Encolhe por faixa de colunas, sem furar o piso de 6,5px de
-    // rótulo mono do PRINT_SPEC.
-    const totalLabelPx = gradeCols <= 9 ? 11 : gradeCols <= 13 ? 9.5 : 8;
+    /**
+     * Fonte da grade — estratégia HIERÁRQUICA (opção B, escolhida pelo dono em
+     * 05/08/2026 sobre a escala uniforme e a quebra em duas faixas).
+     *
+     * A coluna é `1fr`: quanto mais numerações, mais estreita, e o que não cabe
+     * é CORTADO em silêncio (print não vaza, só some). Quando precisa encolher,
+     * encolhe na ordem de prioridade do PRINT_SPEC:
+     *
+     *   QUANTIDADE  — o número que o operador conta. Resiste até o fim (22→18).
+     *   numeração   — identifica, mas é 2 dígitos e tolera menos corpo (18→12).
+     *   TOTAL       — rótulo, o primeiro a ceder (11→8).
+     *
+     * ⚠ Medido: em grade larga quem aperta a coluna NÃO é o número da grade, é
+     * a palavra "TOTAL" (5 chars em mono contra 2 dígitos em Anton). Por isso
+     * ela cai mais rápido que os números.
+     *
+     * Pisos do PRINT_SPEC respeitados: grade Anton ≥ 12px, rótulo mono ≥ 6,5px.
+     */
+    const sizeFontPx   = gradeCols <= 8  ? 18 : gradeCols <= 12 ? 15 : gradeCols <= 16 ? 13 : 12;
+    const qtyFontPx    = gradeCols <= 12 ? 22 : gradeCols <= 16 ? 20 : 18;
+    const totalLabelPx = gradeCols <= 9  ? 11 : gradeCols <= 13 ? 9.5 : 8;
     const sizeCells = item.grade.map(g =>
-      `<div class="cell">${escapeHtml(String(g.size))}</div>`,
+      `<div class="cell" style="font-size:${sizeFontPx}px;">${escapeHtml(String(g.size))}</div>`,
     ).join('');
     const qtyCells = item.grade.map(g =>
-      `<div class="cell">${g.qty}</div>`,
+      `<div class="cell" style="font-size:${qtyFontPx}px;">${g.qty}</div>`,
     ).join('');
     const totalQty = item.grade.reduce((sum, g) => sum + g.qty, 0);
 
@@ -359,7 +375,7 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
           <div class="glabel">TAMANHO</div>
           ${sizeCells}<div class="cell total tam-total" style="font-size:${totalLabelPx}px;">TOTAL</div>
           <div class="glabel last">QUANTIDADE</div>
-          ${qtyCells}<div class="cell total qtd-total">${totalQty}</div>
+          ${qtyCells}<div class="cell total qtd-total" style="font-size:${qtyFontPx}px;">${totalQty}</div>
         </div>
 
         <div class="footer">
