@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildPointingPlan, moveOptions, skipBlockedByPartial } from '../pointingPlan';
+import { buildPointingPlan, moveOptions, skipBlockedByPartial, applyPointing } from '../pointingPlan';
 import { deriveCard, type KanbanCardData } from '../kanbanDerive';
 import type { OrderStage } from '@/hooks/useOrderStages';
 
@@ -239,5 +239,53 @@ describe('skipBlockedByPartial', () => {
     const plan = buildPointingPlan(c, 'Corte Palmilha', FLOW);
     expect(plan.isBackward).toBe(true);
     expect(skipBlockedByPartial(plan, 10)).toBe(false);
+  });
+});
+
+/**
+ * Pular setor exige ACEITE HUMANO explícito (decisão do dono 06/08/2026).
+ * Antes, `applyPointing` auto-confirmava `limite_setor_anterior` e
+ * `material_nao_reservado` pelos setores pulados: os avisos do servidor eram
+ * levantados e engolidos aqui dentro, sem ninguém ver.
+ */
+describe('applyPointing — confirmação humana do pulo', () => {
+  const stages = [
+    stage('Corte Palmilha', 1), stage('Corte Forração', 2),
+    stage('Costura', 3), stage('Aviamento', 4),
+  ];
+  const card = makeCard({ stages, column: 'Corte Palmilha' });
+  const fakeApontar = () => {
+    const calls: unknown[] = [];
+    return {
+      calls,
+      mutateAsync: async (p: unknown) => { calls.push(p); return { success: true }; },
+    } as never;
+  };
+
+  it('recusa o pulo sem aceite, SEM gravar nada', async () => {
+    const apontar = fakeApontar();
+    const plan = buildPointingPlan(card, 'Aviamento', FLOW);
+    const res = await applyPointing({ card, plan, target: 'Aviamento', qty: 100, apontar });
+    expect(res.status).toBe('blocked');
+    expect((apontar as unknown as { calls: unknown[] }).calls).toHaveLength(0);
+  });
+
+  it('com aceite, grava a origem e fecha os pulados', async () => {
+    const apontar = fakeApontar();
+    const plan = buildPointingPlan(card, 'Aviamento', FLOW);
+    const res = await applyPointing({
+      card, plan, target: 'Aviamento', qty: 100, apontar, skipAcknowledged: true,
+    });
+    expect(res.status).toBe('ok');
+    // 1 apontamento na origem + 2 setores pulados
+    expect((apontar as unknown as { calls: unknown[] }).calls).toHaveLength(3);
+  });
+
+  it('movimento sem pulo não pede aceite nenhum', async () => {
+    const apontar = fakeApontar();
+    const plan = buildPointingPlan(card, 'Corte Forração', FLOW);
+    const res = await applyPointing({ card, plan, target: 'Corte Forração', qty: 100, apontar });
+    expect(res.status).toBe('ok');
+    expect((apontar as unknown as { calls: unknown[] }).calls).toHaveLength(1);
   });
 });

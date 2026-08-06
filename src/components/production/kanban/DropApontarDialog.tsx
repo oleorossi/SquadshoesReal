@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { NumberInput } from '@/components/ui/number-input';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -61,6 +62,8 @@ export function DropApontarDialog({
 
   const [qty, setQty] = useState<number>(() => (isBackward ? 0 : Math.max(0, remaining)));
   const [pendingWarnings, setPendingWarnings] = useState<PointingWarning[] | null>(null);
+  // Aceite explícito do pulo de setor (decisão do dono 06/08/2026).
+  const [skipOk, setSkipOk] = useState(false);
 
   // Entrega incompleta = o setor recebe menos do que o total da OP. É o que
   // faz o card nascer ÂMBAR no destino, mostrando "84/120" (R5.3).
@@ -105,7 +108,10 @@ export function DropApontarDialog({
   const doApontar = async (confirmed?: string[]) => {
     if (qty === 0) { onClose(); return; }
     try {
-      const res = await applyPointing({ card, plan, target: effTarget, qty, apontar, confirmedWarnings: confirmed });
+      const res = await applyPointing({
+        card, plan, target: effTarget, qty, apontar,
+        confirmedWarnings: confirmed, skipAcknowledged: skipOk,
+      });
       if (res.status === 'needs_confirmation') {
         setPendingWarnings(res.warnings);
         return;
@@ -240,7 +246,22 @@ export function DropApontarDialog({
             {skipped.length > 0 && !skipBlocked && (
               <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2.5 text-xs text-amber-700 dark:text-amber-300">
                 <strong>Pulando setor{skipped.length > 1 ? 'es' : ''}:</strong> {skipped.join(', ')}.
-                Eles serão marcados como concluídos sem produção apontada — fica registrado.
+                Eles serão marcados como concluídos <strong>sem produção apontada</strong> — fica registrado
+                no histórico com o seu usuário.
+                {/* Aceite explícito: antes o código auto-confirmava os avisos do
+                    servidor por baixo do pano. Fechar setor sem produção é
+                    decisão de fábrica (decisão do dono 06/08/2026). */}
+                <label className="mt-2 flex items-start gap-2 font-medium cursor-pointer">
+                  <Checkbox
+                    checked={skipOk}
+                    onCheckedChange={v => setSkipOk(v === true)}
+                    className="mt-0.5 shrink-0"
+                  />
+                  <span>
+                    Confirmo que {skipped.length > 1 ? 'esses setores não vão' : 'esse setor não vai'} produzir
+                    {' '}est{skipped.length > 1 ? 'es' : 'e'} lote.
+                  </span>
+                </label>
               </div>
             )}
             {skipBlocked && (
@@ -399,7 +420,7 @@ export function DropApontarDialog({
               <Button
                 className="h-11 md:h-10"
                 onClick={() => doApontar()}
-                disabled={apontar.isPending || qty === 0 || skipBlocked}
+                disabled={apontar.isPending || qty === 0 || skipBlocked || (skipped.length > 0 && !skipOk)}
               >
                 {isBackward ? 'Estornar' : 'Apontar'}
               </Button>

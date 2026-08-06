@@ -52,6 +52,35 @@ function capacityTone(utilization: number): { pct: number; bar: string; text: st
 }
 
 /**
+ * Janela em que o faturamento conta como "chegando" (decisão do dono
+ * 06/08/2026). O sistema fatura por SEMANA dentro de um mês
+ * (`sale_orders.billing_week` = '2026-05-S3'), então um mês à frente é o
+ * horizonte natural — e `production_queue.due_date` já é derivada desses campos
+ * do PV pelo gatilho `tg_resync_queue_due_on_pv_change`.
+ */
+const FATURAMENTO_PROXIMO_DIAS = 30;
+
+/**
+ * Esta OP conta pro GARGALO e pro WIP?
+ *
+ * OP em produção sempre conta. OP apenas RESERVADA (`na_fila`) conta só quando
+ * o faturamento está chegando — inclusive quando já venceu, que é o caso mais
+ * urgente, não o menos (decisão do dono 06/08/2026).
+ *
+ * ⚠ Isto muda só a CONTAGEM de gargalo/WIP; o card continua no quadro, com o
+ * selo "reservada". Antes, 12 OPs reservadas (548 pares) sem apontamento nenhum
+ * caíam na primeira etapa e inflavam o gargalo declarado de 36 pra 48 — o gestor
+ * dimensionava reforço de turno por um número 33% maior que o trabalho liberado.
+ */
+function countsForConstraint(c: KanbanCardData): boolean {
+  if (c.q.queue_status !== 'na_fila') return true;
+  if (!c.q.due_date) return false;          // reservada sem prazo não pressiona nada
+  const limite = new Date();
+  limite.setDate(limite.getDate() + FATURAMENTO_PROXIMO_DIAS);
+  return new Date(`${c.q.due_date}T12:00:00`) <= limite;
+}
+
+/**
  * CENTRAL DE PRODUÇÃO — o quadro de OPs por setor. Uma implementação só, duas
  * molduras:
  *
@@ -258,7 +287,10 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
   // ponto que trava o fluxo vale mais que qualquer número solto.
   const wipBySector = useMemo(() => {
     const m = new Map<string, number>();
-    for (const c of allCards) m.set(c.column, (m.get(c.column) || 0) + 1);
+    for (const c of allCards) {
+      if (!countsForConstraint(c)) continue;
+      m.set(c.column, (m.get(c.column) || 0) + 1);
+    }
     return m;
   }, [allCards]);
   const constraintSector = useMemo(() => {
@@ -883,7 +915,10 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
             const capDenom = g ? (g.effective_capacity_pairs || g.capacity_pairs) : 0;
             const capFromFicha = !!g && g.ops_ficha_override > 0;
             const colWip = colAll.length;
-            const overWip = colWip > WIP_LIMIT;
+            // O sinal de acúmulo usa a MESMA contagem do gargalo (`wipBySector`),
+            // que exclui OP reservada com faturamento distante — senão a coluna
+            // ficaria vermelha por trabalho que a fábrica não pode começar.
+            const overWip = (wipBySector.get(sector) || 0) > WIP_LIMIT;
             const isConstraint = sector === constraintSector;
             // Coluna ociosa (0 OP e sem busca ativa) colapsa em faixa fina no
             // desktop — abre no hover. No celular (swipe) mantém largura normal.

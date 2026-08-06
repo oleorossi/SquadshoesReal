@@ -156,10 +156,15 @@ export async function applyPointing(params: {
   qty: number;
   apontar: ReturnType<typeof useApontarProducao>;
   confirmedWarnings?: string[];
+  /**
+   * O humano marcou explicitamente que aceita fechar os setores pulados sem
+   * produção (decisão do dono 06/08/2026). Obrigatório quando há pulo.
+   */
+  skipAcknowledged?: boolean;
   /** Prefixo da nota do ledger (ex.: 'Via Kanban' / 'Via Kanban (lote)'). */
   origin?: string;
 }): Promise<ApplyResult> {
-  const { card, plan, target, qty, apontar, confirmedWarnings, origin = 'Via Kanban' } = params;
+  const { card, plan, target, qty, apontar, confirmedWarnings, skipAcknowledged, origin = 'Via Kanban' } = params;
   const { pointedStage, isBackward, skipped } = plan;
   if (!pointedStage) return { status: 'noop' };
 
@@ -173,6 +178,21 @@ export async function applyPointing(params: {
       status: 'blocked',
       reason: `Pra pular ${skipped.join(', ')} é preciso fechar ${norm(pointedStage.stage_name)} `
         + `(${plan.remaining} pares). Com ${qty}, sobrariam ${plan.remaining - qty} pares sem passar por lá.`,
+    };
+  }
+
+  // CONFIRMAÇÃO HUMANA DO PULO (decisão do dono 06/08/2026).
+  //
+  // ⚠ Antes o código auto-confirmava `limite_setor_anterior` e
+  // `material_nao_reservado` pelos setores pulados — os avisos do servidor eram
+  // levantados e engolidos aqui dentro, sem ninguém ver. Fechar setor sem
+  // produção é decisão de fábrica, não efeito colateral de um arraste: agora
+  // exige um aceite explícito na tela.
+  if (skipped.length > 0 && !skipAcknowledged) {
+    return {
+      status: 'blocked',
+      reason: `Pular ${skipped.join(', ')} fecha ${skipped.length > 1 ? 'esses setores' : 'esse setor'} `
+        + 'sem produção apontada. Confirme na tela que é isso mesmo.',
     };
   }
 
