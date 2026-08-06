@@ -31,8 +31,28 @@ const PAGE_H = 1414; // proporção A4 paisagem
 const BAND_W = 110;
 const TEXT_DARK = '#28282a';
 const TEXT_GRAY = '#5f5f64';
+/** Faixa reservada, dentro da caixa, pro nome da cor sob a foto. */
+export const LABEL_H = 64;
 
-type Box = { x0: number; y0: number; x1: number; y1: number };
+export type Box = { x0: number; y0: number; x1: number; y1: number };
+
+/** Área útil das fotos numa página (o que sobra depois da faixa e do rodapé). */
+export const CONTENT_AREA: Box = { x0: BAND_W + 90, y0: 200, x1: PAGE_W - 90, y1: PAGE_H - 160 };
+
+/** Cores por página aceitas pela lâmina. */
+export const MIN_PER_PAGE = 1;
+export const MAX_PER_PAGE = 6;
+
+/**
+ * Divide as fotos em páginas de `perPage`. Exportada (e não inline no
+ * `buildCatalogSheets`) pra ser testável sem canvas — jsdom não tem 2D context.
+ */
+export function paginateItems<T>(items: T[], perPage: number): T[][] {
+  const n = Math.max(MIN_PER_PAGE, Math.min(MAX_PER_PAGE, Math.floor(perPage) || 3));
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += n) chunks.push(items.slice(i, i + n));
+  return chunks;
+}
 
 function loadImage(url: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -48,7 +68,7 @@ function loadImage(url: string): Promise<HTMLImageElement> {
  * Retângulos das fotos na área útil. n=3 replica o layout da referência
  * (1 grande à esquerda, 2 empilhadas à direita); demais usam grade.
  */
-function layoutBoxes(n: number, area: Box): Box[] {
+export function layoutBoxes(n: number, area: Box): Box[] {
   const w = area.x1 - area.x0;
   const h = area.y1 - area.y0;
   const pad = 30;
@@ -125,9 +145,8 @@ async function drawItem(
   item: CatalogSheetItem,
   box: Box,
 ): Promise<void> {
-  const labelH = 64;
   const slotW = box.x1 - box.x0;
-  const slotH = box.y1 - box.y0 - labelH;
+  const slotH = box.y1 - box.y0 - LABEL_H;
 
   const img = await loadImage(item.imageUrl);
   const scale = Math.min(slotW / img.width, slotH / img.height);
@@ -158,7 +177,6 @@ function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
  */
 export async function buildCatalogSheets(spec: CatalogSheetSpec): Promise<Blob[]> {
   if (!spec.items.length) throw new Error('Nenhuma foto selecionada pra lâmina.');
-  const perPage = Math.max(1, Math.min(6, Math.floor(spec.perPage) || 3));
 
   // Garante que as fontes de display estejam prontas antes de desenhar.
   try {
@@ -170,10 +188,7 @@ export async function buildCatalogSheets(spec: CatalogSheetSpec): Promise<Blob[]
     // fallback silencioso — canvas usa a família substituta
   }
 
-  const chunks: CatalogSheetItem[][] = [];
-  for (let i = 0; i < spec.items.length; i += perPage) {
-    chunks.push(spec.items.slice(i, i + perPage));
-  }
+  const chunks = paginateItems(spec.items, spec.perPage);
 
   const blobs: Blob[] = [];
   for (const chunk of chunks) {
@@ -187,8 +202,7 @@ export async function buildCatalogSheets(spec: CatalogSheetSpec): Promise<Blob[]
     ctx.fillRect(0, 0, PAGE_W, PAGE_H);
     drawFrame(ctx, spec);
 
-    const area: Box = { x0: BAND_W + 90, y0: 200, x1: PAGE_W - 90, y1: PAGE_H - 160 };
-    const boxes = layoutBoxes(chunk.length, area);
+    const boxes = layoutBoxes(chunk.length, CONTENT_AREA);
     for (let i = 0; i < chunk.length; i++) {
       await drawItem(ctx, chunk[i], boxes[i]);
     }

@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
-  CircleNotch as Loader2, Images, Sparkle as Sparkles, Trash, UploadSimple,
+  CircleNotch as Loader2, Images, Sparkle as Sparkles, Trash, UploadSimple, X,
 } from '@phosphor-icons/react';
 import { supabase } from '@/integrations/supabase/client';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
@@ -17,9 +17,12 @@ import { CatalogColorPicker } from '@/components/catalog/CatalogColorPicker';
 import { CatalogSheetBuilder } from '@/components/catalog/CatalogSheetBuilder';
 import { CatalogColor, useCatalogColors } from '@/hooks/useCatalogColors';
 import {
-  CatalogPhoto, uploadRawCatalogPhoto, useCatalogPhotos,
+  CatalogGenerationError, CatalogPhoto, uploadRawCatalogPhoto, useCatalogPhotos,
   useDeleteCatalogPhoto, useGenerateCatalogPhoto,
 } from '@/hooks/useCatalogPhotos';
+
+/** Falhas seguidas antes de abortar a fila. */
+const MAX_FALHAS_SEGUIDAS = 2;
 
 interface RawUpload {
   url: string;
@@ -41,6 +44,8 @@ export default function Catalogo() {
   const [selectedColors, setSelectedColors] = useState<Map<string, CatalogColor>>(new Map());
   const [extraInstructions, setExtraInstructions] = useState('');
   const [progress, setProgress] = useState<string | null>(null);
+  const [lastError, setLastError] = useState<{ message: string; detail?: string } | null>(null);
+  const cancelRef = useRef(false);
 
   const [sheetSelection, setSheetSelection] = useState<string[]>([]);
 
@@ -120,8 +125,14 @@ export default function Catalogo() {
       return;
     }
     const colorsToRun = [...selectedColors.values()];
+    cancelRef.current = false;
+    setLastError(null);
     let ok = 0;
-    for (let i = 0; i < colorsToRun.length; i++) {
+    let falhasSeguidas = 0;
+    let abortadoPorFalha = false;
+    let i = 0;
+    for (; i < colorsToRun.length; i++) {
+      if (cancelRef.current) break;
       const color = colorsToRun[i];
       setProgress(`Gerando ${color.nome}… (${i + 1}/${colorsToRun.length}) — cada cor leva ~1 min`);
       try {
@@ -134,12 +145,35 @@ export default function Catalogo() {
           extraInstructions,
         });
         ok++;
+        falhasSeguidas = 0;
       } catch (err) {
-        toast.error(`${color.nome}: ${err instanceof Error ? err.message : 'falha na geração'}`);
+        falhasSeguidas++;
+        const message = err instanceof Error ? err.message : 'falha na geração';
+        const detail = err instanceof CatalogGenerationError ? err.detail : undefined;
+        setLastError({ message, detail });
+        toast.error(`${color.nome}: ${message}`, { duration: 10_000 });
+        // Falha sistemática (chave sem cota, modelo errado, imagem inválida) se
+        // repete pra TODA cor. Sem esta parada, 22 cores viravam 22 chamadas e
+        // 22 toasts idênticos — e nenhuma delas ia funcionar.
+        if (falhasSeguidas >= MAX_FALHAS_SEGUIDAS) {
+          abortadoPorFalha = true;
+          break;
+        }
       }
     }
+    const cancelado = cancelRef.current;
+    cancelRef.current = false;
     setProgress(null);
     if (ok > 0) toast.success(`${ok} de ${colorsToRun.length} cor(es) gerada(s)!`);
+    if (abortadoPorFalha) {
+      toast.error(
+        `Fila interrompida após ${MAX_FALHAS_SEGUIDAS} falhas seguidas — ` +
+        `${colorsToRun.length - i - 1} cor(es) não foram tentadas. Resolva o erro acima e gere de novo.`,
+        { duration: 12_000 },
+      );
+    } else if (cancelado) {
+      toast.info(`Geração cancelada — ${colorsToRun.length - i} cor(es) não foram tentadas.`);
+    }
   };
 
   return (
@@ -239,14 +273,36 @@ export default function Catalogo() {
           <CardTitle className="text-sm uppercase tracking-wide">3 · Gerar fotos por IA</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex items-center gap-3">
-            <Button onClick={handleGenerate} disabled={!!progress}>
+          <div className="flex flex-wrap items-center gap-3">
+            <Button onClick={handleGenerate} disabled={!!progress || selectedColors.size === 0}>
               {progress
                 ? <><Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> Gerando…</>
                 : <><Sparkles className="mr-1.5 h-4 w-4" /> Gerar {selectedColors.size || ''} cor{selectedColors.size === 1 ? '' : 'es'}</>}
             </Button>
+            {progress && (
+              <Button variant="outline" size="sm" onClick={() => { cancelRef.current = true; }}>
+                <X className="mr-1.5 h-4 w-4" /> Cancelar
+              </Button>
+            )}
             {progress && <span className="text-sm text-muted-foreground">{progress}</span>}
           </div>
+
+          {lastError && (
+            <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm">
+              <p className="font-semibold text-red-600 dark:text-red-400">Falha na geração</p>
+              <p className="mt-1 text-foreground">{lastError.message}</p>
+              {lastError.detail && (
+                <details className="mt-2">
+                  <summary className="cursor-pointer text-xs text-muted-foreground">
+                    Resposta crua do Gemini (pra diagnóstico)
+                  </summary>
+                  <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-all rounded bg-muted/50 p-2 font-mono text-[11px]">
+                    {lastError.detail}
+                  </pre>
+                </details>
+              )}
+            </div>
+          )}
 
           {photosLoading ? (
             <p className="text-sm text-muted-foreground">Carregando galeria…</p>

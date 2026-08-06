@@ -45,6 +45,13 @@ export function useCatalogColors() {
   });
 }
 
+/**
+ * Cadastra ou REATIVA a cor. Vai por RPC, não por `.insert()`, porque a remoção
+ * é soft-delete (`ativo = false`) e o índice UNIQUE em `lower(trim(nome))` não
+ * filtra por ativo: um insert direto de cor já removida estourava
+ * `duplicate key…` cru no toast. A `upsert_catalog_color` ressuscita a linha
+ * (migration 20261210120000).
+ */
 export function useAddCatalogColor() {
   const qc = useQueryClient();
   return useMutation({
@@ -52,12 +59,12 @@ export function useAddCatalogColor() {
       const nome = form.nome.trim().toUpperCase();
       if (!nome) throw new Error('Dê um nome pra cor.');
       if (!HEX_RE.test(form.hex)) throw new Error('Hex inválido (use #RRGGBB).');
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- tabela nova fora do types.ts gerado
-      const { data, error } = await (supabase as any)
-        .from('catalog_colors')
-        .insert({ nome, hex: form.hex.toUpperCase(), grupo: form.grupo || 'Minhas cores', ordem: 99 })
-        .select()
-        .single();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- RPC nova fora do types.ts gerado
+      const { data, error } = await (supabase as any).rpc('upsert_catalog_color', {
+        p_nome: nome,
+        p_hex: form.hex.toUpperCase(),
+        p_grupo: form.grupo || 'Minhas cores',
+      });
       if (error) throw error;
       return data as CatalogColor;
     },

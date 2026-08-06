@@ -27,6 +27,89 @@ const json = (body: unknown, status = 200) =>
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 
+/** Nunca vazar a chave num corpo de erro devolvido ao browser. */
+const redact = (s: string) => s.replace(/AIza[0-9A-Za-z\-_]{10,}/g, "AIza…REDACTED");
+
+/**
+ * Traduz o erro do Gemini pro que o operador precisa FAZER.
+ *
+ * ⚠ Um 429 do Google NÃO é sempre "muitas requisições". Modelo de saída de
+ * imagem não tem cota no free tier: a chave sem billing leva 429 na PRIMEIRA
+ * chamada, e a violação vem com quotaValue "0" / quotaId "…-FreeTier". Colapsar
+ * os dois casos em "tente em alguns minutos" manda o operador esperar por uma
+ * coisa que nunca vai acontecer (auditoria 06/08/2026 — a feature nunca gerou
+ * uma foto sequer por causa disso).
+ */
+function explainGeminiError(status: number, rawText: string, model: string): {
+  message: string;
+  httpStatus: number;
+  detail: string;
+} {
+  const detail = redact(rawText).slice(0, 600);
+  let parsed: {
+    error?: {
+      message?: string;
+      status?: string;
+      details?: Array<{
+        "@type"?: string;
+        violations?: Array<{ quotaId?: string; quotaMetric?: string; quotaValue?: string }>;
+        retryDelay?: string;
+      }>;
+    };
+  } | null = null;
+  try { parsed = JSON.parse(rawText); } catch { /* corpo não-JSON — cai no genérico */ }
+
+  const gMessage = redact(parsed?.error?.message || "").slice(0, 300);
+  const violations = (parsed?.error?.details || [])
+    .flatMap((d) => d.violations || []);
+  const retryDelay = (parsed?.error?.details || []).find((d) => d.retryDelay)?.retryDelay;
+
+  if (status === 429) {
+    const semCota = violations.some(
+      (v) => v.quotaValue === "0" || /free.?tier/i.test(v.quotaId || v.quotaMetric || ""),
+    );
+    if (semCota) {
+      return {
+        httpStatus: 402,
+        detail,
+        message:
+          `A chave do Gemini não tem cota pra gerar imagem no modelo ${model} ` +
+          `(cota do plano grátis = 0). Isso NÃO passa com o tempo: ative o faturamento ` +
+          `no projeto Google Cloud da chave (aistudio.google.com/apikey → plano pago) ` +
+          `ou troque o secret GEMINI_IMAGE_MODEL por um modelo com cota grátis.` +
+          (gMessage ? ` Google disse: ${gMessage}` : ""),
+      };
+    }
+    return {
+      httpStatus: 429,
+      detail,
+      message:
+        `Limite de requisições do Gemini excedido${retryDelay ? ` — tente de novo em ${retryDelay}` : ""}.` +
+        (gMessage ? ` Google disse: ${gMessage}` : ""),
+    };
+  }
+
+  if (status === 400 && /API_KEY_INVALID/.test(rawText)) {
+    return { httpStatus: 502, detail, message: "Chave do Gemini inválida. Confira o secret GEMINI_API_KEY." };
+  }
+  if (status === 403) {
+    return {
+      httpStatus: 502, detail,
+      message: `Chave do Gemini sem permissão pro modelo ${model}.${gMessage ? ` Google disse: ${gMessage}` : ""}`,
+    };
+  }
+  if (status === 404) {
+    return {
+      httpStatus: 502, detail,
+      message: `Modelo ${model} não encontrado. Ajuste o secret GEMINI_IMAGE_MODEL.${gMessage ? ` Google disse: ${gMessage}` : ""}`,
+    };
+  }
+  return {
+    httpStatus: 502, detail,
+    message: `Erro ${status} ao gerar imagem com IA.${gMessage ? ` Google disse: ${gMessage}` : ""}`,
+  };
+}
+
 const PROMPT_TEMPLATE = (colorName: string, colorHex: string, extra: string) => `
 Professional studio product photography of this exact sandal/shoe on a solid clean white background.
 The item is floating at a dynamic diagonal 45-degree angle to showcase the side profile and top details simultaneously.
@@ -139,14 +222,11 @@ serve(async (req) => {
 
     if (!aiResp.ok) {
       const errText = await aiResp.text();
-      console.error("Gemini error:", aiResp.status, errText.slice(0, 500));
-      if (aiResp.status === 429) return json({ error: "Limite de requisições do Gemini excedido. Tente em alguns minutos." }, 429);
-      if (aiResp.status === 400 && errText.includes("API_KEY_INVALID")) {
-        return json({ error: "Chave do Gemini inválida. Confira o secret GEMINI_API_KEY." }, 502);
-      }
-      if (aiResp.status === 403) return json({ error: "Chave do Gemini sem permissão pra este modelo." }, 502);
-      if (aiResp.status === 404) return json({ error: `Modelo ${model} não encontrado. Ajuste o secret GEMINI_IMAGE_MODEL.` }, 502);
-      return json({ error: "Erro ao gerar imagem com IA" }, 502);
+      console.error("Gemini error:", aiResp.status, redact(errText).slice(0, 800));
+      const { message, httpStatus, detail } = explainGeminiError(aiResp.status, errText, model);
+      // `detail` = corpo cru do Google (já sem a chave). Vai pro front porque
+      // adivinhar a causa de um 429 custou uma sessão inteira de auditoria.
+      return json({ error: message, geminiStatus: aiResp.status, detail }, httpStatus);
     }
 
     const aiData = await aiResp.json();
@@ -189,8 +269,17 @@ serve(async (req) => {
       .select()
       .single();
     if (insertError) {
+      // 200 de propósito: a imagem EXISTE no Storage e já custou crédito de IA —
+      // devolver erro faria o front descartar o que foi pago. Mas `id: null` é o
+      // sinal de que ela NÃO vai aparecer na galeria; o chamador tem que contar
+      // isso como falha, não como sucesso.
       console.error("Insert catalog_photos:", insertError);
-      return json({ url: publicUrl, id: null, warning: "Imagem gerada, mas falhou o registro no banco." });
+      return json({
+        url: publicUrl,
+        id: null,
+        colorName,
+        warning: `Imagem gerada e salva no Storage, mas o registro no banco falhou (${insertError.message}). Ela não vai aparecer na galeria.`,
+      });
     }
 
     return json({ url: publicUrl, id: row.id, colorName });

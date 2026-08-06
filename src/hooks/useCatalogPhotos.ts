@@ -63,6 +63,22 @@ export interface GenerateCatalogPhotoInput {
   extraInstructions?: string;
 }
 
+/**
+ * Erro da geração já traduzido. `detail` é o corpo cru do Google (sem a chave) —
+ * a Edge Function passa adiante porque a mensagem curta sozinha já enganou uma
+ * vez: um 429 por cota-zero da chave era exibido como "tente em alguns minutos".
+ */
+export class CatalogGenerationError extends Error {
+  detail?: string;
+  geminiStatus?: number;
+  constructor(message: string, detail?: string, geminiStatus?: number) {
+    super(message);
+    this.name = 'CatalogGenerationError';
+    this.detail = detail;
+    this.geminiStatus = geminiStatus;
+  }
+}
+
 /** Chama a Edge Function que gera a foto de estúdio na cor pedida (~30-90s). */
 export function useGenerateCatalogPhoto() {
   const qc = useQueryClient();
@@ -72,21 +88,25 @@ export function useGenerateCatalogPhoto() {
         body: input,
       });
       if (error) {
-        // FunctionsHttpError esconde o body — tenta extrair a mensagem real.
+        // FunctionsHttpError esconde o body — extrai a mensagem real da função.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any -- FunctionsHttpError não expõe context tipado
         const ctx = (error as any)?.context;
         if (ctx && typeof ctx.json === 'function') {
+          let body: { error?: string; detail?: string; geminiStatus?: number } | null = null;
           try {
-            const body = await ctx.json();
-            if (body?.error) throw new Error(body.error);
-          } catch (e) {
-            if (e instanceof Error && e.message && !/JSON/.test(e.message)) throw e;
+            body = await ctx.json();
+          } catch {
+            body = null; // corpo não-JSON — cai no erro genérico do supabase-js
           }
+          if (body?.error) throw new CatalogGenerationError(body.error, body.detail, body.geminiStatus);
         }
         throw error;
       }
-      if (data?.error) throw new Error(data.error);
-      return data as { url: string; id: string | null; colorName: string };
+      if (data?.error) throw new CatalogGenerationError(data.error, data.detail, data.geminiStatus);
+      // 200 com id null = imagem existe no Storage mas NÃO entrou na galeria.
+      // Contar como sucesso esconderia uma foto paga que ninguém vai achar.
+      if (data && !data.id) throw new CatalogGenerationError(data.warning || 'A foto não foi registrada no banco.');
+      return data as { url: string; id: string; colorName: string };
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['catalog_photos'] });
