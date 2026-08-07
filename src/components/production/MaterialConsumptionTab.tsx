@@ -10,7 +10,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pi
 import { Package, TrendUp as TrendingUp, Stack as Layers, Funnel as Filter, Palette } from '@phosphor-icons/react';
 import { startOfWeek, endOfWeek, startOfMonth, endOfMonth, format, parseISO, isWithinInterval, isValid } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { parseSizes } from '@/lib/labelUtils';
+import { calculateConsumption, type ConsumptionLine, validateConsumptionPayload } from '@/services/consumptionService';
 
 type PeriodFilter = 'week' | 'month' | 'all';
 
@@ -30,6 +30,7 @@ const CHART_COLORS = [
 ];
 
 type ConsumptionRow = {
+  orderId: string;
   groupName: string;
   groupId: string | null;
   materialName: string;
@@ -39,15 +40,14 @@ type ConsumptionRow = {
   cost: number;
 };
 
-const classifyComponentType = (groupName: string, productName: string, category: string) => {
-  const normalized = `${groupName} ${productName} ${category}`.toLowerCase();
-  if (normalized.includes('solado')) return 'Solado';
-  if (normalized.includes('palmilha') || normalized.includes('placa')) return 'Palmilha';
-  if (normalized.includes('forração') || normalized.includes('forracao') || normalized.includes('forro')) return 'Forração';
-  if (normalized.includes('tira')) return 'Tiras';
-  if (normalized.includes('cola') || normalized.includes('adesivo')) return 'Químicos';
-  if (normalized.includes('embalagem') || normalized.includes('caixa')) return 'Embalagem';
-  return 'Outros';
+type ConsumptionProduct = {
+  id: string;
+  name: string | null;
+  unit: string | null;
+  category: string | null;
+  unit_price: number | null;
+  group_id: string | null;
+  color: string | null;
 };
 
 const formatUnit = (unit: string) => {
@@ -66,13 +66,9 @@ function useConsumptionFromSheets() {
           .from('orders')
           .select(`
             id, order_number, created_at, quantity, color, status, grade,
-            reference_id,
+            reference_id, sale_order_item_id,
             technical_sheets(
-              id, name, code,
-              upper_material, upper_consumption,
-              lining_material, lining_consumption,
-              insole_material, insole_consumption,
-              sole_material, sole_consumption, sole_color
+              id, name, code
             )
           `)
           .order('created_at', { ascending: false })
@@ -87,26 +83,128 @@ function useConsumptionFromSheets() {
       if (groupsRes.error) throw groupsRes.error;
       const orders = ordersRes.data || [];
       const groups = groupsRes.data || [];
+      const activeOrders = orders.filter(order => order.reference_id);
+      if (activeOrders.length === 0) return { orders, groups, consumptionRows: [] as ConsumptionRow[] };
 
-      // Get all reference_ids to load BOM materials
-      const refIds = [...new Set(orders.map(o => o.reference_id).filter(Boolean))];
-
-      let materials: any[] = [];
-      if (refIds.length > 0) {
-        const matsRes = await supabase
-          .from('sheet_materials')
-          .select('sheet_id, product_id, group_id, quantity_per_unit, color, sizes, products(name, unit, category, unit_price, group_id, color), product_groups(id, name)')
-          .in('sheet_id', refIds);
-        // ⚠ O erro daqui era ENGOLIDO (`if (!matsRes.error)`): a BOM ficava
-        // vazia e a tela seguia somando SÓ cabedal/forro/palmilha/solado — que
-        // não têm custo (`cost: 0`) —, exibindo "Custo Estimado R$ 0,00" e uma
-        // lista de materiais incompleta com cara de completa. Falha de consulta
-        // agora sobe pro `isError` da query, que já é renderizado abaixo.
-        if (matsRes.error) throw matsRes.error;
-        materials = matsRes.data || [];
+      // Variante do item do PV: mesma resolução usada pelo Wizard antes de
+      // chamar o motor canônico por OP.
+      const saleOrderItemIds = [...new Set(activeOrders.map(order => order.sale_order_item_id).filter(Boolean))] as string[];
+      const variantBySaleOrderItem = new Map<string, string | null>();
+      if (saleOrderItemIds.length > 0) {
+        const { data: itemRows, error: itemRowsError } = await supabase
+          .from('sale_order_items')
+          .select('id, material_variant_id')
+          .in('id', saleOrderItemIds);
+        if (itemRowsError) throw itemRowsError;
+        for (const item of itemRows || []) variantBySaleOrderItem.set(item.id, item.material_variant_id ?? null);
       }
 
-      return { orders, groups, materials };
+      // Consumo CANÔNICO por OP. Grade presente usa o by_grade; OP legada sem
+      // grade cai no wrapper escalar exatamente como no PurchasePlanningWizard.
+      const consumptionByOrder = await Promise.all(
+        activeOrders.map(async (order): Promise<ConsumptionLine[]> => {
+          const variantId = order.sale_order_item_id
+            ? variantBySaleOrderItem.get(order.sale_order_item_id) ?? null
+            : null;
+          const grade = order.grade && typeof order.grade === 'object' && !Array.isArray(order.grade)
+            && Object.keys(order.grade).length > 0
+            ? order.grade
+            : null;
+
+          if (grade) {
+            const { data, error } = await supabase.rpc('calculate_order_consumption_by_grade', {
+              p_reference_id: order.reference_id!,
+              p_grade: grade,
+              p_color: order.color ?? '',
+              ...(variantId ? { p_material_variant_id: variantId } : {}),
+            });
+            if (error) throw error;
+            return validateConsumptionPayload((data as unknown) ?? []);
+          }
+
+          const summary = await calculateConsumption({
+            referenceId: order.reference_id!,
+            quantity: Number(order.quantity) || 0,
+            color: order.color,
+            materialVariantId: variantId,
+          });
+          return summary.lines;
+        }),
+      );
+
+      const productIds = [...new Set(
+        consumptionByOrder.flatMap(lines => lines.map(line => line.product_id).filter(Boolean)),
+      )] as string[];
+      const productsMap = new Map<string, ConsumptionProduct>();
+      if (productIds.length > 0) {
+        const { data: productRows, error: productRowsError } = await supabase
+          .from('products')
+          .select('id, name, unit, category, unit_price, group_id, color')
+          .in('id', productIds);
+        if (productRowsError) throw productRowsError;
+        for (const product of productRows || []) productsMap.set(product.id, product);
+      }
+
+      // Linhas de área vêm sem unidade no contrato do RPC. A conversão usa a
+      // largura da ficha de componente, como no Wizard; sem largura, conserva
+      // dm² e o valor cru em vez de fingir que são metros.
+      const areaProductIds = new Set<string>();
+      for (const lines of consumptionByOrder) {
+        for (const line of lines) {
+          if (line.product_id && line.unit == null) areaProductIds.add(line.product_id);
+        }
+      }
+      const conversionInfo = new Map<string, { dm2PerUnit: number; warning: string | null }>();
+      await Promise.all([...areaProductIds].map(async (productId) => {
+        const { data, error } = await supabase.rpc('get_material_conversion_info', { p_product_id: productId });
+        if (error) throw error;
+        const row = (Array.isArray(data) ? data[0] : data) as {
+          dm2_per_unit?: number | string | null;
+          conversion_warning?: string | null;
+        } | null;
+        if (row) {
+          conversionInfo.set(productId, {
+            dm2PerUnit: Number(row.dm2_per_unit) || 1,
+            warning: row.conversion_warning ?? null,
+          });
+        }
+      }));
+
+      const groupNameById = new Map(groups.map(group => [group.id, group.name]));
+      const consumptionRows: ConsumptionRow[] = [];
+      activeOrders.forEach((order, orderIndex) => {
+        for (const line of consumptionByOrder[orderIndex]) {
+          if (!line.product_id) continue;
+          const product = productsMap.get(line.product_id);
+          const conversion = conversionInfo.get(line.product_id);
+          const isAreaLine = line.unit == null;
+          const widthMissing = !!line.conversion_warning || (isAreaLine && !!conversion?.warning);
+          const required = Number(line.required) || 0;
+          const quantity = isAreaLine && !widthMissing
+            ? required / Math.max(conversion?.dm2PerUnit || 1, 1)
+            : required;
+          const groupName = groupNameById.get(product?.group_id)
+            || line.category
+            || line.component
+            || product?.name
+            || 'Outros';
+          const unit = widthMissing ? 'dm²' : (product?.unit || line.unit || 'un');
+          const unitPrice = Number(product?.unit_price) || 0;
+
+          consumptionRows.push({
+            orderId: order.id,
+            groupName,
+            groupId: product?.group_id || null,
+            materialName: line.product_name || product?.name || groupName,
+            unit,
+            color: line.color || product?.color || order.color || '—',
+            quantity,
+            cost: quantity * unitPrice,
+          });
+        }
+      });
+
+      return { orders, groups, consumptionRows };
     },
   });
 }
@@ -183,113 +281,9 @@ export default function MaterialConsumptionTab() {
       consumptionMap.set(key, { ...row, groupName: gn, materialName, color, unit, quantity: qty });
     };
 
-    for (const order of orders) {
-      const sheet = Array.isArray((order as any).technical_sheets)
-        ? (order as any).technical_sheets[0]
-        : (order as any).technical_sheets;
-      if (!sheet) continue;
-
-      const orderGrade = (order.grade as Record<string, number>) || {};
-      const qty = Number(order.quantity) || 0;
-      const orderColor = order.color || '—';
-
-      // Cabedal (upper) - consumption in dm²/par
-      if (sheet.upper_material && Number(sheet.upper_consumption) > 0) {
-        addRow({
-          groupName: sheet.upper_material,
-          groupId: null,
-          materialName: 'Cabedal',
-           unit: 'dm²',
-           color: orderColor,
-           quantity: Number(sheet.upper_consumption) * qty,
-          cost: 0,
-        });
-      }
-
-      // Forro (lining) - consumption in dm²/par
-      if (sheet.lining_material && Number(sheet.lining_consumption) > 0) {
-        addRow({
-          groupName: sheet.lining_material,
-          groupId: null,
-          materialName: 'Forração',
-           unit: 'dm²',
-           color: orderColor,
-           quantity: Number(sheet.lining_consumption) * qty,
-          cost: 0,
-        });
-      }
-
-      // Palmilha (insole) - consumption in dm²/par
-      if (sheet.insole_material && Number(sheet.insole_consumption) > 0) {
-        addRow({
-          groupName: sheet.insole_material,
-          groupId: null,
-          materialName: 'Palmilha',
-           unit: 'dm²',
-           color: orderColor,
-           quantity: Number(sheet.insole_consumption) * qty,
-          cost: 0,
-        });
-      }
-
-      // Solado: regra industrial fixa = 1 par por par produzido
-      if (sheet.sole_material) {
-        addRow({
-          groupName: sheet.sole_material,
-          groupId: null,
-          materialName: 'Solado',
-          unit: 'par',
-          color: sheet.sole_color || orderColor,
-          quantity: 1 * qty,
-          cost: 0,
-        });
-      }
-
-      // BOM materials (sheet_materials)
-      const orderMaterials = data.materials.filter(m => m.sheet_id === order.reference_id);
-      for (const material of orderMaterials) {
-        const product = material.products as any;
-        const group = material.product_groups as any;
-        if (!product) continue;
-
-        let productUnit = product.unit || 'un';
-        
-        // Calculate quantity based on material sizes and order grade
-        let appliedQty = qty;
-        if (material.sizes && material.sizes.trim() !== '') {
-          const materialSizes = parseSizes(material.sizes);
-          appliedQty = materialSizes.reduce((sum, size) => sum + (Number(orderGrade[size]) || 0), 0);
-          
-          // If no matching sizes in grade, but total qty > 0, we might need a fallback, 
-          // but typically if sizes are specified, it only applies to those.
-          // If the sum is 0, it means this material is not used for any of the sizes in this order.
-          if (appliedQty === 0 && Object.keys(orderGrade).length === 0) {
-            appliedQty = qty; // Fallback if grade is missing
-          }
-        }
-
-        let totalQty = (Number(material.quantity_per_unit) || 0) * appliedQty;
-
-        // Convert cm to m
-        if (productUnit === 'cm') {
-          totalQty /= 100;
-          productUnit = 'metro';
-        }
-
-        const groupName = group?.name || product.category || product.name || 'Outros';
-        const unitPrice = Number(product.unit_price) || 0;
-
-
-        addRow({
-          groupName,
-          groupId: group?.id || product.group_id || null,
-          materialName: product.name || groupName,
-          unit: productUnit,
-          color: material.color || orderColor,
-          quantity: totalQty,
-          cost: totalQty * unitPrice,
-        });
-      }
+    const selectedOrderIds = new Set(orders.map(order => order.id));
+    for (const row of data.consumptionRows) {
+      if (selectedOrderIds.has(row.orderId)) addRow(row);
     }
 
     const consumptionRows = Array.from(consumptionMap.values()).sort((a, b) =>
@@ -392,11 +386,16 @@ export default function MaterialConsumptionTab() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Todos os pedidos</SelectItem>
-            {data.orders.map(o => (
-              <SelectItem key={o.id} value={o.id}>
-                {o.order_number} — {(o as any).technical_sheets?.name || '?'}
-              </SelectItem>
-            ))}
+            {data.orders.map(o => {
+              const sheet = Array.isArray(o.technical_sheets)
+                ? o.technical_sheets[0]
+                : o.technical_sheets;
+              return (
+                <SelectItem key={o.id} value={o.id}>
+                  {o.order_number} — {sheet?.name || '?'}
+                </SelectItem>
+              );
+            })}
           </SelectContent>
         </Select>
 

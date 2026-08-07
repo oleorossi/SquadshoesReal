@@ -225,3 +225,47 @@ que a correção resolveu.
 
 `debit_consistency_report()` **não pôde ser executada**: exige usuário aprovado (RLS), e a
 conexão MCP não é um. O que ela cobre além do `list_stock_debit_holes` fica desconhecido.
+
+---
+
+## Resultado da execução — 2026-08-07
+
+Aplicado. Migrations `20261217120400`, `20261217120500` e `20261217120600` no banco, com os
+carimbos alinhados aos nomes dos arquivos (o `apply_migration` grava a data real, abaixo da
+sequência sintética — realinhado à mão).
+
+| Métrica | Antes | Depois |
+|---|---|---|
+| `run_consumption_parity_tests` | 22/22 | **22/22, 0 vermelhos** |
+| Órfãos em `direct_components` | 5 UUIDs · 24 entradas | **0** |
+| `CF 09 ` escalar | 0,68 | **20** |
+| Produtos sumidos | inexistentes | **6 criados** (`sku LIKE 'AUD20260807-%'`) |
+| Nomes em cache defasados | 4 | **0** |
+
+**Rollback:** `public.backup_auditoria_20260807` (53 linhas — `technical_sheets` inteira, com
+`upper_consumption` e `direct_components` antes de qualquer UPDATE) e
+`public.backup_direct_components_20260807` (só as fichas com órfão). Ambas com `REVOKE ALL`
+de `anon`/`authenticated`.
+
+**Gates, todos verdes:** typecheck canônico · `bun run test` 1.801 · `bun run test:units` 76 ·
+`check:tokens` sem violação nova · guard anti-escalar passando · os 4 módulos de UI transformam
+no Vite sem import não resolvido.
+
+### O que NÃO foi feito, e por quê
+
+1. **O teste de paridade nunca chegou a rodar de verdade.** `technical_sheets` está sob
+   `technical_sheets_select_approved` (`is_approved_user()`), a chave publishable não é aprovada,
+   e não há service-role key no `.env`. O teste como o Codex escreveu falhava na checagem de
+   fixture — vermelho ambiental que continuaria vermelho depois da correção. Foi ajustado para
+   **fazer skip dizendo o motivo** e aceitar `SUPABASE_SERVICE_ROLE_KEY`. Com essa chave
+   exportada, ele roda a comparação real. **A sequência "vermelho → correção → verde" não pôde
+   ser demonstrada.**
+2. **As duas telas reescritas não foram verificadas visualmente** — exigem login, e não insiro
+   credenciais. O que se verificou foi que os módulos transformam sem erro de import.
+3. **Quatro checks de cadastro seguem abertos**, e nenhum é auto-corrigível sem decisão de
+   fábrica: `material_base_artesanal_sem_cor` (149), `forro_cabedal_duplicado_com_palmilha` (27),
+   `produto_artesanal_flag_inconsistente` (4), `solado_fachetado_sem_specs_fachete` (2).
+4. **Os 1.172 buracos de débito (R$ 225.736,46) e os 99 drifts continuam intactos** — era item
+   explicitamente fora do plano.
+5. **Os 26 escritores diretos em `stock_movements` continuam 26.** O Desencontro 4 foi
+   diagnosticado, não corrigido: unificar em `move_stock_delta` é refactor de outra ordem.

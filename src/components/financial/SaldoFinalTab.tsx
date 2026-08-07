@@ -13,8 +13,21 @@ import { startOfWeek, endOfWeek, addWeeks } from 'date-fns';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
+import type { PvMaterialNeed } from '@/lib/perPvPurchasing';
 
 const fmtQty = (v: number) => v.toLocaleString('pt-BR', { maximumFractionDigits: 2 });
+
+const classifyMaterialType = (productName: string, groupName: string, category: string) => {
+  const normalized = `${productName} ${groupName} ${category}`.toLowerCase();
+  if (normalized.includes('solado')) return 'Solado';
+  if (normalized.includes('palmilha') || normalized.includes('placa')) return 'Palmilha';
+  if (normalized.includes('forração') || normalized.includes('forracao') || normalized.includes('forro')) return 'Forração';
+  if (normalized.includes('cabedal') || normalized.includes('napa') || normalized.includes('couro')) return 'Cabedal';
+  if (normalized.includes('tira')) return 'Tiras';
+  if (normalized.includes('cola') || normalized.includes('adesivo')) return 'Químicos';
+  if (normalized.includes('embalagem') || normalized.includes('caixa')) return 'Embalagem';
+  return 'Componente';
+};
 
 interface MaterialBalance {
   key: string;
@@ -24,6 +37,16 @@ interface MaterialBalance {
   current_stock: number;
   weeks: { week_label: string; consumption: number; balance: number }[];
   final_balance: number;
+}
+
+interface SaldoProduct {
+  id: string;
+  name: string;
+  quantity: number | null;
+  unit: string | null;
+  category: string | null;
+  group_id: string | null;
+  product_groups: { name: string | null } | Array<{ name: string | null }> | null;
 }
 
 export default function SaldoFinalTab() {
@@ -37,8 +60,8 @@ export default function SaldoFinalTab() {
 
   // When allWeekLabels load, default to all selected
   useEffect(() => {
-    if (allWeekLabels.length > 0 && selectedWeeks.size === 0) {
-      setSelectedWeeks(new Set(allWeekLabels));
+    if (allWeekLabels.length > 0) {
+      setSelectedWeeks(current => current.size === 0 ? new Set(allWeekLabels) : current);
     }
   }, [allWeekLabels]);
 
@@ -51,80 +74,28 @@ export default function SaldoFinalTab() {
         return Number.isNaN(parsed.getTime()) ? null : parsed;
       };
 
-      const { data: orders = [] } = await supabase
+      const { data: orders = [], error: ordersError } = await supabase
         .from('orders')
         .select(`
-          id, order_number, quantity, status, planned_delivery, reference_id,
-          sale_orders!orders_sale_order_id_fkey(delivery_deadline, delivery_week, delivery_month)
+          id, order_number, quantity, status, planned_delivery, reference_id, sale_order_id,
+          sale_orders!orders_sale_order_id_fkey(id, delivery_deadline, delivery_week, delivery_month)
         `)
         // Status REAIS de orders no backend (audit 2026-05): 'Pronto' não existe.
         .in('status', ['Reservado', 'Em Produção'])
         .order('planned_delivery', { ascending: true });
-
-      const refIds = [...new Set((orders as any[]).map(o => o.reference_id).filter(Boolean))];
-      if (refIds.length === 0) { setBalances([]); setLoading(false); return; }
-
-      const [sheetsRes, productsRes] = await Promise.all([
-        supabase.from('technical_sheets').select('id, name, upper_material, upper_consumption, lining_material, lining_consumption, insole_material, insole_consumption, sole_material, sole_consumption, sole_type, direct_components').in('id', refIds),
-        supabase.from('products').select('id, name, quantity, unit, group_id'),
-      ]);
-
-      const sheetsMap = new Map(((sheetsRes.data ?? []) as any[]).map(s => [s.id, s]));
-      const productRows = (productsRes.data ?? []) as any[];
-      const pMap = new Map(productRows.map(p => [p.id, p]));
-
-      // Group stock map (sum stock of all products within a group)
-      const { data: groupsData = [] } = await supabase.from('product_groups').select('id, name');
-      const groupNameMap = new Map<string, string>();
-      for (const g of groupsData as any[]) groupNameMap.set(g.name?.toLowerCase(), g.id);
-
-      const groupStockMap = new Map<string, { total_stock: number; unit: string }>();
-      for (const p of productRows) {
-        if (!p.group_id) continue;
-        const existing = groupStockMap.get(p.group_id) || { total_stock: 0, unit: '' };
-        existing.total_stock += Number(p.quantity) || 0;
-        if (!existing.unit) existing.unit = p.unit || 'un';
-        groupStockMap.set(p.group_id, existing);
-      }
-
-      function resolveMaterial(materialName: string): { stock: number; unit: string } {
-        if (!materialName) return { stock: 0, unit: 'un' };
-        const nameLower = materialName.toLowerCase().trim();
-
-        const groupId = groupNameMap.get(nameLower);
-        if (groupId) {
-          const info = groupStockMap.get(groupId);
-          if (info) return { stock: info.total_stock, unit: info.unit || 'un' };
-        }
-        for (const [gName, gId] of groupNameMap) {
-          if (gName.includes(nameLower) || nameLower.includes(gName)) {
-            const info = groupStockMap.get(gId);
-            if (info) return { stock: info.total_stock, unit: info.unit || 'un' };
-          }
-        }
-        let totalStock = 0, count = 0, foundUnit = 'un';
-        for (const p of productRows) {
-          const pName = p.name?.toLowerCase() || '';
-          if (pName === nameLower || pName.startsWith(nameLower + ':') || pName.startsWith(nameLower + ' ')) {
-            totalStock += Number(p.quantity) || 0;
-            count++;
-            if (count === 1) foundUnit = p.unit || 'un';
-          }
-        }
-        if (count > 0) return { stock: totalStock, unit: foundUnit };
-        return { stock: 0, unit: 'un' };
-      }
+      if (ordersError) throw ordersError;
 
       const today = new Date();
-      const materialWeeklyMap = new Map<string, {
-        name: string; type: string; unit: string; current_stock: number;
-        weeks: Map<string, number>;
-      }>();
+      const pvsByWeek = new Map<string, string[]>();
       const weekLabelsSet = new Set<string>();
+      const seenPvs = new Set<string>();
 
-      for (const order of orders as any[]) {
-        const sheet = sheetsMap.get(order.reference_id);
-        if (!sheet) continue;
+      // O escopo visual continua sendo o dos PVs com OP ativa. Cada PV entra
+      // uma única vez, mesmo quando possui várias OPs/referências.
+      for (const order of orders) {
+        const pvId = order.sale_order_id as string | null;
+        if (!pvId || seenPvs.has(pvId)) continue;
+        seenPvs.add(pvId);
 
         const saleOrder = Array.isArray(order.sale_orders) ? order.sale_orders[0] : order.sale_orders;
         const deliveryDate = order.planned_delivery || saleOrder?.delivery_deadline || null;
@@ -133,53 +104,68 @@ export default function SaldoFinalTab() {
         const we = endOfWeek(deliveryDateObj, { weekStartsOn: 1 });
         const weekLabel = `${format(ws, 'dd/MM', { locale: ptBR })} - ${format(we, 'dd/MM', { locale: ptBR })}`;
         weekLabelsSet.add(weekLabel);
+        const ids = pvsByWeek.get(weekLabel) || [];
+        ids.push(pvId);
+        pvsByWeek.set(weekLabel, ids);
+      }
 
-        const qty = Number(order.quantity) || 0;
-        const addMaterial = (materialName: string, type: string, consumptionPerPair: number, productId?: string | null) => {
-          if (!materialName || consumptionPerPair <= 0) return;
+      if (seenPvs.size === 0) { setBalances([]); setAllWeekLabels([]); return; }
 
-          let resolved: { stock: number; unit: string };
-          // Nome EXIBIDO: quando há product_id, vale o cadastro atual de `products`,
-          // não o rótulo congelado no JSON da ficha. `direct_components` guarda uma
-          // cópia do nome na hora do cadastro e ela envelhece: o product_id
-          // 672fcd3d está gravado como "Binóculo SANSIN" no S-039 e "Binóculo 10mm"
-          // nas outras fichas — o MESMO produto virava DUAS linhas no Saldo Final
-          // (3.456 + 2.304), como se fossem materiais diferentes.
-          let displayName = materialName;
-          if (productId) {
-            const p = pMap.get(productId);
-            resolved = { stock: Number(p?.quantity) || 0, unit: p?.unit || 'un' };
-            if (p?.name) displayName = p.name;
-          } else {
-            resolved = resolveMaterial(materialName);
-          }
-          // Chave por product_id quando existe — rótulo stale não fragmenta mais a
-          // linha. Sem product_id (materiais por GRUPO da ficha) segue por nome.
-          const key = productId ? `pid:${productId}_${type}` : `${materialName.toLowerCase()}_${type}`;
+      // O agregado canônico por PV calcula per-size, conversão física,
+      // sole_drives_consumption e deduplicação. Chamadas por semana preservam
+      // a grade temporal da UI sem reimplementar o motor no frontend.
+      const weeklyNeeds = await Promise.all(
+        [...pvsByWeek.entries()].map(async ([weekLabel, pvIds]) => {
+          const { data, error } = await supabase.rpc('compute_materials_per_pv', {
+            p_pv_ids: pvIds,
+          });
+          if (error) throw error;
+          return { weekLabel, rows: (data || []) as PvMaterialNeed[] };
+        }),
+      );
 
-          // Consumption in same unit as stock (technical sheet unit = stock unit)
-          const totalConsumption = consumptionPerPair * qty;
+      const materialIds = [...new Set(
+        weeklyNeeds.flatMap(batch => batch.rows.map(row => row.material_id).filter(Boolean)),
+      )] as string[];
+      const productRows: SaldoProduct[] = [];
+      if (materialIds.length > 0) {
+        const { data, error } = await supabase
+          .from('products')
+          .select('id, name, quantity, unit, category, group_id, product_groups!products_group_id_fkey(name)')
+          .in('id', materialIds);
+        if (error) throw error;
+        productRows.push(...((data || []) as unknown as SaldoProduct[]));
+      }
+      const productsMap = new Map(productRows.map(product => [product.id, product]));
+
+      const materialWeeklyMap = new Map<string, {
+        name: string; type: string; unit: string; current_stock: number;
+        weeks: Map<string, number>;
+      }>();
+
+      for (const { weekLabel, rows } of weeklyNeeds) {
+        for (const row of rows) {
+          const consumption = Number(row.needed_qty) || 0;
+          if (!row.material_id || consumption <= 0) continue;
+          const product = productsMap.get(row.material_id);
+          const productGroup = Array.isArray(product?.product_groups)
+            ? product.product_groups[0]
+            : product?.product_groups;
+          const groupName = productGroup?.name || '';
+          const type = classifyMaterialType(row.product_name || product?.name || '', groupName, product?.category || '');
+          const key = `pid:${row.material_id}`;
 
           if (!materialWeeklyMap.has(key)) {
             materialWeeklyMap.set(key, {
-              name: displayName, type, unit: resolved.unit,
-              current_stock: resolved.stock,
+              name: product?.name || row.product_name || 'Material',
+              type,
+              unit: row.unit || product?.unit || 'un',
+              current_stock: Number(product?.quantity) || 0,
               weeks: new Map(),
             });
           }
           const entry = materialWeeklyMap.get(key)!;
-          entry.weeks.set(weekLabel, (entry.weeks.get(weekLabel) || 0) + totalConsumption);
-        };
-
-        if (sheet.upper_consumption > 0) addMaterial(sheet.upper_material || 'Cabedal', 'Cabedal', sheet.upper_consumption);
-        if (sheet.lining_consumption > 0) addMaterial(sheet.lining_material || 'Forração', 'Forração', sheet.lining_consumption);
-        if (sheet.insole_consumption > 0) addMaterial(sheet.insole_material || 'Palmilha', 'Palmilha', sheet.insole_consumption);
-        if (sheet.sole_consumption > 0) addMaterial(sheet.sole_material || sheet.sole_type || 'Solado', 'Solado', sheet.sole_consumption);
-
-        if (Array.isArray(sheet.direct_components)) {
-          for (const comp of sheet.direct_components as any[]) {
-            addMaterial(comp.product_name || 'Componente', 'Componente', Number(comp.quantity) || 0, comp.product_id);
-          }
+          entry.weeks.set(weekLabel, (entry.weeks.get(weekLabel) || 0) + consumption);
         }
       }
 
@@ -213,7 +199,7 @@ export default function SaldoFinalTab() {
 
       results.sort((a, b) => a.final_balance - b.final_balance);
       setBalances(results);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('[SaldoFinal] Error:', err);
     } finally {
       setLoading(false);
