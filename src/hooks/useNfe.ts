@@ -70,23 +70,48 @@ export interface Company {
 
 // ─── NF-e Emitidas ───────────────────────────────────────────────────────────
 
-export function useNfeEmitidas(saleOrderId?: string) {
+/** Colunas da listagem = exatamente a interface NfeEmitida, MENOS
+ *  `gc_detail_response` (que ela já marca como opcional e carregado sob demanda
+ *  via useNfeDetail). O `select('*')` trazia junto os 4 jsonb de payload da SEFAZ
+ *  — 23 kB em 64 linhas, sendo 16 kB só de gc_detail_response — que nenhum
+ *  componente renderiza a partir da lista. */
+const NFE_LIST_COLUMNS = [
+  'id', 'sale_order_id', 'company_id', 'ref_nfe', 'status', 'numero', 'serie',
+  'chave_acesso', 'xml_url', 'danfe_url', 'provider_nfe_id', 'valor_total',
+  'data_emissao', 'motivo_rejeicao', 'protocolo', 'protocolo_cancelamento',
+  'cnpj_emitente', 'nome_destinatario', 'cnpj_destinatario',
+  'justificativa_cancelamento', 'data_cancelamento', 'created_at', 'updated_at',
+].join(', ');
+
+/**
+ * NFs emitidas. Sem `saleOrderId` traz a tabela inteira — uso legítimo em
+ * InvoicesSaidaTab, que quer mesmo todas.
+ *
+ * ⚠ Quem passa um id OPCIONAL (`selectedOrder?.id`) tem que passar `enabled`
+ * junto: sem ele, o id `undefined` não vira `where` nenhum e a query varre a
+ * tabela inteira em vez de não rodar (auditoria PV 07/08/2026 — em /sales isso
+ * disparava uma varredura completa a cada abrir/fechar do dialog de detalhe,
+ * porque a queryKey alterna entre [.., id] e [.., undefined]).
+ */
+export function useNfeEmitidas(saleOrderId?: string, opts?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ['nfe_emitidas', saleOrderId],
+    enabled: opts?.enabled ?? true,
     // staleTime=0 + refetchOnMount='always': mesma estratégia da useAllNfeEmitidas.
     // Sem isso, o card de NFs no PV ficava com cache vazio depois de emitir
     // (user via toast 'NF enviada' mas a lista local mostrava 'nenhuma NF').
+    // ⚠ NÃO trocar por cache: o conserto da varredura é o `enabled`, não isto.
     staleTime: 0,
     refetchOnMount: 'always',
     queryFn: async () => {
       let query = supabase
         .from('nfe_emitidas')
-        .select('*')
+        .select(NFE_LIST_COLUMNS)
         .order('created_at', { ascending: false });
       if (saleOrderId) query = query.eq('sale_order_id', saleOrderId);
       const { data, error } = await query;
       if (error) throw error;
-      return (data || []) as NfeEmitida[];
+      return (data || []) as unknown as NfeEmitida[];
     },
   });
 }

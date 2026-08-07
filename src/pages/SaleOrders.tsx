@@ -44,7 +44,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useSaleOrders, useSaleOrderAllItems, useCreateSaleOrder, useDeleteSaleOrder, useUpdateSaleOrderStatus, useResyncOPsFromSheets, useResyncOPsFromPV, useCommitPickingForSaleOrder, useRealtimeSaleOrders, SaleOrderFormData, SaleOrderItemFormData, PackagingMode, ORDER_TYPE_LABELS, DEFAULT_OP_STAGES, opStageOrder, listarTirasSemCor } from '@/hooks/useSaleOrders';
-import { useTechnicalSheets } from '@/hooks/useTechnicalSheets';
+import { useTechnicalSheetsLite } from '@/hooks/useTechnicalSheets';
 import { useClients, useEconomicGroups } from '@/hooks/useClients';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -231,7 +231,9 @@ export default function SaleOrders() {
   const { data: minBillingData } = useMinBillingMap(activeSaleOrderIds);
   const minBillingMap = minBillingData?.map ?? EMPTY_MIN_BILLING_MAP;
   useRefreshMinBillingInBackground(minBillingData?.staleIds ?? EMPTY_STALE_IDS);
-  const { data: references = [] } = useTechnicalSheets();
+  // Lite: a lista só usa id/code/name/shoe_category. O hook cheio faz select('*')
+  // e traz ~227 kB de colunas que esta tela nunca abre (auditoria PV 07/08/2026).
+  const { data: references = [] } = useTechnicalSheetsLite();
   const { data: clients = [] } = useClients();
   const { data: economicGroups = [] } = useEconomicGroups();
   const { data: representatives = [] } = useRepresentatives();
@@ -358,7 +360,9 @@ export default function SaleOrders() {
   const [selectedOrderItems, setSelectedOrderItems] = useState<any[]>([]);
   const [osDialogOpen, setOsDialogOpen] = useState(false); // atalho "Gerar OS" do PV
   const [loadingOrderItems, setLoadingOrderItems] = useState(false);
-  const { data: selectedOrderNfes = [] } = useNfeEmitidas(selectedOrder?.id);
+  // `enabled` obrigatório: sem PV selecionado o id é undefined e a query varreria
+  // nfe_emitidas inteira em vez de não rodar (auditoria PV 07/08/2026).
+  const { data: selectedOrderNfes = [] } = useNfeEmitidas(selectedOrder?.id, { enabled: !!selectedOrder?.id });
 
   const [dupDialog, setDupDialog] = useState(false);
   const [dupOrderId, setDupOrderId] = useState<string | null>(null);

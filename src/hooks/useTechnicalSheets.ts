@@ -272,6 +272,48 @@ export function useTechnicalSheets() {
   });
 }
 
+/** Colunas que a lista de PV realmente lê das fichas. Auditadas em SaleOrders.tsx
+ *  (busca por sku, refById, segmento Adulto/Infantil, rótulo do item). */
+export const TECHNICAL_SHEET_LITE_COLUMNS = 'id, code, name, shoe_category';
+
+/**
+ * Versão enxuta de `useTechnicalSheets` para telas que só precisam identificar a
+ * ficha (código, nome, segmento) — não a ficha inteira.
+ *
+ * Por que existe (auditoria PV 07/08/2026): o hook canônico faz `select('*')` e,
+ * com 53 fichas, isso são ~227 kB de JSON para entregar ~6 kB de dados usados —
+ * a MAIOR consulta da tela /sales, maior que a própria lista de PVs. O peso está
+ * em colunas que a lista nunca abre (strap_colors 27 kB, production_sectors 7,4 kB,
+ * direct_components 5,8 kB, size_multipliers 5 kB, images 3,6 kB).
+ *
+ * ⚠ NÃO estreite o `useTechnicalSheets` original: TechnicalSheets.tsx e o
+ * SaleOrderForm leem muito mais colunas.
+ *
+ * ⚠ Ao passar a ler uma coluna nova no consumidor, ela TEM que entrar em
+ * `TECHNICAL_SHEET_LITE_COLUMNS` — o TS é loose (`strict:false`), então uma coluna
+ * ausente vira `undefined` silencioso em runtime, não erro de compilação. Mesma
+ * armadilha já documentada em TECHNICAL_SHEET_CONSUMPTION_COLUMNS.
+ *
+ * A sub-key ['technical_sheets','lite'] é invalidada de graça por todo
+ * `invalidateQueries({ queryKey: ['technical_sheets'] })` do projeto — o match do
+ * React Query é por prefixo.
+ */
+export function useTechnicalSheetsLite() {
+  return useQuery({
+    queryKey: ['technical_sheets', 'lite'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('technical_sheets')
+        .select(TECHNICAL_SHEET_LITE_COLUMNS)
+        .order('updated_at', { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+    staleTime: 5 * 60 * 1000,
+    gcTime: 15 * 60 * 1000,
+  });
+}
+
 export function useSheetMaterials(sheetId: string | null) {
   return useQuery({
     queryKey: ['sheet_materials', sheetId],
