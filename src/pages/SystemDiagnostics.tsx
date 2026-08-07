@@ -120,6 +120,11 @@ export default function SystemDiagnostics() {
   // (97% deles). cost_consistency_report() lista as lacunas de cadastro que
   // reproduzem isso, no mesmo formato do relatório de consumo.
   const [costChecks, setCostChecks] = useState<ConsistencyRow[] | null>(null);
+  // Identidade do relógio de ponto (auditoria 07/08/2026): o crachá do relógio é
+  // um SLOT RECICLADO — 23 dos 44 números já foram de mais de uma pessoa —, e o
+  // arquivo do equipamento só exporta IDUsuário/Nome/Dep. Sem âncora temporal, o
+  // ponto de quem saiu era atribuído a quem herdou o número.
+  const [clockChecks, setClockChecks] = useState<ConsistencyRow[] | null>(null);
   const [consRunning, setConsRunning] = useState(false);
   const [consChecksError, setConsChecksError] = useState<string | null>(null);
 
@@ -150,8 +155,9 @@ export default function SystemDiagnostics() {
     setLinkChecks(null);
     setStaleResRows(null);
     setCostChecks(null);
+    setClockChecks(null);
     try {
-      const [consRes, parRes, freshRes, cpcRes, debitRes, guardRes, capRes, linkRes, staleResRes, costRes] = await Promise.all([
+      const [consRes, parRes, freshRes, cpcRes, debitRes, guardRes, capRes, linkRes, staleResRes, costRes, clockRes] = await Promise.all([
         supabase.rpc('consumption_consistency_report'),
         supabase.rpc('run_consumption_parity_tests'),
         // pcp_freshness_report é função nova (ainda não nos tipos gerados) → cast.
@@ -171,9 +177,11 @@ export default function SystemDiagnostics() {
         (supabase as any).rpc('list_ops_with_stale_reservations'),
         // cost_consistency_report — lacunas que fazem o custo sair errado (mig 20261104120200).
         (supabase as any).rpc('cost_consistency_report'),
+        // timeclock_identity_report — saúde do casamento ponto×funcionário (mig 20261227120000).
+        (supabase as any).rpc('timeclock_identity_report'),
       ]);
 
-      const queryError = [consRes, parRes, freshRes, cpcRes, debitRes, guardRes, capRes, linkRes, staleResRes, costRes]
+      const queryError = [consRes, parRes, freshRes, cpcRes, debitRes, guardRes, capRes, linkRes, staleResRes, costRes, clockRes]
         .map((result) => result.error)
         .find(Boolean);
       if (queryError) throw queryError;
@@ -185,6 +193,7 @@ export default function SystemDiagnostics() {
       setDebitGuards((guardRes.data ?? []) as ParityRow[]);
       setCapacityChecks(capRes.data ?? []);
       setCostChecks((costRes.data ?? []) as ConsistencyRow[]);
+      setClockChecks((clockRes.data ?? []) as ConsistencyRow[]);
       setLinkChecks(linkRes.data ?? []);
       setStaleResRows(staleResRes.data ?? []);
       setParityChecks((parRes.data ?? []) as ParityRow[]);
@@ -617,6 +626,30 @@ export default function SystemDiagnostics() {
               <div className="flex items-center gap-2 text-sm text-success"><CheckCircle2 className="h-4 w-4" /> Custo íntegro — nenhuma lacuna de cadastro encontrada.</div>
             )}
             {(costChecks ?? []).slice().sort((a, b) => b.item_count - a.item_count).map((c, i) => (
+              <CheckRow key={i} row={c} />
+            ))}
+          </Panel>
+
+          {/* Ponto — auditoria 07/08/2026. O crachá do relógio (IDUsuário) é um
+              SLOT RECICLADO: o nº 6 era da "camila" e hoje é do "Admilson"; o nº 3
+              era do "junior" e hoje é da "CAMILA". Como o arquivo do equipamento só
+              exporta IDUsuário/Nome/Dep., a vigência da ficha
+              (admission_date..termination_date) é a ÚNICA âncora que impede atribuir
+              ponto a quem nem estava na empresa — daí este painel vigiar o cadastro
+              de que ela depende. */}
+          <Panel
+            eyebrow="RH · PONTO"
+            title="Identidade do relógio de ponto"
+            subtitle="Saúde do casamento ponto×funcionário: ficha com crachá e sem admissão (sentinela da constraint), crachá que bate ponto sem ficha, registro sem funcionário resolvido, ficha ativa sem crachá, crachá que trocou de dono e ponto órfão por herança de crachá. Fonte: timeclock_identity_report(). Use o botão acima pra rodar."
+            bodyClassName="space-y-2"
+          >
+            {clockChecks === null && !consRunning && (
+              <p className="text-sm text-muted-foreground">Rode a verificação acima pra incluir a identidade do relógio de ponto.</p>
+            )}
+            {clockChecks !== null && clockChecks.length === 0 && !consRunning && (
+              <div className="flex items-center gap-2 text-sm text-success"><CheckCircle2 className="h-4 w-4" /> Ponto íntegro — todo registro resolve um funcionário.</div>
+            )}
+            {(clockChecks ?? []).slice().sort((a, b) => b.item_count - a.item_count).map((c, i) => (
               <CheckRow key={i} row={c} />
             ))}
           </Panel>
