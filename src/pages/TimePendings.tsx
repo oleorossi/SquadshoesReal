@@ -367,7 +367,22 @@ export default function TimePendingsPage() {
                         />
                       </TableCell>
                       <TableCell className="text-xs font-medium cursor-pointer" onClick={() => setEditing(p)}>
-                        <div>{p.employee_name}</div>
+                        <div className="flex items-center gap-1">
+                          <span>{p.employee_name}</span>
+                          {p.employee_match_ambiguous && (
+                            <Badge
+                              variant="outline"
+                              className="h-4 px-1 text-[9px] font-normal bg-amber-500/10 text-amber-700 border-amber-500/40 dark:text-amber-400"
+                              title={
+                                'Mais de um cadastro casa com este ponto (mesmo nome ou mesmo crachá). ' +
+                                'O funcionário abaixo foi escolhido pelo crachá; confira em RH → Funcionários ' +
+                                'e unifique as fichas duplicadas.'
+                              }
+                            >
+                              cadastro duplicado
+                            </Badge>
+                          )}
+                        </div>
                         {p.department && (
                           <div className="text-[10px] text-muted-foreground font-normal">{p.department}</div>
                         )}

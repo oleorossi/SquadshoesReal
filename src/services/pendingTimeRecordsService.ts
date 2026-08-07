@@ -35,6 +35,12 @@ export interface PendingTimeRecord {
   punch_count: number;
   issue_type: IssueType;
   has_manual_override: boolean;
+  /**
+   * Mais de uma ficha de `employees` casou com este registro. Ver
+   * migration 20261226120000 — o `employee_id` é escolha por precedência
+   * (external_id > nome), não fato.
+   */
+  employee_match_ambiguous: boolean;
 }
 
 export interface EmployeePendingSummary {
@@ -49,6 +55,11 @@ export interface EmployeePendingSummary {
   extra_punch: number;
   /** 2 batidas com jornada anormalmente curta — adicionado 22/05/2026. */
   suspicious_short_day?: number;
+  /**
+   * Quantas pendências deste funcionário vieram de um casamento ambíguo
+   * (mais de uma ficha em `employees`). > 0 = cadastro duplicado a corrigir.
+   */
+  ambiguous_match_count?: number;
 }
 
 export async function listEmployeePendingSummary(): Promise<EmployeePendingSummary[]> {

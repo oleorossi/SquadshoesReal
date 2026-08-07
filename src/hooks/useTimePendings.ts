@@ -47,6 +47,13 @@ export interface TimePending {
   };
   urgency: Urgency;
   suggestion: PunchSuggestion | null;  // gerado pela função SQL suggest_punches_for_record
+  /**
+   * Mais de uma ficha de `employees` casou com este registro (crachá + nome).
+   * A view escolhe uma por precedência external_id > nome (migration
+   * 20261226120000) — a flag existe pra o RH ver que o cadastro está duplicado
+   * e corrigir a causa, já que o `employee_id` aqui é uma escolha, não um fato.
+   */
+  employee_match_ambiguous: boolean;
 }
 
 export interface PendingCount {

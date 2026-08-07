@@ -290,7 +290,22 @@ function EmployeeCard({
         <div className="flex items-center gap-3">
           {expanded ? <ChevronDown className="w-4 h-4 text-muted-foreground" /> : <ChevronRight className="w-4 h-4 text-muted-foreground" />}
           <div className="flex-1 min-w-0">
-            <CardTitle className="text-sm font-semibold truncate">{emp.name}</CardTitle>
+            <CardTitle className="text-sm font-semibold truncate flex items-center gap-1.5">
+              <span className="truncate">{emp.name}</span>
+              {(emp.ambiguous_match_count ?? 0) > 0 && (
+                <Badge
+                  variant="outline"
+                  className="h-4 shrink-0 px-1 text-[9px] font-normal bg-amber-500/10 text-amber-700 border-amber-500/40 dark:text-amber-400"
+                  title={
+                    `${emp.ambiguous_match_count} pendência(s) casaram com mais de um cadastro ` +
+                    '(mesmo nome ou mesmo crachá). Foram atribuídas a este funcionário pelo crachá; ' +
+                    'unifique as fichas duplicadas em RH → Funcionários.'
+                  }
+                >
+                  cadastro duplicado
+                </Badge>
+              )}
+            </CardTitle>
             <p className="text-xs text-muted-foreground">
               {emp.department ?? 'Sem setor'}
               {emp.oldest_pending && ` · desde ${fmtDateBR(emp.oldest_pending)}`}
