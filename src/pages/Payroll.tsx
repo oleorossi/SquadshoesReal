@@ -1,4 +1,5 @@
 import { Fragment, useMemo, useState, useEffect } from 'react';
+import { eSemanaFechada } from '@/hooks/useFichaProducaoPagamento';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -718,6 +719,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
 
       let calculated = 0;
       let withIncomplete = 0;
+      let skippedPorPar = 0;
       let sharedMatricula = 0;
       let withMissingHeRate = 0;  // HE em minutos mas taxa R$/h não cadastrada → HE R$0
       // Todos os regimes passam pelo MESMO motor (computePeriodFolha honra
@@ -741,6 +743,18 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
         const sch = (emp.work_schedule_id && (schedules as any[]).find(s => s.id === emp.work_schedule_id)) || defaultSchedule;
 
         const regime = String((emp as any).payment_type || 'mensalista').toLowerCase() as 'mensalista' | 'remoto' | 'diarista' | 'producao';
+
+        // POR PAR É SEMANAL. Gerar a folha de um montador para o mês inteiro faz
+        // a aprovação reivindicar julho todo de uma vez — e aí a trava de
+        // sobreposição recusa, com razão, cada semanal daquele intervalo. O banco
+        // barra isso (tg_payroll_producao_semana_fechada); aqui a gente evita o
+        // erro cru e explica onde se paga. Os demais regimes seguem normalmente:
+        // pular um montador não pode impedir a folha dos 17 mensalistas.
+        if (regime === 'producao' && !eSemanaFechada(cFrom, cTo)) {
+          skippedPorPar++;
+          continue;
+        }
+
         const prod = producaoByEmp.get(emp.id);
 
         // MESMO motor da tela do Ponto (computePeriodFolha): monta os dias da escala +
@@ -829,6 +843,13 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
         (withMissingHeRate > 0 ? ` ⚠ ${withMissingHeRate} com hora extra mas SEM valor de HE cadastrado (HE saiu R$0) — preencha "Hora extra (R$/h)" no cadastro do funcionário.` : '') +
         (sharedMatricula > 0 ? ` ⚠ ${sharedMatricula} com matrícula compartilhada — confira o cadastro (pode haver ponto de 2 pessoas na mesma matrícula).` : ''),
       );
+      if (skippedPorPar > 0) {
+        toast.info(
+          `${skippedPorPar} do regime por par ficaram de fora: o pagamento deles é semanal (segunda a domingo) e este período não é uma semana. ` +
+          `Pague pela Ficha de Montadores, navegando até a semana.`,
+          { duration: 8000 },
+        );
+      }
     } catch (err: any) {
       toast.error(`Erro ao calcular folha: ${err.message}`);
     } finally {
