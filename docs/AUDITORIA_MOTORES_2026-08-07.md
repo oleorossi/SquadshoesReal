@@ -1,0 +1,197 @@
+# Auditoria dos motores de consumo, baixa, compra e OS — 2026-08-07
+
+**Pergunta:** todos os motores de cálculo conversam entre si?
+**Resposta:** **não.** Quatro desencontros confirmados, todos com evidência no banco de produção.
+
+**Critério de aprovação acordado:** paridade numérica **e** fonte única de verdade.
+**Escopo:** baixa de estoque · OP (`orders`) · OS (`service_orders`) · ordem de compra.
+
+> Método: diagnósticos vivos do próprio banco (`run_consumption_parity_tests`,
+> `consumption_consistency_report`, `list_stock_debit_holes`, `audit_stock_drift_report`)
+> + introspecção de `pg_proc`/`pg_views` + leitura dos motores TS dos eixos 1 e 2.
+> O lado SQL foi lido do **banco**, não das migrations — vale a Regra de ouro do `CLAUDE.md`.
+
+---
+
+## O que está SÃO
+
+`run_consumption_parity_tests()` — **22/22 verdes**. O escalar delega ao `by_grade`, não há
+resquício de `insole_mode`, a conversão dm²→unidade passa por `get_material_conversion_info`,
+Fachete entra, o gate de cor é accent-insensitive e `try_reserve` deriva a demanda do motor
+unificado sem explosão própria de BOM.
+
+⚠ **Ressalva sobre o alcance desse verde:** esses 22 casos são, em maioria, **assertivas
+textuais sobre o fonte das funções SQL** ("delega", "não usa campo legado", "aplica conversão")
+mais 3 smokes de runtime. Eles provam coerência **interna do lado SQL**. **Nada hoje compara o
+número que o TS produz contra o número que o SQL produz** — as duas suítes checam cada lado por
+dentro. Pelo critério de paridade numérica, esse eixo não é verificado por ninguém.
+
+---
+
+## Desencontro 1 — Duas telas leem o escalar e nunca o per-size
+
+| Arquivo | Linha | O que faz |
+|---|---|---|
+| `src/components/production/MaterialConsumptionTab.tsx` | 204, 217, 230 | `Number(sheet.upper_consumption) * qty` — multiplicação crua |
+| `src/components/financial/SaldoFinalTab.tsx` | 174–176 | `addMaterial(..., sheet.upper_consumption)` — escalar cru |
+
+Nenhuma das duas lê `*_consumption_per_size`. As duas pulam, portanto:
+
+1. os valores **por numeração** (a fonte que o motor canônico usa);
+2. a conversão **dm²→metro** pela largura da ficha de componente;
+3. `sole_drives_consumption` (forro/palmilha vêm do solado);
+4. a supressão anti-duplicidade do forro de cabedal.
+
+**Impacto medido:** na referência `CF 09 ` o escalar é `0,68` e o per-size é `20` em todas as
+6 numerações — **fator 29,4×**. Para material de área com largura cadastrada, é a mesma classe
+do bug corrigido em 2026-05-30 no `sheet_materials`, que inflava ~100×.
+
+⚠ **`SaldoFinalTab` está montado no Planejamento de Compras** (`src/pages/PurchasePlanning.tsx:235`).
+Não é tela morta: o caminho ingênuo alimenta decisão de compra.
+
+---
+
+## Desencontro 2 — O MRP mostra um número e compra outro
+
+| Função | Fonte da conta | Motor canônico? |
+|---|---|---|
+| `fn_projected_demand` — **o que a tela do MRP mostra** | `calculate_order_consumption` | **sim** |
+| `generate_purchase_orders_from_mrp` — **o que vira OC** | `sheet_materials` direto | **não** |
+
+A demanda exibida é canônica; a ordem de compra gerada a partir dela é recalculada por outra
+fonte. Duas contas para o mesmo pedido, e a que vira dinheiro é a que não passa pelo motor.
+
+---
+
+## Desencontro 3 — A projeção de compra se apoia no livro furado
+
+`get_purchase_projection` deriva o consumo histórico de `stock_movements`. Esse livro tem:
+
+| Diagnóstico | Resultado |
+|---|---|
+| `list_stock_debit_holes()` — `consumo_sem_debito` | **1.172 linhas** · 205.291 un · **R$ 225.736,46** · 37 PVs · 34 produtos |
+| `audit_stock_drift_report()` — `products.quantity` × soma dos movimentos | **99 produtos** (50 sem movimento algum, 43 drift baixo, 6 drift alto) |
+| `list_ops_with_stale_reservations()` | 33 OPs |
+
+Exemplos de buraco (OP finalizada, consumo padrão calculado, débito zero):
+
+- `OP-2026-00863` / `PV-00122` / `CF 09 ` / Elástico 30mm — padrão 32.000 un, real 0 → R$ 80.000
+- `OP-2026-00864` / `PV-00122` / `CF 09 ` / Elástico 30mm — padrão 24.000 un, real 0 → R$ 60.000
+- `OP-2026-01167` / `PV-00146` / `DS21` / solado `01` — padrão 1.248 par, real 0 → R$ 2.371
+
+Consumo subnotificado → dias de cobertura inflados → sugestão de reposição sistematicamente
+baixa. O erro do eixo 3 entra no eixo 2 por essa porta.
+
+---
+
+## Desencontro 4 — 26 escritores diretos no mesmo livro-razão
+
+`stock_movements` recebe `INSERT` de **26 funções**, e **20 delas também fazem `UPDATE products SET`** —
+ou seja, cada uma mantém o saldo por conta própria. Existe `move_stock_delta`, que seria a fonte
+única, e mais 25 caminhos que escrevem direto ao lado dela.
+
+Tabelas de movimento, estado real:
+
+| Tabela | Linhas | Escritores |
+|---|---|---|
+| `stock_movements` | 424 | **26 funções** |
+| `material_reservations` | 1.495 | 9 funções |
+| `material_audit_log` | 1.303 | 1 (`log_product_audit`) |
+| `inventory_transactions` | **0** | **nenhum** |
+
+Duas correções à suspeita inicial, para o registro:
+
+- **`material_audit_log` não é um contador rival.** Seu único escritor audita mudança de
+  *cadastro* de produto, não movimento de estoque. A diferença 1.303 × 424 é escopo, não buraco.
+- **`inventory_transactions` é tabela morta** — zero linhas e zero escritores.
+
+---
+
+## Causa raiz dos órfãos de componente
+
+`merge_product_into` mexe em `technical_sheets` mas **não toca `direct_components`**. Como esse
+campo é JSONB, nenhuma FK o protege: merge ou deleção de produto deixa o ponteiro apontando para
+UUID inexistente.
+
+Estado: **24 de 28** linhas de `direct_components` têm `product_id` que não resolve. O estrago
+vem de **5 UUIDs** (confirmado por `list_orphan_direct_components()` = 5):
+
+| UUID | Nome(s) na ficha | Fichas |
+|---|---|---|
+| `73e1826c…` | BINÓCULO 6MM: DOURADO (+ BINÓCULO 6MM na I132) | 11 |
+| `645bf78e…` | **BINÓCULO 6MM** *e* **Fivela Dourada 10.7mm** | 9 |
+| `293dfd6d…` | Coração | 2 |
+| `3fc6938f…` | Elástico 7mm dedinho | 1 |
+| `592ec666…` | Dedinho GOLD | 1 |
+
+⚠ O segundo UUID carrega **dois nomes contraditórios**. Binóculo e fivela não são o mesmo
+produto — o dado **não é auto-reparável por inferência**.
+
+As outras 4 linhas têm ID válido e só o nome em cache defasado (`Ilhós 51 - Ouro` → `Ilhós 51`,
+`Rebite - DOURADO` → `Rebite`).
+
+Já existem no banco, prontos e não usados neste caso: `list_orphan_direct_components`,
+`relink_direct_component`, `tg_strip_invalid_direct_components`. **Não verifiquei** se o trigger
+está inerte, cobre o evento errado, ou é posterior ao estrago — fica como item aberto.
+
+---
+
+## Código morto encontrado
+
+| Item | Evidência |
+|---|---|
+| `src/lib/purchaseRequisition.ts` | consulta `technical_sheets.reference_id`, **coluna que não existe**; `generatePurchaseRequisition` não é chamada em lugar nenhum. Morta por construção — o `error` é descartado, então retornaria requisição vazia em silêncio. |
+| `bill_of_materials` (tabela) | **0 linhas**. O BOM vivo é `sheet_materials` (118 linhas). |
+| `inventory_transactions` (tabela) | 0 linhas, 0 escritores. |
+
+---
+
+## Furos de cadastro (`consumption_consistency_report`)
+
+| Check | Sev | n |
+|---|---|---|
+| `persize_diverge_do_escalar` | alto | 1 (`CF 09 `) |
+| `direct_components_produto_inexistente` | alto | 24 |
+| `material_base_artesanal_sem_cor` | médio | 149 |
+| `produto_artesanal_flag_inconsistente` | médio | 4 |
+| `direct_components_nome_desatualizado` | médio | 4 |
+| `solado_fachetado_sem_specs_fachete` | médio | 2 |
+| `forro_cabedal_duplicado_com_palmilha` | baixo | 27 |
+
+---
+
+## Plano de correção
+
+Ordem acordada: **teste vermelho primeiro, correção depois** — é a única sequência que prova
+que a correção resolveu.
+
+### Fase 1 — Instrumentar (o teste nasce vermelho)
+
+1. Teste de **paridade numérica TS×SQL**: roda o mesmo PV pelos dois motores e compara a saída.
+   Hoje não existe. Deve reprovar em `CF 09` e nos 24 órfãos.
+2. Guard que trava a regressão do Desencontro 1: nenhum componente pode ler `*_consumption`
+   sem também considerar `*_consumption_per_size`.
+
+### Fase 2 — Corrigir código
+
+3. `MaterialConsumptionTab.tsx` e `SaldoFinalTab.tsx` passam a chamar o motor canônico em vez
+   de multiplicar o escalar.
+4. `generate_purchase_orders_from_mrp` passa a derivar de `fn_projected_demand` (a mesma fonte
+   que a tela mostra).
+5. `merge_product_into` e o caminho de deleção passam a varrer `direct_components`.
+6. Remover `purchaseRequisition.ts` e avaliar `bill_of_materials` / `inventory_transactions`.
+
+### Fase 3 — Corrigir dado (migration a partir de `20261217120400`, com snapshot antes)
+
+7. `CF 09`: escalar passa a `20` (decisão do dono — per-size vence).
+8. Criar os produtos sumidos (`un` / Componente / `COMPONENTES DIVERSOS`, espelhando
+   `Binóculo 10mm` e `Fivela 12mm`; `Elástico 7mm dedinho` como **linear**) e religar via
+   `relink_direct_component`.
+9. Sincronizar os 4 nomes em cache defasados.
+10. Os 1.172 buracos de débito e os 99 drifts: **decisão separada** — reconciliar histórico de
+    estoque é outra classe de operação, e `reconcile_stock_debit_hole` já existe para isso.
+
+### Limitação desta auditoria
+
+`debit_consistency_report()` **não pôde ser executada**: exige usuário aprovado (RLS), e a
+conexão MCP não é um. O que ela cobre além do `list_stock_debit_holes` fica desconhecido.
