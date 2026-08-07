@@ -1,5 +1,5 @@
 import { parseDateOnly } from '@/lib/dateOnly';
-import { useState, useMemo, useEffect, type ReactNode } from 'react';
+import { useState, useMemo, useEffect, lazy, Suspense, type ReactNode } from 'react';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -14,15 +14,19 @@ import { Baby, Buildings, ShoppingCart, Plus, CircleNotch as Loader2, Copy, Prin
 import { useMarqueeSelection } from '@/hooks/useMarqueeSelection';
 import { BulkActionsBar, MarqueeOverlay } from '@/components/ui/bulk-actions-bar';
 import { cn } from "@/lib/utils";
-import MarginDialog from '@/components/sale-orders/MarginDialog';
-import OperatorFichasDialog from '@/components/sale-orders/OperatorFichasDialog';
-import { ServiceOrderFormDialog } from '@/components/contractors/ServiceOrderFormDialog';
-import GeneratePurchaseOrdersDialog from '@/components/purchase/GeneratePurchaseOrdersDialog';
+// ⚠ Estes dialogs são `lazy` E têm guarda de montagem no JSX. As duas coisas:
+// `lazy` sozinho não adia nada quando o componente é renderizado
+// incondicionalmente com open={false} — o React monta, o chunk é buscado no
+// primeiro paint e o ganho é zero. (auditoria PV 07/08/2026)
+const MarginDialog = lazy(() => import('@/components/sale-orders/MarginDialog'));
+const OperatorFichasDialog = lazy(() => import('@/components/sale-orders/OperatorFichasDialog'));
+const ServiceOrderFormDialog = lazy(() => import('@/components/contractors/ServiceOrderFormDialog').then(m => ({ default: m.ServiceOrderFormDialog })));
+const GeneratePurchaseOrdersDialog = lazy(() => import('@/components/purchase/GeneratePurchaseOrdersDialog'));
 import PurchaseOrdersForPvCard from '@/components/purchase/PurchaseOrdersForPvCard';
 import { PvOutdatedBadge } from '@/components/sale-orders/PvOutdatedBadge';
 import { RevertInvoiceButton } from '@/components/sale-orders/RevertInvoiceButton';
 import SummaryConsumptionPanel from '@/components/sale-orders/SummaryConsumptionPanel';
-import SaleOrdersOverviewDialog from '@/components/sale-orders/SaleOrdersOverviewDialog';
+const SaleOrdersOverviewDialog = lazy(() => import('@/components/sale-orders/SaleOrdersOverviewDialog'));
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -48,15 +52,16 @@ import { useTechnicalSheetsLite } from '@/hooks/useTechnicalSheets';
 import { useClients, useEconomicGroups } from '@/hooks/useClients';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { ImportClientsDialog } from '@/components/clients/ImportClientsDialog';
-import { BulkNfeDialog } from '@/components/nfe/BulkNfeDialog';
+const ImportClientsDialog = lazy(() => import('@/components/clients/ImportClientsDialog').then(m => ({ default: m.ImportClientsDialog })));
+// BulkNfeDialog arrasta NfePreviewPanel junto — por isso ele também é lazy.
+const BulkNfeDialog = lazy(() => import('@/components/nfe/BulkNfeDialog').then(m => ({ default: m.BulkNfeDialog })));
 import { useAuth } from '@/hooks/useAuth';
 import { useIsAdmin } from '@/hooks/useUserManagement';
 import { useAccessControl, useCan } from '@/hooks/useAccessControl';
 import { useEmitNfe, useNfeEmitidas, useCheckNfeStatus, useCancelNfe, useCompanies } from '@/hooks/useNfe';
-import { NfeDevolucaoDialog } from '@/components/nfe/NfeDevolucaoDialog';
-import { NfeViewerDialog } from '@/components/nfe/NfeViewerDialog';
-import { NfePreviewDialog } from '@/components/nfe/NfePreviewDialog';
+const NfeDevolucaoDialog = lazy(() => import('@/components/nfe/NfeDevolucaoDialog').then(m => ({ default: m.NfeDevolucaoDialog })));
+const NfeViewerDialog = lazy(() => import('@/components/nfe/NfeViewerDialog').then(m => ({ default: m.NfeViewerDialog })));
+const NfePreviewDialog = lazy(() => import('@/components/nfe/NfePreviewDialog').then(m => ({ default: m.NfePreviewDialog })));
 import type { NfeEmitida } from '@/hooks/useNfe';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRepresentatives } from '@/hooks/useRepresentatives';
@@ -1655,12 +1660,14 @@ export default function SaleOrders() {
         </div>
 
         {poGenTarget && (
-          <GeneratePurchaseOrdersDialog
-            open={!!poGenTarget}
-            onOpenChange={(v) => { if (!v) setPoGenTarget(null); }}
-            pvIds={poGenTarget.ids}
-            pvNumbers={poGenTarget.numbers}
-          />
+          <Suspense fallback={null}>
+            <GeneratePurchaseOrdersDialog
+              open={!!poGenTarget}
+              onOpenChange={(v) => { if (!v) setPoGenTarget(null); }}
+              pvIds={poGenTarget.ids}
+              pvNumbers={poGenTarget.numbers}
+            />
+          </Suspense>
         )}
       </>
     );
@@ -2309,12 +2316,16 @@ export default function SaleOrders() {
       />
 
       {/* Preview + Emit NF-e em LOTE — accordion com 1 NF por PV */}
-      <BulkNfeDialog
-        open={bulkNfeOpen}
-        onOpenChange={setBulkNfeOpen}
-        saleOrders={bulkNfeOrders}
-        mode={bulkNfeMode}
-      />
+      {bulkNfeOpen && (
+        <Suspense fallback={null}>
+          <BulkNfeDialog
+            open={bulkNfeOpen}
+            onOpenChange={setBulkNfeOpen}
+            saleOrders={bulkNfeOrders}
+            mode={bulkNfeMode}
+          />
+        </Suspense>
+      )}
 
       {/* Alterar Status em LOTE — select arbitrário do status alvo */}
       <Dialog open={bulkStatusOpen} onOpenChange={setBulkStatusOpen}>
@@ -2363,7 +2374,11 @@ export default function SaleOrders() {
       </Dialog>
 
       {/* IMPORT CLIENTS DIALOG */}
-      <ImportClientsDialog open={importClientsOpen} onOpenChange={setImportClientsOpen} />
+      {importClientsOpen && (
+        <Suspense fallback={null}>
+          <ImportClientsDialog open={importClientsOpen} onOpenChange={setImportClientsOpen} />
+        </Suspense>
+      )}
 
       {/* ORDER DETAILS DIALOG */}
       <Dialog open={detailDialogOpen} onOpenChange={setDetailDialogOpen}>
@@ -2908,34 +2923,44 @@ export default function SaleOrders() {
 
       {/* NF-e devolução dialog */}
       {devolucaoTarget && selectedOrder && (
-        <NfeDevolucaoDialog
-          open={!!devolucaoTarget}
-          onOpenChange={(v) => { if (!v) setDevolucaoTarget(null); }}
-          nfeId={devolucaoTarget.id}
-          nfeNumero={devolucaoTarget.numero}
-          saleOrderId={selectedOrder.id}
-          clientName={selectedOrder.client_name}
-        />
+        <Suspense fallback={null}>
+          <NfeDevolucaoDialog
+            open={!!devolucaoTarget}
+            onOpenChange={(v) => { if (!v) setDevolucaoTarget(null); }}
+            nfeId={devolucaoTarget.id}
+            nfeNumero={devolucaoTarget.numero}
+            saleOrderId={selectedOrder.id}
+            clientName={selectedOrder.client_name}
+          />
+        </Suspense>
       )}
 
       {/* NF-e viewer (DANFE + XML) — abre quando o usuário clica numa NF da lista */}
-      <NfeViewerDialog
-        nfe={viewNfeTarget}
-        open={!!viewNfeTarget}
-        onOpenChange={(v) => { if (!v) setViewNfeTarget(null); }}
-        clientLabel={selectedOrder?.client_name || viewNfeTarget?.nome_destinatario || undefined}
-        orderNumber={selectedOrder?.order_number || undefined}
-      />
+      {viewNfeTarget && (
+        <Suspense fallback={null}>
+          <NfeViewerDialog
+            nfe={viewNfeTarget}
+            open={!!viewNfeTarget}
+            onOpenChange={(v) => { if (!v) setViewNfeTarget(null); }}
+            clientLabel={selectedOrder?.client_name || viewNfeTarget?.nome_destinatario || undefined}
+            orderNumber={selectedOrder?.order_number || undefined}
+          />
+        </Suspense>
+      )}
 
       {/* NF-e preview (dry_run) — atalho do resumo do PV. Mostra tudo que vai
           pra SEFAZ antes do POST destrutivo. Operador confere e confirma. */}
-      <NfePreviewDialog
-        saleOrderId={previewNfeOrder?.id || null}
-        companyId={nfeCompanyId || undefined}
-        orderNumber={previewNfeOrder?.orderNumber}
-        open={!!previewNfeOrder}
-        onClose={() => setPreviewNfeOrder(null)}
-      />
+      {previewNfeOrder && (
+        <Suspense fallback={null}>
+          <NfePreviewDialog
+            saleOrderId={previewNfeOrder?.id || null}
+            companyId={nfeCompanyId || undefined}
+            orderNumber={previewNfeOrder?.orderNumber}
+            open={!!previewNfeOrder}
+            onClose={() => setPreviewNfeOrder(null)}
+          />
+        </Suspense>
+      )}
 
       {/* DUPLICATE DIALOG */}
       <Dialog open={dupDialog} onOpenChange={setDupDialog}>
@@ -3086,32 +3111,48 @@ export default function SaleOrders() {
         </AlertDialogContent>
       </AlertDialog>
 
-      <SaleOrdersOverviewDialog
-        open={overviewOpen}
-        onOpenChange={setOverviewOpen}
-        orders={orders.filter(o => selectedIds.has(o.id))}
-      />
+      {overviewOpen && (
+        <Suspense fallback={null}>
+          <SaleOrdersOverviewDialog
+            open={overviewOpen}
+            onOpenChange={setOverviewOpen}
+            orders={orders.filter(o => selectedIds.has(o.id))}
+          />
+        </Suspense>
+      )}
 
-      <MarginDialog
-        open={marginDialogOpen}
-        onOpenChange={setMarginDialogOpen}
-        saleOrderId={selectedOrder?.id || null}
-        orderNumber={selectedOrder?.order_number || ''}
-        total={Number(selectedOrder?.total) || 0}
-      />
+      {marginDialogOpen && (
+        <Suspense fallback={null}>
+          <MarginDialog
+            open={marginDialogOpen}
+            onOpenChange={setMarginDialogOpen}
+            saleOrderId={selectedOrder?.id || null}
+            orderNumber={selectedOrder?.order_number || ''}
+            total={Number(selectedOrder?.total) || 0}
+          />
+        </Suspense>
+      )}
 
       {/* "Ficha Montagem": seleção de OPs antes de imprimir. Sem OP vinculada,
           o próprio diálogo oferece o caminho antigo (pelos itens do pedido). */}
-      <OperatorFichasDialog
-        open={operatorFichasOpen}
-        onOpenChange={setOperatorFichasOpen}
-        saleOrderId={selectedOrder?.id || null}
-        orderNumber={selectedOrder?.order_number || ''}
-      />
+      {operatorFichasOpen && (
+        <Suspense fallback={null}>
+          <OperatorFichasDialog
+            open={operatorFichasOpen}
+            onOpenChange={setOperatorFichasOpen}
+            saleOrderId={selectedOrder?.id || null}
+            orderNumber={selectedOrder?.order_number || ''}
+          />
+        </Suspense>
+      )}
 
       {/* Atalho "Gerar OS" do PV — reusa o form canônico de OS, já com os itens
           deste pedido pré-selecionados e a OS amarrada ao pedido (sale_order_id). */}
-      {selectedOrder && (
+      {/* Guarda por `osDialogOpen`, não só por `selectedOrder`: este nunca volta a
+          null depois do primeiro PV aberto, então sozinho ele montaria o diálogo
+          (e baixaria o chunk) para sempre. */}
+      {osDialogOpen && selectedOrder && (
+        <Suspense fallback={null}>
         <ServiceOrderFormDialog
           open={osDialogOpen}
           onOpenChange={setOsDialogOpen}
@@ -3125,15 +3166,18 @@ export default function SaleOrders() {
             })
             .filter((i) => i.pairs > 0)}
         />
+        </Suspense>
       )}
 
       {poGenTarget && (
-        <GeneratePurchaseOrdersDialog
-          open={!!poGenTarget}
-          onOpenChange={(v) => { if (!v) setPoGenTarget(null); }}
-          pvIds={poGenTarget.ids}
-          pvNumbers={poGenTarget.numbers}
-        />
+        <Suspense fallback={null}>
+          <GeneratePurchaseOrdersDialog
+            open={!!poGenTarget}
+            onOpenChange={(v) => { if (!v) setPoGenTarget(null); }}
+            pvIds={poGenTarget.ids}
+            pvNumbers={poGenTarget.numbers}
+          />
+        </Suspense>
       )}
     </>
   );

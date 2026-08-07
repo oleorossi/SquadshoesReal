@@ -271,8 +271,9 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
 
   // Imprimir OC: baixa 1 PDF por fornecedor (7 fornecedores → 7 arquivos), pra
   // enviar a ordem individual a cada um. Inclui o grupo "Sem Fornecedor".
-  const handlePrintOcs = () => {
-    const n = printPerPvOcPdf({ drafts, pvNumbers: pvNumbers || [] });
+  const handlePrintOcs = async () => {
+    // await: o jsPDF é carregado sob demanda (ver printPerPvOcPdf.ts).
+    const n = await printPerPvOcPdf({ drafts, pvNumbers: pvNumbers || [] });
     if (n > 0) {
       toast.success(`Baixando ${n} PDF${n === 1 ? '' : 's'} de OC — 1 por fornecedor.`);
       toast.info('Se o navegador pedir, permita "baixar vários arquivos".', { duration: 6000 });

@@ -5,8 +5,15 @@
 // Usa a mesma stack de PDF do resto do app (jsPDF + jspdf-autotable, ver
 // lib/exportReports.ts). Os downloads são escalonados (setTimeout) pra o navegador
 // não bloquear/mesclar múltiplos "save" disparados no mesmo clique.
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+// ⚠ jsPDF e jspdf-autotable são carregados por `import()` DENTRO da função, não
+// no topo. Import estático aqui criava aresta dura até /sales: SaleOrders.tsx
+// importa GeneratePurchaseOrdersDialog, que importa este módulo — então todo
+// mundo que abria a lista de PV baixava ~145 kB gzip de jsPDF, inclusive quem
+// nunca gera ordem de compra. (auditoria PV 07/08/2026)
+//
+// Seguro aqui porque a geração já roda dentro de `setTimeout`, fora do tick do
+// gesto do usuário. NÃO replicar este padrão antes de um `window.open` — ali o
+// await mata o user-gesture e o Chrome bloqueia o pop-up.
 import { formatCurrency, formatMoney } from '@/lib/utils';
 import type { DraftPurchaseOrder } from '@/lib/perPvPurchasing';
 
@@ -30,9 +37,18 @@ export interface PrintPerPvOcArgs {
 /**
  * Baixa 1 PDF por fornecedor (inclui o grupo "Sem Fornecedor" quando existir).
  * Retorna quantos PDFs foram gerados.
+ *
+ * Assíncrona porque carrega jsPDF sob demanda — ver a nota no topo do arquivo.
  */
-export function printPerPvOcPdf({ drafts, pvNumbers }: PrintPerPvOcArgs): number {
+export async function printPerPvOcPdf({ drafts, pvNumbers }: PrintPerPvOcArgs): Promise<number> {
   const groups = (drafts || []).filter(d => d.items.length > 0);
+  if (groups.length === 0) return 0;
+
+  const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+    import('jspdf'),
+    import('jspdf-autotable'),
+  ]);
+
   const pvLabel = (pvNumbers || []).filter(Boolean).join(', ') || 'pedido';
   const dateStr = new Date().toLocaleDateString('pt-BR');
 
