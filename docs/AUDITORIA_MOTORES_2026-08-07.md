@@ -352,3 +352,65 @@ Três decisões de implementação que valem registro:
   `reconcile_stock_debit_hole` já existe — mas o passo anterior é **contagem física** dos 34
   produtos afetados.
 - Os 26 escritores diretos em `stock_movements` continuam 26.
+
+---
+
+## Fechamento dos checks de cadastro — 2026-08-07 (migration `20261223120000`)
+
+**11 dos 12 checks do `consumption_consistency_report()` em zero.** Sobra um, que exige
+medida de fábrica.
+
+| Check | Antes | Depois | Natureza |
+|---|---|---|---|
+| `material_base_artesanal_sem_cor` | 149 | **0** | defeito do **check** |
+| `forro_cabedal_duplicado_com_palmilha` | 27 | **0** | dado |
+| `produto_artesanal_flag_inconsistente` | 4 | **0** | dado |
+| `solado_fachetado_sem_specs_fachete` | 2 | **2** | precisa do dono |
+
+### Os 149 eram ruído do próprio check — e criar os produtos teria sido caro
+
+O check juntava produto × receita e exigia que a base de **cada** receita existisse na cor do
+produto. Mas o grupo `TIRA OVERLOCK 5MM` tem **4 receitas ativas** (NAPA SUDANI, GLOW METALIC,
+NAPA MADRID, NAPA SOFT) e a tira precisa de **uma**, não das quatro.
+
+Medido antes de mexer: dos **62** artesanais com cor, **62** têm ao menos uma base disponível.
+`sem_nenhuma_base = 0`. Os 149 eram 79 combinações (base × cor) que ninguém precisa.
+
+⚠ **Ler o número sem checar teria mandado criar 79 produtos** — NAPA MADRID em AMARELO, ROXO,
+VERDE… inventando estoque de material que a fábrica não usa nessas cores. O check foi corrigido
+para perguntar o que importa: *este artesanal tem alguma base na cor dele?*
+
+### Os 4 da flag eram 1 produto
+
+`TIRA OVERLOCK 5MM: CAPUCCINO`, contado uma vez por receita ativa do grupo. Fan-out de JOIN,
+não quatro produtos.
+
+### Os 27 do forro: zerado e provado que não muda número
+
+Nessas fichas o solado dirige o consumo, tem forro de PALMILHA
+(`insole_lining_consumption_dm2` ≈ 5,7083) e **não** tem forro de cabedal
+(`lining_consumption_dm2 IS NULL`). O escalar `lining_consumption` da ficha (4,56–5,83) é a área
+da palmilha digitada no campo errado — bug PV-00146.
+
+**Verificado com baseline antes/depois** em 120, DS12 e S-039: a saída de
+`calculate_order_consumption_by_grade` é **idêntica** (120 → Forração Palmilha 0,1786 m e
+Palmilha 0,1248 m; DS12 → Cabedal 0,5664 m; S-039 igual). O motor já suprimia a linha fantasma;
+zerar só removeu a armadilha para quem lê o escalar cru — que foi exatamente o Desencontro 1.
+
+Snapshot em `public.backup_cadastro_20260807b` (27 linhas).
+
+### ⚠ Armadilha de regex do Postgres, para quem repetir a injeção
+
+A primeira tentativa **quebrou a função** e foi revertida pela transação. Causa: no ARE do
+Postgres, quando a expressão mistura quantificadores greedy e non-greedy, **o primeiro decide a
+ganância do todo**. Como `[[:space:]]+` vinha antes, o `.*?;` virou greedy e engoliu até o
+último `;` da função — levando o `END;` junto.
+
+Correto é `[^;]*;`, que não consegue atravessar ponto-e-vírgula. Está comentado no arquivo da
+migration.
+
+### O que sobra
+
+`solado_fachetado_sem_specs_fachete` (2): **180 SALTO BLOCO** está marcado `is_fachetado = true`
+mas sem consumo de fachete cadastrado. O valor é medida física — não dá para inferir do banco.
+Enquanto estiver assim, o consumo de fachete dessa referência sai zerado.
