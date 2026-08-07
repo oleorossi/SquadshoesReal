@@ -262,30 +262,53 @@ function openPrint(html: string) {
   if (!w) { alert("Permita pop-ups neste site para imprimir."); return; }
   w.document.write(html); w.document.close();
 }
+/** `pago` na célula = o dia já foi quitado por uma folha (payroll_run_id). */
+interface CalCell { pares: number; medio: number; dificil: number; fichas: number; pago: boolean; }
+interface CalRow {
+  key: string; nome: string; cells: Record<string, CalCell>;
+  medio: number; dificil: number; pares: number; fichas: number;
+  valorPago: number; valorAberto: number; valorTotal: number;
+}
+
+/* ---------- RELATÓRIO ÚNICO (A4 paisagem): rendimento + calendário ----------
+ * Eram dois botões e dois documentos — "Imprimir relatório" (retrato, por
+ * pessoa) e "Calendário em PDF" (paisagem, pessoa × dia). Quem conferia a
+ * semana precisava gerar os dois e juntar no grampo. Agora é um documento só
+ * (decisão do dono, 07/08/2026): o rendimento em cima, o calendário embaixo,
+ * mesmo período e mesmo filtro.
+ *
+ * PAISAGEM porque o calendário manda: ele tem uma coluna por DIA do período —
+ * 7 numa semana, até 31 num mês. A tabela de rendimento tem 9 colunas e cabe
+ * folgada em paisagem; o contrário não é verdade.
+ *
+ * ⚠ Os seletores de tabela são NAMESPACED (.rend / .cal). Os dois documentos
+ * tinham CSS próprio com os mesmos seletores genéricos (table, th, td); juntar
+ * sem escopo faria um reescrever o outro em silêncio. */
 function imprimirRelatorio(p: {
-  rows: AggRow[]; totals: AggTotals; setorLabel: string; oficioPlural: string;
+  rows: AggRow[]; totals: AggTotals; setorLabel: string; oficioPlural: string; oficioLabel: string;
   label: string; intervalo: string; pagStatus: PagStatus;
+  cal: { rows: CalRow[]; days: string[] };
 }) {
   const { rows, totals } = p;
-  const css = `*{box-sizing:border-box}body{margin:0;font-family:'Helvetica Neue',Arial,sans-serif;color:#111;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-    h1{font-size:18px;margin:0 0 2px} .sub{font-size:11px;color:#555;margin-bottom:4px}
-    .filtro{font-size:10px;color:#555;margin-bottom:12px}
-    table{width:100%;border-collapse:collapse;font-size:12px} th,td{border:1px solid #333;padding:6px 8px}
-    th{background:#f1f0ed;text-align:left;font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:#444}
-    td.n{text-align:right;font-variant-numeric:tabular-nums} tfoot td{font-weight:800;background:#f6f5f2}
-    .med{color:#b45309} .dif{color:#0f7a4a} .pg{color:#15803d} .ab{color:#b45309} .fl{color:#1d4ed8}
-    td.na{text-align:center;color:#888;font-size:10px}
-    @page{size:A4 portrait;margin:12mm}`;
+  const nf = (n: number) => (Number(n) || 0).toLocaleString("pt-BR");
+
   // O DIFÍCIL SÓ EXISTE NO PAPEL SE EXISTIR NO PERÍODO (decisão do dono,
-  // 07/08/2026). Sem nenhum par difícil, a coluna inteira sai do relatório —
-  // cabeçalho, células e total. Coluna de zeros ocupa largura e faz o leitor
-  // conferir um número que não existe. Mesma regra que o resumo por dificuldade
-  // da aba de período já aplica na tela.
+  // 07/08/2026). Sem nenhum par difícil, some o PAR de colunas: "méd" sozinha
+  // seria cópia exata de "Pares", e duas colunas com o mesmo número é pior que
+  // nenhuma. Uma decisão só, aplicada às duas tabelas.
   const temDificil = totals.dificil > 0;
-  // Sem difícil, some o PAR de colunas: "méd" sozinha seria cópia exata da
-  // coluna "Pares", e duas colunas com o mesmo número é pior que nenhuma.
   const colsDiff = temDificil ? 2 : 0;
-  const body = rows.map((r, i) => `<tr><td>${i + 1}. ${esc(r.nome)}</td><td class="n">${r.fichas}</td>`
+
+  const filtro = {
+    todos: "Mostrando toda a produção do período.",
+    aberto: "Filtrado: SOMENTE produção ainda livre, que nenhuma folha reivindicou.",
+    folha: "Filtrado: SOMENTE produção reivindicada por folha aprovada e ainda não paga.",
+    pago: "Filtrado: SOMENTE produção já paga.",
+    na: "Filtrado: SOMENTE quem não é regime por par (produção como medição).",
+  }[p.pagStatus];
+
+  // ── 1. Rendimento por pessoa ──────────────────────────────────────────────
+  const bodyRend = rows.map((r, i) => `<tr><td>${i + 1}. ${esc(r.nome)}</td><td class="n">${r.fichas}</td>`
     + (temDificil ? `<td class="n med">${r.paresMedio}</td><td class="n dif">${r.paresDificil || "—"}</td>` : "")
     + `<td class="n">${r.pares}</td>`
     + (r.porPar
@@ -295,102 +318,100 @@ function imprimirRelatorio(p: {
         + `<td class="n">${fmtBRL(r.valorTotal)}</td>`
       : `<td class="n na" colspan="4">não é regime por par</td>`)
     + `</tr>`).join("");
-  const filtro = {
-    todos: "Mostrando toda a produção do período.",
-    aberto: "Filtrado: SOMENTE produção ainda livre, que nenhuma folha reivindicou.",
-    folha: "Filtrado: SOMENTE produção reivindicada por folha aprovada e ainda não paga.",
-    pago: "Filtrado: SOMENTE produção já paga.",
-    na: "Filtrado: SOMENTE quem não é regime por par (produção como medição).",
-  }[p.pagStatus];
-  openPrint(`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>Produtividade — ${esc(p.setorLabel)}</title><style>${css}</style></head><body>
-    <h1>Produtividade — ${esc(p.setorLabel)}</h1>
-    <div class="sub">${esc(p.label)} · ${esc(p.intervalo)} — gerado em ${fmtDia(todayISO())}</div>
-    <div class="filtro">${esc(filtro)} Valores calculados pelo R$/par gravado em cada lançamento.</div>
-    <table><thead><tr><th>${esc(p.oficioPlural.replace(/^./, (c) => c.toUpperCase()))}</th><th style="text-align:right">Fichas</th>
-      ${temDificil ? '<th style="text-align:right" class="med">Pares méd</th><th style="text-align:right" class="dif">Pares dif</th>' : ""}
-      <th style="text-align:right">Pares</th>
-      <th style="text-align:right" class="ab">A pagar</th><th style="text-align:right" class="fl">Na folha</th>
-      <th style="text-align:right" class="pg">Pago</th>
-      <th style="text-align:right">Total</th></tr></thead>
-    <tbody>${body || '<tr><td colspan="${7 + colsDiff}" style="text-align:center;color:#888">Sem dados no período.</td></tr>'}</tbody>
-    <tfoot><tr><td>TOTAL (${rows.length})</td><td class="n">${totals.fichas}</td>
-      ${temDificil ? `<td class="n med">${totals.medio}</td><td class="n dif">${totals.dificil}</td>` : ""}
-      <td class="n">${totals.pares}</td>
-      <td class="n ab">${fmtBRL(totals.valorAberto)}</td><td class="n fl">${fmtBRL(totals.valorFolha)}</td>
-      <td class="n pg">${fmtBRL(totals.valorPago)}</td>
-      <td class="n">${fmtBRL(totals.valorTotal)}</td></tr></tfoot></table>
-    <script>window.onload=function(){window.focus();window.print();};<\/script></body></html>`);
-}
 
-/* ---------- Impressão do CALENDÁRIO de produção (montador × dia, A4 paisagem) ---------- */
-/** `pago` na célula = o dia já foi quitado por uma folha (payroll_run_id). */
-interface CalCell { pares: number; medio: number; dificil: number; fichas: number; pago: boolean; }
-interface CalRow {
-  key: string; nome: string; cells: Record<string, CalCell>;
-  medio: number; dificil: number; pares: number; fichas: number;
-  valorPago: number; valorAberto: number; valorTotal: number;
-}
-function imprimirCalendario(p: { rows: CalRow[]; days: string[]; setorLabel: string; oficioLabel: string; periodo: string; intervalo: string }) {
-  const { rows, days } = p;
-  const nf = (n: number) => (Number(n) || 0).toLocaleString("pt-BR");
+  // ── 2. Calendário pessoa × dia ────────────────────────────────────────────
+  const { rows: cRows, days } = p.cal;
   const dayHead = days.map((d) => {
     const we = dowIdx(d) >= 5;
     return `<th class="day${we ? " we" : ""}">${WD_SHORT7[dowIdx(d)]}<br>${d.slice(8, 10)}/${d.slice(5, 7)}</th>`;
   }).join("");
-  // Mesma regra do relatório A4: nenhum par difícil no período ⇒ as colunas de
-  // dificuldade não são desenhadas, e o split embaixo da célula some junto —
-  // com só uma dificuldade ele repetia o número grande logo acima.
-  const temDificil = rows.some((r) => r.dificil > 0);
-  const body = rows.map((r) => {
+  const bodyCal = cRows.map((r) => {
     const cells = days.map((d) => {
       const c = r.cells[d]; const we = dowIdx(d) >= 5;
       if (!c || c.pares <= 0) return `<td class="c${we ? " we" : ""}">·</td>`;
+      // Com uma dificuldade só, o split embaixo repetiria o número grande acima.
       const sp = temDificil
         ? [c.medio > 0 ? `<span class="med">${c.medio}</span>` : "", c.dificil > 0 ? `<span class="dif">${c.dificil}</span>` : ""].filter(Boolean).join("<span class='x'>·</span>")
         : "";
-      // Dia ainda não quitado ganha marca — o gestor lê a coluna e sabe o que deve.
       return `<td class="c has${we ? " we" : ""}${c.pago ? "" : " ab"}"><b>${c.pares}</b>${sp ? `<div class="sp">${sp}</div>` : ""}</td>`;
     }).join("");
     return `<tr><td class="mont">${esc(r.nome)}</td>${cells}`
-      + `<td class="n med">${r.medio || "—"}</td><td class="n dif">${r.dificil || "—"}</td>`
+      + (temDificil ? `<td class="n med">${r.medio || "—"}</td><td class="n dif">${r.dificil || "—"}</td>` : "")
       + `<td class="n b">${nf(r.pares)}</td><td class="n f">${r.fichas}</td>`
       + `<td class="n pgo">${r.valorPago > 0 ? fmtBRL(r.valorPago) : "—"}</td>`
       + `<td class="n abt">${r.valorAberto > 0 ? fmtBRL(r.valorAberto) : "—"}</td></tr>`;
   }).join("");
   const dayTot = days.map((d) => {
-    const s = rows.reduce((a, r) => a + (r.cells[d]?.pares || 0), 0);
+    const s = cRows.reduce((a, r) => a + (r.cells[d]?.pares || 0), 0);
     return `<td class="c${dowIdx(d) >= 5 ? " we" : ""}">${s || ""}</td>`;
   }).join("");
-  const tMed = rows.reduce((s, r) => s + r.medio, 0), tDif = rows.reduce((s, r) => s + r.dificil, 0);
-  const tPar = rows.reduce((s, r) => s + r.pares, 0), tFic = rows.reduce((s, r) => s + r.fichas, 0);
-  const tPago = rows.reduce((s, r) => s + r.valorPago, 0);
-  const tAberto = rows.reduce((s, r) => s + r.valorAberto, 0);
+  const tMed = cRows.reduce((s, r) => s + r.medio, 0), tDif = cRows.reduce((s, r) => s + r.dificil, 0);
+  const tPar = cRows.reduce((s, r) => s + r.pares, 0), tFic = cRows.reduce((s, r) => s + r.fichas, 0);
+  const tPago = cRows.reduce((s, r) => s + r.valorPago, 0);
+  const tAberto = cRows.reduce((s, r) => s + r.valorAberto, 0);
+
   const css = `*{box-sizing:border-box}body{margin:0;font-family:'Helvetica Neue',Arial,sans-serif;color:#111;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-    h1{font-size:16px;margin:0 0 2px} .sub{font-size:10px;color:#555;margin-bottom:10px}
-    .lg{font-size:9px;color:#555;margin:2px 0 10px} .lg b.med{color:#b45309} .lg b.dif{color:#0f7a4a}
-    table{width:100%;border-collapse:collapse;font-size:8.5px;table-layout:fixed}
-    th,td{border:1px solid #bbb;padding:2px 3px;text-align:center;overflow:hidden}
-    th{background:#f1f0ed;font-size:8px;text-transform:uppercase;color:#444}
-    th.day{width:22px;line-height:1.05} th.day.we,td.c.we{background:#f4f2ee}
-    td.mont,th.mont{text-align:left;font-weight:700;white-space:nowrap;width:96px;background:#fafafa}
-    td.c{color:#bbb} td.c.has{color:#111} td.c b{font-size:9px;font-weight:800} td.c .sp{font-size:6.5px;line-height:1}
-    td.c.ab{background:#fff7ed} td.c.ab.we{background:#f7efe4}
-    td.c .med{color:#b45309;font-weight:700} td.c .dif{color:#0f7a4a;font-weight:700} td.c .x{color:#bbb;margin:0 1px}
-    td.n{text-align:right;font-variant-numeric:tabular-nums;width:34px} td.n.med{color:#b45309;font-weight:700} td.n.dif{color:#0f7a4a;font-weight:700}
-    td.n.b{font-weight:800} td.n.pgo{font-weight:800;width:56px;color:#15803d} td.n.abt{font-weight:800;width:56px;color:#b45309}
-    td.n.f{color:#c81e2e;font-weight:700;width:28px}
-    th.sum{background:#e9e7e2}
-    tfoot td{font-weight:800;background:#f6f5f2} tfoot td.c{color:#111}
-    @page{size:A4 landscape;margin:8mm}`;
-  openPrint(`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>Calendário — ${esc(p.setorLabel)}</title><style>${css}</style></head><body>
-    <h1>Calendário de Produção — ${esc(p.setorLabel)}</h1>
-    <div class="sub">${esc(p.periodo)} · ${esc(p.intervalo)} — gerado em ${fmtDia(todayISO())}</div>
-    <div class="lg">Cada célula = <b>pares do dia</b>${temDificil ? '; embaixo o split <b class="med">médio</b> · <b class="dif">difícil</b>' : ""}. Célula com fundo claro = dia <b>ainda não pago</b>. Colunas cinza = fim de semana.</div>
-    <table>
-      <thead><tr><th class="mont">${esc(p.oficioLabel)}</th>${dayHead}${temDificil ? '<th class="sum">Méd</th><th class="sum">Dif</th>' : ""}<th class="sum">Pares</th><th class="sum">Fichas</th><th class="sum">Pago</th><th class="sum">A pagar</th></tr></thead>
-      <tbody>${body || `<tr><td colspan="${days.length + (temDificil ? 7 : 5)}" style="text-align:center;color:#888;padding:12px">Sem lançamentos no período.</td></tr>`}</tbody>
-      <tfoot><tr><td class="mont">TOTAL (${rows.length})</td>${dayTot}${temDificil ? `<td class="n med">${nf(tMed)}</td><td class="n dif">${nf(tDif)}</td>` : ""}<td class="n b">${nf(tPar)}</td><td class="n f">${tFic}</td><td class="n pgo">${fmtBRL(tPago)}</td><td class="n abt">${fmtBRL(tAberto)}</td></tr></tfoot>
-    </table>
+    h1{font-size:17px;margin:0 0 2px} .sub{font-size:10.5px;color:#555;margin-bottom:3px}
+    .filtro{font-size:9.5px;color:#555;margin-bottom:10px}
+    h2{font-size:12px;margin:14px 0 5px;text-transform:uppercase;letter-spacing:.06em;color:#333;border-bottom:1.5px solid #333;padding-bottom:2px}
+    section{break-inside:avoid}
+    .med{color:#b45309} .dif{color:#0f7a4a} .pg{color:#15803d} .ab{color:#b45309} .fl{color:#1d4ed8}
+    /* ── rendimento por pessoa ── */
+    .rend table{width:100%;border-collapse:collapse;font-size:11px}
+    .rend th,.rend td{border:1px solid #333;padding:4px 7px}
+    .rend th{background:#f1f0ed;text-align:left;font-size:9px;letter-spacing:.05em;text-transform:uppercase;color:#444}
+    .rend td.n{text-align:right;font-variant-numeric:tabular-nums} .rend tfoot td{font-weight:800;background:#f6f5f2}
+    .rend td.na{text-align:center;color:#888;font-size:9.5px}
+    /* ── calendário pessoa × dia ── */
+    .cal table{width:100%;border-collapse:collapse;font-size:8.5px;table-layout:fixed}
+    .cal th,.cal td{border:1px solid #bbb;padding:2px 3px;text-align:center;overflow:hidden}
+    .cal th{background:#f1f0ed;font-size:8px;text-transform:uppercase;color:#444}
+    .cal th.day{width:22px;line-height:1.05} .cal th.day.we,.cal td.c.we{background:#f4f2ee}
+    .cal td.mont,.cal th.mont{text-align:left;font-weight:700;white-space:nowrap;width:96px;background:#fafafa}
+    .cal td.c{color:#bbb} .cal td.c.has{color:#111} .cal td.c b{font-size:9px;font-weight:800} .cal td.c .sp{font-size:6.5px;line-height:1}
+    .cal td.c.ab{background:#fff7ed} .cal td.c.ab.we{background:#f7efe4}
+    .cal td.c .med{color:#b45309;font-weight:700} .cal td.c .dif{color:#0f7a4a;font-weight:700} .cal td.c .x{color:#bbb;margin:0 1px}
+    .cal td.n{text-align:right;font-variant-numeric:tabular-nums;width:34px}
+    .cal td.n.med{color:#b45309;font-weight:700} .cal td.n.dif{color:#0f7a4a;font-weight:700}
+    .cal td.n.b{font-weight:800} .cal td.n.pgo{font-weight:800;width:56px;color:#15803d} .cal td.n.abt{font-weight:800;width:56px;color:#b45309}
+    .cal td.n.f{color:#1d4ed8;font-weight:700;width:28px}
+    .cal th.sum{background:#e9e7e2}
+    .cal tfoot td{font-weight:800;background:#f6f5f2} .cal tfoot td.c{color:#111}
+    .lg{font-size:8.5px;color:#555;margin:4px 0 0} .lg b.med{color:#b45309} .lg b.dif{color:#0f7a4a}
+    @page{size:A4 landscape;margin:9mm}`;
+
+  openPrint(`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>Relatório — ${esc(p.setorLabel)}</title><style>${css}</style></head><body>
+    <h1>Produção e pagamento — ${esc(p.setorLabel)}</h1>
+    <div class="sub">${esc(p.label)} · ${esc(p.intervalo)} — gerado em ${fmtDia(todayISO())}</div>
+    <div class="filtro">${esc(filtro)} Valores calculados pelo R$/par gravado em cada lançamento.</div>
+
+    <section class="rend">
+      <h2>Rendimento por ${esc(p.oficioPlural)}</h2>
+      <table><thead><tr><th>${esc(p.oficioPlural.replace(/^./, (c) => c.toUpperCase()))}</th><th style="text-align:right">Fichas</th>
+        ${temDificil ? '<th style="text-align:right" class="med">Pares méd</th><th style="text-align:right" class="dif">Pares dif</th>' : ""}
+        <th style="text-align:right">Pares</th>
+        <th style="text-align:right" class="ab">A pagar</th><th style="text-align:right" class="fl">Na folha</th>
+        <th style="text-align:right" class="pg">Pago</th>
+        <th style="text-align:right">Total</th></tr></thead>
+      <tbody>${bodyRend || `<tr><td colspan="${7 + colsDiff}" style="text-align:center;color:#888">Sem dados no período.</td></tr>`}</tbody>
+      <tfoot><tr><td>TOTAL (${rows.length})</td><td class="n">${totals.fichas}</td>
+        ${temDificil ? `<td class="n med">${totals.medio}</td><td class="n dif">${totals.dificil}</td>` : ""}
+        <td class="n">${totals.pares}</td>
+        <td class="n ab">${fmtBRL(totals.valorAberto)}</td><td class="n fl">${fmtBRL(totals.valorFolha)}</td>
+        <td class="n pg">${fmtBRL(totals.valorPago)}</td>
+        <td class="n">${fmtBRL(totals.valorTotal)}</td></tr></tfoot></table>
+    </section>
+
+    <section class="cal">
+      <h2>Calendário — o que cada ${esc(p.oficioLabel.toLowerCase())} fez em cada dia</h2>
+      <table>
+        <thead><tr><th class="mont">${esc(p.oficioLabel)}</th>${dayHead}${temDificil ? '<th class="sum">Méd</th><th class="sum">Dif</th>' : ""}<th class="sum">Pares</th><th class="sum">Fichas</th><th class="sum">Pago</th><th class="sum">A pagar</th></tr></thead>
+        <tbody>${bodyCal || `<tr><td colspan="${days.length + (temDificil ? 7 : 5)}" style="text-align:center;color:#888;padding:12px">Sem lançamentos no período.</td></tr>`}</tbody>
+        <tfoot><tr><td class="mont">TOTAL (${cRows.length})</td>${dayTot}${temDificil ? `<td class="n med">${nf(tMed)}</td><td class="n dif">${nf(tDif)}</td>` : ""}<td class="n b">${nf(tPar)}</td><td class="n f">${tFic}</td><td class="n pgo">${fmtBRL(tPago)}</td><td class="n abt">${fmtBRL(tAberto)}</td></tr></tfoot>
+      </table>
+      <div class="lg">Cada célula = <b>pares do dia</b>${temDificil ? '; embaixo o split <b class="med">médio</b> · <b class="dif">difícil</b>' : ""}. Célula com fundo claro = dia <b>ainda não pago</b>. Colunas cinza = fim de semana.</div>
+    </section>
+
     <script>window.onload=function(){window.focus();window.print();};<\/script></body></html>`);
 }
 
@@ -1034,9 +1055,12 @@ export default function FichaMontadoresPage() {
 
   // Gera o CALENDÁRIO de produção (montador × dia) em PDF — o que cada montador
   // fez em cada dia do período, com o split médio/difícil e o pagamento.
-  function gerarCalendario() {
+  /** Monta as linhas pessoa × dia do calendário. Deixou de imprimir sozinho: o
+   *  calendário virou a segunda seção do relatório único, e esta função só
+   *  fornece o dado. Devolve null quando não há o que imprimir. */
+  function montarCalendario(): { rows: CalRow[]; days: string[] } | null {
     const days = daysInRange(range.from, range.to);
-    if (!days.length) { toast.error("Selecione um período válido."); return; }
+    if (!days.length) return null;
     const map = new Map<string, CalRow>();
     for (const f of fichasFiltradas) {
       const key = aggKeyOf(f);
@@ -1060,11 +1084,19 @@ export default function FichaMontadoresPage() {
       }
     }
     const rows = Array.from(map.values()).sort((a, b) => b.pares - a.pares);
-    if (!rows.length) { toast.error("Sem lançamentos no período pra gerar o calendário."); return; }
-    imprimirCalendario({
-      rows, days, setorLabel: cfgSetor.label,
+    return { rows, days };
+  }
+
+  /** Um botão, um documento: rendimento por pessoa + calendário na mesma folha. */
+  function imprimirRelatorioCompleto() {
+    const cal = montarCalendario();
+    if (!cal) { toast.error("Selecione um período válido."); return; }
+    imprimirRelatorio({
+      rows: agg, totals, setorLabel: cfgSetor.label,
+      oficioPlural: cfgSetor.plural,
       oficioLabel: cfgSetor.sing.replace(/^./, (c) => c.toUpperCase()),
-      periodo: periodLabel[pMode], intervalo: `${fmtDia(range.from)} a ${fmtDia(range.to)}`,
+      label: periodLabel[pMode], intervalo: `${fmtDia(range.from)} a ${fmtDia(range.to)}`,
+      pagStatus, cal,
     });
   }
 
@@ -1513,10 +1545,8 @@ export default function FichaMontadoresPage() {
             title={`Rendimento por ${cfgSetor.sing}`}
             subtitle="Valor calculado pelo R$/par gravado em cada lançamento. A taxa se cadastra em Funcionários → Remuneração e entra congelada no apontamento."
             actions={<Button type="button" variant="outline" size="sm" className="gap-1.5" disabled={agg.length === 0}
-              onClick={() => imprimirRelatorio({
-                rows: agg, totals, setorLabel: cfgSetor.label, oficioPlural: cfgSetor.plural,
-                label: periodLabel[pMode], intervalo: `${fmtDia(range.from)} a ${fmtDia(range.to)}`, pagStatus,
-              })}><Printer className="h-4 w-4" /> Imprimir relatório</Button>}
+              title="Uma folha só: o rendimento por pessoa e o calendário dia a dia, no mesmo período e no mesmo filtro."
+              onClick={imprimirRelatorioCompleto}><Printer className="h-4 w-4" /> Imprimir relatório</Button>}
           >
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm" style={{ minWidth: 760 }}>
@@ -1612,14 +1642,13 @@ export default function FichaMontadoresPage() {
             <h2 className="text-lg font-semibold text-foreground">Produção do período</h2>
             {loading && <span className="text-xs text-muted-foreground">carregando…</span>}
             {!loading && <span className="text-xs text-muted-foreground">{fichasFiltradas.length} lançamento(s)</span>}
-            <Button
-              type="button" size="sm" className="ml-auto gap-1.5"
-              disabled={fichasFiltradas.length === 0}
-              onClick={gerarCalendario}
-              title={`Gera um PDF em calendário: o que cada ${cfgSetor.sing} fez em cada dia do período, com médio/difícil e o que já foi pago.`}
-            >
-              <Printer className="h-4 w-4" /> Calendário em PDF
-            </Button>
+            {/* O botão "Calendário em PDF" saiu daqui: o calendário virou a
+                segunda seção do "Imprimir relatório", lá em cima. Um documento
+                só, com o mesmo período e o mesmo filtro — quem conferia a semana
+                gerava os dois e juntava no grampo. */}
+            <span className="ml-auto text-[11px] text-muted-foreground">
+              O calendário sai junto em <strong className="text-foreground">Imprimir relatório</strong>.
+            </span>
           </div>
 
           {/* ══ RESUMO DO PERÍODO (R1) ══ */}
