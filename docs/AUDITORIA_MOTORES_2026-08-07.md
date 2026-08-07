@@ -1,7 +1,11 @@
 # Auditoria dos motores de consumo, baixa, compra e OS — 2026-08-07
 
 **Pergunta:** todos os motores de cálculo conversam entre si?
-**Resposta:** **não.** Quatro desencontros confirmados, todos com evidência no banco de produção.
+**Resposta:** **não** — mas o motor de consumo não é o culpado, e o desencontro é menor do que
+a primeira versão deste documento afirmava.
+
+**Três desencontros confirmados** (1, 3 e 4), um **retratado** (2, ver a seção marcada), todos
+com evidência no banco de produção.
 
 **Critério de aprovação acordado:** paridade numérica **e** fonte única de verdade.
 **Escopo:** baixa de estoque · OP (`orders`) · OS (`service_orders`) · ordem de compra.
@@ -51,21 +55,44 @@ Não é tela morta: o caminho ingênuo alimenta decisão de compra.
 
 ---
 
-## Desencontro 2 — O MRP mostra um número e compra outro
+## ~~Desencontro 2 — O MRP mostra um número e compra outro~~ · RETRATADO
 
-| Função | Fonte da conta | Motor canônico? |
-|---|---|---|
-| `fn_projected_demand` — **o que a tela do MRP mostra** | `calculate_order_consumption` | **sim** |
-| `generate_purchase_orders_from_mrp` — **o que vira OC** | `sheet_materials` direto | **não** |
+> **Esta seção estava errada e foi retratada em 2026-08-07, antes de qualquer correção ser
+> aplicada.** Ela apareceu porque uma varredura por nome de tabela casou `sheet_materials`
+> dentro de `generate_purchase_orders_from_mrp`, e eu li a ocorrência como se fosse a conta.
 
-A demanda exibida é canônica; a ordem de compra gerada a partir dela é recalculada por outra
-fonte. Duas contas para o mesmo pedido, e a que vira dinheiro é a que não passa pelo motor.
+A cadeia real, verificada fonte a fonte:
+
+```
+calculate_order_consumption_by_grade   (motor canônico)
+  └─ fn_projected_demand               total_required
+       └─ v_mrp_needs.projected_demand
+            └─ v_mrp_needs.suggested_qty = GREATEST(total_required + min_stock − quantity − qty_in_po, 0)
+                 └─ generate_purchase_orders_from_mrp  ←  v_row.suggested_qty
+```
+
+**A OC gerada usa a quantidade canônica.** `sheet_materials` aparece uma única vez na função,
+na subquery que monta `linked_sale_order_ids` — metadado de vínculo, não quantidade.
+
+`fn_projected_demand` é, aliás, cuidadoso: inclui tiras via `order_strap_needs`, aplica
+`get_material_conversion_info`, e **exclui da quantidade comprável** as linhas com
+`conversion_warning` (largura faltando = valor ~100× inflado em dm²).
+
+### O que sobra de real, em severidade menor
+
+`linked_sale_order_ids` vincula PVs à OC **apenas** por `sheet_materials`. Um material que
+chega ao PV por `direct_components` — ou pelos campos próprios da ficha (upper/lining/insole) —
+não é vinculado. A OC fica com a quantidade certa e a lista de PVs incompleta. Dado que há 24
+`direct_components` órfãos, isso é observável hoje. **Metadado, não dinheiro.**
 
 ---
 
 ## Desencontro 3 — A projeção de compra se apoia no livro furado
 
-`get_purchase_projection` deriva o consumo histórico de `stock_movements`. Esse livro tem:
+`get_purchase_projection` deriva o consumo histórico de `stock_movements` — o que, para uma
+métrica **histórica**, é a fonte certa. Não é erro de motor: seria errado usar o motor de
+consumo (que é prospectivo) para medir o que já saiu. **O defeito está no livro, não na
+função.** E esse livro tem:
 
 | Diagnóstico | Resultado |
 |---|---|
@@ -176,19 +203,22 @@ que a correção resolveu.
 
 3. `MaterialConsumptionTab.tsx` e `SaldoFinalTab.tsx` passam a chamar o motor canônico em vez
    de multiplicar o escalar.
-4. `generate_purchase_orders_from_mrp` passa a derivar de `fn_projected_demand` (a mesma fonte
-   que a tela mostra).
+4. ~~`generate_purchase_orders_from_mrp` passa a derivar de `fn_projected_demand`.~~
+   **REMOVIDO** — ele já deriva. Ver o Desencontro 2 retratado. Mexer aqui alteraria geração
+   de OC que funciona.
 5. `merge_product_into` e o caminho de deleção passam a varrer `direct_components`.
 6. Remover `purchaseRequisition.ts` e avaliar `bill_of_materials` / `inventory_transactions`.
+7. *(opcional, severidade baixa)* `linked_sale_order_ids` passa a considerar também
+   `direct_components` e os campos próprios da ficha, não só `sheet_materials`.
 
 ### Fase 3 — Corrigir dado (migration a partir de `20261217120400`, com snapshot antes)
 
-7. `CF 09`: escalar passa a `20` (decisão do dono — per-size vence).
-8. Criar os produtos sumidos (`un` / Componente / `COMPONENTES DIVERSOS`, espelhando
+8. `CF 09`: escalar passa a `20` (decisão do dono — per-size vence).
+9. Criar os produtos sumidos (`un` / Componente / `COMPONENTES DIVERSOS`, espelhando
    `Binóculo 10mm` e `Fivela 12mm`; `Elástico 7mm dedinho` como **linear**) e religar via
    `relink_direct_component`.
-9. Sincronizar os 4 nomes em cache defasados.
-10. Os 1.172 buracos de débito e os 99 drifts: **decisão separada** — reconciliar histórico de
+10. Sincronizar os 4 nomes em cache defasados.
+11. Os 1.172 buracos de débito e os 99 drifts: **decisão separada** — reconciliar histórico de
     estoque é outra classe de operação, e `reconcile_stock_debit_hole` já existe para isso.
 
 ### Limitação desta auditoria

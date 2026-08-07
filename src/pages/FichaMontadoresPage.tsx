@@ -36,6 +36,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { useEmployees } from "@/hooks/useEmployees";
 import { useAccessControl } from "@/hooks/useAccessControl";
 import { PagarProducaoDialog } from "@/components/hr/PagarProducaoDialog";
+import { semanaDePagamento } from "@/hooks/useFichaProducaoPagamento";
 import { useProductionSectors, useEmployeeSectors } from "@/hooks/useSectorRoster";
 import { ratesOfRow, sumProducaoRows } from "@/lib/montadorProduction";
 import { searchMatchesAllTerms } from "@/lib/searchUtils";
@@ -225,10 +226,10 @@ function periodRange(mode: PeriodMode, cFrom: string, cTo: string): { from: stri
   const lastDay = new Date(y, m + 1, 0).getDate();
   switch (mode) {
     case "hoje": { const t = todayISO(); return { from: t, to: t }; }
-    case "semana": {
-      const dow = (now.getDay() + 6) % 7;
-      return { from: isoOf(new Date(y, m, now.getDate() - dow)), to: isoOf(new Date(y, m, now.getDate() - dow + 6)) };
-    }
+    // Seg→Dom, do mesmo helper que a folha usa pra montar o período — a janela
+    // exibida aqui É a que vira `payroll_runs.period` ao pagar. Duas definições
+    // de "semana" fariam a tela mostrar um intervalo e a folha cobrar outro.
+    case "semana": return semanaDePagamento(todayISO());
     case "q1": return { from: `${y}-${pad(m + 1)}-01`, to: `${y}-${pad(m + 1)}-15` };
     case "q2": return { from: `${y}-${pad(m + 1)}-16`, to: `${y}-${pad(m + 1)}-${pad(lastDay)}` };
     case "mes": return { from: `${y}-${pad(m + 1)}-01`, to: `${y}-${pad(m + 1)}-${pad(lastDay)}` };

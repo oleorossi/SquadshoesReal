@@ -20,8 +20,41 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
-/** Período de folha no formato de intervalo (`payroll_period_range` entende). */
+/** Período de folha no formato de intervalo (`payroll_period_range` entende).
+ *
+ *  ⚠ O formato é contrato com o BANCO, não estilo: `payroll_period_range`,
+ *  `tg_payroll_link_advances_and_overtime` e `tg_payroll_block_period_overlap`
+ *  casam `^\d{4}-\d{2}-\d{2}_\d{4}-\d{2}-\d{2}$`. Trocar o separador faz os três
+ *  caírem no ramo "formato desconhecido" — o de adiantamentos levanta exceção, e
+ *  o de reivindicação simplesmente NÃO reivindica, em silêncio. */
 export const periodoDeJanela = (from: string, to: string) => `${from}_${to}`;
+
+/** Regex que o banco usa para reconhecer a janela. Exportado para o teste poder
+ *  travar o contrato sem reescrever o padrão (duas cópias divergiriam). */
+export const PERIODO_JANELA_RE = /^\d{4}-\d{2}-\d{2}_\d{4}-\d{2}-\d{2}$/;
+
+const isoDe = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+/**
+ * Semana de pagamento de montador e solador: **segunda a domingo** (decisão do
+ * dono, 07/08/2026).
+ *
+ * O domingo entra de propósito. Já há produção lançada em fim de semana no
+ * histórico, e uma semana que terminasse no sábado deixaria esses pares órfãos —
+ * sem folha nenhuma que os cobrisse, invisíveis para sempre.
+ *
+ * Semanas consecutivas são ADJACENTES, nunca sobrepostas: a de seg X termina no
+ * domingo, e a próxima começa na segunda seguinte. Isso é o que permite pagar
+ * semana após semana sem esbarrar em `tg_payroll_block_period_overlap`.
+ */
+export function semanaDePagamento(iso: string): { from: string; to: string } {
+  const base = new Date(`${iso}T00:00:00`);
+  const dow = (base.getDay() + 6) % 7; // 0 = segunda … 6 = domingo
+  const seg = new Date(base.getFullYear(), base.getMonth(), base.getDate() - dow);
+  const dom = new Date(base.getFullYear(), base.getMonth(), base.getDate() - dow + 6);
+  return { from: isoDe(seg), to: isoDe(dom) };
+}
 
 export interface AbrirFolhaProducaoInput {
   employeeId: string;
