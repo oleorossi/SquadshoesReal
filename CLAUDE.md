@@ -175,21 +175,40 @@ encadeamento de `/producao/kanban/gestao`: `ProtectedRoute → Suspense → Rout
   ao lado do fonte. Sufixos usados: `.units.test.ts`, `.integration.test.ts`, `.edge-cases.test.ts`.
 - Rodar: `bun run test` / `bun run test:units`.
 
-⚠ **`bun run test` verde NÃO significa suíte verde** (armadilha confirmada em 05/08/2026).
-Os dois scripts são **complementares e disjuntos**: `test` roda tudo **MENOS** 4 arquivos,
-que ele exclui por nome no próprio comando (`--exclude`), e `test:units` roda **exatamente
-esses 4**:
+**Estado atual (verificado 07/08/2026 rodando os dois):** `test` roda a suíte inteira e
+`test:units` é um **subconjunto** dela — não há mais exclusão.
 
 | Script | O que roda |
 |---|---|
-| `bun run test` | tudo, **exceto** `conversao.units`, `rpc-parity.units`, `units.edge-cases`, `materialConsumption.units` |
-| `bun run test:units` | **só** esses 4 |
+| `bun run test` | `vitest run` — **tudo**, inclusive os 4 `.units` |
+| `bun run test:units` | só `conversao.units`, `rpc-parity.units`, `units.edge-cases`, `materialConsumption.units` (atalho pra iterar rápido) |
 
-Por que isso morde: durante a exclusão da perda de corte, 6 testes desses 4 arquivos
-ficaram vermelhos por vários pushes enquanto `bun run test` seguia reportando **1.535
-verdes** — ele excluía, por construção, o único lugar onde o problema aparecia. Antes de
-concluir "está tudo passando", **rode os dois**. Se um dia o CI chamar só `test`, esses 4
-arquivos nunca rodam.
+⚠ **Testes de integração fazem SKIP por padrão, e skip não é verde.** Hoje são 4
+(`consumptionService.parity`, `consumptionService.integration`, `debitGuards.integration`,
+`consumptionParity.integration`); eles só rodam com `RUN_DB_INTEGRATION=1`. E o
+`consumptionParity` precisa **também** de `SUPABASE_SERVICE_ROLE_KEY`: as tabelas que ele lê
+estão sob `is_approved_user()`, e a chave publishable não é um usuário aprovado — sem ela o
+SELECT volta 0 linhas **sem erro**. Uma suíte "1.801 passed | 4 skipped" não diz nada sobre
+paridade TS×SQL.
+
+<details>
+<summary>Histórico: a armadilha do <code>--exclude</code> (resolvida)</summary>
+
+Até 05/08/2026 o script era
+`vitest run --exclude conversao.units --exclude rpc-parity.units --exclude units.edge-cases --exclude materialConsumption.units`,
+e os dois scripts eram **disjuntos**: `test` rodava tudo MENOS esses 4, `test:units` rodava
+exatamente esses 4. Durante a exclusão da perda de corte, 6 testes desses arquivos ficaram
+vermelhos por vários pushes enquanto `bun run test` reportava **1.535 verdes** — ele excluía,
+por construção, o único lugar onde o problema aparecia.
+
+O `--exclude` saiu no commit `2f334d1` (05/08/2026), **como efeito colateral de um commit de
+segurança** (`revogar SELECT de anon em 13 views SECURITY DEFINER`) que não tinha nada a ver
+com testes. Ninguém decidiu remover a armadilha; ela caiu junto — e por isso esta seção ficou
+desatualizada por dois dias descrevendo um comportamento que não existia mais.
+
+A lição que sobrevive: **script de teste muda sem ninguém anunciar**. Antes de concluir "está
+tudo passando", olhe o `package.json` em vez de confiar nesta tabela.
+</details>
 
 ## Regra de cálculo de consumo de materiais (CANÔNICA)
 
