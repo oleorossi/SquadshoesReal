@@ -53,6 +53,12 @@ do bug corrigido em 2026-05-30 no `sheet_materials`, que inflava ~100×.
 ⚠ **`SaldoFinalTab` está montado no Planejamento de Compras** (`src/pages/PurchasePlanning.tsx:235`).
 Não é tela morta: o caminho ingênuo alimenta decisão de compra.
 
+⚠ **`MaterialConsumptionTab`, ao contrário, era inalcançável** — verificado em 2026-08-07:
+`src/pages/MaterialConsumption.tsx` não é importada no `App.tsx` e nada a referencia, então não
+existe rota que chegue nela. A correção foi aplicada mesmo assim (fica correta se um dia for
+roteada), mas **o impacto vivo do Desencontro 1 estava só no `SaldoFinalTab`**. A primeira
+versão desta seção não fez essa distinção.
+
 ---
 
 ## ~~Desencontro 2 — O MRP mostra um número e compra outro~~ · RETRATADO
@@ -260,8 +266,14 @@ no Vite sem import não resolvido.
    **fazer skip dizendo o motivo** e aceitar `SUPABASE_SERVICE_ROLE_KEY`. Com essa chave
    exportada, ele roda a comparação real. **A sequência "vermelho → correção → verde" não pôde
    ser demonstrada.**
-2. **As duas telas reescritas não foram verificadas visualmente** — exigem login, e não insiro
-   credenciais. O que se verificou foi que os módulos transformam sem erro de import.
+2. ~~As duas telas reescritas não foram verificadas visualmente.~~ **FEITO** — o dono abriu a
+   sessão e o `/purchase-planning` → aba *Saldo & Custos* foi conferido no navegador: renderiza,
+   sem erro de console vindo do componente (só o `VersionChecker` batendo em endpoint inexistente
+   no local), e — a prova de ponta a ponta — **os produtos criados aparecem como falta real**:
+   Coração −18.360 un, BINÓCULO 6MM: DOURADO −504 un, mais Ilhós 51 −8.800 un e Rebite −2.592 un
+   (os de nome corrigido). Material que a fábrica consumia sem nunca ser debitado nem comprado
+   agora é visível no planejamento. `MaterialConsumptionTab` segue sem verificação visual porque
+   não tem rota (ver Desencontro 1).
 3. **Quatro checks de cadastro seguem abertos**, e nenhum é auto-corrigível sem decisão de
    fábrica: `material_base_artesanal_sem_cor` (149), `forro_cabedal_duplicado_com_palmilha` (27),
    `produto_artesanal_flag_inconsistente` (4), `solado_fachetado_sem_specs_fachete` (2).
