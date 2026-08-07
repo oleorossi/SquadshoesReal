@@ -113,10 +113,21 @@ const hasUsefulYield = (componentSheet: ComponentSheetCandidate | null) => {
   return Object.entries(yieldMap).some(([key, value]) => key !== 'unit' && Number(value) > 0);
 };
 
+/** LARGURA da bobina em mm — é ela que define quantos dm² cabem em 1 metro
+ *  linear. ESPELHA `get_material_conversion_info` no SQL (mig 20261231120000).
+ *
+ *  ⚠ Era `Math.max(width, length)`. Enquanto todo cadastro tinha largura >=
+ *  comprimento os dois davam o mesmo número — o grupo PALMILHA quebrou o empate
+ *  (fichas gravadas 1500x1000 e 1000x1500), o max devolvia 1500 nas duas e
+ *  escondia a contradição. A bobina é 1000x1500 ⇒ largura 1000 ⇒ 100 dm²/m.
+ *  O 150 que estava em uso é a ÁREA da placa, não dm² por metro.
+ *
+ *  O comprimento entra só quando a largura não foi cadastrada, pra não regredir
+ *  ficha legada que gravou a medida no campo errado. */
 const getLinearWidthMm = (componentSheet: ComponentSheetCandidate | null) => {
   const widthMm = convertDimensionToMm(componentSheet?.dimensions_width, componentSheet?.dimensions_unit);
-  const lengthMm = convertDimensionToMm(componentSheet?.dimensions_length, componentSheet?.dimensions_unit);
-  return Math.max(widthMm, lengthMm);
+  if (widthMm > 0) return widthMm;
+  return convertDimensionToMm(componentSheet?.dimensions_length, componentSheet?.dimensions_unit);
 };
 
 const getPlateAreaDm2 = (componentSheet: ComponentSheetCandidate | null) => {

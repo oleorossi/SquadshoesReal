@@ -229,6 +229,37 @@ componente** (`component_sheets`).
     unidade linear (m/cm) e a ficha tem largura. (`convertDm2ToLinearMeters`)
   - → **placas** = `dm² ÷ área_da_placa_dm²` quando a unidade é placa.
     (`convertDm2ToPlates`)
+
+⚠ **LARGURA é `dimensions_width`, não `GREATEST(width, length)`** (mig
+`20261231120000`, 07/08/2026). O divisor linear usa a largura da bobina; a ÁREA da
+placa é que usa largura × comprimento. Espelhado em `getLinearWidthMm`
+(`materialConsumption.ts`) — fonte única, os dois motores importam dela.
+
+<details>
+<summary>Por que o <code>GREATEST</code> existia e por que caducou — não o restaure</summary>
+
+`20260812120000_conversion-info-greatest-dimension` introduziu o `GREATEST` **de
+propósito**: 25 fichas de napa estavam gravadas `1000×1370` (campos trocados), o SQL
+lia largura=1000 → divisor 100 e o TS já fazia `max()` → 137, superestimando ~37% o
+custeio. O `GREATEST` casou os dois lados sob a premissa escrita de que *"a maior
+dimensão cadastrada é sempre a largura da bobina (≤1500mm)"*.
+
+A premissa **caducou**: o grupo PALMILHA cadastrou `1000 × 1500 mm`, onde 1500 é o
+COMPRIMENTO da placa — o próprio teto de 1500 citado como seguro virou o
+contraexemplo. Pior, `1000×1500` dá **área 150 dm²**, numericamente igual ao divisor
+errado que estava em uso: o número certo para PLACA estava sendo aplicado como se
+fosse dm²/metro linear. Consumo de palmilha saía **33% subestimado**.
+
+O fix conserta a CAUSA (normaliza as fichas invertidas) em vez de compensar no
+cálculo. Napas continuam em 137; só PALMILHA muda (150 → **100**). Com o dado já
+normalizado, voltar ao `GREATEST` quebra a palmilha de novo e não conserta mais nada.
+
+⚠ **Sobrevivente**: as 26 fichas de `TIRA OVERLOCK 5MM` foram normalizadas para
+`1370×1000` só para manter o número — mas uma tira de 5 mm não tem 1,37 m de largura.
+É cadastro copiado de napa. Hoje é inócuo (a tira chega por `order_strap_needs`, que
+não divide por `dm2_per_unit`, e não está em `sheet_materials`); vira erro de 137× no
+dia em que alguém puser essa tira no BOM. Remoção é decisão de cadastro, não foi feita.
+</details>
 - **Item linear DIRETO sem ficha de componente** (tiras, elásticos): `quantity_per_unit`
   já está na unidade nativa (metro/contagem) → **NÃO converter**.
 - **Solado**: por par, segmentado por **numeração** (`sizeBreakdown`), nunca por área.
@@ -337,6 +368,75 @@ acusa `undefined`) e o forro-cabedal fantasma reapareceu no Corte Forração. Gu
 `orderConsumption.test.ts`: extrai os `sheet.*` lidos do próprio motor e trava que todos
 estão no `.select()` (auto-derivado — não desatualiza). Isso vale pra QUALQUER coluna
 nova que o motor passe a ler, não só esta.
+
+### Finalizar a OP DEBITA — não cancela a reserva (CANÔNICO, 07/08/2026)
+
+> Decisão do dono. `hybrid_debit_stock_for_order` marca cabedal, forração, palmilha,
+> forração de palmilha, fachete e quase todo o BOM como `debit_mode='soft'`: cria
+> `material_reservations` e **não** mexe em `products.quantity`. A baixa real é outro
+> passo.
+
+**O que estava acontecendo:** `tg_release_reservations_on_order_terminal` cancelava
+("auto-liberada") **toda** reserva ainda em `reserved` quando a OP entrava em
+`Finalizado`, sem gerar `stock_movements`. O material saía da fábrica e voltava para o
+estoque contábil. Medido: **188 OPs `Finalizado` → 810 reservas canceladas contra 71
+consumidas**; `list_stock_debit_holes(400)` acusava **1.191 linhas em 187 OPs, ~223 mil
+unidades, R$ 226.858** com `actual_quantity = 0`.
+
+**Agora:** `settle_open_reservations_for_order()` debita `LEAST(disponível, reservado)`,
+gera o `stock_movements` e transforma o saldo que faltou em `pending_reconciliation` —
+pendência **visível**, nunca `cancelled`. Chamada pelo gatilho
+`trg_aa_settle_reservations_on_finalize` (mig `20261231120200`).
+
+| Camada | O quê |
+|---|---|
+| `settle_open_reservations_for_order` | variante **tolerante** do picking: por numeração no solado, `LEAST` nos demais |
+| `trg_aa_settle_reservations_on_finalize` | dispara na transição para status final |
+| `tg_release_reservations_on_order_terminal` | **não mudou** — em OP finalizada já não acha nada em `reserved`; em OP **Cancelada** segue liberando, que ali é o certo |
+
+⚠ **NÃO troque a chamada por `consume_all_reservations_for_order`.** Aquela dá
+`RAISE EXCEPTION` quando falta estoque — num gatilho de finalização, um cadastro
+divergente **impediria a OP de fechar** e travaria o chão de fábrica. A tolerância é o
+ponto da função nova, não um relaxamento.
+
+⚠ **O NOME do gatilho é load-bearing.** Triggers do mesmo evento disparam em ordem
+**alfabética**. `trg_aa_…` precisa vir antes de `trg_record_consumption_on_finalize`,
+senão `production_consumptions.actual_quantity` é calculado antes dos
+`stock_movements` existirem e o relatório de furos continua acusando 0. Renomear para
+algo depois de `trg_r…` reintroduz o furo **sem quebrar teste nenhum**.
+
+⚠ **Histórico NÃO foi tocado** (decisão do dono): as 187 OPs já finalizadas seguem com
+o furo, visíveis em `list_stock_debit_holes()`. Debitar 223 mil unidades retroativas
+jogaria vários materiais a zero e desmentiria inventários já conferidos. Se um código
+novo "reconciliar" essas OPs em massa, está desfazendo a decisão.
+
+### Cobertura de spec do solado — existir ≠ cobrir a numeração (07/08/2026)
+
+`consumption_consistency_report()` tinha um ponto cego: `solado_dirige_consumo_sem_specs`
+pergunta se **existe** linha em `sole_technical_specs`; existindo uma, dá verde.
+
+Os 3 solados que dirigem consumo (`01`, `INFANTIL`, `180 SALTO BLOCO`) têm specs só de
+**34–40** — o `INFANTIL` inclusive tem estoque na faixa **23–36**, ou seja, as specs
+foram copiadas do adulto. As fichas infantis vendem 25–34. Para tamanho sem spec o motor
+cai no escalar da ficha, e `insole_lining_consumption` é NULL/0 em **26 das 27** fichas
+com `sole_drives_consumption` ⇒ o forro da palmilha contribui **ZERO**.
+
+Caso vivo: PV-00151 / I90 OFF WHITE, 180 pares na grade 28–34 → snapshot congelou
+`Forração Palmilha = 1,000 m`; só os 24 pares do nº 34 entraram. **156 de 180 pares sem
+débito de forro.** Alcance: **6.148 pares** vendidos em tamanhos 25–33 sem spec.
+
+Fechado por dois checks novos (`solado_sem_spec_na_faixa_vendida`,
+`forro_palmilha_debita_zero`) + `list_sole_spec_gaps()`, que devolve a lista acionável
+(solado, numeração, pares vendidos, fichas, PVs).
+
+⚠ **A migration NÃO inventa os dm² que faltam** — é dado de engenharia do dono.
+Extrapolar consumo por numeração dentro de migration seria fabricar cadastro. Enquanto
+as 9 numerações do INFANTIL não forem preenchidas, o forro segue debitando zero nelas —
+agora com alarme.
+
+⚠ **Isto nunca foi divergência TS×SQL:** `orderConsumption.ts` produz o mesmo zero
+(`calculateGradeBasedDm2` com fallback 0). Os dois lados concordam no número errado — a
+tela mostra exatamente o que o estoque debita.
 
 ### Quando converter (sinal de decisão)
 Presença de **ficha de componente com largura > 0**. Caminhos que aplicam a regra:

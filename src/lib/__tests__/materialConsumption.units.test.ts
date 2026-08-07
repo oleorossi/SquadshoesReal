@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  areaToStockDivisor,
   calcRequiredForGrade,
   calculateConsumptionWithUnit,
   convertDm2ToLinearMeters,
@@ -78,9 +79,31 @@ describe('convertDm2ToLinearMeters / convertDm2ToPlates', () => {
       dimensions_unit: 'm',
       waste_pct: 0,
     };
-    // largura efetiva = max(width, length) = 1.4m = 1400mm → 140 dm² por metro linear
+    // largura = 1.4m = 1400mm → 140 dm² por metro linear
     // 280 dm² / 140 dm²/m = 2.0 m
     expect(convertDm2ToLinearMeters(280, sheet)).toBeCloseTo(2.0, 3);
+  });
+
+  // ── A LARGURA é a largura, não "a maior dimensão" (mig 20261231120000) ────
+  // Era Math.max(width, length). Enquanto todo cadastro tinha largura >=
+  // comprimento os dois davam o mesmo número; o grupo PALMILHA quebrou o empate
+  // e o max devolvia o COMPRIMENTO, subestimando o consumo em 33%.
+  it('usa a LARGURA mesmo quando o comprimento é maior (caso PALMILHA)', () => {
+    const bobina = { dimensions_width: 1000, dimensions_length: 1500, dimensions_unit: 'mm' };
+    // largura 1000mm → 100 dm²/m. Com o antigo max() daria 1500mm → 150 dm²/m.
+    expect(convertDm2ToLinearMeters(1000, bobina)).toBeCloseTo(10, 6);
+    expect(areaToStockDivisor('m', bobina)).toBeCloseTo(100, 6);
+  });
+
+  it('não regride cadastro que gravou a medida só no comprimento', () => {
+    const soComprimento = { dimensions_width: 0, dimensions_length: 1370, dimensions_unit: 'mm' };
+    expect(areaToStockDivisor('m', soComprimento)).toBeCloseTo(137, 6);
+  });
+
+  it('a ÁREA da placa continua largura × comprimento (não é afetada)', () => {
+    // 1000 × 1500 mm = 150 dm² — o mesmo 150 que, aplicado como dm²/m, era o bug.
+    const placa = { dimensions_width: 1000, dimensions_length: 1500, dimensions_unit: 'mm' };
+    expect(convertDm2ToPlates(300, placa)).toBeCloseTo(2, 6);
   });
 
   it('IGNORA waste% na conversão para metros lineares', () => {
