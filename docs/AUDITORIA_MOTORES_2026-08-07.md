@@ -278,6 +278,77 @@ no Vite sem import não resolvido.
    fábrica: `material_base_artesanal_sem_cor` (149), `forro_cabedal_duplicado_com_palmilha` (27),
    `produto_artesanal_flag_inconsistente` (4), `solado_fachetado_sem_specs_fachete` (2).
 4. **Os 1.172 buracos de débito (R$ 225.736,46) e os 99 drifts continuam intactos** — era item
-   explicitamente fora do plano.
+   explicitamente fora do plano. Investigados depois; ver a seção seguinte.
 5. **Os 26 escritores diretos em `stock_movements` continuam 26.** O Desencontro 4 foi
    diagnosticado, não corrigido: unificar em `move_stock_delta` é refactor de outra ordem.
+
+---
+
+## Os 1.172 buracos de débito — investigação, 2026-08-07
+
+**Veredicto: dívida real, mas já encerrada. Nenhum lançamento em estoque foi feito.**
+
+### A métrica é legítima
+
+`production_consumptions.actual_quantity` vem de `stock_movements` com `movement_type='out'`
+**e `sm.order_id = p_order_id`** (dentro de `record_order_consumption`). Verificado: as **12
+funções de débito preenchem `order_id`** no INSERT. Então `actual_quantity = 0` significa mesmo
+ausência de baixa amarrada àquela OP — não é coluna morta nem artefato de medição.
+
+Os 61% de `stock_movements` sem `order_id` (260 de 424) vêm de ajuste manual, entrada de lote e
+fusão de produto — que não têm OP por natureza. Não contaminam a conta.
+
+### Mas o vazamento parou, e dá pra ver por duas séries independentes
+
+| OPs com buraco | mar | abr | mai | jun | jul | ago |
+|---|---|---|---|---|---|---|
+| | **102** | 32 | 26 | 19 | **5** | 0 |
+
+| Reservas consumidas | com movimento correspondente |
+|---|---|
+| junho — 117 | **47** (40%) |
+| julho — 65 | **65 (100%)** |
+
+Em junho, 70 reservas foram marcadas como consumidas **sem gerar movimento**. Em julho a
+consistência é total. E hoje, **todas as 8 funções que escrevem `quantity_consumed` também
+inserem em `stock_movements`** — a função que quebrava o invariante foi reescrita entre os dois
+meses e não existe mais. Não há culpada viva.
+
+⚠ **Por que os 1.172 apareceram todos de uma vez:** `production_consumptions` foi populada num
+único lote em julho/2026 (1.295 linhas, 185 OPs, cobrindo março a julho). Não é um contador
+subindo — é uma foto tirada de trás para frente. Ler o total como "vazamento em curso" é o erro
+que a primeira versão desta auditoria cometeu.
+
+### Correção a este documento: os alertas críticos não existem
+
+A versão anterior desta seção afirmava que o trigger `tg_flag_stock_debit_holes_on_finalize`
+estaria emitindo 184 alertas `critical`. **Falso** — `production_alerts` não tem **nenhuma**
+linha de `furo_baixa`. O trigger dispara na *transição* de status, e essas OPs finalizaram antes
+de `production_consumptions` existir. Os únicos alertas na tabela são `op_overload` (131 critical
++ 25 warning). Por isso **o trigger não foi alterado**: filtrar um alerta que não está sendo
+emitido só arrisca suprimir um furo futuro legítimo.
+
+### O que foi feito: travar o invariante (migration `20261222120000`)
+
+`run_debit_guard_tests()` ganhou o **G23**:
+
+> toda função que escreve `quantity_consumed` tem que inserir em `stock_movements`
+
+Três decisões de implementação que valem registro:
+
+1. **É genérico** — varre `pg_proc` em vez de nomear funções, então cobre função nova
+   automaticamente. As G3–G22 citam nome e envelhecem; esta não.
+2. **Foi injetado a partir do catálogo** (`pg_get_functiondef` + `regexp_replace` do `END;`
+   final), não transcrevendo o corpo. Os 22 casos existentes não passaram por cópia manual,
+   logo não podiam ser corrompidos. Verificado depois: 23 casos, 23 verdes.
+3. **Não é vácuo** — conferido que o padrão casa com exatamente as 8 funções que hoje escrevem
+   `quantity_consumed`. Um guard que não enxerga nada passaria por silêncio, não por acerto.
+
+### O que segue em aberto
+
+- **Os 1.172 buracos e os 99 drifts continuam sem lançamento**, por decisão do dono: regularizar
+  consumo de março–junho mexendo no saldo de hoje não torna o estoque atual mais correto, e pode
+  negativar material que está fisicamente na prateleira. Se um dia for regularizar,
+  `reconcile_stock_debit_hole` já existe — mas o passo anterior é **contagem física** dos 34
+  produtos afetados.
+- Os 26 escritores diretos em `stock_movements` continuam 26.
