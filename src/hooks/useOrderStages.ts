@@ -355,6 +355,8 @@ let realtimeChannelSeq = 0;
 export function useRealtimeOrderStages() {
   const qc = useQueryClient();
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Já assinou uma vez? Distingue adesão inicial de REconexão. */
+  const assinouRef = useRef(false);
   useEffect(() => {
     const channel = supabase
       .channel(`order-stages-realtime-${++realtimeChannelSeq}`)
@@ -373,7 +375,13 @@ export function useRealtimeOrderStages() {
         // meio do turno deixava o quadro parado para SEMPRE (até alguém trocar
         // de tela), mostrando a fábrica de antes da queda com cara de quadro
         // vivo. Ao reassinar, buscamos o estado inteiro de novo.
-        if (status === 'SUBSCRIBED') invalidateProductionCaches(qc);
+        // ⚠ Só na REconexão. O callback também recebe SUBSCRIBED na adesão
+        // inicial, e invalidar ali refazia ~25 queries logo depois do
+        // carregamento — toda tela de produção buscava tudo duas vezes.
+        if (status === 'SUBSCRIBED') {
+          if (assinouRef.current) invalidateProductionCaches(qc);
+          assinouRef.current = true;
+        }
       });
     // Aba volta do sono / máquina reconecta: o canal pode ter morrido em
     // silêncio. O `online` do browser é o gatilho mais confiável que existe

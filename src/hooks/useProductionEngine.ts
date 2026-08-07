@@ -81,6 +81,13 @@ export interface QueueDetailRow {
   /** Maior saldo rolado num ÚNICO setor (a soma entre setores contava o mesmo
    *  par várias vezes: "96 rolados" numa OP de 24 pares). */
   carryover_peak: number;
+  /**
+   * % da ROTA já executada. É o único dos números de progresso que VARIA com o
+   * trabalho do dia: `remaining_pairs_net` só muda quando a última etapa é
+   * apontada (medido: igual ao total em 34 de 34 OPs) e `remaining_pairs` é
+   * carga, não pares.
+   */
+  route_progress_pct: number;
   late_days: number;
   queue_position: number;
 }
@@ -104,6 +111,7 @@ export interface OverloadRow {
   /** PARES FÍSICOS restantes / maior rolado num único setor. Use estes na tela. */
   remaining_pairs_net: number;
   carryover_peak: number;
+  route_progress_pct: number;
 }
 
 export interface ScheduleOpRow {

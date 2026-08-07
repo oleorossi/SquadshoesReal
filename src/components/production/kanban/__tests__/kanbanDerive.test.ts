@@ -246,3 +246,78 @@ describe('deriveCards — setores em paralelo', () => {
     }
   });
 });
+
+/**
+ * REGRESSÕES da opção C pegas no code-review de 07/08/2026. A opção C tinha
+ * ensinado `deriveCards` a enxergar níveis, mas a matemática de cada card
+ * continuava serial — e nos casos NORMAIS de duas bancadas ela mentia.
+ */
+describe('deriveCards — regressões do code-review', () => {
+  const LEVEL = new Map<string, number>([
+    ['Corte Palmilha', 10], ['Corte Forração', 10],
+    ['Costura Palmilha', 30], ['Costura Cabedal', 30], ['Aviamento', 30],
+    ['Silk', 60], ['Acabamento', 100],
+  ]);
+  const rota = () => [
+    stage('Corte Palmilha', 1), stage('Corte Forração', 2),
+    stage('Costura Palmilha', 3), stage('Costura Cabedal', 4), stage('Aviamento', 5),
+    stage('Silk', 6), stage('Acabamento', 7),
+  ];
+
+  it('setor paralelo NÃO perde o card ao receber apontamento parcial', () => {
+    const stages = rota();
+    stages[0] = stage('Corte Palmilha', 1, done(288));
+    // A bancada do Corte Forração aponta 100 de 288 no card dela.
+    stages[1] = stage('Corte Forração', 2, { status: 'em_andamento', quantity_processed: 100 });
+    const cards = deriveCards(queue(), stages, FLOW, LEVEL);
+    const forracao = cards.find(c => c.column === 'Corte Forração');
+    expect(forracao).toBeDefined();               // sumia do quadro inteiro
+    expect(forracao!.delivered).toBe(100);        // e com o SEU número
+    expect(forracao!.columnStage!.quantity_total - forracao!.delivered).toBe(188);
+  });
+
+  it('irmão paralelo não lê os números do vizinho como se fosse a montante', () => {
+    const stages = rota();
+    stages[0] = stage('Corte Palmilha', 1, done(288));
+    stages[1] = stage('Corte Forração', 2, done(288));
+    stages[2] = stage('Costura Palmilha', 3, { status: 'em_andamento', quantity_processed: 100 });
+    const cards = deriveCards(queue(), stages, FLOW, LEVEL);
+    const cabedal = cards.find(c => c.column === 'Costura Cabedal')!;
+    // Ela recebe do CORTE (lote cheio), não da irmã que está com 100.
+    expect(cabedal.delivered).toBe(288);
+    expect(cabedal.isPartial).toBe(false);
+    expect(cabedal.upstreamGap).toBeNull();       // dizia "−188 em Costura Palmilha"
+    // E a que está trabalhando mostra o PRÓPRIO progresso.
+    expect(cards.find(c => c.column === 'Costura Palmilha')!.delivered).toBe(100);
+  });
+
+  it('saldo abandonado por pulo continua apontável, em vez de sumir do quadro', () => {
+    const stages = [
+      stage('Corte Palmilha', 1, { status: 'em_andamento', quantity_processed: 180 }),
+      stage('Corte Forração', 2, done(0)),
+      stage('Silk', 6, done(0)),
+      stage('Acabamento', 7, { status: 'em_andamento', quantity_processed: 0 }),
+    ];
+    const cards = deriveCards(queue(), stages, FLOW, LEVEL);
+    const colunas = cards.map(c => c.column);
+    expect(colunas).toContain('Acabamento');      // o card que já existia
+    expect(colunas).toContain('Corte Palmilha');  // os 108 pares órfãos, agora visíveis
+    expect(cards.find(c => c.column === 'Corte Palmilha')!.delivered).toBe(180);
+    expect(cards.find(c => c.column === 'Acabamento')!.upstreamGap)
+      .toEqual({ sector: 'Corte Palmilha', missing: 108 });
+  });
+
+  it('dois setores FORA do cadastro não viram irmãos falsos', () => {
+    const stages = [
+      stage('Corte Palmilha', 1, done(288)),
+      stage('Setor Legado A', 2),
+      stage('Setor Legado B', 3),
+    ];
+    const cards = deriveCards(queue(), stages, FLOW, LEVEL);
+    // Antes, ambos caíam no nível 0 e ganhavam card simultâneo como se fossem
+    // paralelos. Cada desconhecido fica no seu próprio nível.
+    expect(cards).toHaveLength(1);
+    expect(cards[0].column).toBe('Setor Legado A');
+    expect(cards[0].parallelSiblings).toEqual([]);
+  });
+});

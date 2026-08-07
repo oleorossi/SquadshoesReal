@@ -163,6 +163,10 @@ export default function ProducaoEstouro() {
                       Prazo: <strong>{fmtDate(o.due_date)}</strong> → previsto:{' '}
                       <strong className="text-red-600 dark:text-red-400">{fmtDate(o.projected_completion)}</strong>
                       {' '}· restam {o.remaining_pairs_net} pares
+                      {' '}<span
+                        className="text-muted-foreground"
+                        title="Quanto da rota de setores já foi executada. 'Restam' conta pares que ainda não embarcaram e só muda quando a última etapa é apontada — sozinho, ele não diz se a OP andou."
+                      >({o.route_progress_pct}% da rota feita)</span>
                     </p>
                   </div>
                   {canEdit && (
