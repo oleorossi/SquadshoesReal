@@ -41,10 +41,16 @@ import { useProductionSectors, useEmployeeSectors } from "@/hooks/useSectorRoste
 import { ratesOfRow, sumProducaoRows } from "@/lib/montadorProduction";
 import { searchMatchesAllTerms } from "@/lib/searchUtils";
 import { toast } from "sonner";
-import { Printer, ChartBar, ClipboardText, ListChecks, Users, Package, CurrencyDollar, FloppyDisk, CaretLeft, CaretRight, Warning, CheckCircle, Clock } from "@phosphor-icons/react";
+import { Printer, ChartBar, ClipboardText, Users, Package, CurrencyDollar, FloppyDisk, CaretLeft, CaretRight, Warning, CheckCircle, Clock } from "@phosphor-icons/react";
 
 type Grade = "adulto" | "infantil";
-type Tab = "lancamento" | "produtividade" | "fichas";
+/** Duas abas: LANÇAR e VER. "Produtividade" e "Relatórios" eram telas separadas
+ *  fatiando os MESMOS lançamentos em eixos diferentes — pessoa numa, dia na
+ *  outra — com o mesmo filtro, o mesmo motor (`sumProducaoRows`) e o mesmo total.
+ *  Quem queria saber "quanto devo ao Jonathan e quando ele produziu" tinha que
+ *  alternar entre abas e conferir de cabeça se o filtro era o mesmo dos dois
+ *  lados. Unificadas em 07/08/2026 (decisão do dono). */
+type Tab = "lancamento" | "producao";
 /** Fallback dos setores por par — usado SÓ quando a view não responde ou não tem
  *  nenhum setor marcado. A fonte de verdade é `sector_settings.pays_by_pair`
  *  (via v_production_sectors), não esta lista: a Ficha roda a mesma dinâmica nos
@@ -968,8 +974,7 @@ export default function FichaMontadoresPage() {
   const lbl = "block text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1";
   const TABS: { id: Tab; label: string; icon: any }[] = [
     { id: "lancamento", label: "Chamada do dia", icon: ClipboardText },
-    { id: "produtividade", label: "Produtividade", icon: ChartBar },
-    { id: "fichas", label: "Relatórios", icon: ListChecks },
+    { id: "producao", label: "Produção e pagamento", icon: ChartBar },
   ];
 
   // estilo dos inputs de pares por dificuldade (Médio âmbar · Difícil vermelho)
@@ -1340,8 +1345,8 @@ export default function FichaMontadoresPage() {
         </div>
       )}
 
-      {/* ════ PRODUTIVIDADE ════ */}
-      {tab === "produtividade" && (
+      {/* ════ 1. QUEM produziu e QUANTO devo — a parte acionável ════ */}
+      {tab === "producao" && (
         <div className="space-y-4">
           <StatGrid>
             <StatCard label={cfgSetor.plural.replace(/^./, (c) => c.toUpperCase())} value={String(agg.length)} icon={Users}
@@ -1445,9 +1450,11 @@ export default function FichaMontadoresPage() {
         </div>
       )}
 
-      {/* ════ RELATÓRIOS (período) ════ */}
-      {tab === "fichas" && (
-        <section>
+      {/* ════ 2. QUANDO foi produzido, a que taxa e em que ritmo ════
+           Mesmo filtro e mesmo motor do bloco acima — os totais TÊM que bater.
+           Se um dia divergirem, é bug, não arredondamento. */}
+      {tab === "producao" && fichasFiltradas.length > 0 && (
+        <section className="border-t border-border pt-6">
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <h2 className="text-lg font-semibold text-foreground">Produção do período</h2>
             {loading && <span className="text-xs text-muted-foreground">carregando…</span>}
@@ -1461,9 +1468,6 @@ export default function FichaMontadoresPage() {
               <Printer className="h-4 w-4" /> Calendário em PDF
             </Button>
           </div>
-          {!loading && fichasFiltradas.length === 0 && (
-            <p className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">Nenhum lançamento no período selecionado.</p>
-          )}
 
           {/* ══ RESUMO DO PERÍODO (R1) ══ */}
           {!loading && fichasFiltradas.length > 0 && (
