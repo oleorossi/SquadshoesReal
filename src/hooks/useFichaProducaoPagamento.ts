@@ -99,6 +99,24 @@ function traduzErro(msg: string): string {
 }
 
 /**
+ * A janela é uma SEMANA FECHADA (segunda + 6 dias)?
+ *
+ * Portão do pagamento: a cadência é semanal, e pagar uma janela maior (quinzena,
+ * mês, intervalo solto) reivindicaria de uma vez os dias de TODAS as semanas
+ * dentro dela — e `tg_payroll_block_period_overlap` passaria a recusar cada
+ * semanal daquele intervalo, para sempre. Fica-se preso a uma folha só.
+ *
+ * Validado pelo VALOR das datas, não pelo preset clicado: digitar 15/06–21/06 no
+ * Personalizado produz exatamente a mesma janela que o botão "Esta semana", e
+ * aceitar uma enquanto recusa a outra seria arbitrário.
+ */
+export function eSemanaFechada(from: string, to: string): boolean {
+  if (!from || !to) return false;
+  const s = semanaDePagamento(from);
+  return s.from === from && s.to === to;
+}
+
+/**
  * Abre (ou reaproveita) a folha da janela e a aprova, reivindicando a produção.
  * Devolve o líquido já recalculado pelos gatilhos — é ele que deve ir ao recibo.
  */

@@ -14,7 +14,7 @@
 //     segundo pagamento seria impossível e a fábrica travaria na semana seguinte.
 import { describe, it, expect } from 'vitest';
 import {
-  periodoDeJanela, semanaDePagamento, PERIODO_JANELA_RE,
+  periodoDeJanela, semanaDePagamento, eSemanaFechada, PERIODO_JANELA_RE,
 } from '../useFichaProducaoPagamento';
 
 /** Espelha `payroll_period_range`: daterange SEMIABERTO [de, ate+1). É por isso
@@ -94,6 +94,23 @@ describe('trava de sobreposição — o que o banco vai aceitar', () => {
         expect(cruzam(semanas[i], semanas[j])).toBe(false);
       }
     }
+  });
+
+  it('eSemanaFechada aceita a semana e recusa o resto', () => {
+    // Aceita venha de onde vier: preset ou datas digitadas à mão. É a MESMA
+    // janela, e recusar uma enquanto aceita a outra seria arbitrário.
+    expect(eSemanaFechada('2026-06-15', '2026-06-21')).toBe(true);
+    for (const semana of ['2026-06-22', '2026-06-29', '2026-07-20', '2026-07-27']) {
+      const s = semanaDePagamento(semana);
+      expect(eSemanaFechada(s.from, s.to)).toBe(true);
+    }
+    // Recusa o que tomaria os dias de várias semanas de uma vez.
+    expect(eSemanaFechada('2026-06-01', '2026-06-30')).toBe(false); // mês
+    expect(eSemanaFechada('2026-06-01', '2026-06-15')).toBe(false); // quinzena
+    expect(eSemanaFechada('2026-06-15', '2026-06-28')).toBe(false); // 2 semanas
+    expect(eSemanaFechada('2026-06-16', '2026-06-22')).toBe(false); // 7 dias, mas começa na terça
+    expect(eSemanaFechada('2026-06-15', '2026-06-19')).toBe(false); // seg–sex: perderia o fim de semana
+    expect(eSemanaFechada('', '')).toBe(false);
   });
 
   it('janela que ENGLOBA outra é sobreposição — é o caso que a trava existe pra pegar', () => {

@@ -2,7 +2,7 @@
 // "Ficha de Montadores" → CHAMADA DO DIA: produção diária por setor.
 // O trabalhador lança os PARES produzidos por TAMANHO DE FICHA (12 / 15 / 18).
 //   · fichas = Σ (pares ÷ tamanho)   · pares = Σ pares
-// Roster do setor numa tela (visão Dia) + matriz pessoas × Seg–Sex por tamanho
+// Roster do setor numa tela (visão Dia) + matriz pessoas × Seg–Dom por tamanho
 // (visão Semana). Um único "Salvar" (upsert em lote por dia/pessoa).
 //
 // Cada par tem DIFICULDADE (Médio âmbar / Difícil vermelho) que paga R$/par
@@ -36,7 +36,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { useEmployees } from "@/hooks/useEmployees";
 import { useAccessControl } from "@/hooks/useAccessControl";
 import { PagarProducaoDialog } from "@/components/hr/PagarProducaoDialog";
-import { semanaDePagamento } from "@/hooks/useFichaProducaoPagamento";
+import { semanaDePagamento, eSemanaFechada } from "@/hooks/useFichaProducaoPagamento";
 import { useProductionSectors, useEmployeeSectors } from "@/hooks/useSectorRoster";
 import { ratesOfRow, sumProducaoRows } from "@/lib/montadorProduction";
 import { searchMatchesAllTerms } from "@/lib/searchUtils";
@@ -201,17 +201,25 @@ const paresOfDiffMap = (dm: DiffSizeMap) => paresOfMap(dm.medio) + paresOfMap(dm
 const fichasOfDiffMap = (dm: DiffSizeMap) => SIZES.reduce((s, sz) => s + Math.round(((dm.medio[sz] || 0) + (dm.dificil[sz] || 0)) / sz), 0);
 
 const WD_FULL = ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"];
-const WD_SHORT = ["Seg", "Ter", "Qua", "Qui", "Sex"];
+const WD_SHORT = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
 const weekdayName = (iso: string) => WD_FULL[(new Date(iso + "T00:00:00").getDay() + 6) % 7] || "";
-function mondayOf(iso: string) {
-  const d = new Date(iso + "T00:00:00");
-  const dow = (d.getDay() + 6) % 7;
-  d.setDate(d.getDate() - dow);
-  return d;
-}
+/** Os 7 dias da semana da data, SEGUNDA a DOMINGO.
+ *
+ *  Eram 5 (Seg–Sex) e isso escondia produção que É paga: a semana de folha é
+ *  seg→dom, e o histórico tem 4 lançamentos em sábado (20/06 e 27/06) somando
+ *  R$ 517,20 que a matriz não exibia nem deixava editar — só apareciam na visão
+ *  Dia ou no calendário. Pior, `dataRange` monta o intervalo de BUSCA a partir
+ *  daqui: com 5 dias, o sábado nem era carregado do banco.
+ *
+ *  ⚠ Isto alimenta três coisas ao mesmo tempo — a matriz semanal, o rótulo da
+ *  semana e o intervalo de busca. Mexer no comprimento propaga para os três.
+ *
+ *  DERIVA de `semanaDePagamento`, a mesma função que monta `payroll_runs.period`.
+ *  Não é estilo: assim a semana que se LANÇA e a que se PAGA não podem divergir
+ *  por construção — não há dois cálculos para sair de sincronia. */
 function weekDaysOf(iso: string) {
-  const mon = mondayOf(iso);
-  return Array.from({ length: 5 }, (_, i) => { const x = new Date(mon); x.setDate(mon.getDate() + i); return isoOf(x); });
+  const ini = new Date(semanaDePagamento(iso).from + "T00:00:00");
+  return Array.from({ length: 7 }, (_, i) => { const x = new Date(ini); x.setDate(ini.getDate() + i); return isoOf(x); });
 }
 // Dias corridos (ISO) de um intervalo [from,to] inclusivo — base do calendário.
 const WD_SHORT7 = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
@@ -225,8 +233,10 @@ function daysInRange(from: string, to: string): string[] {
   return out;
 }
 
-/** Intervalo {from,to} (ISO) do período (Produtividade + Fichas). */
-function periodRange(mode: PeriodMode, cFrom: string, cTo: string): { from: string; to: string } {
+/** Intervalo {from,to} (ISO) do período da aba Produção.
+ *  `semAnchor` é a semana que o usuário está olhando — a MESMA âncora da
+ *  Chamada do dia, pra lançar e pagar nunca apontarem para semanas diferentes. */
+function periodRange(mode: PeriodMode, cFrom: string, cTo: string, semAnchor: string): { from: string; to: string } {
   const now = new Date();
   const y = now.getFullYear(), m = now.getMonth();
   const lastDay = new Date(y, m + 1, 0).getDate();
@@ -235,7 +245,7 @@ function periodRange(mode: PeriodMode, cFrom: string, cTo: string): { from: stri
     // Seg→Dom, do mesmo helper que a folha usa pra montar o período — a janela
     // exibida aqui É a que vira `payroll_runs.period` ao pagar. Duas definições
     // de "semana" fariam a tela mostrar um intervalo e a folha cobrar outro.
-    case "semana": return semanaDePagamento(todayISO());
+    case "semana": return semanaDePagamento(semAnchor);
     case "q1": return { from: `${y}-${pad(m + 1)}-01`, to: `${y}-${pad(m + 1)}-15` };
     case "q2": return { from: `${y}-${pad(m + 1)}-16`, to: `${y}-${pad(m + 1)}-${pad(lastDay)}` };
     case "mes": return { from: `${y}-${pad(m + 1)}-01`, to: `${y}-${pad(m + 1)}-${pad(lastDay)}` };
@@ -438,7 +448,13 @@ export default function FichaMontadoresPage() {
   // ── chamada do dia / semana ──
   const [chamadaView, setChamadaView] = useState<ChamadaView>("dia");
   const [chamadaDia, setChamadaDia] = useState(todayISO());
+  // Âncora ÚNICA da semana: serve à matriz de lançamento E ao período da aba
+  // Produção. Uma noção só de "a semana que estou olhando" — lançar numa semana
+  // e pagar outra por descuido deixa de ser possível.
   const [semanaAnchor, setSemanaAnchor] = useState(todayISO());
+  const deslocarSemana = useCallback((semanas: number) => {
+    setSemanaAnchor((a) => isoOf(new Date(new Date(a + "T00:00:00").getTime() + semanas * 7 * 864e5)));
+  }, []);
   const [semSize, setSemSize] = useState<number>(12);
   const [semDiff, setSemDiff] = useState<Diff>("medio"); // dificuldade ativa na matriz semanal
   // Trocar de Montagem (com difícil) para Solagem (taxa única) deixaria a matriz
@@ -474,7 +490,15 @@ export default function FichaMontadoresPage() {
   const [pMode, setPMode] = useState<PeriodMode>("semana");
   const [cFrom, setCFrom] = useState(todayISO());
   const [cTo, setCTo] = useState(todayISO());
-  const range = useMemo(() => periodRange(pMode, cFrom, cTo), [pMode, cFrom, cTo]);
+  const range = useMemo(() => periodRange(pMode, cFrom, cTo, semanaAnchor), [pMode, cFrom, cTo, semanaAnchor]);
+  /** A janela é uma SEMANA FECHADA (segunda + 6 dias)? Habilita o pagamento.
+   *  Validado pelo VALOR das datas, não pelo botão clicado: digitar 15/06–21/06
+   *  no Personalizado é a mesma janela que o preset "semana" produz, e recusar
+   *  uma e aceitar a outra seria arbitrário. Pagar fora de semana fecharia a
+   *  janela inteira contra as semanais (tg_payroll_block_period_overlap). */
+  const janelaESemanaFechada = useMemo(
+    () => eSemanaFechada(range.from, range.to), [range.from, range.to],
+  );
 
   // ── dados ──
   const [fichas, setFichas] = useState<Ficha[]>([]);
@@ -487,7 +511,9 @@ export default function FichaMontadoresPage() {
    *  — que é o correto, senão a tela mostraria um dia sem os lançamentos dele. */
   const dataRange = useMemo(() => {
     const wd = weekDaysOf(semanaAnchor);
-    const cands = [chamadaDia, wd[0], wd[4], range.from, range.to].filter(Boolean) as string[];
+    // wd[6] = domingo. Com wd[4] (sexta) o fim de semana ficava FORA do intervalo
+    // buscado: o sábado nem chegava do banco, então não aparecia em lugar nenhum.
+    const cands = [chamadaDia, wd[0], wd[6], range.from, range.to].filter(Boolean) as string[];
     const shift = (iso: string, days: number) =>
       isoOf(new Date(new Date(iso + "T00:00:00").getTime() + days * 864e5));
     return { from: shift(cands.reduce((a, b) => (a < b ? a : b)), -1), to: shift(cands.reduce((a, b) => (a > b ? a : b)), 1) };
@@ -633,7 +659,7 @@ export default function FichaMontadoresPage() {
   );
 
   const weekDays = useMemo(() => weekDaysOf(semanaAnchor), [semanaAnchor]);
-  const weekLabel = `${fmtDia(weekDays[0])} – ${fmtDia(weekDays[4])}`;
+  const weekLabel = `${fmtDia(weekDays[0])} – ${fmtDia(weekDays[6])}`;
   const semParesTotal = useMemo(() => Object.values(week).reduce((s, m) => s + paresOfDiffMap(m), 0), [week]);
   const semFichasTotal = useMemo(() => Object.values(week).reduce((s, m) => s + fichasOfDiffMap(m), 0), [week]);
 
@@ -911,12 +937,34 @@ export default function FichaMontadoresPage() {
       m.set(key, cur);
     }
     const rows = Array.from(m.values());
+    // ZERADOS — quem é regime por par e não lançou nada no período. Sem eles, um
+    // montador parado a semana inteira fica indistinguível de um que não existe,
+    // e o card de contagem não bate com o cabeçalho da página (4 no topo, 3 na
+    // tabela). A ausência é informação: é ela que se cobra na segunda-feira.
+    //
+    // Só com o filtro de pagamento em "Tudo": pedir "A PAGAR" e receber linhas de
+    // R$ 0,00 contradiz o próprio filtro. E só regime por par — mensalista zerado
+    // seria linha permanente que nunca tem o que receber.
+    if (pagStatus === "todos") {
+      for (const e of montadores) {
+        if (String(e.payment_type || "").toLowerCase() !== "producao") continue;
+        if (filtroMontador !== "__all__" && e.id !== filtroMontador) continue;
+        if (m.has(e.id)) continue;
+        rows.push({
+          key: e.id, nome: e.name, fichas: 0,
+          paresMedio: 0, paresDificil: 0, pares: 0,
+          taxaMedio: 0, taxaDificil: 0, porPar: true,
+          valorPago: 0, valorFolha: 0, valorAberto: 0, valorTotal: 0,
+        });
+      }
+    }
     for (const r of rows) {
       const t = taxaCadastro.get(r.key);
       r.taxaMedio = t?.vm ?? 0; r.taxaDificil = t?.vd ?? 0;
     }
+    // Ordena por pares: os zerados caem naturalmente no fim.
     return rows.sort((a, b) => b.pares - a.pares);
-  }, [fichasFiltradas, taxaCadastro, estadoDe]);
+  }, [fichasFiltradas, taxaCadastro, estadoDe, montadores, pagStatus, filtroMontador]);
   const totals = useMemo<AggTotals>(
     () => agg.reduce((s, r) => ({
       fichas: s.fichas + r.fichas, pares: s.pares + r.pares,
@@ -1064,9 +1112,9 @@ export default function FichaMontadoresPage() {
               <div>
                 <label className={lbl}>Semana</label>
                 <div className="flex items-center gap-1">
-                  <Button type="button" variant="outline" size="sm" className="h-9 w-9 p-0" onClick={() => setSemanaAnchor((a) => isoOf(new Date(new Date(a + "T00:00:00").getTime() - 7 * 864e5)))} aria-label="Semana anterior"><CaretLeft className="h-4 w-4" /></Button>
+                  <Button type="button" variant="outline" size="sm" className="h-9 w-9 p-0" onClick={() => deslocarSemana(-1)} aria-label="Semana anterior"><CaretLeft className="h-4 w-4" /></Button>
                   <div className="h-9 inline-flex items-center rounded-md border border-border bg-card px-3 text-sm font-medium tabular-nums">{weekLabel}</div>
-                  <Button type="button" variant="outline" size="sm" className="h-9 w-9 p-0" onClick={() => setSemanaAnchor((a) => isoOf(new Date(new Date(a + "T00:00:00").getTime() + 7 * 864e5)))} aria-label="Próxima semana"><CaretRight className="h-4 w-4" /></Button>
+                  <Button type="button" variant="outline" size="sm" className="h-9 w-9 p-0" onClick={() => deslocarSemana(1)} aria-label="Próxima semana"><CaretRight className="h-4 w-4" /></Button>
                 </div>
               </div>
             )}
@@ -1189,7 +1237,7 @@ export default function FichaMontadoresPage() {
             <Panel
               flush
               eyebrow={`SEMANA ${weekLabel}`}
-              title="Matriz · Seg a Sex"
+              title="Matriz · Seg a Dom"
               subtitle="Pares por dia. Você edita uma combinação por vez (dificuldade × tamanho); a marca +N na célula avisa quantos pares daquele dia estão fora da combinação atual."
               actions={
                 <div className="flex flex-wrap items-center gap-2">
@@ -1219,8 +1267,11 @@ export default function FichaMontadoresPage() {
                   <thead>
                     <tr className="border-b-2 border-border/80 bg-muted/40">
                       <th className="sticky left-0 z-10 bg-muted/40 px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground" style={{ minWidth: 150 }}>{cfgSetor.sing.replace(/^./, (c) => c.toUpperCase())} <span className={`font-mono normal-case ${semDiff === "medio" ? "text-amber-600" : "text-red-600"}`}>· {DIFF_LABEL[semDiff]} de {semSize}</span></th>
+                      {/* Sáb/Dom em cinza, igual ao calendário. Estão aqui porque a
+                          semana de PAGAMENTO é seg→dom: esconder o fim de semana
+                          escondia produção que a folha paga. */}
                       {weekDays.map((d, i) => (
-                        <th key={d} className="px-1 py-2.5 font-mono text-[10px] uppercase tracking-wide text-muted-foreground" style={{ minWidth: 60 }}>{WD_SHORT[i]} {d.slice(8)}</th>
+                        <th key={d} className={`px-1 py-2.5 font-mono text-[10px] uppercase tracking-wide text-muted-foreground ${dowIdx(d) >= 5 ? "bg-muted/70" : ""}`} style={{ minWidth: 60 }}>{WD_SHORT[i]} {d.slice(8)}</th>
                       ))}
                       <th className="border-l-2 border-border px-2 py-2.5 text-[11px] font-bold uppercase text-foreground" style={{ width: 90 }}>Pares · Fichas</th>
                     </tr>
@@ -1243,7 +1294,7 @@ export default function FichaMontadoresPage() {
                             // leitura de quem confia no que está vendo.
                             const foraDaFatia = totalDoDia - naFatia;
                             return (
-                              <td key={d} className="px-1 py-1">
+                              <td key={d} className={`px-1 py-1 ${dowIdx(d) >= 5 ? "bg-muted/30" : ""}`}>
                                 <div className="relative">
                                   <input inputMode="numeric"
                                     value={naFatia || ""}
@@ -1278,7 +1329,7 @@ export default function FichaMontadoresPage() {
                       <td className="sticky left-0 z-10 bg-muted/30 px-4 py-2.5 text-left font-mono text-[10px] uppercase tracking-wider text-muted-foreground">Total {DIFF_LABEL[semDiff]} ({semSize}) / dia</td>
                       {weekDays.map((d) => {
                         const colP = rosterFiltrado.reduce((s, e) => s + (weekMap(e.id, d)[semDiff][semSize] || 0), 0);
-                        return <td key={d} className={`font-mono text-sm font-bold tabular-nums ${semDiff === "medio" ? "text-amber-600" : "text-red-600"}`}>{colP || ""}</td>;
+                        return <td key={d} className={`font-mono text-sm font-bold tabular-nums ${dowIdx(d) >= 5 ? "bg-muted/50" : ""} ${semDiff === "medio" ? "text-amber-600" : "text-red-600"}`}>{colP || ""}</td>;
                       })}
                       <td className="border-l-2 border-border" />
                     </tr>
@@ -1301,10 +1352,32 @@ export default function FichaMontadoresPage() {
         <div className="flex flex-wrap items-end gap-2">
           <div className="flex flex-wrap gap-1">
             {(Object.keys(periodLabel) as PeriodMode[]).map((m) => (
-              <button key={m} type="button" onClick={() => setPMode(m)}
+              <button key={m} type="button"
+                // "Esta semana" volta pra semana corrente: o rótulo promete isso.
+                // Navegar com as setas move a âncora; o preset a traz de volta.
+                onClick={() => { setPMode(m); if (m === "semana") setSemanaAnchor(todayISO()); }}
                 className={`rounded-md border px-3 py-1.5 text-xs font-semibold transition-colors ${pMode === m ? "border-foreground bg-foreground text-background" : "border-border bg-card text-muted-foreground hover:bg-muted/40"}`}>{periodLabel[m]}</button>
             ))}
           </div>
+          {/* Navegação de semana — só faz sentido no modo semana. Traz o valor em
+              aberto junto: percorrendo as semanas dá pra ver ONDE ainda há dívida
+              sem ler a tabela inteira. */}
+          {pMode === "semana" && (
+            <div className="flex items-center gap-1">
+              <Button type="button" variant="outline" size="sm" className="h-9 w-9 p-0"
+                onClick={() => deslocarSemana(-1)} aria-label="Semana anterior"><CaretLeft className="h-4 w-4" /></Button>
+              <div className="h-9 inline-flex items-center gap-2 rounded-md border border-border bg-card px-3 text-sm font-medium tabular-nums">
+                <span>{fmtDia(range.from)} – {fmtDia(range.to)}</span>
+                {totals.valorAberto > 0
+                  ? <span className="font-mono text-xs font-bold text-amber-600">{fmtBRL(totals.valorAberto)} a pagar</span>
+                  : totals.valorTotal > 0
+                    ? <span className="font-mono text-xs font-bold text-green-600">quitada</span>
+                    : <span className="font-mono text-xs text-muted-foreground">sem produção</span>}
+              </div>
+              <Button type="button" variant="outline" size="sm" className="h-9 w-9 p-0"
+                onClick={() => deslocarSemana(1)} aria-label="Próxima semana"><CaretRight className="h-4 w-4" /></Button>
+            </div>
+          )}
           {pMode === "custom" && (
             <div className="flex items-end gap-2">
               <div><label className={lbl}>De</label><Input type="date" value={cFrom} onChange={(e) => setCFrom(e.target.value)} className="h-9 w-40" /></div>
@@ -1419,6 +1492,10 @@ export default function FichaMontadoresPage() {
                               linha de nome solto (prefixo txt:) não tem quem pagar. */}
                           {r.porPar && r.valorAberto > 0 && !r.key.startsWith("txt:") ? (
                             <Button size="sm" variant="outline" className="h-7"
+                              disabled={!janelaESemanaFechada}
+                              title={janelaESemanaFechada
+                                ? undefined
+                                : "O pagamento é semanal: navegue até uma semana (seg→dom) para pagar. Pagar uma janela maior tomaria os dias de todas as semanas dentro dela."}
                               onClick={() => setPagarAlvo({ id: r.key, nome: r.nome, valor: r.valorAberto })}>
                               Pagar
                             </Button>
