@@ -448,6 +448,79 @@ sobra.
 **Peso:** par sempre de `technical_sheets.weight_per_pair_kg`, default 238 g só quando a
 ficha não tem; tara da caixa em `box_types.empty_weight_kg`.
 
+## Rota de produção — Expedição é obrigatória (CANÔNICO, 07/08/2026)
+
+> Decisão do dono. A rota de uma OP nasce de `technical_sheets.production_sectors`
+> (`promote_sale_order_item`), e **toda rota termina em `Expedição`**.
+
+**O sintoma:** arrastar BT01/BT02 pra Expedição no Kanban devolvia *"Esta OP não passa
+por Expedição (ou o setor já está concluído)"* ([`pointingPlan.ts:101`](src/components/production/kanban/pointingPlan.ts#L101)).
+O toast estava **certo** — OP-2026-00968/00969/01146 tinham 10 etapas terminando em
+Acabamento.
+
+**A causa:** as 6 listas canônicas de `ConstructionConfigPanel.tsx` terminavam todas em
+Acabamento, então escolher o modelo de produção da ficha **arrancava a Expedição**. O
+default do SQL sempre a incluiu — os dois lados discordavam. Medido: **16 de 53 fichas**
+sem a etapa, gerando **29 OPs** (9 finalizadas, 20 abertas).
+
+⚠ **O arrasto recusado era o sintoma barato.** O caro era silencioso: `finalize_production_sector`
+marca `Finalizado` quando nenhuma etapa fica pendente, então a OP **encerrava no Acabamento**
+e nunca entrava no romaneio — o filtro `orderInRoteiro(…, 'Expedição')` de
+`PrintWorkSheetsPage.tsx` já excluía BT01 por isso, e ninguém tinha ligado uma coisa à outra.
+
+### Onde a regra mora agora
+
+| Camada | O quê |
+|---|---|
+| **Banco (a trava)** | `tg_normalize_production_sectors` **acrescenta** Expedição em toda gravação de `production_sectors`. Vale pra qualquer porta — painel, SQL Editor, import. Mig `20261230120000`. |
+| React (higiene) | as 6 listas + `routingLabel()` de `ConstructionConfigPanel.tsx`. Não é a defesa; serve pra tela não mostrar uma rota e o banco gravar outra. |
+| Teste | `technical-sheets/__tests__/constructionRouting.test.ts` varre `CANONICAL_ROUTINGS` inteiro — **lista nova já nasce coberta**. |
+
+⚠ **Rota VAZIA continua vazia de propósito.** `production_sectors` null/`[]` significa "sem
+restrição de roteiro" (é assim que `PrintWorkSheetsPage` lê). O trigger sai cedo nesse caso —
+injetar Expedição numa lista vazia criaria ficha cuja rota inteira é a expedição.
+
+### Quem fecha a Expedição — DOIS caminhos
+
+`production_pointings` tinha **zero** lançamentos em Expedição: ninguém nunca apontou lá
+pelo Kanban (os 168 `concluido` que existiam são legado migrado). Tornar a etapa obrigatória
+sem isso faria as OPs empacarem na última coluna e nunca chegarem a `Finalizado` — que é o
+filtro de `PostOPAnalysis`, custeio e KPIs.
+
+1. **Romaneio (automático)** — `register_order_shipment` fecha **toda** etapa não concluída
+   das OPs do PV expedido, com `quantity_total`, e marca as OPs `Finalizado`. Mig `20261230120100`.
+2. **Kanban (manual)** — segue permitindo apontar a Expedição na mão, como qualquer setor.
+
+⚠ A condição no romaneio é `status <> 'concluido'`, **não** `= 'pendente'` como no gatilho
+`tg_close_stages_on_op_finalize`: etapa com apontamento PARCIAL fica `em_andamento` e escapava
+dele, deixando a OP `Finalizado` com etapa aberta — e o card **seguia no Kanban**, que deriva
+o card das ETAPAS, não do status da OP. O escopo maior fica contido na função da expedição;
+o gatilho compartilhado não mudou.
+
+### Backfill — o que foi e o que NÃO foi tocado
+
+- **16 fichas** ganharam Expedição no fim (roteiro custom de cada uma preservado; o trigger
+  reordena pro canônico).
+- **20 OPs abertas** ganharam a etapa. `stage_order = GREATEST(canonical, max+1)`.
+- ⚠ **As 9 OPs já `Finalizado` ficaram INTACTAS**, de propósito: dar etapa pendente a elas as
+  ressuscita no quadro (`deriveCard` volta a devolver card) e desmente um encerramento que já
+  aconteceu. Se um código novo "completar" essas 9 por coerência, está desfazendo a decisão.
+
+### Cópias da rota — eram 4 fontes divergentes
+
+`canonical_stage_order` é a referência. Auditado 07/08/2026:
+
+- ✅ `promote_sale_order_item`, `tg_normalize_production_sectors`, `sector_settings`,
+  `PRODUCTION_STAGES` (`useOrderStages.ts`) — corretos.
+- 🔧 `resync_op_atomic` — fallback usava `'Costura'` (grafia **morta** desde o split de
+  `20261001120000`; a RPC de apontamento não conhece esse nome) e numerava por **ORDINALITY**
+  em vez de `canonical_stage_order`. Daí OP-2026-01245/46/47 terem Acabamento em 9 e o resto
+  da fábrica em 10 — **duas convenções na mesma tabela**. Corrigido. Esta função **DELETA e
+  recria** `order_stages`, então é a porta que reintroduz qualquer erro de rota.
+- 🗑 `advance_order_to_sector` — **dropada**. `v_flow` tinha `'Costura'` e punha `'Aviamento'`
+  ANTES da costura; como ela fecha como `concluido` todo setor de posição menor que o destino,
+  a inversão fecharia a costura ao avançar pro aviamento. Zero chamadores em `src/`.
+
 ## Organização de Grupos de Estoque (product_groups)
 
 > Reorganizado em 2026-07-01: os dois fluxos de criação de grupo (tela **Estoque →

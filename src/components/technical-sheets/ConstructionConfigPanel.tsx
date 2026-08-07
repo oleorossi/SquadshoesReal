@@ -43,12 +43,31 @@ interface ConstructionConfigPanelProps {
 // • Tiras (has_straps=true)            → SEM Corte Cabedal (tira já vem
 //   cortada). COM Costura (só palmilha+forração).
 // Silk fica entre Aviamento e Colagem quando ativado.
-const SECTORS_CABEDAL              = ['Corte Palmilha', 'Corte Cabedal', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'];
-const SECTORS_CABEDAL_SILK         = ['Corte Palmilha', 'Corte Cabedal', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'];
-const SECTORS_CABEDAL_FORRADO      = ['Corte Palmilha', 'Corte Forração', 'Corte Cabedal', 'Costura Palmilha', 'Costura Cabedal', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'];
-const SECTORS_CABEDAL_FORRADO_SILK = ['Corte Palmilha', 'Corte Forração', 'Corte Cabedal', 'Costura Palmilha', 'Costura Cabedal', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'];
-const SECTORS_TIRAS                = ['Corte Palmilha', 'Corte Forração', 'Costura Palmilha', 'Aviamento', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'];
-const SECTORS_TIRAS_SILK           = ['Corte Palmilha', 'Corte Forração', 'Costura Palmilha', 'Aviamento', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'];
+//
+// ⚠ TODA lista termina em 'Expedição' (decisão do dono, 07/08/2026). Até então
+// as 6 terminavam em Acabamento, e escolher o modelo de produção ARRANCAVA a
+// expedição da rota da ficha — 16 das 53 fichas ficaram assim, gerando 29 OPs
+// sem a etapa. O sintoma era o Kanban recusando o arrasto pra Expedição
+// ("Esta OP não passa por Expedição"), mas o estrago maior era silencioso: a OP
+// finalizava no Acabamento e nunca entrava no romaneio.
+//
+// O banco agora garante isso sozinho (`tg_normalize_production_sectors`,
+// migration 20261230120000), então estas listas são higiene de UI: sem elas o
+// painel mostraria uma rota e o banco gravaria outra. Travado por
+// `__tests__/constructionRouting.test.ts`.
+const SECTORS_CABEDAL              = ['Corte Palmilha', 'Corte Cabedal', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição'];
+const SECTORS_CABEDAL_SILK         = ['Corte Palmilha', 'Corte Cabedal', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição'];
+const SECTORS_CABEDAL_FORRADO      = ['Corte Palmilha', 'Corte Forração', 'Corte Cabedal', 'Costura Palmilha', 'Costura Cabedal', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição'];
+const SECTORS_CABEDAL_FORRADO_SILK = ['Corte Palmilha', 'Corte Forração', 'Corte Cabedal', 'Costura Palmilha', 'Costura Cabedal', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição'];
+const SECTORS_TIRAS                = ['Corte Palmilha', 'Corte Forração', 'Costura Palmilha', 'Aviamento', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição'];
+const SECTORS_TIRAS_SILK           = ['Corte Palmilha', 'Corte Forração', 'Costura Palmilha', 'Aviamento', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição'];
+
+/** As 6 acima, pra o teste varrer a tabela em vez de valores fixos. */
+export const CANONICAL_ROUTINGS = [
+  SECTORS_CABEDAL, SECTORS_CABEDAL_SILK,
+  SECTORS_CABEDAL_FORRADO, SECTORS_CABEDAL_FORRADO_SILK,
+  SECTORS_TIRAS, SECTORS_TIRAS_SILK,
+] as const;
 
 function sectorsForModel(model: ProductionModel, hasSilk: boolean): string[] {
   if (model === 'cabedal')        return hasSilk ? SECTORS_CABEDAL_SILK         : SECTORS_CABEDAL;
@@ -62,10 +81,21 @@ function arraysEqual(a: string[] | null | undefined, b: string[]): boolean {
   return a.every((v, i) => v === b[i]);
 }
 
+/** Rota sem a Expedição do fim — ver `isCanonicalRouting`. */
+const semExpedicao = (r: readonly string[]): string[] =>
+  r[r.length - 1] === 'Expedição' ? r.slice(0, -1) : [...r];
+
 /**
  * Returns true if `current` matches any known canonical routing (any model, with or without Silk).
  * Custom routings return false → we ask before overwriting.
  * Legacy pre-rename lists are also accepted as non-customised.
+ *
+ * ⚠ A comparação ignora a Expedição do fim dos DOIS lados (07/08/2026). Ela
+ * passou a ser obrigatória em toda rota, mas as listas legadas abaixo são
+ * fotografias de roteiros que existiram ANTES disso e não a têm. Sem descontá-la,
+ * toda ficha antiga (que o backfill acabou de completar) passaria a ser lida
+ * como "roteiro customizado" e dispararia o aviso de sobrescrita sem que
+ * ninguém tivesse customizado nada.
  */
 function isCanonicalRouting(current: string[] | null | undefined): boolean {
   if (!current || current.length === 0) return true;
@@ -92,7 +122,8 @@ function isCanonicalRouting(current: string[] | null | undefined): boolean {
     ['Corte Palmilha', 'Corte Forração', 'Aviamento', 'Mesa', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'],
     ['Corte', 'Forração', 'Aviamento', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'],
   ];
-  return canonicals.some(d => arraysEqual(current, d));
+  const alvo = semExpedicao(current);
+  return canonicals.some(d => arraysEqual(alvo, semExpedicao(d)));
 }
 
 function detectModel(construction_type: ConstructionType, insole_ready_made: boolean): ProductionModel {
@@ -189,16 +220,20 @@ function ModelCard({ active, onClick, icon, title, subtitle, routing, children }
 
 function routingLabel(model: ProductionModel, hasSilk: boolean, requires_sewing: boolean): string {
   const silk = hasSilk ? ' → Silk' : '';
+  // O rótulo TEM que terminar onde a lista termina: ele é a única coisa que o
+  // usuário lê antes de escolher o modelo. Enquanto as listas paravam no
+  // Acabamento isto batia; agora toda rota vai até a Expedição.
+  const fim = ' → Colagem → Montagem → Solagem → Acabamento → Expedição';
   if (model === 'cabedal') {
-    return `Corte Palmilha ‖ Corte Cabedal${silk} → Colagem → Montagem → Solagem → Acabamento`;
+    return `Corte Palmilha ‖ Corte Cabedal${silk}${fim}`;
   }
   if (model === 'cabedal_forrado') {
     const sewing = requires_sewing ? ' (costura inclusa)' : '';
-    return `Corte Palmilha ‖ Corte Forração ‖ Corte Cabedal${sewing}${silk} → Colagem → Montagem → Solagem → Acabamento`;
+    return `Corte Palmilha ‖ Corte Forração ‖ Corte Cabedal${sewing}${silk}${fim}`;
   }
   // tiras — não tem Corte Cabedal porque a tira já vem cortada.
   // Roteiro segue SECTORS_TIRAS (Mesa foi renomeado p/ Aviamento em 2026-05-20).
-  return `Corte Palmilha → Corte Forração → Costura → Aviamento${silk} → Colagem → Montagem → Solagem → Acabamento`;
+  return `Corte Palmilha → Corte Forração → Costura → Aviamento${silk}${fim}`;
 }
 
 export function ConstructionConfigPanel({
