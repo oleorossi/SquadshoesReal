@@ -53,6 +53,11 @@ export const MENU_OPTIONS: MenuOption[] = [
 
   // RH
   { module: 'rh', label: 'RH (Funcionários e Ponto)', description: 'Cadastro de funcionários, controle de ponto, banco de horas, escalas, faltas', group: 'RH' },
+  // Módulo de AÇÃO, não de rota: não entra em ROUTE_MODULE_MAP. Quem tem
+  // 'ficha_montadores' vê a produção e o status pago/a pagar; só quem tem ESTE
+  // consegue apertar o botão que paga. Existe separado de 'rh_folha' pra dar o
+  // pagamento da produção a um encarregado sem abrir a folha inteira do RH.
+  { module: 'ficha_pagamento', label: 'Pagar produção (Ficha de Montadores)', description: 'Registrar o pagamento da semana de um montador/solador direto na Ficha. Gera folha e recibo — conceder só a quem entrega o dinheiro.', group: 'RH' },
   { module: 'terceirizados', label: 'Terceirizados', description: 'Cadastro de prestadores PJ e ordens de serviço', group: 'RH' },
 
   // RELATÓRIOS / SISTEMA

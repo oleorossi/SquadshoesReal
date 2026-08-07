@@ -223,7 +223,7 @@ export const ROLE_MODULES: Record<string, string[]> = {
     'dashboard', 'estoque', 'produtos', 'ordens', 'vendas', 'clientes',
     'relatorios', 'financeiro', 'nfe', 'empresas_fiscal',
     'fornecedores', 'terceirizados', 'rh', 'rh_folha',
-    'producao', 'expedicao', 'ficha_montadores',
+    'producao', 'expedicao', 'ficha_montadores', 'ficha_pagamento',
   ],
   producao: [
     'dashboard', 'estoque', 'produtos', 'ordens', 'producao', 'vendas', 'expedicao', 'ficha_montadores',

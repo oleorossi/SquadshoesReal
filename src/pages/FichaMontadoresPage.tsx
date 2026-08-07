@@ -34,6 +34,8 @@ import { SearchableSelect } from "@/components/ui/searchable-select";
 import { StatGrid, StatCard } from "@/components/ui/stat-card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useEmployees } from "@/hooks/useEmployees";
+import { useAccessControl } from "@/hooks/useAccessControl";
+import { PagarProducaoDialog } from "@/components/hr/PagarProducaoDialog";
 import { useProductionSectors, useEmployeeSectors } from "@/hooks/useSectorRoster";
 import { ratesOfRow, sumProducaoRows } from "@/lib/montadorProduction";
 import { searchMatchesAllTerms } from "@/lib/searchUtils";
@@ -42,12 +44,13 @@ import { Printer, ChartBar, ClipboardText, ListChecks, Users, Package, CurrencyD
 
 type Grade = "adulto" | "infantil";
 type Tab = "lancamento" | "produtividade" | "fichas";
-/** Setores pagos por PRODUÇÃO — os únicos que esta tela atende (decisão do dono
- *  02/08/2026). Antes a faixa listava os 11 setores de v_production_sectors, mas
- *  9 deles nunca receberam um lançamento: o pagamento por par existe só em
- *  Montagem (montador) e Solagem (solador). Se outro ofício virar por-par um dia,
- *  basta acrescentar a chave canônica aqui. */
-const SETORES_POR_PAR = ["montagem", "solagem"] as const;
+/** Fallback dos setores por par — usado SÓ quando a view não responde ou não tem
+ *  nenhum setor marcado. A fonte de verdade é `sector_settings.pays_by_pair`
+ *  (via v_production_sectors), não esta lista: a Ficha roda a mesma dinâmica nos
+ *  11 setores e qualquer um pode passar a pagar por par com um clique no
+ *  cadastro, sem deploy. Sem o fallback, uma falha de leitura deixaria a tela sem
+ *  aba nenhuma e ninguém conseguiria lançar produção. */
+const SETORES_POR_PAR_FALLBACK = ["montagem", "solagem"] as const;
 /** Nome do ofício por setor, indexado pela CHAVE CANÔNICA do banco.
  *  Atenção: Aviamento tem chave 'mesa' (herança do nome antigo do setor) — por
  *  isso a chave nunca é derivada do rótulo aqui no TS. */
@@ -389,18 +392,41 @@ export default function FichaMontadoresPage() {
   // mesmo, com o rótulo capitalizado, pra a aba nunca sumir por falha de cadastro.
   const { data: allSectors = [] } = useProductionSectors();
   const sectors = useMemo(() => {
+    const porPar = allSectors.filter((s) => s.paysByPair);
+    if (porPar.length) return porPar;
     const byKey = new Map(allSectors.map((s) => [s.key, s]));
-    return SETORES_POR_PAR.map((key) =>
-      byKey.get(key) ?? { key, label: key.replace(/^./, (c) => c.toUpperCase()) },
+    return SETORES_POR_PAR_FALLBACK.map((key) =>
+      byKey.get(key) ?? {
+        key, label: key.replace(/^./, (c) => c.toUpperCase()),
+        flowOrder: 0, headcount: null, paysByPair: true,
+        // No fallback, a Solagem segue sem dificuldade — mesmo estado do banco.
+        paysByDifficulty: key !== "solagem",
+      },
     );
   }, [allSectors]);
   // Setor ativo — abas independentes na mesma tela, dados separados por
   // ficha_montadores.setor (que guarda a CHAVE canônica).
   const [setor, setSetor] = useState<string>("montagem");
+  // Se o setor ativo deixar de pagar por par (desmarcado no cadastro), a aba
+  // some e `setor` ficaria apontando pro nada — a tela mostraria roster vazio
+  // sem dizer por quê. Cai no primeiro setor disponível.
+  useEffect(() => {
+    if (sectors.length && !sectors.some((s) => s.key === setor)) setSetor(sectors[0].key);
+  }, [sectors, setor]);
   const cfgSetor = useMemo(() => {
     const s = sectors.find((x) => x.key === setor);
-    return { id: setor, label: s?.label ?? "Setor", ...oficioOf(setor) };
+    return {
+      id: setor, label: s?.label ?? "Setor",
+      // DEFAULT true no banco; na dúvida mostra a dificuldade (não esconde dado).
+      paysByDifficulty: s?.paysByDifficulty !== false,
+      ...oficioOf(setor),
+    };
   }, [sectors, setor]);
+  /** Dificuldades que este setor usa. Solagem = taxa única → só "médio". */
+  const diffsAtivos = useMemo<Diff[]>(
+    () => (cfgSetor.paysByDifficulty ? DIFFS : ["medio"]),
+    [cfgSetor.paysByDifficulty],
+  );
 
   // ── chamada do dia / semana ──
   const [chamadaView, setChamadaView] = useState<ChamadaView>("dia");
@@ -408,6 +434,12 @@ export default function FichaMontadoresPage() {
   const [semanaAnchor, setSemanaAnchor] = useState(todayISO());
   const [semSize, setSemSize] = useState<number>(12);
   const [semDiff, setSemDiff] = useState<Diff>("medio"); // dificuldade ativa na matriz semanal
+  // Trocar de Montagem (com difícil) para Solagem (taxa única) deixaria a matriz
+  // editando uma dificuldade que o setor não usa — e o seletor some, então não
+  // haveria como voltar. Snap para médio.
+  useEffect(() => {
+    if (!cfgSetor.paysByDifficulty && semDiff !== "medio") setSemDiff("medio");
+  }, [cfgSetor.paysByDifficulty, semDiff]);
   // Mostrar as 6 combinações (3 tamanhos × 2 dificuldades) na visão Dia. Fica
   // FECHADO por padrão: ficha 15/18 e par difícil existem, mas são raros — em
   // todo o histórico nenhum foi lançado. Deixá-los sempre à vista cobrava 6
@@ -429,7 +461,10 @@ export default function FichaMontadoresPage() {
   // Declarado aqui em cima, antes do carregamento, porque a busca no banco é
   // recortada por data: o intervalo que a tela consegue exibir sai da união
   // destes filtros com o dia/semana da Chamada.
-  const [pMode, setPMode] = useState<PeriodMode>("q1");
+  // SEMANA é o padrão: a cadência de pagamento de montador e solador é semanal
+  // (decisão do dono, 07/08/2026), e é esta janela que vira o período da folha
+  // quando se paga por aqui. Abrir na quinzena convidava a pagar a janela errada.
+  const [pMode, setPMode] = useState<PeriodMode>("semana");
   const [cFrom, setCFrom] = useState(todayISO());
   const [cTo, setCTo] = useState(todayISO());
   const range = useMemo(() => periodRange(pMode, cFrom, cTo), [pMode, cFrom, cTo]);
@@ -453,6 +488,13 @@ export default function FichaMontadoresPage() {
 
   const { data: employees = [] } = useEmployees();
   const { data: employeeSectors = [] } = useEmployeeSectors();
+  // Ver a produção e o status pago/a pagar é do módulo 'ficha_montadores'; APERTAR
+  // o botão que paga é do módulo 'ficha_pagamento', concedido à parte. Sem essa
+  // separação, 'producao', 'rh' e até 'consulta' (somente-leitura) — todos com
+  // ficha_montadores — passariam a poder registrar pagamento de salário.
+  const { canAccessModule } = useAccessControl();
+  const podePagarProducao = canAccessModule("ficha_pagamento");
+  const [pagarAlvo, setPagarAlvo] = useState<{ id: string; nome: string; valor: number } | null>(null);
 
   // Trabalhadores do SETOR ativo, pela view canônica (department + alocação
   // explícita, normalizados por capacity_sector_key). Carrega junto o R$/par do
@@ -482,13 +524,13 @@ export default function FichaMontadoresPage() {
       .filter((e) => e.active && String((e as any).payment_type || "").toLowerCase() === "producao")
       .map((e) => {
         const lot = lotacao.get(e.id);
-        const foraDosSetores = !lot || !(SETORES_POR_PAR as readonly string[]).includes(lot.key);
+        const foraDosSetores = !lot || !sectors.some((s) => s.key === lot.key);
         const semTaxa = !(Number((e as any).valor_par_medio) > 0);
         return { id: e.id, name: e.name, lotacao: lot?.label || null, foraDosSetores, semTaxa };
       })
       .filter((p) => p.foraDosSetores || p.semTaxa)
       .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
-  }, [employees, employeeSectors]);
+  }, [employees, employeeSectors, sectors]);
 
   const carregar = useCallback(async () => {
     setLoading(true);
@@ -560,13 +602,18 @@ export default function FichaMontadoresPage() {
     const cols: { sz: number; diff: Diff }[] = [];
     for (const sz of SIZES) {
       for (const diff of DIFFS) {
-        const padrao = sz === 12 && diff === "medio";
+        // Setor de taxa única (Solagem) não oferece a coluna Difícil — lançar
+        // ali valoraria o par a R$ 0,00 em silêncio, porque não há R$/par
+        // difícil cadastrado. A coluna ainda aparece se JÁ houver número nela,
+        // pra um lançamento existente nunca ficar invisível.
         const temDado = montadores.some((e) => ((pares[e.id] || emptyDiffMap())[diff][sz] || 0) > 0);
+        if (!diffsAtivos.includes(diff) && !temDado) continue;
+        const padrao = sz === 12 && diff === "medio";
         if (padrao || detalharDia || temDado) cols.push({ sz, diff });
       }
     }
     return cols;
-  }, [montadores, pares, detalharDia]);
+  }, [montadores, pares, detalharDia, diffsAtivos]);
   /** Combinação rara com número lançado, mas com o detalhe FECHADO — a coluna
    *  aparece e ganha um rótulo explícito pra não parecer a coluna padrão. */
   const temColunaRara = colunasDia.some((c) => !(c.sz === 12 && c.diff === "medio"));
@@ -1140,12 +1187,17 @@ export default function FichaMontadoresPage() {
               subtitle="Pares por dia. Você edita uma combinação por vez (dificuldade × tamanho); a marca +N na célula avisa quantos pares daquele dia estão fora da combinação atual."
               actions={
                 <div className="flex flex-wrap items-center gap-2">
-                  <div className="flex overflow-hidden rounded-md border border-border">
-                    {DIFFS.map((df) => (
-                      <button key={df} type="button" onClick={() => setSemDiff(df)}
-                        className={`px-3 py-1.5 text-xs font-bold uppercase tracking-wide transition-colors ${semDiff === df ? (df === "medio" ? "bg-amber-500 text-white" : "bg-red-600 text-white") : "bg-card text-muted-foreground hover:bg-muted/40"}`}>{DIFF_LABEL[df]}</button>
-                    ))}
-                  </div>
+                  {/* Setor de taxa única não mostra o seletor: com uma opção só,
+                      ele é ruído — e oferecer "Difícil" onde não há R$/par
+                      difícil convida a lançar par que vale R$ 0,00. */}
+                  {diffsAtivos.length > 1 && (
+                    <div className="flex overflow-hidden rounded-md border border-border">
+                      {diffsAtivos.map((df) => (
+                        <button key={df} type="button" onClick={() => setSemDiff(df)}
+                          className={`px-3 py-1.5 text-xs font-bold uppercase tracking-wide transition-colors ${semDiff === df ? (df === "medio" ? "bg-amber-500 text-white" : "bg-red-600 text-white") : "bg-card text-muted-foreground hover:bg-muted/40"}`}>{DIFF_LABEL[df]}</button>
+                      ))}
+                    </div>
+                  )}
                   <div className="flex overflow-hidden rounded-md border border-border">
                     {SIZES.map((sz) => (
                       <button key={sz} type="button" onClick={() => setSemSize(sz)}
@@ -1325,10 +1377,11 @@ export default function FichaMontadoresPage() {
                     <th className="px-3 py-2 text-right text-blue-600">Na folha</th>
                     <th className="px-3 py-2 text-right text-green-600">Pago</th>
                     <th className="px-3 py-2 text-right">Total</th>
+                    {podePagarProducao && <th className="px-3 py-2 text-right">Ação</th>}
                   </tr>
                 </thead>
                 <tbody>
-                  {agg.length === 0 && <tr><td colSpan={10} className="px-3 py-8 text-center text-muted-foreground">Sem lançamentos no período.</td></tr>}
+                  {agg.length === 0 && <tr><td colSpan={podePagarProducao ? 11 : 10} className="px-3 py-8 text-center text-muted-foreground">Sem lançamentos no período.</td></tr>}
                   {agg.map((r, i) => (
                     <tr key={r.key} className="border-t border-border">
                       <td className="px-3 py-2 text-muted-foreground tabular-nums">{i + 1}</td>
@@ -1354,6 +1407,18 @@ export default function FichaMontadoresPage() {
                           não se aplica · não é regime por par
                         </td>
                       )}
+                      {podePagarProducao && (
+                        <td className="px-3 py-2 text-right">
+                          {/* `key` só é employee_id quando o lançamento tem montador_id;
+                              linha de nome solto (prefixo txt:) não tem quem pagar. */}
+                          {r.porPar && r.valorAberto > 0 && !r.key.startsWith("txt:") ? (
+                            <Button size="sm" variant="outline" className="h-7"
+                              onClick={() => setPagarAlvo({ id: r.key, nome: r.nome, valor: r.valorAberto })}>
+                              Pagar
+                            </Button>
+                          ) : <span className="text-muted-foreground">—</span>}
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
@@ -1369,6 +1434,7 @@ export default function FichaMontadoresPage() {
                       <td className="px-3 py-2 text-right tabular-nums text-blue-600">{fmtBRL(totals.valorFolha)}</td>
                       <td className="px-3 py-2 text-right tabular-nums text-green-600">{fmtBRL(totals.valorPago)}</td>
                       <td className="px-3 py-2 text-right tabular-nums">{fmtBRL(totals.valorTotal)}</td>
+                      {podePagarProducao && <td className="px-3 py-2" />}
                     </tr>
                   </tfoot>
                 )}
@@ -1600,6 +1666,19 @@ export default function FichaMontadoresPage() {
             })}
           </div>
         </section>
+      )}
+
+      {pagarAlvo && (
+        <PagarProducaoDialog
+          open
+          onOpenChange={(o) => { if (!o) setPagarAlvo(null); }}
+          employeeId={pagarAlvo.id}
+          employeeName={pagarAlvo.nome}
+          from={range.from}
+          to={range.to}
+          valorAberto={pagarAlvo.valor}
+          onPago={() => { setPagarAlvo(null); void carregar(); }}
+        />
       )}
     </div>
   );

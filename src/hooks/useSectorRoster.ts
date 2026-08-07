@@ -27,6 +27,9 @@ export interface ProductionSector {
   headcount: number | null;
   /** Setor pago por PAR produzido em vez de salário + hora extra. */
   paysByPair: boolean;
+  /** Setor separa os pares em médio/difícil (R$/par diferente por dificuldade).
+   *  false = taxa única — hoje a Solagem. Só faz sentido com paysByPair. */
+  paysByDifficulty: boolean;
 }
 
 export interface EmployeeSector {
@@ -55,6 +58,7 @@ interface RawProductionSector {
   flow_order: number | string;
   headcount: number | string | null;
   pays_by_pair: boolean | null;
+  pays_by_difficulty: boolean | null;
 }
 
 /** As views novas não estão nos tipos gerados; `from` é destipado só no acesso. */
@@ -86,7 +90,7 @@ export function useProductionSectors() {
     queryKey: ['production-sectors', 'detail'],
     queryFn: async (): Promise<ProductionSector[]> => {
       const { data, error } = await fromView('v_production_sectors')
-        .select('sector_key, sector_label, flow_order, headcount, pays_by_pair')
+        .select('sector_key, sector_label, flow_order, headcount, pays_by_pair, pays_by_difficulty')
         .order('flow_order');
       if (error) throw error;
       return ((data ?? []) as RawProductionSector[]).map((r) => ({
@@ -95,6 +99,9 @@ export function useProductionSectors() {
         flowOrder: Number(r.flow_order) || 0,
         headcount: r.headcount == null ? null : Number(r.headcount),
         paysByPair: r.pays_by_pair === true,
+        // DEFAULT true no banco: a ausência de dificuldade é a exceção declarada
+        // (Solagem). `!== false` mantém isso mesmo se a coluna vier nula.
+        paysByDifficulty: r.pays_by_difficulty !== false,
       }));
     },
     staleTime: 5 * 60_000,

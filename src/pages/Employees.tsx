@@ -88,6 +88,13 @@ export default function Employees() {
   const { data: prodSectors = [] } = useProductionSectors();
   const setorPagaPorPar = (label: string) =>
     prodSectors.some(s => s.label === label && s.paysByPair);
+  /** Setor separa médio/difícil? (sector_settings.pays_by_difficulty). A Solagem
+   *  não separa — mostrar "R$/par difícil" lá cria um campo que ninguém preenche
+   *  e que, se um par difícil for lançado, valora a produção em R$ 0,00 calado.
+   *  Setor desconhecido cai em `true` pra nunca esconder campo por falha de
+   *  leitura da view. */
+  const setorSeparaDificuldade = (label: string) =>
+    !prodSectors.some(s => s.label === label && !s.paysByDifficulty);
 
   /** Trocar pra um setor por par já coloca o funcionário no regime certo — o que
    *  troca hora extra por R$/par no formulário. O select de regime continua
@@ -476,21 +483,26 @@ export default function Employees() {
             {(form as any).payment_type === 'producao' && (
               <>
                 <div>
-                  <Label>R$/par — dificuldade média</Label>
+                  <Label>{setorSeparaDificuldade(form.department) ? 'R$/par — dificuldade média' : 'R$/par'}</Label>
                   <CurrencyInput value={(form as any).valor_par_medio || 0} onChange={v => setForm(f => ({ ...f, valor_par_medio: v } as any))} />
                 </div>
-                <div>
-                  <Label>R$/par — dificuldade difícil</Label>
-                  <CurrencyInput value={(form as any).valor_par_dificil || 0} onChange={v => setForm(f => ({ ...f, valor_par_dificil: v } as any))} />
-                </div>
+                {setorSeparaDificuldade(form.department) && (
+                  <div>
+                    <Label>R$/par — dificuldade difícil</Label>
+                    <CurrencyInput value={(form as any).valor_par_dificil || 0} onChange={v => setForm(f => ({ ...f, valor_par_dificil: v } as any))} />
+                  </div>
+                )}
                 {(!((form as any).valor_par_medio > 0) && !((form as any).valor_par_dificil > 0)) && (
                   <p className="col-span-2 text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
-                    <AlertTriangle className="h-3.5 w-3.5" /> Defina o R$/par (médio e/ou difícil) — sem valor, a folha por par sai R$ 0,00.
+                    <AlertTriangle className="h-3.5 w-3.5" /> Defina o R$/par — sem valor, a folha por par sai R$ 0,00.
                   </p>
                 )}
                 <p className="col-span-2 text-xs text-muted-foreground">
                   {setorPagaPorPar(form.department)
                     ? `${form.department} é setor pago por par, então o regime já veio marcado. `
+                    : ''}
+                  {!setorSeparaDificuldade(form.department)
+                    ? `${form.department} paga taxa única — não separa médio e difícil. `
                     : ''}
                   Cada apontamento na Ficha de Montadores guarda o valor da época (congelado). Reajustar aqui não altera folhas passadas.
                 </p>
