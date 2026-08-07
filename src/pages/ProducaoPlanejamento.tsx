@@ -277,9 +277,9 @@ export default function ProducaoPlanejamento() {
                       <th className="text-right p-2">Pares</th>
                       <th
                         className="text-right p-2"
-                        title="Pares que ainda têm de sair da fábrica. Não é a soma do saldo de cada setor — isso contaria o mesmo par uma vez por setor (era o que a coluna mostrava até 06/08/2026: 15.552 numa OP de 1.728 pares)."
+                        title="Quanto da rota de setores já foi executada. Substituiu a coluna 'Restante', que mostrava pares-que-não-embarcaram e por isso era IDÊNTICA a 'Pares' em toda linha (a última etapa só é apontada no fim)."
                       >
-                        Restante
+                        Avanço
                       </th>
                       <th className="text-left p-2">Prazo</th>
                       <th className="text-left p-2">Conclusão prevista</th>
@@ -310,7 +310,11 @@ export default function ProducaoPlanejamento() {
                         <td className="p-2">{q.reference_name || '—'}{q.color ? ` · ${q.color}` : ''}</td>
                         <td className="p-2 text-muted-foreground">{q.client_name || '—'}</td>
                         <td className="p-2 text-right font-mono">{q.quantity}</td>
-                        <td className="p-2 text-right font-mono">{q.remaining_pairs_net}</td>
+                        <td className="p-2 text-right font-mono">
+                          <span className={q.route_progress_pct > 0 ? '' : 'text-muted-foreground'}>
+                            {q.route_progress_pct}%
+                          </span>
+                        </td>
                         <td className="p-2">{fmtDate(q.due_date)}</td>
                         <td className="p-2">{fmtDate(q.projected_completion)}</td>
                         <td className="p-2">

@@ -6,7 +6,7 @@
 -- a fila ordena por prazo mais antigo e esses pedidos venceram há 91–150 dias,
 -- eles subiam ao TOPO e empurravam PV-00150, PV-00147 e PV-00151 pra depois.
 --
--- A migration `20261210120000` fechou a origem do vazamento (cancelar PV passou
+-- A migration `20261214120000` fechou a origem do vazamento (cancelar PV passou
 -- a cascatear pras OPs), mas de propósito não fez backfill: o que fazer com o
 -- que já estava lá era decisão do dono. Ele decidiu: excluir.
 --

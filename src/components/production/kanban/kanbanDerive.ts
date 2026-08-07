@@ -95,31 +95,59 @@ export function deriveCards(
   if (!primeiro || !levelOf) return primeiro ? [primeiro] : [];
 
   const stages = orderStagesByRoute(stagesRaw, flowOrder);
-  const nivel = (s: OrderStage) => levelOf.get(norm(s.stage_name)) ?? flowOrder.get(norm(s.stage_name)) ?? 0;
+  const nivel = makeNivel(flowOrder, levelOf);
   const colStage = primeiro.columnStage;
   if (!colStage) return [primeiro];
 
   const nivelCorrente = nivel(colStage);
-  const idxCol = stages.indexOf(colStage);
 
-  // Irmãos do mesmo nível ainda não concluídos. Só olha pra FRENTE: setor do
-  // mesmo grupo que ficou pra trás sem fechar é buraco de rota (`upstreamGap`),
-  // não trabalho corrente — dar card a ele reabriria etapa já ultrapassada.
-  const irmaos = stages.filter((s, i) =>
-    i > idxCol && s.status !== 'concluido' && nivel(s) === nivelCorrente,
-  );
-  if (irmaos.length === 0) return [primeiro];
+  /**
+   * Ganha card TODA etapa ainda aberta até o nível corrente — não só os irmãos
+   * "à frente" do card mais avançado.
+   *
+   * ⚠ O filtro anterior era `i > idxCol` e furava no caso NORMAL de duas
+   * bancadas: bastava o par paralelo receber o primeiro apontamento PARCIAL pra
+   * ele virar o `front` da OP, empurrar a coluna pro nível seguinte e sumir do
+   * quadro com saldo aberto — sem card em coluna nenhuma, e sem caminho pra
+   * apontar os pares que faltavam (só sobrava o estorno). Contrariava a própria
+   * promessa desta função ("cada setor não concluído do nível corrente ganha o
+   * SEU card, com o SEU saldo").
+   *
+   * Etapa aberta de nível ANTERIOR também entra: é o saldo abandonado por um
+   * pulo, e com a opção C ele tem bancada e trabalho de verdade — deixá-lo
+   * invisível era o que criava OP em dois lugares sem ninguém ver.
+   */
+  const doCard = stages.filter(s => s.status !== 'concluido' && nivel(s) <= nivelCorrente);
+  if (doCard.length <= 1) return [primeiro];
 
-  const nomes = [primeiro.column, ...irmaos.map(s => norm(s.stage_name))];
-  const comIrmaos = (card: KanbanCardData): KanbanCardData => ({
-    ...card,
-    parallelSiblings: nomes.filter(n => n !== card.column),
+  // Irmão = MESMO nível. Etapa aberta de nível anterior não é paralela a nada;
+  // ela aparece como card próprio, mas não se anuncia como irmã.
+  const porNivel = new Map<number, string[]>();
+  for (const s of doCard) {
+    const n = nivel(s);
+    porNivel.set(n, [...(porNivel.get(n) ?? []), norm(s.stage_name)]);
+  }
+
+  return doCard.map(s => {
+    const card = buildCard(q, stages, s, nivel);
+    return { ...card, parallelSiblings: (porNivel.get(nivel(s)) ?? []).filter(n => n !== card.column) };
   });
+}
 
-  return [
-    comIrmaos(primeiro),
-    ...irmaos.map(s => comIrmaos(buildCard(q, stages, primeiro.front, s))),
-  ];
+/**
+ * Nível do motor de uma etapa, com fallback que NÃO colapsa desconhecidos.
+ *
+ * ⚠ Não voltar pra `?? 0`: duas etapas fora de `sector_settings` (grafia legada,
+ * setor removido do cadastro — caso que o quadro suporta de propósito, R1.5)
+ * caíam ambas no nível 0, viravam irmãs paralelas FALSAS e ganhavam cards
+ * simultâneos em colunas que não têm nada a ver uma com a outra. O sentinela
+ * derivado do `stage_order` mantém cada desconhecida no seu próprio nível.
+ */
+function makeNivel(flowOrder: Map<string, number>, levelOf: Map<string, number>) {
+  return (s: OrderStage): number => {
+    const nome = norm(s.stage_name);
+    return levelOf.get(nome) ?? flowOrder.get(nome) ?? (1_000_000 + s.stage_order);
+  };
 }
 
 /**
@@ -131,9 +159,34 @@ export function deriveCards(
 function buildCard(
   q: QueueDetailRow,
   stages: OrderStage[],
-  front: OrderStage | null,
   column: OrderStage,
+  nivel?: (s: OrderStage) => number,
 ): KanbanCardData {
+  /**
+   * A MONTANTE deste card — quem de fato entrega pra ELE.
+   *
+   * ⚠ Com setores em paralelo, "a última etapa com progresso da OP inteira" NÃO
+   * serve: quando a Costura Palmilha apontava 100, os cards de Costura Cabedal e
+   * Aviamento (que são PARALELOS a ela, não posteriores) passavam a exibir
+   * `100/288` em âmbar e o selo vermelho "−188 em Costura Palmilha", cujo texto
+   * afirma que 188 pares nunca passaram por lá. Mentira dupla: elas recebem do
+   * CORTE, que entregou o lote cheio, e a vizinha não é a montante de ninguém.
+   *
+   * A montante real é a última etapa de nível ESTRITAMENTE MENOR. Sem mapa de
+   * níveis (caminho serial antigo), todo índice anterior vale — que é o
+   * comportamento original.
+   */
+  const colIdx = stages.indexOf(column);
+  const nivelCol = nivel ? nivel(column) : Number.POSITIVE_INFINITY;
+  const aMontante = stages.filter((s, i) => i < colIdx && (!nivel || nivel(s) < nivelCol));
+
+  const hasProgress = (s: OrderStage) => s.quantity_processed > 0 || s.status === 'concluido';
+  // O próprio setor sendo trabalhado é o seu "front" — é assim que o card do
+  // setor corrente mostra o que ELE já produziu (180/288), e não 0.
+  const front: OrderStage | null = hasProgress(column)
+    ? column
+    : ([...aMontante].reverse().find(hasProgress) ?? null);
+
   /**
    * Pares ENTREGUES pro setor do card = o que o setor de trás de fato apontou.
    *
@@ -154,11 +207,11 @@ function buildCard(
     : front.quantity_processed;
   const total = column.quantity_total || q.quantity;
 
-  // Buraco deixado pra trás: primeiro setor ANTES da coluna que não fechou o
-  // total. É o saldo abandonado na origem quando se pula com quantidade parcial
-  // (OP-2026-01191: 108 pares nunca cortados; OP-2026-01195: 24).
-  const colIdx = stages.indexOf(column);
-  const gapStage = stages.slice(0, colIdx).find(s => s.quantity_processed < s.quantity_total) ?? null;
+  // Buraco deixado pra trás: primeiro setor A MONTANTE que não fechou o total.
+  // É o saldo abandonado na origem quando se pula com quantidade parcial
+  // (OP-2026-01191: 108 pares nunca cortados; OP-2026-01195: 24). Só olha nível
+  // menor — irmão paralelo aberto não é buraco de rota, é bancada trabalhando.
+  const gapStage = aMontante.find(s => s.quantity_processed < s.quantity_total) ?? null;
   const upstreamGap = gapStage
     ? { sector: norm(gapStage.stage_name), missing: gapStage.quantity_total - gapStage.quantity_processed }
     : null;
@@ -204,5 +257,5 @@ export function deriveCard(q: QueueDetailRow, stagesRaw: OrderStage[], flowOrder
   }
   if (!column) return null;
 
-  return buildCard(q, stages, front, column);
+  return buildCard(q, stages, column);
 }

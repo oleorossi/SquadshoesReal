@@ -62,6 +62,12 @@ export function buildPointingPlan(
   card: KanbanCardData,
   target: string | null,
   flowOrder: Map<string, number>,
+  /**
+   * Nível do motor por setor (grupo paralelo colapsado). Sem ele, o cálculo de
+   * pulo é estritamente sequencial — o comportamento anterior aos setores
+   * em paralelo.
+   */
+  levelOf?: Map<string, number>,
 ): PointingPlan {
   const { column, front } = card;
   const ordered = orderStagesByRoute(card.stages, flowOrder);
@@ -95,8 +101,30 @@ export function buildPointingPlan(
         unavailableReason: `Esta OP não passa por ${target} (ou o setor já está concluído).`,
       };
     }
-    // Pular = ir além do PRÓXIMO setor pendente do fluxo da OP
-    const skipped = targetIdx > colIdx + 1 ? seq.slice(colIdx + 1, targetIdx) : [];
+    /**
+     * Pular = ir além do PRÓXIMO setor pendente do fluxo da OP.
+     *
+     * ⚠ Setor PARALELO não é setor pulado. Com a opção C, Costura Palmilha,
+     * Costura Cabedal e Aviamento rodam no mesmo nível e cada uma tem card e
+     * bancada própria: quando a Costura Palmilha fecha o lote dela e vai pro
+     * Silk, as outras duas NÃO estão sendo puladas — estão trabalhando. Sem
+     * este filtro, o gesto normal de uma célula paralela pedia o aceite
+     * "confirmo que esses setores não vão produzir" e FECHAVA as duas irmãs com
+     * 0 pares; e, se o apontamento fosse parcial, `skipBlockedByPartial`
+     * bloqueava o movimento inteiro com erro vermelho.
+     *
+     * Só conta como pulo quem está num nível ESTRITAMENTE ENTRE a origem e o
+     * destino.
+     */
+    const nivel = (setor: string) => levelOf?.get(setor) ?? flowOrder.get(setor) ?? 0;
+    const nivelCol = nivel(column);
+    const nivelAlvo = nivel(target);
+    const skipped = targetIdx > colIdx + 1
+      ? seq.slice(colIdx + 1, targetIdx).filter(s => {
+          const n = nivel(s);
+          return n !== nivelCol && n !== nivelAlvo;
+        })
+      : [];
     return {
       pointedStage, isBackward: false, skipped, remaining,
       available: !!pointedStage,

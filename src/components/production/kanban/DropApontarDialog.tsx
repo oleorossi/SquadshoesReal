@@ -28,11 +28,13 @@ const MOVE_ATUAL = '__atual';
  * Pulo de setor / volta (R5.5): avisar + confirmar, tudo pela mesma RPC.
  */
 export function DropApontarDialog({
-  card, target, flowOrder, apontar, onClose, photoUrl, onApontado,
+  card, target, flowOrder, levelOf, apontar, onClose, photoUrl, onApontado,
 }: {
   card: KanbanCardData;
   target: string | null;
   flowOrder: Map<string, number>;
+  /** Níveis do motor — sem eles, irmão paralelo é lido como setor pulado. */
+  levelOf?: Map<string, number>;
   apontar: ReturnType<typeof useApontarProducao>;
   onClose: () => void;
   /** Foto da referência já resolvida pela página (`useReferenceThumbs`). */
@@ -50,7 +52,7 @@ export function DropApontarDialog({
   const [moveTarget, setMoveTarget] = useState<string>('');
   const effTarget = target ?? (moveTarget || null);
 
-  const plan = buildPointingPlan(card, effTarget, flowOrder);
+  const plan = buildPointingPlan(card, effTarget, flowOrder, levelOf);
   const { pointedStage, isBackward, skipped, remaining } = plan;
 
   const { fwdOptions, backOption } = moveOptions(card, flowOrder);
@@ -88,8 +90,23 @@ export function DropApontarDialog({
     setMoveTarget(t);
     // Reancora a quantidade no novo sentido: frente = saldo do setor atual;
     // trás = 0 (o usuário digita quantos pares estorna), igual ao drop.
-    const back = t !== '' && (flowOrder.get(t) ?? 0) < (flowOrder.get(column) ?? 0);
+    // ⚠ Sentido pela ROTA DA OP, não pela config global. Todo o resto do módulo
+    // usa `stage_order` e só cai no `flow_order` como desempate; esta linha era
+    // a única a decidir por `flow_order` direto. Hoje as duas ordens coincidem,
+    // mas na divergência (rota legada, setor recadastrado — histórico deste
+    // arquivo) `back` sairia false num movimento de VOLTA e o campo de estorno
+    // nasceria com o saldo cheio: um clique devolveria o lote inteiro.
+    const ordem = new Map(card.stages.map(x => [norm(x.stage_name), x.stage_order]));
+    const oCur = ordem.get(column);
+    const oTgt = t !== '' ? ordem.get(t) : undefined;
+    const back = t !== '' && (oCur !== undefined && oTgt !== undefined
+      ? oTgt < oCur
+      : (flowOrder.get(t) ?? 0) < (flowOrder.get(column) ?? 0));
     setQty(back ? 0 : Math.max(0, columnRemaining));
+    // O aceite de pulo vale pro conjunto de setores do destino ANTERIOR: trocar
+    // o destino tem que exigir novo aceite, senão confirmar o pulo de 1 setor
+    // autoriza silenciosamente o de 5.
+    setSkipOk(false);
   };
 
   if (!pointedStage) {

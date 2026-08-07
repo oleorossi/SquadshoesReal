@@ -29,11 +29,13 @@ interface StepResult {
  * nada a estornar) NÃO viram passo: saem listadas no resumo final com o motivo.
  */
 export function BulkMoveDialog({
-  cards, target, flowOrder, apontar, onClose,
+  cards, target, flowOrder, levelOf, apontar, onClose,
 }: {
   cards: KanbanCardData[];
   target: string;
   flowOrder: Map<string, number>;
+  /** Níveis do motor — sem eles, irmão paralelo é lido como setor pulado. */
+  levelOf?: Map<string, number>;
   apontar: ReturnType<typeof useApontarProducao>;
   onClose: () => void;
 }) {
@@ -41,18 +43,34 @@ export function BulkMoveDialog({
   // Congela a seleção na abertura: cada apontamento invalida as queries e o
   // pai re-renderiza com cards novos — sem o snapshot o wizard trocaria de
   // passo/coluna no meio do preenchimento.
-  const [frozen] = useState(() => cards);
+  /**
+   * ⚠ UMA OP por lote, mesmo com vários cards.
+   *
+   * Desde os setores em paralelo a seleção é chaveada por card, então dá pra
+   * marcar Corte Palmilha E Corte Forração da MESMA OP. O wizard congela os
+   * planos na abertura: o passo 1 apontava e fechava setores, e o passo 2
+   * seguia com um plano obsoleto — `remaining` de antes da gravação e um
+   * `pointedStage` que já tinha sido concluído. Mantém-se o card mais avançado
+   * (o primeiro da ordem do quadro); o irmão volta ao lote na próxima rodada,
+   * já com o estado fresco.
+   */
+  const [frozen] = useState(() => {
+    const porOp = new Map<string, KanbanCardData>();
+    for (const c of cards) if (!porOp.has(c.q.order_id)) porOp.set(c.q.order_id, c);
+    return [...porOp.values()];
+  });
+  const cardsIgnorados = cards.length - frozen.length;
 
   const { steps, blocked } = useMemo(() => {
     const s: { card: KanbanCardData; plan: PointingPlan }[] = [];
     const b: { orderNumber: string; reason: string }[] = [];
     for (const card of frozen) {
-      const plan = buildPointingPlan(card, target, flowOrder);
+      const plan = buildPointingPlan(card, target, flowOrder, levelOf);
       if (plan.available && plan.pointedStage) s.push({ card, plan });
       else b.push({ orderNumber: card.q.order_number, reason: plan.unavailableReason || 'Movimento indisponível.' });
     }
     return { steps: s, blocked: b };
-  }, [frozen, target, flowOrder]);
+  }, [frozen, target, flowOrder, levelOf]);
 
   const [idx, setIdx] = useState(0);
   const [qty, setQty] = useState(0);
@@ -141,6 +159,9 @@ export function BulkMoveDialog({
               <p key={b.orderNumber}><span className="font-mono font-bold">{b.orderNumber}</span> — {b.reason}</p>
             ))}
             {blocked.length > 8 && <p>+{blocked.length - 8} outras.</p>}
+            {cardsIgnorados > 0 && (
+              <p>{cardsIgnorados} card{cardsIgnorados > 1 ? 's' : ''} de setor paralelo da mesma OP ficou de fora — mova um por vez.</p>
+            )}
           </div>
           <div className="flex justify-end pt-2 border-t">
             <Button className="h-11 md:h-10" onClick={onClose}>Fechar</Button>

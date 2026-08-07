@@ -113,7 +113,7 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
   const orderIds = useMemo(() => queue.map(q => q.order_id), [queue]);
   const {
     data: allStages = [], isLoading: stagesLoading, isError: stagesError,
-    error: stagesErrObj, refetch: refetchStages,
+    error: stagesErrObj, refetch: refetchStages, dataUpdatedAt: stagesUpdatedAt,
   } = useAllOrderStages(orderIds);
   // ⚠ MESMO raciocínio das duas queries acima, pras duas consultas de APOIO:
   // sem `isError` a agenda do dia caía em `[]` e o cabeçalho da coluna dizia
@@ -311,7 +311,9 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
       ops: ops.length,
       pares: ops.reduce((s, c) => s + (c.q.quantity || 0), 0),
       atrasadas: ops.filter(c => c.q.late_days > 0).length,
-      parciais: allCards.filter(c => c.isPartial).length,
+      // Também por OP: contar card punha 'parciais' acima do total de OPs
+      // exibido ao lado, leitura impossível que joga suspeita na faixa inteira.
+      parciais: new Set(allCards.filter(c => c.isPartial).map(c => c.q.order_id)).size,
     };
   }, [allCards]);
 
@@ -361,14 +363,18 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
   // de "atrasado porque a matéria-prima não está aqui" — decisões diferentes.
   const travadasMaterial = useMemo(() => {
     if (!gateMap || gateMap.size === 0) return { n: 0, pior: null as string | null };
-    let n = 0, pior: string | null = null;
+    // ⚠ OPs DISTINTAS, não cards: com setores em paralelo a mesma OP travada
+    // aparece em 2 ou 3 colunas, e contar card fazia "10 OPs travadas" virar
+    // "30" — número que decide compra emergencial e prioridade de recebimento.
+    const vistas = new Set<string>();
+    let pior: string | null = null;
     for (const c of allCards) {
       const g = gateMap.get(c.q.order_id);
-      if (!g) continue;
-      n++;
+      if (!g || vistas.has(c.q.order_id)) continue;
+      vistas.add(c.q.order_id);
       if (!pior || g.ready_date > pior) pior = g.ready_date;
     }
-    return { n, pior };
+    return { n: vistas.size, pior };
   }, [gateMap, allCards]);
 
   // Busca ativa em modo filtrar: dentro da coluna ficam SÓ os cards que casaram.
@@ -427,11 +433,11 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
   const dropEligibility = useCallback((card: KanbanCardData, target: string): {
     ok: boolean; kind: 'frente' | 'pulo' | 'estorno'; reason?: string;
   } => {
-    const plan = buildPointingPlan(card, target, flowOrder);
+    const plan = buildPointingPlan(card, target, flowOrder, levelOf);
     if (!plan.available) return { ok: false, kind: 'frente', reason: plan.unavailableReason };
     if (plan.isBackward) return { ok: true, kind: 'estorno' };
     return { ok: true, kind: plan.skipped.length > 0 ? 'pulo' : 'frente' };
-  }, [flowOrder]);
+  }, [flowOrder, levelOf]);
 
   /**
    * Elegibilidade do card EM ARRASTE por setor, calculada uma vez por arraste.
@@ -488,7 +494,19 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
    * até as 9h22). Sem o selo ninguém distingue "a fábrica não apontou" de
    * "a conexão morreu". Agora a hora exibida é a do ÚLTIMO DADO que chegou.
    */
-  const updatedAt = queueUpdatedAt ? new Date(queueUpdatedAt) : null;
+  /**
+   * ⚠ O selo tem que olhar o MAIS ANTIGO das duas fontes, não só a fila.
+   *
+   * A fila tem piso de atualização de 90s; `order_stages` — de onde vêm os
+   * PARES de cada card — depende só do realtime. Se o canal morrer em silêncio
+   * (degradação do Realtime, timeout de proxy) sem emitir CHANNEL_ERROR nem
+   * disparar `online`, o HTTP segue vivo: a fila continua fresca, o selo
+   * continua cinza dizendo "atualizado agora", e os números dos cards ficam
+   * congelados há horas. Era exatamente o modo de falha que o selo existe pra
+   * expor, e ele ficava invisível.
+   */
+  const frescorMs = Math.min(queueUpdatedAt || 0, stagesUpdatedAt || 0) || queueUpdatedAt;
+  const updatedAt = frescorMs ? new Date(frescorMs) : null;
   const staleMin = updatedAt ? Math.floor((now.getTime() - updatedAt.getTime()) / 60_000) : null;
   const stale = staleMin !== null && staleMin >= 5;
   const updatedLabel = updatedAt
@@ -956,10 +974,13 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
             const capDenom = g ? (g.effective_capacity_pairs || g.capacity_pairs) : 0;
             const capFromFicha = !!g && g.ops_ficha_override > 0;
             const colWip = colAll.length;
-            // O sinal de acúmulo usa a MESMA contagem do gargalo (`wipBySector`),
-            // que exclui OP reservada com faturamento distante — senão a coluna
-            // ficaria vermelha por trabalho que a fábrica não pode começar.
-            const overWip = (wipBySector.get(sector) || 0) > WIP_LIMIT;
+            // ⚠ Número exibido e sinal vermelho vêm do MESMO universo: o
+            // CONTÁVEL (`wipBySector`), que exclui OP reservada de faturamento
+            // distante. Exibir `colAll` ao lado de um "/20" calculado sobre
+            // outro conjunto punha "35" em cinza ao lado de "31/20" em vermelho,
+            // e o tooltip afirmava que 31 era quem passara do limite.
+            const colContavel = wipBySector.get(sector) || 0;
+            const overWip = colContavel > WIP_LIMIT;
             const isConstraint = sector === constraintSector;
             // Coluna ociosa (0 OP e sem busca ativa) colapsa em faixa fina no
             // desktop — abre no hover. No celular (swipe) mantém largura normal.
@@ -1039,7 +1060,11 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
                     <Badge
                       variant="outline"
                       className={`text-[10px] shrink-0 font-mono ${overWip ? 'border-red-500/50 bg-red-500/10 text-red-600 dark:text-red-400' : ''}`}
-                      title={overWip ? `${colWip} OPs — acima do limite saudável de ${WIP_LIMIT}` : `${colWip} OPs`}
+                      title={
+                        `${colContavel} OP${colContavel === 1 ? '' : 's'} contando pro gargalo`
+                        + (colWip !== colContavel ? ` · ${colWip} cards no setor (inclui OP reservada de faturamento distante)` : '')
+                        + (overWip ? ` — acima do limite saudável de ${WIP_LIMIT}` : '')
+                      }
                     >
                       {/* ⚠ Numerador e denominador do MESMO universo.
                           Antes o número vinha de `colCards` (filtrado pela busca)
@@ -1048,7 +1073,7 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
                           48 acumuladas, e a dica do mouse dizia 48. É o mesmo
                           erro que o comentário do `colPares` acima já corrigiu
                           no Σ pares; aqui tinha sobrado o híbrido. */}
-                      {filtering ? `${colCards.length} de ${colWip}` : colWip}
+                      {filtering ? `${colCards.length} de ${colContavel}` : colContavel}
                       {overWip && !filtering ? `/${WIP_LIMIT}` : ''}
                     </Badge>
                   </div>
@@ -1165,6 +1190,7 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
           card={dropTarget.card}
           target={dropTarget.target}
           flowOrder={flowOrder}
+          levelOf={levelOf}
           apontar={apontar}
           photoUrl={refThumbs?.get(dropTarget.card.q.reference_id || '') || null}
           onApontado={markLanded}
@@ -1176,6 +1202,7 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
           card={detailStage.card}
           target={null}
           flowOrder={flowOrder}
+          levelOf={levelOf}
           apontar={apontar}
           photoUrl={refThumbs?.get(detailStage.card.q.reference_id || '') || null}
           onApontado={markLanded}
@@ -1187,6 +1214,7 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
           cards={selectedCards}
           target={bulkTarget}
           flowOrder={flowOrder}
+          levelOf={levelOf}
           apontar={apontar}
           onClose={() => { setBulkOpen(false); exitSelectMode(); }}
         />
