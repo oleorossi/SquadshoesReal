@@ -23,7 +23,7 @@
 // snapshot do cadastro no momento do apontamento — a tela NÃO edita taxa (editar
 // aqui reescrevia todo o histórico, inclusive de folha já calculada).
 import { supabase } from "@/integrations/supabase/client";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { EditorialPageHeader } from "@/components/layout/EditorialPageHeader";
 import { Panel } from "@/components/ui/panel";
@@ -273,11 +273,20 @@ function imprimirRelatorio(p: {
     table{width:100%;border-collapse:collapse;font-size:12px} th,td{border:1px solid #333;padding:6px 8px}
     th{background:#f1f0ed;text-align:left;font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:#444}
     td.n{text-align:right;font-variant-numeric:tabular-nums} tfoot td{font-weight:800;background:#f6f5f2}
-    .med{color:#b45309} .dif{color:#c81e2e} .pg{color:#15803d} .ab{color:#b45309} .fl{color:#1d4ed8}
+    .med{color:#b45309} .dif{color:#0f7a4a} .pg{color:#15803d} .ab{color:#b45309} .fl{color:#1d4ed8}
     td.na{text-align:center;color:#888;font-size:10px}
     @page{size:A4 portrait;margin:12mm}`;
+  // O DIFÍCIL SÓ EXISTE NO PAPEL SE EXISTIR NO PERÍODO (decisão do dono,
+  // 07/08/2026). Sem nenhum par difícil, a coluna inteira sai do relatório —
+  // cabeçalho, células e total. Coluna de zeros ocupa largura e faz o leitor
+  // conferir um número que não existe. Mesma regra que o resumo por dificuldade
+  // da aba de período já aplica na tela.
+  const temDificil = totals.dificil > 0;
+  // Sem difícil, some o PAR de colunas: "méd" sozinha seria cópia exata da
+  // coluna "Pares", e duas colunas com o mesmo número é pior que nenhuma.
+  const colsDiff = temDificil ? 2 : 0;
   const body = rows.map((r, i) => `<tr><td>${i + 1}. ${esc(r.nome)}</td><td class="n">${r.fichas}</td>`
-    + `<td class="n med">${r.paresMedio}</td><td class="n dif">${r.paresDificil}</td>`
+    + (temDificil ? `<td class="n med">${r.paresMedio}</td><td class="n dif">${r.paresDificil || "—"}</td>` : "")
     + `<td class="n">${r.pares}</td>`
     + (r.porPar
       ? `<td class="n ab">${r.valorAberto > 0 ? fmtBRL(r.valorAberto) : "—"}</td>`
@@ -298,14 +307,14 @@ function imprimirRelatorio(p: {
     <div class="sub">${esc(p.label)} · ${esc(p.intervalo)} — gerado em ${fmtDia(todayISO())}</div>
     <div class="filtro">${esc(filtro)} Valores calculados pelo R$/par gravado em cada lançamento.</div>
     <table><thead><tr><th>${esc(p.oficioPlural.replace(/^./, (c) => c.toUpperCase()))}</th><th style="text-align:right">Fichas</th>
-      <th style="text-align:right" class="med">Pares méd</th><th style="text-align:right" class="dif">Pares dif</th>
+      ${temDificil ? '<th style="text-align:right" class="med">Pares méd</th><th style="text-align:right" class="dif">Pares dif</th>' : ""}
       <th style="text-align:right">Pares</th>
       <th style="text-align:right" class="ab">A pagar</th><th style="text-align:right" class="fl">Na folha</th>
       <th style="text-align:right" class="pg">Pago</th>
       <th style="text-align:right">Total</th></tr></thead>
-    <tbody>${body || '<tr><td colspan="9" style="text-align:center;color:#888">Sem dados no período.</td></tr>'}</tbody>
+    <tbody>${body || '<tr><td colspan="${7 + colsDiff}" style="text-align:center;color:#888">Sem dados no período.</td></tr>'}</tbody>
     <tfoot><tr><td>TOTAL (${rows.length})</td><td class="n">${totals.fichas}</td>
-      <td class="n med">${totals.medio}</td><td class="n dif">${totals.dificil}</td>
+      ${temDificil ? `<td class="n med">${totals.medio}</td><td class="n dif">${totals.dificil}</td>` : ""}
       <td class="n">${totals.pares}</td>
       <td class="n ab">${fmtBRL(totals.valorAberto)}</td><td class="n fl">${fmtBRL(totals.valorFolha)}</td>
       <td class="n pg">${fmtBRL(totals.valorPago)}</td>
@@ -328,13 +337,19 @@ function imprimirCalendario(p: { rows: CalRow[]; days: string[]; setorLabel: str
     const we = dowIdx(d) >= 5;
     return `<th class="day${we ? " we" : ""}">${WD_SHORT7[dowIdx(d)]}<br>${d.slice(8, 10)}/${d.slice(5, 7)}</th>`;
   }).join("");
+  // Mesma regra do relatório A4: nenhum par difícil no período ⇒ as colunas de
+  // dificuldade não são desenhadas, e o split embaixo da célula some junto —
+  // com só uma dificuldade ele repetia o número grande logo acima.
+  const temDificil = rows.some((r) => r.dificil > 0);
   const body = rows.map((r) => {
     const cells = days.map((d) => {
       const c = r.cells[d]; const we = dowIdx(d) >= 5;
       if (!c || c.pares <= 0) return `<td class="c${we ? " we" : ""}">·</td>`;
-      const sp = [c.medio > 0 ? `<span class="med">${c.medio}</span>` : "", c.dificil > 0 ? `<span class="dif">${c.dificil}</span>` : ""].filter(Boolean).join("<span class='x'>·</span>");
+      const sp = temDificil
+        ? [c.medio > 0 ? `<span class="med">${c.medio}</span>` : "", c.dificil > 0 ? `<span class="dif">${c.dificil}</span>` : ""].filter(Boolean).join("<span class='x'>·</span>")
+        : "";
       // Dia ainda não quitado ganha marca — o gestor lê a coluna e sabe o que deve.
-      return `<td class="c has${we ? " we" : ""}${c.pago ? "" : " ab"}"><b>${c.pares}</b><div class="sp">${sp}</div></td>`;
+      return `<td class="c has${we ? " we" : ""}${c.pago ? "" : " ab"}"><b>${c.pares}</b>${sp ? `<div class="sp">${sp}</div>` : ""}</td>`;
     }).join("");
     return `<tr><td class="mont">${esc(r.nome)}</td>${cells}`
       + `<td class="n med">${r.medio || "—"}</td><td class="n dif">${r.dificil || "—"}</td>`
@@ -352,7 +367,7 @@ function imprimirCalendario(p: { rows: CalRow[]; days: string[]; setorLabel: str
   const tAberto = rows.reduce((s, r) => s + r.valorAberto, 0);
   const css = `*{box-sizing:border-box}body{margin:0;font-family:'Helvetica Neue',Arial,sans-serif;color:#111;-webkit-print-color-adjust:exact;print-color-adjust:exact}
     h1{font-size:16px;margin:0 0 2px} .sub{font-size:10px;color:#555;margin-bottom:10px}
-    .lg{font-size:9px;color:#555;margin:2px 0 10px} .lg b.med{color:#b45309} .lg b.dif{color:#c81e2e}
+    .lg{font-size:9px;color:#555;margin:2px 0 10px} .lg b.med{color:#b45309} .lg b.dif{color:#0f7a4a}
     table{width:100%;border-collapse:collapse;font-size:8.5px;table-layout:fixed}
     th,td{border:1px solid #bbb;padding:2px 3px;text-align:center;overflow:hidden}
     th{background:#f1f0ed;font-size:8px;text-transform:uppercase;color:#444}
@@ -360,8 +375,8 @@ function imprimirCalendario(p: { rows: CalRow[]; days: string[]; setorLabel: str
     td.mont,th.mont{text-align:left;font-weight:700;white-space:nowrap;width:96px;background:#fafafa}
     td.c{color:#bbb} td.c.has{color:#111} td.c b{font-size:9px;font-weight:800} td.c .sp{font-size:6.5px;line-height:1}
     td.c.ab{background:#fff7ed} td.c.ab.we{background:#f7efe4}
-    td.c .med{color:#b45309;font-weight:700} td.c .dif{color:#c81e2e;font-weight:700} td.c .x{color:#bbb;margin:0 1px}
-    td.n{text-align:right;font-variant-numeric:tabular-nums;width:34px} td.n.med{color:#b45309;font-weight:700} td.n.dif{color:#c81e2e;font-weight:700}
+    td.c .med{color:#b45309;font-weight:700} td.c .dif{color:#0f7a4a;font-weight:700} td.c .x{color:#bbb;margin:0 1px}
+    td.n{text-align:right;font-variant-numeric:tabular-nums;width:34px} td.n.med{color:#b45309;font-weight:700} td.n.dif{color:#0f7a4a;font-weight:700}
     td.n.b{font-weight:800} td.n.pgo{font-weight:800;width:56px;color:#15803d} td.n.abt{font-weight:800;width:56px;color:#b45309}
     td.n.f{color:#c81e2e;font-weight:700;width:28px}
     th.sum{background:#e9e7e2}
@@ -370,11 +385,11 @@ function imprimirCalendario(p: { rows: CalRow[]; days: string[]; setorLabel: str
   openPrint(`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>Calendário — ${esc(p.setorLabel)}</title><style>${css}</style></head><body>
     <h1>Calendário de Produção — ${esc(p.setorLabel)}</h1>
     <div class="sub">${esc(p.periodo)} · ${esc(p.intervalo)} — gerado em ${fmtDia(todayISO())}</div>
-    <div class="lg">Cada célula = <b>pares do dia</b>; embaixo o split <b class="med">médio</b> · <b class="dif">difícil</b>. Célula com fundo claro = dia <b>ainda não pago</b>. Colunas cinza = fim de semana.</div>
+    <div class="lg">Cada célula = <b>pares do dia</b>${temDificil ? '; embaixo o split <b class="med">médio</b> · <b class="dif">difícil</b>' : ""}. Célula com fundo claro = dia <b>ainda não pago</b>. Colunas cinza = fim de semana.</div>
     <table>
-      <thead><tr><th class="mont">${esc(p.oficioLabel)}</th>${dayHead}<th class="sum">Méd</th><th class="sum">Dif</th><th class="sum">Pares</th><th class="sum">Fichas</th><th class="sum">Pago</th><th class="sum">A pagar</th></tr></thead>
-      <tbody>${body || `<tr><td colspan="${days.length + 7}" style="text-align:center;color:#888;padding:12px">Sem lançamentos no período.</td></tr>`}</tbody>
-      <tfoot><tr><td class="mont">TOTAL (${rows.length})</td>${dayTot}<td class="n med">${nf(tMed)}</td><td class="n dif">${nf(tDif)}</td><td class="n b">${nf(tPar)}</td><td class="n f">${tFic}</td><td class="n pgo">${fmtBRL(tPago)}</td><td class="n abt">${fmtBRL(tAberto)}</td></tr></tfoot>
+      <thead><tr><th class="mont">${esc(p.oficioLabel)}</th>${dayHead}${temDificil ? '<th class="sum">Méd</th><th class="sum">Dif</th>' : ""}<th class="sum">Pares</th><th class="sum">Fichas</th><th class="sum">Pago</th><th class="sum">A pagar</th></tr></thead>
+      <tbody>${body || `<tr><td colspan="${days.length + (temDificil ? 7 : 5)}" style="text-align:center;color:#888;padding:12px">Sem lançamentos no período.</td></tr>`}</tbody>
+      <tfoot><tr><td class="mont">TOTAL (${rows.length})</td>${dayTot}${temDificil ? `<td class="n med">${nf(tMed)}</td><td class="n dif">${nf(tDif)}</td>` : ""}<td class="n b">${nf(tPar)}</td><td class="n f">${tFic}</td><td class="n pgo">${fmtBRL(tPago)}</td><td class="n abt">${fmtBRL(tAberto)}</td></tr></tfoot>
     </table>
     <script>window.onload=function(){window.focus();window.print();};<\/script></body></html>`);
 }
@@ -456,13 +471,8 @@ export default function FichaMontadoresPage() {
     setSemanaAnchor((a) => isoOf(new Date(new Date(a + "T00:00:00").getTime() + semanas * 7 * 864e5)));
   }, []);
   const [semSize, setSemSize] = useState<number>(12);
-  const [semDiff, setSemDiff] = useState<Diff>("medio"); // dificuldade ativa na matriz semanal
-  // Trocar de Montagem (com difícil) para Solagem (taxa única) deixaria a matriz
-  // editando uma dificuldade que o setor não usa — e o seletor some, então não
-  // haveria como voltar. Snap para médio.
-  useEffect(() => {
-    if (!cfgSetor.paysByDifficulty && semDiff !== "medio") setSemDiff("medio");
-  }, [cfgSetor.paysByDifficulty, semDiff]);
+  // Não há mais "dificuldade ativa": médio e difícil aparecem juntos na semana,
+  // e o setor de taxa única (Solagem) simplesmente não renderiza a faixa verde.
   // Mostrar as 6 combinações (3 tamanhos × 2 dificuldades) na visão Dia. Fica
   // FECHADO por padrão: ficha 15/18 e par difícil existem, mas são raros — em
   // todo o histórico nenhum foi lançado. Deixá-los sempre à vista cobrava 6
@@ -615,7 +625,12 @@ export default function FichaMontadoresPage() {
   const fichasMontador = (mid: string) => fichasOfDiffMap(mapOf(mid));
 
   // ── helpers Semana ──
-  const weekMap = (mid: string, day: string): DiffSizeMap => week[`${mid}|${day}`] || emptyDiffMap();
+  // Memoizado porque `valorSemanaDe` depende dele: sem isto a identidade mudava
+  // a cada render e o useCallback de baixo recriava sempre, à toa.
+  const weekMap = useCallback(
+    (mid: string, day: string): DiffSizeMap => week[`${mid}|${day}`] || emptyDiffMap(),
+    [week],
+  );
   const setWeekCell = (mid: string, day: string, diff: Diff, sz: number, v: number) =>
     setWeek((w) => {
       const k = `${mid}|${day}`; const cur = w[k] || emptyDiffMap();
@@ -659,6 +674,14 @@ export default function FichaMontadoresPage() {
   );
 
   const weekDays = useMemo(() => weekDaysOf(semanaAnchor), [semanaAnchor]);
+  /** (montador|dia) já quitados por uma folha. A célula fica travada: editar
+   *  reescreveria produção que a folha já pagou, e o valor usado no pagamento é
+   *  o snapshot gravado no lançamento. */
+  const diaPago = useMemo(() => {
+    const s = new Set<string>();
+    for (const f of fichas) if (f.montador_id && f.pago_em) s.add(`${f.montador_id}|${f.dia}`);
+    return s;
+  }, [fichas]);
   const weekLabel = `${fmtDia(weekDays[0])} – ${fmtDia(weekDays[6])}`;
   const semParesTotal = useMemo(() => Object.values(week).reduce((s, m) => s + paresOfDiffMap(m), 0), [week]);
   const semFichasTotal = useMemo(() => Object.values(week).reduce((s, m) => s + fichasOfDiffMap(m), 0), [week]);
@@ -833,6 +856,32 @@ export default function FichaMontadoresPage() {
     }
     return m;
   }, [montadores]);
+  /** Taxa REPRESENTATIVA do setor, só para a legenda da barra. Usa a mais comum
+   *  entre quem é por par — se as pessoas tiverem taxas diferentes, a legenda
+   *  vira "vários" em vez de mentir escolhendo uma. */
+  const taxaSetor = useMemo(() => {
+    const vms = new Set<number>(), vds = new Set<number>();
+    for (const e of montadores) {
+      if (String(e.payment_type || "").toLowerCase() !== "producao") continue;
+      const vm = Number(e.valor_par_medio) || 0, vd = Number(e.valor_par_dificil) || 0;
+      if (vm > 0) vms.add(vm);
+      if (vd > 0) vds.add(vd);
+    }
+    return { vm: vms.size === 1 ? [...vms][0] : 0, vd: vds.size === 1 ? [...vds][0] : 0 };
+  }, [montadores]);
+  /** R$ da semana de uma pessoa pelas taxas do CADASTRO — é uma prévia do que
+   *  aquilo vai valer, não o valor pago. Quem paga usa o snapshot gravado na
+   *  linha (aba Produção); os dois só divergem se a taxa mudar depois. */
+  const valorSemanaDe = useCallback((id: string) => {
+    const t = taxaCadastro.get(id) || { vm: 0, vd: 0 };
+    let med = 0, dif = 0;
+    for (const d of weekDays) {
+      const cel = weekMap(id, d);
+      med += paresOfMap(cel.medio);
+      dif += paresOfMap(cel.dificil);
+    }
+    return { med, dif, total: med * t.vm + dif * t.vd };
+  }, [taxaCadastro, weekDays, weekMap]);
 
   // pMode/cFrom/cTo e `range` ficam lá em cima (antes de `carregar`) — a busca
   // no banco depende deles. Aqui só os filtros que não afetam o intervalo.
@@ -1027,7 +1076,7 @@ export default function FichaMontadoresPage() {
 
   // estilo dos inputs de pares por dificuldade (Médio âmbar · Difícil vermelho)
   const cellM = "h-9 w-14 rounded-md border border-amber-500/40 bg-amber-500/5 text-center text-sm font-bold tabular-nums text-foreground outline-none transition-colors placeholder:text-muted-foreground/40 focus:border-amber-600";
-  const cellD = "h-9 w-14 rounded-md border border-red-500/40 bg-red-500/5 text-center text-sm font-bold tabular-nums text-foreground outline-none transition-colors placeholder:text-muted-foreground/40 focus:border-red-600";
+  const cellD = "h-9 w-14 rounded-md border border-green-600/40 bg-green-600/5 text-center text-sm font-bold tabular-nums text-foreground outline-none transition-colors placeholder:text-muted-foreground/40 focus:border-green-600";
   const numOf = (s: string) => parseInt(s.replace(/[^\d]/g, "")) || 0;
 
   return (
@@ -1170,7 +1219,7 @@ export default function FichaMontadoresPage() {
                           <span className="block text-[11px] leading-tight">{sz}<span className="ml-0.5 font-mono text-[9px] normal-case text-muted-foreground/70">pares</span></span>
                           {/* Rótulo da dificuldade sempre presente: cor sozinha não
                               informa (daltonismo / impressão em P&B). */}
-                          <span className={`block text-[10px] font-bold leading-tight ${diff === "medio" ? "text-amber-600" : "text-red-600"}`}>{DIFF_LABEL[diff]}</span>
+                          <span className={`block text-[10px] font-bold leading-tight ${diff === "medio" ? "text-amber-600" : "text-green-700 dark:text-green-400"}`}>{DIFF_LABEL[diff]}</span>
                         </th>
                       ))}
                       <th className="border-l border-border px-3 py-2 text-right align-bottom" style={{ width: 64 }}>Pares</th>
@@ -1214,7 +1263,7 @@ export default function FichaMontadoresPage() {
                       {colunasDia.map(({ sz, diff }) => {
                         const col = rosterFiltrado.reduce((s, e) => s + (mapOf(e.id)[diff][sz] || 0), 0);
                         return (
-                          <td key={`${sz}-${diff}`} className={`border-l border-border px-1 py-2.5 text-center ${diff === "medio" ? "text-amber-600" : "text-red-600"}`}>{col || ""}</td>
+                          <td key={`${sz}-${diff}`} className={`border-l border-border px-1 py-2.5 text-center ${diff === "medio" ? "text-amber-600" : "text-green-700 dark:text-green-400"}`}>{col || ""}</td>
                         );
                       })}
                       <td className="border-l border-border px-3 py-2.5 text-right text-foreground">{totalDiaPares.toLocaleString("pt-BR")}</td>
@@ -1237,24 +1286,26 @@ export default function FichaMontadoresPage() {
             <Panel
               flush
               eyebrow={`SEMANA ${weekLabel}`}
-              title="Matriz · Seg a Dom"
-              subtitle="Pares por dia. Você edita uma combinação por vez (dificuldade × tamanho); a marca +N na célula avisa quantos pares daquele dia estão fora da combinação atual."
+              title="Semana por pessoa"
+              subtitle={diffsAtivos.length > 1
+                ? "Médio e difícil visíveis ao mesmo tempo, sem trocar de fatia. O valor à direita é prévia pelas taxas do cadastro."
+                : "Pares por dia. Este setor paga taxa única — não separa médio e difícil."}
               actions={
                 <div className="flex flex-wrap items-center gap-2">
-                  {/* Setor de taxa única não mostra o seletor: com uma opção só,
-                      ele é ruído — e oferecer "Difícil" onde não há R$/par
-                      difícil convida a lançar par que vale R$ 0,00. */}
+                  {/* As taxas viram legenda: já que as duas dificuldades estão
+                      sempre à vista, não há o que selecionar. */}
+                  <span className="rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-wide text-amber-600">
+                    Médio {taxaSetor.vm > 0 ? fmtBRL(taxaSetor.vm) : "—"}
+                  </span>
                   {diffsAtivos.length > 1 && (
-                    <div className="flex overflow-hidden rounded-md border border-border">
-                      {diffsAtivos.map((df) => (
-                        <button key={df} type="button" onClick={() => setSemDiff(df)}
-                          className={`px-3 py-1.5 text-xs font-bold uppercase tracking-wide transition-colors ${semDiff === df ? (df === "medio" ? "bg-amber-500 text-white" : "bg-red-600 text-white") : "bg-card text-muted-foreground hover:bg-muted/40"}`}>{DIFF_LABEL[df]}</button>
-                      ))}
-                    </div>
+                    <span className="rounded border border-green-600/40 bg-green-600/10 px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-wide text-green-700 dark:text-green-400">
+                      Difícil {taxaSetor.vd > 0 ? fmtBRL(taxaSetor.vd) : "—"}
+                    </span>
                   )}
                   <div className="flex overflow-hidden rounded-md border border-border">
                     {SIZES.map((sz) => (
                       <button key={sz} type="button" onClick={() => setSemSize(sz)}
+                        title={`Os campos passam a lançar fichas de ${sz} pares`}
                         className={`px-3 py-1.5 text-xs font-semibold transition-colors ${semSize === sz ? "bg-foreground text-background" : "bg-card text-muted-foreground hover:bg-muted/40"}`}>{sz}</button>
                     ))}
                   </div>
@@ -1262,79 +1313,104 @@ export default function FichaMontadoresPage() {
                 </div>
               }
             >
-              <div className="overflow-x-auto">
-                <table className="w-full border-collapse text-center">
-                  <thead>
-                    <tr className="border-b-2 border-border/80 bg-muted/40">
-                      <th className="sticky left-0 z-10 bg-muted/40 px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground" style={{ minWidth: 150 }}>{cfgSetor.sing.replace(/^./, (c) => c.toUpperCase())} <span className={`font-mono normal-case ${semDiff === "medio" ? "text-amber-600" : "text-red-600"}`}>· {DIFF_LABEL[semDiff]} de {semSize}</span></th>
-                      {/* Sáb/Dom em cinza, igual ao calendário. Estão aqui porque a
-                          semana de PAGAMENTO é seg→dom: esconder o fim de semana
-                          escondia produção que a folha paga. */}
-                      {weekDays.map((d, i) => (
-                        <th key={d} className={`px-1 py-2.5 font-mono text-[10px] uppercase tracking-wide text-muted-foreground ${dowIdx(d) >= 5 ? "bg-muted/70" : ""}`} style={{ minWidth: 60 }}>{WD_SHORT[i]} {d.slice(8)}</th>
-                      ))}
-                      <th className="border-l-2 border-border px-2 py-2.5 text-[11px] font-bold uppercase text-foreground" style={{ width: 90 }}>Pares · Fichas</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rosterFiltrado.map((e) => {
-                      const rowPares = weekDays.reduce((s, d) => s + paresOfDiffMap(weekMap(e.id, d)), 0);
-                      const rowFichas = weekDays.reduce((s, d) => s + fichasOfDiffMap(weekMap(e.id, d)), 0);
-                      return (
-                        <tr key={e.id} className="border-b border-border/50">
-                          <td className="sticky left-0 z-10 bg-card px-4 py-1.5 text-left"><span className="whitespace-nowrap text-sm font-semibold text-foreground">{e.name}</span></td>
-                          {weekDays.map((d) => {
-                            const cel = weekMap(e.id, d);
-                            const naFatia = cel[semDiff][semSize] || 0;
-                            const totalDoDia = paresOfDiffMap(cel);
-                            // A matriz edita UMA fatia (dificuldade × tamanho) por vez, mas
-                            // o dia pode ter pares em outras. Sem mostrar isso, a célula
-                            // vazia parece "não produziu" quando na verdade produziu fora
-                            // da fatia atual — e o lançamento seguinte sobrescreveria a
-                            // leitura de quem confia no que está vendo.
-                            const foraDaFatia = totalDoDia - naFatia;
-                            return (
-                              <td key={d} className={`px-1 py-1 ${dowIdx(d) >= 5 ? "bg-muted/30" : ""}`}>
-                                <div className="relative">
-                                  <input inputMode="numeric"
-                                    value={naFatia || ""}
-                                    placeholder="·"
-                                    onFocus={(ev) => ev.target.select()}
-                                    onChange={(ev) => setWeekCell(e.id, d, semDiff, semSize, numOf(ev.target.value))}
-                                    className={`h-8 w-full rounded border bg-card text-center text-sm font-semibold tabular-nums text-foreground outline-none transition-colors placeholder:text-muted-foreground/40 ${foraDaFatia > 0 ? "border-dashed" : ""} ${semDiff === "medio" ? "border-amber-500/40 focus:border-amber-600" : "border-red-500/40 focus:border-red-600"}`}
-                                    aria-label={`${e.name} ${fmtDia(d)} — ${DIFF_LABEL[semDiff]} de ${semSize}${foraDaFatia > 0 ? `; mais ${foraDaFatia} pares em outras combinações neste dia` : ""}`} />
-                                  {foraDaFatia > 0 && (
-                                    <span
-                                      className="pointer-events-none absolute -bottom-0.5 right-0.5 font-mono text-[9px] font-bold leading-none text-muted-foreground"
-                                      title={`${totalDoDia} pares no dia — ${foraDaFatia} fora de ${DIFF_LABEL[semDiff]} de ${semSize}`}
-                                    >+{foraDaFatia}</span>
-                                  )}
-                                </div>
-                              </td>
-                            );
-                          })}
-                          <td className="border-l-2 border-border px-2 text-center font-mono text-xs font-bold tabular-nums text-foreground whitespace-nowrap">{rowPares.toLocaleString("pt-BR")} · <span className="text-primary">{rowFichas}</span></td>
-                        </tr>
-                      );
-                    })}
-                    {rosterFiltrado.length === 0 && (
-                      <tr><td colSpan={weekDays.length + 2} className="px-4 py-8 text-center text-sm text-muted-foreground">
-                        Nenhum resultado para "{busca}".
-                        <Button type="button" variant="outline" size="sm" className="ml-2 h-7" onClick={() => setBusca("")}>Limpar busca</Button>
-                      </td></tr>
-                    )}
-                  </tbody>
-                  <tfoot>
-                    <tr className="border-t-2 border-foreground bg-muted/30">
-                      <td className="sticky left-0 z-10 bg-muted/30 px-4 py-2.5 text-left font-mono text-[10px] uppercase tracking-wider text-muted-foreground">Total {DIFF_LABEL[semDiff]} ({semSize}) / dia</td>
+              {/* Uma linha por pessoa, com as duas dificuldades à vista. Substituiu
+                  a matriz que editava UMA fatia (dificuldade × tamanho) por vez:
+                  eram até 6 passadas na mesma grade, e a marca +N existia só pra
+                  avisar do que a célula não conseguia mostrar. */}
+              <div className="divide-y divide-border/60">
+                {rosterFiltrado.map((e) => {
+                  const porPar = String(e.payment_type || "").toLowerCase() === "producao";
+                  const v = valorSemanaDe(e.id);
+                  const rowFichas = weekDays.reduce((s, d) => s + fichasOfDiffMap(weekMap(e.id, d)), 0);
+                  const nada = v.med + v.dif === 0;
+                  const linhaDiff = (df: Diff) => (
+                    <>
+                      <span className={`text-center font-mono text-[10px] font-bold ${df === "medio" ? "text-amber-600" : "text-green-700 dark:text-green-400"}`}
+                        title={df === "medio" ? "Pares de dificuldade média" : "Pares de dificuldade difícil"}>
+                        {df === "medio" ? "M" : "D"}
+                      </span>
                       {weekDays.map((d) => {
-                        const colP = rosterFiltrado.reduce((s, e) => s + (weekMap(e.id, d)[semDiff][semSize] || 0), 0);
-                        return <td key={d} className={`font-mono text-sm font-bold tabular-nums ${dowIdx(d) >= 5 ? "bg-muted/50" : ""} ${semDiff === "medio" ? "text-amber-600" : "text-red-600"}`}>{colP || ""}</td>;
+                        const cel = weekMap(e.id, d);
+                        const val = cel[df][semSize] || 0;
+                        // Pares do dia nessa dificuldade que estão em OUTRO tamanho.
+                        // O tamanho é a única dimensão que continua atrás de um
+                        // seletor (100% do histórico usa 12), então a marca fica.
+                        const fora = paresOfMap(cel[df]) - val;
+                        const travado = diaPago.has(`${e.id}|${d}`);
+                        return (
+                          <div key={d} className="relative">
+                            <input inputMode="numeric" readOnly={travado}
+                              value={val || ""} placeholder="·"
+                              onFocus={(ev) => ev.target.select()}
+                              onChange={(ev) => setWeekCell(e.id, d, df, semSize, numOf(ev.target.value))}
+                              title={travado ? "Dia já pago por uma folha — o valor está congelado no lançamento." : undefined}
+                              className={`h-8 w-full rounded border text-center text-sm font-semibold tabular-nums outline-none transition-colors placeholder:text-muted-foreground/40 ${
+                                travado
+                                  ? "cursor-not-allowed border-border bg-muted/60 text-muted-foreground"
+                                  : df === "medio"
+                                    ? "border-amber-500/40 bg-card text-foreground focus:border-amber-600"
+                                    : "border-green-600/40 bg-card text-foreground focus:border-green-600"
+                              } ${dowIdx(d) >= 5 ? "opacity-70" : ""}`}
+                              aria-label={`${e.name} ${fmtDia(d)} — ${DIFF_LABEL[df]}, ficha de ${semSize}${travado ? " (pago, somente leitura)" : ""}`} />
+                            {travado && (
+                              <span className="pointer-events-none absolute -top-1 -right-1 text-[9px]" aria-hidden>🔒</span>
+                            )}
+                            {fora > 0 && (
+                              <span className="pointer-events-none absolute -bottom-0.5 right-0.5 font-mono text-[9px] font-bold leading-none text-primary"
+                                title={`${fora} pares deste dia estão em outro tamanho de ficha`}>+{fora}</span>
+                            )}
+                          </div>
+                        );
                       })}
-                      <td className="border-l-2 border-border" />
-                    </tr>
-                  </tfoot>
-                </table>
+                    </>
+                  );
+                  return (
+                    <div key={e.id} className={`grid grid-cols-[1fr_auto] items-center gap-4 px-4 py-3 ${nada ? "opacity-60" : ""}`}>
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-baseline gap-2">
+                          <span className="text-sm font-semibold text-foreground">{e.name}</span>
+                          {nada && <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">sem lançamento na semana</span>}
+                          {porPar && !(Number(e.valor_par_medio) > 0) && (
+                            <span className="font-mono text-[10px] uppercase tracking-wider text-amber-600" title="Sem R$/par no cadastro — a produção não vira pagamento.">sem R$/par</span>
+                          )}
+                        </div>
+                        <div className="mt-2 grid items-center gap-1 overflow-x-auto"
+                          style={{ gridTemplateColumns: `20px repeat(${weekDays.length}, minmax(48px,1fr))` }}>
+                          <span />
+                          {weekDays.map((d, i) => (
+                            <span key={d} className={`text-center font-mono text-[9px] uppercase tracking-wide ${dowIdx(d) >= 5 ? "text-muted-foreground/60" : "text-muted-foreground"}`}>
+                              {WD_SHORT[i]} {d.slice(8)}
+                            </span>
+                          ))}
+                          {diffsAtivos.map((df) => <Fragment key={df}>{linhaDiff(df)}</Fragment>)}
+                        </div>
+                      </div>
+                      <div className="text-right font-mono tabular-nums" style={{ minWidth: 126 }}>
+                        {porPar ? (
+                          <>
+                            <span className="block text-base font-bold text-foreground"
+                              title="Prévia pelas taxas do cadastro. O pagamento usa o valor congelado em cada lançamento.">
+                              {fmtBRL(v.total)}
+                            </span>
+                            <span className="block text-[10px] text-muted-foreground">
+                              <span className="font-bold text-amber-600">{v.med.toLocaleString("pt-BR")} méd</span>
+                              {v.dif > 0 && <> · <span className="font-bold text-green-700 dark:text-green-400">{v.dif.toLocaleString("pt-BR")} dif</span></>}
+                            </span>
+                          </>
+                        ) : (
+                          <span className="block text-[10px] uppercase tracking-wider text-muted-foreground" title="Recebe salário — a produção aqui é medição de produtividade.">não é por par</span>
+                        )}
+                        <span className="block text-[10px] text-muted-foreground">{rowFichas} fichas</span>
+                      </div>
+                    </div>
+                  );
+                })}
+                {rosterFiltrado.length === 0 && (
+                  <div className="px-4 py-8 text-center text-sm text-muted-foreground">
+                    Nenhum resultado para "{busca}".
+                    <Button type="button" variant="outline" size="sm" className="ml-2 h-7" onClick={() => setBusca("")}>Limpar busca</Button>
+                  </div>
+                )}
               </div>
               <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3">
                 <span className="text-[11px] text-muted-foreground">Semana {weekLabel} (todos os tamanhos): <strong className="text-foreground">{semParesTotal.toLocaleString("pt-BR")}</strong> pares · <strong className="text-primary">{semFichasTotal}</strong> fichas</span>
@@ -1449,7 +1525,7 @@ export default function FichaMontadoresPage() {
                     <th className="px-3 py-2 w-8">#</th>
                     <th className="px-3 py-2">{cfgSetor.sing.replace(/^./, (c) => c.toUpperCase())}</th>
                     <th className="px-3 py-2 text-right text-amber-600 border-l border-border">Pares méd</th>
-                    <th className="px-3 py-2 text-right text-red-600">Pares dif</th>
+                    <th className="px-3 py-2 text-right text-green-700 dark:text-green-400">Pares dif</th>
                     <th className="px-3 py-2 text-right">Pares</th>
                     <th className="px-3 py-2 text-right border-l border-border">R$/par cadastro</th>
                     <th className="px-3 py-2 text-right text-amber-600 border-l border-border">A pagar</th>
@@ -1466,11 +1542,11 @@ export default function FichaMontadoresPage() {
                       <td className="px-3 py-2 text-muted-foreground tabular-nums">{i + 1}</td>
                       <td className="px-3 py-2 font-medium text-foreground">{r.nome}</td>
                       <td className="px-3 py-2 text-right tabular-nums font-semibold text-amber-600 border-l border-border">{r.paresMedio.toLocaleString("pt-BR")}</td>
-                      <td className="px-3 py-2 text-right tabular-nums font-semibold text-red-600">{r.paresDificil.toLocaleString("pt-BR")}</td>
+                      <td className="px-3 py-2 text-right tabular-nums font-semibold text-green-700 dark:text-green-400">{r.paresDificil.toLocaleString("pt-BR")}</td>
                       <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{r.pares.toLocaleString("pt-BR")}</td>
                       <td className="px-3 py-2 text-right tabular-nums text-[12px] text-muted-foreground border-l border-border">
                         {r.taxaMedio > 0 || r.taxaDificil > 0
-                          ? <><span className="text-amber-600">{fmtBRL(r.taxaMedio)}</span> · <span className="text-red-600">{fmtBRL(r.taxaDificil)}</span></>
+                          ? <><span className="text-amber-600">{fmtBRL(r.taxaMedio)}</span> · <span className="text-green-700 dark:text-green-400">{fmtBRL(r.taxaDificil)}</span></>
                           : <span className="text-amber-600" title="Sem R$/par cadastrado — a produção fica valorada em zero e a folha não a reivindica.">não cadastrado</span>}
                       </td>
                       {r.porPar ? (
@@ -1510,7 +1586,7 @@ export default function FichaMontadoresPage() {
                     <tr className="border-t-2 font-semibold bg-muted/30">
                       <td className="px-3 py-2" /><td className="px-3 py-2">Total ({agg.length})</td>
                       <td className="px-3 py-2 text-right tabular-nums text-amber-600 border-l border-border">{totals.medio.toLocaleString("pt-BR")}</td>
-                      <td className="px-3 py-2 text-right tabular-nums text-red-600">{totals.dificil.toLocaleString("pt-BR")}</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-green-700 dark:text-green-400">{totals.dificil.toLocaleString("pt-BR")}</td>
                       <td className="px-3 py-2 text-right tabular-nums">{totals.pares.toLocaleString("pt-BR")}</td>
                       <td className="px-3 py-2 border-l border-border" />
                       <td className="px-3 py-2 text-right tabular-nums text-amber-600 border-l border-border">{fmtBRL(totals.valorAberto)}</td>
@@ -1562,7 +1638,7 @@ export default function FichaMontadoresPage() {
                       uma linha de zeros em todo relatório de montagem comum. */}
                   {resumoPeriodo.paresDificil > 0 && (
                     <div className="grid grid-cols-[74px_1fr_auto] items-baseline gap-2.5">
-                      <span className="rounded bg-red-500/10 px-1.5 py-0.5 text-center text-[10px] font-bold uppercase tracking-wider text-red-600">Difícil</span>
+                      <span className="rounded bg-green-600/10 px-1.5 py-0.5 text-center text-[10px] font-bold uppercase tracking-wider text-green-700 dark:text-green-400">Difícil</span>
                       <span className="font-mono text-[13px] tabular-nums text-muted-foreground">
                         <b className="font-semibold text-foreground">{resumoPeriodo.paresDificil.toLocaleString("pt-BR")}</b> pares × {fmtBRL(resumoPeriodo.taxaDificil)}
                       </span>
@@ -1640,7 +1716,7 @@ export default function FichaMontadoresPage() {
                       {calendario.temDificil && (
                         <span className="font-mono text-[9px] leading-tight">
                           <span className="font-bold text-amber-600">{c.medio}</span>
-                          {c.dificil > 0 && <> · <span className="font-bold text-red-600">{c.dificil}</span></>}
+                          {c.dificil > 0 && <> · <span className="font-bold text-green-700 dark:text-green-400">{c.dificil}</span></>}
                         </span>
                       )}
                     </div>,
@@ -1683,7 +1759,7 @@ export default function FichaMontadoresPage() {
                           <th className="px-3 py-2">{cfgSetor.sing.replace(/^./, (c) => c.toUpperCase())}</th>
                           <th className="px-3 py-2">Tamanhos (pares)</th>
                           <th className="px-3 py-2 text-right text-amber-600 border-l border-border">Méd</th>
-                          <th className="px-3 py-2 text-right text-red-600">Dif</th>
+                          <th className="px-3 py-2 text-right text-green-700 dark:text-green-400">Dif</th>
                           <th className="px-3 py-2 text-center border-l border-border">Fichas</th>
                           <th className="px-3 py-2 text-center">Pares</th>
                           <th className="px-3 py-2 text-right border-l border-border">Valor</th>
@@ -1707,7 +1783,7 @@ export default function FichaMontadoresPage() {
                               <td className="px-3 py-2 font-medium text-foreground">{f.montador || "—"}</td>
                               <td className="px-3 py-2 text-muted-foreground tabular-nums">{tamLabel}{!chamada && <span className="ml-2 rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase tracking-wide">grade</span>}</td>
                               <td className="px-3 py-2 text-right tabular-nums font-semibold text-amber-600 border-l border-border">{pd.medio ? pd.medio.toLocaleString("pt-BR") : "—"}</td>
-                              <td className="px-3 py-2 text-right tabular-nums font-semibold text-red-600">{pd.dificil ? pd.dificil.toLocaleString("pt-BR") : "—"}</td>
+                              <td className="px-3 py-2 text-right tabular-nums font-semibold text-green-700 dark:text-green-400">{pd.dificil ? pd.dificil.toLocaleString("pt-BR") : "—"}</td>
                               <td className="px-3 py-2 text-center font-semibold tabular-nums text-primary border-l border-border">{chamada ? fichasDiaOf(f) : 1}</td>
                               <td className="px-3 py-2 text-center tabular-nums text-foreground">{pd.total.toLocaleString("pt-BR")}</td>
                               <td className="px-3 py-2 text-right tabular-nums font-semibold border-l border-border">
