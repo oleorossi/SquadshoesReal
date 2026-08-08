@@ -1293,9 +1293,52 @@ export default function SaleOrders() {
     else setDupSelectedClients(dupGroupClients.map(c => c.id));
   };
 
+  // Restaura o detalhe a partir do ?pv= (F5, link colado, aba nova).
+  //
+  // Espera `orders` carregar: com a lista vazia o find falharia e o param seria
+  // apagado antes de ter chance de resolver. Se o id não existir depois de
+  // carregada — PV excluído, link velho, id digitado errado —, o param é limpo em
+  // vez de ficar preso na URL prometendo um pedido que não abre.
+  //
+  // A guarda `detailDialogOpen` impede reabrir depois que o usuário fechou: o
+  // fechamento limpa o param, mas sem ela um re-render entre as duas coisas
+  // reabriria o dialog sozinho.
+  const pvParam = searchParams.get('pv');
+  useEffect(() => {
+    if (!pvParam || isLoading || detailDialogOpen) return;
+    if (selectedOrder?.id === pvParam) return;
+    const target = orders.find((o: any) => o.id === pvParam);
+    if (!target) {
+      setSearchParams(prev => {
+        const next = new URLSearchParams(prev);
+        next.delete('pv');
+        return next;
+      }, { replace: true });
+      return;
+    }
+    void openOrderDetails(target);
+    // openOrderDetails é recriada a cada render (não é useCallback); incluí-la
+    // aqui dispararia o efeito em loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pvParam, isLoading, orders, detailDialogOpen, selectedOrder?.id]);
+
   const openOrderDetails = async (order: any) => {
     setSelectedOrder(order);
     setDetailDialogOpen(true);
+    // ?pv= na URL: o detalhe passa a sobreviver ao F5, abrir em duas abas e ser
+    // mandado por link — antes ele só existia em estado local. `replace: false`
+    // de propósito: com histórico, o Voltar do browser fecha o dialog, que é o
+    // que todo mundo tenta primeiro.
+    //
+    // ⚠ O NÚMERO do PV continua sendo <button>, não <a> (decisão do dono,
+    // 07/08/2026): Ctrl+clique na linha já é o gesto de SELEÇÃO em massa, e um
+    // link roubaria esse gesto. A endereçabilidade vem daqui, sem custo nenhum
+    // de gesto.
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      next.set('pv', order.id);
+      return next;
+    });
     setLoadingOrderItems(true);
     const [itemsResult, productionOrdersResult] = await Promise.all([
       supabase.from('sale_order_items').select('*, technical_sheets(name, code, image_url, images)').eq('sale_order_id', order.id).order('created_at', { ascending: true }),
@@ -2550,7 +2593,24 @@ export default function SaleOrders() {
       )}
 
       {/* ORDER DETAILS DIALOG */}
-      <Dialog open={detailDialogOpen} onOpenChange={setDetailDialogOpen}>
+      {/* Fechar o detalhe limpa o ?pv=. Fica no onOpenChange e não num useEffect
+          de propósito: os outros pontos que fecham este dialog (Editar, ficha
+          técnica) navegam para FORA de /sales logo em seguida, e mexer em
+          searchParams durante essa transição é pedir aviso de setState em
+          componente desmontado. Ali o param some junto com a rota. */}
+      <Dialog
+        open={detailDialogOpen}
+        onOpenChange={(open) => {
+          setDetailDialogOpen(open);
+          if (!open) {
+            setSearchParams(prev => {
+              const next = new URLSearchParams(prev);
+              next.delete('pv');
+              return next;
+            }, { replace: true });
+          }
+        }}
+      >
         <DialogContent className="w-[95vw] max-w-7xl max-h-[92vh] overflow-y-auto">
           <DialogHeader className="space-y-0">
             <div className={cn(
