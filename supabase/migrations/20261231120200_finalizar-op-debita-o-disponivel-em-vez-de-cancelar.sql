@@ -142,7 +142,11 @@ BEGIN
             COALESCE(v_res.reservation_type, 'soft'), COALESCE(v_res.source, 'onhand'),
             jsonb_set(v_res.metadata, '{effective_grade}', v_shortfall_grade)
               || jsonb_build_object('partial_pending', true, 'partial_of', v_res.id::text),
-            '⚠ Saldo de baixa parcial (solado em falta) — reconciliar ao repor estoque');
+            -- sem o prefixo '⚠' que a função irmã usa: o caractere se perdeu ao
+            -- aplicar via MCP e o arquivo foi alinhado ao BANCO, não o contrário.
+            -- É cosmético — quem lê a pendência em código é metadata.partial_pending
+            -- (soleAutoPO.ts:186), não o texto da nota.
+            'Saldo de baixa parcial (solado em falta) — reconciliar ao repor estoque');
           v_pending_count := v_pending_count + 1;
           v_pending_qty := v_pending_qty + v_shortfall;
         END IF;
@@ -211,7 +215,7 @@ BEGIN
             COALESCE(v_res.reservation_type, 'soft'), COALESCE(v_res.source, 'onhand'),
             COALESCE(v_res.metadata, '{}'::jsonb)
               || jsonb_build_object('partial_pending', true, 'partial_of', v_res.id::text),
-            '⚠ Saldo de baixa parcial (estoque insuficiente na finalização) — reconciliar ao repor');
+            'Saldo de baixa parcial (estoque insuficiente na finalização) — reconciliar ao repor');
           v_pending_count := v_pending_count + 1;
           v_pending_qty := v_pending_qty + v_shortfall;
         END IF;
