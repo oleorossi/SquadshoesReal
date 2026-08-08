@@ -90,6 +90,18 @@ import { safeUrlAttr } from '@/lib/htmlUtils';
 // "Cancelado" porque era a única transição comum em vários estados.
 const STATUS_OPTIONS = ['Rascunho', 'Pendente', 'Aprovado', 'Em Produção', 'Faturado', 'Expedido', 'Concluído', 'Finalizado s/ NF', 'Cancelado'] as const;
 
+// Transições válidas por status, pré-computadas uma vez. Antes isto era um IIFE
+// dentro do <SelectContent> de CADA linha: Set + spread + filter + map por linha,
+// a todo render — e mesmo com o dropdown fechado, porque o Radix avalia os
+// children do content quando o JSX é criado, não quando abre.
+// (auditoria PV 07/08/2026)
+const STATUS_TRANSITION_OPTIONS: Record<string, readonly string[]> = Object.fromEntries(
+  STATUS_OPTIONS.map((s) => {
+    const allowed = new Set<string>([s, ...getValidNextStatuses(s)]);
+    return [s, STATUS_OPTIONS.filter((o) => allowed.has(o))];
+  }),
+);
+
 // Audit visual: cores anteriores text-{color}-400 em dark caíam abaixo do
 // ratio WCAG AA (4.5:1) sobre o fundo /15. text-{color}-300 dá contraste
 // adequado mantendo a paleta semântica original.
@@ -134,14 +146,25 @@ const STATUS_BAND: Record<string, string> = {
 
 const TERMINAL_BILLED_STATUSES = ['Faturado', 'Finalizado s/ NF'];
 
-const formatCurrency = (v: number) =>
-  new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+// Formatadores hoistados: `new Intl.*` — e `toLocaleDateString`, que constrói um
+// por dentro — montam um formatador a CADA chamada. A lista formata ~6 células por
+// linha e re-renderiza a cada tecla digitada na busca, então isso eram centenas de
+// construções por render. Mesma saída, mesmo locale, mesmas opções: só a instância
+// passa a ser reusada. (auditoria PV 07/08/2026)
+//
+// ⚠ NÃO trocar por `formatCurrency` de @/lib/utils — aquele usa BRL_UNIT_PRICE e
+// vai a 4 casas; totais de PV virariam R$ 1.234,5678. O equivalente lá é formatMoney.
+const BRL_FMT = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
+const DATE_FMT = new Intl.DateTimeFormat('pt-BR');
+const DATE_SHORT_FMT = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit' });
+
+const formatCurrency = (v: number) => BRL_FMT.format(v);
 
 const formatDate = (d: string | null) =>
-  d ? parseDateOnly(d).toLocaleDateString('pt-BR') : '—';
+  d ? DATE_FMT.format(parseDateOnly(d)) : '—';
 
 const formatDateShort = (d: string) =>
-  parseDateOnly(d).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+  DATE_SHORT_FMT.format(parseDateOnly(d));
 
 // Lookup batch de min_billing_date pra todos os PVs ativos.
 // Usado pra marcar em vermelho linhas com delivery_deadline < min_billing_date.
@@ -1922,7 +1945,7 @@ export default function SaleOrders() {
               <div className="space-y-1">
                 <Label className="text-xs text-muted-foreground uppercase tracking-wider">Status</Label>
                 <Select value={filterStatus} onValueChange={setFilterStatus}>
-                  <SelectTrigger className="h-9 w-[140px] text-xs"><SelectValue /></SelectTrigger>
+                  <SelectTrigger aria-label="Filtrar por status" className="h-9 w-[140px] text-xs"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Todos</SelectItem>
                     {STATUS_OPTIONS.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
@@ -1932,7 +1955,7 @@ export default function SaleOrders() {
               <div className="space-y-1">
                 <Label className="text-xs text-muted-foreground uppercase tracking-wider">Representante</Label>
                 <Select value={filterRep} onValueChange={setFilterRep}>
-                  <SelectTrigger className="h-9 w-[160px] text-xs"><SelectValue /></SelectTrigger>
+                  <SelectTrigger aria-label="Filtrar por representante" className="h-9 w-[160px] text-xs"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Todos</SelectItem>
                     {uniqueReps.map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}
@@ -1942,7 +1965,7 @@ export default function SaleOrders() {
               <div className="space-y-1">
                 <Label className="text-xs text-muted-foreground uppercase tracking-wider">Grupo Econômico</Label>
                 <Select value={filterGroup} onValueChange={setFilterGroup}>
-                  <SelectTrigger className="h-9 w-[160px] text-xs"><SelectValue /></SelectTrigger>
+                  <SelectTrigger aria-label="Filtrar por grupo econômico" className="h-9 w-[160px] text-xs"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Todos</SelectItem>
                     {economicGroups.map(g => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}
@@ -1952,7 +1975,7 @@ export default function SaleOrders() {
               <div className="space-y-1">
                 <Label className="text-xs text-muted-foreground uppercase tracking-wider">Segmento</Label>
                 <Select value={filterSegment} onValueChange={setFilterSegment}>
-                  <SelectTrigger className="h-9 w-[140px] text-xs"><SelectValue /></SelectTrigger>
+                  <SelectTrigger aria-label="Filtrar por segmento" className="h-9 w-[140px] text-xs"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Todos</SelectItem>
                     <SelectItem value="Adulto">Adulto</SelectItem>
@@ -1963,7 +1986,7 @@ export default function SaleOrders() {
               <div className="space-y-1">
                 <Label className="text-xs text-muted-foreground uppercase tracking-wider">Mês Fat.</Label>
                 <Select value={filterMonth} onValueChange={setFilterMonth}>
-                  <SelectTrigger className="h-9 w-[160px] text-xs"><SelectValue /></SelectTrigger>
+                  <SelectTrigger aria-label="Filtrar por mês de faturamento" className="h-9 w-[160px] text-xs"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Todos</SelectItem>
                     {uniqueMonths.map(m => {
@@ -2006,6 +2029,7 @@ export default function SaleOrders() {
                     <Checkbox
                       checked={selectedIds.size === filteredOrders.length && filteredOrders.length > 0}
                       onCheckedChange={toggleSelectAll}
+                      aria-label="Selecionar todos os pedidos visíveis"
                     />
                   </TableHead>
                   <TableHead>Nº Pedido</TableHead>
@@ -2074,7 +2098,7 @@ export default function SaleOrders() {
                       }}
                     >
                       <TableCell onClick={(e) => e.stopPropagation()}>
-                        <Checkbox checked={isSelected} onCheckedChange={() => sel.toggle(order.id)} />
+                        <Checkbox checked={isSelected} onCheckedChange={() => sel.toggle(order.id)} aria-label={`Selecionar pedido ${order.order_number}`} />
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-col">
@@ -2149,7 +2173,7 @@ export default function SaleOrders() {
                             toast.error(`Erro ao atualizar status: ${err.message}`);
                           }
                         }}>
-                          <SelectTrigger className="h-7 w-[130px] text-xs border-0 bg-transparent p-0 shadow-none hover:ring-1 hover:ring-border [&>svg]:hidden disabled:opacity-60">
+                          <SelectTrigger aria-label={`Status do pedido ${order.order_number}: ${order.status}. Alterar`} className="h-7 w-[130px] text-xs border-0 bg-transparent p-0 shadow-none hover:ring-1 hover:ring-border [&>svg]:hidden disabled:opacity-60">
                             <Badge variant="outline" className={`${STATUS_COLORS[order.status] || ''} text-xs gap-1`}>
                               {statusPendingId === order.id
                                 ? <Loader2 className="h-3 w-3 mr-1 animate-spin" aria-label="Processando" />
@@ -2159,19 +2183,18 @@ export default function SaleOrders() {
                             </Badge>
                           </SelectTrigger>
                           <SelectContent>
-                            {(() => {
-                              // Mostra apenas transições válidas pela state machine
-                              // (+ o status atual, pra que a Select tenha um valor selecionável).
-                              const allowed = new Set([order.status, ...getValidNextStatuses(order.status)]);
-                              return STATUS_OPTIONS.filter(s => allowed.has(s)).map(s => (
-                                <SelectItem key={s} value={s}>
-                                  <span className="flex items-center gap-2">
-                                    <span className={`h-2 w-2 rounded-full ${STATUS_DOT[s]}`} />
-                                    {s}
-                                  </span>
-                                </SelectItem>
-                              ));
-                            })()}
+                            {/* Só transições válidas pela state machine (+ o status
+                                atual, pra a Select ter um valor selecionável). O `??`
+                                é obrigatório: status legado fora de STATUS_OPTIONS
+                                deixaria a lista vazia e a Select sem valor. */}
+                            {(STATUS_TRANSITION_OPTIONS[order.status] ?? [order.status]).map(s => (
+                              <SelectItem key={s} value={s}>
+                                <span className="flex items-center gap-2">
+                                  <span className={`h-2 w-2 rounded-full ${STATUS_DOT[s]}`} />
+                                  {s}
+                                </span>
+                              </SelectItem>
+                            ))}
                           </SelectContent>
                         </Select>
                       </TableCell>
@@ -2307,7 +2330,6 @@ export default function SaleOrders() {
           { label: 'Pré-visualizar NF-e', icon: <Receipt className="h-3.5 w-3.5" />, variant: 'outline', onClick: () => openBulkNfe('preview') },
           { label: 'Consumo', icon: <BarChart3 className="h-3.5 w-3.5" />, variant: 'outline', onClick: handleBulkConsumption },
           { label: 'Visão Geral', icon: <LayoutDashboard className="h-3.5 w-3.5" />, variant: 'outline', onClick: () => setOverviewOpen(true) },
-          { label: 'Resumo', icon: <ClipboardList className="h-3.5 w-3.5" />, variant: 'outline', onClick: handleBulkConsumption },
           { label: 'Etiquetas', icon: <Tag className="h-3.5 w-3.5" />, variant: 'outline', onClick: handleBulkLabels },
           { label: 'Imprimir Fichas', icon: <Printer className="h-3.5 w-3.5" />, variant: 'outline', onClick: handleBulkPrint },
           { label: 'Exportar Excel', icon: <Download className="h-3.5 w-3.5" />, variant: 'outline', onClick: handleBulkExport },
