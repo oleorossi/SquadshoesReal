@@ -839,14 +839,18 @@ export default function SaleOrderFormPanel({
        // implícita do HTML). Num PV isso disparava o gauntlet inteiro de save —
        // crédito, material, capacidade, data mínima — a partir de uma tecla
        // apertada no meio do preenchimento da grade. Só o Salvar salva.
-       // Textarea preserva o Enter (quebra de linha) e Ctrl/Cmd+Enter continua
-       // sendo o atalho de quem quer submeter pelo teclado.
+       // Textarea preserva o Enter (quebra de linha).
        // (auditoria PV 07/08/2026)
+       //
+       // ⚠ NÃO reintroduzir atalho Ctrl/Cmd+Enter com `requestSubmit()`: chamado
+       // sem submitter, ele dispara o evento submit direto no form e NÃO consulta
+       // o botão — submete mesmo com o Salvar desabilitado, furando toda a
+       // validação que este mesmo diff endureceu. Quem quiser salvar pelo teclado
+       // tabula até o botão.
        onKeyDown={(e) => {
          if (e.key !== 'Enter') return;
          const el = e.target as HTMLElement;
          if (el?.tagName === 'TEXTAREA') return;
-         if ((e.metaKey || e.ctrlKey) && formRef.current) { formRef.current.requestSubmit(); return; }
          // Deixa passar quem tem semântica própria de Enter (botão, link, opção
          // de combobox) — bloquear ali quebraria o teclado em vez de proteger.
          if (el?.closest('button, a, [role="option"], [role="combobox"], [contenteditable="true"]')) return;
@@ -1946,7 +1950,23 @@ export default function SaleOrderFormPanel({
           if (item.unit_price <= 0) issues.push({ type: 'error', msg: `Item ${i + 1}: preço unitário não pode ser zero` });
           const refVariants = item.reference_id ? allVariantsByRef.get(item.reference_id) : undefined;
           if (refVariants && refVariants.length > 0 && !item.material_variant_id) {
-            issues.push({ type: 'error', msg: `Item ${i + 1}: selecione grupo de material` });
+            // ⚠ WARNING, não error — e isto é deliberado.
+            //
+            // Com `submitDisabled` derivando de errors.length, marcar isto como
+            // erro travaria PVs que já existem: medido em 08/08/2026, são 220
+            // itens em 38 PVs com material_variant_id null, TODOS em referências
+            // com 2+ variantes (o auto-preenchimento de SaleOrderItemForm só age
+            // quando a referência tem exatamente uma). O admin abriria o
+            // PV-2026-00089 só pra corrigir a observação e o Salvar nasceria
+            // morto, sem saída a não ser escolher variante nos 11 itens — dado
+            // que muda consumo e custeio de um PV já faturado.
+            //
+            // Diferente de cor e preço zero, que o handleSubmit JÁ validava
+            // (SaleOrderForm.tsx:744/815) e o banco reforça em
+            // tg_block_zero_unit_price, grupo de material nunca foi validado em
+            // lugar nenhum. Bloquear agora seria regra nova disfarçada de
+            // correção de UI.
+            issues.push({ type: 'warning', msg: `Item ${i + 1}: sem grupo de material` });
           }
         });
         if (!form.payment_condition) issues.push({ type: 'warning', msg: 'Sem condição de pagamento' });
@@ -1960,6 +1980,10 @@ export default function SaleOrderFormPanel({
         // de material passavam do submit e voltavam como erro cru do Postgres.
         const submitDisabled = errors.length > 0 || isPending;
         const disabledReason = errors[0]?.msg;
+        // "O usuário já começou" — usado para decidir quando mostrar a lista de
+        // pendências. Ver a nota no JSX: `submitAttempted` não serve aqui, porque
+        // com o botão desabilitado o submit nunca acontece.
+        const formStarted = submitAttempted || !!form.client_name || validItemsCount > 0;
 
         return (
           <div className="fixed bottom-0 left-0 right-0 z-30 border-t bg-background/95 backdrop-blur-md shadow-[0_-4px_12px_rgba(0,0,0,0.05)] dark:shadow-[0_-4px_12px_rgba(0,0,0,0.3)]">
@@ -1993,14 +2017,21 @@ export default function SaleOrderFormPanel({
               <div className="flex items-center gap-2 justify-end sm:justify-start">
                 {/* "Pronto" só quando REALMENTE não há pendência. Antes ele
                     aparecia no form vazio, porque `issues` só populava depois do
-                    1º submit. Com pendência e sem submit ainda, o slot fica
-                    VAZIO — form novo continua limpo, mas não afirma o contrário. */}
+                    1º submit. Com pendência e o form ainda intocado, o slot fica
+                    VAZIO — form novo continua limpo, mas não afirma o contrário.
+
+                    ⚠ O gatilho é `formStarted`, NÃO `submitAttempted`. Com o
+                    Salvar derivando de `errors.length`, havendo erro o botão está
+                    desabilitado ⇒ o evento submit nunca dispara ⇒ `submitAttempted`
+                    nunca vira true ⇒ o popover com a lista completa de pendências
+                    seria inalcançável, e o usuário ficaria só com o 1º erro ao
+                    lado do botão, sem como ver os outros. */}
                 {issues.length === 0 ? (
                   <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 text-xs font-semibold">
                     <CheckCircle2 className="h-3.5 w-3.5" />
                     Pronto
                   </span>
-                ) : !submitAttempted ? null : (
+                ) : !formStarted ? null : (
                   <Popover>
                     <PopoverTrigger asChild>
                       <Button

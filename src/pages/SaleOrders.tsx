@@ -139,7 +139,7 @@ function SortHead({ sk, sort, onSort, align, children }: {
         {children}
         {active
           ? <ArrowUp className={cn('h-3 w-3 shrink-0 transition-transform', sort!.dir === 'desc' && 'rotate-180')} weight="bold" />
-          : <ArrowsDownUp className="h-3 w-3 shrink-0 opacity-0 group-hover/head:opacity-40" />}
+          : <ArrowsDownUp className="h-3 w-3 shrink-0 opacity-30" />}
       </button>
     </TableHead>
   );
@@ -1305,8 +1305,12 @@ export default function SaleOrders() {
   // reabriria o dialog sozinho.
   const pvParam = searchParams.get('pv');
   useEffect(() => {
+    // ⚠ Sem guarda por `selectedOrder?.id === pvParam`. Ela parecia sensata e
+    // quebrava o caso principal: `selectedOrder` NUNCA é limpo ao fechar o
+    // detalhe, então reabrir o mesmo PV por link (colar a URL de novo, voltar
+    // pela aba) casava a guarda e o diálogo não abria mais. `detailDialogOpen`
+    // sozinho já impede o efeito de reabrir o que o usuário acabou de fechar.
     if (!pvParam || isLoading || detailDialogOpen) return;
-    if (selectedOrder?.id === pvParam) return;
     const target = orders.find((o: any) => o.id === pvParam);
     if (!target) {
       setSearchParams(prev => {
@@ -1320,25 +1324,28 @@ export default function SaleOrders() {
     // openOrderDetails é recriada a cada render (não é useCallback); incluí-la
     // aqui dispararia o efeito em loop.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pvParam, isLoading, orders, detailDialogOpen, selectedOrder?.id]);
+  }, [pvParam, isLoading, orders, detailDialogOpen]);
 
   const openOrderDetails = async (order: any) => {
     setSelectedOrder(order);
     setDetailDialogOpen(true);
     // ?pv= na URL: o detalhe passa a sobreviver ao F5, abrir em duas abas e ser
-    // mandado por link — antes ele só existia em estado local. `replace: false`
-    // de propósito: com histórico, o Voltar do browser fecha o dialog, que é o
-    // que todo mundo tenta primeiro.
+    // mandado por link — antes ele só existia em estado local.
+    //
+    // ⚠ `replace: true`, NÃO push. Uma versão anterior usava push alegando que
+    // "o Voltar do browser fecha o dialog" — não fecha: `detailDialogOpen` é
+    // estado local e nada o observa quando o param some da URL. O push só
+    // empilhava uma entrada morta por PV aberto (e duas, quando a própria URL
+    // era a origem), fazendo o primeiro Voltar não fazer nada.
     //
     // ⚠ O NÚMERO do PV continua sendo <button>, não <a> (decisão do dono,
     // 07/08/2026): Ctrl+clique na linha já é o gesto de SELEÇÃO em massa, e um
-    // link roubaria esse gesto. A endereçabilidade vem daqui, sem custo nenhum
-    // de gesto.
+    // link roubaria esse gesto. A endereçabilidade vem daqui, sem custo de gesto.
     setSearchParams(prev => {
       const next = new URLSearchParams(prev);
       next.set('pv', order.id);
       return next;
-    });
+    }, { replace: true });
     setLoadingOrderItems(true);
     const [itemsResult, productionOrdersResult] = await Promise.all([
       supabase.from('sale_order_items').select('*, technical_sheets(name, code, image_url, images)').eq('sale_order_id', order.id).order('created_at', { ascending: true }),
@@ -2689,6 +2696,16 @@ export default function SaleOrders() {
                         }
                         toast.success(`Pedido ${selectedOrder.order_number} aprovado.`);
                         queryClient.invalidateQueries({ queryKey: ['sale_orders'] });
+                        // Fecha por setState (não passa pelo onOpenChange), então
+                        // limpa o ?pv= aqui — senão o param fica preso e um F5
+                        // reabriria o detalhe de um PV que o usuário já fechou.
+                        // Os outros dois pontos que fecham direto navegam pra fora
+                        // de /sales, e ali o param sai junto com a rota.
+                        setSearchParams(prev => {
+                          const next = new URLSearchParams(prev);
+                          next.delete('pv');
+                          return next;
+                        }, { replace: true });
                         setDetailDialogOpen(false);
                         },
                       })}
@@ -3336,7 +3353,23 @@ export default function SaleOrders() {
               // senão o diálogo de excluir 12 PVs é visualmente idêntico ao de
               // aprovar 12, e a confirmação vira reflexo em vez de decisão.
               className={pendingConfirm?.destructive ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90' : undefined}
-              onClick={() => { const fn = pendingConfirm?.onConfirm; setPendingConfirm(null); void fn?.(); }}
+              // ⚠ preventDefault é LOAD-BEARING, não higiene.
+              //
+              // AlertDialogAction É um Dialog.Close: o Radix compõe este onClick
+              // com `() => onOpenChange(false)`, e o dele roda DEPOIS do nosso.
+              // Sem o preventDefault, um onConfirm que abre um SEGUNDO
+              // pendingConfirm — é o caso do aviso de data inviável, disparado
+              // por handleBulkGenerateOPs e handleBulkStatusChange — tinha o
+              // estado sobrescrito por null no mesmo tick: o 2º diálogo nunca
+              // aparecia, a ação morria sem toast e o usuário achava que aprovou.
+              // composeEventHandlers checa defaultPrevented, então isto desliga
+              // o fechamento automático; quem fecha é o setPendingConfirm(null).
+              onClick={(e) => {
+                e.preventDefault();
+                const fn = pendingConfirm?.onConfirm;
+                setPendingConfirm(null);
+                void fn?.();
+              }}
             >
               {pendingConfirm?.actionLabel}
             </AlertDialogAction>
