@@ -10,7 +10,7 @@ import { resolveMaterialLabel } from '@/lib/labelUtils';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import PendenciasView from '@/components/sale-orders/PendenciasView';
-import { Baby, Buildings, ShoppingCart, Plus, CircleNotch as Loader2, Copy, Printer, Factory, PencilSimple as Pencil, FileText, Funnel as Filter, X, MagnifyingGlass as Search, Package, CurrencyDollar as DollarSign, Clock, CaretDown, ChartBar as BarChart3, ClipboardText as ClipboardList, ArrowsClockwise as RefreshCw, Tag, SquaresFour as LayoutDashboard, Lightning as Zap, FileXls as FileSpreadsheet, Receipt, XCircle, CheckCircle, Check, Download, TrendUp as TrendingUp, Warning as AlertTriangle, ArrowCounterClockwise as RotateCcw, HandPalm as Hand, UploadSimple as Upload, Trash as Trash2, ListChecks, ArrowSquareOut as ExternalLink, DotsThree } from '@phosphor-icons/react';
+import { ArrowUp, ArrowsDownUp, Baby, Buildings, ShoppingCart, Plus, CircleNotch as Loader2, Copy, Printer, Factory, PencilSimple as Pencil, FileText, Funnel as Filter, X, MagnifyingGlass as Search, Package, CurrencyDollar as DollarSign, Clock, CaretDown, ChartBar as BarChart3, ClipboardText as ClipboardList, ArrowsClockwise as RefreshCw, Tag, SquaresFour as LayoutDashboard, Lightning as Zap, FileXls as FileSpreadsheet, Receipt, XCircle, CheckCircle, Check, Download, TrendUp as TrendingUp, Warning as AlertTriangle, ArrowCounterClockwise as RotateCcw, HandPalm as Hand, UploadSimple as Upload, Trash as Trash2, ListChecks, ArrowSquareOut as ExternalLink, DotsThree } from '@phosphor-icons/react';
 import { useMarqueeSelection } from '@/hooks/useMarqueeSelection';
 import { BulkActionsBar, MarqueeOverlay } from '@/components/ui/bulk-actions-bar';
 import { cn } from "@/lib/utils";
@@ -95,6 +95,56 @@ const STATUS_OPTIONS = ['Rascunho', 'Pendente', 'Aprovado', 'Em Produção', 'Fa
 // a todo render — e mesmo com o dropdown fechado, porque o Radix avalia os
 // children do content quando o JSX é criado, não quando abre.
 // (auditoria PV 07/08/2026)
+// Colunas ordenáveis. Só entram aqui as que têm campo confirmado no dado —
+// cabeçalho que parece clicável e não ordena é pior que cabeçalho estático.
+// "Nº Cliente" e "Cidade" ficaram de fora por isso.
+type SortKey = 'order_number' | 'client_name' | 'total' | 'status' | 'pairs' | 'delivery_deadline';
+
+const SORT_ACCESSORS: Record<SortKey, (o: any, pairs: Record<string, number>) => string | number | null> = {
+  order_number: (o) => o.order_number ?? null,
+  client_name: (o) => o.client_name ?? null,
+  total: (o) => Number(o.total) || 0,
+  status: (o) => o.status ?? null,
+  pairs: (o, pairs) => pairs[o.id] ?? 0,
+  delivery_deadline: (o) => o.delivery_deadline ?? null,
+};
+
+/** Cabeçalho ordenável. Um clique ordena crescente, outro decrescente, o terceiro
+ *  volta à ordem natural — sem estado morto em que o usuário não sabe como sair. */
+function SortHead({ sk, sort, onSort, align, children }: {
+  sk: SortKey;
+  sort: { key: SortKey; dir: 'asc' | 'desc' } | null;
+  onSort: (k: SortKey) => void;
+  align?: 'right';
+  children: ReactNode;
+}) {
+  const active = sort?.key === sk;
+  // aria-sort pertence ao <th>, não ao botão dentro dele — no botão o leitor de
+  // tela ignora e a coluna não se anuncia como ordenada.
+  return (
+    <TableHead
+      aria-sort={active ? (sort!.dir === 'asc' ? 'ascending' : 'descending') : 'none'}
+      className={align === 'right' ? 'text-right tabular-nums' : undefined}
+    >
+      <button
+        type="button"
+        onClick={() => onSort(sk)}
+        aria-label={`Ordenar por ${typeof children === 'string' ? children : sk}`}
+        className={cn(
+          'inline-flex items-center gap-1 uppercase tracking-wider font-bold text-xs hover:text-foreground transition-colors',
+          align === 'right' && 'flex-row-reverse',
+          active ? 'text-foreground' : 'text-muted-foreground',
+        )}
+      >
+        {children}
+        {active
+          ? <ArrowUp className={cn('h-3 w-3 shrink-0 transition-transform', sort!.dir === 'desc' && 'rotate-180')} weight="bold" />
+          : <ArrowsDownUp className="h-3 w-3 shrink-0 opacity-0 group-hover/head:opacity-40" />}
+      </button>
+    </TableHead>
+  );
+}
+
 const STATUS_TRANSITION_OPTIONS: Record<string, readonly string[]> = Object.fromEntries(
   STATUS_OPTIONS.map((s) => {
     const allowed = new Set<string>([s, ...getValidNextStatuses(s)]);
@@ -602,7 +652,32 @@ export default function SaleOrders() {
   // Marquee selection + range/Ctrl click + Esc-to-clear (replaces ad-hoc
   // useState<Set>). `selectedIds`/`setSelectedIds` shims abaixo mantêm
   // compatibilidade com o restante do componente (~30 referências).
-  const sel = useMarqueeSelection(filteredOrders, (o) => o.id);
+  // Ordenação por coluna. Não persiste entre sessões (mesma decisão dos filtros,
+  // 07/08/2026): visita nova começa na ordem natural do banco.
+  const [sort, setSort] = useState<{ key: SortKey; dir: 'asc' | 'desc' } | null>(null);
+  const toggleSort = (key: SortKey) =>
+    setSort(s => (s?.key !== key ? { key, dir: 'asc' } : s.dir === 'asc' ? { key, dir: 'desc' } : null));
+
+  const sortedOrders = useMemo(() => {
+    if (!sort) return filteredOrders;
+    const mult = sort.dir === 'asc' ? 1 : -1;
+    const get = SORT_ACCESSORS[sort.key];
+    return [...filteredOrders].sort((a, b) => {
+      const va = get(a, pairsBySaleOrder);
+      const vb = get(b, pairsBySaleOrder);
+      // Vazio sempre no fim, independente da direção — senão ordenar por "Entrega"
+      // enche o topo da tela de traços e esconde o que o usuário quer ver.
+      if (va === null || va === undefined || va === '') return 1;
+      if (vb === null || vb === undefined || vb === '') return -1;
+      if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * mult;
+      return String(va).localeCompare(String(vb), 'pt-BR', { numeric: true }) * mult;
+    });
+  }, [filteredOrders, sort, pairsBySaleOrder]);
+
+  // ⚠ A seleção é alimentada por `sortedOrders`, NÃO por `filteredOrders`. O
+  // Shift+clique seleciona um INTERVALO por índice: se a fonte estivesse na ordem
+  // não ordenada, o intervalo marcaria linhas diferentes das que estão na tela.
+  const sel = useMarqueeSelection(sortedOrders, (o) => o.id);
   const selectedIds = sel.selectedIds;
   // Shim: aceita Set<string> direto OU updater. Usado em locais como
   // `setSelectedIds(new Set())` (= sel.clear) e em handlers de bulk que
@@ -1819,7 +1894,7 @@ export default function SaleOrders() {
                     <Upload className="h-4 w-4" />
                     Importar Clientes
                   </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => { void handleExportSaleOrdersExcel(filteredOrders); }} className="gap-2">
+                  <DropdownMenuItem onSelect={() => { void handleExportSaleOrdersExcel(sortedOrders); }} className="gap-2">
                     <FileSpreadsheet className="h-4 w-4" />
                     Exportar Excel
                   </DropdownMenuItem>
@@ -2104,19 +2179,19 @@ export default function SaleOrders() {
                       aria-label="Selecionar todos os pedidos visíveis"
                     />
                   </TableHead>
-                  <TableHead>Nº Pedido</TableHead>
+                  <SortHead sk="order_number" sort={sort} onSort={toggleSort}>Nº Pedido</SortHead>
                   <TableHead>Nº Cliente</TableHead>
-                  <TableHead>Cliente</TableHead>
+                  <SortHead sk="client_name" sort={sort} onSort={toggleSort}>Cliente</SortHead>
                   <TableHead>Cidade</TableHead>
-                  {canSeeFinancialValues && <TableHead className="text-right tabular-nums">Total</TableHead>}
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right tabular-nums">Pares</TableHead>
-                  <TableHead>Entrega / Fat.</TableHead>
+                  {canSeeFinancialValues && <SortHead sk="total" sort={sort} onSort={toggleSort} align="right">Total</SortHead>}
+                  <SortHead sk="status" sort={sort} onSort={toggleSort}>Status</SortHead>
+                  <SortHead sk="pairs" sort={sort} onSort={toggleSort} align="right">Pares</SortHead>
+                  <SortHead sk="delivery_deadline" sort={sort} onSort={toggleSort}>Entrega / Fat.</SortHead>
                   <TableHead className="text-right">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredOrders.map(order => {
+                {sortedOrders.map(order => {
                   const isSelected = sel.isSelected(order.id);
                   const isOverdue = order.delivery_deadline && parseDateOnly(order.delivery_deadline) < new Date() && !TERMINAL_BILLED_STATUSES.includes(order.status) && order.status !== 'Cancelado';
                   const isInformal = (order as any).nfe_required === false;
