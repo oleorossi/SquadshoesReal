@@ -1321,6 +1321,28 @@ export default function SaleOrderForm() {
     }, 100);
   };
 
+  /**
+   * Fecha um portão do fluxo de save AVISANDO que o pedido não foi salvo.
+   *
+   * O save do PV passa por até 4 diálogos em sequência (material, solado,
+   * capacidade, data mínima). Fechar qualquer um deles — Esc, X, clique fora ou
+   * o botão "Cancelar" — apenas escondia a janela: o save nunca acontecia e nada
+   * dizia isso. O usuário voltava para o formulário preenchido sem saber se
+   * salvou, e o jeito de descobrir era ir na lista procurar o PV.
+   * (auditoria PV 07/08/2026)
+   *
+   * ⚠ Só entra no caminho de ABANDONO. Os botões de confirmação chamam
+   * `onConfirm`/`onConfirmMin`, e os handlers fecham por setState — mudança de
+   * prop controlada não dispara `onOpenChange`, então não há aviso falso.
+   */
+  const abortSubmit = (setOpen: (v: boolean) => void, etapa: string) => (open: boolean) => {
+    setOpen(open);
+    if (open) return;
+    toast.info(`Pedido não salvo — você saiu da etapa de ${etapa}.`, {
+      description: 'O que você preencheu continua aqui. Clique em Salvar para retomar.',
+    });
+  };
+
   const handleMaterialConfirm = (action: 'with_po' | 'without_po' | 'draft') => {
     setMaterialDialogOpen(false);
     if (action !== 'draft' && materialResult?.minPurchaseDateISO && !form.delivery_deadline) {
@@ -1476,7 +1498,7 @@ export default function SaleOrderForm() {
 
       <MaterialPurchaseConfirmDialog
         open={materialDialogOpen}
-        onOpenChange={setMaterialDialogOpen}
+        onOpenChange={abortSubmit(setMaterialDialogOpen, 'compra de material')}
         result={materialResult}
         saleOrderId={isEdit ? id : null}
         onConfirm={handleMaterialConfirm}
@@ -1484,14 +1506,14 @@ export default function SaleOrderForm() {
 
       <SolePurchaseConfirmDialog
         open={soleDialogOpen}
-        onOpenChange={setSoleDialogOpen}
+        onOpenChange={abortSubmit(setSoleDialogOpen, 'compra de solado')}
         result={soleResult}
         onConfirm={handleSoleConfirm}
       />
 
       <SectorOverloadDialog
         open={capacityDialogOpen}
-        onOpenChange={setCapacityDialogOpen}
+        onOpenChange={abortSubmit(setCapacityDialogOpen, 'capacidade de setor')}
         result={capacityResult}
         onKeepDateAndOutsource={handleCapacityKeepDate}
         onPostponeDate={handleCapacityPostpone}
@@ -1500,7 +1522,7 @@ export default function SaleOrderForm() {
 
       <MinBillingDateSuggestionDialog
         open={minBillingDialogOpen}
-        onOpenChange={setMinBillingDialogOpen}
+        onOpenChange={abortSubmit(setMinBillingDialogOpen, 'data mínima de faturamento')}
         minDateISO={minBillingSuggestion?.minDateISO || ''}
         minWeekISO={minBillingSuggestion?.minWeekISO || ''}
         bottleneck={minBillingSuggestion?.bottleneck}

@@ -832,7 +832,28 @@ export default function SaleOrderFormPanel({
 
    return (
      <>
-     <form ref={formRef} onSubmit={handlePreSubmit} className="space-y-5 pb-40 sm:pb-24">
+     <form
+       ref={formRef}
+       onSubmit={handlePreSubmit}
+       // Enter dentro de um <input> submete o form por padrão (submissão
+       // implícita do HTML). Num PV isso disparava o gauntlet inteiro de save —
+       // crédito, material, capacidade, data mínima — a partir de uma tecla
+       // apertada no meio do preenchimento da grade. Só o Salvar salva.
+       // Textarea preserva o Enter (quebra de linha) e Ctrl/Cmd+Enter continua
+       // sendo o atalho de quem quer submeter pelo teclado.
+       // (auditoria PV 07/08/2026)
+       onKeyDown={(e) => {
+         if (e.key !== 'Enter') return;
+         const el = e.target as HTMLElement;
+         if (el?.tagName === 'TEXTAREA') return;
+         if ((e.metaKey || e.ctrlKey) && formRef.current) { formRef.current.requestSubmit(); return; }
+         // Deixa passar quem tem semântica própria de Enter (botão, link, opção
+         // de combobox) — bloquear ali quebraria o teclado em vez de proteger.
+         if (el?.closest('button, a, [role="option"], [role="combobox"], [contenteditable="true"]')) return;
+         e.preventDefault();
+       }}
+       className="space-y-5 pb-40 sm:pb-24"
+     >
       {/* Stepper só faz sentido em PV existente — em "Novo Pedido" o status é sempre
           Rascunho e o widget completo confunde mais do que informa. */}
       {!isNewOrder && (
@@ -1897,43 +1918,48 @@ export default function SaleOrderFormPanel({
           que ocupava 3 alturas de tela e fazia o usuário scrollar pra confirmar.
           Sticky bottom = sempre visível enquanto edita itens. */}
       {(() => {
-        // Só popula issues após o 1º submit. Antes disso, footer fica "limpo"
-        // pra não poluir o form vazio com "Adicione um item" / "Sem condição".
+        // `issues` é calculado SEMPRE (antes só populava após o 1º submit).
+        //
+        // Aquilo produzia o pior estado possível: no form vazio, `issues` ficava
+        // em zero e o rodapé mostrava o selo VERDE "Pronto" ao lado de um Salvar
+        // morto — e o motivo, que morava num `title`, era fisicamente inalcançável
+        // porque botão desabilitado tem `pointer-events-none` (ui/button.tsx).
+        // Quem decide o que APARECE continua sendo `submitAttempted`, logo abaixo,
+        // então o form vazio segue limpo. (auditoria PV 07/08/2026)
+        const validItems = items.filter(i => i.reference_id);
+        const validItemsCount = validItems.length;
+        const factoringInvalid = form.is_factoring && !form.factoring_config_id;
+
         const issues: { type: 'error' | 'warning'; msg: string; field?: string }[] = [];
-        if (submitAttempted) {
-          if (!form.client_name) issues.push({ type: 'error', msg: 'Cliente obrigatório', field: 'client_name' });
-          const validItems = items.filter(i => i.reference_id);
-          if (validItems.length === 0) issues.push({ type: 'error', msg: 'Adicione um item', field: 'items' });
-          validItems.forEach((item, i) => {
-            if (!item.color?.trim()) issues.push({ type: 'error', msg: `Item ${i + 1}: cor faltando` });
-            if (item.quantity <= 0) issues.push({ type: 'warning', msg: `Item ${i + 1}: qtd zerada` });
-            // Preço zero é ERROR (não warning) — bloqueia submit. Reportado
-            // em 20/05/2026: PV-00122 saiu com CF 07 PRETO em R$ 0,00 e
-            // 'sumiu' R$ 442,80 do total geral. Regra dura no front + trigger
-            // no DB (tg_block_zero_unit_price) cobrem o fluxo.
-            if (item.unit_price <= 0) issues.push({ type: 'error', msg: `Item ${i + 1}: preço unitário não pode ser zero` });
-            const refVariants = item.reference_id ? allVariantsByRef.get(item.reference_id) : undefined;
-            if (refVariants && refVariants.length > 0 && !item.material_variant_id) {
-              issues.push({ type: 'error', msg: `Item ${i + 1}: selecione grupo de material` });
-            }
-          });
-          if (!form.payment_condition) issues.push({ type: 'warning', msg: 'Sem condição de pagamento' });
-          if (!form.delivery_deadline) issues.push({ type: 'warning', msg: 'Sem prazo de entrega' });
-        }
+        if (!form.client_name) issues.push({ type: 'error', msg: 'Selecione um cliente antes de salvar', field: 'client_name' });
+        if (validItemsCount === 0) issues.push({ type: 'error', msg: 'Adicione pelo menos um item com referência', field: 'items' });
+        // Factoring passa a ser ERRO listado, não só um booleano solto: antes ele
+        // desabilitava o Salvar sem nunca aparecer na lista de pendências.
+        if (factoringInvalid) issues.push({ type: 'error', msg: 'Selecione qual factoring está antecipando o pedido' });
+        validItems.forEach((item, i) => {
+          if (!item.color?.trim()) issues.push({ type: 'error', msg: `Item ${i + 1}: cor faltando` });
+          if (item.quantity <= 0) issues.push({ type: 'warning', msg: `Item ${i + 1}: qtd zerada` });
+          // Preço zero é ERROR (não warning) — bloqueia submit. Reportado
+          // em 20/05/2026: PV-00122 saiu com CF 07 PRETO em R$ 0,00 e
+          // 'sumiu' R$ 442,80 do total geral. Regra dura no front + trigger
+          // no DB (tg_block_zero_unit_price) cobrem o fluxo.
+          if (item.unit_price <= 0) issues.push({ type: 'error', msg: `Item ${i + 1}: preço unitário não pode ser zero` });
+          const refVariants = item.reference_id ? allVariantsByRef.get(item.reference_id) : undefined;
+          if (refVariants && refVariants.length > 0 && !item.material_variant_id) {
+            issues.push({ type: 'error', msg: `Item ${i + 1}: selecione grupo de material` });
+          }
+        });
+        if (!form.payment_condition) issues.push({ type: 'warning', msg: 'Sem condição de pagamento' });
+        if (!form.delivery_deadline) issues.push({ type: 'warning', msg: 'Sem prazo de entrega' });
 
         const errors = issues.filter(i => i.type === 'error');
         const warnings = issues.filter(i => i.type === 'warning');
 
-        const validItemsCount = items.filter(i => i.reference_id).length;
-        const factoringInvalid = form.is_factoring && !form.factoring_config_id;
-        const submitDisabled = !form.client_name || validItemsCount === 0 || factoringInvalid || isPending;
-        const disabledReason = !form.client_name
-          ? 'Selecione um cliente antes de salvar'
-          : validItemsCount === 0
-            ? 'Adicione pelo menos um item com referência ao pedido'
-            : factoringInvalid
-              ? 'Selecione qual factoring está antecipando o pedido'
-              : undefined;
+        // ⚠ MUDANÇA: o Salvar agora deriva de `errors`. Antes o popover dizia
+        // "Erros bloqueantes" e não bloqueava — cor faltando, preço zero e grupo
+        // de material passavam do submit e voltavam como erro cru do Postgres.
+        const submitDisabled = errors.length > 0 || isPending;
+        const disabledReason = errors[0]?.msg;
 
         return (
           <div className="fixed bottom-0 left-0 right-0 z-30 border-t bg-background/95 backdrop-blur-md shadow-[0_-4px_12px_rgba(0,0,0,0.05)] dark:shadow-[0_-4px_12px_rgba(0,0,0,0.3)]">
@@ -1965,12 +1991,16 @@ export default function SaleOrderFormPanel({
 
               {/* Indicador de validação — meio */}
               <div className="flex items-center gap-2 justify-end sm:justify-start">
+                {/* "Pronto" só quando REALMENTE não há pendência. Antes ele
+                    aparecia no form vazio, porque `issues` só populava depois do
+                    1º submit. Com pendência e sem submit ainda, o slot fica
+                    VAZIO — form novo continua limpo, mas não afirma o contrário. */}
                 {issues.length === 0 ? (
                   <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 text-xs font-semibold">
                     <CheckCircle2 className="h-3.5 w-3.5" />
                     Pronto
                   </span>
-                ) : (
+                ) : !submitAttempted ? null : (
                   <Popover>
                     <PopoverTrigger asChild>
                       <Button
@@ -2023,6 +2053,15 @@ export default function SaleOrderFormPanel({
 
               {/* Botões — direita; em mobile, full-width pra toque confortável */}
               <div className="flex items-center gap-2 sm:gap-2">
+                {/* Motivo VISÍVEL do bloqueio. O `title` continua para leitor de
+                    tela, mas sozinho ele era inútil: `disabled:pointer-events-none`
+                    (ui/button.tsx) impede o hover, então a tooltip nunca abria e o
+                    usuário ficava com um Salvar morto e nenhuma explicação. */}
+                {disabledReason && !isPending && (
+                  <span className="hidden sm:inline text-xs text-muted-foreground max-w-[240px] text-right leading-tight">
+                    {disabledReason}
+                  </span>
+                )}
                 <Button type="button" variant="outline" onClick={onCancel} className="flex-1 sm:flex-none">
                   Cancelar
                 </Button>
@@ -2036,6 +2075,12 @@ export default function SaleOrderFormPanel({
                   {submitLabel}
                 </Button>
               </div>
+              {/* Em telas estreitas o motivo vai abaixo, onde há largura. */}
+              {disabledReason && !isPending && (
+                <span className="sm:hidden text-xs text-muted-foreground leading-tight">
+                  {disabledReason}
+                </span>
+              )}
             </div>
           </div>
         );
