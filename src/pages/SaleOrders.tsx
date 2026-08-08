@@ -418,7 +418,17 @@ export default function SaleOrders() {
   // Produção/almoxarifado veem PVs pra contexto de produção, mas SEM valores
   // (preço unit, total, comissão). canSeeFinancialValues=false bloqueia colunas
   // e KPIs financeiros sem retirar a navegação.
-  const { canSeeFinancialValues, canAccessModule } = useAccessControl();
+  const { canSeeFinancialValues, canAccessModule, roles } = useAccessControl();
+  // Espelha o gate do SERVIDOR (migration 20261231120300): a policy RESTRICTIVE
+  // de UPDATE em sale_orders só passa para admin ou comercial. A UI tem que dizer
+  // o MESMO — mostrar o lápis para quem o banco vai recusar troca um bug por
+  // outro: em vez de editar sem poder, o usuário abre o form, preenche e leva um
+  // erro de RLS no submit.
+  //
+  // ⚠ Antes as duas portas de edição discordavam entre si: o lápis da linha não
+  // tinha gate nenhum e o botão "Editar" do detalhe exigia isAdmin. A incoerência
+  // mascarava o fato de que NENHUM dos dois era gate de verdade.
+  const canEditPv = isAdmin || roles.includes('comercial');
   const canBuy = canAccessModule('financeiro');
   // Gate de permissões da tela de Pedidos (criar/excluir) — esconde ações de
   // usuários explicitamente restritos; admins/sem-grant continuam vendo tudo.
@@ -2504,7 +2514,7 @@ export default function SaleOrders() {
                           <Button variant="ghost" size="icon" className="h-7 w-7" title="Duplicar por grupo" onClick={() => openDupDialog(order.id)}>
                             <Copy className="h-3.5 w-3.5" />
                           </Button>
-                          <Button variant="ghost" size="icon" className="h-7 w-7" title="Editar" onClick={() => navigate(`/sales/edit/${order.id}`)}>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" title="Editar" disabled={!canEditPv} onClick={() => navigate(`/sales/edit/${order.id}`)}>
                             <Pencil className="h-3.5 w-3.5" />
                           </Button>
                           <Button variant="ghost" size="icon" className="h-7 w-7" title="Consumo de materiais" onClick={() => navigate(`/sales?view=consumo&ids=${order.id}`)}>
@@ -2738,7 +2748,7 @@ export default function SaleOrders() {
                   botões numa/duas linhas mesmo com o "Gerar OS" novo. */}
               <div className="flex items-center gap-1.5 flex-wrap border-b py-2.5 [&_button]:h-8 [&_button]:px-2.5 [&_button]:text-xs [&_button]:gap-1.5">
                 <div className="flex items-center gap-2 flex-wrap" role="group" aria-label="Operação">
-                  {isAdmin && <Button variant="outline" size="sm" className="gap-2" onClick={() => { setDetailDialogOpen(false); navigate(`/sales/edit/${selectedOrder.id}`); }}><Pencil className="h-3.5 w-3.5" /> Editar</Button>}
+                  {canEditPv && <Button variant="outline" size="sm" className="gap-2" onClick={() => { setDetailDialogOpen(false); navigate(`/sales/edit/${selectedOrder.id}`); }}><Pencil className="h-3.5 w-3.5" /> Editar</Button>}
                   {/* Botão "Aprovar" individual — só aparece em Rascunho.
                       Sem esse botão, o usuário só conseguia aprovar via "Gerar OPs"
                       em massa (o que aprovava TODOS os Rascunhos de uma vez).

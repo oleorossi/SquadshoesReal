@@ -79,6 +79,9 @@ interface Props {
   onClientSelect: (clientId: string) => void;
   onSubmit: (e: React.FormEvent) => void;
   onCancel: () => void;
+  /** Disparado no primeiro INPUT REAL do usuário (evento de DOM, não setState).
+   *  É o que separa edição de hidratação programática — ver a nota no <form>. */
+  onUserEdit?: () => void;
   isPending: boolean;
   submitLabel: string;
   packagingProductId?: string;
@@ -365,7 +368,7 @@ function FactoringField({ form, setForm, totalValue }: {
 
 export default function SaleOrderFormPanel({
   form, setForm, items, setItems, clients, representatives, references,
-   isAdmin, selectedClientId, onClientSelect, onSubmit, onCancel, isPending, submitLabel,
+   isAdmin, selectedClientId, onClientSelect, onSubmit, onCancel, onUserEdit, isPending, submitLabel,
    packagingProductId, onPackagingProductChange, packagingQuantity: _packagingQuantity, onPackagingQuantityChange,
    onSaveStateAndNavigate,
    minBillingISO, computingMinBilling, onColorIssueChange,
@@ -847,6 +850,20 @@ export default function SaleOrderFormPanel({
        // o botão — submete mesmo com o Salvar desabilitado, furando toda a
        // validação que este mesmo diff endureceu. Quem quiser salvar pelo teclado
        // tabula até o botão.
+       // Marca "sujo" por EVENTO DE DOM, não por comparar snapshot do form.
+       //
+       // Snapshot não funciona aqui: os efeitos de hidratação (representante,
+       // cliente) alteram `form` DEPOIS do load, então qualquer baseline tirado na
+       // montagem nasceria diferente e todo PV seria "sujo". Um aviso que dispara
+       // sempre treina o usuário a clicar "sair" sem ler, e aí ele não protege
+       // nada. Evento de input só acontece quando alguém digita de verdade.
+       //
+       // ⚠ Lacuna conhecida: Radix Select (mês, semana, condição de pagamento) não
+       // emite `input` nem `change` — mexer só neles não marca sujo. Preferi errar
+       // para o lado de avisar de MENOS: falso-negativo perde um aviso, falso-
+       // positivo destrói a confiança em todos os outros.
+       onInput={onUserEdit}
+       onChange={onUserEdit}
        onKeyDown={(e) => {
          if (e.key !== 'Enter') return;
          const el = e.target as HTMLElement;

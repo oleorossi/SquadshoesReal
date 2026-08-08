@@ -348,6 +348,28 @@ export default function SaleOrderForm() {
       s: Array.isArray((i as any).strap_colors) ? (i as any).strap_colors.map((x: any) => x?.color || '') : [],
     })).sort((a, b) => (a.r + a.c).localeCompare(b.r + b.c)),
   );
+  // Alterações não salvas. Alimentado por evento de DOM vindo do painel — ver a
+  // nota no <form> de SaleOrderFormPanel sobre por que snapshot não serve aqui.
+  // ⚠ `originalItemsSigRef` NÃO serve de baseline: ele cobre só os campos de
+  // COMPRA do item (itemsPurchaseSig), não o formulário.
+  const [hasUnsavedEdits, setHasUnsavedEdits] = useState(false);
+  const [pendingExit, setPendingExit] = useState<null | (() => void)>(null);
+
+  // Guarda de F5 / fechar aba / sair do site. Só o nativo do browser funciona
+  // aqui; diálogo próprio não é permitido neste evento.
+  useEffect(() => {
+    if (!hasUnsavedEdits) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [hasUnsavedEdits]);
+
+  /** Envolve uma saída de tela: sem edição pendente sai direto; com edição, pergunta. */
+  const guardExit = (go: () => void) => () => {
+    if (!hasUnsavedEdits) { go(); return; }
+    setPendingExit(() => go);
+  };
+
   const originalItemsSigRef = useRef<string | null>(null);
   const originalDeadlineRef = useRef<string | null>(null);
   useEffect(() => {
@@ -668,6 +690,11 @@ export default function SaleOrderForm() {
     // pedido específico do user pra cor nova). Override entra depois.
     const isOverride = !!(f as any).manual_billing_override;
     const handlePostSave = async (pvId: string | undefined) => {
+      // Salvou: desarma a guarda. Sem isto o beforeunload continuaria disparando
+      // depois do save, e os diálogos de pós-save (tiras, OS, costura) navegam
+      // sozinhos — o usuário levaria um aviso de "alterações não salvas" logo
+      // depois de o toast dizer que salvou.
+      setHasUnsavedEdits(false);
       void checkMarginAfterSave(pvId);
       if (!pvId) { navigate('/sales'); return; }
       try {
@@ -1372,7 +1399,7 @@ export default function SaleOrderForm() {
           description={isEdit ? 'Atualize os dados e itens do pedido comercial' : 'Preencha os dados para criar um novo pedido comercial'}
           actions={
             <>
-              <Button variant="outline" size="sm" className="h-9 gap-1.5" onClick={() => navigate('/sales')}>
+              <Button variant="outline" size="sm" className="h-9 gap-1.5" onClick={guardExit(() => navigate('/sales'))}>
                 <ArrowLeft className="h-4 w-4" /> Voltar
               </Button>
               {/* Audit visual #16: mostra order_number (PV-2026-XXXXX) em vez
@@ -1418,7 +1445,8 @@ export default function SaleOrderForm() {
           selectedClientId={selectedClientId}
           onClientSelect={handleClientSelect}
           onSubmit={handleSubmit}
-          onCancel={() => navigate('/sales')}
+          onCancel={guardExit(() => navigate('/sales'))}
+          onUserEdit={() => setHasUnsavedEdits(true)}
           isPending={createOrder.isPending || updateOrder.isPending || checkingStock || computingMinBilling}
           submitLabel={
             computingMinBilling
@@ -1765,6 +1793,39 @@ export default function SaleOrderForm() {
           if (genOsPvId) queryClient.invalidateQueries({ queryKey: ['pv_service_orders', genOsPvId] });
         }}
       />
+
+      {/* Saída com alterações pendentes. Cobre Voltar e Cancelar (navegação
+          interna do router, que o beforeunload NÃO pega — ele só vale pra F5,
+          fechar aba e sair do site). */}
+      <AlertDialog open={pendingExit !== null} onOpenChange={(o) => { if (!o) setPendingExit(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Sair sem salvar?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Você alterou este pedido e ainda não salvou. Sair agora descarta o que foi digitado.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Continuar editando</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              // preventDefault pelo mesmo motivo do AlertDialog de /sales: o
+              // Action é um Dialog.Close e fecharia por conta própria depois do
+              // nosso handler. Aqui o efeito seria só cosmético, mas o padrão fica
+              // consistente e à prova de encadear outro diálogo depois.
+              onClick={(e) => {
+                e.preventDefault();
+                const go = pendingExit;
+                setPendingExit(null);
+                setHasUnsavedEdits(false);
+                go?.();
+              }}
+            >
+              Descartar e sair
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

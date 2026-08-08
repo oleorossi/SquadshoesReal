@@ -1646,6 +1646,23 @@ export function useResyncOPsFromSheets() {
       let totalResyncedOPs = 0;
       const errors: string[] = [];
 
+      // Roteiros das fichas, buscados UMA vez. Antes era um select por OP dentro
+      // do laço (passo 9) — com ~58 OPs ativas, 58 consultas idênticas em série
+      // pra ler uma coluna de uma tabela de 53 linhas. A tabela inteira cabe numa
+      // consulta só. (auditoria PV 07/08/2026)
+      //
+      // ⚠ Só o SELECT saiu do laço. As 6 RPCs de estorno/débito continuam por OP,
+      // de propósito: a ordem canônica entre elas é load-bearing
+      // (release_order_reservations antes de tudo, pra não orfanar
+      // reservation_batches; restore_sole_grade antes de restore_product_stocks).
+      // Paralelizar ou reordenar aquilo corrompe estoque.
+      const { data: allSheets } = await supabase
+        .from('technical_sheets')
+        .select('id, production_sectors');
+      const sectorsBySheet = new Map<string, any>(
+        (allSheets || []).map((s: any) => [s.id, s.production_sectors]),
+      );
+
       for (const so of activeOrders) {
         try {
           // Get existing OPs for this sale order
@@ -1780,13 +1797,9 @@ export function useResyncOPsFromSheets() {
 
               // 9. Recreate stages from technical sheet
               const DEFAULT_STAGES = DEFAULT_OP_STAGES;
-              const { data: sheetData } = await supabase
-                .from('technical_sheets')
-                .select('production_sectors')
-                .eq('id', op.reference_id)
-                .single();
-              const sectorNames = (sheetData?.production_sectors && Array.isArray(sheetData.production_sectors) && sheetData.production_sectors.length > 0)
-                ? sheetData.production_sectors.map((x: any) => String(x))
+              const sheetSectors = sectorsBySheet.get(op.reference_id);
+              const sectorNames = (sheetSectors && Array.isArray(sheetSectors) && sheetSectors.length > 0)
+                ? sheetSectors.map((x: any) => String(x))
                 : DEFAULT_STAGES.map(s => s.name);
               const rows = sectorNames.map((name: string, idx: number) => {
                 return {
