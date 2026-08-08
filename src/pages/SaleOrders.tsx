@@ -380,6 +380,8 @@ export default function SaleOrders() {
     title: string;
     description: ReactNode;
     actionLabel: string;
+    /** Pinta o botão de confirmação como destrutivo (excluir, cancelar). */
+    destructive?: boolean;
     onConfirm: () => void | Promise<void>;
   }>(null);
 
@@ -750,28 +752,41 @@ export default function SaleOrders() {
     );
   }, [dupGroupId, clients, alreadyCopiedClientIds]);
 
-  const handleBulkDelete = async () => {
-    if (selectedIds.size === 0) return;
+  // Excluir desceu de window.prompt ("digite EXCLUIR <N>") para o mesmo
+  // AlertDialog de Aprovar/Cancelar (decisão do dono, 07/08/2026).
+  //
+  // O prompt nasceu do incidente de mai/2026 — 7 PVs sumiram com um OK acidental
+  // no window.confirm — e a lição continua válida: confirmação passiva não serve.
+  // O que mudou é a CALIBRAGEM: exclusão aqui é soft-delete restaurável por
+  // admin/gerente, enquanto aprovar em massa (que ia sem confirmação alguma)
+  // dispara o pipeline produtivo. A fricção foi para onde o estrago é maior, e o
+  // AlertDialog — ação destrutiva explícita, com a lista dos PVs à vista — é mais
+  // forte que o confirm que causou o incidente.
+  const handleBulkDelete = () => {
+    const n = selectedIds.size;
+    if (n === 0) return;
+    setPendingConfirm({
+      title: `Excluir ${n} pedido${n === 1 ? '' : 's'}?`,
+      description: (
+        <div className="space-y-2">
+          <div className="space-y-1 rounded-md border border-border/60 bg-muted/30 p-3 text-sm">
+            {orders.filter(o => selectedIds.has(o.id)).slice(0, 5).map(o => (
+              <div key={o.id}>{o.order_number} — {o.client_name || '—'}</div>
+            ))}
+            {n > 5 && <div className="text-muted-foreground">… e mais {n - 5}</div>}
+          </div>
+          <p className="text-muted-foreground">Os pedidos ficam ocultos e podem ser restaurados por admin ou gerente.</p>
+        </div>
+      ),
+      actionLabel: `Excluir (${n})`,
+      destructive: true,
+      onConfirm: () => { void doBulkDelete(); },
+    });
+  };
+
+  const doBulkDelete = async () => {
     const ids = Array.from(selectedIds);
-    const sample = orders
-      .filter(o => selectedIds.has(o.id))
-      .slice(0, 5)
-      .map(o => `• ${o.order_number} (${o.client_name || '—'})`)
-      .join('\n');
-    const more = ids.length > 5 ? `\n... e mais ${ids.length - 5}` : '';
-    // Anti-acidente: window.prompt obriga digitar exatamente "EXCLUIR <N>".
-    // window.confirm sozinho permitia OK acidental → 7 PVs sumiram em mai/2026.
-    const expectedText = `EXCLUIR ${ids.length}`;
-    const typed = window.prompt(
-      `Você está EXCLUINDO ${ids.length} pedido${ids.length === 1 ? '' : 's'}:\n\n${sample}${more}\n\n` +
-      `Os pedidos ficam OCULTOS (podem ser restaurados por admin/gerente).\n\n` +
-      `Para confirmar, digite exatamente: ${expectedText}`,
-      ''
-    );
-    if (typed !== expectedText) {
-      if (typed !== null) toast.error('Texto digitado não confere. Exclusão cancelada.');
-      return;
-    }
+    if (ids.length === 0) return;
     const results = await Promise.allSettled(ids.map(id => deleteOrder.mutateAsync(id)));
     const failed = results.filter(r => r.status === 'rejected').length;
     setSelectedIds(new Set());
@@ -950,8 +965,43 @@ export default function SaleOrders() {
 
   // Aprovar e cancelar delegam ao mesmo fluxo do diálogo de status para não
   // contornar guards de viabilidade nem o tratamento parcial de falhas.
-  const handleBulkApprove = () => handleBulkStatusChange('Aprovado');
-  const handleBulkCancel = () => handleBulkStatusChange('Cancelado');
+  // Fricção invertida (decisão do dono, 07/08/2026). Aprovar e Cancelar em massa
+  // iam em 1 CLIQUE, enquanto Excluir — que é soft-delete restaurável — exigia
+  // digitar uma frase. A justificativa certa é MAGNITUDE DE EFEITO COLATERAL, não
+  // reversibilidade: aprovar dispara o pipeline produtivo (OPs, reserva/débito de
+  // material, contas a receber), e desfazer isso é muito mais caro do que
+  // restaurar um PV oculto.
+  const confirmBulkStatus = (status: string, verbo: string, extra?: string, destructive = false) => () => {
+    const n = selectedIds.size;
+    if (n === 0) return;
+    setPendingConfirm({
+      title: `${verbo} ${n} pedido${n === 1 ? '' : 's'}?`,
+      description: (
+        <div className="space-y-2">
+          <div className="space-y-1 rounded-md border border-border/60 bg-muted/30 p-3 text-sm">
+            {orders.filter(o => selectedIds.has(o.id)).slice(0, 5).map(o => (
+              <div key={o.id}>{o.order_number} — {o.client_name || '—'}</div>
+            ))}
+            {n > 5 && <div className="text-muted-foreground">… e mais {n - 5}</div>}
+          </div>
+          {extra && <p className="text-muted-foreground">{extra}</p>}
+        </div>
+      ),
+      actionLabel: `${verbo} (${n})`,
+      destructive,
+      onConfirm: () => { void handleBulkStatusChange(status); },
+    });
+  };
+
+  const handleBulkApprove = confirmBulkStatus(
+    'Aprovado', 'Aprovar',
+    'Gera as ordens de produção, reserva/debita material e cria as contas a receber.',
+  );
+  const handleBulkCancel = confirmBulkStatus(
+    'Cancelado', 'Cancelar',
+    'Libera as reservas de material dos pedidos cancelados.',
+    true,
+  );
   const handleBulkExport = () => {
     const list = selectedIds.size > 0 ? filteredOrders.filter(o => selectedIds.has(o.id)) : filteredOrders;
     handleExportSaleOrdersExcel(list);
@@ -1205,7 +1255,7 @@ export default function SaleOrders() {
   };
 
   const handleBulkGenerateOPs = async (viabilityConfirmed = false) => {
-    if (pendingOrders.length === 0) { toast.info('Nenhum pedido pendente.'); return; }
+    if (pendingOrders.length === 0) { toast.info('Nenhum rascunho para aprovar.'); return; }
 
     // Pré-check de viabilidade: bloqueia approval em massa de PVs com
     // delivery_deadline anterior à data mínima viável (capacidade dos
@@ -1724,10 +1774,32 @@ export default function SaleOrders() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => { void handleBulkGenerateOPs(); }}
+                // Confirmação com CONTAGEM antes de rodar. Esta é a ação mais cara
+                // da tela — aprova rascunhos, gera OPs, debita estoque e cria
+                // contas a receber — e ia em 1 clique, sem aviso. O escopo segue
+                // sendo a base inteira (decisão do dono, 07/08/2026): ela ignora
+                // aba, filtro e seleção de propósito, por ser rotina de fim de dia.
+                // O que faltava era o usuário saber QUANTOS antes de disparar.
+                onClick={() => {
+                  if (pendingOrders.length === 0) { toast.info('Nenhum rascunho para aprovar.'); return; }
+                  setPendingConfirm({
+                    title: `Gerar OPs para ${pendingOrders.length} rascunho(s)?`,
+                    description: (
+                      <div className="space-y-2">
+                        <p>Isto aprova <strong>todos</strong> os pedidos em Rascunho do sistema — não apenas os da aba ou do filtro atual.</p>
+                        <p className="text-muted-foreground">Gera as ordens de produção, reserva/debita material e cria as contas a receber.</p>
+                      </div>
+                    ),
+                    actionLabel: `Gerar OPs (${pendingOrders.length})`,
+                    onConfirm: () => { void handleBulkGenerateOPs(); },
+                  });
+                }}
                 disabled={generatingOPs}
                 className="h-9 gap-2"
-                title={pendingOrders.length > 0 ? `Aprovar ${pendingOrders.length} pendente(s)` : 'Não há pedidos pendentes'}
+                // "rascunho", não "pendente": pendingOrders filtra status === 'Rascunho',
+                // e 'Pendente' é OUTRO status canônico — o rótulo antigo apontava
+                // para o conjunto errado.
+                title={pendingOrders.length > 0 ? `Aprovar ${pendingOrders.length} rascunho(s)` : 'Não há rascunhos para aprovar'}
               >
                 {generatingOPs ? <Loader2 className="h-4 w-4 animate-spin" /> : <Factory className="h-4 w-4" />}
                 <span className="hidden sm:inline">Gerar OPs</span>
@@ -3125,6 +3197,10 @@ export default function SaleOrders() {
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction
+              // Ação destrutiva (excluir/cancelar) tem que PARECER destrutiva —
+              // senão o diálogo de excluir 12 PVs é visualmente idêntico ao de
+              // aprovar 12, e a confirmação vira reflexo em vez de decisão.
+              className={pendingConfirm?.destructive ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90' : undefined}
               onClick={() => { const fn = pendingConfirm?.onConfirm; setPendingConfirm(null); void fn?.(); }}
             >
               {pendingConfirm?.actionLabel}
