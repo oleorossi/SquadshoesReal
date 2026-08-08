@@ -6,7 +6,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { useDebounce } from 'use-debounce';
 import { getSignedUrl } from '@/lib/getSignedUrl';
-import { resolveMaterialLabel } from '@/lib/labelUtils';
+import { resolveMaterialLabels, materialLabelKey } from '@/lib/labelUtils';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import PendenciasView from '@/components/sale-orders/PendenciasView';
@@ -1099,34 +1099,102 @@ export default function SaleOrders() {
     try {
       const selectedOrders = orders.filter(o => selectedIds.has(o.id));
       const labels: Parameters<typeof buildThermalLabelsHtml>[0] = [];
+
+      // ── Tudo em LOTE ────────────────────────────────────────────────────────
+      // Antes: 1 query de OPs por PV + 4 queries SEQUENCIAIS por OP (ficha,
+      // variante de cor, item do PV, material) — e o resolveMaterialLabel ainda
+      // fazia de 1 a 4 por dentro. Para 10 PVs davam ~290 idas e voltas EM SÉRIE,
+      // com a janela de impressão já aberta e em branco o tempo todo. Nada era
+      // deduplicado: 6 OPs da mesma referência refaziam a mesma consulta 6 vezes.
+      // (auditoria PV 07/08/2026)
+      const orderIds = selectedOrders.map(o => o.id);
+      const { data: allOps } = await supabase
+        .from('orders')
+        .select('id, order_number, reference_id, color, grade, quantity, sale_order_item_id, sale_order_id')
+        .in('sale_order_id', orderIds);
+      if (!allOps || allOps.length === 0) { toast.info('Nenhuma etiqueta para gerar.'); return; }
+
+      const refIds = [...new Set(allOps.map((o: any) => o.reference_id).filter(Boolean))];
+      const soiIds = [...new Set(allOps.map((o: any) => o.sale_order_item_id).filter(Boolean))];
+
+      const [sheetsRes, variantsRes, soiRes] = await Promise.all([
+        supabase.from('technical_sheets').select('id, image_url, images, shoe_category, code, name').in('id', refIds),
+        supabase.from('reference_color_variants').select('reference_id, color, image_url, barcode').in('reference_id', refIds),
+        soiIds.length > 0
+          ? (supabase as any).from('sale_order_items').select('id, material_variant_id').in('id', soiIds)
+          : Promise.resolve({ data: [] }),
+      ]);
+
+      const sheetById = new Map<string, any>((sheetsRes.data || []).map((r: any) => [r.id, r]));
+      // ⚠ Chave (reference_id + cor), NÃO só reference_id: o código de barras
+      // varia POR COR. Indexar só pela referência faria etiquetas visualmente
+      // corretas apontarem para o produto errado no leitor.
+      //
+      // ⚠ Cor CRUA, sem trim/uppercase — é a semântica exata do `.eq('color', …)`
+      // que este lote substituiu. Normalizar pareceu mais robusto e é pior: duas
+      // grafias da mesma cor na mesma referência colidiriam na chave e uma
+      // venceria em silêncio, imprimindo o código de barras do produto errado.
+      // Sem normalizar, cor divergente simplesmente não casa e cai no fallback de
+      // antes (o número da OP). Medido em 08/08/2026: zero colisões e zero OPs
+      // que mudariam de resultado — os dois caminhos dão o MESMO hoje, então
+      // fica o que não tem risco latente.
+      const variantKey = (refId: string, color: string) => `${refId}|${color || ''}`;
+      const variantByRefColor = new Map<string, any>(
+        (variantsRes.data || []).map((v: any) => [variantKey(v.reference_id, v.color), v]),
+      );
+      const materialVariantBySoi = new Map<string, string | null>(
+        ((soiRes as any).data || []).map((r: any) => [r.id, r.material_variant_id || null]),
+      );
+
+      // Materiais: 1 chamada em lote no lugar de uma (com 1–4 queries dentro) por OP.
+      const materialByKey = await resolveMaterialLabels(
+        allOps.map((op: any) => ({
+          referenceId: op.reference_id,
+          materialVariantId: materialVariantBySoi.get(op.sale_order_item_id) ?? null,
+          color: op.color || '',
+        })),
+      ).catch(() => new Map<string, string>());
+
+      // URLs assinadas: dedup por URL crua e um Promise.all só.
+      const rawUrls = new Set<string>();
+      for (const op of allOps as any[]) {
+        const sheet = sheetById.get(op.reference_id);
+        const rawRef = (sheet?.images as string[] | null)?.[0] || sheet?.image_url || '';
+        if (rawRef) rawUrls.add(rawRef);
+        const v = variantByRefColor.get(variantKey(op.reference_id, op.color || ''));
+        if (v?.image_url) rawUrls.add(v.image_url);
+      }
+      const signedList = await Promise.all(
+        [...rawUrls].map(async (u) => [u, await getSignedUrl(u).catch(() => '')] as const),
+      );
+      const signedByRaw = new Map<string, string>(signedList);
+
+      const opsBySaleOrder = new Map<string, any[]>();
+      for (const op of allOps as any[]) {
+        const arr = opsBySaleOrder.get(op.sale_order_id) || [];
+        arr.push(op);
+        opsBySaleOrder.set(op.sale_order_id, arr);
+      }
+
+      // A montagem abaixo continua na MESMA ordem de antes (por PV, por OP, por
+      // numeração da grade) — o maço impresso não pode mudar de ordem.
       for (const order of selectedOrders) {
         const displayOrderNumber = order.client_order_number || order.order_number || '';
-        const { data: linkedOps } = await supabase.from('orders').select('id, order_number, reference_id, color, grade, quantity, sale_order_item_id').eq('sale_order_id', order.id);
+        const linkedOps = opsBySaleOrder.get(order.id);
         if (!linkedOps || linkedOps.length === 0) continue;
         for (const op of linkedOps) {
-          const { data: refData } = await supabase.from('technical_sheets').select('image_url, images, shoe_category, code, name').eq('id', op.reference_id).single();
+          const refData = sheetById.get(op.reference_id);
           const rawRefImageUrl = ((refData as any)?.images as string[] | null)?.[0] || refData?.image_url || '';
-          const refImageUrl = await getSignedUrl(rawRefImageUrl);
+          const refImageUrl = rawRefImageUrl ? (signedByRaw.get(rawRefImageUrl) || '') : '';
           const color = op.color || '';
-          // O código de barras varia por cor; usar o da referência faria etiquetas
-          // visualmente corretas apontarem para o produto errado no leitor.
-          const { data: variant } = await supabase.from('reference_color_variants').select('image_url, barcode').eq('reference_id', op.reference_id).eq('color', color).maybeSingle();
+          const variant = variantByRefColor.get(variantKey(op.reference_id, color));
           const labelBarcode = variant?.barcode || op.order_number || '';
-          const imgUrl = variant?.image_url ? await getSignedUrl(variant.image_url) : refImageUrl;
-          let itemVariantId: string | null = null;
-          if ((op as any).sale_order_item_id) {
-            const { data: soi } = await (supabase as any)
-              .from('sale_order_items')
-              .select('material_variant_id')
-              .eq('id', (op as any).sale_order_item_id)
-              .maybeSingle();
-            itemVariantId = soi?.material_variant_id || null;
-          }
-          const mainMaterial = await resolveMaterialLabel({
+          const imgUrl = variant?.image_url ? (signedByRaw.get(variant.image_url) || '') : refImageUrl;
+          const mainMaterial = materialByKey.get(materialLabelKey({
             referenceId: op.reference_id,
-            materialVariantId: itemVariantId,
+            materialVariantId: materialVariantBySoi.get(op.sale_order_item_id) ?? null,
             color,
-          }).catch(() => '');
+          })) || '';
           const grade = op.grade as Record<string, number> | null;
           if (grade && Object.keys(grade).length > 0) {
             for (const [size, qty] of Object.entries(grade)) {
