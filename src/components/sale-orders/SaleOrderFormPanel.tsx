@@ -1,5 +1,5 @@
  import { useMemo, useEffect, useRef, useState, useCallback, Fragment } from 'react';
-import { Plus, CircleNotch as Loader2, User, Truck, ClipboardText as ClipboardList, Info, Percent, CaretUpDown as ChevronsUpDown, CaretDown, Check, ClockCounterClockwise as History, Warning as AlertTriangle, CheckCircle as CheckCircle2, Calculator, Money as Banknote, Receipt, Package, Phone, EnvelopeSimple } from '@phosphor-icons/react';
+import { Plus, CircleNotch as Loader2, User, Truck, ClipboardText as ClipboardList, Info, Percent, CaretUpDown as ChevronsUpDown, CaretDown, Check, ClockCounterClockwise as History, Warning as AlertTriangle, CheckCircle as CheckCircle2, Calculator, Money as Banknote, Receipt, Package, Phone, EnvelopeSimple, CopySimple as Copy } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -89,6 +89,10 @@ interface Props {
   packagingQuantity?: number;
   onPackagingQuantityChange?: (qty: number) => void;
   onSaveStateAndNavigate?: () => void;
+  /** "Copiar p/ novo PV" na barra de lote: recebe os índices selecionados e o
+   *  pai (SaleOrderForm em modo edição) semeia /sales/new com esses itens +
+   *  dados do cliente deste pedido. Ausente = botão não aparece (criação). */
+  onCopyToNewOrder?: (indices: number[]) => void;
   /** Data mínima viável calculada (ISO yyyy-mm-dd). Quando delivery_deadline < esta data,
    *  exibe alerta vermelho persistente ao lado do campo. */
   minBillingISO?: string | null;
@@ -370,7 +374,7 @@ export default function SaleOrderFormPanel({
   form, setForm, items, setItems, clients, representatives, references,
    isAdmin, selectedClientId, onClientSelect, onSubmit, onCancel, onUserEdit, isPending, submitLabel,
    packagingProductId, onPackagingProductChange, packagingQuantity: _packagingQuantity, onPackagingQuantityChange,
-   onSaveStateAndNavigate,
+   onSaveStateAndNavigate, onCopyToNewOrder,
    minBillingISO, computingMinBilling, onColorIssueChange,
  }: Props) {
    const [showDuplicateDialog, setShowDuplicateDialog] = useState(false);
@@ -1853,6 +1857,23 @@ export default function SaleOrderFormPanel({
               Aplicar
             </Button>
           </div>
+          {/* Cópia parcial (só na edição): leva os itens selecionados pra um PV
+              novo em Rascunho, aproveitando cliente + condições comerciais deste
+              pedido. O pai decide o que viaja no seed — ver SaleOrderForm. */}
+          {onCopyToNewOrder && (
+            <div className="flex items-center border-l border-primary/30 pl-3">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => onCopyToNewOrder(Array.from(selectedItemIndices).sort((a, b) => a - b))}
+                className="h-8 text-xs gap-1"
+                title="Cria um novo PV em Rascunho com os itens selecionados, usando os dados do cliente deste pedido"
+              >
+                <Copy className="h-3.5 w-3.5" /> Copiar p/ novo PV
+              </Button>
+            </div>
+          )}
           <div className="ml-auto flex items-center gap-2">
             <Button
               type="button"
