@@ -6,6 +6,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { SearchInput } from '@/components/ui/search-input';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import {
   ArrowLeft, ArrowsInSimple, ArrowsOutSimple, CheckSquare, Funnel, Highlighter,
   Info, Kanban as KanbanIcon, Package, QrCode, Warning as AlertTriangle, X,
@@ -158,12 +159,10 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
   const [dragOverSector, setDragOverSector] = useState<string | null>(null);
   const [landedId, setLandedId] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (embedded) return; // dentro do ERP o título é da rota, não desta tela
-    const prev = document.title;
-    document.title = 'Central de Produção · Squad Shoes';
-    return () => { document.title = prev; };
-  }, [embedded]);
+  // ⚠ Nada de document.title na mão aqui: o EditorialPageHeader (renderizado
+  // logo abaixo, só quando `!embedded`) já grava `${title} · Squad Shoes` e
+  // restaura o anterior ao desmontar. Dois donos do mesmo título brigam — o
+  // último efeito a rodar vence e o restore devolve o valor errado.
 
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 30_000);
@@ -629,22 +628,33 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
     <div className={`flex flex-col overflow-hidden bg-background text-foreground ${
       embedded ? 'h-[calc(100dvh-11rem)] min-h-[32rem]' : 'h-dvh'
     }`}>
-      {/* ── Barra de comando ─────────────────────────────────────────────── */}
-      <div className="shrink-0 border-b border-border bg-card px-2 md:px-3 py-2 flex items-center gap-2 md:gap-3 flex-wrap">
-        {!embedded && (
-          <>
-            <Button asChild variant="ghost" size="sm" className="h-11 md:h-8 gap-1.5 px-2 shrink-0" title="Voltar pro Kanban no ERP">
+      {/* ── Cabeçalho editorial (só na rota dedicada) ────────────────────
+          Substitui o par eyebrow+display inline que vivia dentro da barra de
+          comando. `shrink-0`: num container `h-dvh` com `overflow-hidden`,
+          quem cede altura é o quadro (`flex-1 min-h-0`), nunca o cabeçalho.
+          `live` porque o quadro é realtime (useRealtimeOrderStages) — o selo
+          de frescor com a hora do último dado continua na barra de comando,
+          onde o modo `embedded` também o enxerga. */}
+      {!embedded && (
+        <EditorialPageHeader
+          sectionLabel="PRODUÇÃO · KANBAN · GESTÃO"
+          title="Central de Produção"
+          live
+          className="shrink-0 px-2 md:px-3 pt-3"
+          actions={
+            /* h-11 no celular: o chão de fábrica opera esta tela no toque —
+               é a mesma altura dos outros botões da barra de comando. */
+            <Button asChild variant="outline" size="sm" className="h-11 md:h-9 gap-1.5" title="Voltar pro Kanban no ERP">
               <Link to="/producao/kanban" aria-label="Voltar pro Kanban">
-                <ArrowLeft className="h-4 w-4" /> <span className="hidden sm:inline">Kanban</span>
+                <ArrowLeft className="h-4 w-4" /> Kanban
               </Link>
             </Button>
-            <div className="shrink-0 leading-none">
-              <span className="ed-eyebrow block">PRODUÇÃO · GESTÃO</span>
-              <span className="ed-display text-base md:text-lg leading-none">CENTRAL DE PRODUÇÃO</span>
-            </div>
-          </>
-        )}
+          }
+        />
+      )}
 
+      {/* ── Barra de comando ─────────────────────────────────────────────── */}
+      <div className="shrink-0 border-b border-border bg-card px-2 md:px-3 py-2 flex items-center gap-2 md:gap-3 flex-wrap">
         <SearchInput
           value={search}
           onChange={setSearch}

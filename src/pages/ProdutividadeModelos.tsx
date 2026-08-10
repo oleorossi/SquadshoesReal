@@ -32,6 +32,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/ui/empty-state";
+import { EditorialPageHeader } from "@/components/layout/EditorialPageHeader";
 import { cn, formatCurrency, formatNumber } from "@/lib/utils";
 import { SectorTeamPanel } from "@/components/production/SectorTeamPanel";
 import { SectorOperationsDialog } from "@/components/production/SectorOperationsDialog";
@@ -278,16 +279,61 @@ export default function ProdutividadeModelos() {
 
   return (
     <div className="space-y-5 p-4 md:p-6 max-w-[1220px] mx-auto">
-      {/* Header */}
-      <div className="space-y-1">
-        <p className="text-[11px] font-mono uppercase tracking-widest text-muted-foreground">Produção · Engenharia</p>
-        <h1 className="display text-2xl md:text-3xl uppercase">Produtividade por Modelo</h1>
-        <p className="text-sm text-muted-foreground max-w-2xl">
-          Gargalo, pares/dia da equipe atual e custo por par (custo-minuto × gargalo) — direto da ficha técnica.
-        </p>
-      </div>
+      {/* Header canônico do sistema. Os parâmetros vigentes viraram o `meta`
+          (mono, números em <strong>) — é a mesma linha de antes, agora colada
+          no título em vez de solta abaixo da toolbar. */}
+      <EditorialPageHeader
+        sectionLabel="PRODUÇÃO · PRODUTIVIDADE"
+        title="Produtividade por Modelo"
+        description="Gargalo, pares/dia da equipe atual e custo por par (custo-minuto × gargalo) — direto da ficha técnica."
+        meta={
+          params ? (
+            <>
+              JORNADA <strong>{formatNumber(params.journey_minutes / 60, 1)}H</strong>
+              {"  ·  "}EFICIÊNCIA <strong>{formatNumber(params.efficiency_pct, 0)}%</strong>
+              {"  ·  "}DIAS ÚTEIS <strong>{formatNumber(params.working_days_per_month, 0)}</strong>
+              {result?.params?.overhead_monthly_total != null && (
+                <>
+                  {"  ·  "}FIXO MENSAL <strong>{formatCurrency(result.params.overhead_monthly_total)}</strong>
+                </>
+              )}
+            </>
+          ) : undefined
+        }
+        actions={
+          <>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-9"
+              onClick={() => {
+                setParamsDraft({
+                  journey_minutes: String(params?.journey_minutes ?? ""),
+                  efficiency_pct: String(params?.efficiency_pct ?? ""),
+                  working_days_per_month: String(params?.working_days_per_month ?? ""),
+                });
+                setParamsOpen(true);
+              }}
+            >
+              <Sliders className="h-4 w-4 mr-1.5" /> Parâmetros
+            </Button>
+            <Button
+              size="sm"
+              className="h-9"
+              onClick={() => setTeamOpen(true)}
+            >
+              <UsersThree className="h-4 w-4 mr-1.5" /> Equipe
+              {setoresPendentes > 0
+                ? ` (${setoresPendentes} pendente${setoresPendentes === 1 ? "" : "s"})`
+                : teamTotal > 0
+                  ? ` (${formatNumber(teamTotal, teamTotal % 1 ? 1 : 0)})`
+                  : ""}
+            </Button>
+          </>
+        }
+      />
 
-      {/* Toolbar */}
+      {/* Toolbar: seleção de fichas (as ações da página foram pro header) */}
       <div className="flex flex-wrap items-center gap-2">
         {selectedIds.map((id) => (
           <Button key={id} variant="outline" size="sm" className="h-9" onClick={() => toggleSheet(id)}>
@@ -298,49 +344,7 @@ export default function ProdutividadeModelos() {
         <Button variant="outline" size="sm" className="h-9 border-dashed" onClick={() => setPickerOpen(true)}>
           <Plus className="h-4 w-4 mr-1.5" /> Adicionar ficha
         </Button>
-        <div className="flex-1 min-w-2" />
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-9"
-          onClick={() => {
-            setParamsDraft({
-              journey_minutes: String(params?.journey_minutes ?? ""),
-              efficiency_pct: String(params?.efficiency_pct ?? ""),
-              working_days_per_month: String(params?.working_days_per_month ?? ""),
-            });
-            setParamsOpen(true);
-          }}
-        >
-          <Sliders className="h-4 w-4 mr-1.5" /> Parâmetros
-        </Button>
-        <Button
-          size="sm"
-          className="h-9"
-          onClick={() => setTeamOpen(true)}
-        >
-          <UsersThree className="h-4 w-4 mr-1.5" /> Equipe
-          {setoresPendentes > 0
-            ? ` (${setoresPendentes} pendente${setoresPendentes === 1 ? "" : "s"})`
-            : teamTotal > 0
-              ? ` (${formatNumber(teamTotal, teamTotal % 1 ? 1 : 0)})`
-              : ""}
-        </Button>
       </div>
-
-      {/* Linha de parâmetros vigentes */}
-      {params && (
-        <p className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground">
-          Jornada <span className="text-foreground font-semibold">{formatNumber(params.journey_minutes / 60, 1)}h</span>
-          {"  ·  "}Eficiência <span className="text-foreground font-semibold">{formatNumber(params.efficiency_pct, 0)}%</span>
-          {"  ·  "}Dias úteis <span className="text-foreground font-semibold">{formatNumber(params.working_days_per_month, 0)}</span>
-          {result?.params?.overhead_monthly_total != null && (
-            <>
-              {"  ·  "}Fixo mensal <span className="text-foreground font-semibold">{formatCurrency(result.params.overhead_monthly_total)}</span>
-            </>
-          )}
-        </p>
-      )}
 
       {selectedIds.length === 0 ? (
         <div className="rounded-lg border border-border bg-card">
