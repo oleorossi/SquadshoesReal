@@ -1,6 +1,7 @@
+import { FormSkeleton } from '@/components/layout/PageSkeleton';
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, CircleNotch as Loader2, FileMagnifyingGlass as FileSearch, ArrowCounterClockwise as RotateCcw, Handshake, CheckCircle, Warning as AlertTriangle, PaperPlaneTilt } from '@phosphor-icons/react';
+import { ArrowLeft, FileMagnifyingGlass as FileSearch, ArrowCounterClockwise as RotateCcw, Handshake, CheckCircle, Warning as AlertTriangle, PaperPlaneTilt } from '@phosphor-icons/react';
 import { SendSectorToContractorDialog } from '@/components/sale-orders/SendSectorToContractorDialog';
 // `newISO` é date-only: `new Date(iso)` parseia UTC e o toast confirmava o dia
 // ANTERIOR ao que era gravado em `delivery_deadline`.
@@ -1562,9 +1563,7 @@ export default function SaleOrderForm() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-16">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-      </div>
+      <FormSkeleton blocks={3} fieldsPerBlock={4} />
     );
   }
 

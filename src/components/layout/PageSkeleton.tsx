@@ -186,6 +186,41 @@ export function StatGridSkeleton({ count = 4 }: { count?: number }) {
   );
 }
 
+/**
+ * Formulário de página inteira — título, blocos de campos e barra de ações.
+ *
+ * Existe porque `PageSkeleton` abre com uma grade de 4 KPIs: numa tela de
+ * formulário isso desenha uma estrutura que nunca vai aparecer, que é
+ * justamente o defeito que o skeleton deveria corrigir.
+ */
+export function FormSkeleton({ blocks = 3, fieldsPerBlock = 4 }: { blocks?: number; fieldsPerBlock?: number }) {
+  return (
+    <div className="space-y-6 animate-in fade-in duration-300">
+      <div className="space-y-2">
+        <Skeleton className="h-7 w-64 rounded-md" />
+        <Skeleton className="h-4 w-96 max-w-full rounded" />
+      </div>
+      {Array.from({ length: blocks }).map((_, b) => (
+        <div key={b} className="rounded-lg border p-4 space-y-4">
+          <Skeleton className="h-4 w-40 rounded" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {Array.from({ length: fieldsPerBlock }).map((_, f) => (
+              <div key={f} className="space-y-1.5">
+                <Skeleton className="h-3 w-24 rounded" />
+                <Skeleton className="h-9 w-full rounded-md" />
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+      <div className="flex justify-end gap-2">
+        <Skeleton className="h-10 w-24 rounded-md" />
+        <Skeleton className="h-10 w-32 rounded-md" />
+      </div>
+    </div>
+  );
+}
+
 export function TableSkeleton({
   rows = 8,
   withToolbar = true,

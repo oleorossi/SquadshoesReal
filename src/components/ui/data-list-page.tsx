@@ -18,6 +18,32 @@ const STAT_TONE: Record<string, 'default' | 'primary' | 'success' | 'warning' | 
   default: 'default', primary: 'primary', amber: 'warning', emerald: 'success', destructive: 'destructive',
 };
 
+/**
+ * Chave de invalidação da lista montada pelo `DataListPage`.
+ *
+ * ⚠ USE ESTA FUNÇÃO — não escreva a chave à mão. A query interna registra
+ * `[table, selectCols, orderBy, filters, limit]`, e o React Query casa
+ * invalidação por PREFIXO: invalidar `[table]` atinge todas as variações de
+ * coluna/ordem/filtro/limite da mesma tabela, que é o que se quer depois de
+ * um insert.
+ *
+ * Existe porque a chave era implícita e cada página tinha que adivinhá-la —
+ * e adivinhou errado: até 10/08/2026, 4 dos 5 call sites invalidavam
+ * `['data-list-page']`, string que NUNCA foi registrada por ninguém. A
+ * invalidação era um no-op silencioso: criava-se o registro, o toast de
+ * sucesso aparecia, e a lista só mostrava a linha nova depois de um F5.
+ * Nada quebrava, nada avisava.
+ *
+ * @example
+ *   const create = useMutation({
+ *     mutationFn: async () => { …insert… },
+ *     onSuccess: () => qc.invalidateQueries({ queryKey: dataListPageKey('lgpd_requests') }),
+ *   });
+ */
+export function dataListPageKey(table: string) {
+  return [table] as const;
+}
+
 interface Column {
   key: string;
   label: string;
@@ -87,7 +113,9 @@ export function DataListPage({
   };
   const clearSelection = () => setSelectedIds(new Set());
   const { data: rows = [], isLoading } = useQuery({
-    queryKey: [table, selectCols, orderBy, JSON.stringify(filters), limit],
+    // O prefixo VEM de dataListPageKey pra que a chave registrada aqui e a
+    // chave que os call sites invalidam não possam divergir em silêncio.
+    queryKey: [...dataListPageKey(table), selectCols, orderBy, JSON.stringify(filters), limit],
     queryFn: async () => {
       let q = (supabase as any).from(table).select(selectCols).order(orderBy, { ascending }).limit(limit);
       for (const [k, v] of Object.entries(filters)) {
@@ -256,7 +284,7 @@ export function DataListPage({
                   },
                   onAfter: () => {
                     clearSelection();
-                    qc.invalidateQueries({ queryKey: [table] });
+                    qc.invalidateQueries({ queryKey: dataListPageKey(table) });
                   },
                 });
               },

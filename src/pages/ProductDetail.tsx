@@ -1,3 +1,4 @@
+import { PageSkeleton } from '@/components/layout/PageSkeleton';
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -312,9 +313,7 @@ export default function ProductDetail() {
   if (isLoading) {
     return (
       <AppLayout>
-        <div className="flex items-center justify-center py-20">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        </div>
+        <PageSkeleton />
       </AppLayout>
     );
   }

@@ -3,7 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { HubTabsList } from '@/components/layout/HubTabs';
-import { DataListPage } from '@/components/ui/data-list-page';
+import { DataListPage, dataListPageKey } from '@/components/ui/data-list-page';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -54,7 +54,7 @@ export default function LGPD() {
       if (error) throw error;
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['data-list-page'] });
+      qc.invalidateQueries({ queryKey: dataListPageKey('lgpd_requests') });
       setOpen(false);
       setForm(emptyForm);
       toast.success('Solicitação LGPD registrada');

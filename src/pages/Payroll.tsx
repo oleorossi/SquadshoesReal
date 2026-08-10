@@ -1,3 +1,4 @@
+import { StatGridSkeleton, TableSkeleton } from '@/components/layout/PageSkeleton';
 import { Fragment, useMemo, useState, useEffect } from 'react';
 import { eSemanaFechada } from '@/hooks/useFichaProducaoPagamento';
 import { Button } from '@/components/ui/button';
@@ -859,9 +860,10 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-64 gap-3 text-muted-foreground">
-        <Loader2 className="h-6 w-6 animate-spin" />
-        <span className="text-sm">Carregando...</span>
+      // aba dentro do RHHub — o cabeçalho é do hub, então só o miolo entra aqui
+      <div className="space-y-5">
+        <StatGridSkeleton count={4} />
+        <TableSkeleton rows={8} />
       </div>
     );
   }

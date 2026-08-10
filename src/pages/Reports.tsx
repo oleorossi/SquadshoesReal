@@ -1,6 +1,7 @@
+import { DashboardSkeleton } from '@/components/layout/PageSkeleton';
 import { useMemo, useState } from 'react';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
-import { ShoppingCart, TrendUp as TrendingUp, CurrencyDollar as DollarSign, Percent, Package, Warning as AlertTriangle, Clock, FileText, Download, Funnel as Filter, Calendar, ChartBar as BarChart3, ChartPie as PieChartIcon, MapTrifold as Map, Users, CircleNotch as Loader2, ArrowsClockwise as RefreshCw, FileXls as FileSpreadsheet, Printer, Envelope as Mail, CaretRight as ChevronRight, Pulse as Activity, Stack as Layers, MagnifyingGlassMinus as SearchX } from '@phosphor-icons/react';
+import { ShoppingCart, TrendUp as TrendingUp, CurrencyDollar as DollarSign, Percent, Package, Warning as AlertTriangle, Clock, FileText, Download, Funnel as Filter, Calendar, ChartBar as BarChart3, ChartPie as PieChartIcon, MapTrifold as Map, Users, ArrowsClockwise as RefreshCw, FileXls as FileSpreadsheet, Printer, Envelope as Mail, CaretRight as ChevronRight, Pulse as Activity, Stack as Layers, MagnifyingGlassMinus as SearchX } from '@phosphor-icons/react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -217,9 +218,7 @@ export default function Reports() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-96">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
+      <DashboardSkeleton />
     );
   }
 

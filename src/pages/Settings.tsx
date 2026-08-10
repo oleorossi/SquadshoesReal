@@ -1,3 +1,4 @@
+import { PageSkeleton } from '@/components/layout/PageSkeleton';
 import AppLayout from "@/components/layout/AppLayout";
 import { useState, useMemo, useEffect } from 'react';
 import { Gear as Settings, UserCheck, UserMinus as UserX, Shield, CircleNotch as Loader2, CaretDown as ChevronDown, CaretUp as ChevronUp, Users, Eye, PencilSimple as Pencil, Lock, LockOpen as Unlock, MagnifyingGlass as Search, Envelope as Mail, Calendar, ShieldCheck, ShieldWarning as ShieldAlert, Crown, Briefcase, Factory, Warehouse, Storefront as Store, BookOpen, Receipt, UserGear as UserCog, Trash as Trash2 } from '@phosphor-icons/react';
@@ -594,11 +595,7 @@ export default function SettingsPage() {
 
   if (isLoading) {
     return (
-      
-        <div className="flex items-center justify-center py-20">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        </div>
-      
+      <PageSkeleton />
     );
   }
 
