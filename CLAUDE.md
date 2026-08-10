@@ -114,6 +114,129 @@ supabase db push → DB live
   pros nomes estilo-lucide quando ajudar a legibilidade (`import { CircleNotch as Loader2 } from '@phosphor-icons/react'`).
   Não importar de `lucide-react` (não é a lib do projeto — vira ReferenceError).
 
+### Primitives de página — use antes de reinventar (auditado 10/08/2026)
+
+> Existem primitives que resolvem tela de listagem inteira e **quase ninguém importa** —
+> enquanto **36 telas escrevem `<table>` cru** e há ~25 estados vazios ad-hoc. O problema
+> é **descoberta**, não disciplina: ninguém acha o que não sabe que existe. Esta tabela é
+> o índice. ⚠ Dois dos cinco **não devem ser usados** — ver veredito.
+
+| Primitive | Importações | Veredito |
+|---|---|---|
+| `ui/data-list-page` → `DataListPage` | 5 de 144 telas | ✅ **USE** — resolve a listagem inteira |
+| `ui/data-table` → `DataTable` | 0 | ✅ **USE** quando os dados já estão em memória |
+| `ui/page-container` → `PageContainer`/`PageHeader` | 0 | ❌ **NÃO USE — briga com o `AppLayout`. Candidato a apagar** |
+| `ui/StatusCard.tsx` → `StatusCard` | 0 | ❌ **NÃO USE — redundante com `StatCard` (52 arquivos). Candidato a apagar** |
+| `ui/mini-mark` → `MiniMark` | 0 | ⚠ **quebrado no destino pra que foi feito** (etiqueta) |
+
+Comparativo de adoção, pra calibrar: `ui/panel` **91**, `EditorialPageHeader` **128**,
+`ui/stat-card` **52**. Cauda que já funciona e vale reusar: `ui/selectable-table` (1),
+`ui/list-pagination` (3), `ui/selection-totals-bar` (2 — **específico de financeiro**:
+a API é `count/total/paid/pending/onGeneratePdf`, não serve de barra genérica).
+
+#### `DataListPage` — a que evita as 36 tabelas cruas
+
+Entrega, num componente só: header (`EditorialPageHeader` quando recebe `sectionLabel`),
+**a própria query Supabase**, `StatGrid`/`StatCard`, tabela dentro de `Panel flush`,
+estado de carregando, `EmptyState` e — opcional — checkbox por linha + `BulkActionsBar`
+com exclusão em massa confirmada (`confirmAndBulkDelete`). Você **não** escreve o `useQuery`:
+passa `table` e ele monta `.select().order().limit()` + `.eq()` por `filters`.
+
+```tsx
+<DataListPage
+  sectionLabel="Compliance" title="Solicitações LGPD" table="lgpd_requests"
+  columns={[{ key: 'subject_name', label: 'Titular' },
+            { key: 'status', label: 'Status', align: 'right',
+              render: r => <Badge className={REQ_STATUS[r.status]}>{r.status}</Badge> }]}
+  enableBulkDelete entityLabel="solicitação" displayLabel={r => `• ${r.subject_name}`} />
+```
+
+**QUANDO usar:** listagem chapada de UMA tabela, com filtros de igualdade, ≤100 linhas.
+**Quando NÃO usar:** precisa de `join`/view com agregação, busca textual, ordenação pelo
+usuário, paginação, ou edição inline — aí o custo de contornar o componente passa o de
+escrever a tela. Não force `filters` a virar filtro complexo: ele só faz `.eq()`.
+
+⚠ **A query key é `[table, selectCols, orderBy, JSON.stringify(filters), limit]`** — a
+mutation da sua página tem que invalidar **`[table]`**. Medido em 10/08/2026: **4 dos 5
+call sites** (`LGPD`, `CNAB`, `BankReconciliation`, `SPED`) invalidam
+`queryKey: ['data-list-page']`, que **não é registrada por ninguém** — a invalidação é
+**no-op** e a lista não atualiza depois de criar o registro; só recarregando a página.
+Bug vivo, não corrigido aqui.
+
+⚠ **`limit` default = 100 e NÃO há paginação.** A 101ª linha some **sem aviso**. Acima
+disso, ou sobe o `limit`, ou a tela não é caso de `DataListPage` (ver `ui/list-pagination`).
+
+⚠ **`enableBulkDelete` faz `DELETE` direto na `table` da query** — sem soft-delete e sem
+checar FK. Em tabela com dependente, o registro ou trava no erro do Postgres ou cascateia.
+Só ligue em tabela folha.
+
+⚠ **Sem `sectionLabel` o header cai no modo compacto legado** (`h1` + ícone), fora do
+padrão editorial das outras 128 telas. Em página de rota, **sempre passe `sectionLabel`**;
+omita só quando o componente estiver embutido dentro de aba/card.
+
+⚠ **NÃO faz `document.title`** — se a tela precisa, faça na página. E `EmptyModulePage`,
+exportado do mesmo arquivo, tem **0 usos**: é stub de módulo recém-criado, não substituto
+do `EmptyState`.
+
+#### `DataTable` — tabela client-side sobre dados que você já buscou
+
+Genérico (`DataTable<T>`), sobre as primitives `Table` do shadcn. Dá busca textual
+(`normalizeForSearch`, ignora acento), ordenação (`useTableSort` + `SortableTableHead`),
+seleção com checkbox, menu de ações por linha, paginação client-side e skeleton de load.
+Todas as dependências existem e conferem — está **são**, só nunca foi adotado.
+
+```tsx
+<DataTable data={pedidos} getRowId={p => p.id} searchable pageSize={20}
+  columns={[{ key: 'codigo', title: 'Código' },
+            { key: 'total', title: 'Total', render: p => formatCurrency(p.total) }]}
+  actions={[{ label: 'Excluir', variant: 'destructive', onClick: p => remover(p.id) }]} />
+```
+
+**QUANDO usar:** os dados **já estão em memória** (hook React Query próprio) e você ia
+escrever `<table>` na mão. É o substituto direto das 36 tabelas cruas quando `DataListPage`
+não serve porque a query é sua.
+**Quando NÃO usar:** dataset grande com paginação **server-side** — ele filtra, ordena e
+pagina tudo em memória. E a barra de seleção dele é **própria**, não é a `BulkActionsBar`:
+se a tela já usa `BulkActionsBar`/`useTableSelection`, prefira `ui/selectable-table` pra
+não ter duas UIs de seleção diferentes no mesmo módulo.
+
+#### `PageContainer` / `PageHeader` (`ui/page-container`) — ❌ não use, apague
+
+**Briga com o `AppLayout` nas três coisas que ele faz** (`AppLayout.tsx:953`):
+
+| Prop | O que faz | Por que conflita |
+|---|---|---|
+| `density='default'` | `p-6` fixo | o `<main>` já aplica `px-4 md:px-6 lg:px-8 xl:px-10 2xl:px-12 py-6` → **padding dobrado**, e troca o padding responsivo por um fixo |
+| `animate=true` (default) | classe `page-enter` | o `AppLayout` **já** envolve os filhos em `<div key={pathname} className="page-enter">` → anima duas vezes, aninhado |
+| `maxWidth` | `max-w-*` + `mx-auto` | reintroduz exatamente o cap de largura que o dono mandou **remover** em 19/05/2026 ("sempre se adequar à resolução de quem está acessando") |
+
+O `PageHeader` exportado junto é uma versão pobre do `EditorialPageHeader` (128 arquivos)
+e ainda **colide de nome** com `src/components/layout/PageHeader.tsx`, que é outra coisa
+(breadcrumb mobile). Para header de página use `EditorialPageHeader`; para espaçamento,
+`<div className="space-y-4">` como as demais telas.
+
+#### `StatusCard` (`ui/StatusCard.tsx`) — ❌ não use, apague
+
+Redundante com `ui/stat-card` → `StatCard`, adotado em **52 arquivos** e com API superset
+(`unit`, `hint`, `delta`/`deltaTone`/`deltaLabel`, `icon`, `tone`, `onClick` acessível por
+teclado, + `StatGrid`). O `StatusCard` só tem `title/value/icon/trend/type` e pinta o card
+inteiro de cor. Nada que ele faça falta no `StatCard`. É também o **único arquivo
+PascalCase** entre os primitives de `ui/` (a convenção é kebab-case) — foi por isso que
+ninguém achou. Use `StatCard` com `tone`.
+
+#### `MiniMark` (`ui/mini-mark`) — ⚠ não serve pro que o próprio docblock promete
+
+O comentário diz "marca d'água nos cantos de **etiquetas**, fichas e cards de OP". **Em
+etiqueta não funciona:** `printLabels.ts` monta o documento num `window.open` com apenas
+Google Fonts + `<style>` inline — **sem Tailwind e sem `src/index.css`** —, então
+`bg-primary`, `border-current` e `font-display` não resolvem lá; sai um quadrado sem borda,
+sem "S" e sem o ponto. Por isso a etiqueta usa SVG inline (`silk-mark`), não este componente.
+
+Sobra o uso inline no app (ficha/cartão), e aí ele esbarra na **regra 5 de print**: o único
+sinal de marca é o quadradinho `bg-primary` (vermelho), que no **laser P&B da fábrica** vira
+cinza. Antes de adotar, decida um destino: reescrever como SVG com cores hardcoded (aí serve
+a etiqueta, conforme as regras de print) ou apagar. Não o use como está.
+
 ### Acesso a dados (padrão React Query)
 - Supabase singleton: `import { supabase } from '@/integrations/supabase/client'`.
 - **Query:** hook `use<Entidade>` com `useQuery({ queryKey: ['entidade'], queryFn, staleTime, gcTime })`;
