@@ -429,7 +429,7 @@ function UserCard({
           <div className="flex items-center gap-1 shrink-0">
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-8 w-8 text-primary hover:bg-primary/10" onClick={onEdit}>
+                <Button variant="ghost" size="icon" aria-label="Editar perfil" className="h-8 w-8 text-primary hover:bg-primary/10" onClick={onEdit}>
                   <Pencil className="h-4 w-4" />
                 </Button>
               </TooltipTrigger>
@@ -440,7 +440,7 @@ function UserCard({
                 {profile.approved ? (
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:bg-destructive/10" onClick={() => onApprove(false)}>
+                      <Button variant="ghost" size="icon" aria-label="Bloquear acesso" className="h-8 w-8 text-destructive hover:bg-destructive/10" onClick={() => onApprove(false)}>
                         <Lock className="h-4 w-4" />
                       </Button>
                     </TooltipTrigger>
@@ -449,7 +449,7 @@ function UserCard({
                 ) : (
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 text-success hover:bg-success/10" onClick={() => onApprove(true)}>
+                      <Button variant="ghost" size="icon" aria-label="Aprovar acesso" className="h-8 w-8 text-success hover:bg-success/10" onClick={() => onApprove(true)}>
                         <Unlock className="h-4 w-4" />
                       </Button>
                     </TooltipTrigger>
@@ -458,7 +458,7 @@ function UserCard({
                 )}
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:bg-destructive/10" onClick={onDelete}>
+                    <Button variant="ghost" size="icon" aria-label="Excluir usuário" className="h-8 w-8 text-destructive hover:bg-destructive/10" onClick={onDelete}>
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </TooltipTrigger>
@@ -469,6 +469,7 @@ function UserCard({
             <Button
               variant="ghost"
               size="icon"
+              aria-label={expanded ? 'Recolher detalhes do usuário' : 'Expandir detalhes do usuário'}
               className="h-8 w-8"
               onClick={() => setExpanded(!expanded)}
             >

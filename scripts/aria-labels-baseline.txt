@@ -20,7 +20,6 @@
 2	src/components/label-system/LabelProductionTab.tsx
 1	src/components/logistics/RouteOptimizerPanel.tsx
 1	src/components/nfe/StandaloneNfePanel.tsx
-4	src/components/own-delivery/FleetTab.tsx
 2	src/components/packaging/PackagingCatalogTable.tsx
 3	src/components/packaging/PackagingStockPanel.tsx
 1	src/components/packaging/PackagingTable.tsx
@@ -30,7 +29,6 @@
 1	src/components/sale-orders/SaleOrdersOverviewDialog.tsx
 3	src/components/settings/CommissionTiersDialog.tsx
 1	src/components/settings/EditProfileDialog.tsx
-5	src/components/settings/FinanceConfigPanel.tsx
 3	src/components/settings/RepresentativesPanel.tsx
 2	src/components/soles-hub/SoleCreateDialog.tsx
 1	src/components/suppliers/AddBoletoFinanceDialog.tsx
@@ -46,12 +44,11 @@
 1	src/components/technical-sheets/SoleSilkPanel.tsx
 2	src/components/technical-sheets/VersionsTab.tsx
 2	src/components/timesheet/ImportHistoryPanel.tsx
-5	src/components/ui/data-table.tsx
 1	src/pages/AbsenceReport.tsx
 1	src/pages/AlcadasCompras.tsx
 2	src/pages/ArtisanalRecipes.tsx
 4	src/pages/Automations.tsx
-4	src/pages/Clients.tsx
+3	src/pages/Clients.tsx
 1	src/pages/ContractorReports.tsx
 1	src/pages/Costura.tsx
 1	src/pages/Cronoanalise.tsx
@@ -71,7 +68,6 @@
 1	src/pages/PerfisTributarios.tsx
 1	src/pages/Picking.tsx
 3	src/pages/PurchaseOrders.tsx
-5	src/pages/Settings.tsx
 1	src/pages/SetupTimes.tsx
 2	src/pages/StockAdjustmentPage.tsx
 1	src/pages/StockHistory.tsx

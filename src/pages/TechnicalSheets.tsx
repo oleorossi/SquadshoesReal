@@ -996,7 +996,7 @@ function SheetImageEditor({ sheet, onSaved, updateSheet }: { sheet: any; onSaved
       {previewUrl ? (
         <div className="relative w-full h-64 rounded-lg border overflow-hidden bg-muted">
           <SignedImage src={previewUrl} alt={sheet.name} className="w-full h-full object-contain" />
-          <Button type="button" variant="destructive" size="icon" className="absolute top-2 right-2 h-7 w-7"
+          <Button type="button" variant="destructive" size="icon" aria-label="Remover foto" className="absolute top-2 right-2 h-7 w-7"
             onClick={() => setPreviewUrl(null)}>
             <Trash2 className="h-3.5 w-3.5" />
           </Button>
@@ -1099,7 +1099,7 @@ function QuickCreateForm({ onCreated, onCancel }: { onCreated: (id: string) => v
               {previewUrl ? (
                 <div className="relative w-full h-36 rounded-lg border overflow-hidden bg-muted">
                   <SignedImage src={previewUrl} alt="Preview" className="w-full h-full object-contain" />
-                  <Button type="button" variant="destructive" size="icon" className="absolute top-2 right-2 h-6 w-6"
+                  <Button type="button" variant="destructive" size="icon" aria-label="Remover foto" className="absolute top-2 right-2 h-6 w-6"
                     onClick={() => { setPreviewUrl(null); setForm(f => ({ ...f, images: [] })); }}>
                     <Trash2 className="h-3 w-3" />
                   </Button>
@@ -2846,7 +2846,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                           }}
                         />
                         {form.upper_material && (
-                          <Button variant="ghost" size="icon" className="h-9 w-9 text-destructive hover:text-destructive" onClick={() => {
+                          <Button variant="ghost" size="icon" aria-label="Limpar material do cabedal" className="h-9 w-9 text-destructive hover:text-destructive" onClick={() => {
                             updateField('upper_material', '');
                             updateField('upper_material_product_id' as any, null);
                             updateField('upper_consumption', 0);
@@ -2991,7 +2991,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                                 updateField('components_accessories', arr);
                               }}
                             />
-                            <Button variant="ghost" size="icon" className="h-9 w-9 text-destructive hover:text-destructive" onClick={() => {
+                            <Button variant="ghost" size="icon" aria-label="Remover componente" className="h-9 w-9 text-destructive hover:text-destructive" onClick={() => {
                               const arr = [...(form.components_accessories || [])];
                               arr.splice(rawIdx, 1);
                               updateField('components_accessories', arr);
@@ -3093,7 +3093,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                                   updateField('components_accessories', arr);
                                 }}
                                 />
-                                <Button variant="ghost" size="icon" className="h-9 w-9 text-destructive hover:text-destructive" onClick={() => {
+                                <Button variant="ghost" size="icon" aria-label="Remover componente" className="h-9 w-9 text-destructive hover:text-destructive" onClick={() => {
                                   const arr = [...(form.components_accessories || [])];
                                   arr.splice(rawIdx, 1);
                                   updateField('components_accessories', arr);
@@ -3227,6 +3227,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                           <Button
                             variant="ghost"
                             size="icon"
+                            aria-label="Limpar material do forro"
                             className="h-9 w-9 text-destructive hover:text-destructive"
                             onClick={() => {
                               updateField('lining_material', '');
@@ -3452,7 +3453,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                 const unit = ((liveProd?.unit ?? comp.unit) || 'un').toString().trim() || 'un';
                 const unitPrice = Number(liveProd?.unit_price ?? comp.unit_price) || 0;
                 return (
-                <div key={idx} className="grid grid-cols-3 gap-4 items-end border-l-2 border-green-400/30 pl-3">
+                <div key={idx} className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end border-l-2 border-green-400/30 pl-3">
                   <DirectComponentSelect
                     label={`Componente ${idx + 1}`}
                     value={comp.product_id || ''}
@@ -3484,7 +3485,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                         <strong className="text-foreground">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(unitPrice * comp.quantity)}/par</strong>
                       </span>
                     )}
-                    <Button variant="ghost" size="icon" className="h-9 w-9 text-destructive hover:text-destructive" onClick={() => {
+                    <Button variant="ghost" size="icon" aria-label="Remover componente" className="h-9 w-9 text-destructive hover:text-destructive" onClick={() => {
                       const arr = [...(form.direct_components || [])];
                       arr.splice(idx, 1);
                       updateField('direct_components', arr);
@@ -3715,6 +3716,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                             type="button"
                             variant="ghost"
                             size="icon"
+                            aria-label="Remover cor da tira"
                             className="h-8 w-8 text-destructive"
                             onClick={() => {
                               const updated = (form.strap_colors || []).filter((_: any, i: number) => i !== idx);
@@ -4112,7 +4114,7 @@ function PhotosByColorTab({ sheetId, form, groups, products }: {
                   </label>
                 )}
                 {hasImage && !uploading && (
-                  <Button variant="destructive" size="icon" className="h-5 w-5 absolute -top-1 -right-1 opacity-0 group-hover:opacity-100 shadow-sm"
+                  <Button variant="destructive" size="icon" aria-label="Remover foto da cor" className="h-5 w-5 absolute -top-1 -right-1 opacity-0 group-hover:opacity-100 shadow-sm"
                     onClick={(e) => { e.stopPropagation(); handleRemove(color); }}>
                     <Trash2 className="h-3 w-3" />
                   </Button>
@@ -4395,7 +4397,7 @@ function SheetImageUpload({ images, onChange }: { images: any[]; onChange: (imgs
                   <ImagePlus className="h-3.5 w-3.5 text-foreground" />
                 </div>
               </label>
-              <Button type="button" variant="destructive" size="icon" className="h-7 w-7 rounded-md"
+              <Button type="button" variant="destructive" size="icon" aria-label="Remover foto" className="h-7 w-7 rounded-md"
                 onClick={(e) => { e.stopPropagation(); onChange([]); }}>
                 <Trash2 className="h-3.5 w-3.5" />
               </Button>
@@ -4547,7 +4549,8 @@ function ModelColorGallery({ colorPredominanteId, products, colorImages, onChang
                 {ci?.url && !uploading && (
                    <Button 
                     variant="destructive" 
-                    size="icon" 
+                    size="icon"
+                    aria-label="Remover foto da cor"
                     className="h-5 w-5 absolute -top-1 -right-1 opacity-0 group-hover:opacity-100 shadow-sm"
                     onClick={(e) => {
                         e.stopPropagation();
@@ -6681,7 +6684,7 @@ function SheetBOM({ sheetId, safetyPct, onSafetyChange, shoeCategory }: {
                         <TableCell className="text-xs text-right font-mono">{formatCurrency(costPair)}</TableCell>
                         <TableCell>
                           <div className="flex gap-1">
-                            <Button variant="ghost" size="icon" className="h-6 w-6 text-primary hover:text-primary" onClick={() => handleEdit(m)}>
+                            <Button variant="ghost" size="icon" aria-label="Editar material" className="h-6 w-6 text-primary hover:text-primary" onClick={() => handleEdit(m)}>
                               <Pencil className="h-3 w-3" />
                             </Button>
                             <DeleteConfirmButton onConfirm={() => deleteMaterial.mutate(m.id)} title="Remover material?" size="h-6 w-6" iconSize="h-3 w-3" />

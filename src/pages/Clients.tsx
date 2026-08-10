@@ -706,7 +706,7 @@ export default function Clients() {
                             {c.nome_fantasia && <span className="text-muted-foreground ml-2">({c.nome_fantasia})</span>}
                           </div>
                           {perm.canEdit && (
-                            <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleRemoveFromGroup(c.id)}>
+                            <Button type="button" variant="ghost" size="icon" aria-label="Desvincular loja do grupo" className="h-7 w-7 text-destructive" onClick={() => handleRemoveFromGroup(c.id)}>
                               <Trash2 className="h-3.5 w-3.5" />
                             </Button>
                           )}

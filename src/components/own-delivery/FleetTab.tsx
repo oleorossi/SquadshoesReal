@@ -213,11 +213,11 @@ function VehiclesPanel() {
                   </div>
                 </div>
                 <div className="flex flex-col gap-1">
-                  <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEdit(v)}>
+                  <Button size="icon" variant="ghost" aria-label="Editar veículo" className="h-7 w-7" onClick={() => openEdit(v)}>
                     <Pencil className="h-3.5 w-3.5" />
                   </Button>
                   <Button
-                    size="icon" variant="ghost" className="h-7 w-7 text-destructive"
+                    size="icon" variant="ghost" aria-label="Excluir veículo" className="h-7 w-7 text-destructive"
                     onClick={() => { if (confirm(`Excluir veículo ${v.plate}?`)) del.mutate(v.id); }}
                   >
                     <Trash2 className="h-3.5 w-3.5" />
@@ -397,11 +397,11 @@ function DriversPanel() {
                 {d.notes && <p className="text-xs text-muted-foreground mt-1">{d.notes}</p>}
               </div>
               <div className="flex flex-col gap-1">
-                <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEdit(d)}>
+                <Button size="icon" variant="ghost" aria-label="Editar motorista" className="h-7 w-7" onClick={() => openEdit(d)}>
                   <Pencil className="h-3.5 w-3.5" />
                 </Button>
                 <Button
-                  size="icon" variant="ghost" className="h-7 w-7 text-destructive"
+                  size="icon" variant="ghost" aria-label="Excluir motorista" className="h-7 w-7 text-destructive"
                   onClick={() => { if (confirm(`Excluir motorista ${d.name}?`)) del.mutate(d.id); }}
                 >
                   <Trash2 className="h-3.5 w-3.5" />

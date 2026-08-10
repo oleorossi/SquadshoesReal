@@ -285,7 +285,7 @@ export function DataTable<T>({
                       <TableCell className="text-right">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-7 w-7">
+                            <Button variant="ghost" size="icon" aria-label="Abrir ações da linha" className="h-7 w-7">
                               <MoreHorizontal className="h-4 w-4" />
                             </Button>
                           </DropdownMenuTrigger>
@@ -325,14 +325,14 @@ export function DataTable<T>({
           </p>
           <div className="flex items-center gap-1">
             <Button
-              variant="outline" size="icon" className="h-7 w-7"
+              variant="outline" size="icon" aria-label="Ir para a primeira página" className="h-7 w-7"
               disabled={safePage <= 1}
               onClick={() => setCurrentPage(1)}
             >
               <ChevronsLeft className="h-3.5 w-3.5" />
             </Button>
             <Button
-              variant="outline" size="icon" className="h-7 w-7"
+              variant="outline" size="icon" aria-label="Página anterior" className="h-7 w-7"
               disabled={safePage <= 1}
               onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
             >
@@ -342,14 +342,14 @@ export function DataTable<T>({
               {safePage} / {totalPages}
             </span>
             <Button
-              variant="outline" size="icon" className="h-7 w-7"
+              variant="outline" size="icon" aria-label="Próxima página" className="h-7 w-7"
               disabled={safePage >= totalPages}
               onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
             >
               <ChevronRight className="h-3.5 w-3.5" />
             </Button>
             <Button
-              variant="outline" size="icon" className="h-7 w-7"
+              variant="outline" size="icon" aria-label="Ir para a última página" className="h-7 w-7"
               disabled={safePage >= totalPages}
               onClick={() => setCurrentPage(totalPages)}
             >
