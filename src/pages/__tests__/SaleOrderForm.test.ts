@@ -107,9 +107,9 @@ describe('buildCopySeedPayload', () => {
     seedItems: items,
     form,
     selectedClientId: 'client-1',
-    parentOrderId: 'pv-origem',
     sourceOrderNumber: 'PV-2026-00123',
     activeVariantIds: new Set(['variant-ativa']),
+    companyIsActive: true,
   });
 
   it('NÃO leva o id do item — o novo PV cria linhas novas, nunca atualiza as do pedido origem', () => {
@@ -154,7 +154,6 @@ describe('buildCopySeedPayload', () => {
       is_factoring: true,
       factoring_config_id: 'fact-1',
       packaging_mode: 'colmeia',
-      shipping_rate_per_pair: 1.5,
       status: 'Rascunho',
     });
   });
@@ -165,8 +164,46 @@ describe('buildCopySeedPayload', () => {
     }
   });
 
-  it('rastreabilidade: guarda o PV de origem (vira parent_order_id no create)', () => {
-    expect(seed.parentOrderId).toBe('pv-origem');
+  // Salvar um Rascunho com frete > 0 já cria despesa 'pendente' em financial_entries
+  // (gatilho tg_sale_order_creates_shipping_expense) com vencimento contado de hoje,
+  // e o painel lê o campo num useState do próprio mount — o seed chega depois, então
+  // a tela mostraria R$ 0,00 enquanto o valor ia no payload. Frete é do embarque novo.
+  it('NÃO leva o frete por par — evita despesa invisível no financeiro do PV novo', () => {
+    expect(seed.form.shipping_rate_per_pair).toBeUndefined();
+  });
+
+  it('guarda o número do PV de origem só pra avisar na tela', () => {
     expect(seed.sourceOrderNumber).toBe('PV-2026-00123');
+  });
+
+  // No sale_orders.parent_order_id, "pai" significa DUPLICATA DE GRUPO ECONÔMICO:
+  // o dialog Duplicar por Grupo remove da lista toda loja que já tem PV filho
+  // daquele pai. Como aqui o usuário pode trocar o cliente antes de salvar,
+  // marcar a cópia parcial como filha esconderia em silêncio uma loja que recebeu
+  // 2 de 10 itens, bloqueando a duplicação do pedido inteiro pra ela.
+  it('NÃO marca a cópia como filha do PV origem — isso é vocabulário do Duplicar por Grupo', () => {
+    expect('parentOrderId' in seed).toBe(false);
+  });
+
+  it('empresa emitente inativa não viaja — cai na primária em vez de gravar CNPJ errado na NF-e', () => {
+    const comEmpresaInativa = buildCopySeedPayload({
+      seedItems: items,
+      form: { ...form, company_id: 'empresa-desativada' } as SaleOrderFormData,
+      selectedClientId: 'client-1',
+      sourceOrderNumber: null,
+      activeVariantIds: new Set(['variant-ativa']),
+      companyIsActive: false,
+    });
+    expect(comEmpresaInativa.form.company_id).toBeNull();
+
+    const comEmpresaAtiva = buildCopySeedPayload({
+      seedItems: items,
+      form: { ...form, company_id: 'empresa-ativa' } as SaleOrderFormData,
+      selectedClientId: 'client-1',
+      sourceOrderNumber: null,
+      activeVariantIds: new Set(['variant-ativa']),
+      companyIsActive: true,
+    });
+    expect(comEmpresaAtiva.form.company_id).toBe('empresa-ativa');
   });
 });

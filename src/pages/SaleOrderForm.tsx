@@ -79,7 +79,6 @@ const SALE_ORDER_DRAFT_KEY = 'sale_order_draft';
 const SALE_ORDER_COPY_SEED_KEY = 'sale_order_copy_seed';
 
 export type SaleOrderCopySeed = {
-  parentOrderId: string | null;
   sourceOrderNumber: string | null;
   selectedClientId: string;
   form: Partial<SaleOrderFormData>;
@@ -98,25 +97,46 @@ export type SaleOrderCopySeed = {
  *  - intenção de terceirização (ids/quantidades/setores) é RESETADA: gera OS
  *    no save, e a decisão pertence ao novo pedido — herdar em silêncio criaria
  *    OS que ninguém pediu;
+ *  - empresa emitente só viaja se ainda estiver ATIVA: `useCompanies` só lista as
+ *    ativas, então um `company_id` desativado ficaria invisível no seletor (que
+ *    mostraria "primária") enquanto o form gravava o CNPJ errado na NF-e. Null =
+ *    empresa primária, que é o default documentado da coluna;
  *  - do cabeçalho viajam só cliente + condições comerciais; datas de entrega,
  *    OC do cliente, NF e notas ficam nos defaults (pedido novo, agenda nova).
+ *
+ * ⚠ O FRETE POR PAR fica de fora de propósito (paridade com o Duplicar por Grupo,
+ * que também não o carrega). Dois motivos somados: (1) salvar um Rascunho com
+ * `shipping_rate_per_pair > 0` já cria uma despesa 'pendente' em
+ * `financial_entries` pelo gatilho `tg_sale_order_creates_shipping_expense`, com
+ * vencimento contado de HOJE — desligada da agenda de um pedido que ainda nem tem
+ * data; e (2) o painel lê esse campo pra um `useState` no PRÓPRIO mount, e o seed
+ * chega depois (efeito de filho roda antes do de pai), então a tela mostraria
+ * R$ 0,00 enquanto o valor copiado ia no payload: frete que o usuário nunca viu.
+ * Frete é decisão do embarque novo — deixá-lo em zero é o default seguro.
+ *
+ * ⚠ NÃO gravar `parent_order_id` na cópia parcial. Naquele campo, neste sistema,
+ * "pai" quer dizer especificamente *duplicata de grupo econômico*: o dialog
+ * Duplicar por Grupo lista como "loja já copiada" todo cliente com PV filho
+ * daquele pai (`alreadyCopiedClientIds`, SaleOrders.tsx) e o REMOVE da lista.
+ * Como aqui o usuário pode trocar o cliente antes de salvar, marcar a cópia
+ * parcial como filha esconderia uma loja que recebeu 2 de 10 itens, bloqueando
+ * em silêncio a duplicação do pedido inteiro pra ela.
  */
 export function buildCopySeedPayload(args: {
   seedItems: SaleOrderItemFormData[];
   form: SaleOrderFormData;
   selectedClientId: string;
-  parentOrderId: string | null;
   sourceOrderNumber: string | null;
   activeVariantIds: Set<string>;
+  companyIsActive: boolean;
 }): SaleOrderCopySeed {
-  const { seedItems, form: f, selectedClientId, parentOrderId, sourceOrderNumber, activeVariantIds } = args;
+  const { seedItems, form: f, selectedClientId, sourceOrderNumber, activeVariantIds, companyIsActive } = args;
   return {
-    parentOrderId,
     sourceOrderNumber,
     selectedClientId,
     form: {
       client_id: (f as any).client_id ?? null,
-      company_id: (f as any).company_id ?? null,
+      company_id: companyIsActive ? ((f as any).company_id ?? null) : null,
       client_name: f.client_name,
       client_cnpj: f.client_cnpj,
       client_contact: f.client_contact,
@@ -125,7 +145,6 @@ export function buildCopySeedPayload(args: {
       is_factoring: f.is_factoring,
       factoring_config_id: f.factoring_config_id,
       packaging_mode: f.packaging_mode,
-      shipping_rate_per_pair: Number(f.shipping_rate_per_pair) || 0,
       nfe_required: f.nfe_required,
       own_delivery: f.own_delivery,
       brand: f.brand,
@@ -278,9 +297,12 @@ export default function SaleOrderForm() {
   // Só é descartada após a RPC confirmar a criação, evitando PV duplicado em
   // timeout/resposta perdida.
   const clientRequestIdRef = useRef<string | null>(null);
-  // PV de origem quando este form nasceu de "Copiar itens p/ novo PV" — vai no
-  // parent_order_id do create (mesma rastreabilidade do Duplicar por Grupo).
-  const parentOrderIdRef = useRef<string | null>(null);
+  // Ligado quando a tela nasce de uma cópia E já havia rascunho salvo. O caminho
+  // do seed pula o prompt "Rascunho encontrado" (a cópia vence a tela), e sem
+  // esta trava o auto-save de 5s gravaria o pedido copiado POR CIMA de um
+  // rascunho que o usuário nunca chegou a ver — perda silenciosa e sem volta,
+  // já que o rascunho só é apagado por Restaurar/Descartar explícitos.
+  const preserveExistingDraftRef = useRef(false);
 
   // Itens com cor não cadastrada (cabedal/forração/tira) — BLOQUEIA o save até
   // cadastrar. Reportado por cada SaleOrderItemForm via onColorIssueChange.
@@ -323,10 +345,22 @@ export default function SaleOrderForm() {
       try {
         const seed = JSON.parse(seedRaw) as SaleOrderCopySeed;
         if (Array.isArray(seed?.items) && seed.items.length > 0) {
+          // Rascunho anterior fica INTACTO: como aqui não passamos pelo prompt de
+          // restauração, o auto-save é desarmado nesta sessão em vez de sobrescrever
+          // um trabalho que o usuário não teve chance de ver.
+          const rascunhoAnterior =
+            sessionStorage.getItem(SALE_ORDER_DRAFT_KEY) ?? localStorage.getItem(SALE_ORDER_DRAFT_KEY);
+          if (rascunhoAnterior) {
+            preserveExistingDraftRef.current = true;
+            toast.info(
+              'Havia um rascunho de pedido salvo — ele foi preservado e continua disponível na próxima visita a "Novo Pedido". ' +
+              'Esta cópia não será auto-salva; salve o pedido ao terminar.',
+              { duration: 12000 },
+            );
+          }
           setForm({ ...emptyForm, ...seed.form });
           setItems(seed.items);
           setSelectedClientId(seed.selectedClientId || '');
-          parentOrderIdRef.current = seed.parentOrderId || null;
           const n = seed.items.length;
           toast.success(
             `${n} ${n === 1 ? 'item copiado' : 'itens copiados'}` +
@@ -361,7 +395,9 @@ export default function SaleOrderForm() {
   // Auto-save em localStorage a cada 5s enquanto user mexe no form
   // (sessionStorage continua sendo usado pelo fluxo de saída pra /estoque).
   useEffect(() => {
-    if (isEdit || pendingDraft) return; // não autossalva enquanto pendingDraft está aberto
+    // Não autossalva enquanto pendingDraft está aberto, nem quando a tela veio de
+    // uma cópia com rascunho anterior guardado (ver preserveExistingDraftRef).
+    if (isEdit || pendingDraft || preserveExistingDraftRef.current) return;
     const hasContent =
       (form.client_name?.trim() || '').length > 0 ||
       items.some((it) => it.reference_id || (it.quantity ?? 0) > 0);
@@ -454,6 +490,10 @@ export default function SaleOrderForm() {
   // COMPRA do item (itemsPurchaseSig), não o formulário.
   const [hasUnsavedEdits, setHasUnsavedEdits] = useState(false);
   const [pendingExit, setPendingExit] = useState<null | (() => void)>(null);
+  // O mesmo diálogo serve pra Voltar/Cancelar e pra cópia, mas o texto genérico
+  // ("descarta o que foi digitado") seria meia-verdade no fluxo de cópia: os
+  // valores digitados VÃO junto na cópia; quem se perde é só o pedido original.
+  const [pendingExitIsCopy, setPendingExitIsCopy] = useState(false);
 
   // Guarda de F5 / fechar aba / sair do site. Só o nativo do browser funciona
   // aqui; diálogo próprio não é permitido neste evento.
@@ -465,8 +505,9 @@ export default function SaleOrderForm() {
   }, [hasUnsavedEdits]);
 
   /** Envolve uma saída de tela: sem edição pendente sai direto; com edição, pergunta. */
-  const guardExit = (go: () => void) => () => {
+  const guardExit = (go: () => void, opts?: { isCopy?: boolean }) => () => {
     if (!hasUnsavedEdits) { go(); return; }
+    setPendingExitIsCopy(!!opts?.isCopy);
     setPendingExit(() => go);
   };
 
@@ -742,6 +783,24 @@ export default function SaleOrderForm() {
       }
     }
 
+    // Empresa emitente: só copiamos se ainda estiver ativa (ver doc de
+    // buildCopySeedPayload — desativada some do seletor e o PV nasceria com o
+    // CNPJ errado na NF-e sem nada aparecer na tela).
+    const copiedCompanyId = (formLatestRef.current as any).company_id as string | null | undefined;
+    let companyIsActive = true;
+    if (copiedCompanyId) {
+      const { data: company } = await supabase
+        .from('companies')
+        .select('id')
+        .eq('id', copiedCompanyId)
+        .eq('active', true)
+        .maybeSingle();
+      companyIsActive = !!company;
+      if (!companyIsActive) {
+        toast.warning('Empresa emitente do pedido original está inativa — o novo PV usará a empresa primária.');
+      }
+    }
+
     // Número do PV de origem pro toast do seed (form.order_number não é
     // populado na carga da edição — buscar é 1 select barato em ação de clique).
     let sourceOrderNumber: string | null = null;
@@ -758,9 +817,9 @@ export default function SaleOrderForm() {
       seedItems,
       form: formLatestRef.current,
       selectedClientId,
-      parentOrderId: id || null,
       sourceOrderNumber,
       activeVariantIds,
+      companyIsActive,
     });
   };
 
@@ -778,7 +837,7 @@ export default function SaleOrderForm() {
         return;
       }
       navigate('/sales/new');
-    })();
+    }, { isCopy: true })();
   };
 
   /**
@@ -927,9 +986,6 @@ export default function SaleOrderForm() {
         commission_value,
         packaging_product_id: packagingProductId || null,
         packaging_quantity: packagingQuantity,
-        // Rastreabilidade: setado quando este form nasceu de "Copiar itens p/
-        // novo PV" — liga o novo PV ao de origem (mesmo campo do Duplicar).
-        parent_order_id: parentOrderIdRef.current,
         client_request_id: clientRequestId,
       } as any, {
         onSuccess: (created: { id?: string } | undefined) => {
@@ -1975,12 +2031,27 @@ export default function SaleOrderForm() {
       {/* Saída com alterações pendentes. Cobre Voltar e Cancelar (navegação
           interna do router, que o beforeunload NÃO pega — ele só vale pra F5,
           fechar aba e sair do site). */}
-      <AlertDialog open={pendingExit !== null} onOpenChange={(o) => { if (!o) setPendingExit(null); }}>
+      <AlertDialog
+        open={pendingExit !== null}
+        onOpenChange={(o) => {
+          if (o) return;
+          // Desistir aqui aborta a cópia inteira — sem este aviso o clique em
+          // "Copiar p/ novo PV" simplesmente não fazia nada visível.
+          if (pendingExitIsCopy) toast.info('Cópia cancelada — nada foi copiado.');
+          setPendingExitIsCopy(false);
+          setPendingExit(null);
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Sair sem salvar?</AlertDialogTitle>
+            <AlertDialogTitle>
+              {pendingExitIsCopy ? 'Copiar e sair sem salvar?' : 'Sair sem salvar?'}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              Você alterou este pedido e ainda não salvou. Sair agora descarta o que foi digitado.
+              {pendingExitIsCopy
+                ? 'Os itens copiados levam o que está na tela agora, inclusive o que você ainda não salvou. ' +
+                  'As alterações DESTE pedido, porém, serão descartadas — ele volta ao último estado salvo.'
+                : 'Você alterou este pedido e ainda não salvou. Sair agora descarta o que foi digitado.'}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1995,11 +2066,12 @@ export default function SaleOrderForm() {
                 e.preventDefault();
                 const go = pendingExit;
                 setPendingExit(null);
+                setPendingExitIsCopy(false);
                 setHasUnsavedEdits(false);
                 go?.();
               }}
             >
-              Descartar e sair
+              {pendingExitIsCopy ? 'Descartar aqui e copiar' : 'Descartar e sair'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

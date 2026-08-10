@@ -106,6 +106,21 @@ const emptyItem: SaleOrderItemFormData = {
   reference_id: '', color: '', grade: {}, unit_price: 0, quantity: 0, fichas: 1,
 };
 
+/**
+ * Reindexa a seleção do bulk-edit depois que o item `removedIdx` sai da lista.
+ * A seleção é guardada por ÍNDICE, e remover um item desloca todos os que vêm
+ * depois — sem isto, a ação em lote (preço, fichas, grade, cópia pra novo PV)
+ * cai em silêncio no item que PASSOU a ocupar aquele índice.
+ */
+export function remapSelectionAfterRemoval(selection: Set<number>, removedIdx: number): Set<number> {
+  const next = new Set<number>();
+  selection.forEach(i => {
+    if (i === removedIdx) return;         // o próprio removido sai da seleção
+    next.add(i > removedIdx ? i - 1 : i); // quem vinha depois desce uma posição
+  });
+  return next;
+}
+
 const formatCurrency = (v: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 
@@ -521,11 +536,24 @@ export default function SaleOrderFormPanel({
       lastItemRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }, 100);
   };
+  // A seleção do bulk-edit mora aqui em cima (e não junto do resto da barra de
+  // lote) porque `removeItem` PRECISA reindexá-la — ver o comentário lá.
+  const [selectedItemIndices, setSelectedItemIndices] = useState<Set<number>>(new Set());
+
   // ⚠ PERF: identidade ESTÁVEL é obrigatória nas funções passadas ao
   // SaleOrderItemForm — ele é `memo()` e uma arrow nova a cada render fura o memo,
   // re-renderizando TODOS os itens do PV a cada tecla digitada numa célula de grade.
+  //
+  // ⚠ A seleção é por ÍNDICE, e remover um item desloca todo mundo que vem depois:
+  // sem reindexar, marcar os itens 1 e 3, apagar o 2 e mandar aplicar faria a ação
+  // cair no item que PASSOU a ocupar o índice 3 — outro item, em silêncio. Vale pra
+  // todas as ações em lote (preço, fichas, grade) e é grave na cópia pra novo PV,
+  // que levaria a referência errada pro pedido novo.
   const removeItem = useCallback(
-    (idx: number) => setItems(prev => prev.filter((_, i) => i !== idx)),
+    (idx: number) => {
+      setItems(prev => prev.filter((_, i) => i !== idx));
+      setSelectedItemIndices(prev => (prev.size === 0 ? prev : remapSelectionAfterRemoval(prev, idx)));
+    },
     [setItems],
   );
 
@@ -572,7 +600,7 @@ export default function SaleOrderFormPanel({
    // grade do 1º item selecionado nos demais, aplicar preço unitário, ou
    // aplicar número de fichas. Reduz cliques quando o PV tem 5+ refs com
    // mesma grade/preço.
-   const [selectedItemIndices, setSelectedItemIndices] = useState<Set<number>>(new Set());
+   // (o estado `selectedItemIndices` é declarado junto de removeItem, lá em cima)
    const [bulkPriceInput, setBulkPriceInput] = useState<string>('');
    const [bulkFichasInput, setBulkFichasInput] = useState<string>('');
    const [bulkGradeInput, setBulkGradeInput] = useState<Record<string, string>>({});

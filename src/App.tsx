@@ -913,8 +913,20 @@ const router = createBrowserRouter([
         path: "sales",
         children: [
           { index: true, element: <SaleOrders /> },
-          { path: "new", element: <SaleOrderForm /> },
-          { path: "edit/:id", element: <SaleOrderForm /> },
+          // ⚠ As chaves são LOAD-BEARING. As duas rotas abaixo renderizam o MESMO
+          // componente na MESMA profundidade, e o react-router monta o wrapper
+          // interno (RenderedRoute) sem chave própria — então React reconcilia no
+          // lugar e NÃO remonta ao trocar de uma pra outra. Sem as chaves, sair de
+          // /sales/edit/:id pra /sales/new mantinha TODO o estado do pedido editado
+          // (itens, datas, cliente) numa tela que se diz "Novo Pedido", e "Criar
+          // Pedido" nascia com os itens do pedido antigo. É o mesmo mecanismo do bug
+          // histórico documentado em SaleOrderForm (editar A -> editar B não
+          // desmontava); ali o remédio é o efeito de reset por id, que só cobre
+          // troca ENTRE edições. Chaves distintas resolvem o caso novo<->edição na
+          // raiz e fazem os efeitos de montagem (ex.: consumo do seed de cópia)
+          // voltarem a ser confiáveis. Travado por __tests__/saleOrderRouteRemount.
+          { path: "new", element: <SaleOrderForm key="sale-order-new" /> },
+          { path: "edit/:id", element: <SaleOrderForm key="sale-order-edit" /> },
         ],
       },
       {
