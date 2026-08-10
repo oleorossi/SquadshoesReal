@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { DataListPage } from '@/components/ui/data-list-page';
+import { DataListPage, dataListPageKey } from '@/components/ui/data-list-page';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -51,7 +51,7 @@ export default function SPED() {
       if (error) throw error;
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['data-list-page'] });
+      qc.invalidateQueries({ queryKey: dataListPageKey('sped_exports') });
       setOpen(false);
       setForm(emptyForm);
       toast.success('SPED gerado. Validação e transmissão são feitas externamente.');

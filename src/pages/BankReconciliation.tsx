@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { DataListPage } from '@/components/ui/data-list-page';
+import { DataListPage, dataListPageKey } from '@/components/ui/data-list-page';
 import { Badge } from '@/components/ui/badge';
 import { Scales as Scale, Info, UploadSimple as Upload } from '@phosphor-icons/react';
 import { format } from 'date-fns';
@@ -57,7 +57,7 @@ export default function BankReconciliation() {
       if (error) throw error;
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['data-list-page'] });
+      qc.invalidateQueries({ queryKey: dataListPageKey('bank_reconciliations') });
       setOpen(false);
       setForm(emptyForm);
       toast.success('Sessão de conciliação criada. Use /financeiro?tab=conciliacao pra matchar.');

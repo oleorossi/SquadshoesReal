@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { DataListPage } from '@/components/ui/data-list-page';
+import { DataListPage, dataListPageKey } from '@/components/ui/data-list-page';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -78,7 +78,7 @@ export default function CNAB() {
       if (error) throw error;
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['data-list-page'] });
+      qc.invalidateQueries({ queryKey: dataListPageKey('cnab_remittance_files') });
       setOpen(false);
       setForm({ ...emptyForm, selected_ar: new Set() });
       toast.success('Arquivo CNAB gerado. Envie ao banco pela internet banking.');
