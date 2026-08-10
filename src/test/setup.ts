@@ -23,6 +23,20 @@ if (typeof import.meta !== "undefined" && import.meta.env) {
   import.meta.env.VITE_SUPABASE_ANON_KEY ??= "test-anon-key";
 }
 
+// jsdom não implementa ResizeObserver, e os primitives do radix que medem o
+// próprio nó (checkbox, popover, select) chamam direto no efeito de layout —
+// sem isto, qualquer teste que renderize um formulário do app quebra com
+// "ResizeObserver is not defined" antes de chegar na primeira asserção.
+// Mesmo espírito do matchMedia abaixo: preencher lacuna do ambiente, não simular
+// comportamento (nada no app depende das medidas em teste).
+if (typeof globalThis.ResizeObserver === "undefined") {
+  globalThis.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof ResizeObserver;
+}
+
 Object.defineProperty(window, "matchMedia", {
   writable: true,
   value: (query: string) => ({

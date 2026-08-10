@@ -1,0 +1,210 @@
+import { describe, expect, it, beforeEach, vi } from 'vitest';
+import { useState } from 'react';
+import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MemoryRouter } from 'react-router-dom';
+import {
+  buildCopySeedPayload,
+  consumeCopySeed,
+  hasStoredSaleOrderDraft,
+} from '../SaleOrderForm';
+import type { SaleOrderFormData, SaleOrderItemFormData } from '@/hooks/useSaleOrders';
+
+/**
+ * Testes do TRAJETO da cópia parcial de itens do PV, não das peças isoladas.
+ *
+ * O bug que derrubou a feature na primeira versão não estava em nenhuma função:
+ * estava no FIO entre elas (o efeito que lê o seed nunca rodava). Teste de
+ * função pura passava com folga enquanto a tela criava um pedido com os itens
+ * errados. Por isso aqui exercitamos as duas pontas de verdade:
+ *   1. o clique no botão da barra de lote entrega os ÍNDICES certos;
+ *   2. o seed sobrevive ao armazenamento e é consumido UMA vez do outro lado.
+ */
+
+// O item do PV é pesado (dezenas de hooks de cor/produto/ficha) e não é o que
+// está sob teste — o dublê mantém só o contrato que o painel usa dele.
+vi.mock('@/components/sale-orders/SaleOrderItemForm', () => ({
+  default: ({ item, index, isSelected, onToggleSelect, onRemove }: any) => (
+    <div data-testid={`item-${index}`}>
+      <input
+        type="checkbox"
+        aria-label={`selecionar ${item.reference_id}`}
+        checked={!!isSelected}
+        onChange={() => onToggleSelect?.(index)}
+      />
+      <button type="button" onClick={() => onRemove?.(index)}>
+        remover {item.reference_id}
+      </button>
+    </div>
+  ),
+}));
+
+vi.mock('@/hooks/useAccessControl', () => ({
+  useAccessControl: () => ({ canSeeFinancialValues: true }),
+}));
+vi.mock('@/hooks/useContractors', () => ({ useContractors: () => ({ data: [] }) }));
+vi.mock('@/components/finance/FactoringTab', () => ({ useFactoringConfigs: () => ({ data: [] }) }));
+vi.mock('@/hooks/useNfe', () => ({ useCompanies: () => ({ data: [] }) }));
+vi.mock('@/hooks/useEconomicGroup360', () => ({ useClientCommercialDefaults: () => ({ data: null }) }));
+vi.mock('@/hooks/useReferenceMaterialVariants', () => ({
+  useAllActiveReferenceMaterialVariants: () => ({ data: new Map() }),
+}));
+vi.mock('@/lib/clientCreditExposure', () => ({ fetchClientCreditExposure: vi.fn().mockResolvedValue(null) }));
+vi.mock('@/lib/mobile/clientContext', () => ({ fetchClientPriceList: vi.fn().mockResolvedValue(null) }));
+vi.mock('@/integrations/supabase/client', () => {
+  const thenable = { data: [], error: null };
+  const chain: any = new Proxy({}, {
+    get: (_t, prop) => {
+      if (prop === 'then') return (resolve: any) => resolve(thenable);
+      return () => chain;
+    },
+  });
+  return { supabase: { from: () => chain, rpc: () => chain } };
+});
+
+import SaleOrderFormPanel from '@/components/sale-orders/SaleOrderFormPanel';
+
+const ITEMS: SaleOrderItemFormData[] = [
+  { id: 'i-A', reference_id: 'REF-A', color: 'PRETO', grade: { '37': 5 }, unit_price: 100, quantity: 5, fichas: 1 },
+  { id: 'i-B', reference_id: 'REF-B', color: 'BRANCO', grade: { '38': 6 }, unit_price: 110, quantity: 6, fichas: 1 },
+  { id: 'i-C', reference_id: 'REF-C', color: 'AZUL', grade: { '39': 7 }, unit_price: 120, quantity: 7, fichas: 1 },
+];
+
+const FORM: SaleOrderFormData = {
+  client_id: 'cli-1', client_name: 'PONTO MIX', client_cnpj: '', client_contact: '',
+  client_order_number: '', representative: '', payment_condition: '30/60',
+  delivery_deadline: '', delivery_week: '', delivery_month: '', notes: '',
+  status: 'Aprovado', nfe: '', remessa: '', is_factoring: false,
+  factoring_config_id: '', packaging_mode: 'colmeia',
+};
+
+function PanelHarness({ onCopy }: { onCopy: (indices: number[]) => void }) {
+  // Estado real: é ele que faz o remover-item reindexar a seleção de verdade.
+  const [items, setItems] = useState<SaleOrderItemFormData[]>(ITEMS);
+  return (
+    <MemoryRouter>
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <SaleOrderFormPanel
+          form={FORM}
+          setForm={() => {}}
+          items={items}
+          setItems={setItems}
+          clients={[]}
+          representatives={[]}
+          references={[]}
+          isAdmin
+          selectedClientId="cli-1"
+          onClientSelect={() => {}}
+          onSubmit={(e) => e.preventDefault()}
+          onCancel={() => {}}
+          isPending={false}
+          submitLabel="Criar Pedido"
+          onCopyToNewOrder={onCopy}
+        />
+      </QueryClientProvider>
+    </MemoryRouter>
+  );
+}
+
+describe('cópia parcial — do clique aos índices', () => {
+  it('entrega ao pai exatamente os itens marcados', async () => {
+    const onCopy = vi.fn();
+    const user = userEvent.setup();
+    render(<PanelHarness onCopy={onCopy} />);
+
+    await user.click(screen.getByLabelText('selecionar REF-A'));
+    await user.click(screen.getByLabelText('selecionar REF-C'));
+    await user.click(screen.getByRole('button', { name: /copiar p\/ novo pv/i }));
+
+    expect(onCopy).toHaveBeenCalledWith([0, 2]);
+  });
+
+  it('depois de remover um item, os índices acompanham — copia o item ESCOLHIDO', async () => {
+    const onCopy = vi.fn();
+    const user = userEvent.setup();
+    render(<PanelHarness onCopy={onCopy} />);
+
+    // marca B (índice 1) e apaga A (índice 0): B passa a ser o índice 0.
+    await user.click(screen.getByLabelText('selecionar REF-B'));
+    await user.click(screen.getByRole('button', { name: 'remover REF-A' }));
+    await user.click(screen.getByRole('button', { name: /copiar p\/ novo pv/i }));
+
+    // Sem a reindexação isto viria [1] — que agora é o REF-C, item errado.
+    expect(onCopy).toHaveBeenCalledWith([0]);
+  });
+
+  it('o botão não existe fora da edição (sem o callback do pai)', () => {
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+          <SaleOrderFormPanel
+            form={FORM} setForm={() => {}} items={ITEMS} setItems={() => {}}
+            clients={[]} representatives={[]} references={[]} isAdmin
+            selectedClientId="cli-1" onClientSelect={() => {}}
+            onSubmit={(e) => e.preventDefault()} onCancel={() => {}}
+            isPending={false} submitLabel="Criar Pedido"
+          />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+    expect(screen.queryByRole('button', { name: /copiar p\/ novo pv/i })).toBeNull();
+  });
+});
+
+describe('cópia parcial — o seed do outro lado', () => {
+  beforeEach(() => {
+    sessionStorage.clear();
+    localStorage.clear();
+  });
+
+  const semear = (indices: number[]) => {
+    const seed = buildCopySeedPayload({
+      seedItems: indices.map(i => ITEMS[i]),
+      form: FORM,
+      selectedClientId: 'cli-1',
+      sourceOrderNumber: 'PV-2026-00123',
+      activeVariantIds: new Set<string>(),
+      companyIsActive: true,
+    });
+    sessionStorage.setItem('sale_order_copy_seed', JSON.stringify(seed));
+  };
+
+  it('atravessa o armazenamento com os itens escolhidos e o cliente do pedido origem', () => {
+    semear([0, 2]);
+    const seed = consumeCopySeed();
+    expect(seed?.items.map(i => i.reference_id)).toEqual(['REF-A', 'REF-C']);
+    expect(seed?.form.client_name).toBe('PONTO MIX');
+    expect(seed?.form.payment_condition).toBe('30/60');
+    expect(seed?.form.status).toBe('Rascunho');
+    // O id da linha não sobrevive à serialização — o PV novo cria linhas novas.
+    expect(seed?.items.every(i => i.id === undefined)).toBe(true);
+  });
+
+  it('é ONE-SHOT: a segunda leitura não repete a cópia', () => {
+    semear([1]);
+    expect(consumeCopySeed()?.items).toHaveLength(1);
+    expect(consumeCopySeed()).toBeNull();
+  });
+
+  it('seed corrompido devolve null E some do armazenamento (não fica preso)', () => {
+    sessionStorage.setItem('sale_order_copy_seed', '{isto não é json');
+    expect(consumeCopySeed()).toBeNull();
+    expect(sessionStorage.getItem('sale_order_copy_seed')).toBeNull();
+  });
+
+  it('seed sem item nenhum é ignorado — a tela segue como pedido novo comum', () => {
+    sessionStorage.setItem('sale_order_copy_seed', JSON.stringify({ items: [], form: {} }));
+    expect(consumeCopySeed()).toBeNull();
+  });
+
+  it('sem cópia pendente não inventa nada', () => {
+    expect(consumeCopySeed()).toBeNull();
+  });
+
+  it('detecta rascunho guardado — é o que desarma o auto-save e evita apagá-lo', () => {
+    expect(hasStoredSaleOrderDraft()).toBe(false);
+    localStorage.setItem('sale_order_draft', JSON.stringify({ form: {}, items: [] }));
+    expect(hasStoredSaleOrderDraft()).toBe(true);
+  });
+});

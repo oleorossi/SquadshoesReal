@@ -122,6 +122,46 @@ export type SaleOrderCopySeed = {
  * parcial como filha esconderia uma loja que recebeu 2 de 10 itens, bloqueando
  * em silêncio a duplicação do pedido inteiro pra ela.
  */
+/**
+ * Lê e CONSOME (one-shot) o seed deixado pela cópia parcial. Remove a chave
+ * ANTES de interpretar o conteúdo: seed corrompido não pode ficar preso no
+ * armazenamento reaparecendo a cada visita a /sales/new.
+ *
+ * Devolve null quando não há cópia pendente, quando o JSON não parseia, ou
+ * quando o seed não traz item nenhum — nos três casos a tela segue no fluxo
+ * normal de pedido novo (inclusive o prompt de rascunho).
+ *
+ * Mora fora do componente pra ser testável: o consumo do seed é justamente o
+ * ponto onde a feature quebrou (o efeito de montagem não rodava), e teste de
+ * função pura não alcança lógica presa dentro de um useEffect.
+ */
+export function consumeCopySeed(): SaleOrderCopySeed | null {
+  let raw: string | null = null;
+  try {
+    raw = sessionStorage.getItem(SALE_ORDER_COPY_SEED_KEY);
+    if (!raw) return null;
+    sessionStorage.removeItem(SALE_ORDER_COPY_SEED_KEY);
+  } catch {
+    return null; // armazenamento indisponível (modo privado, cota) — sem cópia
+  }
+  try {
+    const seed = JSON.parse(raw) as SaleOrderCopySeed;
+    if (!Array.isArray(seed?.items) || seed.items.length === 0) return null;
+    return seed;
+  } catch {
+    return null;
+  }
+}
+
+/** Há rascunho de pedido guardado? (o da cópia é outra chave, ver acima) */
+export function hasStoredSaleOrderDraft(): boolean {
+  try {
+    return !!(sessionStorage.getItem(SALE_ORDER_DRAFT_KEY) ?? localStorage.getItem(SALE_ORDER_DRAFT_KEY));
+  } catch {
+    return false;
+  }
+}
+
 export function buildCopySeedPayload(args: {
   seedItems: SaleOrderItemFormData[];
   form: SaleOrderFormData;
@@ -339,38 +379,30 @@ export default function SaleOrderForm() {
     //    pedido). Aplica DIRETO, sem opt-in — o usuário acabou de pedir a cópia.
     //    Consome (remove) antes de aplicar: é one-shot, um F5 depois disso volta
     //    ao fluxo normal de rascunho.
-    const seedRaw = sessionStorage.getItem(SALE_ORDER_COPY_SEED_KEY);
-    if (seedRaw) {
-      sessionStorage.removeItem(SALE_ORDER_COPY_SEED_KEY);
-      try {
-        const seed = JSON.parse(seedRaw) as SaleOrderCopySeed;
-        if (Array.isArray(seed?.items) && seed.items.length > 0) {
-          // Rascunho anterior fica INTACTO: como aqui não passamos pelo prompt de
-          // restauração, o auto-save é desarmado nesta sessão em vez de sobrescrever
-          // um trabalho que o usuário não teve chance de ver.
-          const rascunhoAnterior =
-            sessionStorage.getItem(SALE_ORDER_DRAFT_KEY) ?? localStorage.getItem(SALE_ORDER_DRAFT_KEY);
-          if (rascunhoAnterior) {
-            preserveExistingDraftRef.current = true;
-            toast.info(
-              'Havia um rascunho de pedido salvo — ele foi preservado e continua disponível na próxima visita a "Novo Pedido". ' +
-              'Esta cópia não será auto-salva; salve o pedido ao terminar.',
-              { duration: 12000 },
-            );
-          }
-          setForm({ ...emptyForm, ...seed.form });
-          setItems(seed.items);
-          setSelectedClientId(seed.selectedClientId || '');
-          const n = seed.items.length;
-          toast.success(
-            `${n} ${n === 1 ? 'item copiado' : 'itens copiados'}` +
-            `${seed.sourceOrderNumber ? ` do ${seed.sourceOrderNumber}` : ' do pedido original'}` +
-            ' — revise datas e condições antes de salvar.',
-            { duration: 8000 },
-          );
-          return; // seed vence: não oferece restauração de rascunho antigo por cima
-        }
-      } catch { /* seed corrompido — segue pro fluxo de rascunho */ }
+    const seed = consumeCopySeed();
+    if (seed) {
+      // Rascunho anterior fica INTACTO: como aqui não passamos pelo prompt de
+      // restauração, o auto-save é desarmado nesta sessão em vez de sobrescrever
+      // um trabalho que o usuário não teve chance de ver.
+      if (hasStoredSaleOrderDraft()) {
+        preserveExistingDraftRef.current = true;
+        toast.info(
+          'Havia um rascunho de pedido salvo — ele foi preservado e continua disponível na próxima visita a "Novo Pedido". ' +
+          'Esta cópia não será auto-salva; salve o pedido ao terminar.',
+          { duration: 12000 },
+        );
+      }
+      setForm({ ...emptyForm, ...seed.form });
+      setItems(seed.items);
+      setSelectedClientId(seed.selectedClientId || '');
+      const n = seed.items.length;
+      toast.success(
+        `${n} ${n === 1 ? 'item copiado' : 'itens copiados'}` +
+        `${seed.sourceOrderNumber ? ` do ${seed.sourceOrderNumber}` : ' do pedido original'}` +
+        ' — revise datas e condições antes de salvar.',
+        { duration: 8000 },
+      );
+      return; // seed vence: não oferece restauração de rascunho antigo por cima
     }
     const sessionRaw = sessionStorage.getItem(SALE_ORDER_DRAFT_KEY);
     const localRaw = localStorage.getItem(SALE_ORDER_DRAFT_KEY);
