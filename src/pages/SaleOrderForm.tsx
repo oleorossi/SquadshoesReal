@@ -72,6 +72,77 @@ const emptyItem: SaleOrderItemFormData = {
 };
 
 const SALE_ORDER_DRAFT_KEY = 'sale_order_draft';
+// Cópia parcial de itens (edição → novo PV): a edição grava o seed aqui e navega
+// pra /sales/new, que o consome UMA vez no mount. Chave separada do rascunho:
+// o rascunho é opt-in (dialog), a cópia é ação deliberada e aplica direto.
+const SALE_ORDER_COPY_SEED_KEY = 'sale_order_copy_seed';
+
+export type SaleOrderCopySeed = {
+  parentOrderId: string | null;
+  sourceOrderNumber: string | null;
+  selectedClientId: string;
+  form: Partial<SaleOrderFormData>;
+  items: SaleOrderItemFormData[];
+};
+
+/**
+ * Monta o payload do seed de "Copiar itens p/ novo PV" (pura — exportada pra
+ * teste, mesmo padrão do mapLoadedSaleOrderItem). Guardas que o teste trava:
+ *
+ *  - o `id` do item NÃO viaja: copiá-lo faria o save do novo PV "atualizar"
+ *    linha de OUTRO pedido — é o campo de identidade estável do item
+ *    (migration 20260919120000);
+ *  - variante de material inativa é limpa (id obsoleto bloquearia a NF-e do
+ *    novo PV — emit-nfe devolve 400 pra variante inativa);
+ *  - intenção de terceirização (ids/quantidades/setores) é RESETADA: gera OS
+ *    no save, e a decisão pertence ao novo pedido — herdar em silêncio criaria
+ *    OS que ninguém pediu;
+ *  - do cabeçalho viajam só cliente + condições comerciais; datas de entrega,
+ *    OC do cliente, NF e notas ficam nos defaults (pedido novo, agenda nova).
+ */
+export function buildCopySeedPayload(args: {
+  seedItems: SaleOrderItemFormData[];
+  form: SaleOrderFormData;
+  selectedClientId: string;
+  parentOrderId: string | null;
+  sourceOrderNumber: string | null;
+  activeVariantIds: Set<string>;
+}): SaleOrderCopySeed {
+  const { seedItems, form: f, selectedClientId, parentOrderId, sourceOrderNumber, activeVariantIds } = args;
+  return {
+    parentOrderId,
+    sourceOrderNumber,
+    selectedClientId,
+    form: {
+      client_id: (f as any).client_id ?? null,
+      company_id: (f as any).company_id ?? null,
+      client_name: f.client_name,
+      client_cnpj: f.client_cnpj,
+      client_contact: f.client_contact,
+      representative: f.representative,
+      payment_condition: f.payment_condition,
+      is_factoring: f.is_factoring,
+      factoring_config_id: f.factoring_config_id,
+      packaging_mode: f.packaging_mode,
+      shipping_rate_per_pair: Number(f.shipping_rate_per_pair) || 0,
+      nfe_required: f.nfe_required,
+      own_delivery: f.own_delivery,
+      brand: f.brand,
+      order_type: f.order_type,
+      status: 'Rascunho',
+    },
+    items: seedItems.map(({ id: _itemId, ...rest }) => ({
+      ...rest,
+      material_variant_id:
+        rest.material_variant_id && activeVariantIds.has(rest.material_variant_id)
+          ? rest.material_variant_id
+          : null,
+      selected_terceirizacao_ids: [],
+      terceirizacao_quantities: {},
+      outsourced_sectors: {},
+    })),
+  };
+}
 
 interface SubmitOptions {
   skipMinBillingCheck?: boolean;
@@ -206,6 +277,9 @@ export default function SaleOrderForm() {
   // Só é descartada após a RPC confirmar a criação, evitando PV duplicado em
   // timeout/resposta perdida.
   const clientRequestIdRef = useRef<string | null>(null);
+  // PV de origem quando este form nasceu de "Copiar itens p/ novo PV" — vai no
+  // parent_order_id do create (mesma rastreabilidade do Duplicar por Grupo).
+  const parentOrderIdRef = useRef<string | null>(null);
 
   // Itens com cor não cadastrada (cabedal/forração/tira) — BLOQUEIA o save até
   // cadastrar. Reportado por cada SaleOrderItemForm via onColorIssueChange.
@@ -238,6 +312,31 @@ export default function SaleOrderForm() {
 
   useEffect(() => {
     if (isEdit) return;
+    // 1) Seed de cópia parcial (veio de "Copiar p/ novo PV" na edição de outro
+    //    pedido). Aplica DIRETO, sem opt-in — o usuário acabou de pedir a cópia.
+    //    Consome (remove) antes de aplicar: é one-shot, um F5 depois disso volta
+    //    ao fluxo normal de rascunho.
+    const seedRaw = sessionStorage.getItem(SALE_ORDER_COPY_SEED_KEY);
+    if (seedRaw) {
+      sessionStorage.removeItem(SALE_ORDER_COPY_SEED_KEY);
+      try {
+        const seed = JSON.parse(seedRaw) as SaleOrderCopySeed;
+        if (Array.isArray(seed?.items) && seed.items.length > 0) {
+          setForm({ ...emptyForm, ...seed.form });
+          setItems(seed.items);
+          setSelectedClientId(seed.selectedClientId || '');
+          parentOrderIdRef.current = seed.parentOrderId || null;
+          const n = seed.items.length;
+          toast.success(
+            `${n} ${n === 1 ? 'item copiado' : 'itens copiados'}` +
+            `${seed.sourceOrderNumber ? ` do ${seed.sourceOrderNumber}` : ' do pedido original'}` +
+            ' — revise datas e condições antes de salvar.',
+            { duration: 8000 },
+          );
+          return; // seed vence: não oferece restauração de rascunho antigo por cima
+        }
+      } catch { /* seed corrompido — segue pro fluxo de rascunho */ }
+    }
     const sessionRaw = sessionStorage.getItem(SALE_ORDER_DRAFT_KEY);
     const localRaw = localStorage.getItem(SALE_ORDER_DRAFT_KEY);
     const raw = sessionRaw ?? localRaw;
@@ -606,6 +705,82 @@ export default function SaleOrderForm() {
   };
 
   /**
+   * "Copiar p/ novo PV" (barra de lote da edição): valida a seleção, resolve
+   * variantes de material ativas e monta o seed via buildCopySeedPayload (que
+   * documenta o que viaja e o que fica). O novo PV nasce Rascunho e passa por
+   * TODO o fluxo normal de criação (crédito, semana mínima, estoque, tira sem
+   * cor) — por isso a cópia semeia o formulário em vez de criar o PV direto no
+   * banco.
+   */
+  const buildCopySeed = async (indices: number[]): Promise<SaleOrderCopySeed | null> => {
+    const selected = indices.map(i => items[i]).filter(Boolean);
+    const seedItems = selected.filter(it => it.reference_id);
+    if (seedItems.length === 0) {
+      toast.error('Selecione ao menos um item com referência preenchida pra copiar.');
+      return null;
+    }
+    if (seedItems.length < selected.length) {
+      toast.warning(`${selected.length - seedItems.length} item(ns) sem referência foram ignorados na cópia.`);
+    }
+
+    // Mesma guarda do "Duplicar por Grupo": variante de material pode ter sido
+    // inativada desde a criação do pedido — copiar o id obsoleto bloquearia a
+    // emissão da NF-e do novo PV (emit-nfe devolve 400 pra variante inativa).
+    const variantIds = [...new Set(seedItems.map(i => i.material_variant_id).filter(Boolean))] as string[];
+    let activeVariantIds = new Set<string>();
+    if (variantIds.length > 0) {
+      const { data: activeVariants } = await (supabase as any)
+        .from('reference_material_variants')
+        .select('id')
+        .in('id', variantIds)
+        .eq('active', true);
+      activeVariantIds = new Set((activeVariants || []).map((v: any) => v.id));
+      const staleCount = variantIds.filter(vid => !activeVariantIds.has(vid)).length;
+      if (staleCount > 0) {
+        toast.warning(`${staleCount} variação(ões) de material inativa(s) — o campo será limpo nos itens copiados.`);
+      }
+    }
+
+    // Número do PV de origem pro toast do seed (form.order_number não é
+    // populado na carga da edição — buscar é 1 select barato em ação de clique).
+    let sourceOrderNumber: string | null = null;
+    if (id) {
+      const { data: src } = await supabase
+        .from('sale_orders')
+        .select('order_number')
+        .eq('id', id)
+        .maybeSingle();
+      sourceOrderNumber = (src as any)?.order_number || null;
+    }
+
+    return buildCopySeedPayload({
+      seedItems,
+      form: formLatestRef.current,
+      selectedClientId,
+      parentOrderId: id || null,
+      sourceOrderNumber,
+      activeVariantIds,
+    });
+  };
+
+  const handleCopyItemsToNewOrder = async (indices: number[]) => {
+    const seed = await buildCopySeed(indices);
+    if (!seed) return;
+    // O seed só toca o storage DENTRO do go(): se o usuário cancelar o diálogo
+    // de "sair sem salvar", nada fica pendurado pra uma visita futura a
+    // /sales/new consumir por engano.
+    guardExit(() => {
+      try {
+        sessionStorage.setItem(SALE_ORDER_COPY_SEED_KEY, JSON.stringify(seed));
+      } catch {
+        toast.error('Não foi possível preparar a cópia (armazenamento do navegador indisponível).');
+        return;
+      }
+      navigate('/sales/new');
+    })();
+  };
+
+  /**
    * #3 Guardrail de margem (pós-save, NÃO bloqueia). Decisão do usuário (2026-06-01):
    * avisar pós-save + piso = prejuízo (<0%). Custeia o pedido recém-salvo via
    * calculate_order_cost e:
@@ -751,6 +926,9 @@ export default function SaleOrderForm() {
         commission_value,
         packaging_product_id: packagingProductId || null,
         packaging_quantity: packagingQuantity,
+        // Rastreabilidade: setado quando este form nasceu de "Copiar itens p/
+        // novo PV" — liga o novo PV ao de origem (mesmo campo do Duplicar).
+        parent_order_id: parentOrderIdRef.current,
         client_request_id: clientRequestId,
       } as any, {
         onSuccess: (created: { id?: string } | undefined) => {
@@ -1460,6 +1638,7 @@ export default function SaleOrderForm() {
           packagingQuantity={packagingQuantity}
           onPackagingQuantityChange={setPackagingQuantity}
           onSaveStateAndNavigate={!isEdit ? handleSaveStateAndNavigate : undefined}
+          onCopyToNewOrder={isEdit ? handleCopyItemsToNewOrder : undefined}
           minBillingISO={liveMinBillingISO}
           computingMinBilling={computingLive}
           onColorIssueChange={handleColorIssueChange}
