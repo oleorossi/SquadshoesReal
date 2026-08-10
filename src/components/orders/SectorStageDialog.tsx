@@ -19,22 +19,22 @@ import { toast } from 'sonner';
 
 const STAGE_CONFIGS: Record<string, { color: string; icon: LucideIcon; hints: string }> = {
   // ── New sector names ───────────────────────────────────────────────────────
-  'Corte Palmilha': { color: 'bg-orange-500/15 text-orange-700 border-orange-500/30', icon: Scissors,    hints: 'Separar palmilhas por numeração, conferir molde/faca, contar e identificar lotes.' },
-  'Corte Forração': { color: 'bg-teal-500/15 text-teal-700 border-teal-500/30',       icon: Layers,      hints: 'Conferir cor de forração, cortar por cor e numeração, identificar peças por cor.' },
-  'Mesa':           { color: 'bg-purple-500/15 text-purple-700 border-purple-500/30', icon: LayoutGrid,  hints: 'Receber palmilha forrada, montar tiras/cabedal, verificar alinhamento, registrar Frente e Traseiro.' },
-  'Silk':           { color: 'bg-pink-500/15 text-pink-700 border-pink-500/30',       icon: Paintbrush,  hints: 'Verificar imagem do silk, conferir posicionamento e pressão antes de iniciar o lote.' },
-  'Colagem':        { color: 'bg-amber-500/15 text-amber-700 border-amber-500/30',    icon: Wind,        hints: 'Verificar superfícies limpas, aplicar cola uniformemente, respeitar tempo de secagem, prensagem.' },
-  'Montagem':       { color: 'bg-blue-500/15 text-blue-700 border-blue-500/30',       icon: Hammer,      hints: 'Conferir solado e palmilha, alinhar e montar casco, verificação visual do par.' },
-  'Solagem':        { color: 'bg-lime-500/15 text-lime-700 border-lime-500/30',       icon: Footprints,  hints: 'Conferir solado e palmilha, aplicar cola, prensagem, verificar alinhamento e centragem.' },
-  'Acabamento':     { color: 'bg-emerald-500/15 text-emerald-700 border-emerald-500/30', icon: Sparkles, hints: 'Limpeza geral, verificar costuras e silk, aplicar etiqueta, embalagem individual, caixa identificada.' },
-  'Expedição':      { color: 'bg-indigo-500/15 text-indigo-700 border-indigo-500/30', icon: Truck,       hints: 'Revisar par aprovado, conferir etiqueta de cliente, embalar por lote, gerar romaneio.' },
+  'Corte Palmilha': { color: 'bg-orange-500/15 text-orange-600 border-orange-500/30', icon: Scissors,    hints: 'Separar palmilhas por numeração, conferir molde/faca, contar e identificar lotes.' },
+  'Corte Forração': { color: 'bg-teal-500/15 text-teal-600 border-teal-500/30',       icon: Layers,      hints: 'Conferir cor de forração, cortar por cor e numeração, identificar peças por cor.' },
+  'Mesa':           { color: 'bg-purple-500/15 text-purple-600 border-purple-500/30', icon: LayoutGrid,  hints: 'Receber palmilha forrada, montar tiras/cabedal, verificar alinhamento, registrar Frente e Traseiro.' },
+  'Silk':           { color: 'bg-pink-500/15 text-pink-600 border-pink-500/30',       icon: Paintbrush,  hints: 'Verificar imagem do silk, conferir posicionamento e pressão antes de iniciar o lote.' },
+  'Colagem':        { color: 'bg-amber-500/15 text-amber-600 border-amber-500/30',    icon: Wind,        hints: 'Verificar superfícies limpas, aplicar cola uniformemente, respeitar tempo de secagem, prensagem.' },
+  'Montagem':       { color: 'bg-blue-500/15 text-blue-600 border-blue-500/30',       icon: Hammer,      hints: 'Conferir solado e palmilha, alinhar e montar casco, verificação visual do par.' },
+  'Solagem':        { color: 'bg-lime-500/15 text-lime-600 border-lime-500/30',       icon: Footprints,  hints: 'Conferir solado e palmilha, aplicar cola, prensagem, verificar alinhamento e centragem.' },
+  'Acabamento':     { color: 'bg-emerald-500/15 text-emerald-600 border-emerald-500/30', icon: Sparkles, hints: 'Limpeza geral, verificar costuras e silk, aplicar etiqueta, embalagem individual, caixa identificada.' },
+  'Expedição':      { color: 'bg-indigo-500/15 text-indigo-600 border-indigo-500/30', icon: Truck,       hints: 'Revisar par aprovado, conferir etiqueta de cliente, embalar por lote, gerar romaneio.' },
   // ── Legacy names (kept for backward compat with old OPs) ──────────────────
-  'Corte':     { color: 'bg-blue-500/15 text-blue-700 border-blue-500/30',     icon: Scissors,   hints: 'Registrar quantidade de peças cortadas, tipo de faca utilizada, defeitos de corte.' },
-  'Forração':  { color: 'bg-purple-500/15 text-purple-700 border-purple-500/30', icon: Layers,   hints: 'Registrar tipos de forração aplicados, verificar aderência e acabamento.' },
-  'Aviamento': { color: 'bg-amber-500/15 text-amber-700 border-amber-500/30',   icon: Gem,        hints: 'Conferir aviamentos aplicados (fivelas, enfeites, ilhoses), registrar substituições.' },
-  'Costura':   { color: 'bg-indigo-500/15 text-indigo-700 border-indigo-500/30', icon: PenLine,   hints: 'Verificar costuras, alinhamento e tensão da linha.' },
-  'Embalagem': { color: 'bg-teal-500/15 text-teal-700 border-teal-500/30',      icon: Box,        hints: 'Embalar produto final, etiquetagem, conferência visual.' },
-  'Inspeção':  { color: 'bg-rose-500/15 text-rose-700 border-rose-500/30',      icon: ScanSearch, hints: 'Inspeção de qualidade, registrar defeitos e aprovações.' },
+  'Corte':     { color: 'bg-blue-500/15 text-blue-600 border-blue-500/30',     icon: Scissors,   hints: 'Registrar quantidade de peças cortadas, tipo de faca utilizada, defeitos de corte.' },
+  'Forração':  { color: 'bg-purple-500/15 text-purple-600 border-purple-500/30', icon: Layers,   hints: 'Registrar tipos de forração aplicados, verificar aderência e acabamento.' },
+  'Aviamento': { color: 'bg-amber-500/15 text-amber-600 border-amber-500/30',   icon: Gem,        hints: 'Conferir aviamentos aplicados (fivelas, enfeites, ilhoses), registrar substituições.' },
+  'Costura':   { color: 'bg-indigo-500/15 text-indigo-600 border-indigo-500/30', icon: PenLine,   hints: 'Verificar costuras, alinhamento e tensão da linha.' },
+  'Embalagem': { color: 'bg-teal-500/15 text-teal-600 border-teal-500/30',      icon: Box,        hints: 'Embalar produto final, etiquetagem, conferência visual.' },
+  'Inspeção':  { color: 'bg-rose-500/15 text-rose-600 border-rose-500/30',      icon: ScanSearch, hints: 'Inspeção de qualidade, registrar defeitos e aprovações.' },
 };
 
 const formatCurrency = (v: number) =>
