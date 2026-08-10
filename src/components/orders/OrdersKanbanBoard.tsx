@@ -185,7 +185,7 @@ export default function OrdersKanbanBoard({
   return (
     <div className="space-y-5">
       {/* KPI strip */}
-      <div className="grid grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
         {STAGE_GROUPS.map(g => {
           const colOrders = ordersByGroup.get(g.key) || [];
           const totalPairs = colOrders.reduce((s, o) => s + o.quantity, 0);
@@ -234,7 +234,7 @@ export default function OrdersKanbanBoard({
       </div>
 
       {/* 5-column kanban */}
-      <div className="grid grid-cols-5 gap-3 min-h-[480px]">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 min-h-[480px]">
         {STAGE_GROUPS.map(g => {
           const colOrders = ordersByGroup.get(g.key) || [];
           return (

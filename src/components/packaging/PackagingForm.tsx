@@ -190,7 +190,7 @@ const PackagingForm = ({ initialData, onSubmit, isLoading }: PackagingFormProps)
       {/* Dimensões */}
       <div className="space-y-4">
         <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Dimensões</h3>
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           <div className="space-y-2">
             <Label>Comprimento (cm)</Label>
             <Input type="number" step="0.1" {...register('dimensions_length', { valueAsNumber: true })} />
@@ -221,7 +221,7 @@ const PackagingForm = ({ initialData, onSubmit, isLoading }: PackagingFormProps)
       {/* Estoque e Custo */}
       <div className="space-y-4">
         <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Estoque e Custo</h3>
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
           <div className="space-y-2">
             <Label>Custo Unitário (R$)</Label>
             <Input type="number" step="0.0001" {...register('unit_cost', { valueAsNumber: true })} />

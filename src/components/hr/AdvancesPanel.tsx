@@ -185,7 +185,7 @@ export default function AdvancesPanel() {
               {/* Contexto de saldo do funcionário selecionado — registrar com visão do que já deve */}
               {form.employee_id && (
                 <div className="rounded-lg border border-border bg-muted/30 px-3 py-2.5">
-                  <div className="grid grid-cols-3 gap-2 text-center">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-center">
                     <div>
                       <p className="eyebrow">Saldo aberto</p>
                       <p className={cn('display text-base tabular-nums', (selectedBalance?.pending ?? 0) > 0 ? 'text-rose-600' : 'text-muted-foreground')}>

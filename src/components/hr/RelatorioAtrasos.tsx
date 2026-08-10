@@ -312,7 +312,7 @@ export default function RelatorioAtrasos() {
       </div>
 
       {/* KPIs */}
-      <div className="grid grid-cols-3 gap-2.5">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
         {[
           { label: 'Funcionários com atraso', value: String(totals.funcionarios), icon: Users },
           { label: 'Dias com atraso', value: String(totals.dias), icon: Timer },

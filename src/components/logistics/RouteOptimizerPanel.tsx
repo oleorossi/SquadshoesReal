@@ -857,7 +857,7 @@ export function RouteOptimizerPanel() {
               </div>
             )}
             {routeData && (
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <Card className="p-3 text-center">
                   <p className="text-xs text-muted-foreground">Distância Total</p>
                   <p className="text-lg font-bold text-primary">{routeData.distance.toFixed(1)} km</p>

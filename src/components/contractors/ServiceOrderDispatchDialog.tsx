@@ -143,7 +143,7 @@ export default function ServiceOrderDispatchDialog({ open, onOpenChange, service
             {serviceOrder?.contractorName && <Badge variant="outline">{serviceOrder.contractorName}</Badge>}
 
             {/* 4 números + barra recebido/na-rua/a-enviar */}
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {[
                 { label: 'Pedido', value: ordered, cls: '' },
                 { label: 'Enviado', value: dispatched, cls: '' },

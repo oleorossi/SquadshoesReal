@@ -98,7 +98,7 @@ function FactoringReport({ config }: { config: FactoringConfig }) {
             <p className="text-sm text-muted-foreground text-center py-4">Nenhum pedido trocado com esta factoring</p>
           ) : (
             <>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="bg-muted/50 rounded-lg p-3 text-center">
                   <p className="text-xs text-muted-foreground">Total Bruto</p>
                   <p className="font-mono font-semibold text-sm">R$ {totalBruto.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>

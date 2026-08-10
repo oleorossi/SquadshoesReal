@@ -434,7 +434,7 @@ function TransportResults({
 
               {/* Bau summary */}
               {packingResult && (
-                <div className="mt-4 grid grid-cols-4 gap-3">
+                <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-3">
                   <div className="p-3 rounded-lg bg-muted">
                     <p className="text-xs text-muted-foreground">Volume do Baú</p>
                     <p className="text-base font-bold">{packingResult.bau_volume_m3} m³</p>

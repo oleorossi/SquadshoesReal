@@ -202,7 +202,7 @@ const PackagingTable = () => {
                   </div>
 
                   {/* Estoque */}
-                  <div className="grid grid-cols-3 gap-4 text-sm mt-3 pt-3 border-t">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm mt-3 pt-3 border-t">
                     <div>
                       <p className="text-xs text-muted-foreground">Estoque Atual</p>
                       <p className="font-mono font-medium">{pack.current_stock.toLocaleString()} unidades</p>

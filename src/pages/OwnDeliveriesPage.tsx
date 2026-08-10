@@ -283,7 +283,7 @@ function RoutesTab() {
                 )}
               </div>
 
-              <div className="grid grid-cols-4 gap-2 text-xs">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
                 <Stat icon={<MapPin className="h-3 w-3" />} label="km" value={r.total_distance_km?.toFixed(1) ?? '—'} />
                 <Stat icon={<Fuel className="h-3 w-3" />} label="Combustível" value={formatBrl(r.fuel_cost_brl)} />
                 <Stat icon={<Wrench className="h-3 w-3" />} label="Desgaste" value={formatBrl(r.wear_cost_brl)} />

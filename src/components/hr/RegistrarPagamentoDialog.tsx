@@ -123,7 +123,7 @@ export function RegistrarPagamentoDialog({ open, onOpenChange, run, employeeName
         </DialogHeader>
 
         {/* Resumo líquido / pago / saldo */}
-        <div className="grid grid-cols-3 gap-2 rounded-lg border border-border bg-muted/30 p-3 text-center">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 rounded-lg border border-border bg-muted/30 p-3 text-center">
           <div>
             <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Líquido</div>
             <div className="font-mono tabular-nums font-semibold text-sm">{formatCurrency(liquido)}</div>

@@ -282,7 +282,7 @@ function MfaCard() {
                     </button>
                   </div>
                   {codes.length > 0 && (
-                    <div className="grid grid-cols-4 gap-1.5 mt-2">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 mt-2">
                       {codes.map((c, i) => (
                         <code key={i} className="text-xs font-mono bg-muted px-2 py-1 rounded text-center">
                           {c}

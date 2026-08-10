@@ -308,7 +308,7 @@ export default function SectorStageDialog({ stage, open, onOpenChange, orderNumb
 
           {/* WIP Cost Info from BOM */}
           {hasWipData && (
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               <div className="rounded-md border p-2.5 bg-muted/30">
                 <div className="flex items-center gap-1.5 text-muted-foreground mb-0.5">
                   <Timer className="h-3 w-3" />

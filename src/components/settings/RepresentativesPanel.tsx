@@ -272,7 +272,7 @@ export default function RepresentativesPanel() {
                 <div><Label>Número</Label><Input value={form.numero} onChange={e => setForm(f => ({ ...f, numero: e.target.value }))} className="mt-1" /></div>
               </div>
               <div><Label>Complemento</Label><Input value={form.complemento} onChange={e => setForm(f => ({ ...f, complemento: e.target.value }))} className="mt-1" /></div>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div><Label>Bairro</Label><Input value={form.bairro} onChange={e => setForm(f => ({ ...f, bairro: e.target.value }))} className="mt-1" /></div>
                 <div><Label>Cidade</Label><Input value={form.cidade} onChange={e => setForm(f => ({ ...f, cidade: e.target.value }))} className="mt-1" /></div>
                 <div><Label>UF</Label><Input value={form.estado} onChange={e => setForm(f => ({ ...f, estado: e.target.value }))} className="mt-1" maxLength={2} /></div>

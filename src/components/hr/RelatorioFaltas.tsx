@@ -378,7 +378,7 @@ export default function RelatorioFaltas() {
       )}
 
       {/* KPIs */}
-      <div className="grid grid-cols-3 gap-2.5">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
         {[
           { label: 'Funcionários com falta', value: String(totals.funcionarios), icon: Users },
           { label: 'Total de faltas', value: String(totals.dias), icon: CalendarX, accent: true },

@@ -802,7 +802,7 @@ export default function Automations() {
 
               <Separator />
 
-              <div className="grid grid-cols-3 gap-3 text-center">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-center">
                 <div>
                   <p className="text-lg font-bold font-mono">{detailWf.execution_count}</p>
                   <p className="text-xs text-muted-foreground">Execuções</p>
