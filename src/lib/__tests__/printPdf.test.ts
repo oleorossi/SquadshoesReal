@@ -60,8 +60,9 @@ describe('splitHtmlIntoBatches', () => {
     expect(splitHtmlIntoBatches(solto, 1)).toEqual([solto]);
   });
 
-  it('o lote padrão cabe no teto de tempo do plano Hobby', () => {
-    // 40 páginas por chamada foi o número escolhido pra não estourar ~10s.
+  // O lote existe por TAMANHO de requisição (~4,5MB), não por tempo: a Vercel dá
+  // 300s por função até no Hobby. Ficha densa é o caso que aperta.
+  it('o lote padrão é pequeno o bastante pra caber no limite de envio', () => {
     expect(PAGES_PER_BATCH).toBeLessThanOrEqual(40);
   });
 });

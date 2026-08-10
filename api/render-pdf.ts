@@ -30,7 +30,9 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
  *  embutidas em base64) justamente pra caber com folga. */
 export const config = {
   api: { bodyParser: { sizeLimit: '4mb' } },
-  maxDuration: 60,
+  // 300s é o padrão da plataforma (vale até no Hobby). Chromium + 40 páginas
+  // resolve em segundos; o teto existe só como rede contra render travado.
+  maxDuration: 300,
 };
 
 const MAX_HTML_BYTES = 4 * 1024 * 1024;

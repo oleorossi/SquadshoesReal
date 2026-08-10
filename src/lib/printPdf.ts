@@ -19,8 +19,19 @@ import { toast } from 'sonner';
  * fora do padrão.
  */
 
-/** Páginas por chamada. Assume o teto de ~10s do plano Hobby: um lote grande
- *  estoura o tempo e o operador leva um erro no meio do romaneio. */
+/**
+ * Páginas por chamada.
+ *
+ * ⚠ NÃO é por causa de TEMPO. A Vercel dá 300s (5 min) por função até no plano
+ * Hobby — folga enorme pra 120 etiquetas. (Uma versão anterior deste comentário
+ * dizia "teto de ~10s do Hobby": número de uma era antiga da plataforma.)
+ *
+ * O motivo é TAMANHO: o corpo da requisição é limitado a ~4,5MB. As etiquetas
+ * são leves (as fotos viajam por URL, não embutidas), mas as FICHAS são densas —
+ * 80+ páginas de tabelas com estilo embutido em cada elemento passam fácil disso.
+ * Estourar o limite = requisição recusada = ninguém imprime, já que não há
+ * plano B por decisão do dono.
+ */
 export const PAGES_PER_BATCH = 40;
 
 export interface PrintPdfOptions {
