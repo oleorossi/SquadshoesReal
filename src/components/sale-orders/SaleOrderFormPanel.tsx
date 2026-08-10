@@ -1,5 +1,5 @@
  import { useMemo, useEffect, useRef, useState, useCallback, Fragment } from 'react';
-import { Plus, CircleNotch as Loader2, User, Truck, ClipboardText as ClipboardList, Info, Percent, CaretUpDown as ChevronsUpDown, CaretDown, Check, ClockCounterClockwise as History, Warning as AlertTriangle, CheckCircle as CheckCircle2, Calculator, Money as Banknote, Receipt, Package, Phone, EnvelopeSimple, CopySimple as Copy } from '@phosphor-icons/react';
+import { Plus, CircleNotch as Loader2, User, Truck, ClipboardText as ClipboardList, Info, Percent, CaretUpDown as ChevronsUpDown, CaretDown, Check, ClockCounterClockwise as History, Warning as AlertTriangle, CheckCircle as CheckCircle2, Calculator, Money as Banknote, Receipt, Package, Phone, EnvelopeSimple, CopySimple as Copy, Trash } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -93,6 +93,11 @@ interface Props {
    *  pai (SaleOrderForm em modo edição) semeia /sales/new com esses itens +
    *  dados do cliente deste pedido. Ausente = botão não aparece (criação). */
   onCopyToNewOrder?: (indices: number[]) => void;
+  /** "Excluir selecionados" na barra de lote: recebe os índices selecionados e o
+   *  pai tira os itens da lista e oferece Desfazer. Ausente = botão não aparece.
+   *  A guarda de "nunca excluir o último item" fica AQUI no painel, que é quem
+   *  conhece a seleção. */
+  onDeleteSelectedItems?: (indices: number[]) => void;
   /** Data mínima viável calculada (ISO yyyy-mm-dd). Quando delivery_deadline < esta data,
    *  exibe alerta vermelho persistente ao lado do campo. */
   minBillingISO?: string | null;
@@ -118,6 +123,51 @@ export function remapSelectionAfterRemoval(selection: Set<number>, removedIdx: n
     if (i === removedIdx) return;         // o próprio removido sai da seleção
     next.add(i > removedIdx ? i - 1 : i); // quem vinha depois desce uma posição
   });
+  return next;
+}
+
+/** Item retirado da lista + de onde ele saiu, pro Desfazer devolver no lugar. */
+export interface RemovedItemSnapshot {
+  item: SaleOrderItemFormData;
+  index: number;
+}
+
+/**
+ * Tira de uma vez todos os itens dos índices dados. Devolve a lista restante e o
+ * que saiu, com a posição original de cada um — é esse retrato que o "Desfazer"
+ * usa. Índice repetido ou fora da lista é ignorado.
+ */
+export function removeItemsAtIndices(
+  items: SaleOrderItemFormData[],
+  indices: number[],
+): { remaining: SaleOrderItemFormData[]; removed: RemovedItemSnapshot[] } {
+  const alvo = new Set(indices);
+  const remaining: SaleOrderItemFormData[] = [];
+  const removed: RemovedItemSnapshot[] = [];
+  items.forEach((item, i) => {
+    if (alvo.has(i)) removed.push({ item, index: i });
+    else remaining.push(item);
+  });
+  return { remaining, removed };
+}
+
+/**
+ * Devolve os itens às posições de onde saíram (menor índice primeiro, pra cada
+ * inserção não empurrar as seguintes).
+ *
+ * ⚠ A lista pode ter ENCOLHIDO entre a exclusão e o Desfazer — o usuário pode ter
+ * apagado outro item nesse meio-tempo, e o toast fica aberto até ele fechar. Por
+ * isso o índice é limitado ao tamanho atual em vez de virar buraco: melhor o item
+ * voltar no fim da lista do que não voltar.
+ */
+export function restoreItemsAt(
+  items: SaleOrderItemFormData[],
+  removed: RemovedItemSnapshot[],
+): SaleOrderItemFormData[] {
+  const next = [...items];
+  [...removed]
+    .sort((a, b) => a.index - b.index)
+    .forEach(({ item, index }) => next.splice(Math.min(index, next.length), 0, item));
   return next;
 }
 
@@ -389,7 +439,7 @@ export default function SaleOrderFormPanel({
   form, setForm, items, setItems, clients, representatives, references,
    isAdmin, selectedClientId, onClientSelect, onSubmit, onCancel, onUserEdit, isPending, submitLabel,
    packagingProductId, onPackagingProductChange, packagingQuantity: _packagingQuantity, onPackagingQuantityChange,
-   onSaveStateAndNavigate, onCopyToNewOrder,
+   onSaveStateAndNavigate, onCopyToNewOrder, onDeleteSelectedItems,
    minBillingISO, computingMinBilling, onColorIssueChange,
  }: Props) {
    const [showDuplicateDialog, setShowDuplicateDialog] = useState(false);
@@ -553,8 +603,14 @@ export default function SaleOrderFormPanel({
     (idx: number) => {
       setItems(prev => prev.filter((_, i) => i !== idx));
       setSelectedItemIndices(prev => (prev.size === 0 ? prev : remapSelectionAfterRemoval(prev, idx)));
+      // Tirar item é alteração de verdade. O `onUserEdit` normalmente vem de evento
+      // de INPUT, e clique em botão não emite input — sem esta chamada dava pra
+      // apagar itens, tocar em Voltar e sair SEM aviso nenhum. A regra de "avisar
+      // de menos" documentada no <form> vale pra sinal AMBÍGUO (Radix Select não
+      // emite evento); clique na lixeira é intenção inequívoca, sem falso-positivo.
+      onUserEdit?.();
     },
-    [setItems],
+    [setItems, onUserEdit],
   );
 
   // `items` mais recente sem entrar na lista de dependências — é o que permite
@@ -615,6 +671,27 @@ export default function SaleOrderFormPanel({
    const selectAllItems = useCallback(() => {
      setSelectedItemIndices(new Set(items.map((_, i) => i)));
    }, [items]);
+
+   /**
+    * Exclui os itens marcados. Sem diálogo de confirmação (decisão do dono): a
+    * rede é o "Desfazer" do toast que o pai dispara.
+    *
+    * ⚠ A guarda do ÚLTIMO item mora aqui porque é o painel que conhece a seleção.
+    * E ela avisa em vez de desabilitar o botão de propósito: no celular não existe
+    * hover, então botão apagado sem explicação vira beco sem saída.
+    */
+   const deleteSelectedItems = useCallback(() => {
+     const indices = Array.from(selectedItemIndices).sort((a, b) => a - b);
+     if (indices.length === 0) return;
+     if (indices.length >= items.length) {
+       toast.error('O pedido precisa de pelo menos um item — desmarque um deles para excluir os demais.');
+       return;
+     }
+     onUserEdit?.();
+     onDeleteSelectedItems?.(indices);
+     // Zera em vez de reindexar: os índices selecionados acabaram de sair da lista.
+     setSelectedItemIndices(new Set());
+   }, [selectedItemIndices, items.length, onDeleteSelectedItems, onUserEdit]);
    const applyGradeFromFirstSelected = useCallback(() => {
      const sorted = Array.from(selectedItemIndices).sort((a, b) => a - b);
      if (sorted.length < 2) {
@@ -1922,6 +1999,24 @@ export default function SaleOrderFormPanel({
             >
               Limpar
             </Button>
+            {/* Destrutivo fica ISOLADO no fim, com separador: "Limpar" (só
+                desmarca) encostado em "Excluir" (apaga) é o par que mais gera
+                clique errado. Sem confirmação por decisão do dono — a rede é o
+                Desfazer do toast que o pai dispara. */}
+            {onDeleteSelectedItems && (
+              <div className="flex items-center border-l border-primary/30 pl-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={deleteSelectedItems}
+                  className="h-8 text-xs gap-1 border-destructive/50 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  title="Remove do pedido as referências selecionadas"
+                >
+                  <Trash className="h-3.5 w-3.5" /> Excluir selecionados
+                </Button>
+              </div>
+            )}
           </div>
           </div>
 

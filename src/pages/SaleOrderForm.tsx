@@ -18,7 +18,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '@/components/ui/dialog';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
-import SaleOrderFormPanel from '@/components/sale-orders/SaleOrderFormPanel';
+import SaleOrderFormPanel, { removeItemsAtIndices, restoreItemsAt } from '@/components/sale-orders/SaleOrderFormPanel';
 import { PvServiceOrdersCard } from '@/components/sale-orders/PvServiceOrdersCard';
 import { GenerateServiceOrdersWizard } from '@/components/contractors/GenerateServiceOrdersWizard';
 import { useCreateSaleOrder, useUpdateSaleOrder, SaleOrderFormData, SaleOrderItemFormData } from '@/hooks/useSaleOrders';
@@ -77,6 +77,9 @@ const SALE_ORDER_DRAFT_KEY = 'sale_order_draft';
 // pra /sales/new, que o consome UMA vez no mount. Chave separada do rascunho:
 // o rascunho é opt-in (dialog), a cópia é ação deliberada e aplica direto.
 const SALE_ORDER_COPY_SEED_KEY = 'sale_order_copy_seed';
+
+/** Id fixo do toast de exclusão em lote — ver handleDeleteSelectedItems. */
+const PV_ITEM_DELETE_TOAST_ID = 'pv-itens-excluidos';
 
 export type SaleOrderCopySeed = {
   sourceOrderNumber: string | null;
@@ -527,6 +530,11 @@ export default function SaleOrderForm() {
   // valores digitados VÃO junto na cópia; quem se perde é só o pedido original.
   const [pendingExitIsCopy, setPendingExitIsCopy] = useState(false);
 
+  // Sair da tela mata o "Desfazer" pendente: ele restauraria itens de um
+  // formulário que não está mais montado — botão morto. O toast não expira
+  // sozinho (fica até fechar), então sem isto ele sobreviveria à navegação.
+  useEffect(() => () => { toast.dismiss(PV_ITEM_DELETE_TOAST_ID); }, []);
+
   // Guarda de F5 / fechar aba / sair do site. Só o nativo do browser funciona
   // aqui; diálogo próprio não é permitido neste evento.
   useEffect(() => {
@@ -855,6 +863,44 @@ export default function SaleOrderForm() {
     });
   };
 
+  /**
+   * "Excluir selecionados" da barra de lote (só na edição). Tira os itens da
+   * lista e oferece Desfazer num toast que fica ATÉ o usuário fechar.
+   *
+   * A exclusão é local: o banco só perde a linha quando o PV é salvo — aí
+   * `update_sale_order_atomic` apaga o que sumiu do payload. Por isso não há
+   * diálogo aqui (decisão do dono); o Desfazer é a rede.
+   *
+   * ⚠ O toast tem id FIXO de propósito: uma segunda exclusão SUBSTITUI o Desfazer
+   * anterior, então só a última é desfazível (decisão do dono). Sem id fixo eles
+   * empilhariam e, como não expiram sozinhos, entulhariam a tela no celular.
+   */
+  const handleDeleteSelectedItems = (indices: number[]) => {
+    const { remaining, removed } = removeItemsAtIndices(items, indices);
+    if (removed.length === 0) return;
+    setItems(remaining);
+
+    const n = removed.length;
+    toast.warning(
+      `${n} ${n === 1 ? 'referência removida' : 'referências removidas'} — salve o pedido para aplicar.`,
+      {
+        id: PV_ITEM_DELETE_TOAST_ID,
+        duration: Infinity,
+        action: {
+          label: 'Desfazer',
+          onClick: () => {
+            // Devolve às posições originais. `restoreItemsAt` limita o índice ao
+            // tamanho atual: como o toast não expira, a lista pode ter encolhido
+            // desde a exclusão.
+            setItems(prev => restoreItemsAt(prev, removed));
+            toast.dismiss(PV_ITEM_DELETE_TOAST_ID);
+            // Não desarma `hasUnsavedEdits`: pode haver outras edições na tela.
+          },
+        },
+      },
+    );
+  };
+
   const handleCopyItemsToNewOrder = async (indices: number[]) => {
     const seed = await buildCopySeed(indices);
     if (!seed) return;
@@ -962,6 +1008,9 @@ export default function SaleOrderForm() {
       // sozinhos — o usuário levaria um aviso de "alterações não salvas" logo
       // depois de o toast dizer que salvou.
       setHasUnsavedEdits(false);
+      // Salvou: a exclusão já foi aplicada no banco. Um "Desfazer" ainda aberto
+      // restauraria os itens só na tela e daria a falsa impressão de que voltaram.
+      toast.dismiss(PV_ITEM_DELETE_TOAST_ID);
       void checkMarginAfterSave(pvId);
       if (!pvId) { navigate('/sales'); return; }
       try {
@@ -1726,6 +1775,7 @@ export default function SaleOrderForm() {
           onPackagingQuantityChange={setPackagingQuantity}
           onSaveStateAndNavigate={!isEdit ? handleSaveStateAndNavigate : undefined}
           onCopyToNewOrder={isEdit ? handleCopyItemsToNewOrder : undefined}
+          onDeleteSelectedItems={isEdit ? handleDeleteSelectedItems : undefined}
           minBillingISO={liveMinBillingISO}
           computingMinBilling={computingLive}
           onColorIssueChange={handleColorIssueChange}

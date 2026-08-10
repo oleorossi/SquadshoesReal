@@ -63,7 +63,10 @@ vi.mock('@/integrations/supabase/client', () => {
   return { supabase: { from: () => chain, rpc: () => chain } };
 });
 
-import SaleOrderFormPanel from '@/components/sale-orders/SaleOrderFormPanel';
+import SaleOrderFormPanel, {
+  removeItemsAtIndices,
+  restoreItemsAt,
+} from '@/components/sale-orders/SaleOrderFormPanel';
 
 const ITEMS: SaleOrderItemFormData[] = [
   { id: 'i-A', reference_id: 'REF-A', color: 'PRETO', grade: { '37': 5 }, unit_price: 100, quantity: 5, fichas: 1 },
@@ -79,7 +82,13 @@ const FORM: SaleOrderFormData = {
   factoring_config_id: '', packaging_mode: 'colmeia',
 };
 
-function PanelHarness({ onCopy }: { onCopy: (indices: number[]) => void }) {
+function PanelHarness({
+  onCopy, onDelete, onUserEdit,
+}: {
+  onCopy?: (indices: number[]) => void;
+  onDelete?: (indices: number[]) => void;
+  onUserEdit?: () => void;
+}) {
   // Estado real: é ele que faz o remover-item reindexar a seleção de verdade.
   const [items, setItems] = useState<SaleOrderItemFormData[]>(ITEMS);
   return (
@@ -98,9 +107,11 @@ function PanelHarness({ onCopy }: { onCopy: (indices: number[]) => void }) {
           onClientSelect={() => {}}
           onSubmit={(e) => e.preventDefault()}
           onCancel={() => {}}
+          onUserEdit={onUserEdit}
           isPending={false}
           submitLabel="Criar Pedido"
           onCopyToNewOrder={onCopy}
+          onDeleteSelectedItems={onDelete}
         />
       </QueryClientProvider>
     </MemoryRouter>
@@ -149,6 +160,101 @@ describe('cópia parcial — do clique aos índices', () => {
       </MemoryRouter>,
     );
     expect(screen.queryByRole('button', { name: /copiar p\/ novo pv/i })).toBeNull();
+  });
+});
+
+/**
+ * Exclusão em lote. Sem diálogo de confirmação (decisão do dono) — a rede é o
+ * Desfazer do toast, disparado pelo pai. O que o painel garante é: entregar os
+ * índices certos, nunca deixar o pedido sem item, e marcar o formulário como
+ * alterado (senão dá pra excluir, tocar em Voltar e sair sem aviso nenhum).
+ */
+describe('excluir selecionados — barra de lote', () => {
+  it('entrega ao pai os índices marcados e limpa a seleção', async () => {
+    const onDelete = vi.fn();
+    const user = userEvent.setup();
+    render(<PanelHarness onDelete={onDelete} />);
+
+    await user.click(screen.getByLabelText('selecionar REF-A'));
+    await user.click(screen.getByLabelText('selecionar REF-C'));
+    await user.click(screen.getByRole('button', { name: /excluir selecionados/i }));
+
+    expect(onDelete).toHaveBeenCalledWith([0, 2]);
+    // Seleção zerada: a barra de lote some quando não há nada marcado.
+    expect(screen.queryByRole('button', { name: /excluir selecionados/i })).toBeNull();
+  });
+
+  it('recusa excluir TODOS — o pedido não pode ficar sem item', async () => {
+    const onDelete = vi.fn();
+    const user = userEvent.setup();
+    render(<PanelHarness onDelete={onDelete} />);
+
+    for (const ref of ['REF-A', 'REF-B', 'REF-C']) {
+      await user.click(screen.getByLabelText(`selecionar ${ref}`));
+    }
+    await user.click(screen.getByRole('button', { name: /excluir selecionados/i }));
+
+    expect(onDelete).not.toHaveBeenCalled();
+    // O botão continua lá (não desabilitamos: no celular não há hover pra explicar).
+    expect(screen.getByRole('button', { name: /excluir selecionados/i })).toBeTruthy();
+  });
+
+  it('marca o formulário como alterado — senão dá pra sair sem aviso', async () => {
+    const onUserEdit = vi.fn();
+    const user = userEvent.setup();
+    render(<PanelHarness onDelete={vi.fn()} onUserEdit={onUserEdit} />);
+
+    await user.click(screen.getByLabelText('selecionar REF-A'));
+    await user.click(screen.getByRole('button', { name: /excluir selecionados/i }));
+
+    expect(onUserEdit).toHaveBeenCalled();
+  });
+
+  it('a lixeira individual também marca alterado (mesmo gesto, mesmo aviso)', async () => {
+    const onUserEdit = vi.fn();
+    const user = userEvent.setup();
+    render(<PanelHarness onDelete={vi.fn()} onUserEdit={onUserEdit} />);
+
+    await user.click(screen.getByRole('button', { name: 'remover REF-A' }));
+
+    expect(onUserEdit).toHaveBeenCalled();
+  });
+
+  it('o botão não existe fora da edição (sem o callback do pai)', () => {
+    render(<PanelHarness onCopy={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: /excluir selecionados/i })).toBeNull();
+  });
+});
+
+describe('exclusão em lote — helpers de remoção e desfazer', () => {
+  const lista = (...refs: string[]) =>
+    refs.map(r => ({ ...ITEMS[0], reference_id: r })) as SaleOrderItemFormData[];
+  const refs = (its: SaleOrderItemFormData[]) => its.map(i => i.reference_id);
+
+  it('remove vários de uma vez e guarda de onde cada um saiu', () => {
+    const { remaining, removed } = removeItemsAtIndices(lista('A', 'B', 'C', 'D'), [1, 3]);
+    expect(refs(remaining)).toEqual(['A', 'C']);
+    expect(removed.map(r => [r.item.reference_id, r.index])).toEqual([['B', 1], ['D', 3]]);
+  });
+
+  it('ignora índice repetido ou fora da lista', () => {
+    const { remaining, removed } = removeItemsAtIndices(lista('A', 'B'), [1, 1, 7]);
+    expect(refs(remaining)).toEqual(['A']);
+    expect(removed).toHaveLength(1);
+  });
+
+  it('Desfazer devolve cada item na posição original', () => {
+    const original = lista('A', 'B', 'C', 'D');
+    const { remaining, removed } = removeItemsAtIndices(original, [1, 3]);
+    expect(refs(restoreItemsAt(remaining, removed))).toEqual(['A', 'B', 'C', 'D']);
+  });
+
+  it('a lista pode ter ENCOLHIDO antes do Desfazer — o item volta no fim, não some', () => {
+    const { removed } = removeItemsAtIndices(lista('A', 'B', 'C', 'D'), [3]);
+    // usuário apagou mais itens enquanto o toast (que não expira) seguia aberto
+    const encolhida = lista('A');
+    const restaurada = restoreItemsAt(encolhida, removed);
+    expect(refs(restaurada)).toEqual(['A', 'D']);
   });
 });
 
