@@ -5,10 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "node scripts/check-vercelignore.mjs && vite build && node scripts/verify-no-branding.mjs && node scripts/check-navigation-access.mjs && bash scripts/check-design-tokens.sh",
+    "build": "node scripts/check-vercelignore.mjs && vite build && node scripts/verify-no-branding.mjs && node scripts/check-navigation-access.mjs && bash scripts/check-design-tokens.sh && node scripts/check-aria-labels.mjs",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "check:tokens": "bash scripts/check-design-tokens.sh",
+    "check:aria": "node scripts/check-aria-labels.mjs",
     "check:vercelignore": "node scripts/check-vercelignore.mjs",
     "verify:no-branding": "node scripts/verify-no-branding.mjs",
     "check:navigation": "node scripts/check-navigation-access.mjs",
