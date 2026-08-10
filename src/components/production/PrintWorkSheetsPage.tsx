@@ -1,5 +1,7 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { flushSync } from 'react-dom';
+import { openPrintTab, printHtmlAsPdf, serializeForPdf } from '@/lib/printPdf';
+import { toast } from 'sonner';
 import { useQuery, useIsFetching, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -876,6 +878,10 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
   // fotos por thumbs de OUTRA largura (cache frio) e sem o await o snapshot
   // do print saía com fotos em branco. decode() também força o load de
   // imagens lazy fora do viewport (Firefox/Safari não carregam no print).
+  // Aba de destino do PDF, aberta no CLIQUE (síncrono) — depois do await o
+  // celular trata como pop-up e bloqueia.
+  const printTabRef = useRef<Window | null>(null);
+
   const printWith = async () => {
     const imgs = Array.from(document.querySelectorAll<HTMLImageElement>('.print-area img'));
     const waits: Promise<unknown>[] = imgs.map(img =>
@@ -887,7 +893,24 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
       Promise.allSettled(waits),
       new Promise(res => setTimeout(res, 4000)),
     ]);
-    window.print();
+
+    // PDF do servidor em vez de window.print() (10/08/2026). A ficha tem a MESMA
+    // folga de 9mm da etiqueta (PaginatedSheet.PAGE_HEIGHT_MM = 288 num A4 de 297)
+    // e o mesmo histórico de derramar folha em branco — o próprio arquivo registra
+    // "20 páginas lógicas viraram 40 físicas". No celular, onde o Chrome ignora o
+    // @page{margin:0}, isso volta a acontecer e ainda carimba URL/data no papel.
+    // Serializamos o DOM JÁ PAGINADO (o auto-ajuste de fonte roda aqui, como
+    // sempre) e o servidor só imprime — nenhum layout mudou.
+    const area = document.querySelector<HTMLElement>('.print-area');
+    if (!area) {
+      toast.error('Não encontrei a área de impressão na tela.');
+      return;
+    }
+    await printHtmlAsPdf(serializeForPdf(area, 'Fichas de Produção'), {
+      filename: `fichas-${new Date().toISOString().slice(0, 10)}`,
+      target: printTabRef.current,
+    });
+    printTabRef.current = null;
     // Restaura o layout completo no preview — sem isso, depois do "Relatório
     // simplificado" um Ctrl+P manual sairia na versão reduzida sem pedir.
     // Vale igual pro modo cartão, que ainda troca a orientação do @page.
@@ -3012,7 +3035,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
                 erro zera sheetById e o filtro de roteiro/flags falha ABERTO —
                 OPs entram em setores errados e Corte Forração some. O banner
                 vermelho acima explica e pede recarga. */}
-            <Button onClick={() => printWith()} className="gap-2" disabled={activeSectors.size === 0 || sheetCount === 0 || initialQueriesLoading || failedQueries > 0} title={failedQueries > 0 ? 'Consultas de dados falharam — recarregue a página antes de imprimir' : undefined}>
+            <Button onClick={() => { printTabRef.current = openPrintTab(); void printWith(); }} className="gap-2" disabled={activeSectors.size === 0 || sheetCount === 0 || initialQueriesLoading || failedQueries > 0} title={failedQueries > 0 ? 'Consultas de dados falharam — recarregue a página antes de imprimir' : undefined}>
               <Printer className="h-4 w-4" /> Imprimir {cartao ? 'cartões' : 'fichas'}
             </Button>
             {/* Alternador de MODO (não imprime). O preview passa a refletir o

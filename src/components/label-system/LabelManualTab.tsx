@@ -9,6 +9,7 @@ import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { Printer, Upload, Plus, Minus, ArrowCounterClockwise as RotateCcw, Eye, ArrowSquareIn as Import, X } from '@phosphor-icons/react';
 import { buildThermalLabelsHtml, buildBoxIdentificationHtml, DEFAULT_THERMAL_CONFIG } from '@/lib/printLabels';
+import { openPrintTab, printHtmlAsPdf } from '@/lib/printPdf';
 import { supabase } from '@/integrations/supabase/client';
 import { useCompanies } from '@/hooks/useNfe';
 import { DEFAULT_MANUFACTURER_NAME, DEFAULT_MANUFACTURER_CNPJ } from '@/lib/companySender';
@@ -58,12 +59,21 @@ const EMPTY: ManualForm = {
   sizes: FALLBACK_SIZES.map(s => ({ size: s, qty: '' })),
 };
 
-function openPrint(html: string) {
-  const w = window.open('', '_blank');
-  if (!w) return;
-  w.document.write(html);
-  w.document.close();
-  setTimeout(() => w.print(), 900);
+/**
+ * Impressão via PDF do servidor. Antes escrevia o HTML numa aba e chamava
+ * `print()` — o que no CELULAR gerava folha em branco entre as etiquetas e
+ * carimbava URL/data no papel, porque o Chrome do Android ignora o
+ * `@page{margin:0}`. Ver src/lib/printPdf.ts.
+ */
+function openPrint(html: string, filename: string) {
+  const tab = openPrintTab(); // síncrono, dentro do clique — escapa do bloqueio de pop-up
+  void printHtmlAsPdf(html, { filename, target: tab });
+}
+
+/** Nome do arquivo com o lote/referência quando houver — ajuda a achar depois. */
+function buildFilename(base: string, sufixo?: string) {
+  const limpo = (sufixo || '').trim().replace(/[^\w-]+/g, '-').replace(/^-+|-+$/g, '');
+  return limpo ? `${base}-${limpo}` : base;
 }
 
 export function LabelManualTab() {
@@ -306,7 +316,7 @@ export function LabelManualTab() {
             imageUrl: form.imageUrl || undefined,
             clientOrderNumber: form.lote || undefined,
           }));
-      openPrint(buildThermalLabelsHtml(rows, '', { width: 100, height: 30 }, DEFAULT_THERMAL_CONFIG, resolveSender().senderCnpj));
+      openPrint(buildThermalLabelsHtml(rows, '', { width: 100, height: 30 }, DEFAULT_THERMAL_CONFIG, resolveSender().senderCnpj), buildFilename('etiquetas-termicas', form.lote || form.referencia));
     } else if (form.labelType === 'box') {
       const items = Array.from({ length: copies }, (_, i) => ({
         orderNumber: form.lote || '—',
@@ -324,9 +334,9 @@ export function LabelManualTab() {
         barcode: form.referencia.replace(/\s/g, '') || undefined,
         imageUrl: form.imageUrl || undefined,
       }));
-      openPrint(buildBoxIdentificationHtml(items));
+      openPrint(buildBoxIdentificationHtml(items), buildFilename('rotulos-caixa', form.lote || form.referencia));
     } else if (form.labelType === 'hangtag') {
-      openPrint(buildHangtagManualHtml(form, grade, copies));
+      openPrint(buildHangtagManualHtml(form, grade, copies), buildFilename('etiquetas-pendurar', form.lote || form.referencia));
     }
   };
 

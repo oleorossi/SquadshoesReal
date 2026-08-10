@@ -12,7 +12,7 @@
  *   · colmeia             → ONLY master/external box label (NO individual)
  * - Print modes: per-OP (one at a time) or batch (all selected / by week)
  */
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { Tag, MagnifyingGlass as Search, Barcode, Gear as Settings2, Package as BoxIcon, Package, ArrowCounterClockwise as RotateCcw, Factory, Scan as ScanLine, CalendarBlank as CalendarDays, Buildings as Building2, CircleNotch as Loader2, Stack as Layers, CheckCircle as CheckCircle2, PencilSimple as Pencil, Download, CaretLeft, CaretRight, Plus, X } from '@phosphor-icons/react';
@@ -35,6 +35,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { resolveProductImageWithSource } from '@/lib/imageFallback';
 import { resolveMaterialLabels, materialLabelKey, type MaterialLabelInput } from '@/lib/labelUtils';
 import { buildBoxIdentificationHtml, buildThermalLabelsHtml, buildThermalLabelsPdf, buildHangtagHtml, type BoxIdentificationData, type ThermalLabelConfig, DEFAULT_THERMAL_CONFIG } from '@/lib/printLabels';
+import { openPrintTab, printHtmlAsPdf } from '@/lib/printPdf';
 import { DEFAULT_MANUFACTURER_NAME, DEFAULT_MANUFACTURER_CNPJ } from '@/lib/companySender';
 import { cn } from '@/lib/utils';
 import { isCancelledOrDraftOrder } from '@/lib/orderStatus';
@@ -719,6 +720,9 @@ export function LabelProductionTab() {
   });
   const [showConfig, setShowConfig] = useState(false);
   const [printHtml, setPrintHtml] = useState<string | null>(null);
+  // Aba de destino do PDF. Aberta DENTRO do clique (síncrono) — abrir depois do
+  // await faz o celular tratar como pop-up e bloquear.
+  const printTabRef = useRef<Window | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [labelConfig, setLabelConfig] = useState<ThermalLabelConfig>({ ...DEFAULT_THERMAL_CONFIG });
   const [serializationStart, setSerializationStart] = useState(1);
@@ -1003,6 +1007,7 @@ export function LabelProductionTab() {
   };
 
   const handlePrintHangtags = async () => {
+    printTabRef.current = openPrintTab();
     let cortadasHangtag = 0;
     const selectedGroups = filtered.filter(g => selected.has(g.groupKey));
     if (selectedGroups.length === 0) return;
@@ -1046,6 +1051,7 @@ export function LabelProductionTab() {
   };
 
   const handlePrintIndividual = async () => {
+    printTabRef.current = openPrintTab();
     let cortadasTermica = 0;
     const selectedGroups = filtered.filter(g => selected.has(g.groupKey));
     // Filter out groups that don't allow thermal labels
@@ -1718,6 +1724,7 @@ export function LabelProductionTab() {
   };
 
   const handlePrintBoxLabels = async () => {
+    printTabRef.current = openPrintTab();
     const boxGroups = selectedBoxGroups();
     if (boxGroups.length === 0) {
       toast.error('Nenhum pedido selecionado permite rótulo de caixa externa.');
@@ -1734,25 +1741,22 @@ export function LabelProductionTab() {
     } catch (err: any) { toast.error(err.message); } finally { setIsGenerating(false); }
   };
 
+  // Impressão via PDF do servidor (10/08/2026). Antes escrevia o HTML numa aba e
+  // chamava print(): no CELULAR o Chrome ignora o `@page{margin:0}`, os 288mm de
+  // conteúdo não cabiam na área útil e cada folha de rótulos vinha seguida de uma
+  // folha EM BRANCO — além do cabeçalho do navegador carimbado no papel. Agora
+  // quem desenha é o Chromium do servidor, e o arquivo sai igual em todo aparelho.
+  //
+  // ⚠ A aba é aberta no CLIQUE (printTabRef), não aqui: abrir depois do await faz
+  // o celular tratar como pop-up e bloquear.
   useEffect(() => {
-    if (printHtml) {
-      const w = window.open('', '_blank', 'width=900,height=700');
-      if (w) {
-        w.document.write(printHtml);
-        w.document.close();
-        const fallbackTimer = setTimeout(() => { try { w.print(); } catch {} }, 6000);
-        w.onload = () => {
-          clearTimeout(fallbackTimer);
-          const imagesReady = (w as any)._imagesReady;
-          if (imagesReady && typeof imagesReady.then === 'function') {
-            imagesReady.then(() => { setTimeout(() => w.print(), 300); });
-          } else { setTimeout(() => w.print(), 600); }
-        };
-      } else {
-        toast.error('Popup bloqueado pelo navegador. Permita popups para imprimir.');
-      }
-      setPrintHtml(null);
-    }
+    if (!printHtml) return;
+    void printHtmlAsPdf(printHtml, {
+      filename: `etiquetas-${new Date().toISOString().slice(0, 10)}`,
+      target: printTabRef.current,
+    });
+    printTabRef.current = null;
+    setPrintHtml(null);
   }, [printHtml]);
 
   return (
