@@ -1,3 +1,5 @@
+import { Skeleton } from '@/components/ui/skeleton';
+import { TableSkeleton } from '@/components/layout/PageSkeleton';
 import { useState, useMemo } from 'react';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { Sparkle as Sparkles, Plus, PencilSimple as Pencil, Trash as Trash2, MagnifyingGlass as Search, CircleNotch as Loader2, Calculator, ArrowRight, Users, Warning as AlertTriangle, Scissors, X } from '@phosphor-icons/react';
@@ -241,8 +243,12 @@ export default function ArtisanalRecipes({ embedded = false }: { embedded?: bool
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <div className="space-y-5">
+        <div className="space-y-2">
+          <Skeleton className="h-7 w-56 rounded-md" />
+          <Skeleton className="h-4 w-80 rounded" />
+        </div>
+        <TableSkeleton rows={6} />
       </div>
     );
   }
