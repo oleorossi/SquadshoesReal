@@ -75,8 +75,8 @@ import { SearchInput } from '@/components/ui/search-input';
 import { SelectionTotalsBar } from '@/components/ui/selection-totals-bar';
 import { generateCostReportPdf } from '@/lib/costReportPdf';
 import { type CostReportRow, type DateBasis, summarizeRows, rowDateForBasis, inDateRange } from '@/lib/costReport';
+import { ContractorFormDialog, emptyContractor } from '@/components/contractors/ContractorFormDialog';
 
-const emptyContractor: Partial<Contractor> = { name: '', trade_name: '', cnpj_cpf: '', phone: '', email: '', address: '', city: '', state: '', service_type: '', notes: '', active: true, payment_days: 15 };
 const emptyMaterial: MaterialSent = { material: '', color: '', meters: 0 };
 const emptyOrder: Partial<ServiceOrder> & { materials_sent: MaterialSent[] } = {
   contractor_id: '', description: '', service_date: format(new Date(), 'yyyy-MM-dd'), service_time: '',
@@ -2278,74 +2278,16 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
       </Dialog>
 
       {/* ── Contractor Dialog ── */}
-      <Dialog open={contractorDialog} onOpenChange={open => { setContractorDialog(open); if (!open) { setEditingContractor({ ...emptyContractor }); setIsEditing(false); } }}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2"><Handshake className="h-5 w-5 text-primary" /> {isEditing ? 'Editar' : 'Novo'} Prestador</DialogTitle>
-            <DialogDescription>Dados cadastrais e prazo de pagamento do prestador.</DialogDescription>
-          </DialogHeader>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 py-2">
-            <div className="sm:col-span-2 space-y-1.5">
-              <Label className="text-xs font-medium text-muted-foreground">Nome / Razão Social *</Label>
-              <Input value={editingContractor.name || ''} onChange={e => setEditingContractor(p => ({ ...p, name: e.target.value }))} className="h-9" />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium text-muted-foreground">Nome Fantasia</Label>
-              <Input value={editingContractor.trade_name || ''} onChange={e => setEditingContractor(p => ({ ...p, trade_name: e.target.value }))} className="h-9" />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium text-muted-foreground">CPF/CNPJ</Label>
-              <Input value={editingContractor.cnpj_cpf || ''} onChange={e => setEditingContractor(p => ({ ...p, cnpj_cpf: e.target.value }))} className="h-9 font-mono text-sm" />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium text-muted-foreground">Telefone</Label>
-              <Input value={editingContractor.phone || ''} onChange={e => setEditingContractor(p => ({ ...p, phone: e.target.value }))} className="h-9" />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium text-muted-foreground">Email</Label>
-              <Input value={editingContractor.email || ''} onChange={e => setEditingContractor(p => ({ ...p, email: e.target.value }))} className="h-9" />
-            </div>
-            <div className="sm:col-span-2 space-y-1.5">
-              <Label className="text-xs font-medium text-muted-foreground">Tipo de Serviço</Label>
-              <Input placeholder="Ex: Costura, Palmilha, Pesponto..." value={editingContractor.service_type || ''} onChange={e => setEditingContractor(p => ({ ...p, service_type: e.target.value }))} className="h-9" />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium text-muted-foreground">Prazo de Pagamento (dias)</Label>
-              <NumberInput min={1} decimals={0} value={editingContractor.payment_days ?? 15} onChange={n => setEditingContractor(p => ({ ...p, payment_days: n || 15 }))} className="h-9" />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium text-muted-foreground">Status</Label>
-              <Select value={editingContractor.active ? 'true' : 'false'} onValueChange={v => setEditingContractor(p => ({ ...p, active: v === 'true' }))}>
-                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="true">Ativo</SelectItem>
-                  <SelectItem value="false">Inativo</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="sm:col-span-2 space-y-1.5">
-              <Label className="text-xs font-medium text-muted-foreground">Endereço</Label>
-              <Input value={editingContractor.address || ''} onChange={e => setEditingContractor(p => ({ ...p, address: e.target.value }))} className="h-9" />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium text-muted-foreground">Cidade</Label>
-              <Input value={editingContractor.city || ''} onChange={e => setEditingContractor(p => ({ ...p, city: e.target.value }))} className="h-9" />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium text-muted-foreground">UF</Label>
-              <Input value={editingContractor.state || ''} onChange={e => setEditingContractor(p => ({ ...p, state: e.target.value }))} maxLength={2} className="h-9 uppercase" />
-            </div>
-            <div className="sm:col-span-2 space-y-1.5">
-              <Label className="text-xs font-medium text-muted-foreground">Observações</Label>
-              <Textarea value={editingContractor.notes || ''} onChange={e => setEditingContractor(p => ({ ...p, notes: e.target.value }))} rows={2} className="resize-none" />
-            </div>
-          </div>
-          <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="outline" onClick={() => setContractorDialog(false)} className="h-9">Cancelar</Button>
-            <Button onClick={handleSaveContractor} disabled={createContractor.isPending || updateContractor.isPending} className="h-9">Salvar</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ContractorFormDialog
+        open={contractorDialog}
+        onOpenChange={setContractorDialog}
+        value={editingContractor}
+        onChange={setEditingContractor}
+        isEditing={isEditing}
+        onEditingChange={setIsEditing}
+        onSave={handleSaveContractor}
+        saving={createContractor.isPending || updateContractor.isPending}
+      />
 
       {/* ── Service Order Dialog ── */}
       <Dialog open={orderDialog} onOpenChange={open => { setOrderDialog(open); if (!open) { setEditingOrder({ ...emptyOrder, materials_sent: [{ ...emptyMaterial }] }); setIsEditing(false); setOrderTab('dados'); resetArtisanal(); setOsPvItemSel(new Set()); osPvPrevRef.current = null; } }}>
