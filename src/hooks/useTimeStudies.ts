@@ -8,7 +8,23 @@ import { toast } from 'sonner';
  * (normal_time_minutes, standard_time_minutes, cost_per_minute, cost_per_pair).
  *
  * O resultado alimenta bom_operations.standard_time_minutes via RPC
- * apply_time_study_to_bom — mantendo calculate_order_cost como fonte única do MOD.
+ * apply_time_study_to_bom (que grava time_source = 'cronoanalise').
+ *
+ * ⚠ ONDE O MOD REALMENTE SAI — a versão anterior deste bloco dizia que a cadeia
+ * acima mantinha "calculate_order_cost como fonte única do MOD". Isso é FALSO e
+ * foi verificado no banco em 11/08/2026:
+ *
+ *   - `calculate_order_cost` NÃO lê bom_operations nem standard_time_minutes.
+ *   - Quem calcula MOD é `calculate_order_cost_item`, com
+ *       v_labor += (standard_time_minutes / 60) * cost_per_hour * qty
+ *     lendo bom_operations por sheet_id.
+ *   - `order_stages` tem colunas standard_time_minutes / cost_per_hour /
+ *     cost_per_pair, mas as três estão VAZIAS (0 de 2.638 linhas). Só
+ *     actual_time_minutes tem dado (968), vindo do apontamento.
+ *
+ * E esta Cronoanálise nunca foi usada: `time_studies` tem 0 linhas, enquanto
+ * bom_operations tem 439 operações em 47 fichas — 378 delas com
+ * time_source = 'default', ou seja, custo por valor genérico e não medido.
  */
 
 export interface TimeStudy {

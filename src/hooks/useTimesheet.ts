@@ -43,6 +43,16 @@ export interface Holiday {
   holiday_date: string;
   recurring: boolean;
   created_at: string;
+  /** Feriado facultativo — não derruba o dia útil. */
+  optional?: boolean | null;
+  /**
+   * ⚠ Linha de sinal OPOSTO: `true` marca um DIA ÚTIL EXCEPCIONAL da fábrica
+   * (sábado em que se trabalha), não um feriado. Convive na mesma tabela desde
+   * 11/08/2026 por decisão de produto. Todo consumidor de FOLHA precisa
+   * descartá-la — o gargalo é `resolveHolidaysInRange` (lib/ponto/periodDates),
+   * que já filtra; quem monta o predicado à mão tem que filtrar também.
+   */
+  is_working_day?: boolean | null;
 }
 
 /**

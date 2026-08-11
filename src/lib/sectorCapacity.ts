@@ -59,10 +59,28 @@ const DAY_MS = 86_400_000;
 // regressão).
 let _holidayCache: Set<string> | null = null;
 
+/**
+ * Datas marcadas como DIA ÚTIL EXCEPCIONAL da fábrica (`holidays.is_working_day`),
+ * tipicamente sábados em que se trabalha. Espelha `public.is_business_day()`.
+ *
+ * Vive num cache separado do de feriados de propósito: as duas coleções saem da
+ * mesma tabela mas têm sinais opostos, e misturá-las faria um sábado produtivo
+ * ser lido como feriado.
+ */
+let _workingDayCache: Set<string> = new Set<string>();
+
 function isHoliday(rows: any[]): Set<string> {
   return new Set<string>(
     (rows || [])
-      .filter((r: any) => r?.optional !== true)
+      .filter((r: any) => r?.optional !== true && r?.is_working_day !== true)
+      .map((r: any) => String(r.holiday_date)),
+  );
+}
+
+function workingDays(rows: any[]): Set<string> {
+  return new Set<string>(
+    (rows || [])
+      .filter((r: any) => r?.is_working_day === true)
       .map((r: any) => String(r.holiday_date)),
   );
 }
@@ -70,6 +88,7 @@ function isHoliday(rows: any[]): Set<string> {
 /** Popula o cache de feriados síncrono, a partir dos dados de useHolidays (telas). */
 export function setHolidayCache(rows: any[] | null | undefined): void {
   _holidayCache = isHoliday(rows || []);
+  _workingDayCache = workingDays(rows || []);
 }
 
 /** Carrega feriados do banco uma vez e cacheia (usado por checkSectorCapacity). */
@@ -77,14 +96,18 @@ export async function loadHolidayCache(force = false): Promise<Set<string>> {
   if (_holidayCache && !force) return _holidayCache;
   const { data } = await supabase.from('holidays').select('*');
   _holidayCache = isHoliday(data || []);
+  _workingDayCache = workingDays(data || []);
   return _holidayCache;
 }
 
 export function isBusinessDay(d: Date, holidays?: Set<string>): boolean {
+  const iso = d.toISOString().slice(0, 10);
+  // Dia útil excepcional vence o fim de semana — mesma precedência do SQL.
+  if (_workingDayCache.has(iso)) return true;
   const dow = d.getDay();
   if (dow === 0 || dow === 6) return false;
   const set = holidays ?? _holidayCache;
-  if (set && set.has(d.toISOString().slice(0, 10))) return false;
+  if (set && set.has(iso)) return false;
   return true;
 }
 
