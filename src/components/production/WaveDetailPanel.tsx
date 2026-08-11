@@ -56,6 +56,44 @@ export function WaveDetailPanel({
 
         {wave && (
           <div className="space-y-6 mt-4">
+            {/*
+              Progresso REAL, derivado das OPs. A faixa de setores abaixo vem de
+              production_wave_stages — máquina paralela que ninguém aponta e que
+              diverge em silêncio (em 11/08/2026 as 5 ondas em andamento
+              mentiam). Enquanto as duas convivem, esta linha é a que vale.
+            */}
+            {wave.derived_situacao && (
+              <div
+                className={cn(
+                  'rounded border p-3',
+                  wave.derived_situacao === 'concluida'   ? 'bg-success/10 border-success/30' :
+                  wave.derived_situacao === 'sem_op'      ? 'bg-destructive/10 border-destructive/30' :
+                                                            'bg-primary/10 border-primary/30',
+                )}
+              >
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                  Situação real · derivada das OPs
+                </p>
+                <p className="text-base font-bold uppercase mt-0.5">
+                  {wave.derived_situacao === 'concluida' && 'Concluída — nenhuma etapa aberta'}
+                  {wave.derived_situacao === 'sem_op'    && 'Sem OP — onda inválida'}
+                  {wave.derived_situacao === 'em_producao' && (wave.derived_sector || 'Em produção')}
+                </p>
+                {wave.derived_situacao === 'em_producao' && (
+                  <p className="text-xs text-muted-foreground mt-0.5 tabular-nums">
+                    {wave.derived_ops} OP(s) · {wave.derived_open_stages} etapa(s) aberta(s) ·{' '}
+                    {wave.derived_open_pairs} par(es) restante(s)
+                  </p>
+                )}
+                {wave.current_stage && wave.derived_situacao !== 'em_producao' && (
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    O quadro gravado ainda diz <strong>{wave.current_stage}</strong> — divergência
+                    conhecida da máquina de etapas paralela.
+                  </p>
+                )}
+              </div>
+            )}
+
             {/* progresso de setores */}
             <div className="grid grid-cols-3 sm:grid-cols-9 gap-2">
               {STAGE_ORDER.map((stage) => {

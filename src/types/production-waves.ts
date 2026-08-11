@@ -186,6 +186,25 @@ export type WaveDetail = {
   total_items: number;
   stages: WaveStage[];
   items: WaveItem[];
+  /**
+   * Progresso DERIVADO das OPs da onda (`wave_derived_progress`), a partir de
+   * `order_stages`. É a verdade: `current_stage`/`stages` vêm da máquina de
+   * estado PARALELA `production_wave_stages`, que ninguém aponta — o Kanban
+   * move `order_stages` — e que nada reconcilia.
+   *
+   * Medido em 11/08/2026: as 5 ondas "running" mentiam. Três diziam estar no
+   * Corte com 100% das etapas concluídas; uma estava rodando sem nenhuma OP.
+   *
+   * `derived_situacao`: 'em_producao' | 'concluida' | 'sem_op'.
+   * `derived_sector` é o nome REAL do setor (ex.: 'Corte Palmilha'), não o
+   * enum antigo — o tradutor `kanban_stage_to_wave_stage` devolve NULL para os
+   * setores atuais e por isso não é usado aqui.
+   */
+  derived_sector: string | null;
+  derived_situacao: 'em_producao' | 'concluida' | 'sem_op' | null;
+  derived_ops: number | null;
+  derived_open_stages: number | null;
+  derived_open_pairs: number | null;
 };
 
 export type SectorBoardRow = {
