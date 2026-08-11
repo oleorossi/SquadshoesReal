@@ -100,4 +100,31 @@ describe('openPrintTab', () => {
     expect(open).toHaveBeenCalledWith('', 'squad-pdf');
     vi.unstubAllGlobals();
   });
+
+  /**
+   * A SEGUNDA geração é o caso que quebrava. `window.open` com o mesmo nome
+   * devolve a aba existente, que já está exibindo um PDF — e escrever num
+   * documento PDF LANÇA. Sem proteção, o erro subia até a primeira linha do
+   * handler de impressão e abortava tudo antes do primeiro await: sem toast,
+   * sem erro na tela, sem arquivo.
+   */
+  it('aba já exibindo um PDF não derruba o fluxo — devolve a janela mesmo assim', () => {
+    const abaComPdf = {
+      document: {
+        write: vi.fn(() => { throw new DOMException('cannot write to PDF document'); }),
+        close: vi.fn(),
+      },
+    };
+    vi.stubGlobal('open', vi.fn().mockReturnValue(abaComPdf));
+    expect(() => openPrintTab()).not.toThrow();
+    expect(openPrintTab()).toBe(abaComPdf);
+    vi.unstubAllGlobals();
+  });
+
+  it('pop-up bloqueado (open devolve null) também não derruba', () => {
+    vi.stubGlobal('open', vi.fn().mockReturnValue(null));
+    expect(() => openPrintTab()).not.toThrow();
+    expect(openPrintTab()).toBeNull();
+    vi.unstubAllGlobals();
+  });
 });

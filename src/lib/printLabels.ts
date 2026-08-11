@@ -385,8 +385,7 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
           ${item.mainMaterial ? `<div class="glabel">MATERIAL</div>
           <div class="row-mat">${escapeHtml(item.mainMaterial)}</div>` : ''}
           ${isSingleSizeBox ? `
-          <div class="glabel last">TAMANHO</div>
-          <div class="single-size" style="grid-column: 2 / -1;">
+          <div class="single-size" style="grid-column: 1 / -1;">
             <div class="ss-col"><span class="ss-cap">TAMANHO</span><span class="ss-num ss-red">${escapeHtml(singleSize)}</span></div>
             <div class="ss-col"><span class="ss-cap">QUANTIDADE</span><span class="ss-num">${totalQty}</span></div>
           </div>` : `

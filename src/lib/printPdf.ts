@@ -68,15 +68,24 @@ export interface PrintPdfOptions {
  */
 export function openPrintTab(): Window | null {
   const w = window.open('', PRINT_TAB_NAME);
-  if (w) {
-    w.document.write(
+  // ⚠ O try/catch NÃO é decorativo. Na SEGUNDA geração, `window.open` com o mesmo
+  // nome devolve a aba que já existe — e ela está exibindo um PDF. Escrever num
+  // documento PDF lança, e sem proteção o erro subia até a primeira linha do
+  // handler de impressão, abortando tudo ANTES do primeiro await: sem toast, sem
+  // erro na tela, sem arquivo. Era o "depois eu não consigo gerar o PDF".
+  //
+  // A aba segue sendo REUSADA (nome fixo) pra não multiplicar abas no celular.
+  // Quando ela já tem um PDF, o usuário vê o arquivo antigo até o novo chegar —
+  // melhor que a tela travar.
+  try {
+    w?.document.write(
       '<!doctype html><meta charset="utf-8"><title>Gerando PDF…</title>' +
       '<meta name="viewport" content="width=device-width,initial-scale=1">' +
       '<body style="font-family:system-ui,sans-serif;padding:24px;color:#111">' +
       '<p>Gerando o PDF… pode levar alguns segundos.</p></body>',
     );
-    w.document.close();
-  }
+    w?.document.close();
+  } catch { /* aba já exibindo um PDF — segue com ela mesmo assim */ }
   return w;
 }
 
