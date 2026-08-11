@@ -2518,10 +2518,16 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
           band.pvNumbers.push(order.sale_order_number);
         }
         // Acumula referências (sandálias) com foto pra exibir no header da ficha.
+        // ⚠ Mesma armadilha já corrigida no agrupamento de cards (ver o comentário
+        // em ~2255): guardar por `refCode` sozinho DESCARTA em silêncio a ficha
+        // sem código. Medido em 11/08/2026: 2 das 53 fichas não têm `code`, e
+        // elas respondem por 6 OPs abertas — que sumiam do header da ficha.
+        // `name` nunca é vazio (0 de 53), então a chave cai nele.
         const refCode = order.reference_code || '';
+        const refName = order.reference_name || '';
         const refColor = order.color || '';
-        const refKey = `${refCode}::${refColor}`;
-        if (refCode && !band.refs.some(r => r.key === refKey)) {
+        const refKey = `${refCode || refName}::${refColor}`;
+        if ((refCode || refName) && !band.refs.some(r => r.key === refKey)) {
           const variants = variantsByRef.get(sheetId) || [];
           const exactImg = variants.find(v => (v.color || '').toLowerCase() === cabedelColorLower)?.image_url;
           const pretoImg = !exactImg

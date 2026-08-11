@@ -80,4 +80,34 @@ describe('ficha de Expedição — resumo de caixas por numeração', () => {
     const caixas = Array.from(linhaCaixas.querySelectorAll('td')).slice(1, 8).map(td => td.textContent);
     expect(caixas.every(c => c === '0')).toBe(true);
   });
+
+  it('mostra a REFERÊNCIA (DS22), não o código interno (903925)', () => {
+    // Regressão do PV-00157 (11/08/2026), reportada com print da ficha.
+    //
+    // A seção nascia com `reference_code || reference_name`, invertida em
+    // relação à seção de itens da MESMA ficha (que usa name || code) e ao
+    // ManagementReport. A expedição confere pela referência que está na caixa —
+    // DS22 —, não pelo código 903925.
+    //
+    // ⚠ O fixture do topo deste arquivo mascarava o defeito: ele grava
+    // `reference_code: 'DS21'`, ou seja, já assumia que o código carregava a
+    // referência. No banco real são campos distintos: technical_sheets.code =
+    // 903925 e technical_sheets.name = DS22.
+    renderFicha(grupo({
+      sale_order_number: 'PV-00157',
+      orders: [{
+        id: 'op1',
+        op_number: 'OP-2026-01300',
+        reference_code: '903925',
+        reference_name: 'DS22',
+        color: 'OFF WHITE',
+        total_pairs: 288,
+        pairs_per_box: 12,
+        grid: { '34': 24, '35': 48, '36': 48, '37': 72, '38': 48, '39': 24, '40': 24 },
+      }],
+    }));
+
+    expect(screen.getAllByText(/DS22/).length).toBeGreaterThan(0);
+    expect(screen.queryByText('903925')).toBeNull();
+  });
 });
