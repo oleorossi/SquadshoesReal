@@ -28,7 +28,14 @@ const grupo = (over: Partial<ExpedicaoCustomerGroup> = {}): ExpedicaoCustomerGro
     {
       id: 'op1',
       op_number: 'OP-2026-01290',
-      reference_code: 'DS21',
+      // ⚠ Dado com a FORMA do banco, de propósito. `code` é o código interno e
+      // `name` é a referência — campos distintos. Este fixture já gravou
+      // `reference_code: 'DS21'` sem `reference_name`, uma linha que NÃO existe
+      // (das 53 fichas, 0 têm código sem nome; 2 têm nome sem código). Foi essa
+      // suposição embutida que deixou 5 testes verdes conviverem com a ficha
+      // imprimindo 903925 no lugar de DS22 (PV-00157, 11/08/2026).
+      reference_code: '903929',
+      reference_name: 'DS21',
       color: 'PALHA/PORCELANA',
       total_pairs: 288,
       pairs_per_box: 12,

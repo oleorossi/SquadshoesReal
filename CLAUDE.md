@@ -671,6 +671,34 @@ sobra.
 **Peso:** par sempre de `technical_sheets.weight_per_pair_kg`, default 238 g só quando a
 ficha não tem; tara da caixa em `box_types.empty_weight_kg`.
 
+### ⚠ Volumes da NF NÃO conhecem `box_grouping` — MANTIDO ASSIM (dono, 11/08/2026)
+
+`compute_sale_order_box_breakdown` conta `CEIL(total_pares ÷ capacidade)`. Isso vale pro
+modo `grade`, onde a caixa leva a curva inteira. Em **caixa fechada por numeração**
+(`sale_orders.box_grouping = 'numeracao_unica'`, migration `20261231120500`) a caixa é de UM
+número só, então o físico é `Σ CEIL(pares_da_numeração ÷ capacidade)` — **maior** sempre que
+alguma numeração não fecha caixa cheia. A função **não olha `box_grouping`**, e NF, etiqueta
+e débito de embalagem leem dela.
+
+Medido em 11/08/2026: nos **dois** PVs em numeração única (PV-00147 e PV-00157) a diferença
+é **zero** — as numerações são múltiplos da capacidade (24/48/72 com caixa de 12), que é
+como esses pedidos são colocados. Mas na base ativa **83,4% das células** (456 de 547) não
+fecham caixa cheia, e **6 de 10 PVs** divergiriam se o modo fosse ligado neles — no pior
+caso medido, a NF declararia **90 volumes a menos** que o físico.
+
+**Decisão do dono: MANTER.** Não corrigir a função, nem avisar na tela. O risco só se
+materializa se alguém ligar o modo num pedido de numeração quebrada.
+
+⚠ Então: **não "conserte" a função por coerência** ao mexer em empacotamento — a divergência
+é conhecida e a escolha foi consciente. E **não conclua que está tudo certo** só porque os
+PVs em numeração única batem hoje: eles batem por causa da curva, não porque a função saiba
+do modo.
+
+⚠ O resumo "Caixas por Numeração" da ficha de Expedição (`ExpedicaoWorkSheet`) usa a conta
+**física** (`Math.ceil` por numeração), não a da NF. Nos pedidos de hoje os dois dão o mesmo
+número; num pedido de numeração quebrada a ficha mostraria MAIS caixas que a NF — e a ficha
+é que estaria certa.
+
 ## Rota de produção — Expedição é obrigatória (CANÔNICO, 07/08/2026)
 
 > Decisão do dono. A rota de uma OP nasce de `technical_sheets.production_sectors`
