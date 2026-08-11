@@ -454,7 +454,11 @@ export const ExpedicaoWorkSheet = ({ group, sizeBand, sectorLabel }: Props) => {
         return { size: s, pares, caixas: capacidade > 0 ? Math.ceil(pares / capacidade) : 0 };
       });
       return {
-        ref: o.reference_code || o.reference_name || '—',
+        // Referência primeiro, código depois — mesma precedência da seção de
+        // itens (linha ~334) e do ManagementReport. A expedição confere pela
+        // REFERÊNCIA (DS22), não pelo código interno (903925), e esta seção
+        // nasceu com a ordem invertida.
+        ref: o.reference_name || o.reference_code || '—',
         cor: o.color || '',
         capacidade,
         celulas,
