@@ -1586,6 +1586,50 @@ export default function SaleOrderFormPanel({
                 </CollapsibleContent>
               </Collapsible>
 
+              {/* ── Caixa fechada por numeração (decisão do dono, 11/08/2026) ──
+                  No pedido tradicional a caixa leva a curva completa do cliente.
+                  Alguns pedidos vão com a caixa cheia de UMA numeração só, o que
+                  muda o rótulo de caixa externa.
+
+                  ⚠ Só é permitido quando cada numeração fecha caixa cheia. É essa
+                  condição que garante que o número de VOLUMES não muda — e por isso
+                  NF-e e débito de embalagem seguem intactos. Sem ela, cada numeração
+                  terminaria numa caixa pela metade (medido no PV-00144: 65 volumes
+                  virando 68). */}
+              <div className="mt-4 flex items-start justify-between gap-3 rounded-md border border-border/60 bg-muted/30 px-3 py-2.5">
+                <div className="min-w-0">
+                  <Label htmlFor="box-grouping" className="text-xs font-bold uppercase tracking-wider">
+                    Caixa fechada por numeração
+                  </Label>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Cada caixa vai com {boxGroupingCapacity || 12} pares da mesma numeração,
+                    em vez da grade completa. Muda o rótulo da caixa externa.
+                  </p>
+                  {boxGroupingBlockers.length > 0 && (
+                    <p className="text-xs text-amber-600 mt-1">
+                      Não fecha caixa cheia: {boxGroupingBlockers.slice(0, 2).join('; ')}
+                      {boxGroupingBlockers.length > 2 ? ` e mais ${boxGroupingBlockers.length - 2}` : ''}.
+                    </p>
+                  )}
+                </div>
+                <Switch
+                  id="box-grouping"
+                  checked={form.box_grouping === 'numeracao_unica'}
+                  onCheckedChange={(on) => {
+                    if (!on) { setForm(f => ({ ...f, box_grouping: 'grade' })); return; }
+                    if (boxGroupingBlockers.length > 0) {
+                      toast.error(
+                        `Este pedido não fecha caixas de ${boxGroupingCapacity || 12} pares por numeração — ` +
+                        `${boxGroupingBlockers[0]}. Ajuste a grade ou o número de fichas.`,
+                        { duration: 10_000 },
+                      );
+                      return;
+                    }
+                    setForm(f => ({ ...f, box_grouping: 'numeracao_unica' }));
+                  }}
+                />
+              </div>
+
               {onPackagingProductChange && (
                 <Collapsible
                   open={packagingDetailsOpen}
@@ -1645,49 +1689,6 @@ export default function SaleOrderFormPanel({
                     })()}
                   </RadioGroup>
 
-                  {/* ── Caixa fechada por numeração (decisão do dono, 11/08/2026) ──
-                      No pedido tradicional a caixa leva a curva completa do cliente.
-                      Alguns pedidos vão com a caixa cheia de UMA numeração só, o que
-                      muda o rótulo de caixa externa.
-
-                      ⚠ Só é permitido quando cada numeração fecha caixa cheia. É essa
-                      condição que garante que o número de VOLUMES não muda — e por isso
-                      NF-e e débito de embalagem seguem intactos. Sem ela, cada numeração
-                      terminaria numa caixa pela metade (medido no PV-00144: 65 volumes
-                      virando 68). */}
-                  <div className="flex items-start justify-between gap-3 rounded-md border border-border/60 bg-muted/30 px-3 py-2.5">
-                    <div className="min-w-0">
-                      <Label htmlFor="box-grouping" className="text-xs font-bold uppercase tracking-wider">
-                        Caixa fechada por numeração
-                      </Label>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        Cada caixa vai com {boxGroupingCapacity || 12} pares da mesma numeração,
-                        em vez da grade completa. Muda o rótulo da caixa externa.
-                      </p>
-                      {boxGroupingBlockers.length > 0 && (
-                        <p className="text-xs text-amber-600 mt-1">
-                          Não fecha caixa cheia: {boxGroupingBlockers.slice(0, 2).join('; ')}
-                          {boxGroupingBlockers.length > 2 ? ` e mais ${boxGroupingBlockers.length - 2}` : ''}.
-                        </p>
-                      )}
-                    </div>
-                    <Switch
-                      id="box-grouping"
-                      checked={form.box_grouping === 'numeracao_unica'}
-                      onCheckedChange={(on) => {
-                        if (!on) { setForm(f => ({ ...f, box_grouping: 'grade' })); return; }
-                        if (boxGroupingBlockers.length > 0) {
-                          toast.error(
-                            `Este pedido não fecha caixas de ${boxGroupingCapacity || 12} pares por numeração — ` +
-                            `${boxGroupingBlockers[0]}. Ajuste a grade ou o número de fichas.`,
-                            { duration: 10_000 },
-                          );
-                          return;
-                        }
-                        setForm(f => ({ ...f, box_grouping: 'numeracao_unica' }));
-                      }}
-                    />
-                  </div>
 
                   {/* Resumo de volumes — espelha a NF (compute_sale_order_nfe_volumes):
                       total de pares ÷ pares-por-caixa do modo (12 padrão p/ colmeia/master).
