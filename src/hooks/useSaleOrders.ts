@@ -371,6 +371,9 @@ async function generateAutoPurchaseOrders(saleOrderNumber: string, systemOrderNu
 
 // 3 modos canônicos pro usuário + 1 legacy ('individual_amarrado' = só individual,
 // sem agrupamento). Mantido pra compat com PVs antigos. Não aparece na UI nova.
+/** Montagem das caixas do pedido — ver `box_grouping`. */
+export type BoxGrouping = 'grade' | 'numeracao_unica';
+
 export type PackagingMode = 'individual_master' | 'colmeia' | 'individual_fitilho' | 'individual_amarrado';
 
 export const PACKAGING_MODE_LABELS: Record<PackagingMode, string> = {
@@ -416,6 +419,13 @@ export type SaleOrderFormData = {
   is_factoring: boolean;
   factoring_config_id: string;
   packaging_mode: PackagingMode;
+  /** Como as caixas do pedido são montadas (decisão do dono, 11/08/2026):
+   *  'grade' = cada caixa leva a curva completa do cliente (padrão);
+   *  'numeracao_unica' = cada caixa fecha com uma numeração só.
+   *  ⚠ NÃO muda a contagem de volumes: o modo só é oferecido quando cada
+   *  numeração fecha caixa cheia (ver `singleSizeMisfits` em boxPacking.ts),
+   *  e é isso que mantém NF-e e débito de embalagem intactos. */
+  box_grouping?: BoxGrouping;
   /** Taxa de frete por par em R$ — gera financial_entry de despesa
    *  automaticamente quando > 0 (trigger DB cria/atualiza). */
   shipping_rate_per_pair?: number;

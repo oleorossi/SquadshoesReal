@@ -325,6 +325,18 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
     ).join('');
     const totalQty = item.grade.reduce((sum, g) => sum + g.qty, 0);
 
+    /**
+     * Caixa fechada com UMA numeração (decisão do dono, 11/08/2026): a tabela de
+     * 7 colunas com 6 zeros vira ruído e some, e o número da caixa ocupa o espaço
+     * inteiro — o operador lê a numeração a um metro da bancada.
+     *
+     * ⚠ O gatilho é o CONTEÚDO da caixa, não o modo do pedido. Assim a caixa de
+     * sobra do pedido tradicional — que já é de numeração única hoje — ganha o
+     * mesmo tratamento, em vez de existirem dois rótulos para a mesma situação.
+     */
+    const isSingleSizeBox = item.grade.length === 1;
+    const singleSize = isSingleSizeBox ? String(item.grade[0].size) : '';
+
     // ─── MARCA / SELO (linha 1 da tabela de grade) ─────────
     // Selo e texto usam a MESMA marca: item.marca, resolvida pelo caller via
     // RPC resolve_item_brand (silk do solado, cascata cliente→grupo→padrão).
@@ -372,10 +384,16 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
           <div class="row-ref">${escapeHtml(item.refName || item.refCode || '—')}</div>
           ${item.mainMaterial ? `<div class="glabel">MATERIAL</div>
           <div class="row-mat">${escapeHtml(item.mainMaterial)}</div>` : ''}
+          ${isSingleSizeBox ? `
+          <div class="glabel last">TAMANHO</div>
+          <div class="single-size" style="grid-column: 2 / -1;">
+            <div class="ss-col"><span class="ss-cap">TAMANHO</span><span class="ss-num ss-red">${escapeHtml(singleSize)}</span></div>
+            <div class="ss-col"><span class="ss-cap">QUANTIDADE</span><span class="ss-num">${totalQty}</span></div>
+          </div>` : `
           <div class="glabel">TAMANHO</div>
           ${sizeCells}<div class="cell total tam-total" style="font-size:${totalLabelPx}px;">TOTAL</div>
           <div class="glabel last">QUANTIDADE</div>
-          ${qtyCells}<div class="cell total qtd-total" style="font-size:${qtyFontPx}px;">${totalQty}</div>
+          ${qtyCells}<div class="cell total qtd-total" style="font-size:${qtyFontPx}px;">${totalQty}</div>`}
         </div>
 
         <div class="footer">
@@ -546,6 +564,15 @@ ${LABEL_PRINT_HARDENING}
 .grade-table > .glabel{border-right:1.5px solid #000;border-bottom:1px solid #000;padding:4px 10px;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:10px;letter-spacing:0.06em;color:#555;display:flex;align-items:center;}
 .grade-table > .glabel.first{background:#fff;color:#000;}
 .grade-table > .glabel.last{border-bottom:none;}
+/* Caixa fechada por UMA numeração — o número é a informação principal, lida a
+   um metro. Corpo grande em Anton porque no laser P&B da fábrica o vermelho
+   vira cinza: o tamanho da fonte é que precisa carregar o destaque sozinho. */
+.grade-table > .single-size{display:flex;align-items:stretch;}
+.single-size > .ss-col{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:2px 0;}
+.single-size > .ss-col + .ss-col{border-left:1.5px solid #000;}
+.ss-cap{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:9px;letter-spacing:0.12em;color:#555;}
+.ss-num{font-family:'Anton',Impact,sans-serif;font-size:52px;line-height:0.9;color:#000;}
+.ss-num.ss-red{color:#C00000;}
 .grade-table > .cell{text-align:center;border-right:1px solid #000;border-bottom:1px solid #000;font-family:'Anton',sans-serif;font-weight:400;color:#000;font-size:18px;padding:2px 0;display:flex;align-items:center;justify-content:center;}
 .grade-table > .cell.tam-total{background:#fff;color:#000;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:11px;}
 .grade-table > .cell.qtd-total{background:#fff;color:#000;font-size:22px;border-bottom:none;}

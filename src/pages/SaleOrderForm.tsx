@@ -55,6 +55,7 @@ const emptyForm: SaleOrderFormData = {
   representative: '', payment_condition: '', delivery_deadline: '', delivery_week: '', delivery_month: '',
   notes: '', status: 'Rascunho',
   nfe: '', remessa: '', is_factoring: false, factoring_config_id: '', packaging_mode: 'colmeia',
+  box_grouping: 'grade',
   shipping_rate_per_pair: 0,
   nfe_required: true,
   own_delivery: false,
@@ -716,6 +717,9 @@ export default function SaleOrderForm() {
         is_factoring: (order as any).is_factoring || false,
         factoring_config_id: (order as any).factoring_config_id || '',
         packaging_mode: (order as any).packaging_mode || 'colmeia',
+        // Sem carregar, reabrir o PV mostraria 'grade' e o save gravaria por cima
+        // da escolha — o mesmo furo que já custou company_id e nfe_external.
+        box_grouping: (order as any).box_grouping || 'grade',
         shipping_rate_per_pair: Number((order as any).shipping_rate_per_pair) || 0,
         nfe_required: (order as any).nfe_required !== false,
         own_delivery: (order as any).own_delivery === true,

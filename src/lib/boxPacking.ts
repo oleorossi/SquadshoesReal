@@ -206,6 +206,95 @@ export function packSaleOrderItem({ grade, fichas, capacity }: PackItemInput): P
   return boxes;
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+   MODO "NUMERAÇÃO ÚNICA" — caixa fechada com um número só (decisão do dono,
+   11/08/2026)
+   ══════════════════════════════════════════════════════════════════════════
+
+   No pedido tradicional a caixa leva a grade completa do cliente. Alguns
+   clientes pedem o contrário: cada caixa com `capacity` pares da MESMA
+   numeração. É o ESPELHO da regra acima — lá é "colmeia com a grade + sobra
+   vira numeração única"; aqui toda caixa é de numeração única.
+
+   ⚠ O modo só é oferecido quando FECHA REDONDO (decisão do dono): cada
+   numeração precisa dar um múltiplo exato da capacidade. É isso que garante
+   que o número de volumes NÃO muda — `Σ(pares_da_numeração / capacidade)`
+   é igual a `total / capacidade`, que é o que o modo grade produz.
+
+   Sem essa condição o modo criaria uma caixa parcial POR NUMERAÇÃO. Medido no
+   PV-00144 (DS20 OFF WHITE, 780 pares, 65 fichas): sete caixas pela metade,
+   65 volumes virando 68 — e aí NF-e e débito de embalagem passariam a divergir
+   da carga física, que é o que a regra canônica existe pra impedir.
+*/
+
+/** Numeração que não fecha caixa cheia, com os números pra mensagem de erro. */
+export interface SingleSizeMisfit {
+  size: string;
+  /** Pares dessa numeração no item inteiro (grade × fichas). */
+  pairs: number;
+  /** Quanto sobraria na última caixa. */
+  remainder: number;
+}
+
+/**
+ * O item pode ser empacotado por numeração única sem gerar caixa parcial?
+ *
+ * Devolve as numerações que NÃO fecham — lista vazia significa que pode.
+ * É o que alimenta o aviso da tela do PV, por isso devolve os números: a
+ * mensagem tem que dizer o que ajustar, não só que falhou.
+ */
+export function singleSizeMisfits({ grade, fichas, capacity }: PackItemInput): SingleSizeMisfit[] {
+  const sorted = normalizeGrade(grade);
+  if (!sorted.length || !Number.isFinite(fichas) || fichas <= 0) return [];
+  if (!Number.isFinite(capacity) || capacity <= 0) return [];
+
+  const misfits: SingleSizeMisfit[] = [];
+  for (const g of sorted) {
+    const pairs = g.qty * fichas;
+    const remainder = pairs % capacity;
+    if (remainder !== 0) misfits.push({ size: g.size, pairs, remainder });
+  }
+  return misfits;
+}
+
+/** Atalho de leitura pros chamadores que só querem o sim/não. */
+export function singleSizePackingFits(input: PackItemInput): boolean {
+  return singleSizeMisfits(input).length === 0;
+}
+
+/**
+ * Plano de caixas de UM item do PV no modo numeração única.
+ *
+ * Devolve `[]` quando o item não fecha redondo — mesmo contrato de
+ * `packSaleOrderItem`, que também declina devolvendo vazio. Declinar aqui é
+ * proposital: preferimos cair no modo grade a imprimir volume que não
+ * corresponde à carga.
+ *
+ * ⚠ Chamar por item, como a outra: consolidar entre itens misturaria
+ * referência e cor na mesma caixa.
+ */
+export function packSaleOrderItemBySize({ grade, fichas, capacity }: PackItemInput): PackedBox[] {
+  const sorted = normalizeGrade(grade);
+  if (!sorted.length || !Number.isFinite(fichas) || fichas <= 0) return [];
+  if (!Number.isFinite(capacity) || capacity <= 0) return [];
+  if (singleSizeMisfits({ grade: sorted, fichas, capacity }).length > 0) return [];
+
+  const boxes: PackedBox[] = [];
+  for (const g of sorted) {
+    const pairs = g.qty * fichas;
+    for (let restante = pairs; restante > 0; restante -= capacity) {
+      boxes.push({
+        kind: 'single',
+        size: g.size,
+        contents: [{ size: g.size, qty: capacity }],
+        pairs: capacity,
+        partial: false, // fecha redondo por construção — ver singleSizeMisfits
+      });
+    }
+  }
+  return boxes;
+}
+
 /**
  * Peso de uma caixa em kg.
  * O peso do par vem SEMPRE da ficha técnica da referência

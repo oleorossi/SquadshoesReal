@@ -8,6 +8,9 @@ import {
   boxWeightKg,
   DEFAULT_PAIR_WEIGHT_KG,
   type GradeInput,
+  packSaleOrderItemBySize,
+  singleSizeMisfits,
+  singleSizePackingFits,
 } from '../boxPacking';
 
 /**
@@ -237,5 +240,84 @@ describe('boxWeightKg', () => {
     const bruto = todas.reduce((s, b) => s + boxWeightKg(b, { boxTareKg: 0.1 }), 0);
     expect(bruto).toBeCloseTo(540 * DEFAULT_PAIR_WEIGHT_KG + 45 * 0.1, 6);
     expect(bruto).toBeCloseTo(133.02, 2);
+  });
+});
+
+/**
+ * Modo NUMERAÇÃO ÚNICA (11/08/2026) — caixa fechada com um número só.
+ *
+ * A garantia que sustenta a decisão do dono ("não muda a quantidade de volumes")
+ * é a última asserção: mesma contagem de caixas do modo grade. Se ela cair, NF-e
+ * e débito de embalagem passam a divergir da carga física.
+ */
+describe('packSaleOrderItemBySize — caixa fechada por numeração', () => {
+  // Curva real do PV-00151, com fichas múltiplo de 12: fecha redondo.
+  const grade = { '34': 1, '35': 2, '36': 2, '37': 3, '38': 2, '39': 1, '40': 1 }; // 12/ficha
+  const fichas = 12;
+  const capacity = 12;
+
+  const caixas = () => packSaleOrderItemBySize({ grade, fichas, capacity });
+
+  it('toda caixa leva UMA numeração só', () => {
+    for (const box of caixas()) {
+      expect(box.kind).toBe('single');
+      expect(box.contents).toHaveLength(1);
+      expect(box.contents[0].size).toBe(box.size);
+    }
+  });
+
+  it('nenhum par fica fora de caixa', () => {
+    const total = Object.values(grade).reduce((s, q) => s + q, 0) * fichas;
+    expect(caixas().reduce((s, b) => s + b.pairs, 0)).toBe(total);
+  });
+
+  it('nenhuma caixa passa da capacidade, e nenhuma viaja pela metade', () => {
+    for (const box of caixas()) {
+      expect(box.pairs).toBeLessThanOrEqual(capacity);
+      expect(box.partial).toBe(false);
+    }
+  });
+
+  it('MESMA contagem de caixas do modo grade — é o que mantém a NF intacta', () => {
+    const modoGrade = packSaleOrderItem({ grade, fichas, capacity });
+    expect(caixas()).toHaveLength(modoGrade.length);
+  });
+
+  it('a numeração mais pedida rende mais caixas (nº 37: 3×12 = 36 pares = 3 caixas)', () => {
+    const doTrinta7 = caixas().filter(b => b.size === '37');
+    expect(doTrinta7).toHaveLength(3);
+  });
+
+  it('declina quando NÃO fecha redondo, em vez de inventar caixa parcial', () => {
+    // PV-00144 real: 65 fichas não é múltiplo de 12.
+    expect(packSaleOrderItemBySize({ grade, fichas: 65, capacity })).toEqual([]);
+  });
+});
+
+describe('singleSizeMisfits — o aviso do PV', () => {
+  const grade = { '34': 1, '35': 2, '36': 2, '37': 3, '38': 2, '39': 1, '40': 1 };
+
+  it('aprova quando cada numeração fecha caixa cheia', () => {
+    expect(singleSizeMisfits({ grade, fichas: 12, capacity: 12 })).toEqual([]);
+    expect(singleSizePackingFits({ grade, fichas: 12, capacity: 12 })).toBe(true);
+  });
+
+  it('acusa o PV-00144 com os números que a mensagem precisa mostrar', () => {
+    const faltas = singleSizeMisfits({ grade, fichas: 65, capacity: 12 });
+    expect(faltas.map(f => f.size)).toEqual(['34', '35', '36', '37', '38', '39', '40']);
+    // nº 37: 3 × 65 = 195 pares, 16 caixas cheias e 3 sobrando.
+    const n37 = faltas.find(f => f.size === '37')!;
+    expect(n37.pairs).toBe(195);
+    expect(n37.remainder).toBe(3);
+  });
+
+  it('acusa só a numeração problemática quando as outras fecham', () => {
+    // 36 fichas: o nº 35 (2×36=72) fecha; um nº com 1 par (36) não.
+    const faltas = singleSizeMisfits({ grade: { '35': 2, '36': 1 }, fichas: 36, capacity: 24 });
+    expect(faltas.map(f => f.size)).toEqual(['36']);
+  });
+
+  it('capacidade inválida não vira falso positivo', () => {
+    expect(singleSizeMisfits({ grade, fichas: 12, capacity: 0 })).toEqual([]);
   });
 });

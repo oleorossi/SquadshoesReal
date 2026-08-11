@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { SaleOrderFormData, SaleOrderItemFormData, PACKAGING_MODE_LABELS, PACKAGING_MODE_CANONICAL, type PackagingMode, ORDER_TYPES } from '@/hooks/useSaleOrders';
 import { volumesForPairs, pairsPerVolumeForMode, isPairAsVolumeMode, collectiveTypeForMode } from '@/lib/packagingPairsPerBox';
+import { singleSizeMisfits } from '@/lib/boxPacking';
 import { useAccessControl } from '@/hooks/useAccessControl';
 import { useContractors } from '@/hooks/useContractors';
 import { DISPLAY_SECTORS, SECTOR_LABELS, type SectorKey } from '@/lib/sectors';
@@ -780,6 +781,39 @@ export default function SaleOrderFormPanel({
      toast.success(`Grade aplicada em ${ids.length} ${ids.length === 1 ? 'item' : 'itens'} (${totalPairs} pares por ficha)`);
      setBulkGradeInput({});
    }, [bulkGradeInput, selectedItemIndices, setItems]);
+
+  /**
+   * Capacidade da caixa (pares por colmeia) e itens que NÃO fecham caixa cheia
+   * por numeração — alimentam o controle "Caixa fechada por numeração".
+   *
+   * A capacidade vem do cadastro da ficha, a mesma que a NF usa pra contar
+   * volumes; 12 é só o fallback de exibição quando a ficha ainda não tem caixa
+   * cadastrada. Nunca fixar 12 na regra: solado com colmeia de 10 ou 16 existe.
+   */
+  const boxGroupingCapacity = useMemo(() => {
+    const collType = collectiveTypeForMode(form.packaging_mode || 'colmeia');
+    const caps = (sheetPackagingConfigs as any[])
+      .filter(c => c.packaging_type === collType && Number(c.pairs_per_box) > 0)
+      .map(c => Number(c.pairs_per_box));
+    return caps.length > 0 ? Math.min(...caps) : 0;
+  }, [sheetPackagingConfigs, form.packaging_mode]);
+
+  const boxGroupingBlockers = useMemo(() => {
+    const capacity = boxGroupingCapacity || 12;
+    const problemas: string[] = [];
+    for (const item of items) {
+      if (!item.reference_id || !item.grade) continue;
+      const fichas = Number(item.fichas) || 0;
+      if (fichas <= 0) continue;
+      const faltas = singleSizeMisfits({ grade: item.grade, fichas, capacity });
+      if (faltas.length === 0) continue;
+      const ref = references.find((r: any) => r.id === item.reference_id) as any;
+      const rotulo = [ref?.code || ref?.name || 'item', item.color].filter(Boolean).join(' ');
+      const f = faltas[0];
+      problemas.push(`${rotulo}: o nº ${f.size} dá ${f.pairs} pares`);
+    }
+    return problemas;
+  }, [items, boxGroupingCapacity, references]);
 
   const totalPairs = items.reduce((s, i) => s + (i.quantity || 0), 0);
   const totalValue = items.reduce((s, i) => s + (i.quantity || 0) * (i.unit_price || 0), 0);
@@ -1610,6 +1644,50 @@ export default function SaleOrderFormPanel({
                       ));
                     })()}
                   </RadioGroup>
+
+                  {/* ── Caixa fechada por numeração (decisão do dono, 11/08/2026) ──
+                      No pedido tradicional a caixa leva a curva completa do cliente.
+                      Alguns pedidos vão com a caixa cheia de UMA numeração só, o que
+                      muda o rótulo de caixa externa.
+
+                      ⚠ Só é permitido quando cada numeração fecha caixa cheia. É essa
+                      condição que garante que o número de VOLUMES não muda — e por isso
+                      NF-e e débito de embalagem seguem intactos. Sem ela, cada numeração
+                      terminaria numa caixa pela metade (medido no PV-00144: 65 volumes
+                      virando 68). */}
+                  <div className="flex items-start justify-between gap-3 rounded-md border border-border/60 bg-muted/30 px-3 py-2.5">
+                    <div className="min-w-0">
+                      <Label htmlFor="box-grouping" className="text-xs font-bold uppercase tracking-wider">
+                        Caixa fechada por numeração
+                      </Label>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Cada caixa vai com {boxGroupingCapacity || 12} pares da mesma numeração,
+                        em vez da grade completa. Muda o rótulo da caixa externa.
+                      </p>
+                      {boxGroupingBlockers.length > 0 && (
+                        <p className="text-xs text-amber-600 mt-1">
+                          Não fecha caixa cheia: {boxGroupingBlockers.slice(0, 2).join('; ')}
+                          {boxGroupingBlockers.length > 2 ? ` e mais ${boxGroupingBlockers.length - 2}` : ''}.
+                        </p>
+                      )}
+                    </div>
+                    <Switch
+                      id="box-grouping"
+                      checked={form.box_grouping === 'numeracao_unica'}
+                      onCheckedChange={(on) => {
+                        if (!on) { setForm(f => ({ ...f, box_grouping: 'grade' })); return; }
+                        if (boxGroupingBlockers.length > 0) {
+                          toast.error(
+                            `Este pedido não fecha caixas de ${boxGroupingCapacity || 12} pares por numeração — ` +
+                            `${boxGroupingBlockers[0]}. Ajuste a grade ou o número de fichas.`,
+                            { duration: 10_000 },
+                          );
+                          return;
+                        }
+                        setForm(f => ({ ...f, box_grouping: 'numeracao_unica' }));
+                      }}
+                    />
+                  </div>
 
                   {/* Resumo de volumes — espelha a NF (compute_sale_order_nfe_volumes):
                       total de pares ÷ pares-por-caixa do modo (12 padrão p/ colmeia/master).

@@ -39,7 +39,7 @@ import { openPrintTab, printHtmlAsPdf } from '@/lib/printPdf';
 import { DEFAULT_MANUFACTURER_NAME, DEFAULT_MANUFACTURER_CNPJ } from '@/lib/companySender';
 import { cn } from '@/lib/utils';
 import { isCancelledOrDraftOrder } from '@/lib/orderStatus';
-import { packSaleOrderItem } from '@/lib/boxPacking';
+import { packSaleOrderItem, packSaleOrderItemBySize } from '@/lib/boxPacking';
 import { toast } from 'sonner';
 import { useOrders } from '@/hooks/useOrders';
 import { useLabelTemplates, SQUAD_THERMAL_DEFAULT_ID, SQUAD_BOX_DEFAULT_ID } from '@/hooks/useLabelTemplates';
@@ -1485,9 +1485,24 @@ export function LabelProductionTab() {
           // que assumir 12 e imprimir volume que não corresponde à carga.
           const capacity = capacityBySaleOrder.get(order.sale_order_id) || 0;
           const pairsInPlannedFicha = effGradePerFicha.reduce((s, g) => s + g.qty, 0);
-          const packed = capacity > 0 && pairsInPlannedFicha > 0
-            ? packSaleOrderItem({ grade: effGradePerFicha, fichas: effFichas, capacity })
+          // ── MODO DE MONTAGEM DA CAIXA (decisão do dono, 11/08/2026) ──
+          // `numeracao_unica` fecha cada caixa com uma numeração só, em vez da
+          // curva do cliente. O PV só consegue ligar o modo quando cada
+          // numeração fecha caixa cheia (a tela valida com `singleSizeMisfits`),
+          // então a CONTAGEM de caixas é a mesma dos dois jeitos — é isso que
+          // mantém NF-e e débito de embalagem intactos.
+          //
+          // `packSaleOrderItemBySize` também declina (devolve []) se não fechar,
+          // e aí caímos no modo grade: preferimos a caixa tradicional a imprimir
+          // volume que não corresponde à carga.
+          const packInput = { grade: effGradePerFicha, fichas: effFichas, capacity };
+          const podeEmpacotar = capacity > 0 && pairsInPlannedFicha > 0;
+          const porNumeracao = podeEmpacotar && so?.box_grouping === 'numeracao_unica'
+            ? packSaleOrderItemBySize(packInput)
             : [];
+          const packed = porNumeracao.length > 0
+            ? porNumeracao
+            : (podeEmpacotar ? packSaleOrderItem(packInput) : []);
           // Plano vazio = a regra declinou (grade que não é ficha) ou não há
           // capacidade resolvida. Nos dois casos cai no legado — 1 etiqueta por
           // ficha com a grade cheia. Nunca ficar sem etiqueta nenhuma.
