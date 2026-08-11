@@ -79,7 +79,22 @@ export function absenteeismRate(
   return denom > 0 ? (absenceBizDays / denom) * 100 : 0;
 }
 
-/** Set de feriados OBRIGATÓRIOS (optional !== true) a partir da lista de useHolidays. */
-export function mandatoryHolidaySet(holidaysList: Array<{ holiday_date: string; optional?: boolean }>): Set<string> {
-  return new Set((holidaysList || []).filter(h => h.optional !== true).map(h => h.holiday_date));
+/**
+ * Set de feriados OBRIGATÓRIOS (optional !== true) a partir da lista de useHolidays.
+ *
+ * ⚠ Exclui também `is_working_day` — desde 11/08/2026 a tabela `holidays` guarda
+ * DOIS tipos de linha: o feriado de verdade e o **dia útil excepcional da
+ * fábrica** (sábado em que se trabalha, `is_working_day = true`). Os dois têm
+ * sinais opostos, e este Set é o gargalo por onde a folha inteira lê feriado —
+ * sem o filtro, um sábado produtivo viraria feriado no espelho de ponto e
+ * geraria hora extra fantasma.
+ */
+export function mandatoryHolidaySet(
+  holidaysList: Array<{ holiday_date: string; optional?: boolean; is_working_day?: boolean }>,
+): Set<string> {
+  return new Set(
+    (holidaysList || [])
+      .filter(h => h.optional !== true && h.is_working_day !== true)
+      .map(h => h.holiday_date),
+  );
 }

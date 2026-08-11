@@ -102,6 +102,8 @@ export default function ExceptionsTab() {
       const dayOfWeek = date.getDay();
       const swapMode = swapModeFor(rec.record_date);
       const isHol = !swapMode && holidays.some(h => {
+        // is_working_day = sábado produtivo da fábrica, sinal OPOSTO a feriado
+        if (h.is_working_day === true || h.optional === true) return false;
         if (h.recurring) return h.holiday_date.slice(5) === rec.record_date.slice(5);
         return h.holiday_date === rec.record_date;
       });

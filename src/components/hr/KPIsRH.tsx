@@ -58,7 +58,9 @@ function useKPIsRH() {
         // divergia de PainelRH/AbsenceReport. Ver src/lib/absenteeism.ts.
         (supabase as any).from('employee_absences').select('start_date, end_date')
           .gte('end_date', monthStart).lte('start_date', monthEnd),
-        (supabase as any).from('holidays').select('holiday_date, optional'),
+        // is_working_day precisa vir: sem ela mandatoryHolidaySet leria undefined
+        // e contaria o sábado produtivo da fábrica como feriado.
+        (supabase as any).from('holidays').select('holiday_date, optional, is_working_day'),
       ]);
 
       const runs = (runsRes.data || []) as any[];

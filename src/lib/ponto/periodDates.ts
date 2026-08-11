@@ -4,6 +4,11 @@ type HolidayRow = {
   holiday_date: string;
   recurring?: boolean | null;
   optional?: boolean | null;
+  /**
+   * Dia útil EXCEPCIONAL da fábrica (sábado em que se trabalha), não feriado.
+   * Mora na mesma tabela desde 11/08/2026 — ver o filtro em resolveHolidaysInRange.
+   */
+  is_working_day?: boolean | null;
 };
 
 type AbsenceRow = {
@@ -25,6 +30,12 @@ export function resolveHolidaysInRange(
   const toYear = Number(to.slice(0, 4));
   for (const holiday of holidays || []) {
     if (holiday.optional === true) continue;
+    // ⚠ Gargalo da FOLHA: Payroll, Timesheet, EspelhoPonto e os relatórios de
+    // faltas/atrasos leem feriado por aqui. Desde 11/08/2026 a tabela `holidays`
+    // guarda também o DIA ÚTIL EXCEPCIONAL da fábrica (sábado trabalhado), que
+    // tem sinal OPOSTO — deixá-lo passar marcaria o dia como feriado no espelho
+    // de ponto e geraria hora extra fantasma.
+    if (holiday.is_working_day === true) continue;
     const holidayDate = String(holiday.holiday_date || '').slice(0, 10);
     if (!holiday.recurring) {
       if (holidayDate >= from && holidayDate <= to) resolved.add(holidayDate);
