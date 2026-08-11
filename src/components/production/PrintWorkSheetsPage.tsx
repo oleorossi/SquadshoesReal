@@ -1027,7 +1027,10 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
       // do Supabase quebrava o print de toda OP em produção.
       const { data, error } = await (supabase as any)
         .from('sale_orders')
-        .select('id, client_id, client_name, client_cnpj, order_number, client_order_number, delivery_deadline, status, total, packaging_mode, representative, payment_condition, valor_frete');
+        // ⚠ Lista EXPLÍCITA: coluna que a ficha usa e não está aqui chega
+        // `undefined` e o recurso some em silêncio. `box_grouping` liga o resumo
+        // de caixas por numeração na ficha de Expedição.
+        .select('id, client_id, client_name, client_cnpj, order_number, client_order_number, delivery_deadline, status, total, packaging_mode, box_grouping, representative, payment_condition, valor_frete');
       if (error) throw error;
       return data;
     },
@@ -2687,6 +2690,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
           nfe_numero: nfe?.numero || null,
           nfe_chave: nfe?.chave_acesso || null,
           transport_name: transport,
+          box_grouping: (so as any)?.box_grouping || null,
           orders: [],
         });
       }

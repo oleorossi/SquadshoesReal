@@ -43,6 +43,10 @@ export interface ExpedicaoCustomerGroup {
   nfe_chave?: string | null;
   /** Transportadora destinada (de sale_order.transport_company). */
   transport_name?: string | null;
+  /** Montagem das caixas do PV (`sale_orders.box_grouping`). Em
+   *  `numeracao_unica` a ficha ganha o resumo de CAIXAS POR NUMERAÇÃO, que é
+   *  o que a expedição confere na bancada. Ausente = pedido tradicional. */
+  box_grouping?: string | null;
   orders: ExpedicaoOrder[];
 }
 
@@ -59,6 +63,29 @@ interface Props {
  *  cortada ao meio e a faixa de setor aparece em toda página. ~14 linhas
  *  (foto 36px + paddings ≈ 46px/linha) cabem com folga numa página. */
 const ITEM_ROWS_PER_CHUNK = 14;
+
+/** Células do resumo de caixas por numeração. Cores fixas e sem primitives —
+ *  regra de componente de print (docs/PRINT_SPEC.md). */
+const celRotulo: React.CSSProperties = {
+  border: '1px solid #000',
+  padding: '1px 6px',
+  fontFamily: "'Fira Code', monospace",
+  fontSize: '8.5px',
+  letterSpacing: '0.08em',
+  color: '#C00000',
+  fontWeight: 700,
+  textAlign: 'left',
+  whiteSpace: 'nowrap',
+};
+
+const celNum: React.CSSProperties = {
+  border: '1px solid #000',
+  padding: '1px 0',
+  textAlign: 'center',
+  fontFamily: "'Anton', Impact, sans-serif",
+  color: '#000',
+  lineHeight: 1.05,
+};
 
 /**
  * Ficha de Expedição — uma por cliente/CNPJ. Mostra:
@@ -399,8 +426,126 @@ export const ExpedicaoWorkSheet = ({ group, sizeBand, sectorLabel }: Props) => {
       </div>
   );
 
+  /**
+   * Resumo CAIXAS POR NUMERAÇÃO — só em pedido `numeracao_unica`.
+   *
+   * É a folha que a expedição confere na bancada: por referência × cor, quantas
+   * caixas de cada número saem. Substitui a planilha que o dono mantinha à mão.
+   *
+   * A conta é direta porque no modo numeração única cada caixa fecha com um
+   * número só: `caixas = pares_da_numeração / capacidade`. `orders.grid` já vem
+   * MULTIPLICADO (Σ = total de pares da OP), então não se multiplica por fichas
+   * aqui — a convenção oposta é a de `sale_order_items.grade`.
+   *
+   * ⚠ Só aparece no modo novo. No pedido tradicional a caixa leva a curva
+   * inteira, e "caixas por numeração" não descreveria a carga.
+   */
+  const isNumeracaoUnica = group.box_grouping === 'numeracao_unica';
+
+  const resumoNumeracao = isNumeracaoUnica ? (() => {
+    const linhas = group.orders.map((o) => {
+      const capacidade = Number(o.pairs_per_box) || 0;
+      const grade = o.grid || {};
+      const numeros = Object.keys(grade)
+        .filter((s) => (Number(grade[s]) || 0) > 0)
+        .sort((a, b) => Number(a) - Number(b));
+      const celulas = numeros.map((s) => {
+        const pares = Number(grade[s]) || 0;
+        return { size: s, pares, caixas: capacidade > 0 ? Math.ceil(pares / capacidade) : 0 };
+      });
+      return {
+        ref: o.reference_code || o.reference_name || '—',
+        cor: o.color || '',
+        capacidade,
+        celulas,
+        totalCaixas: celulas.reduce((s, c) => s + c.caixas, 0),
+        totalPares: celulas.reduce((s, c) => s + c.pares, 0),
+      };
+    }).filter((l) => l.celulas.length > 0);
+
+    if (linhas.length === 0) return null;
+    const totalCaixas = linhas.reduce((s, l) => s + l.totalCaixas, 0);
+    const totalPares = linhas.reduce((s, l) => s + l.totalPares, 0);
+    const capacidades = [...new Set(linhas.map((l) => l.capacidade).filter((c) => c > 0))];
+
+    return (
+      <div className="mb-2">
+        <div className="flex items-baseline justify-between mb-1">
+          <div className="flex items-center gap-2">
+            <Package className="h-4 w-4 text-black" weight="bold" />
+            <span className="section-label" style={{ color: '#000' }}>
+              Caixas por Numeração · Conferência
+            </span>
+          </div>
+          <div className="flex items-end gap-4 shrink-0">
+            <div className="text-right">
+              <span className="section-label block" style={{ color: '#000' }}>Caixas</span>
+              <span className="block leading-none" style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '25px', color: '#C00000' }}>
+                {totalCaixas}
+              </span>
+            </div>
+            <div className="text-right">
+              <span className="section-label block" style={{ color: '#000' }}>Pares</span>
+              <span className="block leading-none" style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '25px' }}>
+                {totalPares}
+              </span>
+            </div>
+            {capacidades.length === 1 && (
+              <div className="text-right">
+                <span className="section-label block" style={{ color: '#000' }}>Pares/cx</span>
+                <span className="block leading-none" style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '18px' }}>
+                  {capacidades[0]}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {linhas.map((l, i) => (
+          <div key={`${l.ref}-${l.cor}-${i}`} style={{ border: '1.5px solid #000', marginBottom: '4px' }}>
+            <div className="flex items-baseline gap-2" style={{ borderBottom: '1.5px solid #000', padding: '2px 6px' }}>
+              <span style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '15px' }}>{l.ref}</span>
+              {l.cor && (
+                <span style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '13px', color: '#C00000' }}>{l.cor}</span>
+              )}
+              <span className="ml-auto" style={{ fontFamily: "'Fira Code', monospace", fontSize: '9px', color: '#000' }}>
+                {l.totalCaixas} CX · {l.totalPares} PARES
+              </span>
+            </div>
+            <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+              <tbody>
+                <tr>
+                  <td style={{ ...celRotulo, width: '78px' }}>NUMERAÇÃO</td>
+                  {l.celulas.map((c) => (
+                    <td key={`n-${c.size}`} style={{ ...celNum, fontSize: '15px' }}>{c.size}</td>
+                  ))}
+                  <td style={{ ...celNum, fontSize: '13px', background: '#EEE' }}>TOTAL</td>
+                </tr>
+                <tr>
+                  <td style={{ ...celRotulo, width: '78px' }}>CAIXAS</td>
+                  {l.celulas.map((c) => (
+                    <td key={`c-${c.size}`} style={{ ...celNum, fontSize: '20px' }}>{c.caixas}</td>
+                  ))}
+                  <td style={{ ...celNum, fontSize: '20px', background: '#EEE' }}>{l.totalCaixas}</td>
+                </tr>
+                <tr>
+                  <td style={{ ...celRotulo, width: '78px' }}>PARES</td>
+                  {l.celulas.map((c) => (
+                    <td key={`p-${c.size}`} style={{ ...celNum, fontSize: '11px' }}>{c.pares}</td>
+                  ))}
+                  <td style={{ ...celNum, fontSize: '11px', background: '#EEE' }}>{l.totalPares}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        ))}
+      </div>
+    );
+  })() : null;
+
   const blocks: SheetBlock[] = [
     headerBlock,
+    ...(resumoNumeracao ? [{ node: resumoNumeracao }] : []),
     embalagemBlock,
     tallyBlock,
     ...itemBlocks,
