@@ -16,7 +16,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:units": "vitest run src/services/__tests__/conversao.units.test.ts src/services/__tests__/rpc-parity.units.test.ts src/services/__tests__/units.edge-cases.test.ts src/lib/__tests__/materialConsumption.units.test.ts"
+    "test:units": "vitest run src/services/__tests__/conversao.units.test.ts src/services/__tests__/rpc-parity.units.test.ts src/services/__tests__/units.edge-cases.test.ts src/lib/__tests__/materialConsumption.units.test.ts",
+    "test:db": "RUN_DB_INTEGRATION=1 vitest run src/services/__tests__/consumptionService.parity.test.ts src/services/__tests__/consumptionService.integration.test.ts src/services/__tests__/debitGuards.integration.test.ts src/lib/__tests__/consumptionParity.integration.test.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

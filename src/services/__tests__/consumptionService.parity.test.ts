@@ -1,9 +1,8 @@
 /**
  * Guard de harmonização TS↔SQL (lado SQL).
  *
- * Por padrão é SKIP (não roda no CI sem env). Para executar localmente:
- *   RUN_DB_INTEGRATION=1 PGHOST=... bunx vitest run \
- *     src/services/__tests__/consumptionService.parity.test.ts
+ * Por padrão é SKIP (não roda no CI — as suítes de banco escrevem em produção).
+ * Para executar: `bun run test:db` (ver src/test/dbGuards.ts).
  *
  * Invoca `run_consumption_parity_tests()` (migration
  * 20260722120000_consumption-consistency-and-parity-guards.sql), que TRAVA o
@@ -18,24 +17,14 @@
  * que os motores de display e de custeio/MRP voltem a divergir.
  */
 import { describe, it, expect } from 'vitest';
-import { execSync } from 'node:child_process';
+import { DB_TESTS_ENABLED, describeFailures, runGuardSuite } from '@/test/dbGuards';
 
-const ENABLED = process.env.RUN_DB_INTEGRATION === '1';
-
-(ENABLED ? describe : describe.skip)(
+(DB_TESTS_ENABLED ? describe : describe.skip)(
   'consumo — guard de harmonização SQL (escalar ↔ by_grade)',
   () => {
-    it('todos os cases de run_consumption_parity_tests() passam', () => {
-      const out = execSync(
-        `psql -t -A -F '|' -c "SELECT case_name, ok, message FROM run_consumption_parity_tests();"`,
-        { encoding: 'utf8' },
-      );
-      const rows = out.trim().split('\n').filter(Boolean).map((l) => {
-        const [name, ok, message] = l.split('|');
-        return { name, ok: ok === 't', message };
-      });
-      const failures = rows.filter((r) => !r.ok);
-      expect(failures, JSON.stringify(failures, null, 2)).toHaveLength(0);
+    it('todos os cases de run_consumption_parity_tests() passam', async () => {
+      const rows = await runGuardSuite('run_consumption_parity_tests');
+      expect(rows.filter((r) => !r.ok), describeFailures(rows)).toHaveLength(0);
       // 2 de existência + 7 de contrato (versão VIVA no banco, pós-unificação
       // escalar→by_grade: escalar_delega_ao_bygrade + escalar_nao_duplica_conversao
       // substituíram os cases escalar_* da migration 20260722120000) + 2 de
@@ -49,9 +38,13 @@ const ENABLED = process.env.RUN_DB_INTEGRATION === '1';
       // cases estruturais não pegam) + 2 de padrão GLOBAL por cor no by_grade
       // (migration 20260928121000: component_color_defaults aplicado no
       // fallback de direct_components, com lookup normalizado via
-      // extensions.unaccent). Total vivo: 22 (conferido no banco em 2026-07-26,
-      // todos ok — a base pré-padrão-global tinha 20).
-      expect(rows.length).toBeGreaterThanOrEqual(13);
+      // extensions.unaccent). Total vivo: 22 (reconferido no banco em
+      // 11/08/2026, todos ok — a base pré-padrão-global tinha 20).
+      //
+      // O piso era 13 e contradizia o próprio comentário acima. Subiu pro valor
+      // medido: o objetivo declarado é pegar case APAGADO, e um piso 9 abaixo
+      // do real deixava passar quase metade da suíte sumindo sem ninguém notar.
+      expect(rows.length).toBeGreaterThanOrEqual(22);
     });
   },
 );

@@ -1,9 +1,8 @@
 /**
  * Guard SQL da auditoria débito ficha×grade (specs/auditoria-debito-ficha-grade.md).
  *
- * Por padrão é SKIP (não roda no CI sem env). Para executar localmente:
- *   RUN_DB_INTEGRATION=1 PGHOST=... bunx vitest run \
- *     src/services/__tests__/debitGuards.integration.test.ts
+ * Por padrão é SKIP (não roda no CI — as suítes de banco escrevem em produção).
+ * Para executar: `bun run test:db` (ver src/test/dbGuards.ts).
  *
  * Invoca `run_debit_guard_tests()` (migration
  * 20260915110000_audit-debito-ficha-grade-fixes.sql), que TRAVA os fixes da
@@ -19,26 +18,17 @@
  * (guards BOM-1/BOM-3/TS-1/TEST-1).
  */
 import { describe, it, expect } from 'vitest';
-import { execSync } from 'node:child_process';
+import { DB_TESTS_ENABLED, describeFailures, runGuardSuite } from '@/test/dbGuards';
 
-const ENABLED = process.env.RUN_DB_INTEGRATION === '1';
-
-(ENABLED ? describe : describe.skip)(
+(DB_TESTS_ENABLED ? describe : describe.skip)(
   'débito — guards da auditoria ficha×grade (SQL vivo)',
   () => {
-    it('todos os cases de run_debit_guard_tests() passam', () => {
-      const out = execSync(
-        `psql -t -A -F '|' -c "SELECT case_name, ok, message FROM run_debit_guard_tests();"`,
-        { encoding: 'utf8' },
-      );
-      const rows = out.trim().split('\n').filter(Boolean).map((l) => {
-        const [name, ok, message] = l.split('|');
-        return { name, ok: ok === 't', message };
-      });
-      const failures = rows.filter((r) => !r.ok);
-      expect(failures, JSON.stringify(failures, null, 2)).toHaveLength(0);
+    it('todos os cases de run_debit_guard_tests() passam', async () => {
+      const rows = await runGuardSuite('run_debit_guard_tests');
+      expect(rows.filter((r) => !r.ok), describeFailures(rows)).toHaveLength(0);
       // G1..G10 na migration 20260915110000 — se diminuir, alguém apagou case.
-      expect(rows.length).toBeGreaterThanOrEqual(10);
+      // Piso subiu de 10 pro valor medido em 11/08/2026 (23 casos vivos).
+      expect(rows.length).toBeGreaterThanOrEqual(23);
     });
   },
 );

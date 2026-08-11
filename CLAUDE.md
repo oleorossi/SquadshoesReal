@@ -305,14 +305,42 @@ encadeamento de `/producao/kanban/gestao`: `ProtectedRoute → Suspense → Rout
 |---|---|
 | `bun run test` | `vitest run` — **tudo**, inclusive os 4 `.units` |
 | `bun run test:units` | só `conversao.units`, `rpc-parity.units`, `units.edge-cases`, `materialConsumption.units` (atalho pra iterar rápido) |
+| `bun run test:db` | os 4 de banco, com `RUN_DB_INTEGRATION=1` — **sob demanda**, ver abaixo |
 
-⚠ **Testes de integração fazem SKIP por padrão, e skip não é verde.** Hoje são 4
+### Testes de banco — `bun run test:db` (11/08/2026)
+
+⚠ **Skip não é verde, e isto custou caro.** Os 4 testes de banco
 (`consumptionService.parity`, `consumptionService.integration`, `debitGuards.integration`,
-`consumptionParity.integration`); eles só rodam com `RUN_DB_INTEGRATION=1`. E o
-`consumptionParity` precisa **também** de `SUPABASE_SERVICE_ROLE_KEY`: as tabelas que ele lê
-estão sob `is_approved_user()`, e a chave publishable não é um usuário aprovado — sem ela o
-SELECT volta 0 linhas **sem erro**. Uma suíte "1.801 passed | 4 skipped" não diz nada sobre
-paridade TS×SQL.
+`consumptionParity.integration`) ficaram em skip desde sempre. Quando finalmente rodamos as
+funções, `run_consumption_integration_tests()` estava com **3 casos vermelhos** havia tempo
+indeterminado — o fixture gravava consumo direto em `sole_technical_specs`, que virou tabela
+**ESPELHO** de `sole_group_standard_items`. E o gatilho `tg_sole_specs_freeze_consumption` é
+**assimétrico**: no UPDATE dá `RAISE`, no INSERT apenas **sobrescreve**. Os dm² viravam NULL
+sem erro nenhum. Corrigido na migration `20261231121100`.
+
+**A fricção que mantinha o skip era o `psql`.** Três dos quatro chamavam
+`execSync('psql …')`, exigindo binário de Postgres e `PGHOST`. Como as três funções são
+`public` + SECURITY DEFINER, passaram a rodar por **RPC do supabase-js**
+(`src/test/dbGuards.ts`) — uma credencial destrava os quatro.
+
+| variável | para quê |
+|---|---|
+| `VITE_SUPABASE_URL` | a de sempre |
+| `SUPABASE_SERVICE_ROLE_KEY` | cobre as 4. `run_consumption_integration_tests` dá EXECUTE só a `authenticated`/`service_role`; `consumptionParity` lê tabelas sob `is_approved_user()` |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | plano B — roda só `parity` e `debit_guards` (as que dão EXECUTE a `anon`) |
+
+⚠ **Estas suítes ESCREVEM no banco de produção** — a de integração cria fixture em
+`products`, `technical_sheets`, `sole_group_standard_items` e `sole_technical_specs` (UUIDs
+fixos, limpa no fim). Por isso **não estão no CI**: decisão do dono em 11/08/2026. Rode à mão
+ao mexer em consumo, custeio ou débito.
+
+⚠ **`runGuardSuite` trata 0 casos como ERRO, não como suíte verde** — sem isso uma
+credencial sem permissão devolveria vazio e passaria. Verificado: com a publishable, o de
+integração falha com `permission denied … code=42501` em vez de fingir verde.
+
+⚠ **Os pisos de `expect(rows.length)` estão no valor MEDIDO** (22 / 13 / 23 em 11/08/2026),
+não num número folgado. O piso da paridade era 13 enquanto o comentário do próprio arquivo
+dizia "total vivo: 22" — quase metade da suíte podia sumir sem ninguém notar.
 
 <details>
 <summary>Histórico: a armadilha do <code>--exclude</code> (resolvida)</summary>
