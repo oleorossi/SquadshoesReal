@@ -52,10 +52,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(413).json({ error: 'HTML grande demais — mande em lotes menores.' });
   }
 
-  let browser: Awaited<ReturnType<typeof launchBrowser>> | null = null;
+  let page: Awaited<ReturnType<Awaited<ReturnType<typeof launchBrowser>>['newPage']>> | null = null;
   try {
-    browser = await launchBrowser();
-    const page = await browser.newPage();
+    const browser = await getBrowser();
+    page = await browser.newPage();
 
     // `networkidle0` cobre as fotos dos produtos e o CSS do app, que vêm por URL.
     await page.setContent(html, { waitUntil: ['load', 'networkidle0'], timeout: 45_000 });
@@ -86,9 +86,50 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // antigo, pra nunca sair documento fora do padrão.
     return res.status(500).json({ error: `Falha ao gerar o PDF: ${message}` });
   } finally {
-    if (browser) {
-      try { await browser.close(); } catch { /* nada a fazer */ }
+    // Fecha só a PÁGINA. O browser fica vivo pra próxima chamada — ver getBrowser.
+    if (page) {
+      try { await page.close(); } catch { /* nada a fazer */ }
     }
+  }
+}
+
+/**
+ * Chromium reaproveitado entre invocações.
+ *
+ * MEDIDO em 10/08/2026: subir o Chromium custa ~2s, e esse custo é FIXO —
+ * renderizar 40 páginas leva o mesmo que renderizar 2. Na primeira versão a
+ * função fechava o browser no `finally`, então DUAS chamadas seguidas custavam
+ * 2,2s e 2,27s: a segunda não aproveitava nada da primeira.
+ *
+ * A Vercel reusa a instância da função entre requisições próximas, então guardar
+ * a promessa no escopo do módulo faz as chamadas seguintes pularem a partida.
+ * Guardamos a PROMESSA (não o browser resolvido) pra que duas requisições
+ * simultâneas na mesma instância não subam dois Chromium.
+ *
+ * ⚠ Instância ociosa é reciclada pela plataforma e o browser morre junto; por
+ * isso a checagem de `connected` antes de reusar, com relançamento silencioso.
+ */
+let browserPromise: Promise<Awaited<ReturnType<typeof launchBrowser>>> | null = null;
+
+async function getBrowser() {
+  if (browserPromise) {
+    try {
+      const existente = await browserPromise;
+      const vivo = typeof (existente as { connected?: boolean }).connected === 'boolean'
+        ? (existente as { connected: boolean }).connected
+        : true;
+      if (vivo) return existente;
+    } catch {
+      /* a partida anterior falhou — cai fora e tenta de novo */
+    }
+    browserPromise = null;
+  }
+  browserPromise = launchBrowser();
+  try {
+    return await browserPromise;
+  } catch (err) {
+    browserPromise = null; // não deixa uma falha envenenar as próximas chamadas
+    throw err;
   }
 }
 

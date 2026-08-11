@@ -20,19 +20,27 @@ import { toast } from 'sonner';
  */
 
 /**
- * Páginas por chamada.
+ * Teto de bytes por chamada. O corte é por TAMANHO, não por contagem de páginas.
  *
- * ⚠ NÃO é por causa de TEMPO. A Vercel dá 300s (5 min) por função até no plano
- * Hobby — folga enorme pra 120 etiquetas. (Uma versão anterior deste comentário
- * dizia "teto de ~10s do Hobby": número de uma era antiga da plataforma.)
+ * MEDIDO em 10/08/2026, contra a função em produção:
+ *   2 páginas sem foto ....... 2,2s
+ *   40 páginas sem foto ...... 2,0s   ← renderizar página é quase de graça
+ *   40 páginas com 40 fotos .. 6,0s
+ * Ou seja: o custo é FIXO (~2s pra subir o Chromium), não por página.
  *
- * O motivo é TAMANHO: o corpo da requisição é limitado a ~4,5MB. As etiquetas
- * são leves (as fotos viajam por URL, não embutidas), mas as FICHAS são densas —
- * 80+ páginas de tabelas com estilo embutido em cada elemento passam fácil disso.
- * Estourar o limite = requisição recusada = ninguém imprime, já que não há
- * plano B por decisão do dono.
+ * A primeira versão cortava a cada 40 páginas — o que fazia um lote de 120
+ * etiquetas pagar os 2s TRÊS vezes sem necessidade, porque o HTML de um rótulo
+ * tem ~2,8KB e 120 deles dão ~350KB: cabem numa requisição só, muito longe do
+ * limite de ~4,5MB do corpo da requisição.
+ *
+ * Quem realmente aperta o limite é a FICHA (80+ páginas de tabela com estilo
+ * embutido em cada elemento) — e é só por causa dela que o fatiamento existe.
+ * Estourar o limite = requisição recusada = ninguém imprime, já que não há plano
+ * B por decisão do dono.
+ *
+ * 3MB deixa folga pro JSON.stringify e pros cabeçalhos por cima do HTML cru.
  */
-export const PAGES_PER_BATCH = 40;
+export const MAX_BATCH_BYTES = 3 * 1024 * 1024;
 
 export interface PrintPdfOptions {
   /** Nome do arquivo, sem extensão (ex.: 'etiquetas-PV-00151'). */
@@ -68,8 +76,10 @@ export function openPrintTab(): Window | null {
  * Exportada e pura pra ser testável: é a lógica que decide o que vai em cada
  * chamada, e errar aqui significa etiqueta faltando no meio do maço.
  */
-export function splitHtmlIntoBatches(html: string, pagesPerBatch = PAGES_PER_BATCH): string[] {
-  if (pagesPerBatch <= 0) return [html];
+export function splitHtmlIntoBatches(html: string, maxBytes = MAX_BATCH_BYTES): string[] {
+  // Cabe inteiro? Vai numa chamada só — é o caso NORMAL das etiquetas, e é o que
+  // evita pagar a partida do Chromium mais de uma vez.
+  if (maxBytes <= 0 || html.length <= maxBytes) return [html];
 
   const headMatch = html.match(/<head[^>]*>([\s\S]*?)<\/head>/i);
   const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
@@ -82,14 +92,29 @@ export function splitHtmlIntoBatches(html: string, pagesPerBatch = PAGES_PER_BAT
   // Quebra no início de cada folha, preservando o que vem antes da primeira.
   const parts = body.split(/(?=<section class="page|<div class="pagi-page)/);
   const pages = parts.filter(p => /class="(page|pagi-page)/.test(p));
-  if (pages.length <= pagesPerBatch) return [html];
+  if (pages.length <= 1) return [html]; // nada a fatiar sem picar uma folha ao meio
 
   const preamble = parts.slice(0, parts.length - pages.length).join('');
+  // Todo lote repete <head> + preâmbulo; esse peso conta contra o teto.
+  const overhead = head.length + preamble.length + bodyOpenTag.length + 40;
+  const montar = (fatia: string[]) =>
+    `<!doctype html><html><head>${head}</head>${bodyOpenTag}${preamble}${fatia.join('')}</body></html>`;
+
   const batches: string[] = [];
-  for (let i = 0; i < pages.length; i += pagesPerBatch) {
-    const slice = pages.slice(i, i + pagesPerBatch).join('');
-    batches.push(`<!doctype html><html><head>${head}</head>${bodyOpenTag}${preamble}${slice}</body></html>`);
+  let atual: string[] = [];
+  let tamanho = overhead;
+  for (const pagina of pages) {
+    // Folha sozinha maior que o teto: vai assim mesmo. Picar uma folha ao meio
+    // produziria etiqueta cortada, que é pior que uma requisição grande.
+    if (atual.length > 0 && tamanho + pagina.length > maxBytes) {
+      batches.push(montar(atual));
+      atual = [];
+      tamanho = overhead;
+    }
+    atual.push(pagina);
+    tamanho += pagina.length;
   }
+  if (atual.length > 0) batches.push(montar(atual));
   return batches;
 }
 
@@ -166,13 +191,23 @@ export async function printHtmlAsPdf(html: string, opts: PrintPdfOptions): Promi
       toast.loading('Gerando PDF…', { id: toastId });
     }
 
-    const buffers: ArrayBuffer[] = [];
-    for (let i = 0; i < batches.length; i++) {
-      buffers.push(await renderBatch(batches[i], landscape));
-      if (batches.length > 1) {
-        toast.loading(`Gerando PDF… (${i + 1} de ${batches.length} partes)`, { id: toastId });
-      }
-    }
+    // Lotes em PARALELO. Antes era um `for` com await: cada parte esperava a
+    // anterior e pagava de novo os ~2s de partida do Chromium, somando o tempo
+    // em fila. Como cada chamada é independente, o relógio passa a ser o do lote
+    // mais lento, não a soma. `Promise.all` preserva a ORDEM do array — o que é
+    // load-bearing aqui, senão o maço sai com as folhas embaralhadas.
+    let prontos = 0;
+    const buffers = await Promise.all(
+      batches.map(lote =>
+        renderBatch(lote, landscape).then(buf => {
+          prontos += 1;
+          if (batches.length > 1) {
+            toast.loading(`Gerando PDF… (${prontos} de ${batches.length} partes)`, { id: toastId });
+          }
+          return buf;
+        }),
+      ),
+    );
 
     const merged = await mergePdfs(buffers);
     const blob = new Blob([merged as unknown as BlobPart], { type: 'application/pdf' });
