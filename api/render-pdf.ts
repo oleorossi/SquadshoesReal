@@ -43,13 +43,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: 'Use POST.' });
   }
 
-  const { html, landscape } = (req.body || {}) as { html?: string; landscape?: boolean };
+  // O app manda POST de FORMULÁRIO (o navegador conduz a navegação e exibe o PDF
+  // sozinho — ver o cabeçalho de src/lib/printPdf.ts). JSON continua aceito pra
+  // teste por linha de comando.
+  const body = (req.body || {}) as { html?: string; landscape?: unknown; filename?: string };
+  const html = body.html;
+  const landscape = body.landscape === true || body.landscape === '1';
+  const filename = sanitizeFilename(body.filename) || 'documento';
+  // Requisição vinda de formulário = quem lê a resposta é uma PESSOA numa aba.
+  // Erro em JSON ali é lixo na tela; devolvemos HTML legível.
+  const querHtml = String(req.headers.accept || '').includes('text/html');
 
   if (typeof html !== 'string' || html.trim().length === 0) {
-    return res.status(400).json({ error: 'Campo "html" é obrigatório.' });
+    return fail(res, querHtml, 400, 'Documento vazio — nada para imprimir.');
   }
   if (Buffer.byteLength(html, 'utf8') > MAX_HTML_BYTES) {
-    return res.status(413).json({ error: 'HTML grande demais — mande em lotes menores.' });
+    return fail(res, querHtml, 413,
+      'Documento grande demais para gerar de uma vez. Imprima em partes.');
   }
 
   let page: Awaited<ReturnType<Awaited<ReturnType<typeof launchBrowser>>['newPage']>> | null = null;
@@ -78,19 +88,44 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Length', String(pdf.length));
     res.setHeader('Cache-Control', 'no-store');
+    // `inline` faz o visualizador do aparelho ABRIR o PDF em vez de só baixar —
+    // e o filename é o que aparece ao salvar ou compartilhar.
+    res.setHeader('Content-Disposition', `inline; filename="${filename}.pdf"`);
     return res.status(200).send(Buffer.from(pdf));
   } catch (err) {
     const message = err instanceof Error ? err.message : 'erro desconhecido';
     console.error('[render-pdf] falhou:', message);
-    // Sem plano B por decisão do dono: o app mostra o erro em vez de cair no modo
+    // Sem plano B por decisão do dono: mostramos o erro em vez de cair no modo
     // antigo, pra nunca sair documento fora do padrão.
-    return res.status(500).json({ error: `Falha ao gerar o PDF: ${message}` });
+    return fail(res, querHtml, 500, `Falha ao gerar o PDF: ${message}`);
   } finally {
     // Fecha só a PÁGINA. O browser fica vivo pra próxima chamada — ver getBrowser.
     if (page) {
       try { await page.close(); } catch { /* nada a fazer */ }
     }
   }
+}
+
+/** Só o que vira nome de arquivo com segurança (o valor vem do cliente). */
+function sanitizeFilename(raw?: string): string {
+  return String(raw || '').replace(/[^\w.-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80);
+}
+
+/**
+ * Resposta de erro no formato que o CHAMADOR entende: HTML quando veio de um
+ * formulário (uma pessoa olhando a aba), JSON quando é chamada programática.
+ */
+function fail(res: VercelResponse, querHtml: boolean, status: number, mensagem: string) {
+  if (!querHtml) return res.status(status).json({ error: mensagem });
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  return res.status(status).send(
+    `<!doctype html><meta charset="utf-8">` +
+    `<meta name="viewport" content="width=device-width,initial-scale=1">` +
+    `<body style="font-family:system-ui,sans-serif;padding:24px;color:#111;line-height:1.5">` +
+    `<h2 style="color:#b00;margin:0 0 8px">Não foi possível gerar o PDF</h2>` +
+    `<p>${mensagem.replace(/[<>&]/g, '')}</p>` +
+    `<p style="color:#666">Feche esta aba e tente de novo.</p></body>`,
+  );
 }
 
 /**

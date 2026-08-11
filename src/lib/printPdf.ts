@@ -14,33 +14,44 @@ import { toast } from 'sonner';
  * no celular e no desktop.
  *
  * ⚠ NÃO existe plano B (decisão do dono, 10/08/2026): se a geração falhar, o app
- * avisa e NÃO imprime, em vez de cair no caminho antigo. Servidor fora do ar =
- * ninguém imprime até voltar — foi o preço aceito para nunca sair um documento
- * fora do padrão.
+ * avisa e NÃO imprime, em vez de cair no caminho antigo.
+ *
+ * ────────────────────────────────────────────────────────────────────────────
+ * POR QUE É UM POST DE FORMULÁRIO E NÃO UM `fetch` (correção de 11/08/2026)
+ * ────────────────────────────────────────────────────────────────────────────
+ * A primeira versão fazia `fetch` → `Blob` → `URL.createObjectURL` → apontava a
+ * aba pro `blob:`. No iPhone a aba ficava PARADA no "Gerando o PDF…" e o arquivo
+ * nunca aparecia. Duas causas, ambas do desenho, e ambas invisíveis no desktop:
+ *
+ *   1. Ao abrir a aba nova, o Safari SUSPENDE a aba de origem — que é justamente
+ *      quem estava esperando o `fetch`. A promessa nunca resolve, então nem o
+ *      sucesso nem o `catch` (que escreveria o erro na aba) chegam a rodar. Daí
+ *      a tela congelada na mensagem de espera, sem erro nenhum.
+ *   2. O iOS trata navegação para `blob:` com restrição; o CSP do site também só
+ *      libera `blob:` em `img-src`.
+ *
+ * Com um POST de formulário quem baixa e exibe é o NAVEGADOR, numa navegação
+ * comum: não há promessa pendurada na aba suspensa, não há `blob:`, e o PDF
+ * chega como resposta HTTP normal (`application/pdf`), que o visualizador do
+ * aparelho abre sozinho. É também menos código do que antes.
+ *
+ * ⚠ A aba precisa ser aberta NO TOQUE (openPrintTab) e ter NOME: o `submit`
+ * acontece depois do preparo assíncrono, quando o gesto do usuário já passou —
+ * mirar numa janela que já existe é o que evita o bloqueio de pop-up.
  */
 
+/** Nome da aba de destino. O formulário mira nele — ver openPrintTab. */
+const PRINT_TAB_NAME = 'squad-pdf';
+
 /**
- * Teto de bytes por chamada. O corte é por TAMANHO, não por contagem de páginas.
+ * Teto de bytes do documento.
  *
- * MEDIDO em 10/08/2026, contra a função em produção:
- *   2 páginas sem foto ....... 2,2s
- *   40 páginas sem foto ...... 2,0s   ← renderizar página é quase de graça
- *   40 páginas com 40 fotos .. 6,0s
- * Ou seja: o custo é FIXO (~2s pra subir o Chromium), não por página.
- *
- * A primeira versão cortava a cada 40 páginas — o que fazia um lote de 120
- * etiquetas pagar os 2s TRÊS vezes sem necessidade, porque o HTML de um rótulo
- * tem ~2,8KB e 120 deles dão ~350KB: cabem numa requisição só, muito longe do
- * limite de ~4,5MB do corpo da requisição.
- *
- * Quem realmente aperta o limite é a FICHA (80+ páginas de tabela com estilo
- * embutido em cada elemento) — e é só por causa dela que o fatiamento existe.
- * Estourar o limite = requisição recusada = ninguém imprime, já que não há plano
- * B por decisão do dono.
- *
- * 3MB deixa folga pro JSON.stringify e pros cabeçalhos por cima do HTML cru.
+ * O corpo de uma requisição na Vercel é limitado a ~4,5MB. Etiqueta é leve — 120
+ * rótulos medidos dão **24KB** —, mas a ficha é densa (tabelas com estilo
+ * embutido em cada elemento). Acima disso a requisição é recusada, e como não há
+ * plano B o usuário precisa saber ANTES, com uma mensagem que diz o que fazer.
  */
-export const MAX_BATCH_BYTES = 3 * 1024 * 1024;
+export const MAX_DOCUMENT_BYTES = 4 * 1024 * 1024;
 
 export interface PrintPdfOptions {
   /** Nome do arquivo, sem extensão (ex.: 'etiquetas-PV-00151'). */
@@ -52,70 +63,21 @@ export interface PrintPdfOptions {
 }
 
 /**
- * Abre a aba de destino. Tem que ser chamado DENTRO do clique, de forma síncrona:
- * abrir depois do `await` faz o celular tratar como pop-up e bloquear.
- * Este é o mesmo padrão que o código antigo já usava.
+ * Abre a aba de destino, JÁ NOMEADA. Tem que ser chamado DENTRO do clique, de
+ * forma síncrona: abrir depois de um `await` faz o celular tratar como pop-up.
  */
 export function openPrintTab(): Window | null {
-  const w = window.open('', '_blank');
+  const w = window.open('', PRINT_TAB_NAME);
   if (w) {
     w.document.write(
       '<!doctype html><meta charset="utf-8"><title>Gerando PDF…</title>' +
+      '<meta name="viewport" content="width=device-width,initial-scale=1">' +
       '<body style="font-family:system-ui,sans-serif;padding:24px;color:#111">' +
       '<p>Gerando o PDF… pode levar alguns segundos.</p></body>',
     );
     w.document.close();
   }
   return w;
-}
-
-/**
- * Fatia o documento em lotes de páginas. Cada `.page`/`.pagi-page` é uma folha;
- * o lote reaproveita o mesmo `<head>` (estilos e fontes) do documento original.
- *
- * Exportada e pura pra ser testável: é a lógica que decide o que vai em cada
- * chamada, e errar aqui significa etiqueta faltando no meio do maço.
- */
-export function splitHtmlIntoBatches(html: string, maxBytes = MAX_BATCH_BYTES): string[] {
-  // Cabe inteiro? Vai numa chamada só — é o caso NORMAL das etiquetas, e é o que
-  // evita pagar a partida do Chromium mais de uma vez.
-  if (maxBytes <= 0 || html.length <= maxBytes) return [html];
-
-  const headMatch = html.match(/<head[^>]*>([\s\S]*?)<\/head>/i);
-  const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
-  if (!headMatch || !bodyMatch) return [html];
-
-  const head = headMatch[1];
-  const body = bodyMatch[1];
-  const bodyOpenTag = (html.match(/<body[^>]*>/i) || ['<body>'])[0];
-
-  // Quebra no início de cada folha, preservando o que vem antes da primeira.
-  const parts = body.split(/(?=<section class="page|<div class="pagi-page)/);
-  const pages = parts.filter(p => /class="(page|pagi-page)/.test(p));
-  if (pages.length <= 1) return [html]; // nada a fatiar sem picar uma folha ao meio
-
-  const preamble = parts.slice(0, parts.length - pages.length).join('');
-  // Todo lote repete <head> + preâmbulo; esse peso conta contra o teto.
-  const overhead = head.length + preamble.length + bodyOpenTag.length + 40;
-  const montar = (fatia: string[]) =>
-    `<!doctype html><html><head>${head}</head>${bodyOpenTag}${preamble}${fatia.join('')}</body></html>`;
-
-  const batches: string[] = [];
-  let atual: string[] = [];
-  let tamanho = overhead;
-  for (const pagina of pages) {
-    // Folha sozinha maior que o teto: vai assim mesmo. Picar uma folha ao meio
-    // produziria etiqueta cortada, que é pior que uma requisição grande.
-    if (atual.length > 0 && tamanho + pagina.length > maxBytes) {
-      batches.push(montar(atual));
-      atual = [];
-      tamanho = overhead;
-    }
-    atual.push(pagina);
-    tamanho += pagina.length;
-  }
-  if (atual.length > 0) batches.push(montar(atual));
-  return batches;
 }
 
 /**
@@ -142,102 +104,64 @@ export function serializeForPdf(el: HTMLElement, title = 'Documento'): string {
     `${links}\n${styles}</head><body>${el.outerHTML}</body></html>`;
 }
 
-async function renderBatch(html: string, landscape: boolean): Promise<ArrayBuffer> {
-  const res = await fetch('/api/render-pdf', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ html, landscape }),
-  });
-  if (!res.ok) {
-    let detalhe = `HTTP ${res.status}`;
-    try {
-      const j = await res.json();
-      if (j?.error) detalhe = j.error;
-    } catch { /* resposta sem json */ }
-    throw new Error(detalhe);
-  }
-  return res.arrayBuffer();
-}
-
-/** Junta os lotes num arquivo só. `pdf-lib` entra por import preguiçoso. */
-async function mergePdfs(buffers: ArrayBuffer[]): Promise<Uint8Array> {
-  if (buffers.length === 1) return new Uint8Array(buffers[0]);
-  const { PDFDocument } = await import('pdf-lib');
-  const out = await PDFDocument.create();
-  for (const buf of buffers) {
-    const doc = await PDFDocument.load(buf);
-    const pages = await out.copyPages(doc, doc.getPageIndices());
-    pages.forEach(p => out.addPage(p));
-  }
-  return out.save();
+/** Escreve uma mensagem legível na aba de destino (erro antes de submeter). */
+function avisarNaAba(tab: Window | null, msg: string) {
+  if (!tab || tab.closed) return;
+  try {
+    tab.document.body.innerHTML =
+      `<p style="font-family:system-ui,sans-serif;padding:24px;color:#b00;line-height:1.5">${msg}</p>`;
+  } catch { /* aba já navegou pra outro lugar */ }
 }
 
 /**
- * Gera o PDF do HTML e mostra na aba. Devolve true quando imprimiu.
+ * Manda o HTML pro servidor e deixa o NAVEGADOR exibir o PDF na aba.
  *
- * Fluxo: a aba já foi aberta no clique (openPrintTab) → geramos em lotes →
- * juntamos → apontamos a aba pro arquivo.
+ * Devolve `true` quando o envio foi disparado — o resultado em si aparece na
+ * aba, porque quem conduz a navegação daqui em diante é o browser.
  */
-export async function printHtmlAsPdf(html: string, opts: PrintPdfOptions): Promise<boolean> {
+export function printHtmlAsPdf(html: string, opts: PrintPdfOptions): boolean {
   const { filename, landscape = false } = opts;
   const tab = opts.target ?? null;
-  const batches = splitHtmlIntoBatches(html);
-  const toastId = `pdf-${filename}`;
 
-  try {
-    if (batches.length > 1) {
-      toast.loading(`Gerando PDF… (0 de ${batches.length} partes)`, { id: toastId });
-    } else {
-      toast.loading('Gerando PDF…', { id: toastId });
-    }
-
-    // Lotes em PARALELO. Antes era um `for` com await: cada parte esperava a
-    // anterior e pagava de novo os ~2s de partida do Chromium, somando o tempo
-    // em fila. Como cada chamada é independente, o relógio passa a ser o do lote
-    // mais lento, não a soma. `Promise.all` preserva a ORDEM do array — o que é
-    // load-bearing aqui, senão o maço sai com as folhas embaralhadas.
-    let prontos = 0;
-    const buffers = await Promise.all(
-      batches.map(lote =>
-        renderBatch(lote, landscape).then(buf => {
-          prontos += 1;
-          if (batches.length > 1) {
-            toast.loading(`Gerando PDF… (${prontos} de ${batches.length} partes)`, { id: toastId });
-          }
-          return buf;
-        }),
-      ),
-    );
-
-    const merged = await mergePdfs(buffers);
-    const blob = new Blob([merged as unknown as BlobPart], { type: 'application/pdf' });
-    const url = URL.createObjectURL(blob);
-
-    if (tab && !tab.closed) {
-      tab.location.href = url;
-    } else {
-      // Aba bloqueada ou fechada pelo usuário: baixa o arquivo, que é o caminho
-      // que sempre funciona. Some do padrão só a forma de ENTREGA, não o conteúdo.
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${filename}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-    }
-    // Revoga tarde: o visualizador da aba ainda está lendo o blob.
-    setTimeout(() => URL.revokeObjectURL(url), 60_000);
-
-    toast.success('PDF pronto.', { id: toastId });
-    return true;
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : 'erro desconhecido';
-    toast.error(`Não foi possível gerar o PDF: ${msg}`, { id: toastId, duration: 10_000 });
-    if (tab && !tab.closed) {
-      tab.document.body.innerHTML =
-        `<p style="font-family:system-ui,sans-serif;padding:24px;color:#b00">` +
-        `Falha ao gerar o PDF: ${msg}. Feche esta aba e tente de novo.</p>`;
-    }
+  const bytes = new Blob([html]).size;
+  if (bytes > MAX_DOCUMENT_BYTES) {
+    const mb = (bytes / 1024 / 1024).toFixed(1);
+    const msg =
+      `Documento grande demais pra gerar de uma vez (${mb}MB). ` +
+      `Imprima em partes — por exemplo, menos setores ou menos OPs por vez.`;
+    toast.error(msg, { duration: 12_000 });
+    avisarNaAba(tab, msg);
     return false;
   }
+
+  const form = document.createElement('form');
+  form.method = 'POST';
+  form.action = '/api/render-pdf';
+  form.target = PRINT_TAB_NAME;   // a aba já existe e é nossa: sem bloqueio de pop-up
+  form.style.display = 'none';
+  form.acceptCharset = 'UTF-8';
+
+  const campo = (nome: string, valor: string) => {
+    const input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = nome;
+    input.value = valor;
+    form.appendChild(input);
+  };
+  campo('html', html);
+  campo('filename', filename);
+  if (landscape) campo('landscape', '1');
+
+  document.body.appendChild(form);
+  try {
+    form.submit();
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'erro desconhecido';
+    toast.error(`Não foi possível enviar o documento: ${msg}`, { duration: 10_000 });
+    avisarNaAba(tab, `Falha ao enviar o documento: ${msg}`);
+    return false;
+  } finally {
+    form.remove();
+  }
+  return true;
 }

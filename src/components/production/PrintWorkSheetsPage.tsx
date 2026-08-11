@@ -906,7 +906,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
       toast.error('Não encontrei a área de impressão na tela.');
       return;
     }
-    await printHtmlAsPdf(serializeForPdf(area, 'Fichas de Produção'), {
+    printHtmlAsPdf(serializeForPdf(area, 'Fichas de Produção'), {
       filename: `fichas-${new Date().toISOString().slice(0, 10)}`,
       target: printTabRef.current,
     });
