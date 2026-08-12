@@ -59,7 +59,7 @@ export default function PendingTimeRecordsPanel() {
         (result.failed > 0 ? ` ${result.failed} falharam — veja console.` : '')
       );
       if (result.failed > 0) {
-        // eslint-disable-next-line no-console
+
         console.warn('[bulkApply18h] falhas:', result.results.filter(r => !r.ok));
       }
       qc.invalidateQueries({ queryKey: ['employee-pending-summary'] });

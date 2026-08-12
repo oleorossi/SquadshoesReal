@@ -130,7 +130,7 @@ export function useUpdateReadyStock() {
       const update: any = { quantity };
       if (location !== undefined) update.location = location;
       if (notes !== undefined) update.notes = notes;
-      let query = supabase.from('ready_stock').update(update).eq('id', id);
+      const query = supabase.from('ready_stock').update(update).eq('id', id);
       if (expectedQuantity !== undefined) {
         // Optimistic concurrency: refuse if another tab already changed the quantity.
         const { data: claimed, error } = await query.eq('quantity', expectedQuantity).select('id');

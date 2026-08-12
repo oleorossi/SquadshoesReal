@@ -1438,7 +1438,7 @@ export async function buildThermalLabelsPdf(
     }
 
     // Info column (ref name, color, material, pedido)
-    let infoY = bodyTop + 0.5;
+    const infoY = bodyTop + 0.5;
     const lineGap = bodyH / 5;
 
     // Ref name (largest)

@@ -155,7 +155,7 @@ export async function loadBottlenecksForOrders(
     new Set((ordersRaw || []).map((o: any) => o.reference_id).filter(Boolean)),
   );
 
-  let sheetMap = new Map<string, any>();
+  const sheetMap = new Map<string, any>();
   if (refIds.length > 0) {
     const { data: sheets } = await supabase
       .from('technical_sheets')

@@ -103,7 +103,7 @@ export function MinBillingDateSuggestionDialog({
     const weeks: { value: string; label: string }[] = [];
     const firstDay = new Date(year, month - 1, 1);
     const lastDay = new Date(year, month, 0);
-    let weekStart = new Date(firstDay);
+    const weekStart = new Date(firstDay);
     const dayOfWeek = weekStart.getDay();
     if (dayOfWeek !== 1) {
       weekStart.setDate(weekStart.getDate() - ((dayOfWeek + 6) % 7));

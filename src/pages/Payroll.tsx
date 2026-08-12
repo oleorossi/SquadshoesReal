@@ -393,7 +393,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
     if (!anySel || scopeEmps.length === 0) return [];
     if (previewPaged) return [scopeEmps[Math.min(previewIdx, scopeEmps.length - 1)]];
     return scopeEmps;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [anySel, scopeEmps, previewPaged, previewIdx]);
 
   const previewHtml = useMemo(() => {
@@ -410,7 +410,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
       ? { folha: false, setor: false, calendario: reportSel.calendario, holerite: reportSel.holerite, espelho: reportSel.espelho }
       : reportSel;
     return buildPayrollHtml({ periodTitle, docs, employees: previewEmps as any, espelhoEmployees: espList as any, autoPrint: false, groupBy: 'employee' });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [previewEmps, previewPaged, reportSel, periodTitle, scopedEspelho]);
 
   // Reseta o paginador quando muda a seleção/escopo.

@@ -57,7 +57,7 @@ function warnNonFinite(val: any, label: string): void {
   const key = `${label}|${typeof val}|${val === null ? 'null' : val === undefined ? 'undef' : String(val).slice(0, 40)}`;
   if (__nonFiniteWarned.has(key)) return;
   __nonFiniteWarned.add(key);
-  // eslint-disable-next-line no-console
+
   console.warn(
     `[ficha-tecnica/${label}] Non-finite value coerced to fallback. ` +
     `Received: ${typeof val} →`, val,
@@ -193,7 +193,7 @@ export function formatNumber(val: any, digits = 2): string {
   }
   return fmt.format(num);
  }
- 
+
  /** Standard production sectors in correct order */
  export const PRODUCTION_SECTORS_ORDER = [
    'Corte',
@@ -206,7 +206,7 @@ export function formatNumber(val: any, digits = 2): string {
    'Acabamento',
    'Expedição'
  ];
- 
+
  /** Centralized logging for production flow validation */
  export function logProductionFlow(context: string, data: any) {
    if (typeof import.meta !== 'undefined' && (import.meta as any).env?.DEV) {

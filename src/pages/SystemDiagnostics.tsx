@@ -363,7 +363,7 @@ export default function SystemDiagnostics() {
   // Auto-run on mount
   useEffect(() => {
     runDiagnostics();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, []);
 
   const clearCachesAndReload = async () => {

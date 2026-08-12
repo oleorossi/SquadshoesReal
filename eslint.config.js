@@ -5,7 +5,10 @@ import reactRefresh from "eslint-plugin-react-refresh";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["dist", "src/vendor"] },
+  // Worktrees de ferramentas locais podem conter outra revisão inteira do app.
+  // Eles não fazem parte do artefato nem do diff deste repositório e não podem
+  // transformar o lint da revisão atual em uma mistura de dois projetos.
+  { ignores: ["dist", "src/vendor", ".claude/worktrees/**"] },
   {
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
     files: ["**/*.{ts,tsx}"],

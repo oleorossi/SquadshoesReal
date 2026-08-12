@@ -92,7 +92,7 @@ export default function ServiceOrderDispatchDialog({ open, onOpenChange, service
   // Default: manda o que falta pro prestador padrão da OS (1 clique).
   useEffect(() => {
     if (open) { setQty(toDispatch); setNotes(''); setContractor(serviceOrder?.contractorId || ''); }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [open, toDispatch, serviceOrder?.contractorId]);
 
   const exceeds = qty > toDispatch;

@@ -46,7 +46,7 @@ export function MaterialPurchaseConfirmDialog({ open, onOpenChange, result, sale
   const handleGeneratePOs = async () => {
     setGenerating(true);
     try {
-      let count = 0;
+      const count = 0;
        let ocCount = 0;
        let osCount = 0;
  

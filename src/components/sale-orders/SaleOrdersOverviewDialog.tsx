@@ -53,7 +53,7 @@ function buildWeekOptions(deliveryMonth: string) {
   const [year, month] = deliveryMonth.split('-').map(Number);
   const firstDay = new Date(year, month - 1, 1);
   const lastDay = new Date(year, month, 0);
-  let weekStart = new Date(firstDay);
+  const weekStart = new Date(firstDay);
   const dayOfWeek = weekStart.getDay();
   if (dayOfWeek !== 1) {
     weekStart.setDate(weekStart.getDate() - ((dayOfWeek + 6) % 7));

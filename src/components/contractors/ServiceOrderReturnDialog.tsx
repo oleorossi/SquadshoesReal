@@ -116,12 +116,12 @@ export default function ServiceOrderReturnDialog({ open, onOpenChange, serviceOr
   // Reset (só na ABERTURA) — não mexe no prestador depois pra não reverter a escolha.
   useEffect(() => {
     if (open) { setQtyDefect(0); setQtyLoss(0); setQtyScrapped(0); setDefectNotes(''); setContractor(serviceOrder?.contractorId || ''); }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [open, serviceOrder?.contractorId]);
   // Pré-preenche BONS com o saldo na rua (do prestador selecionado) — atualiza ao trocar.
   useEffect(() => {
     if (open) setQtyGood(inField);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [open, inField]);
 
   // Baixar o nº de defeituosos não pode deixar a sucata maior que eles (o banco

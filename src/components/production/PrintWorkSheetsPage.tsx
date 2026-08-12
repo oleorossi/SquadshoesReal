@@ -1657,7 +1657,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
       cache.set(cacheKey, result);
       return result;
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [soleMappings, sheetById, soleGroupProducts, soleColorConjugations]);
 
   // Nome-base do solado resolvido (ex.: "Solado Tratorado"); '' sem resolução.
@@ -2411,7 +2411,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
     ];
     if (!soleSheetSectors.some(s => activeSectors.has(s))) return null;
     return buildColorGroupedSheets('sole');
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   // knifeDefaultBoundaries vem de query SEPARADA (useKnifeFacasDefault) — sem ele
   // nas deps, o memo não recomputava quando o padrão de facas carregava async →
   // Corte Cabedal ficava número-a-número. (PV-00142, 2026-06-17.)

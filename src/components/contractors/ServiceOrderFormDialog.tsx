@@ -104,7 +104,7 @@ export function ServiceOrderFormDialog({
   });
   useEffect(() => {
     if (open && tableRate != null && tableRate > 0) setUnitPrice(tableRate);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [tableRate, open]);
 
   // Inicializa com props quando o dialog abre

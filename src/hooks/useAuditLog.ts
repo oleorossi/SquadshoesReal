@@ -26,7 +26,7 @@ export function useAuditLog(search?: string, enabled = true) {
     queryKey: ['material_audit_log', search],
     enabled,
     queryFn: async () => {
-      let query = supabase
+      const query = supabase
         .from('material_audit_log' as any)
         .select('*')
         .order('created_at', { ascending: false })

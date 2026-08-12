@@ -20,7 +20,7 @@ export function monthWeekToISODate(monthValue: string, weekValue: string): strin
   if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(weekNum)) return null;
 
   const firstDay = new Date(year, month - 1, 1);
-  let weekStart = new Date(firstDay);
+  const weekStart = new Date(firstDay);
   const dayOfWeek = weekStart.getDay();
   // Alinha pra segunda-feira da semana 1
   if (dayOfWeek !== 1) {

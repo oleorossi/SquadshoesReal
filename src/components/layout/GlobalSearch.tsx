@@ -531,7 +531,7 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
     return QUICK_ACTIONS.filter(a =>
       canAccessRoute(a.permPath) && searchMatchesAllTerms(query, a.label, a.keywords),
     );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [query, isGroupSearch, canAccessRoute]);
 
   // Favoritos de menu (mesma fonte da sidebar — persistido por usuário).

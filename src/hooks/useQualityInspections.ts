@@ -7,7 +7,7 @@ export function useQualityInspections(lotId?: string) {
   return useQuery({
     queryKey: ['quality_inspections', lotId],
     queryFn: async () => {
-       let query = supabase
+       const query = supabase
          .from('quality_inspections' as any)
          .select('*, orders(order_number), quality_checklists(name)')
          .order('created_at', { ascending: false });

@@ -125,7 +125,7 @@ const SelectItem = React.forwardRef<
   const isInvalid = value == null || (typeof value === 'string' && value.trim() === '');
   if (isInvalid) {
     if (import.meta.env.DEV) {
-      // eslint-disable-next-line no-console
+
       console.warn(
         '[SelectItem] value vazio detectado — substituído por sentinela. ' +
           'Origem provável: dado sujo (ex: department="" no DB) sendo passado direto pro value. ' +

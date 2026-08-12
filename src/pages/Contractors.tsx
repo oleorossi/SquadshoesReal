@@ -218,7 +218,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
   const urlQ = urlSearchParams.get('q') || '';
   useEffect(() => {
     if (urlQ) setSearch(urlQ);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [urlQ]);
   // Chave v2: o filtro antigo guardava status cru ('pending_quote' etc.) que não
   // existe mais nos chips; default novo = 'active' (Pendente + Em Processamento).

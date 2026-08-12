@@ -43,6 +43,11 @@ jobs:
         # passa sempre → símbolo indefinido / import errado vira ReferenceError em prod.
         run: bunx tsc -p tsconfig.app.json --noEmit
 
+      # A dívida histórica continua visível em `bun run lint`; este gate impede
+      # que novos erros entrem enquanto os existentes são removidos por ondas.
+      - name: ESLint regression gate
+        run: bun run lint:baseline
+
       - name: Design tokens check
         run: bash scripts/check-design-tokens.sh
         continue-on-error: true
