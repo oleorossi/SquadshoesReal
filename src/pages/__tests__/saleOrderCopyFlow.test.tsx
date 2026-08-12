@@ -309,8 +309,13 @@ describe('cópia parcial — o seed do outro lado', () => {
   });
 
   it('detecta rascunho guardado — é o que desarma o auto-save e evita apagá-lo', () => {
-    expect(hasStoredSaleOrderDraft()).toBe(false);
-    localStorage.setItem('sale_order_draft', JSON.stringify({ form: {}, items: [] }));
-    expect(hasStoredSaleOrderDraft()).toBe(true);
+    expect(hasStoredSaleOrderDraft('user-1')).toBe(false);
+    localStorage.setItem('sale_order_draft:user-1', JSON.stringify({ form: {}, items: [] }));
+    expect(hasStoredSaleOrderDraft('user-1')).toBe(true);
+  });
+
+  it('rascunho é isolado por conta — o de um vendedor não aparece pro outro', () => {
+    localStorage.setItem('sale_order_draft:user-1', JSON.stringify({ form: {}, items: [] }));
+    expect(hasStoredSaleOrderDraft('user-2')).toBe(false);
   });
 });

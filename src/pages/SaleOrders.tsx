@@ -428,11 +428,11 @@ export default function SaleOrders() {
   // ⚠ Antes as duas portas de edição discordavam entre si: o lápis da linha não
   // tinha gate nenhum e o botão "Editar" do detalhe exigia isAdmin. A incoerência
   // mascarava o fato de que NENHUM dos dois era gate de verdade.
-  const canEditPv = isAdmin || roles.includes('comercial');
-  const canBuy = canAccessModule('financeiro');
   // Gate de permissões da tela de Pedidos (criar/excluir) — esconde ações de
   // usuários explicitamente restritos; admins/sem-grant continuam vendo tudo.
   const perm = useCan('/sales');
+  const canEditPv = isAdmin || (roles.includes('comercial') && perm.canEdit);
+  const canBuy = canAccessModule('financeiro');
 
   // Confirmação estruturada genérica (AlertDialog) — substitui os confirm()
   // nativos de ações de alto impacto da página.

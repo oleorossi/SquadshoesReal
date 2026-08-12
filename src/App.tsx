@@ -1,7 +1,7 @@
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { QueryClient, QueryClientProvider, QueryCache, MutationCache } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, QueryCache, MutationCache, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { createBrowserRouter, RouterProvider, Navigate, Outlet, useLocation, useParams, useRouteError, type RouteObject } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
@@ -10,7 +10,7 @@ import { resolveRoleHome } from "@/data/navigation";
 import { resolveModuleForPath, useAccessControl } from "@/hooks/useAccessControl";
 import { CircleNotch as Loader2, ShieldWarning as ShieldAlert, ArrowsClockwise as RefreshCw, SignIn as LogIn } from '@phosphor-icons/react';
 import { Button } from "@/components/ui/button";
- import { lazy, Suspense, useState, useEffect } from "react";
+ import { lazy, Suspense, useState, useEffect, useRef } from "react";
 import ScrollRestorationComponent from "@/components/ScrollRestoration";
 import { GlobalErrorBoundary } from "@/components/GlobalErrorBoundary";
 import { VersionChecker, manualVersionCheck } from "@/components/VersionChecker";
@@ -221,7 +221,7 @@ const InlinePageLoader = () => <PageSkeleton key="page-skeleton" />;
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading, signOut } = useAuth();
-  const { data: profile, isLoading: profileLoading } = useCurrentProfile();
+  const { data: profile, isLoading: profileLoading, isError: profileError } = useCurrentProfile();
   const [profileTimeout, setProfileTimeout] = useState(false);
 
   useEffect(() => {
@@ -249,7 +249,10 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     return <PageLoader />;
   }
 
-  if (profileTimeout && !profile) {
+  // A ausência de profile NUNCA equivale a uma conta aprovada. O `maybeSingle`
+  // retorna null sem erro quando a linha não existe; antes isso deixava a conta
+  // atravessar esta guarda e acessar o dashboard (que é liberado a todo logado).
+  if ((profileTimeout || profileError || !profile) && !profileLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center px-4">
         <div className="text-center space-y-4 max-w-md">
@@ -285,6 +288,23 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
       </div>
     );
   }
+
+  return <>{children}</>;
+}
+
+/** Remove dados sensíveis do React Query ao encerrar ou trocar de identidade. */
+function AuthCacheBoundary({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth();
+  const client = useQueryClient();
+  const previousUserId = useRef<string | undefined>(undefined);
+
+  useEffect(() => {
+    if (previousUserId.current !== undefined && previousUserId.current !== user?.id) {
+      client.cancelQueries();
+      client.clear();
+    }
+    previousUserId.current = user?.id;
+  }, [client, user?.id]);
 
   return <>{children}</>;
 }
@@ -1152,11 +1172,13 @@ const App = () => (
   <GlobalErrorBoundary>
     <ThemeProvider defaultTheme="light" storageKey="squad-shoes-theme">
       <QueryClientProvider client={queryClient}>
-        <TooltipProvider>
-          <VersionChecker />
-          <Sonner position="top-right" closeButton richColors />
-          <RouterProvider router={router} />
-        </TooltipProvider>
+        <AuthCacheBoundary>
+          <TooltipProvider>
+            <VersionChecker />
+            <Sonner position="top-right" closeButton richColors />
+            <RouterProvider router={router} />
+          </TooltipProvider>
+        </AuthCacheBoundary>
       </QueryClientProvider>
     </ThemeProvider>
   </GlobalErrorBoundary>

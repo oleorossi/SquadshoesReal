@@ -29,6 +29,7 @@ import { useTechnicalSheets } from '@/hooks/useTechnicalSheets';
 import { useClients } from '@/hooks/useClients';
 import { useRepresentatives } from '@/hooks/useRepresentatives';
 import { useAuth } from '@/hooks/useAuth';
+import { useCan } from '@/hooks/useAccessControl';
 import { useIsAdmin } from '@/hooks/useUserManagement';
 import { useCheckStockAvailability } from '@/hooks/useOrders';
 import { getCanonicalReferenceIdMap, getCanonicalSaleOrderReferences } from '@/lib/saleOrderReferences';
@@ -73,7 +74,19 @@ const emptyItem: SaleOrderItemFormData = {
   outsourced_sectors: {},
 };
 
-const SALE_ORDER_DRAFT_KEY = 'sale_order_draft';
+const SALE_ORDER_DRAFT_KEY_PREFIX = 'sale_order_draft';
+
+/**
+ * Chave do rascunho, NAMESPACED por usuário: o rascunho carrega cliente, condições
+ * comerciais e preços, então o de um vendedor não pode ressurgir na conta de outro
+ * que usou o mesmo navegador. Fonte única — o componente e o
+ * `hasStoredSaleOrderDraft` derivam a chave daqui, senão os dois divergem e a
+ * detecção de rascunho olha uma chave que ninguém grava.
+ */
+function saleOrderDraftKey(userId: string | null | undefined): string {
+  return `${SALE_ORDER_DRAFT_KEY_PREFIX}:${userId ?? 'anonymous'}`;
+}
+
 // Cópia parcial de itens (edição → novo PV): a edição grava o seed aqui e navega
 // pra /sales/new, que o consome UMA vez no mount. Chave separada do rascunho:
 // o rascunho é opt-in (dialog), a cópia é ação deliberada e aplica direto.
@@ -157,10 +170,16 @@ export function consumeCopySeed(): SaleOrderCopySeed | null {
   }
 }
 
-/** Há rascunho de pedido guardado? (o da cópia é outra chave, ver acima) */
-export function hasStoredSaleOrderDraft(): boolean {
+/**
+ * Há rascunho de pedido guardado PARA ESTE usuário? (o da cópia é outra chave, ver
+ * acima). Recebe o id porque a chave é namespaced: sem ele a função olharia uma
+ * chave que ninguém grava e devolveria sempre `false`, desarmando a preservação do
+ * rascunho na cópia parcial.
+ */
+export function hasStoredSaleOrderDraft(userId: string | null | undefined): boolean {
+  const key = saleOrderDraftKey(userId);
   try {
-    return !!(sessionStorage.getItem(SALE_ORDER_DRAFT_KEY) ?? localStorage.getItem(SALE_ORDER_DRAFT_KEY));
+    return !!(sessionStorage.getItem(key) ?? localStorage.getItem(key));
   } catch {
     return false;
   }
@@ -271,6 +290,17 @@ export default function SaleOrderForm() {
   const cancelOrdersBatch = useCancelOrdersBatch();
   const checkStock = useCheckStockAvailability();
   const { user } = useAuth();
+  const perm = useCan('/sales');
+  const draftKey = saleOrderDraftKey(user?.id);
+
+  // A URL direta não pode contornar a matriz CRUD. A proteção de rota governa
+  // visualização; aqui a operação exige explicitamente create/edit.
+  useEffect(() => {
+    if (!perm.loading && ((isEdit && !perm.canEdit) || (!isEdit && !perm.canCreate))) {
+      toast.error('Você não tem permissão para editar pedidos de venda.');
+      navigate('/sales', { replace: true });
+    }
+  }, [isEdit, navigate, perm.canCreate, perm.canEdit, perm.loading]);
 
   // Diálogo "cancelar todas as OPs em produção e editar". Quando aberto,
   // segura a submissão até o usuário confirmar — então faz batch cancel
@@ -378,7 +408,10 @@ export default function SaleOrderForm() {
   }>(null);
 
   useEffect(() => {
-    if (isEdit) return;
+    // Espera o usuário resolver: a chave do rascunho é por conta, e o seed é
+    // one-shot — consumi-lo antes da sessão carregar o descartaria sem aplicar.
+    // O efeito re-roda quando `user?.id` chega (está nas deps).
+    if (isEdit || !user?.id) return;
     // 1) Seed de cópia parcial (veio de "Copiar p/ novo PV" na edição de outro
     //    pedido). Aplica DIRETO, sem opt-in — o usuário acabou de pedir a cópia.
     //    Consome (remove) antes de aplicar: é one-shot, um F5 depois disso volta
@@ -388,7 +421,7 @@ export default function SaleOrderForm() {
       // Rascunho anterior fica INTACTO: como aqui não passamos pelo prompt de
       // restauração, o auto-save é desarmado nesta sessão em vez de sobrescrever
       // um trabalho que o usuário não teve chance de ver.
-      if (hasStoredSaleOrderDraft()) {
+      if (hasStoredSaleOrderDraft(user.id)) {
         preserveExistingDraftRef.current = true;
         toast.info(
           'Havia um rascunho de pedido salvo — ele foi preservado e continua disponível na próxima visita a "Novo Pedido". ' +
@@ -408,13 +441,13 @@ export default function SaleOrderForm() {
       );
       return; // seed vence: não oferece restauração de rascunho antigo por cima
     }
-    const sessionRaw = sessionStorage.getItem(SALE_ORDER_DRAFT_KEY);
-    const localRaw = localStorage.getItem(SALE_ORDER_DRAFT_KEY);
+    const sessionRaw = sessionStorage.getItem(draftKey);
+    const localRaw = localStorage.getItem(draftKey);
     const raw = sessionRaw ?? localRaw;
     if (!raw) return;
     try {
       const parsed = JSON.parse(raw);
-      if (parsed?.form || parsed?.items?.length) {
+      if (parsed?.ownerId === user.id && (parsed?.form || parsed?.items?.length)) {
         setPendingDraft({
           form: parsed.form ?? emptyForm,
           items: parsed.items?.length ? parsed.items : [{ ...emptyItem }],
@@ -426,14 +459,15 @@ export default function SaleOrderForm() {
         });
       }
     } catch { /* ignore corrupted draft */ }
-  }, []);
+  }, [draftKey, isEdit, user?.id]);
 
   // Auto-save em localStorage a cada 5s enquanto user mexe no form
   // (sessionStorage continua sendo usado pelo fluxo de saída pra /estoque).
   useEffect(() => {
     // Não autossalva enquanto pendingDraft está aberto, nem quando a tela veio de
-    // uma cópia com rascunho anterior guardado (ver preserveExistingDraftRef).
-    if (isEdit || pendingDraft || preserveExistingDraftRef.current) return;
+    // uma cópia com rascunho anterior guardado (ver preserveExistingDraftRef), nem
+    // sem usuário resolvido (a chave é por conta — gravaria em 'anonymous').
+    if (isEdit || pendingDraft || !user?.id || preserveExistingDraftRef.current) return;
     const hasContent =
       (form.client_name?.trim() || '').length > 0 ||
       items.some((it) => it.reference_id || (it.quantity ?? 0) > 0);
@@ -441,13 +475,13 @@ export default function SaleOrderForm() {
     const handle = setTimeout(() => {
       try {
         localStorage.setItem(
-          SALE_ORDER_DRAFT_KEY,
-          JSON.stringify({ form, items, selectedClientId, packagingProductId, packagingQuantity, savedAt: Date.now() }),
+          draftKey,
+          JSON.stringify({ ownerId: user.id, form, items, selectedClientId, packagingProductId, packagingQuantity, savedAt: Date.now() }),
         );
       } catch { /* ignore quota errors */ }
     }, 5_000);
     return () => clearTimeout(handle);
-  }, [form, items, selectedClientId, packagingProductId, packagingQuantity, isEdit, pendingDraft]);
+  }, [draftKey, form, items, selectedClientId, packagingProductId, packagingQuantity, isEdit, pendingDraft, user?.id]);
 
   const restoreDraft = () => {
     if (!pendingDraft) return;
@@ -456,15 +490,15 @@ export default function SaleOrderForm() {
     setSelectedClientId(pendingDraft.selectedClientId);
     setPackagingProductId(pendingDraft.packagingProductId);
     setPackagingQuantity(pendingDraft.packagingQuantity);
-    sessionStorage.removeItem(SALE_ORDER_DRAFT_KEY);
-    localStorage.removeItem(SALE_ORDER_DRAFT_KEY);
+    sessionStorage.removeItem(draftKey);
+    localStorage.removeItem(draftKey);
     setPendingDraft(null);
     toast.success('Rascunho restaurado');
   };
 
   const discardDraft = () => {
-    sessionStorage.removeItem(SALE_ORDER_DRAFT_KEY);
-    localStorage.removeItem(SALE_ORDER_DRAFT_KEY);
+    sessionStorage.removeItem(draftKey);
+    localStorage.removeItem(draftKey);
     setPendingDraft(null);
     toast.success('Rascunho descartado');
   };
@@ -688,11 +722,11 @@ export default function SaleOrderForm() {
 
   const handleSaveStateAndNavigate = useCallback(() => {
     sessionStorage.setItem(
-      SALE_ORDER_DRAFT_KEY,
-      JSON.stringify({ ...draftStateRef.current, savedAt: Date.now() }),
+      draftKey,
+      JSON.stringify({ ownerId: user?.id, ...draftStateRef.current, savedAt: Date.now() }),
     );
     navigate('/estoque?returnTo=sale-order');
-  }, [navigate]);
+  }, [draftKey, navigate, user?.id]);
 
   // Load existing order for edit (only once, after references are ready)
   useEffect(() => {
@@ -1156,6 +1190,10 @@ export default function SaleOrderForm() {
     opts: SubmitOptions = {},
   ) => {
     e.preventDefault();
+    if ((isEdit && !perm.canEdit) || (!isEdit && !perm.canCreate)) {
+      toast.error('Você não tem permissão para salvar pedidos de venda.');
+      return;
+    }
     const f = formLatestRef.current;
     const validItems = items.filter(i => i.reference_id).map(normalizeItemReference);
     if (validItems.length === 0) { toast.error('Adicione pelo menos um item ao pedido.'); return; }
