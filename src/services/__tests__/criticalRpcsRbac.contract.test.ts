@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readFile } from 'node:fs/promises';
 
 const migration = await readFile(
-  'supabase/migrations/20261231120500_rbac-rpcs-operacionais-criticas.sql',
+  'supabase/migrations/20261231121300_rbac-rpcs-operacionais-criticas.sql',
   'utf8',
 );
 

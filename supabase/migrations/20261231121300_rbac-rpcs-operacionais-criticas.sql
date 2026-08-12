@@ -29,7 +29,7 @@ BEGIN
         ARRAY['admin','gerente','almoxarifado','expedicao']),
       ('public.hybrid_debit_stock_for_order(uuid,numeric,text,uuid,jsonb,boolean)'::regprocedure,
         ARRAY['admin','gerente','producao']),
-      ('public.debit_sole_stock_by_grade(uuid,uuid,text,jsonb)'::regprocedure,
+      ('public.debit_sole_stock_by_grade(uuid,uuid,text,jsonb,boolean)'::regprocedure,
         ARRAY['admin','gerente','producao']),
       ('public.debit_strap_stock(jsonb,integer,uuid,jsonb,boolean)'::regprocedure,
         ARRAY['admin','gerente','producao']),
@@ -37,7 +37,7 @@ BEGIN
         ARRAY['admin','gerente','producao']),
       ('public.convert_reservation_to_out(uuid,uuid)'::regprocedure,
         ARRAY['admin','gerente','producao']),
-      ('public.debit_packaging_for_order(uuid,uuid,uuid,integer,text)'::regprocedure,
+      ('public.debit_packaging_for_order(uuid,uuid,uuid,integer,text,boolean)'::regprocedure,
         ARRAY['admin','gerente','producao'])
     ) AS protected(fn, roles)
   LOOP
@@ -60,18 +60,18 @@ REVOKE ALL ON FUNCTION public.adjust_stock(uuid,numeric,numeric,numeric,text,jso
 REVOKE ALL ON FUNCTION public.move_stock_delta(uuid,text,numeric,text,text,timestamptz,text,uuid,boolean) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.pick_item_increment(uuid,text,numeric) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.hybrid_debit_stock_for_order(uuid,numeric,text,uuid,jsonb,boolean) FROM PUBLIC, anon;
-REVOKE ALL ON FUNCTION public.debit_sole_stock_by_grade(uuid,uuid,text,jsonb) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.debit_sole_stock_by_grade(uuid,uuid,text,jsonb,boolean) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.debit_strap_stock(jsonb,integer,uuid,jsonb,boolean) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.process_order_stock_out(uuid,uuid,integer) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.convert_reservation_to_out(uuid,uuid) FROM PUBLIC, anon;
-REVOKE ALL ON FUNCTION public.debit_packaging_for_order(uuid,uuid,uuid,integer,text) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.debit_packaging_for_order(uuid,uuid,uuid,integer,text,boolean) FROM PUBLIC, anon;
 
 GRANT EXECUTE ON FUNCTION public.adjust_stock(uuid,numeric,numeric,numeric,text,jsonb,uuid,boolean) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.move_stock_delta(uuid,text,numeric,text,text,timestamptz,text,uuid,boolean) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.pick_item_increment(uuid,text,numeric) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.hybrid_debit_stock_for_order(uuid,numeric,text,uuid,jsonb,boolean) TO authenticated, service_role;
-GRANT EXECUTE ON FUNCTION public.debit_sole_stock_by_grade(uuid,uuid,text,jsonb) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.debit_sole_stock_by_grade(uuid,uuid,text,jsonb,boolean) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.debit_strap_stock(jsonb,integer,uuid,jsonb,boolean) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.process_order_stock_out(uuid,uuid,integer) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.convert_reservation_to_out(uuid,uuid) TO authenticated, service_role;
-GRANT EXECUTE ON FUNCTION public.debit_packaging_for_order(uuid,uuid,uuid,integer,text) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.debit_packaging_for_order(uuid,uuid,uuid,integer,text,boolean) TO authenticated, service_role;
