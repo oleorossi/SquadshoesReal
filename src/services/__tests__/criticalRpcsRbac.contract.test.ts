@@ -29,4 +29,14 @@ describe('RBAC das RPCs operacionais críticas', () => {
     expect(migration).toContain("ARRAY['admin','gerente','almoxarifado']");
     expect(migration).toContain("ARRAY['admin','gerente','producao']");
   });
+
+  it('não libera comercial nas RPCs diretas, mas permite a sincronização SECURITY DEFINER do PV', async () => {
+    const internalSync = await readFile(
+      'supabase/migrations/20261231121400_rbac-rpcs-internal-pv-sync.sql',
+      'utf8',
+    );
+    expect(internalSync).toContain("current_setting(''app.internal_stock_sync'', true) IS DISTINCT FROM ''1''");
+    expect(internalSync).toContain("set_config(''app.internal_stock_sync'', ''1'', true)");
+    expect(internalSync).not.toContain("ARRAY['admin','gerente','producao','comercial']");
+  });
 });

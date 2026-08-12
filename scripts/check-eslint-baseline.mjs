@@ -2,28 +2,39 @@
  * Bloqueia regressão enquanto a dívida histórica do ESLint é eliminada.
  *
  * Não silencia regras no eslint.config: o lint continua sendo a fonte de
- * diagnóstico completa. Este gate compara a contagem por regra com o baseline
- * aprovado, portanto um erro novo não entra em main, mas uma correção em massa
- * pode reduzir a dívida sem precisar regravar a lista inteira de arquivos.
- * Atualize deliberadamente os limites somente depois de revisar uma redução.
+ * diagnóstico completa. Este gate reprova erros em linhas adicionadas desde a
+ * base do CI. Assim uma correção em massa pode reduzir a dívida, mas não pode
+ * compensar um erro novo removendo outro da mesma regra em um arquivo diferente.
  */
 import { spawnSync } from 'node:child_process';
 
-const baseline = {
-  'no-empty': 21,
-  '@typescript-eslint/no-explicit-any': 4814,
-  '@typescript-eslint/no-unused-expressions': 14,
-  'no-constant-binary-expression': 5,
-  '@typescript-eslint/no-empty-object-type': 2,
-  '@typescript-eslint/ban-ts-comment': 3,
-  'no-fallthrough': 1,
-  'no-async-promise-executor': 1,
-  'no-useless-escape': 15,
-  'no-irregular-whitespace': 2,
-  'no-control-regex': 2,
-  'prefer-const': 37,
-  '@typescript-eslint/no-require-imports': 1,
-};
+const base = process.env.LINT_BASE || 'HEAD^';
+
+const diff = spawnSync('git', ['diff', '--unified=0', base, '--'], {
+  encoding: 'utf8',
+});
+
+if (diff.status !== 0) {
+  console.error(diff.stderr || `Não foi possível comparar o lint com ${base}.`);
+  process.exit(2);
+}
+
+const addedLines = new Map();
+let currentFile;
+for (const line of diff.stdout.split('\n')) {
+  if (line.startsWith('+++ b/')) {
+    currentFile = line.slice(6);
+    continue;
+  }
+  const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/.exec(line);
+  if (!hunk || !currentFile) continue;
+  const start = Number(hunk[1]);
+  const count = Number(hunk[2] ?? 1);
+  if (count === 0) continue;
+  const lines = addedLines.get(currentFile) ?? new Set();
+  for (let lineNumber = start; lineNumber < start + count; lineNumber += 1) lines.add(lineNumber);
+  addedLines.set(currentFile, lines);
+}
 
 const run = spawnSync('bunx', ['eslint', '.', '--format', 'json'], {
   encoding: 'utf8',
@@ -43,27 +54,20 @@ try {
   process.exit(2);
 }
 
-const current = {};
+const regressions = [];
 for (const file of files) {
   for (const message of file.messages) {
-    if (message.severity === 2) {
-      const rule = message.ruleId ?? 'eslint-fatal';
-      current[rule] = (current[rule] ?? 0) + 1;
-    }
+    if (message.severity !== 2) continue;
+    const relativeFile = file.filePath.replace(`${process.cwd()}/`, '');
+    if (!addedLines.get(relativeFile)?.has(message.line)) continue;
+    regressions.push(`${relativeFile}:${message.line} ${message.ruleId ?? 'eslint-fatal'} — ${message.message}`);
   }
 }
 
-const regressions = [];
-for (const [rule, count] of Object.entries(current)) {
-  const allowed = baseline[rule] ?? 0;
-  if (count > allowed) regressions.push(`${rule}: ${allowed} → ${count}`);
-}
-
 if (regressions.length) {
-  console.error('❌ Regressão de lint detectada:');
+  console.error('❌ Erros de ESLint em linhas adicionadas:');
   regressions.forEach((line) => console.error(`  • ${line}`));
   process.exit(1);
 }
 
-const remaining = Object.values(current).reduce((sum, count) => sum + count, 0);
-console.log(`✅ ESLint sem regressões (${remaining} erros históricos ou menos).`);
+console.log(`✅ ESLint sem erros nas linhas adicionadas desde ${base}.`);

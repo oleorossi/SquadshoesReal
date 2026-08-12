@@ -33,9 +33,9 @@ BEGIN
     ) AS g(fn, roles)
   LOOP
     v_def := pg_get_functiondef(v_fn);
-    v_def := regexp_replace(v_def, E'\\nBEGIN\\n', E'\\nBEGIN\\n  IF auth.role() <> ''service_role'' AND NOT public.user_has_any_role(ARRAY[' ||
+    v_def := regexp_replace(v_def, E'\nBEGIN\n', E'\nBEGIN\n  IF auth.role() <> ''service_role'' AND NOT public.user_has_any_role(ARRAY[' ||
       (SELECT string_agg(quote_literal(r), ',') FROM unnest(string_to_array(v_guard, ',')) r) ||
-      E']) THEN RAISE EXCEPTION ''Permission denied''; END IF;\\n', 1, 1, '');
+      E']) THEN RAISE EXCEPTION ''Permission denied''; END IF;\n', 1, 1, '');
     EXECUTE v_def;
   END LOOP;
 END $hardening$;

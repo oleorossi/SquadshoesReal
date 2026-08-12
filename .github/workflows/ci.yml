@@ -12,6 +12,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -46,6 +48,8 @@ jobs:
       # A dívida histórica continua visível em `bun run lint`; este gate impede
       # que novos erros entrem enquanto os existentes são removidos por ondas.
       - name: ESLint regression gate
+        env:
+          LINT_BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
         run: bun run lint:baseline
 
       - name: Design tokens check
