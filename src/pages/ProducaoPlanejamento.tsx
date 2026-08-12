@@ -17,12 +17,14 @@ import {
   PushPin as Pin, PushPinSlash as PinOff, Info,
   CalendarBlank as CalendarIcon, ListChecks, Warning as AlertTriangle,
   DotsSixVertical as GripVertical,
+  ChartBar as ChartBarIcon,
 } from '@phosphor-icons/react';
 import {
   useProductionScheduleGrid, useProductionQueueDetail, useScheduleOps,
   usePinOrder, usePinOrderAt, useEnsureFreshSchedule, useLastEngineRun,
   ScheduleGridCell, QueueDetailRow,
 } from '@/hooks/useProductionEngine';
+import { useSectorDailyManagement } from '@/hooks/useSopPlanning';
 import { useRealtimeOrderStages } from '@/hooks/useOrderStages';
 import { useCan } from '@/hooks/useAccessControl';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
@@ -57,7 +59,7 @@ export default function ProducaoPlanejamento() {
   // A aba mora na URL (contrato do lote L6a): antes era <Tabs defaultValue>, então
   // F5 e o botão Voltar devolviam o usuário à primeira aba.
   const { value: abaAtiva, setValue: setAbaAtiva } = useUrlTabState({
-    values: ['grade', 'fila'] as const,
+    values: ['grade', 'fila', 'gestao'] as const,
     defaultValue: 'grade',
   });
   useEnsureFreshSchedule();
@@ -73,6 +75,8 @@ export default function ProducaoPlanejamento() {
   const pin = usePinOrder();
   const pinAt = usePinOrderAt();
   const canEdit = useCan('/producao/planejamento').canEdit;
+  const today = toISO(new Date());
+  const { data: dailyManagement = [], isLoading: dailyManagementLoading } = useSectorDailyManagement(today);
 
   const [search, setSearch] = useState('');
   const [drill, setDrill] = useState<{ sector: string; date: string } | null>(null);
@@ -146,6 +150,7 @@ export default function ProducaoPlanejamento() {
         <TabsList>
           <TabsTrigger value="grade" className="gap-1.5"><CalendarIcon className="h-3.5 w-3.5" /> Grade setor × dia</TabsTrigger>
           <TabsTrigger value="fila" className="gap-1.5"><ListChecks className="h-3.5 w-3.5" /> Fila ({queue.length})</TabsTrigger>
+          <TabsTrigger value="gestao" className="gap-1.5"><ChartBarIcon className="h-3.5 w-3.5" /> Gestão diária</TabsTrigger>
         </TabsList>
 
         {/* ── GRADE ─────────────────────────────────────────────────────────── */}
@@ -247,6 +252,13 @@ export default function ProducaoPlanejamento() {
                 </table>
               </CardContent>
             </Card>
+          )}
+        </TabsContent>
+
+        <TabsContent value="gestao" className="mt-4 space-y-3">
+          <p className="text-xs text-muted-foreground">Agenda e apontamentos de {fmtDate(today)}. Sem apontamento, a aderência fica como sem dado — não como produção zero.</p>
+          {dailyManagementLoading ? <Skeleton className="h-72 w-full" /> : (
+            <Card><CardContent className="p-0 overflow-x-auto"><table className="w-full text-xs"><thead><tr className="border-b border-border text-muted-foreground"><th className="text-left p-3">Setor</th><th className="text-right p-3">Planejado</th><th className="text-right p-3">Apontado</th><th className="text-right p-3">Aderência</th><th className="text-right p-3">OPs abertas</th><th className="text-right p-3">WIP</th><th className="text-left p-3">Prazo mais antigo</th><th className="p-3"></th></tr></thead><tbody>{dailyManagement.map(row => <tr key={row.sector} className="border-b border-border/60"><td className="p-3 font-medium">{row.sector}</td><td className="p-3 text-right font-mono">{row.planned_pairs}</td><td className="p-3 text-right font-mono">{row.pointed_pairs || '—'}</td><td className="p-3 text-right"><Badge variant="outline" className={row.adherence_pct !== null && row.adherence_pct < 100 ? 'border-primary text-primary' : ''}>{row.adherence_pct === null ? 'sem agenda' : `${row.adherence_pct}%`}</Badge></td><td className="p-3 text-right font-mono">{row.open_ops}</td><td className="p-3 text-right font-mono">{row.wip_pairs}</td><td className="p-3">{fmtDate(row.oldest_due_date)}</td><td className="p-3">{row.priority_order_id && <Link className="text-primary hover:underline" to={`/orders/${row.priority_order_id}/edit`}>OP prioritária</Link>}</td></tr>)}</tbody></table></CardContent></Card>
           )}
         </TabsContent>
 
