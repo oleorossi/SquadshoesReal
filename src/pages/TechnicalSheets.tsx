@@ -138,7 +138,7 @@ import { useSearchParams, Link } from 'react-router-dom';
 import { SignedImage } from '@/components/ui/signed-image';
 import { useDisplaySizeKeys } from '@/lib/soleGradeKeys';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
-import { FileText, Plus, Trash as Trash2, PencilSimple as Pencil, CircleNotch as Loader2, Package, Copy, Stack as Layers, Scissors, Drop as Droplets, Shield, Cube as Box, Footprints, FloppyDisk as Save, Wrench, Tag, ImageSquare as ImagePlus, Warning as AlertTriangle, ClockCounterClockwise as History, Factory, MagicWand as Wand2, ArrowsClockwise as RefreshCw, Gauge, ArrowLeft, ClipboardText as ClipboardCopy, Lock, Palette, CurrencyDollar as DollarSign, GridFour } from '@phosphor-icons/react';
+import { FileText, Plus, Trash as Trash2, PencilSimple as Pencil, CircleNotch as Loader2, Package, Copy, Stack as Layers, Scissors, Drop as Droplets, Shield, Cube as Box, Footprints, FloppyDisk as Save, Wrench, Tag, ImageSquare as ImagePlus, Warning as AlertTriangle, ClockCounterClockwise as History, Factory, MagicWand as Wand2, ArrowsClockwise as RefreshCw, Gauge, ArrowLeft, ClipboardText as ClipboardCopy, Lock, Palette, CurrencyDollar as DollarSign } from '@phosphor-icons/react';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -173,7 +173,7 @@ import { TechnicalReferencePanel } from '@/components/technical-sheets/Technical
 import { NonFiniteDevWatcher } from '@/components/technical-sheets/NonFiniteDevWatcher';
 import { SheetsAuditButton } from '@/components/technical-sheets/SheetsAuditPanel';
 import { CatalogModelsPanel } from '@/components/technical-sheets/CatalogModelsPanel';
-import { TechnicalSheetLayoutPreview } from '@/components/technical-sheets/TechnicalSheetLayoutPreview';
+import { TechnicalSheetCardGrid } from '@/components/technical-sheets/TechnicalSheetCardGrid';
 import { AviamentoRangeTab } from '@/components/technical-sheets/AviamentoRangeTab';
 import { useBomOperations } from '@/hooks/useBomOperations';
 import { useSoleColorMappings, useUpsertSoleColorMapping } from '@/hooks/useSoleColorMappings';
@@ -339,7 +339,6 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
   const [searchTerm, setSearchTerm] = useState('');
   const [bulkSoleApplying, setBulkSoleApplying] = useState(false);
   const [bulkSoleDialogOpen, setBulkSoleDialogOpen] = useState(false);
-  const [layoutPreviewOpen, setLayoutPreviewOpen] = useState(false);
    const [bulkSoleSelected, setBulkSoleSelected] = useState<string>('');
     const [bulkSoleOverwrite, setBulkSoleOverwrite] = useState(false);
 
@@ -633,16 +632,6 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
             <Badge variant="secondary" className="text-xs font-mono ml-1">
               {filteredSheets.length}
             </Badge>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-8 gap-1.5 text-xs"
-              onClick={() => setLayoutPreviewOpen(true)}
-            >
-              <GridFour className="h-3.5 w-3.5" />
-              Preview · 5 layouts
-            </Button>
           </div>
         </div>
 
@@ -772,112 +761,17 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
               }
            })()
         ) : (
-          /* ── List View (Table) ── */
-          <div className="rounded-lg border bg-card overflow-hidden">
-             <Table>
-              <TableHeader>
-                <TableRow className="bg-muted/50 hover:bg-muted/50">
-                  <TableHead className="w-14" />
-                  <TableHead className="font-semibold">Referência</TableHead>
-                  <TableHead className="font-semibold">Código</TableHead>
-                  <TableHead className="font-semibold hidden md:table-cell">Solado / Cabedal</TableHead>
-                  <TableHead className="font-semibold">Categoria</TableHead>
-                  <TableHead className="font-semibold">Ficha</TableHead>
-                  <TableHead className="font-semibold text-right">Ações</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredSheets.map((sheet: any) => {
-                  const statusFichaColors: Record<string, string> = {
-                    publicada: 'bg-success/10 text-success border-success/30',
-                    validada: 'bg-blue-500/10 text-blue-600 border-blue-500/20 dark:text-blue-400',
-                    em_revisao: 'bg-warning/10 text-warning border-warning/30',
-                    rascunho: 'bg-muted text-muted-foreground border-border',
-                  };
-                  return (
-                    <TableRow
-                      key={sheet.id}
-                      className="cursor-pointer hover:bg-muted/60 transition-colors group"
-                      onClick={() => setExpandedId(sheet.id)}
-                    >
-                      <TableCell className="px-3">
-                        {sheet.images && Array.isArray(sheet.images) && sheet.images.length > 0 && typeof sheet.images[0] === 'string' ? (
-                          <SignedImage src={sheet.images[0]} alt={sheet.name} className="h-16 w-16 rounded-md object-cover border bg-muted/30" />
-                        ) : (
-                          <div className="h-16 w-16 rounded-md bg-muted flex items-center justify-center border">
-                            <Package className="h-6 w-6 text-muted-foreground/30" />
-                          </div>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-col">
-                          <span className="font-semibold text-sm flex items-center gap-1.5">
-                            {sheet.name}
-                            {(materialVariantsBySheet?.get(sheet.id)?.length ?? 0) > 0 && (
-                              <Badge variant="secondary" className="px-1.5 py-0 h-4 text-xs bg-warning/10 text-warning border-warning/30" title={materialVariantsBySheet!.get(sheet.id)!.map(v => v.material_name).join(', ')}>
-                                <Package className="h-2.5 w-2.5 mr-0.5" /> {materialVariantsBySheet!.get(sheet.id)!.length} Materiais
-                              </Badge>
-                            )}
-                          </span>
-                          {sheet.collection && <span className="text-xs text-muted-foreground">{sheet.collection}</span>}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <span className="font-mono text-xs text-muted-foreground">{sheet.code || '—'}</span>
-                      </TableCell>
-                      <TableCell className="hidden md:table-cell">
-                        <div className="flex flex-col gap-0.5">
-                          {sheet.sole_material && (
-                            <span className="text-xs text-muted-foreground">
-                              <Footprints className="h-3 w-3 inline mr-1 opacity-60" />{sheet.sole_material}
-                            </span>
-                          )}
-                          {sheet.upper_material && (
-                            <span className="text-xs text-muted-foreground">
-                              <Layers className="h-3 w-3 inline mr-1 opacity-60" />{sheet.upper_material}
-                            </span>
-                          )}
-                          {!sheet.sole_material && !sheet.upper_material && (
-                            <span className="text-xs text-muted-foreground/40">—</span>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className="text-xs uppercase tracking-wider font-medium">
-                          {sheet.shoe_category || 'Geral'}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        {sheet.status_ficha && (
-                          <span className={cn('text-xs font-medium px-2 py-0.5 rounded-full border', statusFichaColors[sheet.status_ficha] || statusFichaColors.rascunho)}>
-                            {STATUS_FICHA_LABELS[sheet.status_ficha] || sheet.status_ficha}
-                          </span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right" onClick={e => e.stopPropagation()}>
-                        <div className="flex justify-end gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
-                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setImageDialogSheet(sheet); }} aria-label="Alterar foto">
-                            <ImagePlus className="h-3.5 w-3.5" />
-                          </Button>
-                          {perm.canDelete && (
-                            <DeleteConfirmButton onConfirm={() => deleteSheet.mutate(sheet.id)} title="Excluir ficha?" size="h-7 w-7" iconSize="h-3 w-3" />
-                          )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </div>
+          /* ── List View · opção 05 escolhida: prancheta fabril ── */
+          <TechnicalSheetCardGrid
+            sheets={filteredSheets}
+            materialVariantsBySheet={materialVariantsBySheet}
+            canDelete={perm.canDelete}
+            onOpenSheet={setExpandedId}
+            onEditImage={setImageDialogSheet}
+            onDeleteSheet={(id) => deleteSheet.mutate(id)}
+          />
         )}
       </div>
-
-      <TechnicalSheetLayoutPreview
-        open={layoutPreviewOpen}
-        onOpenChange={setLayoutPreviewOpen}
-        sheets={filteredSheets}
-      />
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -1086,7 +980,6 @@ function QuickCreateForm({ onCreated, onCancel }: { onCreated: (id: string) => v
   const [touched, setTouched] = useState(false);
 
   const nameMissing = touched && !form.name.trim();
-  const codeMissing = touched && !form.code.trim();
   const categoryMissing = touched && !form.shoe_category;
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1112,8 +1005,8 @@ function QuickCreateForm({ onCreated, onCancel }: { onCreated: (id: string) => v
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setTouched(true);
-    if (!form.name.trim() || !form.code.trim() || !form.shoe_category) {
-      toast.error('Preencha Nome, SKU e Categoria.');
+    if (!form.name.trim() || !form.shoe_category) {
+      toast.error('Preencha Referência e Categoria.');
       return;
     }
     const result = await addSheet.mutateAsync(form);
@@ -1170,14 +1063,13 @@ function QuickCreateForm({ onCreated, onCancel }: { onCreated: (id: string) => v
           </div>
 
           <div>
-            <Label htmlFor="qc-code" className="text-xs">SKU / Código <RequiredMark /></Label>
+            <Label htmlFor="qc-code" className="text-xs">Código interno / SKU <span className="text-muted-foreground normal-case font-normal">(opcional)</span></Label>
             <Input
               id="qc-code"
               value={form.code}
               onChange={e => setForm(f => ({ ...f, code: e.target.value }))}
-              required
-              className={cn("mt-1 h-9 font-mono", codeMissing && "border-destructive")}
-              placeholder="Ex: MON-893767-003"
+              className="mt-1 h-9 font-mono"
+              placeholder="Uso interno, se necessário"
             />
           </div>
 
@@ -1290,7 +1182,7 @@ function QuickCreateForm({ onCreated, onCancel }: { onCreated: (id: string) => v
 /* ===== Completeness Indicator ===== */
 function SheetCompleteness({ sheet }: { sheet: any }) {
   const checks = [
-    { label: 'Identificação', ok: !!(sheet.name && sheet.code && sheet.shoe_category), icon: Tag },
+    { label: 'Identificação', ok: !!(sheet.name && sheet.shoe_category), icon: Tag },
     { label: 'Foto', ok: !!(sheet.images && Array.isArray(sheet.images) && sheet.images.length > 0 && sheet.images[0]), icon: ImagePlus },
     { label: 'Solado', ok: !!sheet.sole_material, icon: Footprints },
     { label: 'Cabedal', ok: !!sheet.upper_material, icon: Layers },
@@ -2179,7 +2071,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
 
 
         {/* TAB: Identificação — reorganizada em cards temáticos.
-            (1) Dados Principais (SKU + Nome + Marca + Modelo)
+            (1) Dados Principais (Referência + Código interno + Marca + Modelo)
             (2) Categoria & Grade
             (3) Comercial & Tributário
             (4) Foto
@@ -2193,8 +2085,11 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
               <span className="text-xs text-muted-foreground ml-auto">Identificação comercial do produto</span>
             </div>
             <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-              <FieldInput label="SKU / Código" value={form.code || ''} onChange={v => updateField('code', v)} placeholder="MON-893767-003" mono />
-              <FieldInput label="Referência" value={form.name || ''} onChange={v => updateField('name', v)} placeholder="Ex.: DS20 / SP101" />
+              <div className="md:col-span-2">
+                <FieldInput label="Referência" value={form.name || ''} onChange={v => updateField('name', v)} placeholder="Ex.: ST 10" />
+                <p className="mt-1 text-xs text-muted-foreground">Identificação principal da ficha, exibida na produção, pedidos e impressões.</p>
+              </div>
+              <FieldInput label="Código interno / SKU (opcional)" value={form.code || ''} onChange={v => updateField('code', v)} placeholder="Uso interno, se necessário" mono />
               <FieldInput label="Marca" value={form.brand || ''} onChange={v => updateField('brand', v)} placeholder="Ex: Squad Shoes" />
               <FieldInput label="Modelo" value={form.model || ''} onChange={v => updateField('model', v)} placeholder="Ex: Air Max Style" />
               <div className="md:col-span-2">
