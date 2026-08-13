@@ -195,9 +195,13 @@ export default function Employees() {
         ]} />
         <TabsContent value="funcionarios" className="space-y-4 mt-4">
       {/* Header local removido — vive no RHHub. Actions ficam aqui em barra própria. */}
-      <div className="flex items-center justify-end gap-2 flex-wrap">
+      <div className="flex flex-col gap-3 border-b border-border/70 pb-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h2 className="text-base font-semibold">Cadastro e vínculos</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Mantenha matrícula do relógio, setor e regime de pagamento atualizados.</p>
+        </div>
         {perm.canCreate && (
-        <Button onClick={() => { setForm(emptyEmployee); setEditing(null); setDialogOpen(true); }} className="gap-2" size="sm">
+        <Button id="novo-funcionario" onClick={() => { setForm(emptyEmployee); setEditing(null); setDialogOpen(true); }} className="gap-2 shrink-0" size="sm">
           <Plus className="h-4 w-4" /> Novo Funcionário
         </Button>
         )}
