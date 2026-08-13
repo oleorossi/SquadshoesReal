@@ -1347,12 +1347,62 @@ function SheetCompleteness({ sheet }: { sheet: any }) {
 
 /* ===== SHEET DETAIL (all tabs) ===== */
 function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () => void }) {
-  // A aba mora na URL (contrato do lote L6a). São 9 abas: quem estava em Custos
+  // A aba mora na URL (contrato do lote L6a). As abas acompanham a sequência
+  // operacional: cadastro → materiais/consumo → produção → precificação →
+  // complementos e documentação. Quem estava em Custos
   // ou Variantes e dava F5 voltava pra Identificação e perdia o lugar.
   const { value: abaAtiva, setValue: setAbaAtiva } = useUrlTabState({
     values: ['id', 'engineering', 'range-aviamento', 'production', 'costs', 'variants', 'media', 'ficha-corte', 'terceirizados'] as const,
     defaultValue: 'id',
   });
+  const tabGuidance: Record<string, { eyebrow: string; title: string; description: string }> = {
+    id: {
+      eyebrow: 'ETAPA 1 · CADASTRO',
+      title: 'Defina a identidade e a estrutura do modelo',
+      description: 'Nome, categoria, grade, solado e informações comerciais que identificam a referência.',
+    },
+    engineering: {
+      eyebrow: 'ETAPA 2 · ENGENHARIA',
+      title: 'Monte os materiais e o consumo por par',
+      description: 'Cadastre o BOM, confira unidades e consumos antes de liberar o modelo para a produção.',
+    },
+    production: {
+      eyebrow: 'ETAPA 3 · PRODUÇÃO',
+      title: 'Defina a rota, tempos e capacidade',
+      description: 'Organize os setores, operações, lead time e capacidade necessários para fabricar esta referência.',
+    },
+    costs: {
+      eyebrow: 'ETAPA 4 · PRECIFICAÇÃO',
+      title: 'Revise custo, margem e preço de venda',
+      description: 'Use o custo consolidado de material, mão de obra e overhead para orientar a precificação.',
+    },
+    variants: {
+      eyebrow: 'COMPLEMENTO · MATERIAIS',
+      title: 'Cadastre alternativas de material',
+      description: 'As cores continuam no pedido de venda; aqui ficam as opções de material que alteram a composição.',
+    },
+    'range-aviamento': {
+      eyebrow: 'COMPLEMENTO · AVIAMENTO',
+      title: 'Configure os ranges das tiras e aviamentos',
+      description: 'Disponível apenas para modelos com tiras e usado para manter o corte e a separação consistentes.',
+    },
+    'ficha-corte': {
+      eyebrow: 'SAÍDA · CHÃO DE FÁBRICA',
+      title: 'Confira a ficha antes de imprimir',
+      description: 'Esta é a versão operacional que acompanha o trabalho no setor de corte.',
+    },
+    media: {
+      eyebrow: 'DOCUMENTAÇÃO',
+      title: 'Mantenha fotos, versões e especificações técnicas',
+      description: 'Registre evidências do modelo e acompanhe as alterações que orientam a produção.',
+    },
+    terceirizados: {
+      eyebrow: 'COMPLEMENTO · TERCEIROS',
+      title: 'Defina os serviços terceirizáveis',
+      description: 'Indique quais etapas desta referência podem ser enviadas a prestadores quando necessário.',
+    },
+  };
+  const activeTabGuidance = tabGuidance[abaAtiva] ?? tabGuidance.id;
   const queryClient = useQueryClient();
   const updateSheet = useUpdateSheet();
   // Mesma queryKey do componente pai — React Query dedupa, não é request extra.
@@ -2056,7 +2106,21 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
       </div>
 
       <Tabs value={abaAtiva} onValueChange={setAbaAtiva}>
-        <TabsList indicator="none" className="flex flex-nowrap overflow-x-auto sm:flex-wrap sm:overflow-visible h-auto gap-1 bg-muted/50 p-1.5 rounded-lg border">
+        <div className="rounded-xl border bg-muted/20 p-2 sm:p-3">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0 px-1">
+              <p className="font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-primary">{activeTabGuidance.eyebrow}</p>
+              <p className="mt-0.5 text-sm font-bold text-foreground">{activeTabGuidance.title}</p>
+              <p className="mt-0.5 max-w-3xl text-xs leading-relaxed text-muted-foreground">{activeTabGuidance.description}</p>
+            </div>
+            <div className="shrink-0 px-1 text-xs text-muted-foreground">
+              {abaAtiva === 'engineering' ? `${sheetMaterials.length} material${sheetMaterials.length === 1 ? '' : 'is'} no BOM` :
+                abaAtiva === 'costs' ? `Custo material: ${formatCurrency(materialCost)}/par` :
+                  abaAtiva === 'production' ? 'Rota e capacidade do modelo' : null}
+            </div>
+          </div>
+        </div>
+        <TabsList indicator="none" aria-label="Etapas da ficha técnica" className="mt-3 flex h-auto flex-nowrap gap-1 overflow-x-auto rounded-lg border bg-muted/50 p-1.5 sm:flex-wrap sm:overflow-visible">
           {/* Cada tab agora mostra um indicador discreto de "completude" ou
               contagem (badge) pro usuário saber onde tem trabalho pendente. */}
           <TabsTrigger value="id" className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md px-3 py-1.5">
@@ -2067,9 +2131,8 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
               <span className="ml-1 inline-flex items-center justify-center h-4 w-4 rounded-full bg-warning/10 text-warning text-xs font-bold">!</span>
             )}
           </TabsTrigger>
-          <Separator orientation="vertical" className="h-5 mx-0.5" />
           <TabsTrigger value="engineering" className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md px-3 py-1.5">
-            <Wrench className="h-3.5 w-3.5" /> BOM & Custos
+            <Wrench className="h-3.5 w-3.5" /> Materiais & Consumo
             <Badge variant="outline" className="ml-1 h-4 px-1.5 text-xs font-mono">
               {sheetMaterials.length}
             </Badge>
@@ -2077,7 +2140,6 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
           {/* Aba só existe quando o modelo TEM tiras (config de tiras + range P/M/G). */}
           {form.has_straps && (
             <>
-              <Separator orientation="vertical" className="h-5 mx-0.5" />
               <TabsTrigger value="range-aviamento" className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md px-3 py-1.5">
                 <Paperclip className="h-3.5 w-3.5" /> Range Aviamento
               </TabsTrigger>
@@ -2085,7 +2147,6 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
           )}
           {/* Aba "Escalonamento" movida pra menu lateral (/escalonamento) em 2026-06-28
               — virou calculadora independente (EscalonamentoCadPage). */}
-          <Separator orientation="vertical" className="h-5 mx-0.5" />
           <TabsTrigger value="production" className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md px-3 py-1.5">
             <Factory className="h-3.5 w-3.5" /> Produção
             {form.sole_group_id ? (
@@ -2094,28 +2155,23 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
               <span className="ml-1 inline-flex items-center justify-center h-4 w-4 rounded-full bg-muted text-muted-foreground text-xs font-bold">·</span>
             )}
           </TabsTrigger>
-          <Separator orientation="vertical" className="h-5 mx-0.5" />
           <TabsTrigger value="costs" className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md px-3 py-1.5">
-            <DollarSign className="h-3.5 w-3.5" /> Custos
+            <DollarSign className="h-3.5 w-3.5" /> Precificação
             {materialCost > 0 && (
               <span className="ml-1 text-xs font-mono text-muted-foreground">
                 {formatCurrency(materialCost).replace('R$', '')}
               </span>
             )}
           </TabsTrigger>
-          <Separator orientation="vertical" className="h-5 mx-0.5" />
           <TabsTrigger value="variants" className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md px-3 py-1.5">
             <Palette className="h-3.5 w-3.5" /> Variantes
           </TabsTrigger>
-          <Separator orientation="vertical" className="h-5 mx-0.5" />
-          <TabsTrigger value="media" className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md px-3 py-1.5">
-            <History className="h-3.5 w-3.5" /> Fotos & Histórico
-          </TabsTrigger>
-          <Separator orientation="vertical" className="h-5 mx-0.5" />
           <TabsTrigger value="ficha-corte" className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md px-3 py-1.5">
-            <Scissors className="h-3.5 w-3.5" /> Ficha Imprimível
+            <Scissors className="h-3.5 w-3.5" /> Imprimir Ficha
           </TabsTrigger>
-          <Separator orientation="vertical" className="h-5 mx-0.5" />
+          <TabsTrigger value="media" className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md px-3 py-1.5">
+            <History className="h-3.5 w-3.5" /> Documentação
+          </TabsTrigger>
           <TabsTrigger value="terceirizados" className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md px-3 py-1.5">
             <Handshake className="h-3.5 w-3.5" /> Terceirizados
           </TabsTrigger>
