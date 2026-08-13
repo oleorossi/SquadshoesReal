@@ -761,7 +761,7 @@ function TimesheetRecordsTab() {
   // da escala (esperado/feriado) + batidas e calcula HE líquida / atraso / falta.
   // DEFINIDA AQUI (antes de allEmployeeSummaries/folhaInd que a usam) — senão dá TDZ.
   const folhaForEmployee = (empName: string, dayData: { date: string; punches?: string[] }[]) => {
-    const emp = findBestEmployeeMatch(empName);
+    const emp = findEmployeeMatch(employees, empName);
     const salary = Number(emp?.salary) || 0;
     const sch = (emp?.work_schedule_id && schedules.find(s => s.id === emp.work_schedule_id)) || defaultSchedule;
     const punchesByDate = new Map<string, string[]>(dayData.map(d => [d.date, Array.isArray(d.punches) ? d.punches : []]));
@@ -828,7 +828,7 @@ function TimesheetRecordsTab() {
 
   // Build EmployeeTimesheetData for printing
   const getHourlySalary = (empName: string) => {
-    const emp = findBestEmployeeMatch(empName);
+    const emp = findEmployeeMatch(employees, empName);
     if (!emp || !emp.salary) return 0;
     return emp.salary / SALARY_HOUR_DIVISOR; // valor-hora = salário ÷ 220
   };
