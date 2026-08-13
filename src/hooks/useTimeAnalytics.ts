@@ -6,7 +6,9 @@ import {
 } from '@/hooks/useTimesheet';
 import { useEmployees } from '@/hooks/useEmployees';
 import { useMemo } from 'react';
-import { calculateWeeklyPeriod } from '@/lib/weeklyTimeCalculation';
+import { computePeriodFolha } from '@/lib/salaryPayroll';
+import { findEmployeeMatch } from '@/lib/employeeMatching';
+import { resolveHolidaysForPayrollRange } from '@/lib/ponto/periodDates';
 
 interface TimeAnalyticsParams {
   date_from: string;
@@ -64,9 +66,18 @@ export function useTimeAnalytics(params: TimeAnalyticsParams) {
       };
     }
 
-    // Group by employee
-    const empNames = new Set(records.map(r => r.employee_name));
-    const totalEmployees = empNames.size;
+    // Agrupa exclusivamente pelo ID do relógio resolvido na vigência do registro.
+    const employeeRecordGroups = new Map<string, typeof records>();
+    records.forEach(record => {
+      const emp = findEmployeeMatch(employees, record.employee_name, record.employee_external_id, {
+        linkedOnly: true, recordDate: record.record_date, allowNameFallback: false,
+      });
+      if (!emp) return;
+      const group = employeeRecordGroups.get(emp.id) || [];
+      group.push(record);
+      employeeRecordGroups.set(emp.id, group);
+    });
+    const totalEmployees = employeeRecordGroups.size;
 
     let totalDaysExpected = 0;
     let totalDaysPresent = 0;
@@ -75,13 +86,14 @@ export function useTimeAnalytics(params: TimeAnalyticsParams) {
     let totalCompleteDays = 0;
     let totalDaysProcessed = 0;
 
-    empNames.forEach(name => {
-      const empRecords = records.filter(r => r.employee_name === name);
+    employeeRecordGroups.forEach(empRecords => {
       // Escala INDIVIDUAL do funcionário (fallback default) — KPIs do hub
       // divergiam das demais telas quando a escala não era a padrão.
-      const empRec = employees.find(e => e.name?.toLowerCase().trim() === name?.toLowerCase().trim());
+      const empRec = findEmployeeMatch(employees, empRecords[0].employee_name, empRecords[0].employee_external_id, {
+        linkedOnly: true, recordDate: empRecords[0].record_date, allowNameFallback: false,
+      });
       const empSchedule = ((empRec as any)?.work_schedule_id && schedules.find(s => s.id === (empRec as any).work_schedule_id)) || defaultSchedule;
-      const empDays: Parameters<typeof calculateWeeklyPeriod>[0] = [];
+      const punchesByDate = new Map<string, string[]>();
 
       empRecords.forEach(rec => {
         const date = new Date(rec.record_date + 'T12:00:00');
@@ -106,22 +118,17 @@ export function useTimeAnalytics(params: TimeAnalyticsParams) {
         if (punches.length > 0 && punches.length % 2 === 0) totalCompleteDays++;
         if (punches.length > 0) totalDaysProcessed++;
 
-        empDays.push({
-          date: rec.record_date,
-          dayOfWeek,
-          workedMinutes: summary.workedMinutes,
-          expectedMinutes: summary.expectedMinutes,
-          overtimeMinutes: 0,
-          isHoliday: isHol,
-          isAbsent: summary.isAbsent,
-          status: summary.status,
-          punches,
-        });
+        punchesByDate.set(rec.record_date, punches);
       });
-
-      // Weekly calculation is the correct source of overtime (per-day value is always 0)
-      const period = calculateWeeklyPeriod(empDays, empSchedule);
-      totalOvertimeMinutes += period.totalOvertimeMinutes;
+      const period = computePeriodFolha({
+        salary: Number(empRec?.salary) || 0, from: params.date_from, to: params.date_to,
+        schedule: empSchedule, holidaysSet: resolveHolidaysForPayrollRange(holidays, params.date_from, params.date_to), punchesByDate,
+        payRegime: (String(empRec?.payment_type || 'mensalista').toLowerCase() as 'mensalista' | 'remoto' | 'diarista' | 'producao'),
+        dailyRate: Number(empRec?.daily_rate) || 0, heNormalRate: Number(empRec?.he_normal_rate) || 0,
+        heSundayHolidayRate: Number(empRec?.he_sunday_holiday_rate) || 0,
+        activeFrom: empRec?.admission_date || undefined, activeTo: empRec?.termination_date || undefined,
+      });
+      totalOvertimeMinutes += period.he_minutes;
     });
 
     const attendanceRate = totalDaysExpected > 0 ? (totalDaysPresent / totalDaysExpected) * 100 : 0;

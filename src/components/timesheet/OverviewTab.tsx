@@ -13,8 +13,9 @@ import {
 } from '@/hooks/useTimesheet';
 import { useEmployees } from '@/hooks/useEmployees';
 import { getBatchDateRange, resolveTimeControlFilters } from '@/lib/timeControlFilters';
-import { calculateWeeklyPeriod } from '@/lib/weeklyTimeCalculation';
-import { findEmployeeMatch, resolveEmployeeName } from '@/lib/employeeMatching';
+import { computePeriodFolha } from '@/lib/salaryPayroll';
+import { findEmployeeMatch } from '@/lib/employeeMatching';
+import { resolveHolidaysForPayrollRange } from '@/lib/ponto/periodDates';
 
 function minutesToDisplay(mins: number) {
   const sign = mins < 0 ? '-' : '';
@@ -99,7 +100,7 @@ export default function OverviewTab() {
     // linkedOnly: true pula funcionários sem coligação (demitidos s/ external_id
     // explícito). Records órfãos somem em vez de aparecer com nome do relógio.
     records.forEach(r => {
-      const match = findEmployeeMatch(employees, r.employee_name, r.employee_external_id, { linkedOnly: true });
+      const match = findEmployeeMatch(employees, r.employee_name, r.employee_external_id, { linkedOnly: true, recordDate: r.record_date, allowNameFallback: false });
       if (!match) return;
       const resolvedName = match.name;
       if (!map.has(resolvedName)) map.set(resolvedName, []);
@@ -116,7 +117,7 @@ export default function OverviewTab() {
 
       // Resolve employee and their individual schedule
       const firstRecord = empRecords[0];
-      const emp = findEmployeeMatch(employees, name, firstRecord?.employee_external_id);
+      const emp = findEmployeeMatch(employees, name, firstRecord?.employee_external_id, { recordDate: firstRecord?.record_date, allowNameFallback: false });
       const empSchedule = (emp?.work_schedule_id && schedules.find(s => s.id === emp.work_schedule_id)) || defaultSchedule;
 
       // Generate all days
@@ -146,38 +147,28 @@ export default function OverviewTab() {
         });
       }
 
-      // Use unified weekly calculation with employee's own schedule
-      const period = calculateWeeklyPeriod(allDays, empSchedule);
-
-      const salary = emp?.salary || 0;
-      const hourlySalary = salary / 220;
-      // Deficit compensates overtime before computing cost
-      const compensatedOT = Math.max(0, period.totalOvertimeMinutes - period.totalDeficitMinutes);
-      const holidayWorkedMins = allDays
-        .filter(d => d.isHoliday && d.workedMinutes > 0)
-        .reduce((s, d) => s + d.workedMinutes, 0);
-      const holidayOTMins = Math.min(compensatedOT, holidayWorkedMins);
-      const normalOTMins = Math.max(0, compensatedOT - holidayOTMins);
-      // Use per-employee overtime rate when set; use empSchedule multipliers as fallback
-      const hasCustomRate = emp?.overtime_hourly_rate != null && emp.overtime_hourly_rate > 0;
-      const effectiveOTRate = hasCustomRate ? emp!.overtime_hourly_rate! : hourlySalary * empSchedule.overtime_multiplier;
-      const effectiveHolidayRate = hasCustomRate
-        ? emp!.overtime_hourly_rate! * (empSchedule.holiday_multiplier / empSchedule.overtime_multiplier)
-        : hourlySalary * empSchedule.holiday_multiplier;
-      const overtimeCost = (normalOTMins / 60) * effectiveOTRate
-        + (holidayOTMins / 60) * effectiveHolidayRate;
+      const from = batchDateRange?.startDate || empRecords.map(r => r.record_date).sort()[0];
+      const to = batchDateRange?.endDate || empRecords.map(r => r.record_date).sort().at(-1) || from;
+      const period = computePeriodFolha({
+        salary: Number(emp?.salary) || 0, from, to, schedule: empSchedule,
+        holidaysSet: resolveHolidaysForPayrollRange(holidays, from, to), punchesByDate: recordMap,
+        payRegime: (String(emp?.payment_type || 'mensalista').toLowerCase() as 'mensalista' | 'remoto' | 'diarista' | 'producao'),
+        dailyRate: Number(emp?.daily_rate) || 0, heNormalRate: Number(emp?.he_normal_rate) || 0,
+        heSundayHolidayRate: Number(emp?.he_sunday_holiday_rate) || 0,
+        activeFrom: emp?.admission_date || undefined, activeTo: emp?.termination_date || undefined,
+      });
 
       results.push({
         name, days: allDays.length,
-        workedMinutes: period.totalWorkedMinutes,
-        expectedMinutes: period.totalExpectedMinutes,
-        overtimeMinutes: compensatedOT,
-        deficitMinutes: period.totalDeficitMinutes,
-        absences: period.totalAbsences,
-        incomplete: period.totalIncomplete,
-        holidaysWorked: period.totalHolidaysWorked,
-        adherencePct: period.totalExpectedMinutes > 0 ? Math.min(100, (period.totalWorkedMinutes / period.totalExpectedMinutes) * 100) : 0,
-        salary, overtimeCost,
+        workedMinutes: period.worked_minutes,
+        expectedMinutes: period.expected_minutes,
+        overtimeMinutes: period.he_minutes,
+        deficitMinutes: period.atraso_minutes,
+        absences: period.falta_days,
+        incomplete: period.pending_days,
+        holidaysWorked: allDays.filter(d => d.isHoliday && d.workedMinutes > 0).length,
+        adherencePct: period.expected_minutes > 0 ? Math.min(100, (period.worked_minutes / period.expected_minutes) * 100) : 0,
+        salary: Number(emp?.salary) || 0, overtimeCost: period.he_value,
       });
     });
 

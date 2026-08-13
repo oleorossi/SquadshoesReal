@@ -101,6 +101,10 @@ export function useAddEmployee() {
   return useMutation({
     mutationFn: async (form: EmployeeForm) => {
       if (!Number.isFinite(form.salary) || form.salary < 0) throw new Error('Salário deve ser um número não-negativo.');
+      const paymentType = form.payment_type || 'mensalista';
+      if ((paymentType === 'mensalista' || paymentType === 'diarista') && !String(form.external_id || '').trim()) {
+        throw new Error('Informe o ID do relógio de ponto para prestadores avaliados por batidas.');
+      }
       const { error } = await supabase.from('employees').insert(stripSearchNorm(form) as any);
       if (error) throw error;
     },

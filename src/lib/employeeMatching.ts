@@ -64,20 +64,30 @@ export function findEmployeeMatch(
   employees: Employee[],
   employeeName: string,
   externalId?: string | null,
-  opts: { linkedOnly?: boolean } = {},
+  opts: { linkedOnly?: boolean; recordDate?: string; allowNameFallback?: boolean } = {},
 ): Employee | undefined {
-  // 1. external_id (coligação explícita) — vale mesmo em demitido pq vínculo é forte
-  // Suporta CSV de IDs pra funcionários com múltiplas matrículas no relógio
+  // 1. ID do relógio é a única identidade válida para ponto/folha. O equipamento
+  // recicla crachás, portanto a data do registro também participa da resolução.
+  // Nunca caia para nome quando o arquivo trouxe um ID: um nome curto do relógio
+  // não é uma chave financeira segura.
   if (externalId) {
-    const match = employees.find(e => {
+    const matches = employees.filter(e => {
       if (!e.external_id) return false;
       const ids = e.external_id.split(',').map(id => id.trim());
-      return ids.includes(externalId.trim());
+      if (!ids.includes(externalId.trim())) return false;
+      if (opts.recordDate) {
+        if (e.admission_date && opts.recordDate < e.admission_date) return false;
+        if (e.termination_date && opts.recordDate > e.termination_date) return false;
+      }
+      return !opts.linkedOnly || e.active;
     });
-    if (match) return match;
+    // Duas fichas vigentes para o mesmo ID é uma inconsistência: não escolha uma
+    // arbitrariamente e não deixe que ela componha relatório ou folha.
+    return matches.length === 1 ? matches[0] : undefined;
   }
 
-  // 2. Fuzzy name. Em modo linkedOnly, filtra inativos pra não vazar demitidos.
+  // 2. Nome só é aceitável em lançamento manual sem identificação do relógio.
+  if (opts.allowNameFallback === false) return undefined;
   const candidates = opts.linkedOnly ? employees.filter(e => e.active) : employees;
   return candidates.find((e) => namesMatch(employeeName, e.name));
 }

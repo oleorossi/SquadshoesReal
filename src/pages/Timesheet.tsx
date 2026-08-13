@@ -30,10 +30,9 @@ import {
   parseTimesheetXlsx, parseTimesheetTxt, calculateDaySummary,
   WorkSchedule, Holiday, TimeRecord, ParsedEmployee, DaySummary,
 } from '@/hooks/useTimesheet';
-import { useEmployees, useUpdateEmployee } from '@/hooks/useEmployees';
+import { useEmployees } from '@/hooks/useEmployees';
 import { computePeriodFolha, SALARY_HOUR_DIVISOR } from '@/lib/salaryPayroll';
 import { getBatchDateRange, resolveTimeControlFilters } from '@/lib/timeControlFilters';
-import { calculateWeeklyPeriod } from '@/lib/weeklyTimeCalculation';
 import { findEmployeeMatch, resolveEmployeeName } from '@/lib/employeeMatching';
 import { resolveHolidaysForPayrollRange } from '@/lib/ponto/periodDates';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
@@ -55,7 +54,7 @@ function WorkScheduleTab() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<WorkSchedule | null>(null);
   const [form, setForm] = useState({
-    name: 'Padrão CLT 44h',
+    name: 'Jornada padrão',
     entry_time: '08:00',
     lunch_start: '12:00',
     lunch_end: '13:00',
@@ -74,7 +73,7 @@ function WorkScheduleTab() {
   const openAdd = () => {
     setEditing(null);
     setForm({
-      name: 'Padrão CLT 44h', entry_time: '08:00', lunch_start: '12:00', lunch_end: '13:00',
+      name: 'Jornada padrão', entry_time: '08:00', lunch_start: '12:00', lunch_end: '13:00',
       exit_time: '17:48', saturday_entry: '08:00', saturday_exit: '12:00',
       weekly_hours: 44, overtime_multiplier: 1.5, night_overtime_multiplier: 1.7,
       holiday_multiplier: 1.5, tolerance_minutes: 10, minimum_overtime_minutes: 0, is_default: false,
@@ -113,7 +112,7 @@ function WorkScheduleTab() {
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-lg font-semibold">Horários de Trabalho</h3>
-          <p className="text-xs text-muted-foreground">Configure os padrões de jornada CLT (44h semanais)</p>
+          <p className="text-xs text-muted-foreground">Configure jornadas de referência para avaliar o ponto e contratos PJ.</p>
         </div>
         <Button onClick={openAdd} size="sm" className="gap-1.5">
           <Plus className="h-4 w-4" /> Novo Horário
@@ -125,7 +124,7 @@ function WorkScheduleTab() {
           <EmptyState
             icon={Clock}
             title="Nenhum horário cadastrado"
-            description="Cadastre o horário padrão CLT para calcular horas extras e faltas."
+            description="Cadastre uma jornada de referência para avaliar horas, pendências e valores contratados."
           />
         </Panel>
       ) : (
@@ -496,7 +495,6 @@ function TimesheetRecordsTab() {
   const { swapWorkedSet, swapOffSet, swapModeFor } = useSwapSets();
   const { data: employees = [] } = useEmployees();
   const importRecords = useImportTimeRecords();
-  const updateEmployee = useUpdateEmployee();
   const deleteBatch = useDeleteBatch();
 
   const fileRef = useRef<HTMLInputElement>(null);
@@ -507,27 +505,6 @@ function TimesheetRecordsTab() {
   const [selectedEmployee, setSelectedEmployee] = useState<string>('');
   const [reportDialogOpen, setReportDialogOpen] = useState(false);
   const [, setRhSearchParams] = useSearchParams(); // navegar Ponto → Relatórios
-  // Employee matching: parsed name → registered employee name
-  const [employeeMatches, setEmployeeMatches] = useState<Record<string, string>>({});
-
-  // Employee matching uses shared utility from '@/lib/employeeMatching'
-
-  const findBestEmployeeMatch = (sourceName: string, externalId?: string) => {
-    return findEmployeeMatch(employees, sourceName, externalId);
-  };
-
-  // Auto-match parsed employees to registered ones
-  const autoMatchEmployees = (parsed: ParsedEmployee[]) => {
-    const matches: Record<string, string> = {};
-    for (const emp of parsed) {
-      const match = findBestEmployeeMatch(emp.name, emp.externalId);
-      if (match) {
-        matches[emp.name] = match.name;
-      }
-    }
-    setEmployeeMatches(matches);
-  };
-
   const defaultSchedule: WorkSchedule = schedules.find(s => s.is_default) || schedules[0] || {
     id: '', name: 'Default', entry_time: '08:00', lunch_start: '12:00', lunch_end: '13:00',
     exit_time: '17:48', saturday_entry: '08:00', saturday_exit: '12:00', weekly_hours: 44,
@@ -590,9 +567,14 @@ function TimesheetRecordsTab() {
         result = await parseTimesheetXlsx(file);
       }
       setPreview({ ...result, rawFile: file });
-      autoMatchEmployees(result.employees);
-      const matched = result.employees.filter(emp => !!findBestEmployeeMatch(emp.name, emp.externalId)).length;
-      toast.success(`${result.employees.length} funcionários encontrados, ${matched} vinculados automaticamente`);
+      const matched = result.employees.filter(emp => emp.records.some(record =>
+        !!findEmployeeMatch(employees, emp.name, emp.externalId, {
+          recordDate: record.dateStr || `${result.startDate.slice(0, 7)}-${String(record.day).padStart(2, '0')}`,
+          allowNameFallback: false,
+        }),
+      )).length;
+      const pending = result.employees.reduce((sum, emp) => sum + emp.records.filter(r => r.punches.length % 2 === 1).length, 0);
+      toast.success(`${result.employees.length} IDs encontrados, ${matched} vinculados pelo relógio${pending ? `; ${pending} dia(s) pendente(s)` : ''}`);
     } catch (err: any) {
       toast.error('Erro ao ler arquivo: ' + err.message);
     } finally {
@@ -603,27 +585,12 @@ function TimesheetRecordsTab() {
 
   const doImport = () => {
     if (!preview) return;
-    // Replace parsed names with matched registered names
-    const mappedEmployees = preview.employees.map(emp => ({
-      ...emp,
-      name: employeeMatches[emp.name] || emp.name,
-    }));
-
-    // Auto-save external_id to matched employees that don't have one yet
-    for (const emp of preview.employees) {
-      const matchedName = employeeMatches[emp.name];
-      if (matchedName && emp.externalId) {
-        const registeredEmp = employees.find(e => e.name === matchedName);
-        if (registeredEmp && !registeredEmp.external_id) {
-          updateEmployee.mutate({ id: registeredEmp.id, data: { external_id: emp.externalId } });
-        }
-      }
-    }
-
     const importStartDate = preview.startDate;
     const importEndDate = preview.endDate;
     importRecords.mutate({
-      employees: mappedEmployees,
+      // Preserva exatamente o nome exportado como evidência; relatórios resolvem
+      // o cadastro por ID do relógio e vigência, nunca por este rótulo.
+      employees: preview.employees,
       startDate: importStartDate,
       endDate: importEndDate,
       file: preview.rawFile, // arquiva no bucket timesheet-imports
@@ -649,7 +616,7 @@ function TimesheetRecordsTab() {
   const handleImport = () => {
     if (!preview) return;
     const unmatchedWithHours = preview.employees.filter(e =>
-      !findBestEmployeeMatch(e.name, e.externalId) &&
+      !findEmployeeMatch(employees, e.name, e.externalId, { allowNameFallback: false }) &&
       Array.isArray(e.records) && e.records.some((r: any) => Array.isArray(r.punches) && r.punches.length > 0),
     );
     if (unmatchedWithHours.length > 0) {
@@ -674,7 +641,7 @@ function TimesheetRecordsTab() {
   const employeeGroups = useMemo(() => {
     const map = new Map<string, TimeRecord[]>();
     records.forEach(r => {
-      const match = findEmployeeMatch(employees, r.employee_name, r.employee_external_id, { linkedOnly: true });
+      const match = findEmployeeMatch(employees, r.employee_name, r.employee_external_id, { linkedOnly: true, recordDate: r.record_date, allowNameFallback: false });
       if (!match) return; // pula funcionários órfãos (só no relógio, sem cadastro)
       const resolvedName = match.name;
       if (!map.has(resolvedName)) map.set(resolvedName, []);
@@ -830,9 +797,6 @@ function TimesheetRecordsTab() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedEmployee, employeeNames, employeeGroups, defaultSchedule, holidays, holidayDates, swapWorkedSet, swapOffSet, schedules, batchDateRange, employees]);
 
-  // Individual employee period (weekly-based) — usado só pro Espelho/banco (regime legal).
-  const periodSummary = useMemo(() => calculateWeeklyPeriod(summaries, defaultSchedule), [summaries, defaultSchedule]);
-
   // ALINHADO À FOLHA: os números de PAGAMENTO da tela (trabalhadas, esperadas, hora extra,
   // atraso, faltas) vêm do MESMO motor da folha (computePeriodFolha — HE líquida do período,
   // esperado da escala), não mais do regime semanal 528. O Espelho/banco seguem no caminho legal.
@@ -851,7 +815,7 @@ function TimesheetRecordsTab() {
   const heValueFolha = folhaInd?.he_value ?? 0;
   const atrasoDescontoFolha = folhaInd?.atraso_desconto ?? 0;
   const absences = faltasFolha;
-  const holidayWorked = periodSummary.totalHolidaysWorked;
+  const holidayWorked = summaries.filter(d => d.isHoliday && d.workedMinutes > 0).length;
 
   // overtimeDays removido: overtimeMinutes por dia é sempre 0 (HE é do período).
   const deficitDays = summaries.filter(d => d.expectedMinutes > 0 && d.workedMinutes > 0 && d.workedMinutes < d.expectedMinutes);

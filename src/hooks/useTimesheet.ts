@@ -125,10 +125,7 @@ async function readSpreadsheetRows(file: File): Promise<any[][]> {
 }
 
 // ── XLSX / XLS Parsing ──────────────────────────────────────
-export function parseTimesheetXlsx(file: File): Promise<{ employees: ParsedEmployee[]; startDate: string; endDate: string }> {
-  return new Promise(async (resolve, reject) => {
-    try {
-      const rows = await readSpreadsheetRows(file);
+export function parseTimesheetRows(rows: any[][]): { employees: ParsedEmployee[]; startDate: string; endDate: string } {
 
       // Find date range from header rows
       let startDate = '';
@@ -299,11 +296,11 @@ export function parseTimesheetXlsx(file: File): Promise<{ employees: ParsedEmplo
         i++;
       }
 
-      resolve({ employees, startDate, endDate });
-    } catch (err) {
-      reject(err);
-    }
-  });
+  return { employees, startDate, endDate };
+}
+
+export async function parseTimesheetXlsx(file: File): Promise<{ employees: ParsedEmployee[]; startDate: string; endDate: string }> {
+  return parseTimesheetRows(await readSpreadsheetRows(file));
 }
 
 // ── TXT Parsing (REP / ponto eletrônico) ─────────────
@@ -1112,11 +1109,11 @@ export function useImportTimeRecords() {
       }
 
       // ── Step 1: dedup within the parsed batch ────────────────────────────
-      // Multiple XLS sections or two IDs mapped to the same employee name can
-      // produce duplicate (employee_name, record_date) pairs; merge them first.
+      // A chave operacional é o ID do relógio, não o nome curto exportado pelo
+      // equipamento. Isso evita mesclar pessoas diferentes que compartilham nome.
       const dedupMap = new Map<string, typeof records[0]>();
       for (const rec of records) {
-        const key = `${rec.employee_name}__${rec.record_date}`;
+        const key = `${rec.employee_external_id || `nome:${rec.employee_name}`}__${rec.record_date}`;
         if (dedupMap.has(key)) {
           const existing = dedupMap.get(key)!;
           const merged = Array.from(new Set([...existing.punches, ...rec.punches])).sort();
@@ -1137,25 +1134,25 @@ export function useImportTimeRecords() {
       const maxDate = uniqueRecords.reduce(
         (m, r) => (r.record_date > m ? r.record_date : m), '0000-00-00'
       );
-      const allNames = [...new Set(uniqueRecords.map(r => r.employee_name))];
+      const allExternalIds = [...new Set(uniqueRecords.map(r => r.employee_external_id).filter(Boolean))];
 
       const existingKeys = new Set<string>();
       const PAGE = 1000;
-      // Split employee names into chunks of 100 to stay within URL-length limits
-      for (let ni = 0; ni < allNames.length; ni += 100) {
-        const nameChunk = allNames.slice(ni, ni + 100);
+      // Busca pelo ID do relógio; nome é apenas rótulo do arquivo e pode mudar.
+      for (let ni = 0; ni < allExternalIds.length; ni += 100) {
+        const idChunk = allExternalIds.slice(ni, ni + 100);
         let from = 0;
         while (true) {
           const { data } = await supabase
             .from('time_records')
-            .select('employee_name, record_date')
-            .in('employee_name', nameChunk)
+            .select('employee_external_id, record_date')
+            .in('employee_external_id', idChunk)
             .gte('record_date', minDate)
             .lte('record_date', maxDate)
             .range(from, from + PAGE - 1);
           if (!data || data.length === 0) break;
           for (const row of data) {
-            existingKeys.add(`${row.employee_name}__${row.record_date}`);
+            existingKeys.add(`${row.employee_external_id || `nome:${row.employee_name}`}__${row.record_date}`);
           }
           if (data.length < PAGE) break; // last page
           from += PAGE;
@@ -1164,7 +1161,7 @@ export function useImportTimeRecords() {
 
       // ── Step 3: keep only records that are not yet in the DB ─────────────
       const toInsert = uniqueRecords.filter(
-        r => !existingKeys.has(`${r.employee_name}__${r.record_date}`)
+        r => !existingKeys.has(`${r.employee_external_id || `nome:${r.employee_name}`}__${r.record_date}`)
       );
       let skipped = uniqueRecords.length - toInsert.length;
 

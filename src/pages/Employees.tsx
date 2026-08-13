@@ -411,17 +411,19 @@ export default function Employees() {
                 className="font-mono"
                 maxLength={14}
               />
-              <p className="text-xs text-muted-foreground mt-0.5">Obrigatório no Espelho de Ponto (Portaria 671)</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Usado apenas para identificação interna quando necessário.</p>
             </div>
             <div>
-              <Label>ID no Relógio (External ID)</Label>
+              <Label>ID do relógio de ponto</Label>
               <div className="relative">
                 <Input value={form.external_id || ''} onChange={e => setForm(f => ({ ...f, external_id: e.target.value }))} placeholder="Ex: 101" className={form.external_id ? 'pr-10 border-emerald-500 focus-visible:ring-emerald-500' : ''} />
                 {form.external_id && (
                   <CheckCircle2 className="absolute right-3 top-1/2 -translate-y-1/2 h-5 w-5 text-emerald-500" />
                 )}
               </div>
-              {form.external_id && <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1">✓ Vinculado ao relógio de ponto</p>}
+              {form.external_id
+                ? <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1">✓ Vinculado por ID e data de vigência</p>
+                : <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">Necessário para importar e calcular ponto deste prestador.</p>}
             </div>
             <div><Label>Cargo</Label><Input value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))} /></div>
             <div><SectorSelectField value={form.department} onChange={onSectorChange} /></div>
