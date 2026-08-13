@@ -2082,10 +2082,12 @@ export default function SaleOrders() {
         />
 
         {/* Main tabs: Ativos vs Faturados */}
-        <div className="flex items-center gap-1 border-b">
+        <div className="flex items-center gap-1 overflow-x-auto border-b" role="tablist" aria-label="Situação dos pedidos">
           <button
             type="button"
             onClick={() => setMainTab('ativos')}
+            role="tab"
+            aria-selected={mainTab === 'ativos'}
             className={cn(
               'px-4 py-2 text-sm font-medium transition-colors border-b-2',
               mainTab === 'ativos'
@@ -2105,6 +2107,8 @@ export default function SaleOrders() {
           <button
             type="button"
             onClick={() => setMainTab('faturados')}
+            role="tab"
+            aria-selected={mainTab === 'faturados'}
             className={cn(
               'px-4 py-2 text-sm font-medium transition-colors border-b-2',
               mainTab === 'faturados'
@@ -2124,6 +2128,8 @@ export default function SaleOrders() {
           <button
             type="button"
             onClick={() => setMainTab('cancelados')}
+            role="tab"
+            aria-selected={mainTab === 'cancelados'}
             className={cn(
               'px-4 py-2 text-sm font-medium transition-colors border-b-2',
               mainTab === 'cancelados'
@@ -2322,11 +2328,63 @@ export default function SaleOrders() {
             />
           </Panel>
         ) : (
+          <>
+          <div className="space-y-2 md:hidden">
+            {sortedOrders.map(order => {
+              const pairs = pairsBySaleOrder[order.id] || 0;
+              const minBilling = minBillingMap.get(order.id) || null;
+              const isOverdue = !!(order.delivery_deadline && parseDateOnly(order.delivery_deadline) < new Date() && !TERMINAL_BILLED_STATUSES.includes(order.status) && order.status !== 'Cancelado');
+              const isInfeasible = !!(minBilling && order.delivery_deadline && order.delivery_deadline < minBilling && !TERMINAL_BILLED_STATUSES.includes(order.status) && order.status !== 'Cancelado');
+              return (
+                <article
+                  key={order.id}
+                  className={cn(
+                    'rounded-xl border bg-card p-4 shadow-sm transition-colors',
+                    sel.isSelected(order.id) && 'border-primary bg-primary/5',
+                    (isOverdue || isInfeasible) && 'border-l-4 border-l-destructive',
+                  )}
+                >
+                  <div className="flex items-start gap-3">
+                    <Checkbox
+                      checked={sel.isSelected(order.id)}
+                      onCheckedChange={() => sel.toggle(order.id)}
+                      aria-label={`Selecionar pedido ${order.order_number}`}
+                      className="mt-1"
+                    />
+                    <button type="button" onClick={() => openOrderDetails(order)} className="min-w-0 flex-1 text-left">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-mono text-sm font-bold text-primary">{order.order_number || '—'}</span>
+                        <Badge variant="outline" className={cn('shrink-0 text-xs', STATUS_COLORS[order.status])}>
+                          <span className={cn('h-1.5 w-1.5 rounded-full', STATUS_DOT[order.status])} />
+                          {order.status}
+                        </Badge>
+                      </div>
+                      <p className="mt-1 truncate text-sm font-semibold">{order.client_name}</p>
+                      <div className="mt-2 grid grid-cols-3 gap-2 text-xs text-muted-foreground">
+                        <span><strong className="block font-mono text-sm text-foreground">{pairs.toLocaleString('pt-BR')}</strong>pares</span>
+                        {canSeeFinancialValues && <span><strong className="block truncate font-mono text-sm text-foreground">{formatCurrency(Number(order.total))}</strong>total</span>}
+                        <span className={cn('text-right', (isOverdue || isInfeasible) && 'font-semibold text-destructive')}><strong className="block text-sm text-foreground">{formatDate(order.delivery_deadline)}</strong>entrega</span>
+                      </div>
+                      {isInfeasible && minBilling && <p className="mt-2 text-xs font-semibold text-destructive">Data mínima viável: {formatDate(minBilling)}</p>}
+                    </button>
+                  </div>
+                  <div className="mt-3 flex gap-2 border-t pt-3">
+                    <Button variant="outline" size="sm" className="min-h-10 flex-1 gap-1.5" onClick={() => navigate(`/sales?view=consumo&ids=${order.id}`)}>
+                      <Package className="h-4 w-4" /> Consumo
+                    </Button>
+                    <Button variant="outline" size="sm" className="min-h-10 flex-1 gap-1.5" disabled={!canEditPv} onClick={() => navigate(`/sales/edit/${order.id}`)}>
+                      <Pencil className="h-4 w-4" /> Editar
+                    </Button>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
           <div
             ref={sel.containerRef}
             onMouseDown={sel.onContainerMouseDown}
             data-marquee-container
-            className="rounded-lg border bg-card overflow-x-auto relative"
+            className="relative hidden overflow-x-auto rounded-lg border bg-card md:block"
           >
             <Table className="min-w-[640px]">
               <TableHeader>
@@ -2616,6 +2674,7 @@ export default function SaleOrders() {
                 container .relative pra coords absolutas funcionarem). */}
             <MarqueeOverlay rect={sel.marqueeRect} />
           </div>
+          </>
         )}
       </div>
 

@@ -1027,12 +1027,29 @@ export default function SaleOrderFormPanel({
           </CardContent>
         </Card>
       )}
+      {/* Mapa do preenchimento: mantém a orientação quando o pedido tem muitas
+          referências e evita rolagem longa só para voltar aos dados comerciais. */}
+      <nav aria-label="Etapas do pedido" className="sticky top-0 z-20 -mx-1 flex gap-2 overflow-x-auto border-y bg-background/95 px-1 py-2 backdrop-blur sm:static sm:mx-0 sm:border sm:rounded-lg sm:px-2">
+        <Button type="button" variant="ghost" size="sm" className="min-h-10 shrink-0 gap-1.5" onClick={() => document.getElementById('pv-cliente')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
+          <User className="h-4 w-4" />
+          <span>Cliente</span>
+          {form.client_name && <Check className="h-3.5 w-3.5 text-success" weight="bold" />}
+        </Button>
+        <Button type="button" variant="ghost" size="sm" className="min-h-10 shrink-0 gap-1.5" onClick={() => document.getElementById('pv-itens')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
+          <ClipboardList className="h-4 w-4" />
+          <span>Itens</span>
+          <Badge variant="secondary" className="h-5 min-w-5 px-1 font-mono">{items.filter(i => i.reference_id).length}</Badge>
+        </Button>
+        <Button type="button" variant="ghost" size="sm" className="min-h-10 shrink-0 gap-1.5" onClick={() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })}>
+          <CheckCircle2 className="h-4 w-4" /> Revisar e salvar
+        </Button>
+      </nav>
       {/* Header section */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         <div className="lg:col-span-2 space-y-5">
 
           {/* Card 1: Cliente & Representante */}
-          <Card className="border-border/60 shadow-sm overflow-hidden">
+          <Card id="pv-cliente" className="scroll-mt-20 border-border/60 shadow-sm overflow-hidden">
             <CardHeader className="py-3 px-4 bg-muted/30 border-b">
               <CardTitle className="text-sm font-bold flex items-center gap-2">
                 <User className="h-4 w-4 text-primary" />
@@ -1873,7 +1890,7 @@ export default function SaleOrderFormPanel({
       </div>
 
       {/* Items section */}
-      <div className="space-y-3">
+      <div id="pv-itens" className="scroll-mt-20 space-y-3">
         <div className="flex items-center justify-between border-b border-border/40 pb-2">
           <div className="flex items-center gap-2">
             <ClipboardList className="h-5 w-5 text-primary" />

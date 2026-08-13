@@ -52,6 +52,27 @@ const newRequestId = () => crypto.randomUUID();
 
 const SIZE_RANGE_ADULT = ['33','34','35','36','37','38','39','40'];
 
+function OrderProgress({ current }: { current: Step }) {
+  const steps: Array<{ key: Step; label: string }> = [
+    { key: 'client', label: 'Cliente' },
+    { key: 'items', label: 'Itens' },
+    { key: 'review', label: 'Revisão' },
+  ];
+  const currentIndex = steps.findIndex((step) => step.key === current);
+  return (
+    <ol aria-label="Progresso do novo pedido" className="grid grid-cols-3 gap-2">
+      {steps.map((step, index) => (
+        <li key={step.key} className="min-w-0">
+          <div className={`h-1 rounded-full ${index <= currentIndex ? 'bg-primary' : 'bg-muted'}`} />
+          <span className={`mt-1 block truncate text-[11px] font-semibold ${index === currentIndex ? 'text-primary' : 'text-muted-foreground'}`}>
+            {index + 1}. {step.label}
+          </span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
 export default function MobileNewOrder() {
   const navigate = useNavigate();
   const online = useOnlineStatus();
@@ -308,8 +329,12 @@ export default function MobileNewOrder() {
   // ── Renderização por step ──
   if (step === 'client') {
     return (
-      <div className="p-4 space-y-3">
-        <h2 className="text-xl font-bold">1 · Cliente</h2>
+      <div className="p-4 space-y-4">
+        <OrderProgress current="client" />
+        <div>
+          <h2 className="text-xl font-bold">Escolha o cliente</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Depois você inclui referências, cores e grades.</p>
+        </div>
         <SearchInput
           value={clientSearch}
           onChange={setClientSearch}
@@ -323,7 +348,7 @@ export default function MobileNewOrder() {
             <li key={c.id}>
               <button
                 onClick={() => { setSelectedClient(c); setStep('items'); }}
-                className="w-full text-left p-3 active:bg-muted/40 transition-colors"
+                className="min-h-14 w-full rounded-md p-3 text-left transition-colors active:bg-muted/40"
               >
                 <p className="font-bold text-foreground">{c.nome_fantasia || c.razao_social}</p>
                 <p className="text-xs text-muted-foreground mt-0.5">
@@ -359,7 +384,8 @@ export default function MobileNewOrder() {
 
   if (step === 'items') {
     return (
-      <div className="p-4 space-y-3 pb-32">
+      <div className="p-4 space-y-4 pb-32">
+        <OrderProgress current="items" />
         <div className="flex items-center justify-between">
           <button onClick={() => setStep('client')} className="flex items-center gap-1 text-muted-foreground">
             <ArrowLeft className="h-5 w-5" />
@@ -379,7 +405,10 @@ export default function MobileNewOrder() {
           <p className="font-bold text-sm">{selectedClient?.razao_social}</p>
         </div>
 
-        <h2 className="text-xl font-bold">2 · Itens</h2>
+        <div>
+          <h2 className="text-xl font-bold">Inclua os itens</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Revise grade e preço de cada referência antes de confirmar.</p>
+        </div>
 
         {/* Items atuais */}
         {items.map((it, idx) => {
@@ -404,7 +433,7 @@ export default function MobileNewOrder() {
                     </p>
                   )}
                 </div>
-                <button onClick={() => setItems(items.filter((_, i) => i !== idx))} className="text-destructive">
+                <button aria-label={`Remover ${it.reference_name}`} onClick={() => setItems(items.filter((_, i) => i !== idx))} className="-mr-2 -mt-2 min-h-11 min-w-11 text-destructive">
                   <Trash className="h-5 w-5" />
                 </button>
               </div>
@@ -550,7 +579,8 @@ export default function MobileNewOrder() {
 
   // Review step
   return (
-    <div className="p-4 space-y-3 pb-32">
+    <div className="p-4 space-y-4 pb-32">
+      <OrderProgress current="review" />
       <div className="flex items-center justify-between">
         <button onClick={() => setStep('items')} className="flex items-center gap-1 text-muted-foreground">
           <ArrowLeft className="h-5 w-5" />
