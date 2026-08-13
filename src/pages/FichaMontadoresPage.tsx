@@ -5,7 +5,7 @@
 // Roster do setor numa tela (visão Dia) + matriz pessoas × Seg–Dom por tamanho
 // (visão Semana). Um único "Salvar" (upsert em lote por dia/pessoa).
 //
-// Cada par tem DIFICULDADE (Médio âmbar / Difícil vermelho) que paga R$/par
+// Cada par tem DIFICULDADE (Médio âmbar / Difícil verde) que paga R$/par
 // diferente: valor_par_medio / valor_par_dificil por pessoa.
 // Modelo 'chamada' em public.ficha_montadores: 1 linha por (dia, montador_id) com
 //   detalhe = [{tamanho, medio, dificil}], total = Σ (medio+dificil),
@@ -23,7 +23,7 @@
 // snapshot do cadastro no momento do apontamento — a tela NÃO edita taxa (editar
 // aqui reescrevia todo o histórico, inclusive de folha já calculada).
 import { supabase } from "@/integrations/supabase/client";
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState, type ComponentType } from "react";
 import { Link } from "react-router-dom";
 import { EditorialPageHeader } from "@/components/layout/EditorialPageHeader";
 import { Panel } from "@/components/ui/panel";
@@ -31,7 +31,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SearchInput } from "@/components/ui/search-input";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import { StatGrid, StatCard } from "@/components/ui/stat-card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useEmployees } from "@/hooks/useEmployees";
 import { useAccessControl } from "@/hooks/useAccessControl";
@@ -42,7 +41,7 @@ import { useUrlTabState } from "@/hooks/useUrlTabState";
 import { ratesOfRow, sumProducaoRows } from "@/lib/montadorProduction";
 import { searchMatchesAllTerms } from "@/lib/searchUtils";
 import { toast } from "sonner";
-import { Printer, ChartBar, ClipboardText, Users, Package, CurrencyDollar, FloppyDisk, CaretLeft, CaretRight, Warning, CheckCircle, Clock } from "@phosphor-icons/react";
+import { Printer, ChartBar, ClipboardText, Users, CurrencyDollar, FloppyDisk, CaretLeft, CaretRight, Warning, CheckCircle, Clock, CalendarBlank, ListBullets } from "@phosphor-icons/react";
 
 type Grade = "adulto" | "infantil";
 /** Duas abas: LANÇAR e VER. "Produtividade" e "Relatórios" eram telas separadas
@@ -52,6 +51,9 @@ type Grade = "adulto" | "infantil";
  *  alternar entre abas e conferir de cabeça se o filtro era o mesmo dos dois
  *  lados. Unificadas em 07/08/2026 (decisão do dono). */
 type Tab = "lancamento" | "producao";
+/** Recortes do relatório. Compartilham período e filtros para que a navegação
+ *  organize a leitura sem criar três versões do mesmo cálculo. */
+type ReportView = "resumo" | "calendario" | "lancamentos";
 /** Fallback dos setores por par — usado SÓ quando a view não responde ou não tem
  *  nenhum setor marcado. A fonte de verdade é `sector_settings.pays_by_pair`
  *  (via v_production_sectors), não esta lista: a Ficha roda a mesma dinâmica nos
@@ -354,6 +356,11 @@ function imprimirRelatorio(p: {
   const css = `*{box-sizing:border-box}body{margin:0;font-family:'Helvetica Neue',Arial,sans-serif;color:#111;-webkit-print-color-adjust:exact;print-color-adjust:exact}
     h1{font-size:17px;margin:0 0 2px} .sub{font-size:10.5px;color:#555;margin-bottom:3px}
     .filtro{font-size:9.5px;color:#555;margin-bottom:10px}
+    .kpis{display:grid;grid-template-columns:1.2fr repeat(3,1fr);border:1px solid #333;margin:8px 0 12px}
+    .kpi{padding:7px 9px;border-right:1px solid #bbb}.kpi:last-child{border-right:0}.kpi.total{background:#111;color:#fff}
+    .kpi small{display:block;font-size:7.5px;text-transform:uppercase;letter-spacing:.08em;color:#666;margin-bottom:2px}.kpi.total small{color:#bbb}
+    .kpi b{display:block;font-size:13px;font-variant-numeric:tabular-nums}.kpi span{font-size:8px;color:#777}.kpi.total span{color:#ccc}
+    .kpi.open b{color:#b45309}.kpi.sheet b{color:#1d4ed8}.kpi.paid b{color:#15803d}
     h2{font-size:12px;margin:14px 0 5px;text-transform:uppercase;letter-spacing:.06em;color:#333;border-bottom:1.5px solid #333;padding-bottom:2px}
     section{break-inside:avoid}
     .med{color:#b45309} .dif{color:#0f7a4a} .pg{color:#15803d} .ab{color:#b45309} .fl{color:#1d4ed8}
@@ -385,6 +392,13 @@ function imprimirRelatorio(p: {
     <h1>Produção e pagamento — ${esc(p.setorLabel)}</h1>
     <div class="sub">${esc(p.label)} · ${esc(p.intervalo)} — gerado em ${fmtDia(todayISO())}</div>
     <div class="filtro">${esc(filtro)} Valores calculados pelo R$/par gravado em cada lançamento.</div>
+
+    <div class="kpis">
+      <div class="kpi total"><small>Total do período</small><b>${fmtBRL(totals.valorTotal)}</b><span>${nf(totals.pares)} pares · ${nf(totals.fichas)} fichas · ${rows.length} pessoa(s)</span></div>
+      <div class="kpi open"><small>A pagar</small><b>${fmtBRL(totals.valorAberto)}</b><span>livre para fechar</span></div>
+      <div class="kpi sheet"><small>Na folha</small><b>${fmtBRL(totals.valorFolha)}</b><span>aprovado, não quitado</span></div>
+      <div class="kpi paid"><small>Pago</small><b>${fmtBRL(totals.valorPago)}</b><span>sem pendência</span></div>
+    </div>
 
     <section class="rend">
       <h2>Rendimento por ${esc(p.oficioPlural)}</h2>
@@ -444,6 +458,7 @@ export default function FichaMontadoresPage() {
     aliases: { produtividade: "producao", relatorios: "producao" },
     migrateFrom: "ficha-montadores-tab",
   });
+  const [reportView, setReportView] = useState<ReportView>("resumo");
   // Setores do fluxo (v_production_sectors, em flow_order) filtrados pelos que são
   // pagos por par. O RÓTULO continua vindo do banco (não hard-coded); só a seleção
   // de QUAIS setores aparecem é desta tela — ela cobre pagamento por produção, e
@@ -589,8 +604,6 @@ export default function FichaMontadoresPage() {
     () => colaboradoresDoSetor.filter((employee) => String(employee.payment_type || "").toLowerCase() === "producao"),
     [colaboradoresDoSetor],
   );
-  const colaboradoresSemProducao = colaboradoresDoSetor.length - montadores.length;
-
   // Pendências de CADASTRO de quem é regime por par. A tela cobre só Montagem e
   // Solagem, então o alerta antigo ("sem setor de produção") virava ruído: ele
   // acusava toda a fábrica. O que importa aqui é quem é PAGO POR PAR e mesmo
@@ -1117,53 +1130,68 @@ export default function FichaMontadoresPage() {
   }
 
   const lbl = "block text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1";
-  const TABS: { id: Tab; label: string; description: string; icon: any }[] = [
+  const TABS: { id: Tab; label: string; description: string; icon: ComponentType<{ className?: string }> }[] = [
     { id: "lancamento", label: "Lançar produção", description: "Registre pares por pessoa e dia", icon: ClipboardText },
     { id: "producao", label: "Conferir e pagar", description: "Confira totais, folha e quitação", icon: ChartBar },
   ];
 
-  // estilo dos inputs de pares por dificuldade (Médio âmbar · Difícil vermelho)
+  // estilo dos inputs de pares por dificuldade (Médio âmbar · Difícil verde)
   const cellM = "h-9 w-14 rounded-md border border-amber-500/40 bg-amber-500/5 text-center text-sm font-bold tabular-nums text-foreground outline-none transition-colors placeholder:text-muted-foreground/40 focus:border-amber-600";
   const cellD = "h-9 w-14 rounded-md border border-green-600/40 bg-green-600/5 text-center text-sm font-bold tabular-nums text-foreground outline-none transition-colors placeholder:text-muted-foreground/40 focus:border-green-600";
   const numOf = (s: string) => parseInt(s.replace(/[^\d]/g, "")) || 0;
 
   return (
-    <div className="w-full space-y-6">
+    <div className="w-full space-y-5">
       <EditorialPageHeader
         sectionLabel={`PRODUÇÃO · ${cfgSetor.label.toUpperCase()}`}
-        title="Produção por colaborador"
-        description="Registre a produção diária de quem recebe por par. Cada lançamento congela o R$/par e compõe a folha semanal da pessoa."
-        meta={<><span className="font-bold">{montadores.length}</span> POR PAR EM {cfgSetor.label.toUpperCase()} · <span className="font-bold">{fichasHoje}</span> FICHA{fichasHoje === 1 ? "" : "S"} HOJE</>}
+        title="Ficha de produção"
+        description="Lance os pares do dia e feche a semana no mesmo lugar. O valor por par fica congelado em cada apontamento e segue para a folha."
+        meta={<><span className="font-bold">{montadores.length}</span> PESSOA{montadores.length === 1 ? "" : "S"} POR PAR · <span className="font-bold">{fichasHoje}</span> FICHA{fichasHoje === 1 ? "" : "S"} HOJE</>}
       />
 
-      {/* Setor — só Montagem e Solagem, os dois ofícios pagos por par. Dados e
-          relatórios separados por ficha_montadores.setor. Com 2 abas a faixa cabe
-          inteira: não precisa mais da rolagem horizontal que os 11 setores exigiam. */}
-      <div className="flex flex-wrap gap-0 overflow-hidden rounded-lg border border-border w-fit">
+      {/* Um único seletor de contexto. Setor e etapa ficavam em três faixas
+          separadas, fazendo o operador reler o mesmo contexto antes de agir. */}
+      <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+        <div className="flex flex-col gap-3 border-b border-border bg-muted/20 p-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-2 overflow-x-auto">
+            <span className="shrink-0 pl-1 font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Setor</span>
+            <div className="flex shrink-0 overflow-hidden rounded-lg border border-border bg-background">
           {sectors.map((s) => {
             const gente = employeeSectors.filter((r) => r.sector_key === s.key && String(r.payment_type || "").toLowerCase() === "producao").length;
             return (
               <button key={s.key} type="button" onClick={() => setSetor(s.key)}
                 title={`${s.label} — ${gente} ${gente === 1 ? "pessoa recebe" : "pessoas recebem"} por produção`}
-                className={`whitespace-nowrap border-r border-border px-4 py-2 text-sm font-bold uppercase tracking-wide transition-colors last:border-r-0 ${setor === s.key ? "bg-foreground text-background" : "bg-card text-muted-foreground hover:bg-muted/40"}`}>
+                className={`whitespace-nowrap border-r border-border px-3.5 py-2 text-xs font-bold uppercase tracking-wide transition-colors last:border-r-0 ${setor === s.key ? "bg-foreground text-background" : "bg-card text-muted-foreground hover:bg-muted/40"}`}>
                 {s.label}
                 <span className={`ml-1.5 font-mono text-[10px] ${setor === s.key ? "text-background/70" : "text-muted-foreground/60"}`}>{gente}</span>
               </button>
             );
           })}
-      </div>
-
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/70 pb-4">
-        <div>
-          <h2 className="text-base font-semibold">{cfgSetor.label} · lançamento por produção</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {montadores.length} {montadores.length === 1 ? "colaborador recebe" : "colaboradores recebem"} por par neste setor.
-            {colaboradoresSemProducao > 0 && ` ${colaboradoresSemProducao} pessoa${colaboradoresSemProducao === 1 ? " está" : "s estão"} fora da chamada por ter outro regime.`}
-          </p>
+            </div>
+          </div>
+          <Button asChild type="button" variant="ghost" size="sm" className="h-8 shrink-0 justify-start text-xs sm:justify-center">
+            <Link to="/rh?tab=funcionarios">Equipe e R$/par</Link>
+          </Button>
         </div>
-        <Button asChild type="button" variant="outline" size="sm">
-          <Link to="/rh?tab=funcionarios">Gerenciar equipe e R$/par</Link>
-        </Button>
+
+        {/* Etapas operacionais em formato compacto. O número comunica ordem e
+            evita que lançamento e dinheiro pareçam duas páginas concorrentes. */}
+        <div className="grid gap-px bg-border sm:grid-cols-2">
+          {TABS.map((t, index) => (
+            <button key={t.id} type="button" onClick={() => setTab(t.id)}
+              className={`group flex min-h-[66px] items-center gap-3 px-4 py-3 text-left transition-colors ${tab === t.id ? "bg-background text-foreground" : "bg-card text-muted-foreground hover:bg-muted/40 hover:text-foreground"}`}>
+              <span className={`font-mono text-[10px] font-bold tracking-[0.16em] ${tab === t.id ? "text-primary" : "text-muted-foreground/60"}`}>0{index + 1}</span>
+              <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${tab === t.id ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground group-hover:text-foreground"}`}>
+                <t.icon className="h-4 w-4" />
+              </span>
+              <span className="min-w-0">
+                <span className="block text-sm font-semibold">{t.label}</span>
+                <span className="mt-0.5 block truncate text-xs font-normal text-muted-foreground">{t.description}</span>
+              </span>
+              {tab === t.id && <span className="ml-auto hidden rounded-full bg-primary/10 px-2 py-1 font-mono text-[9px] font-bold uppercase tracking-wider text-primary sm:inline">Agora</span>}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Pendência de CADASTRO de quem é por par: sem setor válido ou sem R$/par,
@@ -1198,22 +1226,6 @@ export default function FichaMontadoresPage() {
         </div>
       )}
 
-      {/* Etapas operacionais — a tela abre no lançamento; conferência e pagamento
-          são uma segunda etapa para não misturar digitação diária com dinheiro. */}
-      <div className="grid gap-px overflow-hidden rounded-lg border border-border bg-border md:grid-cols-2">
-        {TABS.map((t) => (
-          <button key={t.id} type="button" onClick={() => setTab(t.id)}
-            className={`flex min-h-[76px] items-center gap-3 px-4 py-3 text-left transition-colors ${tab === t.id ? "bg-background text-foreground" : "bg-card text-muted-foreground hover:bg-muted/40 hover:text-foreground"}`}>
-            <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md ${tab === t.id ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
-              <t.icon className="h-4 w-4" />
-            </span>
-            <span>
-              <span className="block text-sm font-semibold">{t.label}</span>
-              <span className="mt-1 block text-xs font-normal text-muted-foreground">{t.description}</span>
-            </span>
-          </button>
-        ))}
-      </div>
 
       {/* ════ CHAMADA DO DIA ════ */}
       {tab === "lancamento" && (
@@ -1235,7 +1247,7 @@ export default function FichaMontadoresPage() {
                 </div>
               </div>
             )}
-            <div className="min-w-[180px] flex-1">
+            <div className="min-w-[180px] flex-1 basis-full sm:basis-auto">
               <label className={lbl}>Buscar</label>
               <SearchInput
                 value={busca}
@@ -1246,10 +1258,10 @@ export default function FichaMontadoresPage() {
                 inputClassName="h-9"
               />
             </div>
-            <div className="ml-auto flex overflow-hidden rounded-md border border-border bg-card">
+            <div className="ml-auto flex w-full overflow-hidden rounded-md border border-border bg-card sm:w-auto">
               {(["dia", "semana"] as ChamadaView[]).map((v) => (
                 <button key={v} type="button" onClick={() => setChamadaView(v)}
-                  className={`px-4 py-1.5 text-xs font-semibold uppercase tracking-wide transition-colors ${chamadaView === v ? "bg-foreground text-background" : "bg-card text-muted-foreground hover:bg-muted/40"}`}>{v}</button>
+                  className={`flex-1 px-4 py-1.5 text-xs font-semibold uppercase tracking-wide transition-colors sm:flex-none ${chamadaView === v ? "bg-foreground text-background" : "bg-card text-muted-foreground hover:bg-muted/40"}`}>{v}</button>
               ))}
             </div>
           </div>
@@ -1266,7 +1278,7 @@ export default function FichaMontadoresPage() {
               eyebrow="CONTAGEM DO DIA"
               title={`${weekdayName(chamadaDia)} · ${fmtDia(chamadaDia)}`}
               subtitle={detalharDia || temColunaRara
-                ? "Pares por tamanho de ficha (12/15/18) e por dificuldade — Médio (âmbar) e Difícil (vermelho) pagam R$/par diferentes."
+                ? "Pares por tamanho de ficha (12/15/18) e por dificuldade — Médio (âmbar) e Difícil (verde) pagam R$/par diferentes."
                 : "Pares produzidos no dia. Ficha de 12 e dificuldade média — abra “Todos os tamanhos” para lançar ficha 15/18 ou par difícil."}
               actions={
                 <div className="flex flex-wrap items-center gap-2">
@@ -1278,7 +1290,51 @@ export default function FichaMontadoresPage() {
                 </div>
               }
             >
-              <div className="overflow-x-auto">
+              {/* No celular, cada pessoa vira uma ficha de apontamento. A grade
+                  desktop continua densa, mas o telefone não precisa arrastar uma
+                  tabela para descobrir nome, total e botão de salvar. */}
+              <div className="divide-y divide-border/60 md:hidden">
+                {rosterFiltrado.map((e) => {
+                  const dm = mapOf(e.id);
+                  const pp = paresOfDiffMap(dm), ff = fichasOfDiffMap(dm);
+                  return (
+                    <div key={e.id} className={`p-4 ${pp > 0 ? "border-l-2 border-l-primary bg-primary/[0.025]" : "border-l-2 border-l-transparent"}`}>
+                      <div className="mb-3 flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-foreground">{e.name}</p>
+                          <p className="truncate text-[11px] text-muted-foreground">{[e.role, e.department].filter(Boolean).join(" · ") || cfgSetor.label}</p>
+                        </div>
+                        <div className="shrink-0 text-right font-mono tabular-nums">
+                          <span className="block text-base font-bold text-foreground">{pp.toLocaleString("pt-BR")}</span>
+                          <span className="block text-[9px] uppercase tracking-wider text-muted-foreground">pares · <b className="text-primary">{ff} fichas</b></span>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        {colunasDia.map(({ sz, diff }) => (
+                          <label key={`${sz}-${diff}`} className={`flex items-center justify-between gap-2 rounded-lg border px-3 py-2 ${diff === "medio" ? "border-amber-500/30 bg-amber-500/5" : "border-green-600/30 bg-green-600/5"}`}>
+                            <span>
+                              <span className="block text-[11px] font-bold text-foreground">Ficha {sz}</span>
+                              <span className={`block text-[9px] font-bold uppercase tracking-wider ${diff === "medio" ? "text-amber-600" : "text-green-700 dark:text-green-400"}`}>{DIFF_LABEL[diff]}</span>
+                            </span>
+                            <input inputMode="numeric" value={dm[diff][sz] || ""} placeholder="0"
+                              onFocus={(ev) => ev.target.select()}
+                              onChange={(ev) => setPS(e.id, diff, sz, numOf(ev.target.value))}
+                              className={`${diff === "medio" ? cellM : cellD} h-10 w-16 bg-background`}
+                              aria-label={`${DIFF_LABEL[diff]} · ficha de ${sz} pares — ${e.name}`} />
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+                {rosterFiltrado.length === 0 && (
+                  <div className="px-4 py-8 text-center text-sm text-muted-foreground">
+                    Nenhum resultado para "{busca}".
+                    <Button type="button" variant="outline" size="sm" className="ml-2 h-7" onClick={() => setBusca("")}>Limpar busca</Button>
+                  </div>
+                )}
+              </div>
+              <div className="hidden overflow-x-auto md:block">
                 <table className="w-full border-collapse" style={{ minWidth: colunasDia.length > 1 ? 760 : 480 }}>
                   <thead>
                     <tr className="border-b-2 border-border/80 bg-muted/40 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
@@ -1434,7 +1490,7 @@ export default function FichaMontadoresPage() {
                     </>
                   );
                   return (
-                    <div key={e.id} className={`grid grid-cols-[1fr_auto] items-center gap-4 px-4 py-3 ${nada ? "opacity-60" : ""}`}>
+                    <div key={e.id} className={`grid grid-cols-1 items-center gap-3 px-4 py-3 sm:grid-cols-[1fr_auto] sm:gap-4 ${nada ? "opacity-60" : ""}`}>
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-baseline gap-2">
                           <span className="text-sm font-semibold text-foreground">{e.name}</span>
@@ -1443,8 +1499,8 @@ export default function FichaMontadoresPage() {
                             <span className="font-mono text-[10px] uppercase tracking-wider text-amber-600" title="Sem R$/par no cadastro — a produção não vira pagamento.">sem R$/par</span>
                           )}
                         </div>
-                        <div className="mt-2 grid items-center gap-1 overflow-x-auto"
-                          style={{ gridTemplateColumns: `20px repeat(${weekDays.length}, minmax(48px,1fr))` }}>
+                        <div className="mt-2 grid items-center gap-1"
+                          style={{ gridTemplateColumns: `16px repeat(${weekDays.length}, minmax(38px,1fr))` }}>
                           <span />
                           {weekDays.map((d, i) => (
                             <span key={d} className={`text-center font-mono text-[9px] uppercase tracking-wide ${dowIdx(d) >= 5 ? "text-muted-foreground/60" : "text-muted-foreground"}`}>
@@ -1454,7 +1510,7 @@ export default function FichaMontadoresPage() {
                           {diffsAtivos.map((df) => <Fragment key={df}>{linhaDiff(df)}</Fragment>)}
                         </div>
                       </div>
-                      <div className="text-right font-mono tabular-nums" style={{ minWidth: 126 }}>
+                      <div className="flex items-end justify-between gap-3 border-t border-border/60 pt-2 text-left font-mono tabular-nums sm:block sm:border-0 sm:pt-0 sm:text-right" style={{ minWidth: 126 }}>
                         {porPar ? (
                           <>
                             <span className="block text-base font-bold text-foreground"
@@ -1495,9 +1551,13 @@ export default function FichaMontadoresPage() {
       {/* ════ filtro de período (Produtividade + Fichas) ════ */}
       {tab !== "lancamento" && (
         <Panel
-          eyebrow="CONFERÊNCIA DO PERÍODO"
-          title="Produção, folha e pagamento"
-          subtitle="Comece pela semana: é a mesma janela usada para abrir e quitar a folha por produção."
+          eyebrow="FECHAMENTO SEMANAL"
+          title={`Conferência de ${cfgSetor.label}`}
+          subtitle="O período, a pessoa e o status abaixo controlam todas as visões e o relatório impresso."
+          actions={<Button type="button" variant="outline" size="sm" className="h-9 w-9 gap-1.5 p-0 sm:w-auto sm:px-3" disabled={agg.length === 0}
+            title="Gera rendimento por pessoa e calendário no mesmo documento, respeitando todos os filtros."
+            aria-label="Imprimir relatório"
+            onClick={imprimirRelatorioCompleto}><Printer className="h-4 w-4" /><span className="hidden sm:inline">Imprimir relatório</span></Button>}
         >
         <div className="flex flex-wrap items-end gap-3">
           <div>
@@ -1519,22 +1579,22 @@ export default function FichaMontadoresPage() {
             <div className="flex items-center gap-1">
               <Button type="button" variant="outline" size="sm" className="h-9 w-9 p-0"
                 onClick={() => deslocarSemana(-1)} aria-label="Semana anterior"><CaretLeft className="h-4 w-4" /></Button>
-              <div className="h-9 inline-flex items-center gap-2 rounded-md border border-border bg-card px-3 text-sm font-medium tabular-nums">
+              <div className="inline-flex h-9 min-w-0 items-center gap-2 rounded-md border border-border bg-card px-2 text-xs font-medium tabular-nums sm:px-3 sm:text-sm">
                 <span>{fmtDia(range.from)} – {fmtDia(range.to)}</span>
                 {totals.valorAberto > 0
-                  ? <span className="font-mono text-xs font-bold text-amber-600">{fmtBRL(totals.valorAberto)} a pagar</span>
+                  ? <span className="hidden font-mono text-xs font-bold text-amber-600 sm:inline">{fmtBRL(totals.valorAberto)} a pagar</span>
                   : totals.valorTotal > 0
-                    ? <span className="font-mono text-xs font-bold text-green-600">quitada</span>
-                    : <span className="font-mono text-xs text-muted-foreground">sem produção</span>}
+                    ? <span className="hidden font-mono text-xs font-bold text-green-600 sm:inline">quitada</span>
+                    : <span className="hidden font-mono text-xs text-muted-foreground sm:inline">sem produção</span>}
               </div>
               <Button type="button" variant="outline" size="sm" className="h-9 w-9 p-0"
                 onClick={() => deslocarSemana(1)} aria-label="Próxima semana"><CaretRight className="h-4 w-4" /></Button>
             </div>
           )}
           {pMode === "custom" && (
-            <div className="flex items-end gap-2">
-              <div><label className={lbl}>De</label><Input type="date" value={cFrom} onChange={(e) => setCFrom(e.target.value)} className="h-9 w-40" /></div>
-              <div><label className={lbl}>Até</label><Input type="date" value={cTo} onChange={(e) => setCTo(e.target.value)} className="h-9 w-40" /></div>
+            <div className="flex flex-wrap items-end gap-2">
+              <div><label className={lbl}>De</label><Input type="date" value={cFrom} onChange={(e) => setCFrom(e.target.value)} className="h-9 w-36 sm:w-40" /></div>
+              <div><label className={lbl}>Até</label><Input type="date" value={cTo} onChange={(e) => setCTo(e.target.value)} className="h-9 w-36 sm:w-40" /></div>
             </div>
           )}
           <div className="min-w-[220px]">
@@ -1551,7 +1611,7 @@ export default function FichaMontadoresPage() {
           {/* Quitação — o que a folha já pagou x o que ainda está em aberto. */}
           <div>
             <label className={lbl}>Pagamento</label>
-            <div className="flex overflow-hidden rounded-md border border-border">
+            <div className="flex max-w-full overflow-x-auto rounded-md border border-border">
               {(["todos", "aberto", "folha", "pago"] as PagStatus[]).map((s) => (
                 <button key={s} type="button" onClick={() => setPagStatus(s)}
                   title={s === "folha" ? "Reivindicado por uma folha aprovada, ainda não pago" : undefined}
@@ -1572,29 +1632,120 @@ export default function FichaMontadoresPage() {
         </Panel>
       )}
 
-      {/* ════ 1. QUEM produziu e QUANTO devo — a parte acionável ════ */}
       {tab === "producao" && (
+        <nav aria-label="Visões do relatório" className="grid grid-cols-3 gap-1 rounded-xl border border-border bg-muted/30 p-1">
+          {([
+            { id: "resumo", label: "Resumo", short: "Totais e pessoas", icon: ChartBar },
+            { id: "calendario", label: "Calendário", short: "Ritmo por dia", icon: CalendarBlank },
+            { id: "lancamentos", label: "Lançamentos", short: "Linhas e ajustes", icon: ListBullets },
+          ] as { id: ReportView; label: string; short: string; icon: ComponentType<{ className?: string }> }[]).map((view) => (
+            <button key={view.id} type="button" onClick={() => setReportView(view.id)} aria-current={reportView === view.id ? "page" : undefined}
+              className={`flex min-w-0 items-center justify-center gap-2 rounded-lg px-2 py-2.5 text-left transition-colors sm:justify-start sm:px-3 ${reportView === view.id ? "bg-background text-foreground shadow-sm ring-1 ring-border" : "text-muted-foreground hover:bg-background/60 hover:text-foreground"}`}>
+              <view.icon className={`h-4 w-4 shrink-0 ${reportView === view.id ? "text-primary" : ""}`} />
+              <span className="min-w-0">
+                <span className="block truncate text-xs font-semibold sm:text-sm">{view.label}</span>
+                <span className="hidden truncate text-[10px] text-muted-foreground sm:block">{view.short}</span>
+              </span>
+            </button>
+          ))}
+        </nav>
+      )}
+
+      {/* ════ 1. QUEM produziu e QUANTO devo — a parte acionável ════ */}
+      {tab === "producao" && reportView === "resumo" && (
         <div className="space-y-4">
-          <StatGrid>
-            <StatCard label={cfgSetor.plural.replace(/^./, (c) => c.toUpperCase())} value={String(agg.length)} icon={Users}
-              hint={`${totals.fichas.toLocaleString("pt-BR")} fichas`} />
-            <StatCard label="Pares" value={totals.pares.toLocaleString("pt-BR")} icon={Package}
-              hint={`${totals.medio.toLocaleString("pt-BR")} méd · ${totals.dificil.toLocaleString("pt-BR")} dif`} />
-            <StatCard label="Na folha / pago" value={fmtBRL(totals.valorFolha + totals.valorPago)} icon={CheckCircle}
-              hint={`${fmtBRL(totals.valorFolha)} aprovado · ${fmtBRL(totals.valorPago)} pago`} />
-            <StatCard label="A pagar" value={fmtBRL(totals.valorAberto)} icon={Clock} tone="primary"
-              hint={`ainda livre · total ${fmtBRL(totals.valorTotal)}`} />
-          </StatGrid>
+          {/* Faixa de fechamento: a pergunta operacional é onde o dinheiro está,
+              não quatro indicadores independentes com o mesmo peso. */}
+          <section aria-label="Situação do fechamento" className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+            <div className="grid grid-cols-3 md:grid-cols-[1.25fr_repeat(3,1fr)]">
+              <div className="col-span-3 border-b border-border bg-foreground p-4 text-background md:col-span-1 md:border-b-0 md:border-r">
+                <div className="flex items-center gap-2 font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-background/65">
+                  <CurrencyDollar className="h-4 w-4" /> Total do período
+                </div>
+                <p className="mt-2 font-mono text-2xl font-bold tracking-tight tabular-nums">{fmtBRL(totals.valorTotal)}</p>
+                <p className="mt-1 text-xs text-background/70">
+                  {totals.pares.toLocaleString("pt-BR")} pares · {totals.fichas.toLocaleString("pt-BR")} fichas · {agg.length} pessoa{agg.length === 1 ? "" : "s"}
+                </p>
+              </div>
+              {[
+                { label: "A pagar", value: totals.valorAberto, hint: "livre para fechar", icon: Clock, tone: "text-amber-600", bg: "bg-amber-500" },
+                { label: "Na folha", value: totals.valorFolha, hint: "aprovado, não quitado", icon: ClipboardText, tone: "text-blue-600", bg: "bg-blue-600" },
+                { label: "Pago", value: totals.valorPago, hint: "sem pendência", icon: CheckCircle, tone: "text-green-600", bg: "bg-green-600" },
+              ].map((item) => {
+                const pct = totals.valorTotal > 0 ? Math.min(100, (item.value / totals.valorTotal) * 100) : 0;
+                return (
+                  <div key={item.label} className="min-w-0 border-r border-border p-3 last:border-r-0 sm:p-4">
+                    <div className={`flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-wider sm:text-[11px] ${item.tone}`}>
+                      <item.icon className="hidden h-4 w-4 sm:block" /> {item.label}
+                    </div>
+                    <p className="mt-2 truncate font-mono text-xs font-bold tabular-nums text-foreground sm:text-lg" title={fmtBRL(item.value)}>{fmtBRL(item.value)}</p>
+                    <p className="mt-0.5 hidden text-[10px] text-muted-foreground sm:block">{item.hint}</p>
+                    <div className="mt-3 h-1 overflow-hidden rounded-full bg-muted" aria-hidden>
+                      <div className={`h-full rounded-full ${item.bg}`} style={{ width: `${pct}%` }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+
+          {(resumoPeriodo.taxaVariou || resumoPeriodo.legado > 0 || resumoPeriodo.semDetalhe > 0) && (
+            <div className="flex items-start gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-xs text-amber-700 dark:text-amber-400">
+              <Warning className="mt-0.5 h-4 w-4 shrink-0" />
+              <div className="space-y-1">
+                {resumoPeriodo.taxaVariou && <p>O R$/par mudou no período. Cada lançamento preserva a taxa vigente no dia.</p>}
+                {resumoPeriodo.legado > 0 && <p><b>{resumoPeriodo.legado}</b> lançamento(s) antigo(s) aparecem no histórico, mas não entram no total da folha.</p>}
+                {resumoPeriodo.semDetalhe > 0 && <p><b>{resumoPeriodo.semDetalhe}</b> lançamento(s) sem dificuldade detalhada entram como médio, seguindo o motor da folha.</p>}
+              </div>
+            </div>
+          )}
 
           <Panel
             eyebrow={`${periodLabel[pMode]} · ${fmtDia(range.from)}–${fmtDia(range.to)}${pagStatus === "todos" ? "" : ` · ${PAG_LABEL[pagStatus]}`}`}
             title={`Rendimento por ${cfgSetor.sing}`}
             subtitle="Valor calculado pelo R$/par gravado em cada lançamento. A taxa se cadastra em Funcionários → Remuneração e entra congelada no apontamento."
-            actions={<Button type="button" variant="outline" size="sm" className="gap-1.5" disabled={agg.length === 0}
-              title="Uma folha só: o rendimento por pessoa e o calendário dia a dia, no mesmo período e no mesmo filtro."
-              onClick={imprimirRelatorioCompleto}><Printer className="h-4 w-4" /> Imprimir relatório</Button>}
+            actions={<span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">Ordenado por pares</span>}
           >
-            <div className="overflow-x-auto">
+            {/* Cartões no celular; tabela de conferência no desktop. */}
+            <div className="divide-y divide-border/60 md:hidden">
+              {agg.length === 0 && <p className="px-4 py-8 text-center text-sm text-muted-foreground">Sem lançamentos no período.</p>}
+              {agg.map((r, i) => (
+                <article key={r.key} className="p-4">
+                  <div className="flex items-start gap-3">
+                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted font-mono text-[10px] font-bold text-muted-foreground">{i + 1}</span>
+                    <div className="min-w-0 flex-1">
+                      <h3 className="truncate text-sm font-semibold text-foreground">{r.nome}</h3>
+                      <p className="mt-0.5 text-[10px] text-muted-foreground">{r.fichas} fichas · R$/par {r.taxaMedio > 0 ? fmtBRL(r.taxaMedio) : "não cadastrado"}{r.taxaDificil > 0 ? ` / ${fmtBRL(r.taxaDificil)}` : ""}</p>
+                    </div>
+                    <div className="shrink-0 text-right font-mono tabular-nums">
+                      <span className="block text-lg font-bold text-foreground">{r.pares.toLocaleString("pt-BR")}</span>
+                      <span className="block text-[9px] uppercase tracking-wider text-muted-foreground">pares</span>
+                    </div>
+                  </div>
+                  {r.porPar ? (
+                    <div className="mt-3 grid grid-cols-3 gap-2 rounded-lg bg-muted/40 p-2.5 text-center font-mono tabular-nums">
+                      <div><span className="block text-[9px] font-bold uppercase tracking-wider text-amber-600">A pagar</span><b className="mt-1 block text-xs text-foreground">{r.valorAberto > 0 ? fmtBRL(r.valorAberto) : "—"}</b></div>
+                      <div><span className="block text-[9px] font-bold uppercase tracking-wider text-blue-600">Na folha</span><b className="mt-1 block text-xs text-foreground">{r.valorFolha > 0 ? fmtBRL(r.valorFolha) : "—"}</b></div>
+                      <div><span className="block text-[9px] font-bold uppercase tracking-wider text-green-600">Pago</span><b className="mt-1 block text-xs text-foreground">{r.valorPago > 0 ? fmtBRL(r.valorPago) : "—"}</b></div>
+                    </div>
+                  ) : (
+                    <p className="mt-3 rounded-lg bg-muted/40 px-3 py-2 text-center text-[10px] uppercase tracking-wide text-muted-foreground">Medição de produtividade · não recebe por par</p>
+                  )}
+                  <div className="mt-3 flex items-center justify-between gap-3">
+                    <span className="text-xs text-muted-foreground">
+                      <b className="text-amber-600">{r.paresMedio.toLocaleString("pt-BR")} méd</b>
+                      {r.paresDificil > 0 && <> · <b className="text-green-700 dark:text-green-400">{r.paresDificil.toLocaleString("pt-BR")} dif</b></>}
+                    </span>
+                    {podePagarProducao && r.porPar && r.valorAberto > 0 && !r.key.startsWith("txt:") && (
+                      <Button size="sm" variant="outline" className="h-8" disabled={!janelaESemanaFechada}
+                        title={janelaESemanaFechada ? undefined : "O pagamento só pode ser fechado em uma semana completa (segunda a domingo)."}
+                        onClick={() => setPagarAlvo({ id: r.key, nome: r.nome, valor: r.valorAberto })}>Pagar</Button>
+                    )}
+                  </div>
+                </article>
+              ))}
+            </div>
+            <div className="hidden overflow-x-auto md:block">
               <table className="w-full text-left text-sm" style={{ minWidth: 760 }}>
                 <thead className="bg-muted/50 text-[11px] uppercase tracking-wider text-muted-foreground">
                   <tr>
@@ -1682,10 +1833,13 @@ export default function FichaMontadoresPage() {
       {/* ════ 2. QUANDO foi produzido, a que taxa e em que ritmo ════
            Mesmo filtro e mesmo motor do bloco acima — os totais TÊM que bater.
            Se um dia divergirem, é bug, não arredondamento. */}
-      {tab === "producao" && fichasFiltradas.length > 0 && (
-        <section className="border-t border-border pt-6">
-          <div className="mb-3 flex flex-wrap items-center gap-2">
-            <h2 className="text-lg font-semibold text-foreground">Produção do período</h2>
+      {tab === "producao" && reportView !== "resumo" && fichasFiltradas.length > 0 && (
+        <section>
+          <div className="mb-4 flex flex-wrap items-end gap-2 border-b border-border pb-3">
+            <div>
+              <p className="font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-primary">{reportView === "calendario" ? "Ritmo de produção" : "Auditoria operacional"}</p>
+              <h2 className="mt-1 text-lg font-semibold text-foreground">{reportView === "calendario" ? "Calendário do período" : "Lançamentos por dia"}</h2>
+            </div>
             {loading && <span className="text-xs text-muted-foreground">carregando…</span>}
             {!loading && <span className="text-xs text-muted-foreground">{fichasFiltradas.length} lançamento(s)</span>}
             {/* O botão "Calendário em PDF" saiu daqui: o calendário virou a
@@ -1698,7 +1852,7 @@ export default function FichaMontadoresPage() {
           </div>
 
           {/* ══ RESUMO DO PERÍODO (R1) ══ */}
-          {!loading && fichasFiltradas.length > 0 && (
+          {reportView === "calendario" && !loading && fichasFiltradas.length > 0 && (
             <div className="mb-5 overflow-hidden rounded-lg border border-border bg-card">
               <div className="flex flex-wrap">
                 <div className="flex min-w-0 flex-1 basis-[340px] flex-col gap-2 p-4">
@@ -1754,7 +1908,7 @@ export default function FichaMontadoresPage() {
           )}
 
           {/* ══ CALENDÁRIO em grade de mês (R2) ══ */}
-          {!loading && fichasFiltradas.length > 0 && (
+          {reportView === "calendario" && !loading && fichasFiltradas.length > 0 && (
             <div className="mb-5 space-y-4">
               {calendario.meses.map((mes) => {
                 const [ano, m] = mes.split("-").map(Number);
@@ -1775,7 +1929,7 @@ export default function FichaMontadoresPage() {
                   if (!c) {
                     // R2.4 — dia vazio DENTRO do período fica visível: a falta é informação.
                     celulas.push(
-                      <div key={iso} className={`min-h-[58px] rounded-md border border-dashed border-border p-1.5 ${fds ? "bg-muted/40" : ""}`}>
+                      <div key={iso} className={`min-h-11 rounded-md border border-dashed border-border p-1 sm:min-h-[58px] sm:p-1.5 ${fds ? "bg-muted/40" : ""}`}>
                         <span className="font-mono text-[10px] tabular-nums text-muted-foreground">{dd}</span>
                       </div>,
                     );
@@ -1783,13 +1937,13 @@ export default function FichaMontadoresPage() {
                   }
                   celulas.push(
                     <div key={iso}
-                      className={`flex min-h-[58px] flex-col rounded-md border p-1.5 ${c.pago ? "border-border bg-card" : "border-amber-500/40 bg-amber-500/10"} ${fds && c.pago ? "bg-muted/40" : ""}`}
+                      className={`flex min-h-11 min-w-0 flex-col overflow-hidden rounded-md border p-1 sm:min-h-[58px] sm:p-1.5 ${c.pago ? "border-border bg-card" : "border-amber-500/40 bg-amber-500/10"} ${fds && c.pago ? "bg-muted/40" : ""}`}
                       title={`${fmtDia(iso)} — ${c.pares.toLocaleString("pt-BR")} pares${c.pago ? "" : " · ainda não pago"}`}>
                       <span className="font-mono text-[10px] tabular-nums text-muted-foreground">{dd}</span>
-                      <span className="mt-auto font-mono text-[17px] font-bold leading-none tracking-tight tabular-nums text-foreground">{c.pares.toLocaleString("pt-BR")}</span>
-                      <span className="font-mono text-[8.5px] uppercase tracking-wider text-muted-foreground">pares</span>
+                      <span className="mt-auto truncate font-mono text-[11px] font-bold leading-none tracking-tight tabular-nums text-foreground sm:text-[17px]">{c.pares.toLocaleString("pt-BR")}</span>
+                      <span className="hidden font-mono text-[8.5px] uppercase tracking-wider text-muted-foreground sm:block">pares</span>
                       {calendario.temDificil && (
-                        <span className="font-mono text-[9px] leading-tight">
+                        <span className="hidden font-mono text-[9px] leading-tight sm:block">
                           <span className="font-bold text-amber-600">{c.medio}</span>
                           {c.dificil > 0 && <> · <span className="font-bold text-green-700 dark:text-green-400">{c.dificil}</span></>}
                         </span>
@@ -1802,12 +1956,12 @@ export default function FichaMontadoresPage() {
                     <h3 className="mb-1.5 font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
                       {primeiro.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}
                     </h3>
-                    <div className="grid grid-cols-7 gap-1">
+                    <div className="grid grid-cols-7 gap-0.5 sm:gap-1">
                       {WD_SHORT7.map((w) => (
                         <span key={w} className="pb-0.5 text-center font-mono text-[9.5px] uppercase tracking-wider text-muted-foreground">{w}</span>
                       ))}
                     </div>
-                    <div className="grid grid-cols-7 gap-1">{celulas}</div>
+                    <div className="grid grid-cols-7 gap-0.5 sm:gap-1">{celulas}</div>
                   </div>
                 );
               })}
@@ -1818,7 +1972,7 @@ export default function FichaMontadoresPage() {
               </div>
             </div>
           )}
-          <div className="space-y-5">
+          {reportView === "lancamentos" && <div className="space-y-5">
             {grupos.map(([d, lista]) => {
               const diaFichas = lista.reduce((s, f) => s + (isChamada(f) ? fichasDiaOf(f) : 1), 0);
               const diaPares = lista.reduce((s, f) => s + (isChamada(f) ? paresOfFicha(f) : paresDaFicha(f)), 0);
@@ -1827,7 +1981,54 @@ export default function FichaMontadoresPage() {
                   <div className="mb-2 flex items-center justify-between">
                     <h3 className="text-sm font-semibold uppercase tracking-wider text-foreground">{fmtDia(d)} <span className="font-normal text-muted-foreground">· {diaFichas} fichas · {diaPares.toLocaleString("pt-BR")} pares</span></h3>
                   </div>
-                  <div className="overflow-hidden rounded-lg border border-border">
+                  <div className="divide-y divide-border/60 overflow-hidden rounded-lg border border-border md:hidden">
+                    {lista.map((f) => {
+                      const chamada = isChamada(f);
+                      const m = sizeMapOf(f);
+                      const pd = chamada ? paresDiffOf(f) : { medio: paresDaFicha(f), dificil: 0, total: paresDaFicha(f) };
+                      const tamLabel = chamada
+                        ? (SIZES.filter((sz) => (m[sz] || 0) > 0).map((sz) => `${m[sz]}×${sz}`).join("  ") || "—")
+                        : (f.referencia || f.solado || "—");
+                      const { vm, vd } = ratesOf(f);
+                      const valor = pd.medio * vm + pd.dificil * vd;
+                      const estado = estadoDe(f);
+                      return (
+                        <article key={f.id} className="p-4">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <h4 className="truncate text-sm font-semibold text-foreground">{f.montador || "—"}</h4>
+                              <p className="mt-0.5 font-mono text-[10px] tabular-nums text-muted-foreground">{tamLabel}{!chamada ? " · grade" : ""}</p>
+                            </div>
+                            <div className="shrink-0 text-right font-mono tabular-nums">
+                              <span className="block text-base font-bold text-foreground">{pd.total.toLocaleString("pt-BR")}</span>
+                              <span className="block text-[9px] uppercase tracking-wider text-muted-foreground">pares · <b className="text-primary">{chamada ? fichasDiaOf(f) : 1} fichas</b></span>
+                            </div>
+                          </div>
+                          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg bg-muted/40 px-3 py-2">
+                            <span className="text-xs">
+                              <b className="text-amber-600">{pd.medio.toLocaleString("pt-BR")} méd</b>
+                              {pd.dificil > 0 && <> · <b className="text-green-700 dark:text-green-400">{pd.dificil.toLocaleString("pt-BR")} dif</b></>}
+                            </span>
+                            <b className="font-mono text-xs tabular-nums text-foreground">{valor > 0 ? fmtBRL(valor) : "R$ 0,00"}</b>
+                          </div>
+                          <div className="mt-3 flex items-center justify-between gap-3">
+                            {estado === "pago" ? (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-green-600"><CheckCircle className="h-3.5 w-3.5" /> Pago {fmtDia(f.pago_em!)}</span>
+                            ) : estado === "folha" ? (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-blue-600"><ClipboardText className="h-3.5 w-3.5" /> Na folha</span>
+                            ) : estado === "aberto" ? (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-amber-600"><Clock className="h-3.5 w-3.5" /> A pagar</span>
+                            ) : <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Sem pagamento por par</span>}
+                            <span className="flex items-center gap-3">
+                              <button onClick={() => abrirDia(f)} className="text-xs font-medium text-primary hover:underline">Abrir</button>
+                              <button onClick={() => excluir(f)} className="text-xs font-medium text-muted-foreground hover:text-red-600 dark:hover:text-red-400">Excluir</button>
+                            </span>
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </div>
+                  <div className="hidden overflow-hidden rounded-lg border border-border md:block">
                     <table className="w-full text-left text-sm">
                       <thead className="bg-muted/50 text-[11px] uppercase tracking-wider text-muted-foreground">
                         <tr>
@@ -1897,8 +2098,17 @@ export default function FichaMontadoresPage() {
                 </div>
               );
             })}
-          </div>
+          </div>}
         </section>
+      )}
+
+      {tab === "producao" && reportView !== "resumo" && !loading && fichasFiltradas.length === 0 && (
+        <Panel>
+          <EmptyState icon={reportView === "calendario" ? CalendarBlank : ListBullets}
+            title="Nenhum lançamento neste recorte"
+            description="Ajuste o período, a pessoa ou o status de pagamento. Todas as visões usam os mesmos filtros."
+            action={<Button type="button" variant="outline" size="sm" onClick={() => { setPMode("semana"); setFiltroMontador("__all__"); setPagStatus("todos"); }}>Limpar filtros</Button>} />
+        </Panel>
       )}
 
       {pagarAlvo && (
