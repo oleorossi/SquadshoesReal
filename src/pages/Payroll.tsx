@@ -19,14 +19,14 @@ import { useHolidays, useSwapSets, useTimesheetCoverage, useWorkSchedules } from
 import { useAbsences, usePayrollRuns, useUpsertPayrollRun, useUpdatePayrollStatus } from '@/hooks/useRH';
 import { usePayrollPaymentSummaries } from '@/hooks/usePayrollPayments';
 import { RegistrarPagamentoDialog } from '@/components/hr/RegistrarPagamentoDialog';
-import { computePeriodFolha, getDaysInRange, type SalaryPayrollResult } from '@/lib/salaryPayroll';
+import { computePeriodFolha, getDaysInRange, type SalaryDayLedger, type SalaryPayrollResult } from '@/lib/salaryPayroll';
 import { computeComparativoRows } from '@/lib/payrollComparativo';
 import { aggregateProducaoByMontador, fetchMontadorProducaoInRange } from '@/lib/montadorProduction';
 import { fetchTimeRecordsInRange } from '@/lib/ponto/fetchTimeRecords';
 import { expandAbsenceDatesByEmployee, resolveHolidaysForPayrollRange } from '@/lib/ponto/periodDates';
 import { printTimeMirror, type TimeMirrorDay } from '@/lib/printTimeMirror';
 import { exportFolhaExcel } from '@/lib/exportFolhaExcel';
-import { printPayrollBundle, buildPayrollHtml, fmtDeltaMin } from '@/lib/printPayrollBundle';
+import { printPayrollBundle, buildPayrollHtml, fmtDeltaMin, type BundleEmployee, type BundleRun } from '@/lib/printPayrollBundle';
 import { buildPayrollSnapshot, readPayrollSnapshot } from '@/lib/payrollSnapshot';
 import { Checkbox } from '@/components/ui/checkbox';
 import { supabase } from '@/integrations/supabase/client';
@@ -326,9 +326,9 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
 
   // Funcionários do período no shape do bundle (run financeiro + dias do
   // calendário). Fonte única pra prévia E impressão.
-  const bundleEmps = useMemo(() => runs.map(r => {
+  const bundleEmps = useMemo<BundleEmployee[]>(() => runs.map(r => {
     const emp = employeeMap.get(r.employee_id);
-    const crow = comparativo.rows.find(cr => cr.id === r.employee_id) as any;
+    const crow = comparativo.rows.find(cr => cr.id === r.employee_id);
     const snapshot = r.status !== 'rascunho' ? readPayrollSnapshot(r.calculation_snapshot) : null;
     const reportResult = snapshot?.result || crow?.result;
     const reportEmployee = snapshot?.employee;
@@ -338,37 +338,38 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
     // tem. O bruto separado por dificuldade vem do comparativo (mesma janela
     // dos runs), não de rateio.
     const pp = reportResult?.payment_type === 'producao' ? reportResult : porParByEmp.get(r.employee_id);
+    const bundleRun: BundleRun = {
+      ...r,
+      por_par: !!pp,
+      dias_produtivos: Number(pp?.paid_days) || 0,
+      fichas: Number(pp?.fichas) || 0,
+      fichas_derivadas: !!pp?.fichas_derivadas,
+      pares_medio: Number(pp?.pares_medio) || 0,
+      pares_dificil: Number(pp?.pares_dificil) || 0,
+      bruto_medio: Number(pp?.bruto_medio) || 0,
+      bruto_dificil: Number(pp?.bruto_dificil) || 0,
+      taxa_medio: Number(pp?.taxa_medio) || 0,
+      taxa_dificil: Number(pp?.taxa_dificil) || 0,
+      taxa_variou: !!pp?.taxa_variou,
+      payment_type: reportResult?.payment_type,
+      he_normal_minutes: reportResult?.he_normal_minutes,
+      he_holiday_minutes: reportResult?.he_holiday_minutes,
+      he_normal_rate: reportEmployee?.he_normal_rate ?? (Number(emp?.he_normal_rate) || 0),
+      he_sunday_holiday_rate: reportEmployee?.he_sunday_holiday_rate ?? (Number(emp?.he_sunday_holiday_rate) || 0),
+      raw_credit_minutes: reportResult?.raw_credit_minutes,
+      raw_delay_minutes: reportResult?.raw_delay_minutes,
+      compensated_minutes: reportResult?.compensated_minutes,
+      discarded_tolerance_minutes: reportResult?.discarded_tolerance_minutes,
+      rule_version: snapshot?.rule_version || reportResult?.rule_version,
+      calculated_at: snapshot?.calculated_at,
+    };
     return {
       id: r.employee_id,
-      name: reportEmployee?.name || emp?.name || (r as any).employee_name || '—',
-      role: reportEmployee?.role || (emp as any)?.role,
-      department: reportEmployee?.department || (emp as any)?.department,
-      run: ({
-        ...r,
-        por_par: !!pp,
-        dias_produtivos: Number(pp?.paid_days) || 0,
-        fichas: Number(pp?.fichas) || 0,
-        fichas_derivadas: !!pp?.fichas_derivadas,
-        pares_medio: Number(pp?.pares_medio) || 0,
-        pares_dificil: Number(pp?.pares_dificil) || 0,
-        bruto_medio: Number(pp?.bruto_medio) || 0,
-        bruto_dificil: Number(pp?.bruto_dificil) || 0,
-        taxa_medio: Number(pp?.taxa_medio) || 0,
-        taxa_dificil: Number(pp?.taxa_dificil) || 0,
-        taxa_variou: !!pp?.taxa_variou,
-        payment_type: reportResult?.payment_type,
-        he_normal_minutes: reportResult?.he_normal_minutes,
-        he_holiday_minutes: reportResult?.he_holiday_minutes,
-        he_normal_rate: reportEmployee?.he_normal_rate ?? (Number((emp as any)?.he_normal_rate) || 0),
-        he_sunday_holiday_rate: reportEmployee?.he_sunday_holiday_rate ?? (Number((emp as any)?.he_sunday_holiday_rate) || 0),
-        raw_credit_minutes: reportResult?.raw_credit_minutes,
-        raw_delay_minutes: reportResult?.raw_delay_minutes,
-        compensated_minutes: reportResult?.compensated_minutes,
-        discarded_tolerance_minutes: reportResult?.discarded_tolerance_minutes,
-        rule_version: snapshot?.rule_version || reportResult?.rule_version,
-        calculated_at: snapshot?.calculated_at,
-      }) as any,
-      days: (reportResult?.day_ledger || []) as any[],
+      name: reportEmployee?.name || emp?.name || '—',
+      role: reportEmployee?.role || emp?.role,
+      department: reportEmployee?.department || emp?.department,
+      run: bundleRun,
+      days: reportResult?.day_ledger || [],
     };
   }), [runs, employeeMap, comparativo.rows, porParByEmp]);
 
@@ -859,7 +860,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
           heSundayHolidayRate: Number((emp as any).he_sunday_holiday_rate) || 0,
         });
         if (result.pending_days > 0) withIncomplete++;
-        if ((result as any).he_rate_missing) withMissingHeRate++;
+        if (result.he_rate_missing) withMissingHeRate++;
 
         const paresTot = (result.pares_medio || 0) + (result.pares_dificil || 0);
         const calculationSnapshot = buildPayrollSnapshot({
@@ -868,13 +869,13 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
           employee: {
             id: emp.id,
             name: emp.name,
-            external_id: (emp as any).external_id || null,
-            role: (emp as any).role || null,
-            department: (emp as any).department || null,
+            external_id: emp.external_id || null,
+            role: emp.role || null,
+            department: emp.department || null,
             payment_type: result.payment_type,
             salary: Number(emp.salary) || 0,
-            he_normal_rate: Number((emp as any).he_normal_rate) || 0,
-            he_sunday_holiday_rate: Number((emp as any).he_sunday_holiday_rate) || 0,
+            he_normal_rate: Number(emp.he_normal_rate) || 0,
+            he_sunday_holiday_rate: Number(emp.he_sunday_holiday_rate) || 0,
           },
           schedule: sch ? { ...sch } : null,
           result,
@@ -1394,9 +1395,9 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
           return <Panel title="Calendário de tempo" flush><div className="p-2"><EmptyState icon={Calculator} title="Nenhuma folha calculada" description={`Não há dados para ${periodTitle}. Clique em "Calcular folha".`} /></div></Panel>;
         }
         const cur = crows.find(r => r.id === calEmp) || crows[0];
-        const days = ((cur as any)?.result?.day_ledger || []) as any[];
-        const cls = (d: any) => {
-          const paymentType = (cur as any)?.result?.payment_type;
+        const days = cur.result.day_ledger || [];
+        const cls = (d: SalaryDayLedger) => {
+          const paymentType = cur.result.payment_type;
           if (paymentType && paymentType !== 'mensalista') {
             return (d.worked_minutes || 0) > 0
               ? { t: 'presença', c: 'bg-sky-500/10 text-sky-700 dark:text-sky-400 border-sky-500/20' }
@@ -1417,16 +1418,16 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
           <Panel title={`Calendário de tempo · ${periodTitle}`} flush>
             <div className="p-4 space-y-3">
               <select value={cur?.id || ''} onChange={e => setCalEmp(e.target.value)} className="h-9 w-full max-w-xs rounded-md border bg-background px-3 text-base md:text-sm">
-                {crows.map(r => <option key={r.id} value={r.id}>{employeeMap.get(r.id)?.name || (r as any).name}</option>)}
+                {crows.map(r => <option key={r.id} value={r.id}>{employeeMap.get(r.id)?.name || r.name}</option>)}
               </select>
-              {(cur as any)?.result?.payment_type === 'mensalista' && (
+              {cur.result.payment_type === 'mensalista' && (
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
                   {[
-                    ['Créditos brutos', fmtHoras((cur as any).result.raw_credit_minutes || 0)],
-                    ['Atrasos brutos', fmtHoras((cur as any).result.raw_delay_minutes || 0)],
-                    ['Compensado', fmtHoras((cur as any).result.compensated_minutes || 0)],
-                    ['HE paga', fmtHoras((cur as any).result.he_minutes || 0)],
-                    ['Atraso líquido', fmtHoras((cur as any).result.atraso_minutes || 0)],
+                    ['Créditos brutos', fmtHoras(cur.result.raw_credit_minutes || 0)],
+                    ['Atrasos brutos', fmtHoras(cur.result.raw_delay_minutes || 0)],
+                    ['Compensado', fmtHoras(cur.result.compensated_minutes || 0)],
+                    ['HE paga', fmtHoras(cur.result.he_minutes || 0)],
+                    ['Atraso líquido', fmtHoras(cur.result.atraso_minutes || 0)],
                   ].map(([label, value]) => (
                     <div key={label} className="rounded-md border bg-muted/20 px-2.5 py-2">
                       <div className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">{label}</div>
