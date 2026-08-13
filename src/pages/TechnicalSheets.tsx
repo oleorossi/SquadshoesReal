@@ -138,7 +138,7 @@ import { useSearchParams, Link } from 'react-router-dom';
 import { SignedImage } from '@/components/ui/signed-image';
 import { useDisplaySizeKeys } from '@/lib/soleGradeKeys';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
-import { FileText, Plus, Trash as Trash2, PencilSimple as Pencil, CircleNotch as Loader2, Package, Copy, Stack as Layers, Scissors, Drop as Droplets, Shield, Cube as Box, Footprints, FloppyDisk as Save, Wrench, Tag, ImageSquare as ImagePlus, Warning as AlertTriangle, ClockCounterClockwise as History, Factory, MagicWand as Wand2, ArrowsClockwise as RefreshCw, Gauge, ArrowLeft, ClipboardText as ClipboardCopy, Lock, Palette, CurrencyDollar as DollarSign } from '@phosphor-icons/react';
+import { FileText, Plus, Trash as Trash2, PencilSimple as Pencil, CircleNotch as Loader2, Package, Copy, Stack as Layers, Scissors, Drop as Droplets, Shield, Cube as Box, Footprints, FloppyDisk as Save, Wrench, Tag, ImageSquare as ImagePlus, Warning as AlertTriangle, ClockCounterClockwise as History, Factory, MagicWand as Wand2, ArrowsClockwise as RefreshCw, Gauge, ArrowLeft, ClipboardText as ClipboardCopy, Lock, Palette, CurrencyDollar as DollarSign, GridFour, ListBullets } from '@phosphor-icons/react';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -214,6 +214,7 @@ const STATUS_FICHA_LABELS: Record<string, string> = { rascunho: 'Rascunho', em_r
 const SOLE_PROCESSES = ['Injetada', 'Colada', 'Costurada', 'Vulcanizada'] as const;
 const ACABAMENTOS_TIRAS = ['brilho', 'fosco', 'metálico', 'metalic', 'glow', 'texturizado', 'envernizado'] as const;
 const MATERIAIS_SOLADO = ['TR', 'EVA', 'Borracha', 'PVC', 'TPU'] as const;
+type CatalogView = 'cards' | 'list';
 
 const COMPONENT_CATEGORIES = [
   // === Base do Solado (padrão, independente de cor) ===
@@ -337,6 +338,14 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [soleFilter, setSoleFilter] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
+  const [catalogView, setCatalogView] = useState<CatalogView>(() => {
+    if (typeof window === 'undefined') return 'cards';
+    try {
+      return window.localStorage.getItem('technical-sheets-catalog-view') === 'list' ? 'list' : 'cards';
+    } catch {
+      return 'cards';
+    }
+  });
   const [bulkSoleApplying, setBulkSoleApplying] = useState(false);
   const [bulkSoleDialogOpen, setBulkSoleDialogOpen] = useState(false);
    const [bulkSoleSelected, setBulkSoleSelected] = useState<string>('');
@@ -377,6 +386,15 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
     () => (sheets as any[]).filter((s: any) => searchMatchesAllTerms(cloneSearchTerm, s.name, s.code)),
     [sheets, cloneSearchTerm],
   );
+
+  const handleCatalogViewChange = (view: CatalogView) => {
+    setCatalogView(view);
+    try {
+      window.localStorage.setItem('technical-sheets-catalog-view', view);
+    } catch {
+      // A preferência permanece válida durante a sessão quando o navegador bloqueia o storage.
+    }
+  };
 
   /** Open the bulk-sole dialog so the user can choose which sole to apply */
   const handleBulkApplySoleSettings = () => {
@@ -632,6 +650,32 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
             <Badge variant="secondary" className="text-xs font-mono ml-1">
               {filteredSheets.length}
             </Badge>
+            {!expandedId && (
+              <div className="ml-1 flex items-center rounded-md border bg-background p-0.5" role="group" aria-label="Modo de visualização das fichas">
+                <Button
+                  type="button"
+                  variant={catalogView === 'cards' ? 'secondary' : 'ghost'}
+                  size="sm"
+                  className="h-7 gap-1.5 px-2 text-xs"
+                  aria-pressed={catalogView === 'cards'}
+                  onClick={() => handleCatalogViewChange('cards')}
+                >
+                  <GridFour className="h-3.5 w-3.5" />
+                  Pranchetas
+                </Button>
+                <Button
+                  type="button"
+                  variant={catalogView === 'list' ? 'secondary' : 'ghost'}
+                  size="sm"
+                  className="h-7 gap-1.5 px-2 text-xs"
+                  aria-pressed={catalogView === 'list'}
+                  onClick={() => handleCatalogViewChange('list')}
+                >
+                  <ListBullets className="h-3.5 w-3.5" />
+                  Lista
+                </Button>
+              </div>
+            )}
           </div>
         </div>
 
@@ -761,15 +805,43 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
               }
            })()
         ) : (
-          /* ── List View · opção 05 escolhida: prancheta fabril ── */
-          <TechnicalSheetCardGrid
-            sheets={filteredSheets}
-            materialVariantsBySheet={materialVariantsBySheet}
-            canDelete={perm.canDelete}
-            onOpenSheet={setExpandedId}
-            onEditImage={setImageDialogSheet}
-            onDeleteSheet={(id) => deleteSheet.mutate(id)}
-          />
+          /* ── Catálogo · opção 05 (pranchetas) ou relação nominal ── */
+          catalogView === 'cards' ? (
+            <TechnicalSheetCardGrid
+              sheets={filteredSheets}
+              materialVariantsBySheet={materialVariantsBySheet}
+              canDelete={perm.canDelete}
+              onOpenSheet={setExpandedId}
+              onEditImage={setImageDialogSheet}
+              onDeleteSheet={(id) => deleteSheet.mutate(id)}
+            />
+          ) : (
+            <div className="overflow-hidden border-2 border-foreground bg-card">
+              <div className="flex items-center justify-between border-b border-foreground bg-muted/30 px-3 py-2">
+                <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+                  Referências
+                </span>
+                <span className="font-mono text-[10px] text-muted-foreground">
+                  {filteredSheets.length}
+                </span>
+              </div>
+              <div className="divide-y divide-border">
+                {[...filteredSheets]
+                  .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'pt-BR'))
+                  .map(sheet => (
+                    <button
+                      key={sheet.id}
+                      type="button"
+                      className="flex min-h-10 w-full items-center px-3 py-2 text-left text-sm font-semibold transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:px-4"
+                      aria-label={`Abrir ficha técnica ${sheet.name}`}
+                      onClick={() => setExpandedId(sheet.id)}
+                    >
+                      <span className="truncate" title={sheet.name}>{sheet.name}</span>
+                    </button>
+                  ))}
+              </div>
+            </div>
+          )
         )}
       </div>
 
