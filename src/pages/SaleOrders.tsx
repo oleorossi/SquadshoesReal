@@ -1475,10 +1475,10 @@ export default function SaleOrders() {
         const productionOrders = (productionOrdersResult.data || []).filter(op => op.sale_order_item_id === item.id);
         return { ...item, variant_image_url: variant?.image_url || '', productionOrders };
       });
-      // Sort by reference (code/name) then by color so items of the same reference appear together
+      // Sort by referência (código interno só como fallback) then by color.
       mappedItems.sort((a: any, b: any) => {
-        const refA = (a.technical_sheets?.code || a.technical_sheets?.name || a.reference_id || '').toString();
-        const refB = (b.technical_sheets?.code || b.technical_sheets?.name || b.reference_id || '').toString();
+        const refA = (a.technical_sheets?.name || a.technical_sheets?.code || a.reference_id || '').toString();
+        const refB = (b.technical_sheets?.name || b.technical_sheets?.code || b.reference_id || '').toString();
         const cmp = refA.localeCompare(refB, 'pt-BR', { numeric: true, sensitivity: 'base' });
         if (cmp !== 0) return cmp;
         return (a.color || '').localeCompare(b.color || '', 'pt-BR', { sensitivity: 'base' });
@@ -1781,14 +1781,14 @@ export default function SaleOrders() {
   const handleExportSaleOrdersExcel = async (ordersToExport: typeof filteredOrders) => {
     if (ordersToExport.length === 0) { toast.error('Nenhum pedido para exportar.'); return; }
 
-    // Build reference lookup: sale_order_id -> list of "Ref Nome/Código Cor"
+    // Build reference lookup: sale_order_id -> list of "Referência · código interno · cor"
     const refsByOrder: Record<string, string[]> = {};
     (allSaleItems || []).forEach((it: any) => {
       const id = it.sale_order_id;
       if (!id) return;
       if (!refsByOrder[id]) refsByOrder[id] = [];
       const ref = refById[it.reference_id];
-      const label = [ref?.code, ref?.name].filter(Boolean).join(' - ') || it.reference_id;
+      const label = [ref?.name, ref?.code && ref.code !== ref.name ? `Cód. interno: ${ref.code}` : ''].filter(Boolean).join(' · ') || it.reference_id;
       const entry = it.color ? `${label} (${it.color})` : label;
       if (!refsByOrder[id].includes(entry)) refsByOrder[id].push(entry);
     });
@@ -3026,16 +3026,16 @@ export default function SaleOrders() {
                       {canSeeFinancialValues && <span className="w-24 text-right">Total</span>}
                     </div>
                     {(() => {
-                      // Agrupa por referência (code+name): cabeçalho da ref UMA
-                      // vez (foto + código + descrição + totais) e as cores como
+                      // Agrupa por referência (name+code): cabeçalho da ref UMA
+                      // vez (foto + referência + descrição + totais) e as cores como
                       // sub-linhas abaixo. Pedido user 11/06/2026 — "mesma
                       // referência uma embaixo da outra".
                       const map = new Map<string, { key: string; refId: string | null; refCode: string; refName: string; refImage: string; items: any[] }>();
                       const order: string[] = [];
                       [...selectedOrderItems]
                         .sort((a, b) => {
-                          const ra = `${(a as any).technical_sheets?.code || ''} ${(a as any).technical_sheets?.name || ''}`.trim();
-                          const rb = `${(b as any).technical_sheets?.code || ''} ${(b as any).technical_sheets?.name || ''}`.trim();
+                          const ra = `${(a as any).technical_sheets?.name || ''} ${(a as any).technical_sheets?.code || ''}`.trim();
+                          const rb = `${(b as any).technical_sheets?.name || ''} ${(b as any).technical_sheets?.code || ''}`.trim();
                           const refCmp = ra.localeCompare(rb, 'pt-BR', { numeric: true });
                           if (refCmp !== 0) return refCmp;
                           return String(a.color || '').localeCompare(String(b.color || ''), 'pt-BR');
@@ -3043,7 +3043,7 @@ export default function SaleOrders() {
                         .forEach((item) => {
                           const refCode = (item as any).technical_sheets?.code || '';
                           const refName = (item as any).technical_sheets?.name || '';
-                          const key = `${refCode}||${refName}`.toLowerCase() || item.id;
+                          const key = `${refName}||${refCode}`.toLowerCase() || item.id;
                           const tsImages = (item as any).technical_sheets?.images as string[] | null;
                           const img = item.variant_image_url || (tsImages && tsImages.length > 0 ? tsImages[0] : ((item as any).technical_sheets?.image_url || ''));
                           let g = map.get(key);
@@ -3055,7 +3055,7 @@ export default function SaleOrders() {
                         const g = map.get(key)!;
                         const groupPairs = g.items.reduce((s, i) => s + Number(i.quantity || 0), 0);
                         const groupValue = g.items.reduce((s, i) => s + Number(i.quantity || 0) * Number(i.unit_price || 0), 0);
-                        const headLabel = g.refCode && g.refCode !== g.refName ? `${g.refCode} · ${g.refName}` : (g.refCode || g.refName || '—');
+                        const headLabel = g.refName || g.refCode || '—';
                         return (
                           <div key={key}>
                             {/* Cabeçalho da referência (uma vez por grupo) */}
@@ -3067,7 +3067,7 @@ export default function SaleOrders() {
                                     {headLabel}<ExternalLink className="h-3 w-3 shrink-0 opacity-50 group-hover:opacity-100 transition-opacity" />
                                   </button>
                                 ) : <p className="text-sm font-bold">{headLabel}</p>}
-                                <p className="text-xs text-muted-foreground">{g.items.length} {g.items.length === 1 ? 'cor' : 'cores'}</p>
+                                <p className="text-xs text-muted-foreground">{g.refCode && g.refCode !== g.refName ? `Cód. interno: ${g.refCode} · ` : ''}{g.items.length} {g.items.length === 1 ? 'cor' : 'cores'}</p>
                               </div>
                               <div className="text-right shrink-0">
                                 <p className="font-mono font-bold text-sm">{groupPairs} <span className="text-xs font-normal text-muted-foreground">pares</span></p>
@@ -3596,7 +3596,7 @@ export default function SaleOrders() {
             .filter((it) => it.sale_order_id === selectedOrder.id)
             .map((it) => {
               const ref = (references as any[]).find((r) => r.id === it.reference_id);
-              return { id: it.id as string, label: [ref?.code || ref?.name || '', it.color || '—'].filter(Boolean).join(' · '), pairs: Number(it.quantity) || 0 };
+              return { id: it.id as string, label: [ref?.name || ref?.code || '', it.color || '—'].filter(Boolean).join(' · '), pairs: Number(it.quantity) || 0 };
             })
             .filter((i) => i.pairs > 0)}
         />

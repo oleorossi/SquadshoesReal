@@ -163,7 +163,7 @@ interface PvItemRow {
 function mapPvItemsForReceipt(rows: PvItemRow[]) {
   return (rows || []).map((it) => {
     const ts = it.technical_sheets;
-    const code = ts?.code || ts?.name || '';
+    const code = ts?.name || ts?.code || '';
     const pairs = Number(it.quantity) || 0;
     return {
       id: it.id as string,
@@ -371,7 +371,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
       const label = numbers.length > 0
         ? numbers.map((n) => {
             const op = byNumber.get(n);
-            const ref = op?.technical_sheets?.code || op?.technical_sheets?.name || '';
+            const ref = op?.technical_sheets?.name || op?.technical_sheets?.code || '';
             return [n, ref, op?.color].filter(Boolean).join(' · ');
           }).join(' — ')
         : null;

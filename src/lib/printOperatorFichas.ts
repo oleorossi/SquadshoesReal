@@ -101,7 +101,8 @@ function fichaHtml(p: {
     </div>
     <div class="subline">Ficha de produção · ${esc(pv)} · ${esc(client)} · ${esc(date)}</div>
     <div class="meta">
-      <div><span class="ml">Referência</span><span class="mv">${esc(refName)}${refCode ? ` · ${esc(refCode)}` : ''}</span></div>
+      <div><span class="ml">Referência</span><span class="mv">${esc(refName || refCode || '—')}</span></div>
+      ${refCode && refCode !== refName ? `<div><span class="ml">Cód. interno</span><span class="mv">${esc(refCode)}</span></div>` : ''}
       <div><span class="ml">Cor</span><span class="mv">${esc(color || '—')}</span></div>
       <div><span class="ml">Ficha</span><span class="mv tot">${fornada} / ${nFichas}</span></div>
       <div><span class="ml">Pares por ficha</span><span class="mv">${baseSum} pares</span></div>

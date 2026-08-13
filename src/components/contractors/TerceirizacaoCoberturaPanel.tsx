@@ -169,8 +169,8 @@ export function TerceirizacaoCoberturaPanel() {
                   <CaretRight className={cn('h-4 w-4 shrink-0 text-muted-foreground transition-transform', isOpen && 'rotate-90')} />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <span className="font-mono text-sm font-bold">{sheet.code || '—'}</span>
-                      <span className="truncate text-sm text-muted-foreground">{sheet.name}</span>
+                      <span className="truncate text-sm font-bold">{sheet.name || sheet.code || '—'}</span>
+                      {sheet.code && sheet.code !== sheet.name && <span className="font-mono text-xs text-muted-foreground">Cód. interno: {sheet.code}</span>}
                     </div>
                     {entries.length > 0 && (
                       <p className="mt-0.5 truncate text-xs text-muted-foreground">{contractorNames.join(' · ')}</p>

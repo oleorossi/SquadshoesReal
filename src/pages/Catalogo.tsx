@@ -60,7 +60,7 @@ export default function Catalogo() {
       const { data, error } = await supabase
         .from('technical_sheets')
         .select('id, code, name')
-        .order('code');
+        .order('name');
       if (error) throw error;
       return (data || []) as Array<{ id: string; code: string; name: string }>;
     },
@@ -73,7 +73,7 @@ export default function Catalogo() {
   );
 
   const referenceOptions = useMemo(
-    () => references.map((r) => ({ value: r.id, label: r.code || r.name, description: r.name })),
+    () => references.map((r) => ({ value: r.id, label: r.name || r.code, description: r.code && r.code !== r.name ? `Cód. interno: ${r.code}` : undefined })),
     [references],
   );
 

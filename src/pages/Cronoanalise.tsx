@@ -61,7 +61,7 @@ export default function Cronoanalise() {
 
   const sheetName = (id: string) => {
     const s = sheets?.find((x) => x.id === id);
-    return s ? (s.code ? `${s.code} · ${s.name}` : s.name) : '—';
+    return s ? (s.name || s.code || '—') : '—';
   };
 
   function openCreate() {
@@ -119,7 +119,7 @@ export default function Cronoanalise() {
             <SelectContent>
               <SelectItem value="all">Todas as referências</SelectItem>
               {sheets?.map((s) => (
-                <SelectItem key={s.id} value={s.id}>{s.code ? `${s.code} · ${s.name}` : s.name}</SelectItem>
+                <SelectItem key={s.id} value={s.id}>{s.name || s.code}{s.code && s.code !== s.name ? ` · Cód. interno: ${s.code}` : ''}</SelectItem>
               ))}
             </SelectContent>
           </Select>

@@ -808,7 +808,7 @@ export default function SaleOrderFormPanel({
       const faltas = singleSizeMisfits({ grade: item.grade, fichas, capacity });
       if (faltas.length === 0) continue;
       const ref = references.find((r: any) => r.id === item.reference_id) as any;
-      const rotulo = [ref?.code || ref?.name || 'item', item.color].filter(Boolean).join(' ');
+      const rotulo = [ref?.name || ref?.code || 'item', item.color].filter(Boolean).join(' ');
       const f = faltas[0];
       problemas.push(`${rotulo}: o nº ${f.size} dá ${f.pairs} pares`);
     }
@@ -1782,7 +1782,7 @@ export default function SaleOrderFormPanel({
                         });
 
                         const refNames = references.reduce((acc, r) => {
-                          acc[r.id] = r.code ? `${r.code} — ${r.name}` : r.name;
+                          acc[r.id] = r.code && r.code !== r.name ? `${r.name} · Cód. interno: ${r.code}` : r.name;
                           return acc;
                         }, {} as Record<string, string>);
 
@@ -1933,7 +1933,7 @@ export default function SaleOrderFormPanel({
           const isNewRefGroup = !!item.reference_id && !isSameRef;
           const groupRef = isNewRefGroup ? references.find((r) => r.id === item.reference_id) : null;
           const groupLabel = groupRef
-            ? (groupRef.code && groupRef.code !== groupRef.name ? `${groupRef.code} · ${groupRef.name}` : (groupRef.code || groupRef.name || 'Referência'))
+            ? (groupRef.name || groupRef.code || 'Referência')
             : 'Referência';
           const groupColorCount = isNewRefGroup ? items.filter((i) => i.reference_id === item.reference_id).length : 0;
           return (

@@ -187,7 +187,7 @@ export default function TimeStudyDialog({ open, onOpenChange, study, prefill, sh
                   <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
                   <SelectContent>
                     {sheets?.map((s) => (
-                      <SelectItem key={s.id} value={s.id}>{s.code ? `${s.code} · ${s.name}` : s.name}</SelectItem>
+                      <SelectItem key={s.id} value={s.id}>{s.name || s.code}{s.code && s.code !== s.name ? ` · Cód. interno: ${s.code}` : ''}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>

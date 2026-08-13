@@ -67,7 +67,7 @@ export function FichaCortePrintTab({ sheet }: Props) {
 
   const HEADER: { key: keyof FichaCorteData; label: string; placeholder?: string }[] = [
     { key: 'linha', label: 'Linha', placeholder: '90.000' },
-    { key: 'referencia', label: 'Referência', placeholder: sheet?.code || '90.004' },
+    { key: 'referencia', label: 'Referência', placeholder: sheet?.name || sheet?.code || 'ST 10' },
     { key: 'corte', label: 'Corte', placeholder: '1498' },
     { key: 'cabedal', label: 'Cabedal', placeholder: '1499' },
     { key: 'peso', label: 'Peso (nº 37)', placeholder: '—' },

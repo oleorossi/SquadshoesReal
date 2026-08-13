@@ -87,7 +87,7 @@ export default function UpperCutOutsourcingSection({ saleOrderId, orderNumber }:
       const groups = Array.from(groupsMap.values())
         .filter((g) => g.pairs > 0)
         .sort((a, b) =>
-          (a.refCode || a.refName).localeCompare(b.refCode || b.refName, 'pt-BR')
+          (a.refName || a.refCode).localeCompare(b.refName || b.refCode, 'pt-BR')
           || a.color.localeCompare(b.color, 'pt-BR'));
 
       // OS ativas de corte de cabedal já vinculadas a ESTE PV (anti-duplicação).
@@ -101,7 +101,7 @@ export default function UpperCutOutsourcingSection({ saleOrderId, orderNumber }:
         const activeOs = ((existingOs || []) as Array<{ order_number: string; description: string | null; status: string }>)
           .filter((o) => !FINALIZED_OS_STATUSES.includes(o.status));
         for (const g of groups) {
-          const refToken = normTxt(g.refCode || g.refName);
+          const refToken = normTxt(g.refName || g.refCode);
           if (!refToken) continue;
           const hit = activeOs.find((o) => {
             const desc = normTxt(o.description || '');
@@ -146,7 +146,7 @@ export default function UpperCutOutsourcingSection({ saleOrderId, orderNumber }:
         });
         unitPrice = rate != null ? Number(rate) : 0;
       } catch { /* sem tarifa — OS nasce com preço 0, definir depois */ }
-      const refLabel = [g.refCode, g.refName].filter(Boolean).join(' ');
+      const refLabel = [g.refName, g.refCode && g.refCode !== g.refName ? `(cód. interno ${g.refCode})` : ''].filter(Boolean).join(' ');
       const colorPart = g.color !== '—' ? ` · cor ${g.color}` : '';
 
       const { data: res, error } = await (supabase as any).rpc('create_upper_cut_service_order', {
@@ -239,8 +239,8 @@ export default function UpperCutOutsourcingSection({ saleOrderId, orderNumber }:
               return (
                 <TableRow key={g.key}>
                   <TableCell className="font-medium">
-                    {g.refCode && <span className="mr-1.5 font-mono text-xs text-muted-foreground">{g.refCode}</span>}
-                    {g.refName}
+                    <span>{g.refName || g.refCode || '—'}</span>
+                    {g.refCode && g.refCode !== g.refName && <span className="ml-1.5 font-mono text-xs text-muted-foreground">Cód. interno: {g.refCode}</span>}
                   </TableCell>
                   <TableCell><Badge variant="outline" className="text-xs">{g.color}</Badge></TableCell>
                   <TableCell className="text-right font-mono font-semibold">{g.pairs}</TableCell>

@@ -141,7 +141,7 @@ export function OperationsTab({
         .select('name, code')
         .eq('id', sheetId)
         .single();
-      return data ? (data.code ? `${data.code} · ${data.name}` : data.name) : 'Ficha atual';
+      return data ? (data.name || data.code || 'Ficha atual') : 'Ficha atual';
     },
   });
   const addOp = useAddBomOperation();
