@@ -7,7 +7,8 @@
 //
 // Cada par tem DIFICULDADE (Médio âmbar / Difícil verde) que paga R$/par
 // diferente: valor_par_medio / valor_par_dificil por pessoa.
-// Modelo 'chamada' em public.ficha_montadores: 1 linha por (dia, montador_id) com
+// Modelo 'chamada' em public.ficha_montadores: 1 linha por
+// (dia, montador_id, setor) com
 //   detalhe = [{tamanho, medio, dificil}], total = Σ (medio+dificil),
 //   fichas_dia = Σ round((medio+dificil)/tamanho). Legado [{tamanho, pares}] é lido
 //   como tudo MÉDIO; fichas de grade = origem='legacy'.
@@ -23,8 +24,8 @@
 // snapshot do cadastro no momento do apontamento — a tela NÃO edita taxa (editar
 // aqui reescrevia todo o histórico, inclusive de folha já calculada).
 import { supabase } from "@/integrations/supabase/client";
-import { Fragment, useCallback, useEffect, useMemo, useState, type ComponentType } from "react";
-import { Link } from "react-router-dom";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { Link, useBlocker } from "react-router-dom";
 import { EditorialPageHeader } from "@/components/layout/EditorialPageHeader";
 import { Panel } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
@@ -32,16 +33,21 @@ import { Input } from "@/components/ui/input";
 import { SearchInput } from "@/components/ui/search-input";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { EmptyState } from "@/components/ui/empty-state";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useEmployees } from "@/hooks/useEmployees";
 import { useAccessControl } from "@/hooks/useAccessControl";
 import { PagarProducaoDialog } from "@/components/hr/PagarProducaoDialog";
 import { semanaDePagamento, eSemanaFechada } from "@/hooks/useFichaProducaoPagamento";
 import { useProductionSectors, useEmployeeSectors } from "@/hooks/useSectorRoster";
 import { useUrlTabState } from "@/hooks/useUrlTabState";
-import { ratesOfRow, sumProducaoRows } from "@/lib/montadorProduction";
+import { ratesOfRow, sumProducaoRows, type FichaMontadorRow } from "@/lib/montadorProduction";
+import { adjustParesByFicha, fichasFromPares, isFichaLocked, parseParesEntry, rateForEntryCategory } from "@/lib/fichaMontadoresEntry";
 import { searchMatchesAllTerms } from "@/lib/searchUtils";
 import { toast } from "sonner";
-import { Printer, ChartBar, ClipboardText, Users, CurrencyDollar, FloppyDisk, CaretLeft, CaretRight, Warning, CheckCircle, Clock, CalendarBlank, ListBullets } from "@phosphor-icons/react";
+import { Printer, ChartBar, ClipboardText, Users, CurrencyDollar, FloppyDisk, CaretLeft, CaretRight, Warning, CheckCircle, Clock, CalendarBlank, ListBullets, Plus, Minus, LockKey, ArrowDown, X } from "@phosphor-icons/react";
 
 type Grade = "adulto" | "infantil";
 /** Duas abas: LANÇAR e VER. "Produtividade" e "Relatórios" eram telas separadas
@@ -130,6 +136,7 @@ interface Ficha {
   payroll_run_id?: string | null;
   pago_em?: string | null;
   criado_em?: string;
+  atualizado_em?: string | null;
 }
 
 /** R$/par gravado NA LINHA (snapshot do cadastro na hora do apontamento).
@@ -427,7 +434,7 @@ function imprimirRelatorio(p: {
       <div class="lg">Cada célula = <b>pares do dia</b>${temDificil ? '; embaixo o split <b class="med">médio</b> · <b class="dif">difícil</b>' : ""}. Célula com fundo claro = dia <b>ainda não pago</b>. Colunas cinza = fim de semana.</div>
     </section>
 
-    <script>window.onload=function(){window.focus();window.print();};<\/script></body></html>`);
+    <script>window.onload=function(){window.focus();window.print();};</script></body></html>`);
 }
 
 interface AggRow {
@@ -449,9 +456,74 @@ interface AggTotals {
   valorPago: number; valorFolha: number; valorAberto: number; valorTotal: number;
 }
 
+interface FichaCounterProps {
+  value: number;
+  tamanho: number;
+  diff: Diff;
+  pessoa: string;
+  locked?: boolean;
+  onChange: (value: number) => void;
+  onKeyDown?: (event: ReactKeyboardEvent<HTMLInputElement>) => void;
+}
+
+/**
+ * Contador da bancada: os botões acompanham a ficha FÍSICA, mas o campo e o
+ * estado continuam em PARES. Assim a interação fica rápida sem trocar a unidade
+ * do domínio nem esconder lançamentos incompletos.
+ */
+function FichaCounter({ value, tamanho, diff, pessoa, locked, onChange, onKeyDown }: FichaCounterProps) {
+  const medio = diff === "medio";
+  const fichasCount = fichasFromPares(value, tamanho);
+  const tone = medio
+    ? "border-amber-500/40 bg-amber-500/[0.045] focus-within:border-amber-600"
+    : "border-green-600/40 bg-green-600/[0.045] focus-within:border-green-600";
+  const accent = medio ? "text-amber-700 dark:text-amber-400" : "text-green-700 dark:text-green-400";
+
+  const parse = (raw: string) => {
+    const parsed = parseParesEntry(raw, tamanho);
+    if (parsed == null) {
+      toast.error(`Use pares inteiros ou a abreviação de ficha, por exemplo: 7f = ${7 * tamanho} pares.`);
+      return;
+    }
+    onChange(parsed);
+  };
+
+  return (
+    <div className={`inline-grid min-w-[190px] grid-cols-[44px_minmax(88px,1fr)_44px] overflow-hidden rounded-lg border transition-colors ${locked ? "border-border bg-muted/50 opacity-70" : tone}`}>
+      <button type="button" disabled={locked || value < tamanho}
+        onClick={() => onChange(adjustParesByFicha(value, tamanho, -1))}
+        className="flex min-h-11 items-center justify-center border-r border-border/70 text-muted-foreground transition-colors hover:bg-background/70 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-35"
+        aria-label={`Remover uma ficha de ${tamanho} pares de ${pessoa}`}>
+        <Minus className="h-4 w-4" weight="bold" />
+      </button>
+      <label className="relative flex min-w-0 flex-col items-center justify-center bg-background/75 px-1 py-1">
+        <span className="sr-only">Pares de {DIFF_LABEL[diff]}, ficha {tamanho}, {pessoa}</span>
+        <input inputMode="numeric" enterKeyHint="next" readOnly={locked}
+          value={value || ""} placeholder="0"
+          onFocus={(event) => event.target.select()}
+          onChange={(event) => parse(event.target.value)}
+          onKeyDown={onKeyDown}
+          data-ficha-entry={`${diff}-${tamanho}`}
+          className="h-6 w-full bg-transparent text-center font-mono text-base font-bold tabular-nums text-foreground outline-none placeholder:text-muted-foreground/35 read-only:cursor-not-allowed"
+          aria-label={`${DIFF_LABEL[diff]} · ficha de ${tamanho} pares — ${pessoa}${locked ? " (fechado pela folha, somente leitura)" : ""}`} />
+        <span className={`font-mono text-[9px] font-bold uppercase tracking-[0.12em] ${accent}`}>
+          {fichasCount} {fichasCount === 1 ? "ficha" : "fichas"} · pares
+        </span>
+      </label>
+      <button type="button" disabled={locked}
+        onClick={() => onChange(adjustParesByFicha(value, tamanho, 1))}
+        className="flex min-h-11 flex-col items-center justify-center border-l border-border/70 text-foreground transition-colors hover:bg-background/70 disabled:cursor-not-allowed disabled:opacity-35"
+        aria-label={`Adicionar uma ficha de ${tamanho} pares para ${pessoa}`}>
+        <Plus className="h-4 w-4" weight="bold" />
+        <span className="font-mono text-[8px] font-bold uppercase tracking-wider">1 ficha</span>
+      </button>
+    </div>
+  );
+}
+
 /* ---------- Componente ---------- */
 export default function FichaMontadoresPage() {
-  const db = supabase as any;
+  const db = supabase;
   const { value: tab, setValue: setTab } = useUrlTabState<Tab>({
     values: ["lancamento", "producao"],
     defaultValue: "lancamento",
@@ -522,6 +594,13 @@ export default function FichaMontadoresPage() {
   // rara aparece sozinha quando JÁ tem número, mesmo com o detalhe fechado, pra
   // nenhum lançamento existente ficar invisível.
   const [detalharDia, setDetalharDia] = useState(false);
+  // A régua ativa espelha a ficha que está na mão do encarregado. Trocar a
+  // régua não altera dados; só muda qual combinação recebe os cliques rápidos.
+  const [diaSize, setDiaSize] = useState<number>(12);
+  const [diaDiff, setDiaDiff] = useState<Diff>("medio");
+  useEffect(() => {
+    if (!diffsAtivos.includes(diaDiff)) setDiaDiff("medio");
+  }, [diffsAtivos, diaDiff]);
   const [busca, setBusca] = useState("");
   // Dia: pares por montador por dificuldade × tamanho
   const [pares, setPares] = useState<Record<string, DiffSizeMap>>({});
@@ -531,6 +610,10 @@ export default function FichaMontadoresPage() {
   const [origWeek, setOrigWeek] = useState<Record<string, DiffSizeMap>>({});
   const [savingDia, setSavingDia] = useState(false);
   const [savingSem, setSavingSem] = useState(false);
+  const [confirmarZerar, setConfirmarZerar] = useState<ChamadaView | null>(null);
+  const [confirmarDescartarDock, setConfirmarDescartarDock] = useState(false);
+  const [salvoEm, setSalvoEm] = useState<Date | null>(null);
+  const loadRequestRef = useRef(0);
 
   // ── filtro de período (Produtividade + Relatórios) ──
   // Declarado aqui em cima, antes do carregamento, porque a busca no banco é
@@ -614,11 +697,11 @@ export default function FichaMontadoresPage() {
   const pendencias = useMemo(() => {
     const lotacao = new Map(employeeSectors.map((r) => [r.employee_id, { key: r.sector_key, label: r.sector_label }]));
     return employees
-      .filter((e) => e.active && String((e as any).payment_type || "").toLowerCase() === "producao")
+      .filter((e) => e.active && String(e.payment_type || "").toLowerCase() === "producao")
       .map((e) => {
         const lot = lotacao.get(e.id);
         const foraDosSetores = !lot || !sectors.some((s) => s.key === lot.key);
-        const semTaxa = !(Number((e as any).valor_par_medio) > 0);
+        const semTaxa = !(Number(e.valor_par_medio) > 0);
         return { id: e.id, name: e.name, lotacao: lot?.label || null, foraDosSetores, semTaxa };
       })
       .filter((p) => p.foraDosSetores || p.semTaxa)
@@ -626,6 +709,13 @@ export default function FichaMontadoresPage() {
   }, [employees, employeeSectors, sectors]);
 
   const carregar = useCallback(async () => {
+    const requestId = ++loadRequestRef.current;
+    // Invalida imediatamente o snapshot do contexto anterior. Sem isto, ao
+    // trocar Montagem por Solagem a tela ainda podia semear por alguns frames os
+    // lançamentos antigos (ou mantê-los se a leitura nova falhasse).
+    setFichas([]);
+    setPares({}); setOrigPares({});
+    setWeek({}); setOrigWeek({});
     setLoading(true);
     // Escopo por SETOR e por INTERVALO. Antes a tela baixava o histórico inteiro
     // do setor a cada troca de aba — cresce sem teto e o PostgREST corta em 1.000
@@ -637,8 +727,15 @@ export default function FichaMontadoresPage() {
       .lte("dia", dataRange.to)
       .order("dia", { ascending: false })
       .order("criado_em", { ascending: false });
-    if (error) toast.error("Erro ao carregar: " + error.message);
-    else setFichas((data ?? []) as Ficha[]);
+    // Troca rápida de setor/período pode inverter a ordem das respostas.
+    // Uma resposta velha nunca pode reidratar o rascunho do contexto novo.
+    if (requestId !== loadRequestRef.current) return;
+    if (error) {
+      setFichas([]);
+      setPares({}); setOrigPares({});
+      setWeek({}); setOrigWeek({});
+      toast.error("Erro ao carregar: " + error.message);
+    } else setFichas((data ?? []) as unknown as Ficha[]);
     setLoading(false);
   }, [db, setor, dataRange.from, dataRange.to]);
   useEffect(() => { carregar(); }, [carregar]);
@@ -666,14 +763,13 @@ export default function FichaMontadoresPage() {
 
   // ── helpers Dia ──
   const mapOf = (mid: string): DiffSizeMap => pares[mid] || emptyDiffMap();
-  const setPS = (mid: string, diff: Diff, sz: number, v: number) =>
+  const setPS = (mid: string, diff: Diff, sz: number, v: number) => {
+    setSalvoEm(null);
     setPares((p) => {
       const cur = p[mid] || emptyDiffMap();
       return { ...p, [mid]: { ...cur, [diff]: { ...cur[diff], [sz]: Math.max(0, v) } } };
     });
-  const paresMontador = (mid: string) => paresOfDiffMap(mapOf(mid));
-  const fichasMontador = (mid: string) => fichasOfDiffMap(mapOf(mid));
-
+  };
   // ── helpers Semana ──
   // Memoizado porque `valorSemanaDe` depende dele: sem isto a identidade mudava
   // a cada render e o useCallback de baixo recriava sempre, à toa.
@@ -681,22 +777,23 @@ export default function FichaMontadoresPage() {
     (mid: string, day: string): DiffSizeMap => week[`${mid}|${day}`] || emptyDiffMap(),
     [week],
   );
-  const setWeekCell = (mid: string, day: string, diff: Diff, sz: number, v: number) =>
+  const setWeekCell = (mid: string, day: string, diff: Diff, sz: number, v: number) => {
+    setSalvoEm(null);
     setWeek((w) => {
       const k = `${mid}|${day}`; const cur = w[k] || emptyDiffMap();
       return { ...w, [k]: { ...cur, [diff]: { ...cur[diff], [sz]: Math.max(0, v) } } };
     });
+  };
 
   const rosterFiltrado = useMemo(
     () => montadores.filter((e) => searchMatchesAllTerms(busca, e.name, e.role, e.department, e.external_id)),
     [montadores, busca],
   );
 
-  /** Colunas de lançamento da visão Dia (tamanho × dificuldade). Sempre a
-   *  combinação padrão (12 · médio); as demais entram quando o detalhe está
-   *  aberto OU quando alguém do roster já tem número ali — assim abrir a tela
-   *  nunca esconde um lançamento que existe. */
+  /** A régua mostra uma combinação por vez no fluxo rápido. A grade completa
+   *  continua disponível para conferência e exceções. */
   const colunasDia = useMemo(() => {
+    if (!detalharDia) return [{ sz: diaSize, diff: diaDiff }];
     const cols: { sz: number; diff: Diff }[] = [];
     for (const sz of SIZES) {
       for (const diff of DIFFS) {
@@ -706,35 +803,110 @@ export default function FichaMontadoresPage() {
         // pra um lançamento existente nunca ficar invisível.
         const temDado = montadores.some((e) => ((pares[e.id] || emptyDiffMap())[diff][sz] || 0) > 0);
         if (!diffsAtivos.includes(diff) && !temDado) continue;
-        const padrao = sz === 12 && diff === "medio";
-        if (padrao || detalharDia || temDado) cols.push({ sz, diff });
+        cols.push({ sz, diff });
       }
     }
     return cols;
-  }, [montadores, pares, detalharDia, diffsAtivos]);
-  /** Combinação rara com número lançado, mas com o detalhe FECHADO — a coluna
-   *  aparece e ganha um rótulo explícito pra não parecer a coluna padrão. */
-  const temColunaRara = colunasDia.some((c) => !(c.sz === 12 && c.diff === "medio"));
+  }, [montadores, pares, detalharDia, diffsAtivos, diaSize, diaDiff]);
 
-  const totalDiaPares = useMemo(() => montadores.reduce((s, e) => s + paresMontador(e.id), 0), [montadores, pares]);
-  const totalDiaFichas = useMemo(() => montadores.reduce((s, e) => s + fichasMontador(e.id), 0), [montadores, pares]);
+  const foraDaRegua = useMemo(() => montadores.reduce((sum, employee) => {
+    const dm = pares[employee.id] || emptyDiffMap();
+    return sum + SIZES.reduce((sizeSum, size) => sizeSum + DIFFS.reduce(
+      (diffSum, diff) => diffSum + (size === diaSize && diff === diaDiff ? 0 : (dm[diff][size] || 0)),
+      0,
+    ), 0);
+  }, 0), [montadores, pares, diaSize, diaDiff]);
+
+  const totalDiaPares = useMemo(() => montadores.reduce((sum, employee) => sum + paresOfDiffMap(pares[employee.id] || emptyDiffMap()), 0), [montadores, pares]);
+  const totalDiaFichas = useMemo(() => montadores.reduce((sum, employee) => sum + fichasOfDiffMap(pares[employee.id] || emptyDiffMap()), 0), [montadores, pares]);
+  const reguaPares = useMemo(
+    () => montadores.reduce((sum, employee) => sum + ((pares[employee.id] || emptyDiffMap())[diaDiff][diaSize] || 0), 0),
+    [montadores, pares, diaDiff, diaSize],
+  );
+  const reguaFichas = useMemo(
+    () => montadores.reduce((sum, employee) => sum + fichasFromPares((pares[employee.id] || emptyDiffMap())[diaDiff][diaSize] || 0, diaSize), 0),
+    [montadores, pares, diaDiff, diaSize],
+  );
   const dirtyDia = useMemo(
-    () => montadores.filter((e) => JSON.stringify(mapOf(e.id)) !== JSON.stringify(origPares[e.id] || emptyDiffMap())).length,
+    () => montadores.filter((e) => JSON.stringify(pares[e.id] || emptyDiffMap()) !== JSON.stringify(origPares[e.id] || emptyDiffMap())).length,
     [montadores, pares, origPares],
   );
+  const dirtyDiaVisivel = useMemo(
+    () => rosterFiltrado.filter((e) => JSON.stringify(pares[e.id] || emptyDiffMap()) !== JSON.stringify(origPares[e.id] || emptyDiffMap())).length,
+    [rosterFiltrado, pares, origPares],
+  );
+  const deltaDiaPares = useMemo(() => {
+    const original = montadores.reduce((sum, employee) => sum + paresOfDiffMap(origPares[employee.id] || emptyDiffMap()), 0);
+    return totalDiaPares - original;
+  }, [montadores, origPares, totalDiaPares]);
 
   const weekDays = useMemo(() => weekDaysOf(semanaAnchor), [semanaAnchor]);
-  /** (montador|dia) já quitados por uma folha. A célula fica travada: editar
-   *  reescreveria produção que a folha já pagou, e o valor usado no pagamento é
-   *  o snapshot gravado no lançamento. */
-  const diaPago = useMemo(() => {
-    const s = new Set<string>();
-    for (const f of fichas) if (f.montador_id && f.pago_em) s.add(`${f.montador_id}|${f.dia}`);
+  /** (montador|dia) reivindicado por uma folha OU já pago. Nos dois estados o
+   *  apontamento está fechado: mudar pares quebraria o snapshot da folha. */
+  const diaFechado = useMemo(() => {
+    const s = new Map<string, "folha" | "pago">();
+    for (const f of fichas) {
+      if (!f.montador_id || !isFichaLocked(f)) continue;
+      s.set(`${f.montador_id}|${f.dia}`, f.pago_em ? "pago" : "folha");
+    }
     return s;
   }, [fichas]);
   const weekLabel = `${fmtDia(weekDays[0])} – ${fmtDia(weekDays[6])}`;
   const semParesTotal = useMemo(() => Object.values(week).reduce((s, m) => s + paresOfDiffMap(m), 0), [week]);
   const semFichasTotal = useMemo(() => Object.values(week).reduce((s, m) => s + fichasOfDiffMap(m), 0), [week]);
+  const dirtySem = useMemo(() => {
+    let total = 0;
+    for (const employee of montadores) {
+      for (const day of weekDays) {
+        const key = `${employee.id}|${day}`;
+        if (JSON.stringify(week[key] || emptyDiffMap()) !== JSON.stringify(origWeek[key] || emptyDiffMap())) total += 1;
+      }
+    }
+    return total;
+  }, [montadores, weekDays, week, origWeek]);
+  const deltaSemPares = useMemo(() => {
+    const original = Object.values(origWeek).reduce((sum, map) => sum + paresOfDiffMap(map), 0);
+    return semParesTotal - original;
+  }, [origWeek, semParesTotal]);
+  const existingChamada = useMemo(() => {
+    const byKey = new Map<string, Ficha>();
+    for (const ficha of fichas) {
+      if (isChamada(ficha) && ficha.montador_id) byKey.set(`${ficha.montador_id}|${ficha.dia}`, ficha);
+    }
+    return byKey;
+  }, [fichas]);
+  const temRascunho = dirtyDia > 0 || dirtySem > 0;
+  const confirmarDescarte = useCallback(() => (
+    !temRascunho || window.confirm("Há lançamentos não salvos. Descartar as alterações e mudar de contexto?")
+  ), [temRascunho]);
+  const limparContextoCarregado = useCallback(() => {
+    // A próxima consulta é assíncrona; a interface não deve continuar exibindo
+    // nem reutilizar fichas que pertenciam ao setor/período anterior.
+    loadRequestRef.current += 1;
+    setLoading(true);
+    setFichas([]);
+    setPares({}); setOrigPares({});
+    setWeek({}); setOrigWeek({});
+    setSalvoEm(null);
+  }, []);
+
+  // Protege links, Voltar e qualquer outra navegação do router. Trocas de
+  // setor/data são estado local e usam confirmarDescarte diretamente.
+  const navigationBlocker = useBlocker(temRascunho);
+  useEffect(() => {
+    if (navigationBlocker.state !== "blocked") return;
+    if (window.confirm("Há lançamentos não salvos. Sair desta tela e descartá-los?")) {
+      setPares(origPares);
+      setWeek(origWeek);
+      navigationBlocker.proceed();
+    } else navigationBlocker.reset();
+  }, [navigationBlocker, origPares, origWeek]);
+  useEffect(() => {
+    if (!temRascunho) return;
+    const beforeUnload = (event: BeforeUnloadEvent) => event.preventDefault();
+    window.addEventListener("beforeunload", beforeUnload);
+    return () => window.removeEventListener("beforeunload", beforeUnload);
+  }, [temRascunho]);
 
   const fichasHoje = useMemo(() => {
     const t = todayISO();
@@ -746,94 +918,62 @@ export default function FichaMontadoresPage() {
   // produção num setor e depois foi transferido pra outro.
   const regimePor = useMemo(() => {
     const m = new Map<string, string>();
-    for (const e of employees) m.set(e.id, String((e as any).payment_type || "mensalista").toLowerCase());
+    for (const e of employees) m.set(e.id, String(e.payment_type || "mensalista").toLowerCase());
     return m;
   }, [employees]);
 
-  /** Monta a linha de um (dia, pessoa). Retorna a ação a executar em LOTE:
-   *  `delete` (zerou os pares), `update` (já existia) ou `insert`.
-   *  Devolve `bloqueio` quando é regime por par sem R$/par cadastrado — salvar
-   *  assim gravaria produção valendo R$ 0,00, que é exatamente como 33 registros
-   *  antigos nasceram (ver docs/adr/0001). O banco também barra (trigger
-   *  trg_ficha_montadores_require_rate); aqui o erro chega antes e com o nome. */
-  function montarLinha(dia: string, e: { id: string; name: string }, dm: DiffSizeMap):
-    | { acao: "delete"; id: string }
-    | { acao: "update"; id: string; payload: any }
-    | { acao: "insert"; payload: any }
-    | { acao: "nada" }
-    | { acao: "bloqueio"; nome: string } {
-    const existing = fichas.find((f) => isChamada(f) && f.montador_id === e.id && f.dia === dia);
-    const totalP = paresOfDiffMap(dm);
-    if (totalP <= 0) return existing ? { acao: "delete", id: existing.id } : { acao: "nada" };
-
-    const emp = montadores.find((x) => x.id === e.id);
-    const vmCad = Number(emp?.valor_par_medio) || 0;
-    const vdCad = Number(emp?.valor_par_dificil) || 0;
-    // SNAPSHOT do R$/par: fonte única = cadastro do funcionário. Congela o valor
-    // da época em cada apontamento, então reajustar o cadastro não reescreve
-    // produção já apontada (nem folha já calculada em cima dela).
-    const vmSnap = vmCad > 0 ? vmCad : (existing?.valor_par_medio ?? existing?.valor_par ?? null);
-    const vdSnap = vdCad > 0 ? vdCad : (existing?.valor_par_dificil ?? null);
-    // Trava: por par sem R$/par MÉDIO não salva. Só o médio é obrigatório —
-    // há gente (Solagem) sem taxa de difícil cadastrada, e par difícil é raro;
-    // a difícil só é exigida quando o lançamento tem pares difíceis.
-    if (regimePor.get(e.id) === "producao") {
-      if (!(Number(vmSnap) > 0)) return { acao: "bloqueio", nome: e.name };
-      if (paresOfMap(dm.dificil) > 0 && !(Number(vdSnap) > 0)) return { acao: "bloqueio", nome: e.name };
-    }
-
-    const det: DetItem[] = SIZES
-      .filter((sz) => (dm.medio[sz] || 0) > 0 || (dm.dificil[sz] || 0) > 0)
-      .map((sz) => ({ tamanho: sz, medio: dm.medio[sz] || 0, dificil: dm.dificil[sz] || 0 }));
-    const fichasCount = det.reduce((s, d) => s + Math.round(((d.medio || 0) + (d.dificil || 0)) / d.tamanho), 0);
-    const payload: any = {
-      dia, montador: e.name, montador_id: e.id, setor,
-      fichas_dia: fichasCount, total: totalP, copias: 1, grade: "adulto", numeracoes: [], quantidades: [],
-      cor: null, referencia: null, reference_id: null, detalhe: det, origem: "chamada",
-      valor_par_medio: vmSnap, valor_par_dificil: vdSnap,
-      valor_par: vmCad > 0 ? vmCad : (existing?.valor_par ?? 0),
-      atualizado_em: new Date().toISOString(),
-    };
-    return existing ? { acao: "update", id: existing.id, payload } : { acao: "insert", payload };
-  }
-
-  /** Grava um conjunto de (dia, pessoa) em LOTE. Antes era uma ida ao banco por
-   *  célula, em fila: a Semana com 5 pessoas × 5 dias disparava 25 requisições
-   *  sequenciais e o botão ficava travado o tempo todo. Agora são no MÁXIMO 3
-   *  (delete + update + insert), independente do tamanho do roster.
-   *  Os updates ainda são um por linha porque cada um tem id próprio — mas vão
-   *  em paralelo, não em fila. */
+  /** Grava o lote em UMA transação no banco. A RPC valida a estrutura, preserva
+   *  snapshots antigos e aplica delete/update/insert juntos: ou tudo entra, ou
+   *  nada muda. */
   async function persistirLote(itens: { dia: string; e: { id: string; name: string }; dm: DiffSizeMap }[]) {
     const bloqueados: string[] = [];
-    const aExcluir: string[] = [];
-    const aInserir: any[] = [];
-    const aAtualizar: { id: string; payload: any }[] = [];
     for (const it of itens) {
-      const r = montarLinha(it.dia, it.e, it.dm);
-      if (r.acao === "bloqueio") bloqueados.push(r.nome);
-      else if (r.acao === "delete") aExcluir.push(r.id);
-      else if (r.acao === "insert") aInserir.push(r.payload);
-      else if (r.acao === "update") aAtualizar.push({ id: r.id, payload: r.payload });
+      const emp = montadores.find((employee) => employee.id === it.e.id);
+      if (regimePor.get(it.e.id) !== "producao" || paresOfDiffMap(it.dm) <= 0) continue;
+      const existing = existingChamada.get(`${it.e.id}|${it.dia}`);
+      const original = existing ? diffSizeMapOf(existing) : emptyDiffMap();
+      const medioAntes = paresOfMap(original.medio) > 0;
+      const dificilAntes = paresOfMap(original.dificil) > 0;
+      // Categoria já presente conserva/valida o snapshot histórico; categoria
+      // que nasce neste save precisa da taxa vigente, que a RPC captura.
+      const vm = rateForEntryCategory({
+        hadPairs: medioAntes,
+        snapshotRate: existing?.valor_par_medio ?? existing?.valor_par,
+        currentRate: emp?.valor_par_medio,
+      });
+      const vd = rateForEntryCategory({
+        hadPairs: dificilAntes,
+        snapshotRate: existing?.valor_par_dificil,
+        currentRate: emp?.valor_par_dificil,
+      });
+      if (paresOfMap(it.dm.medio) > 0 && !(vm > 0)) bloqueados.push(it.e.name);
+      else if (paresOfMap(it.dm.dificil) > 0 && !(vd > 0)) bloqueados.push(it.e.name);
     }
+    if (bloqueados.length) return { gravados: 0, erros: [], bloqueados: Array.from(new Set(bloqueados)) };
 
-    const erros: string[] = [];
-    if (aExcluir.length) {
-      const { error } = await db.from("ficha_montadores").delete().in("id", aExcluir);
-      if (error) erros.push(error.message);
-    }
-    if (aInserir.length) {
-      const { error } = await db.from("ficha_montadores").insert(aInserir);
-      if (error) erros.push(error.message);
-    }
-    if (aAtualizar.length) {
-      const res = await Promise.all(
-        aAtualizar.map((u) => db.from("ficha_montadores").update(u.payload).eq("id", u.id)),
-      );
-      for (const r of res) if (r.error) erros.push(r.error.message);
-    }
-
-    const gravados = aExcluir.length + aInserir.length + aAtualizar.length;
-    return { gravados, erros: Array.from(new Set(erros)), bloqueados: Array.from(new Set(bloqueados)) };
+    const payload = itens.map((item) => {
+      const existing = existingChamada.get(`${item.e.id}|${item.dia}`);
+      return {
+        dia: item.dia,
+        montador_id: item.e.id,
+        // Concorrência otimista: a RPC recusa se alguém alterou esta mesma linha
+        // desde que o lote foi carregado. NULL identifica um INSERT esperado.
+        expected_id: existing?.id ?? null,
+        expected_atualizado_em: existing?.atualizado_em ?? null,
+        detalhe: SIZES
+          .filter((size) => (item.dm.medio[size] || 0) > 0 || (item.dm.dificil[size] || 0) > 0)
+          .map((size) => ({ tamanho: size, medio: item.dm.medio[size] || 0, dificil: item.dm.dificil[size] || 0 })),
+      };
+    });
+    // A RPC nasce nesta migration; os tipos gerados do Supabase só passam a
+    // conhecê-la na próxima regeneração automática.
+    const saveBatch = db.rpc as unknown as (
+      name: "save_ficha_montadores_batch",
+      args: { p_setor: string; p_items: typeof payload },
+    ) => Promise<{ data: { gravados?: number } | null; error: { message: string } | null }>;
+    const { data, error } = await saveBatch("save_ficha_montadores_batch", { p_setor: setor, p_items: payload });
+    if (error) return { gravados: 0, erros: [error.message], bloqueados: [] };
+    return { gravados: Number(data?.gravados) || 0, erros: [], bloqueados: [] };
   }
 
   /** Avisa o que a trava barrou, com o caminho do conserto. */
@@ -847,44 +987,136 @@ export default function FichaMontadoresPage() {
 
   async function salvarDia() {
     setSavingDia(true);
-    const changed = montadores.filter((e) => JSON.stringify(mapOf(e.id)) !== JSON.stringify(origPares[e.id] || emptyDiffMap()));
-    const { gravados, erros, bloqueados } = await persistirLote(
-      changed.map((e) => ({ dia: chamadaDia, e, dm: mapOf(e.id) })),
-    );
-    await carregar();
-    setSavingDia(false);
-    avisarBloqueio(bloqueados);
-    if (erros.length) toast.error(`Erro ao salvar: ${erros.join(" · ")}`);
-    if (gravados) toast.success(`Dia salvo — ${gravados} ${gravados === 1 ? "lançamento" : "lançamentos"}.`);
-    if (!gravados && !erros.length && !bloqueados.length) toast.message("Nada para salvar.");
+    try {
+      const changed = montadores.filter((e) => JSON.stringify(mapOf(e.id)) !== JSON.stringify(origPares[e.id] || emptyDiffMap()));
+      const { gravados, erros, bloqueados } = await persistirLote(
+        changed.map((e) => ({ dia: chamadaDia, e, dm: mapOf(e.id) })),
+      );
+      avisarBloqueio(bloqueados);
+      if (erros.length) {
+        toast.error(`Nada foi alterado. Corrija e tente novamente: ${erros.join(" · ")}`);
+        return;
+      }
+      if (bloqueados.length) return;
+      if (gravados) {
+        await carregar();
+        setSalvoEm(new Date());
+        toast.success(`Dia salvo — ${gravados} ${gravados === 1 ? "lançamento" : "lançamentos"}.`);
+      } else toast.message("Nada para salvar.");
+    } finally {
+      setSavingDia(false);
+    }
   }
 
   async function salvarSemana() {
     setSavingSem(true);
-    const itens: { dia: string; e: { id: string; name: string }; dm: DiffSizeMap }[] = [];
-    for (const e of montadores) {
-      for (const day of weekDays) {
-        const k = `${e.id}|${day}`;
-        if (JSON.stringify(week[k] || emptyDiffMap()) === JSON.stringify(origWeek[k] || emptyDiffMap())) continue;
-        itens.push({ dia: day, e, dm: week[k] || emptyDiffMap() });
+    try {
+      const itens: { dia: string; e: { id: string; name: string }; dm: DiffSizeMap }[] = [];
+      for (const e of montadores) {
+        for (const day of weekDays) {
+          const k = `${e.id}|${day}`;
+          if (JSON.stringify(week[k] || emptyDiffMap()) === JSON.stringify(origWeek[k] || emptyDiffMap())) continue;
+          itens.push({ dia: day, e, dm: week[k] || emptyDiffMap() });
+        }
       }
+      const { gravados, erros, bloqueados } = await persistirLote(itens);
+      avisarBloqueio(bloqueados);
+      if (erros.length) {
+        toast.error(`Nada foi alterado. Corrija e tente novamente: ${erros.join(" · ")}`);
+        return;
+      }
+      if (bloqueados.length) return;
+      if (gravados) {
+        await carregar();
+        setSalvoEm(new Date());
+        toast.success(`Semana salva — ${gravados} lançamento${gravados === 1 ? "" : "s"}.`);
+      } else toast.message("Nada para salvar.");
+    } finally {
+      setSavingSem(false);
     }
-    const { gravados, erros, bloqueados } = await persistirLote(itens);
-    await carregar();
-    setSavingSem(false);
-    avisarBloqueio(bloqueados);
-    if (erros.length) toast.error(`Erro ao salvar: ${erros.join(" · ")}`);
-    if (gravados) toast.success(`Semana salva — ${gravados} lançamento${gravados === 1 ? "" : "s"}.`);
-    if (!gravados && !erros.length && !bloqueados.length) toast.message("Nada para salvar.");
   }
 
-  function zerarDia() { setPares({}); }
-  function zerarSemana() { setWeek((w) => { const n: Record<string, DiffSizeMap> = {}; for (const k in w) n[k] = emptyDiffMap(); return n; }); }
+  function avancarEntrada(event: ReactKeyboardEvent<HTMLInputElement>) {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    const slice = event.currentTarget.dataset.fichaEntry;
+    if (!slice) return;
+    const inputs = Array.from(document.querySelectorAll<HTMLInputElement>(`input[data-ficha-entry="${slice}"]`))
+      .filter((input) => input.offsetParent !== null && !input.readOnly && !input.disabled);
+    const current = inputs.indexOf(event.currentTarget);
+    const next = inputs[current + (event.shiftKey ? -1 : 1)];
+    if (next) {
+      next.focus();
+      next.select();
+    }
+  }
+
+  const salvarDiaRef = useRef(salvarDia);
+  const salvarSemanaRef = useRef(salvarSemana);
+  salvarDiaRef.current = salvarDia;
+  salvarSemanaRef.current = salvarSemana;
+  useEffect(() => {
+    const onSaveShortcut = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "s") return;
+      const dirty = chamadaView === "dia" ? dirtyDia : dirtySem;
+      if (!dirty) return;
+      event.preventDefault();
+      if (chamadaView === "dia" && !savingDia) void salvarDiaRef.current();
+      if (chamadaView === "semana" && !savingSem) void salvarSemanaRef.current();
+    };
+    window.addEventListener("keydown", onSaveShortcut);
+    return () => window.removeEventListener("keydown", onSaveShortcut);
+  }, [chamadaView, dirtyDia, dirtySem, savingDia, savingSem]);
+
+  function zerarDia() {
+    setSalvoEm(null);
+    setPares((current) => {
+      const next = { ...current };
+      for (const employee of montadores) {
+        if (!diaFechado.has(`${employee.id}|${chamadaDia}`)) next[employee.id] = emptyDiffMap();
+      }
+      return next;
+    });
+    setConfirmarZerar(null);
+  }
+  function zerarSemana() {
+    setSalvoEm(null);
+    setWeek((current) => {
+      const next = { ...current };
+      for (const employee of montadores) {
+        for (const day of weekDays) {
+          if (!diaFechado.has(`${employee.id}|${day}`)) next[`${employee.id}|${day}`] = emptyDiffMap();
+        }
+      }
+      return next;
+    });
+    setConfirmarZerar(null);
+  }
+  function descartarRascunhoAtual() {
+    if (chamadaView === "dia") setPares(origPares);
+    else setWeek(origWeek);
+  }
+  function descartarTodosRascunhos() {
+    setPares(origPares);
+    setWeek(origWeek);
+  }
+  function iniciarTrocaDeContexto(invalidarFichas = false) {
+    descartarTodosRascunhos();
+    // Setor sempre muda a identidade das linhas. Dia/semana podem continuar no
+    // dataRange já carregado; nesse caso limpá-lo deixaria a tela sem nova query.
+    if (invalidarFichas) limparContextoCarregado();
+  }
   function abrirDia(f: Ficha) {
+    if (!confirmarDescarte()) return;
+    iniciarTrocaDeContexto();
     setTab("lancamento"); setChamadaView("dia"); setChamadaDia(f.dia);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
   async function excluir(f: Ficha) {
+    if (isFichaLocked(f)) {
+      toast.error("Este lançamento já está vinculado à folha e não pode ser excluído.");
+      return;
+    }
     if (!window.confirm("Excluir este lançamento?")) return;
     const { error } = await db.from("ficha_montadores").delete().eq("id", f.id);
     if (error) toast.error("Erro ao excluir: " + error.message);
@@ -940,9 +1172,9 @@ export default function FichaMontadoresPage() {
   const [pagStatus, setPagStatus] = useState<PagStatus>("todos");
 
   const estadoDe = useCallback((f: Ficha): PagEstado => {
-    if (!f.montador_id || regimePor.get(f.montador_id) !== "producao") return "na";
     if (f.pago_em) return "pago";
     if (f.payroll_run_id) return "folha";
+    if (!f.montador_id || regimePor.get(f.montador_id) !== "producao") return "na";
     return "aberto";
   }, [regimePor]);
 
@@ -965,7 +1197,7 @@ export default function FichaMontadoresPage() {
    * marcado, o total é o que ainda se deve, que é o que vai pra folha.
    */
   const resumoPeriodo = useMemo(() => {
-    const base = sumProducaoRows(fichasFiltradas as any);
+    const base = sumProducaoRows(fichasFiltradas as unknown as FichaMontadorRow[]);
     // Lançamento sem `detalhe` tem o total contado como MÉDIO pelo fallback do
     // motor. São 33 de 50 na base — o relatório avisa em vez de fingir precisão.
     const semDetalhe = fichasFiltradas.filter(
@@ -1138,7 +1370,6 @@ export default function FichaMontadoresPage() {
   // estilo dos inputs de pares por dificuldade (Médio âmbar · Difícil verde)
   const cellM = "h-9 w-14 rounded-md border border-amber-500/40 bg-amber-500/5 text-center text-sm font-bold tabular-nums text-foreground outline-none transition-colors placeholder:text-muted-foreground/40 focus:border-amber-600";
   const cellD = "h-9 w-14 rounded-md border border-green-600/40 bg-green-600/5 text-center text-sm font-bold tabular-nums text-foreground outline-none transition-colors placeholder:text-muted-foreground/40 focus:border-green-600";
-  const numOf = (s: string) => parseInt(s.replace(/[^\d]/g, "")) || 0;
 
   return (
     <div className="w-full space-y-5">
@@ -1149,17 +1380,21 @@ export default function FichaMontadoresPage() {
         meta={<><span className="font-bold">{montadores.length}</span> PESSOA{montadores.length === 1 ? "" : "S"} POR PAR · <span className="font-bold">{fichasHoje}</span> FICHA{fichasHoje === 1 ? "" : "S"} HOJE</>}
       />
 
-      {/* Um único seletor de contexto. Setor e etapa ficavam em três faixas
-          separadas, fazendo o operador reler o mesmo contexto antes de agir. */}
-      <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-        <div className="flex flex-col gap-3 border-b border-border bg-muted/20 p-3 sm:flex-row sm:items-center sm:justify-between">
+      {/* Contexto compacto: a bancada de lançamento é o herói da tela; esta
+          faixa só responde onde estou e qual trabalho vou fazer. */}
+      <div className="rounded-xl border border-border bg-card p-3 shadow-sm">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div className="flex min-w-0 items-center gap-2 overflow-x-auto">
             <span className="shrink-0 pl-1 font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Setor</span>
             <div className="flex shrink-0 overflow-hidden rounded-lg border border-border bg-background">
           {sectors.map((s) => {
             const gente = employeeSectors.filter((r) => r.sector_key === s.key && String(r.payment_type || "").toLowerCase() === "producao").length;
             return (
-              <button key={s.key} type="button" onClick={() => setSetor(s.key)}
+              <button key={s.key} type="button" onClick={() => {
+                if (s.key === setor) return;
+                if (!confirmarDescarte()) return;
+                iniciarTrocaDeContexto(true); setSetor(s.key);
+              }}
                 title={`${s.label} — ${gente} ${gente === 1 ? "pessoa recebe" : "pessoas recebem"} por produção`}
                 className={`whitespace-nowrap border-r border-border px-3.5 py-2 text-xs font-bold uppercase tracking-wide transition-colors last:border-r-0 ${setor === s.key ? "bg-foreground text-background" : "bg-card text-muted-foreground hover:bg-muted/40"}`}>
                 {s.label}
@@ -1169,28 +1404,19 @@ export default function FichaMontadoresPage() {
           })}
             </div>
           </div>
-          <Button asChild type="button" variant="ghost" size="sm" className="h-8 shrink-0 justify-start text-xs sm:justify-center">
-            <Link to="/rh?tab=funcionarios">Equipe e R$/par</Link>
-          </Button>
-        </div>
-
-        {/* Etapas operacionais em formato compacto. O número comunica ordem e
-            evita que lançamento e dinheiro pareçam duas páginas concorrentes. */}
-        <div className="grid gap-px bg-border sm:grid-cols-2">
-          {TABS.map((t, index) => (
-            <button key={t.id} type="button" onClick={() => setTab(t.id)}
-              className={`group flex min-h-[66px] items-center gap-3 px-4 py-3 text-left transition-colors ${tab === t.id ? "bg-background text-foreground" : "bg-card text-muted-foreground hover:bg-muted/40 hover:text-foreground"}`}>
-              <span className={`font-mono text-[10px] font-bold tracking-[0.16em] ${tab === t.id ? "text-primary" : "text-muted-foreground/60"}`}>0{index + 1}</span>
-              <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${tab === t.id ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground group-hover:text-foreground"}`}>
-                <t.icon className="h-4 w-4" />
-              </span>
-              <span className="min-w-0">
-                <span className="block text-sm font-semibold">{t.label}</span>
-                <span className="mt-0.5 block truncate text-xs font-normal text-muted-foreground">{t.description}</span>
-              </span>
-              {tab === t.id && <span className="ml-auto hidden rounded-full bg-primary/10 px-2 py-1 font-mono text-[9px] font-bold uppercase tracking-wider text-primary sm:inline">Agora</span>}
-            </button>
-          ))}
+          <div className="flex flex-wrap items-center gap-2">
+            <nav aria-label="Etapa da ficha" className="flex overflow-hidden rounded-lg border border-border bg-background">
+              {TABS.map((item) => (
+                <button key={item.id} type="button" onClick={() => { if (item.id !== tab) setTab(item.id); }} title={item.description}
+                  className={`flex min-h-9 items-center gap-2 border-r border-border px-3 text-xs font-semibold transition-colors last:border-r-0 ${tab === item.id ? "bg-foreground text-background" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"}`}>
+                  <item.icon className="h-4 w-4" /> {item.label}
+                </button>
+              ))}
+            </nav>
+            <Button asChild type="button" variant="ghost" size="sm" className="h-9 shrink-0 justify-start text-xs sm:justify-center">
+              <Link to="/rh?tab=funcionarios">Equipe e R$/par</Link>
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -1229,21 +1455,44 @@ export default function FichaMontadoresPage() {
 
       {/* ════ CHAMADA DO DIA ════ */}
       {tab === "lancamento" && (
-        <div className="space-y-4">
+        <div className={`space-y-4 ${(chamadaView === "dia" ? dirtyDia : dirtySem) > 0 ? "pb-[calc(120px+env(safe-area-inset-bottom))]" : ""}`}>
           {/* controles */}
           <div className="flex flex-wrap items-end gap-3 rounded-lg border border-border bg-muted/20 p-3">
             {chamadaView === "dia" ? (
               <div>
                 <label className={lbl}>Data</label>
-                <Input type="date" value={chamadaDia} onChange={(e) => setChamadaDia(e.target.value)} className="h-9 w-44" />
+                <div className="flex items-center gap-1">
+                  <Input type="date" value={chamadaDia} onChange={(event) => {
+                    const next = event.target.value;
+                    if (!next) return;
+                    if (next === chamadaDia || confirmarDescarte()) {
+                      if (next !== chamadaDia) iniciarTrocaDeContexto();
+                      setChamadaDia(next);
+                      if (next) setSemanaAnchor(next);
+                    }
+                  }} className="h-9 w-40" />
+                  {chamadaDia !== todayISO() && (
+                    <Button type="button" variant="outline" size="sm" className="h-9 px-3 text-xs" onClick={() => {
+                      if (!confirmarDescarte()) return;
+                      iniciarTrocaDeContexto();
+                      setChamadaDia(todayISO()); setSemanaAnchor(todayISO());
+                    }}>Hoje</Button>
+                  )}
+                </div>
               </div>
             ) : (
               <div>
                 <label className={lbl}>Semana</label>
                 <div className="flex items-center gap-1">
-                  <Button type="button" variant="outline" size="sm" className="h-9 w-9 p-0" onClick={() => deslocarSemana(-1)} aria-label="Semana anterior"><CaretLeft className="h-4 w-4" /></Button>
+                  <Button type="button" variant="outline" size="sm" className="h-9 w-9 p-0" onClick={() => {
+                    if (!confirmarDescarte()) return;
+                    iniciarTrocaDeContexto(); deslocarSemana(-1);
+                  }} aria-label="Semana anterior"><CaretLeft className="h-4 w-4" /></Button>
                   <div className="h-9 inline-flex items-center rounded-md border border-border bg-card px-3 text-sm font-medium tabular-nums">{weekLabel}</div>
-                  <Button type="button" variant="outline" size="sm" className="h-9 w-9 p-0" onClick={() => deslocarSemana(1)} aria-label="Próxima semana"><CaretRight className="h-4 w-4" /></Button>
+                  <Button type="button" variant="outline" size="sm" className="h-9 w-9 p-0" onClick={() => {
+                    if (!confirmarDescarte()) return;
+                    iniciarTrocaDeContexto(); deslocarSemana(1);
+                  }} aria-label="Próxima semana"><CaretRight className="h-4 w-4" /></Button>
                 </div>
               </div>
             )}
@@ -1260,7 +1509,13 @@ export default function FichaMontadoresPage() {
             </div>
             <div className="ml-auto flex w-full overflow-hidden rounded-md border border-border bg-card sm:w-auto">
               {(["dia", "semana"] as ChamadaView[]).map((v) => (
-                <button key={v} type="button" onClick={() => setChamadaView(v)}
+                <button key={v} type="button" onClick={() => {
+                  if (v === chamadaView) return;
+                  if (!confirmarDescarte()) return;
+                  iniciarTrocaDeContexto();
+                  if (v === "semana") setSemanaAnchor(chamadaDia);
+                  setChamadaView(v);
+                }}
                   className={`flex-1 px-4 py-1.5 text-xs font-semibold uppercase tracking-wide transition-colors sm:flex-none ${chamadaView === v ? "bg-foreground text-background" : "bg-card text-muted-foreground hover:bg-muted/40"}`}>{v}</button>
               ))}
             </div>
@@ -1275,21 +1530,71 @@ export default function FichaMontadoresPage() {
           ) : chamadaView === "dia" ? (
             <Panel
               flush
-              eyebrow="CONTAGEM DO DIA"
+              eyebrow="BANCADA DE LANÇAMENTO"
               title={`${weekdayName(chamadaDia)} · ${fmtDia(chamadaDia)}`}
-              subtitle={detalharDia || temColunaRara
-                ? "Pares por tamanho de ficha (12/15/18) e por dificuldade — Médio (âmbar) e Difícil (verde) pagam R$/par diferentes."
-                : "Pares produzidos no dia. Ficha de 12 e dificuldade média — abra “Todos os tamanhos” para lançar ficha 15/18 ou par difícil."}
+              subtitle={detalharDia
+                ? "Grade completa para conferência. Médio (âmbar) e Difícil (verde) mantêm seus R$/par separados."
+                : `Régua ativa: ficha ${diaSize}, ${DIFF_LABEL[diaDiff].toLowerCase()}. Clique em +1 ficha ou digite os pares; 7f vira ${7 * diaSize} pares.`}
               actions={
                 <div className="flex flex-wrap items-center gap-2">
                   <Button type="button" variant={detalharDia ? "default" : "outline"} size="sm" className="h-8"
                     aria-pressed={detalharDia} onClick={() => setDetalharDia((v) => !v)}>
-                    {detalharDia ? "Só o padrão" : "Todos os tamanhos"}
+                    {detalharDia ? "Voltar à régua" : "Conferir grade"}
                   </Button>
-                  <Button type="button" variant="outline" size="sm" className="h-8" onClick={zerarDia}>Zerar tudo</Button>
+                  <Button type="button" variant="ghost" size="sm" className="h-8 text-primary" onClick={() => setConfirmarZerar("dia")}>Zerar o dia</Button>
                 </div>
               }
             >
+              {/* A régua é a assinatura da tela: primeiro o encarregado escolhe
+                  a ficha física que está contando; depois percorre as pessoas. */}
+              <section aria-label="Régua de lançamento" className="border-b border-border bg-foreground text-background">
+                <div className="grid gap-0 lg:grid-cols-[minmax(0,1fr)_auto]">
+                  <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-[9px] font-bold uppercase tracking-[0.18em] text-background/55">Ficha</span>
+                      <div className="flex overflow-hidden rounded-md border border-background/25">
+                        {SIZES.map((size) => (
+                          <button key={size} type="button" onClick={() => { setDiaSize(size); setDetalharDia(false); }}
+                            className={`min-h-9 border-r border-background/20 px-3 font-mono text-xs font-bold last:border-r-0 ${diaSize === size ? "bg-background text-foreground" : "text-background/70 hover:bg-background/10 hover:text-background"}`}>
+                            {size}<span className="ml-1 text-[8px] uppercase opacity-65">pares</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    {diffsAtivos.length > 1 && (
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-[9px] font-bold uppercase tracking-[0.18em] text-background/55">Dificuldade</span>
+                        <div className="flex overflow-hidden rounded-md border border-background/25">
+                          {diffsAtivos.map((diff) => (
+                            <button key={diff} type="button" onClick={() => { setDiaDiff(diff); setDetalharDia(false); }}
+                              className={`min-h-9 border-r border-background/20 px-3 text-xs font-bold last:border-r-0 ${diaDiff === diff ? (diff === "medio" ? "bg-amber-500 text-white" : "bg-green-600 text-white") : "text-background/70 hover:bg-background/10 hover:text-background"}`}>
+                              {DIFF_LABEL[diff]}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    <p className="text-[10px] text-background/55 sm:ml-auto">
+                      <ArrowDown className="mr-1 inline h-3 w-3" /> Enter avança · ⌘/Ctrl+S salva
+                    </p>
+                  </div>
+                  <div className="flex items-center justify-between gap-5 border-t border-background/15 px-4 py-3 font-mono tabular-nums lg:border-l lg:border-t-0">
+                    <div>
+                      <span className="block text-[9px] uppercase tracking-wider text-background/55">Nesta régua</span>
+                      <strong className="text-lg">{reguaPares.toLocaleString("pt-BR")}</strong><span className="ml-1 text-[9px] uppercase text-background/55">pares</span>
+                    </div>
+                    <div className="text-right">
+                      <span className="block text-[9px] uppercase tracking-wider text-background/55">Fichas</span>
+                      <strong className="text-lg text-primary">{reguaFichas}</strong>
+                    </div>
+                  </div>
+                </div>
+                {!detalharDia && foraDaRegua > 0 && (
+                  <button type="button" onClick={() => setDetalharDia(true)} className="block w-full border-t border-background/15 px-4 py-2 text-left font-mono text-[10px] text-background/65 hover:bg-background/10 hover:text-background">
+                    + {foraDaRegua.toLocaleString("pt-BR")} pares em outros tamanhos/dificuldades — conferir grade
+                  </button>
+                )}
+              </section>
               {/* No celular, cada pessoa vira uma ficha de apontamento. A grade
                   desktop continua densa, mas o telefone não precisa arrastar uma
                   tabela para descobrir nome, total e botão de salvar. */}
@@ -1297,11 +1602,16 @@ export default function FichaMontadoresPage() {
                 {rosterFiltrado.map((e) => {
                   const dm = mapOf(e.id);
                   const pp = paresOfDiffMap(dm), ff = fichasOfDiffMap(dm);
+                  const fechado = diaFechado.get(`${e.id}|${chamadaDia}`);
+                  const alterado = JSON.stringify(dm) !== JSON.stringify(origPares[e.id] || emptyDiffMap());
                   return (
-                    <div key={e.id} className={`p-4 ${pp > 0 ? "border-l-2 border-l-primary bg-primary/[0.025]" : "border-l-2 border-l-transparent"}`}>
+                    <div key={e.id} className={`p-4 ${alterado ? "border-l-2 border-l-amber-500 bg-amber-500/[0.025]" : pp > 0 ? "border-l-2 border-l-primary bg-primary/[0.025]" : "border-l-2 border-l-transparent"}`}>
                       <div className="mb-3 flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold text-foreground">{e.name}</p>
+                          <p className="flex items-center gap-1.5 truncate text-sm font-semibold text-foreground">
+                            {e.name}
+                            {fechado && <span title={fechado === "pago" ? "Dia pago" : "Dia na folha"}><LockKey className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /></span>}
+                          </p>
                           <p className="truncate text-[11px] text-muted-foreground">{[e.role, e.department].filter(Boolean).join(" · ") || cfgSetor.label}</p>
                         </div>
                         <div className="shrink-0 text-right font-mono tabular-nums">
@@ -1309,21 +1619,34 @@ export default function FichaMontadoresPage() {
                           <span className="block text-[9px] uppercase tracking-wider text-muted-foreground">pares · <b className="text-primary">{ff} fichas</b></span>
                         </div>
                       </div>
-                      <div className="grid grid-cols-2 gap-2">
+                      {!detalharDia ? (
+                        <div className="flex items-center justify-between gap-3">
+                          <FichaCounter value={dm[diaDiff][diaSize] || 0} tamanho={diaSize} diff={diaDiff} pessoa={e.name}
+                            locked={Boolean(fechado) || loading || savingDia}
+                            onChange={(value) => setPS(e.id, diaDiff, diaSize, value)} onKeyDown={avancarEntrada} />
+                          {alterado && <span className="font-mono text-[9px] font-bold uppercase tracking-wider text-amber-600">alterado</span>}
+                        </div>
+                      ) : <div className="grid grid-cols-2 gap-2">
                         {colunasDia.map(({ sz, diff }) => (
                           <label key={`${sz}-${diff}`} className={`flex items-center justify-between gap-2 rounded-lg border px-3 py-2 ${diff === "medio" ? "border-amber-500/30 bg-amber-500/5" : "border-green-600/30 bg-green-600/5"}`}>
                             <span>
                               <span className="block text-[11px] font-bold text-foreground">Ficha {sz}</span>
                               <span className={`block text-[9px] font-bold uppercase tracking-wider ${diff === "medio" ? "text-amber-600" : "text-green-700 dark:text-green-400"}`}>{DIFF_LABEL[diff]}</span>
                             </span>
-                            <input inputMode="numeric" value={dm[diff][sz] || ""} placeholder="0"
+                            <input inputMode="numeric" enterKeyHint="next" readOnly={Boolean(fechado) || loading || savingDia} value={dm[diff][sz] || ""} placeholder="0"
                               onFocus={(ev) => ev.target.select()}
-                              onChange={(ev) => setPS(e.id, diff, sz, numOf(ev.target.value))}
+                              onChange={(ev) => {
+                                const value = parseParesEntry(ev.target.value, sz);
+                                if (value != null) setPS(e.id, diff, sz, value);
+                              }}
+                              onKeyDown={avancarEntrada}
+                              data-ficha-entry={`${diff}-${sz}`}
                               className={`${diff === "medio" ? cellM : cellD} h-10 w-16 bg-background`}
                               aria-label={`${DIFF_LABEL[diff]} · ficha de ${sz} pares — ${e.name}`} />
                           </label>
                         ))}
-                      </div>
+                      </div>}
+                      {fechado && <p className="mt-2 flex items-center gap-1 text-[10px] text-muted-foreground"><LockKey className="h-3 w-3" /> {fechado === "pago" ? "Dia pago" : "Dia já incluído na folha"} · somente leitura</p>}
                     </div>
                   );
                 })}
@@ -1340,7 +1663,7 @@ export default function FichaMontadoresPage() {
                     <tr className="border-b-2 border-border/80 bg-muted/40 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                       <th className="px-4 py-2 text-left align-bottom" style={{ minWidth: 180 }}>{cfgSetor.sing.replace(/^./, (c) => c.toUpperCase())}</th>
                       {colunasDia.map(({ sz, diff }) => (
-                        <th key={`${sz}-${diff}`} className="border-l border-border px-1 py-1.5 text-center align-bottom" style={{ width: 72 }}>
+                        <th key={`${sz}-${diff}`} className="border-l border-border px-2 py-1.5 text-center align-bottom" style={{ width: detalharDia ? 72 : 224 }}>
                           <span className="block text-[11px] leading-tight">{sz}<span className="ml-0.5 font-mono text-[9px] normal-case text-muted-foreground/70">pares</span></span>
                           {/* Rótulo da dificuldade sempre presente: cor sozinha não
                               informa (daltonismo / impressão em P&B). */}
@@ -1355,19 +1678,37 @@ export default function FichaMontadoresPage() {
                     {rosterFiltrado.map((e) => {
                       const dm = mapOf(e.id);
                       const pp = paresOfDiffMap(dm), ff = fichasOfDiffMap(dm);
+                      const fechado = diaFechado.get(`${e.id}|${chamadaDia}`);
+                      const alterado = JSON.stringify(dm) !== JSON.stringify(origPares[e.id] || emptyDiffMap());
                       return (
-                        <tr key={e.id} className="border-b border-border/50 transition-colors hover:bg-primary/[0.03]" style={{ borderLeft: `2px solid ${pp > 0 ? "hsl(var(--primary))" : "transparent"}` }}>
+                        <tr key={e.id} className={`border-b border-border/50 transition-colors ${fechado ? "bg-muted/30" : "hover:bg-primary/[0.03]"}`} style={{ borderLeft: `2px solid ${alterado ? "hsl(var(--warning))" : pp > 0 ? "hsl(var(--primary))" : "transparent"}` }}>
                           <td className="px-4 py-2">
-                            <div className="truncate text-sm font-semibold text-foreground">{e.name}</div>
+                            <div className="flex items-center gap-1.5 truncate text-sm font-semibold text-foreground">
+                              {e.name}
+                              {alterado && <span className="font-mono text-[8px] font-bold uppercase tracking-wider text-amber-600">alterado</span>}
+                              {fechado && <span title={fechado === "pago" ? "Dia pago" : "Dia na folha"}><LockKey className="h-3.5 w-3.5 text-muted-foreground" /></span>}
+                            </div>
                             <div className="truncate text-[11px] text-muted-foreground">{[e.role, e.department].filter(Boolean).join(" · ") || "Montagem"}</div>
                           </td>
                           {colunasDia.map(({ sz, diff }) => (
-                            <td key={`${sz}-${diff}`} className="border-l border-border px-1 py-1.5 text-center">
-                              <input inputMode="numeric" value={dm[diff][sz] || ""} placeholder="0"
-                                onFocus={(ev) => ev.target.select()}
-                                onChange={(ev) => setPS(e.id, diff, sz, numOf(ev.target.value))}
-                                className={diff === "medio" ? cellM : cellD}
-                                aria-label={`${DIFF_LABEL[diff]} · ficha de ${sz} pares — ${e.name}`} />
+                            <td key={`${sz}-${diff}`} className="border-l border-border px-2 py-1.5 text-center">
+                              {!detalharDia ? (
+                                <FichaCounter value={dm[diff][sz] || 0} tamanho={sz} diff={diff} pessoa={e.name}
+                                  locked={Boolean(fechado) || loading || savingDia}
+                                  onChange={(value) => setPS(e.id, diff, sz, value)} onKeyDown={avancarEntrada} />
+                              ) : (
+                                <input inputMode="numeric" enterKeyHint="next" readOnly={Boolean(fechado) || loading || savingDia}
+                                  value={dm[diff][sz] || ""} placeholder="0"
+                                  onFocus={(ev) => ev.target.select()}
+                                  onChange={(ev) => {
+                                    const value = parseParesEntry(ev.target.value, sz);
+                                    if (value != null) setPS(e.id, diff, sz, value);
+                                  }}
+                                  onKeyDown={avancarEntrada}
+                                  data-ficha-entry={`${diff}-${sz}`}
+                                  className={diff === "medio" ? cellM : cellD}
+                                  aria-label={`${DIFF_LABEL[diff]} · ficha de ${sz} pares — ${e.name}${fechado ? " (somente leitura)" : ""}`} />
+                              )}
                             </td>
                           ))}
                           <td className="border-l border-border px-3 py-2 text-right text-sm font-semibold tabular-nums text-foreground">{pp.toLocaleString("pt-BR")}</td>
@@ -1398,12 +1739,14 @@ export default function FichaMontadoresPage() {
                 </table>
               </div>
               <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3.5">
-                <span className="text-[11px] text-muted-foreground">
+                <span className="text-[11px] text-muted-foreground" aria-live="polite">
                   <strong className="text-foreground">{totalDiaPares.toLocaleString("pt-BR")}</strong> pares · <strong className="text-primary">{totalDiaFichas}</strong> fichas
-                  {dirtyDia > 0 && <span className="ml-2 font-semibold text-amber-600">● {dirtyDia} alterado{dirtyDia === 1 ? "" : "s"}</span>}
+                  {dirtyDia > 0
+                    ? <span className="ml-2 font-semibold text-amber-600">● {dirtyDia} pessoa{dirtyDia === 1 ? "" : "s"} alterada{dirtyDia === 1 ? "" : "s"}</span>
+                    : salvoEm && <span className="ml-2 font-medium text-green-600"><CheckCircle className="mr-1 inline h-3 w-3" />Salvo às {salvoEm.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</span>}
                 </span>
-                <Button type="button" onClick={salvarDia} disabled={savingDia} className="h-10 gap-2">
-                  <FloppyDisk className="h-4 w-4" /> {savingDia ? "Salvando…" : "Salvar o dia"}
+                <Button type="button" onClick={salvarDia} disabled={savingDia || dirtyDia === 0} className="h-10 gap-2">
+                  <FloppyDisk className="h-4 w-4" /> {savingDia ? "Salvando…" : "Salvar alterações"}
                 </Button>
               </div>
             </Panel>
@@ -1434,7 +1777,7 @@ export default function FichaMontadoresPage() {
                         className={`px-3 py-1.5 text-xs font-semibold transition-colors ${semSize === sz ? "bg-foreground text-background" : "bg-card text-muted-foreground hover:bg-muted/40"}`}>{sz}</button>
                     ))}
                   </div>
-                  <Button type="button" variant="outline" size="sm" className="h-8" onClick={zerarSemana}>Zerar tudo</Button>
+                  <Button type="button" variant="ghost" size="sm" className="h-8 text-primary" onClick={() => setConfirmarZerar("semana")}>Zerar semana</Button>
                 </div>
               }
             >
@@ -1442,7 +1785,8 @@ export default function FichaMontadoresPage() {
                   a matriz que editava UMA fatia (dificuldade × tamanho) por vez:
                   eram até 6 passadas na mesma grade, e a marca +N existia só pra
                   avisar do que a célula não conseguia mostrar. */}
-              <div className="divide-y divide-border/60">
+              <div className="overflow-x-auto">
+                <div className="min-w-[680px] divide-y divide-border/60 sm:min-w-0">
                 {rosterFiltrado.map((e) => {
                   const porPar = String(e.payment_type || "").toLowerCase() === "producao";
                   const v = valorSemanaDe(e.id);
@@ -1461,24 +1805,30 @@ export default function FichaMontadoresPage() {
                         // O tamanho é a única dimensão que continua atrás de um
                         // seletor (100% do histórico usa 12), então a marca fica.
                         const fora = paresOfMap(cel[df]) - val;
-                        const travado = diaPago.has(`${e.id}|${d}`);
+                        const fechamento = diaFechado.get(`${e.id}|${d}`);
+                        const travado = Boolean(fechamento);
                         return (
                           <div key={d} className="relative">
-                            <input inputMode="numeric" readOnly={travado}
+                            <input inputMode="numeric" enterKeyHint="next" readOnly={travado || loading || savingSem}
                               value={val || ""} placeholder="·"
                               onFocus={(ev) => ev.target.select()}
-                              onChange={(ev) => setWeekCell(e.id, d, df, semSize, numOf(ev.target.value))}
-                              title={travado ? "Dia já pago por uma folha — o valor está congelado no lançamento." : undefined}
-                              className={`h-8 w-full rounded border text-center text-sm font-semibold tabular-nums outline-none transition-colors placeholder:text-muted-foreground/40 ${
+                              onChange={(ev) => {
+                                const value = parseParesEntry(ev.target.value, semSize);
+                                if (value != null) setWeekCell(e.id, d, df, semSize, value);
+                              }}
+                              onKeyDown={avancarEntrada}
+                              data-ficha-entry={`${df}-${semSize}`}
+                              title={travado ? (fechamento === "pago" ? "Dia pago — o lançamento está congelado." : "Dia já incluído na folha — o lançamento está congelado.") : "Digite pares ou use 7f para sete fichas."}
+                              className={`h-10 min-w-11 w-full rounded border text-center text-sm font-semibold tabular-nums outline-none transition-colors placeholder:text-muted-foreground/40 ${
                                 travado
                                   ? "cursor-not-allowed border-border bg-muted/60 text-muted-foreground"
                                   : df === "medio"
                                     ? "border-amber-500/40 bg-card text-foreground focus:border-amber-600"
                                     : "border-green-600/40 bg-card text-foreground focus:border-green-600"
                               } ${dowIdx(d) >= 5 ? "opacity-70" : ""}`}
-                              aria-label={`${e.name} ${fmtDia(d)} — ${DIFF_LABEL[df]}, ficha de ${semSize}${travado ? " (pago, somente leitura)" : ""}`} />
+                              aria-label={`${e.name} ${fmtDia(d)} — ${DIFF_LABEL[df]}, ficha de ${semSize}${travado ? " (na folha, somente leitura)" : ""}`} />
                             {travado && (
-                              <span className="pointer-events-none absolute -top-1 -right-1 text-[9px]" aria-hidden>🔒</span>
+                              <LockKey className="pointer-events-none absolute -right-1 -top-1 h-3 w-3 text-muted-foreground" aria-hidden />
                             )}
                             {fora > 0 && (
                               <span className="pointer-events-none absolute -bottom-0.5 right-0.5 font-mono text-[9px] font-bold leading-none text-primary"
@@ -1536,14 +1886,50 @@ export default function FichaMontadoresPage() {
                     <Button type="button" variant="outline" size="sm" className="ml-2 h-7" onClick={() => setBusca("")}>Limpar busca</Button>
                   </div>
                 )}
+                </div>
               </div>
               <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3">
-                <span className="text-[11px] text-muted-foreground">Semana {weekLabel} (todos os tamanhos): <strong className="text-foreground">{semParesTotal.toLocaleString("pt-BR")}</strong> pares · <strong className="text-primary">{semFichasTotal}</strong> fichas</span>
-                <Button type="button" onClick={salvarSemana} disabled={savingSem} className="h-10 gap-2">
-                  <FloppyDisk className="h-4 w-4" /> {savingSem ? "Salvando…" : "Salvar semana"}
+                <span className="text-[11px] text-muted-foreground" aria-live="polite">Semana {weekLabel} (todos os tamanhos): <strong className="text-foreground">{semParesTotal.toLocaleString("pt-BR")}</strong> pares · <strong className="text-primary">{semFichasTotal}</strong> fichas
+                  {dirtySem > 0 && <span className="ml-2 font-semibold text-amber-600">● {dirtySem} dia{dirtySem === 1 ? "" : "s"} alterado{dirtySem === 1 ? "" : "s"}</span>}
+                </span>
+                <Button type="button" onClick={salvarSemana} disabled={savingSem || dirtySem === 0} className="h-10 gap-2">
+                  <FloppyDisk className="h-4 w-4" /> {savingSem ? "Salvando…" : "Salvar alterações"}
                 </Button>
               </div>
             </Panel>
+          )}
+
+          {(chamadaView === "dia" ? dirtyDia : dirtySem) > 0 && (
+            <aside aria-label="Alterações não salvas" className="fixed bottom-[calc(1rem+env(safe-area-inset-bottom))] left-1/2 z-sticky flex w-[min(94vw,760px)] -translate-x-1/2 flex-col gap-3 rounded-xl border-2 border-foreground bg-background p-3 shadow-sharp sm:flex-row sm:items-center">
+              <div className="flex min-w-0 flex-1 items-center gap-3">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-warning text-warning-foreground">
+                  <FloppyDisk className="h-5 w-5" />
+                </span>
+                <div className="min-w-0" aria-live="polite">
+                  <p className="truncate text-sm font-bold text-foreground">
+                    {chamadaView === "dia"
+                      ? `${dirtyDia} pessoa${dirtyDia === 1 ? "" : "s"} com alteração`
+                      : `${dirtySem} dia${dirtySem === 1 ? "" : "s"} com alteração`}
+                  </p>
+                  <p className="truncate font-mono text-[10px] text-muted-foreground">
+                    {(chamadaView === "dia" ? deltaDiaPares : deltaSemPares) >= 0 ? "+" : ""}
+                    {(chamadaView === "dia" ? deltaDiaPares : deltaSemPares).toLocaleString("pt-BR")} pares no rascunho
+                    {chamadaView === "dia" && dirtyDia > dirtyDiaVisivel && ` · ${dirtyDia - dirtyDiaVisivel} fora da busca`}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 sm:shrink-0">
+                <Button type="button" variant="outline" className="h-10 flex-1 gap-1.5 sm:flex-none" onClick={() => setConfirmarDescartarDock(true)}>
+                  <X className="h-4 w-4" /> Descartar
+                </Button>
+                <Button type="button" className="h-10 flex-1 gap-1.5 sm:flex-none"
+                  disabled={chamadaView === "dia" ? savingDia : savingSem}
+                  onClick={() => { if (chamadaView === "dia") void salvarDia(); else void salvarSemana(); }}>
+                  <FloppyDisk className="h-4 w-4" />
+                  {chamadaView === "dia" ? (savingDia ? "Salvando…" : "Salvar o dia") : (savingSem ? "Salvando…" : "Salvar semana")}
+                </Button>
+              </div>
+            </aside>
           )}
         </div>
       )}
@@ -2021,7 +2407,9 @@ export default function FichaMontadoresPage() {
                             ) : <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Sem pagamento por par</span>}
                             <span className="flex items-center gap-3">
                               <button onClick={() => abrirDia(f)} className="text-xs font-medium text-primary hover:underline">Abrir</button>
-                              <button onClick={() => excluir(f)} className="text-xs font-medium text-muted-foreground hover:text-red-600 dark:hover:text-red-400">Excluir</button>
+                              {isFichaLocked(f)
+                                ? <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground" title="Lançamento fechado pela folha"><LockKey className="h-3 w-3" /> Protegido</span>
+                                : <button onClick={() => excluir(f)} className="text-xs font-medium text-muted-foreground hover:text-primary">Excluir</button>}
                             </span>
                           </div>
                         </article>
@@ -2087,7 +2475,9 @@ export default function FichaMontadoresPage() {
                               </td>
                               <td className="px-3 py-2 text-right">
                                 <button onClick={() => abrirDia(f)} className="mr-3 text-xs font-medium text-primary hover:underline">Abrir o dia</button>
-                                <button onClick={() => excluir(f)} className="text-xs font-medium text-muted-foreground hover:text-red-600 dark:hover:text-red-400">Excluir</button>
+                                {isFichaLocked(f)
+                                  ? <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground" title="Lançamento fechado pela folha"><LockKey className="h-3 w-3" /> Protegido</span>
+                                  : <button onClick={() => excluir(f)} className="text-xs font-medium text-muted-foreground hover:text-primary">Excluir</button>}
                               </td>
                             </tr>
                           );
@@ -2110,6 +2500,43 @@ export default function FichaMontadoresPage() {
             action={<Button type="button" variant="outline" size="sm" onClick={() => { setPMode("semana"); setFiltroMontador("__all__"); setPagStatus("todos"); }}>Limpar filtros</Button>} />
         </Panel>
       )}
+
+      <AlertDialog open={confirmarZerar != null} onOpenChange={(open) => { if (!open) setConfirmarZerar(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{confirmarZerar === "semana" ? "Zerar a semana?" : "Zerar o dia?"}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmarZerar === "semana"
+                ? `Todos os pares editáveis de ${weekLabel} voltarão a zero. Dias já incluídos na folha permanecem intactos.`
+                : `Todos os pares editáveis de ${weekdayName(chamadaDia)}, ${fmtDia(chamadaDia)}, voltarão a zero. Lançamentos na folha permanecem intactos.`}
+              {" "}A exclusão só chega ao banco depois de salvar.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Manter lançamentos</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmarZerar === "semana" ? zerarSemana : zerarDia} className="bg-primary text-primary-foreground hover:bg-primary/90">
+              Zerar e revisar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={confirmarDescartarDock} onOpenChange={setConfirmarDescartarDock}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Descartar alterações não salvas?</AlertDialogTitle>
+            <AlertDialogDescription>
+              O rascunho {chamadaView === "dia" ? `de ${fmtDia(chamadaDia)}` : `da semana ${weekLabel}`} voltará aos últimos valores salvos. Esta ação não altera o banco.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Continuar editando</AlertDialogCancel>
+            <AlertDialogAction onClick={() => { descartarRascunhoAtual(); setConfirmarDescartarDock(false); }}>
+              Descartar rascunho
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {pagarAlvo && (
         <PagarProducaoDialog
