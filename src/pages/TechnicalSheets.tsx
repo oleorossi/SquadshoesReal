@@ -138,7 +138,7 @@ import { useSearchParams, Link } from 'react-router-dom';
 import { SignedImage } from '@/components/ui/signed-image';
 import { useDisplaySizeKeys } from '@/lib/soleGradeKeys';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
-import { FileText, Plus, Trash as Trash2, PencilSimple as Pencil, CircleNotch as Loader2, Package, Copy, Stack as Layers, Scissors, Drop as Droplets, Shield, Cube as Box, Footprints, FloppyDisk as Save, Wrench, Tag, ImageSquare as ImagePlus, Warning as AlertTriangle, ClockCounterClockwise as History, Factory, MagicWand as Wand2, ArrowsClockwise as RefreshCw, Gauge, ArrowLeft, ClipboardText as ClipboardCopy, Lock, Palette, CurrencyDollar as DollarSign } from '@phosphor-icons/react';
+import { FileText, Plus, Trash as Trash2, PencilSimple as Pencil, CircleNotch as Loader2, Package, Copy, Stack as Layers, Scissors, Drop as Droplets, Shield, Cube as Box, Footprints, FloppyDisk as Save, Wrench, Tag, ImageSquare as ImagePlus, Warning as AlertTriangle, ClockCounterClockwise as History, Factory, MagicWand as Wand2, ArrowsClockwise as RefreshCw, Gauge, ArrowLeft, ClipboardText as ClipboardCopy, Lock, Palette, CurrencyDollar as DollarSign, GridFour } from '@phosphor-icons/react';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -173,6 +173,7 @@ import { TechnicalReferencePanel } from '@/components/technical-sheets/Technical
 import { NonFiniteDevWatcher } from '@/components/technical-sheets/NonFiniteDevWatcher';
 import { SheetsAuditButton } from '@/components/technical-sheets/SheetsAuditPanel';
 import { CatalogModelsPanel } from '@/components/technical-sheets/CatalogModelsPanel';
+import { TechnicalSheetLayoutPreview } from '@/components/technical-sheets/TechnicalSheetLayoutPreview';
 import { AviamentoRangeTab } from '@/components/technical-sheets/AviamentoRangeTab';
 import { useBomOperations } from '@/hooks/useBomOperations';
 import { useSoleColorMappings, useUpsertSoleColorMapping } from '@/hooks/useSoleColorMappings';
@@ -338,6 +339,7 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
   const [searchTerm, setSearchTerm] = useState('');
   const [bulkSoleApplying, setBulkSoleApplying] = useState(false);
   const [bulkSoleDialogOpen, setBulkSoleDialogOpen] = useState(false);
+  const [layoutPreviewOpen, setLayoutPreviewOpen] = useState(false);
    const [bulkSoleSelected, setBulkSoleSelected] = useState<string>('');
     const [bulkSoleOverwrite, setBulkSoleOverwrite] = useState(false);
 
@@ -631,6 +633,16 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
             <Badge variant="secondary" className="text-xs font-mono ml-1">
               {filteredSheets.length}
             </Badge>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 gap-1.5 text-xs"
+              onClick={() => setLayoutPreviewOpen(true)}
+            >
+              <GridFour className="h-3.5 w-3.5" />
+              Preview · 5 layouts
+            </Button>
           </div>
         </div>
 
@@ -860,6 +872,12 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
           </div>
         )}
       </div>
+
+      <TechnicalSheetLayoutPreview
+        open={layoutPreviewOpen}
+        onOpenChange={setLayoutPreviewOpen}
+        sheets={filteredSheets}
+      />
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
