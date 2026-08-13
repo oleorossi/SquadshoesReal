@@ -1117,9 +1117,9 @@ export default function FichaMontadoresPage() {
   }
 
   const lbl = "block text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1";
-  const TABS: { id: Tab; label: string; icon: any }[] = [
-    { id: "lancamento", label: "Chamada do dia", icon: ClipboardText },
-    { id: "producao", label: "Produção e pagamento", icon: ChartBar },
+  const TABS: { id: Tab; label: string; description: string; icon: any }[] = [
+    { id: "lancamento", label: "Lançar produção", description: "Registre pares por pessoa e dia", icon: ClipboardText },
+    { id: "producao", label: "Conferir e pagar", description: "Confira totais, folha e quitação", icon: ChartBar },
   ];
 
   // estilo dos inputs de pares por dificuldade (Médio âmbar · Difícil vermelho)
@@ -1141,10 +1141,10 @@ export default function FichaMontadoresPage() {
           inteira: não precisa mais da rolagem horizontal que os 11 setores exigiam. */}
       <div className="flex flex-wrap gap-0 overflow-hidden rounded-lg border border-border w-fit">
           {sectors.map((s) => {
-            const gente = employeeSectors.filter((r) => r.sector_key === s.key).length;
+            const gente = employeeSectors.filter((r) => r.sector_key === s.key && String(r.payment_type || "").toLowerCase() === "producao").length;
             return (
               <button key={s.key} type="button" onClick={() => setSetor(s.key)}
-                title={`${s.label} — ${gente} ${gente === 1 ? "pessoa" : "pessoas"} no setor`}
+                title={`${s.label} — ${gente} ${gente === 1 ? "pessoa recebe" : "pessoas recebem"} por produção`}
                 className={`whitespace-nowrap border-r border-border px-4 py-2 text-sm font-bold uppercase tracking-wide transition-colors last:border-r-0 ${setor === s.key ? "bg-foreground text-background" : "bg-card text-muted-foreground hover:bg-muted/40"}`}>
                 {s.label}
                 <span className={`ml-1.5 font-mono text-[10px] ${setor === s.key ? "text-background/70" : "text-muted-foreground/60"}`}>{gente}</span>
@@ -1198,12 +1198,19 @@ export default function FichaMontadoresPage() {
         </div>
       )}
 
-      {/* abas */}
-      <div className="flex flex-wrap gap-1 border-b border-border">
+      {/* Etapas operacionais — a tela abre no lançamento; conferência e pagamento
+          são uma segunda etapa para não misturar digitação diária com dinheiro. */}
+      <div className="grid gap-px overflow-hidden rounded-lg border border-border bg-border md:grid-cols-2">
         {TABS.map((t) => (
           <button key={t.id} type="button" onClick={() => setTab(t.id)}
-            className={`flex items-center gap-1.5 px-4 py-2 text-sm font-semibold transition-colors border-b-2 -mb-px ${tab === t.id ? "border-foreground text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}>
-            <t.icon className="h-4 w-4" /> {t.label}
+            className={`flex min-h-[76px] items-center gap-3 px-4 py-3 text-left transition-colors ${tab === t.id ? "bg-background text-foreground" : "bg-card text-muted-foreground hover:bg-muted/40 hover:text-foreground"}`}>
+            <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md ${tab === t.id ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
+              <t.icon className="h-4 w-4" />
+            </span>
+            <span>
+              <span className="block text-sm font-semibold">{t.label}</span>
+              <span className="mt-1 block text-xs font-normal text-muted-foreground">{t.description}</span>
+            </span>
           </button>
         ))}
       </div>
@@ -1212,7 +1219,7 @@ export default function FichaMontadoresPage() {
       {tab === "lancamento" && (
         <div className="space-y-4">
           {/* controles */}
-          <div className="flex flex-wrap items-end gap-3">
+          <div className="flex flex-wrap items-end gap-3 rounded-lg border border-border bg-muted/20 p-3">
             {chamadaView === "dia" ? (
               <div>
                 <label className={lbl}>Data</label>
@@ -1239,7 +1246,7 @@ export default function FichaMontadoresPage() {
                 inputClassName="h-9"
               />
             </div>
-            <div className="ml-auto flex overflow-hidden rounded-md border border-border">
+            <div className="ml-auto flex overflow-hidden rounded-md border border-border bg-card">
               {(["dia", "semana"] as ChamadaView[]).map((v) => (
                 <button key={v} type="button" onClick={() => setChamadaView(v)}
                   className={`px-4 py-1.5 text-xs font-semibold uppercase tracking-wide transition-colors ${chamadaView === v ? "bg-foreground text-background" : "bg-card text-muted-foreground hover:bg-muted/40"}`}>{v}</button>
@@ -1487,8 +1494,15 @@ export default function FichaMontadoresPage() {
 
       {/* ════ filtro de período (Produtividade + Fichas) ════ */}
       {tab !== "lancamento" && (
-        <div className="flex flex-wrap items-end gap-2">
-          <div className="flex flex-wrap gap-1">
+        <Panel
+          eyebrow="CONFERÊNCIA DO PERÍODO"
+          title="Produção, folha e pagamento"
+          subtitle="Comece pela semana: é a mesma janela usada para abrir e quitar a folha por produção."
+        >
+        <div className="flex flex-wrap items-end gap-3">
+          <div>
+            <label className={lbl}>Período</label>
+            <div className="flex flex-wrap gap-1">
             {(Object.keys(periodLabel) as PeriodMode[]).map((m) => (
               <button key={m} type="button"
                 // "Esta semana" volta pra semana corrente: o rótulo promete isso.
@@ -1496,6 +1510,7 @@ export default function FichaMontadoresPage() {
                 onClick={() => { setPMode(m); if (m === "semana") setSemanaAnchor(todayISO()); }}
                 className={`rounded-md border px-3 py-1.5 text-xs font-semibold transition-colors ${pMode === m ? "border-foreground bg-foreground text-background" : "border-border bg-card text-muted-foreground hover:bg-muted/40"}`}>{periodLabel[m]}</button>
             ))}
+            </div>
           </div>
           {/* Navegação de semana — só faz sentido no modo semana. Traz o valor em
               aberto junto: percorrendo as semanas dá pra ver ONDE ainda há dívida
@@ -1552,8 +1567,9 @@ export default function FichaMontadoresPage() {
               ))}
             </div>
           </div>
-          <div className="ml-auto text-xs text-muted-foreground">{fmtDia(range.from)} – {fmtDia(range.to)}</div>
+          <div className="ml-auto self-center text-xs text-muted-foreground">{fmtDia(range.from)} – {fmtDia(range.to)}</div>
         </div>
+        </Panel>
       )}
 
       {/* ════ 1. QUEM produziu e QUANTO devo — a parte acionável ════ */}
