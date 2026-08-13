@@ -5,9 +5,9 @@
  *  - exportar pra Excel/CSV pra contador conferir
  *  - decidir quais payroll_runs aprovar/ajustar antes do "Aprovar folha"
  *
- * Fonte: payroll_runs filtrado pelo period selecionado. HE = overtime_amount
- * (modelo atual = HE única 1,5×; as colunas 50/100/noturno/DSR são legado NÃO
- * escrito e por isso saíram do relatório — davam R$0). Ver docs/AUDITORIA_RH_COMPATIBILIDADE.md.
+ * Fonte: payroll_runs filtrado pelo período. HE = overtime_amount, calculada pelo
+ * saldo líquido do período nas taxas individuais normal/domingo-feriado. As colunas
+ * 50/100/noturno/DSR são legado e não fazem parte do contrato atual.
  */
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -184,7 +184,7 @@ export default function PreFolha() {
                 )}
               </div>
               <div>
-                <p className="text-xs uppercase tracking-wider text-muted-foreground">HE total (1,5×)</p>
+                <p className="text-xs uppercase tracking-wider text-muted-foreground">HE paga · taxa individual</p>
                 <p className="font-mono text-lg font-bold">{fmt(totals.heValue)}</p>
                 <p className="text-xs text-muted-foreground">{fmtMin(totals.heMin)}</p>
               </div>
@@ -210,7 +210,7 @@ export default function PreFolha() {
                   <TableRow className="bg-muted/40">
                     <TableHead className="text-xs uppercase tracking-wider">Funcionário</TableHead>
                     <TableHead className="text-xs uppercase tracking-wider">Setor</TableHead>
-                    <TableHead className="text-right text-xs uppercase tracking-wider">HE 1,5×</TableHead>
+                    <TableHead className="text-right text-xs uppercase tracking-wider">HE paga</TableHead>
                     <TableHead className="text-right text-xs uppercase tracking-wider">Faltas</TableHead>
                     <TableHead className="text-right text-xs uppercase tracking-wider">Proventos</TableHead>
                     <TableHead className="text-right text-xs uppercase tracking-wider">Descontos</TableHead>

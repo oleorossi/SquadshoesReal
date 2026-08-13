@@ -70,8 +70,9 @@ Numerados, testáveis, cada um um "must".
    cadastro: **HE normal** e **HE domingo/feriado** — ambos R$/h. **Não há taxa noturna
    separada**: hora extra noturna usa a **HE normal** do funcionário (decisão do dono
    2026-07-09).
-6. Só vira hora extra o tempo que **passar de 10 minutos** além da jornada (mínimo global de
-   10 min; abaixo disso, descartado). `minimum_overtime_minutes = 10`.
+6. Excesso de um dia **compensa atraso parcial de outro dentro do período da folha**. Só o
+   saldo positivo final que **passar de 10 minutos** vira hora extra; de 1 a 10 minutos é
+   descartado. Saldo negativo vira atraso líquido. Falta integral não entra nessa compensação.
 7. Domingo/feriado usa a taxa **HE domingo/feriado** do funcionário; **todas as demais** horas
    extras (dia útil, sábado, noturna) usam a **HE normal**.
 
@@ -81,6 +82,8 @@ Numerados, testáveis, cada um um "must".
 9. Atraso **desconta proporcional ao tempo**, usando o **mesmo divisor da falta** (req. 11):
    valor da hora de desconto = `(salário ÷ dias_úteis_do_mês) ÷ horas_da_jornada_diária`.
    A jornada diária sai da escala (`work_schedules`) do funcionário.
+9.1. Havendo taxas diferentes, a compensação consome primeiro créditos de HE normal e preserva
+   os créditos de domingo/feriado. Dentro de cada grupo, a alocação é cronológica.
 
 **Falta**
 10. Falta **justificada** (atestado etc.) **não desconta**. Deve haver uma **tela onde o RH
@@ -91,7 +94,7 @@ Numerados, testáveis, cada um um "must".
 **Menu / navegação**
 12. O RH ("Pessoas", rota `/rh`) passa a ter exatamente **4 telas**:
     1. **Funcionários** — cadastro: salário, escala/jornada, toggle diarista + `daily_rate`,
-       e os 3 valores de HE em R$/h.
+       e os 2 valores de HE em R$/h.
     2. **Ponto** — importar arquivo do KP1028 + histórico de arquivos (req. 1) + corrigir
        batidas faltantes + registrar falta/atraso justificado (req. 10), tudo num lugar.
     3. **Espelho do funcionário** — por pessoa, no período: batidas, atrasos, HE, faltas.
@@ -116,8 +119,9 @@ Numerados, testáveis, cada um um "must".
 - (já existem) `salary`, `payment_type` (`mensalista|diarista`), `daily_rate`,
   `work_schedule_id`, `active`, `admission_date`, `termination_date`.
 
-**`work_schedules`** — fonte da jornada (entry/lunch/exit, saturday_entry/exit,
-`tolerance_minutes` que passa a ser **0**, `minimum_overtime_minutes` = **10**). Manter uma
+**`work_schedules`** — fonte da jornada (entry/lunch/exit, saturday_entry/exit). Os campos
+legados de tolerância/multiplicador são preservados por compatibilidade, mas a folha fixa
+tolerância diária em **0** e aplica os **10min somente ao saldo positivo final**. Manter uma
 escala por funcionário via `employees.work_schedule_id`.
 
 **`time_records`** (`punches jsonb`) — inalterada; alimentada por `parseTimeClockFile` +
@@ -129,11 +133,12 @@ escala por funcionário via `employees.work_schedule_id`.
 `useEmployeeAbsences`). É a fonte do "justificado". Corrigir a FK (`employee_id` aponta pra
 `auth.users`, deveria apontar pra `employees`). É esta tabela que a tela do req. 10 escreve.
 
-**`punch_clock_params`** (versionado por `valid_from/valid_to`) — guardar `tolerance = 0` e
-`minimum_overtime_minutes = 10` como parâmetros globais correntes.
+**Regra versionada do cálculo** — `tolerance = 0` e `minimum_overtime_minutes = 10` fazem
+parte da versão persistida no snapshot de `payroll_runs`, junto do ledger dia a dia.
 
-**`payroll_runs` / `payroll_payments`** — resultado da folha e histórico de pagamentos
-(mantidos; `payroll_runs` trava quando finalizado).
+**`payroll_runs` / `payroll_payments`** — resultado da folha e histórico de pagamentos.
+Cada fechamento grava `calculation_rule_version` + `calculation_snapshot`; a aprovação é
+bloqueada sem snapshot, e o cálculo fica imutável quando aprovado/pago.
 
 **A remover / descontinuar:** `bank_hours_movements` e views `bank_hours_balance`,
 `v_bank_hours_summary`, `v_bank_hours_per_sector` (ver Open Q sobre drop vs deprecate);
@@ -151,10 +156,10 @@ descontinuação de banco de horas.
 2. Sistema aponta **pendências** (dia sem par de batida, entrada sem saída). RH corrige na
    mesma tela (batida manual, auditada).
 3. RH abre a tela de **falta/atraso justificado** e marca os casos com atestado (não descontam).
-4. RH abre **Espelho** de um funcionário e confere: batidas, atraso (zero tol.), HE (>10 min,
-   R$/h negociada), faltas.
+4. RH abre **Espelho** de um funcionário e confere: batidas, créditos/débitos brutos,
+   compensação, atraso líquido, HE paga (>10 min, R$/h negociada) e faltas.
 5. RH vai em **Folha**, escolhe o mês, roda o cálculo. Sistema computa por funcionário:
-   `líquido = salário − faltas_injustificadas − atrasos + HE(normal/dom-fer/noturna)`.
+   `líquido = salário − faltas_injustificadas − atraso_líquido + HE_paga − adiantamentos`.
    Diaristas entram por dia × `daily_rate` (com meia-diária).
 6. RH finaliza a folha (trava) e registra os **pagamentos** (com recibo).
 
@@ -171,11 +176,11 @@ descontinuação de banco de horas.
 - **Feriado** (tabela `holidays`) num dia trabalhado → horas contam como HE domingo/feriado.
 - **Sábado** → é dia de trabalho se a escala tem `saturday_entry/exit`; conta como dia útil no
   divisor da falta.
-- **HE ≤ 10 min** → descartada (req. 6), não vira R$ 0,01 de ruído.
+- **Saldo positivo após compensação ≤ 10 min** → descartado (req. 6), não vira ruído.
 - **Atraso + saída antecipada no mesmo dia** → ambos descontam (proporcional).
 - **Falta justificada em dia que também teve atraso** → o justificado zera o desconto daquele dia.
-- **Reabertura de mês já finalizado** → respeitar a trava de `payroll_runs` (não recalcular
-  silenciosamente por cima de folha fechada).
+- **Reabertura de mês já finalizado** → respeitar a trava de `payroll_runs`; documentos de
+  folha aprovada/paga usam o snapshot e a versão de regra gravados no fechamento.
 - **Import com nomes que não casam com `employees`** → reconciliação por `EnNo`/`external_id`
   (mapa `punch_device_map`); não gravar batida órfã.
 
@@ -226,10 +231,10 @@ Checklist verificável item a item:
       paralelos.)*
 - [ ] **Req 3** — Cadastro tem toggle diarista; Cátia calcula por dia com meia-diária.
       *(Verificar: marcar diarista, rodar um mês com um dia de 4h → 0,5 diária.)*
-- [ ] **Req 4/5/6/7** — Um mensalista com HE conhecida: espelho e folha mostram
-      `minutos_HE(>10) × R$/h` na taxa certa (HE normal em dia útil/sábado/noturno; HE
+- [ ] **Req 4/5/6/7** — Um mensalista com HE conhecida: espelho e folha mostram o saldo
+      após compensação e `minutos_HE(>10) × R$/h` na taxa certa (HE normal em dia útil/sábado/noturno; HE
       domingo-feriado nos domingos/feriados). *(Verificar com um caso montado à mão vs cálculo
-      manual.)*
+      manual, incluindo +15/−5 = 0 e +15/−4 = 11min pagos.)*
 - [ ] **Req 8/9** — Atraso de X min desconta `X × ((salário÷dias_úteis)÷jornada)`, sem
       tolerância. *(Verificar: bater 20 min atrasado → desconto proporcional; nenhum "|| 10".)*
 - [ ] **Req 10** — Marcar uma falta/atraso como justificado na tela zera o desconto daquele dia.

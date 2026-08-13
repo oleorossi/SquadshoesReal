@@ -170,16 +170,13 @@ function WorkScheduleTab() {
                   <div>Sáb: <span className="font-mono tabular-nums font-medium">{s.saturday_entry || '—'}–{s.saturday_exit || '—'}</span></div>
                 </div>
                 <Separator />
-                <div className="grid grid-cols-4 gap-2 text-xs text-muted-foreground">
+                <div className="grid grid-cols-3 gap-2 text-xs text-muted-foreground">
                   <div>Semanal: <span className="font-medium text-foreground">{s.weekly_hours}h</span></div>
                   <div>Dia: <span className="font-medium text-foreground">{dailyHours.toFixed(1)}h</span></div>
                   <div>Sáb: <span className="font-medium text-foreground">{satLabel}</span></div>
-                  <div>Tolerância: <span className="font-medium text-foreground">{s.tolerance_minutes}min</span></div>
                 </div>
-                <div className="grid grid-cols-3 gap-2 text-xs text-muted-foreground">
-                  <div>HE normal: <span className="font-medium text-foreground">{s.overtime_multiplier}x</span></div>
-                  <div>HE feriado: <span className="font-medium text-foreground">{s.holiday_multiplier}x</span></div>
-                  <div>Mín. HE: <span className="font-medium text-foreground">{s.minimum_overtime_minutes > 0 ? `${s.minimum_overtime_minutes}min` : 'sem mínimo'}</span></div>
+                <div className="rounded-md border border-primary/20 bg-primary/5 px-2.5 py-2 text-xs text-muted-foreground">
+                  Na folha, excessos compensam atrasos parciais no período. Saldo positivo acima de 10min vira HE pelas taxas do funcionário.
                 </div>
               </CardContent>
             </Card>
@@ -192,7 +189,7 @@ function WorkScheduleTab() {
         <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editing ? 'Editar Horário' : 'Novo Horário de Trabalho'}</DialogTitle>
-            <DialogDescription>Configure a jornada semanal, tolerância e multiplicadores de hora extra.</DialogDescription>
+            <DialogDescription>Configure somente a jornada. As regras e taxas financeiras da folha são centralizadas.</DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4 mt-2">
             <div>
@@ -220,11 +217,6 @@ function WorkScheduleTab() {
 
             <div className="grid grid-cols-2 gap-3">
               <div><Label className="text-xs">Horas Semanais</Label><Input type="number" value={form.weekly_hours} onChange={e => setForm(f => ({ ...f, weekly_hours: Number(e.target.value) }))} className="mt-1" /></div>
-              <div><Label className="text-xs">Tolerância (min)</Label><Input type="number" value={form.tolerance_minutes} onChange={e => setForm(f => ({ ...f, tolerance_minutes: Number(e.target.value) }))} className="mt-1" /></div>
-              <div><Label className="text-xs">Mín. HE para contar (min)</Label><Input type="number" min="0" value={form.minimum_overtime_minutes} onChange={e => setForm(f => ({ ...f, minimum_overtime_minutes: Number(e.target.value) }))} className="mt-1" placeholder="0 = sem mínimo" /></div>
-              <div><Label className="text-xs">Multiplicador HE</Label><Input type="number" step="0.1" value={form.overtime_multiplier} onChange={e => setForm(f => ({ ...f, overtime_multiplier: Number(e.target.value) }))} className="mt-1" /></div>
-              <div><Label className="text-xs">Multiplicador Feriado</Label><Input type="number" step="0.1" value={form.holiday_multiplier} onChange={e => setForm(f => ({ ...f, holiday_multiplier: Number(e.target.value) }))} className="mt-1" /></div>
-              <div><Label className="text-xs">Mult. HE Noturna</Label><Input type="number" step="0.1" value={form.night_overtime_multiplier} onChange={e => setForm(f => ({ ...f, night_overtime_multiplier: Number(e.target.value) }))} className="mt-1" /></div>
             </div>
 
             <div className="flex items-center gap-3">

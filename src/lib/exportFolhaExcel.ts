@@ -1,4 +1,4 @@
-import { evaluationDetail, type EmployeeTimesheetData } from './printTimesheet';
+import type { EmployeeTimesheetData } from './printTimesheet';
 import type { SalaryPayrollResult } from './salaryPayroll';
 
 const DAYS_PT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
@@ -7,8 +7,9 @@ const h2 = (min: number) => Math.round((min / 60) * 100) / 100;   // minutos →
 const r2 = (v: number) => Math.round(v * 100) / 100;
 
 const KIND_LABEL: Record<string, string> = {
-  ok: 'Normal', curto: 'Abaixo do esperado', falta: 'FALTA',
-  fds: 'Fim de semana / feriado', pendente: 'Batida ímpar (pendente)',
+  normal: 'Normal', credit: 'Crédito de jornada', debit: 'Débito de jornada',
+  absence: 'FALTA', excused: 'Ausência justificada',
+  pending: 'Batida ímpar (pendente)', neutral: 'Neutro / sem cobertura',
 };
 
 export interface FolhaExportRow {
@@ -24,11 +25,11 @@ export interface FolhaExportRow {
 
 /**
  * Gera e baixa um .xlsx com a folha do período:
- *   - "Resumo": 1 linha por funcionário (salário, faltas, atrasos, HE, líquidos mês/quinzenas).
+ *   - "Resumo": 1 linha por funcionário (salário, faltas, compensação, atraso líquido, HE e líquido).
  *   - "Detalhe dia a dia": 1 linha por (funcionário × dia) com batidas, esperado, trabalhado,
- *     situação, saldo e o desconto/excedente DO DIA.
- *   - "Como ler": notas (HE/atraso pago é líquido do período; falta = salário ÷ 30).
- * Tudo com o MESMO motor da folha (evaluationDetail reconcilia com computePeriodFolha).
+ *     situação, saldos brutos, compensação e parcelas efetivamente pagas/descontadas.
+ *   - "Como ler": contrato da regra vigente.
+ * Tudo vem do ledger de computePeriodFolha; não há recálculo financeiro no exportador.
  */
 export async function exportFolhaExcel(rows: FolhaExportRow[], periodLabel: string, filename: string): Promise<void> {
   const XLSX = await import('xlsx'); // lazy: 424KB só ao exportar a Folha
@@ -41,48 +42,56 @@ export async function exportFolhaExcel(rows: FolhaExportRow[], periodLabel: stri
     'Salário': r2(r.mes.base_salary),
     'Faltas (dias)': r.mes.falta_days,
     'Faltas (R$)': r2(r.mes.falta_desconto),
-    'Atrasos (R$)': r2(r.mes.atraso_desconto),
-    'Hora extra (R$)': r2(r.mes.he_value),
+    'Créditos brutos (min)': r.mes.raw_credit_minutes || 0,
+    'Atrasos brutos (min)': r.mes.raw_delay_minutes || 0,
+    'Compensado (min)': r.mes.compensated_minutes || 0,
+    'Atraso líquido (min)': r.mes.atraso_minutes,
+    'Atraso líquido (R$)': r2(r.mes.atraso_desconto),
+    'HE normal paga (min)': r.mes.he_normal_minutes || 0,
+    'HE dom./feriado paga (min)': r.mes.he_holiday_minutes || 0,
+    'Hora extra paga (R$)': r2(r.mes.he_value),
     'Adiantamentos (R$)': r2(r.advMes),
-    'Líquido Mês': r2(r.mes.net_value),
-    'Líquido 1ª quinz': r2(r.q1.net_value),
-    'Líquido 2ª quinz': r2(r.q2.net_value),
+    'Líquido do período': r2(r.mes.net_value),
+    'Versão da regra': r.mes.rule_version,
     'Situação': r.sit,
   }));
   const wsResumo = XLSX.utils.json_to_sheet(resumo);
   wsResumo['!cols'] = [
-    { wch: 9 }, { wch: 22 }, { wch: 10 }, { wch: 11 }, { wch: 11 }, { wch: 11 },
-    { wch: 13 }, { wch: 15 }, { wch: 12 }, { wch: 14 }, { wch: 14 }, { wch: 34 },
+    { wch: 9 }, { wch: 22 }, { wch: 10 }, { wch: 11 }, { wch: 11 }, { wch: 14 },
+    { wch: 14 }, { wch: 16 }, { wch: 18 }, { wch: 22 }, { wch: 18 }, { wch: 15 },
+    { wch: 18 }, { wch: 20 }, { wch: 26 }, { wch: 34 },
   ];
   XLSX.utils.book_append_sheet(wb, wsResumo, 'Resumo');
 
   // ── Detalhe dia a dia (1 linha/funcionário/dia) ──
   const detalhe: Record<string, string | number>[] = [];
   for (const r of rows) {
-    const e = evaluationDetail(r.data);
-    for (const d of e.dayRows) {
-      const deficitMin = d.kind === 'falta' ? d.expected : (d.kind === 'curto' ? Math.max(0, d.expected - d.worked) : 0);
-      const descontoDia = d.kind === 'falta' ? e.valorDia : (d.kind === 'curto' ? (deficitMin / 60) * e.vh : 0);
-      const excedenteDia = d.saldo > 0 ? (d.saldo / 60) * e.vh * e.premiumMultiplier : 0;
+    for (const d of (r.mes.day_ledger || [])) {
       detalhe.push({
         'Matrícula': r.ext || '',
         'Funcionário': r.name,
         'Data': fmtBR(d.date),
-        'Dia': DAYS_PT[d.dayOfWeek] || '',
-        'Batidas (horários)': d.punches.join(' · ') || (d.kind === 'falta' ? '— (falta)' : '—'),
-        'Esperado (h)': h2(d.expected),
-        'Trabalhado (h)': d.kind === 'pendente' ? 'ímpar' : h2(d.worked),
-        'Situação do dia': KIND_LABEL[d.kind] || d.kind,
-        'Saldo do dia (h)': d.kind === 'falta' || d.kind === 'pendente' ? '' : h2(d.saldo),
-        'Desconto do dia (R$)': r2(descontoDia),
-        'Excedente do dia (R$)': r2(excedenteDia),
+        'Dia': DAYS_PT[d.day_of_week] || '',
+        'Batidas (horários)': d.punches.join(' · ') || (d.status === 'absence' ? '— (falta)' : '—'),
+        'Esperado (h)': h2(d.expected_minutes),
+        'Trabalhado (h)': d.status === 'pending' ? 'ímpar' : h2(d.worked_minutes),
+        'Situação do dia': KIND_LABEL[d.status] || d.status,
+        'Saldo bruto (h)': d.status === 'absence' || d.status === 'pending' ? '' : h2(d.raw_balance_minutes),
+        'Crédito bruto (min)': d.raw_credit_minutes,
+        'Débito bruto (min)': d.raw_delay_minutes,
+        'Compensado (min)': Math.max(d.compensated_credit_minutes, d.compensated_delay_minutes),
+        'HE paga (min)': d.payable_overtime_minutes,
+        'Atraso líquido (min)': d.payable_delay_minutes,
+        'Tolerância descartada (min)': d.discarded_tolerance_minutes,
+        'Tipo de HE': d.overtime_bucket === 'holiday' ? 'Domingo/feriado' : d.overtime_bucket === 'normal' ? 'Normal' : '',
       });
     }
   }
   const wsDet = XLSX.utils.json_to_sheet(detalhe);
   wsDet['!cols'] = [
     { wch: 9 }, { wch: 22 }, { wch: 11 }, { wch: 5 }, { wch: 26 }, { wch: 11 },
-    { wch: 13 }, { wch: 22 }, { wch: 13 }, { wch: 17 }, { wch: 18 },
+    { wch: 13 }, { wch: 24 }, { wch: 13 }, { wch: 16 }, { wch: 16 }, { wch: 16 },
+    { wch: 14 }, { wch: 18 }, { wch: 25 }, { wch: 18 },
   ];
   XLSX.utils.book_append_sheet(wb, wsDet, 'Detalhe dia a dia');
 
@@ -90,16 +99,14 @@ export async function exportFolhaExcel(rows: FolhaExportRow[], periodLabel: stri
   const notas = [
     [`Folha — ${periodLabel}`],
     [],
-    ['Os valores seguem o MESMO motor da Folha (hora extra LÍQUIDA do período).'],
-    ['• Falta = desconta 1 dia (salário ÷ 30). O "Desconto do dia (R$)" da falta é exato.'],
-    ['• Atraso: o "Desconto do dia (R$)" de um dia "abaixo do esperado" é só referência —'],
-    ['  o atraso PAGO é LÍQUIDO do período (dias longos / fim de semana abatem antes).'],
-    ['  O valor oficial está em "Atrasos (R$)" no Resumo.'],
-    ['• Hora extra: o "Excedente do dia (R$)" é bruto por dia (×1,5). A HE PAGA é o'],
-    ['  excedente LÍQUIDO do período — quem não bate a meta de horas NÃO tem HE.'],
-    ['  O valor oficial está em "Hora extra (R$)" no Resumo.'],
+    ['Os valores e o detalhe vêm do MESMO ledger usado no fechamento da Folha.'],
+    ['• Excesso de um dia compensa atraso parcial de outro dentro do período selecionado.'],
+    ['• Falta integral fica separada e não entra na compensação de minutos.'],
+    ['• Primeiro calcula-se crédito bruto − atraso bruto. Saldo positivo acima de 10min vira HE;'],
+    ['  saldo de 1 a 10min é descartado; saldo negativo vira atraso líquido descontável.'],
+    ['• A compensação consome primeiro créditos de taxa normal e preserva domingo/feriado.'],
+    ['• HE normal e domingo/feriado usam as taxas individuais cadastradas no funcionário.'],
     ['• Batida ímpar = dia pendente (fica fora do cálculo até resolver em Pendências).'],
-    ['• Base da quinzena é proporcional aos dias do mês: 1ª + 2ª = salário exato.'],
     ['• Líquido = salário (proporcional) − faltas − atrasos + HE − adiantamentos.'],
     ['• A coluna Situação no Resumo avisa ponto faltando / faltas demais / sem escala —'],
     ['  corrija o ponto antes de pagar.'],

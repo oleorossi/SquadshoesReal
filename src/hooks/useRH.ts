@@ -218,6 +218,9 @@ export interface PayrollRun {
   total_liquido: number;
   status: 'rascunho' | 'aprovado' | 'pago';
   notes: string;
+  /** Snapshot imutável usado por documentos de folhas aprovadas/pagas. */
+  calculation_snapshot?: unknown;
+  calculation_rule_version?: string | null;
   approved_at: string | null;
   paid_at: string | null;
   created_at: string;

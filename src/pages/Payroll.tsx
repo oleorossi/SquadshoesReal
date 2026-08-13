@@ -16,7 +16,7 @@ import { printRhReport, type RhCell } from '@/lib/printRhReport';
 import { useQuery } from '@tanstack/react-query';
 import { useEmployees } from '@/hooks/useEmployees';
 import { useHolidays, useSwapSets, useTimesheetCoverage, useWorkSchedules } from '@/hooks/useTimesheet';
-import { usePayrollRuns, useUpsertPayrollRun, useUpdatePayrollStatus } from '@/hooks/useRH';
+import { useAbsences, usePayrollRuns, useUpsertPayrollRun, useUpdatePayrollStatus } from '@/hooks/useRH';
 import { usePayrollPaymentSummaries } from '@/hooks/usePayrollPayments';
 import { RegistrarPagamentoDialog } from '@/components/hr/RegistrarPagamentoDialog';
 import { computePeriodFolha, getDaysInRange, type SalaryPayrollResult } from '@/lib/salaryPayroll';
@@ -27,6 +27,7 @@ import { expandAbsenceDatesByEmployee, resolveHolidaysForPayrollRange } from '@/
 import { printTimeMirror, type TimeMirrorDay } from '@/lib/printTimeMirror';
 import { exportFolhaExcel } from '@/lib/exportFolhaExcel';
 import { printPayrollBundle, buildPayrollHtml, fmtDeltaMin } from '@/lib/printPayrollBundle';
+import { buildPayrollSnapshot, readPayrollSnapshot } from '@/lib/payrollSnapshot';
 import { Checkbox } from '@/components/ui/checkbox';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -153,7 +154,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
   const upsertRun = useUpsertPayrollRun();
   const updateStatus = useUpdatePayrollStatus();
 
-  // Feriados OBRIGATÓRIOS (optional !== true) → dia inteiro 1,5×.
+  // Feriados OBRIGATÓRIOS (optional !== true) → crédito na taxa individual de feriado.
   const holidaysSet = useMemo(
     () => resolveHolidaysForPayrollRange(holidaysList as any[], appliedFrom, appliedTo),
     [holidaysList, appliedFrom, appliedTo],
@@ -249,6 +250,11 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
       return (data || []) as any[];
     },
   });
+  const { data: compAbsences = [] } = useAbsences({ from: appliedFrom, to: appliedTo });
+  const compAbsenceDates = useMemo(
+    () => expandAbsenceDatesByEmployee(compAbsences, appliedFrom, appliedTo),
+    [compAbsences, appliedFrom, appliedTo],
+  );
   // Produção por par (Ficha de Montadores) do período — alimenta o regime 'producao'
   // no comparativo (mês/quinzena). Só linhas 'chamada'; R$/par snapshot da linha.
   const { data: compProducao = [] } = useQuery({
@@ -262,9 +268,22 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
   const comparativo = useMemo(() => computeComparativoRows({
     employees, schedules, defaultSchedule, holidaysSet, swapWorkedSet, swapOffSet,
     timeRecords: compRecords, advancesList: compAdvances, producaoRows: compProducao,
+    absenceDatesByEmployee: compAbsenceDates,
     range: { from: appliedFrom, to: appliedTo }, period: compPeriod,
     maxCovered: coverage?.maxCovered || null,
-  }), [employees, schedules, defaultSchedule, holidaysSet, swapWorkedSet, swapOffSet, compRecords, compAdvances, compProducao, appliedFrom, appliedTo, compPeriod, coverage]);
+  }), [employees, schedules, defaultSchedule, holidaysSet, swapWorkedSet, swapOffSet, compRecords, compAdvances, compProducao, compAbsenceDates, appliedFrom, appliedTo, compPeriod, coverage]);
+
+  // Rascunho = prévia viva. Aprovada/paga = resultado congelado no snapshot.
+  const reportComparativoRows = useMemo(() => {
+    const runByEmployee = new Map(runs.map(run => [run.employee_id, run]));
+    return comparativo.rows.map(row => {
+      const run = runByEmployee.get(row.id);
+      const snapshot = run && run.status !== 'rascunho' ? readPayrollSnapshot(run.calculation_snapshot) : null;
+      return snapshot
+        ? { ...row, name: snapshot.employee.name, result: snapshot.result }
+        : row;
+    });
+  }, [comparativo.rows, runs]);
 
   /** Detalhe de PRODUÇÃO por funcionário (dias produtivos, fichas, pares) para
    *  quem é regime por par. Sai do comparativo, que roda exatamente na mesma
@@ -284,8 +303,22 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
 
   const handleExportExcel = () => {
     if (comparativo.rows.length === 0) { toast.error('Nada pra exportar.'); return; }
+    const runByEmployee = new Map(runs.map(run => [run.employee_id, run]));
     exportFolhaExcel(
-      comparativo.rows.map(r => ({ ext: r.ext, name: r.name, data: r.printData, mes: r.result, q1: r.q1, q2: r.q2, advMes: r.advMes, sit: r.sit.txt })),
+      comparativo.rows.map(r => {
+        const run = runByEmployee.get(r.id);
+        const snapshot = run && run.status !== 'rascunho' ? readPayrollSnapshot(run.calculation_snapshot) : null;
+        return {
+          ext: snapshot?.employee.external_id || r.ext,
+          name: snapshot?.employee.name || r.name,
+          data: r.printData,
+          mes: snapshot?.result || r.result,
+          q1: r.q1,
+          q2: r.q2,
+          advMes: snapshot?.result.advances_total ?? r.advMes,
+          sit: snapshot ? `Fechada · ${snapshot.rule_version}` : r.sit.txt,
+        };
+      }),
       periodTitle,
       `Folha_${compPeriod}.xlsx`,
     );
@@ -296,31 +329,46 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
   const bundleEmps = useMemo(() => runs.map(r => {
     const emp = employeeMap.get(r.employee_id);
     const crow = comparativo.rows.find(cr => cr.id === r.employee_id) as any;
+    const snapshot = r.status !== 'rascunho' ? readPayrollSnapshot(r.calculation_snapshot) : null;
+    const reportResult = snapshot?.result || crow?.result;
+    const reportEmployee = snapshot?.employee;
     // Regime por par: o bundle recebe a produção junto do run financeiro. Sem
     // isso, o holerite IMPRESSO descrevia o bruto como "Salário base" e exibia
     // "trabalhado 0h · valor-hora R$ 0,00" — o mesmo defeito que a tela já não
     // tem. O bruto separado por dificuldade vem do comparativo (mesma janela
     // dos runs), não de rateio.
-    const pp = porParByEmp.get(r.employee_id);
+    const pp = reportResult?.payment_type === 'producao' ? reportResult : porParByEmp.get(r.employee_id);
     return {
       id: r.employee_id,
-      name: emp?.name || (r as any).employee_name || '—',
-      role: (emp as any)?.role, department: (emp as any)?.department,
-      run: (pp ? {
+      name: reportEmployee?.name || emp?.name || (r as any).employee_name || '—',
+      role: reportEmployee?.role || (emp as any)?.role,
+      department: reportEmployee?.department || (emp as any)?.department,
+      run: ({
         ...r,
-        por_par: true,
-        dias_produtivos: Number(pp.paid_days) || 0,
-        fichas: Number(pp.fichas) || 0,
-        fichas_derivadas: !!pp.fichas_derivadas,
-        pares_medio: Number(pp.pares_medio) || 0,
-        pares_dificil: Number(pp.pares_dificil) || 0,
-        bruto_medio: Number(pp.bruto_medio) || 0,
-        bruto_dificil: Number(pp.bruto_dificil) || 0,
-        taxa_medio: Number(pp.taxa_medio) || 0,
-        taxa_dificil: Number(pp.taxa_dificil) || 0,
-        taxa_variou: !!pp.taxa_variou,
-      } : r) as any,
-      days: (crow?.printData?.days || []) as any[],
+        por_par: !!pp,
+        dias_produtivos: Number(pp?.paid_days) || 0,
+        fichas: Number(pp?.fichas) || 0,
+        fichas_derivadas: !!pp?.fichas_derivadas,
+        pares_medio: Number(pp?.pares_medio) || 0,
+        pares_dificil: Number(pp?.pares_dificil) || 0,
+        bruto_medio: Number(pp?.bruto_medio) || 0,
+        bruto_dificil: Number(pp?.bruto_dificil) || 0,
+        taxa_medio: Number(pp?.taxa_medio) || 0,
+        taxa_dificil: Number(pp?.taxa_dificil) || 0,
+        taxa_variou: !!pp?.taxa_variou,
+        payment_type: reportResult?.payment_type,
+        he_normal_minutes: reportResult?.he_normal_minutes,
+        he_holiday_minutes: reportResult?.he_holiday_minutes,
+        he_normal_rate: reportEmployee?.he_normal_rate ?? (Number((emp as any)?.he_normal_rate) || 0),
+        he_sunday_holiday_rate: reportEmployee?.he_sunday_holiday_rate ?? (Number((emp as any)?.he_sunday_holiday_rate) || 0),
+        raw_credit_minutes: reportResult?.raw_credit_minutes,
+        raw_delay_minutes: reportResult?.raw_delay_minutes,
+        compensated_minutes: reportResult?.compensated_minutes,
+        discarded_tolerance_minutes: reportResult?.discarded_tolerance_minutes,
+        rule_version: snapshot?.rule_version || reportResult?.rule_version,
+        calculated_at: snapshot?.calculated_at,
+      }) as any,
+      days: (reportResult?.day_ledger || []) as any[],
     };
   }), [runs, employeeMap, comparativo.rows, porParByEmp]);
 
@@ -449,7 +497,18 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
     const now = new Date();
     const generatedAt = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
 
-    const src = comparativo.rows.filter(r => setorFilter === 'all' || setorOf(r.id) === setorFilter);
+    const compByEmployee = new Map(comparativo.rows.map(row => [row.id, row]));
+    const src = runs.map(run => {
+      const live = compByEmployee.get(run.employee_id);
+      const snapshot = run.status !== 'rascunho' ? readPayrollSnapshot(run.calculation_snapshot) : null;
+      return {
+        id: run.employee_id,
+        name: snapshot?.employee.name || live?.name || employeeMap.get(run.employee_id)?.name || '—',
+        department: snapshot?.employee.department || setorOf(run.employee_id),
+        result: snapshot?.result || live?.result,
+      };
+    }).filter((r): r is typeof r & { result: SalaryPayrollResult } =>
+      !!r.result && (setorFilter === 'all' || r.department === setorFilter));
     if (src.length === 0) { toast.error('Nenhum funcionário na folha do período.'); return; }
 
     // Duas formas de pagar, dois blocos: quem é medido pelo RELÓGIO DE PONTO
@@ -460,7 +519,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
     const srcPonto = src.filter(r => !isPorPar(r));
     const srcPorPar = src.filter(r => isPorPar(r));
 
-    let tSal = 0, tHe = 0, tFalta = 0, tAtraso = 0, tLiqPonto = 0, tWork = 0, tHeMin = 0;
+    let tSal = 0, tHe = 0, tFalta = 0, tAtraso = 0, tValePonto = 0, tLiqPonto = 0, tWork = 0, tHeMin = 0;
     const rowsPonto = srcPonto.map((r): RhCell[] => {
       const res = r.result;
       // `base_salary` é o salário MENSAL cheio (referência p/ valor-dia/valor-hora);
@@ -469,11 +528,12 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
       // não fechava com o Líquido. A tela já faz essa distinção (linha ~1453).
       const sal = Number(res.period_base) || 0, he = Number(res.he_value) || 0;
       const falta = Number(res.falta_desconto) || 0, atraso = Number(res.atraso_desconto) || 0;
-      tSal += sal; tHe += he; tFalta += falta; tAtraso += atraso;
+      const vale = Number(res.advances_total) || 0;
+      tSal += sal; tHe += he; tFalta += falta; tAtraso += atraso; tValePonto += vale;
       tLiqPonto += Number(res.net_value) || 0; tWork += Number(res.worked_minutes) || 0; tHeMin += Number(res.he_minutes) || 0;
       return [
         { v: r.name },
-        { v: setorOf(r.id) || '—' },
+        { v: r.department || '—' },
         { v: String(res.paid_days ?? 0), align: 'r' },
         { v: fmtHm(res.worked_minutes), align: 'r' },
         { v: fmtHm(res.he_minutes), align: 'r' },
@@ -481,6 +541,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
         { v: he > 0 ? fmt(he) : '—', align: 'r' },
         { v: falta > 0 ? `− ${fmt(falta)}` : '—', align: 'r', neg: falta > 0 },
         { v: atraso > 0 ? `− ${fmt(atraso)}` : '—', align: 'r', neg: atraso > 0 },
+        { v: vale > 0 ? `− ${fmt(vale)}` : '—', align: 'r', neg: vale > 0 },
         { v: fmt(Number(res.net_value) || 0), align: 'r', strong: true },
       ];
     });
@@ -508,7 +569,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
         pares > 0 ? `${pares.toLocaleString('pt-BR')} × ${fmt(taxa)}${marca}` : '—';
       return [
         { v: r.name },
-        { v: setorOf(r.id) || '—' },
+        { v: r.department || '—' },
         { v: String(dias), align: 'r' },
         { v: fichas > 0 ? `${fichas}${res.fichas_derivadas ? ' *' : ''}` : '—', align: 'r' },
         { v: cel(pMed, Number(res.taxa_medio) || 0), align: 'r' },
@@ -520,7 +581,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
     });
 
     const notas = [
-      srcPonto.length > 0 ? 'Faltas e atrasos conforme dias úteis e jornada da escala · H.E. conforme taxa cadastrada.' : '',
+      srcPonto.length > 0 ? 'Excessos compensam atrasos parciais dentro do período. Só o saldo positivo acima de 10min vira H.E.; falta integral fica separada. H.E. conforme taxa individual cadastrada.' : '',
       srcPorPar.length > 0 ? 'Por par: cada lançamento vale o R$/par gravado nele — o relógio de ponto não entra na conta. Pares × R$/par deve fechar com a coluna Produção.' : '',
       algumaFichaDerivada ? '* Fichas inferidas (lote de 12): o lançamento é anterior ao registro de tamanho. Os PARES, que são a base do pagamento, não dependem disso.' : '',
       algumaTaxaVariou ? '† O R$/par mudou dentro do período (reajuste): a taxa exibida é a média das gravadas em cada lançamento. A coluna Produção continua exata.' : '',
@@ -536,7 +597,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
         { label: 'Horas trab.', value: fmtHm(tWork) },
         { label: 'Pares produzidos', value: (tPMed + tPDif).toLocaleString('pt-BR') },
         { label: 'Proventos', value: fmt(tSal + tHe + tBruto) },
-        { label: 'Descontos', value: fmt(tFalta + tAtraso + tVale) },
+        { label: 'Descontos', value: fmt(tFalta + tAtraso + tValePonto + tVale) },
         { label: 'Líquido', value: fmt(tLiqPonto + tLiqPar) },
       ],
       sections: [
@@ -547,7 +608,8 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
             { label: 'Funcionário' }, { label: 'Setor' }, { label: 'Dias', align: 'r' },
             { label: 'H. trab.', align: 'r' }, { label: 'H. extra', align: 'r' },
             { label: 'Salário', align: 'r' }, { label: 'H.E. (R$)', align: 'r' },
-            { label: 'Faltas', align: 'r' }, { label: 'Atrasos', align: 'r' }, { label: 'Líquido', align: 'r' },
+            { label: 'Faltas', align: 'r' }, { label: 'Atraso líq.', align: 'r' },
+            { label: 'Adiant.', align: 'r' }, { label: 'Líquido', align: 'r' },
           ],
           rows: rowsPonto,
           totals: [
@@ -559,6 +621,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
             { v: fmt(tHe), align: 'r', strong: true },
             { v: `− ${fmt(tFalta)}`, align: 'r', neg: true, strong: true },
             { v: `− ${fmt(tAtraso)}`, align: 'r', neg: true, strong: true },
+            { v: `− ${fmt(tValePonto)}`, align: 'r', neg: true, strong: true },
             { v: fmt(tLiqPonto), align: 'r', strong: true },
           ],
         },
@@ -799,6 +862,23 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
         if ((result as any).he_rate_missing) withMissingHeRate++;
 
         const paresTot = (result.pares_medio || 0) + (result.pares_dificil || 0);
+        const calculationSnapshot = buildPayrollSnapshot({
+          from: cFrom,
+          to: cTo,
+          employee: {
+            id: emp.id,
+            name: emp.name,
+            external_id: (emp as any).external_id || null,
+            role: (emp as any).role || null,
+            department: (emp as any).department || null,
+            payment_type: result.payment_type,
+            salary: Number(emp.salary) || 0,
+            he_normal_rate: Number((emp as any).he_normal_rate) || 0,
+            he_sunday_holiday_rate: Number((emp as any).he_sunday_holiday_rate) || 0,
+          },
+          schedule: sch ? { ...sch } : null,
+          result,
+        });
         await upsertRun.mutateAsync({
           employee_id: emp.id,
           period: cPeriod,
@@ -830,6 +910,8 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
           total_descontos: result.total_descontos,
           total_liquido: result.net_value,
           net_salary: result.net_value,
+          calculation_rule_version: result.rule_version,
+          calculation_snapshot: calculationSnapshot,
           notes: regime === 'producao'
             ? `Por par: ${paresTot} pares (${result.pares_medio || 0} méd + ${result.pares_dificil || 0} dif) · ${result.paid_days} dia(s) produtivo(s)`
             : (result.pending_days > 0 ? `${result.pending_days} dia(s) pendente(s) — resolver no Pendências` : null),
@@ -1043,8 +1125,8 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
     <div className="space-y-4 page-enter">
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="text-xs text-muted-foreground">
-          <span className="font-semibold text-foreground">Base proporcional aos dias − descontos</span> · base = salário × dias do período ÷ dias do mês · faltas e atrasos conforme a escala ·
-          {' '}hora extra após 18h / fim de semana / feriado = <span className="font-semibold text-foreground">1,5×</span>
+          <span className="font-semibold text-foreground">Base proporcional aos dias − descontos</span> · créditos compensam atrasos parciais no período · faltas integrais ficam separadas ·
+          {' '}hora extra paga pela <span className="font-semibold text-foreground">taxa individual</span> normal ou de domingo/feriado
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <div className="flex items-center gap-1">
@@ -1145,8 +1227,9 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
               <TableHead>Funcionário</TableHead>
               <TableHead className="text-right">Salário</TableHead>
               <TableHead className="text-right">Faltas</TableHead>
-              <TableHead className="text-right">Atrasos</TableHead>
-              <TableHead className="text-right">Hora extra</TableHead>
+              <TableHead className="text-right">Atraso líquido</TableHead>
+              <TableHead className="text-right">HE paga</TableHead>
+              <TableHead className="text-right">Adiant.</TableHead>
               <TableHead className="text-right">Líquido</TableHead>
               <TableHead>Status</TableHead>
               <TableHead></TableHead>
@@ -1155,7 +1238,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
           <TableBody>
             {runs.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="p-0">
+                <TableCell colSpan={9} className="p-0">
                   <EmptyState
                     icon={Calculator}
                     title="Nenhuma folha calculada"
@@ -1167,7 +1250,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
             <Fragment key={g.setor}>
               {/* Cabeçalho do setor + subtotais (Proventos · Descontos · Líquido) */}
               <TableRow className="bg-muted/60 hover:bg-muted/60 border-t-2 border-border">
-                <TableCell colSpan={8} className="py-2">
+                <TableCell colSpan={9} className="py-2">
                   <div className="flex items-center justify-between gap-3 flex-wrap">
                     <span className="font-bold uppercase tracking-wide text-sm">
                       {g.setor}
@@ -1253,6 +1336,11 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
                       </TableCell>
                     </>
                   )}
+                  <TableCell className="text-right font-mono tabular-nums">
+                    {hasAdvance
+                      ? <span className="text-amber-600 font-semibold">−{fmt(r.advances_total || 0)}</span>
+                      : <span className="text-muted-foreground">—</span>}
+                  </TableCell>
                   <TableCell className="text-right font-mono tabular-nums font-bold">{fmt(r.total_liquido)}</TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1.5">
@@ -1301,19 +1389,29 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
       )}
 
       {view === 'calendario' && (() => {
-        const crows = comparativo.rows;
+        const crows = reportComparativoRows;
         if (crows.length === 0) {
           return <Panel title="Calendário de tempo" flush><div className="p-2"><EmptyState icon={Calculator} title="Nenhuma folha calculada" description={`Não há dados para ${periodTitle}. Clique em "Calcular folha".`} /></div></Panel>;
         }
         const cur = crows.find(r => r.id === calEmp) || crows[0];
-        const days = ((cur as any)?.printData?.days || []) as any[];
+        const days = ((cur as any)?.result?.day_ledger || []) as any[];
         const cls = (d: any) => {
-          const exp = d.expectedMinutes || 0, w = d.workedMinutes || 0;
-          if (exp === 0) return { t: '—', c: 'bg-muted/40 text-muted-foreground border-border/60' };
-          if (w === 0) return { t: 'falta', c: 'bg-red-500/10 text-red-700 dark:text-red-400 border-red-500/20' };
-          if ((d.overtimeMinutes || 0) > 0 || w > exp) return { t: '+' + fmtDeltaMin(w - exp), c: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20' };
-          if (w < exp) return { t: '−' + fmtDeltaMin(exp - w), c: 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20' };
-          return { t: fmtDeltaMin(w), c: 'bg-card text-foreground border-border' };
+          const paymentType = (cur as any)?.result?.payment_type;
+          if (paymentType && paymentType !== 'mensalista') {
+            return (d.worked_minutes || 0) > 0
+              ? { t: 'presença', c: 'bg-sky-500/10 text-sky-700 dark:text-sky-400 border-sky-500/20' }
+              : { t: '—', c: 'bg-muted/40 text-muted-foreground border-border/60' };
+          }
+          if (d.status === 'pending') return { t: 'pendente', c: 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20' };
+          if (d.status === 'excused') return { t: 'justificada', c: 'bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 border-indigo-500/20' };
+          if (d.status === 'absence') return { t: 'falta', c: 'bg-red-500/10 text-red-700 dark:text-red-400 border-red-500/20' };
+          if ((d.payable_overtime_minutes || 0) > 0) return { t: `HE +${fmtDeltaMin(d.payable_overtime_minutes)}`, c: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20' };
+          if ((d.payable_delay_minutes || 0) > 0) return { t: `−${fmtDeltaMin(d.payable_delay_minutes)}`, c: 'bg-red-500/10 text-red-700 dark:text-red-400 border-red-500/20' };
+          if ((d.compensated_credit_minutes || 0) > 0 || (d.compensated_delay_minutes || 0) > 0) return { t: 'compensado', c: 'bg-sky-500/10 text-sky-700 dark:text-sky-400 border-sky-500/20' };
+          if ((d.discarded_tolerance_minutes || 0) > 0) return { t: 'tolerância', c: 'bg-muted/40 text-muted-foreground border-border/60' };
+          return (d.worked_minutes || 0) > 0
+            ? { t: fmtDeltaMin(d.worked_minutes), c: 'bg-card text-foreground border-border' }
+            : { t: '—', c: 'bg-muted/40 text-muted-foreground border-border/60' };
         };
         return (
           <Panel title={`Calendário de tempo · ${periodTitle}`} flush>
@@ -1321,6 +1419,22 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
               <select value={cur?.id || ''} onChange={e => setCalEmp(e.target.value)} className="h-9 w-full max-w-xs rounded-md border bg-background px-3 text-base md:text-sm">
                 {crows.map(r => <option key={r.id} value={r.id}>{employeeMap.get(r.id)?.name || (r as any).name}</option>)}
               </select>
+              {(cur as any)?.result?.payment_type === 'mensalista' && (
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+                  {[
+                    ['Créditos brutos', fmtHoras((cur as any).result.raw_credit_minutes || 0)],
+                    ['Atrasos brutos', fmtHoras((cur as any).result.raw_delay_minutes || 0)],
+                    ['Compensado', fmtHoras((cur as any).result.compensated_minutes || 0)],
+                    ['HE paga', fmtHoras((cur as any).result.he_minutes || 0)],
+                    ['Atraso líquido', fmtHoras((cur as any).result.atraso_minutes || 0)],
+                  ].map(([label, value]) => (
+                    <div key={label} className="rounded-md border bg-muted/20 px-2.5 py-2">
+                      <div className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">{label}</div>
+                      <div className="font-mono text-sm font-semibold tabular-nums">{value}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
               <div className="grid grid-cols-7 gap-1.5">
                 {days.map((d, i) => {
                   const s = cls(d);
@@ -1333,9 +1447,9 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
                 })}
               </div>
               <div className="flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground pt-1">
-                <span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-emerald-500/40 inline-block" /> hora extra</span>
-                <span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-amber-500/40 inline-block" /> atraso</span>
-                <span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-red-500/40 inline-block" /> falta</span>
+                <span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-emerald-500/40 inline-block" /> HE paga</span>
+                <span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-sky-500/40 inline-block" /> compensado</span>
+                <span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-red-500/40 inline-block" /> atraso líquido / falta</span>
                 <Button size="sm" variant="outline" className="h-7 ml-auto gap-1.5" onClick={() => printEspelho(cur.id)}><Printer className="h-3.5 w-3.5" /> Imprimir espelho</Button>
               </div>
             </div>
@@ -1480,7 +1594,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
                     label: isFullMonth ? 'Salário base' : `Salário do período (${pdays} dia(s) proporcional)`,
                     value: periodBase, type: 'p' as const, always: true,
                   },
-                  { label: `Horas extras 1,5× (${fmtHoras(r.overtime_50_minutes || 0)})`, value: r.overtime_amount || 0, type: 'p' as const },
+                  { label: `Horas extras — taxa individual (${fmtHoras(r.overtime_50_minutes || 0)})`, value: r.overtime_amount || 0, type: 'p' as const },
                   { label: `Faltas (${r.absent_days || 0} dia(s))`, value: r.absence_discount || 0, type: 'd' as const, highlight: (r.absent_days || 0) > 0 },
                   { label: 'Atrasos / saídas cedo', value: r.deductions_amount || 0, type: 'd' as const },
                   { label: 'Adiantamentos do período', value: r.advances_total || 0, type: 'd' as const, highlight: true },

@@ -12,6 +12,11 @@ export type BundleRun = {
   overtime_50_minutes?: number; absent_days?: number; absence_discount?: number;
   deductions_amount?: number; advances_total?: number; total_descontos?: number;
   total_liquido: number; worked_minutes?: number; hourly_rate?: number; period: string;
+  payment_type?: 'mensalista' | 'remoto' | 'diarista' | 'producao';
+  he_normal_minutes?: number; he_holiday_minutes?: number;
+  he_normal_rate?: number; he_sunday_holiday_rate?: number;
+  raw_credit_minutes?: number; raw_delay_minutes?: number; compensated_minutes?: number;
+  discarded_tolerance_minutes?: number; rule_version?: string; calculated_at?: string;
   /** Regime POR PAR (produção). Quando true, salário/faltas/atrasos/HE não se
    *  aplicam: o bruto vem de pares × R$/par da Ficha de Montadores, e o
    *  relógio de ponto é só presença. Sem isto o holerite impresso chamava o
@@ -32,8 +37,20 @@ export type BundleRun = {
   taxa_variou?: boolean;
 };
 export type BundleDay = {
-  date: string; expectedMinutes?: number; workedMinutes?: number;
-  overtimeMinutes?: number; status?: string;
+  date: string;
+  day_of_week?: number;
+  punches?: string[];
+  expected_minutes?: number;
+  worked_minutes?: number;
+  raw_balance_minutes?: number;
+  raw_credit_minutes?: number;
+  raw_delay_minutes?: number;
+  compensated_credit_minutes?: number;
+  compensated_delay_minutes?: number;
+  payable_overtime_minutes?: number;
+  payable_delay_minutes?: number;
+  discarded_tolerance_minutes?: number;
+  status?: string;
 };
 export type BundleEmployee = {
   id: string; name: string; role?: string; department?: string;
@@ -136,6 +153,7 @@ function folhaSection(emps: BundleEmployee[], periodTitle: string): string {
           <span style="font-size:8px;font-weight:700;color:#555;border:1px solid #999;padding:0 3px;margin-left:4px;">POR PAR</span></td>
         <td>${fmt(r.total_proventos || 0)}</td>
         <td colspan="3" style="font-size:9px;color:#333;">${esc(det)}</td>
+        <td style="color:${(r.advances_total || 0) > 0 ? '#b45309' : '#9ca3af'};">${(r.advances_total || 0) > 0 ? '−' + fmt(r.advances_total || 0) : '—'}</td>
         <td style="font-weight:700;">${fmt(r.total_liquido)}</td>
       </tr>`;
     }
@@ -149,23 +167,38 @@ function folhaSection(emps: BundleEmployee[], periodTitle: string): string {
       <td style="color:${(r.absent_days || 0) > 0 ? '#b91c1c' : '#9ca3af'};">${faltas}</td>
       <td style="color:${(r.deductions_amount || 0) > 0 ? '#b91c1c' : '#9ca3af'};">${atrasos}</td>
       <td style="color:${(r.overtime_amount || 0) > 0 ? '#047857' : '#9ca3af'};">${he}</td>
+      <td style="color:${(r.advances_total || 0) > 0 ? '#b45309' : '#9ca3af'};">${(r.advances_total || 0) > 0 ? '−' + fmt(r.advances_total || 0) : '—'}</td>
       <td style="font-weight:700;">${fmt(r.total_liquido)}</td>
     </tr>`;
   };
   const rows = emps.map(linha).join('');
-  const totLiq = emps.reduce((s, e) => s + (e.run.total_liquido || 0), 0);
+  const totals = emps.reduce((a, e) => {
+    const r = e.run;
+    a.base += (r.total_proventos || 0) - (r.overtime_amount || 0);
+    a.falta += r.absence_discount || 0;
+    a.atraso += r.deductions_amount || 0;
+    a.he += r.overtime_amount || 0;
+    a.adv += r.advances_total || 0;
+    a.liq += r.total_liquido || 0;
+    return a;
+  }, { base: 0, falta: 0, atraso: 0, he: 0, adv: 0, liq: 0 });
   const temPorPar = emps.some(e => e.run.por_par);
   return `<section class="doc">
     <h2>Folha · ${esc(periodTitle)}</h2>
     <table class="grid">
       <thead><tr>
         <th style="text-align:left;">Funcionário</th><th>Salário / Produção</th><th>Faltas</th>
-        <th>Atrasos</th><th>Hora extra</th><th>Líquido</th>
+        <th>Atraso líquido</th><th>Hora extra paga</th><th>Adiant.</th><th>Líquido</th>
       </tr></thead>
       <tbody>${rows}</tbody>
       <tfoot><tr>
         <td style="text-align:left;font-weight:700;">TOTAL (${emps.length})</td>
-        <td colspan="4"></td><td style="font-weight:800;">${fmt(totLiq)}</td>
+        <td style="font-weight:800;">${fmt(totals.base)}</td>
+        <td style="font-weight:800;color:#b91c1c;">${totals.falta > 0 ? '−' + fmt(totals.falta) : '—'}</td>
+        <td style="font-weight:800;color:#b91c1c;">${totals.atraso > 0 ? '−' + fmt(totals.atraso) : '—'}</td>
+        <td style="font-weight:800;color:#047857;">${totals.he > 0 ? '+' + fmt(totals.he) : '—'}</td>
+        <td style="font-weight:800;color:#b45309;">${totals.adv > 0 ? '−' + fmt(totals.adv) : '—'}</td>
+        <td style="font-weight:800;">${fmt(totals.liq)}</td>
       </tr></tfoot>
     </table>
     ${temPorPar ? `<p class="legend">POR PAR = pago por produção (Ficha de Montadores): sem salário, falta, atraso ou hora extra. O relógio de ponto não entra na conta.</p>` : ''}
@@ -175,13 +208,22 @@ function folhaSection(emps: BundleEmployee[], periodTitle: string): string {
 // ── Calendário de tempo: grade semanal por funcionário (espelha a view do app) ─
 function calendarSection(e: BundleEmployee, periodTitle: string): string {
   const cell = (d: BundleDay) => {
-    const exp = d.expectedMinutes || 0, w = d.workedMinutes || 0;
+    const exp = d.expected_minutes || 0, w = d.worked_minutes || 0;
     let bg = '#fff', color = '#111', label = '—';
-    if (exp === 0) { bg = '#f3f4f6'; color = '#6b7280'; label = '—'; }
-    else if (w === 0) { bg = '#fee2e2'; color = '#b91c1c'; label = 'falta'; }
-    else if ((d.overtimeMinutes || 0) > 0 || w > exp) { bg = '#d1fae5'; color = '#047857'; label = '+' + fmtDeltaMin(w - exp); }
-    else if (w < exp) { bg = '#fef3c7'; color = '#b45309'; label = '−' + fmtDeltaMin(exp - w); }
-    else { label = fmtDeltaMin(w); }
+    if (e.run.payment_type && e.run.payment_type !== 'mensalista') {
+      label = w > 0 ? 'presença' : '—';
+      bg = w > 0 ? '#e0f2fe' : '#f3f4f6'; color = w > 0 ? '#0369a1' : '#6b7280';
+    } else if (d.status === 'pending') { bg = '#fef3c7'; color = '#b45309'; label = 'pendente'; }
+    else if (d.status === 'excused') { bg = '#e0e7ff'; color = '#4338ca'; label = 'justificada'; }
+    else if (d.status === 'absence') { bg = '#fee2e2'; color = '#b91c1c'; label = 'falta'; }
+    else if ((d.payable_overtime_minutes || 0) > 0) { bg = '#d1fae5'; color = '#047857'; label = 'HE +' + fmtDeltaMin(d.payable_overtime_minutes || 0); }
+    else if ((d.payable_delay_minutes || 0) > 0) { bg = '#fee2e2'; color = '#b91c1c'; label = '−' + fmtDeltaMin(d.payable_delay_minutes || 0); }
+    else if ((d.compensated_credit_minutes || 0) > 0 || (d.compensated_delay_minutes || 0) > 0) { bg = '#e0f2fe'; color = '#0369a1'; label = 'compensado'; }
+    else if ((d.discarded_tolerance_minutes || 0) > 0) { bg = '#f3f4f6'; color = '#6b7280'; label = 'tolerância'; }
+    else if ((d.raw_credit_minutes || 0) > 0) { bg = '#ecfdf5'; color = '#047857'; label = 'crédito +' + fmtDeltaMin(d.raw_credit_minutes || 0); }
+    else if ((d.raw_delay_minutes || 0) > 0) { bg = '#fffbeb'; color = '#b45309'; label = 'débito −' + fmtDeltaMin(d.raw_delay_minutes || 0); }
+    else if (exp > 0 && w > 0) { label = fmtDeltaMin(w); }
+    else { bg = '#f3f4f6'; color = '#6b7280'; label = '—'; }
     const dd = `${String(d.date).slice(8, 10)}/${String(d.date).slice(5, 7)}`;
     return `<td style="background:${bg};color:${color};border:1px solid #d1d5db;padding:4px 2px;text-align:center;width:14.28%;">
       <div style="font-size:9px;opacity:.7;">${dd}</div>
@@ -197,9 +239,11 @@ function calendarSection(e: BundleEmployee, periodTitle: string): string {
     <h2>Calendário de tempo · ${esc(periodTitle)}</h2>
     <p class="sub">${esc(e.name)}${e.role ? ' · ' + esc(e.role) : ''}${e.department ? ' · ' + esc(e.department) : ''}</p>
     <table class="cal"><tbody>${grid}</tbody></table>
-    <p class="legend"><span style="background:#d1fae5;">&nbsp;&nbsp;</span> hora extra
-      &nbsp; <span style="background:#fef3c7;">&nbsp;&nbsp;</span> atraso
-      &nbsp; <span style="background:#fee2e2;">&nbsp;&nbsp;</span> falta</p>
+    <p class="legend"><span style="background:#d1fae5;">&nbsp;&nbsp;</span> HE paga
+      &nbsp; <span style="background:#e0f2fe;">&nbsp;&nbsp;</span> compensado
+      &nbsp; <span style="background:#fee2e2;">&nbsp;&nbsp;</span> atraso líquido / falta
+      &nbsp; <span style="background:#fef3c7;">&nbsp;&nbsp;</span> pendência
+      </p>
   </section>`;
 }
 
@@ -210,6 +254,14 @@ function holeriteSection(e: BundleEmployee, periodTitle: string): string {
   const periodBase = (r.total_proventos || 0) - (r.overtime_amount || 0);
   const nf = (n: number) => (Number(n) || 0).toLocaleString('pt-BR');
   const marca = r.taxa_variou ? ' †' : '';
+  const normalHeRaw = ((r.he_normal_minutes || 0) / 60) * (r.he_normal_rate || 0);
+  const holidayHeRaw = ((r.he_holiday_minutes || 0) / 60) * (r.he_sunday_holiday_rate || r.he_normal_rate || 0);
+  const normalHeValue = Math.round(normalHeRaw * 100) / 100;
+  // Fecha centavo a centavo com o total já arredondado pelo motor da folha.
+  const holidayHeValue = (r.he_holiday_minutes || 0) > 0
+    ? Math.round(((r.overtime_amount || 0) - normalHeValue) * 100) / 100
+    : 0;
+  const splitHe = normalHeRaw + holidayHeRaw > 0;
   // POR PAR: nada de salário, falta, atraso ou hora extra — nenhum deles entra
   // na conta deste regime. Cada dificuldade usa o SEU bruto, nunca o total
   // rateado (a média de 0,80 e 1,00 não é o R$/par de nenhum dos dois).
@@ -227,7 +279,12 @@ function holeriteSection(e: BundleEmployee, periodTitle: string): string {
       ]
     : [
         { label: isFullMonth ? 'Salário base' : 'Salário do período (proporcional)', value: periodBase, type: 'p' as const, always: true, hi: false },
-        { label: `Horas extras 1,5× (${fmtH(r.overtime_50_minutes || 0)})`, value: r.overtime_amount || 0, type: 'p' as const, always: false, hi: false },
+        ...(splitHe ? [
+          { label: `Hora extra — taxa normal (${fmtH(r.he_normal_minutes || 0)})`, value: normalHeValue, type: 'p' as const, always: false, hi: false },
+          { label: `Hora extra — domingo/feriado (${fmtH(r.he_holiday_minutes || 0)})`, value: holidayHeValue, type: 'p' as const, always: false, hi: false },
+        ] : [
+          { label: `Horas extras — taxa individual (${fmtH(r.overtime_50_minutes || 0)})`, value: r.overtime_amount || 0, type: 'p' as const, always: false, hi: false },
+        ]),
         { label: `Faltas (${r.absent_days || 0} dia(s))`, value: r.absence_discount || 0, type: 'd' as const, always: false, hi: (r.absent_days || 0) > 0 },
         { label: 'Atrasos / saídas cedo', value: r.deductions_amount || 0, type: 'd' as const, always: false, hi: false },
         { label: 'Adiantamentos do período', value: r.advances_total || 0, type: 'd' as const, always: false, hi: true },
@@ -259,6 +316,7 @@ function holeriteSection(e: BundleEmployee, periodTitle: string): string {
       <div><span>Descontos</span><strong style="color:#b91c1c;">${fmt(r.total_descontos || 0)}</strong></div>
       <div><span>Líquido a receber</span><strong style="font-size:16px;color:#0f172a;">${fmt(r.total_liquido)}</strong></div>
     </div>
+    ${r.rule_version ? `<p class="legend">Regra: ${esc(r.rule_version)}${r.calculated_at ? ` · calculado em ${esc(new Date(r.calculated_at).toLocaleString('pt-BR'))}` : ''}. Créditos e atrasos parciais são compensados dentro do período.</p>` : ''}
   </section>`;
 }
 

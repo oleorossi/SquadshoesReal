@@ -1,10 +1,9 @@
 // RelatorioAtrasos — relatório de ATRASOS por funcionário no período. Mostra em
-// quais dias cada funcionário atrasou (ou saiu cedo) e quanto tempo, e ao clicar
-// num funcionário abre um CALENDÁRIO com os dias de atraso + os HORÁRIOS batidos
-// (exatamente do registro do relógio de ponto) e o R$ descontado por dia.
+// quais dias cada funcionário teve déficit parcial, quanto foi compensado por
+// créditos de outros dias e qual saldo realmente virou desconto.
 //
 // Fonte da verdade: o MESMO motor da folha (computePeriodFolha → late_days), então
-// o atraso aqui bate EXATAMENTE com a coluna ATRASOS da Folha do Mês e com o
+// O total líquido aqui bate EXATAMENTE com a coluna ATRASOS da Folha e com o
 // desconto aplicado no líquido (atraso_desconto retornado pelo motor da folha).
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -51,8 +50,12 @@ function periodRange(mode: Mode, cFrom: string, cTo: string) {
 interface AtrasoRow {
   id: string;
   name: string;
-  days: { date: string; minutes: number }[];
+  days: { date: string; minutes: number; compensated_minutes?: number; payable_minutes?: number }[];
   totalMin: number;
+  compensatedMin: number;
+  netMin: number;
+  rawCreditMin: number;
+  paidHeMin: number;
   /** Batidas por data (exatamente do relógio) — alimenta o calendário. */
   punchesByDate: Map<string, string[]>;
   schedule: any;
@@ -94,9 +97,9 @@ function AtrasoCalendarDialog({ row, from, to, onClose }: { row: AtrasoRow | nul
               </div>
             </div>
             <div className="text-right shrink-0">
-              <span className="block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Total atrasado</span>
-              <span className="text-2xl font-extrabold tabular-nums text-amber-600 dark:text-amber-400 leading-none">{fmtMin(row.totalMin)}</span>
-              <span className="block text-xs text-muted-foreground mt-0.5">{row.days.length} dia{row.days.length === 1 ? '' : 's'} · desconto {fmtBRL(totalRS)}</span>
+              <span className="block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Atraso líquido</span>
+              <span className="text-2xl font-extrabold tabular-nums text-amber-600 dark:text-amber-400 leading-none">{fmtMin(row.netMin)}</span>
+              <span className="block text-xs text-muted-foreground mt-0.5">bruto {fmtMin(row.totalMin)} · compensado {fmtMin(row.compensatedMin)} · desconto {fmtBRL(totalRS)}</span>
             </div>
           </DialogTitle>
         </DialogHeader>
@@ -143,7 +146,7 @@ function AtrasoCalendarDialog({ row, from, to, onClose }: { row: AtrasoRow | nul
                         <span className={`text-[10px] font-bold tabular-nums leading-none ${lateMin != null ? 'text-amber-700 dark:text-amber-400' : 'text-muted-foreground'}`}>{day}</span>
                         {lateMin != null ? (
                           <span className="mt-auto">
-                            <span className="block text-[11px] font-bold tabular-nums text-amber-600 dark:text-amber-400 leading-tight">{fmtMin(lateMin)}</span>
+                            <span className="block text-[11px] font-bold tabular-nums text-amber-600 dark:text-amber-400 leading-tight">débito {fmtMin(lateMin)}</span>
                             {punches[0] && <span className="block text-[9px] font-mono text-amber-700/80 dark:text-amber-400/80 leading-none">↦ {hhmm(punches[0])}</span>}
                           </span>
                         ) : punches[0] ? (
@@ -162,7 +165,7 @@ function AtrasoCalendarDialog({ row, from, to, onClose }: { row: AtrasoRow | nul
         <div className="rounded-lg border border-border overflow-hidden">
           <div className="bg-muted/40 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground flex items-center justify-between">
             <span>Dias com atraso · batidas do relógio</span>
-            <span>Déficit</span>
+            <span>Débito bruto → líquido</span>
           </div>
           <div className="divide-y divide-border">
             {row.days.map((d) => {
@@ -178,7 +181,10 @@ function AtrasoCalendarDialog({ row, from, to, onClose }: { row: AtrasoRow | nul
                     </p>
                   </div>
                   <div className="shrink-0 text-right">
-                    <p className="text-sm font-bold tabular-nums text-amber-600 dark:text-amber-400 leading-none">{fmtMin(d.minutes)}</p>
+                    <p className="text-sm font-bold tabular-nums text-amber-600 dark:text-amber-400 leading-none">
+                      {fmtMin(d.minutes)} → {fmtMin(d.payable_minutes || 0)}
+                    </p>
+                    {(d.compensated_minutes || 0) > 0 && <p className="text-[10px] text-sky-700 dark:text-sky-400">{fmtMin(d.compensated_minutes || 0)} compensado</p>}
                   </div>
                 </div>
               );
@@ -278,6 +284,10 @@ export default function RelatorioAtrasos() {
         if (late.length > 0) {
           out.push({
             id: emp.id, name: emp.name, days: late, totalMin: late.reduce((s, d) => s + d.minutes, 0),
+            compensatedMin: res.compensated_minutes || 0,
+            netMin: res.atraso_minutes,
+            rawCreditMin: res.raw_credit_minutes || 0,
+            paidHeMin: res.he_minutes,
             punchesByDate: empPunches, schedule: sch, atrasoDiscount: res.atraso_desconto,
           });
         }
@@ -289,7 +299,9 @@ export default function RelatorioAtrasos() {
   const totals = useMemo(() => ({
     funcionarios: rows.length,
     dias: rows.reduce((s, r) => s + r.days.length, 0),
-    minutos: rows.reduce((s, r) => s + r.totalMin, 0),
+    minutosBrutos: rows.reduce((s, r) => s + r.totalMin, 0),
+    compensados: rows.reduce((s, r) => s + r.compensatedMin, 0),
+    minutosLiquidos: rows.reduce((s, r) => s + r.netMin, 0),
   }), [rows]);
 
   const periodBtn = (m: Mode, label: string) => (
@@ -312,11 +324,12 @@ export default function RelatorioAtrasos() {
       </div>
 
       {/* KPIs */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
         {[
           { label: 'Funcionários com atraso', value: String(totals.funcionarios), icon: Users },
-          { label: 'Dias com atraso', value: String(totals.dias), icon: Timer },
-          { label: 'Tempo total atrasado', value: fmtMin(totals.minutos), icon: Clock, accent: true },
+          { label: 'Atraso bruto', value: fmtMin(totals.minutosBrutos), icon: Timer },
+          { label: 'Compensado por excessos', value: fmtMin(totals.compensados), icon: CheckCircle },
+          { label: 'Atraso líquido', value: fmtMin(totals.minutosLiquidos), icon: Clock, accent: true },
         ].map((k) => (
           <div key={k.label} className={`rounded-lg border p-3 ${k.accent ? 'border-amber-500/30 bg-amber-500/5' : 'border-border bg-card'}`}>
             <p className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted-foreground font-bold">
@@ -367,8 +380,8 @@ export default function RelatorioAtrasos() {
                   </div>
                 </div>
                 <div className="shrink-0 text-right">
-                  <p className="text-lg font-bold tabular-nums text-amber-600 dark:text-amber-400 leading-none">{fmtMin(r.totalMin)}</p>
-                  <p className="text-[11px] text-muted-foreground">{r.days.length} dia{r.days.length === 1 ? '' : 's'}</p>
+                  <p className="text-lg font-bold tabular-nums text-amber-600 dark:text-amber-400 leading-none">{fmtMin(r.netMin)}</p>
+                  <p className="text-[11px] text-muted-foreground">bruto {fmtMin(r.totalMin)} · comp. {fmtMin(r.compensatedMin)}</p>
                 </div>
               </button>
             ))}

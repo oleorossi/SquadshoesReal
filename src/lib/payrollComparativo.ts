@@ -37,6 +37,7 @@ export function buildEmployeePrintData(
   emp: any,
   sch: any,
   days: { date: string; dow: number; punches: string[]; isHoliday: boolean; swap?: 'worked' | 'off' }[],
+  payrollResult?: SalaryPayrollResult,
 ): EmployeeTimesheetData {
   const summaries: DaySummary[] = days.map(d => {
     const s = calculateDaySummary(d.punches, d.dow, sch, d.isHoliday, d.swap);
@@ -56,6 +57,7 @@ export function buildEmployeePrintData(
     paymentType: (emp?.payment_type as 'mensalista' | 'remoto' | 'diarista' | 'producao') || 'mensalista',
     dailyRate: Number(emp?.daily_rate) || 0,
     monthlySalary: Number(emp?.salary) || 0,
+    payrollResult,
   };
 }
 
@@ -82,6 +84,8 @@ export interface ComparativoArgs {
   swapOffSet?: Set<string>;
   timeRecords: { employee_external_id?: string | null; employee_name?: string | null; record_date: string; punches: string[] }[];
   advancesList: { employee_id: string; amount: number; advance_date: string }[];
+  /** Ausências justificadas já expandidas por funcionário no intervalo consultado. */
+  absenceDatesByEmployee?: Map<string, Set<string>>;
   /** Linhas de ficha_montadores (produção por par) do período — regime 'producao'. */
   producaoRows?: FichaMontadorRow[];
   range: { from: string; to: string };
@@ -179,6 +183,7 @@ export function computeComparativoRows(args: ComparativoArgs): ComparativoResult
         return computePeriodFolha({
           salary: Number(emp.salary) || 0, from, to,
           schedule: sch, holidaysSet, swapWorkedSet, swapOffSet, punchesByDate: empPunches,
+          absenceDates: args.absenceDatesByEmployee?.get(emp.id),
           activeFrom: emp.admission_date || null, activeTo: emp.termination_date || null,
           coveredDates,
           periodDays, monthDays, maxCoveredDate: maxCovered,
@@ -221,7 +226,7 @@ export function computeComparativoRows(args: ComparativoArgs): ComparativoResult
         id: emp.id, ext: extKey || undefined, name: emp.name,
         result, q1, q2, matchedDays, advMes,
         sit,
-        printData: buildEmployeePrintData(emp, sch, printDays),
+        printData: buildEmployeePrintData(emp, sch, printDays, result),
       };
     })
     .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));

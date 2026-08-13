@@ -12,8 +12,12 @@ import { expectedDayMinutes } from './salaryPayroll';
 
 export interface AtrasoPrintRow {
   name: string;
-  days: { date: string; minutes: number }[];
+  days: { date: string; minutes: number; compensated_minutes?: number; payable_minutes?: number }[];
   totalMin: number;
+  compensatedMin: number;
+  netMin: number;
+  rawCreditMin: number;
+  paidHeMin: number;
   atrasoDiscount: number;
   punchesByDate: Map<string, string[]>;
   schedule: any;
@@ -128,19 +132,20 @@ export function printEmployeeAtraso(row: AtrasoPrintRow, from: string, to: strin
     const punches = row.punchesByDate.get(d.date) || [];
     return `<tr><td><span class="dt">${fmtDia(d.date)}</span> <span class="dow">${dowShort(d.date)}</span>` +
       `<div class="punches">${punches.length ? punches.map(hhmm).join('  ·  ') : 'sem batidas'}</div></td>` +
-      `<td class="amber">${fmtMin(d.minutes)}</td></tr>`;
+      `<td class="amber">${fmtMin(d.minutes)} → ${fmtMin(d.payable_minutes || 0)}${(d.compensated_minutes || 0) > 0 ? `<span class="rs">${fmtMin(d.compensated_minutes || 0)} compensado</span>` : ''}</td></tr>`;
   }).join('');
   const inner =
     `<div class="eyebrow">Atrasos · ${fmtDia(from)}–${fmtDia(to)}</div>` +
     `<h1>${esc(row.name)}</h1>` +
     `<div class="sub">Jornada esperada: <strong>${expWindow}</strong> (${fmtMin(expMin)}/dia). Horários do relógio de ponto.</div>` +
-    `<div class="kpis"><div class="kpi"><div class="l">Dias com atraso</div><div class="v">${row.days.length}</div></div>` +
-    `<div class="kpi amber"><div class="l">Total atrasado</div><div class="v">${fmtMin(row.totalMin)}</div></div>` +
+    `<div class="kpis"><div class="kpi"><div class="l">Atraso bruto</div><div class="v">${fmtMin(row.totalMin)}</div></div>` +
+    `<div class="kpi"><div class="l">Compensado</div><div class="v">${fmtMin(row.compensatedMin)}</div></div>` +
+    `<div class="kpi amber"><div class="l">Atraso líquido</div><div class="v">${fmtMin(row.netMin)}</div></div>` +
     `<div class="kpi amber"><div class="l">Desconto</div><div class="v">${fmtBRL(totalRS)}</div></div></div>` +
     calendarHTML(row, from, to) +
-    `<table><thead><tr><th>Dia · batidas do relógio</th><th class="r">Déficit</th></tr></thead>` +
+    `<table><thead><tr><th>Dia · batidas do relógio</th><th class="r">Débito bruto → líquido</th></tr></thead>` +
     `<tbody>${tableRows}</tbody>` +
-    `<tfoot><tr><td>Total · ${row.days.length} dia${row.days.length === 1 ? '' : 's'}</td><td class="amber">${fmtMin(row.totalMin)}<span class="rs">${fmtBRL(totalRS)}</span></td></tr></tfoot></table>`;
+    `<tfoot><tr><td>Total · ${row.days.length} dia${row.days.length === 1 ? '' : 's'}</td><td class="amber">${fmtMin(row.netMin)} líquido<span class="rs">${fmtBRL(totalRS)}</span></td></tr></tfoot></table>`;
   openPrint(`Atrasos — ${row.name}`, inner);
 }
 
@@ -148,22 +153,25 @@ export function printEmployeeAtraso(row: AtrasoPrintRow, from: string, to: strin
 export function printAtrasoSummary(rows: AtrasoPrintRow[], from: string, to: string) {
   const totDias = rows.reduce((s, r) => s + r.days.length, 0);
   const totMin = rows.reduce((s, r) => s + r.totalMin, 0);
+  const totComp = rows.reduce((s, r) => s + r.compensatedMin, 0);
+  const totNet = rows.reduce((s, r) => s + r.netMin, 0);
   const totRS = rows.reduce((s, r) => s + r.atrasoDiscount, 0);
   const body = rows.map((r) => {
     const chips = r.days.map((d) => `${fmtDia(d.date).slice(0, 5)} ${fmtMin(d.minutes)}`).join('   ·   ');
     return `<tr><td><span class="dt">${esc(r.name)}</span><div class="punches">${chips}</div></td>` +
       `<td class="r">${r.days.length}</td>` +
-      `<td class="amber">${fmtMin(r.totalMin)}<span class="rs">${fmtBRL(r.atrasoDiscount)}</span></td></tr>`;
+      `<td class="amber">${fmtMin(r.netMin)}<span class="rs">bruto ${fmtMin(r.totalMin)} · comp. ${fmtMin(r.compensatedMin)} · ${fmtBRL(r.atrasoDiscount)}</span></td></tr>`;
   }).join('');
   const inner =
     `<div class="eyebrow">Relatório de Atrasos</div>` +
     `<h1>Resumo por funcionário</h1>` +
-    `<div class="sub">Período <strong>${fmtDia(from)}–${fmtDia(to)}</strong>. Atraso/desconto idênticos à Folha do Mês.</div>` +
+    `<div class="sub">Período <strong>${fmtDia(from)}–${fmtDia(to)}</strong>. Excesso de um dia compensa atraso parcial de outro; falta integral fica separada.</div>` +
     `<div class="kpis"><div class="kpi"><div class="l">Funcionários com atraso</div><div class="v">${rows.length}</div></div>` +
-    `<div class="kpi"><div class="l">Dias com atraso</div><div class="v">${totDias}</div></div>` +
-    `<div class="kpi amber"><div class="l">Tempo total atrasado</div><div class="v">${fmtMin(totMin)}</div></div></div>` +
+    `<div class="kpi"><div class="l">Atraso bruto</div><div class="v">${fmtMin(totMin)}</div></div>` +
+    `<div class="kpi"><div class="l">Compensado</div><div class="v">${fmtMin(totComp)}</div></div>` +
+    `<div class="kpi amber"><div class="l">Atraso líquido</div><div class="v">${fmtMin(totNet)}</div></div></div>` +
     `<table><thead><tr><th>Funcionário · dias</th><th class="r">Dias</th><th class="r">Atraso · desconto</th></tr></thead>` +
     `<tbody>${body}</tbody>` +
-    `<tfoot><tr><td>Total</td><td class="r">${totDias}</td><td class="amber">${fmtMin(totMin)}<span class="rs">${fmtBRL(totRS)}</span></td></tr></tfoot></table>`;
+    `<tfoot><tr><td>Total</td><td class="r">${totDias}</td><td class="amber">${fmtMin(totNet)} líquido<span class="rs">bruto ${fmtMin(totMin)} · comp. ${fmtMin(totComp)} · ${fmtBRL(totRS)}</span></td></tr></tfoot></table>`;
   openPrint('Relatório de Atrasos', inner);
 }
