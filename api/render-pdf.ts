@@ -1,4 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { createClient } from '@supabase/supabase-js';
+import { isAllowedPrintResource } from '../src/lib/printResourceSecurity';
 
 /**
  * Renderiza HTML em PDF com Chromium headless.
@@ -20,10 +22,8 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
  * (`displayHeaderFooter` é false por padrão). O mesmo HTML sai idêntico no celular,
  * no desktop e em qualquer impressora — que era o pedido do dono.
  *
- * ⚠ Esta função é BURRA de propósito: recebe HTML e devolve PDF. Ela não sabe o que
- * é um PV, não fala com o banco e não tem sessão. Fazer o Chromium abrir a página do
- * app exigiria carregar login e permissões aqui dentro, e qualquer mudança de rota
- * quebraria a impressão.
+ * O HTML continua autocontido, mas a função exige uma sessão Supabase aprovada,
+ * limita chamadas por usuário e só permite recursos remotos de hosts conhecidos.
  */
 
 /** Teto do corpo da requisição. O cliente manda HTML com as fotos por URL (não
@@ -36,6 +36,38 @@ export const config = {
 };
 
 const MAX_HTML_BYTES = 4 * 1024 * 1024;
+const RATE_WINDOW_MS = 60_000;
+const RATE_LIMIT = 12;
+const rateByUser = new Map<string, number[]>();
+
+type RequestBody = {
+  html?: string;
+  landscape?: unknown;
+  filename?: string;
+  access_token?: string;
+  job_id?: string;
+};
+
+function consumeRateSlot(userId: string, now = Date.now()): boolean {
+  const valid = (rateByUser.get(userId) || []).filter(ts => now - ts < RATE_WINDOW_MS);
+  if (valid.length >= RATE_LIMIT) {
+    rateByUser.set(userId, valid);
+    return false;
+  }
+  valid.push(now);
+  rateByUser.set(userId, valid);
+  return true;
+}
+
+function serverSupabase(accessToken: string) {
+  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+  const key = process.env.SUPABASE_PUBLISHABLE_KEY || process.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+  if (!url || !key) throw new Error('Supabase não configurado no servidor.');
+  return createClient(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: { headers: { Authorization: `Bearer ${accessToken}` } },
+  });
+}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
@@ -46,13 +78,49 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // O app manda POST de FORMULÁRIO (o navegador conduz a navegação e exibe o PDF
   // sozinho — ver o cabeçalho de src/lib/printPdf.ts). JSON continua aceito pra
   // teste por linha de comando.
-  const body = (req.body || {}) as { html?: string; landscape?: unknown; filename?: string };
+  const body = (req.body || {}) as RequestBody;
   const html = body.html;
   const landscape = body.landscape === true || body.landscape === '1';
   const filename = sanitizeFilename(body.filename) || 'documento';
   // Requisição vinda de formulário = quem lê a resposta é uma PESSOA numa aba.
   // Erro em JSON ali é lixo na tela; devolvemos HTML legível.
   const querHtml = String(req.headers.accept || '').includes('text/html');
+
+  if (!body.access_token) {
+    return fail(res, querHtml, 401, 'Sessão ausente. Entre novamente no sistema.');
+  }
+
+  let userId = '';
+  let db: ReturnType<typeof serverSupabase>;
+  try {
+    db = serverSupabase(body.access_token);
+    const { data: authData, error: authError } = await db.auth.getUser(body.access_token);
+    if (authError || !authData.user) {
+      return fail(res, querHtml, 401, 'Sessão inválida ou expirada.');
+    }
+    userId = authData.user.id;
+    const { data: profile, error: profileError } = await db
+      .from('profiles')
+      .select('approved')
+      .eq('id', userId)
+      .maybeSingle();
+    if (profileError || !profile?.approved) {
+      return fail(res, querHtml, 403, 'Usuário sem aprovação para gerar documentos.');
+    }
+    if (!consumeRateSlot(userId)) {
+      res.setHeader('Retry-After', '60');
+      return fail(res, querHtml, 429, 'Muitas gerações em sequência. Aguarde um minuto.');
+    }
+    if (body.job_id) {
+      const { data: job } = await db.from('print_jobs').select('user_id').eq('id', body.job_id).maybeSingle();
+      if (!job || job.user_id !== userId) {
+        return fail(res, querHtml, 403, 'Lote de impressão inválido para esta sessão.');
+      }
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Falha de autenticação.';
+    return fail(res, querHtml, 500, message);
+  }
 
   if (typeof html !== 'string' || html.trim().length === 0) {
     return fail(res, querHtml, 400, 'Documento vazio — nada para imprimir.');
@@ -67,6 +135,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const browser = await getBrowser();
     page = await browser.newPage();
 
+    const allowedHosts = new Set<string>([
+      'squadshoes-real.vercel.app',
+      ...(process.env.VERCEL_URL ? [process.env.VERCEL_URL] : []),
+      ...(process.env.PRINT_ALLOWED_RESOURCE_HOSTS || '').split(',').map(v => v.trim()).filter(Boolean),
+    ].map(v => v.toLowerCase()));
+    const isLocal = !process.env.VERCEL;
+    if (isLocal) {
+      allowedHosts.add('localhost');
+      allowedHosts.add('127.0.0.1');
+    }
+    await page.setRequestInterception(true);
+    page.on('request', request => {
+      if (isAllowedPrintResource(request.url(), allowedHosts, isLocal)) request.continue();
+      else request.abort('blockedbyclient');
+    });
+
     // `networkidle0` cobre as fotos dos produtos e o CSS do app, que vêm por URL.
     await page.setContent(html, { waitUntil: ['load', 'networkidle0'], timeout: 45_000 });
 
@@ -77,6 +161,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Fonte que não chegou = texto no fallback, e a etiqueta perde a identidade
     // (Anton no número da OP). Melhor esperar um pouco do que imprimir errado.
     await page.evaluate(() => (document as unknown as { fonts: { ready: Promise<unknown> } }).fonts.ready);
+
+    // Builders marcam códigos por id. Se o CDN falhar, não entregamos um PDF
+    // visualmente válido porém sem rastreabilidade.
+    await page.waitForFunction(() => {
+      const barcodes = Array.from(document.querySelectorAll<SVGElement>('svg[id^="bc-"],svg[id^="bx-"]'));
+      const qrs = Array.from(document.querySelectorAll<HTMLElement>('[id^="qr-ht-"]'));
+      return barcodes.every(el => el.childElementCount > 0)
+        && qrs.every(el => el.querySelector('canvas,img') !== null);
+    }, { timeout: 12_000 });
 
     const pdf = await page.pdf({
       printBackground: true,   // faixas pretas e o vermelho #C00000 do destaque
@@ -91,10 +184,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // `inline` faz o visualizador do aparelho ABRIR o PDF em vez de só baixar —
     // e o filename é o que aparece ao salvar ou compartilhar.
     res.setHeader('Content-Disposition', `inline; filename="${filename}.pdf"`);
+    if (body.job_id) {
+      await db.from('print_jobs').update({ status: 'generated' }).eq('id', body.job_id).eq('user_id', userId);
+    }
     return res.status(200).send(Buffer.from(pdf));
   } catch (err) {
     const message = err instanceof Error ? err.message : 'erro desconhecido';
     console.error('[render-pdf] falhou:', message);
+    try {
+      if (body.job_id) {
+        const db = serverSupabase(body.access_token);
+        await db.from('print_jobs').update({ status: 'failed' }).eq('id', body.job_id).eq('user_id', userId);
+      }
+    } catch { /* o erro original é o relevante para o operador */ }
     // Sem plano B por decisão do dono: mostramos o erro em vez de cair no modo
     // antigo, pra nunca sair documento fora do padrão.
     return fail(res, querHtml, 500, `Falha ao gerar o PDF: ${message}`);

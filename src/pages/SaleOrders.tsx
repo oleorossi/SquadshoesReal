@@ -70,7 +70,8 @@ import { printAllSectorsForSaleOrder } from '@/lib/printSaleOrderOPs';
 import { autoCreateSolePO, autoCreateSolePOFromShortfall } from '@/lib/soleAutoPO';
 import { buildThermalLabelsHtml } from '@/lib/printLabels';
 import { resolveSenderCnpj } from '@/lib/companySender';
-import { openPrintWindow, writeRawPrintWindow } from '@/lib/printOrder';
+import { openPrintTab, printHtmlAsPdf } from '@/lib/printPdf';
+import { createPrintJob, setPrintJobStatus } from '@/lib/printJobs';
 import { todayISO, todayPlusDaysISO } from '@/lib/date';
 import { computeARSchedule } from '@/lib/saleOrderAR';
 import logoImg from '@/assets/logo-squad-shoes.jpg';
@@ -1105,7 +1106,7 @@ export default function SaleOrders() {
 
   const handleBulkLabels = async () => {
     if (selectedIds.size === 0) return;
-    const pw = openPrintWindow('Etiquetas térmicas');
+    const pw = openPrintTab();
     try {
       const selectedOrders = orders.filter(o => selectedIds.has(o.id));
       const labels: Parameters<typeof buildThermalLabelsHtml>[0] = [];
@@ -1122,7 +1123,22 @@ export default function SaleOrders() {
         .from('orders')
         .select('id, order_number, reference_id, color, grade, quantity, sale_order_item_id, sale_order_id')
         .in('sale_order_id', orderIds);
-      if (!allOps || allOps.length === 0) { toast.info('Nenhuma etiqueta para gerar.'); return; }
+      if (!allOps || allOps.length === 0) {
+        pw?.close();
+        toast.info('Nenhuma etiqueta para gerar.');
+        return;
+      }
+      const requestedLabels = (allOps as any[]).reduce((sum, op) => {
+        const grade = op.grade && typeof op.grade === 'object' && !Array.isArray(op.grade)
+          ? op.grade as Record<string, number> : null;
+        const gradeTotal = grade ? Object.values(grade).reduce((a, qty) => a + (Number(qty) || 0), 0) : 0;
+        return sum + (gradeTotal > 0 ? gradeTotal : (Number(op.quantity) || 0));
+      }, 0);
+      if (requestedLabels > 5000) {
+        pw?.close();
+        toast.error(`A seleção geraria ${requestedLabels.toLocaleString('pt-BR')} etiquetas. Reduza o lote para no máximo 5.000.`);
+        return;
+      }
 
       const refIds = [...new Set(allOps.map((o: any) => o.reference_id).filter(Boolean))];
       const soiIds = [...new Set(allOps.map((o: any) => o.sale_order_item_id).filter(Boolean))];
@@ -1241,13 +1257,28 @@ export default function SaleOrders() {
           }
         }
       }
-      if (labels.length === 0) { toast.info('Nenhuma etiqueta para gerar.'); return; }
+      if (labels.length === 0) {
+        pw?.close();
+        toast.info('Nenhuma etiqueta para gerar.');
+        return;
+      }
       const logoUrl = new URL(logoImg, window.location.origin).href;
       const senderCnpj = resolveSenderCnpj(companies, (selectedOrders[0] as any)?.company_id);
       const html = buildThermalLabelsHtml(labels, logoUrl, { width: 100, height: 30 }, undefined, senderCnpj);
-      writeRawPrintWindow(pw, html);
-      toast.success(`${labels.length} etiqueta(s) gerada(s)`);
+      const jobId = await createPrintJob({
+        batchName: `Térmicas de pedidos - ${new Date().toLocaleString('pt-BR')}`,
+        totalLabels: labels.length,
+        orderIds: (allOps as any[]).map(op => op.id),
+      });
+      const submitted = await printHtmlAsPdf(html, {
+        filename: `etiquetas-pedidos-${new Date().toISOString().slice(0, 10)}`,
+        target: pw,
+        jobId,
+      });
+      if (!submitted) await setPrintJobStatus(jobId, 'failed');
+      if (submitted) toast.success(`${labels.length} etiqueta(s) enviadas para geração do PDF.`);
     } catch (err: any) {
+      pw?.close();
       toast.error(err.message);
     }
   };

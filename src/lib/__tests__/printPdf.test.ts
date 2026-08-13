@@ -2,6 +2,16 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { printHtmlAsPdf, openPrintTab, MAX_DOCUMENT_BYTES } from '../printPdf';
 
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn(), loading: vi.fn() } }));
+vi.mock('@/integrations/supabase/client', () => ({
+  supabase: {
+    auth: {
+      getSession: vi.fn().mockResolvedValue({
+        data: { session: { access_token: 'token-de-teste' } },
+        error: null,
+      }),
+    },
+  },
+}));
 import { toast } from 'sonner';
 
 /**
@@ -32,8 +42,8 @@ describe('printHtmlAsPdf — POST de formulário', () => {
     return form;
   };
 
-  it('envia por POST para a função, mirando a aba já aberta', () => {
-    const ok = printHtmlAsPdf('<html><body>oi</body></html>', { filename: 'etiquetas-PV-1' });
+  it('envia por POST para a função, mirando a aba já aberta', async () => {
+    const ok = await printHtmlAsPdf('<html><body>oi</body></html>', { filename: 'etiquetas-PV-1' });
     expect(ok).toBe(true);
     expect(submit).toHaveBeenCalledTimes(1);
     const form = campos();
@@ -44,8 +54,8 @@ describe('printHtmlAsPdf — POST de formulário', () => {
     expect(form.target).toBe('squad-pdf');
   });
 
-  it('leva o HTML, o nome do arquivo e a orientação', () => {
-    printHtmlAsPdf('<html><body>conteudo</body></html>', {
+  it('leva o HTML, o nome do arquivo, a sessão e a orientação', async () => {
+    await printHtmlAsPdf('<html><body>conteudo</body></html>', {
       filename: 'cartoes-lote', landscape: true,
     });
     const form = campos();
@@ -55,22 +65,33 @@ describe('printHtmlAsPdf — POST de formulário', () => {
     expect(valores.html).toContain('conteudo');
     expect(valores.filename).toBe('cartoes-lote');
     expect(valores.landscape).toBe('1');
+    expect(valores.access_token).toBe('token-de-teste');
   });
 
-  it('não manda "landscape" quando é retrato (o servidor decide pelo padrão)', () => {
-    printHtmlAsPdf('<html><body>x</body></html>', { filename: 'fichas' });
+  it('vincula o envio ao job previamente registrado', async () => {
+    await printHtmlAsPdf('<html><body>conteudo</body></html>', {
+      filename: 'lote', jobId: 'job-123',
+    });
+    const valores = Object.fromEntries(
+      Array.from(campos().querySelectorAll('input')).map(i => [i.name, i.value]),
+    );
+    expect(valores.job_id).toBe('job-123');
+  });
+
+  it('não manda "landscape" quando é retrato (o servidor decide pelo padrão)', async () => {
+    await printHtmlAsPdf('<html><body>x</body></html>', { filename: 'fichas' });
     const nomes = Array.from(campos().querySelectorAll('input')).map(i => i.name);
     expect(nomes).not.toContain('landscape');
   });
 
-  it('não deixa o formulário sujando a página depois de enviar', () => {
-    printHtmlAsPdf('<html><body>x</body></html>', { filename: 'fichas' });
+  it('não deixa o formulário sujando a página depois de enviar', async () => {
+    await printHtmlAsPdf('<html><body>x</body></html>', { filename: 'fichas' });
     expect(document.querySelectorAll('form').length).toBe(0);
   });
 
-  it('recusa documento acima do limite ANTES de enviar, com instrução do que fazer', () => {
+  it('recusa documento acima do limite ANTES de enviar, com instrução do que fazer', async () => {
     const gigante = `<html><body>${'x'.repeat(MAX_DOCUMENT_BYTES + 1)}</body></html>`;
-    const ok = printHtmlAsPdf(gigante, { filename: 'fichas' });
+    const ok = await printHtmlAsPdf(gigante, { filename: 'fichas' });
     expect(ok).toBe(false);
     expect(submit).not.toHaveBeenCalled();
     // A mensagem tem que dizer o que fazer, não só que falhou.
@@ -78,9 +99,9 @@ describe('printHtmlAsPdf — POST de formulário', () => {
     expect(msg).toMatch(/partes/i);
   });
 
-  it('avisa na aba quando recusa — senão ela fica parada na mensagem de espera', () => {
+  it('avisa na aba quando recusa — senão ela fica parada na mensagem de espera', async () => {
     const aba = { closed: false, document: { body: { innerHTML: '' } } } as unknown as Window;
-    printHtmlAsPdf(`<html><body>${'x'.repeat(MAX_DOCUMENT_BYTES + 1)}</body></html>`,
+    await printHtmlAsPdf(`<html><body>${'x'.repeat(MAX_DOCUMENT_BYTES + 1)}</body></html>`,
       { filename: 'fichas', target: aba });
     expect(aba.document.body.innerHTML).toMatch(/grande demais/i);
   });

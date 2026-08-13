@@ -2,7 +2,7 @@ import { escapeHtml } from './htmlUtils';
 
 /** Sanitiza valor de barcode pra interpolação segura em <script> (evita XSS/quebra de tag). Barcodes/nº de pedido são alfanuméricos. */
 function sanitizeBarcode(value: unknown): string {
-  return String(value ?? '').replace(/[^A-Za-z0-9._\-\/]/g, '');
+  return String(value ?? '').replace(/[^A-Za-z0-9._/-]/g, '');
 }
 
 /** Literal de string JS seguro pra interpolar dentro de <script>, PRESERVANDO
@@ -178,7 +178,7 @@ function silkLogoSvg(silk: string, size: number): string {
 
 /** Build HTML string for box identification labels (rótulo Caixa Externa).
  *
- * Formato 198×132mm — 2 etiquetas empilhadas verticalmente por folha A4 portrait
+ * Formato físico canônico 192×132mm — 2 etiquetas empilhadas por folha A4 portrait
  * com 6mm de margem de corte entre elas. Visual ECONOMIA DE TINTA (2026-06-30,
  * "Opção 4 — editorial bold"): fundo BRANCO, molduras/divisórias pretas grossas
  * (3px) e tipografia forte, SEM nenhum preenchimento de área (saiu o amarelo
@@ -194,8 +194,8 @@ function silkLogoSvg(silk: string, size: number): string {
  *
  * Regra: campo vazio → linha/célula NÃO renderiza (em vez de aparecer "—").
  *
- * Histórico: redimensionado de 150×100mm → 198×132mm em 19/05/2026 conforme
- * handoff `cxext_198x132_handoff/` (README + screen-etiquetas.jsx). Fontes
+ * Histórico: o handoff visual nasceu em 198×132mm, mas a largura imprimível
+ * correta com margens de 9mm é 192mm. Fontes
  * escaladas proporcionalmente (NF 26→34px, foto 220×170→310×240px, PEDIDO
  * 22→28px, TT total 13→18px, QUANTIDADE 12→16px).
  */
@@ -224,7 +224,7 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
   );
   const FALLBACK_PHOTO_DATA_URL = `data:image/svg+xml;utf8,${SHOE_FALLBACK_SVG}`;
 
-  // Render de uma etiqueta individual (198×132mm).
+  // Render de uma etiqueta individual (192×132mm).
   const renderLabel = (item: BoxIdentificationData, idx: number): string => {
     // ─── HEADER NF / PROG ──────────────────────────────────
     // E-M3: sem NF, exibe o rótulo "NF:" com valor vazio (em vez de "—"),
@@ -416,7 +416,7 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
 
   // (código órfão da implementação 150×100mm removido em 19/05/2026 — agora
   //  vive em git history se precisar consultar; o novo renderLabel acima cobre
-  //  todo o ciclo de renderização da etiqueta 198×132mm.)
+  //  todo o ciclo de renderização da etiqueta 192×132mm.)
 
   // Pages com 2 etiquetas empilhadas por A4 portrait + linha de corte (6mm)
   // entre elas. page-break-inside:avoid no .page garante que cada par fique
@@ -452,7 +452,7 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
-<title>Rótulo Caixa Externa · 198×132mm</title>
+<title>Rótulo Caixa Externa · 192×132mm</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter+Tight:wght@400;600;700;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
@@ -1177,9 +1177,12 @@ window._imagesReady=waitForImages();
 
 /** Sanitize string for ZPL UTF-8 (^CI28): strip control chars, keep Portuguese accents. */
 function zplAscii(str: string): string {
-  return str
-    .normalize('NFC')
-    .replace(/[\x00-\x1F\x7F]/g, '');
+  return [...str.normalize('NFC')]
+    .filter(char => {
+      const code = char.charCodeAt(0);
+      return code > 31 && code !== 127;
+    })
+    .join('');
 }
 
 /**
@@ -1575,7 +1578,7 @@ export function buildThermalLabelsZpl(
     const material = zplField(l.mainMaterial, 28);
     const sizeVal  = zplField(l.size, 6);
     // CODE128 não tem modo hex — aqui a defesa é a allow-list de caracteres.
-    const barcode  = (l.barcode || l.refCode || '').replace(/[^A-Za-z0-9 ._\-\/]/g, '').slice(0, 50);
+    const barcode  = (l.barcode || l.refCode || '').replace(/[^A-Za-z0-9 ._/-]/g, '').slice(0, 50);
 
     return [
       '^XA',
@@ -1695,8 +1698,8 @@ export function buildIndividualLabelsHtml(items: LabelData[]): string {
   </body></html>`;
 }
 
-/** @deprecated Use buildBoxIdentificationHtml instead. */
-export function printBoxLabels(items: LabelData[]) {
+/** Adapta o estoque de pronta-entrega ao rótulo oficial, sem abrir janelas. */
+export function buildStockBoxLabelsHtml(items: LabelData[], senderCnpj = ''): string {
   const boxItems: BoxIdentificationData[] = items.map((item, idx) => ({
     orderNumber: '',
     refCode: item.refCode,
@@ -1706,24 +1709,36 @@ export function printBoxLabels(items: LabelData[]) {
     boxNumber: idx + 1,
     totalBoxes: items.length,
     senderName: 'SQUAD SHOES',
-    senderCnpj: '',
+    senderCnpj,
     grade: item.sizes,
+    totalPairsInRemessa: item.totalQty,
+    shoeCategory: item.category,
+    imageUrl: item.imageUrl,
   }));
-  const html = buildBoxIdentificationHtml(boxItems);
-  // Legacy: try to open in new window
-  const w = window.open('', '_blank');
-  if (w) {
-    w.document.open();
-    w.document.write(html);
-    w.document.close();
-  }
+  return buildBoxIdentificationHtml(boxItems);
+}
+
+const CARE_SYMBOL_LABELS: Record<string, string> = {
+  'no-wash': 'NÃO LAVAR',
+  'hand-wash': 'LAVAR À MÃO',
+  'no-bleach': 'NÃO ALVEJAR',
+  'no-tumble-dry': 'NÃO SECAR EM TAMBOR',
+  'line-dry': 'SECAR À SOMBRA',
+  'no-iron': 'NÃO PASSAR',
+  'no-dry-clean': 'NÃO LAVAR A SECO',
+  'wipe-clean': 'LIMPAR COM PANO ÚMIDO',
+};
+
+function careSymbolLabel(symbol: string): string {
+  const key = String(symbol || '').trim().toLowerCase().replace(/_/g, '-');
+  return CARE_SYMBOL_LABELS[key] || String(symbol || '').replace(/[-_]+/g, ' ').toUpperCase();
 }
 
 /** Build HTML for Premium Hangtags (Etiquetas de Pendurar) */
 export function buildHangtagHtml(labels: {
   refCode: string; refName: string; color: string;
   size: string; barcode: string; qrcode?: string;
-  composition?: string; careSymbols?: string[];
+  composition?: string; careSymbols?: string[]; careText?: string;
   brandName?: string; logoUrl?: string;
 }[], dimensions = { width: 50, height: 80 }): string {
   const { width: W, height: H } = dimensions;
@@ -1748,7 +1763,8 @@ export function buildHangtagHtml(labels: {
             <p class="ht-info-row"><span class="ht-info-label">Cor</span> <span class="ht-info-value">${escapeHtml(l.color)}</span></p>
           </div>
           ${l.composition ? `<div class="ht-composition">${escapeHtml(l.composition || 'SINTÉTICO / TÊXTIL / BORRACHA')}</div>` : ''}
-          ${(l.careSymbols || []).length > 0 ? `<div class="ht-care-icons">${(l.careSymbols || []).map(s => `<span>${escapeHtml(s)}</span>`).join('')}</div>` : ''}
+          ${(l.careSymbols || []).length > 0 ? `<div class="ht-care-icons">${(l.careSymbols || []).map(s => `<span>${escapeHtml(careSymbolLabel(s))}</span>`).join('')}</div>` : ''}
+          ${l.careText ? `<div class="ht-care-text">${escapeHtml(l.careText)}</div>` : ''}
         </div>
         <div class="ht-footer">
           <div class="ht-barcode"><svg id="bc-ht-${idx}"></svg></div>
@@ -1826,9 +1842,11 @@ export function buildHangtagHtml(labels: {
     background:#f5f5f5;border-radius:0.8mm;padding:1.5mm 2mm;width:100%;
   }
   .ht-care-icons{
-    font-family:monospace;font-size:9pt;
+    font-family:'Inter Tight',system-ui,sans-serif;font-size:4.7pt;font-weight:800;
     display:flex;justify-content:center;gap:1.5mm;flex-wrap:wrap;
   }
+  .ht-care-icons span{border:0.35mm solid #000;border-radius:0.6mm;padding:0.7mm 1mm;line-height:1;}
+  .ht-care-text{font-size:4.7pt;line-height:1.25;text-align:center;color:#333;}
   .ht-footer{
     width:100%;display:flex;flex-direction:column;align-items:center;
     gap:1mm;padding:1.5mm 3mm 2mm;border-top:0.5px solid #eee;flex-shrink:0;

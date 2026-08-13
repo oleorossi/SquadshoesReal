@@ -1,9 +1,10 @@
 /**
- * Shared label templates store using localStorage for persistence.
+ * Templates oficiais em código + templates customizados persistidos no Supabase.
  * Both LabelTemplatesTab and LabelProductionTab use this hook.
  */
-import { useState, useCallback, useMemo } from 'react';
-import { usePersistedState } from './usePersistedState';
+import { useCallback, useMemo } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
 import type { LabelTemplate } from '@/types/label-system';
 
 export const BUILTIN_TEMPLATES: LabelTemplate[] = [
@@ -32,7 +33,7 @@ export const BUILTIN_TEMPLATES: LabelTemplate[] = [
     name: 'Squad Shoes — Rótulo Caixa Padrão',
     category: 'master_box',
     type: 'thermal',
-    dimensions: { width: 190, height: 138, unit: 'mm' },
+    dimensions: { width: 192, height: 132, unit: 'mm' },
     fields: [
       { id: 'b1', name: 'Cabeçalho', type: 'text', position: { x: 2, y: 2, width: 120, height: 12 }, styling: { font_size: 15, font_weight: 'bold', text_align: 'left', text_transform: 'uppercase' }, data_source: 'custom', default_value: 'SQUAD SHOES' },
       { id: 'b2', name: 'Código Barras', type: 'barcode', position: { x: 130, y: 2, width: 58, height: 12 }, styling: { font_size: 12, font_weight: 'normal', text_align: 'center', text_transform: 'none' }, data_source: 'barcode', barcode_format: 'CODE128' },
@@ -116,46 +117,144 @@ export const BUILTIN_TEMPLATES: LabelTemplate[] = [
 export const SQUAD_THERMAL_DEFAULT_ID = 'squad-thermal-default';
 export const SQUAD_BOX_DEFAULT_ID = 'squad-box-default';
 
+const SYSTEM_BUILTINS = BUILTIN_TEMPLATES.filter(t =>
+  t.id === SQUAD_THERMAL_DEFAULT_ID || t.id === SQUAD_BOX_DEFAULT_ID,
+);
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function rowToTemplate(row: {
+  id: string;
+  name: string;
+  type: string;
+  width_mm: number;
+  height_mm: number;
+  layout_config: unknown;
+  is_active: boolean | null;
+  created_at: string;
+}): LabelTemplate {
+  const layout = (row.layout_config && typeof row.layout_config === 'object'
+    ? row.layout_config : {}) as Partial<LabelTemplate>;
+  const categories: LabelTemplate['category'][] = ['individual_box', 'master_box', 'hangtag', 'thermal', 'shipping'];
+  const category = layout.category || (categories.includes(row.type as LabelTemplate['category'])
+    ? row.type as LabelTemplate['category'] : 'thermal');
+  const printTypes: LabelTemplate['type'][] = ['thermal', 'inkjet', 'laser'];
+  const printType = printTypes.includes(layout.type as LabelTemplate['type'])
+    ? layout.type as LabelTemplate['type']
+    : (category === 'hangtag' ? 'inkjet' : 'thermal');
+  return {
+    id: row.id,
+    name: row.name,
+    category,
+    type: printType,
+    dimensions: { width: row.width_mm, height: row.height_mm, unit: 'mm' },
+    fields: Array.isArray(layout.fields) ? layout.fields : [],
+    print_settings: layout.print_settings || { dpi: 203, color_mode: 'monochrome', copies_default: 1 },
+    is_active: row.is_active ?? true,
+    created_at: row.created_at,
+    updated_at: layout.updated_at || row.created_at,
+  };
+}
+
+function templateToRow(template: LabelTemplate) {
+  return {
+    id: template.id,
+    name: template.name,
+    type: template.type,
+    width_mm: template.dimensions.width,
+    height_mm: template.dimensions.height,
+    is_active: template.is_active,
+    layout_config: {
+      schema_version: 1,
+      category: template.category,
+      type: template.type,
+      fields: template.fields,
+      print_settings: template.print_settings,
+      updated_at: template.updated_at,
+    },
+  };
+}
+
 export function useLabelTemplates() {
-  const [customTemplates, setCustomTemplates] = usePersistedState<LabelTemplate[]>('label-custom-templates', []);
+  const queryClient = useQueryClient();
+  const { data: customTemplates = [], isLoading } = useQuery({
+    queryKey: ['label_templates'],
+    queryFn: async () => {
+      // Migração única dos templates que versões anteriores guardavam só no
+      // navegador. Só apagamos o storage depois de persistir com sucesso.
+      if (typeof window !== 'undefined') {
+        const raw = window.localStorage.getItem('label-custom-templates');
+        if (raw) {
+          try {
+            const legacy = (JSON.parse(raw) as LabelTemplate[])
+              .filter(template => !SYSTEM_BUILTINS.some(item => item.id === template.id))
+              .map(template => ({ ...template, id: UUID_RE.test(template.id) ? template.id : crypto.randomUUID() }));
+            if (legacy.length > 0) {
+              const { error } = await supabase.from('label_templates').upsert(legacy.map(templateToRow) as never);
+              if (error) throw error;
+            }
+            window.localStorage.removeItem('label-custom-templates');
+          } catch (error) {
+            console.error('[useLabelTemplates] migração do localStorage falhou:', error);
+          }
+        }
+      }
+      const { data, error } = await supabase.from('label_templates').select('*').order('name');
+      if (error) throw error;
+      return (data || []).map(rowToTemplate);
+    },
+    staleTime: 30_000,
+  });
+
+  const saveMutation = useMutation({
+    mutationFn: async (template: LabelTemplate) => {
+      const { error } = await supabase.from('label_templates').upsert(templateToRow(template) as never);
+      if (error) throw error;
+      return template;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['label_templates'] }),
+  });
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from('label_templates').delete().eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['label_templates'] }),
+  });
 
   const allTemplates = useMemo(() => {
     // Merge built-in + custom, custom overrides by ID
     const customIds = new Set(customTemplates.map(t => t.id));
-    const builtins = BUILTIN_TEMPLATES.filter(t => !customIds.has(t.id));
+    const builtins = SYSTEM_BUILTINS.filter(t => !customIds.has(t.id));
     return [...builtins, ...customTemplates];
   }, [customTemplates]);
 
   const addTemplate = useCallback((t: LabelTemplate) => {
-    setCustomTemplates(prev => [...prev, t]);
-  }, [setCustomTemplates]);
+    return saveMutation.mutateAsync(t);
+  }, [saveMutation]);
 
   const updateTemplate = useCallback((t: LabelTemplate) => {
-    setCustomTemplates(prev => {
-      const exists = prev.find(x => x.id === t.id);
-      if (exists) return prev.map(x => x.id === t.id ? t : x);
-      // If updating a built-in, add it as a custom override
-      return [...prev, t];
-    });
-  }, [setCustomTemplates]);
+    if (SYSTEM_BUILTINS.some(x => x.id === t.id)) return Promise.resolve(t);
+    return saveMutation.mutateAsync(t);
+  }, [saveMutation]);
 
   const deleteTemplate = useCallback((id: string) => {
     // Can't delete built-in templates
-    if (BUILTIN_TEMPLATES.some(t => t.id === id)) return;
-    setCustomTemplates(prev => prev.filter(t => t.id !== id));
-  }, [setCustomTemplates]);
+    if (SYSTEM_BUILTINS.some(t => t.id === id)) return Promise.resolve();
+    return deleteMutation.mutateAsync(id);
+  }, [deleteMutation]);
 
-  const duplicateTemplate = useCallback((t: LabelTemplate) => {
+  const duplicateTemplate = useCallback(async (t: LabelTemplate) => {
     const copy: LabelTemplate = {
       ...t,
       id: crypto.randomUUID(),
       name: `${t.name} (cópia)`,
+      is_active: false,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
-    setCustomTemplates(prev => [...prev, copy]);
+    await saveMutation.mutateAsync(copy);
     return copy;
-  }, [setCustomTemplates]);
+  }, [saveMutation]);
 
   const getTemplatesByCategory = useCallback((category: string) => {
     return allTemplates.filter(t => t.category === category && t.is_active);
@@ -173,5 +272,7 @@ export function useLabelTemplates() {
     duplicateTemplate,
     getTemplatesByCategory,
     isBuiltinDefault,
+    isLoading,
+    isSaving: saveMutation.isPending || deleteMutation.isPending,
   };
 }

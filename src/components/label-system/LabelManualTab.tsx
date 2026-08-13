@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- importação dinâmica de PV/OP com joins Supabase */
 import { useState, useRef, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,10 +11,12 @@ import { Badge } from '@/components/ui/badge';
 import { Printer, Upload, Plus, Minus, ArrowCounterClockwise as RotateCcw, Eye, ArrowSquareIn as Import, X } from '@phosphor-icons/react';
 import { buildThermalLabelsHtml, buildBoxIdentificationHtml, DEFAULT_THERMAL_CONFIG } from '@/lib/printLabels';
 import { openPrintTab, printHtmlAsPdf } from '@/lib/printPdf';
+import { createPrintJob, setPrintJobStatus } from '@/lib/printJobs';
 import { supabase } from '@/integrations/supabase/client';
 import { useCompanies } from '@/hooks/useNfe';
 import { DEFAULT_MANUFACTURER_NAME, DEFAULT_MANUFACTURER_CNPJ } from '@/lib/companySender';
 import { escapeHtml } from '@/lib/htmlUtils';
+import { expandManualGrade } from '@/lib/manualLabelQuantity';
 import { toast } from 'sonner';
 
 const FALLBACK_SIZES = [
@@ -65,9 +68,18 @@ const EMPTY: ManualForm = {
  * carimbava URL/data no papel, porque o Chrome do Android ignora o
  * `@page{margin:0}`. Ver src/lib/printPdf.ts.
  */
-function openPrint(html: string, filename: string) {
+function openPrint(html: string, filename: string, totalLabels: number, orderIds: string[] = []) {
   const tab = openPrintTab(); // síncrono, dentro do clique — escapa do bloqueio de pop-up
-  void printHtmlAsPdf(html, { filename, target: tab });
+  void (async () => {
+    try {
+      const jobId = await createPrintJob({ batchName: `Manual - ${filename}`, totalLabels, orderIds });
+      const submitted = await printHtmlAsPdf(html, { filename, target: tab, jobId });
+      if (!submitted) await setPrintJobStatus(jobId, 'failed');
+    } catch (error) {
+      tab?.close();
+      toast.error(error instanceof Error ? error.message : 'Falha ao registrar a geração.');
+    }
+  })();
 }
 
 /** Nome do arquivo com o lote/referência quando houver — ajuda a achar depois. */
@@ -287,25 +299,27 @@ export function LabelManualTab() {
 
   const grade = form.sizes.filter(s => s.size && Number(s.qty) > 0).map(s => ({ size: s.size, qty: Number(s.qty) }));
   const totalPairs = grade.reduce((s, e) => s + e.qty, 0);
-  const copies = Math.max(1, Number(form.copies) || 1);
+  const copies = Math.max(1, Math.floor(Number(form.copies) || 1));
   const mainMaterial = form.materials.filter(Boolean).join(', ');
 
   const handlePrint = () => {
+    const requested = grade.length > 0 ? totalPairs * copies : copies;
+    if ((form.labelType === 'thermal' || form.labelType === 'hangtag') && requested > 5000) {
+      toast.error(`A entrada geraria ${requested.toLocaleString('pt-BR')} etiquetas. Reduza para no máximo 5.000 por PDF.`);
+      return;
+    }
     if (form.labelType === 'thermal') {
       const rows = grade.length > 0
-        ? grade.flatMap(g =>
-            Array.from({ length: copies }, () => ({
+        ? expandManualGrade(grade, copies).map(size => ({
               refCode: form.referencia,
               refName: form.materials[0] || form.referencia,
               mainMaterial,
               color: form.cor,
-              size: g.size,
-              barcode: (form.referencia + g.size).replace(/\s/g, ''),
+              size,
+              barcode: (form.referencia + size).replace(/\s/g, ''),
               imageUrl: form.imageUrl || undefined,
               clientOrderNumber: form.lote || undefined,
-              qty: g.qty > 1 ? g.qty : undefined,
             }))
-          )
         : Array.from({ length: copies }, () => ({
             refCode: form.referencia,
             refName: form.materials[0] || form.referencia,
@@ -316,7 +330,12 @@ export function LabelManualTab() {
             imageUrl: form.imageUrl || undefined,
             clientOrderNumber: form.lote || undefined,
           }));
-      openPrint(buildThermalLabelsHtml(rows, '', { width: 100, height: 30 }, DEFAULT_THERMAL_CONFIG, resolveSender().senderCnpj), buildFilename('etiquetas-termicas', form.lote || form.referencia));
+      openPrint(
+        buildThermalLabelsHtml(rows, '', { width: 100, height: 30 }, DEFAULT_THERMAL_CONFIG, resolveSender().senderCnpj),
+        buildFilename('etiquetas-termicas', form.lote || form.referencia),
+        rows.length,
+        importedRef?.kind === 'op' ? [importedRef.id] : [],
+      );
     } else if (form.labelType === 'box') {
       const items = Array.from({ length: copies }, (_, i) => ({
         orderNumber: form.lote || '—',
@@ -334,9 +353,20 @@ export function LabelManualTab() {
         barcode: form.referencia.replace(/\s/g, '') || undefined,
         imageUrl: form.imageUrl || undefined,
       }));
-      openPrint(buildBoxIdentificationHtml(items), buildFilename('rotulos-caixa', form.lote || form.referencia));
+      openPrint(
+        buildBoxIdentificationHtml(items),
+        buildFilename('rotulos-caixa', form.lote || form.referencia),
+        items.length,
+        importedRef?.kind === 'op' ? [importedRef.id] : [],
+      );
     } else if (form.labelType === 'hangtag') {
-      openPrint(buildHangtagManualHtml(form, grade, copies), buildFilename('etiquetas-pendurar', form.lote || form.referencia));
+      const total = grade.length > 0 ? grade.reduce((sum, item) => sum + item.qty, 0) * copies : copies;
+      openPrint(
+        buildHangtagManualHtml(form, grade, copies),
+        buildFilename('etiquetas-pendurar', form.lote || form.referencia),
+        total,
+        importedRef?.kind === 'op' ? [importedRef.id] : [],
+      );
     }
   };
 
@@ -469,7 +499,7 @@ export function LabelManualTab() {
                 <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="thermal">Etiqueta Térmica (100×30 mm)</SelectItem>
-                  <SelectItem value="box">Rótulo Caixa (190×138 mm)</SelectItem>
+                  <SelectItem value="box">Rótulo Caixa (192×132 mm)</SelectItem>
                   <SelectItem value="hangtag">Hangtag / Penduricalho</SelectItem>
                 </SelectContent>
               </Select>
@@ -697,15 +727,8 @@ function buildHangtagManualHtml(form: ManualForm, grade: { size: string; qty: nu
 
   const mainMaterial = form.materials.filter(Boolean).join(' | ');
 
-  const tags = grade.length > 0
-    ? grade.flatMap(g =>
-        Array.from({ length: copies }, () =>
-          buildSingleHangtag(form, g.size, mainMaterial, fmtPrice)
-        )
-      )
-    : Array.from({ length: copies }, () =>
-        buildSingleHangtag(form, '', mainMaterial, fmtPrice)
-      );
+  const tags = expandManualGrade(grade, copies)
+    .map(size => buildSingleHangtag(form, size, mainMaterial, fmtPrice));
 
   const pages: string[] = [];
   for (let i = 0; i < tags.length; i += 4) {

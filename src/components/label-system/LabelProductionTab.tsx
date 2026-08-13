@@ -12,10 +12,11 @@
  *   · colmeia             → ONLY master/external box label (NO individual)
  * - Print modes: per-OP (one at a time) or batch (all selected / by week)
  */
+/* eslint-disable @typescript-eslint/no-explicit-any -- joins JSONB/Supabase heterogêneos deste módulo legado */
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
-import { Tag, MagnifyingGlass as Search, Barcode, Gear as Settings2, Package as BoxIcon, Package, ArrowCounterClockwise as RotateCcw, Factory, Scan as ScanLine, CalendarBlank as CalendarDays, Buildings as Building2, CircleNotch as Loader2, Stack as Layers, CheckCircle as CheckCircle2, PencilSimple as Pencil, Download, CaretLeft, CaretRight, Plus, X } from '@phosphor-icons/react';
+import { Tag, MagnifyingGlass as Search, Barcode, Gear as Settings2, Package as BoxIcon, Package, ArrowCounterClockwise as RotateCcw, Factory, Scan as ScanLine, CalendarBlank as CalendarDays, Buildings as Building2, CircleNotch as Loader2, Stack as Layers, CheckCircle as CheckCircle2, PencilSimple as Pencil, CaretLeft, CaretRight, Plus, X } from '@phosphor-icons/react';
 import { startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval, parseISO } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -34,14 +35,17 @@ import logoImg from '@/assets/logo-squad-shoes.jpg';
 import { supabase } from '@/integrations/supabase/client';
 import { resolveProductImageWithSource } from '@/lib/imageFallback';
 import { resolveMaterialLabels, materialLabelKey, type MaterialLabelInput } from '@/lib/labelUtils';
-import { buildBoxIdentificationHtml, buildThermalLabelsHtml, buildThermalLabelsPdf, buildHangtagHtml, type BoxIdentificationData, type ThermalLabelConfig, DEFAULT_THERMAL_CONFIG } from '@/lib/printLabels';
+import { buildBoxIdentificationHtml, buildThermalLabelsHtml, buildHangtagHtml, type BoxIdentificationData, type ThermalLabelConfig, DEFAULT_THERMAL_CONFIG } from '@/lib/printLabels';
 import { openPrintTab, printHtmlAsPdf } from '@/lib/printPdf';
+import { confirmPrintJob, createPrintJob, PRINT_JOB_STATUS_LABELS, setPrintJobStatus } from '@/lib/printJobs';
+import { buildTemplateLabelsHtml } from '@/lib/templateLabels';
+import { buildHangtagBarcode } from '@/lib/labelIdentifiers';
+import { resolveLabelBoxCapacity, type SolePackagingCapacity } from '@/lib/labelBoxCapacity';
 import { DEFAULT_MANUFACTURER_NAME, DEFAULT_MANUFACTURER_CNPJ } from '@/lib/companySender';
 import { cn } from '@/lib/utils';
 import { isCancelledOrDraftOrder } from '@/lib/orderStatus';
 import { packSaleOrderItem, packSaleOrderItemBySize } from '@/lib/boxPacking';
 import { toast } from 'sonner';
-import { useOrders } from '@/hooks/useOrders';
 import { useLabelTemplates, SQUAD_THERMAL_DEFAULT_ID, SQUAD_BOX_DEFAULT_ID } from '@/hooks/useLabelTemplates';
 import { useCompanies } from '@/hooks/useNfe';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
@@ -57,6 +61,21 @@ const LABEL_SIZES = [
   { id: '80x30',  label: '80 × 30 mm',  width: 80,  height: 30, description: 'Compacta' },
   { id: '60x30',  label: '60 × 30 mm',  width: 60,  height: 30, description: 'Mini' },
 ] as const;
+
+const LABEL_QUERY_PAGE_SIZE = 1000;
+
+async function fetchAllLabelPages<T>(
+  load: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
+): Promise<T[]> {
+  const rows: T[] = [];
+  for (let from = 0; ; from += LABEL_QUERY_PAGE_SIZE) {
+    const { data, error } = await load(from, from + LABEL_QUERY_PAGE_SIZE - 1);
+    if (error) throw new Error(error.message);
+    const page = data || [];
+    rows.push(...page);
+    if (page.length < LABEL_QUERY_PAGE_SIZE) return rows;
+  }
+}
 
 /**
  * Campos do rótulo de caixa externa que a edição manual expõe — a ordem aqui é
@@ -182,7 +201,13 @@ export interface GroupedReference {
   strapsLabel: string;
 }
 
-export function groupOrdersByReference(orders: any[], saleOrdersMap: Map<string, any>, strapLookup?: Map<string, string>): GroupedReference[] {
+// eslint-disable-next-line react-refresh/only-export-components
+export function groupOrdersByReference(
+  orders: any[],
+  saleOrdersMap: Map<string, any>,
+  strapLookup?: Map<string, string>,
+  splitByOrder = false,
+): GroupedReference[] {
   const map = new Map<string, GroupedReference>();
   const lookup = strapLookup || new Map<string, string>();
   for (const order of orders) {
@@ -190,7 +215,11 @@ export function groupOrdersByReference(orders: any[], saleOrdersMap: Map<string,
     if (!refId) continue;
     const soId = order.sale_order_id || '';
     const strapSig = buildStrapSignature(order, lookup);
-    const key = `${soId}|${refId}|${order.color || ''}|${strapSig}`;
+    // Variante e item são load-bearing: referências visualmente iguais podem
+    // usar materiais distintos. No modo "por OP", a OP também entra na chave.
+    const variantId = order.material_variant_id || '';
+    const orderKey = splitByOrder ? (order.id || order.order_number || '') : '';
+    const key = `${soId}|${refId}|${order.color || ''}|${variantId}|${strapSig}|${orderKey}`;
     const ref = order.technical_sheets;
     const so = soId ? saleOrdersMap.get(soId) : null;
     if (!map.has(key)) {
@@ -355,6 +384,7 @@ function ReferenceCard({ group, selected, onToggle, hasOverride }: { group: Grou
 
 
 function PrintHistoryTable() {
+  const queryClient = useQueryClient();
   const { data: history, isLoading } = useQuery({
     queryKey: ['print_history'],
     queryFn: async () => {
@@ -376,6 +406,7 @@ function PrintHistoryTable() {
             <th className="p-4 font-semibold text-xs uppercase tracking-wider">Data e Hora</th>
             <th className="p-4 font-semibold text-xs uppercase tracking-wider text-center">Etiquetas</th>
             <th className="p-4 font-semibold text-xs uppercase tracking-wider text-center">Status</th>
+            <th className="p-4 font-semibold text-xs uppercase tracking-wider text-right">Ação</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-muted/50">
@@ -385,14 +416,31 @@ function PrintHistoryTable() {
               <td className="p-4 text-muted-foreground text-xs">{new Date(j.created_at).toLocaleString('pt-BR')}</td>
               <td className="p-4 text-center font-mono text-xs">{j.total_labels}</td>
               <td className="p-4 text-center">
-                <Badge variant={j.status === 'completed' ? 'secondary' : 'outline'} className="text-xs uppercase tracking-tighter px-2 h-5">
-                  {j.status === 'completed' ? 'Processado' : j.status}
+                <Badge variant={j.status === 'confirmed' ? 'secondary' : 'outline'} className="text-xs uppercase tracking-tighter px-2 h-5">
+                  {PRINT_JOB_STATUS_LABELS[j.status || ''] || j.status}
                 </Badge>
+              </td>
+              <td className="p-4 text-right">
+                {j.status === 'generated' && (
+                  <Button
+                    size="sm"
+                    onClick={async () => {
+                      await confirmPrintJob(j.id);
+                      await Promise.all([
+                        queryClient.invalidateQueries({ queryKey: ['print_history'] }),
+                        queryClient.invalidateQueries({ queryKey: ['printed_order_ids'] }),
+                      ]);
+                      toast.success('Impressão física confirmada.');
+                    }}
+                  >
+                    Confirmar impressão
+                  </Button>
+                )}
               </td>
             </tr>
           ))}
           {(!history || history.length === 0) && (
-            <tr><td colSpan={4} className="p-20 text-center text-muted-foreground italic text-xs">Nenhum histórico de impressão disponível no momento.</td></tr>
+            <tr><td colSpan={5} className="p-20 text-center text-muted-foreground italic text-xs">Nenhum histórico de impressão disponível no momento.</td></tr>
           )}
         </tbody>
       </table>
@@ -402,7 +450,17 @@ function PrintHistoryTable() {
 
 export function LabelProductionTab() {
   const queryClient = useQueryClient();
-  const { data: allOrders = [] } = useOrders();
+  const { data: allOrders = [] } = useQuery({
+    queryKey: ['orders_for_labels_all'],
+    queryFn: () => fetchAllLabelPages((from, to) => supabase
+      .from('orders')
+      .select('*, technical_sheets(name, code, image_url, reference_color_variants(color, image_url))')
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
+      .range(from, to)),
+    staleTime: 0,
+    refetchOnMount: 'always',
+  });
   const { data: saleOrders = [] } = useQuery({
     queryKey: ['sale_orders_for_labels_v2'],
     queryFn: async () => {
@@ -412,18 +470,20 @@ export function LabelProductionTab() {
       // trigger tg_sync_nfe_numero_to_sale_order não tenha rodado (ex: NF
       // sincronizada antes da migration). Sempre preferimos o número MAIS
       // RECENTE com status='autorizada'.
-      const { data, error } = await supabase
+      const data = await fetchAllLabelPages<any>((from, to) => supabase
         .from('sale_orders')
         .select(`
           *,
           clients(id, razao_social, cnpj, endereco, bairro, cidade, estado, cep, branch_code, branch_name, economic_group_id, economic_groups(name)),
           transporters:transporter_id(name),
           nfe_emitidas(numero, serie, status, created_at)
-        `);
-      if (error) throw error;
+        `)
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: false })
+        .range(from, to));
       // Pra cada PV, escolhe o número da NF: prefere a autorizada mais recente
       // de nfe_emitidas; cai pra so.nfe (campo histórico/manual) quando vazio.
-      return (data || []).map((so: any) => {
+      return data.map((so: any) => {
         const authorized = (so.nfe_emitidas || [])
           .filter((n: any) => n.status === 'autorizada' && n.numero)
           .sort((a: any, b: any) => (b.created_at || '').localeCompare(a.created_at || ''));
@@ -506,16 +566,16 @@ export function LabelProductionTab() {
     queryKey: ['sale_orders_scheduled_for_labels'],
     queryFn: async () => {
       const [waves, queue] = await Promise.all([
-        (supabase as any).from('v_wave_orders').select('sale_order_id'),
-        (supabase as any).from('production_queue').select('order_id, orders!inner(sale_order_id)'),
+        fetchAllLabelPages<any>((from, to) => (supabase as any)
+          .from('v_wave_orders').select('sale_order_id').range(from, to)),
+        fetchAllLabelPages<any>((from, to) => (supabase as any)
+          .from('production_queue').select('order_id, orders!inner(sale_order_id)').range(from, to)),
       ]);
-      if (waves.error) throw waves.error;
-      if (queue.error) throw queue.error;
       const set = new Set<string>();
-      for (const row of (waves.data || []) as any[]) {
+      for (const row of waves) {
         if (row.sale_order_id) set.add(row.sale_order_id);
       }
-      for (const row of (queue.data || []) as any[]) {
+      for (const row of queue) {
         const soId = row.orders?.sale_order_id;
         if (soId) set.add(soId);
       }
@@ -531,9 +591,11 @@ export function LabelProductionTab() {
   const { data: clientsByCnpj = new Map<string, any>() } = useQuery({
     queryKey: ['clients_by_cnpj_for_labels'],
     queryFn: async () => {
-      const { data } = await supabase
+      const data = await fetchAllLabelPages<any>((from, to) => supabase
         .from('clients')
-        .select('id, razao_social, cnpj, endereco, bairro, cidade, estado, cep, branch_code, branch_name');
+        .select('id, razao_social, cnpj, endereco, bairro, cidade, estado, cep, branch_code, branch_name')
+        .order('id')
+        .range(from, to));
       const map = new Map<string, any>();
       for (const c of data || []) {
         if (c.cnpj) map.set((c.cnpj as string).replace(/\D/g, ''), c);
@@ -548,11 +610,12 @@ export function LabelProductionTab() {
   const { data: strapLookup = new Map<string, string>() } = useQuery({
     queryKey: ['sale_order_items_strap_lookup'],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const data = await fetchAllLabelPages<any>((from, to) => supabase
         .from('sale_order_items')
         .select('id, sale_order_id, reference_id, color, quantity, grade, strap_colors')
-        .not('strap_colors', 'is', null);
-      if (error) throw error;
+        .not('strap_colors', 'is', null)
+        .order('id')
+        .range(from, to));
       const map = new Map<string, string>();
       for (const item of data || []) {
         const straps = item.strap_colors as any[];
@@ -610,18 +673,28 @@ export function LabelProductionTab() {
   // MATERIAL impresso (spec variacao-material-pv). Sem o filtro not-null de
   // color — item com variante setada costuma ter color NULL (a variante LIMPA
   // item.color) e ficaria de fora do lookup.
-  const { data: itemColorLookup = new Map<string, { color: string; variantId: string | null }>() } = useQuery({
+  type LabelSaleOrderItem = {
+    color: string;
+    variantId: string | null;
+    grade: Record<string, number> | null;
+    fichas: number | null;
+  };
+  const { data: itemColorLookup = new Map<string, LabelSaleOrderItem>() } = useQuery({
     queryKey: ['sale_order_items_color_lookup'],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const data = await fetchAllLabelPages<any>((from, to) => supabase
         .from('sale_order_items')
-        .select('id, color, material_variant_id');
-      if (error) throw error;
-      const map = new Map<string, { color: string; variantId: string | null }>();
+        .select('id, color, material_variant_id, grade, fichas')
+        .order('id')
+        .range(from, to));
+      const map = new Map<string, LabelSaleOrderItem>();
       for (const it of data || []) {
         map.set(it.id, {
           color: (it.color || '').trim(),
           variantId: (it as any).material_variant_id || null,
+          grade: it.grade && typeof it.grade === 'object' && !Array.isArray(it.grade)
+            ? it.grade as Record<string, number> : null,
+          fichas: Number(it.fichas) > 0 ? Number(it.fichas) : null,
         });
       }
       return map;
@@ -639,7 +712,12 @@ export function LabelProductionTab() {
   const ordersWithResolvedColor = useMemo(() => {
     return (allOrders as any[]).map((o: any) => {
       const item = o.sale_order_item_id ? itemColorLookup.get(o.sale_order_item_id) : undefined;
-      const enriched = { ...o, material_variant_id: item?.variantId ?? null };
+      const enriched = {
+        ...o,
+        material_variant_id: item?.variantId ?? null,
+        sale_order_item_grade: item?.grade ?? null,
+        sale_order_item_fichas: item?.fichas ?? null,
+      };
       if (o.color && String(o.color).trim() !== '') return enriched;
       return item?.color ? { ...enriched, color: item.color } : enriched;
     });
@@ -656,7 +734,7 @@ export function LabelProductionTab() {
   //   refletia. Faltava ainda escutar sale_order_items (cor/grade/qtd/tiras do PV).
   useEffect(() => {
     const labelKeys = [
-      ['orders'],
+      ['orders_for_labels_all'],
       ['sale_orders_for_labels_v2'],
       ['sale_order_items_strap_lookup'],
       ['sale_order_items_color_lookup'],
@@ -669,7 +747,7 @@ export function LabelProductionTab() {
     const channel = supabase
       .channel('labels-tab-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
-        queryClient.invalidateQueries({ queryKey: ['orders'] });
+        queryClient.invalidateQueries({ queryKey: ['orders_for_labels_all'] });
         // OP entra/sai da production_queue junto com INSERT/UPDATE de status em
         // orders (o motor enfileira OP nova e remove finalizada) — invalida o
         // gate pra fila refletir sem esperar remount.
@@ -682,7 +760,7 @@ export function LabelProductionTab() {
         queryClient.invalidateQueries({ queryKey: ['sale_orders_for_labels_v2'] });
         queryClient.invalidateQueries({ queryKey: ['sale_order_items_strap_lookup'] });
         queryClient.invalidateQueries({ queryKey: ['sale_order_items_color_lookup'] });
-        queryClient.invalidateQueries({ queryKey: ['orders'] });
+        queryClient.invalidateQueries({ queryKey: ['orders_for_labels_all'] });
       })
       .subscribe((status, err) => {
         if (status === 'CHANNEL_ERROR') { /* realtime error — subscription will retry */ }
@@ -707,8 +785,15 @@ export function LabelProductionTab() {
     queryKey: ['printed_order_ids'],
     queryFn: async () => {
       const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-      const { data, error } = await supabase.from('print_jobs').select('order_ids').not('order_ids', 'is', null).gte('created_at', thirtyDaysAgo);
-      if (error) throw error;
+      const data = await fetchAllLabelPages<any>((from, to) => supabase
+        .from('print_jobs')
+        .select('order_ids')
+        .eq('status', 'confirmed')
+        .not('order_ids', 'is', null)
+        .gte('created_at', thirtyDaysAgo)
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: false })
+        .range(from, to));
       const ids = new Set<string>();
       for (const row of data || []) {
         const arr = row.order_ids as any;
@@ -719,7 +804,7 @@ export function LabelProductionTab() {
     staleTime: 30000,
   });
   const [showConfig, setShowConfig] = useState(false);
-  const [printHtml, setPrintHtml] = useState<string | null>(null);
+  const [printRequest, setPrintRequest] = useState<{ html: string; jobId: string } | null>(null);
   // Aba de destino do PDF. Aberta DENTRO do clique (síncrono) — abrir depois do
   // await faz o celular tratar como pop-up e bloquear.
   const printTabRef = useRef<Window | null>(null);
@@ -732,7 +817,6 @@ export function LabelProductionTab() {
   // como "2026-05-S4" provenientes de sale_orders.billing_week
   const [billingWeekFilter, setBillingWeekFilter] = useState<string>('__all__');
   const [showScanner, setShowScanner] = useState(false);
-  const [pairsPerFicha, setPairsPerFicha] = useState(12);
   const [thermalMode, setThermalMode] = useState<'quantity' | 'ficha'>('quantity');
   const [printMode, setPrintMode] = useState<'batch' | 'per_op'>('batch');
   const [selectedThermalTemplateId, setSelectedThermalTemplateId] = useState(SQUAD_THERMAL_DEFAULT_ID);
@@ -740,7 +824,10 @@ export function LabelProductionTab() {
 
   const { templates: allLabelTemplates } = useLabelTemplates();
   const thermalTemplates = useMemo(() => allLabelTemplates.filter(t => (t.category === 'thermal' || t.category === 'individual_box') && t.is_active), [allLabelTemplates]);
-  const boxTemplates = useMemo(() => allLabelTemplates.filter(t => (t.category === 'master_box' || t.category === 'shipping') && t.is_active), [allLabelTemplates]);
+  // O rótulo externo tem campos fiscais/expedição que não cabem no designer
+  // genérico. Até existir um schema específico, só o layout oficial é elegível.
+  const boxTemplates = useMemo(() => allLabelTemplates.filter(t => t.id === SQUAD_BOX_DEFAULT_ID && t.is_active), [allLabelTemplates]);
+  const usesCustomThermalTemplate = selectedThermalTemplateId !== SQUAD_THERMAL_DEFAULT_ID;
 
   // Strap label overrides — allows user to edit strap text per group for labels
   const [strapsLabelOverrides, setStrapsLabelOverrides] = useState<Record<string, string>>({});
@@ -908,7 +995,7 @@ export function LabelProductionTab() {
     });
   }, [currentOrders, periodFilter, billingWeekFilter, saleOrdersMap]);
 
-  const groupedRefs = groupOrdersByReference(periodFilteredOrders, saleOrdersMap, strapLookup);
+  const groupedRefs = groupOrdersByReference(periodFilteredOrders, saleOrdersMap, strapLookup, printMode === 'per_op');
   const filtered = groupedRefs.filter((g) =>
     // espaço ou "/" = refinamento AND (ex.: "stx alcineu")
     searchMatchesAllTerms(
@@ -950,19 +1037,23 @@ export function LabelProductionTab() {
   }, [filtered, selected]);
 
   const getOrderFichaMetrics = (order: any) => {
-    const baseGrade = (order?.grade && typeof order.grade === 'object' ? order.grade : {}) as Record<string, number>;
+    const baseGrade = (order?.sale_order_item_grade && typeof order.sale_order_item_grade === 'object'
+      ? order.sale_order_item_grade : {}) as Record<string, number>;
     const gradeEntries = Object.entries(baseGrade)
       .map(([size, qty]) => [size, Number(qty) || 0] as const)
       .filter(([, qty]) => qty > 0)
       .sort(([a], [b]) => Number(a) - Number(b));
     const pairsInOneFicha = gradeEntries.reduce((sum, [, qty]) => sum + qty, 0);
-    const totalPairs = Number(order?.quantity) || 0;
-    const explicitFichas = Number(order?.fichas);
-    const derivedFichas = pairsInOneFicha > 0 && totalPairs > 0 ? totalPairs / pairsInOneFicha : 1;
-    const numFichas = Math.max(1, Math.ceil(explicitFichas > 0 ? explicitFichas : derivedFichas || 1));
+    const numFichas = Number(order?.sale_order_item_fichas) || 0;
+    if (pairsInOneFicha <= 0 || numFichas <= 0) {
+      throw new Error(
+        `Grade/fichas do item do PV ausentes para ${order?.order_number || 'a OP selecionada'}. ` +
+        'Corrija o item do pedido antes de gerar por ficha.',
+      );
+    }
     return {
       gradeText: gradeEntries.map(([size, qty]) => `${size}(${qty})`).join(' '),
-      pairsInOneFicha: pairsInOneFicha || Math.max(1, Number(pairsPerFicha) || 1),
+      pairsInOneFicha,
       numFichas,
     };
   };
@@ -988,29 +1079,26 @@ export function LabelProductionTab() {
   const materialFromMap = (map: Map<string, string>, referenceId: string, variantId: string | null, color: string) =>
     map.get(materialLabelKey({ referenceId, materialVariantId: variantId, color })) || '';
 
-  /**
-   * Teto de etiquetas por numeração num único lote — guarda o navegador de
-   * travar montando dezenas de milhares de nós. NÃO pode cortar em silêncio
-   * (auditoria 2026-07-28 · T7): o operador levava menos etiqueta do que pediu
-   * e achava que o lote estava completo. Quem estoura é avisado e gera o resto
-   * num segundo lote.
-   */
-  const CAP_HANGTAG_POR_NUMERO = 500;
-  const CAP_TERMICA_POR_NUMERO = 2000;
-  const avisarCorte = (cortadas: number, cap: number) => {
-    if (cortadas <= 0) return;
-    toast.warning(
-      `${cortadas} etiqueta(s) NÃO entraram neste lote — o limite é ${cap} por numeração. ` +
-      'Gere o restante num segundo lote.',
-      { duration: 12000 },
+  /** Teto do job inteiro. Acima dele bloqueamos antes de montar o HTML: nunca
+   * truncar silenciosamente nem registrar uma OP como parcialmente impressa. */
+  const MAX_LABELS_PER_JOB = 5000;
+  const validateJobSize = (total: number) => {
+    if (total <= MAX_LABELS_PER_JOB) return true;
+    toast.error(
+      `A seleção geraria ${total.toLocaleString('pt-BR')} etiquetas. ` +
+      `O limite seguro é ${MAX_LABELS_PER_JOB.toLocaleString('pt-BR')} por PDF; reduza a seleção.`,
+      { duration: 12_000 },
     );
+    return false;
   };
 
   const handlePrintHangtags = async () => {
-    printTabRef.current = openPrintTab();
-    let cortadasHangtag = 0;
     const selectedGroups = filtered.filter(g => selected.has(g.groupKey));
     if (selectedGroups.length === 0) return;
+    const requested = selectedGroups.reduce((sum, group) =>
+      sum + Object.values(group.aggregatedGrade).reduce((a, qty) => a + (Number(qty) || 0), 0), 0);
+    if (!validateJobSize(requested)) return;
+    printTabRef.current = openPrintTab();
     setIsGenerating(true);
     try {
       const { data: careData } = await supabase.from('care_instructions').select('*');
@@ -1018,41 +1106,64 @@ export function LabelProductionTab() {
       const labels: any[] = [];
       let currentSerial = serializationStart;
       const logoUrl = new URL(logoImg, window.location.origin).href;
+      const normalizeCareName = (value: string) => value
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-zA-Z0-9]+/g, ' ')
+        .trim()
+        .toLowerCase();
+      const unmatchedMaterials = new Set<string>();
       for (const group of selectedGroups) {
         const mainMaterial = materialFromMap(materialMap, group.referenceId, groupVariantId(group), group.colors[0] || '');
-        const care = careData?.find(c => mainMaterial.toLowerCase().includes(c.name.toLowerCase())) || careData?.[0];
+        const materialParts = [mainMaterial, ...mainMaterial.split(/[,|;]/)]
+          .map(normalizeCareName)
+          .filter(Boolean);
+        const care = careData?.find(c => materialParts.includes(normalizeCareName(c.name)));
+        if (mainMaterial && !care) unmatchedMaterials.add(mainMaterial);
         const effRefCode = getEffectiveRefCode(group);
         const effRefName = getEffectiveRefName(group);
         for (const [size, qty] of Object.entries(group.aggregatedGrade)) {
-          const pedidas = Number(qty) || 0;
-          const safeQty = Math.min(pedidas, CAP_HANGTAG_POR_NUMERO);
-          cortadasHangtag += pedidas - safeQty;
-          for (let i = 0; i < safeQty; i++) {
+          const quantity = Number(qty) || 0;
+          for (let i = 0; i < quantity; i++) {
             labels.push({
               refCode: effRefCode, refName: effRefName,
               color: getEffectiveColor(group, group.colors[0] || ''), size,
-              barcode: effRefCode ? `${effRefCode}${size.padStart(2, '0')}${currentSerial.toString().padStart(4, '0')}` : group.groupKey,
+              barcode: buildHangtagBarcode(effRefCode, size, useSerialization, currentSerial, group.groupKey),
               qrcode: effRefCode ? `https://squadshoes.com.br/product/${effRefCode}` : '',
-              composition: mainMaterial, careSymbols: care?.symbols || [],
+              composition: mainMaterial,
+              careSymbols: Array.isArray(care?.symbols) ? care.symbols as string[] : [],
+              careText: care?.instruction_text_pt || undefined,
               logoUrl, brandName: 'SQUAD SHOES',
             });
             if (useSerialization) currentSerial++;
           }
         }
       }
-      setPrintHtml(buildHangtagHtml(labels));
+      if (unmatchedMaterials.size > 0) {
+        toast.warning(
+          `Sem instrução de conservação vinculada para: ${[...unmatchedMaterials].join(', ')}. ` +
+          'Os hangtags serão gerados sem inventar instruções.',
+          { duration: 12_000 },
+        );
+      }
       const orderIds = selectedGroups.flatMap(g => g.orders.map((o: any) => o.id));
-      await supabase.from('print_jobs').insert({ batch_name: `Hangtags - ${new Date().toLocaleString()}`, total_labels: labels.length, status: 'completed', order_ids: orderIds } as any);
-      queryClient.invalidateQueries({ queryKey: ['printed_order_ids'] });
+      const html = buildHangtagHtml(labels);
+      const jobId = await createPrintJob({
+        batchName: `Hangtags - ${new Date().toLocaleString('pt-BR')}`,
+        totalLabels: labels.length,
+        orderIds,
+      });
+      setPrintRequest({ html, jobId });
       queryClient.invalidateQueries({ queryKey: ['print_history'] });
-      avisarCorte(cortadasHangtag, CAP_HANGTAG_POR_NUMERO);
       toast.success(`${labels.length} hangtags geradas.`);
-    } catch (err: any) { toast.error(err.message); } finally { setIsGenerating(false); }
+    } catch (err: any) {
+      printTabRef.current?.close();
+      printTabRef.current = null;
+      toast.error(err.message);
+    } finally { setIsGenerating(false); }
   };
 
   const handlePrintIndividual = async () => {
-    printTabRef.current = openPrintTab();
-    let cortadasTermica = 0;
     const selectedGroups = filtered.filter(g => selected.has(g.groupKey));
     // Filter out groups that don't allow thermal labels
     const thermalGroups = selectedGroups.filter(g => getAllowedLabelTypes(g.packagingMode).thermal);
@@ -1060,6 +1171,12 @@ export function LabelProductionTab() {
       toast.error('Nenhum pedido selecionado permite etiquetas individuais (verifique o tipo de embalagem).');
       return;
     }
+    if (thermalMode === 'quantity') {
+      const requested = thermalGroups.reduce((sum, group) =>
+        sum + Object.values(group.aggregatedGrade).reduce((a, qty) => a + (Number(qty) || 0), 0), 0);
+      if (!validateJobSize(requested)) return;
+    }
+    printTabRef.current = openPrintTab();
     setIsGenerating(true);
     try {
       const labels: any[] = [];
@@ -1109,10 +1226,8 @@ export function LabelProductionTab() {
         const effRefName = getEffectiveRefName(group);
         if (thermalMode === 'quantity') {
           for (const [size, qty] of Object.entries(group.aggregatedGrade)) {
-            const pedidas = Number(qty) || 0;
-            const aGerar = Math.min(pedidas, CAP_TERMICA_POR_NUMERO);
-            cortadasTermica += pedidas - aGerar;
-            for (let i = 0; i < aGerar; i++) {
+            const quantity = Number(qty) || 0;
+            for (let i = 0; i < quantity; i++) {
               labels.push({ refCode: effRefCode, refName: effRefName, mainMaterial, color: getEffectiveColor(group, colorName), size, barcode: `${effRefCode || group.orders?.[0]?.order_number || group.groupKey}-${size}`, imageUrl: productImageUrl, imageIsFallback: productImageFallback, shoeCategory: refData?.shoe_category || '', strapsLabel: getEffectiveStrapsLabel(group) });
             }
           }
@@ -1130,134 +1245,34 @@ export function LabelProductionTab() {
           }
         }
       }
-      const orderIds = thermalGroups.flatMap(g => g.orders.map((o: any) => o.id));
-      await supabase.from('print_jobs').insert({ batch_name: `Térmicas - ${new Date().toLocaleString()}`, total_labels: labels.length, status: 'completed', order_ids: orderIds } as any).throwOnError();
-      queryClient.invalidateQueries({ queryKey: ['printed_order_ids'] });
-      queryClient.invalidateQueries({ queryKey: ['print_history'] });
-      setPrintHtml(buildThermalLabelsHtml(labels, logoUrl, { width: currentSize.width, height: currentSize.height }, labelConfig, resolveSender().senderCnpj));
-      avisarCorte(cortadasTermica, CAP_TERMICA_POR_NUMERO);
-      toast.success(`${labels.length} etiquetas térmicas geradas.`);
-    } catch (err: any) { toast.error(err?.message || 'Erro ao gerar etiquetas'); } finally { setIsGenerating(false); }
-  };
-
-  const handleDownloadPdf = async () => {
-    let cortadasTermica = 0;
-    const selectedGroups = filtered.filter(g => selected.has(g.groupKey));
-    const thermalGroups = selectedGroups.filter(g => getAllowedLabelTypes(g.packagingMode).thermal);
-    if (thermalGroups.length === 0) {
-      toast.error('Nenhum pedido selecionado permite etiquetas individuais.');
-      return;
-    }
-    setIsGenerating(true);
-    try {
-      const logoUrl = new URL(logoImg, window.location.origin).href;
-      const uniqueRefIds = [...new Set(thermalGroups.map(g => g.referenceId))];
-      const [refDataMap, materialMap] = await Promise.all([
-        supabase.from('technical_sheets').select('id, image_url, images, code, shoe_category').in('id', uniqueRefIds)
-          .then(({ data }) => { const map = new Map<string, any>(); for (const r of data || []) map.set(r.id, r); return map; }),
-        buildMaterialMap(thermalGroups),
-      ]);
-      // Resolve a foto do produto (mesmo fallback de 5 níveis da térmica HTML).
-      // O PDF não embutia foto — usuário imprimia via PDF e recebia etiqueta sem
-      // foto do produto. Aqui pré-resolvemos as URLs; buildThermalLabelsPdf baixa
-      // e embute os bytes.
-      const imageRequests = new Map<string, { referenceId: string; colorName: string }>();
-      for (const group of thermalGroups) {
-        const colorName = group.colors[0] || '';
-        imageRequests.set(`${group.referenceId}|${colorName}`, { referenceId: group.referenceId, colorName });
-        for (const order of group.orders) {
-          const orderColor = order.color || colorName;
-          imageRequests.set(`${group.referenceId}|${orderColor}`, { referenceId: group.referenceId, colorName: orderColor });
-        }
-      }
-      const imageFallbackMap = new Map<string, boolean>();
-      const imageResults = await Promise.all([...imageRequests.entries()].map(async ([key, { referenceId, colorName }]) => {
-        try {
-          const result = await resolveProductImageWithSource({ referenceId, colorName, fallbackUrl: logoUrl });
-          return [key, result.url, !result.matchedColor] as const;
-        } catch {
-          return [key, logoUrl, true] as const;
-        }
-      }));
-      const imageMap = new Map<string, string>();
-      imageResults.forEach(([k, url, isFallback]) => { imageMap.set(k, url); imageFallbackMap.set(k, isFallback); });
-
-      const labels: { refCode: string; refName: string; mainMaterial: string; color: string; size: string; barcode: string; shoeCategory?: string; clientOrderNumber?: string; qty?: number; strapsLabel?: string; imageUrl?: string; imageIsFallback?: boolean; }[] = [];
-      for (const group of thermalGroups) {
-        const mainMaterial = materialFromMap(materialMap, group.referenceId, groupVariantId(group), group.colors[0] || '');
-        const refData = refDataMap.get(group.referenceId);
-        const colorName = group.colors[0] || '';
-        const effRefCode = getEffectiveRefCode(group);
-        const effRefName = getEffectiveRefName(group);
-        if (thermalMode === 'quantity') {
-          for (const [size, qty] of Object.entries(group.aggregatedGrade)) {
-            const pedidas = Number(qty) || 0;
-            const aGerar = Math.min(pedidas, CAP_TERMICA_POR_NUMERO);
-            cortadasTermica += pedidas - aGerar;
-            for (let i = 0; i < aGerar; i++) {
-              labels.push({
-                refCode: effRefCode, refName: effRefName, mainMaterial,
-                color: getEffectiveColor(group, colorName), size, barcode: `${effRefCode || group.orders?.[0]?.order_number || group.groupKey}-${size}`,
-                shoeCategory: refData?.shoe_category || '',
-                clientOrderNumber: group.clientOrderNumber || '',
-                strapsLabel: getEffectiveStrapsLabel(group),
-                imageUrl: imageMap.get(`${group.referenceId}|${colorName}`) || logoUrl,
-                imageIsFallback: imageFallbackMap.get(`${group.referenceId}|${colorName}`) ?? false,
-              });
-            }
-          }
-        } else {
-          for (const order of group.orders) {
-            const orderColor = order.color || colorName;
-            const orderMaterial = materialFromMap(materialMap, group.referenceId, order.material_variant_id ?? null, orderColor);
-            const { gradeText, pairsInOneFicha, numFichas } = getOrderFichaMetrics(order);
-            for (let i = 0; i < numFichas; i++) {
-              labels.push({
-                refCode: effRefCode, refName: effRefName, mainMaterial: orderMaterial,
-                color: getEffectiveColor(group, orderColor), size: gradeText || `${pairsInOneFicha} PRS`,
-                barcode: `${effRefCode || order.order_number || group.groupKey}-${gradeText || pairsInOneFicha}`,
-                shoeCategory: refData?.shoe_category || '',
-                clientOrderNumber: group.clientOrderNumber || '',
-                qty: pairsInOneFicha,
-                strapsLabel: getEffectiveStrapsLabel(group),
-                imageUrl: imageMap.get(`${group.referenceId}|${orderColor}`) || imageMap.get(`${group.referenceId}|${group.colors[0] || ''}`) || logoUrl,
-                imageIsFallback: imageMap.has(`${group.referenceId}|${orderColor}`)
-                  ? (imageFallbackMap.get(`${group.referenceId}|${orderColor}`) ?? false)
-                  : (imageFallbackMap.get(`${group.referenceId}|${group.colors[0] || ''}`) ?? false),
-              });
-            }
-          }
-        }
-      }
-      if (labels.length === 0) {
-        toast.error('Nada para gerar.');
+      if (!validateJobSize(labels.length)) {
+        printTabRef.current?.close();
+        printTabRef.current = null;
         return;
       }
-      avisarCorte(cortadasTermica, CAP_TERMICA_POR_NUMERO);
-      const blob = await buildThermalLabelsPdf(
-        labels,
-        { width: currentSize.width, height: currentSize.height },
-        resolveSender().senderCnpj,
-      );
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `etiquetas-${currentSize.id}-${labels.length}un-${Date.now()}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-
       const orderIds = thermalGroups.flatMap(g => g.orders.map((o: any) => o.id));
-      await supabase.from('print_jobs').insert({ batch_name: `PDF ${currentSize.label} - ${new Date().toLocaleString()}`, total_labels: labels.length, status: 'completed', order_ids: orderIds } as any);
-      queryClient.invalidateQueries({ queryKey: ['printed_order_ids'] });
+      const selectedTemplate = thermalTemplates.find(t => t.id === selectedThermalTemplateId);
+      const dimensions = selectedTemplate?.dimensions || { width: currentSize.width, height: currentSize.height };
+      const html = selectedTemplate && selectedTemplate.id !== SQUAD_THERMAL_DEFAULT_ID
+        ? buildTemplateLabelsHtml(selectedTemplate, labels)
+        : buildThermalLabelsHtml(labels, logoUrl, { width: dimensions.width, height: dimensions.height }, labelConfig, resolveSender().senderCnpj);
+      const jobId = await createPrintJob({
+        batchName: `Térmicas - ${new Date().toLocaleString('pt-BR')}`,
+        totalLabels: labels.length,
+        orderIds,
+        templateId: selectedThermalTemplateId,
+      });
       queryClient.invalidateQueries({ queryKey: ['print_history'] });
-      toast.success(`PDF gerado: ${labels.length} etiquetas (${currentSize.label}). Abra e imprima.`);
+      setPrintRequest({
+        html,
+        jobId,
+      });
+      toast.success(`${labels.length} etiquetas térmicas geradas.`);
     } catch (err: any) {
-      toast.error(err?.message || 'Erro ao gerar PDF');
-    } finally {
-      setIsGenerating(false);
-    }
+      printTabRef.current?.close();
+      printTabRef.current = null;
+      toast.error(err?.message || 'Erro ao gerar etiquetas');
+    } finally { setIsGenerating(false); }
   };
 
   /** Grupos selecionados que aceitam rótulo de caixa externa. */
@@ -1282,7 +1297,7 @@ export function LabelProductionTab() {
         Promise.all(uniqueRefIds.map(async (refId) => {
           const { data: refData } = await supabase
             .from('technical_sheets')
-            .select('image_url, images, code, shoe_category')
+            .select('image_url, images, code, shoe_category, sole_group_id')
             .eq('id', refId)
             .single();
           refDataMap.set(refId, refData);
@@ -1344,16 +1359,46 @@ export function LabelProductionTab() {
         } catch { brandMap.set(k, 'Squad Shoes'); }
       }));
 
-      // ── CAPACIDADE DA CAIXA por PV — fonte única do servidor ────────────
-      // `compute_sale_order_box_breakdown` é a MESMA função que a NF-e usa pra
-      // contar volumes: ela resolve solado → `product_groups.pairs_per_box_<tipo>`
-      // e ainda devolve `pairs_per_box_source`. Ler daqui, em vez de repetir a
-      // cascata no front, é o que impede a etiqueta de divergir da NF.
-      //
-      // ⚠ Limite conhecido: o breakdown agrega por TIPO de caixa, não por item.
-      // Num PV com dois solados cujas caixas tenham capacidades diferentes,
-      // pegamos a linha coletiva de maior volume. Não morde hoje (um PV = uma
-      // família de solado); o aviso em DEV registra o dia em que morder.
+      // ── CAPACIDADE DA CAIXA por REFERÊNCIA/SOLADO ───────────────────────
+      // A RPC da NF agrega o PV e não identifica a linha que originou cada
+      // capacidade. Para montar caixas físicas precisamos do nível do item:
+      // ficha → grupo do solado → capacidade do modo → default da caixa.
+      type SolePackaging = SolePackagingCapacity & {
+        id: string;
+      };
+      const soleGroupIds = [...new Set(
+        [...refDataMap.values()].map(ref => ref?.sole_group_id).filter(Boolean),
+      )] as string[];
+      const solePackaging = new Map<string, SolePackaging>();
+      if (soleGroupIds.length > 0) {
+        const { data, error } = await supabase
+          .from('product_groups')
+          .select('id, pairs_per_box_individual, pairs_per_box_master, pairs_per_box_colmeia, box_type_id, box_type_master_id, box_type_colmeia_id')
+          .in('id', soleGroupIds);
+        if (error) throw error;
+        for (const row of data || []) solePackaging.set(row.id, row as SolePackaging);
+      }
+      const boxTypeIds = [...new Set(
+        [...solePackaging.values()]
+          .flatMap(row => [row.box_type_id, row.box_type_master_id, row.box_type_colmeia_id])
+          .filter(Boolean),
+      )] as string[];
+      const boxTypeCapacity = new Map<string, number>();
+      if (boxTypeIds.length > 0) {
+        const { data, error } = await supabase
+          .from('box_types')
+          .select('id, pairs_per_box_default')
+          .in('id', boxTypeIds);
+        if (error) throw error;
+        for (const row of data || []) {
+          if (Number(row.pairs_per_box_default) > 0) boxTypeCapacity.set(row.id, Number(row.pairs_per_box_default));
+        }
+      }
+      const capacityForReference = (referenceId: string, packagingMode: string): number => {
+        const ref = refDataMap.get(referenceId);
+        const sole = ref?.sole_group_id ? solePackaging.get(ref.sole_group_id) : undefined;
+        return resolveLabelBoxCapacity(packagingMode, sole, boxTypeCapacity);
+      };
       // ── GRADE DA FICHA vem do PV, não da OP ─────────────────────────────
       // `sale_order_items.grade` é a grade de UMA ficha (Σ = pares por ficha) e
       // `fichas` é quantas delas o item tem. A OP guarda a convenção OPOSTA:
@@ -1366,50 +1411,40 @@ export function LabelProductionTab() {
       // tem 3). Empacotar sobre 14 muda quem vai pra sobra e quantas caixas
       // saem — 18 por OP em vez de 15. Por isso a ficha real manda.
       type SaleOrderItemGrade = {
+        id: string;
         sale_order_id: string;
         reference_id: string;
         color: string | null;
+        material_variant_id: string | null;
         grade: Record<string, number> | null;
         fichas: number | null;
       };
-      const fichaKey = (soId: string, refId: string, color: string | null | undefined) =>
-        `${soId}|${refId}|${(color || '').toUpperCase().trim()}`;
+      const fichaKey = (soId: string, refId: string, color: string | null | undefined, variantId?: string | null) =>
+        `${soId}|${refId}|${(color || '').toUpperCase().trim()}|${variantId || ''}`;
+      const fichaByItemId = new Map<string, { grade: Record<string, number>; fichas: number }>();
       const fichaFromPv = new Map<string, { grade: Record<string, number>; fichas: number }>();
-
-      type BoxBreakdownRow = { tipo: string | null; pairs_per_box: number | null; total_pairs: number | null };
-      const capacityBySaleOrder = new Map<string, number>();
       const saleOrderIdsForBoxes = [...new Set(
         boxGroups.flatMap(g => g.orders.map(o => o.sale_order_id)).filter(Boolean),
       )];
       if (saleOrderIdsForBoxes.length > 0) {
-        const { data: pvItems } = await supabase
+        const pvItems = await fetchAllLabelPages<SaleOrderItemGrade>((from, to) => supabase
           .from('sale_order_items')
-          .select('sale_order_id, reference_id, color, grade, fichas')
-          .in('sale_order_id', saleOrderIdsForBoxes);
-        for (const it of (pvItems || []) as unknown as SaleOrderItemGrade[]) {
+          .select('id, sale_order_id, reference_id, color, material_variant_id, grade, fichas')
+          .in('sale_order_id', saleOrderIdsForBoxes)
+          .order('id')
+          .range(from, to) as unknown as PromiseLike<{
+            data: SaleOrderItemGrade[] | null;
+            error: { message: string } | null;
+          }>);
+        for (const it of pvItems) {
           const grade = it.grade && typeof it.grade === 'object' ? it.grade : null;
           const fichas = Number(it.fichas) || 0;
           if (!grade || fichas <= 0) continue;
-          fichaFromPv.set(fichaKey(it.sale_order_id, it.reference_id, it.color), { grade, fichas });
+          const ficha = { grade, fichas };
+          fichaByItemId.set(it.id, ficha);
+          fichaFromPv.set(fichaKey(it.sale_order_id, it.reference_id, it.color, it.material_variant_id), ficha);
         }
       }
-      await Promise.all(saleOrderIdsForBoxes.map(async (soId) => {
-        try {
-          const { data } = await (supabase as any).rpc('compute_sale_order_box_breakdown', {
-            p_sale_order_id: soId,
-          });
-          const coletivas = ((data || []) as BoxBreakdownRow[])
-            .filter(r => r.tipo !== 'fitilho' && Number(r.pairs_per_box) > 0)
-            .sort((a, b) => Number(b.total_pairs) - Number(a.total_pairs));
-          if (import.meta.env.DEV && coletivas.length > 1) {
-            console.warn('[LabelProductionTab] PV com mais de uma caixa coletiva — usando a dominante:', soId, coletivas);
-          }
-          if (coletivas[0]) capacityBySaleOrder.set(soId, Number(coletivas[0].pairs_per_box) || 0);
-        } catch {
-          // Sem capacidade resolvida → cai no caminho legado (1 etiqueta por
-          // ficha). Nunca inventar capacidade: caixa errada é volume errado.
-        }
-      }));
 
       const boxItems: BoxIdentificationData[] = [];
       // Conjunto a que cada etiqueta pertence pra numerar o volume: PV +
@@ -1420,59 +1455,28 @@ export function LabelProductionTab() {
         const refData = refDataMap.get(group.referenceId);
         for (const order of group.orders) {
           const mainMaterial = materialFromMap(materialMap, group.referenceId, (order as any).material_variant_id ?? null, order.color || group.colors[0] || '');
-          // Parse grade defensivamente — Supabase devolve JSONB como objeto JS,
-          // mas se vier string (caso de cache antigo, .raw, ou serialização
-          // intermediária), parseamos. Antes assumíamos sempre objeto.
-          let grade: Record<string, number> | null = null;
-          const rawGrade = (order as any).grade;
-          if (rawGrade && typeof rawGrade === 'object' && !Array.isArray(rawGrade)) {
-            grade = rawGrade as Record<string, number>;
-          } else if (typeof rawGrade === 'string' && rawGrade.trim().startsWith('{')) {
-            try { grade = JSON.parse(rawGrade); } catch { grade = null; }
-          }
-          const sizes = grade ? Object.keys(grade).sort((a, b) => Number(a) - Number(b)) : [];
-          const gradeItems = sizes.map(size => ({ size, qty: Number(grade?.[size]) || 0 }));
-          // grade já é por ficha (sum(grade) = pares em 1 ficha; quantity = pares
-          // totais = sum(grade) × fichas). Nº de fichas vem de pairsPerFicha
-          // configurado pelo usuário OU do próprio sum(grade) se não setado.
-          const pairsInOneFicha = gradeItems.reduce((sum, g) => sum + g.qty, 0);
-          const fichas = pairsPerFicha > 0
-            ? Math.ceil(order.quantity / pairsPerFicha)
-            : (pairsInOneFicha > 0 ? Math.max(1, Math.round(order.quantity / pairsInOneFicha)) : 1);
           const so = saleOrdersMap.get(order.sale_order_id);
           const finalImageUrl = imageMap.get(`${group.referenceId}|${order.color || ''}`) || logoUrl;
-          // Cada ficha imprime a grade COMPLETA (não dividir por fichas — a grade
-          // do PV já representa a distribuição de 1 ficha). Bug anterior: dividia
-          // por fichas e perdia tudo no floor (1/50 = 0), só a última ficha
-          // herdava o resto via remainder. Resultado: 49 etiquetas em branco com
-          // "CORRUGADO 0 PRS" e 1 etiqueta completa no final.
-          //
-          // Se pairsPerFicha (config do usuário) for diferente de sum(grade),
-          // escala proporcionalmente — cada caixa contém pairsPerFicha pares.
-          const useScale = pairsInOneFicha > 0 && pairsPerFicha > 0 && pairsPerFicha !== pairsInOneFicha;
-          const scale = useScale ? pairsPerFicha / pairsInOneFicha : 1;
-          let gradePerFicha = gradeItems.map(g => ({ size: g.size, qty: Math.round(g.qty * scale) }));
-          // Defesa: se escala fracionária derrubou tudo pra 0 mas a grade
-          // original tem qty (pairsInOneFicha > 0), usa a grade direta — melhor
-          // mostrar a distribuição da ficha do que etiqueta zerada.
-          if (gradePerFicha.reduce((s, g) => s + g.qty, 0) === 0 && pairsInOneFicha > 0) {
-            gradePerFicha = gradeItems.map(g => ({ size: g.size, qty: g.qty }));
+          // A grade de uma ficha e o nº de fichas vêm exclusivamente do item do
+          // PV. A OP guarda a grade total multiplicada e não pode ser reescalada.
+          const pvFicha = (order.sale_order_item_id ? fichaByItemId.get(order.sale_order_item_id) : undefined)
+            || fichaFromPv.get(fichaKey(
+              (order as { sale_order_id: string }).sale_order_id,
+              group.referenceId,
+              order.color,
+              order.material_variant_id,
+            ));
+          if (!pvFicha) {
+            throw new Error(
+              `Item do PV não localizado para ${group.refCode || group.refName} (${order.order_number || 'OP sem número'}). ` +
+              'Ressincronize a OP antes de gerar o rótulo.',
+            );
           }
-          if (import.meta.env.DEV && pairsInOneFicha === 0) {
-            console.warn('[LabelProductionTab] order sem grade utilizável:', {
-              order_number: order.order_number, rawGrade, gradeItems,
-            });
-          }
-
-          // A ficha real do PV vence a grade escalada da OP sempre que existir.
-          const pvFicha = fichaFromPv.get(fichaKey((order as { sale_order_id: string }).sale_order_id, group.referenceId, order.color));
-          const effFichas = pvFicha ? pvFicha.fichas : fichas;
-          const effGradePerFicha = pvFicha
-            ? Object.entries(pvFicha.grade)
-                .map(([size, qty]) => ({ size, qty: Number(qty) || 0 }))
-                .filter(g => g.qty > 0)
-                .sort((a, b) => Number(a.size) - Number(b.size))
-            : gradePerFicha;
+          const effFichas = pvFicha.fichas;
+          const effGradePerFicha = Object.entries(pvFicha.grade)
+            .map(([size, qty]) => ({ size, qty: Number(qty) || 0 }))
+            .filter(g => g.qty > 0)
+            .sort((a, b) => Number(a.size) - Number(b.size));
 
           // ── PLANO DE CAIXAS (regra canônica em `src/lib/boxPacking.ts`) ──
           // A colmeia leva a capacidade cadastrada no solado; o excedente da
@@ -1480,11 +1484,22 @@ export function LabelProductionTab() {
           // item inteiro, em caixas de UMA numeração só. Uma etiqueta por
           // CAIXA — antes era uma por ficha, e a caixa de sobra não existia.
           //
-          // Sem capacidade resolvida no servidor, mantém o comportamento
-          // legado (1 etiqueta por ficha com a grade cheia). Degradar é melhor
-          // que assumir 12 e imprimir volume que não corresponde à carga.
-          const capacity = capacityBySaleOrder.get(order.sale_order_id) || 0;
+          // Sem capacidade/grade resolvida, BLOQUEIA. Assumir 12 ou repetir a
+          // ficha produziria um volume que não corresponde à carga física.
+          const capacity = capacityForReference(group.referenceId, so?.packaging_mode || group.packagingMode);
           const pairsInPlannedFicha = effGradePerFicha.reduce((s, g) => s + g.qty, 0);
+          if (capacity <= 0) {
+            throw new Error(
+              `Capacidade da caixa não cadastrada para ${group.refCode || group.refName}. ` +
+              'Cadastre a embalagem no grupo do solado antes de gerar o rótulo.',
+            );
+          }
+          if (pairsInPlannedFicha <= 0 || effFichas <= 0) {
+            throw new Error(
+              `Grade/fichas inválidas no item ${group.refCode || group.refName} (${order.order_number || 'OP sem número'}). ` +
+              'Corrija o item do PV antes de gerar o rótulo.',
+            );
+          }
           // ── MODO DE MONTAGEM DA CAIXA (decisão do dono, 11/08/2026) ──
           // `numeracao_unica` fecha cada caixa com uma numeração só, em vez da
           // curva do cliente. O PV só consegue ligar o modo quando cada
@@ -1496,23 +1511,19 @@ export function LabelProductionTab() {
           // e aí caímos no modo grade: preferimos a caixa tradicional a imprimir
           // volume que não corresponde à carga.
           const packInput = { grade: effGradePerFicha, fichas: effFichas, capacity };
-          const podeEmpacotar = capacity > 0 && pairsInPlannedFicha > 0;
-          const porNumeracao = podeEmpacotar && so?.box_grouping === 'numeracao_unica'
+          const porNumeracao = so?.box_grouping === 'numeracao_unica'
             ? packSaleOrderItemBySize(packInput)
             : [];
           const packed = porNumeracao.length > 0
             ? porNumeracao
-            : (podeEmpacotar ? packSaleOrderItem(packInput) : []);
-          // Plano vazio = a regra declinou (grade que não é ficha) ou não há
-          // capacidade resolvida. Nos dois casos cai no legado — 1 etiqueta por
-          // ficha com a grade cheia. Nunca ficar sem etiqueta nenhuma.
-          const plannedBoxes: { contents: { size: string; qty: number }[]; pairs: number }[] =
-            packed.length > 0
-              ? packed
-              : Array.from({ length: Math.max(1, effFichas) }, () => ({
-                  contents: effGradePerFicha.map(g => ({ ...g })),
-                  pairs: pairsInPlannedFicha,
-                }));
+            : packSaleOrderItem(packInput);
+          if (packed.length === 0) {
+            throw new Error(
+              `Não foi possível fechar as caixas de ${group.refCode || group.refName}. ` +
+              'Confira grade, número de fichas e capacidade da embalagem.',
+            );
+          }
+          const plannedBoxes: { contents: { size: string; qty: number }[]; pairs: number }[] = packed;
           // Calcula o "range" do tamanho para o destaque grande no canto da
           // etiqueta — ex.: 29-36, ou só "36" se houver um tamanho só.
           // Por CAIXA (não pela ficha): a caixa de sobra tem uma numeração só,
@@ -1591,7 +1602,7 @@ export function LabelProductionTab() {
             });
             volumeSetKeys.set(
               boxItems[boxItems.length - 1],
-              `${so?.order_number || ''}|${group.referenceId}|${(order.color || '').toUpperCase().trim()}`,
+              `${so?.order_number || ''}|${group.referenceId}|${(order.color || '').toUpperCase().trim()}|${order.material_variant_id || ''}`,
             );
           }
         }
@@ -1739,21 +1750,35 @@ export function LabelProductionTab() {
   };
 
   const handlePrintBoxLabels = async () => {
-    printTabRef.current = openPrintTab();
     const boxGroups = selectedBoxGroups();
     if (boxGroups.length === 0) {
       toast.error('Nenhum pedido selecionado permite rótulo de caixa externa.');
       return;
     }
+    printTabRef.current = openPrintTab();
     setIsGenerating(true);
     try {
       const boxItems = (await computeBoxItems(boxGroups)).map(applyBoxOverride);
-      setPrintHtml(buildBoxIdentificationHtml(boxItems));
+      if (!validateJobSize(boxItems.length)) {
+        printTabRef.current?.close();
+        printTabRef.current = null;
+        return;
+      }
       const orderIds = boxGroups.flatMap(g => g.orders.map((o: any) => o.id));
-      await supabase.from('print_jobs').insert({ batch_name: `Rótulos Caixa - ${new Date().toLocaleString()}`, total_labels: boxItems.length, status: 'completed', order_ids: orderIds } as any);
-      queryClient.invalidateQueries({ queryKey: ['printed_order_ids'] });
+      const html = buildBoxIdentificationHtml(boxItems);
+      const jobId = await createPrintJob({
+        batchName: `Rótulos Caixa - ${new Date().toLocaleString('pt-BR')}`,
+        totalLabels: boxItems.length,
+        orderIds,
+        templateId: selectedBoxTemplateId,
+      });
+      setPrintRequest({ html, jobId });
       queryClient.invalidateQueries({ queryKey: ['print_history'] });
-    } catch (err: any) { toast.error(err.message); } finally { setIsGenerating(false); }
+    } catch (err: any) {
+      printTabRef.current?.close();
+      printTabRef.current = null;
+      toast.error(err.message);
+    } finally { setIsGenerating(false); }
   };
 
   // Impressão via PDF do servidor (10/08/2026). Antes escrevia o HTML numa aba e
@@ -1765,14 +1790,23 @@ export function LabelProductionTab() {
   // ⚠ A aba é aberta no CLIQUE (printTabRef), não aqui: abrir depois do await faz
   // o celular tratar como pop-up e bloquear.
   useEffect(() => {
-    if (!printHtml) return;
-    void printHtmlAsPdf(printHtml, {
-      filename: `etiquetas-${new Date().toISOString().slice(0, 10)}`,
-      target: printTabRef.current,
-    });
+    if (!printRequest) return;
+    const request = printRequest;
+    const target = printTabRef.current;
     printTabRef.current = null;
-    setPrintHtml(null);
-  }, [printHtml]);
+    setPrintRequest(null);
+    void printHtmlAsPdf(request.html, {
+      filename: `etiquetas-${new Date().toISOString().slice(0, 10)}`,
+      target,
+      jobId: request.jobId,
+    }).then(async submitted => {
+      if (!submitted) await setPrintJobStatus(request.jobId, 'failed');
+      queryClient.invalidateQueries({ queryKey: ['print_history'] });
+    }).catch(error => {
+      console.error('[LabelProductionTab] falha ao atualizar o lote de impressão:', error);
+      queryClient.invalidateQueries({ queryKey: ['print_history'] });
+    });
+  }, [printRequest, queryClient]);
 
   return (
     <div className="space-y-6">
@@ -1837,29 +1871,37 @@ export function LabelProductionTab() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label className="text-xs">Tamanho da Etiqueta</Label>
-                    <Select value={labelSize} onValueChange={setLabelSize}>
-                      <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        {LABEL_SIZES.map(s => (<SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-xs">Margem (%)</Label>
-                    <Slider value={[labelConfig.marginPct]} onValueChange={([v]) => setLabelConfig({ ...labelConfig, marginPct: v })} min={0} max={20} step={1} className="py-2" />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-x-6 gap-y-2">
-                  {Object.entries({ showImage: 'Imagem', showBarcode: 'Cód. Barras', showCode: 'Cód. Interno', showMaterial: 'Material', showCategory: 'Categoria', showPedido: 'Pedido', showSize: 'Tamanho' }).map(([key, label]) => (
-                    <div key={key} className="flex items-center gap-2">
-                      <Checkbox id={`check-${key}`} checked={(labelConfig as any)[key]} onCheckedChange={(v) => setLabelConfig({ ...labelConfig, [key]: !!v })} />
-                      <Label htmlFor={`check-${key}`} className="text-xs cursor-pointer">{label}</Label>
+                {usesCustomThermalTemplate ? (
+                  <p className="text-xs text-muted-foreground rounded-md border p-3">
+                    Dimensões, campos, posições e estilos vêm do template customizado. Edite-os na aba Templates.
+                  </p>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label className="text-xs">Tamanho da Etiqueta</Label>
+                        <Select value={labelSize} onValueChange={setLabelSize}>
+                          <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            {LABEL_SIZES.map(s => (<SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-xs">Margem (%)</Label>
+                        <Slider value={[labelConfig.marginPct]} onValueChange={([v]) => setLabelConfig({ ...labelConfig, marginPct: v })} min={0} max={20} step={1} className="py-2" />
+                      </div>
                     </div>
-                  ))}
-                </div>
+                    <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+                      {Object.entries({ showImage: 'Imagem', showBarcode: 'Cód. Barras', showCode: 'Cód. Interno', showMaterial: 'Material', showCategory: 'Categoria', showPedido: 'Pedido', showSize: 'Tamanho' }).map(([key, label]) => (
+                        <div key={key} className="flex items-center gap-2">
+                          <Checkbox id={`check-${key}`} checked={(labelConfig as any)[key]} onCheckedChange={(v) => setLabelConfig({ ...labelConfig, [key]: !!v })} />
+                          <Label htmlFor={`check-${key}`} className="text-xs cursor-pointer">{label}</Label>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
               </div>
               <div className="space-y-4 md:border-l md:pl-8">
                 <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
@@ -1878,20 +1920,9 @@ export function LabelProductionTab() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="grid grid-cols-1 gap-4">
-                  <div className="space-y-2">
-                    <Label className="text-xs">Pares por Ficha (Etiqueta)</Label>
-                    <div className="flex items-center gap-3">
-                      <Input type="number" value={pairsPerFicha} onChange={e => setPairsPerFicha(Number(e.target.value))} className="h-8 text-xs font-mono w-24" />
-                      <span className="text-xs text-muted-foreground italic">Divide o pedido em fichas</span>
-                    </div>
-                  </div>
-                  {/* "Fichas por Caixa Master" saiu em 05/08/2026: os pares por
-                      caixa passaram a vir do SOLADO (product_groups.pairs_per_box_*,
-                      via compute_sale_order_box_breakdown — a mesma fonte da NF).
-                      O campo virou controle morto, e controle morto é pior que
-                      campo ausente: alguém mexe e nada muda. */}
-                </div>
+                <p className="text-xs text-muted-foreground">
+                  Grade e fichas vêm do item do PV; capacidade vem do grupo do solado. Esses valores não são ajustáveis na impressão.
+                </p>
               </div>
             </div>
           </CardContent>
@@ -1998,9 +2029,6 @@ export function LabelProductionTab() {
                           <SelectItem value="ficha">Por Ficha (nº)</SelectItem>
                         </SelectContent>
                       </Select>
-                      <Button onClick={handleDownloadPdf} variant="outline" size="sm" className="gap-1.5 h-9 border-emerald-500/40 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/30" title="Baixar PDF — abre em qualquer leitor (Preview, Adobe, navegador) e imprime direto">
-                        <Download className="h-3.5 w-3.5" />PDF
-                      </Button>
                     </div>
                     <span className="text-xs text-muted-foreground truncate max-w-[200px]">
                       Template: {thermalTemplates.find(t => t.id === selectedThermalTemplateId)?.name || 'Padrão'}

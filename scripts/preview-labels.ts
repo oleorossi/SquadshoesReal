@@ -20,7 +20,7 @@ const OUT = process.env.PREVIEW_OUT || '/Users/leonardomonnerat/Documents/Claude
 try { mkdirSync(OUT, { recursive: true }); } catch {}
 
 // ───────────────────────────────────────────────────────────────
-// 1) CAIXA EXTERNA — 198×132mm (EtqCxExt)
+// 1) CAIXA EXTERNA — 192×132mm (EtqCxExt)
 // ───────────────────────────────────────────────────────────────
 const boxItems: BoxIdentificationData[] = [
   {

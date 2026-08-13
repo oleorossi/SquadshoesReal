@@ -1,162 +1,121 @@
-import { useState } from 'react';
+import { useEffect } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Progress } from '@/components/ui/progress';
-import { Printer, CheckCircle as CheckCircle2, XCircle, Clock, Warning as AlertTriangle, ArrowCounterClockwise as RotateCcw, Trash as Trash2 } from '@phosphor-icons/react';
+import { Printer, CheckCircle as CheckCircle2, XCircle, Clock, Warning as AlertTriangle, FilePdf, Trash as Trash2 } from '@phosphor-icons/react';
+import { supabase } from '@/integrations/supabase/client';
+import { confirmPrintJob, PRINT_JOB_STATUS_LABELS, setPrintJobStatus } from '@/lib/printJobs';
 import { toast } from 'sonner';
-import type { PrintJob, PrinterInfo } from '@/types/label-system';
 
-const MOCK_PRINTERS: PrinterInfo[] = [
-  { id: '1', name: 'Elgin L42 Pro', brand: 'Elgin', model: 'L42 Pro', status: 'online', paper_level: 72, jobs_in_queue: 2, last_heartbeat: new Date().toISOString() },
-  { id: '2', name: 'Zebra ZD421', brand: 'Zebra', model: 'ZD421', status: 'online', paper_level: 95, jobs_in_queue: 0, last_heartbeat: new Date().toISOString() },
-  { id: '3', name: 'Brother QL-820', brand: 'Brother', model: 'QL-820NWB', status: 'offline', paper_level: 30, jobs_in_queue: 0, last_heartbeat: new Date(Date.now() - 3600000).toISOString() },
-];
+interface JobRow {
+  id: string;
+  batch_name: string | null;
+  created_at: string;
+  status: string | null;
+  total_labels: number | null;
+  order_ids: unknown;
+  label_templates: { name: string } | null;
+}
 
-const MOCK_JOBS: PrintJob[] = [
-  { id: '1', template_id: '1', template_name: 'Térmica 100×30', status: 'completed', total_labels: 120, printed_labels: 120, order_number: 'OP-2024-0451', reference: 'REF-CLASSIC', created_at: new Date(Date.now() - 600000).toISOString(), completed_at: new Date(Date.now() - 300000).toISOString() },
-  { id: '2', template_id: '1', template_name: 'Térmica 100×30', status: 'printing', total_labels: 80, printed_labels: 45, order_number: 'OP-2024-0452', reference: 'REF-SPORT', created_at: new Date(Date.now() - 120000).toISOString() },
-  { id: '3', template_id: '2', template_name: 'Caixa Master', status: 'pending', total_labels: 24, printed_labels: 0, order_number: 'OP-2024-0453', created_at: new Date(Date.now() - 60000).toISOString() },
-  { id: '4', template_id: '1', template_name: 'Térmica 100×30', status: 'failed', total_labels: 50, printed_labels: 12, order_number: 'OP-2024-0450', created_at: new Date(Date.now() - 7200000).toISOString(), error_message: 'Papel esgotado' },
-];
-
-const STATUS_CONFIG: Record<string, { icon: React.ReactNode; color: string; label: string }> = {
-  pending: { icon: <Clock className="h-4 w-4" />, color: 'text-amber-500', label: 'Pendente' },
-  printing: { icon: <Printer className="h-4 w-4 animate-pulse" />, color: 'text-blue-500', label: 'Imprimindo' },
-  completed: { icon: <CheckCircle2 className="h-4 w-4" />, color: 'text-green-500', label: 'Concluído' },
-  failed: { icon: <XCircle className="h-4 w-4" />, color: 'text-destructive', label: 'Falhou' },
-  cancelled: { icon: <XCircle className="h-4 w-4" />, color: 'text-muted-foreground', label: 'Cancelado' },
+const STATUS_CONFIG: Record<string, { icon: React.ReactNode; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
+  pending: { icon: <Clock className="h-4 w-4" />, variant: 'outline' },
+  generated: { icon: <FilePdf className="h-4 w-4" />, variant: 'secondary' },
+  confirmed: { icon: <CheckCircle2 className="h-4 w-4" />, variant: 'default' },
+  failed: { icon: <XCircle className="h-4 w-4" />, variant: 'destructive' },
+  cancelled: { icon: <XCircle className="h-4 w-4" />, variant: 'outline' },
+  completed: { icon: <AlertTriangle className="h-4 w-4" />, variant: 'outline' },
 };
 
 export function PrintDashboardTab() {
-  const [jobs, setJobs] = useState<PrintJob[]>(MOCK_JOBS);
+  const queryClient = useQueryClient();
+  const { data: jobs = [], isLoading } = useQuery({
+    queryKey: ['print_jobs_dashboard'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('print_jobs')
+        .select('id, batch_name, created_at, status, total_labels, order_ids, label_templates(name)')
+        .order('created_at', { ascending: false })
+        .limit(100);
+      if (error) throw error;
+      return (data || []) as unknown as JobRow[];
+    },
+    staleTime: 15_000,
+  });
 
-  const stats = {
-    total: jobs.length,
-    completed: jobs.filter(j => j.status === 'completed').length,
-    pending: jobs.filter(j => j.status === 'pending' || j.status === 'printing').length,
-    failed: jobs.filter(j => j.status === 'failed').length,
-    totalLabels: jobs.reduce((a, j) => a + j.printed_labels, 0),
-  };
+  useEffect(() => {
+    const channel = supabase
+      .channel('print-jobs-dashboard')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'print_jobs' }, () => {
+        queryClient.invalidateQueries({ queryKey: ['print_jobs_dashboard'] });
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [queryClient]);
 
-  const handleRetry = (id: string) => {
-    setJobs(prev => prev.map(j => j.id === id ? { ...j, status: 'pending' as const, printed_labels: 0, error_message: undefined } : j));
-    toast.success('Job reenviado para fila');
-  };
+  const generated = jobs.filter(job => job.status === 'generated');
+  const confirmed = jobs.filter(job => job.status === 'confirmed');
+  const pending = jobs.filter(job => job.status === 'pending');
+  const failed = jobs.filter(job => job.status === 'failed');
+  const confirmedLabels = confirmed.reduce((sum, job) => sum + (job.total_labels || 0), 0);
 
-  const handleCancel = (id: string) => {
-    setJobs(prev => prev.map(j => j.id === id ? { ...j, status: 'cancelled' as const } : j));
-    toast.info('Job cancelado');
+  const changeStatus = async (id: string, status: 'confirmed' | 'cancelled') => {
+    if (status === 'confirmed') await confirmPrintJob(id);
+    else await setPrintJobStatus(id, status);
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['print_jobs_dashboard'] }),
+      queryClient.invalidateQueries({ queryKey: ['print_history'] }),
+      queryClient.invalidateQueries({ queryKey: ['printed_order_ids'] }),
+    ]);
+    toast.success(status === 'confirmed' ? 'Impressão física confirmada.' : 'Geração cancelada.');
   };
 
   return (
     <div className="space-y-6">
-      {/* KPI cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="py-4 text-center">
-            <div className="text-2xl font-bold text-foreground">{stats.totalLabels}</div>
-            <div className="text-xs text-muted-foreground">Etiquetas Impressas</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="py-4 text-center">
-            <div className="text-2xl font-bold text-green-600">{stats.completed}</div>
-            <div className="text-xs text-muted-foreground">Jobs Concluídos</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="py-4 text-center">
-            <div className="text-2xl font-bold text-amber-600">{stats.pending}</div>
-            <div className="text-xs text-muted-foreground">Na Fila</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="py-4 text-center">
-            <div className="text-2xl font-bold text-destructive">{stats.failed}</div>
-            <div className="text-xs text-muted-foreground">Com Falha</div>
-          </CardContent>
-        </Card>
+        <Card><CardContent className="py-4 text-center"><div className="text-2xl font-bold">{confirmedLabels}</div><div className="text-xs text-muted-foreground">Etiquetas confirmadas</div></CardContent></Card>
+        <Card><CardContent className="py-4 text-center"><div className="text-2xl font-bold text-primary">{generated.length}</div><div className="text-xs text-muted-foreground">PDFs aguardando confirmação</div></CardContent></Card>
+        <Card><CardContent className="py-4 text-center"><div className="text-2xl font-bold text-amber-600">{pending.length}</div><div className="text-xs text-muted-foreground">Em geração</div></CardContent></Card>
+        <Card><CardContent className="py-4 text-center"><div className="text-2xl font-bold text-destructive">{failed.length}</div><div className="text-xs text-muted-foreground">Falhas</div></CardContent></Card>
       </div>
 
-      {/* Printers */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-sm flex items-center gap-2"><Printer className="h-4 w-4" /> Impressoras</CardTitle>
+          <CardTitle className="text-sm flex items-center gap-2"><Printer className="h-4 w-4" /> Gerações recentes</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-3 md:grid-cols-3">
-            {MOCK_PRINTERS.map(p => (
-              <div key={p.id} className="border rounded-lg p-3 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-medium text-sm">{p.name}</span>
-                  <Badge variant={p.status === 'online' ? 'default' : 'secondary'}>
-                    {p.status === 'online' ? '● Online' : '○ Offline'}
-                  </Badge>
-                </div>
-                <div className="text-xs text-muted-foreground">{p.brand} {p.model}</div>
-                <div className="space-y-1">
-                  <div className="flex justify-between text-xs">
-                    <span>Papel</span>
-                    <span>{p.paper_level}%</span>
-                  </div>
-                  <Progress value={p.paper_level} className="h-1.5" />
-                </div>
-                {p.jobs_in_queue > 0 && (
-                  <div className="text-xs text-muted-foreground">{p.jobs_in_queue} job(s) na fila</div>
-                )}
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Jobs */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm">Fila de Impressão</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-2">
-            {jobs.map(job => {
-              const sc = STATUS_CONFIG[job.status];
-              const pct = job.total_labels > 0 ? (job.printed_labels / job.total_labels) * 100 : 0;
-              return (
-                <div key={job.id} className="border rounded-lg p-3 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className={sc.color}>{sc.icon}</span>
-                      <span className="font-mono text-sm font-bold">{job.order_number}</span>
-                      <Badge variant="outline" className="text-xs">{job.template_name}</Badge>
+          {isLoading ? (
+            <p className="py-10 text-center text-sm text-muted-foreground">Carregando histórico…</p>
+          ) : jobs.length === 0 ? (
+            <p className="py-10 text-center text-sm text-muted-foreground">Nenhuma geração registrada.</p>
+          ) : (
+            <div className="space-y-2">
+              {jobs.map(job => {
+                const status = job.status || 'pending';
+                const config = STATUS_CONFIG[status] || STATUS_CONFIG.pending;
+                const orderCount = Array.isArray(job.order_ids) ? job.order_ids.length : 0;
+                return (
+                  <div key={job.id} className="border rounded-lg p-3 flex flex-col md:flex-row md:items-center gap-3">
+                    <span className="text-muted-foreground">{config.icon}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-sm truncate">{job.batch_name || 'Lote sem nome'}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {new Date(job.created_at).toLocaleString('pt-BR')} · {job.total_labels || 0} etiquetas · {orderCount} OPs
+                        {job.label_templates?.name ? ` · ${job.label_templates.name}` : ''}
+                      </p>
                     </div>
-                    <div className="flex items-center gap-1">
-                      {job.status === 'failed' && (
-                        <Button size="sm" variant="ghost" onClick={() => handleRetry(job.id)} title="Reenviar">
-                          <RotateCcw className="h-3.5 w-3.5" />
-                        </Button>
-                      )}
-                      {(job.status === 'pending' || job.status === 'printing') && (
-                        <Button size="sm" variant="ghost" className="text-destructive" onClick={() => handleCancel(job.id)} title="Cancelar">
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      )}
-                    </div>
+                    <Badge variant={config.variant} className="gap-1 self-start md:self-auto">{PRINT_JOB_STATUS_LABELS[status] || status}</Badge>
+                    {status === 'generated' && <Button size="sm" onClick={() => void changeStatus(job.id, 'confirmed')}>Confirmar impressão</Button>}
+                    {status === 'pending' && (
+                      <Button size="sm" variant="ghost" className="text-destructive" onClick={() => void changeStatus(job.id, 'cancelled')} title="Cancelar">
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
                   </div>
-                  <div className="flex items-center gap-3">
-                    <Progress value={pct} className="h-1.5 flex-1" />
-                    <span className="text-xs text-muted-foreground whitespace-nowrap">
-                      {job.printed_labels}/{job.total_labels}
-                    </span>
-                  </div>
-                  {job.error_message && (
-                    <div className="flex items-center gap-1 text-xs text-destructive">
-                      <AlertTriangle className="h-3 w-3" /> {job.error_message}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

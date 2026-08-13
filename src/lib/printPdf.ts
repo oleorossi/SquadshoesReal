@@ -1,4 +1,5 @@
 import { toast } from 'sonner';
+import { supabase } from '@/integrations/supabase/client';
 
 /**
  * Impressão via PDF gerado no servidor — caminho ÚNICO de etiquetas e fichas.
@@ -60,6 +61,8 @@ export interface PrintPdfOptions {
   landscape?: boolean;
   /** Aba aberta ANTES de gerar — ver openPrintTab. */
   target?: Window | null;
+  /** Job criado antes do envio. O servidor move pending → generated/failed. */
+  jobId?: string;
 }
 
 /**
@@ -128,7 +131,7 @@ function avisarNaAba(tab: Window | null, msg: string) {
  * Devolve `true` quando o envio foi disparado — o resultado em si aparece na
  * aba, porque quem conduz a navegação daqui em diante é o browser.
  */
-export function printHtmlAsPdf(html: string, opts: PrintPdfOptions): boolean {
+export async function printHtmlAsPdf(html: string, opts: PrintPdfOptions): Promise<boolean> {
   const { filename, landscape = false } = opts;
   const tab = opts.target ?? null;
 
@@ -139,6 +142,14 @@ export function printHtmlAsPdf(html: string, opts: PrintPdfOptions): boolean {
       `Documento grande demais pra gerar de uma vez (${mb}MB). ` +
       `Imprima em partes — por exemplo, menos setores ou menos OPs por vez.`;
     toast.error(msg, { duration: 12_000 });
+    avisarNaAba(tab, msg);
+    return false;
+  }
+
+  const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError || !session?.access_token) {
+    const msg = 'Sua sessão expirou. Entre novamente antes de gerar o PDF.';
+    toast.error(msg, { duration: 10_000 });
     avisarNaAba(tab, msg);
     return false;
   }
@@ -159,6 +170,8 @@ export function printHtmlAsPdf(html: string, opts: PrintPdfOptions): boolean {
   };
   campo('html', html);
   campo('filename', filename);
+  campo('access_token', session.access_token);
+  if (opts.jobId) campo('job_id', opts.jobId);
   if (landscape) campo('landscape', '1');
 
   document.body.appendChild(form);

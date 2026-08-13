@@ -1,11 +1,12 @@
 import { useState, useMemo } from 'react';
 import { escapeHtml, safeUrlAttr } from '@/lib/htmlUtils';
 import { Plus, Trash as Trash2, CircleNotch as Loader2, MagnifyingGlass, Package, ShoppingBag, PencilSimple as Pencil, MapPin, Note as StickyNote, FileArrowDown as FileDown, Tag, Package as BoxIcon, Printer, ImageSquare as ImagePlus } from '@phosphor-icons/react';
-import { printBoxLabels } from '@/lib/printLabels';
-import { buildThermalLabelsHtml } from '@/lib/printLabels';
+import { buildStockBoxLabelsHtml, buildThermalLabelsHtml } from '@/lib/printLabels';
 import { resolveMaterialLabels, materialLabelKey } from '@/lib/labelUtils';
 import { DEFAULT_MANUFACTURER_CNPJ } from '@/lib/companySender';
 import { printHtml, writeRawPrintWindow, openPrintWindow } from '@/lib/printOrder';
+import { openPrintTab, printHtmlAsPdf } from '@/lib/printPdf';
+import { createPrintJob, setPrintJobStatus } from '@/lib/printJobs';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -31,6 +32,7 @@ import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { SearchInput } from '@/components/ui/search-input';
 import { EmptyState } from '@/components/ui/empty-state';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
+import { toast } from 'sonner';
 
 function gcd(a: number, b: number): number {
   return b === 0 ? a : gcd(b, a % b);
@@ -497,8 +499,31 @@ ${cardsHtml}
               <span className="hidden sm:inline">PDF Lista</span>
             </Button>
             <Button variant="outline" onClick={async () => {
-              const materialFor = await resolveGroupMaterials();
-              printBoxLabels(grouped.map(g => toLabelData(g, materialFor(g))));
+              if (grouped.length > 5000) {
+                toast.error(`A seleção geraria ${grouped.length.toLocaleString('pt-BR')} rótulos. Reduza o lote para no máximo 5.000.`);
+                return;
+              }
+              const target = openPrintTab();
+              try {
+                const materialFor = await resolveGroupMaterials();
+                const html = buildStockBoxLabelsHtml(
+                  grouped.map(g => toLabelData(g, materialFor(g))),
+                  DEFAULT_MANUFACTURER_CNPJ,
+                );
+                const jobId = await createPrintJob({
+                  batchName: `Rótulos pronta-entrega - ${new Date().toLocaleString('pt-BR')}`,
+                  totalLabels: grouped.length,
+                });
+                const submitted = await printHtmlAsPdf(html, {
+                  filename: `rotulos-pronta-entrega-${new Date().toISOString().slice(0, 10)}`,
+                  target,
+                  jobId,
+                });
+                if (!submitted) await setPrintJobStatus(jobId, 'failed');
+              } catch (error) {
+                target?.close();
+                toast.error(error instanceof Error ? error.message : 'Falha ao gerar os rótulos.');
+              }
             }} className="gap-2">
               <BoxIcon className="h-4 w-4" />
               <span className="hidden sm:inline">Rótulo Caixa</span>
@@ -506,23 +531,44 @@ ${cardsHtml}
             <Button variant="outline" onClick={async () => {
               // Etiqueta individual sai na impressora TÉRMICA (100×30mm, 1 por
               // página) — A4 fica pros rótulos de caixa e listas.
-              const materialFor = await resolveGroupMaterials();
-              const thermal = grouped.flatMap(g =>
-                g.items.filter(i => i.quantity > 0).flatMap(i =>
-                  Array.from({ length: i.quantity }, () => ({
-                    refCode: g.refCode,
-                    refName: g.refName,
-                    mainMaterial: materialFor(g),
-                    color: g.color,
-                    size: i.size,
-                    barcode: g.refCode || g.refName,
-                    imageUrl: g.imageUrl,
-                    shoeCategory: g.category,
-                  }))
-                )
-              );
-              const html = buildThermalLabelsHtml(thermal, '', { width: 100, height: 30 }, undefined, DEFAULT_MANUFACTURER_CNPJ);
-              const w = window.open('', '_blank'); if (w) { w.document.open(); w.document.write(html); w.document.close(); }
+              const requested = grouped.reduce((sum, group) =>
+                sum + group.items.reduce((itemSum, item) => itemSum + Math.max(0, Number(item.quantity) || 0), 0), 0);
+              if (requested > 5000) {
+                toast.error(`A seleção geraria ${requested.toLocaleString('pt-BR')} etiquetas. Reduza o lote para no máximo 5.000.`);
+                return;
+              }
+              const target = openPrintTab();
+              try {
+                const materialFor = await resolveGroupMaterials();
+                const thermal = grouped.flatMap(g =>
+                  g.items.filter(i => i.quantity > 0).flatMap(i =>
+                    Array.from({ length: i.quantity }, () => ({
+                      refCode: g.refCode,
+                      refName: g.refName,
+                      mainMaterial: materialFor(g),
+                      color: g.color,
+                      size: i.size,
+                      barcode: g.refCode || g.refName,
+                      imageUrl: g.imageUrl,
+                      shoeCategory: g.category,
+                    }))
+                  )
+                );
+                const html = buildThermalLabelsHtml(thermal, '', { width: 100, height: 30 }, undefined, DEFAULT_MANUFACTURER_CNPJ);
+                const jobId = await createPrintJob({
+                  batchName: `Térmicas pronta-entrega - ${new Date().toLocaleString('pt-BR')}`,
+                  totalLabels: thermal.length,
+                });
+                const submitted = await printHtmlAsPdf(html, {
+                  filename: `etiquetas-pronta-entrega-${new Date().toISOString().slice(0, 10)}`,
+                  target,
+                  jobId,
+                });
+                if (!submitted) await setPrintJobStatus(jobId, 'failed');
+              } catch (error) {
+                target?.close();
+                toast.error(error instanceof Error ? error.message : 'Falha ao gerar as etiquetas.');
+              }
             }} className="gap-2">
               <Tag className="h-4 w-4" />
               <span className="hidden sm:inline">Etiquetas</span>

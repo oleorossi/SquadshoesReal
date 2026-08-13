@@ -11,6 +11,7 @@ import { Plus, PencilSimple as Pencil, Trash as Trash2, Copy, Eye, PaintBucket, 
 import { toast } from 'sonner';
 import type { LabelTemplate } from '@/types/label-system';
 import { useLabelTemplates } from '@/hooks/useLabelTemplates';
+import { validateLabelTemplate } from '@/lib/templateLabels';
 
 const CATEGORY_LABELS: Record<string, string> = {
   individual_box: 'Caixa Individual',
@@ -32,8 +33,8 @@ export function LabelTemplatesTab() {
     return (
       <LabelDesigner
         template={designerTemplate}
-        onSave={(updated) => {
-          updateTemplate(updated);
+        onSave={async (updated) => {
+          await updateTemplate(updated);
           setDesignerTemplate(null);
         }}
         onBack={() => setDesignerTemplate(null)}
@@ -43,18 +44,31 @@ export function LabelTemplatesTab() {
 
   const filtered = filter === 'all' ? templates : templates.filter(t => t.category === filter);
 
-  const handleToggleActive = (id: string) => {
+  const handleToggleActive = async (id: string) => {
     const t = templates.find(x => x.id === id);
-    if (t) updateTemplate({ ...t, is_active: !t.is_active, updated_at: new Date().toISOString() });
+    if (!t) return;
+    if (!t.is_active) {
+      const errors = validateLabelTemplate(t);
+      if (errors.length > 0) { toast.error(errors[0]); return; }
+    }
+    try {
+      await updateTemplate({ ...t, is_active: !t.is_active, updated_at: new Date().toISOString() });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Não foi possível atualizar o template.');
+    }
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (isBuiltinDefault(id)) {
       toast.error('Templates padrão não podem ser removidos.');
       return;
     }
-    deleteTemplate(id);
-    toast.success('Template removido');
+    try {
+      await deleteTemplate(id);
+      toast.success('Template removido');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Não foi possível remover o template.');
+    }
   };
 
   return (
@@ -127,20 +141,26 @@ export function LabelTemplatesTab() {
                 </div>
 
                 <div className="flex gap-1">
-                  <Button size="sm" variant="ghost" onClick={() => setDesignerTemplate(t)} title="Abrir Designer">
-                    <PaintBucket className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button size="sm" variant="ghost" onClick={() => handleToggleActive(t.id)}>
-                    <Eye className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button size="sm" variant="ghost" onClick={() => { setEditingTemplate(t); setDialogOpen(true); }}>
-                    <Pencil className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button size="sm" variant="ghost" onClick={() => { duplicateTemplate(t); toast.success('Template duplicado'); }}>
+                  {!isDefault && (
+                    <>
+                      <Button size="sm" variant="ghost" onClick={() => setDesignerTemplate(t)} title="Abrir Designer">
+                        <PaintBucket className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => void handleToggleActive(t.id)} title={t.is_active ? 'Desativar' : 'Ativar'}>
+                        <Eye className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => { setEditingTemplate(t); setDialogOpen(true); }} title="Editar propriedades">
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                    </>
+                  )}
+                  <Button size="sm" variant="ghost" onClick={() => void duplicateTemplate(t)
+                    .then(() => toast.success('Template duplicado'))
+                    .catch(error => toast.error(error instanceof Error ? error.message : 'Não foi possível duplicar.'))}>
                     <Copy className="h-3.5 w-3.5" />
                   </Button>
                   {!isDefault && (
-                    <Button size="sm" variant="ghost" className="text-destructive" onClick={() => handleDelete(t.id)}>
+                    <Button size="sm" variant="ghost" className="text-destructive" onClick={() => void handleDelete(t.id)}>
                       <Trash2 className="h-3.5 w-3.5" />
                     </Button>
                   )}
@@ -158,11 +178,11 @@ export function LabelTemplatesTab() {
           </DialogHeader>
           <TemplateForm
             initial={editingTemplate}
-            onSave={(t) => {
+            onSave={async (t) => {
               if (editingTemplate) {
-                updateTemplate(t);
+                await updateTemplate(t);
               } else {
-                addTemplate(t);
+                await addTemplate(t);
               }
               setDialogOpen(false);
               toast.success(editingTemplate ? 'Template atualizado' : 'Template criado');
@@ -174,7 +194,7 @@ export function LabelTemplatesTab() {
   );
 }
 
-function TemplateForm({ initial, onSave }: { initial: LabelTemplate | null; onSave: (t: LabelTemplate) => void }) {
+function TemplateForm({ initial, onSave }: { initial: LabelTemplate | null; onSave: (t: LabelTemplate) => void | Promise<void> }) {
   const [name, setName] = useState(initial?.name || '');
   const [category, setCategory] = useState<string>(initial?.category || 'thermal');
   const [width, setWidth] = useState(initial?.dimensions.width || 100);
@@ -182,15 +202,13 @@ function TemplateForm({ initial, onSave }: { initial: LabelTemplate | null; onSa
   const [dpi, setDpi] = useState(initial?.print_settings.dpi || 203);
 
   const CATEGORY_LABELS: Record<string, string> = {
-    individual_box: 'Caixa Individual',
-    master_box: 'Caixa Master',
-    hangtag: 'Hangtag',
-    thermal: 'Térmica',
-    shipping: 'Expedição',
+    thermal: 'Térmica customizada',
+    individual_box: 'Caixa individual customizada',
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!name.trim()) { toast.error('Nome é obrigatório'); return; }
+    if (!(width > 0) || !(height > 0)) { toast.error('Largura e altura precisam ser maiores que zero.'); return; }
     const now = new Date().toISOString();
     const template: LabelTemplate = {
       id: initial?.id || crypto.randomUUID(),
@@ -200,11 +218,15 @@ function TemplateForm({ initial, onSave }: { initial: LabelTemplate | null; onSa
       dimensions: { width, height, unit: 'mm' },
       fields: initial?.fields || [],
       print_settings: { dpi, color_mode: 'monochrome', copies_default: 1 },
-      is_active: initial?.is_active ?? true,
+      is_active: initial?.is_active ?? false,
       created_at: initial?.created_at || now,
       updated_at: now,
     };
-    onSave(template);
+    try {
+      await onSave(template);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Não foi possível salvar o template.');
+    }
   };
 
   return (

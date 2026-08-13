@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { safeUrlAttr, escapeHtml, PRINT_IFRAME_SANDBOX } from '../htmlUtils';
-import { zplField } from '../printLabels';
+import { buildHangtagHtml, zplField } from '../printLabels';
 
 /**
  * Guards do batch 7 da auditoria 2026-07-28 (tema T6 — impressão).
@@ -76,5 +76,17 @@ describe('escapeHtml', () => {
       '&lt;script&gt;alert(1)&lt;/script&gt;',
     );
     expect(escapeHtml('a" onload="x')).toBe('a&quot; onload=&quot;x');
+  });
+});
+
+describe('instruções do hangtag', () => {
+  it('traduz tokens internos em orientação legível', () => {
+    const html = buildHangtagHtml([{
+      refCode: 'I100', refName: 'Modelo', color: 'Preto', size: '36',
+      barcode: 'I10036', careSymbols: ['no-wash', 'no-bleach'],
+    }]);
+    expect(html).toContain('NÃO LAVAR');
+    expect(html).toContain('NÃO ALVEJAR');
+    expect(html).not.toContain('>no-wash<');
   });
 });

@@ -11,6 +11,8 @@ import { Separator } from '@/components/ui/separator';
 import { TextT as Type, Barcode, QrCode, Image, Hash, Calendar, ArrowLeft, MagnifyingGlassPlus as ZoomIn, MagnifyingGlassMinus as ZoomOut, GridFour as Grid3X3, Eye, FloppyDisk as Save, Trash as Trash2, Copy, Stack as Layers, DotsSixVertical as GripVertical, Cursor as MousePointer } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import type { LabelTemplate, LabelField } from '@/types/label-system';
+import { buildTemplateLabelsHtml, validateLabelTemplate } from '@/lib/templateLabels';
+import { openPrintTab, printHtmlAsPdf } from '@/lib/printPdf';
 
 const DATA_SOURCE_LABELS: Record<string, string> = {
   product_name: 'Nome do Produto',
@@ -45,7 +47,7 @@ const MM_TO_PX = 2.5;
 
 interface LabelDesignerProps {
   template: LabelTemplate;
-  onSave: (template: LabelTemplate) => void;
+  onSave: (template: LabelTemplate) => void | Promise<void>;
   onBack: () => void;
 }
 
@@ -135,9 +137,36 @@ export function LabelDesigner({ template: initialTemplate, onSave, onBack }: Lab
 
   const handleMouseUp = () => setDragInfo(null);
 
-  const handleSave = () => {
-    onSave(template);
-    toast.success('Template salvo');
+  const handleSave = async () => {
+    const errors = validateLabelTemplate(template);
+    if (errors.length > 0) {
+      toast.error(errors[0]);
+      return;
+    }
+    try {
+      await onSave(template);
+      toast.success('Template salvo');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Não foi possível salvar o template.');
+    }
+  };
+
+  const handlePreview = () => {
+    const errors = validateLabelTemplate(template);
+    if (errors.length > 0) {
+      toast.error(errors[0]);
+      return;
+    }
+    const target = openPrintTab();
+    const html = buildTemplateLabelsHtml(template, [{
+      refCode: 'I100',
+      refName: 'MODELO DE EXEMPLO',
+      color: 'PRETO',
+      size: '36',
+      barcode: 'I100-36',
+      clientOrderNumber: 'PV-EXEMPLO',
+    }]);
+    void printHtmlAsPdf(html, { filename: `preview-${template.name}`, target });
   };
 
   return (
@@ -163,7 +192,7 @@ export function LabelDesigner({ template: initialTemplate, onSave, onBack }: Lab
             <Switch checked={showGrid} onCheckedChange={setShowGrid} id="grid-toggle" />
             <Label htmlFor="grid-toggle" className="text-xs"><Grid3X3 className="h-3.5 w-3.5" /></Label>
           </div>
-          <Button variant="outline" size="sm" className="gap-1.5">
+          <Button variant="outline" size="sm" className="gap-1.5" onClick={handlePreview}>
             <Eye className="h-3.5 w-3.5" /> Preview
           </Button>
           <Button size="sm" className="gap-1.5" onClick={handleSave}>
@@ -265,10 +294,6 @@ export function LabelDesigner({ template: initialTemplate, onSave, onBack }: Lab
                     )}
                   </div>
 
-                  {/* Resize handle */}
-                  {isSelected && (
-                    <div className="absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-primary rounded-sm cursor-se-resize" />
-                  )}
                 </div>
               );
             })}
