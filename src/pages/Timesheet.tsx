@@ -16,8 +16,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent } from '@/components/ui/tabs';
-import { HubTabsList } from '@/components/layout/HubTabs';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
@@ -39,6 +38,8 @@ import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
+import { usePendingTotal } from '@/hooks/useTimePendings';
+import { cn } from '@/lib/utils';
 
 const DAYS_PT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
@@ -871,45 +872,52 @@ function TimesheetRecordsTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h3 className="text-lg font-semibold">Importar e conferir ponto</h3>
-          <p className="text-xs text-muted-foreground">Envie o arquivo do relógio (AGL_001.TXT, RegistroPresença.xls etc.). A matrícula é usada para vincular cada batida ao funcionário.</p>
-        </div>
-        <div className="flex gap-2">
+      <Panel className="border-primary/25 bg-primary/[0.025]">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-start gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm">
+              <Upload className="h-5 w-5" />
+            </span>
+            <div className="min-w-0">
+              <p className="section-label text-primary">COMECE AQUI</p>
+              <h3 className="mt-1 text-base font-bold">Selecione o arquivo do relógio</h3>
+              <p className="mt-1 max-w-2xl text-xs leading-relaxed text-muted-foreground">
+                Aceita AGL_001.TXT, XLS e XLSX. Antes de gravar, você confere o período, os funcionários vinculados e as batidas encontradas.
+              </p>
+            </div>
+          </div>
           <input ref={fileRef} type="file" accept=".xlsx,.xls,.txt" className="hidden" onChange={handleFileUpload} />
-          <Button size="sm" className="gap-1.5" onClick={() => fileRef.current?.click()} disabled={parsing}>
+          <Button className="w-full shrink-0 gap-1.5 sm:w-auto" onClick={() => fileRef.current?.click()} disabled={parsing}>
             {parsing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-            Importar Arquivo
+            {parsing ? 'Lendo arquivo...' : 'Selecionar arquivo'}
           </Button>
-          {employeeNames.length > 0 && (
-            <Button
-              size="sm" variant="outline" className="gap-1.5"
-              onClick={() => setRhSearchParams(p => { const n = new URLSearchParams(p); n.set('tab', 'folha'); return n; }, { replace: true })}
-            >
-              <FileText className="h-4 w-4" />
-              Ver folha
-            </Button>
-          )}
         </div>
-      </div>
+      </Panel>
 
-      <Card className="border-primary/20 bg-primary/[0.03]">
-        <CardContent className="grid gap-3 p-4 md:grid-cols-3">
-          <div className="flex gap-2.5">
-            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">1</span>
-            <p className="text-xs leading-relaxed"><strong className="block text-sm">Importe o relógio</strong>Confira período, matrículas vinculadas e dias com batidas antes de confirmar.</p>
-          </div>
-          <div className="flex gap-2.5">
-            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">2</span>
-            <p className="text-xs leading-relaxed"><strong className="block text-sm">Corrija pendências</strong>Batida ímpar é revisada em <strong>Corrigir batidas</strong>; ajustes ficam identificados como manuais.</p>
-          </div>
-          <div className="flex gap-2.5">
-            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">3</span>
-            <p className="text-xs leading-relaxed"><strong className="block text-sm">Confira jornada e hora extra</strong>Após a revisão, consulte os totais calculados na aba <strong>Folha</strong>.</p>
-          </div>
-        </CardContent>
-      </Card>
+      <details className="group rounded-lg border border-border/70 bg-card">
+        <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-4 py-2.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 [&::-webkit-details-marker]:hidden">
+          <span className="flex items-center gap-2 text-sm font-medium">
+            <AlarmClock className="h-4 w-4 text-muted-foreground" />
+            Como fechar o ponto deste período
+          </span>
+          <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
+        </summary>
+        <div className="grid gap-4 border-t border-border/70 px-4 py-4 md:grid-cols-3">
+          {[
+            ['1', 'Importe', 'Confira período, matrículas vinculadas e dias com batidas.'],
+            ['2', 'Corrija', 'Resolva batidas ímpares ou esquecidas antes do cálculo.'],
+            ['3', 'Justifique e confira', 'Registre ausências justificadas e revise os totais na Folha.'],
+          ].map(([step, title, description]) => (
+            <div key={step} className="flex gap-2.5">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-bold text-foreground">{step}</span>
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                <strong className="block text-sm text-foreground">{title}</strong>
+                {description}
+              </p>
+            </div>
+          ))}
+        </div>
+      </details>
 
       {preview && (() => {
         const matchedEmployees = preview.employees.filter(emp =>
@@ -1047,40 +1055,19 @@ function TimesheetRecordsTab() {
       })()}
 
       {/* Filters */}
-      <div className="space-y-2">
-        {fullDateRange && (
-          <div className="flex flex-wrap items-center gap-2 px-3 py-2 bg-primary/5 border border-primary/20 rounded-lg text-xs">
-            <Calendar className="h-3.5 w-3.5 text-primary" />
-            <span className="text-muted-foreground">
-              Importações disponíveis:{' '}
-              <span className="font-medium text-foreground">
-                {fullDateRange.startDate.split('-').reverse().join('/')} → {fullDateRange.endDate.split('-').reverse().join('/')}
-              </span>
-              {' · '}
-              <span className="font-medium text-foreground">{fullDateRange.totalRecords.toLocaleString('pt-BR')}</span> registros em{' '}
-              <span className="font-medium text-foreground">{batches.length}</span> importações
-            </span>
-            <Button
-              variant="link"
-              size="sm"
-              className="h-auto py-0 px-1 text-xs"
-              onClick={() => {
-                setSelectedBatch('');
-                setFilterStartDate(fullDateRange.startDate);
-                setFilterEndDate(fullDateRange.endDate);
-              }}
-            >
-              Carregar período completo
-            </Button>
-          </div>
-        )}
-
-        <div className="flex flex-wrap items-end gap-3 p-4 bg-muted/30 rounded-lg border border-border/50">
+      <Panel
+        eyebrow="CONFERÊNCIA"
+        title="Período para revisão"
+        subtitle={fullDateRange
+          ? `Histórico disponível de ${fullDateRange.startDate.split('-').reverse().join('/')} a ${fullDateRange.endDate.split('-').reverse().join('/')} · ${fullDateRange.totalRecords.toLocaleString('pt-BR')} registros em ${batches.length} importações.`
+          : 'Escolha as datas ou uma importação específica para conferir as batidas.'}
+      >
+        <div className="grid items-end gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(150px,0.75fr)_minmax(150px,0.75fr)_minmax(240px,1.35fr)_auto]">
           <div className="space-y-1.5">
-            <Label className="text-xs font-medium">Data Início</Label>
+            <Label className="text-xs font-medium">Início</Label>
             <Input 
               type="date" 
-              className="w-40" 
+              className="w-full"
               value={filterStartDate}
               min={fullDateRange?.startDate}
               max={fullDateRange?.endDate}
@@ -1092,10 +1079,10 @@ function TimesheetRecordsTab() {
           </div>
 
           <div className="space-y-1.5">
-            <Label className="text-xs font-medium">Data Fim</Label>
+            <Label className="text-xs font-medium">Fim</Label>
             <Input 
               type="date" 
-              className="w-40" 
+              className="w-full"
               value={filterEndDate}
               min={fullDateRange?.startDate}
               max={fullDateRange?.endDate}
@@ -1107,35 +1094,33 @@ function TimesheetRecordsTab() {
           </div>
 
           <div className="space-y-1.5">
-            <Label className="text-xs font-medium">Importação (opcional)</Label>
-            <div className="w-64">
-              <Select 
-                value={selectedBatch} 
-                onValueChange={(v) => {
-                  setSelectedBatch(v);
-                  const range = getBatchDateRange(v);
-                  if (range) {
-                    setFilterStartDate(range.startDate);
-                    setFilterEndDate(range.endDate);
-                  }
-                }}
-              >
-                <SelectTrigger><SelectValue placeholder="Todas as importações" /></SelectTrigger>
-                <SelectContent>
-                  {batches.map(b => (
-                    <SelectItem key={b} value={b}>{b.replace(/_\d+$/, '').split('_').map(d => d.split('-').reverse().join('/')).join(' a ')}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            <Label className="text-xs font-medium">Importação específica</Label>
+            <Select
+              value={selectedBatch}
+              onValueChange={(v) => {
+                setSelectedBatch(v);
+                const range = getBatchDateRange(v);
+                if (range) {
+                  setFilterStartDate(range.startDate);
+                  setFilterEndDate(range.endDate);
+                }
+              }}
+            >
+              <SelectTrigger className="w-full"><SelectValue placeholder="Todas as importações" /></SelectTrigger>
+              <SelectContent>
+                {batches.map(b => (
+                  <SelectItem key={b} value={b}>{b.replace(/_\d+$/, '').split('_').map(d => d.split('-').reverse().join('/')).join(' a ')}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2 sm:col-span-2 xl:col-span-1 xl:justify-end">
             {fullDateRange && (
               <Button
                 variant="secondary"
                 size="sm"
-                className="h-10 gap-1.5"
+                className="h-10 flex-1 gap-1.5 sm:flex-none"
                 onClick={() => {
                   setSelectedBatch('');
                   setFilterStartDate(fullDateRange.startDate);
@@ -1143,7 +1128,7 @@ function TimesheetRecordsTab() {
                 }}
               >
                 <Calendar className="h-3.5 w-3.5" />
-                Período Completo
+                Todo o histórico
               </Button>
             )}
 
@@ -1158,7 +1143,7 @@ function TimesheetRecordsTab() {
                   setFilterEndDate('');
                 }}
               >
-                Limpar
+                Limpar filtros
               </Button>
             )}
 
@@ -1167,6 +1152,8 @@ function TimesheetRecordsTab() {
                 variant="outline" 
                 size="icon" 
                 className="h-10 w-10 text-destructive" 
+                aria-label="Excluir a importação selecionada"
+                title="Excluir a importação selecionada"
                 onClick={() => { 
                   deleteBatch.mutate(selectedBatch); 
                   setSelectedBatch(''); 
@@ -1177,7 +1164,29 @@ function TimesheetRecordsTab() {
             )}
           </div>
         </div>
-      </div>
+
+        {employeeNames.length > 0 && (
+          <div className="-mx-4 -mb-4 mt-4 flex flex-col gap-3 border-t border-border bg-muted/20 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 items-start gap-2.5">
+              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+              <div>
+                <p className="text-sm font-medium">
+                  {employeeNames.length} funcionário{employeeNames.length === 1 ? '' : 's'} com batidas neste período
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Corrija batidas pendentes antes de conferir os valores calculados na Folha.
+                </p>
+              </div>
+            </div>
+            <Button
+              size="sm" variant="outline" className="w-full shrink-0 gap-1.5 sm:w-auto"
+              onClick={() => setRhSearchParams(p => { const n = new URLSearchParams(p); n.set('tab', 'folha'); return n; }, { replace: true })}
+            >
+              <FileText className="h-3.5 w-3.5" /> Abrir folha
+            </Button>
+          </div>
+        )}
+      </Panel>
 
       {/* Employee selector OCULTO (2026-06-20): o Ponto não mostra mais resumo
           por funcionário — isso é visualização e vive no RH → Relatórios. */}
@@ -1214,31 +1223,6 @@ function TimesheetRecordsTab() {
             </Button>
           )}
         </div>
-      )}
-
-      {/* Resumo de horas consolidado (todos os funcionários) REMOVIDO daqui em
-          2026-06-20: duplicava o RH → Relatórios → "Horas". O Ponto cuida da
-          ENTRADA (importar/lançar/pendências/escala); a visualização e a impressão
-          (Horas, Pagamento, Espelho legal, Calendário) ficam num lugar só. */}
-      {employeeNames.length > 0 && (
-        <Panel flush>
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4">
-            <div className="text-sm">
-              <p className="font-medium">
-                {employeeNames.length} funcionário{employeeNames.length === 1 ? '' : 's'} com batidas importadas neste período
-              </p>
-              <p className="text-xs text-muted-foreground">
-                Jornada semanal, horas extras e valores calculados ficam na aba <strong>Folha</strong>. Batida ímpar ou esquecida? Resolva em <strong>Corrigir batidas</strong>.
-              </p>
-            </div>
-            <Button
-              size="sm" variant="outline" className="gap-1.5 shrink-0"
-              onClick={() => setRhSearchParams(p => { const n = new URLSearchParams(p); n.set('tab', 'folha'); return n; }, { replace: true })}
-            >
-              <FileText className="h-3.5 w-3.5" /> Ver folha
-            </Button>
-          </div>
-        </Panel>
       )}
 
       {/* Resumo/financeiro/registro-diário por funcionário REMOVIDOS do Ponto
@@ -1386,6 +1370,46 @@ export default function Timesheet() {
       reports: 'records', overtime: 'records', history: 'config', schedule: 'config', holidays: 'config',
     },
   });
+  const { total: pendingTotal, overdueTotal } = usePendingTotal(30);
+  const sections = [
+    {
+      value: 'records',
+      label: 'Importar',
+      description: 'Envie o arquivo do relógio e escolha o período que deseja conferir.',
+      icon: FileSpreadsheet,
+      step: '1',
+    },
+    {
+      value: 'manual',
+      label: 'Corrigir',
+      description: 'Resolva batidas ímpares, esquecidas ou lançamentos manuais.',
+      icon: ClipboardEdit,
+      step: '2',
+    },
+    {
+      value: 'ausencias',
+      label: 'Justificar',
+      description: 'Registre faltas e atrasos justificados antes de fechar a folha.',
+      icon: FirstAid,
+      step: '3',
+    },
+    {
+      value: 'calendario',
+      label: 'Cobertura',
+      description: 'Consulte a cobertura da equipe no calendário.',
+      icon: Calendar,
+      step: undefined,
+    },
+    {
+      value: 'config',
+      label: 'Ajustes',
+      description: 'Gerencie feriados, trocas de dia e o histórico de arquivos.',
+      icon: Settings2,
+      step: undefined,
+    },
+  ] as const;
+  const activeSection = sections.find(section => section.value === activeTab) ?? sections[0];
+
   return (
     <div className="space-y-4 page-enter">
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
@@ -1393,13 +1417,57 @@ export default function Timesheet() {
             batidas + feriados. Resolução HE, divergências, atrasos, validação
             de jornada e escala foram aposentados — o modelo por hora não usa
             jornada esperada. */}
-        <HubTabsList tabs={[
-          { value: 'records',     label: 'Importar e conferir', icon: FileSpreadsheet },
-          { value: 'manual',      label: 'Corrigir batidas', icon: ClipboardEdit },
-          { value: 'ausencias',   label: 'Faltas/Atrasos Justificados', icon: FirstAid },
-          { value: 'calendario',  label: 'Cobertura',    icon: Calendar },
-          { value: 'config',      label: 'Configuração', icon: Clock },
-        ]} />
+        <div className="rounded-lg border border-border/70 bg-card p-2">
+          <TabsList
+            indicator="none"
+            className="grid h-auto w-full grid-cols-6 gap-1 border-0 bg-transparent p-0 md:flex"
+            aria-label="Fluxo do controle de ponto"
+          >
+            {sections.map((section, index) => (
+              <TabsTrigger
+                key={section.value}
+                value={section.value}
+                className={cn(
+                  'group min-h-10 gap-1.5 rounded-md border-b-0 px-2 py-2 font-sans text-xs font-semibold normal-case tracking-normal data-[state=active]:bg-muted data-[state=active]:text-foreground md:col-auto md:flex-1 md:px-3',
+                  index < 3 ? 'col-span-2' : 'col-span-3',
+                  index === 3 && 'md:ml-2',
+                )}
+              >
+                {section.step ? (
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-border bg-background text-[10px] font-bold text-muted-foreground group-data-[state=active]:border-primary group-data-[state=active]:bg-primary group-data-[state=active]:text-primary-foreground">
+                    {section.step}
+                  </span>
+                ) : (
+                  <section.icon className="h-4 w-4 shrink-0 text-muted-foreground group-data-[state=active]:text-primary" />
+                )}
+                {section.label}
+                {section.value === 'manual' && pendingTotal > 0 && (
+                  <>
+                    <span
+                      className={cn('h-2 w-2 shrink-0 rounded-full sm:hidden', overdueTotal > 0 ? 'bg-destructive' : 'bg-amber-500')}
+                      title={`${pendingTotal} pendências de ponto`}
+                    />
+                    <span className="sr-only">{pendingTotal} pendências de ponto</span>
+                    <Badge
+                      variant="outline"
+                      aria-hidden="true"
+                      className={cn(
+                        'ml-0.5 hidden h-5 shrink-0 px-1.5 text-[10px] tabular-nums sm:inline-flex',
+                        overdueTotal > 0
+                          ? 'border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-400'
+                          : 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400',
+                      )}
+                      title={`${pendingTotal} pendências de ponto`}
+                    >
+                      {pendingTotal}
+                    </Badge>
+                  </>
+                )}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+          <p className="px-2 pb-1 pt-2 text-xs text-muted-foreground">{activeSection.description}</p>
+        </div>
 
         <TabsContent value="records"><TimesheetRecordsTab /></TabsContent>
         {/* Lançamento + Pendências UNIFICADOS (2026-06-21, pedido do dono): as duas
