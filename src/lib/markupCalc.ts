@@ -10,9 +10,9 @@
  *   preço = custo_total / (1 − (impostos + margem + factoring + comissão) / 100)
  *   margem = % do PREÇO (não do custo); lucro = preço × margem/100.
  *
- * Factoring: juros SIMPLES (taxa a.m. / 30 × dias). O financeiro real
- * (factoringCalc.ts) usa juros COMPOSTOS — divergência conhecida e mantida de
- * propósito (auditoria 2026-06-14; unificar é decisão do dono, muda números).
+ * Factoring: desconto composto, igual ao motor financeiro (`factoringCalc.ts`):
+ *   desconto = 1 − 1 / (1 + taxa_mensal) ^ (dias / 30)
+ * Isso mantém a precificação alinhada ao valor líquido que será recebido.
  */
 
 /** Prazo considerado "à vista" (dias de factoring do preço à vista). */
@@ -23,18 +23,23 @@ const fmt2 = (v: number) =>
 
 /**
  * Prazo em dias a partir do texto do campo: "60" → 60; "30/60/90" → média (60).
- * Com parcelas iguais e juros simples, a média das parcelas é matematicamente
- * exata (Σ taxa×dᵢ×preçoᵢ = taxa×média×preço quando os preçoᵢ são iguais).
+ * Com parcelas iguais, a média representa o prazo médio de recebimento usado
+ * na simulação de desconto composto. O menu não modela parcelas com valores
+ * diferentes — regra comercial confirmada: as parcelas têm sempre mesmo valor.
  */
 export function parseDaysInput(input: string): number {
+  const parts = parseDaysInstallments(input);
+  return parts.length > 0 ? parts.reduce((a, b) => a + b, 0) / parts.length : 0;
+}
+
+/** Parcelas da condição de pagamento. Cada parcela tem o mesmo valor. */
+export function parseDaysInstallments(input: string): number[] {
   const trimmed = (input ?? '').trim();
-  if (!trimmed) return 0;
-  const parts = trimmed
+  if (!trimmed) return [];
+  return trimmed
     .split('/')
     .map((s) => parseFloat(s.trim().replace(',', '.')))
     .filter((n) => !isNaN(n) && n > 0);
-  if (parts.length === 0) return 0;
-  return parts.reduce((a, b) => a + b, 0) / parts.length;
 }
 
 /** Rótulo do prazo pra exibição: "60" → "60d"; "30/60/90" → "30/60/90 (média 60,00d)". */
@@ -50,9 +55,22 @@ export function formatDaysLabel(input: string): string {
   return `${trimmed} (média ${fmt2(avg)}d)`;
 }
 
-/** % efetivo de factoring por juros simples: (taxa a.m. / 30) × dias. */
-export function simpleFactoringPct(monthlyRatePct: number, days: number): number {
-  return ((monthlyRatePct || 0) / 30) * (days || 0);
+/**
+ * Percentual efetivo de desconto por factoring composto. Espelha
+ * `calculateFactoringDiscount`: PV = FV / (1 + i) ^ (dias / 30).
+ */
+export function compoundFactoringPct(monthlyRatePct: number, days: number | number[]): number {
+  const monthlyRate = Math.max(0, Number(monthlyRatePct) || 0) / 100;
+  const installments = (Array.isArray(days) ? days : [days])
+    .map((day) => Math.max(0, Number(day) || 0))
+    .filter((day) => day > 0);
+  if (monthlyRate <= 0 || installments.length === 0) return 0;
+  // Cada parcela tem o mesmo valor: o desconto efetivo é a média dos PVs,
+  // nunca o desconto composto aplicado ao prazo médio.
+  const presentValueFactor = installments.reduce(
+    (sum, day) => sum + 1 / Math.pow(1 + monthlyRate, day / 30), 0,
+  ) / installments.length;
+  return (1 - presentValueFactor) * 100;
 }
 
 export interface MarkupInput {
@@ -62,7 +80,7 @@ export interface MarkupInput {
   /** Margem desejada, % do preço. */
   profitPct: number;
   factoringMonthlyPct: number;
-  days: number;
+  days: number | number[];
   commissionPct: number;
 }
 
@@ -83,7 +101,7 @@ export interface MarkupOutput {
 
 /** Fórmula direta do simulador: custo + parâmetros → preço sugerido. */
 export function computeMarkupPrice(p: MarkupInput): MarkupOutput {
-  const factoringTotalPct = simpleFactoringPct(p.factoringMonthlyPct, p.days);
+  const factoringTotalPct = compoundFactoringPct(p.factoringMonthlyPct, p.days);
   const totalMarkupPct = p.taxPct + p.profitPct + factoringTotalPct + p.commissionPct;
   const markupDivisor = 1 - totalMarkupPct / 100;
   const isValid = markupDivisor > 0;
@@ -91,7 +109,8 @@ export function computeMarkupPrice(p: MarkupInput): MarkupOutput {
 
   // À vista nunca com MAIS dias de factoring que o prazo (senão à vista > a
   // prazo quando o prazo é < CASH_DAYS). Auditoria 2026-06-14.
-  const factoringVistaPct = simpleFactoringPct(p.factoringMonthlyPct, Math.min(CASH_DAYS, p.days));
+  const cashDays = (Array.isArray(p.days) ? p.days : [p.days]).map((day) => Math.min(CASH_DAYS, day));
+  const factoringVistaPct = compoundFactoringPct(p.factoringMonthlyPct, cashDays);
   const markupVistaDivisor = 1 - (p.taxPct + p.profitPct + factoringVistaPct + p.commissionPct) / 100;
   const cashPrice = isValid && markupVistaDivisor > 0 ? p.totalCost / markupVistaDivisor : 0;
 
@@ -113,7 +132,7 @@ export interface TargetProfitInput {
   totalCost: number;
   taxPct: number;
   factoringMonthlyPct: number;
-  days: number;
+  days: number | number[];
   commissionPct: number;
   /** "Quero receber R$ X líquido por par" (após impostos, factoring e comissão). */
   targetProfitBrl: number;
@@ -131,7 +150,7 @@ export interface TargetProfitInput {
  */
 export function deriveMarginFromTargetProfit(p: TargetProfitInput): number | null {
   if (!(p.targetProfitBrl > 0)) return null;
-  const nonMarginPct = p.taxPct + simpleFactoringPct(p.factoringMonthlyPct, p.days) + p.commissionPct;
+  const nonMarginPct = p.taxPct + compoundFactoringPct(p.factoringMonthlyPct, p.days) + p.commissionPct;
   const denom = 1 - nonMarginPct / 100;
   if (denom <= 0) return null;
   const derivedPrice = (p.totalCost + p.targetProfitBrl) / denom;
@@ -143,11 +162,15 @@ export interface ReverseInput {
   soldPrice: number;
   /** Custo de matéria-prima, R$/par. */
   materialCost: number;
+  /** Mão de obra direta, R$/par. */
+  labor: number;
   overhead: number;
+  /** Embalagem adicional fora do BOM, R$/par. */
+  packaging: number;
   freight: number;
   taxPct: number;
   factoringMonthlyPct: number;
-  days: number;
+  days: number | number[];
   commissionPct: number;
 }
 
@@ -161,7 +184,7 @@ export interface ReverseOutput {
   realProfit: number;
   /** Margem líquida real, % do preço praticado (negativa em prejuízo). */
   realMarginPct: number;
-  /** Markup bruto sobre custo total (custo + overhead + frete). */
+  /** Markup bruto sobre custo total. */
   markupPct: number;
   /** Preço que entrega o MESMO lucro se o cliente pagar em CASH_DAYS dias. */
   cashPrice: number;
@@ -175,19 +198,20 @@ export interface ReverseOutput {
 export function computeReverseAnalysis(p: ReverseInput): ReverseOutput | null {
   if (!(p.soldPrice > 0) || !(p.materialCost > 0)) return null;
 
-  const factoringTotalPct = simpleFactoringPct(p.factoringMonthlyPct, p.days);
+  const factoringTotalPct = compoundFactoringPct(p.factoringMonthlyPct, p.days);
   const taxValue = p.soldPrice * (p.taxPct / 100);
   const factoringValue = p.soldPrice * (factoringTotalPct / 100);
   const commissionValue = p.soldPrice * (p.commissionPct / 100);
   const netRevenue = p.soldPrice - taxValue - factoringValue - commissionValue;
-  const totalCost = p.materialCost + p.overhead + p.freight;
+  const totalCost = p.materialCost + p.labor + p.overhead + p.packaging + p.freight;
   const realProfit = netRevenue - totalCost;
   const realMarginPct = (realProfit / p.soldPrice) * 100;
   const markupPct = totalCost > 0 ? ((p.soldPrice - totalCost) / totalCost) * 100 : 0;
 
   // À vista com o mesmo lucro em ≤ CASH_DAYS dias; clamp em 0 quando o prejuízo
   // é maior que o custo (preço negativo é nonsense). Auditoria 2026-06-14.
-  const factoringVistaPct = simpleFactoringPct(p.factoringMonthlyPct, Math.min(CASH_DAYS, p.days));
+  const cashDays = (Array.isArray(p.days) ? p.days : [p.days]).map((day) => Math.min(CASH_DAYS, day));
+  const factoringVistaPct = compoundFactoringPct(p.factoringMonthlyPct, cashDays);
   const cashDivisor = 1 - (p.taxPct + factoringVistaPct + p.commissionPct) / 100;
   const cashPrice = cashDivisor > 0 ? Math.max(0, (totalCost + realProfit) / cashDivisor) : 0;
 

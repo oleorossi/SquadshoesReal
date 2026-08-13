@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import {
   parseDaysInput,
+  parseDaysInstallments,
   formatDaysLabel,
-  simpleFactoringPct,
+  compoundFactoringPct,
   computeMarkupPrice,
   deriveMarginFromTargetProfit,
   computeReverseAnalysis,
@@ -17,6 +18,11 @@ describe('parseDaysInput', () => {
     expect(parseDaysInput('abc')).toBe(0);
   });
   it('ignora parte inválida ("30//60" → média 45)', () => expect(parseDaysInput('30//60')).toBe(45));
+  it('preserva cada parcela para o factoring composto', () => {
+    expect(parseDaysInstallments('30/60/90')).toEqual([30, 60, 90]);
+    expect(compoundFactoringPct(3, parseDaysInstallments('30/60/90')))
+      .toBeCloseTo((1 - ((1 / 1.03) + (1 / 1.03 ** 2) + (1 / 1.03 ** 3)) / 3) * 100, 6);
+  });
 });
 
 describe('formatDaysLabel', () => {
@@ -38,12 +44,14 @@ describe('computeMarkupPrice (fórmula direta)', () => {
       .toBeCloseTo(20, 6);
   });
 
-  it('factoring simples: 3% a.m. × 60 dias = 6% do preço', () => {
+  it('factoring composto: 3% a.m. por 60 dias usa o mesmo desconto do financeiro', () => {
     const r = computeMarkupPrice({
       totalCost: 50, taxPct: 0, profitPct: 0, factoringMonthlyPct: 3, days: 60, commissionPct: 0,
     });
-    expect(r.factoringTotalPct).toBeCloseTo(6, 6);
-    expect(r.suggestedPrice).toBeCloseTo(50 / 0.94, 6);
+    const discountPct = compoundFactoringPct(3, 60);
+    expect(discountPct).toBeCloseTo((1 - 1 / (1.03 ** 2)) * 100, 6);
+    expect(r.factoringTotalPct).toBeCloseTo(discountPct, 6);
+    expect(r.suggestedPrice).toBeCloseTo(50 / (1 - discountPct / 100), 6);
   });
 
   it('taxas ≥ 100% → inválido, preço 0', () => {
@@ -59,7 +67,7 @@ describe('computeMarkupPrice (fórmula direta)', () => {
     const r = computeMarkupPrice({
       totalCost: 30, taxPct: 6, profitPct: 20, factoringMonthlyPct: 3, days: 60, commissionPct: 5,
     });
-    const vistaPct = simpleFactoringPct(3, CASH_DAYS);
+    const vistaPct = compoundFactoringPct(3, CASH_DAYS);
     const expected = 30 / (1 - (6 + 20 + vistaPct + 5) / 100);
     expect(r.cashPrice).toBeCloseTo(expected, 6);
     expect(r.cashPrice).toBeLessThan(r.suggestedPrice);
@@ -88,7 +96,8 @@ describe('deriveMarginFromTargetProfit (modo inverso "quero receber")', () => {
     expect(margin).not.toBeNull();
     const direct = computeMarkupPrice({ ...p, profitPct: margin! });
     expect(direct.realProfit).toBeCloseTo(15, 6);
-    expect(direct.suggestedPrice).toBeCloseTo(65 / (1 - 0.17), 4); // (custo+alvo)/(1−K)
+    const k = 6 + compoundFactoringPct(3, 60) + 5;
+    expect(direct.suggestedPrice).toBeCloseTo(65 / (1 - k / 100), 4); // (custo+alvo)/(1−K)
   });
 
   it('alvo ≤ 0 ou K ≥ 100% → null (caller usa a margem manual)', () => {
@@ -107,7 +116,7 @@ describe('computeReverseAnalysis (margem real de venda praticada)', () => {
       totalCost: 20 + 3 + 2, taxPct: 6, profitPct: 25, factoringMonthlyPct: 3, days: 60, commissionPct: 5,
     });
     const rev = computeReverseAnalysis({
-      soldPrice: direct.suggestedPrice, materialCost: 20, overhead: 3, freight: 2,
+      soldPrice: direct.suggestedPrice, materialCost: 20, labor: 0, overhead: 3, packaging: 0, freight: 2,
       taxPct: 6, factoringMonthlyPct: 3, days: 60, commissionPct: 5,
     });
     expect(rev).not.toBeNull();
@@ -118,14 +127,14 @@ describe('computeReverseAnalysis (margem real de venda praticada)', () => {
   });
 
   it('entrada inválida (preço ou custo ≤ 0) → null', () => {
-    const base = { taxPct: 6, factoringMonthlyPct: 0, days: 0, commissionPct: 5, overhead: 0, freight: 0 };
+    const base = { taxPct: 6, factoringMonthlyPct: 0, days: 0, commissionPct: 5, labor: 0, overhead: 0, packaging: 0, freight: 0 };
     expect(computeReverseAnalysis({ ...base, soldPrice: 0, materialCost: 10 })).toBeNull();
     expect(computeReverseAnalysis({ ...base, soldPrice: 22.9, materialCost: 0 })).toBeNull();
   });
 
   it('venda no prejuízo: margem negativa e à vista clampado em 0 quando nonsense', () => {
     const rev = computeReverseAnalysis({
-      soldPrice: 10, materialCost: 100, overhead: 0, freight: 0,
+      soldPrice: 10, materialCost: 100, labor: 0, overhead: 0, packaging: 0, freight: 0,
       taxPct: 6, factoringMonthlyPct: 0, days: 0, commissionPct: 5,
     });
     expect(rev!.realMarginPct).toBeLessThan(0);
@@ -135,9 +144,23 @@ describe('computeReverseAnalysis (margem real de venda praticada)', () => {
 
   it('markup bruto = (preço − custo total) / custo total', () => {
     const rev = computeReverseAnalysis({
-      soldPrice: 30, materialCost: 10, overhead: 3, freight: 2,
+      soldPrice: 30, materialCost: 10, labor: 0, overhead: 3, packaging: 0, freight: 2,
       taxPct: 0, factoringMonthlyPct: 0, days: 0, commissionPct: 0,
     });
     expect(rev!.markupPct).toBeCloseTo(100, 6); // (30 − 15) / 15
+  });
+
+  it('inclui mão de obra e embalagem na margem real e mantém paridade com a direta', () => {
+    const totalCost = 20 + 4 + 3 + 2 + 1;
+    const direct = computeMarkupPrice({
+      totalCost, taxPct: 6, profitPct: 20, factoringMonthlyPct: 3, days: 60, commissionPct: 5,
+    });
+    const rev = computeReverseAnalysis({
+      soldPrice: direct.suggestedPrice, materialCost: 20, labor: 4, overhead: 3, packaging: 2, freight: 1,
+      taxPct: 6, factoringMonthlyPct: 3, days: 60, commissionPct: 5,
+    });
+    expect(rev).not.toBeNull();
+    expect(rev!.totalCost).toBeCloseTo(totalCost, 6);
+    expect(rev!.realMarginPct).toBeCloseTo(20, 6);
   });
 });

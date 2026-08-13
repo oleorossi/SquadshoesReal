@@ -40,7 +40,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { format, parseISO } from 'date-fns';
 import { parseBrlNumberNonNeg } from '@/lib/parseBrlNumber';
-import { parseDaysInput, computeMarkupPrice, deriveMarginFromTargetProfit } from '@/lib/markupCalc';
+import { parseDaysInput, parseDaysInstallments, computeMarkupPrice, deriveMarginFromTargetProfit } from '@/lib/markupCalc';
 
 const STORAGE_KEY = 'pricing-by-sheet-state';
 
@@ -293,7 +293,9 @@ export default function PricingByTechnicalSheetPanel({ initialSheetId }: Props =
   const getLabor = () =>
     laborManual.trim() !== '' ? parseBrlNumberNonNeg(laborManual) : policyLaborCost;
 
-  // Custo de embalagem por par — direto de cost_policies.packaging_cost_per_pair
+  // O motor canônico já inclui as caixas e demais itens do BOM. A política e
+  // este override representam exclusivamente embalagem adicional fora do BOM.
+  // Deixá-la em branco/zero na política não acrescenta nada ao custo.
   const policyPackaging = Number(costPolicy?.packaging_cost_per_pair) || 0;
   const getPackaging = () =>
     packagingManual.trim() !== '' ? parseBrlNumberNonNeg(packagingManual) : policyPackaging;
@@ -306,12 +308,12 @@ export default function PricingByTechnicalSheetPanel({ initialSheetId }: Props =
   const policyDefaultTaxPct = Number(costPolicy?.default_tax_pct) || 0;
   const policyDefaultCommissionPct = Number(costPolicy?.default_commission_pct) || 0;
 
-  // Auto-fill na primeira carga: se o usuário ainda não digitou nada, usar defaults.
-  // Não sobrescreve campo já preenchido (preserva edições anteriores).
+  // Auto-fill somente no primeiro uso. Um cenário salvo (inclusive um campo
+  // deixado em branco) sempre tem precedência sobre a política.
   useEffect(() => {
     if (!costPolicy) return;
-    if (!taxPct && policyDefaultTaxPct > 0) setTaxPct(String(policyDefaultTaxPct));
-    if (!commissionPct && policyDefaultCommissionPct > 0) setCommissionPct(String(policyDefaultCommissionPct));
+    if (!Object.prototype.hasOwnProperty.call(saved, 'taxPct') && policyDefaultTaxPct > 0) setTaxPct(String(policyDefaultTaxPct));
+    if (!Object.prototype.hasOwnProperty.call(saved, 'commissionPct') && policyDefaultCommissionPct > 0) setCommissionPct(String(policyDefaultCommissionPct));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [costPolicy?.id]);
 
@@ -332,14 +334,14 @@ export default function PricingByTechnicalSheetPanel({ initialSheetId }: Props =
 
     // Modo inverso: lucro-alvo em R$/par → margem % equivalente; null → margem digitada.
     const derivedMargin = deriveMarginFromTargetProfit({
-      totalCost, taxPct: numTax, factoringMonthlyPct: numFactoring, days: numDays,
+      totalCost, taxPct: numTax, factoringMonthlyPct: numFactoring, days: parseDaysInstallments(days),
       commissionPct: numCommission, targetProfitBrl: parseBrlNumberNonNeg(targetProfitBrl),
     });
     const numProfit = derivedMargin ?? parseBrlNumberNonNeg(profitMarginPct);
 
     const calc = computeMarkupPrice({
       totalCost, taxPct: numTax, profitPct: numProfit,
-      factoringMonthlyPct: numFactoring, days: numDays, commissionPct: numCommission,
+      factoringMonthlyPct: numFactoring, days: parseDaysInstallments(days), commissionPct: numCommission,
     });
     // Aqui, além do divisor válido, exige custo de MP > 0 (sem BOM não há o que simular).
     const isValid = calc.isValid && numCost > 0;
@@ -744,7 +746,7 @@ export default function PricingByTechnicalSheetPanel({ initialSheetId }: Props =
                   className="mt-1 h-9 text-sm"
                 />
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Vazio usa <strong>{fmtBRL(policyPackaging)}</strong> (cost_policies.packaging)
+                  Vazio usa <strong>{fmtBRL(policyPackaging)}</strong> da política. Informe apenas custos fora do BOM.
                 </p>
               </div>
             </div>

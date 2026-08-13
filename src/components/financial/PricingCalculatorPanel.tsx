@@ -9,7 +9,7 @@ import { Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip as Rech
 import { useCostPolicies } from '@/hooks/useCostPolicies';
 import { parseBrlNumberNonNeg } from '@/lib/parseBrlNumber';
 import {
-  parseDaysInput, formatDaysLabel, computeMarkupPrice,
+  parseDaysInput, parseDaysInstallments, formatDaysLabel, computeMarkupPrice,
   deriveMarginFromTargetProfit, computeReverseAnalysis,
 } from '@/lib/markupCalc';
 
@@ -67,6 +67,8 @@ export default function PricingCalculatorPanel() {
   const [commissionPct, setCommissionPct] = useState(saved.commissionPct ?? '');
   const [freightValue, setFreightValue] = useState(saved.freightValue ?? '');
   const [overheadManual, setOverheadManual] = useState(saved.overheadManual ?? '');
+  const [laborValue, setLaborValue] = useState(saved.laborValue ?? '');
+  const [packagingValue, setPackagingValue] = useState(saved.packagingValue ?? '');
 
   // Reverse state
   const [soldPrice, setSoldPrice] = useState(saved.soldPrice ?? '');
@@ -77,17 +79,32 @@ export default function PricingCalculatorPanel() {
   const [reverseCommissionPct, setReverseCommissionPct] = useState(saved.reverseCommissionPct ?? '');
   const [reverseFreightValue, setReverseFreightValue] = useState(saved.reverseFreightValue ?? '');
   const [reverseOverheadManual, setReverseOverheadManual] = useState(saved.reverseOverheadManual ?? '');
+  const [reverseLaborValue, setReverseLaborValue] = useState(saved.reverseLaborValue ?? '');
+  const [reversePackagingValue, setReversePackagingValue] = useState(saved.reversePackagingValue ?? '');
+
+  // Na primeira utilização, sugere as alíquotas da política. Depois disso o
+  // localStorage é a fonte do último cenário informado — inclusive se o usuário
+  // decidiu deixar uma alíquota em branco.
+  useEffect(() => {
+    if (!costPolicy) return;
+    if (!Object.prototype.hasOwnProperty.call(saved, 'taxPct') && Number(costPolicy.default_tax_pct) > 0) {
+      setTaxPct(String(costPolicy.default_tax_pct));
+    }
+    if (!Object.prototype.hasOwnProperty.call(saved, 'commissionPct') && Number(costPolicy.default_commission_pct) > 0) {
+      setCommissionPct(String(costPolicy.default_commission_pct));
+    }
+  }, [costPolicy, saved]);
 
   // Persist all fields to localStorage on change
   useEffect(() => {
     const state: Record<string, string> = {
-      cost, taxPct, factoringRatePct, days, profitMarginPct, commissionPct, freightValue, overheadManual,
-      soldPrice, reverseCost, reverseTaxPct, reverseFactoringPct, reverseDays, reverseCommissionPct, reverseFreightValue, reverseOverheadManual,
+      cost, taxPct, factoringRatePct, days, profitMarginPct, commissionPct, freightValue, overheadManual, laborValue, packagingValue,
+      soldPrice, reverseCost, reverseTaxPct, reverseFactoringPct, reverseDays, reverseCommissionPct, reverseFreightValue, reverseOverheadManual, reverseLaborValue, reversePackagingValue,
       targetProfitBrl,
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  }, [cost, taxPct, factoringRatePct, days, profitMarginPct, commissionPct, freightValue, overheadManual,
-      soldPrice, reverseCost, reverseTaxPct, reverseFactoringPct, reverseDays, reverseCommissionPct, reverseFreightValue, reverseOverheadManual,
+  }, [cost, taxPct, factoringRatePct, days, profitMarginPct, commissionPct, freightValue, overheadManual, laborValue, packagingValue,
+      soldPrice, reverseCost, reverseTaxPct, reverseFactoringPct, reverseDays, reverseCommissionPct, reverseFreightValue, reverseOverheadManual, reverseLaborValue, reversePackagingValue,
       targetProfitBrl]);
 
   // Rateio de despesas: SÓ entra no cálculo se o usuário digitar. Campo vazio
@@ -105,6 +122,8 @@ export default function PricingCalculatorPanel() {
     setReverseCommissionPct(commissionPct);
     setReverseFreightValue(freightValue);
     setReverseOverheadManual(overheadManual);
+    setReverseLaborValue(laborValue);
+    setReversePackagingValue(packagingValue);
     if (results.isValid && results.suggestedPrice > 0) {
       // toFixed (ponto decimal), NUNCA fmt(): "1.234,56" num estado numérico é
       // relido como 1.234 (bug parseNum BRL) e é rejeitado pelo input type=number.
@@ -120,6 +139,8 @@ export default function PricingCalculatorPanel() {
     setCommissionPct(reverseCommissionPct);
     setFreightValue(reverseFreightValue);
     setOverheadManual(reverseOverheadManual);
+    setLaborValue(reverseLaborValue);
+    setPackagingValue(reversePackagingValue);
     setProfitMarginPct('');
   };
 
@@ -135,45 +156,51 @@ export default function PricingCalculatorPanel() {
     const numCommission = parseBrlNumberNonNeg(commissionPct);
     const numFreight = parseBrlNumberNonNeg(freightValue);
     const numOverhead = getOverhead(overheadManual);
+    const numLabor = parseBrlNumberNonNeg(laborValue);
+    const numPackaging = parseBrlNumberNonNeg(packagingValue);
 
     // custo_base = custo_materia_prima + (despesas_fixas / capacidade) + frete
-    const totalCost = numCost + numOverhead + numFreight;
+    const totalCost = numCost + numLabor + numOverhead + numPackaging + numFreight;
 
     // Modo inverso "quero receber R$ X líquido": deriva a margem % equivalente;
     // null (sem alvo ou taxas ≥ 100%) → usa a margem digitada.
     const derivedMargin = deriveMarginFromTargetProfit({
       totalCost, taxPct: numTax, factoringMonthlyPct: numFactoring,
-      days: numDays, commissionPct: numCommission,
+      days: parseDaysInstallments(days), commissionPct: numCommission,
       targetProfitBrl: parseBrlNumberNonNeg(targetProfitBrl),
     });
     const numProfit = derivedMargin ?? parseBrlNumberNonNeg(profitMarginPct);
 
     const calc = computeMarkupPrice({
       totalCost, taxPct: numTax, profitPct: numProfit,
-      factoringMonthlyPct: numFactoring, days: numDays, commissionPct: numCommission,
+      factoringMonthlyPct: numFactoring, days: parseDaysInstallments(days), commissionPct: numCommission,
     });
 
-    return { ...calc, numCost, numFreight, numOverhead, totalCost, derivedMarginPct: derivedMargin };
-  }, [cost, taxPct, factoringRatePct, days, profitMarginPct, targetProfitBrl, commissionPct, freightValue, overheadManual, policyOverhead]);
+    return { ...calc, numCost, numLabor, numFreight, numOverhead, numPackaging, totalCost, derivedMarginPct: derivedMargin };
+  }, [cost, taxPct, factoringRatePct, days, profitMarginPct, targetProfitBrl, commissionPct, freightValue, overheadManual, laborValue, packagingValue]);
 
   const reverseResults = useMemo(() => {
     const numFreight = parseBrlNumberNonNeg(reverseFreightValue);
     const numOverhead = getOverhead(reverseOverheadManual);
+    const numLabor = parseBrlNumberNonNeg(reverseLaborValue);
+    const numPackaging = parseBrlNumberNonNeg(reversePackagingValue);
     const numSold = parseBrlNumberNonNeg(soldPrice);
     const numReverseCost = parseBrlNumberNonNeg(reverseCost);
     const rev = computeReverseAnalysis({
       soldPrice: numSold,
       materialCost: numReverseCost,
+      labor: numLabor,
       overhead: numOverhead,
+      packaging: numPackaging,
       freight: numFreight,
       taxPct: parseBrlNumberNonNeg(reverseTaxPct),
       factoringMonthlyPct: parseBrlNumberNonNeg(reverseFactoringPct),
-      days: parseDaysInput(reverseDays),
+      days: parseDaysInstallments(reverseDays),
       commissionPct: parseBrlNumberNonNeg(reverseCommissionPct),
     });
     if (!rev) return null;
-    return { ...rev, numSold, numReverseCost, numFreight, numOverhead };
-  }, [soldPrice, reverseCost, reverseTaxPct, reverseFactoringPct, reverseDays, reverseCommissionPct, reverseFreightValue, reverseOverheadManual, policyOverhead]);
+    return { ...rev, numSold, numReverseCost, numLabor, numPackaging, numFreight, numOverhead };
+  }, [soldPrice, reverseCost, reverseTaxPct, reverseFactoringPct, reverseDays, reverseCommissionPct, reverseFreightValue, reverseOverheadManual, reverseLaborValue, reversePackagingValue]);
 
   // Chart data for reverse calculator
   const reverseBarData = useMemo(() => {
@@ -183,6 +210,8 @@ export default function PricingCalculatorPanel() {
       { name: 'Impostos', valor: -reverseResults.taxValue },
       { name: 'Antecipação', valor: -reverseResults.factoringValue },
       { name: 'Comissão', valor: -reverseResults.commissionValue },
+      { name: 'Mão de obra', valor: -reverseResults.numLabor },
+      { name: 'Embalagem', valor: -reverseResults.numPackaging },
       { name: 'Frete', valor: -reverseResults.numFreight },
       { name: 'Rateio', valor: -reverseResults.numOverhead },
       { name: 'Custo MP', valor: -reverseResults.numReverseCost },
@@ -347,8 +376,16 @@ export default function PricingCalculatorPanel() {
             )}
           </div>
 
-          {/* Overhead, Commission & Freight */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 gap-3">
+          {/* Custos e percentuais opcionais */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+            <div>
+              <Label htmlFor="labor" className="text-xs">Mão de obra (R$/par)</Label>
+              <div className="relative mt-1">
+                <DollarSign className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                <Input id="labor" type="number" step="0.01" min="0" value={laborValue} onChange={(e) => setLaborValue(e.target.value)} className="pl-8 h-9 text-sm" placeholder="0,00" />
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">Opcional</p>
+            </div>
             <div>
               <Label htmlFor="overhead" className="text-xs flex items-center gap-1.5">
                 <Building2 className="h-3 w-3 text-muted-foreground" />
@@ -369,6 +406,14 @@ export default function PricingCalculatorPanel() {
               ) : (
                 <p className="text-xs text-muted-foreground mt-1">Despesas fixas ÷ capacidade</p>
               )}
+            </div>
+            <div>
+              <Label htmlFor="packaging" className="text-xs">Embalagem adicional (R$/par)</Label>
+              <div className="relative mt-1">
+                <DollarSign className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                <Input id="packaging" type="number" step="0.01" min="0" value={packagingValue} onChange={(e) => setPackagingValue(e.target.value)} className="pl-8 h-9 text-sm" placeholder="0,00" />
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">Somente fora do BOM · opcional</p>
             </div>
             <div>
               <Label htmlFor="commission" className="text-xs flex items-center gap-1.5">
@@ -413,7 +458,9 @@ export default function PricingCalculatorPanel() {
                 const realMarginPct = results.suggestedPrice > 0 ? (results.realProfit / results.suggestedPrice) * 100 : 0;
                 const segs = [
                   { label: 'Custo MP', value: results.numCost, color: 'hsl(var(--background) / 0.62)' },
+                  { label: 'Mão de obra', value: results.numLabor, color: 'hsl(var(--background) / 0.53)' },
                   { label: 'Rateio', value: results.numOverhead, color: 'hsl(var(--background) / 0.44)' },
+                  { label: 'Embalagem', value: results.numPackaging, color: 'hsl(var(--background) / 0.37)' },
                   { label: 'Frete', value: results.numFreight, color: 'hsl(var(--background) / 0.30)' },
                   { label: 'Impostos', value: results.taxValue, color: 'hsl(var(--primary) / 0.55)' },
                   { label: 'Comissão', value: results.commissionValue, color: 'hsl(var(--primary) / 0.75)' },
@@ -484,8 +531,14 @@ export default function PricingCalculatorPanel() {
                       <div className="flex justify-between" style={{ color: 'hsl(var(--info))' }}><span>(−) Comissão</span><span>R$ {fmt(results.commissionValue)}</span></div>
                       <div className="border-t pt-1.5 flex justify-between"><span className="text-muted-foreground">(=) Receita Líquida</span><span className="font-semibold">R$ {fmt(results.suggestedPrice - results.taxValue - results.factoringValue - results.commissionValue)}</span></div>
                       <div className="flex justify-between text-muted-foreground"><span>(−) Custo MP</span><span>R$ {fmt(results.numCost)}</span></div>
+                      {results.numLabor > 0 && (
+                        <div className="flex justify-between text-muted-foreground"><span>(−) Mão de obra</span><span>R$ {fmt(results.numLabor)}</span></div>
+                      )}
                       {results.numOverhead > 0 && (
                         <div className="flex justify-between" style={{ color: 'hsl(var(--stage-assy-fg))' }}><span>(−) Rateio Despesas</span><span>R$ {fmt(results.numOverhead)}</span></div>
+                      )}
+                      {results.numPackaging > 0 && (
+                        <div className="flex justify-between text-muted-foreground"><span>(−) Embalagem adicional</span><span>R$ {fmt(results.numPackaging)}</span></div>
                       )}
                       {results.numFreight > 0 && (
                         <div className="flex justify-between" style={{ color: 'hsl(var(--stage-sew-fg))' }}><span>(−) Frete</span><span>R$ {fmt(results.numFreight)}</span></div>
@@ -571,8 +624,16 @@ export default function PricingCalculatorPanel() {
             </div>
           </div>
 
-          {/* Overhead, Commission & Freight for reverse */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 gap-3">
+          {/* Custos e percentuais da análise reversa */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+            <div>
+              <Label htmlFor="reverseLabor" className="text-xs">Mão de obra (R$/par)</Label>
+              <div className="relative mt-1">
+                <DollarSign className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                <Input id="reverseLabor" type="number" step="0.01" min="0" value={reverseLaborValue} onChange={(e) => setReverseLaborValue(e.target.value)} className="pl-8 h-9 text-sm" placeholder="0,00" />
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">Opcional</p>
+            </div>
             <div>
               <Label htmlFor="reverseOverhead" className="text-xs flex items-center gap-1.5">
                 <Building2 className="h-3 w-3 text-muted-foreground" />
@@ -593,6 +654,14 @@ export default function PricingCalculatorPanel() {
               ) : (
                 <p className="text-xs text-muted-foreground mt-1">Despesas fixas ÷ capacidade</p>
               )}
+            </div>
+            <div>
+              <Label htmlFor="reversePackaging" className="text-xs">Embalagem adicional (R$/par)</Label>
+              <div className="relative mt-1">
+                <DollarSign className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                <Input id="reversePackaging" type="number" step="0.01" min="0" value={reversePackagingValue} onChange={(e) => setReversePackagingValue(e.target.value)} className="pl-8 h-9 text-sm" placeholder="0,00" />
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">Somente fora do BOM · opcional</p>
             </div>
             <div>
               <Label htmlFor="reverseCommission" className="text-xs flex items-center gap-1.5">
@@ -627,7 +696,9 @@ export default function PricingCalculatorPanel() {
                 const rr = reverseResults;
                 const segs = [
                   { label: 'Custo MP', value: rr.numReverseCost, color: 'hsl(var(--background) / 0.62)' },
+                  { label: 'Mão de obra', value: rr.numLabor, color: 'hsl(var(--background) / 0.53)' },
                   { label: 'Rateio', value: rr.numOverhead, color: 'hsl(var(--background) / 0.44)' },
+                  { label: 'Embalagem', value: rr.numPackaging, color: 'hsl(var(--background) / 0.37)' },
                   { label: 'Frete', value: rr.numFreight, color: 'hsl(var(--background) / 0.30)' },
                   { label: 'Impostos', value: rr.taxValue, color: 'hsl(var(--primary) / 0.55)' },
                   { label: 'Comissão', value: rr.commissionValue, color: 'hsl(var(--primary) / 0.75)' },
@@ -706,8 +777,14 @@ export default function PricingCalculatorPanel() {
                     <div className="flex justify-between" style={{ color: 'hsl(var(--info))' }}><span>(−) Comissão</span><span>R$ {fmt(reverseResults.commissionValue)}</span></div>
                     <div className="border-t pt-1.5 flex justify-between"><span className="text-muted-foreground">(=) Receita Líquida</span><span className="font-semibold">R$ {fmt(reverseResults.netRevenue)}</span></div>
                     <div className="flex justify-between text-muted-foreground"><span>(−) Custo MP</span><span>R$ {fmt(reverseResults.numReverseCost)}</span></div>
+                    {reverseResults.numLabor > 0 && (
+                      <div className="flex justify-between text-muted-foreground"><span>(−) Mão de obra</span><span>R$ {fmt(reverseResults.numLabor)}</span></div>
+                    )}
                     {reverseResults.numOverhead > 0 && (
                       <div className="flex justify-between" style={{ color: 'hsl(var(--stage-assy-fg))' }}><span>(−) Rateio Despesas</span><span>R$ {fmt(reverseResults.numOverhead)}</span></div>
+                    )}
+                    {reverseResults.numPackaging > 0 && (
+                      <div className="flex justify-between text-muted-foreground"><span>(−) Embalagem adicional</span><span>R$ {fmt(reverseResults.numPackaging)}</span></div>
                     )}
                     {reverseResults.numFreight > 0 && (
                       <div className="flex justify-between" style={{ color: 'hsl(var(--stage-sew-fg))' }}><span>(−) Frete</span><span>R$ {fmt(reverseResults.numFreight)}</span></div>

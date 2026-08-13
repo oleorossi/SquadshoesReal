@@ -3,7 +3,7 @@
  *
  * Cobre os campos do registro `cost_policies` (active=true):
  *   - overhead_monthly_total + monthly_production_target → R$/par derivado
- *   - packaging_cost_per_pair
+ *   - packaging_cost_per_pair (somente embalagem adicional fora do BOM)
  *   - freight_allocation_pct
  *   - default_tax_pct + default_commission_pct (Markup defaults)
  *
@@ -136,7 +136,7 @@ export default function CostPolicies() {
             <div className="grid sm:grid-cols-2 gap-3">
               <div>
                 <Label className="text-xs flex items-center gap-1.5">
-                  <Box className="h-3 w-3" /> Custo de embalagem por par (R$)
+                  <Box className="h-3 w-3" /> Embalagem adicional fora do BOM (R$/par)
                 </Label>
                 <Input
                   type="number" step="0.01" min={0}
@@ -145,7 +145,8 @@ export default function CostPolicies() {
                   className="mt-1"
                 />
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Soma das caixas + fitilho + acessórios de embalagem médios por par.
+                  Opcional. Use apenas para itens que não estejam na ficha técnica/BOM;
+                  caixas, fitilho e acessórios já cadastrados no BOM entram pelo consumo.
                 </p>
               </div>
               <div>
