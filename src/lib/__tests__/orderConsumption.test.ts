@@ -26,7 +26,7 @@ import {
  * canônicas (CLAUDE.md): dm²/par → metro linear pela largura da ficha; placa
  * via área do grupo; palmilha = PLACA + FORRAÇÃO; solado por numeração.
  *
- * Cenário (espelha o exemplo do user — setor Corte Palmilha):
+ * Cenário (espelha o exemplo do user — setor Corte Fibra):
  *   item: ref 'sheet-1', cor PRETO, quantity 24, grade base soma 6 (→ 4 fichas)
  *   - Cabedal NAPA SOFT: 6 dm²/par × 24 = 144 dm² ÷ (1000mm/10) = 1.44 m
  *   - Forração NAPA FORRO: 4 dm²/par × 24 = 96 dm² ÷ (500mm/10) = 1.92 m
@@ -343,9 +343,9 @@ describe('orderConsumption — motor canônico', () => {
     expect(sumBulk).toBeCloseTo(sumModal, 9);
   });
 
-  it('Corte Palmilha exibe a placa; Corte Forração recebe a forração da palmilha (E3)', () => {
+  it('Corte Fibra exibe a placa; Corte Forração recebe a forração da palmilha (E3)', () => {
     const bulk = computeConsumptionForItems([buildItem()], buildContext()).map(toBulkConsumptionRow);
-    const palmilha = filterConsumptionForSector(bulk, 'Corte Palmilha');
+    const palmilha = filterConsumptionForSector(bulk, 'Corte Fibra');
 
     // Só a PLACA — a forração da palmilha é corte do setor Corte Forração.
     expect(palmilha.every(r => r.component === 'Palmilha')).toBe(true);

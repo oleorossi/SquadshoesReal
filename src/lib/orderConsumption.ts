@@ -1593,7 +1593,7 @@ export function computeConsumptionForItems(
           forrTotal = calculateConsumptionWithUnit(item, insoleLiningCons, forrSheet, 'metro', undefined, soleProductIdForInsole).total;
         }
         // componentType DISTINTO 'Forração Palmilha' (não 'Palmilha'): é FORRO
-        // cortado no setor Corte Forração, não placa do Corte Palmilha. O
+        // cortado no setor Corte Forração, não placa do Corte Fibra. O
         // roteamento por setor (filterConsumptionForSector) depende disso.
         if (forrTotal > 0 || forrWarning) addConsumptionRow(consumptionMap, {
           componentType: 'Forração Palmilha',

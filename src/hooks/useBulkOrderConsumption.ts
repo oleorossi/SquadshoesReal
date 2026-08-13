@@ -242,7 +242,7 @@ export const filterConsumptionForSector = (
         (unclassified(r) && byName(r, /palmilha|\beva\b|placa\s+de\s+fibra/)),
       );
     // 'Forração Palmilha' (forro que cobre a placa) é CORTADO no Corte
-    // Forração — é napa de forro, não placa do Corte Palmilha.
+    // Forração — é napa de forro, não placa do Corte Fibra.
     case 'Corte Forração':
       return rows.filter(r =>
         r.component === 'Forração' ||
