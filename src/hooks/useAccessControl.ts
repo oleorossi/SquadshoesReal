@@ -80,7 +80,6 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   // governadas pelo módulo 'producao', igual às demais /producao/*.
   '/producao/planejamento': 'producao',
   '/producao/kanban': 'producao',
-  '/producao/kanban/gestao': 'producao', // modo eventual do mesmo Kanban
   '/producao/estouro': 'producao',
   '/producao/setores': 'producao',
   '/producao/apontamento': 'producao',

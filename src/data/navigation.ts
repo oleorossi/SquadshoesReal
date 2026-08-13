@@ -64,7 +64,6 @@ export const navigationCatalog: NavigationResource[] = [
   { path: '/imprimir-fichas', label: 'Imprimir Fichas', group: 'Produção', icon: Printer, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/PrintWorkSheets') },
   { path: '/producao/analises', label: 'Análises', group: 'Produção', icon: BarChart3, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/ProducaoAnalises') },
   { path: '/producao/produtividade', label: 'Produtividade por Modelo', group: 'Produção', icon: Gauge, surfaces: ['command', 'hub-shortcut'], preload: () => import('@/pages/ProdutividadeModelos') },
-  { path: '/producao/kanban/gestao', label: 'Kanban · Modo Gestão', group: 'Produção', icon: Kanban, surfaces: ['command'], preload: () => import('@/pages/ProducaoKanbanGestao') },
   // Ordens não ocupa a sidebar por decisão do dono, mas é aberta pela FAB e
   // por cards; o mesmo recurso governa ação rápida, busca e permissão granular.
   { path: '/orders', label: 'Ordens de Produção', group: 'Produção', icon: ClipboardCheck, surfaces: ['command', 'quick-action'], preload: () => import('@/pages/Orders') },
@@ -213,7 +212,6 @@ export const secondaryRoutes: NavigationResource[] = [
   resource('/sac'),
   resource('/forecast'),
   resource('/producao/produtividade'),
-  resource('/producao/kanban/gestao'),
   resource('/orders'),
   resource('/reservas-estoque'),
   resource('/fichas-tecnicas/padroes'),

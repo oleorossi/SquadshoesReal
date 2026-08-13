@@ -458,6 +458,10 @@ const EXEMPT_FROM_MENU = [
   { re: /^\/m(\/|$)/, reason: 'PWA do representante — shell próprio com tab bar' },
   { re: /^\/design-preview$/, reason: 'Showcase interno do design system' },
   { re: /^\/navigation-audit$/, reason: 'Ferramenta de DEV, alcançada pelo banner de auditoria' },
+  {
+    re: /^\/producao\/kanban\/gestao$/,
+    reason: 'Modo dedicado alcançado pelo botão do Kanban — herda navegação e permissão de /producao/kanban',
+  },
   { re: /^\/(sales|orders)\/(new|edit)/, reason: 'Formulário — alcançado por ação, não por menu' },
   {
     re: /^\/orders\/(summary|grouped-summary)$/,

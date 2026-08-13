@@ -707,6 +707,10 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
     window.setTimeout(() => setLandedId(cur => (cur === orderId ? null : cur)), 1600);
   };
 
+  // Na rota dedicada este componente É o conteúdo principal da página. Dentro
+  // do ERP ele vira section, evitando um <main> aninhado no <main> do AppLayout.
+  const Root = embedded ? 'section' : 'main';
+
   return (
     // h-dvh (não h-screen/100vh): no Safari iOS o vh inclui a área da barra de
     // endereço e cortava o rodapé das colunas. Embutido no ERP a altura é
@@ -714,11 +718,15 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
     // O desconto inclui topbar/breadcrumb, paddings e o EditorialPageHeader que
     // vivem FORA deste componente. O valor anterior (11rem) ignorava parte
     // dessa casca e criava duas rolagens verticais concorrendo no desktop.
-    <div className={`flex flex-col overflow-hidden bg-background text-foreground ${
+    <Root
+      aria-label={embedded ? 'Quadro Kanban de produção' : 'Modo Gestão do Kanban'}
+      data-kanban-mode={embedded ? 'erp' : 'gestao'}
+      className={`flex flex-col overflow-hidden bg-background text-foreground ${
       embedded
         ? 'h-[calc(100dvh-17rem)] min-h-[28rem] md:h-[calc(100dvh-15rem)] md:min-h-[34rem]'
         : 'h-dvh'
-    }`}>
+      }`}
+    >
       {/* ── Cabeçalho editorial (só na rota dedicada) ────────────────────
           Substitui o par eyebrow+display inline que vivia dentro da barra de
           comando. `shrink-0`: num container `h-dvh` com `overflow-hidden`,
@@ -804,7 +812,7 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
               fullscreen do navegador só faz sentido na rota própria. */}
           {embedded ? (
             <Button asChild variant="outline" size="sm" className="h-11 md:h-9 gap-1.5" title="Abrir a Central de Produção em tela cheia, sem a casca do ERP">
-              <Link to="/producao/kanban/gestao">
+              <Link to="/producao/kanban/gestao" aria-label="Abrir Modo Gestão em página dedicada">
                 <ArrowsOutSimple className="h-4 w-4" /> <span className="hidden sm:inline">Modo Gestão</span>
               </Link>
             </Button>
@@ -1409,6 +1417,6 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
         />
       )}
       <QrScanDialog open={scanOpen} onClose={() => setScanOpen(false)} onDetect={handleScan} />
-    </div>
+    </Root>
   );
 }
