@@ -1750,9 +1750,11 @@ export default function SaleOrderForm() {
     <>
       <div className="w-full space-y-6 pb-20">
         <EditorialPageHeader
+          sectionNumber={isEdit ? '02' : '01'}
           sectionLabel="COMERCIAL · Pedido de Venda"
           title={isEdit ? 'Editar Pedido' : 'Novo Pedido'}
-          description={isEdit ? 'Atualize os dados e itens do pedido comercial' : 'Preencha os dados para criar um novo pedido comercial'}
+          description={isEdit ? 'Revise o cliente, os itens e as condições antes de salvar.' : 'Cadastre o cliente, inclua as referências e revise as condições antes de criar.'}
+          meta={isEdit && form?.order_number ? <span>PEDIDO <strong>{form.order_number}</strong></span> : undefined}
           actions={
             <>
               <Button variant="outline" size="sm" className="h-9 gap-1.5" onClick={guardExit(() => navigate('/sales'))}>
@@ -1762,7 +1764,7 @@ export default function SaleOrderForm() {
                   de UUID truncado no header. UUID é interno e irrelevante
                   pra usuário. Cai no UUID truncado só se ainda não carregou. */}
               {isEdit && (form?.order_number || id) && (
-                <Badge variant="secondary" className="font-mono">
+                <Badge variant="secondary" className="hidden font-mono sm:inline-flex">
                   {form?.order_number || id?.substring(0, 8)}
                 </Badge>
               )}

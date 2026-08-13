@@ -1021,16 +1021,17 @@ export default function SaleOrderFormPanel({
       {/* Stepper só faz sentido em PV existente — em "Novo Pedido" o status é sempre
           Rascunho e o widget completo confunde mais do que informa. */}
       {!isNewOrder && (
-        <Card className="border-border/60 shadow-sm">
-          <CardContent className="p-3">
+        <Card className="border-border/60 bg-muted/20 shadow-sm">
+          <CardContent className="px-4 py-3 sm:px-5">
             <OrderStatusStepper currentStatus={form.status} />
           </CardContent>
         </Card>
       )}
       {/* Mapa do preenchimento: mantém a orientação quando o pedido tem muitas
           referências e evita rolagem longa só para voltar aos dados comerciais. */}
-      <nav aria-label="Etapas do pedido" className="sticky top-0 z-20 -mx-1 flex gap-2 overflow-x-auto border-y bg-background/95 px-1 py-2 backdrop-blur sm:static sm:mx-0 sm:border sm:rounded-lg sm:px-2">
-        <Button type="button" variant="ghost" size="sm" className="min-h-10 shrink-0 gap-1.5" onClick={() => document.getElementById('pv-cliente')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
+      <nav aria-label="Etapas do pedido" className="sticky top-0 z-20 -mx-1 flex gap-1 overflow-x-auto border-y bg-background/95 px-1 py-2 backdrop-blur sm:static sm:mx-0 sm:rounded-lg sm:border sm:bg-muted/20 sm:px-2">
+        <span className="hidden shrink-0 items-center px-2 text-[11px] font-bold uppercase tracking-wider text-muted-foreground lg:flex">Preenchimento</span>
+        <Button type="button" variant="ghost" size="sm" className="min-h-10 shrink-0 gap-1.5 bg-background shadow-sm sm:bg-transparent sm:shadow-none" onClick={() => document.getElementById('pv-cliente')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
           <User className="h-4 w-4" />
           <span>Cliente</span>
           {form.client_name && <Check className="h-3.5 w-3.5 text-success" weight="bold" />}
@@ -1050,15 +1051,16 @@ export default function SaleOrderFormPanel({
 
           {/* Card 1: Cliente & Representante */}
           <Card id="pv-cliente" className="scroll-mt-20 border-border/60 shadow-sm overflow-hidden">
-            <CardHeader className="py-3 px-4 bg-muted/30 border-b">
+            <CardHeader className="space-y-1 px-4 py-3.5 bg-muted/30 border-b">
               <CardTitle className="text-sm font-bold flex items-center gap-2">
                 <User className="h-4 w-4 text-primary" />
-                Cliente & Representante
+                Identificação do pedido
               </CardTitle>
+              <p className="text-xs text-muted-foreground">Comece pelo cliente; as condições e a operação ficam logo abaixo.</p>
             </CardHeader>
             <CardContent className="p-4 space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
+                <div className="order-2">
                   <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1 block">Representante</Label>
                   <Select value={form.representative} onValueChange={v => setForm(f => ({ ...f, representative: v }))}>
                     <SelectTrigger className="h-9"><SelectValue placeholder="Selecione..." /></SelectTrigger>
@@ -1069,7 +1071,7 @@ export default function SaleOrderFormPanel({
                     </SelectContent>
                   </Select>
                 </div>
-                <div>
+                <div className="order-1 md:col-span-2">
                   <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1 block">Cliente (Cadastro)</Label>
                   <SearchableClientSelect
                     clients={clients.filter(c => c.active)}
@@ -1106,6 +1108,12 @@ export default function SaleOrderFormPanel({
                     </div>
                   )}
                 </div>
+              </div>
+
+              <div className="flex items-center gap-3 pt-1" aria-hidden="true">
+                <span className="h-px flex-1 bg-border" />
+                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Configuração comercial</span>
+                <span className="h-px flex-1 bg-border" />
               </div>
 
               {/* Tipo de Pedido — natureza comercial (carteira / programado /
@@ -1843,18 +1851,21 @@ export default function SaleOrderFormPanel({
         </div>
 
         <div className="space-y-5">
-          <Card className="border-border/60 shadow-sm">
-            <CardHeader className="py-3 px-4 bg-muted/30 border-b">
+          <Card className="border-border/60 shadow-sm overflow-hidden">
+            <CardHeader className="space-y-1 px-4 py-3.5 bg-muted/30 border-b">
               <CardTitle className="text-sm font-bold flex items-center gap-2">
                 <Info className="h-4 w-4 text-primary" />
-                Observações & Contato
+                Contato e observações
               </CardTitle>
+              <p className="text-xs text-muted-foreground">Use somente o que precisa acompanhar este pedido.</p>
             </CardHeader>
             <CardContent className="p-4 space-y-4">
               <div>
                 <Label className="text-xs text-muted-foreground uppercase font-bold mb-1 block">Contato no Cliente</Label>
-                <Input value={form.client_contact} onChange={e => setForm(f => ({ ...f, client_contact: e.target.value }))} className="h-9" />
+                <Input value={form.client_contact} onChange={e => setForm(f => ({ ...f, client_contact: e.target.value }))} className="h-9" placeholder="Nome, telefone ou e-mail" />
               </div>
+              <div className="border-t pt-4">
+                <p className="mb-3 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Notas do pedido</p>
               <div>
                 <Label className="text-xs text-muted-foreground uppercase font-bold mb-1 block">Observações do Pedido</Label>
                 <Textarea
@@ -1875,6 +1886,7 @@ export default function SaleOrderFormPanel({
                   className="min-h-[80px] text-sm resize-none"
                   placeholder="Ex: 'Frete por conta do destinatário · Conferir embalagem antes de receber'. A OC do cliente é adicionada automaticamente."
                 />
+              </div>
               </div>
               {selectedRep && (
                 <div className="p-3 rounded-lg bg-primary/5 border border-primary/10">
