@@ -90,6 +90,19 @@ export interface ParsedEmployee {
   records: { day: number; punches: string[]; dateStr?: string }[];
 }
 
+/** Resolve o dia exibido pelo relógio para uma data dentro do período importado. */
+export function resolveTimesheetRecordDate(day: number, startDate: string, endDate: string): string {
+  const [startYear, startMonth, startDay] = startDate.split('-').map(Number);
+  const [endYear, endMonth] = endDate.split('-').map(Number);
+  if (startYear === endYear && startMonth === endMonth) {
+    return `${startYear}-${String(startMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  }
+  if (day >= startDay) {
+    return `${startYear}-${String(startMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  }
+  return `${endYear}-${String(endMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
 // ── Helper: read rows from either .xls or .xlsx ──────
 async function readSpreadsheetRows(file: File): Promise<any[][]> {
   // xlsx (~424KB) carregado sob demanda — não infla o chunk da rota de Ponto,
@@ -1030,8 +1043,6 @@ export function useImportTimeRecords() {
       if (!startDate || !endDate || !/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
         throw new Error('Datas inválidas detectadas no arquivo. Verifique o formato do arquivo de ponto.');
       }
-      const [startYear, startMonth, startDay] = startDate.split('-').map(Number);
-      const [endYear, endMonth] = endDate.split('-').map(Number);
       const batchId = `${startDate}_${endDate}_${Date.now()}`;
 
       // Resolve a (year, month) for a raw day number considering cross-month
@@ -1042,16 +1053,7 @@ export function useImportTimeRecords() {
       // baseada no calendário: dado o range startDate→endDate (que pode cruzar
       // mês), o day pertence ao primeiro mês se day >= startDay, caso contrário
       // ao último mês. Funciona para single-month e cross-month.
-      const resolveDate = (day: number): string => {
-        if (startYear === endYear && startMonth === endMonth) {
-          return `${startYear}-${String(startMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-        }
-        // Cross-month: day in [startDay..31] → first month; day in [1..endDay] → last month
-        if (day >= startDay) {
-          return `${startYear}-${String(startMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-        }
-        return `${endYear}-${String(endMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-      };
+      const resolveDate = (day: number): string => resolveTimesheetRecordDate(day, startDate, endDate);
 
       // Helper: enumera todas as datas do período (yyyy-mm-dd) para
       // produzir time_records vazios para colaboradores sem batidas.

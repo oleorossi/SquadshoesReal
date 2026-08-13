@@ -130,6 +130,13 @@ export default function ManualEntryTab() {
     tolerance_minutes: 10, minimum_overtime_minutes: 0, is_default: true, works_sunday: false, works_monday: true, works_tuesday: true, works_wednesday: true, works_thursday: true, works_friday: true, works_saturday: true, created_at: '', updated_at: '',
   };
 
+  // A correção sugerida precisa respeitar a escala contratada da pessoa. Usar
+  // sempre a escala padrão preencheria incorretamente turnos diferentes.
+  const scheduleForEmployee = useCallback((employeeName: string) => {
+    const employee = employees.find(e => e.name === employeeName);
+    return (employee?.work_schedule_id && schedules.find(s => s.id === employee.work_schedule_id)) || defaultSchedule;
+  }, [employees, schedules, defaultSchedule]);
+
   // Map of "employeeName|dateStr" → TimeRecord
   const recordMap = useMemo(() => {
     const m = new Map<string, TimeRecord>();
@@ -186,8 +193,9 @@ export default function ManualEntryTab() {
       toast.info('Domingo não tem expediente padrão. Adicione manualmente se houve trabalho.');
       return;
     }
-    const entry = (dow === 6 ? defaultSchedule.saturday_entry : defaultSchedule.entry_time) || '08:00';
-    const exit = (dow === 6 ? defaultSchedule.saturday_exit : defaultSchedule.exit_time) || '17:48';
+    const schedule = scheduleForEmployee(cellDialog.employeeName);
+    const entry = (dow === 6 ? schedule.saturday_entry : schedule.entry_time) || '08:00';
+    const exit = (dow === 6 ? schedule.saturday_exit : schedule.exit_time) || '17:48';
     setCellDialog(d => d ? {
       ...d,
       slots: { entrada: entry, saidaAlmoco: '', voltaAlmoco: '', saida: exit },
@@ -415,7 +423,11 @@ export default function ManualEntryTab() {
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Horário previsto</span>
                   <span className="font-mono text-xs text-muted-foreground">
-                    {defaultSchedule.entry_time} – {defaultSchedule.exit_time}
+                    {(() => {
+                      const schedule = scheduleForEmployee(cellDialog.employeeName);
+                      const dow = new Date(cellDialog.dateStr + 'T12:00:00').getDay();
+                      return `${dow === 6 ? schedule.saturday_entry : schedule.entry_time} – ${dow === 6 ? schedule.saturday_exit : schedule.exit_time}`;
+                    })()}
                   </span>
                 </div>
               </div>

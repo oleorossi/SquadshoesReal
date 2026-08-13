@@ -103,17 +103,17 @@ export default function PendingTimeRecordsPanel() {
             <AlertDialogTrigger asChild>
               <Button
                 size="sm"
-                variant="default"
-                className="gap-1.5 shrink-0"
+                variant="outline"
+                className="gap-1.5 shrink-0 border-amber-500/40 text-amber-800 hover:text-amber-900 dark:text-amber-300"
                 disabled={bulkApplying}
               >
                 <Clock className="w-4 h-4" />
-                {bulkApplying ? 'Aplicando...' : 'Aplicar padrão 18:00 a todos'}
+                {bulkApplying ? 'Aplicando...' : 'Revisão em massa: saída 18:00'}
               </Button>
             </AlertDialogTrigger>
             <AlertDialogContent>
               <AlertDialogHeader>
-                <AlertDialogTitle>Aplicar saída 18:00 às {totalPending} pendências?</AlertDialogTitle>
+              <AlertDialogTitle>Preencher saída 18:00 em {totalPending} pendências?</AlertDialogTitle>
                 <AlertDialogDescription className="space-y-2">
                   <span className="block">
                     Atalho pra processar tudo em massa. O sistema vai adicionar batidas marcadas com <code>*</code> em cada dia pendente:
@@ -124,7 +124,7 @@ export default function PendingTimeRecordsPanel() {
                     <li><b>5 batidas (extra):</b> pulado — precisa revisão manual</li>
                   </ul>
                   <span className="block text-amber-700 text-xs">
-                    Recomendado: faça revisão depois semana a semana e ajuste casos atípicos (faltas reais, saída adiantada, etc.) usando o botão "Editar" de cada linha.
+                    Use apenas quando 18:00 for confirmado para todos os dias. Para faltas, saídas adiantadas ou turnos diferentes, corrija cada linha em “Editar”.
                   </span>
                 </AlertDialogDescription>
               </AlertDialogHeader>

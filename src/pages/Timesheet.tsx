@@ -27,7 +27,7 @@ import {
   useWorkdaySwaps, useAddWorkdaySwap, useDeleteWorkdaySwap, useSwapSets,
   useTimeRecords, useImportBatches, useImportTimeRecords, useDeleteBatch,
   useAllImportsDateRange,
-  parseTimesheetXlsx, parseTimesheetTxt, calculateDaySummary,
+  parseTimesheetXlsx, parseTimesheetTxt, calculateDaySummary, resolveTimesheetRecordDate,
   WorkSchedule, Holiday, TimeRecord, ParsedEmployee, DaySummary,
 } from '@/hooks/useTimesheet';
 import { useEmployees } from '@/hooks/useEmployees';
@@ -38,6 +38,7 @@ import { resolveHolidaysForPayrollRange } from '@/lib/ponto/periodDates';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
+import { useUrlTabState } from '@/hooks/useUrlTabState';
 
 const DAYS_PT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
@@ -566,15 +567,25 @@ function TimesheetRecordsTab() {
       } else {
         result = await parseTimesheetXlsx(file);
       }
-      setPreview({ ...result, rawFile: file });
-      const matched = result.employees.filter(emp => emp.records.some(record =>
+      const datedResult = {
+        ...result,
+        employees: result.employees.map(emp => ({
+          ...emp,
+          records: emp.records.map(record => ({
+            ...record,
+            dateStr: record.dateStr || resolveTimesheetRecordDate(record.day, result.startDate, result.endDate),
+          })),
+        })),
+      };
+      setPreview({ ...datedResult, rawFile: file });
+      const matched = datedResult.employees.filter(emp => emp.records.some(record =>
         !!findEmployeeMatch(employees, emp.name, emp.externalId, {
-          recordDate: record.dateStr || `${result.startDate.slice(0, 7)}-${String(record.day).padStart(2, '0')}`,
+          recordDate: record.dateStr,
           allowNameFallback: false,
         }),
       )).length;
-      const pending = result.employees.reduce((sum, emp) => sum + emp.records.filter(r => r.punches.length % 2 === 1).length, 0);
-      toast.success(`${result.employees.length} IDs encontrados, ${matched} vinculados pelo relógio${pending ? `; ${pending} dia(s) pendente(s)` : ''}`);
+      const pending = datedResult.employees.reduce((sum, emp) => sum + emp.records.filter(r => r.punches.length % 2 === 1).length, 0);
+      toast.success(`${datedResult.employees.length} IDs encontrados, ${matched} vinculados pelo relógio${pending ? `; ${pending} dia(s) pendente(s)` : ''}`);
     } catch (err: any) {
       toast.error('Erro ao ler arquivo: ' + err.message);
     } finally {
@@ -862,8 +873,8 @@ function TimesheetRecordsTab() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h3 className="text-lg font-semibold">Registro de Ponto</h3>
-          <p className="text-xs text-muted-foreground">Importe o arquivo de ponto (AGL_001.TXT, RegistroPresença.xls, etc.)</p>
+          <h3 className="text-lg font-semibold">Importar e conferir ponto</h3>
+          <p className="text-xs text-muted-foreground">Envie o arquivo do relógio (AGL_001.TXT, RegistroPresença.xls etc.). A matrícula é usada para vincular cada batida ao funcionário.</p>
         </div>
         <div className="flex gap-2">
           <input ref={fileRef} type="file" accept=".xlsx,.xls,.txt" className="hidden" onChange={handleFileUpload} />
@@ -882,6 +893,23 @@ function TimesheetRecordsTab() {
           )}
         </div>
       </div>
+
+      <Card className="border-primary/20 bg-primary/[0.03]">
+        <CardContent className="grid gap-3 p-4 md:grid-cols-3">
+          <div className="flex gap-2.5">
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">1</span>
+            <p className="text-xs leading-relaxed"><strong className="block text-sm">Importe o relógio</strong>Confira período, matrículas vinculadas e dias com batidas antes de confirmar.</p>
+          </div>
+          <div className="flex gap-2.5">
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">2</span>
+            <p className="text-xs leading-relaxed"><strong className="block text-sm">Corrija pendências</strong>Batida ímpar é revisada em <strong>Corrigir batidas</strong>; ajustes ficam identificados como manuais.</p>
+          </div>
+          <div className="flex gap-2.5">
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">3</span>
+            <p className="text-xs leading-relaxed"><strong className="block text-sm">Confira jornada e hora extra</strong>Após a revisão, consulte os totais calculados na aba <strong>Folha</strong>.</p>
+          </div>
+        </CardContent>
+      </Card>
 
       {preview && (() => {
         const matchedEmployees = preview.employees.filter(emp =>
@@ -1200,7 +1228,7 @@ function TimesheetRecordsTab() {
                 {employeeNames.length} funcionário{employeeNames.length === 1 ? '' : 's'} com batidas importadas neste período
               </p>
               <p className="text-xs text-muted-foreground">
-                Quanto cada um tem a receber (com base nessas batidas) fica na aba <strong>Folha</strong>. Batida ímpar/inconsistente? Resolva na sub-aba <strong>Lançamento &amp; Pendências</strong> aqui do Ponto.
+                Jornada semanal, horas extras e valores calculados ficam na aba <strong>Folha</strong>. Batida ímpar ou esquecida? Resolva em <strong>Corrigir batidas</strong>.
               </p>
             </div>
             <Button
@@ -1349,20 +1377,25 @@ function TimesheetRecordsTab() {
 
 // ── Main Page ──────────────────────────────────────────
 export default function Timesheet() {
-  const [searchParams] = useSearchParams();
-  // Quando o Timesheet é renderizado dentro do RHHub (`/rh?tab=ponto`), o param
-  // `tab` já carrega o tab do hub. A sub-aba interna usa `subtab`.
-  const initialTab = searchParams.get('subtab') || searchParams.get('tab') || 'records';
+  const { value: activeTab, setValue: setActiveTab } = useUrlTabState({
+    values: ['records', 'manual', 'ausencias', 'calendario', 'config'] as const,
+    defaultValue: 'records',
+    param: 'subtab',
+    aliases: {
+      overview: 'records', late: 'manual', occurrences: 'manual', pending: 'manual',
+      reports: 'records', overtime: 'records', history: 'config', schedule: 'config', holidays: 'config',
+    },
+  });
   return (
     <div className="space-y-4 page-enter">
-      <Tabs defaultValue={mapLegacyTab(initialTab)} className="space-y-4">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
         {/* Refocus 2026-06-01 (folha por hora): Ponto gira só em torno das
             batidas + feriados. Resolução HE, divergências, atrasos, validação
             de jornada e escala foram aposentados — o modelo por hora não usa
             jornada esperada. */}
         <HubTabsList tabs={[
-          { value: 'records',     label: 'Ponto',        icon: FileSpreadsheet },
-          { value: 'manual',      label: 'Lançamento & Pendências', icon: ClipboardEdit },
+          { value: 'records',     label: 'Importar e conferir', icon: FileSpreadsheet },
+          { value: 'manual',      label: 'Corrigir batidas', icon: ClipboardEdit },
           { value: 'ausencias',   label: 'Faltas/Atrasos Justificados', icon: FirstAid },
           { value: 'calendario',  label: 'Cobertura',    icon: Calendar },
           { value: 'config',      label: 'Configuração', icon: Clock },
@@ -1396,20 +1429,4 @@ export default function Timesheet() {
       </Tabs>
     </div>
   );
-}
-
-/** Mapeia URLs legadas (?subtab=late, =reports etc.) pras 5 sub-tabs novas. */
-function mapLegacyTab(t: string): string {
-  switch (t) {
-    case 'overview':    return 'records';      // overview migrou pro Painel
-    case 'late':
-    case 'occurrences':
-    case 'pending':     return 'manual';       // Pendências unificada em Lançamento
-    case 'reports':     return 'records';      // relatórios migraram pro RH > Relatórios
-    case 'overtime':    return 'records';      // resolução HE aposentada (folha por hora)
-    case 'history':
-    case 'schedule':
-    case 'holidays':    return 'config';       // unificado em Configuração
-    default:            return t || 'records';
-  }
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseTimesheetRows } from '../useTimesheet';
+import { parseTimesheetRows, resolveTimesheetRecordDate } from '../useTimesheet';
 
 // Estrutura fiel ao export RegistroPresença.xls do KP1028. A fixture usa só
 // dados sintéticos: o arquivo real de ponto não deve entrar no repositório.
@@ -26,5 +26,12 @@ describe('parseTimesheetRows — KP1028 RegistroPresença.xls', () => {
       { day: 18, punches: ['08:00', '12:00', '13:00'] },
     ]);
     expect(result.employees[1]).toMatchObject({ externalId: '3', name: 'sem batidas', records: [] });
+  });
+
+  it('atribui os dias corretamente ao cruzar julho e agosto', () => {
+    expect(resolveTimesheetRecordDate(16, '2026-07-16', '2026-08-07')).toBe('2026-07-16');
+    expect(resolveTimesheetRecordDate(31, '2026-07-16', '2026-08-07')).toBe('2026-07-31');
+    expect(resolveTimesheetRecordDate(1, '2026-07-16', '2026-08-07')).toBe('2026-08-01');
+    expect(resolveTimesheetRecordDate(7, '2026-07-16', '2026-08-07')).toBe('2026-08-07');
   });
 });
