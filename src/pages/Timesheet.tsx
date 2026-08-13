@@ -884,8 +884,14 @@ function TimesheetRecordsTab() {
       </div>
 
       {preview && (() => {
-        const unmatchedEmps = preview.employees.filter(emp => !employeeMatches[emp.name]);
-        const matchedCount = Object.keys(employeeMatches).length;
+        const matchedEmployees = preview.employees.filter(emp =>
+          emp.records.some(record => findEmployeeMatch(employees, emp.name, emp.externalId, {
+            recordDate: record.dateStr || `${preview.startDate.slice(0, 7)}-${String(record.day).padStart(2, '0')}`,
+            allowNameFallback: false,
+          })),
+        );
+        const unmatchedEmps = preview.employees.filter(emp => !matchedEmployees.includes(emp));
+        const matchedCount = matchedEmployees.length;
         const totalRecords = preview.employees.reduce((s, e) => s + e.records.length, 0);
         // Range REAL de batidas (ignora placeholders punches=[]) — pra avisar
         // quando o arquivo do relógio termina antes do esperado. Causa nº1 de
@@ -968,7 +974,7 @@ function TimesheetRecordsTab() {
                     <TableHeader>
                       <TableRow>
                         <TableHead className="text-xs">Nome no Arquivo (sem vínculo)</TableHead>
-                        <TableHead className="text-xs">Vincular a Funcionário</TableHead>
+                        <TableHead className="text-xs">Status</TableHead>
                         <TableHead className="text-xs text-right">Dias</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -979,27 +985,8 @@ function TimesheetRecordsTab() {
                             {emp.name}
                             {emp.externalId && <span className="text-muted-foreground ml-1 text-xs">(ID: {emp.externalId})</span>}
                           </TableCell>
-                          <TableCell className="py-1.5">
-                            <Select
-                              value="__none__"
-                              onValueChange={(v) => {
-                                if (v !== '__none__') {
-                                  setEmployeeMatches(prev => ({ ...prev, [emp.name]: v }));
-                                }
-                              }}
-                            >
-                              <SelectTrigger className="h-7 text-xs w-full">
-                                <SelectValue placeholder="Selecionar..." />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="__none__">
-                                  <span className="text-muted-foreground">— Usar nome do arquivo —</span>
-                                </SelectItem>
-                                {employees.filter(e => e.active).map(e => (
-                                  <SelectItem key={e.id} value={e.name}>{e.name}</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
+                          <TableCell className="py-1.5 text-xs text-muted-foreground">
+                            Cadastre a matrícula do relógio no funcionário antes de importar.
                           </TableCell>
                           <TableCell className="text-right font-mono text-sm py-1.5">{emp.records.length}</TableCell>
                         </TableRow>

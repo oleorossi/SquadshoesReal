@@ -1152,7 +1152,7 @@ export function useImportTimeRecords() {
             .range(from, from + PAGE - 1);
           if (!data || data.length === 0) break;
           for (const row of data) {
-            existingKeys.add(`${row.employee_external_id || `nome:${row.employee_name}`}__${row.record_date}`);
+            existingKeys.add(`${row.employee_external_id}__${row.record_date}`);
           }
           if (data.length < PAGE) break; // last page
           from += PAGE;
