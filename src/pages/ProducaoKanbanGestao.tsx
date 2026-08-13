@@ -1038,10 +1038,11 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
               variant="ghost"
               size="icon"
               className="h-11 w-11 md:h-8 md:w-8 shrink-0"
+              aria-label="Ir ao setor anterior"
               onClick={() => goToAdjacentSector(-1)}
               disabled={activeSectorIndex <= 0}
-              aria-label={activeSectorIndex > 0
-                ? `Ir ao setor anterior: ${navigableColumns[activeSectorIndex - 1]}`
+              title={activeSectorIndex > 0
+                ? `Ir para ${navigableColumns[activeSectorIndex - 1]}`
                 : 'Primeiro setor do fluxo'}
             >
               <CaretLeft className="h-4 w-4" />
@@ -1093,10 +1094,11 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
               variant="ghost"
               size="icon"
               className="h-11 w-11 md:h-8 md:w-8 shrink-0"
+              aria-label="Ir ao próximo setor"
               onClick={() => goToAdjacentSector(1)}
               disabled={activeSectorIndex >= navigableColumns.length - 1}
-              aria-label={activeSectorIndex < navigableColumns.length - 1
-                ? `Ir ao próximo setor: ${navigableColumns[activeSectorIndex + 1]}`
+              title={activeSectorIndex < navigableColumns.length - 1
+                ? `Ir para ${navigableColumns[activeSectorIndex + 1]}`
                 : 'Último setor do fluxo'}
             >
               <CaretRight className="h-4 w-4" />
