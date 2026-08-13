@@ -38,6 +38,7 @@ import { useAccessControl } from "@/hooks/useAccessControl";
 import { PagarProducaoDialog } from "@/components/hr/PagarProducaoDialog";
 import { semanaDePagamento, eSemanaFechada } from "@/hooks/useFichaProducaoPagamento";
 import { useProductionSectors, useEmployeeSectors } from "@/hooks/useSectorRoster";
+import { useUrlTabState } from "@/hooks/useUrlTabState";
 import { ratesOfRow, sumProducaoRows } from "@/lib/montadorProduction";
 import { searchMatchesAllTerms } from "@/lib/searchUtils";
 import { toast } from "sonner";
@@ -437,7 +438,12 @@ interface AggTotals {
 /* ---------- Componente ---------- */
 export default function FichaMontadoresPage() {
   const db = supabase as any;
-  const [tab, setTab] = useState<Tab>("lancamento");
+  const { value: tab, setValue: setTab } = useUrlTabState<Tab>({
+    values: ["lancamento", "producao"],
+    defaultValue: "lancamento",
+    aliases: { produtividade: "producao", relatorios: "producao" },
+    migrateFrom: "ficha-montadores-tab",
+  });
   // Setores do fluxo (v_production_sectors, em flow_order) filtrados pelos que são
   // pagos por par. O RÓTULO continua vindo do banco (não hard-coded); só a seleção
   // de QUAIS setores aparecem é desta tela — ela cobre pagamento por produção, e
@@ -563,7 +569,7 @@ export default function FichaMontadoresPage() {
   // Trabalhadores do SETOR ativo, pela view canônica (department + alocação
   // explícita, normalizados por capacity_sector_key). Carrega junto o R$/par do
   // cadastro, que é a fonte do snapshot no apontamento.
-  const montadores = useMemo(
+  const colaboradoresDoSetor = useMemo(
     () => employeeSectors
       .filter((r) => r.sector_key === setor)
       .map((r) => ({
@@ -574,6 +580,16 @@ export default function FichaMontadoresPage() {
       .sort((a, b) => a.name.localeCompare(b.name, "pt-BR")),
     [employeeSectors, setor],
   );
+
+  // A chamada é o livro que alimenta a folha por produção. Por isso só mostra
+  // quem realmente recebe por par: mensalistas lotados em Montagem/Solagem não
+  // podem receber um lançamento que pareça pagar produção mas não entra no
+  // cálculo. Lançamentos históricos deles continuam visíveis nos relatórios.
+  const montadores = useMemo(
+    () => colaboradoresDoSetor.filter((employee) => String(employee.payment_type || "").toLowerCase() === "producao"),
+    [colaboradoresDoSetor],
+  );
+  const colaboradoresSemProducao = colaboradoresDoSetor.length - montadores.length;
 
   // Pendências de CADASTRO de quem é regime por par. A tela cobre só Montagem e
   // Solagem, então o alerta antigo ("sem setor de produção") virava ruído: ele
@@ -1115,9 +1131,9 @@ export default function FichaMontadoresPage() {
     <div className="w-full space-y-6">
       <EditorialPageHeader
         sectionLabel={`PRODUÇÃO · ${cfgSetor.label.toUpperCase()}`}
-        title={`Ficha de ${cfgSetor.label}`}
-        description="Lance os PARES produzidos no dia. O sistema calcula as fichas (lotes) e o valor a pagar pelo R$/par de cada pessoa."
-        meta={<><span className="font-bold">{montadores.length}</span> {(montadores.length === 1 ? cfgSetor.sing : cfgSetor.plural).toUpperCase()} · <span className="font-bold">{fichasHoje}</span> FICHA{fichasHoje === 1 ? "" : "S"} HOJE</>}
+        title="Produção por colaborador"
+        description="Registre a produção diária de quem recebe por par. Cada lançamento congela o R$/par e compõe a folha semanal da pessoa."
+        meta={<><span className="font-bold">{montadores.length}</span> POR PAR EM {cfgSetor.label.toUpperCase()} · <span className="font-bold">{fichasHoje}</span> FICHA{fichasHoje === 1 ? "" : "S"} HOJE</>}
       />
 
       {/* Setor — só Montagem e Solagem, os dois ofícios pagos por par. Dados e
@@ -1135,6 +1151,19 @@ export default function FichaMontadoresPage() {
               </button>
             );
           })}
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/70 pb-4">
+        <div>
+          <h2 className="text-base font-semibold">{cfgSetor.label} · lançamento por produção</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {montadores.length} {montadores.length === 1 ? "colaborador recebe" : "colaboradores recebem"} por par neste setor.
+            {colaboradoresSemProducao > 0 && ` ${colaboradoresSemProducao} pessoa${colaboradoresSemProducao === 1 ? " está" : "s estão"} fora da chamada por ter outro regime.`}
+          </p>
+        </div>
+        <Button asChild type="button" variant="outline" size="sm">
+          <Link to="/rh?tab=funcionarios">Gerenciar equipe e R$/par</Link>
+        </Button>
       </div>
 
       {/* Pendência de CADASTRO de quem é por par: sem setor válido ou sem R$/par,
@@ -1220,8 +1249,9 @@ export default function FichaMontadoresPage() {
 
           {montadores.length === 0 ? (
             <Panel>
-              <EmptyState icon={Users} title={`Nenhum ${cfgSetor.sing} no setor`}
-                description={`Defina o setor "${cfgSetor.label}" no cadastro do funcionário (Funcionários → Setor) para lançar a produção dele aqui.`} />
+              <EmptyState icon={Users} title={`Nenhum ${cfgSetor.sing} por par em ${cfgSetor.label}`}
+                description={`Defina setor, regime “Por par” e R$/par no cadastro antes de lançar. Pessoas mensalistas deste setor não aparecem na chamada porque não compõem a folha por produção.`}
+                action={<Button asChild variant="outline" size="sm"><Link to="/rh?tab=funcionarios">Abrir Funcionários</Link></Button>} />
             </Panel>
           ) : chamadaView === "dia" ? (
             <Panel
