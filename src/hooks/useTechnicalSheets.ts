@@ -193,7 +193,9 @@ export type SheetFormData = {
     *  facas de Corte Cabedal). Agrega numerações por faixa na ficha de operador
     *  de Aviamento. NULL = herda padrão global aviamento_pmg_default; [] = sem
     *  faixa (numeração individual); [{label,sizes[]}] = faixas próprias da ref. */
-   aviamento_size_ranges?: Array<{ label: string; sizes: string[] }> | null;
+  aviamento_size_ranges?: Array<{ label: string; sizes: string[] }> | null;
+  /** Setor de consumo de cada componente técnico da ficha. */
+  component_consumption_sectors?: Record<string, string>;
 };
 
 export const emptySheetForm: SheetFormData = {
@@ -240,7 +242,13 @@ export const emptySheetForm: SheetFormData = {
    box_weight_kg: null,
    ncm: null,
    knife_size_ranges: null,
-   aviamento_size_ranges: null,
+  aviamento_size_ranges: null,
+  component_consumption_sectors: {
+    fibra: 'Corte Fibra',
+    forracao_palmilha: 'Corte Forração',
+    cabedal: 'Corte Cabedal',
+    solado: 'Solagem',
+  },
 };
 
 export type SheetMaterialFormData = {
@@ -254,6 +262,8 @@ export type SheetMaterialFormData = {
   supplier: string;
   notes: string;
   sizes: string;
+  /** Setor físico que recebe e consome este item no início da operação. */
+  consumption_sector: string;
 };
 
 export function useTechnicalSheets() {

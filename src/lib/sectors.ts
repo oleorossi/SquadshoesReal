@@ -31,6 +31,7 @@ export type SectorKey =
 export const SECTOR_NORMALIZE: Record<string, SectorKey> = {
   // canônico pós PR1-PR3
   'corte palmilha': 'corte_palmilha',
+  'corte fibra': 'corte_palmilha',
   'corte forração': 'corte_forracao',
   'corte forracao': 'corte_forracao',
   'aviamento':      'mesa',
@@ -72,7 +73,7 @@ export function sheetHasSector(sheet: { production_sectors?: unknown } | null | 
 
 /** Rótulo de usuário por enum de setor. */
 export const SECTOR_LABELS: Record<SectorKey, string> = {
-  corte_palmilha:   'Corte Palmilha',
+  corte_palmilha:   'Corte Fibra',
   corte_forracao:   'Corte Forração',
   costura_palmilha: 'Costura Palmilha',
   costura_cabedal:  'Costura Cabedal',
@@ -116,7 +117,7 @@ export const DISPLAY_SECTORS: { key: SectorKey; label: string }[] = [
  * desde a migration 20261001120000 — hoje são `Costura Palmilha` e `Costura Cabedal`).
  */
 export const SECTOR_FLOW: string[] = [
-  'Corte Palmilha', 'Corte Forração',
+  'Corte Fibra', 'Corte Forração',
   'Costura Palmilha', 'Costura Cabedal', 'Aviamento',
   'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição',
 ];
@@ -128,7 +129,7 @@ export const SECTOR_FLOW: string[] = [
  * 2026-07-29). Setor sem grupo é sequencial: só arranca quando o nível anterior
  * entrega.
  *
- *   Corte Palmilha ‖ Corte Forração                    → grupo 'corte'
+ *   Corte Fibra ‖ Corte Forração                        → grupo 'corte'
  *   Costura Palmilha ‖ Costura Cabedal ‖ Aviamento     → grupo 'costura_aviamento'
  *   Silk → Colagem → Montagem → Solagem → Acabamento → Expedição   (sequenciais)
  *
@@ -137,7 +138,7 @@ export const SECTOR_FLOW: string[] = [
  * reagrupar setores pela tela /producao/setores e o banco é quem manda.
  */
 export const SECTOR_PARALLEL_GROUP: Record<string, string | null> = {
-  'Corte Palmilha':   'corte',
+  'Corte Fibra':      'corte',
   'Corte Forração':   'corte',
   'Costura Palmilha': 'costura_aviamento',
   'Costura Cabedal':  'costura_aviamento',

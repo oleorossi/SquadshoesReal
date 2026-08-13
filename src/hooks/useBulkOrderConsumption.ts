@@ -234,7 +234,7 @@ export const filterConsumptionForSector = (
   const unclassified = (r: ConsumptionRow) => !r.component || r.component === 'Outros';
 
   switch (sector) {
-    case 'Corte Palmilha':
+    case 'Corte Fibra':
       // \beva\b: só a palavra isolada (placa EVA) — /forma/ removido (não há
       // match legítimo e capturava 'plataforma').
       return rows.filter(r =>

@@ -55,12 +55,12 @@ interface ConstructionConfigPanelProps {
 // migration 20261230120000), então estas listas são higiene de UI: sem elas o
 // painel mostraria uma rota e o banco gravaria outra. Travado por
 // `__tests__/constructionRouting.test.ts`.
-const SECTORS_CABEDAL              = ['Corte Palmilha', 'Corte Cabedal', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição'];
-const SECTORS_CABEDAL_SILK         = ['Corte Palmilha', 'Corte Cabedal', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição'];
-const SECTORS_CABEDAL_FORRADO      = ['Corte Palmilha', 'Corte Forração', 'Corte Cabedal', 'Costura Palmilha', 'Costura Cabedal', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição'];
-const SECTORS_CABEDAL_FORRADO_SILK = ['Corte Palmilha', 'Corte Forração', 'Corte Cabedal', 'Costura Palmilha', 'Costura Cabedal', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição'];
-const SECTORS_TIRAS                = ['Corte Palmilha', 'Corte Forração', 'Costura Palmilha', 'Aviamento', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição'];
-const SECTORS_TIRAS_SILK           = ['Corte Palmilha', 'Corte Forração', 'Costura Palmilha', 'Aviamento', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição'];
+const SECTORS_CABEDAL              = ['Corte Fibra', 'Corte Cabedal', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição'];
+const SECTORS_CABEDAL_SILK         = ['Corte Fibra', 'Corte Cabedal', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição'];
+const SECTORS_CABEDAL_FORRADO      = ['Corte Fibra', 'Corte Forração', 'Corte Cabedal', 'Costura Palmilha', 'Costura Cabedal', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição'];
+const SECTORS_CABEDAL_FORRADO_SILK = ['Corte Fibra', 'Corte Forração', 'Corte Cabedal', 'Costura Palmilha', 'Costura Cabedal', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição'];
+const SECTORS_TIRAS                = ['Corte Fibra', 'Corte Forração', 'Costura Palmilha', 'Aviamento', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição'];
+const SECTORS_TIRAS_SILK           = ['Corte Fibra', 'Corte Forração', 'Costura Palmilha', 'Aviamento', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição'];
 
 /** As 6 acima, pra o teste varrer a tabela em vez de valores fixos. */
 export const CANONICAL_ROUTINGS = [
@@ -69,9 +69,14 @@ export const CANONICAL_ROUTINGS = [
   SECTORS_TIRAS, SECTORS_TIRAS_SILK,
 ] as const;
 
-function sectorsForModel(model: ProductionModel, hasSilk: boolean): string[] {
+function sectorsForModel(model: ProductionModel, hasSilk: boolean, requiresSewing = true): string[] {
   if (model === 'cabedal')        return hasSilk ? SECTORS_CABEDAL_SILK         : SECTORS_CABEDAL;
-  if (model === 'cabedal_forrado') return hasSilk ? SECTORS_CABEDAL_FORRADO_SILK : SECTORS_CABEDAL_FORRADO;
+  if (model === 'cabedal_forrado') {
+    const routing = hasSilk ? SECTORS_CABEDAL_FORRADO_SILK : SECTORS_CABEDAL_FORRADO;
+    // Corte a fio não passa por Costura Cabedal. A Costura Palmilha continua,
+    // pois é outro componente físico e depende do Corte Fibra.
+    return requiresSewing ? routing : routing.filter(s => s !== 'Costura Cabedal');
+  }
   return hasSilk ? SECTORS_TIRAS_SILK : SECTORS_TIRAS;
 }
 
@@ -144,7 +149,7 @@ function applyModel(
   onChange: (f: string, v: any) => void,
   onSectors?: (s: string[]) => void,
 ) {
-  const sectors = sectorsForModel(model, hasSilk);
+  const sectors = sectorsForModel(model, hasSilk, _requires_sewing);
   if (model === 'cabedal') {
     onChange('insole_ready_made', true);
     onChange('construction_type', 'corte_fio');
@@ -225,15 +230,15 @@ function routingLabel(model: ProductionModel, hasSilk: boolean, requires_sewing:
   // Acabamento isto batia; agora toda rota vai até a Expedição.
   const fim = ' → Colagem → Montagem → Solagem → Acabamento → Expedição';
   if (model === 'cabedal') {
-    return `Corte Palmilha ‖ Corte Cabedal${silk}${fim}`;
+    return `Corte Fibra ‖ Corte Cabedal${silk}${fim}`;
   }
   if (model === 'cabedal_forrado') {
     const sewing = requires_sewing ? ' (costura inclusa)' : '';
-    return `Corte Palmilha ‖ Corte Forração ‖ Corte Cabedal${sewing}${silk}${fim}`;
+    return `Corte Fibra ‖ Corte Forração ‖ Corte Cabedal${sewing}${silk}${fim}`;
   }
   // tiras — não tem Corte Cabedal porque a tira já vem cortada.
   // Roteiro segue SECTORS_TIRAS (Mesa foi renomeado p/ Aviamento em 2026-05-20).
-  return `Corte Palmilha → Corte Forração → Costura → Aviamento${silk}${fim}`;
+  return `Corte Fibra → Corte Forração → Costura → Aviamento${silk}${fim}`;
 }
 
 export function ConstructionConfigPanel({
@@ -275,7 +280,7 @@ export function ConstructionConfigPanel({
   };
 
   const toggleSilk = (enabled: boolean) => {
-    const next = sectorsForModel(activeModel, enabled);
+    const next = sectorsForModel(activeModel, enabled, requires_sewing);
     guardedSectorChange(next);
   };
 
@@ -328,7 +333,7 @@ export function ConstructionConfigPanel({
                   const sewing = !!v;
                   onChange('requires_sewing', sewing);
                   onChange('construction_type', sewing ? 'corte_costura' : 'corte_fio');
-                  guardedSectorChange(sectorsForModel('cabedal_forrado', hasSilk));
+                  guardedSectorChange(sectorsForModel('cabedal_forrado', hasSilk, sewing));
                 }}
               />
               <Label htmlFor="req-sewing" className="text-xs cursor-pointer">

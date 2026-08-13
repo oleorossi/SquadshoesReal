@@ -15,7 +15,7 @@ import { invalidateProductionCaches } from '@/hooks/useProductionTransitions';
 // `canonical_stage_order()` no banco — Aviamento saiu de 4 pra 5 e tudo
 // depois dele deslocou uma casa. Não reordenar sem mudar a função SQL junto.
 export const PRODUCTION_STAGES = [
-  { name: 'Corte Palmilha', order: 1 },
+  { name: 'Corte Fibra', order: 1 },
   { name: 'Corte Forração', order: 2 },
   { name: 'Costura Palmilha', order: 3 },
   { name: 'Costura Cabedal', order: 4 },

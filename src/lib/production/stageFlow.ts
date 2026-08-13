@@ -9,12 +9,14 @@
 /** Grafia legada → canônica (rows antigas e caminhos de escrita antigos). */
 const STAGE_ALIASES: Record<string, string> = {
   Mesa: 'Aviamento',
+  // Nome anterior mantido só para OPs/históricos ainda não migrados.
+  'Corte Palmilha': 'Corte Fibra',
   // A 'Costura' única virou dois setores (migration 20261001120000). O legado
   // resolve pra PALMILHA — era o que a etapa única representava em toda ficha.
   Costura: 'Costura Palmilha',
 };
 
-const CUTTING_STAGES = new Set(['Corte Palmilha', 'Corte Forração']);
+const CUTTING_STAGES = new Set(['Corte Fibra', 'Corte Forração', 'Corte Palmilha']);
 
 export function canonicalStageName(name: string): string {
   const trimmed = (name || '').trim();
@@ -43,13 +45,18 @@ export function sameStage(a: string, b: string): boolean {
  * As duas costuras são independentes entre si — nenhuma bloqueia a outra.
  */
 export const STAGE_DAG: Record<string, string[]> = {
-  'Corte Palmilha': [],
+  'Corte Fibra': [],
   'Corte Forração': [],
-  'Costura Palmilha': [],
-  'Costura Cabedal': [],
+  'Corte Cabedal': [],
+  // Regra operacional decidida: não existe costura de palmilha sem a fibra
+  // já cortada. Basta haver pares entregues; não exige fechamento total.
+  'Costura Palmilha': ['Corte Fibra'],
+  // A etapa só é criada para modelo sem corte a fio. Quando existe, o corte
+  // de cabedal precisa ter entregue pares antes da costura começar.
+  'Costura Cabedal': ['Corte Cabedal'],
   'Aviamento': [],
   'Silk': [],
-  'Colagem': ['Corte Palmilha', 'Costura Palmilha', 'Costura Cabedal'],
+  'Colagem': ['Corte Fibra', 'Costura Palmilha', 'Costura Cabedal'],
   'Montagem': ['Colagem'],
   'Solagem': ['Montagem'],
   'Acabamento': ['Solagem'],

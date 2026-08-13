@@ -9,7 +9,6 @@ import { syncFinancialRecordsCore } from '@/lib/financialSync';
 import { isValidStatusTransition } from '@/lib/saleOrderStateMachine';
 import { logAuditEvent } from '@/services/auditService';
 import { recomputeMaterialGate } from '@/hooks/useMaterialGate';
-import { consumeReservationsOnRelease } from '@/lib/releaseConsumption';
 import { canonicalStageOrder } from '@/components/production/worksheet/stageOrder';
 import { pruneStrapSourcing } from '@/lib/strapSourcing';
 import { resolveGroupSuppliers } from '@/lib/groupSupplierResolution';
@@ -873,10 +872,8 @@ export function useUpdateSaleOrderStatus() {
           }
         }
 
-        // Liberou pra produção = material sai da prateleira. Consome as reservas
-        // que a RPC acabou de criar (ver `releaseConsumption.ts`). Best-effort:
-        // falta de estoque não trava a promoção, e o faturamento segue como rede.
-        await consumeReservationsOnRelease(id);
+        // A promoção apenas reserva. A baixa física é feita, de forma atômica e
+        // proporcional, quando cada setor inicia a produção.
 
         // Gate de material: as OPs acabaram de nascer/entrar em produção, então
         // o início do Corte tem que refletir quando o material tem como chegar
@@ -1236,11 +1233,7 @@ export function useUpdateSaleOrderStatus() {
           id, status as 'Aprovado' | 'Em Produção', soForEngine?.order_number || id,
         );
 
-        if (status === 'Em Produção') {
-          // Liberar pra produção é o gesto em que o material sai da prateleira
-          // (ver `releaseConsumption.ts`). Espelha a promoção direta acima.
-          await consumeReservationsOnRelease(id);
-        }
+        // A promoção apenas reserva. A baixa física ocorre ao iniciar o setor.
 
         // ⚠ Ordem load-bearing: DEPOIS das OCs automáticas que
         // `runPromotionEngine` dispara. Reservar/comprar muda a falta, e o gate
@@ -2274,10 +2267,9 @@ export function useBulkSyncFinancial() {
 // OPs de um PV — debita products.quantity, registra stock_movement('out') e
 // marca a reservation como consumed.
 //
-// Desde 31/07/2026 este NÃO é mais o caminho principal: a baixa sai sozinha na
-// liberação pra produção (`consumeReservationsOnRelease`, que chama esta mesma
-// RPC). Este hook ficou como FALLBACK — PV liberado antes da regra, ou
-// liberação em que a baixa automática falhou. Ver `src/lib/releaseConsumption.ts`.
+// Este é um caminho administrativo de picking. A operação normal não o chama
+// ao liberar o PV: a baixa física ocorre no início de cada setor, proporcional
+// aos pares efetivamente apontados.
 //
 // ⚠ SOLADO ENTRA na baixa, sim. O comentário anterior aqui afirmava que solados
 // "já vêm com status='consumed' da criação da OP" — é FALSO e enganava: isso só

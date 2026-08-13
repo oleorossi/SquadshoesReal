@@ -53,7 +53,7 @@ export const MACRO_SECTORS: ReadonlyArray<SectorDescriptor<MacroSectorId>> = [
 ];
 
 export const MICRO_SECTORS: ReadonlyArray<SectorDescriptor<MicroSectorId>> = [
-  { id: 'corte_palmilha', label: 'Corte Palmilha', short: 'Cort. Pal.', order: 1 },
+  { id: 'corte_palmilha', label: 'Corte Fibra', short: 'Cort. Fib.', order: 1 },
   { id: 'corte_forracao', label: 'Corte Forração', short: 'Cort. For.', order: 2 },
   { id: 'aviamento',      label: 'Aviamento',      short: 'Aviam.',     order: 3 },
   { id: 'costura',        label: 'Costura',        short: 'Cost.',      order: 4 },
@@ -109,6 +109,7 @@ const LEGACY_ALIASES: Record<string, MicroSectorId | MacroSectorId> = {
   embalagem:    'expedicao',     // "Embalagem" (Fluxo) ≡ macro Expedição
   // capitalização variada
   'corte palmilha': 'corte_palmilha',
+  'corte fibra': 'corte_palmilha',
   'corte forração': 'corte_forracao',
   'corte forracao': 'corte_forracao',
 };

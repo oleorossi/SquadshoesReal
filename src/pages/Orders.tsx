@@ -749,16 +749,9 @@ function getWeekOptions() {
   };
   const handleManualStatusChange = async (order: any, newStatus: string) => {
     const prevStatus = order.status as string;
-    // Reserve→Debit: Reservado → Em Produção apenas consome as reservas (já criadas)
+    // Reservado → Em Produção preserva as reservas. A baixa física é feita no
+    // início de cada setor, proporcional aos pares apontados.
     if (newStatus === 'Em Produção' && prevStatus === 'Reservado') {
-      const { error: consumeErr } = await (supabase.rpc as any)('consume_all_reservations_for_order', {
-        p_order_id: order.id,
-      });
-      if (consumeErr) {
-        toast.error(`Erro ao confirmar picking: ${consumeErr.message}`);
-        return;
-      }
-      toast.success('Picking confirmado — material debitado.');
       updateStatus.mutate({ id: order.id, status: newStatus });
       return;
     }
@@ -850,16 +843,8 @@ function getWeekOptions() {
         } catch (poErr: any) {
           console.error('Erro ao gerar OC de solado por déficit (OP → Em Produção):', poErr?.message);
         }
-        // Reserve→Debit (Phase 1): aplica o débito real (consome reservas, decrementa stock)
-        const { error: consumeErr } = await (supabase.rpc as any)('consume_all_reservations_for_order', {
-          p_order_id: order.id,
-        });
-        if (consumeErr) {
-          await (supabase.rpc as any)('release_order_reservations', { p_order_id: order.id });
-          await supabase.from('orders').update({ status: 'Rascunho', updated_at: new Date().toISOString() }).eq('id', order.id);
-          toast.error(`Erro ao consumir reservas: ${consumeErr.message}`);
-          return;
-        }
+        // Reserva concluída: a baixa física será atômica e proporcional quando
+        // cada setor iniciar; não consumir a OP inteira na liberação.
       } catch (err: any) {
         // Release the 'Em Debito' claim so the OP returns to Rascunho on any unexpected error.
         await supabase.from('orders').update({ status: 'Rascunho', updated_at: new Date().toISOString() }).eq('id', order.id).eq('status', 'Em Debito' as any);

@@ -279,8 +279,25 @@ function parseSizesFromRange(sizesStr?: string, shoeCategory?: string): number[]
 }
 
 const emptyMaterialForm: SheetMaterialFormData = {
-  product_id: '', group_id: null, quantity_per_unit: 0, consumption_per_size: {}, color: '', width: '', weight: '', supplier: '', notes: '', sizes: '',
+  product_id: '', group_id: null, quantity_per_unit: 0, consumption_per_size: {}, color: '', width: '', weight: '', supplier: '', notes: '', sizes: '', consumption_sector: '',
 };
+
+const CONSUMPTION_SECTORS = [
+  'Corte Fibra', 'Corte Forração', 'Corte Cabedal', 'Costura Palmilha',
+  'Costura Cabedal', 'Aviamento', 'Silk', 'Colagem', 'Montagem', 'Solagem',
+  'Acabamento',
+] as const;
+
+/** Sugestão inicial; a ficha sempre exige confirmação explícita do usuário. */
+function suggestedConsumptionSector(category?: string | null): string {
+  const normalized = normalizeForSearch(category || '');
+  if (/solado|sola/.test(normalized)) return 'Solagem';
+  if (/embal|caixa|etiqueta|papel/.test(normalized)) return 'Acabamento';
+  if (/cola|adesivo|primer|quimic/.test(normalized)) return 'Colagem';
+  if (/linha|fio/.test(normalized)) return 'Costura Palmilha';
+  if (/aviamento|acessorio|elast|ilh[oó]|fivela|rebite|fachete|contraforte|coura[cç]a|refor[cç]/.test(normalized)) return 'Aviamento';
+  return '';
+}
 
 export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {}) {
   const { data: sheets = [], isLoading } = useTechnicalSheets();
@@ -2958,6 +2975,9 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                           onCheckedChange={v => updateField('upper_corte_a_fio' as any, !!v)}
                         />
                       </div>
+                      <p className="text-xs text-muted-foreground">
+                        Baixa de estoque: cabedal no início de <strong className="text-foreground">Corte Cabedal</strong>.
+                      </p>
                     </div>
 
                     {/* Acessórios alternativos de cabedal removidos da UI conforme decisão
@@ -3474,6 +3494,22 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                       updateField('direct_components', arr);
                     }} className="mt-1 h-9 text-sm" placeholder="0" step={unit === 'un' ? '1' : '0.01'} />
                   </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Setor de consumo</Label>
+                    <Select
+                      value={comp.consumption_sector || 'Aviamento'}
+                      onValueChange={(sector) => {
+                        const arr = [...(form.direct_components || [])];
+                        arr[idx] = { ...arr[idx], consumption_sector: sector };
+                        updateField('direct_components', arr);
+                      }}
+                    >
+                      <SelectTrigger className="mt-1 h-9 text-sm"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {CONSUMPTION_SECTORS.map(sector => <SelectItem key={sector} value={sector}>{sector}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
                   <div className="flex items-end gap-2">
                     {unitPrice > 0 && comp.quantity > 0 && (
                       // Mostra a conta inteira (qtd × R$/unidade), não só o total:
@@ -3497,7 +3533,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                 </div>
               );})}
               <Button variant="outline" size="sm" className="gap-1.5" onClick={() => {
-                updateField('direct_components', [...(form.direct_components || []), { product_id: '', product_name: '', quantity: 1, unit_price: 0, unit: 'un' }]);
+                      updateField('direct_components', [...(form.direct_components || []), { product_id: '', product_name: '', quantity: 1, unit_price: 0, unit: 'un', consumption_sector: 'Aviamento' }]);
               }}>
                 <Plus className="h-3.5 w-3.5" /> Adicionar Componente
               </Button>
@@ -3624,6 +3660,31 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                   <Layers className="h-4 w-4 text-primary" />
                   Consumos Técnicos
                 </h3>
+              </div>
+              <div className="mb-4 rounded-lg border bg-muted/20 p-3">
+                <p className="text-xs font-semibold">Setor de consumo dos componentes técnicos</p>
+                <p className="mt-1 text-xs text-muted-foreground">A baixa é registrada no início do setor selecionado.</p>
+                <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {[
+                    ['fibra', 'Fibra'],
+                    ['forracao_palmilha', 'Forração da Palmilha'],
+                    ['cabedal', 'Cabedal'],
+                    ['solado', 'Solado'],
+                  ].map(([key, label]) => (
+                    <div key={key}>
+                      <Label className="text-xs text-muted-foreground">{label}</Label>
+                      <Select
+                        value={(form.component_consumption_sectors || {})[key] || ''}
+                        onValueChange={(sector) => updateField('component_consumption_sectors', {
+                          ...(form.component_consumption_sectors || {}), [key]: sector,
+                        })}
+                      >
+                        <SelectTrigger className="mt-1 h-8 text-xs"><SelectValue placeholder="Selecione" /></SelectTrigger>
+                        <SelectContent>{CONSUMPTION_SECTORS.map(sector => <SelectItem key={sector} value={sector}>{sector}</SelectItem>)}</SelectContent>
+                      </Select>
+                    </div>
+                  ))}
+                </div>
               </div>
               <ComponentSheets
                 embedded
@@ -3858,7 +3919,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
              </div>
            </div>
            <ProductionSectorsTab
-             sectors={sheet.production_sectors || ['Corte Palmilha', 'Corte Forração', 'Costura Palmilha', 'Costura Cabedal', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição']}
+             sectors={sheet.production_sectors || ['Corte Fibra', 'Corte Forração', 'Costura Palmilha', 'Costura Cabedal', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição']}
              insoleReadyMade={(sheet as any).insole_ready_made === true}
              onChange={(sectors: string[]) => {
                updateSheet.mutate({ id: sheet.id, data: { production_sectors: sectors } as any });
@@ -4134,7 +4195,7 @@ function PhotosByColorTab({ sheetId, form, groups, products }: {
 
  const ALL_PRODUCTION_SECTORS = [
    // Sub-etapas paralelas de Corte (decisão 2026-05-12):
-   //   - Corte Palmilha: sempre (todo sapato tem palmilha)
+   //   - Corte Fibra: sempre (todo sapato tem palmilha)
    //   - Corte Forração: quando o modelo tem forração na palmilha
    // Costura dividida em DOIS setores independentes que trabalham lado a lado
    // (decisão do dono 2026-10-01, migration 20261001120000):
@@ -4148,7 +4209,7 @@ function PhotosByColorTab({ sheetId, form, groups, products }: {
    // ⚠ A ordem aqui espelha `canonical_stage_order()` no banco. Setor que
    // você adicionar aqui TEM que entrar na lista canônica do trigger também,
    // senão o usuário marca, salva, e o valor desaparece sem erro.
-   { name: 'Corte Palmilha',   order: 1 },
+   { name: 'Corte Fibra',      order: 1 },
    { name: 'Corte Forração',   order: 2 },
    { name: 'Costura Palmilha', order: 3 },
    { name: 'Costura Cabedal',  order: 4 },
@@ -4166,7 +4227,7 @@ function PhotosByColorTab({ sheetId, form, groups, products }: {
 // O editor desabilita os chips pra não fingir que a seleção foi salva.
 // Palmilha pronta na cor ⇒ não há palmilha pra cortar nem pra costurar. A
 // costura de CABEDAL segue valendo (é outro componente).
-const READY_MADE_STRIPPED_SECTORS = ['Corte Palmilha', 'Corte Forração', 'Costura Palmilha'];
+const READY_MADE_STRIPPED_SECTORS = ['Corte Fibra', 'Corte Forração', 'Costura Palmilha'];
  
 // Etapas fixas do setor Aviamento. Quando o user marca Aviamento em
 // production_sectors, abre um sub-painel pra escolher quais dessas etapas
@@ -4203,7 +4264,7 @@ function ProductionSectorsTab({
   onChange: (sectors: string[]) => void;
   aviamentoSteps: string[];
   onChangeAviamentoSteps: (steps: string[]) => void;
-  /** Palmilha pronta na cor: o trigger do banco remove Corte Palmilha/
+  /** Palmilha pronta na cor: o trigger do banco remove Corte Fibra/
    *  Corte Forração/Costura do roteiro — os chips ficam desabilitados. */
   insoleReadyMade?: boolean;
 }) {
@@ -4283,7 +4344,7 @@ function ProductionSectorsTab({
       </div>
       {insoleReadyMade && (
         <p className="text-xs text-warning">
-          ⚠ Palmilha pronta na cor: Corte Palmilha, Corte Forração e Costura são removidos do roteiro automaticamente.
+          ⚠ Palmilha pronta na cor: Corte Fibra, Corte Forração e Costura são removidos do roteiro automaticamente.
         </p>
       )}
 
@@ -5552,13 +5613,14 @@ function SheetBOM({ sheetId, safetyPct, onSafetyChange, shoeCategory }: {
         ...f,
         product_id: rep.id,
         group_id: groupId,
+        consumption_sector: f.consumption_sector || suggestedConsumptionSector(rep.category),
         width: dimStr || f.width,
         weight: f.weight,
         quantity_per_unit: avgConsumption > 0 ? Math.round(avgConsumption * 10000) / 10000 : f.quantity_per_unit,
         consumption_per_size: Object.keys(yieldPerSize).length > 0 ? yieldPerSize : f.consumption_per_size,
       }));
     } else {
-      setForm(f => ({ ...f, product_id: rep.id, group_id: groupId }));
+      setForm(f => ({ ...f, product_id: rep.id, group_id: groupId, consumption_sector: f.consumption_sector || suggestedConsumptionSector(rep.category) }));
     }
   };
 
@@ -5581,11 +5643,12 @@ function SheetBOM({ sheetId, safetyPct, onSafetyChange, shoeCategory }: {
         ...f,
         product_id: productId,
         group_id: prod?.group_id || null,
+        consumption_sector: f.consumption_sector || suggestedConsumptionSector(prod?.category),
         quantity_per_unit: avgConsumption > 0 ? Math.round(avgConsumption * 10000) / 10000 : f.quantity_per_unit,
         consumption_per_size: Object.keys(yieldPerSize).length > 0 ? yieldPerSize : f.consumption_per_size,
       }));
     } else {
-      setForm(f => ({ ...f, product_id: productId, group_id: prod?.group_id || null }));
+      setForm(f => ({ ...f, product_id: productId, group_id: prod?.group_id || null, consumption_sector: f.consumption_sector || suggestedConsumptionSector(prod?.category) }));
     }
   };
 
@@ -5614,7 +5677,7 @@ function SheetBOM({ sheetId, safetyPct, onSafetyChange, shoeCategory }: {
   const handleAdd = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const hasPerSize = Object.values(form.consumption_per_size || {}).some(v => Number(v) > 0);
-    if (!form.product_id || (form.quantity_per_unit <= 0 && !hasPerSize)) return;
+    if (!form.product_id || !form.consumption_sector || (form.quantity_per_unit <= 0 && !hasPerSize)) return;
 
     const prod = products.find(p => p.id === form.product_id);
     const isSolado = normalizeForSearch(prod?.category).includes('solado') || normalizeForSearch(prod?.category).includes('sola');
@@ -5670,6 +5733,7 @@ function SheetBOM({ sheetId, safetyPct, onSafetyChange, shoeCategory }: {
               supplier: '',
               notes: `Automático via Solado ${prod?.name}`,
               sizes: '',
+              consumption_sector: suggestedConsumptionSector(rep.category),
             });
           }
 
@@ -5709,6 +5773,7 @@ function SheetBOM({ sheetId, safetyPct, onSafetyChange, shoeCategory }: {
         supplier: m.supplier || '',
         notes: m.notes || '',
         sizes: m.sizes || '',
+        consumption_sector: m.consumption_sector || '',
       },
     });
   };
@@ -5725,10 +5790,10 @@ function SheetBOM({ sheetId, safetyPct, onSafetyChange, shoeCategory }: {
 
   const handleCopyFrom = async (sourceSheetId: string) => {
     const { data } = await supabase.from('sheet_materials')
-      .select('product_id, group_id, quantity_per_unit, color, width, weight, supplier, notes, sizes')
+      .select('product_id, group_id, quantity_per_unit, color, width, weight, supplier, notes, sizes, consumption_sector')
       .eq('sheet_id', sourceSheetId);
     if (!data?.length) { toast.error('Ficha sem materiais'); return; }
-    const toAdd = data.filter(m => !usedProductIds.has(m.product_id)).map(m => ({ ...m, sizes: m.sizes || '' }));
+    const toAdd = (data as any[]).filter(m => !usedProductIds.has(m.product_id)).map(m => ({ ...m, sizes: m.sizes || '' }));
     if (!toAdd.length) { toast.info('Todos os materiais já estão na ficha'); return; }
     bulkAdd.mutate({ sheetId, materials: toAdd });
     setShowCopyDialog(false);
@@ -5881,6 +5946,16 @@ function SheetBOM({ sheetId, safetyPct, onSafetyChange, shoeCategory }: {
               <Label className="text-xs">Fornecedor</Label>
               <Input value={form.supplier} onChange={e => setForm(f => ({ ...f, supplier: e.target.value }))} className="mt-1 h-9 text-sm" />
             </div>
+            <div>
+              <Label className="text-xs">Setor de consumo <span className="text-destructive">*</span></Label>
+              <Select value={form.consumption_sector} onValueChange={v => setForm(f => ({ ...f, consumption_sector: v }))}>
+                <SelectTrigger className="mt-1 h-9 text-sm"><SelectValue placeholder="Selecione o setor" /></SelectTrigger>
+                <SelectContent>
+                  {CONSUMPTION_SECTORS.map(sector => <SelectItem key={sector} value={sector}>{sector}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <p className="mt-1 text-xs text-muted-foreground">Baixa no início deste setor. A sugestão pode ser ajustada.</p>
+            </div>
           </div>
 
           {/* Per-size consumption grid */}
@@ -5947,7 +6022,7 @@ function SheetBOM({ sheetId, safetyPct, onSafetyChange, shoeCategory }: {
 
           <div className="flex justify-end gap-2 pt-2">
             <Button size="sm" variant="outline" onClick={() => { setAdding(false); setForm(emptyMaterialForm); }}>Cancelar</Button>
-            <Button size="sm" onClick={handleAdd} disabled={!form.product_id || (form.quantity_per_unit <= 0 && Object.values(form.consumption_per_size || {}).every(v => Number(v) <= 0)) || addMaterial.isPending}>
+            <Button size="sm" onClick={handleAdd} disabled={!form.product_id || !form.consumption_sector || (form.quantity_per_unit <= 0 && Object.values(form.consumption_per_size || {}).every(v => Number(v) <= 0)) || addMaterial.isPending}>
               {addMaterial.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Adicionar'}
             </Button>
           </div>
@@ -5969,6 +6044,7 @@ function SheetBOM({ sheetId, safetyPct, onSafetyChange, shoeCategory }: {
                 <TableHead className="text-xs text-right">Qtd/Par</TableHead>
                 <TableHead className="text-xs text-center">Rend.</TableHead>
                 <TableHead className="text-xs">Forn.</TableHead>
+                <TableHead className="text-xs">Setor</TableHead>
                 <TableHead className="text-xs text-right">Custo/Par</TableHead>
                 <TableHead className="w-16"></TableHead>
               </TableRow>
@@ -5989,7 +6065,7 @@ function SheetBOM({ sheetId, safetyPct, onSafetyChange, shoeCategory }: {
                     lastSection = section;
                     rows.push(
                       <TableRow key={`section-${section}`} className="border-t-2 border-primary/20">
-                        <TableCell colSpan={11} className="py-2 bg-primary/5">
+                        <TableCell colSpan={12} className="py-2 bg-primary/5">
                           <div className="flex items-center gap-2">
                             <span className="text-xs font-bold uppercase tracking-wider text-primary">
                               {section === 'base' ? '📐 Base do Solado — Consumo padrão' : '🎨 Depende do Modelo'}
@@ -6005,7 +6081,7 @@ function SheetBOM({ sheetId, safetyPct, onSafetyChange, shoeCategory }: {
                   
                   rows.push(
                     <TableRow key={`cat-${cat}`} className="bg-muted/20">
-                      <TableCell colSpan={11} className="py-1.5">
+                      <TableCell colSpan={12} className="py-1.5">
                         <div className="flex items-center gap-2">
                           <CatIcon className={`h-3.5 w-3.5 ${catConfig?.color || 'text-muted-foreground'}`} />
                           <span className="text-xs font-semibold">{catConfig?.label || cat}</span>
@@ -6105,6 +6181,7 @@ function SheetBOM({ sheetId, safetyPct, onSafetyChange, shoeCategory }: {
                           {pairsPerPlate > 0 ? `~${pairsPerPlate}p` : '—'}
                         </TableCell>
                         <TableCell className="text-xs">{m.supplier || '—'}</TableCell>
+                        <TableCell className="text-xs"><Badge variant={(m as any).consumption_sector ? 'outline' : 'destructive'} className="text-[10px]">{(m as any).consumption_sector || 'Revisar'}</Badge></TableCell>
                         <TableCell className="text-xs text-right font-mono">{formatCurrency(costPair)}</TableCell>
                         <TableCell>
                           <div className="flex gap-1">
@@ -6190,6 +6267,13 @@ function SheetBOM({ sheetId, safetyPct, onSafetyChange, shoeCategory }: {
                 <div>
                   <Label className="text-xs">Fornecedor</Label>
                   <Input value={editing.data.supplier} onChange={e => setEditing(ed => ed ? { ...ed, data: { ...ed.data, supplier: e.target.value } } : null)} className="mt-1 h-9 text-sm" />
+                </div>
+                <div>
+                  <Label className="text-xs">Setor de consumo <span className="text-destructive">*</span></Label>
+                  <Select value={editing.data.consumption_sector} onValueChange={v => setEditing(ed => ed ? { ...ed, data: { ...ed.data, consumption_sector: v } } : null)}>
+                    <SelectTrigger className="mt-1 h-9 text-sm"><SelectValue placeholder="Selecione o setor" /></SelectTrigger>
+                    <SelectContent>{CONSUMPTION_SECTORS.map(sector => <SelectItem key={sector} value={sector}>{sector}</SelectItem>)}</SelectContent>
+                  </Select>
                 </div>
               </div>
               
