@@ -27,7 +27,7 @@ export const STRAP_YIELD_DEFAULTS = {
 export interface StrapYieldInput {
   /** `Lm` — largura útil do material (mm). */
   larguraMaterialMm: number;
-  /** `Lt` — largura da tira (mm). */
+  /** `Lt` — largura da BANDA cortada no material (mm), não a medida final da tira. */
   larguraTiraMm: number;
   /** `P` — perda de processo (%). */
   perdaPct: number;
@@ -83,9 +83,9 @@ export function computeStrapYield(input: StrapYieldInput): StrapYieldResult {
   const Cr = Number(input.comprimentoRoloM) || 0;
 
   if (!(Lm > 0)) return fail('Informe a largura útil do material.');
-  if (!(Lt > 0)) return fail('Informe a largura da tira.');
+  if (!(Lt > 0)) return fail('Informe a largura da banda de corte.');
   if (!(Cr > 0)) return fail('Informe o comprimento do rolo.');
-  if (Lt >= Lm) return fail('A largura da tira é maior que a largura do material.');
+  if (Lt > Lm) return fail('A largura da banda de corte é maior que a largura do material.');
   if (P < 0 || P >= 100) return fail('A perda deve estar entre 0 e 100%.');
 
   const fator = 1 - P / 100;
@@ -118,7 +118,7 @@ export function computeStrapYield(input: StrapYieldInput): StrapYieldResult {
 /* ─────────────────────────── Cálculo inverso ─────────────────────────────────
  * "Quanto preciso": dada a METRAGEM DE TIRA PRONTA desejada, quanto da LARGURA do
  * rolo é preciso cortar — e, de contexto, quanto material linear e quantos rolos.
- * Mesma geometria do direto (largura do material, largura da tira, perda), só que
+ * Mesma geometria do direto (largura do material, largura da banda de corte, perda), só que
  * resolvida ao contrário.
  *
  * O corte físico fixa o COMPRIMENTO do rolo e fatia uma FAIXA da largura: cada tira
@@ -178,13 +178,13 @@ export interface StrapMaterialNeededResult {
    * Arredonda PRA CIMA ao nº inteiro de tiras (senão falta metragem) e recalcula
    * tudo em cima disso. É o que a UI mostra como resposta; os campos exatos acima
    * viram o detalhamento do cálculo. */
-  /** `ceil(tirasNecessarias)` — tiras inteiras a cortar. RESPOSTA REAL. */
+  /** `ceil(tirasNecessarias)` — bandas inteiras a cortar. RESPOSTA REAL. */
   tirasInteiras: number;
-  /** `tirasInteiras × Lt` — largura real a cortar (mm), múltiplo da largura da tira. */
+  /** `tirasInteiras × Lt` — largura real a cortar (mm), múltiplo da largura da banda. */
   larguraRealMm: number;
   /** `larguraRealMm ÷ Lm × 100` — % da largura do rolo, na largura real. */
   larguraRealPctDoRolo: number;
-  /** `tirasInteiras × Cr` — soma de todas as tiras inteiras, em metros brutos. */
+  /** `tirasInteiras × Cr` — soma de todas as bandas inteiras, em metros brutos. */
   tiraBrutaRealM: number;
   /** `tiraBrutaRealM × (1−P/100)` — metros de tira aproveitáveis de fato. */
   tiraLiquidaRealM: number;
@@ -194,7 +194,9 @@ export interface StrapMaterialNeededResult {
   materialRealM: number;
   /** `larguraRealMm ÷ Lm` — rolos necessários (fracionário) na largura real. */
   rolosRealNecessarios: number;
-  /** `ceil(rolosRealNecessarios)` — rolos inteiros a abrir, na largura real. */
+  /** Rolos físicos a abrir: `ceil(tirasInteiras ÷ floor(Lm ÷ Lt))`. Diferente de
+   *  `ceil(rolosRealNecessarios)` quando a sobra lateral de cada rolo não comporta
+   *  outra banda. */
   rolosRealInteiros: number;
   /** `larguraCortarMm ÷ Lm × 100` — % da largura do rolo ocupada pela faixa
    *  (= `rolosNecessarios × 100`). Pode passar de 100 quando exige mais de 1 rolo. */
@@ -205,11 +207,12 @@ export interface StrapMaterialNeededResult {
   materialNecessarioM: number;
   /** `material ÷ comprimento do rolo` = `larguraCortarMm ÷ Lm` — rolos (fracionário). */
   rolosNecessarios: number;
-  /** `ceil(rolosNecessarios)` — rolos inteiros a abrir. */
+  /** Alias legado de `rolosRealInteiros`: rolos físicos a abrir depois de arredondar
+   *  as bandas e respeitar a capacidade inteira de cada rolo. */
   rolosInteiros: number;
   /** `Cml × material` — custo total do material necessário (exato). `null` sem custo. */
   custoMaterialNecessario: number | null;
-  /** `Cml × materialRealM` — custo do material de fato consumido (tiras inteiras). */
+  /** `Cml × materialRealM` — custo do material de fato consumido (bandas inteiras). */
   custoMaterialReal: number | null;
   /** `Cml ÷ taxa líquida` — custo de material por metro de tira (R$/m). `null` sem custo. */
   custoPorMetroTira: number | null;
@@ -263,9 +266,9 @@ export function computeStrapMaterialNeeded(input: StrapMaterialNeededInput): Str
   const T = Number(input.tiraDesejadaM) || 0;
 
   if (!(Lm > 0)) return failNeeded('Informe a largura útil do material.');
-  if (!(Lt > 0)) return failNeeded('Informe a largura da tira.');
+  if (!(Lt > 0)) return failNeeded('Informe a largura da banda de corte.');
   if (!(T > 0)) return failNeeded('Informe quantos metros de tira você precisa.');
-  if (Lt >= Lm) return failNeeded('A largura da tira é maior que a largura do material.');
+  if (Lt > Lm) return failNeeded('A largura da banda de corte é maior que a largura do material.');
   if (!(Cr > 0)) return failNeeded('Informe o comprimento do rolo (define a largura a cortar).');
   if (P < 0 || P >= 100) return failNeeded('A perda deve estar entre 0 e 100%.');
 
@@ -292,14 +295,20 @@ export function computeStrapMaterialNeeded(input: StrapMaterialNeededInput): Str
   const tiraLiquidaRealM = tiraBrutaRealM * fator;
   const sobraTiraM = Math.max(0, tiraLiquidaRealM - T);
   const materialRealM = Lm > 0 ? (larguraRealMm / Lm) * Cr : 0;
+  // `rolosRealNecessarios` é equivalência de ÁREA/material (pode ser fracionária).
+  // Para saber quantos rolos FÍSICOS abrir, respeita a capacidade inteira de bandas
+  // de cada rolo. Somar todas as larguras e dividir por Lm reaproveitaria, de forma
+  // impossível, as sobras laterais de rolos diferentes (137 bandas de 20 mm em
+  // 1370 mm: equivalem a 2 rolos, mas cabem 68 por rolo e exigem 3 rolos físicos).
   const rolosRealNecessarios = Lm > 0 ? larguraRealMm / Lm : 0;
-  const rolosRealInteiros = Math.ceil(rolosRealNecessarios);
+  const bandasPorRolo = Math.floor(Lm / Lt);
+  const rolosRealInteiros = bandasPorRolo > 0 ? Math.ceil(tirasInteiras / bandasPorRolo) : 0;
 
   // Aviso é sobre o que se corta DE FATO (largura real, já arredondada).
   const passaLargura = larguraRealMm > Lm;
 
   const rolosNecessarios = materialNecessarioM / Cr;
-  const rolosInteiros = Math.ceil(rolosNecessarios);
+  const rolosInteiros = rolosRealInteiros;
 
   const result: StrapMaterialNeededResult = {
     valid: true,
