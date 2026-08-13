@@ -5,7 +5,7 @@ import { toast } from 'sonner';
 import { useQuery, useIsFetching, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
-import { Printer, ArrowLeft, Stack as Layers, Cards } from '@phosphor-icons/react';
+import { Printer, ArrowLeft, Stack as Layers, Cards, FileText, Check, ArrowsClockwise, CircleNotch as Loader2, Warning as AlertTriangle } from '@phosphor-icons/react';
 import OperatorWorkSheet from '@/components/production/OperatorWorkSheet';
 import { PalmilhaWorkSheet, type PalmilhaGroup } from '@/components/production/PalmilhaWorkSheet';
 import { CartaoLote } from '@/components/production/CartaoLote';
@@ -54,6 +54,13 @@ import { useAviamentoPmgDefault } from '@/hooks/useAviamentoPmgDefault';
  * `break-inside: avoid` mantém o cartão inteiro e a folha enche até o fim.
  */
 const cartaoStyles = `
+  @media screen {
+    /* A prévia do modo cartão precisa mostrar o mesmo conjunto que será
+       emitido. Antes as fichas A4 continuavam visíveis acima dos cartões e
+       só sumiam no @media print, induzindo a uma conferência falsa. */
+    .cartao-grid .pagi-sheet,
+    .cartao-grid .page-break { display: none !important; }
+  }
   @media print {
     @page { size: A4 landscape; margin: 0; }
     /* O paginador explícito e os maços de ficha não participam deste modo. */
@@ -110,8 +117,17 @@ const printStyles = `
      empilhados com contorno + respiro. Em print as regras do @media print
      abaixo zeram margem/sombra. */
   .pagi-page {
-    box-shadow: 0 0 0 1px #d4d4d4;
+    box-shadow: 0 0 0 1px hsl(var(--border)), 0 14px 32px hsl(var(--foreground) / 0.08);
     margin-bottom: 10px;
+  }
+
+  /* Mesa de conferência: distingue a interface do papel sem tocar nas
+     dimensões internas medidas pelo PaginatedSheet. */
+  .worksheet-preview-shell {
+    background: hsl(var(--muted) / 0.35);
+    border: 1px solid hsl(var(--border));
+    padding: clamp(0.5rem, 2vw, 1.5rem);
+    overflow-x: auto;
   }
 
   /* ── WYSIWYG (2026-06-12): tela = papel ──
@@ -293,6 +309,18 @@ const printStyles = `
       width: 100%;
       margin: 0 !important;
       padding: 0 !important;
+    }
+
+    /* A mesa de conferência é só chrome de tela. Em print ela fica neutra e
+       não pode deslocar a primeira página nem criar área física extra. */
+    .worksheet-preview-shell {
+      width: auto !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      border: 0 !important;
+      background: transparent !important;
+      box-shadow: none !important;
+      overflow: visible !important;
     }
 
     /* Cada ficha tem w-[210mm] p-[8mm] no <div> raiz (tamanho real pra
@@ -2974,6 +3002,8 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
   }, [activeSectors, palmilhaGroups, solagemData, silkMontageGroups, aviamentoGroups, groupedWorksheets, acabamentoOrders.length, expedicaoGroups, reportGroups]);
 
   const today = new Date().toLocaleDateString('pt-BR');
+  const printPairCount = printOrders.reduce((total, order) => total + (Number(order.total_pairs) || 0), 0);
+  const printBlocked = activeSectors.size === 0 || sheetCount === 0 || initialQueriesLoading || failedQueries > 0;
 
   return (
     /* print:p-0 print:space-y-0 — sem isso o p-6 (24px) + a margem do
@@ -2981,146 +3011,164 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
        de deslocamento ACIMA da primeira folha em print (visibility:hidden
        preserva layout; o reset de @media print só alcança body>div/main>div)
        → a 1ª página de TODO maço vazava o pé pra uma folha em branco. */
-    <div className="p-6 space-y-6 print:p-0 print:space-y-0">
+    <div className="space-y-5 p-3 sm:p-6 print:p-0 print:space-y-0">
       <style>{printStyles}</style>
       {/* Modo CARTÃO: A4 PAISAGEM com 3 colunas de cartões de 99mm — 12 por
           folha. Injetado SÓ nesse modo porque troca a orientação do @page,
           que é global. Ver CartaoLote.tsx pro racional do formato. */}
       {cartao && <style>{cartaoStyles}</style>}
 
-      {/* ── Toolbar (no-print) ── */}
-      <div className="no-print bg-muted/40 p-4 rounded-lg border space-y-3">
-        <div className="flex items-center justify-between gap-4 flex-wrap">
-          <div className="flex items-center gap-3">
-            <Button variant="ghost" onClick={onBack}><ArrowLeft className="mr-2 h-4 w-4" /> Voltar</Button>
-            <div className="h-8 w-[1px] bg-border" />
-            <h2 className="font-bold text-lg">Imprimir Fichas</h2>
-            <span className="text-sm text-muted-foreground">
-              {printOrders.length} OP(s) · {activeSectors.size} setor{activeSectors.size === 1 ? '' : 'es'} · {sheetCount} ficha{sheetCount === 1 ? '' : 's'}
-              {initialQueriesLoading && <span className="ml-2 text-amber-600">· carregando dados…</span>}
-            </span>
-            {failedQueries > 0 && (
-              <span className="text-xs text-red-600 bg-red-500/10 border border-red-500/30 rounded px-2 py-1">
-                ⚠ {failedQueries} consulta{failedQueries > 1 ? 's' : ''} de dados {failedQueries > 1 ? 'falharam' : 'falhou'} — fichas podem sair incompletas (cliente, solado ou consumo). Recarregue a página antes de imprimir.
-              </span>
-            )}
+      {/* ── Painel de conferência (no-print) ── */}
+      <section className="no-print relative z-30 border border-l-4 border-border border-l-primary bg-background shadow-sm md:sticky md:top-3">
+        <div className="grid gap-4 p-4 lg:grid-cols-[minmax(260px,1fr)_auto_auto] lg:items-center">
+          <div className="flex min-w-0 items-start gap-3">
+            <Button variant="ghost" size="icon" onClick={onBack} aria-label="Voltar à seleção de OPs" className="shrink-0">
+              <ArrowLeft className="h-4 w-4" weight="bold" />
+            </Button>
+            <div className="min-w-0">
+              <p className="eyebrow">ETAPA 02 · CONFERÊNCIA</p>
+              <h1 className="mt-0.5 font-display text-2xl uppercase leading-none tracking-wide">
+                {cartao ? 'Cartões de lote' : 'Fichas de operador'}
+              </h1>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Revise a rota e o conteúdo antes de emitir o arquivo.
+              </p>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={markAllSectors}
-              className="text-xs text-primary hover:underline px-2 py-1"
-            >
-              Marcar todos
-            </button>
-            <span className="text-xs text-muted-foreground">·</span>
-            <button
-              type="button"
-              onClick={clearSectors}
-              className="text-xs text-muted-foreground hover:underline px-2 py-1"
-            >
-              Limpar
-            </button>
-            {/* Saída invertida: emite as páginas da última pra primeira SÓ no
-                print (preview em tela não muda) — compensa impressora que
-                empilha face pra cima. Vale também no modo cartão: os cartões
-                recortáveis reordenados não fazem
-                diferença (vão pra tesoura). */}
+
+          <dl className="grid grid-cols-3 divide-x divide-border border-y border-border/70 py-2 lg:border-y-0 lg:py-0">
+            <div className="px-3 text-center">
+              <dt className="eyebrow">OPS</dt>
+              <dd className="font-mono text-sm font-bold tabular-nums">{printOrders.length}</dd>
+            </div>
+            <div className="px-3 text-center">
+              <dt className="eyebrow">PARES</dt>
+              <dd className="font-mono text-sm font-bold tabular-nums">{printPairCount.toLocaleString('pt-BR')}</dd>
+            </div>
+            <div className="px-3 text-center">
+              <dt className="eyebrow">FICHAS</dt>
+              <dd className="font-mono text-sm font-bold tabular-nums">{sheetCount}</dd>
+            </div>
+          </dl>
+
+          <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+            <div className="inline-flex border border-border bg-muted/30 p-0.5" aria-label="Formato da prévia">
+              <button
+                type="button"
+                onClick={() => setCartao(false)}
+                aria-pressed={!cartao}
+                className={`inline-flex h-8 items-center gap-1.5 px-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${!cartao ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+              >
+                <FileText className="h-3.5 w-3.5" /> A4
+              </button>
+              <button
+                type="button"
+                onClick={() => setCartao(true)}
+                aria-pressed={cartao}
+                className={`inline-flex h-8 items-center gap-1.5 px-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${cartao ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                title="Cartões recortáveis por lote de setor, 12 por folha A4 horizontal"
+              >
+                <Cards className="h-3.5 w-3.5" /> Cartões
+              </button>
+            </div>
+
             <button
               type="button"
               onClick={toggleReverseOutput}
               aria-pressed={reverseOutput}
               title={reverseOutput
-                ? 'LIGADO: as páginas saem da última pra primeira, pra pilha da impressora (face pra cima) ler na ordem certa. Clique pra desligar se a sua impressora já empilha na ordem correta.'
-                : 'DESLIGADO: as páginas saem na ordem do documento. Ligue se o maço impresso está saindo de trás pra frente.'}
-              className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
-                reverseOutput
-                  ? 'bg-primary text-primary-foreground border-primary'
-                  : 'bg-background text-muted-foreground border-border hover:border-primary/40 hover:text-foreground'
-              }`}
+                ? 'Ligado: emite da última página para a primeira, adequado à impressora que empilha com a face para cima.'
+                : 'Desligado: emite na ordem normal do documento.'}
+              className={`inline-flex h-9 items-center gap-1.5 border px-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${reverseOutput ? 'border-primary/40 bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:text-foreground'}`}
             >
-              Saída invertida {reverseOutput ? '✓' : ''}
+              <ArrowsClockwise className="h-3.5 w-3.5" /> Inverter saída
+              {reverseOutput && <Check className="h-3.5 w-3.5" weight="bold" />}
             </button>
-            {/* failedQueries > 0 também bloqueia: query de technical_sheets em
-                erro zera sheetById e o filtro de roteiro/flags falha ABERTO —
-                OPs entram em setores errados e Corte Forração some. O banner
-                vermelho acima explica e pede recarga. */}
-            <Button onClick={() => { printTabRef.current = openPrintTab(); void printWith(); }} className="gap-2" disabled={activeSectors.size === 0 || sheetCount === 0 || initialQueriesLoading || failedQueries > 0} title={failedQueries > 0 ? 'Consultas de dados falharam — recarregue a página antes de imprimir' : undefined}>
-              <Printer className="h-4 w-4" /> Imprimir {cartao ? 'cartões' : 'fichas'}
-            </Button>
-            {/* Alternador de MODO (não imprime). O preview passa a refletir o
-                modo — antes o cartão só existia durante o window.print() e o
-                dono mandava imprimir sem nunca ter visto o resultado. */}
+
             <Button
-              variant={cartao ? 'default' : 'outline'}
-              onClick={() => setCartao(v => !v)}
+              onClick={() => { printTabRef.current = openPrintTab(); void printWith(); }}
               className="gap-2"
-              title={cartao
-                ? 'Voltar pras fichas A4 por setor'
-                : 'Ver como cartões recortáveis por lote de setor (99 × ~51mm, 12 por folha A4 na horizontal)'}
+              disabled={printBlocked}
+              title={failedQueries > 0 ? 'Consultas de dados falharam — recarregue a página antes de imprimir' : undefined}
             >
-              <Cards className="h-4 w-4" /> {cartao ? 'Ver fichas' : 'Ver cartões'}
+              {initialQueriesLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+              Emitir {cartao ? 'cartões' : 'PDF'}
             </Button>
           </div>
         </div>
-        {/* Chips de setor — clica pra ativar/desativar; conteúdo atualiza ao vivo */}
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <Layers className="h-3.5 w-3.5 text-muted-foreground mr-1" />
-          {SECTORS.map(s => {
-            const active = activeSectors.has(s);
-            return (
-              <button
-                key={s}
-                type="button"
-                onClick={() => toggleSector(s)}
-                className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
-                  active
-                    ? 'bg-primary text-primary-foreground border-primary'
-                    : 'bg-background text-muted-foreground border-border hover:border-primary/40 hover:text-foreground'
-                }`}
-                aria-pressed={active}
-              >
-                {sectorLabel(s)}
-              </button>
-            );
-          })}
+
+        {failedQueries > 0 && (
+          <div className="flex items-start gap-2 border-y border-destructive/30 bg-destructive/10 px-4 py-2.5 text-xs text-destructive" role="alert">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" weight="fill" />
+            <span><strong>{failedQueries} consulta{failedQueries > 1 ? 's falharam' : ' falhou'}.</strong> Cliente, solado ou consumo podem sair incompletos. Recarregue a página antes de emitir.</span>
+          </div>
+        )}
+
+        {/* Trilho de produção: elemento de assinatura da tela e seletor real
+            dos setores. A sequência visual espelha o percurso da ficha. */}
+        <div className="border-t border-border/70 px-4 py-3">
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <Layers className="h-4 w-4 text-primary" />
+              <p className="text-xs font-bold uppercase tracking-wide">Rota de produção</p>
+              <span className="font-mono text-[10px] text-muted-foreground">{activeSectors.size}/{SECTORS.length}</span>
+            </div>
+            <div className="flex items-center gap-1 text-xs">
+              <button type="button" onClick={markAllSectors} className="px-2 py-1 font-semibold text-primary hover:underline">Todos</button>
+              <span className="text-border">/</span>
+              <button type="button" onClick={clearSectors} className="px-2 py-1 text-muted-foreground hover:text-foreground hover:underline">Limpar</button>
+            </div>
+          </div>
+          <div className="overflow-x-auto pb-1">
+            <div className="flex min-w-max" role="group" aria-label="Setores incluídos na impressão">
+              {SECTORS.map((sector, index) => {
+                const active = activeSectors.has(sector);
+                return (
+                  <button
+                    key={sector}
+                    type="button"
+                    onClick={() => toggleSector(sector)}
+                    className={`group relative flex h-14 w-36 items-center gap-2 border-y border-r px-2.5 text-left transition-colors first:border-l focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${active ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-background text-muted-foreground hover:bg-muted/50 hover:text-foreground'} ${sector === 'Relatório Gerencial' ? 'ml-3 border-l' : ''}`}
+                    aria-pressed={active}
+                  >
+                    <span className={`flex h-7 w-7 shrink-0 items-center justify-center border font-mono text-[10px] font-bold ${active ? 'border-primary-foreground/50' : 'border-border bg-muted/40'}`}>
+                      {String(index + 1).padStart(2, '0')}
+                    </span>
+                    <span className="text-[11px] font-semibold leading-tight">{sectorLabel(sector)}</span>
+                    {active && <Check className="absolute right-1.5 top-1.5 h-3 w-3" weight="bold" aria-hidden="true" />}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </div>
-        {/* Filtros de impressão: faixa (infantil/adulto, por numeração) + solado(s) */}
-        <div className="flex items-start gap-x-4 gap-y-1.5 flex-wrap">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-xs text-muted-foreground mr-1">Faixa:</span>
-            {(['all', 'infantil', 'adulto'] as const).map(f => (
+
+        {/* Filtros de conteúdo: secundários à rota, mas sempre visíveis. */}
+        <div className="flex flex-wrap items-start gap-x-6 gap-y-2 border-t border-border/70 bg-muted/20 px-4 py-3">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="eyebrow mr-1">FAIXA</span>
+            {(['all', 'infantil', 'adulto'] as const).map(filter => (
               <button
-                key={f}
+                key={filter}
                 type="button"
-                onClick={() => setSizeFilter(f)}
-                className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
-                  sizeFilter === f
-                    ? 'bg-primary text-primary-foreground border-primary'
-                    : 'bg-background text-muted-foreground border-border hover:border-primary/40 hover:text-foreground'
-                }`}
-                aria-pressed={sizeFilter === f}
+                onClick={() => setSizeFilter(filter)}
+                className={`border px-2.5 py-1 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${sizeFilter === filter ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-background text-muted-foreground hover:text-foreground'}`}
+                aria-pressed={sizeFilter === filter}
               >
-                {f === 'all' ? 'Todas' : f === 'infantil' ? 'Infantil' : 'Adulto'}
+                {filter === 'all' ? 'Todas' : filter === 'infantil' ? 'Infantil' : 'Adulto'}
               </button>
             ))}
             {sizeFilter !== 'all' && (
-              <span className="text-[11px] text-amber-600">
-                OP de grade mista entra INTEIRA (tarja MISTO) — o filtro não recorta a grade.
-              </span>
+              <span className="ml-1 text-[11px] text-warning">Grade mista entra inteira e recebe a tarja MISTO.</span>
             )}
           </div>
           {soleOptions.length > 0 && (
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="text-xs text-muted-foreground mr-1">Solado:</span>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="eyebrow mr-1">SOLADO</span>
               <button
                 type="button"
                 onClick={() => setSoleFilter(new Set())}
-                className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
-                  soleFilter.size === 0
-                    ? 'bg-primary text-primary-foreground border-primary'
-                    : 'bg-background text-muted-foreground border-border hover:border-primary/40 hover:text-foreground'
-                }`}
+                className={`border px-2.5 py-1 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${soleFilter.size === 0 ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-background text-muted-foreground hover:text-foreground'}`}
                 aria-pressed={soleFilter.size === 0}
               >
                 Todos
@@ -3131,16 +3179,12 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
                   <button
                     key={sole}
                     type="button"
-                    onClick={() => setSoleFilter(prev => {
-                      const n = new Set(prev);
-                      if (n.has(sole)) n.delete(sole); else n.add(sole);
-                      return n;
+                    onClick={() => setSoleFilter(previous => {
+                      const next = new Set(previous);
+                      if (next.has(sole)) next.delete(sole); else next.add(sole);
+                      return next;
                     })}
-                    className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
-                      active
-                        ? 'bg-primary text-primary-foreground border-primary'
-                        : 'bg-background text-muted-foreground border-border hover:border-primary/40 hover:text-foreground'
-                    }`}
+                    className={`border px-2.5 py-1 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${active ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-background text-muted-foreground hover:text-foreground'}`}
                     aria-pressed={active}
                   >
                     {sole}
@@ -3150,9 +3194,10 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
             </div>
           )}
         </div>
-      </div>
+      </section>
 
       {/* ── Print area ── */}
+      <div className="worksheet-preview-shell">
       <div className={`print-area space-y-0${cartao ? ' cartao-grid' : ''}`}>
       {/* Saída invertida (2026-07-24): durante o print, o provider liga a
           inversão nas páginas de cada PaginatedSheet e o ReversibleStack
@@ -3951,6 +3996,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
         ))}
       </ReversibleStack>
       </ReversePrintContext.Provider>
+      </div>
       </div>
     </div>
   );

@@ -384,8 +384,9 @@ export const PaginatedSheet = ({ sectorLabel, blocks, pageStyle, minScale }: Pag
             ...pageStyle,
           }}
         >
-          {/* Faixa de cabeçalho — TODA página, inclusive a 1ª. Setor à
-              esquerda, "N/TOTAL" à direita (contagem dentro da ficha). */}
+          {/* Faixa de cabeçalho — TODA página, inclusive a 1ª. O marcador
+              quadrado facilita localizar o início visual da faixa quando o
+              maço está sobre a bancada, sem mudar sua altura física. */}
           <div
             className="pagi-page-head"
             style={{
@@ -405,11 +406,17 @@ export const PaginatedSheet = ({ sectorLabel, blocks, pageStyle, minScale }: Pag
               overflow: 'hidden',
             }}
           >
-            <span style={{ fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {sectorLabel}
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, overflow: 'hidden' }}>
+              <span
+                aria-hidden="true"
+                style={{ width: 6, height: 6, flex: '0 0 auto', background: '#000', display: 'inline-block' }}
+              />
+              <span style={{ fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                Ficha de operador · {sectorLabel}
+              </span>
             </span>
             <span style={{ fontWeight: 600, flexShrink: 0 }}>
-              {page.startPage}/{totalPages}
+              Folha {page.startPage} / {totalPages}
             </span>
           </div>
           {page.blockIdxs.map((bi, j) => (

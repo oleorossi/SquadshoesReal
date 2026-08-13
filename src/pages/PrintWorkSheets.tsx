@@ -4,14 +4,14 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrderLotsBatch } from '@/hooks/useOrderLots';
 import PrintWorkSheetsPage, { SECTORS } from '@/components/production/PrintWorkSheetsPage';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { SearchInput } from '@/components/ui/search-input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Printer, MagnifyingGlass as Search, CircleNotch as Loader2, FileText, Funnel as Filter, Baby, Warning as AlertTriangle, Cards } from '@phosphor-icons/react';
+import { Printer, MagnifyingGlass as Search, CircleNotch as Loader2, FileText, Funnel as Filter, Baby, Warning as AlertTriangle, Cards, ArrowRight, Stack } from '@phosphor-icons/react';
 import { EmptyState } from '@/components/ui/empty-state';
 import { toast } from 'sonner';
 import { printOperatorFichasFromRows } from '@/lib/printOperatorFichas';
@@ -263,86 +263,141 @@ export default function PrintWorkSheets() {
   }
 
   const totalPairs = selectedOrders.reduce((s, o) => s + (o.total_pairs ?? 0), 0);
+  const selectedLotCount = selectedOrders.reduce((total, order) => {
+    const lots = lotsMap?.get(order.id);
+    return total + Math.max(1, lots?.length ?? 1);
+  }, 0);
+
+  const openPreview = (asCartao: boolean) => {
+    setOpenAsCartao(asCartao);
+    setShowPrintView(true);
+  };
+
+  const printQuickOperatorSheets = async () => {
+    try {
+      await printOperatorFichasFromRows(selectedOrders);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Falha ao gerar fichas de operador.');
+    }
+  };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5 pb-24 md:pb-6">
       <EditorialPageHeader
-        sectionLabel="PRODUÇÃO · IMPRESSÃO"
-        title="Imprimir Fichas de Produção"
-        description="Selecione as OPs e escolha qual ficha gerar: por setor (Corte/Costura/Silk/Montagem/Solagem/Acabamento), Expedição agrupada por cliente, ou Relatório Gerencial completo do PV."
-        actions={
-        <div className="flex items-center gap-2 flex-wrap">
-          {/* Atalho "Selecionar tudo e imprimir": marca TODAS as OPs filtradas
-              + abre a tela de print em 1 clique. Pedido do user 18/05/2026.
-              Respeita filtros ativos (status + busca), só seleciona o que
-              está visível na lista filtrada. */}
-          <Button
-            variant="outline"
-            disabled={filtered.length === 0}
-            onClick={() => {
-              setSelectedIds(new Set(filtered.map(r => r.id)));
-              setOpenAsCartao(false);
-              setShowPrintView(true);
-            }}
-            className="gap-2"
-            title="Marca todas as OPs filtradas e abre direto a tela de impressão"
-          >
-            <FileText className="h-4 w-4" />
-            Selecionar tudo e imprimir ({filtered.length})
-          </Button>
-          {/* Ficha de Operador (Corte Forração/Aviamento/Montagem) das OPs selecionadas —
-              gera direto o A4: N fichas repetidas por fornada de 12 pares, 2 vias cada.
-              Pula setor que a referência não tem na ficha técnica. */}
-          <Button
-            variant="outline"
-            disabled={selectedOrders.length === 0}
-            onClick={async () => {
-              try { await printOperatorFichasFromRows(selectedOrders); }
-              catch (err: any) { toast.error(err?.message || 'Falha ao gerar fichas de operador.'); }
-            }}
-            className="gap-2"
-            title="Gera as fichas de operador (Corte Forração / Aviamento / Montagem) das OPs selecionadas — N fichas por fornada de 12 pares, 2 vias; pula setor que a referência não tem"
-          >
-            <Printer className="h-4 w-4" />
-            Ficha de Operador ({selectedOrders.length})
-          </Button>
-          <Button
-            disabled={selectedOrders.length === 0}
-            onClick={() => { setOpenAsCartao(false); setShowPrintView(true); }}
-            className="gap-2"
-            title="Abre a tela com os setores das fichas — você marca/desmarca quais entram no arquivo final"
-          >
-            <FileText className="h-4 w-4" />
-            Gerar fichas ({selectedOrders.length} OP{selectedOrders.length === 1 ? '' : 's'})
-          </Button>
-          {/* Atalho pro modo CARTÃO — abre a mesma tela de impressão já
-              mostrando os cartões recortáveis (95,5 × ~43mm, 12 por folha A4
-              na horizontal). Você ainda marca/desmarca setores e vê o preview
-              antes de mandar imprimir. */}
-          <Button
-            variant="outline"
-            disabled={selectedOrders.length === 0}
-            onClick={() => { setOpenAsCartao(true); setShowPrintView(true); }}
-            className="gap-2"
-            title="Abre a tela de impressão já em modo cartão: 1 cartão recortável por lote de setor, 12 por folha A4 na horizontal"
-          >
-            <Cards className="h-4 w-4" />
-            Cartões de lote ({selectedOrders.length})
-          </Button>
-        </div>
-        }
+        sectionNumber="01"
+        sectionLabel="PRODUÇÃO · CHÃO DE FÁBRICA"
+        title="Fichas de operador"
+        description="Monte um lote confiável, confira a rota dos setores e só então emita as fichas que acompanham a produção."
+        meta={<span>{filtered.length} OP{filtered.length === 1 ? '' : 's'} NO RECORTE ATUAL</span>}
       />
 
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-bold flex items-center gap-2">
-            <Filter className="h-4 w-4 text-primary" /> Filtros e seleção
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="flex gap-2 flex-wrap items-center">
+      {/* Dossiê de emissão: torna a sequência selecionar → conferir → emitir
+          explícita e separa a impressão rápida legada do fluxo principal. */}
+      <Card className="overflow-hidden border-border/70 shadow-sm">
+        <div className="h-1 bg-primary" aria-hidden="true" />
+        <CardContent className="p-0">
+          <div className="grid lg:grid-cols-[1.15fr_0.85fr]">
+            <div className="p-5 sm:p-6 lg:border-r lg:border-border/70">
+              <div className="mb-5 flex items-start justify-between gap-4">
+                <div>
+                  <p className="eyebrow">LOTE DE IMPRESSÃO</p>
+                  <h2 className="mt-1 text-xl font-bold tracking-tight">Manifesto da seleção</h2>
+                  <p className="mt-1 max-w-xl text-sm text-muted-foreground">
+                    O lote abaixo é exatamente o que seguirá para a conferência por setor.
+                  </p>
+                </div>
+                <Stack className="h-7 w-7 shrink-0 text-primary" weight="duotone" aria-hidden="true" />
+              </div>
+
+              <ol className="grid grid-cols-3" aria-label="Etapas da emissão">
+                {[
+                  ['01', 'Selecionar OPs'],
+                  ['02', 'Conferir setores'],
+                  ['03', 'Emitir PDF'],
+                ].map(([number, label], index) => {
+                  const reached = index === 0 || selectedOrders.length > 0;
+                  return (
+                    <li key={number} className="relative min-w-0 pr-2">
+                      {index < 2 && (
+                        <span className={`absolute left-7 right-0 top-3 h-px ${reached ? 'bg-primary/50' : 'bg-border'}`} aria-hidden="true" />
+                      )}
+                      <span className={`relative z-10 inline-flex h-6 min-w-6 items-center justify-center border px-1 font-mono text-[10px] font-bold ${reached ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-background text-muted-foreground'}`}>
+                        {number}
+                      </span>
+                      <span className={`mt-2 block text-[11px] font-semibold leading-tight sm:text-xs ${reached ? 'text-foreground' : 'text-muted-foreground'}`}>
+                        {label}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ol>
+            </div>
+
+            <div className="flex flex-col justify-between bg-muted/25 p-5 sm:p-6">
+              <dl className="grid grid-cols-3 divide-x divide-border">
+                <div className="pr-3">
+                  <dt className="eyebrow">OPS</dt>
+                  <dd className="mt-1 font-display text-3xl leading-none">{selectedOrders.length}</dd>
+                </div>
+                <div className="px-3">
+                  <dt className="eyebrow">PARES</dt>
+                  <dd className="mt-1 font-display text-3xl leading-none">{totalPairs.toLocaleString('pt-BR')}</dd>
+                </div>
+                <div className="pl-3">
+                  <dt className="eyebrow">LOTES</dt>
+                  <dd className="mt-1 font-display text-3xl leading-none">{selectedLotCount}</dd>
+                </div>
+              </dl>
+
+              <div className="mt-6 grid gap-2 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+                <Button
+                  disabled={selectedOrders.length === 0}
+                  onClick={() => openPreview(false)}
+                  className="gap-2 sm:col-span-2 lg:col-span-1 xl:col-span-2"
+                  title="Revise setores e conteúdo antes de emitir o PDF"
+                >
+                  Revisar e gerar fichas
+                  <ArrowRight className="h-4 w-4" weight="bold" />
+                </Button>
+                <Button
+                  variant="outline"
+                  disabled={selectedOrders.length === 0}
+                  onClick={() => openPreview(true)}
+                  className="gap-2"
+                  title="Prévia de cartões recortáveis por lote de setor"
+                >
+                  <Cards className="h-4 w-4" /> Cartões de lote
+                </Button>
+                <Button
+                  variant="ghost"
+                  disabled={selectedOrders.length === 0}
+                  onClick={printQuickOperatorSheets}
+                  className="gap-2 text-muted-foreground"
+                  title="Impressão direta do modelo legado: Corte Forração, Aviamento e Montagem; duas vias por fornada"
+                >
+                  <Printer className="h-4 w-4" /> Rápida · 2 vias
+                </Button>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="border-border/70">
+        <CardContent className="space-y-4 p-4 sm:p-5">
+          <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
+            <div className="flex items-center gap-2 xl:min-w-40">
+              <span className="flex h-8 w-8 items-center justify-center border border-primary/25 bg-primary/10 text-primary">
+                <Filter className="h-4 w-4" />
+              </span>
+              <div>
+                <p className="text-sm font-bold">Selecionar OPs</p>
+                <p className="text-[11px] text-muted-foreground">Refine antes de marcar</p>
+              </div>
+            </div>
+            <div className="flex flex-1 flex-col gap-2 sm:flex-row sm:flex-wrap">
             <SearchInput
-              className="flex-1 min-w-[200px]"
+              className="min-w-[220px] flex-1"
               inputClassName="h-9"
               value={search}
               onChange={setSearch}
@@ -359,7 +414,7 @@ export default function PrintWorkSheets() {
                 setSelectedIds(new Set());
               }}
             >
-              <SelectTrigger className="w-52 h-9">
+              <SelectTrigger className="h-9 w-full sm:w-52">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
@@ -377,7 +432,7 @@ export default function PrintWorkSheets() {
                 setSelectedIds(new Set());
               }}
             >
-              <SelectTrigger className="w-44 h-9" title="Filtra OPs por PV — evita contaminar batch com OPs de outros PVs">
+              <SelectTrigger className="h-9 w-full sm:w-44" title="Filtra OPs por PV — evita contaminar batch com OPs de outros PVs">
                 <SelectValue placeholder="Por PV" />
               </SelectTrigger>
               <SelectContent>
@@ -385,14 +440,37 @@ export default function PrintWorkSheets() {
                 {pvOptions.map(pv => <SelectItem key={pv} value={pv}>{pv}</SelectItem>)}
               </SelectContent>
             </Select>
-            <div className="text-xs text-muted-foreground ml-2">
-              {filtered.length} OP{filtered.length === 1 ? '' : 's'} encontrada{filtered.length === 1 ? '' : 's'}
-              {/* Conta a seleção VISÍVEL (selectedOrders já está escopado a
-                  `filtered`), não selectedIds.size — que pode carregar seleções
-                  de buscas anteriores escondidas pelo filtro atual. */}
-              {selectedOrders.length > 0 && ` · ${selectedOrders.length} selecionada${selectedOrders.length === 1 ? '' : 's'} · ${totalPairs} pares`}
             </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={filtered.length === 0}
+              onClick={toggleAll}
+              className="shrink-0"
+            >
+              {allSelected ? 'Desmarcar visíveis' : `Marcar visíveis (${filtered.length})`}
+            </Button>
           </div>
+
+          <div className="flex items-center justify-between border-y border-border/60 py-2 text-xs text-muted-foreground">
+            <span>{filtered.length} encontrada{filtered.length === 1 ? '' : 's'}</span>
+            <span className="font-mono font-semibold text-foreground">
+              {selectedOrders.length} selecionada{selectedOrders.length === 1 ? '' : 's'} · {totalPairs.toLocaleString('pt-BR')} pares
+            </span>
+          </div>
+
+          {selectedOrders.length > 0 && (
+            <div className="sticky top-16 z-30 flex items-center justify-between gap-3 border border-primary/30 bg-background/95 p-3 shadow-md backdrop-blur md:hidden">
+              <div>
+                <p className="font-mono text-xs font-bold">{selectedOrders.length} OP · {totalPairs.toLocaleString('pt-BR')} pares</p>
+                <p className="text-[10px] text-muted-foreground">Pronto para conferir setores</p>
+              </div>
+              <Button size="sm" onClick={() => openPreview(false)} className="gap-2">
+                Revisar <ArrowRight className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
 
           {isLoading ? (
             <div className="flex justify-center py-8">
@@ -433,9 +511,10 @@ export default function PrintWorkSheets() {
               />
             )
           ) : (
-            <div className="border rounded-md overflow-hidden">
+            <>
+            <div className="hidden overflow-hidden border md:block">
               <table className="w-full text-xs">
-                <thead className="bg-muted/30">
+                <thead className="bg-muted/50">
                   <tr>
                     <th className="text-left p-2 w-10">
                       <Checkbox
@@ -460,16 +539,24 @@ export default function PrintWorkSheets() {
                     return (
                       <tr
                         key={r.id}
-                        className={`border-t border-border/40 cursor-pointer ${
+                        tabIndex={0}
+                        aria-selected={checked}
+                        className={`cursor-pointer border-t border-l-4 border-border/40 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${
                           checked
-                            ? 'bg-primary/5 hover:bg-primary/10'
+                            ? 'border-l-primary bg-primary/5 hover:bg-primary/10'
                             // Linha infantil com fundo rosa-claro — mesmo padrão
                             // visual da lista de Pedidos de Venda.
                             : inf
-                              ? 'bg-pink-500/[0.06] hover:bg-pink-500/[0.11]'
-                              : 'hover:bg-muted/30'
+                              ? 'border-l-transparent bg-pink-500/[0.06] hover:bg-pink-500/[0.11]'
+                              : 'border-l-transparent hover:bg-muted/30'
                         }`}
                         onClick={() => toggleOne(r.id)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            toggleOne(r.id);
+                          }
+                        }}
                       >
                         <td className="p-2">
                           <Checkbox
@@ -532,7 +619,7 @@ export default function PrintWorkSheets() {
                           )}
                         </td>
                         <td className="p-2">{r.color || '—'}</td>
-                        <td className="p-2 text-right font-mono">{r.quantity}</td>
+                        <td className="p-2 text-right font-mono text-sm font-bold tabular-nums">{r.quantity}</td>
                         <td className="p-2">
                           {r.sale_orders?.delivery_deadline
                             ? format(parseISO(r.sale_orders.delivery_deadline), 'dd/MM/yyyy', { locale: ptBR })
@@ -547,23 +634,73 @@ export default function PrintWorkSheets() {
                 </tbody>
               </table>
             </div>
+
+            <div className="grid gap-2 md:hidden">
+              {filtered.map(r => {
+                const checked = selectedIds.has(r.id);
+                const { inf, ad } = rowSizeBands(r.grade);
+                const lots = lotsMap?.get(r.id);
+                return (
+                  <div
+                    key={r.id}
+                    role="button"
+                    tabIndex={0}
+                    aria-pressed={checked}
+                    onClick={() => toggleOne(r.id)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        toggleOne(r.id);
+                      }
+                    }}
+                    className={`border-l-4 p-3 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${checked ? 'border-primary bg-primary/5' : 'border-border bg-card'}`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <Checkbox
+                        checked={checked}
+                        onCheckedChange={() => toggleOne(r.id)}
+                        onClick={event => event.stopPropagation()}
+                        aria-label={`Selecionar OP ${r.order_number}`}
+                        className="mt-0.5"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="font-mono text-sm font-bold">OP {r.order_number}</p>
+                            <p className="mt-0.5 truncate text-sm font-medium">{r.technical_sheets?.name || 'Sem referência'}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="font-display text-2xl leading-none">{r.quantity}</p>
+                            <p className="eyebrow mt-1">PARES</p>
+                          </div>
+                        </div>
+                        <p className="mt-2 truncate text-xs text-muted-foreground">
+                          PV {r.sale_orders?.order_number || '—'} · {r.sale_orders?.client_name || 'Sem cliente'}
+                        </p>
+                        <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                          <Badge variant="outline" className="text-[10px]">{r.status}</Badge>
+                          {lots && lots.length > 1 && <Badge variant="outline" className="text-[10px]">{lots.length} lotes</Badge>}
+                          {inf && <Badge variant="outline" className="gap-1 text-[10px]"><Baby className="h-3 w-3" weight="fill" /> Infantil</Badge>}
+                          {ad && <Badge variant="outline" className="text-[10px]">Adulto</Badge>}
+                          {r.color && <span className="ml-auto truncate text-[11px] text-muted-foreground">{r.color}</span>}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            </>
           )}
         </CardContent>
       </Card>
 
-      <Card className="bg-muted/30 border-border/50">
-        <CardContent className="p-3 text-[11px] text-muted-foreground">
-          <p className="font-medium text-foreground mb-1">Fichas disponíveis no print:</p>
-          <ul className="list-disc ml-4 space-y-0.5">
-            <li><strong>Por setor</strong>: Corte Palmilha · Corte Forração · Costura · Aviamento · Silk · Colagem · Montagem · Solagem · Acabamento</li>
-            <li><strong>Expedição</strong>: 1 ficha por cliente, agrupando todas as OPs do mesmo CNPJ</li>
-            <li><strong>Relatório Gerencial</strong>: 1 ficha A4 por PV com KPIs, status por setor, tabela de custos e margens</li>
-          </ul>
-          <p className="mt-2">
-            Após gerar, use Ctrl+P (ou Cmd+P) para imprimir; o layout é otimizado para A4.
-          </p>
-        </CardContent>
-      </Card>
+      <div className="grid gap-px overflow-hidden border bg-border text-xs sm:grid-cols-3">
+        <div className="bg-card p-3"><strong className="block text-foreground">Fichas por setor</strong><span className="text-muted-foreground">Da preparação à expedição, seguindo a rota real.</span></div>
+        <div className="bg-card p-3"><strong className="block text-foreground">Expedição consolidada</strong><span className="text-muted-foreground">Uma ficha por cliente e CNPJ.</span></div>
+        <div className="bg-card p-3"><strong className="block text-foreground">Relatório gerencial</strong><span className="text-muted-foreground">Resumo de PV, custos, margens e andamento.</span></div>
+      </div>
+
     </div>
   );
 }
