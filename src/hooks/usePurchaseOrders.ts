@@ -397,17 +397,16 @@ export function useCreatePurchaseOrder() {
         if (now - t > 30_000) recentPurchaseOrders.delete(k);
       }
 
-      const { data: po, error } = await supabase.from('purchase_orders').insert({
-        supplier_name: data.supplier_name,
-        supplier_id: data.supplier_id || null,
-        notes: data.notes || '',
-        total_value: total,
-        auto_generated: false,
-        // Server-side idempotência (migration 20260523130000): trigger
-        // tg_purchase_order_idempotency rejeita INSERT com mesmo key nos
-        // últimos 30s — protege contra retries que escapem do Map client-side.
-        idempotency_key: idemKey,
-      } as any).select().single();
+      // Uma única RPC: pai + linhas + normalização são atômicos. O caminho
+      // anterior inseria o cabeçalho e compensava um erro das linhas com DELETE,
+      // deixando uma janela para OCs órfãs e unidades fora do contrato.
+      const { data: po, error } = await (supabase as any).rpc('create_purchase_order_normalized', {
+        p_supplier_name: data.supplier_name,
+        p_supplier_id: data.supplier_id || null,
+        p_notes: data.notes || '',
+        p_idempotency_key: idemKey,
+        p_items: data.items,
+      });
       if (error) {
         // Erro 23505 do trigger = duplicate within 30s window.
         if (error.code === '23505' && /idempotency/.test(error.message || '')) {
@@ -419,33 +418,7 @@ export function useCreatePurchaseOrder() {
         throw error;
       }
 
-      const items = data.items.map(i => ({
-        purchase_order_id: po.id,
-        product_id: i.product_id,
-        quantity: i.quantity,
-        suggested_quantity: i.quantity,
-        unit_price: i.unit_price,
-        unit: i.unit,
-        current_stock: i.current_stock,
-        min_stock: i.min_stock,
-        max_stock: i.max_stock,
-        grade: i.grade ?? null,
-        color: i.color ?? null,
-      }));
-      const { error: e2 } = await supabase.from('purchase_order_items').insert(items);
-      if (e2) {
-        // Compensating delete — if items insert failed, the parent PO would be orphaned.
-        // Filter by status='pending' to avoid deleting a PO that was concurrently advanced.
-        const { error: cleanupErr } = await supabase.from('purchase_orders').delete().eq('id', po.id).eq('status', 'pending');
-        if (cleanupErr) {
-          throw new Error(
-            `Falha ao inserir itens (${e2.message}) e ao limpar OC órfã (${cleanupErr.message}). ` +
-            `Verifique a OC ${po.id} manualmente.`
-          );
-        }
-        throw e2;
-      }
-      return po;
+      return po as PurchaseOrder;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['purchase_orders'] });

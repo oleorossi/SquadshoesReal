@@ -4,7 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { warnPackagingDebit } from '@/lib/packagingDebitWarnings';
 import { autoCreateSolePO, autoCreateSolePOFromShortfall } from '@/lib/soleAutoPO';
-import { autoCreateMaterialPO } from '@/lib/materialAutoPO';
+import { ArtisanalMaterialPurchaseBlockedError, autoCreateMaterialPO } from '@/lib/materialAutoPO';
 import { syncFinancialRecordsCore } from '@/lib/financialSync';
 import { isValidStatusTransition } from '@/lib/saleOrderStateMachine';
 import { logAuditEvent } from '@/services/auditService';
@@ -779,6 +779,9 @@ async function runPromotionEngine(
       });
     } catch (e: any) {
       console.error('[promotionEngine] OC de material falhou:', e?.message);
+      if (e instanceof ArtisanalMaterialPurchaseBlockedError) {
+        toast.warning(e.message, { duration: 10000 });
+      }
     }
   }
 

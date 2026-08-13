@@ -9,6 +9,14 @@ export interface MaterialAutoPOResult {
   accumulated: boolean;
 }
 
+/** Erro de domínio: material artesanal é produzido por OS, nunca comprado. */
+export class ArtisanalMaterialPurchaseBlockedError extends Error {
+  constructor(productName: string) {
+    super(`"${productName}" é material artesanal e não pode gerar OC automática. Gere ou revise a OS de produção artesanal.`);
+    this.name = 'ArtisanalMaterialPurchaseBlockedError';
+  }
+}
+
 /**
  * When a material is insufficient for an order (detected by check_stock_availability),
  * finds the product's supplier and auto-creates (or accumulates into) a purchase order.
@@ -30,11 +38,12 @@ export async function autoCreateMaterialPO(params: {
   // Cast: a coluna purchase_multiple ainda não está nos tipos gerados do Supabase
   // (aplicada via MCP nesta sessão). product fica `any` — ok, o arquivo já usa casts.
   const { data: product } = await (supabase.from('products') as any)
-    .select('id, name, quantity, min_stock, unit_price, unit, purchase_order_unit, conversion_rate, group_id, supplier_id, color, purchase_multiple, product_groups:product_groups!products_group_id_fkey(purchase_multiple)')
+    .select('id, name, quantity, min_stock, unit_price, unit, purchase_order_unit, conversion_rate, group_id, supplier_id, color, is_artisanal, purchase_multiple, product_groups:product_groups!products_group_id_fkey(purchase_multiple)')
     .eq('id', productId)
     .maybeSingle();
 
   if (!product) return null;
+  if (product.is_artisanal) throw new ArtisanalMaterialPurchaseBlockedError(product.name || productName);
 
   const currentStock = Number(product.quantity) || 0;
   const minStock = Number(product.min_stock) || 0;
