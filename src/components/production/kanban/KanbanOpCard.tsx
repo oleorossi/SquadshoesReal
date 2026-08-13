@@ -68,11 +68,13 @@ export function KanbanOpCard({
   const { q, front, delivered, isPartial, columnStage, upstreamGap, parallelSiblings } = card;
   const total = columnStage?.quantity_total || q.quantity;
   const idade = stageAge(columnStage);
-  const thumbSize = compact ? 32 : 40;
+  // O card compacto cresce para 40px no celular; pedir a miniatura já nessa
+  // resolução evita ampliar uma imagem de 32px e borrar a referência no toque.
+  const thumbSize = 40;
   const thumb = thumbUrl(photoUrl || q.reference_photo_url, thumbSize);
   return (
     <Card
-      className={`relative overflow-hidden ${compact ? 'p-2' : 'p-2.5'} ${isPartial ? 'pl-3' : ''} cursor-pointer select-none
+      className={`relative overflow-hidden ${compact ? 'p-2.5 md:p-2' : 'p-2.5'} ${isPartial ? 'pl-3' : ''} cursor-pointer select-none
         transition-[transform,box-shadow,border-color,opacity] duration-150 ease-out
         hover:-translate-y-0.5 hover:shadow-md active:translate-y-0
         focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-foreground/70 focus-visible:ring-offset-1 focus-visible:ring-offset-background
@@ -135,22 +137,25 @@ export function KanbanOpCard({
           <img
             src={thumb}
             alt=""
-            className={`${compact ? 'h-8 w-8' : 'h-10 w-10'} rounded object-contain bg-muted shrink-0`}
+            className={`${compact ? 'h-10 w-10 md:h-8 md:w-8' : 'h-10 w-10'} rounded object-contain bg-muted shrink-0`}
             loading="lazy"
           />
         ) : (
-          <div className={`${compact ? 'h-8 w-8' : 'h-10 w-10'} rounded bg-muted shrink-0`} />
+          <div className={`${compact ? 'h-10 w-10 md:h-8 md:w-8' : 'h-10 w-10'} rounded bg-muted shrink-0`} />
         )}
         <div className="min-w-0 flex-1">
-          <div className="flex items-center justify-between gap-1">
+          <div className="flex items-start justify-between gap-1.5">
             <Link
               to={`/orders/${q.order_id}/edit`}
               onClick={e => e.stopPropagation()}
-              className={`font-mono ${compact ? 'text-[11px]' : 'text-xs'} font-bold hover:underline truncate`}
+              className={`font-mono ${compact ? 'text-xs md:text-[11px]' : 'text-xs'} font-bold hover:underline truncate`}
             >
               {q.order_number}
             </Link>
-            <span className="flex shrink-0 items-center gap-1">
+            {/* Os estados quebram dentro do próprio card. Antes o grupo inteiro
+                era `shrink-0`: em colunas estreitas ele empurrava o número da OP
+                e os últimos selos eram cortados pelo `overflow-hidden`. */}
+            <span className="flex max-w-[72%] shrink-0 flex-wrap items-center justify-end gap-1">
               {/* Selo do parcial: fecha a leitura de longe, junto do trilho
                   âmbar e do "84/120" abaixo. */}
               {isPartial && (
@@ -217,14 +222,14 @@ export function KanbanOpCard({
           {/* Referência em VERMELHO (pedido do dono 2026-10-01): é o dado que
               o operador procura primeiro no card. A cor fica só na referência —
               a cor do produto segue em muted pra não competir. */}
-          <p className={`${compact ? 'text-[10px]' : 'text-[11px]'} truncate`}>
+          <p className={`${compact ? 'text-[11px] md:text-[10px]' : 'text-[11px]'} truncate`}>
             <span className="font-semibold text-primary">{q.reference_name || '—'}</span>
             {q.color ? <span className="text-muted-foreground"> · {q.color}</span> : null}
           </p>
           <div className="mt-1 flex items-center justify-between">
             {/* "84/120": o que ENTROU neste setor em destaque, o total do
                 pedido logo atrás — assim se lê o que passou e o que falta. */}
-            <span className={`font-mono ${compact ? 'text-[11px]' : 'text-xs'} font-bold`}>
+            <span className={`font-mono ${compact ? 'text-sm md:text-[11px]' : 'text-xs'} font-bold`}>
               <span className={isPartial ? 'text-amber-600 dark:text-amber-400' : ''}>{front ? delivered : 0}</span>
               <span className="font-normal opacity-60">/{total}</span>
             </span>

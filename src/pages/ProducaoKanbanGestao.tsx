@@ -8,7 +8,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import {
-  ArrowLeft, ArrowsInSimple, ArrowsOutSimple, CheckSquare, Funnel, Highlighter,
+  ArrowLeft, ArrowsInSimple, ArrowsOutSimple, CaretLeft, CaretRight, CheckSquare, Funnel, Highlighter,
   Info, Kanban as KanbanIcon, Package, QrCode, Warning as AlertTriangle, X,
 } from '@phosphor-icons/react';
 import {
@@ -152,8 +152,11 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
   const [bulkOpen, setBulkOpen] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [now, setNow] = useState(() => new Date());
+  const [activeSector, setActiveSector] = useState('');
   const cardEls = useRef(new Map<string, HTMLDivElement>());
   const boardEl = useRef<HTMLDivElement | null>(null);
+  const sectorNavEl = useRef<HTMLDivElement | null>(null);
+  const boardScrollRaf = useRef(0);
   // Coluna sob o card arrastado (contorno respirando) e OP que acabou de ser
   // apontada (halo de pouso). Ambos são transitórios — nada fica piscando.
   const [dragOverSector, setDragOverSector] = useState<string | null>(null);
@@ -400,6 +403,89 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
     return s;
   }, [filtering, matchedIds, allCards]);
 
+  /**
+   * TRILHO DO FLUXO — navegação curta entre as colunas do quadro.
+   *
+   * No celular cada coluna ocupa quase a viewport; sem um índice, chegar ao
+   * décimo setor exigia nove swipes sem nenhuma noção de distância. No desktop
+   * o trilho também evita arrastar a barra horizontal até achar um setor.
+   * Durante uma busca filtrada ele lista só os setores que continuam visíveis
+   * no celular, espelhando a regra `hidden md:flex` das colunas sem resultado.
+   */
+  const navigableColumns = useMemo(
+    () => (filtering && matchedColumns
+      ? columns.filter(sector => matchedColumns.has(sector))
+      : columns),
+    [columns, filtering, matchedColumns],
+  );
+
+  const navCountBySector = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const card of allCards) {
+      if (filtering && matchedIds && !matchedIds.has(card.q.order_id)) continue;
+      counts.set(card.column, (counts.get(card.column) || 0) + 1);
+    }
+    return counts;
+  }, [allCards, filtering, matchedIds]);
+
+  const scrollToSector = useCallback((sector: string) => {
+    const board = boardEl.current;
+    const column = board?.querySelector<HTMLElement>(`[data-kb-col="${CSS.escape(sector)}"]`);
+    if (!board || !column || column.offsetParent === null) return;
+    // `offsetLeft` não é necessariamente relativo ao quadro (na versão
+    // embedded o offsetParent pode ser a casca do ERP). Medir os dois retângulos
+    // preserva o centro correto nas duas molduras e em qualquer breakpoint.
+    const boardRect = board.getBoundingClientRect();
+    const columnRect = column.getBoundingClientRect();
+    const target = board.scrollLeft
+      + columnRect.left
+      - boardRect.left
+      - Math.max((board.clientWidth - columnRect.width) / 2, 0);
+    const behavior = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
+    board.scrollTo({ left: target, behavior });
+    setActiveSector(sector);
+  }, []);
+
+  const syncActiveSector = useCallback(() => {
+    cancelAnimationFrame(boardScrollRaf.current);
+    boardScrollRaf.current = requestAnimationFrame(() => {
+      const board = boardEl.current;
+      if (!board) return;
+      const center = board.getBoundingClientRect().left + board.clientWidth / 2;
+      let nearest: { sector: string; distance: number } | null = null;
+      board.querySelectorAll<HTMLElement>('[data-kb-col]').forEach(column => {
+        if (column.offsetParent === null) return;
+        const rect = column.getBoundingClientRect();
+        const distance = Math.abs(rect.left + rect.width / 2 - center);
+        const sector = column.dataset.kbCol;
+        if (sector && (!nearest || distance < nearest.distance)) nearest = { sector, distance };
+      });
+      if (nearest) setActiveSector(nearest.sector);
+    });
+  }, []);
+
+  useEffect(() => () => cancelAnimationFrame(boardScrollRaf.current), []);
+
+  useEffect(() => {
+    setActiveSector(current => (
+      current && navigableColumns.includes(current) ? current : navigableColumns[0] || ''
+    ));
+  }, [navigableColumns]);
+
+  useEffect(() => {
+    if (!activeSector) return;
+    const behavior = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
+    sectorNavEl.current
+      ?.querySelector<HTMLElement>(`[data-kb-nav="${CSS.escape(activeSector)}"]`)
+      ?.scrollIntoView({ behavior, block: 'nearest', inline: 'nearest' });
+  }, [activeSector]);
+
+  const activeSectorIndex = Math.max(navigableColumns.indexOf(activeSector), 0);
+  const goToAdjacentSector = (direction: -1 | 1) => {
+    const target = navigableColumns[activeSectorIndex + direction];
+    if (target) scrollToSector(target);
+  };
+
   const selectedCards = useMemo(
     () => allCards.filter(c => selectedIds.has(c.key)),
     [allCards, selectedIds],
@@ -625,8 +711,13 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
     // h-dvh (não h-screen/100vh): no Safari iOS o vh inclui a área da barra de
     // endereço e cortava o rodapé das colunas. Embutido no ERP a altura é
     // limitada pelo AppLayout — usar h-dvh aqui empurraria o rodapé pra fora.
+    // O desconto inclui topbar/breadcrumb, paddings e o EditorialPageHeader que
+    // vivem FORA deste componente. O valor anterior (11rem) ignorava parte
+    // dessa casca e criava duas rolagens verticais concorrendo no desktop.
     <div className={`flex flex-col overflow-hidden bg-background text-foreground ${
-      embedded ? 'h-[calc(100dvh-11rem)] min-h-[32rem]' : 'h-dvh'
+      embedded
+        ? 'h-[calc(100dvh-17rem)] min-h-[28rem] md:h-[calc(100dvh-15rem)] md:min-h-[34rem]'
+        : 'h-dvh'
     }`}>
       {/* ── Cabeçalho editorial (só na rota dedicada) ────────────────────
           Substitui o par eyebrow+display inline que vivia dentro da barra de
@@ -654,7 +745,7 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
       )}
 
       {/* ── Barra de comando ─────────────────────────────────────────────── */}
-      <div className="shrink-0 border-b border-border bg-card px-2 md:px-3 py-2 flex items-center gap-2 md:gap-3 flex-wrap">
+      <div className="shrink-0 border-b border-border bg-card px-2 md:px-3 py-2 grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_auto] 2xl:grid-cols-[minmax(20rem,1fr)_auto_auto] items-center gap-2 md:gap-3">
         <SearchInput
           value={search}
           onChange={setSearch}
@@ -663,11 +754,15 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
           placeholder="Buscar OP, referência, cor, cliente, PV — ou bipe o QR da ficha…"
           resultCount={matches.length}
           totalCount={allCards.length}
-          className="flex-1 min-w-[240px] max-w-xl order-last md:order-none basis-full md:basis-auto"
+          className="w-full min-w-0 max-w-none 2xl:max-w-xl"
           inputClassName="h-11 md:h-9"
         />
 
-        <div className="flex items-center gap-1.5 shrink-0">
+        {/* No celular as ações ficam numa faixa própria: a busca vem primeiro e
+            nenhum botão comprime a viewport. O overflow é intencional — gesto
+            horizontal curto, com alvos de 44px e rótulos sempre visíveis. */}
+        <div className="min-w-0 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden xl:overflow-visible">
+        <div className="flex w-max items-center gap-1.5 xl:w-auto">
           <Button variant="outline" size="sm" className="h-11 md:h-9 gap-1.5" onClick={() => setScanOpen(true)}>
             <QrCode className="h-4 w-4" /> Bipar
           </Button>
@@ -719,10 +814,13 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
             </Button>
           )}
         </div>
+        </div>
 
         {/* KPIs do quadro + relógio (painel de sala de controle). No celular
-            ficam ocultos — os headers das colunas já carregam as contagens. */}
-        <div className="hidden md:flex items-center gap-4 shrink-0 ml-auto font-mono text-xs">
+            ficam ocultos — os headers das colunas já carregam as contagens. Em
+            notebook ocupam uma segunda linha previsível; em 2XL voltam pra
+            mesma linha sem disputar largura com a busca. */}
+        <div className="hidden md:flex col-span-1 xl:col-span-2 2xl:col-span-1 items-center justify-end gap-4 shrink-0 font-mono text-xs border-t border-border/60 pt-1 2xl:border-0 2xl:pt-0 2xl:ml-auto">
           <span><strong className="text-sm">{kpis.ops}</strong> <span className="text-muted-foreground">OPs</span></span>
           <span><strong className="text-sm">{kpis.pares.toLocaleString('pt-BR')}</strong> <span className="text-muted-foreground">pares</span></span>
           <span className={kpis.atrasadas > 0 ? 'text-red-600' : ''}>
@@ -848,9 +946,9 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
 
       {/* ── Faixa de fluxo: gargalo + atraso em primeiro plano ───────────── */}
       {!isLoading && allCards.length > 0 && (constraintSector || kpis.atrasadas > 0 || travadasMaterial.n > 0 || gridError || gateError) && (
-        <div className="shrink-0 border-b border-border px-3 py-1.5 flex items-center gap-2 md:gap-3 flex-wrap text-xs">
+        <div className="shrink-0 border-b border-border px-2 md:px-3 py-1.5 flex items-stretch md:items-center gap-2 md:gap-3 flex-nowrap overflow-x-auto md:flex-wrap md:overflow-visible text-xs [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
           {constraintSector && (
-            <div className="flex items-center gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1">
+            <div className="flex shrink-0 max-w-[calc(100vw-1rem)] md:max-w-none items-center gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1">
               <span className="text-sm leading-none" aria-hidden="true">⛏️</span>
               <span>
                 <strong className="uppercase tracking-wide">Gargalo: {constraintSector}</strong>
@@ -862,7 +960,7 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
             </div>
           )}
           {kpis.atrasadas > 0 && (
-            <div className="flex items-center gap-2 rounded-md border border-red-500/40 bg-red-500/10 px-2.5 py-1">
+            <div className="flex shrink-0 max-w-[calc(100vw-1rem)] md:max-w-none items-center gap-2 rounded-md border border-red-500/40 bg-red-500/10 px-2.5 py-1">
               <strong className="text-red-600 dark:text-red-400 font-mono text-sm leading-none">
                 {Math.round((kpis.atrasadas / Math.max(kpis.ops, 1)) * 100)}%
               </strong>
@@ -875,7 +973,7 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
           {/* Travadas por MATERIAL: atraso que não se resolve com mais gente na
               linha — só com a matéria-prima chegando. */}
           {travadasMaterial.n > 0 && (
-            <div className="flex items-center gap-2 rounded-md border border-blue-500/40 bg-blue-500/10 px-2.5 py-1">
+            <div className="flex shrink-0 max-w-[calc(100vw-1rem)] md:max-w-none items-center gap-2 rounded-md border border-blue-500/40 bg-blue-500/10 px-2.5 py-1">
               <Package className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
               <span>
                 <span className="font-mono font-semibold">{travadasMaterial.n}</span> OP(s) sem material
@@ -895,7 +993,7 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
               afirmando "hoje: 0" e "nenhuma OP travada" com a mesma cara de
               quando a fábrica está de fato em dia. */}
           {gridError && (
-            <div className="flex items-center gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1">
+            <div className="flex shrink-0 max-w-[calc(100vw-1rem)] md:max-w-none items-center gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1">
               <AlertTriangle className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
               <span>
                 <strong>Agenda de hoje indisponível</strong>
@@ -907,7 +1005,7 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
             </div>
           )}
           {gateError && (
-            <div className="flex items-center gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1">
+            <div className="flex shrink-0 max-w-[calc(100vw-1rem)] md:max-w-none items-center gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1">
               <Package className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
               <span>
                 <strong>Gate de material indisponível</strong>
@@ -921,10 +1019,90 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
         </div>
       )}
 
+      {/* ── Trilho do fluxo: índice navegável das colunas ───────────────────
+          É sequência de produção de verdade (não tabs decorativas): o número
+          indica a posição no fluxo, a pílula conta os cards visíveis e o
+          destaque acompanha a coluna central enquanto o quadro rola. */}
+      {!isLoading && !loadError && allCards.length > 0 && navigableColumns.length > 0 && (
+        <nav className="shrink-0 border-b border-border bg-background px-2 md:px-3 py-1.5" aria-label="Navegar pelos setores do Kanban">
+          <div className="flex min-w-0 items-center gap-1.5">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-11 w-11 md:h-8 md:w-8 shrink-0"
+              onClick={() => goToAdjacentSector(-1)}
+              disabled={activeSectorIndex <= 0}
+              aria-label={activeSectorIndex > 0
+                ? `Ir ao setor anterior: ${navigableColumns[activeSectorIndex - 1]}`
+                : 'Primeiro setor do fluxo'}
+            >
+              <CaretLeft className="h-4 w-4" />
+            </Button>
+            <div
+              ref={sectorNavEl}
+              className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto motion-safe:scroll-smooth [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+            >
+              {navigableColumns.map((sector, index) => {
+                const count = navCountBySector.get(sector) || 0;
+                const isActive = sector === activeSector;
+                const isConstraint = sector === constraintSector;
+                const overWip = (wipBySector.get(sector) || 0) > WIP_LIMIT;
+                return (
+                  <button
+                    key={sector}
+                    type="button"
+                    data-kb-nav={sector}
+                    aria-current={isActive ? 'step' : undefined}
+                    aria-label={`${index + 1} de ${navigableColumns.length}: ${sector}, ${count} OP${count === 1 ? '' : 's'}${isConstraint ? ', gargalo atual' : ''}`}
+                    onClick={() => scrollToSector(sector)}
+                    className={`group h-11 md:h-8 shrink-0 flex items-center gap-2 rounded-sm border px-2.5 text-[11px] font-semibold uppercase tracking-wide transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 ${
+                      isActive
+                        ? 'border-foreground bg-foreground text-background shadow-sm'
+                        : isConstraint
+                          ? 'border-amber-500/50 bg-amber-500/10 text-foreground hover:bg-amber-500/20'
+                          : 'border-border bg-card text-muted-foreground hover:bg-muted/60 hover:text-foreground'
+                    }`}
+                    title={`${sector}: ${count} card${count === 1 ? '' : 's'}${isConstraint ? ' · gargalo atual' : ''}`}
+                  >
+                    <span className={`font-mono text-[9px] ${isActive ? 'text-background/65' : 'text-muted-foreground/70'}`}>
+                      {String(index + 1).padStart(2, '0')}
+                    </span>
+                    <span className="max-w-[9rem] truncate">{sector}</span>
+                    <span className={`min-w-5 rounded-full px-1.5 py-0.5 text-center font-mono text-[10px] leading-none ${
+                      isActive
+                        ? 'bg-background/15 text-background'
+                        : overWip
+                          ? 'bg-red-500/10 text-red-600 dark:text-red-400'
+                          : 'bg-muted text-foreground'
+                    }`}>
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-11 w-11 md:h-8 md:w-8 shrink-0"
+              onClick={() => goToAdjacentSector(1)}
+              disabled={activeSectorIndex >= navigableColumns.length - 1}
+              aria-label={activeSectorIndex < navigableColumns.length - 1
+                ? `Ir ao próximo setor: ${navigableColumns[activeSectorIndex + 1]}`
+                : 'Último setor do fluxo'}
+            >
+              <CaretRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </nav>
+      )}
+
       {/* ── Quadro: todos os setores lado a lado ─────────────────────────── */}
       {isLoading ? (
         <div className="flex-1 flex gap-2 p-3 overflow-hidden">
-          {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="flex-1 min-w-[185px]" />)}
+          {Array.from({ length: 8 }).map((_, i) => (
+            <Skeleton key={i} className="flex-1 min-w-[calc(100vw-4rem)] md:min-w-[13.5rem]" />
+          ))}
         </div>
       ) : loadError ? (
         /* Falha ≠ fábrica vazia. Dizer isso explicitamente, com o erro técnico
@@ -962,7 +1140,8 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
       ) : (
         <div
           ref={boardEl}
-          className="flex-1 min-h-0 flex gap-2 overflow-x-auto overscroll-x-contain px-3 py-3 snap-x snap-mandatory md:snap-none"
+          onScroll={syncActiveSector}
+          className="flex-1 min-h-0 flex gap-2 overflow-x-auto overscroll-x-contain scroll-px-3 px-3 py-3 snap-x snap-mandatory md:snap-none [scrollbar-width:thin]"
         >
           {columns.map((sector, colIdx) => {
             const colAll = allCards.filter(c => c.column === sector);
@@ -1017,8 +1196,8 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
                   filtering && !hasMatch ? 'hidden md:flex' : 'flex'
                 } ${
                   isRail && !railOpen
-                    ? 'flex-1 basis-0 min-w-[85vw] md:flex-none md:min-w-[3.5rem] md:max-w-[3.5rem] md:opacity-70 md:hover:opacity-100'
-                    : 'flex-1 basis-0 min-w-[85vw] md:min-w-[185px] max-w-none md:max-w-[300px]'
+                    ? 'flex-1 basis-0 min-w-[calc(100vw-4rem)] max-w-[calc(100vw-4rem)] md:flex-none md:min-w-[3.5rem] md:max-w-[3.5rem] md:opacity-70 md:hover:opacity-100'
+                    : 'flex-1 basis-0 min-w-[calc(100vw-4rem)] max-w-[calc(100vw-4rem)] md:min-w-[13.5rem] lg:min-w-[14rem] 2xl:min-w-[15rem] md:max-w-[20rem]'
                 }`}
                 onDragOver={e => {
                   e.preventDefault();
