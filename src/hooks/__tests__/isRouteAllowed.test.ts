@@ -4,7 +4,7 @@ import { isRouteAllowed, isActionAllowed, resolveMenuOwner, resolveModuleForPath
 // Catálogo de menu controlado pros testes de "dono" da rota (sibling resolution).
 const MENU = [
   '/estoque', '/estoque/historico', '/estoque/qualidade',
-  '/sales', '/pcp', '/orders', '/imprimir-fichas', '/fichas-montadores',
+  '/sales', '/pcp', '/producao/kanban', '/orders', '/imprimir-fichas', '/fichas-montadores',
   '/label-system', '/rh', '/contractors',
 ];
 
@@ -18,6 +18,9 @@ describe('resolveModuleForPath', () => {
     expect(resolveModuleForPath('/label-system')).toBe('expedicao');
     expect(resolveModuleForPath('/estoque/historico')).toBe('estoque');
     expect(resolveModuleForPath('/sales/123')).toBe('vendas');
+    // Modo Gestão é uma moldura dedicada do MESMO Kanban: herda a entrada pai,
+    // não cria um módulo ou destino concedível paralelo.
+    expect(resolveModuleForPath('/producao/kanban/gestao')).toBe('producao');
   });
 });
 
@@ -29,6 +32,7 @@ describe('resolveMenuOwner', () => {
   it('sub-rota sem item próprio cai no item pai', () => {
     expect(resolveMenuOwner('/sales/123', MENU)).toBe('/sales');
     expect(resolveMenuOwner('/estoque/qualquer-detalhe', MENU)).toBe('/estoque');
+    expect(resolveMenuOwner('/producao/kanban/gestao', MENU)).toBe('/producao/kanban');
   });
   it('rota sem nenhum item-prefixo → null', () => {
     expect(resolveMenuOwner('/sac', MENU)).toBeNull();
