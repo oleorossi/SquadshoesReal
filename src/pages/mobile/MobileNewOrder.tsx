@@ -388,7 +388,7 @@ export default function MobileNewOrder() {
             <div key={idx} className="border-[1.5px] border-foreground/15 rounded-lg p-3 bg-card">
               <div className="flex items-start gap-3">
                 {it.image_url ? (
-                  <img src={it.image_url} alt={it.reference_name} className="h-14 w-14 object-cover rounded" />
+                  <img src={it.image_url} alt={it.reference_name} width="56" height="56" loading="lazy" decoding="async" className="h-14 w-14 object-cover rounded" />
                 ) : (
                   <div className="h-14 w-14 bg-muted rounded" />
                 )}
@@ -610,7 +610,7 @@ export default function MobileNewOrder() {
             const qty = Object.values(it.grade).reduce((a, b) => a + (b || 0), 0);
             return (
               <li key={idx} className="p-3 flex items-center gap-3">
-                {it.image_url && <img src={it.image_url} alt="" className="h-10 w-10 object-cover rounded" />}
+                {it.image_url && <img src={it.image_url} alt="" width="40" height="40" loading="lazy" decoding="async" className="h-10 w-10 object-cover rounded" />}
                 <div className="flex-1">
                   <p className="text-sm font-bold">{it.reference_name}</p>
                   <p className="text-xs text-muted-foreground">{it.color} · {qty} pares</p>

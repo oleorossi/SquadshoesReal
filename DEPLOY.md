@@ -30,7 +30,8 @@ https://supabase.com/dashboard/project/ssvxfoybzmjlypnipqzn/settings/functions
 
 Variáveis a definir (verifique quais a sua aplicação usa):
 
-- `LOVABLE_API_KEY` - usado por `suggest-ncm` (Gemini via gateway Lovable)
+- `GEMINI_API_KEY` - usada diretamente pelas funções `suggest-ncm`, `extract-clients`, `generate-catalog-photo` e `recolor-image`. Crie-a na sua conta Google em https://aistudio.google.com/app/apikey
+- `GEMINI_IMAGE_MODEL` - opcional; modelo de imagem usado por `generate-catalog-photo` e `recolor-image` (padrão: `gemini-3.1-flash-image`)
 - `SUPABASE_SERVICE_ROLE_KEY` - já é injetado automaticamente em todas as functions
 - `SUPABASE_URL` - já é injetado automaticamente
 - `SUPABASE_ANON_KEY` - já é injetado automaticamente

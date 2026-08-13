@@ -60,28 +60,40 @@ function useOrderFlowAudit() {
     queryKey: ['order-flow-audit'],
     staleTime: 60 * 1000,
     queryFn: async () => {
-      // Fetch all required data in parallel
-      const [soRes, opsRes, reservationsRes, giRes, fgrRes, wipRes, arRes, cogsRes, stagesRes] = await Promise.all([
-        supabase.from('sale_orders').select('id, order_number, client_name, status, created_at, total, delivery_deadline').order('created_at', { ascending: false }).limit(200),
-        supabase.from('orders').select('id, order_number, sale_order_id, status, quantity, reference_id, color, created_at').order('created_at', { ascending: false }).limit(2000),
-        supabase.from('material_reservations')
-          .select('id, order_id, product_id, quantity_reserved, quantity_consumed, status, reservation_type, orders(order_number, reference_id, references(name))')
-          .limit(5000),
-        supabase.from('goods_issues').select('id, order_id, sale_order_id, status, total_value, issue_number').limit(2000),
-        supabase.from('finished_goods_receipts').select('id, order_id, sale_order_id, quantity_good, quantity_scrap, total_cost, inspection_status').limit(2000),
-        supabase.from('wip_ledger').select('id, order_id, sale_order_id, entry_type, amount').limit(5000),
-        supabase.from('accounts_receivable').select('id, sale_order_id, amount, amount_received, status').limit(2000),
-        supabase.from('cogs_entries').select('id, sale_order_id, order_id, total_cogs').limit(2000),
-        supabase.from('order_stages').select('id, order_id, stage_name, status, completed_at, quantity_processed, quantity_total').order('completed_at', { ascending: false }).limit(5000),
+      // Primeiro delimita o conjunto auditado; nenhum histórico alheio é baixado.
+      const { data: saleOrders = [], error: saleOrdersError } = await supabase
+        .from('sale_orders')
+        .select('id, order_number, client_name, status, created_at, total, delivery_deadline')
+        .order('created_at', { ascending: false })
+        .limit(200);
+      if (saleOrdersError) throw saleOrdersError;
+      const saleOrderIds = saleOrders.map(so => so.id);
+      const { data: ops = [], error: opsError } = saleOrderIds.length
+        ? await supabase.from('orders').select('id, order_number, sale_order_id, status, quantity, reference_id, color, created_at').in('sale_order_id', saleOrderIds)
+        : { data: [], error: null };
+      if (opsError) throw opsError;
+      const opIds = ops.map(op => op.id);
+      // Algumas tabelas legadas podem ter apenas order_id e outras apenas
+      // sale_order_id. Mantemos os dois vínculos para não transformar dados
+      // existentes em falso alerta ao reduzir o escopo da consulta.
+      const linkedToOrderOrSaleOrder = (table: string, columns: string) => {
+        if (!saleOrderIds.length) return Promise.resolve({ data: [], error: null });
+        const filters = [`sale_order_id.in.(${saleOrderIds.join(',')})`];
+        if (opIds.length) filters.push(`order_id.in.(${opIds.join(',')})`);
+        return (supabase.from as any)(table).select(columns).or(filters.join(','));
+      };
+      const [reservationsRes, giRes, fgrRes, wipRes, arRes, cogsRes, stagesRes] = await Promise.all([
+        opIds.length ? supabase.from('material_reservations').select('id, order_id, product_id, quantity_reserved, quantity_consumed, status, reservation_type, orders(order_number, reference_id, references(name))').in('order_id', opIds) : Promise.resolve({ data: [], error: null }),
+        linkedToOrderOrSaleOrder('goods_issues', 'id, order_id, sale_order_id, status, total_value, issue_number'),
+        linkedToOrderOrSaleOrder('finished_goods_receipts', 'id, order_id, sale_order_id, quantity_good, quantity_scrap, total_cost, inspection_status'),
+        linkedToOrderOrSaleOrder('wip_ledger', 'id, order_id, sale_order_id, entry_type, amount'),
+        saleOrderIds.length ? supabase.from('accounts_receivable').select('id, sale_order_id, amount, amount_received, status').in('sale_order_id', saleOrderIds) : Promise.resolve({ data: [], error: null }),
+        linkedToOrderOrSaleOrder('cogs_entries', 'id, sale_order_id, order_id, total_cogs'),
+        opIds.length ? supabase.from('order_stages').select('id, order_id, stage_name, status, completed_at, quantity_processed, quantity_total').in('order_id', opIds).order('completed_at', { ascending: false }) : Promise.resolve({ data: [], error: null }),
       ]);
-
-      const queryError = [soRes, opsRes, reservationsRes, giRes, fgrRes, wipRes, arRes, cogsRes, stagesRes]
-        .map((result) => result.error)
-        .find(Boolean);
+      const queryError = [reservationsRes, giRes, fgrRes, wipRes, arRes, cogsRes, stagesRes].map(result => result.error).find(Boolean);
       if (queryError) throw queryError;
 
-      const saleOrders = soRes.data ?? [];
-      const ops = opsRes.data ?? [];
       const reservations = reservationsRes.data ?? [];
       const goodsIssues = giRes.data ?? [];
       const fgReceipts = fgrRes.data ?? [];

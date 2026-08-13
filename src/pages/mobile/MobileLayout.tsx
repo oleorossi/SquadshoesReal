@@ -25,15 +25,23 @@ export default function MobileLayout() {
   const location = useLocation();
   const [pendingCount, setPendingCount] = useState(0);
 
-  // Boot: instala auto-sync + conta pendentes
+  // Boot: instala auto-sync + conta pendentes. Não usamos polling: em aparelhos
+  // móveis uma leitura IndexedDB a cada 5 s mantém a CPU acordada sem melhorar
+  // a UI. A fila emite evento quando muda e a tela também atualiza ao voltar
+  // ao foreground.
   useEffect(() => {
     const cleanup = installAutoSync();
     const refresh = async () => setPendingCount(await countPendingOrders());
-    refresh();
-    const interval = setInterval(refresh, 5000);
+    void refresh();
+    const visibilityHandler = () => {
+      if (document.visibilityState === 'visible') void refresh();
+    };
+    window.addEventListener('squad:pending-orders-changed', refresh);
+    document.addEventListener('visibilitychange', visibilityHandler);
     return () => {
       cleanup();
-      clearInterval(interval);
+      window.removeEventListener('squad:pending-orders-changed', refresh);
+      document.removeEventListener('visibilitychange', visibilityHandler);
     };
   }, []);
 
@@ -82,7 +90,7 @@ export default function MobileLayout() {
             <Link
               key={t.to}
               to={t.to}
-              className={`flex-1 flex flex-col items-center justify-center gap-0.5 ${active ? 'text-primary' : 'text-muted-foreground'}`}
+              className={`flex-1 min-h-11 flex flex-col items-center justify-center gap-0.5 ${active ? 'text-primary' : 'text-muted-foreground'}`}
             >
               <Icon className="h-6 w-6" weight={active ? 'fill' : 'regular'} />
               <span className="text-[10px] font-medium uppercase tracking-wide">{t.label}</span>

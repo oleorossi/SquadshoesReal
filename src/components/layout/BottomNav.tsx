@@ -2,9 +2,10 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { House as Home, Factory, Package, ShoppingCart, DotsThree as MoreHorizontal, X, Star } from '@phosphor-icons/react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
-import { menuGroups } from '@/data/navigation';
+import { menuGroups, orderGroupsForRoles, secondaryRoutes } from '@/data/navigation';
 import { useAccessControl } from '@/hooks/useAccessControl';
 import { useMenuFavorites } from '@/hooks/useMenuFavorites';
+import { useCurrentUserRoles } from '@/hooks/useUserManagement';
 
 const PRIMARY_ITEMS = [
   { icon: Home,         label: 'Painel',   path: '/dashboard' },
@@ -23,10 +24,21 @@ export function BottomNav() {
   // (permissão por menu). Sem isso o nav mobile expunha itens não liberados.
   const { canAccessRoute } = useAccessControl();
   const primaryItems = useMemo(() => PRIMARY_ITEMS.filter(i => canAccessRoute(i.path)), [canAccessRoute]);
+  const { data: currentRoles = [] } = useCurrentUserRoles();
+  const roleNames = useMemo(() => currentRoles.map(role => role.role), [currentRoles]);
   const visibleGroups = useMemo(
-    () => menuGroups
-      .map(g => ({ ...g, items: g.items.filter(i => canAccessRoute(i.path)) }))
-      .filter(g => g.items.length > 0),
+    () => orderGroupsForRoles(
+      menuGroups
+        .map(g => ({ ...g, items: g.items.filter(i => canAccessRoute(i.path)) }))
+        .filter(g => g.items.length > 0),
+      roleNames,
+    ),
+    [canAccessRoute, roleNames],
+  );
+  // Rotas complementares não poluem a barra principal, mas precisam ser
+  // encontráveis no celular sem depender de conhecer o atalho Cmd+K.
+  const secondaryItems = useMemo(
+    () => secondaryRoutes.filter(item => canAccessRoute(item.path)),
     [canAccessRoute],
   );
 
@@ -183,6 +195,34 @@ export function BottomNav() {
                 </div>
               </div>
             ))}
+            {secondaryItems.length > 0 && (
+              <div>
+                <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1.5">
+                  <MoreHorizontal className="h-3 w-3" />
+                  Ferramentas
+                </div>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {secondaryItems.map((item) => {
+                    const active = isActive(item.path);
+                    return (
+                      <button
+                        key={item.path}
+                        onClick={() => { navigate(item.path); setMoreOpen(false); }}
+                        className={cn(
+                          "flex min-h-11 flex-col items-center gap-1 px-2 py-2.5 rounded-xl text-xs font-medium transition-all",
+                          active
+                            ? "bg-primary/10 text-primary"
+                            : "bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground",
+                        )}
+                      >
+                        <item.icon className="h-4 w-4" />
+                        <span className="leading-none text-center">{item.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

@@ -660,6 +660,8 @@ export default function AppLayout({ children, printMode = false }: { children: R
                       onDragStart={!mobile ? handleGroupDragStart(group.label) : undefined}
                       onDragEnd={!mobile ? clearDrag : undefined}
                       onClick={() => toggleGroup(group.label)}
+                      aria-expanded={!isGroupCollapsed}
+                      aria-controls={`nav-group-${group.label.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-')}`}
                       className={cn(
                         // Industrial Editorial Pro: group label vira eyebrow
                         // (Fira Code 10px tracking widest uppercase).
@@ -675,7 +677,10 @@ export default function AppLayout({ children, printMode = false }: { children: R
                       <ChevronDown className={cn("h-3 w-3 transition-transform duration-200", isGroupCollapsed && "-rotate-90")} />
                     </button>
                     {!isGroupCollapsed && (
-                      <div className="mt-0.5 space-y-0.5 animate-slide-down">
+                      <div
+                        id={`nav-group-${group.label.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-')}`}
+                        className="mt-0.5 space-y-0.5 animate-slide-down"
+                      >
                         {visibleItems.map((item) => {
                           const isFavorite = favorites.some(f => f.path === item.path);
                           const isSubItem = !!(item as any).parent;

@@ -45,6 +45,13 @@ interface DraftPayload {
 
 let dbPromise: Promise<IDBPDatabase> | null = null;
 
+/** Atualiza badges da UI móvel sem precisar consultar o IndexedDB em polling. */
+const notifyPendingOrdersChanged = () => {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('squad:pending-orders-changed'));
+  }
+};
+
 const getDb = () => {
   if (!dbPromise) {
     dbPromise = openDB(DB_NAME, DB_VERSION, {
@@ -75,6 +82,7 @@ export const enqueueOrder = async (payload: PendingOrderPayload): Promise<void> 
     lastAttemptAt: null,
   };
   await db.put('pending-orders', queued);
+  notifyPendingOrdersChanged();
 };
 
 export const listPendingOrders = async (): Promise<QueuedOrder[]> => {
@@ -86,6 +94,7 @@ export const listPendingOrders = async (): Promise<QueuedOrder[]> => {
 export const removeFromQueue = async (client_request_id: string): Promise<void> => {
   const db = await getDb();
   await db.delete('pending-orders', client_request_id);
+  notifyPendingOrdersChanged();
 };
 
 export const markAttemptFailed = async (
@@ -101,6 +110,7 @@ export const markAttemptFailed = async (
     lastError: error.slice(0, 500),
     lastAttemptAt: Date.now(),
   });
+  notifyPendingOrdersChanged();
 };
 
 export const countPendingOrders = async (): Promise<number> => {

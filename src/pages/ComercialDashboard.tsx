@@ -17,25 +17,37 @@ function useComercialData() {
       // Narrow column selection — the dashboard only needs these fields and
       // select('*') was pulling notes, descriptions, and other heavy fields
       // that bloated the initial payload by 30-50%.
-      const [salesRes, itemsRes, clientsRes, groupsRes, repsRes] = await Promise.all([
-        supabase.from('sale_orders').select('id, client_id, client_name, total, status, representative, commission_value').order('created_at', { ascending: false }).limit(1000),
-        supabase.from('sale_order_items').select('reference_id, quantity, unit_price, color, technical_sheets(name, code)').limit(5000),
-        supabase.from('clients').select('id, economic_groups(name)').limit(2000),
-        supabase.from('economic_groups').select('id, name'),
-        supabase.from('representatives').select('id, name').eq('active', true),
-      ]);
+      const { data: salesData, error: salesError } = await supabase
+        .from('sale_orders')
+        .select('id, client_id, client_name, total, status, representative, commission_value')
+        .order('created_at', { ascending: false })
+        .limit(500);
+      if (salesError) throw salesError;
 
-      const sales = salesRes.data || [];
+      const sales = salesData ?? [];
+      const saleOrderIds = sales.map(s => s.id);
+      const clientIds = Array.from(new Set(sales.map(s => s.client_id).filter(Boolean)));
+      const [itemsRes, clientsRes] = await Promise.all([
+        saleOrderIds.length
+          ? supabase.from('sale_order_items').select('sale_order_id, reference_id, quantity, unit_price, color, technical_sheets(name, code)').in('sale_order_id', saleOrderIds)
+          : Promise.resolve({ data: [], error: null }),
+        clientIds.length
+          ? supabase.from('clients').select('id, economic_groups(name)').in('id', clientIds)
+          : Promise.resolve({ data: [], error: null }),
+      ]);
+      if (itemsRes.error) throw itemsRes.error;
+      if (clientsRes.error) throw clientsRes.error;
+
       const items = itemsRes.data || [];
       const clients = clientsRes.data || [];
-       // groups and reps fetched for potential future use or to ensure data consistency
+      const clientsById = new Map(clients.map(client => [client.id, client]));
 
       // Top clients by total purchased
       const clientTotals = new Map<string, { name: string; group: string; total: number; orders: number }>();
       for (const s of sales) {
         const key = s.client_name || 'Sem nome';
         const prev = clientTotals.get(key) || { name: key, group: '', total: 0, orders: 0 };
-        const client = clients.find(c => c.id === s.client_id);
+        const client = clientsById.get(s.client_id);
         prev.group = (client as any)?.economic_groups?.name || prev.group || '';
         prev.total += s.total;
         prev.orders += 1;

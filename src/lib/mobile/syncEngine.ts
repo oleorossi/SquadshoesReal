@@ -124,14 +124,15 @@ export const triggerSync = async (): Promise<SyncResult | null> => {
 export const installAutoSync = () => {
   if (typeof window === 'undefined') return () => {};
   const handler = () => { void triggerSync(); };
-  window.addEventListener('online', handler);
-  document.addEventListener('visibilitychange', () => {
+  const visibilityHandler = () => {
     if (document.visibilityState === 'visible') handler();
-  });
+  };
+  window.addEventListener('online', handler);
+  document.addEventListener('visibilitychange', visibilityHandler);
   // Tenta logo na inicialização caso já tenha itens pendentes de sessão anterior
   setTimeout(handler, 1500);
   return () => {
     window.removeEventListener('online', handler);
-    // visibilitychange listener fica — é cheap
+    document.removeEventListener('visibilitychange', visibilityHandler);
   };
 };

@@ -38,7 +38,7 @@ serve(async (req) => {
     }
 
     // Authorization: only admin/manager roles can spend AI credits.
-    // Without this, any authenticated user could drain LOVABLE_API_KEY budget.
+    // Without this, any authenticated user could drain GEMINI_API_KEY budget.
     const userId = claimsData.claims.sub;
     const adminClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "");
     const { data: roles, error: rolesError } = await adminClient
@@ -120,8 +120,9 @@ serve(async (req) => {
       );
     }
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
+    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+    if (!GEMINI_API_KEY) throw new Error("GEMINI_API_KEY não configurada nos secrets da função.");
+    const model = Deno.env.get("GEMINI_IMAGE_MODEL") || "gemini-3.1-flash-image";
 
     // Download the original image and convert to base64
     console.log("Downloading image:", imageUrl);
@@ -146,45 +147,33 @@ serve(async (req) => {
     const base64Image = btoa(binary);
 
     const contentType = imgResp.headers.get("content-type") || "image/jpeg";
-    const dataUrl = `data:${contentType};base64,${base64Image}`;
+    console.log(`Enviando recoloração para Gemini: cor=${targetColor}, modelo=${model}`);
 
-    console.log("Sending to AI for recoloring to:", targetColor);
-
-    // Call AI gateway with the image model
+    // Chamada direta à conta Google: não passa pelo AI Gateway da Lovable.
     const aiResp = await fetch(
-      "https://ai.gateway.lovable.dev/v1/chat/completions",
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
       {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          "x-goog-api-key": GEMINI_API_KEY,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "google/gemini-3.1-flash-image-preview",
-          modalities: ["image", "text"],
-          messages: [
-            {
-              role: "user",
-              content: [
-                {
-                  type: "image_url",
-                  image_url: { url: dataUrl },
-                },
-                {
-                  type: "text",
-                  text: `Change the color of this shoe/footwear to "${targetColor}". Keep the exact same shoe design, shape, style, details, textures and proportions. Only change the main color to ${targetColor}. Keep the background and lighting the same. The result must look like a professional product photo.`,
-                },
-              ],
-            },
-          ],
+          contents: [{
+            parts: [
+              { inlineData: { mimeType: contentType, data: base64Image } },
+              { text: `Change the color of this shoe/footwear to "${targetColor}". Keep the exact same shoe design, shape, style, details, textures and proportions. Only change the main color to ${targetColor}. Keep the background and lighting the same. The result must look like a professional product photo.` },
+            ],
+          }],
+          generationConfig: { responseModalities: ["IMAGE", "TEXT"] },
         }),
-        signal: AbortSignal.timeout(45_000),
+        signal: AbortSignal.timeout(120_000),
       }
     );
 
     if (!aiResp.ok) {
       const errText = await aiResp.text();
-      console.error("AI gateway error:", aiResp.status, errText);
+      console.error("Gemini error:", aiResp.status, errText.slice(0, 800));
 
       if (aiResp.status === 429) {
         return new Response(
@@ -192,10 +181,10 @@ serve(async (req) => {
           { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      if (aiResp.status === 402) {
+      if (aiResp.status === 401 || aiResp.status === 403) {
         return new Response(
-          JSON.stringify({ error: "Créditos insuficientes. Adicione créditos ao seu workspace." }),
-          { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          JSON.stringify({ error: "A chave Gemini não tem permissão para este modelo. Confira GEMINI_API_KEY e o faturamento da conta Google." }),
+          { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
 
@@ -208,40 +197,11 @@ serve(async (req) => {
     const aiData = await aiResp.json();
     console.log("AI response received, extracting image...");
 
-    // Extract image from response
-    let resultBase64: string | null = null;
-    let resultMimeType = "image/png";
-
-    const choice = aiData.choices?.[0];
-
-    // Helper to extract base64 from a data URL string
-    const extractFromDataUrl = (url: string): boolean => {
-      const prefix = "base64,";
-      const idx = url.indexOf(prefix);
-      if (idx === -1) return false;
-      const mimeMatch = url.match(/^data:([^;]+);/);
-      if (mimeMatch) resultMimeType = mimeMatch[1];
-      resultBase64 = url.substring(idx + prefix.length).replace(/\s/g, '');
-      return true;
-    };
-
-    // Check choice.message.images array (primary location for image models)
-    if (choice?.message?.images && Array.isArray(choice.message.images)) {
-      for (const img of choice.message.images) {
-        if (img.type === "image_url" && img.image_url?.url) {
-          if (extractFromDataUrl(img.image_url.url)) break;
-        }
-      }
-    }
-
-    // Fallback: check content array
-    if (!resultBase64 && choice?.message?.content && Array.isArray(choice.message.content)) {
-      for (const part of choice.message.content) {
-        if (part.type === "image_url" && part.image_url?.url) {
-          if (extractFromDataUrl(part.image_url.url)) break;
-        }
-      }
-    }
+    // Gemini devolve a imagem codificada em inlineData.
+    const parts = aiData?.candidates?.[0]?.content?.parts || [];
+    const imagePart = parts.find((part: { inlineData?: { data?: string } }) => part.inlineData?.data);
+    const resultBase64: string | null = imagePart?.inlineData?.data || null;
+    const resultMimeType: string = imagePart?.inlineData?.mimeType || "image/png";
 
     if (!resultBase64) {
       console.error("No image in AI response:", JSON.stringify(aiData).slice(0, 500));
