@@ -1,6 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
-import { isAllowedPrintResource } from '../src/lib/printResourceSecurity';
 
 /**
  * Renderiza HTML em PDF com Chromium headless.
@@ -39,6 +38,26 @@ const MAX_HTML_BYTES = 4 * 1024 * 1024;
 const RATE_WINDOW_MS = 60_000;
 const RATE_LIMIT = 12;
 const rateByUser = new Map<string, number[]>();
+
+/**
+ * A função serverless é empacotada sem os módulos do front-end em `src/`.
+ * Esta allowlist fica propositalmente aqui para que a proteção contra SSRF viaje
+ * junto com `api/render-pdf.ts`; importar a versão do browser fez a função cair
+ * ainda no carregamento do módulo na Vercel.
+ */
+function isAllowedPrintResource(raw: string, allowedHosts: Set<string>, isLocal = false): boolean {
+  if (raw.startsWith('data:') || raw.startsWith('blob:') || raw === 'about:blank') return true;
+  let url: URL;
+  try { url = new URL(raw); } catch { return false; }
+  if (url.protocol !== 'https:' && !(isLocal && url.protocol === 'http:')) return false;
+  const host = url.hostname.toLowerCase();
+  if (allowedHosts.has(host)) return true;
+  if (host.endsWith('.supabase.co') || host.endsWith('.supabase.in')) return true;
+  return host === 'fonts.googleapis.com'
+    || host === 'fonts.gstatic.com'
+    || host === 'cdn.jsdelivr.net'
+    || host === 'cdnjs.cloudflare.com';
+}
 
 type RequestBody = {
   html?: string;
