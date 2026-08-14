@@ -7,6 +7,7 @@ import { GlobalErrorBoundary } from "./components/GlobalErrorBoundary";
 import { installWhiteLabelGuard } from "./lib/whiteLabelGuard";
 import { installChunkErrorHandler } from "./lib/chunkErrorHandler";
 import { tryReserveReload } from "./lib/recoveryReload";
+import { clearStalePwaArtifacts } from "./utils/pwa-utils";
 
 // White-label runtime guard: remove badges/branding injetados via script
 // (cobre casos não pegos pelo CSS estático e shadow DOM dinâmico).
@@ -38,16 +39,14 @@ if (import.meta.env.DEV) {
 }
 
 // Adicionar um atalho global para depuração
- (window as any).forceAppUpdate = () => {
+ (window as any).forceAppUpdate = async () => {
    if (import.meta.env.DEV) console.warn("Forçando atualização manual do sistema...");
    localStorage.clear();
    sessionStorage.clear();
-   if ('serviceWorker' in navigator) {
-     navigator.serviceWorker.getRegistrations().then(registrations => {
-       registrations.forEach(registration => registration.unregister());
-     });
-   }
-   window.location.reload();
+   await clearStalePwaArtifacts().catch(() => {});
+   const url = new URL(window.location.href);
+   url.searchParams.set('_r', String(Date.now()));
+   window.location.replace(url.toString());
  };
 
 // Recuperação automática de chunk obsoleto: quando um deploy novo remove os

@@ -15,6 +15,7 @@ import ScrollRestorationComponent from "@/components/ScrollRestoration";
 import { GlobalErrorBoundary } from "@/components/GlobalErrorBoundary";
 import { VersionChecker, manualVersionCheck } from "@/components/VersionChecker";
 import PageSkeleton, { DashboardSkeleton } from "@/components/layout/PageSkeleton";
+import { clearStalePwaArtifacts } from "@/utils/pwa-utils";
 
 // Eager-loaded (auth flow)
 import Auth from "./pages/Auth";
@@ -633,6 +634,27 @@ const RouteErrorFallback = () => {
   try { (window as any).__lastError = error; } catch {}
   const message = error?.message || error?.statusText || error?.toString?.() || 'Erro desconhecido';
   const stack = error?.stack || error?.componentStack;
+  const isStaleChunk = /failed to fetch dynamically imported module|importing a module script failed|failed to load module script/i.test(message);
+
+  // Erro de import lazy pode ser capturado pelo React Router antes de chegar aos
+  // listeners globais de `main.tsx`. Nesse caso a própria tela de erro faz UMA
+  // recuperação completa (cache + SW + URL inédita), em vez de deixar o usuário
+  // preso na rota com o hash de um deploy que já não existe.
+  useEffect(() => {
+    if (!isStaleChunk) return;
+    const key = 'route-stale-chunk-recovered-at';
+    const previous = Number(sessionStorage.getItem(key) || 0);
+    if (previous && Date.now() - previous < 60_000) return;
+    sessionStorage.setItem(key, String(Date.now()));
+    void clearStalePwaArtifacts()
+      .catch(() => {})
+      .finally(() => {
+        const url = new URL(window.location.href);
+        url.searchParams.set('_r', String(Date.now()));
+        window.location.replace(url.toString());
+      });
+  }, [isStaleChunk]);
+
   return (
     <div className="min-h-[300px] flex flex-col items-center justify-center p-8 gap-4">
       <ShieldAlert className="h-10 w-10 text-destructive" />

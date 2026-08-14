@@ -12,7 +12,15 @@ export const SW_RESET_FLAG = "sw-clear-done";
  }
  
  export async function clearStalePwaArtifacts(): Promise<void> {
-   // This was previously clearing everything on every load.
-   // We keep it as an export but don't call it automatically anymore
-   // to allow our new SW to work.
+   // Nunca é chamado no carregamento normal. Só nos fluxos explícitos de
+   // recuperação após deploy, quando manter um chunk velho é pior que perder um
+   // cache temporário de API.
+   if ('caches' in window) {
+     const keys = await caches.keys();
+     await Promise.all(keys.map(key => caches.delete(key)));
+   }
+   if ('serviceWorker' in navigator) {
+     const registrations = await navigator.serviceWorker.getRegistrations();
+     await Promise.all(registrations.map(registration => registration.unregister()));
+   }
  }
