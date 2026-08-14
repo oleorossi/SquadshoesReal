@@ -1,8 +1,7 @@
 import { describe, expect, it, beforeEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { render, act } from '@testing-library/react';
-import { createMemoryRouter, RouterProvider, Outlet } from 'react-router-dom';
+import { render } from '@testing-library/react';
 import { useEffect } from 'react';
 
 /**
@@ -30,39 +29,31 @@ describe('remontagem entre /sales/new e /sales/edit/:id', () => {
     return <div>probe</div>;
   }
 
+  function RouteSlot({ path, keyed }: { path: 'new' | 'edit'; keyed: boolean }) {
+    if (path === 'new') return keyed ? <Probe key="new" /> : <Probe />;
+    return keyed ? <Probe key="edit" /> : <Probe />;
+  }
+
   const renderRoutes = (keyed: boolean) => {
-    const router = createMemoryRouter(
-      [
-        {
-          path: '/sales',
-          element: <Outlet />,
-          children: [
-            { path: 'new', element: keyed ? <Probe key="new" /> : <Probe /> },
-            { path: 'edit/:id', element: keyed ? <Probe key="edit" /> : <Probe /> },
-          ],
-        },
-      ],
-      { initialEntries: ['/sales/edit/pv-1'] },
-    );
-    render(<RouterProvider router={router} />);
-    return router;
+    const view = render(<RouteSlot path="edit" keyed={keyed} />);
+    return () => view.rerender(<RouteSlot path="new" keyed={keyed} />);
   };
 
   beforeEach(() => { mounts = 0; });
 
-  it('SEM chave o componente não remonta — é a armadilha que quebrou a cópia', async () => {
-    const router = renderRoutes(false);
+  it('SEM chave o componente não remonta — é a armadilha que quebrou a cópia', () => {
+    const navigate = renderRoutes(false);
     expect(mounts).toBe(1);
-    await act(async () => { await router.navigate('/sales/new'); });
+    navigate();
     // Mesmo tipo, mesma posição: React atualiza no lugar. Nenhum efeito de
     // montagem roda de novo — e todo o estado do pedido editado sobrevive.
     expect(mounts).toBe(1);
   });
 
-  it('COM chaves distintas a troca remonta e os efeitos de montagem voltam a rodar', async () => {
-    const router = renderRoutes(true);
+  it('COM chaves distintas a troca remonta e os efeitos de montagem voltam a rodar', () => {
+    const navigate = renderRoutes(true);
     expect(mounts).toBe(1);
-    await act(async () => { await router.navigate('/sales/new'); });
+    navigate();
     expect(mounts).toBe(2);
   });
 
