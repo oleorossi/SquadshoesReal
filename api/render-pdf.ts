@@ -170,8 +170,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       else request.abort('blockedbyclient');
     });
 
-    // `networkidle0` cobre as fotos dos produtos e o CSS do app, que vêm por URL.
-    await page.setContent(html, { waitUntil: ['load', 'networkidle0'], timeout: 45_000 });
+    // Puppeteer 25 restringe `setContent.waitUntil` a load/domcontentloaded.
+    // Esperar a rede em uma etapa própria preserva a garantia de que fotos e CSS
+    // remotos terminaram antes da geração do PDF.
+    await page.setContent(html, { waitUntil: 'load', timeout: 45_000 });
+    await page.waitForNetworkIdle({ idleTime: 500, timeout: 45_000 });
 
     // Sem isto o PDF sai com o CSS de TELA — e as fichas dependem do @media print
     // pra soltar a altura fixa das páginas.
