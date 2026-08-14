@@ -28,7 +28,7 @@ describe('DEFAULT_LEAD_TIME_COLUMNS × SECTOR_CONFIG', () => {
   it('seleciona toda coluna de capacidade que o motor lê da categoria', () => {
     const missing: string[] = [];
     for (const [sector, cfg] of Object.entries(SECTOR_CONFIG)) {
-      for (const field of [cfg.capField, cfg.fallbackCapField]) {
+      for (const field of [cfg.categoryCapField ?? cfg.capField, cfg.fallbackCapField]) {
         if (field && !selected.has(field as string)) missing.push(`${sector} → ${String(field)}`);
       }
     }
@@ -62,5 +62,18 @@ describe('DEFAULT_LEAD_TIME_COLUMNS × SECTOR_CONFIG', () => {
     expect(
       getEffectiveCapacityPerDay('costura_cabedal', null, { costura_capacity_per_day: 550 }),
     ).toBe(550);
+  });
+
+  it('Corte Palmilha prioriza a coluna própria e preserva a ficha legada', () => {
+    expect(getEffectiveCapacityPerDay('corte_palmilha', {
+      corte_palmilha_capacity_per_day: 320,
+      sewing_capacity_per_day: 720,
+    }, { sewing_capacity_per_day: 600 })).toBe(320);
+    expect(getEffectiveCapacityPerDay('corte_palmilha', {
+      sewing_capacity_per_day: 720,
+    }, { sewing_capacity_per_day: 600 })).toBe(720);
+    expect(getEffectiveCapacityPerDay('corte_palmilha', null, {
+      sewing_capacity_per_day: 600,
+    })).toBe(600);
   });
 });

@@ -285,6 +285,24 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
     });
   }, [comparativo.rows, runs]);
 
+  /** Rascunho pode existir para conferência; aprovação só quando a mesma folha
+   * está financeiramente fechável. O banco repete estas travas como proteção
+   * contra chamada direta ou tela desatualizada. */
+  const approvalBlockReason = (run: any): string | null => {
+    const emp: any = employeeMap.get(run.employee_id);
+    const result = reportComparativoRows.find(row => row.id === run.employee_id)?.result;
+    const regime = String(emp?.payment_type || 'mensalista').toLowerCase();
+    if (Number(result?.pending_days || 0) > 0) return 'Há batidas pendentes neste período.';
+    if (result?.he_rate_missing) return 'Há hora extra sem taxa financeira cadastrada.';
+    if (regime === 'mensalista' || regime === 'diarista') {
+      if (!emp?.work_schedule_id) return 'Cadastre a jornada própria deste funcionário.';
+      if (!String(emp?.external_id || '').trim()) return 'Cadastre a matrícula do relógio deste funcionário.';
+      if (coverage?.maxCovered && coverage.maxCovered < appliedTo) return `Ponto importado somente até ${coverage.maxCovered.split('-').reverse().join('/')}.`;
+      if (coverage?.count === 0) return 'Não há batidas importadas para este período.';
+    }
+    return null;
+  };
+
   /** Detalhe de PRODUÇÃO por funcionário (dias produtivos, fichas, pares) para
    *  quem é regime por par. Sai do comparativo, que roda exatamente na mesma
    *  janela de `runs` (ambos em appliedFrom..appliedTo) — por isso os números da
@@ -1014,7 +1032,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
             value={docScope}
             onChange={setDocScope}
             options={[
-              { value: 'all', label: `Todos os funcionários (${runs.length || espelhoEmps.length})` },
+              { value: 'all', label: `${runs.length || espelhoEmps.length} com documentos no período${employees.filter(e => e.active).length > (runs.length || espelhoEmps.length) ? ` · ${employees.filter(e => e.active).length - (runs.length || espelhoEmps.length)} sem registro` : ''}` },
               ...runs.map(r => ({ value: r.employee_id, label: employeeMap.get(r.employee_id)?.name || '—' })),
             ]}
             placeholder="Funcionário"
@@ -1270,6 +1288,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
               const emp = employeeMap.get(r.employee_id);
               const sb = STATUS_BADGES[r.status] || STATUS_BADGES.rascunho;
               const hasAdvance = (r.advances_total || 0) > 0;
+              const approvalReason = approvalBlockReason(r);
               const sum = paySummaries[r.id];
               const parcial = r.status === 'aprovado' && !!sum && sum.paidTotal > 0.005 && sum.paidTotal < (r.total_liquido || 0) - 0.005;
               // Regime por par: as colunas de ponto (Faltas/Atrasos/Hora extra)
@@ -1358,10 +1377,12 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
                         <Button
                           size="sm" variant="ghost"
                           onClick={() => {
+                            if (approvalReason) { toast.error(approvalReason); return; }
                             if (hasAdvance) setApproveRun(r.id);
                             else updateStatus.mutate({ id: r.id, status: 'aprovado' });
                           }}
-                          title={hasAdvance ? 'Revisar adiantamento antes de aprovar' : 'Aprovar folha'}
+                          disabled={!!approvalReason}
+                          title={approvalReason || (hasAdvance ? 'Revisar adiantamento antes de aprovar' : 'Aprovar folha')}
                         >
                           <CheckCircle2 className="h-4 w-4 text-emerald-600" />
                         </Button>

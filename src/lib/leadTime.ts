@@ -34,6 +34,7 @@ import type { SectorKey } from './sectors';
 export type { SectorKey };
 
 interface SheetCapacityRow {
+  corte_palmilha_capacity_per_day?: number | null;
   cutting_capacity_per_day?: number | null;
   sewing_capacity_per_day?: number | null;
   costura_capacity_per_day?: number | null;
@@ -94,6 +95,9 @@ interface CategoryDefaultsRow {
 // DEFAULT_LEAD_TIME_COLUMNS do fetch. Setor/coluna nova entra na cobertura sozinha.
 export const SECTOR_CONFIG: Record<SectorKey, {
   capField: keyof SheetCapacityRow;
+  /** Coluna equivalente no default da categoria quando a ficha tem coluna nova
+   *  que não existe na tabela de defaults. */
+  categoryCapField?: keyof CategoryDefaultsRow;
   /** Coluna de capacidade alternativa quando a principal não está cadastrada
    *  (ex.: Expedição usa expedition_capacity_per_day, mas cai pra
    *  finishing_capacity_per_day — comportamento legado — quando vazia). */
@@ -104,9 +108,9 @@ export const SECTOR_CONFIG: Record<SectorKey, {
   // New sector names (PR 2 — Costura adicionado entre Corte Forração e Mesa)
   // Fix 2026-05-23: corte_palmilha usava lead_time_costura_dias por engano —
   // o resto da família corte (forração + mesa) usa lead_time_corte_dias.
-  // Mantinha o nome 'sewing_capacity_per_day' (legado: chamavam corte de
-  // palmilha de "costura de palmilha"), mas o lead_time correto é o de corte.
-  corte_palmilha: { capField: 'sewing_capacity_per_day',    ltField: 'lead_time_corte_dias',      hardFallbackDays: 1 },
+  // Coluna própria criada para separar o Corte Palmilha da Costura. Ficha
+  // legada continua em sewing; o default da categoria também cai nela.
+  corte_palmilha: { capField: 'corte_palmilha_capacity_per_day', categoryCapField: 'sewing_capacity_per_day', fallbackCapField: 'sewing_capacity_per_day', ltField: 'lead_time_corte_dias', hardFallbackDays: 1 },
   corte_forracao: { capField: 'cutting_capacity_per_day',   ltField: 'lead_time_corte_dias',      hardFallbackDays: 2 },
   // Costura dividida em dois setores paralelos (migration 20261001120000).
   // Cada um tem capacidade própria, com fallback pra coluna antiga enquanto as
@@ -150,7 +154,8 @@ export function getEffectiveCapacityPerDay(
     const fromSheetFb = num(sheet?.[cfg.fallbackCapField]);
     if (fromSheetFb > 0) return fromSheetFb;
   }
-  const fromCategory = num(categoryDefaults?.[cfg.capField as keyof CategoryDefaultsRow]);
+  const categoryCapField = cfg.categoryCapField ?? cfg.capField as keyof CategoryDefaultsRow;
+  const fromCategory = num(categoryDefaults?.[categoryCapField]);
   if (fromCategory > 0) return fromCategory;
   if (cfg.fallbackCapField) {
     return num(categoryDefaults?.[cfg.fallbackCapField as keyof CategoryDefaultsRow]);
