@@ -142,8 +142,8 @@ const aggregateSqlByProduct = (rows: ConsumptionLine[]): Map<string, number> => 
         .select('reference_id, color')
         .in('reference_id', referenceIds)
         .order('created_at', { ascending: false }),
-      fetchTechnicalSheetsForConsumption(referenceIds),
-      fetchConsumptionContext(referenceIds),
+      fetchTechnicalSheetsForConsumption(referenceIds, supabase),
+      fetchConsumptionContext(referenceIds, supabase),
     ]);
     if (ordersError) throw ordersError;
 
@@ -205,6 +205,7 @@ const aggregateSqlByProduct = (rows: ConsumptionLine[]): Map<string, number> => 
           mismatches.push({
             reference: reference.name,
             product_id: productId,
+            product_name: ctx.allProducts.find(product => product.id === productId)?.name ?? null,
             ts_required: tsRequired,
             sql_required: sqlRequired,
             delta: tsRequired - sqlRequired,
@@ -214,5 +215,5 @@ const aggregateSqlByProduct = (rows: ConsumptionLine[]): Map<string, number> => 
     }
 
     expect(mismatches, JSON.stringify(mismatches, null, 2)).toEqual([]);
-  });
+  }, 30_000);
 });

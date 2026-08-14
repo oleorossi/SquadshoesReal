@@ -8,6 +8,7 @@ vi.mock('@/integrations/supabase/client', () => ({ supabase: {} }));
 
 import {
   computeConsumptionForItems,
+  resolveInsoleBaseProductCanonical,
   TECHNICAL_SHEET_CONSUMPTION_COLUMNS,
   type ConsumptionContext,
   type ConsumptionItem,
@@ -930,16 +931,27 @@ describe('orderConsumption — motor canônico', () => {
     expect(placa.totalQuantity).toBeCloseTo(120, 6);
   });
 
-  it('palmilha pronta comprada por PAR (produto pinado unit=par) mantém a linha em par', () => {
+  it('palmilha sem forração com produto pinado por cor mantém a linha em par', () => {
     const ctx = buildContext();
     ctx.allProducts.push({ id: 'p-palm-pronta', name: 'PALMILHA PRONTA 123', unit: 'par', color: 'BEGE', group_id: 'g-eva', quantity: 100, reserved_stock: 0, stock_grade: null, sole_classification: null } as any);
     ctx.palmilhaColorMap.set('sheet-1::preto', { color: 'BEGE', productId: 'p-palm-pronta' });
 
-    const rows = computeConsumptionForItems([buildItem()], ctx);
+    const rows = computeConsumptionForItems([buildItem({ technical_sheets: buildSheet({ insole_has_lining: false }) })], ctx);
     const palm = rows.find(r => r.componentType === 'Palmilha')!;
     expect(palm.productUnit).toBe('par');
     expect(palm.totalQuantity).toBe(24);
     expect(palm.materialName).toBe('PALMILHA PRONTA 123');
+  });
+
+  it('palmilha em fabricação prioriza a placa em dm² quando o grupo também contém palmilha pronta', () => {
+    const products = [
+      { id: 'p-pronta', name: 'PALMILHA: OURO LIGHT', color: 'OURO LIGHT', unit: 'm', group_id: 'g-palmilha', quantity: 90 },
+      { id: 'p-placa', name: 'PLACA 1.0 EVA 3.0', color: 'BRANCA', unit: 'dm²', group_id: 'g-palmilha', quantity: 0 },
+    ];
+    const groups = [{ id: 'g-palmilha', name: 'PALMILHA' }];
+
+    expect(resolveInsoleBaseProductCanonical('PALMILHA', 'PORCELANA', products, groups)?.id)
+      .toBe('p-placa');
   });
 
   it('palmilha com produto PINADO em dm² emite dm² (unidade do produto vence o par legado)', () => {
