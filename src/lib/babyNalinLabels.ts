@@ -25,18 +25,18 @@ export const OFFSET_X_MM = (MEDIA_WIDTH_MM - ART_WIDTH_MM) / 2; // 2,0
 export const OFFSET_Y_MM = (MEDIA_HEIGHT_MM - ART_HEIGHT_MM) / 2; // 1,0
 
 /**
- * Módulo do CODE128 travado em 2 dots da Elgin L42 (203 dpi).
+ * Módulo do CODE128 definido pelo padrão do cliente: 7 dots a 600 dpi.
  *
  * A cabeça imprime em grade de dots; módulo que não é múltiplo inteiro de dot
  * sai com barras de larguras desiguais. Com 13 dígitos (123 módulos) o 2 dots
  * é o ÚNICO valor viável: 1 dot dá 0,125 mm — abaixo do que leitor de loja lê —
- * e 3 dots dá 46,2 mm, que não cabe nem na etiqueta, quanto mais com zona de
- * silêncio. Ver `assertBarcodeFits`.
+ * O desenho técnico entregue pelo cliente especifica 0,296 mm por módulo;
+ * manter esse valor evita que a leitura do código varie entre lotes.
  */
-export const PRINTER_DPI = 203;
-export const DOT_MM = 25.4 / PRINTER_DPI; // 0,12512 mm
-export const MODULE_DOTS = 2;
-export const MODULE_MM = DOT_MM * MODULE_DOTS; // 0,2502 mm
+export const PRINTER_DPI = 600;
+export const DOT_MM = 25.4 / PRINTER_DPI; // 0,0423 mm
+export const MODULE_DOTS = 7;
+export const MODULE_MM = 0.296;
 
 /** Mínimo em branco de cada lado do código. Nada pode invadir essa faixa. */
 export const QUIET_ZONE_MIN_MM = 3.1;
@@ -253,6 +253,8 @@ export function assertBarcodeFits(codigo: string): BarcodeFit {
 export interface BabyNalinPdfOptions {
   /** Repete cada etiqueta pela `Qt. Solicitada` do pedido. Padrão: 1 por linha. */
   repeatByQuantity?: boolean;
+  /** Etiquetas físicas por par quando a repetição por quantidade estiver ligada. */
+  repeatMultiplier?: number;
   /** PNG em data URI + proporção, pra compor a logomarca. Sem ele, sai sem logo. */
   logo?: { dataUrl: string; width: number; height: number } | null;
 }
@@ -325,9 +327,10 @@ function drawLabel(doc: PdfDoc, row: BabyNalinRow, options: BabyNalinPdfOptions)
 }
 
 /** Expande as linhas em páginas — uma etiqueta por página, na ordem do arquivo. */
-export function expandRows(rows: BabyNalinRow[], repeatByQuantity: boolean): BabyNalinRow[] {
+export function expandRows(rows: BabyNalinRow[], repeatByQuantity: boolean, repeatMultiplier = 1): BabyNalinRow[] {
   if (!repeatByQuantity) return rows;
-  return rows.flatMap(r => Array.from({ length: Math.max(1, r.quantidade) }, () => r));
+  const multiplier = Math.min(100, Math.max(1, Math.trunc(Number(repeatMultiplier) || 1)));
+  return rows.flatMap(r => Array.from({ length: Math.max(1, r.quantidade) * multiplier }, () => r));
 }
 
 /** Monta o PDF: uma página por etiqueta, no tamanho exato da mídia 50 × 40. */
@@ -338,7 +341,7 @@ export async function buildBabyNalinPdf(
   if (rows.length === 0) throw new Error('Nada para gerar: nenhuma etiqueta selecionada.');
 
   const { jsPDF } = await import('jspdf');
-  const paginas = expandRows(rows, options.repeatByQuantity ?? false);
+  const paginas = expandRows(rows, options.repeatByQuantity ?? false, options.repeatMultiplier ?? 1);
 
   const doc = new jsPDF({
     unit: 'mm',

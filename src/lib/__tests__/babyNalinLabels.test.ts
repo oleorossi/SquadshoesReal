@@ -85,8 +85,8 @@ describe('encodeCode128', () => {
 });
 
 describe('geometria da etiqueta', () => {
-  it('o módulo é 2 dots a 203 dpi = 0,2502 mm', () => {
-    expect(MODULE_MM).toBeCloseTo(0.2502, 4);
+  it('segue o módulo de 0,296 mm do padrão do cliente', () => {
+    expect(MODULE_MM).toBeCloseTo(0.296, 4);
   });
 
   it('a arte 46×38 fica centralizada na mídia 50×40', () => {
@@ -99,14 +99,14 @@ describe('geometria da etiqueta', () => {
   it('o código de 13 dígitos cabe com folga na zona de silêncio', () => {
     const fit = measureBarcode(EAN);
     expect(fit.moduleCount).toBe(123);
-    expect(fit.widthMm).toBeCloseTo(30.78, 1);
+    expect(fit.widthMm).toBeCloseTo(36.41, 1);
     expect(fit.quietZoneMm).toBeGreaterThanOrEqual(QUIET_ZONE_MIN_MM);
     expect(fit.fits).toBe(true);
   });
 
-  it('3 dots não caberiam — é por isso que o módulo está travado em 2', () => {
-    const tresDots = 123 * (25.4 / 203) * 3;
-    expect(tresDots).toBeGreaterThan(ART_WIDTH_MM);
+  it('preserva zona de silêncio de pelo menos 3,1 mm em cada lado', () => {
+    const fit = measureBarcode(EAN);
+    expect(fit.quietZoneMm).toBeGreaterThanOrEqual(3.1);
   });
 
   it('barra a geração quando o código não respeita a zona de silêncio', () => {
@@ -197,6 +197,11 @@ describe('expansão por quantidade', () => {
 
   it('com repetição, uma etiqueta por par solicitado', () => {
     expect(expandRows(rows, true)).toHaveLength(5);
+  });
+
+  it('aplica o multiplicador de etiquetas por par', () => {
+    expect(expandRows(rows, true, 2)).toHaveLength(10);
+    expect(expandRows(rows, true, 0)).toHaveLength(5);
   });
 });
 

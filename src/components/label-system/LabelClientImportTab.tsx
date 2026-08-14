@@ -11,6 +11,7 @@ import { Panel } from '@/components/ui/panel';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { EmptyState } from '@/components/ui/empty-state';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
@@ -46,10 +47,11 @@ export function LabelClientImportTab() {
   const [rows, setRows] = useState<BabyNalinRow[]>([]);
   const [fileName, setFileName] = useState('');
   const [repeatByQuantity, setRepeatByQuantity] = useState(false);
+  const [repeatMultiplier, setRepeatMultiplier] = useState(1);
   const [reading, setReading] = useState(false);
   const [generating, setGenerating] = useState(false);
 
-  const totalPaginas = expandRows(rows, repeatByQuantity).length;
+  const totalPaginas = expandRows(rows, repeatByQuantity, repeatMultiplier).length;
   const totalPares = rows.reduce((t, r) => t + r.quantidade, 0);
   // Código que não respeita a zona de silêncio não pode virar etiqueta — a
   // barra sairia cortada e só se descobre no leitor da loja.
@@ -85,7 +87,7 @@ export function LabelClientImportTab() {
       const logo = await loadLogoDataUrl(logoFornecedor);
       if (!logo) toast.warning('Não carreguei a logomarca — o PDF sai sem ela.');
 
-      const doc = await buildBabyNalinPdf(rows, { repeatByQuantity, logo });
+      const doc = await buildBabyNalinPdf(rows, { repeatByQuantity, repeatMultiplier, logo });
       doc.save(pdfFilename(fileName));
       toast.success(`PDF com ${totalPaginas} etiqueta(s) gerado.`);
     } catch (error) {
@@ -99,6 +101,7 @@ export function LabelClientImportTab() {
     setRows([]);
     setFileName('');
     setRepeatByQuantity(false);
+    setRepeatMultiplier(1);
   }
 
   return (
@@ -145,7 +148,7 @@ export function LabelClientImportTab() {
               <StatCard
                 label="Páginas do PDF"
                 value={totalPaginas}
-                hint={repeatByQuantity ? 'uma por par' : 'uma por linha'}
+                hint={repeatByQuantity ? `${repeatMultiplier} por par` : 'uma por linha'}
               />
             </StatGrid>
 
@@ -160,6 +163,31 @@ export function LabelClientImportTab() {
                   Repetir cada etiqueta pela quantidade solicitada
                 </Label>
               </div>
+
+              {repeatByQuantity && (
+                <div className="flex items-center gap-2 rounded-md border border-primary/20 bg-primary/5 px-2.5 py-1.5">
+                  <Label htmlFor="repeat-multiplier" className="whitespace-nowrap text-xs font-semibold text-foreground">
+                    Etiquetas por par
+                  </Label>
+                  <Input
+                    id="repeat-multiplier"
+                    type="number"
+                    min={1}
+                    max={100}
+                    step={1}
+                    value={repeatMultiplier}
+                    onChange={e => {
+                      const next = Math.trunc(Number(e.target.value));
+                      setRepeatMultiplier(Number.isFinite(next) ? Math.min(100, Math.max(1, next)) : 1);
+                    }}
+                    className="h-8 w-16 bg-background text-center font-mono"
+                    aria-describedby="repeat-multiplier-help"
+                  />
+                  <span id="repeat-multiplier-help" className="text-xs text-muted-foreground">
+                    {totalPaginas.toLocaleString('pt-BR')} etiquetas no total
+                  </span>
+                </div>
+              )}
 
               <div className="ml-auto flex items-center gap-2">
                 <Button variant="outline" size="sm" className="h-9" onClick={() => inputRef.current?.click()}>
