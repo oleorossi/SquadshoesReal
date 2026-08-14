@@ -193,7 +193,7 @@ export function useServiceOrderOverview() {
       const rows: ServiceOrderOverview[] = [];
       for (let from = 0; ; from += PAGE) {
         const { data, error } = await supabase
-          .from('v_service_order_overview' as any)
+          .from('v_service_order_overview')
           .select('*')
           .order('service_order_id', { ascending: true })
           .range(from, from + PAGE - 1);

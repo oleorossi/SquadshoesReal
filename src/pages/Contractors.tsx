@@ -68,6 +68,7 @@ import { useAllGroupColors } from '@/hooks/useGroupColors';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { format, addDays } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
+import type { Tables } from '@/integrations/supabase/types';
 import { adjustStockSafe } from '@/lib/stockAdjustments';
 import { toast } from 'sonner';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
@@ -78,6 +79,7 @@ import { type CostReportRow, type DateBasis, summarizeRows, rowDateForBasis, inD
 import { ContractorFormDialog, emptyContractor } from '@/components/contractors/ContractorFormDialog';
 
 const emptyMaterial: MaterialSent = { material: '', color: '', meters: 0 };
+type SaleOrderLookup = Pick<Tables<'sale_orders'>, 'id' | 'order_number' | 'client_order_number' | 'client_name'>;
 const emptyOrder: Partial<ServiceOrder> & { materials_sent: MaterialSent[] } = {
   contractor_id: '', description: '', service_date: format(new Date(), 'yyyy-MM-dd'), service_time: '',
   quantity: 1, unit_price: 0, total_value: 0, status: 'Pendente', notes: '',
@@ -557,8 +559,8 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
       // procurar por "I901" deixou de achar OS — o que repõe isso são códigos
       // estáveis (PV-00151, OP-00231), que não dependem de alguém ter digitado.
       const linkedOrders = linkedSaleOrderIdsOf(o)
-        .map(id => (saleOrders as any[]).find(s => s.id === id))
-        .filter(Boolean);
+        .map(id => (saleOrders as SaleOrderLookup[]).find(s => s.id === id))
+        .filter((so): so is SaleOrderLookup => so !== undefined);
       return searchMatchesAllTerms(
         orderSearch,
         o.description, o.order_number, o.contractors?.name,
@@ -680,7 +682,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
       && o.status !== 'received' && o.status !== 'Concluído'
       && o.status !== 'Cancelado' && o.status !== 'cancelled';
     const canReceive = isBottleneckOS && active && isPendingReceive;
-    const canDispatch = Boolean((o as any).dispatch_tracked) && active;
+    const canDispatch = Boolean(o.dispatch_tracked) && active;
     const canProcess = active
       && o.status !== 'Em Andamento'
       && !['pending_quote', 'quoted_unconfirmed'].includes(String(o.status));
@@ -740,7 +742,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                 o item de menu nunca aparecia. Quem identifica a OS é o
                 order_number, que sempre existe. */}
             <DropdownMenuItem onClick={async () => {
-              const so = (saleOrders as any[]).find(s => linkedSaleOrderIdsOf(o).includes(s.id));
+              const so = (saleOrders as SaleOrderLookup[]).find(s => linkedSaleOrderIdsOf(o).includes(s.id));
               // Itens do papel: buscados sob demanda (o dialog só carrega os do
               // PV aberto). Só saem os que a OS realmente cobre — sem a seleção
               // gravada isso imprimiria as 3 cores do pedido com o total de
@@ -786,7 +788,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
   const renderMobileOsRow = (o: ServiceOrder) => {
     const selected = selectedOsIds.has(o.id);
     const linkedPvId = linkedSaleOrderIdsOf(o)[0] || null;
-    const so = linkedPvId ? saleOrders.find((s: any) => s.id === linkedPvId) : null;
+    const so = linkedPvId ? (saleOrders as SaleOrderLookup[]).find(s => s.id === linkedPvId) : null;
     const noValue = Number(o.total_value) === 0 && isOsActive(o.status);
     const checkboxId = `mobile-os-${o.id}`;
 
