@@ -1,19 +1,20 @@
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { HubTabsList } from '@/components/layout/HubTabs';
-import { Tag, Printer, Gear as Settings2, ChartBar as BarChart3, PencilLine as PenLine } from '@phosphor-icons/react';
+import { Tag, Printer, Gear as Settings2, ChartBar as BarChart3, PencilLine as PenLine, Barcode } from '@phosphor-icons/react';
 import { LabelTemplatesTab } from '@/components/label-system/LabelTemplatesTab';
 import { LabelProductionTab } from '@/components/label-system/LabelProductionTab';
 import { PrintDashboardTab } from '@/components/label-system/PrintDashboardTab';
 import { LabelAnalyticsDashboard } from '@/components/label-system/LabelAnalyticsDashboard';
 import { LabelManualTab } from '@/components/label-system/LabelManualTab';
+import { LabelClientImportTab } from '@/components/label-system/LabelClientImportTab';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
 export default function LabelSystem() {
   // A aba mora na URL (contrato do lote L6a): o useState local não sobrevivia
   // ao F5 nem ao botão Voltar.
   const { value: activeTab, setValue: setActiveTab } = useUrlTabState({
-    values: ['production', 'manual', 'templates', 'dashboard', 'analytics'] as const,
+    values: ['production', 'manual', 'client-import', 'templates', 'dashboard', 'analytics'] as const,
     defaultValue: 'production',
   });
 
@@ -30,6 +31,7 @@ export default function LabelSystem() {
           tabs={[
             { value: 'production', label: 'Geração & Impressão', icon: Tag },
             { value: 'manual', label: 'Manual', icon: PenLine },
+            { value: 'client-import', label: 'Cliente (importar)', icon: Barcode },
             { value: 'templates', label: 'Templates', icon: Settings2 },
             { value: 'dashboard', label: 'Fila', icon: Printer },
             { value: 'analytics', label: 'Analytics', icon: BarChart3 },
@@ -41,6 +43,9 @@ export default function LabelSystem() {
         </TabsContent>
         <TabsContent value="manual">
           <LabelManualTab />
+        </TabsContent>
+        <TabsContent value="client-import">
+          <LabelClientImportTab />
         </TabsContent>
         <TabsContent value="templates">
           <LabelTemplatesTab />
