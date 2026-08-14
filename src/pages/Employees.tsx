@@ -67,6 +67,8 @@ export default function Employees() {
   useEffect(() => { if (urlQ) setSearch(urlQ); }, [urlQ]);
   const [statusFilter, setStatusFilter] = usePersistedState<'all' | 'active' | 'inactive'>('emp-status-filter', 'active');
   const [deptFilter, setDeptFilter] = usePersistedState('emp-dept-filter', 'all');
+  const [paymentFilter, setPaymentFilter] = usePersistedState('emp-payment-filter', 'all');
+  const [setupFilter, setSetupFilter] = usePersistedState('emp-setup-filter', 'all');
   // Sub-abas da página Funcionários: cadastro + Adiantamentos (movido da Folha em 2026-06-28).
   const [subTab, setSubTab] = usePersistedState('rh-func-subtab', 'funcionarios');
 
@@ -110,7 +112,14 @@ export default function Employees() {
     const matchSearch = searchMatchesAllTerms(search, e.name, e.role, e.department, e.external_id, e.phone, e.whatsapp);
     const matchStatus = statusFilter === 'all' || (statusFilter === 'active' ? e.active : !e.active);
     const matchDept = deptFilter === 'all' || e.department === deptFilter;
-    return matchSearch && matchStatus && matchDept;
+    const matchPayment = paymentFilter === 'all' || e.payment_type === paymentFilter;
+    const needsClock = (e.payment_type === 'mensalista' || e.payment_type === 'diarista') && !String(e.external_id || '').trim();
+    const needsSchedule = (e.payment_type === 'mensalista' || e.payment_type === 'diarista') && !e.work_schedule_id;
+    const matchSetup = setupFilter === 'all'
+      || (setupFilter === 'clock' && needsClock)
+      || (setupFilter === 'schedule' && needsSchedule)
+      || (setupFilter === 'ready' && !needsClock && !needsSchedule);
+    return matchSearch && matchStatus && matchDept && matchPayment && matchSetup;
   });
 
   const sel = useMarqueeSelection(filteredEmployees, (e) => e.id);
@@ -130,6 +139,10 @@ export default function Employees() {
   };
 
   const activeEmployees = employees.filter(e => e.active);
+  const peopleSetupPending = activeEmployees.filter(e =>
+    (e.payment_type === 'mensalista' || e.payment_type === 'diarista')
+    && (!String(e.external_id || '').trim() || !e.work_schedule_id),
+  ).length;
   // Folha mensal FIXA = só salários (mensalista/remoto/diarista). Quem é por par
   // (payment_type='producao') é variável — não tem salário fixo, sai daqui.
   const totalMonthlyPayroll = activeEmployees
@@ -221,6 +234,9 @@ export default function Employees() {
           {producaoIds.size > 0 && (
             <StatCard label="Variável (por par)" value={fmt(variavelPorPar)} hint={`${producaoIds.size} por par · mês`} icon={Wallet} />
           )}
+          {peopleSetupPending > 0 && (
+            <StatCard label="Cadastros a concluir" value={peopleSetupPending} hint="matrícula ou jornada ausente" tone="warning" icon={AlertTriangle} />
+          )}
         </StatGrid>
 
         <div className="space-y-3 mt-4">
@@ -257,6 +273,25 @@ export default function Employees() {
                   </SelectContent>
                 </Select>
               )}
+              <Select value={paymentFilter} onValueChange={setPaymentFilter}>
+                <SelectTrigger className="w-[145px] h-8 text-xs"><SelectValue placeholder="Regime" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos os regimes</SelectItem>
+                  <SelectItem value="mensalista">Mensalista</SelectItem>
+                  <SelectItem value="diarista">Diarista</SelectItem>
+                  <SelectItem value="producao">Por par</SelectItem>
+                  <SelectItem value="remoto">Remoto</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={setupFilter} onValueChange={setSetupFilter}>
+                <SelectTrigger className="w-[170px] h-8 text-xs"><SelectValue placeholder="Cadastro" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Cadastro: todos</SelectItem>
+                  <SelectItem value="ready">Cadastro completo</SelectItem>
+                  <SelectItem value="clock">Sem matrícula do relógio</SelectItem>
+                  <SelectItem value="schedule">Sem jornada</SelectItem>
+                </SelectContent>
+              </Select>
               <span className="text-xs text-muted-foreground ml-1">{filteredEmployees.length} resultado{filteredEmployees.length !== 1 ? 's' : ''}</span>
             </div>
 

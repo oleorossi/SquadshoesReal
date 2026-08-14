@@ -37,6 +37,7 @@ import { resolveHolidaysForPayrollRange } from '@/lib/ponto/periodDates';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
+import { PeriodRangeFilter } from '@/components/hr/PeriodRangeFilter';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { usePendingTotal } from '@/hooks/useTimePendings';
 import { cn } from '@/lib/utils';
@@ -473,6 +474,11 @@ function TimesheetRecordsTab() {
   const [selectedBatch, setSelectedBatch] = useState<string>('');
   const [filterStartDate, setFilterStartDate] = useState<string>(monthStart);
   const [filterEndDate, setFilterEndDate] = useState<string>(monthEnd);
+  const handleRangeChange = ({ from, to }: { from: string; to: string }) => {
+    setSelectedBatch('');
+    setFilterStartDate(from);
+    setFilterEndDate(to);
+  };
   const resolvedFilters = useMemo(() => resolveTimeControlFilters({
     selectedBatch,
     filterStartDate,
@@ -1054,37 +1060,15 @@ function TimesheetRecordsTab() {
           ? `Histórico disponível de ${fullDateRange.startDate.split('-').reverse().join('/')} a ${fullDateRange.endDate.split('-').reverse().join('/')} · ${fullDateRange.totalRecords.toLocaleString('pt-BR')} registros em ${batches.length} importações.`
           : 'Escolha as datas ou uma importação específica para conferir as batidas.'}
       >
-        <div className="grid items-end gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(150px,0.75fr)_minmax(150px,0.75fr)_minmax(240px,1.35fr)_auto]">
-          <div className="space-y-1.5">
-            <Label className="text-xs font-medium">Início</Label>
-            <Input 
-              type="date" 
-              className="w-full"
-              value={filterStartDate}
-              min={fullDateRange?.startDate}
-              max={fullDateRange?.endDate}
-              onChange={e => {
-                setFilterStartDate(e.target.value);
-                setSelectedBatch('');
-              }} 
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <Label className="text-xs font-medium">Fim</Label>
-            <Input 
-              type="date" 
-              className="w-full"
-              value={filterEndDate}
-              min={fullDateRange?.startDate}
-              max={fullDateRange?.endDate}
-              onChange={e => {
-                setFilterEndDate(e.target.value);
-                setSelectedBatch('');
-              }} 
-            />
-          </div>
-
+        <div className="space-y-3">
+          <PeriodRangeFilter
+            value={{ from: filterStartDate, to: filterEndDate }}
+            onChange={handleRangeChange}
+            min={fullDateRange?.startDate}
+            max={fullDateRange?.endDate}
+            label="Período das batidas"
+          />
+          <div className="grid items-end gap-3 sm:grid-cols-[minmax(240px,1fr)_auto]">
           <div className="space-y-1.5">
             <Label className="text-xs font-medium">Importação específica</Label>
             <Select
@@ -1107,7 +1091,7 @@ function TimesheetRecordsTab() {
             </Select>
           </div>
 
-          <div className="flex flex-wrap gap-2 sm:col-span-2 xl:col-span-1 xl:justify-end">
+          <div className="flex flex-wrap gap-2 sm:justify-end">
             {fullDateRange && (
               <Button
                 variant="secondary"
@@ -1154,6 +1138,7 @@ function TimesheetRecordsTab() {
                 <Trash2 className="h-4 w-4" />
               </Button>
             )}
+          </div>
           </div>
         </div>
 

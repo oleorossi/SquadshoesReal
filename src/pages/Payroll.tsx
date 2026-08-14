@@ -34,6 +34,7 @@ import { toast } from 'sonner';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
+import { PeriodRangeFilter } from '@/components/hr/PeriodRangeFilter';
 import RelatorioFaltas from '@/components/hr/RelatorioFaltas';
 import RelatorioAtrasos from '@/components/hr/RelatorioAtrasos';
 
@@ -137,14 +138,6 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
   const appliedTo = useDebouncedValue(range.to, 450);
   const appliedPeriod = useMemo(() => rangeToPeriod(appliedFrom, appliedTo), [appliedFrom, appliedTo]);
   const periodTitle = useMemo(() => periodLabel(appliedFrom, appliedTo), [appliedFrom, appliedTo]);
-  const periodDays = useMemo(() => daysBetween(range.from, range.to), [range.from, range.to]); // hint imediato (sem query)
-  // Atalhos de quinzena ancorados no mês do "de".
-  const applyPreset = (preset: '1q' | '2q' | 'mes') => {
-    const ym = (range.from || `${defaultPeriod}-01`).slice(0, 7);
-    if (preset === '1q') setRange({ from: `${ym}-01`, to: `${ym}-15` });
-    else if (preset === '2q') setRange({ from: `${ym}-16`, to: lastDayOfMonth(ym) });
-    else setRange({ from: `${ym}-01`, to: lastDayOfMonth(ym) });
-  };
 
   const { data: employees = [] } = useEmployees();
   const { data: schedules = [] } = useWorkSchedules();
@@ -971,20 +964,10 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
 
   // Seletor de período (quinzena/mês/datas) + Calcular — reusado na aba Relatórios.
   const filtersBar = (
-    <div className="flex items-center gap-2 flex-wrap">
-      <div className="flex items-center gap-1">
-        <Button size="sm" variant="outline" className="h-9" onClick={() => applyPreset('1q')}>1ª quinz.</Button>
-        <Button size="sm" variant="outline" className="h-9" onClick={() => applyPreset('2q')}>2ª quinz.</Button>
-        <Button size="sm" variant="outline" className="h-9" onClick={() => applyPreset('mes')}>Mês</Button>
-      </div>
-      <div className="flex items-center gap-1">
-        <Input type="date" value={range.from} max={range.to || undefined} onChange={e => setRange(r => ({ ...r, from: e.target.value }))} className="w-36 h-9" aria-label="Data inicial" />
-        <span className="text-muted-foreground text-xs">até</span>
-        <Input type="date" value={range.to} min={range.from || undefined} onChange={e => setRange(r => ({ ...r, to: e.target.value }))} className="w-36 h-9" aria-label="Data final" />
-        <span className="text-xs text-muted-foreground whitespace-nowrap ml-1">{periodDays} dia(s)</span>
-      </div>
-      <Button size="sm" onClick={calculateAll} disabled={calcRunning || !range.from || !range.to}>
-        {calcRunning ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Calculator className="h-4 w-4 mr-2" />}
+    <div className="flex w-full flex-col gap-2 xl:flex-row xl:items-center">
+      <PeriodRangeFilter value={range} onChange={setRange} className="flex-1" label="Período da folha" />
+      <Button size="sm" className="h-10 shrink-0" onClick={calculateAll} disabled={calcRunning || !range.from || !range.to}>
+        {calcRunning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Calculator className="mr-2 h-4 w-4" />}
         Calcular folha
       </Button>
     </div>
@@ -1123,8 +1106,8 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
               <div className="text-xs text-muted-foreground max-w-md">
                 Gere e imprima os relatórios da folha do período. O <b className="text-foreground">Espelho relógio de ponto</b> mostra o registro bruto importado — sem cálculo — só pra conferir as batidas.
               </div>
-              {filtersBar}
             </div>
+            {filtersBar}
             {coverage && coverage.count === 0 && (
               <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-xs text-amber-700 dark:text-amber-400 flex items-center gap-2">
                 <AlertTriangle className="h-4 w-4 shrink-0" />
@@ -1147,24 +1130,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
           <span className="font-semibold text-foreground">Base proporcional aos dias − descontos</span> · créditos compensam atrasos parciais no período · faltas integrais ficam separadas ·
           {' '}hora extra paga pela <span className="font-semibold text-foreground">taxa individual</span> normal ou de domingo/feriado
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="flex items-center gap-1">
-            <Button size="sm" variant="outline" className="h-9" onClick={() => applyPreset('1q')}>1ª quinz.</Button>
-            <Button size="sm" variant="outline" className="h-9" onClick={() => applyPreset('2q')}>2ª quinz.</Button>
-            <Button size="sm" variant="outline" className="h-9" onClick={() => applyPreset('mes')}>Mês</Button>
-          </div>
-          <div className="flex items-center gap-1">
-            <Input type="date" value={range.from} max={range.to || undefined} onChange={e => setRange(r => ({ ...r, from: e.target.value }))} className="w-36 h-9" aria-label="Data inicial" />
-            <span className="text-muted-foreground text-xs">até</span>
-            <Input type="date" value={range.to} min={range.from || undefined} onChange={e => setRange(r => ({ ...r, to: e.target.value }))} className="w-36 h-9" aria-label="Data final" />
-            <span className="text-xs text-muted-foreground whitespace-nowrap ml-1">{periodDays} dia(s)</span>
-          </div>
-          <Button size="sm" onClick={calculateAll} disabled={calcRunning || !range.from || !range.to}>
-            {calcRunning ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Calculator className="h-4 w-4 mr-2" />}
-            Calcular folha
-          </Button>
-          {/* "Relatórios" virou uma ABA própria (RH → Relatórios) — ver reportsOnly. */}
-        </div>
+        {filtersBar}
       </div>
 
       {coverage && coverage.count === 0 && (
