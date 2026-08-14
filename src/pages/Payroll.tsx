@@ -288,8 +288,8 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
   /** Rascunho pode existir para conferência; aprovação só quando a mesma folha
    * está financeiramente fechável. O banco repete estas travas como proteção
    * contra chamada direta ou tela desatualizada. */
-  const approvalBlockReason = (run: any): string | null => {
-    const emp: any = employeeMap.get(run.employee_id);
+  const approvalBlockReason = (run: (typeof runs)[number]): string | null => {
+    const emp = employeeMap.get(run.employee_id);
     const result = reportComparativoRows.find(row => row.id === run.employee_id)?.result;
     const regime = String(emp?.payment_type || 'mensalista').toLowerCase();
     if (Number(result?.pending_days || 0) > 0) return 'Há batidas pendentes neste período.';
