@@ -6,131 +6,7 @@
    return null;
  }
  
- import { ArrowRight, CaretRight as ChevronRight, Calculator, CheckCircle, Question as HelpCircle } from '@phosphor-icons/react';
- function GuidedPathSelector({ sheets, products, onSelect }: { sheets: any[], products: any[], onSelect: (id: string) => void }) {
-   const [selectedRef, setSelectedRef] = useState<string | null>(null);
-   const [selectedMaterial, setSelectedMaterial] = useState<string | null>(null);
-   const [selectedColor, setSelectedColor] = useState<string | null>(null);
- 
-   const materials = useMemo(() => {
-     if (!selectedRef) return [];
-     const sheet = sheets.find(s => s.id === selectedRef);
-     if (!sheet) return [];
-     const mats = new Set<string>();
-     if (sheet.upper_material) mats.add(sheet.upper_material);
-     if (sheet.lining_material) mats.add(sheet.lining_material);
-     if (sheet.sole_material) mats.add(sheet.sole_material);
-     return Array.from(mats);
-   }, [selectedRef, sheets]);
- 
-   const colors = useMemo(() => {
-     if (!selectedRef || !selectedMaterial) return [];
-     const sheet = sheets.find(s => s.id === selectedRef);
-     if (!sheet || !sheet.reference_color_variants) return [];
-     return sheet.reference_color_variants.map((v: any) => v.color).filter(Boolean);
-   }, [selectedRef, selectedMaterial, sheets]);
- 
-   const totalPrice = useMemo(() => {
-     if (!selectedRef) return 0;
-     const sheet = sheets.find(s => s.id === selectedRef);
-     return sheet?.sale_price || 0;
-   }, [selectedRef, sheets]);
- 
-   return (
-     <Card className="bg-gradient-to-r from-muted/50 to-background border-primary/10 shadow-sm overflow-hidden mb-6">
-       <CardContent className="p-4 sm:p-6">
-         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-2 text-sm overflow-x-auto no-scrollbar pb-2 sm:pb-0">
-           {/* 1. Referência */}
-           <div className="flex items-center gap-2 bg-background p-2 rounded-lg border shadow-sm min-w-[200px]">
-             <div className="h-6 w-6 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-bold">1</div>
-             <Select value={selectedRef || ''} onValueChange={v => { setSelectedRef(v); setSelectedMaterial(null); setSelectedColor(null); }}>
-               <SelectTrigger className="border-none focus:ring-0 h-7 bg-transparent px-1">
-                 <SelectValue placeholder="Selecione Referência" />
-               </SelectTrigger>
-               <SelectContent>
-                 {sheets.slice(0, 50).map(s => (
-                   <SelectItem key={s.id} value={s.id}>{s.name} {s.code ? `(${s.code})` : ''}</SelectItem>
-                 ))}
-               </SelectContent>
-             </Select>
-           </div>
- 
-           <ChevronRight className="hidden sm:block h-4 w-4 text-muted-foreground/30" />
- 
-           {/* 2. Material */}
-           <div className={cn(
-             "flex items-center gap-2 p-2 rounded-lg border shadow-sm min-w-[180px] transition-all",
-             selectedRef ? "bg-background border-primary/20" : "bg-muted/30 opacity-50 grayscale"
-           )}>
-             <div className="h-6 w-6 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-bold">2</div>
-             <Select value={selectedMaterial || ''} onValueChange={setSelectedMaterial} disabled={!selectedRef}>
-               <SelectTrigger className="border-none focus:ring-0 h-7 bg-transparent px-1">
-                 <SelectValue placeholder="Selecione Material *" />
-               </SelectTrigger>
-               <SelectContent>
-                 {materials.map(m => (
-                   <SelectItem key={m} value={m}>{m}</SelectItem>
-                 ))}
-                 {materials.length === 0 && <SelectItem value="none" disabled>Nenhum material</SelectItem>}
-               </SelectContent>
-             </Select>
-           </div>
- 
-           <ChevronRight className="hidden sm:block h-4 w-4 text-muted-foreground/30" />
- 
-           {/* 3. Cor */}
-           <div className={cn(
-             "flex items-center gap-2 p-2 rounded-lg border shadow-sm min-w-[150px] transition-all",
-             selectedMaterial ? "bg-background border-primary/20" : "bg-muted/30 opacity-50 grayscale"
-           )}>
-             <div className="h-6 w-6 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-bold">3</div>
-             <Select value={selectedColor || ''} onValueChange={setSelectedColor} disabled={!selectedMaterial}>
-               <SelectTrigger className="border-none focus:ring-0 h-7 bg-transparent px-1">
-                 <SelectValue placeholder="Cor (filtrada)" />
-               </SelectTrigger>
-               <SelectContent>
-                 {colors.map(c => (
-                   <SelectItem key={c} value={c}>{c}</SelectItem>
-                 ))}
-                 {colors.length === 0 && <SelectItem value="none" disabled>Sem variantes</SelectItem>}
-               </SelectContent>
-             </Select>
-           </div>
- 
-           <ChevronRight className="hidden sm:block h-4 w-4 text-muted-foreground/30" />
- 
-           {/* 4. Preço */}
-           <div className={cn(
-             "flex items-center gap-2 p-2 rounded-lg border shadow-sm min-w-[120px] transition-all",
-             selectedRef ? "bg-primary/5 border-primary/30" : "bg-muted/30 opacity-50 grayscale"
-           )}>
-             <div className="h-6 w-6 rounded-full bg-primary/10 text-primary flex items-center justify-center">
-               <Calculator className="h-3 w-3" />
-             </div>
-             <div className="flex flex-col">
-               <span className="text-xs text-muted-foreground uppercase font-bold leading-none mb-0.5">Preço</span>
-               <span className="font-mono font-bold text-sm leading-none">
-                 {totalPrice > 0 ? globalFormatCurrency(totalPrice) : '---'}
-               </span>
-             </div>
-           </div>
- 
-           <div className="flex-1" />
- 
-           {/* Action */}
-           <Button 
-             disabled={!selectedRef} 
-             onClick={() => selectedRef && onSelect(selectedRef)}
-             className="h-10 px-6 gap-2 bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg hover:shadow-xl transition-all"
-           >
-             <FileText className="h-4 w-4" />
-             Abrir Ficha
-           </Button>
-         </div>
-       </CardContent>
-     </Card>
-   );
- }
+ import { CaretRight as ChevronRight, CheckCircle } from '@phosphor-icons/react';
  
 import React, { useState, useMemo, useEffect } from 'react';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
@@ -174,6 +50,7 @@ import { NonFiniteDevWatcher } from '@/components/technical-sheets/NonFiniteDevW
 import { SheetsAuditButton } from '@/components/technical-sheets/SheetsAuditPanel';
 import { CatalogModelsPanel } from '@/components/technical-sheets/CatalogModelsPanel';
 import { TechnicalSheetCardGrid } from '@/components/technical-sheets/TechnicalSheetCardGrid';
+import { QuickSheetSelector } from '@/components/technical-sheets/QuickSheetSelector';
 import { AviamentoRangeTab } from '@/components/technical-sheets/AviamentoRangeTab';
 import { useBomOperations } from '@/hooks/useBomOperations';
 import { useSoleColorMappings, useUpsertSoleColorMapping } from '@/hooks/useSoleColorMappings';
@@ -489,7 +366,7 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
 
   return (
     <>
-      <div className="space-y-5 page-enter editorial-stagger">
+      <div className="space-y-4 page-enter editorial-stagger">
         <NonFiniteDevWatcher />
         <EditorialPageHeader
           sectionLabel="ENGENHARIA · FICHAS"
@@ -504,29 +381,38 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
                 className="gap-2"
                 title="Regras globais de componente/tira por cor (grupo + cor do pedido → produto padrão), valendo pra todos os modelos"
               >
-                <Link to="/fichas-tecnicas/padroes">
+                <Link to="/fichas-tecnicas/padroes" aria-label="Abrir padrões por cor">
                   <Palette className="h-4 w-4" />
                   <span className="hidden sm:inline">Padrões por Cor</span>
                 </Link>
               </Button>
-              <Button
-                variant="outline"
-                onClick={handleBulkApplySoleSettings}
-                disabled={bulkSoleApplying || filteredSheets.length === 0}
-                className="gap-2"
-                title="Aplica consumo, processo e grupo do solado em todas as fichas listadas, baseado em outras fichas que usam o mesmo solado"
-              >
-                {bulkSoleApplying ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
-                <span className="hidden sm:inline">Aplicar Solado em Massa</span>
-              </Button>
+              {!expandedId && (
+                <Button
+                  variant="outline"
+                  onClick={handleBulkApplySoleSettings}
+                  disabled={bulkSoleApplying || filteredSheets.length === 0}
+                  className="gap-2"
+                  title="Aplica consumo, processo e grupo do solado em todas as fichas listadas, baseado em outras fichas que usam o mesmo solado"
+                  aria-label="Aplicar solado em massa"
+                >
+                  {bulkSoleApplying ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+                  <span className="hidden sm:inline">Aplicar Solado em Massa</span>
+                </Button>
+              )}
               {perm.canCreate && (
-                <Button variant="outline" onClick={() => { setCloneSourceId(''); setCloneNewName(''); setCloneSearchTerm(''); setCloneDialogOpen(true); }} className="gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => { setCloneSourceId(''); setCloneNewName(''); setCloneSearchTerm(''); setCloneDialogOpen(true); }}
+                  className="gap-2"
+                  aria-label="Copiar ficha técnica"
+                  title="Copiar ficha técnica"
+                >
                   <ClipboardCopy className="h-4 w-4" />
                   <span className="hidden sm:inline">Copiar</span>
                 </Button>
               )}
               {perm.canCreate && (
-                <Button onClick={() => setDialogOpen(true)} className="gap-2">
+                <Button onClick={() => setDialogOpen(true)} className="gap-2" aria-label="Criar nova ficha técnica" title="Nova ficha técnica">
                   <Plus className="h-4 w-4" />
                   <span className="hidden sm:inline">Nova Ficha</span>
                 </Button>
@@ -536,9 +422,8 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
         />
 
          {!expandedId && (
-           <GuidedPathSelector 
+           <QuickSheetSelector
              sheets={sheets} 
-             products={[]} 
              onSelect={(id) => setExpandedId(id)} 
            />
          )}
@@ -609,49 +494,50 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
           </DialogContent>
         </Dialog>
 
-        {/* Search & Filters */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
-          <SearchInput
-            className="flex-1 max-w-md"
-            value={searchTerm}
-            onChange={setSearchTerm}
-            placeholder="Buscar por nome, código, coleção, cor…"
-            resultCount={filteredSheets.length}
-            totalCount={sheets.length}
-          />
-          <div className="flex items-center gap-2 flex-wrap">
-            {[
-              { key: 'all', label: 'Todos' },
-              { key: 'Feminino', label: 'Adulto' },
-              { key: 'Infantil', label: 'Infantil' },
-            ].map(f => (
-              <Button
-                key={f.key}
-                variant={categoryFilter === f.key ? 'default' : 'outline'}
-                size="sm"
-                className="h-8 text-xs"
-                onClick={() => setCategoryFilter(f.key)}
-              >
-                {f.label}
-              </Button>
-            ))}
-            <Select value={soleFilter} onValueChange={setSoleFilter}>
-              <SelectTrigger className="h-8 text-xs w-[180px]">
-                <Footprints className="h-3.5 w-3.5 mr-1 opacity-70" />
-                <SelectValue placeholder="Filtrar por solado" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos os solados</SelectItem>
-                {soleOptions.map(s => (
-                  <SelectItem key={s.name} value={s.name}>{s.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Badge variant="secondary" className="text-xs font-mono ml-1">
-              {filteredSheets.length}
-            </Badge>
-            {!expandedId && (
-              <div className="ml-1 flex items-center rounded-md border bg-background p-0.5" role="group" aria-label="Modo de visualização das fichas">
+        {/* Search & Filters — catálogo some durante a edição da ficha. */}
+        {!expandedId && (
+          <div className="flex flex-col gap-2 border-y border-border py-2 lg:flex-row lg:items-center">
+            <SearchInput
+              className="w-full lg:max-w-md lg:flex-1"
+              value={searchTerm}
+              onChange={setSearchTerm}
+              placeholder="Buscar por nome, código, coleção, cor…"
+              resultCount={filteredSheets.length}
+              totalCount={sheets.length}
+            />
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 lg:ml-auto lg:flex-wrap lg:overflow-visible lg:pb-0">
+              {[
+                { key: 'all', label: 'Todos' },
+                { key: 'Feminino', label: 'Adulto' },
+                { key: 'Infantil', label: 'Infantil' },
+              ].map(f => (
+                <Button
+                  key={f.key}
+                  variant={categoryFilter === f.key ? 'default' : 'outline'}
+                  size="sm"
+                  className="h-8 shrink-0 text-xs"
+                  aria-pressed={categoryFilter === f.key}
+                  onClick={() => setCategoryFilter(f.key)}
+                >
+                  {f.label}
+                </Button>
+              ))}
+              <Select value={soleFilter} onValueChange={setSoleFilter}>
+                <SelectTrigger className="h-8 w-[180px] shrink-0 text-xs">
+                  <Footprints className="mr-1 h-3.5 w-3.5 opacity-70" />
+                  <SelectValue placeholder="Filtrar por solado" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos os solados</SelectItem>
+                  {soleOptions.map(s => (
+                    <SelectItem key={s.name} value={s.name}>{s.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Badge variant="secondary" className="ml-1 shrink-0 font-mono text-xs" aria-live="polite">
+                {filteredSheets.length} {filteredSheets.length === 1 ? 'ficha' : 'fichas'}
+              </Badge>
+              <div className="ml-1 flex shrink-0 items-center rounded-md border bg-background p-0.5" role="group" aria-label="Modo de visualização das fichas">
                 <Button
                   type="button"
                   variant={catalogView === 'cards' ? 'secondary' : 'ghost'}
@@ -675,12 +561,12 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
                   Lista
                 </Button>
               </div>
-            )}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Empty State */}
-        {filteredSheets.length === 0 ? (
+        {!expandedId && filteredSheets.length === 0 ? (
           <Card className="border-dashed">
             <CardContent className="p-0">
               <EmptyState
@@ -693,7 +579,7 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
                       : 'Nenhuma ficha encontrada'
                 }
                 description={sheets.length === 0 ? undefined : 'Ajuste a busca ou os filtros de categoria.'}
-                action={sheets.length > 0 ? <Button variant="link" onClick={() => { setCategoryFilter('all'); setSearchTerm(''); }}>Limpar filtros</Button> : undefined}
+                action={sheets.length > 0 ? <Button variant="link" onClick={() => { setCategoryFilter('all'); setSoleFilter('all'); setSearchTerm(''); }}>Limpar filtros</Button> : undefined}
               />
             </CardContent>
           </Card>
@@ -701,7 +587,7 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
           /* ── Detail View ── */
           (() => {
              try {
-               const sheet = filteredSheets.find((s: any) => s.id === expandedId);
+               const sheet = sheets.find(s => s.id === expandedId);
                if (!sheet) {
                  return (
                    <Card className="border-dashed">

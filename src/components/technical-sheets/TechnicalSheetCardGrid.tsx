@@ -55,8 +55,12 @@ function SheetThumbnail({ sheet }: { sheet: TechnicalSheetGridItem }) {
 
   if (!image) {
     return (
-      <div className="flex aspect-[5/4] w-full items-center justify-center bg-muted/40">
-        <Package className="h-10 w-10 text-muted-foreground/30" weight="thin" />
+      <div
+        className="flex aspect-video w-full items-center justify-center bg-muted/40"
+        role="img"
+        aria-label={`Sem imagem para ${sheet.name}`}
+      >
+        <Package className="h-7 w-7 text-muted-foreground/30" weight="thin" />
       </div>
     );
   }
@@ -65,7 +69,8 @@ function SheetThumbnail({ sheet }: { sheet: TechnicalSheetGridItem }) {
     <SignedImage
       src={image}
       alt={`Foto da referência ${sheet.name}`}
-      className="aspect-[5/4] w-full border-0 transition-transform duration-200 group-hover:scale-[1.02] motion-reduce:transform-none"
+      className="aspect-video w-full border-0 bg-muted/20 transition-transform duration-200 group-hover:scale-[1.02] motion-reduce:transform-none"
+      fit="contain"
     />
   );
 }
@@ -79,7 +84,7 @@ export function TechnicalSheetCardGrid({
   onDeleteSheet,
 }: Props) {
   return (
-    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3 lg:grid-cols-4 xl:grid-cols-5">
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3 lg:grid-cols-4 xl:grid-cols-5 min-[1800px]:grid-cols-6">
       {sheets.map(sheet => {
         const status = sheet.status_ficha || 'rascunho';
         const variants = materialVariantsBySheet?.get(sheet.id) || [];
@@ -113,8 +118,8 @@ export function TechnicalSheetCardGrid({
                 <SheetThumbnail sheet={sheet} />
               </div>
 
-              <div className="flex flex-1 flex-col space-y-2 p-2.5 sm:p-3">
-                <div className="min-h-10">
+              <div className="flex flex-1 flex-col space-y-1.5 p-2 sm:p-2.5">
+                <div className="min-h-8">
                   {sheet.code && (
                     <p className="truncate font-mono text-[9px] text-muted-foreground sm:text-[10px]" title={`Código interno: ${sheet.code}`}>
                       Cód. interno: {sheet.code}
@@ -146,8 +151,8 @@ export function TechnicalSheetCardGrid({
               </div>
             </button>
 
-            <div className="flex min-w-0 items-center justify-between gap-1 border-t border-foreground px-2 py-1.5">
-              <Badge variant="outline" className="min-w-0 max-w-[calc(100%_-_4rem)] truncate rounded-sm px-1.5 py-0 text-[9px] uppercase tracking-wider sm:text-[10px]">
+            <div className="flex min-w-0 items-center justify-between gap-1 border-t border-foreground px-1.5 py-1 sm:px-2 sm:py-1.5">
+              <Badge variant="outline" className="min-w-0 flex-1 truncate rounded-sm px-1.5 py-0 text-[10px] uppercase tracking-wider">
                 {sheet.shoe_category || 'Geral'}
               </Badge>
               <div className="flex shrink-0 items-center gap-0.5">
@@ -155,8 +160,8 @@ export function TechnicalSheetCardGrid({
                   type="button"
                   variant="ghost"
                   size="icon"
-                  className="h-7 w-7"
-                  aria-label="Alterar foto"
+                  className="h-11 w-11 sm:h-8 sm:w-8"
+                  aria-label={`Alterar foto de ${sheet.name}`}
                   title={`Alterar foto de ${sheet.name}`}
                   onClick={() => onEditImage(sheet)}
                 >
@@ -165,9 +170,9 @@ export function TechnicalSheetCardGrid({
                 {canDelete && (
                   <DeleteConfirmButton
                     onConfirm={() => onDeleteSheet(sheet.id)}
-                    title="Excluir ficha?"
-                    size="h-7 w-7"
-                    iconSize="h-3 w-3"
+                    title={`Excluir ficha ${sheet.name}?`}
+                    size="h-11 w-11 sm:h-8 sm:w-8"
+                    iconSize="h-3.5 w-3.5"
                   />
                 )}
               </div>
