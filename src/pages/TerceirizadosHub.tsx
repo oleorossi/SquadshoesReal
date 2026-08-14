@@ -29,7 +29,7 @@
  * Rotas antigas (/terceiros, /terceiros-na-rua, /terceiros/relatorios,
  * /contractors) redirecionam pra cá com a aba certa via ?tab=.
  */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
@@ -42,7 +42,10 @@ import ContractorsPage from './Contractors';
 import ArtisanalRecipes from './ArtisanalRecipes';
 import { TerceirizacaoCoberturaPanel } from '@/components/contractors/TerceirizacaoCoberturaPanel';
 
-const TRIGGER = 'gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm px-3 py-1.5 rounded-md';
+// Uma única régua, com alvos de toque de 44px e labels curtos. O nome completo
+// continua no aria-label/title de cada aba.
+const TRIGGER = 'h-11 shrink-0 snap-start gap-1.5 rounded-md px-3 py-0 text-[11px] data-[state=active]:bg-background data-[state=active]:shadow-sm sm:text-xs';
+const GROUP_LABEL = 'flex h-11 shrink-0 items-center px-2 font-mono text-[9px] font-bold uppercase tracking-[0.16em] text-muted-foreground/80';
 
 // Abas servidas pelo componente Contractors (uma única instância controlada).
 const CONTRACTOR_TABS = ['orders', 'planning', 'contractors'];
@@ -54,6 +57,7 @@ const DEFAULT_TAB = 'orders';
 
 export default function TerceirizadosHub() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const tabListRef = useRef<HTMLDivElement>(null);
   // "Na Rua" foi FUNDIDA em "Ordens de Serviço" (2026-06-30): o acompanhamento
   // em campo virou os chips "Na rua"/"Atrasados" + KPIs dentro da própria OS.
   // Links/bookmarks antigos (?tab=rua) redirecionam pra Ordens de Serviço.
@@ -64,6 +68,13 @@ export default function TerceirizadosHub() {
   useEffect(() => {
     if (VALID_TABS.has(requested)) setTab(requested);
   }, [requested]);
+
+  // Links diretos podem abrir uma aba que está fora do recorte horizontal no
+  // celular. Mantemos a ativa visível sem mover verticalmente a página.
+  useEffect(() => {
+    const activeTab = tabListRef.current?.querySelector<HTMLElement>('[data-state="active"]');
+    activeTab?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }, [tab]);
 
   const onTabChange = (v: string) => {
     setTab(v);
@@ -86,28 +97,32 @@ export default function TerceirizadosHub() {
         description="Acompanhamento na rua, ordens de serviço, cadastro de contratadas e relatório — tudo num só lugar."
       />
       <Tabs value={tab} onValueChange={onTabChange} className="space-y-4">
-        <TabsList indicator="none" className="h-auto flex-wrap items-center gap-1 bg-muted/50 p-1 rounded-lg">
-          {/* OPERACIONAL */}
-          <TabsTrigger value="orders" className={TRIGGER}>
-            <ClipboardList className="h-3.5 w-3.5" /> Ordens de Serviço
+        <TabsList
+          ref={tabListRef}
+          indicator="none"
+          aria-label="Áreas de terceirização"
+          className="h-auto snap-x snap-proximity flex-nowrap items-center gap-1 overflow-x-auto overscroll-x-contain rounded-lg border border-border/60 bg-muted/50 p-0.5 scroll-px-2"
+        >
+          <span aria-hidden="true" className={GROUP_LABEL}>Operação</span>
+          <TabsTrigger value="orders" className={TRIGGER} aria-label="Ordens de Serviço" title="Ordens de Serviço">
+            <ClipboardList className="h-3.5 w-3.5" /> Ordens
           </TabsTrigger>
-          <TabsTrigger value="planning" className={TRIGGER}>
-            <ChartLineUp className="h-3.5 w-3.5" /> Planejamento
+          <TabsTrigger value="planning" className={TRIGGER} aria-label="Planejamento de terceirização" title="Planejamento de terceirização">
+            <ChartLineUp className="h-3.5 w-3.5" /> Planejar
           </TabsTrigger>
-          <TabsTrigger value="relatorio" className={TRIGGER}>
+          <TabsTrigger value="relatorio" className={TRIGGER} aria-label="Relatório de terceirizados">
             <BarChart3 className="h-3.5 w-3.5" /> Relatório
           </TabsTrigger>
-          {/* divisor OPERACIONAL | CADASTRO */}
-          <span aria-hidden className="mx-1 h-5 w-px self-center bg-border" />
-          {/* CADASTRO */}
-          <TabsTrigger value="contractors" className={TRIGGER}>
+          <span aria-hidden className="mx-1 h-6 w-px shrink-0 self-center bg-border" />
+          <span aria-hidden="true" className={GROUP_LABEL}>Cadastros</span>
+          <TabsTrigger value="contractors" className={TRIGGER} aria-label="Cadastro de prestadores">
             <Users className="h-3.5 w-3.5" /> Prestadores
           </TabsTrigger>
-          <TabsTrigger value="cobertura" className={TRIGGER}>
-            <Tag className="h-3.5 w-3.5" /> Tarifas por Referência
+          <TabsTrigger value="cobertura" className={TRIGGER} aria-label="Tarifas por Referência" title="Tarifas por Referência">
+            <Tag className="h-3.5 w-3.5" /> Tarifas
           </TabsTrigger>
-          <TabsTrigger value="recipes" className={TRIGGER}>
-            <Sparkles className="h-3.5 w-3.5" /> Receitas Artesanais
+          <TabsTrigger value="recipes" className={TRIGGER} aria-label="Receitas Artesanais" title="Receitas Artesanais">
+            <Sparkles className="h-3.5 w-3.5" /> Receitas
           </TabsTrigger>
         </TabsList>
 

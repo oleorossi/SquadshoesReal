@@ -1,8 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
-  ChartBar as BarChart3, Buildings, CheckCircle, Warning as AlertTriangle,
+  Buildings, CheckCircle, Warning as AlertTriangle,
   Clock, CurrencyDollar as DollarSign, Printer, Calendar, Funnel, X,
-  Package as Boxes, ArrowSquareOut, Camera,
+  Camera, CaretLeft, CaretRight,
 } from '@phosphor-icons/react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -10,6 +10,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
@@ -96,6 +97,77 @@ const PUNCTUALITY_STYLE: Record<string, string> = {
   no_deadline: 'bg-muted text-muted-foreground border-border',
 };
 
+const REPORT_ROWS_PER_PAGE = 25;
+
+function pageCount(total: number): number {
+  return Math.max(1, Math.ceil(total / REPORT_ROWS_PER_PAGE));
+}
+
+function rowsForPage<T>(rows: T[], page: number): T[] {
+  const safePage = Math.min(Math.max(0, page), pageCount(rows.length) - 1);
+  const start = safePage * REPORT_ROWS_PER_PAGE;
+  return rows.slice(start, start + REPORT_ROWS_PER_PAGE);
+}
+
+interface ReportPagerProps {
+  page: number;
+  total: number;
+  onPageChange: (page: number) => void;
+  label: string;
+}
+
+function ReportPager({ page, total, onPageChange, label }: ReportPagerProps) {
+  const totalPages = pageCount(total);
+  if (totalPages <= 1) return null;
+
+  const safePage = Math.min(page, totalPages - 1);
+  const first = safePage * REPORT_ROWS_PER_PAGE + 1;
+  const last = Math.min(total, first + REPORT_ROWS_PER_PAGE - 1);
+
+  return (
+    <nav
+      aria-label={`Paginar ${label}`}
+      className="flex flex-col gap-2 border-t border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+    >
+      <p className="text-center text-xs text-muted-foreground sm:text-left" aria-live="polite">
+        {first.toLocaleString('pt-BR')}–{last.toLocaleString('pt-BR')} de {total.toLocaleString('pt-BR')}
+      </p>
+      <div className="grid grid-cols-2 gap-2 sm:flex">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-11 gap-1.5 md:h-8"
+          onClick={() => onPageChange(safePage - 1)}
+          disabled={safePage === 0}
+        >
+          <CaretLeft className="h-4 w-4" /> Anterior
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-11 gap-1.5 md:h-8"
+          onClick={() => onPageChange(safePage + 1)}
+          disabled={safePage >= totalPages - 1}
+        >
+          Próxima <CaretRight className="h-4 w-4" />
+        </Button>
+      </div>
+    </nav>
+  );
+}
+
+function PunctualityBadge({ punctuality, daysLate }: { punctuality: ContractorHistoryOrder['punctuality']; daysLate: number }) {
+  if (punctuality === 'no_deadline') {
+    return <Badge variant="outline" className={cn(PUNCTUALITY_STYLE.no_deadline, 'text-xs')}>Sem prazo</Badge>;
+  }
+  if (punctuality === 'on_time') {
+    return <Badge variant="outline" className={cn(PUNCTUALITY_STYLE.on_time, 'text-xs')}>No prazo</Badge>;
+  }
+  return <Badge variant="outline" className={cn(PUNCTUALITY_STYLE.late, 'text-xs')}>+{daysLate}d</Badge>;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function ContractorReportsPage({ embedded }: { embedded?: boolean } = {}) {
@@ -107,6 +179,9 @@ export default function ContractorReportsPage({ embedded }: { embedded?: boolean
   const [periodPreset, setPeriodPreset] = useState<string>('30d');
   const [customStart, setCustomStart] = useState<string>(lastNDaysISO(30));
   const [customEnd, setCustomEnd] = useState<string>(new Date().toISOString().slice(0, 10));
+  const [financialPage, setFinancialPage] = useState(0);
+  const [rankingPage, setRankingPage] = useState(0);
+  const [historyPage, setHistoryPage] = useState(0);
 
   const period = useMemo(() => {
     switch (periodPreset) {
@@ -151,6 +226,19 @@ export default function ContractorReportsPage({ embedded }: { embedded?: boolean
   const [dateField, setDateField] = useState<OsDateField>('service');
   const [paymentState, setPaymentState] = useState<'all' | OsPaymentState | 'overdue'>('all');
 
+  useEffect(() => {
+    setFinancialPage(0);
+    setHistoryPage(0);
+  }, [contractorFilter, periodPreset, customStart, customEnd]);
+
+  useEffect(() => {
+    setFinancialPage(0);
+  }, [dateField, paymentState]);
+
+  useEffect(() => {
+    setRankingPage(0);
+  }, [contractorFilter]);
+
   const { data: financials = [], isLoading: loadingFinancials } = useContractorOsFinancials({
     contractor_id: contractorFilter !== 'all' ? contractorFilter : null,
     date_field:    dateField,
@@ -160,10 +248,11 @@ export default function ContractorReportsPage({ embedded }: { embedded?: boolean
   });
 
   const finSummary = useMemo(() => {
-    let paid = 0, unpaid = 0, overdue = 0, notBilled = 0, anomalies = 0;
+    let paid = 0, unpaid = 0, overdue = 0, notBilled = 0, anomalies = 0, totalDue = 0;
     for (const r of financials) {
       const due = Number(r.amount_due || 0);
       const alreadyPaid = Number(r.amount_paid_effective || 0);
+      totalDue += due;
       if (r.payment_state === 'paid') {
         paid += alreadyPaid;
       } else if (r.payment_state === 'partially_paid') {
@@ -181,7 +270,7 @@ export default function ContractorReportsPage({ embedded }: { embedded?: boolean
         anomalies += 1; // missing_ap
       }
     }
-    return { paid, unpaid, overdue, notBilled, anomalies, count: financials.length };
+    return { paid, unpaid, overdue, notBilled, anomalies, totalDue, count: financials.length };
   }, [financials]);
 
   // History do período (linha por OS) — usado pra tabela de histórico
@@ -190,9 +279,21 @@ export default function ContractorReportsPage({ embedded }: { embedded?: boolean
     () => periodHistory.reduce((s, h) => s + Number(h.total_value || 0), 0),
     [periodHistory],
   );
+  const visibleFinancials = useMemo(
+    () => rowsForPage(financials, financialPage),
+    [financials, financialPage],
+  );
+  const visibleMetrics = useMemo(
+    () => rowsForPage(filteredMetrics, rankingPage),
+    [filteredMetrics, rankingPage],
+  );
+  const visibleHistory = useMemo(
+    () => rowsForPage(periodHistory, historyPage),
+    [periodHistory, historyPage],
+  );
 
   const handlePrintReceipt = (o: ContractorHistoryOrder) => {
-    const contractor = contractors.find((c: any) => c.id === o.contractor_id) as any;
+    const contractor = contractors.find((c) => c.id === o.contractor_id);
     // Papel único (Modelo A): sem preço nem total — só quantidade. Ver
     // printServiceOrderReceipt.ts. Aqui não há itens do PV à mão, então o papel
     // sai pela descrição e o canhoto confere pelo total.
@@ -236,25 +337,35 @@ export default function ContractorReportsPage({ embedded }: { embedded?: boolean
 
       {/* Filtros */}
       <Panel
-        title="Filtros"
-        actions={
-          <div className="flex items-center gap-2 flex-wrap">
-            <Funnel className="h-4 w-4 text-muted-foreground" />
+        eyebrow="RECORTE DO RELATÓRIO"
+        title={
+          <span className="inline-flex items-center gap-2">
+            <Funnel className="h-4 w-4 text-primary" aria-hidden="true" /> Filtros
+          </span>
+        }
+        subtitle="Escolha a contratada e a janela de tempo que orientam o histórico e os pagamentos."
+      >
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(220px,1.25fr)_minmax(180px,0.8fr)_auto] xl:items-end">
+          <div className="space-y-1.5">
+            <Label id="contractor-report-contractor-label" className="text-xs text-muted-foreground">Contratada</Label>
             <Select value={contractorFilter} onValueChange={setContractorFilter}>
-              <SelectTrigger className="h-9 w-[200px] text-xs">
-                <SelectValue placeholder="Contratada" />
+              <SelectTrigger aria-labelledby="contractor-report-contractor-label" className="h-11 w-full text-sm md:h-9">
+                <SelectValue placeholder="Todas as contratadas" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todas as contratadas</SelectItem>
-                {contractors.map((c: any) => (
+                {contractors.map((c) => (
                   <SelectItem key={c.id} value={c.id}>
                     {c.trade_name || c.name}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label id="contractor-report-period-label" className="text-xs text-muted-foreground">Período</Label>
             <Select value={periodPreset} onValueChange={setPeriodPreset}>
-              <SelectTrigger className="h-9 w-[160px] text-xs">
+              <SelectTrigger aria-labelledby="contractor-report-period-label" className="h-11 w-full text-sm md:h-9">
                 <SelectValue placeholder="Período" />
               </SelectTrigger>
               <SelectContent>
@@ -266,38 +377,46 @@ export default function ContractorReportsPage({ embedded }: { embedded?: boolean
                 <SelectItem value="custom">Personalizado…</SelectItem>
               </SelectContent>
             </Select>
-            {periodPreset === 'custom' && (
-              <>
-                <Input
-                  type="date"
-                  value={customStart}
-                  onChange={(e) => setCustomStart(e.target.value)}
-                  className="h-9 text-xs w-[140px]"
-                />
-                <Input
-                  type="date"
-                  value={customEnd}
-                  onChange={(e) => setCustomEnd(e.target.value)}
-                  className="h-9 text-xs w-[140px]"
-                />
-              </>
-            )}
-            {(contractorFilter !== 'all' || periodPreset !== '30d') && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-9 text-xs gap-1 text-muted-foreground"
-                onClick={() => { setContractorFilter('all'); setPeriodPreset('30d'); }}
-              >
-                <X className="h-3.5 w-3.5" />
-                Reset
-              </Button>
-            )}
           </div>
-        }
-      >
-        <p className="text-xs text-muted-foreground">
-          Métricas all-time abaixo refletem o filtro de contratada. Histórico filtra <strong>período</strong> e <strong>contratada</strong>.
+          {(contractorFilter !== 'all' || periodPreset !== '30d') && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-11 w-full gap-1 text-xs text-muted-foreground md:h-9 xl:w-auto"
+              onClick={() => { setContractorFilter('all'); setPeriodPreset('30d'); }}
+            >
+              <X className="h-3.5 w-3.5" />
+              Limpar filtros
+            </Button>
+          )}
+        </div>
+        {periodPreset === 'custom' && (
+          <fieldset className="mt-3 grid gap-3 rounded-md border border-border bg-muted/20 p-3 sm:grid-cols-2">
+            <legend className="px-1 text-xs font-semibold text-muted-foreground">Intervalo personalizado</legend>
+            <div className="space-y-1.5">
+              <Label htmlFor="contractor-report-start" className="text-xs text-muted-foreground">Data inicial</Label>
+              <Input
+                id="contractor-report-start"
+                type="date"
+                value={customStart}
+                onChange={(e) => setCustomStart(e.target.value)}
+                className="h-11 w-full text-sm md:h-9"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="contractor-report-end" className="text-xs text-muted-foreground">Data final</Label>
+              <Input
+                id="contractor-report-end"
+                type="date"
+                value={customEnd}
+                onChange={(e) => setCustomEnd(e.target.value)}
+                className="h-11 w-full text-sm md:h-9"
+              />
+            </div>
+          </fieldset>
+        )}
+        <p className="mt-3 text-xs text-muted-foreground">
+          Os indicadores gerais refletem a contratada selecionada; histórico e pagamentos também respeitam o período.
         </p>
       </Panel>
 
@@ -341,10 +460,12 @@ export default function ContractorReportsPage({ embedded }: { embedded?: boolean
         eyebrow={`${DATE_FIELD_LABEL[dateField]} · ${period.label}`}
         title="Pagamentos aos prestadores"
         subtitle="Estado real vindo das contas a pagar — não do status da OS."
-        actions={
-          <div className="flex items-center gap-2 flex-wrap">
+      >
+        <div className="mb-4 space-y-3 rounded-md border border-border bg-muted/20 p-3">
+          <div className="space-y-1.5">
+            <Label id="contractor-report-date-field-label" className="text-xs text-muted-foreground">Organizar período por</Label>
             <Select value={dateField} onValueChange={(v) => setDateField(v as OsDateField)}>
-              <SelectTrigger className="h-8 w-[168px] text-xs">
+              <SelectTrigger aria-labelledby="contractor-report-date-field-label" className="h-11 w-full text-sm md:h-9 md:max-w-xs">
                 <SelectValue placeholder="Filtrar data por" />
               </SelectTrigger>
               <SelectContent>
@@ -353,25 +474,26 @@ export default function ContractorReportsPage({ embedded }: { embedded?: boolean
                 <SelectItem value="payment">Data do pagamento</SelectItem>
               </SelectContent>
             </Select>
-            <div className="flex items-center gap-1 flex-wrap">
+          </div>
+          <div role="group" aria-label="Estado do pagamento" className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
               {([
                 ['all', 'Todas'], ['paid', 'Pagas'], ['unpaid', 'A pagar'],
-                ['overdue', 'Vencidas'], ['not_billed', 'Não faturadas'],
+                ['partially_paid', 'Parciais'], ['overdue', 'Vencidas'],
+                ['not_billed', 'Não faturadas'],
               ] as const).map(([value, label]) => (
                 <Button
                   key={value}
                   variant={paymentState === value ? 'default' : 'outline'}
                   size="sm"
-                  className="h-8 text-xs"
+                  className="h-11 w-full text-xs md:h-9 sm:w-auto"
+                  aria-pressed={paymentState === value}
                   onClick={() => setPaymentState(value as typeof paymentState)}
                 >
                   {label}
                 </Button>
               ))}
-            </div>
           </div>
-        }
-      >
+        </div>
         <StatGrid>
           <StatCard label="Pago no período" value={formatCurrency(finSummary.paid)} icon={CheckCircle} tone="success" hint="contas quitadas" />
           <StatCard label="A pagar" value={formatCurrency(finSummary.unpaid)} icon={DollarSign} tone={finSummary.unpaid > 0 ? 'warning' : 'default'} hint="conta emitida, ainda não quitada" />
@@ -407,7 +529,68 @@ export default function ContractorReportsPage({ embedded }: { embedded?: boolean
             description="Ajuste o prestador, o período ou o eixo de data para ver os pagamentos."
           />
         ) : (
-          <Table>
+          <>
+          <div className="divide-y divide-border md:hidden">
+            {visibleFinancials.map((r: OsFinancialRow) => {
+              const meta = PAYMENT_STATE_META[r.payment_state];
+              return (
+                <article
+                  key={r.os_id}
+                  aria-label={`OS ${r.order_number || 'sem número'} de ${r.contractor_name}`}
+                  className="space-y-3 p-4"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-mono text-sm font-bold">{r.order_number || '—'}</p>
+                      <p className="truncate text-sm font-medium">{r.contractor_name}</p>
+                      <p className="mt-0.5 text-xs capitalize text-muted-foreground">{r.sector || 'Setor não informado'}{r.is_avulsa ? ' · OS avulsa' : ''}</p>
+                    </div>
+                    <Badge variant="outline" className={cn('shrink-0 text-xs', meta.className)} title={meta.hint}>
+                      {meta.label}
+                    </Badge>
+                  </div>
+                  <dl className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-md bg-muted/30 p-3 text-xs">
+                    <div>
+                      <dt className="text-muted-foreground">Valor</dt>
+                      <dd className="mt-0.5 font-mono text-sm font-bold tabular-nums">{formatCurrency(Number(r.amount_due || 0))}</dd>
+                    </div>
+                    <div className="text-right">
+                      <dt className="text-muted-foreground">Quantidade</dt>
+                      <dd className="mt-0.5 text-sm font-semibold tabular-nums">{Number(r.quantity).toLocaleString('pt-BR')}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-muted-foreground">Serviço</dt>
+                      <dd className="mt-0.5 tabular-nums">{formatDateBR(r.service_date)}</dd>
+                    </div>
+                    <div className="text-right">
+                      <dt className="text-muted-foreground">Vencimento</dt>
+                      <dd className={cn('mt-0.5 tabular-nums', r.is_overdue && 'font-semibold text-red-700 dark:text-red-400')}>
+                        {formatDateBR(r.due_date)}{r.is_overdue ? ` · +${r.days_overdue}d` : ''}
+                      </dd>
+                    </div>
+                    {r.payment_date && (
+                      <div className="col-span-2 border-t border-border pt-2">
+                        <dt className="text-muted-foreground">Pago em</dt>
+                        <dd className="mt-0.5 tabular-nums">{formatDateBR(r.payment_date)}</dd>
+                      </div>
+                    )}
+                  </dl>
+                </article>
+              );
+            })}
+            <div className="grid grid-cols-2 gap-3 bg-muted/40 p-4 text-sm">
+              <div>
+                <p className="text-xs uppercase tracking-wider text-muted-foreground">Total do período</p>
+                <p className="font-mono font-bold tabular-nums">{formatCurrency(finSummary.totalDue)}</p>
+              </div>
+              <div className="text-right text-xs text-muted-foreground">
+                <p>{formatCurrency(finSummary.paid)} pago</p>
+                <p>{formatCurrency(finSummary.unpaid)} a pagar</p>
+              </div>
+            </div>
+          </div>
+          <div className="hidden md:block">
+          <Table aria-label="Detalhamento de pagamentos por ordem de serviço">
             <TableHeader>
               <TableRow className="bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                 <TableHead>OS</TableHead>
@@ -422,7 +605,7 @@ export default function ContractorReportsPage({ embedded }: { embedded?: boolean
               </TableRow>
             </TableHeader>
             <TableBody>
-              {financials.map((r: OsFinancialRow) => {
+              {visibleFinancials.map((r: OsFinancialRow) => {
                 const meta = PAYMENT_STATE_META[r.payment_state];
                 return (
                   <TableRow key={r.os_id} className="hover:bg-muted/30">
@@ -459,7 +642,7 @@ export default function ContractorReportsPage({ embedded }: { embedded?: boolean
                   Total do período
                 </TableCell>
                 <TableCell className="text-right text-sm tabular-nums">
-                  {formatCurrency(financials.reduce((s, r) => s + Number(r.amount_due || 0), 0))}
+                  {formatCurrency(finSummary.totalDue)}
                 </TableCell>
                 <TableCell colSpan={4} className="text-xs text-muted-foreground">
                   {formatCurrency(finSummary.paid)} pago · {formatCurrency(finSummary.unpaid)} a pagar
@@ -467,6 +650,9 @@ export default function ContractorReportsPage({ embedded }: { embedded?: boolean
               </TableRow>
             </TableBody>
           </Table>
+          </div>
+          <ReportPager page={financialPage} total={financials.length} onPageChange={setFinancialPage} label="detalhamento de pagamentos" />
+          </>
         )}
       </Panel>
 
@@ -478,7 +664,68 @@ export default function ContractorReportsPage({ embedded }: { embedded?: boolean
           subtitle="Ordenado por valor total. Concluído = produzido · Pago = conta quitada · A pagar = conta em aberto."
           flush
         >
-          <Table>
+          <div className="divide-y divide-border md:hidden">
+            {visibleMetrics.map((m) => {
+              const rate = calcPunctualityRate(m);
+              return (
+                <article
+                  key={m.contractor_id}
+                  aria-label={`Indicadores de ${m.contractor_name}`}
+                  className="space-y-3 p-4"
+                >
+                  <div className="flex items-start gap-3">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+                      <Buildings className="h-5 w-5" aria-hidden="true" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h4 className="font-semibold">{m.contractor_name}</h4>
+                        {!m.active && <Badge variant="outline" className="bg-muted text-xs">Inativa</Badge>}
+                      </div>
+                      {m.service_type && <p className="text-xs text-muted-foreground">{m.service_type}</p>}
+                    </div>
+                    {rate !== null && (
+                      <Badge
+                        variant="outline"
+                        className={cn(
+                          'shrink-0 text-xs',
+                          rate >= 90 ? PUNCTUALITY_STYLE.on_time
+                          : rate >= 70 ? 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400'
+                          : PUNCTUALITY_STYLE.late,
+                        )}
+                      >
+                        {rate}% no prazo
+                      </Badge>
+                    )}
+                  </div>
+                  <dl className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="rounded-md bg-muted/30 p-2.5">
+                      <dt className="text-muted-foreground">Produzido</dt>
+                      <dd className="mt-0.5 font-mono text-sm font-bold tabular-nums">{formatCurrency(m.total_value_completed)}</dd>
+                    </div>
+                    <div className="rounded-md bg-muted/30 p-2.5 text-right">
+                      <dt className="text-muted-foreground">Pago</dt>
+                      <dd className="mt-0.5 font-mono text-sm font-bold tabular-nums text-green-700 dark:text-green-400">{formatCurrency(m.total_value_paid)}</dd>
+                    </div>
+                    <div className="rounded-md bg-muted/30 p-2.5">
+                      <dt className="text-muted-foreground">A pagar</dt>
+                      <dd className={cn('mt-0.5 font-mono text-sm font-bold tabular-nums', Number(m.total_value_unpaid) > 0 && 'text-amber-700 dark:text-amber-400')}>{formatCurrency(m.total_value_unpaid)}</dd>
+                    </div>
+                    <div className="rounded-md bg-muted/30 p-2.5 text-right">
+                      <dt className="text-muted-foreground">OSs / pares</dt>
+                      <dd className="mt-0.5 text-sm font-semibold tabular-nums">{m.completed_orders.toLocaleString('pt-BR')} / {Number(m.total_quantity).toLocaleString('pt-BR')}</dd>
+                    </div>
+                  </dl>
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+                    <span>{m.open_orders} em aberto{m.open_overdue_count > 0 ? ` · ${m.open_overdue_count} vencidas` : ''}</span>
+                    <span className="inline-flex items-center gap-1"><Calendar className="h-3.5 w-3.5" aria-hidden="true" /> Última OS {formatDateBR(m.last_order_at)}</span>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+          <div className="hidden md:block">
+          <Table aria-label="Ranking de desempenho das contratadas">
             <TableHeader>
               <TableRow className="bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                 <TableHead>Contratada</TableHead>
@@ -494,7 +741,7 @@ export default function ContractorReportsPage({ embedded }: { embedded?: boolean
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredMetrics.map((m) => {
+              {visibleMetrics.map((m) => {
                 const rate = calcPunctualityRate(m);
                 return (
                   <TableRow key={m.contractor_id} className="hover:bg-muted/30">
@@ -576,6 +823,8 @@ export default function ContractorReportsPage({ embedded }: { embedded?: boolean
               })}
             </TableBody>
           </Table>
+          </div>
+          <ReportPager page={rankingPage} total={filteredMetrics.length} onPageChange={setRankingPage} label="ranking de contratadas" />
         </Panel>
       )}
 
@@ -608,8 +857,77 @@ export default function ContractorReportsPage({ embedded }: { embedded?: boolean
             size="sm"
           />
         ) : (
-          <div className="overflow-x-auto">
-            <Table>
+          <>
+          <div className="divide-y divide-border md:hidden">
+            {visibleHistory.map((o) => (
+              <article
+                key={o.id}
+                aria-label={`OS ${o.order_number || o.receipt_number || 'sem número'} de ${o.contractor_name}`}
+                className="space-y-3 p-4"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <p className="font-mono text-sm font-bold">{o.receipt_number || o.order_number || '—'}</p>
+                      {o.is_artisanal && (
+                        <Badge variant="outline" className="border-purple-500/30 bg-purple-500/10 text-xs text-purple-700 dark:text-purple-300">
+                          Artesanal
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="mt-0.5 truncate text-sm font-medium">{o.contractor_name}</p>
+                  </div>
+                  <PunctualityBadge punctuality={o.punctuality} daysLate={o.days_late} />
+                </div>
+                <p className="line-clamp-2 text-sm text-muted-foreground" title={o.description || undefined}>
+                  {o.description || 'Sem descrição informada.'}
+                </p>
+                <dl className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-md bg-muted/30 p-3 text-xs">
+                  <div>
+                    <dt className="text-muted-foreground">Setor</dt>
+                    <dd className="mt-0.5 font-medium">{o.sector || '—'}</dd>
+                  </div>
+                  <div className="text-right">
+                    <dt className="text-muted-foreground">Concluída</dt>
+                    <dd className="mt-0.5 tabular-nums">{formatDateBR(o.finished_at)}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Pares</dt>
+                    <dd className="mt-0.5 text-sm font-semibold tabular-nums">{Number(o.quantity).toLocaleString('pt-BR')}</dd>
+                  </div>
+                  <div className="text-right">
+                    <dt className="text-muted-foreground">Valor</dt>
+                    <dd className="mt-0.5 font-mono text-sm font-bold tabular-nums">{formatCurrency(Number(o.total_value || 0))}</dd>
+                  </div>
+                </dl>
+                <div className={cn('grid gap-2', o.signed_photo_url ? 'grid-cols-2' : 'grid-cols-1')}>
+                  {o.signed_photo_url ? (
+                    <Button asChild variant="outline" size="sm" className="h-11 gap-1.5">
+                      <a
+                        href={o.signed_photo_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        aria-label={`Ver foto assinada da OS ${o.order_number || o.receipt_number || ''}`}
+                      >
+                        <Camera className="h-4 w-4" /> Foto assinada
+                      </a>
+                    </Button>
+                  ) : null}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-11 gap-1.5"
+                    onClick={() => handlePrintReceipt(o)}
+                    aria-label={`Imprimir recibo da OS ${o.order_number || o.receipt_number || ''}`}
+                  >
+                    <Printer className="h-4 w-4" /> Imprimir
+                  </Button>
+                </div>
+              </article>
+            ))}
+          </div>
+          <div className="hidden md:block">
+            <Table aria-label="Histórico de ordens de serviço finalizadas">
               <TableHeader>
                 <TableRow className="bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                   <TableHead>Recibo / OS</TableHead>
@@ -620,11 +938,11 @@ export default function ContractorReportsPage({ embedded }: { embedded?: boolean
                   <TableHead className="text-right">Valor</TableHead>
                   <TableHead>Concluída</TableHead>
                   <TableHead>Pontualidade</TableHead>
-                  <TableHead className="w-10"></TableHead>
+                  <TableHead className="w-10"><span className="sr-only">Ações</span></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {periodHistory.map((o) => (
+                {visibleHistory.map((o) => (
                   <TableRow key={o.id} className="hover:bg-muted/30">
                     <TableCell className="font-mono text-xs whitespace-nowrap">
                       {o.receipt_number || o.order_number || '—'}
@@ -640,6 +958,7 @@ export default function ContractorReportsPage({ embedded }: { embedded?: boolean
                           rel="noopener noreferrer"
                           className="inline-flex items-center ml-1.5 text-emerald-700 dark:text-emerald-400"
                           title="Ver foto do recibo assinado"
+                          aria-label={`Ver foto assinada da OS ${o.order_number || o.receipt_number || ''}`}
                         >
                           <Camera className="h-3.5 w-3.5" />
                         </a>
@@ -660,19 +979,7 @@ export default function ContractorReportsPage({ embedded }: { embedded?: boolean
                       {formatDateBR(o.finished_at)}
                     </TableCell>
                     <TableCell>
-                      {o.punctuality === 'no_deadline' ? (
-                        <Badge variant="outline" className={cn(PUNCTUALITY_STYLE.no_deadline, 'text-xs')}>
-                          Sem prazo
-                        </Badge>
-                      ) : o.punctuality === 'on_time' ? (
-                        <Badge variant="outline" className={cn(PUNCTUALITY_STYLE.on_time, 'text-xs')}>
-                          No prazo
-                        </Badge>
-                      ) : (
-                        <Badge variant="outline" className={cn(PUNCTUALITY_STYLE.late, 'text-xs')}>
-                          +{o.days_late}d
-                        </Badge>
-                      )}
+                      <PunctualityBadge punctuality={o.punctuality} daysLate={o.days_late} />
                     </TableCell>
                     <TableCell>
                       <Button
@@ -681,6 +988,7 @@ export default function ContractorReportsPage({ embedded }: { embedded?: boolean
                         className="h-7 w-7"
                         onClick={() => handlePrintReceipt(o)}
                         title="Imprimir recibo"
+                        aria-label={`Imprimir recibo da OS ${o.order_number || o.receipt_number || ''}`}
                       >
                         <Printer className="h-3.5 w-3.5" />
                       </Button>
@@ -690,6 +998,8 @@ export default function ContractorReportsPage({ embedded }: { embedded?: boolean
               </TableBody>
             </Table>
           </div>
+          <ReportPager page={historyPage} total={periodHistory.length} onPageChange={setHistoryPage} label="histórico de ordens de serviço" />
+          </>
         )}
       </Panel>
     </div>

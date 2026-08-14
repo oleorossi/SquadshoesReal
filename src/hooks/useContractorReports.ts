@@ -1,5 +1,17 @@
 import { useQuery } from '@tanstack/react-query';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
+import { fetchAllPages } from '@/lib/supabasePaginate';
+
+// A view financeira foi criada depois da última geração de `types.ts` e as
+// outras duas ganharam colunas novas. Centralizar o escape de tipagem mantém os
+// contratos de resposta explícitos nas interfaces abaixo, sem espalhar casts.
+const reportSupabase = supabase as unknown as SupabaseClient;
+
+function dayAfterISO(date: string): string {
+  const [year, month, day] = date.split('-').map(Number);
+  return new Date(Date.UTC(year, month - 1, day + 1)).toISOString().slice(0, 10);
+}
 
 export interface ContractorMetric {
   contractor_id: string;
@@ -96,14 +108,12 @@ export interface ContractorHistoryOrder {
 export function useContractorMetrics() {
   return useQuery({
     queryKey: ['v_contractor_metrics'],
-    queryFn: async () => {
-      const { data, error } = await (supabase as any)
-        .from('v_contractor_metrics')
-        .select('*')
-        .order('total_value_all', { ascending: false });
-      if (error) throw error;
-      return (data || []) as ContractorMetric[];
-    },
+    queryFn: () => fetchAllPages<ContractorMetric>((from, to) => reportSupabase
+      .from('v_contractor_metrics')
+      .select('*')
+      .order('total_value_all', { ascending: false })
+      .order('contractor_id', { ascending: true })
+      .range(from, to)),
     staleTime: 60_000,
   });
 }
@@ -115,18 +125,19 @@ export function useContractorHistory(filters?: {
 }) {
   return useQuery({
     queryKey: ['v_contractor_history_orders', filters?.contractor_id ?? '__all__', filters?.period_start ?? '', filters?.period_end ?? ''],
-    queryFn: async () => {
-      let q = (supabase as any)
+    queryFn: () => fetchAllPages<ContractorHistoryOrder>((from, to) => {
+      let query = reportSupabase
         .from('v_contractor_history_orders')
         .select('*')
-        .order('finished_at', { ascending: false });
-      if (filters?.contractor_id) q = q.eq('contractor_id', filters.contractor_id);
-      if (filters?.period_start) q = q.gte('finished_at', filters.period_start);
-      if (filters?.period_end) q = q.lte('finished_at', filters.period_end + 'T23:59:59');
-      const { data, error } = await q;
-      if (error) throw error;
-      return (data || []) as ContractorHistoryOrder[];
-    },
+        .order('finished_at', { ascending: false })
+        .order('id', { ascending: true });
+      if (filters?.contractor_id) query = query.eq('contractor_id', filters.contractor_id);
+      if (filters?.period_start) query = query.gte('finished_at', filters.period_start);
+      // Limite exclusivo do dia seguinte inclui também timestamps com
+      // milissegundos no último segundo do período.
+      if (filters?.period_end) query = query.lt('finished_at', dayAfterISO(filters.period_end));
+      return query.range(from, to);
+    }),
     staleTime: 60_000,
   });
 }
@@ -160,21 +171,20 @@ export function useContractorOsFinancials(filters?: {
       filters?.period_end ?? '',
       state,
     ],
-    queryFn: async () => {
+    queryFn: () => fetchAllPages<OsFinancialRow>((from, to) => {
       const col = DATE_COLUMN[dateField];
-      let q = (supabase as any)
+      let query = reportSupabase
         .from('v_contractor_os_financials')
         .select('*')
-        .order(col, { ascending: false, nullsFirst: false });
-      if (filters?.contractor_id) q = q.eq('contractor_id', filters.contractor_id);
-      if (filters?.period_start) q = q.gte(col, filters.period_start);
-      if (filters?.period_end) q = q.lte(col, filters.period_end);
-      if (state === 'overdue') q = q.eq('is_overdue', true);
-      else if (state !== 'all') q = q.eq('payment_state', state);
-      const { data, error } = await q;
-      if (error) throw error;
-      return (data || []) as OsFinancialRow[];
-    },
+        .order(col, { ascending: false, nullsFirst: false })
+        .order('os_id', { ascending: true });
+      if (filters?.contractor_id) query = query.eq('contractor_id', filters.contractor_id);
+      if (filters?.period_start) query = query.gte(col, filters.period_start);
+      if (filters?.period_end) query = query.lte(col, filters.period_end);
+      if (state === 'overdue') query = query.eq('is_overdue', true);
+      else if (state !== 'all') query = query.eq('payment_state', state);
+      return query.range(from, to);
+    }),
     staleTime: 60_000,
   });
 }

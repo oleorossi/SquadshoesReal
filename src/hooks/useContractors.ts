@@ -162,6 +162,8 @@ export interface ServiceOrderOverview {
   accounts_payable_id: string | null;
   payment_status: string | null; // 'pending' | 'paid' | null (sem AP)
   payable_amount: number | null;
+  /** Saldo ainda devido, já descontando pagamentos parciais. */
+  payable_open_amount?: number | null;
   payment_due_date: string | null;
   payment_date: string | null;
   has_payable: boolean;
@@ -171,6 +173,8 @@ export interface ServiceOrderOverview {
   qty_returned_defect: number | null;
   qty_loss: number | null;
   qty_in_field: number | null;
+  /** Despacho bruto real; em OS legada inclui o envio inicial implícito. */
+  qty_dispatched?: number | null;
   /** Defeito que ainda pode voltar ao prestador (não sucateado). */
   qty_defect_pending_rework?: number | null;
   /** Perda + sucata: o que a OS não entrega sem reposição de material. */
@@ -182,12 +186,24 @@ export function useServiceOrderOverview() {
   return useQuery({
     queryKey: ['service_order_overview'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('v_service_order_overview' as any)
-        .select('*');
-      if (error) throw error;
+      // A view cresce junto com as OS. Um select sem range para silenciosamente
+      // em ~1.000 linhas no PostgREST e fazia lista e saldos cobrirem universos
+      // diferentes.
+      const PAGE = 1000;
+      const rows: ServiceOrderOverview[] = [];
+      for (let from = 0; ; from += PAGE) {
+        const { data, error } = await supabase
+          .from('v_service_order_overview' as any)
+          .select('*')
+          .order('service_order_id', { ascending: true })
+          .range(from, from + PAGE - 1);
+        if (error) throw error;
+        const page = (data ?? []) as unknown as ServiceOrderOverview[];
+        rows.push(...page);
+        if (page.length < PAGE) break;
+      }
       const map = new Map<string, ServiceOrderOverview>();
-      for (const row of (data as unknown as ServiceOrderOverview[])) {
+      for (const row of rows) {
         map.set(row.service_order_id, row);
       }
       return map;

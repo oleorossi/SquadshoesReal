@@ -56,7 +56,7 @@ export function OsPaymentBadge({ ov, osStatus }: { ov?: ServiceOrderOverview; os
 // Só aparece quando houve algum retorno mas ainda há pares na rua (parcial).
 export function OsBalanceLine({ ov }: { ov?: ServiceOrderOverview }) {
   if (!ov) return null;
-  const sent = Number(ov.qty_sent ?? 0);
+  const sent = Number(ov.qty_dispatched ?? ov.qty_sent ?? 0);
   const good = Number(ov.qty_returned_good ?? 0);
   const defect = Number(ov.qty_returned_defect ?? 0);
   const loss = Number(ov.qty_loss ?? 0);

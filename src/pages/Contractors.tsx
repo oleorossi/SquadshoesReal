@@ -20,7 +20,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
-import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
@@ -61,6 +60,7 @@ import { useProducts, getBaseName } from '@/hooks/useProducts';
 import { ContractorHistoryDialog } from '@/components/contractors/ContractorHistoryDialog';
 import { ContractorRatesDialog } from '@/components/contractors/ContractorRatesDialog';
 import { OutsourcingPlanningTab } from '@/components/contractors/OutsourcingPlanningTab';
+import { ContractorOperationsOverview } from '@/components/contractors/ContractorOperationsOverview';
 const emptyRecipe: Partial<ArtisanalRecipe> = { name: '', artisanal_product_name: '', base_product_name: '', yield_per_meter: 1, labor_cost_per_meter: 0, active: true };
 
 import { useSaleOrders } from '@/hooks/useSaleOrders';
@@ -187,7 +187,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
   const { data: contractors = [], isLoading: loadingC } = useContractors();
   const { data: orders = [], isLoading: loadingO } = useServiceOrders();
   const { data: osOverview } = useServiceOrderOverview(); // Map por service_order_id: pagamento (AP) + saldo de recebimento
-  const { data: products = [], isLoading: loadingP } = useProducts();
+  const { data: products = [] } = useProducts();
   const { data: saleOrders = [] } = useSaleOrders();
   const { data: artisanalRecipes = [] } = useArtisanalRecipes({ onlyActive: true });
   const recipes = artisanalRecipes;
@@ -208,8 +208,10 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
   // Gates de ação da área Terceirizados (criar OS / excluir OS). Admin e
   // usuários sem permissão granular sempre passam.
   const osPerm = useCan('/terceirizados');
-  // Busca NÃO persiste: reseta ao sair e voltar pra tela (useState remonta limpo).
-  const [search, setSearch] = useState('');
+  // Buscas independentes: um termo digitado em OS não deve esvaziar a lista de
+  // prestadores quando o usuário troca de aba (e vice-versa).
+  const [orderSearch, setOrderSearch] = useState('');
+  const [contractorSearch, setContractorSearch] = useState('');
   // Aceita ?q= na URL — a busca global navega pra cá com ?q=<termo>, que
   // sobrepõe o valor persistido. REATIVO (deps no param, não só mount):
   // selecionar outra OS no ⌘K estando já em /terceirizados não remonta a
@@ -217,7 +219,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
   const [urlSearchParams] = useSearchParams();
   const urlQ = urlSearchParams.get('q') || '';
   useEffect(() => {
-    if (urlQ) setSearch(urlQ);
+    if (urlQ) setOrderSearch(urlQ);
 
   }, [urlQ]);
   // Chave v2: o filtro antigo guardava status cru ('pending_quote' etc.) que não
@@ -226,6 +228,13 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
   // Modo de exibição das OS: 'list' (tabela densa, melhor pra varrer muitas OS)
   // ou 'cards'. Persistido por usuário. Default 'list' a pedido (melhor visão).
   const [osView, setOsView] = usePersistedState<'list' | 'cards'>('contractors-os-view', 'list');
+  const [osSort, setOsSort] = usePersistedState<'urgency' | 'recent' | 'deadline'>('contractors-os-sort', 'urgency');
+  const [standaloneTab, setStandaloneTab] = useState('orders');
+  const currentTab = embedded ? activeTab ?? 'orders' : standaloneTab;
+  const handleTabChange = (value: string) => {
+    if (embedded) onActiveTabChange?.(value);
+    else setStandaloneTab(value);
+  };
 
   // ── Filtros do relatório de custos da OS, na URL (compartilháveis) ───────────
   // contractor=id do prestador (vazio=todos), from/to=período, basis=base de data.
@@ -307,9 +316,13 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
 
   // Itens do PV vinculado à OS aberta (ref · cor + pares). Alimenta o seletor de
   // itens do dialog e a guia de remessa (cartões por item).
+  const editingPvId = editingOrder.sale_order_id
+    || editingOrder.source_sale_order_id
+    || editingOrder.linked_sale_order_ids?.[0]
+    || null;
   const { data: osPvItemsRaw = [] } = useQuery({
-    queryKey: ['os_dialog_pv_items', editingOrder.sale_order_id],
-    enabled: orderDialog && !!editingOrder.sale_order_id,
+    queryKey: ['os_dialog_pv_items', editingPvId],
+    enabled: orderDialog && !!editingPvId,
     queryFn: async () => {
       // `grade` e `image_url` entram pro papel da OS: o canhoto confere por
       // NUMERAÇÃO e a foto identifica o modelo na bancada. Sem eles o papel
@@ -317,7 +330,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
       const { data, error } = await supabase
         .from('sale_order_items')
         .select(OS_PV_ITEM_COLUMNS)
-        .eq('sale_order_id', editingOrder.sale_order_id as string);
+        .eq('sale_order_id', editingPvId as string);
       if (error) throw error;
       return data || [];
     },
@@ -331,9 +344,14 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
   // Alimentam o nº de ordem de produção na lista, na busca, no papel impresso e
   // no seletor de itens do dialog. Derivadas SEMPRE na leitura (nunca gravadas
   // na OS), pra que uma OS criada antes de "Gerar OPs" ganhe o número sozinha.
+  const linkedSaleOrderIdsOf = useCallback((o: ServiceOrder): string[] => Array.from(new Set([
+    o.sale_order_id,
+    o.source_sale_order_id,
+    ...(o.linked_sale_order_ids || []),
+  ].filter(Boolean) as string[])), []);
   const osSaleOrderIds = useMemo(
-    () => Array.from(new Set(orders.map((o) => o.sale_order_id).filter(Boolean))).sort() as string[],
-    [orders],
+    () => Array.from(new Set(orders.flatMap(linkedSaleOrderIdsOf))).sort(),
+    [orders, linkedSaleOrderIdsOf],
   );
   const { data: opsForOs = [] } = useQuery({
     queryKey: ['ops_for_service_orders', osSaleOrderIds],
@@ -365,9 +383,10 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
 
     const out = new Map<string, { numbers: string[]; label: string | null }>();
     for (const o of orders) {
-      const pvOps = o.sale_order_id ? opsByPv.get(o.sale_order_id) || [] : [];
+      const linkedIds = linkedSaleOrderIdsOf(o);
+      const pvOps = linkedIds.flatMap(id => opsByPv.get(id) || []);
       // Sem seleção gravada (OS antiga) → todas as OPs do PV.
-      const numbers = opNumbersForServiceOrder(pvOps, o.selected_sale_order_item_ids ?? null, o.sale_order_id);
+      const numbers = opNumbersForServiceOrder(pvOps, o.selected_sale_order_item_ids ?? null);
       const label = numbers.length > 0
         ? numbers.map((n) => {
             const op = byNumber.get(n);
@@ -378,7 +397,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
       out.set(o.id, { numbers, label });
     }
     return out;
-  }, [orders, opsForOs]);
+  }, [orders, opsForOs, linkedSaleOrderIdsOf]);
   const opNumbersOf = useCallback(
     (o: Pick<ServiceOrder, 'id'> | null | undefined): string[] => (o?.id ? opInfoByOsId.get(o.id)?.numbers || [] : []),
     [opInfoByOsId],
@@ -404,7 +423,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
    */
   const fetchReceiptItemsForOs = useCallback(async (o: ServiceOrder) => {
     const ids = o?.selected_sale_order_item_ids;
-    if (!o?.sale_order_id || !Array.isArray(ids) || ids.length === 0) return [];
+    if (!Array.isArray(ids) || ids.length === 0) return [];
     const { data, error } = await supabase
       .from('sale_order_items')
       .select(OS_PV_ITEM_COLUMNS)
@@ -422,7 +441,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
   // abertura de uma OS existente — aí preserva a quantidade já gravada).
   useEffect(() => {
     if (!orderDialog) return;
-    const pv = editingOrder.sale_order_id || null;
+    const pv = editingPvId;
     if (pv && osPvItems.length > 0) {
       const saved = (editingOrder as any).selected_sale_order_item_ids as string[] | null | undefined;
       const known = new Set(osPvItems.map((i) => i.id));
@@ -438,7 +457,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
       osPvPrevRef.current = null;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orderDialog, editingOrder.sale_order_id, osPvItems]);
+  }, [orderDialog, editingPvId, osPvItems]);
 
   // Liga/desliga um item do PV e recalcula a Quantidade (Σ pares marcados).
   const toggleOsPvItem = (id: string) => {
@@ -481,12 +500,13 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
   // ── Stats ──
   const stats = useMemo(() => {
     const activeContractors = contractors.filter(c => c.active).length;
+    const visibleOperationalOrders = orders.filter(o => !o.archived_at);
     // Normalizar, não comparar texto literal: uma OS fechada como 'received'
     // (o vocabulário do fluxo de gargalos) não entrava em concluídas E ainda
     // somava no valor total — os KPIs do topo divergiam dos chips logo abaixo,
     // na mesma tela.
-    const pendingOrders = orders.filter(o => normalizeOsStatus(o.status) === OS_STATUS.PENDENTE).length;
-    const inProgressOrders = orders.filter(o => normalizeOsStatus(o.status) === OS_STATUS.EM_ANDAMENTO).length;
+    const pendingOrders = visibleOperationalOrders.filter(o => normalizeOsStatus(o.status) === OS_STATUS.PENDENTE).length;
+    const inProgressOrders = visibleOperationalOrders.filter(o => normalizeOsStatus(o.status) === OS_STATUS.EM_ANDAMENTO).length;
     const completedOrders = orders.filter(o => isOsDone(o.status)).length;
     const totalValue = orders.filter(o => !isOsCancelled(o.status)).reduce((s, o) => s + Number(o.total_value || 0), 0);
     // OS de gargalo: criadas via /gargalos, aguardando contratada confirmar prazo.
@@ -510,8 +530,8 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
   // ── Filtered data ──
   const filteredContractors = useMemo(() => {
     return contractors.filter(c =>
-      searchMatchesAllTerms(search, c.name, c.trade_name, c.service_type, c.cnpj_cpf, c.phone, c.city, c.state));
-  }, [contractors, search]);
+      searchMatchesAllTerms(contractorSearch, c.name, c.trade_name, c.service_type, c.cnpj_cpf, c.phone, c.city, c.state));
+  }, [contractors, contractorSearch]);
 
   const sel = useMarqueeSelection(filteredContractors, (c) => c.id);
   const handleBulkDeleteContractors = async () => {
@@ -536,16 +556,18 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
       // Pedido e OP entram na busca: com a descrição nascendo vazia (02/08/2026),
       // procurar por "I901" deixou de achar OS — o que repõe isso são códigos
       // estáveis (PV-00151, OP-00231), que não dependem de alguém ter digitado.
-      const so = (saleOrders as any[]).find(s => s.id === o.sale_order_id);
+      const linkedOrders = linkedSaleOrderIdsOf(o)
+        .map(id => (saleOrders as any[]).find(s => s.id === id))
+        .filter(Boolean);
       return searchMatchesAllTerms(
-        search,
+        orderSearch,
         o.description, o.order_number, o.contractors?.name,
         o.receipt_number, o.artisanal_output_name,
-        so?.order_number, so?.client_order_number,
+        ...linkedOrders.flatMap(so => [so.order_number, so.client_order_number]),
         ...opNumbersOf(o),
       );
     });
-  }, [orders, search, showArchivedOs, saleOrders, opNumbersOf]);
+  }, [orders, orderSearch, showArchivedOs, saleOrders, opNumbersOf, linkedSaleOrderIdsOf]);
 
   // ── Operacional "Na rua" (fundido da antiga aba, 2026-06-30) ──────────────
   // "Na rua" = OS com pares ainda em campo (overview.qty_in_field > 0).
@@ -555,7 +577,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   }, []);
   const osInField = useCallback(
-    (o: ServiceOrder) => Number(osOverview?.get(o.id)?.qty_in_field ?? 0) > 0,
+    (o: ServiceOrder) => !o.archived_at && isOsActive(o.status) && Number(osOverview?.get(o.id)?.qty_in_field ?? 0) > 0,
     [osOverview],
   );
   const osLate = useCallback(
@@ -590,6 +612,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
   const fieldStats = useMemo(() => {
     let itens = 0, pares = 0, atrasados = 0;
     for (const o of orders) {
+      if (o.archived_at || !isOsActive(o.status)) continue;
       const inf = Number(osOverview?.get(o.id)?.qty_in_field ?? 0);
       if (inf > 0) {
         itens++; pares += inf;
@@ -604,7 +627,12 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
     let count = 0, value = 0;
     for (const o of orders) {
       const ov = osOverview?.get(o.id);
-      if (ov?.has_payable && ov.payment_status !== 'paid') { count++; value += Number(o.total_value || 0); }
+      if (ov?.has_payable && ov.payment_status !== 'paid') {
+        count++;
+        // A conta pode ser parcial (retornos por tranche). O valor da OS inteira
+        // inflava o KPI depois do primeiro recebimento.
+        value += Number(ov.payable_open_amount ?? ov.payable_amount ?? o.total_value ?? 0);
+      }
     }
     return { count, value };
   }, [orders, osOverview]);
@@ -643,49 +671,76 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
     return <span className="whitespace-nowrap text-xs text-muted-foreground">{fmt} · em {-lateDays}d</span>;
   };
 
-  // Ações contextuais da OS (Receber/Enviar/Processar/Entregue + menu) —
-  // COMPARTILHADAS entre o card e a linha da tabela. Deriva o estado do próprio
-  // `o` pra ser autocontido.
+  // Uma ação principal por estado. As alternativas continuam no menu, mas a
+  // linha deixa de apresentar quatro conclusões concorrentes ao mesmo tempo.
   const renderOsActions = (o: ServiceOrder) => {
     const isBottleneckOS = !!o.target_sector;
     const active = isOsActive(o.status);
     const isPendingReceive = isBottleneckOS
       && o.status !== 'received' && o.status !== 'Concluído'
       && o.status !== 'Cancelado' && o.status !== 'cancelled';
+    const canReceive = isBottleneckOS && active && isPendingReceive;
+    const canDispatch = Boolean((o as any).dispatch_tracked) && active;
+    const canProcess = active
+      && o.status !== 'Em Andamento'
+      && !['pending_quote', 'quoted_unconfirmed'].includes(String(o.status));
+    const primaryAction = canReceive
+      ? 'receive'
+      : canDispatch
+        ? 'dispatch'
+        : canProcess
+          ? 'process'
+          : active
+            ? 'return'
+            : null;
+
     return (
-      <div className="flex shrink-0 items-center justify-end gap-1">
-        {isBottleneckOS && active && isPendingReceive && (
-          <Button size="sm" variant="outline" className="h-7 gap-1 px-2 text-xs" onClick={() => openReceiveDialog(o)}>
+      <div className="flex min-w-0 flex-wrap items-center justify-end gap-1">
+        {primaryAction === 'receive' && (
+          <Button size="sm" variant="outline" className="h-9 gap-1 px-2.5 text-xs" onClick={() => openReceiveDialog(o)}>
             <CheckCircle2 className="h-3 w-3" /> Receber
           </Button>
         )}
-        {(o as any).dispatch_tracked && active && (
-          <Button size="sm" variant="outline" className="h-7 gap-1 px-2 text-xs" onClick={() => setDispatchDialogOs(o)}>
+        {primaryAction === 'dispatch' && (
+          <Button size="sm" variant="outline" className="h-9 gap-1 px-2.5 text-xs" onClick={() => setDispatchDialogOs(o)}>
             <Truck className="h-3 w-3" /> Enviar
           </Button>
         )}
-        {active && o.status !== 'Em Andamento' && !['pending_quote', 'quoted_unconfirmed'].includes(String(o.status)) && (
-          <Button size="sm" variant="outline" className="h-7 gap-1 px-2 text-xs" title="Mover para Em Processamento" onClick={() => markInProgress(o)}>
+        {primaryAction === 'process' && (
+          <Button size="sm" variant="outline" className="h-9 gap-1 px-2.5 text-xs" title="Mover para Em Processamento" onClick={() => markInProgress(o)}>
             <Play className="h-3 w-3" /> Processar
           </Button>
         )}
-        {active && (
-          <Button size="sm" variant="outline" className="h-7 gap-1 px-2 text-xs text-green-700 dark:text-green-400 border-green-500/40 hover:bg-green-500/10" title="Registrar retorno e marcar como Entregue" onClick={() => markDelivered(o)}>
-            <CheckCircle2 className="h-3 w-3" /> Entregue
+        {primaryAction === 'return' && (
+          <Button size="sm" variant="outline" className="h-9 gap-1 px-2.5 text-xs" title="Registrar o retorno do serviço" onClick={() => markDelivered(o)}>
+            <CheckCircle2 className="h-3 w-3" /> Registrar retorno
           </Button>
         )}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Mais ações da OS"><MoreVertical className="h-4 w-4" /></Button>
+            <Button variant="ghost" size="icon" className="h-9 w-9" aria-label={`Mais ações da OS ${o.order_number}`}><MoreVertical className="h-4 w-4" /></Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-44">
+          <DropdownMenuContent align="end" className="w-52">
+            {canReceive && primaryAction !== 'receive' && (
+              <DropdownMenuItem onClick={() => openReceiveDialog(o)}><CheckCircle2 className="mr-2 h-3.5 w-3.5" /> Receber</DropdownMenuItem>
+            )}
+            {canDispatch && primaryAction !== 'dispatch' && (
+              <DropdownMenuItem onClick={() => setDispatchDialogOs(o)}><Truck className="mr-2 h-3.5 w-3.5" /> Enviar</DropdownMenuItem>
+            )}
+            {canProcess && primaryAction !== 'process' && (
+              <DropdownMenuItem onClick={() => markInProgress(o)}><Play className="mr-2 h-3.5 w-3.5" /> Processar</DropdownMenuItem>
+            )}
+            {active && primaryAction !== 'return' && (
+              <DropdownMenuItem onClick={() => markDelivered(o)}><CheckCircle2 className="mr-2 h-3.5 w-3.5" /> Registrar retorno</DropdownMenuItem>
+            )}
+            {active && <DropdownMenuSeparator />}
             <DropdownMenuItem onClick={() => openEditOrder(o)}><Pencil className="mr-2 h-3.5 w-3.5" /> Editar</DropdownMenuItem>
             {/* Impressão do papel da OS. O guard antigo era `o.receipt_number &&`,
                 mas 385 das 386 OS têm essa coluna como string VAZIA (falsy) —
                 o item de menu nunca aparecia. Quem identifica a OS é o
                 order_number, que sempre existe. */}
             <DropdownMenuItem onClick={async () => {
-              const so = (saleOrders as any[]).find(s => s.id === o.sale_order_id);
+              const so = (saleOrders as any[]).find(s => linkedSaleOrderIdsOf(o).includes(s.id));
               // Itens do papel: buscados sob demanda (o dialog só carrega os do
               // PV aberto). Só saem os que a OS realmente cobre — sem a seleção
               // gravada isso imprimiria as 3 cores do pedido com o total de
@@ -728,6 +783,56 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
     );
   };
 
+  const renderMobileOsRow = (o: ServiceOrder) => {
+    const selected = selectedOsIds.has(o.id);
+    const linkedPvId = linkedSaleOrderIdsOf(o)[0] || null;
+    const so = linkedPvId ? saleOrders.find((s: any) => s.id === linkedPvId) : null;
+    const noValue = Number(o.total_value) === 0 && isOsActive(o.status);
+    const checkboxId = `mobile-os-${o.id}`;
+
+    return (
+      <article key={o.id} className={cn('overflow-hidden rounded-lg border bg-card', selected && 'border-primary/50 ring-1 ring-primary/20')}>
+        <div className="flex items-start gap-1 p-2.5">
+          <label htmlFor={checkboxId} className="flex h-11 w-10 shrink-0 cursor-pointer items-center justify-center" aria-label={`Selecionar OS ${o.order_number}`}>
+            <Checkbox id={checkboxId} checked={selected} onCheckedChange={() => toggleOsSelect(o.id)} />
+          </label>
+          <button
+            type="button"
+            onClick={() => openEditOrder(o)}
+            className="min-w-0 flex-1 rounded-md p-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            aria-label={`Abrir OS ${o.order_number}`}
+          >
+            <span className="flex items-start justify-between gap-2">
+              <span className="min-w-0">
+                <span className="block font-mono text-sm font-bold tracking-tight">{o.order_number}</span>
+                <span className="block truncate text-sm font-semibold">{o.contractors?.name || 'Sem prestador'}</span>
+              </span>
+              <Badge variant="outline" className={cn('shrink-0 gap-1 text-[11px]', osStatusColor(o.status))}>
+                <span className={cn('h-1.5 w-1.5 rounded-full', osStatusDot(o.status))} />
+                {statusLabel(o.status)}
+              </Badge>
+            </span>
+            <span className="mt-2 block line-clamp-2 text-xs text-muted-foreground">{osListLine(o)}</span>
+            <span className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+              {so && <span className="font-mono font-semibold text-primary">PV {so.order_number}</span>}
+              <span>{renderDeadlineInline(o)}</span>
+              <span className="ml-auto font-mono font-bold tabular-nums">
+                {noValue ? 'A definir' : formatCurrency(Number(o.total_value))}
+              </span>
+            </span>
+          </button>
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t bg-muted/30 px-3 py-2">
+          <div className="min-w-0">
+            <OsPaymentBadge ov={osOverview?.get(o.id)} osStatus={o.status} />
+            <OsBalanceLine ov={osOverview?.get(o.id)} />
+          </div>
+          {renderOsActions(o)}
+        </div>
+      </article>
+    );
+  };
+
   // OS → linha do relatório de custos (pagamento/vencimento vêm do overview).
   const toOsCostRow = useCallback((o: ServiceOrder): CostReportRow => {
     const ov = osOverview?.get(o.id);
@@ -759,6 +864,29 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
     }),
     [searchedOrders, statusFilter, matchChip, contractorFilter, osFromDate, osToDate, osBasis, toOsCostRow],
   );
+
+  const orderedFilteredOrders = useMemo(() => {
+    const result = [...filteredOrders];
+    const timestamp = (o: ServiceOrder) => new Date(o.created_at || o.service_date || 0).getTime();
+    if (osSort === 'recent') return result.sort((a, b) => timestamp(b) - timestamp(a));
+    if (osSort === 'deadline') {
+      return result.sort((a, b) => {
+        const aDue = a.quoted_deadline || '9999-12-31';
+        const bDue = b.quoted_deadline || '9999-12-31';
+        return aDue.localeCompare(bDue) || timestamp(b) - timestamp(a);
+      });
+    }
+    const rank = (o: ServiceOrder) => {
+      if (osLate(o)) return 0;
+      if (isOsActive(o.status) && o.quoted_deadline === todayISO) return 1;
+      if (osInField(o)) return 2;
+      if (osStale(o)) return 3;
+      if (normalizeOsStatus(o.status) === OS_STATUS.PENDENTE) return 4;
+      if (isOsActive(o.status)) return 5;
+      return 6;
+    };
+    return result.sort((a, b) => rank(a) - rank(b) || timestamp(b) - timestamp(a));
+  }, [filteredOrders, osSort, osLate, osInField, osStale, todayISO]);
 
   // Seleção PRESA AO FILTRO: derivar de `orders` deixava selecionada OS que o
   // filtro atual não mostra — e "Receber em lote" registra devolução e dispara
@@ -1634,7 +1762,9 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
     }
   };
 
-  if (loadingC || loadingO || loadingP) {
+  // O catálogo completo de materiais é usado apenas nos formulários. A lista
+  // operacional não deve ficar bloqueada enquanto ele carrega em segundo plano.
+  if (loadingC || loadingO) {
     const spinner = <div className="flex items-center justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
     return embedded ? spinner : <AppLayout>{spinner}</AppLayout>;
   }
@@ -1650,43 +1780,29 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
           />
         )}
 
-        {/* Stats */}
-        {/* KPIs — auditoria 2026-06-28: ocultar os que ficam sempre em 0
-            (Aguardando prazo / Concluídas) enquanto não houver dado, pra não
-            virar ruído permanente. Reaparecem sozinhos quando o ciclo de vida
-            da OS começar a finalizar. */}
-        {/* KPIs OPERACIONAL-FIRST (otimização 2026-06-30): urgência primeiro
-            (Atrasados → Na rua → Pendentes → A pagar), depois resumo. Cards de
-            valor 0 ficam ocultos pra não virar ruído. */}
-        <StatGrid>
-          {fieldStats.atrasados > 0 && (
-            <StatCard icon={AlertTriangle} label="Atrasados" value={fieldStats.atrasados} hint="OS com prazo vencido" tone="destructive" />
-          )}
-          {fieldStats.itens > 0 && (
-            <StatCard icon={Truck} label="Na rua" value={fieldStats.pares} hint={`${fieldStats.itens} OS em campo`} />
-          )}
-          <StatCard icon={Clock} label="OS Pendentes" value={stats.pendingOrders} hint={`${stats.inProgressOrders} em andamento`} tone="warning" />
-          {aPagar.count > 0 && (
-            <StatCard icon={DollarSign} label="A pagar" value={formatCurrency(aPagar.value)} hint={`${aPagar.count} OS`} tone="warning" />
-          )}
-          {/* OS de gargalo aguardando prazo — cada uma mantém uma OP bloqueada. */}
-          {(stats.pendingQuotes > 0 || stats.blockedOps > 0) && (
-            <StatCard
-              icon={AlertCircle}
-              label="OS aguardando prazo"
-              value={stats.pendingQuotes}
-              hint={stats.blockedOps > 0 ? `${stats.blockedOps} ${stats.blockedOps === 1 ? 'OP bloqueada' : 'OPs bloqueadas'}` : 'fluxo de gargalos'}
-              tone="destructive"
-            />
-          )}
-          {stats.completedOrders > 0 && (
-            <StatCard icon={CheckCircle2} label="OS Concluídas" value={stats.completedOrders} tone="success" />
-          )}
-          <StatCard icon={DollarSign} label="Valor Total OS" value={formatCurrency(stats.totalValue)} />
-          <StatCard icon={Users} label="Prestadores Ativos" value={stats.activeContractors} hint={`${contractors.length} total`} />
-        </StatGrid>
+        {currentTab === 'orders' && (
+          <ContractorOperationsOverview
+            overdueOrders={fieldStats.atrasados}
+            inFieldOrders={fieldStats.itens}
+            inFieldPairs={fieldStats.pares}
+            pendingOrders={stats.pendingOrders}
+            inProgressOrders={stats.inProgressOrders}
+            amountDue={aPagar.value}
+            amountDueOrders={aPagar.count}
+            completedOrders={stats.completedOrders}
+            totalValue={stats.totalValue}
+            activeContractors={stats.activeContractors}
+            totalContractors={contractors.length}
+            onFilter={(filter) => {
+              setOrderSearch('');
+              setShowArchivedOs(false);
+              clearOsReportFilters();
+              setStatusFilter(filter);
+            }}
+          />
+        )}
 
-        <Tabs {...(embedded ? { value: activeTab ?? "orders", onValueChange: onActiveTabChange } : { defaultValue: "orders" })}>
+        <Tabs value={currentTab} onValueChange={handleTabChange}>
           {/* No hub /terceiros a navegação por aba é a barra única do hub —
               a TabsList interna fica oculta e o painel ativo vem por props. */}
           {!embedded && (
@@ -1700,22 +1816,91 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
 
           {/* ── ORDERS TAB ── */}
           <TabsContent value="orders" className="mt-3 space-y-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <SearchInput
-                className="flex-1 min-w-[200px] max-w-sm"
-                inputClassName="h-9"
-                value={search}
-                onChange={setSearch}
-                placeholder="Buscar por nº da OS, prestador, descrição…"
-                resultCount={filteredOrders.length}
-                totalCount={orders.length}
-              />
-              {/* Chips de status — default "Ativas" (Pendente + Em Processamento).
-                  Labels: 'Em Andamento'→Em Processamento, 'Concluído'→Entregue.
-                  Auditoria 2026-06-28: chips de estado específico só aparecem se
-                  tiverem dado (ou estiverem selecionados); "Ativas"/"Todas" são
-                  fixos. Some o ruído de "Em Processamento 0 / Entregue 0". */}
-              <div className="flex items-center gap-1 flex-wrap">
+            <section aria-label="Busca, filtros e ações das ordens" className="overflow-hidden rounded-lg border bg-card">
+              <div className="flex flex-col gap-3 p-3 lg:flex-row lg:items-center">
+                <SearchInput
+                  className="w-full min-w-0 flex-1 lg:max-w-md"
+                  inputClassName="h-10 lg:h-9"
+                  value={orderSearch}
+                  onChange={setOrderSearch}
+                  placeholder="Buscar OS, prestador, PV ou descrição…"
+                  resultCount={filteredOrders.length}
+                  totalCount={orders.length}
+                />
+
+                <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:justify-end">
+                  {/* Filtros de relatório (prestador / período / base) + PDF num popover. */}
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" size="sm" className="relative h-10 gap-1.5 lg:h-9">
+                        <FileDown className="h-4 w-4" /> Relatório
+                        {hasOsReportFilters && <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-primary" aria-hidden />}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent align="end" className="w-[calc(100vw-2rem)] space-y-3 sm:w-80">
+                      <div>
+                        <Label className="text-xs text-muted-foreground">Prestador</Label>
+                        <Select value={contractorFilter} onValueChange={v => setOsParam('contractor', v === 'all' ? null : v)}>
+                          <SelectTrigger aria-label="Prestador do relatório" className="mt-1 h-10 w-full sm:h-9">
+                            <span className="flex items-center gap-1.5 truncate"><Funnel className="h-3.5 w-3.5 shrink-0" /><SelectValue placeholder="Todos os prestadores" /></span>
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">Todos os prestadores</SelectItem>
+                            {contractors.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <Label className="flex items-center gap-1 text-xs text-muted-foreground"><Calendar className="h-3.5 w-3.5" /> De</Label>
+                          <Input aria-label="Data inicial do relatório" type="date" value={osFromDate} onChange={e => setOsParam('from', e.target.value || null)} className="mt-1 h-10 sm:h-9" />
+                        </div>
+                        <div>
+                          <Label className="text-xs text-muted-foreground">Até</Label>
+                          <Input aria-label="Data final do relatório" type="date" value={osToDate} onChange={e => setOsParam('to', e.target.value || null)} className="mt-1 h-10 sm:h-9" />
+                        </div>
+                      </div>
+                      <div>
+                        <Label className="text-xs text-muted-foreground">Base da data</Label>
+                        <Select value={osBasis} onValueChange={v => setOsParam('basis', v === 'criacao' ? 'criacao' : null)}>
+                          <SelectTrigger aria-label="Base de data do relatório" className="mt-1 h-10 w-full sm:h-9"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="vencimento">Por vencimento</SelectItem>
+                            <SelectItem value="criacao">Por criação</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="flex items-center justify-between gap-2 pt-1">
+                        {hasOsReportFilters ? (
+                          <Button variant="ghost" size="sm" className="h-10 gap-1.5 text-muted-foreground sm:h-9" onClick={clearOsReportFilters}>
+                            <X className="h-3.5 w-3.5" /> Limpar
+                          </Button>
+                        ) : <span />}
+                        <Button size="sm" className="h-10 gap-1.5 sm:h-9" disabled={osPdfBusy} onClick={() => handleGenerateOsPdf('filtro')}>
+                          {osPdfBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
+                          Gerar PDF ({filteredOrders.length})
+                        </Button>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                  {osPerm.canCreate && (
+                    <Button variant="outline" size="sm" onClick={() => openNewOrder()} className="h-10 gap-1.5 lg:h-9">
+                      <Plus className="h-4 w-4" /> OS avulsa
+                    </Button>
+                  )}
+                  {osPerm.canCreate && (
+                    <Button size="sm" onClick={() => setGenOsOpen(true)} className="col-span-2 h-10 gap-1.5 sm:col-span-1 lg:h-9">
+                      <Handshake className="h-4 w-4" /> Gerar por pedido
+                    </Button>
+                  )}
+                </div>
+              </div>
+
+              {/* Filtros operacionais ficam numa faixa própria e rolável em
+                  telas estreitas. Assim a barra não vira quatro linhas no celular. */}
+              <div className="flex items-center gap-2 border-t bg-muted/20 px-3 py-2">
+                <div role="group" aria-label="Filtrar ordens por situação" className="min-w-0 flex-1 overflow-x-auto">
+                  <div className="flex min-w-max items-center gap-1">
                 {STATUS_CHIPS.filter(chip =>
                   chip.value === 'active' || chip.value === 'all' ||
                   chip.value === statusFilter || (statusChipCounts[chip.value] ?? 0) > 0
@@ -1726,8 +1911,9 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                     variant={statusFilter === chip.value
                       ? ((chip.value === 'na_rua' || chip.value === 'atrasados') ? 'destructive' : 'default')
                       : 'outline'}
-                    className="h-9 gap-1.5 text-xs"
+                    className="h-10 gap-1.5 text-xs sm:h-9"
                     onClick={() => setStatusFilter(chip.value)}
+                    aria-pressed={statusFilter === chip.value}
                   >
                     {chip.label}
                     <span className={cn('text-[10px] font-mono tabular-nums', statusFilter === chip.value ? 'opacity-80' : 'text-muted-foreground')}>
@@ -1735,102 +1921,56 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                     </span>
                   </Button>
                 ))}
-                {/* Triagem P0.3: arquivadas ficam fora das listas por default. */}
+                  </div>
+                </div>
                 <Button
                   size="sm"
                   variant={showArchivedOs ? 'secondary' : 'ghost'}
-                  className="h-9 text-xs text-muted-foreground"
+                  className="h-10 shrink-0 px-2 text-xs text-muted-foreground sm:h-9"
                   onClick={() => setShowArchivedOs(v => !v)}
+                  aria-pressed={showArchivedOs}
                 >
-                  {showArchivedOs ? 'Ocultar arquivadas' : 'Mostrar arquivadas'}
+                  <Archive className="h-4 w-4 sm:mr-1" />
+                  <span className="hidden sm:inline">{showArchivedOs ? 'Ocultar arquivadas' : 'Arquivadas'}</span>
                 </Button>
               </div>
-              <div className="ml-auto flex items-center gap-2">
-                {/* Filtros de relatório (prestador / período / base) + PDF num popover —
-                    tiram o ruído da lista operacional. O ponto sinaliza filtro ativo. */}
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" size="sm" className="h-9 gap-1.5 relative">
-                      <FileDown className="h-4 w-4" /> Relatório
-                      {hasOsReportFilters && <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-primary" aria-hidden />}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent align="end" className="w-80 space-y-3">
-                    <div>
-                      <Label className="text-xs text-muted-foreground">Prestador</Label>
-                      <Select value={contractorFilter} onValueChange={v => setOsParam('contractor', v === 'all' ? null : v)}>
-                        <SelectTrigger className="mt-1 h-9 w-full">
-                          <span className="flex items-center gap-1.5 truncate"><Funnel className="h-3.5 w-3.5 shrink-0" /><SelectValue placeholder="Todos os prestadores" /></span>
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">Todos os prestadores</SelectItem>
-                          {contractors.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <Label className="text-xs text-muted-foreground flex items-center gap-1"><Calendar className="h-3.5 w-3.5" /> De</Label>
-                        <Input type="date" value={osFromDate} onChange={e => setOsParam('from', e.target.value || null)} className="mt-1 h-9" />
-                      </div>
-                      <div>
-                        <Label className="text-xs text-muted-foreground">Até</Label>
-                        <Input type="date" value={osToDate} onChange={e => setOsParam('to', e.target.value || null)} className="mt-1 h-9" />
-                      </div>
-                    </div>
-                    <div>
-                      <Label className="text-xs text-muted-foreground">Base da data</Label>
-                      <Select value={osBasis} onValueChange={v => setOsParam('basis', v === 'criacao' ? 'criacao' : null)}>
-                        <SelectTrigger className="mt-1 h-9 w-full"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="vencimento">Por vencimento</SelectItem>
-                          <SelectItem value="criacao">Por criação</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="flex items-center justify-between gap-2 pt-1">
-                      {hasOsReportFilters ? (
-                        <Button variant="ghost" size="sm" className="h-9 gap-1.5 text-muted-foreground" onClick={clearOsReportFilters}>
-                          <X className="h-3.5 w-3.5" /> Limpar
-                        </Button>
-                      ) : <span />}
-                      <Button size="sm" className="h-9 gap-1.5" disabled={osPdfBusy} onClick={() => handleGenerateOsPdf('filtro')}>
-                        {osPdfBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
-                        Gerar PDF ({filteredOrders.length})
-                      </Button>
-                    </div>
-                  </PopoverContent>
-                </Popover>
-                {osPerm.canCreate && <Button variant="outline" size="sm" onClick={() => setGenOsOpen(true)} className="h-9 gap-1.5"><Handshake className="h-4 w-4" /> Gerar OS por Pedido</Button>}
-                {osPerm.canCreate && <Button size="sm" onClick={() => openNewOrder()} className="h-9 gap-1.5"><Plus className="h-4 w-4" /> Nova OS</Button>}
-              </div>
-            </div>
+            </section>
 
             {filteredOrders.length === 0 ? (
               <Panel flush>
                 <EmptyState
-                  icon={search ? Search : ClipboardList}
-                  title={search ? `Nenhum resultado para "${search}"` : 'Nenhuma OS encontrada'}
-                  description={search || hasOsReportFilters || statusFilter !== 'all'
+                  icon={orderSearch ? Search : ClipboardList}
+                  title={orderSearch ? `Nenhum resultado para "${orderSearch}"` : 'Nenhuma OS encontrada'}
+                  description={orderSearch || hasOsReportFilters || statusFilter !== 'all'
                     ? 'Ajuste a busca, os chips de status ou os filtros de relatório.'
                     : 'Crie a primeira ordem de serviço para uma contratada.'}
-                  action={search
-                    ? <Button variant="outline" size="sm" onClick={() => setSearch('')}>Limpar busca</Button>
-                    : osPerm.canCreate ? <Button size="sm" className="gap-1.5" onClick={() => openNewOrder()}><Plus className="h-4 w-4" /> Nova OS</Button> : undefined}
+                  action={orderSearch
+                    ? <Button variant="outline" size="sm" onClick={() => setOrderSearch('')}>Limpar busca</Button>
+                    : osPerm.canCreate ? <Button size="sm" className="gap-1.5" onClick={() => setGenOsOpen(true)}><Handshake className="h-4 w-4" /> Gerar por pedido</Button> : undefined}
                 />
               </Panel>
             ) : (
               <div className="space-y-2">
-                <div className="flex items-center justify-between px-0.5 text-xs text-muted-foreground">
+                <div className="flex flex-col gap-2 px-0.5 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
                   <span className="font-mono">{filteredOrders.length} OS</span>
-                  <div className="flex items-center gap-3">
-                    <div className="inline-flex items-center rounded-md border bg-card p-0.5">
+                  <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                    <Select value={osSort} onValueChange={v => setOsSort(v as typeof osSort)}>
+                      <SelectTrigger aria-label="Ordenar ordens de serviço" className="h-10 w-[156px] bg-card text-xs sm:h-8">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="urgency">Mais urgentes</SelectItem>
+                        <SelectItem value="recent">Mais recentes</SelectItem>
+                        <SelectItem value="deadline">Prazo mais próximo</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <div role="group" aria-label="Modo de exibição" className="inline-flex items-center rounded-md border bg-card p-0.5">
                       <button
                         type="button"
                         onClick={() => setOsView('list')}
                         aria-pressed={osView === 'list'}
                         title="Modo lista"
-                        className={cn('inline-flex items-center gap-1 rounded px-2 py-0.5 transition-colors', osView === 'list' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground')}
+                        className={cn('inline-flex h-9 items-center gap-1 rounded px-2 transition-colors sm:h-7', osView === 'list' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground')}
                       >
                         <ListIcon className="h-3.5 w-3.5" /> Lista
                       </button>
@@ -1839,22 +1979,22 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                         onClick={() => setOsView('cards')}
                         aria-pressed={osView === 'cards'}
                         title="Modo cartões"
-                        className={cn('inline-flex items-center gap-1 rounded px-2 py-0.5 transition-colors', osView === 'cards' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground')}
+                        className={cn('inline-flex h-9 items-center gap-1 rounded px-2 transition-colors sm:h-7', osView === 'cards' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground')}
                       >
                         <SquaresFour className="h-3.5 w-3.5" /> Cartões
                       </button>
                     </div>
-                    <button type="button" className="transition-colors hover:text-foreground" onClick={toggleSelectAllOs}>
+                    <button type="button" className="h-10 rounded px-1 transition-colors hover:text-foreground sm:h-auto" onClick={toggleSelectAllOs}>
                       {allOsSelected ? 'Limpar seleção' : 'Selecionar todas'}
                     </button>
                   </div>
                 </div>
                 {osView === 'cards' ? (
                 <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
-                  {filteredOrders.map(o => {
+                  {orderedFilteredOrders.map(o => {
                     const mats = getMaterials(o);
                     // Vínculo direto (legacy) OU terceirização integrada (source_sale_order_id).
-                    const linkedPvId = o.sale_order_id || o.source_sale_order_id || null;
+                    const linkedPvId = linkedSaleOrderIdsOf(o)[0] || null;
                     const so = linkedPvId ? saleOrders.find((s: any) => s.id === linkedPvId) : null;
                     const isAuto = !!o.source_sale_order_id;
                     const isBottleneckOS = !!o.target_sector;
@@ -1957,7 +2097,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                         </div>
 
                         {/* Rodapé: pagamento + ações contextuais + menu (faixa) */}
-                        <div className="-mx-3.5 -mb-3.5 mt-3 flex items-center justify-between gap-2 rounded-b-xl border-t border-border/60 bg-muted/30 px-3.5 pb-3 pt-2.5">
+                        <div className="-mx-3.5 -mb-3.5 mt-3 flex flex-wrap items-center justify-between gap-2 rounded-b-xl border-t border-border/60 bg-muted/30 px-3.5 pb-3 pt-2.5">
                           <div className="flex min-w-0 flex-col gap-0.5">
                             <OsPaymentBadge ov={osOverview?.get(o.id)} osStatus={o.status} />
                             <OsBalanceLine ov={osOverview?.get(o.id)} />
@@ -1969,7 +2109,11 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                   })}
                 </div>
                 ) : (
-                <div className="overflow-x-auto rounded-lg border">
+                <>
+                <div className="space-y-2 md:hidden">
+                  {orderedFilteredOrders.map(renderMobileOsRow)}
+                </div>
+                <div className="hidden overflow-x-auto rounded-lg border md:block">
                   <Table>
                     <TableHeader>
                       <TableRow className="bg-muted/40 [&_th]:h-9 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
@@ -1986,9 +2130,9 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {filteredOrders.map(o => {
+                      {orderedFilteredOrders.map(o => {
                         const mats = getMaterials(o);
-                        const linkedPvId = o.sale_order_id || o.source_sale_order_id || null;
+                        const linkedPvId = linkedSaleOrderIdsOf(o)[0] || null;
                         const so = linkedPvId ? saleOrders.find((s: any) => s.id === linkedPvId) : null;
                         const isAuto = !!o.source_sale_order_id;
                         const selected = selectedOsIds.has(o.id);
@@ -2005,10 +2149,10 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                               <Checkbox checked={selected} onCheckedChange={() => toggleOsSelect(o.id)} aria-label={`Selecionar OS ${o.order_number}`} />
                             </TableCell>
                             <TableCell className="whitespace-nowrap font-mono text-sm font-bold">
-                              <span className="inline-flex items-center gap-1">
+                              <button type="button" onClick={() => openEditOrder(o)} className="inline-flex min-h-9 items-center gap-1 rounded px-1 text-left hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label={`Abrir OS ${o.order_number}`}>
                                 {o.order_number}
                                 {o.artisanal_recipe_id && <span title="Produção artesanal"><FlaskConical className="h-3 w-3 text-primary" /></span>}
-                              </span>
+                              </button>
                             </TableCell>
                             <TableCell className="text-sm">{o.contractors?.name || <span className="text-muted-foreground">Sem prestador</span>}</TableCell>
                             <TableCell className="hidden whitespace-nowrap md:table-cell">
@@ -2041,6 +2185,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                     </TableBody>
                   </Table>
                 </div>
+                </>
                 )}
               </div>
             )}
@@ -2057,21 +2202,64 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
 
           {/* ── CONTRACTORS TAB ── */}
           <TabsContent value="contractors" className="mt-3 space-y-3">
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
               <SearchInput
-                className="flex-1 min-w-[200px] max-w-sm"
-                inputClassName="h-9"
-                value={search}
-                onChange={setSearch}
+                className="w-full min-w-0 flex-1 sm:max-w-md"
+                inputClassName="h-10 sm:h-9"
+                value={contractorSearch}
+                onChange={setContractorSearch}
                 placeholder="Buscar por nome, CPF/CNPJ, tipo de serviço…"
                 resultCount={filteredContractors.length}
                 totalCount={contractors.length}
               />
-              <div className="ml-auto">
-                <Button size="sm" onClick={openNewContractor} className="h-9 gap-1.5"><Plus className="h-4 w-4" /> Novo Prestador</Button>
+              <div className="sm:ml-auto">
+                <Button size="sm" onClick={openNewContractor} className="h-10 w-full gap-1.5 sm:h-9 sm:w-auto"><Plus className="h-4 w-4" /> Novo prestador</Button>
               </div>
             </div>
 
+            <div className="space-y-2 md:hidden">
+              {filteredContractors.length === 0 ? (
+                <Panel flush>
+                  <EmptyState
+                    size="sm"
+                    icon={contractorSearch ? Search : Users}
+                    title={contractorSearch ? `Nenhum resultado para "${contractorSearch}"` : 'Nenhum prestador cadastrado'}
+                    action={contractorSearch ? <Button variant="outline" size="sm" onClick={() => setContractorSearch('')}>Limpar busca</Button> : undefined}
+                  />
+                </Panel>
+              ) : filteredContractors.map(c => {
+                const selected = sel.isSelected(c.id);
+                const checkboxId = `mobile-contractor-${c.id}`;
+                return (
+                  <article key={c.id} className={cn('overflow-hidden rounded-lg border bg-card', selected && 'border-primary/50 ring-1 ring-primary/20')}>
+                    <div className="flex items-start gap-1 p-2.5">
+                      <label htmlFor={checkboxId} className="flex h-11 w-10 shrink-0 cursor-pointer items-center justify-center" aria-label={`Selecionar ${c.name}`}>
+                        <Checkbox id={checkboxId} checked={selected} onCheckedChange={() => sel.toggle(c.id)} />
+                      </label>
+                      <button type="button" onClick={() => openEditContractor(c)} className="min-w-0 flex-1 rounded p-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                        <span className="flex items-start justify-between gap-2">
+                          <span className="truncate text-sm font-bold">{c.name}</span>
+                          <Badge variant={c.active ? 'default' : 'secondary'} className="shrink-0 text-xs">{c.active ? 'Ativo' : 'Inativo'}</Badge>
+                        </span>
+                        <span className="mt-1 block text-xs text-muted-foreground">{c.service_type || 'Serviço não informado'}</span>
+                        <span className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                          {c.phone && <span>{c.phone}</span>}
+                          {c.city && c.state && <span>{c.city}/{c.state}</span>}
+                          <span className="font-mono">Pgto. {c.payment_days}d</span>
+                        </span>
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-3 gap-1 border-t bg-muted/30 p-2">
+                      <Button variant="ghost" size="sm" className="h-10 gap-1 text-xs" onClick={() => setHistoryContractor(c)}><ClockCounterClockwise className="h-3.5 w-3.5" /> Histórico</Button>
+                      <Button variant="ghost" size="sm" className="h-10 text-xs" onClick={() => setRatesContractor(c)}>Tarifas</Button>
+                      <Button variant="ghost" size="sm" className="h-10 gap-1 text-xs" onClick={() => openEditContractor(c)}><Pencil className="h-3.5 w-3.5" /> Editar</Button>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+
+            <div className="hidden md:block">
             <Panel flush>
                 <div className="rounded-md border-0 overflow-auto">
                   <Table>
@@ -2100,9 +2288,9 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                           <TableCell colSpan={9} className="p-0">
                             <EmptyState
                               size="sm"
-                              icon={search ? Search : Users}
-                              title={search ? `Nenhum resultado para "${search}"` : 'Nenhum prestador cadastrado'}
-                              action={search ? <Button variant="outline" size="sm" onClick={() => setSearch('')}>Limpar busca</Button> : undefined}
+                              icon={contractorSearch ? Search : Users}
+                              title={contractorSearch ? `Nenhum resultado para "${contractorSearch}"` : 'Nenhum prestador cadastrado'}
+                              action={contractorSearch ? <Button variant="outline" size="sm" onClick={() => setContractorSearch('')}>Limpar busca</Button> : undefined}
                             />
                           </TableCell>
                         </TableRow>
@@ -2151,6 +2339,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                   </Table>
                 </div>
             </Panel>
+            </div>
           </TabsContent>
         </Tabs>
       </div>
@@ -2910,24 +3099,27 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
         } : null}
       />
 
-      <BulkActionsBar
-        selectedIds={sel.selectedIds}
-        onClear={sel.clear}
-        itemLabel={sel.selectedIds.size === 1 ? 'prestador' : 'prestadores'}
-        actions={[
-          {
-            label: 'Excluir',
-            variant: 'destructive',
-            icon: <Trash2 className="h-3.5 w-3.5" />,
-            onClick: handleBulkDeleteContractors,
-          },
-        ]}
-      />
+      {currentTab === 'contractors' && sel.selectedIds.size > 0 && (
+        <BulkActionsBar
+          selectedIds={sel.selectedIds}
+          onClear={sel.clear}
+          itemLabel={sel.selectedIds.size === 1 ? 'prestador' : 'prestadores'}
+          actions={[
+            {
+              label: 'Excluir',
+              variant: 'destructive',
+              icon: <Trash2 className="h-3.5 w-3.5" />,
+              onClick: handleBulkDeleteContractors,
+            },
+          ]}
+        />
+      )}
 
       {/* Rodapé fixo de seleção de OS: totais somados + relatório PDF + ações
           da triagem P0.3 (receber em lote / arquivar). */}
+      {currentTab === 'orders' && selectedOrders.length > 0 && (
       <SelectionTotalsBar
-        count={selectedOsIds.size}
+        count={selectedOrders.length}
         total={osSelectionSummary.total}
         paid={osSelectionSummary.paid}
         pending={osSelectionSummary.pending}
@@ -3001,7 +3193,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
               </AlertDialogTrigger>
               <AlertDialogContent>
                 <AlertDialogHeader>
-                  <AlertDialogTitle>Arquivar {selectedOsIds.size} OS?</AlertDialogTitle>
+                  <AlertDialogTitle>Arquivar {selectedOrders.length} OS?</AlertDialogTitle>
                   <AlertDialogDescription>
                     Elas somem das listagens (o histórico é preservado e dá pra revê-las com
                     "Mostrar arquivadas"). Use pra encerrar a triagem de OS antigas que não
@@ -3011,7 +3203,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                 <AlertDialogFooter>
                   <AlertDialogCancel>Cancelar</AlertDialogCancel>
                   <AlertDialogAction onClick={() => {
-                    archiveOs.mutate([...selectedOsIds], { onSuccess: () => setSelectedOsIds(new Set()) });
+                    archiveOs.mutate(selectedOrders.map(o => o.id), { onSuccess: () => setSelectedOsIds(new Set()) });
                   }}>
                     Arquivar
                   </AlertDialogAction>
@@ -3021,6 +3213,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
           </>
         }
       />
+      )}
     </>
   );
 

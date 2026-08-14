@@ -58,7 +58,9 @@ CREATE TRIGGER trg_apply_so_dispatch AFTER INSERT ON public.service_order_dispat
   FOR EACH ROW EXECUTE FUNCTION public.tg_apply_service_order_dispatch();
 
 -- View de saldo: enviado = Σ parcelas (se rastreada) senão quantity; na rua = enviado − recebido.
--- (CREATE OR REPLACE só adiciona colunas no FIM — mantém as 8 originais na ordem.)
+-- IMPORTANTE: a migration 20260726200000 já acrescentou as colunas de retrabalho
+-- no fim da view. CREATE OR REPLACE não pode removê-las durante um reset; esta
+-- recriação preserva a ordem e a semântica introduzidas naquela migration.
 CREATE OR REPLACE VIEW public.v_service_order_balance AS
   SELECT so.id AS service_order_id,
     so.contractor_id,
@@ -71,12 +73,18 @@ CREATE OR REPLACE VIEW public.v_service_order_balance AS
     r.last_return_at,
     so.dispatch_tracked,
     (CASE WHEN so.dispatch_tracked THEN COALESCE(d.dispatched, 0) ELSE so.quantity END)::bigint AS qty_dispatched,
-    GREATEST(0, so.quantity - (CASE WHEN so.dispatch_tracked THEN COALESCE(d.dispatched, 0) ELSE so.quantity END))::bigint AS qty_to_dispatch
+    GREATEST(0, so.quantity - (CASE WHEN so.dispatch_tracked THEN COALESCE(d.dispatched, 0) ELSE so.quantity END))::bigint
+      + GREATEST(0::bigint, COALESCE(r.defect, 0::bigint) - COALESCE(r.scrapped, 0::bigint))
+      AS qty_to_dispatch,
+    GREATEST(0::bigint, COALESCE(r.defect, 0::bigint) - COALESCE(r.scrapped, 0::bigint))
+      AS qty_defect_pending_rework,
+    COALESCE(r.loss, 0::bigint) + COALESCE(r.scrapped, 0::bigint) AS qty_short
    FROM public.service_orders so
      LEFT JOIN (SELECT service_order_id, SUM(qty_dispatched) AS dispatched
                   FROM public.service_order_dispatches GROUP BY service_order_id) d ON d.service_order_id = so.id
      LEFT JOIN (SELECT service_order_id, sum(qty_good) AS good, sum(qty_defect) AS defect,
-                       sum(qty_loss) AS loss, max(returned_at) AS last_return_at
+                       sum(qty_loss) AS loss, sum(qty_defect_scrapped) AS scrapped,
+                       max(returned_at) AS last_return_at
                   FROM public.service_order_returns GROUP BY service_order_id) r ON r.service_order_id = so.id;
 
 -- send_terceirizacao_os: OS criada do PV passa a usar o checklist (dispatch_tracked = true,
