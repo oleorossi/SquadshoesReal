@@ -3,7 +3,7 @@
 -- specs/equipe-e-capacidade-fonte-unica.md
 --
 --  [#1/#20 ALTA] O invariante R13 quebrava em 41 de 51 fichas: a MO era somada a
---    partir da camada usada para CAPACIDADE (medido/última referência), enquanto
+--    partir da camada usada para CAPACIDADE (medido/padrão), enquanto
 --    calculate_order_cost_item soma SEMPRE as operações ativas do BOM. Agora as
 --    duas coisas são separadas: capacidade usa a cadeia; CUSTO sai exclusivamente
 --    do BOM da ficha — idêntico ao custeio por construção (órfãs incluídas).
@@ -43,7 +43,6 @@ DECLARE
   v_time_sources  text[];
   v_source        text;
   v_src_sheet     text;
-  v_ref_sheet_id  uuid;
   v_rate          numeric;
   v_pairs         numeric;
   v_mo            numeric;
@@ -145,7 +144,7 @@ BEGIN
        ORDER BY coalesce(ss.flow_order, 999), r.first_ord
     LOOP
       v_minutes := NULL; v_mo_sector := NULL; v_time_sources := NULL;
-      v_source := NULL; v_src_sheet := NULL; v_ref_sheet_id := NULL;
+      v_source := NULL; v_src_sheet := NULL;
       v_pairs := NULL; v_measured := false;
       v_keys := v_keys || v_rec.key;
       v_med := v_measured_map -> v_rec.key;
@@ -167,27 +166,11 @@ BEGIN
         -- Valor lançado pelo dono = capacidade observada; não sofre eficiência (R28/R11)
         v_measured := v_time_sources && ARRAY['manual', 'cronoanalise'];
       ELSE
-        SELECT bo.sheet_id, ts.name
-          INTO v_ref_sheet_id, v_src_sheet
-          FROM bom_operations bo
-          JOIN technical_sheets ts ON ts.id = bo.sheet_id
-         WHERE bo.sheet_id <> v_sheet.id AND bo.active AND bo.standard_time_minutes > 0
-           AND bo.time_source IN ('manual', 'cronoanalise')
-           AND public.capacity_sector_key(bo.stage) = v_rec.key
-         ORDER BY bo.updated_at DESC
-         LIMIT 1;
-
-        IF v_ref_sheet_id IS NOT NULL THEN
-          SELECT round(sum(bo.standard_time_minutes), 4), array_agg(DISTINCT bo.time_source)
-            INTO v_minutes, v_time_sources
-            FROM bom_operations bo
-           WHERE bo.sheet_id = v_ref_sheet_id AND bo.active
-             AND bo.standard_time_minutes > 0
-             AND bo.time_source IN ('manual', 'cronoanalise')
-             AND public.capacity_sector_key(bo.stage) = v_rec.key;
-          v_source := 'ultima_referencia';
-          v_measured := true;
-        ELSIF v_med IS NOT NULL AND (v_med->>'min_person_per_pair') IS NOT NULL THEN
+        -- Sem tempo específico na ficha, usa a medição atual do setor quando
+        -- disponível; caso contrário, o padrão da categoria. Nunca herda
+        -- manual/cronoanálise de outra referência, pois a dificuldade é própria
+        -- do modelo e não pode contaminar categorias diferentes.
+        IF v_med IS NOT NULL AND (v_med->>'min_person_per_pair') IS NOT NULL THEN
           -- Camada 3 (R21/R30): produtividade MEDIDA das pessoas do setor.
           -- Escala real (RH/Chamada do Dia), agnóstica de modelo — a diferença
           -- entre modelos continua vindo das camadas 1 e 2.
@@ -232,7 +215,7 @@ BEGIN
 
       IF v_source IS NULL THEN
         v_warnings := v_warnings ||
-          format('%s: sem tempo em nenhuma camada (BOM / última referência / medição / padrão da categoria)', v_rec.label);
+          format('%s: sem tempo em nenhuma camada (BOM da ficha / medição / padrão da categoria)', v_rec.label);
       ELSE
         -- R7: equipe NÃO informada = "não dimensionado". O setor sai do gargalo
         -- em vez de zerar o modelo inteiro. Zero só quando digitado (setor parado).
@@ -344,12 +327,12 @@ BEGIN
       'partial',            coalesce(array_length(v_undim, 1), 0) > 0,
       'undimensioned',      to_jsonb(v_undim),
       -- R12: modelo que só tem tempo padrão não é resultado medido
-      -- [#21 R12] só valor DO MODELO (própria ficha ou herdado de outra
-      -- referência) tira o rótulo "tempos padrão". 'medido' é escala do setor —
+      -- [#21 R12] só valor específico DO MODELO tira o rótulo "tempos padrão".
+      -- 'medido' é escala do setor —
       -- contá-lo deixava 50 de 51 modelos empatados em índice 100.
       'somente_padrao', NOT EXISTS (
         SELECT 1 FROM jsonb_array_elements(v_sectors) s
-         WHERE s->>'minutes_source' IN ('bom', 'ultima_referencia')),
+         WHERE s->>'minutes_source' = 'bom'),
       'warnings',           to_jsonb(v_warnings),
       'sectors',            v_sectors,
       'bottleneck_sector',  CASE WHEN v_bottleneck IS NULL THEN NULL

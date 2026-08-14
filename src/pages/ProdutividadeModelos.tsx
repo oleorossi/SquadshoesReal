@@ -56,17 +56,6 @@ function SourceChip({ sector }: { sector: SectorProductivity }) {
   if (sector.minutes_source === "faltando") {
     return <Badge variant="outline" className="bg-red-500/10 text-red-600 border-transparent text-[10px]">sem tempo</Badge>;
   }
-  if (sector.minutes_source === "ultima_referencia") {
-    return (
-      <Badge
-        variant="outline"
-        className="bg-blue-500/10 text-blue-600 border-transparent text-[10px]"
-        title={`Último valor preenchido na referência ${sector.source_sheet_name ?? "?"}`}
-      >
-        última ref · {sector.source_sheet_name}
-      </Badge>
-    );
-  }
   if (sector.minutes_source === "medido") {
     const cob = sector.cobertura_medicao === "parcial"
       ? ` · parcial ${sector.pessoas_medidas}/${sector.pessoas_total}`
@@ -796,8 +785,8 @@ export default function ProdutividadeModelos() {
                     </div>
                   )}
                   <p className="text-[11px] text-muted-foreground">
-                    Grava como tempo manual no BOM da ficha — o custeio dos PVs deste modelo
-                    recalcula sozinho e outras referências novas herdam via "última referência".
+                    Grava como tempo manual no BOM desta ficha — o custeio dos PVs deste modelo
+                    recalcula sozinho, sem alterar o tempo das demais referências.
                   </p>
                 </div>
               );

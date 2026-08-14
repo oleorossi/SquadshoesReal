@@ -4,7 +4,7 @@
 > automatizada em 3 frentes (banco real `ssvxfoybzmjlypnipqzn`, repo, motores
 > existentes). Divergências em relação ao rascunho original estão marcadas **[Δ]**.
 > **APROVADA pelo dono em 2026-07-19**, com 2 aditivos do dono incorporados (R16–R18):
-> fallback "última referência preenchida" e banco de custos salvos por referência.
+> banco de custos salvos por referência.
 > Mockup de alta fidelidade da tela (light+dark, tokens reais):
 > https://claude.ai/code/artifact/3e3f2c82-9508-459a-9120-e234e8121dac
 
@@ -176,14 +176,10 @@ Fatos que fundamentam as decisões abaixo (auditoria read-only):
 15. **Testes**: `src/services/__tests__/capacityService.test.ts` (vitest) cobrindo as
     validações de input do R12 (sem tocar no banco — mock do client) e o parse do
     contrato; typecheck `bunx tsc -p tsconfig.app.json --noEmit` limpo.
-16. **Fallback "última referência" (aditivo)**: a cadeia de minutos do R5 ganha um
-    degrau intermediário — `BOM da própria ficha` > **último valor preenchido pelo
-    dono em qualquer outra referência** (linha ativa mais recente por stage com
-    `time_source IN ('manual','cronoanalise')` e `minutes > 0`, por `updated_at`) >
-    `sector_minutes_default` da categoria. Marcado `minutes_source='ultima_referencia'`
-    com o nome da ficha de origem no payload (`source_sheet_name`) e chip próprio na
-    UI. Valores derivados pelo generator (`capacidade`/`default`) NÃO contam como
-    "preenchidos pelo dono".
+16. **Isolamento por referência (correção 2026-08-14)**: a cadeia de minutos é
+   `BOM da própria ficha` > `medição atual do setor` > `sector_minutes_default` da
+   categoria. Um tempo manual/cronoanalisado de outra referência nunca é herdado:
+   dificuldade e método produtivo pertencem ao modelo cadastrado.
 17. **Banco de custos por referência (aditivo)**: tabela
     `model_productivity_snapshots` (FK `technical_sheet_id`, nome congelado,
     `pairs_per_day`, `bottleneck_sector`, custos dos dois métodos, `params` jsonb
@@ -204,8 +200,7 @@ Fatos que fundamentam as decisões abaixo (auditoria read-only):
     eficiência — capacidade observada já embute a ineficiência real; a eficiência
     global segue valendo só na EXIBIÇÃO de pares/dia), gravando como
     `time_source='manual'` no BOM da ficha. Consequências encadeadas: custeio dos
-    PVs recalcula via trigger costs_dirty; engine lê como camada 1; referências
-    novas herdam via `ultima_referencia`. **Dificuldade por modelo** = capacidades
+    PVs recalcula via trigger costs_dirty; engine lê como camada 1. **Dificuldade por modelo** = capacidades
     diferentes no MESMO setor (300 vs 240 p/d na Costura ⇒ 3,6 vs 4,5 min/par ⇒
     MO R$ 0,65 vs R$ 0,82/par com 2 pessoas) — o "coeficiente" emerge da razão,
     sem cadastro paralelo de coeficientes (que driftaria do BOM). Guard-rails:
@@ -236,8 +231,7 @@ capacityService.ts → ProdutividadeModelos.tsx        model_productivity_snapsh
 **Cadeia de minutos por setor (R5 + R16):**
 ```
 1. BOM da própria ficha (operações ativas, Σ min/par)          → 'bom'
-2. Último valor preenchido pelo dono em OUTRA referência        → 'ultima_referencia'
-   (time_source manual|cronoanalise, mais recente por stage)
+2. Medição atual do setor, quando houver                       → 'medido'
 3. sector_minutes_default da categoria (COALESCE(cat,''))       → 'default'
 4. Nada ⇒ setor fora do cálculo + incomplete/warning
 ```
@@ -292,8 +286,8 @@ Documentar esse contraste num comment do RPC e no header da página.
   aparecem apenas no consistency report.
 - `p_sheet_ids` vazio ⇒ erro claro no RPC; service bloqueia antes.
 - Ficha inexistente no array ⇒ ignorada com warning agregado (não aborta o lote).
-- Fallback última referência sem nenhum valor manual/cronoanálise no sistema ⇒ cai
-  direto no padrão da categoria (degrau 3) sem erro.
+- Ficha sem tempo próprio ⇒ usa a medição atual do setor quando houver; caso contrário,
+  cai direto no padrão da categoria, sem herdar outra referência.
 - Snapshot de ficha `incomplete` ⇒ RPC de save recusa com mensagem clara.
 - Snapshot não é atualizado retroativamente (é congelamento — mesma semântica de
   `order_costs`/`reference_sector_pricing`): corrigir a ficha depois NÃO conserta
@@ -370,10 +364,9 @@ Documentar esse contraste num comment do RPC e no header da página.
 - [ ] R14: rota mapeada em `ROUTE_MODULE_MAP` + `secondaryRoutes`;
       `NavigationAccessConsistency.test.ts` e `check-navigation-access.mjs` verdes;
       sidebar Produção continua com 7 itens.
-- [ ] R16: ficha sem BOM num setor com valor manual/cronoanálise em outra referência
-      usa esse valor (marcado `ultima_referencia` + ficha de origem), e só cai no
-      padrão da categoria quando não há valor preenchido em lugar nenhum — query
-      manual comparando as 3 camadas.
+- [ ] R16: ficha sem tempo próprio não herda manual/cronoanálise de outra referência;
+      usa medição atual do setor ou o padrão de sua categoria — query manual comparando
+      as camadas.
 - [ ] R17: `save_model_productivity_snapshot(SP101)` insere linha em
       `model_productivity_snapshots` com números idênticos ao
       `get_model_productivity` do momento; tentar salvar ficha `incomplete` retorna

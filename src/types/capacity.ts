@@ -3,11 +3,12 @@
 // Espelha get_model_productivity / save_model_productivity_snapshot
 // (migrations 20260719120100 / 20260719120200).
 
-/** Cadeia de minutos por setor (R5 + R16 do spec):
+/** Cadeia de minutos por setor:
  *  'bom' = valor específico do modelo (manual/cronoanálise/capacidade da própria
- *  ficha); 'ultima_referencia' = último valor preenchido pelo dono em OUTRA
- *  referência; 'default' = padrão da categoria; 'faltando' = nenhuma camada. */
-export type MinutesSource = 'bom' | 'ultima_referencia' | 'medido' | 'default' | 'faltando';
+ *  ficha); 'default' = padrão da categoria; 'faltando' = nenhuma camada.
+ *  Nunca herda o tempo de outra referência: cada modelo só usa seu próprio
+ *  cadastro ou o padrão da sua categoria. */
+export type MinutesSource = 'bom' | 'medido' | 'default' | 'faltando';
 
 /** De onde veio a equipe do setor (R6): ajuste manual > contagem do RH > vazio. */
 export type TeamSource = 'rh' | 'manual' | 'nao_informado';
@@ -20,7 +21,7 @@ export interface SectorProductivity {
   label: string;
   minutes_per_pair: number | null;
   minutes_source: MinutesSource;
-  /** Nome da ficha de origem quando minutes_source = 'ultima_referencia'. */
+  /** Reservado para proveniências futuras; hoje é sempre nulo. */
   source_sheet_name: string | null;
   /** time_source agregadas das linhas do BOM usadas (manual/cronoanalise/capacidade/default). */
   time_sources: string[];
