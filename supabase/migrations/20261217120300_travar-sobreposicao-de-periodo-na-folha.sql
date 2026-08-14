@@ -62,6 +62,10 @@ BEGIN
    WHERE r.employee_id = NEW.employee_id
      AND r.id <> NEW.id
      AND r.status <> 'cancelado'
+     -- INSERT ... ON CONFLICT ainda passa por este trigger ANTES de o banco
+     -- reaproveitar o rascunho da mesma chave. Período idêntico não é uma
+     -- segunda janela: deixa o UNIQUE resolver como UPDATE do rascunho.
+     AND r.period <> NEW.period
      AND public.payroll_period_range(r.period) && v_range
    ORDER BY r.period
    LIMIT 1;
