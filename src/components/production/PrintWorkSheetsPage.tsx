@@ -820,6 +820,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
   // do diálogo pega o DOM já invertido (mesmo padrão da re-medição do
   // PaginatedSheet). afterprint (ou cancelamento do diálogo) restaura.
   const [printReversing, setPrintReversing] = useState(false);
+  const [preparingNativePrint, setPreparingNativePrint] = useState(false);
   useEffect(() => {
     if (!reverseOutput) return;
     const flip = (on: boolean) => {
@@ -910,7 +911,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
   // celular trata como pop-up e bloqueia.
   const printTabRef = useRef<Window | null>(null);
 
-  const printWith = async () => {
+  const waitForPrintAssets = async () => {
     const imgs = Array.from(document.querySelectorAll<HTMLImageElement>('.print-area img'));
     const waits: Promise<unknown>[] = imgs.map(img =>
       img.complete ? Promise.resolve() : img.decode().catch(() => undefined)
@@ -921,6 +922,25 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
       Promise.allSettled(waits),
       new Promise(res => setTimeout(res, 4000)),
     ]);
+  };
+
+  /**
+   * Caminho simples para desktop: entrega a prévia já conferida ao diálogo
+   * nativo do navegador. Não depende de endpoint, Chromium serverless nem de
+   * abertura de nova aba; o operador pode imprimir ou escolher "Salvar como PDF".
+   */
+  const printInBrowser = async () => {
+    setPreparingNativePrint(true);
+    try {
+      await waitForPrintAssets();
+      window.print();
+    } finally {
+      setPreparingNativePrint(false);
+    }
+  };
+
+  const printWith = async () => {
+    await waitForPrintAssets();
 
     // PDF do servidor em vez de window.print() (10/08/2026). A ficha tem a MESMA
     // folga de 9mm da etiqueta (PaginatedSheet.PAGE_HEIGHT_MM = 288 num A4 de 297)
@@ -3086,13 +3106,24 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
             </button>
 
             <Button
+              variant="outline"
+              onClick={() => { void printInBrowser(); }}
+              className="gap-2"
+              disabled={printBlocked || preparingNativePrint}
+              title={failedQueries > 0 ? 'Consultas de dados falharam — recarregue a página antes de imprimir' : 'Abre o diálogo do navegador. Você pode imprimir ou escolher “Salvar como PDF”.'}
+            >
+              {preparingNativePrint ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+              Imprimir
+            </Button>
+
+            <Button
               onClick={() => { printTabRef.current = openPrintTab(); void printWith(); }}
               className="gap-2"
-              disabled={printBlocked}
-              title={failedQueries > 0 ? 'Consultas de dados falharam — recarregue a página antes de imprimir' : undefined}
+              disabled={printBlocked || preparingNativePrint}
+              title={failedQueries > 0 ? 'Consultas de dados falharam — recarregue a página antes de imprimir' : 'Gera um PDF padronizado no servidor, indicado para celular e quando a geometria precisa ser idêntica entre impressoras.'}
             >
               {initialQueriesLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
-              Emitir {cartao ? 'cartões' : 'PDF'}
+              PDF padronizado
             </Button>
           </div>
         </div>
