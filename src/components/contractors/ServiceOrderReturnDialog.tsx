@@ -199,6 +199,9 @@ export default function ServiceOrderReturnDialog({ open, onOpenChange, serviceOr
       // Mantém a coluna legada no cabeçalho para relatórios antigos, enquanto a
       // evidência correta fica presa ao retorno que ela documenta.
       if (signedPhotoUrl) {
+        // Coluna já existe no banco, mas o arquivo gerado do Supabase ainda não
+        // acompanha a migration.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { error: photoErr } = await (supabase as any)
           .from('service_orders')
           .update({ signed_photo_url: signedPhotoUrl })

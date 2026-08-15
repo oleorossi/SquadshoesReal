@@ -193,6 +193,8 @@ export function StrapShortageDialog({ open, saleOrderId, saleOrderNumber, onClos
 
       const rateByContractor = new Map<string, number>();
       await Promise.all(Array.from(new Set(artesanal.map(r => r.contractor_id))).map(async (contractorId) => {
+        // Setor novo; entra no types.ts na próxima regeneração do Supabase.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { data: rate, error: rateError } = await (supabase as any).rpc('get_contractor_rate', {
           p_contractor_id: contractorId,
           p_sector: 'tiras',
@@ -222,6 +224,8 @@ export function StrapShortageDialog({ open, saleOrderId, saleOrderNumber, onClos
         const unitPrice = rateByContractor.get(r.contractor_id) || 0;
 
         const order_number = await generateServiceOrderNumber();
+        // Campos do ciclo rastreado ainda não estão completos no types.ts.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { error } = await (supabase as any).from('service_orders').insert({
           contractor_id: r.contractor_id,
           order_number,

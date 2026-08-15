@@ -119,6 +119,8 @@ export function useServiceOrderGenerationGaps() {
   return useQuery({
     queryKey: ['service_order_generation_gaps'],
     queryFn: async () => {
+      // RPC adicionada pela migration do ciclo de OS.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data, error } = await (supabase as any).rpc('list_service_order_generation_gaps');
       if (error) throw error;
       return (data || []) as ServiceOrderGenerationGap[];
@@ -132,6 +134,8 @@ export function useRetryServiceOrderGenerationGap() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (gap: ServiceOrderGenerationGap) => {
+      // RPC adicionada pela migration do ciclo de OS.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data, error } = await (supabase as any).rpc('send_item_sector_os', {
         p_order_id: gap.order_id,
         p_sector: gap.sector,
@@ -147,6 +151,11 @@ export function useRetryServiceOrderGenerationGap() {
       qc.invalidateQueries({ queryKey: ['pv_outsourceable_lines'] });
       toast.success('OS pendente gerada pelo fluxo canônico.');
     },
-    onError: (e: any) => toast.error(e?.message || 'Não foi possível gerar a OS pendente.'),
+    onError: (error: unknown) => {
+      const message = error && typeof error === 'object' && 'message' in error
+        ? String(error.message)
+        : 'Não foi possível gerar a OS pendente.';
+      toast.error(message);
+    },
   });
 }

@@ -144,6 +144,9 @@ export function useBulkAssignServiceOrders() {
       const failures: string[] = [];
       for (const [saleOrderId, orders] of byPv) {
         try {
+          // RPC ganhou o contrato canônico nesta migration; types.ts será
+          // regenerado numa rodada separada.
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const { data, error } = await (supabase as any).rpc('generate_op_service_orders', {
             p_sale_order_id: saleOrderId,
             p_lines: orders.map((order) => ({
@@ -163,12 +166,17 @@ export function useBulkAssignServiceOrders() {
             else failures.push(result.reason || 'OP não pertence ao PV');
             if (result.os_id) osIds.push(result.os_id);
           }
-        } catch (error: any) {
-          failures.push(`PV ${saleOrderId}: ${error?.message || 'erro desconhecido'}`);
+        } catch (error: unknown) {
+          const message = error && typeof error === 'object' && 'message' in error
+            ? String(error.message)
+            : 'erro desconhecido';
+          failures.push(`PV ${saleOrderId}: ${message}`);
         }
       }
 
       if (osIds.length > 0) {
+        // Metadados existem no banco, mas ainda não no types.ts gerado.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { error } = await (supabase as any)
           .from('service_orders')
           .update({ bottleneck_week: input.bottleneck_week, quoted_at: new Date().toISOString(), notes: notesPrefix })

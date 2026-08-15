@@ -200,6 +200,8 @@ export function useServiceOrderOverview() {
       const loadView = async (view: string) => {
         const rows: ServiceOrderOverview[] = [];
         for (let from = 0; ; from += PAGE) {
+          // View nova e fallback dinâmico entram no types.ts na próxima geração.
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const { data, error } = await (supabase as any)
             .from(view)
             .select('*')
@@ -216,11 +218,14 @@ export function useServiceOrderOverview() {
       let rows: ServiceOrderOverview[];
       try {
         rows = await loadView('v_service_order_operational');
-      } catch (error: any) {
+      } catch (error: unknown) {
         // Durante os poucos segundos entre o deploy do frontend e a migration,
         // preserva a leitura antiga. Outros erros continuam visíveis.
-        const missingView = ['42P01', 'PGRST205'].includes(error?.code)
-          || /v_service_order_operational.*(does not exist|schema cache)/i.test(error?.message || '');
+        const details = error && typeof error === 'object'
+          ? error as { code?: string; message?: string }
+          : {};
+        const missingView = ['42P01', 'PGRST205'].includes(details.code || '')
+          || /v_service_order_operational.*(does not exist|schema cache)/i.test(details.message || '');
         if (!missingView) throw error;
         rows = await loadView('v_service_order_overview');
       }

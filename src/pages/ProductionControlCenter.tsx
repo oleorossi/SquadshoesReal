@@ -1192,6 +1192,8 @@ function OutsourceDialog({ target, onClose }: { target: BottleneckRow | null; on
     mutationFn: async () => {
       if (!target || !contractorId) throw new Error('Selecione costureira/terceirizado.');
       if (unitPrice <= 0) throw new Error('Informe o valor por par antes de gerar a OS.');
+      // RPC atualizada pela migration do ciclo canônico de OS.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data, error } = await (supabase as any).rpc('generate_op_service_orders', {
         p_sale_order_id: target.saleOrderId,
         p_lines: [{
@@ -1213,6 +1215,8 @@ function OutsourceDialog({ target, onClose }: { target: BottleneckRow | null; on
       // O writer canônico cuida dos vínculos e da idempotência. Estas notas são
       // apenas o contexto operacional específico do painel de capacidade.
       if (result.os_id && (materialsNotes || notes)) {
+        // Campos de gargalo ainda não estão completos no types.ts gerado.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { error: noteError } = await (supabase as any)
           .from('service_orders')
           .update({
