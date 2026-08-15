@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useEffect, useRef } from 'react';
 import { invalidateProductionCaches } from '@/hooks/useProductionTransitions';
+import { shouldLoadOrderStages } from '@/lib/productionLoading';
 
 // Default fallback stages when no BOM operations exist.
 //
@@ -73,6 +74,7 @@ export function useAllOrderStages(orderIds?: string[]) {
     // array passado pra `useOrdersMaterialGate`, que chaveia o cache por `ids[0]`.
     // Reordenar aqui trocava o primeiro id do gate e invalidava o cache dele à toa.
     queryKey: ['order_stages', orderIds ? [...orderIds].sort().join(',') : 'all'],
+    enabled: shouldLoadOrderStages(orderIds),
     queryFn: async () => {
       // If specific order IDs provided, fetch only those
       if (orderIds && orderIds.length > 0) {

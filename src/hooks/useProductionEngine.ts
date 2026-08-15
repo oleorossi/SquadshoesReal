@@ -11,6 +11,7 @@ import { useQuery, useMutation, useQueryClient, QueryClient } from '@tanstack/re
 import { useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { shouldRetryProductionQueue } from '@/lib/productionLoading';
 
 // ── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -239,6 +240,7 @@ export function useProductionQueueDetail() {
   return useQuery({
     queryKey: ['production_queue_detail'],
     refetchInterval: ENGINE_REFETCH_MS,
+    retry: shouldRetryProductionQueue,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('v_production_queue_detail')
