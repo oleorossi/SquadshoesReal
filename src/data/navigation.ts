@@ -90,7 +90,7 @@ export const navigationCatalog: NavigationResource[] = [
   { path: '/expedicao', label: 'Expedição', group: 'Logística', icon: Package, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/ExpedicaoHub') },
   // Etiquetas pertence à expedição no controle de acesso; agrupá-la aqui evita
   // um grupo de um item que quebra a leitura do fluxo da fábrica.
-  { path: '/label-system', label: 'Sistema de Etiquetas', group: 'Logística', icon: Tag, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/LabelSystem') },
+  { path: '/label-system', label: 'ETIQUETAGEM', group: 'Logística', icon: Tag, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/LabelSystem') },
   { path: '/embalagens', label: 'Embalagens', group: 'Logística', icon: Box, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/PackagingManagement') },
   { path: '/transporte', label: 'Transporte', group: 'Logística', icon: Truck, surfaces: ['command'] /* Transporte: 0 tarifas cadastradas */, preload: () => import('@/pages/Transport') },
   { path: '/picking', label: 'Separação · Materiais', group: 'Logística', icon: ClipboardCheck, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/PickingListPage') },
