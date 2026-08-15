@@ -133,34 +133,42 @@ export default function GroupOrganizationPanel({ permPath, extraActions }: Props
 
   return (
     <div className="space-y-4">
-      {/* Barra: busca + ações */}
-      <div className="flex flex-wrap items-center gap-2">
-        <SearchInput
-          value={search}
-          onChange={setSearch}
-          placeholder="Buscar grupo, material ou SKU…"
-          className="flex-1 min-w-[200px]"
-          inputClassName="h-9"
-        />
-        {extraActions}
-        {perm.canCreate && (
-          <Button variant="outline" size="sm" className="h-9 gap-1.5" onClick={() => setSuggestOpen(true)}>
-            <Sparkle className="h-4 w-4" />
-            <span className="hidden sm:inline">Sugestões de família</span>
-          </Button>
-        )}
-        {perm.canCreate && (
-          <Button variant="outline" size="sm" className="h-9 gap-1.5" onClick={() => openCreate({ title: 'Novo Grupo de Material' })}>
-            <FolderOpen className="h-4 w-4" />
-            <span className="hidden sm:inline">Novo grupo</span>
-          </Button>
-        )}
-        {perm.canCreate && (
-          <Button size="sm" className="h-9 gap-1.5" onClick={openAddGlobal}>
-            <Plus className="h-4 w-4" />
-            <span className="hidden sm:inline">Novo material</span>
-          </Button>
-        )}
+      {/* Bancada da ficha: consulta à esquerda, lançamentos à direita. */}
+      <div className="border-y border-foreground/20 bg-card px-3 py-2 sm:px-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="hidden shrink-0 font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-muted-foreground lg:inline">
+            Consulta da ficha
+          </span>
+          <span className="hidden h-5 border-l border-foreground/20 lg:block" aria-hidden="true" />
+          <SearchInput
+            value={search}
+            onChange={setSearch}
+            placeholder="Buscar grupo, material ou SKU…"
+            className="min-w-[210px] flex-1"
+            inputClassName="h-9"
+          />
+          <div className="flex flex-1 flex-wrap items-center justify-end gap-2 sm:flex-none">
+            {extraActions}
+            {perm.canCreate && (
+              <Button variant="outline" size="sm" className="h-9 gap-1.5" onClick={() => setSuggestOpen(true)}>
+                <Sparkle className="h-4 w-4" />
+                <span className="hidden xl:inline">Sugestões de família</span>
+              </Button>
+            )}
+            {perm.canCreate && (
+              <Button variant="outline" size="sm" className="h-9 gap-1.5" onClick={() => openCreate({ title: 'Novo Grupo de Material' })}>
+                <FolderOpen className="h-4 w-4" />
+                <span className="hidden sm:inline">Novo grupo</span>
+              </Button>
+            )}
+            {perm.canCreate && (
+              <Button size="sm" className="h-9 gap-1.5" onClick={openAddGlobal}>
+                <Plus className="h-4 w-4" />
+                <span className="hidden sm:inline">Novo material</span>
+              </Button>
+            )}
+          </div>
+        </div>
       </div>
 
       {isLoading ? (
@@ -173,7 +181,7 @@ export default function GroupOrganizationPanel({ permPath, extraActions }: Props
           action={perm.canCreate ? <Button onClick={() => openCreate({ title: 'Novo Grupo de Material' })} className="gap-2"><Plus className="h-4 w-4" />Novo grupo</Button> : undefined}
         />
       ) : (
-        <div className="rounded-xl border border-border/60 bg-card overflow-hidden">
+        <div>
           <GroupStockTree
             groups={groups}
             products={products as unknown as ProductLite[]}
