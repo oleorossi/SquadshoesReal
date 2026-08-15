@@ -122,8 +122,8 @@ export function SectorOverloadDialog({ open, onOpenChange, result, onKeepDateAnd
           <AlertTitle className="text-sm">O que você quer fazer?</AlertTitle>
           <AlertDescription className="text-xs space-y-1">
             <p>
-              <strong>Manter a data:</strong> uma Ordem de Serviço (OS) de terceirização será criada automaticamente
-              para cobrir o excedente, garantindo a entrega.
+              <strong>Manter a data:</strong> o pedido é salvo primeiro; em seguida o assistente mostra as OPs e setores
+              para você escolher prestador, quantidade e tarifa antes de emitir cada OS.
             </p>
             <p>
               <strong>Adiar para {formatDateBR(suggestedISO)}:</strong> ajusta a data de
@@ -204,7 +204,7 @@ export function SectorOverloadDialog({ open, onOpenChange, result, onKeepDateAnd
                 </Button>
               )}
               <Button onClick={onKeepDateAndOutsource}>
-                Manter data e gerar OS terceirizada
+                Manter data e definir terceirização
               </Button>
             </>
           )}

@@ -120,24 +120,7 @@ export function useBulkAssignServiceOrders() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (input: BulkAssignInput) => {
-      // Buscar OPs que JÁ TÊM OS ativa pra esse gargalo (evita duplicar)
-      const FINALIZED = ['received', 'Concluído', 'concluido', 'finalizado', 'Finalizado', 'Cancelado', 'cancelled', 'cancelado'];
-      const orderIds = input.contributing_orders.map(o => o.order_id);
-      const { data: existing } = await (supabase as any)
-        .from('service_orders')
-        .select('order_id')
-        .in('order_id', orderIds)
-        .eq('target_sector', input.target_sector)
-        .eq('bottleneck_week', input.bottleneck_week)
-        .not('status', 'in', `(${FINALIZED.map(s => `"${s}"`).join(',')})`);
-      const skippedOrderIds = new Set((existing || []).map((r: any) => r.order_id));
-
-      const toCreate = input.contributing_orders.filter(o => !skippedOrderIds.has(o.order_id));
-      if (toCreate.length === 0) {
-        return { created: 0, skipped: skippedOrderIds.size };
-      }
-
-      const today = new Date().toISOString().slice(0, 10);
+      if (input.unit_price <= 0) throw new Error('Informe o valor por par antes de emitir as OSs.');
       // Lista completa de OPs que originaram a demanda — repetida em cada
       // OS pra dar contexto à contratada de qual lote ela está cobrindo.
       const allOpNumbers = input.contributing_orders.map(o => o.order_number).join(', ');
@@ -147,35 +130,66 @@ export function useBulkAssignServiceOrders() {
         `(semana de ${input.bottleneck_week}).\n` +
         `OPs cobertas neste lote (${input.contributing_orders.length}): ${allOpNumbers}.\n` +
         `Total agregado do lote: ${totalPairsInBatch} pares.`;
-      const rows = toCreate.map((o, i) => ({
-        contractor_id: input.contractor_id,
-        order_id: o.order_id,
-        sale_order_id: o.sale_order_id,
-        target_sector: input.target_sector,
-        bottleneck_week: input.bottleneck_week,
-        quantity: o.quantity,
-        unit_price: input.unit_price,
-        total_value: o.quantity * input.unit_price,
-        service_date: today,
-        status: 'quoted',
-        quoted_at: new Date().toISOString(),
-        quoted_deadline: input.quoted_deadline,
-        description: `Cobertura de gargalo ${SECTOR_LABEL[input.target_sector]} (lote) — OP ${o.order_number}`,
-        notes: notesPrefix,
-        order_number: `OS-GARG-${Date.now()}-${i}`,
-      }));
+      const byPv = new Map<string, BulkAssignInput['contributing_orders']>();
+      let skipped = 0;
+      for (const order of input.contributing_orders) {
+        if (!order.sale_order_id) { skipped += 1; continue; }
+        const current = byPv.get(order.sale_order_id) || [];
+        current.push(order);
+        byPv.set(order.sale_order_id, current);
+      }
 
-      const { error } = await (supabase as any).from('service_orders').insert(rows);
-      if (error) throw error;
-      return { created: rows.length, skipped: skippedOrderIds.size };
+      let created = 0;
+      const osIds: string[] = [];
+      const failures: string[] = [];
+      for (const [saleOrderId, orders] of byPv) {
+        try {
+          const { data, error } = await (supabase as any).rpc('generate_op_service_orders', {
+            p_sale_order_id: saleOrderId,
+            p_lines: orders.map((order) => ({
+              order_id: order.order_id,
+              sector: input.target_sector,
+              contractor_id: input.contractor_id,
+              quantity: order.quantity,
+              unit_price: input.unit_price,
+              quoted_deadline: input.quoted_deadline,
+            })),
+          });
+          if (error) throw error;
+          if (data?.error) throw new Error(data.error);
+          for (const result of data?.lines || []) {
+            if (result.action === 'created' || result.action === 'reactivated') created += 1;
+            else if (result.action === 'exists') skipped += 1;
+            else failures.push(result.reason || 'OP não pertence ao PV');
+            if (result.os_id) osIds.push(result.os_id);
+          }
+        } catch (error: any) {
+          failures.push(`PV ${saleOrderId}: ${error?.message || 'erro desconhecido'}`);
+        }
+      }
+
+      if (osIds.length > 0) {
+        const { error } = await (supabase as any)
+          .from('service_orders')
+          .update({ bottleneck_week: input.bottleneck_week, quoted_at: new Date().toISOString(), notes: notesPrefix })
+          .in('id', osIds);
+        if (error) failures.push(`OS criada, mas sem metadados do gargalo: ${error.message}`);
+      }
+      return { created, skipped, failed: failures.length, firstFailure: failures[0] || null };
     },
-    onSuccess: ({ created, skipped }) => {
+    onSuccess: ({ created, skipped, failed, firstFailure }) => {
+      let msg = `${created} ${created === 1 ? 'OS criada' : 'OSs criadas'}.`;
+      if (skipped > 0) msg += ` ${skipped} ${skipped === 1 ? 'OP já tinha' : 'OPs já tinham'} OS ativa — ${skipped === 1 ? 'pulada' : 'puladas'}.`;
+      if (failed > 0) {
+        toast.warning(`${msg} ${failed} ${failed === 1 ? 'falha requer' : 'falhas requerem'} revisão. ${firstFailure || ''}`);
+      } else {
+        toast.success(msg);
+      }
+    },
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: ['service_orders'] });
       qc.invalidateQueries({ queryKey: ['service_orders_active_bottleneck'] });
       qc.invalidateQueries({ queryKey: ['v_sector_bottlenecks'] });
-      let msg = `${created} ${created === 1 ? 'OS criada' : 'OSs criadas'}.`;
-      if (skipped > 0) msg += ` ${skipped} ${skipped === 1 ? 'OP já tinha' : 'OPs já tinham'} OS ativa — ${skipped === 1 ? 'pulada' : 'puladas'}.`;
-      toast.success(msg);
     },
     onError: (err: any) => {
       toast.error(`Falha no encaminhamento em lote: ${err.message || 'erro desconhecido'}`);

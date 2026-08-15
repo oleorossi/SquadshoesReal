@@ -821,7 +821,13 @@ export default function Finance() {
   }, [rawTabParam]);
   const [selectedReceivables, setSelectedReceivables] = useState<Set<string>>(new Set());
   const [selectedPayables, setSelectedPayables] = useState<Set<string>>(new Set());
-  const [payableSearch, setPayableSearch] = useState('');
+  const financeQuery = searchParams.get('q') || '';
+  const [payableSearch, setPayableSearch] = useState(financeQuery);
+  useEffect(() => {
+    if (!financeQuery) return;
+    setAccountsSubTab('payable');
+    setPayableSearch(financeQuery);
+  }, [financeQuery]);
   const [payableStatusFilter, setPayableStatusFilter] = useState<string[]>([]);
   const [payableDateFrom, setPayableDateFrom] = useState('');
   const [payableDateTo, setPayableDateTo] = useState('');

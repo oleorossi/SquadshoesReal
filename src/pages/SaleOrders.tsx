@@ -20,7 +20,7 @@ import { cn } from "@/lib/utils";
 // primeiro paint e o ganho é zero. (auditoria PV 07/08/2026)
 const MarginDialog = lazy(() => import('@/components/sale-orders/MarginDialog'));
 const OperatorFichasDialog = lazy(() => import('@/components/sale-orders/OperatorFichasDialog'));
-const ServiceOrderFormDialog = lazy(() => import('@/components/contractors/ServiceOrderFormDialog').then(m => ({ default: m.ServiceOrderFormDialog })));
+const GenerateServiceOrdersWizard = lazy(() => import('@/components/contractors/GenerateServiceOrdersWizard').then(m => ({ default: m.GenerateServiceOrdersWizard })));
 const GeneratePurchaseOrdersDialog = lazy(() => import('@/components/purchase/GeneratePurchaseOrdersDialog'));
 import PurchaseOrdersForPvCard from '@/components/purchase/PurchaseOrdersForPvCard';
 import { PvOutdatedBadge } from '@/components/sale-orders/PvOutdatedBadge';
@@ -3580,25 +3580,18 @@ export default function SaleOrders() {
         </Suspense>
       )}
 
-      {/* Atalho "Gerar OS" do PV — reusa o form canônico de OS, já com os itens
-          deste pedido pré-selecionados e a OS amarrada ao pedido (sale_order_id). */}
+      {/* Atalho "Gerar OS" do PV — usa o mesmo assistente do pós-cadastro e do
+          menu de Terceirizados. A unidade de emissão é OP × setor; assim não há
+          um segundo modelo de OS criado diretamente pelos itens do pedido. */}
       {/* Guarda por `osDialogOpen`, não só por `selectedOrder`: este nunca volta a
           null depois do primeiro PV aberto, então sozinho ele montaria o diálogo
           (e baixaria o chunk) para sempre. */}
       {osDialogOpen && selectedOrder && (
         <Suspense fallback={null}>
-        <ServiceOrderFormDialog
+        <GenerateServiceOrdersWizard
           open={osDialogOpen}
           onOpenChange={setOsDialogOpen}
-          saleOrderId={selectedOrder.id}
-          saleOrderLabel={selectedOrder.order_number}
-          pvItems={(allSaleItems as any[])
-            .filter((it) => it.sale_order_id === selectedOrder.id)
-            .map((it) => {
-              const ref = (references as any[]).find((r) => r.id === it.reference_id);
-              return { id: it.id as string, label: [ref?.name || ref?.code || '', it.color || '—'].filter(Boolean).join(' · '), pairs: Number(it.quantity) || 0 };
-            })
-            .filter((i) => i.pairs > 0)}
+          initialSaleOrderId={selectedOrder.id}
         />
         </Suspense>
       )}

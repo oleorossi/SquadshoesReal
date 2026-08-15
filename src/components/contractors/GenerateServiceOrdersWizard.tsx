@@ -214,9 +214,16 @@ export function GenerateServiceOrdersWizard({
       onSuccess: (res) => {
         const created = res.filter((r) => r.action === 'created' || r.action === 'reactivated').length;
         const exists = res.filter((r) => r.action === 'exists').length;
-        toast.success(
-          `${created} ${created === 1 ? 'OS gerada' : 'OS geradas'}${exists ? ` · ${exists} já existiam` : ''}.`,
-        );
+        const invalid = res.filter((r) => r.action === 'invalid_line' || r.action === 'op_not_in_pv');
+        if (created > 0 || exists > 0) {
+          toast.success(
+            `${created} ${created === 1 ? 'OS gerada' : 'OS geradas'}${exists ? ` · ${exists} já existiam` : ''}.`,
+          );
+        }
+        if (invalid.length > 0) {
+          const firstReason = invalid[0]?.reason || 'OP não pertence mais a este pedido';
+          toast.warning(`${invalid.length} ${invalid.length === 1 ? 'linha não foi gerada' : 'linhas não foram geradas'}: ${firstReason}.`);
+        }
         onGenerated?.();
         onOpenChange(false);
       },

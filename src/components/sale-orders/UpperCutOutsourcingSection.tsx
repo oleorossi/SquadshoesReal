@@ -145,7 +145,10 @@ export default function UpperCutOutsourcingSection({ saleOrderId, orderNumber }:
           p_date: new Date().toISOString().slice(0, 10),
         });
         unitPrice = rate != null ? Number(rate) : 0;
-      } catch { /* sem tarifa — OS nasce com preço 0, definir depois */ }
+      } catch { /* mensagem disciplinada abaixo */ }
+      if (unitPrice <= 0) {
+        throw new Error('Cadastre a tarifa de Corte Cabedal para esta prestadora antes de emitir a OS.');
+      }
       const refLabel = [g.refName, g.refCode && g.refCode !== g.refName ? `(cód. interno ${g.refCode})` : ''].filter(Boolean).join(' ');
       const colorPart = g.color !== '—' ? ` · cor ${g.color}` : '';
 
@@ -195,9 +198,6 @@ export default function UpperCutOutsourcingSection({ saleOrderId, orderNumber }:
           `Estoque insuficiente de ${s.product_name}: necessário ${s.required} ${s.unit}, disponível ${s.available}. ` +
           'A OS saiu e o disponível foi debitado — acerte a entrada dessa napa.',
         );
-      }
-      if (unitPrice <= 0) {
-        toast.warning(`OS ${osNumber} está SEM preço — cadastre a tarifa da prestadora ou defina o valor na OS.`);
       }
     } catch (err: any) {
       toast.error(err?.message || 'Falha ao criar a OS de corte de cabedal.');

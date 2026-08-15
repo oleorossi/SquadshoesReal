@@ -42,7 +42,6 @@ import { enrichMaterialShortages, MaterialAvailabilityResult } from '@/lib/mater
 import { MaterialPurchaseConfirmDialog } from '@/components/sale-orders/MaterialPurchaseConfirmDialog';
 import { checkSectorCapacity, CapacityCheckResult } from '@/lib/sectorCapacity';
 import { SectorOverloadDialog } from '@/components/sale-orders/SectorOverloadDialog';
-import { createOutsourceOrdersForOverloads } from '@/lib/outsourceOrders';
 import { computeMinBillingForNewOrder, fetchMinBillingDate, isBeforeMinDate, toISOWeek, type MinBillingResult } from '@/lib/minBillingDate';
 import { MinBillingDateSuggestionDialog } from '@/components/sale-orders/MinBillingDateSuggestionDialog';
 import { OverrideOutsourceCosturaDialog } from '@/components/sale-orders/OverrideOutsourceCosturaDialog';
@@ -648,6 +647,7 @@ export default function SaleOrderForm() {
   const [genOsNavAfter, setGenOsNavAfter] = useState(false);
   const [postSaveOsOpen, setPostSaveOsOpen] = useState(false);
   const [postSaveOsPvId, setPostSaveOsPvId] = useState<string | null>(null);
+  const capacityOutsourceAfterSaveRef = useRef(false);
   // Live min billing date for the persistent red badge in the form panel.
   // Edit mode → server compute_min_billing_date(id). New mode → frontend
   // computeMinBillingForNewOrder over current items. Recomputed with debounce.
@@ -1069,6 +1069,13 @@ export default function SaleOrderForm() {
         setOutsourceCosturaPendingNav(true);
         setOutsourceCosturaOpen(true);
       } else {
+        if (capacityOutsourceAfterSaveRef.current) {
+          capacityOutsourceAfterSaveRef.current = false;
+          setGenOsPvId(pvId);
+          setGenOsNavAfter(true);
+          setGenOsOpen(true);
+          return;
+        }
         // Atalho de finalização: se o pedido tem algum serviço terceirizável pendente,
         // oferece gerar OS por pedido antes de sair (best-effort — falha não bloqueia).
         try {
@@ -1647,30 +1654,14 @@ export default function SaleOrderForm() {
     }
   };
 
-  const handleCapacityKeepDate = async () => {
+  const handleCapacityKeepDate = () => {
     setCapacityDialogOpen(false);
     if (!capacityResult) { doSubmit(); return; }
-    try {
-      const res = await createOutsourceOrdersForOverloads(capacityResult.overloads, isEdit ? id : undefined);
-      if (res.created > 0) {
-        toast.success(`${res.created} Ordem(ns) de Serviço terceirizada(s) criada(s) para suprir o excedente.`);
-      } else if (res.skippedDuplicate.length > 0 && res.skippedNoContractor.length === 0) {
-        toast.info('As OS de terceirização desses setores já existiam — nada duplicado.');
-      }
-      // Setores sem prestador cadastrado: NÃO jogamos a OS em um terceirizado
-      // qualquer (bug antigo). Avisamos pra cadastrar o prestador certo.
-      const semPrestador = [...new Set(res.skippedNoContractor)];
-      if (semPrestador.length > 0) {
-        toast.warning(
-          `Sem terceirizado p/ ${semPrestador.join(', ')} — nenhuma OS criada nesses setores. ` +
-          `Cadastre o prestador (com o setor no "tipo de serviço") em Terceirizados.`,
-          { duration: 8000 },
-        );
-      }
-    } catch (err: any) {
-      toast.error(`Erro ao criar OS: ${err.message}`);
-    }
-    setTimeout(() => doSubmit(), 100);
+    // A OS precisa nascer depois do PV e das OPs. O fluxo antigo tentava criar
+    // antes do save, sem OP, sem tarifa e sem vínculo confiável. Guardamos a
+    // escolha e abrimos o assistente canônico assim que o pedido for persistido.
+    capacityOutsourceAfterSaveRef.current = true;
+    doSubmit();
   };
 
   const handleCapacityPostpone = (newISO: string) => {
@@ -2100,6 +2091,11 @@ export default function SaleOrderForm() {
               setOutsourceCosturaPvId(strapShortagePvId);
               setOutsourceCosturaPendingNav(true);
               setOutsourceCosturaOpen(true);
+            } else if (capacityOutsourceAfterSaveRef.current && strapShortagePvId) {
+              capacityOutsourceAfterSaveRef.current = false;
+              setGenOsPvId(strapShortagePvId);
+              setGenOsNavAfter(true);
+              setGenOsOpen(true);
             } else {
               navigate('/sales');
             }

@@ -47,6 +47,13 @@ const SECTOR_TO_LEAD_COLUMN: Record<MonitoredSector, string> = {
   'Costura':        'lead_time_costura_dias',
 };
 
+const SERVICE_ORDER_SECTOR: Record<MonitoredSector, string> = {
+  'Corte Palmilha': 'corte_palmilha',
+  'Corte Forração': 'corte_forracao',
+  'Aviamento': 'mesa',
+  'Costura': 'costura',
+};
+
 const WEEKS_TO_SHOW = 8;
 
 // ─── Limiares de carga (cadastrados em system_settings) ────────────────────
@@ -138,6 +145,7 @@ interface SheetCapacityRow {
 
 interface BottleneckRow {
   orderId: string;
+  saleOrderId: string;
   orderNumber: string;
   reference: string;
   sheetId: string;
@@ -397,6 +405,7 @@ export default function ProductionControlCenter() {
             const severity: 'critical' | 'warning' = loadPct > criticalLoadPct ? 'critical' : 'warning';
             perOpBottlenecks.push({
               orderId: row.order_id,
+              saleOrderId: row.sale_order_id,
               orderNumber: row.pedido_ref,
               reference: row.referencia_nome,
               sheetId: row.reference_id,
@@ -1182,28 +1191,46 @@ function OutsourceDialog({ target, onClose }: { target: BottleneckRow | null; on
   const save = useMutation({
     mutationFn: async () => {
       if (!target || !contractorId) throw new Error('Selecione costureira/terceirizado.');
-      const total = quantity * unitPrice;
-      const payload = {
-        related_order_id: target.orderId,
-        sector: target.sector,
-        contractor_id: contractorId,
-        description: `Terceirização ${target.sector} — OP ${target.orderNumber} (${target.reference})`,
-        quantity,
-        unit_price: unitPrice,
-        total_value: total,
-        service_date: deadline || null,
-        status: deadline ? 'em_andamento' : 'aguardando_aceite',
-        materials_sent: materialsNotes ? [{ note: materialsNotes }] : [],
-        notes: notes || `OP em gargalo: ${target.reason}. Capacidade da ficha: ${Math.round(target.fichaCapacity)}/dia.`,
-      };
-      const { error } = await (supabase as any).from('service_orders').insert(payload);
+      if (unitPrice <= 0) throw new Error('Informe o valor por par antes de gerar a OS.');
+      const { data, error } = await (supabase as any).rpc('generate_op_service_orders', {
+        p_sale_order_id: target.saleOrderId,
+        p_lines: [{
+          order_id: target.orderId,
+          sector: SERVICE_ORDER_SECTOR[target.sector],
+          contractor_id: contractorId,
+          quantity,
+          unit_price: unitPrice,
+          quoted_deadline: deadline || null,
+        }],
+      });
       if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      const result = data?.lines?.[0];
+      if (!result || result.action === 'invalid_line' || result.action === 'op_not_in_pv') {
+        throw new Error(result?.reason || 'A OP não pertence mais ao pedido informado.');
+      }
+
+      // O writer canônico cuida dos vínculos e da idempotência. Estas notas são
+      // apenas o contexto operacional específico do painel de capacidade.
+      if (result.os_id && (materialsNotes || notes)) {
+        const { error: noteError } = await (supabase as any)
+          .from('service_orders')
+          .update({
+            materials_sent: materialsNotes ? [{ note: materialsNotes }] : [],
+            notes: notes || `OP em gargalo: ${target.reason}. Capacidade da ficha: ${Math.round(target.fichaCapacity)}/dia.`,
+          })
+          .eq('id', result.os_id);
+        if (noteError) throw noteError;
+      }
+      return result;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['active_outsource_oses'] });
       qc.invalidateQueries({ queryKey: ['outsource_history'] });
       qc.invalidateQueries({ queryKey: ['production_control_timeline'] });
-      toast.success(deadline ? 'OS criada com prazo. Setor seguinte bloqueado até a entrega.' : 'OS criada. Aguardando aceite da costureira.');
+      qc.invalidateQueries({ queryKey: ['service_orders'] });
+      qc.invalidateQueries({ queryKey: ['service_order_overview'] });
+      toast.success(deadline ? 'OS emitida com prazo. Agora registre a remessa física.' : 'OS emitida. Agora registre a remessa física.');
       onClose();
     },
     onError: (e: Error) => toast.error(e.message),

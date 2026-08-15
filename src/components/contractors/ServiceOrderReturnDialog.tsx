@@ -7,10 +7,13 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { NumberInput } from '@/components/ui/number-input';
 import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useContractors } from '@/hooks/useContractors';
-import { CircleNotch as Loader2 } from '@phosphor-icons/react';
+import { uploadSignedReceiptPhoto } from '@/lib/serviceOrderStock';
+import { formatCurrency } from '@/lib/utils';
+import { CalendarBlank as Calendar, Camera, CircleNotch as Loader2, CurrencyDollar } from '@phosphor-icons/react';
 
 /**
  * Registrar Retorno de OS terceirizada (Fase 1 facção).
@@ -41,6 +44,8 @@ interface BalanceRow {
   qty_returned_defect: number;
   qty_loss: number;
   qty_in_field: number;
+  qty_to_dispatch?: number;
+  qty_defect_pending_rework?: number;
   dispatch_tracked?: boolean;
 }
 
@@ -53,6 +58,8 @@ export interface ReturnDialogServiceOrder {
   /** OS dividida entre prestadores → mostra seletor "de quem está voltando". */
   dispatchTracked?: boolean | null;
   contractorId?: string | null;
+  unitPrice?: number | null;
+  paymentDays?: number | null;
 }
 
 interface ContractorBal { contractor_id: string; qty_dispatched: number; qty_in_field: number; }
@@ -105,6 +112,8 @@ export default function ServiceOrderReturnDialog({ open, onOpenChange, serviceOr
   const [qtyScrapped, setQtyScrapped] = useState(0);
   const [defectNotes, setDefectNotes] = useState('');
   const [contractor, setContractor] = useState('');
+  const [returnDate, setReturnDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
 
   // Na rua = do PRESTADOR selecionado (OS dividida) OU total (OS normal).
@@ -115,7 +124,15 @@ export default function ServiceOrderReturnDialog({ open, onOpenChange, serviceOr
 
   // Reset (só na ABERTURA) — não mexe no prestador depois pra não reverter a escolha.
   useEffect(() => {
-    if (open) { setQtyDefect(0); setQtyLoss(0); setQtyScrapped(0); setDefectNotes(''); setContractor(serviceOrder?.contractorId || ''); }
+    if (open) {
+      setQtyDefect(0);
+      setQtyLoss(0);
+      setQtyScrapped(0);
+      setDefectNotes('');
+      setContractor(serviceOrder?.contractorId || '');
+      setReturnDate(new Date().toISOString().slice(0, 10));
+      setReceiptFile(null);
+    }
 
   }, [open, serviceOrder?.contractorId]);
   // Pré-preenche BONS com o saldo na rua (do prestador selecionado) — atualiza ao trocar.
@@ -132,7 +149,19 @@ export default function ServiceOrderReturnDialog({ open, onOpenChange, serviceOr
 
   const totalReturn = qtyGood + qtyDefect + qtyLoss;
   const exceeds = totalReturn > inField;
-  const remaining = inField - totalReturn;
+  const remainingTotal = Math.max(0, Number(balance?.qty_in_field ?? inField) - totalReturn);
+  const reworkCreated = Math.max(0, qtyDefect - Math.min(qtyScrapped, qtyDefect));
+  const expectedPayable = qtyGood * Math.max(0, Number(serviceOrder?.unitPrice ?? 0));
+  // Em remessa dividida, prazo financeiro pertence a quem efetivamente
+  // devolveu — pode ser diferente do prestador do cabeçalho da OS.
+  const selectedContractor = contractors.find(c => c.id === contractor);
+  const paymentDays = Math.max(0, Number(selectedContractor?.payment_days ?? serviceOrder?.paymentDays ?? 30));
+  const expectedDueDate = useMemo(() => {
+    if (!returnDate || paymentDays >= 999) return null;
+    const d = new Date(`${returnDate}T12:00:00`);
+    d.setDate(d.getDate() + paymentDays);
+    return d.toLocaleDateString('pt-BR');
+  }, [returnDate, paymentDays]);
 
   const fmtDate = useMemo(() => (s: string) => new Date(s).toLocaleDateString('pt-BR'), []);
 
@@ -141,35 +170,66 @@ export default function ServiceOrderReturnDialog({ open, onOpenChange, serviceOr
     if (dispatchTracked && !contractor) { toast.error('Selecione de qual prestador está voltando.'); return; }
     if (totalReturn <= 0) { toast.error('Informe ao menos 1 par devolvido.'); return; }
     if (exceeds) { toast.error(`Retorno excede o saldo na rua (${inField} pares).`); return; }
+    if ((qtyDefect > 0 || qtyLoss > 0) && !defectNotes.trim()) {
+      toast.error('Descreva o defeito/perda para preservar a rastreabilidade da conferência.');
+      return;
+    }
     setSaving(true);
+    let uploadedPath: string | null = null;
     try {
+      let signedPhotoUrl: string | null = null;
+      if (receiptFile) {
+        const uploaded = await uploadSignedReceiptPhoto(soId, receiptFile);
+        signedPhotoUrl = uploaded.url;
+        uploadedPath = uploaded.path;
+      }
       const { error } = await (supabase as any).from('service_order_returns').insert({
         service_order_id: soId,
+        returned_at: new Date(`${returnDate}T12:00:00`).toISOString(),
         qty_good: qtyGood,
         qty_defect: qtyDefect,
         qty_defect_scrapped: Math.min(qtyScrapped, qtyDefect),
         qty_loss: qtyLoss,
         defect_notes: defectNotes.trim() || null,
         contractor_id: dispatchTracked ? (contractor || null) : null,
+        signed_photo_url: signedPhotoUrl,
       });
       if (error) throw error;
 
-      const completed = remaining <= 0;
+      // Mantém a coluna legada no cabeçalho para relatórios antigos, enquanto a
+      // evidência correta fica presa ao retorno que ela documenta.
+      if (signedPhotoUrl) {
+        const { error: photoErr } = await (supabase as any)
+          .from('service_orders')
+          .update({ signed_photo_url: signedPhotoUrl })
+          .eq('id', soId);
+        if (photoErr) toast.warning('Conferência salva, mas a foto não apareceu no cabeçalho da OS.');
+      }
+
+      // Em OS dividida, zerar um prestador não conclui se outro ainda tem saldo.
+      // Defeito não-sucateado também mantém a OS aberta para retrabalho.
+      const completed = remainingTotal <= 0 && reworkCreated <= 0;
       toast.success(
         completed
-          ? `OS ${serviceOrder?.order_number ?? ''} entregue por completo — conta a pagar gerada pelos pares bons.`
-          : `Retorno registrado — restam ${remaining} pares na rua.`,
+          ? `OS ${serviceOrder?.order_number ?? ''} conferida por completo — financeiro gerado pelos pares bons.`
+          : reworkCreated > 0
+            ? `Conferência registrada — ${reworkCreated} par(es) aguardam retrabalho.`
+            : `Conferência parcial registrada — restam ${remainingTotal} pares na rua.`,
       );
       qc.invalidateQueries({ queryKey: ['service_orders'] });
       qc.invalidateQueries({ queryKey: ['v_contractor_metrics'] });
       qc.invalidateQueries({ queryKey: ['v_contractor_history_orders'] });
       qc.invalidateQueries({ queryKey: ['accounts_payable'] });
       qc.invalidateQueries({ queryKey: ['service_order_overview'] });
+      qc.invalidateQueries({ queryKey: ['service_order_timeline', soId] });
       qc.invalidateQueries({ queryKey: ['so_return_dialog', soId] });
       onSaved?.({ completed });
       if (completed) onOpenChange(false);
       else refetch();
     } catch (e: any) {
+      if (uploadedPath) {
+        try { await supabase.storage.from('service-orders').remove([uploadedPath]); } catch { /* best effort */ }
+      }
       toast.error(`Falha ao registrar retorno: ${e?.message || 'erro desconhecido'}`);
     } finally {
       setSaving(false);
@@ -181,7 +241,7 @@ export default function ServiceOrderReturnDialog({ open, onOpenChange, serviceOr
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>
-            Registrar Retorno — OS {serviceOrder?.order_number ?? ''}
+            Conferir retorno — OS {serviceOrder?.order_number ?? ''}
           </DialogTitle>
         </DialogHeader>
 
@@ -197,7 +257,7 @@ export default function ServiceOrderReturnDialog({ open, onOpenChange, serviceOr
               )}
               <span className="text-muted-foreground">
                 Enviado <strong className="text-foreground">{balance?.qty_sent ?? serviceOrder?.quantity ?? 0}</strong>
-                {' · '}Devolvido <strong className="text-foreground">{(balance?.qty_returned_good ?? 0) + (balance?.qty_returned_defect ?? 0) + (balance?.qty_loss ?? 0)}</strong>
+                {' · '}Conferido <strong className="text-foreground">{(balance?.qty_returned_good ?? 0) + (balance?.qty_returned_defect ?? 0) + (balance?.qty_loss ?? 0)}</strong>
                 {' · '}Na rua <strong className="text-foreground">{inField}</strong>
               </span>
             </div>
@@ -232,6 +292,17 @@ export default function ServiceOrderReturnDialog({ open, onOpenChange, serviceOr
               </div>
             </div>
 
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <Label className="text-xs flex items-center gap-1"><Calendar className="h-3 w-3" /> Data da conferência</Label>
+                <Input type="date" value={returnDate} max={new Date().toISOString().slice(0, 10)} onChange={(e) => setReturnDate(e.target.value)} className="mt-1 h-9" />
+              </div>
+              <div>
+                <Label className="text-xs flex items-center gap-1"><Camera className="h-3 w-3" /> Canhoto/foto (opcional)</Label>
+                <Input type="file" accept="image/*,.pdf" onChange={(e) => setReceiptFile(e.target.files?.[0] || null)} className="mt-1 h-9 text-xs" />
+              </div>
+            </div>
+
             {/* Destino do defeito: sem isso, TODO par defeituoso ficava como
                 retrabalho pendente e nunca havia como registrar sucata. */}
             {qtyDefect > 0 && (
@@ -263,24 +334,40 @@ export default function ServiceOrderReturnDialog({ open, onOpenChange, serviceOr
 
             {(qtyDefect > 0 || qtyLoss > 0) && (
               <div>
-                <Label className="text-xs">Observação (defeito/perda)</Label>
+                <Label className="text-xs">Ocorrência do defeito/perda *</Label>
                 <Textarea value={defectNotes} onChange={e => setDefectNotes(e.target.value)} rows={2} placeholder="Ex.: costura torta em 4 pares" />
+              </div>
+            )}
+
+            {totalReturn > 0 && (
+              <div className="rounded-md border border-primary/20 bg-primary/5 p-3 text-xs">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="flex items-center gap-1.5 font-semibold text-foreground"><CurrencyDollar className="h-4 w-4 text-primary" /> Envio ao financeiro</span>
+                  <strong className="font-mono text-sm tabular-nums">{paymentDays >= 999 ? 'Não gera AP' : formatCurrency(expectedPayable)}</strong>
+                </div>
+                <p className="mt-1 text-muted-foreground">
+                  {paymentDays >= 999
+                    ? 'Prestador interno FÁBRICA: a conferência fecha o fluxo físico sem criar conta a pagar.'
+                    : <>{qtyGood} bons × {formatCurrency(Number(serviceOrder?.unitPrice ?? 0))}/par{expectedDueDate ? ` · vence ${expectedDueDate}` : ''}. Defeito e perda não são pagos.</>}
+                </p>
               </div>
             )}
 
             <div className="text-xs">
               {exceeds ? (
                 <span className="text-red-600">Retorno ({totalReturn}) excede o saldo na rua ({inField}).</span>
-              ) : remaining > 0 ? (
-                <span className="text-amber-600">Retorno parcial — ficarão {remaining} pares na rua.</span>
+              ) : remainingTotal > 0 ? (
+                <span className="text-amber-600">Conferência parcial — ficarão {remainingTotal} pares na rua.</span>
+              ) : reworkCreated > 0 ? (
+                <span className="text-amber-600">Conferência completa desta remessa, mas {reworkCreated} par(es) reabrem saldo de retrabalho.</span>
               ) : totalReturn > 0 ? (
-                <span className="text-green-600">Retorno total — a OS será fechada e a conta a pagar gerada (pares bons × preço).</span>
+                <span className="text-green-600">Conferência total — a OS será fechada e o financeiro receberá somente os pares bons.</span>
               ) : null}
             </div>
 
             {(data?.returns?.length ?? 0) > 0 && (
               <div className="border border-border rounded-md p-2 max-h-32 overflow-auto">
-                <p className="text-[11px] font-medium text-muted-foreground mb-1">Retornos anteriores</p>
+                <p className="text-[11px] font-medium text-muted-foreground mb-1">Conferências anteriores</p>
                 {data!.returns.map(r => (
                   <div key={r.id} className="text-xs flex items-center justify-between py-0.5">
                     <span>{fmtDate(r.returned_at)}</span>
@@ -296,8 +383,8 @@ export default function ServiceOrderReturnDialog({ open, onOpenChange, serviceOr
 
         <DialogFooter>
           <Button variant="outline" className="h-9" onClick={() => onOpenChange(false)}>Cancelar</Button>
-          <Button className="h-9" onClick={handleSave} disabled={saving || isLoading || totalReturn <= 0 || exceeds || (dispatchTracked && !contractor)}>
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Registrar retorno'}
+          <Button className="h-9" onClick={handleSave} disabled={saving || isLoading || totalReturn <= 0 || exceeds || !returnDate || ((qtyDefect > 0 || qtyLoss > 0) && !defectNotes.trim()) || (dispatchTracked && !contractor)}>
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Concluir conferência'}
           </Button>
         </DialogFooter>
       </DialogContent>

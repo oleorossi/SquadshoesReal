@@ -273,9 +273,6 @@ export function OutsourcingPlanningTab() {
     if (!assignTarget || !assignContractorId) return;
     setAssigning(true);
     try {
-      // Fluxo canônico de criação de OS (mesmo do ServiceOrderFormDialog):
-      // número via generateServiceOrderNumber, status 'Pendente', target_sector.
-      const order_number = await generateServiceOrderNumber();
       // Tarifa vigente serviço×prestadora — OS de excedente não nasce mais sem preço
       let unitPrice = 0;
       try {
@@ -286,6 +283,13 @@ export function OutsourcingPlanningTab() {
         });
         unitPrice = rate != null ? Number(rate) : 0;
       } catch { /* sem tarifa */ }
+      if (unitPrice <= 0) {
+        toast.error('Cadastre a tarifa R$/par deste prestador e setor antes de emitir a OS.');
+        return;
+      }
+      // Fluxo de planejamento não está ligado a uma OP única, mas preserva a
+      // mesma regra operacional: tarifa válida + despacho físico explícito.
+      const order_number = await generateServiceOrderNumber();
       await createOrder.mutateAsync({
         contractor_id: assignContractorId,
         order_number,
@@ -298,7 +302,8 @@ export function OutsourcingPlanningTab() {
         target_sector: assignTarget.sectorKey,
         bottleneck_week: assignTarget.weekIso,
         linked_sale_order_ids: assignTarget.pvIds,
-        notes: unitPrice > 0 ? 'Gerada pela aba Planejamento (demanda > capacidade interna). Preço pela tabela vigente.' : 'Gerada pela aba Planejamento (demanda > capacidade interna). SEM TARIFA cadastrada — definir valor por par com a contratada.',
+        dispatch_tracked: true,
+        notes: 'Gerada pela aba Planejamento (demanda > capacidade interna). Preço pela tabela vigente.',
       } as any);
       toast.success(`OS de excedente criada — ${assignTarget.sectorLabel}, semana de ${format(new Date(assignTarget.weekIso + 'T00:00:00'), 'dd/MM/yyyy')}.`);
       setAssignTarget(null);

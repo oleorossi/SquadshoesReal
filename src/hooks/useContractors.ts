@@ -131,10 +131,11 @@ export function useServiceOrders() {
         // prestador (endereço, documentos, dados bancários, campos de busca…)
         // repetida uma vez por OS. Com ~380 OS pra 6 prestadores, o mesmo registro
         // vinha centenas de vezes e sozinho dominava os 748 kB da resposta. Um grep
-        // no repo inteiro mostra que só `name` e `trade_name` são lidos do embed.
+        // no repo inteiro mostra que só identificação e prazo financeiro são
+        // lidos do embed.
         const { data, error } = await supabase
           .from('service_orders')
-          .select('*, contractors(id, name, trade_name)')
+          .select('*, contractors(id, name, trade_name, payment_days)')
           .order('created_at', { ascending: false })
           .range(from, from + PAGE - 1);
         if (error) throw error;
@@ -175,10 +176,16 @@ export interface ServiceOrderOverview {
   qty_in_field: number | null;
   /** Despacho bruto real; em OS legada inclui o envio inicial implícito. */
   qty_dispatched?: number | null;
+  /** Saldo que ainda pode ser remetido (inclui crédito de retrabalho). */
+  qty_to_dispatch?: number | null;
   /** Defeito que ainda pode voltar ao prestador (não sucateado). */
   qty_defect_pending_rework?: number | null;
   /** Perda + sucata: o que a OS não entrega sem reposição de material. */
   qty_short?: number | null;
+  /** Quantidade de títulos financeiros ativos ligados à OS/retornos. */
+  payable_count?: number | null;
+  /** Anomalia operacional calculada pelo read model novo. */
+  workflow_issue?: 'missing_rate' | 'missing_payable' | string | null;
   last_return_at: string | null;
 }
 
@@ -190,17 +197,32 @@ export function useServiceOrderOverview() {
       // em ~1.000 linhas no PostgREST e fazia lista e saldos cobrirem universos
       // diferentes.
       const PAGE = 1000;
-      const rows: ServiceOrderOverview[] = [];
-      for (let from = 0; ; from += PAGE) {
-        const { data, error } = await supabase
-          .from('v_service_order_overview')
-          .select('*')
-          .order('service_order_id', { ascending: true })
-          .range(from, from + PAGE - 1);
-        if (error) throw error;
-        const page = (data ?? []) as unknown as ServiceOrderOverview[];
-        rows.push(...page);
-        if (page.length < PAGE) break;
+      const loadView = async (view: string) => {
+        const rows: ServiceOrderOverview[] = [];
+        for (let from = 0; ; from += PAGE) {
+          const { data, error } = await (supabase as any)
+            .from(view)
+            .select('*')
+            .order('service_order_id', { ascending: true })
+            .range(from, from + PAGE - 1);
+          if (error) throw error;
+          const page = (data ?? []) as unknown as ServiceOrderOverview[];
+          rows.push(...page);
+          if (page.length < PAGE) break;
+        }
+        return rows;
+      };
+
+      let rows: ServiceOrderOverview[];
+      try {
+        rows = await loadView('v_service_order_operational');
+      } catch (error: any) {
+        // Durante os poucos segundos entre o deploy do frontend e a migration,
+        // preserva a leitura antiga. Outros erros continuam visíveis.
+        const missingView = ['42P01', 'PGRST205'].includes(error?.code)
+          || /v_service_order_operational.*(does not exist|schema cache)/i.test(error?.message || '');
+        if (!missingView) throw error;
+        rows = await loadView('v_service_order_overview');
       }
       const map = new Map<string, ServiceOrderOverview>();
       for (const row of rows) {
@@ -471,8 +493,9 @@ export function useDeleteServiceOrder() {
 }
 
 /**
- * P0.3 (2026-07): recebimento TOTAL em lote — insere um retorno com o saldo na
- * rua de cada OS selecionada. A cadeia EXISTENTE faz o resto:
+ * Compatibilidade com OS legadas: recebimento TOTAL em lote insere um retorno
+ * com o saldo implícito de cada OS selecionada. OS novas usam despacho rastreado
+ * e passam obrigatoriamente pela conferência individual:
  * tg_apply_service_order_return → status 'Concluído' → tg_create_ap_for_service_order
  * → conta a pagar pelos pares bons (com guarda FÁBRICA payment_days≥999 e
  * anti-duplicata). Perda/defeito usa o ServiceOrderReturnDialog individual —

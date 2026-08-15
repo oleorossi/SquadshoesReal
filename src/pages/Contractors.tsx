@@ -2,15 +2,15 @@ import AppLayout from "@/components/layout/AppLayout";
 import ServiceOrderReturnDialog from '@/components/contractors/ServiceOrderReturnDialog';
 import ServiceOrderDispatchDialog from '@/components/contractors/ServiceOrderDispatchDialog';
 import { GenerateServiceOrdersWizard } from '@/components/contractors/GenerateServiceOrdersWizard';
-import ConsolidatedServiceOrders from '@/components/contractors/ConsolidatedServiceOrders';
+import { ServiceOrderGenerationGapsAlert } from '@/components/contractors/ServiceOrderGenerationGapsAlert';
+import { ServiceOrderTimeline } from '@/components/contractors/ServiceOrderTimeline';
 import { printServiceOrderReceipt, expandBaseGrade } from '@/lib/printServiceOrderReceipt';
 import { thumbUrl } from '@/lib/imageThumb';
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { useCan } from '@/hooks/useAccessControl';
-import { CircleNotch as Loader2, Plus, MagnifyingGlass as Search, PencilSimple as Pencil, Trash as Trash2, FileText, Handshake, Printer, X, Check, CaretUpDown as ChevronsUpDown, Upload, CheckCircle as CheckCircle2, Circle, ClipboardText as ClipboardList, CurrencyDollar as DollarSign, Clock, Users, ArrowRight, Package, Flask as FlaskConical, Scissors, Warning as AlertTriangle, WarningCircle as AlertCircle, CalendarBlank as Calendar, LockKey as Lock, Play, ClockCounterClockwise, ChartLineUp, FileArrowDown as FileDown, Funnel, Truck, DotsThreeVertical as MoreVertical, Archive, List as ListIcon, SquaresFour } from '@phosphor-icons/react';
-import { ReceivePiecesDialog } from '@/components/bottlenecks/ReceivePiecesDialog';
+import { CircleNotch as Loader2, Plus, MagnifyingGlass as Search, PencilSimple as Pencil, Trash as Trash2, FileText, Handshake, Printer, X, Check, CaretUpDown as ChevronsUpDown, Upload, CheckCircle as CheckCircle2, Circle, ClipboardText as ClipboardList, CurrencyDollar as DollarSign, Clock, Users, ArrowRight, Package, Flask as FlaskConical, Scissors, Warning as AlertTriangle, WarningCircle as AlertCircle, CalendarBlank as Calendar, LockKey as Lock, ClockCounterClockwise, ChartLineUp, FileArrowDown as FileDown, Funnel, Truck, DotsThreeVertical as MoreVertical, Archive, List as ListIcon, SquaresFour } from '@phosphor-icons/react';
 import { SECTOR_LABEL, SectorKey } from '@/hooks/useSectorBottlenecks';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -44,7 +44,8 @@ import {
 } from '@/hooks/useContractors';
 import { SERVICE_ORDER_SECTORS } from '@/lib/serviceOrderSectors';
 import { opNumberByPvItem, opNumbersForServiceOrder, type OpRefWithReference } from '@/lib/serviceOrderOps';
-import { OsPaymentBadge, OsBalanceLine } from '@/components/contractors/OsStatusIndicators';
+import { OsPaymentBadge, OsBalanceLine, OsWorkflowRail } from '@/components/contractors/OsStatusIndicators';
+import { resolveServiceOrderWorkflow } from '@/lib/serviceOrderWorkflow';
 import {
   OS_DONE_STATUSES, OS_CANCELLED_STATUSES, OS_PENDING_STATUSES, OS_STATUS,
   isOsDone, isOsCancelled, isOsActive, osStatusLabel, osStatusBadgeVariant,
@@ -88,6 +89,7 @@ const emptyOrder: Partial<ServiceOrder> & { materials_sent: MaterialSent[] } = {
   sale_order_id: null,
   target_sector: null,     // setor terceirizado (obrigatório no form manual)
   is_avulsa: true,         // toda OS criada pelo form manual é avulsa
+  dispatch_tracked: true,  // OS nova só entra "na rua" depois de uma remessa explícita
   order_id: null,          // vínculo opcional com a OP
   artisanal_recipe_id: null,
   artisanal_output_name: '',
@@ -276,13 +278,6 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
   const [editingRecipe, setEditingRecipe] = useState<Partial<ArtisanalRecipe>>(emptyRecipe);
   const [isEditing, setIsEditing] = useState(false);
   const [isEditingRecipe, setIsEditingRecipe] = useState(false);
-  const [receiveDialogOpen, setReceiveDialogOpen] = useState(false);
-  const [receiveTarget, setReceiveTarget] = useState<ServiceOrder | null>(null);
-
-  const openReceiveDialog = (o: ServiceOrder) => {
-    setReceiveTarget(o);
-    setReceiveDialogOpen(true);
-  };
   const [orderTab, setOrderTab] = useState('dados');
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   // Busca do seletor de pedido (PV/OP) — filtro manual (shouldFilter=false) sobre
@@ -676,46 +671,37 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
   // Uma ação principal por estado. As alternativas continuam no menu, mas a
   // linha deixa de apresentar quatro conclusões concorrentes ao mesmo tempo.
   const renderOsActions = (o: ServiceOrder) => {
-    const isBottleneckOS = !!o.target_sector;
     const active = isOsActive(o.status);
-    const isPendingReceive = isBottleneckOS
-      && o.status !== 'received' && o.status !== 'Concluído'
-      && o.status !== 'Cancelado' && o.status !== 'cancelled';
-    const canReceive = isBottleneckOS && active && isPendingReceive;
-    const canDispatch = Boolean(o.dispatch_tracked) && active;
-    const canProcess = active
-      && o.status !== 'Em Andamento'
-      && !['pending_quote', 'quoted_unconfirmed'].includes(String(o.status));
-    const primaryAction = canReceive
-      ? 'receive'
-      : canDispatch
-        ? 'dispatch'
-        : canProcess
-          ? 'process'
-          : active
-            ? 'return'
-            : null;
+    const ov = osOverview?.get(o.id);
+    const workflow = resolveServiceOrderWorkflow({
+      status: o.status,
+      dispatchTracked: o.dispatch_tracked,
+      quantity: o.quantity,
+      qtyDispatched: ov?.qty_dispatched,
+      qtyInField: ov?.qty_in_field,
+      qtyToDispatch: ov?.qty_to_dispatch,
+      qtyReturnedGood: ov?.qty_returned_good,
+      qtyReturnedDefect: ov?.qty_returned_defect,
+      qtyLoss: ov?.qty_loss,
+      hasPayable: ov?.has_payable,
+      isPaid: ov?.is_paid,
+    });
 
     return (
       <div className="flex min-w-0 flex-wrap items-center justify-end gap-1">
-        {primaryAction === 'receive' && (
-          <Button size="sm" variant="outline" className="h-9 gap-1 px-2.5 text-xs" onClick={() => openReceiveDialog(o)}>
-            <CheckCircle2 className="h-3 w-3" /> Receber
+        {workflow.primaryAction === 'conference' && (
+          <Button size="sm" variant="outline" className="h-9 gap-1 px-2.5 text-xs" onClick={() => setReturnDialogOs(o)}>
+            <CheckCircle2 className="h-3 w-3" /> Conferir retorno
           </Button>
         )}
-        {primaryAction === 'dispatch' && (
+        {workflow.primaryAction === 'dispatch' && (
           <Button size="sm" variant="outline" className="h-9 gap-1 px-2.5 text-xs" onClick={() => setDispatchDialogOs(o)}>
-            <Truck className="h-3 w-3" /> Enviar
+            <Truck className="h-3 w-3" /> Enviar{workflow.qtyDispatched > 0 ? ' saldo' : ''}
           </Button>
         )}
-        {primaryAction === 'process' && (
-          <Button size="sm" variant="outline" className="h-9 gap-1 px-2.5 text-xs" title="Mover para Em Processamento" onClick={() => markInProgress(o)}>
-            <Play className="h-3 w-3" /> Processar
-          </Button>
-        )}
-        {primaryAction === 'return' && (
-          <Button size="sm" variant="outline" className="h-9 gap-1 px-2.5 text-xs" title="Registrar o retorno do serviço" onClick={() => markDelivered(o)}>
-            <CheckCircle2 className="h-3 w-3" /> Registrar retorno
+        {workflow.primaryAction === 'finance' && (
+          <Button size="sm" variant="outline" className="h-9 gap-1 px-2.5 text-xs" onClick={() => navigate(`/finance?tab=payable&q=${encodeURIComponent(o.order_number)}`)}>
+            <DollarSign className="h-3 w-3" /> Ver financeiro
           </Button>
         )}
         <DropdownMenu>
@@ -723,17 +709,14 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
             <Button variant="ghost" size="icon" className="h-9 w-9" aria-label={`Mais ações da OS ${o.order_number}`}><MoreVertical className="h-4 w-4" /></Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-52">
-            {canReceive && primaryAction !== 'receive' && (
-              <DropdownMenuItem onClick={() => openReceiveDialog(o)}><CheckCircle2 className="mr-2 h-3.5 w-3.5" /> Receber</DropdownMenuItem>
+            {workflow.canConference && workflow.primaryAction !== 'conference' && (
+              <DropdownMenuItem onClick={() => setReturnDialogOs(o)}><CheckCircle2 className="mr-2 h-3.5 w-3.5" /> Conferir retorno</DropdownMenuItem>
             )}
-            {canDispatch && primaryAction !== 'dispatch' && (
-              <DropdownMenuItem onClick={() => setDispatchDialogOs(o)}><Truck className="mr-2 h-3.5 w-3.5" /> Enviar</DropdownMenuItem>
+            {workflow.canDispatch && workflow.primaryAction !== 'dispatch' && (
+              <DropdownMenuItem onClick={() => setDispatchDialogOs(o)}><Truck className="mr-2 h-3.5 w-3.5" /> Enviar saldo</DropdownMenuItem>
             )}
-            {canProcess && primaryAction !== 'process' && (
-              <DropdownMenuItem onClick={() => markInProgress(o)}><Play className="mr-2 h-3.5 w-3.5" /> Processar</DropdownMenuItem>
-            )}
-            {active && primaryAction !== 'return' && (
-              <DropdownMenuItem onClick={() => markDelivered(o)}><CheckCircle2 className="mr-2 h-3.5 w-3.5" /> Registrar retorno</DropdownMenuItem>
+            {workflow.canOpenFinance && workflow.primaryAction !== 'finance' && (
+              <DropdownMenuItem onClick={() => navigate(`/finance?tab=payable&q=${encodeURIComponent(o.order_number)}`)}><DollarSign className="mr-2 h-3.5 w-3.5" /> Ver no financeiro</DropdownMenuItem>
             )}
             {active && <DropdownMenuSeparator />}
             <DropdownMenuItem onClick={() => openEditOrder(o)}><Pencil className="mr-2 h-3.5 w-3.5" /> Editar</DropdownMenuItem>
@@ -826,10 +809,13 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
         </div>
         <div className="flex flex-wrap items-center justify-between gap-2 border-t bg-muted/30 px-3 py-2">
           <div className="min-w-0">
-            <OsPaymentBadge ov={osOverview?.get(o.id)} osStatus={o.status} />
+            <OsPaymentBadge ov={osOverview?.get(o.id)} osStatus={o.status} expectsPayable={Number(o.contractors?.payment_days ?? 30) < 999} />
             <OsBalanceLine ov={osOverview?.get(o.id)} />
           </div>
           {renderOsActions(o)}
+        </div>
+        <div className="border-t px-3 pb-2">
+          <OsWorkflowRail order={o} ov={osOverview?.get(o.id)} />
         </div>
       </article>
     );
@@ -905,6 +891,10 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
     () => selectedOrders.filter(o => isOsActive(o.status) && !o.archived_at),
     [selectedOrders],
   );
+  const bulkReceivableLegacy = useMemo(
+    () => bulkReceivable.filter(o => !o.dispatch_tracked),
+    [bulkReceivable],
+  );
 
   // Quebra por prestador do que o recebimento em lote vai efetivamente cobrar.
   // A confirmação descrevia o efeito ("gera conta a pagar") mas não mostrava
@@ -912,8 +902,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
   const bulkReceivePreview = useMemo(() => {
     const byContractor = new Map<string, { name: string; os: number; pairs: number; value: number }>();
     let skipped = 0;
-    for (const o of bulkReceivable) {
-      if (o.dispatch_tracked) { skipped++; continue; }
+    for (const o of bulkReceivableLegacy) {
       const ov = osOverview?.get(o.id);
       const pairs = Math.max(0, Number(ov?.qty_in_field ?? o.quantity ?? 0));
       if (pairs <= 0) { skipped++; continue; }
@@ -926,7 +915,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
     }
     const rows = Array.from(byContractor.values()).sort((a, b) => b.value - a.value);
     return { rows, skipped, total: rows.reduce((s, r) => s + r.value, 0) };
-  }, [bulkReceivable, osOverview]);
+  }, [bulkReceivableLegacy, osOverview]);
   const allOsSelected = filteredOrders.length > 0 && filteredOrders.every(o => selectedOsIds.has(o.id));
   const toggleSelectAllOs = useCallback(() => {
     setSelectedOsIds(prev => (filteredOrders.length > 0 && filteredOrders.every(o => prev.has(o.id))) ? new Set() : new Set(filteredOrders.map(o => o.id)));
@@ -1408,9 +1397,6 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
   const [dispatchDialogOs, setDispatchDialogOs] = useState<ServiceOrder | null>(null);
   // Confirmação estilizada de exclusão de OS (substitui window.confirm nativo).
   const [deleteOsTarget, setDeleteOsTarget] = useState<ServiceOrder | null>(null);
-  const markDelivered = useCallback((o: ServiceOrder) => {
-    setReturnDialogOs(o);
-  }, []);
   const handleReturnSaved = useCallback(async (info: { completed: boolean }) => {
     const o = returnDialogOs;
     if (!info.completed || !o) return;
@@ -1430,12 +1416,6 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
       }
     }
   }, [returnDialogOs, produceArtisanalOutput]);
-
-  // "Em Processamento" (DB: 'Em Andamento') — passa pelo hook canônico, que já
-  // bloqueia downgrade de OS Concluída e invalida o cache.
-  const markInProgress = useCallback((o: ServiceOrder) => {
-    updateOrder.mutate({ id: o.id, status: 'Em Andamento' } as any);
-  }, [updateOrder]);
 
   // Dar baixa / reabrir um material da OS. Quando TODOS ficam baixados, a OS
   // fecha (status→Concluído) via claim atômico (.neq status) que evita
@@ -1519,6 +1499,9 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
           `Produção artesanal: ${recipe.artisanal_product_name} (${artOutputColor}) — ${totalToProduce.toFixed(2)}m`,
         total_value: laborCost,
         unit_price: laborCost,
+        // Produção artesanal conserva o fluxo legado de transformação de
+        // estoque; o despacho físico rastreado vale para OS de setor por pares.
+        dispatch_tracked: false,
       };
       if (artOutputColor && baseMetersSend > 0) {
         artMaterials = [{ material: recipe.base_product_name, color: artOutputColor, meters: Number(baseMetersSend.toFixed(4)) }];
@@ -1818,6 +1801,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
 
           {/* ── ORDERS TAB ── */}
           <TabsContent value="orders" className="mt-3 space-y-3">
+            <ServiceOrderGenerationGapsAlert />
             <section aria-label="Busca, filtros e ações das ordens" className="overflow-hidden rounded-lg border bg-card">
               <div className="flex flex-col gap-3 p-3 lg:flex-row lg:items-center">
                 <SearchInput
@@ -2099,12 +2083,15 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                         </div>
 
                         {/* Rodapé: pagamento + ações contextuais + menu (faixa) */}
-                        <div className="-mx-3.5 -mb-3.5 mt-3 flex flex-wrap items-center justify-between gap-2 rounded-b-xl border-t border-border/60 bg-muted/30 px-3.5 pb-3 pt-2.5">
-                          <div className="flex min-w-0 flex-col gap-0.5">
-                            <OsPaymentBadge ov={osOverview?.get(o.id)} osStatus={o.status} />
-                            <OsBalanceLine ov={osOverview?.get(o.id)} />
+                        <div className="-mx-3.5 -mb-3.5 mt-3 rounded-b-xl border-t border-border/60 bg-muted/30 px-3.5 pb-3 pt-2.5">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex min-w-0 flex-col gap-0.5">
+                              <OsPaymentBadge ov={osOverview?.get(o.id)} osStatus={o.status} orderNumber={o.order_number} expectsPayable={Number(o.contractors?.payment_days ?? 30) < 999} />
+                              <OsBalanceLine ov={osOverview?.get(o.id)} />
+                            </div>
+                            {renderOsActions(o)}
                           </div>
-                          {renderOsActions(o)}
+                          <OsWorkflowRail order={o} ov={osOverview?.get(o.id)} />
                         </div>
                       </div>
                     );
@@ -2176,7 +2163,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                                 fazia o pagamento parecer ausente do fluxo. */}
                             <TableCell className="whitespace-nowrap">
                               <div className="flex flex-col gap-0.5">
-                                <OsPaymentBadge ov={osOverview?.get(o.id)} osStatus={o.status} />
+                                <OsPaymentBadge ov={osOverview?.get(o.id)} osStatus={o.status} orderNumber={o.order_number} expectsPayable={Number(o.contractors?.payment_days ?? 30) < 999} />
                                 <OsBalanceLine ov={osOverview?.get(o.id)} />
                               </div>
                             </TableCell>
@@ -2492,6 +2479,9 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
             <TabsList className="w-full">
               <TabsTrigger value="dados" className="flex-1">Dados</TabsTrigger>
               <TabsTrigger value="foto" className="flex-1 gap-1"><Upload className="h-3.5 w-3.5" /> Foto Assinada</TabsTrigger>
+              {isEditing && editingOrder.id && (
+                <TabsTrigger value="historico" className="flex-1 gap-1"><ClockCounterClockwise className="h-3.5 w-3.5" /> Histórico</TabsTrigger>
+              )}
             </TabsList>
 
             <TabsContent value="dados" className="mt-3">
@@ -2931,6 +2921,12 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
               </div>
             </TabsContent>
 
+            {isEditing && editingOrder.id && (
+              <TabsContent value="historico" className="mt-4">
+                <ServiceOrderTimeline serviceOrderId={editingOrder.id} />
+              </TabsContent>
+            )}
+
             <TabsContent value="foto" className="mt-3">
               {/* placeholder marker */}
               <div className="space-y-4">
@@ -3053,6 +3049,8 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
           contractorName: returnDialogOs.contractors?.name ?? null,
           dispatchTracked: (returnDialogOs as any).dispatch_tracked ?? false,
           contractorId: returnDialogOs.contractor_id ?? null,
+          unitPrice: returnDialogOs.unit_price ?? 0,
+          paymentDays: contractors.find((c) => c.id === returnDialogOs.contractor_id)?.payment_days ?? 30,
         } : null}
         onSaved={handleReturnSaved}
       />
@@ -3068,7 +3066,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
           contractorName: dispatchDialogOs.contractors?.name ?? null,
           contractorId: dispatchDialogOs.contractor_id ?? null,
         } : null}
-        onReceive={() => { const o = dispatchDialogOs; if (o) openReceiveDialog(o); }}
+        onReceive={() => { const o = dispatchDialogOs; if (o) setReturnDialogOs(o); }}
       />
 
       <ContractorHistoryDialog
@@ -3082,23 +3080,6 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
         open={!!ratesContractor}
         onOpenChange={(open) => { if (!open) setRatesContractor(null); }}
         contractor={ratesContractor ? { id: ratesContractor.id, name: ratesContractor.trade_name || ratesContractor.name } : null}
-      />
-
-      <ReceivePiecesDialog
-        open={receiveDialogOpen}
-        onOpenChange={setReceiveDialogOpen}
-        serviceOrder={receiveTarget ? {
-          id: receiveTarget.id,
-          order_number: receiveTarget.order_number,
-          target_sector: receiveTarget.target_sector ?? null,
-          quantity: receiveTarget.quantity,
-          quoted_deadline: receiveTarget.quoted_deadline ?? null,
-          bottleneck_week: receiveTarget.bottleneck_week ?? null,
-          order_id: receiveTarget.order_id ?? null,
-          description: receiveTarget.description,
-          notes: receiveTarget.notes,
-          contractors: receiveTarget.contractors ? { name: receiveTarget.contractors.name } : null,
-        } : null}
       />
 
       {currentTab === 'contractors' && sel.selectedIds.size > 0 && (
@@ -3130,22 +3111,21 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
         generating={osPdfBusy}
         extraActions={
           <>
-            {bulkReceivable.length > 0 && (
+            {bulkReceivableLegacy.length > 0 && (
               <AlertDialog>
                 <AlertDialogTrigger asChild>
                   <Button size="sm" variant="outline" className="gap-1.5" disabled={bulkReceive.isPending}>
                     {bulkReceive.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
-                    Receber {bulkReceivable.length}
+                    Receber {bulkReceivableLegacy.length} legada(s)
                   </Button>
                 </AlertDialogTrigger>
                 <AlertDialogContent>
                   <AlertDialogHeader>
-                    <AlertDialogTitle>Receber {bulkReceivable.length} OS por completo?</AlertDialogTitle>
+                    <AlertDialogTitle>Receber {bulkReceivableLegacy.length} OS legada(s) por completo?</AlertDialogTitle>
                     <AlertDialogDescription>
                       Cada OS será marcada como Entregue e <strong>gera conta a pagar</strong> pelos
                       pares bons. OS de prestador interno (FÁBRICA) concluem sem gerar conta a pagar.
-                      Retorno com perda/defeito deve usar o recebimento individual da OS.
-                      {bulkReceivable.some(o => o.dispatch_tracked) && ' OS divididas entre prestadores serão puladas.'}
+                      Retorno com perda/defeito e toda OS nova devem usar a conferência individual.
                     </AlertDialogDescription>
                   </AlertDialogHeader>
 
@@ -3177,7 +3157,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                   <AlertDialogFooter>
                     <AlertDialogCancel>Cancelar</AlertDialogCancel>
                     <AlertDialogAction onClick={() => {
-                      bulkReceive.mutate(bulkReceivable.map(o => ({
+                      bulkReceive.mutate(bulkReceivableLegacy.map(o => ({
                         id: o.id, order_number: o.order_number, quantity: o.quantity, dispatch_tracked: o.dispatch_tracked,
                       })), { onSuccess: () => setSelectedOsIds(new Set()) });
                     }}>

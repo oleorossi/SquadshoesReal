@@ -23,6 +23,9 @@ export const SERVICE_ORDER_SECTORS: ReadonlyArray<{ value: string; label: string
   { value: 'montagem', label: 'Montagem' },
   { value: 'solagem', label: 'Solagem' },
   { value: 'acabamento', label: 'Acabamento' },
+  // Fluxo especial do pós-save: produção artesanal de tiras faltantes. Também
+  // precisa de tarifa e conferência; por isso participa do mesmo cadastro.
+  { value: 'tiras', label: 'Tiras Artesanais' },
 ];
 
 export const serviceOrderSectorLabel = (s: string | null | undefined): string =>

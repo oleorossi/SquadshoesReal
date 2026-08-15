@@ -179,6 +179,9 @@ export default function ServiceOrderDispatchDialog({ open, onOpenChange, service
                 <NumberInput value={qty} onChange={v => setQty(Math.max(0, Math.min(toDispatch, Math.trunc(v ?? 0))))} min={0} className="h-9" />
               </div>
             </div>
+            <p className="text-[11px] text-muted-foreground">
+              Outro prestador só pode receber parte desta OS quando a tarifa vigente dele for igual à tarifa do cabeçalho; isso evita gerar uma conta a pagar incorreta.
+            </p>
             <Textarea value={notes} onChange={e => setNotes(e.target.value)} rows={1} placeholder="Observação da remessa (opcional)" className="min-h-9" />
             {exceeds && <p className="text-xs text-red-600">Envio ({qty}) maior que o que falta enviar ({toDispatch}).</p>}
             {toDispatch === 0 && <p className="text-xs text-muted-foreground">Pedido todo enviado. Use <strong>Receber</strong> conforme a banca devolve.</p>}

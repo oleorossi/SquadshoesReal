@@ -21,7 +21,6 @@ import {
   type StrapShortage,
   type StrapIncompleteItem,
 } from '@/lib/strapShortages';
-import { addServiceOrderLine } from '@/hooks/useConsolidatedServiceOrders';
 import { generateServiceOrderNumber } from '@/lib/serviceOrderStock';
 
 type Mode = 'artesanal' | 'comprar';
@@ -169,81 +168,13 @@ export function StrapShortageDialog({ open, saleOrderId, saleOrderNumber, onClos
       const artesanal = rows.filter(r => r.mode === 'artesanal');
       const comprar = rows.filter(r => r.mode === 'comprar');
 
-      // 1) Artesanal → LINHA na OS aberta do prestador (OS consolidada).
-      // Antes criava 1 service_orders por tira (o print com 7 OS). Agora cada tira
-      // vira uma LINHA (add_service_order_line faz find-or-create da OS aberta do
-      // prestador), com pares (quantidade) + metragem (metros = pares × consumo/par,
-      // a 2ª unidade). Idempotente por source_item_key (reprocessar não duplica).
-      // Preço 0 até haver tarifa (contractor_service_rates) — firmado na entrega.
-      let zeroRateCount = 0;
-      let usedFlatFallback = false;
+      // Valida tudo que é previsível antes da primeira gravação. Assim uma
+      // tarifa ou fornecedor ausente não deixa metade do lote emitida.
       for (const r of artesanal) {
         if (!r.contractor_id) {
           throw new Error(`Selecione o prestador pra ${r.shortage.strap_label} ${r.shortage.strap_color}.`);
         }
-        const materialName = `TIRA ${r.shortage.strap_label} ${r.shortage.strap_color}`.trim();
-        const desc = `TIRA ARTESANAL · ${r.shortage.strap_label} ${r.shortage.strap_color}` +
-          ` · Ref ${r.shortage.cabedal_color}`;
-        const pares = Math.max(0, Math.round(Number(r.shortage.pairs) || 0));
-        // Metragem = pares × consumo por par (na unidade linear da tira). 2ª unidade.
-        const metros = (Number(r.shortage.pairs) || 0) * (Number(r.shortage.consumption_per_pair) || 0);
-        const metrosRound = metros > 0 ? Math.round(metros * 100) / 100 : null;
-        try {
-          await addServiceOrderLine({
-            contractorId: r.contractor_id,
-            sourceItemKey: `strap::${r.shortage.sale_order_item_id}::${r.shortage.strap_label}::${r.shortage.strap_color}`,
-            materialName,
-            description: desc,
-            saleOrderId: saleOrderId,
-            targetSector: 'Tiras',
-            color: r.shortage.strap_color,
-            quantity: pares,
-            unit: 'par',
-            meters: metrosRound,
-            unitPrice: 0,
-          });
-        } catch (e: any) {
-          // Fallback defensivo: enquanto a migration 20260913120000 (RPC
-          // add_service_order_line + tabela service_order_items) não estiver
-          // aplicada no banco, o modelo consolidado não existe. Em vez de
-          // quebrar a geração de tiras (feature viva), cai no modelo antigo
-          // (1 service_orders flat por tira). Some sozinho quando a migration
-          // entrar. Só faz fallback se o erro for "objeto não existe no schema".
-          const msg = String(e?.message || '');
-          const code = String(e?.code || '');
-          const schemaMissing = code === 'PGRST202' || code === 'PGRST205' || code === '42883' || code === '42P01'
-            || /add_service_order_line|service_order_items|could not find|schema cache|does not exist/i.test(msg);
-          if (!schemaMissing) {
-            throw new Error(`OS ${r.shortage.strap_label}: ${msg}`);
-          }
-          usedFlatFallback = true;
-          const order_number = await generateServiceOrderNumber();
-          const { error: flatErr } = await (supabase as any).from('service_orders').insert({
-            contractor_id: r.contractor_id,
-            order_number,
-            description: desc,
-            material_name: materialName,
-            material_color: r.shortage.strap_color,
-            material_meters: metrosRound,
-            target_sector: 'Tiras',
-            sale_order_id: saleOrderId,
-            quantity: pares,
-            unit_price: 0,
-            total_value: 0,
-            status: 'Pendente',
-            service_date: new Date().toISOString().slice(0, 10),
-          });
-          if (flatErr) throw new Error(`OS ${r.shortage.strap_label}: ${flatErr.message}`);
-        }
-        zeroRateCount++;
       }
-      if (zeroRateCount > 0) {
-        toast.warning(
-          `${zeroRateCount} tira(s) adicionada(s) ${usedFlatFallback ? 'como OS avulsa' : 'à OS do prestador'} a R$0 — cadastre a tarifa em Terceirizados → Tarifas por Referência pra valorar.`,
-        );
-      }
-
-      // 2) Comprar Pronto → purchase_orders + items
       for (const r of comprar) {
         if (!r.shortage.product_id) {
           throw new Error(
@@ -251,13 +182,76 @@ export function StrapShortageDialog({ open, saleOrderId, saleOrderNumber, onClos
             `primeiro cadastre o produto-tira nessa cor em /estoque.`
           );
         }
-        const sup = r.shortage.group_id ? suppliersByGroup.get(r.shortage.group_id) : null;
-        if (!sup) {
+        const supplier = r.shortage.group_id ? suppliersByGroup.get(r.shortage.group_id) : null;
+        if (!supplier) {
           throw new Error(
             `Sem fornecedor cadastrado pro grupo da ${r.shortage.strap_label}. ` +
             `Vincule um supplier ao produto-tira ou ao grupo do material.`
           );
         }
+      }
+
+      const rateByContractor = new Map<string, number>();
+      await Promise.all(Array.from(new Set(artesanal.map(r => r.contractor_id))).map(async (contractorId) => {
+        const { data: rate, error: rateError } = await (supabase as any).rpc('get_contractor_rate', {
+          p_contractor_id: contractorId,
+          p_sector: 'tiras',
+          p_date: new Date().toISOString().slice(0, 10),
+        });
+        if (rateError) throw rateError;
+        rateByContractor.set(contractorId, Number(rate) || 0);
+      }));
+      for (const r of artesanal) {
+        if ((rateByContractor.get(r.contractor_id) || 0) <= 0) {
+          throw new Error(`Cadastre a tarifa de Tiras Artesanais para o prestador de ${r.shortage.strap_label} antes de emitir a OS.`);
+        }
+      }
+
+      // 1) Artesanal → uma OS operacional por tira. O modelo antigo adicionava
+      // linhas num contêiner sem remessa física e sem AP por linha; aqui cada
+      // demanda percorre emissão → envio → conferência → financeiro.
+      let artisanOsCount = 0;
+      for (const r of artesanal) {
+        const materialName = `TIRA ${r.shortage.strap_label} ${r.shortage.strap_color}`.trim();
+        const desc = `TIRA ARTESANAL · ${r.shortage.strap_label} ${r.shortage.strap_color}` +
+          ` · Ref ${r.shortage.cabedal_color}`;
+        const pares = Math.max(0, Math.round(Number(r.shortage.pairs) || 0));
+        // Metragem = pares × consumo por par (na unidade linear da tira). 2ª unidade.
+        const metros = (Number(r.shortage.pairs) || 0) * (Number(r.shortage.consumption_per_pair) || 0);
+        const metrosRound = metros > 0 ? Math.round(metros * 100) / 100 : null;
+        const unitPrice = rateByContractor.get(r.contractor_id) || 0;
+
+        const order_number = await generateServiceOrderNumber();
+        const { error } = await (supabase as any).from('service_orders').insert({
+          contractor_id: r.contractor_id,
+          order_number,
+          description: desc,
+          source_item_key: `strap::${r.shortage.sale_order_item_id}::${r.shortage.strap_label}::${r.shortage.strap_color}`,
+          material_name: materialName,
+          material_color: r.shortage.strap_color,
+          material_meters: metrosRound,
+          target_sector: 'tiras',
+          sale_order_id: saleOrderId,
+          source_sale_order_id: saleOrderId,
+          linked_sale_order_ids: [saleOrderId],
+          is_avulsa: false,
+          dispatch_tracked: true,
+          quantity: pares,
+          unit_price: unitPrice,
+          total_value: pares * unitPrice,
+          status: 'Pendente',
+          service_date: new Date().toISOString().slice(0, 10),
+        });
+        if (error) throw new Error(`OS ${r.shortage.strap_label}: ${error.message}`);
+        artisanOsCount++;
+      }
+      if (artisanOsCount > 0) {
+        toast.success(`${artisanOsCount} ${artisanOsCount === 1 ? 'OS de tira emitida' : 'OSs de tiras emitidas'} — registre a remessa quando o material sair.`);
+      }
+
+      // 2) Comprar Pronto → purchase_orders + items
+      for (const r of comprar) {
+        const sup = r.shortage.group_id ? suppliersByGroup.get(r.shortage.group_id) : null;
         const { data: poRow, error: poErr } = await supabase.from('purchase_orders').insert({
           supplier_id: sup.id,
           // Domínio de purchase_orders.status é inglês ('pending' é o default

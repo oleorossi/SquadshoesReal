@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 
 /**
  * Geração de OS de terceirização por Pedido → Serviço → OP.
@@ -61,6 +62,7 @@ export interface GenerateOsResultLine {
   sector: string;
   action: 'created' | 'reactivated' | 'exists' | 'op_not_in_pv' | 'invalid_line';
   os_id?: string;
+  reason?: string;
 }
 
 const ERROR_LABELS: Record<string, string> = {
@@ -82,6 +84,8 @@ export function useGenerateOpServiceOrders() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['service_orders'] });
+      qc.invalidateQueries({ queryKey: ['service_order_overview'] });
+      qc.invalidateQueries({ queryKey: ['service_order_generation_gaps'] });
       qc.invalidateQueries({ queryKey: ['v_contractor_metrics'] });
       qc.invalidateQueries({ queryKey: ['pv_outsourceable_lines'] });
     },
@@ -97,4 +101,52 @@ export async function fetchContractorRate(contractorId: string, sector: string):
   });
   if (error || data == null) return null;
   return Number(data);
+}
+
+export interface ServiceOrderGenerationGap {
+  order_id: string;
+  op_number: string;
+  sale_order_id: string;
+  pv_number: string;
+  sector: string;
+  contractor_id: string;
+  contractor_name: string;
+  reason: string;
+}
+
+/** Intenção gravada no PV cuja OP existe, mas a OS não nasceu. */
+export function useServiceOrderGenerationGaps() {
+  return useQuery({
+    queryKey: ['service_order_generation_gaps'],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).rpc('list_service_order_generation_gaps');
+      if (error) throw error;
+      return (data || []) as ServiceOrderGenerationGap[];
+    },
+    staleTime: 30_000,
+  });
+}
+
+/** Reprocessa uma lacuna pelo mesmo escritor canônico OP × setor. */
+export function useRetryServiceOrderGenerationGap() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (gap: ServiceOrderGenerationGap) => {
+      const { data, error } = await (supabase as any).rpc('send_item_sector_os', {
+        p_order_id: gap.order_id,
+        p_sector: gap.sector,
+        p_contractor_id: gap.contractor_id,
+      });
+      if (error) throw error;
+      return data as { action: string; os_id?: string };
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['service_order_generation_gaps'] });
+      qc.invalidateQueries({ queryKey: ['service_orders'] });
+      qc.invalidateQueries({ queryKey: ['service_order_overview'] });
+      qc.invalidateQueries({ queryKey: ['pv_outsourceable_lines'] });
+      toast.success('OS pendente gerada pelo fluxo canônico.');
+    },
+    onError: (e: any) => toast.error(e?.message || 'Não foi possível gerar a OS pendente.'),
+  });
 }
