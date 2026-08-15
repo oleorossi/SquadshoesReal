@@ -9,7 +9,7 @@ import PageHeader from '../PageHeader';
  * O mapa antigo era manual e tinha `parentGroups['producao'] = { label:
  * 'Produção', to: '/pcp' }` ao lado de `routeLabels['producao'] = 'Produção'`.
  * O algoritmo empurrava o pai e depois TODOS os segmentos, então `/producao/kanban`
- * saía como **"Produção › Produção › Kanban"** — e o primeiro "Produção" levava
+ * saía como **"Produção › Produção › Modo Gestão"** — e o primeiro "Produção" levava
  * ao `/pcp`, que já era um tradutor morto.
  *
  * Agora os rótulos e grupos vêm de `navigation.ts`. Estes testes travam as três
@@ -30,7 +30,7 @@ function crumbs(path: string) {
 describe('PageHeader — breadcrumb derivado da navegação', () => {
   it('não repete o grupo quando o primeiro segmento já é o próprio grupo', () => {
     const trilha = crumbs('/producao/kanban');
-    expect(trilha).toEqual(['Produção', 'Kanban']);
+    expect(trilha).toEqual(['Produção', 'Modo Gestão']);
     // A regressão original: 'Produção' duas vezes seguidas.
     expect(trilha.filter((c) => c === 'Produção')).toHaveLength(1);
   });

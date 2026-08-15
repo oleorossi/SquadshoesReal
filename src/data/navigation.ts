@@ -57,7 +57,9 @@ export const navigationCatalog: NavigationResource[] = [
 
   // Produção
   { path: '/producao/planejamento', label: 'Planejamento', group: 'Produção', icon: ClipboardCheck, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/ProducaoPlanejamento') },
-  { path: '/producao/kanban', label: 'Kanban', group: 'Produção', icon: Kanban, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/ProducaoKanban') },
+  // Mantém o path concedível histórico para não invalidar permissões por item;
+  // a rota redireciona imediatamente para a Central em Modo Gestão.
+  { path: '/producao/kanban', label: 'Modo Gestão', group: 'Produção', icon: Kanban, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/ProducaoKanban') },
   { path: '/producao/estouro', label: 'Estouro de Produção', group: 'Produção', icon: AlertTriangle, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/ProducaoEstouro') },
   { path: '/producao/setores', label: 'Setores', group: 'Produção', icon: Factory, surfaces: ['command'] /* configuração global do motor, não entrada diária */, preload: () => import('@/pages/ProducaoSetoresConfig') },
   { path: '/producao/apontamento', label: 'Apontamento', group: 'Produção', icon: ListChecks, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/Setores') },

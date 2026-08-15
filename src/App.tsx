@@ -565,7 +565,7 @@ const LEGACY_ALIAS_ROUTES: {
     { path: 'producao/visao-agregada', element: <LegacyRouteRedirect to="/producao/analises?view=lote" /> },
     { path: 'order-flow-audit', element: <LegacyRouteRedirect to="/producao/analises?view=auditoria" /> },
     { path: 'producao', element: <LegacyRouteRedirect to="/producao/planejamento" /> },
-    { path: 'producao/live', element: <LegacyRouteRedirect to="/producao/kanban" /> },
+    { path: 'producao/live', element: <LegacyRouteRedirect to="/producao/kanban/gestao" /> },
     { path: 'producao/timeline', element: <LegacyRouteRedirect to="/producao/analises?view=timeline" /> },
     { path: 'production-dashboard', element: <LegacyRouteRedirect to="/producao/analises?view=dashboard" /> },
     { path: 'production', element: <LegacyRouteRedirect to="/producao/analises?view=dashboard" /> },

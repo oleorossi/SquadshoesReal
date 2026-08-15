@@ -4,7 +4,7 @@ import { Navigate, useSearchParams } from 'react-router-dom';
  * REDIRECT LEGADO (remodelagem 2026-07-12, specs/remodelagem-producao.md R7.3).
  *
  * O hub PCP de 14 abas foi substituído por itens diretos no menu Produção:
- * Planejamento, Kanban, Estouro de Produção, Setores, Apontamento, Imprimir
+ * Planejamento, Modo Gestão, Estouro de Produção, Setores, Apontamento, Imprimir
  * Fichas e Análises. Este componente só traduz bookmarks /pcp?tab=… até
  * 12/01/2027; deve sair quando a rota completar 90 dias sem acesso.
  */
@@ -31,10 +31,10 @@ export default function PCPHub() {
         to = '/producao/planejamento';
         break;
       case 'quadro':
-        // 'cartoes' (Live) virou o Kanban; matriz/timeline/lote são views legadas
+        // 'cartoes' (Live) virou o Modo Gestão; matriz/timeline/lote são views legadas
         to = modo && modo !== 'cartoes'
           ? `/producao/analises?view=${modo}`
-          : '/producao/kanban';
+          : '/producao/kanban/gestao';
         break;
       case 'setores':
         to = sub ? `/producao/apontamento?sub=${sub}` : '/producao/apontamento';

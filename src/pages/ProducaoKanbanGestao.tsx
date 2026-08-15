@@ -743,9 +743,9 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
           actions={
             /* h-11 no celular: o chão de fábrica opera esta tela no toque —
                é a mesma altura dos outros botões da barra de comando. */
-            <Button asChild variant="outline" size="sm" className="h-11 md:h-9 gap-1.5" title="Voltar pro Kanban no ERP">
-              <Link to="/producao/kanban" aria-label="Voltar pro Kanban">
-                <ArrowLeft className="h-4 w-4" /> Kanban
+            <Button asChild variant="outline" size="sm" className="h-11 md:h-9 gap-1.5" title="Voltar para o Planejamento de Produção">
+              <Link to="/producao/planejamento" aria-label="Voltar para o Planejamento de Produção">
+                <ArrowLeft className="h-4 w-4" /> Planejamento
               </Link>
             </Button>
           }
