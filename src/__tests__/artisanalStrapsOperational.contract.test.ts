@@ -10,6 +10,7 @@ const CATALOG = readMigration('20270101003000_artisanal_straps_catalog_core.sql'
 const SCHEMA = readMigration('20270101003100_artisanal_straps_operational_schema.sql');
 const ENGINE = readMigration('20270101003200_artisanal_straps_operational_engine.sql');
 const LEGACY = readMigration('20270101003300_artisanal_straps_legacy_migration_apply.sql');
+const POSTDEPLOY = readMigration('20270101003500_artisanal_straps_postdeploy_acl_hardening.sql');
 const HARDENING = readMigration('20270101003050_artisanal_straps_catalog_postdeploy_hardening.sql');
 const PER_PV_APPLIED = readMigration('20261022120000_compute-materials-per-pv-uses-strap-single-engine.sql');
 const ITEM_OP_SYNC = readMigration('20260925133000_stock-debit-hole-prevention.sql');
@@ -437,5 +438,23 @@ describe('Tiras artesanais — contrato SQL canônico', () => {
     expect(bundle).toContain("v_product_payload ? 'purchase_order_unit'");
     expect(bundle).toContain('Campo legado purchase_order_unit nao e aceito; use purchase_unit');
     expect(bundle).not.toContain('administer_strap_operations');
+  });
+
+  it('remove EXECUTE anônimo dos helpers SECURITY DEFINER herdados', () => {
+    expect(POSTDEPLOY).toContain(
+      'REVOKE ALL ON FUNCTION public.order_strap_needs(jsonb,numeric,jsonb)',
+    );
+    expect(POSTDEPLOY).toContain('FROM PUBLIC, anon;');
+    expect(POSTDEPLOY).toContain(
+      'GRANT EXECUTE ON FUNCTION public.order_strap_needs(jsonb,numeric,jsonb)',
+    );
+    expect(POSTDEPLOY).toContain(
+      'REVOKE ALL ON FUNCTION public.tg_validate_strap_daily_capacity()',
+    );
+    expect(POSTDEPLOY).toContain(
+      "'anon','public.order_strap_needs(jsonb,numeric,jsonb)','EXECUTE'",
+    );
+    expect(POSTDEPLOY).toContain("acl.grantee=0 AND acl.privilege_type='EXECUTE'");
+    expect(POSTDEPLOY).toContain("t.tgname='trg_validate_strap_daily_capacity'");
   });
 });
