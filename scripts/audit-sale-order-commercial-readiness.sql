@@ -210,32 +210,45 @@ SELECT jsonb_pretty(jsonb_build_object(
     ), '[]'::jsonb),
     'missing_material_variant', COALESCE((
       SELECT jsonb_agg(jsonb_build_object(
-        'pv', oi.order_number,
-        'reference', concat_ws(' · ', oi.reference_code, oi.reference_name),
-        'color', oi.color,
-        'active_variants', vc.active_variants
+        'pv', sample.order_number,
+        'reference', concat_ws(' · ', sample.reference_code, sample.reference_name),
+        'color', sample.color,
+        'active_variants', sample.active_variants
       ))
-      FROM open_items oi
-      JOIN variant_counts vc ON vc.reference_id = oi.reference_id AND vc.active_variants > 0
-      WHERE oi.material_variant_id IS NULL
-      ORDER BY oi.order_number, oi.reference_code
-      LIMIT 20
+      FROM (
+        SELECT oi.order_number, oi.reference_code, oi.reference_name, oi.color, vc.active_variants
+        FROM open_items oi
+        JOIN variant_counts vc ON vc.reference_id = oi.reference_id AND vc.active_variants > 0
+        WHERE oi.material_variant_id IS NULL
+        ORDER BY oi.order_number, oi.reference_code
+        LIMIT 20
+      ) sample
     ), '[]'::jsonb),
     'price_rule_differences', COALESCE((
       SELECT jsonb_agg(jsonb_build_object(
-        'pv', oi.order_number,
-        'reference', concat_ws(' · ', oi.reference_code, oi.reference_name),
-        'color', oi.color,
-        'saved_price', oi.unit_price,
-        'rule_price', er.effective_price,
-        'origin', er.price_origin
+        'pv', sample.order_number,
+        'reference', concat_ws(' · ', sample.reference_code, sample.reference_name),
+        'color', sample.color,
+        'saved_price', sample.saved_price,
+        'rule_price', sample.effective_price,
+        'origin', sample.price_origin
       ))
-      FROM open_items oi
-      JOIN effective_rule er ON er.sale_order_item_id = oi.id
-      WHERE er.effective_price IS NOT NULL
-        AND abs(COALESCE(oi.unit_price, 0) - er.effective_price) > 0.009
-      ORDER BY oi.order_number, oi.reference_code
-      LIMIT 20
+      FROM (
+        SELECT
+          oi.order_number,
+          oi.reference_code,
+          oi.reference_name,
+          oi.color,
+          oi.unit_price AS saved_price,
+          er.effective_price,
+          er.price_origin
+        FROM open_items oi
+        JOIN effective_rule er ON er.sale_order_item_id = oi.id
+        WHERE er.effective_price IS NOT NULL
+          AND abs(COALESCE(oi.unit_price, 0) - er.effective_price) > 0.009
+        ORDER BY oi.order_number, oi.reference_code
+        LIMIT 20
+      ) sample
     ), '[]'::jsonb)
   )
 )) AS audit;
