@@ -117,6 +117,23 @@ describe('Tiras artesanais — contrato SQL canônico', () => {
     );
   });
 
+  it('valida a view de custo sem depender dos aliases reescritos pelo PostgreSQL', () => {
+    const viewAssertionStart = ENGINE.indexOf(
+      "DECLARE v_definition text:=lower(pg_get_viewdef(\n  'public.v_strap_cost_variance_operational'",
+    );
+    const viewAssertionEnd = ENGINE.indexOf('GRANT SELECT ON', viewAssertionStart);
+    const viewAssertion = ENGINE.slice(viewAssertionStart, viewAssertionEnd);
+
+    expect(viewAssertionStart).toBeGreaterThanOrEqual(0);
+    expect(viewAssertion).toContain("position('sale_order_strap_demand_id' IN v_definition)=0");
+    expect(viewAssertion).toContain("position('purchase_demand_contribution_id' IN v_definition)=0");
+    expect(viewAssertion).toContain("position('batch_contribution_id' IN v_definition)=0");
+    expect(viewAssertion).toContain("v_definition !~ 'not [a-z_][a-z0-9_]*\\.is_current'");
+    expect(viewAssertion).toContain("position('replenishment_required_m' IN v_definition)=0");
+    expect(viewAssertion).not.toContain("position('not d.is_current'");
+    expect(viewAssertion).not.toContain("position('d.replenishment_required_m'");
+  });
+
   it('retira tiras integralmente do canal genérico por PV sem quebrar sua assinatura', () => {
     const applied = functionBody(
       PER_PV_APPLIED,
