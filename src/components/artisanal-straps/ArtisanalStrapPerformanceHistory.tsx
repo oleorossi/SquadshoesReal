@@ -76,7 +76,7 @@ export function ArtisanalStrapPerformanceHistory({
           <Alert variant="destructive">
             <Warning className="h-4 w-4" />
             <AlertTitle>Histórico de rendimento indisponível</AlertTitle>
-            <AlertDescription>Recarregue a view canônica antes de sugerir outra versão.</AlertDescription>
+            <AlertDescription>Atualize os dados de rendimento antes de sugerir outra versão.</AlertDescription>
           </Alert>
         ) : yields.length === 0 ? (
           <EmptyState
@@ -136,7 +136,7 @@ export function ArtisanalStrapPerformanceHistory({
       <Panel
         eyebrow="CUSTO POR ORIGEM"
         title="Variação prevista × realizada"
-        subtitle="Uma linha por PV, variante e origem; valores vêm exclusivamente da view financeira protegida."
+        subtitle="Compare o previsto e o realizado por pedido de venda, variante e origem."
         actions={canSeeFinancial
           ? <Badge variant="outline">{costs.length} linha(s)</Badge>
           : <Badge variant="secondary" className="gap-1"><LockKey className="h-3 w-3" /> Valores protegidos</Badge>}
@@ -147,7 +147,7 @@ export function ArtisanalStrapPerformanceHistory({
           <Alert variant="destructive">
             <Warning className="h-4 w-4" />
             <AlertTitle>Relatório de variação indisponível</AlertTitle>
-            <AlertDescription>Nenhuma tabela financeira interna será usada como fallback.</AlertDescription>
+            <AlertDescription>Atualize os dados para tentar carregar o relatório novamente.</AlertDescription>
           </Alert>
         ) : costs.length === 0 ? (
           <EmptyState icon={ChartLine} title="Nenhuma variação realizada" description="O relatório abre depois das movimentações físicas vinculadas ao PV." size="sm" />

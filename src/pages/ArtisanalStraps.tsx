@@ -55,6 +55,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
+import { useContractors } from '@/hooks/useContractors';
 import {
   type ArtisanalStrapCatalog,
   type ArtisanalStrapCatalogDiagnostic,
@@ -94,13 +95,14 @@ import { printArtisanalStrapBatch } from '@/lib/printArtisanalStrapBatch';
 import StrapCalculator from './StrapCalculator';
 
 const TAB_VALUES = [
+  'demandas',
+  'producao',
   'cadastro',
   'receitas',
   'variantes',
-  'demandas',
-  'producao',
-  'historico',
   'calculadora',
+  'desempenho',
+  'diagnostico',
 ] as const;
 
 type HubTab = (typeof TAB_VALUES)[number];
@@ -130,6 +132,12 @@ function formatMeters(value: unknown, maximumFractionDigits = 2) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return '—';
   return `${parsed.toLocaleString('pt-BR', { maximumFractionDigits })} m`;
+}
+
+function formatCurrencyValue(value: unknown) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return '—';
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(parsed);
 }
 
 function formatDate(value: string | null | undefined) {
@@ -349,13 +357,13 @@ function ColorDialog({
     <Dialog open={open} onOpenChange={(next) => { if (!next) close(); }}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Cores canônicas</DialogTitle>
+          <DialogTitle>Cores padronizadas</DialogTitle>
           <DialogDescription>Cadastre uma cor ou proponha um alias para revisão administrativa.</DialogDescription>
         </DialogHeader>
         <Select value={kind} onValueChange={(value) => setKind(value as 'color' | 'alias')}>
           <SelectTrigger><SelectValue /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="color">Nova cor canônica</SelectItem>
+            <SelectItem value="color">Nova cor padronizada</SelectItem>
             <SelectItem value="alias">Novo alias</SelectItem>
           </SelectContent>
         </Select>
@@ -367,7 +375,7 @@ function ColorDialog({
         ) : (
           <>
             <div className="space-y-1.5">
-              <Label>Cor canônica *</Label>
+              <Label>Cor padronizada *</Label>
               <Select value={colorId} onValueChange={setColorId}>
                 <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
                 <SelectContent>
@@ -447,7 +455,7 @@ function OfficialProductDialog({
         <DialogHeader>
           <DialogTitle>Definir produto-base oficial</DialogTitle>
           <DialogDescription>
-            Resolve uma única napa física para a combinação exata de grupo e cor canônica.
+            Define uma única napa física para a combinação exata de grupo e cor padronizada.
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 sm:grid-cols-2">
@@ -467,7 +475,7 @@ function OfficialProductDialog({
             </Select>
           </div>
           <div className="space-y-1.5">
-            <Label>Cor canônica *</Label>
+            <Label>Cor padronizada *</Label>
             <Select value={colorId} onValueChange={setColorId}>
               <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
               <SelectContent>
@@ -566,7 +574,7 @@ function TechnicalLineMigrationDialog({
         </DialogHeader>
         <div className="space-y-4">
           <div className="space-y-1.5">
-            <Label>Família e medida canônica *</Label>
+            <Label>Família e medida padronizadas *</Label>
             <Select value={measureId} onValueChange={setMeasureId}>
               <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
               <SelectContent>
@@ -609,8 +617,14 @@ function TechnicalLineMigrationDialog({
 export default function ArtisanalStraps() {
   const { value: activeTab, setValue: setActiveTab } = useUrlTabState<HubTab>({
     values: TAB_VALUES,
-    defaultValue: 'cadastro',
-    aliases: { recipes: 'receitas', optimizer: 'calculadora', stock: 'variantes' },
+    defaultValue: 'demandas',
+    aliases: {
+      recipes: 'receitas',
+      optimizer: 'calculadora',
+      stock: 'variantes',
+      historico: 'desempenho',
+      history: 'desempenho',
+    },
   });
   const [searchParams, setSearchParams] = useSearchParams();
   const [reasonDialog, setReasonDialog] = useState<ReasonDialogState | null>(null);
@@ -624,15 +638,15 @@ export default function ArtisanalStraps() {
 
   const catalogQuery = useArtisanalStrapCatalog(true);
   const catalog = catalogQuery.data || EMPTY_CATALOG;
-  const demandsQuery = useArtisanalStrapDemands(activeTab === 'demandas' || activeTab === 'historico');
-  const productionQuery = useArtisanalStrapProduction(activeTab === 'producao' || activeTab === 'historico');
+  const demandsQuery = useArtisanalStrapDemands(activeTab === 'demandas' || activeTab === 'diagnostico');
+  const productionQuery = useArtisanalStrapProduction(activeTab === 'producao' || activeTab === 'diagnostico');
   const externalOperationsQuery = useArtisanalStrapExternalOperations(activeTab === 'producao');
-  const catalogDiagnosticsQuery = useArtisanalStrapCatalogDiagnostics(activeTab === 'historico');
+  const catalogDiagnosticsQuery = useArtisanalStrapCatalogDiagnostics(activeTab === 'diagnostico');
   const legacyMigrationDiagnosticsQuery = useArtisanalStrapLegacyMigrationDiagnostics(
-    activeTab === 'historico' && catalog.capabilities.resolve_strap_migration,
+    activeTab === 'diagnostico' && catalog.capabilities.resolve_strap_migration,
   );
-  const realYieldQuery = useArtisanalStrapRealYieldHistory(activeTab === 'historico');
-  const costVarianceQuery = useArtisanalStrapCostVariance(activeTab === 'historico');
+  const realYieldQuery = useArtisanalStrapRealYieldHistory(activeTab === 'desempenho');
+  const costVarianceQuery = useArtisanalStrapCostVariance(activeTab === 'desempenho');
 
   const submitRecipe = useSubmitArtisanalStrapRecipe();
   const approveRecipe = useApproveArtisanalStrapRecipe();
@@ -682,15 +696,24 @@ export default function ArtisanalStraps() {
   const pendingRecipes = catalog.recipes.filter((item) => item.status === 'pending_approval').length;
   const activeVariants = catalog.variants.filter((item) => item.status === 'active').length;
   const openDemands = demandsQuery.data?.demands.filter((item) => !['fulfilled', 'cancelled', 'superseded'].includes(item.status)).length;
+  const focusDemand = demandsQuery.data?.demands.find((item) => !['fulfilled', 'cancelled', 'superseded'].includes(item.status));
+  const focusVariant = catalog.variants.find((item) => item.id === focusDemand?.strap_variant_id)
+    || catalog.variants.find((item) => item.status === 'active')
+    || catalog.variants[0];
+  const focusIdentity = focusVariant ? identityForVariant(catalog, focusVariant) : null;
+  const focusProduct = focusVariant
+    ? catalog.products.find((item) => item.id === focusVariant.finished_product_id)
+    : null;
 
   const tabs = [
-    { value: 'cadastro', label: 'Cadastro', icon: TreeStructure },
-    { value: 'receitas', label: 'Receitas e rendimento', icon: Scissors, badge: pendingRecipes || undefined },
-    { value: 'variantes', label: 'Variantes e estoque', icon: Package, badge: reviewCount || undefined },
-    { value: 'demandas', label: 'Demandas', icon: ListChecks, badge: openDemands || undefined },
-    { value: 'producao', label: 'Produção', icon: Factory },
-    { value: 'historico', label: 'Histórico/diagnóstico', icon: ClockCounterClockwise },
-    { value: 'calculadora', label: 'Calculadora', icon: Calculator },
+    { value: 'demandas', label: 'Demandas', icon: ListChecks, badge: openDemands || undefined, group: 'Operação' },
+    { value: 'producao', label: 'Produção e planejamento', icon: Factory, group: 'Operação' },
+    { value: 'cadastro', label: 'Catálogo', icon: TreeStructure, group: 'Engenharia' },
+    { value: 'receitas', label: 'Receitas', icon: Scissors, badge: pendingRecipes || undefined, group: 'Engenharia' },
+    { value: 'variantes', label: 'Variantes e estoque', icon: Package, badge: reviewCount || undefined, group: 'Engenharia' },
+    { value: 'calculadora', label: 'Calculadora', icon: Calculator, group: 'Engenharia' },
+    { value: 'desempenho', label: 'Desempenho', icon: ClockCounterClockwise, group: 'Controle' },
+    { value: 'diagnostico', label: 'Diagnóstico', icon: Warning, group: 'Controle' },
   ];
 
   if (catalogQuery.isLoading) {
@@ -710,7 +733,7 @@ export default function ArtisanalStraps() {
           <Warning className="h-4 w-4" />
           <AlertTitle>Não foi possível abrir Tiras Artesanais</AlertTitle>
           <AlertDescription className="space-y-3">
-            <p>O catálogo canônico não respondeu. Nenhum formulário legado foi aberto como fallback.</p>
+            <p>O cadastro de tiras não respondeu. Tente novamente antes de criar ou editar uma variante.</p>
             <Button size="sm" variant="outline" onClick={() => catalogQuery.refetch()} className="gap-2">
               <RefreshCw className="h-4 w-4" /> Tentar novamente
             </Button>
@@ -723,10 +746,10 @@ export default function ArtisanalStraps() {
   return (
     <div className="space-y-5 page-enter">
       <EditorialPageHeader
-        sectionLabel="ENGENHARIA · FONTE ÚNICA"
+        sectionLabel="ENGENHARIA · TIRAS ARTESANAIS"
         title="Tiras Artesanais"
-        description="Da identidade da napa ao estoque da tira pronta, com rendimento, demanda e produção no mesmo fluxo."
-        meta={<><strong>{activeVariants}</strong> variantes ativas · <strong>{catalog.recipes.length}</strong> receitas versionadas</>}
+        description="Da necessidade do pedido à tira pronta: rendimento, estoque, produção e terceirização no mesmo fluxo."
+        meta={<><strong>{activeVariants}</strong> variantes ativas · <strong>{catalog.recipes.length}</strong> receitas registradas</>}
         actions={
           <>
             <Button
@@ -734,9 +757,9 @@ export default function ArtisanalStraps() {
               size="sm"
               onClick={() => {
                 catalogQuery.refetch();
-                if (activeTab === 'demandas' || activeTab === 'historico') demandsQuery.refetch();
-                if (activeTab === 'producao' || activeTab === 'historico') productionQuery.refetch();
-                if (activeTab === 'historico') {
+                if (activeTab === 'demandas' || activeTab === 'diagnostico') demandsQuery.refetch();
+                if (activeTab === 'producao' || activeTab === 'diagnostico') productionQuery.refetch();
+                if (activeTab === 'desempenho') {
                   realYieldQuery.refetch();
                   costVarianceQuery.refetch();
                 }
@@ -747,7 +770,7 @@ export default function ArtisanalStraps() {
             </Button>
             {catalog.capabilities.manage_strap_catalog && (
               <Button size="sm" onClick={() => openEditor()} className="gap-2">
-                <Plus className="h-4 w-4" /> Nova tira
+                <Plus className="h-4 w-4" /> Nova variante
               </Button>
             )}
           </>
@@ -755,10 +778,10 @@ export default function ArtisanalStraps() {
         kpis={
           <div className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-border bg-border sm:grid-cols-4">
             {[
+              ['Demandas abertas', openDemands ?? '—'],
               ['Variantes ativas', activeVariants],
               ['Aguardando revisão', reviewCount],
               ['Receitas pendentes', pendingRecipes],
-              ['Cores canônicas', catalog.colors.filter((item) => item.active).length],
             ].map(([label, value]) => (
               <div key={label} className="bg-card px-3 py-3">
                 <p className="font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
@@ -769,21 +792,33 @@ export default function ArtisanalStraps() {
         }
       />
 
-      <div className="rounded-lg border border-border bg-muted/20 p-3">
-        <StrapIdentityTrail
-          typeName="TIRA CHATA"
-          measureName="8 mm"
-          baseName="NAPA SOFT"
-          colorName="OFF WHITE"
-          compact
-        />
-        <p className="mt-2 text-xs text-muted-foreground">
-          Essa sequência de IDs é preservada em cadastro, estoque, demanda, lote, compra e histórico.
-        </p>
-      </div>
+      {focusIdentity && (
+        <div className="overflow-hidden rounded-lg border border-border bg-card">
+          <div className="flex flex-col gap-3 border-l-4 border-primary px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <p className="font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
+                Tira em foco · {focusDemand ? 'primeira demanda aberta' : 'variante ativa'}
+              </p>
+              <StrapIdentityTrail {...focusIdentity} compact className="mt-2" />
+            </div>
+            <div className="shrink-0 text-left sm:text-right">
+              <p className="max-w-64 truncate text-xs font-semibold text-foreground">{focusProduct?.name || 'Produto acabado'}</p>
+              <p className="font-mono text-[10px] text-muted-foreground">{focusProduct?.sku || focusVariant?.id}</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as HubTab)} className="space-y-4">
         <HubTabsList tabs={tabs} ariaLabel="Áreas de Tiras Artesanais" />
+
+        <TabsContent value="demandas" className="mt-0">
+          <DemandsTab catalog={catalog} query={demandsQuery} />
+        </TabsContent>
+
+        <TabsContent value="producao" className="mt-0">
+          <ProductionTab catalog={catalog} query={productionQuery} externalQuery={externalOperationsQuery} />
+        </TabsContent>
 
         <TabsContent value="cadastro" className="mt-0">
           <CatalogTab
@@ -794,7 +829,7 @@ export default function ArtisanalStraps() {
             onOpenWidth={setWidthDialog}
             onApproveAlias={(alias) => setReasonDialog({
               title: `Aprovar alias “${alias.alias}”`,
-              description: 'Depois da aprovação, o alias participa da resolução da cor canônica.',
+              description: 'Depois da aprovação, esse nome alternativo passa a identificar a cor padronizada.',
               confirmLabel: 'Aprovar alias',
               onConfirm: (reason) => approveAlias.mutateAsync({ aliasId: alias.id, reason }),
             })}
@@ -819,7 +854,7 @@ export default function ArtisanalStraps() {
             })}
             onApprove={(recipe) => setReasonDialog({
               title: 'Aprovar rendimento confirmado',
-              description: `A versão ${recipe.version} passa a valer prospectivamente; snapshots existentes não mudam.`,
+              description: `A versão ${recipe.version} valerá para os próximos pedidos; pedidos e lotes já registrados não mudam.`,
               confirmLabel: 'Aprovar receita',
               onConfirm: (reason) => approveRecipe.mutateAsync({ recipeId: recipe.id, reason }),
             })}
@@ -830,23 +865,26 @@ export default function ArtisanalStraps() {
           <VariantsTab catalog={catalog} openEditor={openEditor} />
         </TabsContent>
 
-        <TabsContent value="demandas" className="mt-0">
-          <DemandsTab catalog={catalog} query={demandsQuery} />
+        <TabsContent value="calculadora" className="mt-0">
+          <CalculatorTab catalog={catalog} />
         </TabsContent>
 
-        <TabsContent value="producao" className="mt-0">
-          <ProductionTab catalog={catalog} query={productionQuery} externalQuery={externalOperationsQuery} />
+        <TabsContent value="desempenho" className="mt-0">
+          <PerformanceTab
+            catalog={catalog}
+            realYieldQuery={realYieldQuery}
+            costVarianceQuery={costVarianceQuery}
+            openEditor={openEditor}
+          />
         </TabsContent>
 
-        <TabsContent value="historico" className="mt-0">
+        <TabsContent value="diagnostico" className="mt-0">
           <DiagnosticsTab
             catalog={catalog}
             demandsQuery={demandsQuery}
             productionQuery={productionQuery}
             catalogDiagnosticsQuery={catalogDiagnosticsQuery}
             legacyMigrationDiagnosticsQuery={legacyMigrationDiagnosticsQuery}
-            realYieldQuery={realYieldQuery}
-            costVarianceQuery={costVarianceQuery}
             migrationDryRun={runMigrationDryRun}
             openEditor={openEditor}
             onRequestDryRun={() => setReasonDialog({
@@ -860,10 +898,6 @@ export default function ArtisanalStraps() {
             onResolveLegacyProduct={setLegacyProductDiagnostic}
             onApplyIncrementalResolution={setIncrementalApplyDiagnostic}
           />
-        </TabsContent>
-
-        <TabsContent value="calculadora" className="mt-0">
-          <CalculatorTab catalog={catalog} />
         </TabsContent>
       </Tabs>
 
@@ -1021,7 +1055,6 @@ function CatalogTab({
 
   return (
     <div className="space-y-4">
-      <ArtisanalStrapPlanningConfig />
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <SearchInput
           className="w-full sm:max-w-sm"
@@ -1034,7 +1067,7 @@ function CatalogTab({
         {catalog.capabilities.manage_strap_catalog && (
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" size="sm" onClick={onOpenColor} className="gap-2">
-              <Palette className="h-4 w-4" /> Cores e aliases
+              <Palette className="h-4 w-4" /> Cores e nomes alternativos
             </Button>
             {catalog.capabilities.resolve_strap_migration && (
               <Button variant="outline" size="sm" onClick={onOpenOfficialProduct} className="gap-2">
@@ -1042,7 +1075,7 @@ function CatalogTab({
               </Button>
             )}
             <Button size="sm" onClick={() => openEditor()} className="gap-2">
-              <Plus className="h-4 w-4" /> Nova combinação
+              <Plus className="h-4 w-4" /> Nova variante
             </Button>
             <ArtisanalStrapBatchMatrix catalog={catalog} />
           </div>
@@ -1058,11 +1091,11 @@ function CatalogTab({
           <EmptyState
             icon={TreeStructure}
             title={search ? 'Nenhuma família encontrada' : 'Nenhuma família cadastrada'}
-            description={search ? 'Ajuste os termos da busca.' : 'Cadastre a primeira família pelo editor canônico.'}
+            description={search ? 'Ajuste os termos da busca.' : 'Cadastre a primeira variante pelo cadastro principal.'}
             action={search
               ? <Button variant="outline" size="sm" onClick={() => setSearch('')}>Limpar busca</Button>
               : catalog.capabilities.manage_strap_catalog
-                ? <Button size="sm" onClick={() => openEditor()}>Nova tira</Button>
+                ? <Button size="sm" onClick={() => openEditor()}>Nova variante</Button>
                 : undefined}
             size="sm"
           />
@@ -1234,7 +1267,12 @@ function RecipesTab({
   onApprove: (recipe: ArtisanalStrapRecipe) => void;
 }) {
   const [search, setSearch] = useState('');
+  const { data: contractors = [] } = useContractors();
   const maps = useMemo(() => mapsFor(catalog), [catalog]);
+  const contractorNames = useMemo(
+    () => new Map(contractors.map((contractor) => [contractor.id, contractor.name])),
+    [contractors],
+  );
   const recipes = catalog.recipes
     .filter((recipe) => {
       const measure = maps.measures.get(recipe.measure_id);
@@ -1267,6 +1305,9 @@ function RecipesTab({
               );
               const theoretical = Number(recipe.theoretical_yield_m_per_m);
               const confirmed = Number(recipe.confirmed_yield_m_per_m);
+              const executorLabel = recipe.executor_type === 'factory'
+                ? 'Fábrica'
+                : contractorNames.get(recipe.default_contractor_id || '') || 'Terceirizado não identificado';
               return (
                 <article key={recipe.id} className="p-4 hover:bg-muted/20">
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -1276,7 +1317,7 @@ function RecipesTab({
                         <StrapStatusBadge status={recipe.status} />
                         <Badge variant="outline">v{recipe.version}</Badge>
                       </div>
-                      <div className="mt-3 grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
+                      <div className="mt-3 grid grid-cols-2 gap-2 text-sm sm:grid-cols-3 lg:grid-cols-5">
                         <div>
                           <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Banda</p>
                           <p className="font-mono font-semibold">{recipe.cut_band_width_mm} mm</p>
@@ -1291,8 +1332,14 @@ function RecipesTab({
                         </div>
                         <div>
                           <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Executor</p>
-                          <p className="font-semibold">{recipe.executor_type === 'factory' ? 'Fábrica' : 'Terceirizado'}</p>
+                          <p className="font-semibold">{executorLabel}</p>
                         </div>
+                        {catalog.capabilities.can_see_financial_values && (
+                          <div>
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Transformação</p>
+                            <p className="font-mono font-semibold">{formatCurrencyValue(recipe.transformation_cost_per_m)}/m</p>
+                          </div>
+                        )}
                       </div>
                     </div>
                     <div className="flex flex-wrap gap-2">
@@ -1454,7 +1501,7 @@ function DemandsTab({
         <Warning className="h-4 w-4" />
         <AlertTitle>Demandas indisponíveis</AlertTitle>
         <AlertDescription className="space-y-3">
-          <p>A view operacional não respondeu; tente novamente. O hub não consulta tabelas cruas como fallback.</p>
+          <p>Os dados de pedidos e reposição não responderam. Tente novamente para conferir as necessidades abertas.</p>
           <Button size="sm" variant="outline" onClick={() => query.refetch()} className="gap-2">
             <RefreshCw className="h-4 w-4" /> Recarregar demandas
           </Button>
@@ -1485,12 +1532,12 @@ function DemandsTab({
       </div>
 
       <Panel
-        eyebrow="NETTING CANÔNICO"
-        title="Contribuições abertas"
-        subtitle="PVs e reposição do piso permanecem estruturalmente separados, mesmo quando compartilham lote ou OC."
+        eyebrow="NECESSIDADE E COBERTURA"
+        title="Demandas abertas"
+        subtitle="Pedidos de venda e reposição do estoque mínimo continuam separados, mesmo quando compartilham lote ou ordem de compra."
       >
         {demands.length === 0 ? (
-          <EmptyState icon={ListChecks} title="Nenhuma demanda encontrada" description="Ajuste os filtros ou aguarde o worker processar novos pedidos." size="sm" />
+          <EmptyState icon={ListChecks} title="Nenhuma demanda encontrada" description="Ajuste os filtros ou aguarde o processamento dos novos pedidos." size="sm" />
         ) : (
           <div className="space-y-3">
             {demands.map((demand) => (
@@ -1584,7 +1631,7 @@ function ProductionTab({
         <Warning className="h-4 w-4" />
         <AlertTitle>Planejamento indisponível</AlertTitle>
         <AlertDescription className="space-y-3">
-          <p>A view segura de lotes não respondeu. Nenhuma quantidade foi recalculada no navegador.</p>
+          <p>Os dados de lotes não responderam. Nenhuma quantidade foi recalculada nesta tela.</p>
           <Button size="sm" variant="outline" onClick={() => query.refetch()} className="gap-2">
             <RefreshCw className="h-4 w-4" /> Recarregar lotes
           </Button>
@@ -1595,6 +1642,7 @@ function ProductionTab({
 
   return (
     <div className="space-y-4">
+      <ArtisanalStrapPlanningConfig />
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <SearchInput
           className="w-full sm:max-w-sm"
@@ -1919,14 +1967,39 @@ const LEGACY_MIGRATION_COPY: Record<string, { title: string; correction: string 
   },
 };
 
+function PerformanceTab({
+  catalog,
+  realYieldQuery,
+  costVarianceQuery,
+  openEditor,
+}: {
+  catalog: ArtisanalStrapCatalog;
+  realYieldQuery: ReturnType<typeof useArtisanalStrapRealYieldHistory>;
+  costVarianceQuery: ReturnType<typeof useArtisanalStrapCostVariance>;
+  openEditor: (args?: OpenEditorArgs) => void;
+}) {
+  return (
+    <ArtisanalStrapPerformanceHistory
+      catalog={catalog}
+      yieldQuery={realYieldQuery}
+      costQuery={costVarianceQuery}
+      onSuggestYield={(row) => openEditor({
+        mode: 'edit',
+        origin: 'hub',
+        variantId: row.strap_variant_id,
+        suggestedRecipeId: row.recipe_id,
+        suggestedYieldMPerM: Number(row.actual_yield_m_per_m),
+      })}
+    />
+  );
+}
+
 function DiagnosticsTab({
   catalog,
   demandsQuery,
   productionQuery,
   catalogDiagnosticsQuery,
   legacyMigrationDiagnosticsQuery,
-  realYieldQuery,
-  costVarianceQuery,
   migrationDryRun,
   openEditor,
   onRequestDryRun,
@@ -1940,8 +2013,6 @@ function DiagnosticsTab({
   productionQuery: ReturnType<typeof useArtisanalStrapProduction>;
   catalogDiagnosticsQuery: ReturnType<typeof useArtisanalStrapCatalogDiagnostics>;
   legacyMigrationDiagnosticsQuery: ReturnType<typeof useArtisanalStrapLegacyMigrationDiagnostics>;
-  realYieldQuery: ReturnType<typeof useArtisanalStrapRealYieldHistory>;
-  costVarianceQuery: ReturnType<typeof useArtisanalStrapCostVariance>;
   migrationDryRun: ReturnType<typeof useRunArtisanalStrapMigrationDryRun>;
   openEditor: (args?: OpenEditorArgs) => void;
   onRequestDryRun: () => void;
@@ -1965,31 +2036,18 @@ function DiagnosticsTab({
 
   return (
     <div className="space-y-4">
-      <ArtisanalStrapPerformanceHistory
-        catalog={catalog}
-        yieldQuery={realYieldQuery}
-        costQuery={costVarianceQuery}
-        onSuggestYield={(row) => openEditor({
-          mode: 'edit',
-          origin: 'hub',
-          variantId: row.strap_variant_id,
-          suggestedRecipeId: row.recipe_id,
-          suggestedYieldMPerM: Number(row.actual_yield_m_per_m),
-        })}
-      />
-
       {(demandsQuery.isError || productionQuery.isError || catalogDiagnosticsQuery.isError
         || legacyMigrationDiagnosticsQuery.isError) && (
         <Alert variant="destructive">
           <Warning className="h-4 w-4" />
           <AlertTitle>Diagnóstico parcial</AlertTitle>
-          <AlertDescription>Uma das views operacionais não respondeu. Os blocos disponíveis permanecem somente leitura.</AlertDescription>
+          <AlertDescription>Uma das fontes de dados não respondeu. Os blocos disponíveis permanecem somente leitura.</AlertDescription>
         </Alert>
       )}
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,0.6fr)]">
         <Panel
-          eyebrow="INTEGRIDADE CANÔNICA"
+          eyebrow="INTEGRIDADE DOS DADOS"
           title="Diagnósticos acionáveis"
           subtitle="O servidor aponta a combinação exata; o hub nunca corrige ou infere dados automaticamente."
           actions={<Badge variant={catalogIssues.length ? 'outline' : 'secondary'}>{catalogIssues.length} {catalogIssues.length === 1 ? 'pendência' : 'pendências'}</Badge>}
@@ -2003,7 +2061,7 @@ function DiagnosticsTab({
               size="sm"
             />
           ) : catalogIssues.length === 0 ? (
-            <EmptyState icon={CheckCircle} title="Nenhuma inconsistência detectada" description="As invariantes do catálogo estão coerentes." size="sm" />
+            <EmptyState icon={CheckCircle} title="Nenhuma inconsistência detectada" description="As regras do catálogo estão coerentes." size="sm" />
           ) : (
             <div className="space-y-2">
               {catalogIssues.slice(0, 60).map((issue) => {
@@ -2198,7 +2256,7 @@ function DiagnosticsTab({
       <Panel
         eyebrow="HISTÓRICO IMUTÁVEL"
         title="Versões substituídas e indicadores"
-        subtitle="Snapshots comprometidos permanecem vinculados às versões que realmente usaram."
+        subtitle="Os registros permanecem vinculados às versões realmente usadas em cada operação."
       >
         <div className="grid gap-3 sm:grid-cols-3">
           <div className="rounded-md border border-border bg-muted/20 p-3">

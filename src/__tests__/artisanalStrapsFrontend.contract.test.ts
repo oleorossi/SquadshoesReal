@@ -37,6 +37,7 @@ const incrementalMigrationDialog = read('src/components/artisanal-straps/Artisan
 const incrementalMigrationHelper = read('src/lib/legacyStrapIncrementalApply.ts');
 const performanceHistory = read('src/components/artisanal-straps/ArtisanalStrapPerformanceHistory.tsx');
 const strapEditor = read('src/components/artisanal-straps/ArtisanalStrapEditor.tsx');
+const hubTabs = read('src/components/layout/HubTabs.tsx');
 
 describe('Tiras artesanais — contrato do frontend canônico', () => {
   it('consulta somente RPCs e views operacionais nas áreas sensíveis', () => {
@@ -268,5 +269,47 @@ describe('Tiras artesanais — contrato do frontend canônico', () => {
     expect(hub).toContain('rendimentoConfirmadoInicialMPerM={Number(selectedRecipe.confirmed_yield_m_per_m)}');
     expect(calculator).toContain('A necessidade operacional usa exclusivamente o rendimento confirmado');
     expect(calculator).not.toContain('a % de perda cobre');
+  });
+
+  it('abre pelas demandas e organiza a jornada industrial em três grupos de trabalho', () => {
+    expect(hub).toContain("defaultValue: 'demandas'");
+    expect(hub).toContain("group: 'Operação'");
+    expect(hub).toContain("group: 'Engenharia'");
+    expect(hub).toContain("group: 'Controle'");
+    expect(hub).toContain('<TabsContent value="desempenho"');
+    expect(hub).toContain('<TabsContent value="diagnostico"');
+    expect(hubTabs).toContain('group?: string');
+    expect(hubTabs).toContain('beginsGroup');
+  });
+
+  it('mantém o planejamento junto da produção, fora do catálogo de engenharia', () => {
+    const catalogTab = hub.slice(hub.indexOf('function CatalogTab'), hub.indexOf('function RecipesTab'));
+    const productionTab = hub.slice(hub.indexOf('function ProductionTab'), hub.indexOf('function ProductionBatchCard'));
+    expect(catalogTab).not.toContain('<ArtisanalStrapPlanningConfig');
+    expect(productionTab).toContain('<ArtisanalStrapPlanningConfig');
+  });
+
+  it('mostra uma tira real em foco e elimina a identidade demonstrativa fixa', () => {
+    expect(hub).toContain('const focusDemand');
+    expect(hub).toContain('const focusVariant');
+    expect(hub).toContain('Tira em foco');
+    expect(hub).not.toContain('typeName="TIRA CHATA"');
+    expect(hub).not.toContain('measureName="8mm"');
+    expect(hub).not.toContain('baseName="NAPA SOFT"');
+    expect(hub).not.toContain('colorName="OFF WHITE"');
+  });
+
+  it('completa a leitura da receita com executor e custo protegido por permissão', () => {
+    expect(hub).toContain('useContractors');
+    expect(hub).toContain('executorLabel');
+    expect(hub).toContain('transformation_cost_per_m');
+    expect(hub).toContain('catalog.capabilities.can_see_financial_values');
+  });
+
+  it('usa linguagem operacional nas telas de rotina', () => {
+    expect(hub).not.toContain('NETTING CANÔNICO');
+    expect(hub).not.toContain('aguarde o worker');
+    expect(performanceHistory).not.toContain('view canônica');
+    expect(performanceHistory).not.toContain('fallback');
   });
 });
