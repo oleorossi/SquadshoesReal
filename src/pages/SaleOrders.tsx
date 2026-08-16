@@ -10,7 +10,7 @@ import { resolveMaterialLabels, materialLabelKey } from '@/lib/labelUtils';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import PendenciasView from '@/components/sale-orders/PendenciasView';
-import { ArrowUp, ArrowsDownUp, Baby, Buildings, ShoppingCart, Plus, CircleNotch as Loader2, Copy, Printer, Factory, PencilSimple as Pencil, FileText, Funnel as Filter, X, MagnifyingGlass as Search, Package, CurrencyDollar as DollarSign, Clock, CaretDown, ChartBar as BarChart3, ClipboardText as ClipboardList, ArrowsClockwise as RefreshCw, Tag, SquaresFour as LayoutDashboard, Lightning as Zap, FileXls as FileSpreadsheet, Receipt, XCircle, CheckCircle, Check, Download, TrendUp as TrendingUp, Warning as AlertTriangle, ArrowCounterClockwise as RotateCcw, HandPalm as Hand, UploadSimple as Upload, Trash as Trash2, ListChecks, ArrowSquareOut as ExternalLink, DotsThree } from '@phosphor-icons/react';
+import { ArrowUp, ArrowsDownUp, Baby, Buildings, ShoppingCart, Plus, CircleNotch as Loader2, Copy, Printer, Factory, PencilSimple as Pencil, FileText, Funnel as Filter, X, MagnifyingGlass as Search, Package, Clock, CaretDown, ChartBar as BarChart3, ClipboardText as ClipboardList, ArrowsClockwise as RefreshCw, Tag, SquaresFour as LayoutDashboard, Lightning as Zap, FileXls as FileSpreadsheet, Receipt, XCircle, CheckCircle, Check, Download, TrendUp as TrendingUp, Warning as AlertTriangle, ArrowCounterClockwise as RotateCcw, HandPalm as Hand, UploadSimple as Upload, Trash as Trash2, ListChecks, ArrowSquareOut as ExternalLink, DotsThree } from '@phosphor-icons/react';
 import { useMarqueeSelection } from '@/hooks/useMarqueeSelection';
 import { BulkActionsBar, MarqueeOverlay } from '@/components/ui/bulk-actions-bar';
 import { cn } from "@/lib/utils";
@@ -76,14 +76,14 @@ import { todayISO, todayPlusDaysISO } from '@/lib/date';
 import { computeARSchedule } from '@/lib/saleOrderAR';
 import logoImg from '@/assets/logo-squad-shoes.jpg';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
-import { StatGridSkeleton, TableSkeleton } from '@/components/layout/PageSkeleton';
+import { TableSkeleton } from '@/components/layout/PageSkeleton';
 import { getValidNextStatuses } from '@/lib/saleOrderStateMachine';
-import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
 import { normalizeForSearch, splitSearchTerms } from '@/lib/searchUtils';
 import { safeUrlAttr } from '@/lib/htmlUtils';
 import { warnPackagingDebit } from '@/lib/packagingDebitWarnings';
+import SalesOperationsRail, { SalesOperationsRailSkeleton } from '@/components/sale-orders/SalesOperationsRail';
 
 // TODOS os status canônicos do sale_orders (saleOrderStateMachine.ts).
 // Antes faltavam 'Pendente', 'Expedido' e 'Concluído' — PVs nesses status
@@ -750,6 +750,31 @@ export default function SaleOrders() {
   const totalPares = useMemo(() =>
     filteredOrders.reduce((s, o) => s + (pairsBySaleOrder[o.id] || 0), 0),
   [filteredOrders, pairsBySaleOrder]);
+
+  const deadlineRiskCount = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return filteredOrders.filter((order) => {
+      if (TERMINAL_BILLED_STATUSES.includes(order.status) || order.status === 'Cancelado') return false;
+      const overdue = !!order.delivery_deadline && parseDateOnly(order.delivery_deadline) < today;
+      const minBilling = minBillingMap.get(order.id) || null;
+      const infeasible = !!(minBilling && order.delivery_deadline && order.delivery_deadline < minBilling);
+      return overdue || infeasible;
+    }).length;
+  }, [filteredOrders, minBillingMap]);
+
+  const currentScopeLabel = mainTab === 'faturados'
+    ? 'Faturados / sem NF'
+    : mainTab === 'cancelados'
+      ? 'Pedidos cancelados'
+      : 'Pedidos ativos';
+  const selectedMinBilling = selectedOrder ? minBillingMap.get(selectedOrder.id) || null : null;
+  const selectedDeadlineInfeasible = !!(
+    selectedOrder
+    && selectedMinBilling
+    && selectedOrder.delivery_deadline
+    && selectedOrder.delivery_deadline < selectedMinBilling
+  );
 
   const uniqueMonths = useMemo(() => {
     const months = new Set(orders.map(o => o.delivery_month).filter(Boolean));
@@ -1881,7 +1906,7 @@ export default function SaleOrders() {
           title="Pedidos de Venda"
           description="Gestão comercial e geração de ordens de produção"
         />
-        <StatGridSkeleton count={4} />
+        <SalesOperationsRailSkeleton />
         <TableSkeleton rows={8} />
       </div>
     );
@@ -2157,41 +2182,21 @@ export default function SaleOrders() {
           </button>
         </div>
 
-        {/* KPI Cards — Novidade editorial */}
-        <StatGrid>
-          <StatCard
-            label="Total Pedidos"
-            value={kpis.count}
-            hint={`${totalPares.toLocaleString('pt-BR')} pares`}
-            icon={ShoppingCart}
-          />
-          <StatCard
-            label="Rascunhos"
-            value={kpis.pending}
-            icon={Clock}
-            tone="warning"
-          />
-          <StatCard
-            label="Aprovados"
-            value={kpis.approved}
-            hint={`${kpis.inProduction} em produção`}
-            icon={Package}
-            tone="success"
-          />
-          {canSeeFinancialValues && (
-            <StatCard
-              label="Valor Total"
-              value={formatCurrency(kpis.total)}
-              icon={DollarSign}
-              tone="primary"
-            />
-          )}
-        </StatGrid>
+        <SalesOperationsRail
+          scopeLabel={currentScopeLabel}
+          orderCount={kpis.count}
+          pairs={totalPares}
+          drafts={kpis.pending}
+          approved={kpis.approved}
+          inProduction={kpis.inProduction}
+          deadlineRisk={deadlineRiskCount}
+          total={canSeeFinancialValues ? formatCurrency(kpis.total) : undefined}
+        />
 
         {/* Search & Filter Bar */}
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-3 rounded-lg border bg-card p-2.5 shadow-sm">
           <div className="flex flex-wrap items-center gap-2">
-            <div className="relative flex-1 max-w-md">
+            <div className="relative min-w-[16rem] flex-[1_1_32rem] max-w-2xl">
               <SmartSearch
                 value={searchTerm}
                 onChange={setSearchTerm}
@@ -2233,6 +2238,10 @@ export default function SaleOrders() {
                 <X className="h-3 w-3 mr-1" /> Limpar
               </Button>
             )}
+            <span className="ml-auto hidden text-right text-[10px] uppercase tracking-wider text-muted-foreground lg:block">
+              <strong className="font-mono text-xs text-foreground">{sortedOrders.length}</strong> PVs visíveis<br />
+              <strong className="font-mono text-xs text-foreground">{totalPares.toLocaleString('pt-BR')}</strong> pares
+            </span>
           </div>
 
           {/* Busca ATRAVESSA as abas (spec R5): mostra a contagem da aba atual
@@ -2393,7 +2402,7 @@ export default function SaleOrders() {
             ref={sel.containerRef}
             onMouseDown={sel.onContainerMouseDown}
             data-marquee-container
-            className="relative hidden overflow-x-auto rounded-lg border bg-card md:block"
+            className="relative hidden overflow-x-auto rounded-lg border border-border bg-card shadow-sm md:block"
           >
             <Table className="min-w-[640px]">
               <TableHeader>
@@ -2443,18 +2452,11 @@ export default function SaleOrders() {
                       data-marquee-item
                       data-marquee-id={order.id}
                       className={cn(
-                        "group transition-colors cursor-pointer",
-                        isSelected ? "bg-primary/10 hover:bg-primary/15" : "hover:bg-muted/50",
-                        isOverdue && "border-l-4 border-l-destructive",
-                        isInformal && !isSelected && "bg-amber-500/[0.04] hover:bg-amber-500/[0.08]",
-                        // PV com NF emitida: fundo verde claro (semântico) — destaca visualmente
-                        // pedidos que já saíram da etapa fiscal. Não conflita com isInformal pois
-                        // são mutuamente exclusivos (informal nunca chega em Faturado/Expedido).
-                        hasEmittedNfe && !isSelected && "bg-emerald-500/[0.07] hover:bg-emerald-500/[0.12]",
-                        // Pedido infantil: fundo rosa-claro. Guardado p/ não brigar com
-                        // os tints amber (sem NF) / emerald (NF emitida) — o badge rosa
-                        // identifica mesmo quando a linha já tem outro fundo.
-                        isInfantil && !isSelected && !isInformal && !hasEmittedNfe && "bg-pink-500/[0.06] hover:bg-pink-500/[0.11]"
+                        'group cursor-pointer border-l-4 border-l-transparent transition-colors',
+                        isSelected ? 'border-l-primary bg-primary/10 hover:bg-primary/15' : 'hover:bg-muted/50',
+                        (isOverdue || isInfeasible) && '!border-l-destructive',
+                        isInformal && !isSelected && !(isOverdue || isInfeasible) && 'border-l-amber-500',
+                        hasEmittedNfe && !isSelected && !(isOverdue || isInfeasible) && 'border-l-emerald-500',
                       )}
                       onClick={(e) => {
                         const target = e.target as HTMLElement;
@@ -2795,10 +2797,10 @@ export default function SaleOrders() {
           }
         }}
       >
-        <DialogContent className="w-[95vw] max-w-7xl max-h-[92vh] overflow-y-auto">
-          <DialogHeader className="space-y-0">
+        <DialogContent className="w-[96vw] max-w-[1440px] max-h-[94vh] gap-0 overflow-y-auto p-0">
+          <DialogHeader className="sticky top-0 z-30 space-y-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/90">
             <div className={cn(
-              "-mx-6 -mt-6 rounded-t-lg border-b px-6 py-4",
+              'border-b px-6 py-4 pr-12',
               STATUS_BAND[selectedOrder?.status || ''] || 'bg-muted/30'
             )}>
             <div className="flex items-start justify-between gap-4 gap-y-3 flex-wrap">
@@ -2842,7 +2844,7 @@ export default function SaleOrders() {
           </DialogHeader>
 
           {selectedOrder && (
-            <div className="space-y-4 mt-3">
+            <div className="space-y-4 px-6 pb-6 pt-4">
               {/* Mesa de liberação do PV: as ações seguem a ordem de trabalho
                   (pedido → materiais/produção → documentos/terceiros). */}
               <div className="grid overflow-hidden rounded-lg border bg-card lg:grid-cols-[0.72fr_1.55fr_0.9fr] [&_button]:h-8 [&_button]:px-2.5 [&_button]:text-xs [&_button]:gap-1.5">
@@ -2996,7 +2998,10 @@ export default function SaleOrders() {
                 </section>
               </div>
 
-              <div className="overflow-hidden rounded-lg border border-l-4 border-l-primary bg-card">
+              <div className={cn(
+                'overflow-hidden rounded-lg border border-l-4 bg-card',
+                selectedDeadlineInfeasible ? 'border-l-destructive' : 'border-l-foreground',
+              )}>
                 <div className="border-b bg-muted/30 px-4 py-2">
                   <p className="eyebrow">Dados comerciais e entrega</p>
                 </div>
@@ -3009,12 +3014,13 @@ export default function SaleOrders() {
                     ...(selectedOrder.client_order_number ? [{ label: 'Nº Pedido Cliente', value: selectedOrder.client_order_number, mono: true }] : []),
                     { label: 'Pagamento', value: selectedOrder.payment_condition || '—' },
                     { label: 'Entrega', value: selectedOrder.delivery_deadline ? parseDateOnly(selectedOrder.delivery_deadline).toLocaleDateString('pt-BR') : '—' },
+                    ...(selectedMinBilling ? [{ label: 'Data mínima viável', value: formatDate(selectedMinBilling), mono: true, critical: selectedDeadlineInfeasible }] : []),
                     ...(canSeeFinancialValues && Number(selectedOrder.commission_value) > 0 ? [{ label: 'Comissão', value: formatCurrency(Number(selectedOrder.commission_value)), mono: true }] : []),
                     { label: 'Criado em', value: new Date(selectedOrder.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) },
-                  ] as { label: string; value: string; mono?: boolean }[]).map((f) => (
+                  ] as { label: string; value: string; mono?: boolean; critical?: boolean }[]).map((f) => (
                     <div key={f.label} className="min-w-0">
                       <dt className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{f.label}</dt>
-                      <dd className={cn('text-sm text-foreground truncate', f.mono && 'font-mono')} title={String(f.value)}>{f.value}</dd>
+                      <dd className={cn('truncate text-sm text-foreground', f.mono && 'font-mono', f.critical && 'font-bold text-destructive')} title={String(f.value)}>{f.value}</dd>
                     </div>
                   ))}
                 </dl>
@@ -3033,6 +3039,15 @@ export default function SaleOrders() {
                   <EmptyState icon={Package} title="Nenhum item neste pedido" />
                 ) : (
                   <div className="divide-y">
+                    <div className="flex flex-wrap items-center justify-between gap-2 bg-foreground px-4 py-2.5 text-background">
+                      <div>
+                        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-background/55">Conteúdo do pedido</p>
+                        <p className="text-sm font-semibold">Referências, cores e distribuição da grade</p>
+                      </div>
+                      <p className="font-mono text-xs text-background/70">
+                        {selectedOrderItems.length} {selectedOrderItems.length === 1 ? 'item' : 'itens'} · {selectedOrderItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0).toLocaleString('pt-BR')} pares
+                      </p>
+                    </div>
                     <div className={cn(
                       'grid items-center bg-muted/60 px-4 py-2 text-xs font-semibold text-muted-foreground',
                       canSeeFinancialValues
