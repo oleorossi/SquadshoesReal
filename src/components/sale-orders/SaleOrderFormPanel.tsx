@@ -67,6 +67,33 @@ interface Representative {
   active: boolean;
 }
 
+interface SolePackagingGroup {
+  id: string;
+  name: string;
+  box_type_id: string | null;
+  box_type_master_id: string | null;
+  box_type_colmeia_id: string | null;
+  box_type_fitilho_id: string | null;
+  pairs_per_box_individual: number | null;
+  pairs_per_box_master: number | null;
+  pairs_per_box_colmeia: number | null;
+  pairs_per_box_fitilho: number | null;
+}
+
+interface SaleOrderPackagingBox {
+  id: string;
+  nome: string;
+  tipo: string | null;
+  pairs_per_box_default: number | null;
+  metros_per_amarrado_default: number | null;
+  comprimento_cm: number | null;
+  largura_cm: number | null;
+  altura_cm: number | null;
+  peso_kg: number | null;
+  quantity: number | null;
+  active: boolean | null;
+}
+
 interface Props {
   form: SaleOrderFormData;
   setForm: (fn: (f: SaleOrderFormData) => SaleOrderFormData) => void;
@@ -540,7 +567,8 @@ export default function SaleOrderFormPanel({
         .in('id', groupIds);
       if (groupsError) throw groupsError;
 
-      const boxIds = [...new Set((groups ?? []).flatMap((group: any) => [
+      const typedGroups = (groups ?? []) as SolePackagingGroup[];
+      const boxIds = [...new Set(typedGroups.flatMap(group => [
         group.box_type_id,
         group.box_type_master_id,
         group.box_type_colmeia_id,
@@ -554,8 +582,9 @@ export default function SaleOrderFormPanel({
           .in('id', boxIds);
       if (boxesError) throw boxesError;
 
-      const groupsById = new Map((groups ?? []).map((group: any) => [group.id, group]));
-      const boxesById = new Map((boxes ?? []).map((box: any) => [box.id, box]));
+      const typedBoxes = (boxes ?? []) as SaleOrderPackagingBox[];
+      const groupsById = new Map(typedGroups.map(group => [group.id, group]));
+      const boxesById = new Map(typedBoxes.map(box => [box.id, box]));
       const slots = [
         ['individual', 'box_type_id', 'pairs_per_box_individual'],
         ['master', 'box_type_master_id', 'pairs_per_box_master'],
@@ -563,11 +592,12 @@ export default function SaleOrderFormPanel({
         ['fitilho', 'box_type_fitilho_id', 'pairs_per_box_fitilho'],
       ] as const;
 
-      return (sheets ?? []).flatMap((sheet: any) => {
-        const group: any = groupsById.get(sheet.sole_group_id);
+      return (sheets ?? []).flatMap(sheet => {
+        if (!sheet.sole_group_id) return [];
+        const group = groupsById.get(sheet.sole_group_id);
         if (!group) return [];
         return slots.flatMap(([type, boxField, pairsField]) => {
-          const box: any = boxesById.get(group[boxField]);
+          const box = boxesById.get(group[boxField] ?? '');
           if (!box || box.active === false) return [];
           const pairs = Number(group[pairsField] || box.pairs_per_box_default || 12);
           return [{

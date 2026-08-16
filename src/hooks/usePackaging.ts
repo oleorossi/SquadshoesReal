@@ -34,7 +34,7 @@ export function usePackagingStats() {
   return useQuery<PackagingStats>({
     queryKey: ['packagingStats'],
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
+      const { data, error } = await supabase
         .from('box_types')
         .select('id, quantity, min_stock, unit_price, empty_weight_kg, active')
         .eq('active', true);
@@ -47,11 +47,11 @@ export function usePackagingStats() {
       // Prontidão dos 3 modos por modelo de solado — a view nasceu com a
       // migration 20261110120000, junto com a fonte única no solado.
       const [solesRes, sheetsRes] = await Promise.all([
-        (supabase as any)
-          .from('v_solados_sem_embalagem')
+        supabase
+          .from('v_solados_sem_embalagem' as never)
           .select('modo_tradicional_ok, modo_amarrado_ok, modo_colmeia_ok'),
-        (supabase as any)
-          .from('v_fichas_sem_solado_embalagem')
+        supabase
+          .from('v_fichas_sem_solado_embalagem' as never)
           .select('sheet_id', { count: 'exact', head: true }),
       ]);
       const { data: soles, error: solesErr } = solesRes;
@@ -229,7 +229,7 @@ export function useDeleteIndividualPackaging() {
       qc.invalidateQueries({ queryKey: ['box_types_stock'] });
       toast.success('Embalagem excluída');
     },
-    onError: (err: any) => toast.error(err?.message || 'Erro ao excluir embalagem'),
+    onError: (err: unknown) => toast.error(err instanceof Error ? err.message : 'Erro ao excluir embalagem'),
   });
 }
 
@@ -246,7 +246,7 @@ export function useDuplicateIndividualPackaging() {
       if (e1) throw e1;
       if (!src) throw new Error('Embalagem não encontrada');
 
-      const { id: _omit, created_at: _c, updated_at: _u, ...rest } = src as any;
+      const { id: _omit, created_at: _c, updated_at: _u, ...rest } = src;
       const { error: e2 } = await supabase.from('box_types').insert({
         ...rest,
         nome: `${src.nome} (cópia)`,
@@ -262,16 +262,44 @@ export function useDuplicateIndividualPackaging() {
       qc.invalidateQueries({ queryKey: ['box_types_stock'] });
       toast.success('Embalagem duplicada');
     },
-    onError: (err: any) => toast.error(err?.message || 'Erro ao duplicar embalagem'),
+    onError: (err: unknown) => toast.error(err instanceof Error ? err.message : 'Erro ao duplicar embalagem'),
   });
 }
 
+export interface PackagingBoxAlert {
+  id: string;
+  nome: string;
+  tipo: string | null;
+  interno: boolean | null;
+  quantity: number | null;
+  min_stock: number | null;
+  unit_price: number | null;
+  empty_weight_kg: number | null;
+  supplier_id: string | null;
+}
+
+export interface SolePackagingAlert {
+  sole_group_id: string;
+  solado: string;
+  modo_tradicional_ok: boolean;
+  modo_amarrado_ok: boolean;
+  modo_colmeia_ok: boolean;
+  fichas_afetadas: number;
+}
+
+export interface SheetWithoutSoleAlert {
+  sheet_id: string;
+  ficha: string;
+  itens_pv: number;
+  motivo: string | null;
+}
+
 export interface PackagingAlertsData {
-  lowStock: any[];
-  boxesWithoutPrice: any[];
-  boxesWithoutTare: any[];
-  incompleteSoles: any[];
-  sheetsWithoutSole: any[];
+  lowStock: PackagingBoxAlert[];
+  boxesWithoutPrice: PackagingBoxAlert[];
+  boxesWithoutTare: PackagingBoxAlert[];
+  incompleteSoles: SolePackagingAlert[];
+  sheetsWithoutSole: SheetWithoutSoleAlert[];
 }
 
 /** Alertas completos do domínio — estoque, cadastro de caixa e vínculo por solado. */
@@ -285,12 +313,12 @@ export function usePackagingAlerts() {
           .select('id, nome, tipo, interno, quantity, min_stock, unit_price, empty_weight_kg, supplier_id')
           .eq('active', true)
           .order('nome'),
-        (supabase as any)
-          .from('v_solados_sem_embalagem')
+        supabase
+          .from('v_solados_sem_embalagem' as never)
           .select('sole_group_id, solado, modo_tradicional_ok, modo_amarrado_ok, modo_colmeia_ok, fichas_afetadas')
           .order('solado'),
-        (supabase as any)
-          .from('v_fichas_sem_solado_embalagem')
+        supabase
+          .from('v_fichas_sem_solado_embalagem' as never)
           .select('sheet_id, ficha, itens_pv, motivo')
           .order('itens_pv', { ascending: false }),
       ]);
@@ -298,15 +326,15 @@ export function usePackagingAlerts() {
       if (solesRes.error) throw solesRes.error;
       if (sheetsRes.error) throw sheetsRes.error;
 
-      const boxes = boxesRes.data ?? [];
+      const boxes = (boxesRes.data ?? []) as PackagingBoxAlert[];
       return {
         lowStock: boxes.filter(box =>
           Number(box.min_stock || 0) > 0 && Number(box.quantity || 0) <= Number(box.min_stock || 0)),
         boxesWithoutPrice: boxes.filter(box => !(Number(box.unit_price || 0) > 0)),
-        boxesWithoutTare: boxes.filter(box => !(Number((box as any).empty_weight_kg || 0) > 0)),
-        incompleteSoles: (solesRes.data ?? []).filter((sole: any) =>
+        boxesWithoutTare: boxes.filter(box => !(Number(box.empty_weight_kg || 0) > 0)),
+        incompleteSoles: ((solesRes.data ?? []) as SolePackagingAlert[]).filter(sole =>
           !sole.modo_tradicional_ok || !sole.modo_amarrado_ok || !sole.modo_colmeia_ok),
-        sheetsWithoutSole: sheetsRes.data ?? [],
+        sheetsWithoutSole: (sheetsRes.data ?? []) as SheetWithoutSoleAlert[],
       };
     },
     staleTime: 2 * 60_000,

@@ -178,7 +178,7 @@ export function BoxTypeFormDialog({ open, onOpenChange, box, defaultTipo, onSave
     }
     setSaving(true);
     try {
-      const { data: savedId, error } = await (supabase as any).rpc('upsert_box_type_with_stock', {
+      const { data: savedId, error } = await supabase.rpc('upsert_box_type_with_stock' as never, {
         p_box_type_id: box?.id ?? null,
         p_nome: form.nome.trim(),
         p_tipo: form.tipo,
@@ -194,7 +194,7 @@ export function BoxTypeFormDialog({ open, onOpenChange, box, defaultTipo, onSave
         p_min_stock: form.min_stock,
         p_unit_price: form.unit_price,
         p_supplier_id: form.supplier_id || null,
-      });
+      } as never);
       if (error) throw error;
 
       toast.success(isEdit ? 'Embalagem atualizada!' : 'Embalagem criada!');

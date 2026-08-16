@@ -71,9 +71,9 @@ export default function PackagingDebitAuditPanel() {
   const { data: rows = [], isLoading, isFetching, error } = useQuery<PackagingAuditRow[]>({
     queryKey: ['packaging_debit_audit'],
     queryFn: async () => {
-      const { data, error: rpcError } = await (supabase as any).rpc('list_packaging_debit_audit', {
+      const { data, error: rpcError } = await supabase.rpc('list_packaging_debit_audit' as never, {
         p_limit: 600,
-      });
+      } as never);
       if (rpcError) throw rpcError;
       return (data ?? []) as PackagingAuditRow[];
     },

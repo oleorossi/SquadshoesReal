@@ -68,9 +68,9 @@ export function PackagingDecision({ order }: PackagingDecisionProps) {
     queryKey: ['packaging_plan_for_order', order.orderId],
     enabled: !!order.orderId,
     queryFn: async () => {
-      const { data: planData, error: planError } = await (supabase as any).rpc('plan_packaging_for_order', {
+      const { data: planData, error: planError } = await supabase.rpc('plan_packaging_for_order' as never, {
         p_order_id: order.orderId,
-      });
+      } as never);
       if (planError) throw planError;
       const plan = (planData ?? []) as PlanRow[];
       const ids = [...new Set(plan.map(row => row.box_type_id).filter(Boolean))] as string[];

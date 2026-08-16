@@ -68,7 +68,7 @@ export default function PackagingAlerts() {
   return (
     <div className="grid gap-4 xl:grid-cols-2">
       <AlertSection title="Estoque abaixo do mínimo" count={alerts.lowStock.length}>
-        {alerts.lowStock.map((box: any) => (
+        {alerts.lowStock.map(box => (
           <div key={box.id} className="flex items-center justify-between rounded-md border border-warning/30 bg-warning/5 p-3">
             <div>
               <p className="text-sm font-medium">{box.nome}</p>
@@ -84,11 +84,11 @@ export default function PackagingAlerts() {
 
       <AlertSection
         title="Cadastro de caixa incompleto"
-        count={new Set([...alerts.boxesWithoutPrice, ...alerts.boxesWithoutTare].map((box: any) => box.id)).size}
+        count={new Set([...alerts.boxesWithoutPrice, ...alerts.boxesWithoutTare].map(box => box.id)).size}
       >
         {Array.from(new Map(
-          [...alerts.boxesWithoutPrice, ...alerts.boxesWithoutTare].map((box: any) => [box.id, box]),
-        ).values()).map((box: any) => {
+          [...alerts.boxesWithoutPrice, ...alerts.boxesWithoutTare].map(box => [box.id, box] as const),
+        ).values()).map(box => {
           const missing: string[] = [];
           if (!(Number(box.unit_price || 0) > 0)) missing.push('preço');
           if (!(Number(box.empty_weight_kg || 0) > 0)) missing.push('tara');
@@ -105,7 +105,7 @@ export default function PackagingAlerts() {
       </AlertSection>
 
       <AlertSection title="Tipos de solado incompletos" count={alerts.incompleteSoles.length}>
-        {alerts.incompleteSoles.map((sole: any) => {
+        {alerts.incompleteSoles.map(sole => {
           const missing = [
             !sole.modo_tradicional_ok && 'Tradicional',
             !sole.modo_amarrado_ok && 'Amarrado',
@@ -134,7 +134,7 @@ export default function PackagingAlerts() {
       </AlertSection>
 
       <AlertSection title="Fichas sem tipo de solado" count={alerts.sheetsWithoutSole.length}>
-        {alerts.sheetsWithoutSole.slice(0, 30).map((sheet: any) => (
+        {alerts.sheetsWithoutSole.slice(0, 30).map(sheet => (
           <div key={sheet.sheet_id} className="flex items-center justify-between rounded-md border p-3">
             <div>
               <p className="text-sm font-medium">{sheet.ficha}</p>

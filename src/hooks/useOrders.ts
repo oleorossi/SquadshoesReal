@@ -147,11 +147,11 @@ export function useCreateOrder() {
           // INSERT da OP. Nunca apagar a OP antes de estornar: o order_id é o
           // único elo auditável entre saída e devolução.
           const failures: string[] = [];
-          const { error: releaseErr } = await (supabase.rpc as any)('release_order_reservations', { p_order_id: data.id });
+          const { error: releaseErr } = await supabase.rpc('release_order_reservations' as never, { p_order_id: data.id } as never);
           if (releaseErr && !/does not exist|not found/i.test(releaseErr.message)) failures.push(releaseErr.message);
-          const { error: soleRestoreErr } = await (supabase.rpc as any)('restore_sole_grade_for_order', { p_order_id: data.id });
+          const { error: soleRestoreErr } = await supabase.rpc('restore_sole_grade_for_order' as never, { p_order_id: data.id } as never);
           if (soleRestoreErr && !/does not exist|not found/i.test(soleRestoreErr.message)) failures.push(soleRestoreErr.message);
-          const { error: stockRestoreErr } = await supabase.rpc('restore_product_stocks_for_order', { p_order_id: data.id } as any);
+          const { error: stockRestoreErr } = await supabase.rpc('restore_product_stocks_for_order', { p_order_id: data.id } as never);
           if (stockRestoreErr) failures.push(stockRestoreErr.message);
 
           if (failures.length > 0) {
@@ -172,7 +172,7 @@ export function useCreateOrder() {
           p_order_id: data.id,
           p_order_grade: form.grade && Object.keys(form.grade).length > 0 ? form.grade : null,
           p_force_soft: true,
-        } as any);
+        } as never);
         if (rpcError) await cleanupOrphan(`Débito de estoque falhou: ${rpcError.message}`);
 
         // Debit sole stock by grade (per size)
@@ -183,7 +183,7 @@ export function useCreateOrder() {
             p_color: form.color || '',
             p_order_grade: form.grade,
             p_force_soft: true,
-          } as any);
+          } as never);
           if (soleError) {
             await cleanupOrphan(`Débito de solado falhou: ${soleError.message}`);
           }
@@ -196,16 +196,16 @@ export function useCreateOrder() {
           .select('packaging_mode')
           .eq('id', form.sale_order_id)
           .maybeSingle();
-        const { data: packagingResult, error: pkgErr } = await (supabase as any).rpc('debit_packaging_for_order', {
+        const { data: packagingResult, error: pkgErr } = await supabase.rpc('debit_packaging_for_order' as never, {
           p_sale_order_id: form.sale_order_id,
           p_order_id: data.id,
           p_reference_id: form.reference_id,
           p_order_quantity: form.quantity,
-          p_packaging_mode: (saleOrder as any)?.packaging_mode || 'individual_amarrado',
+          p_packaging_mode: saleOrder?.packaging_mode || 'individual_amarrado',
           p_force_soft: false,
-        });
+        } as never);
         if (pkgErr) await cleanupOrphan(`Débito de embalagem falhou: ${pkgErr.message}`);
-        warnPackagingDebit(packagingResult, `OP ${(data as any).order_number || data.id.slice(0, 8)}`);
+        warnPackagingDebit(packagingResult, `OP ${data.order_number || data.id.slice(0, 8)}`);
       }
 
       // Create production stages atomically — only for OPs that will enter

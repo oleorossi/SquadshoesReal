@@ -24,6 +24,8 @@ interface SoleGroupRow {
   sheetsCount: number;
 }
 
+type SoleGroupSource = Omit<SoleGroupRow, 'productsCount' | 'sheetsCount'>;
+
 function readiness(group: SoleGroupRow) {
   const tradicional = !!group.box_type_id && !!group.box_type_master_id;
   const amarrado = !!group.box_type_id && !!group.box_type_fitilho_id;
@@ -57,17 +59,17 @@ export default function SolePackagingConfigurationPanel({ initialSoleGroupId }: 
       if (sheetsRes.error) throw sheetsRes.error;
 
       const productsByGroup = new Map<string, number>();
-      for (const row of productsRes.data ?? []) {
-        const id = (row as any).group_id as string;
+      for (const row of (productsRes.data ?? []) as Array<{ group_id: string }>) {
+        const id = row.group_id;
         productsByGroup.set(id, (productsByGroup.get(id) ?? 0) + 1);
       }
       const sheetsByGroup = new Map<string, number>();
-      for (const row of sheetsRes.data ?? []) {
-        const id = (row as any).sole_group_id as string;
+      for (const row of (sheetsRes.data ?? []) as Array<{ sole_group_id: string }>) {
+        const id = row.sole_group_id;
         sheetsByGroup.set(id, (sheetsByGroup.get(id) ?? 0) + 1);
       }
 
-      return (groupsRes.data ?? []).map((group: any) => ({
+      return ((groupsRes.data ?? []) as SoleGroupSource[]).map(group => ({
         ...group,
         productsCount: productsByGroup.get(group.id) ?? 0,
         sheetsCount: sheetsByGroup.get(group.id) ?? 0,

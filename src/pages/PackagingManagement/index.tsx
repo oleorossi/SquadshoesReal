@@ -79,7 +79,7 @@ const OrderPackagingDecision = () => {
                   <SelectValue placeholder="Selecione um pedido..." />
                 </SelectTrigger>
                 <SelectContent>
-                  {orders.map((o: any) => (
+                  {orders.map(o => (
                     <SelectItem key={o.id} value={o.id}>
                       OP #{o.order_number} ({o.quantity} pares)
                     </SelectItem>
@@ -94,9 +94,9 @@ const OrderPackagingDecision = () => {
       {selectedOrder && (
         <PackagingDecision
           order={{
-            orderId: (selectedOrder as any).id,
-            reference: (selectedOrder as any).order_number,
-            quantity: (selectedOrder as any).quantity,
+            orderId: selectedOrder.id,
+            reference: selectedOrder.order_number,
+            quantity: selectedOrder.quantity,
           }}
         />
       )}
