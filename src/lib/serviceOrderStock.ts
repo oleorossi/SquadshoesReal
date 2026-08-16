@@ -1,5 +1,10 @@
 import { supabase } from '@/integrations/supabase/client';
 import { adjustStockSafe } from '@/lib/stockAdjustments';
+import {
+  buildFullServiceOrderItemReceipt,
+  normalizeServiceOrderReceiptItems,
+} from '@/lib/serviceOrderItemReceipts';
+import { callUntypedRpc } from '@/lib/supabaseRpc';
 
 /**
  * Débito de estoque para uma OS (service_order) — extraído pra reuso
@@ -243,6 +248,45 @@ export async function receiveServiceOrderFully(
   // Nada na rua = já recebida. Não inserir retorno zerado (dispararia conta a
   // pagar de valor zero e sujaria o histórico).
   if (inField <= 0) return { received: 0, skipped: true };
+
+  // Quando o saldo por item fecha exatamente com o saldo físico, o atalho de
+  // recebimento total preserva também a rastreabilidade por modelo/cor. Se a OS
+  // é legada ou diverge, não inventa rateio: mantém o cabeçalho agregado antigo.
+  const itemRes = await callUntypedRpc<unknown>('list_service_order_receipt_items', {
+    p_service_order_id: serviceOrderId,
+  });
+  const itemRpcMissing = itemRes.error && (
+    ['42883', 'PGRST202'].includes(String(itemRes.error.code || ''))
+    || /list_service_order_receipt_items.*(does not exist|schema cache|not find)/i.test(String(itemRes.error.message || ''))
+  );
+  if (itemRes.error && !itemRpcMissing) {
+    throw new Error(`Falha ao carregar os itens da OS: ${itemRes.error.message}`);
+  }
+
+  const receiptItems = normalizeServiceOrderReceiptItems(itemRes.data);
+  const itemPayload = buildFullServiceOrderItemReceipt(receiptItems, inField);
+
+  if (itemPayload) {
+    const { error: registerError } = await callUntypedRpc<unknown>('register_service_order_return', {
+      p_service_order_id: serviceOrderId,
+      p_returned_at: new Date().toISOString(),
+      p_qty_good: inField,
+      p_qty_defect: 0,
+      p_qty_defect_scrapped: 0,
+      p_qty_loss: 0,
+      p_defect_notes: opts?.notes ?? null,
+      p_contractor_id: null,
+      p_signed_photo_url: null,
+      p_items: itemPayload,
+    });
+    if (!registerError) return { received: inField, skipped: false };
+
+    const registerMissing = ['42883', 'PGRST202'].includes(String(registerError.code || ''))
+      || /register_service_order_return.*(does not exist|schema cache|not find)/i.test(String(registerError.message || ''));
+    if (!registerMissing) {
+      throw new Error(`Falha ao registrar o recebimento por item: ${registerError.message}`);
+    }
+  }
 
   const { error } = await (supabase as any).from('service_order_returns').insert({
     service_order_id: serviceOrderId,

@@ -13,7 +13,20 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useContractors } from '@/hooks/useContractors';
 import { uploadSignedReceiptPhoto } from '@/lib/serviceOrderStock';
 import { formatCurrency } from '@/lib/utils';
-import { CalendarBlank as Calendar, Camera, CircleNotch as Loader2, CurrencyDollar } from '@phosphor-icons/react';
+import {
+  EMPTY_SERVICE_ORDER_ITEM_RECEIPT,
+  normalizeServiceOrderReceiptItems,
+  serviceOrderItemPhysicalTotal,
+  serviceOrderItemReceiptPayload,
+  summarizeServiceOrderItemReceipts,
+  updateServiceOrderItemReceiptEntry,
+  type ServiceOrderItemReceiptEntry,
+  type ServiceOrderItemReceiptField,
+  type ServiceOrderReceiptItem,
+} from '@/lib/serviceOrderItemReceipts';
+import { callUntypedRpc } from '@/lib/supabaseRpc';
+import type { TablesInsert } from '@/integrations/supabase/types';
+import { CalendarBlank as Calendar, Camera, CheckCircle, CircleNotch as Loader2, CurrencyDollar, Package } from '@phosphor-icons/react';
 
 /**
  * Registrar Retorno de OS terceirizada (Fase 1 facção).
@@ -64,6 +77,13 @@ export interface ReturnDialogServiceOrder {
 
 interface ContractorBal { contractor_id: string; qty_dispatched: number; qty_in_field: number; }
 
+interface RegisterReturnResult {
+  return_id?: string;
+  completed?: boolean;
+  qty_in_field?: number;
+  qty_to_dispatch?: number;
+}
+
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -82,7 +102,7 @@ export default function ServiceOrderReturnDialog({ open, onOpenChange, serviceOr
     queryKey: ['so_return_dialog', soId],
     enabled: open && !!soId,
     queryFn: async () => {
-      const [{ data: bal, error: balErr }, { data: rets, error: retErr }, { data: cbals }] = await Promise.all([
+      const [{ data: bal, error: balErr }, { data: rets, error: retErr }, { data: cbals }, itemRes] = await Promise.all([
         (supabase as any).from('v_service_order_balance').select('*').eq('service_order_id', soId).maybeSingle(),
         (supabase as any)
           .from('service_order_returns')
@@ -90,10 +110,23 @@ export default function ServiceOrderReturnDialog({ open, onOpenChange, serviceOr
           .eq('service_order_id', soId)
           .order('returned_at', { ascending: false }),
         (supabase as any).from('v_service_order_contractor_balance').select('contractor_id, qty_dispatched, qty_in_field').eq('service_order_id', soId),
+        callUntypedRpc<unknown>('list_service_order_receipt_items', { p_service_order_id: soId }),
       ]);
       if (balErr) throw balErr;
       if (retErr) throw retErr;
-      return { balance: (bal ?? null) as BalanceRow | null, returns: (rets ?? []) as ReturnRow[], contractorBals: (cbals ?? []) as ContractorBal[] };
+      const itemError = itemRes.error as { code?: string; message?: string } | null;
+      const itemRpcMissing = itemError && (
+        ['42883', 'PGRST202'].includes(itemError.code || '')
+        || /list_service_order_receipt_items.*(does not exist|schema cache|not find)/i.test(itemError.message || '')
+      );
+      if (itemError && !itemRpcMissing) throw itemError;
+      const receiptItems = normalizeServiceOrderReceiptItems(itemRes.data);
+      return {
+        balance: (bal ?? null) as BalanceRow | null,
+        returns: (rets ?? []) as ReturnRow[],
+        contractorBals: (cbals ?? []) as ContractorBal[],
+        receiptItems,
+      };
     },
   });
 
@@ -115,6 +148,11 @@ export default function ServiceOrderReturnDialog({ open, onOpenChange, serviceOr
   const [returnDate, setReturnDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
+  const [itemEntries, setItemEntries] = useState<Record<string, ServiceOrderItemReceiptEntry>>({});
+
+  const receiptItems = useMemo(() => data?.receiptItems ?? [], [data?.receiptItems]);
+  const unallocatedReturnQty = Math.max(0, Number(receiptItems[0]?.unallocated_return_qty ?? 0));
+  const itemMode = receiptItems.length > 0 && unallocatedReturnQty === 0;
 
   // Na rua = do PRESTADOR selecionado (OS dividida) OU total (OS normal).
   const selBal = contractorBals.find(b => b.contractor_id === contractor);
@@ -132,14 +170,27 @@ export default function ServiceOrderReturnDialog({ open, onOpenChange, serviceOr
       setContractor(serviceOrder?.contractorId || '');
       setReturnDate(new Date().toISOString().slice(0, 10));
       setReceiptFile(null);
+      setItemEntries({});
     }
 
   }, [open, serviceOrder?.contractorId]);
-  // Pré-preenche BONS com o saldo na rua (do prestador selecionado) — atualiza ao trocar.
+  // OS sem escopo por item mantém o atalho antigo: preenche o saldo todo como
+  // bom. Quando há itens, começa zerado para o operador indicar QUAL chegou.
   useEffect(() => {
-    if (open) setQtyGood(inField);
+    if (!open) return;
+    if (itemMode) {
+      setQtyGood(0);
+      setQtyDefect(0);
+      setQtyLoss(0);
+      setQtyScrapped(0);
+      setItemEntries(Object.fromEntries(
+        receiptItems.map(item => [item.sale_order_item_id, { ...EMPTY_SERVICE_ORDER_ITEM_RECEIPT }]),
+      ));
+    } else {
+      setQtyGood(inField);
+    }
 
-  }, [open, inField]);
+  }, [open, inField, itemMode, receiptItems]);
 
   // Baixar o nº de defeituosos não pode deixar a sucata maior que eles (o banco
   // tem CHECK pra isso — melhor corrigir na tela que estourar no save).
@@ -147,11 +198,20 @@ export default function ServiceOrderReturnDialog({ open, onOpenChange, serviceOr
     setQtyScrapped(s => Math.min(s, qtyDefect));
   }, [qtyDefect]);
 
-  const totalReturn = qtyGood + qtyDefect + qtyLoss;
+  const itemSummary = useMemo(() => summarizeServiceOrderItemReceipts(itemEntries), [itemEntries]);
+  const effectiveQtyGood = itemMode ? itemSummary.qtyGood : qtyGood;
+  const effectiveQtyDefect = itemMode ? itemSummary.qtyDefect : qtyDefect;
+  const effectiveQtyScrapped = itemMode ? itemSummary.qtyDefectScrapped : qtyScrapped;
+  const effectiveQtyLoss = itemMode ? itemSummary.qtyLoss : qtyLoss;
+  const itemPayload = useMemo(
+    () => itemMode ? serviceOrderItemReceiptPayload(itemEntries) : [],
+    [itemEntries, itemMode],
+  );
+  const totalReturn = effectiveQtyGood + effectiveQtyDefect + effectiveQtyLoss;
   const exceeds = totalReturn > inField;
   const remainingTotal = Math.max(0, Number(balance?.qty_in_field ?? inField) - totalReturn);
-  const reworkCreated = Math.max(0, qtyDefect - Math.min(qtyScrapped, qtyDefect));
-  const expectedPayable = qtyGood * Math.max(0, Number(serviceOrder?.unitPrice ?? 0));
+  const reworkCreated = Math.max(0, effectiveQtyDefect - Math.min(effectiveQtyScrapped, effectiveQtyDefect));
+  const expectedPayable = effectiveQtyGood * Math.max(0, Number(serviceOrder?.unitPrice ?? 0));
   // Em remessa dividida, prazo financeiro pertence a quem efetivamente
   // devolveu — pode ser diferente do prestador do cabeçalho da OS.
   const selectedContractor = contractors.find(c => c.id === contractor);
@@ -165,12 +225,41 @@ export default function ServiceOrderReturnDialog({ open, onOpenChange, serviceOr
 
   const fmtDate = useMemo(() => (s: string) => new Date(s).toLocaleDateString('pt-BR'), []);
 
+  const updateItemEntry = (
+    item: ServiceOrderReceiptItem,
+    field: ServiceOrderItemReceiptField,
+    value: number,
+  ) => {
+    setItemEntries(current => ({
+      ...current,
+      [item.sale_order_item_id]: updateServiceOrderItemReceiptEntry(
+        current[item.sale_order_item_id] ?? EMPTY_SERVICE_ORDER_ITEM_RECEIPT,
+        field,
+        value,
+        item.qty_remaining,
+      ),
+    }));
+  };
+
+  const fillItemAsGood = (item: ServiceOrderReceiptItem) => {
+    const current = itemEntries[item.sale_order_item_id] ?? EMPTY_SERVICE_ORDER_ITEM_RECEIPT;
+    const usedByOtherItems = Math.max(0, totalReturn - serviceOrderItemPhysicalTotal(current));
+    const availableInField = Math.max(0, inField - usedByOtherItems);
+    setItemEntries(entries => ({
+      ...entries,
+      [item.sale_order_item_id]: {
+        ...EMPTY_SERVICE_ORDER_ITEM_RECEIPT,
+        qtyGood: Math.min(Math.max(0, Math.trunc(item.qty_remaining)), availableInField),
+      },
+    }));
+  };
+
   const handleSave = async () => {
     if (!soId || saving) return;
     if (dispatchTracked && !contractor) { toast.error('Selecione de qual prestador está voltando.'); return; }
     if (totalReturn <= 0) { toast.error('Informe ao menos 1 par devolvido.'); return; }
     if (exceeds) { toast.error(`Retorno excede o saldo na rua (${inField} pares).`); return; }
-    if ((qtyDefect > 0 || qtyLoss > 0) && !defectNotes.trim()) {
+    if ((effectiveQtyDefect > 0 || effectiveQtyLoss > 0) && !defectNotes.trim()) {
       toast.error('Descreva o defeito/perda para preservar a rastreabilidade da conferência.');
       return;
     }
@@ -183,18 +272,46 @@ export default function ServiceOrderReturnDialog({ open, onOpenChange, serviceOr
         signedPhotoUrl = uploaded.url;
         uploadedPath = uploaded.path;
       }
-      const { error } = await (supabase as any).from('service_order_returns').insert({
-        service_order_id: soId,
-        returned_at: new Date(`${returnDate}T12:00:00`).toISOString(),
-        qty_good: qtyGood,
-        qty_defect: qtyDefect,
-        qty_defect_scrapped: Math.min(qtyScrapped, qtyDefect),
-        qty_loss: qtyLoss,
-        defect_notes: defectNotes.trim() || null,
-        contractor_id: dispatchTracked ? (contractor || null) : null,
-        signed_photo_url: signedPhotoUrl,
+      const returnedAt = new Date(`${returnDate}T12:00:00`).toISOString();
+      const register = await callUntypedRpc<RegisterReturnResult>('register_service_order_return', {
+        p_service_order_id: soId,
+        p_returned_at: returnedAt,
+        p_qty_good: effectiveQtyGood,
+        p_qty_defect: effectiveQtyDefect,
+        p_qty_defect_scrapped: Math.min(effectiveQtyScrapped, effectiveQtyDefect),
+        p_qty_loss: effectiveQtyLoss,
+        p_defect_notes: defectNotes.trim() || null,
+        p_contractor_id: dispatchTracked ? (contractor || null) : null,
+        p_signed_photo_url: signedPhotoUrl,
+        p_items: itemPayload,
       });
-      if (error) throw error;
+      const rpcError = register.error as { code?: string; message?: string } | null;
+      const rpcMissing = rpcError && (
+        ['42883', 'PGRST202'].includes(rpcError.code || '')
+        || /register_service_order_return.*(does not exist|schema cache|not find)/i.test(rpcError.message || '')
+      );
+      let registerResult = (register.data ?? null) as RegisterReturnResult | null;
+      if (rpcError && !rpcMissing) throw rpcError;
+
+      // Janela curta de deploy: se o frontend chegar antes da migration, conserva
+      // o fluxo agregado antigo. O modo por item só aparece quando o RPC de
+      // leitura novo existe, portanto nunca perde um rateio já digitado aqui.
+      if (rpcMissing) {
+        const legacyPayload = {
+          service_order_id: soId,
+          returned_at: returnedAt,
+          qty_good: effectiveQtyGood,
+          qty_defect: effectiveQtyDefect,
+          qty_defect_scrapped: Math.min(effectiveQtyScrapped, effectiveQtyDefect),
+          qty_loss: effectiveQtyLoss,
+          defect_notes: defectNotes.trim() || null,
+          contractor_id: dispatchTracked ? (contractor || null) : null,
+          signed_photo_url: signedPhotoUrl,
+        } as unknown as TablesInsert<'service_order_returns'>;
+        const { error } = await supabase.from('service_order_returns').insert(legacyPayload);
+        if (error) throw error;
+        registerResult = null;
+      }
 
       // Mantém a coluna legada no cabeçalho para relatórios antigos, enquanto a
       // evidência correta fica presa ao retorno que ela documenta.
@@ -211,13 +328,18 @@ export default function ServiceOrderReturnDialog({ open, onOpenChange, serviceOr
 
       // Em OS dividida, zerar um prestador não conclui se outro ainda tem saldo.
       // Defeito não-sucateado também mantém a OS aberta para retrabalho.
-      const completed = remainingTotal <= 0 && reworkCreated <= 0;
+      const completed = typeof registerResult?.completed === 'boolean'
+        ? registerResult.completed
+        : remainingTotal <= 0 && reworkCreated <= 0;
+      const remainingAfter = registerResult?.qty_in_field == null
+        ? remainingTotal
+        : Math.max(0, Number(registerResult.qty_in_field));
       toast.success(
         completed
           ? `OS ${serviceOrder?.order_number ?? ''} conferida por completo — financeiro gerado pelos pares bons.`
           : reworkCreated > 0
             ? `Conferência registrada — ${reworkCreated} par(es) aguardam retrabalho.`
-            : `Conferência parcial registrada — restam ${remainingTotal} pares na rua.`,
+            : `Conferência parcial registrada — restam ${remainingAfter} pares na rua.`,
       );
       qc.invalidateQueries({ queryKey: ['service_orders'] });
       qc.invalidateQueries({ queryKey: ['v_contractor_metrics'] });
@@ -241,7 +363,7 @@ export default function ServiceOrderReturnDialog({ open, onOpenChange, serviceOr
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
             Conferir retorno — OS {serviceOrder?.order_number ?? ''}
@@ -280,20 +402,137 @@ export default function ServiceOrderReturnDialog({ open, onOpenChange, serviceOr
               </div>
             )}
 
-            <div className="grid grid-cols-3 gap-3">
-              <div>
-                <Label className="text-xs">Pares BONS</Label>
-                <NumberInput value={qtyGood} onChange={v => setQtyGood(Math.max(0, Math.trunc(v ?? 0)))} min={0} className="h-9" />
-              </div>
-              <div>
-                <Label className="text-xs">Defeituosos</Label>
-                <NumberInput value={qtyDefect} onChange={v => setQtyDefect(Math.max(0, Math.trunc(v ?? 0)))} min={0} className="h-9" />
-              </div>
-              <div>
-                <Label className="text-xs">Perda</Label>
-                <NumberInput value={qtyLoss} onChange={v => setQtyLoss(Math.max(0, Math.trunc(v ?? 0)))} min={0} className="h-9" />
-              </div>
-            </div>
+            {itemMode ? (
+              <section className="overflow-hidden rounded-lg border border-border bg-card">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/40 px-3 py-2.5">
+                  <div className="flex items-center gap-2">
+                    <span className="grid h-7 w-7 place-items-center rounded-md border border-border bg-background">
+                      <Package className="h-4 w-4 text-primary" />
+                    </span>
+                    <div>
+                      <p className="text-xs font-bold text-foreground">Itens desta entrada</p>
+                      <p className="text-[11px] text-muted-foreground">Preencha somente o que chegou agora.</p>
+                    </div>
+                  </div>
+                  <Badge variant="outline" className="font-mono text-[10px]">
+                    {itemPayload.length} de {receiptItems.filter(item => item.qty_remaining > 0).length} movimentados
+                  </Badge>
+                </div>
+
+                <div className="max-h-[42vh] divide-y divide-border overflow-y-auto">
+                  {receiptItems.map(item => {
+                    const entry = itemEntries[item.sale_order_item_id] ?? EMPTY_SERVICE_ORDER_ITEM_RECEIPT;
+                    const entryTotal = serviceOrderItemPhysicalTotal(entry);
+                    const itemName = item.reference_name || item.reference_code || 'Item do pedido';
+                    const trace = [item.pv_number, item.op_number].filter(Boolean).join(' · ');
+                    const completedItem = item.qty_remaining <= 0;
+                    return (
+                      <article key={item.sale_order_item_id} className="px-3 py-3">
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <p className="truncate text-sm font-bold text-foreground">{itemName}</p>
+                              {item.color && <Badge variant="secondary" className="h-5 text-[10px]">{item.color}</Badge>}
+                              {completedItem && (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-emerald-600">
+                                  <CheckCircle className="h-3.5 w-3.5" /> Recebido
+                                </span>
+                              )}
+                            </div>
+                            <p className="mt-0.5 font-mono text-[10px] text-muted-foreground">{trace || 'Sem PV/OP identificado'}</p>
+                            <p className="mt-1 text-[11px] text-muted-foreground">
+                              Contratado <b className="text-foreground">{item.contracted_qty.toLocaleString('pt-BR')}</b>
+                              {' · '}Finalizado <b className="text-foreground">{item.qty_settled.toLocaleString('pt-BR')}</b>
+                              {' · '}Falta <b className="text-foreground">{item.qty_remaining.toLocaleString('pt-BR')}</b>
+                            </p>
+                          </div>
+                          {!completedItem && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-8 text-[11px]"
+                              onClick={() => entryTotal > 0
+                                ? setItemEntries(entries => ({
+                                    ...entries,
+                                    [item.sale_order_item_id]: { ...EMPTY_SERVICE_ORDER_ITEM_RECEIPT },
+                                  }))
+                                : fillItemAsGood(item)}
+                            >
+                              {entryTotal > 0 ? 'Limpar' : 'Receber saldo'}
+                            </Button>
+                          )}
+                        </div>
+
+                        {!completedItem && (
+                          <div className="mt-2.5 grid grid-cols-3 gap-2 sm:grid-cols-4">
+                            <div>
+                              <Label className="text-[10px] text-muted-foreground">Bons</Label>
+                              <NumberInput
+                                value={entry.qtyGood}
+                                onChange={value => updateItemEntry(item, 'qtyGood', value ?? 0)}
+                                min={0}
+                                className="h-8"
+                              />
+                            </div>
+                            <div>
+                              <Label className="text-[10px] text-muted-foreground">Defeito</Label>
+                              <NumberInput
+                                value={entry.qtyDefect}
+                                onChange={value => updateItemEntry(item, 'qtyDefect', value ?? 0)}
+                                min={0}
+                                className="h-8"
+                              />
+                            </div>
+                            <div>
+                              <Label className="text-[10px] text-muted-foreground">Perda</Label>
+                              <NumberInput
+                                value={entry.qtyLoss}
+                                onChange={value => updateItemEntry(item, 'qtyLoss', value ?? 0)}
+                                min={0}
+                                className="h-8"
+                              />
+                            </div>
+                            <div className={entry.qtyDefect > 0 ? 'col-span-3 sm:col-span-1' : 'hidden sm:block'}>
+                              <Label className="text-[10px] text-muted-foreground">Sucata do defeito</Label>
+                              <NumberInput
+                                value={entry.qtyDefectScrapped}
+                                onChange={value => updateItemEntry(item, 'qtyDefectScrapped', value ?? 0)}
+                                min={0}
+                                disabled={entry.qtyDefect <= 0}
+                                className="h-8"
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </article>
+                    );
+                  })}
+                </div>
+              </section>
+            ) : (
+              <>
+                {unallocatedReturnQty > 0 && receiptItems.length > 0 && (
+                  <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-300">
+                    Esta OS já possui {unallocatedReturnQty} par(es) conferidos antes do rastreio por item. O lançamento continua pelo resumo para não atribuir esses pares ao modelo errado.
+                  </div>
+                )}
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <Label className="text-xs">Pares BONS</Label>
+                    <NumberInput value={qtyGood} onChange={v => setQtyGood(Math.max(0, Math.trunc(v ?? 0)))} min={0} className="h-9" />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Defeituosos</Label>
+                    <NumberInput value={qtyDefect} onChange={v => setQtyDefect(Math.max(0, Math.trunc(v ?? 0)))} min={0} className="h-9" />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Perda</Label>
+                    <NumberInput value={qtyLoss} onChange={v => setQtyLoss(Math.max(0, Math.trunc(v ?? 0)))} min={0} className="h-9" />
+                  </div>
+                </div>
+              </>
+            )}
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
@@ -308,7 +547,7 @@ export default function ServiceOrderReturnDialog({ open, onOpenChange, serviceOr
 
             {/* Destino do defeito: sem isso, TODO par defeituoso ficava como
                 retrabalho pendente e nunca havia como registrar sucata. */}
-            {qtyDefect > 0 && (
+            {!itemMode && qtyDefect > 0 && (
               <div className="rounded-md border border-border bg-muted/30 p-3">
                 <Label className="text-xs">Destino dos {qtyDefect} defeituosos</Label>
                 <div className="mt-1.5 grid grid-cols-2 items-end gap-3">
@@ -335,7 +574,7 @@ export default function ServiceOrderReturnDialog({ open, onOpenChange, serviceOr
               </div>
             )}
 
-            {(qtyDefect > 0 || qtyLoss > 0) && (
+            {(effectiveQtyDefect > 0 || effectiveQtyLoss > 0) && (
               <div>
                 <Label className="text-xs">Ocorrência do defeito/perda *</Label>
                 <Textarea value={defectNotes} onChange={e => setDefectNotes(e.target.value)} rows={2} placeholder="Ex.: costura torta em 4 pares" />
@@ -351,7 +590,7 @@ export default function ServiceOrderReturnDialog({ open, onOpenChange, serviceOr
                 <p className="mt-1 text-muted-foreground">
                   {paymentDays >= 999
                     ? 'Prestador interno FÁBRICA: a conferência fecha o fluxo físico sem criar conta a pagar.'
-                    : <>{qtyGood} bons × {formatCurrency(Number(serviceOrder?.unitPrice ?? 0))}/par{expectedDueDate ? ` · vence ${expectedDueDate}` : ''}. Defeito e perda não são pagos.</>}
+                    : <>{effectiveQtyGood} bons × {formatCurrency(Number(serviceOrder?.unitPrice ?? 0))}/par{expectedDueDate ? ` · vence ${expectedDueDate}` : ''}. Defeito e perda não são pagos.</>}
                 </p>
               </div>
             )}
@@ -386,7 +625,7 @@ export default function ServiceOrderReturnDialog({ open, onOpenChange, serviceOr
 
         <DialogFooter>
           <Button variant="outline" className="h-9" onClick={() => onOpenChange(false)}>Cancelar</Button>
-          <Button className="h-9" onClick={handleSave} disabled={saving || isLoading || totalReturn <= 0 || exceeds || !returnDate || ((qtyDefect > 0 || qtyLoss > 0) && !defectNotes.trim()) || (dispatchTracked && !contractor)}>
+          <Button className="h-9" onClick={handleSave} disabled={saving || isLoading || totalReturn <= 0 || exceeds || !returnDate || ((effectiveQtyDefect > 0 || effectiveQtyLoss > 0) && !defectNotes.trim()) || (dispatchTracked && !contractor)}>
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Concluir conferência'}
           </Button>
         </DialogFooter>
