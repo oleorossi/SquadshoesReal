@@ -8,10 +8,13 @@ import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
 import {
   MagnifyingGlass as Search, Handshake, CaretRight, Warning, CheckCircle, CircleNotch as Loader2,
+  CurrencyDollar, Users,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { ReferenceTerceirizacoesPanel } from '@/components/technical-sheets/ReferenceTerceirizacoesPanel';
+import { ContractorSectionHeader } from '@/components/contractors/ContractorSectionHeader';
+import { ContractorSummaryRail } from '@/components/contractors/ContractorSummaryRail';
 
 /**
  * Cobertura de Terceirização por Referência.
@@ -92,31 +95,41 @@ export function TerceirizacaoCoberturaPanel() {
 
   const loading = loadingSheets || loadingTercs;
   const gapCount = sheets.length - configuredCount;
+  const activeServices = tercs.filter(t => t.active).length;
+  const configuredProviders = new Set(
+    tercs.map(t => t.contractors?.trade_name || t.contractors?.name).filter(Boolean),
+  ).size;
+  const coverageRatio = sheets.length > 0 ? (configuredCount / sheets.length) * 100 : 0;
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h3 className="flex items-center gap-2 text-base font-bold tracking-tight">
-            <Handshake className="h-4 w-4 text-primary" /> Cobertura de Terceirização
-          </h3>
-          <p className="mt-0.5 max-w-2xl text-xs text-muted-foreground">
-            Configure, por referência, os serviços terceirizáveis (contratada · descrição · <strong>R$/par</strong>).
-            Sem isso o caminho automático do pedido fica mudo. O cadastro reusa a aba da ficha técnica.
-          </p>
-        </div>
-        <div className="text-right">
-          <p className="display text-2xl leading-none tabular-nums">
-            <span className={configuredCount === sheets.length && sheets.length > 0 ? 'text-emerald-600' : 'text-foreground'}>{configuredCount}</span>
-            <span className="text-base text-muted-foreground">/{sheets.length}</span>
-          </p>
-          <p className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">fichas configuradas</p>
-        </div>
-      </div>
+      <ContractorSectionHeader
+        eyebrow="CADASTRO · TARIFA POR REFERÊNCIA"
+        title="Cobertura da terceirização"
+        description="Defina quem executa cada serviço e o R$/par usado pelo pedido para gerar a OS sem digitação repetida."
+      />
 
-      <div className="flex flex-wrap items-center gap-2">
+      <ContractorSummaryRail
+        ariaLabel="Resumo da cobertura de tarifas"
+        lead={{
+          label: 'Cobertura pronta',
+          value: `${configuredCount}/${sheets.length}`,
+          hint: 'referências configuradas',
+          meta: `${Math.round(coverageRatio)}% do catálogo`,
+          icon: Handshake,
+          progress: coverageRatio,
+        }}
+        metrics={[
+          { label: 'Pendências', value: gapCount, hint: 'referências sem configuração', icon: Warning, tone: gapCount > 0 ? 'warning' : 'success' },
+          { label: 'Serviços ativos', value: activeServices, hint: 'linhas válidas para gerar OS', icon: CheckCircle, tone: 'success' },
+          { label: 'Prestadores', value: configuredProviders, hint: 'presentes nas referências', icon: Users },
+          { label: 'Regra de preço', value: 'R$/par', hint: 'valor aplicado ao pedido', icon: CurrencyDollar },
+        ]}
+      />
+
+      <section aria-label="Filtros de cobertura" className="flex flex-col gap-2 rounded-lg border border-border bg-card p-3 sm:flex-row sm:items-center">
         <SearchInput
-          className="min-w-[200px] max-w-sm flex-1"
+          className="min-w-[200px] max-w-md flex-1"
           inputClassName="h-9"
           value={search}
           onChange={setSearch}
@@ -132,7 +145,7 @@ export function TerceirizacaoCoberturaPanel() {
         >
           <Warning className="h-3.5 w-3.5" /> Só sem configuração ({gapCount})
         </Button>
-      </div>
+      </section>
 
       {loading ? (
         <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
@@ -158,7 +171,7 @@ export function TerceirizacaoCoberturaPanel() {
             return (
               <div
                 key={sheet.id}
-                className={cn('rounded-xl border bg-card transition-colors', isOpen ? 'border-primary/40' : 'border-border/60 hover:border-border')}
+                className={cn('rounded-lg border bg-card transition-colors', isOpen ? 'border-primary/40' : 'border-border/60 hover:border-border')}
               >
                 <button
                   type="button"

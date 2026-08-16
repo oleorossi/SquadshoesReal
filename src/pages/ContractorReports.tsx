@@ -18,6 +18,8 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { Panel } from '@/components/ui/panel';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { ContractorSectionHeader } from '@/components/contractors/ContractorSectionHeader';
+import { ContractorSummaryRail } from '@/components/contractors/ContractorSummaryRail';
 import { cn, formatCurrency } from '@/lib/utils';
 import {
   useContractorMetrics, useContractorHistory, useContractorOsFinancials,
@@ -335,6 +337,13 @@ export default function ContractorReportsPage({ embedded }: { embedded?: boolean
         />
       )}
 
+      <ContractorSectionHeader
+        eyebrow="ANÁLISE · DESEMPENHO EXTERNO"
+        title="Produção, prazo e pagamento"
+        description="Cruze entrega física e contas a pagar para entender quem produz no prazo, quanto já foi quitado e onde existe passivo."
+        actions={<span className="rounded-full border border-border bg-card px-3 py-1 font-mono text-xs tabular-nums text-muted-foreground">{period.label}</span>}
+      />
+
       {/* Filtros */}
       <Panel
         eyebrow="RECORTE DO RELATÓRIO"
@@ -420,40 +429,29 @@ export default function ContractorReportsPage({ embedded }: { embedded?: boolean
         </p>
       </Panel>
 
-      {/* KPIs */}
-      <StatGrid>
-        <StatCard
-          label="OSs finalizadas"
-          value={summary.totalOrders}
-          icon={CheckCircle}
-          hint="all-time agregado"
-        />
-        <StatCard
-          label="Valor pago (all-time)"
-          value={formatCurrency(summary.totalValue)}
-          icon={DollarSign}
-          hint={`conta quitada · ${formatCurrency(summary.totalCompleted)} concluído`}
-        />
-        <StatCard
-          label="Taxa de pontualidade"
-          value={summary.punctualityRate === null ? '—' : `${summary.punctualityRate}%`}
-          icon={Clock}
-          tone={
-            summary.punctualityRate === null ? 'default'
-            : summary.punctualityRate >= 90 ? 'success'
-            : summary.punctualityRate >= 70 ? 'warning'
-            : 'destructive'
-          }
-          hint={`${summary.totalOnTime} no prazo · ${summary.totalLate} atrasadas`}
-        />
-        <StatCard
-          label="OSs abertas vencidas"
-          value={summary.openOverdue}
-          icon={AlertTriangle}
-          tone={summary.openOverdue > 0 ? 'destructive' : 'default'}
-          hint="prazo passou + não recebida"
-        />
-      </StatGrid>
+      <ContractorSummaryRail
+        ariaLabel="Resumo de desempenho dos prestadores"
+        lead={{
+          label: 'Produção externa',
+          value: summary.totalOrders,
+          hint: 'OS finalizadas no histórico',
+          meta: `${filteredMetrics.length} prestadores no recorte`,
+          icon: Buildings,
+          progress: summary.punctualityRate ?? 0,
+        }}
+        metrics={[
+          { label: 'Pago', value: formatCurrency(summary.totalValue), hint: 'contas efetivamente quitadas', icon: CheckCircle, tone: 'success' },
+          { label: 'Produzido', value: formatCurrency(summary.totalCompleted), hint: 'valor das OS concluídas', icon: DollarSign },
+          {
+            label: 'Pontualidade',
+            value: summary.punctualityRate === null ? '—' : `${summary.punctualityRate}%`,
+            hint: `${summary.totalOnTime} no prazo · ${summary.totalLate} atrasadas`,
+            icon: Clock,
+            tone: summary.punctualityRate === null ? 'default' : summary.punctualityRate >= 90 ? 'success' : summary.punctualityRate >= 70 ? 'warning' : 'destructive',
+          },
+          { label: 'Vencidas abertas', value: summary.openOverdue, hint: 'prazo passou sem retorno', icon: AlertTriangle, tone: summary.openOverdue > 0 ? 'destructive' : 'default' },
+        ]}
+      />
 
       {/* Pagamentos — pagas × não pagas por prestador e período */}
       <Panel

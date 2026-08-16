@@ -10,7 +10,7 @@ import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { useCan } from '@/hooks/useAccessControl';
-import { CircleNotch as Loader2, Plus, MagnifyingGlass as Search, PencilSimple as Pencil, Trash as Trash2, FileText, Handshake, Printer, X, Check, CaretUpDown as ChevronsUpDown, Upload, CheckCircle as CheckCircle2, Circle, ClipboardText as ClipboardList, CurrencyDollar as DollarSign, Clock, Users, Package, Flask as FlaskConical, Scissors, Warning as AlertTriangle, WarningCircle as AlertCircle, CalendarBlank as Calendar, LockKey as Lock, ClockCounterClockwise, ChartLineUp, FileArrowDown as FileDown, Funnel, Truck, DotsThreeVertical as MoreVertical, Archive, List as ListIcon, SquaresFour } from '@phosphor-icons/react';
+import { CircleNotch as Loader2, Plus, MagnifyingGlass as Search, PencilSimple as Pencil, Trash as Trash2, FileText, Handshake, Printer, X, Check, CaretUpDown as ChevronsUpDown, Upload, CheckCircle as CheckCircle2, Circle, ClipboardText as ClipboardList, CurrencyDollar as DollarSign, Clock, Users, Package, Flask as FlaskConical, Scissors, Warning as AlertTriangle, WarningCircle as AlertCircle, CalendarBlank as Calendar, LockKey as Lock, ClockCounterClockwise, ChartLineUp, FileArrowDown as FileDown, Funnel, Truck, DotsThreeVertical as MoreVertical, Archive, List as ListIcon, SquaresFour, IdentificationCard, PhoneCall } from '@phosphor-icons/react';
 import { SECTOR_LABEL, SectorKey } from '@/hooks/useSectorBottlenecks';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -58,6 +58,8 @@ import { ContractorHistoryDialog } from '@/components/contractors/ContractorHist
 import { ContractorRatesDialog } from '@/components/contractors/ContractorRatesDialog';
 import { OutsourcingPlanningTab } from '@/components/contractors/OutsourcingPlanningTab';
 import { ContractorOperationsOverview } from '@/components/contractors/ContractorOperationsOverview';
+import { ContractorSectionHeader } from '@/components/contractors/ContractorSectionHeader';
+import { ContractorSummaryRail } from '@/components/contractors/ContractorSummaryRail';
 import { useSaleOrders } from '@/hooks/useSaleOrders';
 import { useAllGroupColors } from '@/hooks/useGroupColors';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -205,6 +207,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
   // prestadores quando o usuário troca de aba (e vice-versa).
   const [orderSearch, setOrderSearch] = useState('');
   const [contractorSearch, setContractorSearch] = useState('');
+  const [contractorStatusFilter, setContractorStatusFilter] = usePersistedState<'all' | 'active' | 'inactive'>('contractors-directory-status', 'active');
   // Aceita ?q= na URL — a busca global navega pra cá com ?q=<termo>, que
   // sobrepõe o valor persistido. REATIVO (deps no param, não só mount):
   // selecionar outra OS no ⌘K estando já em /terceirizados não remonta a
@@ -505,9 +508,39 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
 
   // ── Filtered data ──
   const filteredContractors = useMemo(() => {
-    return contractors.filter(c =>
-      searchMatchesAllTerms(contractorSearch, c.name, c.trade_name, c.service_type, c.cnpj_cpf, c.phone, c.city, c.state));
-  }, [contractors, contractorSearch]);
+    return contractors.filter(c => {
+      const matchesStatus = contractorStatusFilter === 'all'
+        || (contractorStatusFilter === 'active' ? c.active : !c.active);
+      return matchesStatus && searchMatchesAllTerms(
+        contractorSearch,
+        c.name, c.trade_name, c.service_type, c.cnpj_cpf, c.phone, c.city, c.state,
+      );
+    });
+  }, [contractors, contractorSearch, contractorStatusFilter]);
+
+  const contractorDirectoryStats = useMemo(() => {
+    const active = contractors.filter(c => c.active);
+    const serviceTypes = new Set(active.map(c => (c.service_type || '').trim()).filter(Boolean)).size;
+    const documented = contractors.filter(c => String(c.cnpj_cpf || '').trim()).length;
+    const withContact = contractors.filter(c => String(c.phone || '').trim() || String(c.email || '').trim()).length;
+    const averagePaymentDays = active.length > 0
+      ? Math.round(active.reduce((sum, c) => sum + Number(c.payment_days || 0), 0) / active.length)
+      : 0;
+    return {
+      active: active.length,
+      inactive: contractors.length - active.length,
+      serviceTypes,
+      documented,
+      withContact,
+      averagePaymentDays,
+      activeRatio: contractors.length > 0 ? (active.length / contractors.length) * 100 : 0,
+    };
+  }, [contractors]);
+  const contractorDirectoryHasFilters = Boolean(contractorSearch.trim()) || contractorStatusFilter !== 'all';
+  const clearContractorDirectoryFilters = () => {
+    setContractorSearch('');
+    setContractorStatusFilter('all');
+  };
 
   const sel = useMarqueeSelection(filteredContractors, (c) => c.id);
   const handleBulkDeleteContractors = async () => {
@@ -1288,25 +1321,33 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
         )}
 
         {currentTab === 'orders' && (
-          <ContractorOperationsOverview
-            overdueOrders={fieldStats.atrasados}
-            inFieldOrders={fieldStats.itens}
-            inFieldPairs={fieldStats.pares}
-            pendingOrders={stats.pendingOrders}
-            inProgressOrders={stats.inProgressOrders}
-            amountDue={aPagar.value}
-            amountDueOrders={aPagar.count}
-            completedOrders={stats.completedOrders}
-            totalValue={stats.totalValue}
-            activeContractors={stats.activeContractors}
-            totalContractors={contractors.length}
-            onFilter={(filter) => {
-              setOrderSearch('');
-              setShowArchivedOs(false);
-              clearOsReportFilters();
-              setStatusFilter(filter);
-            }}
-          />
+          <div className="space-y-4">
+            <ContractorSectionHeader
+              eyebrow="OPERAÇÃO · EXPEDIÇÃO EXTERNA"
+              title="Controle de saída e retorno"
+              description="Acompanhe o que precisa sair, o material em campo, a conferência do retorno e o reflexo financeiro de cada OS."
+              actions={<span className="rounded-full border border-border bg-card px-3 py-1 font-mono text-xs tabular-nums text-muted-foreground">{statusChipCounts.active ?? 0} OS ativas</span>}
+            />
+            <ContractorOperationsOverview
+              overdueOrders={fieldStats.atrasados}
+              inFieldOrders={fieldStats.itens}
+              inFieldPairs={fieldStats.pares}
+              pendingOrders={stats.pendingOrders}
+              inProgressOrders={stats.inProgressOrders}
+              amountDue={aPagar.value}
+              amountDueOrders={aPagar.count}
+              completedOrders={stats.completedOrders}
+              totalValue={stats.totalValue}
+              activeContractors={stats.activeContractors}
+              totalContractors={contractors.length}
+              onFilter={(filter) => {
+                setOrderSearch('');
+                setShowArchivedOs(false);
+                clearOsReportFilters();
+                setStatusFilter(filter);
+              }}
+            />
+          </div>
         )}
 
         <Tabs value={currentTab} onValueChange={handleTabChange}>
@@ -1711,30 +1752,72 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
           {/* ── RECIPES TAB ── */}
 
           {/* ── CONTRACTORS TAB ── */}
-          <TabsContent value="contractors" className="mt-3 space-y-3">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <TabsContent value="contractors" className="mt-3 space-y-4">
+            <ContractorSectionHeader
+              eyebrow="CADASTRO · REDE PRODUTIVA"
+              title="Prestadores e capacidade externa"
+              description="Mantenha identificação, especialidade, contato, prazo de pagamento, histórico e tarifas no mesmo diretório."
+              actions={<Button size="sm" onClick={openNewContractor} className="h-10 w-full gap-1.5 sm:h-9 sm:w-auto"><Plus className="h-4 w-4" /> Novo prestador</Button>}
+            />
+
+            <ContractorSummaryRail
+              ariaLabel="Resumo do cadastro de prestadores"
+              lead={{
+                label: 'Rede ativa',
+                value: contractorDirectoryStats.active,
+                hint: `de ${contractors.length} prestadores cadastrados`,
+                meta: `${contractorDirectoryStats.serviceTypes} especialidades`,
+                icon: Users,
+                progress: contractorDirectoryStats.activeRatio,
+              }}
+              metrics={[
+                { label: 'Histórico', value: contractorDirectoryStats.inactive, hint: 'prestadores inativos', icon: ClockCounterClockwise },
+                { label: 'Documentados', value: contractorDirectoryStats.documented, hint: 'com CPF ou CNPJ', icon: IdentificationCard, tone: contractorDirectoryStats.documented < contractors.length ? 'warning' : 'success' },
+                { label: 'Com contato', value: contractorDirectoryStats.withContact, hint: 'telefone ou e-mail', icon: PhoneCall, tone: contractorDirectoryStats.withContact < contractors.length ? 'warning' : 'success' },
+                { label: 'Prazo médio', value: `${contractorDirectoryStats.averagePaymentDays}d`, hint: 'pagamento dos ativos', icon: Clock },
+              ]}
+            />
+
+            <section aria-label="Filtros do diretório de prestadores" className="flex flex-col gap-3 rounded-lg border border-border bg-card p-3 lg:flex-row lg:items-center">
               <SearchInput
-                className="w-full min-w-0 flex-1 sm:max-w-md"
+                className="w-full min-w-0 flex-1 lg:max-w-md"
                 inputClassName="h-10 sm:h-9"
                 value={contractorSearch}
                 onChange={setContractorSearch}
-                placeholder="Buscar por nome, CPF/CNPJ, tipo de serviço…"
+                placeholder="Buscar por nome, CPF/CNPJ, serviço ou cidade…"
                 resultCount={filteredContractors.length}
                 totalCount={contractors.length}
               />
-              <div className="sm:ml-auto">
-                <Button size="sm" onClick={openNewContractor} className="h-10 w-full gap-1.5 sm:h-9 sm:w-auto"><Plus className="h-4 w-4" /> Novo prestador</Button>
+              <div role="group" aria-label="Filtrar prestadores por situação" className="grid grid-cols-3 gap-1 rounded-md bg-muted p-1 lg:ml-auto lg:flex">
+                {([
+                  ['all', 'Todos', contractors.length],
+                  ['active', 'Ativos', contractorDirectoryStats.active],
+                  ['inactive', 'Inativos', contractorDirectoryStats.inactive],
+                ] as const).map(([value, label, count]) => (
+                  <Button
+                    key={value}
+                    type="button"
+                    variant={contractorStatusFilter === value ? 'secondary' : 'ghost'}
+                    size="sm"
+                    className="h-9 gap-1.5 text-xs"
+                    aria-pressed={contractorStatusFilter === value}
+                    onClick={() => setContractorStatusFilter(value)}
+                  >
+                    {label}<span className="font-mono text-[10px] tabular-nums text-muted-foreground">{count}</span>
+                  </Button>
+                ))}
               </div>
-            </div>
+            </section>
 
             <div className="space-y-2 md:hidden">
               {filteredContractors.length === 0 ? (
                 <Panel flush>
                   <EmptyState
                     size="sm"
-                    icon={contractorSearch ? Search : Users}
-                    title={contractorSearch ? `Nenhum resultado para "${contractorSearch}"` : 'Nenhum prestador cadastrado'}
-                    action={contractorSearch ? <Button variant="outline" size="sm" onClick={() => setContractorSearch('')}>Limpar busca</Button> : undefined}
+                    icon={contractorDirectoryHasFilters ? Search : Users}
+                    title={contractorDirectoryHasFilters ? 'Nenhum prestador neste filtro' : 'Nenhum prestador cadastrado'}
+                    description={contractorDirectoryHasFilters ? 'Amplie a situação selecionada ou limpe a busca para consultar todo o histórico.' : undefined}
+                    action={contractorDirectoryHasFilters ? <Button variant="outline" size="sm" onClick={clearContractorDirectoryFilters}>Limpar filtros</Button> : undefined}
                   />
                 </Panel>
               ) : filteredContractors.map(c => {
@@ -1770,7 +1853,12 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
             </div>
 
             <div className="hidden md:block">
-            <Panel flush>
+            <Panel
+              eyebrow="CADASTRO · VIGÊNCIA · PAGAMENTO"
+              title="Diretório de prestadores"
+              subtitle="Clique em uma linha para editar. Histórico e tarifas permanecem acessíveis sem sair do cadastro."
+              flush
+            >
                 <div className="rounded-md border-0 overflow-auto">
                   <Table>
                     <TableHeader>
@@ -1798,9 +1886,10 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                           <TableCell colSpan={9} className="p-0">
                             <EmptyState
                               size="sm"
-                              icon={contractorSearch ? Search : Users}
-                              title={contractorSearch ? `Nenhum resultado para "${contractorSearch}"` : 'Nenhum prestador cadastrado'}
-                              action={contractorSearch ? <Button variant="outline" size="sm" onClick={() => setContractorSearch('')}>Limpar busca</Button> : undefined}
+                              icon={contractorDirectoryHasFilters ? Search : Users}
+                              title={contractorDirectoryHasFilters ? 'Nenhum prestador neste filtro' : 'Nenhum prestador cadastrado'}
+                              description={contractorDirectoryHasFilters ? 'Amplie a situação selecionada ou limpe a busca para consultar todo o histórico.' : undefined}
+                              action={contractorDirectoryHasFilters ? <Button variant="outline" size="sm" onClick={clearContractorDirectoryFilters}>Limpar filtros</Button> : undefined}
                             />
                           </TableCell>
                         </TableRow>

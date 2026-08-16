@@ -21,6 +21,8 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
+import { ContractorSectionHeader } from '@/components/contractors/ContractorSectionHeader';
+import { ContractorSummaryRail } from '@/components/contractors/ContractorSummaryRail';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
@@ -316,36 +318,62 @@ export function OutsourcingPlanningTab() {
   };
 
   const activeContractors = contractors.filter((c) => c.active);
+  const planningSummary = useMemo(() => cells.reduce((summary, cell) => ({
+    demand: summary.demand + cell.demand,
+    capacity: summary.capacity + cell.capacityWeek,
+    excess: summary.excess + cell.excess,
+    withoutCapacity: summary.withoutCapacity + cell.pairsWithoutCap,
+    overloadedWindows: summary.overloadedWindows + (cell.excess > 0 ? 1 : 0),
+  }), { demand: 0, capacity: 0, excess: 0, withoutCapacity: 0, overloadedWindows: 0 }), [cells]);
 
   return (
     <TooltipProvider delayDuration={150}>
-      <div className="space-y-3">
-        <div className="flex items-start justify-between gap-2 flex-wrap">
-          <div>
-            <p className="text-sm font-medium">Demanda programada vs capacidade interna — próximas {WEEKS_AHEAD} semanas</p>
-            <p className="text-xs text-muted-foreground">
-              Setores terceirizáveis: Corte Cabedal (fichas sem tiras) e Costura. Linhas em vermelho = semana estourada → designe o excedente pra uma terceirizada.
-            </p>
-          </div>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-8 gap-1.5 text-xs text-muted-foreground">
-                <Info className="h-3.5 w-3.5" />
-                Como a capacidade é calculada
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="left" className="max-w-[320px] text-xs">
-              A capacidade/dia é cadastrada por ficha técnica. Como cada semana mistura
-              fichas diferentes, usamos a <strong>média ponderada por pares</strong> das
-              fichas com demanda na semana × {WORK_DAYS_PER_WEEK} dias úteis. Fichas sem
-              capacidade cadastrada pesam 0 (conservador). É uma aproximação gerencial —
-              não substitui o sequenciamento fino por janela de produção.
-            </TooltipContent>
-          </Tooltip>
-        </div>
+      <div className="space-y-4">
+        <ContractorSectionHeader
+          eyebrow="PLANEJAMENTO · CAPACIDADE EXTERNA"
+          title="Antecipação de excedentes"
+          description={`Compare demanda e capacidade nas próximas ${WEEKS_AHEAD} semanas e transforme o excedente em OS antes que ele vire atraso.`}
+          actions={(
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="outline" size="sm" className="h-9 gap-1.5 text-xs">
+                  <Info className="h-3.5 w-3.5" /> Como calculamos
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="left" className="max-w-[320px] text-xs">
+                A capacidade/dia é cadastrada por ficha técnica. A semana usa a
+                <strong> média ponderada por pares</strong> × {WORK_DAYS_PER_WEEK} dias úteis.
+                Fichas sem capacidade pesam zero, de forma conservadora.
+              </TooltipContent>
+            </Tooltip>
+          )}
+        />
+
+        <ContractorSummaryRail
+          ariaLabel="Resumo do planejamento de terceirização"
+          lead={{
+            label: 'Janela analisada',
+            value: WEEKS_AHEAD,
+            hint: 'semanas futuras',
+            meta: `${activeContractors.length} prestadores ativos`,
+            icon: CalendarIcon,
+            progress: Math.min(100, (cells.length / (WEEKS_AHEAD * PLANNING_SECTORS.length)) * 100),
+          }}
+          metrics={[
+            { label: 'Demanda', value: planningSummary.demand.toLocaleString('pt-BR'), hint: 'pares programados', icon: Buildings },
+            { label: 'Capacidade', value: planningSummary.capacity.toLocaleString('pt-BR'), hint: 'pares estimados', icon: CheckCircle2, tone: 'success' },
+            { label: 'Excedente', value: planningSummary.excess.toLocaleString('pt-BR'), hint: `${planningSummary.overloadedWindows} janelas estouradas`, icon: AlertTriangle, tone: planningSummary.excess > 0 ? 'destructive' : 'default' },
+            { label: 'Sem cadastro', value: planningSummary.withoutCapacity.toLocaleString('pt-BR'), hint: 'pares sem capacidade na ficha', icon: Info, tone: planningSummary.withoutCapacity > 0 ? 'warning' : 'default' },
+          ]}
+        />
 
         {cells.length === 0 ? (
-          <Panel flush>
+          <Panel
+            eyebrow={`${cells.length} JANELAS · CORTE E COSTURA`}
+            title="Mapa semanal de excedentes"
+            subtitle="Vermelho exige designação; verde cabe na capacidade interna estimada."
+            flush
+          >
             <EmptyState
               icon={CalendarIcon}
               title="Nenhuma demanda programada"
