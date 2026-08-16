@@ -11,6 +11,7 @@ const reports = read('src/pages/ContractorReports.tsx');
 const coverage = read('src/components/contractors/TerceirizacaoCoberturaPanel.tsx');
 const contractorForm = read('src/components/contractors/ContractorFormDialog.tsx');
 const serviceOrderWizard = read('src/components/contractors/GenerateServiceOrdersWizard.tsx');
+const standaloneServiceOrder = read('src/components/contractors/ServiceOrderFormDialog.tsx');
 const serviceFocus = read('src/lib/contractorServiceFocus.ts');
 const primaryServicesMigration = read('supabase/migrations/20270101004600_priorizar_costura_cabedal_e_aviamento_nas_os.sql');
 
@@ -49,6 +50,17 @@ describe('Terceirizados — contrato visual e organizacional do módulo', () => 
     expect(serviceOrderWizard).toContain('Outros serviços');
     expect(serviceOrderWizard).toContain('Manter produção interna');
     expect(serviceOrderWizard).toContain('.filter((contractor) => contractor.active)');
+  });
+
+  it('aplica a mesma disciplina de criação à OS avulsa', () => {
+    expect(contractors).toContain('<ServiceOrderFormDialog');
+    expect(standaloneServiceOrder).toContain("const STEPS = ['Serviço', 'Prestador e valores', 'Conferência']");
+    expect(standaloneServiceOrder).toContain('Costura de cabedal e Aviamento primeiro');
+    expect(standaloneServiceOrder).toContain('Outros serviços');
+    expect(standaloneServiceOrder).toContain('contractors.filter((contractor) => contractor.active)');
+    expect(standaloneServiceOrder).toContain('Comprovante de conferência');
+    expect(standaloneServiceOrder).toContain('is_avulsa: !saleOrderId');
+    expect(standaloneServiceOrder).toContain('dispatch_tracked: true');
   });
 
   it('usa o mesmo recorte de serviço na criação e nos relatórios', () => {

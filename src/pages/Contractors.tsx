@@ -2,6 +2,7 @@ import AppLayout from "@/components/layout/AppLayout";
 import ServiceOrderReturnDialog from '@/components/contractors/ServiceOrderReturnDialog';
 import ServiceOrderDispatchDialog from '@/components/contractors/ServiceOrderDispatchDialog';
 import { GenerateServiceOrdersWizard } from '@/components/contractors/GenerateServiceOrdersWizard';
+import { ServiceOrderFormDialog } from '@/components/contractors/ServiceOrderFormDialog';
 import { ServiceOrderGenerationGapsAlert } from '@/components/contractors/ServiceOrderGenerationGapsAlert';
 import { ServiceOrderTimeline } from '@/components/contractors/ServiceOrderTimeline';
 import { printServiceOrderReceipt, expandBaseGrade } from '@/lib/printServiceOrderReceipt';
@@ -264,6 +265,8 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
   const [ratesContractor, setRatesContractor] = useState<Contractor | null>(null);
   const [contractorDialog, setContractorDialog] = useState(false);
   const [orderDialog, setOrderDialog] = useState(false);
+  const [standaloneOsOpen, setStandaloneOsOpen] = useState(false);
+  const [standaloneOsContractorId, setStandaloneOsContractorId] = useState<string | undefined>();
   const [editingContractor, setEditingContractor] = useState<Partial<Contractor>>(emptyContractor);
   const [editingOrder, setEditingOrder] = useState<Partial<ServiceOrder> & { materials_sent: MaterialSent[] }>(emptyOrder);
   const [isEditing, setIsEditing] = useState(false);
@@ -1272,9 +1275,8 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
     setOrderDialog(true);
   };
   const openNewOrder = (contractorId?: string) => {
-    setEditingOrder({ ...emptyOrder, materials_sent: [{ ...emptyMaterial }], ...(contractorId ? { contractor_id: contractorId } : {}) });
-    setIsEditing(false);
-    setOrderDialog(true);
+    setStandaloneOsContractorId(contractorId);
+    setStandaloneOsOpen(true);
   };
 
   // Sinal do hub (/terceirizados): "Nova OS" pedida por outra aba (ex.: Na Rua)
@@ -2548,6 +2550,18 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
         onOpenChange={setGenOsOpen}
         onGenerated={() => {
           queryClient.invalidateQueries({ queryKey: ['service_orders'] });
+        }}
+      />
+      <ServiceOrderFormDialog
+        open={standaloneOsOpen}
+        onOpenChange={(nextOpen) => {
+          setStandaloneOsOpen(nextOpen);
+          if (!nextOpen) setStandaloneOsContractorId(undefined);
+        }}
+        initialContractorId={standaloneOsContractorId}
+        onCreated={() => {
+          queryClient.invalidateQueries({ queryKey: ['service_orders'] });
+          queryClient.invalidateQueries({ queryKey: ['service_order_overview'] });
         }}
       />
     </>

@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Buildings, Flask as FlaskConical, Calendar, CurrencyDollar,
+  ArrowLeft, ArrowRight, Buildings, Calendar, CaretDown, CheckCircle,
+  CurrencyDollar, Handshake, Needle, PaperPlaneTilt, Path, Warning,
 } from '@phosphor-icons/react';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -11,39 +12,32 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { NumberInput } from '@/components/ui/number-input';
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
+import { SearchableSelect, type SearchableOption } from '@/components/ui/searchable-select';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useContractors } from '@/hooks/useContractors';
 import { generateServiceOrderNumber } from '@/lib/serviceOrderStock';
-import { SERVICE_ORDER_SECTORS } from '@/lib/serviceOrderSectors';
+import { SERVICE_ORDER_SECTORS, serviceOrderSectorLabel } from '@/lib/serviceOrderSectors';
 import { opNumberByPvItem, opNumbersForServiceOrder, type OpRef } from '@/lib/serviceOrderOps';
+import {
+  CONTRACTOR_SERVICE_FOCUS_META,
+  contractorServicePriority,
+  getContractorServiceFocus,
+} from '@/lib/contractorServiceFocus';
 import { formatCurrency, cn } from '@/lib/utils';
 
 /**
- * Dialog compartilhado pra CRIAR uma nova OS terceirizada.
+ * Assistente canônico para criar uma OS avulsa.
  *
- * Fluxo:
- *  1. Coleta contractor + setor + descrição + qty × unit_price (= total auto)
- *  2. Submit: INSERT em service_orders
- *  3. Re-invalida caches relevantes
+ * A OS avulsa é independente de PV/OP, mas segue a mesma disciplina do fluxo
+ * por pedido: rota de serviço → prestador e valores → conferência. Costura de
+ * cabedal e Aviamento aparecem primeiro; os demais serviços ficam disponíveis
+ * sem competir com o lançamento diário mais frequente.
  *
- * Substitui o form bugado em Contractors.tsx (que gravava total_value=unit_price
- * sem multiplicar pela quantidade) e é reusável no hub /terceiros (aba Na Rua).
- *
- * ⚠ A OS **não debita estoque** (decisão do dono, 31/07/2026). O consumo de
- * material tem UM dono: o ledger da OP (reserva na liberação pra produção →
- * `commit_picking_for_sale_order`; faturamento como rede via
- * `convert_reservation_to_out`). O débito que existia aqui escrevia direto em
- * `products.quantity` com `order_id` NULL, sem linha em `material_reservations`
- * e sem enxergar o que a OP já tinha reservado — a mesma napa sairia duas vezes.
- * Nunca foi disparado em produção (0 movimentos em 4 meses) e foi removido antes
- * de virar furo de estoque. Não reintroduzir aqui.
- *
- * Edit mode pode ser implementado depois — MVP foca em CREATE.
+ * ⚠ A OS não debita estoque. O consumo de material tem UM dono: o ledger da OP.
+ * A OS avulsa nasce com rastreamento de remessa e só entra "na rua" quando a
+ * saída for registrada no fluxo operacional.
  */
 
 export interface ServiceOrderFormDialogProps {
@@ -52,47 +46,69 @@ export interface ServiceOrderFormDialogProps {
   initialContractorId?: string;
   initialSector?: string;
   onCreated?: (serviceOrderId: string) => void;
-  /** Contexto de um PV (atalho "Gerar OS" no pedido): amarra a OS ao pedido e
-   *  lista os itens dele pra seleção. A Quantidade da OS = Σ pares selecionados. */
   saleOrderId?: string;
-  saleOrderLabel?: string;               // ex.: "PV-00145"
+  saleOrderLabel?: string;
   pvItems?: { id: string; label: string; pairs: number }[];
 }
 
-// Lista canônica compartilhada — era uma cópia local aqui, divergente da de
-// `serviceOrderSectors.ts` (que não tinha `mesa` nem `colagem`). Duas listas =
-// tarifa por setor silenciosamente sem match. Consolidado em 01/08/2026.
-const SECTORS = SERVICE_ORDER_SECTORS;
-
+const STEPS = ['Serviço', 'Prestador e valores', 'Conferência'] as const;
 const todayISO = () => new Date().toISOString().slice(0, 10);
+
+const SORTED_SECTORS = [...SERVICE_ORDER_SECTORS].sort((left, right) => (
+  contractorServicePriority(left.value, left.label) - contractorServicePriority(right.value, right.label)
+  || left.label.localeCompare(right.label, 'pt-BR')
+));
+
+const PRIMARY_SECTORS = SORTED_SECTORS.filter((item) => {
+  const focus = getContractorServiceFocus(item.value, item.label);
+  return focus === 'costura_cabedal' || focus === 'aviamento';
+});
+
+const OTHER_SECTORS = SORTED_SECTORS.filter((item) => !PRIMARY_SECTORS.includes(item));
 
 export function ServiceOrderFormDialog({
   open, onOpenChange, initialContractorId, initialSector, onCreated,
   saleOrderId, saleOrderLabel, pvItems,
 }: ServiceOrderFormDialogProps) {
-  const qc = useQueryClient();
+  const queryClient = useQueryClient();
   const { data: contractors = [] } = useContractors();
 
-  // Form state
-  const [contractorId, setContractorId] = useState<string>('');
-  const [sector, setSector] = useState<string>('costura');
-  const [description, setDescription] = useState<string>('');
-  const [serviceDate, setServiceDate] = useState<string>(todayISO());
-  const [quotedDeadline, setQuotedDeadline] = useState<string>('');
-  const [quantity, setQuantity] = useState<number>(0);
-  const [unitPrice, setUnitPrice] = useState<number>(0);
-  const [notes, setNotes] = useState<string>('');
-  // Seleção dos itens do PV (atalho do pedido). Default: todos marcados.
+  const [step, setStep] = useState(0);
+  const [contractorId, setContractorId] = useState('');
+  const [sector, setSector] = useState('costura');
+  const [description, setDescription] = useState('');
+  const [serviceDate, setServiceDate] = useState(todayISO());
+  const [quotedDeadline, setQuotedDeadline] = useState('');
+  const [quantity, setQuantity] = useState(0);
+  const [unitPrice, setUnitPrice] = useState(0);
+  const [notes, setNotes] = useState('');
   const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
+  const [showOtherServices, setShowOtherServices] = useState(false);
 
-  // Tarifa vigente serviço×prestadora (contractor_service_rates — fora do
-  // types.ts; regenerar depois). Pré-preenche o valor por par; digitar
-  // diferente vira override visível ("preço fora da tabela").
-  const { data: tableRate } = useQuery({
+  const activeContractors = useMemo(
+    () => contractors.filter((contractor) => contractor.active),
+    [contractors],
+  );
+  const activeContractorIds = useMemo(
+    () => new Set(activeContractors.map((contractor) => contractor.id)),
+    [activeContractors],
+  );
+  const selectedContractor = activeContractors.find((contractor) => contractor.id === contractorId);
+  const paymentDays = Number(selectedContractor?.payment_days ?? 30) || 30;
+  const selectedSectorLabel = serviceOrderSectorLabel(sector);
+
+  const contractorOptions: SearchableOption[] = useMemo(() => activeContractors.map((contractor) => ({
+    value: contractor.id,
+    label: contractor.trade_name || contractor.name,
+    description: contractor.service_type || undefined,
+    keywords: `${contractor.name} ${contractor.trade_name || ''} ${contractor.service_type || ''}`,
+  })), [activeContractors]);
+
+  const { data: tableRate, isFetching: loadingRate } = useQuery({
     queryKey: ['contractor_rate', contractorId, sector, serviceDate],
     enabled: open && !!contractorId && !!sector,
     queryFn: async () => {
-      const { data, error } = await (supabase as any).rpc('get_contractor_rate', {
+      const { data, error } = await supabase.rpc('get_contractor_rate', {
         p_contractor_id: contractorId,
         p_sector: sector,
         p_date: serviceDate || todayISO(),
@@ -102,54 +118,50 @@ export function ServiceOrderFormDialog({
     },
     staleTime: 60_000,
   });
+
   useEffect(() => {
     if (open && tableRate != null && tableRate > 0) setUnitPrice(tableRate);
-
   }, [tableRate, open]);
 
-  // Inicializa com props quando o dialog abre
   useEffect(() => {
-    if (open) {
-      setContractorId(initialContractorId || '');
-      setSector(initialSector || 'costura');
-      setServiceDate(todayISO());
-      setQuotedDeadline('');
-      setUnitPrice(0);
-      setNotes('');
-      // A descrição nasce SEMPRE vazia (decisão do dono, 02/08/2026). Antes ela
-      // vinha com "PV-00151 — ref · cor, ref · cor, ..." e listava TODOS os itens
-      // do pedido mesmo com um só marcado — texto errado que ainda precisava ser
-      // limpo à mão pra mandar uma referência sozinha. Quem identifica o escopo
-      // da OS agora é a seleção gravada + o nº da OP derivado dela, não texto.
-      setDescription('');
-      // Atalho do PV: pré-marca todos os itens e soma os pares na Quantidade.
-      if (pvItems && pvItems.length) {
-        setSelectedItemIds(new Set(pvItems.map((i) => i.id)));
-        setQuantity(pvItems.reduce((s, i) => s + (Number(i.pairs) || 0), 0));
-      } else {
-        setSelectedItemIds(new Set());
-        setQuantity(0);
-      }
+    if (!open) return;
+    setStep(0);
+    setContractorId(initialContractorId || '');
+    setSector(initialSector || 'costura');
+    setServiceDate(todayISO());
+    setQuotedDeadline('');
+    setUnitPrice(0);
+    setNotes('');
+    setDescription('');
+    setShowOtherServices(false);
+    if (pvItems?.length) {
+      setSelectedItemIds(new Set(pvItems.map((item) => item.id)));
+      setQuantity(pvItems.reduce((sum, item) => sum + (Number(item.pairs) || 0), 0));
+    } else {
+      setSelectedItemIds(new Set());
+      setQuantity(0);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, initialContractorId, initialSector]);
+  }, [open, initialContractorId, initialSector, pvItems]);
 
-  // Liga/desliga um item do PV e recalcula a Quantidade (Σ pares selecionados).
+  useEffect(() => {
+    if (!open || !contractorId || activeContractorIds.size === 0) return;
+    if (!activeContractorIds.has(contractorId)) setContractorId('');
+  }, [activeContractorIds, contractorId, open]);
+
   const toggleItem = (id: string) => {
     const next = new Set(selectedItemIds);
-    next.has(id) ? next.delete(id) : next.add(id);
+    if (next.has(id)) next.delete(id); else next.add(id);
     setSelectedItemIds(next);
-    setQuantity((pvItems || []).filter((i) => next.has(i.id)).reduce((s, i) => s + (Number(i.pairs) || 0), 0));
+    setQuantity((pvItems || [])
+      .filter((item) => next.has(item.id))
+      .reduce((sum, item) => sum + (Number(item.pairs) || 0), 0));
   };
+
   const selectedPvItems = useMemo(
-    () => (pvItems || []).filter((i) => selectedItemIds.has(i.id)),
+    () => (pvItems || []).filter((item) => selectedItemIds.has(item.id)),
     [pvItems, selectedItemIds],
   );
 
-  // OPs do pedido, pra mostrar o nº da ordem de produção ao lado de cada item.
-  // A OS pode ser criada ANTES de "Gerar OPs" rodar — nesse caso a query volta
-  // vazia, o aviso aparece e o número surge sozinho depois (é derivado na
-  // leitura a partir do item gravado, nunca congelado na OS).
   const { data: pvOps = [] } = useQuery({
     queryKey: ['pv_ops_for_os', saleOrderId],
     enabled: open && !!saleOrderId,
@@ -165,300 +177,475 @@ export function ServiceOrderFormDialog({
   });
   const opByItem = useMemo(() => opNumberByPvItem(pvOps), [pvOps]);
   const selectedOpNumbers = useMemo(
-    () => opNumbersForServiceOrder(pvOps, selectedPvItems.map((i) => i.id), saleOrderId),
+    () => opNumbersForServiceOrder(pvOps, selectedPvItems.map((item) => item.id), saleOrderId),
     [pvOps, selectedPvItems, saleOrderId],
   );
-  // Aviso só quando há item marcado e NENHUM deles tem OP — o caso "ainda não
-  // gerei as OPs". Item a item, a ausência já aparece na própria linha.
-  const opsMissing = selectedPvItems.length > 0 && selectedOpNumbers.length === 0;
 
-  const totalValue = useMemo(() => quantity * unitPrice, [quantity, unitPrice]);
-  const selectedContractor = contractors.find((c: any) => c.id === contractorId);
-  const paymentDays = Number((selectedContractor as any)?.payment_days ?? 30) || 30;
+  const totalValue = quantity * unitPrice;
+  const deadlineInvalid = !!quotedDeadline && !!serviceDate && quotedDeadline < serviceDate;
+  const canAdvanceService = !!sector && (!pvItems?.length || selectedPvItems.length > 0);
+  const canReview = !!selectedContractor
+    && !!serviceDate
+    && quantity > 0
+    && unitPrice > 0
+    && !deadlineInvalid;
+  const canSubmit = canAdvanceService && canReview;
+  const rateOverridden = tableRate != null
+    && tableRate > 0
+    && Math.abs(unitPrice - tableRate) > 0.004;
+
+  const paymentForecast = useMemo(() => {
+    if (!quotedDeadline) return null;
+    const date = new Date(`${quotedDeadline}T00:00:00`);
+    date.setDate(date.getDate() + paymentDays);
+    return date.toLocaleDateString('pt-BR');
+  }, [paymentDays, quotedDeadline]);
+
+  const selectSector = (value: string) => {
+    setSector(value);
+    setUnitPrice(0);
+  };
+
+  const selectContractor = (value: string) => {
+    setContractorId(value);
+    setUnitPrice(0);
+  };
 
   const create = useMutation({
     mutationFn: async () => {
-      if (!contractorId) throw new Error('Selecione uma contratada.');
-      // Descrição é OPCIONAL (02/08/2026) — a coluna é NOT NULL, então grava ''.
-      // O que identifica a OS é o nº dela, o PV e a OP derivada dos itens
-      // gravados; descrição é campo livre pra quem quiser anotar. O form legado
-      // da aba Ordens de Serviço já não a exigia (Contractors.tsx:manualOsValid).
-      if (quantity <= 0 || unitPrice <= 0) throw new Error('Quantidade e valor unitário devem ser maiores que zero.');
+      if (!canSubmit || !selectedContractor) {
+        throw new Error('Revise serviço, prestador, quantidade, valor e datas antes de criar a OS.');
+      }
 
-      const order_number = await generateServiceOrderNumber();
-      const payload: any = {
-        contractor_id: contractorId,
-        order_number,
+      const orderNumber = await generateServiceOrderNumber();
+      const payload = {
+        contractor_id: selectedContractor.id,
+        order_number: orderNumber,
         description: description.trim(),
-        service_date: serviceDate || todayISO(),
+        service_date: serviceDate,
         quoted_deadline: quotedDeadline || null,
         target_sector: sector,
+        sector,
         quantity,
         unit_price: unitPrice,
         total_value: totalValue,
         status: 'Pendente',
         notes: notes.trim() || null,
         quoted_at: quotedDeadline ? new Date().toISOString() : null,
+        sale_order_id: saleOrderId || null,
+        source_sale_order_id: saleOrderId || null,
+        selected_sale_order_item_ids: saleOrderId
+          ? selectedPvItems.map((item) => item.id)
+          : null,
+        is_avulsa: !saleOrderId,
+        dispatch_tracked: true,
       };
-      // Atalho do PV: amarra a OS ao pedido (aparece no card de OS do PV, via
-      // sale_order_id/source_sale_order_id — mesma consulta do PvServiceOrdersCard).
-      if (saleOrderId) {
-        payload.sale_order_id = saleOrderId;
-        payload.source_sale_order_id = saleOrderId;
-        // Registra QUAIS itens do pedido esta OS cobre. Antes isso só existia
-        // como texto na descrição — e o texto listava todos os itens mesmo com
-        // um marcado. Daqui saem as OPs da OS (derivadas na leitura) e a
-        // pré-marcação correta ao reabrir a OS pra editar.
-        payload.selected_sale_order_item_ids = selectedPvItems.map((i) => i.id);
-      }
 
-      const { data: inserted, error } = await (supabase as any)
+      const { data: inserted, error } = await supabase
         .from('service_orders')
         .insert(payload)
-        .select('id, order_number')
+        .select('id')
         .single();
-      if (error) throw new Error(error.message);
-
-      return inserted.id as string;
+      if (error) throw error;
+      return inserted.id;
     },
     onSuccess: (id) => {
-      qc.invalidateQueries({ queryKey: ['service_orders'] });
-      qc.invalidateQueries({ queryKey: ['v_contractor_metrics'] });
-      toast.success('Ordem de serviço criada.');
+      queryClient.invalidateQueries({ queryKey: ['service_orders'] });
+      queryClient.invalidateQueries({ queryKey: ['service_order_overview'] });
+      queryClient.invalidateQueries({ queryKey: ['v_contractor_metrics'] });
+      toast.success(saleOrderId ? 'Ordem de serviço criada.' : 'OS avulsa criada e pronta para expedição.');
       onCreated?.(id);
       onOpenChange(false);
     },
-    onError: (err: any) => {
-      toast.error(err?.message || 'Falha ao criar OS.');
+    onError: (error: Error) => {
+      toast.error(error.message || 'Falha ao criar OS.');
     },
   });
 
-  const canSubmit = !!contractorId && quantity > 0 && unitPrice > 0;
+  const renderSectorCard = (item: { value: string; label: string }, primary: boolean) => {
+    const focus = getContractorServiceFocus(item.value, item.label);
+    const selected = sector === item.value;
+    const RouteIcon = focus === 'costura_cabedal' ? Needle
+      : focus === 'aviamento' ? Path
+      : Handshake;
+    const description = focus === 'costura_cabedal' || focus === 'aviamento'
+      ? CONTRACTOR_SERVICE_FOCUS_META[focus].description
+      : 'Serviço eventual fora da rota principal da fábrica.';
+
+    return (
+      <button
+        key={item.value}
+        type="button"
+        aria-pressed={selected}
+        onClick={() => selectSector(item.value)}
+        className={cn(
+          'group flex min-h-[92px] w-full items-start gap-3 rounded-lg border p-3 text-left transition-colors',
+          selected
+            ? 'border-primary bg-primary/5 shadow-sm'
+            : primary
+              ? 'border-primary/20 bg-card hover:border-primary/45 hover:bg-primary/5'
+              : 'border-border bg-card hover:bg-muted/35',
+        )}
+      >
+        <span className={cn(
+          'flex h-9 w-9 shrink-0 items-center justify-center rounded-md border',
+          selected ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-muted/40 text-muted-foreground',
+        )}>
+          <RouteIcon className="h-4 w-4" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="flex items-center justify-between gap-2">
+            <span className="text-sm font-semibold text-foreground">{item.label}</span>
+            {selected && <CheckCircle className="h-4 w-4 shrink-0 text-primary" weight="fill" />}
+          </span>
+          <span className="mt-1 block text-[11px] leading-relaxed text-muted-foreground">{description}</span>
+        </span>
+      </button>
+    );
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[92vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
+      <DialogContent className="max-h-[94vh] max-w-4xl overflow-y-auto p-0">
+        <DialogHeader className="border-b border-border bg-muted/25 px-5 py-4 pr-12">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="outline" className="border-primary/25 bg-card font-mono text-[10px] uppercase tracking-wider text-primary">
+              Expedição externa
+            </Badge>
+            {!saleOrderId && <Badge variant="secondary" className="font-mono text-[10px] uppercase">Sem PV / OP</Badge>}
+          </div>
+          <DialogTitle className="flex items-center gap-2 font-display text-2xl uppercase tracking-tight">
             <Buildings className="h-5 w-5 text-primary" />
-            {saleOrderLabel ? `Gerar OS · ${saleOrderLabel}` : 'Nova Ordem de Serviço'}
+            {saleOrderLabel ? `Gerar OS · ${saleOrderLabel}` : 'Criar OS avulsa'}
           </DialogTitle>
-          <DialogDescription>
-            {pvItems && pvItems.length
-              ? 'Selecione os itens deste pedido, o prestador e o setor. A OS nasce amarrada ao pedido.'
-              : 'Lance qtd × valor por par (total calculado automaticamente). A OS não movimenta estoque — o material baixa na liberação do pedido pra produção.'}
+          <DialogDescription className="max-w-3xl text-sm">
+            {saleOrderId
+              ? 'Escolha o serviço, confirme o prestador e revise o envio antes de criar a OS vinculada.'
+              : 'Para um serviço independente de pedido: escolha a rota, informe a cobrança e confira antes de enviar.'}
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-5">
-          {/* ── Bloco 0: Itens do PV (só no atalho "Gerar OS" do pedido) ── */}
-          {pvItems && pvItems.length > 0 && (
-            <section className="space-y-2">
-              <div className="text-[10px] tracking-[0.18em] uppercase font-bold text-muted-foreground">
-                Itens deste pedido{saleOrderLabel ? ` · ${saleOrderLabel}` : ''}
-              </div>
-              <div className="space-y-1.5">
-                {pvItems.map((it) => {
-                  const on = selectedItemIds.has(it.id);
-                  const opNo = opByItem.get(it.id);
-                  return (
-                    <button
-                      type="button" key={it.id} onClick={() => toggleItem(it.id)}
-                      className={cn(
-                        'w-full flex items-center gap-2.5 rounded-md border px-3 py-2 text-left transition-colors',
-                        on ? 'border-primary/40 bg-primary/5' : 'border-border bg-muted/30 hover:bg-muted/50',
-                      )}
-                    >
-                      <span className={cn('h-4 w-4 rounded border grid place-items-center text-[10px] leading-none text-white', on ? 'bg-primary border-primary' : 'border-muted-foreground/40')}>{on ? '✓' : ''}</span>
-                      <span className="text-sm font-medium text-foreground flex-1 truncate">{it.label}</span>
-                      {/* Nº da OP por item: mostra de qual ordem de produção é
-                          cada cor e deixa visível, item a item, qual ainda não
-                          foi gerada. */}
-                      {opNo
-                        ? <span className="mono shrink-0 text-[11px] font-semibold text-primary">{opNo}</span>
-                        : <span className="shrink-0 text-[11px] text-muted-foreground">sem OP</span>}
-                      <span className="text-xs tabular-nums text-muted-foreground">{it.pairs.toLocaleString('pt-BR')} pares</span>
-                    </button>
-                  );
-                })}
-              </div>
-              <p className="text-[11px] text-muted-foreground">
-                {selectedPvItems.length} de {pvItems.length} selecionado(s) · <b className="text-foreground">{selectedPvItems.reduce((s, i) => s + i.pairs, 0).toLocaleString('pt-BR')} pares</b> → vira a Quantidade da OS.
-                {selectedOpNumbers.length > 0 && (
-                  <> · <span className="mono font-semibold text-primary">{selectedOpNumbers.join(', ')}</span></>
-                )}
-              </p>
-              {opsMissing && (
-                <p className="text-[11px] text-muted-foreground">
-                  OPs ainda não geradas para este pedido. A OS pode ser criada normalmente — o número aparece sozinho assim que você gerar as OPs.
-                </p>
-              )}
-            </section>
-          )}
-
-          {/* ── Bloco 1: Contratada + Setor ──────────────────────────── */}
-          <section className="space-y-3">
-            <div className="text-[10px] tracking-[0.18em] uppercase font-bold text-muted-foreground">
-              Prestador e setor
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div>
-                <Label className="text-xs">Contratada *</Label>
-                <Select value={contractorId} onValueChange={setContractorId}>
-                  <SelectTrigger className="mt-1 h-9">
-                    <SelectValue placeholder="Selecionar contratada..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {contractors.length === 0 && (
-                      <div className="px-3 py-2 text-xs text-muted-foreground">
-                        Nenhuma contratada cadastrada. Cadastre em /terceirizados.
-                      </div>
-                    )}
-                    {contractors.map((c: any) => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {c.trade_name || c.name}
-                        {c.service_type && (
-                          <Badge variant="outline" className="h-4 text-[10px] ml-2">{c.service_type}</Badge>
-                        )}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label className="text-xs">Setor coberto *</Label>
-                <Select value={sector} onValueChange={setSector}>
-                  <SelectTrigger className="mt-1 h-9">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {SECTORS.map((s) => (
-                      <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          </section>
-
-          {/* ── Bloco 2: Descrição + Datas ───────────────────────────── */}
-          <section className="space-y-3">
-            <div className="text-[10px] tracking-[0.18em] uppercase font-bold text-muted-foreground">
-              Detalhes do serviço
-            </div>
-            <div>
-              <Label className="text-xs">Descrição (opcional)</Label>
-              <Textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="Nasce vazia de propósito — escreva só se tiver algo a dizer além do pedido, da OP e dos itens."
-                rows={2}
-                className="mt-1 text-sm"
-              />
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div>
-                <Label className="text-xs flex items-center gap-1">
-                  <Calendar className="h-3 w-3" /> Data do envio
-                </Label>
-                <Input
-                  type="date"
-                  value={serviceDate}
-                  onChange={(e) => setServiceDate(e.target.value)}
-                  className="mt-1 h-9 text-sm"
-                />
-              </div>
-              <div>
-                <Label className="text-xs flex items-center gap-1">
-                  <Calendar className="h-3 w-3" /> Prazo prometido
-                </Label>
-                <Input
-                  type="date"
-                  value={quotedDeadline}
-                  min={serviceDate || todayISO()}
-                  onChange={(e) => setQuotedDeadline(e.target.value)}
-                  className="mt-1 h-9 text-sm"
-                />
-              </div>
-            </div>
-          </section>
-
-          {/* ── Bloco 3: Quantidade × Valor = Total ──────────────────── */}
-          <section className="space-y-3">
-            <div className="text-[10px] tracking-[0.18em] uppercase font-bold text-muted-foreground">
-              Valor (qty × unit = total automático)
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div>
-                <Label className="text-xs">Quantidade (pares) *</Label>
-                <NumberInput value={quantity} onChange={setQuantity} step="1" min={0} className="mt-1 h-9" />
-              </div>
-              <div>
-                <Label className="text-xs flex items-center gap-1">
-                  <CurrencyDollar className="h-3 w-3" /> Valor por par *
-                </Label>
-                <NumberInput value={unitPrice} onChange={setUnitPrice} step="0.01" min={0} className="mt-1 h-9" />
-                {tableRate != null && tableRate > 0 && Math.abs(unitPrice - tableRate) > 0.004 && (
-                  <p className="text-[11px] text-amber-600 mt-0.5">Preço fora da tabela (vigente: {formatCurrency(tableRate)})</p>
-                )}
-                {contractorId && (tableRate == null || tableRate <= 0) && (
-                  <p className="text-[11px] text-muted-foreground mt-0.5">Sem tarifa cadastrada p/ este serviço</p>
-                )}
-              </div>
-              <div>
-                <Label className="text-xs">Total da OS</Label>
-                <div className="mt-1 h-9 px-3 flex items-center justify-end rounded-md bg-primary/5 border border-primary/20">
-                  <span className="mono font-bold text-base tabular-nums text-foreground">
-                    {formatCurrency(totalValue)}
+        <div className="px-5 pt-4">
+          <div className="grid grid-cols-3 gap-2 rounded-lg border border-border bg-muted/25 p-1.5">
+            {STEPS.map((label, index) => {
+              const state = index < step ? 'done' : index === step ? 'active' : 'future';
+              return (
+                <button
+                  key={label}
+                  type="button"
+                  onClick={() => index < step && setStep(index)}
+                  className={cn(
+                    'flex min-w-0 items-center gap-2 rounded-md px-2 py-2 text-left transition-colors',
+                    state === 'active' && 'bg-card shadow-sm',
+                    index < step ? 'cursor-pointer hover:bg-card/70' : 'cursor-default',
+                  )}
+                >
+                  <span className={cn(
+                    'flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold',
+                    state === 'active' ? 'bg-primary text-primary-foreground'
+                      : state === 'done' ? 'bg-green-500/15 text-green-700 dark:text-green-400'
+                      : 'bg-muted text-muted-foreground',
+                  )}>
+                    {state === 'done' ? <CheckCircle className="h-4 w-4" weight="fill" /> : index + 1}
                   </span>
-                </div>
-              </div>
-            </div>
-            {totalValue > 0 && selectedContractor && (
-              <div className="text-xs text-muted-foreground flex items-center justify-between px-1">
-                <span>
-                  {quantity.toLocaleString('pt-BR')} pares × {formatCurrency(unitPrice)}
-                </span>
-                {quotedDeadline && (
-                  <span>
-                    Pagamento (~{paymentDays}d após entrega): <strong className="text-foreground">
-                      {(() => {
-                        const d = new Date(quotedDeadline + 'T00:00:00');
-                        d.setDate(d.getDate() + paymentDays);
-                        return d.toLocaleDateString('pt-BR');
-                      })()}
-                    </strong>
+                  <span className={cn(
+                    'truncate text-xs',
+                    state === 'active' ? 'font-semibold text-foreground' : 'text-muted-foreground',
+                  )}>
+                    {label}
                   </span>
-                )}
-              </div>
-            )}
-          </section>
-
-          {/* ── Bloco 5: Observações ─────────────────────────────────── */}
-          <section className="space-y-2">
-            <Label className="text-xs">Observações (opcional)</Label>
-            <Textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Notas internas, instruções, número de lote, etc."
-              rows={2}
-              className="text-sm"
-            />
-          </section>
+                </button>
+              );
+            })}
+          </div>
         </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={create.isPending}>
+        <div className="min-h-[390px] px-5 py-4">
+          {step === 0 && (
+            <div className="space-y-4">
+              <section className="space-y-2.5" aria-labelledby="standalone-primary-route">
+                <div className="flex flex-col gap-2 rounded-lg border border-primary/20 bg-primary/5 p-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p id="standalone-primary-route" className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-primary">
+                      <PaperPlaneTilt className="h-3.5 w-3.5" /> Rota principal
+                    </p>
+                    <p className="mt-1 text-sm font-semibold">Costura de cabedal e Aviamento primeiro</p>
+                    <p className="text-[11px] text-muted-foreground">Selecione o serviço que sairá da fábrica.</p>
+                  </div>
+                  <Badge variant="outline" className="w-fit border-primary/25 bg-card font-mono text-[10px] text-primary">
+                    2 serviços frequentes
+                  </Badge>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {PRIMARY_SECTORS.map((item) => renderSectorCard(item, true))}
+                </div>
+              </section>
+
+              {OTHER_SECTORS.length > 0 && (
+                <section className="space-y-2.5 border-t border-border pt-4" aria-labelledby="standalone-other-services">
+                  <button
+                    id="standalone-other-services"
+                    type="button"
+                    onClick={() => setShowOtherServices((value) => !value)}
+                    className="flex w-full items-center justify-between gap-3 rounded-lg border border-border bg-muted/25 px-3 py-3 text-left hover:bg-muted/40"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <Handshake className="h-4 w-4 text-muted-foreground" />
+                      <div>
+                        <p className="text-sm font-semibold">Outros serviços</p>
+                        <p className="text-[11px] text-muted-foreground">{OTHER_SECTORS.length} opções eventuais · abrir somente quando necessário</p>
+                      </div>
+                    </div>
+                    <CaretDown className={cn('h-4 w-4 text-muted-foreground transition-transform', showOtherServices && 'rotate-180')} />
+                  </button>
+                  {showOtherServices && (
+                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                      {OTHER_SECTORS.map((item) => renderSectorCard(item, false))}
+                    </div>
+                  )}
+                </section>
+              )}
+
+              {pvItems && pvItems.length > 0 && (
+                <section className="space-y-2 border-t border-border pt-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">
+                      Escopo do pedido · {saleOrderLabel || 'PV'}
+                    </p>
+                    <span className="font-mono text-[10px] text-muted-foreground">{selectedPvItems.length}/{pvItems.length} itens</span>
+                  </div>
+                  <div className="space-y-1.5">
+                    {pvItems.map((item) => {
+                      const selected = selectedItemIds.has(item.id);
+                      const opNumber = opByItem.get(item.id);
+                      return (
+                        <button
+                          type="button"
+                          key={item.id}
+                          onClick={() => toggleItem(item.id)}
+                          className={cn(
+                            'flex w-full items-center gap-2.5 rounded-md border px-3 py-2 text-left transition-colors',
+                            selected ? 'border-primary/40 bg-primary/5' : 'border-border bg-muted/20 hover:bg-muted/40',
+                          )}
+                        >
+                          <span className={cn(
+                            'grid h-4 w-4 place-items-center rounded border text-[10px] leading-none text-white',
+                            selected ? 'border-primary bg-primary' : 'border-muted-foreground/40',
+                          )}>{selected ? '✓' : ''}</span>
+                          <span className="min-w-0 flex-1 truncate text-sm font-medium">{item.label}</span>
+                          <span className="shrink-0 font-mono text-[10px] text-muted-foreground">{opNumber || 'sem OP'}</span>
+                          <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{item.pairs.toLocaleString('pt-BR')} pares</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
+              )}
+            </div>
+          )}
+
+          {step === 1 && (
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_240px]">
+              <div className="space-y-4">
+                <section className="rounded-lg border border-border bg-card p-4">
+                  <div className="mb-3 flex items-center justify-between gap-2">
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">01 · Prestador ativo</p>
+                      <p className="mt-1 text-sm font-semibold">Quem executará {selectedSectorLabel}</p>
+                    </div>
+                    <Badge variant="secondary" className="font-mono text-[10px]">{activeContractors.length} ativos</Badge>
+                  </div>
+                  <Label className="text-xs">Prestador *</Label>
+                  <SearchableSelect
+                    value={contractorId}
+                    onChange={selectContractor}
+                    options={contractorOptions}
+                    placeholder="Selecionar prestador ativo..."
+                    searchPlaceholder="Buscar por nome ou serviço..."
+                    emptyText="Nenhum prestador ativo encontrado."
+                    heading="Prestadores ativos"
+                    icon={<Buildings className="h-4 w-4" />}
+                    className="mt-1 h-10"
+                  />
+                  {activeContractors.length === 0 && (
+                    <p className="mt-2 flex items-center gap-1.5 text-xs text-amber-700 dark:text-amber-400">
+                      <Warning className="h-3.5 w-3.5" /> Ative ou cadastre um prestador antes de criar a OS.
+                    </p>
+                  )}
+                </section>
+
+                <section className="rounded-lg border border-border bg-card p-4">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">02 · Escopo e agenda</p>
+                  <div className="mt-3">
+                    <Label className="text-xs">Descrição (opcional)</Label>
+                    <Textarea
+                      value={description}
+                      onChange={(event) => setDescription(event.target.value)}
+                      placeholder="Ex.: costura do lote piloto, aplicação de enfeites, retrabalho específico..."
+                      rows={2}
+                      className="mt-1 text-sm"
+                    />
+                  </div>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <Label className="flex items-center gap-1 text-xs"><Calendar className="h-3 w-3" /> Data do envio *</Label>
+                      <Input type="date" value={serviceDate} onChange={(event) => setServiceDate(event.target.value)} className="mt-1 h-9" />
+                    </div>
+                    <div>
+                      <Label className="flex items-center gap-1 text-xs"><Calendar className="h-3 w-3" /> Prazo prometido</Label>
+                      <Input
+                        type="date"
+                        value={quotedDeadline}
+                        min={serviceDate || todayISO()}
+                        onChange={(event) => setQuotedDeadline(event.target.value)}
+                        className="mt-1 h-9"
+                      />
+                      {deadlineInvalid && <p className="mt-1 text-[11px] text-destructive">O prazo não pode ser anterior ao envio.</p>}
+                    </div>
+                  </div>
+                  <div className="mt-3">
+                    <Label className="text-xs">Observações internas (opcional)</Label>
+                    <Textarea
+                      value={notes}
+                      onChange={(event) => setNotes(event.target.value)}
+                      placeholder="Lote, instruções de conferência ou combinação com o prestador."
+                      rows={2}
+                      className="mt-1 text-sm"
+                    />
+                  </div>
+                </section>
+              </div>
+
+              <aside className="h-fit rounded-lg border border-border bg-muted/25 p-4 lg:sticky lg:top-0">
+                <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">03 · Cobrança</p>
+                <div className="mt-3 space-y-3">
+                  <div>
+                    <Label className="text-xs">Quantidade (pares) *</Label>
+                    <NumberInput value={quantity} onChange={setQuantity} step="1" min={0} className="mt-1 h-9" />
+                  </div>
+                  <div>
+                    <Label className="flex items-center gap-1 text-xs"><CurrencyDollar className="h-3 w-3" /> Valor por par *</Label>
+                    <NumberInput value={unitPrice} onChange={setUnitPrice} step="0.01" min={0} className="mt-1 h-9" />
+                    {loadingRate && <p className="mt-1 text-[11px] text-muted-foreground">Buscando tarifa vigente...</p>}
+                    {rateOverridden && (
+                      <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-400">
+                        Fora da tabela: vigente {formatCurrency(tableRate || 0)}
+                      </p>
+                    )}
+                    {contractorId && !loadingRate && (tableRate == null || tableRate <= 0) && (
+                      <p className="mt-1 text-[11px] text-muted-foreground">Sem tarifa cadastrada para este serviço.</p>
+                    )}
+                  </div>
+                </div>
+                <div className="mt-4 border-t border-border pt-4">
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Total calculado</p>
+                  <p className="mt-1 font-display text-3xl leading-none text-foreground">{formatCurrency(totalValue)}</p>
+                  <p className="mt-2 text-[11px] text-muted-foreground">
+                    {quantity.toLocaleString('pt-BR')} pares × {formatCurrency(unitPrice)}
+                  </p>
+                </div>
+              </aside>
+            </div>
+          )}
+
+          {step === 2 && (
+            <div className="space-y-4">
+              <div className="grid gap-2 sm:grid-cols-4">
+                <div className="rounded-lg border border-border bg-muted/25 p-3 sm:col-span-2">
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Serviço e prestador</p>
+                  <p className="mt-1 text-sm font-semibold">{selectedSectorLabel}</p>
+                  <p className="truncate text-xs text-muted-foreground">{selectedContractor?.trade_name || selectedContractor?.name || '—'}</p>
+                </div>
+                <div className="rounded-lg border border-border bg-muted/25 p-3">
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Quantidade</p>
+                  <p className="mt-1 font-display text-3xl leading-none">{quantity.toLocaleString('pt-BR')}</p>
+                  <p className="text-[11px] text-muted-foreground">pares</p>
+                </div>
+                <div className="rounded-lg border border-primary/25 bg-primary/5 p-3">
+                  <p className="text-[10px] uppercase tracking-wider text-primary">Total da OS</p>
+                  <p className="mt-1 font-display text-2xl leading-none">{formatCurrency(totalValue)}</p>
+                  <p className="text-[11px] text-muted-foreground">{formatCurrency(unitPrice)} / par</p>
+                </div>
+              </div>
+
+              <section className="overflow-hidden rounded-lg border border-border bg-card">
+                <div className="flex items-center justify-between gap-3 border-b border-border bg-muted/25 px-4 py-3">
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Comprovante de conferência</p>
+                    <p className="mt-1 text-sm font-semibold">Revise o que será gravado</p>
+                  </div>
+                  <Badge className="gap-1.5 bg-green-600 text-white hover:bg-green-600">
+                    <CheckCircle className="h-3.5 w-3.5" weight="fill" /> Pronto
+                  </Badge>
+                </div>
+                <div className="grid gap-x-6 gap-y-4 p-4 sm:grid-cols-2">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Origem</p>
+                    <p className="mt-1 text-sm">{saleOrderLabel || 'OS avulsa · sem PV/OP'}</p>
+                    {selectedOpNumbers.length > 0 && <p className="mt-0.5 font-mono text-[11px] text-primary">{selectedOpNumbers.join(', ')}</p>}
+                  </div>
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Agenda</p>
+                    <p className="mt-1 text-sm">Envio {new Date(`${serviceDate}T00:00:00`).toLocaleDateString('pt-BR')}</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      {quotedDeadline
+                        ? `Prazo ${new Date(`${quotedDeadline}T00:00:00`).toLocaleDateString('pt-BR')}`
+                        : 'Prazo ainda não combinado'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Descrição</p>
+                    <p className="mt-1 whitespace-pre-wrap text-sm">{description.trim() || 'Sem descrição adicional.'}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Financeiro previsto</p>
+                    <p className="mt-1 text-sm">{paymentForecast ? `~${paymentForecast}` : 'Após conferência do retorno'}</p>
+                    <p className="text-[11px] text-muted-foreground">{paymentDays} dias conforme cadastro do prestador</p>
+                  </div>
+                  {notes.trim() && (
+                    <div className="sm:col-span-2">
+                      <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Observações internas</p>
+                      <p className="mt-1 whitespace-pre-wrap text-sm">{notes.trim()}</p>
+                    </div>
+                  )}
+                </div>
+              </section>
+
+              <div className="flex gap-2 rounded-lg border border-green-500/25 bg-green-500/10 p-3 text-xs text-green-800 dark:text-green-300">
+                <PaperPlaneTilt className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>A OS será criada como <strong>Pendente</strong>. Registre a remessa depois para colocá-la “na rua”; nenhum estoque será debitado nesta criação.</span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <DialogFooter className="border-t border-border bg-muted/20 px-5 py-3 sm:justify-between">
+          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={create.isPending}>
             Cancelar
           </Button>
-          <Button onClick={() => create.mutate()} disabled={!canSubmit || create.isPending}>
-            {create.isPending ? 'Criando...' : (
-              <>
-                <FlaskConical className="h-3.5 w-3.5 mr-1" />
-                Criar OS
-              </>
+          <div className="flex items-center gap-2">
+            {step > 0 && (
+              <Button variant="outline" onClick={() => setStep((current) => Math.max(0, current - 1))} disabled={create.isPending}>
+                <ArrowLeft className="mr-1.5 h-3.5 w-3.5" /> Voltar
+              </Button>
             )}
-          </Button>
+            {step === 0 && (
+              <Button onClick={() => setStep(1)} disabled={!canAdvanceService}>
+                Definir prestador <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+              </Button>
+            )}
+            {step === 1 && (
+              <Button onClick={() => setStep(2)} disabled={!canReview}>
+                Conferir OS <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+              </Button>
+            )}
+            {step === 2 && (
+              <Button onClick={() => create.mutate()} disabled={!canSubmit || create.isPending}>
+                <PaperPlaneTilt className="mr-1.5 h-3.5 w-3.5" />
+                {create.isPending ? 'Criando...' : saleOrderId ? 'Criar OS' : 'Criar OS avulsa'}
+              </Button>
+            )}
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>
