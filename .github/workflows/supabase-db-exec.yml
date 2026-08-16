@@ -65,17 +65,33 @@ jobs:
         run: |
           : "${SUPABASE_ACCESS_TOKEN:?SUPABASE_ACCESS_TOKEN não configurado}"
           : "${SUPABASE_PROJECT_ID:?SUPABASE_PROJECT_ID não configurado}"
-          test -f "$SQL_PATH" || { echo "Arquivo não existe: $SQL_PATH"; exit 1; }
-          QUERY_PATH="$SQL_PATH"
+          SOURCE_PATH="$SQL_PATH"
+          if [ "$SQL_PATH" = "@tiras-artesanais-ddl" ]; then
+            SOURCE_PATH=/tmp/tiras-artesanais-ddl.sql
+            : > "$SOURCE_PATH"
+            for path in \
+              supabase/migrations/20270101003000_artisanal_straps_catalog_core.sql \
+              supabase/migrations/20270101003050_artisanal_straps_catalog_postdeploy_hardening.sql \
+              supabase/migrations/20270101003100_artisanal_straps_operational_schema.sql \
+              supabase/migrations/20270101003200_artisanal_straps_operational_engine.sql \
+              supabase/migrations/20270101003300_artisanal_straps_legacy_migration_apply.sql
+            do
+              test -f "$path" || { echo "Arquivo não existe: $path"; exit 1; }
+              sed -E '/^[[:space:]]*BEGIN;[[:space:]]*$/d; /^[[:space:]]*COMMIT;[[:space:]]*$/d' "$path" >> "$SOURCE_PATH"
+            done
+          else
+            test -f "$SOURCE_PATH" || { echo "Arquivo não existe: $SOURCE_PATH"; exit 1; }
+          fi
+          QUERY_PATH="$SOURCE_PATH"
           if [ "$DRY_RUN" = "true" ]; then
             QUERY_PATH=/tmp/supabase-dry-run.sql
             {
               echo 'BEGIN;'
-              sed -E '/^[[:space:]]*BEGIN;[[:space:]]*$/d; /^[[:space:]]*COMMIT;[[:space:]]*$/d' "$SQL_PATH"
+              sed -E '/^[[:space:]]*BEGIN;[[:space:]]*$/d; /^[[:space:]]*COMMIT;[[:space:]]*$/d' "$SOURCE_PATH"
               echo 'ROLLBACK;'
             } > "$QUERY_PATH"
           fi
-          echo "── Executando: $SQL_PATH ($(wc -c < "$SQL_PATH") bytes) · dry_run=$DRY_RUN"
+          echo "── Executando: $SQL_PATH ($(wc -c < "$SOURCE_PATH") bytes) · dry_run=$DRY_RUN"
           jq -Rs '{query: .}' < "$QUERY_PATH" > /tmp/body.json
           code=$(curl -sS -o /tmp/resp.json -w '%{http_code}' -X POST \
             "https://api.supabase.com/v1/projects/${SUPABASE_PROJECT_ID}/database/query" \
