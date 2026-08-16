@@ -102,6 +102,12 @@ const STATUS_OPTIONS = ['Rascunho', 'Pendente', 'Aprovado', 'Em Produção', 'Fa
 // "Nº Cliente" e "Cidade" ficaram de fora por isso.
 type SortKey = 'order_number' | 'client_name' | 'total' | 'status' | 'pairs' | 'delivery_deadline';
 
+interface SaleOrderItemLabelMaterialRow {
+  id: string;
+  material_variant_id: string | null;
+  material_variant_commercial_snapshot: unknown;
+}
+
 const SORT_ACCESSORS: Record<SortKey, (o: any, pairs: Record<string, number>) => string | number | null> = {
   order_number: (o) => o.order_number ?? null,
   client_name: (o) => o.client_name ?? null,
@@ -1173,7 +1179,11 @@ export default function SaleOrders() {
         supabase.from('technical_sheets').select('id, image_url, images, shoe_category, code, name').in('id', refIds),
         supabase.from('reference_color_variants').select('reference_id, color, image_url, barcode').in('reference_id', refIds),
         soiIds.length > 0
-          ? (supabase as any).from('sale_order_items').select('id, material_variant_id, material_variant_commercial_snapshot').in('id', soiIds)
+          ? supabase
+            .from('sale_order_items')
+            .select('id, material_variant_id, material_variant_commercial_snapshot')
+            .in('id', soiIds)
+            .overrideTypes<SaleOrderItemLabelMaterialRow[], { merge: false }>()
           : Promise.resolve({ data: [] }),
       ]);
 
@@ -1198,7 +1208,7 @@ export default function SaleOrders() {
         ((soiRes as any).data || []).map((r: any) => [r.id, r.material_variant_id || null]),
       );
       const materialVariantSnapshotBySoi = new Map<string, unknown>(
-        ((soiRes as any).data || []).map((r: any) => [r.id, r.material_variant_commercial_snapshot || null]),
+        (soiRes.data || []).map((r) => [r.id, r.material_variant_commercial_snapshot || null]),
       );
 
       // Materiais: 1 chamada em lote no lugar de uma (com 1–4 queries dentro) por OP.

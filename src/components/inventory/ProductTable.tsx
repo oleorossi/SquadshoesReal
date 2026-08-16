@@ -416,7 +416,7 @@ function ProductRows({ products, onEdit, onDelete, onStockOut, onGrade, onArtisa
                      "Marcar como artesanal"). Cor própria (violeta) pra scan rápido
                      de quais materiais são feitos artesanalmente. É a MESMA flag
                      (`is_artisanal`) que o motor de consumo lê pra converter em napa. */}
-                 {(product as any).is_artisanal && !isPurchasedReadyStrap && (
+                 {product.is_artisanal && !isPurchasedReadyStrap && (
                    <Tooltip>
                      <TooltipTrigger asChild>
                        <Badge variant="outline" className="bg-violet-500/10 text-violet-600 border-violet-500/30 dark:text-violet-300 gap-1 px-1.5 h-5">

@@ -108,7 +108,7 @@ export function useAddProduct() {
   return useMutation({
     mutationFn: async (form: ProductFormData) => {
       const normalized = normalizeProductSupplierColor(form);
-      const payload = { ...sanitizeUuidFields(normalized), max_stock: (form as any).max_stock ?? 0 };
+      const payload = { ...sanitizeUuidFields(normalized), max_stock: form.max_stock ?? 0 };
       const { data, error } = await supabase
         .from('products')
         .insert(payload as any)
@@ -200,7 +200,7 @@ export function useUpdateProduct() {
       // concurrency control). A direct write races with debit RPCs and bypasses
       // the audit trail; same guard applied to usePackaging (audit-37 [3]).
       const normalized = normalizeProductSupplierColor(data);
-      const { quantity, stock_grade, min_stock_grade, ...safeData } = normalized as any;
+      const { quantity, stock_grade, min_stock_grade, ...safeData } = normalized;
       if (quantity !== undefined || stock_grade !== undefined) {
         // Surface a developer warning; the stock adjustment page is the correct path.
         console.warn('[useUpdateProduct] quantity/stock_grade stripped — use adjust_stock RPC or stock adjustment page.');

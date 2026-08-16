@@ -549,16 +549,16 @@ Deno.serve(async (req) => {
       };
     });
 
-    const billableItems = resolvedItems.filter((it: any) => Number(it.quantity) > 0);
+    const billableItems = resolvedItems.filter((it) => Number(it.quantity) > 0);
 
     const itemsInvalidVariantSnapshot = billableItems
-      .filter((it: any) => it._hasMaterialVariant && (
+      .filter((it) => it._hasMaterialVariant && (
         !it._variantSnapshot
         || String(it._variantSnapshot.material_variant_id || '') !== String(it.material_variant_id)
         || !String(it._variantSnapshot.description || '').trim()
         || !String(it._variantSnapshot.sku || '').trim()
       ))
-      .map((it: any) => `${it.technical_sheets?.code || it.reference_id || it.id} [item ${it.id}]`);
+      .map((it) => `${it.technical_sheets?.code || it.reference_id || it.id} [item ${it.id}]`);
     if (itemsInvalidVariantSnapshot.length > 0) {
       return new Response(JSON.stringify({
         error: `Snapshot comercial ausente ou inválido nas referências: ${itemsInvalidVariantSnapshot.join('; ')}. Este é um bloqueio de integridade: acione a administração para diagnosticar o item no banco; a emissão não consultará o catálogo vivo nem inventará identidade histórica.`,
@@ -566,9 +566,9 @@ Deno.serve(async (req) => {
     }
 
     const itemsPendingLegacyReview = billableItems
-      .filter((it: any) => it._hasMaterialVariant
+      .filter((it) => it._hasMaterialVariant
         && it._variantSnapshot?.provenance?.historical_truth === 'unknown')
-      .map((it: any) => `${it.technical_sheets?.code || it.reference_id || it.id} [item ${it.id}]`);
+      .map((it) => `${it.technical_sheets?.code || it.reference_id || it.id} [item ${it.id}]`);
     if (itemsPendingLegacyReview.length > 0) {
       return new Response(JSON.stringify({
         error: `Identidade comercial legada ainda não comprovada nas referências: ${itemsPendingLegacyReview.join('; ')}. Comercial/Gerência deve validar SKU, NCM, descrição, cor e preço contra o pedido original e chamar a RPC administrativa review_legacy_material_variant_commercial_snapshot com p_attested_identity: primeiro p_apply=false (preview), depois p_apply=true usando o mesmo p_expected_snapshot. O catálogo atual não será tratado como verdade histórica.`,
@@ -595,7 +595,7 @@ Deno.serve(async (req) => {
 
     // Preço fiscal = preço contratado e congelado no item do PV. O override
     // vivo da variante é apenas sugestão durante a edição e nunca reprecifica NF.
-    const effectivePrice = (it: any) => Number(it.unit_price ?? 0);
+    const effectivePrice = (it) => Number(it.unit_price ?? 0);
     const sumItems = billableItems.reduce(
       (s: number, it: any) => s + Number(((Number(it.quantity) || 0) * effectivePrice(it)).toFixed(2)),
       0,
@@ -842,7 +842,7 @@ Deno.serve(async (req) => {
       const codigoNf = String((
         hasMaterialVariant
           ? variant?.sku
-          : (ts?.code || (prod as any)?.sku || (prod as any)?.code)
+          : (ts?.code || prod?.sku || prod?.code)
       ) || "").trim();
       // Unidade comercial na NF. Pedido do dono em 01/06/2026, validando contra
       // a NF #248 revisada pela contabilidade (o DANFE de referência sai com

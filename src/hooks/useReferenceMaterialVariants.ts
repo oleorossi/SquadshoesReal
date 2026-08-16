@@ -1,5 +1,6 @@
  import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
  import { supabase } from '@/integrations/supabase/client';
+ import type { TablesInsert, TablesUpdate } from '@/integrations/supabase/types';
  import { toast } from 'sonner';
 
 // Query keys (compartilhadas entre os hooks pra invalidar de forma consistente)
@@ -111,7 +112,7 @@ export async function findMaterialVariantSkuCollision(
        const normalized = normalizeVariantMutation(data);
        const { data: result, error } = await supabase
          .from('reference_material_variants')
-         .insert(normalized as any)
+         .insert(normalized as TablesInsert<'reference_material_variants'>)
          .select()
          .single();
        if (error) throw error;
@@ -136,7 +137,7 @@ export async function findMaterialVariantSkuCollision(
        const normalized = normalizeVariantMutation(data);
        const { error } = await supabase
          .from('reference_material_variants')
-         .update(normalized as any)
+         .update(normalized as TablesUpdate<'reference_material_variants'>)
          .eq('id', id);
        if (error) throw error;
      },

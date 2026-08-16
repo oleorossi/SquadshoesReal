@@ -165,7 +165,7 @@ function VariantDetailSheet({ open, onOpenChange, product, otherVariants }: {
       //    tg_sync_reserved_stock). Nenhum dos triggers de `products` recalcula
       //    a coluna, então um UPDATE direto passava livre e apagava reserva viva.
       const { quantity: nextQty, reserved_stock: _ignored, ...rest } = form as any;
-      const updates: any = { ...rest, supplier_color_code: supplierColorCode };
+      const updates = { ...rest, supplier_color_code: supplierColorCode };
       const { error } = await supabase.from('products').update(updates).eq('id', product.id);
       if (error) throw error;
 

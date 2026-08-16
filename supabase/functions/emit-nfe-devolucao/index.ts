@@ -291,7 +291,7 @@ Deno.serve(async (req) => {
       }
       const normalizedProductName = productName.toUpperCase();
       const normalizedProductCode = productCode.toUpperCase();
-      const originalIdentityMatches = originalNfeProducts.filter((product: any) => {
+      const originalIdentityMatches = originalNfeProducts.filter((product) => {
         const candidateName = String(product.nome_produto || product.nome || '')
           .trim().toUpperCase();
         const candidateCode = String(product.codigo_produto || product.codigo || '')
@@ -300,7 +300,7 @@ Deno.serve(async (req) => {
           && (!normalizedProductCode || candidateCode === normalizedProductCode);
       });
       const originalCodeMatches = normalizedProductCode
-        ? originalNfeProducts.filter((product: any) =>
+        ? originalNfeProducts.filter((product) =>
             String(product.codigo_produto || product.codigo || '').trim().toUpperCase()
               === normalizedProductCode
           )
