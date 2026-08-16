@@ -72,7 +72,8 @@ BEGIN
   END IF;
 
   UPDATE public.reference_material_variants v
-     SET sku = expected.new_sku
+     SET sku = expected.new_sku,
+         updated_at = clock_timestamp()
   FROM (VALUES
     ('75f6fcfb-7e61-42d8-ace3-0fd566cc9be3'::uuid, 'I90I-GM'::text, 'I91-GM'::text),
     ('519826f3-6a67-4f89-a401-22c924900ac6'::uuid, 'I90I-NS'::text, 'I91-NS'::text),
