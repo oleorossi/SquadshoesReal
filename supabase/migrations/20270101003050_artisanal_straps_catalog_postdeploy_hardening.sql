@@ -1693,8 +1693,9 @@ BEGIN
   SELECT pg_get_functiondef(
     'public.save_artisanal_strap_catalog_bundle(jsonb,text)'::regprocedure
   ) INTO v_bundle;
-  IF v_bundle !~ 'purchase_order_unit.*nao pertence ao contrato canonico'
-     OR v_bundle !~ 'administer_strap_operations' THEN
+  IF v_bundle !~ 'purchase_order_unit.*nao e aceito; use purchase_unit'
+     OR v_bundle !~ 'assert_artisanal_strap_capability.*manage_strap_catalog'
+     OR v_bundle ~ 'administer_strap_operations' THEN
     RAISE EXCEPTION 'Bundle nao aplica hardening de payload/capability';
   END IF;
 
