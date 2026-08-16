@@ -108,12 +108,12 @@ export const fetchClientPriceList = async (clientId: string): Promise<PriceLooku
   if (itemsError) throw itemsError;
 
   for (const it of (items ?? [])) {
-    const refId = (it as any).reference_id;
-    const color = ((it as any).color || '').toUpperCase().trim();
+    const refId = it.reference_id;
+    const color = (it.color || '').toUpperCase().trim();
     const tier: PriceTier = {
-      id: (it as any).id,
-      minQty: Math.max(0, Number((it as any).min_quantity) || 0),
-      price: Number((it as any).unit_price) || 0,
+      id: it.id,
+      minQty: Math.max(0, Number(it.min_quantity) || 0),
+      price: Number(it.unit_price) || 0,
     };
     const target = color ? byRefColor : byRef;
     const key = color ? `${refId}::${color}` : refId;

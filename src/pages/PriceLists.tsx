@@ -31,6 +31,11 @@ type PriceList = {
   is_promotional: boolean;
 };
 
+type PriceListRow = PriceList & {
+  id: string;
+  client_name?: string | null;
+};
+
 const EMPTY: PriceList = {
   name: '',
   channel: 'atacado',
@@ -51,7 +56,7 @@ export default function PriceLists() {
   const [edit, setEdit] = useState<PriceList>(EMPTY);
   const [itemsFor, setItemsFor] = useState<{ id: string; name: string } | null>(null);
 
-  const { data: lists = [], isLoading } = useQuery({
+  const { data: lists = [], isLoading } = useQuery<PriceListRow[]>({
     queryKey: ['price_lists'],
     queryFn: async () => {
       const { data, error } = await (supabase as any)
@@ -115,7 +120,7 @@ export default function PriceLists() {
   });
 
   const openNew = () => { setEdit({ ...EMPTY, valid_from: todayISO() }); setOpen(true); };
-  const openEdit = (pl: any) => {
+  const openEdit = (pl: PriceListRow) => {
     setEdit({
       id: pl.id,
       name: pl.name ?? '',
@@ -163,7 +168,7 @@ export default function PriceLists() {
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-        {lists.map((pl: any) => {
+        {lists.map((pl) => {
           const validity = evaluatePriceListValidity(pl);
           const statusLabel = validity.effective ? 'Vigente'
             : validity.invalidReason === 'inactive' ? 'Inativa'
