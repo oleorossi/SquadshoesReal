@@ -9,7 +9,7 @@ import {
 } from 'recharts';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { TrendUp as TrendingUp, TrendDown as TrendingDown, Warning as AlertTriangle, Calendar } from '@phosphor-icons/react';
+import { TrendUp as TrendingUp, TrendDown as TrendingDown, Warning as AlertTriangle, Calendar, ArrowsClockwise as RefreshCw, Info } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { StatNumber } from '@/components/ui/stat-number';
 
@@ -22,7 +22,7 @@ const fmtShort = (v: number) => {
 
 export function CashFlowProjection() {
   const [horizon, setHorizon] = useState<30 | 60 | 90>(30);
-  const { data, isLoading } = useCashFlowProjection(horizon);
+  const { data, isLoading, error, refetch } = useCashFlowProjection(horizon);
 
   return (
     <div className="space-y-4">
@@ -33,7 +33,7 @@ export function CashFlowProjection() {
             Projeção de Fluxo de Caixa
           </h3>
           <p className="text-xs text-muted-foreground">
-            Saldo projetado considerando contas a pagar, a receber e pedidos aprovados/faturados
+            Saldo bancário atual + títulos em aberto por data de vencimento. PVs aprovados entram pela conta a receber sincronizada.
           </p>
         </div>
         <div className="flex gap-1">
@@ -50,17 +50,43 @@ export function CashFlowProjection() {
         </div>
       </div>
 
-      {isLoading || !data ? (
+      {isLoading ? (
         <Skeleton className="h-[400px]" />
+      ) : error || !data ? (
+        <Card className="border-destructive/40 bg-destructive/5">
+          <CardContent className="h-[300px] flex flex-col items-center justify-center text-center gap-2">
+            <AlertTriangle className="h-8 w-8 text-destructive" />
+            <p className="text-sm font-semibold text-destructive">Não foi possível calcular a projeção</p>
+            <p className="text-xs text-muted-foreground max-w-lg">{(error as Error)?.message || 'A consulta não retornou dados.'}</p>
+            <Button size="sm" variant="outline" className="mt-2 gap-1.5" onClick={() => refetch()}>
+              <RefreshCw className="h-3.5 w-3.5" /> Tentar novamente
+            </Button>
+          </CardContent>
+        </Card>
       ) : (
         <>
+          {data.bankAccountsCount === 0 && (
+            <div className="flex items-start gap-3 rounded-lg border border-primary/30 bg-primary/5 p-3">
+              <Info className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-semibold">Saldo bancário ainda não cadastrado</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  A projeção parte de R$ 0,00 e mostra apenas o efeito dos títulos. Cadastre as contas bancárias para obter o saldo final realista.
+                </p>
+              </div>
+            </div>
+          )}
           {/* KPIs do horizonte — Auditoria visual 01/08/2026 (M29): números
               via StatNumber canônico (Anton adaptativo) em vez de <p> ad-hoc. */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <Card>
               <CardContent className="pt-4 pb-3">
                 <p className="text-xs text-muted-foreground">Saldo Inicial</p>
-                <StatNumber value={fmt(data.initialBalance)} base={24} min={14} />
+                {data.bankAccountsCount === 0 ? (
+                  <p className="text-sm font-semibold text-muted-foreground mt-1">Não cadastrado</p>
+                ) : (
+                  <StatNumber value={fmt(data.initialBalance)} base={24} min={14} />
+                )}
               </CardContent>
             </Card>
             <Card>

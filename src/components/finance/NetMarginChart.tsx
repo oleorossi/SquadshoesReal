@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
+import { compareMarginHalves, summarizeMargin } from '@/lib/financeMath';
 
 const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
 const fmtPct = (v: number) => `${v.toFixed(1)}%`;
@@ -41,11 +42,14 @@ function useNetMarginByPeriod(monthsBack: number) {
       const ids = (profitData || []).map((p: any) => p.sale_order_id);
       if (ids.length === 0) return [];
 
-      const { data: ordersData } = await supabase
+      const { data: ordersData, error: ordersError } = await supabase
         .from('sale_orders')
         .select('id, delivery_deadline, created_at')
         .in('id', ids)
-        .gte('delivery_deadline', start);
+        // Pedidos sem prazo usam created_at como data de referência. O filtro
+        // antigo em delivery_deadline eliminava essas linhas antes do fallback.
+        .or(`delivery_deadline.gte.${start},and(delivery_deadline.is.null,created_at.gte.${start})`);
+      if (ordersError) throw ordersError;
 
       const orderDateMap = new Map<string, string>();
       for (const o of ordersData || []) {
@@ -89,26 +93,17 @@ function useNetMarginByPeriod(monthsBack: number) {
 
 export function NetMarginChart() {
   const [monthsBack, setMonthsBack] = useState(6);
-  const { data = [], isLoading } = useNetMarginByPeriod(monthsBack);
+  const { data = [], isLoading, error, refetch } = useNetMarginByPeriod(monthsBack);
 
   const totals = useMemo(() => {
-    const revenue = data.reduce((s, m) => s + m.revenue, 0);
-    const cost = data.reduce((s, m) => s + m.cost, 0);
-    const margin = revenue - cost;
-    const marginPct = revenue > 0 ? (margin / revenue) * 100 : 0;
+    const { revenue, cost, margin, marginPct } = summarizeMargin(data);
     const orderCount = data.reduce((s, m) => s + m.orderCount, 0);
     return { revenue, cost, margin, marginPct, orderCount };
   }, [data]);
 
   // Tendência: comparar primeira metade do período com a segunda
   const trend = useMemo(() => {
-    if (data.length < 2) return null;
-    const half = Math.floor(data.length / 2);
-    const firstHalf = data.slice(0, half);
-    const secondHalf = data.slice(half);
-    const firstAvg = firstHalf.reduce((s, m) => s + m.marginPct, 0) / Math.max(1, firstHalf.length);
-    const secondAvg = secondHalf.reduce((s, m) => s + m.marginPct, 0) / Math.max(1, secondHalf.length);
-    return { firstAvg, secondAvg, delta: secondAvg - firstAvg };
+    return compareMarginHalves(data);
   }, [data]);
 
   const hasData = totals.orderCount > 0;
@@ -119,11 +114,12 @@ export function NetMarginChart() {
         <div>
           <CardTitle className="text-sm flex items-center gap-2">
             <TrendingUp className="h-4 w-4 text-primary" />
-            Margem Líquida — Evolução por Período
+            Margem Industrial dos Pedidos — Evolução por Período
           </CardTitle>
           <p className="text-xs text-muted-foreground mt-1">
             Receita × Custo (matéria-prima + MOD + GGF + embalagem) com margem % por mês.
-            Fonte: <code>order_costs</code> (cálculos persistidos via "Calcular Custos" no PV).
+            Não inclui despesas administrativas, impostos ou factoring; o lucro líquido fica na DRE.
+            Fonte: <code>order_costs</code>.
           </p>
         </div>
         <Select value={String(monthsBack)} onValueChange={(v) => setMonthsBack(Number(v))}>
@@ -142,6 +138,15 @@ export function NetMarginChart() {
         {isLoading ? (
           <div className="h-72 flex items-center justify-center text-muted-foreground text-sm">
             Carregando…
+          </div>
+        ) : error ? (
+          <div className="h-72 flex items-center justify-center flex-col gap-2 text-center">
+            <TrendingDown className="h-8 w-8 text-destructive" />
+            <p className="text-sm font-semibold text-destructive">Falha ao calcular a margem dos pedidos</p>
+            <p className="text-xs text-muted-foreground max-w-lg">{(error as Error).message}</p>
+            <button className="text-xs font-medium text-primary underline" onClick={() => refetch()}>
+              Tentar novamente
+            </button>
           </div>
         ) : !hasData ? (
           <div className="h-72 flex items-center justify-center flex-col gap-2 text-muted-foreground">
@@ -165,7 +170,7 @@ export function NetMarginChart() {
                 <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Margem</p>
                 <p className={cn(
                   'text-sm font-bold tabular-nums mt-0.5',
-                  totals.margin >= 0 ? 'text-emerald-700' : 'text-red-700',
+                  totals.margin >= 0 ? 'text-success' : 'text-destructive',
                 )}>{fmt(totals.margin)}</p>
               </div>
               <div className="rounded-md bg-muted/30 p-2.5">
@@ -173,8 +178,8 @@ export function NetMarginChart() {
                 <div className="flex items-center gap-1.5 mt-0.5">
                   <p className={cn(
                     'text-sm font-bold tabular-nums',
-                    totals.marginPct >= 20 ? 'text-emerald-700' :
-                    totals.marginPct >= 10 ? 'text-amber-700' : 'text-red-700',
+                    totals.marginPct >= 20 ? 'text-success' :
+                    totals.marginPct >= 10 ? 'text-warning' : 'text-destructive',
                   )}>{fmtPct(totals.marginPct)}</p>
                   {trend && Math.abs(trend.delta) > 0.5 && (
                     <Badge
@@ -182,8 +187,8 @@ export function NetMarginChart() {
                       className={cn(
                         'text-xs h-4 px-1.5',
                         trend.delta > 0
-                          ? 'border-emerald-500/40 text-emerald-700'
-                          : 'border-red-500/40 text-red-700',
+                          ? 'border-success/40 text-success'
+                          : 'border-destructive/40 text-destructive',
                       )}
                     >
                       {trend.delta > 0 ? '↑' : '↓'} {Math.abs(trend.delta).toFixed(1)}pp
@@ -233,7 +238,7 @@ export function NetMarginChart() {
             </div>
 
             <p className="text-xs text-muted-foreground italic mt-3">
-              Pedidos contabilizados pelo <strong>delivery_deadline</strong>. Apenas PVs com cálculo de
+              Pedidos contabilizados pelo <strong>delivery_deadline</strong> (ou criação, quando o prazo estiver vazio). Apenas PVs com cálculo de
               custo persistido (<code>order_costs</code>) entram. {totals.orderCount} PV(s) no período.
             </p>
           </>

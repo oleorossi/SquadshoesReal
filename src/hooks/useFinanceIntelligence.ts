@@ -1,6 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { addDays, format, parseISO, startOfMonth, endOfMonth, subMonths, isAfter, isBefore } from 'date-fns';
+import { openBalanceOf, sumOpenBalance } from '@/lib/ledgerBalance';
+import { percentageOf, sumOpenDueInPeriod, sumRealizedInPeriod } from '@/lib/financeMath';
 
 export type DREInventoryMonth = {
   period: string;
@@ -44,13 +46,19 @@ export type DREMonth = {
   resultadoLiquido: number;
   /** % do lucro líquido sobre a receita — resposta direta à pergunta
    *  "se faturei 100k, quanto vai pro meu bolso". Fórmula:
-   *  (receita − cmv − despOp − impostos) / receita × 100. */
+   *  (receita − cmv − despOp − impostos − juros) / receita × 100. */
   resultadoLiquidoPct: number;
+};
+
+export type DREReport = {
+  months: DREMonth[];
+  company: { regime_tributario: string; razao_social: string } | null;
 };
 
 /**
  * Smart Cash Flow Projection 30/60/90 days
- * Combines: bank balance + receivables + payables + sale orders (faturados/aprovados)
+ * Combines: bank balance + receivables + payables. Sale orders enter through
+ * their synchronized accounts_receivable row, preventing double counting.
  */
 export function useCashFlowProjection(daysAhead: 30 | 60 | 90 = 90) {
   return useQuery({
@@ -96,7 +104,7 @@ export function useCashFlowProjection(daysAhead: 30 | 60 | 90 = 90) {
 
       // Outflow: pending payables
       (payRes.data || []).forEach((p) => {
-        const remaining = Number(p.amount) - Number(p.amount_paid || 0);
+        const remaining = openBalanceOf(p, 'payable');
         if (remaining <= 0) return;
         const due = p.due_date >= todayStr ? p.due_date : todayStr;
         const point = points.get(due);
@@ -105,7 +113,7 @@ export function useCashFlowProjection(daysAhead: 30 | 60 | 90 = 90) {
 
       // Inflow: pending receivables
       (recRes.data || []).forEach((r) => {
-        const remaining = Number(r.amount) - Number(r.amount_received || 0);
+        const remaining = openBalanceOf(r, 'receivable');
         if (remaining <= 0) return;
         const due = r.due_date >= todayStr ? r.due_date : todayStr;
         const point = points.get(due);
@@ -137,6 +145,7 @@ export function useCashFlowProjection(daysAhead: 30 | 60 | 90 = 90) {
 
       return {
         initialBalance,
+        bankAccountsCount: (banksRes.data || []).length,
         series,
         minBalance,
         firstNegativeDay,
@@ -164,9 +173,9 @@ export function useCashFlowProjection(daysAhead: 30 | 60 | 90 = 90) {
  * O relatório por COMPETÊNCIA/variação de estoque continua disponível como
  * REFERÊNCIA em useDREInventoryVariation (não é a DRE principal).
  *
- * ⚠ Limitação do modelo de dados: pagamentos parciais sem payment_date não entram
- * (só conta o que tem data de caixa). Não há ledger de pagamentos — payment_date é
- * único por linha (reflete o último pagamento).
+ * ⚠ Limitação do modelo de dados: não há ledger de parcelas de pagamento.
+ * payment_date é único por título e reflete a última baixa; em múltiplas baixas,
+ * o acumulado pago/recebido fica alocado nessa última data.
  */
 export function useDREAuto(monthsBack: number = 6) {
   return useQuery({
@@ -223,11 +232,13 @@ export function useDREAuto(monthsBack: number = 6) {
       if (recRes.error) throw recRes.error;
       if (payRes.error) throw payRes.error;
       if (factRes.error) throw factRes.error;
-      // CMV reconhecido: degrada com elegância se a tabela/migration ainda não foi
-      // aplicada (janela entre deploy do front e aplicação da migration via MCP).
-      // Sem isso a DRE inteira quebraria; aqui o CMV só fica 0 até a tabela existir.
-      if (cmvRes?.error) {
-        console.warn('useDREAuto: sale_order_cmv_recognized indisponível (migration pendente?) — CMV reconhecido tratado como 0.', cmvRes.error?.message);
+      // DRE financeira não pode degradar CMV/regime tributário para zero: isso
+      // transforma falha de fonte em lucro fictício. A UI mostra o erro e permite
+      // tentar novamente sem apresentar números incompletos como verdadeiros.
+      if (cmvRes?.error) throw new Error(`Falha ao carregar o CMV reconhecido: ${cmvRes.error.message}`);
+      if (companyRes?.error) throw new Error(`Falha ao carregar o regime tributário: ${companyRes.error.message}`);
+      if (!companyRes?.data?.regime_tributario) {
+        throw new Error('Empresa principal sem regime tributário cadastrado. A DRE não pode classificar impostos com segurança.');
       }
       const isSimplesNacional = String(companyRes?.data?.regime_tributario || '') === '1';
 
@@ -310,14 +321,17 @@ export function useDREAuto(monthsBack: number = 6) {
       // "se faturei 100k, quanto vai pro meu bolso?".
       Object.values(months).forEach((m) => {
         m.margemBruta = m.receita - m.cmv;
-        m.margemBrutaPct = m.receita > 0 ? (m.margemBruta / m.receita) * 100 : 0;
+        m.margemBrutaPct = percentageOf(m.margemBruta, m.receita);
         m.ebitda = m.margemBruta - m.despOperacionais;
-        m.ebitdaPct = m.receita > 0 ? (m.ebitda / m.receita) * 100 : 0;
+        m.ebitdaPct = percentageOf(m.ebitda, m.receita);
         m.resultadoLiquido = m.ebitda - m.impostos - m.jurosFactoring;
-        m.resultadoLiquidoPct = m.receita > 0 ? (m.resultadoLiquido / m.receita) * 100 : 0;
+        m.resultadoLiquidoPct = percentageOf(m.resultadoLiquido, m.receita);
       });
 
-      return Object.values(months).sort((a, b) => a.period.localeCompare(b.period));
+      return {
+        months: Object.values(months).sort((a, b) => a.period.localeCompare(b.period)),
+        company: companyRes.data as DREReport['company'],
+      } satisfies DREReport;
     },
   });
 }
@@ -331,10 +345,11 @@ export function useDREAuto(monthsBack: number = 6) {
  *    within that month, using each product's current unit_price as proxy for historical cost.
  *  - Compras = purchase_orders (status='received') whose updated_at falls in that month.
  */
-export function useDREInventoryVariation(monthsBack: number = 6) {
+export function useDREInventoryVariation(monthsBack: number = 6, enabled = true) {
   return useQuery({
     queryKey: ['dre-inventory-variation', monthsBack],
     staleTime: 5 * 60 * 1000,
+    enabled,
     queryFn: async () => {
       const now = new Date();
       const startDate = format(startOfMonth(subMonths(now, monthsBack - 1)), 'yyyy-MM-dd');
@@ -518,7 +533,7 @@ export function useFinanceAlerts() {
         (p) => p.status !== 'paid' && p.due_date >= todayStr && p.due_date <= next7
       );
       const next7Total = next7Payables.reduce(
-        (s, p) => s + (Number(p.amount) - Number(p.amount_paid)),
+        (s, p) => s + openBalanceOf(p, 'payable'),
         0
       );
       if (bankCount > 0 && next7Total > balance) {
@@ -545,13 +560,13 @@ export function useFinanceAlerts() {
       });
       if (overdueRecs.length > 0) {
         const totalOverdue = overdueRecs.reduce(
-          (s, r) => s + (Number(r.amount) - Number(r.amount_received)),
+          (s, r) => s + openBalanceOf(r, 'receivable'),
           0
         );
 
         if (overdue90.length > 0) {
           const total90 = overdue90.reduce(
-            (s, r) => s + (Number(r.amount) - Number(r.amount_received)),
+            (s, r) => s + openBalanceOf(r, 'receivable'),
             0
           );
           alerts.push({
@@ -581,12 +596,14 @@ export function useFinanceAlerts() {
       const dailyChanges = new Map<string, number>();
       
       (payRes.data || []).forEach(p => {
-        const remaining = Number(p.amount) - Number(p.amount_paid);
+        const remaining = openBalanceOf(p, 'payable');
+        if (remaining <= 0) return;
         const due = p.due_date < todayStr ? todayStr : p.due_date;
         dailyChanges.set(due, (dailyChanges.get(due) || 0) - remaining);
       });
       (recRes.data || []).forEach(r => {
-        const remaining = Number(r.amount) - Number(r.amount_received);
+        const remaining = openBalanceOf(r, 'receivable');
+        if (remaining <= 0) return;
         const due = r.due_date < todayStr ? todayStr : r.due_date;
         dailyChanges.set(due, (dailyChanges.get(due) || 0) + remaining);
       });
@@ -617,7 +634,7 @@ export function useFinanceAlerts() {
       );
       if (overduePayables.length > 0) {
         const total = overduePayables.reduce(
-          (s, p) => s + (Number(p.amount) - Number(p.amount_paid)),
+          (s, p) => s + openBalanceOf(p, 'payable'),
           0
         );
         alerts.push({
@@ -646,7 +663,6 @@ export function useFinanceKPIs() {
     staleTime: 5 * 60 * 1000,
     queryFn: async () => {
       const now = new Date();
-      const todayStr = format(now, 'yyyy-MM-dd');
       const monthStart = format(startOfMonth(now), 'yyyy-MM-dd');
       const monthEnd = format(endOfMonth(now), 'yyyy-MM-dd');
       const lastMonthStart = format(startOfMonth(subMonths(now, 1)), 'yyyy-MM-dd');
@@ -656,11 +672,11 @@ export function useFinanceKPIs() {
         supabase.from('bank_accounts').select('current_balance').eq('active', true),
         supabase
           .from('accounts_payable')
-          .select('due_date, amount, amount_paid, status')
+          .select('due_date, payment_date, amount, amount_paid, status')
           .neq('status', 'cancelled'),
         supabase
           .from('accounts_receivable')
-          .select('due_date, amount, amount_received, status')
+          .select('due_date, payment_date, amount, amount_received, status')
           .neq('status', 'cancelled'),
       ]);
       if (banksRes.error) throw banksRes.error;
@@ -673,23 +689,17 @@ export function useFinanceKPIs() {
 
       const totalBalance = banks.reduce((s, b) => s + Number(b.current_balance || 0), 0);
 
-      const totalPayable = pays
-        .filter((p) => p.status !== 'paid')
-        .reduce((s, p) => s + (Number(p.amount) - Number(p.amount_paid)), 0);
-      const totalReceivable = recs
-        .filter((r) => r.status !== 'received')
-        .reduce((s, r) => s + (Number(r.amount) - Number(r.amount_received)), 0);
+      const totalPayable = sumOpenBalance(pays, 'payable');
+      const totalReceivable = sumOpenBalance(recs, 'receivable');
 
-      const monthRevenue = recs
-        .filter((r) => r.due_date >= monthStart && r.due_date <= monthEnd)
-        .reduce((s, r) => s + Number(r.amount), 0);
-      const monthExpenses = pays
-        .filter((p) => p.due_date >= monthStart && p.due_date <= monthEnd)
-        .reduce((s, p) => s + Number(p.amount), 0);
-
-      const lastMonthRevenue = recs
-        .filter((r) => r.due_date >= lastMonthStart && r.due_date <= lastMonthEnd)
-        .reduce((s, r) => s + Number(r.amount), 0);
+      // "Receita/Despesa do mês" é REALIZADO em regime de caixa. Valores com
+      // vencimento no mês ficam em campos de previsão separados — misturar os
+      // dois fazia um título ainda não recebido aparecer como receita efetiva.
+      const monthRevenue = sumRealizedInPeriod(recs, 'receivable', monthStart, monthEnd);
+      const monthExpenses = sumRealizedInPeriod(pays, 'payable', monthStart, monthEnd);
+      const lastMonthRevenue = sumRealizedInPeriod(recs, 'receivable', lastMonthStart, lastMonthEnd);
+      const monthReceivableForecast = sumOpenDueInPeriod(recs, 'receivable', monthStart, monthEnd);
+      const monthPayableForecast = sumOpenDueInPeriod(pays, 'payable', monthStart, monthEnd);
 
       const revenueGrowth =
         lastMonthRevenue > 0
@@ -705,6 +715,9 @@ export function useFinanceKPIs() {
         monthRevenue,
         monthExpenses,
         monthResult: monthRevenue - monthExpenses,
+        monthReceivableForecast,
+        monthPayableForecast,
+        monthForecastResult: monthReceivableForecast - monthPayableForecast,
         revenueGrowth,
       };
     },

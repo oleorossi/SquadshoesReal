@@ -41,10 +41,15 @@ describe('openBalanceOf — o número dos cards do topo', () => {
   it('zera cancelada — não é obrigação', () => {
     expect(openBalanceOf(ap('cancelled', 1000), 'payable')).toBe(0);
     expect(openBalanceOf(ar('cancelled', 1000), 'receivable')).toBe(0);
+    expect(openBalanceOf(ap('cancelado', 1000), 'payable')).toBe(0);
   });
 
   it('nunca devolve negativo quando o pago excede o valor', () => {
     expect(openBalanceOf(ap('parcial', 1000, 1500), 'payable')).toBe(0);
+  });
+
+  it('não propaga NaN para os totalizadores', () => {
+    expect(openBalanceOf(ap('pending', Number.NaN, Number.NaN), 'payable')).toBe(0);
   });
 
   it('lê o campo certo por tipo de razão — trocar amount_paid/amount_received quebraria aqui', () => {

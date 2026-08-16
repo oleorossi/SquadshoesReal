@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { sanitizeUuidFields } from '@/lib/utils';
+import { invalidateFinanceDerivedQueries } from '@/lib/financeQueryInvalidation';
 
 export type AccountPayable = {
   id: string;
@@ -47,11 +48,12 @@ export type AccountReceivable = {
   sale_orders?: { order_number: string; client_name: string } | null;
 };
 
-export function useAccountsPayable() {
+export function useAccountsPayable(enabled = true) {
   return useQuery({
     queryKey: ['accounts_payable'],
     staleTime: 2 * 60 * 1000,
     gcTime: 5 * 60 * 1000,
+    enabled,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('accounts_payable')
@@ -64,11 +66,12 @@ export function useAccountsPayable() {
   });
 }
 
-export function useAccountsReceivable() {
+export function useAccountsReceivable(enabled = true) {
   return useQuery({
     queryKey: ['accounts_receivable'],
     staleTime: 2 * 60 * 1000,
     gcTime: 5 * 60 * 1000,
+    enabled,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('accounts_receivable')
@@ -91,6 +94,7 @@ export function useCreateAccountPayable() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['accounts_payable'] });
+      invalidateFinanceDerivedQueries(qc);
       toast.success('Conta a pagar criada!');
     },
     onError: (e: Error) => toast.error(e.message),
@@ -107,6 +111,7 @@ export function useCreateAccountReceivable() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['accounts_receivable'] });
+      invalidateFinanceDerivedQueries(qc);
       toast.success('Conta a receber criada!');
     },
     onError: (e: Error) => toast.error(e.message),
@@ -137,6 +142,7 @@ export function useUpdateAccountPayable() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['accounts_payable'] });
+      invalidateFinanceDerivedQueries(qc);
       toast.success('Conta atualizada!');
     },
     onError: (e: Error) => toast.error(e.message),
@@ -167,6 +173,7 @@ export function useUpdateAccountReceivable() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['accounts_receivable'] });
+      invalidateFinanceDerivedQueries(qc);
       toast.success('Conta atualizada!');
     },
     onError: (e: Error) => toast.error(e.message),
@@ -189,6 +196,7 @@ export function useDeleteAccountPayable() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['accounts_payable'] });
+      invalidateFinanceDerivedQueries(qc);
       toast.success('Conta excluída!');
     },
     onError: (e: Error) => toast.error(e.message),
@@ -226,6 +234,7 @@ export function useReverseAccountPayable() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['accounts_payable'] });
+      invalidateFinanceDerivedQueries(qc);
       toast.success('Pagamento estornado. A conta voltou para "À Vencer".');
     },
     onError: (e: Error) => toast.error(e.message),
@@ -248,6 +257,7 @@ export function useDeleteAccountReceivable() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['accounts_receivable'] });
+      invalidateFinanceDerivedQueries(qc);
       toast.success('Conta excluída!');
     },
     onError: (e: Error) => toast.error(e.message),
@@ -279,6 +289,7 @@ export function useReverseAccountReceivable() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['accounts_receivable'] });
+      invalidateFinanceDerivedQueries(qc);
       toast.success('Recebimento estornado. A conta voltou para "À Vencer".');
     },
     onError: (e: Error) => toast.error(e.message),

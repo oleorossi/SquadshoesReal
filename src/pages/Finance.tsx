@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { useCan } from '@/hooks/useAccessControl';
-import { CurrencyDollar as DollarSign, TrendUp as TrendingUp, TrendDown as TrendingDown, Warning as AlertTriangle, Plus, PencilSimple as Pencil, Trash as Trash2, CheckCircle, ArrowCounterClockwise as Undo2, Clock, CircleNotch as Loader2, FileText, Buildings as Building2, ChartBar as BarChart3, Calculator, Bank as Landmark, FileArrowUp as FileUp, FileArrowDown as FileDown, UserCheck, MagnifyingGlass, Percent } from '@phosphor-icons/react';
+import { CurrencyDollar as DollarSign, TrendUp as TrendingUp, TrendDown as TrendingDown, Warning as AlertTriangle, Plus, PencilSimple as Pencil, Trash as Trash2, CheckCircle, ArrowCounterClockwise as Undo2, Clock, CircleNotch as Loader2, FileText, Buildings as Building2, ChartBar as BarChart3, Calculator, Bank as Landmark, FileArrowUp as FileUp, FileArrowDown as FileDown, UserCheck, MagnifyingGlass, Percent, ArrowsClockwise as RefreshCw } from '@phosphor-icons/react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { format, parseISO, isAfter, isBefore, addDays, startOfMonth, endOfMonth, eachDayOfInterval, subMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -64,6 +64,7 @@ import { NetMarginChart } from '@/components/finance/NetMarginChart';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { getSecondaryRoutesForGroup } from '@/data/navigation';
 import { Panel } from '@/components/ui/panel';
+import { invalidateFinanceDerivedQueries } from '@/lib/financeQueryInvalidation';
 
 const fmt = (v: number | null | undefined) => {
   const n = Number(v);
@@ -768,10 +769,30 @@ const FINANCE_LEGACY_SUBTAB: Record<string, 'payable' | 'receivable'> = {
 };
 
 export default function Finance() {
-  const { data: payables = [], isLoading: loadingP } = useAccountsPayable();
-  const { data: receivables = [], isLoading: loadingR } = useAccountsReceivable();
-  const { data: entries = [] } = useFinancialEntries();
-  const { data: suppliers = [] } = useSuppliers();
+  const { value: financeTab, setValue: setFinanceTab } = useUrlTabState<FinanceTab>({
+    values: FINANCE_TABS,
+    defaultValue: 'accounts',
+    aliases: FINANCE_TAB_ALIASES,
+    clearOnChange: ['subtab'],
+    migrateFrom: 'financeTab',
+  });
+  const [searchParams] = useSearchParams();
+  const needsLedger = financeTab === 'accounts' || financeTab === 'dashboard';
+  const {
+    data: payables = [],
+    isLoading: loadingP,
+    error: payablesError,
+    refetch: refetchPayables,
+  } = useAccountsPayable(needsLedger);
+  const {
+    data: receivables = [],
+    isLoading: loadingR,
+    error: receivablesError,
+    refetch: refetchReceivables,
+  } = useAccountsReceivable(needsLedger);
+  // Fornecedores só alimentam os formulários da aba Contas. Evita baixar o
+  // cadastro inteiro ao abrir Visão Geral, Notas ou Relatórios.
+  const { data: suppliers = [] } = useSuppliers(financeTab === 'accounts');
   const qc = useQueryClient();
   const createPayable = useCreateAccountPayable();
   const createReceivable = useCreateAccountReceivable();
@@ -798,15 +819,7 @@ export default function Finance() {
   // caía na aba salva da última visita. E trocar de aba não escrevia nada, então
   // F5 e o botão Voltar perdiam o lugar. `migrateFrom` lê o valor salvo uma única
   // vez e o converte em URL canônica; depois disso o storage é ignorado.
-  const { value: financeTab, setValue: setFinanceTab } = useUrlTabState<FinanceTab>({
-    values: FINANCE_TABS,
-    defaultValue: 'accounts',
-    aliases: FINANCE_TAB_ALIASES,
-    clearOnChange: ['subtab'],
-    migrateFrom: 'financeTab',
-  });
   const [accountsSubTab, setAccountsSubTab] = useState<'payable' | 'receivable'>('payable');
-  const [searchParams] = useSearchParams();
 
   // Alguns aliases legados carregam a SUBABA junto (?tab=payable quer dizer
   // "Contas → A Pagar"). O helper normaliza a aba-pai; a filha é sedimentada
@@ -887,6 +900,7 @@ export default function Finance() {
       })
     );
     qc.invalidateQueries({ queryKey: ['accounts_receivable'] });
+    invalidateFinanceDerivedQueries(qc);
     const failed = results.filter(r => r.status === 'rejected').length;
     const ok = results.filter(r => r.status === 'fulfilled').length;
     if (failed > 0) toast.error(`${ok} marcada(s), ${failed} falha(s) — verifique e tente novamente.`);
@@ -925,13 +939,15 @@ export default function Finance() {
       })
     );
     qc.invalidateQueries({ queryKey: ['accounts_payable'] });
+    invalidateFinanceDerivedQueries(qc);
     const failed = results.filter(r => r.status === 'rejected').length;
     const ok = results.filter(r => r.status === 'fulfilled').length;
     if (failed > 0) toast.error(`${ok} marcada(s), ${failed} falha(s) — verifique e tente novamente.`);
     else if (ok > 0) toast.success(`${ok} conta(s) marcada(s) como paga(s)`);
   };
 
-  const loading = loadingP || loadingR;
+  const loading = needsLedger && (loadingP || loadingR);
+  const ledgerError = needsLedger ? (payablesError || receivablesError) : null;
 
   const exportPayablesBatch = (items: AccountPayable[]) => {
     const pending = items.filter(p => p.status !== 'paid' && p.status !== 'cancelled');
@@ -1029,6 +1045,7 @@ export default function Finance() {
     if (error) { toast.error(error.message); return; }
     if (!claimed?.length) { toast.info('Conta já paga ou cancelada — reabra-a antes de marcar como paga.'); return; }
     qc.invalidateQueries({ queryKey: ['accounts_payable'] });
+    invalidateFinanceDerivedQueries(qc);
     toast.success('Conta marcada como paga.');
   };
   const markReceived = async (r: AccountReceivable) => {
@@ -1042,6 +1059,7 @@ export default function Finance() {
     if (error) { toast.error(error.message); return; }
     if (!claimed?.length) { toast.info('Conta já estava recebida.'); return; }
     qc.invalidateQueries({ queryKey: ['accounts_receivable'] });
+    invalidateFinanceDerivedQueries(qc);
     toast.success('Conta marcada como recebida.');
   };
 
@@ -1080,7 +1098,24 @@ export default function Finance() {
           </div>
         )}
 
-        {loading ? (
+        {ledgerError ? (
+          <Card className="border-destructive/40 bg-destructive/5">
+            <CardContent className="py-10 text-center">
+              <AlertTriangle className="h-8 w-8 text-destructive mx-auto mb-3" />
+              <p className="font-semibold text-destructive">Não foi possível carregar as contas financeiras</p>
+              <p className="text-xs text-muted-foreground mt-1">A tela não exibirá listas ou totais parciais como se estivessem zerados.</p>
+              <p className="text-xs font-mono text-destructive/80 mt-2">{(ledgerError as Error).message}</p>
+              <Button
+                size="sm"
+                variant="outline"
+                className="mt-4 gap-1.5"
+                onClick={() => { refetchPayables(); refetchReceivables(); }}
+              >
+                <RefreshCw className="h-3.5 w-3.5" /> Tentar novamente
+              </Button>
+            </CardContent>
+          </Card>
+        ) : loading ? (
           /* F14 (audit): skeleton em vez de spinner — usuário vê o esqueleto
               da página enquanto contas/recebíveis carregam, mantendo layout
               estável e percepção de carregamento mais rápida. */
@@ -1209,7 +1244,7 @@ export default function Finance() {
                           {finPerm.canEdit && (
                           <AlertDialog>
                             <AlertDialogTrigger asChild>
-                              <Button size="sm" variant="default" className="bg-green-600 hover:bg-green-700 text-white"><CheckCircle className="h-4 w-4 mr-1" /> Pago ({selectedPayables.size})</Button>
+                              <Button size="sm" variant="default" className="bg-success text-success-foreground hover:bg-success/90"><CheckCircle className="h-4 w-4 mr-1" /> Pago ({selectedPayables.size})</Button>
                             </AlertDialogTrigger>
                             <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Marcar {selectedPayables.size} conta(s) como paga(s)?</AlertDialogTitle><AlertDialogDescription>O valor total será considerado pago na data de hoje. Contas já pagas ou canceladas são ignoradas.</AlertDialogDescription></AlertDialogHeader>
                               <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={handleBulkMarkPaid}>Confirmar</AlertDialogAction></AlertDialogFooter>
@@ -1316,7 +1351,7 @@ export default function Finance() {
                           ) : sortedP.map(p => {
                             const eff = getEffectiveStatus(p.status, p.due_date);
                             const cfg = statusConfig[eff] || statusConfig.pending;
-                            const remaining = Math.max(0, p.amount - p.amount_paid);
+                            const remaining = openBalanceOf(p, 'payable');
                             const accruals = calculateOverdueAccruals(p.amount, p.due_date);
                             return (
                               <TableRow key={p.id} className="cursor-pointer hover:bg-muted/50 transition-colors" data-state={selectedPayables.has(p.id) ? 'selected' : undefined}
@@ -1434,7 +1469,7 @@ export default function Finance() {
                           {finPerm.canEdit && (
                           <AlertDialog>
                             <AlertDialogTrigger asChild>
-                              <Button size="sm" variant="default" className="bg-green-600 hover:bg-green-700 text-white"><CheckCircle className="h-4 w-4 mr-1" /> Recebido ({selectedReceivables.size})</Button>
+                              <Button size="sm" variant="default" className="bg-success text-success-foreground hover:bg-success/90"><CheckCircle className="h-4 w-4 mr-1" /> Recebido ({selectedReceivables.size})</Button>
                             </AlertDialogTrigger>
                             <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Marcar {selectedReceivables.size} conta(s) como recebida(s)?</AlertDialogTitle><AlertDialogDescription>O valor total será considerado recebido na data de hoje.</AlertDialogDescription></AlertDialogHeader>
                               <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={handleBulkMarkReceived}>Confirmar</AlertDialogAction></AlertDialogFooter>

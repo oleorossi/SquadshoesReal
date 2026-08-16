@@ -1,6 +1,4 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -11,8 +9,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, LineChart, Line } from 'recharts';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { TrendUp as TrendingUp, FileText as FileBarChart, Package as PackageSearch, Info } from '@phosphor-icons/react';
+import { TrendUp as TrendingUp, FileText as FileBarChart, Package as PackageSearch, Info, Warning as AlertTriangle, ArrowsClockwise as RefreshCw } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
+import { percentageOf } from '@/lib/financeMath';
 
 const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const fmtShort = (v: number) => {
@@ -25,23 +24,36 @@ const fmtMonth = (p: string) => format(parseISO(`${p}-01`), 'MMM/yy', { locale: 
 
 export function DREAuto() {
   const [months, setMonths] = useState<3 | 6 | 12>(6);
-  const { data = [], isLoading } = useDREAuto(months);
-  const { data: inventoryData = [], isLoading: invLoading } = useDREInventoryVariation(months);
-  const { data: company } = useQuery({
-    queryKey: ['primary_company_regime'],
-    staleTime: 10 * 60_000,
-    queryFn: async () => {
-      const { data } = await (supabase as any)
-        .from('companies')
-        .select('regime_tributario, razao_social')
-        .eq('is_primary', true)
-        .maybeSingle();
-      return data as { regime_tributario: string; razao_social: string } | null;
-    },
-  });
+  const { data: report, isLoading, error, refetch } = useDREAuto(months);
+  const {
+    data: inventoryData = [],
+    isLoading: invLoading,
+    error: inventoryError,
+    refetch: refetchInventory,
+  } = useDREInventoryVariation(months, Boolean(report) && !error);
+  const data = report?.months || [];
+  const company = report?.company || null;
   const isSimplesNacional = String(company?.regime_tributario || '') === '1';
 
   if (isLoading) return <Skeleton className="h-96" />;
+
+  if (error) {
+    return (
+      <Card className="border-destructive/40 bg-destructive/5">
+        <CardContent className="py-8 text-center">
+          <AlertTriangle className="h-8 w-8 text-destructive mx-auto mb-3" />
+          <p className="font-semibold text-destructive">Não foi possível calcular a DRE</p>
+          <p className="text-xs text-muted-foreground mt-1 max-w-xl mx-auto">
+            Os números não serão exibidos enquanto alguma fonte de receita, CMV, despesa ou regime tributário estiver indisponível.
+          </p>
+          <p className="text-xs font-mono text-destructive/80 mt-2">{(error as Error).message}</p>
+          <Button size="sm" variant="outline" className="mt-4 gap-1.5" onClick={() => refetch()}>
+            <RefreshCw className="h-3.5 w-3.5" /> Tentar novamente
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
 
   const totalReceita = data.reduce((s, d) => s + d.receita, 0);
   const totalCMV = data.reduce((s, d) => s + d.cmv, 0);
@@ -50,10 +62,8 @@ export function DREAuto() {
   // % do faturamento que vira lucro líquido — calculado sobre o agregado
   // (ponderado pela receita), não a média simples dos meses. Métrica
   // principal: "se faturei R$ X, R$ Y vai pro meu bolso, ou Z%".
-  const lucroLiquidoPctAgregado = totalReceita > 0
-    ? (totalResultadoLiquido / totalReceita) * 100
-    : 0;
-  const avgMargem = data.length > 0 ? data.reduce((s, d) => s + d.margemBrutaPct, 0) / data.length : 0;
+  const lucroLiquidoPctAgregado = percentageOf(totalResultadoLiquido, totalReceita);
+  const margemBrutaPeriodo = percentageOf(totalReceita - totalCMV, totalReceita);
 
   return (
     <div className="space-y-4">
@@ -79,6 +89,9 @@ export function DREAuto() {
             Regime de <strong>caixa</strong> — reconhecido pela data em que o dinheiro entra
             (recebimento) / sai (pagamento). Juros de factoring entram como despesa financeira.
           </p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Em títulos com múltiplas baixas, o acumulado fica na data da última baixa até existir um razão detalhado de pagamentos.
+          </p>
         </div>
         <div className="flex gap-1">
           {([3, 6, 12] as const).map((m) => (
@@ -100,6 +113,17 @@ export function DREAuto() {
           aceitável, <8% pede atenção (margens apertadas). */}
       <Card className="border-primary/40 bg-primary/5">
         <CardContent className="pt-4 pb-4">
+          {totalReceita <= 0 ? (
+            <div className="flex items-start gap-3 py-2">
+              <Info className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-semibold">Sem receita recebida no período</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  A margem não é calculável até existir baixa de recebimento com data de pagamento. Títulos apenas vencendo no período não entram na DRE de caixa.
+                </p>
+              </div>
+            </div>
+          ) : (
           <div className="flex items-start justify-between gap-4 flex-wrap">
             <div>
               <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">
@@ -129,6 +153,7 @@ export function DREAuto() {
               </p>
             </div>
           </div>
+          )}
         </CardContent>
       </Card>
 
@@ -161,12 +186,12 @@ export function DREAuto() {
         </Card>
         <Card>
           <CardContent className="pt-4 pb-3">
-            <p className="text-xs text-muted-foreground">Margem Bruta Média</p>
+            <p className="text-xs text-muted-foreground">Margem Bruta do Período</p>
             <StatNumber
-              value={fmtPct(avgMargem)}
+              value={fmtPct(margemBrutaPeriodo)}
               base={24}
               min={14}
-              className={avgMargem >= 30 ? 'text-success' : avgMargem >= 15 ? 'text-warning' : 'text-destructive'}
+              className={margemBrutaPeriodo >= 30 ? 'text-success' : margemBrutaPeriodo >= 15 ? 'text-warning' : 'text-destructive'}
             />
           </CardContent>
         </Card>
@@ -188,6 +213,14 @@ export function DREAuto() {
         <CardContent>
           {invLoading ? (
             <Skeleton className="h-32" />
+          ) : inventoryError ? (
+            <div className="rounded-md border border-destructive/30 bg-destructive/5 p-4 text-center">
+              <p className="text-sm font-semibold text-destructive">Falha ao calcular a variação de estoque</p>
+              <p className="text-xs text-muted-foreground mt-1">{(inventoryError as Error).message}</p>
+              <Button size="sm" variant="outline" className="mt-3 gap-1.5" onClick={() => refetchInventory()}>
+                <RefreshCw className="h-3.5 w-3.5" /> Tentar novamente
+              </Button>
+            </div>
           ) : (
             <div className="overflow-x-auto">
               <Table>

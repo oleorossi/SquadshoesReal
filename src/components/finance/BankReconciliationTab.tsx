@@ -30,6 +30,8 @@ import { Bank as Landmark, Upload, CheckCircle as CheckCircle2, Warning as Alert
 import { useAccountsPayable, useAccountsReceivable } from '@/hooks/useFinance';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { openBalanceOf } from '@/lib/ledgerBalance';
+import { invalidateFinanceDerivedQueries } from '@/lib/financeQueryInvalidation';
 
 const fmt = (v: number | null | undefined) => {
   const n = Number(v);
@@ -125,7 +127,7 @@ function findMatches(
   if (stmt.amount < 0) {
     for (const p of payables as any[]) {
       if (p.status === 'paid' || p.status === 'cancelled') continue;
-      const remaining = Math.max(0, (p.amount || 0) - (p.amount_paid || 0));
+      const remaining = openBalanceOf(p, 'payable');
       if (Math.abs(remaining - stmtAbsAmount) > 0.05) continue;
 
       let confidence: MatchCandidate['confidence'] = 'baixa';
@@ -156,7 +158,7 @@ function findMatches(
   if (stmt.amount > 0) {
     for (const r of receivables as any[]) {
       if (r.status === 'received' || r.status === 'cancelled') continue;
-      const remaining = Math.max(0, (r.amount || 0) - (r.amount_received || 0));
+      const remaining = openBalanceOf(r, 'receivable');
       if (Math.abs(remaining - stmtAbsAmount) > 0.05) continue;
 
       let confidence: MatchCandidate['confidence'] = 'baixa';
@@ -294,6 +296,7 @@ export default function BankReconciliationTab() {
       toast.success(`Conciliada com sucesso (${fmt(match.amount)} em ${paymentDate}).`);
       qc.invalidateQueries({ queryKey: ['accounts_payable'] });
       qc.invalidateQueries({ queryKey: ['accounts_receivable'] });
+      invalidateFinanceDerivedQueries(qc);
     } catch (err: any) {
       toast.error('Falha ao conciliar: ' + err.message);
     } finally {

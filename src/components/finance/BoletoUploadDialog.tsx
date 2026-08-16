@@ -16,6 +16,7 @@ import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import { readBoletoPdfs } from '@/lib/pdfBoleto';
 import { formatDigitableLine, parseDigitableLine } from '@/lib/boletoParser';
+import { invalidateFinanceDerivedQueries } from '@/lib/financeQueryInvalidation';
 
 type ReadStatus = 'ok' | 'warning' | 'error';
 
@@ -262,13 +263,17 @@ export default function BoletoUploadDialog({ open, onOpenChange, suppliers }: Pr
       }
 
       queryClient.invalidateQueries({ queryKey: ['accounts_payable'] });
+      invalidateFinanceDerivedQueries(queryClient);
       const attachNote = attachFailures > 0 ? ` (${attachFailures} anexo(s) falharam)` : '';
       toast.success(`${created} conta(s) a pagar lançada(s)!${attachNote}`);
       reset();
       onOpenChange(false);
     } catch (e) {
       toast.error(`Erro ao lançar: ${(e as Error).message}. ${created} já criada(s).`);
-      if (created > 0) queryClient.invalidateQueries({ queryKey: ['accounts_payable'] });
+      if (created > 0) {
+        queryClient.invalidateQueries({ queryKey: ['accounts_payable'] });
+        invalidateFinanceDerivedQueries(queryClient);
+      }
     } finally {
       setSaving(false);
       // Tira da lista o que já foi gravado — evita lançamento duplicado se o

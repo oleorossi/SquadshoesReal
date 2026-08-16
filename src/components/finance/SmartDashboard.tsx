@@ -3,7 +3,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { StatNumber } from '@/components/ui/stat-number';
-import { Warning as AlertTriangle, TrendUp as TrendingUp, TrendDown as TrendingDown, CurrencyDollar as DollarSign, Wallet, ArrowUpRight, ArrowDownRight, WarningCircle as AlertCircle, Info, Sparkle as Sparkles, CaretRight as ChevronRight, CheckCircle, CircleNotch as Loader2 } from '@phosphor-icons/react';
+import { Warning as AlertTriangle, TrendUp as TrendingUp, TrendDown as TrendingDown, CurrencyDollar as DollarSign, Wallet, ArrowUpRight, ArrowDownRight, WarningCircle as AlertCircle, Info, Sparkle as Sparkles, CaretRight as ChevronRight, CheckCircle, CircleNotch as Loader2, ArrowsClockwise as RefreshCw } from '@phosphor-icons/react';
 import { useFinanceAlerts, useFinanceKPIs, useCashFlowProjection } from '@/hooks/useFinanceIntelligence';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart, ReferenceLine } from 'recharts';
 import { format, parseISO } from 'date-fns';
@@ -34,11 +34,32 @@ const severityIcon = {
 };
 
 export function SmartDashboard({ onNavigate }: { onNavigate?: (tab: string) => void }) {
-  const { data: kpis, isLoading: loadingKpis, error: kpisError } = useFinanceKPIs();
+  const { data: kpis, isLoading: loadingKpis, error: kpisError, refetch: refetchKpis } = useFinanceKPIs();
   const { data: alerts = [], isLoading: loadingAlerts, error: alertsError } = useFinanceAlerts();
-  const { data: cashflow, isLoading: loadingCashflow } = useCashFlowProjection(30);
+  const {
+    data: cashflow,
+    isLoading: loadingCashflow,
+    error: cashflowError,
+    refetch: refetchCashflow,
+  } = useCashFlowProjection(30);
   // Surfacing errors silenciados antes (useQuery sem onError swallowed) —
   // se a query de alertas falhar, mostra aviso visível em vez de "Tudo em dia!".
+
+  if (kpisError) {
+    return (
+      <Card className="border-destructive/40 bg-destructive/5">
+        <CardContent className="py-8 text-center">
+          <AlertTriangle className="h-8 w-8 text-destructive mx-auto mb-3" />
+          <p className="font-semibold text-destructive">Não foi possível montar a visão financeira</p>
+          <p className="text-xs text-muted-foreground mt-1">Nenhum total será exibido com fontes incompletas.</p>
+          <p className="text-xs font-mono text-destructive/80 mt-2">{(kpisError as Error).message}</p>
+          <Button size="sm" variant="outline" className="mt-4 gap-1.5" onClick={() => refetchKpis()}>
+            <RefreshCw className="h-3.5 w-3.5" /> Tentar novamente
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
 
   if (loadingKpis || !kpis) {
     return (
@@ -95,9 +116,13 @@ export function SmartDashboard({ onNavigate }: { onNavigate?: (tab: string) => v
              <div className="flex items-center gap-3 rounded-lg border border-success/30 bg-success/5 p-4">
                <CheckCircle className="h-5 w-5 text-success shrink-0" />
                <div className="min-w-0 flex-1">
-                 <p className="text-sm font-semibold text-success">Tudo em dia</p>
+                 <p className="text-sm font-semibold text-success">
+                   {kpis.bankAccountsCount === 0 ? 'Nenhum alerta nos títulos' : 'Tudo em dia'}
+                 </p>
                  <p className="text-xs text-muted-foreground mt-0.5">
-                   Saldo positivo, nenhuma conta vencida e sem projeção de saldo negativo nos próximos 30 dias.
+                   {kpis.bankAccountsCount === 0
+                     ? 'Nenhuma conta vencida. Cadastre o saldo bancário para também validar cobertura e risco de caixa.'
+                     : 'Saldo positivo, nenhuma conta vencida e sem projeção de saldo negativo nos próximos 30 dias.'}
                  </p>
                </div>
              </div>
@@ -208,12 +233,19 @@ export function SmartDashboard({ onNavigate }: { onNavigate?: (tab: string) => v
         </Card>
       </div>
 
-      {/* ─── DRE RÁPIDO DO MÊS ─── */}
+      {/* ─── MOVIMENTO REALIZADO DO MÊS ─── */}
+      <div className="flex items-center justify-between gap-3 flex-wrap -mb-2">
+        <div>
+          <h3 className="text-sm font-semibold">Movimento realizado no mês</h3>
+          <p className="text-xs text-muted-foreground">Regime de caixa: somente valores efetivamente recebidos ou pagos.</p>
+        </div>
+        <Badge variant="outline" className="text-xs">Realizado · Caixa</Badge>
+      </div>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <Card>
           <CardContent className="pt-5 pb-4">
             <div className="flex items-center justify-between">
-              <p className="text-xs text-muted-foreground">Receitas do Mês</p>
+              <p className="text-xs text-muted-foreground">Recebido no Mês</p>
               {kpis.revenueGrowth !== 0 && (
                 <Badge
                   variant={kpis.revenueGrowth > 0 ? 'default' : 'destructive'}
@@ -225,23 +257,26 @@ export function SmartDashboard({ onNavigate }: { onNavigate?: (tab: string) => v
               )}
             </div>
             <p className="display text-xl tabular-nums text-success mt-1">{fmt(kpis.monthRevenue)}</p>
+            <p className="text-xs text-muted-foreground mt-1">Ainda previsto no mês: {fmt(kpis.monthReceivableForecast)}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-5 pb-4">
-            <p className="text-xs text-muted-foreground">Despesas do Mês</p>
+            <p className="text-xs text-muted-foreground">Pago no Mês</p>
             <p className="display text-xl tabular-nums text-destructive mt-1">{fmt(kpis.monthExpenses)}</p>
+            <p className="text-xs text-muted-foreground mt-1">Ainda previsto no mês: {fmt(kpis.monthPayableForecast)}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-5 pb-4">
-            <p className="text-xs text-muted-foreground">Resultado do Mês</p>
+            <p className="text-xs text-muted-foreground">Resultado de Caixa</p>
             <p className={cn(
               'display text-xl tabular-nums mt-1',
               kpis.monthResult >= 0 ? 'text-success' : 'text-destructive'
             )}>
               {fmt(kpis.monthResult)}
             </p>
+            <p className="text-xs text-muted-foreground mt-1">Resultado ainda previsto: {fmt(kpis.monthForecastResult)}</p>
           </CardContent>
         </Card>
       </div>
@@ -251,7 +286,9 @@ export function SmartDashboard({ onNavigate }: { onNavigate?: (tab: string) => v
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="text-sm">Projeção de Saldo — Próximos 30 dias</CardTitle>
-            {cashflow?.firstNegativeDay && (
+            {kpis.bankAccountsCount === 0 ? (
+              <Badge variant="outline" className="text-xs">Parte de R$ 0 · sem bancos</Badge>
+            ) : cashflow?.firstNegativeDay && (
               <Badge variant="destructive" className="text-xs">
                 Saldo zera em {format(parseISO(cashflow.firstNegativeDay), "dd 'de' MMM", { locale: ptBR })}
               </Badge>
@@ -259,8 +296,17 @@ export function SmartDashboard({ onNavigate }: { onNavigate?: (tab: string) => v
           </div>
         </CardHeader>
         <CardContent>
-          {loadingCashflow || !cashflow ? (
+          {loadingCashflow ? (
             <Skeleton className="h-[220px]" />
+          ) : cashflowError || !cashflow ? (
+            <div className="h-[220px] flex flex-col items-center justify-center text-center gap-2">
+              <AlertTriangle className="h-7 w-7 text-destructive" />
+              <p className="text-sm font-semibold text-destructive">Falha ao carregar a projeção</p>
+              <p className="text-xs text-muted-foreground max-w-lg">{(cashflowError as Error)?.message || 'A projeção não retornou dados.'}</p>
+              <Button size="sm" variant="outline" className="gap-1.5" onClick={() => refetchCashflow()}>
+                <RefreshCw className="h-3.5 w-3.5" /> Tentar novamente
+              </Button>
+            </div>
           ) : (
             <ResponsiveContainer width="100%" height={220}>
               <AreaChart data={cashflow.series}>

@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { invalidateFinanceDerivedQueries } from '@/lib/financeQueryInvalidation';
 import { stripSearchNorm } from '@/lib/searchUtils';
 
 // ─── Chart of Accounts ───
@@ -183,7 +184,11 @@ export function useCreateBankAccount() {
       const { error } = await supabase.from('bank_accounts').insert(ba);
       if (error) throw error;
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['bank_accounts'] }); toast.success('Conta bancária criada!'); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['bank_accounts'] });
+      invalidateFinanceDerivedQueries(qc);
+      toast.success('Conta bancária criada!');
+    },
     onError: (e: Error) => toast.error(e.message),
   });
 }
@@ -195,7 +200,11 @@ export function useUpdateBankAccount() {
       const { error } = await supabase.from('bank_accounts').update(data).eq('id', id);
       if (error) throw error;
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['bank_accounts'] }); toast.success('Conta bancária atualizada!'); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['bank_accounts'] });
+      invalidateFinanceDerivedQueries(qc);
+      toast.success('Conta bancária atualizada!');
+    },
     onError: (e: Error) => toast.error(e.message),
   });
 }
@@ -237,7 +246,11 @@ export function useCreateFinancialEntry() {
       const { error } = await supabase.from('financial_entries').insert(stripSearchNorm(entry));
       if (error) throw error;
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['financial_entries'] }); toast.success('Lançamento criado!'); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['financial_entries'] });
+      invalidateFinanceDerivedQueries(qc);
+      toast.success('Lançamento criado!');
+    },
     onError: (e: Error) => toast.error(e.message),
   });
 }
@@ -263,7 +276,11 @@ export function useUpdateFinancialEntry() {
         throw new Error('Lançamento confirmado/lançado — cancele a fonte (PV/OS/OC) antes de editar.');
       }
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['financial_entries'] }); toast.success('Lançamento atualizado!'); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['financial_entries'] });
+      invalidateFinanceDerivedQueries(qc);
+      toast.success('Lançamento atualizado!');
+    },
     onError: (e: Error) => toast.error(e.message),
   });
 }
@@ -285,7 +302,11 @@ export function useDeleteFinancialEntry() {
         throw new Error('Lançamento confirmado/lançado — cancele a fonte (PV/OS/OC) antes de excluir.');
       }
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['financial_entries'] }); toast.success('Lançamento excluído!'); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['financial_entries'] });
+      invalidateFinanceDerivedQueries(qc);
+      toast.success('Lançamento excluído!');
+    },
     onError: (e: Error) => toast.error(e.message),
   });
 }

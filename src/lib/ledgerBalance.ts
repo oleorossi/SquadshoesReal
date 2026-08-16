@@ -39,28 +39,37 @@ const SETTLED_STATUSES: Record<LedgerKind, readonly string[]> = {
 /** Canceladas saem das DUAS visões — nunca foram obrigação real. */
 const CANCELLED_STATUSES: readonly string[] = ['cancelled', 'cancelado'];
 
+function normalizedStatus(row: LedgerRow): string {
+  return String(row.status || '').trim().toLowerCase();
+}
+
+function finiteAmount(value: unknown): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 export function isCancelled(row: LedgerRow): boolean {
-  return CANCELLED_STATUSES.includes(row.status);
+  return CANCELLED_STATUSES.includes(normalizedStatus(row));
 }
 
 export function isSettled(row: LedgerRow, kind: LedgerKind): boolean {
-  return SETTLED_STATUSES[kind].includes(row.status);
+  return isCancelled(row) || SETTLED_STATUSES[kind].includes(normalizedStatus(row));
 }
 
 /** Quanto já foi liquidado nesta linha, no campo certo para o tipo de razão. */
 export function settledAmountOf(row: LedgerRow, kind: LedgerKind): number {
-  return (kind === 'payable' ? row.amount_paid : row.amount_received) || 0;
+  return Math.max(0, finiteAmount(kind === 'payable' ? row.amount_paid : row.amount_received));
 }
 
 /** SALDO EM ABERTO da linha — 0 se liquidada ou cancelada. */
 export function openBalanceOf(row: LedgerRow, kind: LedgerKind): number {
   if (isSettled(row, kind)) return 0;
-  return Math.max(0, (row.amount || 0) - settledAmountOf(row, kind));
+  return Math.max(0, finiteAmount(row.amount) - settledAmountOf(row, kind));
 }
 
 /** VOLUME da linha — valor cheio; 0 apenas se cancelada. */
 export function volumeOf(row: LedgerRow): number {
-  return isCancelled(row) ? 0 : row.amount || 0;
+  return isCancelled(row) ? 0 : Math.max(0, finiteAmount(row.amount));
 }
 
 export function sumOpenBalance(rows: LedgerRow[], kind: LedgerKind): number {

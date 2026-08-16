@@ -4,6 +4,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
@@ -69,6 +70,29 @@ const CATEGORY_LABELS: Record<string, string> = {
   outro: 'Outros',
 };
 
+function LedgerReportState({
+  loading,
+  error,
+  onRetry,
+}: {
+  loading: boolean;
+  error: unknown;
+  onRetry: () => void;
+}) {
+  if (loading) return <Skeleton className="h-80" />;
+  if (!error) return null;
+  return (
+    <Card className="border-destructive/40 bg-destructive/5">
+      <CardContent className="py-8 text-center">
+        <AlertTriangle className="h-8 w-8 text-destructive mx-auto mb-3" />
+        <p className="text-sm font-semibold text-destructive">Falha ao carregar os dados do relatório</p>
+        <p className="text-xs text-muted-foreground mt-1">{(error as Error).message}</p>
+        <Button size="sm" variant="outline" className="mt-3" onClick={onRetry}>Tentar novamente</Button>
+      </CardContent>
+    </Card>
+  );
+}
+
 // F8 (audit): paleta de aging com variantes dark mode pra atingir contraste
 // WCAG AA. text-{amber/orange/red}-600 em fundo dark caía pra ratio < 4.5:1.
 // As variantes -400 mantêm legibilidade em ambos os modos.
@@ -99,8 +123,8 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 // ─── Aging Tab ────────────────────────────────────────────────────────────────
 
 function AgingTab() {
-  const { data: receivables = [] } = useAccountsReceivable();
-  const { data: payables = [] } = useAccountsPayable();
+  const { data: receivables = [], isLoading: loadingR, error: errorR, refetch: refetchR } = useAccountsReceivable();
+  const { data: payables = [], isLoading: loadingP, error: errorP, refetch: refetchP } = useAccountsPayable();
   const [view, setView] = useState<'receivable' | 'payable'>('receivable');
   const today = useMemo(() => {
     const t = new Date();
@@ -115,7 +139,7 @@ function AgingTab() {
       const days = differenceInDays(today, parseISO(r.due_date));
       return days >= b.min && days <= b.max;
     });
-    const amount = items.reduce((s, r) => s + Math.max(0, (r.amount || 0) - (r.amount_received || 0)), 0);
+    const amount = items.reduce((s, r) => s + openBalanceOf(r, 'receivable'), 0);
     return { ...b, amount, count: items.length, items };
   }), [receivables]);
 
@@ -126,7 +150,7 @@ function AgingTab() {
       const days = differenceInDays(today, parseISO(p.due_date));
       return days >= b.min && days <= b.max;
     });
-    const amount = items.reduce((s, p) => s + Math.max(0, (p.amount || 0) - (p.amount_paid || 0)), 0);
+    const amount = items.reduce((s, p) => s + openBalanceOf(p, 'payable'), 0);
     return { ...b, amount, count: items.length, items };
   }), [payables]);
 
@@ -142,7 +166,7 @@ function AgingTab() {
           name: r.client_name || '—',
           description: r.description,
           due_date: r.due_date,
-          amount: Math.max(0, (r.amount || 0) - (r.amount_received || 0)),
+          amount: openBalanceOf(r, 'receivable'),
           days: differenceInDays(today, parseISO(r.due_date!)),
         }))
         .filter(r => r.days > 0)
@@ -154,7 +178,7 @@ function AgingTab() {
         name: p.suppliers?.name || '—',
         description: p.description,
         due_date: p.due_date,
-        amount: Math.max(0, (p.amount || 0) - (p.amount_paid || 0)),
+        amount: openBalanceOf(p, 'payable'),
         days: differenceInDays(today, parseISO(p.due_date!)),
       }))
       .filter(p => p.days > 0)
@@ -182,6 +206,15 @@ function AgingTab() {
     const w = window.open('', '_blank');
     if (w) { w.document.write(html); w.document.close(); setTimeout(() => w.print(), 300); }
   };
+
+  const reportState = (
+    <LedgerReportState
+      loading={loadingR || loadingP}
+      error={errorR || errorP}
+      onRetry={() => { refetchR(); refetchP(); }}
+    />
+  );
+  if (loadingR || loadingP || errorR || errorP) return reportState;
 
   return (
     <div className="space-y-4">
@@ -283,8 +316,8 @@ function AgingTab() {
 // ─── Categories Tab ───────────────────────────────────────────────────────────
 
 function CategoriesTab() {
-  const { data: payables = [] } = useAccountsPayable();
-  const { data: receivables = [] } = useAccountsReceivable();
+  const { data: payables = [], isLoading: loadingP, error: errorP, refetch: refetchP } = useAccountsPayable();
+  const { data: receivables = [], isLoading: loadingR, error: errorR, refetch: refetchR } = useAccountsReceivable();
   const [months, setMonths] = useState('3');
   const [view, setView] = useState<LedgerView>('volume');
 
@@ -326,6 +359,16 @@ function CategoriesTab() {
   }, [payables, receivables, months, view]);
 
   const totalExpense = expenseByCategory.reduce((s, c) => s + c.value, 0);
+
+  if (loadingP || loadingR || errorP || errorR) {
+    return (
+      <LedgerReportState
+        loading={loadingP || loadingR}
+        error={errorP || errorR}
+        onRetry={() => { refetchP(); refetchR(); }}
+      />
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -456,8 +499,8 @@ function CategoriesTab() {
 // ─── Ranking Tab ──────────────────────────────────────────────────────────────
 
 function RankingTab() {
-  const { data: receivables = [] } = useAccountsReceivable();
-  const { data: payables = [] } = useAccountsPayable();
+  const { data: receivables = [], isLoading: loadingR, error: errorR, refetch: refetchR } = useAccountsReceivable();
+  const { data: payables = [], isLoading: loadingP, error: errorP, refetch: refetchP } = useAccountsPayable();
   /* Volume por padrão: a pergunta natural de um ranking é "quem é meu maior
      cliente/fornecedor", e no modo Em aberto quem já quitou tudo desaparece. */
   const [view, setView] = useState<LedgerView>('volume');
@@ -500,6 +543,16 @@ function RankingTab() {
 
   const topClientsChart = clientRanking.slice(0, 8).map(c => ({ name: c.name.split(' ')[0], value: c.value }));
   const topSuppliersChart = supplierRanking.slice(0, 8).map(s => ({ name: s.name.split(' ')[0], value: s.value }));
+
+  if (loadingR || loadingP || errorR || errorP) {
+    return (
+      <LedgerReportState
+        loading={loadingR || loadingP}
+        error={errorR || errorP}
+        onRetry={() => { refetchR(); refetchP(); }}
+      />
+    );
+  }
 
   return (
     <div className="space-y-4">

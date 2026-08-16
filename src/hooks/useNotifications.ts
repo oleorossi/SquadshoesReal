@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { apiService } from '@/lib/apiService';
 import { supabase } from '@/integrations/supabase/client';
+import { openBalanceOf } from '@/lib/ledgerBalance';
 
 export interface NotificationItem {
   id: string;
@@ -83,7 +84,7 @@ export function useNotifications() {
 
       // --- Contas a pagar vencidas ---
       if (overduePayables && overduePayables.length > 0) {
-        const totalOverdue = overduePayables.reduce((s, p) => s + (p.amount - (p.amount_paid || 0)), 0);
+        const totalOverdue = overduePayables.reduce((s, p) => s + openBalanceOf(p, 'payable'), 0);
         notifications.push({
           id: 'overdue-payables',
           category: 'finance',
@@ -96,7 +97,7 @@ export function useNotifications() {
 
       // --- Contas a receber vencidas ---
       if (overdueReceivables && overdueReceivables.length > 0) {
-        const totalOverdue = overdueReceivables.reduce((s, r) => s + (r.amount - (r.amount_received || 0)), 0);
+        const totalOverdue = overdueReceivables.reduce((s, r) => s + openBalanceOf(r, 'receivable'), 0);
         notifications.push({
           id: 'overdue-receivables',
           category: 'finance',

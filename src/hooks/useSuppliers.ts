@@ -73,9 +73,10 @@ export type InvoiceItem = {
 };
 
 // ─── Suppliers ───
-export function useSuppliers() {
+export function useSuppliers(enabled = true) {
   return useQuery({
     queryKey: ['suppliers'],
+    enabled,
     queryFn: async () => {
       const { data, error } = await supabase.from('suppliers').select('*').order('name');
       if (error) throw error;
