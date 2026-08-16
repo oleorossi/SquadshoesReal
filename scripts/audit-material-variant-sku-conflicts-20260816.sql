@@ -28,45 +28,31 @@ variant_usage AS (
   LEFT JOIN public.orders o ON o.sale_order_item_id = soi.id
   LEFT JOIN public.sheet_materials sm ON sm.material_variant_id = v.id
   GROUP BY v.id
-),
-recent_items AS (
-  SELECT
-    target.id AS variant_id,
-    COALESCE(jsonb_agg(entry.payload ORDER BY entry.sort_key DESC)
-      FILTER (WHERE entry.payload IS NOT NULL), '[]'::jsonb) AS items
-  FROM target_variants target
-  LEFT JOIN LATERAL (
-    SELECT
-      COALESCE(NULLIF(to_jsonb(so) ->> 'created_at', '')::timestamptz,
-               '-infinity'::timestamptz) AS sort_key,
-      jsonb_build_object(
-        'sale_order_item', to_jsonb(soi),
-        'sale_order', to_jsonb(so)
-      ) AS payload
-    FROM public.sale_order_items soi
-    JOIN public.sale_orders so ON so.id = soi.sale_order_id
-    WHERE soi.material_variant_id = target.id
-    ORDER BY COALESCE(NULLIF(to_jsonb(so) ->> 'created_at', '')::timestamptz,
-                      '-infinity'::timestamptz) DESC
-    LIMIT 20
-  ) entry ON true
-  GROUP BY target.id
 )
-SELECT jsonb_pretty(jsonb_agg(jsonb_build_object(
-  'normalized_sku', lower(btrim(v.sku)),
-  'variant', to_jsonb(v),
-  'technical_sheet', to_jsonb(ts),
-  'usage', jsonb_build_object(
-    'sale_order_items', usage.sale_order_item_count,
-    'non_cancelled_sale_order_items', usage.non_cancelled_sale_order_item_count,
-    'production_orders', usage.production_order_count,
-    'specific_bom_lines', usage.specific_bom_line_count,
-    'latest_sale_order_at', usage.latest_sale_order_at
-  ),
-  'recent_items', recent.items
-) ORDER BY lower(btrim(v.sku)), v.id)) AS material_variant_sku_conflicts
+SELECT
+  lower(btrim(v.sku)) AS normalized_sku,
+  v.id AS variant_id,
+  v.reference_id,
+  to_jsonb(ts) ->> 'code' AS reference_code,
+  to_jsonb(ts) ->> 'name' AS reference_name,
+  to_jsonb(ts) ->> 'status' AS reference_status,
+  to_jsonb(ts) ->> 'status_ficha' AS sheet_status,
+  v.material_name,
+  v.sku,
+  v.active,
+  v.main_material_group_id,
+  v.upper_material_group_id,
+  v.lining_material_group_id,
+  v.insole_material_group_id,
+  v.created_at,
+  v.updated_at,
+  usage.sale_order_item_count,
+  usage.non_cancelled_sale_order_item_count,
+  usage.production_order_count,
+  usage.specific_bom_line_count,
+  usage.latest_sale_order_at
 FROM target_variants target
 JOIN public.reference_material_variants v ON v.id = target.id
 JOIN public.technical_sheets ts ON ts.id = v.reference_id
 JOIN variant_usage usage ON usage.id = v.id
-JOIN recent_items recent ON recent.variant_id = v.id;
+ORDER BY lower(btrim(v.sku)), v.id;
