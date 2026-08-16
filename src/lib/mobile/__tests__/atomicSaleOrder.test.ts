@@ -25,7 +25,7 @@ const payload = {
     total: 0,
   },
   items: [
-    { reference_id: 'ref-1', color: 'PRETO', quantity: 10, grade: { '37': 10 }, unit_price: 100, strap_colors: [], strap_sourcing: {} },
+    { reference_id: 'ref-1', material_variant_id: 'variant-1', color: 'PRETO', quantity: 10, grade: { '37': 10 }, unit_price: 100, strap_colors: [], strap_sourcing: {} },
     { reference_id: 'ref-2', color: 'BRANCO', quantity: 5, grade: { '38': 5 }, unit_price: 120, strap_colors: [], strap_sourcing: {} },
   ],
   client_id: 'client-1',
@@ -45,6 +45,7 @@ describe('submitMobileSaleOrderAtomic', () => {
       p_client_request_id: payload.order.client_request_id,
       p_items: payload.items,
     }));
+    expect(rpc.mock.calls[0][1].p_items[0]).toMatchObject({ material_variant_id: 'variant-1' });
   });
 
   it('rejeita replay parcial para a fila não ser removida', async () => {

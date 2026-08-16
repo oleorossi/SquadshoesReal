@@ -1,4 +1,17 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  buildClickNotasTechnicalProductName,
+  ClickNotasProductPostDefinitelyRejectedError,
+  ClickNotasProductClaimBusyError,
+  ClickNotasProductIdentityConflictError,
+  ClickNotasProductReconciliationRequiredError,
+  provisionClickNotasProductIdentity,
+  resolveClickNotasProductIdentity,
+  type ClickNotasProductBeginPostResult,
+  type ClickNotasProductClaimResult,
+  type ClickNotasProductCompletionResult,
+  type ClickNotasProductReconciliationResult,
+} from "../_shared/clickNotasProductIdentity.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": Deno.env.get("ALLOWED_ORIGIN") || "https://squadshoes-real.vercel.app",
@@ -421,7 +434,7 @@ Deno.serve(async (req) => {
 
     const { data: items, error: itemsErr } = await adminClient
       .from("sale_order_items")
-      .select("*, technical_sheets(id, name, code, ncm, gestaoclick_id, description, shoe_category, upper_material, lining_material, insole_material, sole_material, weight_per_pair_kg), reference_material_variants(sku, barcode, ncm, description_override, active, unit_price_override), products(id, name, sku, ncm, gestaoclick_id, unit)")
+      .select("*, technical_sheets(id, name, code, ncm, gestaoclick_id, description, shoe_category, upper_material, lining_material, insole_material, sole_material, weight_per_pair_kg), products(id, name, sku, ncm, gestaoclick_id, unit)")
       .eq("sale_order_id", sale_order_id)
       .order("created_at", { ascending: true })
       .order("id", { ascending: true });
@@ -525,38 +538,64 @@ Deno.serve(async (req) => {
       }), { status: 400, headers: corsHeaders });
     }
 
-    const itemsInactiveVariant: string[] = [];
     const resolvedItems = (items || []).map((it: any) => {
-      const v = it.reference_material_variants;
-      if (it.material_variant_id && (!v || !v.active)) {
-        const ref = it.technical_sheets?.code || it.reference_id;
-        itemsInactiveVariant.push(`${ref} (variation_id=${it.material_variant_id})`);
-      }
-      return { ...it, _variant: v && v.active ? v : null };
+      const snapshot = it.material_variant_commercial_snapshot;
+      return {
+        ...it,
+        _hasMaterialVariant: !!it.material_variant_id,
+        _variantSnapshot: snapshot && typeof snapshot === 'object' && !Array.isArray(snapshot)
+          ? snapshot
+          : null,
+      };
     });
-    if (itemsInactiveVariant.length > 0) {
+
+    const billableItems = resolvedItems.filter((it: any) => Number(it.quantity) > 0);
+
+    const itemsInvalidVariantSnapshot = billableItems
+      .filter((it: any) => it._hasMaterialVariant && (
+        !it._variantSnapshot
+        || String(it._variantSnapshot.material_variant_id || '') !== String(it.material_variant_id)
+        || !String(it._variantSnapshot.description || '').trim()
+        || !String(it._variantSnapshot.sku || '').trim()
+      ))
+      .map((it: any) => `${it.technical_sheets?.code || it.reference_id || it.id} [item ${it.id}]`);
+    if (itemsInvalidVariantSnapshot.length > 0) {
       return new Response(JSON.stringify({
-        error: `Variação de material inativa ou removida nas referências: ${itemsInactiveVariant.join("; ")}. Reative a variação no cadastro da ficha técnica ou edite o pedido para selecionar outra variação antes de emitir.`,
+        error: `Snapshot comercial ausente ou inválido nas referências: ${itemsInvalidVariantSnapshot.join('; ')}. Este é um bloqueio de integridade: acione a administração para diagnosticar o item no banco; a emissão não consultará o catálogo vivo nem inventará identidade histórica.`,
       }), { status: 400, headers: corsHeaders });
     }
 
-    const billableItems = resolvedItems.filter((it: any) => Number(it.quantity) > 0);
+    const itemsPendingLegacyReview = billableItems
+      .filter((it: any) => it._hasMaterialVariant
+        && it._variantSnapshot?.provenance?.historical_truth === 'unknown')
+      .map((it: any) => `${it.technical_sheets?.code || it.reference_id || it.id} [item ${it.id}]`);
+    if (itemsPendingLegacyReview.length > 0) {
+      return new Response(JSON.stringify({
+        error: `Identidade comercial legada ainda não comprovada nas referências: ${itemsPendingLegacyReview.join('; ')}. Comercial/Gerência deve validar SKU, NCM, descrição, cor e preço contra o pedido original e chamar a RPC administrativa review_legacy_material_variant_commercial_snapshot com p_attested_identity: primeiro p_apply=false (preview), depois p_apply=true usando o mesmo p_expected_snapshot. O catálogo atual não será tratado como verdade histórica.`,
+      }), { status: 409, headers: corsHeaders });
+    }
 
     const itemsMissingNcm: string[] = [];
     for (const it of billableItems) {
       // NF avulsa (product_id): usa NCM do produto direto.
       // NF normal (reference_id): usa NCM da variant/ficha.
-      const ncm = (it._variant?.ncm || it.technical_sheets?.ncm || it.products?.ncm || "").trim();
+      const ncm = String((
+        it._hasMaterialVariant
+          ? it._variantSnapshot?.ncm
+          : (it.technical_sheets?.ncm || it.products?.ncm)
+      ) || "").trim();
       if (!ncm || ncm.length !== 8 || !/^\d{8}$/.test(ncm)) {
         const ref = it.technical_sheets?.code || it.products?.sku || it.reference_id || it.product_id;
         itemsMissingNcm.push(`${ref} (NCM atual: "${ncm || "vazio"}")`);
       }
     }
     if (itemsMissingNcm.length > 0) {
-      return new Response(JSON.stringify({ error: `NCM ausente ou inválido (precisa 8 dígitos) nas referências: ${itemsMissingNcm.join("; ")}. Atualize a ficha técnica, variação de material ou produto antes de emitir.` }), { status: 400, headers: corsHeaders });
+      return new Response(JSON.stringify({ error: `NCM ausente ou inválido (precisa 8 dígitos) nas referências: ${itemsMissingNcm.join("; ")}. Corrija o item enquanto o PV estiver em Rascunho/Pendente ou faça uma revisão comercial explícita; itens avulsos usam o cadastro do produto.` }), { status: 400, headers: corsHeaders });
     }
 
-    const effectivePrice = (it: any) => Number(it._variant?.unit_price_override ?? it.unit_price ?? 0);
+    // Preço fiscal = preço contratado e congelado no item do PV. O override
+    // vivo da variante é apenas sugestão durante a edição e nunca reprecifica NF.
+    const effectivePrice = (it: any) => Number(it.unit_price ?? 0);
     const sumItems = billableItems.reduce(
       (s: number, it: any) => s + Number(((Number(it.quantity) || 0) * effectivePrice(it)).toFixed(2)),
       0,
@@ -781,18 +820,30 @@ Deno.serve(async (req) => {
     for (const it of billableItems) {
       const ts = it.technical_sheets;
       const prod = it.products; // NF avulsa: dados vêm de products
-      const variant = it._variant;
+      const variant = it._variantSnapshot;
+      const hasMaterialVariant = it._hasMaterialVariant;
       const isStandalone = !ts && !!prod;
-      const ncm = (variant?.ncm || ts?.ncm || prod?.ncm || "").trim();
+      const ncm = String((
+        hasMaterialVariant ? variant?.ncm : (ts?.ncm || prod?.ncm)
+      ) || "").trim();
       const price = effectivePrice(it);
       const baseName = ts?.name || prod?.name || "Produto";
-      const desc = (variant?.description_override || (it.color ? `${baseName} - ${it.color}` : baseName)).trim();
+      const itemColor = (variant?.color || it.color || '').toString().trim();
+      const desc = (
+        hasMaterialVariant
+          ? String(variant?.description || '')
+          : (itemColor ? `${baseName} - ${itemColor}` : baseName)
+      ).trim();
       // Código do produto na NF (cProd no XML / "CÓDIGO PRODUTO" no DANFE) = o
       // SKU/Código da ficha (technical_sheets.code). Pedido do dono 2026-06-20:
       // a NF deve mostrar o NOSSO código, não o codigo_interno auto do ClickNotas
       // (ex.: 903927). Variante pode sobrescrever (variant.sku); NF avulsa usa o
       // products.sku/code. Mandamos tanto na linha quanto no cadastro do produto.
-      const codigoNf = (variant?.sku || ts?.code || (prod as any)?.sku || (prod as any)?.code || "").toString().trim();
+      const codigoNf = String((
+        hasMaterialVariant
+          ? variant?.sku
+          : (ts?.code || (prod as any)?.sku || (prod as any)?.code)
+      ) || "").trim();
       // Unidade comercial na NF. Pedido do dono em 01/06/2026, validando contra
       // a NF #248 revisada pela contabilidade (o DANFE de referência sai com
       // "UN", não "PAR"): forçar "UN". Vale também p/ NF avulsa de standalone
@@ -800,87 +851,190 @@ Deno.serve(async (req) => {
       const unidade = "UN";
 
       // Marca deste item: silk do solado (cascata) ou 'Squad Shoes'.
-      const itemBrand = await resolveItemBrand(it.reference_id, it.color);
+      const itemBrand = await resolveItemBrand(it.reference_id, itemColor);
 
-      // Resolução do produto no ClickNotas — POR NOME.
-      // BUG CRÍTICO da cor (e do duplicado) corrigido aqui:
-      //  - O `codigo` que mandamos no POST /produtos é IGNORADO pelo
-      //    ClickNotas (ele gera um codigo_interno próprio) → busca por
-      //    código nunca acha nada.
-      //  - POST /produtos com nome JÁ EXISTENTE → erro 404 "URL do produto
-      //    já está sendo utilizada".
-      //  - O `nome` ("SP117 - CARAMELO") já é único por cor e a busca
-      //    /produtos?nome= funciona.
-      // Logo: buscamos por nome exato; se achar, reusa; senão cria.
+      // Resolução do produto no ClickNotas — descrição + SKU congelados.
+      // O ClickNotas ignora `codigo` no POST e gera um código interno; por isso
+      // o nome técnico do cadastro incorpora o SKU. O nome fiscal da linha
+      // continua sendo somente a descrição congelada do snapshot.
       // technical_sheets.gestaoclick_id NUNCA é usado (uma ficha = N cores).
       // products.gestaoclick_id (NF avulsa) continua sendo cache válido.
       const nomeProduto = desc.slice(0, 120);
+      let nomeProdutoCadastro = nomeProduto;
+      if (hasMaterialVariant) {
+        try {
+          nomeProdutoCadastro = buildClickNotasTechnicalProductName(desc, codigoNf);
+        } catch (identityError) {
+          return new Response(JSON.stringify({
+            error: `Identidade ClickNotas inválida para "${nomeProduto}" / SKU "${codigoNf || '<vazio>'}": ${identityError instanceof Error ? identityError.message : String(identityError)}`,
+          }), { status: 400, headers: corsHeaders });
+        }
+      }
       let gcProductId: string | null = isStandalone ? (prod?.gestaoclick_id || null) : null;
-      let gcStatus: 'cached' | 'found_by_name' | 'pending_create' = gcProductId ? 'cached' : 'pending_create';
+      let gcStatus: 'cached' | 'found_by_identity' | 'pending_create' = gcProductId ? 'cached' : 'pending_create';
       if (!gcProductId) {
-        const lookup = await gcFetch(`/produtos?nome=${encodeURIComponent(nomeProduto)}`);
-        const foundList = Array.isArray(lookup.json?.data) ? lookup.json.data : [];
-        const match = foundList.find(
-          (p: any) => String(p.nome || "").trim().toUpperCase() === nomeProduto.trim().toUpperCase(),
-        );
-        if (match?.id) {
-          gcProductId = String(match.id);
-          gcStatus = 'found_by_name';
-        } else if (isDryRun) {
-          // Preview: não cria produto. gcProductId fica null (warning no preview).
-          gcStatus = 'pending_create';
-        } else {
-          // Cadastro enriquecido (20/05/2026 — pedido user): leva todos os
-          // dados úteis da ficha técnica + variante pro ClickNotas. Antes
-          // só ia nome+preco+unidade+ncm+marca → produto novo nascia
-          // "pelado" e a contabilidade tinha que editar depois.
-          //
-          // Campos adicionais:
-          //  - descricao: combina ficha.description + materiais técnicos
-          //  - codigo: SKU da variante (quando houver) — facilita auditoria
-          //  - gtin/cean: código de barras (XML SEFAZ <cEAN>)
-          //  - peso_bruto/peso_liquido: weight_per_pair_kg da ficha
-          //  - categoria: shoe_category ('Adulto', 'Infantil', etc)
-          //  - cest: campo fiscal (opcional, copia da ficha se houver)
-          const techDescParts = [
-            ts?.description?.trim(),
-            ts?.upper_material ? `Cabedal: ${ts.upper_material}` : null,
-            ts?.lining_material ? `Forro: ${ts.lining_material}` : null,
-            ts?.insole_material ? `Palmilha: ${ts.insole_material}` : null,
-            ts?.sole_material ? `Solado: ${ts.sole_material}` : null,
-            it.color ? `Cor: ${it.color}` : null,
-          ].filter(Boolean);
-          const fullDesc = techDescParts.join(' | ').slice(0, 500);
-          const skuVariante = (variant?.sku || '').trim();
-          const gtinVariante = (variant?.barcode || '').trim();
-          const pesoKg = Number(ts?.weight_per_pair_kg || 0);
-          const productPayload: Record<string, unknown> = {
-            nome: nomeProduto,
-            valor_venda: price.toFixed(2),
-            unidade: "UN",
-            ncm,
-            tipo: "P",
-            marca: itemBrand, // marca aparece no XML SEFAZ <prod><xMarca> — silk do solado
-          };
-          if (fullDesc) productPayload.descricao = fullDesc;
-          if (codigoNf) productPayload.codigo = codigoNf;
-          if (gtinVariante) productPayload.gtin = gtinVariante;
-          if (pesoKg > 0) {
-            productPayload.peso_bruto = pesoKg.toFixed(3);
-            productPayload.peso_liquido = pesoKg.toFixed(3);
-          }
-          if (ts?.shoe_category) productPayload.categoria = ts.shoe_category;
-          const r = await gcFetch("/produtos", {
-            method: "POST",
-            body: JSON.stringify(productPayload),
-          });
-          if (!r.ok || r.json?.status === "error") {
+        if (isDryRun) {
+          // Preview não cria claim nem produto. A execução real consulta o
+          // registry distribuído e pode reutilizar um technical_name anterior.
+          const lookup = await gcFetch(`/produtos?nome=${encodeURIComponent(nomeProdutoCadastro)}`);
+          const foundList = Array.isArray(lookup.json?.data) ? lookup.json.data : [];
+          const identityResolution = resolveClickNotasProductIdentity(foundList, nomeProdutoCadastro);
+          if (identityResolution.kind === 'match' && identityResolution.product.id) {
+            gcProductId = String(identityResolution.product.id);
+            gcStatus = 'found_by_identity';
+          } else if (identityResolution.kind === 'conflict') {
             return new Response(JSON.stringify({
-              error: `Falha ao sincronizar produto "${nomeProduto}" com ClickNotas: ${r.json?.data?.mensagem || r.json?.message || r.json?.mensagem || JSON.stringify(r.json)}`,
-            }), { status: 502, headers: corsHeaders });
+              error: `Conflito de identidade no ClickNotas para "${nomeProdutoCadastro}": ${identityResolution.reason}. O cadastro externo não será reutilizado; revise a duplicidade antes de emitir.`,
+            }), { status: 409, headers: corsHeaders });
           }
-          gcProductId = String(r.json?.data?.id);
-          gcStatus = 'cached'; // recém criado, agora cacheado pro próximo uso
+        } else {
+          const identityKind = hasMaterialVariant ? 'material_variant_sku' : 'technical_name';
+          const identityValue = hasMaterialVariant ? codigoNf : nomeProdutoCadastro;
+          const ownerToken = crypto.randomUUID();
+          try {
+            const provisioned = await provisionClickNotasProductIdentity({
+              claim: async () => {
+                const { data, error } = await adminClient.rpc('claim_clicknotas_product_identity', {
+                  p_identity_kind: identityKind,
+                  p_identity_value: identityValue,
+                  p_technical_name: nomeProdutoCadastro,
+                  p_owner_token: ownerToken,
+                  p_correlation_id: `emit-nfe:${sale_order_id}:${it.id}`,
+                  p_lease_seconds: 120,
+                });
+                if (error) throw new Error(`Falha ao adquirir claim ClickNotas: ${error.message}`);
+                return data as ClickNotasProductClaimResult;
+              },
+              lookup: async (technicalName) => {
+                const lookup = await gcFetch(`/produtos?nome=${encodeURIComponent(technicalName)}`);
+                if (!lookup.ok || lookup.json?.status === 'error') {
+                  throw new Error(
+                    `Falha ao consultar identidade ClickNotas "${technicalName}": ${lookup.json?.data?.mensagem || lookup.json?.message || lookup.json?.mensagem || JSON.stringify(lookup.json)}`,
+                  );
+                }
+                const foundList = Array.isArray(lookup.json?.data) ? lookup.json.data : [];
+                const resolution = resolveClickNotasProductIdentity(foundList, technicalName);
+                if (resolution.kind === 'match' && resolution.product.id) {
+                  return { kind: 'match', providerId: String(resolution.product.id) };
+                }
+                if (resolution.kind === 'conflict' || resolution.kind === 'match') {
+                  return {
+                    kind: 'conflict',
+                    message: `Conflito de identidade no ClickNotas para "${technicalName}"; revise cadastros duplicados ou sem ID.`,
+                  };
+                }
+                return { kind: 'not_found' };
+              },
+              beginPost: async (leaseGeneration) => {
+                const { data, error } = await adminClient.rpc('begin_clicknotas_product_post', {
+                  p_identity_kind: identityKind,
+                  p_identity_value: identityValue,
+                  p_owner_token: ownerToken,
+                  p_lease_generation: leaseGeneration,
+                });
+                if (error) throw new Error(`Falha ao registrar início do POST ClickNotas: ${error.message}`);
+                return data as ClickNotasProductBeginPostResult;
+              },
+              create: async (technicalName) => {
+                // Cadastro enriquecido: a linha fiscal usa nomeProduto; somente
+                // o cadastro externo usa o technical_name write-once do claim.
+                const techDescParts = [
+                  ts?.description?.trim(),
+                  ts?.upper_material ? `Cabedal: ${ts.upper_material}` : null,
+                  ts?.lining_material ? `Forro: ${ts.lining_material}` : null,
+                  ts?.insole_material ? `Palmilha: ${ts.insole_material}` : null,
+                  ts?.sole_material ? `Solado: ${ts.sole_material}` : null,
+                  itemColor ? `Cor: ${itemColor}` : null,
+                ].filter(Boolean);
+                const fullDesc = hasMaterialVariant
+                  ? desc.slice(0, 500)
+                  : techDescParts.join(' | ').slice(0, 500);
+                const gtinVariante = (variant?.gtin || '').trim();
+                const pesoKg = Number(ts?.weight_per_pair_kg || 0);
+                const productPayload: Record<string, unknown> = {
+                  nome: technicalName,
+                  valor_venda: price.toFixed(2),
+                  unidade: "UN",
+                  ncm,
+                  tipo: "P",
+                  marca: itemBrand,
+                };
+                if (fullDesc) productPayload.descricao = fullDesc;
+                if (codigoNf) productPayload.codigo = codigoNf;
+                if (gtinVariante) productPayload.gtin = gtinVariante;
+                if (pesoKg > 0) {
+                  productPayload.peso_bruto = pesoKg.toFixed(3);
+                  productPayload.peso_liquido = pesoKg.toFixed(3);
+                }
+                if (ts?.shoe_category) productPayload.categoria = ts.shoe_category;
+                const r = await gcFetch("/produtos", {
+                  method: "POST",
+                  body: JSON.stringify(productPayload),
+                });
+                if (!r.ok || r.json?.status === "error") {
+                  if (r.status === 429) {
+                    throw new ClickNotasProductPostDefinitelyRejectedError(
+                      `ClickNotas recusou por limite de requisições sem processar o produto "${technicalName}".`,
+                    );
+                  }
+                  throw new Error(
+                    `Falha ao sincronizar produto "${technicalName}" com ClickNotas: ${r.json?.data?.mensagem || r.json?.message || r.json?.mensagem || JSON.stringify(r.json)}`,
+                  );
+                }
+                const providerId = String(r.json?.data?.id || '').trim();
+                if (!providerId) throw new Error('ClickNotas criou produto sem retornar ID.');
+                return { providerId };
+              },
+              complete: async (leaseGeneration, providerId) => {
+                const { data, error } = await adminClient.rpc('complete_clicknotas_product_identity', {
+                  p_identity_kind: identityKind,
+                  p_identity_value: identityValue,
+                  p_owner_token: ownerToken,
+                  p_lease_generation: leaseGeneration,
+                  p_provider_id: providerId,
+                });
+                if (error) throw new Error(`Falha ao concluir claim ClickNotas: ${error.message}`);
+                return data as ClickNotasProductCompletionResult;
+              },
+              recordOutcome: async (leaseGeneration, outcome, errorMessage, retrySeconds) => {
+                const { error } = await adminClient.rpc('record_clicknotas_product_identity_outcome', {
+                  p_identity_kind: identityKind,
+                  p_identity_value: identityValue,
+                  p_owner_token: ownerToken,
+                  p_lease_generation: leaseGeneration,
+                  p_outcome: outcome,
+                  p_error: errorMessage,
+                  p_retry_seconds: retrySeconds,
+                });
+                if (error) throw error;
+              },
+              reconcile: async (observation, providerId, errorMessage) => {
+                const { data, error } = await adminClient.rpc('reconcile_clicknotas_product_identity', {
+                  p_identity_kind: identityKind,
+                  p_identity_value: identityValue,
+                  p_observation: observation,
+                  p_provider_id: providerId,
+                  p_error: errorMessage,
+                  p_correlation_id: `emit-nfe:${sale_order_id}:${it.id}`,
+                });
+                if (error) throw new Error(`Falha ao reconciliar identidade ClickNotas: ${error.message}`);
+                return data as ClickNotasProductReconciliationResult;
+              },
+            });
+            gcProductId = provisioned.providerId;
+            gcStatus = provisioned.source === 'external_lookup'
+              ? 'found_by_identity'
+              : 'cached';
+          } catch (identityError) {
+            const status = identityError instanceof ClickNotasProductClaimBusyError
+              || identityError instanceof ClickNotasProductIdentityConflictError
+              || identityError instanceof ClickNotasProductReconciliationRequiredError
+              ? 409
+              : 502;
+            return new Response(JSON.stringify({
+              error: identityError instanceof Error ? identityError.message : String(identityError),
+            }), { status, headers: corsHeaders });
+          }
         }
         if (isStandalone && prod?.id && gcProductId && !isDryRun) {
           await adminClient.from("products").update({ gestaoclick_id: gcProductId }).eq("id", prod.id);

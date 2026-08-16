@@ -28,4 +28,22 @@ describe('groupOrdersByReference — identidade física da etiqueta', () => {
     expect(groupOrdersByReference(orders, saleOrders)).toHaveLength(1);
     expect(groupOrdersByReference(orders, saleOrders, undefined, true)).toHaveLength(2);
   });
+
+  it('não mistura nomes históricos diferentes da mesma variante viva', () => {
+    const groups = groupOrdersByReference([
+      {
+        ...base,
+        id: 'op-1',
+        material_variant_id: 'var-a',
+        material_variant_commercial_snapshot: { material_name: 'NAPA SOFT' },
+      },
+      {
+        ...base,
+        id: 'op-2',
+        material_variant_id: 'var-a',
+        material_variant_commercial_snapshot: { material_name: 'NAPA MADRI' },
+      },
+    ], saleOrders);
+    expect(groups).toHaveLength(2);
+  });
 });

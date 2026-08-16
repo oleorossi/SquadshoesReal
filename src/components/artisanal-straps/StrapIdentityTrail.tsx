@@ -5,6 +5,7 @@ interface StrapIdentityTrailProps {
   typeName?: string | null;
   measureName?: string | null;
   baseName?: string | null;
+  baseLabel?: string;
   colorName?: string | null;
   compact?: boolean;
   className?: string;
@@ -21,6 +22,7 @@ export function StrapIdentityTrail({
   typeName,
   measureName,
   baseName,
+  baseLabel = 'Napa-base',
   colorName,
   compact = false,
   className,
@@ -38,7 +40,7 @@ export function StrapIdentityTrail({
         'grid grid-cols-2 gap-2 sm:flex sm:items-stretch sm:gap-1.5',
         className,
       )}
-      aria-label="Identidade da tira: família, medida, napa-base e cor"
+      aria-label={`Identidade da tira: família, medida, ${baseLabel.toLocaleLowerCase('pt-BR')} e cor`}
     >
       {STEPS.map((step, index) => (
         <div key={step.key} className="contents sm:flex sm:min-w-0 sm:flex-1 sm:items-center sm:gap-1.5">
@@ -49,7 +51,7 @@ export function StrapIdentityTrail({
             )}
           >
             <p className="font-mono text-[9px] font-bold uppercase tracking-[0.16em] text-muted-foreground">
-              {step.label}
+              {step.key === 'base' ? baseLabel : step.label}
             </p>
             <p className={cn('truncate font-semibold text-foreground', compact ? 'text-xs' : 'text-sm')}>
               {values[step.key] || 'A definir'}

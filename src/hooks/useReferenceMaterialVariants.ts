@@ -10,10 +10,10 @@ const ALL_ACTIVE_KEY = ['reference_material_variants', 'all_active'] as const;
    id: string;
    reference_id: string;
    material_name: string;
-   sku: string;
-   barcode: string;
-   ncm: string;
-   description_override: string;
+   sku: string | null;
+   barcode: string | null;
+   ncm: string | null;
+   description_override: string | null;
    /** Material PRINCIPAL da variante (grupo). É o que a variante É — cascateia
     *  pros componentes que a ficha liberou em `technical_sheets.variant_drives_*`
     *  (mig 20261027120000). Os pinos por componente abaixo são EXCEÇÃO e vencem
@@ -36,7 +36,8 @@ const ALL_ACTIVE_KEY = ['reference_material_variants', 'all_active'] as const;
    lining_consumption_override: number | null;
    /** Produto de palmilha override. NULL = resolve pelo grupo da ficha. */
    insole_material_product_id: string | null;
-   /** Grupo de palmilha (forração) da variação. Resolve por grupo+cor do PV. NULL = herda a ficha. */
+   /** Grupo da placa/EVA da palmilha. A forração da palmilha é outro conceito
+    *  e não é reinterpretada neste campo. NULL = herda a ficha. */
    insole_material_group_id: string | null;
    /** Override de consumo (dm²/par) da palmilha. NULL = usa ficha. (LEGADO — ver upper.) */
    insole_consumption_override: number | null;
@@ -51,6 +52,41 @@ const ALL_ACTIVE_KEY = ['reference_material_variants', 'all_active'] as const;
    created_at: string;
    updated_at: string;
  };
+
+export const normalizeMaterialVariantSku = (sku: string | null | undefined) =>
+  sku?.trim().toLocaleLowerCase('pt-BR') || '';
+
+export const MATERIAL_VARIANT_SKU_MAX_LENGTH = 80;
+
+export function normalizeVariantMutation<T extends Partial<ReferenceMaterialVariant>>(data: T): T {
+  if (!Object.prototype.hasOwnProperty.call(data, 'sku')) return data;
+  const sku = data.sku?.trim() || null;
+  if (data.active === true && !sku) {
+    throw new Error('SKU é obrigatório para variante ativa');
+  }
+  if (sku && sku.length > MATERIAL_VARIANT_SKU_MAX_LENGTH) {
+    throw new Error(`SKU deve ter no máximo ${MATERIAL_VARIANT_SKU_MAX_LENGTH} caracteres`);
+  }
+  return { ...data, sku };
+}
+
+/** Validação antecipada da mesma unicidade GLOBAL aplicada no banco por
+ * lower(btrim(sku)). O índice continua sendo a proteção contra corrida. */
+export async function findMaterialVariantSkuCollision(
+  sku: string | null | undefined,
+  excludeId?: string | null,
+): Promise<Pick<ReferenceMaterialVariant, 'id' | 'reference_id' | 'material_name' | 'sku'> | null> {
+  const normalized = normalizeMaterialVariantSku(sku);
+  if (!normalized) return null;
+  const { data, error } = await supabase
+    .from('reference_material_variants')
+    .select('id, reference_id, material_name, sku')
+    .not('sku', 'is', null);
+  if (error) throw error;
+  return ((data || []) as ReferenceMaterialVariant[]).find(v =>
+    v.id !== excludeId && normalizeMaterialVariantSku(v.sku) === normalized
+  ) || null;
+}
  
  export function useReferenceMaterialVariants(referenceId?: string) {
    return useQuery({
@@ -72,9 +108,10 @@ const ALL_ACTIVE_KEY = ['reference_material_variants', 'all_active'] as const;
    const qc = useQueryClient();
    return useMutation({
      mutationFn: async (data: Partial<ReferenceMaterialVariant>) => {
+       const normalized = normalizeVariantMutation(data);
        const { data: result, error } = await supabase
          .from('reference_material_variants')
-         .insert(data as any)
+         .insert(normalized as any)
          .select()
          .single();
        if (error) throw error;
@@ -96,9 +133,10 @@ const ALL_ACTIVE_KEY = ['reference_material_variants', 'all_active'] as const;
    const qc = useQueryClient();
    return useMutation({
      mutationFn: async ({ id, data }: { id: string; data: Partial<ReferenceMaterialVariant> }) => {
+       const normalized = normalizeVariantMutation(data);
        const { error } = await supabase
          .from('reference_material_variants')
-         .update(data as any)
+         .update(normalized as any)
          .eq('id', id);
        if (error) throw error;
      },
@@ -153,10 +191,11 @@ export function useDuplicateReferenceMaterialVariant() {
         ...overrides,
         reference_id: sheet_id,
       };
+      const normalizedPayload = normalizeVariantMutation(insertPayload);
 
       const { data: newVariant, error: insertErr } = await supabase
         .from('reference_material_variants')
-        .insert(insertPayload)
+        .insert(normalizedPayload)
         .select()
         .single();
       if (insertErr) throw insertErr;
@@ -218,10 +257,11 @@ export function useUpsertReferenceMaterialVariant() {
   return useMutation({
     mutationFn: async (payload: ReferenceMaterialVariantInsert & { id?: string }) => {
       const { id, ...rest } = payload;
+      const normalized = normalizeVariantMutation(rest);
       if (id) {
         const { data, error } = await (supabase as any)
           .from('reference_material_variants')
-          .update(rest)
+          .update(normalized)
           .eq('id', id)
           .select()
           .single();
@@ -230,7 +270,7 @@ export function useUpsertReferenceMaterialVariant() {
       }
       const { data, error } = await (supabase as any)
         .from('reference_material_variants')
-        .insert(rest)
+        .insert(normalized)
         .select()
         .single();
       if (error) throw error;

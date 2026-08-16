@@ -59,6 +59,7 @@ import { useContractors } from '@/hooks/useContractors';
 import {
   type ArtisanalStrapCatalog,
   type ArtisanalStrapCatalogDiagnostic,
+  type ArtisanalStrapIdentityBasis,
   type ArtisanalStrapLegacyMigrationDiagnostic,
   type ArtisanalStrapRecipe,
   type ArtisanalStrapVariant,
@@ -532,9 +533,12 @@ interface OpenEditorArgs {
   mode?: ArtisanalStrapEditorMode;
   origin?: ArtisanalStrapEditorOrigin;
   variantId?: string;
+  identityBasis?: ArtisanalStrapIdentityBasis;
   measureId?: string;
   baseGroupId?: string;
   colorId?: string;
+  finishedProductId?: string;
+  buyReadyReviewId?: string;
   suggestedRecipeId?: string;
   suggestedYieldMPerM?: number;
 }
@@ -670,9 +674,12 @@ export default function ArtisanalStraps() {
       params.set('origin', args.origin || 'hub');
       const values: Array<[string, string | undefined]> = [
         ['variantId', args.variantId],
+        ['identityBasis', args.identityBasis],
         ['measureId', args.measureId],
         ['baseGroupId', args.baseGroupId],
         ['colorId', args.colorId],
+        ['finishedProductId', args.finishedProductId],
+        ['buyReadyReviewId', args.buyReadyReviewId],
         ['suggestedRecipeId', args.suggestedRecipeId],
         ['suggestedYieldMPerM', args.suggestedYieldMPerM == null ? undefined : String(args.suggestedYieldMPerM)],
       ];
@@ -687,7 +694,9 @@ export default function ArtisanalStraps() {
   const closeEditor = () => {
     setSearchParams((previous) => {
       const params = new URLSearchParams(previous);
-      ['editor', 'mode', 'origin', 'variantId', 'measureId', 'baseGroupId', 'colorId', 'suggestedRecipeId', 'suggestedYieldMPerM'].forEach((key) => params.delete(key));
+      ['editor', 'mode', 'origin', 'variantId', 'identityBasis', 'measureId', 'baseGroupId',
+        'colorId', 'finishedProductId', 'buyReadyReviewId', 'suggestedRecipeId',
+        'suggestedYieldMPerM'].forEach((key) => params.delete(key));
       return params;
     }, { replace: true });
   };
@@ -731,7 +740,7 @@ export default function ArtisanalStraps() {
       <div className="flex min-h-[420px] items-center justify-center px-4">
         <Alert variant="destructive" className="max-w-xl">
           <Warning className="h-4 w-4" />
-          <AlertTitle>Não foi possível abrir Tiras Artesanais</AlertTitle>
+          <AlertTitle>Não foi possível abrir Tiras</AlertTitle>
           <AlertDescription className="space-y-3">
             <p>O cadastro de tiras não respondeu. Tente novamente antes de criar ou editar uma variante.</p>
             <Button size="sm" variant="outline" onClick={() => catalogQuery.refetch()} className="gap-2">
@@ -746,8 +755,8 @@ export default function ArtisanalStraps() {
   return (
     <div className="space-y-5 page-enter">
       <EditorialPageHeader
-        sectionLabel="ENGENHARIA · TIRAS ARTESANAIS"
-        title="Tiras Artesanais"
+        sectionLabel="ENGENHARIA · TIRAS"
+        title="Tiras"
         description="Da necessidade do pedido à tira pronta: rendimento, estoque, produção e terceirização no mesmo fluxo."
         meta={<><strong>{activeVariants}</strong> variantes ativas · <strong>{catalog.recipes.length}</strong> receitas registradas</>}
         actions={
@@ -810,7 +819,7 @@ export default function ArtisanalStraps() {
       )}
 
       <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as HubTab)} className="space-y-4">
-        <HubTabsList tabs={tabs} ariaLabel="Áreas de Tiras Artesanais" />
+        <HubTabsList tabs={tabs} ariaLabel="Áreas de Tiras" />
 
         <TabsContent value="demandas" className="mt-0">
           <DemandsTab catalog={catalog} query={demandsQuery} />
@@ -909,9 +918,14 @@ export default function ArtisanalStraps() {
         mode={editorMode}
         origin={editorOrigin}
         variantId={searchParams.get('variantId')}
+        identityBasis={searchParams.get('identityBasis') === 'finished_product_group'
+          ? 'finished_product_group'
+          : null}
         measureId={searchParams.get('measureId')}
         baseGroupId={searchParams.get('baseGroupId')}
         colorId={searchParams.get('colorId')}
+        finishedProductId={searchParams.get('finishedProductId')}
+        buyReadyReviewId={searchParams.get('buyReadyReviewId')}
         suggestedRecipeId={searchParams.get('suggestedRecipeId')}
         suggestedYieldMPerM={searchParams.get('suggestedYieldMPerM') == null
           ? null
@@ -2070,24 +2084,72 @@ function DiagnosticsTab({
                 };
                 const variant = catalog.variants.find((item) => item.id === issue.entity_id);
                 const migrationEntityType = String(issue.details?.entity_type || '');
+                const requiredFinishedProductId = typeof issue.details?.required_finished_product_id === 'string'
+                  ? issue.details.required_finished_product_id
+                  : '';
+                const requiredIdentityGroupId = typeof issue.details?.required_identity_group_id === 'string'
+                  ? issue.details.required_identity_group_id
+                  : '';
+                const buyReadyReviewId = typeof issue.details?.review_id === 'string'
+                  ? issue.details.review_id
+                  : '';
                 const canResolveFloorReview = issue.issue_code === 'migration_review_item_required'
                   && ['legacy_replenishment_mode', 'legacy_replenishment_source_unavailable'].includes(migrationEntityType);
+                const canResolveBuyReadyReview = migrationEntityType === 'buy_ready_strap_product'
+                  && issue.details?.action_required === 'review_existing_variant'
+                  && catalog.capabilities.manage_strap_catalog
+                  && catalog.capabilities.resolve_strap_migration;
+                const buyReadyReviewHasOperationalBlockers = migrationEntityType === 'buy_ready_strap_product'
+                  && issue.details?.action_required === 'clear_operational_blockers_before_review';
+                const canCreateBuyReadyVariant = issue.issue_code === 'migration_review_item_required'
+                  && migrationEntityType === 'buy_ready_strap_product'
+                  && issue.details?.action_required === 'create_variant_with_bundle'
+                  && Boolean(requiredFinishedProductId && requiredIdentityGroupId && buyReadyReviewId)
+                  && catalog.capabilities.manage_strap_catalog
+                  && catalog.capabilities.resolve_strap_migration;
                 return (
                   <div key={`${issue.issue_code}-${issue.entity_id}`} className="flex flex-col gap-2 rounded-md border border-border p-3 sm:flex-row sm:items-center sm:justify-between">
                     <div className="min-w-0">
                       <p className="text-sm font-semibold">{copy.title}</p>
                       <p className="text-xs text-muted-foreground">{copy.correction}</p>
+                      {buyReadyReviewHasOperationalBlockers && (
+                        <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
+                          Concilie ou encerre as demandas, lotes e compras abertas antes de revisar e ativar a tira.
+                        </p>
+                      )}
                       <p className="mt-1 truncate font-mono text-[9px] text-muted-foreground">{issue.entity_id}</p>
                       {issue.issue_code === 'migration_review_item_required' && !canResolveFloorReview && (
                         <details className="mt-2 rounded-md bg-muted/30 p-2">
-                          <summary className="cursor-pointer text-xs font-semibold">Revisão somente informativa · {migrationEntityType || 'tipo não informado'}</summary>
+                          <summary className="cursor-pointer text-xs font-semibold">
+                            {migrationEntityType === 'buy_ready_strap_product'
+                              ? 'Revisão de tira comprada pronta'
+                              : 'Revisão somente informativa'} · {migrationEntityType || 'tipo não informado'}
+                          </summary>
                           <pre className="mt-2 max-h-44 overflow-auto whitespace-pre-wrap text-[10px] text-muted-foreground">{JSON.stringify(issue.details, null, 2)}</pre>
                         </details>
                       )}
                     </div>
                     {variant && (
+                      migrationEntityType !== 'buy_ready_strap_product' || canResolveBuyReadyReview
+                    ) && (
                       <Button variant="outline" size="sm" onClick={() => openEditor({ mode: 'review', variantId: variant.id })}>
                         Revisar variante
+                      </Button>
+                    )}
+                    {canCreateBuyReadyVariant && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => openEditor({
+                          mode: 'create',
+                          origin: 'hub',
+                          identityBasis: 'finished_product_group',
+                          baseGroupId: requiredIdentityGroupId,
+                          finishedProductId: requiredFinishedProductId,
+                          buyReadyReviewId,
+                        })}
+                      >
+                        Cadastrar tira comprada
                       </Button>
                     )}
                     {issue.issue_code === 'legacy_technical_line_review_required'

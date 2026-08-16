@@ -79,10 +79,12 @@ import { bomMaterialCostPerPair } from '@/lib/materialConsumption';
 import { getShoeSizeMappings } from '@/utils/shoeUtils';
 import {
   applyCanonicalTechnicalStrapMeasure,
+  applyTechnicalStrapIdentity,
   ensureTechnicalStrapLineIds,
   hasCanonicalTechnicalStrapIdentity,
   newTechnicalStrapLineId,
 } from '@/lib/technicalStrapLines';
+import { strapIdentityBasis } from '@/lib/strapIdentity';
 
 import { useShoeCategories } from '@/hooks/useShoeCategories';
 import { SHOE_CATEGORIES } from '@/lib/shoeCategories';
@@ -1362,6 +1364,16 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
     f.strap_colors = ensureTechnicalStrapLineIds(f.strap_colors);
     return f;
   });
+  const activeStrapIdentityGroups = useMemo(() => {
+    const selectedIds = new Set((form.strap_colors || [])
+      .map((line) => line.identity_group_id)
+      .filter(Boolean));
+    return (strapCatalog?.groups || [])
+      .filter((group) => selectedIds.has(group.id) || (strapCatalog?.products || []).some((product) => (
+        product.group_id === group.id && product.active !== false && product.unit === 'm'
+      )))
+      .sort((left, right) => left.name.localeCompare(right.name, 'pt-BR'));
+  }, [form.strap_colors, strapCatalog]);
   const [dirty, setDirty] = useState(false);
 
   // Quando o sheet prop muda (após re-fetch pós-save), sincroniza form pra
@@ -1822,7 +1834,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
           !hasCanonicalTechnicalStrapIdentity(line, strapCatalog.measures)
         ));
         if (invalidLines.length > 0) {
-          toast.error(`${invalidLines.length} tira(s) sem família e medida canônicas. Preencha os campos destacados antes de salvar.`);
+          toast.error(`${invalidLines.length} tira(s) sem família, medida ou base de identidade canônicas. Preencha os campos destacados antes de salvar.`);
           setAbaAtiva('range-aviamento');
           return;
         }
@@ -3271,7 +3283,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Shield className="h-3.5 w-3.5 text-blue-600" />
-                    <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Palmilha</span>
+                    <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Palmilha · placa/EVA</span>
                   </div>
                   {form.sole_group_id && (
                     <Button
@@ -3289,7 +3301,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                   )}
                 </div>
                 <div className="space-y-3">
-                  <GroupMaterialSelect label="Material" value={form.insole_material} onChange={v => { updateField('insole_material', v); autoFillConsumption(v, 'insole_material'); }} />
+                  <GroupMaterialSelect label="Placa / EVA" value={form.insole_material} onChange={v => { updateField('insole_material', v); autoFillConsumption(v, 'insole_material'); }} />
                   {/* Tipo de Placa removido — vem do cadastro do Solado (insole_plate_product
                       duplicava o que já tá em Solados → Cadastro). */}
 
@@ -3604,7 +3616,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
             {form.has_straps && (
               <div className="space-y-3">
                 <p className="text-xs text-muted-foreground">
-                  Defina quantas tiras este modelo possui, a <strong>família e medida canônicas</strong> de cada uma
+                  Defina quantas tiras este modelo possui, a <strong>família, medida e base de identidade</strong> de cada uma
                   e o consumo por numeração <strong>por pé</strong> (em cm).
                   O sistema multiplica por <strong>2</strong> (par = 2 pés) ao calcular o consumo.
                   As <strong>cores</strong> de cada tira são escolhidas no lançamento do Pedido
@@ -3676,6 +3688,62 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                           >
                             <Trash2 className="h-3.5 w-3.5" />
                           </Button>
+                        )}
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="space-y-1.5">
+                          <Label className="text-xs font-semibold">
+                            Base da identidade <span className="text-destructive">*</span>
+                          </Label>
+                          <Select
+                            value={strapIdentityBasis(strap)}
+                            onValueChange={(value) => {
+                              const updated = [...(form.strap_colors || [])];
+                              updated[idx] = applyTechnicalStrapIdentity(
+                                updated[idx],
+                                value as 'reference_base' | 'finished_product_group',
+                                null,
+                              );
+                              updateField('strap_colors', updated);
+                            }}
+                          >
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="reference_base">Segue a napa da referência</SelectItem>
+                              <SelectItem value="finished_product_group">Grupo próprio · comprada pronta</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        {strapIdentityBasis(strap) === 'finished_product_group' && (
+                          <div className="space-y-1.5">
+                            <Label className="text-xs font-semibold">
+                              Grupo do produto acabado <span className="text-destructive">*</span>
+                            </Label>
+                            <Select
+                              value={strap.identity_group_id || ''}
+                              onValueChange={(groupId) => {
+                                const updated = [...(form.strap_colors || [])];
+                                updated[idx] = applyTechnicalStrapIdentity(
+                                  updated[idx],
+                                  'finished_product_group',
+                                  groupId,
+                                );
+                                updateField('strap_colors', updated);
+                              }}
+                            >
+                              <SelectTrigger className={!strap.identity_group_id ? 'border-destructive focus:ring-destructive' : ''}>
+                                <SelectValue placeholder="Selecione o grupo acabado" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {activeStrapIdentityGroups.map((group) => (
+                                  <SelectItem key={group.id} value={group.id}>{group.name}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <p className="text-xs text-muted-foreground">
+                              Origem fixa no PV: <strong>Comprar pronta</strong>.
+                            </p>
+                          </div>
                         )}
                       </div>
                       <div className="space-y-1.5">
@@ -3807,6 +3875,10 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                         measure_id: last?.measure_id,
                         group_id: last?.group_id,
                         group_name: last?.group_name,
+                        identity_basis: strapIdentityBasis(last),
+                        identity_group_id: strapIdentityBasis(last) === 'finished_product_group'
+                          ? last?.identity_group_id || null
+                          : null,
                         consumption: last?.consumption,
                         consumption_per_size: { ...(last?.consumption_per_size || {}) },
                       },

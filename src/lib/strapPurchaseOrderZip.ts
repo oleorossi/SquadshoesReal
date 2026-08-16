@@ -160,7 +160,7 @@ export async function renderStrapPurchaseOrderPdf(order: StrapPurchaseOrderPdfDa
   doc.setCreationDate(Number.isNaN(createdAt.getTime()) ? new Date('2000-01-01T00:00:00Z') : createdAt);
   doc.setProperties({
     title: `Ordem de compra ${order.orderNumber}`,
-    subject: 'Compra especializada de tiras artesanais',
+    subject: 'Compra especializada de tiras',
     author: 'Squad Shoes',
     creator: 'Squad Shoes',
   });

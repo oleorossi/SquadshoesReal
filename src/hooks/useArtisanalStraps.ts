@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import type { LegacyStrapProductAllocationInput } from '@/lib/legacyStrapMigration';
+import type { StrapIdentityBasis } from '@/lib/strapIdentity';
 
 interface UntypedQueryResult {
   data: unknown;
@@ -30,6 +31,7 @@ export type ArtisanalStrapRecipeStatus =
   | 'suspended'
   | 'archived';
 export type ArtisanalStrapSourceMode = 'internal' | 'buy_ready';
+export type ArtisanalStrapIdentityBasis = StrapIdentityBasis;
 
 export interface ArtisanalStrapType {
   id: string;
@@ -84,6 +86,8 @@ export interface ArtisanalStrapVariant {
   id: string;
   measure_id: string;
   base_group_id: string;
+  identity_basis: ArtisanalStrapIdentityBasis;
+  internal_production_enabled: boolean;
   color_id: string;
   finished_product_id: string;
   min_stock_m: number;
@@ -139,12 +143,14 @@ export interface ArtisanalStrapCatalogProduct {
   unit?: string | null;
   unit_price?: number | null;
   supplier_id?: string | null;
+  supplier_color_code?: string | null;
   purchase_unit?: string | null;
   conversion_rate?: number | null;
   purchase_price?: number | null;
   min_order_quantity?: number | null;
   purchase_multiple?: number | null;
   material_preparation_days?: number | null;
+  is_artisanal?: boolean | null;
   active?: boolean;
 }
 
@@ -193,6 +199,10 @@ export interface SaveArtisanalStrapBundlePayload {
   variant: {
     id?: string;
     base_group_id: string;
+    identity_basis: ArtisanalStrapIdentityBasis;
+    /** Alias explícito exigido pelo writer buy-ready; deve ser igual a base_group_id. */
+    identity_group_id?: string | null;
+    internal_production_enabled: boolean;
     color_id: string;
     finished_product_id?: string;
     min_stock_m: number;
@@ -207,6 +217,7 @@ export interface SaveArtisanalStrapBundlePayload {
     sku?: string;
     category?: string;
     supplier_id?: string | null;
+    supplier_color_code?: string | null;
     purchase_unit?: string;
     conversion_rate?: number;
     purchase_price?: number;
@@ -837,6 +848,20 @@ function asArray<T>(value: unknown): T[] {
   return Array.isArray(value) ? (value as T[]) : [];
 }
 
+export function normalizeArtisanalStrapVariant(
+  variant: Partial<ArtisanalStrapVariant>,
+): ArtisanalStrapVariant {
+  return {
+    ...variant,
+    identity_basis: variant.identity_basis === 'finished_product_group'
+      ? 'finished_product_group'
+      : 'reference_base',
+    // Catálogo legado não declarava a capacidade. Preservar `true` mantém o
+    // comportamento anterior até a migration preencher o valor explícito.
+    internal_production_enabled: variant.internal_production_enabled !== false,
+  } as ArtisanalStrapVariant;
+}
+
 function normalizeCatalog(value: unknown): ArtisanalStrapCatalog {
   const raw = (value && typeof value === 'object' ? value : {}) as Record<string, unknown>;
   const capabilities = raw.capabilities && typeof raw.capabilities === 'object'
@@ -849,7 +874,8 @@ function normalizeCatalog(value: unknown): ArtisanalStrapCatalog {
     aliases: asArray<CanonicalStrapColorAlias>(raw.aliases),
     width_profiles: asArray<BaseMaterialWidthProfile>(raw.width_profiles),
     official_products: asArray<BaseMaterialOfficialProduct>(raw.official_products),
-    variants: asArray<ArtisanalStrapVariant>(raw.variants),
+    variants: asArray<Partial<ArtisanalStrapVariant>>(raw.variants)
+      .map(normalizeArtisanalStrapVariant),
     recipes: asArray<ArtisanalStrapRecipe>(raw.recipes),
     products: asArray<ArtisanalStrapCatalogProduct>(raw.products),
     groups: asArray<ArtisanalStrapCatalogGroup>(raw.groups),
@@ -2147,14 +2173,14 @@ export function useSaveArtisanalStrapBundle() {
     },
     onSuccess: () => {
       invalidateArtisanalStraps(queryClient);
-      toast.success('Tira artesanal salva com todos os vínculos.');
+      toast.success('Tira salva com todos os vínculos.');
     },
     onError: (error: unknown) => {
       if (error && typeof error === 'object') {
         (error as Record<string, unknown>)._handled = true;
       }
       const message = error instanceof Error ? error.message : null;
-      toast.error(message || 'Não foi possível salvar a tira artesanal.');
+      toast.error(message || 'Não foi possível salvar a tira.');
     },
   });
 }

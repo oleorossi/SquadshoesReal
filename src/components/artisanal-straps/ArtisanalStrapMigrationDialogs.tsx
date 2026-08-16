@@ -76,6 +76,11 @@ export function ArtisanalStrapMigrationResolutionDialog({
     legacyVariantId && candidateVariantId && legacyVariantId !== candidateVariantId,
   );
   const variant = catalog.variants.find((item) => item.id === variantId);
+  const purchasedReady = variant?.identity_basis === 'finished_product_group'
+    || variant?.internal_production_enabled === false;
+  useEffect(() => {
+    if (purchasedReady) setFloorMode('buy_ready');
+  }, [purchasedReady, variantId]);
   const measure = catalog.measures.find((item) => item.id === variant?.measure_id);
   const type = catalog.types.find((item) => item.id === measure?.strap_type_id);
   const base = catalog.groups.find((item) => item.id === variant?.base_group_id);
@@ -120,7 +125,7 @@ export function ArtisanalStrapMigrationResolutionDialog({
             {(variantIdentityConflict || !variant) && (
               <Alert variant="destructive"><Warning className="h-4 w-4" /><AlertTitle>Identidade exata indisponível</AlertTitle><AlertDescription>{variantIdentityConflict ? 'O UUID legado diverge do candidato retornado. Recarregue o diagnóstico; nenhuma resolução será enviada.' : 'A variante indicada pela revisão não existe no catálogo carregado. Recarregue antes de decidir.'}</AlertDescription></Alert>
             )}
-            <div className="space-y-1.5"><Label>Origem do piso *</Label><Select value={floorMode} onValueChange={(value) => setFloorMode(value as ArtisanalStrapSourceMode)}><SelectTrigger><SelectValue placeholder="Confirme explicitamente" /></SelectTrigger><SelectContent><SelectItem value="internal">Produzir com napa própria</SelectItem><SelectItem value="buy_ready">Comprar tira pronta</SelectItem></SelectContent></Select></div>
+            <div className="space-y-1.5"><Label>Origem do piso *</Label><Select value={floorMode} onValueChange={(value) => setFloorMode(value as ArtisanalStrapSourceMode)} disabled={purchasedReady}><SelectTrigger><SelectValue placeholder="Confirme explicitamente" /></SelectTrigger><SelectContent>{!purchasedReady && <SelectItem value="internal">Produzir com napa própria</SelectItem>}<SelectItem value="buy_ready">Comprada pronta</SelectItem></SelectContent></Select>{purchasedReady && <p className="text-xs text-muted-foreground">Origem fixa pela identidade do produto acabado.</p>}</div>
             {candidateText && <pre className="max-h-36 overflow-auto rounded-md border bg-muted/30 p-2 text-[10px] text-muted-foreground">{candidateText}</pre>}
           </div>
         )}

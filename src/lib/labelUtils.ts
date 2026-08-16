@@ -4,8 +4,10 @@ import { supabase } from "@/integrations/supabase/client";
 // MATERIAL impresso nas etiquetas — cascata CANÔNICA (spec variacao-material-pv)
 //
 // Fonte ÚNICA pra etiqueta térmica, rótulo caixa externa e etiqueta individual:
-//   1. Variação do PV (sale_order_items.material_variant_id) → material_name
-//      da reference_material_variants (ex.: "NAPA SOFT").
+//   1. Snapshot comercial congelado no item do PV → material_name usado na
+//      confirmação, sem depender do cadastro vivo da variante.
+//   1a. Fallback legado sem snapshot: material_variant_id → material_name da
+//      reference_material_variants (ex.: "NAPA SOFT").
 //   1b. Item SEM variante gravada, mas a referência TEM variantes ativas →
 //      infere a variante pela COR do item: se exatamente UMA variante tem
 //      grupo de material (cabedal/forro/palmilha) que cobre a cor
@@ -35,12 +37,36 @@ export type MaterialLabelInput = {
   referenceId: string;
   /** Variação de material do item do PV (quando o order/item tem). */
   materialVariantId?: string | null;
+  /** Snapshot congelado no sale_order_item. Quando presente, vence o cadastro
+   * vivo da variante, inclusive se ela foi renomeada ou inativada depois. */
+  materialVariantCommercialSnapshot?: unknown;
   /** Cor do item — decide o pick-one da forração em fichas de tiras. */
   color?: string | null;
 };
 
+export type MaterialVariantCommercialSnapshot = {
+  material_variant_id?: string | null;
+  material_name?: string | null;
+  sku?: string | null;
+  gtin?: string | null;
+  ncm?: string | null;
+  description?: string | null;
+  color?: string | null;
+  unit_price?: number | null;
+};
+
+export function materialNameFromCommercialSnapshot(snapshot: unknown): string {
+  if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) return '';
+  return String((snapshot as MaterialVariantCommercialSnapshot).material_name || '').trim();
+}
+
 export const materialLabelKey = (i: MaterialLabelInput) =>
-  `${i.referenceId}|${i.materialVariantId || ''}|${(i.color || '').trim().toUpperCase()}`;
+  JSON.stringify([
+    i.referenceId,
+    i.materialVariantId || '',
+    (i.color || '').trim().toUpperCase(),
+    materialNameFromCommercialSnapshot(i.materialVariantCommercialSnapshot),
+  ]);
 
 /** Resolve N combos em poucas queries (1× variantes + 1× fichas + coberturas
  *  de cor deduplicadas). Retorna Map keyed por materialLabelKey. */
@@ -54,9 +80,19 @@ export async function resolveMaterialLabels(
   }
   if (combos.size === 0) return out;
 
-  // 1) Variação do PV — vence tudo.
+  // 1) Snapshot comercial do item — vence tudo e torna etiqueta histórica
+  // independente do cadastro vivo da variante.
+  const pendingLiveVariant: MaterialLabelInput[] = [];
+  for (const [key, c] of combos) {
+    const snapshotName = materialNameFromCommercialSnapshot(c.materialVariantCommercialSnapshot);
+    if (snapshotName) out.set(key, snapshotName);
+    else pendingLiveVariant.push(c);
+  }
+  if (pendingLiveVariant.length === 0) return out;
+
+  // 1a) Fallback legado: item sem snapshot tenta a variação viva do PV.
   const variantIds = [...new Set(
-    [...combos.values()].map(c => c.materialVariantId).filter(Boolean) as string[],
+    pendingLiveVariant.map(c => c.materialVariantId).filter(Boolean) as string[],
   )];
   const variantName = new Map<string, string>();
   if (variantIds.length > 0) {
@@ -68,7 +104,8 @@ export async function resolveMaterialLabels(
   }
 
   const pending: MaterialLabelInput[] = [];
-  for (const [key, c] of combos) {
+  for (const c of pendingLiveVariant) {
+    const key = materialLabelKey(c);
     const vn = c.materialVariantId ? variantName.get(c.materialVariantId) : undefined;
     if (vn) out.set(key, vn);
     else pending.push(c);

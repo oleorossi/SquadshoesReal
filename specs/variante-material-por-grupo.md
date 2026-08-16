@@ -1,5 +1,9 @@
 # Variante de Material por Grupo (napa) — redesenho do dialog
 
+> Complemento posterior: `identidade-variantes-e-tiras-compradas.md` define a
+> unicidade do SKU, o snapshot comercial, o código de cor do fornecedor e corrige
+> a semântica viva de `insole_material_group_id` para placa/EVA.
+
 ## Goal
 Permitir que uma variante de material de uma ficha técnica aponte para **outro
 grupo de material** (ex.: outra napa) em vez de um produto de cabedal individual.

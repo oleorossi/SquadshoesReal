@@ -13,6 +13,19 @@
 //   2202: inter-estadual (NF original 6101/6102)
 // =============================================================================
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  buildClickNotasTechnicalProductName,
+  ClickNotasProductPostDefinitelyRejectedError,
+  ClickNotasProductClaimBusyError,
+  ClickNotasProductIdentityConflictError,
+  ClickNotasProductReconciliationRequiredError,
+  provisionClickNotasProductIdentity,
+  resolveClickNotasProductIdentity,
+  type ClickNotasProductBeginPostResult,
+  type ClickNotasProductClaimResult,
+  type ClickNotasProductCompletionResult,
+  type ClickNotasProductReconciliationResult,
+} from "../_shared/clickNotasProductIdentity.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": Deno.env.get("ALLOWED_ORIGIN") || "https://squadshoes-real.vercel.app",
@@ -205,11 +218,20 @@ Deno.serve(async (req) => {
     const itemIds = itens.map(i => i.sale_order_item_id);
     const { data: soItems } = await adminClient
       .from("sale_order_items")
-      .select("*, technical_sheets(id, name, code, ncm, gestaoclick_id), reference_material_variants(sku, ncm, description_override, unit_price_override)")
+      .select("*, technical_sheets(id, name, code, ncm, gestaoclick_id)")
+      .eq("sale_order_id", nfeOriginal.sale_order_id)
       .in("id", itemIds);
     if (!soItems || soItems.length !== itens.length) {
       return new Response(JSON.stringify({ error: "Alguns itens informados não pertencem ao pedido" }), { status: 400, headers: corsHeaders });
     }
+
+    // O payload persistido da NF original é a fonte mais forte para recuperar
+    // o produto_id externo realmente usado naquela emissão. Para variantes, a
+    // identidade é o par descrição+SKU do snapshot — nunca o cache compartilhado
+    // da ficha técnica.
+    const originalNfeProducts = Array.isArray(nfeOriginal.gc_request_payload?.produtos)
+      ? nfeOriginal.gc_request_payload.produtos
+      : [];
 
     // 3) Validação de saldo por item
     const itensFinal: any[] = [];
@@ -225,19 +247,84 @@ Deno.serve(async (req) => {
           error: `Item ${item.technical_sheets?.code || item.id} — saldo de ${qtyAvail} pares; tentou devolver ${qtyToReturn}.`,
         }), { status: 400, headers: corsHeaders });
       }
-      const variant = item.reference_material_variants;
-      const unitPrice = Number(variant?.unit_price_override ?? item.unit_price ?? 0);
+      const rawSnapshot = item.material_variant_commercial_snapshot;
+      const variant = rawSnapshot && typeof rawSnapshot === 'object' && !Array.isArray(rawSnapshot)
+        ? rawSnapshot
+        : null;
+      const hasMaterialVariant = !!item.material_variant_id;
+      if (hasMaterialVariant && (
+        !variant
+        || String(variant.material_variant_id || '') !== String(item.material_variant_id)
+        || !String(variant.description || '').trim()
+        || !String(variant.sku || '').trim()
+      )) {
+        return new Response(JSON.stringify({
+          error: `Item ${item.technical_sheets?.code || item.id} [item ${item.id}] sem snapshot comercial válido. Este é um bloqueio de integridade: acione a administração para diagnosticar o item no banco; a devolução não consultará o catálogo vivo nem inventará identidade histórica.`,
+        }), { status: 400, headers: corsHeaders });
+      }
+      if (hasMaterialVariant && variant?.provenance?.historical_truth === 'unknown') {
+        return new Response(JSON.stringify({
+          error: `Item ${item.technical_sheets?.code || item.id} [item ${item.id}] tem identidade comercial legada ainda não comprovada. Comercial/Gerência deve validar SKU, NCM, descrição, cor e preço contra a NF/pedido original e chamar a RPC administrativa review_legacy_material_variant_commercial_snapshot com p_attested_identity: primeiro p_apply=false (preview), depois p_apply=true usando o mesmo p_expected_snapshot. O catálogo atual não será tratado como verdade histórica.`,
+        }), { status: 409, headers: corsHeaders });
+      }
+      // Devolução usa exatamente o preço contratado do item original. Alterar
+      // o override vivo da variante nunca reprecifica a operação histórica.
+      const unitPrice = Number(item.unit_price ?? 0);
+      const itemColor = String((hasMaterialVariant ? variant?.color : item.color) || item.color || '').trim();
+      const productName = String((
+        hasMaterialVariant
+          ? variant?.description
+          : (itemColor ? `${item.technical_sheets?.name} - ${itemColor}` : item.technical_sheets?.name)
+      ) || '').trim().slice(0, 120);
+      const productCode = String(
+        (hasMaterialVariant ? variant?.sku : item.technical_sheets?.code) || ''
+      ).trim();
+      let technicalProductName = productName;
+      if (hasMaterialVariant) {
+        try {
+          technicalProductName = buildClickNotasTechnicalProductName(productName, productCode);
+        } catch (identityError) {
+          return new Response(JSON.stringify({
+            error: `Identidade ClickNotas inválida para "${productName}" / SKU "${productCode || '<vazio>'}": ${identityError instanceof Error ? identityError.message : String(identityError)}`,
+          }), { status: 400, headers: corsHeaders });
+        }
+      }
+      const normalizedProductName = productName.toUpperCase();
+      const normalizedProductCode = productCode.toUpperCase();
+      const originalIdentityMatches = originalNfeProducts.filter((product: any) => {
+        const candidateName = String(product.nome_produto || product.nome || '')
+          .trim().toUpperCase();
+        const candidateCode = String(product.codigo_produto || product.codigo || '')
+          .trim().toUpperCase();
+        return candidateName === normalizedProductName
+          && (!normalizedProductCode || candidateCode === normalizedProductCode);
+      });
+      const originalCodeMatches = normalizedProductCode
+        ? originalNfeProducts.filter((product: any) =>
+            String(product.codigo_produto || product.codigo || '').trim().toUpperCase()
+              === normalizedProductCode
+          )
+        : [];
+      const originalProduct = originalIdentityMatches[0]
+        || (originalCodeMatches.length === 1 ? originalCodeMatches[0] : null);
+      const originalGcProductId = originalProduct?.produto_id
+        ? String(originalProduct.produto_id)
+        : null;
       itensFinal.push({
         sale_order_item_id: item.id,
         reference_id: item.reference_id,
-        color: item.color,
+        material_variant_id: item.material_variant_id || null,
+        color: itemColor,
         ts_id: item.technical_sheets?.id,
         ts_code: item.technical_sheets?.code,
         ts_name: item.technical_sheets?.name,
-        ts_ncm: variant?.ncm || item.technical_sheets?.ncm,
-        ts_gc_id: item.technical_sheets?.gestaoclick_id,
-        variant_sku: variant?.sku,
-        variant_desc: variant?.description_override,
+        ts_ncm: hasMaterialVariant ? variant?.ncm : item.technical_sheets?.ncm,
+        gc_product_id: hasMaterialVariant
+          ? originalGcProductId
+          : (originalGcProductId || item.technical_sheets?.gestaoclick_id),
+        product_code: productCode,
+        product_name: productName,
+        technical_product_name: technicalProductName,
         qty: qtyToReturn,
         valor_unit: unitPrice,
         valor_total: Number((qtyToReturn * unitPrice).toFixed(2)),
@@ -270,28 +357,138 @@ Deno.serve(async (req) => {
       }), { status: 400, headers: corsHeaders });
     }
 
-    // 6) Sync produtos no ClickNotas (caso falte)
+    // 6) Resolve produto ClickNotas pela identidade congelada. O nome técnico
+    // incorpora o SKU porque o ClickNotas ignora `codigo` no cadastro e gera
+    // um código interno. A linha fiscal mantém product_name sem esse sufixo.
+    // Uma variante nunca grava technical_sheets.gestaoclick_id: esse cache é
+    // compartilhado pela ficha e colidiria SOFT/MADRI ou cores diferentes.
     for (const it of itensFinal) {
-      if (it.ts_gc_id) continue;
-      const desc = (it.variant_desc || (it.color ? `${it.ts_name} - ${it.color}` : it.ts_name)).trim();
-      const r = await gcFetch("/produtos", {
-        method: "POST",
-        body: JSON.stringify({
-          nome: desc.slice(0, 120),
-          codigo: it.variant_sku || it.ts_code || `ITEM-${it.ts_id}`,
-          valor_venda: it.valor_unit.toFixed(2),
-          unidade: "PAR",
-          ncm: it.ts_ncm,
-          tipo: "P",
-        }),
-      });
-      if (!r.ok || r.json?.status === "error") {
+      if (it.gc_product_id) continue;
+      const identityKind = it.material_variant_id ? 'material_variant_sku' : 'technical_name';
+      const identityValue = it.material_variant_id ? it.product_code : it.technical_product_name;
+      const ownerToken = crypto.randomUUID();
+      try {
+        const provisioned = await provisionClickNotasProductIdentity({
+          claim: async () => {
+            const { data, error } = await adminClient.rpc('claim_clicknotas_product_identity', {
+              p_identity_kind: identityKind,
+              p_identity_value: identityValue,
+              p_technical_name: it.technical_product_name,
+              p_owner_token: ownerToken,
+              p_correlation_id: `emit-nfe-devolucao:${nfeOriginal.id}:${it.sale_order_item_id}`,
+              p_lease_seconds: 120,
+            });
+            if (error) throw new Error(`Falha ao adquirir claim ClickNotas: ${error.message}`);
+            return data as ClickNotasProductClaimResult;
+          },
+          lookup: async (technicalName) => {
+            const lookup = await gcFetch(`/produtos?nome=${encodeURIComponent(technicalName)}`);
+            if (!lookup.ok || lookup.json?.status === 'error') {
+              throw new Error(
+                `Falha ao consultar identidade ClickNotas "${technicalName}": ${lookup.json?.data?.mensagem || lookup.json?.message || lookup.json?.mensagem || JSON.stringify(lookup.json)}`,
+              );
+            }
+            const foundList = Array.isArray(lookup.json?.data) ? lookup.json.data : [];
+            const resolution = resolveClickNotasProductIdentity(foundList, technicalName);
+            if (resolution.kind === 'match' && resolution.product.id) {
+              return { kind: 'match', providerId: String(resolution.product.id) };
+            }
+            if (resolution.kind === 'conflict' || resolution.kind === 'match') {
+              return {
+                kind: 'conflict',
+                message: `Conflito de identidade no ClickNotas para "${technicalName}"; revise cadastros duplicados ou sem ID.`,
+              };
+            }
+            return { kind: 'not_found' };
+          },
+          beginPost: async (leaseGeneration) => {
+            const { data, error } = await adminClient.rpc('begin_clicknotas_product_post', {
+              p_identity_kind: identityKind,
+              p_identity_value: identityValue,
+              p_owner_token: ownerToken,
+              p_lease_generation: leaseGeneration,
+            });
+            if (error) throw new Error(`Falha ao registrar início do POST ClickNotas: ${error.message}`);
+            return data as ClickNotasProductBeginPostResult;
+          },
+          create: async (technicalName) => {
+            const r = await gcFetch("/produtos", {
+              method: "POST",
+              body: JSON.stringify({
+                nome: technicalName,
+                codigo: it.product_code || `ITEM-${it.ts_id}`,
+                valor_venda: it.valor_unit.toFixed(2),
+                unidade: "PAR",
+                ncm: it.ts_ncm,
+                tipo: "P",
+              }),
+            });
+            if (!r.ok || r.json?.status === "error") {
+              if (r.status === 429) {
+                throw new ClickNotasProductPostDefinitelyRejectedError(
+                  `ClickNotas recusou por limite de requisições sem processar o produto "${technicalName}".`,
+                );
+              }
+              throw new Error(
+                `Falha ao sincronizar produto ${it.ts_code} com ClickNotas: ${r.json?.message || JSON.stringify(r.json)}`,
+              );
+            }
+            const providerId = String(r.json?.data?.id || '').trim();
+            if (!providerId) throw new Error('ClickNotas criou produto sem retornar ID.');
+            return { providerId };
+          },
+          complete: async (leaseGeneration, providerId) => {
+            const { data, error } = await adminClient.rpc('complete_clicknotas_product_identity', {
+              p_identity_kind: identityKind,
+              p_identity_value: identityValue,
+              p_owner_token: ownerToken,
+              p_lease_generation: leaseGeneration,
+              p_provider_id: providerId,
+            });
+            if (error) throw new Error(`Falha ao concluir claim ClickNotas: ${error.message}`);
+            return data as ClickNotasProductCompletionResult;
+          },
+          recordOutcome: async (leaseGeneration, outcome, errorMessage, retrySeconds) => {
+            const { error } = await adminClient.rpc('record_clicknotas_product_identity_outcome', {
+              p_identity_kind: identityKind,
+              p_identity_value: identityValue,
+              p_owner_token: ownerToken,
+              p_lease_generation: leaseGeneration,
+              p_outcome: outcome,
+              p_error: errorMessage,
+              p_retry_seconds: retrySeconds,
+            });
+            if (error) throw error;
+          },
+          reconcile: async (observation, providerId, errorMessage) => {
+            const { data, error } = await adminClient.rpc('reconcile_clicknotas_product_identity', {
+              p_identity_kind: identityKind,
+              p_identity_value: identityValue,
+              p_observation: observation,
+              p_provider_id: providerId,
+              p_error: errorMessage,
+              p_correlation_id: `emit-nfe-devolucao:${nfeOriginal.id}:${it.sale_order_item_id}`,
+            });
+            if (error) throw new Error(`Falha ao reconciliar identidade ClickNotas: ${error.message}`);
+            return data as ClickNotasProductReconciliationResult;
+          },
+        });
+        it.gc_product_id = provisioned.providerId;
+      } catch (identityError) {
+        const status = identityError instanceof ClickNotasProductClaimBusyError
+          || identityError instanceof ClickNotasProductIdentityConflictError
+          || identityError instanceof ClickNotasProductReconciliationRequiredError
+          ? 409
+          : 502;
         return new Response(JSON.stringify({
-          error: `Falha ao sincronizar produto ${it.ts_code} com ClickNotas: ${r.json?.message || JSON.stringify(r.json)}`,
-        }), { status: 502, headers: corsHeaders });
+          error: identityError instanceof Error ? identityError.message : String(identityError),
+        }), { status, headers: corsHeaders });
       }
-      it.ts_gc_id = String(r.json?.data?.id);
-      if (it.ts_id) await adminClient.from("technical_sheets").update({ gestaoclick_id: it.ts_gc_id }).eq("id", it.ts_id);
+      if (!it.material_variant_id && it.ts_id) {
+        await adminClient.from("technical_sheets")
+          .update({ gestaoclick_id: it.gc_product_id })
+          .eq("id", it.ts_id);
+      }
     }
 
     // 7) Payload ClickNotas — NF de entrada por devolução
@@ -382,7 +579,9 @@ Deno.serve(async (req) => {
       chave_referenciada: nfeOriginal.chave_acesso,
       informacoes_complementares: `Devolução referente à NF ${nfeOriginal.numero || nfeOriginal.chave_acesso}. Motivo: ${motivo.trim()}`,
       produtos: itensFinal.map(it => ({
-        produto_id: it.ts_gc_id,
+        produto_id: it.gc_product_id,
+        ...(it.product_code ? { codigo_produto: it.product_code } : {}),
+        nome_produto: it.product_name,
         quantidade: it.qty.toFixed(2),
         // valor_venda é o preço UNITÁRIO — o ClickNotas multiplica por
         // quantidade internamente. Mandar o total da linha aqui fazia o

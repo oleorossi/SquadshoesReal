@@ -1075,7 +1075,7 @@ export default function SaleOrderForm() {
       void checkMarginAfterSave(pvId);
       if (!pvId) { navigate('/sales'); return; }
       if (validItems.some((item) => Array.isArray(item.strap_colors) && item.strap_colors.length > 0)) {
-        toast.info('Demanda de tiras enviada ao processamento canônico. Acompanhe em Engenharia → Tiras artesanais → Demandas.');
+        toast.info('Demanda de tiras enviada ao processamento canônico. Acompanhe em Engenharia → Tiras → Demandas.');
       }
       if (isOverride) {
         setOutsourceCosturaPvId(pvId);

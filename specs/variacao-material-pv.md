@@ -1,5 +1,8 @@
 # Variação de Material no Pedido de Venda (PV) — material antes da cor, ponta a ponta
 
+> Complemento posterior: `identidade-variantes-e-tiras-compradas.md` define a
+> unicidade do SKU, o snapshot comercial e o código de cor do fornecedor.
+
 > Preview visual aprovado das 4 telas: https://claude.ai/code/artifact/b41a90c5-4dd1-4f42-847b-d0c830dda5cb
 > Complementa (não substitui) o spec `variante-material-por-grupo.md` — o motor
 > variant-aware (consumo/gate/débito, commit `0404ea5`) JÁ ESTÁ EM MAIN. Este

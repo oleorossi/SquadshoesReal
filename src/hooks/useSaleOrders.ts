@@ -528,6 +528,8 @@ export type SaleOrderItemFormData = {
     color: string;
     strap_type_id?: string | null;
     measure_id?: string | null;
+    identity_basis?: 'reference_base' | 'finished_product_group' | null;
+    identity_group_id?: string | null;
     color_id?: string | null;
     group_id?: string | null;
     group_name?: string | null;

@@ -1104,7 +1104,7 @@ export function ArtisanalStrapPurchaseOrdersPanel({
   if (groups.length === 0) return null;
   return (
     <Panel
-      eyebrow="COMPRA PRONTA"
+      eyebrow="COMPRADA PRONTA"
       title={title}
       subtitle={subtitle}
       actions={<div className="flex flex-wrap gap-2">

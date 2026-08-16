@@ -1115,7 +1115,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
 
   const handleSaveOrder = () => {
     if (isCanonicalStrapServiceOrder(editingOrder as ServiceOrder)) {
-      toast.error('Esta OS pertence ao fluxo canônico de tiras. Faça a operação no Hub de Tiras Artesanais.');
+      toast.error('Esta OS pertence ao fluxo canônico de tiras. Faça a operação no Hub de Tiras.');
       navigate('/tiras-artesanais?tab=producao&origin=terceirizados');
       return;
     }

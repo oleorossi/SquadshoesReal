@@ -94,6 +94,7 @@ const emptyForm: ProductFormData = {
   safety_stock: 0, supplier_lead_time_days: 7,
   calculation_method: 'weight',
   supplier_id: null,
+  supplier_color_code: null,
   is_chemical: false,
   sole_material: null, heel_height: null,
   consumption_unit: null, is_standard_sole_item: false,
@@ -426,6 +427,8 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
         safety_stock: rest.safety_stock ?? 0,
         supplier_lead_time_days: rest.supplier_lead_time_days ?? 10,
         calculation_method: normalizeCalculationMethod(rest.calculation_method),
+        supplier_id: rest.supplier_id || null,
+        supplier_color_code: rest.supplier_color_code || null,
         is_chemical: rest.is_chemical ?? false,
         sole_material: rest.sole_material || null,
         heel_height: rest.heel_height ?? null,
@@ -690,6 +693,11 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
       return;
     }
     const baseData = { ...form };
+    baseData.supplier_color_code = baseData.supplier_color_code?.trim() || null;
+    if (baseData.supplier_color_code && !baseData.supplier_id) {
+      toast.error('Selecione o fornecedor antes de informar o código da cor.');
+      return;
+    }
     if (needsWidthForConversion(baseData) && effectiveConversionFactorStrict(baseData) == null) {
       toast.error('A conversão de metro linear para área exige largura positiva com unidade (mm, cm, dm ou m).');
       return;
@@ -835,6 +843,9 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
         const products = multiColors.map((color, idx) => ({
           ...baseData,
           color,
+          // Código do fornecedor pertence à cor física exata. Um valor único
+          // do formulário nunca é replicado numa criação de várias cores.
+          supplier_color_code: null,
           name: form.name,
           sku: multiColors.length > 1 ? `${form.sku}-${String(idx + 1).padStart(2, '0')}` : form.sku,
         }));
@@ -845,6 +856,7 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
           onSubmit({
             ...baseData,
             color,
+            supplier_color_code: null,
             // Nome compartilhado entre as cores, sempre SEM a cor — cada item se
             // distingue por `color`, não pelo nome.
             name: stripColorFromName(form.name || '', color) || form.name,
@@ -1235,7 +1247,16 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
 
             <div className="sm:col-span-2">
               <Label>Fornecedor</Label>
-              <Select value={form.supplier_id || 'none'} onValueChange={v => update('supplier_id', v === 'none' ? null : v)}>
+              <Select value={form.supplier_id || 'none'} onValueChange={v => {
+                const supplierId = v === 'none' ? null : v;
+                setForm(prev => ({
+                  ...prev,
+                  supplier_id: supplierId,
+                  // Código antigo pertence ao fornecedor anterior. O usuário
+                  // pode informar explicitamente o novo logo abaixo.
+                  supplier_color_code: null,
+                }));
+              }}>
                 <SelectTrigger className="mt-1 h-10"><SelectValue placeholder="Sem fornecedor" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">Sem fornecedor</SelectItem>
@@ -1245,6 +1266,27 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
                 </SelectContent>
               </Select>
             </div>
+
+            {!multiColorMode ? (
+              <div className="sm:col-span-2">
+                <Label htmlFor="supplier_color_code">Código da cor no fornecedor</Label>
+                <Input
+                  id="supplier_color_code"
+                  value={form.supplier_color_code || ''}
+                  onChange={e => update('supplier_color_code', e.target.value)}
+                  disabled={!form.supplier_id}
+                  className="mt-1 h-10 font-mono"
+                  placeholder={form.supplier_id ? 'Ex.: MAD-047' : 'Selecione um fornecedor primeiro'}
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Código desta cor no catálogo do fornecedor. Não substitui a cor interna nem o SKU.
+                </p>
+              </div>
+            ) : (
+              <p className="sm:col-span-2 text-xs text-muted-foreground">
+                Na criação de várias cores, o código do fornecedor é cadastrado individualmente depois de criar os itens.
+              </p>
+            )}
 
             {/* "Mover para Grupo" foi movido pra aba "Mover de Família" (edição). */}
 

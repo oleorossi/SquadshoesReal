@@ -1,5 +1,12 @@
+import {
+  normalizeStrapIdentity,
+  strapIdentityBasis,
+  type StrapIdentityBasis,
+  type StrapIdentityLike,
+} from '@/lib/strapIdentity';
+
 /** Identidade imutável de uma linha de tira da ficha técnica. */
-export interface TechnicalStrapLineLike {
+export interface TechnicalStrapLineLike extends StrapIdentityLike {
   id?: string | null;
   technical_strap_line_id?: string | null;
   strap_type_id?: string | null;
@@ -31,7 +38,12 @@ export function newTechnicalStrapLineId(): string {
 export function ensureTechnicalStrapLineIds<T extends object & TechnicalStrapLineLike>(
   lines: T[] | null | undefined,
   forceNew = false,
-): Array<T & { id: string; technical_strap_line_id: string }> {
+): Array<T & {
+  id: string;
+  technical_strap_line_id: string;
+  identity_basis: StrapIdentityBasis;
+  identity_group_id: string | null;
+}> {
   return (lines || []).map((line) => {
     const existing = !forceNew
       ? (isUuid(line.technical_strap_line_id)
@@ -41,11 +53,11 @@ export function ensureTechnicalStrapLineIds<T extends object & TechnicalStrapLin
           : null)
       : null;
     const technicalStrapLineId = existing || newTechnicalStrapLineId();
-    return {
+    return normalizeStrapIdentity({
       ...line,
       id: technicalStrapLineId,
       technical_strap_line_id: technicalStrapLineId,
-    };
+    });
   });
 }
 
@@ -71,6 +83,18 @@ export function applyCanonicalTechnicalStrapMeasure<T extends TechnicalStrapLine
   };
 }
 
+export function applyTechnicalStrapIdentity<T extends TechnicalStrapLineLike>(
+  line: T,
+  identityBasis: StrapIdentityBasis,
+  identityGroupId?: string | null,
+): T & { identity_basis: StrapIdentityBasis; identity_group_id: string | null } {
+  return {
+    ...line,
+    identity_basis: identityBasis,
+    identity_group_id: identityBasis === 'finished_product_group' ? identityGroupId || null : null,
+  };
+}
+
 export function hasCanonicalTechnicalStrapIdentity(
   line: TechnicalStrapLineLike,
   measures: TechnicalStrapMeasureLike[],
@@ -79,5 +103,6 @@ export function hasCanonicalTechnicalStrapIdentity(
     return false;
   }
   const measure = measures.find((entry) => entry.id === line.measure_id && entry.active !== false);
-  return Boolean(measure && measure.strap_type_id === line.strap_type_id);
+  if (!measure || measure.strap_type_id !== line.strap_type_id) return false;
+  return strapIdentityBasis(line) !== 'finished_product_group' || isUuid(line.identity_group_id);
 }

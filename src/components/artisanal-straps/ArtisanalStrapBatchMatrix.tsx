@@ -245,6 +245,8 @@ export function ArtisanalStrapBatchMatrix({ catalog }: { catalog: ArtisanalStrap
             measure: { id: combo.measureId },
             variant: {
               base_group_id: combo.baseGroupId,
+              identity_basis: 'reference_base',
+              internal_production_enabled: true,
               color_id: combo.colorId,
               min_stock_m: config.minStockM,
               min_stock_replenishment_mode: config.floorMode,

@@ -13,7 +13,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { PencilSimple as Pencil, Warning as AlertTriangle, FolderOpen, CaretDown as ChevronDown, ArrowsDownUp as ArrowUpDown, ArrowUp, ArrowDown, Stack as Layers, Package as PackageMinus, GridFour as Grid3X3, Gear as Settings2, Package, Image as ImageIcon, X, Flask as FlaskConical, WarningCircle, Plus, DotsThree } from '@phosphor-icons/react';
+import { PencilSimple as Pencil, Warning as AlertTriangle, FolderOpen, CaretDown as ChevronDown, ArrowsDownUp as ArrowUpDown, ArrowUp, ArrowDown, Stack as Layers, Package as PackageMinus, GridFour as Grid3X3, Gear as Settings2, Package, Image as ImageIcon, X, Flask as FlaskConical, WarningCircle, Plus, DotsThree, ShoppingBag } from '@phosphor-icons/react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { useMaterialsConfigIssuesByProduct, ISSUE_LABELS } from '@/hooks/useMaterialsConfigIssues';
@@ -34,6 +34,8 @@ import { useUpdateProduct, useDeleteProduct } from '@/hooks/useProducts';
 import { useForceDeleteProductFlow } from './ForceDeleteProductDialog';
 import { CheckCircle, XCircle, Trash, Download } from '@phosphor-icons/react';
 import { toast } from 'sonner';
+import { useArtisanalStrapCatalog } from '@/hooks/useArtisanalStraps';
+import { isNominalBuyReadyStrapIdentity } from '@/lib/strapIdentity';
 
 function ImageZoomDialog({ src, alt, open, onOpenChange }: { src: string; alt: string; open: boolean; onOpenChange: (o: boolean) => void }) {
   if (!src) return null;
@@ -313,7 +315,7 @@ function ProductHoverPreview({ product, formatCurrency, children }: {
   );
 }
 
-function ProductRows({ products, onEdit, onDelete, onStockOut, onGrade, onArtisanal, formatCurrency, indent = false, avgConsumptionMap, selectedIds, showName = true }: {
+function ProductRows({ products, onEdit, onDelete, onStockOut, onGrade, onArtisanal, formatCurrency, indent = false, avgConsumptionMap, selectedIds, purchasedReadyProductIds, showName = true }: {
   products: Product[];
   onEdit: (product: Product) => void;
   onDelete: (id: string) => void;
@@ -324,6 +326,7 @@ function ProductRows({ products, onEdit, onDelete, onStockOut, onGrade, onArtisa
   indent?: boolean;
   avgConsumptionMap: Record<string, number>;
   selectedIds?: Set<string>;
+  purchasedReadyProductIds: ReadonlySet<string>;
   /** false em grupo homogêneo: as N linhas repetiriam o mesmo nome, então a COR
    *  vira o rótulo da linha. true em grupo heterogêneo (R1.1a). */
   showName?: boolean;
@@ -345,6 +348,7 @@ function ProductRows({ products, onEdit, onDelete, onStockOut, onGrade, onArtisa
         const status = getStockStatus(product);
         const isInactive = !product.active;
         const isSelected = selectedIds?.has(product.id);
+        const isPurchasedReadyStrap = purchasedReadyProductIds.has(product.id);
         return (
           <TableRow key={product.id} data-row-index={product.id} tabIndex={0} className={cn("group cursor-pointer hover:bg-muted/60 transition-colors focus-visible:outline-none focus-visible:bg-muted/60", isInactive && "opacity-50", isSelected && "bg-primary/10", indent && "bg-muted/20")} onClick={() => navigate(`/estoque/${product.id}`)} onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); navigate(`/estoque/${product.id}`); } }}>
             <TableCell className={cn("font-medium", dCls.cell)}>
@@ -412,7 +416,7 @@ function ProductRows({ products, onEdit, onDelete, onStockOut, onGrade, onArtisa
                      "Marcar como artesanal"). Cor própria (violeta) pra scan rápido
                      de quais materiais são feitos artesanalmente. É a MESMA flag
                      (`is_artisanal`) que o motor de consumo lê pra converter em napa. */}
-                 {(product as any).is_artisanal && (
+                 {(product as any).is_artisanal && !isPurchasedReadyStrap && (
                    <Tooltip>
                      <TooltipTrigger asChild>
                        <Badge variant="outline" className="bg-violet-500/10 text-violet-600 border-violet-500/30 dark:text-violet-300 gap-1 px-1.5 h-5">
@@ -421,6 +425,17 @@ function ProductRows({ products, onEdit, onDelete, onStockOut, onGrade, onArtisa
                        </Badge>
                      </TooltipTrigger>
                      <TooltipContent side="bottom" className="text-xs">Produzido de forma artesanal (cortado de rolo). O consumo é convertido na matéria-prima base da receita.</TooltipContent>
+                   </Tooltip>
+                 )}
+                 {isPurchasedReadyStrap && (
+                   <Tooltip>
+                     <TooltipTrigger asChild>
+                       <Badge variant="outline" className="bg-sky-500/10 text-sky-700 border-sky-500/30 dark:text-sky-300 gap-1 px-1.5 h-5">
+                         <ShoppingBag className="h-3 w-3" />
+                         <span className="text-xs font-bold">COMPRADA PRONTA</span>
+                       </Badge>
+                     </TooltipTrigger>
+                     <TooltipContent side="bottom" className="text-xs">Tira acabada comprada; não possui receita nem produção artesanal.</TooltipContent>
                    </Tooltip>
                  )}
                  {/* Badge de "config faltando" — sinaliza materiais cujo
@@ -612,7 +627,7 @@ function ProductRows({ products, onEdit, onDelete, onStockOut, onGrade, onArtisa
                     <TooltipContent>Estoque por numeração</TooltipContent>
                   </Tooltip>
                 )}
-                <Tooltip>
+                {!isPurchasedReadyStrap && <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
                       variant="ghost"
@@ -632,7 +647,7 @@ function ProductRows({ products, onEdit, onDelete, onStockOut, onGrade, onArtisa
                   <TooltipContent>
                     {(product as any).is_artisanal ? 'Configurar produção artesanal' : 'Marcar como artesanal'}
                   </TooltipContent>
-                </Tooltip>
+                </Tooltip>}
                 <Button variant="ghost" size="icon" aria-label="Editar material" className="h-8 w-8" onClick={() => onEdit(product)}>
                   <Pencil className="h-4 w-4" />
                 </Button>
@@ -686,6 +701,18 @@ type GroupRow = {
 
 export function ProductTable({ products, onEdit, onDelete, externalSort, searchTerm, allProducts, onSortChange }: ProductTableProps) {
   const { data: groups = [] } = useGroups();
+  const { data: strapCatalog } = useArtisanalStrapCatalog(false);
+  const purchasedReadyProductIds = useMemo(() => {
+    const ids = new Set(
+      (strapCatalog?.variants || [])
+      .filter((variant) => variant.identity_basis === 'finished_product_group')
+      .map((variant) => variant.finished_product_id),
+    );
+    products.forEach((product) => {
+      if (isNominalBuyReadyStrapIdentity(product.id, product.group_id)) ids.add(product.id);
+    });
+    return ids;
+  }, [strapCatalog?.variants, products]);
   const { density, isVisible, visibleCount } = useTableView();
   // Material column always shown; +1 for it.
   const colCount = visibleCount + 1;
@@ -979,6 +1006,7 @@ export function ProductTable({ products, onEdit, onDelete, externalSort, searchT
                      avgConsumptionMap={avgConsumptionMap}
                      onArtisanal={setArtisanalProducts}
                      selectedIds={selectedIds}
+                     purchasedReadyProductIds={purchasedReadyProductIds}
                    />
                 )}
               </TableBody>
@@ -1009,7 +1037,7 @@ export function ProductTable({ products, onEdit, onDelete, externalSort, searchT
                     </TableCell>
                   </TableRow>
                 ) : (
-                  <ProductRows products={sortedProducts} onEdit={handleEditIntercepted} onDelete={onDelete} onStockOut={setStockOutProduct} onGrade={setGradeProduct} onArtisanal={setArtisanalProducts} formatCurrency={formatCurrency} avgConsumptionMap={avgConsumptionMap} selectedIds={selectedIds} />
+                  <ProductRows products={sortedProducts} onEdit={handleEditIntercepted} onDelete={onDelete} onStockOut={setStockOutProduct} onGrade={setGradeProduct} onArtisanal={setArtisanalProducts} formatCurrency={formatCurrency} avgConsumptionMap={avgConsumptionMap} selectedIds={selectedIds} purchasedReadyProductIds={purchasedReadyProductIds} />
                 )}
               </TableBody>
             </Table>
@@ -1159,9 +1187,11 @@ export function ProductTable({ products, onEdit, onDelete, externalSort, searchT
                               <Settings2 className="h-4 w-4 mr-2" /> Abrir grupo de estoque
                             </DropdownMenuItem>
                           )}
-                          <DropdownMenuItem onClick={() => setArtisanalProducts(groupProds)}>
-                            <FlaskConical className="h-4 w-4 mr-2" /> Marcar as {totalProducts} como artesanais
-                          </DropdownMenuItem>
+                          {!groupProds.some((product) => purchasedReadyProductIds.has(product.id)) && (
+                            <DropdownMenuItem onClick={() => setArtisanalProducts(groupProds)}>
+                              <FlaskConical className="h-4 w-4 mr-2" /> Marcar as {totalProducts} como artesanais
+                            </DropdownMenuItem>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
@@ -1181,6 +1211,7 @@ export function ProductTable({ products, onEdit, onDelete, externalSort, searchT
                         formatCurrency={formatCurrency}
                         avgConsumptionMap={avgConsumptionMap}
                         selectedIds={selectedIds}
+                        purchasedReadyProductIds={purchasedReadyProductIds}
                         showName={stats.heterogeneo}
                       />
                     </TableBody>

@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { referencesWithMissingStrapSnapshot } from '../MobileNewOrder';
+import {
+  buildMobileSaleOrderItemsPayload,
+  MOBILE_TECHNICAL_SHEET_SELECT,
+  mobileMaterialSelectionIssues,
+  repriceMobileDraftItems,
+  referencesWithMissingStrapSnapshot,
+} from '../MobileNewOrder';
+import type { PriceLookup } from '@/lib/mobile/clientContext';
 
 describe('referencesWithMissingStrapSnapshot', () => {
   const reference = {
@@ -44,3 +51,138 @@ describe('referencesWithMissingStrapSnapshot', () => {
   });
 });
 
+describe('identidade comercial material no PV mobile', () => {
+  const references = [{
+    id: 'ref-1',
+    name: 'BT01',
+    variant_drives_upper: false,
+    variant_drives_lining: true,
+  }];
+  const materialVariants = [{
+    id: 'variant-1',
+    reference_id: 'ref-1',
+    material_name: 'Napa Soft',
+    sku: 'BT01-SOFT',
+    main_material_group_id: 'lining-group',
+    active: true,
+  }];
+  const products = [
+    { id: 'product-1', group_id: 'lining-group', color: 'PRETO', active: true },
+    { id: 'product-2', group_id: 'lining-group', color: 'BRANCO', active: false },
+  ];
+  const groups = [{ id: 'lining-group', name: 'Napa Soft' }];
+
+  it('exige material antes da cor e aceita somente cor de produto ativo do grupo efetivo', () => {
+    const base = {
+      reference_id: 'ref-1',
+      reference_name: 'BT01',
+      color: '',
+      grade: { '37': 10 },
+      unit_price: 120,
+    };
+    expect(mobileMaterialSelectionIssues([base], references, materialVariants, products, groups)[0])
+      .toContain('selecione o material antes da cor');
+    expect(mobileMaterialSelectionIssues([{
+      ...base,
+      material_variant_id: 'variant-1',
+      color: 'BRANCO',
+    }], references, materialVariants, products, groups)[0]).toContain('cor ativa');
+    expect(mobileMaterialSelectionIssues([{
+      ...base,
+      material_variant_id: 'variant-1',
+      color: 'PRETO',
+    }], references, materialVariants, products, groups)).toEqual([]);
+  });
+
+  it('persiste material_variant_id e preço congelado no mesmo payload online/offline', () => {
+    const payload = buildMobileSaleOrderItemsPayload([{
+      reference_id: 'ref-1',
+      reference_name: 'BT01',
+      color: 'PRETO',
+      grade: { '37': 10 },
+      unit_price: 137.5,
+      material_variant_id: 'variant-1',
+      material_variant_name: 'Napa Soft',
+      material_variant_sku: 'BT01-SOFT',
+    }]);
+
+    expect(payload[0]).toMatchObject({
+      reference_id: 'ref-1',
+      material_variant_id: 'variant-1',
+      color: 'PRETO',
+      quantity: 10,
+      unit_price: 137.5,
+    });
+    expect(payload[0]).not.toHaveProperty('material_variant_name');
+    expect(payload[0]).not.toHaveProperty('material_variant_sku');
+  });
+
+  it('carrega o preço-base da ficha e respeita tabela > variante > ficha', () => {
+    expect(MOBILE_TECHNICAL_SHEET_SELECT).toContain('sale_price');
+    const lookup: PriceLookup = {
+      byRefColor: new Map([['ref-1::PRETO', [
+        { minQty: 1, price: 140 },
+        { minQty: 100, price: 130 },
+      ]]]),
+      byRef: new Map(),
+    };
+    const item = {
+      reference_id: 'ref-1',
+      reference_name: 'BT01',
+      material_variant_id: 'variant-1',
+      color: 'PRETO',
+      grade: { '37': 120 },
+      unit_price: 0,
+      unit_price_source: 'missing' as const,
+    };
+    const pricedByTable = repriceMobileDraftItems(
+      [item],
+      lookup,
+      [{ ...references[0], sale_price: 160 }],
+      [{ ...materialVariants[0], unit_price_override: 150 }],
+    )[0];
+    expect(pricedByTable).toMatchObject({ unit_price: 130, unit_price_source: 'table_color' });
+
+    const pricedByVariant = repriceMobileDraftItems(
+      [{ ...item, grade: { '37': 10 } }],
+      { byRefColor: new Map(), byRef: new Map() },
+      [{ ...references[0], sale_price: 160 }],
+      [{ ...materialVariants[0], unit_price_override: 150 }],
+    )[0];
+    expect(pricedByVariant).toMatchObject({ unit_price: 150, unit_price_source: 'material_variant' });
+
+    const pricedBySheet = repriceMobileDraftItems(
+      [{ ...item, material_variant_id: null }],
+      { byRefColor: new Map(), byRef: new Map() },
+      [{ ...references[0], sale_price: 160 }],
+      materialVariants,
+    )[0];
+    expect(pricedBySheet).toMatchObject({ unit_price: 160, unit_price_source: 'technical_sheet' });
+  });
+
+  it('recalcula faixa automática pela grade sem sobrescrever preço manual', () => {
+    const lookup: PriceLookup = {
+      byRefColor: new Map(),
+      byRef: new Map([['ref-1', [
+        { minQty: 1, price: 140 },
+        { minQty: 100, price: 130 },
+      ]]]),
+    };
+    const automatic = repriceMobileDraftItems([{
+      reference_id: 'ref-1',
+      reference_name: 'BT01',
+      color: 'PRETO',
+      grade: { '37': 120 },
+      unit_price: 140,
+      unit_price_source: 'table_reference',
+    }], lookup, references, materialVariants)[0];
+    expect(automatic).toMatchObject({ unit_price: 130, unit_price_source: 'table_reference' });
+
+    const manual = repriceMobileDraftItems([{
+      ...automatic,
+      unit_price: 137.5,
+      unit_price_source: 'manual',
+    }], lookup, references, materialVariants)[0];
+    expect(manual).toMatchObject({ unit_price: 137.5, unit_price_source: 'manual' });
+  });
+});

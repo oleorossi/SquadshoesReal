@@ -129,7 +129,7 @@ export function replaceWithCanonicalStrapRows(
       {
         componentType: 'Tiras',
         groupName: 'Demanda de tira não resolvida',
-        materialName: 'Revisar ficha e origem no Hub de Tiras Artesanais',
+        materialName: 'Revisar ficha e origem no Hub de Tiras',
         productUnit: 'm',
         color: '—',
         totalQuantity: 0,
@@ -154,7 +154,7 @@ export function replaceWithCanonicalStrapRows(
     const sourceLabel = preview.sourceMode === 'internal'
       ? 'Produção interna'
       : preview.sourceMode === 'buy_ready'
-        ? 'Compra pronta'
+        ? 'Comprada pronta'
         : 'Origem pendente';
 
     if (existing) {

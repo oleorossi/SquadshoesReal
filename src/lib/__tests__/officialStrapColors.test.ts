@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { officialStrapColorsForBase } from '@/lib/officialStrapColors';
+import {
+  canonicalStrapColorForProduct,
+  officialStrapColorsForBase,
+  purchasedReadyStrapColorsForGroup,
+  strapColorsForIdentity,
+} from '@/lib/officialStrapColors';
 
 describe('officialStrapColorsForBase', () => {
   it('lista somente vínculos oficiais ativos da base, inclusive produto com saldo zero', () => {
@@ -44,5 +49,72 @@ describe('officialStrapColorsForBase', () => {
     };
 
     expect(officialStrapColorsForBase(catalog, 'soft').map((color) => color.id)).toEqual(['off']);
+  });
+});
+
+describe('purchasedReadyStrapColorsForGroup', () => {
+  const catalog = {
+    colors: [
+      { id: 'preto', name: 'PRETO', active: true },
+      { id: 'off', name: 'OFF WHITE', active: true },
+      { id: 'manual', name: 'MANUAL', active: true },
+    ],
+    aliases: [{
+      canonical_color_id: 'off',
+      alias: 'OF WHITE',
+      status: 'approved',
+    }],
+    products: [
+      { id: 'strass-preto', group_id: 'strass', color: 'PRETO', active: true },
+      { id: 'strass-off', group_id: 'strass', color: 'OF WHITE', active: true },
+      { id: 'other', group_id: 'other', color: 'MANUAL', active: true },
+      { id: 'inactive', group_id: 'strass', color: 'MANUAL', active: false },
+    ],
+    official_products: [],
+    variants: [],
+  };
+
+  it('deriva somente produtos ativos do grupo e aliases aprovados', () => {
+    expect(purchasedReadyStrapColorsForGroup(catalog, 'strass').map((color) => color.id))
+      .toEqual(['off', 'preto']);
+  });
+
+  it('não usa available_colors nem mistura a napa da referência', () => {
+    const identity = {
+      identity_basis: 'finished_product_group' as const,
+      identity_group_id: 'strass',
+      available_colors: ['MANUAL'],
+    };
+    expect(strapColorsForIdentity(catalog, identity, 'soft').map((color) => color.id))
+      .toEqual(['off', 'preto']);
+  });
+
+  it('não escolhe cor quando o alias aprovado é ambíguo', () => {
+    const ambiguous = {
+      ...catalog,
+      aliases: [
+        { canonical_color_id: 'off', alias: 'DUPLA', status: 'approved' },
+        { canonical_color_id: 'preto', alias: 'DUPLA', status: 'approved' },
+      ],
+      products: [{ id: 'ambiguous', group_id: 'strass', color: 'DUPLA', active: true }],
+    };
+    expect(canonicalStrapColorForProduct(ambiguous, 'ambiguous')).toBeNull();
+    expect(purchasedReadyStrapColorsForGroup(ambiguous, 'strass')).toEqual([]);
+  });
+
+  it('não deixa o cadastro da variante contradizer a cor exata do produto', () => {
+    const divergentVariant = {
+      ...catalog,
+      variants: [{
+        finished_product_id: 'strass-preto',
+        base_group_id: 'strass',
+        identity_basis: 'finished_product_group' as const,
+        color_id: 'manual',
+        status: 'active',
+      }],
+    };
+
+    expect(purchasedReadyStrapColorsForGroup(divergentVariant, 'strass').map((color) => color.id))
+      .toEqual(['off', 'preto']);
   });
 });

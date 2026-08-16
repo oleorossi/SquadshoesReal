@@ -1173,7 +1173,7 @@ export default function SaleOrders() {
         supabase.from('technical_sheets').select('id, image_url, images, shoe_category, code, name').in('id', refIds),
         supabase.from('reference_color_variants').select('reference_id, color, image_url, barcode').in('reference_id', refIds),
         soiIds.length > 0
-          ? (supabase as any).from('sale_order_items').select('id, material_variant_id').in('id', soiIds)
+          ? (supabase as any).from('sale_order_items').select('id, material_variant_id, material_variant_commercial_snapshot').in('id', soiIds)
           : Promise.resolve({ data: [] }),
       ]);
 
@@ -1197,12 +1197,16 @@ export default function SaleOrders() {
       const materialVariantBySoi = new Map<string, string | null>(
         ((soiRes as any).data || []).map((r: any) => [r.id, r.material_variant_id || null]),
       );
+      const materialVariantSnapshotBySoi = new Map<string, unknown>(
+        ((soiRes as any).data || []).map((r: any) => [r.id, r.material_variant_commercial_snapshot || null]),
+      );
 
       // Materiais: 1 chamada em lote no lugar de uma (com 1–4 queries dentro) por OP.
       const materialByKey = await resolveMaterialLabels(
         allOps.map((op: any) => ({
           referenceId: op.reference_id,
           materialVariantId: materialVariantBySoi.get(op.sale_order_item_id) ?? null,
+          materialVariantCommercialSnapshot: materialVariantSnapshotBySoi.get(op.sale_order_item_id) ?? null,
           color: op.color || '',
         })),
       ).catch(() => new Map<string, string>());
@@ -1245,6 +1249,7 @@ export default function SaleOrders() {
           const mainMaterial = materialByKey.get(materialLabelKey({
             referenceId: op.reference_id,
             materialVariantId: materialVariantBySoi.get(op.sale_order_item_id) ?? null,
+            materialVariantCommercialSnapshot: materialVariantSnapshotBySoi.get(op.sale_order_item_id) ?? null,
             color,
           })) || '';
           const grade = op.grade as Record<string, number> | null;

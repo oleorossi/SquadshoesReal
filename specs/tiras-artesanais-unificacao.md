@@ -1,5 +1,9 @@
 # Unificação de Tiras Artesanais — Cadastro, Demanda, Produção, Compra e Estoque
 
+> Complemento posterior: `identidade-variantes-e-tiras-compradas.md` generaliza
+> o domínio para Tiras e formaliza componentes `buy_ready` não artesanais, como
+> STRASS, com identidade independente da napa da referência.
+
 > Especificação normativa fechada com o usuário em 16/08/2026. Este documento define a fonte
 > única para todo o domínio de tiras artesanais. Ele substitui, nas partes em que
 > houver conflito, `cadastro-tira-artesanal-no-pv.md`,

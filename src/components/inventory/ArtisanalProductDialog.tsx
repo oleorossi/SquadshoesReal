@@ -4,6 +4,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useArtisanalStrapCatalog } from '@/hooks/useArtisanalStraps';
 import { normalizeStrapColorKey } from '@/lib/strapSourcing';
+import { isNominalBuyReadyStrapIdentity } from '@/lib/strapIdentity';
 import type { Product } from '@/types/inventory';
 
 interface Props {
@@ -50,6 +51,28 @@ export function ArtisanalProductDialog({ product, products, open, onOpenChange }
 
   const variant = catalogQuery.data.variants.find((item) =>
     item.finished_product_id === target.id);
+  const nominalBuyReady = isNominalBuyReadyStrapIdentity(target.id, target.group_id);
+  if (nominalBuyReady && !variant) {
+    return (
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader><DialogTitle>Tira comprada pronta</DialogTitle></DialogHeader>
+          <Alert>
+            <AlertTitle>Produção interna indisponível</AlertTitle>
+            <AlertDescription>
+              Este produto pertence ao cutover nominal de compra pronta. Resolva medida, grupo e cor por UUID no Hub de Tiras; ele não pode ser marcado como artesanal.
+            </AlertDescription>
+          </Alert>
+          <a
+            href="/tiras-artesanais"
+            className="inline-flex h-10 items-center justify-center rounded-md bg-primary px-4 text-sm font-semibold text-primary-foreground"
+          >
+            Resolver no Hub de Tiras
+          </a>
+        </DialogContent>
+      </Dialog>
+    );
+  }
   const contextualBaseGroupId = !variant && target.group_id
     && catalogQuery.data.official_products.some((official) =>
       official.base_group_id === target.group_id && official.status === 'active')

@@ -149,7 +149,7 @@ export function useGeneratePerPvPurchaseOrders() {
       const valid = filtered.drafts;
       if (valid.length === 0) {
         if (filtered.excluded.length > 0) {
-          throw new Error('Este pedido contém somente tiras neste canal. Elas seguem o motor automático em Tiras Artesanais; nenhuma OC por pedido foi gerada.');
+          throw new Error('Este pedido contém somente tiras neste canal. Elas seguem o motor automático em Tiras; nenhuma OC por pedido foi gerada.');
         }
         throw new Error('Nenhum material a comprar para este(s) pedido(s).');
       }

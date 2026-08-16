@@ -366,7 +366,7 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
                 <strong>
                   {excludedStrapNeeds.length > 0
                     ? `${excludedStrapNeeds.length} demanda(s) de tira separada(s) deste canal.`
-                    : 'As tiras artesanais seguem um canal próprio.'}
+                    : 'As tiras seguem um canal próprio.'}
                 </strong>{' '}
                 O motor automático de tiras cuida da compra pronta ou da transformação.
                 Os materiais comuns abaixo continuam normalmente em Compras por Pedido.

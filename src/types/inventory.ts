@@ -1,8 +1,11 @@
 import { Tables, TablesInsert, TablesUpdate } from '@/integrations/supabase/types';
 
-export type Product = Tables<'products'>;
-export type ProductInsert = TablesInsert<'products'>;
-export type ProductUpdate = TablesUpdate<'products'>;
+// Extensão temporária até a próxima geração automática de
+// integrations/supabase/types.ts após aplicar a migration 04300.
+type ProductSupplierColor = { supplier_color_code: string | null };
+export type Product = Tables<'products'> & ProductSupplierColor;
+export type ProductInsert = TablesInsert<'products'> & Partial<ProductSupplierColor>;
+export type ProductUpdate = TablesUpdate<'products'> & Partial<ProductSupplierColor>;
 
 export type ProductFormData = {
   name: string;
@@ -46,6 +49,9 @@ export type ProductFormData = {
   supplier_lead_time_days?: number;
   calculation_method?: 'weight' | 'meter' | 'unit';
   supplier_id?: string | null;
+  /** Código da cor no catálogo do fornecedor selecionado. É próprio deste
+   *  produto/cor e nunca é propagado pras cores irmãs. */
+  supplier_color_code?: string | null;
   // Lot tracking & chemical
   lot_number?: string | null;
   expiration_date?: string | null;
@@ -148,4 +154,3 @@ export interface ProductionOrder {
   pv_number?: string | null;
   notes?: string | null;
 }
-

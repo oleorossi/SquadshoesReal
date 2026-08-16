@@ -26,6 +26,8 @@ import { useQuery } from '@tanstack/react-query';
    useDeleteReferenceMaterialVariant,
    useReorderReferenceMaterialVariants,
    useDuplicateReferenceMaterialVariant,
+   findMaterialVariantSkuCollision,
+   MATERIAL_VARIANT_SKU_MAX_LENGTH,
    ReferenceMaterialVariant
  } from '@/hooks/useReferenceMaterialVariants';
  import { useProducts } from '@/hooks/useProducts';
@@ -56,7 +58,7 @@ function skuSlug(groupName: string): string {
 
 /**
  * Seletor de grupo de material (product_groups) com busca. Reusado para
- * Cabedal / Forro / Palmilha. `allowInherit` mostra a opção "Herda a ficha"
+ * Cabedal / Forro / Placa-EVA da palmilha. `allowInherit` mostra "Herda a ficha"
  * (limpa a seleção → o motor resolve pela ficha).
  */
 function GroupCombobox({
@@ -160,7 +162,7 @@ function GroupCombobox({
      return cobertos.has(key(alvo)) ? '' : alvo;
    }, [sheetMaterials, variants, groups]);
 
-   // Grupos por componente (Cabedal / Forro / Palmilha), filtrados pelo setor.
+   // Grupos por componente (Cabedal / Forro / Placa-EVA), filtrados pelo setor.
    const cabedalGroups  = useMemo(() => groups.filter(g => sectorOfGroup(g) === SECTOR_CABEDAL), [groups]);
    const forroGroups    = useMemo(() => groups.filter(g => sectorOfGroup(g) === SECTOR_FORRO), [groups]);
    const palmilhaGroups = useMemo(() => groups.filter(g => sectorOfGroup(g) === SECTOR_PALMILHA), [groups]);
@@ -401,6 +403,15 @@ function GroupCombobox({
        toast.error('O nome do material é obrigatório');
        return;
      }
+     const sku = formData.sku?.trim() || '';
+     if (formData.active && !sku) {
+       toast.error('O SKU é obrigatório para variante ativa');
+       return;
+     }
+     if (sku.length > MATERIAL_VARIANT_SKU_MAX_LENGTH) {
+       toast.error(`O SKU deve ter no máximo ${MATERIAL_VARIANT_SKU_MAX_LENGTH} caracteres`);
+       return;
+     }
 
      // Sem material principal a variante não troca material nenhum — vira um
      // rótulo com SKU próprio. Foi exatamente esse no-op silencioso que fez o
@@ -427,6 +438,15 @@ function GroupCombobox({
      }
 
      try {
+       if (sku) {
+         const skuCollision = await findMaterialVariantSkuCollision(sku, editingVariant?.id);
+         if (skuCollision) {
+           toast.error(`O SKU "${sku}" já está em uso`, {
+             description: `Variante: ${skuCollision.material_name}. Espaços nas extremidades e diferença entre maiúsculas/minúsculas não criam outro SKU.`,
+           });
+           return;
+         }
+       }
        if (editingVariant?.id) {
          await updateVariant.mutateAsync({
            id: editingVariant.id,
@@ -477,6 +497,10 @@ function GroupCombobox({
    };
  
    const handleToggleActive = async (variant: ReferenceMaterialVariant) => {
+     if (!variant.active && !variant.sku?.trim()) {
+       toast.error('Cadastre um SKU antes de ativar esta variante');
+       return;
+     }
      await updateVariant.mutateAsync({
        id: variant.id,
        data: { active: !variant.active }
@@ -682,8 +706,9 @@ function GroupCombobox({
                   />
                   <p className="text-xs text-muted-foreground">
                     É o que esta variante É. Substitui o material da ficha em todos os
-                    componentes que a ficha liberar (Cabedal, Forração, Palmilha, Fachete e a
-                    base da tira artesanal). A área (dm²/par) continua sendo a da ficha.
+                    componentes que a ficha liberar (Cabedal, Forração, Fachete e a base da
+                    tira artesanal). A placa/EVA da palmilha usa o seletor próprio abaixo. A
+                    área (dm²/par) continua sendo a da ficha.
                   </p>
                   {formData.main_material_group_id && (
                     <p className="text-xs text-muted-foreground">
@@ -729,7 +754,7 @@ function GroupCombobox({
                         />
                       </div>
                       <div className="space-y-1.5">
-                        <Label className="text-xs font-medium">Palmilha</Label>
+                        <Label className="text-xs font-medium">Placa / EVA da palmilha</Label>
                         <GroupCombobox
                           value={formData.insole_material_group_id}
                           onChange={handlePickInsoleGroup}
@@ -737,7 +762,7 @@ function GroupCombobox({
                           describe={describeGroup}
                           placeholder="Segue o material principal"
                           allowInherit
-                          ariaLabel="Grupo de palmilha"
+                          ariaLabel="Grupo da placa ou EVA da palmilha"
                         />
                       </div>
                     </div>
@@ -768,13 +793,16 @@ function GroupCombobox({
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label htmlFor="sku" className="text-xs font-medium">SKU</Label>
+                  <Label htmlFor="sku" className="text-xs font-medium">
+                    SKU {formData.active && <span className="text-destructive">*</span>}
+                  </Label>
                   <div className="flex items-center gap-2">
                     <Input
                       id="sku"
                       className="h-9 flex-1 font-mono text-sm"
                       value={formData.sku || ''}
                       onChange={e => setFormData(prev => ({ ...prev, sku: e.target.value }))}
+                      maxLength={MATERIAL_VARIANT_SKU_MAX_LENGTH}
                       placeholder="Código do produto"
                     />
                     <Button
@@ -788,6 +816,9 @@ function GroupCombobox({
                       <Hash className="h-3.5 w-3.5" /> Gerar
                     </Button>
                   </div>
+                  <p className="text-xs text-muted-foreground">
+                    Identifica esta oferta comercial, deve ser único em todas as referências e ter até {MATERIAL_VARIANT_SKU_MAX_LENGTH} caracteres.
+                  </p>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

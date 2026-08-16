@@ -13,13 +13,14 @@
  *
  * Outros stores reservados pra expansão futura:
  *   - drafts: rascunhos de PVs em edição (não enviados)
- *   - cached-clients / cached-refs: preload pra catálogo offline
+ *   - catalog-cache: referências, variantes de material e cores estruturais
  */
 import { openDB, type IDBPDatabase } from 'idb';
 import type { SaleOrderFormData, SaleOrderItemFormData } from '@/hooks/useSaleOrders';
 
 const DB_NAME = 'squad-mobile-queue';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
+const MOBILE_ORDER_CATALOG_KEY = 'mobile-new-order';
 
 export interface PendingOrderPayload {
   order: SaleOrderFormData & { client_request_id: string };
@@ -43,6 +44,12 @@ interface DraftPayload {
   updatedAt: number;
 }
 
+interface CatalogCachePayload<T = unknown> {
+  key: string;
+  data: T;
+  updatedAt: number;
+}
+
 let dbPromise: Promise<IDBPDatabase> | null = null;
 
 /** Atualiza badges da UI móvel sem precisar consultar o IndexedDB em polling. */
@@ -62,6 +69,9 @@ const getDb = () => {
         }
         if (!db.objectStoreNames.contains('drafts')) {
           db.createObjectStore('drafts', { keyPath: 'client_request_id' });
+        }
+        if (!db.objectStoreNames.contains('catalog-cache')) {
+          db.createObjectStore('catalog-cache', { keyPath: 'key' });
         }
       },
     });
@@ -140,4 +150,23 @@ export const listDrafts = async (): Promise<DraftPayload[]> => {
 export const deleteDraft = async (client_request_id: string): Promise<void> => {
   const db = await getDb();
   await db.delete('drafts', client_request_id);
+};
+
+// ── Catálogo do novo PV ────────────────────────────────────────────────────
+
+/** Mantém a identidade material→grupo→cor disponível mesmo sem rede. */
+export const saveMobileOrderCatalog = async <T>(data: T): Promise<void> => {
+  const db = await getDb();
+  const cached: CatalogCachePayload<T> = {
+    key: MOBILE_ORDER_CATALOG_KEY,
+    data,
+    updatedAt: Date.now(),
+  };
+  await db.put('catalog-cache', cached);
+};
+
+export const loadMobileOrderCatalog = async <T>(): Promise<T | null> => {
+  const db = await getDb();
+  const cached = await db.get('catalog-cache', MOBILE_ORDER_CATALOG_KEY) as CatalogCachePayload<T> | undefined;
+  return cached?.data ?? null;
 };

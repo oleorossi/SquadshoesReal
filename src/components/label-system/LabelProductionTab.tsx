@@ -34,7 +34,7 @@ import { Textarea } from '@/components/ui/textarea';
 import logoImg from '@/assets/logo-squad-shoes.jpg';
 import { supabase } from '@/integrations/supabase/client';
 import { resolveProductImageWithSource } from '@/lib/imageFallback';
-import { resolveMaterialLabels, materialLabelKey, type MaterialLabelInput } from '@/lib/labelUtils';
+import { resolveMaterialLabels, materialLabelKey, materialNameFromCommercialSnapshot, type MaterialLabelInput } from '@/lib/labelUtils';
 import { buildBoxIdentificationHtml, buildThermalLabelsHtml, buildHangtagHtml, type BoxIdentificationData, type ThermalLabelConfig, DEFAULT_THERMAL_CONFIG } from '@/lib/printLabels';
 import { openPrintTab, printHtmlAsPdf } from '@/lib/printPdf';
 import { confirmPrintJob, createPrintJob, PRINT_JOB_STATUS_LABELS, setPrintJobStatus } from '@/lib/printJobs';
@@ -218,8 +218,9 @@ export function groupOrdersByReference(
     // Variante e item são load-bearing: referências visualmente iguais podem
     // usar materiais distintos. No modo "por OP", a OP também entra na chave.
     const variantId = order.material_variant_id || '';
+    const variantSnapshotName = materialNameFromCommercialSnapshot(order.material_variant_commercial_snapshot);
     const orderKey = splitByOrder ? (order.id || order.order_number || '') : '';
-    const key = `${soId}|${refId}|${order.color || ''}|${variantId}|${strapSig}|${orderKey}`;
+    const key = `${soId}|${refId}|${order.color || ''}|${variantId}|${variantSnapshotName}|${strapSig}|${orderKey}`;
     const ref = order.technical_sheets;
     const so = soId ? saleOrdersMap.get(soId) : null;
     if (!map.has(key)) {
@@ -676,6 +677,7 @@ export function LabelProductionTab() {
   type LabelSaleOrderItem = {
     color: string;
     variantId: string | null;
+    variantCommercialSnapshot: unknown;
     grade: Record<string, number> | null;
     fichas: number | null;
   };
@@ -684,7 +686,7 @@ export function LabelProductionTab() {
     queryFn: async () => {
       const data = await fetchAllLabelPages<any>((from, to) => supabase
         .from('sale_order_items')
-        .select('id, color, material_variant_id, grade, fichas')
+        .select('id, color, material_variant_id, material_variant_commercial_snapshot, grade, fichas')
         .order('id')
         .range(from, to));
       const map = new Map<string, LabelSaleOrderItem>();
@@ -692,6 +694,7 @@ export function LabelProductionTab() {
         map.set(it.id, {
           color: (it.color || '').trim(),
           variantId: (it as any).material_variant_id || null,
+          variantCommercialSnapshot: (it as any).material_variant_commercial_snapshot || null,
           grade: it.grade && typeof it.grade === 'object' && !Array.isArray(it.grade)
             ? it.grade as Record<string, number> : null,
           fichas: Number(it.fichas) > 0 ? Number(it.fichas) : null,
@@ -715,6 +718,7 @@ export function LabelProductionTab() {
       const enriched = {
         ...o,
         material_variant_id: item?.variantId ?? null,
+        material_variant_commercial_snapshot: item?.variantCommercialSnapshot ?? null,
         sale_order_item_grade: item?.grade ?? null,
         sale_order_item_fichas: item?.fichas ?? null,
       };
@@ -1065,19 +1069,45 @@ export function LabelProductionTab() {
     const ids = new Set((group.orders as any[]).map(o => o.material_variant_id ?? null));
     return ids.size === 1 ? ([...ids][0] as string | null) : null;
   };
+  const groupVariantSnapshot = (group: any): unknown => {
+    const snapshots = (group.orders as any[])
+      .map(o => o.material_variant_commercial_snapshot)
+      .filter(Boolean);
+    return snapshots[0] || null;
+  };
   const buildMaterialMap = async (groups: any[]): Promise<Map<string, string>> => {
     const inputs: MaterialLabelInput[] = [];
     for (const g of groups) {
       const gColor = g.colors[0] || '';
-      inputs.push({ referenceId: g.referenceId, materialVariantId: groupVariantId(g), color: gColor });
+      inputs.push({
+        referenceId: g.referenceId,
+        materialVariantId: groupVariantId(g),
+        materialVariantCommercialSnapshot: groupVariantSnapshot(g),
+        color: gColor,
+      });
       for (const o of (g.orders as any[])) {
-        inputs.push({ referenceId: g.referenceId, materialVariantId: o.material_variant_id ?? null, color: o.color || gColor });
+        inputs.push({
+          referenceId: g.referenceId,
+          materialVariantId: o.material_variant_id ?? null,
+          materialVariantCommercialSnapshot: o.material_variant_commercial_snapshot ?? null,
+          color: o.color || gColor,
+        });
       }
     }
     try { return await resolveMaterialLabels(inputs); } catch { return new Map(); }
   };
-  const materialFromMap = (map: Map<string, string>, referenceId: string, variantId: string | null, color: string) =>
-    map.get(materialLabelKey({ referenceId, materialVariantId: variantId, color })) || '';
+  const materialFromMap = (
+    map: Map<string, string>,
+    referenceId: string,
+    variantId: string | null,
+    snapshot: unknown,
+    color: string,
+  ) => map.get(materialLabelKey({
+    referenceId,
+    materialVariantId: variantId,
+    materialVariantCommercialSnapshot: snapshot,
+    color,
+  })) || '';
 
   /** Teto do job inteiro. Acima dele bloqueamos antes de montar o HTML: nunca
    * truncar silenciosamente nem registrar uma OP como parcialmente impressa. */
@@ -1114,7 +1144,7 @@ export function LabelProductionTab() {
         .toLowerCase();
       const unmatchedMaterials = new Set<string>();
       for (const group of selectedGroups) {
-        const mainMaterial = materialFromMap(materialMap, group.referenceId, groupVariantId(group), group.colors[0] || '');
+        const mainMaterial = materialFromMap(materialMap, group.referenceId, groupVariantId(group), groupVariantSnapshot(group), group.colors[0] || '');
         const materialParts = [mainMaterial, ...mainMaterial.split(/[,|;]/)]
           .map(normalizeCareName)
           .filter(Boolean);
@@ -1217,7 +1247,7 @@ export function LabelProductionTab() {
       imageResults.forEach(([k, url, isFallback]) => { imageMap.set(k, url); imageFallbackMap.set(k, isFallback); });
 
       for (const group of thermalGroups) {
-        const mainMaterial = materialFromMap(materialMap, group.referenceId, groupVariantId(group), group.colors[0] || '');
+        const mainMaterial = materialFromMap(materialMap, group.referenceId, groupVariantId(group), groupVariantSnapshot(group), group.colors[0] || '');
         const refData = refDataMap.get(group.referenceId);
         const colorName = group.colors[0] || '';
         const productImageUrl = imageMap.get(`${group.referenceId}|${colorName}`) || logoUrl;
@@ -1234,7 +1264,7 @@ export function LabelProductionTab() {
         } else {
           for (const order of group.orders) {
             const orderColor = order.color || colorName;
-            const orderMaterial = materialFromMap(materialMap, group.referenceId, order.material_variant_id ?? null, orderColor);
+            const orderMaterial = materialFromMap(materialMap, group.referenceId, order.material_variant_id ?? null, order.material_variant_commercial_snapshot ?? null, orderColor);
             const orderKey = `${group.referenceId}|${orderColor}`;
             const orderImageUrl = imageMap.get(orderKey) || productImageUrl;
             const orderImageFallback = imageMap.has(orderKey) ? (imageFallbackMap.get(orderKey) ?? false) : productImageFallback;
@@ -1454,7 +1484,7 @@ export function LabelProductionTab() {
       for (const group of boxGroups) {
         const refData = refDataMap.get(group.referenceId);
         for (const order of group.orders) {
-          const mainMaterial = materialFromMap(materialMap, group.referenceId, (order as any).material_variant_id ?? null, order.color || group.colors[0] || '');
+          const mainMaterial = materialFromMap(materialMap, group.referenceId, (order as any).material_variant_id ?? null, (order as any).material_variant_commercial_snapshot ?? null, order.color || group.colors[0] || '');
           const so = saleOrdersMap.get(order.sale_order_id);
           const finalImageUrl = imageMap.get(`${group.referenceId}|${order.color || ''}`) || logoUrl;
           // A grade de uma ficha e o nº de fichas vêm exclusivamente do item do

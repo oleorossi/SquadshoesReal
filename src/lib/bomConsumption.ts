@@ -1251,7 +1251,7 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
       if (missingLineIds.length > 0) {
         throw new Error(
           `A Lista de Separação encontrou ${missingLineIds.length} tira(s) sem demanda canônica. ` +
-          'Reprocesse o pedido na aba Tiras Artesanais antes de separar; nenhum cálculo legado foi usado.',
+          'Reprocesse o pedido na aba Tiras antes de separar; nenhum cálculo legado foi usado.',
         );
       }
 
@@ -1262,7 +1262,7 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
         addConsumptionRow(consumptionMap, {
           componentType: 'Tiras',
           groupName: row.finished_product_name || 'Tira sem cadastro',
-          materialName: row.source_mode === 'buy_ready' ? 'Compra pronta' : 'Produção interna',
+          materialName: row.source_mode === 'buy_ready' ? 'Comprada pronta' : 'Produção interna',
           productUnit: 'm',
           color: row.color_name || '—',
           totalQuantity: Number(row.planned_finished_m) || 0,

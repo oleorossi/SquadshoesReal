@@ -25,7 +25,38 @@ export const ProductSchema = z.object({
   heel_height: z.number().nullable().optional(),
   is_standard_sole_item: z.boolean().optional(),
   purchase_multiple: z.number().min(0, "Múltiplo deve ser zero ou positivo").optional(),
-}).passthrough();
+  supplier_id: z.string().uuid().nullable().optional(),
+  supplier_color_code: z.string().nullable().optional(),
+}).passthrough().superRefine((product, ctx) => {
+  const code = product.supplier_color_code?.trim() || null;
+  if (code && !product.supplier_id) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['supplier_color_code'],
+      message: 'Código da cor do fornecedor exige um fornecedor selecionado',
+    });
+  }
+});
+
+/** Normalização única usada nas bordas de INSERT/UPDATE. Campo ausente em um
+ * patch continua ausente; string vazia vira NULL e código sem fornecedor é
+ * rejeitado antes de chegar ao CHECK do banco. */
+export function normalizeProductSupplierColor<T extends {
+  supplier_id?: string | null;
+  supplier_color_code?: string | null;
+}>(data: T): T {
+  if (!Object.prototype.hasOwnProperty.call(data, 'supplier_color_code')) return data;
+  const supplierColorCode = data.supplier_color_code?.trim() || null;
+  // Em UPDATE parcial, supplier_id ausente significa "preserve o existente";
+  // só rejeitamos quando o próprio payload o remove explicitamente. O CHECK e
+  // o trigger do banco validam o estado final sob concorrência.
+  if (supplierColorCode
+      && Object.prototype.hasOwnProperty.call(data, 'supplier_id')
+      && !data.supplier_id) {
+    throw new Error('Selecione o fornecedor antes de informar o código da cor');
+  }
+  return { ...data, supplier_color_code: supplierColorCode };
+}
 
 
 export function useProducts() {
@@ -76,7 +107,8 @@ export function useAddProduct() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (form: ProductFormData) => {
-      const payload = { ...sanitizeUuidFields(form), max_stock: (form as any).max_stock ?? 0 };
+      const normalized = normalizeProductSupplierColor(form);
+      const payload = { ...sanitizeUuidFields(normalized), max_stock: (form as any).max_stock ?? 0 };
       const { data, error } = await supabase
         .from('products')
         .insert(payload as any)
@@ -167,7 +199,8 @@ export function useUpdateProduct() {
       // through the adjust_stock RPC (with stock_movements audit row and
       // concurrency control). A direct write races with debit RPCs and bypasses
       // the audit trail; same guard applied to usePackaging (audit-37 [3]).
-      const { quantity, stock_grade, min_stock_grade, ...safeData } = data as any;
+      const normalized = normalizeProductSupplierColor(data);
+      const { quantity, stock_grade, min_stock_grade, ...safeData } = normalized as any;
       if (quantity !== undefined || stock_grade !== undefined) {
         // Surface a developer warning; the stock adjustment page is the correct path.
         console.warn('[useUpdateProduct] quantity/stock_grade stripped — use adjust_stock RPC or stock adjustment page.');

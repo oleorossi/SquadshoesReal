@@ -95,7 +95,7 @@ type VariantEditableFields = Pick<Product,
   'quantity' | 'min_stock' | 'max_stock' | 'safety_stock' | 'reserved_stock' |
   'unit_price' | 'price_wholesale' | 'price_retail' | 'unit' |
   'lead_time_days' | 'min_order_quantity'
->;
+> & { supplier_color_code: string | null };
 
 function VariantDetailSheet({ open, onOpenChange, product, otherVariants }: {
   open: boolean;
@@ -117,6 +117,7 @@ function VariantDetailSheet({ open, onOpenChange, product, otherVariants }: {
       active: product.active,
       location: product.location || '',
       supplier_id: product.supplier_id || null,
+      supplier_color_code: product.supplier_color_code || null,
       quantity: Number(product.quantity) || 0,
       min_stock: Number(product.min_stock) || 0,
       max_stock: Number(product.max_stock) || 0,
@@ -140,6 +141,11 @@ function VariantDetailSheet({ open, onOpenChange, product, otherVariants }: {
     const newColor = (form.color ?? '').toString().trim();
     if (!newColor) { toast.error('Cor é obrigatória'); return; }
     if (!(form.sku ?? '').toString().trim()) { toast.error('SKU é obrigatório'); return; }
+    const supplierColorCode = (form.supplier_color_code ?? '').toString().trim() || null;
+    if (supplierColorCode && !form.supplier_id) {
+      toast.error('Selecione o fornecedor antes de informar o código da cor');
+      return;
+    }
     const dup = otherVariants.some(o =>
       (o.color || '').toLowerCase().trim() === newColor.toLowerCase()
     );
@@ -159,7 +165,7 @@ function VariantDetailSheet({ open, onOpenChange, product, otherVariants }: {
       //    tg_sync_reserved_stock). Nenhum dos triggers de `products` recalcula
       //    a coluna, então um UPDATE direto passava livre e apagava reserva viva.
       const { quantity: nextQty, reserved_stock: _ignored, ...rest } = form as any;
-      const updates: any = { ...rest };
+      const updates: any = { ...rest, supplier_color_code: supplierColorCode };
       const { error } = await supabase.from('products').update(updates).eq('id', product.id);
       if (error) throw error;
 
@@ -312,13 +318,33 @@ function VariantDetailSheet({ open, onOpenChange, product, otherVariants }: {
             </div>
             <div>
               <Label className="text-xs">Fornecedor</Label>
-              <Select value={form.supplier_id ?? '__none__'} onValueChange={v => update('supplier_id', v === '__none__' ? null : v)}>
+              <Select value={form.supplier_id ?? '__none__'} onValueChange={v => {
+                const supplierId = v === '__none__' ? null : v;
+                setForm(prev => ({
+                  ...prev,
+                  supplier_id: supplierId,
+                  supplier_color_code: null,
+                }));
+              }}>
                 <SelectTrigger className="mt-1 h-9"><SelectValue placeholder="Sem fornecedor" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__none__">— Sem fornecedor —</SelectItem>
                   {suppliers.map((s: any) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
                 </SelectContent>
               </Select>
+            </div>
+            <div>
+              <Label className="text-xs">Código da cor no fornecedor</Label>
+              <Input
+                value={form.supplier_color_code ?? ''}
+                onChange={e => update('supplier_color_code', e.target.value)}
+                disabled={!form.supplier_id}
+                className="mt-1 h-9 font-mono"
+                placeholder={form.supplier_id ? 'Ex.: MAD-047' : 'Selecione um fornecedor primeiro'}
+              />
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                Próprio desta cor; não é copiado pras outras variantes.
+              </p>
             </div>
           </section>
         </div>
@@ -730,6 +756,11 @@ export function MasterVariantDialog({
       // O sentinela vira NULL de verdade só aqui, na borda do banco.
       for (const k of ['group_id', 'supplier_id']) {
         if (payload[k] === LIMPAR) payload[k] = null;
+      }
+      // Trocar o fornecedor de todas as cores invalida os códigos particulares
+      // do catálogo anterior. O editor em massa nunca copia um código único.
+      if (Object.prototype.hasOwnProperty.call(payload, 'supplier_id')) {
+        payload.supplier_color_code = null;
       }
       if (payload.conversion_rate != null) payload.conversion_rate = safeNum(payload.conversion_rate, 1) || 1;
       if (payload.yield_per_meter != null) payload.yield_per_meter = safeNum(payload.yield_per_meter) || null;

@@ -57,7 +57,7 @@ export async function createGroupColorProduct(spec: GroupColorSpec): Promise<Cre
     return {
       ...res,
       status: 'error',
-      error: 'Família de tira artesanal só pode ser criada pelo Hub de Tiras Artesanais.',
+      error: 'Família de tira artesanal só pode ser criada pelo Hub de Tiras.',
     };
   }
 
@@ -67,7 +67,7 @@ export async function createGroupColorProduct(spec: GroupColorSpec): Promise<Cre
     return {
       ...res,
       status: 'error',
-      error: 'Grupo legado de tira detectado; resolva a identidade no Hub de Tiras Artesanais.',
+      error: 'Grupo legado de tira detectado; resolva a identidade no Hub de Tiras.',
     };
   }
   if ((existing || []).some((p: any) => (p.color || '').trim().toLowerCase() === color.toLowerCase())) {

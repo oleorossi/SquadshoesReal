@@ -3,10 +3,17 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Check, MagnifyingGlass, Trash, WhatsappLogo, Share, ChartBar, Clock } from '@phosphor-icons/react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { enqueueOrder, saveDraft, loadDraft, deleteDraft } from '@/lib/mobile/offlineQueue';
+import {
+  deleteDraft,
+  enqueueOrder,
+  loadDraft,
+  loadMobileOrderCatalog,
+  saveDraft,
+  saveMobileOrderCatalog,
+} from '@/lib/mobile/offlineQueue';
 import { useOnlineStatus } from '@/lib/mobile/networkStatus';
 import { triggerSync } from '@/lib/mobile/syncEngine';
-import { fetchClientPriceList, fetchClientHistory, resolvePrice, type PriceLookup, type ClientHistory } from '@/lib/mobile/clientContext';
+import { fetchClientPriceList, fetchClientHistory, type PriceLookup, type ClientHistory } from '@/lib/mobile/clientContext';
 import { searchMatchesAllTerms, searchNormOrFilter } from '@/lib/searchUtils';
 import { SearchInput } from '@/components/ui/search-input';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -23,7 +30,16 @@ import { useArtisanalStrapCatalog, type ArtisanalStrapCatalog } from '@/hooks/us
 import { isoToMonthWeek } from '@/lib/billingWeek';
 import { listMissingTechnicalStrapSnapshots } from '@/lib/strapSnapshotGuard';
 import { submitMobileSaleOrderAtomic } from '@/lib/mobile/atomicSaleOrder';
-import { officialStrapColorsForBase } from '@/lib/officialStrapColors';
+import { strapColorsForIdentity } from '@/lib/officialStrapColors';
+import { isPurchasedReadyStrap, strapIdentityBasis } from '@/lib/strapIdentity';
+import {
+  resolveSaleOrderItemPrice,
+  type SaleOrderPriceSource,
+} from '@/lib/saleOrderPricing';
+import {
+  activeProductColorsForGroup,
+  resolveMaterialVariantColorGroup,
+} from '@/lib/materialVariantColorGroup';
 
 interface ClientLite {
   id: string;
@@ -37,24 +53,66 @@ interface ClientLite {
 interface RefLite {
   id: string;
   name: string;
+  sale_price?: number | null;
   shoe_category_id?: string | null;
   has_straps?: boolean | null;
   strap_colors?: any[] | null;
+  variant_drives_upper?: boolean | null;
+  variant_drives_lining?: boolean | null;
 }
 
-interface VariantLite {
+interface ReferenceColorVariantLite {
   reference_id: string;
   color: string;
   image_url?: string | null;
 }
 
-interface DraftItem {
+interface MaterialVariantLite {
+  id: string;
+  reference_id: string;
+  material_name: string;
+  sku?: string | null;
+  unit_price_override?: number | null;
+  main_material_group_id?: string | null;
+  upper_material_product_id?: string | null;
+  upper_material_group_id?: string | null;
+  lining_material_product_id?: string | null;
+  lining_material_group_id?: string | null;
+  active?: boolean | null;
+  display_order?: number | null;
+}
+
+interface ProductLite {
+  id: string;
+  group_id?: string | null;
+  color?: string | null;
+  active?: boolean | null;
+}
+
+interface ProductGroupLite {
+  id: string;
+  name: string;
+}
+
+interface MobileOrderCatalog {
+  references: RefLite[];
+  referenceColorVariants: ReferenceColorVariantLite[];
+  materialVariants: MaterialVariantLite[];
+  products: ProductLite[];
+  productGroups: ProductGroupLite[];
+}
+
+export interface DraftItem {
   reference_id: string;
   reference_name: string;
   color: string;
   image_url?: string | null;
   grade: Record<string, number>;
   unit_price: number;
+  unit_price_source?: SaleOrderPriceSource | 'manual';
+  material_variant_id?: string | null;
+  material_variant_name?: string | null;
+  material_variant_sku?: string | null;
   strap_colors?: any[];
   strap_sourcing?: StrapSourcingMap;
 }
@@ -66,11 +124,101 @@ const newRequestId = () => crypto.randomUUID();
 
 const SIZE_RANGE_ADULT = ['33','34','35','36','37','38','39','40'];
 
+export const MOBILE_TECHNICAL_SHEET_SELECT = 'id, name, sale_price, shoe_category_id, has_straps, strap_colors, variant_drives_upper, variant_drives_lining';
+
+const draftItemQuantity = (item: DraftItem) =>
+  Object.values(item.grade).reduce((sum, value) => sum + (value || 0), 0);
+
+export function repriceMobileDraftItems(
+  items: DraftItem[],
+  lookup: PriceLookup,
+  references: RefLite[],
+  materialVariants: MaterialVariantLite[],
+): DraftItem[] {
+  let changed = false;
+  const repriced = items.map((item) => {
+    // Rascunhos antigos não registravam a origem. Um valor positivo sem origem
+    // pode ter sido digitado pelo vendedor e, por segurança, permanece congelado.
+    if (item.unit_price_source === 'manual' || (!item.unit_price_source && item.unit_price > 0)) {
+      return item;
+    }
+    const reference = references.find((entry) => entry.id === item.reference_id);
+    if (!reference) return item;
+    const variant = materialVariants.find((entry) => entry.id === item.material_variant_id);
+    const resolution = resolveSaleOrderItemPrice({
+      lookup,
+      referenceId: item.reference_id,
+      color: item.color,
+      quantity: draftItemQuantity(item),
+      variantPrice: variant?.unit_price_override,
+      sheetPrice: reference.sale_price,
+    });
+    if (Math.abs(item.unit_price - resolution.price) < 0.005
+        && item.unit_price_source === resolution.source) {
+      return item;
+    }
+    changed = true;
+    return {
+      ...item,
+      unit_price: resolution.price,
+      unit_price_source: resolution.source,
+    };
+  });
+  return changed ? repriced : items;
+}
+
 export function referencesWithMissingStrapSnapshot(items: DraftItem[], references: RefLite[]) {
   const missingIndexes = new Set(
     listMissingTechnicalStrapSnapshots(items, references).map((entry) => entry.index),
   );
   return items.filter((_, index) => missingIndexes.has(index));
+}
+
+export function buildMobileSaleOrderItemsPayload(items: DraftItem[]): SaleOrderItemFormData[] {
+  return items.map((item) => ({
+    reference_id: item.reference_id,
+    material_variant_id: item.material_variant_id || null,
+    color: item.color,
+    quantity: Object.values(item.grade).reduce((sum, value) => sum + (value || 0), 0),
+    grade: item.grade,
+    unit_price: item.unit_price,
+    observation: '',
+    strap_colors: item.strap_colors || [],
+    strap_sourcing: item.strap_sourcing || {},
+  } as SaleOrderItemFormData));
+}
+
+export function mobileMaterialSelectionIssues(
+  items: DraftItem[],
+  references: RefLite[],
+  materialVariants: MaterialVariantLite[],
+  products: ProductLite[],
+  productGroups: ProductGroupLite[],
+): string[] {
+  return items.flatMap((item) => {
+    const variants = materialVariants.filter((variant) =>
+      variant.reference_id === item.reference_id && variant.active !== false
+    );
+    if (item.material_variant_id && !variants.some((variant) => variant.id === item.material_variant_id)) {
+      return [`${item.reference_name}: a variante de material salva não está mais ativa`];
+    }
+    if (variants.length === 0) return [];
+    const variant = variants.find((entry) => entry.id === item.material_variant_id);
+    if (!variant) return [`${item.reference_name}: selecione o material antes da cor`];
+    const reference = references.find((entry) => entry.id === item.reference_id);
+    const group = resolveMaterialVariantColorGroup({
+      variant,
+      sheet: reference,
+      products,
+      groups: productGroups,
+    });
+    if (!group) return [`${item.reference_name}: variante sem grupo efetivo de cor`];
+    const colors = activeProductColorsForGroup(products, group.id);
+    if (!item.color || !colors.includes(item.color.trim().toUpperCase())) {
+      return [`${item.reference_name}: selecione uma cor ativa do material ${variant.material_name}`];
+    }
+    return [];
+  });
 }
 
 function OrderProgress({ current }: { current: Step }) {
@@ -108,6 +256,7 @@ function MobileStrapIdentityEditor({
   const quantity = Object.values(item.grade).reduce((sum, value) => sum + (value || 0), 0);
   const { data: lines = [], isLoading } = useStrapStockLines({
     referenceId: item.reference_id,
+    materialVariantId: item.material_variant_id || null,
     itemColor: item.color,
     strapColors: item.strap_colors || [],
     strapSourcing: item.strap_sourcing || {},
@@ -118,7 +267,39 @@ function MobileStrapIdentityEditor({
   });
   const lineById = useMemo(() => new Map(lines.map((line) => [line.technicalStrapLineId, line])), [lines]);
 
+  useEffect(() => {
+    if (!billingDate) return;
+    const fixed = (item.strap_colors || []).filter((strap) => isPurchasedReadyStrap(strap));
+    if (fixed.length === 0) return;
+    let next = item.strap_sourcing || {};
+    let changed = false;
+    fixed.forEach((strap) => {
+      const lineId = technicalStrapLineId(strap);
+      const line = lineId ? lineById.get(lineId) : undefined;
+      const colorId = line?.colorId || strap.color_id || null;
+      if (!lineId || !line?.strapVariantId || !colorId || !line.canBuyReady) return;
+      const candidate = {
+        source_mode: 'buy_ready' as const,
+        color_id: colorId,
+        strap_variant_id: line.strapVariantId,
+        recipe_id: null,
+        gross_required_m: line.strapRequiredM,
+        required_at: line.requiredAt,
+        main_production_start: line.mainProductionStart,
+        schedule_revision: line.scheduleRevision,
+      };
+      if (JSON.stringify(next[lineId]) === JSON.stringify(candidate)) return;
+      next = setStrapSourcing(next, lineId, candidate);
+      changed = true;
+    });
+    if (changed) onChange({ ...item, strap_sourcing: next });
+  }, [billingDate, item, lineById, onChange]);
+
   const selectOrigin = (strap: any, mode: 'internal' | 'buy_ready') => {
+    if (mode === 'internal' && isPurchasedReadyStrap(strap)) {
+      toast.error('Esta tira é comprada pronta e não permite produção interna.');
+      return;
+    }
     const lineId = technicalStrapLineId(strap);
     const line = lineId ? lineById.get(lineId) : undefined;
     const colorId = line?.colorId || strap.color_id || null;
@@ -153,20 +334,24 @@ function MobileStrapIdentityEditor({
         const lineId = technicalStrapLineId(strap);
         const line = lineId ? lineById.get(lineId) : undefined;
         const selection = lineId ? item.strap_sourcing?.[lineId] : null;
-        const officialColors = officialStrapColorsForBase(catalog, line?.baseGroupId);
+        const purchasedReady = isPurchasedReadyStrap(strap);
+        const usesFinishedGroup = strapIdentityBasis(strap) === 'finished_product_group';
+        const identityColors = strapColorsForIdentity(catalog, strap, line?.baseGroupId);
         const selectedColor = catalog?.colors.find((entry) => entry.id === strap.color_id);
-        const colorIsOfficial = !!strap.color_id && officialColors.some((entry) => entry.id === strap.color_id);
-        const displayedColors = selectedColor && !colorIsOfficial
-          ? [selectedColor, ...officialColors]
-          : officialColors;
+        const colorIsAvailable = !!strap.color_id
+          && identityColors.some((entry) => entry.id === strap.color_id);
+        const displayedColors = selectedColor && !colorIsAvailable
+          ? [selectedColor, ...identityColors]
+          : identityColors;
+        const identityGroupResolved = usesFinishedGroup ? !!strap.identity_group_id : !!line?.baseGroupId;
         return (
           <div key={lineId || strapIndex} className="space-y-2 rounded-md border p-2">
             <p className="text-xs font-semibold">{strap.label || `Tira ${strapIndex + 1}`}</p>
             <Select
               value={strap.color_id || undefined}
-              disabled={!catalog || isLoading || !line?.baseGroupId}
+              disabled={!catalog || isLoading || !identityGroupResolved}
               onValueChange={(colorId) => {
-                const color = officialColors.find((entry) => entry.id === colorId);
+                const color = identityColors.find((entry) => entry.id === colorId);
                 if (!color) return;
                 const straps = [...(item.strap_colors || [])];
                 straps[strapIndex] = { ...strap, color_id: color.id, color: color.name };
@@ -182,26 +367,26 @@ function MobileStrapIdentityEditor({
               </SelectTrigger>
               <SelectContent>
                 {displayedColors.map((entry) => (
-                  <SelectItem key={entry.id} value={entry.id} disabled={!officialColors.some((color) => color.id === entry.id)}>{entry.name}{entry.id === strap.color_id && !colorIsOfficial ? ' · vínculo inválido' : ''}</SelectItem>
+                  <SelectItem key={entry.id} value={entry.id} disabled={!identityColors.some((color) => color.id === entry.id)}>{entry.name}{entry.id === strap.color_id && !colorIsAvailable ? ' · vínculo inválido' : ''}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
-            {!isLoading && !line?.baseGroupId && <p className="text-xs text-destructive">A referência não identifica a napa-base por UUID. Corrija o cadastro no hub.</p>}
-            {!!line?.baseGroupId && officialColors.length === 0 && <p className="text-xs text-destructive">Esta napa-base não possui cor oficial ativa.</p>}
-            {!!strap.color_id && !colorIsOfficial && <p className="text-xs text-destructive">A cor atual não pertence à napa-base resolvida.</p>}
-            <div className="grid grid-cols-2 gap-1.5">
+            {!isLoading && !identityGroupResolved && <p className="text-xs text-destructive">{usesFinishedGroup ? 'A ficha não identifica o grupo do produto acabado por UUID.' : 'A referência não identifica a napa-base por UUID. Corrija o cadastro no hub.'}</p>}
+            {identityGroupResolved && identityColors.length === 0 && <p className="text-xs text-destructive">{usesFinishedGroup ? 'O grupo comprado não possui produto ativo com cor canônica.' : 'Esta napa-base não possui cor oficial ativa.'}</p>}
+            {!!strap.color_id && !colorIsAvailable && <p className="text-xs text-destructive">A cor atual não pertence ao grupo de identidade resolvido.</p>}
+            <div className={`grid gap-1.5 ${purchasedReady ? 'grid-cols-1' : 'grid-cols-2'}`}>
               {([
                 ['internal', 'Produzir com napa'],
                 ['buy_ready', 'Comprar pronta'],
-              ] as const).map(([mode, label]) => (
+              ] as const).filter(([mode]) => !purchasedReady || mode === 'buy_ready').map(([mode, label]) => (
                 <button
                   key={mode}
                   type="button"
-                  disabled={!billingDate || isLoading || !line?.strapVariantId || !strap.color_id || !colorIsOfficial}
+                  disabled={!billingDate || isLoading || !line?.strapVariantId || !strap.color_id || !colorIsAvailable}
                   onClick={() => selectOrigin(strap, mode)}
                   className={`min-h-10 rounded-md border px-2 text-[11px] font-semibold disabled:opacity-50 ${selection?.source_mode === mode ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground'}`}
                 >
-                  {label}
+                  {purchasedReady ? 'Comprada pronta · origem fixa' : label}
                 </button>
               ))}
             </div>
@@ -227,11 +412,15 @@ export default function MobileNewOrder() {
   const [selectedClient, setSelectedClient] = useState<ClientLite | null>(null);
   // F3: contexto do cliente — tabela de preço + histórico
   const [priceLookup, setPriceLookup] = useState<PriceLookup>({ byRefColor: new Map(), byRef: new Map() });
+  const [priceLookupLoading, setPriceLookupLoading] = useState(false);
   const [clientHistory, setClientHistory] = useState<ClientHistory | null>(null);
 
   // Items
   const [refs, setRefs] = useState<RefLite[]>([]);
-  const [variants, setVariants] = useState<VariantLite[]>([]);
+  const [referenceColorVariants, setReferenceColorVariants] = useState<ReferenceColorVariantLite[]>([]);
+  const [materialVariants, setMaterialVariants] = useState<MaterialVariantLite[]>([]);
+  const [materialProducts, setMaterialProducts] = useState<ProductLite[]>([]);
+  const [materialProductGroups, setMaterialProductGroups] = useState<ProductGroupLite[]>([]);
   const [items, setItems] = useState<DraftItem[]>([]);
   const [refSearch, setRefSearch] = useState('');
   const [billingDate, setBillingDate] = useState('');
@@ -256,6 +445,9 @@ export default function MobileNewOrder() {
           setSelectedClient(data.client);
           setItems(data.items || []);
           setBillingDate(data.billingDate || '');
+          if (data.priceLookup?.byRefColor instanceof Map && data.priceLookup?.byRef instanceof Map) {
+            setPriceLookup(data.priceLookup);
+          }
           if (data.client) setStep('items');
         }
       } else {
@@ -267,23 +459,42 @@ export default function MobileNewOrder() {
 
   // ── F3: ao selecionar cliente, carrega price list + histórico ──
   useEffect(() => {
+    let cancelled = false;
     if (!selectedClient?.id) {
       setPriceLookup({ byRefColor: new Map(), byRef: new Map() });
+      setPriceLookupLoading(false);
       setClientHistory(null);
       return;
     }
-    void fetchClientPriceList(selectedClient.id).then(setPriceLookup).catch(() => {});
-    void fetchClientHistory(selectedClient.id).then(setClientHistory).catch(() => {});
-  }, [selectedClient?.id]);
+    if (!online) {
+      setPriceLookupLoading(false);
+      return;
+    }
+    setPriceLookupLoading(true);
+    void fetchClientPriceList(selectedClient.id)
+      .then((lookup) => {
+        if (!cancelled) setPriceLookup(lookup);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setPriceLookupLoading(false);
+      });
+    void fetchClientHistory(selectedClient.id)
+      .then((history) => {
+        if (!cancelled) setClientHistory(history);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [selectedClient?.id, online]);
 
   // ── Autosave draft ──
   useEffect(() => {
     if (!selectedClient && items.length === 0) return;
     const t = setTimeout(() => {
-      void saveDraft(requestId, { client: selectedClient, items, billingDate });
+      void saveDraft(requestId, { client: selectedClient, items, billingDate, priceLookup });
     }, 500);
     return () => clearTimeout(t);
-  }, [selectedClient, items, billingDate, requestId]);
+  }, [selectedClient, items, billingDate, priceLookup, requestId]);
 
   // ── Carrega clientes ──
   useEffect(() => {
@@ -309,36 +520,116 @@ export default function MobileNewOrder() {
   // ── Carrega refs (preload no step de items) ──
   useEffect(() => {
     if (step !== 'items') return;
+    let cancelled = false;
+    const applyCatalog = (catalog: MobileOrderCatalog) => {
+      if (cancelled) return;
+      setRefs(catalog.references);
+      setReferenceColorVariants(catalog.referenceColorVariants);
+      setMaterialVariants(catalog.materialVariants);
+      setMaterialProducts(catalog.products);
+      setMaterialProductGroups(catalog.productGroups);
+    };
     (async () => {
-      const { data } = await supabase
+      const cached = await loadMobileOrderCatalog<MobileOrderCatalog>().catch(() => null);
+      if (cached) applyCatalog(cached);
+      if (!online) return;
+
+      const { data, error } = await supabase
         .from('technical_sheets')
-        .select('id, name, shoe_category_id, has_straps, strap_colors')
+        .select(MOBILE_TECHNICAL_SHEET_SELECT)
         .order('name')
         .limit(100);
-      setRefs((data ?? []).map((reference) => ({
+      if (error) throw error;
+      const references = (data ?? []).map((reference) => ({
         ...reference,
         strap_colors: Array.isArray(reference.strap_colors) ? reference.strap_colors : [],
-      })));
+      })) as RefLite[];
 
-      const refIds = (data ?? []).map(r => r.id);
-      if (refIds.length > 0) {
-        const { data: v } = await supabase
+      const refIds = references.map((reference) => reference.id);
+      let referenceColors: ReferenceColorVariantLite[] = [];
+      let activeVariants: MaterialVariantLite[] = [];
+      if (refIds.length) {
+        const [colorResult, materialResult] = await Promise.all([
+          supabase
           .from('reference_color_variants')
           .select('reference_id, color, image_url')
-          .in('reference_id', refIds);
-        setVariants(v ?? []);
+          .in('reference_id', refIds),
+          supabase
+            .from('reference_material_variants')
+            .select('id, reference_id, material_name, sku, unit_price_override, main_material_group_id, upper_material_product_id, upper_material_group_id, lining_material_product_id, lining_material_group_id, active, display_order')
+            .in('reference_id', refIds)
+            .eq('active', true)
+            .order('display_order'),
+        ]);
+        if (colorResult.error) throw colorResult.error;
+        if (materialResult.error) throw materialResult.error;
+        referenceColors = (colorResult.data || []) as ReferenceColorVariantLite[];
+        activeVariants = (materialResult.data || []) as MaterialVariantLite[];
       }
-    })();
-  }, [step]);
+
+      const pinnedIds = Array.from(new Set(activeVariants.flatMap((variant) => [
+        variant.upper_material_product_id,
+        variant.lining_material_product_id,
+      ]).filter(Boolean))) as string[];
+      let pinnedProducts: ProductLite[] = [];
+      if (pinnedIds.length) {
+        const { data: pinned, error: pinnedError } = await supabase
+          .from('products')
+          .select('id, group_id, color, active')
+          .in('id', pinnedIds);
+        if (pinnedError) throw pinnedError;
+        pinnedProducts = (pinned || []) as ProductLite[];
+      }
+
+      const pinnedGroupByProduct = new Map(pinnedProducts.map((product) => [product.id, product.group_id]));
+      const groupIds = Array.from(new Set(activeVariants.flatMap((variant) => [
+        variant.upper_material_group_id,
+        variant.lining_material_group_id,
+        variant.main_material_group_id,
+        variant.upper_material_product_id ? pinnedGroupByProduct.get(variant.upper_material_product_id) : null,
+        variant.lining_material_product_id ? pinnedGroupByProduct.get(variant.lining_material_product_id) : null,
+      ]).filter(Boolean))) as string[];
+
+      let products = pinnedProducts;
+      let productGroups: ProductGroupLite[] = [];
+      if (groupIds.length) {
+        const [productResult, groupResult] = await Promise.all([
+          supabase.from('products').select('id, group_id, color, active').in('group_id', groupIds),
+          supabase.from('product_groups').select('id, name').in('id', groupIds),
+        ]);
+        if (productResult.error) throw productResult.error;
+        if (groupResult.error) throw groupResult.error;
+        products = Array.from(new Map(
+          [...pinnedProducts, ...((productResult.data || []) as ProductLite[])]
+            .map((product) => [product.id, product]),
+        ).values());
+        productGroups = (groupResult.data || []) as ProductGroupLite[];
+      }
+
+      const catalog: MobileOrderCatalog = {
+        references,
+        referenceColorVariants: referenceColors,
+        materialVariants: activeVariants,
+        products,
+        productGroups,
+      };
+      applyCatalog(catalog);
+      await saveMobileOrderCatalog(catalog);
+    })().catch(() => {
+      // O cache permanece utilizável. O submit ainda valida toda identidade.
+    });
+    return () => { cancelled = true; };
+  }, [step, online]);
 
   const filteredRefs = useMemo(() => {
     if (!refSearch) return refs;
     return refs.filter(r => searchMatchesAllTerms(
       refSearch,
       r.name,
-      ...variants.filter(v => v.reference_id === r.id).map(v => v.color),
+      ...referenceColorVariants.filter(v => v.reference_id === r.id).map(v => v.color),
+      ...materialVariants.filter(v => v.reference_id === r.id).flatMap(v => [v.material_name, v.sku || '']),
     ));
-  }, [refs, variants, refSearch]);
+  }, [refs, referenceColorVariants, materialVariants, refSearch]);
 
   const totalPairs = items.reduce(
     (s, it) => s + Object.values(it.grade).reduce((a, b) => a + (b || 0), 0),
@@ -356,6 +647,55 @@ export default function MobileNewOrder() {
     () => new Set(unresolvedStrapSnapshots.map((item) => item.reference_id)),
     [unresolvedStrapSnapshots],
   );
+  const materialSelectionIssues = useMemo(
+    () => mobileMaterialSelectionIssues(
+      items,
+      refs,
+      materialVariants,
+      materialProducts,
+      materialProductGroups,
+    ),
+    [items, refs, materialVariants, materialProducts, materialProductGroups],
+  );
+
+  const variantsForReference = (referenceId: string) => materialVariants.filter((variant) =>
+    variant.reference_id === referenceId && variant.active !== false
+  );
+
+  const colorsForMaterialVariant = (reference: RefLite | undefined, variant: MaterialVariantLite | undefined) => {
+    const group = resolveMaterialVariantColorGroup({
+      variant,
+      sheet: reference,
+      products: materialProducts,
+      groups: materialProductGroups,
+    });
+    return group ? activeProductColorsForGroup(materialProducts, group.id) : [];
+  };
+
+  const automaticPrice = (
+    referenceId: string,
+    color: string | null,
+    variant?: MaterialVariantLite,
+    grade: Record<string, number> = {},
+  ) => resolveSaleOrderItemPrice({
+    lookup: priceLookup,
+    referenceId,
+    color,
+    quantity: Object.values(grade).reduce((sum, value) => sum + (value || 0), 0),
+    variantPrice: variant?.unit_price_override,
+    sheetPrice: refs.find((entry) => entry.id === referenceId)?.sale_price,
+  });
+
+  // A tabela e o catálogo chegam de forma assíncrona (ou do cache offline).
+  // Reaplica a cadeia somente aos preços automáticos; edição manual permanece.
+  useEffect(() => {
+    setItems((current) => repriceMobileDraftItems(
+      current,
+      priceLookup,
+      refs,
+      materialVariants,
+    ));
+  }, [priceLookup, refs, materialVariants]);
 
   const strapsForReference = (reference: RefLite, color: string) =>
     ensureTechnicalStrapLineIds(Array.isArray(reference.strap_colors) ? reference.strap_colors : [])
@@ -369,6 +709,16 @@ export default function MobileNewOrder() {
     }
     if (items.length === 0 || totalPairs === 0) {
       toast.error('Adicione ao menos 1 item com quantidade');
+      return;
+    }
+    if (priceLookupLoading) {
+      toast.error('Aguarde a tabela de preços do cliente terminar de carregar.');
+      setStep('items');
+      return;
+    }
+    if (materialSelectionIssues.length > 0) {
+      toast.error(materialSelectionIssues[0]);
+      setStep('items');
       return;
     }
     if (unresolvedStrapSnapshots.length > 0) {
@@ -423,19 +773,7 @@ export default function MobileNewOrder() {
     // sale_order_items NÃO tem coluna reference_name (auditoria 24/05/2026
     // mostrou HTTP 400 "column does not exist"). Nome vem via JOIN com
     // technical_sheets quando exibido.
-    const itemsPayload: any[] = items.map(it => {
-      const qty = Object.values(it.grade).reduce((a, b) => a + (b || 0), 0);
-      return {
-        reference_id: it.reference_id,
-        color: it.color,
-        quantity: qty,
-        grade: it.grade,
-        unit_price: it.unit_price,
-        observation: '',
-        strap_colors: it.strap_colors || [],
-        strap_sourcing: it.strap_sourcing || {},
-      };
-    });
+    const itemsPayload = buildMobileSaleOrderItemsPayload(items);
 
     // Se online, tenta enviar direto. Senão (ou se falhar), enfileira.
     // Bug fix 24/05/2026: incluir `total` calculado no payload — sem isso,
@@ -526,7 +864,14 @@ export default function MobileNewOrder() {
           {clients.map(c => (
             <li key={c.id}>
               <button
-                onClick={() => { setSelectedClient(c); setStep('items'); }}
+                onClick={() => {
+                  // Nunca deixa a tabela do cliente anterior precificar o novo.
+                  setPriceLookup({ byRefColor: new Map(), byRef: new Map() });
+                  setPriceLookupLoading(online);
+                  setClientHistory(null);
+                  setSelectedClient(c);
+                  setStep('items');
+                }}
                 className="min-h-14 w-full rounded-md p-3 text-left transition-colors active:bg-muted/40"
               >
                 <p className="font-bold text-foreground">{c.nome_fantasia || c.razao_social}</p>
@@ -571,8 +916,18 @@ export default function MobileNewOrder() {
             <span className="text-sm">Cliente</span>
           </button>
           <button
-            onClick={() => setStep('review')}
-            disabled={items.length === 0 || unresolvedStrapSnapshots.length > 0}
+            onClick={() => {
+              if (priceLookupLoading) {
+                toast.error('Aguarde a tabela de preços do cliente terminar de carregar.');
+                return;
+              }
+              if (materialSelectionIssues.length > 0) {
+                toast.error(materialSelectionIssues[0]);
+                return;
+              }
+              setStep('review');
+            }}
+            disabled={priceLookupLoading || items.length === 0 || unresolvedStrapSnapshots.length > 0 || materialSelectionIssues.length > 0}
             className="text-primary font-bold disabled:text-muted-foreground"
           >
             Revisar →
@@ -582,6 +937,9 @@ export default function MobileNewOrder() {
         <div className="bg-muted/40 rounded-lg p-3">
           <p className="text-xs uppercase tracking-widest text-muted-foreground font-mono mb-1">Cliente</p>
           <p className="font-bold text-sm">{selectedClient?.razao_social}</p>
+          {priceLookupLoading && (
+            <p className="mt-1 text-xs text-muted-foreground">Atualizando tabela de preços…</p>
+          )}
         </div>
 
         <div>
@@ -595,6 +953,13 @@ export default function MobileNewOrder() {
             <p className="mt-1 text-xs text-muted-foreground">
               {unresolvedStrapSnapshots.map((entry) => entry.reference_name).join(', ')} usa tira, mas não possui linhas técnicas no snapshot. Corrija a ficha técnica no desktop; o app não infere cor ou variante.
             </p>
+          </div>
+        )}
+
+        {materialSelectionIssues.length > 0 && (
+          <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+            <p className="font-bold text-amber-800 dark:text-amber-300">Identidade comercial incompleta</p>
+            <p className="mt-1 text-xs text-muted-foreground">{materialSelectionIssues[0]}</p>
           </div>
         )}
 
@@ -624,6 +989,10 @@ export default function MobileNewOrder() {
         {/* Items atuais */}
         {items.map((it, idx) => {
           const itemTotal = Object.values(it.grade).reduce((a, b) => a + (b || 0), 0);
+          const reference = refs.find((entry) => entry.id === it.reference_id);
+          const itemMaterialVariants = variantsForReference(it.reference_id);
+          const selectedMaterialVariant = itemMaterialVariants.find((entry) => entry.id === it.material_variant_id);
+          const materialColors = colorsForMaterialVariant(reference, selectedMaterialVariant);
           return (
             <div key={idx} className="border-[1.5px] border-foreground/15 rounded-lg p-3 bg-card">
               <div className="flex items-start gap-3">
@@ -635,12 +1004,26 @@ export default function MobileNewOrder() {
                 <div className="flex-1 min-w-0">
                   <p className="font-bold text-sm truncate">{it.reference_name}</p>
                   <p className="text-xs text-muted-foreground uppercase">{it.color}</p>
+                  {(selectedMaterialVariant || it.material_variant_name) && (
+                    <p className="mt-0.5 text-[11px] text-muted-foreground">
+                      {selectedMaterialVariant?.material_name || it.material_variant_name}
+                      {(selectedMaterialVariant?.sku || it.material_variant_sku)
+                        ? ` · SKU ${selectedMaterialVariant?.sku || it.material_variant_sku}`
+                        : ''}
+                    </p>
+                  )}
                   <p className="text-sm font-mono mt-1">
                     {itemTotal} pares · R$ {(itemTotal * it.unit_price).toFixed(2)}
                   </p>
                   {it.unit_price > 0 && (
                     <p className="text-[10px] text-emerald-700 font-mono mt-0.5">
-                      R$ {it.unit_price.toFixed(2)}/par (tabela)
+                      R$ {it.unit_price.toFixed(2)}/par ({it.unit_price_source === 'material_variant'
+                        ? 'preço próprio da variante'
+                        : it.unit_price_source === 'manual'
+                          ? 'editado e congelado'
+                          : it.unit_price_source?.startsWith('table_')
+                            ? 'tabela'
+                            : 'preço congelado'})
                     </p>
                   )}
                 </div>
@@ -648,6 +1031,93 @@ export default function MobileNewOrder() {
                   <Trash className="h-5 w-5" />
                 </button>
               </div>
+              {itemMaterialVariants.length > 0 && (
+                <div className="mt-3 grid gap-2 rounded-md border bg-muted/20 p-2">
+                  <div>
+                    <label className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
+                      Material *
+                    </label>
+                    <Select
+                      value={it.material_variant_id || undefined}
+                      onValueChange={(variantId) => {
+                        const variant = itemMaterialVariants.find((entry) => entry.id === variantId);
+                        if (!variant) return;
+                        setItems((current) => current.map((entry, currentIndex) => {
+                          if (currentIndex !== idx) return entry;
+                          const price = automaticPrice(entry.reference_id, null, variant, entry.grade);
+                          return {
+                            ...entry,
+                            material_variant_id: variant.id,
+                            material_variant_name: variant.material_name,
+                            material_variant_sku: variant.sku || null,
+                            color: '',
+                            image_url: undefined,
+                            unit_price: price.price,
+                            unit_price_source: price.source,
+                            strap_colors: reference ? strapsForReference(reference, '') : [],
+                            strap_sourcing: {},
+                          };
+                        }));
+                      }}
+                    >
+                      <SelectTrigger className={!it.material_variant_id ? 'border-amber-500/60' : ''}>
+                        <SelectValue placeholder="Selecione o material primeiro" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {itemMaterialVariants.map((variant) => (
+                          <SelectItem key={variant.id} value={variant.id}>
+                            {variant.material_name}{variant.sku ? ` · SKU ${variant.sku}` : ''}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
+                      Cor *
+                    </label>
+                    <Select
+                      value={it.color || undefined}
+                      disabled={!selectedMaterialVariant || materialColors.length === 0}
+                      onValueChange={(color) => {
+                        if (!selectedMaterialVariant || !materialColors.includes(color)) return;
+                        const image = referenceColorVariants.find((variant) =>
+                          variant.reference_id === it.reference_id
+                          && variant.color.trim().toUpperCase() === color
+                        )?.image_url;
+                        setItems((current) => current.map((entry, currentIndex) => {
+                          if (currentIndex !== idx) return entry;
+                          const price = automaticPrice(
+                            entry.reference_id,
+                            color,
+                            selectedMaterialVariant,
+                            entry.grade,
+                          );
+                          return {
+                            ...entry,
+                            color,
+                            image_url: image || undefined,
+                            unit_price: price.price,
+                            unit_price_source: price.source,
+                            strap_colors: reference ? strapsForReference(reference, color) : [],
+                            strap_sourcing: {},
+                          };
+                        }));
+                      }}
+                    >
+                      <SelectTrigger className={!it.color ? 'border-amber-500/60' : ''}>
+                        <SelectValue placeholder={selectedMaterialVariant ? 'Selecione a cor do grupo efetivo' : 'Escolha o material antes'} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {materialColors.map((color) => <SelectItem key={color} value={color}>{color}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                    {selectedMaterialVariant && materialColors.length === 0 && (
+                      <p className="mt-1 text-xs text-destructive">O grupo efetivo não possui produto ativo com cor.</p>
+                    )}
+                  </div>
+                </div>
+              )}
               {unresolvedStrapReferenceIds.has(it.reference_id) && (
                 <p className="mt-2 rounded-md border border-destructive/30 bg-destructive/5 px-2 py-1.5 text-xs font-medium text-destructive">
                   Ficha com tiras habilitadas e snapshot vazio — item bloqueado.
@@ -657,13 +1127,23 @@ export default function MobileNewOrder() {
                 <summary className="text-xs text-primary cursor-pointer">Editar grade</summary>
                 <GradeEditor
                   grade={it.grade}
-                  onChange={g => setItems(items.map((x, i) => i === idx ? { ...x, grade: g } : x))}
+                  onChange={(grade) => setItems((current) => {
+                    const withGrade = current.map((entry, currentIndex) =>
+                      currentIndex === idx ? { ...entry, grade } : entry
+                    );
+                    return repriceMobileDraftItems(
+                      withGrade,
+                      priceLookup,
+                      refs,
+                      materialVariants,
+                    );
+                  })}
                 />
                 <div className="mt-2 flex items-center gap-2">
                   <label className="text-xs text-muted-foreground">Preço/par:</label>
                   <NumberInput
                     value={it.unit_price}
-                    onChange={n => setItems(items.map((x, i) => i === idx ? { ...x, unit_price: n } : x))}
+                    onChange={n => setItems(items.map((x, i) => i === idx ? { ...x, unit_price: n, unit_price_source: 'manual' } : x))}
                     className="w-24 px-2 py-1 text-sm border rounded font-mono"
                   />
                 </div>
@@ -703,12 +1183,32 @@ export default function MobileNewOrder() {
           )}
           <div className="grid grid-cols-2 gap-2 mt-2 max-h-64 overflow-y-auto">
             {filteredRefs.slice(0, 30).map(r => {
-              const refVariants = variants.filter(v => v.reference_id === r.id);
+              const refColorVariants = referenceColorVariants.filter(v => v.reference_id === r.id);
+              const refMaterialVariants = variantsForReference(r.id);
               return (
                 <div key={r.id} className="border rounded p-2">
                   <p className="text-xs font-bold truncate">{r.name}</p>
                   <div className="flex flex-wrap gap-1 mt-1">
-                    {refVariants.length === 0 ? (
+                    {refMaterialVariants.length > 0 ? (
+                      <button
+                        onClick={() => {
+                          setItems([...items, {
+                            reference_id: r.id,
+                            reference_name: r.name,
+                            material_variant_id: null,
+                            material_variant_name: null,
+                            material_variant_sku: null,
+                            color: '',
+                            grade: {},
+                            unit_price: 0,
+                            strap_colors: strapsForReference(r, ''),
+                            strap_sourcing: {},
+                          }]);
+                          setRefSearch('');
+                        }}
+                        className="rounded bg-primary/10 px-2 py-1 text-xs font-semibold text-primary"
+                      >+ escolher material</button>
+                    ) : refColorVariants.length === 0 ? (
                       <button
                         onClick={() => {
                           setItems([...items, {
@@ -716,7 +1216,8 @@ export default function MobileNewOrder() {
                             reference_name: r.name,
                             color: '',
                             grade: {},
-                            unit_price: resolvePrice(priceLookup, r.id, null),
+                            unit_price: automaticPrice(r.id, null).price,
+                            unit_price_source: automaticPrice(r.id, null).source,
                             strap_colors: strapsForReference(r, ''),
                             strap_sourcing: {},
                           }]);
@@ -724,7 +1225,7 @@ export default function MobileNewOrder() {
                         }}
                         className="text-xs px-2 py-1 bg-muted rounded"
                       >+ sem cor</button>
-                    ) : refVariants.slice(0, 4).map(v => (
+                    ) : refColorVariants.slice(0, 4).map(v => (
                       <button
                         key={v.color}
                         onClick={() => {
@@ -734,7 +1235,8 @@ export default function MobileNewOrder() {
                             color: v.color,
                             image_url: v.image_url || undefined,
                             grade: {},
-                            unit_price: resolvePrice(priceLookup, r.id, v.color),
+                            unit_price: automaticPrice(r.id, v.color).price,
+                            unit_price_source: automaticPrice(r.id, v.color).source,
                             strap_colors: strapsForReference(r, v.color),
                             strap_sourcing: {},
                           }]);
@@ -879,6 +1381,11 @@ export default function MobileNewOrder() {
                 <div className="flex-1">
                   <p className="text-sm font-bold">{it.reference_name}</p>
                   <p className="text-xs text-muted-foreground">{it.color} · {qty} pares</p>
+                  {it.material_variant_name && (
+                    <p className="text-[11px] text-muted-foreground">
+                      {it.material_variant_name}{it.material_variant_sku ? ` · SKU ${it.material_variant_sku}` : ''}
+                    </p>
+                  )}
                 </div>
                 <span className="font-mono text-sm">R$ {(qty * it.unit_price).toFixed(2)}</span>
               </li>

@@ -94,7 +94,8 @@ export default function ProductDetail() {
     dimensions_length: 0, dimensions_width: 0, dimensions_thickness: 0, dimensions_unit: 'mm',
     purchase_unit: 'un', production_unit: 'un', conversion_rate: 1, purchase_order_unit: 'un',
     min_order_quantity: 1, safety_stock: 0, lead_time_days: 7, calculation_method: 'weight',
-    supplier_id: null, lot_number: null, expiration_date: null, is_chemical: false,
+    supplier_id: null, supplier_color_code: null,
+    lot_number: null, expiration_date: null, is_chemical: false,
     linked_last_id: null, sole_material: null, heel_height: null,
   });
 
@@ -146,7 +147,8 @@ export default function ProductDetail() {
       min_order_quantity: rest.min_order_quantity ?? 1,
       safety_stock: rest.safety_stock ?? 0, lead_time_days: rest.lead_time_days ?? 7,
       calculation_method: normalizeCalculationMethod(rest.calculation_method),
-      supplier_id: (rest as any).supplier_id || null,
+      supplier_id: rest.supplier_id || null,
+      supplier_color_code: rest.supplier_color_code || null,
       lot_number: rest.lot_number || null, expiration_date: rest.expiration_date || null,
       is_chemical: rest.is_chemical ?? false,
       linked_last_id: rest.linked_last_id || null,
@@ -218,6 +220,11 @@ export default function ProductDetail() {
       baseData.dimensions_width = plateWidth;
       baseData.dimensions_thickness = plateThickness;
       baseData.dimensions_unit = plateUnit;
+      baseData.supplier_color_code = baseData.supplier_color_code?.trim() || null;
+      if (baseData.supplier_color_code && !baseData.supplier_id) {
+        toast.error('Selecione o fornecedor antes de informar o código da cor.');
+        return;
+      }
 
       const purchaseUnit = normalizePurchaseUnit(baseData.purchase_unit || baseData.purchase_order_unit);
       const stockUnit = normalizeProductionUnit(baseData.unit);
@@ -484,7 +491,14 @@ export default function ProductDetail() {
                 </div>
                 <div>
                   <Label>Fornecedor</Label>
-                  <Select value={form.supplier_id || 'none'} onValueChange={v => update('supplier_id', v === 'none' ? null : v)}>
+                  <Select value={form.supplier_id || 'none'} onValueChange={v => {
+                    const supplierId = v === 'none' ? null : v;
+                    setForm(prev => ({
+                      ...prev,
+                      supplier_id: supplierId,
+                      supplier_color_code: null,
+                    }));
+                  }}>
                     <SelectTrigger className="mt-1"><SelectValue placeholder="Sem fornecedor" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">Sem fornecedor</SelectItem>
@@ -493,6 +507,17 @@ export default function ProductDetail() {
                       ))}
                     </SelectContent>
                   </Select>
+                </div>
+                <div>
+                  <Label htmlFor="supplier_color_code">Código da cor no fornecedor</Label>
+                  <Input
+                    id="supplier_color_code"
+                    value={form.supplier_color_code || ''}
+                    onChange={e => update('supplier_color_code', e.target.value)}
+                    disabled={!form.supplier_id}
+                    className="mt-1 font-mono"
+                    placeholder={form.supplier_id ? 'Ex.: MAD-047' : 'Selecione um fornecedor primeiro'}
+                  />
                 </div>
                 <div>
                   <Label>Unidade de Medida</Label>

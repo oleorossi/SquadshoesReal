@@ -40,7 +40,12 @@ import {
   ensureTechnicalStrapLineIds,
   technicalStrapLineId,
 } from '@/lib/technicalStrapLines';
-import { officialStrapColorsForBase } from '@/lib/officialStrapColors';
+import { strapColorsForIdentity } from '@/lib/officialStrapColors';
+import { isPurchasedReadyStrap, strapIdentityBasis } from '@/lib/strapIdentity';
+import {
+  activeProductColorsForGroup,
+  resolveMaterialVariantColorGroup,
+} from '@/lib/materialVariantColorGroup';
 import { SearchInput } from '@/components/ui/search-input';
 import { ItemSectorOutsourcingSection } from '@/components/sale-orders/ItemSectorOutsourcingSection';
 interface ReferenceOption {
@@ -382,8 +387,8 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
   }, [soleSizeRange, soleConjugations, grade]);
 
   // colorVariants removido — variante de cor sai do escopo da ficha técnica.
-  // As cores disponíveis vêm exclusivamente das variantes de material
-  // (reference_material_variants.available_colors[]) ou do BOM via grupos.
+  // As cores disponíveis vêm dos produtos ativos dos grupos efetivos. O campo
+  // legado `available_colors` não governa novos itens.
 
   const activeMaterialVariants = variantsByRef.get(item.reference_id || '') ?? [];
   const selectedMaterialVariant = activeMaterialVariants.find(v => v.id === item.material_variant_id);
@@ -499,25 +504,15 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
   const mainGroupForNewColor = useMemo<{ id: string; name: string } | null>(() => {
     if (item.material_variant_id) {
       const variant = activeMaterialVariants.find(v => v.id === item.material_variant_id);
-      // Variante por grupo: pino do slot de cabedal, e — quando a ficha libera o
-      // slot — o MATERIAL PRINCIPAL. Mesma precedência de
-      // resolve_upper_material_for_variant (mig 20261027120000): variante criada
-      // só com material principal (o padrão do diálogo novo) cai aqui.
-      const upperGid = variant?.upper_material_group_id
-        || ((sheetSpecs as any)?.variant_drives_upper ? variant?.main_material_group_id : null);
-      if (upperGid) {
-        const group = (productGroups as any[]).find((g: any) => g.id === upperGid);
-        if (group) return { id: group.id, name: group.name };
-      }
-      // Legado: variante que fixava um produto de cabedal
-      // (upper_material_product_id → products.group_id → product_groups.name).
-      if (variant?.upper_material_product_id) {
-        const prod = (allProducts as any[]).find((p: any) => p.id === variant.upper_material_product_id);
-        if (prod?.group_id) {
-          const group = (productGroups as any[]).find((g: any) => g.id === prod.group_id);
-          return { id: prod.group_id, name: group?.name || variant.material_name || '' };
-        }
-      }
+      // A variante selecionada governa um único componente: cabedal primeiro;
+      // quando ele não foi delegado/preenchido, forração. Retornar null aqui é
+      // intencional — cair no pool legado ofereceria cores de outro componente.
+      return resolveMaterialVariantColorGroup({
+        variant,
+        sheet: sheetSpecs,
+        products: allProducts,
+        groups: productGroups,
+      });
     }
     // Fallback: primeiro material de forração/palmilha no BOM
     const liningCategories = new Set(['Forração da Palmilha', 'Palmilha']);
@@ -624,11 +619,23 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     if (modelHasCabedal) return [];
     const straps = (item.strap_colors as any[]) || [];
     return straps.map((s: any, idx: number) => {
-      if (!s?.color || !s?.group_id) return null;
-      const grp = (productGroups as any[]).find((g: any) => g.id === s.group_id);
+      // A tira comprada pronta é validada pelo catálogo canônico
+      // (grupo UUID + produto ativo + alias aprovado), não pelo helper legado
+      // que também aceita cor extraída do nome do produto.
+      if (isPurchasedReadyStrap(s)) return null;
+      const effectiveGroupId = s?.identity_basis === 'finished_product_group'
+        ? s?.identity_group_id
+        : s?.group_id;
+      if (!s?.color || !effectiveGroupId) return null;
+      const grp = productGroups.find((g) => g.id === effectiveGroupId);
       if (grp?.is_color_agnostic) return null; // material base: cor não se aplica
-      const hasProduct = groupHasProductForColor(allProducts as any[], s.group_id, s.color);
-      return hasProduct ? null : { idx, color: s.color, group_name: s.group_name || '', group_id: s.group_id };
+      const hasProduct = groupHasProductForColor(allProducts, effectiveGroupId, s.color);
+      return hasProduct ? null : {
+        idx,
+        color: s.color,
+        group_name: grp?.name || s.group_name || '',
+        group_id: effectiveGroupId,
+      };
     }).filter(Boolean) as any;
   }, [item.strap_colors, allProducts, productGroups, modelHasCabedal]);
 
@@ -665,6 +672,10 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     const strap = ((item.strap_colors as any[]) || []).find(
       (entry) => technicalStrapLineId(entry) === lineId,
     );
+    if (value === 'internal' && isPurchasedReadyStrap(strap)) {
+      toast.error('Esta tira é comprada pronta e não permite produção interna.');
+      return;
+    }
     const colorId = line?.colorId || strap?.color_id || null;
     if (!line?.strapVariantId || !colorId) {
       toast.error('Selecione a cor canônica e aguarde a resolução exata da variante antes de escolher a origem.');
@@ -691,6 +702,10 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
   };
   const applyStrapOriginToAll = (value: 'internal' | 'buy_ready') => {
     const straps = ((item.strap_colors as any[]) || []);
+    if (value === 'internal' && straps.some((strap) => isPurchasedReadyStrap(strap))) {
+      toast.error('Há tira comprada pronta na ficha. Ela mantém origem fixa Comprar pronta.');
+      return;
+    }
     const unresolved = straps.filter((strap) => {
       const lineId = technicalStrapLineId(strap);
       const line = lineId ? strapLineByKey.get(lineId) : undefined;
@@ -726,36 +741,51 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     onUpdate(index, 'strap_sourcing', next);
   };
 
+  // A linha técnica por grupo acabado não oferece uma decisão de origem: assim
+  // que cor e variante canônicas resolvem, congela buy_ready no snapshot do PV.
+  useEffect(() => {
+    const fixed = (item.strap_colors || [])
+      .filter((strap) => isPurchasedReadyStrap(strap));
+    if (fixed.length === 0) return;
+    let next = strapSourcingMap;
+    let changed = false;
+    fixed.forEach((strap) => {
+      const lineId = technicalStrapLineId(strap);
+      const line = lineId ? strapLineByKey.get(lineId) : undefined;
+      const colorId = line?.colorId || strap.color_id || null;
+      if (!lineId || !line?.strapVariantId || !colorId || !line.canBuyReady) return;
+      const candidate = {
+        source_mode: 'buy_ready' as const,
+        color_id: colorId,
+        strap_variant_id: line.strapVariantId,
+        recipe_id: null,
+        gross_required_m: line.strapRequiredM,
+        required_at: line.requiredAt,
+        main_production_start: line.mainProductionStart,
+        schedule_revision: line.scheduleRevision,
+      };
+      const current = next[lineId];
+      if (JSON.stringify(current) === JSON.stringify(candidate)) return;
+      next = setStrapSourcing(next, lineId, candidate);
+      changed = true;
+    });
+    if (changed) latestRef.current.onUpdate(latestRef.current.index, 'strap_sourcing', next);
+  }, [item.strap_colors, strapLineByKey, strapSourcingMap]);
+
   const availableColors: string[] = useMemo(() => {
-    // When a material group is selected and has specific colors defined, use those exclusively.
-    // This enforces the Reference → Material → Color flow for multi-material references.
+    // Variante selecionada: a cor vem EXCLUSIVAMENTE do grupo efetivo que o
+    // resolver estrutural escolheu. `available_colors` é legado/auditoria.
     if (item.material_variant_id) {
-      const sel = activeMaterialVariants.find(v => v.id === item.material_variant_id);
-      if (sel?.available_colors?.length) {
-        return [...sel.available_colors].sort((a, b) => a.localeCompare(b, 'pt-BR'));
-      }
-      // Variante por grupo (NOVO): as cores oferecidas são EXCLUSIVAMENTE as do
-      // grupo de cabedal escolhido — a cor do item = cor do cabedal (forro/palmilha
-      // seguem por mapeamento). Cor fora do grupo é barrada pelo guard de cor.
-      // Só para variante PURA por grupo (sem pin de produto legado): variantes
-      // antigas (com upper_material_product_id, agora com group_id via backfill)
-      // mantêm o pool UNIÃO de antes — não estreita o dropdown delas.
-      // O grupo efetivo do cabedal é o pino do slot ou, quando a ficha libera o
-      // slot, o MATERIAL PRINCIPAL — que no diálogo novo costuma ser o ÚNICO
-      // preenchido. Sem ele aqui, variante nova não estreitava o dropdown e o
-      // operador escolhia cor que o material da variante não tem.
-      const upperGid = sel?.upper_material_group_id
-        || ((sheetSpecs as any)?.variant_drives_upper ? sel?.main_material_group_id : null);
-      if (upperGid && !sel?.upper_material_product_id) {
-        const groupColors = getColorsFromGroupId(upperGid);
-        if (groupColors.length) return uniqueSortedColors(groupColors);
-      }
+      const effectiveGroupId = mainGroupForNewColor?.id;
+      return effectiveGroupId
+        ? activeProductColorsForGroup(allProducts, effectiveGroupId)
+        : [];
     }
 
     const colorSet = new Set<string>();
 
-    // Variante SEM curadoria manual (available_colors vazio): as cores vêm do
-    // grupo de produtos do material apontado pela variante (upper/lining/insole
+    // Sem variante selecionada, o pool auxiliar vem dos grupos de produtos
+    // apontados pelas variantes (upper/lining/insole
     // _material_product_id → products.group_id → cores do grupo), unidas às dos
     // materiais da ficha abaixo. Adicionado 11/06/2026 — user cadastrou variante
     // NAPA SOFT na EC23 (grupo com 27 cores) e o PV só mostrava as 3 cores do
@@ -763,11 +793,8 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     // o dropdown principal fica travado até escolher material, mas esse pool
     // alimenta o fallback de cor das TIRAS sem group_id (não travado). Solado
     // fica de fora — cor de solado é campo próprio.
-    const variantsForColors = item.material_variant_id
-      ? activeMaterialVariants.filter(v => v.id === item.material_variant_id)
-      : activeMaterialVariants;
+    const variantsForColors = activeMaterialVariants;
     variantsForColors.forEach(v => {
-      (v.available_colors || []).forEach(color => colorSet.add(color));
       // Grupos apontados pela variante → cores dos produtos do grupo. O
       // `main_material_group_id` entra aqui SEM depender de variant_drives_*:
       // este pool é a UNIÃO de cores possíveis (alimenta o fallback de cor das
@@ -833,7 +860,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
       selectedRef.colors.split(',').forEach(color => colorSet.add(color.trim()));
     }
     return uniqueSortedColors(Array.from(colorSet));
-  }, [item.material_variant_id, activeMaterialVariants, sheetSpecs, selectedRef?.colors, selectedRef?.has_straps, selectedRef?.strap_colors, refMaterials, productGroups, allProducts, groupSupplierMaterials, allGroupColors]);
+  }, [item.material_variant_id, mainGroupForNewColor, activeMaterialVariants, sheetSpecs, selectedRef?.colors, selectedRef?.has_straps, selectedRef?.strap_colors, refMaterials, productGroups, allProducts, groupSupplierMaterials, allGroupColors]);
 
   // Cor da VARIAÇÃO do material (cabedal): products.color do produto apontado
   // por upper_material_product_id da variante selecionada. É o "nome da variação
@@ -952,6 +979,8 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
           color: '',
           strap_type_id: s.strap_type_id || null,
           measure_id: s.measure_id || null,
+          identity_basis: s.identity_basis || 'reference_base',
+          identity_group_id: s.identity_group_id || null,
           group_id: s.group_id || '',
           group_name: s.group_name || '',
           consumption: s.consumption || 0,
@@ -973,6 +1002,8 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
             color: existing?.color || '',
             strap_type_id: refStrap.strap_type_id || null,
             measure_id: refStrap.measure_id || null,
+            identity_basis: refStrap.identity_basis || 'reference_base',
+            identity_group_id: refStrap.identity_group_id || null,
             group_id: refStrap.group_id || '',
             group_name: refStrap.group_name || '',
             consumption: refStrap.consumption || 0,
@@ -989,6 +1020,8 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
           if (!c) return true;
           return (c.group_id || '') !== (u.group_id || '')
             || (c.group_name || '') !== (u.group_name || '')
+            || (c.identity_basis || 'reference_base') !== (u.identity_basis || 'reference_base')
+            || (c.identity_group_id || '') !== (u.identity_group_id || '')
             || (c.label || '') !== (u.label || '')
             || Number(c.consumption || 0) !== Number(u.consumption || 0)
             || JSON.stringify(c.consumption_per_size || {}) !== JSON.stringify(u.consumption_per_size || {});
@@ -1322,7 +1355,15 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                   </SelectTrigger>
                   <SelectContent>
                     {activeMaterialVariants.map(v => {
-                      const colorCount = v.available_colors?.length ?? 0;
+                      const effectiveGroup = resolveMaterialVariantColorGroup({
+                        variant: v,
+                        sheet: sheetSpecs,
+                        products: allProducts,
+                        groups: productGroups,
+                      });
+                      const colorCount = effectiveGroup
+                        ? activeProductColorsForGroup(allProducts, effectiveGroup.id).length
+                        : 0;
                       return (
                         <SelectItem key={v.id} value={v.id}>
                           <span className="font-medium">{v.material_name}</span>
@@ -1776,9 +1817,11 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
               <div className="px-3 py-2 border-b bg-muted/10 flex flex-wrap items-center justify-between gap-2">
                 <span className="text-xs text-muted-foreground">Aplicar a todas e revisar individualmente:</span>
                 <div className="flex gap-1.5">
-                  <Button type="button" variant="outline" size="sm" className="h-7 text-xs" onClick={() => applyStrapOriginToAll('internal')}>
-                    Produzir com napa própria
-                  </Button>
+                  {!straps.some((strap) => isPurchasedReadyStrap(strap)) && (
+                    <Button type="button" variant="outline" size="sm" className="h-7 text-xs" onClick={() => applyStrapOriginToAll('internal')}>
+                      Produzir com napa própria
+                    </Button>
+                  )}
                   <Button type="button" variant="outline" size="sm" className="h-7 text-xs" onClick={() => applyStrapOriginToAll('buy_ready')}>
                     Comprar tira pronta
                   </Button>
@@ -1791,11 +1834,18 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                     <strong>Atenção:</strong> {missing.length === 1
                       ? `Cor "${missing[0].color}" não tem produto no estoque do grupo "${missing[0].group_name || 'tira'}".`
                       : `${missing.length} tiras com cor sem produto no estoque.`}
-                    {' '}O débito vai falhar quando a OP entrar em produção. Cadastre agora pra continuar:
+                    {' '}A identidade canônica não pode ser confirmada até o grupo possuir o produto ativo correto.
                   </p>
                   <div className="flex flex-wrap gap-1.5">
                     {missing.map(m => {
                       const strap = straps[m.idx];
+                      if (isPurchasedReadyStrap(strap)) {
+                        return (
+                          <span key={m.idx} className="rounded-md border border-amber-500/40 bg-card px-2 py-1 text-xs">
+                            {strap.label || `Tira ${m.idx + 1}`}: cor ausente no grupo comprado
+                          </span>
+                        );
+                      }
                       return (
                         <Button
                           key={m.idx}
@@ -1804,8 +1854,8 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                           size="sm"
                           className="h-7 text-xs gap-1 border-amber-500/40 bg-card hover:bg-amber-500/10 text-amber-700 dark:text-amber-400"
                           onClick={() => {
-                            setPendingStrapGroupId(strap.group_id);
-                            setPendingStrapGroupName(strap.group_name || '');
+                            setPendingStrapGroupId(m.group_id);
+                            setPendingStrapGroupName(m.group_name || '');
                             setPendingStrapColor(strap.color);
                             setPendingStrapIndex(m.idx);
                             setCreateStrapDialog(true);
@@ -1826,12 +1876,22 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                   const isMissing = missing.some(m => m.idx === sIdx);
                   const lineId = technicalStrapLineId(strap);
                   const resolvedLine = lineId ? strapLineByKey.get(lineId) : undefined;
-                  const officialColors = officialStrapColorsForBase(strapCatalog, resolvedLine?.baseGroupId);
+                  const purchasedReady = isPurchasedReadyStrap(strap);
+                  const usesFinishedGroup = strapIdentityBasis(strap) === 'finished_product_group';
+                  const identityColors = strapColorsForIdentity(
+                    strapCatalog,
+                    strap,
+                    resolvedLine?.baseGroupId,
+                  );
                   const selectedColor = strapCatalog?.colors.find((entry) => entry.id === strap.color_id);
-                  const colorIsOfficial = !!strap.color_id && officialColors.some((entry) => entry.id === strap.color_id);
-                  const displayedColors = selectedColor && !colorIsOfficial
-                    ? [selectedColor, ...officialColors]
-                    : officialColors;
+                  const colorIsAvailable = !!strap.color_id
+                    && identityColors.some((entry) => entry.id === strap.color_id);
+                  const displayedColors = selectedColor && !colorIsAvailable
+                    ? [selectedColor, ...identityColors]
+                    : identityColors;
+                  const identityGroupResolved = usesFinishedGroup
+                    ? !!strap.identity_group_id
+                    : !!resolvedLine?.baseGroupId;
                   return (
                     <div key={strap.id || sIdx} className="space-y-1">
                       <div className="flex items-center justify-between gap-1">
@@ -1840,9 +1900,9 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                       </div>
                       <Select
                         value={strap.color_id || undefined}
-                        disabled={!item.reference_id || !strapCatalog || strapLinesLoading || !resolvedLine?.baseGroupId}
+                        disabled={!item.reference_id || !strapCatalog || strapLinesLoading || !identityGroupResolved}
                         onValueChange={(colorId) => {
-                          const canonical = officialColors.find((entry) => entry.id === colorId);
+                          const canonical = identityColors.find((entry) => entry.id === colorId);
                           if (!canonical) return;
                           const updated = [...straps];
                           updated[sIdx] = {
@@ -1867,18 +1927,30 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                         </SelectTrigger>
                         <SelectContent>
                           {displayedColors.map((entry) => (
-                              <SelectItem key={entry.id} value={entry.id} disabled={!officialColors.some((color) => color.id === entry.id)}>{entry.name}{entry.id === strap.color_id && !colorIsOfficial ? ' · vínculo inválido' : ''}</SelectItem>
+                              <SelectItem key={entry.id} value={entry.id} disabled={!identityColors.some((color) => color.id === entry.id)}>{entry.name}{entry.id === strap.color_id && !colorIsAvailable ? ' · vínculo inválido' : ''}</SelectItem>
                             ))}
                         </SelectContent>
                       </Select>
-                      {!strapLinesLoading && !resolvedLine?.baseGroupId && (
-                        <p className="text-xs leading-tight text-destructive">A referência/variante não identifica a napa-base por UUID. Corrija o cadastro antes de escolher a cor.</p>
+                      {!strapLinesLoading && !identityGroupResolved && (
+                        <p className="text-xs leading-tight text-destructive">
+                          {usesFinishedGroup
+                            ? 'A linha técnica não identifica o grupo do produto acabado por UUID.'
+                            : 'A referência/variante não identifica a napa-base por UUID. Corrija o cadastro antes de escolher a cor.'}
+                        </p>
                       )}
-                      {!!resolvedLine?.baseGroupId && officialColors.length === 0 && (
-                        <p className="text-xs leading-tight text-destructive">Esta napa-base não possui cor com produção, saldo acabado ou compra pronta disponíveis.</p>
+                      {identityGroupResolved && identityColors.length === 0 && (
+                        <p className="text-xs leading-tight text-destructive">
+                          {usesFinishedGroup
+                            ? 'Este grupo acabado não possui produto ativo com cor canônica.'
+                            : 'Esta napa-base não possui cor com produção, saldo acabado ou compra pronta disponíveis.'}
+                        </p>
                       )}
-                      {!!strap.color_id && !colorIsOfficial && (
-                        <p className="text-xs leading-tight text-destructive">A cor atual não possui napa oficial ativa nesta base. Escolha uma opção válida.</p>
+                      {!!strap.color_id && !colorIsAvailable && (
+                        <p className="text-xs leading-tight text-destructive">
+                          {usesFinishedGroup
+                            ? 'A cor atual não possui produto ativo no grupo acabado.'
+                            : 'A cor atual não possui napa oficial ativa nesta base. Escolha uma opção válida.'}
+                        </p>
                       )}
                       {!strap.color_id && strap.color && (
                         <p className="text-xs leading-tight text-amber-700 dark:text-amber-400">
@@ -1907,11 +1979,11 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                                 {effective ? 'escolhida para esta linha' : 'escolha obrigatória'}
                               </span>
                             </div>
-                            <div className="grid grid-cols-2 gap-1">
+                            <div className={cn('grid gap-1', purchasedReady ? 'grid-cols-1' : 'grid-cols-2')}>
                               {([
                                 ['internal', 'Produzir com napa própria'],
                                 ['buy_ready', 'Comprar tira pronta'],
-                              ] as const).map(([opt, label]) => (
+                              ] as const).filter(([opt]) => !purchasedReady || opt === 'buy_ready').map(([opt, label]) => (
                                 <button
                                   key={opt}
                                   type="button"
@@ -1926,7 +1998,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                                       : 'border-border bg-card text-muted-foreground hover:bg-muted/40',
                                   )}
                                 >
-                                  {label}
+                                  {purchasedReady ? 'Comprada pronta · origem fixa' : label}
                                 </button>
                               ))}
                             </div>
@@ -2027,6 +2099,9 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
         groupId={(() => {
           if (pendingStrapIndex == null || pendingStrapIndex < 0) return pendingStrapGroupId;
           const strap = (item.strap_colors as any[])?.[pendingStrapIndex];
+          if (strap?.identity_basis === 'finished_product_group') {
+            return strap.identity_group_id || pendingStrapGroupId;
+          }
           const lineId = technicalStrapLineId(strap);
           return (lineId ? strapLineByKey.get(lineId)?.baseGroupId : null) || pendingStrapGroupId;
         })()}

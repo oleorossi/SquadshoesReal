@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyCanonicalTechnicalStrapMeasure,
+  applyTechnicalStrapIdentity,
   ensureTechnicalStrapLineIds,
   hasCanonicalTechnicalStrapIdentity,
   isUuid,
@@ -12,6 +13,8 @@ describe('technicalStrapLines', () => {
     const [line] = ensureTechnicalStrapLineIds([{ id: '1', label: 'TIRA 1' }]);
     expect(isUuid(line.technical_strap_line_id)).toBe(true);
     expect(line.id).toBe(line.technical_strap_line_id);
+    expect(line.identity_basis).toBe('reference_base');
+    expect(line.identity_group_id).toBeNull();
   });
 
   it('preserva um UUID já atribuído', () => {
@@ -51,5 +54,27 @@ describe('technicalStrapLines', () => {
       { ...selected, strap_type_id: crypto.randomUUID() },
       [measure],
     )).toBe(false);
+  });
+
+  it('exige grupo estrutural na identidade de produto acabado', () => {
+    const technicalLineId = crypto.randomUUID();
+    const measure = {
+      id: crypto.randomUUID(),
+      strap_type_id: crypto.randomUUID(),
+      active: true,
+    };
+    const base = applyCanonicalTechnicalStrapMeasure({
+      technical_strap_line_id: technicalLineId,
+    }, measure);
+
+    const missingGroup = applyTechnicalStrapIdentity(base, 'finished_product_group');
+    expect(hasCanonicalTechnicalStrapIdentity(missingGroup, [measure])).toBe(false);
+
+    const withGroup = applyTechnicalStrapIdentity(
+      base,
+      'finished_product_group',
+      crypto.randomUUID(),
+    );
+    expect(hasCanonicalTechnicalStrapIdentity(withGroup, [measure])).toBe(true);
   });
 });
