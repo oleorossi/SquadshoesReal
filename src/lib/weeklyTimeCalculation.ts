@@ -57,7 +57,7 @@ export interface PeriodSummary {
 // ── Helpers ────────────────────────────────────────────
 
 /** ISO week number (Mon=1) */
-function getISOWeekKey(dateStr: string): string {
+export function getISOWeekKey(dateStr: string): string {
   const d = new Date(dateStr + 'T12:00:00');
   const day = d.getDay() || 7; // Mon=1 … Sun=7
   d.setDate(d.getDate() + 4 - day); // nearest Thursday
@@ -67,7 +67,7 @@ function getISOWeekKey(dateStr: string): string {
 }
 
 /** Get the Monday of the ISO week for a given date */
-function getWeekMonday(dateStr: string): string {
+export function getWeekMonday(dateStr: string): string {
   const d = new Date(dateStr + 'T12:00:00');
   const day = d.getDay() || 7;
   d.setDate(d.getDate() - day + 1);
@@ -75,7 +75,7 @@ function getWeekMonday(dateStr: string): string {
 }
 
 /** Get the Sunday of the ISO week for a given date */
-function getWeekSunday(dateStr: string): string {
+export function getWeekSunday(dateStr: string): string {
   const d = new Date(dateStr + 'T12:00:00');
   const day = d.getDay() || 7;
   d.setDate(d.getDate() + (7 - day));

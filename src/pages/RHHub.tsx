@@ -12,9 +12,9 @@ const Employees            = lazy(() => import('./Employees'));
 const Timesheet            = lazy(() => import('./Timesheet'));
 const FolhaConsolidada     = lazy(() => import('@/components/hr/FolhaConsolidada'));
 const PayrollPaymentsHistory = lazy(() => import('@/components/hr/PayrollPaymentsHistory'));
-// Espelho / documentos: a página Folha em modo somente-relatórios (reportsOnly) já
-// gera o Espelho de ponto + calendário de faltas e de atrasos por funcionário.
-const PayrollReports       = lazy(() => import('./Payroll'));
+// Relatórios de ponto são um chunk próprio: não carregam folha, pagamentos nem
+// produção só para mostrar crédito/débito semanal do relógio.
+const TimeBalanceReports   = lazy(() => import('./TimeBalanceReports'));
 
 const TabLoader = () => (
   <div className="flex items-center justify-center py-20">
@@ -32,7 +32,7 @@ type Tab = typeof TABS[number];
 const tabs: { value: Tab; label: string; icon: typeof Users }[] = [
   { value: 'funcionarios', label: 'Equipe',  icon: Users },
   { value: 'ponto',        label: 'Ponto',   icon: AlarmClock },
-  { value: 'espelho',      label: 'Espelho', icon: FileText },
+  { value: 'espelho',      label: 'Relatórios', icon: FileText },
   { value: 'folha',        label: 'Folha',   icon: DollarSign },
 ];
 
@@ -48,9 +48,9 @@ const TAB_HEADERS: Record<Tab, { section: string; title: string; description: st
     description: 'Importe as batidas, resolva pendências e prepare o período para a folha.',
   },
   espelho: {
-    section: 'PESSOAS · ESPELHO',
-    title: 'Espelho do Ponto',
-    description: 'Confira a jornada e as ocorrências de cada colaborador no período.',
+    section: 'PESSOAS · RELATÓRIOS',
+    title: 'Relatórios do Ponto',
+    description: 'Confira horas extras e pendências semanais, com calendário por colaborador.',
   },
   folha: {
     section: 'PESSOAS · FOLHA',
@@ -166,7 +166,7 @@ export default function RHHub() {
         <Suspense fallback={<TabLoader />}>
           <TabsContent value="funcionarios" className="mt-4"><Employees /></TabsContent>
           <TabsContent value="ponto" className="mt-4"><Timesheet /></TabsContent>
-          <TabsContent value="espelho" className="mt-4"><PayrollReports reportsOnly /></TabsContent>
+          <TabsContent value="espelho" className="mt-4"><TimeBalanceReports /></TabsContent>
           <TabsContent value="folha" className="mt-4"><FolhaTab /></TabsContent>
         </Suspense>
       </Tabs>
