@@ -15,6 +15,7 @@ import { useState, useMemo } from 'react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useSuppliers } from '@/hooks/useSuppliers';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { supabase } from '@/integrations/supabase/client';
 
 export default function SolePurchaseTab() {
   const { data: orders = [], isLoading: isLoadingOrders } = useOrders();
@@ -38,8 +39,25 @@ export default function SolePurchaseTab() {
     queryKey: ['sole_shortages', ordersKey],
     enabled: orders.length > 0,
     queryFn: async () => {
+      const saleOrderItemIds = [
+        ...new Set(orders.map((o: any) => o.sale_order_item_id).filter(Boolean)),
+      ] as string[];
+      const variantByItemId = new Map<string, string | null>();
+      if (saleOrderItemIds.length > 0) {
+        const { data, error } = await supabase
+          .from('sale_order_items')
+          .select('id, material_variant_id')
+          .in('id', saleOrderItemIds);
+        if (error) throw error;
+        for (const item of data || []) {
+          variantByItemId.set(item.id, item.material_variant_id || null);
+        }
+      }
       const items = orders.map((o: any) => ({
         reference_id: o.reference_id,
+        material_variant_id: o.sale_order_item_id
+          ? variantByItemId.get(o.sale_order_item_id) || null
+          : null,
         color: o.color,
         totalPairs: o.quantity || 0,
         referenceLabel: o.order_number,
@@ -123,9 +141,9 @@ export default function SolePurchaseTab() {
             current_stock: s.available,
             min_stock: 0,
             max_stock: 0,
-            // Rateia a grade (size_breakdown = demanda TOTAL do PV) pro que de fato
-            // será comprado (suggested_purchase_qty = falta líquida/MOQ) — senão
-            // soma(grade) ≠ quantity e o recebimento trava (mergeReceivedGrade).
+            // size_breakdown já é a falta líquida por número. Se o MOQ aumentar
+            // o total, rateia essa falta pro comprado e preserva soma(grade) ==
+            // quantity, exigida pelo recebimento (mergeReceivedGrade).
             grade: rateGradeToTotal(s.size_breakdown, s.suggested_purchase_qty),
             color: s.sole_color ?? null,
           })),

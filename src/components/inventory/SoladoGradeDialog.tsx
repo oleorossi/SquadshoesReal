@@ -18,6 +18,7 @@ import { getSoleModelName } from '@/lib/utils';
 import { toast } from 'sonner';
 import { MagnifyingGlass, Plus, Package, Palette, Info, Link as Link2, Check } from '@phosphor-icons/react';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
+import { getGradeQuantityForKey } from '@/lib/gradeDistribution';
 
 interface SoladoGradeDialogProps {
   open: boolean;
@@ -97,7 +98,7 @@ function ColorGradeEditor({
   // since been merged into a conjugated bucket ("33/34"). Summing all keys
   // would double-count those sizes and inflate the displayed total.
   const total = effectiveKeys.length > 0
-    ? effectiveKeys.reduce((s, k) => s + (grade[k] || 0), 0)
+    ? effectiveKeys.reduce((s, k) => s + getGradeQuantityForKey(grade, k), 0)
     : Object.values(grade).reduce((s, v) => s + (v || 0), 0);
 
   const updateKey = (key: string, value: number) => {
@@ -106,23 +107,18 @@ function ColorGradeEditor({
     // criando estoque fracionado que confundia auditoria.
     const intValue = Math.max(0, Math.floor(Number(value) || 0));
     const next = { ...grade, [key]: intValue };
+    // Ao editar o balde conjugado, remove os baldes individuais legados.
+    // Mantê-los faria o save consolidar 33 + 34 por cima do novo 33/34 e
+    // duplicaria o estoque silenciosamente.
+    if (key.includes('/')) {
+      for (const part of key.split('/')) delete next[part];
+    }
     setGrade(next);
     const newTotal = effectiveKeys.length > 0
-      ? effectiveKeys.reduce((s, k) => s + (next[k] || 0), 0)
+      ? effectiveKeys.reduce((s, k) => s + getGradeQuantityForKey(next, k), 0)
       : Object.values(next).reduce((s, v) => s + (v || 0), 0);
     onGradeChange(product.id, next, newTotal);
   };
-
-  // Notify parent whenever the underlying product (and therefore its
-  // baseline grade) changes. The previous empty-deps version only fired
-  // once on mount, so when the dialog reused this component for a
-  // different color variant the parent kept seeing the first product's
-  // total. product.id covers tab switches; the grade contents are
-  // captured via the same useEffect that resets local grade state above.
-  useEffect(() => {
-    onGradeChange(product.id, grade, total);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [product.id]);
 
   // Show conjugation notice only when some of the keys are actually conjugated pairs
   const isConjugated = sizeKeys && sizeKeys.some(k => k.includes('/'));
@@ -148,7 +144,7 @@ function ColorGradeEditor({
             style={{ gridTemplateColumns: `repeat(${Math.min(effectiveKeys.length, 8)}, minmax(0, 1fr))` }}
           >
             {effectiveKeys.map(key => {
-              const curVal = grade[key] || 0;
+              const curVal = getGradeQuantityForKey(grade, key);
               return (
                 <div key={key} className="text-center">
                   <span className="text-xs text-muted-foreground font-medium">{key}</span>
@@ -202,13 +198,17 @@ function AddToGroupDialog({ open, onOpenChange, groupId, groupName }: {
   useEffect(() => {
     if (open) {
       queryClient.invalidateQueries({ queryKey: ['products'] });
+      queryClient.invalidateQueries({ queryKey: ['soles_hub_products'] });
       setSearch('');
       setSelected(new Set());
     }
   }, [open, queryClient]);
 
   const { available, alreadyInGroup, totalActive } = useMemo(() => {
-    const activeAll = allProducts.filter(p => p.active);
+    const activeAll = allProducts.filter((p) => {
+      const category = (p.category || '').toLowerCase();
+      return p.active && (category === 'sola' || category.startsWith('solado'));
+    });
     const active = activeAll.filter(p => searchMatchesAllTerms(search, p.name, p.sku, p.category, p.color));
     return {
       available: active.filter(p => p.group_id !== groupId),
@@ -561,6 +561,7 @@ export function SoladoGradeDialog({ open, onOpenChange, product }: SoladoGradeDi
       }
 
       queryClient.invalidateQueries({ queryKey: ['products'] });
+      queryClient.invalidateQueries({ queryKey: ['soles_hub_products'] });
       // O save regrava _size_from/_size_to no stock_grade (linha ~500) — se o
       // range resolvido divergir do metadata antigo (ex.: grade sem metadata,
       // range inferido das keys), o PV cacheia o range velho por 5min

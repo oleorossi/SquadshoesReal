@@ -1,6 +1,7 @@
 import { supabase } from '@/integrations/supabase/client';
 import { PALMILHA_DEFAULT_KEY } from '@/hooks/usePalmilhaColorMappings';
 import { normalizeColorKey } from '@/lib/materialConsumption';
+import { calculateGradeCoverage, rateGradeToTotal } from '@/lib/gradeDistribution';
 
 export interface SoleShortage {
   sole_product_id: string;
@@ -8,7 +9,10 @@ export interface SoleShortage {
   sole_color: string | null;
   sole_sku: string | null;
   required: number;
+  /** Pares da grade demandada cobertos pelo estoque atual. */
   available: number;
+  /** Pares da grade demandada já cobertos por OCs abertas. */
+  incoming: number;
   shortage: number;
   unit_price: number;
   supplier_id: string | null;
@@ -19,7 +23,7 @@ export interface SoleShortage {
   suggested_purchase_qty: number;
   /** References on the order that consume this sole. */
   reference_labels: string[];
-  /** Total required pairs broken down by size (e.g. {"36": 12, "37": 24}). */
+  /** Falta líquida por numeração, já descontando estoque e OCs em trânsito. */
   size_breakdown: Record<string, number>;
   /** Distinct sale-order numbers that consume this sole. */
   order_numbers: string[];
@@ -32,6 +36,7 @@ export interface InsoleShortage {
   insole_sku: string | null;
   required: number;
   available: number;
+  incoming: number;
   shortage: number;
   unit_price: number;
   supplier_id: string | null;
@@ -60,6 +65,8 @@ export interface SoleAvailabilityResult {
 
 interface ItemInput {
   reference_id: string;
+  /** Variante do item do PV; pode pinar um solado diferente do padrão da ficha. */
+  material_variant_id?: string | null;
   color: string | null;
   totalPairs: number;
   referenceLabel: string;
@@ -81,8 +88,23 @@ export async function checkSoleAvailability(items: ItemInput[]): Promise<SoleAva
   }
 
   const sheetIds = [...new Set(validItems.map(i => i.reference_id))];
+  const materialVariantIds = [
+    ...new Set(validItems.map(i => i.material_variant_id).filter(Boolean)),
+  ] as string[];
 
-  const [{ data: sheets }, { data: soleMappings }, { data: palmilhaMappings }] = await Promise.all([
+  // Mesma precedência do débito e dos motores de consumo: solado pinado na
+  // variante do item do PV vence a cascata de cor/ficha.
+  const variantSoleById = new Map<string, string>();
+  await Promise.all(materialVariantIds.map(async (variantId) => {
+    const { data, error } = await supabase.rpc('resolve_sole_for_variant', {
+      p_variant_id: variantId,
+    });
+    if (error) throw error;
+    const resolved = Array.isArray(data) ? data[0] : data;
+    if (resolved?.product_id) variantSoleById.set(variantId, resolved.product_id);
+  }));
+
+  const [sheetsResult, soleMappingsResult, palmilhaMappingsResult] = await Promise.all([
     supabase
       .from('technical_sheets')
       .select('id, primary_sole_id, sole_group_id, insole_material, insole_has_lining, lead_time_montagem_dias, lead_time_acabamento_dias, lead_time_buffer_material_dias')
@@ -96,6 +118,12 @@ export async function checkSoleAvailability(items: ItemInput[]): Promise<SoleAva
       .select('sheet_id, cabedal_color, palmilha_color')
       .in('sheet_id', sheetIds),
   ]);
+  if (sheetsResult.error) throw sheetsResult.error;
+  if (soleMappingsResult.error) throw soleMappingsResult.error;
+  if (palmilhaMappingsResult.error) throw palmilhaMappingsResult.error;
+  const sheets = sheetsResult.data;
+  const soleMappings = soleMappingsResult.data;
+  const palmilhaMappings = palmilhaMappingsResult.data;
 
   // ── Conjugações: pra cada solado, group_id → mapa size→size_key.
   // Necessário pra agregar `size_breakdown` na chave conjugada antes de
@@ -143,7 +171,7 @@ export async function checkSoleAvailability(items: ItemInput[]): Promise<SoleAva
   const groupProducts = new Map<string, Array<{ id: string; color: string | null; quantity: number }>>();
 
   if (candidateGroupIds.length > 0) {
-    const [{ data: colorConjs }, { data: gProducts }] = await Promise.all([
+    const [colorConjsResult, groupProductsResult] = await Promise.all([
       (supabase as any)
         .from('sole_color_conjugations')
         .select('sole_group_id, cabedal_color, palmilha_color, is_default')
@@ -155,6 +183,10 @@ export async function checkSoleAvailability(items: ItemInput[]): Promise<SoleAva
         .eq('active', true)
         .in('group_id', candidateGroupIds),
     ]);
+    if (colorConjsResult.error) throw colorConjsResult.error;
+    if (groupProductsResult.error) throw groupProductsResult.error;
+    const colorConjs = colorConjsResult.data;
+    const gProducts = groupProductsResult.data;
     for (const c of (colorConjs || []) as Array<{ sole_group_id: string; cabedal_color: string | null; palmilha_color: string; is_default: boolean | null }>) {
       let entry = colorConjByGroup.get(c.sole_group_id);
       if (!entry) { entry = { exact: new Map(), def: null }; colorConjByGroup.set(c.sole_group_id, entry); }
@@ -171,7 +203,15 @@ export async function checkSoleAvailability(items: ItemInput[]): Promise<SoleAva
   }
 
   /** Cascata de resolução do solado (espelha resolve_sole_color do banco). */
-  const resolveSoleProductId = (sheet: any, refId: string, cabedalColor: string | null): string | null => {
+  const resolveSoleProductId = (
+    sheet: any,
+    refId: string,
+    cabedalColor: string | null,
+    materialVariantId?: string | null,
+  ): string | null => {
+    if (materialVariantId && variantSoleById.has(materialVariantId)) {
+      return variantSoleById.get(materialVariantId)!;
+    }
     const colorKey = normalizeColorKey(cabedalColor);
 
     // P0: conjugação ativa do grupo da ficha (cor exata → default)
@@ -216,15 +256,46 @@ export async function checkSoleAvailability(items: ItemInput[]): Promise<SoleAva
   // Group required pairs per insole: "insoleGroupName::palmilhaColor" → {...}
   const requiredInsoles = new Map<
     string,
-    { qty: number; groupName: string; palmilhaColor: string; sizeBreakdown: Record<string, number>; orderNumbers: Set<string>; cabelColors: Set<string> }
+    { qty: number; groupName: string; palmilhaColor: string; resolvedProductId: string | null; sizeBreakdown: Record<string, number>; orderNumbers: Set<string>; cabelColors: Set<string> }
   >();
+
+  const insoleVariantResolutionCache = new Map<string, Promise<string | null>>();
+  const resolveVariantInsole = (
+    variantId: string,
+    groupName: string,
+    color: string,
+    required: number,
+  ) => {
+    const key = `${variantId}::${groupName}::${normalizeColorKey(color)}::${required}`;
+    let pending = insoleVariantResolutionCache.get(key);
+    if (!pending) {
+      pending = (async () => {
+        const { data, error } = await supabase.rpc('resolve_insole_material_for_variant', {
+          p_variant_id: variantId,
+          p_group_name: groupName,
+          p_color: color,
+          p_required: required,
+        });
+        if (error) throw error;
+        const resolved = Array.isArray(data) ? data[0] : data;
+        return resolved?.product_id || null;
+      })();
+      insoleVariantResolutionCache.set(key, pending);
+    }
+    return pending;
+  };
 
   for (const item of validItems) {
     const sheet = sheetMap.get(item.reference_id) as any;
     if (!sheet) continue;
 
     // ── Sole ── (cascata canônica P0→P3; ver resolveSoleProductId acima)
-    const soleId = resolveSoleProductId(sheet, item.reference_id, item.color);
+    const soleId = resolveSoleProductId(
+      sheet,
+      item.reference_id,
+      item.color,
+      item.material_variant_id,
+    );
     if (soleId) {
       const existing = requiredSoles.get(soleId) || { qty: 0, references: new Set<string>(), sizeBreakdown: {} as Record<string, number>, orderNumbers: new Set<string>() };
       existing.qty += item.totalPairs;
@@ -257,9 +328,20 @@ export async function checkSoleAvailability(items: ItemInput[]): Promise<SoleAva
       palmilhaColor = mappedColor || item.color || '';
     }
 
-    const insoleKey = `${insoleGroupName}::${palmilhaColor.toLowerCase().trim()}`;
+    const resolvedInsoleProductId = item.material_variant_id
+      ? await resolveVariantInsole(
+          item.material_variant_id,
+          insoleGroupName,
+          palmilhaColor,
+          item.totalPairs,
+        )
+      : null;
+    const insoleKey = resolvedInsoleProductId
+      ? `product::${resolvedInsoleProductId}`
+      : `${insoleGroupName}::${palmilhaColor.toLowerCase().trim()}`;
     const existingInsole = requiredInsoles.get(insoleKey) || {
-      qty: 0, groupName: insoleGroupName, palmilhaColor, sizeBreakdown: {} as Record<string, number>,
+      qty: 0, groupName: insoleGroupName, palmilhaColor, resolvedProductId: resolvedInsoleProductId,
+      sizeBreakdown: {} as Record<string, number>,
       orderNumbers: new Set<string>(), cabelColors: new Set<string>(),
     };
     existingInsole.qty += item.totalPairs;
@@ -276,9 +358,15 @@ export async function checkSoleAvailability(items: ItemInput[]): Promise<SoleAva
 
   // ── Fetch sole products + suppliers ──
   const soleIds = [...requiredSoles.keys()];
-  const { data: soleProducts } = soleIds.length > 0
-    ? await supabase.from('products').select('id, name, sku, color, group_id, quantity, reserved_stock, unit_price, supplier_id, supplier_lead_time_days, lead_time_days, sole_moq').in('id', soleIds)
-    : { data: [] as any[] };
+  let soleProducts: any[] = [];
+  if (soleIds.length > 0) {
+    const { data, error } = await supabase
+      .from('products')
+      .select('id, name, sku, color, group_id, quantity, reserved_stock, stock_grade, unit_price, supplier_id, supplier_lead_time_days, lead_time_days, sole_moq')
+      .in('id', soleIds);
+    if (error) throw error;
+    soleProducts = data || [];
+  }
 
   // ── Fetch sole conjugations for the groups that appear ──────
   // Para cada solado com group_id, busca as regras de conjugação e remapeia
@@ -289,10 +377,11 @@ export async function checkSoleAvailability(items: ItemInput[]): Promise<SoleAva
     ...new Set((soleProducts || []).map((p: any) => p.group_id).filter(Boolean)),
   ] as string[];
   if (soleGroupIds.length > 0) {
-    const { data: conjs } = await (supabase as any)
+    const { data: conjs, error } = await (supabase as any)
       .from('sole_size_conjugations')
       .select('sole_group_id, size_key, sizes')
       .in('sole_group_id', soleGroupIds);
+    if (error) throw error;
     for (const c of (conjs || []) as Array<{ sole_group_id: string; size_key: string; sizes: number[] }>) {
       let m = conjugationByGroupId.get(c.sole_group_id);
       if (!m) { m = new Map(); conjugationByGroupId.set(c.sole_group_id, m); }
@@ -318,18 +407,37 @@ export async function checkSoleAvailability(items: ItemInput[]): Promise<SoleAva
 
   // ── Fetch insole products by group name + color ──
   const insoleGroupNames = [...new Set([...requiredInsoles.values()].map(r => r.groupName))];
+  const resolvedInsoleProductIds = [
+    ...new Set([...requiredInsoles.values()].map(r => r.resolvedProductId).filter(Boolean)),
+  ] as string[];
   let insoleProducts: any[] = [];
   if (insoleGroupNames.length > 0) {
-    const { data: ig } = await supabase.from('product_groups').select('id, name').in('name', insoleGroupNames);
+    const { data: ig, error: groupError } = await supabase.from('product_groups').select('id, name').in('name', insoleGroupNames);
+    if (groupError) throw groupError;
     if (ig && ig.length > 0) {
       const igIds = ig.map((g: any) => g.id);
-      const { data: ip } = await supabase
+      const { data: ip, error: productsError } = await supabase
         .from('products')
         .select('id, name, sku, color, group_id, quantity, reserved_stock, unit_price, supplier_id, supplier_lead_time_days, lead_time_days')
         .in('group_id', igIds)
         .eq('active', true);
+      if (productsError) throw productsError;
       const groupNameById = new Map(ig.map((g: any) => [g.id, g.name]));
       insoleProducts = (ip || []).map((p: any) => ({ ...p, groupName: groupNameById.get(p.group_id) }));
+    }
+  }
+  if (resolvedInsoleProductIds.length > 0) {
+    const missingIds = resolvedInsoleProductIds.filter(
+      id => !insoleProducts.some(product => product.id === id),
+    );
+    if (missingIds.length > 0) {
+      const { data: pinnedProducts, error } = await supabase
+        .from('products')
+        .select('id, name, sku, color, group_id, quantity, reserved_stock, unit_price, supplier_id, supplier_lead_time_days, lead_time_days')
+        .in('id', missingIds)
+        .eq('active', true);
+      if (error) throw error;
+      insoleProducts.push(...(pinnedProducts || []));
     }
   }
 
@@ -339,10 +447,49 @@ export async function checkSoleAvailability(items: ItemInput[]): Promise<SoleAva
       ...insoleProducts.map((p: any) => p.supplier_id),
     ].filter(Boolean)),
   ];
-  const { data: suppliers } = allSupplierIds.length > 0
-    ? await supabase.from('suppliers').select('id, name, lead_time_days').in('id', allSupplierIds)
-    : { data: [] as any[] };
+  let suppliers: any[] = [];
+  if (allSupplierIds.length > 0) {
+    const { data, error } = await supabase
+      .from('suppliers')
+      .select('id, name, lead_time_days')
+      .in('id', allSupplierIds);
+    if (error) throw error;
+    suppliers = data || [];
+  }
   const supplierMap = new Map((suppliers || []).map((s: any) => [s.id, s]));
+
+  // OCs abertas contam como estoque em trânsito. Para demanda gradeada, só uma
+  // OC que também tenha grade pode cobrir uma numeração específica; OC legada
+  // sem grade não mascara uma falta do nº 36 com um total genérico.
+  const incomingTotalByProduct = new Map<string, number>();
+  const incomingGradeByProduct = new Map<string, Record<string, number>>();
+  const purchaseTrackedIds = [
+    ...new Set([...soleIds, ...insoleProducts.map(product => product.id).filter(Boolean)]),
+  ];
+  if (purchaseTrackedIds.length > 0) {
+    const { data: openItems, error: openItemsError } = await supabase
+      .from('purchase_order_items')
+      .select('product_id, quantity, received_quantity, grade, purchase_orders!inner(status)')
+      .in('product_id', purchaseTrackedIds)
+      .in('purchase_orders.status', ['pending', 'approved', 'sent', 'parcial']);
+    if (openItemsError) throw openItemsError;
+
+    for (const row of (openItems || []) as any[]) {
+      const remaining = Math.max(0, Number(row.quantity) - Number(row.received_quantity || 0));
+      if (!row.product_id || remaining <= 0) continue;
+      incomingTotalByProduct.set(
+        row.product_id,
+        (incomingTotalByProduct.get(row.product_id) || 0) + remaining,
+      );
+      const remainingGrade = rateGradeToTotal(row.grade as Record<string, number> | null, remaining);
+      if (!remainingGrade) continue;
+      const aggregate = incomingGradeByProduct.get(row.product_id) || {};
+      for (const [size, qty] of Object.entries(remainingGrade)) {
+        aggregate[size] = (aggregate[size] || 0) + qty;
+      }
+      incomingGradeByProduct.set(row.product_id, aggregate);
+    }
+  }
 
   // ── Sole shortages ──
   const shortages: SoleShortage[] = [];
@@ -352,20 +499,34 @@ export async function checkSoleAvailability(items: ItemInput[]): Promise<SoleAva
   for (const product of soleProducts || []) {
     const need = requiredSoles.get((product as any).id);
     if (!need) continue;
-    const onHand = Math.max(0, Number((product as any).quantity || 0) - Number((product as any).reserved_stock || 0));
-    if (onHand >= need.qty) continue;
+    const hasGradeDemand = Object.values(need.sizeBreakdown).some((qty) => Number(qty) > 0);
+    const scalarOnHand = Math.max(0, Number((product as any).quantity || 0) - Number((product as any).reserved_stock || 0));
+    const scalarIncoming = incomingTotalByProduct.get((product as any).id) || 0;
+    const coverage = hasGradeDemand
+      ? calculateGradeCoverage(
+          need.sizeBreakdown,
+          (product as any).stock_grade,
+          incomingGradeByProduct.get((product as any).id),
+        )
+      : null;
+    const coveredOnHand = coverage?.totalCoveredOnHand ?? Math.min(need.qty, scalarOnHand);
+    const coveredIncoming = coverage?.totalCoveredIncoming
+      ?? Math.min(Math.max(need.qty - coveredOnHand, 0), scalarIncoming);
+    const shortageQty = coverage?.totalShortage
+      ?? Math.max(need.qty - coveredOnHand - coveredIncoming, 0);
+    if (shortageQty <= 0) continue;
 
     const supplier = (product as any).supplier_id ? supplierMap.get((product as any).supplier_id) : null;
     const leadTime = Number((supplier as any)?.lead_time_days || (product as any).supplier_lead_time_days || (product as any).lead_time_days || 10);
     const moq = Number((product as any).sole_moq || 0);
-    const shortageQty = need.qty - onHand;
     shortages.push({
       sole_product_id: (product as any).id,
       sole_name: (product as any).name,
       sole_color: (product as any).color,
       sole_sku: (product as any).sku,
       required: need.qty,
-      available: onHand,
+      available: coveredOnHand,
+      incoming: coveredIncoming,
       shortage: shortageQty,
       unit_price: Number((product as any).unit_price || 0),
       supplier_id: (product as any).supplier_id || null,
@@ -374,7 +535,7 @@ export async function checkSoleAvailability(items: ItemInput[]): Promise<SoleAva
       moq,
       suggested_purchase_qty: Math.max(shortageQty, moq),
       reference_labels: [...need.references],
-      size_breakdown: need.sizeBreakdown,
+      size_breakdown: coverage?.shortageBySize ?? need.sizeBreakdown,
       order_numbers: [...need.orderNumbers],
     });
     if (leadTime > maxLeadTime) maxLeadTime = leadTime;
@@ -393,24 +554,32 @@ export async function checkSoleAvailability(items: ItemInput[]): Promise<SoleAva
     if (need.qty <= 0) continue;
     // Find best-matching insole product: prefer exact color match, then any in group
     const colorLower = need.palmilhaColor.toLowerCase().trim();
-    const product = insoleProducts.find(p => p.groupName === need.groupName && (p.color || '').toLowerCase().trim() === colorLower)
-      || insoleProducts.find(p => p.groupName === need.groupName);
+    const product = need.resolvedProductId
+      ? insoleProducts.find(p => p.id === need.resolvedProductId)
+      : insoleProducts.find(p => p.groupName === need.groupName && (p.color || '').toLowerCase().trim() === colorLower)
+        || insoleProducts.find(p => p.groupName === need.groupName);
     if (!product) continue;
 
     const onHand = Math.max(0, Number(product.quantity || 0) - Number(product.reserved_stock || 0));
-    if (onHand >= need.qty) continue;
+    const coveredOnHand = Math.min(need.qty, onHand);
+    const incoming = Math.min(
+      Math.max(need.qty - coveredOnHand, 0),
+      incomingTotalByProduct.get(product.id) || 0,
+    );
+    const shortageQty = Math.max(need.qty - coveredOnHand - incoming, 0);
+    if (shortageQty <= 0) continue;
 
     const supplier = product.supplier_id ? supplierMap.get(product.supplier_id) : null;
     const leadTime = Number((supplier as any)?.lead_time_days || product.supplier_lead_time_days || product.lead_time_days || 10);
     const moq = 0;
-    const shortageQty = need.qty - onHand;
     insoleShortages.push({
       insole_product_id: product.id,
       insole_name: product.name,
       insole_color: need.palmilhaColor || null,
       insole_sku: product.sku || null,
       required: need.qty,
-      available: onHand,
+      available: coveredOnHand,
+      incoming,
       shortage: shortageQty,
       unit_price: Number(product.unit_price || 0),
       supplier_id: product.supplier_id || null,

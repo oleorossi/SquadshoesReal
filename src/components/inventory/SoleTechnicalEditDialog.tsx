@@ -9,13 +9,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Product } from '@/types/inventory';
-import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient } from '@tanstack/react-query';
 import { useSuppliers } from '@/hooks/useSuppliers';
 import { toast } from 'sonner';
- import { Wrench, Truck, CurrencyDollar as DollarSign, Ruler, Gear as Settings2, Package as Package2 } from '@phosphor-icons/react';
- import { Switch } from '@/components/ui/switch';
+import { Wrench, Truck, CurrencyDollar as DollarSign, Ruler, Gear as Settings2, Package as Package2 } from '@phosphor-icons/react';
+import { Switch } from '@/components/ui/switch';
 import { SoleStandardMaterialsEditor } from './SoleStandardMaterialsEditor';
+import { updateSoleProfile } from '@/services/soleProfileService';
 
 interface Props {
   open: boolean;
@@ -72,14 +72,9 @@ export function SoleTechnicalEditDialog({ open, onOpenChange, product }: Props) 
     if (!product) return;
     setSaving(true);
     try {
-      // Dados técnicos do solado (fornecedor/lead time, MOQ, material, salto,
-      // fachete, classificação…) são do MODELO → valem pra TODAS as cores
-      // (variação de cor é só estoque). Propaga no grupo quando há group_id.
-      const groupId = (product as any)?.group_id || null;
-      const sharedFields = {
+      const result = await updateSoleProfile(product.id, {
         supplier_id: supplierId || null,
         supplier_lead_time_days: leadTime,
-        lead_time_days: leadTime,
         sole_moq: moq,
         heel_height: heelHeight,
         sole_material: soleMaterial || null,
@@ -88,20 +83,13 @@ export function SoleTechnicalEditDialog({ open, onOpenChange, product }: Props) 
         is_fachetado: isFachetado,
         insole_mode: insoleMode,
         sole_classification: soleClassification,
-      };
-      const { error } = groupId
-        ? await supabase.from('products').update(sharedFields as any).eq('group_id', groupId)
-        : await supabase.from('products').update(sharedFields as any).eq('id', product.id);
-      if (error) throw error;
-      // Preço do solado (R$/par) segue POR VARIANTE (não propaga) — comportamento
-      // atual; só o estoque também é por cor.
-      const { error: priceErr } = await supabase
-        .from('products')
-        .update({ unit_price: unitPrice } as any)
-        .eq('id', product.id);
-      if (priceErr) throw priceErr;
+        unit_price: unitPrice,
+      });
       qc.invalidateQueries({ queryKey: ['products'] });
-      toast.success(groupId ? 'Dados técnicos atualizados em todas as cores do solado!' : 'Dados técnicos do solado atualizados!');
+      qc.invalidateQueries({ queryKey: ['soles_hub_products'] });
+      toast.success(result.siblings_updated > 0
+        ? `Dados técnicos atualizados em ${result.siblings_updated + 1} cores do solado!`
+        : 'Dados técnicos do solado atualizados!');
       onOpenChange(false);
     } catch (err: any) {
       toast.error(`Erro: ${err.message}`);
@@ -268,7 +256,7 @@ export function SoleTechnicalEditDialog({ open, onOpenChange, product }: Props) 
                 />
               </div>
               <div>
-                <Label className="text-xs">Altura do salto (cm)</Label>
+                <Label className="text-xs">Altura do salto (mm)</Label>
                 <NumberInput min={0} step="0.1" value={heelHeight} onChange={setHeelHeight} className="mt-1" />
               </div>
             </div>

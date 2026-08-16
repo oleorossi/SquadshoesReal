@@ -1474,6 +1474,7 @@ export default function SaleOrderForm() {
             const refLabel = ref ? `${(ref as any).code || ''} - ${(ref as any).name || ''}`.trim() : it.reference_id.substring(0, 8);
             return {
               reference_id: it.reference_id,
+              material_variant_id: (it as any).material_variant_id || null,
               color: it.color || '',
               totalPairs: it.quantity,
               referenceLabel: refLabel,
@@ -1483,7 +1484,7 @@ export default function SaleOrderForm() {
           })
         );
         setCheckingStock(false);
-        if (soleCheck.shortages.length > 0) {
+        if (soleCheck.shortages.length > 0 || soleCheck.insoleShortages.length > 0) {
           setSoleResult(soleCheck);
           setSoleDialogOpen(true);
           return;

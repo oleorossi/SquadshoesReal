@@ -1,10 +1,11 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { NumberInput } from '@/components/ui/number-input';
 import { CurrencyInput } from '@/components/ui/currency-input';
+import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -12,15 +13,15 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
-import { FloppyDisk as Save, Gear as Settings2, Stack as Layers, Palette, Link as Link2, Plus, Info, Footprints as Shoe, Crown, CheckCircle, WarningCircle } from '@phosphor-icons/react';
+import { FloppyDisk as Save, Gear as Settings2, Stack as Layers, Palette, Link as Link2, Plus, Info, Footprints as Shoe, Crown, CheckCircle, WarningCircle, Ruler, Truck } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 // SoleSizeConjugationsEditor removido SÓ desta tela em 2026-05-31.
 // Componente continua existindo e é usado em ProductFormDialog +
 // MasterVariantDialog + TechnicalSheets — feature de numeração conjugada
 // continua ativa no backend.
-import { SoleColorConjugationsEditor } from './SoleColorConjugationsEditor';
 import { useDisplaySizeKeys } from '@/lib/soleGradeKeys';
 import { formatCurrency } from '@/lib/utils';
+import { updateSoleProfile } from '@/services/soleProfileService';
 import type { SoleProduct } from './types';
 
 type SoleClassification = 'tradicional' | 'palmilha_pronta' | 'conjugado';
@@ -42,16 +43,23 @@ export default function SolesCadastroTab({ sole }: Props) {
     color: sole.color || '',
     size_from: (sole.stock_grade as any)?._size_from ?? 33,
     size_to: (sole.stock_grade as any)?._size_to ?? 40,
-    unit_price: Number((sole as any).unit_price) || 0,
-    notes: '',
+    unit_price: Number(sole.unit_price) || 0,
+    supplier_id: sole.supplier_id || '',
+    supplier_lead_time_days: Number(sole.supplier_lead_time_days ?? sole.lead_time_days) || 0,
+    sole_material: sole.sole_material || '',
+    heel_height: Number(sole.heel_height) || 0,
+    sole_moq: Number(sole.sole_moq) || 0,
+    sole_technical_notes: sole.sole_technical_notes || '',
   };
   const [form, setForm] = useState(initialForm);
 
   // Conjugações deste solado (ou do grupo, se group_id)
   const groupId = sole.group_id;
   const classification = (sole.sole_classification as SoleClassification | null) || 'tradicional';
-  const isFachetado = (sole as any).is_fachetado ?? false;
-  const rangeInvalid = Number(form.size_from) > Number(form.size_to);
+  const isFachetado = sole.is_fachetado ?? false;
+  const rangeInvalid = Number(form.size_from) < 10
+    || Number(form.size_to) > 60
+    || Number(form.size_from) > Number(form.size_to);
   // Valor em estoque desta variante = pares em estoque × custo por par.
   // Atualiza ao vivo conforme o usuário edita o "Valor do solado".
   const stockTotalPairs = Number(sole.quantity) || 0;
@@ -62,7 +70,13 @@ export default function SolesCadastroTab({ sole }: Props) {
     form.color !== initialForm.color ||
     Number(form.size_from) !== initialForm.size_from ||
     Number(form.size_to) !== initialForm.size_to ||
-    Number(form.unit_price) !== Number(initialForm.unit_price);
+    Number(form.unit_price) !== Number(initialForm.unit_price) ||
+    form.supplier_id !== initialForm.supplier_id ||
+    Number(form.supplier_lead_time_days) !== Number(initialForm.supplier_lead_time_days) ||
+    form.sole_material !== initialForm.sole_material ||
+    Number(form.heel_height) !== Number(initialForm.heel_height) ||
+    Number(form.sole_moq) !== Number(initialForm.sole_moq) ||
+    form.sole_technical_notes !== initialForm.sole_technical_notes;
 
   // Pré-visualização dos tamanhos que vão sair na grade — aplica conjugações
   // se houver (33/34 etc). Mostrado num bloco destacado pro user enxergar o
@@ -75,12 +89,16 @@ export default function SolesCadastroTab({ sole }: Props) {
   }, [form.size_from, form.size_to]);
   const gridKeys = useDisplaySizeKeys({ sizes: baseSizes, soleGroupId: groupId });
 
-  // Progresso de preenchimento (4 campos chave): nome, cor, range válido, grupo vinculado.
+  // Prontidão operacional: identificação, custo, integração de compra e ficha.
   const filledSlots = [
     form.name.trim().length > 0,
     form.color.trim().length > 0,
     !rangeInvalid && form.size_from > 0 && form.size_to > 0,
     !!groupId,
+    Number(form.unit_price) > 0,
+    !!form.supplier_id,
+    Number(form.supplier_lead_time_days) > 0,
+    form.sole_material.trim().length > 0,
   ];
   const filledCount = filledSlots.filter(Boolean).length;
   const totalSlots = filledSlots.length;
@@ -108,65 +126,22 @@ export default function SolesCadastroTab({ sole }: Props) {
     },
   });
 
-  // Replica name + gradeRange pras siblings (produtos do mesmo group_id em
-  // cores diferentes). Quando o usuário edita o nome ou o range de numeração
-  // de UMA cor, faz sentido espelhar nas outras — é o mesmo modelo de solado.
-  // sku/color NÃO são replicados (são por-variante).
-  const replicateToSiblings = async (patch: { name?: string; gradeRange?: { from: number; to: number } }) => {
-    if (!groupId) return { count: 0 };
-    const { data: siblings } = await supabase
-      .from('products')
-      .select('id, stock_grade')
-      .eq('group_id', groupId)
-      .neq('id', sole.id);
-
-    let count = 0;
-    for (const sib of (siblings || [])) {
-      const updates: any = {};
-      if (patch.name !== undefined) updates.name = patch.name;
-      if (patch.gradeRange) {
-        const grade = { ...((sib as any).stock_grade || {}), _size_from: patch.gradeRange.from, _size_to: patch.gradeRange.to };
-        updates.stock_grade = grade;
-      }
-      if (Object.keys(updates).length === 0) continue;
-      const { error } = await supabase.from('products').update(updates).eq('id', (sib as any).id);
-      if (!error) count++;
-    }
-    return { count };
-  };
-
   const update = useMutation({
-    mutationFn: async (patch: { name: string; sku: string | null; color: string | null; unit_price?: number; gradeRange?: { from: number; to: number } }) => {
-      // 1. Atualiza o produto selecionado (todos os campos)
-      const updates: any = {
-        name: patch.name,
-        sku: patch.sku,
-        color: patch.color,
-      };
-      // Valor do solado (R$/par) — por variante. Entra no estoque (valor) e no
-      // custeio do calçado (linha Solado lê products.unit_price).
-      if (patch.unit_price !== undefined) updates.unit_price = patch.unit_price;
-      if (patch.gradeRange) {
-        const grade = { ...(sole.stock_grade as any || {}), _size_from: patch.gradeRange.from, _size_to: patch.gradeRange.to };
-        updates.stock_grade = grade;
-      }
-      const { error } = await supabase.from('products').update(updates).eq('id', sole.id);
-      if (error) throw error;
-
-      // 2. Replica name + gradeRange pras siblings (cor diferente, mesmo modelo)
-      const nameChanged = patch.name !== sole.name;
-      const rangeChanged = !!patch.gradeRange;
-      let siblingCount = 0;
-      if (nameChanged || rangeChanged) {
-        const result = await replicateToSiblings({
-          name: nameChanged ? patch.name : undefined,
-          gradeRange: patch.gradeRange,
-        });
-        siblingCount = result.count;
-      }
-      return { siblingCount };
-    },
-    onSuccess: ({ siblingCount }) => {
+    mutationFn: () => updateSoleProfile(sole.id, {
+      name: form.name.trim(),
+      sku: form.sku.trim(),
+      color: form.color.trim(),
+      unit_price: Number(form.unit_price) || 0,
+      size_from: Number(form.size_from),
+      size_to: Number(form.size_to),
+      supplier_id: form.supplier_id || null,
+      supplier_lead_time_days: Number(form.supplier_lead_time_days) || 0,
+      sole_material: form.sole_material.trim() || null,
+      heel_height: Number(form.heel_height) || 0,
+      sole_moq: Number(form.sole_moq) || 0,
+      sole_technical_notes: form.sole_technical_notes.trim() || null,
+    }),
+    onSuccess: ({ siblings_updated: siblingCount }) => {
       qc.invalidateQueries({ queryKey: ['soles_hub_products'] });
       qc.invalidateQueries({ queryKey: ['products'] });
       // O range de numeração do solado alimenta a grade do PV e da ficha
@@ -185,62 +160,15 @@ export default function SolesCadastroTab({ sole }: Props) {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const updateGrade = useMutation({
-    mutationFn: async ({ from, to }: { from: number; to: number }) => {
-      const grade = { ...(sole.stock_grade as any || {}), _size_from: from, _size_to: to };
-      const { error } = await supabase.from('products').update({ stock_grade: grade } as any).eq('id', sole.id);
-      if (error) throw error;
-      // Range de numeração é estrutural do MODELO → vale pra todas as cores
-      // (replicateToSiblings preserva o estoque/grade de cada cor; só move os
-      // marcadores _size_from/_size_to). Só o estoque é por cor.
-      const { count } = await replicateToSiblings({ gradeRange: { from, to } });
-      return { count };
-    },
-    onSuccess: ({ count }) => {
-      qc.invalidateQueries({ queryKey: ['soles_hub_products'] });
-      qc.invalidateQueries({ queryKey: ['products'] });
-      // Idem update(): reflete o novo range na grade do PV / ficha técnica.
-      qc.invalidateQueries({ queryKey: ['sole_size_range_specific'] });
-      qc.invalidateQueries({ queryKey: ['sole_size_conjugations'] });
-      toast.success(
-        count > 0
-          ? `Range de numeração atualizado · propagado para ${count} ${count === 1 ? 'cor' : 'cores'}.`
-          : 'Range de numeração atualizado!',
-      );
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-
   // Toggle is_fachetado em todas variantes do grupo
   const updateFachetado = useMutation({
-    mutationFn: async (next: boolean) => {
-      if (!groupId) {
-        const { error } = await supabase
-          .from('products')
-          .update({ is_fachetado: next } as any)
-          .eq('id', sole.id);
-        if (error) throw error;
-        return;
-      }
-      const { error } = await supabase
-        .from('products')
-        .update({ is_fachetado: next } as any)
-        .eq('group_id', groupId);
-      if (error) throw error;
-    },
+    mutationFn: (next: boolean) => updateSoleProfile(sole.id, { is_fachetado: next }),
     onSuccess: (_data, next) => {
       qc.invalidateQueries({ queryKey: ['soles_hub_products'] });
       qc.invalidateQueries({ queryKey: ['products'] });
       toast.success(next ? 'Solado marcado como fachetado' : 'Solado não-fachetado');
     },
     onError: (e: Error) => toast.error(e.message),
-  });
-
-  // === Fornecedor + Lead Time ============================================
-  // Estado local do form de fornecedor (sincronizado com sole no mount).
-  const [supplierForm, setSupplierForm] = useState({
-    supplier_id: (sole.supplier_id as string | null) || null,
-    lead_time_days: Number((sole as any).lead_time_days) || 0,
   });
 
   const { data: suppliers = [] } = useQuery({
@@ -254,22 +182,6 @@ export default function SolesCadastroTab({ sole }: Props) {
       return data || [];
     },
     staleTime: 5 * 60 * 1000,
-  });
-
-  const updateSupplier = useMutation({
-    mutationFn: async (payload: { supplier_id: string | null; lead_time_days: number }) => {
-      // Aplica em TODAS as variantes do grupo — fornecedor é compartilhado.
-      const target = groupId ? supabase.from('products').update(payload as any).eq('group_id', groupId)
-                              : supabase.from('products').update(payload as any).eq('id', sole.id);
-      const { error } = await target;
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['soles_hub_products'] });
-      qc.invalidateQueries({ queryKey: ['products'] });
-      toast.success('Fornecedor & lead time atualizados');
-    },
-    onError: (e: Error) => toast.error(e.message),
   });
 
   // === Fachete: material group + dm²/par por numeração ===================
@@ -296,14 +208,9 @@ export default function SolesCadastroTab({ sole }: Props) {
   });
 
   const updateFacheteMaterial = useMutation({
-    mutationFn: async (groupIdSel: string | null) => {
-      // Aplica em TODAS as variantes do solado (compartilhado).
-      const target = groupId
-        ? supabase.from('products').update({ fachete_material_group_id: groupIdSel } as any).eq('group_id', groupId)
-        : supabase.from('products').update({ fachete_material_group_id: groupIdSel } as any).eq('id', sole.id);
-      const { error } = await target;
-      if (error) throw error;
-    },
+    mutationFn: (groupIdSel: string | null) => updateSoleProfile(sole.id, {
+      fachete_material_group_id: groupIdSel,
+    }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['soles_hub_products'] });
       qc.invalidateQueries({ queryKey: ['products'] });
@@ -317,21 +224,9 @@ export default function SolesCadastroTab({ sole }: Props) {
   // Se virar palmilha_pronta e ainda não existir regra default de coligação, cria.
   const updateClassification = useMutation({
     mutationFn: async (nextClass: SoleClassification) => {
-      if (!groupId) {
-        const { error } = await supabase
-          .from('products')
-          .update({ sole_classification: nextClass } as any)
-          .eq('id', sole.id);
-        if (error) throw error;
-        return;
-      }
-      const { error } = await supabase
-        .from('products')
-        .update({ sole_classification: nextClass } as any)
-        .eq('group_id', groupId);
-      if (error) throw error;
+      await updateSoleProfile(sole.id, { sole_classification: nextClass });
 
-      if (nextClass === 'palmilha_pronta') {
+      if (groupId && nextClass === 'palmilha_pronta') {
         const { data: existing } = await (supabase as any)
           .from('sole_color_conjugations')
           .select('id')
@@ -339,7 +234,7 @@ export default function SolesCadastroTab({ sole }: Props) {
           .eq('is_default', true)
           .limit(1);
         if (!existing || existing.length === 0) {
-          await (supabase as any)
+          const { error } = await (supabase as any)
             .from('sole_color_conjugations')
             .insert({
               sole_group_id: groupId,
@@ -347,6 +242,7 @@ export default function SolesCadastroTab({ sole }: Props) {
               palmilha_color: 'Caramelo',
               is_default: true,
             });
+          if (error) throw error;
         }
       }
     },
@@ -359,19 +255,7 @@ export default function SolesCadastroTab({ sole }: Props) {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const handleSave = () => {
-    const currentFrom = (sole.stock_grade as any)?._size_from ?? 33;
-    const currentTo = (sole.stock_grade as any)?._size_to ?? 40;
-    const rangeChanged = form.size_from !== currentFrom || form.size_to !== currentTo;
-
-    update.mutate({
-      name: form.name,
-      sku: form.sku || null,
-      color: form.color || null,
-      unit_price: Number(form.unit_price) || 0,
-      gradeRange: rangeChanged ? { from: Number(form.size_from), to: Number(form.size_to) } : undefined,
-    });
-  };
+  const handleSave = () => update.mutate();
 
   // Helper visual: badge "Preenchido" / "Pendente" pra cabeçalho de card.
   const StatusBadge = ({ filled, label }: { filled: boolean; label?: string }) =>
@@ -431,10 +315,10 @@ export default function SolesCadastroTab({ sole }: Props) {
             <Info className="h-4 w-4 text-amber-700 dark:text-amber-400 mt-0.5 shrink-0" />
             <div className="text-xs text-amber-900 dark:text-amber-200 space-y-1">
               <p>
-                <strong>Compartilhado entre cores:</strong> nome, range de numeração, conjugações (33/34, 39/40), consumo de Forração/Palmilha e Itens Padrão.
+                <strong>Compartilhado entre cores:</strong> nome, range de numeração, fornecedor, prazo, material, salto, MOQ, observações, consumos e itens padrão.
               </p>
               <p>
-                <strong>Por cor:</strong> SKU, estoque por numeração, conjugação cabedal × solado, silk.
+                <strong>Por cor:</strong> SKU, cor, preço de compra, estoque por numeração, conjugação cabedal × solado e silk.
               </p>
             </div>
           </CardContent>
@@ -622,11 +506,67 @@ export default function SolesCadastroTab({ sole }: Props) {
         </CardContent>
       </Card>
 
-      {/* 3 — CARACTERÍSTICAS (fachetado) */}
+      {/* 3 — PARÂMETROS INDUSTRIAIS E DE COMPRA */}
+      <Card>
+        <CardHeader className="pb-3 flex flex-row items-center gap-2">
+          <Ruler className="h-4 w-4 text-primary" />
+          <CardTitle className="text-sm">3. Engenharia e compra</CardTitle>
+          <StatusBadge
+            filled={form.sole_material.trim().length > 0 && Number(form.unit_price) > 0}
+          />
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs flex items-center gap-1.5">
+                Material / composto
+                {groupId && <span className="text-primary uppercase tracking-wider font-bold">· compartilhado</span>}
+              </Label>
+              <Input
+                value={form.sole_material}
+                onChange={e => setForm(f => ({ ...f, sole_material: e.target.value }))}
+                placeholder="PVC, TR, PU, EVA, borracha..."
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Altura do salto (mm)</Label>
+              <NumberInput
+                min={0}
+                decimals={1}
+                value={form.heel_height}
+                onChange={n => setForm(f => ({ ...f, heel_height: n }))}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">MOQ / lote mínimo (pares)</Label>
+              <NumberInput
+                min={0}
+                decimals={0}
+                value={form.sole_moq}
+                onChange={n => setForm(f => ({ ...f, sole_moq: n }))}
+              />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Observações técnicas</Label>
+            <Textarea
+              value={form.sole_technical_notes}
+              onChange={e => setForm(f => ({ ...f, sole_technical_notes: e.target.value }))}
+              placeholder="Fôrma compatível, acabamento, dureza, restrições de aplicação, inspeção de recebimento..."
+              rows={3}
+            />
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Esses dados identificam o composto e orientam compra, inspeção e aplicação. Os consumos por numeração continuam na aba <strong>Consumos</strong>.
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* 4 — CARACTERÍSTICAS (fachetado) */}
       <Card>
         <CardHeader className="pb-3 flex flex-row items-center gap-2">
           <Crown className="h-4 w-4 text-primary" />
-          <CardTitle className="text-sm">3. Características</CardTitle>
+          <CardTitle className="text-sm">4. Características</CardTitle>
           <StatusBadge filled label="Configurado" />
         </CardHeader>
         <CardContent className="space-y-3">
@@ -697,9 +637,9 @@ export default function SolesCadastroTab({ sole }: Props) {
       {/* CARD: Fornecedor & Lead Time — compartilhado entre cores do grupo */}
       <Card>
         <CardHeader className="pb-3 flex flex-row items-center gap-2">
-          <Layers className="h-4 w-4 text-primary" />
+          <Truck className="h-4 w-4 text-primary" />
           <CardTitle className="text-sm">Fornecedor & Lead Time</CardTitle>
-          {supplierForm.supplier_id && supplierForm.lead_time_days > 0
+          {form.supplier_id && form.supplier_lead_time_days > 0
             ? <StatusBadge filled label="Configurado" />
             : <StatusBadge filled={false} label="Pendente" />}
         </CardHeader>
@@ -707,19 +647,21 @@ export default function SolesCadastroTab({ sole }: Props) {
           <p className="text-xs text-muted-foreground">
             O lead time entra no <strong>cronograma reverso</strong> do MRP: data-limite de
             compra = entrega do cliente − produção − este lead time. Sem isso, o sistema
-            assume 7 dias por default e pode pedir compra cedo demais.
+            usa o prazo padrão do motor e pode posicionar a compra fora da realidade.
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-[2fr_1fr] gap-3">
             <div>
               <Label className="text-xs uppercase tracking-wider font-bold text-muted-foreground">Fornecedor</Label>
               <Select
-                value={supplierForm.supplier_id || ''}
+                value={form.supplier_id || ''}
                 onValueChange={(v) => {
                   const sup = (suppliers as any[]).find((s: any) => s.id === v);
-                  const inferred = Number(sup?.lead_time_days) || supplierForm.lead_time_days || 0;
-                  const next = { supplier_id: v || null, lead_time_days: inferred };
-                  setSupplierForm(next);
-                  updateSupplier.mutate(next);
+                  const inferred = Number(sup?.lead_time_days) || form.supplier_lead_time_days || 0;
+                  setForm(prev => ({
+                    ...prev,
+                    supplier_id: v || '',
+                    supplier_lead_time_days: inferred,
+                  }));
                 }}
               >
                 <SelectTrigger className="mt-1 h-9">
@@ -732,15 +674,15 @@ export default function SolesCadastroTab({ sole }: Props) {
                 </SelectContent>
               </Select>
             </div>
-            <div onBlur={() => updateSupplier.mutate(supplierForm)}>
+            <div>
               <Label className="text-xs uppercase tracking-wider font-bold text-muted-foreground">
                 Lead time <span className="font-mono">(dias úteis)</span>
               </Label>
               <NumberInput
                 min={0}
                 decimals={0}
-                value={supplierForm.lead_time_days}
-                onChange={n => setSupplierForm(prev => ({ ...prev, lead_time_days: n }))}
+                value={form.supplier_lead_time_days}
+                onChange={n => setForm(prev => ({ ...prev, supplier_lead_time_days: n }))}
                 className="mt-1 h-9 font-mono text-right"
               />
             </div>
@@ -787,7 +729,7 @@ export default function SolesCadastroTab({ sole }: Props) {
           <Button
             size="sm"
             onClick={handleSave}
-            disabled={update.isPending || rangeInvalid}
+            disabled={update.isPending || rangeInvalid || !form.name.trim()}
             className="gap-1.5"
           >
             <Save className="h-3.5 w-3.5" />
@@ -813,9 +755,25 @@ function GroupBindingFallback({ soleId }: { soleId: string }) {
   const { data: groups = [], isLoading } = useQuery({
     queryKey: ['product_groups_for_sole_binding'],
     queryFn: async () => {
+      const { data: products, error: productError } = await supabase
+        .from('products')
+        .select('group_id, category')
+        .not('group_id', 'is', null)
+        .eq('active', true);
+      if (productError) throw productError;
+      const soleGroupIds = [...new Set((products || [])
+        .filter((product) => {
+          const category = (product.category || '').toLowerCase();
+          return category === 'sola' || category.startsWith('solado');
+        })
+        .map(product => product.group_id)
+        .filter(Boolean))] as string[];
+      if (soleGroupIds.length === 0) return [];
+
       const { data, error } = await supabase
         .from('product_groups')
         .select('id, name, description')
+        .in('id', soleGroupIds)
         .order('name');
       if (error) throw error;
       return (data ?? []) as Array<{ id: string; name: string; description: string | null }>;

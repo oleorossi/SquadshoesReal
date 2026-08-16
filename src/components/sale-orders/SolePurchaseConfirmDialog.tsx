@@ -8,6 +8,7 @@ import { SoleAvailabilityResult, SoleShortage, InsoleShortage } from '@/lib/sole
 import { useCreatePurchaseOrder } from '@/hooks/usePurchaseOrders';
 import { toast } from 'sonner';
 import { SubmitFlowStepper } from './SubmitFlowStepper';
+import { rateGradeToTotal } from '@/lib/gradeDistribution';
 
 interface Props {
   open: boolean;
@@ -57,16 +58,20 @@ function SizeGradeTable({ breakdown }: { breakdown: Record<string, number> }) {
   );
 }
 
-function StockSummary({ required, available, shortage, suggested }: { required: number; available: number; shortage: number; suggested: number }) {
+function StockSummary({ required, available, incoming = 0, shortage, suggested }: { required: number; available: number; incoming?: number; shortage: number; suggested: number }) {
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
       <div className="rounded bg-muted/30 px-2 py-1.5">
         <div className="text-xs uppercase text-muted-foreground">Necessário</div>
         <div className="font-mono font-semibold">{required}</div>
       </div>
       <div className="rounded bg-muted/30 px-2 py-1.5">
-        <div className="text-xs uppercase text-muted-foreground">Estoque</div>
+        <div className="text-xs uppercase text-muted-foreground">Coberto estoque</div>
         <div className="font-mono">{available}</div>
+      </div>
+      <div className="rounded bg-blue-500/10 px-2 py-1.5">
+        <div className="text-xs uppercase text-blue-700 dark:text-blue-400">Em trânsito</div>
+        <div className="font-mono">{incoming}</div>
       </div>
       <div className="rounded bg-destructive/10 px-2 py-1.5">
         <div className="text-xs uppercase text-destructive">Faltam</div>
@@ -143,7 +148,7 @@ export function SolePurchaseConfirmDialog({ open, onOpenChange, result, onConfir
             unit: 'par',
             current_stock: g.available,
             min_stock: 0, max_stock: 0,
-            grade: Object.keys(g.size_breakdown).length > 0 ? g.size_breakdown : null,
+            grade: rateGradeToTotal(g.size_breakdown, g.suggested_purchase_qty),
             color: g.sole_color ?? null,
           })),
         });
@@ -174,7 +179,7 @@ export function SolePurchaseConfirmDialog({ open, onOpenChange, result, onConfir
             unit: 'par',
             current_stock: g.available,
             min_stock: 0, max_stock: 0,
-            grade: Object.keys(g.size_breakdown).length > 0 ? g.size_breakdown : null,
+            grade: rateGradeToTotal(g.size_breakdown, g.suggested_purchase_qty),
             color: g.insole_color ?? null,
           })),
         });
@@ -244,7 +249,7 @@ export function SolePurchaseConfirmDialog({ open, onOpenChange, result, onConfir
                       {Object.keys(s.size_breakdown).length === 0 && (
                         <p className="text-xs text-muted-foreground italic">Sem grade detalhada — total: <strong>{s.required}</strong> pares.</p>
                       )}
-                      <StockSummary required={s.required} available={s.available} shortage={s.shortage} suggested={s.suggested_purchase_qty} />
+                      <StockSummary required={s.required} available={s.available} incoming={s.incoming} shortage={s.shortage} suggested={s.suggested_purchase_qty} />
                       {s.order_numbers.length > 0 && (
                         <div className="flex items-start gap-1.5 flex-wrap pt-1 border-t">
                           <FileText className="h-3.5 w-3.5 text-muted-foreground mt-0.5" />
@@ -289,7 +294,7 @@ export function SolePurchaseConfirmDialog({ open, onOpenChange, result, onConfir
                     {Object.keys(s.size_breakdown).length === 0 && (
                       <p className="text-xs text-muted-foreground italic">Total: <strong>{s.required}</strong> pares.</p>
                     )}
-                    <StockSummary required={s.required} available={s.available} shortage={s.shortage} suggested={s.suggested_purchase_qty} />
+                    <StockSummary required={s.required} available={s.available} incoming={s.incoming} shortage={s.shortage} suggested={s.suggested_purchase_qty} />
                     {s.order_numbers.length > 0 && (
                       <div className="flex items-start gap-1.5 flex-wrap pt-1 border-t">
                         <FileText className="h-3.5 w-3.5 text-muted-foreground mt-0.5" />

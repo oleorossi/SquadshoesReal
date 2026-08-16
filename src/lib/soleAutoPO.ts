@@ -54,15 +54,39 @@ export async function autoCreateSolePO(params: {
   // cor/grade erradas na OC-00094 (3 OPs do PV-00146, cada chamada resolveu
   // um produto diferente do grupo). Se o canônico não resolver, retornamos
   // null SEM criar OC — nunca pedir produto de cor/modelo errado.
-  const { data: resolved, error: resolveErr } = await supabase.rpc('resolve_sole_color', {
-    p_sheet_id: referenceId,
-    p_product_color: color,
-  });
-  if (resolveErr) {
-    console.error('autoCreateSolePO: resolve_sole_color falhou:', resolveErr.message);
-    return null;
+  let soleProductId: string | null = null;
+  const { data: sourceOrder } = await supabase
+    .from('orders')
+    .select('sale_order_item_id')
+    .eq('id', orderId)
+    .maybeSingle();
+  if (sourceOrder?.sale_order_item_id) {
+    const { data: sourceItem } = await supabase
+      .from('sale_order_items')
+      .select('material_variant_id')
+      .eq('id', sourceOrder.sale_order_item_id)
+      .maybeSingle();
+    if (sourceItem?.material_variant_id) {
+      const { data: variantSole, error: variantError } = await supabase.rpc(
+        'resolve_sole_for_variant',
+        { p_variant_id: sourceItem.material_variant_id },
+      );
+      if (variantError) throw variantError;
+      soleProductId = (Array.isArray(variantSole) ? variantSole[0] : variantSole)?.product_id ?? null;
+    }
   }
-  const soleProductId = (Array.isArray(resolved) ? resolved[0] : resolved)?.sole_product_id ?? null;
+
+  if (!soleProductId) {
+    const { data: resolved, error: resolveErr } = await supabase.rpc('resolve_sole_color', {
+      p_sheet_id: referenceId,
+      p_product_color: color,
+    });
+    if (resolveErr) {
+      console.error('autoCreateSolePO: resolve_sole_color falhou:', resolveErr.message);
+      return null;
+    }
+    soleProductId = (Array.isArray(resolved) ? resolved[0] : resolved)?.sole_product_id ?? null;
+  }
   if (!soleProductId) return null;
 
   const { data: p } = await supabase
@@ -107,8 +131,8 @@ export async function autoCreateSolePO(params: {
   const shortage = Object.values(perSizeShortage).reduce((s, v) => s + v, 0);
   if (shortage <= 0) return null; // estoque cobre todos os tamanhos, nada a pedir
 
-  // Comportamento legado preservado: o item da OC grava a grade COMPLETA
-  // pedida (quantity = só o déficit). A variante por shortfall grava o déficit.
+  // A grade da OC precisa somar exatamente a quantidade do item. Gravar aqui a
+  // demanda completa com quantity = déficit fazia o recebimento falhar depois.
   return criarOuAcumularOCDeSolado({
     orderId,
     orderRef,
@@ -121,7 +145,7 @@ export async function autoCreateSolePO(params: {
     unitPrice,
     unit,
     perSizeShortage,
-    poItemGrade: grade,
+    poItemGrade: perSizeShortage,
   });
 }
 

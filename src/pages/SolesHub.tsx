@@ -32,6 +32,7 @@ import { useCan } from '@/hooks/useAccessControl';
 // ── Tipos ───────────────────────────────────────────────────────────────────
 import type { SoleProduct } from '@/components/soles-hub/types';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
+import { getGradeTotal } from '@/lib/gradeDistribution';
 export type { SoleProduct };
 
 function isSoleProduct(category: string | null): boolean {
@@ -41,10 +42,19 @@ function isSoleProduct(category: string | null): boolean {
 
 // Soma do estoque por grade (ignora chaves _size_from / _size_to)
 function gradeTotal(grade: Record<string, any> | null): number {
-  if (!grade) return 0;
-  return Object.entries(grade)
-    .filter(([k]) => !k.startsWith('_'))
-    .reduce((s, [, v]) => s + (Number(v) || 0), 0);
+  return getGradeTotal(grade);
+}
+
+function registrationGaps(sole: SoleProduct): string[] {
+  const grade = sole.stock_grade as Record<string, any> | null;
+  return [
+    !sole.group_id && 'família',
+    Number(sole.unit_price) <= 0 && 'preço',
+    !sole.supplier_id && 'fornecedor',
+    Number(sole.supplier_lead_time_days ?? sole.lead_time_days) <= 0 && 'prazo',
+    !sole.sole_material?.trim() && 'material',
+    (grade?._size_from == null || grade?._size_to == null) && 'numeração',
+  ].filter(Boolean) as string[];
 }
 
 // ── Hook: carrega TODOS os solados ativos ──────────────────────────────────
@@ -54,7 +64,10 @@ function useSoleProducts() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('products')
-        .select('id, name, sku, category, color, quantity, unit, min_stock, stock_grade, group_id, active, sole_classification')
+        // O detalhe edita todos estes campos. Uma projeção menor fazia o save
+        // parecer perdido: a mutation gravava unit_price/fornecedor/fachete,
+        // invalidava a query e o refetch devolvia esses valores como undefined.
+        .select('id, name, sku, category, color, quantity, unit, unit_price, min_stock, stock_grade, group_id, active, sole_classification, supplier_id, supplier_lead_time_days, lead_time_days, sole_moq, sole_material, heel_height, sole_technical_notes, is_fachetado, fachete_material_group_id, is_standard_sole_item, insole_mode')
         .eq('active', true)
         .order('name');
       if (error) throw error;
@@ -196,7 +209,8 @@ export default function SolesHub() {
   const stats = useMemo(() => {
     const totalPairs = soles.reduce((s, p) => s + gradeTotal(p.stock_grade), 0);
     const lowStock = soles.filter(p => gradeTotal(p.stock_grade) < (p.min_stock || 0)).length;
-    return { totalSoles: soles.length, totalPairs, lowStock };
+    const pendingRegistration = soles.filter((p) => registrationGaps(p).length > 0).length;
+    return { totalSoles: soles.length, totalPairs, lowStock, pendingRegistration };
   }, [soles]);
 
   return (
@@ -222,6 +236,14 @@ export default function SolesHub() {
                     <AlertTriangle className="h-3 w-3" /> Abaixo do mínimo
                   </p>
                   <p className="text-lg font-bold font-mono text-amber-700 dark:text-amber-400">{stats.lowStock}</p>
+                </Card>
+              )}
+              {stats.pendingRegistration > 0 && (
+                <Card className="px-3 py-2 border-border bg-muted/30">
+                  <p className="text-xs uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+                    <AlertTriangle className="h-3 w-3" /> Cadastro pendente
+                  </p>
+                  <p className="text-lg font-bold font-mono">{stats.pendingRegistration}</p>
                 </Card>
               )}
               {perm.canCreate && (
@@ -465,6 +487,7 @@ function SoleListItem({ sole, selected, onSelect }: {
   const isLow = total < (sole.min_stock || 0);
   const isZero = total === 0;
   const colorLabel = sole.color?.trim() || '— sem cor';
+  const gaps = registrationGaps(sole);
   return (
     <button
       onClick={onSelect}
@@ -490,6 +513,15 @@ function SoleListItem({ sole, selected, onSelect }: {
           )}>
             {total} {total === 1 ? 'par' : 'pares'}
           </span>
+          {gaps.length > 0 && (
+            <Badge
+              variant="outline"
+              className="h-4 px-1 text-xs leading-none text-destructive border-destructive/30"
+              title={`Cadastro pendente: ${gaps.join(', ')}`}
+            >
+              {gaps.length} {gaps.length === 1 ? 'pendência' : 'pendências'}
+            </Badge>
+          )}
         </div>
       </div>
       <ChevronRight className={cn('h-3.5 w-3.5 shrink-0 transition-transform', selected && 'rotate-90 text-primary')} />

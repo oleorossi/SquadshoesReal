@@ -9,16 +9,10 @@ import { SoladoGradeDialog } from '@/components/inventory/SoladoGradeDialog';
 import { useSoleConjugations } from '@/hooks/useSoleConjugations';
 import type { Product } from '@/types/inventory';
 import type { SoleProduct } from './types';
+import { getGradeQuantityForKey } from '@/lib/gradeDistribution';
 
 interface Props {
   sole: SoleProduct;
-}
-
-function gradeTotal(grade: Record<string, any> | null): number {
-  if (!grade) return 0;
-  return Object.entries(grade)
-    .filter(([k]) => !k.startsWith('_'))
-    .reduce((s, [, v]) => s + (Number(v) || 0), 0);
 }
 
 export default function SolesEstoqueTab({ sole }: Props) {
@@ -70,18 +64,7 @@ export default function SolesEstoqueTab({ sole }: Props) {
   // formato individual) OU usa a key conjugada se já estiver no grade.
   const qtyByKey = useMemo<Record<string, number>>(() => {
     const out: Record<string, number> = {};
-    for (const k of effectiveSizeKeys) {
-      if (grade[k] != null) {
-        out[k] = Number(grade[k]) || 0;
-        continue;
-      }
-      if (k.includes('/')) {
-        const parts = k.split('/').map(p => Number(p)).filter(n => !isNaN(n));
-        out[k] = parts.reduce((s, n) => s + (Number(grade[String(n)]) || 0), 0);
-      } else {
-        out[k] = Number(grade[k]) || 0;
-      }
-    }
+    for (const k of effectiveSizeKeys) out[k] = getGradeQuantityForKey(grade, k);
     return out;
   }, [effectiveSizeKeys, grade]);
 

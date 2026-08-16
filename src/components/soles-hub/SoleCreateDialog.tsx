@@ -6,6 +6,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { NumberInput } from '@/components/ui/number-input';
+import { CurrencyInput } from '@/components/ui/currency-input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import {
@@ -48,6 +49,7 @@ export default function SoleCreateDialog({ open, onOpenChange, onCreated }: Prop
   const [classification, setClassification] = useState<SoleClassification>('tradicional');
   const [isFachetado, setIsFachetado] = useState(false);
   const [minStock, setMinStock] = useState<number>(0);
+  const [unitPrice, setUnitPrice] = useState<number>(0);
   const [groupId, setGroupId] = useState<string>('');
   const [creatingGroup, setCreatingGroup] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
@@ -114,6 +116,7 @@ export default function SoleCreateDialog({ open, onOpenChange, onCreated }: Prop
     setClassification('tradicional');
     setIsFachetado(false);
     setMinStock(0);
+    setUnitPrice(0);
     setGroupId('');
     setCreatingGroup(false);
     setNewGroupName('');
@@ -170,7 +173,7 @@ export default function SoleCreateDialog({ open, onOpenChange, onCreated }: Prop
         quantity: 0,
         min_stock: minStock || 0,
         active: true,
-        unit_price: 0,
+        unit_price: unitPrice,
         stock_grade: grade,
         sole_classification: classification,
         is_fachetado: isFachetado,
@@ -336,8 +339,16 @@ export default function SoleCreateDialog({ open, onOpenChange, onCreated }: Prop
             </div>
           </div>
 
-          {/* Estoque mínimo + grupo */}
-          <div className="grid grid-cols-2 gap-3">
+          {/* Custo + estoque mínimo + grupo */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="sole-unit-price">Custo (R$/par)</Label>
+              <CurrencyInput
+                id="sole-unit-price"
+                value={unitPrice}
+                onChange={setUnitPrice}
+              />
+            </div>
             <div className="space-y-1.5">
               <Label htmlFor="sole-min-stock">Estoque mínimo</Label>
               <NumberInput

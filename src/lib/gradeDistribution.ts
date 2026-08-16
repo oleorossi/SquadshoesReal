@@ -45,3 +45,97 @@ export function rateGradeToTotal(
   for (const p of parts) if (p.base > 0) out[p.k] = p.base;
   return Object.keys(out).length ? out : null;
 }
+
+/**
+ * Lê uma quantidade da grade sem contar duas vezes numerações conjugadas.
+ * A chave canônica (ex.: "33/34") sempre vence. O fallback para as chaves
+ * individuais só atende cadastros legados que ainda não foram consolidados.
+ */
+export function getGradeQuantityForKey(
+  grade: Record<string, unknown> | null | undefined,
+  sizeKey: string,
+): number {
+  if (!grade || !sizeKey || sizeKey.startsWith('_')) return 0;
+  if (Object.prototype.hasOwnProperty.call(grade, sizeKey)) {
+    return Math.max(0, Number(grade[sizeKey]) || 0);
+  }
+  if (!sizeKey.includes('/')) return 0;
+  return [...new Set(sizeKey.split('/'))]
+    .reduce((sum, size) => sum + Math.max(0, Number(grade[size]) || 0), 0);
+}
+
+/** Soma a grade ignorando metadados e chaves individuais já cobertas por um
+ * balde conjugado canônico. Útil durante a transição de cadastros legados. */
+export function getGradeTotal(
+  grade: Record<string, unknown> | null | undefined,
+): number {
+  if (!grade) return 0;
+  const entries = Object.entries(grade).filter(([key]) => !key.startsWith('_'));
+  const coveredIndividuals = new Set(
+    entries.flatMap(([key]) => key.includes('/') ? key.split('/') : []),
+  );
+  return entries.reduce((total, [key, value]) => {
+    if (!key.includes('/') && coveredIndividuals.has(key)) return total;
+    return total + Math.max(0, Number(value) || 0);
+  }, 0);
+}
+
+export interface GradeCoverage {
+  coveredOnHandBySize: Record<string, number>;
+  coveredIncomingBySize: Record<string, number>;
+  shortageBySize: Record<string, number>;
+  totalRequired: number;
+  totalCoveredOnHand: number;
+  totalCoveredIncoming: number;
+  totalShortage: number;
+}
+
+/**
+ * Compara demanda, estoque e compras em trânsito por numeração. Sobra no nº 40
+ * não cobre falta no nº 36; esta é a diferença essencial para solados.
+ */
+export function calculateGradeCoverage(
+  required: Record<string, number> | null | undefined,
+  onHand: Record<string, unknown> | null | undefined,
+  incoming?: Record<string, unknown> | null,
+): GradeCoverage {
+  const coveredOnHandBySize: Record<string, number> = {};
+  const coveredIncomingBySize: Record<string, number> = {};
+  const shortageBySize: Record<string, number> = {};
+
+  let totalRequired = 0;
+  let totalCoveredOnHand = 0;
+  let totalCoveredIncoming = 0;
+  let totalShortage = 0;
+
+  for (const [sizeKey, rawRequired] of Object.entries(required || {})) {
+    if (sizeKey.startsWith('_')) continue;
+    const requiredQty = Math.max(0, Number(rawRequired) || 0);
+    if (requiredQty <= 0) continue;
+
+    const onHandQty = getGradeQuantityForKey(onHand, sizeKey);
+    const coveredOnHand = Math.min(requiredQty, onHandQty);
+    const afterStock = requiredQty - coveredOnHand;
+    const incomingQty = getGradeQuantityForKey(incoming, sizeKey);
+    const coveredIncoming = Math.min(afterStock, incomingQty);
+    const shortage = afterStock - coveredIncoming;
+
+    totalRequired += requiredQty;
+    totalCoveredOnHand += coveredOnHand;
+    totalCoveredIncoming += coveredIncoming;
+    totalShortage += shortage;
+    if (coveredOnHand > 0) coveredOnHandBySize[sizeKey] = coveredOnHand;
+    if (coveredIncoming > 0) coveredIncomingBySize[sizeKey] = coveredIncoming;
+    if (shortage > 0) shortageBySize[sizeKey] = shortage;
+  }
+
+  return {
+    coveredOnHandBySize,
+    coveredIncomingBySize,
+    shortageBySize,
+    totalRequired,
+    totalCoveredOnHand,
+    totalCoveredIncoming,
+    totalShortage,
+  };
+}
