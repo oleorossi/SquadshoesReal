@@ -1831,5 +1831,16 @@ GRANT SELECT ON public.v_strap_demands_operational,
 
 DROP TRIGGER IF EXISTS trg_debit_service_order_base ON public.service_orders;
 
-COMMENT ON FUNCTION public.debit_service_order_base() IS
-  'LEGADO READ-ONLY/CUTOVER: trigger trg_debit_service_order_base removido em 20270101003100. Historico e funcao preservados; nova baixa ocorre exclusivamente em register_strap_production_receipt.';
+-- Nem todo historico de producao possui esta funcao auxiliar legada. COMMENT
+-- resolve o objeto obrigatoriamente, portanto precisa do mesmo tratamento
+-- idempotente do DROP TRIGGER acima quando a funcao ja nao existe.
+DO $optional_legacy_debit_comment$
+BEGIN
+  IF to_regprocedure('public.debit_service_order_base()') IS NOT NULL THEN
+    EXECUTE $legacy_comment$
+      COMMENT ON FUNCTION public.debit_service_order_base() IS
+        'LEGADO READ-ONLY/CUTOVER: trigger trg_debit_service_order_base removido em 20270101003100. Historico e funcao preservados; nova baixa ocorre exclusivamente em register_strap_production_receipt.'
+    $legacy_comment$;
+  END IF;
+END
+$optional_legacy_debit_comment$;
