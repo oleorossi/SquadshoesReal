@@ -40,7 +40,7 @@ export default function SolePurchaseTab() {
     enabled: orders.length > 0,
     queryFn: async () => {
       const saleOrderItemIds = [
-        ...new Set(orders.map((o: any) => o.sale_order_item_id).filter(Boolean)),
+        ...new Set(orders.map((order) => order.sale_order_item_id).filter(Boolean)),
       ] as string[];
       const variantByItemId = new Map<string, string | null>();
       if (saleOrderItemIds.length > 0) {

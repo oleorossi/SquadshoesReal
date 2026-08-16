@@ -227,14 +227,14 @@ export default function SolesCadastroTab({ sole }: Props) {
       await updateSoleProfile(sole.id, { sole_classification: nextClass });
 
       if (groupId && nextClass === 'palmilha_pronta') {
-        const { data: existing } = await (supabase as any)
+        const { data: existing } = await supabase
           .from('sole_color_conjugations')
           .select('id')
           .eq('sole_group_id', groupId)
           .eq('is_default', true)
           .limit(1);
         if (!existing || existing.length === 0) {
-          const { error } = await (supabase as any)
+          const { error } = await supabase
             .from('sole_color_conjugations')
             .insert({
               sole_group_id: groupId,

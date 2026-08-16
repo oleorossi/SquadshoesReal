@@ -41,12 +41,12 @@ function isSoleProduct(category: string | null): boolean {
 }
 
 // Soma do estoque por grade (ignora chaves _size_from / _size_to)
-function gradeTotal(grade: Record<string, any> | null): number {
+function gradeTotal(grade: Record<string, unknown> | null): number {
   return getGradeTotal(grade);
 }
 
 function registrationGaps(sole: SoleProduct): string[] {
-  const grade = sole.stock_grade as Record<string, any> | null;
+  const grade = sole.stock_grade as Record<string, unknown> | null;
   return [
     !sole.group_id && 'família',
     Number(sole.unit_price) <= 0 && 'preço',

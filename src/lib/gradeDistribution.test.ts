@@ -79,7 +79,7 @@ describe('calculateGradeCoverage', () => {
 
   it('ignora metadados da grade', () => {
     const result = calculateGradeCoverage(
-      { _size_from: 33, _size_to: 40, '36': 5 } as any,
+      { _size_from: 33, _size_to: 40, '36': 5 },
       { _size_from: 33, _size_to: 40, '36': 5 },
     );
     expect(result.totalRequired).toBe(5);

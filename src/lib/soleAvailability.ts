@@ -76,6 +76,45 @@ interface ItemInput {
   orderNumber?: string | null;
 }
 
+interface TechnicalSheetAvailabilityRow {
+  primary_sole_id: string | null;
+  sole_group_id: string | null;
+  insole_material: string | null;
+  insole_has_lining: boolean | null;
+  lead_time_montagem_dias: number | null;
+  lead_time_acabamento_dias: number | null;
+  lead_time_buffer_material_dias: number | null;
+}
+
+interface SoleProductAvailabilityRow {
+  id: string;
+  name: string;
+  sku: string | null;
+  color: string | null;
+  group_id: string | null;
+  quantity: number | null;
+  reserved_stock: number | null;
+  stock_grade: Record<string, unknown> | null;
+  unit_price: number | null;
+  supplier_id: string | null;
+  supplier_lead_time_days: number | null;
+  lead_time_days: number | null;
+  sole_moq: number | null;
+}
+
+interface SupplierAvailabilityRow {
+  id: string;
+  name: string;
+  lead_time_days: number | null;
+}
+
+interface PurchaseOrderItemAvailabilityRow {
+  product_id: string | null;
+  quantity: number;
+  received_quantity: number | null;
+  grade: Record<string, number> | null;
+}
+
 /**
  * Resolve the actual sole product variant for each line item, consult current
  * stock and return shortages plus a minimum billing date.
@@ -204,7 +243,7 @@ export async function checkSoleAvailability(items: ItemInput[]): Promise<SoleAva
 
   /** Cascata de resolução do solado (espelha resolve_sole_color do banco). */
   const resolveSoleProductId = (
-    sheet: any,
+    sheet: TechnicalSheetAvailabilityRow,
     refId: string,
     cabedalColor: string | null,
     materialVariantId?: string | null,
@@ -358,14 +397,17 @@ export async function checkSoleAvailability(items: ItemInput[]): Promise<SoleAva
 
   // ── Fetch sole products + suppliers ──
   const soleIds = [...requiredSoles.keys()];
-  let soleProducts: any[] = [];
+  let soleProducts: SoleProductAvailabilityRow[] = [];
   if (soleIds.length > 0) {
     const { data, error } = await supabase
       .from('products')
       .select('id, name, sku, color, group_id, quantity, reserved_stock, stock_grade, unit_price, supplier_id, supplier_lead_time_days, lead_time_days, sole_moq')
       .in('id', soleIds);
     if (error) throw error;
-    soleProducts = data || [];
+    soleProducts = (data || []).map(product => ({
+      ...product,
+      stock_grade: product.stock_grade as Record<string, unknown> | null,
+    }));
   }
 
   // ── Fetch sole conjugations for the groups that appear ──────
@@ -374,10 +416,10 @@ export async function checkSoleAvailability(items: ItemInput[]): Promise<SoleAva
   // conjugadas ("33/34"), espelhando o que `debit_sole_stock_by_grade` faz
   // no banco. Sem isso, o relatório de compras divergiria do estoque real.
   const soleGroupIds = [
-    ...new Set((soleProducts || []).map((p: any) => p.group_id).filter(Boolean)),
+    ...new Set(soleProducts.map(product => product.group_id).filter(Boolean)),
   ] as string[];
   if (soleGroupIds.length > 0) {
-    const { data: conjs, error } = await (supabase as any)
+    const { data: conjs, error } = await supabase
       .from('sole_size_conjugations')
       .select('sole_group_id, size_key, sizes')
       .in('sole_group_id', soleGroupIds);
@@ -447,7 +489,7 @@ export async function checkSoleAvailability(items: ItemInput[]): Promise<SoleAva
       ...insoleProducts.map((p: any) => p.supplier_id),
     ].filter(Boolean)),
   ];
-  let suppliers: any[] = [];
+  let suppliers: SupplierAvailabilityRow[] = [];
   if (allSupplierIds.length > 0) {
     const { data, error } = await supabase
       .from('suppliers')
@@ -456,7 +498,7 @@ export async function checkSoleAvailability(items: ItemInput[]): Promise<SoleAva
     if (error) throw error;
     suppliers = data || [];
   }
-  const supplierMap = new Map((suppliers || []).map((s: any) => [s.id, s]));
+  const supplierMap = new Map(suppliers.map(supplier => [supplier.id, supplier]));
 
   // OCs abertas contam como estoque em trânsito. Para demanda gradeada, só uma
   // OC que também tenha grade pode cobrir uma numeração específica; OC legada
@@ -474,7 +516,7 @@ export async function checkSoleAvailability(items: ItemInput[]): Promise<SoleAva
       .in('purchase_orders.status', ['pending', 'approved', 'sent', 'parcial']);
     if (openItemsError) throw openItemsError;
 
-    for (const row of (openItems || []) as any[]) {
+    for (const row of (openItems || []) as unknown as PurchaseOrderItemAvailabilityRow[]) {
       const remaining = Math.max(0, Number(row.quantity) - Number(row.received_quantity || 0));
       if (!row.product_id || remaining <= 0) continue;
       incomingTotalByProduct.set(
@@ -497,16 +539,16 @@ export async function checkSoleAvailability(items: ItemInput[]): Promise<SoleAva
   let postSoleDays = 0;
 
   for (const product of soleProducts || []) {
-    const need = requiredSoles.get((product as any).id);
+    const need = requiredSoles.get(product.id);
     if (!need) continue;
     const hasGradeDemand = Object.values(need.sizeBreakdown).some((qty) => Number(qty) > 0);
-    const scalarOnHand = Math.max(0, Number((product as any).quantity || 0) - Number((product as any).reserved_stock || 0));
-    const scalarIncoming = incomingTotalByProduct.get((product as any).id) || 0;
+    const scalarOnHand = Math.max(0, Number(product.quantity || 0) - Number(product.reserved_stock || 0));
+    const scalarIncoming = incomingTotalByProduct.get(product.id) || 0;
     const coverage = hasGradeDemand
       ? calculateGradeCoverage(
           need.sizeBreakdown,
-          (product as any).stock_grade,
-          incomingGradeByProduct.get((product as any).id),
+          product.stock_grade,
+          incomingGradeByProduct.get(product.id),
         )
       : null;
     const coveredOnHand = coverage?.totalCoveredOnHand ?? Math.min(need.qty, scalarOnHand);
