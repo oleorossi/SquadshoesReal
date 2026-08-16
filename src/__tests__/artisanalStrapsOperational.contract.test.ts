@@ -12,6 +12,7 @@ const ENGINE = readMigration('20270101003200_artisanal_straps_operational_engine
 const LEGACY = readMigration('20270101003300_artisanal_straps_legacy_migration_apply.sql');
 const HARDENING = readMigration('20270101003050_artisanal_straps_catalog_postdeploy_hardening.sql');
 const PER_PV_APPLIED = readMigration('20261022120000_compute-materials-per-pv-uses-strap-single-engine.sql');
+const ITEM_OP_SYNC = readMigration('20260925133000_stock-debit-hole-prevention.sql');
 
 function functionBody(sql: string, name: string, nextMarker: string) {
   const start = sql.indexOf(`CREATE OR REPLACE FUNCTION public.${name}(`);
@@ -57,6 +58,33 @@ describe('Tiras artesanais — contrato SQL canônico', () => {
     expect(ENGINE).toContain('process_strap_demand_job');
     expect(ENGINE).toContain("'* * * * *'");
     expect(ENGINE).toContain("drain_strap_demand_jobs(100, 'pg_cron')");
+  });
+
+  it('isola o backfill cadastral do gatilho que cria OPs e movimenta estoque', () => {
+    const backfillStart = SCHEMA.indexOf('DO $strap_sourcing_backfill$');
+    const backfillEnd = SCHEMA.indexOf('$strap_sourcing_backfill$;', backfillStart);
+    expect(backfillStart).toBeGreaterThanOrEqual(0);
+    expect(backfillEnd).toBeGreaterThan(backfillStart);
+
+    const backfill = SCHEMA.slice(backfillStart, backfillEnd);
+    const suppress = backfill.indexOf("set_config('app.suppress_item_op_sync', '1', true)");
+    const firstUpdate = backfill.indexOf('UPDATE public.sale_order_items');
+    const restore = backfill.lastIndexOf("'app.suppress_item_op_sync'");
+
+    expect(suppress).toBeGreaterThanOrEqual(0);
+    expect(suppress).toBeLessThan(firstUpdate);
+    expect(backfill.match(/UPDATE public\.sale_order_items/g)).toHaveLength(2);
+    expect(restore).toBeGreaterThan(backfill.lastIndexOf('UPDATE public.sale_order_items'));
+    expect(backfill).toContain("coalesce(v_previous_item_op_sync, '')");
+
+    const syncTrigger = functionBody(
+      ITEM_OP_SYNC,
+      'tg_sync_orders_from_sale_order_item',
+      'CREATE OR REPLACE FUNCTION public.tg_release_reservations_on_order_terminal',
+    );
+    expect(syncTrigger).toContain(
+      "current_setting('app.suppress_item_op_sync', true) = '1'",
+    );
   });
 
   it('usa quantidade exata da grade e não inventa consumo ausente', () => {
