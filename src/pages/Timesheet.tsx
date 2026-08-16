@@ -6,7 +6,7 @@ import PendingTimeRecordsPanel from '@/components/timesheet/PendingTimeRecordsPa
 import EmployeeAbsences from './EmployeeAbsences';
 import { useState, useRef, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Clock, Upload, Plus, Trash as Trash2, CircleNotch as Loader2, Calendar, Gear as Settings2, Warning as AlertTriangle, FileXls as FileSpreadsheet, CaretDown as ChevronDown, Sun, Moon, Coffee, CheckCircle as CheckCircle2, XCircle, MinusCircle, Printer, Users as Users2, CurrencyDollar as DollarSign, Link as Link2, Shield, FileText, Clipboard as ClipboardEdit, Alarm as AlarmClock, ClockCounterClockwise as History, Wallet, ArrowsLeftRight, FirstAid } from '@phosphor-icons/react';
+import { Clock, Upload, Plus, Trash as Trash2, CircleNotch as Loader2, Calendar, Gear as Settings2, Warning as AlertTriangle, FileXls as FileSpreadsheet, CaretDown as ChevronDown, Sun, Moon, Coffee, CheckCircle as CheckCircle2, XCircle, MinusCircle, Printer, Users as Users2, CurrencyDollar as DollarSign, Link as Link2, Shield, FileText, Clipboard as ClipboardEdit, Alarm as AlarmClock, ClockCounterClockwise as History, Wallet, ArrowsLeftRight, FirstAid, Archive as ArchiveBox } from '@phosphor-icons/react';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -501,7 +501,7 @@ function TimesheetRecordsTab() {
   const [parsing, setParsing] = useState(false);
   // Mantém o File original junto com o preview pra permitir arquivá-lo no
   // bucket timesheet-imports após confirmação da importação (PR Frente 2).
-  const [preview, setPreview] = useState<{ employees: ParsedEmployee[]; startDate: string; endDate: string; rawFile?: File } | null>(null);
+  const [preview, setPreview] = useState<{ employees: ParsedEmployee[]; startDate: string; endDate: string; rawFile: File } | null>(null);
   const [selectedEmployee, setSelectedEmployee] = useState<string>('');
   const [reportDialogOpen, setReportDialogOpen] = useState(false);
   const [, setRhSearchParams] = useSearchParams(); // navegar Ponto → Relatórios
@@ -603,7 +603,7 @@ function TimesheetRecordsTab() {
       employees: preview.employees,
       startDate: importStartDate,
       endDate: importEndDate,
-      file: preview.rawFile, // arquiva no bucket timesheet-imports
+      file: preview.rawFile,
     }, {
       onSuccess: () => {
         // Set date filters to the imported period so records are visible across all batches
@@ -1339,12 +1339,12 @@ function TimesheetRecordsTab() {
 // ── Main Page ──────────────────────────────────────────
 export default function Timesheet() {
   const { value: activeTab, setValue: setActiveTab } = useUrlTabState({
-    values: ['records', 'manual', 'ausencias', 'calendario', 'config'] as const,
+    values: ['records', 'manual', 'ausencias', 'calendario', 'arquivos', 'config'] as const,
     defaultValue: 'records',
     param: 'subtab',
     aliases: {
       overview: 'records', late: 'manual', occurrences: 'manual', pending: 'manual',
-      reports: 'records', overtime: 'records', history: 'config', schedule: 'config', holidays: 'config',
+      reports: 'records', overtime: 'records', history: 'arquivos', schedule: 'config', holidays: 'config',
     },
   });
   const { total: pendingTotal, overdueTotal } = usePendingTotal(30);
@@ -1378,9 +1378,16 @@ export default function Timesheet() {
       step: undefined,
     },
     {
+      value: 'arquivos',
+      label: 'Arquivos',
+      description: 'Consulte e baixe os arquivos originais preservados em cada importação.',
+      icon: ArchiveBox,
+      step: undefined,
+    },
+    {
       value: 'config',
       label: 'Ajustes',
-      description: 'Gerencie feriados, trocas de dia e o histórico de arquivos.',
+      description: 'Gerencie feriados e trocas de dias de trabalho.',
       icon: Settings2,
       step: undefined,
     },
@@ -1406,7 +1413,7 @@ export default function Timesheet() {
                 value={section.value}
                 className={cn(
                   'group min-h-10 gap-1.5 rounded-md border-b-0 px-2 py-2 font-sans text-xs font-semibold normal-case tracking-normal data-[state=active]:bg-muted data-[state=active]:text-foreground md:col-auto md:flex-1 md:px-3',
-                  index < 3 ? 'col-span-2' : 'col-span-3',
+                  'col-span-2',
                   index === 3 && 'md:ml-2',
                 )}
               >
@@ -1464,12 +1471,11 @@ export default function Timesheet() {
             do dia). Mesma tela reaproveitada de /rh/ausencias. */}
         <TabsContent value="ausencias"><EmployeeAbsences embedded /></TabsContent>
         <TabsContent value="calendario"><CoverageCalendar /></TabsContent>
+        <TabsContent value="arquivos"><ImportHistoryPanel /></TabsContent>
         <TabsContent value="config" className="space-y-6">
           <HolidaysTab />
           <Separator />
           <WorkdaySwapsTab />
-          <Separator />
-          <ImportHistoryPanel />
         </TabsContent>
       </Tabs>
     </div>

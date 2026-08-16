@@ -1,9 +1,23 @@
 import { useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import type { Database } from '@/integrations/supabase/types';
 import { toast } from 'sonner';
 // Motor único de ponto: base por-dia canônica (mesmos primitivos da folha).
 import { worksOnDow, expectedDayMinutes, splitDayMinutes } from '@/lib/ponto/pontoEngine';
+
+type TimeImportLogInsert = Database['public']['Tables']['time_import_logs']['Insert'];
+type TimeImportLogUpdate = Database['public']['Tables']['time_import_logs']['Update'];
+interface ArchiveRpcResult {
+  inserted?: number;
+  updated?: number;
+  skipped?: number;
+}
+interface RpcFailure {
+  code?: string;
+  details?: string;
+  message?: string;
+}
 
 // ── Types ──────────────────────────────────────────────
 export interface WorkSchedule {
@@ -1034,10 +1048,9 @@ export function useImportTimeRecords() {
       employees: ParsedEmployee[];
       startDate: string;
       endDate: string;
-      // Arquivo bruto opcional — quando presente, é arquivado no bucket
-      // Storage `timesheet-imports` e linkado em `time_import_logs.file_path`
-      // pra audit/download posterior. Adicionado em 20260525130000.
-      file?: File;
+      // O arquivo original é obrigatório: nenhuma batida é aplicada antes de
+      // o binário estar preservado no arquivo permanente de auditoria.
+      file: File;
     }) => {
       const { employees, startDate, endDate, file } = params;
       if (!startDate || !endDate || !/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
@@ -1126,7 +1139,80 @@ export function useImportTimeRecords() {
       }
       const uniqueRecords = Array.from(dedupMap.values());
 
-      // ── Step 2: paginated fetch of ALL existing keys in this date range ──
+      // ── Step 2: cria o protocolo e arquiva o original ANTES das batidas ──
+      // O log nasce primeiro para registrar inclusive tentativas cujo upload
+      // falhe. Só depois de o Storage confirmar o arquivo o processamento segue.
+      const safeName = file.name.replace(/[^\w.-]/g, '_').slice(0, 200) || 'arquivo-ponto';
+      const archivedFilePath = `${batchId}/${safeName}`;
+      const archivedMime = file.type || 'application/octet-stream';
+      const { data: authData, error: authError } = await supabase.auth.getUser();
+      if (authError || !authData.user) {
+        throw new Error('Sua sessão expirou. Entre novamente antes de importar o arquivo de ponto.');
+      }
+
+      const { data: createdLog, error: createLogError } = await supabase
+        .from('time_import_logs')
+        .insert({
+          file_name: file.name,
+          file_path: archivedFilePath,
+          file_size_bytes: file.size,
+          mime_type: archivedMime,
+          archive_status: 'pending',
+          batch_id: batchId,
+          start_date: startDate,
+          end_date: endDate,
+          inserted_count: 0,
+          updated_count: 0,
+          skipped_count: 0,
+          error_count: 0,
+          total_rows: uniqueRecords.length,
+          status: 'processing',
+          imported_by: authData.user.id,
+          notes: 'Arquivo recebido; aguardando confirmação do armazenamento permanente.',
+        } as unknown as TimeImportLogInsert)
+        .select('id')
+        .single();
+      if (createLogError || !createdLog?.id) {
+        throw new Error(`A importação não foi iniciada porque o protocolo do arquivo não pôde ser criado: ${createLogError?.message || 'erro desconhecido'}`);
+      }
+      const importLogId = createdLog.id;
+
+      const { error: uploadError } = await supabase.storage
+        .from('timesheet-imports')
+        .upload(archivedFilePath, file, {
+          contentType: archivedMime,
+          upsert: false,
+        });
+      if (uploadError) {
+        await supabase
+          .from('time_import_logs')
+          .update({
+            file_path: null,
+            archive_status: 'failed',
+            status: 'error',
+            error_count: 1,
+            error_messages: [{ row: 'arquivo', error: uploadError.message }],
+            notes: 'O arquivo não foi armazenado; nenhuma batida foi aplicada.',
+          } as unknown as TimeImportLogUpdate)
+          .eq('id', importLogId);
+        throw new Error(`A importação foi interrompida antes de alterar o ponto: não foi possível arquivar o arquivo original (${uploadError.message}).`);
+      }
+
+      const { error: archiveConfirmationError } = await supabase
+        .from('time_import_logs')
+        .update({
+          archive_status: 'available',
+          archived_at: new Date().toISOString(),
+          notes: 'Original preservado; processando as batidas.',
+        } as unknown as TimeImportLogUpdate)
+        .eq('id', importLogId);
+      if (archiveConfirmationError) {
+        throw new Error(`O arquivo foi armazenado, mas a confirmação do histórico falhou. Nenhuma batida foi aplicada: ${archiveConfirmationError.message}`);
+      }
+
+      try {
+
+      // ── Step 3: paginated fetch of ALL existing keys in this date range ──
       // Supabase returns at most 1000 rows per query by default; we paginate
       // with .range() to ensure we see every already-imported day — no matter
       // how many records are stored.
@@ -1161,124 +1247,104 @@ export function useImportTimeRecords() {
         }
       }
 
-      // ── Step 3: keep only records that are not yet in the DB ─────────────
+      // ── Step 4: keep only records that are not yet in the DB ─────────────
       const toInsert = uniqueRecords.filter(
         r => !existingKeys.has(`${r.employee_external_id || `nome:${r.employee_name}`}__${r.record_date}`)
       );
       let skipped = uniqueRecords.length - toInsert.length;
 
-      // ── Step 4: insert new records.
-      // Prefer the atomic RPC `import_time_records_safe` (migration 20260430120000)
-      // which uses INSERT ... ON CONFLICT DO NOTHING server-side, eliminating the
-      // 23505 race entirely. Fall back to the legacy chunk-with-retry path if the
-      // RPC is missing (e.g. environment that hasn't applied the migration).
+      // ── Step 5: insert new records.
+      // A RPC canônica insere as batidas e fecha o protocolo do arquivo na
+      // mesma transação. O fallback existe só para a pequena janela em que o
+      // frontend novo pode subir antes da migration no deploy.
       let insertedCount = 0;
+      let updatedCount = 0;
+      let archiveRpcFinalized = false;
       try {
-        const { data: rpcData, error: rpcErr } = await (supabase as any).rpc(
-          'import_time_records_safe',
-          { records: toInsert as any },
+        const rpcClient = supabase as unknown as {
+          rpc: (name: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: RpcFailure | null }>;
+        };
+        const { data: rpcData, error: rpcErr } = await rpcClient.rpc(
+          'import_time_records_with_archive',
+          {
+            records: toInsert,
+            p_log_id: importLogId,
+            p_pre_skipped: skipped,
+          },
         );
         if (rpcErr) throw rpcErr;
-        // RPC returns { inserted, skipped } shape
-        const ins = Number((rpcData as any)?.inserted);
-        const skp = Number((rpcData as any)?.skipped);
+        // RPC retorna as contagens já consolidadas no histórico.
+        const result = rpcData as ArchiveRpcResult | null;
+        const ins = Number(result?.inserted);
+        const upd = Number(result?.updated);
+        const skp = Number(result?.skipped);
         if (Number.isFinite(ins)) insertedCount = ins;
-        if (Number.isFinite(skp)) skipped += skp;
-      } catch (rpcErr: any) {
+        if (Number.isFinite(upd)) updatedCount = upd;
+        if (Number.isFinite(skp)) skipped = skp;
+        archiveRpcFinalized = true;
+      } catch (rpcError: unknown) {
         // Common error codes for missing function: 42883 (function does not exist), PGRST202.
-        const code = rpcErr?.code || rpcErr?.details || '';
-        const msg = String(rpcErr?.message || '');
+        const rpcErr = rpcError as RpcFailure;
+        const code = rpcErr.code || rpcErr.details || '';
+        const msg = String(rpcErr.message || '');
         const isMissing =
           code === '42883' ||
           code === 'PGRST202' ||
           msg.includes('function') && msg.includes('does not exist');
         if (!isMissing) throw rpcErr;
         // Legacy fallback — pre-migration environments only.
-        console.warn('[useTimesheet] import_time_records_safe RPC not available; falling back to chunked insert.');
+        console.warn('[useTimesheet] import_time_records_with_archive RPC not available; falling back to chunked insert.');
         for (let i = 0; i < toInsert.length; i += 100) {
           const chunk = toInsert.slice(i, i + 100);
           const { error } = await supabase.from('time_records').insert(chunk);
           if (!error) { insertedCount += chunk.length; continue; }
-          if ((error as any).code !== '23505') throw error;
+          if (error.code !== '23505') throw error;
           for (const rec of chunk) {
             const { error: e } = await supabase.from('time_records').insert([rec]);
             if (!e) insertedCount++;
-            else if ((e as any).code === '23505') skipped++;
+            else if (e.code === '23505') skipped++;
             else throw e;
           }
         }
       }
 
-      // ── Step 5: arquiva o arquivo bruto + grava log ───────────────────
-      // Faz upload pro bucket `timesheet-imports` e atualiza `time_import_logs`
-      // (criado pelo registro automático no caller, ou criado aqui como fallback).
-      // Falha no upload é reportada mas NÃO derruba a mutation — registros já
-      // foram inseridos com sucesso e o log permite consulta sem o arquivo bruto.
-      let archivedFilePath: string | null = null;
-      let archivedFileSize: number | null = null;
-      let archivedMime: string | null = null;
-      if (file) {
-        const safeName = file.name.replace(/[^\w\d.\-]/g, '_').slice(0, 200);
-        const filePath = `${batchId}/${safeName}`;
-        try {
-          const { error: upErr } = await supabase.storage
-            .from('timesheet-imports')
-            .upload(filePath, file, {
-              contentType: file.type || 'application/octet-stream',
-              upsert: true,
-            });
-          if (upErr) throw upErr;
-          archivedFilePath = filePath;
-          archivedFileSize = file.size;
-          archivedMime = file.type || null;
-        } catch (err: any) {
-          console.warn('[useImportTimeRecords] falha ao arquivar arquivo:', err);
-          toast.error(`Registros importados, mas arquivo bruto não pôde ser arquivado: ${err.message}`, { duration: 8000 });
-        }
-
-        // Cria/atualiza time_import_logs (idempotente por batch_id) — caso
-        // ImportHistoryPanel ou outro fluxo já tenha criado o log, fazemos
-        // upsert no file_path.
-        try {
-          const { data: existing } = await supabase
-            .from('time_import_logs' as any)
-            .select('id')
-            .eq('batch_id', batchId)
-            .maybeSingle();
-          if (existing) {
-            await supabase
-              .from('time_import_logs' as any)
-              .update({
-                file_path: archivedFilePath,
-                file_size_bytes: archivedFileSize,
-                mime_type: archivedMime,
-                inserted_count: insertedCount,
-                skipped_count: skipped,
-              } as any)
-              .eq('id', (existing as any).id);
-          } else {
-            await supabase.from('time_import_logs' as any).insert({
-              file_name: file.name,
-              file_path: archivedFilePath,
-              file_size_bytes: archivedFileSize,
-              mime_type: archivedMime,
-              batch_id: batchId,
-              start_date: startDate,
-              end_date: endDate,
-              inserted_count: insertedCount,
-              updated_count: 0,
-              skipped_count: skipped,
-              error_count: 0,
-              total_rows: insertedCount + skipped,
-              status: 'success' as const,
-            } as any);
-          }
-        } catch (err: any) {
-          console.warn('[useImportTimeRecords] falha ao gravar time_import_logs:', err);
-        }
+      // ── Step 6: fecha o protocolo somente após o processamento ─────────
+      if (!archiveRpcFinalized) {
+        const { error: finalizeLogError } = await supabase
+          .from('time_import_logs')
+          .update({
+            inserted_count: insertedCount,
+            updated_count: updatedCount,
+            skipped_count: skipped,
+            error_count: 0,
+            total_rows: uniqueRecords.length,
+            status: 'success',
+            error_messages: [],
+            notes: 'Arquivo original preservado e processamento concluído.',
+          } as unknown as TimeImportLogUpdate)
+          .eq('id', importLogId);
+        if (finalizeLogError) throw finalizeLogError;
       }
 
-      return { batchId, inserted: insertedCount, skipped, archivedFilePath, endDate };
+      return { batchId, inserted: insertedCount, updated: updatedCount, skipped, archivedFilePath, endDate };
+      } catch (error: unknown) {
+        const message = error instanceof Error
+          ? error.message
+          : 'Falha desconhecida durante o processamento das batidas.';
+        const { error: markError } = await supabase
+          .from('time_import_logs')
+          .update({
+            status: 'error',
+            error_count: 1,
+            error_messages: [{ row: 'processamento', error: message }],
+            notes: 'O original permanece arquivado; confira o erro antes de tentar novamente.',
+          } as unknown as TimeImportLogUpdate)
+          .eq('id', importLogId);
+        if (markError) {
+          console.warn('[useImportTimeRecords] arquivo preservado, mas o log de erro não pôde ser atualizado:', markError);
+        }
+        throw new Error(`O arquivo original foi preservado, mas o processamento não foi concluído. Confira o histórico antes de repetir: ${message}`);
+      }
     },
     onSuccess: (result) => {
       // Fix 22/05/2026: invalidação completa pra que TODAS as views que

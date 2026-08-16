@@ -1,6 +1,5 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { toast } from 'sonner';
 
 export interface TimeImportLog {
   id: string;
@@ -13,7 +12,7 @@ export interface TimeImportLog {
   skipped_count: number;
   error_count: number;
   total_rows: number;
-  status: 'success' | 'partial' | 'error';
+  status: 'processing' | 'success' | 'partial' | 'error';
   error_messages: Array<{ row: string; error: string }> | null;
   notes: string | null;
   imported_by: string | null;
@@ -22,64 +21,57 @@ export interface TimeImportLog {
   file_path?: string | null;
   file_size_bytes?: number | null;
   mime_type?: string | null;
+  archive_status?: 'pending' | 'available' | 'failed' | 'legacy';
+  archived_at?: string | null;
 }
 
 /**
- * Gera URL temporária (signed) pra download do arquivo bruto de uma importação.
- * Validade default 60s — suficiente pra acionar download imediato.
+ * Baixa o arquivo bruto do bucket privado. Usar download() em vez de URL
+ * assinada garante que o navegador salve o binário com o nome original.
  */
-export async function getImportFileUrl(filePath: string, expiresInSec = 60): Promise<string> {
+export async function downloadImportFile(filePath: string, fileName: string): Promise<void> {
   const { data, error } = await supabase.storage
     .from('timesheet-imports')
-    .createSignedUrl(filePath, expiresInSec);
+    .download(filePath);
   if (error) throw error;
-  if (!data?.signedUrl) throw new Error('URL não pôde ser gerada');
-  return data.signedUrl;
+  if (!data) throw new Error('Arquivo não encontrado no histórico');
+
+  const url = URL.createObjectURL(data);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = fileName;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 export function useTimeImportLogs() {
   return useQuery({
     queryKey: ['time_import_logs'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('time_import_logs' as any)
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(200);
-      if (error) throw error;
-      return (data || []) as unknown as TimeImportLog[];
+      // O PostgREST limita respostas a 1.000 linhas. Paginar internamente evita
+      // que importações antigas desapareçam do histórico conforme ele cresce.
+      const PAGE_SIZE = 1000;
+      const logs: TimeImportLog[] = [];
+      let from = 0;
+
+      while (true) {
+        const { data, error } = await supabase
+          .from('time_import_logs')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .range(from, from + PAGE_SIZE - 1);
+        if (error) throw error;
+
+        const page = (data || []) as unknown as TimeImportLog[];
+        logs.push(...page);
+        if (page.length < PAGE_SIZE) break;
+        from += PAGE_SIZE;
+      }
+
+      return logs;
     },
     staleTime: 30_000,
-  });
-}
-
-export function useDeleteTimeImportLog() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (id: string) => {
-      // Antes de deletar o log, tenta remover o arquivo bruto do bucket pra
-      // não deixar lixo. Falha silenciosa — log órfão é melhor do que log
-      // inacessível por falha de Storage.
-      const { data: log } = await supabase
-        .from('time_import_logs' as any)
-        .select('file_path')
-        .eq('id', id)
-        .maybeSingle();
-      const filePath = (log as any)?.file_path;
-      if (filePath) {
-        try {
-          await supabase.storage.from('timesheet-imports').remove([filePath]);
-        } catch (err) {
-          console.warn('[useDeleteTimeImportLog] falha ao remover arquivo do bucket:', err);
-        }
-      }
-      const { error } = await supabase.from('time_import_logs' as any).delete().eq('id', id);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['time_import_logs'] });
-      toast.success('Registro removido do histórico');
-    },
-    onError: (e: Error) => toast.error(e.message),
   });
 }
