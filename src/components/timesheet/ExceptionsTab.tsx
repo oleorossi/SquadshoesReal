@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Warning as AlertTriangle, CheckCircle as CheckCircle2, MagnifyingGlass as Search, Eye, CircleNotch as Loader2, Lightning as Zap, Shield, XCircle, Clock, Funnel as Filter } from '@phosphor-icons/react';
 import { Card, CardContent } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { SearchInput } from '@/components/ui/search-input';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -13,14 +12,14 @@ import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import {
-  useWorkSchedules, useHolidays, useSwapSets, useTimeRecords, useImportBatches,
+  useWorkSchedules, useHolidays, useSwapSets, useTimeRecords,
   calculateDaySummary, WorkSchedule,
 } from '@/hooks/useTimesheet';
 import {
   useTimeExceptions, useUpdateTimeException, useBulkCreateExceptions,
 } from '@/hooks/useTimeExceptions';
 import type { TimeException, TimeExceptionForm } from '@/types/timesheet';
-import { getBatchDateRange, resolveTimeControlFilters } from '@/lib/timeControlFilters';
+import { PeriodRangeFilter } from '@/components/hr/PeriodRangeFilter';
 
 const SEVERITY_MAP: Record<string, { label: string; color: string; icon: typeof AlertTriangle }> = {
   critical: { label: 'Crítico', color: 'text-destructive', icon: XCircle },
@@ -46,33 +45,21 @@ const TYPE_MAP: Record<string, string> = {
 };
 
 export default function ExceptionsTab() {
-  const { data: batches = [] } = useImportBatches();
-  const [selectedBatch, setSelectedBatch] = useState('');
-  const [filterStartDate, setFilterStartDate] = useState('');
-  const [filterEndDate, setFilterEndDate] = useState('');
-
-  // Auto-seleciona batch mais recente quando há batches mas nenhum filtro
-  // está aplicado — sem isso a tab fica vazia depois do primeiro import.
-  useEffect(() => {
-    if (batches.length > 0 && !selectedBatch && !filterStartDate && !filterEndDate) {
-      setSelectedBatch(batches[0]);
-    }
-  }, [batches, selectedBatch, filterStartDate, filterEndDate]);
-
-  const resolvedFilters = useMemo(() => resolveTimeControlFilters({
-    selectedBatch,
+  const today = new Date();
+  const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+  const [filterStartDate, setFilterStartDate] = useState(`${currentMonth}-01`);
+  const [filterEndDate, setFilterEndDate] = useState(
+    new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().slice(0, 10),
+  );
+  const { data: records = [] } = useTimeRecords(
+    undefined,
     filterStartDate,
     filterEndDate,
-  }), [selectedBatch, filterStartDate, filterEndDate]);
-  const { data: records = [] } = useTimeRecords(
-    resolvedFilters.queryBatch,
-    resolvedFilters.queryStartDate,
-    resolvedFilters.queryEndDate,
   );
   const { data: schedules = [] } = useWorkSchedules();
   const { data: holidays = [] } = useHolidays();
   const { swapModeFor } = useSwapSets();
-  const { data: exceptions = [], isLoading } = useTimeExceptions(selectedBatch || undefined);
+  const { data: exceptions = [], isLoading } = useTimeExceptions(filterStartDate, filterEndDate);
   const updateException = useUpdateTimeException();
   const bulkCreate = useBulkCreateExceptions();
 
@@ -221,31 +208,15 @@ export default function ExceptionsTab() {
           </h3>
           <p className="text-xs text-muted-foreground">Detecte e gerencie anomalias nos registros de ponto</p>
         </div>
-        <div className="w-56">
-          <Label className="text-xs font-medium">Importação</Label>
-          <Select value={selectedBatch} onValueChange={(value) => {
-            setSelectedBatch(value);
-            const range = getBatchDateRange(value);
-            if (range) {
-              setFilterStartDate(range.startDate);
-              setFilterEndDate(range.endDate);
-            }
-          }}>
-            <SelectTrigger className="mt-1"><SelectValue placeholder="Selecione..." /></SelectTrigger>
-            <SelectContent>
-              {batches.map(b => (
-                <SelectItem key={b} value={b}>{b.replace(/_\d+$/, '')}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="w-40">
-          <Label className="text-xs font-medium">Data Início</Label>
-          <Input type="date" value={filterStartDate} onChange={e => setFilterStartDate(e.target.value)} className="mt-1" />
-        </div>
-        <div className="w-40">
-          <Label className="text-xs font-medium">Data Fim</Label>
-          <Input type="date" value={filterEndDate} onChange={e => setFilterEndDate(e.target.value)} className="mt-1" />
+        <div className="min-w-[280px] flex-1">
+          <PeriodRangeFilter
+            value={{ from: filterStartDate, to: filterEndDate }}
+            onChange={({ from, to }) => {
+              setFilterStartDate(from);
+              setFilterEndDate(to);
+            }}
+            label="Período salvo no sistema"
+          />
         </div>
         <Button
           size="sm"

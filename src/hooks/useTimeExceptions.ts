@@ -3,16 +3,17 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import type { TimeException, TimeExceptionForm } from '@/types/timesheet';
 
-export function useTimeExceptions(batch?: string) {
+export function useTimeExceptions(startDate?: string, endDate?: string) {
   return useQuery({
-    queryKey: ['time_exceptions', batch],
+    queryKey: ['time_exceptions', startDate, endDate],
     queryFn: async () => {
       let q = supabase
         .from('time_exceptions')
         .select('*')
         .order('record_date', { ascending: false })
         .order('employee_name');
-      if (batch) q = q.eq('import_batch', batch);
+      if (startDate) q = q.gte('record_date', startDate);
+      if (endDate) q = q.lte('record_date', endDate);
       const { data, error } = await q;
       if (error) throw error;
       return (data || []) as TimeException[];

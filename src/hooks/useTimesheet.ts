@@ -5,6 +5,7 @@ import type { Database } from '@/integrations/supabase/types';
 import { toast } from 'sonner';
 // Motor único de ponto: base por-dia canônica (mesmos primitivos da folha).
 import { worksOnDow, expectedDayMinutes, splitDayMinutes } from '@/lib/ponto/pontoEngine';
+import { mergeImportedTimePunches } from '@/lib/ponto/systemTimesheet';
 
 type TimeImportLogInsert = Database['public']['Tables']['time_import_logs']['Insert'];
 type TimeImportLogUpdate = Database['public']['Tables']['time_import_logs']['Update'];
@@ -987,10 +988,9 @@ export function useTimesheetCoverage(from?: string, to?: string) {
           .range(offset, offset + PAGE - 1);
         if (error) throw error;
         if (!data || data.length === 0) break;
-        // M2: só conta o dia como COBERTO se tem batida real. O importador grava
-        // linhas com punches=[] pra todo dia do período — contá-las fazia o
-        // maxCovered avançar até o fim do mês sem ponto, desligando o aviso
-        // "Parcial" e a proteção anti-subpagamento da folha.
+        // Só conta o dia como COBERTO se há batida real. Imports antigos podem
+        // conter placeholders punches=[]; contá-los avançaria o maxCovered sem
+        // ponto e desligaria a proteção anti-subpagamento da folha.
         for (const r of data as { record_date: string; punches: unknown }[]) {
           if (Array.isArray(r.punches) && r.punches.length > 0) covered.add(r.record_date);
         }
@@ -1068,46 +1068,12 @@ export function useImportTimeRecords() {
       // ao último mês. Funciona para single-month e cross-month.
       const resolveDate = (day: number): string => resolveTimesheetRecordDate(day, startDate, endDate);
 
-      // Helper: enumera todas as datas do período (yyyy-mm-dd) para
-      // produzir time_records vazios para colaboradores sem batidas.
-      const allDatesInPeriod = (): string[] => {
-        const dates: string[] = [];
-        const start = new Date(`${startDate}T00:00:00`);
-        const end = new Date(`${endDate}T00:00:00`);
-        const cur = new Date(start);
-        while (cur <= end) {
-          const y = cur.getFullYear();
-          const m = String(cur.getMonth() + 1).padStart(2, '0');
-          const d = String(cur.getDate()).padStart(2, '0');
-          dates.push(`${y}-${m}-${d}`);
-          cur.setDate(cur.getDate() + 1);
-        }
-        return dates;
-      };
-      const periodDates = allDatesInPeriod();
-
       const records: any[] = [];
       for (const emp of employees) {
-        if (emp.records.length === 0) {
-          // Funcionário no quadro do arquivo mas sem batidas: gera time_records
-          // com punches=[] para CADA dia do período. Isso permite que relatórios
-          // de absenteísmo enxerguem ele como ausente em vez de simplesmente não
-          // aparecer no banco. Calculations downstream tratam punches=[] como
-          // 'absent'/'weekend'/'holiday' baseado no dia da semana.
-          for (const dateStr of periodDates) {
-            records.push({
-              employee_name: emp.name || `(sem nome ID ${emp.externalId})`,
-              employee_external_id: emp.externalId,
-              department: emp.department,
-              record_date: dateStr,
-              punches: [],
-              import_batch: batchId,
-            });
-          }
-          continue;
-        }
-
         for (const rec of emp.records) {
+          // Ausência de linha no arquivo não cria placeholder no banco. A grade,
+          // a folha e os relatórios derivam a lacuna do cadastro + calendário.
+          if (!Array.isArray(rec.punches) || rec.punches.length === 0) continue;
           const dateStr = (rec.dateStr && /^\d{4}-\d{2}-\d{2}$/.test(rec.dateStr))
             ? rec.dateStr
             : resolveDate(rec.day);
@@ -1212,46 +1178,12 @@ export function useImportTimeRecords() {
 
       try {
 
-      // ── Step 3: paginated fetch of ALL existing keys in this date range ──
-      // Supabase returns at most 1000 rows per query by default; we paginate
-      // with .range() to ensure we see every already-imported day — no matter
-      // how many records are stored.
-      const minDate = uniqueRecords.reduce(
-        (m, r) => (r.record_date < m ? r.record_date : m), '9999-99-99'
-      );
-      const maxDate = uniqueRecords.reduce(
-        (m, r) => (r.record_date > m ? r.record_date : m), '0000-00-00'
-      );
-      const allExternalIds = [...new Set(uniqueRecords.map(r => r.employee_external_id).filter(Boolean))];
-
-      const existingKeys = new Set<string>();
-      const PAGE = 1000;
-      // Busca pelo ID do relógio; nome é apenas rótulo do arquivo e pode mudar.
-      for (let ni = 0; ni < allExternalIds.length; ni += 100) {
-        const idChunk = allExternalIds.slice(ni, ni + 100);
-        let from = 0;
-        while (true) {
-          const { data } = await supabase
-            .from('time_records')
-            .select('employee_external_id, record_date')
-            .in('employee_external_id', idChunk)
-            .gte('record_date', minDate)
-            .lte('record_date', maxDate)
-            .range(from, from + PAGE - 1);
-          if (!data || data.length === 0) break;
-          for (const row of data) {
-            existingKeys.add(`${row.employee_external_id}__${row.record_date}`);
-          }
-          if (data.length < PAGE) break; // last page
-          from += PAGE;
-        }
-      }
-
-      // ── Step 4: keep only records that are not yet in the DB ─────────────
-      const toInsert = uniqueRecords.filter(
-        r => !existingKeys.has(`${r.employee_external_id || `nome:${r.employee_name}`}__${r.record_date}`)
-      );
-      let skipped = uniqueRecords.length - toInsert.length;
+      // ── Step 3: envia TODAS as batidas do arquivo ────────────────────────
+      // O banco decide insert × update pela identidade do relógio + data.
+      // Filtrar chaves existentes aqui fazia a reimportação ignorar batidas
+      // novas do mesmo dia e mantinha o arquivo como fonte operacional.
+      const toInsert = uniqueRecords;
+      let skipped = 0;
 
       // ── Step 5: insert new records.
       // A RPC canônica insere as batidas e fecha o protocolo do arquivo na
@@ -1292,18 +1224,33 @@ export function useImportTimeRecords() {
           code === 'PGRST202' ||
           msg.includes('function') && msg.includes('does not exist');
         if (!isMissing) throw rpcErr;
-        // Legacy fallback — pre-migration environments only.
+        // Legacy fallback — pre-migration environments only. Também atualiza
+        // dias existentes e preserva batidas manuais, espelhando a RPC nova.
         console.warn('[useTimesheet] import_time_records_with_archive RPC not available; falling back to chunked insert.');
-        for (let i = 0; i < toInsert.length; i += 100) {
-          const chunk = toInsert.slice(i, i + 100);
-          const { error } = await supabase.from('time_records').insert(chunk);
-          if (!error) { insertedCount += chunk.length; continue; }
-          if (error.code !== '23505') throw error;
-          for (const rec of chunk) {
-            const { error: e } = await supabase.from('time_records').insert([rec]);
-            if (!e) insertedCount++;
-            else if (e.code === '23505') skipped++;
-            else throw e;
+        for (const rec of toInsert) {
+          let existingQuery = supabase
+            .from('time_records')
+            .select('id, punches')
+            .eq('record_date', rec.record_date);
+          existingQuery = rec.employee_external_id
+            ? existingQuery.eq('employee_external_id', rec.employee_external_id)
+            : existingQuery.eq('employee_name', rec.employee_name);
+          const { data: existing, error: existingError } = await existingQuery.maybeSingle();
+          if (existingError) throw existingError;
+          if (existing) {
+            const { error } = await supabase
+              .from('time_records')
+              .update({
+                ...rec,
+                punches: mergeImportedTimePunches(existing.punches as string[], rec.punches),
+              })
+              .eq('id', existing.id);
+            if (error) throw error;
+            updatedCount++;
+          } else {
+            const { error } = await supabase.from('time_records').insert(rec);
+            if (error) throw error;
+            insertedCount++;
           }
         }
       }

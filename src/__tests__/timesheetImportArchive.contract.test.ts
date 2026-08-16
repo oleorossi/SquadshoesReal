@@ -6,6 +6,7 @@ const ROOT = resolve(__dirname, '../..');
 const read = (path: string) => readFileSync(resolve(ROOT, path), 'utf8');
 
 const MIGRATION = read('supabase/migrations/20270101003400_timesheet_import_archive_permanent.sql');
+const SYSTEM_SOURCE_MIGRATION = read('supabase/migrations/20270101004200_ponto_base_interna_incremental.sql');
 const IMPORT_HOOK = read('src/hooks/useTimesheet.ts');
 const HISTORY_HOOK = read('src/hooks/useTimeImportLogs.ts');
 const HISTORY_PANEL = read('src/components/timesheet/ImportHistoryPanel.tsx');
@@ -54,5 +55,20 @@ describe('arquivo permanente das importações do relógio de ponto', () => {
     expect(PAGE).toContain('<TabsContent value="arquivos"><ImportHistoryPanel /></TabsContent>');
     expect(HISTORY_PANEL).toContain('Os documentos não podem ser excluídos');
     expect(HISTORY_PANEL).toContain('Baixar original');
+  });
+
+  it('reimporta dias existentes e deixa as lacunas para o calendário interno', () => {
+    expect(IMPORT_HOOK).toContain('const toInsert = uniqueRecords');
+    expect(IMPORT_HOOK).not.toContain('const toInsert = uniqueRecords.filter');
+    expect(IMPORT_HOOK).toContain('rec.punches.length === 0) continue');
+    expect(SYSTEM_SOURCE_MIGRATION).toContain('upd_count := upd_count + 1');
+    expect(SYSTEM_SOURCE_MIGRATION).toContain("jsonb_array_length(rec->'punches') = 0");
+    expect(SYSTEM_SOURCE_MIGRATION).toContain('merge_time_record_punches');
+  });
+
+  it('não oferece lote de arquivo como filtro operacional', () => {
+    expect(PAGE).not.toContain('Importação específica');
+    expect(PAGE).toContain('Avaliação pela base do sistema');
+    expect(PAGE).toContain('não é necessário editar o arquivo original');
   });
 });

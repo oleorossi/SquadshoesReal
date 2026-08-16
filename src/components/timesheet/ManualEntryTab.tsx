@@ -4,7 +4,8 @@ import {
   useWorkSchedules, useTimeRecords,
   WorkSchedule, TimeRecord,
 } from '@/hooks/useTimesheet';
-import { useEmployees } from '@/hooks/useEmployees';
+import { useEmployees, type Employee } from '@/hooks/useEmployees';
+import { groupTimeRecordsBySystemEmployee, listSystemTimesheetEmployees } from '@/lib/ponto/systemTimesheet';
 import { useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -58,6 +59,7 @@ type Slots = Record<SlotKey, string>;
 type SlotManual = Record<SlotKey, boolean>;
 
 interface CellDialogState {
+  employeeId: string;
   employeeName: string;
   dateStr: string;
   existingRecord: TimeRecord | null;
@@ -132,38 +134,41 @@ export default function ManualEntryTab() {
 
   // A correção sugerida precisa respeitar a escala contratada da pessoa. Usar
   // sempre a escala padrão preencheria incorretamente turnos diferentes.
-  const scheduleForEmployee = useCallback((employeeName: string) => {
-    const employee = employees.find(e => e.name === employeeName);
+  const scheduleForEmployee = useCallback((employeeId: string) => {
+    const employee = employees.find(e => e.id === employeeId);
     return (employee?.work_schedule_id && schedules.find(s => s.id === employee.work_schedule_id)) || defaultSchedule;
   }, [employees, schedules, defaultSchedule]);
 
-  // Map of "employeeName|dateStr" → TimeRecord
+  const timesheetEmployees = useMemo(
+    () => listSystemTimesheetEmployees(employees, weekDates[0], weekEnd),
+    [employees, weekDates, weekEnd],
+  );
+
+  // Map canônico "employeeId|dateStr" → TimeRecord. O nome curto exportado
+  // pelo relógio nunca controla a célula da grade.
   const recordMap = useMemo(() => {
     const m = new Map<string, TimeRecord>();
-    records.forEach(r => m.set(`${r.employee_name}|${r.record_date}`, r));
+    const grouped = groupTimeRecordsBySystemEmployee(employees, records).byEmployee;
+    for (const [employeeId, employeeRecords] of grouped) {
+      employeeRecords.forEach(record => m.set(`${employeeId}|${record.record_date}`, record));
+    }
     return m;
-  }, [records]);
-
-  const employeeNames = useMemo(() => {
-    const fromRecords = new Set(records.map(r => r.employee_name));
-    const fromRegistry = employees.map(e => e.name);
-    fromRegistry.forEach(n => fromRecords.add(n));
-    return Array.from(fromRecords).sort();
   }, [records, employees]);
 
   const displayedEmployees = useMemo(() => {
-    if (filterEmployee === '__all__') return employeeNames;
-    return [filterEmployee];
-  }, [employeeNames, filterEmployee]);
+    if (filterEmployee === '__all__') return timesheetEmployees;
+    const selected = timesheetEmployees.find(employee => employee.id === filterEmployee);
+    return selected ? [selected] : timesheetEmployees;
+  }, [timesheetEmployees, filterEmployee]);
 
   const prevWeek = () => setWeekStart(d => addDays(d, -7));
   const nextWeek = () => setWeekStart(d => addDays(d, 7));
   const goToCurrentWeek = () => setWeekStart(getMonday(new Date()));
 
-  const openCell = useCallback((employeeName: string, dateStr: string) => {
-    const existing = recordMap.get(`${employeeName}|${dateStr}`) || null;
+  const openCell = useCallback((employee: Employee, dateStr: string) => {
+    const existing = recordMap.get(`${employee.id}|${dateStr}`) || null;
     const { slots, slotManual, extras } = punchesToSlots(existing ? (existing.punches as string[]) : []);
-    setCellDialog({ employeeName, dateStr, existingRecord: existing, slots, slotManual, extras });
+    setCellDialog({ employeeId: employee.id, employeeName: employee.name, dateStr, existingRecord: existing, slots, slotManual, extras });
     setNewPunch('');
   }, [recordMap]);
 
@@ -193,7 +198,7 @@ export default function ManualEntryTab() {
       toast.info('Domingo não tem expediente padrão. Adicione manualmente se houve trabalho.');
       return;
     }
-    const schedule = scheduleForEmployee(cellDialog.employeeName);
+    const schedule = scheduleForEmployee(cellDialog.employeeId);
     const entry = (dow === 6 ? schedule.saturday_entry : schedule.entry_time) || '08:00';
     const exit = (dow === 6 ? schedule.saturday_exit : schedule.exit_time) || '17:48';
     setCellDialog(d => d ? {
@@ -208,7 +213,7 @@ export default function ManualEntryTab() {
     if (!cellDialog) return;
     setSaving(true);
     try {
-      const { employeeName, dateStr, existingRecord, slots, slotManual, extras } = cellDialog;
+      const { employeeId, employeeName, dateStr, existingRecord, slots, slotManual, extras } = cellDialog;
       const punches = slotsToPunches(slots, slotManual, extras);
       if (existingRecord) {
         const { error } = await supabase
@@ -219,7 +224,7 @@ export default function ManualEntryTab() {
       } else {
         // external_id + depto do cadastro (quando casar por nome) → a folha
         // casa de forma robusta por matrícula, não só por nome.
-        const reg = employees.find(e => e.name === employeeName);
+        const reg = employees.find(e => e.id === employeeId);
         const { error } = await supabase
           .from('time_records')
           .insert({
@@ -242,8 +247,8 @@ export default function ManualEntryTab() {
     }
   };
 
-  const clearCell = async (employeeName: string, dateStr: string) => {
-    const rec = recordMap.get(`${employeeName}|${dateStr}`);
+  const clearCell = async (employeeId: string, dateStr: string) => {
+    const rec = recordMap.get(`${employeeId}|${dateStr}`);
     if (!rec) return;
     const { error } = await supabase
       .from('time_records')
@@ -278,9 +283,9 @@ export default function ManualEntryTab() {
                   <SelectItem value="__all__">
                     <span className="flex items-center gap-1.5"><Users2 className="h-3.5 w-3.5" /> Todos</span>
                   </SelectItem>
-                  {employeeNames.map(n => (
-                    <SelectItem key={n} value={n}>
-                      <span className="flex items-center gap-1.5"><User className="h-3.5 w-3.5" /> {n}</span>
+                  {timesheetEmployees.map(employee => (
+                    <SelectItem key={employee.id} value={employee.id}>
+                      <span className="flex items-center gap-1.5"><User className="h-3.5 w-3.5" /> {employee.name}</span>
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -340,13 +345,13 @@ export default function ManualEntryTab() {
                   </tr>
                 </thead>
                 <tbody>
-                  {displayedEmployees.map((empName, rowIdx) => (
-                    <tr key={empName} className={`border-b hover:bg-muted/20 ${rowIdx % 2 === 0 ? '' : 'bg-muted/10'}`}>
+                  {displayedEmployees.map((employee, rowIdx) => (
+                    <tr key={employee.id} className={`border-b hover:bg-muted/20 ${rowIdx % 2 === 0 ? '' : 'bg-muted/10'}`}>
                       <td className={`py-2 px-3 font-medium text-xs sticky left-0 z-10 ${rowIdx % 2 === 0 ? 'bg-card' : 'bg-muted/10'}`}>
-                        <span className="truncate block max-w-[140px]">{empName}</span>
+                        <span className="truncate block max-w-[140px]">{employee.name}</span>
                       </td>
                       {weekDates.map(dateStr => {
-                        const rec = recordMap.get(`${empName}|${dateStr}`);
+                        const rec = recordMap.get(`${employee.id}|${dateStr}`);
                         const punches = (rec?.punches as string[] | undefined) || [];
                         const d = new Date(dateStr + 'T12:00:00');
                         const dow = d.getDay();
@@ -363,7 +368,7 @@ export default function ManualEntryTab() {
                               ${isWeekend && !rec ? 'bg-muted/5 opacity-60' : ''}
                               hover:bg-primary/10
                             `}
-                            onClick={() => openCell(empName, dateStr)}
+                            onClick={() => openCell(employee, dateStr)}
                           >
                             {cleanPunches.length === 0 ? (
                               <div className="text-muted-foreground text-xs py-1">—</div>
@@ -424,7 +429,7 @@ export default function ManualEntryTab() {
                   <span className="text-muted-foreground">Horário previsto</span>
                   <span className="font-mono text-xs text-muted-foreground">
                     {(() => {
-                      const schedule = scheduleForEmployee(cellDialog.employeeName);
+                      const schedule = scheduleForEmployee(cellDialog.employeeId);
                       const dow = new Date(cellDialog.dateStr + 'T12:00:00').getDay();
                       return `${dow === 6 ? schedule.saturday_entry : schedule.entry_time} – ${dow === 6 ? schedule.saturday_exit : schedule.exit_time}`;
                     })()}
@@ -513,7 +518,7 @@ export default function ManualEntryTab() {
                   variant="ghost"
                   size="sm"
                   className="gap-1 text-muted-foreground text-xs"
-                  onClick={() => { if (cellDialog) clearCell(cellDialog.employeeName, cellDialog.dateStr); setCellDialog(null); }}
+                  onClick={() => { if (cellDialog) clearCell(cellDialog.employeeId, cellDialog.dateStr); setCellDialog(null); }}
                   disabled={!cellDialog.existingRecord}
                 >
                   <Trash2 className="h-3.5 w-3.5" /> Limpar dia

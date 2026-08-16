@@ -24,16 +24,21 @@ import {
   useWorkSchedules, useAddWorkSchedule, useUpdateWorkSchedule, useDeleteWorkSchedule,
   useHolidays, useAddHoliday, useDeleteHoliday,
   useWorkdaySwaps, useAddWorkdaySwap, useDeleteWorkdaySwap, useSwapSets,
-  useTimeRecords, useImportBatches, useImportTimeRecords, useDeleteBatch,
+  useTimeRecords, useImportTimeRecords, useTimesheetCoverage,
   useAllImportsDateRange,
   parseTimesheetXlsx, parseTimesheetTxt, calculateDaySummary, resolveTimesheetRecordDate,
   WorkSchedule, Holiday, TimeRecord, ParsedEmployee, DaySummary,
 } from '@/hooks/useTimesheet';
 import { useEmployees } from '@/hooks/useEmployees';
+import { useAbsences } from '@/hooks/useRH';
 import { computePeriodFolha, SALARY_HOUR_DIVISOR } from '@/lib/salaryPayroll';
-import { getBatchDateRange, resolveTimeControlFilters } from '@/lib/timeControlFilters';
 import { findEmployeeMatch, resolveEmployeeName } from '@/lib/employeeMatching';
-import { resolveHolidaysForPayrollRange } from '@/lib/ponto/periodDates';
+import { expandAbsenceDatesByEmployee, resolveHolidaysForPayrollRange } from '@/lib/ponto/periodDates';
+import {
+  buildSystemTimesheetAssessment,
+  groupTimeRecordsBySystemEmployee,
+  listSystemTimesheetEmployees,
+} from '@/lib/ponto/systemTimesheet';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -463,7 +468,6 @@ function WorkdaySwapsTab() {
 
 // ── Import & Records Tab ──────────────────────────────
 function TimesheetRecordsTab() {
-  const { data: batches = [] } = useImportBatches();
   const { data: fullDateRange } = useAllImportsDateRange();
   // Quando NÃO houver filtro de data setado, default = mês corrente.
   // Auto-preenchimento elimina a necessidade de selecionar um batch específico
@@ -471,31 +475,25 @@ function TimesheetRecordsTab() {
   const today = new Date();
   const monthStart = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`;
   const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().slice(0, 10);
-  const [selectedBatch, setSelectedBatch] = useState<string>('');
   const [filterStartDate, setFilterStartDate] = useState<string>(monthStart);
   const [filterEndDate, setFilterEndDate] = useState<string>(monthEnd);
   const handleRangeChange = ({ from, to }: { from: string; to: string }) => {
-    setSelectedBatch('');
     setFilterStartDate(from);
     setFilterEndDate(to);
   };
-  const resolvedFilters = useMemo(() => resolveTimeControlFilters({
-    selectedBatch,
-    filterStartDate,
-    filterEndDate,
-  }), [selectedBatch, filterStartDate, filterEndDate]);
 
   const { data: records = [], isLoading } = useTimeRecords(
-    resolvedFilters.queryBatch,
-    resolvedFilters.queryStartDate,
-    resolvedFilters.queryEndDate,
+    undefined,
+    filterStartDate,
+    filterEndDate,
   );
   const { data: schedules = [] } = useWorkSchedules();
   const { data: holidays = [] } = useHolidays();
   const { swapWorkedSet, swapOffSet, swapModeFor } = useSwapSets();
   const { data: employees = [] } = useEmployees();
+  const { data: coverage } = useTimesheetCoverage(filterStartDate, filterEndDate);
+  const { data: absenceRows = [] } = useAbsences({ from: filterStartDate, to: filterEndDate });
   const importRecords = useImportTimeRecords();
-  const deleteBatch = useDeleteBatch();
 
   const fileRef = useRef<HTMLInputElement>(null);
   const [parsing, setParsing] = useState(false);
@@ -606,10 +604,10 @@ function TimesheetRecordsTab() {
       file: preview.rawFile,
     }, {
       onSuccess: () => {
-        // Set date filters to the imported period so records are visible across all batches
+        // O arquivo apenas alimenta a base. A conferência sempre consulta o
+        // período no sistema, somando importações e lançamentos manuais.
         setFilterStartDate(importStartDate);
         setFilterEndDate(importEndDate);
-        setSelectedBatch('');
         setSelectedEmployee('__all__');
       }
     });
@@ -640,25 +638,15 @@ function TimesheetRecordsTab() {
     doImport();
   };
 
-  // Group records by employee, resolving names via employee registry.
-  // Fix 22/05/2026: usa findEmployeeMatch com linkedOnly:true e DESCARTA
-  // records de funcionários sem coligação (ex: nomes que só existem no
-  // relógio de ponto como "alex", "anaCarolina"). Antes esses apareciam
-  // com 13 faltas no relatório porque o sistema gerava linhas vazias pra
-  // todo o período mesmo sem cadastro. User pediu que só apareçam quem
-  // tem cadastro no sistema E está vinculado ao relógio (active +
-  // external_id ou match fuzzy com active).
+  // O quadro nasce do cadastro interno e só depois recebe as batidas do arquivo.
+  // Assim um funcionário sem linha no arquivo continua aparecendo no período.
   const employeeGroups = useMemo(() => {
     const map = new Map<string, TimeRecord[]>();
-    records.forEach(r => {
-      const match = findEmployeeMatch(employees, r.employee_name, r.employee_external_id, { linkedOnly: true, recordDate: r.record_date, allowNameFallback: false });
-      if (!match) return; // pula funcionários órfãos (só no relógio, sem cadastro)
-      const resolvedName = match.name;
-      if (!map.has(resolvedName)) map.set(resolvedName, []);
-      map.get(resolvedName)!.push(r);
-    });
+    const roster = listSystemTimesheetEmployees(employees, filterStartDate, filterEndDate);
+    const grouped = groupTimeRecordsBySystemEmployee(employees, records).byEmployee;
+    roster.forEach(employee => map.set(employee.name, grouped.get(employee.id) || []));
     return map;
-  }, [records, employees]);
+  }, [records, employees, filterStartDate, filterEndDate]);
 
   const employeeNames = useMemo(() => [...employeeGroups.keys()].sort(), [employeeGroups]);
 
@@ -673,18 +661,18 @@ function TimesheetRecordsTab() {
     }
   }, [employeeNames.length, employeeGroups, selectedEmployee]);
 
-  // Use the same dateRange logic as OverviewTab (via timeControlFilters) for consistency
+  // Intervalo operacional vem do filtro do sistema, nunca do nome do arquivo.
   const batchDateRange = useMemo(() => {
-    // If resolved filters provide a date range (from batch or manual), use it directly
-    if (resolvedFilters.dateRange) {
-      return resolvedFilters.dateRange;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(filterStartDate)
+      && /^\d{4}-\d{2}-\d{2}$/.test(filterEndDate)
+      && filterStartDate <= filterEndDate) {
+      return { startDate: filterStartDate, endDate: filterEndDate };
     }
 
-    // Fallback: derive from actual record dates
     if (records.length === 0) return null;
     const dates = records.map(r => r.record_date).sort();
     return { startDate: dates[0], endDate: dates[dates.length - 1] };
-  }, [resolvedFilters.dateRange, records]);
+  }, [filterStartDate, filterEndDate, records]);
 
   // Resolve uma vez por intervalo: feriado recorrente vale em todos os anos do ponto.
   const holidayDates = useMemo(
@@ -693,6 +681,25 @@ function TimesheetRecordsTab() {
       : new Set<string>(),
     [holidays, batchDateRange],
   );
+  const absenceDatesByEmployee = useMemo(
+    () => batchDateRange
+      ? expandAbsenceDatesByEmployee(absenceRows, batchDateRange.startDate, batchDateRange.endDate)
+      : new Map<string, Set<string>>(),
+    [absenceRows, batchDateRange],
+  );
+  const systemAssessment = useMemo(() => buildSystemTimesheetAssessment({
+    employees,
+    records,
+    schedules,
+    defaultSchedule,
+    from: batchDateRange?.startDate || '',
+    to: batchDateRange?.endDate || '',
+    coveredDates: coverage?.coveredDates || new Set<string>(),
+    holidayDates,
+    swapWorkedSet,
+    swapOffSet,
+    absenceDatesByEmployee,
+  }), [employees, records, schedules, defaultSchedule, batchDateRange, coverage, holidayDates, swapWorkedSet, swapOffSet, absenceDatesByEmployee]);
   // Troca de dia: qualquer data de troca (work/off) prevalece sobre feriado — o dia
   // é lido pela regra flex (normal quando trabalhado, neutro quando não).
   const isHolidayDate = (dateStr: string) =>
@@ -826,15 +833,21 @@ function TimesheetRecordsTab() {
   const atrasoDescontoFolha = folhaInd?.atraso_desconto ?? 0;
   const absences = faltasFolha;
   const holidayWorked = summaries.filter(d => d.isHoliday && d.workedMinutes > 0).length;
+  const employeesWithGaps = useMemo(
+    () => systemAssessment.employees
+      .filter(item => item.missingDates.length > 0)
+      .sort((left, right) => right.missingDates.length - left.missingDates.length),
+    [systemAssessment],
+  );
 
   // overtimeDays removido: overtimeMinutes por dia é sempre 0 (HE é do período).
   const deficitDays = summaries.filter(d => d.expectedMinutes > 0 && d.workedMinutes > 0 && d.workedMinutes < d.expectedMinutes);
   const absentDays = summaries.filter(d => d.isAbsent);
 
-  // Period label from batch
+  // Período sempre vem do filtro aplicado no sistema.
   const periodLabel = filterStartDate && filterEndDate 
     ? `${filterStartDate.split('-').reverse().join('/')} - ${filterEndDate.split('-').reverse().join('/')}`
-    : (selectedBatch ? selectedBatch.replace(/_\d+$/, '').split('_').map(d => d.split('-').reverse().join('/')).join(' - ') : 'Período');
+    : 'Período';
 
   // Build EmployeeTimesheetData for printing
   const getHourlySalary = (empName: string) => {
@@ -1055,42 +1068,17 @@ function TimesheetRecordsTab() {
       {/* Filters */}
       <Panel
         eyebrow="CONFERÊNCIA"
-        title="Período para revisão"
+        title="Avaliação pela base do sistema"
         subtitle={fullDateRange
-          ? `Histórico disponível de ${fullDateRange.startDate.split('-').reverse().join('/')} a ${fullDateRange.endDate.split('-').reverse().join('/')} · ${fullDateRange.totalRecords.toLocaleString('pt-BR')} registros em ${batches.length} importações.`
-          : 'Escolha as datas ou uma importação específica para conferir as batidas.'}
+          ? `Batidas disponíveis de ${fullDateRange.startDate.split('-').reverse().join('/')} a ${fullDateRange.endDate.split('-').reverse().join('/')} · ${fullDateRange.totalRecords.toLocaleString('pt-BR')} registros. Funcionários, escalas e lacunas vêm do cadastro interno.`
+          : 'Escolha o período. O arquivo apenas alimenta as batidas; a avaliação usa o cadastro e o calendário do sistema.'}
       >
         <div className="space-y-3">
           <PeriodRangeFilter
             value={{ from: filterStartDate, to: filterEndDate }}
             onChange={handleRangeChange}
-            min={fullDateRange?.startDate}
-            max={fullDateRange?.endDate}
             label="Período das batidas"
           />
-          <div className="grid items-end gap-3 sm:grid-cols-[minmax(240px,1fr)_auto]">
-          <div className="space-y-1.5">
-            <Label className="text-xs font-medium">Importação específica</Label>
-            <Select
-              value={selectedBatch}
-              onValueChange={(v) => {
-                setSelectedBatch(v);
-                const range = getBatchDateRange(v);
-                if (range) {
-                  setFilterStartDate(range.startDate);
-                  setFilterEndDate(range.endDate);
-                }
-              }}
-            >
-              <SelectTrigger className="w-full"><SelectValue placeholder="Todas as importações" /></SelectTrigger>
-              <SelectContent>
-                {batches.map(b => (
-                  <SelectItem key={b} value={b}>{b.replace(/_\d+$/, '').split('_').map(d => d.split('-').reverse().join('/')).join(' a ')}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
           <div className="flex flex-wrap gap-2 sm:justify-end">
             {fullDateRange && (
               <Button
@@ -1098,7 +1086,6 @@ function TimesheetRecordsTab() {
                 size="sm"
                 className="h-10 flex-1 gap-1.5 sm:flex-none"
                 onClick={() => {
-                  setSelectedBatch('');
                   setFilterStartDate(fullDateRange.startDate);
                   setFilterEndDate(fullDateRange.endDate);
                 }}
@@ -1108,38 +1095,78 @@ function TimesheetRecordsTab() {
               </Button>
             )}
 
-            {(selectedBatch || filterStartDate || filterEndDate) && (
+            {(filterStartDate !== monthStart || filterEndDate !== monthEnd) && (
               <Button 
                 variant="ghost" 
                 size="sm" 
                 className="h-10 px-3 text-muted-foreground hover:text-foreground"
                 onClick={() => {
-                  setSelectedBatch('');
-                  setFilterStartDate('');
-                  setFilterEndDate('');
+                  setFilterStartDate(monthStart);
+                  setFilterEndDate(monthEnd);
                 }}
               >
-                Limpar filtros
+                Voltar ao mês atual
               </Button>
             )}
+          </div>
 
-            {selectedBatch && (
-              <Button 
-                variant="outline" 
-                size="icon" 
-                className="h-10 w-10 text-destructive" 
-                aria-label="Excluir a importação selecionada"
-                title="Excluir a importação selecionada"
-                onClick={() => { 
-                  deleteBatch.mutate(selectedBatch); 
-                  setSelectedBatch(''); 
-                }}
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            )}
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            {[
+              ['Funcionários avaliados', systemAssessment.employeeCount, 'Cadastro vigente no período'],
+              ['Com batidas', systemAssessment.employeesWithPunches, 'Em qualquer dia coberto'],
+              ['Sem batida no período', systemAssessment.employeesWithoutPunches, 'Não depende de linha no arquivo'],
+              ['Dias para avaliar', systemAssessment.missingDayCount, 'Já desconta feriado, folga e ausência'],
+            ].map(([label, value, hint]) => (
+              <div key={String(label)} className="rounded-md border border-border/70 bg-muted/20 p-3">
+                <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">{label}</p>
+                <p className="mt-1 text-2xl font-bold tabular-nums">{value}</p>
+                <p className="text-[11px] text-muted-foreground">{hint}</p>
+              </div>
+            ))}
           </div>
-          </div>
+
+          {employeesWithGaps.length > 0 && (
+            <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-3">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">
+                    {employeesWithGaps.length} funcionário{employeesWithGaps.length === 1 ? '' : 's'} com dia coberto sem batida
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Lacunas calculadas pelo sistema; não é necessário editar o arquivo original.
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setRhSearchParams(params => {
+                    const next = new URLSearchParams(params);
+                    next.set('subtab', 'manual');
+                    return next;
+                  }, { replace: true })}
+                >
+                  Corrigir na grade
+                </Button>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {employeesWithGaps.slice(0, 10).map(item => (
+                  <Badge key={item.employee.id} variant="outline" className="bg-background font-normal">
+                    {item.employee.name} · {item.missingDates.length} dia{item.missingDates.length === 1 ? '' : 's'}
+                  </Badge>
+                ))}
+                {employeesWithGaps.length > 10 && (
+                  <Badge variant="secondary">+{employeesWithGaps.length - 10}</Badge>
+                )}
+              </div>
+            </div>
+          )}
+
+          {systemAssessment.unmatchedRecordCount > 0 && (
+            <p className="flex items-center gap-1.5 text-xs text-amber-700 dark:text-amber-300">
+              <AlertTriangle className="h-3.5 w-3.5" />
+              {systemAssessment.unmatchedRecordCount} registro{systemAssessment.unmatchedRecordCount === 1 ? '' : 's'} sem vínculo com funcionário cadastrado. Confira a matrícula no cadastro de Pessoas.
+            </p>
+          )}
         </div>
 
         {employeeNames.length > 0 && (
@@ -1148,10 +1175,10 @@ function TimesheetRecordsTab() {
               <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
               <div>
                 <p className="text-sm font-medium">
-                  {employeeNames.length} funcionário{employeeNames.length === 1 ? '' : 's'} com batidas neste período
+                  {employeeNames.length} funcionário{employeeNames.length === 1 ? '' : 's'} do cadastro no período
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  Corrija batidas pendentes antes de conferir os valores calculados na Folha.
+                  O filtro já combina todos os uploads e lançamentos manuais salvos no sistema.
                 </p>
               </div>
             </div>
@@ -1206,12 +1233,12 @@ function TimesheetRecordsTab() {
           (2026-06-20): tudo isso é visualização e vive no RH → Relatórios (Horas,
           Pagamento, Espelho, Calendário). O Ponto é SÓ ENTRADA. */}
 
-      {records.length === 0 && !preview && (
+      {!isLoading && records.length === 0 && !preview && (
         <Panel flush>
           <EmptyState
             icon={FileSpreadsheet}
-            title="Nenhum registro de ponto importado"
-            description="Importe o arquivo .xlsx ou .txt (AGL) gerado pelo relógio de ponto."
+            title="Nenhuma batida salva neste período"
+            description="Importe o arquivo do relógio ou use Corrigir para lançar diretamente no sistema. O cadastro de funcionários permanece sendo a base da avaliação."
           />
         </Panel>
       )}
