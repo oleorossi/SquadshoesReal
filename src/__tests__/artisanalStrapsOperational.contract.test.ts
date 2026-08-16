@@ -161,6 +161,24 @@ describe('Tiras artesanais — contrato SQL canônico', () => {
     expect(ENGINE).toContain('c.purchase_product_id=NEW.product_id');
   });
 
+  it('não exige a função auxiliar legada ao remover o trigger de dupla baixa', () => {
+    const cutover = SCHEMA.slice(SCHEMA.indexOf('-- 11. Cutover'));
+    const dropTrigger = cutover.indexOf(
+      'DROP TRIGGER IF EXISTS trg_debit_service_order_base ON public.service_orders',
+    );
+    const optionalGuard = cutover.indexOf(
+      "to_regprocedure('public.debit_service_order_base()') IS NOT NULL",
+    );
+    const legacyComment = cutover.indexOf(
+      'COMMENT ON FUNCTION public.debit_service_order_base() IS',
+    );
+
+    expect(dropTrigger).toBeGreaterThanOrEqual(0);
+    expect(optionalGuard).toBeGreaterThan(dropTrigger);
+    expect(legacyComment).toBeGreaterThan(optionalGuard);
+    expect(cutover).toContain('EXECUTE $legacy_comment$');
+  });
+
   it('internaliza o update legado e mantém somente o wrapper com preflight', () => {
     expect(ENGINE).toContain('RENAME TO update_sale_order_atomic_legacy_202701');
     expect(ENGINE).toContain(
