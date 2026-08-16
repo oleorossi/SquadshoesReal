@@ -94,6 +94,29 @@ describe('Tiras artesanais — contrato SQL canônico', () => {
     expect(ENGINE).not.toMatch(/PERFORM public\.debit_strap_stock/);
   });
 
+  it('neutraliza callers legados qualificados e não qualificados antes do cutover', () => {
+    const cutoverStart = ENGINE.indexOf('-- 14. Cutover nominal');
+    const cutoverEnd = ENGINE.indexOf(
+      'CREATE TABLE public.strap_service_order_financial_snapshots',
+      cutoverStart,
+    );
+    const cutover = ENGINE.slice(cutoverStart, cutoverEnd);
+
+    expect(cutover).toContain("p.prosrc LIKE '%debit_strap_stock%'");
+    expect(cutover).toContain(
+      "'public.debit_strap_stock','public.deprecated_strap_stock_noop'",
+    );
+    expect(cutover).toContain(
+      "'debit_strap_stock','public.deprecated_strap_stock_noop'",
+    );
+    expect(cutover).toContain(
+      "p.proname NOT IN ('debit_strap_stock','deprecated_strap_stock_noop')",
+    );
+    expect(cutover).toContain(
+      "THEN RAISE EXCEPTION 'Cutover incompleto: caller vivo de baixa legada de tira'",
+    );
+  });
+
   it('retira tiras integralmente do canal genérico por PV sem quebrar sua assinatura', () => {
     const applied = functionBody(
       PER_PV_APPLIED,

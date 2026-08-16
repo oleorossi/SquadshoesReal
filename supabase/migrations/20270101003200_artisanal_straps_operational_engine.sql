@@ -349,10 +349,16 @@ BEGIN
       FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
      WHERE n.nspname='public' AND p.prokind='f'
        AND p.proname NOT IN ('debit_strap_stock','deprecated_strap_stock_noop')
-       AND pg_get_functiondef(p.oid) LIKE '%public.debit_strap_stock%'
+       -- Instalacoes antigas misturam chamadas qualificadas e nao
+       -- qualificadas; comentarios tambem podem conservar o nome legado. O
+       -- mesmo predicado amplo usado pela assertion final precisa dirigir a
+       -- recompilacao, senao o deploy depende da versao intermediaria viva.
+       AND p.prosrc LIKE '%debit_strap_stock%'
   LOOP
     v_definition:=replace(pg_get_functiondef(v_proc.oid),
       'public.debit_strap_stock','public.deprecated_strap_stock_noop');
+    v_definition:=replace(v_definition,
+      'debit_strap_stock','public.deprecated_strap_stock_noop');
     EXECUTE v_definition;
   END LOOP;
 END;
