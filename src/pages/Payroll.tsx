@@ -42,6 +42,8 @@ import {
 } from '@/lib/payrollClosing';
 import RelatorioFaltas from '@/components/hr/RelatorioFaltas';
 import RelatorioAtrasos from '@/components/hr/RelatorioAtrasos';
+import { employeeOverlapsEmploymentRange } from '@/lib/employeeEmployment';
+import { findEmployeeMatch } from '@/lib/employeeMatching';
 
 const fmt = (v: number) => (Number(v) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 /** Minutos → "7h00". */
@@ -157,6 +159,10 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
     [employees],
   );
   const employeeMap = useMemo(() => new Map(employees.map(e => [e.id, e])), [employees]);
+  const periodSalaryEmployeeCount = useMemo(
+    () => salaryEmployees.filter(employee => employeeOverlapsEmploymentRange(employee, appliedFrom, appliedTo)).length,
+    [salaryEmployees, appliedFrom, appliedTo],
+  );
   const { data: schedules = [] } = useWorkSchedules();
   const defaultSchedule = useMemo(() => (schedules as any[]).find(s => s.is_default) || (schedules as any[])[0] || null, [schedules]);
   const { data: queriedRuns = [], isLoading } = usePayrollRuns(appliedPeriod);
@@ -400,41 +406,35 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
   // matrícula (employee_external_id). Independe da folha calculada — usa direto o
   // compRecords (time_records do período), pra conferência do arquivo do relógio.
   const espelhoEmps = useMemo(() => {
-    const norm = (s: string) => String(s ?? '').toLowerCase().trim();
-    // Casa uma matrícula/nome do relógio com um funcionário CADASTRADO e ATIVO —
-    // mesmo critério dos outros relatórios (matrícula, com external_id possivelmente
-    // separado por vírgula, OU nome normalizado). Retorna o funcionário ou undefined.
-    const matchEmployee = (extId: string, name: string) =>
-      (employees as any[]).find(e => {
-        if ((e as any).active === false) return false;
-        const eExt = String((e as any).external_id ?? '').split(',').map(x => x.trim()).filter(Boolean);
-        if (extId && eExt.includes(extId)) return true;
-        return norm((e as any).name) === norm(name);
-      });
-
     type EspGroup = { id: string; name: string; role?: string; department?: string; matchId?: string; rawDays: { date: string; punches: string[] }[] };
-    const byExt = new Map<string, EspGroup>();
+    const byEmployee = new Map<string, EspGroup>();
     for (const rec of (compRecords as any[])) {
-      const ext = String(rec.employee_external_id ?? rec.employee_name ?? '—');
-      const g = byExt.get(ext) || { id: ext, name: rec.employee_name || '—', rawDays: [] };
+      const emp = findEmployeeMatch(
+        employees,
+        rec.employee_name || '',
+        rec.employee_external_id || null,
+        { recordDate: rec.record_date, allowNameFallback: !rec.employee_external_id },
+      );
+      if (!emp || !employeeOverlapsEmploymentRange(emp, appliedFrom, appliedTo)) continue;
+      const clockId = String(rec.employee_external_id ?? emp.external_id ?? emp.id);
+      const g = byEmployee.get(emp.id) || {
+        id: clockId,
+        name: emp.name,
+        role: emp.role,
+        department: emp.department,
+        matchId: emp.id,
+        rawDays: [],
+      };
       g.rawDays.push({ date: rec.record_date, punches: Array.isArray(rec.punches) ? rec.punches : [] });
-      byExt.set(ext, g);
+      byEmployee.set(emp.id, g);
     }
     const out: EspGroup[] = [];
-    for (const g of byExt.values()) {
-      const emp = matchEmployee(g.id, g.name);
-      // Só entra no espelho quem é funcionário cadastrado — igual aos outros
-      // relatórios. Usuário do relógio sem cadastro (ex.: "alex · matrícula 18")
-      // fica de fora, mesmo tendo batido no ponto.
-      if (!emp) continue;
-      // matchId = id INTERNO do funcionário (mesmo de bundleEmps) — casa o Espelho
-      // com o pacote da folha no modo por-funcionário do buildPayrollHtml.
-      g.role = (emp as any).role; g.department = (emp as any).department; g.matchId = (emp as any).id;
+    for (const g of byEmployee.values()) {
       g.rawDays.sort((a, b) => a.date.localeCompare(b.date));
       out.push(g);
     }
     return out.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
-  }, [compRecords, employees]);
+  }, [compRecords, employees, appliedFrom, appliedTo]);
 
   // Escopo do Espelho (Todos / um funcionário) — casa o employee_id escolhido com
   // a matrícula (external_id) do registro bruto.
@@ -734,17 +734,19 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
     // Dias do mês p/ a base proporcional da quinzena: 1ª(15) + 2ª(mês−15) = salário EXATO
     // (sem pagar 1 dia a mais num mês de 31). Mês cheio ignora (cBaseDays undefined).
     const cMonthDays = daysBetween(`${cFrom.slice(0, 7)}-01`, lastDayOfMonth(cFrom.slice(0, 7)));
-    const activeSalaryEmployees = salaryEmployees.filter(employee => employee.active);
+    const periodSalaryEmployees = salaryEmployees.filter(employee =>
+      employeeOverlapsEmploymentRange(employee, cFrom, cTo),
+    );
     setCalcRunning(true);
     try {
       // Pré-voo atômico: o banco também recusa janelas sobrepostas, mas faria
       // isso funcionário a funcionário durante o loop. Validar todos antes evita
       // gerar parte da equipe e parar no primeiro conflito.
-      if (activeSalaryEmployees.length > 0) {
+      if (periodSalaryEmployees.length > 0) {
         const { data: existingRuns, error: existingRunsError } = await supabase
           .from('payroll_runs')
           .select('employee_id, period, status')
-          .in('employee_id', activeSalaryEmployees.map(employee => employee.id))
+          .in('employee_id', periodSalaryEmployees.map(employee => employee.id))
           .neq('status', 'cancelado');
         if (existingRunsError) throw existingRunsError;
 
@@ -835,7 +837,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
       let withMissingHeRate = 0;  // HE em minutos mas taxa R$/h não cadastrada → HE R$0
       // A folha comum contém somente os regimes salariais. Produção por par é
       // fechada semanalmente na Ficha de Montadores e nunca é consultada aqui.
-      for (const emp of activeSalaryEmployees) {
+      for (const emp of periodSalaryEmployees) {
         // Match das batidas por MATRÍCULA + NOME. Se a matrícula é compartilhada por
         // mais de um nome (ex.: ext_id 1 = "valdilene" + "Dona Val"), pega SÓ as
         // batidas com o nome DESTE funcionário — senão herdaria o ponto do outro.
@@ -1030,7 +1032,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
             value={docScope}
             onChange={setDocScope}
             options={[
-              { value: 'all', label: `${runs.length || espelhoEmps.length} com documentos no período${employees.filter(e => e.active).length > (runs.length || espelhoEmps.length) ? ` · ${employees.filter(e => e.active).length - (runs.length || espelhoEmps.length)} sem registro` : ''}` },
+              { value: 'all', label: `${runs.length || espelhoEmps.length} com documentos no período${periodSalaryEmployeeCount > (runs.length || espelhoEmps.length) ? ` · ${periodSalaryEmployeeCount - (runs.length || espelhoEmps.length)} sem registro` : ''}` },
               ...runs.map(r => ({ value: r.employee_id, label: employeeMap.get(r.employee_id)?.name || '—' })),
             ]}
             placeholder="Funcionário"

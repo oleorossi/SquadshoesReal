@@ -21,6 +21,33 @@ const SCHEDULE = {
 };
 
 describe('consistência da folha e dos relatórios', () => {
+  it('inclui desligado somente no período em que o vínculo ainda existia', () => {
+    const employee = {
+      id: 'employee-terminated',
+      name: 'Funcionário desligado',
+      external_id: '9',
+      active: false,
+      admission_date: '2026-01-01',
+      termination_date: '2026-05-15',
+      salary: 2100,
+      payment_type: 'mensalista',
+      work_schedule_id: SCHEDULE.id,
+    };
+    const calculate = (from: string, to: string) => computeComparativoRows({
+      employees: [employee],
+      schedules: [SCHEDULE],
+      defaultSchedule: SCHEDULE,
+      holidaysSet: new Set(),
+      timeRecords: [],
+      advancesList: [],
+      range: { from, to },
+      period: from.slice(0, 7),
+    });
+
+    expect(calculate('2026-05-01', '2026-05-31').rows).toHaveLength(1);
+    expect(calculate('2026-06-01', '2026-06-30').rows).toHaveLength(0);
+  });
+
   it('comparativo usa as mesmas ausências justificadas do fechamento', () => {
     const employee = {
       id: 'employee-1',

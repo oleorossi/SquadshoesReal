@@ -2,8 +2,7 @@ import type { Employee } from '@/hooks/useEmployees';
 import type { TimeRecord, WorkSchedule } from '@/hooks/useTimesheet';
 import { findEmployeeMatch } from '@/lib/employeeMatching';
 import { worksOnDow } from '@/lib/ponto/pontoEngine';
-
-const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+import { employeeOverlapsEmploymentRange } from '@/lib/employeeEmployment';
 
 function cleanPunchKey(punch: string): string {
   const clean = String(punch || '').replace(/[*"]/g, '');
@@ -57,10 +56,7 @@ export function employeeOverlapsTimesheetRange(
   from: string,
   to: string,
 ): boolean {
-  if (!ISO_DATE.test(from) || !ISO_DATE.test(to) || from > to) return false;
-  if (employee.admission_date && employee.admission_date > to) return false;
-  if (employee.termination_date && employee.termination_date < from) return false;
-  return employee.active || !!employee.termination_date;
+  return employeeOverlapsEmploymentRange(employee, from, to);
 }
 
 /** Remoto não usa relógio. Produção por par continua visível para presença. */

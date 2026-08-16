@@ -1,14 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { Plus, PencilSimple as Pencil, Trash as Trash2, CircleNotch as Loader2, Phone, ChatCircle as MessageCircle, CurrencyDollar as DollarSign, Users as Users2, MagnifyingGlass as Search, CheckCircle as CheckCircle2, UserCheck, UserMinus as UserX, Buildings as Building2, CalendarBlank as CalendarDays, Warning as AlertTriangle, Wallet } from '@phosphor-icons/react';
+import { Plus, PencilSimple as Pencil, Trash as Trash2, CircleNotch as Loader2, Phone, ChatCircle as MessageCircle, CurrencyDollar as DollarSign, Users as Users2, MagnifyingGlass as Search, CheckCircle as CheckCircle2, UserCheck, UserMinus as UserX, Buildings as Building2, Warning as AlertTriangle, Wallet, ClockCounterClockwise as History, ArrowRight } from '@phosphor-icons/react';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { useCan } from '@/hooks/useAccessControl';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { SectorSelectField } from '@/components/hr/SectorSelectField';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -25,8 +24,6 @@ import {
 } from '@/hooks/useEmployees';
 import { useMontadorProducao } from '@/hooks/useMontadorProducao';
 import { MONTHLY_HOURS_DIVISOR } from '@/lib/hourlyPayroll';
-import { toast } from 'sonner';
-import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
@@ -35,6 +32,7 @@ import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { HubTabsList } from '@/components/layout/HubTabs';
 import AdvancesPanel from '@/components/hr/AdvancesPanel';
 import { useProductionSectors } from '@/hooks/useSectorRoster';
+import { normalizeEmployeeEmploymentState } from '@/lib/employeeEmployment';
 
 // Folha por hora: o que importa do cadastro é nome, matrícula, salário-referência
 // (220h/mês) e contato/PIX. HE/escala/mensalista-diarista foram aposentados (as
@@ -46,6 +44,9 @@ const emptyEmployee = {
 };
 
 const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+const fmtDate = (date?: string | null) => date
+  ? new Date(`${date}T12:00:00`).toLocaleDateString('pt-BR')
+  : '—';
 
 export default function Employees() {
   const { data: employees = [], isLoading, isError } = useEmployees();
@@ -158,6 +159,20 @@ export default function Employees() {
   const variavelPorPar = producaoIds.size
     ? Array.from(prodMap?.entries() || []).filter(([id]) => producaoIds.has(id)).reduce((s, [, v]) => s + v.bruto, 0)
     : 0;
+  const inactiveEmployees = employees.length - activeEmployees.length;
+  const activeRatio = employees.length > 0 ? Math.round((activeEmployees.length / employees.length) * 100) : 0;
+
+  const handleToggleEmployeeStatus = (employee: Employee) => {
+    if (!employee.active && employee.termination_date) {
+      const ok = confirm(
+        `Reativar ${employee.name}?\n\nA data de demissão (${fmtDate(employee.termination_date)}) será removida para abrir um novo vínculo ativo.`,
+      );
+      if (!ok) return;
+      updateEmployee.mutate({ id: employee.id, data: { active: true, termination_date: null } });
+      return;
+    }
+    updateEmployee.mutate({ id: employee.id, data: { active: !employee.active } });
+  };
 
   const handleSave = () => {
     // A3 da auditoria 2026-05-28: warn em demissão retroativa.
@@ -179,8 +194,9 @@ export default function Employees() {
         if (!ok) return;
       }
     }
-    if (editing) updateEmployee.mutate({ id: editing.id, data: form });
-    else addEmployee.mutate(form);
+    const payload = normalizeEmployeeEmploymentState(form);
+    if (editing) updateEmployee.mutate({ id: editing.id, data: payload });
+    else addEmployee.mutate(payload);
     setDialogOpen(false);
     setForm(emptyEmployee);
     setEditing(null);
@@ -207,11 +223,11 @@ export default function Employees() {
           { value: 'adiantamentos', label: 'Adiantamentos', icon: Wallet },
         ]} />
         <TabsContent value="funcionarios" className="space-y-4 mt-4">
-      {/* Header local removido — vive no RHHub. Actions ficam aqui em barra própria. */}
-      <div className="flex flex-col gap-3 border-b border-border/70 pb-4 sm:flex-row sm:items-end sm:justify-between">
+      <div className="flex flex-col gap-3 border-b-2 border-foreground pb-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 className="text-base font-semibold">Cadastro e vínculos</h2>
-          <p className="mt-1 text-sm text-muted-foreground">Mantenha matrícula do relógio, setor e regime de pagamento atualizados.</p>
+          <p className="eyebrow">PESSOAS · REGISTRO FUNCIONAL</p>
+          <h2 className="mt-1 text-xl font-bold tracking-tight">Quadro e vínculos</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Cadastro, vigência no relógio de ponto e remuneração em uma única ficha.</p>
         </div>
         {perm.canCreate && (
         <Button id="novo-funcionario" onClick={() => { setForm(emptyEmployee); setEditing(null); setDialogOpen(true); }} className="gap-2 shrink-0" size="sm">
@@ -220,30 +236,49 @@ export default function Employees() {
         )}
       </div>
 
-      {/* KPI Cards */}
-        <StatGrid>
-          <StatCard label="Total" value={employees.length} hint="funcionários" icon={Users2} />
-          <StatCard
-            label="Ativos"
-            value={activeEmployees.length}
-            hint={`${employees.length - activeEmployees.length} inativos`}
-            tone="success"
-            icon={UserCheck}
-          />
-          <StatCard label="Folha Mensal" value={fmt(totalMonthlyPayroll)} hint="salário fixo · ativos" icon={DollarSign} />
-          {producaoIds.size > 0 && (
-            <StatCard label="Variável (por par)" value={fmt(variavelPorPar)} hint={`${producaoIds.size} por par · mês`} icon={Wallet} />
-          )}
-          {peopleSetupPending > 0 && (
-            <StatCard label="Cadastros a concluir" value={peopleSetupPending} hint="matrícula ou jornada ausente" tone="warning" icon={AlertTriangle} />
-          )}
-        </StatGrid>
+        <div className="overflow-hidden rounded-lg border border-border bg-card">
+          <div className="grid grid-cols-2 xl:grid-cols-[1.35fr_repeat(4,minmax(0,1fr))]">
+            <div className="col-span-2 flex min-h-36 flex-col justify-between bg-foreground p-5 text-background xl:col-span-1">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-background/65">Quadro em operação</span>
+                <UserCheck className="h-5 w-5 text-background/70" />
+              </div>
+              <div className="mt-5 flex items-end justify-between gap-4">
+                <div>
+                  <span className="ed-display text-5xl leading-none">{activeEmployees.length}</span>
+                  <p className="mt-2 text-xs text-background/70">ativos de {employees.length} cadastros</p>
+                </div>
+                <span className="font-mono text-sm tabular-nums text-background/80">{activeRatio}%</span>
+              </div>
+              <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-background/20" aria-label={`${activeRatio}% do quadro ativo`}>
+                <div className="h-full rounded-full bg-background" style={{ width: `${activeRatio}%` }} />
+              </div>
+            </div>
+
+            <div className="flex min-h-28 flex-col justify-between border-t border-border p-4 xl:border-l xl:border-t-0">
+              <div className="flex items-center justify-between gap-2"><span className="eyebrow">Folha fixa</span><DollarSign className="h-4 w-4 text-muted-foreground" /></div>
+              <div><p className="ed-display text-2xl leading-none">{fmt(totalMonthlyPayroll)}</p><p className="mt-2 text-xs text-muted-foreground">salários dos vínculos ativos</p></div>
+            </div>
+            <div className="flex min-h-28 flex-col justify-between border-l border-t border-border p-4 xl:border-t-0">
+              <div className="flex items-center justify-between gap-2"><span className="eyebrow">Produção do mês</span><Wallet className="h-4 w-4 text-muted-foreground" /></div>
+              <div><p className="ed-display text-2xl leading-none">{fmt(variavelPorPar)}</p><p className="mt-2 text-xs text-muted-foreground">{producaoIds.size} pagos por par</p></div>
+            </div>
+            <div className="flex min-h-28 flex-col justify-between border-t border-border p-4 xl:border-l xl:border-t-0">
+              <div className="flex items-center justify-between gap-2"><span className="eyebrow">A concluir</span><AlertTriangle className="h-4 w-4 text-warning" /></div>
+              <div><p className="ed-display text-3xl leading-none text-warning">{peopleSetupPending}</p><p className="mt-2 text-xs text-muted-foreground">sem matrícula ou jornada</p></div>
+            </div>
+            <div className="flex min-h-28 flex-col justify-between border-l border-t border-border p-4 xl:border-t-0">
+              <div className="flex items-center justify-between gap-2"><span className="eyebrow">Histórico</span><History className="h-4 w-4 text-muted-foreground" /></div>
+              <div><p className="ed-display text-3xl leading-none">{inactiveEmployees}</p><p className="mt-2 text-xs text-muted-foreground">inativos preservados</p></div>
+            </div>
+          </div>
+        </div>
 
         <div className="space-y-3 mt-4">
             {/* Filters */}
-            <div className="flex flex-wrap gap-2 items-center">
+            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card p-3">
               <SearchInput
-                className="flex-1 min-w-[180px] max-w-xs"
+                className="min-w-[220px] flex-1 lg:max-w-md"
                 value={search}
                 onChange={setSearch}
                 placeholder="Buscar por nome, cargo, depto, ID relógio…"
@@ -253,8 +288,10 @@ export default function Employees() {
               <div className="flex gap-1 bg-muted rounded-md p-1">
                 {(['all', 'active', 'inactive'] as const).map(s => (
                   <button
+                    type="button"
                     key={s}
                     onClick={() => setStatusFilter(s)}
+                    aria-pressed={statusFilter === s}
                     className={`px-3 py-1 rounded text-xs font-medium transition-colors ${statusFilter === s ? 'bg-background shadow text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
                   >
                     {s === 'all' ? 'Todos' : s === 'active' ? 'Ativos' : 'Inativos'}
@@ -295,7 +332,13 @@ export default function Employees() {
               <span className="text-xs text-muted-foreground ml-1">{filteredEmployees.length} resultado{filteredEmployees.length !== 1 ? 's' : ''}</span>
             </div>
 
-            <Panel flush>
+            <Panel
+              flush
+              eyebrow="CADASTRO · VIGÊNCIA · REMUNERAÇÃO"
+              title="Diretório de funcionários"
+              subtitle="Clique em uma linha para abrir a ficha completa. Desligados continuam disponíveis no histórico."
+              actions={<Badge variant="outline" className="font-mono tabular-nums">{filteredEmployees.length} registros</Badge>}
+            >
               <Table>
                 <TableHeader>
                   <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
@@ -308,7 +351,7 @@ export default function Employees() {
                     </TableHead>
                     <TableHead>Nome</TableHead>
                     <TableHead>Cargo / Depto</TableHead>
-                    <TableHead>Admissão</TableHead>
+                    <TableHead>Vínculo</TableHead>
                     <TableHead className="text-right">Salário</TableHead>
                     <TableHead className="text-right">Valor-hora</TableHead>
                     <TableHead>Status</TableHead>
@@ -334,7 +377,7 @@ export default function Employees() {
                     return (
                     <TableRow
                       key={e.id}
-                      className={`cursor-pointer hover:bg-muted/50 transition-colors ${!e.active ? 'opacity-60' : ''} ${sel.isSelected(e.id) ? 'bg-primary/5 hover:bg-primary/10' : ''}`}
+                      className={`cursor-pointer transition-colors hover:bg-muted/50 ${!e.active ? 'border-l-2 border-l-muted-foreground/30 bg-muted/20' : 'border-l-2 border-l-success/50'} ${sel.isSelected(e.id) ? 'bg-primary/5 hover:bg-primary/10' : ''}`}
                       onClick={(ev) => { if ((ev.target as HTMLElement).closest('button,[role="checkbox"]')) return; setEditing(e); setForm(e); setDialogOpen(true); }}
                     >
                       <TableCell onClick={(ev) => ev.stopPropagation()}>
@@ -348,7 +391,7 @@ export default function Employees() {
                         <div className="flex items-center gap-2">
                           <span>{e.name}</span>
                           {e.external_id && (
-                            <span title={`ID Relógio: ${e.external_id}`} className="inline-flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400">
+                            <span title={`ID Relógio: ${e.external_id}`} className="inline-flex items-center gap-1 text-xs text-success">
                               <CheckCircle2 className="h-3.5 w-3.5" /> {e.external_id}
                             </span>
                           )}
@@ -359,9 +402,13 @@ export default function Employees() {
                         {e.department && <div className="text-xs text-muted-foreground">{e.department}</div>}
                       </TableCell>
                       <TableCell className="text-sm">
-                        {e.admission_date
-                          ? new Date(e.admission_date + 'T12:00:00').toLocaleDateString('pt-BR')
-                          : '—'}
+                        <div className="font-mono text-xs tabular-nums">
+                          {fmtDate(e.admission_date)}
+                          {e.termination_date && <span className="text-muted-foreground"> → {fmtDate(e.termination_date)}</span>}
+                        </div>
+                        <div className="mt-1 text-[11px] text-muted-foreground">
+                          {e.termination_date ? 'último dia trabalhado registrado' : 'vínculo em aberto'}
+                        </div>
                       </TableCell>
                       <TableCell className="font-mono text-sm text-right">
                         {(e as any).payment_type === 'producao'
@@ -373,8 +420,8 @@ export default function Employees() {
                       </TableCell>
                       <TableCell>
                         {e.active
-                          ? <Badge className="bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400 border-0 text-xs">Ativo</Badge>
-                          : <Badge variant="outline" className="text-muted-foreground text-xs">Inativo</Badge>
+                          ? <Badge className="border-0 bg-success/15 text-xs text-success">Ativo</Badge>
+                          : <Badge variant="outline" className="text-muted-foreground text-xs">{e.termination_date ? 'Desligado' : 'Inativo'}</Badge>
                         }
                       </TableCell>
                       <TableCell>
@@ -386,20 +433,19 @@ export default function Employees() {
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
                           <Button variant="ghost" size="icon" onClick={() => { setEditing(e); setForm(e); setDialogOpen(true); }} aria-label={`Editar funcionário ${e.name}`}><Pencil className="h-4 w-4" /></Button>
-                          {/* Inativar/Reativar em 1 clique: o destino certo quando
-                              o funcionário tem ponto/folha no histórico (excluir é
-                              bloqueado). Reversível, sem confirmação. */}
+                          {/* Inativar preserva o histórico. Reabrir vínculo encerrado
+                              remove a data de demissão somente após confirmação. */}
                           <Button
                             variant="ghost"
                             size="icon"
-                            onClick={() => updateEmployee.mutate({ id: e.id, data: { active: !e.active } })}
+                            onClick={() => handleToggleEmployeeStatus(e)}
                             disabled={updateEmployee.isPending}
                             aria-label={e.active ? `Inativar funcionário ${e.name}` : `Reativar funcionário ${e.name}`}
-                            title={e.active ? 'Inativar' : 'Reativar'}
+                            title={e.active ? 'Inativar' : e.termination_date ? 'Reabrir vínculo' : 'Reativar'}
                           >
                             {e.active
-                              ? <UserX className="h-4 w-4 text-amber-600" />
-                              : <UserCheck className="h-4 w-4 text-emerald-600" />}
+                              ? <UserX className="h-4 w-4 text-warning" />
+                              : <UserCheck className="h-4 w-4 text-success" />}
                           </Button>
                           {perm.canDelete && <DeleteConfirmButton onConfirm={() => deleteEmployee.mutate(e.id)} size="icon" />}
                         </div>
@@ -428,10 +474,41 @@ export default function Employees() {
 
       {/* Employee Form Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader><DialogTitle>{editing ? 'Editar Funcionário' : 'Novo Funcionário'}</DialogTitle></DialogHeader>
-          <div className="grid grid-cols-2 gap-4 mt-2">
-            <div className="col-span-2"><Label>Nome</Label><Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} /></div>
+        <DialogContent className="gap-0 p-0 sm:max-w-3xl">
+          <DialogHeader className="border-b border-border px-5 pb-4 pt-5 pr-14 sm:px-6 sm:pt-6">
+            <p className="eyebrow">RH · FICHA FUNCIONAL</p>
+            <DialogTitle>{editing ? 'Editar funcionário' : 'Novo funcionário'}</DialogTitle>
+            <DialogDescription>Identificação, vigência no ponto e remuneração do colaborador.</DialogDescription>
+          </DialogHeader>
+
+          <div className="border-b border-border bg-muted/30 px-5 py-4 sm:px-6">
+            <div className="grid gap-3 sm:grid-cols-[1fr_auto_1fr_auto_1fr] sm:items-center">
+              <div className="flex items-center gap-3">
+                <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${form.admission_date ? 'bg-foreground text-background' : 'bg-muted text-muted-foreground'}`}>
+                  <CheckCircle2 className="h-4 w-4" weight="fill" />
+                </span>
+                <div><p className="eyebrow">Admissão</p><p className="mt-1 font-mono text-xs tabular-nums">{fmtDate(form.admission_date)}</p></div>
+              </div>
+              <ArrowRight className="hidden h-4 w-4 text-muted-foreground sm:block" />
+              <div className="flex items-center gap-3">
+                <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${form.termination_date ? 'bg-muted text-muted-foreground' : 'bg-success text-success-foreground'}`}>
+                  <UserCheck className="h-4 w-4" weight="fill" />
+                </span>
+                <div><p className="eyebrow">Atividade</p><p className="mt-1 text-xs font-semibold">{form.termination_date ? 'Encerrada' : form.active ? 'Em atividade' : 'Inativo'}</p></div>
+              </div>
+              <ArrowRight className="hidden h-4 w-4 text-muted-foreground sm:block" />
+              <div className="flex items-center gap-3">
+                <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${form.termination_date ? 'bg-destructive text-destructive-foreground' : 'bg-muted text-muted-foreground'}`}>
+                  <UserX className="h-4 w-4" weight="fill" />
+                </span>
+                <div><p className="eyebrow">Demissão</p><p className="mt-1 font-mono text-xs tabular-nums">{fmtDate(form.termination_date)}</p></div>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 p-5 sm:grid-cols-2 sm:p-6">
+            <div className="section-label border-b border-border pb-2 sm:col-span-2">01 · Identificação e relógio</div>
+            <div className="sm:col-span-2"><Label>Nome</Label><Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} /></div>
             <div>
               <Label>CPF</Label>
               <Input
@@ -455,15 +532,16 @@ export default function Employees() {
             <div>
               <Label>ID do relógio de ponto</Label>
               <div className="relative">
-                <Input value={form.external_id || ''} onChange={e => setForm(f => ({ ...f, external_id: e.target.value }))} placeholder="Ex: 101" className={form.external_id ? 'pr-10 border-emerald-500 focus-visible:ring-emerald-500' : ''} />
+                <Input value={form.external_id || ''} onChange={e => setForm(f => ({ ...f, external_id: e.target.value }))} placeholder="Ex: 101" className={form.external_id ? 'border-success pr-10 focus-visible:ring-success' : ''} />
                 {form.external_id && (
-                  <CheckCircle2 className="absolute right-3 top-1/2 -translate-y-1/2 h-5 w-5 text-emerald-500" />
+                  <CheckCircle2 className="absolute right-3 top-1/2 -translate-y-1/2 h-5 w-5 text-success" />
                 )}
               </div>
               {form.external_id
-                ? <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1">✓ Vinculado por ID e data de vigência</p>
-                : <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">Necessário para importar e calcular ponto deste prestador.</p>}
+                ? <p className="mt-1 text-xs text-success">✓ Vinculado por ID e data de vigência</p>
+                : <p className="mt-1 text-xs text-warning">Necessário para importar e calcular ponto deste prestador.</p>}
             </div>
+            <div className="section-label mt-2 border-b border-border pb-2 sm:col-span-2">02 · Vínculo de trabalho</div>
             <div><Label>Cargo</Label><Input value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))} /></div>
             <div><SectorSelectField value={form.department} onChange={onSectorChange} /></div>
             <div><Label>Admissão</Label><Input type="date" value={form.admission_date} onChange={e => setForm(f => ({ ...f, admission_date: e.target.value }))} /></div>
@@ -472,15 +550,21 @@ export default function Employees() {
               <Input
                 type="date"
                 value={(form as any).termination_date ?? ''}
-                onChange={e => setForm(f => ({ ...f, termination_date: e.target.value || null } as any))}
+                onChange={e => setForm(f => ({
+                  ...f,
+                  termination_date: e.target.value || null,
+                  active: e.target.value ? false : f.active,
+                } as any))}
               />
-              <p className="text-xs text-muted-foreground mt-1">
-                Último dia trabalhado. Deixe vazio se ainda ativo. Sistema para
-                de calcular horas esperadas após essa data no registro de ponto.
+              <p className={`mt-1 text-xs ${form.termination_date ? 'font-medium text-destructive' : 'text-muted-foreground'}`}>
+                {form.termination_date
+                  ? `Ao salvar, o cadastro será inativado. Relatórios posteriores não incluem o funcionário; o histórico fica preservado até ${fmtDate(form.termination_date)}.`
+                  : 'Último dia trabalhado. Deixe vazio enquanto o vínculo estiver em aberto.'}
               </p>
             </div>
 
-            <div className="col-span-2">
+            <div className="section-label mt-2 border-b border-border pb-2 sm:col-span-2">03 · Regime e remuneração</div>
+            <div className="sm:col-span-2">
               <Label>Regime de pagamento</Label>
               <Select value={(form as any).payment_type || 'mensalista'} onValueChange={v => setForm(f => ({ ...f, payment_type: v } as any))}>
                 <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
@@ -503,7 +587,7 @@ export default function Employees() {
             </div>
 
             {(form as any).payment_type !== 'producao' && (
-            <div className="col-span-2">
+            <div className="sm:col-span-2">
               <Label>{(form as any).payment_type === 'diarista' ? 'Salário (referência — não usado no diarista)' : 'Salário (R$)'}</Label>
               <CurrencyInput value={form.salary} onChange={v => setForm(f => ({ ...f, salary: v }))} />
               <p className="text-xs text-muted-foreground mt-1">
@@ -514,7 +598,7 @@ export default function Employees() {
             )}
 
             {(form as any).payment_type === 'diarista' && (
-              <div className="col-span-2">
+              <div className="sm:col-span-2">
                 <Label>Valor da diária (R$/dia)</Label>
                 <CurrencyInput value={(form as any).daily_rate || 0} onChange={v => setForm(f => ({ ...f, daily_rate: v } as any))} />
                 <p className="text-xs text-muted-foreground mt-1">Pagamento = diária × nº de dias com batida no período.</p>
@@ -534,11 +618,11 @@ export default function Employees() {
                   </div>
                 )}
                 {(!((form as any).valor_par_medio > 0) && !((form as any).valor_par_dificil > 0)) && (
-                  <p className="col-span-2 text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                  <p className="flex items-center gap-1 text-xs text-warning sm:col-span-2">
                     <AlertTriangle className="h-3.5 w-3.5" /> Defina o R$/par — sem valor, a folha por par sai R$ 0,00.
                   </p>
                 )}
-                <p className="col-span-2 text-xs text-muted-foreground">
+                <p className="text-xs text-muted-foreground sm:col-span-2">
                   {setorPagaPorPar(form.department)
                     ? `${form.department} é setor pago por par, então o regime já veio marcado. `
                     : ''}
@@ -566,14 +650,33 @@ export default function Employees() {
                 </div>
               </>
             )}
+            <div className="section-label mt-2 border-b border-border pb-2 sm:col-span-2">04 · Contato e situação atual</div>
             <div><Label>Telefone</Label><Input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} /></div>
             <div><Label>WhatsApp</Label><Input value={form.whatsapp} onChange={e => setForm(f => ({ ...f, whatsapp: e.target.value }))} /></div>
-            <div className="col-span-2"><Label>Chave PIX</Label><Input value={form.pix_key} onChange={e => setForm(f => ({ ...f, pix_key: e.target.value }))} /></div>
-            <div className="col-span-2 flex items-center gap-2"><Switch checked={form.active} onCheckedChange={v => setForm(f => ({ ...f, active: v }))} /><Label>Funcionário Ativo</Label></div>
+            <div className="sm:col-span-2"><Label>Chave PIX</Label><Input value={form.pix_key} onChange={e => setForm(f => ({ ...f, pix_key: e.target.value }))} /></div>
+            <div className="flex items-start justify-between gap-4 rounded-lg border border-border bg-muted/30 p-3 sm:col-span-2">
+              <div>
+                <Label htmlFor="employee-active">Vínculo ativo</Label>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {form.termination_date
+                    ? 'Bloqueado pela demissão. Limpe a data antes de reabrir o vínculo.'
+                    : 'Funcionários inativos deixam as rotinas atuais, mas o histórico permanece consultável.'}
+                </p>
+              </div>
+              <Switch
+                id="employee-active"
+                checked={form.active && !form.termination_date}
+                disabled={!!form.termination_date}
+                onCheckedChange={v => setForm(f => ({ ...f, active: v }))}
+              />
+            </div>
           </div>
-          <div className="flex justify-end gap-2 mt-4">
+          <div className="sticky bottom-0 flex justify-end gap-2 border-t border-border bg-background px-5 py-4 sm:px-6">
             <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
-            <Button onClick={handleSave}>Salvar</Button>
+            <Button data-dialog-primary="true" onClick={handleSave} disabled={addEmployee.isPending || updateEmployee.isPending}>
+              {(addEmployee.isPending || updateEmployee.isPending) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Salvar ficha
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

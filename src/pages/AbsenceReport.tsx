@@ -21,6 +21,7 @@ import {
   businessDaysInPeriod, absenceBusinessDays, sumAbsenceBusinessDays,
   absenteeismRate, mandatoryHolidaySet,
 } from '@/lib/absenteeism';
+import { employeeOverlapsEmploymentRange } from '@/lib/employeeEmployment';
 
 export default function AbsenceReport() {
   const today = new Date();
@@ -40,7 +41,10 @@ export default function AbsenceReport() {
   const remove = useDeleteAbsence();
 
   const empMap = useMemo(() => new Map(employees.map(e => [e.id, e])), [employees]);
-  const activeEmpCount = useMemo(() => employees.filter(e => e.active).length, [employees]);
+  const activeEmpCount = useMemo(
+    () => employees.filter(e => employeeOverlapsEmploymentRange(e, from, to)).length,
+    [employees, from, to],
+  );
 
   const filtered = useMemo(() => {
     if (filterType === 'all') return absences;

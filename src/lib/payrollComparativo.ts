@@ -13,6 +13,7 @@ import { sumProducaoRows, type FichaMontadorRow } from './montadorProduction';
 import { calculateDaySummary, type DaySummary } from '@/hooks/useTimesheet';
 import { MONTHLY_HOURS_DIVISOR } from './hourlyPayroll';
 import type { EmployeeTimesheetData } from './printTimesheet';
+import { employeeOverlapsEmploymentRange } from './employeeEmployment';
 
 export type SitTone = 'green' | 'amber' | 'red';
 export interface Situacao { txt: string; tone: SitTone }
@@ -99,7 +100,7 @@ export interface ComparativoResult {
   monthDays: number;
 }
 
-/** Constrói os comparativos (Mês × 1ª × 2ª) de TODOS os funcionários ativos. */
+/** Constrói os comparativos (Mês × 1ª × 2ª) dos vínculos vigentes no período. */
 export function computeComparativoRows(args: ComparativoArgs): ComparativoResult {
   const { employees, schedules, defaultSchedule, holidaysSet, timeRecords, advancesList, range, period, maxCovered = null } = args;
   const swapWorkedSet = args.swapWorkedSet ?? new Set<string>();
@@ -161,7 +162,7 @@ export function computeComparativoRows(args: ComparativoArgs): ComparativoResult
   const coveredDays = maxCovered ? rangeDays.filter(d => d.date <= maxCovered) : rangeDays;
 
   const rows: ComparativoRow[] = employees
-    .filter(e => e.active)
+    .filter(e => employeeOverlapsEmploymentRange(e, range.from, range.to))
     .map(emp => {
       const extKey = emp.external_id ? String(emp.external_id) : '';
       const nameKey = String(emp.name || '').toLowerCase().trim();

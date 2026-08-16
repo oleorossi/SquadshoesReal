@@ -20,6 +20,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { CircleNotch as Loader2, Clock, Timer, Users, CheckCircle, CalendarBlank, CaretRight, FilePdf } from '@phosphor-icons/react';
 import { printEmployeeAtraso, printAtrasoSummary } from '@/lib/atrasoReportPrint';
+import { employeeOverlapsEmploymentRange } from '@/lib/employeeEmployment';
 
 const pad = (n: number) => String(n).padStart(2, '0');
 const todayISO = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
@@ -263,7 +264,7 @@ export default function RelatorioAtrasos() {
       }
 
       const out: AtrasoRow[] = [];
-      for (const emp of (employees as any[]).filter(e => e.active)) {
+      for (const emp of (employees as any[]).filter(e => employeeOverlapsEmploymentRange(e, from, to))) {
         const extKey = emp.external_id ? String(emp.external_id) : '';
         const nameKey = (emp.name || '').toLowerCase().trim();
         const extShared = !!extKey && (extIdNames.get(extKey)?.size || 0) > 1;

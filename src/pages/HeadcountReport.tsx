@@ -8,6 +8,7 @@ import { useEmployees } from '@/hooks/useEmployees';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { Panel } from '@/components/ui/panel';
+import { employeeIsEmployedOnDate } from '@/lib/employeeEmployment';
 
 function monthKey(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
@@ -42,18 +43,14 @@ export default function HeadcountReport() {
     return eachMonth(f, t);
   }, [from, to]);
 
-  /**
-   * Para cada mês, conta funcionários:
-   *   - Ativos no fim do mês = admission_date <= ultimo_dia_mes E (não há flag dispensado/data fim)
-   *   - Como o schema atual só tem `active boolean` + `admission_date`, usamos:
-   *     - Admitidos no mês: admission_date entre o 1o e o último dia
-   *     - Ativos no mês: admission_date <= último dia E (active=true OU updated_at > último dia)
-   */
+  /** Reconstrói cada mês pelas datas reais do vínculo, sem usar updated_at como demissão. */
   const series = useMemo(() => {
     return months.map(mk => {
       const [y, m] = mk.split('-').map(Number);
       const lastDay = new Date(y, m, 0);
       const firstDay = new Date(y, m - 1, 1);
+      const firstIso = `${mk}-01`;
+      const lastIso = `${mk}-${String(lastDay.getDate()).padStart(2, '0')}`;
 
       let active = 0;
       let admitted = 0;
@@ -64,12 +61,8 @@ export default function HeadcountReport() {
         if (adm > lastDay) continue;
         // Admitido neste mês
         if (adm >= firstDay && adm <= lastDay) admitted++;
-        // Considerado ativo neste mês = admitido até o fim E (atualmente ativo OU updated_at > fim do mês)
-        const updated = e.updated_at ? new Date(e.updated_at) : null;
-        const stillActive = e.active || (updated && updated > lastDay);
-        if (stillActive) active++;
-        // Dispensado neste mês = não está mais ativo E updated_at cai dentro do mês
-        if (!e.active && updated && updated >= firstDay && updated <= lastDay) dismissed++;
+        if (employeeIsEmployedOnDate(e, lastIso)) active++;
+        if (e.termination_date && e.termination_date >= firstIso && e.termination_date <= lastIso) dismissed++;
       }
       return { month: mk, label: monthLabel(mk), active, admitted, dismissed, net: admitted - dismissed };
     });
