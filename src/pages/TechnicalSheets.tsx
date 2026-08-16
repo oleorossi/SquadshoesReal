@@ -809,7 +809,7 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
                   autoFocus
                 />
                 <p className="text-xs text-muted-foreground">
-                  Serão copiados: identificação, materiais (BOM), embalagens, mapeamentos de cor de solado e palmilha.
+                  Serão copiados: identificação, materiais (BOM) e mapeamentos de cor de solado e palmilha. A embalagem é herdada do tipo de solado.
                 </p>
               </div>
             )}
@@ -1288,7 +1288,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
       // consumption_unit ADICIONADO em 2026-05-31: sem ele, getUnitForGroupName
       // caía no fallback dimensions_unit (geralmente 'mm'), exibindo MM em
       // grupos cuja UoM canónica de BOM é 'm' (ex: ELÁSTICO SARJA).
-      const { data, error } = await supabase.from('product_groups').select('id, name, consumption_unit, dimensions_length, dimensions_width, dimensions_unit, box_type_id').order('name');
+      const { data, error } = await supabase.from('product_groups').select('id, name, consumption_unit, dimensions_length, dimensions_width, dimensions_unit').order('name');
       if (error) {
         console.error('[TechnicalSheets] Falha ao carregar product_groups:', error);
         return [];
@@ -1473,92 +1473,10 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
       }
       if (src.sole_group_id) {
         updateField('sole_group_id', src.sole_group_id);
-        
-        // Auto-fill box if the sole product has one
-        const product = products.find((p: any) => p.name + (p.color ? ` (${p.color})` : '') === soleName);
-        if (product?.box_type_id) {
-          updateField('box_type_id', product.box_type_id);
-          filled.push(`caixa: ${product.box_type_id}`);
-        }
       }
       if (filled.length > 0) {
         toast.info(`Configurações de solado aplicadas: ${filled.join(', ')}`);
       }
-    }
-  };
-
-  const autoFillPackagingFromSole = async (soleProductId: string) => {
-    if (!sheet?.id) return;
-    try {
-      // Fetch packaging associations from sole_structures
-      const { data: structures } = await supabase
-        .from('sole_structures')
-        .select('component_type, default_material_id')
-        .eq('sole_id', soleProductId)
-        .in('component_type', ['Embalagem Individual', 'Embalagem Colmeia', 'Embalagem Master']);
-
-      if (!structures || structures.length === 0) return;
-
-      const typeMap: Record<string, string> = {
-        'Embalagem Individual': 'individual',
-        'Embalagem Colmeia': 'colmeia',
-        'Embalagem Master': 'master',
-      };
-
-      // Fetch box details for each packaging
-      const boxIds = structures.filter(s => s.default_material_id).map(s => s.default_material_id!);
-      if (boxIds.length === 0) return;
-
-      const { data: boxes } = await supabase
-        .from('box_types')
-        .select('id, nome, comprimento_cm, largura_cm, altura_cm, peso_kg, unit_price, supplier_id')
-        .in('id', boxIds);
-
-      if (!boxes || boxes.length === 0) return;
-
-      // Check existing packaging_configs for this sheet to avoid duplicates
-      const { data: existingConfigs } = await supabase
-        .from('packaging_configs')
-        .select('packaging_type, box_type_id')
-        .eq('sheet_id', sheet.id);
-
-      const existingSet = new Set((existingConfigs || []).map(c => `${c.packaging_type}_${c.box_type_id}`));
-
-      let added = 0;
-      for (const struct of structures) {
-        if (!struct.default_material_id) continue;
-        const pkgType = typeMap[struct.component_type];
-        if (!pkgType) continue;
-
-        const dedupKey = `${pkgType}_${struct.default_material_id}`;
-        if (existingSet.has(dedupKey)) continue;
-
-        const box = boxes.find(b => b.id === struct.default_material_id);
-        if (!box) continue;
-
-        const defaultPairs = pkgType === 'individual' ? 1 : 12;
-        const { error } = await supabase.from('packaging_configs').insert({
-          sheet_id: sheet.id,
-          packaging_type: pkgType,
-          box_type_id: box.id,
-          pairs_per_box: defaultPairs,
-          nome: box.nome,
-          comprimento_cm: box.comprimento_cm,
-          largura_cm: box.largura_cm,
-          altura_cm: box.altura_cm,
-          peso_kg: box.peso_kg || 0,
-          cost_per_unit: box.unit_price || 0,
-          supplier_id: box.supplier_id || null,
-        } as any);
-        if (!error) added++;
-      }
-
-      if (added > 0) {
-        queryClient.invalidateQueries({ queryKey: ['packaging_configs', sheet.id] });
-        toast.success(`${added} ${added === 1 ? 'embalagem vinculada' : 'embalagens vinculadas'} automaticamente do solado!`);
-      }
-    } catch (err: any) {
-      console.error("Error auto-filling packaging:", err);
     }
   };
 
@@ -1671,8 +1589,6 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
         toast.info("Consumo para este solado não encontrado nas fichas de componentes. Configure na edição do grupo em Estoque.");
       }
 
-      // 3. Pull packaging associations from sole_structures
-      await autoFillPackagingFromSole(soleProductId);
     } catch (err: any) {
       console.error("Error auto-filling from sole specs:", err);
       toast.error("Erro ao puxar dados do solado: " + err.message);

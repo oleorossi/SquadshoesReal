@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { SaleOrderFormData, SaleOrderItemFormData, PACKAGING_MODE_LABELS, PACKAGING_MODE_CANONICAL, type PackagingMode, ORDER_TYPES } from '@/hooks/useSaleOrders';
 import { volumesForPairs, pairsPerVolumeForMode, isPairAsVolumeMode, collectiveTypeForMode } from '@/lib/packagingPairsPerBox';
-import { singleSizeMisfits } from '@/lib/boxPacking';
+import { packSaleOrderItem, packSaleOrderItemBySize, singleSizeMisfits } from '@/lib/boxPacking';
 import { useAccessControl } from '@/hooks/useAccessControl';
 import { useContractors } from '@/hooks/useContractors';
 import { DISPLAY_SECTORS, SECTOR_LABELS, type SectorKey } from '@/lib/sectors';
@@ -439,7 +439,8 @@ function FactoringField({ form, setForm, totalValue }: {
 export default function SaleOrderFormPanel({
   form, setForm, items, setItems, clients, representatives, references,
    isAdmin, selectedClientId, onClientSelect, onSubmit, onCancel, onUserEdit, isPending, submitLabel,
-   packagingProductId, onPackagingProductChange, packagingQuantity: _packagingQuantity, onPackagingQuantityChange,
+   packagingProductId: _packagingProductId, onPackagingProductChange: _onPackagingProductChange,
+   packagingQuantity: _packagingQuantity, onPackagingQuantityChange: _onPackagingQuantityChange,
    onSaveStateAndNavigate, onCopyToNewOrder, onDeleteSelectedItems,
    minBillingISO, computingMinBilling, onColorIssueChange,
  }: Props) {
@@ -505,77 +506,91 @@ export default function SaleOrderFormPanel({
     staleTime: 30_000,
   });
 
-  // Fetch box_types (central packaging registry)
-  const { data: boxTypes = [] } = useQuery({
-    queryKey: ['box_types'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('box_types')
-        .select('*')
-        .eq('active', true)
-        .order('nome');
-      if (error) throw error;
-      return data || [];
-    },
-    staleTime: 60_000,
-  });
-
   const { data: allVariantsByRef = new Map() } = useAllActiveReferenceMaterialVariants();
 
-  // Fetch packaging configs from technical sheets for selected references
+  // IDs das fichas/referências presentes no PV.
   const selectedSheetIds = useMemo(() => {
     return [...new Set(items.map(i => i.reference_id).filter(Boolean))];
   }, [items]);
 
+  // Visão contextual SOMENTE LEITURA. A configuração canônica é sempre:
+  // ficha -> tipo de solado -> slots de caixa em product_groups -> box_types.
+  // `packaging_configs` deixou de ser consultada aqui porque era uma segunda
+  // fonte, capaz de mostrar uma caixa diferente daquela debitada na OP.
   const { data: sheetPackagingConfigs = [] } = useQuery({
-    queryKey: ['packaging_configs_for_refs', selectedSheetIds],
+    queryKey: ['sole_packaging_for_sale_order_refs', selectedSheetIds],
     enabled: selectedSheetIds.length > 0,
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('packaging_configs')
-        .select('*, products:product_id(id, name, color, quantity)')
-        .in('sheet_id', selectedSheetIds);
-      if (error) throw error;
-      return data || [];
-    },
-    staleTime: 30_000,
-  });
-
-  // Auto-pull caixa do SOLADO: quando uma ficha técnica é selecionada nos itens,
-  // busca sole_group_id da ficha → pega box_type_id do product_groups daquele
-  // solado → sugere como packagingProductId quando ainda não há um setado.
-  // Conforme requisito: "ao selecionar o solado deve puxar as medidas da caixa
-  // correta automaticamente".
-  const { data: soleBoxes = [] } = useQuery({
-    queryKey: ['sole_boxes_for_refs', selectedSheetIds],
-    enabled: selectedSheetIds.length > 0,
-    queryFn: async () => {
-      const { data: sheets } = await supabase
+      const { data: sheets, error: sheetsError } = await supabase
         .from('technical_sheets')
         .select('id, sole_group_id')
         .in('id', selectedSheetIds);
-      const soleGroupIds = [...new Set((sheets || []).map(s => (s as any).sole_group_id).filter(Boolean))];
-      if (soleGroupIds.length === 0) return [];
-      const { data, error } = await supabase
+      if (sheetsError) throw sheetsError;
+
+      const groupIds = [...new Set((sheets ?? []).map(sheet => sheet.sole_group_id).filter(Boolean))] as string[];
+      if (groupIds.length === 0) return [];
+
+      const { data: groups, error: groupsError } = await supabase
         .from('product_groups')
-        .select('id, box_type_id, box_type_master_id, box_type_colmeia_id, box_type_fitilho_id, name')
-        .in('id', soleGroupIds);
-      if (error) throw error;
-      return data || [];
+        .select(`
+          id, name,
+          box_type_id, box_type_master_id, box_type_colmeia_id, box_type_fitilho_id,
+          pairs_per_box_individual, pairs_per_box_master, pairs_per_box_colmeia, pairs_per_box_fitilho
+        `)
+        .in('id', groupIds);
+      if (groupsError) throw groupsError;
+
+      const boxIds = [...new Set((groups ?? []).flatMap((group: any) => [
+        group.box_type_id,
+        group.box_type_master_id,
+        group.box_type_colmeia_id,
+        group.box_type_fitilho_id,
+      ]).filter(Boolean))] as string[];
+      const { data: boxes, error: boxesError } = boxIds.length === 0
+        ? { data: [], error: null }
+        : await supabase
+          .from('box_types')
+          .select('id, nome, tipo, pairs_per_box_default, metros_per_amarrado_default, comprimento_cm, largura_cm, altura_cm, peso_kg, quantity, active')
+          .in('id', boxIds);
+      if (boxesError) throw boxesError;
+
+      const groupsById = new Map((groups ?? []).map((group: any) => [group.id, group]));
+      const boxesById = new Map((boxes ?? []).map((box: any) => [box.id, box]));
+      const slots = [
+        ['individual', 'box_type_id', 'pairs_per_box_individual'],
+        ['master', 'box_type_master_id', 'pairs_per_box_master'],
+        ['colmeia', 'box_type_colmeia_id', 'pairs_per_box_colmeia'],
+        ['fitilho', 'box_type_fitilho_id', 'pairs_per_box_fitilho'],
+      ] as const;
+
+      return (sheets ?? []).flatMap((sheet: any) => {
+        const group: any = groupsById.get(sheet.sole_group_id);
+        if (!group) return [];
+        return slots.flatMap(([type, boxField, pairsField]) => {
+          const box: any = boxesById.get(group[boxField]);
+          if (!box || box.active === false) return [];
+          const pairs = Number(group[pairsField] || box.pairs_per_box_default || 12);
+          return [{
+            id: `${sheet.id}:${type}`,
+            sheet_id: sheet.id,
+            sole_group_id: group.id,
+            sole_group_name: group.name,
+            packaging_type: type,
+            box_type_id: box.id,
+            nome: box.nome,
+            pairs_per_box: Math.max(1, pairs),
+            metros_per_amarrado: Number(box.metros_per_amarrado_default || 1),
+            comprimento_cm: Number(box.comprimento_cm || 0),
+            largura_cm: Number(box.largura_cm || 0),
+            altura_cm: Number(box.altura_cm || 0),
+            peso_kg: Number(box.peso_kg || 0),
+            products: { id: box.id, name: box.nome, quantity: Number(box.quantity || 0) },
+          }];
+        });
+      });
     },
     staleTime: 30_000,
   });
-
-  // Auto-suggest de embalagem desabilitado: a lógica antiga setava
-  // sale_orders.packaging_product_id com um box_type_id (FK em box_types),
-  // mas a coluna tem FK em products(id) — quebrava o save com
-  // "violates foreign key constraint sale_orders_packaging_product_id_fkey".
-  // box_types e products são tabelas independentes; precisaria do produto
-  // correspondente em products (category='Embalagem') pra setar corretamente.
-  // Sistema já deriva embalagem do solado em outros lugares (PackagingTab/
-  // packaging_configs), então não há perda funcional em deixar isso vazio.
-
-  const _selectedPackaging = boxTypes.find(p => p.id === packagingProductId);
 
   const lastItemRef = useRef<HTMLDivElement>(null);
   const addItem = () => {
@@ -830,12 +845,6 @@ export default function SaleOrderFormPanel({
 
   const packagingVolumeSummary = useMemo(() => {
     const mode = form.packaging_mode || 'colmeia';
-    const byRef = new Map<string, number>();
-    items.forEach(item => {
-      if (item.reference_id && item.quantity > 0) {
-        byRef.set(item.reference_id, (byRef.get(item.reference_id) || 0) + item.quantity);
-      }
-    });
     const configByRef = new Map<string, number>();
     const collectiveType = collectiveTypeForMode(mode);
     sheetPackagingConfigs.forEach((config: any) => {
@@ -844,15 +853,31 @@ export default function SaleOrderFormPanel({
       }
     });
     let volumes = 0;
-    for (const [referenceId, pairs] of byRef) {
-      volumes += volumesForPairs(mode, pairs, configByRef.get(referenceId));
+    for (const item of items) {
+      if (!item.reference_id || item.quantity <= 0) continue;
+      const capacity = configByRef.get(item.reference_id) || 12;
+      if (isPairAsVolumeMode(mode)) {
+        volumes += item.quantity;
+        continue;
+      }
+      const pack = form.box_grouping === 'numeracao_unica'
+        ? packSaleOrderItemBySize
+        : packSaleOrderItem;
+      const packed = pack({
+        grade: item.grade,
+        fichas: Number(item.fichas) || 1,
+        capacity,
+      });
+      volumes += packed.length > 0
+        ? packed.length
+        : volumesForPairs(mode, item.quantity, capacity);
     }
     return {
       pairMode: isPairAsVolumeMode(mode),
-      pairsPerVolume: pairsPerVolumeForMode(mode),
+      pairsPerVolume: pairsPerVolumeForMode(mode, boxGroupingCapacity || undefined),
       volumes,
     };
-  }, [form.packaging_mode, items, sheetPackagingConfigs]);
+  }, [form.packaging_mode, form.box_grouping, items, sheetPackagingConfigs, boxGroupingCapacity]);
 
   // Sync de volta pro form quando user digita — assim o save (handleSubmit do
   // SaleOrderForm) já manda shipping_rate_per_pair no payload. Trigger no DB
@@ -898,25 +923,6 @@ export default function SaleOrderFormPanel({
     });
     return indices;
   }, [items]);
-
-  // Auto-calculate packaging quantity based on pairs_per_package.
-  // Default por MODO (12 p/ colmeia/master) quando a caixa não tem capacidade
-  // cadastrada — antes caía em 1 par/caixa, divergindo da NF.
-  const calcPackagingQty = (productId: string, pairs: number) => {
-    const pkg = boxTypes.find(p => p.id === productId);
-    const cadastrado = Number((pkg as any)?.pairs_per_box ?? (pkg as any)?.pairs_per_box_default) || 0;
-    const ppp = pairsPerVolumeForMode(form.packaging_mode, cadastrado);
-    return Math.ceil(pairs / Math.max(ppp, 1));
-  };
-
-  useEffect(() => {
-    if (packagingProductId && onPackagingQuantityChange) {
-      onPackagingQuantityChange(calcPackagingQty(packagingProductId, totalPairs));
-    }
-    // boxTypes is in deps because calcPackagingQty reads pairs_per_box from it.
-    // Without this dep, when boxTypes loads asynchronously after first render,
-    // pairs_per_box defaults to 1 and the wrong qty is set.
-  }, [totalPairs, packagingProductId, boxTypes]);
 
    /**
     * Identidade produtiva de um item para fins de duplicata.
@@ -1655,8 +1661,7 @@ export default function SaleOrderFormPanel({
                 />
               </div>
 
-              {onPackagingProductChange && (
-                <Collapsible
+              <Collapsible
                   open={packagingDetailsOpen}
                   onOpenChange={setPackagingDetailsOpen}
                   className="mt-4 rounded-lg border border-border/50 bg-muted/20"
@@ -1665,7 +1670,7 @@ export default function SaleOrderFormPanel({
                     <button type="button" className="flex w-full items-center justify-between gap-3 p-3 text-left">
                       <span className="flex items-center gap-1.5 text-xs font-bold text-foreground">
                         <Package className="h-3.5 w-3.5 text-primary" />
-                        Embalagens das Fichas Técnicas
+                        Embalagem definida pelo tipo de solado
                       </span>
                       <span className="ml-auto flex min-w-0 items-center gap-2">
                         {!packagingDetailsOpen && (
@@ -1715,58 +1720,33 @@ export default function SaleOrderFormPanel({
                   </RadioGroup>
 
 
-                  {/* Resumo de volumes — espelha a NF (compute_sale_order_nfe_volumes):
-                      total de pares ÷ pares-por-caixa do modo (12 padrão p/ colmeia/master).
-                      Aparece SEMPRE, mesmo sem caixa cadastrada nas fichas — antes a tela
-                      só mostrava "nenhuma embalagem", divergindo da NF. */}
-                  {(() => {
-                    const mode = form.packaging_mode;
-                    const byRef = new Map<string, number>();
-                    items.forEach(it => {
-                      if (it.reference_id && it.quantity > 0) {
-                        byRef.set(it.reference_id, (byRef.get(it.reference_id) || 0) + it.quantity);
-                      }
-                    });
-                    const totalP = Array.from(byRef.values()).reduce((s, n) => s + n, 0);
-                    if (totalP <= 0) return null;
-                    // pares/caixa cadastrado por ficha (config do tipo do modo); senão default 12
-                    const collType = collectiveTypeForMode(mode);
-                    const cfgByRef = new Map<string, number>();
-                    sheetPackagingConfigs.forEach((c: any) => {
-                      if (c.packaging_type === collType && Number(c.pairs_per_box) > 0) {
-                        cfgByRef.set(c.sheet_id, Number(c.pairs_per_box));
-                      }
-                    });
-                    let volumes = 0;
-                    for (const [refId, p] of byRef) volumes += volumesForPairs(mode, p, cfgByRef.get(refId));
-                    const pairMode = isPairAsVolumeMode(mode);
-                    const ppb = pairsPerVolumeForMode(mode);
-                    return (
-                      <div className="flex items-center justify-between rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-xs">
-                        <span className="text-muted-foreground">
-                          {pairMode
-                            ? `Cada par = 1 volume · ${totalP} pares`
-                            : `${ppb} pares/caixa (padrão) · ${totalP} pares ÷ ${ppb}`}
-                        </span>
-                        <span className="font-mono font-semibold text-foreground whitespace-nowrap">
-                          {volumes} {volumes === 1 ? 'volume' : 'volumes'}
-                        </span>
-                      </div>
-                    );
-                  })()}
+                  {/* Mesma regra de empacotamento da NF e do débito: calcula por
+                      item/cor, respeita a grade e nunca mistura referências. */}
+                  {totalPairs > 0 && (
+                    <div className="flex items-center justify-between rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-xs">
+                      <span className="text-muted-foreground">
+                        {packagingVolumeSummary.pairMode
+                          ? `Cada par = 1 volume · ${totalPairs} pares`
+                          : `${packagingVolumeSummary.pairsPerVolume} pares/caixa · cálculo por grade e referência`}
+                      </span>
+                      <span className="font-mono font-semibold text-foreground whitespace-nowrap">
+                        {packagingVolumeSummary.volumes} {packagingVolumeSummary.volumes === 1 ? 'volume' : 'volumes'}
+                      </span>
+                    </div>
+                  )}
 
-                  {/* Show packaging configs from technical sheets */}
+                  {/* Exibição contextual; a edição fica somente em /embalagens. */}
                   {sheetPackagingConfigs.length > 0 && (
                     <div className="space-y-2">
                       <Label className="inline-flex items-center gap-1.5 text-xs text-muted-foreground uppercase font-bold">
-                        <Package className="h-3.5 w-3.5" /> Configurações por referência
+                        <Package className="h-3.5 w-3.5" /> Configurações herdadas do solado
                       </Label>
                       {(() => {
                         const mode = form.packaging_mode;
                         // Filter configs based on packaging mode
                         const relevantConfigs = sheetPackagingConfigs.filter(cfg => {
                           if (mode === 'colmeia') return cfg.packaging_type === 'colmeia';
-                          if (mode === 'individual_amarrado') return cfg.packaging_type === 'individual';
+                          if (mode === 'individual_amarrado') return cfg.packaging_type === 'individual' || cfg.packaging_type === 'fitilho';
                           if (mode === 'individual_master') return cfg.packaging_type === 'individual' || cfg.packaging_type === 'master';
                           if (mode === 'individual_fitilho') return cfg.packaging_type === 'individual' || cfg.packaging_type === 'fitilho';
                           return true;
@@ -1776,7 +1756,7 @@ export default function SaleOrderFormPanel({
                           return (
                             <p className="flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-300">
                               <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-                              <span>Nenhuma embalagem do tipo selecionado configurada nas fichas técnicas.</span>
+                              <span>Nenhuma embalagem deste modo configurada no tipo de solado.</span>
                             </p>
                           );
                         }
@@ -1794,24 +1774,38 @@ export default function SaleOrderFormPanel({
                           return acc;
                         }, {} as Record<string, string>);
 
-                        // Calculate boxes needed per reference
-                        const itemsByRef = new Map<string, number>();
-                        items.forEach(item => {
-                          if (item.reference_id && item.quantity > 0) {
-                            itemsByRef.set(item.reference_id, (itemsByRef.get(item.reference_id) || 0) + item.quantity);
-                          }
-                        });
-
                         return (
                           <div className="space-y-1.5">
                             {Array.from(bySheet.entries()).map(([sheetId, cfgs]) => (
                               <div key={sheetId} className="p-2 rounded bg-background border border-border/40 space-y-1">
                                 <p className="text-xs font-bold text-foreground truncate">{refNames[sheetId] || sheetId}</p>
                                 {cfgs.map(cfg => {
-                                  const pairsForRef = itemsByRef.get(sheetId) || 0;
-                                  const boxesNeeded = cfg.pairs_per_box > 0 ? Math.ceil(pairsForRef / cfg.pairs_per_box) : 0;
-                                  const typeLabel = cfg.packaging_type === 'individual' ? 'Individual' : cfg.packaging_type === 'master' ? 'Master' : 'Colméia';
+                                  const capacity = Math.max(1, Number(cfg.pairs_per_box) || 1);
+                                  const packagesNeeded = items
+                                    .filter(item => item.reference_id === sheetId && item.quantity > 0)
+                                    .reduce((sum, item) => {
+                                      if (cfg.packaging_type === 'fitilho') {
+                                        return sum + Math.ceil(item.quantity / capacity) * Number(cfg.metros_per_amarrado || 1);
+                                      }
+                                      const pack = form.box_grouping === 'numeracao_unica'
+                                        ? packSaleOrderItemBySize
+                                        : packSaleOrderItem;
+                                      const packed = pack({
+                                        grade: item.grade,
+                                        fichas: Number(item.fichas) || 1,
+                                        capacity,
+                                      });
+                                      return sum + (packed.length > 0 ? packed.length : Math.ceil(item.quantity / capacity));
+                                    }, 0);
+                                  const typeLabel = cfg.packaging_type === 'individual'
+                                    ? 'Individual'
+                                    : cfg.packaging_type === 'master'
+                                      ? 'Master'
+                                      : cfg.packaging_type === 'fitilho'
+                                        ? 'Fitilho'
+                                        : 'Colméia';
                                   const linkedProduct = (cfg as any).products;
+                                  const unit = cfg.packaging_type === 'fitilho' ? 'm' : 'cx';
                                   return (
                                     <div key={cfg.id} className="flex items-center justify-between text-xs text-muted-foreground">
                                       <span>
@@ -1821,7 +1815,7 @@ export default function SaleOrderFormPanel({
                                         {cfg.pairs_per_box > 1 ? ` | ${cfg.pairs_per_box} pares/cx` : ''}
                                       </span>
                                       <span className="font-mono font-medium text-foreground ml-2 whitespace-nowrap">
-                                        {boxesNeeded > 0 ? `${boxesNeeded} cx` : '—'}
+                                        {packagesNeeded > 0 ? `${packagesNeeded.toLocaleString('pt-BR')} ${unit}` : '—'}
                                         {linkedProduct && (
                                           <span className="text-xs text-muted-foreground ml-1">(est: {linkedProduct.quantity})</span>
                                         )}
@@ -1840,12 +1834,11 @@ export default function SaleOrderFormPanel({
                   {sheetPackagingConfigs.length === 0 && selectedSheetIds.length > 0 && (
                     <p className="flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-300">
                       <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-                      <span>Nenhuma embalagem configurada nas fichas técnicas das referências selecionadas.</span>
+                      <span>Nenhuma embalagem configurada nos tipos de solado das referências selecionadas.</span>
                     </p>
                   )}
                   </CollapsibleContent>
                 </Collapsible>
-              )}
             </CardContent>
           </Card>
         </div>

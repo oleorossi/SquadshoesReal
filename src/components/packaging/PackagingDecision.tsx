@@ -1,248 +1,209 @@
-import { Cube as Box, Stack as Layers, Package as PackageCheck, WarningCircle as AlertCircle, Package } from '@phosphor-icons/react';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
 import { useQuery } from '@tanstack/react-query';
+import {
+  Cube as Box,
+  Stack as Layers,
+  Package as PackageCheck,
+  WarningCircle as AlertCircle,
+} from '@phosphor-icons/react';
 import { supabase } from '@/integrations/supabase/client';
-
-/** packaging modes → which packaging_type rows are consumed.
- *  Espelha `resolveTypesForMode` (utils/sole-packaging-debit.ts) e a RPC viva:
- *  'individual_amarrado' é sinônimo de 'individual_fitilho' e debita os DOIS
- *  tipos — antes esta tabela listava só 'individual' e a sugestão escondia o
- *  fitilho que o débito consome. */
-const MODE_TYPES: Record<string, string[]> = {
-  colmeia:            ['colmeia'],
-  individual_master:  ['individual', 'master'],
-  individual_fitilho: ['individual', 'fitilho'],
-  individual_amarrado:['individual', 'fitilho'],
-};
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
 
 interface PackagingDecisionProps {
   order: {
+    orderId: string;
     reference: string;
     quantity: number;
-    /** e.g. 'individual_amarrado' | 'individual_master' | 'colmeia' */
-    packagingMode?: string;
-    /** Technical sheet ID — used to look up packaging_configs */
-    sheetId?: string;
-    /** @deprecated use packagingMode */
-    model_packaging_type?: string;
-    accepts_bundled_packaging?: boolean;
   };
 }
 
+interface PlanRow {
+  packaging_mode: string;
+  packaging_type: string | null;
+  box_type_id: string | null;
+  box_name: string | null;
+  unit_label: string | null;
+  pairs_per_package: number | null;
+  required_quantity: number | null;
+  actual_debited: number | null;
+  remaining_quantity: number | null;
+  available_quantity: number | null;
+  audit_status: string;
+  sole_group_name: string | null;
+}
+
+interface BoxMeta {
+  id: string;
+  comprimento_cm: number | null;
+  largura_cm: number | null;
+  altura_cm: number | null;
+  unit_price: number | null;
+}
+
+const MODE_LABEL: Record<string, string> = {
+  individual_master: 'Tradicional (Individual + Master)',
+  colmeia: 'Caixa Colmeia',
+  individual_fitilho: 'Amarrado (Individual + Fitilho)',
+  individual_amarrado: 'Amarrado (legado)',
+};
+
+const STATUS_LABEL: Record<string, string> = {
+  ok: 'Débito conferido',
+  sem_debito: 'Ainda não debitado',
+  parcial: 'Débito parcial',
+  sem_estoque: 'Sem estoque',
+  estoque_parcial: 'Estoque insuficiente',
+  sem_solado: 'Ficha sem solado',
+  sem_caixa: 'Solado sem caixa',
+  caixa_inativa: 'Caixa inativa',
+  nao_aplicavel: 'Não aplicável',
+};
+
+const nf = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 3 });
+const brl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
+
 export function PackagingDecision({ order }: PackagingDecisionProps) {
-  const qty = Number(order.quantity) || 0;
-  const mode = order.packagingMode || order.model_packaging_type || 'individual_amarrado';
-  const activeTypes = MODE_TYPES[mode] || ['individual'];
-
-  const { data: configs = [], isLoading, error: configsError } = useQuery({
-    queryKey: ['packaging_configs_decision', order.sheetId],
-    enabled: !!order.sheetId,
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['packaging_plan_for_order', order.orderId],
+    enabled: !!order.orderId,
     queryFn: async () => {
-      // Fonte canônica desde 02/08/2026: os slots do MODELO DE SOLADO
-      // (`product_groups.box_type_*`), que é o que `debit_packaging_for_order`
-      // debita. O caminho antigo por ficha (`technical_sheet_box_types`) foi
-      // aposentado — se esta tela continuasse lendo de lá, a sugestão mostraria
-      // caixa diferente da que sai do estoque.
-      const { data: sheet, error: sheetErr } = await supabase
-        .from('technical_sheets')
-        .select('sole_group_id')
-        .eq('id', order.sheetId!)
-        .maybeSingle();
-      if (sheetErr) throw sheetErr;
-
-      const soleGroupId = (sheet as any)?.sole_group_id as string | null;
-      if (!soleGroupId) return [];
-
-      const { data, error } = await (supabase as any)
-        .from('product_groups')
-        .select(`
-          pairs_per_box_individual, pairs_per_box_master, pairs_per_box_colmeia, pairs_per_box_fitilho,
-          box_individual:box_type_id(id, nome, tipo, pairs_per_box_default, metros_per_amarrado_default, comprimento_cm, largura_cm, altura_cm, quantity, unit_price),
-          box_master:box_type_master_id(id, nome, tipo, pairs_per_box_default, metros_per_amarrado_default, comprimento_cm, largura_cm, altura_cm, quantity, unit_price),
-          box_colmeia:box_type_colmeia_id(id, nome, tipo, pairs_per_box_default, metros_per_amarrado_default, comprimento_cm, largura_cm, altura_cm, quantity, unit_price),
-          box_fitilho:box_type_fitilho_id(id, nome, tipo, pairs_per_box_default, metros_per_amarrado_default, comprimento_cm, largura_cm, altura_cm, quantity, unit_price)
-        `)
-        .eq('id', soleGroupId)
-        .maybeSingle();
-      if (error) throw error;
-      if (!data) return [];
-
-      const slots: Array<{ key: string; box: any; pairs: number | null }> = [
-        { key: 'individual', box: data.box_individual, pairs: data.pairs_per_box_individual },
-        { key: 'master', box: data.box_master, pairs: data.pairs_per_box_master },
-        { key: 'colmeia', box: data.box_colmeia, pairs: data.pairs_per_box_colmeia },
-        { key: 'fitilho', box: data.box_fitilho, pairs: data.pairs_per_box_fitilho },
-      ];
-
-      return slots.flatMap(({ key, box, pairs }) => {
-        const b = Array.isArray(box) ? box[0] : box;
-        if (!b) return [];
-        return [{
-          packaging_type: (b.tipo ?? key) as string,
-          nome: b.nome ?? 'Embalagem',
-          // Precedência igual à da RPC: valor do solado > padrão da caixa > 12.
-          pairs_per_box: Number(pairs || 0) > 0 ? Number(pairs) : Number(b.pairs_per_box_default || 12),
-          comprimento_cm: b.comprimento_cm ?? 0,
-          largura_cm: b.largura_cm ?? 0,
-          altura_cm: b.altura_cm ?? 0,
-          // Fitilho é linear: o preço é por metro e cada amarrado gasta N metros.
-          cost_per_unit: b.tipo === 'fitilho'
-            ? Number(b.unit_price ?? 0) * Number(b.metros_per_amarrado_default ?? 1)
-            : Number(b.unit_price ?? 0),
-          box_type_id: b.id,
-          box_types: { nome: b.nome, quantity: b.quantity },
-        }];
+      const { data: planData, error: planError } = await (supabase as any).rpc('plan_packaging_for_order', {
+        p_order_id: order.orderId,
       });
+      if (planError) throw planError;
+      const plan = (planData ?? []) as PlanRow[];
+      const ids = [...new Set(plan.map(row => row.box_type_id).filter(Boolean))] as string[];
+      if (ids.length === 0) return { plan, boxes: new Map<string, BoxMeta>() };
+
+      const { data: boxData, error: boxError } = await supabase
+        .from('box_types')
+        .select('id, comprimento_cm, largura_cm, altura_cm, unit_price')
+        .in('id', ids);
+      if (boxError) throw boxError;
+      return {
+        plan,
+        boxes: new Map((boxData ?? []).map(box => [box.id, box as BoxMeta])),
+      };
     },
+    staleTime: 30_000,
   });
 
-  if (isLoading) return <Skeleton className="h-32 w-full" />;
+  if (isLoading) return <Skeleton className="h-64 w-full" />;
 
-  /** Configs active for the chosen mode */
-  const relevant = configs.filter((c: any) => activeTypes.includes(c.packaging_type));
-
-  /** Per-type breakdown */
-  const breakdown = relevant.map((c: any) => {
-    const pairsPerBox = Math.max(1, Number(c.pairs_per_box) || 1);
-    const boxesNeeded = Math.ceil(qty / pairsPerBox);
-    const costPerUnit = Number((c as any).cost_per_unit || 0);
-    const l = Number(c.comprimento_cm) || 0;
-    const w = Number(c.largura_cm) || 0;
-    const h = Number(c.altura_cm) || 0;
-    const volM3 = l * w * h / 1_000_000;
-    const stockValue = Number((c.box_types as any)?.quantity);
-    const stockAvail = Number.isFinite(stockValue) ? stockValue : null;
+  const plan = data?.plan ?? [];
+  const mode = plan[0]?.packaging_mode ?? '';
+  const sole = plan[0]?.sole_group_name ?? null;
+  const breakdown = plan.map(row => {
+    const box = row.box_type_id ? data?.boxes.get(row.box_type_id) : null;
+    const required = Number(row.required_quantity ?? 0);
+    const unitPrice = Number(box?.unit_price ?? 0);
+    const volumeM3 = row.packaging_type === 'fitilho'
+      ? 0
+      : Number(box?.comprimento_cm ?? 0) * Number(box?.largura_cm ?? 0) * Number(box?.altura_cm ?? 0) / 1_000_000;
     return {
-      type: c.packaging_type as string,
-      nome: (c.box_types as any)?.nome || c.nome || c.packaging_type,
-      pairsPerBox,
-      boxesNeeded,
-      costPerUnit,
-      totalCost: costPerUnit * boxesNeeded,
-      volM3: volM3 * boxesNeeded,
-      stockAvail,
-      stockUnavailable: stockAvail === null,
-      hasShortage: stockAvail === null || stockAvail < boxesNeeded,
+      ...row,
+      cost: required * unitPrice,
+      volume: required * volumeM3,
+      hasIssue: !['ok', 'nao_aplicavel'].includes(row.audit_status),
     };
   });
 
-  /** Totals */
-  const totalCost = breakdown.reduce((s, b) => s + b.totalCost, 0);
-  const totalVolM3 = breakdown.reduce((s, b) => s + b.volM3, 0);
-  const anyShortage = breakdown.some(b => b.hasShortage);
-
-  const fmtBRL = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-  const modeLabel: Record<string, string> = {
-    individual_master:   'Tradicional (Individual + Master)',
-    colmeia:             'Caixa Colméia',
-    individual_fitilho:  'Amarrado (Individual + Fitilho)',
-    individual_amarrado: 'Apenas Individual (legado)',
-  };
+  const totalCost = breakdown.reduce((sum, row) => sum + row.cost, 0);
+  const totalVolume = breakdown.reduce((sum, row) => sum + row.volume, 0);
+  const hasIssue = breakdown.some(row => row.hasIssue);
 
   return (
     <Card className="border-l-4 border-l-primary">
-      <CardHeader className="flex flex-row items-center space-x-2 pb-2">
+      <CardHeader className="flex flex-row items-center gap-2 pb-2">
         <Box className="h-5 w-5 text-primary" />
-        <CardTitle className="text-base font-semibold">
-          Sugestão — Pedido #{order.reference}
-        </CardTitle>
-        <Badge variant="outline" className="ml-auto text-xs">
-          {modeLabel[mode] || mode}
-        </Badge>
+        <CardTitle className="text-base">Plano — OP #{order.reference}</CardTitle>
+        {mode && <Badge variant="outline" className="ml-auto text-xs">{MODE_LABEL[mode] ?? mode}</Badge>}
       </CardHeader>
-
       <CardContent className="space-y-4">
-        {!order.sheetId ? (
-          <div className="text-muted-foreground text-sm flex items-center gap-2">
-            <Package className="h-4 w-4" />
-            Selecione uma OP com ficha técnica para visualizar a sugestão de embalagem.
-          </div>
-        ) : configsError ? (
-          <div className="text-destructive text-sm flex items-center gap-2">
+        {error ? (
+          <div className="flex items-center gap-2 text-sm text-destructive">
             <AlertCircle className="h-4 w-4" />
-            Não foi possível consultar as embalagens vinculadas à ficha: {(configsError as Error).message}
+            Não foi possível calcular o plano: {(error as Error).message}
           </div>
-        ) : relevant.length === 0 ? (
-          <div className="text-muted-foreground text-sm flex items-center gap-2">
-            <Package className="h-4 w-4" />
-            Nenhuma caixa configurada no solado desta referência para o modo <strong>{modeLabel[mode] || mode}</strong>.
-            Configure em Solados → Consumos → Embalagem. Sem isso, o pedido entra mas nada é debitado.
-          </div>
+        ) : plan.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Nenhum plano encontrado para esta OP.</p>
         ) : (
           <>
-            {/* Breakdown table */}
-            <div className="rounded-lg border overflow-hidden">
-              {/* Audit A8: scroll horizontal interno — overflow-hidden do card clipava as colunas finais em 360px */}
-              <div className="overflow-x-auto">
-              <table className="w-full min-w-[520px] text-sm">
+            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              <span>Tipo de solado: <strong className="text-foreground">{sole ?? 'não vinculado'}</strong></span>
+              <span>·</span>
+              <span>{nf.format(order.quantity)} pares</span>
+            </div>
+
+            <div className="overflow-x-auto rounded-lg border">
+              <table className="w-full min-w-[720px] text-sm">
                 <thead>
-                  <tr className="bg-muted/30 text-left">
-                    <th scope="col" className="p-2 pl-3 font-medium text-xs">Embalagem</th>
-                    <th scope="col" className="p-2 text-center font-medium text-xs">Pares/cx</th>
-                    <th scope="col" className="p-2 text-center font-medium text-xs">Qtd. Caixas</th>
-                    <th scope="col" className="p-2 text-center font-medium text-xs">Estoque</th>
-                    <th scope="col" className="p-2 text-right font-medium text-xs pr-3">Custo</th>
+                  <tr className="border-b bg-muted/40 text-left text-xs text-muted-foreground">
+                    <th className="p-2.5 font-medium">Embalagem</th>
+                    <th className="p-2.5 text-center font-medium">Capacidade</th>
+                    <th className="p-2.5 text-right font-medium">Necessário</th>
+                    <th className="p-2.5 text-right font-medium">Debitado</th>
+                    <th className="p-2.5 text-right font-medium">Estoque</th>
+                    <th className="p-2.5 font-medium">Situação</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {breakdown.map(b => (
-                    <tr key={b.type} className={b.hasShortage ? 'bg-destructive/5' : ''}>
-                      <td className="p-2 pl-3">
+                  {breakdown.map((row, index) => (
+                    <tr key={`${row.packaging_type ?? 'none'}:${index}`} className={row.hasIssue ? 'bg-warning/[0.04]' : ''}>
+                      <td className="p-2.5">
                         <div className="flex items-center gap-2">
-                          <PackageCheck className="h-3.5 w-3.5 text-primary shrink-0" />
-                          <span className="font-medium text-xs">{b.nome}</span>
-                          <Badge variant="outline" className="text-xs h-4">{b.type}</Badge>
+                          <PackageCheck className="h-4 w-4 shrink-0 text-primary" />
+                          <div>
+                            <p className="text-xs font-medium">{row.box_name ?? 'Não configurada'}</p>
+                            <p className="text-xs text-muted-foreground">{row.packaging_type ?? '—'}</p>
+                          </div>
                         </div>
                       </td>
-                      <td className="p-2 text-center text-xs font-mono">{b.pairsPerBox}</td>
-                      <td className="p-2 text-center">
-                        <span className="font-bold text-sm">{b.boxesNeeded}</span>
+                      <td className="p-2.5 text-center font-mono text-xs">
+                        {row.pairs_per_package ? `${row.pairs_per_package} pares` : '—'}
                       </td>
-                      <td className="p-2 text-center text-xs">
-                        {b.stockAvail !== null ? (
-                          <span className={b.hasShortage ? 'text-destructive font-semibold' : 'text-muted-foreground'}>
-                            {b.stockAvail}
-                            {b.hasShortage && <span className="ml-1 text-xs text-destructive">⚠ FALTA {b.boxesNeeded - b.stockAvail}</span>}
-                          </span>
-                        ) : <span className="text-destructive font-semibold">Indisponível</span>}
+                      <td className="p-2.5 text-right font-mono text-xs">
+                        {row.required_quantity == null ? '—' : `${nf.format(row.required_quantity)} ${row.unit_label ?? ''}`}
                       </td>
-                      <td className="p-2 text-right text-xs font-mono pr-3">
-                        {b.totalCost > 0 ? fmtBRL(b.totalCost) : '—'}
+                      <td className="p-2.5 text-right font-mono text-xs">{nf.format(row.actual_debited ?? 0)}</td>
+                      <td className="p-2.5 text-right font-mono text-xs">
+                        {row.available_quantity == null ? '—' : nf.format(row.available_quantity)}
+                      </td>
+                      <td className="p-2.5">
+                        <Badge variant="outline" className={row.hasIssue
+                          ? 'border-warning/30 bg-warning/10 text-warning-foreground'
+                          : 'border-success/30 bg-success/10 text-success'}>
+                          {STATUS_LABEL[row.audit_status] ?? row.audit_status}
+                        </Badge>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="rounded-lg bg-muted/40 p-3">
+                <p className="text-xs text-muted-foreground">Cubicagem calculada</p>
+                <p className="mt-0.5 flex items-center gap-1.5 font-mono text-sm font-bold">
+                  <Layers className="h-4 w-4 text-primary" /> {totalVolume.toFixed(3)} m³
+                </p>
+              </div>
+              <div className="rounded-lg bg-muted/40 p-3">
+                <p className="text-xs text-muted-foreground">Custo previsto</p>
+                <p className="mt-0.5 text-sm font-bold">{totalCost > 0 ? brl.format(totalCost) : '—'}</p>
+              </div>
+              <div className="rounded-lg bg-muted/40 p-3">
+                <p className="text-xs text-muted-foreground">Origem da configuração</p>
+                <p className="mt-0.5 text-sm font-bold">Tipo de solado</p>
               </div>
             </div>
 
-            {/* Summary row */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div className="p-3 bg-muted/40 rounded-lg">
-                <p className="text-xs text-muted-foreground">Cubicagem estimada</p>
-                <div className="flex items-center gap-1.5 mt-0.5">
-                  <Layers className="h-4 w-4 text-primary" />
-                  <span className="font-bold text-sm font-mono">
-                    {totalVolM3 > 0 ? `${totalVolM3.toFixed(3)} m³` : `≈ ${(qty * 0.005).toFixed(3)} m³`}
-                  </span>
-                </div>
-              </div>
-              <div className="p-3 bg-muted/40 rounded-lg">
-                <p className="text-xs text-muted-foreground">Custo total embalagem</p>
-                <p className="font-bold text-sm mt-0.5">{totalCost > 0 ? fmtBRL(totalCost) : '—'}</p>
-              </div>
-              <div className="p-3 bg-muted/40 rounded-lg">
-                <p className="text-xs text-muted-foreground">Total de pares</p>
-                <p className="font-bold text-sm mt-0.5">{qty} pares</p>
-              </div>
-            </div>
-
-            {anyShortage && (
-              <div className="flex items-start gap-2 bg-destructive/10 border border-destructive/20 p-3 rounded-lg text-sm text-destructive">
-                <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
-                <p>Estoque insuficiente em uma ou mais embalagens. Verifique os alertas acima antes de iniciar a embalagem.</p>
+            {hasIssue && (
+              <div className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm text-warning-foreground">
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                Corrija a pendência nas abas Configuração por Solado ou Cadastro & Estoque deste módulo.
               </div>
             )}
           </>

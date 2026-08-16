@@ -15,7 +15,7 @@ import { supabase } from '@/integrations/supabase/client';
  * Embalagem na ficha técnica — SOMENTE LEITURA desde 02/08/2026.
  *
  * A fonte única passou a ser o MODELO DE SOLADO (`product_groups.box_type_*`),
- * editado em Solados → Consumos → Embalagem. Esta aba mostra o que o solado da
+ * editado em Embalagens → Configuração por Solado. Esta aba mostra o que o solado da
  * ficha define e manda editar lá.
  *
  * Por que saiu daqui: `technical_sheet_box_types` permitia vincular DUAS caixas
@@ -151,10 +151,10 @@ export function PackagingTab({ sheetId, soleGroupId }: PackagingTabProps) {
           </div>
           <Button
             type="button" variant="outline" size="sm" className="h-8 gap-1.5 shrink-0"
-            onClick={() => navigate('/solados')}
+            onClick={() => navigate(`/embalagens?tab=soles&soleGroupId=${resolvedGroupId}`)}
           >
             <ArrowSquareOut className="h-3.5 w-3.5" />
-            Editar em Solados
+            Abrir em Embalagens
           </Button>
         </CardContent>
       </Card>

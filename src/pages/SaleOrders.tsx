@@ -1692,7 +1692,7 @@ export default function SaleOrders() {
                 p_reference_id: item.reference_id,
                 p_order_quantity: item.quantity,
                 p_packaging_mode: pkgMode,
-                p_force_soft: true,
+                p_force_soft: false,
               } as any);
               if (pkgError) errors.push(`${order.order_number}: Embalagem - ${pkgError.message}`);
 

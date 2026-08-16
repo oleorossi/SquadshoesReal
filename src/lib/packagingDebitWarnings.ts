@@ -80,7 +80,7 @@ export function warnPackagingDebit(data: unknown, contextLabel?: string): void {
         {
           description:
             `Necessário ${qty(e.needed_qty, unidade)} · debitado ${qty(debitado, unidade)} · falta ${qty(falta, unidade)}. ` +
-            'O pedido seguiu normalmente. Reponha em Logística → Embalagens; ao repor, o débito se completa sozinho na próxima ação da OP.',
+            'O pedido seguiu normalmente. Reponha em Embalagens → Cadastro & Estoque; o débito se completa na próxima ação da OP.',
           duration: 12000,
         },
       );
@@ -103,12 +103,12 @@ export function warnPackagingDebit(data: unknown, contextLabel?: string): void {
       {
         description: semSolado
           ? 'A embalagem é definida pelo modelo de solado. Vincule o solado na ficha técnica (aba Solado).'
-          : 'Cadastre em Solados → escolha o solado → Consumos → Embalagem.',
+          : 'Cadastre em Embalagens → Configuração por Solado.',
       },
     );
   } else if (skipped.length > 0) {
     toast.warning(`${prefix}Sem caixa vinculada para: ${skipped.join(', ')}.`, {
-      description: 'Vincule em Solados → escolha o solado → Consumos → Embalagem.',
+      description: 'Vincule em Embalagens → Configuração por Solado.',
     });
   }
 }

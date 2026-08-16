@@ -275,21 +275,6 @@ function getWeekOptions() {
 
   useRealtimeOrderStages();
 
-  const packagingProducts = useMemo(() => products.filter(p => p.category === 'Embalagem' && p.active), [products]);
-
-  const { data: boxTypesForOrders = [] } = useQuery({
-    queryKey: ['box_types'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('box_types')
-        .select('*')
-        .order('nome');
-      if (error) throw error;
-      return data || [];
-    },
-    staleTime: 30 * 60 * 1000,
-  });
-
   // Busca NÃO persiste: reseta ao sair e voltar pra tela (useState remonta
   // limpo). Antes usava usePersistedState com a chave 'searchTerm' — a MESMA
   // de SaleOrders, então o termo vazava entre OPs e PVs.
@@ -325,8 +310,8 @@ function getWeekOptions() {
   const [deleteOrderId, setDeleteOrderId] = useState<string | null>(null);
   const [bulkCancelIds, setBulkCancelIds] = useState<Set<string> | null>(null);
 
-  const [form, setForm] = useState<OrderFormData & { color: string; planned_start: string; planned_delivery: string; production_line: string; responsible: string; packaging_type: string; packaging_product_id: string; packaging_quantity: number; sale_order_id: string }>({
-    reference_id: '', quantity: 1, notes: '', color: '', planned_start: '', planned_delivery: '', production_line: '', responsible: '', packaging_type: '', packaging_product_id: '', packaging_quantity: 0, sale_order_id: '',
+  const [form, setForm] = useState<OrderFormData & { color: string; planned_start: string; planned_delivery: string; production_line: string; responsible: string; sale_order_id: string }>({
+    reference_id: '', quantity: 1, notes: '', color: '', planned_start: '', planned_delivery: '', production_line: '', responsible: '', sale_order_id: '',
   });
 
   const normalizedStatusFilter = statusFilter;
@@ -1049,13 +1034,10 @@ function getWeekOptions() {
       planned_delivery: form.planned_delivery || undefined,
       production_line: form.production_line,
       responsible: form.responsible,
-      packaging_type: form.packaging_type,
-      packaging_product_id: form.packaging_product_id || undefined,
-      packaging_quantity: form.packaging_quantity,
       sale_order_id: form.sale_order_id || undefined,
     } as any);
     setConfirmOpen(false);
-    setForm({ reference_id: '', quantity: 1, notes: '', color: '', planned_start: '', planned_delivery: '', production_line: '', responsible: '', packaging_type: '', packaging_product_id: '', packaging_quantity: 0, sale_order_id: '' });
+    setForm({ reference_id: '', quantity: 1, notes: '', color: '', planned_start: '', planned_delivery: '', production_line: '', responsible: '', sale_order_id: '' });
     setStockCheckResult([]);
   };
 
@@ -1998,7 +1980,7 @@ function getWeekOptions() {
       {/* OP form dialog */}
       <Dialog open={dialogOpen} onOpenChange={(open) => {
         setDialogOpen(open);
-        if (!open) setForm({ reference_id: '', quantity: 1, notes: '', color: '', planned_start: '', planned_delivery: '', production_line: '', responsible: '', packaging_type: '', packaging_product_id: '', packaging_quantity: 0, sale_order_id: '' });
+        if (!open) setForm({ reference_id: '', quantity: 1, notes: '', color: '', planned_start: '', planned_delivery: '', production_line: '', responsible: '', sale_order_id: '' });
       }}>
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -2175,43 +2157,6 @@ function getWeekOptions() {
                 <Label>Responsável</Label>
                 <Input value={form.responsible} onChange={e => setForm(f => ({ ...f, responsible: e.target.value }))} className="mt-1" />
               </div>
-
-              {/* Embalagem */}
-              <div className="sm:col-span-2 border-t pt-3 mt-1">
-                <p className="text-xs font-semibold text-muted-foreground mb-2">Embalagem</p>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div>
-                    <Label>Tipo de Embalagem</Label>
-                    <Select value={form.packaging_type} onValueChange={v => setForm(f => ({ ...f, packaging_type: v }))}>
-                      <SelectTrigger className="mt-1"><SelectValue placeholder="Selecione" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Caixa Individual">Caixa Individual</SelectItem>
-                        <SelectItem value="Caixa Corrugada">Caixa Corrugada</SelectItem>
-                        {boxTypesForOrders.map(bt => (
-                          <SelectItem key={bt.id} value={bt.nome}>
-                            {bt.nome} ({bt.comprimento_cm}×{bt.largura_cm}×{bt.altura_cm} cm)
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label>Produto Embalagem (Estoque)</Label>
-                    <Select value={form.packaging_product_id} onValueChange={v => setForm(f => ({ ...f, packaging_product_id: v }))}>
-                      <SelectTrigger className="mt-1"><SelectValue placeholder="Selecione" /></SelectTrigger>
-                      <SelectContent>
-                        {packagingProducts.map(p => (
-                          <SelectItem key={p.id} value={p.id}>{p.name} (Disp: {p.quantity})</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label>Qtd Embalagem</Label>
-                    <Input type="number" min={0} value={form.packaging_quantity} onChange={e => setForm(f => ({ ...f, packaging_quantity: Number(e.target.value) }))} className="mt-1 font-mono" />
-                  </div>
-                </div>
-              </div>
             </div>
             <div>
               <Label>Observações</Label>
@@ -2286,7 +2231,7 @@ function getWeekOptions() {
               <AlertDialogAction onClick={() => {
                 createOrder.mutate({ ...form, status_override: 'Rascunho' } as any);
                 setConfirmOpen(false);
-                setForm({ reference_id: '', quantity: 1, notes: '', color: '', planned_start: '', planned_delivery: '', production_line: '', responsible: '', packaging_type: '', packaging_product_id: '', packaging_quantity: 0, sale_order_id: '' });
+                setForm({ reference_id: '', quantity: 1, notes: '', color: '', planned_start: '', planned_delivery: '', production_line: '', responsible: '', sale_order_id: '' });
                 setStockCheckResult([]);
               }} className="bg-muted text-muted-foreground hover:bg-muted/80">
                 Salvar como Rascunho

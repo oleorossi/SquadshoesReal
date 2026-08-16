@@ -21,6 +21,10 @@ export interface PackagingStats {
   boxes_without_tare: number;
   /** Grupos de solado sem NENHUM dos 3 modos montado — PV entra e não debita. */
   soles_without_packaging: number;
+  /** Grupos com pelo menos um dos três modos incompleto. */
+  soles_with_incomplete_modes: number;
+  /** Fichas sem tipo de solado: não há como resolver a embalagem. */
+  sheets_without_sole: number;
   // ── totais (informativo) ──
   total_boxes: number;
   total_units: number;
@@ -42,13 +46,22 @@ export function usePackagingStats() {
 
       // Prontidão dos 3 modos por modelo de solado — a view nasceu com a
       // migration 20261110120000, junto com a fonte única no solado.
-      const { data: soles, error: solesErr } = await (supabase as any)
-        .from('v_solados_sem_embalagem')
-        .select('modo_tradicional_ok, modo_amarrado_ok, modo_colmeia_ok');
+      const [solesRes, sheetsRes] = await Promise.all([
+        (supabase as any)
+          .from('v_solados_sem_embalagem')
+          .select('modo_tradicional_ok, modo_amarrado_ok, modo_colmeia_ok'),
+        (supabase as any)
+          .from('v_fichas_sem_solado_embalagem')
+          .select('sheet_id', { count: 'exact', head: true }),
+      ]);
+      const { data: soles, error: solesErr } = solesRes;
       if (solesErr) throw new Error(`Falha ao ler prontidão de embalagem dos solados: ${solesErr.message}`);
+      if (sheetsRes.error) throw new Error(`Falha ao ler fichas sem solado: ${sheetsRes.error.message}`);
 
       const semNenhumModo = ((soles ?? []) as Array<Record<string, boolean>>)
         .filter(s => !s.modo_tradicional_ok && !s.modo_amarrado_ok && !s.modo_colmeia_ok).length;
+      const modoIncompleto = ((soles ?? []) as Array<Record<string, boolean>>)
+        .filter(s => !s.modo_tradicional_ok || !s.modo_amarrado_ok || !s.modo_colmeia_ok).length;
 
       return {
         low_stock_alerts: boxes.filter(b =>
@@ -56,6 +69,8 @@ export function usePackagingStats() {
         boxes_without_price: boxes.filter(b => !(Number(b.unit_price || 0) > 0)).length,
         boxes_without_tare: boxes.filter(b => !(Number(b.empty_weight_kg || 0) > 0)).length,
         soles_without_packaging: semNenhumModo,
+        soles_with_incomplete_modes: modoIncompleto,
+        sheets_without_sole: sheetsRes.count ?? 0,
         total_boxes: boxes.length,
         total_units: boxes.reduce((s, b) => s + Number(b.quantity || 0), 0),
       };
@@ -251,20 +266,48 @@ export function useDuplicateIndividualPackaging() {
   });
 }
 
-/** Hook to get low-stock packaging alerts */
+export interface PackagingAlertsData {
+  lowStock: any[];
+  boxesWithoutPrice: any[];
+  boxesWithoutTare: any[];
+  incompleteSoles: any[];
+  sheetsWithoutSole: any[];
+}
+
+/** Alertas completos do domínio — estoque, cadastro de caixa e vínculo por solado. */
 export function usePackagingAlerts() {
-  return useQuery({
+  return useQuery<PackagingAlertsData>({
     queryKey: ['packagingAlerts'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('box_types')
-        .select('id, nome, interno, quantity, min_stock, unit_price, supplier_id')
-        .eq('active', true)
-        .order('nome');
-      if (error) throw error;
-      return (data ?? []).filter(b =>
-        Number(b.min_stock || 0) > 0 && Number(b.quantity || 0) <= Number(b.min_stock || 0)
-      );
+      const [boxesRes, solesRes, sheetsRes] = await Promise.all([
+        supabase
+          .from('box_types')
+          .select('id, nome, tipo, interno, quantity, min_stock, unit_price, empty_weight_kg, supplier_id')
+          .eq('active', true)
+          .order('nome'),
+        (supabase as any)
+          .from('v_solados_sem_embalagem')
+          .select('sole_group_id, solado, modo_tradicional_ok, modo_amarrado_ok, modo_colmeia_ok, fichas_afetadas')
+          .order('solado'),
+        (supabase as any)
+          .from('v_fichas_sem_solado_embalagem')
+          .select('sheet_id, ficha, itens_pv, motivo')
+          .order('itens_pv', { ascending: false }),
+      ]);
+      if (boxesRes.error) throw boxesRes.error;
+      if (solesRes.error) throw solesRes.error;
+      if (sheetsRes.error) throw sheetsRes.error;
+
+      const boxes = boxesRes.data ?? [];
+      return {
+        lowStock: boxes.filter(box =>
+          Number(box.min_stock || 0) > 0 && Number(box.quantity || 0) <= Number(box.min_stock || 0)),
+        boxesWithoutPrice: boxes.filter(box => !(Number(box.unit_price || 0) > 0)),
+        boxesWithoutTare: boxes.filter(box => !(Number((box as any).empty_weight_kg || 0) > 0)),
+        incompleteSoles: (solesRes.data ?? []).filter((sole: any) =>
+          !sole.modo_tradicional_ok || !sole.modo_amarrado_ok || !sole.modo_colmeia_ok),
+        sheetsWithoutSole: sheetsRes.data ?? [],
+      };
     },
     staleTime: 2 * 60_000,
   });
@@ -309,4 +352,3 @@ export function useCreatePackagingCatalog() {
     onError: () => toast.error('Erro ao criar item do catálogo'),
   });
 }
-

@@ -575,17 +575,6 @@ export function useCloneSheet() {
         if (matInsErr) await rollback(`Falha ao copiar materiais: ${matInsErr.message}`);
       }
 
-      const { data: pkgs, error: pkgReadErr } = await supabase
-        .from('packaging_configs')
-        .select('*')
-        .eq('sheet_id', sourceId);
-      if (pkgReadErr) await rollback(`Falha ao ler embalagens: ${pkgReadErr.message}`);
-      if (pkgs && pkgs.length > 0) {
-        const rows = pkgs.map(({ id: _i, created_at: _c, updated_at: _u, ...p }: any) => ({ ...p, sheet_id: newId }));
-        const { error: pkgInsErr } = await supabase.from('packaging_configs').insert(rows as any);
-        if (pkgInsErr) await rollback(`Falha ao copiar embalagens: ${pkgInsErr.message}`);
-      }
-
       const { data: soleMaps, error: soleReadErr } = await (supabase as any)
         .from('technical_sheet_sole_colors')
         .select('*')

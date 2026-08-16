@@ -233,6 +233,11 @@ export default function SolePackagingPanel({ soleGroupId, soleGroupName }: Props
       qc.invalidateQueries({ queryKey: ['sole_packaging', soleGroupId] });
       qc.invalidateQueries({ queryKey: ['packaging_links_overview_by_sole'] });
       qc.invalidateQueries({ queryKey: ['soles_without_packaging'] });
+      qc.invalidateQueries({ queryKey: ['packaging_sole_groups'] });
+      qc.invalidateQueries({ queryKey: ['packagingStats'] });
+      qc.invalidateQueries({ queryKey: ['packagingAlerts'] });
+      qc.invalidateQueries({ queryKey: ['packaging_debit_audit'] });
+      qc.invalidateQueries({ queryKey: ['packaging_plan_for_order'] });
       markDirty(false);
     } catch (err: any) {
       toast.error(err?.message || 'Erro ao salvar embalagem');

@@ -11,15 +11,13 @@ import { toast } from 'sonner';
 /**
  * Cadastro COMPLETO de uma caixa (`box_types`) — porta ÚNICA.
  *
- * Decisão do dono (02/08/2026): embalagem passa a ser cadastrada também pela
- * tela do solado, com medidas/preço/estoque. Pra não repetir o padrão de "dois
- * editores do mesmo dado" (que já custou caro em grupos de estoque e no consumo
- * de solado), o formulário mora AQUI e é montado nos dois lugares:
+ * Porta única: Gestão de Embalagens. O mesmo formulário é aberto pela lista de
+ * estoque e pelo vínculo por tipo de solado, ambos dentro de `/embalagens`.
  *
- *   • Gestão de Embalagens → Cadastro & Estoque  (`PackagingStockPanel`)
- *   • Solados → Consumos → Embalagem             (`SolePackagingPanel`)
- *
- * Corrigir um campo aqui corrige nos dois. Não recriar um segundo formulário.
+ * O save inteiro passa por `upsert_box_type_with_stock`: metadados, quantidade
+ * e stock_movements são confirmados na MESMA transação. O fluxo anterior fazia
+ * UPDATE absoluto e só depois tentava inserir o movimento, então concorrência
+ * com um débito podia perder estoque e falha no histórico ficava invisível.
  */
 
 export type BoxKind = 'individual' | 'master' | 'colmeia' | 'fitilho';
@@ -119,6 +117,7 @@ export function invalidateBoxQueries(qc: ReturnType<typeof useQueryClient>) {
   for (const key of [
     'box_types_stock', 'box_types', 'box_types_with_kind', 'individualPackaging',
     'packagingStats', 'packagingAlerts', 'sole_packaging', 'packaging_links_overview_by_sole',
+    'packaging_sole_groups', 'packaging_debit_audit', 'packaging_plan_for_order',
   ]) {
     qc.invalidateQueries({ queryKey: [key] });
   }
@@ -165,74 +164,42 @@ export function BoxTypeFormDialog({ open, onOpenChange, box, defaultTipo, onSave
       toast.error('Nome é obrigatório');
       return;
     }
+    if (!(form.pairs_per_box_default > 0)) {
+      toast.error(form.tipo === 'fitilho' ? 'Pares por amarrado deve ser maior que zero' : 'Pares por caixa deve ser maior que zero');
+      return;
+    }
+    if (form.tipo === 'fitilho' && !(form.metros_per_amarrado_default > 0)) {
+      toast.error('Metros por amarrado deve ser maior que zero');
+      return;
+    }
+    if ([form.quantity, form.min_stock, form.unit_price].some(value => !Number.isFinite(value) || value < 0)) {
+      toast.error('Estoque, mínimo e custo devem ser números não negativos');
+      return;
+    }
     setSaving(true);
     try {
-      // `interno` espelha tipo='individual' por compat com leitores antigos.
-      // `empty_weight_kg` entra também na CRIAÇÃO — antes só era gravado na
-      // edição, então caixa nova nascia sem tara e o peso bruto da NF saía
-      // errado até alguém reabrir e salvar de novo.
-      const payload = {
-        nome: form.nome.trim(),
-        tipo: form.tipo,
-        interno: form.tipo === 'individual',
-        pairs_per_box_default: form.pairs_per_box_default,
-        metros_per_amarrado_default: form.tipo === 'fitilho' ? form.metros_per_amarrado_default : null,
-        comprimento_cm: form.comprimento_cm,
-        largura_cm: form.largura_cm,
-        altura_cm: form.altura_cm,
-        peso_kg: form.peso_kg,
-        empty_weight_kg: form.empty_weight_kg || null,
-        empilhamento_maximo: form.empilhamento_maximo || null,
-        quantity: form.quantity,
-        min_stock: form.min_stock,
-        unit_price: form.unit_price,
-        supplier_id: form.supplier_id || null,
-      };
+      const { data: savedId, error } = await (supabase as any).rpc('upsert_box_type_with_stock', {
+        p_box_type_id: box?.id ?? null,
+        p_nome: form.nome.trim(),
+        p_tipo: form.tipo,
+        p_pairs_per_box_default: form.pairs_per_box_default,
+        p_metros_per_amarrado_default: form.tipo === 'fitilho' ? form.metros_per_amarrado_default : null,
+        p_comprimento_cm: form.comprimento_cm,
+        p_largura_cm: form.largura_cm,
+        p_altura_cm: form.altura_cm,
+        p_peso_kg: form.peso_kg,
+        p_empty_weight_kg: form.empty_weight_kg || null,
+        p_empilhamento_maximo: form.empilhamento_maximo || null,
+        p_quantity: form.quantity,
+        p_min_stock: form.min_stock,
+        p_unit_price: form.unit_price,
+        p_supplier_id: form.supplier_id || null,
+      });
+      if (error) throw error;
 
-      if (isEdit && box) {
-        const prevQty = Number(box.quantity || 0);
-        const { error } = await (supabase as any)
-          .from('box_types')
-          .update({ ...payload, updated_at: new Date().toISOString() })
-          .eq('id', box.id);
-        if (error) throw error;
-
-        const diff = Math.abs(form.quantity - prevQty);
-        if (diff > 0) {
-          await supabase.from('stock_movements').insert({
-            product_id: box.id,
-            movement_type: form.quantity > prevQty ? 'in' : 'out',
-            quantity: diff,
-            previous_stock: prevQty,
-            new_stock: form.quantity,
-            description: 'Ajuste manual de estoque de embalagem',
-          });
-        }
-        toast.success('Embalagem atualizada!');
-        invalidateBoxQueries(qc);
-        onSaved?.(box.id);
-      } else {
-        const { data: created, error } = await (supabase as any)
-          .from('box_types')
-          .insert({ ...payload, active: true })
-          .select('id')
-          .single();
-        if (error) throw error;
-
-        if (form.quantity > 0 && created?.id) {
-          await supabase.from('stock_movements').insert({
-            product_id: created.id,
-            movement_type: 'in',
-            quantity: form.quantity,
-            previous_stock: 0,
-            new_stock: form.quantity,
-            description: 'Estoque inicial de embalagem',
-          });
-        }
-        toast.success('Embalagem criada!');
-        invalidateBoxQueries(qc);
-        if (created?.id) onSaved?.(created.id);
-      }
+      toast.success(isEdit ? 'Embalagem atualizada!' : 'Embalagem criada!');
+      invalidateBoxQueries(qc);
+      if (savedId) onSaved?.(String(savedId));
       onOpenChange(false);
     } catch (err: any) {
       toast.error(err?.message || 'Erro ao salvar embalagem');

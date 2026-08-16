@@ -19,8 +19,8 @@ const codeOf = (rel: string) =>
 
 /**
  * Consolidação 02/08/2026 — embalagem tem UMA fonte: o MODELO DE SOLADO
- * (`product_groups.box_type_*_id` + `pairs_per_box_*`), editado em
- * Solados → Consumos → Embalagem.
+ * (`product_groups.box_type_*_id` + `pairs_per_box_*`), editado somente em
+ * Embalagens → Configuração por Solado.
  *
  * ANTES existiam três donos:
  *   1. `product_groups.*`          — editado em Estoque → Grupos (aba Embalagem)
@@ -46,6 +46,7 @@ const FUNCOES_MIGRADAS = [
 ];
 
 const MIGRATION = 'supabase/migrations/20261110120000_packaging-single-source-sole-group.sql';
+const INTEGRITY_MIGRATION = 'supabase/migrations/20270101002100_integridade_setor_embalagem.sql';
 
 describe('embalagem tem uma fonte só: o modelo de solado', () => {
   it('nenhuma tela viva lê technical_sheet_box_types', () => {
@@ -96,7 +97,7 @@ describe('embalagem tem uma fonte só: o modelo de solado', () => {
     expect(create).not.toMatch(/box_type_master_id:\s*form\./);
   });
 
-  it('a tela do solado edita os TRÊS modos', () => {
+  it('o editor central por tipo de solado cobre os TRÊS modos', () => {
     // O modo é escolhido no PV (sale_orders.packaging_mode). Se o solado não
     // tiver os três montados, o PV entra e não debita nada.
     const src = read('src/components/soles-hub/SolePackagingPanel.tsx');
@@ -108,9 +109,33 @@ describe('embalagem tem uma fonte só: o modelo de solado', () => {
     }
   });
 
+  it('a edição por solado existe somente dentro de /embalagens', () => {
+    const management = codeOf('src/pages/PackagingManagement/index.tsx');
+    const central = codeOf('src/components/packaging/SolePackagingConfigurationPanel.tsx');
+    const soles = codeOf('src/components/soles-hub/SolesConsumosTab.tsx');
+    const transport = codeOf('src/pages/Transport.tsx');
+
+    expect(management).toContain('SolePackagingConfigurationPanel');
+    expect(central).toContain('SolePackagingPanel');
+    expect(soles, 'Solados voltou a montar o editor de embalagem').not.toContain('SolePackagingPanel');
+    expect(transport, 'Transporte voltou a embutir o módulo editável').not.toContain('PackagingManagementPage');
+  });
+
+  it('ficha, PV e OP não criam configuração paralela', () => {
+    for (const rel of [
+      'src/hooks/useTechnicalSheets.ts',
+      'src/pages/TechnicalSheets.tsx',
+      'src/components/sale-orders/SaleOrderFormPanel.tsx',
+    ]) {
+      expect(codeOf(rel), `${rel} voltou a acessar packaging_configs`).not.toMatch(/\.from\(['"]packaging_configs['"]\)/);
+    }
+    expect(codeOf('src/pages/Orders.tsx')).not.toMatch(/form\.packaging_(product_id|quantity|type)/);
+    expect(codeOf('src/hooks/useOrders.ts')).not.toContain('debit_packaging_for_order_atomic');
+  });
+
   it('o cadastro da caixa é um componente só, montado nos dois lugares', () => {
-    // "Mesmo componente nos dois lugares" foi a decisão que evita o padrão de
-    // dois editores. Se um deles reintroduzir um formulário próprio, divergem.
+    // Os dois pontos ficam no MESMO módulo /embalagens: estoque e vínculo por
+    // solado compartilham o formulário de caixa.
     for (const rel of [
       'src/components/packaging/PackagingStockPanel.tsx',
       'src/components/soles-hub/SolePackagingPanel.tsx',
@@ -134,8 +159,21 @@ describe('embalagem tem uma fonte só: o modelo de solado', () => {
   it('o aviso de débito manda o operador pra tela certa', () => {
     const src = codeOf('src/lib/packagingDebitWarnings.ts');
     expect(src, 'o aviso ainda aponta pra Estoque → Grupos, que não edita mais').not.toMatch(/Estoque → Grupos/);
-    expect(src).toContain('Solados');
+    expect(src).toContain('Embalagens');
     // Ficha sem solado e solado sem caixa se consertam em telas diferentes.
     expect(src).toContain('sheet_without_sole_group');
+  });
+
+  it('o débito novo é reconciliável, auditável e não baixa histórico', () => {
+    const migration = read(INTEGRITY_MIGRATION);
+    expect(migration).toContain('FUNCTION public.plan_packaging_for_order');
+    expect(migration).toContain('FUNCTION public.list_packaging_debit_audit');
+    expect(migration).toContain("WHEN 'in'  THEN -sm.quantity");
+    expect(migration).toContain('pg_advisory_xact_lock');
+    expect(migration).toContain('trg_reconcile_packaging_on_order_insert');
+    expect(migration).toContain('trg_reconcile_packaging_on_sole_group');
+    expect(migration).toContain('upsert_box_type_with_stock');
+    expect(migration).toContain('DROP FUNCTION IF EXISTS public.debit_packaging_for_order_atomic');
+    expect(migration, 'a migration não pode debitar OPs antigas em lote').not.toMatch(/UPDATE\s+public\.orders/i);
   });
 });

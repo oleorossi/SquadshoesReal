@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { HubTabsList } from '@/components/layout/HubTabs';
  import { Button } from '@/components/ui/button';
@@ -19,7 +19,6 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { OrderTransportCalculator } from '@/components/transport/OrderTransportCalculator';
 import { RouteOptimizerPanel } from '@/components/logistics/RouteOptimizerPanel';
 import { RoutePlanner } from '@/components/logistics/RoutePlanner';
-import PackagingManagementPage from './PackagingManagement';
  import { useBaus, useAddBau, useDeleteBau, useBoxTypes, useAddBoxType, useDeleteBoxType, useItemTypes, useAddItemType, useDeleteItemType, useTransportCompanies, useAddTransportCompany, useUpdateTransportCompany, useDeleteTransportCompany, useTransportCompanyRates, useUpsertTransportCompanyRates } from '@/hooks/useTransport';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -35,6 +34,7 @@ type PermissionGate = ReturnType<typeof useCan>;
 
 export default function Transport() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
   const currentTab = searchParams.get('tab') || 'capacity';
   const perm = useCan('/transporte');
 
@@ -68,7 +68,12 @@ export default function Transport() {
           </TabsContent>
 
           <TabsContent value="packaging">
-            <PackagingManagementPage embedded />
+            <EmptyState
+              icon={Package}
+              title="Embalagens têm um módulo próprio"
+              description="Cadastro, estoque, configuração por solado e conferência de débitos ficam centralizados em um único local."
+              action={<Button onClick={() => navigate('/embalagens')}>Abrir Gestão de Embalagens</Button>}
+            />
           </TabsContent>
 
           <TabsContent value="carriers">
@@ -1044,7 +1049,7 @@ function SimulatorTab() {
     queryFn: async () => {
       const { data, error } = await supabase
          .from('products')
-         .select('id, name, sku, box_type_id, current_stock, pairs_per_package, category, technical_name')
+         .select('id, name, sku, group_id, current_stock, category, technical_name')
          .or('category.ilike.%solado%,technical_name.ilike.%solado%')
         .eq('active', true)
         .order('name');
@@ -1071,7 +1076,25 @@ function SimulatorTab() {
   const selectedClient = clients.find(c => c.id === selectedClientId);
 
   const { data: boxTypes = [] } = useBoxTypes();
-  const selectedBox = selectedSole?.box_type_id ? boxTypes.find(bt => bt.id === selectedSole.box_type_id) : null;
+  const { data: soleGroups = [] } = useQuery({
+    queryKey: ['sole_groups_transport_packaging'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('product_groups')
+        .select('id, box_type_id, box_type_master_id, pairs_per_box_master')
+        .eq('sector', 'Solado');
+      if (error) throw error;
+      return data ?? [];
+    },
+    staleTime: 60_000,
+  });
+  const selectedGroup = soleGroups.find(group => group.id === selectedSole?.group_id);
+  const selectedIndividualBox = selectedGroup?.box_type_id
+    ? boxTypes.find(box => box.id === selectedGroup.box_type_id)
+    : null;
+  const selectedMasterBox = selectedGroup?.box_type_master_id
+    ? boxTypes.find(box => box.id === selectedGroup.box_type_master_id)
+    : null;
 
   return (
     <div className="space-y-4">
@@ -1102,9 +1125,9 @@ function SimulatorTab() {
                   ))}
                 </SelectContent>
               </Select>
-              {selectedBox && (
+              {(selectedIndividualBox || selectedMasterBox) && (
                 <p className="text-xs text-muted-foreground mt-1">
-                  Caixa: {selectedBox.nome} ({selectedBox.comprimento_cm}x{selectedBox.largura_cm}x{selectedBox.altura_cm}cm)
+                  Tradicional: {[selectedIndividualBox?.nome, selectedMasterBox?.nome].filter(Boolean).join(' + ')}
                 </p>
               )}
             </div>
@@ -1154,18 +1177,18 @@ function SimulatorTab() {
         orderWeight={quantity * avgWeight}
         productCategory={category}
         orderNumber="Simulação"
-         individualBoxDims={selectedBox && (selectedSole?.pairs_per_package || 1) <= 1 ? {
-           L: selectedBox.comprimento_cm,
-           W: selectedBox.largura_cm,
-           H: selectedBox.altura_cm,
-           name: selectedBox.nome
+         individualBoxDims={selectedIndividualBox ? {
+           L: selectedIndividualBox.comprimento_cm,
+           W: selectedIndividualBox.largura_cm,
+           H: selectedIndividualBox.altura_cm,
+           name: selectedIndividualBox.nome
          } : undefined}
-         masterBoxDims={selectedBox && (selectedSole?.pairs_per_package || 0) > 1 ? {
-           L: selectedBox.comprimento_cm,
-           W: selectedBox.largura_cm,
-           H: selectedBox.altura_cm,
-           name: selectedBox.nome,
-           pairsPerMaster: selectedSole?.pairs_per_package
+         masterBoxDims={selectedMasterBox ? {
+           L: selectedMasterBox.comprimento_cm,
+           W: selectedMasterBox.largura_cm,
+           H: selectedMasterBox.altura_cm,
+           name: selectedMasterBox.nome,
+           pairsPerMaster: Number(selectedGroup?.pairs_per_box_master || 12),
          } : undefined}
         destinationCity={selectedClient?.cidade}
         destinationState={selectedClient?.estado}

@@ -1,12 +1,11 @@
 import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { HubTabsList } from '@/components/layout/HubTabs';
 import { Card, CardContent } from '@/components/ui/card';
-import { Stack as Layers, Info, Image as ImageIcon, Cube as Box, Package as Package2 } from '@phosphor-icons/react';
+import { Stack as Layers, Info, Image as ImageIcon, Package as Package2 } from '@phosphor-icons/react';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { SoleTechnicalDetails } from '@/components/technical-sheets/SoleTechnicalDetails';
 import SoleStandardConsumptionPanel from './SoleStandardConsumptionPanel';
 import { SoleSilkPanel } from '@/components/technical-sheets/SoleSilkPanel';
-import SolePackagingPanel from './SolePackagingPanel';
 import type { SoleProduct } from './types';
 
 interface Props {
@@ -19,7 +18,7 @@ export default function SolesConsumosTab({ sole, soleLabel }: Props) {
   // Compat com nomes persistidos das abas aposentadas em 02/08/2026:
   // "Itens Padrão" (sole_standard_materials) e "Por Numeração"
   // (sole_standard_items_consumption) foram absorvidas pelo cadastro único.
-  const safeTab = tab === 'standard' || tab === 'numeracao' ? 'padrao' : tab;
+  const safeTab = tab === 'standard' || tab === 'numeracao' || tab === 'embalagem' ? 'padrao' : tab;
 
   return (
     <div className="space-y-3">
@@ -43,7 +42,6 @@ export default function SolesConsumosTab({ sole, soleLabel }: Props) {
           { value: 'padrao',    label: 'Consumo Padrão',      icon: Package2 },
           { value: 'forracao',  label: 'Numerações',          icon: Layers },
           { value: 'silk',      label: 'Silk / Arte',         icon: ImageIcon },
-          { value: 'embalagem', label: 'Embalagem',            icon: Box },
         ]} />
 
         {/* Cadastro ÚNICO do consumo padrão do modelo: linhas PAPEL (forração,
@@ -72,17 +70,6 @@ export default function SolesConsumosTab({ sole, soleLabel }: Props) {
             o mesmo cadastro por solado ao consolidar a jornada em /solados. */}
         <TabsContent value="silk" className="mt-4">
           <SoleSilkPanel soleProductId={sole.id} soleName={soleLabel ?? sole.name} />
-        </TabsContent>
-
-        {/* Fonte ÚNICA da embalagem desde 02/08/2026: grava em
-            `product_groups.box_type_*`, que é o que o débito, os volumes da NF e
-            o MRP leem. O caminho antigo por ficha (`technical_sheet_box_types`)
-            foi aposentado — ver migration 20261110120000. */}
-        <TabsContent value="embalagem" className="mt-4">
-          <SolePackagingPanel
-            soleGroupId={sole.group_id}
-            soleGroupName={soleLabel ?? sole.name}
-          />
         </TabsContent>
       </Tabs>
     </div>

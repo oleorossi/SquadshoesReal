@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { sanitizeUuidFields } from '@/lib/utils';
 import { searchNormOrFilter } from '@/lib/searchUtils';
 import { SALE_ORDER_STATUS } from '@/lib/saleOrderStateMachine';
+import { warnPackagingDebit } from '@/lib/packagingDebitWarnings';
 
 /**
  * Teto do recorte de `useOrders`. Exportado de propósito: quem renderiza a
@@ -24,9 +25,6 @@ type CreateOrderData = {
   production_line?: string;
   responsible?: string;
   status_override?: string;
-  packaging_type?: string;
-  packaging_product_id?: string;
-  packaging_quantity?: number;
   grade?: Record<string, number>;
   /** OBRIGATÓRIO: `orders.sale_order_id` é NOT NULL sem default e nenhum
    *  trigger BEFORE INSERT o preenche. Sem este campo no payload o INSERT
@@ -136,9 +134,6 @@ export function useCreateOrder() {
           planned_delivery: form.planned_delivery || null,
           production_line: form.production_line || '',
           responsible: form.responsible || '',
-          packaging_type: form.packaging_type || '',
-          packaging_product_id: form.packaging_product_id || null,
-          packaging_quantity: form.packaging_quantity || 0,
         }) as any)
         .select()
         .single();
@@ -148,6 +143,24 @@ export function useCreateOrder() {
         // Compensating cleanup: if any debit step fails, the OP we just inserted
         // would be orphaned (no stock movements). Delete it to keep DB consistent.
         const cleanupOrphan = async (cause: string): Promise<never> => {
+          // O trigger canônico de embalagem já pode ter debitado a caixa no
+          // INSERT da OP. Nunca apagar a OP antes de estornar: o order_id é o
+          // único elo auditável entre saída e devolução.
+          const failures: string[] = [];
+          const { error: releaseErr } = await (supabase.rpc as any)('release_order_reservations', { p_order_id: data.id });
+          if (releaseErr && !/does not exist|not found/i.test(releaseErr.message)) failures.push(releaseErr.message);
+          const { error: soleRestoreErr } = await (supabase.rpc as any)('restore_sole_grade_for_order', { p_order_id: data.id });
+          if (soleRestoreErr && !/does not exist|not found/i.test(soleRestoreErr.message)) failures.push(soleRestoreErr.message);
+          const { error: stockRestoreErr } = await supabase.rpc('restore_product_stocks_for_order', { p_order_id: data.id } as any);
+          if (stockRestoreErr) failures.push(stockRestoreErr.message);
+
+          if (failures.length > 0) {
+            await supabase.from('orders').update({
+              status: 'Cancelada',
+              notes: `${cause}; estorno falhou: ${failures.join('; ')}. Investigação manual necessária.`,
+            }).eq('id', data.id);
+            throw new Error(`${cause}. A OP foi mantida cancelada porque o estorno falhou: ${failures.join('; ')}`);
+          }
           await supabase.from('orders').delete().eq('id', data.id);
           throw new Error(cause);
         };
@@ -172,28 +185,27 @@ export function useCreateOrder() {
             p_force_soft: true,
           } as any);
           if (soleError) {
-            // hybrid debit already committed — restore it before cleanup.
-            await supabase.rpc('restore_product_stocks_for_order', { p_order_id: data.id } as any);
             await cleanupOrphan(`Débito de solado falhou: ${soleError.message}`);
           }
         }
 
-        // Debit packaging from stock atomically (RPC locks the product row).
-        if (form.packaging_product_id && form.packaging_quantity && form.packaging_quantity > 0) {
-          const { error: pkgErr } = await supabase.rpc('debit_packaging_for_order_atomic' as any, {
-            p_order_id: data.id,
-            p_packaging_product_id: form.packaging_product_id,
-            p_quantity: form.packaging_quantity,
-            p_packaging_type: form.packaging_type || null,
-          });
-          if (pkgErr) {
-            // Canonical rollback order: release reservations → sole grade → product stocks
-            await (supabase.rpc as any)('release_order_reservations', { p_order_id: data.id });
-            await (supabase.rpc as any)('restore_sole_grade_for_order', { p_order_id: data.id });
-            await supabase.rpc('restore_product_stocks_for_order', { p_order_id: data.id } as any);
-            await cleanupOrphan(`Débito de embalagem falhou: ${pkgErr.message}`);
-          }
-        }
+        // Embalagem nunca é escolhida manualmente na OP. A RPC deriva tudo do
+        // PV + ficha + tipo de solado e reconcilia trigger/caller sem duplicar.
+        const { data: saleOrder } = await supabase
+          .from('sale_orders')
+          .select('packaging_mode')
+          .eq('id', form.sale_order_id)
+          .maybeSingle();
+        const { data: packagingResult, error: pkgErr } = await (supabase as any).rpc('debit_packaging_for_order', {
+          p_sale_order_id: form.sale_order_id,
+          p_order_id: data.id,
+          p_reference_id: form.reference_id,
+          p_order_quantity: form.quantity,
+          p_packaging_mode: (saleOrder as any)?.packaging_mode || 'individual_amarrado',
+          p_force_soft: false,
+        });
+        if (pkgErr) await cleanupOrphan(`Débito de embalagem falhou: ${pkgErr.message}`);
+        warnPackagingDebit(packagingResult, `OP ${(data as any).order_number || data.id.slice(0, 8)}`);
       }
 
       // Create production stages atomically — only for OPs that will enter

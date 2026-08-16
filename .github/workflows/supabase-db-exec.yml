@@ -33,6 +33,14 @@ on:
         options:
           - 'true'
           - 'false'
+      dry_run:
+        description: 'Validar tudo em transação e finalizar com ROLLBACK?'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
 
 concurrency:
   group: supabase-db-exec
@@ -53,12 +61,22 @@ jobs:
           SUPABASE_PROJECT_ID:   ${{ secrets.SUPABASE_PROJECT_ID }}
           SQL_PATH: ${{ inputs.sql_path }}
           STRICT:   ${{ inputs.strict }}
+          DRY_RUN:  ${{ inputs.dry_run }}
         run: |
           : "${SUPABASE_ACCESS_TOKEN:?SUPABASE_ACCESS_TOKEN não configurado}"
           : "${SUPABASE_PROJECT_ID:?SUPABASE_PROJECT_ID não configurado}"
           test -f "$SQL_PATH" || { echo "Arquivo não existe: $SQL_PATH"; exit 1; }
-          echo "── Executando: $SQL_PATH ($(wc -c < "$SQL_PATH") bytes)"
-          jq -Rs '{query: .}' < "$SQL_PATH" > /tmp/body.json
+          QUERY_PATH="$SQL_PATH"
+          if [ "$DRY_RUN" = "true" ]; then
+            QUERY_PATH=/tmp/supabase-dry-run.sql
+            {
+              echo 'BEGIN;'
+              sed -E '/^[[:space:]]*BEGIN;[[:space:]]*$/d; /^[[:space:]]*COMMIT;[[:space:]]*$/d' "$SQL_PATH"
+              echo 'ROLLBACK;'
+            } > "$QUERY_PATH"
+          fi
+          echo "── Executando: $SQL_PATH ($(wc -c < "$SQL_PATH") bytes) · dry_run=$DRY_RUN"
+          jq -Rs '{query: .}' < "$QUERY_PATH" > /tmp/body.json
           code=$(curl -sS -o /tmp/resp.json -w '%{http_code}' -X POST \
             "https://api.supabase.com/v1/projects/${SUPABASE_PROJECT_ID}/database/query" \
             -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \

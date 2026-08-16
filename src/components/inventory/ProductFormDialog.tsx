@@ -429,7 +429,6 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
         is_chemical: rest.is_chemical ?? false,
         sole_material: rest.sole_material || null,
         heel_height: rest.heel_height ?? null,
-        box_type_id: rest.box_type_id || null,
         consumption_unit: (rest as any).consumption_unit || null,
         is_standard_sole_item: (rest as any).is_standard_sole_item ?? false,
       });
@@ -1495,9 +1494,8 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
                   Embalagem
                 </Label>
                 <p className="text-xs text-muted-foreground">
-                  O cadastro e a vinculação de embalagens (tipo, pares por caixa, estoque) agora ficam
-                  só em <strong>Gestão de Embalagens</strong>. Vincule as caixas que cada ficha usa
-                  na aba <strong>Embalagem</strong> da própria ficha técnica.
+                  O cadastro, o estoque e a vinculação de embalagens ficam somente em
+                  <strong> Gestão de Embalagens</strong>, na configuração do tipo de solado.
                 </p>
               </div>
             )}

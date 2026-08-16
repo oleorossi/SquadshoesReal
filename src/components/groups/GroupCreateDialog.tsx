@@ -121,7 +121,7 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
         dimensions_unit: form.dimensions_width ? 'mm' : null,
         parent_group_id: form.parent_group_id || null,
         // Embalagem NÃO entra: grupo de solado nasce sem caixa e a configuração
-        // dos 3 modos é feita em Solados → Consumos → Embalagem (02/08/2026).
+        // dos 3 modos é feita em Embalagens → Configuração por Solado.
       });
       reset();
       onOpenChange(false);
@@ -297,17 +297,15 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
             </Label>
           </div>
 
-          {/* Embalagem saiu daqui em 02/08/2026: grupo de solado NASCE VAZIO e a
-              pendência fica visível na tela de Solados (decisão do dono — nada é
-              herdado em silêncio). A edição é porta única em
-              Solados → Consumos → Embalagem. */}
+          {/* Grupo de solado nasce vazio; a configuração tem porta única no
+              setor de Embalagens e nunca é herdada em silêncio. */}
           <div className="rounded-md border border-dashed bg-muted/20 p-3 flex items-start gap-2 text-xs text-muted-foreground">
             <Package className="h-4 w-4 text-primary shrink-0 mt-0.5" />
             <div>
               <p className="font-medium text-foreground">Embalagem</p>
               <p>
                 Grupo de solado nasce <strong>sem caixa</strong>. Configure os três modos
-                (Tradicional, Amarrado e Colméia) em <strong>Solados → Consumos → Embalagem</strong> —
+                (Tradicional, Amarrado e Colméia) em <strong>Embalagens → Configuração por Solado</strong> —
                 enquanto não configurar, o pedido entra mas nenhuma caixa é debitada.
               </p>
             </div>

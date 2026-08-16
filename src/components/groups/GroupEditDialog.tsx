@@ -90,7 +90,7 @@ function getVisibleFields(type: GroupType) {
     yieldTab:       isSole || isUpper || isInsole,
     // Embalagem: o débito de embalagem lê a caixa vinculada + pares/caixa DO
     // GRUPO DO SOLADO (product_groups.box_type_*_id). Sem esse elo o débito não
-    // tem o que debitar. Editável aqui pra o cadastro solado↔caixa existir.
+    // tem o que debitar. Aqui é somente leitura; a edição fica em /embalagens.
     packaging:      isSole,
   };
 }
@@ -508,7 +508,7 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
   const [purchaseMultiple, setPurchaseMultiple] = useState<number>((group as any).purchase_multiple || 0);
 
   // ── Embalagem: o estado saiu daqui em 02/08/2026 junto com a edição.
-  // A aba `packaging` agora só aponta pra Solados → Consumos → Embalagem
+  // A aba `packaging` agora só aponta pra Embalagens → Configuração por Solado
   // (`SolePackagingPanel`), que grava direto em `product_groups`.
   const navigate = useNavigate();
 
@@ -1275,7 +1275,7 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
             )}
 
             {/* Tab: Packaging — SAIU daqui em 02/08/2026.
-                A edição virou porta única em Solados → Consumos → Embalagem, que
+                A edição virou porta única em Embalagens → Configuração por Solado, que
                 grava exatamente nestas mesmas colunas de `product_groups`. Manter
                 os dois editando repetiria o padrão de "dois donos do mesmo dado"
                 que já custou caro em consumo de solado. Aqui fica só o ponteiro. */}
@@ -1284,10 +1284,10 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                 <div className="flex items-start gap-2 rounded-lg border border-primary/20 bg-primary/[0.03] p-3 text-sm text-muted-foreground">
                   <Package className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
                   <div className="space-y-1">
-                    <p className="font-medium text-foreground">A embalagem deste solado é cadastrada em Solados</p>
+                    <p className="font-medium text-foreground">A embalagem deste solado é cadastrada no setor de Embalagens</p>
                     <p className="text-xs">
                       Os três modos (Tradicional, Amarrado e Colméia), com medidas, preço e estoque de cada
-                      caixa, ficam em <strong>Solados → escolha o solado → Consumos → Embalagem</strong>. É a
+                      caixa, ficam em <strong>Embalagens → Configuração por Solado</strong>. É a
                       mesma configuração que o débito, os volumes da NF e o MRP leem.
                     </p>
                   </div>
@@ -1297,10 +1297,10 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                   variant="outline"
                   size="sm"
                   className="h-9 gap-1.5"
-                  onClick={() => { onOpenChange(false); navigate('/solados'); }}
+                  onClick={() => { onOpenChange(false); navigate(`/embalagens?tab=soles&soleGroupId=${group.id}`); }}
                 >
                   <Package className="h-4 w-4" />
-                  Abrir Solados
+                  Abrir Embalagens
                 </Button>
               </TabsContent>
             )}
