@@ -399,12 +399,16 @@ BEGIN
      OR v_run.overall_checksum !~ '^[0-9a-f]{32}$' THEN
     RAISE EXCEPTION 'Dry-run de proveniencia inexistente/invalido';
   END IF;
-  SELECT p,coalesce(pg.is_artisanal_strap,false)
-    INTO v_product,v_group_is_strap
+  SELECT * INTO v_product
     FROM public.products p
-    LEFT JOIN public.product_groups pg ON pg.id=p.group_id
-   WHERE p.id=v_product_id FOR SHARE OF p;
-  IF NOT FOUND OR NOT (coalesce(v_product.is_artisanal,false) OR v_group_is_strap) THEN
+   WHERE p.id=v_product_id FOR SHARE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Produto nao possui classificacao estrutural de tira artesanal';
+  END IF;
+  SELECT coalesce(pg.is_artisanal_strap,false) INTO v_group_is_strap
+    FROM public.product_groups pg
+   WHERE pg.id=v_product.group_id;
+  IF NOT (coalesce(v_product.is_artisanal,false) OR coalesce(v_group_is_strap,false)) THEN
     RAISE EXCEPTION 'Produto nao possui classificacao estrutural de tira artesanal';
   END IF;
   IF v_review.candidates->>'group_id' IS DISTINCT FROM v_product.group_id::text THEN
@@ -3950,6 +3954,7 @@ AS $$
 DECLARE
   v_item public.sale_order_items%ROWTYPE;
   v_review public.artisanal_strap_migration_review_items%ROWTYPE;
+  v_review_json jsonb;
   v_cutover_id uuid;
   v_actor_id uuid;
   v_line_count integer;
@@ -3970,7 +3975,7 @@ BEGIN
    WHERE i.id=p_sale_order_item_id FOR UPDATE;
   IF NOT FOUND THEN RETURN false; END IF;
 
-  SELECT ri,c.id,coalesce(
+  SELECT to_jsonb(ri),c.id,coalesce(
       auth.uid(),
       (
         SELECT DISTINCT (j.payload->>'requested_by')::uuid
@@ -3980,7 +3985,7 @@ BEGIN
              ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
       ),c.applied_by,r.run_by
     )
-    INTO v_review,v_cutover_id,v_actor_id
+    INTO v_review_json,v_cutover_id,v_actor_id
     FROM public.artisanal_strap_migration_review_items ri
     JOIN public.artisanal_strap_migration_cutovers c
       ON c.migration_run_id=ri.migration_run_id
@@ -3997,6 +4002,8 @@ BEGIN
      AND c.id=v_item.strap_migration_cutover_id
    FOR UPDATE OF ri;
   IF NOT FOUND THEN RETURN false; END IF;
+  v_review:=jsonb_populate_record(
+    NULL::public.artisanal_strap_migration_review_items,v_review_json);
   IF v_actor_id IS NULL THEN
     RAISE EXCEPTION 'Autor nominal ausente para fechar pendencia do PV legado';
   END IF;

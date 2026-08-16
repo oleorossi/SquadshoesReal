@@ -377,6 +377,34 @@ describe('Tiras artesanais — contrato SQL canônico', () => {
     expect(LEGACY).toContain('legacy_product_mapping_required');
   });
 
+  it('captura produto e classificação de grupo sem misturar rowtype e escalar no INTO', () => {
+    const provenance = functionBody(
+      LEGACY,
+      'capture_artisanal_strap_product_provenance',
+      'CREATE OR REPLACE FUNCTION public.tg_capture_artisanal_strap_product_provenance',
+    );
+
+    expect(provenance).toContain('SELECT * INTO v_product');
+    expect(provenance).toContain(
+      'SELECT coalesce(pg.is_artisanal_strap,false) INTO v_group_is_strap',
+    );
+    expect(provenance).not.toContain('INTO v_product,v_group_is_strap');
+    expect(provenance).toContain(
+      'coalesce(v_product.is_artisanal,false) OR coalesce(v_group_is_strap,false)',
+    );
+
+    const rowtypeVariables = [...LEGACY.matchAll(
+      /^\s*(v_[a-z0-9_]+)\s+public\.[a-z0-9_.]+%ROWTYPE;/gmi,
+    )].map((match) => match[1]);
+    expect(rowtypeVariables.length).toBeGreaterThan(0);
+    rowtypeVariables.forEach((variable) => {
+      expect(LEGACY).not.toMatch(new RegExp(`INTO\\s+${variable}\\s*,`, 'i'));
+      expect(LEGACY).not.toMatch(new RegExp(`INTO[^;\\n]*,\\s*${variable}\\b`, 'i'));
+    });
+    expect(LEGACY).toContain('INTO v_review_json,v_cutover_id,v_actor_id');
+    expect(LEGACY).toContain('v_review:=jsonb_populate_record(');
+  });
+
   it('migra somente rotas específicas, sem herdar o acesso amplo de terceirizados', () => {
     const grants = HARDENING.slice(
       HARDENING.indexOf('WITH explicit_legacy AS'),
