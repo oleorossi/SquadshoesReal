@@ -902,13 +902,16 @@ DO $$
 DECLARE v_definition text:=lower(pg_get_viewdef(
   'public.v_strap_cost_variance_operational'::regclass,true));
 BEGIN
-  RAISE EXCEPTION 'DEBUG cost variance view: %', v_definition;
-  IF v_definition !~ 'c\.sale_order_strap_demand_id'
-     OR v_definition !~ 'a\.purchase_demand_contribution_id'
-     OR v_definition !~ 'a\.batch_contribution_id'
+  -- pg_get_viewdef renomeia aliases repetidos (por exemplo, d -> d_1).
+  -- Valide os vinculos estruturais e a semantica, nao o alias escolhido pelo
+  -- deparser da versao de PostgreSQL do ambiente.
+  IF position('sale_order_strap_demand_id' IN v_definition)=0
+     OR position('purchase_demand_contribution_id' IN v_definition)=0
+     OR position('batch_contribution_id' IN v_definition)=0
      OR position('admin_source_override' IN v_definition)=0
-     OR position('not d.is_current' IN v_definition)=0
-     OR position('d.replenishment_required_m' IN v_definition)=0
+     OR v_definition !~ 'not [a-z_][a-z0-9_]*\.is_current'
+     OR position('replenishment_required_m' IN v_definition)=0
+     OR position('left join realized_rollup rr' IN v_definition)=0
      OR position('rr.realized_m' IN v_definition)=0 THEN
     RAISE EXCEPTION 'Req51/112/113: custo realizado perdeu a revisao/origem fisica antiga';
   END IF;
