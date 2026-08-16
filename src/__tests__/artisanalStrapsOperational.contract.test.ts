@@ -134,6 +134,29 @@ describe('Tiras artesanais — contrato SQL canônico', () => {
     expect(viewAssertion).not.toContain("position('d.replenishment_required_m'");
   });
 
+  it('expõe ajustes do cabeçalho e do item da OC sem nomes de coluna duplicados', () => {
+    const viewStart = ENGINE.indexOf(
+      'CREATE OR REPLACE VIEW public.v_strap_purchase_order_items_operational',
+    );
+    const viewEnd = ENGINE.indexOf(
+      'CREATE OR REPLACE VIEW public.v_strap_service_order_items_operational',
+      viewStart,
+    );
+    const view = ENGINE.slice(viewStart, viewEnd);
+
+    expect(viewStart).toBeGreaterThanOrEqual(0);
+    expect(viewEnd).toBeGreaterThan(viewStart);
+    expect(view).toContain('po.strap_manual_adjustment_reason,');
+    expect(view).toContain(
+      'i.strap_manual_adjustment_reason AS item_manual_adjustment_reason,',
+    );
+    expect(view).toContain('i.strap_manual_adjusted_by AS item_manual_adjusted_by,');
+    expect(view).toContain('i.strap_manual_adjusted_at AS item_manual_adjusted_at,');
+    expect(view).not.toMatch(/\n\s+i\.strap_manual_adjustment_reason,\n/);
+    expect(view).not.toMatch(/\n\s+i\.strap_manual_adjusted_by,\n/);
+    expect(view).not.toMatch(/\n\s+i\.strap_manual_adjusted_at,\n/);
+  });
+
   it('retira tiras integralmente do canal genérico por PV sem quebrar sua assinatura', () => {
     const applied = functionBody(
       PER_PV_APPLIED,
