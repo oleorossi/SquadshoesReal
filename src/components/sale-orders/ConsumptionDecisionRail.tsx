@@ -71,7 +71,7 @@ export default function ConsumptionDecisionRail({
       {/* ── Hero: material base + itens em falta ───────────────────────── */}
       <div className="rounded-lg border border-border bg-card p-3">
         <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-          Material base a comprar
+          Necessidade de material base
         </p>
         {baseTotal ? (
           <>
@@ -85,7 +85,7 @@ export default function ConsumptionDecisionRail({
               </p>
             )}
             <p className="mt-1 text-[11px] text-muted-foreground">
-              tiras convertidas em napa + napa cortada direto
+              consumo bruto · tiras convertidas + napa cortada direto
             </p>
             {baseTotal.skipped > 0 && (
               <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">
@@ -248,7 +248,7 @@ export default function ConsumptionDecisionRail({
           </Button>
         )}
         <Button variant="outline" size="sm" className="flex-1 gap-1.5" onClick={onPrintPdf}>
-          <FileText className="h-4 w-4" /> PDF
+          <FileText className="h-4 w-4" /> Gerar PDF
         </Button>
       </div>
     </aside>

@@ -1,7 +1,7 @@
  import { format, parseISO, addDays, isTuesday, nextTuesday, isBefore, startOfDay } from 'date-fns';
 import { convertDm2ToLinearMeters, convertDm2ToPlates, isLinearWidthMissing, type ComponentSheetCandidate } from './materialConsumption';
 import { classifyBomMaterial } from './orderConsumption';
-import { caixaCollectiveTypeFromName, shouldShowCaixaForMode, type CollectiveType } from './packagingPairsPerBox';
+import { caixaCollectiveTypeFromName, shouldShowCaixaForMode, wholePackagingDemand, type CollectiveType } from './packagingPairsPerBox';
 
 /**
  * Chave do mapa de datas-limite de compra (view purchase_projection_timeline).
@@ -180,7 +180,10 @@ export function generateWeeklyPurchasingPlan(
 
       // A5: a perda + a largura vêm da ficha de COMPONENTE do produto (não da reference_id).
       const cs = csByProduct.get(mat.product_id) || null;
-      const requiredAmount = calculateRequiredAmount(mat, order, cs);
+      const rawRequiredAmount = calculateRequiredAmount(mat, order, cs);
+      const requiredAmount = classifyBomMaterial('', mat.products.name || '', mat.products.category || '') === 'Embalagem'
+        ? wholePackagingDemand(rawRequiredAmount, mat.products.unit)
+        : rawRequiredAmount;
       if (requiredAmount <= 0) continue;
 
       // QUANDO comprar (just-in-time) — chegar pouco antes da produção, sem ficar parado:

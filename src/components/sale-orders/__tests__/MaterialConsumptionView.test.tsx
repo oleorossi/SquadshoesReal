@@ -4,6 +4,12 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import MaterialConsumptionView from '@/components/sale-orders/MaterialConsumptionView';
 import type { ConsumptionRow } from '@/lib/consumptionRows';
+import { openPrintTab, printHtmlAsPdf } from '@/lib/printPdf';
+
+vi.mock('@/lib/printPdf', () => ({
+  openPrintTab: vi.fn(() => null),
+  printHtmlAsPdf: vi.fn(async () => true),
+}));
 
 /**
  * Smoke da tela de Consumo reformulada (buy-first, 05/08/2026).
@@ -55,7 +61,7 @@ describe('MaterialConsumptionView — tela buy-first', () => {
     renderView();
     // NAPA SOFT: 1,00 (OFF WHITE) + 1,00 (PRETO) = 2,00 m de napa. Palmilha/EVA
     // e solado não são material base e ficam fora do herói.
-    const hero = screen.getByText('Material base a comprar').closest('div')!;
+    const hero = screen.getByText('Necessidade de material base').closest('div')!;
     expect(hero).toHaveTextContent('2,00');
     expect(hero).toHaveTextContent('NAPA SOFT');
     // 4 itens em falta: EVA, OURO LIGHT, NAPA SOFT OFF WHITE e o solado.
@@ -114,6 +120,16 @@ describe('MaterialConsumptionView — tela buy-first', () => {
     renderView({ onGerarOC });
     await userEvent.setup().click(screen.getByRole('button', { name: /Gerar OC/i }));
     expect(onGerarOC).toHaveBeenCalledOnce();
+  });
+
+  it('gera um PDF real no servidor em vez de usar a impressão solta do navegador', async () => {
+    renderView();
+    await userEvent.setup().click(screen.getByRole('button', { name: /Gerar PDF/i }));
+    expect(openPrintTab).toHaveBeenCalledOnce();
+    expect(printHtmlAsPdf).toHaveBeenCalledWith(
+      expect.stringContaining('Consumo de Materiais — PV-00151'),
+      expect.objectContaining({ filename: 'consumo-de-materiais-pv-00151' }),
+    );
   });
 
   it('cadastro incompleto vira UM cartão recolhido, não três banners de prosa', () => {

@@ -15,15 +15,16 @@ import {
   CaretDown,
 } from '@phosphor-icons/react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { escapeHtml } from '@/lib/htmlUtils';
 import { computeBaseMaterialTotal, BASE_MATERIAL_COMPONENTS, BASE_GROUP_PATTERN } from '@/lib/baseMaterialTotal';
-import { soleMatrixHtml, buildColAvailability, sizeSortKey } from '@/lib/soleMatrixHtml';
+import { buildColAvailability, sizeSortKey } from '@/lib/soleMatrixHtml';
 import type { ArtisanalStrapCutRow } from '@/lib/strapRollCut';
 import ArtisanalStrapRollCutBlock from '@/components/sale-orders/ArtisanalStrapRollCutBlock';
 import ConsumptionDecisionRail, { type ConsumptionFilter } from '@/components/sale-orders/ConsumptionDecisionRail';
 import { type ConsumptionRow, COMPONENT_ORDER, normTxt } from '@/lib/consumptionRows';
-import { buildBuyList, isBuyListRow } from '@/lib/buyList';
+import { isBuyListRow } from '@/lib/buyList';
 import { formatQty, formatUnit, pluralizeItens } from '@/lib/consumptionFormat';
+import { buildMaterialConsumptionReportHtml, materialConsumptionReportFilename } from '@/lib/materialConsumptionReport';
+import { openPrintTab, printHtmlAsPdf } from '@/lib/printPdf';
 import {
   aggregateItems,
   countPending,
@@ -363,186 +364,19 @@ export default function MaterialConsumptionView({
     withQty: rows.some((r) => r.warning && r.totalQuantity > 0),
   }), [rows]);
 
-  const buyList = useMemo(() => buildBuyList(rows), [rows]);
-
   const handlePrintPdf = useCallback(() => {
-    // Cores de cabeçalho por componentType (visual hierarchy)
-    const componentColors: Record<string, { bg: string; border: string; text: string }> = {
-      'Cabedal':    { bg: '#fef3c7', border: '#f59e0b', text: '#78350f' },
-      'Forração':      { bg: '#cffafe', border: '#06b6d4', text: '#155e75' },
-      'Fachete':    { bg: '#cffafe', border: '#0891b2', text: '#155e75' },
-      'Palmilha':   { bg: '#dbeafe', border: '#3b82f6', text: '#1e3a8a' },
-      'Forração Palmilha': { bg: '#cffafe', border: '#06b6d4', text: '#155e75' },
-      'Solado':     { bg: '#dcfce7', border: '#22c55e', text: '#14532d' },
-      'Tiras':      { bg: '#fce7f3', border: '#ec4899', text: '#831843' },
-      'Químicos':   { bg: '#ede9fe', border: '#8b5cf6', text: '#4c1d95' },
-      'Embalagem':  { bg: '#e0e7ff', border: '#6366f1', text: '#312e81' },
-      'Outros':     { bg: '#f3f4f6', border: '#9ca3af', text: '#374151' },
-    };
-
-    // ═══ PDF "Comprar primeiro" ═══
-    // Lidera com a LISTA DE COMPRA de napa por família → cor, depois o que está
-    // PENDENTE de cadastro, depois os demais materiais e o corte do rolo. O
-    // agrupamento vem de `buildBuyList` — o MESMO que alimenta a tela, pra o
-    // papel nunca mais divergir dela.
-    const napaAccent = (name: string): string => {
-      const n = normTxt(name);
-      if (n.includes('sudani')) return '#a75232';
-      if (n.includes('madrid')) return '#9a5b2e';
-      if (n.includes('palha')) return '#8a7320';
-      if (n.includes('soft')) return '#3f5c93';
-      if (BASE_GROUP_PATTERN.test(name)) return '#5a6b4a';
-      return '#6b7280';
-    };
-
-    const { families: napaFams, grandTotal: grandNapa, pendingStraps, otherRows } = buyList;
-
-    // (a) MATERIAL BASE (NAPA) A COMPRAR — família → cor, com selo de pendência.
-    const napaSection = napaFams.length === 0 ? '' : `
-      <div style="break-inside:avoid;margin-bottom:12px;border:1px solid #e6e1d8;border-radius:6px;overflow:hidden">
-        <div style="background:#e7f4ec;border-bottom:1px solid #bce2c8;padding:6px 10px;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">
-          <span style="font-size:9pt;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#15803d">Material base (napa) a comprar</span>
-          <span style="font-family:monospace;font-weight:800;color:#15803d;font-size:12pt">${formatQty(grandNapa, 'm')} m</span>
-          <span style="margin-left:auto;font-size:8pt;color:#6b7280">napa cortada direto + tiras convertidas</span>
-        </div>
-        <table style="width:100%;border-collapse:collapse">${napaFams.map((f) => {
-          const acc = napaAccent(f.napa);
-          const famHead = `<tr><td colspan="3" style="padding:6px 8px;border-top:1.5px solid #1f2937;background:#faf8f4">
-            <div style="display:flex;align-items:center;gap:8px">
-              <span style="display:inline-flex;align-items:center;gap:5px;font-size:8.5pt;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:${acc}">
-                <span style="width:8px;height:8px;border-radius:2px;background:${acc};display:inline-block"></span>${escapeHtml(f.napa)}</span>
-              <span style="margin-left:auto;font-family:monospace;font-weight:800;color:${acc}">${formatQty(f.total, 'm')} m</span>
-            </div></td></tr>`;
-          const colorRows = f.colors.map((c) => {
-            const status = c.pending > 0
-              ? `<span style="font-size:8pt;font-weight:700;background:#fbefd8;color:#b45309;border:1px solid #ead4a4;padding:1px 6px;border-radius:20px">+${c.pending} a cadastrar</span>`
-              : '';
-            return `<tr>
-              <td style="padding:4px 8px 4px 20px;border-bottom:1px solid #efeae1;font-weight:600">${escapeHtml(c.color || '—')}</td>
-              <td style="padding:4px 8px;border-bottom:1px solid #efeae1;text-align:right;font-family:monospace;font-weight:700;color:${acc}">${formatQty(c.qty, 'm')} <span style="color:#9a9284;font-size:8pt">m</span></td>
-              <td style="padding:4px 8px;border-bottom:1px solid #efeae1;text-align:right;width:120px">${status}</td>
-            </tr>`;
-          }).join('');
-          return famHead + colorRows;
-        }).join('')}</table>
-      </div>`;
-
-    // (b) PENDENTE DE CADASTRO — tiras cuja napa não tem rendimento cadastrado.
-    const pendingSection = pendingStraps.length === 0 ? '' : `
-      <div style="break-inside:avoid;margin-bottom:12px;border:1px solid #ead4a4;border-radius:6px;overflow:hidden">
-        <div style="background:#fbefd8;padding:6px 10px;color:#b45309;font-weight:800;font-size:9pt;text-transform:uppercase;letter-spacing:.5px">
-          ⚠ Pendente de cadastro · ${pendingStraps.length} tira${pendingStraps.length !== 1 ? 's' : ''} sem rendimento</div>
-        <p style="font-size:8pt;color:#a8752f;margin:5px 10px 3px">Cadastre o rendimento da tira nessas napas pra estes metros entrarem no total a comprar acima.</p>
-        <table style="width:100%;border-collapse:collapse">${pendingStraps.map((p) => `<tr>
-          <td style="padding:3px 10px;border-bottom:1px solid #f0e7d8;font-weight:600;color:#b45309">${escapeHtml(p.tira)}<span style="color:#a8752f;font-weight:400"> · ${escapeHtml(p.color || '—')} · ${escapeHtml(p.napa)}</span></td>
-          <td style="padding:3px 10px;border-bottom:1px solid #f0e7d8;text-align:right;font-family:monospace;color:#b45309">${formatQty(p.tiraM, 'm')} <span style="font-size:8pt;color:#a8752f">m de tira</span></td>
-        </tr>`).join('')}</table>
-      </div>`;
-
-    // (c) OUTROS MATERIAIS (não-napa) — por componente; solado = matriz de grade.
-    const otherByType = new Map<string, ConsumptionRow[]>();
-    for (const row of otherRows) {
-      if (!otherByType.has(row.componentType)) otherByType.set(row.componentType, []);
-      otherByType.get(row.componentType)!.push(row);
-    }
-    const otherCards = Array.from(otherByType.entries()).map(([ct, crows]) => {
-      const colors = componentColors[ct] || componentColors['Outros'];
-      const subt = new Map<string, number>();
-      for (const r of crows) subt.set(r.productUnit, (subt.get(r.productUnit) || 0) + r.totalQuantity);
-      const totalSummary = Array.from(subt.entries()).map(([u, v]) => `${v.toFixed(1)} ${formatUnit(u)}`).join(' · ');
-      const head = `<div style="background:${colors.bg};color:${colors.text};padding:4px 8px;font-weight:700;font-size:10pt;text-transform:uppercase;letter-spacing:.5px;display:flex;justify-content:space-between;align-items:center"><span>▌${escapeHtml(ct)}</span><span style="font-size:8.5pt;font-weight:600;opacity:.8">${totalSummary}</span></div>`;
-      if (ct === 'Solado') {
-        return `<div class="card" style="grid-column:1 / -1;border:2px solid ${colors.border};border-radius:6px;overflow:hidden;margin-bottom:6px">${head}<div style="background:white;padding:0 6px 6px">${soleMatrixHtml(crows)}</div></div>`;
-      }
-      const body = crows.map((r) => {
-        const app = r.materialName || r.groupName;
-        return `<tr><td style="padding:3px 6px;border-bottom:1px solid #e5e7eb"><div style="font-weight:600;font-size:9.5pt">${escapeHtml(app)}</div><div style="color:#6b7280;font-size:8pt">${escapeHtml(r.groupName)}${r.color && r.color !== '—' ? ` · ${escapeHtml(r.color)}` : ''}</div></td>
-          <td style="padding:3px 6px;border-bottom:1px solid #e5e7eb;text-align:right;font-family:monospace;font-weight:700;font-size:9.5pt">${r.totalQuantity.toFixed(2)} <span style="color:#6b7280;font-weight:400;font-size:8pt">${formatUnit(r.productUnit)}</span></td></tr>`;
-      }).join('');
-      return `<div class="card" style="border:2px solid ${colors.border};border-radius:6px;overflow:hidden;margin-bottom:6px">${head}<table style="width:100%;border-collapse:collapse;background:white"><tbody>${body}</tbody></table></div>`;
-    }).join('');
-    const otherSection = otherRows.length === 0 ? '' : `
-      <div style="font-size:9pt;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#374151;margin:6px 0 6px;border-top:1.5px solid #d1d5db;padding-top:6px">Outros materiais</div>
-      <div class="grid">${otherCards}</div>`;
-
-    const totalsHtml = Array.from(totalsByUnit.entries()).map(([unit, total]) =>
-      `<span style="display:inline-block;background:#1f2937;color:white;padding:3px 10px;border-radius:4px;margin-right:6px;font-size:9.5pt;font-weight:600">
-        ${total.toFixed(1)} ${formatUnit(unit)}
-      </span>`
-    ).join('');
-
-    // Cabeçalho multi-PV: lista de pedidos consolidados (só quando fornecida).
-    const orderHeaderHtml = (orderHeaders && orderHeaders.length > 0) ? `
-      <div style="margin:0 0 10px;padding:6px 10px;border:1px solid #e5e7eb;border-radius:6px;background:#f9fafb;display:flex;flex-wrap:wrap;gap:4px 16px;font-size:9pt">
-        ${orderHeaders.map((h) => `<span><strong>PV ${escapeHtml(h.order_number)}</strong>${h.client_order_number ? ` <span style="color:#6b7280">· Cliente ${escapeHtml(h.client_order_number)}</span>` : ''}</span>`).join('')}
-      </div>` : '';
-
-    // Bloco vermelho: tiras artesanais — corte do rolo (mesmo conteúdo da tela).
-    const strapCutHtml = artisanalStrapRows.length === 0 ? '' : `
-        <div style="break-inside:avoid;margin-top:10px">
-          <div style="background:#fef2f2;color:#dc2626;padding:4px 8px;font-weight:700;font-size:10pt;text-transform:uppercase;letter-spacing:.5px;border-radius:4px">✂️ Tiras artesanais — separação da napa-base</div>
-          <p style="font-size:8.5pt;color:#dc2626;margin:4px 0">Metragem calculada por tira pronta ÷ rendimento confirmado da receita aprovada.</p>
-          <table style="width:100%;border-collapse:collapse;font-size:9.5pt;border:1px solid #fca5a5">
-            <thead><tr style="color:#dc2626;background:#fef2f2">
-              <th style="padding:4px 6px;text-align:left;font-size:8.5pt;text-transform:uppercase">Tira e snapshot da receita</th>
-              <th style="padding:4px 6px;text-align:right;font-size:8.5pt;text-transform:uppercase">Separar napa</th>
-            </tr></thead>
-            <tbody>${artisanalStrapRows.map((r) => {
-              const snapshot = r.canonical;
-              const blocked = !snapshot || snapshot.baseRequiredM <= 0
-                || snapshot.confirmedYieldMPerM <= 0 || snapshot.blockingReasons.length > 0;
-              const separar = !blocked && snapshot
-                ? `<span style="font-weight:700;font-size:11pt">${snapshot.baseRequiredM.toLocaleString('pt-BR', { maximumFractionDigits: 6 })} m</span>`
-                : `<span style="font-size:8.5pt">⚠ ${escapeHtml(snapshot?.blockingReasons.join(' · ') || 'snapshot canônico incompleto')}</span>`;
-              const details = snapshot
-                ? `Tira ${r.metros_necessarios.toLocaleString('pt-BR', { maximumFractionDigits: 4 })} m · rendimento ${snapshot.confirmedYieldMPerM.toLocaleString('pt-BR', { maximumFractionDigits: 6 })} m/m${snapshot.usableBaseWidthMm > 0 ? ` · largura útil ${snapshot.usableBaseWidthMm.toLocaleString('pt-BR')} mm` : ''}${r.largura_mm > 0 ? ` · banda ${r.largura_mm.toLocaleString('pt-BR')} mm` : ''}`
-                : 'Sem receita canônica';
-              return `<tr style="color:#dc2626">
-                <td style="padding:3px 6px;border-bottom:1px solid #fecaca;font-weight:600">${escapeHtml(r.groupName)}${r.color && r.color !== '—' ? ` · ${escapeHtml(r.color)}` : ''}${r.baseName ? ` · base ${escapeHtml(r.baseName)}` : ''}<div style="font-size:7.5pt;font-weight:400;color:#6b7280">${escapeHtml(details)}</div></td>
-                <td style="padding:3px 6px;border-bottom:1px solid #fecaca;text-align:right;font-family:monospace">${separar}</td>
-              </tr>`;
-            }).join('')}</tbody>
-          </table>
-        </div>`;
-
-    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${escapeHtml(title)}</title>
-      <style>
-        /* Margem 8mm (não 6mm) + box-sizing global p/ as bordas não serem
-           cortadas na zona não-imprimível. Mesma correção de
-           printLabels.ts/PrintWorkSheetsPage. */
-        @page { size: A4 portrait; margin: 8mm; }
-        * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; box-sizing: border-box; }
-        html, body { margin: 0; padding: 0; }
-        body { font-family: system-ui, -apple-system, sans-serif; color: #111; font-size: 10pt; line-height: 1.3; max-width: 100%; overflow-x: hidden; }
-        h1 { font-size: 14pt; margin: 0 0 2px; }
-        .sub { color: #6b7280; font-size: 9pt; margin: 0 0 8px; }
-        .totals-strip { margin-bottom: 10px; padding: 6px 0; border-top: 2px solid #1f2937; border-bottom: 2px solid #1f2937; }
-        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; width: 100%; }
-        .card { max-width: 100%; }
-        table { max-width: 100%; }
-        @media print {
-          .card { break-inside: avoid; }
-        }
-      </style></head>
-      <body>
-        <h1>${escapeHtml(title)}</h1>
-        <p class="sub">Gerado em ${new Date().toLocaleDateString('pt-BR')} · ${napaFams.length} napa(s) a comprar${pendingStraps.length ? ` · ${pendingStraps.length} pendente(s) de cadastro` : ''}</p>
-        ${orderHeaderHtml}
-        <div class="totals-strip">${totalsHtml}</div>
-        ${napaSection}
-        ${pendingSection}
-        ${otherSection}
-        ${strapCutHtml}
-      </body></html>`;
-
-    const printWindow = window.open('', '_blank');
-    if (printWindow) {
-      printWindow.document.write(html);
-      printWindow.document.close();
-      printWindow.focus();
-      setTimeout(() => printWindow.print(), 400);
-    }
-  }, [buyList, totalsByUnit, title, artisanalStrapRows, orderHeaders]);
+    const target = openPrintTab();
+    const html = buildMaterialConsumptionReportHtml({
+      rows,
+      artisanalStrapRows,
+      title,
+      orderHeaders,
+    });
+    void printHtmlAsPdf(html, {
+      filename: materialConsumptionReportFilename(title),
+      target,
+    });
+  }, [rows, title, artisanalStrapRows, orderHeaders]);
 
   if (loading) {
     return (
@@ -718,6 +552,36 @@ export default function MaterialConsumptionView({
   return (
     <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
       <div className="min-w-0 space-y-3">
+        {/* Manifesto operacional: contexto + decisão no mesmo plano, sem
+            duplicar cartões soltos. O trilho à direita continua sendo a ação;
+            esta faixa explica a leitura antes da tabela. */}
+        <section className="grid overflow-hidden border-y-2 border-foreground bg-card sm:grid-cols-[minmax(0,1.5fr)_repeat(3,minmax(7rem,0.55fr))]" aria-label="Resumo operacional do consumo">
+          <div className="border-b border-border px-4 py-3 sm:border-b-0 sm:border-r">
+            <p className="eyebrow">Suprimentos · conferência do pedido</p>
+            <h2 className="display mt-1 text-2xl leading-none sm:text-3xl">{title}</h2>
+            <p className="mt-1.5 max-w-xl text-xs text-muted-foreground">
+              Necessidade é consumo bruto; falta já desconta o estoque líquido e orienta a reposição.
+            </p>
+          </div>
+          <dl className="border-r border-border px-3 py-3">
+            <dt className="eyebrow">Material base</dt>
+            <dd className="mt-1 font-mono text-xl font-bold leading-none tabular-nums">
+              {baseTotal ? `${formatQty(baseTotal.total, 'm')} m` : '—'}
+            </dd>
+            <dd className="mt-1 text-[10px] text-muted-foreground">necessidade de napa</dd>
+          </dl>
+          <dl className="border-r border-border px-3 py-3">
+            <dt className="eyebrow">Em falta</dt>
+            <dd className="mt-1 font-mono text-xl font-bold leading-none tabular-nums text-destructive">{emFaltaCount}</dd>
+            <dd className="mt-1 text-[10px] text-muted-foreground">itens para repor</dd>
+          </dl>
+          <dl className="px-3 py-3">
+            <dt className="eyebrow">Pendências</dt>
+            <dd className="mt-1 font-mono text-xl font-bold leading-none tabular-nums">{pendingCount}</dd>
+            <dd className="mt-1 text-[10px] text-muted-foreground">cadastros a revisar</dd>
+          </dl>
+        </section>
+
         {orderHeaders && orderHeaders.length > 0 && (
           <div className="flex flex-wrap gap-x-6 gap-y-1 rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm">
             {orderHeaders.map((h, i) => (

@@ -3,8 +3,17 @@ import {
   caixaCollectiveTypeFromName,
   shouldShowCaixaForMode,
   collectiveTypeForMode,
+  wholePackagingDemand,
   type CollectiveType,
 } from '@/lib/packagingPairsPerBox';
+
+describe('wholePackagingDemand', () => {
+  it('arredonda caixa física para cima e preserva insumo linear', () => {
+    expect(wholePackagingDemand(23.904, 'un')).toBe(24);
+    expect(wholePackagingDemand(24, 'un')).toBe(24);
+    expect(wholePackagingDemand(23.904, 'm')).toBeCloseTo(23.904, 6);
+  });
+});
 
 describe('caixaCollectiveTypeFromName', () => {
   it('detecta colmeia / individual / master / fitilho pelo nome', () => {

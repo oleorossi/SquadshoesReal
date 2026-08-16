@@ -384,7 +384,8 @@ describe('orderConsumption — motor canônico', () => {
   // ── Embalagem: filtro de caixa por packaging_mode (bug PV-00141) ───────────
   // A ficha lista DUAS caixas no BOM como alternativas (colmeia 0.083/par +
   // individual 1/par), ambas no grupo "EMBALAGEM". Sem filtro, addConsumptionRow
-  // funde as duas e soma a qtd; com packaging_mode, mostra só a do modo.
+  // funde as duas e soma a qtd; com packaging_mode, mostra só a do modo. Caixa
+  // física fecha por item/OP, então o motor faz CEIL antes de consolidar.
   function ctxComCaixas(): ConsumptionContext {
     const ctx = buildContext();
     ctx.materials = [
@@ -401,7 +402,7 @@ describe('orderConsumption — motor canônico', () => {
     const embal = rows.filter(r => r.componentType === 'Embalagem');
     expect(embal).toHaveLength(1);
     expect(embal[0].materialName).toBe('CAIXA COLMEIA 11');
-    expect(embal[0].totalQuantity).toBeCloseTo(24 * 0.083, 6); // 1.992, não 25.992
+    expect(embal[0].totalQuantity).toBe(2); // ceil(1,992), não 26
   });
 
   it('packaging_mode individual → mostra só CAIXA INDIVIDUAL', () => {
@@ -416,15 +417,15 @@ describe('orderConsumption — motor canônico', () => {
   it('SEM packaging_mode → lista as duas caixas em linhas separadas (cada uma na sua qtd)', () => {
     // Sem modo definido não dá pra escolher a alternativa, mas as duas caixas
     // são PRODUTOS distintos: cada uma vira sua própria linha com a quantidade
-    // real. Antes fundiam numa linha só do grupo EMBALAGEM, somando 1,992
-    // colmeias + 24 individuais = 25,992 "caixas" rotuladas com o primeiro nome.
+    // física. Antes fundiam numa linha só do grupo EMBALAGEM, somando colmeia
+    // fracionária + individual e rotulando tudo com o primeiro nome.
     const item = buildItem(); // sem packagingMode
     const rows = computeConsumptionForItems([item], ctxComCaixas());
     const embal = rows.filter(r => r.componentType === 'Embalagem');
     expect(embal).toHaveLength(2);
     const colmeia = embal.find(r => r.materialName === 'CAIXA COLMEIA 11');
     const individual = embal.find(r => r.materialName === 'CAIXA INDIVIDUAL 11');
-    expect(colmeia?.totalQuantity).toBeCloseTo(24 * 0.083, 6);
+    expect(colmeia?.totalQuantity).toBe(2);
     expect(individual?.totalQuantity).toBeCloseTo(24, 6);
   });
 

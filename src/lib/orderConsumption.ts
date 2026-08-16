@@ -13,7 +13,7 @@ import {
 } from '@/lib/materialConsumption';
 import { calculateStrapConsumptionCm, resolveOrderStraps } from '@/lib/strapConsumption';
 import { scaleGradeWithLargestRemainder } from '@/lib/scaleGrade';
-import { caixaCollectiveTypeFromName, shouldShowCaixaForMode, type CollectiveType } from '@/lib/packagingPairsPerBox';
+import { caixaCollectiveTypeFromName, shouldShowCaixaForMode, wholePackagingDemand, type CollectiveType } from '@/lib/packagingPairsPerBox';
 import {
   findSoleProductForColor,
   getSoleTargetColor,
@@ -2241,6 +2241,14 @@ export function computeConsumptionForItems(
       const rawQty = (Number(material.quantity_per_unit) || 0) * itemQuantity;
       let totalQty = rawQty;
       let widthMissing = false;
+
+      // Caixa física não admite fração. A ficha guarda 0,083 caixa/par, mas a
+      // OP precisa de CEIL por item antes da consolidação (288 × 0,083 =
+      // 23,904 → 24 caixas). Sem isto a tela escondia a fração ao formatar 72,
+      // enquanto o valor interno/OC continuava 71,712.
+      if (bomComponentType === 'Embalagem') {
+        totalQty = wholePackagingDemand(rawQty, productUnit);
+      }
 
       // Materiais de ÁREA cortados de bobina (napa/couro): têm ficha de componente
       // e quantity_per_unit está em dm²/par. Converter para metros lineares pela

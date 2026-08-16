@@ -63,6 +63,22 @@ export function volumesForPairs(mode: string | null | undefined, pairs: number, 
 }
 
 /**
+ * Caixa é uma unidade física indivisível. O BOM guarda fração por par
+ * (ex.: 0,083 caixa/par), mas demanda, separação e compra precisam arredondar
+ * CADA item/OP para cima antes de consolidar — a mesma regra de
+ * `plan_packaging_for_order` e `compute_sale_order_box_breakdown` no banco.
+ *
+ * Fitilho e outros insumos lineares classificados em Embalagem continuam em
+ * metros e NÃO passam por este arredondamento.
+ */
+export function wholePackagingDemand(quantity: number, unit: string | null | undefined): number {
+  const normalizedUnit = (unit || '').toLowerCase().trim();
+  if (!['un', 'par', 'placa'].includes(normalizedUnit)) return quantity;
+  if (!(quantity > 0)) return 0;
+  return Math.ceil(quantity - Number.EPSILON);
+}
+
+/**
  * Detecta o TIPO de caixa coletiva pelo NOME do produto de embalagem.
  * Ex.: "CAIXA COLMEIA 11" → 'colmeia', "CAIXA INDIVIDUAL 11" → 'individual'.
  * `null` quando o nome não denota um tipo conhecido (não é caixa tipada).

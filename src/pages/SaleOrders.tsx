@@ -2843,11 +2843,14 @@ export default function SaleOrders() {
 
           {selectedOrder && (
             <div className="space-y-4 mt-3">
-              {/* Toolbar de ações do PV — compacta ([&_button]) pra caber todos os
-                  botões numa/duas linhas mesmo com o "Gerar OS" novo. */}
-              <div className="flex items-center gap-1.5 flex-wrap border-b py-2.5 [&_button]:h-8 [&_button]:px-2.5 [&_button]:text-xs [&_button]:gap-1.5">
-                <div className="flex items-center gap-2 flex-wrap" role="group" aria-label="Operação">
+              {/* Mesa de liberação do PV: as ações seguem a ordem de trabalho
+                  (pedido → materiais/produção → documentos/terceiros). */}
+              <div className="grid overflow-hidden rounded-lg border bg-card lg:grid-cols-[0.72fr_1.55fr_0.9fr] [&_button]:h-8 [&_button]:px-2.5 [&_button]:text-xs [&_button]:gap-1.5">
+                <section className="border-b border-border p-2.5 lg:border-b-0 lg:border-r" aria-labelledby="pv-actions-order">
+                  <p id="pv-actions-order" className="eyebrow mb-2"><span className="mr-1 font-mono text-primary">01</span> Pedido</p>
+                  <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Ações do pedido">
                   {canEditPv && <Button variant="outline" size="sm" className="gap-2" onClick={() => { setDetailDialogOpen(false); navigate(`/sales/edit/${selectedOrder.id}`); }}><Pencil className="h-3.5 w-3.5" /> Editar</Button>}
+                  <Button variant="outline" size="sm" className="gap-2" onClick={() => setMarginDialogOpen(true)}><TrendingUp className="h-3.5 w-3.5" /> Margem</Button>
                   {/* Botão "Aprovar" individual — só aparece em Rascunho.
                       Sem esse botão, o usuário só conseguia aprovar via "Gerar OPs"
                       em massa (o que aprovava TODOS os Rascunhos de uma vez).
@@ -2887,6 +2890,12 @@ export default function SaleOrders() {
                       <CheckCircle className="h-3.5 w-3.5" /> Aprovar
                     </Button>
                   )}
+                  </div>
+                </section>
+
+                <section className="border-b border-border p-2.5 lg:border-b-0 lg:border-r" aria-labelledby="pv-actions-production">
+                  <p id="pv-actions-production" className="eyebrow mb-2"><span className="mr-1 font-mono text-primary">02</span> Materiais e produção</p>
+                  <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Ações de materiais e produção">
                   {isAdmin && (selectedOrder.status === 'Aprovado' || selectedOrder.status === 'Em Produção') && (
                     <Button variant="outline" size="sm" className="gap-2" disabled={resyncPVOPs.isPending} onClick={() => setPendingConfirm({
                       title: 'Recriar as OPs deste pedido?',
@@ -2940,10 +2949,12 @@ export default function SaleOrders() {
                       Baixar material
                     </Button>
                   )}
-                  <Button variant="outline" size="sm" className="gap-2" onClick={() => setMarginDialogOpen(true)}><TrendingUp className="h-3.5 w-3.5" /> Margem</Button>
-                </div>
-                <div className="hidden sm:block w-px self-stretch bg-border mx-1" aria-hidden="true" />
-                <div role="group" aria-label="Impressão e documentos">
+                  </div>
+                </section>
+
+                <section className="p-2.5" aria-labelledby="pv-actions-documents">
+                  <p id="pv-actions-documents" className="eyebrow mb-2"><span className="mr-1 font-mono text-primary">03</span> Documentos e terceiros</p>
+                  <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Impressão, documentos e terceirização">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button variant="outline" size="sm" className="h-8 gap-2">
@@ -2975,18 +2986,21 @@ export default function SaleOrders() {
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
-                </div>
-                <div className="hidden sm:block w-px self-stretch bg-border mx-1" aria-hidden="true" />
                 {/* Atalho: cria uma Ordem de Serviço com os itens deste pedido
                     (terceirização) — mesmo fluxo/tabela da OS do menu. Primário
                     (vermelho) por ser uma ação de criação, igual Gerar OCs/OPs. */}
                 <Button size="sm" className="gap-2" onClick={() => setOsDialogOpen(true)} title="Gerar Ordem de Serviço com os itens deste pedido — mesmo fluxo do menu Terceirizados">
                   <Buildings className="h-3.5 w-3.5" /> Gerar OS
                 </Button>
+                  </div>
+                </section>
               </div>
 
-              <div className="rounded-lg border bg-muted/30 overflow-hidden">
-                <dl className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-3 p-4">
+              <div className="overflow-hidden rounded-lg border border-l-4 border-l-primary bg-card">
+                <div className="border-b bg-muted/30 px-4 py-2">
+                  <p className="eyebrow">Dados comerciais e entrega</p>
+                </div>
+                <dl className="grid grid-cols-2 gap-x-6 gap-y-3 p-4 sm:grid-cols-3 xl:grid-cols-4">
                   {([
                     { label: 'Representante', value: selectedOrder.representative || '—' },
                     { label: 'Cliente', value: selectedOrder.client_name || '—' },

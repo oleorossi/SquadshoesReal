@@ -19,7 +19,7 @@ import {
   resolveMaterialProductCanonical,
 } from '@/lib/orderConsumption';
 import { scaleGradeWithLargestRemainder } from '@/lib/scaleGrade';
-import { caixaCollectiveTypeFromName, shouldShowCaixaForMode, type CollectiveType } from '@/lib/packagingPairsPerBox';
+import { caixaCollectiveTypeFromName, shouldShowCaixaForMode, wholePackagingDemand, type CollectiveType } from '@/lib/packagingPairsPerBox';
 import { resolvePinnedSoleProductIdByColor, type SoleColorRule } from '@/lib/soleColorResolution';
 import {
   type ArtisanalStrapCutRow,
@@ -1185,6 +1185,12 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
       const rawQty = (Number(material.quantity_per_unit) || 0) * itemQuantity;
       let totalQty = rawQty;
       let widthMissing = false;
+
+      // Espelha o consumo do PV e o débito SQL: caixa é inteira e fecha por
+      // item/OP antes de consolidar. Fitilho em metro permanece fracionário.
+      if (bomType === 'Embalagem') {
+        totalQty = wholePackagingDemand(rawQty, productUnit);
+      }
 
       // Materiais de ÁREA cortados de bobina (napa/couro): têm ficha de
       // componente e quantity_per_unit está em dm²/par. Converter para metros

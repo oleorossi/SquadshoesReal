@@ -83,6 +83,13 @@ describe('generateWeeklyPurchasingPlan — filtro de caixa por packaging_mode', 
     expect(plan.find((r) => r.materialId === 'cx-individual')).toBeUndefined();
   });
 
+  it('arredonda a necessidade de caixa por OP antes de consolidar', () => {
+    const order: WeeklyOrder = { ...baseOrder, quantity: 24, packaging_mode: 'colmeia' };
+    const fractional = { ...caixaColmeia, quantity_per_unit: 0.083 };
+    const { plan } = generateWeeklyPurchasingPlan([order], [fractional]);
+    expect(plan.find((r) => r.materialId === 'cx-colmeia')?.totalToBuy).toBe(2);
+  });
+
   it('sem packaging_mode → comportamento legado (mantém as duas caixas)', () => {
     const { plan } = generateWeeklyPurchasingPlan([baseOrder], [caixaColmeia, caixaIndividual]);
     expect(plan.find((r) => r.materialId === 'cx-colmeia')?.totalToBuy).toBeCloseTo(100, 5);
