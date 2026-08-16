@@ -379,27 +379,173 @@ REVOKE ALL ON FUNCTION public.deprecated_strap_stock_noop(jsonb,integer,uuid,jso
   FROM PUBLIC, anon, authenticated;
 
 -- O canal manual "Compras por Pedido" continua listando todos os materiais
--- comuns, mas sua CTE de tira fica vazia. Tira/napa da transformacao saem
--- exclusivamente das contribuicoes pre_netted do worker.
+-- comuns. Tira pronta e napa de transformacao ficam integralmente fora desta
+-- RPC: o worker 032 e suas contribuicoes pre_netted sao o unico canal. A
+-- assinatura permanece identica para os consumidores existentes.
+CREATE OR REPLACE FUNCTION public.compute_materials_per_pv(p_pv_ids uuid[])
+RETURNS TABLE(
+  material_id uuid,
+  product_name text,
+  unit text,
+  color text,
+  needed_qty numeric,
+  stock_qty numeric,
+  shortage numeric,
+  supplier_id uuid,
+  supplier_name text,
+  last_unit_price numeric,
+  is_artisanal boolean,
+  grade jsonb,
+  color_mismatch boolean,
+  conversion_warning text
+)
+LANGUAGE sql
+SET search_path TO 'public', 'extensions'
+AS $function$
+  WITH item_cons AS (
+    SELECT soi.grade AS item_grade,
+      coalesce(public.filter_caixa_by_packaging_mode(
+        public.calculate_order_consumption_by_grade(
+          soi.reference_id,
+          public.scale_grade_to_total(soi.grade,soi.quantity),
+          coalesce(soi.color,''),
+          soi.material_variant_id
+        ),so.packaging_mode),'[]'::jsonb) AS cons
+    FROM public.sale_orders so
+    JOIN public.sale_order_items soi ON soi.sale_order_id=so.id
+    WHERE soi.sale_order_id=ANY(p_pv_ids)
+      AND soi.reference_id IS NOT NULL
+      AND soi.grade IS NOT NULL
+      AND jsonb_typeof(soi.grade)='object'
+      AND EXISTS (
+        SELECT 1 FROM jsonb_each_text(soi.grade) g
+         WHERE g.key ~ '^[0-9]+(/[0-9]+)?$' AND g.value::numeric>0
+      )
+      AND (
+        so.status NOT IN ('Faturado','Cancelado','Finalizado s/ NF')
+        OR EXISTS (
+          SELECT 1 FROM public.orders o
+           WHERE o.sale_order_item_id=soi.id
+             AND o.status NOT IN ('Finalizado','Cancelada')
+        )
+      )
+  ),
+  -- O consumo por grade nao emite a parcela especializada de tira. Esta
+  -- fronteira estrutural preserva cabedal/forracao/palmilha/solado/BOM sem
+  -- classificar tira por nome, cor, grupo ou products.is_artisanal.
+  exploded AS (
+    SELECT
+      (line->>'product_id')::uuid AS product_id,
+      line->>'product_name' AS product_name,
+      CASE WHEN line->>'matched_by'='group_generic' THEN ''
+           ELSE coalesce(line->>'color','') END AS color,
+      (line->>'required')::numeric AS required,
+      line->>'unit' AS unit,
+      line->>'component' AS component,
+      line->>'matched_by' AS matched_by,
+      line->>'conversion_warning' AS conversion_warning,
+      ic.item_grade
+    FROM item_cons ic, jsonb_array_elements(ic.cons) AS line
+    WHERE line->>'product_id' IS NOT NULL
+  ),
+  agg AS (
+    SELECT e.product_id,e.color,max(e.product_name) AS product_name,
+      coalesce(sum(e.required) FILTER (
+        WHERE e.unit IS NULL AND e.conversion_warning IS NULL),0)
+        /greatest(coalesce((
+          SELECT conv.dm2_per_unit
+            FROM public.get_material_conversion_info(e.product_id) conv
+           LIMIT 1
+        ),1),1)
+      +coalesce(sum(e.required) FILTER (
+        WHERE e.unit IS NOT NULL AND e.conversion_warning IS NULL),0) AS needed_qty,
+      max(e.conversion_warning) AS conversion_warning
+    FROM exploded e
+    GROUP BY e.product_id,e.color
+  ),
+  own_res AS (
+    SELECT mr.product_id,
+      sum(greatest(0,coalesce(mr.quantity_reserved,0)
+        -coalesce(mr.quantity_consumed,0))) AS own_reserved
+    FROM public.material_reservations mr
+    JOIN public.orders o ON o.id=mr.order_id
+    WHERE o.sale_order_id=ANY(p_pv_ids)
+      AND mr.status IN ('reserved','partially_consumed')
+      -- Reserva de tira acabada/base pertence ao netting 032 e nao pode ser
+      -- devolvida ao estoque disponivel deste canal generico.
+      AND mr.sale_order_strap_demand_id IS NULL
+      AND mr.strap_stock_floor_contribution_id IS NULL
+    GROUP BY mr.product_id
+  ),
+  mism AS (
+    SELECT product_id,color,bool_or(matched_by='color_mismatch') AS color_mismatch
+      FROM exploded GROUP BY product_id,color
+  ),
+  solado_grade AS (
+    SELECT product_id,color,jsonb_object_agg(k,v) AS grade FROM (
+      SELECT e.product_id,e.color,kv.key AS k,
+        round(sum(kv.value::numeric*e.required/nullif(gs.total,0))) AS v
+      FROM exploded e
+      CROSS JOIN LATERAL (
+        SELECT sum(x.value::numeric) AS total
+          FROM jsonb_each_text(e.item_grade) x WHERE x.key ~ '^[0-9/]+$'
+      ) gs,
+      jsonb_each_text(e.item_grade) kv
+      WHERE e.component='Solado' AND e.item_grade IS NOT NULL
+        AND kv.key ~ '^[0-9/]+$' AND coalesce(gs.total,0)>0
+      GROUP BY e.product_id,e.color,kv.key
+    ) g WHERE v>0 GROUP BY product_id,color
+  )
+  SELECT
+    a.product_id AS material_id,
+    coalesce(p.name,a.product_id::text) AS product_name,
+    coalesce(p.unit,'un') AS unit,
+    a.color,
+    a.needed_qty,
+    greatest(0,p.quantity-coalesce(p.reserved_stock,0)
+      +coalesce(orr.own_reserved,0)) AS stock_qty,
+    greatest(0,a.needed_qty-greatest(0,p.quantity
+      -coalesce(p.reserved_stock,0)+coalesce(orr.own_reserved,0))) AS shortage,
+    p.supplier_id,
+    sup.name AS supplier_name,
+    coalesce(p.unit_price,0) AS last_unit_price,
+    coalesce(p.is_artisanal,false) AS is_artisanal,
+    sg.grade,
+    coalesce(m.color_mismatch,false) AS color_mismatch,
+    a.conversion_warning
+  FROM agg a
+  LEFT JOIN public.products p ON p.id=a.product_id
+  LEFT JOIN public.suppliers sup ON sup.id=p.supplier_id
+  LEFT JOIN own_res orr ON orr.product_id=a.product_id
+  LEFT JOIN solado_grade sg ON sg.product_id=a.product_id AND sg.color=a.color
+  LEFT JOIN mism m ON m.product_id=a.product_id AND m.color=a.color
+  WHERE a.needed_qty>0 OR a.conversion_warning IS NOT NULL
+  ORDER BY sup.name NULLS LAST,coalesce(p.name,a.product_id::text);
+$function$;
+
+COMMENT ON FUNCTION public.compute_materials_per_pv(uuid[]) IS
+  'Canal generico Compras por Pedido: somente exploded nao-tira. Tira pronta e '
+  'napa de transformacao pertencem exclusivamente ao worker canonico 032 e as '
+  'contribuicoes pre_netted; assinatura legada preservada para consumidores.';
+
 DO $$
-DECLARE v_oid oid; v_definition text; v_start integer; v_tail integer;
+DECLARE v_oid oid; v_definition text;
 BEGIN
-  SELECT p.oid INTO v_oid
+  SELECT p.oid,lower(pg_get_functiondef(p.oid)) INTO v_oid,v_definition
     FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
    WHERE n.nspname='public' AND p.proname='compute_materials_per_pv'
      AND pg_get_function_identity_arguments(p.oid)='p_pv_ids uuid[]';
-  IF v_oid IS NOT NULL THEN
-    v_definition:=pg_get_functiondef(v_oid);
-    v_start:=strpos(v_definition,'  strap_lines AS (');
-    v_tail:=CASE WHEN v_start>0 THEN strpos(substr(v_definition,v_start),'  agg AS (') ELSE 0 END;
-    IF v_start=0 OR v_tail=0 THEN
-      RAISE EXCEPTION 'Cutover recusado: shape inesperado de compute_materials_per_pv(uuid[])';
-    END IF;
-    v_definition:=left(v_definition,v_start-1)
-      || E'  strap_lines AS (\n    SELECT NULL::uuid AS product_id, NULL::text AS color,\n'
-      || E'      NULL::numeric AS required, NULL::text AS block_reason WHERE false\n  ),\n'
-      || substr(v_definition,v_start+v_tail-1);
-    EXECUTE v_definition;
+  IF v_oid IS NULL
+     OR position('exploded as (' IN v_definition)=0
+     OR position('calculate_order_consumption_by_grade' IN v_definition)=0
+     OR position('from agg a' IN v_definition)=0
+     OR position('mr.sale_order_strap_demand_id is null' IN v_definition)=0
+     OR position('mr.strap_stock_floor_contribution_id is null' IN v_definition)=0
+     OR position('strap_lines as (' IN v_definition)>0
+     OR position('resolve_strap_stock_lines' IN v_definition)>0
+     OR position('order_strap_needs' IN v_definition)>0
+     OR position('component=''tira''' IN replace(v_definition,' ',''))>0 THEN
+    RAISE EXCEPTION 'Req5/52/54: compute_materials_per_pv ainda duplica o motor canonico de tiras';
   END IF;
 END;
 $$;

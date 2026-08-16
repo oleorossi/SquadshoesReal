@@ -65,6 +65,12 @@ export interface PvMaterialNeed {
    *  OC compraria ~100× em dm² cru); needed 0 + warning ⇒ resolver o cadastro
    *  da largura antes de comprar. Auditoria 2026-07-01. */
   conversion_warning?: string | null;
+  /** Identidades estruturais opcionais. Versões novas do RPC podem devolvê-las;
+   *  quando presentes, o canal per_pv deve excluir a linha sem interpretar nome. */
+  strap_variant_id?: string | null;
+  technical_strap_line_id?: string | null;
+  finished_product_id?: string | null;
+  product_group_id?: string | null;
 }
 
 export interface DraftPurchaseOrderItem {
@@ -94,6 +100,11 @@ export interface DraftPurchaseOrderItem {
    *  Presente ⇒ parte da necessidade ficou FORA de `needed_qty`: esta linha
    *  compra A MENOS do que o pedido consome até o cadastro ser corrigido. */
   conversion_warning?: string | null;
+  /** Proveniência estrutural preservada até o último guard antes do INSERT. */
+  strap_variant_id?: string | null;
+  technical_strap_line_id?: string | null;
+  finished_product_id?: string | null;
+  product_group_id?: string | null;
 }
 
 /** Soma duas grades por numeração (chaves = números/conjugados). */
@@ -116,6 +127,140 @@ export interface DraftPurchaseOrder {
 }
 
 export const NO_SUPPLIER_LABEL = 'Sem Fornecedor';
+
+export interface PerPvStrapIdentityGuard {
+  canonicalFinishedProductIds: ReadonlySet<string>;
+  canonicalStrapGroupIds: ReadonlySet<string>;
+  legacyArtisanalProductIds: ReadonlySet<string>;
+  productGroupByProductId: ReadonlyMap<string, string>;
+}
+
+interface PerPvStrapCatalogLike {
+  variants?: Array<{ id?: string | null; finished_product_id?: string | null }>;
+  groups?: Array<{ id?: string | null; is_artisanal_strap?: boolean | null }>;
+  /** Produtos-base oficiais não são, por si, tira acabada: a mesma napa pode
+   *  ser um material comum do calçado e não deve sumir do per_pv. */
+  official_products?: Array<{ official_product_id?: string | null }>;
+}
+
+interface PerPvProductIdentityLike {
+  id?: string | null;
+  group_id?: string | null;
+  is_artisanal?: boolean | null;
+}
+
+interface PerPvGroupIdentityLike {
+  id?: string | null;
+  is_artisanal_strap?: boolean | null;
+}
+
+function nonEmptyId(value: unknown): string | null {
+  const id = typeof value === 'string' ? value.trim() : '';
+  return id || null;
+}
+
+/**
+ * Compila apenas evidências estruturais. Nomes/SKUs nunca entram: um material
+ * comum que contenha “tira” no texto deve continuar no canal per_pv.
+ */
+export function createPerPvStrapIdentityGuard({
+  catalog,
+  products = [],
+  groups = [],
+}: {
+  catalog?: PerPvStrapCatalogLike | null;
+  products?: PerPvProductIdentityLike[];
+  groups?: PerPvGroupIdentityLike[];
+}): PerPvStrapIdentityGuard {
+  const canonicalFinishedProductIds = new Set<string>();
+  const canonicalStrapGroupIds = new Set<string>();
+  const legacyArtisanalProductIds = new Set<string>();
+  const productGroupByProductId = new Map<string, string>();
+
+  for (const variant of catalog?.variants || []) {
+    const productId = nonEmptyId(variant.finished_product_id);
+    if (productId) canonicalFinishedProductIds.add(productId);
+  }
+  for (const group of [...(catalog?.groups || []), ...groups]) {
+    const groupId = nonEmptyId(group.id);
+    if (groupId && group.is_artisanal_strap === true) canonicalStrapGroupIds.add(groupId);
+  }
+  for (const product of products) {
+    const productId = nonEmptyId(product.id);
+    const groupId = nonEmptyId(product.group_id);
+    if (!productId) continue;
+    if (groupId) productGroupByProductId.set(productId, groupId);
+    if (product.is_artisanal === true) legacyArtisanalProductIds.add(productId);
+  }
+  return {
+    canonicalFinishedProductIds,
+    canonicalStrapGroupIds,
+    legacyArtisanalProductIds,
+    productGroupByProductId,
+  };
+}
+
+export type PerPvPurchasableIdentity = Pick<DraftPurchaseOrderItem, 'material_id'> & Partial<Pick<
+  PvMaterialNeed,
+  'strap_variant_id' | 'technical_strap_line_id' | 'finished_product_id' | 'product_group_id'
+>>;
+
+export function isStructuralArtisanalStrapPurchaseItem(
+  item: PerPvPurchasableIdentity,
+  guard: PerPvStrapIdentityGuard,
+) {
+  const materialId = nonEmptyId(item.material_id);
+  const variantId = nonEmptyId(item.strap_variant_id);
+  const technicalLineId = nonEmptyId(item.technical_strap_line_id);
+  const finishedProductId = nonEmptyId(item.finished_product_id);
+  const groupId = nonEmptyId(item.product_group_id)
+    || (materialId ? guard.productGroupByProductId.get(materialId) || null : null);
+  return Boolean(
+    technicalLineId
+    // A própria coluna `strap_variant_id` é uma FK estrutural do domínio; se a
+    // variante foi arquivada/está em revisão e sumiu do catálogo, ainda assim a
+    // linha jamais volta para o canal genérico.
+    || variantId
+    // `finished_product_id` neste payload é o produto acabado resolvido pela
+    // variante de tira, não um product_id genérico. A presença também fecha o
+    // canal mesmo durante revisão/migração do catálogo.
+    || finishedProductId
+    || (materialId && guard.canonicalFinishedProductIds.has(materialId))
+    || (materialId && guard.legacyArtisanalProductIds.has(materialId))
+    || (groupId && guard.canonicalStrapGroupIds.has(groupId))
+  );
+}
+
+export function partitionPerPvStrapPurchaseItems<T extends PerPvPurchasableIdentity>(
+  items: T[],
+  guard: PerPvStrapIdentityGuard,
+) {
+  const common: T[] = [];
+  const straps: T[] = [];
+  for (const item of items) {
+    (isStructuralArtisanalStrapPurchaseItem(item, guard) ? straps : common).push(item);
+  }
+  return { common, straps };
+}
+
+/** Defesa final para qualquer caller do hook, inclusive fora do diálogo. */
+export function excludeStrapsFromPerPvDrafts(
+  drafts: DraftPurchaseOrder[],
+  guard: PerPvStrapIdentityGuard,
+) {
+  const excluded: DraftPurchaseOrderItem[] = [];
+  const commonDrafts = drafts.flatMap((draft) => {
+    const partitioned = partitionPerPvStrapPurchaseItems(draft.items, guard);
+    excluded.push(...partitioned.straps);
+    if (partitioned.common.length === 0) return [];
+    return [{
+      ...draft,
+      items: partitioned.common,
+      total: round3(partitioned.common.reduce((sum, item) => sum + item.quantity * item.unit_price, 0)),
+    }];
+  });
+  return { drafts: commonDrafts, excluded };
+}
 
 export interface BuildOptions {
   /**
@@ -188,6 +333,10 @@ export function buildPerPvPurchaseOrders(
       // Basta UM aviso pra linha estar comprometida — guarda o primeiro (a RPC
       // já agrega por (produto, cor), então na prática só há um).
       existing.conversion_warning = existing.conversion_warning || (n.conversion_warning ?? null);
+      existing.strap_variant_id = existing.strap_variant_id || n.strap_variant_id || null;
+      existing.technical_strap_line_id = existing.technical_strap_line_id || n.technical_strap_line_id || null;
+      existing.finished_product_id = existing.finished_product_id || n.finished_product_id || null;
+      existing.product_group_id = existing.product_group_id || n.product_group_id || null;
     } else {
       merged.set(key, {
         material_id: n.material_id,
@@ -206,6 +355,10 @@ export function buildPerPvPurchaseOrders(
         grade: n.grade ?? null,
         color_mismatch: !!n.color_mismatch,
         conversion_warning: n.conversion_warning ?? null,
+        strap_variant_id: n.strap_variant_id ?? null,
+        technical_strap_line_id: n.technical_strap_line_id ?? null,
+        finished_product_id: n.finished_product_id ?? null,
+        product_group_id: n.product_group_id ?? null,
         supplier_id: n.supplier_id ?? null,
         supplier_name: n.supplier_name ?? null,
       });
@@ -284,6 +437,10 @@ export function buildPerPvPurchaseOrders(
       grade: it.grade ?? null,
       color_mismatch: !!it.color_mismatch,
       conversion_warning: it.conversion_warning ?? null,
+      strap_variant_id: it.strap_variant_id ?? null,
+      technical_strap_line_id: it.technical_strap_line_id ?? null,
+      finished_product_id: it.finished_product_id ?? null,
+      product_group_id: it.product_group_id ?? null,
     });
   }
 

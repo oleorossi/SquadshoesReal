@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import {
   buildPerPvPurchaseOrders,
+  createPerPvStrapIdentityGuard,
+  excludeStrapsFromPerPvDrafts,
+  partitionPerPvStrapPurchaseItems,
   summarizePerPvDrafts,
   isPerPvPurchaseOrder,
   collectPvNeedWarnings,
@@ -209,7 +212,7 @@ describe('buildPerPvPurchaseOrders', () => {
 
   it('ignora linhas inválidas (sem material_id) e quantidade zero', () => {
     const drafts = buildPerPvPurchaseOrders([
-      need({ material_id: '', needed_qty: 5 } as any),
+      need({ material_id: '', needed_qty: 5 }),
       need({ material_id: 'm1', needed_qty: 0 }),
       need({ material_id: 'm2', needed_qty: 4 }),
     ]);
@@ -277,18 +280,81 @@ describe('isPerPvPurchaseOrder', () => {
   });
 });
 
+describe('fronteira estrutural de tiras no canal per_pv', () => {
+  const guard = createPerPvStrapIdentityGuard({
+    catalog: {
+      variants: [{ id: 'variant-soft-preto', finished_product_id: 'product-strap-soft-preto' }],
+      groups: [{ id: 'group-strap-finished', is_artisanal_strap: true }],
+      official_products: [{ official_product_id: 'product-napa-soft-preto' }],
+    },
+    products: [
+      { id: 'product-strap-soft-preto', group_id: 'group-strap-finished', is_artisanal: false },
+      { id: 'legacy-artisanal', group_id: 'group-legacy', is_artisanal: true },
+      { id: 'product-napa-soft-preto', group_id: 'group-napa', is_artisanal: false },
+      { id: 'common', group_id: 'group-common', is_artisanal: false },
+    ],
+    groups: [
+      { id: 'group-strap-finished', is_artisanal_strap: true },
+      { id: 'group-napa', is_artisanal_strap: false },
+      { id: 'group-common', is_artisanal_strap: false },
+    ],
+  });
+
+  it('separa produto acabado canônico, FK de variante, linha técnica e flag legada exata', () => {
+    const result = partitionPerPvStrapPurchaseItems([
+      need({ material_id: 'product-strap-soft-preto', product_name: 'Produto acabado neutro' }),
+      need({ material_id: 'unknown-product', product_name: 'Sem nome de tira', strap_variant_id: 'archived-variant' }),
+      need({ material_id: 'another-product', product_name: 'Linha técnica', technical_strap_line_id: 'technical-line-id' }),
+      need({ material_id: 'legacy-artisanal', product_name: 'Legado estrutural' }),
+      need({ material_id: 'common', product_name: 'Material comum' }),
+    ], guard);
+
+    expect(result.straps.map((item) => item.material_id)).toEqual([
+      'product-strap-soft-preto',
+      'unknown-product',
+      'another-product',
+      'legacy-artisanal',
+    ]);
+    expect(result.common.map((item) => item.material_id)).toEqual(['common']);
+  });
+
+  it('não classifica por nome e não remove a napa-base oficial quando ela é material comum', () => {
+    const result = partitionPerPvStrapPurchaseItems([
+      need({ material_id: 'common', product_name: 'TIRA DE FIXAÇÃO DA MÁQUINA' }),
+      need({ material_id: 'product-napa-soft-preto', product_name: 'NAPA SOFT PRETO' }),
+    ], guard);
+
+    expect(result.straps).toEqual([]);
+    expect(result.common.map((item) => item.material_id)).toEqual([
+      'common',
+      'product-napa-soft-preto',
+    ]);
+  });
+
+  it('remove a tira de um draft misto e recalcula o total só com materiais comuns', () => {
+    const drafts = buildPerPvPurchaseOrders([
+      need({ material_id: 'product-strap-soft-preto', needed_qty: 4, last_unit_price: 8 }),
+      need({ material_id: 'common', needed_qty: 3, last_unit_price: 5 }),
+    ]);
+    const result = excludeStrapsFromPerPvDrafts(drafts, guard);
+
+    expect(result.excluded.map((item) => item.material_id)).toEqual(['product-strap-soft-preto']);
+    expect(result.drafts).toHaveLength(1);
+    expect(result.drafts[0].items.map((item) => item.material_id)).toEqual(['common']);
+    expect(result.drafts[0].total).toBe(15);
+  });
+});
+
 /**
- * GATE do aviso do motor. A tira artesanal bloqueada (sem napa na família+cor)
- * volta da RPC com needed_qty 0 + conversion_warning: o item é descartado da OC
- * — corretamente, não se compra 0 — mas a mensagem PRECISA sobreviver, senão o
- * material some da tela e a OC sai comprando a menos em silêncio. Foi assim que
- * a divergência compra × reserva do PV-00148 passou despercebida.
+ * GATE do aviso do motor de materiais comuns. A fronteira estrutural acima tira
+ * o domínio artesanal deste canal; conversão/largura inválida ainda pode voltar
+ * com needed_qty 0 + conversion_warning e precisa continuar visível.
  */
 describe('collectPvNeedWarnings', () => {
-  const BLOCK = 'Tira chata 8mm está marcada como cortada aqui, mas não existe NAPA SOFT na cor BEGE no estoque — cadastre a napa ou marque a tira como comprada pronta.';
+  const BLOCK = 'NAPA CABEDAL está sem largura válida na ficha de componente — cadastre a largura antes de comprar.';
 
   it('a linha bloqueada não vira item de OC, mas o aviso sobrevive', () => {
-    const needs = [need({ material_id: 'tira-8', product_name: 'Tira chata 8mm', color: 'BEGE', needed_qty: 0, conversion_warning: BLOCK })];
+    const needs = [need({ material_id: 'napa-cabedal', product_name: 'NAPA CABEDAL', color: 'BEGE', needed_qty: 0, conversion_warning: BLOCK })];
     expect(buildPerPvPurchaseOrders(needs)).toHaveLength(0);
     const warnings = collectPvNeedWarnings(needs);
     expect(warnings).toHaveLength(1);

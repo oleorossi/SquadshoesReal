@@ -11,6 +11,7 @@ const SCHEMA = readMigration('20270101003100_artisanal_straps_operational_schema
 const ENGINE = readMigration('20270101003200_artisanal_straps_operational_engine.sql');
 const LEGACY = readMigration('20270101003300_artisanal_straps_legacy_migration_apply.sql');
 const HARDENING = readMigration('20270101003050_artisanal_straps_catalog_postdeploy_hardening.sql');
+const PER_PV_APPLIED = readMigration('20261022120000_compute-materials-per-pv-uses-strap-single-engine.sql');
 
 function functionBody(sql: string, name: string, nextMarker: string) {
   const start = sql.indexOf(`CREATE OR REPLACE FUNCTION public.${name}(`);
@@ -18,6 +19,12 @@ function functionBody(sql: string, name: string, nextMarker: string) {
   expect(start).toBeGreaterThanOrEqual(0);
   expect(end).toBeGreaterThan(start);
   return sql.slice(start, end);
+}
+
+function returnTableShape(sql: string) {
+  const match = sql.match(/RETURNS TABLE\((.*?)\)\s*LANGUAGE/is);
+  expect(match).not.toBeNull();
+  return match![1].replace(/\s+/g, ' ').trim().toLowerCase();
 }
 
 describe('Tiras artesanais — contrato SQL canônico', () => {
@@ -57,6 +64,30 @@ describe('Tiras artesanais — contrato SQL canônico', () => {
     expect(ENGINE).toContain('RETURN (v_total_cm * v_scale) / 100');
     expect(ENGINE).toContain("v_default_cm numeric := coalesce(nullif(p_line ->> 'consumption', '')::numeric, 0)");
     expect(ENGINE).not.toMatch(/PERFORM public\.debit_strap_stock/);
+  });
+
+  it('retira tiras integralmente do canal genérico por PV sem quebrar sua assinatura', () => {
+    const applied = functionBody(
+      PER_PV_APPLIED,
+      'compute_materials_per_pv',
+      'COMMENT ON FUNCTION public.compute_materials_per_pv',
+    );
+    const cutover = functionBody(
+      ENGINE,
+      'compute_materials_per_pv',
+      'COMMENT ON FUNCTION public.compute_materials_per_pv',
+    );
+
+    expect(returnTableShape(cutover)).toBe(returnTableShape(applied));
+    expect(cutover).toContain('exploded AS (');
+    expect(cutover).toContain('FROM agg a');
+    expect(cutover).toContain('mr.sale_order_strap_demand_id IS NULL');
+    expect(cutover).toContain('mr.strap_stock_floor_contribution_id IS NULL');
+    expect(cutover).not.toContain('strap_lines AS (');
+    expect(cutover).not.toContain('resolve_strap_stock_lines');
+    expect(cutover).not.toContain('order_strap_needs');
+    expect(cutover).not.toContain("component='Tira'");
+    expect(ENGINE).toContain('compute_materials_per_pv ainda duplica o motor canonico de tiras');
   });
 
   it('separa compra por fornecedor, mês e quinzena e congela os parâmetros comerciais', () => {

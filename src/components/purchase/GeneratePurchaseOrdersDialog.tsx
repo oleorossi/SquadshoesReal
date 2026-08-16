@@ -1,5 +1,6 @@
 import { Fragment, useMemo, useState } from 'react';
-import { computePurchaseBaseTotal, isSuspectUnrolledArtisanal } from '@/lib/baseMaterialTotal';
+import { Link } from 'react-router-dom';
+import { computePurchaseBaseTotal } from '@/lib/baseMaterialTotal';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -18,12 +19,22 @@ import {
 } from '@phosphor-icons/react';
 import { formatCurrency, formatMoney } from '@/lib/utils';
 import { useMaterialsPerPv, useGeneratePerPvPurchaseOrders } from '@/hooks/usePerPvPurchasing';
+import { useArtisanalStrapCatalog } from '@/hooks/useArtisanalStraps';
 import { useProducts } from '@/hooks/useProducts';
 import { useGroups } from '@/hooks/useGroups';
 import { effectivePurchaseMultiple } from '@/lib/purchaseMultiple';
 import { effectiveConversionFactorStrict } from '@/lib/purchaseConversion';
 import { normalizeUnit } from '@/lib/unitConversion';
-import { buildPerPvPurchaseOrders, summarizePerPvDrafts, collectPvNeedWarnings, NO_SUPPLIER_LABEL } from '@/lib/perPvPurchasing';
+import {
+  buildPerPvPurchaseOrders,
+  collectPvNeedWarnings,
+  createPerPvStrapIdentityGuard,
+  NO_SUPPLIER_LABEL,
+  partitionPerPvStrapPurchaseItems,
+  summarizePerPvDrafts,
+  type DraftPurchaseOrderItem,
+  type PvMaterialNeed,
+} from '@/lib/perPvPurchasing';
 import { printPerPvMaterials } from '@/lib/printPerPvMaterials';
 import { printPerPvOcPdf } from '@/lib/printPerPvOcPdf';
 import CreateStrapProductDialog from '@/components/sale-orders/CreateStrapProductDialog';
@@ -46,6 +57,27 @@ type Props = {
   onGenerated?: (createdIds: string[]) => void;
 };
 
+interface PurchasingProduct {
+  id: string;
+  name: string;
+  group_id?: string | null;
+  is_artisanal?: boolean | null;
+  purchase_multiple?: number | null;
+  purchase_unit?: string | null;
+  purchase_order_unit?: string | null;
+  unit?: string | null;
+  conversion_rate?: number | null;
+  dimensions_width?: number | null;
+  dimensions_unit?: string | null;
+  sku?: string | null;
+  technical_name?: string | null;
+  color?: string | null;
+  product_groups?: {
+    name?: string | null;
+    purchase_multiple?: number | null;
+  } | null;
+}
+
 /**
  * Modal do canal "Compras por Pedido". Mostra os materiais necessários do(s)
  * PV(s) agrupados por fornecedor (+ balde "Sem Fornecedor") e gera uma OC por
@@ -58,12 +90,23 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
   const [netOfStock, setNetOfStock] = useState(true);
   // GUARD: cor não cadastrada bloqueia gerar OC; override consciente p/ casos benignos.
   const [overrideColorMismatch, setOverrideColorMismatch] = useState(false);
-  // GUARD: aviso da RPC (tira sem napa, largura faltando) bloqueia gerar — a OC
+  // GUARD: aviso da RPC (ex.: largura/conversão faltante) bloqueia gerar — a OC
   // sairia comprando A MENOS. Override consciente pelo mesmo padrão da cor.
   const [overrideNeedWarnings, setOverrideNeedWarnings] = useState(false);
-  const { data: needs = [], isLoading, isError, error } = useMaterialsPerPv(open ? pvIds : null);
-  const { data: products = [] } = useProducts();
-  const { data: groups = [] } = useGroups();
+  const needsQuery = useMaterialsPerPv(open ? pvIds : null);
+  const productsQuery = useProducts();
+  const groupsQuery = useGroups();
+  const strapCatalogQuery = useArtisanalStrapCatalog(true);
+  const needs = useMemo<PvMaterialNeed[]>(() => needsQuery.data || [], [needsQuery.data]);
+  const products = useMemo<PurchasingProduct[]>(
+    () => (productsQuery.data || []) as PurchasingProduct[],
+    [productsQuery.data],
+  );
+  const groups = useMemo(() => groupsQuery.data || [], [groupsQuery.data]);
+  const identityUnavailable = productsQuery.isError || groupsQuery.isError || strapCatalogQuery.isError;
+  const isLoading = needsQuery.isLoading || productsQuery.isLoading || groupsQuery.isLoading || strapCatalogQuery.isLoading;
+  const isError = needsQuery.isError || identityUnavailable;
+  const error = needsQuery.error || productsQuery.error || groupsQuery.error || strapCatalogQuery.error;
   const generate = useGeneratePerPvPurchaseOrders();
   const qc = useQueryClient();
   // Cadastro 1-clique da cor faltante: resolve o grupo a partir do produto (material_id).
@@ -75,17 +118,29 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
     variantId?: string | null;
   } | null>(null);
   const resolveGroupForMaterial = (materialId: string): { groupId: string; groupName: string } | null => {
-    const prod = (products as any[]).find((p) => p.id === materialId);
+    const prod = products.find((p) => p.id === materialId);
     if (!prod?.group_id) return null;
-    const grp = (groups as any[]).find((g) => g.id === prod.group_id);
+    const grp = groups.find((g) => g.id === prod.group_id);
     return grp ? { groupId: grp.id, groupName: grp.name } : null;
   };
+
+  const strapIdentityGuard = useMemo(() => createPerPvStrapIdentityGuard({
+    catalog: strapCatalogQuery.data,
+    products: products as Array<{ id?: string | null; group_id?: string | null; is_artisanal?: boolean | null }>,
+    groups,
+  }), [groups, products, strapCatalogQuery.data]);
+  const needsPartition = useMemo(
+    () => partitionPerPvStrapPurchaseItems(needs, strapIdentityGuard),
+    [needs, strapIdentityGuard],
+  );
+  const purchasableNeeds = needsPartition.common;
+  const excludedStrapNeeds = needsPartition.straps;
 
   // Enriquece cada necessidade com o múltiplo de compra efetivo (item→grupo),
   // pra buildPerPvPurchaseOrders arredondar a quantidade pra cima (187 → 200).
   const multipleByProduct = useMemo(() => {
     const m = new Map<string, number>();
-    for (const p of products as any[]) {
+    for (const p of products) {
       m.set(p.id, effectivePurchaseMultiple(p.purchase_multiple, p.product_groups?.purchase_multiple));
     }
     return m;
@@ -96,7 +151,7 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
   // geração fica bloqueada: nunca rebaixa a conversão para 1:1.
   const conversionByProduct = useMemo(() => {
     const m = new Map<string, { purchase_unit: string | null; conversion_factor: number | null; conversion_warning: string | null }>();
-    for (const p of products as any[]) {
+    for (const p of products) {
       const purchaseUnit = p.purchase_unit || p.purchase_order_unit;
       const ctx = {
         unit: p.unit,
@@ -125,10 +180,10 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
   }, [products]);
 
   const conversionWarnings = useMemo(
-    () => [...new Set(needs
-      .map((n: any) => conversionByProduct.get(n.material_id)?.conversion_warning)
+    () => [...new Set(purchasableNeeds
+      .map((need) => conversionByProduct.get(need.material_id)?.conversion_warning)
       .filter((warning): warning is string => !!warning))],
-    [needs, conversionByProduct],
+    [purchasableNeeds, conversionByProduct],
   );
 
   // Avisos que vêm do BANCO (compute_materials_per_pv → conversion_warning),
@@ -137,7 +192,7 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
   // material sumia da tela sem explicação — exatamente o silêncio que o motor
   // único de tira artesanal existe pra acabar (spec §2.4). A mensagem já vem
   // pronta e acionável do banco; aqui só a exibimos.
-  const needWarnings = useMemo(() => collectPvNeedWarnings(needs as any[]), [needs]);
+  const needWarnings = useMemo(() => collectPvNeedWarnings(purchasableNeeds), [purchasableNeeds]);
   /** Bloqueio TOTAL: nada dessa linha entra na OC (needed_qty 0). */
   const blockedWarnings = useMemo(() => needWarnings.filter((w) => w.needed_qty <= 0), [needWarnings]);
 
@@ -148,7 +203,7 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
   // fornecedor tem várias versões da mesma peça.
   const identityByProduct = useMemo(() => {
     const m = new Map<string, { sku: string | null; technical_name: string | null; color: string | null }>();
-    for (const p of products as any[]) {
+    for (const p of products) {
       m.set(p.id, {
         sku: (p.sku || '').trim() || null,
         technical_name: (p.technical_name || '').trim() || null,
@@ -159,7 +214,7 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
   }, [products]);
 
   const enrichedNeeds = useMemo(
-    () => needs.filter((n: any) => !conversionByProduct.get(n.material_id)?.conversion_warning).map((n: any) => {
+    () => purchasableNeeds.filter((need) => !conversionByProduct.get(need.material_id)?.conversion_warning).map((n) => {
       const conv = conversionByProduct.get(n.material_id);
       const ident = identityByProduct.get(n.material_id);
       return {
@@ -175,9 +230,10 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
         purchase_multiple: multipleByProduct.get(n.material_id) ?? null,
         purchase_unit: conv?.purchase_unit ?? null,
         conversion_factor: conv?.conversion_factor,
+        product_group_id: n.product_group_id || strapIdentityGuard.productGroupByProductId.get(n.material_id) || null,
       };
     }),
-    [needs, multipleByProduct, conversionByProduct, identityByProduct],
+    [purchasableNeeds, multipleByProduct, conversionByProduct, identityByProduct, strapIdentityGuard.productGroupByProductId],
   );
 
   const drafts = useMemo(
@@ -190,37 +246,22 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
   // O grupo do produto é o que diz se a linha é napa; a RPC não manda essa
   // informação, mas o cadastro já está carregado aqui.
   const groupNameByProduct = useMemo(() => {
-    const byId = new Map((groups as any[]).map((g) => [g.id, (g.name || '').trim()]));
+    const byId = new Map(groups.map((g) => [g.id, (g.name || '').trim()]));
     const m = new Map<string, string>();
     // `useProducts` já embute product_groups(name) — prefere o embutido pra não
     // depender da query de grupos ter resolvido antes desta render.
-    for (const p of products as any[]) {
+    for (const p of products) {
       m.set(p.id, ((p.product_groups?.name as string) || byId.get(p.group_id) || '').trim());
     }
     return m;
   }, [products, groups]);
-
-  /** Quantos produtos ARTESANAIS cada grupo tem — base da suspeita de tira que
-   *  escapou do rollup (um irmão sem a flag no meio de um grupo artesanal). */
-  const artisanalCountByGroup = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const p of products as any[]) {
-      if (p.is_artisanal && p.group_id) m.set(p.group_id, (m.get(p.group_id) || 0) + 1);
-    }
-    return m;
-  }, [products]);
-
-  const productById = useMemo(
-    () => new Map((products as any[]).map((p) => [p.id, p])),
-    [products],
-  );
 
   // Usa a quantidade A COMPRAR (líquida de estoque e já no múltiplo de compra),
   // não a necessidade bruta: nesta tela todo número é o que vai na OC — o
   // "Total estimado" ao lado é o dinheiro dessa mesma quantidade. Por isso o
   // valor acompanha o toggle "Descontar estoque" e pode ficar ABAIXO do total
   // que o modal de Consumo mostra, que é consumo, não compra.
-  const baseInputsFor = (items: any[]) => items.map((it) => ({
+  const baseInputsFor = (items: DraftPurchaseOrderItem[]) => items.map((it) => ({
     groupName: groupNameByProduct.get(it.material_id) || '',
     unit: it.purchase_unit || it.unit,
     qty: Number(it.quantity) || 0,
@@ -230,14 +271,6 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
     () => computePurchaseBaseTotal(baseInputsFor(drafts.flatMap((d) => d.items))),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [drafts, groupNameByProduct],
-  );
-
-  /** Linhas que deveriam ter virado napa e não viraram (flag faltando no
-   *  produto) — a OC compraria tira pronta sem avisar ninguém. */
-  const unrolledSuspects = useMemo(
-    () => drafts.flatMap((d) => d.items).filter((it) =>
-      isSuspectUnrolledArtisanal(productById.get(it.material_id) || {}, artisanalCountByGroup)),
-    [drafts, productById, artisanalCountByGroup],
   );
 
   // O título SEMPRE nomeia os PVs do escopo. Antes, multi-PV virava "N pedidos"
@@ -253,6 +286,10 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
   }, [pvNumbers, pvIds.length]);
 
   const handleGenerate = async () => {
+    if (isLoading || isError) {
+      toast.error('Não foi possível validar as identidades canônicas de tira. Nenhuma OC foi gerada; recarregue o catálogo.');
+      return;
+    }
     if (conversionWarnings.length > 0) {
       toast.error('Corrija os cadastros de conversão indicados antes de gerar as OCs.');
       return;
@@ -311,8 +348,33 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
 
         {isError && (
           <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
-            Falha ao calcular materiais: {(error as Error)?.message || 'erro desconhecido'}.
-            {' '}Verifique se a migration <code>compute_materials_per_pv</code> já foi aplicada no banco.
+            <strong>
+              {identityUnavailable
+                ? 'Não foi possível validar quais materiais pertencem ao catálogo canônico de tiras.'
+                : 'Falha ao calcular os materiais deste pedido.'}
+            </strong>{' '}
+            {(error as Error)?.message || 'Erro desconhecido.'}{' '}
+            Nenhuma OC será gerada até a validação terminar com segurança.
+          </div>
+        )}
+
+        {!isLoading && !isError && (
+          <div className="flex flex-col gap-3 rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex min-w-0 items-start gap-2">
+              <Package className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+              <div>
+                <strong>
+                  {excludedStrapNeeds.length > 0
+                    ? `${excludedStrapNeeds.length} demanda(s) de tira separada(s) deste canal.`
+                    : 'As tiras artesanais seguem um canal próprio.'}
+                </strong>{' '}
+                O motor automático de tiras cuida da compra pronta ou da transformação.
+                Os materiais comuns abaixo continuam normalmente em Compras por Pedido.
+              </div>
+            </div>
+            <Button asChild size="sm" variant="outline" className="shrink-0">
+              <Link to="/tiras-artesanais?tab=demandas">Acompanhar tiras</Link>
+            </Button>
           </div>
         )}
 
@@ -328,10 +390,9 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
           </div>
         )}
 
-        {/* Avisos do MOTOR (banco). Tira artesanal marcada como "corto aqui" sem
-            napa na família+cor, receita ausente/zerada, largura faltando na ficha
-            de componente — em todos a parcela afetada fica FORA da compra. Sem
-            este bloco a linha simplesmente sumia da tela. */}
+        {/* Avisos do motor de materiais comuns. O canal especializado de tiras é
+            excluído antes daqui; estes avisos nunca autorizam comprar tira pronta
+            nem napa de transformação pela OC per_pv. */}
         {!isLoading && !isError && needWarnings.length > 0 && (
           <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-400 space-y-2">
             <div className="flex items-start gap-2">
@@ -372,7 +433,9 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
           <div className="flex flex-col items-center gap-2 py-12 text-muted-foreground">
             <Package className="h-8 w-8" />
             <p className="text-sm">
-              {needWarnings.length > 0
+              {excludedStrapNeeds.length > 0
+                ? 'Não há material comum a comprar. As tiras identificadas seguem no motor automático.'
+                : needWarnings.length > 0
                 ? 'Nada a comprar: o que este pedido precisa está bloqueado pelos avisos acima.'
                 : netOfStock
                   ? 'Nenhum material em falta — o estoque cobre este(s) pedido(s).'
@@ -444,30 +507,6 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
                   numa única OC <strong>"{NO_SUPPLIER_LABEL}"</strong>. Cadastre o fornecedor do
                   produto pra direcionar automaticamente nas próximas vezes.
                 </span>
-              </div>
-            )}
-
-            {/* Tira que deveria ter virado napa — flag `is_artisanal` faltando
-                no produto faz a OC comprar tira PRONTA, calada. Avisa, não
-                corrige sozinho: virar a flag muda o que se compra. */}
-            {unrolledSuspects.length > 0 && (
-              <div className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-400">
-                <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
-                <div className="min-w-0">
-                  <strong>{unrolledSuspects.length} item(ns) sendo comprado(s) como tira pronta.</strong>{' '}
-                  Os outros produtos do mesmo grupo são cortados do rolo, mas estes estão sem a marca
-                  de <strong>material artesanal</strong> no cadastro — então não viraram napa aqui.
-                  <ul className="mt-1.5 space-y-1">
-                    {unrolledSuspects.map((i) => (
-                      <li key={`${i.material_id}-${i.color ?? ''}`} className="text-xs font-mono">
-                        {i.product_name} · <strong>{i.color || '—'}</strong> · {formatBaseQty(Number(i.needed_qty) || 0)} {i.unit}
-                      </li>
-                    ))}
-                  </ul>
-                  <p className="mt-1.5 text-xs">
-                    Pra converter em napa, marque o produto como artesanal em <strong>Estoque → Materiais</strong>.
-                  </p>
-                </div>
               </div>
             )}
 
@@ -660,7 +699,7 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
             )}
             <Button
               onClick={handleGenerate}
-              disabled={generate.isPending || drafts.length === 0 || conversionWarnings.length > 0 || (summary.colorMismatchCount > 0 && !overrideColorMismatch) || (needWarnings.length > 0 && !overrideNeedWarnings)}
+              disabled={isLoading || isError || generate.isPending || drafts.length === 0 || conversionWarnings.length > 0 || (summary.colorMismatchCount > 0 && !overrideColorMismatch) || (needWarnings.length > 0 && !overrideNeedWarnings)}
               title={conversionWarnings.length > 0 ? 'Há materiais com conversão inválida' : summary.colorMismatchCount > 0 && !overrideColorMismatch ? 'Há itens com cor não cadastrada — cadastre a cor ou marque o override' : needWarnings.length > 0 && !overrideNeedWarnings ? 'Há materiais fora da compra por falta de cadastro — resolva ou marque o override' : undefined}
               className="gap-2"
             >

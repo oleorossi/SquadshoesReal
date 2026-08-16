@@ -2316,6 +2316,7 @@ DECLARE
   v_purchase_ids uuid[];
   v_service_ids uuid[];
   v_group_is_strap boolean:=false;
+  v_variant_lock_id uuid;
 BEGIN
   PERFORM public.assert_artisanal_strap_capability('resolve_strap_migration');
   IF p_correlation_id IS NULL THEN RAISE EXCEPTION 'correlation_id obrigatorio'; END IF;
@@ -2328,6 +2329,21 @@ BEGIN
   PERFORM pg_advisory_xact_lock(hashtextextended('artisanal-strap-legacy-cutover',0));
   PERFORM pg_advisory_xact_lock(hashtextextended(
     'artisanal-strap-product-map:'||p_legacy_product_id::text,0));
+  -- reconcile_strap_variant_local_202701 usa variante -> produto. Reserve
+  -- todas as variantes do payload na mesma ordem antes de travar o produto.
+  BEGIN
+    FOR v_variant_lock_id IN
+      SELECT DISTINCT nullif(e.value->>'strap_variant_id','')::uuid AS id
+        FROM jsonb_array_elements(p_allocations) e(value)
+       WHERE nullif(e.value->>'strap_variant_id','') IS NOT NULL
+       ORDER BY 1
+    LOOP
+      PERFORM pg_advisory_xact_lock(hashtextextended(
+        'strap-variant:'||v_variant_lock_id::text,0));
+    END LOOP;
+  EXCEPTION WHEN invalid_text_representation THEN
+    RAISE EXCEPTION 'strap_variant_id invalido nas alocacoes';
+  END;
   SELECT * INTO v_product FROM public.products
    WHERE id=p_legacy_product_id FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'Produto legado inexistente'; END IF;
@@ -2563,8 +2579,22 @@ DECLARE
   v_after_current numeric;
   v_expected_count integer;
   v_processed_count integer;
+  v_variant_lock_id uuid;
 BEGIN
   PERFORM public.assert_artisanal_strap_capability('resolve_strap_migration');
+  -- Chamadores publicos ja possuem o advisory global; a repeticao e
+  -- reentrante e torna este helper seguro mesmo em execucao interna direta.
+  PERFORM pg_advisory_xact_lock(hashtextextended(
+    'artisanal-strap-legacy-cutover',0));
+  FOR v_variant_lock_id IN
+    SELECT DISTINCT a.strap_variant_id AS id
+      FROM public.legacy_strap_product_migration_allocations a
+     WHERE a.mapping_id=p_mapping_id
+     ORDER BY 1
+  LOOP
+    PERFORM pg_advisory_xact_lock(hashtextextended(
+      'strap-variant:'||v_variant_lock_id::text,0));
+  END LOOP;
   SELECT * INTO v_map FROM public.legacy_strap_product_migration_maps
    WHERE id=p_mapping_id FOR UPDATE;
   IF NOT FOUND OR v_map.status<>'resolved' THEN
@@ -3196,6 +3226,7 @@ DECLARE
   v_purchase_item_ids uuid[]:=ARRAY[]::uuid[];
   v_service_item_ids uuid[]:=ARRAY[]::uuid[];
   v_job_id uuid;
+  v_variant_lock_id uuid;
   v_incremental_job_ids jsonb:='[]'::jsonb;
   v_all_cutover_job_ids jsonb:='[]'::jsonb;
   v_affected_variant_ids jsonb:='[]'::jsonb;
@@ -3288,10 +3319,17 @@ BEGIN
       SELECT a.target_product_id FROM public.legacy_strap_product_migration_allocations a
        WHERE a.mapping_id=p_mapping_id
     ) x;
-  SELECT coalesce(array_agg(a.strap_variant_id ORDER BY a.strap_variant_id),ARRAY[]::uuid[])
+  SELECT coalesce(
+      array_agg(DISTINCT a.strap_variant_id ORDER BY a.strap_variant_id),
+      ARRAY[]::uuid[])
     INTO v_variant_ids
     FROM public.legacy_strap_product_migration_allocations a
    WHERE a.mapping_id=p_mapping_id;
+  FOREACH v_variant_lock_id IN ARRAY v_variant_ids
+  LOOP
+    PERFORM pg_advisory_xact_lock(hashtextextended(
+      'strap-variant:'||v_variant_lock_id::text,0));
+  END LOOP;
   SELECT coalesce(array_agg(DISTINCT x.id ORDER BY x.id),ARRAY[]::uuid[])
     INTO v_reservation_ids
     FROM public.legacy_strap_product_migration_allocations a
@@ -4323,6 +4361,7 @@ DECLARE
   v_invalid_identity boolean;
   v_final_status text;
   v_cutover_job_ids jsonb:='[]'::jsonb;
+  v_variant_lock_id uuid;
 BEGIN
   PERFORM public.assert_artisanal_strap_capability('resolve_strap_migration');
   IF p_correlation_id IS NULL THEN RAISE EXCEPTION 'correlation_id obrigatorio'; END IF;
@@ -4330,6 +4369,14 @@ BEGIN
     RAISE EXCEPTION 'Checksum esperado do dry-run deve possuir 32 hexadecimais';
   END IF;
   PERFORM pg_advisory_xact_lock(hashtextextended('artisanal-strap-legacy-cutover',0));
+  -- O cutover global pode fotografar/reclassificar qualquer variante atual.
+  -- Congele todo o conjunto em UUID crescente antes do primeiro row lock.
+  FOR v_variant_lock_id IN
+    SELECT v.id FROM public.artisanal_strap_variants v ORDER BY v.id
+  LOOP
+    PERFORM pg_advisory_xact_lock(hashtextextended(
+      'strap-variant:'||v_variant_lock_id::text,0));
+  END LOOP;
   IF EXISTS (SELECT 1 FROM public.artisanal_strap_migration_cutovers
     WHERE status IN ('applying','applied','applied_with_review')) THEN
     RAISE EXCEPTION 'Ja existe cutover ativo; valide ou reverta antes de outro';
@@ -5158,6 +5205,7 @@ DECLARE
   v_sale_item_ids uuid[]:=ARRAY[]::uuid[];
   v_demand_ids uuid[]:=ARRAY[]::uuid[];
   v_reason text:=public.require_strap_change_reason(p_reason);
+  v_variant_lock_id uuid;
 BEGIN
   PERFORM public.assert_artisanal_strap_capability('resolve_strap_migration');
   IF p_correlation_id IS NULL THEN RAISE EXCEPTION 'correlation_id obrigatorio'; END IF;
@@ -5169,6 +5217,35 @@ BEGIN
        IS DISTINCT FROM lower(coalesce(v_cutover.post_state_checksum,'')) THEN
     RAISE EXCEPTION 'Checksum pos-cutover informado nao confere';
   END IF;
+
+  SELECT coalesce(array_agg(x.id ORDER BY x.id),ARRAY[]::uuid[])
+    INTO v_variant_ids
+    FROM (
+      SELECT a.strap_variant_id AS id
+        FROM public.legacy_strap_product_migration_allocations a
+        JOIN public.legacy_strap_product_migration_maps m ON m.id=a.mapping_id
+       WHERE m.applied_cutover_id=p_cutover_id
+      UNION
+      SELECT s.entity_id
+        FROM public.artisanal_strap_migration_entity_snapshots s
+       WHERE s.cutover_id=p_cutover_id AND s.entity_type='strap_variant'
+      UNION
+      SELECT nullif(s.before_data->>'strap_variant_id','')::uuid
+        FROM public.artisanal_strap_migration_entity_snapshots s
+       WHERE s.cutover_id=p_cutover_id
+         AND nullif(s.before_data->>'strap_variant_id','') IS NOT NULL
+      UNION
+      SELECT nullif(s.after_data->>'strap_variant_id','')::uuid
+        FROM public.artisanal_strap_migration_entity_snapshots s
+       WHERE s.cutover_id=p_cutover_id
+         AND nullif(s.after_data->>'strap_variant_id','') IS NOT NULL
+    ) x
+   WHERE x.id IS NOT NULL;
+  FOREACH v_variant_lock_id IN ARRAY v_variant_ids
+  LOOP
+    PERFORM pg_advisory_xact_lock(hashtextextended(
+      'strap-variant:'||v_variant_lock_id::text,0));
+  END LOOP;
 
   -- Congela primeiro os jobs ja existentes que podem materializar o escopo.
   -- Worker que ja os reclamou termina antes de qualquer lock operacional; o
@@ -5208,30 +5285,6 @@ BEGIN
         )
       )
    ORDER BY j.id FOR UPDATE;
-
-  SELECT coalesce(array_agg(x.id ORDER BY x.id),ARRAY[]::uuid[])
-    INTO v_variant_ids
-    FROM (
-      SELECT a.strap_variant_id AS id
-        FROM public.legacy_strap_product_migration_allocations a
-        JOIN public.legacy_strap_product_migration_maps m ON m.id=a.mapping_id
-       WHERE m.applied_cutover_id=p_cutover_id
-      UNION
-      SELECT s.entity_id
-        FROM public.artisanal_strap_migration_entity_snapshots s
-       WHERE s.cutover_id=p_cutover_id AND s.entity_type='strap_variant'
-      UNION
-      SELECT nullif(s.before_data->>'strap_variant_id','')::uuid
-        FROM public.artisanal_strap_migration_entity_snapshots s
-       WHERE s.cutover_id=p_cutover_id
-         AND nullif(s.before_data->>'strap_variant_id','') IS NOT NULL
-      UNION
-      SELECT nullif(s.after_data->>'strap_variant_id','')::uuid
-        FROM public.artisanal_strap_migration_entity_snapshots s
-       WHERE s.cutover_id=p_cutover_id
-         AND nullif(s.after_data->>'strap_variant_id','') IS NOT NULL
-    ) x
-   WHERE x.id IS NOT NULL;
 
   SELECT coalesce(array_agg(x.id ORDER BY x.id),ARRAY[]::uuid[])
     INTO v_product_ids
@@ -6466,6 +6519,9 @@ CREATE TRIGGER trg_guard_legacy_artisanal_product_update
   ON public.products
   FOR EACH ROW EXECUTE FUNCTION public.tg_guard_legacy_artisanal_product_writer();
 
+-- O helper nominal ignora intencionalmente a NAPA-base oficial. Este guard
+-- repete flag/grupo/finished da linha persistida para impedir que um item de
+-- tira estrutural pre-dry-run seja recebido por OC generica.
 CREATE OR REPLACE FUNCTION public.tg_guard_strap_purchase_order_item()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -6483,14 +6539,32 @@ BEGIN
   IF TG_OP<>'INSERT' THEN
     SELECT po.snapshot_locked_at,po.source_type INTO v_old_locked,v_old_source
       FROM public.purchase_orders po WHERE po.id=OLD.purchase_order_id;
-    v_old_strap_product:=public.is_legacy_strap_migration_controlled_product(
-      OLD.product_id);
+    SELECT coalesce(p.is_artisanal,false)
+           OR coalesce(pg.is_artisanal_strap,false)
+           OR EXISTS (
+             SELECT 1 FROM public.artisanal_strap_variants v
+              WHERE v.finished_product_id=p.id
+           )
+           OR public.is_legacy_strap_migration_controlled_product(p.id)
+      INTO v_old_strap_product
+      FROM public.products p
+      LEFT JOIN public.product_groups pg ON pg.id=p.group_id
+     WHERE p.id=OLD.product_id;
   END IF;
   IF TG_OP<>'DELETE' THEN
     SELECT po.snapshot_locked_at,po.source_type INTO v_new_locked,v_new_source
       FROM public.purchase_orders po WHERE po.id=NEW.purchase_order_id;
-    v_new_strap_product:=public.is_legacy_strap_migration_controlled_product(
-      NEW.product_id);
+    SELECT coalesce(p.is_artisanal,false)
+           OR coalesce(pg.is_artisanal_strap,false)
+           OR EXISTS (
+             SELECT 1 FROM public.artisanal_strap_variants v
+              WHERE v.finished_product_id=p.id
+           )
+           OR public.is_legacy_strap_migration_controlled_product(p.id)
+      INTO v_new_strap_product
+      FROM public.products p
+      LEFT JOIN public.product_groups pg ON pg.id=p.group_id
+     WHERE p.id=NEW.product_id;
     IF coalesce(v_new_strap_product,false)
        AND v_new_source IS DISTINCT FROM 'strap_demand' THEN
       RAISE EXCEPTION 'Produto legado/canonico de tira so pode entrar pela OC strap_demand; inbound generico bloqueado';
@@ -6820,6 +6894,7 @@ DO $$
 DECLARE
   v_table text;
   v_blocker_definition text;
+  v_product_resolver_definition text;
   v_helper_definition text;
   v_global_definition text;
   v_incremental_definition text;
@@ -7088,6 +7163,8 @@ BEGIN
   -- OC congelada em split, OS terminal, race de lock e inferencia de fonte.
   v_blocker_definition:=pg_get_functiondef(
     'public.legacy_strap_product_mapping_blockers(uuid)'::regprocedure);
+  v_product_resolver_definition:=pg_get_functiondef(
+    'public.resolve_legacy_strap_product_migration(uuid,jsonb,text,text,uuid)'::regprocedure);
   v_helper_definition:=pg_get_functiondef(
     'public.apply_resolved_legacy_strap_product_mapping(uuid,uuid,text,uuid)'::regprocedure);
   v_global_definition:=pg_get_functiondef(
@@ -7146,6 +7223,70 @@ BEGIN
      OR strpos(v_helper_definition,
        'v_processed_count IS DISTINCT FROM v_expected_count')=0 THEN
     RAISE EXCEPTION 'Repro race: ordem item->OC->produto/recontagem estrita ausente';
+  END IF;
+  -- Repro de deadlock: o reconciliador canonico segura strap-variant antes de
+  -- qualquer produto. Resolver, helper, apply global/incremental e rollback
+  -- devem reservar TODOS os UUIDs do proprio escopo na mesma ordem primeiro.
+  IF strpos(v_product_resolver_definition,
+       '''strap-variant:''||v_variant_lock_id::text')=0
+     OR strpos(v_product_resolver_definition,
+       'SELECT DISTINCT nullif(e.value->>''strap_variant_id'','''')::uuid AS id')=0
+     OR strpos(v_product_resolver_definition,
+       '''strap-variant:''||v_variant_lock_id::text')
+          > strpos(v_product_resolver_definition,
+            'WHERE id=p_legacy_product_id FOR UPDATE')
+     OR strpos(v_helper_definition,
+       '''strap-variant:''||v_variant_lock_id::text')=0
+     OR strpos(v_helper_definition,
+       'SELECT DISTINCT a.strap_variant_id AS id')=0
+     OR strpos(v_helper_definition,
+       '''strap-variant:''||v_variant_lock_id::text')
+          > strpos(v_helper_definition,'WHERE id=p_mapping_id FOR UPDATE')
+     OR strpos(v_global_definition,
+       'SELECT v.id FROM public.artisanal_strap_variants v ORDER BY v.id')=0
+     OR strpos(v_global_definition,
+       '''strap-variant:''||v_variant_lock_id::text')=0
+     OR strpos(v_global_definition,
+       '''strap-variant:''||v_variant_lock_id::text')
+          > strpos(v_global_definition,'WHERE id=p_run_id FOR UPDATE')
+     OR strpos(v_incremental_definition,
+       'DISTINCT a.strap_variant_id ORDER BY a.strap_variant_id')=0
+     OR strpos(v_incremental_definition,
+       'FOREACH v_variant_lock_id IN ARRAY v_variant_ids')=0
+     OR strpos(v_incremental_definition,
+       '''strap-variant:''||v_variant_lock_id::text')=0
+     OR strpos(v_incremental_definition,
+       '''strap-variant:''||v_variant_lock_id::text')
+          > strpos(v_incremental_definition,
+            'WHERE a.mapping_id=p_mapping_id ORDER BY a.id FOR UPDATE')
+     OR strpos(v_rollback_definition,
+       'FOREACH v_variant_lock_id IN ARRAY v_variant_ids')=0
+     OR strpos(v_rollback_definition,
+       '''strap-variant:''||v_variant_lock_id::text')=0
+     OR strpos(v_rollback_definition,
+       '''strap-variant:''||v_variant_lock_id::text')
+          > strpos(v_rollback_definition,'ORDER BY j.id FOR UPDATE') THEN
+    RAISE EXCEPTION 'Repro deadlock variante->produto: advisory UUID-first ausente/tardio';
+  END IF;
+  IF strpos(v_incremental_definition,
+       'PERFORM 1 FROM public.purchase_order_items i WHERE i.id=ANY(v_purchase_item_ids)')=0
+     OR strpos(v_incremental_definition,
+       'PERFORM 1 FROM public.purchase_order_items i WHERE i.id=ANY(v_purchase_item_ids)')
+          > strpos(v_incremental_definition,
+            'PERFORM 1 FROM public.products p WHERE p.id=ANY(v_product_ids)')
+     OR strpos(v_incremental_definition,
+       'PERFORM 1 FROM public.products p WHERE p.id=ANY(v_product_ids)')
+          > strpos(v_incremental_definition,
+            'PERFORM 1 FROM public.artisanal_strap_variants v WHERE v.id=ANY(v_variant_ids)')
+     OR strpos(v_rollback_definition,
+       'PERFORM 1 FROM public.purchase_order_items i')
+          > strpos(v_rollback_definition,
+            'PERFORM 1 FROM public.products p')
+     OR strpos(v_rollback_definition,
+       'PERFORM 1 FROM public.products p')
+          > strpos(v_rollback_definition,
+            'PERFORM 1 FROM public.artisanal_strap_variants v') THEN
+    RAISE EXCEPTION 'Ordem interna item->cabecalho->reserva->produto->variante regrediu';
   END IF;
   IF strpos(v_helper_definition,
        'resolve_artisanal_strap_source_availability')=0
@@ -7251,6 +7392,12 @@ BEGIN
        'legacy_strap_product_migration_allocations')=0
      OR strpos(v_po_guard_definition,
        'is_legacy_strap_migration_controlled_product')=0
+     OR strpos(v_po_guard_definition,'p.is_artisanal')=0
+     OR strpos(v_po_guard_definition,'pg.is_artisanal_strap')=0
+     OR strpos(v_po_guard_definition,'artisanal_strap_variants')=0
+     OR strpos(v_po_guard_definition,'v.finished_product_id=p.id')=0
+     OR v_po_guard_definition
+          ~ 'op[.]official_product_id[[:space:]]*=[[:space:]]*p[.]id'
      OR strpos(v_po_validator_definition,
        'is_legacy_strap_migration_controlled_product')=0
      OR v_po_origin_trigger IS NULL
@@ -7276,7 +7423,7 @@ BEGIN
      OR strpos(v_adjust_stock_definition,'pg.is_artisanal_strap')=0
      OR strpos(v_adjust_stock_definition,
        'base_material_color_official_products')>0 THEN
-    RAISE EXCEPTION 'Repro INSERT/transicao/NAPA-base: classificacao estrutural do writer regrediu';
+    RAISE EXCEPTION 'Repro INSERT/transicao/ajuste/NAPA-base: classificacao estrutural regrediu';
   END IF;
 END;
 $$;
