@@ -201,6 +201,21 @@ describe('identidade comercial da variante de material', () => {
       ?.split('EXECUTE FUNCTION')[0] || '';
     expect(syncOrdersBase).toContain('AFTER INSERT');
 
+    const totalSplit = migration.split('-- O trigger de total não existe em todas as instalações legadas.')[1]
+      ?.split('DROP TRIGGER IF EXISTS trg_mark_so_costs_dirty_from_item')[0] || '';
+    expect(totalSplit).toContain("trigger_catalog.tgname = 'trg_sync_sale_order_total'");
+    expect(totalSplit).toContain("to_regprocedure('public.fn_sync_sale_order_total()') IS NOT NULL");
+    expect(totalSplit).toContain('IF v_original_enabled_mode IS NOT NULL');
+    expect(totalSplit).toContain("WHEN 'R' THEN 'ENABLE REPLICA'");
+    expect(totalSplit).toContain("WHEN 'A' THEN 'ENABLE ALWAYS'");
+    expect(totalSplit).toContain("WHEN 'D' THEN 'DISABLE'");
+    expect(migration).not.toMatch(
+      /^DROP TRIGGER IF EXISTS trg_sync_sale_order_total ON public\.sale_order_items;$/mu,
+    );
+    expect(migration).not.toMatch(
+      /^CREATE TRIGGER trg_sync_sale_order_total$/mu,
+    );
+
     const backfillStart = migration.indexOf('WITH legacy_snapshots AS');
     const backfillEnd = migration.indexOf('CREATE OR REPLACE FUNCTION public.capture_sale_order_item_material_variant_snapshot');
     const backfillSection = migration.slice(0, backfillEnd);

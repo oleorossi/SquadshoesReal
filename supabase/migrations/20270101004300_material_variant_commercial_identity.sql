@@ -1208,35 +1208,80 @@ $$;
 --   * no refresh de confirmação, pg_trigger_depth() prova a origem aninhada.
 -- INSERT/DELETE e qualquer UPDATE normal preservam o comportamento anterior.
 
-DROP TRIGGER IF EXISTS trg_sync_sale_order_total ON public.sale_order_items;
-DROP TRIGGER IF EXISTS trg_sync_sale_order_total_on_update ON public.sale_order_items;
-CREATE TRIGGER trg_sync_sale_order_total
-AFTER INSERT OR DELETE ON public.sale_order_items
-FOR EACH ROW EXECUTE FUNCTION public.fn_sync_sale_order_total();
-CREATE TRIGGER trg_sync_sale_order_total_on_update
-AFTER UPDATE ON public.sale_order_items
-FOR EACH ROW
-WHEN (NOT (
-  (to_jsonb(OLD) - 'material_variant_commercial_snapshot')
-    IS NOT DISTINCT FROM
-  (to_jsonb(NEW) - 'material_variant_commercial_snapshot')
-  AND (
-    (
-      pg_trigger_depth() > 0
-      AND COALESCE(
-        current_setting('app.material_variant_snapshot_confirmation_order_id', true)
-          = NEW.sale_order_id::text,
-        false
-      )
-    )
-    OR COALESCE(
-      current_setting('app.material_variant_snapshot_review_item_id', true)
-        = NEW.id::text,
-      false
-    )
-  )
-))
-EXECUTE FUNCTION public.fn_sync_sale_order_total();
+-- O trigger de total não existe em todas as instalações legadas. Só o
+-- dividimos quando tanto o trigger original quanto sua função estão vivos;
+-- ausência é estado válido e não deve ser transformada em recurso novo.
+DO $$
+DECLARE
+  v_original_enabled_mode text;
+  v_split_trigger_name text;
+BEGIN
+  SELECT trigger_catalog.tgenabled::text
+    INTO v_original_enabled_mode
+  FROM pg_catalog.pg_trigger trigger_catalog
+  WHERE trigger_catalog.tgrelid = 'public.sale_order_items'::regclass
+    AND trigger_catalog.tgname = 'trg_sync_sale_order_total'
+    AND NOT trigger_catalog.tgisinternal;
+
+  IF v_original_enabled_mode IS NOT NULL
+     AND to_regprocedure('public.fn_sync_sale_order_total()') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER trg_sync_sale_order_total ON public.sale_order_items';
+    EXECUTE 'DROP TRIGGER IF EXISTS trg_sync_sale_order_total_on_update ON public.sale_order_items';
+    EXECUTE $trigger_sql$
+      CREATE TRIGGER trg_sync_sale_order_total
+      AFTER INSERT OR DELETE ON public.sale_order_items
+      FOR EACH ROW EXECUTE FUNCTION public.fn_sync_sale_order_total()
+    $trigger_sql$;
+    EXECUTE $trigger_sql$
+      CREATE TRIGGER trg_sync_sale_order_total_on_update
+      AFTER UPDATE ON public.sale_order_items
+      FOR EACH ROW
+      WHEN (NOT (
+        (to_jsonb(OLD) - 'material_variant_commercial_snapshot')
+          IS NOT DISTINCT FROM
+        (to_jsonb(NEW) - 'material_variant_commercial_snapshot')
+        AND (
+          (
+            pg_trigger_depth() > 0
+            AND COALESCE(
+              current_setting('app.material_variant_snapshot_confirmation_order_id', true)
+                = NEW.sale_order_id::text,
+              false
+            )
+          )
+          OR COALESCE(
+            current_setting('app.material_variant_snapshot_review_item_id', true)
+              = NEW.id::text,
+            false
+          )
+        )
+      ))
+      EXECUTE FUNCTION public.fn_sync_sale_order_total()
+    $trigger_sql$;
+
+    -- CREATE TRIGGER nasce em modo origin. Replica, always e disabled precisam
+    -- ser restaurados explicitamente nos dois lados do split.
+    IF v_original_enabled_mode <> 'O' THEN
+      FOREACH v_split_trigger_name IN ARRAY ARRAY[
+        'trg_sync_sale_order_total',
+        'trg_sync_sale_order_total_on_update'
+      ]
+      LOOP
+        EXECUTE format(
+          'ALTER TABLE public.sale_order_items %s TRIGGER %I',
+          CASE v_original_enabled_mode
+            WHEN 'R' THEN 'ENABLE REPLICA'
+            WHEN 'A' THEN 'ENABLE ALWAYS'
+            WHEN 'D' THEN 'DISABLE'
+            ELSE 'ENABLE'
+          END,
+          v_split_trigger_name
+        );
+      END LOOP;
+    END IF;
+  END IF;
+END;
+$$;
 
 DROP TRIGGER IF EXISTS trg_mark_so_costs_dirty_from_item ON public.sale_order_items;
 DROP TRIGGER IF EXISTS trg_mark_so_costs_dirty_from_item_on_update ON public.sale_order_items;
