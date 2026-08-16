@@ -299,15 +299,24 @@ export function SoleProductSelect({ label, value, onChange }: { label: string; v
         return getSoleModelName(name, color).toLowerCase();
       };
 
-      const modelMap = new Map<string, { id: string; name: string; group_id: string; groupName: string; totalStock: number; variantCount: number; sku: string | null }>();
+      const modelMap = new Map<string, { id: string; name: string; group_id: string; groupName: string; totalStock: number; primaryStock: number; variantCount: number; sku: string | null }>();
       (data || []).forEach((p: any) => {
         const key = normalizeBaseName(p.name, p.color);
         const groupName = (p.product_groups?.name as string | undefined) || '';
         const displayName = getSoleModelName(p.name, p.color);
         const existing = modelMap.get(key);
         if (existing) {
-          existing.totalStock += Number(p.quantity || 0);
+          const stock = Number(p.quantity || 0);
+          existing.totalStock += stock;
           existing.variantCount += 1;
+          // O UUID salvo na ficha é o fallback do motor de consumo. Entre as
+          // variantes de cor do mesmo modelo, escolhe uma variante ativa e
+          // operacional, em vez de depender da ordem arbitrária do SELECT.
+          if (stock > existing.primaryStock) {
+            existing.id = p.id;
+            existing.sku = p.sku;
+            existing.primaryStock = stock;
+          }
         } else {
           modelMap.set(key, {
             id: p.id,
@@ -315,6 +324,7 @@ export function SoleProductSelect({ label, value, onChange }: { label: string; v
             group_id: p.group_id,
             groupName,
             totalStock: Number(p.quantity || 0),
+            primaryStock: Number(p.quantity || 0),
             variantCount: 1,
             sku: p.sku,
           });

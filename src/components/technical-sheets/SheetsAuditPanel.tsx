@@ -32,6 +32,10 @@ type AuditRow = {
   missing_mod: boolean;
   upper_per_size_partial_no_fallback: boolean;
   missing_production_sectors: boolean;
+  missing_primary_sole_id: boolean;
+  invalid_published_ncm: boolean;
+  unit_configuration_issue: boolean;
+  area_material_width_missing: boolean;
 };
 
 type SoleAuditRow = {
@@ -70,6 +74,10 @@ type AuditSummary = {
   tiras_sem_grupo: number;
   sem_mod_cadastrado: number;
   sem_setores_producao: number;
+  sem_solado_principal: number;
+  ncm_invalido_publicada: number;
+  unidade_invalida: number;
+  material_area_sem_largura: number;
 };
 
 const GAP_LABELS: { key: keyof AuditRow; label: string; severity: 'critical' | 'warn' }[] = [
@@ -89,6 +97,10 @@ const GAP_LABELS: { key: keyof AuditRow; label: string; severity: 'critical' | '
   { key: 'missing_mod', label: 'MOD (mão-de-obra)', severity: 'warn' },
   { key: 'upper_per_size_partial_no_fallback', label: 'Cabedal per-size parcial', severity: 'warn' },
   { key: 'missing_production_sectors', label: 'Setores de produção não configurados', severity: 'critical' },
+  { key: 'missing_primary_sole_id', label: 'Solado principal sem vínculo de estoque', severity: 'critical' },
+  { key: 'invalid_published_ncm', label: 'NCM inválido em ficha publicada', severity: 'critical' },
+  { key: 'unit_configuration_issue', label: 'Unidade ou conversão de estoque', severity: 'critical' },
+  { key: 'area_material_width_missing', label: 'Largura do material de área', severity: 'critical' },
 ];
 
 function useSheetsAudit() {
@@ -178,14 +190,14 @@ export function SheetsAuditPanel({
             Auditoria de Fichas Técnicas
           </DialogTitle>
           <DialogDescription className="sr-only">
-            Pendências de cadastro por ficha técnica e por solado.
+            Pendências de prontidão industrial por ficha técnica e por solado.
           </DialogDescription>
         </DialogHeader>
 
         <Tabs value={tab} onValueChange={(v) => setTab(v as any)}>
           <TabsList>
             <TabsTrigger value="sheets" className="text-xs">
-              Fichas Técnicas
+              Prontidão das fichas
               {summary && (summary.total_fichas - summary.fichas_100_completas) > 0 && (
                 <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/40 text-xs h-4 px-1.5 ml-2">
                   {summary.total_fichas - summary.fichas_100_completas}

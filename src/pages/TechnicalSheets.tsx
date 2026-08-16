@@ -9,6 +9,7 @@
  import { CaretRight as ChevronRight, CheckCircle } from '@phosphor-icons/react';
  
 import React, { useState, useMemo, useEffect } from 'react';
+import { buildBulkSolePatch, evaluateTechnicalSheetReadiness } from '@/lib/technicalSheetReadiness';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { useSearchParams, Link } from 'react-router-dom';
 import { SignedImage } from '@/components/ui/signed-image';
@@ -28,6 +29,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { FichaCortePrintTab } from '@/components/technical-sheets/FichaCortePrintTab';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
@@ -52,6 +54,7 @@ import { CatalogModelsPanel } from '@/components/technical-sheets/CatalogModelsP
 import { TechnicalSheetCardGrid } from '@/components/technical-sheets/TechnicalSheetCardGrid';
 import { QuickSheetSelector } from '@/components/technical-sheets/QuickSheetSelector';
 import { AviamentoRangeTab } from '@/components/technical-sheets/AviamentoRangeTab';
+import { TechnicalSheetReadinessRail } from '@/components/technical-sheets/TechnicalSheetReadinessRail';
 import { useBomOperations } from '@/hooks/useBomOperations';
 import { useSoleColorMappings, useUpsertSoleColorMapping } from '@/hooks/useSoleColorMappings';
  import { usePalmilhaColorMappings, useUpsertPalmilhaColorMapping, PALMILHA_DEFAULT_KEY } from '@/hooks/usePalmilhaColorMappings';
@@ -323,22 +326,10 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
             referenceCandidates.find((s: any) => s.id !== target.id) ||
             referenceCandidates[0];
           if (!src) { skippedNoCandidate++; return; }
-          const patch: any = {};
-          if (overwrite || !target.sole_material) {
-            if (target.sole_material !== soleName) patch.sole_material = soleName;
-          }
-          if (src.sole_consumption > 0 && (overwrite || !target.sole_consumption)) {
-            if (target.sole_consumption !== src.sole_consumption) patch.sole_consumption = src.sole_consumption;
-          }
-          if (src.sole_process && (overwrite || !target.sole_process)) {
-            if (target.sole_process !== src.sole_process) patch.sole_process = src.sole_process;
-          }
-          if (src.sole_group_id && (overwrite || !target.sole_group_id)) {
-            if (target.sole_group_id !== src.sole_group_id) patch.sole_group_id = src.sole_group_id;
-          }
+          const patch = buildBulkSolePatch(target, src, soleName, overwrite);
           if (Object.keys(patch).length === 0) { skippedNoChange++; return; }
           try {
-            await updateSheet.mutateAsync({ id: target.id, ...patch });
+            await updateSheet.mutateAsync({ id: target.id, data: patch });
             applied++;
           } catch (err) {
             console.error('Falha ao atualizar ficha', target.id, err);
@@ -375,42 +366,42 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
           actions={
             <>
               <SheetsAuditButton onJumpToSheet={(id) => setExpandedId(id)} />
-              <Button
-                variant="outline"
-                asChild
-                className="gap-2"
-                title="Regras globais de componente/tira por cor (grupo + cor do pedido → produto padrão), valendo pra todos os modelos"
-              >
-                <Link to="/fichas-tecnicas/padroes" aria-label="Abrir padrões por cor">
-                  <Palette className="h-4 w-4" />
-                  <span className="hidden sm:inline">Padrões por Cor</span>
-                </Link>
-              </Button>
-              {!expandedId && (
-                <Button
-                  variant="outline"
-                  onClick={handleBulkApplySoleSettings}
-                  disabled={bulkSoleApplying || filteredSheets.length === 0}
-                  className="gap-2"
-                  title="Aplica consumo, processo e grupo do solado em todas as fichas listadas, baseado em outras fichas que usam o mesmo solado"
-                  aria-label="Aplicar solado em massa"
-                >
-                  {bulkSoleApplying ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
-                  <span className="hidden sm:inline">Aplicar Solado em Massa</span>
-                </Button>
-              )}
-              {perm.canCreate && (
-                <Button
-                  variant="outline"
-                  onClick={() => { setCloneSourceId(''); setCloneNewName(''); setCloneSearchTerm(''); setCloneDialogOpen(true); }}
-                  className="gap-2"
-                  aria-label="Copiar ficha técnica"
-                  title="Copiar ficha técnica"
-                >
-                  <ClipboardCopy className="h-4 w-4" />
-                  <span className="hidden sm:inline">Copiar</span>
-                </Button>
-              )}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="gap-2" aria-label="Abrir ferramentas das fichas técnicas">
+                    <Wrench className="h-4 w-4" />
+                    <span className="hidden sm:inline">Ferramentas</span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-64">
+                  <DropdownMenuItem asChild className="gap-2">
+                    <Link to="/fichas-tecnicas/padroes">
+                      <Palette className="h-4 w-4" /> Padrões por cor
+                    </Link>
+                  </DropdownMenuItem>
+                  {!expandedId && (
+                    <DropdownMenuItem
+                      onSelect={handleBulkApplySoleSettings}
+                      disabled={bulkSoleApplying || filteredSheets.length === 0}
+                      className="gap-2"
+                    >
+                      {bulkSoleApplying ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+                      Aplicar solado em massa
+                    </DropdownMenuItem>
+                  )}
+                  {perm.canCreate && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onSelect={() => { setCloneSourceId(''); setCloneNewName(''); setCloneSearchTerm(''); setCloneDialogOpen(true); }}
+                        className="gap-2"
+                      >
+                        <ClipboardCopy className="h-4 w-4" /> Copiar ficha
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
               {perm.canCreate && (
                 <Button onClick={() => setDialogOpen(true)} className="gap-2" aria-label="Criar nova ficha técnica" title="Nova ficha técnica">
                   <Plus className="h-4 w-4" />
@@ -1139,16 +1130,12 @@ function QuickCreateForm({ onCreated, onCancel }: { onCreated: (id: string) => v
 
 /* ===== Completeness Indicator ===== */
 function SheetCompleteness({ sheet }: { sheet: any }) {
-  const checks = [
-    { label: 'Identificação', ok: !!(sheet.name && sheet.shoe_category), icon: Tag },
-    { label: 'Foto', ok: !!(sheet.images && Array.isArray(sheet.images) && sheet.images.length > 0 && sheet.images[0]), icon: ImagePlus },
-    { label: 'Solado', ok: !!sheet.sole_material, icon: Footprints },
-    { label: 'Cabedal', ok: !!sheet.upper_material, icon: Layers },
-    { label: 'Forração', ok: !!sheet.lining_material, icon: Scissors },
-    { label: 'Palmilha', ok: !!sheet.insole_material, icon: Shield },
-    { label: 'Setores', ok: !!(sheet.production_sectors && sheet.production_sectors.length > 0), icon: Factory },
-    { label: 'Status', ok: sheet.status_ficha === 'publicada' || sheet.status_ficha === 'validada', icon: Check },
-  ];
+  const stageIcons = { identity: Tag, engineering: Wrench, stock: Package, production: Factory, release: Check };
+  const checks = evaluateTechnicalSheetReadiness(sheet).map((stage) => ({
+    label: stage.label,
+    ok: stage.ready,
+    icon: stageIcons[stage.key],
+  }));
   const completed = checks.filter(c => c.ok).length;
   const pct = Math.round((completed / checks.length) * 100);
 
@@ -1156,7 +1143,7 @@ function SheetCompleteness({ sheet }: { sheet: any }) {
     <div className="rounded-lg border bg-card p-3">
       <div className="flex items-center gap-3 mb-2">
         <div className="flex items-center gap-2 flex-1">
-          <span className="text-xs font-semibold text-muted-foreground">Preenchimento da Ficha</span>
+          <span className="text-xs font-semibold text-muted-foreground">Prontidão industrial</span>
           <Badge variant={pct === 100 ? 'default' : pct >= 60 ? 'secondary' : 'destructive'} className="text-xs font-mono">
             {pct}%
           </Badge>
@@ -1255,6 +1242,19 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
   const activeTabGuidance = tabGuidance[abaAtiva] ?? tabGuidance.id;
   const queryClient = useQueryClient();
   const updateSheet = useUpdateSheet();
+  const { data: sheetAudit } = useQuery({
+    queryKey: ['technical_sheet_audit', sheet.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('v_technical_sheets_audit' as any)
+        .select('*')
+        .eq('id', sheet.id)
+        .maybeSingle();
+      if (error) throw error;
+      return data as any;
+    },
+    staleTime: 60_000,
+  });
   // Mesma queryKey do componente pai — React Query dedupa, não é request extra.
   // Serve pra só mostrar as travas de "segue o material da variante" quando a
   // ficha realmente tem variante cadastrada.
@@ -1408,14 +1408,19 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
       setDirty(true);
     };
 
+    const selectedSoleProduct = useMemo(() => (products as any[]).find((product: any) =>
+      product.id === (form as any).primary_sole_id,
+    ) || (products as any[]).find((product: any) =>
+      product.group_id === form.sole_group_id
+      && getSoleModelName(product.name, product.color) === form.sole_material,
+    ), [products, (form as any).primary_sole_id, form.sole_group_id, form.sole_material]);
+    const facheteMaterialGroup = useMemo(() => (groups as any[]).find((group: any) =>
+      group.id === selectedSoleProduct?.fachete_material_group_id,
+    ), [groups, selectedSoleProduct?.fachete_material_group_id]);
+
     React.useEffect(() => {
-      if (form.sole_material && products.length > 0) {
-        const soleProd = products.find((p: any) => p.name + (p.color ? ` (${p.color})` : '') === form.sole_material || p.name === form.sole_material);
-        if (soleProd) {
-          setIsSoleFachetado(!!soleProd.is_fachetado);
-        }
-      }
-    }, [form.sole_material, products, form.shoe_category]);
+      setIsSoleFachetado(Boolean(selectedSoleProduct?.is_fachetado));
+    }, [selectedSoleProduct?.id, selectedSoleProduct?.is_fachetado]);
 
   /** Auto-fill consumption from last sheet that used the same group, filtered by adult/infantil */
   const autoFillConsumption = (groupName: string, materialField: 'upper_material' | 'lining_material' | 'insole_material') => {
@@ -1871,6 +1876,12 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
         </div>
       </div>
 
+      <TechnicalSheetReadinessRail
+        sheet={{ ...sheet, ...form, production_sectors: sheet.production_sectors }}
+        audit={sheetAudit || undefined}
+        onSelectTab={setAbaAtiva}
+      />
+
       <Tabs value={abaAtiva} onValueChange={setAbaAtiva}>
         <div className="rounded-xl border bg-muted/20 p-2 sm:p-3">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -2229,6 +2240,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                 onChange={(productName, groupId, productId) => {
                    updateField('sole_material', productName);
                    updateField('sole_group_id', groupId);
+                   updateField('primary_sole_id' as any, productId || null);
                    autoFillSole(productName);
                    // Auto-fill NCM da última ficha cadastrada para esse solado.
                    // Trigger DB `tg_autofill_ncm_from_sole` aplica essa mesma
@@ -2420,31 +2432,21 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                        </div>
                        <Label className="text-xs font-bold text-warning">Forração de Salto (Fachete)</Label>
                      </div>
-                     <div>
-                       <Label className="text-xs text-muted-foreground uppercase">Material do Fachete</Label>
-                       <Select
-                         value={form.fachete_material || ''}
-                         onValueChange={v => updateField('fachete_material', v)}
-                       >
-                         <SelectTrigger className="h-9 text-xs mt-1">
-                           <SelectValue placeholder="Selecionar grupo..." />
-                         </SelectTrigger>
-                         <SelectContent>
-                           {(groups || []).map((g: any) => (
-                             <SelectItem key={g.id} value={g.name} className="text-xs">{g.name}</SelectItem>
-                           ))}
-                         </SelectContent>
-                       </Select>
-                       {!form.fachete_material ? (
-                         <p className="text-xs text-warning mt-1 flex items-start gap-1">
-                           <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" weight="fill" />
-                           <span>Selecione o material do fachete — senão o forro do salto <strong>não é consumido</strong> no custeio.</span>
-                         </p>
-                       ) : (
-                         <p className="text-xs text-muted-foreground mt-1">
-                           Consumo de fachete por numeração é configurado em <strong>Solados → Cadastro</strong>.
-                         </p>
-                       )}
+                     <div className="rounded-md border bg-background/70 p-3">
+                       <div className="flex flex-wrap items-center justify-between gap-2">
+                         <div>
+                           <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Fonte do material</p>
+                           <p className="mt-1 text-sm font-semibold">
+                             {facheteMaterialGroup?.name || form.lining_material || 'Forração da ficha (fallback)'}
+                           </p>
+                         </div>
+                         <Button variant="outline" size="sm" asChild>
+                           <Link to="/solados?tab=cadastro">Configurar em Solados</Link>
+                         </Button>
+                       </div>
+                       <p className="mt-2 text-xs text-muted-foreground">
+                         O grupo vem do solado principal; o consumo por numeração vem das especificações do solado. Este valor não é duplicado na ficha.
+                       </p>
                      </div>
                      {/* Trava do fachete: o grupo acima vem do SOLADO, que é
                          compartilhado entre referências e cores. Ligado, o fachete
