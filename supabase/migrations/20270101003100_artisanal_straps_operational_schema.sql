@@ -16,12 +16,33 @@ ALTER TABLE public.sale_order_items
   ADD COLUMN IF NOT EXISTS strap_sourcing jsonb NOT NULL DEFAULT '{}'::jsonb,
   ADD COLUMN IF NOT EXISTS strap_sourcing_revision integer NOT NULL DEFAULT 0;
 
-UPDATE public.sale_order_items
-   SET strap_sourcing='{}'::jsonb
- WHERE strap_sourcing IS NULL OR jsonb_typeof(strap_sourcing)<>'object';
-UPDATE public.sale_order_items
-   SET strap_sourcing_revision=0
- WHERE strap_sourcing_revision IS NULL OR strap_sourcing_revision<0;
+-- Este e um backfill exclusivamente cadastral. Em PVs aprovados/em producao,
+-- qualquer UPDATE de sale_order_items dispara tg_sync_orders_from_sale_order_item,
+-- que pode criar/atualizar OPs e reservar/debitar estoque. Isole somente estas
+-- duas escritas com a guarda canonica do gatilho e restaure o valor anterior
+-- para nao contaminar as migrations seguintes quando o deploy roda em uma
+-- unica transacao.
+DO $strap_sourcing_backfill$
+DECLARE
+  v_previous_item_op_sync text := current_setting('app.suppress_item_op_sync', true);
+BEGIN
+  PERFORM set_config('app.suppress_item_op_sync', '1', true);
+
+  UPDATE public.sale_order_items
+     SET strap_sourcing='{}'::jsonb
+   WHERE strap_sourcing IS NULL OR jsonb_typeof(strap_sourcing)<>'object';
+
+  UPDATE public.sale_order_items
+     SET strap_sourcing_revision=0
+   WHERE strap_sourcing_revision IS NULL OR strap_sourcing_revision<0;
+
+  PERFORM set_config(
+    'app.suppress_item_op_sync',
+    coalesce(v_previous_item_op_sync, ''),
+    true
+  );
+END
+$strap_sourcing_backfill$;
 ALTER TABLE public.sale_order_items
   ALTER COLUMN strap_sourcing SET DEFAULT '{}'::jsonb,
   ALTER COLUMN strap_sourcing SET NOT NULL,
