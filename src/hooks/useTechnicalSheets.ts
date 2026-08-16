@@ -117,6 +117,7 @@ export type SheetFormData = {
   insole_material: string;
   sole_type: string;
   sole_group_id: string | null;
+  primary_sole_id?: string | null;
   sole_material: string;
   sole_color: string;
   insole_color: string;
@@ -209,7 +210,7 @@ export const emptySheetForm: SheetFormData = {
   lining_material: '', lining_material_product_id: null,
   fachete_material: '',
   insole_material: '',
-  sole_type: '', sole_material: '', sole_color: '', sole_process: '', sole_group_id: null, insole_color: '', insole_plate_product: '',
+  sole_type: '', sole_material: '', sole_color: '', sole_process: '', sole_group_id: null, primary_sole_id: null, insole_color: '', insole_plate_product: '',
   heel_height: '',
   fit_type: 'normal',
   version_number: 'v1',

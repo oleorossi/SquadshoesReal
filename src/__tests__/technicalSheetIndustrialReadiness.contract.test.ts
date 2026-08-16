@@ -9,7 +9,7 @@ const migrationSource = readFileSync(
 
 describe('contrato de integração da ficha técnica', () => {
   it('persiste o UUID do solado e usa o payload correto na aplicação em massa', () => {
-    expect(pageSource).toContain("updateField('primary_sole_id' as any, productId || null)");
+    expect(pageSource).toContain("updateField('primary_sole_id', productId || null)");
     expect(pageSource).toContain('updateSheet.mutateAsync({ id: target.id, data: patch })');
   });
 

@@ -20,6 +20,28 @@ export interface TechnicalSheetAuditSignals {
   upper_per_size_partial_no_fallback?: boolean;
 }
 
+export interface TechnicalSheetReadinessInput {
+  [key: string]: unknown;
+  id?: string;
+  name?: unknown;
+  shoe_category?: unknown;
+  status_ficha?: unknown;
+  ncm?: unknown;
+  primary_sole_id?: unknown;
+  sole_consumption?: unknown;
+  has_straps?: unknown;
+  strap_colors?: unknown;
+  upper_material?: unknown;
+  upper_consumption?: unknown;
+  upper_consumption_per_size?: unknown;
+  insole_ready_made?: unknown;
+  insole_material?: unknown;
+  sole_drives_consumption?: unknown;
+  insole_consumption?: unknown;
+  insole_consumption_per_size?: unknown;
+  production_sectors?: unknown;
+}
+
 const hasPositiveScalar = (value: unknown): boolean => {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0;
@@ -45,7 +67,7 @@ const hasConfiguredStrap = (line: unknown): boolean => {
 };
 
 export function evaluateTechnicalSheetReadiness(
-  sheet: Record<string, any>,
+  sheet: TechnicalSheetReadinessInput,
   audit: TechnicalSheetAuditSignals = {},
 ): TechnicalSheetReadinessStage[] {
   const identityIssues: string[] = [];
@@ -103,8 +125,8 @@ export function evaluateTechnicalSheetReadiness(
 }
 
 export function buildBulkSolePatch(
-  target: Record<string, any>,
-  source: Record<string, any>,
+  target: Record<string, unknown>,
+  source: Record<string, unknown>,
   soleName: string,
   overwrite: boolean,
 ): Record<string, unknown> {

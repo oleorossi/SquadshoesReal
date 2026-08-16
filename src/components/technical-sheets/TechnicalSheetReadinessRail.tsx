@@ -17,6 +17,7 @@ import { cn } from '@/lib/utils';
 import {
   evaluateTechnicalSheetReadiness,
   type TechnicalSheetAuditSignals,
+  type TechnicalSheetReadinessInput,
   type TechnicalSheetReadinessStageKey,
 } from '@/lib/technicalSheetReadiness';
 
@@ -29,7 +30,7 @@ const STAGE_ICONS = {
 } satisfies Record<TechnicalSheetReadinessStageKey, typeof Tag>;
 
 interface Props {
-  sheet: Record<string, any>;
+  sheet: TechnicalSheetReadinessInput;
   audit?: TechnicalSheetAuditSignals;
   onSelectTab: (tab: 'id' | 'engineering' | 'production' | 'costs') => void;
 }
@@ -43,12 +44,12 @@ export function TechnicalSheetReadinessRail({ sheet, audit, onSelectTab }: Props
     staleTime: 60_000,
     queryFn: async () => {
       const [items, openOrders, staleSnapshots] = await Promise.all([
-        supabase.from('sale_order_items').select('id', { count: 'exact', head: true }).eq('reference_id', sheet.id),
+        supabase.from('sale_order_items').select('id', { count: 'exact', head: true }).eq('reference_id', sheet.id || ''),
         supabase.from('orders').select('id', { count: 'exact', head: true })
-          .eq('reference_id', sheet.id)
+          .eq('reference_id', sheet.id || '')
           .not('status', 'in', '(Finalizado,Cancelada,Cancelado)'),
         supabase.from('technical_sheet_snapshots').select('sale_order_id')
-          .eq('sheet_id', sheet.id)
+          .eq('sheet_id', sheet.id || '')
           .not('outdated_at', 'is', null),
       ]);
       const error = items.error || openOrders.error || staleSnapshots.error;

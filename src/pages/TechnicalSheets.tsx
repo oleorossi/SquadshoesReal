@@ -10,6 +10,7 @@
  
 import React, { useState, useMemo, useEffect } from 'react';
 import { buildBulkSolePatch, evaluateTechnicalSheetReadiness } from '@/lib/technicalSheetReadiness';
+import type { TechnicalSheetAuditSignals } from '@/lib/technicalSheetReadiness';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { useSearchParams, Link } from 'react-router-dom';
 import { SignedImage } from '@/components/ui/signed-image';
@@ -1246,12 +1247,12 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
     queryKey: ['technical_sheet_audit', sheet.id],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('v_technical_sheets_audit' as any)
+        .from('v_technical_sheets_audit')
         .select('*')
         .eq('id', sheet.id)
         .maybeSingle();
       if (error) throw error;
-      return data as any;
+      return data as unknown as TechnicalSheetAuditSignals | null;
     },
     staleTime: 60_000,
   });
@@ -1408,13 +1409,13 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
       setDirty(true);
     };
 
-    const selectedSoleProduct = useMemo(() => (products as any[]).find((product: any) =>
-      product.id === (form as any).primary_sole_id,
-    ) || (products as any[]).find((product: any) =>
+    const selectedSoleProduct = useMemo(() => products.find((product) =>
+      product.id === form.primary_sole_id,
+    ) || products.find((product) =>
       product.group_id === form.sole_group_id
       && getSoleModelName(product.name, product.color) === form.sole_material,
-    ), [products, (form as any).primary_sole_id, form.sole_group_id, form.sole_material]);
-    const facheteMaterialGroup = useMemo(() => (groups as any[]).find((group: any) =>
+    ), [products, form.primary_sole_id, form.sole_group_id, form.sole_material]);
+    const facheteMaterialGroup = useMemo(() => groups.find((group) =>
       group.id === selectedSoleProduct?.fachete_material_group_id,
     ), [groups, selectedSoleProduct?.fachete_material_group_id]);
 
@@ -2240,7 +2241,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                 onChange={(productName, groupId, productId) => {
                    updateField('sole_material', productName);
                    updateField('sole_group_id', groupId);
-                   updateField('primary_sole_id' as any, productId || null);
+                   updateField('primary_sole_id', productId || null);
                    autoFillSole(productName);
                    // Auto-fill NCM da última ficha cadastrada para esse solado.
                    // Trigger DB `tg_autofill_ncm_from_sole` aplica essa mesma
