@@ -168,8 +168,8 @@ export function GenerateServiceOrdersWizard({
   }, [lines]);
 
   const pvOptions: SearchableOption[] = useMemo(() => saleOrders
-    .filter((saleOrder: any) => !['Cancelado', 'cancelado', 'Rascunho'].includes(saleOrder.status))
-    .map((saleOrder: any) => ({
+    .filter((saleOrder) => !['Cancelado', 'cancelado', 'Rascunho'].includes(saleOrder.status))
+    .map((saleOrder) => ({
       value: saleOrder.id,
       label: `${saleOrder.order_number || 'PV'}${saleOrder.client_name ? ` · ${saleOrder.client_name}` : ''}`,
       description: [
@@ -282,7 +282,7 @@ export function GenerateServiceOrdersWizard({
         onGenerated?.();
         onOpenChange(false);
       },
-      onError: (error: any) => toast.error(error?.message || 'Falha ao gerar OS.'),
+      onError: (error: unknown) => toast.error(error instanceof Error ? error.message : 'Falha ao gerar OS.'),
     });
   };
 
