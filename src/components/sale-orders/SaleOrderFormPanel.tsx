@@ -31,6 +31,7 @@ import {
   parsePaymentConditionInstallments,
 } from '@/lib/factoringCalc';
 import { computeARSchedule } from '@/lib/saleOrderAR';
+import { getMaterialVariantReadinessIssue } from '@/lib/saleOrderCommercialReadiness';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
@@ -2005,6 +2006,7 @@ export default function SaleOrderFormPanel({
                 isAdmin={isAdmin}
                 priceLookup={clientPricing?.lookup}
                 maxDiscountPct={clientPricing?.maxDiscountPct ?? 0}
+                variantsByRef={allVariantsByRef}
                 onUpdate={updateItem}
                 onRemove={removeItem}
                 onCopyGradeFromPrevious={copyGradeFromPrevious}
@@ -2241,8 +2243,18 @@ export default function SaleOrderFormPanel({
           // no DB (tg_block_zero_unit_price) cobrem o fluxo.
           if (item.unit_price <= 0) issues.push({ type: 'error', msg: `Item ${i + 1}: preço unitário não pode ser zero` });
           const refVariants = item.reference_id ? allVariantsByRef.get(item.reference_id) : undefined;
-          if (refVariants && refVariants.length > 0 && !item.material_variant_id) {
-            // ⚠ WARNING, não error — e isto é deliberado.
+          const materialIssue = getMaterialVariantReadinessIssue({
+            itemNumber: i + 1,
+            itemId: item.id,
+            activeVariantCount: refVariants?.length ?? 0,
+            materialVariantId: item.material_variant_id,
+          });
+          if (materialIssue) {
+            // Item NOVO precisa nascer resolvido: a variante escolhe os grupos
+            // que alimentam consumo, custo, estoque e SKU fiscal. Item histórico
+            // continua só com aviso; forçar uma escolha retroativa mudaria o que
+            // já foi vendido/produzido e bloquearia manutenção do PV.
+            // ⚠ WARNING no histórico, ERROR no item novo — deliberado.
             //
             // Com `submitDisabled` derivando de errors.length, marcar isto como
             // erro travaria PVs que já existem: medido em 08/08/2026, são 220
@@ -2258,11 +2270,22 @@ export default function SaleOrderFormPanel({
             // tg_block_zero_unit_price, grupo de material nunca foi validado em
             // lugar nenhum. Bloquear agora seria regra nova disfarçada de
             // correção de UI.
-            issues.push({ type: 'warning', msg: `Item ${i + 1}: sem grupo de material` });
+            issues.push({ type: materialIssue.type, msg: materialIssue.message });
           }
         });
         if (!form.payment_condition) issues.push({ type: 'warning', msg: 'Sem condição de pagamento' });
         if (!form.delivery_deadline) issues.push({ type: 'warning', msg: 'Sem prazo de entrega' });
+        const pricingContext = clientPricing?.lookup.context;
+        if (pricingContext && !pricingContext.effective) {
+          const reason = pricingContext.invalidReason === 'inactive' ? 'inativa'
+            : pricingContext.invalidReason === 'not_started' ? 'ainda não vigente'
+            : pricingContext.invalidReason === 'expired' ? 'vencida'
+            : 'indisponível';
+          issues.push({
+            type: 'warning',
+            msg: `Tabela de preço “${pricingContext.name}” ${reason}; preços não foram aplicados`,
+          });
+        }
 
         const errors = issues.filter(i => i.type === 'error');
         const warnings = issues.filter(i => i.type === 'warning');

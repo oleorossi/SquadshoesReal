@@ -4,11 +4,12 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Trash as Trash2, Lock, CaretUpDown as ChevronsUpDown, Check, Package, ArrowSquareOut as ExternalLink, Palette, Plus, X, ChatText as MessageSquare, Warning } from '@phosphor-icons/react';
+import { Trash as Trash2, Lock, CaretUpDown as ChevronsUpDown, Check, Package, ArrowSquareOut as ExternalLink, Palette, Plus, X, ChatText as MessageSquare, Warning, ArrowsClockwise as RefreshCw, Tag, CurrencyDollar } from '@phosphor-icons/react';
 import { Badge } from '@/components/ui/badge';
 import { ReferenceLink } from '@/components/ui/reference-link';
 import { cn } from '@/lib/utils';
 import { resolvePrice, type PriceLookup } from '@/lib/mobile/clientContext';
+import { resolveSaleOrderItemPrice, type SaleOrderPriceResolution } from '@/lib/saleOrderPricing';
 import { SaleOrderItemFormData } from '@/hooks/useSaleOrders';
 import { useAccessControl } from '@/hooks/useAccessControl';
 import { useSheetMaterials } from '@/hooks/useTechnicalSheets';
@@ -23,7 +24,7 @@ import { useAddProduct, ProductSchema } from '@/hooks/useProducts';
 import { useAddComponentSheet } from '@/hooks/useComponentSheets';
 import type { ProductFormData } from '@/types/inventory';
 import { toast } from 'sonner';
-import { useReferenceMaterialVariants, useAllActiveReferenceMaterialVariants, VariantSummary } from '@/hooks/useReferenceMaterialVariants';
+import { type ReferenceMaterialVariant, type VariantSummary } from '@/hooks/useReferenceMaterialVariants';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { normalizeForSearch, searchMatchesAllTerms } from '@/lib/searchUtils';
 import { shouldSyncStrapColorsToMain } from '@/lib/strapColorSync';
@@ -49,6 +50,8 @@ interface ReferenceOption {
   ncm?: string | null;
   suggested_price?: number | null;
   packaging_box_dimensions?: string | null;
+  status_ficha?: string | null;
+  status?: string | null;
   has_straps?: boolean | null;
   strap_colors?: any[] | null;
 }
@@ -70,6 +73,9 @@ interface Props {
   priceLookup?: PriceLookup;
   /** Desconto máximo permitido (clients.max_discount_pct) — avisa quando furar. */
   maxDiscountPct?: number;
+  /** Mapa compartilhado pelo formulário inteiro. Evita uma assinatura/query de
+   *  variantes por item em PVs longos. */
+  variantsByRef?: ReadonlyMap<string, readonly ReferenceMaterialVariant[]>;
   /** Reporta ao pai se este item tem cor não cadastrada (cabedal/forração/tira),
    *  pra BLOQUEAR o salvamento do PV até cadastrar. null = sem pendência. */
   onColorIssueChange?: (index: number, info: { color: string; materials: string[] } | null) => void;
@@ -91,7 +97,9 @@ function parseSizeRange(sizes?: string | null, shoeCategory?: string | null): nu
 const formatCurrency = (v: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 
-function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, onUpdate, onRemove, onCopyGradeFromPrevious, onSaveStateAndNavigate, isSelected, onToggleSelect, priceLookup, maxDiscountPct = 0, onColorIssueChange }: Props) {
+const EMPTY_VARIANTS_BY_REF = new Map<string, readonly ReferenceMaterialVariant[]>();
+
+function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, onUpdate, onRemove, onCopyGradeFromPrevious, onSaveStateAndNavigate, isSelected, onToggleSelect, priceLookup, maxDiscountPct = 0, variantsByRef = EMPTY_VARIANTS_BY_REF, onColorIssueChange }: Props) {
   const qc = useQueryClient();
   const { canSeeFinancialValues } = useAccessControl();
   const fichas = item.fichas || 1;
@@ -368,9 +376,8 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
   // As cores disponíveis vêm exclusivamente das variantes de material
   // (reference_material_variants.available_colors[]) ou do BOM via grupos.
 
-  const { data: materialVariants = [] } = useReferenceMaterialVariants(item.reference_id || null);
-  const activeMaterialVariants = materialVariants.filter(v => v.active);
-  const { data: allVariantsByRef = new Map<string, VariantSummary[]>() } = useAllActiveReferenceMaterialVariants();
+  const activeMaterialVariants = variantsByRef.get(item.reference_id || '') ?? [];
+  const selectedMaterialVariant = activeMaterialVariants.find(v => v.id === item.material_variant_id);
 
   const { data: allProducts = [] } = useQuery({
     queryKey: ['products_for_colors'],
@@ -799,33 +806,35 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     }
   }, [modelHasCabedal, item.strap_colors]);
 
-  // Controle da resolução de preço da tabela (com price-break por quantidade):
-  // lastPricedColor evita reaplicar à toa; lastAppliedTablePrice guarda o último
-  // preço de tabela aplicado p/ distinguir "preço da tabela" de "preço manual".
-  const lastPricedColor = useRef<string | null>(null);
-  const lastAppliedTablePrice = useRef<number | null>(null);
+  const automaticPriceResolution = useMemo(() => resolveSaleOrderItemPrice({
+    lookup: priceLookup,
+    referenceId: selectedRef?.id,
+    color: item.color,
+    quantity: item.quantity,
+    variantPrice: selectedMaterialVariant?.unit_price_override,
+    sheetPrice: selectedRef?.sale_price,
+  }), [
+    priceLookup,
+    selectedRef?.id,
+    selectedRef?.sale_price,
+    item.color,
+    item.quantity,
+    selectedMaterialVariant?.unit_price_override,
+  ]);
+
+  // Guarda o último preço realmente aplicado pelo motor. Se o valor atual
+  // deixar de coincidir, a edição é manual e mudanças de cor/quantidade não a
+  // sobrescrevem. A origem continua rastreável na própria linha do pedido.
+  const lastAppliedAutoPrice = useRef<{
+    referenceId: string;
+    price: number;
+    resolution: SaleOrderPriceResolution;
+  } | null>(null);
+  const manualPriceEdited = useRef(false);
 
   useEffect(() => {
     const currentStraps = Array.isArray(item.strap_colors) ? (item.strap_colors as any[]) : [];
     const { index: idx, onUpdate: update } = latestRef.current;
-
-    // Auto-popula o preço quando está 0 e a ref carregou/mudou. Prioridade:
-    // TABELA do cliente (price_list_items via priceLookup) > preço da VARIANTE
-    // (unit_price_override) > sale_price da ficha (comportamento legado).
-    // priceLookup entra nas deps deste effect p/ reaplicar quando o pricing do
-    // cliente carrega.
-    if (selectedRef && item.unit_price === 0) {
-      const qty = Number(item.quantity) || 0;
-      const tablePrice = priceLookup ? resolvePrice(priceLookup, selectedRef.id, item.color || '', qty) : 0;
-      const variantPrice = item.material_variant_id
-        ? Number(activeMaterialVariants.find(v => v.id === item.material_variant_id)?.unit_price_override) || 0
-        : 0;
-      const autoPrice = tablePrice > 0 ? tablePrice
-        : variantPrice > 0 ? variantPrice
-        : selectedRef.sale_price;
-      if (autoPrice != null) update(idx, 'unit_price', autoPrice);
-      if (tablePrice > 0) lastAppliedTablePrice.current = tablePrice;
-    }
 
     // Strap sync: only run once per reference change. If the same reference's
     // strap_colors refresh in the query cache, skip — otherwise a cache update
@@ -891,28 +900,35 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
         }
       }
     }
-  }, [item.reference_id, selectedRef?.id, selectedRef?.strap_colors, priceLookup]);
+  }, [item.reference_id, selectedRef?.id, selectedRef?.strap_colors]);
 
-  // Reaplica o preço da TABELA quando muda a COR ou a QUANTIDADE (price-break por
-  // volume). Sobrescreve quando: a cor mudou, OU a faixa por quantidade mudou E o
-  // preço atual ainda é o da tabela (não foi editado à mão) — assim sobe/desce de
-  // faixa por volume sem clobrar um preço manual.
+  // Recalcula toda a cadeia comercial quando muda referência, material, cor,
+  // quantidade/faixa ou tabela do cliente. Só substitui campo vazio ou o último
+  // valor que o próprio motor aplicou; preço digitado pelo usuário é preservado.
   useEffect(() => {
-    if (!selectedRef || !priceLookup) return;
-    const color = item.color || '';
-    const qty = Number(item.quantity) || 0;
-    const tablePrice = resolvePrice(priceLookup, selectedRef.id, color, qty);
-    if (tablePrice <= 0) { lastPricedColor.current = color; return; }
-    const colorChanged = lastPricedColor.current !== color;
-    const priceIsTableDriven = lastAppliedTablePrice.current !== null
-      && Math.abs((item.unit_price || 0) - lastAppliedTablePrice.current) < 0.005;
-    if ((colorChanged || priceIsTableDriven) && Math.abs((item.unit_price || 0) - tablePrice) >= 0.005) {
-      const { index: idx, onUpdate: update } = latestRef.current;
-      update(idx, 'unit_price', tablePrice);
+    if (!selectedRef) return;
+    const current = Number(item.unit_price) || 0;
+    const previousAuto = lastAppliedAutoPrice.current;
+    const currentIsPreviousAuto = !!previousAuto
+      && Math.abs(current - previousAuto.price) < 0.005;
+
+    if (current > 0 && !currentIsPreviousAuto) return;
+    if (automaticPriceResolution.price <= 0) {
+      if (currentIsPreviousAuto) lastAppliedAutoPrice.current = null;
+      return;
     }
-    if (colorChanged || priceIsTableDriven) lastAppliedTablePrice.current = tablePrice;
-    lastPricedColor.current = color;
-  }, [item.color, item.quantity, selectedRef?.id, priceLookup, item.unit_price]);
+
+    lastAppliedAutoPrice.current = {
+      referenceId: selectedRef.id,
+      price: automaticPriceResolution.price,
+      resolution: automaticPriceResolution,
+    };
+    manualPriceEdited.current = false;
+    if (Math.abs(current - automaticPriceResolution.price) >= 0.005) {
+      const { index: idx, onUpdate: update } = latestRef.current;
+      update(idx, 'unit_price', automaticPriceResolution.price);
+    }
+  }, [selectedRef?.id, automaticPriceResolution, item.unit_price]);
 
   useEffect(() => {
     if (isFirstRender.current) {
@@ -923,13 +939,12 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     const refChanged = prevRefId.current !== item.reference_id && prevRefId.current !== '';
     if (refChanged) {
       const { index: idx, onUpdate: update } = latestRef.current;
-      if (selectedRef && (item.unit_price === 0 || !isAdmin)) {
-        // Mesma prioridade: tabela do cliente > sale_price da ficha. Na troca de
-        // ref a cor é resetada logo abaixo, então resolve pelo preço base da ref.
-        const tablePrice = priceLookup ? resolvePrice(priceLookup, selectedRef.id, '', Number(item.quantity) || 0) : 0;
-        const autoPrice = tablePrice > 0 ? tablePrice : selectedRef.sale_price;
-        if (autoPrice != null) update(idx, 'unit_price', autoPrice);
-      }
+      // Referência é identidade do produto: preço da referência anterior nunca
+      // pode atravessar a troca, mesmo para admin. O motor reaplica a nova fonte
+      // no render seguinte; se ela não existir, o guard deixa o item pendente.
+      lastAppliedAutoPrice.current = null;
+      manualPriceEdited.current = false;
+      update(idx, 'unit_price', 0);
       update(idx, 'grade', {});
       update(idx, 'color', '');
       update(idx, 'strap_colors', []);
@@ -945,20 +960,6 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
       update(idx, 'material_variant_id', activeMaterialVariants[0].id);
     }
   }, [item.reference_id, activeMaterialVariants.length]);
-
-  // Preço próprio da variante: aplica ao ESCOLHER a variante, e só com o campo
-  // zerado — a tabela do cliente e o preço digitado à mão continuam ganhando.
-  // Effect separado de propósito: o de cima roda por troca de referência e
-  // carrega o sync de tiras junto; pendurar a variante lá reexecutaria aquilo.
-  useEffect(() => {
-    if (!item.material_variant_id || item.unit_price !== 0) return;
-    const variantPrice = Number(
-      activeMaterialVariants.find(v => v.id === item.material_variant_id)?.unit_price_override,
-    ) || 0;
-    if (variantPrice <= 0) return;
-    const { index: idx, onUpdate: update } = latestRef.current;
-    update(idx, 'unit_price', variantPrice);
-  }, [item.material_variant_id, item.unit_price, activeMaterialVariants]);
 
   // Auto-sincroniza cor das tiras com a cor principal do item. Regra de negócio
   // (user em 2026-05): "cor da sandália = cor da forração; em modelos com tiras,
@@ -1033,6 +1034,16 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
   });
 
   const isInfantil = selectedRef?.shoe_category === 'Infantil';
+  const appliedAutoPrice = lastAppliedAutoPrice.current;
+  const priceMatchesAuto = !!appliedAutoPrice
+    && appliedAutoPrice.referenceId === selectedRef?.id
+    && Math.abs((Number(item.unit_price) || 0) - appliedAutoPrice.price) < 0.005;
+  const priceSourceLabel = priceMatchesAuto
+    ? appliedAutoPrice!.resolution.sourceLabel
+    : item.unit_price > 0
+      ? manualPriceEdited.current ? 'Informado manualmente' : 'Preço salvo no pedido'
+      : automaticPriceResolution.sourceLabel;
+  const priceIsManual = item.unit_price > 0 && !priceMatchesAuto && manualPriceEdited.current;
 
   return (
     <div className={`rounded-lg border shadow-sm overflow-hidden mb-4 transition-all hover:border-primary/30 ${isSelected ? 'bg-primary/5 border-primary/40' : 'bg-card'}`}>
@@ -1181,7 +1192,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
             <Label className="text-xs font-bold text-muted-foreground uppercase mb-1 block">Modelo / Referência</Label>
             <ReferencePickerControlled
               references={references}
-              variantsByRef={allVariantsByRef}
+              variantsByRef={variantsByRef}
               selectedRef={selectedRef}
               currentId={item.reference_id || ''}
               onSelect={(refId) => onUpdate(index, 'reference_id', refId)}
@@ -1194,28 +1205,56 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
               <Label className="text-xs font-bold text-muted-foreground uppercase mb-1 block">
                 Material *
               </Label>
-              <Select
-                value={item.material_variant_id || ''}
-                onValueChange={v => {
-                  onUpdate(index, 'material_variant_id', v || null);
-                  // Clear color — available colors may differ per material group
-                  onUpdate(index, 'color', '');
-                }}
-              >
-                <SelectTrigger className={cn(
-                  "h-9 text-xs",
-                  !item.material_variant_id && "border-amber-400/60 text-muted-foreground"
-                )}>
-                  <SelectValue placeholder="Selecione o material…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {activeMaterialVariants.map(v => (
-                    <SelectItem key={v.id} value={v.id}>
-                      {v.material_name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="flex gap-1">
+                <Select
+                  value={item.material_variant_id || ''}
+                  onValueChange={v => {
+                    onUpdate(index, 'material_variant_id', v || null);
+                    // Clear color — available colors may differ per material group
+                    onUpdate(index, 'color', '');
+                  }}
+                >
+                  <SelectTrigger className={cn(
+                    "h-9 text-xs flex-1",
+                    !item.material_variant_id && "border-amber-400/60 text-muted-foreground"
+                  )}>
+                    <SelectValue placeholder="Selecione o material…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {activeMaterialVariants.map(v => {
+                      const colorCount = v.available_colors?.length ?? 0;
+                      return (
+                        <SelectItem key={v.id} value={v.id}>
+                          <span className="font-medium">{v.material_name}</span>
+                          <span className="ml-1.5 text-muted-foreground">
+                            {[v.sku, colorCount > 0 ? `${colorCount} cores` : '', Number(v.unit_price_override) > 0 ? formatCurrency(Number(v.unit_price_override)) : '']
+                              .filter(Boolean).join(' · ')}
+                          </span>
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="h-9 w-9 flex-shrink-0"
+                  title="Configurar variações desta referência"
+                  aria-label="Configurar variações desta referência"
+                  onClick={() => window.open(`/fichas-tecnicas?ref=${selectedRef?.id || ''}&tab=variants`, '_blank', 'noopener,noreferrer')}
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+              {selectedMaterialVariant && (
+                <p className="mt-1 truncate text-[11px] text-muted-foreground" title={selectedMaterialVariant.sku || undefined}>
+                  {selectedMaterialVariant.sku ? `SKU ${selectedMaterialVariant.sku}` : 'Sem SKU próprio'}
+                  {Number(selectedMaterialVariant.unit_price_override) > 0
+                    ? ` · preço próprio ${formatCurrency(Number(selectedMaterialVariant.unit_price_override))}`
+                    : ' · usa preço da tabela/ficha'}
+                </p>
+              )}
             </div>
           )}
 
@@ -1322,11 +1361,22 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                   value={item.unit_price}
                   // Clamp >=0: o NumberInput não impede negativo colado (min é
                   // prop morta lá), e preço negativo entrava no total/AR/margem.
-                  onChange={(v) => onUpdate(index, 'unit_price', Math.max(0, v))}
+                  onChange={(v) => {
+                    lastAppliedAutoPrice.current = null;
+                    manualPriceEdited.current = true;
+                    onUpdate(index, 'unit_price', Math.max(0, v));
+                  }}
                   className="h-9 font-mono text-xs"
                   decimals={2}
                 />
                 {pdv > 0 && !isAdmin && <div className="absolute right-2 top-1/2 -translate-y-1/2"><Lock className="h-3 w-3 text-muted-foreground opacity-30" /></div>}
+              </div>
+              <div className="mt-1 flex items-center gap-1.5 text-[11px] leading-tight text-muted-foreground">
+                <CurrencyDollar className={cn('h-3 w-3', priceIsManual ? 'text-amber-600' : 'text-primary')} />
+                <span className={cn(priceIsManual && 'text-amber-700 dark:text-amber-300')}>{priceSourceLabel}</span>
+                {priceMatchesAuto && appliedAutoPrice?.resolution.tableRule?.tier.minQty
+                  ? <span>· a partir de {appliedAutoPrice.resolution.tableRule.tier.minQty} pares</span>
+                  : null}
               </div>
               {(() => {
                 // Teto de desconto (c): avisa (não bloqueia) quando o preço cai mais
@@ -1373,6 +1423,43 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
               </Button>
             </div>
           )}
+        </div>
+
+        {/* Linha de decisão comercial: o operador enxerga a sequência fabril
+            completa sem reabrir campos — referência → material → produção →
+            preço. Além de reduzir erro, torna explícita a origem do preço. */}
+        <div className="grid grid-cols-1 divide-y rounded-md border bg-muted/10 sm:grid-cols-4 sm:divide-x sm:divide-y-0">
+          <div className="flex min-w-0 items-center gap-2 px-3 py-2">
+            <span className={cn('flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold', selectedRef ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground')}>1</span>
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Referência</p>
+              <p className="truncate text-xs font-medium">
+                {selectedRef?.code || 'Pendente'}
+                {selectedRef?.status_ficha && <span className="ml-1 font-normal text-muted-foreground">· {selectedRef.status_ficha.replace('_', ' ')}</span>}
+              </p>
+            </div>
+          </div>
+          <div className="flex min-w-0 items-center gap-2 px-3 py-2">
+            <span className={cn('flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold', activeMaterialVariants.length === 0 || selectedMaterialVariant ? 'bg-primary text-primary-foreground' : 'bg-amber-500/20 text-amber-700 dark:text-amber-300')}>2</span>
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Material</p>
+              <p className="truncate text-xs font-medium">{selectedMaterialVariant?.material_name || (activeMaterialVariants.length > 0 ? 'Escolha obrigatória' : sheetSpecs?.upper_material || 'Da ficha')}</p>
+            </div>
+          </div>
+          <div className="flex min-w-0 items-center gap-2 px-3 py-2">
+            <span className={cn('flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold', item.color && totalPairs > 0 ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground')}>3</span>
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Cor e grade</p>
+              <p className="truncate text-xs font-medium">{item.color || 'Sem cor'} · {totalPairs} pares</p>
+            </div>
+          </div>
+          <div className="flex min-w-0 items-center gap-2 px-3 py-2">
+            <span className={cn('flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold', item.unit_price > 0 ? 'bg-primary text-primary-foreground' : 'bg-destructive/15 text-destructive')}>4</span>
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Preço</p>
+              <p className="truncate text-xs font-medium">{item.unit_price > 0 ? formatCurrency(item.unit_price) : 'Pendente'} · <span className="font-normal text-muted-foreground">{priceSourceLabel}</span></p>
+            </div>
+          </div>
         </div>
 
         {/* Grade Section */}
@@ -1951,23 +2038,44 @@ function ColorSearchSelect({
 }
 
 function ReferenceSearch({
-  references, onSelect, selectedId, variantsByRef,
+  references, onSelect, selectedId, variantsByRef, onRefresh, refreshing, onCreate,
 }: {
   references: ReferenceOption[];
   onSelect: (ref: ReferenceOption) => void;
   selectedId?: string;
-  variantsByRef?: Map<string, VariantSummary[]>;
+  variantsByRef?: ReadonlyMap<string, readonly VariantSummary[]>;
+  onRefresh: () => void;
+  refreshing: boolean;
+  onCreate: () => void;
 }) {
   const [search, setSearch] = useState('');
   // Match com espaços/acentos/case ignorados — "SP 10"/"sp10"/"Sp-10"
-  // devem todos casar com a referência cadastrada como "SP10".
-  const filtered = references.filter(r => searchMatchesAllTerms(search, r.code, r.name));
+  // devem todos casar com a referência cadastrada como "SP10". Material e SKU
+  // também entram no índice: o vendedor pode lembrar "Santorine" sem lembrar a ref.
+  const filtered = references
+    .filter(r => {
+      const variants = variantsByRef?.get(r.id) ?? [];
+      return searchMatchesAllTerms(
+        search,
+        r.code,
+        r.name,
+        r.shoe_category,
+        ...variants.flatMap(v => [v.material_name, v.sku || '']),
+      );
+    })
+    .sort((a, b) => {
+      if (a.id === selectedId) return -1;
+      if (b.id === selectedId) return 1;
+      const statusOrder: Record<string, number> = { publicada: 0, validada: 1, em_revisao: 2, rascunho: 3 };
+      const byReadiness = (statusOrder[a.status_ficha || ''] ?? 4) - (statusOrder[b.status_ficha || ''] ?? 4);
+      return byReadiness || String(a.code || a.name).localeCompare(String(b.code || b.name), 'pt-BR');
+    });
   return (
     <div className="p-2 space-y-2">
       <SearchInput
         value={search}
         onChange={setSearch}
-        placeholder="Buscar por código ou nome..."
+        placeholder="Código, nome, material ou SKU..."
         resultCount={filtered.length}
         totalCount={references.length}
         inputClassName="text-sm"
@@ -2007,13 +2115,30 @@ function ReferenceSearch({
                   )}
                 </div>
                 <div className="flex flex-col gap-0.5 min-w-0">
-                  <span className="font-mono bg-muted px-1.5 rounded text-muted-foreground w-fit">{ref.code}</span>
+                  <div className="flex flex-wrap items-center gap-1">
+                    <span className="font-mono bg-muted px-1.5 rounded text-muted-foreground w-fit">{ref.code}</span>
+                    {ref.status_ficha && (
+                      <Badge
+                        variant="outline"
+                        className={cn(
+                          'h-4 px-1 text-[10px] font-medium capitalize',
+                          ref.status_ficha === 'publicada' && 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+                          ref.status_ficha !== 'publicada' && 'border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300',
+                        )}
+                      >
+                        {ref.status_ficha.replace('_', ' ')}
+                      </Badge>
+                    )}
+                  </div>
                   <span className="truncate max-w-[200px] font-medium">{ref.name}</span>
                   {variants.length > 0 && (
-                    <span className="text-xs text-primary/70 font-medium">
-                      {variants.length} grupo{variants.length !== 1 ? 's' : ''} de material
+                    <span className="flex items-center gap-1 text-xs text-primary/70 font-medium">
+                      <Tag className="h-3 w-3" /> {variants.length} grupo{variants.length !== 1 ? 's' : ''} de material
                     </span>
                   )}
+                  <span className={cn('text-[11px]', Number(ref.sale_price) > 0 ? 'text-muted-foreground' : 'text-amber-700 dark:text-amber-300')}>
+                    {Number(ref.sale_price) > 0 ? `Base ${formatCurrency(Number(ref.sale_price))}` : 'Sem preço-base na ficha'}
+                  </span>
                 </div>
               </div>
               {ref.shoe_category && (
@@ -2022,6 +2147,15 @@ function ReferenceSearch({
             </button>
           );
         })}
+      </div>
+      <div className="flex items-center justify-between gap-2 border-t pt-2">
+        <Button type="button" variant="ghost" size="sm" className="h-7 gap-1.5 text-xs" onClick={onRefresh} disabled={refreshing}>
+          <RefreshCw className={cn('h-3.5 w-3.5', refreshing && 'animate-spin')} />
+          Atualizar referências
+        </Button>
+        <Button type="button" variant="outline" size="sm" className="h-7 gap-1.5 text-xs" onClick={onCreate}>
+          <Plus className="h-3.5 w-3.5" /> Nova referência
+        </Button>
       </div>
     </div>
   );
@@ -2092,12 +2226,27 @@ function ReferencePickerControlled({
   references, variantsByRef, selectedRef, currentId, onSelect,
 }: {
   references: ReferenceOption[];
-  variantsByRef: Map<string, VariantSummary[]>;
+  variantsByRef: ReadonlyMap<string, readonly VariantSummary[]>;
   selectedRef: ReferenceOption | undefined;
   currentId: string;
   onSelect: (id: string) => void;
 }) {
   const [open, setOpen] = useState(!currentId);
+  const [refreshing, setRefreshing] = useState(false);
+  const qc = useQueryClient();
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        qc.refetchQueries({ queryKey: ['technical_sheets'] }),
+        qc.refetchQueries({ queryKey: ['reference_material_variants', 'all_active'] }),
+      ]);
+      toast.success('Referências e materiais atualizados.');
+    } finally {
+      setRefreshing(false);
+    }
+  };
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
@@ -2114,6 +2263,9 @@ function ReferencePickerControlled({
           onSelect={(ref) => { onSelect(ref.id); setOpen(false); }}
           selectedId={currentId}
           variantsByRef={variantsByRef}
+          onRefresh={handleRefresh}
+          refreshing={refreshing}
+          onCreate={() => window.open('/fichas-tecnicas?new=1', '_blank', 'noopener,noreferrer')}
         />
       </PopoverContent>
     </Popover>

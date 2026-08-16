@@ -251,14 +251,18 @@ export function useAllActiveReferenceMaterialVariants() {
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from('reference_material_variants')
-        .select('id, reference_id, material_name, sku, available_colors')
+        // O PV precisa também dos overrides de preço e dos grupos/produtos que
+        // resolvem cor. Buscar só o resumo obrigava cada item a disparar outra
+        // query por referência (N+1 em pedidos longos).
+        .select('*')
         .eq('active', true)
         .order('display_order');
       if (error) throw error;
-      const map = new Map<string, VariantSummary[]>();
-      for (const v of (data || [])) {
+      const map = new Map<string, ReferenceMaterialVariant[]>();
+      for (const raw of (data || [])) {
+        const v = raw as ReferenceMaterialVariant;
         const arr = map.get(v.reference_id) ?? [];
-        arr.push({ id: v.id, material_name: v.material_name, sku: v.sku, available_colors: v.available_colors ?? [] });
+        arr.push(v);
         map.set(v.reference_id, arr);
       }
       return map;
@@ -268,7 +272,7 @@ export function useAllActiveReferenceMaterialVariants() {
 }
 
 
-export type VariantSummary = { id: string; material_name: string; sku: string | null; available_colors: string[] };
+export type VariantSummary = { id: string; material_name: string; sku: string | null; available_colors: string[] | null };
 
 
 /** Campos de override de material/consumo são opcionais no upsert: quando

@@ -69,19 +69,29 @@ export function PriceListItemsDialog({ open, onClose, priceList }: PriceListItem
       if (!refId) throw new Error('Selecione a referência');
       const p = Number(String(price).replace(',', '.'));
       if (!Number.isFinite(p) || p <= 0) throw new Error('Preço deve ser > 0');
-      const { error } = await supabase.from('price_list_items').insert({
+      const normalizedColor = color.trim().toUpperCase() || null;
+      const normalizedMinQty = Math.max(1, parseInt(minQty, 10) || 1);
+      const existing = items.find(item =>
+        item.reference_id === refId
+        && (item.color || '').trim().toUpperCase() === (normalizedColor || '')
+        && Number(item.min_quantity || 1) === normalizedMinQty,
+      );
+      const payload = {
         price_list_id: priceList.id,
         reference_id: refId,
-        color: color.trim() || null,
+        color: normalizedColor,
         unit_price: Number(p.toFixed(2)),
-        min_quantity: Math.max(1, parseInt(minQty, 10) || 1),
-      } as never);
+        min_quantity: normalizedMinQty,
+      };
+      const { error } = existing
+        ? await supabase.from('price_list_items').update(payload as never).eq('id', existing.id)
+        : await supabase.from('price_list_items').insert(payload as never);
       if (error) throw error;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['price_list_items', priceList?.id] });
       setRefId(''); setColor(''); setPrice(''); setMinQty('1');
-      toast.success('Item adicionado à tabela.');
+      toast.success('Regra de preço salva.');
     },
     onError: (e: Error) => toast.error(e.message),
   });

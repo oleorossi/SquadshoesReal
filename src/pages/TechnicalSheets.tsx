@@ -206,11 +206,20 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
   const [searchParams, setSearchParams] = useSearchParams();
   useEffect(() => {
     const refFromUrl = searchParams.get('ref');
+    const createFromUrl = searchParams.get('new') === '1';
+    if (createFromUrl && !perm.loading) {
+      if (perm.canCreate) setDialogOpen(true);
+      else toast.error('Você não tem permissão para criar ficha técnica.');
+    }
     if (refFromUrl && refFromUrl !== expandedId) {
       setExpandedId(refFromUrl);
-      // Remove o param da URL pra não re-disparar em outras navegações
+    }
+    if ((refFromUrl && refFromUrl !== expandedId) || (createFromUrl && !perm.loading)) {
+      // Remove só os comandos consumidos. `tab=variants`, por exemplo, precisa
+      // permanecer pra abrir a ficha diretamente na seleção de materiais.
       const next = new URLSearchParams(searchParams);
-      next.delete('ref');
+      if (refFromUrl) next.delete('ref');
+      if (createFromUrl && !perm.loading) next.delete('new');
       setSearchParams(next, { replace: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

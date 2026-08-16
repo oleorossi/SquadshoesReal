@@ -138,6 +138,15 @@ SELECT jsonb_pretty(jsonb_build_object(
     ),
     'clients_assigned', (SELECT count(*) FROM public.clients WHERE price_list_id IS NOT NULL),
     'clients_assigned_invalid_today', (SELECT count(*) FROM valid_client_lists WHERE NOT effective_today),
+    'invalid_validity_periods', (
+      SELECT count(*) FROM public.price_lists WHERE valid_to IS NOT NULL AND valid_to < valid_from
+    ),
+    'nonpositive_rule_prices', (
+      SELECT count(*) FROM public.price_list_items WHERE unit_price <= 0
+    ),
+    'invalid_min_quantity_rules', (
+      SELECT count(*) FROM public.price_list_items WHERE min_quantity < 1
+    ),
     'duplicate_rule_groups', (SELECT count(*) FROM duplicate_price_rules),
     'duplicate_rule_rows', (SELECT COALESCE(sum(duplicates), 0) FROM duplicate_price_rules),
     'open_items_with_valid_client_list', (

@@ -5,16 +5,48 @@
  * preço certo automaticamente.
  */
 import { supabase } from '@/integrations/supabase/client';
+import { todayISO } from '@/lib/date';
 
 /** Faixa de preço por quantidade (price-break). minQty = quantidade mínima
  *  (em pares) a partir da qual o preço vale. */
-export interface PriceTier { minQty: number; price: number; }
+export interface PriceTier { id?: string; minQty: number; price: number; }
+
+export type PriceListInvalidReason = 'inactive' | 'not_started' | 'expired' | 'not_found';
+
+export interface PriceListContext {
+  id: string;
+  name: string;
+  active: boolean;
+  validFrom: string;
+  validTo: string | null;
+  effective: boolean;
+  invalidReason?: PriceListInvalidReason;
+}
 
 export interface PriceLookup {
   /** reference_id::color -> faixas de preço (asc por minQty). Cor vazia = default da ref. */
   byRefColor: Map<string, PriceTier[]>;
   /** reference_id -> faixas de preço default (qualquer cor). */
   byRef: Map<string, PriceTier[]>;
+  /** Metadados da tabela atribuída ao cliente. Uma tabela fora da vigência
+   *  permanece visível pra auditoria, mas não fornece preço ao pedido. */
+  context?: PriceListContext;
+}
+
+export interface ResolvedPriceRule {
+  price: number;
+  tier: PriceTier;
+  match: 'color' | 'reference';
+}
+
+export function evaluatePriceListValidity(
+  list: { active?: boolean | null; valid_from?: string | null; valid_to?: string | null },
+  today = todayISO(),
+): { effective: boolean; invalidReason?: PriceListInvalidReason } {
+  if (list.active === false) return { effective: false, invalidReason: 'inactive' };
+  if (list.valid_from && list.valid_from > today) return { effective: false, invalidReason: 'not_started' };
+  if (list.valid_to && list.valid_to < today) return { effective: false, invalidReason: 'expired' };
+  return { effective: true };
 }
 
 export const fetchClientPriceList = async (clientId: string): Promise<PriceLookup> => {
@@ -22,25 +54,64 @@ export const fetchClientPriceList = async (clientId: string): Promise<PriceLooku
   const byRef = new Map<string, PriceTier[]>();
 
   // 1. Busca price_list_id do cliente
-  const { data: client } = await supabase
+  const { data: client, error: clientError } = await supabase
     .from('clients')
     .select('price_list_id')
     .eq('id', clientId)
     .maybeSingle();
+  if (clientError) throw clientError;
 
   const priceListId = (client as any)?.price_list_id;
   if (!priceListId) return { byRefColor, byRef };
 
+  // A atribuição ao cliente não basta: tabela inativa, futura ou vencida nunca
+  // pode precificar um PV. Antes estes campos existiam no cadastro, mas eram
+  // ignorados no fluxo de venda.
+  const { data: priceList, error: listError } = await supabase
+    .from('price_lists')
+    .select('id, name, active, valid_from, valid_to')
+    .eq('id', priceListId)
+    .maybeSingle();
+  if (listError) throw listError;
+  if (!priceList) {
+    return {
+      byRefColor,
+      byRef,
+      context: {
+        id: priceListId,
+        name: 'Tabela não encontrada',
+        active: false,
+        validFrom: '',
+        validTo: null,
+        effective: false,
+        invalidReason: 'not_found',
+      },
+    };
+  }
+
+  const validity = evaluatePriceListValidity(priceList);
+  const context: PriceListContext = {
+    id: priceList.id,
+    name: priceList.name,
+    active: priceList.active,
+    validFrom: priceList.valid_from,
+    validTo: priceList.valid_to,
+    ...validity,
+  };
+  if (!context.effective) return { byRefColor, byRef, context };
+
   // 2. Busca todos os items dessa lista (com a faixa de quantidade — price-break)
-  const { data: items } = await supabase
+  const { data: items, error: itemsError } = await supabase
     .from('price_list_items')
-    .select('reference_id, color, unit_price, min_quantity')
+    .select('id, reference_id, color, unit_price, min_quantity')
     .eq('price_list_id', priceListId);
+  if (itemsError) throw itemsError;
 
   for (const it of (items ?? [])) {
     const refId = (it as any).reference_id;
     const color = ((it as any).color || '').toUpperCase().trim();
     const tier: PriceTier = {
+      id: (it as any).id,
       minQty: Math.max(0, Number((it as any).min_quantity) || 0),
       price: Number((it as any).unit_price) || 0,
     };
@@ -52,18 +123,36 @@ export const fetchClientPriceList = async (clientId: string): Promise<PriceLooku
   // Ordena as faixas por minQty ascendente p/ a resolução por volume.
   for (const arr of byRefColor.values()) arr.sort((a, b) => a.minQty - b.minQty);
   for (const arr of byRef.values()) arr.sort((a, b) => a.minQty - b.minQty);
-  return { byRefColor, byRef };
+  return { byRefColor, byRef, context };
 };
 
 /** Escolhe o preço da MAIOR faixa cujo minQty <= quantidade. Abaixo de todas,
  *  usa a menor faixa (preço base). */
-const pickTier = (tiers: PriceTier[] | undefined, quantity: number): number | undefined => {
+const pickTier = (tiers: PriceTier[] | undefined, quantity: number): PriceTier | undefined => {
   if (!tiers || tiers.length === 0) return undefined;
   let chosen = tiers[0];
   for (const t of tiers) {
     if (t.minQty <= quantity) chosen = t; else break;
   }
-  return chosen.price;
+  return chosen;
+};
+
+export const resolvePriceRule = (
+  lookup: PriceLookup,
+  referenceId: string,
+  color?: string | null,
+  quantity = 0,
+): ResolvedPriceRule | undefined => {
+  if (lookup.context && !lookup.context.effective) return undefined;
+  if (color) {
+    const exact = pickTier(
+      lookup.byRefColor.get(`${referenceId}::${color.toUpperCase().trim()}`),
+      quantity,
+    );
+    if (exact) return { price: exact.price, tier: exact, match: 'color' };
+  }
+  const fallback = pickTier(lookup.byRef.get(referenceId), quantity);
+  return fallback ? { price: fallback.price, tier: fallback, match: 'reference' } : undefined;
 };
 
 /**
@@ -77,11 +166,7 @@ export const resolvePrice = (
   color?: string | null,
   quantity = 0,
 ): number => {
-  if (color) {
-    const exact = pickTier(lookup.byRefColor.get(`${reference_id}::${color.toUpperCase().trim()}`), quantity);
-    if (exact !== undefined) return exact;
-  }
-  return pickTier(lookup.byRef.get(reference_id), quantity) ?? 0;
+  return resolvePriceRule(lookup, reference_id, color, quantity)?.price ?? 0;
 };
 
 // ── Histórico do cliente ────────────────────────────────────────────────────

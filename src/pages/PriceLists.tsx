@@ -14,9 +14,10 @@ import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
 import { PriceListItemsDialog } from '@/components/sale-orders/PriceListItemsDialog';
-import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { useCan } from '@/hooks/useAccessControl';
+import { safeFormatBR, todayISO } from '@/lib/date';
+import { evaluatePriceListValidity } from '@/lib/mobile/clientContext';
 
 type PriceList = {
   id?: string;
@@ -35,7 +36,7 @@ const EMPTY: PriceList = {
   channel: 'atacado',
   region_uf: null,
   client_id: null,
-  valid_from: format(new Date(), 'yyyy-MM-dd'),
+  valid_from: todayISO(),
   valid_to: null,
   active: true,
   is_promotional: false,
@@ -83,6 +84,10 @@ export default function PriceLists() {
 
   const save = useMutation({
     mutationFn: async (pl: PriceList) => {
+      if (!pl.valid_from) throw new Error('Informe o início da vigência.');
+      if (pl.valid_to && pl.valid_to < pl.valid_from) {
+        throw new Error('O fim da vigência não pode ser anterior ao início.');
+      }
       const payload = {
         name: pl.name,
         channel: pl.channel,
@@ -109,7 +114,7 @@ export default function PriceLists() {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const openNew = () => { setEdit(EMPTY); setOpen(true); };
+  const openNew = () => { setEdit({ ...EMPTY, valid_from: todayISO() }); setOpen(true); };
   const openEdit = (pl: any) => {
     setEdit({
       id: pl.id,
@@ -117,7 +122,7 @@ export default function PriceLists() {
       channel: pl.channel ?? 'atacado',
       region_uf: pl.region_uf,
       client_id: pl.client_id,
-      valid_from: pl.valid_from?.slice(0, 10) ?? format(new Date(), 'yyyy-MM-dd'),
+      valid_from: pl.valid_from?.slice(0, 10) ?? todayISO(),
       valid_to: pl.valid_to?.slice(0, 10) ?? null,
       active: pl.active ?? true,
       is_promotional: pl.is_promotional ?? false,
@@ -158,7 +163,14 @@ export default function PriceLists() {
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-        {lists.map((pl: any) => (
+        {lists.map((pl: any) => {
+          const validity = evaluatePriceListValidity(pl);
+          const statusLabel = validity.effective ? 'Vigente'
+            : validity.invalidReason === 'inactive' ? 'Inativa'
+            : validity.invalidReason === 'not_started' ? 'Futura'
+            : validity.invalidReason === 'expired' ? 'Vencida'
+            : 'Inválida';
+          return (
           <Card
             key={pl.id}
             className="hover:shadow-md transition-shadow cursor-pointer group"
@@ -171,8 +183,8 @@ export default function PriceLists() {
                   {pl.name}
                 </CardTitle>
                 <div className="flex items-center gap-1">
-                  <Badge variant={pl.active ? 'default' : 'secondary'} className="text-xs">
-                    {pl.active ? 'Ativa' : 'Inativa'}
+                  <Badge variant={validity.effective ? 'default' : 'secondary'} className="text-xs">
+                    {statusLabel}
                   </Badge>
                   <Pencil className="h-3 w-3 text-muted-foreground/50 group-hover:text-primary" />
                 </div>
@@ -200,8 +212,8 @@ export default function PriceLists() {
                   <Calendar className="h-3 w-3" /> Vigência
                 </span>
                 <span className="font-mono">
-                  {format(new Date(pl.valid_from), 'dd/MM/yy')}
-                  {pl.valid_to ? ` → ${format(new Date(pl.valid_to), 'dd/MM/yy')}` : ' →'}
+                  {safeFormatBR(pl.valid_from, '—', 'dd/MM/yy')}
+                  {pl.valid_to ? ` → ${safeFormatBR(pl.valid_to, '—', 'dd/MM/yy')}` : ' →'}
                 </span>
               </div>
               {pl.is_promotional && (
@@ -215,7 +227,8 @@ export default function PriceLists() {
               </Button>
             </CardContent>
           </Card>
-        ))}
+          );
+        })}
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
