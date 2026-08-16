@@ -210,6 +210,19 @@ describe('Tiras artesanais — contrato SQL canônico', () => {
     expect(SCHEMA).toContain("entry_type IN ('accrual', 'loss_claim', 'credit_carry')");
   });
 
+  it('cria a fila de retrabalho antes de compilar qualquer função que a consulta', () => {
+    const table = ENGINE.indexOf('CREATE TABLE public.strap_rework_material_requests');
+    const firstReference = ENGINE.indexOf('FROM public.strap_rework_material_requests');
+    const lockHelper = ENGINE.indexOf(
+      'CREATE OR REPLACE FUNCTION public.lock_strap_physical_operation_scope',
+    );
+
+    expect(table).toBeGreaterThanOrEqual(0);
+    expect(firstReference).toBeGreaterThan(table);
+    expect(lockHelper).toBeGreaterThan(firstReference);
+    expect(ENGINE.match(/CREATE TABLE public\.strap_rework_material_requests/g)).toHaveLength(1);
+  });
+
   it('fecha writers antigos e expõe somente a allow-list operacional', () => {
     expect(SCHEMA).toContain('DROP TRIGGER IF EXISTS trg_debit_service_order_base');
     expect(ENGINE).toContain('Fecha o default EXECUTE PUBLIC de todas as funcoes definidas neste motor');
@@ -256,6 +269,9 @@ describe('Tiras artesanais — contrato SQL canônico', () => {
     expect(cutoverEnd).toBeGreaterThan(cutoverStart);
     expect(cutover).toContain('IF v_def IS NOT NULL THEN');
     expect(cutover).toContain("coalesce(mr.source,'''') NOT IN");
+    expect(cutover).toContain(
+      'Cutover recusado: baixa por setor nao foi isolada das reservas de tira',
+    );
     expect(cutover).toContain('EXECUTE v_def;');
     expect(cutover).not.toContain("::regprocedure)\n    INTO v_def");
     expect(cutover).not.toContain('debit_reserved_materials_for_sector ausente');
