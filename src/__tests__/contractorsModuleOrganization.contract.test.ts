@@ -10,6 +10,9 @@ const planning = read('src/components/contractors/OutsourcingPlanningTab.tsx');
 const reports = read('src/pages/ContractorReports.tsx');
 const coverage = read('src/components/contractors/TerceirizacaoCoberturaPanel.tsx');
 const contractorForm = read('src/components/contractors/ContractorFormDialog.tsx');
+const serviceOrderWizard = read('src/components/contractors/GenerateServiceOrdersWizard.tsx');
+const serviceFocus = read('src/lib/contractorServiceFocus.ts');
+const primaryServicesMigration = read('supabase/migrations/20270101004600_priorizar_costura_cabedal_e_aviamento_nas_os.sql');
 
 describe('Terceirizados — contrato visual e organizacional do módulo', () => {
   it('mantém a mesma hierarquia nas cinco áreas operacionais', () => {
@@ -38,5 +41,28 @@ describe('Terceirizados — contrato visual e organizacional do módulo', () => 
     expect(contractorForm).toContain('02 · Contato e localização');
     expect(contractorForm).toContain('03 · Operação e pagamento');
     expect(contractorForm).toContain('Inativar preserva OS, tarifas e pagamentos anteriores.');
+  });
+
+  it('prioriza Costura de cabedal e Aviamento no fluxo de criação', () => {
+    expect(serviceOrderWizard).toContain("const STEPS = ['Pedido', 'Serviços e OPs', 'Conferência']");
+    expect(serviceOrderWizard).toContain('Costura de cabedal e Aviamento primeiro');
+    expect(serviceOrderWizard).toContain('Outros serviços');
+    expect(serviceOrderWizard).toContain('Manter produção interna');
+    expect(serviceOrderWizard).toContain('.filter((contractor) => contractor.active)');
+  });
+
+  it('usa o mesmo recorte de serviço na criação e nos relatórios', () => {
+    expect(serviceFocus).toContain("sectorText === 'mesa'");
+    expect(serviceFocus).toContain("combined.includes('costura') && !combined.includes('palmilha')");
+    expect(reports).toContain('Filtrar relatório por serviço');
+    expect(reports).toContain('matchesContractorServiceFocus');
+    expect(reports).toContain('Mesmo período e serviço dos filtros');
+  });
+
+  it('faz a origem de dados reconhecer os nomes atuais das OPs', () => {
+    expect(primaryServicesMigration).toContain("('costura',        'Costura de cabedal', 'Costura Cabedal'");
+    expect(primaryServicesMigration).toContain("('mesa',           'Aviamento',           'Aviamento'");
+    expect(primaryServicesMigration).toContain("WHEN 'costura'        THEN ARRAY['costura cabedal', 'costura']");
+    expect(primaryServicesMigration).toContain("WHEN 'mesa'           THEN ARRAY['aviamento', 'mesa']");
   });
 });

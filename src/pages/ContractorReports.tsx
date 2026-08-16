@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   Buildings, CheckCircle, Warning as AlertTriangle,
   Clock, CurrencyDollar as DollarSign, Printer, Calendar, Funnel, X,
-  Camera, CaretLeft, CaretRight,
+  Camera, CaretLeft, CaretRight, Handshake, Needle, Path,
 } from '@phosphor-icons/react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -22,8 +22,13 @@ import { ContractorSectionHeader } from '@/components/contractors/ContractorSect
 import { ContractorSummaryRail } from '@/components/contractors/ContractorSummaryRail';
 import { cn, formatCurrency } from '@/lib/utils';
 import {
-  useContractorMetrics, useContractorHistory, useContractorOsFinancials,
-  type ContractorMetric, type ContractorHistoryOrder,
+  CONTRACTOR_SERVICE_FOCUS_META,
+  matchesContractorServiceFocus,
+  type ContractorServiceFocus,
+} from '@/lib/contractorServiceFocus';
+import {
+  useContractorHistory, useContractorOsFinancials,
+  type ContractorHistoryOrder,
   type OsFinancialRow, type OsDateField, type OsPaymentState,
 } from '@/hooks/useContractorReports';
 import { useContractors } from '@/hooks/useContractors';
@@ -52,7 +57,26 @@ function firstOfMonthISO(): string {
   return d.toISOString().slice(0, 10);
 }
 
-function calcPunctualityRate(m: ContractorMetric): number | null {
+interface ReportContractorMetric {
+  contractor_id: string;
+  contractor_name: string;
+  service_type: string | null;
+  active: boolean;
+  completed_orders: number;
+  cancelled_orders: number;
+  open_orders: number;
+  on_time_count: number;
+  late_count: number;
+  open_overdue_count: number;
+  avg_late_days: number;
+  total_value_paid: number;
+  total_value_unpaid: number;
+  total_quantity: number;
+  last_order_at: string | null;
+  total_value_completed: number;
+}
+
+function calcPunctualityRate(m: ReportContractorMetric): number | null {
   const finishedWithDeadline = m.on_time_count + m.late_count;
   if (finishedWithDeadline === 0) return null;
   return Math.round((m.on_time_count / finishedWithDeadline) * 100);
@@ -173,11 +197,11 @@ function PunctualityBadge({ punctuality, daysLate }: { punctuality: ContractorHi
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function ContractorReportsPage({ embedded }: { embedded?: boolean } = {}) {
-  const { data: metrics = [], isLoading: loadingMetrics } = useContractorMetrics();
   const { data: contractors = [] } = useContractors();
 
   // Filtros
   const [contractorFilter, setContractorFilter] = useState<string>('all');
+  const [serviceFocus, setServiceFocus] = useState<ContractorServiceFocus>('all');
   const [periodPreset, setPeriodPreset] = useState<string>('30d');
   const [customStart, setCustomStart] = useState<string>(lastNDaysISO(30));
   const [customEnd, setCustomEnd] = useState<string>(new Date().toISOString().slice(0, 10));
@@ -203,27 +227,6 @@ export default function ContractorReportsPage({ embedded }: { embedded?: boolean
     period_end:    period.end,
   });
 
-  // Filtra métricas pelo contractor selecionado (pra cards)
-  const filteredMetrics = useMemo(() => {
-    if (contractorFilter === 'all') return metrics;
-    return metrics.filter((m) => m.contractor_id === contractorFilter);
-  }, [metrics, contractorFilter]);
-
-  // KPIs gerais
-  const summary = useMemo(() => {
-    const totalOrders = filteredMetrics.reduce((s, m) => s + m.completed_orders, 0);
-    // total_value_paid = dinheiro efetivamente pago (accounts_payable quitadas).
-    const totalValue  = filteredMetrics.reduce((s, m) => s + Number(m.total_value_paid || 0), 0);
-    const totalCompleted = filteredMetrics.reduce((s, m) => s + Number(m.total_value_completed || 0), 0);
-    const totalOnTime = filteredMetrics.reduce((s, m) => s + m.on_time_count, 0);
-    const totalLate   = filteredMetrics.reduce((s, m) => s + m.late_count, 0);
-    const punctualityRate = (totalOnTime + totalLate) > 0
-      ? Math.round((totalOnTime / (totalOnTime + totalLate)) * 100)
-      : null;
-    const openOverdue = filteredMetrics.reduce((s, m) => s + m.open_overdue_count, 0);
-    return { totalOrders, totalValue, totalCompleted, totalOnTime, totalLate, punctualityRate, openOverdue };
-  }, [filteredMetrics]);
-
   // ── Pagamentos: filtros próprios (eixo de data + estado) ───────────────────
   const [dateField, setDateField] = useState<OsDateField>('service');
   const [paymentState, setPaymentState] = useState<'all' | OsPaymentState | 'overdue'>('all');
@@ -231,7 +234,7 @@ export default function ContractorReportsPage({ embedded }: { embedded?: boolean
   useEffect(() => {
     setFinancialPage(0);
     setHistoryPage(0);
-  }, [contractorFilter, periodPreset, customStart, customEnd]);
+  }, [contractorFilter, serviceFocus, periodPreset, customStart, customEnd]);
 
   useEffect(() => {
     setFinancialPage(0);
@@ -239,7 +242,7 @@ export default function ContractorReportsPage({ embedded }: { embedded?: boolean
 
   useEffect(() => {
     setRankingPage(0);
-  }, [contractorFilter]);
+  }, [contractorFilter, serviceFocus]);
 
   const { data: financials = [], isLoading: loadingFinancials } = useContractorOsFinancials({
     contractor_id: contractorFilter !== 'all' ? contractorFilter : null,
@@ -249,9 +252,35 @@ export default function ContractorReportsPage({ embedded }: { embedded?: boolean
     payment_state: paymentState,
   });
 
+  // Consulta estável dos indicadores: sempre pela data do serviço e sem o
+  // filtro de estado de pagamento. Assim os cards não mudam só porque o usuário
+  // abriu "Pagas" ou "Vencidas" na tabela financeira.
+  const { data: summaryFinancials = [], isLoading: loadingSummaryFinancials } = useContractorOsFinancials({
+    contractor_id: contractorFilter !== 'all' ? contractorFilter : null,
+    date_field:    'service',
+    period_start:  period.start,
+    period_end:    period.end,
+    payment_state: 'all',
+  });
+
+  const serviceFinancials = useMemo(
+    () => financials.filter((row) => matchesContractorServiceFocus(serviceFocus, row.sector)),
+    [financials, serviceFocus],
+  );
+  const serviceSummaryFinancials = useMemo(
+    () => summaryFinancials.filter((row) => matchesContractorServiceFocus(serviceFocus, row.sector)),
+    [summaryFinancials, serviceFocus],
+  );
+
+  // Histórico do período e do serviço selecionado.
+  const periodHistory = useMemo(
+    () => history.filter((row) => matchesContractorServiceFocus(serviceFocus, row.sector)),
+    [history, serviceFocus],
+  );
+
   const finSummary = useMemo(() => {
     let paid = 0, unpaid = 0, overdue = 0, notBilled = 0, anomalies = 0, totalDue = 0;
-    for (const r of financials) {
+    for (const r of serviceFinancials) {
       const due = Number(r.amount_due || 0);
       const alreadyPaid = Number(r.amount_paid_effective || 0);
       totalDue += due;
@@ -272,18 +301,100 @@ export default function ContractorReportsPage({ embedded }: { embedded?: boolean
         anomalies += 1; // missing_ap
       }
     }
-    return { paid, unpaid, overdue, notBilled, anomalies, totalDue, count: financials.length };
-  }, [financials]);
+    return { paid, unpaid, overdue, notBilled, anomalies, totalDue, count: serviceFinancials.length };
+  }, [serviceFinancials]);
 
-  // History do período (linha por OS) — usado pra tabela de histórico
-  const periodHistory = useMemo(() => history, [history]);
+  // Ranking reconstruído a partir do mesmo período e do mesmo serviço do
+  // relatório. O ranking antigo era all-time e não acompanhava os filtros.
+  const filteredMetrics = useMemo<ReportContractorMetric[]>(() => {
+    type WorkingMetric = ReportContractorMetric & { lateDaysSum: number };
+    const result = new Map<string, WorkingMetric>();
+    const ensure = (contractorId: string, contractorName: string): WorkingMetric => {
+      const existing = result.get(contractorId);
+      if (existing) return existing;
+      const contractor = contractors.find((candidate) => candidate.id === contractorId);
+      const created: WorkingMetric = {
+        contractor_id: contractorId,
+        contractor_name: contractor?.trade_name || contractor?.name || contractorName,
+        service_type: contractor?.service_type || null,
+        active: contractor?.active ?? true,
+        completed_orders: 0,
+        cancelled_orders: 0,
+        open_orders: 0,
+        on_time_count: 0,
+        late_count: 0,
+        open_overdue_count: 0,
+        avg_late_days: 0,
+        lateDaysSum: 0,
+        total_value_paid: 0,
+        total_value_unpaid: 0,
+        total_quantity: 0,
+        last_order_at: null,
+        total_value_completed: 0,
+      };
+      result.set(contractorId, created);
+      return created;
+    };
+
+    for (const row of periodHistory) {
+      const metric = ensure(row.contractor_id, row.contractor_name);
+      metric.completed_orders += 1;
+      metric.total_quantity += Number(row.quantity || 0);
+      metric.total_value_completed += Number(row.total_value || 0);
+      if (row.punctuality === 'on_time') metric.on_time_count += 1;
+      if (row.punctuality === 'late') {
+        metric.late_count += 1;
+        metric.lateDaysSum += Number(row.days_late || 0);
+      }
+      if (!metric.last_order_at || (row.finished_at && row.finished_at > metric.last_order_at)) {
+        metric.last_order_at = row.finished_at;
+      }
+    }
+
+    for (const row of serviceSummaryFinancials) {
+      if (!row.contractor_id) continue;
+      const metric = ensure(row.contractor_id, row.contractor_name);
+      const due = Number(row.amount_due || 0);
+      const paid = Number(row.amount_paid_effective || 0);
+      metric.total_value_paid += paid;
+      if (row.payment_state === 'unpaid' || row.payment_state === 'partially_paid') {
+        metric.total_value_unpaid += Math.max(0, due - paid);
+      }
+      if (row.payment_state === 'not_billed') metric.open_orders += 1;
+      if (row.is_overdue) metric.open_overdue_count += 1;
+      if (!metric.last_order_at || (row.service_date && row.service_date > metric.last_order_at)) {
+        metric.last_order_at = row.service_date;
+      }
+    }
+
+    return [...result.values()]
+      .map(({ lateDaysSum, ...metric }) => ({
+        ...metric,
+        avg_late_days: metric.late_count > 0 ? lateDaysSum / metric.late_count : 0,
+      }))
+      .sort((a, b) => b.total_value_completed - a.total_value_completed || a.contractor_name.localeCompare(b.contractor_name, 'pt-BR'));
+  }, [contractors, periodHistory, serviceSummaryFinancials]);
+
+  const summary = useMemo(() => {
+    const totalOrders = filteredMetrics.reduce((sum, metric) => sum + metric.completed_orders, 0);
+    const totalValue = filteredMetrics.reduce((sum, metric) => sum + metric.total_value_paid, 0);
+    const totalCompleted = filteredMetrics.reduce((sum, metric) => sum + metric.total_value_completed, 0);
+    const totalOnTime = filteredMetrics.reduce((sum, metric) => sum + metric.on_time_count, 0);
+    const totalLate = filteredMetrics.reduce((sum, metric) => sum + metric.late_count, 0);
+    const punctualityRate = totalOnTime + totalLate > 0
+      ? Math.round((totalOnTime / (totalOnTime + totalLate)) * 100)
+      : null;
+    const openOverdue = filteredMetrics.reduce((sum, metric) => sum + metric.open_overdue_count, 0);
+    return { totalOrders, totalValue, totalCompleted, totalOnTime, totalLate, punctualityRate, openOverdue };
+  }, [filteredMetrics]);
+
   const periodTotalValue = useMemo(
     () => periodHistory.reduce((s, h) => s + Number(h.total_value || 0), 0),
     [periodHistory],
   );
   const visibleFinancials = useMemo(
-    () => rowsForPage(financials, financialPage),
-    [financials, financialPage],
+    () => rowsForPage(serviceFinancials, financialPage),
+    [serviceFinancials, financialPage],
   );
   const visibleMetrics = useMemo(
     () => rowsForPage(filteredMetrics, rankingPage),
@@ -319,7 +430,7 @@ export default function ContractorReportsPage({ embedded }: { embedded?: boolean
     );
   };
 
-  if (loadingMetrics) {
+  if (loadingHistory && loadingSummaryFinancials && history.length === 0) {
     return (
       <div className="py-12 text-center text-muted-foreground text-sm">
         Calculando métricas...
@@ -333,7 +444,7 @@ export default function ContractorReportsPage({ embedded }: { embedded?: boolean
         <EditorialPageHeader
           sectionLabel="PRODUÇÃO · RELATÓRIOS · TERCEIROS"
           title="Relatório de Terceirizados"
-          description="Métricas agregadas por prestador + histórico de OSs finalizadas no período. Filtre por contratada e janela de tempo."
+          description="Produção, prazo e pagamento por serviço terceirizado. Costura de cabedal e Aviamento têm recorte próprio."
         />
       )}
 
@@ -352,8 +463,41 @@ export default function ContractorReportsPage({ embedded }: { embedded?: boolean
             <Funnel className="h-4 w-4 text-primary" aria-hidden="true" /> Filtros
           </span>
         }
-        subtitle="Escolha a contratada e a janela de tempo que orientam o histórico e os pagamentos."
+        subtitle="Escolha primeiro o serviço; contratada e período refinam o mesmo recorte em todos os indicadores."
       >
+        <div className="mb-4 space-y-1.5">
+          <Label className="text-xs text-muted-foreground">Serviço terceirizado</Label>
+          <div role="group" aria-label="Filtrar relatório por serviço" className="grid gap-2 sm:grid-cols-3">
+            {(['all', 'costura_cabedal', 'aviamento'] as const).map((focus) => {
+              const meta = CONTRACTOR_SERVICE_FOCUS_META[focus];
+              const ServiceIcon = focus === 'costura_cabedal' ? Needle : focus === 'aviamento' ? Path : Handshake;
+              const active = serviceFocus === focus;
+              return (
+                <button
+                  key={focus}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => setServiceFocus(focus)}
+                  className={cn(
+                    'flex min-h-16 items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors',
+                    active ? 'border-primary/35 bg-primary/10 text-foreground' : 'border-border bg-card hover:bg-muted/35',
+                  )}
+                >
+                  <span className={cn(
+                    'flex h-9 w-9 shrink-0 items-center justify-center rounded-md border',
+                    active ? 'border-primary/25 bg-card text-primary' : 'border-border bg-muted text-muted-foreground',
+                  )}>
+                    <ServiceIcon className="h-4 w-4" weight={active ? 'bold' : 'regular'} />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold">{meta.label}</span>
+                    <span className="block truncate text-[10px] text-muted-foreground">{meta.description}</span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(220px,1.25fr)_minmax(180px,0.8fr)_auto] xl:items-end">
           <div className="space-y-1.5">
             <Label id="contractor-report-contractor-label" className="text-xs text-muted-foreground">Contratada</Label>
@@ -387,12 +531,12 @@ export default function ContractorReportsPage({ embedded }: { embedded?: boolean
               </SelectContent>
             </Select>
           </div>
-          {(contractorFilter !== 'all' || periodPreset !== '30d') && (
+          {(contractorFilter !== 'all' || serviceFocus !== 'all' || periodPreset !== '30d') && (
             <Button
               variant="ghost"
               size="sm"
               className="h-11 w-full gap-1 text-xs text-muted-foreground md:h-9 xl:w-auto"
-              onClick={() => { setContractorFilter('all'); setPeriodPreset('30d'); }}
+              onClick={() => { setContractorFilter('all'); setServiceFocus('all'); setPeriodPreset('30d'); }}
             >
               <X className="h-3.5 w-3.5" />
               Limpar filtros
@@ -425,7 +569,7 @@ export default function ContractorReportsPage({ embedded }: { embedded?: boolean
           </fieldset>
         )}
         <p className="mt-3 text-xs text-muted-foreground">
-          Os indicadores gerais refletem a contratada selecionada; histórico e pagamentos também respeitam o período.
+          Todo o relatório está em {CONTRACTOR_SERVICE_FOCUS_META[serviceFocus === 'other' ? 'all' : serviceFocus].label.toLowerCase()} e {period.label.toLowerCase()}.
         </p>
       </Panel>
 
@@ -434,7 +578,7 @@ export default function ContractorReportsPage({ embedded }: { embedded?: boolean
         lead={{
           label: 'Produção externa',
           value: summary.totalOrders,
-          hint: 'OS finalizadas no histórico',
+          hint: `OS finalizadas · ${period.label.toLowerCase()}`,
           meta: `${filteredMetrics.length} prestadores no recorte`,
           icon: Buildings,
           progress: summary.punctualityRate ?? 0,
@@ -449,7 +593,7 @@ export default function ContractorReportsPage({ embedded }: { embedded?: boolean
             icon: Clock,
             tone: summary.punctualityRate === null ? 'default' : summary.punctualityRate >= 90 ? 'success' : summary.punctualityRate >= 70 ? 'warning' : 'destructive',
           },
-          { label: 'Vencidas abertas', value: summary.openOverdue, hint: 'prazo passou sem retorno', icon: AlertTriangle, tone: summary.openOverdue > 0 ? 'destructive' : 'default' },
+          { label: 'Pagamentos vencidos', value: summary.openOverdue, hint: 'contas em atraso no recorte', icon: AlertTriangle, tone: summary.openOverdue > 0 ? 'destructive' : 'default' },
         ]}
       />
 
@@ -513,14 +657,14 @@ export default function ContractorReportsPage({ embedded }: { embedded?: boolean
       </Panel>
 
       <Panel
-        eyebrow={`${financials.length} OS`}
+        eyebrow={`${serviceFinancials.length} OS · ${CONTRACTOR_SERVICE_FOCUS_META[serviceFocus === 'other' ? 'all' : serviceFocus].shortLabel}`}
         title="Detalhamento de pagamentos"
         subtitle={`Período por ${DATE_FIELD_LABEL[dateField].toLowerCase()}.`}
         flush
       >
         {loadingFinancials ? (
           <div className="py-10 text-center text-sm text-muted-foreground">Carregando pagamentos...</div>
-        ) : financials.length === 0 ? (
+        ) : serviceFinancials.length === 0 ? (
           <EmptyState
             icon={DollarSign}
             title="Nenhuma OS no período"
@@ -649,7 +793,7 @@ export default function ContractorReportsPage({ embedded }: { embedded?: boolean
             </TableBody>
           </Table>
           </div>
-          <ReportPager page={financialPage} total={financials.length} onPageChange={setFinancialPage} label="detalhamento de pagamentos" />
+          <ReportPager page={financialPage} total={serviceFinancials.length} onPageChange={setFinancialPage} label="detalhamento de pagamentos" />
           </>
         )}
       </Panel>
@@ -657,9 +801,9 @@ export default function ContractorReportsPage({ embedded }: { embedded?: boolean
       {/* Ranking por contractor */}
       {filteredMetrics.length > 0 && (
         <Panel
-          eyebrow="All-time"
-          title="Ranking de contratadas"
-          subtitle="Ordenado por valor total. Concluído = produzido · Pago = conta quitada · A pagar = conta em aberto."
+          eyebrow={`${period.label} · ${CONTRACTOR_SERVICE_FOCUS_META[serviceFocus === 'other' ? 'all' : serviceFocus].shortLabel}`}
+          title="Desempenho por prestador"
+          subtitle="Mesmo período e serviço dos filtros. Ordenado pelo valor produzido, com pagamento e pontualidade lado a lado."
           flush
         >
           <div className="divide-y divide-border md:hidden">
@@ -715,7 +859,7 @@ export default function ContractorReportsPage({ embedded }: { embedded?: boolean
                     </div>
                   </dl>
                   <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-                    <span>{m.open_orders} em aberto{m.open_overdue_count > 0 ? ` · ${m.open_overdue_count} vencidas` : ''}</span>
+                    <span>{m.open_orders} OS em aberto{m.open_overdue_count > 0 ? ` · ${m.open_overdue_count} pagamentos vencidos` : ''}</span>
                     <span className="inline-flex items-center gap-1"><Calendar className="h-3.5 w-3.5" aria-hidden="true" /> Última OS {formatDateBR(m.last_order_at)}</span>
                   </div>
                 </article>
@@ -732,7 +876,7 @@ export default function ContractorReportsPage({ embedded }: { embedded?: boolean
                 <TableHead className="text-right">Concluído</TableHead>
                 <TableHead className="text-right">Pago</TableHead>
                 <TableHead className="text-right">A pagar</TableHead>
-                <TableHead className="text-right">Em aberto</TableHead>
+                <TableHead className="text-right">OS / financeiro</TableHead>
                 <TableHead className="text-right">Pontualidade</TableHead>
                 <TableHead className="text-right">Atraso médio</TableHead>
                 <TableHead>Última OS</TableHead>
@@ -788,7 +932,7 @@ export default function ContractorReportsPage({ embedded }: { embedded?: boolean
                       {m.open_orders}
                       {m.open_overdue_count > 0 && (
                         <Badge variant="outline" className={cn('text-[10px] ml-1', PUNCTUALITY_STYLE.late)}>
-                          {m.open_overdue_count} venc.
+                          {m.open_overdue_count} pag. venc.
                         </Badge>
                       )}
                     </TableCell>
@@ -822,15 +966,15 @@ export default function ContractorReportsPage({ embedded }: { embedded?: boolean
             </TableBody>
           </Table>
           </div>
-          <ReportPager page={rankingPage} total={filteredMetrics.length} onPageChange={setRankingPage} label="ranking de contratadas" />
+          <ReportPager page={rankingPage} total={filteredMetrics.length} onPageChange={setRankingPage} label="desempenho de prestadores" />
         </Panel>
       )}
 
       {filteredMetrics.length === 0 && (
         <EmptyState
           icon={Buildings}
-          title="Nenhuma contratada com OSs registradas"
-          description="Cadastre contratadas em /terceirizados e crie OSs pra ver as métricas aqui."
+          title="Nenhum prestador neste recorte"
+          description="Ajuste o serviço ou o período para localizar as OSs registradas."
         />
       )}
 
@@ -840,8 +984,8 @@ export default function ContractorReportsPage({ embedded }: { embedded?: boolean
         title="OSs finalizadas no período"
         subtitle={
           contractorFilter !== 'all'
-            ? `Filtrado por contratada${period.start ? ` · entre ${formatDateBR(period.start)} e ${formatDateBR(period.end)}` : ''}`
-            : `${periodHistory.length} ${periodHistory.length === 1 ? 'OS' : 'OSs'} · ${formatCurrency(periodTotalValue)} no total`
+            ? `Filtrado por contratada · ${CONTRACTOR_SERVICE_FOCUS_META[serviceFocus === 'other' ? 'all' : serviceFocus].label}${period.start ? ` · entre ${formatDateBR(period.start)} e ${formatDateBR(period.end)}` : ''}`
+            : `${periodHistory.length} ${periodHistory.length === 1 ? 'OS' : 'OSs'} de ${CONTRACTOR_SERVICE_FOCUS_META[serviceFocus === 'other' ? 'all' : serviceFocus].label.toLowerCase()} · ${formatCurrency(periodTotalValue)} no total`
         }
         flush
       >

@@ -9,7 +9,7 @@
  */
 export const SERVICE_ORDER_SECTORS: ReadonlyArray<{ value: string; label: string }> = [
   { value: 'corte_cabedal', label: 'Corte Cabedal' },
-  { value: 'costura', label: 'Costura' },
+  { value: 'costura', label: 'Costura de cabedal' },
   { value: 'corte_palmilha', label: 'Corte Palmilha' },
   { value: 'corte_forracao', label: 'Corte Forração' },
   { value: 'silk', label: 'Silk' },
