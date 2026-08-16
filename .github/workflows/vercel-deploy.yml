@@ -125,7 +125,9 @@ jobs:
         env:
           DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
         run: |
-          DEPLOY_URL=$(vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }})
+          # Upload compactado evita o teto diário de quantidade de arquivos da
+          # API (api-upload-free) sem alterar o build já validado acima.
+          DEPLOY_URL=$(vercel deploy --prebuilt --prod --archive=tgz --token=${{ secrets.VERCEL_TOKEN }})
           echo "🚀 Deploy concluído: $DEPLOY_URL"
           echo "## Deploy info" >> $GITHUB_STEP_SUMMARY
           echo "- URL: $DEPLOY_URL" >> $GITHUB_STEP_SUMMARY
