@@ -2563,6 +2563,54 @@ AS $$
   );
 $$;
 
+-- O preflight de troca de origem consulta retrabalho já na próxima função.
+-- A tabela precisa existir antes da compilação desses corpos PL/pgSQL no
+-- PostgreSQL com check_function_bodies ativo.
+CREATE TABLE public.strap_rework_material_requests (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  service_order_item_id uuid NOT NULL REFERENCES public.service_order_items(id) ON DELETE RESTRICT,
+  batch_item_id uuid NOT NULL REFERENCES public.strap_production_batch_items(id) ON DELETE RESTRICT,
+  contractor_id uuid NOT NULL REFERENCES public.contractors(id) ON DELETE RESTRICT,
+  base_product_id uuid NOT NULL REFERENCES public.products(id) ON DELETE RESTRICT,
+  requested_m numeric(24,9) NOT NULL,
+  approved_m numeric(24,9) NOT NULL DEFAULT 0,
+  sent_m numeric(24,9) NOT NULL DEFAULT 0,
+  reason text NOT NULL,
+  decision_reason text,
+  status text NOT NULL DEFAULT 'pending',
+  requested_by uuid REFERENCES public.profiles(id) ON DELETE SET NULL,
+  decided_by uuid REFERENCES public.profiles(id) ON DELETE SET NULL,
+  decided_at timestamptz,
+  operation_type text NOT NULL DEFAULT 'strap_rework_material_request',
+  idempotency_key text NOT NULL,
+  payload_hash text NOT NULL,
+  correlation_id uuid NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT strap_rework_material_request_qty_ck CHECK (
+    requested_m>0 AND approved_m>=0 AND approved_m<=requested_m
+    AND sent_m>=0 AND sent_m<=approved_m),
+  CONSTRAINT strap_rework_material_request_status_ck CHECK (
+    status IN ('pending','approved','rejected','consumed','cancelled')),
+  CONSTRAINT strap_rework_material_request_reason_ck CHECK (btrim(reason)<>''),
+  CONSTRAINT strap_rework_material_request_decision_ck CHECK (
+    (status='pending' AND decided_at IS NULL AND decided_by IS NULL)
+    OR (status<>'pending' AND decided_at IS NOT NULL AND decided_by IS NOT NULL
+      AND nullif(btrim(decision_reason),'') IS NOT NULL)),
+  CONSTRAINT strap_rework_material_request_idempotency_uq UNIQUE(operation_type,idempotency_key)
+);
+
+ALTER TABLE public.strap_rework_material_requests ENABLE ROW LEVEL SECURITY;
+CREATE POLICY strap_rework_material_requests_select
+  ON public.strap_rework_material_requests FOR SELECT TO authenticated
+  USING ((SELECT public.is_approved_user()));
+GRANT SELECT ON public.strap_rework_material_requests TO authenticated;
+REVOKE INSERT,UPDATE,DELETE,TRUNCATE ON public.strap_rework_material_requests FROM authenticated;
+
+CREATE TRIGGER trg_touch_strap_rework_material_requests
+  BEFORE UPDATE ON public.strap_rework_material_requests
+  FOR EACH ROW EXECUTE FUNCTION public.tg_touch_artisanal_strap_operational();
+
 -- Estado interno usado pelo preflight e pela pos-condicao da troca
 -- administrativa. Fato realizado e preservado na revisao antiga e nao e, por
 -- si so, bloqueio. Bloqueiam somente documento congelado ainda com saldo,
@@ -8043,51 +8091,6 @@ BEGIN
     'accounts_payable_id',v_cycle.accounts_payable_id);
 END;
 $$;
-
-CREATE TABLE public.strap_rework_material_requests (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  service_order_item_id uuid NOT NULL REFERENCES public.service_order_items(id) ON DELETE RESTRICT,
-  batch_item_id uuid NOT NULL REFERENCES public.strap_production_batch_items(id) ON DELETE RESTRICT,
-  contractor_id uuid NOT NULL REFERENCES public.contractors(id) ON DELETE RESTRICT,
-  base_product_id uuid NOT NULL REFERENCES public.products(id) ON DELETE RESTRICT,
-  requested_m numeric(24,9) NOT NULL,
-  approved_m numeric(24,9) NOT NULL DEFAULT 0,
-  sent_m numeric(24,9) NOT NULL DEFAULT 0,
-  reason text NOT NULL,
-  decision_reason text,
-  status text NOT NULL DEFAULT 'pending',
-  requested_by uuid REFERENCES public.profiles(id) ON DELETE SET NULL,
-  decided_by uuid REFERENCES public.profiles(id) ON DELETE SET NULL,
-  decided_at timestamptz,
-  operation_type text NOT NULL DEFAULT 'strap_rework_material_request',
-  idempotency_key text NOT NULL,
-  payload_hash text NOT NULL,
-  correlation_id uuid NOT NULL,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now(),
-  CONSTRAINT strap_rework_material_request_qty_ck CHECK (
-    requested_m>0 AND approved_m>=0 AND approved_m<=requested_m
-    AND sent_m>=0 AND sent_m<=approved_m),
-  CONSTRAINT strap_rework_material_request_status_ck CHECK (
-    status IN ('pending','approved','rejected','consumed','cancelled')),
-  CONSTRAINT strap_rework_material_request_reason_ck CHECK (btrim(reason)<>''),
-  CONSTRAINT strap_rework_material_request_decision_ck CHECK (
-    (status='pending' AND decided_at IS NULL AND decided_by IS NULL)
-    OR (status<>'pending' AND decided_at IS NOT NULL AND decided_by IS NOT NULL
-      AND nullif(btrim(decision_reason),'') IS NOT NULL)),
-  CONSTRAINT strap_rework_material_request_idempotency_uq UNIQUE(operation_type,idempotency_key)
-);
-
-ALTER TABLE public.strap_rework_material_requests ENABLE ROW LEVEL SECURITY;
-CREATE POLICY strap_rework_material_requests_select
-  ON public.strap_rework_material_requests FOR SELECT TO authenticated
-  USING ((SELECT public.is_approved_user()));
-GRANT SELECT ON public.strap_rework_material_requests TO authenticated;
-REVOKE INSERT,UPDATE,DELETE,TRUNCATE ON public.strap_rework_material_requests FROM authenticated;
-
-CREATE TRIGGER trg_touch_strap_rework_material_requests
-  BEFORE UPDATE ON public.strap_rework_material_requests
-  FOR EACH ROW EXECUTE FUNCTION public.tg_touch_artisanal_strap_operational();
 
 -- Primeiro lock comum a reconciliacao e a TODO writer fisico da linha/lote.
 -- A leitura inicial descobre apenas FKs de escopo; depois do advisory o writer
