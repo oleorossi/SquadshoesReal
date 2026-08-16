@@ -384,22 +384,30 @@ describe('Tiras artesanais — contrato SQL canônico', () => {
       'CREATE OR REPLACE FUNCTION public.tg_capture_artisanal_strap_product_provenance',
     );
 
-    expect(provenance).toContain('SELECT * INTO v_product');
+    expect(provenance).toContain('INTO v_product_selection');
     expect(provenance).toContain(
-      'SELECT coalesce(pg.is_artisanal_strap,false) INTO v_group_is_strap',
+      'coalesce(pg.is_artisanal_strap,false) AS group_is_strap',
     );
     expect(provenance).not.toContain('INTO v_product,v_group_is_strap');
+    expect(provenance).toContain('WHERE p.id=v_product_id FOR SHARE OF p');
+    expect(provenance).toContain('v_product:=jsonb_populate_record(');
+    expect(provenance).toContain('v_group_is_strap:=v_product_selection.group_is_strap');
     expect(provenance).toContain(
-      'coalesce(v_product.is_artisanal,false) OR coalesce(v_group_is_strap,false)',
+      'coalesce(v_product.is_artisanal,false) OR v_group_is_strap',
     );
 
-    const rowtypeVariables = [...LEGACY.matchAll(
-      /^\s*(v_[a-z0-9_]+)\s+public\.[a-z0-9_.]+%ROWTYPE;/gmi,
+    const compositeVariables = [...LEGACY.matchAll(
+      /^\s*(v_[a-z0-9_]+)\s+(?:public\.[a-z0-9_.]+%ROWTYPE|record);/gmi,
     )].map((match) => match[1]);
-    expect(rowtypeVariables.length).toBeGreaterThan(0);
-    rowtypeVariables.forEach((variable) => {
-      expect(LEGACY).not.toMatch(new RegExp(`INTO\\s+${variable}\\s*,`, 'i'));
-      expect(LEGACY).not.toMatch(new RegExp(`INTO[^;\\n]*,\\s*${variable}\\b`, 'i'));
+    const intoTargets = [...LEGACY.matchAll(
+      /\bINTO\s+(?:STRICT\s+)?(v_[a-z0-9_]+[\s\S]*?)(?=\bFROM\b|;)/gi,
+    )].map((match) => match[1]);
+    expect(compositeVariables.length).toBeGreaterThan(0);
+    compositeVariables.forEach((variable) => {
+      const invalidTargets = intoTargets.filter((targets) => (
+        new RegExp(`\\b${variable}\\b`, 'i').test(targets) && targets.includes(',')
+      ));
+      expect(invalidTargets, `${variable} não pode dividir uma lista INTO`).toEqual([]);
     });
     expect(LEGACY).toContain('INTO v_review_json,v_cutover_id,v_actor_id');
     expect(LEGACY).toContain('v_review:=jsonb_populate_record(');
