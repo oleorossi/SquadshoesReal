@@ -204,6 +204,16 @@ describe('identidade comercial da variante de material', () => {
     const backfillStart = migration.indexOf('WITH legacy_snapshots AS');
     const backfillEnd = migration.indexOf('CREATE OR REPLACE FUNCTION public.capture_sale_order_item_material_variant_snapshot');
     const backfillSection = migration.slice(0, backfillEnd);
+    expect(backfillSection).toContain("FROM pg_catalog.pg_trigger trigger_catalog");
+    expect(backfillSection).toContain("trigger_catalog.tgrelid = 'public.sale_order_items'::regclass");
+    expect(backfillSection).toContain("trigger_catalog.tgenabled <> 'D'");
+    expect(backfillSection).toContain('INTO v_enabled_trigger_names, v_enabled_trigger_modes');
+    expect(backfillSection).toContain('array_agg(');
+    expect(backfillSection).toContain("WHEN 'R' THEN 'ENABLE REPLICA'");
+    expect(backfillSection).toContain("WHEN 'A' THEN 'ENABLE ALWAYS'");
+    expect(backfillSection).not.toMatch(
+      /ALTER TABLE public\.sale_order_items DISABLE TRIGGER trg_/u,
+    );
     for (const trigger of [
       'trg_sync_sale_order_total',
       'trg_mark_so_costs_dirty_from_item',
@@ -211,12 +221,14 @@ describe('identidade comercial da variante de material', () => {
       'trg_sync_orders_from_sale_order_item',
       'trg_enqueue_strap_demands_on_item_change',
     ]) {
-      const disabledAt = backfillSection.indexOf(`DISABLE TRIGGER ${trigger}`);
-      const enabledAt = backfillSection.indexOf(`ENABLE TRIGGER ${trigger}`);
-      expect(disabledAt).toBeGreaterThan(-1);
-      expect(disabledAt).toBeLessThan(backfillStart);
-      expect(enabledAt).toBeGreaterThan(backfillStart);
+      expect(backfillSection).toContain(`'${trigger}'`);
     }
+    expect(backfillSection.indexOf('FROM pg_catalog.pg_trigger trigger_catalog'))
+      .toBeLessThan(backfillStart);
+    expect(backfillSection.indexOf("'ALTER TABLE public.sale_order_items DISABLE TRIGGER %I'"))
+      .toBeLessThan(backfillStart);
+    expect(backfillSection.indexOf("'ALTER TABLE public.sale_order_items %s TRIGGER %I'"))
+      .toBeGreaterThan(backfillStart);
   });
 
   it('só confirma variante ativa, da própria referência e com SKU, preservando backfill legado', () => {

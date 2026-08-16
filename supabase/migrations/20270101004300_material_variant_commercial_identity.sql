@@ -662,50 +662,100 @@ $$;
 -- O fallback vigente de ficha é guardado, mas a proveniência declara que ele
 -- não prova o valor usado na venda histórica.
 --
--- O UPDATE de snapshot não pode parecer uma edição operacional: os cinco
--- triggers amplos vivos criariam/recalculariam OP, custo, reserva, total e job
--- de tira mesmo sem mudança comercial. A migration já segura lock de DDL;
--- desabilitamos nominalmente só esses cinco durante o backfill e os reativamos
--- ainda na mesma transação. Qualquer erro faz rollback também desse estado.
-ALTER TABLE public.sale_order_items DISABLE TRIGGER trg_sync_sale_order_total;
-ALTER TABLE public.sale_order_items DISABLE TRIGGER trg_mark_so_costs_dirty_from_item;
-ALTER TABLE public.sale_order_items DISABLE TRIGGER trg_mark_reservations_outdated_from_item;
-ALTER TABLE public.sale_order_items DISABLE TRIGGER trg_sync_orders_from_sale_order_item;
-ALTER TABLE public.sale_order_items DISABLE TRIGGER trg_enqueue_strap_demands_on_item_change;
+-- O UPDATE de snapshot não pode parecer uma edição operacional: os triggers
+-- amplos que existirem criariam/recalculariam OP, custo, reserva, total e job de
+-- tira mesmo sem mudança comercial. Instalações legadas não possuem
+-- necessariamente todos os cinco. Desabilitamos apenas os presentes e ativos,
+-- preservando ausentes, já desabilitados e o modo original (origin/replica/always).
+-- Qualquer erro faz rollback também desse estado.
+DO $$
+DECLARE
+  v_target_triggers CONSTANT text[] := ARRAY[
+    'trg_sync_sale_order_total',
+    'trg_mark_so_costs_dirty_from_item',
+    'trg_mark_reservations_outdated_from_item',
+    'trg_sync_orders_from_sale_order_item',
+    'trg_enqueue_strap_demands_on_item_change'
+  ];
+  v_enabled_trigger_names text[] := ARRAY[]::text[];
+  v_enabled_trigger_modes text[] := ARRAY[]::text[];
+  v_index integer;
+BEGIN
+  SELECT COALESCE(
+           array_agg(
+             trigger_catalog.tgname
+             ORDER BY array_position(v_target_triggers, trigger_catalog.tgname)
+           ),
+           ARRAY[]::text[]
+         ),
+         COALESCE(
+           array_agg(
+             trigger_catalog.tgenabled::text
+             ORDER BY array_position(v_target_triggers, trigger_catalog.tgname)
+           ),
+           ARRAY[]::text[]
+         )
+    INTO v_enabled_trigger_names, v_enabled_trigger_modes
+  FROM pg_catalog.pg_trigger trigger_catalog
+  WHERE trigger_catalog.tgrelid = 'public.sale_order_items'::regclass
+    AND trigger_catalog.tgname = ANY (v_target_triggers)
+    AND NOT trigger_catalog.tgisinternal
+    AND trigger_catalog.tgenabled <> 'D';
 
-WITH legacy_snapshots AS (
-  SELECT soi.id,
-         public.build_material_variant_commercial_snapshot(
-           soi.material_variant_id,
-           soi.reference_id,
-           soi.color,
-           soi.unit_price,
-           'migration_backfill_requires_review'
-         ) AS snapshot
-  FROM public.sale_order_items soi
-  WHERE soi.material_variant_id IS NOT NULL
-    AND soi.material_variant_commercial_snapshot IS NULL
-)
-UPDATE public.sale_order_items soi
-SET material_variant_commercial_snapshot =
-  (legacy.snapshot - 'provenance')
-  || jsonb_build_object(
-       'provenance',
-       (legacy.snapshot -> 'provenance')
-       || jsonb_build_object(
-            'identity_source', 'legacy_current_catalog',
-            'capture_reason', 'migration_backfill_requires_review',
-            'historical_truth', 'unknown'
-          )
-     )
-FROM legacy_snapshots legacy
-WHERE legacy.id = soi.id;
+  IF cardinality(v_enabled_trigger_names) > 0 THEN
+    FOR v_index IN 1..cardinality(v_enabled_trigger_names)
+    LOOP
+      EXECUTE format(
+        'ALTER TABLE public.sale_order_items DISABLE TRIGGER %I',
+        v_enabled_trigger_names[v_index]
+      );
+    END LOOP;
+  END IF;
 
-ALTER TABLE public.sale_order_items ENABLE TRIGGER trg_sync_sale_order_total;
-ALTER TABLE public.sale_order_items ENABLE TRIGGER trg_mark_so_costs_dirty_from_item;
-ALTER TABLE public.sale_order_items ENABLE TRIGGER trg_mark_reservations_outdated_from_item;
-ALTER TABLE public.sale_order_items ENABLE TRIGGER trg_sync_orders_from_sale_order_item;
-ALTER TABLE public.sale_order_items ENABLE TRIGGER trg_enqueue_strap_demands_on_item_change;
+  WITH legacy_snapshots AS (
+    SELECT soi.id,
+           public.build_material_variant_commercial_snapshot(
+             soi.material_variant_id,
+             soi.reference_id,
+             soi.color,
+             soi.unit_price,
+             'migration_backfill_requires_review'
+           ) AS snapshot
+    FROM public.sale_order_items soi
+    WHERE soi.material_variant_id IS NOT NULL
+      AND soi.material_variant_commercial_snapshot IS NULL
+  )
+  UPDATE public.sale_order_items soi
+  SET material_variant_commercial_snapshot =
+    (legacy.snapshot - 'provenance')
+    || jsonb_build_object(
+         'provenance',
+         (legacy.snapshot -> 'provenance')
+         || jsonb_build_object(
+              'identity_source', 'legacy_current_catalog',
+              'capture_reason', 'migration_backfill_requires_review',
+              'historical_truth', 'unknown'
+            )
+       )
+  FROM legacy_snapshots legacy
+  WHERE legacy.id = soi.id;
+
+  IF cardinality(v_enabled_trigger_names) > 0 THEN
+    FOR v_index IN 1..cardinality(v_enabled_trigger_names)
+    LOOP
+      EXECUTE format(
+        'ALTER TABLE public.sale_order_items %s TRIGGER %I',
+        CASE v_enabled_trigger_modes[v_index]
+          WHEN 'R' THEN 'ENABLE REPLICA'
+          WHEN 'A' THEN 'ENABLE ALWAYS'
+          ELSE 'ENABLE'
+        END,
+        v_enabled_trigger_names[v_index]
+      );
+    END LOOP;
+  END IF;
+END;
+$$;
 
 CREATE OR REPLACE FUNCTION public.capture_sale_order_item_material_variant_snapshot()
 RETURNS trigger
