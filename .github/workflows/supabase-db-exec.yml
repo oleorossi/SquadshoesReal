@@ -90,6 +90,13 @@ jobs:
               sed -E '/^[[:space:]]*BEGIN;[[:space:]]*$/d; /^[[:space:]]*COMMIT;[[:space:]]*$/d' "$SOURCE_PATH"
               echo 'ROLLBACK;'
             } > "$QUERY_PATH"
+          elif [ "$SQL_PATH" = "@tiras-artesanais-ddl" ]; then
+            QUERY_PATH=/tmp/supabase-atomic-apply.sql
+            {
+              echo 'BEGIN;'
+              sed -E '/^[[:space:]]*BEGIN;[[:space:]]*$/d; /^[[:space:]]*COMMIT;[[:space:]]*$/d' "$SOURCE_PATH"
+              echo 'COMMIT;'
+            } > "$QUERY_PATH"
           fi
           echo "── Executando: $SQL_PATH ($(wc -c < "$SOURCE_PATH") bytes) · dry_run=$DRY_RUN"
           jq -Rs '{query: .}' < "$QUERY_PATH" > /tmp/body.json
