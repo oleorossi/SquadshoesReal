@@ -242,6 +242,25 @@ describe('Tiras artesanais — contrato SQL canônico', () => {
     expect(cutover).toContain('EXECUTE $legacy_comment$');
   });
 
+  it('isola a baixa fabril por setor somente quando o writer legado existe', () => {
+    const cutoverStart = ENGINE.indexOf(
+      "SELECT pg_get_functiondef(to_regprocedure(\n    'public.debit_reserved_materials_for_sector",
+    );
+    const cutoverEnd = ENGINE.indexOf(
+      "SELECT pg_get_functiondef('public.resync_op_atomic(uuid)'::regprocedure)",
+      cutoverStart,
+    );
+    const cutover = ENGINE.slice(cutoverStart, cutoverEnd);
+
+    expect(cutoverStart).toBeGreaterThanOrEqual(0);
+    expect(cutoverEnd).toBeGreaterThan(cutoverStart);
+    expect(cutover).toContain('IF v_def IS NOT NULL THEN');
+    expect(cutover).toContain("coalesce(mr.source,'''') NOT IN");
+    expect(cutover).toContain('EXECUTE v_def;');
+    expect(cutover).not.toContain("::regprocedure)\n    INTO v_def");
+    expect(cutover).not.toContain('debit_reserved_materials_for_sector ausente');
+  });
+
   it('internaliza o update legado e mantém somente o wrapper com preflight', () => {
     expect(ENGINE).toContain('RENAME TO update_sale_order_atomic_legacy_202701');
     expect(ENGINE).toContain(

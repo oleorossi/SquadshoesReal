@@ -1721,28 +1721,30 @@ $$;
 DO $$
 DECLARE v_def text; v_before text;
 BEGIN
-  SELECT pg_get_functiondef('public.debit_reserved_materials_for_sector(uuid,uuid,text,numeric)'::regprocedure)
+  SELECT pg_get_functiondef(to_regprocedure(
+    'public.debit_reserved_materials_for_sector(uuid,uuid,text,numeric)'))
     INTO v_def;
-  IF v_def IS NULL THEN RAISE EXCEPTION 'debit_reserved_materials_for_sector ausente'; END IF;
-  v_before:=v_def;
-  v_def:=replace(v_def,
-    'WHERE mr.order_id = p_order_id
-       AND mr.status IN (''reserved'', ''partially_consumed'')',
-    'WHERE mr.order_id = p_order_id
-       AND coalesce(mr.source,'''') NOT IN (''strap_engine_finished'',''strap_engine_base'')
-       AND mr.strap_variant_id IS NULL
-       AND mr.status IN (''reserved'', ''partially_consumed'')');
-  v_def:=replace(v_def,
-    'WHERE mr.order_id = p_order_id AND mr.status IN (''reserved'', ''partially_consumed'')',
-    'WHERE mr.order_id = p_order_id
-       AND coalesce(mr.source,'''') NOT IN (''strap_engine_finished'',''strap_engine_base'')
-       AND mr.strap_variant_id IS NULL
-       AND mr.status IN (''reserved'', ''partially_consumed'')');
-  IF v_def=v_before OR (length(v_def)-length(replace(v_def,'strap_engine_finished','')))
-       /length('strap_engine_finished')<2 THEN
-    RAISE EXCEPTION 'Cutover recusado: baixa por setor nao foi isolada das reservas de tira';
+  IF v_def IS NOT NULL THEN
+    v_before:=v_def;
+    v_def:=replace(v_def,
+      'WHERE mr.order_id = p_order_id
+         AND mr.status IN (''reserved'', ''partially_consumed'')',
+      'WHERE mr.order_id = p_order_id
+         AND coalesce(mr.source,'''') NOT IN (''strap_engine_finished'',''strap_engine_base'')
+         AND mr.strap_variant_id IS NULL
+         AND mr.status IN (''reserved'', ''partially_consumed'')');
+    v_def:=replace(v_def,
+      'WHERE mr.order_id = p_order_id AND mr.status IN (''reserved'', ''partially_consumed'')',
+      'WHERE mr.order_id = p_order_id
+         AND coalesce(mr.source,'''') NOT IN (''strap_engine_finished'',''strap_engine_base'')
+         AND mr.strap_variant_id IS NULL
+         AND mr.status IN (''reserved'', ''partially_consumed'')');
+    IF v_def=v_before OR (length(v_def)-length(replace(v_def,'strap_engine_finished','')))
+         /length('strap_engine_finished')<2 THEN
+      RAISE EXCEPTION 'Cutover recusado: baixa por setor nao foi isolada das reservas de tira';
+    END IF;
+    EXECUTE v_def;
   END IF;
-  EXECUTE v_def;
 
   SELECT pg_get_functiondef('public.resync_op_atomic(uuid)'::regprocedure) INTO v_def;
   IF v_def IS NULL THEN RAISE EXCEPTION 'resync_op_atomic(uuid) ausente'; END IF;
