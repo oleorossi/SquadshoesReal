@@ -1,6 +1,6 @@
 import { StatGridSkeleton, TableSkeleton } from '@/components/layout/PageSkeleton';
 import { Fragment, useMemo, useState, useEffect } from 'react';
-import { eSemanaFechada } from '@/hooks/useFichaProducaoPagamento';
+import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -11,7 +11,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { CircleNotch as Loader2, CurrencyDollar as DollarSign, Calculator, CheckCircle as CheckCircle2, Receipt, Warning as AlertTriangle, Wallet, Clock, Printer, DownloadSimple, IdentificationCard, CalendarBlank, Paperclip, FilePdf, Package } from '@phosphor-icons/react';
+import { CircleNotch as Loader2, CurrencyDollar as DollarSign, Calculator, CheckCircle as CheckCircle2, Receipt, Warning as AlertTriangle, Wallet, Clock, Printer, DownloadSimple, IdentificationCard, CalendarBlank, Paperclip, FilePdf, Package, ArrowSquareOut } from '@phosphor-icons/react';
 import { printRhReport, type RhCell } from '@/lib/printRhReport';
 import { useQuery } from '@tanstack/react-query';
 import { useEmployees } from '@/hooks/useEmployees';
@@ -21,7 +21,6 @@ import { usePayrollPaymentSummaries } from '@/hooks/usePayrollPayments';
 import { RegistrarPagamentoDialog } from '@/components/hr/RegistrarPagamentoDialog';
 import { computePeriodFolha, getDaysInRange, type SalaryDayLedger, type SalaryPayrollResult } from '@/lib/salaryPayroll';
 import { computeComparativoRows } from '@/lib/payrollComparativo';
-import { aggregateProducaoByMontador, fetchMontadorProducaoInRange } from '@/lib/montadorProduction';
 import { fetchTimeRecordsInRange } from '@/lib/ponto/fetchTimeRecords';
 import { expandAbsenceDatesByEmployee, resolveHolidaysForPayrollRange } from '@/lib/ponto/periodDates';
 import { printTimeMirror, type TimeMirrorDay } from '@/lib/printTimeMirror';
@@ -34,7 +33,13 @@ import { toast } from 'sonner';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
-import { PeriodRangeFilter } from '@/components/hr/PeriodRangeFilter';
+import { PayrollClosingSelector } from '@/components/hr/PayrollClosingSelector';
+import {
+  employeeUsesSalaryClosing,
+  identifyPayrollClosing,
+  payrollRangesOverlap,
+  storedPayrollPeriodRange,
+} from '@/lib/payrollClosing';
 import RelatorioFaltas from '@/components/hr/RelatorioFaltas';
 import RelatorioAtrasos from '@/components/hr/RelatorioAtrasos';
 
@@ -140,9 +145,28 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
   const periodTitle = useMemo(() => periodLabel(appliedFrom, appliedTo), [appliedFrom, appliedTo]);
 
   const { data: employees = [] } = useEmployees();
+  // A folha salarial fecha somente regimes baseados em salário/diária. Quem é
+  // `producao` nasce e é pago na Ficha de Montadores, em semana fechada; filtrar
+  // pelo REGIME (e não pelo nome do setor) mantém mensalistas da Solagem aqui.
+  const salaryEmployees = useMemo(
+    () => employees.filter(employeeUsesSalaryClosing),
+    [employees],
+  );
+  const productionEmployees = useMemo(
+    () => employees.filter(employee => employee.active && !employeeUsesSalaryClosing(employee)),
+    [employees],
+  );
+  const employeeMap = useMemo(() => new Map(employees.map(e => [e.id, e])), [employees]);
   const { data: schedules = [] } = useWorkSchedules();
   const defaultSchedule = useMemo(() => (schedules as any[]).find(s => s.is_default) || (schedules as any[])[0] || null, [schedules]);
-  const { data: runs = [], isLoading } = usePayrollRuns(appliedPeriod);
+  const { data: queriedRuns = [], isLoading } = usePayrollRuns(appliedPeriod);
+  // Protege também períodos históricos que, antes da separação, possam ter
+  // recebido uma linha de produção na chave mensal/quinzenal.
+  const runs = useMemo(() => queriedRuns.filter(run => {
+    const snapshot = readPayrollSnapshot(run.calculation_snapshot);
+    const paymentType = snapshot?.result.payment_type || employeeMap.get(run.employee_id)?.payment_type;
+    return String(paymentType || 'mensalista').toLowerCase() !== 'producao';
+  }), [queriedRuns, employeeMap]);
   const { data: holidaysList = [] } = useHolidays();
   const upsertRun = useUpsertPayrollRun();
   const updateStatus = useUpdatePayrollStatus();
@@ -158,8 +182,6 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
 
   // Cobertura: até onde o ponto foi importado neste período (debounced, igual às queries).
   const { data: coverage } = useTimesheetCoverage(appliedFrom, appliedTo);
-
-  const employeeMap = useMemo(() => new Map(employees.map(e => [e.id, e])), [employees]);
 
   // Resumo de pagamentos por folha (pago/parcial + recibo anexado) das runs visíveis.
   const runIds = useMemo(() => runs.map(r => r.id), [runs]);
@@ -248,23 +270,13 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
     () => expandAbsenceDatesByEmployee(compAbsences, appliedFrom, appliedTo),
     [compAbsences, appliedFrom, appliedTo],
   );
-  // Produção por par (Ficha de Montadores) do período — alimenta o regime 'producao'
-  // no comparativo (mês/quinzena). Só linhas 'chamada'; R$/par snapshot da linha.
-  const { data: compProducao = [] } = useQuery({
-    queryKey: ['payroll-comp-producao', appliedFrom, appliedTo],
-    enabled: !!(appliedFrom && appliedTo),
-    staleTime: 60_000,
-    queryFn: async () => {
-      return fetchMontadorProducaoInRange(appliedFrom, appliedTo);
-    },
-  });
   const comparativo = useMemo(() => computeComparativoRows({
-    employees, schedules, defaultSchedule, holidaysSet, swapWorkedSet, swapOffSet,
-    timeRecords: compRecords, advancesList: compAdvances, producaoRows: compProducao,
+    employees: salaryEmployees, schedules, defaultSchedule, holidaysSet, swapWorkedSet, swapOffSet,
+    timeRecords: compRecords, advancesList: compAdvances, producaoRows: [],
     absenceDatesByEmployee: compAbsenceDates,
     range: { from: appliedFrom, to: appliedTo }, period: compPeriod,
     maxCovered: coverage?.maxCovered || null,
-  }), [employees, schedules, defaultSchedule, holidaysSet, swapWorkedSet, swapOffSet, compRecords, compAdvances, compProducao, compAbsenceDates, appliedFrom, appliedTo, compPeriod, coverage]);
+  }), [salaryEmployees, schedules, defaultSchedule, holidaysSet, swapWorkedSet, swapOffSet, compRecords, compAdvances, compAbsenceDates, appliedFrom, appliedTo, compPeriod, coverage]);
 
   // Rascunho = prévia viva. Aprovada/paga = resultado congelado no snapshot.
   const reportComparativoRows = useMemo(() => {
@@ -711,22 +723,50 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
       toast.error('Selecione um intervalo de datas válido para calcular a folha.');
       return;
     }
+    const closing = identifyPayrollClosing({ from: cFrom, to: cTo });
+    if (!closing) {
+      toast.error('A folha salarial só pode ser gerada por quinzena ou por mês completo.');
+      return;
+    }
     const cPeriod = rangeToPeriod(cFrom, cTo);
     // Mês cheio paga salário (30 avos); período parcial (quinzena) = proporcional aos dias.
-    let cBaseDays = /^\d{4}-\d{2}$/.test(cPeriod) ? undefined : daysBetween(cFrom, cTo);
+    const cBaseDays = closing.cadence === 'mes' ? undefined : daysBetween(cFrom, cTo);
     // Dias do mês p/ a base proporcional da quinzena: 1ª(15) + 2ª(mês−15) = salário EXATO
     // (sem pagar 1 dia a mais num mês de 31). Mês cheio ignora (cBaseDays undefined).
     const cMonthDays = daysBetween(`${cFrom.slice(0, 7)}-01`, lastDayOfMonth(cFrom.slice(0, 7)));
-    // Guard cross-month: cMonthDays é só do mês de cFrom; um intervalo manual que
-    // CRUZA meses faria base = salário × dias ÷ diasDoMêsDeFrom passar de 1 salário
-    // (ex.: 01/05–20/06 = 51/31 = 1,65×). Os atalhos (1ª/2ª/Mês) ficam sempre num
-    // mês só. Capamos a base em ≤ 1 salário e avisamos pra preferir os atalhos.
-    if (cBaseDays !== undefined && cFrom.slice(0, 7) !== cTo.slice(0, 7)) {
-      cBaseDays = Math.min(cBaseDays, cMonthDays);
-      toast.warning('Intervalo cruza meses: a base é aproximada (capada em 1 salário). Para base exata, use os atalhos 1ª/2ª quinzena ou Mês.');
-    }
+    const activeSalaryEmployees = salaryEmployees.filter(employee => employee.active);
     setCalcRunning(true);
     try {
+      // Pré-voo atômico: o banco também recusa janelas sobrepostas, mas faria
+      // isso funcionário a funcionário durante o loop. Validar todos antes evita
+      // gerar parte da equipe e parar no primeiro conflito.
+      if (activeSalaryEmployees.length > 0) {
+        const { data: existingRuns, error: existingRunsError } = await supabase
+          .from('payroll_runs')
+          .select('employee_id, period, status')
+          .in('employee_id', activeSalaryEmployees.map(employee => employee.id))
+          .neq('status', 'cancelado');
+        if (existingRunsError) throw existingRunsError;
+
+        const targetRange = { from: cFrom, to: cTo };
+        const conflicts = (existingRuns || []).filter(run => {
+          if (run.period === cPeriod) return run.status !== 'rascunho';
+          const existingRange = storedPayrollPeriodRange(run.period);
+          return !!existingRange && payrollRangesOverlap(existingRange, targetRange);
+        });
+        if (conflicts.length > 0) {
+          const names = Array.from(new Set(conflicts.map(run => employeeMap.get(run.employee_id)?.name || 'Funcionário')));
+          const preview = names.slice(0, 4).join(', ');
+          const remaining = names.length > 4 ? ` e mais ${names.length - 4}` : '';
+          toast.error(
+            `Fechamento não gerado: ${preview}${remaining} já possuem folha cobrindo algum dia deste período. ` +
+            'Cancele o fechamento conflitante antes de trocar entre quinzena e mês.',
+            { duration: 9000 },
+          );
+          return;
+        }
+      }
+
       const calculationHolidays = resolveHolidaysForPayrollRange(holidaysList as any[], cFrom, cTo);
       // Clamp à cobertura: dias após a última data importada NÃO entram (evita contar
       // como falta quem ainda não teve o ponto baixado). Folha fica "parcial" até importar.
@@ -789,19 +829,13 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
       if (absencesError) throw absencesError;
       const absencesByEmp = expandAbsenceDatesByEmployee((absences || []) as any[], cFrom, cTo);
 
-      // Produção por par (Ficha de Montadores) do período — base do regime 'producao'
-      // (Σ pares × R$/par snapshot de cada apontamento). Ignora salário/ponto.
-      const producaoByEmp = aggregateProducaoByMontador(await fetchMontadorProducaoInRange(cFrom, cTo));
-
       let calculated = 0;
       let withIncomplete = 0;
-      let skippedPorPar = 0;
       let sharedMatricula = 0;
       let withMissingHeRate = 0;  // HE em minutos mas taxa R$/h não cadastrada → HE R$0
-      // Todos os regimes passam pelo MESMO motor (computePeriodFolha honra
-      // payment_type): mensalista (salário − descontos por dia), remoto (salário
-      // cheio, ignora ponto) e diarista (diária × dias trabalhados). (2026-06-19)
-      for (const emp of employees.filter(e => e.active)) {
+      // A folha comum contém somente os regimes salariais. Produção por par é
+      // fechada semanalmente na Ficha de Montadores e nunca é consultada aqui.
+      for (const emp of activeSalaryEmployees) {
         // Match das batidas por MATRÍCULA + NOME. Se a matrícula é compartilhada por
         // mais de um nome (ex.: ext_id 1 = "valdilene" + "Dona Val"), pega SÓ as
         // batidas com o nome DESTE funcionário — senão herdaria o ponto do outro.
@@ -818,20 +852,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
         // Escala do funcionário (própria ou a padrão — ex.: Dona Val não tem própria).
         const sch = (emp.work_schedule_id && (schedules as any[]).find(s => s.id === emp.work_schedule_id)) || defaultSchedule;
 
-        const regime = String((emp as any).payment_type || 'mensalista').toLowerCase() as 'mensalista' | 'remoto' | 'diarista' | 'producao';
-
-        // POR PAR É SEMANAL. Gerar a folha de um montador para o mês inteiro faz
-        // a aprovação reivindicar julho todo de uma vez — e aí a trava de
-        // sobreposição recusa, com razão, cada semanal daquele intervalo. O banco
-        // barra isso (tg_payroll_producao_semana_fechada); aqui a gente evita o
-        // erro cru e explica onde se paga. Os demais regimes seguem normalmente:
-        // pular um montador não pode impedir a folha dos 17 mensalistas.
-        if (regime === 'producao' && !eSemanaFechada(cFrom, cTo)) {
-          skippedPorPar++;
-          continue;
-        }
-
-        const prod = producaoByEmp.get(emp.id);
+        const regime = String(emp.payment_type || 'mensalista').toLowerCase() as 'mensalista' | 'remoto' | 'diarista';
 
         // MESMO motor da tela do Ponto (computePeriodFolha): monta os dias da escala +
         // batidas e calcula a folha líquida, com clamp pela cobertura.
@@ -853,18 +874,6 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
           maxCoveredDate: maxCov,
           payRegime: regime,
           dailyRate: Number((emp as any).daily_rate) || 0,
-          // Produção por par (regime 'producao') — bruto já valorado pelo snapshot.
-          producaoBruto: prod?.bruto || 0,
-          producaoParesMedio: prod?.paresMedio || 0,
-          producaoParesDificil: prod?.paresDificil || 0,
-          producaoDias: prod?.dias || 0,
-          producaoFichas: prod?.fichas || 0,
-          producaoFichasDerivadas: prod?.fichasDerivadas || false,
-          producaoBrutoMedio: prod?.brutoMedio || 0,
-          producaoBrutoDificil: prod?.brutoDificil || 0,
-          producaoTaxaMedio: prod?.taxaMedio || 0,
-          producaoTaxaDificil: prod?.taxaDificil || 0,
-          producaoTaxaVariou: prod?.taxaVariou || false,
           // HE em R$/h ABSOLUTO por funcionário (spec 2026-07-09) — dia útil/sábado/noturno
           // e domingo/feriado. Falta/atraso passam a usar dias úteis do mês (motor).
           heNormalRate: Number((emp as any).he_normal_rate) || 0,
@@ -873,7 +882,6 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
         if (result.pending_days > 0) withIncomplete++;
         if (result.he_rate_missing) withMissingHeRate++;
 
-        const paresTot = (result.pares_medio || 0) + (result.pares_dificil || 0);
         const calculationSnapshot = buildPayrollSnapshot({
           from: cFrom,
           to: cTo,
@@ -894,7 +902,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
         await upsertRun.mutateAsync({
           employee_id: emp.id,
           period: cPeriod,
-          base_salary: regime === 'producao' ? 0 : Number(emp.salary) || 0,
+          base_salary: Number(emp.salary) || 0,
           hourly_rate: result.valor_hora,
           worked_minutes: result.worked_minutes,
           normal_minutes: result.normal_minutes,
@@ -903,15 +911,11 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
           premium_value: result.he_value,
           expected_minutes: result.expected_minutes,
           business_days: result.workdays,
-          // Por par: "dias trabalhados" = DIAS PRODUTIVOS (dias com pares
-          // lançados), não dias com batida — o ponto não paga neste regime.
-          business_days_worked: regime === 'producao' ? result.paid_days : result.worked_days,
+          business_days_worked: result.worked_days,
           absent_days: result.falta_days,
           absence_discount: result.falta_desconto,
-          // Pares do período (por par): congelados na folha para holerite e
-          // recibo não dependerem de reprocessar a Ficha meses depois.
-          pares_medio: result.pares_medio || 0,
-          pares_dificil: result.pares_dificil || 0,
+          pares_medio: 0,
+          pares_dificil: 0,
           // Minutos de HE que geraram overtime_amount (o holerite exibe esta
           // coluna; premium_minutes é outro conceito — pós-18h/fds).
           overtime_50_minutes: result.he_minutes,
@@ -924,9 +928,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
           net_salary: result.net_value,
           calculation_rule_version: result.rule_version,
           calculation_snapshot: calculationSnapshot,
-          notes: regime === 'producao'
-            ? `Por par: ${paresTot} pares (${result.pares_medio || 0} méd + ${result.pares_dificil || 0} dif) · ${result.paid_days} dia(s) produtivo(s)`
-            : (result.pending_days > 0 ? `${result.pending_days} dia(s) pendente(s) — resolver no Pendências` : null),
+          notes: result.pending_days > 0 ? `${result.pending_days} dia(s) pendente(s) — resolver no Ponto` : null,
           status: 'rascunho',
         });
         calculated++;
@@ -938,13 +940,6 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
         (withMissingHeRate > 0 ? ` ⚠ ${withMissingHeRate} com hora extra mas SEM valor de HE cadastrado (HE saiu R$0) — preencha "Hora extra (R$/h)" no cadastro do funcionário.` : '') +
         (sharedMatricula > 0 ? ` ⚠ ${sharedMatricula} com matrícula compartilhada — confira o cadastro (pode haver ponto de 2 pessoas na mesma matrícula).` : ''),
       );
-      if (skippedPorPar > 0) {
-        toast.info(
-          `${skippedPorPar} do regime por par ficaram de fora: o pagamento deles é semanal (segunda a domingo) e este período não é uma semana. ` +
-          `Pague pela Ficha de Montadores, navegando até a semana.`,
-          { duration: 8000 },
-        );
-      }
     } catch (err: any) {
       toast.error(`Erro ao calcular folha: ${err.message}`);
     } finally {
@@ -962,14 +957,34 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
     );
   }
 
-  // Seletor de período (quinzena/mês/datas) + Calcular — reusado na aba Relatórios.
+  const selectedClosing = identifyPayrollClosing(range);
+
+  // A folha não aceita mais hoje/semana/intervalo livre. O operador escolhe o
+  // TIPO de fechamento e, na quinzena, qual metade civil do mês será usada.
   const filtersBar = (
-    <div className="flex w-full flex-col gap-2 xl:flex-row xl:items-center">
-      <PeriodRangeFilter value={range} onChange={setRange} className="flex-1" label="Período da folha" />
-      <Button size="sm" className="h-10 shrink-0" onClick={calculateAll} disabled={calcRunning || !range.from || !range.to}>
-        {calcRunning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Calculator className="mr-2 h-4 w-4" />}
-        Calcular folha
-      </Button>
+    <div className="grid w-full gap-3 xl:grid-cols-[minmax(0,1fr)_220px]">
+      <PayrollClosingSelector value={range} onChange={setRange} />
+      <div className="flex flex-col justify-between gap-3 rounded-lg border border-foreground bg-foreground p-4 text-background">
+        <div>
+          <p className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] opacity-65">Ação do período</p>
+          <p className="mt-2 text-lg font-bold leading-tight">
+            {selectedClosing?.cadence === 'quinzena' ? 'Gerar folha da quinzena' : 'Gerar folha do mês'}
+          </p>
+          <p className="mt-2 text-xs leading-relaxed opacity-70">
+            Cria os rascunhos para conferência antes da aprovação e do pagamento.
+          </p>
+        </div>
+        <Button
+          size="sm"
+          variant="secondary"
+          className="h-11 w-full bg-background text-foreground hover:bg-background/90"
+          onClick={calculateAll}
+          disabled={calcRunning || !selectedClosing}
+        >
+          {calcRunning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Calculator className="mr-2 h-4 w-4" />}
+          Gerar fechamento
+        </Button>
+      </div>
     </div>
   );
 
@@ -1125,12 +1140,36 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
 
   return (
     <div className="space-y-4 page-enter">
-      <div className="flex items-center justify-between gap-2 flex-wrap">
-        <div className="text-xs text-muted-foreground">
-          <span className="font-semibold text-foreground">Base proporcional aos dias − descontos</span> · créditos compensam atrasos parciais no período · faltas integrais ficam separadas ·
-          {' '}hora extra paga pela <span className="font-semibold text-foreground">taxa individual</span> normal ou de domingo/feriado
+      <div className="text-xs text-muted-foreground">
+        <span className="font-semibold text-foreground">Folha salarial pelo relógio de ponto</span> · mensalistas, remotos e diaristas · créditos compensam atrasos parciais · faltas integrais ficam separadas ·
+        {' '}hora extra paga pela <span className="font-semibold text-foreground">taxa individual</span>
+      </div>
+
+      {filtersBar}
+
+      <div className="grid gap-3 rounded-lg border border-border/70 bg-muted/30 p-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+        <div className="flex min-w-0 items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-sm bg-primary/10 text-primary">
+            <Package className="h-5 w-5" />
+          </div>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="font-bold text-foreground">Montagem e Solagem por produção</p>
+              <Badge variant="outline" className="font-mono text-[10px] uppercase tracking-wider">
+                {productionEmployees.length} por par
+              </Badge>
+            </div>
+            <p className="mt-1 max-w-3xl text-xs leading-relaxed text-muted-foreground">
+              O pagamento por par é fechado semanalmente na Ficha de Montadores, usando a produção diária e o R$/par congelado em cada lançamento.
+              Mensalistas da Solagem continuam normalmente nesta folha.
+            </p>
+          </div>
         </div>
-        {filtersBar}
+        <Button asChild variant="outline" size="sm" className="w-full gap-1.5 bg-background lg:w-auto">
+          <Link to="/fichas-montadores?tab=producao">
+            Abrir fechamento por produção <ArrowSquareOut className="h-4 w-4" />
+          </Link>
+        </Button>
       </div>
 
       {coverage && coverage.count === 0 && (

@@ -55,7 +55,7 @@ const TAB_HEADERS: Record<Tab, { section: string; title: string; description: st
   folha: {
     section: 'PESSOAS · FOLHA',
     title: 'Folha de Pagamento',
-    description: 'Calcule valores, confira o fechamento e acompanhe os pagamentos.',
+    description: 'Feche a quinzena ou o mês; pagamentos por produção seguem pela Ficha de Montadores.',
   },
 };
 
@@ -82,7 +82,7 @@ function FolhaTab() {
           className={cn('inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md transition-colors',
             inner === 'consolidada' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:bg-muted/40')}
         >
-          <DollarSign className="h-3.5 w-3.5" /> Consolidada
+          <DollarSign className="h-3.5 w-3.5" /> Fechamento
         </button>
         <button
           onClick={() => setInner('pagamentos')}
