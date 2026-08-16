@@ -10,19 +10,3 @@ JOIN pg_catalog.pg_proc trigger_function
 WHERE trigger_catalog.tgrelid = 'public.sale_order_items'::regclass
   AND NOT trigger_catalog.tgisinternal
 ORDER BY trigger_catalog.tgname;
-
-SELECT
-  procedure_catalog.oid::regprocedure::text AS function_signature,
-  procedure_catalog.prosecdef AS security_definer
-FROM pg_catalog.pg_proc procedure_catalog
-JOIN pg_catalog.pg_namespace namespace_catalog
-  ON namespace_catalog.oid = procedure_catalog.pronamespace
-WHERE namespace_catalog.nspname = 'public'
-  AND (
-    procedure_catalog.proname ILIKE '%sale_order_total%'
-    OR procedure_catalog.proname ILIKE '%costs_dirty%'
-    OR procedure_catalog.proname ILIKE '%reservations_outdated%'
-    OR procedure_catalog.proname ILIKE '%sync_orders_from_sale_order_item%'
-    OR procedure_catalog.proname ILIKE '%strap_demands_on_item_change%'
-  )
-ORDER BY procedure_catalog.oid::regprocedure::text;
