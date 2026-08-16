@@ -26,6 +26,7 @@ import {
   type ConsumptionRow,
 } from '@/hooks/useBulkOrderConsumption';
 import { calcGroupPlateAreaDm2 } from '@/lib/orderConsumption';
+import { findSoleProductForColor, getSoleTargetColor, type SoleColorProduct } from '@/lib/soleColorResolution';
 import logoSquad from '@/assets/logo-squad-shoes.jpg';
 import { useOrderLotsBatch } from '@/hooks/useOrderLots';
 import { expandOrdersByLots, type LotMetadata } from '@/lib/lotExpansion';
@@ -1295,7 +1296,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from('sole_color_conjugations')
-        .select('sole_group_id, cabedal_color, palmilha_color, is_default, active')
+        .select('sole_group_id, cabedal_color, palmilha_color, resolution_mode, is_default, active')
         .in('sole_group_id', allSoleGroupIds)
         .eq('active', true);
       if (error) throw error;
@@ -1665,14 +1666,16 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
         // P0 — regra ativa em sole_color_conjugations pro grupo da ficha.
         const sheetGroupId = sheet?.sole_group_id || null;
         if (sheetGroupId && colorLower !== '') {
-          const rules = conjByGroup.get(sheetGroupId) || [];
-          const rule = rules.find(r => norm(r.cabedal_color) === colorLower)
-            ?? rules.find(r => r.is_default === true);
-          const targetColor = rule?.palmilha_color; // nome histórico — é a cor-alvo do SOLADO
-          if (targetColor) {
-            const candidate = (productsByGroup.get(sheetGroupId) || [])
-              .find(p => norm(p.color) === norm(targetColor));
-            if (candidate) return fromProduct(candidate);
+          const decision = getSoleTargetColor(cabedalColor, conjByGroup.get(sheetGroupId) || []);
+          if (decision.locked) {
+            if (!decision.targetColor) return null;
+            const candidateId = findSoleProductForColor(
+              sheetGroupId,
+              decision.targetColor,
+              soleGroupProducts as SoleColorProduct[],
+            );
+            const candidate = candidateId ? productsById.get(candidateId) : null;
+            return candidate ? fromProduct(candidate) : null;
           }
         }
 

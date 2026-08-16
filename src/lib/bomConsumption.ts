@@ -20,6 +20,7 @@ import {
 } from '@/lib/orderConsumption';
 import { scaleGradeWithLargestRemainder } from '@/lib/scaleGrade';
 import { caixaCollectiveTypeFromName, shouldShowCaixaForMode, type CollectiveType } from '@/lib/packagingPairsPerBox';
+import { resolvePinnedSoleProductIdByColor, type SoleColorRule } from '@/lib/soleColorResolution';
 import {
   aggregateArtisanalStrapCut,
   isArtisanalStrap,
@@ -204,21 +205,23 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
     if (s.id && s.sole_group_id) sheetSoleGroupMap.set(s.id, s.sole_group_id);
     if (s.id && s.primary_sole_id) sheetPrimarySoleMap.set(s.id, s.primary_sole_id);
   }
-  const soleConjugationsByGroup = new Map<
-    string,
-    Array<{ cabedal_color: string; palmilha_color: string; is_default: boolean }>
-  >();
+  const soleConjugationsByGroup = new Map<string, SoleColorRule[]>();
   {
     const soleGroupIds = Array.from(new Set(sheetSoleGroupMap.values()));
     if (soleGroupIds.length > 0) {
       const { data: conjugations } = await (supabase as any)
         .from('sole_color_conjugations')
-        .select('sole_group_id, cabedal_color, palmilha_color, is_default, active')
+        .select('sole_group_id, cabedal_color, palmilha_color, resolution_mode, is_default, active')
         .in('sole_group_id', soleGroupIds)
         .eq('active', true);
       for (const c of (conjugations || []) as any[]) {
         const arr = soleConjugationsByGroup.get(c.sole_group_id) || [];
-        arr.push({ cabedal_color: c.cabedal_color, palmilha_color: c.palmilha_color, is_default: !!c.is_default });
+        arr.push({
+          cabedal_color: c.cabedal_color,
+          palmilha_color: c.palmilha_color,
+          resolution_mode: c.resolution_mode || 'fixed',
+          is_default: !!c.is_default,
+        });
         soleConjugationsByGroup.set(c.sole_group_id, arr);
       }
     }
@@ -555,7 +558,12 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
     const insoleVariantGroup = variant ? variantGroupName(variant.insole_material_product_id, variant.insole_material_group_id) : '';
     const variantSolePid: string | null = variant?.sole_material_product_id
       && (allProducts || []).some((p: any) => p.id === variant.sole_material_product_id)
-      ? variant.sole_material_product_id
+      ? resolvePinnedSoleProductIdByColor(
+          variant.sole_material_product_id,
+          orderColor,
+          soleConjugationsByGroup,
+          allProducts || [],
+        )
       : null;
 
     // Cabedal
@@ -616,12 +624,14 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
     // de cabedal (lining_consumption_dm2 nulo) ⇒ a "Forração" (cabedal) da
     // ficha É a palmilha digitada no campo errado — não emitir 2× a mesma napa.
     // Faltava na Lista de Separação (auditoria 2026-07-19, BOM-3).
-    // Resolução CANÔNICA de solado (BOM-2): pin da variante > cascata P0–P3
+    // Resolução CANÔNICA de solado (BOM-2): pin escolhe o modelo e a regra de
+    // cor escolhe a variante física; sem pin segue a cascata P0–P3
     // (coligação de cor → mapping explícito → mapping legado por grupo/maior
     // estoque → primary_sole_id) — a MESMA função do motor canônico
     // (resolveSoleProductIdCanonical), não mais só o mapping explícito.
-    const resolvedSolePid: string | null = variantSolePid
-      || resolveSoleProductIdCanonical(order.reference_id, orderColor, {
+    const resolvedSolePid: string | null = variant?.sole_material_product_id
+      ? variantSolePid
+      : resolveSoleProductIdCanonical(order.reference_id, orderColor, {
         sheetSoleGroupMap,
         soleConjugationsByGroup,
         soleColorMap,
@@ -1215,7 +1225,7 @@ export type SoleBreakdownResult = {
  * em cada cor e em cada número precisam ser puxados do estoque/comprados.
  *
  * Resolução do solado = CASCATA CANÔNICA (F2-06, mesma do débito/motor
- * canônico): pin da variante do item do PV (resolve_sole_for_variant) → P0
+ * canônico): pin da variante escolhe o modelo + regra de cor → P0
  * coligação de cor → P1 mapping explícito (technical_sheet_sole_colors) → P2
  * mapping legado por grupo (maior estoque) → P3 primary_sole_id. Fallback pro
  * texto livre da ficha (sole_material/sole_color) SÓ quando a cascata devolve
@@ -1278,27 +1288,29 @@ export async function calculateSoleBreakdownByGrade(orderIds: string[]): Promise
     if (s.id && s.sole_group_id) sheetSoleGroupMap.set(s.id, s.sole_group_id);
     if (s.id && s.primary_sole_id) sheetPrimarySoleMap.set(s.id, s.primary_sole_id);
   }
-  const soleConjugationsByGroup = new Map<
-    string,
-    Array<{ cabedal_color: string; palmilha_color: string; is_default: boolean }>
-  >();
+  const soleConjugationsByGroup = new Map<string, SoleColorRule[]>();
   {
     const soleGroupIds = Array.from(new Set(sheetSoleGroupMap.values()));
     if (soleGroupIds.length > 0) {
       const { data: conjugations } = await (supabase as any)
         .from('sole_color_conjugations')
-        .select('sole_group_id, cabedal_color, palmilha_color, is_default, active')
+        .select('sole_group_id, cabedal_color, palmilha_color, resolution_mode, is_default, active')
         .in('sole_group_id', soleGroupIds)
         .eq('active', true);
       for (const c of (conjugations || []) as any[]) {
         const arr = soleConjugationsByGroup.get(c.sole_group_id) || [];
-        arr.push({ cabedal_color: c.cabedal_color, palmilha_color: c.palmilha_color, is_default: !!c.is_default });
+        arr.push({
+          cabedal_color: c.cabedal_color,
+          palmilha_color: c.palmilha_color,
+          resolution_mode: c.resolution_mode || 'fixed',
+          is_default: !!c.is_default,
+        });
         soleConjugationsByGroup.set(c.sole_group_id, arr);
       }
     }
   }
-  // Pin de solado da variante do item do PV — o débito o honra
-  // (resolve_sole_for_variant, mig 20260911140000).
+  // Pin de solado da variante do item do PV. A resolução final ainda aplica
+  // Preto/regra fixa/pintável dentro do grupo pinado.
   const variantSoleByItem = new Map<string, string>();
   {
     const variantIds = [...new Set((saleOrderItems || []).map((si: any) => si.material_variant_id).filter(Boolean))];
@@ -1327,8 +1339,17 @@ export async function calculateSoleBreakdownByGrade(orderIds: string[]): Promise
     const variantPid = (order as any).sale_order_item_id
       ? variantSoleByItem.get((order as any).sale_order_item_id)
       : undefined;
-    const resolvedPid = (variantPid && productById.has(variantPid) ? variantPid : null)
-      || resolveSoleProductIdCanonical(order.reference_id, order.color || '', {
+    const resolvedVariantPid = variantPid && productById.has(variantPid)
+      ? resolvePinnedSoleProductIdByColor(
+          variantPid,
+          order.color || '',
+          soleConjugationsByGroup,
+          allProducts || [],
+        )
+      : null;
+    const resolvedPid = variantPid
+      ? resolvedVariantPid
+      : resolveSoleProductIdCanonical(order.reference_id, order.color || '', {
         sheetSoleGroupMap,
         soleConjugationsByGroup,
         soleColorMap,

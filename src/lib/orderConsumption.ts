@@ -14,6 +14,12 @@ import {
 import { calculateStrapConsumptionCm, resolveOrderStraps } from '@/lib/strapConsumption';
 import { scaleGradeWithLargestRemainder } from '@/lib/scaleGrade';
 import { caixaCollectiveTypeFromName, shouldShowCaixaForMode, type CollectiveType } from '@/lib/packagingPairsPerBox';
+import {
+  findSoleProductForColor,
+  getSoleTargetColor,
+  resolvePinnedSoleProductIdByColor,
+  type SoleColorRule,
+} from '@/lib/soleColorResolution';
 
 /**
  * Motor CANÔNICO de consumo de materiais.
@@ -160,7 +166,7 @@ export type ConsumptionContext = {
   /** sheet_id → sole_group_id (do solado vinculado à ficha). */
   sheetSoleGroupMap: Map<string, string>;
   /** sole_group_id → conjugações ativas (regras cabedal→cor-do-solado). */
-  soleConjugationsByGroup: Map<string, Array<{ cabedal_color: string; palmilha_color: string; is_default: boolean }>>;
+  soleConjugationsByGroup: Map<string, SoleColorRule[]>;
   /** (sheet_id::cor) → sole_group_id de mappings LEGADOS de
    *  technical_sheet_sole_colors SEM sole_product_id (P2 do resolve_sole_color:
    *  resolve pro produto do grupo com maior estoque). Opcional (testes antigos). */
@@ -346,7 +352,7 @@ export const reduceSoleTechnicalSpecsByRecency = <T extends SoleTechnicalSpecWit
  *  lógica (auditoria 2026-07-19, BOM-2). */
 export type SoleResolutionMaps = {
   sheetSoleGroupMap: Map<string, string>;
-  soleConjugationsByGroup: Map<string, Array<{ cabedal_color: string; palmilha_color: string; is_default: boolean }>>;
+  soleConjugationsByGroup: Map<string, SoleColorRule[]>;
   soleColorMap: Map<string, string>;
   soleColorGroupMap?: Map<string, string>;
   sheetPrimarySoleMap?: Map<string, string>;
@@ -384,19 +390,16 @@ export function resolveSoleProductIdCanonical(
   const normColor = normColorCanonical;
   const colorNorm = normColor(cabedalColor);
 
-  // P0 — coligação de cor por sole_group_id da ficha.
+  // P0 — regra de cor por sole_group_id da ficha. Preto é invariável; regras
+  // pintáveis usam a própria cor do cabedal. Uma regra que não encontra sua
+  // variante física falha fechada e NÃO cai num produto de outra cor.
   const soleGroupId = sheetSoleGroupMap.get(refId);
   if (soleGroupId && colorNorm) {
     const rules = soleConjugationsByGroup.get(soleGroupId) || [];
-    let targetColor: string | null =
-      rules.find(r => normColor(r.cabedal_color) === colorNorm)?.palmilha_color || null;
-    if (!targetColor) targetColor = rules.find(r => r.is_default)?.palmilha_color || null;
-    if (targetColor) {
-      const targetNorm = normColor(targetColor);
-      const candidates = (allProducts || [])
-        .filter((x: any) => x.group_id === soleGroupId && normColor(x.color) === targetNorm)
-        .sort((a: any, b: any) => (Number(b.quantity) || 0) - (Number(a.quantity) || 0));
-      if (candidates[0]) return candidates[0].id;
+    const decision = getSoleTargetColor(cabedalColor, rules);
+    if (decision.locked) {
+      if (!decision.targetColor) return null;
+      return findSoleProductForColor(soleGroupId, decision.targetColor, allProducts || []);
     }
   }
 
@@ -755,20 +758,22 @@ export async function fetchConsumptionContext(
 
   // Coligações cabedal → cor-do-solado por sole_group_id (regra independente
   // da sole_classification — mesmo fix do resolve_sole_color SQL).
-  const soleConjugationsByGroup = new Map<
-    string,
-    Array<{ cabedal_color: string; palmilha_color: string; is_default: boolean }>
-  >();
+  const soleConjugationsByGroup = new Map<string, SoleColorRule[]>();
   const soleGroupIds = Array.from(new Set(sheetSoleGroupMap.values()));
   if (soleGroupIds.length > 0) {
     const { data: conjugations } = await client
       .from('sole_color_conjugations')
-      .select('sole_group_id, cabedal_color, palmilha_color, is_default, active')
+      .select('sole_group_id, cabedal_color, palmilha_color, resolution_mode, is_default, active')
       .in('sole_group_id', soleGroupIds)
       .eq('active', true);
     for (const c of (conjugations || []) as any[]) {
       const arr = soleConjugationsByGroup.get(c.sole_group_id) || [];
-      arr.push({ cabedal_color: c.cabedal_color, palmilha_color: c.palmilha_color, is_default: !!c.is_default });
+      arr.push({
+        cabedal_color: c.cabedal_color,
+        palmilha_color: c.palmilha_color,
+        resolution_mode: c.resolution_mode || 'fixed',
+        is_default: !!c.is_default,
+      });
       soleConjugationsByGroup.set(c.sole_group_id, arr);
     }
   }
@@ -1242,14 +1247,22 @@ export function computeConsumptionForItems(
     const upperVariantDriven = !!(upperVariant.pin || upperVariant.groupName);
     const liningVariantDriven = !!(liningVariant.pin || liningVariant.groupName);
     const insoleVariantDriven = !!(insoleVariant.pin || insoleVariant.groupName);
-    // Solado da variante: pin direto (resolve_sole_for_variant no SQL).
+    // O pin da variante escolhe o modelo/grupo; a cor continua obedecendo a
+    // regra industrial (inclusive Preto → Preto e modo pintável).
     const variantSolePid = variant?.sole_material_product_id
       && (allProducts || []).some((p: any) => p.id === variant.sole_material_product_id)
-      ? variant.sole_material_product_id
+      ? resolvePinnedSoleProductIdByColor(
+          variant.sole_material_product_id,
+          orderColor,
+          soleConjugationsByGroup,
+          allProducts || [],
+        )
       : null;
-    /** Resolução de solado DESTE item: pin da variante > cascata canônica. */
+    /** Resolução: grupo/modelo pinado pela variante + regra canônica de cor. */
     const resolveSoleForItem = (): string | null =>
-      variantSolePid ?? resolveSoleProductId(item.reference_id, orderColor);
+      variant?.sole_material_product_id
+        ? variantSolePid
+        : resolveSoleProductId(item.reference_id, orderColor);
 
     // Cabedal: resolve which option matches the order color
     const allCabedalAccessories = Array.isArray(sheet?.components_accessories)
@@ -1685,8 +1698,8 @@ export function computeConsumptionForItems(
       }
     }
 
-    // Solado: pin da VARIANTE primeiro (resolve_sole_for_variant no SQL); senão
-    // resolução canônica (P0 conjugação → P1 mapping explícito → P2 mapping
+    // Solado: variante pode pinar o MODELO/grupo, mas Preto e as regras de cor
+    // continuam valendo; sem pin usa a resolução P0 → P1 mapping explícito → P2 mapping
     // legado por grupo/maior estoque → P3 primary_sole_id), com match de cor
     // case/acento-insensitive. Toda a ordem vive em resolveSoleForItem/
     // resolveSoleProductId — espelho do backend.

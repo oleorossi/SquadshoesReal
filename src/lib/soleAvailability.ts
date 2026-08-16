@@ -2,6 +2,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { PALMILHA_DEFAULT_KEY } from '@/hooks/usePalmilhaColorMappings';
 import { normalizeColorKey } from '@/lib/materialConsumption';
 import { calculateGradeCoverage, rateGradeToTotal } from '@/lib/gradeDistribution';
+import { getSoleTargetColor, type SoleColorRule } from '@/lib/soleColorResolution';
 
 export interface SoleShortage {
   sole_product_id: string;
@@ -127,20 +128,25 @@ export async function checkSoleAvailability(items: ItemInput[]): Promise<SoleAva
   }
 
   const sheetIds = [...new Set(validItems.map(i => i.reference_id))];
-  const materialVariantIds = [
-    ...new Set(validItems.map(i => i.material_variant_id).filter(Boolean)),
-  ] as string[];
+  const variantRequests = [...new Map(validItems
+    .filter(item => item.material_variant_id)
+    .map(item => [
+      `${item.material_variant_id}::${normalizeColorKey(item.color)}`,
+      { variantId: item.material_variant_id!, color: item.color || '' },
+    ])).entries()];
 
-  // Mesma precedência do débito e dos motores de consumo: solado pinado na
-  // variante do item do PV vence a cascata de cor/ficha.
-  const variantSoleById = new Map<string, string>();
-  await Promise.all(materialVariantIds.map(async (variantId) => {
-    const { data, error } = await supabase.rpc('resolve_sole_for_variant', {
-      p_variant_id: variantId,
+  // O pin escolhe o modelo/grupo; a RPC aplica a cor do cabedal sobre ele.
+  const variantSoleByRequest = new Map<string, string | null>();
+  await Promise.all(variantRequests.map(async ([key, request]) => {
+    // RPC nasce nesta migration; o arquivo gerado do Supabase ainda não a conhece.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await (supabase as any).rpc('resolve_sole_for_variant_color', {
+      p_variant_id: request.variantId,
+      p_product_color: request.color,
     });
     if (error) throw error;
     const resolved = Array.isArray(data) ? data[0] : data;
-    if (resolved?.product_id) variantSoleById.set(variantId, resolved.product_id);
+    variantSoleByRequest.set(key, resolved?.product_id ?? null);
   }));
 
   const [sheetsResult, soleMappingsResult, palmilhaMappingsResult] = await Promise.all([
@@ -203,8 +209,7 @@ export async function checkSoleAvailability(items: ItemInput[]): Promise<SoleAva
     ]),
   ] as string[];
 
-  // Regras de conjugação de COR por grupo: { exatas: corCabedal→corSolado, default }
-  const colorConjByGroup = new Map<string, { exact: Map<string, string>; def: string | null }>();
+  const colorConjByGroup = new Map<string, SoleColorRule[]>();
   // Produtos ativos dos grupos candidatos, ordenados por estoque desc (igual ao
   // ORDER BY p.quantity DESC do resolve_sole_color).
   const groupProducts = new Map<string, Array<{ id: string; color: string | null; quantity: number }>>();
@@ -213,7 +218,7 @@ export async function checkSoleAvailability(items: ItemInput[]): Promise<SoleAva
     const [colorConjsResult, groupProductsResult] = await Promise.all([
       (supabase as any)
         .from('sole_color_conjugations')
-        .select('sole_group_id, cabedal_color, palmilha_color, is_default')
+        .select('sole_group_id, cabedal_color, palmilha_color, resolution_mode, is_default')
         .eq('active', true)
         .in('sole_group_id', candidateGroupIds),
       supabase
@@ -226,12 +231,10 @@ export async function checkSoleAvailability(items: ItemInput[]): Promise<SoleAva
     if (groupProductsResult.error) throw groupProductsResult.error;
     const colorConjs = colorConjsResult.data;
     const gProducts = groupProductsResult.data;
-    for (const c of (colorConjs || []) as Array<{ sole_group_id: string; cabedal_color: string | null; palmilha_color: string; is_default: boolean | null }>) {
-      let entry = colorConjByGroup.get(c.sole_group_id);
-      if (!entry) { entry = { exact: new Map(), def: null }; colorConjByGroup.set(c.sole_group_id, entry); }
-      if (c.is_default && entry.def == null) entry.def = c.palmilha_color;
-      const cabKey = normalizeColorKey(c.cabedal_color);
-      if (cabKey && !entry.exact.has(cabKey)) entry.exact.set(cabKey, c.palmilha_color);
+    for (const c of (colorConjs || []) as Array<SoleColorRule & { sole_group_id: string }>) {
+      const entry = colorConjByGroup.get(c.sole_group_id) || [];
+      entry.push(c);
+      colorConjByGroup.set(c.sole_group_id, entry);
     }
     for (const p of (gProducts || []) as any[]) {
       const arr = groupProducts.get(p.group_id) || [];
@@ -248,20 +251,22 @@ export async function checkSoleAvailability(items: ItemInput[]): Promise<SoleAva
     cabedalColor: string | null,
     materialVariantId?: string | null,
   ): string | null => {
-    if (materialVariantId && variantSoleById.has(materialVariantId)) {
-      return variantSoleById.get(materialVariantId)!;
+    if (materialVariantId) {
+      const requestKey = `${materialVariantId}::${normalizeColorKey(cabedalColor)}`;
+      if (variantSoleByRequest.has(requestKey)) return variantSoleByRequest.get(requestKey) || null;
+      return null;
     }
     const colorKey = normalizeColorKey(cabedalColor);
 
     // P0: conjugação ativa do grupo da ficha (cor exata → default)
     if (sheet?.sole_group_id && colorKey) {
-      const conj = colorConjByGroup.get(sheet.sole_group_id);
-      const targetColor = conj?.exact.get(colorKey) ?? conj?.def ?? null;
-      if (targetColor) {
-        const targetKey = normalizeColorKey(targetColor);
+      const decision = getSoleTargetColor(cabedalColor, colorConjByGroup.get(sheet.sole_group_id));
+      if (decision.locked) {
+        if (!decision.targetColor) return null;
+        const targetKey = normalizeColorKey(decision.targetColor);
         const hit = (groupProducts.get(sheet.sole_group_id) || [])
           .find(p => normalizeColorKey(p.color) === targetKey);
-        if (hit) return hit.id;
+        return hit?.id || null;
       }
     }
 

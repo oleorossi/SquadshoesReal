@@ -1164,11 +1164,12 @@ describe('orderConsumption — motor canônico', () => {
       expect(palmForr.totalQuantity).toBeCloseTo(72 / 80, 6);
     });
 
-    it('solado pinado na variante prevalece sobre a cascata de cor (resolve_sole_for_variant)', () => {
+    it('solado pinado na variante escolhe o modelo e preserva Preto → Preto', () => {
       const ctx = buildVariantContext();
       ctx.productGroups.push({ id: 'g-sole-99', name: 'SOLADO 99', dimensions_length: null, dimensions_width: null, dimensions_unit: null } as any);
       ctx.allProducts.push({ id: 'p-sole-99', name: '99 - PRETO', unit: 'par', color: 'PRETO', group_id: 'g-sole-99', quantity: 0, reserved_stock: 0, stock_grade: null, sole_classification: null } as any);
-      // Mapping de cor apontaria pra outro solado — o pin da variante deve vencer.
+      // Mapping da ficha apontaria outro modelo; o pin escolhe o SOLADO 99 e a
+      // regra obrigatória mantém a variante preta dentro desse grupo.
       ctx.allProducts.push({ id: 'p-sole-01', name: '01 - PRETO', unit: 'par', color: 'PRETO', group_id: null, quantity: 0, reserved_stock: 0, stock_grade: null, sole_classification: null } as any);
       ctx.soleColorMap.set('sheet-1::PRETO', 'p-sole-01');
       const v = ctx.materialVariantsById!.get('var-glow')!;

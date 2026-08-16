@@ -272,7 +272,7 @@ const withSole = (t: Record<string, unknown[]>, sole: Record<string, any> = {}) 
   (t.technical_sheets[0] as any).sole_group_id = 'g-sole';
   (t.technical_sheets[0] as any).primary_sole_id = sole.id ?? 'p-sole';
   t.products = [...(t.products as any[]), {
-    id: 'p-sole', name: '204 - CARAMELO', color: 'CARAMELO', group_id: 'g-sole',
+    id: 'p-sole', name: '204 - PRETO', color: 'PRETO', group_id: 'g-sole',
     quantity: 100, sole_classification: null, ...sole,
   }];
   t.product_groups = [...(t.product_groups as any[]), {
@@ -289,22 +289,23 @@ describe('calculateBomForOrders — cascata canônica de solado (BOM-2/BOM-7)', 
     const rows = await calculateBomForOrders(['op1']);
     const solado = rows.find(r => r.componentType === 'Solado');
     expect(solado?.groupName).toBe('SOLADO 204');
-    expect(solado?.color).toBe('CARAMELO');
+    expect(solado?.color).toBe('PRETO');
     // BOM-7: default canônico de 1 par/par (sole_consumption 0/null não apaga).
     expect(solado?.totalQuantity).toBe(720);
   });
 
   it('P0: coligação de cor escolhe o produto do grupo na cor-alvo com MAIOR estoque', async () => {
     const t = withSole(buildBomTables());
-    // Dois solados no grupo; a coligação manda PRETO → CARAMELO. O de maior
+    // Dois solados no grupo; a coligação manda WHISKY → CARAMELO. O de maior
     // estoque na cor-alvo (p-sole-c2, qty 500) deve vencer o primary (p-sole).
+    (t.orders[0] as any).color = 'WHISKY';
     t.products = [...(t.products as any[]), {
       id: 'p-sole-c2', name: '204 - CARAMELO GG', color: 'CARAMELO', group_id: 'g-sole',
       quantity: 500, sole_classification: null,
     }];
     t.sole_color_conjugations = [{
-      sole_group_id: 'g-sole', cabedal_color: 'PRETO', palmilha_color: 'CARAMELO',
-      is_default: false, active: true,
+      sole_group_id: 'g-sole', cabedal_color: 'WHISKY', palmilha_color: 'CARAMELO',
+      resolution_mode: 'fixed', is_default: false, active: true,
     }];
     mockDb.tables = t;
     const rows = await calculateBomForOrders(['op1']);

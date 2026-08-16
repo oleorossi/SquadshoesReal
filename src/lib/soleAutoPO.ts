@@ -55,6 +55,7 @@ export async function autoCreateSolePO(params: {
   // um produto diferente do grupo). Se o canônico não resolver, retornamos
   // null SEM criar OC — nunca pedir produto de cor/modelo errado.
   let soleProductId: string | null = null;
+  let variantDriven = false;
   const { data: sourceOrder } = await supabase
     .from('orders')
     .select('sale_order_item_id')
@@ -67,16 +68,19 @@ export async function autoCreateSolePO(params: {
       .eq('id', sourceOrder.sale_order_item_id)
       .maybeSingle();
     if (sourceItem?.material_variant_id) {
-      const { data: variantSole, error: variantError } = await supabase.rpc(
-        'resolve_sole_for_variant',
-        { p_variant_id: sourceItem.material_variant_id },
+      variantDriven = true;
+      // RPC nasce nesta migration; o arquivo gerado do Supabase ainda não a conhece.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: variantSole, error: variantError } = await (supabase as any).rpc(
+        'resolve_sole_for_variant_color',
+        { p_variant_id: sourceItem.material_variant_id, p_product_color: color },
       );
       if (variantError) throw variantError;
       soleProductId = (Array.isArray(variantSole) ? variantSole[0] : variantSole)?.product_id ?? null;
     }
   }
 
-  if (!soleProductId) {
+  if (!variantDriven) {
     const { data: resolved, error: resolveErr } = await supabase.rpc('resolve_sole_color', {
       p_sheet_id: referenceId,
       p_product_color: color,

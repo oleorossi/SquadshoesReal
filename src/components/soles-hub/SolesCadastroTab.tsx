@@ -23,6 +23,7 @@ import { useDisplaySizeKeys } from '@/lib/soleGradeKeys';
 import { formatCurrency } from '@/lib/utils';
 import { updateSoleProfile } from '@/services/soleProfileService';
 import type { SoleProduct } from './types';
+import { SoleColorConjugationsEditor } from './SoleColorConjugationsEditor';
 
 type SoleClassification = 'tradicional' | 'palmilha_pronta' | 'conjugado';
 const SOLE_CLASSIFICATION_LABEL: Record<SoleClassification, string> = {
@@ -220,31 +221,11 @@ export default function SolesCadastroTab({ sole }: Props) {
   });
 
 
-  // Atualiza sole_classification em TODAS as variantes do grupo (mantém consistência).
-  // Se virar palmilha_pronta e ainda não existir regra default de coligação, cria.
+  // Atualiza sole_classification em TODAS as variantes do grupo. A cor não é
+  // inferida daqui: criar Caramelo automaticamente quebrava grupos pintáveis.
   const updateClassification = useMutation({
     mutationFn: async (nextClass: SoleClassification) => {
       await updateSoleProfile(sole.id, { sole_classification: nextClass });
-
-      if (groupId && nextClass === 'palmilha_pronta') {
-        const { data: existing } = await supabase
-          .from('sole_color_conjugations')
-          .select('id')
-          .eq('sole_group_id', groupId)
-          .eq('is_default', true)
-          .limit(1);
-        if (!existing || existing.length === 0) {
-          const { error } = await supabase
-            .from('sole_color_conjugations')
-            .insert({
-              sole_group_id: groupId,
-              cabedal_color: '*',
-              palmilha_color: 'Caramelo',
-              is_default: true,
-            });
-          if (error) throw error;
-        }
-      }
     },
     onSuccess: (_data, nextClass) => {
       qc.invalidateQueries({ queryKey: ['soles_hub_products'] });
@@ -506,11 +487,32 @@ export default function SolesCadastroTab({ sole }: Props) {
         </CardContent>
       </Card>
 
-      {/* 3 — PARÂMETROS INDUSTRIAIS E DE COMPRA */}
+      {/* 3 — COR DO CABEDAL × COR FÍSICA DO SOLADO */}
+      <Card>
+        <CardHeader className="pb-3 flex flex-row items-center gap-2">
+          <Palette className="h-4 w-4 text-primary" />
+          <CardTitle className="text-sm">3. Cores e pintura</CardTitle>
+          <StatusBadge filled={!!groupId} label={groupId ? 'Por grupo' : 'Vincular grupo'} />
+        </CardHeader>
+        <CardContent>
+          {groupId ? (
+            <SoleColorConjugationsEditor soleGroupId={groupId} />
+          ) : (
+            <div className="rounded-md border bg-muted/20 p-3">
+              <p className="text-sm font-medium">Vincule o solado a um grupo para configurar as cores.</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                O grupo reúne as variantes físicas Preto, Caramelo e as cores pintáveis usadas no consumo, na compra e na baixa de estoque.
+              </p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* 4 — PARÂMETROS INDUSTRIAIS E DE COMPRA */}
       <Card>
         <CardHeader className="pb-3 flex flex-row items-center gap-2">
           <Ruler className="h-4 w-4 text-primary" />
-          <CardTitle className="text-sm">3. Engenharia e compra</CardTitle>
+          <CardTitle className="text-sm">4. Engenharia e compra</CardTitle>
           <StatusBadge
             filled={form.sole_material.trim().length > 0 && Number(form.unit_price) > 0}
           />
@@ -566,7 +568,7 @@ export default function SolesCadastroTab({ sole }: Props) {
       <Card>
         <CardHeader className="pb-3 flex flex-row items-center gap-2">
           <Crown className="h-4 w-4 text-primary" />
-          <CardTitle className="text-sm">4. Características</CardTitle>
+          <CardTitle className="text-sm">5. Características</CardTitle>
           <StatusBadge filled label="Configurado" />
         </CardHeader>
         <CardContent className="space-y-3">
