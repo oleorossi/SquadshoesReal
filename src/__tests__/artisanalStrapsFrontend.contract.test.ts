@@ -14,6 +14,9 @@ const planning = read('src/components/artisanal-straps/ArtisanalStrapPlanningCon
 const purchasePdf = read('src/lib/strapPurchaseOrderZip.ts');
 const serviceOrderPdf = read('src/lib/printArtisanalStrapServiceOrder.ts');
 const saleOrderForm = read('src/pages/SaleOrderForm.tsx');
+const saleOrderHooks = read('src/hooks/useSaleOrders.ts');
+const strapSourcingOverrideDialog = read('src/components/sale-orders/StrapSourcingAdminOverrideDialog.tsx');
+const strapSourcingOverrideHelper = read('src/lib/strapSourcingOverride.ts');
 const saleOrderItemForm = read('src/components/sale-orders/SaleOrderItemForm.tsx');
 const groupEditDialog = read('src/components/groups/GroupEditDialog.tsx');
 const contractors = read('src/pages/Contractors.tsx');
@@ -136,6 +139,9 @@ describe('Tiras artesanais — contrato do frontend canônico', () => {
     expect(operations).toContain('isTerminalStrapOperationStatus');
     expect(operations).toContain('const canSend = canExecute && !terminal && !suspended');
     expect(operations).toContain('const canReturn = canExecute && hasCustody');
+    expect(operations).toContain('const hasContractorRemittance = Boolean(item.sent_at)');
+    expect(operations).toMatch(/const canReceive[\s\S]*&& hasContractorRemittance[\s\S]*const canSend/);
+    expect(operations).toContain('Recebimento liberado somente após registrar a remessa da napa');
     expect(hooks).toMatch(/schedule_strap_batch_item[\s\S]*p_reason:\s*reason/);
     expect(hooks).toMatch(/start_strap_production_batch[\s\S]*p_reason:\s*reason/);
     expect(hooks).toMatch(/replan_strap_production_batch[\s\S]*p_reason:\s*reason/);
@@ -170,13 +176,25 @@ describe('Tiras artesanais — contrato do frontend canônico', () => {
     ].forEach((contract) => expect(hooks).toContain(contract));
     expect(legacyProductMigration).toContain('buildLegacyStrapProductAllocations');
     expect(legacyProductMigration).toContain('remainingReserved: reservation.remaining_reserved');
-    expect(legacyProductMigration).toContain('OCs com snapshot não podem ser remapeadas');
+    expect(legacyProductMigration).toContain('isLegacySelfTargetAllocation');
+    expect(legacyProductMigration).toContain('Estes IDs ficam somente leitura e não entram no payload de reescrita');
+    expect(legacyProductMigration).toContain('const assignableServiceItems');
+    expect(legacyProductMigration).toContain('serviceOrderItemIds: assignableServiceItems.map');
+    expect(legacyProductMigration).toContain('O cabeçalho está terminal; estas linhas não são obrigatórias');
     expect(hub).toContain("['legacy_product_mapping_required', 'resolved_product_mapping_blocked']");
-    expect(hub).toContain("String(issue.details?.entity_type || '') !== 'legacy_product'");
-    expect(migrationDialogs).toContain("entityType !== 'legacy_product'");
+    expect(hub).toContain("['legacy_replenishment_mode', 'legacy_replenishment_source_unavailable']");
+    expect(hub).toContain("issue.issue_code === 'legacy_replenishment_source_unavailable'");
+    expect(migrationDialogs).toContain("['legacy_replenishment_mode', 'legacy_replenishment_source_unavailable']");
+    expect(migrationDialogs).toContain("useState<ArtisanalStrapSourceMode | ''>('')");
+    expect(migrationDialogs).toContain('Variante canônica do diagnóstico');
+    expect(migrationDialogs).not.toContain('setBaseGroupId');
+    expect(migrationDialogs).not.toContain('setVariantId');
     expect(migrationControl).toContain('expectedChecksum: dryRun.overall_checksum');
     expect(migrationControl).toContain('expectedPostChecksum: preview.expected_post_checksum');
     expect(migrationControl).toContain('Confirmo que revisei o dry-run');
+    expect(migrationControl).toContain('dryRunPending || dryRunBlocked');
+    expect(migrationControl).toContain('Novo dry-run bloqueado por cutover ativo');
+    expect(migrationControl).toContain('O dry-run permanece desabilitado até a consulta administrativa confirmar');
     expect(hub).toContain("issue.issue_code === 'resolved_product_mapping_ready_to_apply'");
     expect(hub).toContain('Aplicar resolução');
     expect(incrementalMigrationDialog).toContain("diagnostic?.issue_code !== 'resolved_product_mapping_ready_to_apply'");
@@ -199,6 +217,32 @@ describe('Tiras artesanais — contrato do frontend canônico', () => {
       "['artisanal-strap-demands']",
       "['artisanal-strap-external-operations']",
     ].forEach((queryKey) => expect(incrementalApplyHook).toContain(queryKey));
+  });
+
+  it('oferece override administrativo somente após recusa da edição normal da origem', () => {
+    expect(saleOrderHooks).toContain("rpc('override_sale_order_item_strap_sourcing'");
+    [
+      'p_sale_order_item_id: saleOrderItemId',
+      'p_expected_revision: expectedRevision',
+      'p_lines: lines',
+      'p_reason: reason',
+      'p_correlation_id: correlationId || crypto.randomUUID()',
+      "['artisanal-strap-demands']",
+      "['artisanal-strap-production']",
+      "['artisanal-strap-external-operations']",
+    ].forEach((contract) => expect(saleOrderHooks).toContain(contract));
+    expect(saleOrderForm).toContain('if (!isCommittedStrapSourcingError(error)) return');
+    expect(saleOrderForm).toContain('if (!isAdmin)');
+    expect(saleOrderForm).toContain('sameStrapSourcingSelection(baseline.lines, lines)');
+    expect(saleOrderForm).toContain('nenhum override foi tentado');
+    expect(strapSourcingOverrideDialog).toContain('Motivo obrigatório');
+    expect(strapSourcingOverrideDialog).toContain('revisão esperada');
+    expect(strapSourcingOverrideDialog).toContain('Confirmar override e reconciliar');
+    expect(strapSourcingOverrideDialog).toContain('target.lines');
+    expect(strapSourcingOverrideHelper).toMatch(/origem comprometida\.\*override_sale_order_item_strap_sourcing/i);
+    expect(strapSourcingOverrideHelper).toContain("detail?.code === 'strap_source_override_blocked'");
+    expect(strapSourcingOverrideHelper).toContain('Ação necessária:');
+    expect(strapSourcingOverrideHelper).toContain("String(record.code || '') === '40001'");
   });
 
   it('compara rendimento e custo pelas views canônicas sem alterar receita aprovada', () => {

@@ -1706,6 +1706,67 @@ export function useUpdateSaleOrder() {
   });
 }
 
+export interface OverrideSaleOrderItemStrapSourcingResult {
+  code: 'strap_source_override_applied';
+  sale_order_item_id: string;
+  strap_sourcing_revision: number;
+  strap_sourcing: NonNullable<SaleOrderItemFormData['strap_sourcing']>;
+  correlation_id: string;
+  changed_demand_ids: string[];
+  new_demand_ids: string[];
+  job_id: string | null;
+  neutralization?: Record<string, unknown>;
+  reconciliation?: Record<string, unknown>;
+}
+
+/**
+ * Saída administrativa exclusiva para uma origem que o save normal recusou por
+ * já possuir OC/lote/OS comprometido. A revisão otimista e o motivo seguem para
+ * a RPC concreta; este hook nunca chama o setter comum como fallback.
+ */
+export function useOverrideSaleOrderItemStrapSourcing() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ saleOrderItemId, expectedRevision, lines, reason, correlationId }: {
+      saleOrderItemId: string;
+      expectedRevision: number;
+      lines: NonNullable<SaleOrderItemFormData['strap_sourcing']>;
+      reason: string;
+      correlationId?: string;
+    }) => {
+      const { data, error } = await supabase.rpc('override_sale_order_item_strap_sourcing' as never, {
+        p_sale_order_item_id: saleOrderItemId,
+        p_expected_revision: expectedRevision,
+        p_lines: lines,
+        p_reason: reason,
+        p_correlation_id: correlationId || crypto.randomUUID(),
+      } as never);
+      if (error) throw error;
+      return data as OverrideSaleOrderItemStrapSourcingResult;
+    },
+    onSuccess: () => {
+      [
+        ['sale_orders'],
+        ['sale_order_items'],
+        ['sale_order_items_all'],
+        ['orders'],
+        ['purchase_orders'],
+        ['artisanal-strap-demands'],
+        ['artisanal-strap-production'],
+        ['artisanal-strap-external-operations'],
+        ['artisanal-strap-purchase-order-approval-count'],
+      ].forEach((queryKey) => qc.invalidateQueries({ queryKey }));
+      toast.success('Origem comprometida reconciliada pelo override administrativo.');
+    },
+    onError: (error: unknown) => {
+      const message = error && typeof error === 'object' && 'message' in error
+        ? String(error.message)
+        : 'Não foi possível reconciliar a origem comprometida.';
+      toast.error(message);
+    },
+  });
+}
+
 /**
  * Resync all active OPs from their technical sheets.
  * Reverses stock, deletes stages, recreates OPs with updated BOM and production sectors.

@@ -32,6 +32,18 @@ export interface BuildLegacyStrapAllocationInput {
   serviceAssignments: Record<string, string>;
 }
 
+/**
+ * Documento congelado só deixa de bloquear quando não há remapeamento: uma
+ * única alocação aponta de volta para o próprio produto legado. Nesse caso os
+ * IDs imutáveis ficam fora do payload e o servidor apenas conserva o vínculo.
+ */
+export function isLegacySelfTargetAllocation(
+  legacyProductId: string,
+  targetProductIds: string[],
+) {
+  return targetProductIds.length === 1 && targetProductIds[0] === legacyProductId;
+}
+
 function decimalText(value: string | number): string {
   if (typeof value === 'number') {
     if (!Number.isFinite(value)) throw new Error('Quantidade não numérica.');

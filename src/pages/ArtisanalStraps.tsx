@@ -618,7 +618,7 @@ export default function ArtisanalStraps() {
   const [colorDialog, setColorDialog] = useState(false);
   const [officialProductDialog, setOfficialProductDialog] = useState(false);
   const [technicalLineMapId, setTechnicalLineMapId] = useState<string | null>(null);
-  const [migrationDiagnostic, setMigrationDiagnostic] = useState<ArtisanalStrapCatalogDiagnostic | null>(null);
+  const [migrationDiagnostic, setMigrationDiagnostic] = useState<ArtisanalStrapCatalogDiagnostic | ArtisanalStrapLegacyMigrationDiagnostic | null>(null);
   const [legacyProductDiagnostic, setLegacyProductDiagnostic] = useState<ArtisanalStrapLegacyMigrationDiagnostic | null>(null);
   const [incrementalApplyDiagnostic, setIncrementalApplyDiagnostic] = useState<ArtisanalStrapLegacyMigrationDiagnostic | null>(null);
 
@@ -1864,7 +1864,7 @@ const DIAGNOSTIC_COPY: Record<string, { title: string; correction: string }> = {
   },
   migration_review_item_required: {
     title: 'Item legado exige decisão administrativa',
-    correction: 'Escolha napa-base, variante e origem do piso; ambiguidades nunca são inferidas.',
+    correction: 'Use a ação concreta indicada pelo tipo da revisão. Somente a origem do piso aceita resolução administrativa genérica.',
   },
 };
 
@@ -1892,6 +1892,10 @@ const LEGACY_MIGRATION_COPY: Record<string, { title: string; correction: string 
   resolved_recipe_missing_on_service_order: {
     title: 'OS histórica não recebeu a ponte de receita',
     correction: 'Revise o mapa de receita e a compatibilidade da variante da linha.',
+  },
+  legacy_replenishment_source_unavailable: {
+    title: 'Origem de reposição indisponível',
+    correction: 'Escolha uma origem atualmente disponível para a variante exata; a identidade não pode ser trocada aqui.',
   },
   ambiguous_variant_demand_not_suspended: {
     title: 'Demanda ambígua continua operacional',
@@ -1942,7 +1946,7 @@ function DiagnosticsTab({
   openEditor: (args?: OpenEditorArgs) => void;
   onRequestDryRun: () => void;
   onResolveTechnicalLine: (mapId: string) => void;
-  onResolveMigrationItem: (diagnostic: ArtisanalStrapCatalogDiagnostic) => void;
+  onResolveMigrationItem: (diagnostic: ArtisanalStrapCatalogDiagnostic | ArtisanalStrapLegacyMigrationDiagnostic) => void;
   onResolveLegacyProduct: (diagnostic: ArtisanalStrapLegacyMigrationDiagnostic) => void;
   onApplyIncrementalResolution: (diagnostic: ArtisanalStrapLegacyMigrationDiagnostic) => void;
 }) {
@@ -2008,12 +2012,21 @@ function DiagnosticsTab({
                   correction: 'Abra o cadastro relacionado e saneie a origem da inconsistência.',
                 };
                 const variant = catalog.variants.find((item) => item.id === issue.entity_id);
+                const migrationEntityType = String(issue.details?.entity_type || '');
+                const canResolveFloorReview = issue.issue_code === 'migration_review_item_required'
+                  && ['legacy_replenishment_mode', 'legacy_replenishment_source_unavailable'].includes(migrationEntityType);
                 return (
                   <div key={`${issue.issue_code}-${issue.entity_id}`} className="flex flex-col gap-2 rounded-md border border-border p-3 sm:flex-row sm:items-center sm:justify-between">
                     <div className="min-w-0">
                       <p className="text-sm font-semibold">{copy.title}</p>
                       <p className="text-xs text-muted-foreground">{copy.correction}</p>
                       <p className="mt-1 truncate font-mono text-[9px] text-muted-foreground">{issue.entity_id}</p>
+                      {issue.issue_code === 'migration_review_item_required' && !canResolveFloorReview && (
+                        <details className="mt-2 rounded-md bg-muted/30 p-2">
+                          <summary className="cursor-pointer text-xs font-semibold">Revisão somente informativa · {migrationEntityType || 'tipo não informado'}</summary>
+                          <pre className="mt-2 max-h-44 overflow-auto whitespace-pre-wrap text-[10px] text-muted-foreground">{JSON.stringify(issue.details, null, 2)}</pre>
+                        </details>
+                      )}
                     </div>
                     {variant && (
                       <Button variant="outline" size="sm" onClick={() => openEditor({ mode: 'review', variantId: variant.id })}>
@@ -2026,11 +2039,10 @@ function DiagnosticsTab({
                           Vincular medida
                         </Button>
                       )}
-                    {['legacy_recipe_map_review_required', 'migration_review_item_required'].includes(issue.issue_code)
-                      && String(issue.details?.entity_type || '') !== 'legacy_product'
+                    {(issue.issue_code === 'legacy_recipe_map_review_required' || canResolveFloorReview)
                       && catalog.capabilities.resolve_strap_migration && (
                         <Button variant="outline" size="sm" onClick={() => onResolveMigrationItem(issue)}>
-                          Resolver migração
+                          {canResolveFloorReview ? 'Confirmar origem do piso' : 'Vincular receita'}
                         </Button>
                       )}
                   </div>
@@ -2089,6 +2101,11 @@ function DiagnosticsTab({
                             details: issueDetails,
                           })}
                         >Reaplicar ponte de receita</Button>
+                      )}
+                      {issue.issue_code === 'legacy_replenishment_source_unavailable' && (
+                        <Button size="sm" variant="outline" onClick={() => onResolveMigrationItem(issue)}>
+                          Escolher origem disponível
+                        </Button>
                       )}
                     </div>
                     <details className="rounded-md bg-muted/30 p-2"><summary className="cursor-pointer text-xs font-semibold">Detalhes e blockers</summary><pre className="mt-2 max-h-52 overflow-auto whitespace-pre-wrap text-[10px] text-muted-foreground">{JSON.stringify(issue.details, null, 2)}</pre></details>

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildLegacyStrapProductAllocations,
   decimalToMigrationUnits,
+  isLegacySelfTargetAllocation,
 } from '@/lib/legacyStrapMigration';
 
 const VARIANT_A = '11111111-1111-4111-8111-111111111111';
@@ -82,5 +83,11 @@ describe('legacyStrapMigration', () => {
       expectedReservedStock: 4,
     })).toThrow(/reservado do produto não confere/i);
   });
-});
 
+  it('só reconhece documento congelado como conservado numa alocação self-target', () => {
+    const legacyProductId = '33333333-3333-4333-8333-333333333333';
+    expect(isLegacySelfTargetAllocation(legacyProductId, [legacyProductId])).toBe(true);
+    expect(isLegacySelfTargetAllocation(legacyProductId, [legacyProductId, legacyProductId])).toBe(false);
+    expect(isLegacySelfTargetAllocation(legacyProductId, [VARIANT_A])).toBe(false);
+  });
+});

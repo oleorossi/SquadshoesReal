@@ -25,6 +25,7 @@ import {
 import {
   buildLegacyStrapProductAllocations,
   decimalToMigrationUnits,
+  isLegacySelfTargetAllocation,
   migrationUnitsToDecimal,
   type LegacyStrapAllocationDraft,
 } from '@/lib/legacyStrapMigration';
@@ -94,14 +95,21 @@ export function ArtisanalStrapLegacyProductMigrationDialog({
 
   const assignablePurchaseItems = (details?.open_purchase_order_items || []).filter((item) => item.assignable);
   const blockedPurchaseItems = (details?.open_purchase_order_items || []).filter((item) => !item.assignable);
+  const assignableServiceItems = (details?.open_service_order_items || []).filter((item) => item.assignable !== false);
+  const blockedServiceItems = (details?.open_service_order_items || []).filter((item) => item.assignable === false);
   const selectedVariantIds = new Set(allocations.map((allocation) => allocation.variantId).filter(Boolean));
+  const selectedTargetProductIds = allocations.flatMap((allocation) => {
+    const variant = catalog.variants.find((entry) => entry.id === allocation.variantId);
+    return variant ? [variant.finished_product_id] : [];
+  });
+  const isSelfTarget = Boolean(details && isLegacySelfTargetAllocation(
+    details.legacy_product_id,
+    selectedTargetProductIds,
+  ));
 
   const built = useMemo(() => {
     if (!details) return { payload: null, error: 'Produto legado não informado.' };
     try {
-      if (blockedPurchaseItems.length > 0) {
-        throw new Error('Há OC com snapshot imutável. Ela precisa ser concluída ou tratada pelo bloqueio administrativo antes de refazer o rateio.');
-      }
       const selectedVariants = allocations.map((allocation) => (
         catalog.variants.find((variant) => variant.id === allocation.variantId)
       ));
@@ -111,6 +119,9 @@ export function ArtisanalStrapLegacyProductMigrationDialog({
       const targetProductIds = selectedVariants.map((variant) => variant!.finished_product_id);
       if (new Set(targetProductIds).size !== targetProductIds.length) {
         throw new Error('Duas variantes apontam para o mesmo produto acabado; desambigue o cadastro antes do rateio.');
+      }
+      if (blockedPurchaseItems.length > 0 && !isLegacySelfTargetAllocation(details.legacy_product_id, targetProductIds)) {
+        throw new Error('Há OC congelada. Só é seguro conservá-la numa única alocação que mantenha o próprio produto legado; split ou outro destino exigem concluir ou sanear o documento.');
       }
       return {
         payload: buildLegacyStrapProductAllocations({
@@ -122,7 +133,7 @@ export function ArtisanalStrapLegacyProductMigrationDialog({
             remainingReserved: reservation.remaining_reserved,
           })),
           assignablePurchaseItemIds: assignablePurchaseItems.map((item) => item.id),
-          serviceOrderItemIds: (details.open_service_order_items || []).map((item) => item.id),
+          serviceOrderItemIds: assignableServiceItems.map((item) => item.id),
           reservationAssignments,
           purchaseAssignments,
           serviceAssignments,
@@ -132,7 +143,7 @@ export function ArtisanalStrapLegacyProductMigrationDialog({
     } catch (error) {
       return { payload: null, error: error instanceof Error ? error.message : 'Rateio inválido.' };
     }
-  }, [allocations, assignablePurchaseItems, blockedPurchaseItems.length, catalog.variants, details, purchaseAssignments, reservationAssignments, serviceAssignments]);
+  }, [allocations, assignablePurchaseItems, assignableServiceItems, blockedPurchaseItems.length, catalog.variants, details, purchaseAssignments, reservationAssignments, serviceAssignments]);
 
   const allocatedQuantity = useMemo(() => {
     try {
@@ -259,18 +270,37 @@ export function ArtisanalStrapLegacyProductMigrationDialog({
                 </div>
               ))}
               {blockedPurchaseItems.length > 0 && (
-                <Alert variant="destructive"><Warning className="h-4 w-4" /><AlertTitle>OCs com snapshot não podem ser remapeadas</AlertTitle><AlertDescription className="space-y-1">{blockedPurchaseItems.map((item) => <p key={item.id}>{item.order_number || item.purchase_order_id}: {item.blocking_reason || 'documento imutável'}</p>)}</AlertDescription></Alert>
+                <Alert variant={isSelfTarget ? 'default' : 'destructive'}>
+                  <Warning className="h-4 w-4" />
+                  <AlertTitle>{isSelfTarget ? 'OC congelada preservada no próprio produto' : 'OCs congeladas não podem ser remapeadas'}</AlertTitle>
+                  <AlertDescription className="space-y-1">
+                    <p>{isSelfTarget
+                      ? 'A alocação é única e aponta para o produto legado. Estes IDs ficam somente leitura e não entram no payload de reescrita.'
+                      : 'Split ou troca de produto permanece bloqueado; o documento imutável nunca é atribuído a outra variante.'}</p>
+                    {blockedPurchaseItems.map((item) => <p key={item.id}>{item.order_number || item.purchase_order_id}: {item.blocking_reason || 'documento imutável'}</p>)}
+                  </AlertDescription>
+                </Alert>
               )}
             </section>
 
             <section className="space-y-2">
               <h3 className="text-sm font-semibold">4. OS abertas</h3>
-              {(details.open_service_order_items || []).length === 0 ? <p className="text-xs text-muted-foreground">Nenhuma linha de OS aberta.</p> : details.open_service_order_items.map((item) => (
+              {assignableServiceItems.length === 0 ? <p className="text-xs text-muted-foreground">Nenhuma linha de OS aberta e atribuível.</p> : assignableServiceItems.map((item) => (
                 <div key={item.id} className="flex flex-col gap-2 rounded-md border border-border p-3 sm:flex-row sm:items-center sm:justify-between">
                   <div><p className="text-xs font-semibold">{item.order_number || item.service_order_id}</p><p className="text-xs text-muted-foreground">Restante: {quantityLabel(item.remaining_meters)} m · {item.line_status}</p></div>
                   <AssignmentSelect label={`Variante do item de OS ${item.id}`} value={serviceAssignments[item.id]} onValueChange={(value) => setServiceAssignments((current) => ({ ...current, [item.id]: value }))} />
                 </div>
               ))}
+              {blockedServiceItems.length > 0 && (
+                <Alert>
+                  <Warning className="h-4 w-4" />
+                  <AlertTitle>OS somente leitura</AlertTitle>
+                  <AlertDescription className="space-y-1">
+                    <p>O cabeçalho está terminal; estas linhas não são obrigatórias e seus IDs não entram no payload.</p>
+                    {blockedServiceItems.map((item) => <p key={item.id}>{item.order_number || item.service_order_id}: {item.blocking_reason || 'cabeçalho terminal'}</p>)}
+                  </AlertDescription>
+                </Alert>
+              )}
             </section>
 
             <section className="grid gap-3 sm:grid-cols-2">

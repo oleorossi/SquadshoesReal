@@ -512,6 +512,82 @@ BEFORE UPDATE OF migration_run_id,entity_type,legacy_id,reason,candidates
 ON public.artisanal_strap_migration_review_items
 FOR EACH ROW EXECUTE FUNCTION public.tg_guard_active_strap_migration_review_provenance();
 
+CREATE OR REPLACE FUNCTION public.tg_block_strap_migration_dry_run_during_cutover()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM public.artisanal_strap_migration_cutovers c
+     WHERE c.status IN ('applying','applied','applied_with_review')
+  ) THEN
+    RAISE EXCEPTION 'Novo dry-run bloqueado enquanto existe cutover ativo'
+      USING ERRCODE='55000',
+        HINT='Conclua as resolucoes incrementais ou reverta o cutover atual.';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_block_strap_migration_dry_run_during_cutover
+  ON public.artisanal_strap_migration_runs;
+CREATE TRIGGER trg_block_strap_migration_dry_run_during_cutover
+BEFORE INSERT ON public.artisanal_strap_migration_runs
+FOR EACH ROW EXECUTE FUNCTION
+  public.tg_block_strap_migration_dry_run_during_cutover();
+
+-- 03050 contem o inventario read-only completo. Mantemos aquele corpo como
+-- helper interno e fazemos desta migration (a ultima do conjunto) o portao
+-- transacional final da RPC publica.
+DO $$
+BEGIN
+  IF to_regprocedure(
+       'public.run_artisanal_strap_catalog_migration_dry_run(text)') IS NOT NULL
+     AND to_regprocedure(
+       'public.run_artisanal_strap_catalog_migration_dry_run_unfenced_202701(text)') IS NULL THEN
+    ALTER FUNCTION public.run_artisanal_strap_catalog_migration_dry_run(text)
+      RENAME TO run_artisanal_strap_catalog_migration_dry_run_unfenced_202701;
+  END IF;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.run_artisanal_strap_catalog_migration_dry_run(
+  p_note text DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  PERFORM public.assert_artisanal_strap_capability('resolve_strap_migration');
+  PERFORM pg_advisory_xact_lock(hashtextextended(
+    'artisanal-strap-legacy-cutover',0));
+  IF EXISTS (
+    SELECT 1 FROM public.artisanal_strap_migration_cutovers c
+     WHERE c.status IN ('applying','applied','applied_with_review')
+  ) THEN
+    RAISE EXCEPTION 'Novo dry-run bloqueado enquanto existe cutover ativo'
+      USING ERRCODE='55000',
+        HINT='Conclua as resolucoes incrementais ou reverta o cutover atual.';
+  END IF;
+  RETURN public.run_artisanal_strap_catalog_migration_dry_run_unfenced_202701(
+    p_note);
+END;
+$$;
+
+REVOKE ALL ON FUNCTION
+  public.run_artisanal_strap_catalog_migration_dry_run_unfenced_202701(text)
+FROM PUBLIC,anon,authenticated;
+REVOKE ALL ON FUNCTION
+  public.run_artisanal_strap_catalog_migration_dry_run(text)
+FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION
+  public.run_artisanal_strap_catalog_migration_dry_run(text)
+TO authenticated;
+
 DROP TRIGGER IF EXISTS trg_capture_artisanal_strap_product_provenance
   ON public.artisanal_strap_migration_review_items;
 CREATE TRIGGER trg_capture_artisanal_strap_product_provenance
@@ -941,6 +1017,7 @@ AS $$
 DECLARE
   v_map_before jsonb;
   v_map public.legacy_artisanal_recipe_map%ROWTYPE;
+  v_map_exists boolean:=false;
   v_recipe public.artisanal_strap_recipes%ROWTYPE;
   v_order record;
   v_item record;
@@ -953,34 +1030,225 @@ DECLARE
   v_item_snapshot_before jsonb;
   v_item_snapshot_after jsonb;
   v_item_compatible boolean;
+  v_item_can_restore boolean;
+  v_item_mismatch_review_id uuid;
   v_order_has_unresolved_line boolean;
   v_order_technical_suspension boolean;
   v_reason text:=public.require_strap_change_reason(p_reason);
   v_correlation_id uuid:=gen_random_uuid();
 BEGIN
   PERFORM public.assert_artisanal_strap_capability('resolve_strap_migration');
-  IF NOT EXISTS (SELECT 1 FROM public.artisanal_recipes WHERE id=p_legacy_recipe_id) THEN
+  PERFORM pg_advisory_xact_lock(hashtextextended(
+    'artisanal-strap-legacy-cutover',0));
+  PERFORM 1 FROM public.artisanal_recipes
+   WHERE id=p_legacy_recipe_id FOR SHARE;
+  IF NOT FOUND THEN
     RAISE EXCEPTION 'Receita legada inexistente';
   END IF;
   SELECT * INTO v_recipe FROM public.artisanal_strap_recipes
-   WHERE id=p_canonical_recipe_id;
+   WHERE id=p_canonical_recipe_id FOR SHARE;
   IF NOT FOUND THEN RAISE EXCEPTION 'Receita canonica inexistente'; END IF;
 
-  SELECT to_jsonb(m) INTO v_map_before
+  SELECT * INTO v_map
     FROM public.legacy_artisanal_recipe_map m
    WHERE m.legacy_recipe_id=p_legacy_recipe_id FOR UPDATE;
+  v_map_exists:=FOUND;
+  v_map_before:=CASE WHEN v_map_exists THEN to_jsonb(v_map) ELSE NULL END;
+
+  -- A primeira resolucao congela L->C. Repetir exatamente L->C e replay
+  -- idempotente; trocar C reinterpretaria OS/snapshots historicos e nunca e
+  -- uma correcao in-place (crie uma nova versao prospectiva da receita).
+  IF v_map_exists AND v_map.canonical_recipe_id IS NOT NULL THEN
+    IF v_map.canonical_recipe_id=p_canonical_recipe_id
+       AND v_map.status='resolved' THEN
+      RETURN to_jsonb(v_map)||jsonb_build_object(
+        'replayed',true,'immutable_mapping',true,
+        'correlation_id',v_correlation_id);
+    END IF;
+    RAISE EXCEPTION 'Mapa de receita legada e imutavel: % ja aponta para %',
+      p_legacy_recipe_id,v_map.canonical_recipe_id
+      USING ERRCODE='55000',
+        DETAIL=jsonb_build_object(
+          'code','legacy_recipe_mapping_immutable',
+          'legacy_recipe_id',p_legacy_recipe_id,
+          'existing_canonical_recipe_id',v_map.canonical_recipe_id,
+          'requested_canonical_recipe_id',p_canonical_recipe_id,
+          'mapping_status',v_map.status
+        )::text,
+        HINT='Crie uma nova versao canonica para uso prospectivo; documentos e mapa existentes nao sao reescritos.';
+  END IF;
+
+  -- Ordem deterministica compartilhada com apply/rollback: linha -> cabecalho.
+  -- Depois destes locks, toda validacao abaixo e repetida sobre o estado que
+  -- sera efetivamente gravado.
+  PERFORM 1
+    FROM public.service_order_items i
+    JOIN public.service_orders so ON so.id=i.service_order_id
+   WHERE so.artisanal_recipe_id=p_legacy_recipe_id
+   ORDER BY i.id FOR UPDATE OF i;
+  PERFORM 1 FROM public.service_orders so
+   WHERE so.artisanal_recipe_id=p_legacy_recipe_id
+   ORDER BY so.id FOR UPDATE;
+
+  IF EXISTS (
+    SELECT 1 FROM public.service_orders so
+     WHERE so.artisanal_recipe_id=p_legacy_recipe_id
+       AND so.canonical_strap_recipe_id IS NOT NULL
+       AND so.canonical_strap_recipe_id<>p_canonical_recipe_id
+  ) OR EXISTS (
+    SELECT 1
+      FROM public.service_order_items i
+      JOIN public.service_orders so ON so.id=i.service_order_id
+     WHERE so.artisanal_recipe_id=p_legacy_recipe_id
+       AND i.strap_recipe_id IS NOT NULL
+       AND i.strap_recipe_id<>p_canonical_recipe_id
+  ) OR EXISTS (
+    SELECT 1
+      FROM public.artisanal_strap_migration_entity_snapshots s
+     WHERE s.entity_type='service_order'
+       AND s.entity_id IN (
+         SELECT so.id FROM public.service_orders so
+          WHERE so.artisanal_recipe_id=p_legacy_recipe_id
+       )
+       AND (
+         (nullif(s.before_data->>'canonical_strap_recipe_id','') IS NOT NULL
+           AND (s.before_data->>'canonical_strap_recipe_id')::uuid
+             <>p_canonical_recipe_id)
+         OR (nullif(s.after_data->>'canonical_strap_recipe_id','') IS NOT NULL
+           AND (s.after_data->>'canonical_strap_recipe_id')::uuid
+             <>p_canonical_recipe_id)
+       )
+  ) OR EXISTS (
+    SELECT 1
+      FROM public.artisanal_strap_migration_entity_snapshots s
+     WHERE s.entity_type='service_order_item'
+       AND s.entity_id IN (
+         SELECT i.id
+           FROM public.service_order_items i
+           JOIN public.service_orders so ON so.id=i.service_order_id
+          WHERE so.artisanal_recipe_id=p_legacy_recipe_id
+       )
+       AND (
+         (nullif(s.before_data->>'strap_recipe_id','') IS NOT NULL
+           AND (s.before_data->>'strap_recipe_id')::uuid<>p_canonical_recipe_id)
+         OR (nullif(s.after_data->>'strap_recipe_id','') IS NOT NULL
+           AND (s.after_data->>'strap_recipe_id')::uuid<>p_canonical_recipe_id)
+       )
+  ) OR EXISTS (
+    SELECT 1
+      FROM public.strap_production_batch_items bi
+      JOIN public.service_order_items i ON i.strap_batch_item_id=bi.id
+      JOIN public.service_orders so ON so.id=i.service_order_id
+     WHERE so.artisanal_recipe_id=p_legacy_recipe_id
+       AND bi.recipe_id<>p_canonical_recipe_id
+  ) OR EXISTS (
+    SELECT 1
+      FROM public.strap_production_receipts pr
+      JOIN public.service_order_items i
+        ON i.id=pr.service_order_item_id OR i.strap_batch_item_id=pr.batch_item_id
+      JOIN public.service_orders so ON so.id=i.service_order_id
+     WHERE so.artisanal_recipe_id=p_legacy_recipe_id
+       AND pr.recipe_id<>p_canonical_recipe_id
+  ) OR EXISTS (
+    SELECT 1
+      FROM public.sale_order_strap_demands d
+      JOIN public.service_order_items i ON i.sale_order_strap_demand_id=d.id
+      JOIN public.service_orders so ON so.id=i.service_order_id
+     WHERE so.artisanal_recipe_id=p_legacy_recipe_id
+       AND d.recipe_id IS NOT NULL AND d.recipe_id<>p_canonical_recipe_id
+  ) OR EXISTS (
+    SELECT 1
+      FROM public.stock_movements sm
+      JOIN public.service_order_items i
+        ON i.id=sm.service_order_item_id OR i.strap_batch_item_id=sm.strap_batch_item_id
+      JOIN public.service_orders so ON so.id=i.service_order_id
+     WHERE so.artisanal_recipe_id=p_legacy_recipe_id
+       AND sm.strap_recipe_id IS NOT NULL
+       AND sm.strap_recipe_id<>p_canonical_recipe_id
+  ) OR EXISTS (
+    SELECT 1
+      FROM public.artisanal_strap_operational_audit_log a
+     WHERE (
+       a.entity_type='service_order'
+       AND a.entity_id IN (
+         SELECT so.id FROM public.service_orders so
+          WHERE so.artisanal_recipe_id=p_legacy_recipe_id
+       )
+       AND (
+         (coalesce(a.before_data->>'canonical_strap_recipe_id','')
+           ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+           AND (a.before_data->>'canonical_strap_recipe_id')::uuid
+             <>p_canonical_recipe_id)
+         OR (coalesce(a.after_data->>'canonical_strap_recipe_id','')
+           ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+           AND (a.after_data->>'canonical_strap_recipe_id')::uuid
+             <>p_canonical_recipe_id)
+       )
+     ) OR (
+       a.entity_type='service_order_item'
+       AND a.entity_id IN (
+         SELECT i.id
+           FROM public.service_order_items i
+           JOIN public.service_orders so ON so.id=i.service_order_id
+          WHERE so.artisanal_recipe_id=p_legacy_recipe_id
+       )
+       AND (
+         (coalesce(a.before_data->>'strap_recipe_id','')
+           ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+           AND (a.before_data->>'strap_recipe_id')::uuid<>p_canonical_recipe_id)
+         OR (coalesce(a.after_data->>'strap_recipe_id','')
+           ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+           AND (a.after_data->>'strap_recipe_id')::uuid<>p_canonical_recipe_id)
+       )
+     )
+  ) THEN
+    RAISE EXCEPTION 'Receita legada possui documento/snapshot/fato com referencia canonica diferente; re-resolucao bloqueada'
+      USING ERRCODE='55000',
+        DETAIL=jsonb_build_object(
+          'code','legacy_recipe_fact_conflict',
+          'legacy_recipe_id',p_legacy_recipe_id,
+          'requested_canonical_recipe_id',p_canonical_recipe_id,
+          'conflicting_order_ids',coalesce((
+            SELECT jsonb_agg(so.id ORDER BY so.id)
+              FROM public.service_orders so
+             WHERE so.artisanal_recipe_id=p_legacy_recipe_id
+               AND so.canonical_strap_recipe_id IS NOT NULL
+               AND so.canonical_strap_recipe_id<>p_canonical_recipe_id
+          ),'[]'::jsonb),
+          'conflicting_item_ids',coalesce((
+            SELECT jsonb_agg(i.id ORDER BY i.id)
+              FROM public.service_order_items i
+              JOIN public.service_orders so ON so.id=i.service_order_id
+             WHERE so.artisanal_recipe_id=p_legacy_recipe_id
+               AND i.strap_recipe_id IS NOT NULL
+               AND i.strap_recipe_id<>p_canonical_recipe_id
+          ),'[]'::jsonb)
+        )::text,
+        HINT='Preserve o historico e cadastre uma nova versao prospectiva.';
+  END IF;
+
   PERFORM set_config('app.strap_change_reason',v_reason,true);
-  INSERT INTO public.legacy_artisanal_recipe_map(
-    legacy_recipe_id,canonical_recipe_id,status,resolution_reason,
-    resolved_by,resolved_at
-  ) VALUES (
-    p_legacy_recipe_id,p_canonical_recipe_id,'resolved',v_reason,auth.uid(),now()
-  )
-  ON CONFLICT (legacy_recipe_id) DO UPDATE SET
-    canonical_recipe_id=EXCLUDED.canonical_recipe_id,status='resolved',
-    resolution_reason=EXCLUDED.resolution_reason,resolved_by=EXCLUDED.resolved_by,
-    resolved_at=EXCLUDED.resolved_at,updated_at=now()
-  RETURNING * INTO v_map;
+  IF v_map_exists THEN
+    UPDATE public.legacy_artisanal_recipe_map SET
+      canonical_recipe_id=p_canonical_recipe_id,status='resolved',
+      resolution_reason=v_reason,resolved_by=auth.uid(),resolved_at=now(),
+      updated_at=now()
+     WHERE legacy_recipe_id=p_legacy_recipe_id
+       AND canonical_recipe_id IS NULL
+       AND status IN ('review_required','rejected')
+    RETURNING * INTO v_map;
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'Mapa de receita mudou durante a resolucao'
+        USING ERRCODE='40001';
+    END IF;
+  ELSE
+    INSERT INTO public.legacy_artisanal_recipe_map(
+      legacy_recipe_id,canonical_recipe_id,status,resolution_reason,
+      resolved_by,resolved_at
+    ) VALUES (
+      p_legacy_recipe_id,p_canonical_recipe_id,'resolved',v_reason,auth.uid(),now()
+    ) RETURNING * INTO v_map;
+  END IF;
   UPDATE public.artisanal_strap_migration_review_items
      SET status='resolved',
          resolution=jsonb_build_object('legacy_recipe_id',p_legacy_recipe_id,
@@ -990,10 +1258,34 @@ BEGIN
      AND legacy_id=p_legacy_recipe_id::text
      AND status='review_required';
 
+  -- Se a OS ficou terminal enquanto aguardava a escolha, a ponte vive somente
+  -- no mapa. O documento e suas linhas permanecem byte-a-byte historicos.
+  UPDATE public.artisanal_strap_migration_review_items ri SET
+    status='resolved',
+    resolution=jsonb_build_object(
+      'legacy_recipe_id',p_legacy_recipe_id,
+      'canonical_recipe_id',p_canonical_recipe_id,
+      'service_order_id',ri.legacy_id,
+      'historical_document_preserved',true,
+      'reason',v_reason,
+      'correlation_id',v_correlation_id),
+    resolved_by=auth.uid(),resolved_at=now(),updated_at=now()
+   WHERE ri.entity_type='open_service_order_legacy_recipe'
+     AND ri.status='review_required'
+     AND ri.candidates->>'legacy_recipe_id'=p_legacy_recipe_id::text
+     AND ri.candidates->>'service_order_id'=ri.legacy_id
+     AND EXISTS (
+       SELECT 1 FROM public.service_orders so
+        WHERE so.id::text=ri.legacy_id
+          AND so.artisanal_recipe_id=p_legacy_recipe_id
+          AND NOT public.is_open_legacy_strap_service_status(so.status)
+     );
+
   PERFORM set_config('app.strap_engine_write','1',true);
   FOR v_order IN
     SELECT so.* FROM public.service_orders so
      WHERE so.artisanal_recipe_id=p_legacy_recipe_id
+       AND public.is_open_legacy_strap_service_status(so.status)
      ORDER BY so.id FOR UPDATE
   LOOP
     v_open_order_review_id:=NULL;
@@ -1016,8 +1308,6 @@ BEGIN
        AND ri.candidates->>'service_order_id'=v_order.id::text
        AND ri.candidates->>'legacy_recipe_id'=p_legacy_recipe_id::text
        AND c.id=v_order.strap_migration_cutover_id
-     ORDER BY c.created_at DESC
-     LIMIT 1
      FOR UPDATE OF ri;
     v_order_technical_suspension:=v_open_order_review_id IS NOT NULL
       AND v_order.status='Suspensa'
@@ -1032,12 +1322,21 @@ BEGIN
         v_order_cutover_id::text;
     v_before:=to_jsonb(v_order);
     UPDATE public.service_orders
-       SET canonical_strap_recipe_id=p_canonical_recipe_id,
+       SET canonical_strap_recipe_id=CASE
+             WHEN canonical_strap_recipe_id IS NULL THEN p_canonical_recipe_id
+             ELSE canonical_strap_recipe_id END,
            strap_migration_status=CASE WHEN v_open_order_review_id IS NULL
              THEN 'resolved' ELSE strap_migration_status END,
            strap_migration_reason=CASE WHEN v_open_order_review_id IS NULL
              THEN v_reason ELSE strap_migration_reason END
-     WHERE id=v_order.id;
+     WHERE id=v_order.id
+       AND public.is_open_legacy_strap_service_status(status)
+       AND (canonical_strap_recipe_id IS NULL
+         OR canonical_strap_recipe_id=p_canonical_recipe_id);
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'OS aberta % mudou durante a resolucao',v_order.id
+        USING ERRCODE='40001';
+    END IF;
 
     -- Linha ja identificada por variante recebe a receita somente quando as FKs
     -- de medida/base conferem. Incompatibilidade aberta fica suspensa; nunca se
@@ -1045,9 +1344,20 @@ BEGIN
     FOR v_item IN
       SELECT i.* FROM public.service_order_items i
        WHERE i.service_order_id=v_order.id AND i.strap_variant_id IS NOT NULL
+         AND public.is_open_legacy_strap_service_status(i.line_status)
        ORDER BY i.id FOR UPDATE
     LOOP
       v_item_before:=to_jsonb(v_item);
+      v_item_mismatch_review_id:=NULL;
+      SELECT ri.id INTO v_item_mismatch_review_id
+        FROM public.artisanal_strap_migration_review_items ri
+       WHERE ri.entity_type='open_service_order_recipe_mismatch'
+         AND ri.legacy_id=v_item.id::text
+         AND ri.status='review_required'
+         AND ri.candidates->>'service_order_id'=v_order.id::text
+         AND ri.candidates->>'service_order_item_id'=v_item.id::text
+         AND ri.candidates->>'legacy_recipe_id'=p_legacy_recipe_id::text
+       FOR UPDATE;
       SELECT EXISTS (
         SELECT 1 FROM public.artisanal_strap_variants v
          WHERE v.id=v_item.strap_variant_id
@@ -1065,61 +1375,63 @@ BEGIN
              AND s.entity_type='service_order_item'
              AND s.entity_id=v_item.id;
         END IF;
+        v_item_can_restore:=v_order_technical_suspension
+          AND v_item.line_status='Suspensa'
+          AND (
+            v_item.suspension_reason='Receita legada requer resolucao'
+            OR (
+              v_item.suspension_reason=
+                'Receita legada nao compativel com variante canonica'
+              AND v_item_mismatch_review_id IS NOT NULL
+            )
+          )
+          AND v_item_snapshot_after->>'line_status'='Suspensa'
+          AND v_item_snapshot_after->>'suspension_reason'=
+            'Receita legada requer resolucao'
+          AND v_item_snapshot_before->>'line_status'=
+            v_item.suspended_from_status;
         UPDATE public.service_order_items
-           SET strap_recipe_id=p_canonical_recipe_id,
+           SET strap_recipe_id=CASE WHEN strap_recipe_id IS NULL
+                 THEN p_canonical_recipe_id ELSE strap_recipe_id END,
                -- Restaura exatamente a suspensao anterior (inclusive uma
                -- suspensao administrativa), nunca um status inferido.
-               line_status=CASE WHEN v_order_technical_suspension
-                 AND v_item.line_status='Suspensa'
-                 AND v_item.suspension_reason='Receita legada requer resolucao'
-                 AND v_item_snapshot_after->>'line_status'='Suspensa'
-                 AND v_item_snapshot_after->>'suspension_reason'=
-                   'Receita legada requer resolucao'
-                 AND v_item_snapshot_before->>'line_status'=
-                   v_item.suspended_from_status
+               line_status=CASE WHEN v_item_can_restore
                  THEN v_item_snapshot_before->>'line_status'
                  ELSE line_status END,
-               suspended_from_status=CASE WHEN v_order_technical_suspension
-                 AND v_item.line_status='Suspensa'
-                 AND v_item.suspension_reason='Receita legada requer resolucao'
-                 AND v_item_snapshot_after->>'line_status'='Suspensa'
-                 AND v_item_snapshot_after->>'suspension_reason'=
-                   'Receita legada requer resolucao'
-                 AND v_item_snapshot_before->>'line_status'=
-                   v_item.suspended_from_status
+               suspended_from_status=CASE WHEN v_item_can_restore
                  THEN v_item_snapshot_before->>'suspended_from_status'
                  ELSE suspended_from_status END,
-               suspension_reason=CASE WHEN v_order_technical_suspension
-                 AND v_item.line_status='Suspensa'
-                 AND v_item.suspension_reason='Receita legada requer resolucao'
-                 AND v_item_snapshot_after->>'line_status'='Suspensa'
-                 AND v_item_snapshot_after->>'suspension_reason'=
-                   'Receita legada requer resolucao'
-                 AND v_item_snapshot_before->>'line_status'=
-                   v_item.suspended_from_status
+               suspension_reason=CASE WHEN v_item_can_restore
                  THEN v_item_snapshot_before->>'suspension_reason'
                  ELSE suspension_reason END,
-               suspended_by=CASE WHEN v_order_technical_suspension
-                 AND v_item.line_status='Suspensa'
-                 AND v_item.suspension_reason='Receita legada requer resolucao'
-                 AND v_item_snapshot_after->>'line_status'='Suspensa'
-                 AND v_item_snapshot_after->>'suspension_reason'=
-                   'Receita legada requer resolucao'
-                 AND v_item_snapshot_before->>'line_status'=
-                   v_item.suspended_from_status
+               suspended_by=CASE WHEN v_item_can_restore
                  THEN nullif(v_item_snapshot_before->>'suspended_by','')::uuid
                  ELSE suspended_by END,
-               suspended_at=CASE WHEN v_order_technical_suspension
-                 AND v_item.line_status='Suspensa'
-                 AND v_item.suspension_reason='Receita legada requer resolucao'
-                 AND v_item_snapshot_after->>'line_status'='Suspensa'
-                 AND v_item_snapshot_after->>'suspension_reason'=
-                   'Receita legada requer resolucao'
-                 AND v_item_snapshot_before->>'line_status'=
-                   v_item.suspended_from_status
+               suspended_at=CASE WHEN v_item_can_restore
                  THEN nullif(v_item_snapshot_before->>'suspended_at','')::timestamptz
                  ELSE suspended_at END
-         WHERE id=v_item.id;
+         WHERE id=v_item.id
+           AND public.is_open_legacy_strap_service_status(line_status)
+           AND (strap_recipe_id IS NULL OR strap_recipe_id=p_canonical_recipe_id);
+        IF NOT FOUND THEN
+          RAISE EXCEPTION 'Linha aberta de OS % mudou durante a resolucao',v_item.id
+            USING ERRCODE='40001';
+        END IF;
+        IF v_item_mismatch_review_id IS NOT NULL
+           AND (v_item.line_status<>'Suspensa' OR v_item_can_restore) THEN
+          UPDATE public.artisanal_strap_migration_review_items ri SET
+            status='resolved',
+            resolution=jsonb_build_object(
+              'legacy_recipe_id',p_legacy_recipe_id,
+              'canonical_recipe_id',p_canonical_recipe_id,
+              'service_order_id',v_order.id,
+              'service_order_item_id',v_item.id,
+              'reason',v_reason,
+              'correlation_id',v_correlation_id),
+            resolved_by=auth.uid(),resolved_at=now(),updated_at=now()
+           WHERE ri.id=v_item_mismatch_review_id
+             AND ri.status='review_required';
+        END IF;
       ELSIF public.is_open_legacy_strap_service_status(v_item.line_status) THEN
         UPDATE public.service_order_items
            SET suspended_from_status=coalesce(suspended_from_status,line_status),
@@ -1170,6 +1482,13 @@ BEGIN
               WHERE v.id=i.strap_variant_id
                 AND v.measure_id=v_recipe.measure_id
                 AND v.base_group_id=v_recipe.base_group_id
+           )
+           OR EXISTS (
+             SELECT 1
+               FROM public.artisanal_strap_migration_review_items ri
+              WHERE ri.entity_type='open_service_order_recipe_mismatch'
+                AND ri.legacy_id=i.id::text
+                AND ri.status='review_required'
            )
          )
     ) INTO v_order_has_unresolved_line;
@@ -3577,6 +3896,291 @@ BEGIN
 END;
 $$;
 
+-- Fecha a pendencia do PV somente depois de o worker ter materializado uma
+-- demanda corrente para CADA linha tecnica, exatamente conforme o sourcing
+-- persistido. Tambem reata apenas demandas que o proprio cutover suspendeu;
+-- qualquer suspensao administrativa ou drift deixa a review aberta.
+CREATE OR REPLACE FUNCTION public.try_resolve_open_sale_order_item_strap_migration(
+  p_sale_order_item_id uuid,
+  p_correlation_id uuid
+)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_item public.sale_order_items%ROWTYPE;
+  v_review public.artisanal_strap_migration_review_items%ROWTYPE;
+  v_cutover_id uuid;
+  v_actor_id uuid;
+  v_line_count integer;
+  v_preview_count integer;
+  v_blocked_count integer;
+  v_mismatch_count integer;
+  v_current_count integer;
+  v_demand public.sale_order_strap_demands%ROWTYPE;
+  v_snapshot_before jsonb;
+  v_snapshot_after jsonb;
+  v_item_before jsonb;
+  v_reason constant text:='PV legado reconciliado por identidade, origem e demanda canonicas';
+BEGIN
+  IF p_correlation_id IS NULL THEN
+    RAISE EXCEPTION 'correlation_id obrigatorio para reconciliar PV legado';
+  END IF;
+  SELECT * INTO v_item FROM public.sale_order_items i
+   WHERE i.id=p_sale_order_item_id FOR UPDATE;
+  IF NOT FOUND THEN RETURN false; END IF;
+
+  SELECT ri,c.id,coalesce(
+      auth.uid(),
+      (
+        SELECT DISTINCT (j.payload->>'requested_by')::uuid
+          FROM public.strap_demand_jobs j
+         WHERE j.correlation_id=p_correlation_id
+           AND coalesce(j.payload->>'requested_by','')
+             ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+      ),c.applied_by,r.run_by
+    )
+    INTO v_review,v_cutover_id,v_actor_id
+    FROM public.artisanal_strap_migration_review_items ri
+    JOIN public.artisanal_strap_migration_cutovers c
+      ON c.migration_run_id=ri.migration_run_id
+     AND c.status IN ('applied','applied_with_review')
+    JOIN public.artisanal_strap_migration_entity_snapshots s
+      ON s.cutover_id=c.id AND s.entity_type='sale_order_item'
+     AND s.entity_id=v_item.id
+    JOIN public.artisanal_strap_migration_runs r ON r.id=ri.migration_run_id
+   WHERE ri.entity_type='open_sale_order_item_ambiguous'
+     AND ri.legacy_id=v_item.id::text
+     AND ri.status='review_required'
+     AND ri.candidates->>'sale_order_item_id'=v_item.id::text
+     AND ri.candidates->>'sale_order_id'=v_item.sale_order_id::text
+     AND c.id=v_item.strap_migration_cutover_id
+   FOR UPDATE OF ri;
+  IF NOT FOUND THEN RETURN false; END IF;
+  IF v_actor_id IS NULL THEN
+    RAISE EXCEPTION 'Autor nominal ausente para fechar pendencia do PV legado';
+  END IF;
+
+  IF jsonb_typeof(v_item.strap_colors)<>'array'
+     OR jsonb_array_length(v_item.strap_colors)=0
+     OR jsonb_typeof(v_item.strap_sourcing)<>'object' THEN
+    RETURN false;
+  END IF;
+  v_line_count:=jsonb_array_length(v_item.strap_colors);
+  IF jsonb_object_length(v_item.strap_sourcing)<>v_line_count
+     OR EXISTS (
+       SELECT 1
+         FROM jsonb_array_elements(v_item.strap_colors)
+           WITH ORDINALITY e(value,ordinality)
+        WHERE coalesce(e.value->>'technical_strap_line_id','')
+                !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+           OR NOT (v_item.strap_sourcing ? (e.value->>'technical_strap_line_id'))
+           OR jsonb_typeof(v_item.strap_sourcing->(e.value->>'technical_strap_line_id'))
+                <>'object'
+           OR v_item.strap_sourcing->(e.value->>'technical_strap_line_id')->>'source_mode'
+                NOT IN ('internal','buy_ready')
+           OR coalesce(v_item.strap_sourcing->(e.value->>'technical_strap_line_id')
+                ->>'strap_variant_id','')
+                !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+           OR NOT EXISTS (
+             SELECT 1
+               FROM public.technical_strap_line_identity_map m
+               JOIN public.artisanal_strap_measures measure ON measure.id=m.measure_id
+              WHERE m.technical_sheet_id=v_item.reference_id
+                AND m.legacy_path='strap_colors'
+                AND m.legacy_ordinal=e.ordinality-1
+                AND m.technical_strap_line_id::text=
+                  e.value->>'technical_strap_line_id'
+                AND m.measure_id::text=e.value->>'measure_id'
+                AND measure.strap_type_id::text=e.value->>'strap_type_id'
+                AND m.status='resolved'
+           )
+     ) OR EXISTS (
+       SELECT 1 FROM jsonb_object_keys(v_item.strap_sourcing) k(key)
+        WHERE NOT EXISTS (
+          SELECT 1 FROM jsonb_array_elements(v_item.strap_colors) e(value)
+           WHERE e.value->>'technical_strap_line_id'=k.key
+        )
+     ) THEN
+    RETURN false;
+  END IF;
+
+  SELECT count(*),
+         count(*) FILTER (WHERE jsonb_array_length(p.blocking_reasons)>0),
+         count(*) FILTER (WHERE NOT EXISTS (
+           SELECT 1 FROM public.sale_order_strap_demands d
+            WHERE d.sale_order_item_id=v_item.id AND d.is_current
+              AND d.technical_strap_line_id=p.technical_strap_line_id
+              AND d.strap_variant_id=p.strap_variant_id
+              AND d.source_mode=p.source_mode
+              AND d.finished_product_id=p.finished_product_id
+              AND d.recipe_id IS NOT DISTINCT FROM p.recipe_id
+              AND d.base_product_id IS NOT DISTINCT FROM p.base_product_id
+              AND d.gross_required_m=p.gross_required_m
+         ))
+    INTO v_preview_count,v_blocked_count,v_mismatch_count
+    FROM public.preview_sale_order_strap_demand(v_item.sale_order_id) p
+   WHERE p.sale_order_item_id=v_item.id;
+  SELECT count(*) INTO v_current_count
+    FROM public.sale_order_strap_demands d
+   WHERE d.sale_order_item_id=v_item.id AND d.is_current;
+  IF v_preview_count<>v_line_count OR v_blocked_count<>0
+     OR v_mismatch_count<>0 OR v_current_count<>v_preview_count THEN
+    RETURN false;
+  END IF;
+
+  -- Preflight de TODAS as demandas antes da primeira escrita; uma suspensao
+  -- administrativa entre as linhas nao pode causar retomada parcial.
+  IF EXISTS (
+    SELECT 1
+      FROM public.sale_order_strap_demands d
+      LEFT JOIN public.artisanal_strap_migration_entity_snapshots s
+        ON s.cutover_id=v_cutover_id
+       AND s.entity_type='sale_order_strap_demand' AND s.entity_id=d.id
+     WHERE d.sale_order_item_id=v_item.id AND d.is_current
+       AND (
+         d.status IN ('error','cancelled','superseded')
+         OR (
+           d.status='suspended' AND (
+             s.entity_id IS NULL
+             OR d.suspension_reason<>
+               'Linha tecnica do PV requer escolha explicita apos migracao'
+             OR s.after_data->>'status'<>'suspended'
+             OR s.after_data->>'suspension_reason'<>
+               'Linha tecnica do PV requer escolha explicita apos migracao'
+             OR s.before_data->>'status' IS DISTINCT FROM d.suspended_from_status
+           )
+         )
+       )
+  ) THEN
+    RETURN false;
+  END IF;
+
+  PERFORM set_config('app.strap_engine_write','1',true);
+  FOR v_demand IN
+    SELECT d.* FROM public.sale_order_strap_demands d
+     WHERE d.sale_order_item_id=v_item.id AND d.is_current
+     ORDER BY d.id FOR UPDATE
+  LOOP
+    IF v_demand.status='suspended' THEN
+      SELECT s.before_data,s.after_data
+        INTO v_snapshot_before,v_snapshot_after
+        FROM public.artisanal_strap_migration_entity_snapshots s
+       WHERE s.cutover_id=v_cutover_id
+         AND s.entity_type='sale_order_strap_demand'
+         AND s.entity_id=v_demand.id;
+      IF NOT FOUND
+         OR v_demand.suspension_reason<>
+           'Linha tecnica do PV requer escolha explicita apos migracao'
+         OR v_snapshot_after->>'status'<>'suspended'
+         OR v_snapshot_after->>'suspension_reason'<>
+           'Linha tecnica do PV requer escolha explicita apos migracao'
+         OR v_snapshot_before->>'status' IS DISTINCT FROM
+           v_demand.suspended_from_status THEN
+        RETURN false;
+      END IF;
+      UPDATE public.sale_order_strap_demands SET
+        status=v_snapshot_before->>'status',
+        suspended_from_status=v_snapshot_before->>'suspended_from_status',
+        suspension_reason=v_snapshot_before->>'suspension_reason',
+        suspended_by=nullif(v_snapshot_before->>'suspended_by','')::uuid,
+        suspended_at=nullif(v_snapshot_before->>'suspended_at','')::timestamptz,
+        correlation_id=p_correlation_id,updated_at=now()
+       WHERE id=v_demand.id;
+      PERFORM public.log_artisanal_strap_migration_event(
+        'sale_order_strap_demand',v_demand.id,'resume',to_jsonb(v_demand),
+        (SELECT to_jsonb(d) FROM public.sale_order_strap_demands d
+          WHERE d.id=v_demand.id),v_reason,p_correlation_id);
+    END IF;
+  END LOOP;
+
+  -- O worker ja reconciliou a versao corrente. Se uma demanda foi apenas
+  -- reatada acima (payload identico), recalcula a variante na mesma transacao.
+  PERFORM public.reconcile_strap_variant(x.strap_variant_id,p_correlation_id,
+      'legacy_sale_order_review_resolved')
+    FROM (
+      SELECT DISTINCT d.strap_variant_id
+        FROM public.sale_order_strap_demands d
+       WHERE d.sale_order_item_id=v_item.id AND d.is_current
+       ORDER BY d.strap_variant_id
+    ) x;
+
+  IF EXISTS (
+    SELECT 1 FROM public.sale_order_strap_demands d
+     WHERE d.sale_order_item_id=v_item.id AND d.is_current
+       AND d.status IN ('suspended','error','cancelled','superseded')
+  ) THEN
+    RAISE EXCEPTION 'Reconciliacao do PV legado deixou demanda suspensa/invalida'
+      USING ERRCODE='55000';
+  END IF;
+
+  v_item_before:=to_jsonb(v_item);
+  UPDATE public.sale_order_items SET
+    strap_migration_status='migrated',
+    strap_migration_reason=v_reason
+   WHERE id=v_item.id;
+  UPDATE public.artisanal_strap_migration_review_items ri SET
+    status='resolved',
+    resolution=jsonb_build_object(
+      'sale_order_id',v_item.sale_order_id,
+      'sale_order_item_id',v_item.id,
+      'cutover_id',v_cutover_id,
+      'strap_sourcing_revision',v_item.strap_sourcing_revision,
+      'demand_count',v_current_count,
+      'reason',v_reason,
+      'correlation_id',p_correlation_id),
+    resolved_by=v_actor_id,resolved_at=now(),updated_at=now()
+   WHERE ri.id=v_review.id AND ri.status='review_required';
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Pendencia do item de PV mudou durante reconciliacao'
+      USING ERRCODE='40001';
+  END IF;
+  PERFORM public.log_artisanal_strap_migration_event(
+    'sale_order_item',v_item.id,'reconcile',v_item_before,
+    (SELECT to_jsonb(i) FROM public.sale_order_items i WHERE i.id=v_item.id),
+    v_reason,p_correlation_id);
+  RETURN true;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.tg_resolve_open_sale_order_item_strap_migration()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE v_item_id uuid;
+BEGIN
+  IF NEW.source_type='sale_order' AND NEW.status='completed'
+     AND OLD.status IS DISTINCT FROM NEW.status THEN
+    FOR v_item_id IN
+      SELECT i.id
+        FROM public.sale_order_items i
+       WHERE i.sale_order_id=NEW.source_id
+         AND EXISTS (
+           SELECT 1 FROM public.artisanal_strap_migration_review_items ri
+            WHERE ri.entity_type='open_sale_order_item_ambiguous'
+              AND ri.legacy_id=i.id::text AND ri.status='review_required'
+         )
+       ORDER BY i.id
+    LOOP
+      PERFORM public.try_resolve_open_sale_order_item_strap_migration(
+        v_item_id,NEW.correlation_id);
+    END LOOP;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_resolve_open_sale_order_item_strap_migration
+  ON public.strap_demand_jobs;
+CREATE TRIGGER trg_resolve_open_sale_order_item_strap_migration
+AFTER UPDATE OF status ON public.strap_demand_jobs
+FOR EACH ROW EXECUTE FUNCTION
+  public.tg_resolve_open_sale_order_item_strap_migration();
+
 CREATE OR REPLACE FUNCTION public.artisanal_strap_legacy_conservation_report()
 RETURNS jsonb
 LANGUAGE sql
@@ -5737,6 +6341,47 @@ $$;
 DROP TRIGGER IF EXISTS trg_debit_service_order_base ON public.service_orders;
 DROP TRIGGER IF EXISTS trg_revert_service_order_base_on_cancel ON public.service_orders;
 
+-- A relacao de produto base oficial (por exemplo, NAPA por cor), sozinha, nao
+-- o transforma em tira. O helper nominal cobre acabado/mapa/status; o trigger
+-- abaixo acrescenta as flags estruturais da propria linha OLD/NEW para tambem
+-- fechar INSERT e transicao de cadastro na mesma instrucao.
+CREATE OR REPLACE FUNCTION public.is_legacy_strap_migration_controlled_product(
+  p_product_id uuid
+)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1
+      FROM public.products p
+     WHERE p.id=p_product_id
+       AND (
+         p.strap_migration_status IN ('review_required','resolved','migrated')
+         OR EXISTS (
+           SELECT 1 FROM public.artisanal_strap_variants v
+            WHERE v.finished_product_id=p.id
+         )
+         OR EXISTS (
+           SELECT 1 FROM public.artisanal_strap_migration_product_provenance pp
+            WHERE pp.legacy_product_id=p.id
+         )
+         OR EXISTS (
+           SELECT 1 FROM public.legacy_strap_product_migration_maps m
+            WHERE m.legacy_product_id=p.id
+         )
+         OR EXISTS (
+           SELECT 1
+             FROM public.legacy_strap_product_migration_allocations a
+             JOIN public.legacy_strap_product_migration_maps m ON m.id=a.mapping_id
+            WHERE a.target_product_id=p.id
+         )
+       )
+  );
+$$;
+
 CREATE OR REPLACE FUNCTION public.tg_guard_legacy_artisanal_product_writer()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -5748,22 +6393,24 @@ DECLARE
   v_new_legacy boolean:=false;
 BEGIN
   IF TG_OP<>'INSERT' THEN
-    v_old_legacy:=coalesce(OLD.is_artisanal,false) OR EXISTS (
-      SELECT 1 FROM public.product_groups pg
-       WHERE pg.id=OLD.group_id AND coalesce(pg.is_artisanal_strap,false)
-    ) OR EXISTS (SELECT 1 FROM public.artisanal_strap_variants v
-      WHERE v.finished_product_id=OLD.id)
-      OR EXISTS (SELECT 1 FROM public.base_material_color_official_products op
-        WHERE op.official_product_id=OLD.id AND op.status='active');
+    v_old_legacy:=coalesce(OLD.is_artisanal,false)
+      OR EXISTS (
+        SELECT 1 FROM public.product_groups pg
+         WHERE pg.id=OLD.group_id
+           AND coalesce(pg.is_artisanal_strap,false)
+      ) OR coalesce(
+        OLD.strap_migration_status IN ('review_required','resolved','migrated'),false
+      ) OR public.is_legacy_strap_migration_controlled_product(OLD.id);
   END IF;
   IF TG_OP<>'DELETE' THEN
-    v_new_legacy:=coalesce(NEW.is_artisanal,false) OR EXISTS (
-      SELECT 1 FROM public.product_groups pg
-       WHERE pg.id=NEW.group_id AND coalesce(pg.is_artisanal_strap,false)
-    ) OR EXISTS (SELECT 1 FROM public.artisanal_strap_variants v
-      WHERE v.finished_product_id=NEW.id)
-      OR EXISTS (SELECT 1 FROM public.base_material_color_official_products op
-        WHERE op.official_product_id=NEW.id AND op.status='active');
+    v_new_legacy:=coalesce(NEW.is_artisanal,false)
+      OR EXISTS (
+        SELECT 1 FROM public.product_groups pg
+         WHERE pg.id=NEW.group_id
+           AND coalesce(pg.is_artisanal_strap,false)
+      ) OR coalesce(
+        NEW.strap_migration_status IN ('review_required','resolved','migrated'),false
+      ) OR public.is_legacy_strap_migration_controlled_product(NEW.id);
   END IF;
   IF NOT (v_old_legacy OR v_new_legacy) THEN
     RETURN CASE WHEN TG_OP='DELETE' THEN OLD ELSE NEW END;
@@ -5818,50 +6465,6 @@ CREATE TRIGGER trg_guard_legacy_artisanal_product_update
     quantity,current_stock,reserved_stock,unit_price,stock_grade
   ON public.products
   FOR EACH ROW EXECUTE FUNCTION public.tg_guard_legacy_artisanal_product_writer();
-
--- 03200 consegue classificar produto/grupo/variante, mas ainda nao conhece os
--- objetos desta migration. A prova nominal do dry-run, o mapa e seu target
--- tambem congelam o inbound generico, inclusive quando o cadastro antigo nao
--- possuia flag/grupo correto.
-CREATE OR REPLACE FUNCTION public.is_legacy_strap_migration_controlled_product(
-  p_product_id uuid
-)
-RETURNS boolean
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = public
-AS $$
-  SELECT EXISTS (
-    SELECT 1
-      FROM public.products p
-      LEFT JOIN public.product_groups pg ON pg.id=p.group_id
-     WHERE p.id=p_product_id
-       AND (
-         coalesce(p.is_artisanal,false)
-         OR coalesce(pg.is_artisanal_strap,false)
-         OR p.strap_migration_status IN ('review_required','resolved','migrated')
-         OR EXISTS (
-           SELECT 1 FROM public.artisanal_strap_variants v
-            WHERE v.finished_product_id=p.id
-         )
-         OR EXISTS (
-           SELECT 1 FROM public.artisanal_strap_migration_product_provenance pp
-            WHERE pp.legacy_product_id=p.id
-         )
-         OR EXISTS (
-           SELECT 1 FROM public.legacy_strap_product_migration_maps m
-            WHERE m.legacy_product_id=p.id
-         )
-         OR EXISTS (
-           SELECT 1
-             FROM public.legacy_strap_product_migration_allocations a
-             JOIN public.legacy_strap_product_migration_maps m ON m.id=a.mapping_id
-            WHERE a.target_product_id=p.id
-         )
-       )
-  );
-$$;
 
 CREATE OR REPLACE FUNCTION public.tg_guard_strap_purchase_order_item()
 RETURNS trigger
@@ -6015,9 +6618,9 @@ $$;
 -- Os triggers de 03200 continuam anexados aos mesmos OIDs de funcao. A
 -- constraint diferida de origem exige contribution exata antes do COMMIT.
 
--- O ajuste generico de estoque permanece disponivel para materiais comuns,
--- mas nunca pode criar fatos de tira/napa canonica sem identidade, custo,
--- correlacao e auditoria do motor operacional.
+-- O ajuste generico de estoque permanece disponivel para materiais comuns e
+-- para a NAPA-base oficial. Produto acabado de tira ou legado nominal exige
+-- identidade, custo, correlacao e auditoria do motor operacional.
 DO $$
 BEGIN
   IF to_regprocedure('public.adjust_stock_batch(jsonb,boolean)') IS NOT NULL
@@ -6050,13 +6653,12 @@ BEGIN
     SELECT 1
       FROM jsonb_array_elements(p_items) x(value)
       JOIN public.products p ON p.id=nullif(x.value->>'product_id','')::uuid
+      LEFT JOIN public.product_groups pg ON pg.id=p.group_id
      WHERE coalesce(p.is_artisanal,false)
-        OR EXISTS (SELECT 1 FROM public.artisanal_strap_variants v
-          WHERE v.finished_product_id=p.id)
-        OR EXISTS (SELECT 1 FROM public.base_material_color_official_products op
-          WHERE op.official_product_id=p.id AND op.status='active')
+        OR coalesce(pg.is_artisanal_strap,false)
+        OR public.is_legacy_strap_migration_controlled_product(p.id)
   ) THEN
-    RAISE EXCEPTION 'Ajuste generico bloqueado para tira/napa canonica; use recebimento, picking ou conciliacao operacional de tiras';
+    RAISE EXCEPTION 'Ajuste generico bloqueado para tira acabada/produto legado; use recebimento, picking ou conciliacao operacional de tiras';
   END IF;
   RETURN public.adjust_stock_batch_legacy_non_strap_202701(
     p_items,coalesce(p_enforce_reserved,false));
@@ -6172,6 +6774,7 @@ REVOKE ALL ON FUNCTION
   public.artisanal_strap_product_mapping_scope_checksum(uuid,uuid),
   public.artisanal_strap_incremental_mapping_blockers(uuid,uuid),
   public.apply_resolved_legacy_strap_product_mapping(uuid,uuid,text,uuid),
+  public.try_resolve_open_sale_order_item_strap_migration(uuid,uuid),
   public.is_legacy_strap_migration_controlled_product(uuid),
   public.artisanal_strap_legacy_conservation_report(),
   public.current_artisanal_strap_migration_snapshot(text,uuid)
@@ -6179,6 +6782,9 @@ FROM PUBLIC,anon,authenticated;
 
 REVOKE ALL ON FUNCTION
   public.tg_capture_artisanal_strap_product_provenance(),
+  public.tg_guard_active_strap_migration_review_provenance(),
+  public.tg_block_strap_migration_dry_run_during_cutover(),
+  public.tg_resolve_open_sale_order_item_strap_migration(),
   public.tg_guard_legacy_artisanal_product_writer(),
   public.tg_guard_legacy_artisanal_recipe_writer(),
   public.tg_guard_legacy_artisanal_service_order_writer(),
@@ -6217,6 +6823,21 @@ DECLARE
   v_helper_definition text;
   v_global_definition text;
   v_incremental_definition text;
+  v_rollback_definition text;
+  v_rollback_preview_definition text;
+  v_review_resolver_definition text;
+  v_technical_definition text;
+  v_recipe_definition text;
+  v_sale_review_definition text;
+  v_review_guard_definition text;
+  v_dry_run_guard_definition text;
+  v_dry_run_definition text;
+  v_po_classification_definition text;
+  v_product_guard_definition text;
+  v_adjust_stock_definition text;
+  v_po_guard_definition text;
+  v_po_validator_definition text;
+  v_po_origin_trigger text;
 BEGIN
   IF EXISTS (
     SELECT 1 FROM pg_trigger t
@@ -6270,6 +6891,30 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'Captura nominal de proveniencia do dry-run ausente';
   END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger t
+     WHERE t.tgrelid='public.artisanal_strap_migration_review_items'::regclass
+       AND t.tgname='trg_guard_active_strap_migration_review_provenance'
+       AND NOT t.tgisinternal
+  ) THEN
+    RAISE EXCEPTION 'Guard de proveniencia contra novo dry-run ausente';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger t
+     WHERE t.tgrelid='public.artisanal_strap_migration_runs'::regclass
+       AND t.tgname='trg_block_strap_migration_dry_run_during_cutover'
+       AND NOT t.tgisinternal
+  ) THEN
+    RAISE EXCEPTION 'Bloqueio de novo dry-run durante cutover ausente';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger t
+     WHERE t.tgrelid='public.strap_demand_jobs'::regclass
+       AND t.tgname='trg_resolve_open_sale_order_item_strap_migration'
+       AND NOT t.tgisinternal
+  ) THEN
+    RAISE EXCEPTION 'Fechamento operacional da review de PV ausente';
+  END IF;
   FOREACH v_table IN ARRAY ARRAY[
     'artisanal_strap_migration_product_provenance',
     'legacy_strap_product_migration_maps',
@@ -6304,6 +6949,23 @@ BEGIN
      OR has_function_privilege('authenticated',
        'public.artisanal_strap_incremental_mapping_blockers(uuid,uuid)','EXECUTE')
      OR has_function_privilege('authenticated',
+       'public.try_resolve_open_sale_order_item_strap_migration(uuid,uuid)','EXECUTE')
+     OR has_function_privilege('authenticated',
+       'public.is_legacy_strap_migration_controlled_product(uuid)','EXECUTE')
+     OR has_function_privilege('authenticated',
+       'public.tg_guard_active_strap_migration_review_provenance()','EXECUTE')
+     OR has_function_privilege('authenticated',
+       'public.tg_block_strap_migration_dry_run_during_cutover()','EXECUTE')
+     OR has_function_privilege('authenticated',
+       'public.tg_resolve_open_sale_order_item_strap_migration()','EXECUTE')
+     OR has_function_privilege('authenticated',
+       'public.tg_guard_strap_purchase_order_item()','EXECUTE')
+     OR has_function_privilege('authenticated',
+       'public.tg_validate_purchase_order_item()','EXECUTE')
+     OR has_function_privilege('authenticated',
+       'public.run_artisanal_strap_catalog_migration_dry_run_unfenced_202701(text)',
+       'EXECUTE')
+     OR has_function_privilege('authenticated',
        'public.artisanal_strap_legacy_state_checksum()','EXECUTE') THEN
     RAISE EXCEPTION 'Helper interno de migracao exposto ao authenticated';
   END IF;
@@ -6328,10 +6990,97 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'Produto nao candidato conseguiu proveniencia/mapa de tira';
   END IF;
+  -- Repro do recebimento de NAPA: ser produto oficial de uma base/cor, sozinho,
+  -- nao o torna produto acabado/legado congelado. Em contrapartida, todo
+  -- acabado, provenanced, mapped ou status nominal precisa permanecer guardado.
+  IF EXISTS (
+    SELECT 1
+      FROM public.base_material_color_official_products op
+      JOIN public.products p ON p.id=op.official_product_id
+     WHERE op.status='active'
+       AND NOT coalesce(p.is_artisanal,false)
+       AND NOT EXISTS (
+         SELECT 1 FROM public.product_groups pg
+          WHERE pg.id=p.group_id AND coalesce(pg.is_artisanal_strap,false)
+       )
+       AND coalesce(p.strap_migration_status,'not_applicable')
+             NOT IN ('review_required','resolved','migrated')
+       AND NOT EXISTS (
+         SELECT 1 FROM public.artisanal_strap_variants v
+          WHERE v.finished_product_id=p.id
+       )
+       AND NOT EXISTS (
+         SELECT 1 FROM public.artisanal_strap_migration_product_provenance pp
+          WHERE pp.legacy_product_id=p.id
+       )
+       AND NOT EXISTS (
+         SELECT 1 FROM public.legacy_strap_product_migration_maps m
+          WHERE m.legacy_product_id=p.id
+       )
+       AND NOT EXISTS (
+         SELECT 1
+           FROM public.legacy_strap_product_migration_allocations a
+          WHERE a.target_product_id=p.id
+       )
+       AND public.is_legacy_strap_migration_controlled_product(p.id)
+  ) THEN
+    RAISE EXCEPTION 'Repro NAPA-base: produto oficial isolado foi congelado como tira';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM public.artisanal_strap_variants v
+     WHERE v.finished_product_id IS NOT NULL
+       AND NOT public.is_legacy_strap_migration_controlled_product(
+         v.finished_product_id)
+  ) OR EXISTS (
+    SELECT 1 FROM public.artisanal_strap_migration_product_provenance pp
+     WHERE NOT public.is_legacy_strap_migration_controlled_product(
+       pp.legacy_product_id)
+  ) OR EXISTS (
+    SELECT 1 FROM public.legacy_strap_product_migration_maps m
+     WHERE NOT public.is_legacy_strap_migration_controlled_product(
+       m.legacy_product_id)
+  ) OR EXISTS (
+    SELECT 1 FROM public.legacy_strap_product_migration_allocations a
+     WHERE NOT public.is_legacy_strap_migration_controlled_product(
+       a.target_product_id)
+  ) OR EXISTS (
+    SELECT 1 FROM public.products p
+     WHERE p.strap_migration_status IN ('review_required','resolved','migrated')
+       AND NOT public.is_legacy_strap_migration_controlled_product(p.id)
+  ) THEN
+    RAISE EXCEPTION 'Repro tira acabada/mapped: produto controlado escapou do guard';
+  END IF;
+  IF EXISTS (
+    SELECT 1
+      FROM public.legacy_artisanal_recipe_map m
+      JOIN public.service_orders so ON so.artisanal_recipe_id=m.legacy_recipe_id
+     WHERE m.status='resolved'
+       AND so.canonical_strap_recipe_id IS NOT NULL
+       AND so.canonical_strap_recipe_id<>m.canonical_recipe_id
+  ) OR EXISTS (
+    SELECT 1
+      FROM public.legacy_artisanal_recipe_map m
+      JOIN public.service_orders so ON so.artisanal_recipe_id=m.legacy_recipe_id
+      JOIN public.service_order_items i ON i.service_order_id=so.id
+     WHERE m.status='resolved'
+       AND i.strap_recipe_id IS NOT NULL
+       AND i.strap_recipe_id<>m.canonical_recipe_id
+  ) THEN
+    RAISE EXCEPTION 'Diagnostico Req128: mapa de receita ja diverge de OS/linha historica';
+  END IF;
   IF NOT has_function_privilege('authenticated',
        'public.apply_resolved_legacy_strap_product_mapping_incremental(uuid,uuid,text,text,text,uuid)',
        'EXECUTE') THEN
     RAISE EXCEPTION 'RPC incremental de migracao nao foi concedida ao authenticated';
+  END IF;
+  IF NOT has_function_privilege('authenticated',
+       'public.resolve_artisanal_strap_migration_review_item(uuid,jsonb,text)',
+       'EXECUTE') THEN
+    RAISE EXCEPTION 'RPC concreta de review de piso nao foi concedida ao authenticated';
+  END IF;
+  IF NOT has_function_privilege('authenticated',
+       'public.run_artisanal_strap_catalog_migration_dry_run(text)','EXECUTE') THEN
+    RAISE EXCEPTION 'RPC protegida de dry-run nao foi concedida ao authenticated';
   END IF;
 
   -- Repros estruturais dos quatro cenarios adversariais fechados nesta camada.
@@ -6345,6 +7094,39 @@ BEGIN
     'public.apply_artisanal_strap_migration(uuid,text,text,uuid)'::regprocedure);
   v_incremental_definition:=pg_get_functiondef(
     'public.apply_resolved_legacy_strap_product_mapping_incremental(uuid,uuid,text,text,text,uuid)'::regprocedure);
+  v_rollback_definition:=pg_get_functiondef(
+    'public.rollback_artisanal_strap_migration(uuid,text,text,uuid)'::regprocedure);
+  v_rollback_preview_definition:=pg_get_functiondef(
+    'public.preview_artisanal_strap_migration_rollback(uuid)'::regprocedure);
+  v_review_resolver_definition:=pg_get_functiondef(
+    'public.resolve_artisanal_strap_migration_review_item(uuid,jsonb,text)'::regprocedure);
+  v_technical_definition:=pg_get_functiondef(
+    'public.resolve_technical_strap_line_migration(uuid,uuid,text)'::regprocedure);
+  v_recipe_definition:=pg_get_functiondef(
+    'public.resolve_legacy_artisanal_recipe_migration(uuid,uuid,text)'::regprocedure);
+  v_sale_review_definition:=pg_get_functiondef(
+    'public.try_resolve_open_sale_order_item_strap_migration(uuid,uuid)'::regprocedure);
+  v_review_guard_definition:=pg_get_functiondef(
+    'public.tg_guard_active_strap_migration_review_provenance()'::regprocedure);
+  v_dry_run_guard_definition:=pg_get_functiondef(
+    'public.tg_block_strap_migration_dry_run_during_cutover()'::regprocedure);
+  v_dry_run_definition:=pg_get_functiondef(
+    'public.run_artisanal_strap_catalog_migration_dry_run(text)'::regprocedure);
+  v_po_classification_definition:=pg_get_functiondef(
+    'public.is_legacy_strap_migration_controlled_product(uuid)'::regprocedure);
+  v_product_guard_definition:=pg_get_functiondef(
+    'public.tg_guard_legacy_artisanal_product_writer()'::regprocedure);
+  v_adjust_stock_definition:=pg_get_functiondef(
+    'public.adjust_stock_batch(jsonb,boolean)'::regprocedure);
+  v_po_guard_definition:=pg_get_functiondef(
+    'public.tg_guard_strap_purchase_order_item()'::regprocedure);
+  v_po_validator_definition:=pg_get_functiondef(
+    'public.tg_validate_purchase_order_item()'::regprocedure);
+  SELECT pg_get_triggerdef(t.oid) INTO v_po_origin_trigger
+    FROM pg_trigger t
+   WHERE t.tgrelid='public.purchase_order_items'::regclass
+     AND t.tgname='trg_assert_strap_purchase_order_item_origin'
+     AND NOT t.tgisinternal;
 
   IF strpos(v_blocker_definition,'frozen_purchase_item_receipt_pending')=0
      OR strpos(v_blocker_definition,
@@ -6375,11 +7157,134 @@ BEGIN
        'PERFORM public.validate_artisanal_strap_variant(v_variant.id)')>0 THEN
     RAISE EXCEPTION 'Repro Req25: status administrativo voltou a depender da fonte';
   END IF;
+  IF strpos(v_rollback_definition,
+       'LOCK TABLE public.purchase_receipts IN SHARE ROW EXCLUSIVE MODE')=0
+     OR strpos(v_rollback_definition,
+       'v_preview:=public.preview_artisanal_strap_migration_rollback')=0
+     OR strpos(v_rollback_definition,
+       'LOCK TABLE public.purchase_receipts IN SHARE ROW EXCLUSIVE MODE')
+        > strpos(v_rollback_definition,
+          'v_preview:=public.preview_artisanal_strap_migration_rollback')
+     OR strpos(v_rollback_definition,
+       'Checksum mudou enquanto rollback aguardava locks')=0
+     OR strpos(v_rollback_preview_definition,'poi.product_id IN')=0
+     OR strpos(v_rollback_preview_definition,
+       'current_artisanal_strap_migration_snapshot')=0 THEN
+    RAISE EXCEPTION 'Repro rollback concorrente: lock/preflight decisivo ausente';
+  END IF;
+  IF strpos(v_review_resolver_definition,
+       'legacy_replenishment_source_unavailable')=0
+     OR strpos(v_review_resolver_definition,
+       'resolve_artisanal_strap_source_availability')=0
+     OR strpos(v_review_resolver_definition,
+       'Use resolve_technical_strap_line_migration')=0
+     OR strpos(v_review_resolver_definition,
+       'Use resolve_legacy_artisanal_recipe_migration')=0 THEN
+    RAISE EXCEPTION 'Resolver generico voltou a fechar review sem operacao real';
+  END IF;
+  IF strpos(v_technical_definition,'technical_line_content_mismatch')=0
+     OR strpos(v_technical_definition,
+       'vinculacao nao aplicada')=0
+     OR strpos(v_technical_definition,
+       'Reverta/conclua o cutover ativo e execute novo dry-run')=0 THEN
+    RAISE EXCEPTION 'Drift de linha tecnica voltou a aparentar sucesso';
+  END IF;
+  IF strpos(v_recipe_definition,'open_service_order_legacy_recipe')=0
+     OR strpos(v_recipe_definition,
+       'Receita legada requer resolucao')=0
+     OR strpos(v_recipe_definition,
+       'v_order_snapshot_before')=0
+     OR strpos(v_recipe_definition,'THEN ''resume''')=0 THEN
+    RAISE EXCEPTION 'Resolucao de receita nao reata a suspensao tecnica exata da OS';
+  END IF;
+  IF strpos(v_recipe_definition,'legacy_recipe_mapping_immutable')=0
+     OR strpos(v_recipe_definition,'''replayed'',true')=0
+     OR strpos(v_recipe_definition,'legacy_recipe_fact_conflict')=0
+     OR strpos(v_recipe_definition,'strap_production_receipts')=0
+     OR strpos(v_recipe_definition,'artisanal_strap_operational_audit_log')=0
+     OR strpos(v_recipe_definition,
+       'public.is_open_legacy_strap_service_status(so.status)')=0
+     OR strpos(v_recipe_definition,
+       'strap_recipe_id=CASE WHEN strap_recipe_id IS NULL')=0
+     OR strpos(v_recipe_definition,
+       'strap_recipe_id IS NULL OR strap_recipe_id=p_canonical_recipe_id')=0
+     OR strpos(v_recipe_definition,'historical_document_preserved')=0
+     OR strpos(v_recipe_definition,
+       'ON CONFLICT (legacy_recipe_id) DO UPDATE')>0 THEN
+    RAISE EXCEPTION 'Repro Req128: receita legada voltou a reescrever mapa/fato historico';
+  END IF;
+  IF strpos(v_sale_review_definition,
+       'preview_sale_order_strap_demand')=0
+     OR strpos(v_sale_review_definition,
+       'sale_order_strap_demand')=0
+     OR strpos(v_sale_review_definition,
+       'Linha tecnica do PV requer escolha explicita apos migracao')=0
+     OR strpos(v_sale_review_definition,
+       'strap_migration_status=''migrated''')=0 THEN
+    RAISE EXCEPTION 'Review ambigua de PV pode fechar sem demanda reconciliada';
+  END IF;
+  IF strpos(v_review_guard_definition,'Dry-run bloqueado')=0
+     OR strpos(v_review_guard_definition,
+       'c.status IN (''applying'',''applied'',''applied_with_review'')')=0 THEN
+    RAISE EXCEPTION 'Novo dry-run pode reparentear review do cutover ativo';
+  END IF;
+  IF strpos(v_dry_run_guard_definition,
+       'Novo dry-run bloqueado enquanto existe cutover ativo')=0
+     OR strpos(v_dry_run_guard_definition,
+       'c.status IN (''applying'',''applied'',''applied_with_review'')')=0 THEN
+    RAISE EXCEPTION 'RPC de dry-run pode nascer durante cutover ativo';
+  END IF;
+  IF strpos(v_dry_run_definition,
+       'run_artisanal_strap_catalog_migration_dry_run_unfenced_202701')=0
+     OR strpos(v_dry_run_definition,
+       'artisanal-strap-legacy-cutover')=0
+     OR strpos(v_dry_run_definition,
+       'Novo dry-run bloqueado enquanto existe cutover ativo')=0 THEN
+    RAISE EXCEPTION 'Wrapper final da RPC de dry-run nao serializa o cutover';
+  END IF;
+  IF strpos(v_po_classification_definition,'strap_migration_status')=0
+     OR strpos(v_po_classification_definition,
+       'artisanal_strap_migration_product_provenance')=0
+     OR strpos(v_po_classification_definition,
+       'legacy_strap_product_migration_maps')=0
+     OR strpos(v_po_classification_definition,
+       'legacy_strap_product_migration_allocations')=0
+     OR strpos(v_po_guard_definition,
+       'is_legacy_strap_migration_controlled_product')=0
+     OR strpos(v_po_validator_definition,
+       'is_legacy_strap_migration_controlled_product')=0
+     OR v_po_origin_trigger IS NULL
+     OR v_po_origin_trigger NOT ILIKE '%DEFERRABLE INITIALLY DEFERRED%' THEN
+    RAISE EXCEPTION 'Inbound generico de produto legado de tira deixou de ser bloqueado';
+  END IF;
+  IF strpos(v_po_classification_definition,
+       'base_material_color_official_products')>0
+     OR strpos(v_po_classification_definition,'p.is_artisanal')>0
+     OR strpos(v_po_classification_definition,'is_artisanal_strap')>0
+     OR strpos(v_product_guard_definition,
+       'is_legacy_strap_migration_controlled_product')=0
+     OR strpos(v_product_guard_definition,'OLD.is_artisanal')=0
+     OR strpos(v_product_guard_definition,'NEW.is_artisanal')=0
+     OR strpos(v_product_guard_definition,'pg.id=OLD.group_id')=0
+     OR strpos(v_product_guard_definition,'pg.id=NEW.group_id')=0
+     OR strpos(v_product_guard_definition,'pg.is_artisanal_strap')=0
+     OR strpos(v_product_guard_definition,
+       'base_material_color_official_products')>0
+     OR strpos(v_adjust_stock_definition,
+       'is_legacy_strap_migration_controlled_product')=0
+     OR strpos(v_adjust_stock_definition,'p.is_artisanal')=0
+     OR strpos(v_adjust_stock_definition,'pg.is_artisanal_strap')=0
+     OR strpos(v_adjust_stock_definition,
+       'base_material_color_official_products')>0 THEN
+    RAISE EXCEPTION 'Repro INSERT/transicao/NAPA-base: classificacao estrutural do writer regrediu';
+  END IF;
 END;
 $$;
 
 COMMENT ON FUNCTION public.resolve_legacy_strap_product_migration(uuid,jsonb,text,text,uuid) IS
   'Resolve produto legado por alocacoes explicitas; exige conservacao exata de quantity/current_stock/reserved_stock e IDs de documentos abertos.';
+COMMENT ON FUNCTION public.resolve_legacy_artisanal_recipe_migration(uuid,uuid,text) IS
+  'Congela uma unica ponte legado->canonica; replay identico e idempotente, troca de destino/fato conflitante falha e documentos terminais nunca sao reescritos.';
 COMMENT ON FUNCTION public.apply_artisanal_strap_migration(uuid,text,text,uuid) IS
   'Aplica o dry-run fresco numa transacao, migra somente identidades inequivocas/resolvidas e salva manifesto/snapshots de rollback.';
 COMMENT ON FUNCTION public.apply_resolved_legacy_strap_product_mapping_incremental(uuid,uuid,text,text,text,uuid) IS
@@ -6388,3 +7293,11 @@ COMMENT ON FUNCTION public.preview_artisanal_strap_migration_rollback(uuid) IS
   'Preflight read-only: rollback so e permitido sem checksum/snapshot divergente ou fato operacional posterior.';
 COMMENT ON FUNCTION public.rollback_artisanal_strap_migration(uuid,text,text,uuid) IS
   'Restaura snapshots e compensa transferencias sem apagar movimentos historicos.';
+COMMENT ON FUNCTION public.resolve_artisanal_strap_migration_review_item(uuid,jsonb,text) IS
+  'Executa apenas a escolha real do piso de reposicao; demais reviews exigem sua RPC/documento concreto e nunca sao fechadas por texto.';
+COMMENT ON FUNCTION public.try_resolve_open_sale_order_item_strap_migration(uuid,uuid) IS
+  'Helper interno: fecha review de PV apenas apos linhas, sourcing e demandas correntes coincidirem estruturalmente.';
+COMMENT ON FUNCTION public.is_legacy_strap_migration_controlled_product(uuid) IS
+  'Classifica somente produto acabado de tira ou legado nominal por proveniencia/mapa/status; NAPA-base oficial isolada permanece material comum.';
+COMMENT ON FUNCTION public.run_artisanal_strap_catalog_migration_dry_run(text) IS
+  'Executa o inventario sem mutar negocio, mas bloqueia e serializa enquanto existir cutover legado ativo.';

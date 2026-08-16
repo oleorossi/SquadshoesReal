@@ -615,17 +615,7 @@ GROUP BY r.strap_variant_id,r.recipe_id,r.finished_product_id,fp.id,r.base_produ
 CREATE OR REPLACE VIEW public.v_strap_cost_variance_operational
 WITH (security_invoker = false)
 AS
-WITH finished_out AS (
-  SELECT h.sale_order_item_id,h.technical_strap_line_id,
-    sum(abs(sm.quantity)) AS realized_m,
-    sum(abs(sm.quantity)*coalesce(sm.effective_unit_cost,0)) AS realized_cost
-  FROM public.stock_movements sm
-  JOIN public.sale_order_strap_demands h ON h.id=sm.sale_order_strap_demand_id
-  WHERE sm.sale_order_strap_demand_id IS NOT NULL
-    AND sm.movement_type='out'
-    AND sm.finished_product_id=sm.product_id
-  GROUP BY h.sale_order_item_id,h.technical_strap_line_id
-), claims_by_receipt AS (
+WITH claims_by_receipt AS (
   SELECT cl.production_receipt_id,sum(cl.claim_amount) AS recovered_cost
   FROM public.contractor_loss_claims cl
   WHERE cl.production_receipt_id IS NOT NULL
@@ -634,7 +624,7 @@ WITH finished_out AS (
 ), receipt_origin_weights AS (
   -- Terceiro tem linha de OS por contribuicao: a origem e exata inclusive
   -- quando o recebimento foi 100% rejeitado e nao gerou allocation aprovada.
-  SELECT r.id AS production_receipt_id,h.sale_order_item_id,h.technical_strap_line_id,
+  SELECT r.id AS production_receipt_id,h.id AS sale_order_strap_demand_id,
     1::numeric AS origin_weight
   FROM public.strap_production_receipts r
   JOIN public.service_order_items soi ON soi.id=r.service_order_item_id
@@ -644,7 +634,7 @@ WITH finished_out AS (
   -- Na fabrica o item pode consolidar varias contribuicoes. Para a parcela
   -- rejeitada sem output, distribui o custo pelo plano que existia quando o
   -- fato foi registrado; piso participa do denominador e nao e atribuido a PV.
-  SELECT r.id,h.sale_order_item_id,h.technical_strap_line_id,w.origin_weight
+  SELECT r.id,w.sale_order_strap_demand_id,w.origin_weight
   FROM public.strap_production_receipts r
   JOIN LATERAL (
     SELECT c.sale_order_strap_demand_id,
@@ -653,16 +643,33 @@ WITH finished_out AS (
     WHERE c.batch_item_id=r.batch_item_id AND c.planned_m>0
       AND c.created_at<=r.created_at
   ) w ON true
-  JOIN public.sale_order_strap_demands h ON h.id=w.sale_order_strap_demand_id
   WHERE r.service_order_item_id IS NULL
-), approved_by_line AS (
-  SELECT h.sale_order_item_id,h.technical_strap_line_id,sum(a.approved_m) AS produced_approved_m
+), internal_realized AS (
+  SELECT c.sale_order_strap_demand_id,
+    sum(a.approved_m) AS realized_m,
+    sum(a.approved_m*(
+      coalesce(fs.base_consumed_cost_snapshot/nullif(r.delivered_m,0),0)
+      +fs.transformation_cost_per_m_snapshot)) AS realized_cost
   FROM public.strap_production_receipt_allocations a
   JOIN public.strap_production_batch_contributions c ON c.id=a.batch_contribution_id
-  JOIN public.sale_order_strap_demands h ON h.id=c.sale_order_strap_demand_id
-  GROUP BY h.sale_order_item_id,h.technical_strap_line_id
-), rejected_cost_by_line AS (
-  SELECT w.sale_order_item_id,w.technical_strap_line_id,
+  JOIN public.strap_production_receipts r ON r.id=a.production_receipt_id
+  JOIN public.strap_production_receipt_financial_snapshots fs
+    ON fs.production_receipt_id=r.id
+  WHERE c.sale_order_strap_demand_id IS NOT NULL
+  GROUP BY c.sale_order_strap_demand_id
+), purchase_realized AS (
+  SELECT c.sale_order_strap_demand_id,
+    sum(a.accepted_stock_quantity) AS realized_m,
+    sum(a.accepted_stock_quantity*pri.effective_unit_cost_stock) AS realized_cost
+  FROM public.purchase_receipt_allocations a
+  JOIN public.purchase_demand_contributions c
+    ON c.id=a.purchase_demand_contribution_id
+  JOIN public.purchase_receipt_items pri ON pri.id=a.purchase_receipt_item_id
+  WHERE c.sale_order_strap_demand_id IS NOT NULL
+    AND a.accepted_stock_quantity>0
+  GROUP BY c.sale_order_strap_demand_id
+), rejected_cost_by_demand AS (
+  SELECT w.sale_order_strap_demand_id,
     sum(greatest(0,fs.base_consumed_cost_snapshot*(r.rejected_m/nullif(r.delivered_m,0))
       -coalesce(cr.recovered_cost,0))*w.origin_weight) AS net_rejected_base_cost
   FROM public.strap_production_receipts r
@@ -671,18 +678,34 @@ WITH finished_out AS (
   JOIN receipt_origin_weights w ON w.production_receipt_id=r.id
   LEFT JOIN claims_by_receipt cr ON cr.production_receipt_id=r.id
   WHERE r.rejected_m>0
-  GROUP BY w.sale_order_item_id,w.technical_strap_line_id
+  GROUP BY w.sale_order_strap_demand_id
 ), realized_rollup AS (
-  SELECT fo.sale_order_item_id,fo.technical_strap_line_id,fo.realized_m,
-    fo.realized_cost + coalesce(rc.net_rejected_base_cost,0)
-      * coalesce(least(1,fo.realized_m/nullif(ap.produced_approved_m,0)),0) AS realized_cost
-  FROM finished_out fo
-  LEFT JOIN rejected_cost_by_line rc
-    ON rc.sale_order_item_id=fo.sale_order_item_id
-   AND rc.technical_strap_line_id=fo.technical_strap_line_id
-  LEFT JOIN approved_by_line ap
-    ON ap.sale_order_item_id=fo.sale_order_item_id
-   AND ap.technical_strap_line_id=fo.technical_strap_line_id
+  SELECT x.sale_order_strap_demand_id,sum(x.realized_m) AS realized_m,
+    sum(x.realized_cost)+coalesce(max(rc.net_rejected_base_cost),0) AS realized_cost
+  FROM (
+    SELECT sale_order_strap_demand_id,realized_m,realized_cost FROM internal_realized
+    UNION ALL
+    SELECT sale_order_strap_demand_id,realized_m,realized_cost FROM purchase_realized
+  ) x
+  LEFT JOIN rejected_cost_by_demand rc
+    ON rc.sale_order_strap_demand_id=x.sale_order_strap_demand_id
+  GROUP BY x.sale_order_strap_demand_id
+), report_rows AS (
+  SELECT d.*,coalesce(rr.realized_m,0) AS report_realized_m,
+    coalesce(rr.realized_cost,0) AS report_realized_cost,
+    CASE
+      -- Fato realizado continua na demanda/revisao que o originou. Depois de
+      -- override administrativo, a identidade nova reporta somente a falta que
+      -- restou apos o netting global; estoque livre nao e custo realizado da
+      -- origem nova e realizacao de outra variante nunca atravessa este join.
+      WHEN NOT d.is_current THEN coalesce(rr.realized_m,0)
+      WHEN d.calculation_explanation ? 'admin_source_override'
+        THEN greatest(0,d.replenishment_required_m)
+      ELSE d.gross_required_m
+    END::numeric(24,6) AS report_planned_m
+  FROM public.sale_order_strap_demands d
+  LEFT JOIN realized_rollup rr ON rr.sale_order_strap_demand_id=d.id
+  WHERE d.is_current OR coalesce(rr.realized_m,0)>0
 )
 SELECT
   d.id AS sale_order_strap_demand_id,
@@ -691,24 +714,24 @@ SELECT
   d.sale_order_item_id,
   d.strap_variant_id,
   d.source_mode,
-  d.gross_required_m AS planned_m,
-  coalesce(rr.realized_m,0) AS realized_m,
+  d.report_planned_m AS planned_m,
+  d.report_realized_m AS realized_m,
   CASE WHEN public.can_see_strap_financial_values() THEN fs.planned_unit_cost ELSE NULL END AS planned_unit_cost,
-  CASE WHEN public.can_see_strap_financial_values() AND rr.realized_m>0
-    THEN rr.realized_cost/rr.realized_m ELSE NULL END AS realized_unit_cost,
-  CASE WHEN public.can_see_strap_financial_values() THEN fs.planned_unit_cost*d.gross_required_m ELSE NULL END AS planned_cost,
-  CASE WHEN public.can_see_strap_financial_values() THEN coalesce(rr.realized_cost,0) ELSE NULL END AS realized_cost,
+  CASE WHEN public.can_see_strap_financial_values() AND d.report_realized_m>0
+    THEN d.report_realized_cost/d.report_realized_m ELSE NULL END AS realized_unit_cost,
+  CASE WHEN public.can_see_strap_financial_values() THEN fs.planned_unit_cost*d.report_planned_m ELSE NULL END AS planned_cost,
+  CASE WHEN public.can_see_strap_financial_values() THEN d.report_realized_cost ELSE NULL END AS realized_cost,
   CASE WHEN public.can_see_strap_financial_values() THEN
-    coalesce(rr.realized_cost,0)-(fs.planned_unit_cost*d.gross_required_m) ELSE NULL END AS cost_variance,
+    d.report_realized_cost-(fs.planned_unit_cost*d.report_planned_m) ELSE NULL END AS cost_variance,
   CASE
-    WHEN coalesce(rr.realized_m,0)=0 THEN 'Sem consumo realizado'
-    WHEN rr.realized_m<d.gross_required_m THEN 'Execucao parcial: ainda ha metragem sem custo realizado'
-    WHEN rr.realized_m>d.gross_required_m THEN 'Metragem efetiva acima da quantidade prevista'
+    WHEN d.report_realized_m=0 THEN 'Sem recebimento realizado nesta origem/revisao'
+    WHEN d.report_realized_m<d.report_planned_m THEN 'Execucao parcial: ainda ha metragem sem custo realizado'
+    WHEN d.report_realized_m>d.report_planned_m THEN 'Metragem efetiva acima da quantidade prevista'
     WHEN NOT public.can_see_strap_financial_values() THEN 'Execucao concluida; valores financeiros protegidos'
     WHEN fs.planned_unit_cost IS NULL THEN 'Snapshot de custo previsto indisponivel'
-    WHEN abs((rr.realized_cost/nullif(rr.realized_m,0))-fs.planned_unit_cost)<=0.000001
+    WHEN abs((d.report_realized_cost/nullif(d.report_realized_m,0))-fs.planned_unit_cost)<=0.000001
       THEN 'Custo efetivo aderente ao snapshot do PV'
-    WHEN (rr.realized_cost/nullif(rr.realized_m,0))>fs.planned_unit_cost
+    WHEN (d.report_realized_cost/nullif(d.report_realized_m,0))>fs.planned_unit_cost
       THEN CASE WHEN d.source_mode='internal'
         THEN 'Custo efetivo interno acima do snapshot (napa, rendimento ou transformacao)'
         ELSE 'Preco efetivo da compra pronta acima do snapshot' END
@@ -718,12 +741,26 @@ SELECT
   END AS variance_reason,
   d.status,
   d.correlation_id
-FROM public.sale_order_strap_demands d
+FROM report_rows d
 JOIN public.sale_orders so ON so.id=d.sale_order_id
 LEFT JOIN public.strap_financial_snapshots fs ON fs.sale_order_strap_demand_id=d.id
-LEFT JOIN realized_rollup rr ON rr.sale_order_item_id=d.sale_order_item_id
-  AND rr.technical_strap_line_id=d.technical_strap_line_id
-WHERE d.is_current AND public.is_approved_user();
+WHERE public.is_approved_user();
+
+DO $$
+DECLARE v_definition text:=lower(pg_get_viewdef(
+  'public.v_strap_cost_variance_operational'::regclass,true));
+BEGIN
+  IF v_definition !~ 'c\.sale_order_strap_demand_id'
+     OR v_definition !~ 'a\.purchase_demand_contribution_id'
+     OR v_definition !~ 'a\.batch_contribution_id'
+     OR position('admin_source_override' IN v_definition)=0
+     OR position('not d.is_current' IN v_definition)=0
+     OR position('d.replenishment_required_m' IN v_definition)=0
+     OR position('rr.realized_m' IN v_definition)=0 THEN
+    RAISE EXCEPTION 'Req51/112/113: custo realizado perdeu a revisao/origem fisica antiga';
+  END IF;
+END;
+$$;
 
 GRANT SELECT ON public.v_strap_contractor_loss_claims_operational,
   public.v_strap_contractor_payment_cycles_operational,
@@ -2314,8 +2351,10 @@ AS $$
 $$;
 
 -- Req48/89/118: a linha externa e vinculada por UUID a demanda. sent_at e
--- qualquer ledger/recebimento/claim sao fatos historicos; retorno integral
--- zera a custodia, mas nao apaga o compromisso nem autoriza trocar a origem.
+-- qualquer ledger/recebimento/claim sao fatos historicos e continuam sendo
+-- compromisso para a edicao comum. O override administrativo pode encerrar
+-- somente o saldo futuro quando o preflight abaixo provar custodia zero e
+-- inexistencia de pendencia fisica; nenhum fato desta funcao e apagado.
 CREATE OR REPLACE FUNCTION public.strap_demand_has_external_commitment(
   p_sale_order_strap_demand_id uuid
 )
@@ -2366,9 +2405,10 @@ AS $$
   );
 $$;
 
--- Estado interno usado pelo preflight e pelo pos-condicao da troca
--- administrativa. O retorno separa fatos imutaveis de promessas que o
--- reconciliador deve conseguir neutralizar na mesma transacao.
+-- Estado interno usado pelo preflight e pela pos-condicao da troca
+-- administrativa. Fato realizado e preservado na revisao antiga e nao e, por
+-- si so, bloqueio. Bloqueiam somente documento congelado ainda com saldo,
+-- custodia/claim/retrabalho abertos e inconsistencias sem reversao canonica.
 CREATE OR REPLACE FUNCTION public.inspect_strap_source_override_state(
   p_sale_order_strap_demand_ids uuid[]
 )
@@ -2381,98 +2421,212 @@ AS $$
   WITH demand_ids AS (
     SELECT DISTINCT id
       FROM unnest(coalesce(p_sale_order_strap_demand_ids,ARRAY[]::uuid[])) id
+  ), linked_service_lines AS (
+    SELECT DISTINCT soi.id,soi.service_order_id,soi.strap_batch_item_id,
+      soi.strap_variant_id,soi.base_product_id,soi.finished_product_id,
+      soi.sent_at,soi.line_status,soi.delivered_qty,soi.meters
+      FROM public.service_order_items soi
+     WHERE soi.sale_order_strap_demand_id IN (SELECT id FROM demand_ids)
+        OR EXISTS(SELECT 1 FROM public.strap_production_batch_contributions c
+          JOIN demand_ids d ON d.id=c.sale_order_strap_demand_id
+          WHERE c.service_order_item_id=soi.id)
+  ), custody AS (
+    SELECT l.id AS service_order_item_id,
+      coalesce(sum(m.quantity) FILTER (WHERE m.movement_type='sent'),0) AS sent_m,
+      coalesce(sum(m.quantity) FILTER (WHERE m.movement_type='returned'),0) AS returned_m,
+      coalesce(sum(m.quantity) FILTER (WHERE m.movement_type='consumed'),0) AS consumed_m,
+      coalesce(sum(m.quantity) FILTER (WHERE m.movement_type='lost'),0) AS lost_m,
+      coalesce(sum(m.quantity) FILTER (WHERE m.movement_type='adjusted'),0) AS adjusted_m,
+      coalesce(sum(CASE WHEN m.movement_type='sent' THEN m.quantity
+        WHEN m.movement_type='adjusted' THEN m.quantity ELSE -m.quantity END),0) AS balance_m,
+      coalesce(jsonb_agg(m.id ORDER BY m.occurred_at,m.id)
+        FILTER (WHERE m.id IS NOT NULL),'[]'::jsonb) AS movement_ids
+      FROM linked_service_lines l
+      LEFT JOIN public.contractor_material_custody_movements m
+        ON m.service_order_item_id=l.id
+       AND m.service_order_id=l.service_order_id
+       AND m.base_product_id=l.base_product_id
+     GROUP BY l.id
   ), immutable_facts AS (
-    SELECT 'purchase_document_frozen'::text AS fact_type, c.id AS entity_id,
+    SELECT 'purchase_document_frozen_with_open_balance'::text AS fact_type,
+      c.id AS entity_id,
       jsonb_build_object(
         'contribution_id',c.id,'purchase_order_id',c.purchase_order_id,
         'purchase_order_item_id',c.purchase_order_item_id,
         'contribution_status',c.status,'purchase_order_status',po.status,
         'snapshot_locked_at',po.snapshot_locked_at,
-        'has_receipt',EXISTS(SELECT 1 FROM public.purchase_receipt_items pri
-          WHERE pri.purchase_order_item_id=c.purchase_order_item_id)
+        'committed_quantity_stock_unit',c.committed_quantity_stock_unit,
+        'accepted_quantity_stock_unit',c.accepted_quantity_stock_unit,
+        'open_quantity_stock_unit',greatest(0,c.committed_quantity_stock_unit
+          -c.accepted_quantity_stock_unit)
       ) AS detail
       FROM public.purchase_demand_contributions c
       JOIN demand_ids d ON d.id=c.sale_order_strap_demand_id
       LEFT JOIN public.purchase_orders po ON po.id=c.purchase_order_id
-     WHERE c.status IN ('approved','sent','partial','received')
-        OR po.snapshot_locked_at IS NOT NULL
-        OR EXISTS(SELECT 1 FROM public.purchase_receipt_items pri
-          WHERE pri.purchase_order_item_id=c.purchase_order_item_id)
+     WHERE greatest(0,c.committed_quantity_stock_unit-c.accepted_quantity_stock_unit)>0.000001
+       AND (po.snapshot_locked_at IS NOT NULL
+         OR c.status IN ('approved','sent','partial','received'))
+       AND lower(btrim(coalesce(po.status,''))) NOT IN
+         ('cancelled','canceled','cancelado','cancelada','reversed','estornado')
     UNION ALL
-    SELECT 'production_started_or_received',c.id,
+    SELECT 'purchase_allocation_inconsistent',c.id,
+      jsonb_build_object('contribution_id',c.id,
+        'accepted_quantity_stock_unit',c.accepted_quantity_stock_unit,
+        'allocated_receipt_m',coalesce((SELECT sum(a.accepted_stock_quantity)
+          FROM public.purchase_receipt_allocations a
+          WHERE a.purchase_demand_contribution_id=c.id),0))
+      FROM public.purchase_demand_contributions c
+      JOIN demand_ids d ON d.id=c.sale_order_strap_demand_id
+     WHERE abs(c.accepted_quantity_stock_unit-coalesce((SELECT sum(a.accepted_stock_quantity)
+       FROM public.purchase_receipt_allocations a
+       WHERE a.purchase_demand_contribution_id=c.id),0))>0.000001
+    UNION ALL
+    SELECT 'contractor_custody_open',l.id,
       jsonb_build_object(
-        'contribution_id',c.id,'batch_item_id',bi.id,'batch_id',b.id,
-        'contribution_status',c.status,'batch_item_status',bi.status,
-        'batch_status',b.status,'batch_item_started_at',bi.started_at,
-        'batch_started_at',b.started_at,
-        'has_receipt',EXISTS(SELECT 1
-          FROM public.strap_production_receipt_allocations ra
-          WHERE ra.batch_contribution_id=c.id)
+        'service_order_item_id',l.id,'service_order_id',l.service_order_id,
+        'sent_at',l.sent_at,'sent_m',c.sent_m,'returned_m',c.returned_m,
+        'consumed_m',c.consumed_m,'lost_m',c.lost_m,'adjusted_m',c.adjusted_m,
+        'balance_in_custody_m',c.balance_m,'movement_ids',c.movement_ids
       )
+      FROM linked_service_lines l JOIN custody c ON c.service_order_item_id=l.id
+     WHERE abs(c.balance_m)>0.000001
+    UNION ALL
+    SELECT 'contractor_dispatch_inconsistent',l.id,
+      jsonb_build_object(
+        'service_order_item_id',l.id,'sent_at',l.sent_at,
+        'sent_m',c.sent_m,'returned_m',c.returned_m,'movement_ids',c.movement_ids,
+        'diagnostic','sent_at sem remessa estrutural correspondente'
+      )
+      FROM linked_service_lines l JOIN custody c ON c.service_order_item_id=l.id
+     WHERE (l.sent_at IS NOT NULL AND c.sent_m<=0)
+        OR (l.sent_at IS NULL AND c.sent_m>0)
+    UNION ALL
+    SELECT 'contractor_custody_link_inconsistent',m.id,
+      jsonb_build_object('custody_movement_id',m.id,
+        'service_order_item_id',l.id,'expected_service_order_id',l.service_order_id,
+        'actual_service_order_id',m.service_order_id,
+        'expected_base_product_id',l.base_product_id,
+        'actual_base_product_id',m.base_product_id)
+      FROM linked_service_lines l
+      JOIN public.contractor_material_custody_movements m
+        ON m.service_order_item_id=l.id
+     WHERE m.service_order_id IS DISTINCT FROM l.service_order_id
+        OR m.base_product_id IS DISTINCT FROM l.base_product_id
+    UNION ALL
+    SELECT 'contractor_claim_pending',cl.id,
+      jsonb_build_object('claim_id',cl.id,'service_order_item_id',cl.service_order_item_id,
+        'status',cl.status,'lost_quantity',cl.lost_quantity)
+      FROM public.contractor_loss_claims cl
+      JOIN linked_service_lines l ON l.id=cl.service_order_item_id
+     WHERE cl.status='pending'
+    UNION ALL
+    SELECT 'contractor_rework_pending',rr.id,
+      jsonb_build_object('rework_request_id',rr.id,
+        'service_order_item_id',rr.service_order_item_id,'status',rr.status,
+        'approved_m',rr.approved_m,'sent_m',rr.sent_m)
+      FROM public.strap_rework_material_requests rr
+      JOIN linked_service_lines l ON l.id=rr.service_order_item_id
+     WHERE rr.status IN ('pending','approved')
+    UNION ALL
+    SELECT 'physical_reconciliation_pending',pr.id,
+      jsonb_build_object('pending_reconciliation_id',pr.id,
+        'production_receipt_id',pr.production_receipt_id,
+        'reconciliation_type',pr.reconciliation_type,
+        'expected_quantity',pr.expected_quantity,'posted_quantity',pr.posted_quantity)
+      FROM public.strap_pending_reconciliations pr
+      JOIN public.strap_production_receipt_allocations ra
+        ON ra.production_receipt_id=pr.production_receipt_id
+      JOIN public.strap_production_batch_contributions c
+        ON c.id=ra.batch_contribution_id
+      JOIN demand_ids d ON d.id=c.sale_order_strap_demand_id
+     WHERE pr.status='pending'
+    UNION ALL
+    SELECT 'production_allocation_inconsistent',c.id,
+      jsonb_build_object('contribution_id',c.id,'delivered_m',c.delivered_m,
+        'allocated_receipt_m',coalesce((SELECT sum(ra.approved_m)
+          FROM public.strap_production_receipt_allocations ra
+          WHERE ra.batch_contribution_id=c.id),0))
       FROM public.strap_production_batch_contributions c
       JOIN demand_ids d ON d.id=c.sale_order_strap_demand_id
-      JOIN public.strap_production_batch_items bi ON bi.id=c.batch_item_id
-      JOIN public.strap_production_batches b ON b.id=bi.batch_id
-     WHERE c.status IN ('in_progress','partial','fulfilled')
-        OR bi.started_at IS NOT NULL OR b.started_at IS NOT NULL
-        OR EXISTS(SELECT 1 FROM public.strap_production_receipt_allocations ra
-          WHERE ra.batch_contribution_id=c.id)
+     WHERE abs(c.delivered_m-coalesce((SELECT sum(ra.approved_m)
+       FROM public.strap_production_receipt_allocations ra
+       WHERE ra.batch_contribution_id=c.id),0))>0.000001
     UNION ALL
-    SELECT 'external_physical_fact',soi.id,
-      jsonb_build_object(
-        'service_order_item_id',soi.id,'service_order_id',soi.service_order_id,
-        'sent_at',soi.sent_at,
-        'custody_movement_ids',coalesce((SELECT jsonb_agg(m.id ORDER BY m.occurred_at,m.id)
-          FROM public.contractor_material_custody_movements m
-          WHERE m.service_order_item_id=soi.id
-            AND m.service_order_id=soi.service_order_id
-            AND m.base_product_id=soi.base_product_id),'[]'::jsonb),
-        'receipt_ids',coalesce((SELECT jsonb_agg(r.id ORDER BY r.occurred_at,r.id)
-          FROM public.strap_production_receipts r
-          WHERE r.service_order_item_id=soi.id
-            AND r.batch_item_id=soi.strap_batch_item_id),'[]'::jsonb),
-        'claim_ids',coalesce((SELECT jsonb_agg(cl.id ORDER BY cl.created_at,cl.id)
-          FROM public.contractor_loss_claims cl
-          WHERE cl.service_order_item_id=soi.id
-            AND cl.service_order_id=soi.service_order_id
-            AND cl.base_product_id=soi.base_product_id),'[]'::jsonb)
-      )
-      FROM public.service_order_items soi
-     WHERE (
-       soi.sale_order_strap_demand_id IN (SELECT id FROM demand_ids)
-       OR EXISTS(SELECT 1 FROM public.strap_production_batch_contributions c
-         JOIN demand_ids d ON d.id=c.sale_order_strap_demand_id
-         WHERE c.service_order_item_id=soi.id)
-     ) AND (
-       soi.sent_at IS NOT NULL
-       OR EXISTS(SELECT 1 FROM public.contractor_material_custody_movements m
-         WHERE m.service_order_item_id=soi.id
-           AND m.service_order_id=soi.service_order_id
-           AND m.base_product_id=soi.base_product_id)
-       OR EXISTS(SELECT 1 FROM public.strap_production_receipts r
-         WHERE r.service_order_item_id=soi.id
-           AND r.batch_item_id=soi.strap_batch_item_id)
-       OR EXISTS(SELECT 1 FROM public.contractor_loss_claims cl
-         WHERE cl.service_order_item_id=soi.id
-           AND cl.service_order_id=soi.service_order_id
-           AND cl.base_product_id=soi.base_product_id)
-     )
-    UNION ALL
-    SELECT 'reservation_consumed',r.id,
-      jsonb_build_object('reservation_id',r.id,'product_id',r.product_id,
-        'quantity_reserved',r.quantity_reserved,'quantity_consumed',r.quantity_consumed,
-        'status',r.status)
+    SELECT 'consumption_without_physical_origin',r.id,
+      jsonb_build_object('reservation_id',r.id,'source',r.source,
+        'product_id',r.product_id,'quantity_consumed',r.quantity_consumed)
       FROM public.material_reservations r
       JOIN demand_ids d ON d.id=r.sale_order_strap_demand_id
-     WHERE coalesce(r.quantity_consumed,0)>0
+     WHERE coalesce(r.quantity_consumed,0)>0 AND (
+       (r.source='strap_engine_finished' AND NOT EXISTS(
+         SELECT 1 FROM public.stock_movements sm
+          WHERE sm.material_reservation_id=r.id AND sm.movement_type='out'
+            AND sm.product_id=r.product_id AND sm.finished_product_id=r.product_id))
+       OR (r.source='strap_engine_base' AND NOT EXISTS(
+         SELECT 1 FROM public.strap_production_receipts pr
+          WHERE pr.batch_item_id=r.strap_batch_item_id
+            AND pr.base_product_id=r.product_id AND pr.base_consumed_m>0))
+       OR r.source NOT IN ('strap_engine_finished','strap_engine_base')
+     )
+  ), preserved_facts AS (
+    SELECT 'purchase_receipt'::text AS fact_type,c.id AS entity_id,
+      jsonb_build_object('contribution_id',c.id,'source_mode','buy_ready',
+        'accepted_quantity_stock_unit',c.accepted_quantity_stock_unit,
+        'receipt_allocation_ids',coalesce((SELECT jsonb_agg(a.id ORDER BY a.id)
+          FROM public.purchase_receipt_allocations a
+          WHERE a.purchase_demand_contribution_id=c.id),'[]'::jsonb)) AS detail
+      FROM public.purchase_demand_contributions c
+      JOIN demand_ids d ON d.id=c.sale_order_strap_demand_id
+     WHERE c.accepted_quantity_stock_unit>0
     UNION ALL
-    SELECT 'stock_movement',sm.id,
-      jsonb_build_object('stock_movement_id',sm.id,'product_id',sm.product_id,
-        'movement_type',sm.movement_type,'quantity',sm.quantity,
-        'strap_production_receipt_id',sm.strap_production_receipt_id,
-        'purchase_receipt_item_id',sm.purchase_receipt_item_id)
-      FROM public.stock_movements sm
-      JOIN demand_ids d ON d.id=sm.sale_order_strap_demand_id
+    SELECT 'production_receipt',c.id,
+      jsonb_build_object('contribution_id',c.id,'source_mode','internal',
+        'delivered_m',c.delivered_m,
+        'receipt_allocation_ids',coalesce((SELECT jsonb_agg(a.id ORDER BY a.id)
+          FROM public.strap_production_receipt_allocations a
+          WHERE a.batch_contribution_id=c.id),'[]'::jsonb))
+      FROM public.strap_production_batch_contributions c
+      JOIN demand_ids d ON d.id=c.sale_order_strap_demand_id
+     WHERE c.delivered_m>0
+    UNION ALL
+    SELECT 'finished_stock_consumption',r.id,
+      jsonb_build_object('reservation_id',r.id,'quantity_consumed',r.quantity_consumed,
+        'stock_movement_ids',coalesce((SELECT jsonb_agg(sm.id ORDER BY sm.created_at,sm.id)
+          FROM public.stock_movements sm WHERE sm.material_reservation_id=r.id),'[]'::jsonb))
+      FROM public.material_reservations r
+      JOIN demand_ids d ON d.id=r.sale_order_strap_demand_id
+     WHERE r.source='strap_engine_finished' AND coalesce(r.quantity_consumed,0)>0
+    UNION ALL
+    SELECT 'contractor_history',l.id,
+      jsonb_build_object('service_order_item_id',l.id,'sent_at',l.sent_at,
+        'sent_m',c.sent_m,'returned_m',c.returned_m,'consumed_m',c.consumed_m,
+        'lost_m',c.lost_m,'adjusted_m',c.adjusted_m,'movement_ids',c.movement_ids)
+      FROM linked_service_lines l JOIN custody c ON c.service_order_item_id=l.id
+     WHERE l.sent_at IS NOT NULL OR jsonb_array_length(c.movement_ids)>0
+    UNION ALL
+    SELECT 'contractor_production_receipt',r.id,
+      jsonb_build_object('production_receipt_id',r.id,
+        'service_order_item_id',r.service_order_item_id,
+        'approved_m',r.approved_m,'rejected_m',r.rejected_m,
+        'base_consumed_m',r.base_consumed_m,'base_returned_m',r.base_returned_m)
+      FROM linked_service_lines l
+      JOIN public.strap_production_receipts r
+        ON r.service_order_item_id=l.id
+       AND r.batch_item_id=l.strap_batch_item_id
+       AND r.strap_variant_id=l.strap_variant_id
+       AND r.base_product_id=l.base_product_id
+       AND r.finished_product_id=l.finished_product_id
+    UNION ALL
+    SELECT 'contractor_loss_claim',cl.id,
+      jsonb_build_object('claim_id',cl.id,
+        'service_order_item_id',cl.service_order_item_id,'status',cl.status,
+        'lost_quantity',cl.lost_quantity,'claim_amount',cl.claim_amount)
+      FROM linked_service_lines l
+      JOIN public.contractor_loss_claims cl
+        ON cl.service_order_item_id=l.id
+       AND cl.service_order_id=l.service_order_id
+       AND cl.base_product_id=l.base_product_id
+     WHERE cl.status<>'pending'
   ), reversible_state AS (
     SELECT jsonb_build_object(
       'current_demand_ids',coalesce((SELECT jsonb_agg(d.id ORDER BY d.id)
@@ -2481,34 +2635,268 @@ AS $$
       'reservation_ids',coalesce((SELECT jsonb_agg(r.id ORDER BY r.id)
         FROM public.material_reservations r JOIN demand_ids d ON d.id=r.sale_order_strap_demand_id
         WHERE r.status IN ('reserved','partially_consumed')
-          AND coalesce(r.quantity_consumed,0)=0),'[]'::jsonb),
+          AND r.quantity_reserved-coalesce(r.quantity_consumed,0)>0.000001),'[]'::jsonb),
       'purchase_contribution_ids',coalesce((SELECT jsonb_agg(c.id ORDER BY c.id)
         FROM public.purchase_demand_contributions c
         JOIN demand_ids d ON d.id=c.sale_order_strap_demand_id
-        WHERE c.status IN ('proposed','awaiting_approval','suspended')),'[]'::jsonb),
+        LEFT JOIN public.purchase_orders po ON po.id=c.purchase_order_id
+        WHERE c.status IN ('proposed','awaiting_approval','suspended')
+           OR (c.status IN ('approved','sent','partial')
+             AND lower(btrim(coalesce(po.status,''))) IN
+               ('cancelled','canceled','cancelado','cancelada','reversed','estornado'))),'[]'::jsonb),
       'production_contribution_ids',coalesce((SELECT jsonb_agg(c.id ORDER BY c.id)
         FROM public.strap_production_batch_contributions c
         JOIN demand_ids d ON d.id=c.sale_order_strap_demand_id
-        JOIN public.strap_production_batch_items bi ON bi.id=c.batch_item_id
-        JOIN public.strap_production_batches b ON b.id=bi.batch_id
-        WHERE c.status IN ('planned','suspended')
-          AND bi.started_at IS NULL AND b.started_at IS NULL
-          AND NOT public.strap_demand_has_external_commitment(d.id)),'[]'::jsonb),
+        WHERE c.status IN ('planned','in_progress','partial','suspended')),'[]'::jsonb),
       'service_order_item_ids',coalesce((SELECT jsonb_agg(soi.id ORDER BY soi.id)
-        FROM public.service_order_items soi
-        WHERE soi.sent_at IS NULL AND soi.line_status NOT IN ('Entregue','Cancelado')
-          AND (soi.sale_order_strap_demand_id IN (SELECT id FROM demand_ids)
-            OR EXISTS(SELECT 1 FROM public.strap_production_batch_contributions c
-              JOIN demand_ids d ON d.id=c.sale_order_strap_demand_id
-              WHERE c.service_order_item_id=soi.id))),'[]'::jsonb)
+        FROM linked_service_lines soi
+        WHERE soi.line_status NOT IN ('Entregue','Cancelado')),'[]'::jsonb),
+      'batch_item_ids',coalesce((SELECT jsonb_agg(DISTINCT c.batch_item_id ORDER BY c.batch_item_id)
+        FROM public.strap_production_batch_contributions c
+        JOIN demand_ids d ON d.id=c.sale_order_strap_demand_id
+        WHERE c.status IN ('planned','in_progress','partial','suspended')),'[]'::jsonb)
     ) AS detail
   )
   SELECT jsonb_build_object(
     'immutable_blockers',coalesce((SELECT jsonb_agg(
       jsonb_build_object('type',f.fact_type,'entity_id',f.entity_id,'detail',f.detail)
       ORDER BY f.fact_type,f.entity_id) FROM immutable_facts f),'[]'::jsonb),
+    'preserved_realized_facts',coalesce((SELECT jsonb_agg(
+      jsonb_build_object('type',f.fact_type,'entity_id',f.entity_id,'detail',f.detail)
+      ORDER BY f.fact_type,f.entity_id) FROM preserved_facts f),'[]'::jsonb),
     'reversible',r.detail
   ) FROM reversible_state r;
+$$;
+
+-- Encerra somente o saldo futuro da revisao antiga. Recebimentos, allocations,
+-- movimentos, consumo e snapshots permanecem apontando para a demanda antiga;
+-- reserva parcialmente consumida libera apenas quantity_reserved-consumed.
+CREATE OR REPLACE FUNCTION public.neutralize_strap_source_override_promises(
+  p_sale_order_strap_demand_ids uuid[],
+  p_reason text,
+  p_correlation_id uuid
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_po_ids uuid[]:=ARRAY[]::uuid[];
+  v_batch_item_ids uuid[]:=ARRAY[]::uuid[];
+  v_batch_ids uuid[]:=ARRAY[]::uuid[];
+  v_service_item_ids uuid[]:=ARRAY[]::uuid[];
+  v_id uuid;
+  v_lock record;
+  v_item public.strap_production_batch_items%ROWTYPE;
+  v_total numeric;
+  v_released_finished numeric:=0;
+  v_released_base numeric:=0;
+  v_reservation_count integer:=0;
+  v_purchase_count integer:=0;
+  v_production_count integer:=0;
+  v_service_count integer:=0;
+  v_count integer:=0;
+BEGIN
+  IF nullif(btrim(p_reason),'') IS NULL OR p_correlation_id IS NULL THEN
+    RAISE EXCEPTION 'Neutralizacao de origem exige motivo e correlation_id';
+  END IF;
+  PERFORM set_config('app.strap_engine_write','1',true);
+  PERFORM set_config('app.strap_po_engine','1',true);
+  FOR v_lock IN
+    SELECT DISTINCT d.base_product_id AS id
+      FROM public.sale_order_strap_demands d
+     WHERE d.id=ANY(coalesce(p_sale_order_strap_demand_ids,ARRAY[]::uuid[]))
+       AND d.base_product_id IS NOT NULL ORDER BY 1
+  LOOP
+    PERFORM pg_advisory_xact_lock(hashtextextended(
+      'strap-base-netting:'||v_lock.id::text,0));
+  END LOOP;
+  FOR v_lock IN
+    SELECT DISTINCT d.strap_variant_id AS id
+      FROM public.sale_order_strap_demands d
+     WHERE d.id=ANY(coalesce(p_sale_order_strap_demand_ids,ARRAY[]::uuid[]))
+     ORDER BY 1
+  LOOP
+    PERFORM pg_advisory_xact_lock(hashtextextended(
+      'strap-variant:'||v_lock.id::text,0));
+  END LOOP;
+
+  WITH targets AS (
+    SELECT r.id,r.source,
+      greatest(r.quantity_reserved-coalesce(r.quantity_consumed,0),0) AS released_m
+      FROM public.material_reservations r
+     WHERE r.sale_order_strap_demand_id=ANY(
+       coalesce(p_sale_order_strap_demand_ids,ARRAY[]::uuid[]))
+       AND r.status IN ('reserved','partially_consumed')
+       AND r.quantity_reserved-coalesce(r.quantity_consumed,0)>0.000001
+     FOR UPDATE
+  ), changed AS (
+    UPDATE public.material_reservations r SET
+      quantity_reserved=coalesce(r.quantity_consumed,0),
+      status=CASE WHEN coalesce(r.quantity_consumed,0)>0 THEN 'consumed' ELSE 'cancelled' END,
+      notes=coalesce(r.notes,'')||' | saldo futuro liberado por override de origem',
+      metadata=coalesce(r.metadata,'{}'::jsonb)||jsonb_build_object(
+        'source_override_correlation_id',p_correlation_id,
+        'source_override_reason',btrim(p_reason))
+      FROM targets t WHERE r.id=t.id
+      RETURNING t.source,t.released_m
+  )
+  SELECT coalesce(sum(released_m) FILTER (WHERE source='strap_engine_finished'),0),
+         coalesce(sum(released_m) FILTER (WHERE source='strap_engine_base'),0),
+         count(*)::integer
+    INTO v_released_finished,v_released_base,v_reservation_count FROM changed;
+
+  SELECT coalesce(array_agg(DISTINCT c.purchase_order_id)
+    FILTER (WHERE c.purchase_order_id IS NOT NULL),ARRAY[]::uuid[])
+    INTO v_po_ids
+    FROM public.purchase_demand_contributions c
+    LEFT JOIN public.purchase_orders po ON po.id=c.purchase_order_id
+   WHERE c.sale_order_strap_demand_id=ANY(
+     coalesce(p_sale_order_strap_demand_ids,ARRAY[]::uuid[]))
+     AND (c.status IN ('proposed','awaiting_approval','suspended')
+       OR (c.status IN ('approved','sent','partial')
+         AND lower(btrim(coalesce(po.status,''))) IN
+           ('cancelled','canceled','cancelado','cancelada','reversed','estornado')));
+  UPDATE public.purchase_demand_contributions c SET
+    status=CASE WHEN c.status IN ('proposed','awaiting_approval','suspended')
+      THEN 'cancelled' ELSE 'superseded' END,
+    suspension_reason='Saldo futuro neutralizado por override: '||btrim(p_reason),
+    correlation_id=p_correlation_id
+    FROM public.purchase_orders po
+   WHERE c.sale_order_strap_demand_id=ANY(
+     coalesce(p_sale_order_strap_demand_ids,ARRAY[]::uuid[]))
+     AND po.id=c.purchase_order_id
+     AND (c.status IN ('proposed','awaiting_approval','suspended')
+       OR (c.status IN ('approved','sent','partial')
+         AND lower(btrim(coalesce(po.status,''))) IN
+           ('cancelled','canceled','cancelado','cancelada','reversed','estornado')));
+  GET DIAGNOSTICS v_purchase_count=ROW_COUNT;
+  -- Contribuicao proposta ainda nao materializada nao possui purchase_order.
+  UPDATE public.purchase_demand_contributions c SET status='cancelled',
+    suspension_reason='Saldo futuro neutralizado por override: '||btrim(p_reason),
+    correlation_id=p_correlation_id
+   WHERE c.sale_order_strap_demand_id=ANY(
+     coalesce(p_sale_order_strap_demand_ids,ARRAY[]::uuid[]))
+     AND c.purchase_order_id IS NULL
+     AND c.status IN ('proposed','awaiting_approval','suspended');
+  GET DIAGNOSTICS v_count=ROW_COUNT;
+  v_purchase_count:=v_purchase_count+v_count;
+
+  SELECT coalesce(array_agg(DISTINCT c.batch_item_id),ARRAY[]::uuid[]),
+         coalesce(array_agg(DISTINCT c.service_order_item_id)
+           FILTER (WHERE c.service_order_item_id IS NOT NULL),ARRAY[]::uuid[])
+    INTO v_batch_item_ids,v_service_item_ids
+    FROM public.strap_production_batch_contributions c
+   WHERE c.sale_order_strap_demand_id=ANY(
+     coalesce(p_sale_order_strap_demand_ids,ARRAY[]::uuid[]))
+     AND c.status IN ('planned','in_progress','partial','suspended');
+  SELECT coalesce(array_agg(DISTINCT bi.batch_id),ARRAY[]::uuid[])
+    INTO v_batch_ids FROM public.strap_production_batch_items bi
+   WHERE bi.id=ANY(v_batch_item_ids);
+
+  -- delivered_m e receipt allocations ficam intactos. superseded significa
+  -- apenas que planned_m-delivered_m deixou de ser promessa futura.
+  UPDATE public.strap_production_batch_contributions SET
+    status='superseded',correlation_id=p_correlation_id
+   WHERE sale_order_strap_demand_id=ANY(
+     coalesce(p_sale_order_strap_demand_ids,ARRAY[]::uuid[]))
+     AND status IN ('planned','in_progress','partial','suspended');
+  GET DIAGNOSTICS v_production_count=ROW_COUNT;
+
+  UPDATE public.service_order_items soi SET line_status='Cancelado',
+    suspension_reason='Saldo futuro neutralizado por override: '||btrim(p_reason)
+   WHERE soi.id=ANY(v_service_item_ids)
+     AND soi.line_status NOT IN ('Entregue','Cancelado')
+     AND NOT EXISTS(SELECT 1 FROM public.strap_production_batch_contributions c
+       WHERE c.service_order_item_id=soi.id
+         AND c.status NOT IN ('fulfilled','cancelled','superseded'))
+     AND NOT EXISTS(SELECT 1
+       FROM public.contractor_material_custody_movements m
+       WHERE m.service_order_item_id=soi.id
+       GROUP BY m.service_order_item_id
+       HAVING abs(sum(CASE WHEN m.movement_type='sent' THEN m.quantity
+         WHEN m.movement_type='adjusted' THEN m.quantity ELSE -m.quantity END))>0.000001)
+     AND NOT EXISTS(SELECT 1 FROM public.contractor_loss_claims cl
+       WHERE cl.service_order_item_id=soi.id AND cl.status='pending')
+     AND NOT EXISTS(SELECT 1 FROM public.strap_rework_material_requests rr
+       WHERE rr.service_order_item_id=soi.id AND rr.status IN ('pending','approved'));
+  GET DIAGNOSTICS v_service_count=ROW_COUNT;
+
+  FOREACH v_id IN ARRAY v_service_item_ids LOOP
+    PERFORM public.reconcile_strap_service_order_completion(v_id,p_correlation_id,
+      'Encerramento do saldo futuro por override de origem');
+  END LOOP;
+
+  FOREACH v_id IN ARRAY v_batch_item_ids LOOP
+    SELECT * INTO v_item FROM public.strap_production_batch_items
+     WHERE id=v_id FOR UPDATE;
+    IF v_item.started_at IS NULL AND v_item.delivered_m=0 THEN
+      SELECT coalesce(sum(c.planned_m),0) INTO v_total
+        FROM public.strap_production_batch_contributions c
+       WHERE c.batch_item_id=v_id
+         AND c.status IN ('planned','in_progress','partial');
+      UPDATE public.strap_executor_daily_capacity_allocations
+         SET status='superseded',updated_at=now()
+       WHERE batch_item_id=v_id AND status='active';
+      UPDATE public.strap_production_batch_items SET
+        planned_finished_m=v_total,
+        planned_base_m=v_total/confirmed_yield_snapshot,
+        scheduled_m=0,unscheduled_m=v_total,
+        status=CASE WHEN v_total=0 THEN 'cancelled' ELSE 'planned' END,
+        updated_at=now()
+       WHERE id=v_id;
+      IF v_total>0 THEN
+        PERFORM public.schedule_strap_batch_item(v_id,
+          'Reagendamento apos override de origem',p_correlation_id);
+      END IF;
+    ELSIF NOT EXISTS(SELECT 1 FROM public.strap_production_batch_contributions c
+      WHERE c.batch_item_id=v_id
+        AND c.status NOT IN ('fulfilled','cancelled','superseded')) THEN
+      -- Documento iniciado nao e reescrito. A conclusao explicita registra
+      -- que o restante foi abandonado, mantendo plano, realizado e started_at.
+      UPDATE public.strap_production_batch_items SET status='completed',
+        completed_at=coalesce(completed_at,now()),updated_at=now() WHERE id=v_id;
+    END IF;
+  END LOOP;
+
+  FOREACH v_id IN ARRAY v_batch_ids LOOP
+    IF NOT EXISTS(SELECT 1 FROM public.strap_production_batch_items bi
+      WHERE bi.batch_id=v_id AND bi.status NOT IN ('completed','cancelled')) THEN
+      UPDATE public.strap_production_batches b SET
+        status=CASE WHEN b.started_at IS NOT NULL OR EXISTS(
+          SELECT 1 FROM public.strap_production_batch_items bi
+          WHERE bi.batch_id=b.id AND (bi.started_at IS NOT NULL OR bi.delivered_m>0))
+          THEN 'completed' ELSE 'cancelled' END,
+        completed_at=CASE WHEN b.started_at IS NOT NULL OR EXISTS(
+          SELECT 1 FROM public.strap_production_batch_items bi
+          WHERE bi.batch_id=b.id AND (bi.started_at IS NOT NULL OR bi.delivered_m>0))
+          THEN coalesce(b.completed_at,now()) ELSE NULL END,
+        suspension_reason='Saldo futuro neutralizado por override: '||btrim(p_reason),
+        correlation_id=p_correlation_id,updated_at=now()
+       WHERE b.id=v_id;
+    END IF;
+  END LOOP;
+
+  FOREACH v_id IN ARRAY v_po_ids LOOP
+    IF EXISTS(SELECT 1 FROM public.purchase_orders po WHERE po.id=v_id
+      AND po.snapshot_locked_at IS NULL
+      AND po.status IN ('draft','pending','Pendente')) THEN
+      PERFORM public.recalculate_open_strap_purchase_order(v_id);
+    END IF;
+  END LOOP;
+
+  RETURN jsonb_build_object(
+    'released_finished_stock_m',v_released_finished,
+    'released_base_stock_m',v_released_base,
+    'released_reservation_count',v_reservation_count,
+    'neutralized_purchase_contribution_count',v_purchase_count,
+    'neutralized_production_contribution_count',v_production_count,
+    'closed_service_order_item_count',v_service_count,
+    'affected_purchase_order_ids',to_jsonb(v_po_ids),
+    'affected_batch_item_ids',to_jsonb(v_batch_item_ids),
+    'preserved_facts',true,'correlation_id',p_correlation_id);
+END;
 $$;
 
 CREATE OR REPLACE FUNCTION public.tg_version_and_guard_sale_order_item_strap_sourcing()
@@ -2566,7 +2954,13 @@ BEGIN
 
   SELECT EXISTS(
     SELECT 1 FROM public.sale_order_strap_demands d
-    WHERE d.sale_order_item_id=OLD.id AND (
+    WHERE d.sale_order_item_id=OLD.id
+      AND (
+        OLD.strap_sourcing->d.technical_strap_line_id::text->>'source_mode'
+          IS DISTINCT FROM NEW.strap_sourcing->d.technical_strap_line_id::text->>'source_mode'
+        OR nullif(OLD.strap_sourcing->d.technical_strap_line_id::text->>'strap_variant_id','')::uuid
+          IS DISTINCT FROM nullif(NEW.strap_sourcing->d.technical_strap_line_id::text->>'strap_variant_id','')::uuid
+      ) AND (
       EXISTS(SELECT 1 FROM public.purchase_demand_contributions c
         JOIN public.purchase_orders po ON po.id=c.purchase_order_id
         WHERE c.sale_order_strap_demand_id=d.id
@@ -2670,10 +3064,9 @@ DECLARE
   v_before_state jsonb;
   v_after_state jsonb;
   v_blockers jsonb;
+  v_neutralization jsonb:='{}'::jsonb;
   v_changed_demand_ids uuid[]:=ARRAY[]::uuid[];
-  v_recalc_po_ids uuid[]:=ARRAY[]::uuid[];
-  v_recalc_batch_item_ids uuid[]:=ARRAY[]::uuid[];
-  v_id uuid;
+  v_new_demand_ids uuid[]:=ARRAY[]::uuid[];
   v_job_id uuid;
   v_job_status text;
   v_worker_id text;
@@ -2702,20 +3095,26 @@ BEGIN
   v_before_state:=public.inspect_strap_source_override_state(v_changed_demand_ids);
   v_blockers:=coalesce(v_before_state->'immutable_blockers','[]'::jsonb);
   IF jsonb_array_length(v_blockers)>0 THEN
-    RAISE EXCEPTION 'Troca de origem bloqueada por fatos imutaveis'
+    RAISE EXCEPTION 'Troca de origem bloqueada por saldo fisico/documental aberto'
       USING ERRCODE='55000',
         DETAIL=jsonb_build_object(
           'code','strap_source_override_blocked',
           'sale_order_item_id',v_item.id,
           'blocked_facts',v_blockers,
-          'required_action','Concluir/estornar pelo fluxo documental; sent_at e fatos fisicos nao sao regravados'
+          'preserved_realized_facts',v_before_state->'preserved_realized_facts',
+          'required_action','Concilie custodia/pendencia ou cancele o saldo congelado pelo fluxo documental'
         )::text,
-        HINT='A RPC nao reescreve OC congelada, recebimento, consumo, custodia, claim ou remessa enviada';
+        HINT='Recebimento/consumo concluido e preservado; somente saldo congelado, custodia ou inconsistencia aberta bloqueiam';
   END IF;
   v_before:=jsonb_build_object('strap_sourcing',v_item.strap_sourcing,
     'strap_sourcing_revision',v_item.strap_sourcing_revision,
     'changed_demand_ids',to_jsonb(v_changed_demand_ids),
     'override_state',v_before_state);
+
+  IF cardinality(v_changed_demand_ids)>0 THEN
+    v_neutralization:=public.neutralize_strap_source_override_promises(
+      v_changed_demand_ids,p_reason,p_correlation_id);
+  END IF;
   PERFORM set_config('app.strap_source_admin_override','1',true);
   PERFORM set_config('app.strap_source_rpc','1',true);
   UPDATE public.sale_order_items SET strap_sourcing=p_lines WHERE id=v_item.id
@@ -2753,57 +3152,27 @@ BEGIN
             'reconciliation',v_process_result)::text;
     END IF;
 
-    -- Suspensoes tecnicas antigas nao sao fato fisico. Depois de o worker
-    -- substituir a demanda, encerra apenas essas promessas ainda reversiveis.
-    SELECT coalesce(array_agg(DISTINCT c.purchase_order_id)
-      FILTER (WHERE c.purchase_order_id IS NOT NULL),ARRAY[]::uuid[])
-      INTO v_recalc_po_ids
-      FROM public.purchase_demand_contributions c
-     WHERE c.sale_order_strap_demand_id=ANY(v_changed_demand_ids)
-       AND c.status='suspended';
-    UPDATE public.purchase_demand_contributions SET status='cancelled',
-      suspension_reason='Neutralizada por troca administrativa de origem: '||btrim(p_reason),
-      correlation_id=p_correlation_id
-     WHERE sale_order_strap_demand_id=ANY(v_changed_demand_ids)
-       AND status='suspended';
-    FOREACH v_id IN ARRAY v_recalc_po_ids LOOP
-      PERFORM public.recalculate_open_strap_purchase_order(v_id);
-    END LOOP;
-
-    SELECT coalesce(array_agg(DISTINCT c.batch_item_id),ARRAY[]::uuid[])
-      INTO v_recalc_batch_item_ids
-      FROM public.strap_production_batch_contributions c
-      JOIN public.strap_production_batch_items bi ON bi.id=c.batch_item_id
-      JOIN public.strap_production_batches b ON b.id=bi.batch_id
-     WHERE c.sale_order_strap_demand_id=ANY(v_changed_demand_ids)
-       AND c.status='suspended' AND bi.started_at IS NULL AND b.started_at IS NULL
-       AND NOT public.strap_demand_has_external_commitment(c.sale_order_strap_demand_id);
-    UPDATE public.service_order_items soi SET line_status='Cancelado'
-     WHERE soi.sent_at IS NULL AND soi.id IN (
-       SELECT c.service_order_item_id
-         FROM public.strap_production_batch_contributions c
-        WHERE c.sale_order_strap_demand_id=ANY(v_changed_demand_ids)
-          AND c.status='suspended' AND c.service_order_item_id IS NOT NULL
-     );
-    UPDATE public.strap_production_batch_contributions c SET
-      status='superseded',correlation_id=p_correlation_id
-      FROM public.strap_production_batch_items bi,public.strap_production_batches b
-     WHERE bi.id=c.batch_item_id AND b.id=bi.batch_id
-       AND c.sale_order_strap_demand_id=ANY(v_changed_demand_ids)
-       AND c.status='suspended' AND bi.started_at IS NULL AND b.started_at IS NULL
-       AND NOT public.strap_demand_has_external_commitment(c.sale_order_strap_demand_id);
-    FOREACH v_id IN ARRAY v_recalc_batch_item_ids LOOP
-      UPDATE public.strap_production_batch_items bi SET
-        planned_finished_m=x.finished_m,
-        planned_base_m=x.finished_m/bi.confirmed_yield_snapshot
-        FROM (SELECT coalesce(sum(c.planned_m),0) AS finished_m
-          FROM public.strap_production_batch_contributions c
-          WHERE c.batch_item_id=v_id
-            AND c.status IN ('planned','in_progress','partial')) x
-       WHERE bi.id=v_id;
-      PERFORM public.schedule_strap_batch_item(v_id,
-        'Neutralizacao por troca administrativa de origem',p_correlation_id);
-    END LOOP;
+    SELECT coalesce(array_agg(d.id ORDER BY d.id),ARRAY[]::uuid[])
+      INTO v_new_demand_ids
+      FROM public.sale_order_strap_demands d
+     WHERE d.is_current AND d.supersedes_demand_id=ANY(v_changed_demand_ids);
+    UPDATE public.sale_order_strap_demands d SET
+      calculation_explanation=coalesce(d.calculation_explanation,'{}'::jsonb)
+        ||jsonb_build_object('admin_source_override',jsonb_build_object(
+          'previous_demand_ids',to_jsonb(v_changed_demand_ids),
+          'preserved_realized_facts',v_before_state->'preserved_realized_facts',
+          'released_to_free_stock_m',coalesce(
+            (v_neutralization->>'released_finished_stock_m')::numeric,0),
+          'new_identity',jsonb_build_object(
+            'strap_variant_id',d.strap_variant_id,
+            'source_mode',d.source_mode,
+            'gross_required_m',d.gross_required_m,
+            'inherited_fulfilled_m',d.fulfilled_m,
+            'inherited_cancelled_m',d.cancelled_m,
+            'coverage_policy','global_priority_netting'),
+          'correlation_id',p_correlation_id,
+          'reason',btrim(p_reason)))
+     WHERE d.id=ANY(v_new_demand_ids);
   END IF;
 
   v_after_state:=public.inspect_strap_source_override_state(v_changed_demand_ids);
@@ -2812,18 +3181,28 @@ BEGIN
      OR jsonb_array_length(v_after_state->'reversible'->'reservation_ids')>0
      OR jsonb_array_length(v_after_state->'reversible'->'purchase_contribution_ids')>0
      OR jsonb_array_length(v_after_state->'reversible'->'production_contribution_ids')>0
-     OR jsonb_array_length(v_after_state->'reversible'->'service_order_item_ids')>0 THEN
+     OR jsonb_array_length(v_after_state->'reversible'->'service_order_item_ids')>0
+     OR jsonb_array_length(v_after_state->'reversible'->'batch_item_ids')>0
+     OR EXISTS (SELECT 1 FROM public.sale_order_strap_demands d
+          WHERE d.id=ANY(v_new_demand_ids)
+            AND (coalesce(d.fulfilled_m,0)<>0 OR coalesce(d.cancelled_m,0)<>0)) THEN
     RAISE EXCEPTION 'Troca de origem deixou promessa antiga sem neutralizar'
       USING ERRCODE='55000',
         DETAIL=jsonb_build_object('code','strap_source_override_postcondition_failed',
           'changed_demand_ids',to_jsonb(v_changed_demand_ids),
+          'new_demand_state',(SELECT coalesce(jsonb_agg(jsonb_build_object(
+            'id',d.id,'strap_variant_id',d.strap_variant_id,
+            'source_mode',d.source_mode,'gross_required_m',d.gross_required_m,
+            'fulfilled_m',d.fulfilled_m,'cancelled_m',d.cancelled_m) ORDER BY d.id),'[]'::jsonb)
+            FROM public.sale_order_strap_demands d WHERE d.id=ANY(v_new_demand_ids)),
           'remaining_state',v_after_state)::text;
   END IF;
   v_after:=jsonb_build_object('strap_sourcing',v_item.strap_sourcing,
     'strap_sourcing_revision',v_item.strap_sourcing_revision,
     'changed_demand_ids',to_jsonb(v_changed_demand_ids),
+    'new_demand_ids',to_jsonb(v_new_demand_ids),
     'override_state',v_after_state,'job_id',v_job_id,
-    'reconciliation',v_process_result);
+    'neutralization',v_neutralization,'reconciliation',v_process_result);
   INSERT INTO public.artisanal_strap_operational_audit_log(
     entity_type,entity_id,action,before_data,after_data,reason,correlation_id,actor_id)
   VALUES('sale_order_item',v_item.id,'override_source',v_before,v_after,
@@ -2833,8 +3212,11 @@ BEGIN
     'strap_sourcing_revision',v_item.strap_sourcing_revision,
     'strap_sourcing',v_item.strap_sourcing,'correlation_id',p_correlation_id,
     'changed_demand_ids',to_jsonb(v_changed_demand_ids),
+    'new_demand_ids',to_jsonb(v_new_demand_ids),
     'neutralization',jsonb_build_object('before',v_before_state,
-      'after',v_after_state,'fully_reconciled',true),
+      'actions',v_neutralization,'after',v_after_state,
+      'preserved_realized_facts',v_before_state->'preserved_realized_facts',
+      'fully_reconciled',true),
     'job_id',v_job_id,'reconciliation',v_process_result);
 END;
 $$;
@@ -5681,12 +6063,13 @@ BEGIN
       v_count:=v_count+1;
       CONTINUE;
     END IF;
-    -- Suspensao causada SOMENTE pela fonte e reavaliada automaticamente. Isso
-    -- permite consumir saldo que chegou depois e retomar quando o cadastro e
-    -- saneado. Suspensao administrativa/manual continua exigindo a RPC de
-    -- retomada e nunca e inferida por texto de nome/cor.
+    -- Suspensao tecnica causada pelo catalogo/fonte e reavaliada
+    -- automaticamente. Isso permite consumir saldo que chegou depois e
+    -- retomar quando a variante e reativada ou o cadastro e saneado. Suspensao
+    -- operacional manual continua exigindo a RPC de retomada.
     IF v_demand.status='suspended' AND (
-      (v_demand.source_mode='internal'
+      v_demand.suspension_reason LIKE 'Variante fora do estado ativo:%'
+      OR (v_demand.source_mode='internal'
         AND v_demand.suspension_reason LIKE 'Producao interna indisponivel:%')
       OR (v_demand.source_mode='buy_ready'
         AND v_demand.suspension_reason LIKE 'Compra pronta indisponivel:%')
@@ -6015,7 +6398,8 @@ BEGIN
       WHERE id=v_floor.id
       RETURNING * INTO v_floor;
     ELSIF v_floor.status='suspended' AND (
-      (v_floor.source_mode='internal' AND v_internal_allowed
+      v_floor.suspension_reason LIKE 'Variante fora do estado ativo:%'
+      OR (v_floor.source_mode='internal' AND v_internal_allowed
         AND v_floor.suspension_reason LIKE 'Producao interna indisponivel:%')
       OR (v_floor.source_mode='buy_ready' AND v_buy_allowed
         AND v_floor.suspension_reason LIKE 'Compra pronta indisponivel:%')
@@ -6207,6 +6591,8 @@ BEGIN
      OR v_local !~ 'c\.status IN \(''approved'',''sent'',''partial'',''received''\)'
      OR v_local !~ 'c\.status IN \(''in_progress'',''partial'',''fulfilled''\)'
      OR v_source_resume_count <> 2
+     OR v_local !~ 'v_demand\.suspension_reason LIKE ''Variante fora do estado ativo:%'''
+     OR v_local !~ 'v_floor\.suspension_reason LIKE ''Variante fora do estado ativo:%'''
      OR v_local !~ 'Producao interna indisponivel:'
      OR v_local !~ 'Compra pronta indisponivel:'
      OR v_sent_guard_count < 5
@@ -6238,11 +6624,8 @@ AS $$
 DECLARE
   v_base_ids uuid[]:=ARRAY[]::uuid[];
   v_new_base_ids uuid[]:=ARRAY[]::uuid[];
-  v_locked_base_ids uuid[]:=ARRAY[]::uuid[];
-  v_missing_base_ids uuid[]:=ARRAY[]::uuid[];
   v_variant_ids uuid[]:=ARRAY[p_strap_variant_id];
   v_new_variant_ids uuid[]:=ARRAY[p_strap_variant_id];
-  v_lock_ceiling uuid;
 BEGIN
   IF p_strap_variant_id IS NULL OR NOT EXISTS (
     SELECT 1 FROM public.artisanal_strap_variants v WHERE v.id=p_strap_variant_id
@@ -6327,8 +6710,11 @@ AS $$
 DECLARE
   v_base_ids uuid[]:=ARRAY[]::uuid[];
   v_new_base_ids uuid[]:=ARRAY[]::uuid[];
+  v_locked_base_ids uuid[]:=ARRAY[]::uuid[];
+  v_missing_base_ids uuid[]:=ARRAY[]::uuid[];
   v_variant_ids uuid[]:=ARRAY[p_strap_variant_id];
   v_new_variant_ids uuid[]:=ARRAY[p_strap_variant_id];
+  v_lock_ceiling uuid;
   v_base_id uuid;
   v_variant_id uuid;
   v_current_base uuid;
@@ -6740,6 +7126,7 @@ DECLARE
   v_removed uuid[] := ARRAY[]::uuid[];
   v_requested_by uuid;
   v_has_commitment boolean;
+  v_is_admin_identity_change boolean:=false;
   v_processed integer := 0;
   v_blocked integer := 0;
   v_cost numeric;
@@ -6819,6 +7206,10 @@ BEGIN
         v_recipe_version:=nullif(v_line->'resolved'->'catalog'->>'recipe_version','')::integer;
         v_yield:=nullif(v_line->'resolved'->>'confirmed_yield_m_per_m','')::numeric;
         v_main_start:=(v_line->'resolved'->>'main_production_start')::date;
+        v_is_admin_identity_change:=v_existing.id IS NOT NULL
+          AND current_setting('app.strap_source_admin_override',true)='1'
+          AND (v_existing.source_mode<>v_source_mode
+            OR v_existing.strap_variant_id<>v_variant_id);
         SELECT * INTO v_week FROM public.get_previous_strap_open_week(v_main_start,v_factory_calendar);
 
         v_has_commitment:=v_existing.id IS NOT NULL AND (
@@ -6832,8 +7223,11 @@ BEGIN
               AND (c.status IN ('in_progress','partial','fulfilled') OR b.started_at IS NOT NULL))
           OR public.strap_demand_has_external_commitment(v_existing.id)
         );
-        IF v_existing.id IS NOT NULL AND v_existing.source_mode<>v_source_mode
-           AND v_has_commitment THEN
+        IF v_existing.id IS NOT NULL
+           AND (v_existing.source_mode<>v_source_mode
+             OR v_existing.strap_variant_id<>v_variant_id)
+           AND v_has_commitment
+           AND current_setting('app.strap_source_admin_override',true) IS DISTINCT FROM '1' THEN
           UPDATE public.sale_order_strap_demands SET suspended_from_status=status,
             status='suspended',suspension_reason='Origem comprometida: cancele/reconcilie o documento antes da troca',
             suspended_at=now(),suspended_by=v_requested_by,
@@ -6858,9 +7252,19 @@ BEGIN
         END IF;
 
         v_revision:=coalesce(v_existing.revision,0)+1;
-        v_carry_fulfilled:=least(coalesce(v_existing.fulfilled_m,0),v_gross);
-        v_carry_cancelled:=least(coalesce(v_existing.cancelled_m,0),
-          greatest(0,v_gross-v_carry_fulfilled));
+        IF v_is_admin_identity_change THEN
+          -- Fatos realizados/cancelados pertencem exclusivamente a revisao e
+          -- identidade antigas. A nova identidade nasce pelo bruto completo e
+          -- entra no netting global; saldo acabado liberado pode ser reservado
+          -- por qualquer PV elegivel segundo a prioridade canonica. Em especial,
+          -- nenhuma realizacao de V1 pode reduzir a necessidade de V2.
+          v_carry_fulfilled:=0;
+          v_carry_cancelled:=0;
+        ELSE
+          v_carry_fulfilled:=least(coalesce(v_existing.fulfilled_m,0),v_gross);
+          v_carry_cancelled:=least(coalesce(v_existing.cancelled_m,0),
+            greatest(0,v_gross-v_carry_fulfilled));
+        END IF;
         IF v_existing.id IS NOT NULL THEN
           UPDATE public.sale_order_strap_demands SET is_current=false,status='superseded',
             correlation_id=v_job.correlation_id WHERE id=v_existing.id;
@@ -6889,7 +7293,16 @@ BEGIN
           jsonb_build_object('technical_strap_line_id',v_line->>'technical_strap_line_id',
             'strap_variant_id',v_variant_id,'resolved',v_line->'resolved'),
           jsonb_build_object('gross_required_m',v_gross,'loss_factor',0,
-            'calendar_exception',v_week.calendar_exception),
+            'calendar_exception',v_week.calendar_exception)
+            ||CASE WHEN v_is_admin_identity_change THEN jsonb_build_object(
+              'admin_source_revision_split',jsonb_build_object(
+                'previous_demand_id',v_existing.id,
+                'previous_revision_fulfilled_m',coalesce(v_existing.fulfilled_m,0),
+                'previous_revision_cancelled_m',coalesce(v_existing.cancelled_m,0),
+                'new_identity_gross_m',v_gross,
+                'inherited_fulfilled_m',0,
+                'inherited_cancelled_m',0))
+              ELSE '{}'::jsonb END,
           CASE WHEN v_carry_fulfilled+v_carry_cancelled>=v_gross
             THEN 'fulfilled' ELSE 'pending' END,
           v_revision,true,v_existing.id,'sale_order_strap_demand',
@@ -6900,7 +7313,8 @@ BEGIN
         SELECT * INTO v_existing_financial
           FROM public.strap_financial_snapshots s
          WHERE s.sale_order_strap_demand_id=v_existing.id;
-        IF FOUND AND v_existing.source_mode=v_source_mode THEN
+        IF FOUND AND v_existing.source_mode=v_source_mode
+           AND v_existing.strap_variant_id=v_variant_id THEN
           -- O custo planejado pertence a confirmacao original do PV. Mudanca
           -- de agenda, quantidade ou origem nao reprecifica uma venda aprovada.
           INSERT INTO public.strap_financial_snapshots(
@@ -6999,6 +7413,8 @@ DECLARE
     'public.strap_demand_has_external_commitment(uuid)'::regprocedure);
   v_state text:=pg_get_functiondef(
     'public.inspect_strap_source_override_state(uuid[])'::regprocedure);
+  v_neutralizer text:=pg_get_functiondef(
+    'public.neutralize_strap_source_override_promises(uuid[],text,uuid)'::regprocedure);
   v_trigger text:=pg_get_functiondef(
     'public.tg_version_and_guard_sale_order_item_strap_sourcing()'::regprocedure);
   v_override text:=pg_get_functiondef(
@@ -7018,17 +7434,42 @@ BEGIN
      OR position('r.service_order_item_id = soi.id' IN v_helper)=0
      OR position('contractor_loss_claims' IN v_helper)=0
      OR position('cl.service_order_item_id = soi.id' IN v_helper)=0
-     OR position('purchase_document_frozen' IN v_state)=0
-     OR position('external_physical_fact' IN v_state)=0
-     OR position('reservation_consumed' IN v_state)=0
-     OR position('stock_movement' IN v_state)=0
+     OR position('purchase_document_frozen_with_open_balance' IN v_state)=0
+     OR position('contractor_custody_open' IN v_state)=0
+     OR position('physical_reconciliation_pending' IN v_state)=0
+     OR position('purchase_allocation_inconsistent' IN v_state)=0
+     OR position('contractor_custody_link_inconsistent' IN v_state)=0
+     OR position('preserved_realized_facts' IN v_state)=0
+     OR position('finished_stock_consumption' IN v_state)=0
+     OR position('contractor_production_receipt' IN v_state)=0
+     OR position('contractor_loss_claim' IN v_state)=0
+     OR position('quantity_reserved=coalesce(r.quantity_consumed,0)' IN v_neutralizer)=0
+     OR position('status=''superseded''' IN v_neutralizer)=0
+     OR position('delivered_m e receipt allocations ficam intactos' IN v_neutralizer)=0
      OR position('strap_demand_has_external_commitment(d.id)' IN v_trigger)=0
      OR position('inspect_strap_source_override_state(v_changed_demand_ids)' IN v_override)=0
+     OR position('neutralize_strap_source_override_promises' IN v_override)=0
      OR position('strap_source_override_blocked' IN v_override)=0
      OR position('strap_source_override_postcondition_failed' IN v_override)=0
+     OR position('released_to_free_stock_m' IN v_override)=0
+     OR position('preserved_realized_facts' IN v_override)=0
+     OR position('global_priority_netting' IN v_override)=0
+     OR position('new_demand_state' IN v_override)=0
+     OR position('coalesce(d.fulfilled_m,0)<>0' IN v_override)=0
+     OR position('coalesce(d.cancelled_m,0)<>0' IN v_override)=0
      OR position('process_strap_demand_job(v_job_id,v_worker_id)' IN v_override)=0
      OR position('''override_source''' IN v_override)=0
      OR position('strap_demand_has_external_commitment(v_existing.id)' IN v_worker)=0
+     OR position('app.strap_source_admin_override' IN v_worker)=0
+     OR position('v_existing.strap_variant_id<>v_variant_id' IN v_worker)=0
+     OR position('v_carry_fulfilled:=0' IN v_worker)=0
+     OR position('v_carry_cancelled:=0' IN v_worker)=0
+     OR position('v_prior_revision_settled' IN v_worker)>0
+     OR position('admin_source_revision_split' IN v_worker)=0
+     OR position('new_identity_gross_m' IN v_worker)=0
+     OR position('inherited_fulfilled_m' IN v_worker)=0
+     OR position('inherited_cancelled_m' IN v_worker)=0
+     OR position('v_existing.strap_variant_id=v_variant_id' IN v_worker)=0
      OR position('strap_demand_has_external_commitment(v_existing.id)' IN v_worker)
         >= position('is_current=false,status=''superseded''' IN v_worker) THEN
     RAISE EXCEPTION 'Req48/117/118: override nao preserva fatos nem neutraliza promessas atomicamente';
@@ -7490,6 +7931,45 @@ CREATE TRIGGER trg_touch_strap_rework_material_requests
   BEFORE UPDATE ON public.strap_rework_material_requests
   FOR EACH ROW EXECUTE FUNCTION public.tg_touch_artisanal_strap_operational();
 
+-- Primeiro lock comum a reconciliacao e a TODO writer fisico da linha/lote.
+-- A leitura inicial descobre apenas FKs de escopo; depois do advisory o writer
+-- rele FOR UPDATE. Ordem: napa global -> variante -> headers/linha -> produtos,
+-- eliminando o ciclo produto <-> service_order_item.
+CREATE OR REPLACE FUNCTION public.lock_strap_physical_operation_scope(
+  p_service_order_item_id uuid DEFAULT NULL,
+  p_batch_item_id uuid DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE v_variant_id uuid; v_base_product_id uuid; v_batch_item_id uuid;
+BEGIN
+  IF num_nonnulls(p_service_order_item_id,p_batch_item_id)<>1 THEN
+    RAISE EXCEPTION 'Escopo fisico exige service_order_item_id xor batch_item_id';
+  END IF;
+  IF p_service_order_item_id IS NOT NULL THEN
+    SELECT soi.strap_variant_id,soi.base_product_id,soi.strap_batch_item_id
+      INTO v_variant_id,v_base_product_id,v_batch_item_id
+      FROM public.service_order_items soi WHERE soi.id=p_service_order_item_id;
+  ELSE
+    SELECT bi.strap_variant_id,bi.base_product_id,bi.id
+      INTO v_variant_id,v_base_product_id,v_batch_item_id
+      FROM public.strap_production_batch_items bi WHERE bi.id=p_batch_item_id;
+  END IF;
+  IF v_variant_id IS NULL OR v_base_product_id IS NULL OR v_batch_item_id IS NULL THEN
+    RAISE EXCEPTION 'Escopo fisico de tira inexistente/incompleto';
+  END IF;
+  PERFORM pg_advisory_xact_lock(hashtextextended(
+    'strap-base-netting:'||v_base_product_id::text,0));
+  PERFORM pg_advisory_xact_lock(hashtextextended(
+    'strap-variant:'||v_variant_id::text,0));
+  RETURN jsonb_build_object('strap_variant_id',v_variant_id,
+    'base_product_id',v_base_product_id,'batch_item_id',v_batch_item_id);
+END;
+$$;
+
 CREATE OR REPLACE FUNCTION public.strap_custody_open_value(
   p_service_order_item_id uuid,
   p_base_product_id uuid
@@ -7647,6 +8127,7 @@ BEGIN
     RETURN jsonb_build_object('movement_id',v_existing.id,'replayed',true);
   END IF;
 
+  PERFORM public.lock_strap_physical_operation_scope(p_service_order_item_id,NULL);
   SELECT * INTO v_line FROM public.service_order_items
    WHERE id=p_service_order_item_id FOR UPDATE;
   IF NOT FOUND OR v_line.strap_variant_id IS NULL THEN RAISE EXCEPTION 'Linha de OS de tira nao encontrada'; END IF;
@@ -7803,6 +8284,7 @@ BEGIN
       THEN RAISE EXCEPTION 'Replay divergente'; END IF;
     RETURN jsonb_build_object('movement_id',v_existing,'replayed',true);
   END IF;
+  PERFORM public.lock_strap_physical_operation_scope(p_service_order_item_id,NULL);
   SELECT * INTO v_line FROM public.service_order_items WHERE id=p_service_order_item_id FOR UPDATE;
   SELECT * INTO v_os FROM public.service_orders WHERE id=v_line.service_order_id;
   PERFORM pg_advisory_xact_lock(hashtextextended(
@@ -7857,6 +8339,7 @@ BEGIN
     RAISE EXCEPTION 'Ajuste assinado e motivo sao obrigatorios'; END IF;
   IF nullif(btrim(p_idempotency_key),'') IS NULL THEN RAISE EXCEPTION 'idempotency_key obrigatoria'; END IF;
   PERFORM pg_advisory_xact_lock(hashtextextended('strap-idempotency:'||p_idempotency_key,0));
+  PERFORM public.lock_strap_physical_operation_scope(p_service_order_item_id,NULL);
   SELECT * INTO v_line FROM public.service_order_items WHERE id=p_service_order_item_id FOR UPDATE;
   SELECT * INTO v_os FROM public.service_orders WHERE id=v_line.service_order_id;
   PERFORM pg_advisory_xact_lock(hashtextextended(format('strap-custody:%s:%s',v_line.id,v_line.base_product_id),0));
@@ -7959,6 +8442,7 @@ BEGIN
      OR nullif(btrim(p_idempotency_key),'') IS NULL THEN
     RAISE EXCEPTION 'Responsavel, motivo e idempotency_key sao obrigatorios'; END IF;
   PERFORM pg_advisory_xact_lock(hashtextextended('strap-idempotency:'||p_idempotency_key,0));
+  PERFORM public.lock_strap_physical_operation_scope(p_service_order_item_id,NULL);
   SELECT * INTO v_line FROM public.service_order_items WHERE id=p_service_order_item_id FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'Linha de OS nao encontrada'; END IF;
   IF p_production_receipt_id IS NULL THEN
@@ -8037,11 +8521,16 @@ AS $$
 DECLARE v_claim public.contractor_loss_claims%ROWTYPE; v_line public.service_order_items%ROWTYPE;
   v_os public.service_orders%ROWTYPE; v_balance numeric; v_product public.products%ROWTYPE;
   v_posted numeric; v_movement uuid; v_before jsonb; v_claimed numeric;
+  v_scope_service_order_item_id uuid;
 BEGIN
   PERFORM set_config('app.strap_engine_write','1',true);
   IF NOT public.user_has_any_role(ARRAY['admin']) THEN RAISE EXCEPTION 'Somente Administrador'; END IF;
   IF p_decision NOT IN ('approved','rejected') OR nullif(btrim(p_reason),'') IS NULL THEN
     RAISE EXCEPTION 'Decisao e motivo sao obrigatorios'; END IF;
+  SELECT service_order_item_id INTO v_scope_service_order_item_id
+    FROM public.contractor_loss_claims WHERE id=p_claim_id;
+  IF v_scope_service_order_item_id IS NULL THEN RAISE EXCEPTION 'Claim nao encontrado'; END IF;
+  PERFORM public.lock_strap_physical_operation_scope(v_scope_service_order_item_id,NULL);
   SELECT * INTO v_claim FROM public.contractor_loss_claims WHERE id=p_claim_id FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'Claim nao encontrado'; END IF;
   IF v_claim.status=p_decision THEN RETURN jsonb_build_object('claim_id',v_claim.id,'replayed',true); END IF;
@@ -8600,6 +9089,8 @@ BEGIN
       'approved_m',v_existing.approved_m,'rejected_m',v_existing.rejected_m);
   END IF;
 
+  PERFORM public.lock_strap_physical_operation_scope(
+    p_service_order_item_id,p_batch_item_id);
   IF p_service_order_item_id IS NOT NULL THEN
     SELECT * INTO v_line FROM public.service_order_items
      WHERE id=p_service_order_item_id FOR UPDATE;
@@ -8645,6 +9136,20 @@ BEGIN
   END IF;
   IF p_service_order_item_id IS NOT NULL AND v_batch.executor_type <> 'contractor' THEN
     RAISE EXCEPTION 'service_order_item_id so e valido para lote terceirizado';
+  END IF;
+  IF p_service_order_item_id IS NOT NULL AND (
+       v_line.sent_at IS NULL OR v_line.sent_at>p_occurred_at
+       OR NOT EXISTS(
+         SELECT 1 FROM public.contractor_material_custody_movements m
+          WHERE m.service_order_item_id=v_line.id
+            AND m.service_order_id=v_line.service_order_id
+            AND m.base_product_id=v_item.base_product_id
+            AND m.movement_type='sent' AND m.occurred_at<=p_occurred_at)
+     ) THEN
+    RAISE EXCEPTION 'Recebimento terceirizado exige remessa estrutural anterior da napa';
+  END IF;
+  IF p_service_order_item_id IS NOT NULL AND p_base_consumed_m<=0 THEN
+    RAISE EXCEPTION 'Recebimento terceirizado com metragem entregue exige consumo positivo de napa';
   END IF;
 
   IF p_allocations IS NOT NULL THEN
@@ -9508,6 +10013,7 @@ BEGIN
     RAISE EXCEPTION 'Quantidade, motivo e idempotency_key sao obrigatorios';
   END IF;
   PERFORM pg_advisory_xact_lock(hashtextextended('strap-idempotency:'||p_idempotency_key,0));
+  PERFORM public.lock_strap_physical_operation_scope(p_service_order_item_id,NULL);
   SELECT * INTO v_line FROM public.service_order_items
    WHERE id=p_service_order_item_id FOR UPDATE;
   IF NOT FOUND OR v_line.strap_batch_item_id IS NULL THEN RAISE EXCEPTION 'Linha de OS de tira nao encontrada'; END IF;
@@ -9558,7 +10064,7 @@ SET search_path = public
 AS $$
 DECLARE v_request public.strap_rework_material_requests%ROWTYPE;
   v_line public.service_order_items%ROWTYPE; v_approved numeric; v_available numeric;
-  v_before jsonb;
+  v_before jsonb; v_scope_service_order_item_id uuid;
 BEGIN
   PERFORM set_config('app.strap_engine_write','1',true);
   IF NOT public.user_has_any_role(ARRAY['admin']) THEN
@@ -9567,6 +10073,10 @@ BEGIN
   IF p_decision NOT IN ('approved','rejected') OR nullif(btrim(p_reason),'') IS NULL THEN
     RAISE EXCEPTION 'Decisao e motivo sao obrigatorios';
   END IF;
+  SELECT service_order_item_id INTO v_scope_service_order_item_id
+    FROM public.strap_rework_material_requests WHERE id=p_request_id;
+  IF v_scope_service_order_item_id IS NULL THEN RAISE EXCEPTION 'Solicitacao nao encontrada'; END IF;
+  PERFORM public.lock_strap_physical_operation_scope(v_scope_service_order_item_id,NULL);
   SELECT * INTO v_request FROM public.strap_rework_material_requests
    WHERE id=p_request_id FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'Solicitacao nao encontrada'; END IF;
@@ -9633,6 +10143,61 @@ JOIN public.products p ON p.id=r.base_product_id;
 GRANT SELECT ON public.v_strap_rework_material_requests_operational TO authenticated;
 GRANT EXECUTE ON FUNCTION public.request_strap_rework_material(uuid,numeric,text,text,uuid),
   public.decide_strap_rework_material_request(uuid,text,numeric,text,uuid) TO authenticated;
+
+-- Contrato executavel Req53/61/87/89: reconciliacao e writers fisicos usam o
+-- mesmo advisory antes de qualquer row lock. Recebimento externo tambem prova
+-- sent_at + movimento sent exato antes de criar estoque/accrual.
+DO $$
+DECLARE
+  v_scope text:=pg_get_functiondef(
+    'public.lock_strap_physical_operation_scope(uuid,uuid)'::regprocedure);
+  v_global text:=pg_get_functiondef(
+    'public.reconcile_strap_variant(uuid,uuid,text)'::regprocedure);
+  v_local text:=pg_get_functiondef(
+    'public.reconcile_strap_variant_local_202701(uuid,uuid,text)'::regprocedure);
+  v_defs text[]:=ARRAY[
+    pg_get_functiondef('public.send_strap_material_to_contractor(uuid,numeric,text,text,timestamptz,uuid)'::regprocedure),
+    pg_get_functiondef('public.return_strap_material_from_contractor(uuid,numeric,text,text,timestamptz,uuid)'::regprocedure),
+    pg_get_functiondef('public.adjust_strap_contractor_custody(uuid,numeric,text,text,timestamptz,uuid)'::regprocedure),
+    pg_get_functiondef('public.create_strap_contractor_loss_claim(uuid,numeric,text,text,jsonb,text,uuid,uuid)'::regprocedure),
+    pg_get_functiondef('public.decide_strap_contractor_loss_claim(uuid,text,text,uuid)'::regprocedure),
+    pg_get_functiondef('public.register_strap_production_receipt(uuid,uuid,numeric,numeric,numeric,numeric,text,numeric,text,timestamptz,text,uuid,jsonb)'::regprocedure),
+    pg_get_functiondef('public.request_strap_rework_material(uuid,numeric,text,text,uuid)'::regprocedure),
+    pg_get_functiondef('public.decide_strap_rework_material_request(uuid,text,numeric,text,uuid)'::regprocedure)
+  ];
+  v_def text;
+  v_receipt text;
+BEGIN
+  IF position('strap-base-netting:' IN v_scope)=0
+     OR position('strap-variant:' IN v_scope)=0
+     OR position('strap-base-netting:' IN v_scope)>=position('strap-variant:' IN v_scope) THEN
+    RAISE EXCEPTION 'Ordem advisory fisica divergente da reconciliacao global';
+  END IF;
+  IF position('strap-base-netting:' IN v_global)=0
+     OR position('strap-base-netting:' IN v_global)>=position('FOR UPDATE' IN v_global)
+     OR position('strap-variant:' IN v_local)=0
+     OR position('strap-variant:' IN v_local)>=position('FOR UPDATE' IN v_local) THEN
+    RAISE EXCEPTION 'Reconciliacao adquiriu row lock antes do advisory canonico';
+  END IF;
+  FOREACH v_def IN ARRAY v_defs LOOP
+    IF position('lock_strap_physical_operation_scope' IN v_def)=0
+       OR position('lock_strap_physical_operation_scope' IN v_def)
+          >=position('FOR UPDATE' IN v_def) THEN
+      RAISE EXCEPTION 'Writer fisico adquiriu row lock antes do escopo advisory comum';
+    END IF;
+  END LOOP;
+  v_receipt:=v_defs[6];
+  IF position('v_line.sent_at IS NULL' IN v_receipt)=0
+     OR position('m.service_order_item_id=v_line.id' IN v_receipt)=0
+     OR position('m.service_order_id=v_line.service_order_id' IN v_receipt)=0
+     OR position('m.base_product_id=v_item.base_product_id' IN v_receipt)=0
+     OR position('m.movement_type=''sent''' IN v_receipt)=0
+     OR position('p_base_consumed_m<=0' IN v_receipt)=0
+     OR position('Recebimento terceirizado exige remessa estrutural anterior' IN v_receipt)=0 THEN
+    RAISE EXCEPTION 'Recebimento terceirizado ainda aceita entrada sem remessa/consumo';
+  END IF;
+END;
+$$;
 
 CREATE OR REPLACE FUNCTION public.list_strap_executor_planning_config()
 RETURNS jsonb
@@ -10150,18 +10715,55 @@ DECLARE v_variant record; v_key text; v_correlation uuid:=gen_random_uuid();
 BEGIN
   IF NEW.quantity IS NOT DISTINCT FROM OLD.quantity THEN RETURN NEW; END IF;
   FOR v_variant IN
-    SELECT DISTINCT v.id
-      FROM public.artisanal_strap_variants v
-      LEFT JOIN public.base_material_color_official_products op
-        ON op.base_group_id=v.base_group_id AND op.color_id=v.color_id AND op.status='active'
-     WHERE v.status='active'
-       AND (v.finished_product_id=NEW.id OR op.official_product_id=NEW.id)
+    SELECT DISTINCT v.id FROM public.artisanal_strap_variants v
+      JOIN (
+        -- Catalogo corrente/historico, sem exigir status ativo: Req118 ainda
+        -- permite concluir o documento comprometido da variante suspensa.
+        SELECT av.id AS strap_variant_id
+          FROM public.artisanal_strap_variants av
+         WHERE av.finished_product_id=NEW.id
+        UNION
+        SELECT av.id FROM public.artisanal_strap_variants av
+          JOIN public.base_material_color_official_products op
+            ON op.base_group_id=av.base_group_id AND op.color_id=av.color_id
+         WHERE op.official_product_id=NEW.id
+        UNION
+        -- Snapshots operacionais exatos sobrevivem a troca/inativacao do
+        -- oficial; nenhuma busca usa nome, cor textual ou LIMIT 1.
+        SELECT d.strap_variant_id FROM public.sale_order_strap_demands d
+         WHERE d.is_current AND (d.base_product_id=NEW.id OR d.finished_product_id=NEW.id)
+           AND d.status NOT IN ('fulfilled','superseded','cancelled','error')
+        UNION
+        SELECT f.strap_variant_id FROM public.strap_stock_floor_contributions f
+         WHERE f.is_current AND (f.base_product_id=NEW.id OR f.finished_product_id=NEW.id)
+           AND f.status NOT IN ('fulfilled','superseded','cancelled','error')
+        UNION
+        SELECT r.strap_variant_id FROM public.material_reservations r
+         WHERE r.strap_variant_id IS NOT NULL AND r.product_id=NEW.id
+           AND r.status IN ('reserved','partially_consumed')
+        UNION
+        SELECT soi.strap_variant_id FROM public.service_order_items soi
+         WHERE soi.strap_variant_id IS NOT NULL
+           AND (soi.base_product_id=NEW.id OR soi.finished_product_id=NEW.id)
+           AND soi.line_status NOT IN ('Entregue','Cancelado')
+        UNION
+        SELECT bi.strap_variant_id FROM public.strap_production_batch_items bi
+         WHERE (bi.base_product_id=NEW.id OR bi.finished_product_id=NEW.id)
+           AND bi.status NOT IN ('completed','cancelled')
+        UNION
+        SELECT c.strap_variant_id FROM public.purchase_demand_contributions c
+         WHERE c.strap_variant_id IS NOT NULL AND c.purchase_product_id=NEW.id
+           AND c.status NOT IN ('received','cancelled','superseded')
+      ) affected ON affected.strap_variant_id=v.id
      ORDER BY v.id
   LOOP
-    v_key:=format('strap-product-stock:%s:%s:%s:%s',txid_current(),NEW.id,v_variant.id,NEW.quantity);
+    v_key:=format('strap-product-stock:%s:%s:%s:%s:%s',txid_current(),NEW.id,
+      v_variant.id,OLD.quantity,NEW.quantity);
     PERFORM public.enqueue_strap_demand_job('stock',v_variant.id,0,0,'stock_changed',
       jsonb_build_object('strap_variant_id',v_variant.id,'product_id',NEW.id,
-        'previous_quantity',OLD.quantity,'new_quantity',NEW.quantity),v_key,v_correlation);
+        'previous_quantity',OLD.quantity,'new_quantity',NEW.quantity,
+        'reason','products.quantity changed for exact operational strap relation'),
+      v_key,v_correlation);
   END LOOP;
   RETURN NEW;
 END;
@@ -10171,6 +10773,29 @@ DROP TRIGGER IF EXISTS trg_enqueue_strap_product_stock_change ON public.products
 CREATE TRIGGER trg_enqueue_strap_product_stock_change
   AFTER UPDATE OF quantity ON public.products
   FOR EACH ROW EXECUTE FUNCTION public.tg_enqueue_strap_product_stock_change();
+
+-- Contrato executavel Req53/118: quantity de uma napa/artefato historico faz
+-- fan-out por FKs operacionais mesmo depois de trocar o oficial ou suspender a
+-- variante. A relacao nunca e inferida por nome/cor.
+DO $$
+DECLARE v_def text:=pg_get_functiondef(
+  'public.tg_enqueue_strap_product_stock_change()'::regprocedure);
+BEGIN
+  IF position('sale_order_strap_demands' IN v_def)=0
+     OR position('strap_stock_floor_contributions' IN v_def)=0
+     OR position('material_reservations' IN v_def)=0
+     OR position('service_order_items' IN v_def)=0
+     OR position('strap_production_batch_items' IN v_def)=0
+     OR position('purchase_demand_contributions' IN v_def)=0
+     OR position('d.base_product_id=NEW.id' IN v_def)=0
+     OR position('soi.base_product_id=NEW.id' IN v_def)=0
+     OR position('bi.base_product_id=NEW.id' IN v_def)=0
+     OR position('v.status=''active''' IN v_def)>0
+     OR position('op.status=''active''' IN v_def)>0 THEN
+    RAISE EXCEPTION 'Req53/118: mudanca de estoque nao cobre snapshots historicos exatos';
+  END IF;
+END;
+$$;
 
 CREATE OR REPLACE FUNCTION public.tg_enqueue_strap_commercial_change()
 RETURNS trigger
@@ -10920,6 +11545,7 @@ BEGIN
     'resolve_sale_order_main_production_start','preview_sale_order_strap_demand_draft',
     'preview_sale_order_strap_demand','strap_demand_has_external_commitment',
     'inspect_strap_source_override_state',
+    'neutralize_strap_source_override_promises',
     'tg_version_and_guard_sale_order_item_strap_sourcing',
     'set_sale_order_item_strap_sourcing','override_sale_order_item_strap_sourcing',
     'create_sale_order_atomic','create_sale_order_atomic_legacy_202701',
@@ -10946,7 +11572,8 @@ BEGIN
     'process_strap_demand_job','process_next_strap_demand_job',
     'drain_strap_demand_jobs','retry_strap_demand_job','resolve_contractor_payment_cycle',
     'close_contractor_payment_cycle','mark_contractor_payment_cycle_paid',
-    'strap_custody_open_value','reconcile_strap_service_order_completion',
+    'lock_strap_physical_operation_scope','strap_custody_open_value',
+    'reconcile_strap_service_order_completion',
     'send_strap_material_to_contractor','return_strap_material_from_contractor',
     'adjust_strap_contractor_custody','create_strap_contractor_loss_claim',
     'decide_strap_contractor_loss_claim','register_strap_purchase_receipt',

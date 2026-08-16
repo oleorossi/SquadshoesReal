@@ -2,7 +2,9 @@
 -- Tiras artesanais: hardening pos-deploy do catalogo e disponibilidade por fonte
 -- Spec: specs/tiras-artesanais-unificacao.md (Reqs. 25, 73, 101, 118, 122-129)
 --
--- 03000 ja foi publicada antes destes guards. Esta migration e deliberadamente
+-- 03000 ja foi publicada antes destes guards. O sufixo 03050 garante que este
+-- hardening rode antes do schema/engine/cutover 03100-03300; assim 03300 fica
+-- como definicao final das rotinas de migracao. Esta migration e deliberadamente
 -- aditiva: nao recria tabelas/seeds, nao reescreve snapshots/compromissos e
 -- reaplica somente funcoes, triggers e correcoes de permissao deterministicas.
 -- =============================================================================
@@ -300,7 +302,8 @@ BEGIN
       PERFORM public.assert_artisanal_strap_variant_activation(NEW.id);
     ELSIF OLD.status IS DISTINCT FROM 'active'
        OR NEW.min_stock_replenishment_mode
-          IS DISTINCT FROM OLD.min_stock_replenishment_mode THEN
+          IS DISTINCT FROM OLD.min_stock_replenishment_mode
+       OR NEW.purchase_enabled IS DISTINCT FROM OLD.purchase_enabled THEN
       PERFORM public.assert_artisanal_strap_variant_activation(NEW.id);
     END IF;
   END IF;
@@ -483,7 +486,6 @@ SET search_path = public
 AS $$
 DECLARE
   v_id uuid;
-  v_previous_status text;
   v_reason text := public.require_strap_change_reason(p_reason, 'Cadastro de variante de tira');
 BEGIN
   PERFORM public.assert_artisanal_strap_capability('manage_strap_catalog');
@@ -510,7 +512,7 @@ BEGIN
       p_status, CASE WHEN p_status = 'active' THEN NULL ELSE coalesce(p_review_reason, v_reason) END
     ) RETURNING id INTO v_id;
   ELSE
-    SELECT status INTO v_previous_status
+    PERFORM 1
       FROM public.artisanal_strap_variants
      WHERE id = p_id
      FOR UPDATE;
@@ -532,8 +534,7 @@ BEGIN
   -- Trigger diferivel executa a mesma validacao; esta chamada torna o erro
   -- imediato e a RPC nunca retorna um UUID ainda invalido.
   PERFORM public.validate_artisanal_strap_variant(v_id);
-  IF p_status = 'active'
-     AND (p_id IS NULL OR v_previous_status IS DISTINCT FROM 'active') THEN
+  IF p_status = 'active' THEN
     PERFORM public.assert_artisanal_strap_variant_activation(v_id);
   END IF;
   RETURN v_id;
@@ -1649,6 +1650,7 @@ BEGIN
   IF v_validator !~ 'assert_artisanal_strap_variant_activation'
      OR v_validator !~ 'OLD.status IS DISTINCT FROM ''active'''
      OR v_validator !~ 'NEW.min_stock_replenishment_mode'
+     OR v_validator !~ 'NEW.purchase_enabled'
      OR v_validator !~ 'Variante nova exige cor e produto-base oficial ativos' THEN
     RAISE EXCEPTION 'Req25/Req101: gate de fonte nao cobre ativacao, reativacao e troca de origem';
   END IF;

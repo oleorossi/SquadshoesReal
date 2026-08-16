@@ -689,6 +689,8 @@ export interface LegacyStrapMigrationServiceOrderItem {
   meters: number;
   delivered_meters: number;
   remaining_meters: number;
+  assignable: boolean;
+  blocking_reason?: string | null;
   strap_variant_id?: string | null;
   strap_recipe_id?: string | null;
 }

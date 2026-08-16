@@ -21,10 +21,21 @@ import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import SaleOrderFormPanel, { removeItemsAtIndices, restoreItemsAt } from '@/components/sale-orders/SaleOrderFormPanel';
 import { PvServiceOrdersCard } from '@/components/sale-orders/PvServiceOrdersCard';
 import { GenerateServiceOrdersWizard } from '@/components/contractors/GenerateServiceOrdersWizard';
-import { useCreateSaleOrder, useUpdateSaleOrder, SaleOrderFormData, SaleOrderItemFormData, listarTirasSemOrigem } from '@/hooks/useSaleOrders';
+import {
+  buildExtraItemColumns,
+  useCreateSaleOrder,
+  useUpdateSaleOrder,
+  SaleOrderFormData,
+  SaleOrderItemFormData,
+  listarTirasSemOrigem,
+} from '@/hooks/useSaleOrders';
 import { calculateOrderCost, type OrderCostResult } from '@/services/costingService';
 import { useCancelOrdersBatch } from '@/hooks/useOrders';
 import { CancelOpsAndEditDialog, type BlockingOp } from '@/components/sale-orders/CancelOpsAndEditDialog';
+import {
+  StrapSourcingAdminOverrideDialog,
+  type StrapSourcingAdminOverrideTarget,
+} from '@/components/sale-orders/StrapSourcingAdminOverrideDialog';
 import { useTechnicalSheets } from '@/hooks/useTechnicalSheets';
 import { useClients } from '@/hooks/useClients';
 import { useRepresentatives } from '@/hooks/useRepresentatives';
@@ -47,6 +58,11 @@ import { MinBillingDateSuggestionDialog } from '@/components/sale-orders/MinBill
 import { OverrideOutsourceCosturaDialog } from '@/components/sale-orders/OverrideOutsourceCosturaDialog';
 import { monthWeekToISODate, isoToMonthWeek } from '@/lib/billingWeek';
 import { listMissingTechnicalStrapSnapshots } from '@/lib/strapSnapshotGuard';
+import {
+  isCommittedStrapSourcingError,
+  sameStrapSourcingSelection,
+  strapSourcingErrorDetails,
+} from '@/lib/strapSourcingOverride';
 
 const emptyForm: SaleOrderFormData = {
   client_id: null,
@@ -365,6 +381,11 @@ export default function SaleOrderForm() {
 
   const [form, setForm] = useState<SaleOrderFormData>(emptyForm);
   const [items, setItems] = useState<SaleOrderItemFormData[]>([{ ...emptyItem }]);
+  const originalStrapSourcingRef = useRef(new Map<string, {
+    revision: number;
+    lines: NonNullable<SaleOrderItemFormData['strap_sourcing']>;
+  }>());
+  const [strapOverrideTarget, setStrapOverrideTarget] = useState<StrapSourcingAdminOverrideTarget | null>(null);
   // A chave nasce na primeira tentativa e sobrevive a qualquer retry desta tela.
   // Só é descartada após a RPC confirmar a criação, evitando PV duplicado em
   // timeout/resposta perdida.
@@ -527,6 +548,8 @@ export default function SaleOrderForm() {
       setOrderLoaded(false);
       setForm(emptyForm);
       setItems([{ ...emptyItem }]);
+      originalStrapSourcingRef.current.clear();
+      setStrapOverrideTarget(null);
       setSelectedClientId('');
       setPackagingProductId('');
       setPackagingQuantity(0);
@@ -777,6 +800,13 @@ export default function SaleOrderForm() {
           if (cmp !== 0) return cmp;
           return (a.color || '').localeCompare(b.color || '', 'pt-BR', { sensitivity: 'base' });
         });
+        originalStrapSourcingRef.current = new Map(mapped.flatMap((item) => {
+          if (!item.id) return [];
+          return [[item.id, {
+            revision: Number(item.strap_sourcing_revision) || 0,
+            lines: buildExtraItemColumns(item).strap_sourcing as NonNullable<SaleOrderItemFormData['strap_sourcing']>,
+          }]];
+        }));
         setItems(mapped);
       }
       setOrderLoaded(true);
@@ -1083,6 +1113,43 @@ export default function SaleOrderForm() {
         packaging_quantity: packagingQuantity,
       } as any, {
         onSuccess: () => handlePostSave(id!),
+        onError: (error: unknown) => {
+          if (!isCommittedStrapSourcingError(error)) return;
+          if (!isAdmin) {
+            toast.error(
+              'A origem já possui compromisso operacional. Somente o Administrador pode reconciliá-la; nenhum campo do PV foi salvo.',
+              { duration: 9000 },
+            );
+            return;
+          }
+          const candidate = validItems
+            .flatMap((item) => {
+              if (!item.id) return [];
+              const baseline = originalStrapSourcingRef.current.get(item.id);
+              const lines = buildExtraItemColumns(item).strap_sourcing as NonNullable<SaleOrderItemFormData['strap_sourcing']>;
+              if (!baseline || sameStrapSourcingSelection(baseline.lines, lines)) return [];
+              const reference = canonicalReferences.find((entry) => entry.id === item.reference_id);
+              const referenceLabel = reference
+                ? `${reference.code || ''} ${reference.name || ''}`.trim() || item.reference_id
+                : item.reference_id;
+              return [{
+                saleOrderItemId: item.id,
+                expectedRevision: Number(item.strap_sourcing_revision ?? baseline.revision),
+                referenceLabel,
+                lines,
+                detectionDiagnostic: strapSourcingErrorDetails(error),
+              } satisfies StrapSourcingAdminOverrideTarget];
+            })
+            .sort((left, right) => left.saleOrderItemId.localeCompare(right.saleOrderItemId))[0];
+          if (!candidate) {
+            toast.error(
+              'O servidor detectou uma origem comprometida, mas a linha alterada não pôde ser identificada com segurança. Recarregue o PV; nenhum override foi tentado.',
+              { duration: 10000 },
+            );
+            return;
+          }
+          setStrapOverrideTarget(candidate);
+        },
       });
     } else {
       const clientRequestId = clientRequestIdRef.current ?? crypto.randomUUID();
@@ -2081,6 +2148,28 @@ export default function SaleOrderForm() {
             setOutsourceCosturaPendingNav(false);
             navigate('/sales');
           }
+        }}
+      />
+
+      <StrapSourcingAdminOverrideDialog
+        target={strapOverrideTarget}
+        onClose={() => setStrapOverrideTarget(null)}
+        onApplied={(result) => {
+          const lines = result.strap_sourcing || strapOverrideTarget?.lines || {};
+          originalStrapSourcingRef.current.set(result.sale_order_item_id, {
+            revision: result.strap_sourcing_revision,
+            lines,
+          });
+          setItems((current) => current.map((item) => item.id === result.sale_order_item_id
+            ? {
+              ...item,
+              strap_sourcing: lines,
+              strap_sourcing_revision: result.strap_sourcing_revision,
+            }
+            : item));
+          setStrapOverrideTarget(null);
+          setHasUnsavedEdits(true);
+          toast.info('Origem reconciliada. Revise os demais campos e clique em salvar novamente; eles ainda não foram gravados.');
         }}
       />
 

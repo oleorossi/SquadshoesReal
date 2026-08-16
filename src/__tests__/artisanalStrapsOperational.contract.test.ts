@@ -10,7 +10,15 @@ const CATALOG = readMigration('20270101003000_artisanal_straps_catalog_core.sql'
 const SCHEMA = readMigration('20270101003100_artisanal_straps_operational_schema.sql');
 const ENGINE = readMigration('20270101003200_artisanal_straps_operational_engine.sql');
 const LEGACY = readMigration('20270101003300_artisanal_straps_legacy_migration_apply.sql');
-const HARDENING = readMigration('20270101003400_artisanal_straps_catalog_postdeploy_hardening.sql');
+const HARDENING = readMigration('20270101003050_artisanal_straps_catalog_postdeploy_hardening.sql');
+
+function functionBody(sql: string, name: string, nextMarker: string) {
+  const start = sql.indexOf(`CREATE OR REPLACE FUNCTION public.${name}(`);
+  const end = sql.indexOf(nextMarker, start);
+  expect(start).toBeGreaterThanOrEqual(0);
+  expect(end).toBeGreaterThan(start);
+  return sql.slice(start, end);
+}
 
 describe('Tiras artesanais — contrato SQL canônico', () => {
   it('mantém identidade exata por medida, base e cor, com aliases aprovados sem ambiguidade', () => {
@@ -109,6 +117,72 @@ describe('Tiras artesanais — contrato SQL canônico', () => {
       "to_regprocedure('public.update_sale_order_atomic(uuid,jsonb,jsonb)') IS NOT NULL",
     );
     expect(ENGINE).toContain("has_function_privilege('authenticated'");
+  });
+
+  it('declara o estado de reexpansão no orquestrador global que o utiliza', () => {
+    const component = functionBody(
+      ENGINE,
+      'resolve_strap_netting_component',
+      '-- Orquestrador global por napa',
+    );
+    const reconcile = functionBody(
+      ENGINE,
+      'reconcile_strap_variant',
+      '-- Contrato executavel: todos os competidores',
+    );
+
+    ['v_locked_base_ids uuid[]', 'v_missing_base_ids uuid[]', 'v_lock_ceiling uuid'].forEach(
+      (declaration) => expect(reconcile).toContain(declaration),
+    );
+    expect(component).not.toContain('v_locked_base_ids');
+    expect(component).not.toContain('v_missing_base_ids');
+    expect(component).not.toContain('v_lock_ceiling');
+    expect(reconcile.indexOf('v_locked_base_ids uuid[]'))
+      .toBeLessThan(reconcile.indexOf('v_locked_base_ids:=v_base_ids'));
+  });
+
+  it('serializa writers físicos antes dos row locks e exige remessa no recebimento externo', () => {
+    const scope = functionBody(
+      ENGINE,
+      'lock_strap_physical_operation_scope',
+      'CREATE OR REPLACE FUNCTION public.strap_custody_open_value',
+    );
+    const receipt = functionBody(
+      ENGINE,
+      'register_strap_production_receipt',
+      '-- -----------------------------------------------------------------------------\n-- 11.',
+    );
+
+    expect(scope.indexOf("'strap-base-netting:'"))
+      .toBeLessThan(scope.indexOf("'strap-variant:'"));
+    expect(receipt.indexOf('lock_strap_physical_operation_scope'))
+      .toBeLessThan(receipt.indexOf('FOR UPDATE'));
+    expect(receipt).toContain('v_line.sent_at IS NULL');
+    expect(receipt).toContain('m.service_order_id=v_line.service_order_id');
+    expect(receipt).toContain('m.base_product_id=v_item.base_product_id');
+    expect(receipt).toContain("m.movement_type='sent'");
+    expect(receipt).toContain('p_base_consumed_m<=0');
+  });
+
+  it('faz fan-out de estoque por snapshots operacionais exatos, inclusive suspensos', () => {
+    const fanout = functionBody(
+      ENGINE,
+      'tg_enqueue_strap_product_stock_change',
+      'DROP TRIGGER IF EXISTS trg_enqueue_strap_product_stock_change',
+    );
+
+    [
+      'sale_order_strap_demands',
+      'strap_stock_floor_contributions',
+      'material_reservations',
+      'service_order_items',
+      'strap_production_batch_items',
+      'purchase_demand_contributions',
+    ].forEach((relation) => expect(fanout).toContain(relation));
+    expect(fanout).toContain('d.base_product_id=NEW.id');
+    expect(fanout).toContain('soi.base_product_id=NEW.id');
+    expect(fanout).not.toContain("v.status='active'");
+    expect(fanout).not.toContain("op.status='active'");
   });
 
   it('faz migração conservativa com checksum, conservação, diagnóstico e rollback', () => {

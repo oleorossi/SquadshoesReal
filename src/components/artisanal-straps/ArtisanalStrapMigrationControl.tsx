@@ -60,6 +60,8 @@ export function ArtisanalStrapMigrationControl({
   const [rollbackConfirmed, setRollbackConfirmed] = useState(false);
   const cutovers = cutoversQuery.data || [];
   const activeCutover = cutovers.find((cutover) => ['applying', 'applied', 'applied_with_review'].includes(cutover.status));
+  const cutoverStateUnknown = cutoversQuery.isLoading || cutoversQuery.isError;
+  const dryRunBlocked = cutoverStateUnknown || Boolean(activeCutover);
   const preview = previewRollback.data?.cutover_id === previewCutoverId
     ? previewRollback.data
     : undefined;
@@ -83,11 +85,17 @@ export function ArtisanalStrapMigrationControl({
         subtitle="O dry-run congela a revisão; o corte revalida o mesmo checksum antes de tocar saldo ou documentos."
         actions={canResolve ? (
           <div className="flex flex-wrap gap-2">
-            <Button size="sm" variant="outline" onClick={onRequestDryRun} disabled={dryRunPending}>{dryRunPending ? 'Executando…' : 'Executar dry-run'}</Button>
+            <Button size="sm" variant="outline" onClick={onRequestDryRun} disabled={dryRunPending || dryRunBlocked} title={dryRunBlocked ? 'Confirme o estado dos cutovers antes de gerar outra fotografia.' : undefined}>{dryRunPending ? 'Executando…' : 'Executar dry-run'}</Button>
             <Button size="sm" onClick={() => setApplyOpen(true)} disabled={!dryRun || Boolean(activeCutover) || applyMigration.isPending}>Aplicar migração</Button>
           </div>
         ) : undefined}
       >
+        {canResolve && activeCutover && (
+          <Alert className="mb-3"><Warning className="h-4 w-4" /><AlertTitle>Novo dry-run bloqueado por cutover ativo</AlertTitle><AlertDescription>O corte {activeCutover.cutover_id} está em {activeCutover.status}. Aplique as resoluções incrementais prontas ou valide e reverta esse corte antes de congelar uma nova fotografia.</AlertDescription></Alert>
+        )}
+        {canResolve && cutoverStateUnknown && (
+          <Alert variant={cutoversQuery.isError ? 'destructive' : 'default'} className="mb-3"><Warning className="h-4 w-4" /><AlertTitle>Estado dos cutovers ainda não confirmado</AlertTitle><AlertDescription>O dry-run permanece desabilitado até a consulta administrativa confirmar que não existe corte ativo.</AlertDescription></Alert>
+        )}
         {!canResolve ? (
           <EmptyState icon={LockKey} title="Ação exclusiva do Administrador" description="Consulta não concede autoridade para ratear, aplicar ou reverter a migração." size="sm" />
         ) : dryRun ? (
@@ -95,7 +103,6 @@ export function ArtisanalStrapMigrationControl({
             <div className="flex flex-wrap items-center gap-2"><StrapStatusBadge status={dryRun.status} /><Badge variant="outline">{dryRun.review_required_count} revisão(ões)</Badge><Badge variant="outline">{dryRun.report.checks?.length || 0} checks</Badge></div>
             <p className="break-all font-mono text-[10px] text-muted-foreground">run_id: {dryRun.run_id}</p>
             <p className="break-all font-mono text-[10px] text-muted-foreground">checksum do dry-run: {dryRun.overall_checksum}</p>
-            {activeCutover && <Alert><Warning className="h-4 w-4" /><AlertTitle>Já existe um corte ativo</AlertTitle><AlertDescription>Valide ou reverta {activeCutover.cutover_id} antes de aplicar outro dry-run.</AlertDescription></Alert>}
           </div>
         ) : (
           <EmptyState icon={ClockCounterClockwise} title="Nenhum dry-run nesta sessão" description="Execute novamente depois de cada resolução; o servidor rejeita checksum antigo." size="sm" />

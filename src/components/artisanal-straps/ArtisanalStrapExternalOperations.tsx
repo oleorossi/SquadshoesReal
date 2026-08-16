@@ -1471,10 +1471,12 @@ export function ArtisanalStrapExternalOperations({
                         .some(isSuspendedStrapOperationStatus);
                       const remainingFinishedM = Math.max(0, Number(item.planned_m) - Number(item.delivered_m || 0));
                       const hasCustody = custodyBalance > 0.0001;
+                      const hasContractorRemittance = Boolean(item.sent_at);
                       const hasPhysicalCommitment = hasCustody || Boolean(
                         item.sent_at || item.batch_item_started_at || item.batch_started_at,
                       );
                       const canReceive = canExecute && !terminal && remainingFinishedM > 0.0001
+                        && hasContractorRemittance
                         && (!suspended || hasPhysicalCommitment);
                       const canSend = canExecute && !terminal && !suspended && remainingFinishedM > 0.0001;
                       const canReturn = canExecute && hasCustody;
@@ -1516,6 +1518,9 @@ export function ArtisanalStrapExternalOperations({
                           </div>
                           {terminal && !hasCustody && (
                             <p className="mt-2 text-xs text-muted-foreground">Linha encerrada: não há fato físico de custódia pendente.</p>
+                          )}
+                          {canExecute && !terminal && remainingFinishedM > 0.0001 && !hasContractorRemittance && (
+                            <p className="mt-2 text-xs text-muted-foreground">Recebimento liberado somente após registrar a remessa da napa. Use Remeter; sem data de envio a entrada seria recusada.</p>
                           )}
                           {suspended && hasCustody && (
                             <p className="mt-2 text-xs text-muted-foreground">Suspensa: somente recebimento já comprometido e saneamento da custódia permanecem disponíveis.</p>
