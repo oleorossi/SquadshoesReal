@@ -371,6 +371,7 @@ DECLARE
   v_review public.artisanal_strap_migration_review_items%ROWTYPE;
   v_run public.artisanal_strap_migration_runs%ROWTYPE;
   v_product public.products%ROWTYPE;
+  v_product_selection record;
   v_existing public.artisanal_strap_migration_product_provenance%ROWTYPE;
   v_product_id uuid;
   v_group_is_strap boolean;
@@ -399,16 +400,19 @@ BEGIN
      OR v_run.overall_checksum !~ '^[0-9a-f]{32}$' THEN
     RAISE EXCEPTION 'Dry-run de proveniencia inexistente/invalido';
   END IF;
-  SELECT * INTO v_product
+  SELECT to_jsonb(p) AS product_json,
+         coalesce(pg.is_artisanal_strap,false) AS group_is_strap
+    INTO v_product_selection
     FROM public.products p
-   WHERE p.id=v_product_id FOR SHARE;
+    LEFT JOIN public.product_groups pg ON pg.id=p.group_id
+   WHERE p.id=v_product_id FOR SHARE OF p;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'Produto nao possui classificacao estrutural de tira artesanal';
   END IF;
-  SELECT coalesce(pg.is_artisanal_strap,false) INTO v_group_is_strap
-    FROM public.product_groups pg
-   WHERE pg.id=v_product.group_id;
-  IF NOT (coalesce(v_product.is_artisanal,false) OR coalesce(v_group_is_strap,false)) THEN
+  v_product:=jsonb_populate_record(
+    NULL::public.products,v_product_selection.product_json);
+  v_group_is_strap:=v_product_selection.group_is_strap;
+  IF NOT (coalesce(v_product.is_artisanal,false) OR v_group_is_strap) THEN
     RAISE EXCEPTION 'Produto nao possui classificacao estrutural de tira artesanal';
   END IF;
   IF v_review.candidates->>'group_id' IS DISTINCT FROM v_product.group_id::text THEN
