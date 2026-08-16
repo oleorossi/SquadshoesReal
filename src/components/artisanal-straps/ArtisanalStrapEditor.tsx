@@ -235,7 +235,8 @@ export function ArtisanalStrapEditor({
       .sort((a, b) => Number(b.version) - Number(a.version))[0] : undefined;
     const suggestedRecipe = catalog.recipes.find((item) => item.id === suggestedRecipeId);
     const recipe = selectedInternalProductionEnabled
-      && suggestedRecipe?.measure_id === selectedMeasure?.id
+      && suggestedRecipe
+      && suggestedRecipe.measure_id === selectedMeasure?.id
       && suggestedRecipe.base_group_id === selectedBaseId
       ? suggestedRecipe
       : latestRecipe;
