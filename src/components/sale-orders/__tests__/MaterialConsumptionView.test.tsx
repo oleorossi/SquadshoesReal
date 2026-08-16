@@ -141,4 +141,22 @@ describe('MaterialConsumptionView — tela buy-first', () => {
     expect(screen.queryByText(/Sem largura cadastrada/)).not.toBeInTheDocument();
     expect(screen.getByText(/Por que ficam fora do total/)).toBeInTheDocument();
   });
+
+  it('mostra a quantidade prevista da tira sem tratá-la como falta', () => {
+    renderView({
+      rows: [row({
+        componentType: 'Tiras',
+        groupName: 'TIRA CHATA 8MM',
+        materialName: 'Tira 1',
+        color: 'CAPUCCINO',
+        totalQuantity: 0,
+        previewQuantity: 17.25,
+        warning: 'Quantidade ainda não liberada para estoque.',
+      })],
+    });
+
+    expect(screen.getByText('≈ 17,25')).toBeInTheDocument();
+    expect(screen.getByText('prévia calculada pela ficha')).toBeInTheDocument();
+    expect(screen.queryByText(/faltam 17,25/i)).not.toBeInTheDocument();
+  });
 });

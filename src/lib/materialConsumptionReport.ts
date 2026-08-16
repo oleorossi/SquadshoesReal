@@ -137,13 +137,20 @@ const renderMaterialSections = (rows: ConsumptionRow[]): string => {
 
   for (const item of nonSole) {
     const short = itemShortfall(item);
+    const previewQuantity = item.rows.reduce(
+      (total, row) => total + Math.max(0, Number(row.previewQuantity) || 0),
+      0,
+    );
+    const needHtml = previewQuantity > 0 && !(item.total > 0)
+      ? `≈ ${formatQty(previewQuantity, item.productUnit)}<small class="qty-preview">prévia da ficha</small>`
+      : formatQty(item.total, item.productUnit);
     const applications = Array.from(new Set(item.rows.map((row) => row.materialName).filter(Boolean)));
     const warnings = Array.from(new Set(item.rows.flatMap((row) => row.warning ? [row.warning] : [])));
     append(item.componentType, `<tr class="material-row${short > 0 ? ' is-short' : ''}${!item.known ? ' is-pending' : ''}">
       <td><strong>${escapeHtml(item.groupName)}</strong>${warnings.length ? `<div class="row-warning">▲ ${escapeHtml(warnings.join(' · '))}</div>` : ''}</td>
       <td>${escapeHtml(applications.join(' + ') || item.groupName)}</td>
       <td>${escapeHtml(item.color || '—')}</td>
-      <td class="num strong">${formatQty(item.total, item.productUnit)}</td>
+      <td class="num strong">${needHtml}</td>
       <td class="num">${item.known ? formatQty(item.available, item.productUnit) : '—'}</td>
       <td class="num${short > 0 ? ' shortage' : ''}">${item.known && short > 0 ? formatQty(short, item.productUnit) : '—'}</td>
       <td class="unit">${escapeHtml(formatUnit(item.productUnit))}</td>
@@ -285,6 +292,7 @@ export function buildMaterialConsumptionReportHtml({
     .shortage { color:var(--accent); font-weight:700; }
     .shortage small { display:block; color:var(--muted); font-size:6.5pt; font-weight:500; }
     .row-warning { margin-top:2px; color:var(--warn); font-size:6.7pt; line-height:1.25; }
+    .qty-preview { display:block; margin-top:1px; color:var(--muted); font-family:'Fira Sans',sans-serif; font-size:6.5pt; font-weight:500; }
     .component-block { margin-top:8px; break-inside:auto; }
     .component-heading { display:flex; justify-content:space-between; gap:10px; padding:3px 5px; border-left:4px solid var(--accent); background:var(--ink); color:white; font-size:7.6pt; font-weight:700; letter-spacing:.09em; text-transform:uppercase; }
     .component-heading span:last-child { color:#ccc8c1; font-family:'Fira Code',monospace; font-size:6.8pt; }

@@ -63,6 +63,28 @@ describe('materialConsumptionReport', () => {
     expect(html).toContain("font-family:'Fira Code'");
   });
 
+  it('leva a prévia de quantidade das tiras para o PDF sem criar falta', () => {
+    const html = buildMaterialConsumptionReportHtml({
+      title: 'Consumo de Materiais — PV-00157',
+      artisanalStrapRows: [],
+      rows: [row({
+        componentType: 'Tiras',
+        groupName: 'TIRA CHATA 8MM',
+        materialName: 'Tira 1',
+        color: 'CAPUCCINO',
+        productUnit: 'm',
+        totalQuantity: 0,
+        previewQuantity: 17.25,
+        available: 0,
+        warning: 'Quantidade ainda não liberada para estoque.',
+      })],
+    });
+
+    expect(html).toContain('≈ 17,25');
+    expect(html).toContain('prévia da ficha');
+    expect(html).not.toContain('class="num shortage">17,25');
+  });
+
   it('cria nome de arquivo estável e seguro', () => {
     expect(materialConsumptionReportFilename('Consumo de Materiais — PV-00157'))
       .toBe('consumo-de-materiais-pv-00157');

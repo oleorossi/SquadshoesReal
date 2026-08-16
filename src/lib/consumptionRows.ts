@@ -16,6 +16,12 @@ import {
 export type ConsumptionRow = MaterialConsumptionRow & {
   /** Estoque líquido atual do produto exato ou do grupo/cor resolvido. */
   available?: number;
+  /**
+   * Metragem informativa calculada pela ficha quando a tira ainda não tem
+   * identidade canônica suficiente para participar de estoque, falta ou OC.
+   * `totalQuantity` permanece 0 nesse caso para manter o bloqueio operacional.
+   */
+  previewQuantity?: number;
   /** Solado: estoque por numeração do produto exato. */
   soleSizeStock?: Record<string, number>;
   /** Snapshot explicativo da conversão canônica da tira interna em napa. */
@@ -26,6 +32,38 @@ export type ConsumptionRow = MaterialConsumptionRow & {
   baseProductId?: string | null;
   technicalStrapLineIds?: string[];
 };
+
+/**
+ * Preserva a quantidade calculada pela ficha como PRÉVIA quando a RPC canônica
+ * ainda não devolveu nenhuma tira. As linhas continuam com quantidade
+ * operacional zero e aviso, portanto não viram falta nem sugestão de compra.
+ */
+export function attachUnresolvedStrapQuantityPreview(
+  canonicalRows: ConsumptionRow[],
+  calculatedRows: MaterialConsumptionRow[],
+  hasCanonicalPreview: boolean,
+): ConsumptionRow[] {
+  if (hasCanonicalPreview) return canonicalRows;
+
+  const calculatedStraps = calculatedRows.filter((row) =>
+    row.componentType === 'Tiras' && Number(row.totalQuantity) > 0);
+  if (calculatedStraps.length === 0) return canonicalRows;
+
+  const unresolvedWarning = canonicalRows.find((row) => row.componentType === 'Tiras')?.warning
+    || 'A tira permanece bloqueada até resolver variante, base, cor e receita por ID.';
+  const previewWarning = `${unresolvedWarning} A metragem exibida é somente uma prévia calculada pela ficha.`;
+
+  return [
+    ...canonicalRows.filter((row) => row.componentType !== 'Tiras'),
+    ...calculatedStraps.map((row): ConsumptionRow => ({
+      ...row,
+      totalQuantity: 0,
+      previewQuantity: Number(row.totalQuantity),
+      productIds: [],
+      warning: previewWarning,
+    })),
+  ];
+}
 
 export const COMPONENT_ORDER = ['Cabedal', 'Forração', 'Fachete', 'Palmilha', 'Forração Palmilha', 'Solado', 'Tiras', 'Químicos', 'Embalagem', 'Outros'] as const;
 
@@ -63,7 +101,11 @@ export async function annotateConsumptionAvailability(
   ctx: ConsumptionContext,
   strapPreviews: CanonicalStrapDemandPreview[] = [],
 ): Promise<{ rows: ConsumptionRow[]; artisanalStrapRows: ArtisanalStrapCutRow[] }> {
-  const canonicalRows = replaceWithCanonicalStrapRows(rows, ctx, strapPreviews) as ConsumptionRow[];
+  const canonicalRows = attachUnresolvedStrapQuantityPreview(
+    replaceWithCanonicalStrapRows(rows, ctx, strapPreviews) as ConsumptionRow[],
+    rows,
+    strapPreviews.length > 0,
+  );
 
   const colorMatchesProduct = (product: any, color: string): boolean => {
     if (!color || color === '—') return true;

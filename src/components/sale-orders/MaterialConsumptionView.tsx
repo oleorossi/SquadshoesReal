@@ -396,6 +396,7 @@ export default function MaterialConsumptionView({
     const short = rowShortfall(row);
     const ok = known && short === 0;
     const isSole = row.componentType === 'Solado';
+    const hasQuantityPreview = !(row.totalQuantity > 0) && Number(row.previewQuantity) > 0;
     const soleKey = `${sectionKey}|${row.groupName}|${row.color}|${index}`;
     const isOpen = !!openSoles[soleKey];
 
@@ -449,9 +450,18 @@ export default function MaterialConsumptionView({
         <TableCell>{row.materialName}</TableCell>
         <TableCell>{row.color}</TableCell>
         <TableCell className="text-right font-mono font-bold tabular-nums">
-          {row.warning && !(row.totalQuantity > 0)
-            ? <span className="font-normal text-muted-foreground">—</span>
-            : formatQty(row.totalQuantity, row.productUnit)}
+          {hasQuantityPreview ? (
+            <>
+              <span className="text-amber-700 dark:text-amber-400">
+                ≈ {formatQty(Number(row.previewQuantity), row.productUnit)}
+              </span>
+              <div className="mt-0.5 whitespace-nowrap text-[10px] font-normal text-muted-foreground">
+                prévia calculada pela ficha
+              </div>
+            </>
+          ) : row.warning && !(row.totalQuantity > 0) ? (
+            <span className="font-normal text-muted-foreground">—</span>
+          ) : formatQty(row.totalQuantity, row.productUnit)}
           {row.artisanal && (
             row.artisanal.pending ? (
               <div className="mt-0.5 whitespace-nowrap text-[10px] font-normal text-amber-600 dark:text-amber-400">
@@ -677,6 +687,15 @@ export default function MaterialConsumptionView({
                   const subt = new Map<string, number>();
                   for (const r of sectionRows) subt.set(r.productUnit, (subt.get(r.productUnit) || 0) + r.totalQuantity);
                   const subtotal = Array.from(subt.entries()).map(([u, v]) => `${formatQty(v, u)} ${formatUnit(u)}`).join(' · ');
+                  const previewSubt = new Map<string, number>();
+                  for (const r of sectionRows) {
+                    if (Number(r.previewQuantity) > 0) {
+                      previewSubt.set(r.productUnit, (previewSubt.get(r.productUnit) || 0) + Number(r.previewQuantity));
+                    }
+                  }
+                  const previewSubtotal = Array.from(previewSubt.entries())
+                    .map(([u, v]) => `prévia ≈ ${formatQty(v, u)} ${formatUnit(u)}`)
+                    .join(' · ');
                   const short = countShort(sectionRows);
                   const [secLabel, secFamily] = String(sectionKey).split(SECTION_SEP);
                   out.push(
@@ -691,7 +710,7 @@ export default function MaterialConsumptionView({
                             )}
                           </span>
                           <span className="text-xs tabular-nums text-muted-foreground">
-                            {subtotal}
+                            {previewSubtotal || subtotal}
                             {short > 0 && <span className="font-medium text-red-600 dark:text-red-400"> · {short} em falta</span>}
                           </span>
                         </div>
