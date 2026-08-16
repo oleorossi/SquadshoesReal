@@ -22,6 +22,7 @@ import { usePrefetchRoute } from '@/hooks/usePrefetchRoute';
 import { useNavOrder, reorderKeys, insertKey } from '@/hooks/useNavOrder';
 import { NavigationAuditWatcher } from './NavigationAuditWatcher';
 import { DiagnosticsFab } from '@/components/DiagnosticsFab';
+import { useArtisanalStrapPurchaseOrderApprovalCount } from '@/hooks/useArtisanalStraps';
 
 const QuickActionsFAB = () => {
   const navigate = useNavigate();
@@ -90,6 +91,8 @@ const AppLayoutContext = createContext<boolean>(false);
 export default function AppLayout({ children, printMode = false }: { children: React.ReactNode; printMode?: boolean }) {
   const { signOut } = useAuth();
   const { isAdmin, canAccessRoute } = useAccessControl();
+  const approvalCountQuery = useArtisanalStrapPurchaseOrderApprovalCount(isAdmin);
+  const purchaseApprovalCount = approvalCountQuery.data || 0;
   const { data: currentProfile } = useCurrentProfile();
   const { data: currentRoles = [] } = useCurrentUserRoles();
   // `useCurrentUserRoles` devolve objetos; a apresentação por perfil trabalha
@@ -610,11 +613,18 @@ export default function AppLayout({ children, printMode = false }: { children: R
                   {filteredSystemItems.map((item) => (
                     <Tooltip key={item.path} delayDuration={0}>
                       <TooltipTrigger asChild>
-                        <NavLink to={item.path} className={({ isActive }) => collapsedItemClass(isActive)}>
+                        <NavLink to={item.path} className={({ isActive }) => cn(collapsedItemClass(isActive), 'relative')}>
                           <item.icon className="h-4 w-4 shrink-0" />
+                          {item.path === '/admin/aprovacao-ordens-compra' && purchaseApprovalCount > 0 && (
+                            <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-bold text-primary-foreground">
+                              {purchaseApprovalCount > 99 ? '99+' : purchaseApprovalCount}
+                            </span>
+                          )}
                         </NavLink>
                       </TooltipTrigger>
-                      <TooltipContent side="right" sideOffset={8} className="text-xs font-medium">{item.label}</TooltipContent>
+                      <TooltipContent side="right" sideOffset={8} className="text-xs font-medium">
+                        {item.label}{item.path === '/admin/aprovacao-ordens-compra' && purchaseApprovalCount > 0 ? ` · ${purchaseApprovalCount} pendente(s)` : ''}
+                      </TooltipContent>
                     </Tooltip>
                   ))}
                 </div>
@@ -767,6 +777,11 @@ export default function AppLayout({ children, printMode = false }: { children: R
                       <div className="flex items-center gap-2.5 min-w-0">
                         <item.icon className="h-4 w-4 shrink-0" />
                         <span className="truncate">{item.label}</span>
+                        {item.path === '/admin/aprovacao-ordens-compra' && purchaseApprovalCount > 0 && (
+                          <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-bold text-primary-foreground">
+                            {purchaseApprovalCount > 99 ? '99+' : purchaseApprovalCount}
+                          </span>
+                        )}
                       </div>
                     </NavLink>
                   ))}
@@ -858,6 +873,11 @@ export default function AppLayout({ children, printMode = false }: { children: R
           <DropdownMenuItem key={item.path} onClick={() => navigate(item.path)} className="gap-2 cursor-pointer">
             <item.icon className="h-4 w-4" />
             <span>{item.label}</span>
+            {item.path === '/admin/aprovacao-ordens-compra' && purchaseApprovalCount > 0 && (
+              <span className="ml-auto rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-bold text-primary-foreground">
+                {purchaseApprovalCount > 99 ? '99+' : purchaseApprovalCount}
+              </span>
+            )}
           </DropdownMenuItem>
         ))}
       </DropdownMenuContent>

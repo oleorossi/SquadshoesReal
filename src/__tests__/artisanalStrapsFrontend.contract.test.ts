@@ -1,0 +1,228 @@
+import { existsSync, readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { describe, expect, it } from 'vitest';
+
+const ROOT = resolve(__dirname, '../..');
+const read = (path: string) => readFileSync(resolve(ROOT, path), 'utf8');
+const hooks = read('src/hooks/useArtisanalStraps.ts');
+const incrementalApplyHook = hooks.slice(
+  hooks.indexOf('export function useApplyResolvedLegacyStrapProductMappingIncremental'),
+  hooks.indexOf('export function useApplyArtisanalStrapMigration'),
+);
+const operations = read('src/components/artisanal-straps/ArtisanalStrapExternalOperations.tsx');
+const planning = read('src/components/artisanal-straps/ArtisanalStrapPlanningConfig.tsx');
+const purchasePdf = read('src/lib/strapPurchaseOrderZip.ts');
+const serviceOrderPdf = read('src/lib/printArtisanalStrapServiceOrder.ts');
+const saleOrderForm = read('src/pages/SaleOrderForm.tsx');
+const saleOrderItemForm = read('src/components/sale-orders/SaleOrderItemForm.tsx');
+const groupEditDialog = read('src/components/groups/GroupEditDialog.tsx');
+const contractors = read('src/pages/Contractors.tsx');
+const notifications = read('src/hooks/useNotifications.ts');
+const batchMatrix = read('src/components/artisanal-straps/ArtisanalStrapBatchMatrix.tsx');
+const groupColorProducts = read('src/lib/groupColorProducts.ts');
+const contractorHooks = read('src/hooks/useContractors.ts');
+const technicalSheets = read('src/pages/TechnicalSheets.tsx');
+const canonicalPreview = read('src/lib/canonicalStrapDemandPreview.ts');
+const strapCutBlock = read('src/components/sale-orders/ArtisanalStrapRollCutBlock.tsx');
+const pickingList = read('src/pages/PickingListPage.tsx');
+const hub = read('src/pages/ArtisanalStraps.tsx');
+const calculator = read('src/pages/StrapCalculator.tsx');
+const legacyProductMigration = read('src/components/artisanal-straps/ArtisanalStrapLegacyProductMigrationDialog.tsx');
+const migrationControl = read('src/components/artisanal-straps/ArtisanalStrapMigrationControl.tsx');
+const migrationDialogs = read('src/components/artisanal-straps/ArtisanalStrapMigrationDialogs.tsx');
+const incrementalMigrationDialog = read('src/components/artisanal-straps/ArtisanalStrapIncrementalApplyDialog.tsx');
+const incrementalMigrationHelper = read('src/lib/legacyStrapIncrementalApply.ts');
+const performanceHistory = read('src/components/artisanal-straps/ArtisanalStrapPerformanceHistory.tsx');
+const strapEditor = read('src/components/artisanal-straps/ArtisanalStrapEditor.tsx');
+
+describe('Tiras artesanais — contrato do frontend canônico', () => {
+  it('consulta somente RPCs e views operacionais nas áreas sensíveis', () => {
+    [
+      'v_strap_service_order_items_operational',
+      'v_strap_purchase_order_items_operational',
+      'v_strap_contractor_loss_claims_operational',
+      'v_strap_contractor_payment_cycles_operational',
+      'v_contractor_material_custody_balances',
+      'v_strap_rework_material_requests_operational',
+      'list_strap_executor_planning_config',
+    ].forEach((source) => expect(hooks).toContain(source));
+
+    [
+      'contractor_payment_cycles',
+      'contractor_accruals',
+      'contractor_loss_claims',
+      'purchase_receipt_items',
+      'strap_executor_capacities',
+      'contractor_payment_schedules',
+    ].forEach((table) => expect(hooks).not.toContain(`from('${table}')`));
+  });
+
+  it('congela OC por upload imutável com referência SHA-256 nos metadados', () => {
+    expect(operations).toMatch(/upsert:\s*false/);
+    expect(operations).toMatch(/metadata:\s*\{\s*sha256\s*\}/);
+    expect(operations).not.toMatch(/upsert:\s*true/);
+    expect(hooks).toContain('createSignedUrl');
+    expect(hooks).toContain('get_strap_purchase_order_document');
+    expect(operations).toContain('usePrepareArtisanalStrapPurchaseOrderApproval');
+    expect(operations).toContain('Aprovar em lote');
+    expect(operations).toContain('Uma falha nunca impede a tentativa das OCs seguintes');
+    expect(operations).toContain('PurchaseOrderBulkSummary');
+    expect(operations).toContain('Entrada integralmente rejeitada');
+    expect(operations).toMatch(/invoiceTotal <= 0\.01\s*\? installments\.length === 0/);
+    expect(operations).toContain('approverName: prepared.approver_name');
+    expect(operations).toContain('approvalToken: prepared.approval_token');
+    expect(hooks).toContain('prepare_strap_purchase_order_approval');
+    expect(hooks).toContain('adjust_strap_purchase_order');
+    expect(hooks).toContain('p_expected_commercial_digest');
+    expect(operations).toContain('Ajustar OC antes da aprovação');
+    expect(operations).toContain('Salvar ajuste auditado');
+    expect(purchasePdf).toContain('DOCUMENTO OFICIAL APROVADO');
+    expect(purchasePdf).toContain('AGUARDANDO APROVAÇÃO — NÃO ENVIAR');
+    expect(purchasePdf).toContain('DOCUMENTO SUSPENSO — NÃO ENVIAR');
+  });
+
+  it('expõe capacidade, calendário, periodicidade e retrabalho somente pelas RPCs públicas', () => {
+    [
+      'save_strap_operational_calendar',
+      'save_strap_executor_capacity',
+      'save_contractor_payment_schedule',
+      'request_strap_rework_material',
+      'decide_strap_rework_material_request',
+    ].forEach((rpc) => expect(hooks).toContain(rpc));
+    expect(planning).toContain('Capacidade e calendários por executor');
+    expect(planning).toContain('Semanal');
+    expect(planning).toContain('Quinzenal');
+  });
+
+  it('remove a janela legada e mantém o pós-save do PV sem escritor paralelo', () => {
+    expect(existsSync(resolve(ROOT, 'src/components/sale-orders/StrapShortageDialog.tsx'))).toBe(false);
+    expect(existsSync(resolve(ROOT, 'src/lib/strapShortages.ts'))).toBe(false);
+    expect(saleOrderForm).not.toContain('StrapShortageDialog');
+    expect(saleOrderItemForm).not.toContain('createGroupColorProducts');
+    expect(saleOrderItemForm).not.toContain('Cadastrar todas');
+    expect(groupEditDialog).toContain('isCanonicalStrapGroup');
+    expect(groupEditDialog).toContain('Abrir cadastro canônico');
+    expect(groupColorProducts).toContain('Família de tira artesanal só pode ser criada pelo Hub');
+    expect(groupColorProducts).not.toMatch(/is_artisanal:\s*true/);
+    expect(contractors).not.toMatch(/use(Create|Update|Delete)ArtisanalRecipe/);
+    expect(contractors).not.toContain('Nova Receita Artesanal');
+  });
+
+  it('detecta OS canônica pela identidade das linhas e remove ações legadas', () => {
+    expect(contractorHooks).toContain('v_strap_service_order_items_operational');
+    expect(contractors).toContain('isCanonicalStrapServiceOrder(o)');
+    expect(contractors).toContain('Abrir no Hub de Tiras');
+  });
+
+  it('separa RBAC administrativo e documentos/unidades operacionais', () => {
+    expect(hooks).toContain('administer_strap_operations');
+    expect(operations).toContain('catalog.capabilities.administer_strap_operations');
+    expect(operations).not.toContain('catalog.capabilities.manage_strap_catalog');
+    expect(operations).toContain("entityType: 'purchase_order'");
+    expect(operations).toContain('Recebimento com rejeição');
+    expect(hooks).toContain('p_production_receipt_id: productionReceiptId');
+    expect(operations).toContain('row.stock_unit_snapshot');
+    expect(serviceOrderPdf).toContain('ORDEM DE SERVIÇO');
+    expect(serviceOrderPdf).toContain('Reposição de estoque mínimo');
+    expect(notifications).toContain('v_strap_purchase_order_notifications_operational');
+    expect(notifications).toContain("link: '/admin/aprovacao-ordens-compra'");
+  });
+
+  it('obriga revisão da alocação parcial e respeita estados operacionais da OS', () => {
+    expect(hooks).toContain('p_allocations: input.allocations');
+    expect(operations).toContain('Sugestão normativa');
+    expect(operations).toContain('Revisada pelo operador');
+    expect(operations).toContain('Revisei a sugestão e confirmo a distribuição');
+    expect(operations).toContain('isTerminalStrapOperationStatus');
+    expect(operations).toContain('const canSend = canExecute && !terminal && !suspended');
+    expect(operations).toContain('const canReturn = canExecute && hasCustody');
+    expect(hooks).toMatch(/schedule_strap_batch_item[\s\S]*p_reason:\s*reason/);
+    expect(hooks).toMatch(/start_strap_production_batch[\s\S]*p_reason:\s*reason/);
+    expect(hooks).toMatch(/replan_strap_production_batch[\s\S]*p_reason:\s*reason/);
+  });
+
+  it('faz a matriz resolver napa candidata sem writer paralelo nem SKU truncado', () => {
+    expect(batchMatrix).toContain('useDesignateBaseMaterialOfficialProduct');
+    expect(batchMatrix).toContain("alias.status === 'approved'");
+    expect(batchMatrix).toContain('crypto.randomUUID().toUpperCase()');
+    expect(batchMatrix).toContain('Compra pronta habilitada');
+    expect(batchMatrix).toContain('config.purchaseEnabled || config.floorMode');
+    expect(batchMatrix).not.toContain('.slice(0, 6)');
+    expect(batchMatrix).not.toContain("from('products')");
+  });
+
+  it('grava família e medida canônicas na linha UUID da ficha técnica', () => {
+    expect(technicalSheets).toContain('applyCanonicalTechnicalStrapMeasure');
+    expect(technicalSheets).toContain('hasCanonicalTechnicalStrapIdentity');
+    expect(technicalSheets).toContain("setAbaAtiva('range-aviamento')");
+    expect(technicalSheets).not.toContain('<StrapGroupCombobox');
+  });
+
+  it('executa a migração 03300 sem falso resolved de produto legado', () => {
+    [
+      'artisanal_strap_legacy_migration_diagnostics',
+      'resolve_legacy_strap_product_migration',
+      'apply_artisanal_strap_migration',
+      'preview_artisanal_strap_migration_rollback',
+      'rollback_artisanal_strap_migration',
+      'v_artisanal_strap_legacy_migration_admin',
+      'apply_resolved_legacy_strap_product_mapping_incremental',
+    ].forEach((contract) => expect(hooks).toContain(contract));
+    expect(legacyProductMigration).toContain('buildLegacyStrapProductAllocations');
+    expect(legacyProductMigration).toContain('remainingReserved: reservation.remaining_reserved');
+    expect(legacyProductMigration).toContain('OCs com snapshot não podem ser remapeadas');
+    expect(hub).toContain("['legacy_product_mapping_required', 'resolved_product_mapping_blocked']");
+    expect(hub).toContain("String(issue.details?.entity_type || '') !== 'legacy_product'");
+    expect(migrationDialogs).toContain("entityType !== 'legacy_product'");
+    expect(migrationControl).toContain('expectedChecksum: dryRun.overall_checksum');
+    expect(migrationControl).toContain('expectedPostChecksum: preview.expected_post_checksum');
+    expect(migrationControl).toContain('Confirmo que revisei o dry-run');
+    expect(hub).toContain("issue.issue_code === 'resolved_product_mapping_ready_to_apply'");
+    expect(hub).toContain('Aplicar resolução');
+    expect(incrementalMigrationDialog).toContain("diagnostic?.issue_code !== 'resolved_product_mapping_ready_to_apply'");
+    expect(incrementalMigrationDialog).toContain('createLegacyStrapIncrementalIdempotencyKey');
+    expect(incrementalMigrationDialog).toContain('Repetir mesma tentativa');
+    expect(incrementalMigrationDialog).toContain('Replay idempotente confirmado');
+    expect(incrementalMigrationDialog).not.toContain("from('");
+    expect(incrementalMigrationHelper).toContain('crypto.randomUUID()');
+    [
+      'p_cutover_id: cutoverId',
+      'p_mapping_id: mappingId',
+      'p_expected_scope_checksum: expectedScopeChecksum',
+      'p_reason: reason',
+      'p_idempotency_key: idempotencyKey',
+    ].forEach((argument) => expect(incrementalApplyHook).toContain(argument));
+    expect(incrementalApplyHook).toContain('invalidateArtisanalStraps(queryClient)');
+    [
+      "['artisanal-strap-legacy-migration-diagnostics']",
+      "['artisanal-strap-migration-cutovers']",
+      "['artisanal-strap-demands']",
+      "['artisanal-strap-external-operations']",
+    ].forEach((queryKey) => expect(incrementalApplyHook).toContain(queryKey));
+  });
+
+  it('compara rendimento e custo pelas views canônicas sem alterar receita aprovada', () => {
+    expect(hooks).toContain("from('v_strap_real_yield_history')");
+    expect(hooks).toContain("from('v_strap_cost_variance_operational')");
+    expect(performanceHistory).toContain('Confirmado × realizado');
+    expect(performanceHistory).toContain('Variação prevista × realizada');
+    expect(performanceHistory).toContain('Criar versão sugerida');
+    expect(strapEditor).toContain('Sugestão do rendimento realizado');
+    expect(strapEditor).toContain('nova versão em rascunho');
+    expect(strapEditor).toContain('id: createRecipeVersion ? undefined');
+    expect(strapEditor).not.toContain('status: \'approved\'');
+  });
+
+  it('orienta a fábrica pela napa e rendimento canônicos, sem rolo fixo legado', () => {
+    expect(canonicalPreview).toContain('baseRequiredM: baseRequired');
+    expect(canonicalPreview).toContain('confirmedYieldMPerM: yieldPerMeter');
+    expect(strapCutBlock).toContain('separação da napa-base');
+    expect(strapCutBlock).toContain('snapshot.baseRequiredM');
+    expect(strapCutBlock).not.toContain('ROLO_COMPRIMENTO_M');
+    expect(pickingList).toContain('separação da napa-base');
+    expect(pickingList).not.toContain('ROLO_LARGURA_MM');
+    expect(hub).toContain('rendimentoConfirmadoInicialMPerM={Number(selectedRecipe.confirmed_yield_m_per_m)}');
+    expect(calculator).toContain('A necessidade operacional usa exclusivamente o rendimento confirmado');
+    expect(calculator).not.toContain('a % de perda cobre');
+  });
+});

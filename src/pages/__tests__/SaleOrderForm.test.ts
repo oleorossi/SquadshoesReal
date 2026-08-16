@@ -19,6 +19,7 @@ describe('mapLoadedSaleOrderItem', () => {
         unit_price: 125,
         quantity: 10,
         strap_colors: [],
+        strap_sourcing_revision: 7,
       },
       {
         id: 'sale-order-item-2',
@@ -41,6 +42,7 @@ describe('mapLoadedSaleOrderItem', () => {
     ]);
     // canonicaliza o reference_id legado
     expect(mappedItems[0].reference_id).toBe('canonical-reference');
+    expect(mappedItems[0].strap_sourcing_revision).toBe(7);
   });
 });
 
@@ -83,8 +85,22 @@ describe('buildCopySeedPayload', () => {
       unit_price: 100,
       quantity: 10,
       fichas: 1,
-      strap_colors: [{ id: 'g1', label: 'TIRA CHATA 8MM', color: 'PRETO' }],
-      strap_sourcing: { 'g1|PRETO': 'in_house' },
+      strap_colors: [{
+        id: '11111111-1111-4111-8111-111111111111',
+        technical_strap_line_id: '11111111-1111-4111-8111-111111111111',
+        label: 'TIRA CHATA 8MM',
+        color: 'PRETO',
+        color_id: '22222222-2222-4222-8222-222222222222',
+      }],
+      strap_sourcing: {
+        '11111111-1111-4111-8111-111111111111': {
+          source_mode: 'internal',
+          color_id: '22222222-2222-4222-8222-222222222222',
+          strap_variant_id: '33333333-3333-4333-8333-333333333333',
+          recipe_id: '44444444-4444-4444-8444-444444444444',
+        },
+      },
+      strap_sourcing_revision: 4,
       observation: 'obs do item',
       material_variant_id: 'variant-ativa',
       selected_terceirizacao_ids: ['terc-1'],
@@ -114,6 +130,7 @@ describe('buildCopySeedPayload', () => {
 
   it('NÃO leva o id do item — o novo PV cria linhas novas, nunca atualiza as do pedido origem', () => {
     expect(seed.items.every((it) => !('id' in it) || it.id === undefined)).toBe(true);
+    expect(seed.items.every((it) => !('strap_sourcing_revision' in it))).toBe(true);
   });
 
   it('preserva a definição física do item (ref, cor, grade, preço, tiras, sourcing, observação)', () => {
@@ -124,8 +141,21 @@ describe('buildCopySeedPayload', () => {
       unit_price: 100,
       quantity: 10,
       fichas: 1,
-      strap_colors: [{ id: 'g1', label: 'TIRA CHATA 8MM', color: 'PRETO' }],
-      strap_sourcing: { 'g1|PRETO': 'in_house' },
+      strap_colors: [{
+        id: '11111111-1111-4111-8111-111111111111',
+        technical_strap_line_id: '11111111-1111-4111-8111-111111111111',
+        label: 'TIRA CHATA 8MM',
+        color: 'PRETO',
+        color_id: '22222222-2222-4222-8222-222222222222',
+      }],
+      strap_sourcing: {
+        '11111111-1111-4111-8111-111111111111': {
+          source_mode: 'internal',
+          color_id: '22222222-2222-4222-8222-222222222222',
+          strap_variant_id: '33333333-3333-4333-8333-333333333333',
+          recipe_id: '44444444-4444-4444-8444-444444444444',
+        },
+      },
       observation: 'obs do item',
     });
   });

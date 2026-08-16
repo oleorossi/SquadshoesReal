@@ -52,10 +52,6 @@ export type BuyList = {
   otherRows: ConsumptionRow[];
 };
 
-/** Parcelas arredondadas ANTES de somar — o total tem que fechar com a coluna
- *  visível (mesma decisão de `baseMaterialTotal.ts`). */
-const r2 = (n: number) => Math.round(n * 100) / 100;
-
 /** A linha é napa cortada DIRETO do rolo (não tira convertida)? */
 export const isDirectNapaRow = (row: ConsumptionRow): boolean =>
   BASE_MATERIAL_COMPONENTS.has(row.componentType)
@@ -80,7 +76,9 @@ export function buildBuyList(rows: ConsumptionRow[]): BuyList {
   const addNapa = (napa: string, color: string, qty: number) => {
     if (!napaBuy.has(napa)) napaBuy.set(napa, new Map());
     const cm = napaBuy.get(napa)!;
-    cm.set(color, (cm.get(color) || 0) + r2(qty));
+    // Mantém precisão integral durante a agregação. Duas casas pertencem apenas
+    // à renderização; arredondar cada contribuição perde metragens pequenas.
+    cm.set(color, (cm.get(color) || 0) + qty);
   };
 
   for (const row of rows) {

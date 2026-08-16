@@ -1,5 +1,4 @@
 import { supabase } from '@/integrations/supabase/client';
-import { debitStockForServiceOrder } from '@/lib/serviceOrderStock';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -134,31 +133,8 @@ export async function createWaveWithMaterialOrders(params: {
       artisanal_recipe_id: an.artisanal_recipe_id,
     });
 
-    // If base material is also in shortage → add to PO list regardless of generatePOs flag
-    if ((an.base_shortage ?? 0) > 0 && an.base_product_id) {
-      shortages.push({
-        product_id: an.base_product_id,
-        product_name: an.base_product_name ?? '',
-        unit: 'm',
-        color: an.color,
-        needed_qty: an.base_needed_qty ?? 0,
-        stock_qty: an.base_stock_qty ?? 0,
-        shortage: an.base_shortage ?? 0,
-        supplier_id: null,
-        supplier_name: null,
-        supplier_lead_time_days: 10,
-        is_artisanal: false,
-        artisanal_recipe_id: null,
-        artisanal_recipe_name: null,
-        base_product_id: null,
-        base_product_name: null,
-        base_needed_qty: null,
-        base_stock_qty: null,
-        base_shortage: null,
-        os_send_date: null,
-        purchase_deadline: null,
-      });
-    }
+    // A falta da napa-base NÃO entra na OC geral da onda. Netting, contribuição
+    // por PV e eventual compra pertencem exclusivamente ao motor canônico de tiras.
   }
 
   if (!generatePOs || shortages.length === 0) {
@@ -305,144 +281,4 @@ export async function createWaveWithMaterialOrders(params: {
   }
 
   return { waveId, posCreated, artisanalOsNeeds };
-}
-
-// ─── Auto-create artisanal service orders when wave is created ────────────────
-// Always assigns to contractor "nego" (matched by ILIKE).
-// Creates one OS per artisanal material need with all artisanal fields populated.
-export async function autoCreateArtisanalServiceOrders(
-  artisanalNeeds: ArtisanalOsNeed[],
-): Promise<number> {
-  if (!artisanalNeeds.length) return 0;
-
-  // Find contractor "nego"
-  const { data: contractors, error: contractorsErr } = await (supabase as any)
-    .from('contractors')
-    .select('id, name')
-    .ilike('name', '%nego%')
-    .eq('active', true)
-    .limit(1);
-  if (contractorsErr) throw contractorsErr;
-
-  const negoId: string | null = (contractors as any[])?.[0]?.id ?? null;
-  if (!negoId) {
-    // Wave is already committed; missing contractor means artisanal production
-    // will never be scheduled. Throw so the caller can surface this to the operator.
-    throw new Error('Terceiro "nego" não encontrado ou inativo — cadastre o terceiro antes de criar ondas com necessidades artesanais.');
-  }
-
-  const needsWithMaterialsSent = artisanalNeeds.filter(
-    (need) => need.base_product_name && (need.base_needed_qty ?? 0) > 0,
-  );
-  let stockProducts: any[] = [];
-  let productGroups: any[] = [];
-  if (needsWithMaterialsSent.length > 0) {
-    const [productsRes, productGroupsRes] = await Promise.all([
-      supabase.from('products').select('id, name, color, quantity, group_id'),
-      supabase.from('product_groups').select('id, name'),
-    ]);
-    if (productsRes.error) throw productsRes.error;
-    if (productGroupsRes.error) throw productGroupsRes.error;
-    stockProducts = (productsRes.data ?? []) as any[];
-    productGroups = (productGroupsRes.data ?? []) as any[];
-  }
-
-  let created = 0;
-  const insertedOsIds: string[] = [];
-  const confirmedOsIds = new Set<string>();
-  try {
-    for (const need of artisanalNeeds) {
-      if (!need.artisanal_recipe_id) continue;
-
-      const osDate = need.os_send_date ?? new Date().toISOString().slice(0, 10);
-      const colorSuffix = need.color ? ` (${need.color})` : '';
-      const description = `OS artesanal automática — ${need.product_name}${colorSuffix}`;
-
-      const materialsSent = (need.base_product_name && (need.base_needed_qty ?? 0) > 0)
-        ? [{ material: need.base_product_name, color: need.color || '', meters: need.base_needed_qty, completed: false }]
-        : null;
-
-      const { data: osRow, error } = await (supabase as any)
-        .from('service_orders')
-        .insert({
-          contractor_id: negoId,
-          description,
-          service_date: osDate,
-          quantity: 1,
-          unit_price: 0,
-          total_value: 0,
-          status: 'Pendente',
-          artisanal_recipe_id: need.artisanal_recipe_id,
-          artisanal_output_name: need.product_name,
-          artisanal_output_color: need.color || '',
-          artisanal_output_meters: need.needed_meters,
-          artisanal_for_order_meters: need.needed_meters,
-          artisanal_for_stock_meters: 0,
-          artisanal_base_color: need.color || '',
-          artisanal_stock_entry_done: false,
-          ...(materialsSent ? { materials_sent: materialsSent } : {}),
-        })
-        .select('id')
-        .single();
-
-      if (error) {
-        console.error(`autoCreateArtisanalServiceOrders: falha ao criar OS para ${need.product_name}:`, error.message);
-        throw new Error(`Falha ao criar OS artesanal para "${need.product_name}": ${error.message}`);
-      }
-      if (!osRow?.id) throw new Error(`Falha ao criar OS artesanal para "${need.product_name}": resposta sem identificador.`);
-      insertedOsIds.push(osRow.id);
-
-      if (materialsSent) {
-        const debitResult = await debitStockForServiceOrder(
-          [{
-            material: need.base_product_name!,
-            color: need.color || '',
-            meters: need.base_needed_qty!,
-            product_id: need.base_product_id ?? undefined,
-          }],
-          {
-            service_order_id: osRow.id,
-            products: stockProducts,
-            product_groups: productGroups,
-          },
-        );
-        const failed = debitResult.items.filter((item) => item.status !== 'ok');
-        if (failed.length > 0) {
-          throw new Error(
-            `OS artesanal para "${need.product_name}" não pôde enviar a MP base: ${failed.map((item) => item.message || `${item.material}/${item.color}`).join('; ')}.`,
-          );
-        }
-
-        // Mantém o snapshot local coerente para OSs seguintes que usem a mesma MP.
-        for (const item of debitResult.items) {
-          if (item.status !== 'ok' || !item.product_id) continue;
-          const product = stockProducts.find((row) => row.id === item.product_id);
-          if (product) product.quantity = Math.max(0, Number(product.quantity) - item.meters);
-        }
-      }
-      confirmedOsIds.add(osRow.id);
-      created++;
-    }
-  } catch (err: any) {
-    // Só remove a OS cujo débito ainda não foi confirmado. OSs anteriores já
-    // baixaram estoque e precisam permanecer rastreáveis mesmo se outra OS do
-    // lote falhar; o erro propaga para sinalizar a cobertura parcial da onda.
-    const unconfirmedOsIds = insertedOsIds.filter((id) => !confirmedOsIds.has(id));
-    if (unconfirmedOsIds.length > 0) {
-      const { error: delErr } = await (supabase as any)
-        .from('service_orders')
-        .delete()
-        .in('id', unconfirmedOsIds);
-      if (delErr) {
-        const cause = err?.message ?? String(err);
-        throw new Error(
-          `${cause}. ATENÇÃO: ${unconfirmedOsIds.length} ${unconfirmedOsIds.length === 1 ? 'OS artesanal já criada' : 'OSs artesanais já criadas'} ` +
-          `sem débito confirmado não puderam ser removidas (${delErr.message}). Remover manualmente: ${unconfirmedOsIds.join(', ')}.`
-        );
-      }
-    }
-    throw err;
-  }
-
-  return created;
 }

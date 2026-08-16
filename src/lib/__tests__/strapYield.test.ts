@@ -1,453 +1,245 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
-  computeStrapYield,
   computeStrapMaterialNeeded,
-  partialCutYield,
+  computeStrapYield,
   PARTIAL_CUT_UNIT_TO_M,
+  partialCutYield,
   STRAP_YIELD_DEFAULTS,
 } from '@/lib/strapYield';
-import { ROLO_LARGURA_MM, ROLO_COMPRIMENTO_M, PERDA_PCT } from '@/lib/strapRollCut';
+import { ROLO_COMPRIMENTO_M, ROLO_LARGURA_MM } from '@/lib/strapRollCut';
 
-const round = (n: number, d = 3) => Math.round(n * 10 ** d) / 10 ** d;
+const round = (value: number, decimals = 6) =>
+  Math.round(value * 10 ** decimals) / 10 ** decimals;
 
-describe('computeStrapYield — rendimento contínuo (sem piso)', () => {
-  it('caso canônico do Leonardo: 1370 / 20 × (1−15%) = 58,225 m/m', () => {
-    const r = computeStrapYield({
+describe('computeStrapYield — bandas físicas completas, sem perda adicional', () => {
+  it('usa floor(1370 / 20) = 68 m de tira por metro de napa', () => {
+    const result = computeStrapYield({
       larguraMaterialMm: 1370,
       larguraTiraMm: 20,
-      perdaPct: 15,
       comprimentoRoloM: 40,
     });
-    expect(r.valid).toBe(true);
-    expect(round(r.metragemPorMetroBruto)).toBe(68.5);
-    expect(round(r.metragemPorMetroLiq)).toBe(58.225);
-    // rolo inteiro: 58,225 × 40 = 2329 m
-    expect(round(r.totalRoloLiq, 2)).toBe(2329);
-    expect(round(r.totalRoloBruto, 2)).toBe(2740); // 68,5 × 40
+
+    expect(result.valid).toBe(true);
+    expect(result.bandasCompletas).toBe(68);
+    expect(result.metragemPorMetroBruto).toBe(68);
+    expect(result.metragemPorMetroLiq).toBe(68);
+    expect(result.totalRoloBruto).toBe(2720);
+    expect(result.totalRoloLiq).toBe(2720);
   });
 
-  it('caso canônico + custo do material (Cml = 13,34 R$/m)', () => {
-    const r = computeStrapYield({
+  it('descarta apenas a sobra lateral que não forma uma banda completa', () => {
+    const result = computeStrapYield({
+      larguraMaterialMm: 1000,
+      larguraTiraMm: 30,
+      comprimentoRoloM: 10,
+    });
+
+    expect(result.bandasCompletas).toBe(33);
+    expect(result.metragemPorMetroLiq).toBe(33);
+    expect(result.totalRoloLiq).toBe(330);
+  });
+
+  it('calcula custo pela sugestão geométrica quando ainda não há receita', () => {
+    const result = computeStrapYield({
       larguraMaterialMm: 1370,
       larguraTiraMm: 20,
-      perdaPct: 15,
       comprimentoRoloM: 40,
       custoMetroLinear: 13.34,
     });
-    // gasta no rolo: 13,34 × 40 = 533,60
-    expect(round(r.custoMaterialRolo ?? 0, 2)).toBe(533.6);
-    // custo por metro de tira: 13,34 ÷ 58,225 = 0,2291
-    expect(round(r.custoPorMetroTira ?? 0, 4)).toBe(0.2291);
+
+    expect(result.custoMaterialRolo).toBeCloseTo(533.6, 8);
+    expect(result.custoPorMetroTira).toBeCloseTo(13.34 / 68, 8);
   });
 
-  it('largura casada, perda 10% (1000/20/10%/10m)', () => {
-    const r = computeStrapYield({
-      larguraMaterialMm: 1000,
-      larguraTiraMm: 20,
-      perdaPct: 10,
-      comprimentoRoloM: 10,
-    });
-    expect(round(r.metragemPorMetroBruto)).toBe(50);
-    expect(round(r.metragemPorMetroLiq)).toBe(45);
-    expect(round(r.totalRoloLiq, 2)).toBe(450);
-  });
-
-  it('sem piso: largura não-casada mantém a fração (1000/30/8%/10m)', () => {
-    const r = computeStrapYield({
-      larguraMaterialMm: 1000,
-      larguraTiraMm: 30,
-      perdaPct: 8,
-      comprimentoRoloM: 10,
-    });
-    // 1000/30 = 33,333… (NÃO 33 — não há piso)
-    expect(round(r.metragemPorMetroBruto, 4)).toBe(33.3333);
-    expect(round(r.metragemPorMetroLiq, 4)).toBe(30.6667); // ×0,92
-    expect(round(r.totalRoloLiq, 4)).toBe(306.6667);
-  });
-
-  it('perda 0 → líquido = bruto', () => {
-    const r = computeStrapYield({ larguraMaterialMm: 1370, larguraTiraMm: 25, perdaPct: 0, comprimentoRoloM: 40 });
-    expect(round(r.metragemPorMetroLiq)).toBe(round(r.metragemPorMetroBruto));
-    expect(round(r.metragemPorMetroLiq)).toBe(54.8); // 1370/25
-  });
-
-  it('banda com a largura exata do material é válida', () => {
-    const r = computeStrapYield({
-      larguraMaterialMm: 1370,
-      larguraTiraMm: 1370,
-      perdaPct: 15,
-      comprimentoRoloM: 40,
-    });
-    expect(r.valid).toBe(true);
-    expect(r.metragemPorMetroBruto).toBe(1);
-    expect(r.metragemPorMetroLiq).toBe(0.85);
-    expect(r.totalRoloLiq).toBe(34);
-  });
-});
-
-describe('computeStrapYield — validação (§9)', () => {
-  const base = { larguraMaterialMm: 1370, larguraTiraMm: 20, perdaPct: 15, comprimentoRoloM: 40 };
-  it('tira maior que material → inválido', () => {
-    const r = computeStrapYield({ ...base, larguraMaterialMm: 100, larguraTiraMm: 120 });
-    expect(r.valid).toBe(false);
-    expect(r.error).toMatch(/maior que a largura do material/i);
-  });
-  it('largura do material ≤ 0 → inválido', () => {
-    expect(computeStrapYield({ ...base, larguraMaterialMm: 0 }).valid).toBe(false);
-  });
-  it('largura da banda ≤ 0 → inválido', () => {
-    expect(computeStrapYield({ ...base, larguraTiraMm: 0 }).valid).toBe(false);
-  });
-  it('comprimento do rolo ≤ 0 → inválido', () => {
-    expect(computeStrapYield({ ...base, comprimentoRoloM: 0 }).valid).toBe(false);
-  });
-  it('perda ≥ 100 → inválido', () => {
-    expect(computeStrapYield({ ...base, perdaPct: 100 }).valid).toBe(false);
-  });
-  it('perda negativa → inválido', () => {
-    expect(computeStrapYield({ ...base, perdaPct: -1 }).valid).toBe(false);
-  });
-  it('sem custo → blocos de custo ficam null', () => {
-    const r = computeStrapYield(base);
-    expect(r.custoMaterialRolo).toBeNull();
-    expect(r.custoPorMetroTira).toBeNull();
-  });
-});
-
-describe('defaults', () => {
-  it('defaults da calculadora = constantes canônicas do rolo', () => {
-    expect(STRAP_YIELD_DEFAULTS.larguraMaterialMm).toBe(ROLO_LARGURA_MM);
-    expect(STRAP_YIELD_DEFAULTS.comprimentoRoloM).toBe(ROLO_COMPRIMENTO_M);
-    expect(STRAP_YIELD_DEFAULTS.perdaPct).toBe(PERDA_PCT * 100);
-  });
-});
-
-describe('computeStrapMaterialNeeded — inverso (quanto material preciso)', () => {
-  it('caso canônico: 1000 m de tira 18mm → 529,4 mm de largura a cortar', () => {
-    const r = computeStrapMaterialNeeded({
-      larguraMaterialMm: 1370,
-      larguraTiraMm: 18,
-      perdaPct: 15,
-      comprimentoRoloM: 40,
-      tiraDesejadaM: 1000,
-    });
-    expect(r.valid).toBe(true);
-    // taxa líquida 1370/18 × 0,85 = 64,6944… m/m
-    expect(round(r.metragemPorMetroLiq, 4)).toBe(64.6944);
-    // NÚMERO-HERÓI: 1000 × 18 ÷ (40 × 0,85) = 18000 ÷ 34 = 529,4118 mm
-    expect(round(r.larguraCortarMm, 4)).toBe(529.4118);
-    // 529,4118 ÷ 18 = 29,4118 tiras
-    expect(round(r.tirasNecessarias, 4)).toBe(29.4118);
-    // 529,4118 ÷ 1370 × 100 = 38,6432% da largura do rolo (= rolos × 100)
-    expect(round(r.larguraPctDoRolo, 4)).toBe(38.6432);
-    expect(round(r.larguraPctDoRolo, 6)).toBe(round(r.rolosNecessarios * 100, 6));
-    expect(r.passaLargura).toBe(false); // 529 < 1370
-    // contexto: 1000 ÷ 64,6944 = 15,4573 m de material
-    expect(round(r.materialNecessarioM, 4)).toBe(15.4573);
-    // rolo de 40 m → 0,386 rolo → 1 rolo inteiro
-    expect(round(r.rolosNecessarios, 4)).toBe(0.3864);
-    expect(r.rolosInteiros).toBe(1);
-  });
-
-  it('dois passos (exemplo do Leonardo): 80 m → bruto 36 mm → com perda 42,35 mm', () => {
-    const r = computeStrapMaterialNeeded({
-      larguraMaterialMm: 1370,
-      larguraTiraMm: 18,
-      perdaPct: 15,
-      comprimentoRoloM: 40,
-      tiraDesejadaM: 80,
-    });
-    // 1º passo (sem perda): 80 × 18 ÷ 40 = 36 mm
-    expect(round(r.larguraCortarBrutaMm, 4)).toBe(36);
-    // 2º passo (perda AUMENTA): 36 ÷ 0,85 = 42,3529 mm
-    expect(round(r.larguraCortarMm, 4)).toBe(42.3529);
-    expect(round(r.larguraExtraPerdaMm, 4)).toBe(6.3529);
-    // a perda sempre aumenta a largura a cortar
-    expect(r.larguraCortarMm).toBeGreaterThan(r.larguraCortarBrutaMm);
-    // soma de todas as tiras: 80 ÷ 0,85 = 94,1176 m brutos → 80 m aproveitáveis
-    expect(round(r.tiraBrutaTotalM, 4)).toBe(94.1176);
-    expect(round(r.tiraBrutaTotalM * 0.85, 4)).toBe(80);
-  });
-
-  it('tiraBrutaTotalM = tirasNecessarias × comprimento do rolo', () => {
-    const r = computeStrapMaterialNeeded({
-      larguraMaterialMm: 1370,
-      larguraTiraMm: 18,
-      perdaPct: 15,
-      comprimentoRoloM: 40,
-      tiraDesejadaM: 100,
-    });
-    expect(round(r.tiraBrutaTotalM, 6)).toBe(round(r.tirasNecessarias * 40, 6));
-    expect(round(r.tiraBrutaTotalM, 4)).toBe(117.6471); // 2,9412 × 40
-  });
-
-  it('perda 0 → bruto = final, sem acréscimo', () => {
-    const r = computeStrapMaterialNeeded({
-      larguraMaterialMm: 1370,
-      larguraTiraMm: 18,
-      perdaPct: 0,
-      comprimentoRoloM: 40,
-      tiraDesejadaM: 80,
-    });
-    expect(round(r.larguraCortarBrutaMm, 4)).toBe(round(r.larguraCortarMm, 4));
-    expect(round(r.larguraExtraPerdaMm, 6)).toBe(0);
-    expect(round(r.tiraBrutaTotalM, 4)).toBe(80); // sem perda, bruto = pedido
-  });
-
-  it('REAL: não existe 2,9 bandas → 3 bandas inteiras, 54 mm, 102 m (sobra 2 m)', () => {
-    const r = computeStrapMaterialNeeded({
-      larguraMaterialMm: 1370,
-      larguraTiraMm: 18,
-      perdaPct: 15,
-      comprimentoRoloM: 40,
-      tiraDesejadaM: 100,
-    });
-    // exato dá 2,9412 tiras — arredonda PRA CIMA (senão falta metragem)
-    expect(round(r.tirasNecessarias, 4)).toBe(2.9412);
-    expect(r.tirasInteiras).toBe(3);
-    // largura real é múltiplo da largura da banda: 3 × 18 = 54 mm
-    expect(round(r.larguraRealMm, 4)).toBe(54);
-    expect(r.larguraRealMm % 18).toBe(0);
-    // 3 × 40 = 120 m brutos → 102 m líquidos → sobra 2 m além dos 100 pedidos
-    expect(round(r.tiraBrutaRealM, 4)).toBe(120);
-    expect(round(r.tiraLiquidaRealM, 4)).toBe(102);
-    expect(round(r.sobraTiraM, 4)).toBe(2);
-    // a largura real nunca é menor que a exata (arredonda pra cima)
-    expect(r.larguraRealMm).toBeGreaterThanOrEqual(r.larguraCortarMm);
-    // e o líquido real cobre o pedido
-    expect(r.tiraLiquidaRealM).toBeGreaterThanOrEqual(r.tiraDesejadaM);
-  });
-
-  it('REAL: material/rolos/% derivam da largura real', () => {
-    const r = computeStrapMaterialNeeded({
-      larguraMaterialMm: 1370,
-      larguraTiraMm: 18,
-      perdaPct: 15,
-      comprimentoRoloM: 40,
-      tiraDesejadaM: 100,
-    });
-    // 54 ÷ 1370 × 40 = 1,5766 m
-    expect(round(r.materialRealM, 4)).toBe(1.5766);
-    expect(round(r.rolosRealNecessarios, 4)).toBe(0.0394); // 54/1370
-    expect(r.rolosRealInteiros).toBe(1);
-    expect(round(r.larguraRealPctDoRolo, 2)).toBe(3.94);
-    // invariante: materialRealM = rolosRealNecessarios × Cr
-    expect(round(r.materialRealM, 6)).toBe(round(r.rolosRealNecessarios * 40, 6));
-  });
-
-  it('REAL: conta rolos físicos pela capacidade inteira de bandas', () => {
-    const r = computeStrapMaterialNeeded({
+  it('usa o rendimento confirmado da receita e mantém a geometria como teto', () => {
+    const result = computeStrapYield({
       larguraMaterialMm: 1370,
       larguraTiraMm: 20,
-      perdaPct: 15,
       comprimentoRoloM: 40,
-      tiraDesejadaM: 4658,
+      rendimentoConfirmadoMPerM: 64,
+      custoMetroLinear: 20,
     });
-    // Cada banda rende 34 m: 4658 ÷ 34 = 137 bandas.
-    expect(r.tirasInteiras).toBe(137);
-    // Em cada rolo cabem floor(1370 ÷ 20) = 68 bandas; 137 bandas exigem 3 rolos.
-    expect(Math.floor(1370 / 20)).toBe(68);
-    expect(r.rolosRealNecessarios).toBe(2); // material equivalente: 2740 ÷ 1370
-    expect(r.rolosRealInteiros).toBe(3); // abertura física: ceil(137 ÷ 68)
-    expect(r.rolosInteiros).toBe(3); // alias legado também representa abertura física
+
+    expect(result.valid).toBe(true);
+    expect(result.bandasCompletas).toBe(68);
+    expect(result.metragemPorMetroBruto).toBe(68);
+    expect(result.metragemPorMetroLiq).toBe(64);
+    expect(result.totalRoloLiq).toBe(2560);
+    expect(result.custoPorMetroTira).toBeCloseTo(20 / 64, 10);
   });
 
-  it('REAL: banda com a largura exata do material ocupa um rolo físico', () => {
-    const r = computeStrapMaterialNeeded({
+  it('bloqueia rendimento confirmado acima da capacidade geométrica', () => {
+    const result = computeStrapYield({
+      larguraMaterialMm: 1370,
+      larguraTiraMm: 20,
+      comprimentoRoloM: 40,
+      rendimentoConfirmadoMPerM: 70,
+    });
+
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain('não pode superar');
+  });
+
+  it('aceita uma única banda com a largura exata do material', () => {
+    const result = computeStrapYield({
       larguraMaterialMm: 1370,
       larguraTiraMm: 1370,
-      perdaPct: 15,
       comprimentoRoloM: 40,
-      tiraDesejadaM: 34,
     });
-    expect(r.valid).toBe(true);
-    expect(r.tirasInteiras).toBe(1);
-    expect(r.rolosRealInteiros).toBe(1);
+
+    expect(result.valid).toBe(true);
+    expect(result.bandasCompletas).toBe(1);
+    expect(result.totalRoloLiq).toBe(40);
   });
 
-  it('REAL: quando o exato já é inteiro, não há sobra', () => {
-    // 1 tira exata: T tal que T = Cr × fator = 40 × 0,85 = 34 m
-    const r = computeStrapMaterialNeeded({
-      larguraMaterialMm: 1370,
-      larguraTiraMm: 18,
-      perdaPct: 15,
-      comprimentoRoloM: 40,
-      tiraDesejadaM: 34,
-    });
-    expect(round(r.tirasNecessarias, 6)).toBe(1);
-    expect(r.tirasInteiras).toBe(1);
-    expect(round(r.larguraRealMm, 4)).toBe(18);
-    expect(round(r.sobraTiraM, 6)).toBe(0);
-    expect(round(r.tiraLiquidaRealM, 4)).toBe(34);
+  it.each([
+    ['largura útil ausente', { larguraMaterialMm: 0, larguraTiraMm: 20, comprimentoRoloM: 40 }],
+    ['largura da banda ausente', { larguraMaterialMm: 1370, larguraTiraMm: 0, comprimentoRoloM: 40 }],
+    ['comprimento ausente', { larguraMaterialMm: 1370, larguraTiraMm: 20, comprimentoRoloM: 0 }],
+    ['banda maior que a napa', { larguraMaterialMm: 100, larguraTiraMm: 120, comprimentoRoloM: 40 }],
+  ])('bloqueia %s', (_label, input) => {
+    expect(computeStrapYield(input).valid).toBe(false);
   });
 
-  it('REAL: custo usa o material de fato consumido', () => {
-    const r = computeStrapMaterialNeeded({
+  it('mantém os defaults alinhados ao rolo canônico', () => {
+    expect(STRAP_YIELD_DEFAULTS).toEqual({
+      larguraMaterialMm: ROLO_LARGURA_MM,
+      comprimentoRoloM: ROLO_COMPRIMENTO_M,
+    });
+  });
+});
+
+describe('computeStrapMaterialNeeded — execução em bandas inteiras', () => {
+  it('640 m com rendimento confirmado de 64 exigem exatamente 10 m de napa', () => {
+    const result = computeStrapMaterialNeeded({
+      larguraMaterialMm: 1370,
+      larguraTiraMm: 20,
+      comprimentoRoloM: 40,
+      tiraDesejadaM: 640,
+      rendimentoConfirmadoMPerM: 64,
+      custoMetroLinear: 20,
+    });
+
+    expect(result.valid).toBe(true);
+    expect(result.metragemPorMetroBruto).toBe(68);
+    expect(result.metragemPorMetroLiq).toBe(64);
+    expect(result.materialNecessarioM).toBe(10);
+    expect(result.materialRealM).toBe(10);
+    expect(result.custoMaterialNecessario).toBe(200);
+    expect(result.custoMaterialReal).toBe(200);
+  });
+
+  it('30 m de tira com rendimento 68 exigem 30 / 68 m de napa', () => {
+    const result = computeStrapMaterialNeeded({
+      larguraMaterialMm: 1370,
+      larguraTiraMm: 20,
+      comprimentoRoloM: 40,
+      tiraDesejadaM: 30,
+    });
+
+    expect(result.valid).toBe(true);
+    expect(result.bandasCompletas).toBe(68);
+    expect(result.materialNecessarioM).toBeCloseTo(30 / 68, 10);
+  });
+
+  it('arredonda a execução para cima sem inventar percentual de perda', () => {
+    const result = computeStrapMaterialNeeded({
       larguraMaterialMm: 1370,
       larguraTiraMm: 18,
-      perdaPct: 15,
+      comprimentoRoloM: 40,
+      tiraDesejadaM: 100,
+    });
+
+    expect(result.tirasNecessarias).toBe(2.5);
+    expect(result.tirasInteiras).toBe(3);
+    expect(result.larguraCortarMm).toBe(45);
+    expect(result.larguraRealMm).toBe(54);
+    expect(result.tiraLiquidaRealM).toBe(120);
+    expect(result.sobraTiraM).toBe(20);
+    expect(result.rolosRealInteiros).toBe(1);
+  });
+
+  it('conta rolos físicos pela capacidade inteira de bandas', () => {
+    const result = computeStrapMaterialNeeded({
+      larguraMaterialMm: 1370,
+      larguraTiraMm: 20,
+      comprimentoRoloM: 40,
+      tiraDesejadaM: 137 * 40,
+    });
+
+    expect(result.tirasInteiras).toBe(137);
+    expect(result.bandasCompletas).toBe(68);
+    expect(result.rolosRealInteiros).toBe(3);
+    expect(result.rolosInteiros).toBe(3);
+  });
+
+  it('é inverso de um rolo cheio sem atravessar a sobra lateral', () => {
+    const input = {
+      larguraMaterialMm: 1370,
+      larguraTiraMm: 20,
+      comprimentoRoloM: 40,
+    };
+    const forward = computeStrapYield(input);
+    const inverse = computeStrapMaterialNeeded({
+      ...input,
+      tiraDesejadaM: forward.totalRoloLiq,
+    });
+
+    expect(inverse.materialNecessarioM).toBe(40);
+    expect(inverse.tirasInteiras).toBe(68);
+    expect(inverse.larguraRealMm).toBe(1360);
+    expect(inverse.rolosRealInteiros).toBe(1);
+    expect(inverse.passaLargura).toBe(false);
+  });
+
+  it('mantém custo exato e custo da execução inteira separados', () => {
+    const result = computeStrapMaterialNeeded({
+      larguraMaterialMm: 1370,
+      larguraTiraMm: 18,
       comprimentoRoloM: 40,
       tiraDesejadaM: 100,
       custoMetroLinear: 19.9,
     });
-    // 1,57664 m × 19,90 = 31,3752 → 31,38 (real) > 30,76 (exato)
-    expect(round(r.custoMaterialReal ?? -1, 2)).toBe(31.38);
-    expect(r.custoMaterialReal).toBeGreaterThan(r.custoMaterialNecessario as number);
+
+    expect(result.custoMaterialNecessario).toBeCloseTo((100 / 76) * 19.9, 8);
+    expect(result.custoMaterialReal).toBeCloseTo((54 / 1370) * 40 * 19.9, 8);
+    expect(result.custoPorMetroTira).toBeCloseTo(19.9 / 76, 8);
   });
 
-  it('invariante: larguraCortarMm = rolosNecessarios × Lm', () => {
-    const r = computeStrapMaterialNeeded({
-      larguraMaterialMm: 1370,
-      larguraTiraMm: 22,
-      perdaPct: 12,
-      comprimentoRoloM: 40,
-      tiraDesejadaM: 730,
-    });
-    expect(round(r.larguraCortarMm, 6)).toBe(round(r.rolosNecessarios * 1370, 6));
-  });
-
-  it('faixa maior que a largura do rolo → passaLargura true + rolos inteiros', () => {
-    const r = computeStrapMaterialNeeded({
-      larguraMaterialMm: 1370,
-      larguraTiraMm: 18,
-      perdaPct: 15,
-      comprimentoRoloM: 40,
-      tiraDesejadaM: 100000,
-    });
-    // 100000 × 18 ÷ 34 = 52941 mm ≫ 1370 mm
-    expect(round(r.larguraCortarMm, 0)).toBe(52941);
-    expect(r.passaLargura).toBe(true);
-    expect(r.rolosInteiros).toBeGreaterThan(1);
-  });
-
-  it('é o inverso exato de computeStrapYield (ida e volta)', () => {
-    const base = { larguraMaterialMm: 1370, larguraTiraMm: 20, perdaPct: 15, comprimentoRoloM: 40 };
-    const fwd = computeStrapYield(base);
-    // rolo cheio rende totalRoloLiq de tira → pra essa tira preciso do rolo cheio (40 m)
-    const inv = computeStrapMaterialNeeded({ ...base, tiraDesejadaM: fwd.totalRoloLiq });
-    expect(round(inv.materialNecessarioM, 4)).toBe(round(base.comprimentoRoloM, 4));
-    expect(round(inv.rolosNecessarios, 6)).toBe(1);
-    expect(inv.rolosInteiros).toBe(2);
-    // rolo cheio ⇒ corta a largura inteira do material (no cálculo EXATO)
-    expect(round(inv.larguraCortarMm, 4)).toBe(round(base.larguraMaterialMm, 4));
-    // Já com tiras INTEIRAS: 1370 ÷ 20 = 68,5 tiras não existe → 69 tiras = 1380 mm,
-    // que não cabe nos 1370 mm do rolo. Logo `passaLargura` é true — correto: pra
-    // essa metragem exata em bandas inteiras não basta um comprimento de rolo.
-    expect(inv.tirasInteiras).toBe(69);
-    expect(round(inv.larguraRealMm, 4)).toBe(1380);
-    expect(inv.passaLargura).toBe(true);
-    expect(inv.rolosRealInteiros).toBe(2);
-  });
-
-  it('custo do material: 1000 m de tira a 19,90 R$/m linear', () => {
-    const r = computeStrapMaterialNeeded({
-      larguraMaterialMm: 1370,
-      larguraTiraMm: 18,
-      perdaPct: 15,
-      comprimentoRoloM: 40,
-      tiraDesejadaM: 1000,
-      custoMetroLinear: 19.9,
-    });
-    // 15,4573 m × 19,90 = 307,60
-    expect(round(r.custoMaterialNecessario ?? -1, 2)).toBe(307.6);
-    // custo por metro de tira: 19,90 ÷ 64,6944 = 0,3076
-    expect(round(r.custoPorMetroTira ?? -1, 4)).toBe(0.3076);
-  });
-
-  it('sem comprimento de rolo → inválido (Cr define a largura a cortar)', () => {
-    const r = computeStrapMaterialNeeded({
-      larguraMaterialMm: 1000,
-      larguraTiraMm: 20,
-      perdaPct: 10,
-      comprimentoRoloM: 0,
-      tiraDesejadaM: 450,
-    });
-    expect(r.valid).toBe(false);
-    expect(r.error).toMatch(/comprimento do rolo/i);
-  });
-
-  it('sem custo → blocos de custo ficam null', () => {
-    const r = computeStrapMaterialNeeded({
-      larguraMaterialMm: 1370,
-      larguraTiraMm: 18,
-      perdaPct: 15,
-      comprimentoRoloM: 40,
-      tiraDesejadaM: 500,
-    });
-    expect(r.custoMaterialNecessario).toBeNull();
-    expect(r.custoPorMetroTira).toBeNull();
-  });
-
-  describe('validação', () => {
-    const base = { larguraMaterialMm: 1370, larguraTiraMm: 20, perdaPct: 15, comprimentoRoloM: 40, tiraDesejadaM: 500 };
-    it('tira desejada ≤ 0 → inválido', () => {
-      const r = computeStrapMaterialNeeded({ ...base, tiraDesejadaM: 0 });
-      expect(r.valid).toBe(false);
-      expect(r.error).toMatch(/quantos metros de tira/i);
-    });
-    it('tira mais larga que o material → inválido', () => {
-      expect(computeStrapMaterialNeeded({ ...base, larguraMaterialMm: 100, larguraTiraMm: 120 }).valid).toBe(false);
-    });
-    it('largura do material ≤ 0 → inválido', () => {
-      expect(computeStrapMaterialNeeded({ ...base, larguraMaterialMm: 0 }).valid).toBe(false);
-    });
-    it('largura da banda ≤ 0 → inválido', () => {
-      expect(computeStrapMaterialNeeded({ ...base, larguraTiraMm: 0 }).valid).toBe(false);
-    });
-    it('perda ≥ 100 → inválido', () => {
-      expect(computeStrapMaterialNeeded({ ...base, perdaPct: 100 }).valid).toBe(false);
-    });
+  it.each([
+    ['demanda ausente', { larguraMaterialMm: 1370, larguraTiraMm: 20, comprimentoRoloM: 40, tiraDesejadaM: 0 }],
+    ['largura útil ausente', { larguraMaterialMm: 0, larguraTiraMm: 20, comprimentoRoloM: 40, tiraDesejadaM: 10 }],
+    ['banda ausente', { larguraMaterialMm: 1370, larguraTiraMm: 0, comprimentoRoloM: 40, tiraDesejadaM: 10 }],
+    ['comprimento ausente', { larguraMaterialMm: 1370, larguraTiraMm: 20, comprimentoRoloM: 0, tiraDesejadaM: 10 }],
+  ])('bloqueia %s', (_label, input) => {
+    expect(computeStrapMaterialNeeded(input).valid).toBe(false);
   });
 });
 
-describe('partialCutYield — cortes parciais do rolo', () => {
-  // taxa do exemplo da tela: 1370 / 18 × (1−15%) = 64,6944… m/m
-  const RATE = computeStrapYield({
+describe('partialCutYield — cortes parciais', () => {
+  const rate = computeStrapYield({
     larguraMaterialMm: 1370,
     larguraTiraMm: 18,
-    perdaPct: 15,
     comprimentoRoloM: 40,
   }).metragemPorMetroLiq;
 
-  it('taxa-âncora ≈ 64,694 m/m', () => {
-    expect(round(RATE, 4)).toBe(64.6944);
+  it('usa 76 bandas completas por metro de napa', () => {
+    expect(rate).toBe(76);
+    expect(partialCutYield(rate, 0.03, 19.9)).toEqual({
+      tiraM: 2.28,
+      custo: 0.597,
+    });
   });
 
-  it('unidades → metros', () => {
-    expect(PARTIAL_CUT_UNIT_TO_M.mm).toBe(0.001);
-    expect(PARTIAL_CUT_UNIT_TO_M.cm).toBe(0.01);
-    expect(PARTIAL_CUT_UNIT_TO_M.m).toBe(1);
+  it('mantém as conversões canônicas e precisão sem arredondar parcelas', () => {
+    expect(PARTIAL_CUT_UNIT_TO_M).toEqual({ mm: 0.001, cm: 0.01, m: 1 });
+    const contributions = [0.0049, 0.0049, 0.0049];
+    expect(round(contributions.reduce((sum, value) => sum + value, 0), 4)).toBe(0.0147);
   });
 
-  it('30 mm (0,03 m) → ≈ 1,941 m de tira e ≈ R$ 0,60 a 19,90 R$/m', () => {
-    const r = partialCutYield(RATE, 30 * PARTIAL_CUT_UNIT_TO_M.mm, 19.9);
-    expect(round(r.tiraM, 3)).toBe(1.941);
-    expect(round(r.custo ?? -1, 3)).toBe(0.597);
-  });
-
-  it('1 m → taxa cheia e custo = custo por metro linear', () => {
-    const r = partialCutYield(RATE, 1, 19.9);
-    expect(round(r.tiraM, 4)).toBe(64.6944);
-    expect(round(r.custo ?? -1, 2)).toBe(19.9);
-  });
-
-  it('sem custo informado → custo null, tira segue calculada', () => {
-    const r = partialCutYield(RATE, 0.5);
-    expect(round(r.tiraM, 3)).toBe(32.347);
-    expect(r.custo).toBeNull();
-  });
-
-  it('comprimento ≤ 0 → zeros (UI mostra "—"); custo 0 se informado, null se não', () => {
-    expect(partialCutYield(RATE, 0, 19.9)).toEqual({ tiraM: 0, custo: 0 });
-    expect(partialCutYield(RATE, -5, 19.9)).toEqual({ tiraM: 0, custo: 0 });
-    expect(partialCutYield(RATE, 0)).toEqual({ tiraM: 0, custo: null });
-  });
-
-  it('taxa inválida (≤ 0) → zeros, sem lançar', () => {
+  it('degrada entradas inválidas sem lançar', () => {
     expect(partialCutYield(0, 0.03, 19.9)).toEqual({ tiraM: 0, custo: 0 });
-  });
-
-  it('custo negativo é ignorado (custo null)', () => {
-    expect(partialCutYield(RATE, 0.3, -1).custo).toBeNull();
+    expect(partialCutYield(rate, 0)).toEqual({ tiraM: 0, custo: null });
+    expect(partialCutYield(rate, 0.3, -1).custo).toBeNull();
   });
 });

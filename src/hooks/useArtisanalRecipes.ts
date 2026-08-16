@@ -19,27 +19,30 @@ export function calcArtisanalRequirement(
   const yield_factor = Number(recipe.yield_per_meter) || 1;
   const labor_cost = Number(recipe.labor_cost_per_meter) || 0;
 
-  const needed = Math.max(0, targetMeters);
-  const forStock = Math.max(0, minStock - currentStock);
-  const totalToProduce = needed + forStock;
+  const demand = Math.max(0, Number(targetMeters) || 0);
+  const physicalStock = Math.max(0, Number(currentStock) || 0);
+  const stockFloor = Math.max(0, Number(minStock) || 0);
+  // O saldo atende primeiro a demanda; apenas o que falta para a demanda e para
+  // recompor o piso vira produção. Equivale a max(0, D + M - C), sem contar o
+  // mesmo estoque duas vezes.
+  const forOrder = Math.max(0, demand - physicalStock);
+  const stockAfterOrder = Math.max(0, physicalStock - demand);
+  const forStock = Math.max(0, stockFloor - stockAfterOrder);
+  const totalToProduce = forOrder + forStock;
   const baseMetersSend = totalToProduce / yield_factor;
   const laborCostTotal = totalToProduce * labor_cost;
 
   return {
-    currentStock,
-    minStock,
-    forOrderMeters: needed,
+    currentStock: physicalStock,
+    minStock: stockFloor,
+    forOrderMeters: forOrder,
     forStockMeters: forStock,
     totalToProduce,
     baseMetersSend,
     laborCost: laborCostTotal,
-    stockOk: currentStock >= minStock,
+    stockOk: stockAfterOrder >= stockFloor,
   };
 }
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
-import { toast } from 'sonner';
-
 export interface ArtisanalRecipe {
   id: string;
   name: string;
@@ -55,101 +58,4 @@ export interface ArtisanalRecipe {
   active: boolean;
   created_at: string;
   updated_at: string;
-}
-
-export function useArtisanalRecipes(opts?: { onlyActive?: boolean }) {
-  return useQuery({
-    queryKey: ['artisanal_recipes', opts?.onlyActive ?? false],
-    queryFn: async () => {
-      let q = supabase.from('artisanal_recipes').select('*').order('name');
-      if (opts?.onlyActive) q = q.eq('active', true);
-      const { data, error } = await q;
-      if (error) throw error;
-      return (data || []) as ArtisanalRecipe[];
-    },
-    staleTime: 5 * 60 * 1000,
-  });
-}
-
-export function useCreateArtisanalRecipe() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (recipe: Partial<ArtisanalRecipe>) => {
-      if (recipe.yield_per_meter !== undefined && (!Number.isFinite(recipe.yield_per_meter) || recipe.yield_per_meter <= 0)) {
-        throw new Error('Rendimento por metro deve ser um número positivo.');
-      }
-      const { data, error } = await supabase
-        .from('artisanal_recipes')
-        .insert(recipe as any)
-        .select()
-        .single();
-      if (error) throw error;
-      return data;
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['artisanal_recipes'] });
-      toast.success('Receita artesanal cadastrada!');
-    },
-    onError: (e: any) => toast.error(e.message),
-  });
-}
-
-export function useUpdateArtisanalRecipe() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async ({ id, ...updates }: Partial<ArtisanalRecipe> & { id: string }) => {
-      if (updates.yield_per_meter !== undefined && (!Number.isFinite(updates.yield_per_meter) || updates.yield_per_meter <= 0)) {
-        throw new Error('Rendimento por metro deve ser um número positivo.');
-      }
-      const { error } = await supabase
-        .from('artisanal_recipes')
-        .update(updates as any)
-        .eq('id', id);
-      if (error) throw error;
-    },
-    onSuccess: async () => {
-      qc.invalidateQueries({ queryKey: ['artisanal_recipes'] });
-      toast.success('Receita atualizada!');
-      // Trigger DB enfileira OSs artesanais ativas. Drena a fila agora para
-      // que o estoque seja imediatamente sincronizado com o novo yield/custo.
-      const { data: resyncData, error: resyncErr } = await (supabase as any).rpc('process_resync_queue', { p_limit: 50 });
-      if (resyncErr) {
-        if (!/does not exist|42883/i.test(resyncErr.message + (resyncErr.code ?? ''))) {
-          console.error('[resync_queue] process_resync_queue failed:', resyncErr.message);
-        }
-      } else {
-        const processed = Number(resyncData?.processed || 0);
-        if (processed > 0) {
-          qc.invalidateQueries({ queryKey: ['orders'] });
-          qc.invalidateQueries({ queryKey: ['products'] });
-          qc.invalidateQueries({ queryKey: ['stock_movements'] });
-          toast.success(`${processed} OS(s) artesanal(is) resincronizada(s)`);
-        }
-      }
-    },
-    onError: (e: any) => toast.error(e.message),
-  });
-}
-
-export function useDeleteArtisanalRecipe() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (id: string) => {
-      const { count, error: cntErr } = await supabase
-        .from('service_orders')
-        .select('id', { count: 'exact', head: true })
-        .eq('artisanal_recipe_id', id);
-      if (cntErr) throw cntErr;
-      if ((count ?? 0) > 0) {
-        throw new Error(`Receita está vinculada a ${count} OS(s). Inative-a (active=false) em vez de excluir.`);
-      }
-      const { error } = await supabase.from('artisanal_recipes').delete().eq('id', id);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['artisanal_recipes'] });
-      toast.success('Receita removida!');
-    },
-    onError: (e: any) => toast.error(e.message),
-  });
 }

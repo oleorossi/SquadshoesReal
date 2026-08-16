@@ -4,7 +4,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
  * GATE da auditoria dos motores (2026-07-01) — Lista de Separação (bomConsumption).
  *
  * Trava as 4 correções:
- *  (a) corte do rolo artesanal NÃO multiplica por `fichas` do sale_order_item —
+ *  (a) separação canônica da napa para tira NÃO multiplica por `fichas` do sale_order_item —
  *      `orders.grade` é a grade REAL da OP (Σ = quantity); passar fichas gerava
  *      supercontagem de 30–92× (OP-2026-00729: 60×).
  *  (b) `calculateBomForOrders` não hardcoda `fichas: 1` — o fallback exato
@@ -19,7 +19,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Tabelas fake por teste. O mock do client devolve TODAS as linhas da tabela
 // (os filtros .in/.eq/.gt são no-ops) — os cenários são montados já filtrados.
-const mockDb = vi.hoisted(() => ({ tables: {} as Record<string, unknown[]> }));
+const mockDb = vi.hoisted(() => ({
+  tables: {} as Record<string, unknown[]>,
+  rpc: {} as Record<string, unknown>,
+}));
 
 vi.mock('@/integrations/supabase/client', () => {
   /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -34,7 +37,10 @@ vi.mock('@/integrations/supabase/client', () => {
     return builder;
   };
   return {
-    supabase: { from: (table: string) => makeBuilder((mockDb.tables[table] as any[]) ?? []) },
+    supabase: {
+      from: (table: string) => makeBuilder((mockDb.tables[table] as any[]) ?? []),
+      rpc: (name: string) => Promise.resolve({ data: mockDb.rpc[name] ?? [], error: null }),
+    },
   };
 });
 
@@ -138,6 +144,7 @@ function buildBomTables(over: {
 
 beforeEach(() => {
   mockDb.tables = {};
+  mockDb.rpc = {};
 });
 
 // ─── (b) fichas hardcoded — fallback exato escala-invariante ─────────────────
@@ -216,7 +223,10 @@ describe('calculateBomForOrders — palmilha em dm² quando o produto é dm² (a
 
 // ─── (a) Corte do rolo artesanal — sem multiplicar por fichas ────────────────
 
-describe('calculateArtisanalStrapRollCut — não multiplica por fichas (achado a)', () => {
+describe('calculateArtisanalStrapRollCut — separação canônica não multiplica por fichas (achado a)', () => {
+  const saleOrderId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  const saleOrderItemId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+
   function buildRollTables(): Record<string, unknown[]> {
     // Espelha OP-2026-00729: grade REAL (Σ = quantity = 720) + fichas=60 no
     // sale_order_item. O bug multiplicava o total da grade REAL por 60.
@@ -225,7 +235,7 @@ describe('calculateArtisanalStrapRollCut — não multiplica por fichas (achado 
     return {
       orders: [{
         id: 'op1', reference_id: 'ts1', color: 'PRETO', quantity: 720,
-        grade: gradeReal, sale_order_item_id: 'si1',
+        grade: gradeReal, sale_order_id: saleOrderId, sale_order_item_id: saleOrderItemId,
       }],
       technical_sheets: [{
         id: 'ts1',
@@ -235,7 +245,7 @@ describe('calculateArtisanalStrapRollCut — não multiplica por fichas (achado 
         }],
       }],
       // fichas=60 PRESENTE no banco — o cálculo não pode usá-lo.
-      sale_order_items: [{ id: 'si1', strap_colors: null, fichas: 60 }],
+      sale_order_items: [{ id: saleOrderItemId, strap_colors: null, fichas: 60 }],
       product_groups: [{
         id: 'g-tira', name: 'TIRA CHATA 8MM',
         dimensions_width: 8, dimensions_unit: 'mm', is_artisanal_strap: true,
@@ -247,14 +257,39 @@ describe('calculateArtisanalStrapRollCut — não multiplica por fichas (achado 
 
   it('grade REAL + fichas=60 no item: metros = Σ(pares × cm/par), UMA vez (não ×60)', async () => {
     mockDb.tables = buildRollTables();
+    mockDb.rpc.preview_sale_order_strap_demand = [{
+      sale_order_item_id: saleOrderItemId,
+      technical_strap_line_id: '11111111-1111-4111-8111-111111111111',
+      strap_variant_id: '22222222-2222-4222-8222-222222222222',
+      source_mode: 'internal',
+      gross_required_m: 86.4,
+      recipe_id: '33333333-3333-4333-8333-333333333333',
+      base_product_id: '44444444-4444-4444-8444-444444444444',
+      finished_product_id: '55555555-5555-4555-8555-555555555555',
+      blocking_reasons: [],
+      resolved: {
+        strap_product_name: 'TIRA CHATA 8MM',
+        strap_color_name: 'PRETO',
+        base_product_name: 'NAPA SOFT PRETO',
+        confirmed_yield_m_per_m: 34,
+        base_required_m: 86.4 / 34,
+        cut_band_width_mm: 8,
+        usable_base_width_mm_snapshot: 1370,
+        theoretical_yield_m_per_m: 34,
+      },
+    }];
     const rows = await calculateArtisanalStrapRollCut(['op1']);
     expect(rows).toHaveLength(1);
     // 720 pares × 12 cm/par = 8640 cm = 86,4 m (bug antigo: 86,4 × 60 = 5184 m).
     expect(rows[0].metros_necessarios).toBeCloseTo(86.4, 6);
     expect(rows[0].largura_mm).toBe(8);
-    // ceil(86,4 / 34) = 3 bandas × 8 mm = 24 mm = 2,4 cm do rolo.
-    expect(rows[0].cut.n_bandas).toBe(3);
-    expect(rows[0].cut.cm_a_cortar).toBeCloseTo(2.4, 6);
+    // O cutover não reconstrói o rolo fixo 40×1370: separa diretamente a
+    // napa-base pelo rendimento confirmado persistido na receita.
+    expect(rows[0].canonical?.baseRequiredM).toBeCloseTo(86.4 / 34, 6);
+    expect(rows[0].canonical?.confirmedYieldMPerM).toBe(34);
+    expect(rows[0].cut.n_bandas).toBe(0);
+    expect(rows[0].cut.cm_a_cortar).toBe(0);
+    expect(rows[0].cut.valid).toBe(false);
   });
 });
 

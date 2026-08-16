@@ -1,29 +1,30 @@
 /**
- * Origem da tira: "corto aqui" × "compro pronta" — lado TS.
+ * Escolha explícita da origem de uma linha técnica de tira do PV.
  *
- * Espelha a função SQL `resolve_strap_sourcing` (migration 20261021120000). A
- * decisão vive por LINHA DE TIRA do PV em `sale_order_items.strap_sourcing`
- * (jsonb), com default herdado de `products.is_artisanal`:
- *
- *   in_house  → quem sai do estoque é a NAPA (a tira é cortada aqui)
- *   purchased → quem sai do estoque é a PRÓPRIA tira (comprada pronta)
- *
- * ⚠ A CHAVE do mapa é contrato com o banco: `"<group_id>|<COR>"`, com a cor em
- * MAIÚSCULA, sem acento e sem espaços nas pontas — exatamente
- * `upper(btrim(unaccent(color)))` do SQL. Chave fora desse formato não é lida
- * por `resolve_strap_sourcing`, e o override vira no-op SILENCIOSO (o motor cai
- * no default do produto sem reclamar). Por isso a normalização mora aqui, numa
- * função só, testada.
- *
- * Ver specs/tira-artesanal-fonte-unica-e-os-cabedal.md §2.1.
+ * A chave persistida é exclusivamente o `technical_strap_line_id` (UUID). Cor,
+ * nome e grupo são rótulos mutáveis e não participam da identidade operacional.
+ * Não existe origem herdada nem default silencioso.
  */
+import { isUuid, technicalStrapLineId, type TechnicalStrapLineLike } from '@/lib/technicalStrapLines';
 
-export type StrapSourcing = 'in_house' | 'purchased';
+export type StrapSourceMode = 'internal' | 'buy_ready';
+
+export interface StrapSourcingSelection {
+  source_mode: StrapSourceMode;
+  /** Identidade canônica congelada no momento da escolha. */
+  color_id?: string | null;
+  strap_variant_id?: string | null;
+  recipe_id?: string | null;
+  gross_required_m?: number | null;
+  required_at?: string | null;
+  main_production_start?: string | null;
+  schedule_revision?: number | null;
+}
 
 /** Mapa persistido em `sale_order_items.strap_sourcing`. */
-export type StrapSourcingMap = Record<string, StrapSourcing>;
+export type StrapSourcingMap = Record<string, StrapSourcingSelection>;
 
-/** `upper(btrim(unaccent(color)))` do Postgres. */
+/** Mantido apenas para apresentação e busca, nunca para resolver identidade. */
 export function normalizeStrapColorKey(color: string | null | undefined): string {
   return (color || '')
     .toString()
@@ -33,100 +34,103 @@ export function normalizeStrapColorKey(color: string | null | undefined): string
     .toUpperCase();
 }
 
-/**
- * Nome da napa como o separador precisa ler: **material + cor**.
- *
- * A napa é um grupo com uma variação por cor (`products.name` = "NAPA SOFT" pra
- * todas, cor em `products.color`) — ver project_material_color_variation_pattern.
- * Mostrar só o nome do produto mandaria o separador procurar "NAPA SOFT" numa
- * prateleira com 20 cores. Alguns cadastros já embutem a cor no nome
- * ("NAPA SOFT: CAPUCCINO"); nesses, não repete.
- */
 export function napaDisplayName(name: string | null | undefined, color: string | null | undefined): string {
   const base = (name || '').toString().trim();
-  const c = (color || '').toString().trim();
-  if (!c) return base;
-  if (!base) return c;
-  return normalizeStrapColorKey(base).includes(normalizeStrapColorKey(c)) ? base : `${base} ${c}`;
+  const canonicalColor = (color || '').toString().trim();
+  if (!canonicalColor) return base;
+  if (!base) return canonicalColor;
+  return normalizeStrapColorKey(base).includes(normalizeStrapColorKey(canonicalColor))
+    ? base
+    : `${base} ${canonicalColor}`;
 }
 
-/** Chave canônica da linha de tira: `"<group_id>|<COR>"`. */
-export function strapSourcingKey(groupId: string | null | undefined, color: string | null | undefined): string | null {
-  const gid = (groupId || '').toString().trim();
-  if (!gid) return null;
-  return `${gid}|${normalizeStrapColorKey(color)}`;
+export function strapSourcingKey(lineId: string | null | undefined): string | null {
+  const id = (lineId || '').toString().trim();
+  return technicalStrapLineId({ technical_strap_line_id: id });
 }
 
-/** Só aceita os dois valores que o SQL reconhece — qualquer outro é ausência. */
-function asSourcing(v: unknown): StrapSourcing | null {
-  return v === 'in_house' || v === 'purchased' ? v : null;
+function asSelection(value: unknown): StrapSourcingSelection | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const candidate = value as Record<string, unknown>;
+  if (candidate.source_mode !== 'internal' && candidate.source_mode !== 'buy_ready') return null;
+  return { ...candidate, source_mode: candidate.source_mode } as StrapSourcingSelection;
 }
 
-/**
- * O que o PV gravou para esta linha, se gravou. `null` = herda o cadastro do
- * produto (é a ausência que faz o motor cair em `products.is_artisanal`).
- */
+export function getStrapSourcingSelection(
+  map: StrapSourcingMap | null | undefined,
+  lineId: string | null | undefined,
+): StrapSourcingSelection | null {
+  const key = strapSourcingKey(lineId);
+  if (!key || !map || typeof map !== 'object') return null;
+  return asSelection((map as Record<string, unknown>)[key]);
+}
+
 export function getStrapSourcingOverride(
   map: StrapSourcingMap | null | undefined,
-  groupId: string | null | undefined,
-  color: string | null | undefined,
-): StrapSourcing | null {
-  const key = strapSourcingKey(groupId, color);
-  if (!key || !map || typeof map !== 'object') return null;
-  return asSourcing((map as Record<string, unknown>)[key]);
+  lineId: string | null | undefined,
+): StrapSourceMode | null {
+  return getStrapSourcingSelection(map, lineId)?.source_mode ?? null;
 }
 
-/** Decisão efetiva: override do PV vence; sem override, o default herdado. */
-export function resolveStrapSourcing(
-  map: StrapSourcingMap | null | undefined,
-  groupId: string | null | undefined,
-  color: string | null | undefined,
-  inherited: StrapSourcing,
-): StrapSourcing {
-  return getStrapSourcingOverride(map, groupId, color) ?? inherited;
-}
-
-/**
- * Grava (ou limpa, com `value = null`) o override de uma linha, devolvendo um
- * mapa NOVO. Limpar remove a chave em vez de gravar o valor herdado: assim a
- * linha volta a seguir o cadastro do produto se ele mudar depois.
- */
 export function setStrapSourcing(
   map: StrapSourcingMap | null | undefined,
-  groupId: string | null | undefined,
-  color: string | null | undefined,
-  value: StrapSourcing | null,
+  lineId: string | null | undefined,
+  value: StrapSourceMode | StrapSourcingSelection | null,
 ): StrapSourcingMap {
-  const base: StrapSourcingMap = {};
-  for (const [k, v] of Object.entries(map || {})) {
-    const s = asSourcing(v);
-    if (s) base[k] = s;
+  const result: StrapSourcingMap = {};
+  for (const [key, selection] of Object.entries(map || {})) {
+    const valid = asSelection(selection);
+    if (strapSourcingKey(key) && valid) result[key] = valid;
   }
-  const key = strapSourcingKey(groupId, color);
-  if (!key) return base;
-  if (value === null) delete base[key];
-  else base[key] = value;
-  return base;
+
+  const key = strapSourcingKey(lineId);
+  if (!key) return result;
+  if (value === null) delete result[key];
+  else if (typeof value === 'string') {
+    result[key] = { ...(result[key] || {}), source_mode: value };
+  } else {
+    result[key] = { ...(result[key] || {}), ...value };
+  }
+  return result;
 }
 
 /**
- * Descarta chaves que não correspondem a nenhuma linha de tira viva do item —
- * trocar a cor da tira deixaria o override antigo pendurado, e ele voltaria a
- * valer se a cor original fosse escolhida de novo por outro motivo.
+ * Uma origem só é confirmável quando também congela a cor e a variante que o
+ * resolvedor canônico mostrou ao usuário. Texto/grupo nunca completam identidade.
  */
+export function isCompleteStrapSourcingSelection(
+  selection: StrapSourcingSelection | null | undefined,
+): selection is StrapSourcingSelection & { color_id: string; strap_variant_id: string } {
+  return !!selection
+    && (selection.source_mode === 'internal' || selection.source_mode === 'buy_ready')
+    && isUuid(selection.color_id)
+    && isUuid(selection.strap_variant_id);
+}
+
+/** Remove escolhas de linhas que já não existem na ficha/snapshot. */
 export function pruneStrapSourcing(
   map: StrapSourcingMap | null | undefined,
-  straps: Array<{ group_id?: string | null; color?: string | null }> | null | undefined,
+  straps: TechnicalStrapLineLike[] | null | undefined,
 ): StrapSourcingMap {
   const alive = new Set(
     (straps || [])
-      .map((s) => strapSourcingKey(s?.group_id, s?.color))
-      .filter((k): k is string => !!k),
+      .map((line) => technicalStrapLineId(line))
+      .filter((id): id is string => !!id),
   );
-  const out: StrapSourcingMap = {};
-  for (const [k, v] of Object.entries(map || {})) {
-    const s = asSourcing(v);
-    if (s && alive.has(k)) out[k] = s;
+  const result: StrapSourcingMap = {};
+  for (const [key, selection] of Object.entries(map || {})) {
+    const valid = asSelection(selection);
+    if (alive.has(key) && valid) result[key] = valid;
   }
-  return out;
+  return result;
+}
+
+export function missingStrapSourcingLineIds(
+  map: StrapSourcingMap | null | undefined,
+  straps: TechnicalStrapLineLike[] | null | undefined,
+): string[] {
+  return (straps || [])
+    .map((line) => technicalStrapLineId(line))
+    .filter((id): id is string => !!id)
+    .filter((id) => !isCompleteStrapSourcingSelection(getStrapSourcingSelection(map, id)));
 }

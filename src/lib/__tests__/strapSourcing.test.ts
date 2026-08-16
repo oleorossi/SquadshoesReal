@@ -1,66 +1,76 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   getStrapSourcingOverride,
+  isCompleteStrapSourcingSelection,
+  missingStrapSourcingLineIds,
   normalizeStrapColorKey,
   pruneStrapSourcing,
-  resolveStrapSourcing,
   setStrapSourcing,
   strapSourcingKey,
   type StrapSourcingMap,
 } from '@/lib/strapSourcing';
 
-const GID = '11111111-2222-3333-4444-555555555555';
+const LINE_A = '11111111-2222-4333-8444-555555555555';
+const LINE_B = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+const COLOR_A = '22222222-3333-4444-8555-666666666666';
+const VARIANT_A = '33333333-4444-4555-8666-777777777777';
 
-describe('strapSourcing — chave contratada com resolve_strap_sourcing (SQL)', () => {
-  // A chave é `group_id || '|' || upper(btrim(unaccent(color)))`. Errar o formato
-  // não dá erro nenhum: o motor não acha a chave e cai no default do produto.
-  it('normaliza a cor como upper(btrim(unaccent(...)))', () => {
-    expect(normalizeStrapColorKey('  capuccino ')).toBe('CAPUCCINO');
-    expect(normalizeStrapColorKey('Rosê')).toBe('ROSE');
-    expect(normalizeStrapColorKey('MARROM CAFÉ')).toBe('MARROM CAFE');
-    expect(normalizeStrapColorKey(null)).toBe('');
+describe('strapSourcing — identidade por linha técnica UUID', () => {
+  it('usa somente o UUID imutável como chave', () => {
+    expect(strapSourcingKey(LINE_A)).toBe(LINE_A);
+    expect(strapSourcingKey('1')).toBeNull();
+    expect(strapSourcingKey(null)).toBeNull();
   });
 
-  it('monta a chave no formato "<group_id>|<COR>"', () => {
-    expect(strapSourcingKey(GID, 'bege')).toBe(`${GID}|BEGE`);
+  it('não cria default: uma linha sem escolha continua nula', () => {
+    expect(getStrapSourcingOverride({}, LINE_A)).toBeNull();
+    expect(missingStrapSourcingLineIds({}, [{ technical_strap_line_id: LINE_A }])).toEqual([LINE_A]);
   });
 
-  it('sem group_id não há chave — o override não teria onde morar', () => {
-    expect(strapSourcingKey('', 'BEGE')).toBeNull();
-    expect(strapSourcingKey(null, 'BEGE')).toBeNull();
-  });
-});
-
-describe('strapSourcing — precedência override > cadastro', () => {
-  it('sem chave, herda o default do produto', () => {
-    expect(resolveStrapSourcing({}, GID, 'BEGE', 'in_house')).toBe('in_house');
-    expect(resolveStrapSourcing(null, GID, 'BEGE', 'purchased')).toBe('purchased');
-  });
-
-  it('com chave, o PV vence o cadastro', () => {
-    const map = setStrapSourcing({}, GID, 'Bege', 'purchased');
-    expect(resolveStrapSourcing(map, GID, 'BEGE', 'in_house')).toBe('purchased');
+  it('grava internal e buy_ready por linha, permitindo override individual', () => {
+    let map = setStrapSourcing({}, LINE_A, 'internal');
+    map = setStrapSourcing(map, LINE_B, 'buy_ready');
+    expect(getStrapSourcingOverride(map, LINE_A)).toBe('internal');
+    expect(getStrapSourcingOverride(map, LINE_B)).toBe('buy_ready');
+    expect(missingStrapSourcingLineIds(map, [
+      { technical_strap_line_id: LINE_A },
+      { technical_strap_line_id: LINE_B },
+    ])).toEqual([LINE_A, LINE_B]);
   });
 
-  it('limpar remove a chave (volta a herdar), não grava o valor herdado', () => {
-    const map = setStrapSourcing({}, GID, 'BEGE', 'in_house');
-    const cleared = setStrapSourcing(map, GID, 'BEGE', null);
-    expect(getStrapSourcingOverride(cleared, GID, 'BEGE')).toBeNull();
-    expect(Object.keys(cleared)).toHaveLength(0);
+  it('só fica confirmável com cor e variante canônicas congeladas', () => {
+    const map = setStrapSourcing({}, LINE_A, {
+      source_mode: 'internal',
+      color_id: COLOR_A,
+      strap_variant_id: VARIANT_A,
+      recipe_id: '44444444-5555-4666-8777-888888888888',
+    });
+
+    expect(isCompleteStrapSourcingSelection(map[LINE_A])).toBe(true);
+    expect(missingStrapSourcingLineIds(map, [{ technical_strap_line_id: LINE_A }])).toEqual([]);
   });
 
-  it('valor fora do domínio do SQL é tratado como ausência', () => {
-    expect(getStrapSourcingOverride({ [`${GID}|BEGE`]: 'talvez' } as unknown as StrapSourcingMap, GID, 'BEGE')).toBeNull();
+  it('limpar volta ao estado pendente, sem herança', () => {
+    const map = setStrapSourcing({}, LINE_A, 'internal');
+    expect(getStrapSourcingOverride(setStrapSourcing(map, LINE_A, null), LINE_A)).toBeNull();
   });
-});
 
-describe('pruneStrapSourcing', () => {
-  it('descarta override de cor que não existe mais nas tiras do item', () => {
+  it('recusa o mapa legado group+cor e valores antigos', () => {
+    const legacy = { 'group|OFF WHITE': 'in_house' } as unknown as StrapSourcingMap;
+    expect(getStrapSourcingOverride(legacy, LINE_A)).toBeNull();
+  });
+
+  it('poda somente linhas removidas, preservando o snapshot da linha viva', () => {
     const map = {
-      ...setStrapSourcing({}, GID, 'BEGE', 'in_house'),
-      ...setStrapSourcing({}, GID, 'PRETO', 'purchased'),
+      ...setStrapSourcing({}, LINE_A, 'internal'),
+      ...setStrapSourcing({}, LINE_B, 'buy_ready'),
     };
-    const pruned = pruneStrapSourcing(map, [{ group_id: GID, color: 'bege' }]);
-    expect(Object.keys(pruned)).toEqual([`${GID}|BEGE`]);
+    expect(pruneStrapSourcing(map, [{ technical_strap_line_id: LINE_A }])).toEqual({
+      [LINE_A]: { source_mode: 'internal' },
+    });
+  });
+
+  it('normalização de cor é somente de apresentação', () => {
+    expect(normalizeStrapColorKey(' Cura of White ')).toBe('CURA OF WHITE');
   });
 });

@@ -7,8 +7,7 @@ import {
   type BaseMaterialInput,
 } from './baseMaterialTotal';
 
-/** Linhas reais do PV-00147, seção COGUMELO (print do dono, 20/07/2026).
- *  Total conferido por ele na mão: 36,74 m de napa. */
+/** Linhas reais do PV-00147, preservadas em precisão integral. */
 const COGUMELO: BaseMaterialInput[] = [
   {
     componentType: 'Forração Palmilha', groupName: 'NAPA SUDANI',
@@ -32,9 +31,9 @@ const COGUMELO: BaseMaterialInput[] = [
 ];
 
 describe('computeBaseMaterialTotal', () => {
-  it('soma tiras convertidas + napa direta (PV-00147 COGUMELO = 36,74 m)', () => {
+  it('soma tiras convertidas + napa direta sem arredondar cada parcela', () => {
     const r = computeBaseMaterialTotal(COGUMELO)!;
-    expect(r.total).toBeCloseTo(36.74, 2);
+    expect(r.total).toBeCloseTo(36.7336065574, 8);
     expect(r.skipped).toBe(0);
   });
 
@@ -42,7 +41,7 @@ describe('computeBaseMaterialTotal', () => {
     const r = computeBaseMaterialTotal(COGUMELO)!;
     expect(r.parts.map(p => p.name)).toEqual(['NAPA SUDANI', 'NAPA SOFT']);
     expect(r.parts[0].qty).toBeCloseTo(20.27, 2);
-    expect(r.parts[1].qty).toBeCloseTo(16.47, 2);
+    expect(r.parts[1].qty).toBeCloseTo(16.4636065574, 8);
   });
 
   it('conta o equivalente em napa da tira, nunca os metros de tira', () => {
@@ -69,25 +68,19 @@ describe('computeBaseMaterialTotal', () => {
     expect(r.skipped).toBe(1);
   });
 
-  it('tira com rendimento HERDADO entra no total e é contada em derived (caso NAPA SUDANI)', () => {
-    // Cenário do print (23/07/2026): seção CAPUCCINO · NAPA SUDANI mostrava
-    // "7 itens ficaram fora do total" porque NAPA SUDANI não tinha receita.
-    // Com o rendimento herdado (strapYieldResolution), a tira converte e SOMA.
+  it('três contribuições de 0,0049 permanecem 0,0147', () => {
     const r = computeBaseMaterialTotal([
-      { componentType: 'Forração Palmilha', groupName: 'NAPA SUDANI', productUnit: 'm', totalQuantity: 13.51 },
-      {
-        componentType: 'Tiras', groupName: 'Tira chata 8mm', productUnit: 'm',
-        totalQuantity: 270.72,
-        artisanal: { baseName: 'NAPA SUDANI', baseQty: 270.72 / 60, yieldPerMeter: 60, derivedFrom: 'NAPA SOFT' },
-      },
+      ...[1, 2, 3].map(() => ({
+        componentType: 'Tiras', groupName: 'TIRA TESTE', productUnit: 'm',
+        totalQuantity: 0.294,
+        artisanal: { baseName: 'NAPA SOFT', baseQty: 0.0049, yieldPerMeter: 60 },
+      })),
     ])!;
-    expect(r.total).toBeCloseTo(13.51 + 4.51, 2);
+    expect(r.total).toBeCloseTo(0.0147, 10);
     expect(r.skipped).toBe(0);
-    expect(r.derived).toBe(1);
-    expect(r.parts[0].name).toBe('NAPA SUDANI');
   });
 
-  it('tira pendente (sem receita nem herança) continua fora do total e contada em skipped', () => {
+  it('tira pendente sem receita exata continua fora do total e contada em skipped', () => {
     const r = computeBaseMaterialTotal([
       { componentType: 'Forração Palmilha', groupName: 'NAPA SUDANI', productUnit: 'm', totalQuantity: 13.51 },
       {
@@ -98,7 +91,6 @@ describe('computeBaseMaterialTotal', () => {
     ])!;
     expect(r.total).toBeCloseTo(13.51, 2);
     expect(r.skipped).toBe(1);
-    expect(r.derived).toBe(0);
   });
 
   it('deixa de fora consumo não calculado (fachete sem specs)', () => {

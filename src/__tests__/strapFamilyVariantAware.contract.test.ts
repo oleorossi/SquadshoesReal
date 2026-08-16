@@ -112,27 +112,24 @@ describe('religamento dos consumidores (débito + compras)', () => {
   });
 });
 
-describe('cadastro de tira no PV usa a mesma fonte que a produção', () => {
+describe('cadastro de tira no PV usa o editor canônico', () => {
   it('o PV passa a variante do item para o diálogo', () => {
     expect(itemForm).toContain('materialVariantId={item.material_variant_id || null}');
   });
 
-  it('o diálogo pergunta a família com a variante junto', () => {
-    expect(dialog).toContain('p_variant_id: variantId');
-    expect(dialog).toContain("rpc('strap_base_family_for_sheet'");
+  it('o adaptador abre o mesmo editor atômico do hub', () => {
+    expect(dialog).toContain('<ArtisanalStrapEditor');
+    expect(dialog).toContain('useArtisanalStrapCatalog(false)');
   });
 
-  it('a família entra nas dependências do preenchimento', () => {
-    expect(dialog).toMatch(/\[open, groupId, groupName, color, referenceId, materialVariantId\]/);
+  it('não resolve base por nome nem grava a tabela de receita legada', () => {
+    expect(dialog).not.toContain("rpc('strap_base_family_for_sheet'");
+    expect(dialog).not.toContain("from('artisanal_recipes')");
+    expect(dialog).not.toContain("create_artisanal_product_with_stock");
   });
 
-  it('o aviso âmbar culpa a variante, não a ficha, quando foi ela que decidiu', () => {
-    expect(dialog).toContain('variante de material deste item');
-    expect(dialog).toContain('familyFromVariant');
-  });
-
-  it('avisa quando a cor cadastrada diverge da cor da tira do PV', () => {
-    expect(dialog).toContain('A tira do PV é');
-    expect(dialog).toContain('a napa na cor da TIRA');
+  it('mantém o contexto do PV sem transformar texto em identidade operacional', () => {
+    expect(dialog).toContain("origin={origin || (referenceId ? 'pv' : 'grupos')}");
+    expect(dialog).toContain('o editor exige UUIDs');
   });
 });

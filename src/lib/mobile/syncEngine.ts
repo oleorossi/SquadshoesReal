@@ -9,17 +9,15 @@
  *     onde `online` demora)
  *   - chamada manual via `triggerSync()` (botão "Sincronizar agora")
  */
-import { supabase } from '@/integrations/supabase/client';
 import {
   listPendingOrders,
   removeFromQueue,
   markAttemptFailed,
   type QueuedOrder,
 } from './offlineQueue';
+import { submitMobileSaleOrderAtomic } from './atomicSaleOrder';
 
 const MAX_ATTEMPTS = 5;
-const SUPABASE_DUPLICATE_CODE = '23505'; // unique_violation
-
 interface SyncResult {
   succeeded: number;
   failed: number;
@@ -38,53 +36,12 @@ let syncInFlight = false;
  */
 const processOne = async (q: QueuedOrder): Promise<'success' | 'dedup' | 'error'> => {
   try {
-    const { order, items, client_id, representative_id } = q.payload;
-
-    // Insert PV
-    const total = items.reduce((s, i) => s + (Number(i.unit_price) || 0) * (Number(i.quantity) || 0), 0);
-    const insertData: any = {
-      ...order,
-      total,
-      client_id: client_id ?? null,
-      representative_id: representative_id ?? null,
-    };
-    const { data: created, error: pvError } = await supabase
-      .from('sale_orders')
-      .insert(insertData)
-      .select()
-      .single();
-
-    if (pvError) {
-      // Duplicata por client_request_id UNIQUE — server já tem
-      if (pvError.code === SUPABASE_DUPLICATE_CODE && pvError.message?.includes('client_request_id')) {
-        return 'dedup';
-      }
-      await markAttemptFailed(q.client_request_id, pvError.message);
-      return 'error';
-    }
-
-    // Insert items
-    if (items.length > 0 && created?.id) {
-      const itemsToInsert = items.map(it => ({
-        ...it,
-        sale_order_id: created.id,
-      }));
-      const { error: itemsError } = await supabase
-        .from('sale_order_items')
-        .insert(itemsToInsert);
-      if (itemsError) {
-        // PV criou mas items falharam — situação delicada. Logamos e mantemos
-        // na fila pra retry manual (admin precisa intervir — não tentamos
-        // deletar PV pra não cascatear danos).
-        await markAttemptFailed(q.client_request_id, `Items insert: ${itemsError.message}`);
-        return 'error';
-      }
-    }
-
+    const created = await submitMobileSaleOrderAtomic(q.payload);
     await removeFromQueue(q.client_request_id);
-    return 'success';
-  } catch (e: any) {
-    await markAttemptFailed(q.client_request_id, e?.message ?? String(e));
+    return created.idempotent_replay ? 'dedup' : 'success';
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    await markAttemptFailed(q.client_request_id, message);
     return 'error';
   }
 };

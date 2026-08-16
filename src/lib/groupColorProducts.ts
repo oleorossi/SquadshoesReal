@@ -48,8 +48,28 @@ export async function createGroupColorProduct(spec: GroupColorSpec): Promise<Cre
   const res: CreateColorResult = { color, groupName: spec.groupName, status: 'skipped' };
   if (!color || !spec.groupId) return res;
 
+  const { data: group } = await (supabase as any).from('product_groups')
+    .select('is_artisanal_strap')
+    .eq('id', spec.groupId)
+    .maybeSingle();
+  const strapLikeName = /tira|elastic|tranç/i.test(spec.groupName || '');
+  if (strapLikeName || group?.is_artisanal_strap === true) {
+    return {
+      ...res,
+      status: 'error',
+      error: 'Família de tira artesanal só pode ser criada pelo Hub de Tiras Artesanais.',
+    };
+  }
+
   const { data: existing } = await supabase.from('products')
-    .select('id, color').eq('group_id', spec.groupId).eq('active', true);
+    .select('id, color, is_artisanal').eq('group_id', spec.groupId).eq('active', true);
+  if ((existing || []).some((product: any) => product.is_artisanal === true)) {
+    return {
+      ...res,
+      status: 'error',
+      error: 'Grupo legado de tira detectado; resolva a identidade no Hub de Tiras Artesanais.',
+    };
+  }
   if ((existing || []).some((p: any) => (p.color || '').trim().toLowerCase() === color.toLowerCase())) {
     return res; // já cadastrada nessa cor
   }
@@ -58,7 +78,6 @@ export async function createGroupColorProduct(spec: GroupColorSpec): Promise<Cre
     .select('*').eq('group_id', spec.groupId).eq('active', true)
     .order('created_at', { ascending: false }).limit(1).maybeSingle();
 
-  const isStrapLike = /tira|elastic|tranç/i.test(spec.groupName || '');
   const baseSku = (last?.sku || '').trim();
   const preferredSku = baseSku
     ? `${baseSku.replace(/-[A-Z0-9]+$/i, '')}-${skuToken(color, 'COR', 4)}`
@@ -70,7 +89,7 @@ export async function createGroupColorProduct(spec: GroupColorSpec): Promise<Cre
     sku: finalSku,
     category: (last?.category || '').trim() || sectorOfGroup({ name: spec.groupName } as any),
     color,
-    unit: isStrapLike ? 'm' : (last?.unit || 'un'),
+    unit: last?.unit || 'un',
     unit_price: last?.unit_price || 0,
     location: last?.location || '', // products.location é NOT NULL — nunca null (igual ao dialog)
     min_stock: last?.min_stock || 0,
@@ -78,9 +97,6 @@ export async function createGroupColorProduct(spec: GroupColorSpec): Promise<Cre
     quantity: 0,
     group_id: spec.groupId,
     active: true,
-    // Tiras são artesanais (cortadas de napa). Marca no lote pra ficar consistente
-    // com o cadastro unitário; a receita (base) fica pro cadastro por cor (dialog).
-    is_artisanal: isStrapLike || undefined,
     image_url: '',
     yield_per_meter: last?.yield_per_meter ?? null,
     yield_unit: last?.yield_unit ?? null,

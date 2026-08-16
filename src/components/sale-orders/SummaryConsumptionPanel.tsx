@@ -8,6 +8,10 @@ import {
   type ConsumptionItem,
 } from '@/lib/orderConsumption';
 import { annotateConsumptionAvailability, type ConsumptionRow } from '@/lib/consumptionRows';
+import {
+  parseCanonicalStrapDemandPreview,
+  type CanonicalStrapDemandPreview,
+} from '@/lib/canonicalStrapDemandPreview';
 import MaterialConsumptionView, { type OrderHeader } from '@/components/sale-orders/MaterialConsumptionView';
 import UpperCutOutsourcingSection from '@/components/sale-orders/UpperCutOutsourcingSection';
 import type { ArtisanalStrapCutRow } from '@/lib/strapRollCut';
@@ -110,7 +114,21 @@ export default function SummaryConsumptionPanel({ saleOrderIds, onGerarOC }: Pro
       );
 
       const refIds = [...new Set(items.map((i: any) => i.reference_id).filter(Boolean))];
-      const ctx = await fetchConsumptionContext(refIds);
+      const [ctx, previewResults] = await Promise.all([
+        fetchConsumptionContext(refIds),
+        Promise.all(ids.map((saleOrderId) =>
+          (supabase as any).rpc('preview_sale_order_strap_demand', {
+            p_sale_order_id: saleOrderId,
+          }))),
+      ]);
+      const strapPreviews: CanonicalStrapDemandPreview[] = [];
+      for (const result of previewResults as Array<{ data?: unknown; error?: { message?: string } | null }>) {
+        if (result.error) throw result.error;
+        for (const value of (Array.isArray(result.data) ? result.data : []) as Record<string, unknown>[]) {
+          const parsed = parseCanonicalStrapDemandPreview(value);
+          if (parsed.technicalStrapLineId) strapPreviews.push(parsed);
+        }
+      }
 
       // Cada item carrega o packaging_mode do SEU pedido.
       const itemsWithMode = (items as any[]).map((it) => ({
@@ -126,7 +144,7 @@ export default function SummaryConsumptionPanel({ saleOrderIds, onGerarOC }: Pro
         ctx,
       );
       const { rows: annotatedRows, artisanalStrapRows: strapCut } =
-        await annotateConsumptionAvailability(computed, ctx);
+        await annotateConsumptionAvailability(computed, ctx, strapPreviews);
 
       if (isCancelled()) return;
       setRows(annotatedRows);

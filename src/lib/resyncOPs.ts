@@ -38,18 +38,6 @@ export async function resyncOPsForSheet(sheetId: string): Promise<{ totalResynce
   if (opsErr) throw opsErr;
   if (!ops || ops.length === 0) return { totalResyncedOPs: 0, errors: [] };
 
-  // Fetch updated strap data from the technical sheet itself.
-  // CRITICAL: capture the error. A silent SELECT failure (RLS / network) yielded
-  // sheetStraps=[] and let the resync run with stale per-size strap consumption,
-  // re-debiting wrong quantities of strap stock.
-  const { data: sheetStrapData, error: sheetStrapErr } = await supabase
-    .from('technical_sheets')
-    .select('strap_colors')
-    .eq('id', sheetId)
-    .single();
-  if (sheetStrapErr) throw new Error(`Falha ao carregar tiras da ficha técnica: ${sheetStrapErr.message}`);
-  const sheetStraps: any[] = Array.isArray(sheetStrapData?.strap_colors) ? sheetStrapData.strap_colors : [];
-
   const soIds = [...new Set(ops.map(op => op.sale_order_id).filter(Boolean))];
   let soItems: any[] = [];
   if (soIds.length > 0) {
@@ -71,36 +59,8 @@ export async function resyncOPsForSheet(sheetId: string): Promise<{ totalResynce
         p_order_id: op.id,
       });
       if (!rpcErr) {
-        // RPC handled stock estorno + re-débito + estágios atomicamente.
-        // Ainda precisa lidar com tiras (lógica de merge entre sheet e
-        // sale_order_item.strap_colors continua no TS por enquanto).
-        const matchingItem = (soItems || []).find((i: any) => i.reference_id === op.reference_id && i.color === op.color);
-        if (matchingItem?.strap_colors && Array.isArray(matchingItem.strap_colors) && (matchingItem.strap_colors as any[]).length > 0) {
-          const mergedStraps = (matchingItem.strap_colors as any[]).map((itemStrap: any) => {
-            const sheetStrap = sheetStraps.find((ss: any) => ss.id === itemStrap.id) || sheetStraps.find((ss: any) => ss.label === itemStrap.label);
-            return sheetStrap
-              ? { ...itemStrap, consumption: sheetStrap.consumption, consumption_per_size: sheetStrap.consumption_per_size }
-              : itemStrap;
-          });
-          if (matchingItem.id) {
-            await supabase.from('sale_order_items').update({ strap_colors: mergedStraps } as any).eq('id', matchingItem.id);
-          }
-          const opGradeForStraps = (op.grade as Record<string, number>) || {};
-          const { error: strapErr } = await supabase.rpc('debit_strap_stock', {
-            p_strap_colors: mergedStraps,
-            p_order_quantity: op.quantity,
-            p_order_id: op.id,
-            p_order_grade: (matchingItem as any).grade || (Object.keys(opGradeForStraps).length > 0 ? opGradeForStraps : null),
-            // Resync = reserva SOFT (igual à criação da OP). Sem isso o débito
-            // era HARD e travava o resync com "Estoque insuficiente" quando a
-            // tira (cortada do rolo) está com 0 no estoque. Falta vira ruptura.
-            p_force_soft: true,
-          } as any);
-          if (strapErr) {
-            errors.push(`OP ${op.order_number} — tiras: ${strapErr.message}`);
-            toast.error(`Tiras — resync OP ${op.order_number}: ${strapErr.message}`);
-          }
-        }
+        // Tiras não pertencem à OP genérica. O worker canônico do PV mantém
+        // reservas, lote/OS e baixa de napa de forma idempotente.
         totalResyncedOPs++;
         continue;
       }
@@ -216,43 +176,8 @@ export async function resyncOPsForSheet(sheetId: string): Promise<{ totalResynce
         if (soleErr) throw new Error(`Falha no re-débito de solado (fallback): ${soleErr.message}`);
       }
 
-      // 6. Re-debit strap materials (using updated consumption from technical sheet)
-      const matchingItem = (soItems || []).find((i: any) => i.reference_id === op.reference_id && i.color === op.color);
-      if (matchingItem?.strap_colors && Array.isArray(matchingItem.strap_colors) && (matchingItem.strap_colors as any[]).length > 0) {
-        // Merge: keep color selections from sale_order_item but update consumption from technical sheet
-        const mergedStraps = (matchingItem.strap_colors as any[]).map((itemStrap: any) => {
-          const sheetStrap = sheetStraps.find((ss: any) => ss.id === itemStrap.id) || sheetStraps.find((ss: any) => ss.label === itemStrap.label);
-          if (sheetStrap) {
-            return {
-              ...itemStrap,
-              consumption: sheetStrap.consumption,
-              consumption_per_size: sheetStrap.consumption_per_size,
-            };
-          }
-          return itemStrap;
-        });
-
-        // Also update the sale_order_item with the merged strap data for future consistency
-        if (matchingItem.id) {
-          await supabase.from('sale_order_items').update({ strap_colors: mergedStraps } as any).eq('id', matchingItem.id);
-        }
-
-        const { error: strapErr } = await supabase.rpc('debit_strap_stock', {
-          p_strap_colors: mergedStraps,
-          p_order_quantity: op.quantity,
-          p_order_id: op.id,
-          p_order_grade: (matchingItem as any).grade || grade || null,
-          // Resync = reserva SOFT (igual à criação da OP) — não trava com
-          // "Estoque insuficiente" quando a tira está com 0 no estoque.
-          p_force_soft: true,
-        } as any);
-        if (strapErr) {
-          console.error('Erro ao re-debitar tiras (resync):', strapErr.message);
-          toast.error(`Tiras — resync OP ${op.order_number}: ${strapErr.message}`);
-        }
-      }
-
-      // 7. Recreate stages from updated technical sheet
+      // 6. Recreate stages from updated technical sheet. Tiras são tratadas
+      // somente pelo worker canônico, nunca por este fallback legado.
       const { data: sheetData } = await supabase
         .from('technical_sheets')
         .select('production_sectors')

@@ -3,8 +3,8 @@
  *
  * Tiras artesanais são cortadas de um rolo padrão (40 m × 1370 mm). A `cut_width_mm`
  * cadastrada da tira é a LARGURA da banda cortada ao longo da dimensão de 1370 mm do
- * rolo — cada banda vira UMA tira pronta e tem o comprimento inteiro do rolo (40 m,
- * → 34 m úteis após 15% de perda). O nome da tira (ex. "Tira chata 8mm") é a medida
+ * rolo — cada banda vira UMA tira pronta e tem o comprimento inteiro do rolo (40 m).
+ * O nome da tira (ex. "Tira chata 8mm") é a medida
  * FINAL da peça, não a banda.
  *
  * O valor de saída (`cm_a_cortar`) é quanto da LARGURA do rolo (dos 1370 mm) precisa
@@ -12,15 +12,15 @@
  * pelo Leonardo em 2026-06-14 (PV-00140).
  *
  * Fórmula:
- *   metros_uteis_por_banda = 40 × (1 − 0,15) = 34 m       // cada banda rende 34 m úteis
- *   n_bandas               = ceil(metros_necessarios ÷ 34)
+ *   metros_uteis_por_banda = 40 m
+ *   n_bandas               = ceil(metros_necessarios ÷ 40)
  *   cm_a_cortar            = (n_bandas × cut_width_mm) ÷ 10
  *
  * Conferência (cut=20mm, PV-00140):
- *   2448 m   → ⌈2448/34⌉ = 72 bandas × 20mm = 1440mm = 144,0 cm
- *   2148 m   → 64 × 20mm = 1280mm = 128,0 cm
- *   1509,6 m → 45 × 20mm =  900mm =  90,0 cm
- *   384 m    → 12 × 20mm =  240mm =  24,0 cm
+ *   2448 m   → ⌈2448/40⌉ = 62 bandas × 20mm = 1240mm = 124,0 cm
+ *   2148 m   → 54 × 20mm = 1080mm = 108,0 cm
+ *   1509,6 m → 38 × 20mm =  760mm =  76,0 cm
+ *   384 m    → 10 × 20mm =  200mm =  20,0 cm
  *
  * Esta é a FONTE ÚNICA da matemática usada nos painéis de consumo do PV (Resumo de
  * Consumo, Lista de Separação e modal Consumo de Materiais). Toda mudança mora aqui.
@@ -30,8 +30,6 @@ export const ROLO_LARGURA_MM = 1370;
 /** Largura do rolo em CENTÍMETROS (1370 mm = 137 cm). Base do breakdown multi-rolo. */
 export const ROLO_LARGURA_CM = ROLO_LARGURA_MM / 10;
 export const ROLO_COMPRIMENTO_M = 40;
-/** Perda do rolo (aparas/sobras). 15%. */
-export const PERDA_PCT = 0.15;
 
 export interface StrapRollCutInput {
   /** Largura de corte cadastrada da tira artesanal, em mm. */
@@ -42,7 +40,7 @@ export interface StrapRollCutInput {
 
 export interface StrapRollCutResult {
   largura_mm: number;
-  /** Metros lineares úteis por banda cortada (= 40 m × 0,85 = 34 m). Constante. */
+  /** Metros lineares úteis por banda cortada (= comprimento integral do rolo). */
   metros_uteis_por_banda: number;
   /** Quantas bandas (= tiras prontas) de `cut_width_mm` precisam ser cortadas. */
   n_bandas: number;
@@ -88,8 +86,7 @@ export function normalizeWidthToMm(
 export function computeStrapRollCut({ largura_mm, metros_necessarios }: StrapRollCutInput): StrapRollCutResult {
   const largura = Number(largura_mm) || 0;
   const metros = Number(metros_necessarios) || 0;
-  // Cada banda cortada tem o comprimento inteiro do rolo (40 m) → 34 m úteis após perda.
-  const metros_uteis_por_banda = ROLO_COMPRIMENTO_M * (1 - PERDA_PCT);
+  const metros_uteis_por_banda = ROLO_COMPRIMENTO_M;
 
   const base: StrapRollCutResult = {
     largura_mm: largura,
@@ -111,7 +108,7 @@ export function computeStrapRollCut({ largura_mm, metros_necessarios }: StrapRol
   }
 
   // Quantas bandas de `largura` mm cortar ao longo da LARGURA do rolo — cada banda é
-  // 1 tira pronta e rende 34 m úteis. Uma banda parcial conta inteira (ceil).
+  // 1 tira pronta e rende o comprimento integral. Uma banda parcial conta inteira (ceil).
   const n_bandas = metros > 0 ? Math.ceil(metros / metros_uteis_por_banda) : 0;
   const mm_largura_a_cortar = n_bandas * largura;
   const cm_a_cortar = mm_largura_a_cortar / 10;
@@ -270,6 +267,17 @@ export interface ArtisanalStrapCutRow {
   metros_necessarios: number;
   /** Resultado do cálculo de corte do rolo. */
   cut: StrapRollCutResult;
+  /** Snapshot canônico da receita. Presente nos fluxos operacionais novos;
+   *  quando existe, a fábrica separa metros da napa-base por rendimento e
+   *  jamais usa o rolo fixo legado de 40 m × 1370 mm. */
+  canonical?: {
+    recipeId: string | null;
+    baseRequiredM: number;
+    confirmedYieldMPerM: number;
+    usableBaseWidthMm: number;
+    theoreticalYieldMPerM: number;
+    blockingReasons: string[];
+  };
   /**
    * Material-base do rolo (ex.: "NAPA SOFT") — `base_product_name` da receita
    * artesanal cujo resultado é esta tira. Usado pelo otimizador para AGRUPAR
@@ -313,9 +321,9 @@ const normKey = (s: string | null | undefined): string =>
  * Agrega tiras artesanais por **(grupo + cor)** SOMANDO os metros antes de chamar
  * `computeStrapRollCut` UMA única vez por grupo. Isto é matematicamente melhor que
  * calcular cada tira separada e somar os `cm_a_cortar`, porque
- * `Σ ceil(mᵢ/34) ≥ ceil(Σ mᵢ /34)` — a soma dos arredondamentos para cima nunca é
- * menor que o arredondamento da soma. (Ex.: 4×312 m + 936 m → 5×ceil = 136 cm,
- * agregado 2184 m → ceil único = 130 cm.)
+ * `Σ ceil(mᵢ/40) ≥ ceil(Σ mᵢ /40)` — a soma dos arredondamentos para cima nunca é
+ * menor que o arredondamento da soma. (Ex.: 4×312 m + 936 m → 112 cm,
+ * agregado 2184 m → ceil único = 110 cm.)
  *
  * A chave de agrupamento é `groupKey` (o chamador passa o `group_id` da tira; cai
  * pro nome normalizado quando ausente) + cor normalizada. A largura usada é a maior

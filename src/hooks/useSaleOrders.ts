@@ -10,7 +10,8 @@ import { isValidStatusTransition } from '@/lib/saleOrderStateMachine';
 import { logAuditEvent } from '@/services/auditService';
 import { recomputeMaterialGate } from '@/hooks/useMaterialGate';
 import { canonicalStageOrder } from '@/components/production/worksheet/stageOrder';
-import { pruneStrapSourcing } from '@/lib/strapSourcing';
+import { missingStrapSourcingLineIds, pruneStrapSourcing } from '@/lib/strapSourcing';
+import { technicalStrapLineId } from '@/lib/technicalStrapLines';
 import { resolveGroupSuppliers } from '@/lib/groupSupplierResolution';
 
 // Setores default de uma OP — nomes CANÔNICOS ('Aviamento', não o legado 'Mesa';
@@ -49,7 +50,7 @@ export const DEFAULT_OP_STAGES = [
  * DESMARCAÇÃO de todos os setores ter efeito. A guarda por presença de chave
  * segue existindo no SQL para proteger chamadores que não mandem estas colunas.
  */
-function buildExtraItemColumns(item: SaleOrderItemFormData): Record<string, unknown> {
+export function buildExtraItemColumns(item: SaleOrderItemFormData): Record<string, unknown> {
   const raw = (item as any)?.strap_sourcing;
   const sel = item.selected_terceirizacao_ids;
   const tq = item.terceirizacao_quantities;
@@ -59,7 +60,7 @@ function buildExtraItemColumns(item: SaleOrderItemFormData): Record<string, unkn
     // deixaria o override antigo pendurado, pronto pra ressuscitar.
     strap_sourcing: (raw && typeof raw === 'object')
       ? pruneStrapSourcing(raw, (item as any)?.strap_colors)
-      : null,
+      : {},
     selected_terceirizacao_ids: Array.isArray(sel) ? sel : [],
     terceirizacao_quantities: (tq && typeof tq === 'object') ? tq : {},
     outsourced_sectors: (outs && typeof outs === 'object') ? outs : {},
@@ -98,6 +99,31 @@ export function listarTirasSemCor(
       const nomeTira = String((strap as any).label || (strap as any).group_name || '').trim() || `Tira ${i + 1}`;
       const contexto = [item.reference_label, item.color].filter(Boolean).join(' / ');
       problemas.push(contexto ? `${nomeTira} (${contexto})` : nomeTira);
+    }
+  }
+  return problemas;
+}
+
+/** Lista linhas que ainda não receberam a escolha explícita de origem. */
+export function listarTirasSemOrigem(
+  items: Array<{
+    strap_colors?: any[] | null;
+    strap_sourcing?: SaleOrderItemFormData['strap_sourcing'];
+    color?: string | null;
+    reference_label?: string | null;
+  }>,
+): string[] {
+  const problemas: string[] = [];
+  for (const item of items || []) {
+    const straps = Array.isArray(item?.strap_colors) ? item.strap_colors : [];
+    const missing = new Set(missingStrapSourcingLineIds(item.strap_sourcing, straps));
+    for (let index = 0; index < straps.length; index++) {
+      const line = straps[index];
+      const lineId = technicalStrapLineId(line);
+      if (lineId && !missing.has(lineId)) continue;
+      const nome = String(line?.label || line?.group_name || '').trim() || `Tira ${index + 1}`;
+      const contexto = [item.reference_label, item.color].filter(Boolean).join(' / ');
+      problemas.push(contexto ? `${nome} (${contexto})` : nome);
     }
   }
   return problemas;
@@ -495,14 +521,32 @@ export type SaleOrderItemFormData = {
   unit_price: number;
   quantity: number;
   fichas?: number;
-  strap_colors?: { id: string; label: string; color: string }[];
-  /** Origem POR LINHA DE TIRA: `{ "<group_id>|<COR>": "in_house" | "purchased" }`.
-   *  Chave ausente = herda `products.is_artisanal`. `in_house` faz sair NAPA do
-   *  estoque; `purchased`, a própria tira. Lido pelo motor único
-   *  (`resolve_strap_sourcing`), que compras E reserva/débito consultam.
-   *  ⚠ Nenhum dos dois RPCs atômicos lista esta coluna — é gravada por UPDATE
-   *  direcionado depois do RPC (mesmo padrão de selected_terceirizacao_ids). */
-  strap_sourcing?: Record<string, 'in_house' | 'purchased'> | null;
+  strap_colors?: Array<{
+    id: string;
+    technical_strap_line_id?: string;
+    label: string;
+    color: string;
+    strap_type_id?: string | null;
+    measure_id?: string | null;
+    color_id?: string | null;
+    group_id?: string | null;
+    group_name?: string | null;
+    consumption?: number | null;
+    consumption_per_size?: Record<string, number> | null;
+  }>;
+  /** Origem explícita por `technical_strap_line_id`; ausência bloqueia confirmação. */
+  strap_sourcing?: Record<string, {
+    source_mode: 'internal' | 'buy_ready';
+    color_id?: string | null;
+    strap_variant_id?: string | null;
+    recipe_id?: string | null;
+    gross_required_m?: number | null;
+    required_at?: string | null;
+    main_production_start?: string | null;
+    schedule_revision?: number | null;
+  }> | null;
+  /** Revisão otimista do mapa de origem; obrigatória ao editar item existente. */
+  strap_sourcing_revision?: number;
   observation?: string | null;
   material_variant_id?: string | null;
   /** Terceirização integrada: IDs das reference_terceirizacoes marcadas pra
@@ -816,7 +860,7 @@ export function useUpdateSaleOrderStatus() {
       if (status === 'Aprovado' || isDirectPromotion) {
         const { data: itemsGuard, error: itemsGuardErr } = await supabase
           .from('sale_order_items')
-          .select('color, strap_colors, technical_sheets(name, code)')
+          .select('color, strap_colors, strap_sourcing, technical_sheets(name, code)')
           .eq('sale_order_id', id);
         if (itemsGuardErr) throw new Error(`Falha ao validar tiras do pedido: ${itemsGuardErr.message}`);
         const tirasSemCor = listarTirasSemCor(
@@ -831,6 +875,21 @@ export function useUpdateSaleOrderStatus() {
             `Não é possível prosseguir: tira sem COR definida — ${tirasSemCor.slice(0, 4).join('; ')}` +
             `${tirasSemCor.length > 4 ? ` e mais ${tirasSemCor.length - 4}` : ''}. ` +
             'Edite o item do pedido e defina a cor de cada tira antes de continuar.'
+          );
+        }
+        const tirasSemOrigem = listarTirasSemOrigem(
+          (itemsGuard || []).map((it: any) => ({
+            strap_colors: it.strap_colors,
+            strap_sourcing: it.strap_sourcing,
+            color: it.color,
+            reference_label: it.technical_sheets?.code || it.technical_sheets?.name || null,
+          })),
+        );
+        if (tirasSemOrigem.length > 0) {
+          throw new Error(
+            `Não é possível confirmar: escolha a origem de cada tira — ${tirasSemOrigem.slice(0, 4).join('; ')}` +
+            `${tirasSemOrigem.length > 4 ? ` e mais ${tirasSemOrigem.length - 4}` : ''}. ` +
+            'Selecione “Produzir com napa própria” ou “Comprar tira pronta”.',
           );
         }
       }
@@ -1029,17 +1088,6 @@ export function useUpdateSaleOrderStatus() {
               } as any);
             }
 
-            // Re-soft-reserve tiras
-            if (item?.strap_colors && Array.isArray(item.strap_colors) && item.strap_colors.length > 0) {
-              await supabase.rpc('debit_strap_stock', {
-                p_strap_colors: item.strap_colors,
-                p_order_quantity: op.quantity,
-                p_order_id: op.id,
-                p_order_grade: grade,
-                p_force_soft: true,
-              } as any);
-            }
-
             // Re-soft-reserve embalagem — PV volta pra Rascunho; débito real só acontece
             // quando o PV for re-aprovado ou re-entrar em produção (caminhos hard acima).
             await supabase.rpc('debit_packaging_for_order', {
@@ -1166,11 +1214,29 @@ export function useUpdateSaleOrderStatus() {
           // OCs: linked_sale_order_ids @> [id] e ainda não recebidas/canceladas
           const { data: linkedPOs, error: linkedPOsErr } = await supabase
             .from('purchase_orders')
-            .select('id, status')
+            .select('id, status, linked_sale_order_ids')
             .contains('linked_sale_order_ids', [id])
             .not('status', 'in', '(received,cancelled,closed)');
           if (linkedPOsErr) throw linkedPOsErr;
-          for (const po of (linkedPOs || [])) {
+          const linkedPoIds = (linkedPOs || []).map((po: any) => po.id);
+          const { data: canonicalPoContributions, error: canonicalPoErr } = linkedPoIds.length > 0
+            ? await (supabase as any)
+              .from('purchase_demand_contributions')
+              .select('purchase_order_id')
+              .in('purchase_order_id', linkedPoIds)
+            : { data: [], error: null };
+          if (canonicalPoErr) throw canonicalPoErr;
+          const canonicalPoIds = new Set((canonicalPoContributions || [])
+            .map((row: any) => row.purchase_order_id)
+            .filter(Boolean));
+          const cancellablePOs = (linkedPOs || []).filter((po: any) => {
+            const pvIds = Array.isArray(po.linked_sale_order_ids) ? po.linked_sale_order_ids : [];
+            // O worker canônico remove somente a contribuição do PV. Documentos
+            // consolidados — canônicos ou legados — nunca são cancelados inteiros
+            // por uma única venda.
+            return !canonicalPoIds.has(po.id) && pvIds.length <= 1;
+          });
+          for (const po of cancellablePOs) {
             const { error: poCancelErr } = await supabase.from('purchase_orders')
               .update({ status: 'cancelled', notes: `Cancelada — PV vinculado cancelado`, updated_at: new Date().toISOString() })
               .eq('id', po.id);
@@ -1184,19 +1250,25 @@ export function useUpdateSaleOrderStatus() {
           // devido. As grafias minúsculas seguem na lista só como defesa de legado.
           const { data: linkedSOs, error: linkedSOsErr } = await supabase
             .from('service_orders')
-            .select('id, status, sale_order_id, linked_sale_order_ids')
+            .select('id, status, sale_order_id, linked_sale_order_ids, service_order_items(strap_batch_item_id)')
             .or(`sale_order_id.eq.${id},linked_sale_order_ids.cs.{${id}}`)
             .not('status', 'in', '("Concluído","concluido","concluida","received","finalizado","Finalizado","Cancelado","cancelado","cancelled")');
           if (linkedSOsErr) throw linkedSOsErr;
-          for (const so of (linkedSOs || [])) {
+          const cancellableSOs = (linkedSOs || []).filter((so: any) => {
+            const pvIds = Array.isArray(so.linked_sale_order_ids) ? so.linked_sale_order_ids : [];
+            const isCanonicalStrap = (so.service_order_items || [])
+              .some((item: any) => Boolean(item.strap_batch_item_id));
+            return !isCanonicalStrap && pvIds.length <= 1;
+          });
+          for (const so of cancellableSOs) {
             const { error: soCancelErr } = await supabase.from('service_orders')
               .update({ status: 'Cancelado', notes: `Cancelada — PV vinculado cancelado`, updated_at: new Date().toISOString() })
               .eq('id', so.id);
             if (soCancelErr) throw soCancelErr;
           }
-          if ((linkedPOs?.length ?? 0) + (linkedSOs?.length ?? 0) > 0) {
+          if (cancellablePOs.length + cancellableSOs.length > 0) {
             toast.warning(
-              `${linkedPOs?.length ?? 0} OC(s) e ${linkedSOs?.length ?? 0} OS(s) vinculadas foram canceladas automaticamente.`,
+              `${cancellablePOs.length} OC(s) e ${cancellableSOs.length} OS(s) exclusivas do PV foram canceladas automaticamente.`,
               { duration: 8000 },
             );
           }
@@ -1516,9 +1588,10 @@ export function useUpdateSaleOrder() {
         material_variant_id: (i as any).material_variant_id ?? null,
         // Sem isto, EDITAR um PV descartava as cores de tira (o create persiste via
         // spread, mas o update montava payload explícito e esquecia strap_colors) →
-        // banco ficava com '[]' → StrapShortageDialog acusava "sem cor" falsamente.
+        // banco ficava com '[]' → o fluxo legado acusava "sem cor" falsamente.
         // O RPC update_sale_order_atomic também grava esta coluna (migration de jun/26).
         strap_colors: (i as any).strap_colors ?? [],
+        strap_sourcing_revision: Number((i as any).strap_sourcing_revision) || 0,
         // Fase 1b: origem da tira + intenção de terceirização entram na MESMA
         // transação. Eram 2 laços de UPDATE serial logo abaixo desta chamada.
         // Sempre presentes (mesmo vazias) — é assim que "desmarquei todos os
@@ -1770,38 +1843,10 @@ export function useResyncOPsFromSheets() {
                 }
               }
 
-              // 8. Re-debit strap materials
-              let matchingItem = op.sale_order_item_id
-                ? soItemsById.get(op.sale_order_item_id)
-                : undefined;
-              if (!op.sale_order_item_id) {
-                const fallbackItems = (soItems || []).filter(
-                  item => item.reference_id === op.reference_id && item.color === op.color,
-                );
-                if (fallbackItems.length === 1) {
-                  matchingItem = fallbackItems[0];
-                } else if (fallbackItems.length > 1) {
-                  console.warn(
-                    'Resync de tiras ignorado: OP órfã tem múltiplos itens do PV para a mesma referência e cor.',
-                    { orderId: op.id, referenceId: op.reference_id, color: op.color, candidateItemIds: fallbackItems.map(item => item.id) },
-                  );
-                }
-              }
-              if (matchingItem?.strap_colors && Array.isArray(matchingItem.strap_colors) && (matchingItem.strap_colors as any[]).length > 0) {
-                const { error: strapError } = await supabase.rpc('debit_strap_stock', {
-                  p_strap_colors: matchingItem.strap_colors,
-                  p_order_quantity: op.quantity,
-                  p_order_id: op.id,
-                  p_order_grade: (matchingItem as any).grade || (op as any).grade || null,
-                  p_force_soft: true,
-                } as any);
-                if (strapError) {
-                  console.error('Erro ao re-debitar tiras:', op.id, strapError.message);
-                  toast.error(`Tiras — re-débito OP ${(op as any).order_number || op.id}: ${strapError.message}`);
-                }
-              }
+              // Tiras são reconciliadas exclusivamente pelo worker canônico do PV.
+              // Recriar/resincronizar uma OP nunca reserva nem debita napa.
 
-              // 9. Recreate stages from technical sheet
+              // 8. Recreate stages from technical sheet
               const DEFAULT_STAGES = DEFAULT_OP_STAGES;
               const sheetSectors = sectorsBySheet.get(op.reference_id);
               const sectorNames = (sheetSectors && Array.isArray(sheetSectors) && sheetSectors.length > 0)
@@ -2158,20 +2203,6 @@ export function useResyncOPsFromPV() {
             } catch (poErr: any) {
               console.error('Erro ao criar OC de solado por déficit (resync):', poErr?.message);
             }
-          }
-        }
-
-        if ((item as any).strap_colors && Array.isArray((item as any).strap_colors) && (item as any).strap_colors.length > 0) {
-          const { error: strapErr } = await supabase.rpc('debit_strap_stock', {
-            p_strap_colors: (item as any).strap_colors,
-            p_order_quantity: item.quantity,
-            p_order_id: newOp.id,
-            p_order_grade: grade || null,
-            p_force_soft: true,
-          } as any);
-          if (strapErr) {
-            console.error('Erro ao debitar tiras (resync):', strapErr.message);
-            toast.error(`Tiras — OP ${(newOp as any).order_number || ''}: ${strapErr.message}`);
           }
         }
 

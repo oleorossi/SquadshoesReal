@@ -26,9 +26,10 @@ import {
   COMPONENT_ORDER,
   formatUnit,
 } from '@/lib/bomConsumption';
-import { type ArtisanalStrapCutRow, ROLO_COMPRIMENTO_M, ROLO_LARGURA_MM, rollFillLabel, strapRollBarHtml } from '@/lib/strapRollCut';
+import type { ArtisanalStrapCutRow } from '@/lib/strapRollCut';
 import {
   fetchStrapPickingLines,
+  strapPickingIdentityKey,
   strapPickingKey,
   strapNapaSubline,
   type StrapPickingLine,
@@ -368,6 +369,13 @@ export default function PickingListPage() {
   // da ficha — tenta os dois antes de desistir.
   const napaForRow = useCallback((row: ConsumptionRow): StrapPickingLine | undefined => {
     if (row.componentType !== 'Tiras' || strapNapa.size === 0) return undefined;
+    if (row.strapVariantId && row.baseProductId && row.recipeId) {
+      return strapNapa.get(strapPickingIdentityKey(
+        row.strapVariantId,
+        row.baseProductId,
+        row.recipeId,
+      ));
+    }
     return strapNapa.get(strapPickingKey(row.materialName, row.color))
         || strapNapa.get(strapPickingKey(row.groupName, row.color));
   }, [strapNapa]);
@@ -467,34 +475,33 @@ export default function PickingListPage() {
       `;
     }
 
-    // Bloco vermelho: tiras artesanais — corte do rolo. UMA linha por (grupo+cor),
-    // com os metros já somados (aggregateArtisanalStrapCut). Quando passa de 1 rolo
-    // (137 cm), mostra o breakdown "N rolos completos + X cm" embaixo do cm total.
+    // Tiras internas: usa exclusivamente a napa-base requerida e os snapshots da
+    // receita aprovada. O rolo fixo legado não é reconstruído nesta superfície.
     let strapCutHtml = '';
     if (strapCut.length > 0) {
       const strapRows = strapCut.map((r) => {
-        const { cut } = r;
-        const cortar = cut.valid
-          ? `<span style="font-weight:700;font-size:14px">${cut.cm_a_cortar.toFixed(1)} cm</span>`
-          : `<span style="font-size:11px">⚠ ${escapeHtml(cut.warning || 'sem largura')}</span>`;
-        const fill = rollFillLabel(cut);
-        const breakdownHtml = fill
-          ? `<div style="font-size:10px;color:#dc2626;opacity:.85;font-family:system-ui">${escapeHtml(fill)}</div>`
-          : '';
-        const larguraTxt = cut.widthMissing ? '' : ` · ${r.largura_mm.toFixed(0)} mm`;
+        const snapshot = r.canonical;
+        const blocked = !snapshot || snapshot.baseRequiredM <= 0
+          || snapshot.confirmedYieldMPerM <= 0 || snapshot.blockingReasons.length > 0;
+        const separar = !blocked && snapshot
+          ? `<span style="font-weight:700;font-size:14px">${snapshot.baseRequiredM.toLocaleString('pt-BR', { maximumFractionDigits: 6 })} m</span>`
+          : `<span style="font-size:11px">⚠ ${escapeHtml(snapshot?.blockingReasons.join(' · ') || 'snapshot canônico incompleto')}</span>`;
+        const details = snapshot
+          ? `Tira ${r.metros_necessarios.toLocaleString('pt-BR', { maximumFractionDigits: 4 })} m · rendimento ${snapshot.confirmedYieldMPerM.toLocaleString('pt-BR', { maximumFractionDigits: 6 })} m/m${snapshot.usableBaseWidthMm > 0 ? ` · largura útil ${snapshot.usableBaseWidthMm.toLocaleString('pt-BR')} mm` : ''}${r.largura_mm > 0 ? ` · banda ${r.largura_mm.toLocaleString('pt-BR')} mm` : ''}`
+          : 'Sem receita canônica';
         const colorTxt = r.color && r.color !== '—' ? ` · ${escapeHtml(r.color)}` : '';
         return `<tr style="color:#dc2626">
-          <td style="padding:4px 8px;font-weight:600">${escapeHtml(r.groupName)}${colorTxt}${larguraTxt}</td>
-          <td style="padding:4px 8px;text-align:right;font-family:monospace">${cortar}${strapRollBarHtml(cut)}${breakdownHtml}</td>
+          <td style="padding:4px 8px;font-weight:600">${escapeHtml(r.groupName)}${colorTxt}${r.baseName ? ` · base ${escapeHtml(r.baseName)}` : ''}<div style="font-size:10px;font-weight:400;color:#6b7280">${escapeHtml(details)}</div></td>
+          <td style="padding:4px 8px;text-align:right;font-family:monospace">${separar}</td>
         </tr>`;
       }).join('');
       strapCutHtml = `
-        <h2 style="font-size:13px;margin:18px 0 4px;color:#dc2626;text-transform:uppercase;letter-spacing:.5px">✂️ Tiras artesanais — corte do rolo (${ROLO_COMPRIMENTO_M}m × ${ROLO_LARGURA_MM}mm)</h2>
-        <p style="font-size:11px;color:#dc2626;margin:0 0 6px">Agrupadas por grupo + cor (metros somados antes do corte). Cortar do rolo — não é consumo direto de estoque.</p>
+        <h2 style="font-size:13px;margin:18px 0 4px;color:#dc2626;text-transform:uppercase;letter-spacing:.5px">✂️ Tiras artesanais — separação da napa-base</h2>
+        <p style="font-size:11px;color:#dc2626;margin:0 0 6px">Metragem calculada por tira pronta ÷ rendimento confirmado da receita aprovada.</p>
         <table style="border:1px solid #fca5a5">
           <thead><tr style="color:#dc2626">
-            <th style="background:#fef2f2">Tira (cor · largura)</th>
-            <th style="background:#fef2f2;text-align:right">Cortar do rolo (cm)</th>
+            <th style="background:#fef2f2">Tira e snapshot da receita</th>
+            <th style="background:#fef2f2;text-align:right">Separar napa</th>
           </tr></thead>
           <tbody>${strapRows}</tbody>
         </table>`;

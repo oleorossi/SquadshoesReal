@@ -7,8 +7,6 @@ import { useForceDeleteProductFlow } from '@/components/inventory/ForceDeletePro
 import { supabase } from '@/integrations/supabase/client';
 import { createGroupColorProduct } from '@/lib/groupColorProducts';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
-import { useArtisanalRecipes, useCreateArtisanalRecipe, useUpdateArtisanalRecipe } from '@/hooks/useArtisanalRecipes';
-import { useContractors } from '@/hooks/useContractors';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
@@ -456,6 +454,9 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
   const groupType = useMemo(() => getGroupType(sector), [sector]);
   const show = useMemo(() => getVisibleFields(groupType), [groupType]);
   const showYieldTab = show.yieldTab;
+  const isCanonicalStrapGroup = group.is_artisanal_strap === true
+    || products.some((product: any) => product.is_artisanal === true)
+    || /tira|elastic|tranç/i.test(group.name || '');
 
   /**
    * Detecta se o grupo é de Solado pra mostrar campos específicos
@@ -489,14 +490,6 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
   const [editProductName, setEditProductName] = useState('');
 
-  // Artisanal recipe state
-  const [isArtisanal, setIsArtisanal] = useState(false);
-  const [artBaseMaterial, setArtBaseMaterial] = useState('');
-  const [artYieldPerMeter, setArtYieldPerMeter] = useState<number>(1);
-  const [artLaborCost, setArtLaborCost] = useState<number>(0);
-  const [artContractorId, setArtContractorId] = useState<string>('__none__');
-  const [artNotes, setArtNotes] = useState('');
-  const [existingRecipeId, setExistingRecipeId] = useState<string | null>(null);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [variantsDialogOpen, setVariantsDialogOpen] = useState(false);
   // Hierarquia (product_groups.parent_group_id) + peso unitário. State perdido no
@@ -522,6 +515,11 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
   const handleAddColor = async () => {
     const c = newColor.trim();
     if (!c) return;
+    if (isCanonicalStrapGroup) {
+      onOpenChange(false);
+      navigate(`/tiras-artesanais?tab=cadastro&editor=1&mode=create&origin=grupos&baseGroupId=${encodeURIComponent(group.id)}`);
+      return;
+    }
     setAddingColor(true);
     try {
       const res = await createGroupColorProduct({ groupId: group.id, groupName: group.name, color: c });
@@ -540,11 +538,6 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
       setAddingColor(false);
     }
   };
-
-  const { data: recipes = [] } = useArtisanalRecipes();
-  const { data: contractors = [] } = useContractors();
-  const createRecipe = useCreateArtisanalRecipe();
-  const updateRecipe = useUpdateArtisanalRecipe();
 
   useEffect(() => {
     setName(group.name);
@@ -573,30 +566,6 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
     if (dosItens.length === 0) return null;
     return { grupo: doGrupo, itens: dosItens };
   }, [group, products]);
-
-  // Load artisanal recipe for this group whenever recipes or products change
-  useEffect(() => {
-    const groupNameLower = group.name.toLowerCase();
-    const recipe = recipes.find(r => r.artisanal_product_name.toLowerCase() === groupNameLower);
-    const anyArtisanal = allProducts.filter(p => p.group_id === group.id).some(p => (p as any).is_artisanal);
-    if (recipe) {
-      setIsArtisanal(true);
-      setExistingRecipeId(recipe.id);
-      setArtBaseMaterial(recipe.base_product_name);
-      setArtYieldPerMeter(Number(recipe.yield_per_meter) || 1);
-      setArtLaborCost(Number(recipe.labor_cost_per_meter) || 0);
-      setArtContractorId(recipe.default_contractor_id || '__none__');
-      setArtNotes(recipe.notes || '');
-    } else {
-      setIsArtisanal(anyArtisanal);
-      setExistingRecipeId(null);
-      setArtBaseMaterial('');
-      setArtYieldPerMeter(1);
-      setArtLaborCost(0);
-      setArtContractorId('__none__');
-      setArtNotes('');
-    }
-  }, [group.id, group.name, recipes, allProducts]);
 
   const handleSave = async () => {
     if (!name.trim()) {
@@ -674,33 +643,6 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
               toast.success(`Unidade de consumo aplicada em ${products.length} ${products.length === 1 ? 'item' : 'itens'}.`);
             }
           }
-        }
-      }
-
-      // Propagate artisanal flag
-      if (products.length > 0) {
-        await supabase
-          .from('products')
-          .update({ is_artisanal: isArtisanal } as any)
-          .eq('group_id', group.id);
-      }
-
-      if (isArtisanal && artBaseMaterial) {
-        const recipePayload = {
-          name: `Receita: ${name}`,
-          artisanal_product_name: name,
-          base_product_name: artBaseMaterial,
-          yield_per_meter: artYieldPerMeter,
-          labor_cost_per_meter: artLaborCost,
-          default_contractor_id: artContractorId === '__none__' ? null : artContractorId,
-          notes: artNotes || null,
-          active: true,
-        };
-        if (existingRecipeId) {
-          await updateRecipe.mutateAsync({ id: existingRecipeId, ...recipePayload });
-        } else {
-          const created = await createRecipe.mutateAsync(recipePayload);
-          setExistingRecipeId((created as any).id || null);
         }
       }
 
@@ -950,91 +892,28 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
 
               {/* Artesanal */}
               {show.artisanal && (
-              <div className="rounded-lg border-2 border-amber-500/40 p-4 bg-amber-500/10 space-y-3">
-                <div className="flex items-start justify-between gap-3">
+              <div className="rounded-lg border border-border bg-muted/30 p-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-start gap-3">
-                    <FlaskConical className="h-5 w-5 text-amber-600 mt-0.5 shrink-0" />
+                    <FlaskConical className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
                     <div>
-                      <p className="text-sm font-medium">Material Artesanal</p>
+                      <p className="text-sm font-medium">Tiras artesanais</p>
                       <p className="text-xs text-muted-foreground mt-1">
-                        Quando ativado, todos os itens deste grupo são marcados como artesanais e uma receita de conversão é criada automaticamente.
+                        Família, medida, napa, cor, rendimento e produto acabado são administrados juntos no cadastro canônico.
                       </p>
                     </div>
                   </div>
-                  <Switch checked={isArtisanal} onCheckedChange={setIsArtisanal} />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      onOpenChange(false);
+                      navigate(`/tiras-artesanais?tab=cadastro&editor=1&mode=create&origin=grupos&baseGroupId=${encodeURIComponent(group.id)}`);
+                    }}
+                  >
+                    Abrir cadastro de tiras
+                  </Button>
                 </div>
-
-                {isArtisanal && (
-                  <div className="space-y-3 pt-1">
-                    <div>
-                      <Label className="text-xs">Material Base (Matéria-Prima)</Label>
-                      <Input
-                        list="art-base-material-list"
-                        value={artBaseMaterial}
-                        onChange={e => setArtBaseMaterial(e.target.value)}
-                        placeholder="Ex: Napa Crua, Lona Base..."
-                        className="mt-1 h-9"
-                      />
-                      <datalist id="art-base-material-list">
-                        {allProducts.filter(p => p.active && !p.group_id).map(p => (
-                          <option key={p.id} value={p.name} />
-                        ))}
-                      </datalist>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <Label className="text-xs">Rendimento (m² saída / m base)</Label>
-                        <NumberInput
-                          min={0.01}
-                          value={artYieldPerMeter}
-                          onChange={n => setArtYieldPerMeter(n)}
-                          className="mt-1 h-9"
-                          placeholder="Ex: 0.85"
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-xs">Custo MO (R$/m)</Label>
-                        <NumberInput
-                          min={0}
-                          value={artLaborCost}
-                          onChange={n => setArtLaborCost(n)}
-                          className="mt-1 h-9"
-                          placeholder="Ex: 2.50"
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <Label className="text-xs">Terceirizado Padrão</Label>
-                      <Select value={artContractorId} onValueChange={setArtContractorId}>
-                        <SelectTrigger className="mt-1 h-9">
-                          <SelectValue placeholder="Nenhum (opcional)" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="__none__">Nenhum</SelectItem>
-                          {contractors.filter(c => c.active).map(c => (
-                            <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    {artYieldPerMeter > 0 && (
-                      <p className="text-xs text-amber-700 dark:text-amber-400 bg-amber-500/10 rounded px-2 py-1">
-                        Cada 1 m de base gera {artYieldPerMeter.toFixed(2)} m² de produto acabado
-                        {artLaborCost > 0 ? ` · MO: R$ ${artLaborCost.toFixed(2)}/m` : ''}
-                      </p>
-                    )}
-                    <div>
-                      <Label className="text-xs">Observações</Label>
-                      <Textarea
-                        value={artNotes}
-                        onChange={e => setArtNotes(e.target.value)}
-                        className="mt-1"
-                        rows={2}
-                        placeholder="Observações sobre o processo artesanal..."
-                      />
-                    </div>
-                  </div>
-                )}
               </div>
               )}
 
@@ -1308,12 +1187,19 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
             {/* Tab: Cores — único lugar que vê as cores do grupo como CONJUNTO
                 (duplicata, typo, largura divergente) e permite fundir. */}
             <TabsContent value="colors" className="space-y-4 mt-4">
-              <GroupColorsTab
-                groupId={group.id}
-                groupName={group.name}
-                products={products}
-                groupWidth={(group as any).dimensions_width}
-              />
+              {isCanonicalStrapGroup ? (
+                <div className="flex flex-col gap-3 rounded-md border border-primary/30 bg-primary/5 p-4 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-xs text-muted-foreground">A fusão, criação e revisão de cores desta família pertencem ao catálogo canônico de Tiras.</p>
+                  <Button type="button" variant="outline" onClick={() => { onOpenChange(false); navigate(`/tiras-artesanais?tab=cadastro&editor=1&mode=review&origin=grupos&baseGroupId=${encodeURIComponent(group.id)}`); }}>Revisar no Hub de Tiras</Button>
+                </div>
+              ) : (
+                <GroupColorsTab
+                  groupId={group.id}
+                  groupName={group.name}
+                  products={products}
+                  groupWidth={(group as any).dimensions_width}
+                />
+              )}
             </TabsContent>
 
             {/* Tab: Items */}
@@ -1323,28 +1209,39 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                   <Package className="h-4 w-4" />
                   Itens do Grupo ({products.length})
                 </Label>
-                <Button type="button" variant="outline" size="sm" className="gap-2" onClick={() => setAddDialogOpen(true)}>
+                <Button type="button" variant="outline" size="sm" className="gap-2" onClick={() => isCanonicalStrapGroup
+                  ? navigate(`/tiras-artesanais?tab=cadastro&editor=1&mode=create&origin=grupos&baseGroupId=${encodeURIComponent(group.id)}`)
+                  : setAddDialogOpen(true)}>
                   <Plus className="h-3.5 w-3.5" />
-                  Adicionar
+                  {isCanonicalStrapGroup ? 'Cadastrar no Hub' : 'Adicionar'}
                 </Button>
               </div>
-              {/* Criar cor nova direto no grupo (produto material×cor). */}
-              <div className="flex items-end gap-2 rounded-md border border-dashed border-border/70 bg-muted/20 p-2.5">
-                <div className="flex-1">
-                  <Label className="text-[11px] text-muted-foreground">Criar nova cor neste grupo</Label>
-                  <Input
-                    value={newColor}
-                    onChange={e => setNewColor(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddColor(); } }}
-                    placeholder="Ex.: COGUMELO"
-                    className="mt-0.5 h-8 text-xs uppercase"
-                  />
+              {/* Tiras acabadas têm um único writer: o catálogo canônico. */}
+              {isCanonicalStrapGroup ? (
+                <div className="flex flex-col gap-2 rounded-md border border-primary/30 bg-primary/5 p-3 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-xs text-muted-foreground">Cores, produto acabado, piso e receita desta família são criados juntos no hub de Tiras.</p>
+                  <Button type="button" size="sm" variant="outline" onClick={() => { onOpenChange(false); navigate(`/tiras-artesanais?tab=cadastro&editor=1&mode=create&origin=grupos&baseGroupId=${encodeURIComponent(group.id)}`); }}>
+                    Abrir cadastro canônico
+                  </Button>
                 </div>
-                <Button type="button" size="sm" className="h-8 gap-1" disabled={addingColor || !newColor.trim()} onClick={handleAddColor}>
-                  <Plus className="h-3.5 w-3.5" />
-                  {addingColor ? 'Criando...' : 'Criar cor'}
-                </Button>
-              </div>
+              ) : (
+                <div className="flex items-end gap-2 rounded-md border border-dashed border-border/70 bg-muted/20 p-2.5">
+                  <div className="flex-1">
+                    <Label className="text-[11px] text-muted-foreground">Criar nova cor neste grupo</Label>
+                    <Input
+                      value={newColor}
+                      onChange={e => setNewColor(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddColor(); } }}
+                      placeholder="Ex.: COGUMELO"
+                      className="mt-0.5 h-8 text-xs uppercase"
+                    />
+                  </div>
+                  <Button type="button" size="sm" className="h-8 gap-1" disabled={addingColor || !newColor.trim()} onClick={handleAddColor}>
+                    <Plus className="h-3.5 w-3.5" />
+                    {addingColor ? 'Criando...' : 'Criar cor'}
+                  </Button>
+                </div>
+              )}
               {products.length === 0 ? (
                 <p className="text-xs text-muted-foreground py-4 text-center">Nenhum item neste grupo.</p>
               ) : (
@@ -1363,7 +1260,7 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                       {products.map(p => (
                         <TableRow key={p.id}>
                           <TableCell className="text-xs font-medium">
-                            {editingProductId === p.id ? (
+                            {!isCanonicalStrapGroup && editingProductId === p.id ? (
                               <div className="flex gap-1">
                                 <Input
                                   value={editProductName}
@@ -1385,7 +1282,7 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                           <TableCell className="text-xs text-right font-mono">{p.quantity} {p.unit}</TableCell>
                           <TableCell className="text-center">
                             <div className="flex justify-center gap-1">
-                              <Button
+                              {!isCanonicalStrapGroup && <Button
                                 variant="ghost"
                                 size="icon"
                                 className="h-6 w-6"
@@ -1396,8 +1293,8 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                                 title="Renomear"
                               >
                                 <Pencil className="h-3 w-3" />
-                              </Button>
-                              <Button
+                              </Button>}
+                              {!isCanonicalStrapGroup && <Button
                                 variant="ghost"
                                 size="icon"
                                 className="h-6 w-6 text-primary"
@@ -1405,7 +1302,8 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                                 title="Editar Material Completo"
                               >
                                 <Package className="h-3.5 w-3.5" />
-                              </Button>
+                              </Button>}
+                              {isCanonicalStrapGroup && <Button variant="ghost" size="sm" onClick={() => { onOpenChange(false); navigate(`/tiras-artesanais?tab=cadastro&editor=1&mode=review&origin=grupos&baseGroupId=${encodeURIComponent(group.id)}`); }}>Abrir no Hub</Button>}
                             </div>
                           </TableCell>
                         </TableRow>

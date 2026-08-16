@@ -50,7 +50,7 @@ export const navigationCatalog: NavigationResource[] = [
   // Engenharia
   { path: '/fichas-tecnicas', label: 'Fichas Técnicas', group: 'Engenharia', icon: Ruler, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/TechnicalSheets') },
   { path: '/escalonamento', label: 'Escalonamento', group: 'Engenharia', icon: Calculator, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/EscalonamentoCadPage') },
-  { path: '/calculadora-tiras', label: 'Calculadora de Tiras', group: 'Engenharia', icon: Scissors, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/StrapCalculator') },
+  { path: '/tiras-artesanais', label: 'Tiras Artesanais', group: 'Engenharia', icon: Scissors, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/ArtisanalStraps') },
   { path: '/solados', label: 'Solados', group: 'Engenharia', icon: Footprints, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/SolesHub') },
   { path: '/silks', label: 'Silks', group: 'Engenharia', icon: Sparkles, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/Silks') },
   { path: '/fichas-tecnicas/padroes', label: 'Padrões por Cor', group: 'Engenharia', icon: Sparkles, surfaces: ['command'], preload: () => import('@/pages/ColorStandards') },
@@ -126,6 +126,7 @@ export const navigationCatalog: NavigationResource[] = [
   { path: '/rh/pendencias-ponto', label: 'Pendências de Ponto', group: 'RH', icon: Clock, surfaces: ['command'], preload: () => import('@/pages/TimePendings') },
 
   // Sistema (admin)
+  { path: '/admin/aprovacao-ordens-compra', label: 'Aprovação de Ordens de Compra', group: 'Sistema', icon: ShoppingBag, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/PurchaseOrderApprovals') },
   { path: '/settings', label: 'Configurações', group: 'Sistema', icon: Settings, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/Settings') },
   { path: '/automations', label: 'Automações', group: 'Sistema', icon: Zap, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/Automations') },
   { path: '/relatorios', label: 'Relatórios', group: 'Sistema', icon: BarChart3, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/RelatoriosHub') },
@@ -169,7 +170,7 @@ const menuGroupsDeclarados: NavigationGroup[] = [
   },
   {
     label: 'Engenharia', icon: Ruler,
-    items: [resource('/fichas-tecnicas'), resource('/escalonamento'), resource('/calculadora-tiras'), resource('/solados'), resource('/silks')],
+    items: [resource('/fichas-tecnicas'), resource('/escalonamento'), resource('/tiras-artesanais'), resource('/solados'), resource('/silks')],
   },
   {
     label: 'Produção', icon: Factory,
@@ -203,6 +204,7 @@ const menuGroupsDeclarados: NavigationGroup[] = [
 
 /** Itens da seção admin da sidebar; continuam recursos idênticos aos demais. */
 export const systemItems: NavigationResource[] = [
+  resource('/admin/aprovacao-ordens-compra'),
   resource('/settings'),
   resource('/automations'),
   resource('/relatorios'),

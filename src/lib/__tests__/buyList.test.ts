@@ -86,6 +86,16 @@ describe('buildBuyList', () => {
     const bl = buildBuyList([row({ productUnit: 'dm²', totalQuantity: 570 })]);
     expect(bl.families).toHaveLength(0);
   });
+
+  it('preserva precisão integral antes da apresentação', () => {
+    const bl = buildBuyList([1, 2, 3].map(() => row({
+      componentType: 'Tiras',
+      groupName: 'TIRA TESTE',
+      totalQuantity: 0.294,
+      artisanal: { baseName: 'NAPA SOFT', baseQty: 0.0049, yieldPerMeter: 60 },
+    })));
+    expect(bl.grandTotal).toBeCloseTo(0.0147, 10);
+  });
 });
 
 /**

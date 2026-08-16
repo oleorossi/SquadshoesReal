@@ -47,7 +47,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { useSaleOrders, useSaleOrderAllItems, useCreateSaleOrder, useDeleteSaleOrder, useUpdateSaleOrderStatus, useResyncOPsFromSheets, useResyncOPsFromPV, useCommitPickingForSaleOrder, useRealtimeSaleOrders, SaleOrderFormData, SaleOrderItemFormData, PackagingMode, ORDER_TYPE_LABELS, DEFAULT_OP_STAGES, opStageOrder, listarTirasSemCor } from '@/hooks/useSaleOrders';
+import { useSaleOrders, useSaleOrderAllItems, useCreateSaleOrder, useDeleteSaleOrder, useUpdateSaleOrderStatus, useResyncOPsFromSheets, useResyncOPsFromPV, useCommitPickingForSaleOrder, useRealtimeSaleOrders, SaleOrderFormData, SaleOrderItemFormData, PackagingMode, ORDER_TYPE_LABELS, DEFAULT_OP_STAGES, opStageOrder, listarTirasSemCor, listarTirasSemOrigem } from '@/hooks/useSaleOrders';
 import { useTechnicalSheetsLite } from '@/hooks/useTechnicalSheets';
 import { useClients, useEconomicGroups } from '@/hooks/useClients';
 import { supabase } from '@/integrations/supabase/client';
@@ -83,6 +83,7 @@ import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
 import { normalizeForSearch, splitSearchTerms } from '@/lib/searchUtils';
 import { safeUrlAttr } from '@/lib/htmlUtils';
+import { warnPackagingDebit } from '@/lib/packagingDebitWarnings';
 
 // TODOS os status canônicos do sale_orders (saleOrderStateMachine.ts).
 // Antes faltavam 'Pendente', 'Expedido' e 'Concluído' — PVs nesses status
@@ -1538,7 +1539,7 @@ export default function SaleOrders() {
         {
           const { data: guardItems, error: guardErr } = await supabase
             .from('sale_order_items')
-            .select('color, strap_colors, technical_sheets(name, code)')
+            .select('color, strap_colors, strap_sourcing, technical_sheets(name, code)')
             .eq('sale_order_id', order.id);
           if (guardErr) { errors.push(`${order.order_number}: falha ao validar tiras — ${guardErr.message}`); continue; }
           const tirasSemCor = listarTirasSemCor(
@@ -1550,6 +1551,18 @@ export default function SaleOrders() {
           );
           if (tirasSemCor.length > 0) {
             errors.push(`${order.order_number}: tira sem COR definida (${tirasSemCor.slice(0, 3).join('; ')}) — defina a cor antes de aprovar.`);
+            continue;
+          }
+          const tirasSemOrigem = listarTirasSemOrigem(
+            (guardItems || []).map((it: any) => ({
+              strap_colors: it.strap_colors,
+              strap_sourcing: it.strap_sourcing,
+              color: it.color,
+              reference_label: it.technical_sheets?.code || it.technical_sheets?.name || null,
+            })),
+          );
+          if (tirasSemOrigem.length > 0) {
+            errors.push(`${order.order_number}: escolha a origem de cada tira (${tirasSemOrigem.slice(0, 3).join('; ')}).`);
             continue;
           }
         }
@@ -1677,16 +1690,11 @@ export default function SaleOrders() {
                   } catch (_e) { /* logged */ }
                 }
               }
-              // Debit strap materials
-              const strapColors = item.strap_colors as any[];
-              if (strapColors && strapColors.length > 0) {
-                const { error: strapError } = await supabase.rpc('debit_strap_stock', { p_strap_colors: strapColors, p_order_quantity: item.quantity, p_order_id: createdOp?.id || null, p_order_grade: item.grade || null, p_force_soft: true } as any);
-                if (strapError) errors.push(`${order.order_number}: Tiras - ${strapError.message}`);
-              }
-              // Debit packaging stock — use the per-mode RPC (has internal SELECT FOR UPDATE
-              // since 20260517130000). The atomic variant requires a resolved product id
-              // and cannot do the packaging_configs lookup that this path needs.
-              const { error: pkgError } = await supabase.rpc('debit_packaging_for_order', {
+              // A confirmação do PV já enfileirou as tiras no worker canônico.
+              // Criar a OP não reserva nem debita napa/tira diretamente.
+              // A configuração vem exclusivamente do tipo de solado. A RPC é
+              // reconciliável: trigger + caller não duplicam o débito.
+              const { data: pkgData, error: pkgError } = await supabase.rpc('debit_packaging_for_order', {
                 p_sale_order_id: order.id,
                 p_order_id: createdOp.id,
                 p_reference_id: item.reference_id,
@@ -1695,6 +1703,7 @@ export default function SaleOrders() {
                 p_force_soft: false,
               } as any);
               if (pkgError) errors.push(`${order.order_number}: Embalagem - ${pkgError.message}`);
+              else warnPackagingDebit(pkgData, order.order_number);
 
               createdBulkOps.push(createdOp);
               opsCreated++;
@@ -2853,13 +2862,10 @@ export default function SaleOrders() {
                         description: 'Isso permite incluir o pedido em ondas de produção.',
                         actionLabel: 'Aprovar',
                         onConfirm: async () => {
-                        const { error } = await supabase
-                          .from('sale_orders')
-                          .update({ status: 'Aprovado' })
-                          .eq('id', selectedOrder.id)
-                          .eq('status', 'Rascunho');
-                        if (error) {
-                          toast.error(`Erro ao aprovar: ${error.message}`);
+                        try {
+                          await updateStatus.mutateAsync({ id: selectedOrder.id, status: 'Aprovado' });
+                        } catch (error: any) {
+                          toast.error(`Erro ao aprovar: ${error?.message || error}`);
                           return;
                         }
                         toast.success(`Pedido ${selectedOrder.order_number} aprovado.`);

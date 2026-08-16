@@ -37,11 +37,10 @@ export type BaseMaterialInput = {
   warning?: string;
   /** Equivalente em material base quando a linha é tira artesanal.
    *  `pending` = a napa-base (família da ficha da referência) é conhecida mas
-   *  não há rendimento cadastrado pra ela NEM como derivar de outra base
+   *  não há rendimento exato cadastrado para ela
    *  → fica FORA do total e conta como "a cadastrar".
-   *  `derivedFrom` = rendimento herdado de outra base da mesma tira
-   *  (`strapYieldResolution.ts`) → ENTRA no total, contado em `derived`. */
-  artisanal?: { baseName: string; baseQty: number; yieldPerMeter: number; pending?: boolean; derivedFrom?: string };
+   */
+  artisanal?: { baseName: string; baseQty: number; yieldPerMeter: number; pending?: boolean };
 };
 
 export type BaseMaterialTotal = {
@@ -52,19 +51,7 @@ export type BaseMaterialTotal = {
   /** Linhas de napa deixadas de fora por cadastro incompleto — entrariam
    *  ~100× infladas (largura faltando) ou sem consumo calculado. */
   skipped: number;
-  /** Tiras DENTRO do total cujo rendimento foi herdado de outra base (não
-   *  medido pra esta napa) — a UI sinaliza sem alarmar. */
-  derived: number;
 };
-
-// Cada parcela é arredondada a 2 casas ANTES de somar, de propósito: é o valor
-// que está impresso na linha ("≈ 3,85 m NAPA SOFT"). Somando os exatos, o
-// COGUMELO daria 36,73 e o dono — que confere somando a coluna na mão — veria
-// 36,74 na tela e 36,73 no total. Um total que não fecha com as parcelas
-// visíveis destrói a confiança no número; 1 cm de erro acumulado não muda
-// pedido de compra nenhum. Se um dia a linha passar a mostrar mais casas,
-// mudar as duas coisas juntas.
-const round2 = (n: number) => Math.round(n * 100) / 100;
 
 // ── Mesma leitura na geração de OC (Compras por Pedido) ────────────────────
 // A OC não conhece `componentType` (vem de outra RPC, `compute_materials_per_pv`),
@@ -96,8 +83,7 @@ export type PurchaseBaseInput = {
   qty: number;
 };
 
-/** Total de material base de um conjunto de linhas de OC. Mesma aritmética do
- *  modal (parcelas arredondadas antes de somar), pro número fechar com a coluna. */
+/** Total de material base sem arredondamento intermediário. */
 export function computePurchaseBaseTotal(
   items: PurchaseBaseInput[],
   recipeBases?: Iterable<string>,
@@ -107,13 +93,13 @@ export function computePurchaseBaseTotal(
     if (!isBaseMaterialGroup(it.groupName, recipeBases)) continue;
     if (!BASE_LINEAR_UNITS.has((it.unit || '').toLowerCase())) continue;
     if (!(it.qty > 0)) continue;
-    byName.set(it.groupName, (byName.get(it.groupName) || 0) + round2(it.qty));
+    byName.set(it.groupName, (byName.get(it.groupName) || 0) + it.qty);
   }
   if (byName.size === 0) return null;
   const parts = Array.from(byName.entries())
     .map(([name, qty]) => ({ name, qty }))
     .sort((a, b) => b.qty - a.qty);
-  return { total: round2(parts.reduce((s, p) => s + p.qty, 0)), parts, skipped: 0, derived: 0 };
+  return { total: parts.reduce((s, p) => s + p.qty, 0), parts, skipped: 0 };
 }
 
 /**
@@ -145,31 +131,29 @@ export function isSuspectUnrolledArtisanal(
 export function computeBaseMaterialTotal(rows: BaseMaterialInput[]): BaseMaterialTotal | null {
   const byName = new Map<string, number>();
   let skipped = 0;
-  let derived = 0;
 
   for (const r of rows) {
     // Tira com família conhecida (napa da ficha) mas SEM rendimento cadastrado
-    // pra essa base nem como derivar de outra → fora do total, conta como
+    // pra essa base → fora do total, conta como
     // "a cadastrar" (não converte às cegas pela base errada).
     if (r.artisanal?.pending) { skipped++; continue; }
     // Tira artesanal: conta o equivalente em napa, NUNCA os metros de tira
     // (169,20 m de tira = 2,82 m de napa; somar os 169,20 inflaria 60×).
     if (r.artisanal && r.artisanal.baseQty > 0) {
       const name = r.artisanal.baseName || 'Material base';
-      byName.set(name, (byName.get(name) || 0) + round2(r.artisanal.baseQty));
-      if (r.artisanal.derivedFrom) derived++;
+      byName.set(name, (byName.get(name) || 0) + r.artisanal.baseQty);
       continue;
     }
     if (!BASE_MATERIAL_COMPONENTS.has(r.componentType)) continue;
     if (!BASE_LINEAR_UNITS.has((r.productUnit || '').toLowerCase())) continue;
     if (r.widthMissing || r.warning) { skipped++; continue; }
     if (!(r.totalQuantity > 0)) continue;
-    byName.set(r.groupName, (byName.get(r.groupName) || 0) + round2(r.totalQuantity));
+    byName.set(r.groupName, (byName.get(r.groupName) || 0) + r.totalQuantity);
   }
 
   if (byName.size === 0) return null;
   const parts = Array.from(byName.entries())
     .map(([name, qty]) => ({ name, qty }))
     .sort((a, b) => b.qty - a.qty);
-  return { total: round2(parts.reduce((s, p) => s + p.qty, 0)), parts, skipped, derived };
+  return { total: parts.reduce((s, p) => s + p.qty, 0), parts, skipped };
 }

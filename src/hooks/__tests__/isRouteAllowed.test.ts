@@ -6,6 +6,7 @@ const MENU = [
   '/estoque', '/estoque/historico', '/estoque/qualidade',
   '/sales', '/pcp', '/producao/kanban', '/orders', '/imprimir-fichas', '/fichas-montadores',
   '/label-system', '/rh', '/contractors',
+  '/tiras-artesanais',
 ];
 
 const perm = (module: string, can_view = true) => ({ module, can_view });
@@ -36,6 +37,12 @@ describe('resolveMenuOwner', () => {
   });
   it('rota sem nenhum item-prefixo → null', () => {
     expect(resolveMenuOwner('/sac', MENU)).toBeNull();
+  });
+  it('aliases de tiras preservam o dono concedível do hub', () => {
+    expect(resolveMenuOwner('/calculadora-tiras', MENU)).toBe('/tiras-artesanais');
+    expect(resolveMenuOwner('/artisanal-recipes', MENU)).toBe('/tiras-artesanais');
+    expect(resolveMenuOwner('/terceirizados?foo=1&tab=recipes', MENU)).toBe('/tiras-artesanais');
+    expect(resolveModuleForPath('/terceirizados?tab=recipes')).toBe('produtos');
   });
 });
 
@@ -110,6 +117,14 @@ describe('isRouteAllowed — granular POR ITEM (allow-list de paths)', () => {
     const o = { isAdmin: false, roles: ['consulta'], perms: [perm('/sales')], allMenuPaths: MENU };
     expect(isRouteAllowed('/sales', o)).toBe(true);
     expect(isRouteAllowed('/sales/123', o)).toBe(true);
+  });
+
+  it('grant do hub novo atravessa os redirects legados de tiras', () => {
+    const o = { isAdmin: false, roles: ['consulta'], perms: [perm('/tiras-artesanais')], allMenuPaths: MENU };
+    expect(isRouteAllowed('/tiras-artesanais', o)).toBe(true);
+    expect(isRouteAllowed('/calculadora-tiras', o)).toBe(true);
+    expect(isRouteAllowed('/artisanal-recipes', o)).toBe(true);
+    expect(isRouteAllowed('/terceirizados?tab=recipes', o)).toBe(true);
   });
 
   it('can_view=false é ignorado', () => {

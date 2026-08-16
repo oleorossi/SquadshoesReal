@@ -29,7 +29,7 @@ export function useNotifications() {
       const now = new Date();
       const in3days = new Date(now);
       in3days.setDate(in3days.getDate() + 3);
-      const [dashRes, sectorRes, bottleneckRes, crmRes] = await Promise.allSettled([
+      const [dashRes, sectorRes, bottleneckRes, crmRes, strapPurchaseRes] = await Promise.allSettled([
         apiService.getDashboardNotifications(),
         supabase
           .from('notifications')
@@ -50,6 +50,11 @@ export function useNotifications() {
           .not('scheduled_for', 'is', null)
           .lte('scheduled_for', in3days.toISOString())
           .order('scheduled_for', { ascending: true })
+          .limit(30),
+        (supabase as any)
+          .from('v_strap_purchase_order_notifications_operational')
+          .select('id, event_type, purchase_order_id, order_number, criticality, title, message, created_at')
+          .order('created_at', { ascending: false })
           .limit(30),
       ]);
       const data = dashRes.status === 'fulfilled' ? dashRes.value : {
@@ -72,6 +77,27 @@ export function useNotifications() {
       }
 
       const notifications: NotificationItem[] = [];
+
+      const strapPurchaseNotifications =
+        strapPurchaseRes.status === 'fulfilled' && !strapPurchaseRes.value.error
+          ? (strapPurchaseRes.value.data || [])
+          : [];
+      if (strapPurchaseRes.status === 'fulfilled' && strapPurchaseRes.value.error) {
+        console.warn('[useNotifications] strap purchase query failed:', strapPurchaseRes.value.error.message);
+      }
+      strapPurchaseNotifications.forEach((entry: any) => {
+        const criticality = String(entry.criticality || '').toLocaleLowerCase('pt-BR');
+        notifications.push({
+          id: `strap-purchase-${entry.id}`,
+          category: 'purchasing',
+          severity: criticality.includes('urgente')
+            ? 'critical'
+            : criticality.includes('atrasad') ? 'warning' : 'info',
+          title: entry.title || `OC ${entry.order_number || ''} requer atenção`,
+          description: entry.message || 'Abra a fila administrativa para revisar a ordem automática de tira pronta.',
+          link: '/admin/aprovacao-ordens-compra',
+        });
+      });
 
       const {
         overduePayables,

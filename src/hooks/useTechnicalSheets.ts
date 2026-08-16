@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient, UseQueryResult, QueryClient } fr
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { resyncOPsForSheet } from '@/lib/resyncOPs';
+import { ensureTechnicalStrapLineIds } from '@/lib/technicalStrapLines';
 
 /**
  * Helper unificado: dispara resync (await) e invalida caches.
@@ -549,11 +550,12 @@ export function useCloneSheet() {
       // (modelo com tiras opcionais), o trigger zera as tiras no clone.
       // Re-aplica esses campos via UPDATE depois pra preservar a config real.
       if (fields.has_straps || (fields.strap_colors && fields.strap_colors.length > 0)) {
+        const clonedStrapColors = ensureTechnicalStrapLineIds(fields.strap_colors, true);
         await supabase
           .from('technical_sheets')
           .update({
             has_straps: fields.has_straps,
-            strap_colors: fields.strap_colors,
+            strap_colors: clonedStrapColors,
           } as any)
           .eq('id', newId);
       }

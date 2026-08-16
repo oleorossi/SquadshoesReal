@@ -49,7 +49,7 @@ const InputCostsPage = lazy(() => import("./pages/InputCostsPage"));
 // (component_color_defaults): grupo + cor do pedido → SKU padrão.
 const ColorStandards = lazy(() => import("./pages/ColorStandards"));
 const EscalonamentoCadPage = lazy(() => import("./pages/EscalonamentoCadPage"));
-const StrapCalculator = lazy(() => import("./pages/StrapCalculator"));
+const ArtisanalStraps = lazy(() => import("./pages/ArtisanalStraps"));
 const Silks = lazy(() => import("./pages/Silks"));
 const ProductDetail = lazy(() => import("./pages/ProductDetail"));
 const Orders = lazy(() => import("./pages/Orders"));
@@ -72,6 +72,7 @@ const Contractors = lazy(() => import("./pages/Contractors"));
 // Rotas legadas (/employees, /timesheet) redirecionam para /rh?tab=...
 const PurchaseOrders = lazy(() => import("./pages/PurchaseOrders"));
 const PurchaseOrdersPerPv = lazy(() => import("./pages/PurchaseOrdersPerPv"));
+const PurchaseOrderApprovals = lazy(() => import("./pages/PurchaseOrderApprovals"));
 const ComercialDashboard = lazy(() => import("./pages/ComercialDashboard"));
 // ProductionLive/ProductionTimeline não têm rota própria: views legadas chegam
 // em /producao/analises, que mantém esses componentes sob o motor canônico.
@@ -314,7 +315,11 @@ function RouteGuard({ children }: { children: React.ReactNode }) {
   const location = useLocation();
    const { loading, isError, canAccessRoute, permsLoading, permsError, isAdmin } = useAccessControl();
 
-   const path = location.pathname;
+   // O alias antigo de receitas precisa atravessar a guarda com o dono do hub
+   // novo; o componente TerceirizadosHub faz o redirect logo depois.
+   const isLegacyStrapRecipes = location.pathname === '/terceirizados'
+     && new URLSearchParams(location.search).get('tab') === 'recipes';
+   const path = isLegacyStrapRecipes ? '/terceirizados?tab=recipes' : location.pathname;
    // URL que não resolve módulo nenhum é URL que não existe: cai no catch-all e
    // tem que renderizar o NotFound. Sem isso, errar o endereço devolveria
    // "Acesso Restrito" — mensagem de permissão pra um problema de digitação.
@@ -612,7 +617,7 @@ const LEGACY_ALIAS_ROUTES: {
     { path: 'terceiros', element: <LegacyRouteRedirect to="/terceirizados?tab=orders" /> },
     { path: 'terceiros-na-rua', element: <LegacyRouteRedirect to="/terceirizados?tab=orders" /> },
     { path: 'terceiros/relatorios', element: <LegacyRouteRedirect to="/terceirizados?tab=relatorio" /> },
-    { path: 'artisanal-recipes', element: <LegacyRouteRedirect to="/terceirizados?tab=recipes" /> },
+    { path: 'artisanal-recipes', element: <LegacyRouteRedirect to="/tiras-artesanais?tab=receitas" /> },
 
     // Logística e sistema
     { path: 'labels', element: <LegacyRouteRedirect to="/label-system" /> },
@@ -877,10 +882,13 @@ const router = createBrowserRouter([
          element: <EscalonamentoCadPage />,
        },
        {
-         // Calculadora de Tiras — rendimento de corte artesanal (tira reta, 1D).
-         // Ferramenta avulsa; parity travada com strapRollCut (motor do PV).
+         path: "tiras-artesanais",
+         element: <ArtisanalStraps />,
+       },
+       {
+         // A calculadora permanece acessível por bookmarks, dentro do hub único.
          path: "calculadora-tiras",
-         element: <StrapCalculator />,
+         element: <LegacyRouteRedirect to="/tiras-artesanais?tab=calculadora" />,
        },
        {
          path: "silks",
@@ -998,6 +1006,10 @@ const router = createBrowserRouter([
       {
         path: "purchase-orders",
         element: <PurchaseOrders />,
+      },
+      {
+        path: "admin/aprovacao-ordens-compra",
+        element: <PurchaseOrderApprovals />,
       },
       {
         path: "purchase-planning",

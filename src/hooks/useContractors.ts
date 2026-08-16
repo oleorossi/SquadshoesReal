@@ -56,6 +56,8 @@ export interface ServiceOrder {
   linked_sale_order_ids?: string[] | null;
   // Artisanal production fields
   artisanal_recipe_id?: string | null;
+  /** Identidade operacional canônica detectada nas linhas da OS. */
+  is_canonical_strap?: boolean;
   artisanal_output_name?: string | null;
   artisanal_output_color?: string | null;
   artisanal_output_meters?: number;
@@ -143,9 +145,22 @@ export function useServiceOrders() {
         all.push(...data);
         if (data.length < PAGE) break;
       }
+      const canonicalIds = new Set<string>();
+      for (let from = 0; ; from += PAGE) {
+        const { data, error } = await (supabase as any)
+          .from('v_strap_service_order_items_operational')
+          .select('service_order_id')
+          .order('service_order_id', { ascending: true })
+          .range(from, from + PAGE - 1);
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+        data.forEach((row: { service_order_id?: string }) => { if (row.service_order_id) canonicalIds.add(row.service_order_id); });
+        if (data.length < PAGE) break;
+      }
       return (all as unknown as ServiceOrder[]).map(o => ({
         ...o,
         materials_sent: Array.isArray(o.materials_sent) ? o.materials_sent : [],
+        ...((o.artisanal_recipe_id || canonicalIds.has(o.id)) ? { is_canonical_strap: true } : {}),
       }));
     },
     // Sem staleTime próprio herdava os 60s globais e, com refetchOnMount ligado,
@@ -153,6 +168,10 @@ export function useServiceOrders() {
     // já invalidam ['service_orders'], então a correção por tempo é redundante.
     staleTime: 5 * 60 * 1000,
   });
+}
+
+export function isCanonicalStrapServiceOrder(order: Pick<ServiceOrder, 'artisanal_recipe_id' | 'is_canonical_strap'> | null | undefined) {
+  return Boolean(order?.is_canonical_strap || order?.artisanal_recipe_id);
 }
 
 /** Visão geral por OS (view v_service_order_overview): pagamento (AP) + saldo de

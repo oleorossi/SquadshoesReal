@@ -7,9 +7,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Calendar, Truck, Warning as AlertTriangle, ShoppingCart, CircleNotch as Loader2, FloppyDisk as Save } from '@phosphor-icons/react';
 import { MaterialAvailabilityResult } from '@/lib/materialAvailability';
 import { SubmitFlowStepper } from './SubmitFlowStepper';
- import { useUpsertOpenPurchaseOrder } from '@/hooks/usePurchaseOrders';
- import { useUpsertOpenServiceOrder, useContractors } from '@/hooks/useContractors';
- import { useArtisanalRecipes, calcArtisanalRequirement } from '@/hooks/useArtisanalRecipes';
+import { useUpsertOpenPurchaseOrder } from '@/hooks/usePurchaseOrders';
 import { toast } from 'sonner';
 
 interface Props {
@@ -23,10 +21,7 @@ interface Props {
 }
 
 export function MaterialPurchaseConfirmDialog({ open, onOpenChange, result, saleOrderId, onConfirm }: Props) {
-   const upsertPO = useUpsertOpenPurchaseOrder();
-   const upsertSO = useUpsertOpenServiceOrder();
-   const { data: recipes = [] } = useArtisanalRecipes({ onlyActive: true });
-   const { data: contractors = [] } = useContractors();
+  const upsertPO = useUpsertOpenPurchaseOrder();
   const [generating, setGenerating] = useState(false);
 
   if (!result) return null;
@@ -46,12 +41,13 @@ export function MaterialPurchaseConfirmDialog({ open, onOpenChange, result, sale
   const handleGeneratePOs = async () => {
     setGenerating(true);
     try {
-      const count = 0;
-       let ocCount = 0;
-       let osCount = 0;
+      let ocCount = 0;
  
-       const regularShortages = shortages.filter(s => !s.is_artisanal);
-       const artisanalShortages = shortages.filter(s => s.is_artisanal);
+      // Tiras artesanais nunca são materializadas por este diálogo. A escolha
+      // produzir/comprar do PV é reconciliada pelo worker canônico, que conhece
+      // variante, napa, receita, semana e contribuição exatas. Mantê-las aqui
+      // criava uma segunda OS por nome/cor e podia debitar a napa errada.
+      const regularShortages = shortages.filter(s => !s.is_artisanal);
  
        // Group regular by supplier
        const byRegSupplier = regularShortages.reduce<Record<string, typeof shortages>>((acc, s) => {
@@ -99,62 +95,7 @@ export function MaterialPurchaseConfirmDialog({ open, onOpenChange, result, sale
          ocCount++;
        }
  
-       // Generate OS for artisanal — calcula material BASE necessário + sobra pra estoque
-       for (const art of artisanalShortages) {
-         const groupName = (art.product_name || '').split(':')[0].trim();
-         const colorName = (art.product_name || '').split(':')[1]?.trim() || '';
-         // O7: match priorizado — preferir EXACT match (artisanal_product_name = groupName)
-         // sobre includes (que confundia "Tira Overlock 5mm" com "Tira Overlock 5mm Reforçada").
-         // Em empate, prefere receita ativa com default_contractor_id setado.
-         const exactRecipes = recipes.filter(r =>
-           r.artisanal_product_name?.trim().toLowerCase() === groupName.toLowerCase()
-         );
-         const looseRecipes = exactRecipes.length > 0
-           ? exactRecipes
-           : recipes.filter(r => r.artisanal_product_name?.toLowerCase().includes(groupName.toLowerCase()));
-         const recipe = looseRecipes
-           .sort((a, b) => Number(!!b.default_contractor_id) - Number(!!a.default_contractor_id))[0];
-         if (!recipe) {
-           toast.warning(`Produto artesanal "${art.product_name}" sem receita cadastrada.`);
-           continue;
-         }
-         // O8: filtra contractors ativos antes de fallback. Sem isso, pegava
-         // alphabetic[0] mesmo se inativo. Também alerta antes de criar.
-         const activeContractors = contractors.filter((c: any) => c.active !== false);
-         const contractorId = recipe.default_contractor_id || activeContractors[0]?.id;
-         if (!contractorId) {
-           toast.warning(`Produto "${art.product_name}" sem terceirizado ativo definido para OS.`);
-           continue;
-         }
-         if (!recipe.default_contractor_id) {
-           const fallbackName = activeContractors[0]?.name || '?';
-           toast.info(`OS de "${art.product_name}" usando contractor fallback: ${fallbackName}. Defina default na receita.`, { duration: 6000 });
-         }
-
-         // forOrder = shortage (o que falta pro pedido); forStock = repor min_stock
-         const forOrder = Math.max(0, art.required - art.available);
-         const calc = calcArtisanalRequirement(recipe, forOrder, art.available, art.min_stock);
-
-         // Upsert: agrega numa OS ABERTA pro mesmo contractor+recipe+color
-         await upsertSO.mutateAsync({
-           contractor_id: contractorId,
-           artisanal_recipe_id: recipe.id,
-           output_name: groupName,
-           output_color: colorName,
-           base_color: colorName,
-           for_order_meters: calc.forOrderMeters,
-           for_stock_meters: calc.forStockMeters,
-           total_meters: calc.totalToProduce,
-           base_product_name: recipe.base_product_name,
-           base_meters_send: calc.baseMetersSend,
-           sale_order_id: saleOrderId || null,
-           unit_price: recipe.labor_cost_per_meter,
-         });
-         osCount++;
-       }
- 
-       if (ocCount > 0) toast.success(`${ocCount} ${ocCount === 1 ? 'ordem de compra gerada' : 'ordens de compra geradas'}!`);
-       if (osCount > 0) toast.success(`${osCount} ${osCount === 1 ? 'ordem de serviço gerada' : 'ordens de serviço geradas'}!`);
+      if (ocCount > 0) toast.success(`${ocCount} ${ocCount === 1 ? 'ordem de compra gerada' : 'ordens de compra geradas'}!`);
       onConfirm('with_po');
     } catch (err: any) {
       toast.error(`Erro ao gerar OCs: ${err.message}`);
@@ -187,6 +128,17 @@ export function MaterialPurchaseConfirmDialog({ open, onOpenChange, result, sale
             Considere essa data ao definir o prazo de entrega. A produção interna inicia em paralelo conforme cada material chega.
           </AlertDescription>
         </Alert>
+
+        {shortages.some((shortage) => shortage.is_artisanal) && (
+          <Alert>
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>Tiras seguem o planejamento automático</AlertTitle>
+            <AlertDescription>
+              As tiras deste pedido serão consolidadas no lote interno, na OS terceirizada
+              ou na OC de tira pronta conforme a origem escolhida em cada linha.
+            </AlertDescription>
+          </Alert>
+        )}
 
         {/* Shortage table */}
         <div className="border rounded-lg overflow-x-auto">

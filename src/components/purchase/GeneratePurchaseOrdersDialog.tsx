@@ -67,7 +67,13 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
   const generate = useGeneratePerPvPurchaseOrders();
   const qc = useQueryClient();
   // Cadastro 1-clique da cor faltante: resolve o grupo a partir do produto (material_id).
-  const [createTarget, setCreateTarget] = useState<{ groupId: string; groupName: string; color: string } | null>(null);
+  const [createTarget, setCreateTarget] = useState<{
+    groupId: string;
+    groupName: string;
+    color: string;
+    measureId?: string | null;
+    variantId?: string | null;
+  } | null>(null);
   const resolveGroupForMaterial = (materialId: string): { groupId: string; groupName: string } | null => {
     const prod = (products as any[]).find((p) => p.id === materialId);
     if (!prod?.group_id) return null;
@@ -486,7 +492,13 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
                                 size="sm"
                                 variant="outline"
                                 className="h-6 px-2 text-[11px] gap-1 border-destructive/40"
-                                onClick={() => setCreateTarget({ groupId: grp.groupId, groupName: grp.groupName, color: (i.color || '').trim() })}
+                                onClick={() => setCreateTarget({
+                                  groupId: grp.groupId,
+                                  groupName: grp.groupName,
+                                  color: (i.color || '').trim(),
+                                  measureId: (i as typeof i & { measure_id?: string | null }).measure_id,
+                                  variantId: (i as typeof i & { strap_variant_id?: string | null }).strap_variant_id,
+                                })}
                               >
                                 <Package className="h-3 w-3" /> Cadastrar
                               </Button>
@@ -667,6 +679,9 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
         groupId={createTarget.groupId}
         groupName={createTarget.groupName}
         color={createTarget.color}
+        measureId={createTarget.measureId}
+        variantId={createTarget.variantId}
+        origin="compras"
         onCreated={() => {
           setCreateTarget(null);
           setOverrideColorMismatch(false);

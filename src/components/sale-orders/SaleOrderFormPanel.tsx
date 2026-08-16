@@ -96,6 +96,7 @@ interface SaleOrderPackagingBox {
 }
 
 interface Props {
+  saleOrderId?: string | null;
   form: SaleOrderFormData;
   setForm: (fn: (f: SaleOrderFormData) => SaleOrderFormData) => void;
   items: SaleOrderItemFormData[];
@@ -465,7 +466,7 @@ function FactoringField({ form, setForm, totalValue }: {
 }
 
 export default function SaleOrderFormPanel({
-  form, setForm, items, setItems, clients, representatives, references,
+  saleOrderId, form, setForm, items, setItems, clients, representatives, references,
    isAdmin, selectedClientId, onClientSelect, onSubmit, onCancel, onUserEdit, isPending, submitLabel,
    packagingProductId: _packagingProductId, onPackagingProductChange: _onPackagingProductChange,
    packagingQuantity: _packagingQuantity, onPackagingQuantityChange: _onPackagingQuantityChange,
@@ -1998,6 +1999,11 @@ export default function SaleOrderFormPanel({
                 </div>
               )}
               <SaleOrderItemForm
+                saleOrderId={saleOrderId}
+                billingWeek={form.delivery_month && form.delivery_week
+                  ? `${form.delivery_month}-${form.delivery_week}`
+                  : null}
+                requiredAt={form.delivery_deadline || null}
                 item={item}
                 index={idx}
                 onColorIssueChange={onColorIssueChange}

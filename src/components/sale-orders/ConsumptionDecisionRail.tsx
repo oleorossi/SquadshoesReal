@@ -93,11 +93,6 @@ export default function ConsumptionDecisionRail({
                 do total — cadastro incompleto
               </p>
             )}
-            {baseTotal.derived > 0 && (
-              <p className="mt-1 text-[11px] text-muted-foreground">
-                {baseTotal.derived} {baseTotal.derived === 1 ? 'tira com rendimento herdado' : 'tiras com rendimento herdado'} de outra napa
-              </p>
-            )}
           </>
         ) : (
           <p className="mt-1 text-xs text-muted-foreground">

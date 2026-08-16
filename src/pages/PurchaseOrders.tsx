@@ -24,6 +24,7 @@ import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { HubTabsList } from '@/components/layout/HubTabs';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import SolePurchaseTab from '@/components/purchase/SolePurchaseTab';
+import { ArtisanalStrapPurchaseOrdersSurface } from '@/components/artisanal-straps/ArtisanalStrapPurchaseOrdersSurface';
 import { printPurchaseOrderGrouped, printSupplierPOs } from '@/lib/printPurchaseOrder';
 import { SelectionTotalsBar } from '@/components/ui/selection-totals-bar';
 import { generateCostReportPdf } from '@/lib/costReportPdf';
@@ -192,7 +193,7 @@ export default function PurchaseOrders() {
   // A aba mora na URL (contrato do lote L6a): antes era <Tabs defaultValue>, então
   // F5 e o botão Voltar devolviam o usuário à primeira aba.
   const { value: abaAtiva, setValue: setAbaAtiva } = useUrlTabState({
-    values: ['all', 'solados'] as const,
+    values: ['all', 'automaticas', 'solados'] as const,
     defaultValue: 'all',
   });
   const { data: orders = [], isLoading } = usePurchaseOrders();
@@ -443,6 +444,7 @@ export default function PurchaseOrders() {
           <HubTabsList
             tabs={[
               { value: 'all', label: 'Geral', icon: ShoppingCart },
+              { value: 'automaticas', label: 'Demandas automáticas', icon: Zap },
               { value: 'solados', label: 'Solados', icon: Footprints },
             ]}
           />
@@ -832,6 +834,10 @@ export default function PurchaseOrders() {
                 </TableBody>
               </Table>
             </Panel>
+          </TabsContent>
+
+          <TabsContent value="automaticas">
+            <ArtisanalStrapPurchaseOrdersSurface mode="operational" />
           </TabsContent>
 
           <TabsContent value="solados">

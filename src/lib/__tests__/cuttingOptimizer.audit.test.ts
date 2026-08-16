@@ -251,9 +251,10 @@ describe('auditoria FFD — estatística agregada', () => {
     expect(subVsOpt).toBe(0);
     expect(subVsBfd).toBe(0);
     expect(worstGap).toBe(0);
-    // FFD/LB pode passar de 1 (granularidade: LB contínuo é inatingível), mas fica baixo.
-    // No domínio real o pior caso observado é ~1.14 (peças idênticas que não fecham o rolo).
-    expect(worstRatioLb).toBeLessThan(1.2);
+    // FFD/LB pode passar de 1: a soma das larguras ignora que as sobras de rolos distintos
+    // não se combinam. Com bandas de 40 m, o conjunto auditado chega exatamente a 1,5,
+    // embora continue ótimo nos casos em que o brute force é viável.
+    expect(worstRatioLb).toBeLessThanOrEqual(1.5);
   });
 
   it('cobertura: ≥ 30 cenários, conjunto realista de larguras', () => {
@@ -267,12 +268,12 @@ describe('auditoria FFD — estatística agregada', () => {
 // ─── Bloco 3: casos reais do Leonardo (âncora de regressão) ───────────────────
 
 describe('auditoria FFD — casos reais do Leonardo', () => {
-  it('PV-00140 CARAMELO: Overlock 5mm cut=20, 2148 m → 64 bandas, 1 rolo (0,93)', () => {
+  it('PV-00140 CARAMELO: Overlock 5mm cut=20, 2148 m → 54 bandas, 1 rolo', () => {
     const p = planRollCutting([{ recipe_id: 'ov', recipe_name: 'Overlock 5mm', cut_width_mm: 20, m_needed: 2148 }]);
-    expect(p.breakdown[0].n_bandas).toBe(64); // ceil(2148/34)
-    expect(p.total_rolls).toBe(1); // 64×20 = 1280 mm ≤ 1370
-    expect(p.total_used_mm).toBe(1280);
-    expect(p.rolls[0].leftover_mm).toBe(1370 - 1280); // 90 mm
+    expect(p.breakdown[0].n_bandas).toBe(54); // ceil(2148/40)
+    expect(p.total_rolls).toBe(1); // 54×20 = 1080 mm ≤ 1370
+    expect(p.total_used_mm).toBe(1080);
+    expect(p.rolls[0].leftover_mm).toBe(1370 - 1080); // 290 mm
   });
 
   it('PV multi-tira CARAMELO (chata25/over5/chata8) cabe em 1 rolo e é ótimo', () => {
@@ -284,20 +285,20 @@ describe('auditoria FFD — casos reais do Leonardo', () => {
     const ws = widthsFromDemands(demands);
     const p = planRollCutting(demands);
     expect(p.total_rolls).toBe(1);
-    expect(p.total_used_mm).toBe(198); // 3×25 + 15×5 + 6×8
+    expect(p.total_used_mm).toBe(180); // 3×25 + 13×5 + 5×8
     expect(p.total_rolls).toBe(optimal(ws));
   });
 
   it('produção grande: Overlock 5000m cut20 + chata 1000m cut25 + costurada 500m cut11', () => {
     const demands: RollCutDemand[] = [
-      D('ov20', 20, 5000), // 148 bandas × 20 = 2960
-      D('ch25', 25, 1000), // 30 bandas × 25 = 750
-      D('co11', 11, 500), //  15 bandas × 11 = 165
+      D('ov20', 20, 5000), // 125 bandas × 20 = 2500
+      D('ch25', 25, 1000), // 25 bandas × 25 = 625
+      D('co11', 11, 500), //  13 bandas × 11 = 143
     ];
     const ws = widthsFromDemands(demands);
     const p = planRollCutting(demands);
-    expect(p.total_used_mm).toBe(2960 + 750 + 165); // 3875 mm
-    expect(p.total_rolls).toBe(3); // ceil(3875/1370) = 3
+    expect(p.total_used_mm).toBe(2500 + 625 + 143); // 3268 mm
+    expect(p.total_rolls).toBe(3); // ceil(3268/1370) = 3
     expect(p.total_rolls).toBe(lowerBound(ws)); // atinge o limite inferior
     expect(p.total_rolls).toBe(bfd(ws)); // == BFD
   });
@@ -323,7 +324,7 @@ describe('auditoria FFD — edge cases', () => {
 
   it('largura == 1370 mm × 3 bandas: 3 rolos cheios, ótimo', () => {
     const p = planRollCutting([{ recipe_id: 'full', recipe_name: 'Cheia', cut_width_mm: 1370, m_needed: 102 }]);
-    expect(p.breakdown[0].n_bandas).toBe(3); // ceil(102/34)
+    expect(p.breakdown[0].n_bandas).toBe(3); // ceil(102/40)
     expect(p.total_rolls).toBe(3);
     expect(p.total_leftover_mm).toBe(0);
     expect(p.total_rolls).toBe(optimal([1370, 1370, 1370]));
@@ -337,16 +338,16 @@ describe('auditoria FFD — edge cases', () => {
   });
 
   it('demanda fracionária 45,5 m: banda parcial conta inteira (2 bandas)', () => {
-    expect(bandsForMeters(45.5)).toBe(2); // ceil(45.5/34)
+    expect(bandsForMeters(45.5)).toBe(2); // ceil(45.5/40)
     const p = planRollCutting([{ recipe_id: 'f', recipe_name: 'Frac', cut_width_mm: 20, m_needed: 45.5 }]);
     expect(p.breakdown[0].n_bandas).toBe(2);
     expect(p.total_used_mm).toBe(40);
     expect(p.total_rolls).toBe(1);
   });
 
-  it('demanda exata de 1 banda (34 m): exatamente 1 banda', () => {
-    expect(bandsForMeters(34)).toBe(1);
-    const p = planRollCutting([{ recipe_id: 'e', recipe_name: 'Exata', cut_width_mm: 250, m_needed: 34 }]);
+  it('demanda exata de 1 banda (40 m): exatamente 1 banda', () => {
+    expect(bandsForMeters(40)).toBe(1);
+    const p = planRollCutting([{ recipe_id: 'e', recipe_name: 'Exata', cut_width_mm: 250, m_needed: 40 }]);
     expect(p.breakdown[0].n_bandas).toBe(1);
   });
 });

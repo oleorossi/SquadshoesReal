@@ -2,9 +2,9 @@
  * Calculadora de Tiras — rendimento de corte (metragem de tira por metro linear).
  *
  * Ferramenta avulsa com DOIS sentidos, alternados por um seletor no topo das entradas:
- *  • "Quanto rende" (direto): largura do material, largura da banda de corte, perda e comprimento
- *    do rolo → quantos metros de tira saem por metro linear (número-herói), total do
- *    rolo, custo e a tabela de cortes parciais. Modelo contínuo (sem piso).
+ *  • "Quanto rende" (direto): largura do material, largura da banda de corte, rendimento
+ *    confirmado e comprimento do rolo → quantos metros de tira saem por metro linear,
+ *    total do rolo, custo e a tabela de cortes parciais.
  *  • "Quanto preciso" (inverso): a mesma geometria, mas partindo dos metros de TIRA
  *    PRONTA desejados → quantos metros de material (e quantos rolos / quanto custa) são
  *    necessários. Ver `computeStrapMaterialNeeded` em `@/lib/strapYield`.
@@ -37,6 +37,7 @@ import {
   PARTIAL_CUT_UNIT_TO_M,
   STRAP_YIELD_DEFAULTS,
   type PartialCutUnit,
+  type StrapMaterialNeededResult,
   type StrapYieldInput,
   type StrapMaterialNeededInput,
 } from '@/lib/strapYield';
@@ -85,14 +86,124 @@ type Modo = 'rendimento' | 'necessidade';
 /** Snapshot submetido no clique de Calcular — inclui o modo e a tira desejada. */
 type Snapshot = StrapYieldInput & { modo: Modo; tiraDesejadaM?: number };
 
-export default function StrapCalculator() {
+interface StrapCalculatorProps {
+  embedded?: boolean;
+  larguraMaterialInicialMm?: number;
+  larguraBandaInicialMm?: number;
+  rendimentoConfirmadoInicialMPerM?: number;
+  canShowFinancialValues?: boolean;
+}
+
+function ConfirmedNeedResult({
+  result,
+  submitted,
+  showCost,
+}: {
+  result: StrapMaterialNeededResult;
+  submitted: Snapshot;
+  showCost: boolean;
+}) {
+  return (
+    <div className="space-y-4 duration-300 animate-in fade-in-50 slide-in-from-bottom-2">
+      <Card className="overflow-hidden border-red-500/30 bg-red-500/10">
+        <CardContent className="py-6">
+          <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-red-600/80 dark:text-red-400/80">
+            <Package className="h-3.5 w-3.5" weight="bold" />
+            Napa-base necessária
+          </div>
+          <div className="mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <span className="font-mono text-6xl font-bold leading-none tabular-nums text-red-600 dark:text-red-400">
+              {nf(result.materialNecessarioM, 6)}
+            </span>
+            <span className="text-lg font-medium text-red-600/80 dark:text-red-400/80">m lineares</span>
+          </div>
+          <p className="mt-3 font-mono text-xs text-red-700/70 dark:text-red-300/70">
+            {nf(result.tiraDesejadaM, 6)} m de tira ÷ {nf(result.metragemPorMetroLiq, 6)} m/m confirmados = {nf(result.materialNecessarioM, 6)} m de napa
+          </p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="grid gap-3 py-5 sm:grid-cols-3">
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Tira pronta</p>
+            <p className="mt-1 font-mono text-lg font-bold text-foreground">{nf(result.tiraDesejadaM, 6)} m</p>
+          </div>
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Rendimento confirmado</p>
+            <p className="mt-1 font-mono text-lg font-bold text-foreground">{nf(result.metragemPorMetroLiq, 6)} m/m</p>
+          </div>
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Capacidade teórica</p>
+            <p className="mt-1 font-mono text-lg font-bold text-foreground">{nf(result.metragemPorMetroBruto, 0)} m/m</p>
+            <p className="text-[10px] text-muted-foreground">
+              floor({nf(submitted.larguraMaterialMm, 0)} ÷ {nf(submitted.larguraTiraMm, 0)})
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      {showCost ? (
+        <Card className="border-red-500/20">
+          <CardContent className="divide-y divide-border/60 py-0">
+            <div className="flex items-center justify-between gap-4 py-4">
+              <div>
+                <div className="text-sm font-medium text-foreground">Custo da napa necessária</div>
+                <div className="text-xs text-muted-foreground">
+                  {formatCurrency(submitted.custoMetroLinear)} /m × {nf(result.materialNecessarioM, 6)} m
+                </div>
+              </div>
+              <span className="shrink-0 font-mono text-2xl font-bold tabular-nums text-foreground">
+                {formatCurrency(result.custoMaterialNecessario)}
+              </span>
+            </div>
+            <div className="flex items-center justify-between gap-4 py-3">
+              <span className="text-sm text-foreground">Custo por metro de tira</span>
+              <span className="shrink-0 font-mono text-sm font-semibold tabular-nums text-foreground">
+                {formatCurrency(result.custoPorMetroTira)} /m
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="flex items-center gap-2 rounded-lg border border-border/60 bg-muted/30 px-3 py-2.5 text-xs text-muted-foreground">
+          <ArrowRight className="h-3.5 w-3.5 shrink-0" />
+          Informe o custo do material para ver quanto você gasta.
+        </div>
+      )}
+
+      <div className="flex items-start gap-2 rounded-lg border border-border/60 bg-muted/30 px-3 py-2.5 text-xs text-muted-foreground">
+        <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+        <span>
+          A largura útil e a banda conferem o teto geométrico. A necessidade operacional usa exclusivamente o rendimento confirmado da receita aprovada.
+        </span>
+      </div>
+    </div>
+  );
+}
+
+export default function StrapCalculator({
+  embedded = false,
+  larguraMaterialInicialMm,
+  larguraBandaInicialMm,
+  rendimentoConfirmadoInicialMPerM,
+  canShowFinancialValues = true,
+}: StrapCalculatorProps = {}) {
+  const larguraMaterialPadraoMm = larguraMaterialInicialMm && larguraMaterialInicialMm > 0
+    ? larguraMaterialInicialMm
+    : STRAP_YIELD_DEFAULTS.larguraMaterialMm;
+  const larguraBandaPadraoMm = larguraBandaInicialMm && larguraBandaInicialMm > 0
+    ? larguraBandaInicialMm
+    : 0;
+  const rendimentoConfirmadoPadrao = rendimentoConfirmadoInicialMPerM && rendimentoConfirmadoInicialMPerM > 0
+    ? rendimentoConfirmadoInicialMPerM
+    : null;
   const [modo, setModo] = useState<Modo>('rendimento');
   // Largura do material é digitada em CM na tela; o motor recebe em mm.
   const [larguraMaterialCm, setLarguraMaterialCm] = useState<number>(
-    STRAP_YIELD_DEFAULTS.larguraMaterialMm / MM_POR_CM,
+    larguraMaterialPadraoMm / MM_POR_CM,
   );
-  const [larguraTiraMm, setLarguraTiraMm] = useState<number>(0);
-  const [perdaPct, setPerdaPct] = useState<number>(STRAP_YIELD_DEFAULTS.perdaPct);
+  const [larguraTiraMm, setLarguraTiraMm] = useState<number>(larguraBandaPadraoMm);
   const [comprimentoRoloM, setComprimentoRoloM] = useState<number>(STRAP_YIELD_DEFAULTS.comprimentoRoloM);
   const [custoMetroLinear, setCustoMetroLinear] = useState<number>(0);
   // Modo inverso: quantos metros de tira pronta o usuário precisa produzir.
@@ -106,9 +217,9 @@ export default function StrapCalculator() {
   const baseInput: StrapYieldInput = {
     larguraMaterialMm: larguraMaterialCm * MM_POR_CM,
     larguraTiraMm,
-    perdaPct,
     comprimentoRoloM,
     custoMetroLinear: custoMetroLinear > 0 ? custoMetroLinear : null,
+    rendimentoConfirmadoMPerM: rendimentoConfirmadoPadrao,
   };
   const current: Snapshot =
     modo === 'necessidade' ? { ...baseInput, modo, tiraDesejadaM } : { ...baseInput, modo };
@@ -148,9 +259,8 @@ export default function StrapCalculator() {
   };
 
   const restaurar = () => {
-    setLarguraMaterialCm(STRAP_YIELD_DEFAULTS.larguraMaterialMm / MM_POR_CM);
-    setLarguraTiraMm(0);
-    setPerdaPct(STRAP_YIELD_DEFAULTS.perdaPct);
+    setLarguraMaterialCm(larguraMaterialPadraoMm / MM_POR_CM);
+    setLarguraTiraMm(larguraBandaPadraoMm);
     setComprimentoRoloM(STRAP_YIELD_DEFAULTS.comprimentoRoloM);
     setCustoMetroLinear(0);
     setTiraDesejadaM(0);
@@ -164,11 +274,13 @@ export default function StrapCalculator() {
 
   return (
     <div className="space-y-5 page-enter">
-      <EditorialPageHeader
-        sectionLabel="ENGENHARIA · CORTE"
-        title="Calculadora de Tiras"
-        description="Nos dois sentidos: quanto de tira sai de um material — ou quantas bandas e quantos rolos cortar para uma metragem de tira. Preencha os dados e clique em Calcular. Defaults do rolo padrão (137 cm × 40 m, 15%), todos editáveis. Largura útil em cm; banda de corte em mm."
-      />
+      {!embedded && (
+        <EditorialPageHeader
+          sectionLabel="ENGENHARIA · CORTE"
+          title="Calculadora de Tiras"
+          description="Nos dois sentidos: quanto de tira sai de um material — ou quantas bandas e quantos rolos cortar para uma metragem de tira. A conta usa somente bandas físicas completas, sem perda percentual adicional. Largura útil em cm; banda de corte em mm."
+        />
+      )}
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,380px)_1fr]">
         {/* ── ENTRADAS ──────────────────────────────────────────────── */}
@@ -237,34 +349,39 @@ export default function StrapCalculator() {
               </p>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-2">
-                  <Label htmlFor="p">Perda de processo</Label>
-                  <UnitTag>%</UnitTag>
-                </div>
-                <NumberInput id="p" value={perdaPct} onChange={setPerdaPct} unit="%" decimals={2} placeholder="15" />
+            {rendimentoConfirmadoPadrao != null && (
+              <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-2.5">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Rendimento confirmado da receita
+                </p>
+                <p className="mt-1 font-mono text-lg font-bold text-foreground">
+                  {nf(rendimentoConfirmadoPadrao, 6)} m/m
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">Valor aprovado e usado em metragem, custo e estoque.</p>
               </div>
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-2">
-                  <Label htmlFor="cr">Comprimento do rolo</Label>
-                  <UnitTag>m</UnitTag>
-                </div>
-                <NumberInput id="cr" value={comprimentoRoloM} onChange={setComprimentoRoloM} unit="m" decimals={2} placeholder="40" />
-                {inverso && <p className="text-[11px] text-muted-foreground">Comprimento em que a faixa é cortada.</p>}
+            )}
+
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2">
+                <Label htmlFor="cr">Comprimento do rolo</Label>
+                <UnitTag>m</UnitTag>
               </div>
+              <NumberInput id="cr" value={comprimentoRoloM} onChange={setComprimentoRoloM} unit="m" decimals={2} placeholder="40" />
+              {inverso && <p className="text-[11px] text-muted-foreground">Comprimento em que a faixa é cortada.</p>}
             </div>
 
-            <div className="space-y-1.5 rounded-lg border border-border/60 bg-muted/30 p-3">
-              <div className="flex items-center gap-2">
-                <Label htmlFor="cml" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Custo do material (opcional)
-                </Label>
-                <UnitTag>R$/m</UnitTag>
+            {canShowFinancialValues && (
+              <div className="space-y-1.5 rounded-lg border border-border/60 bg-muted/30 p-3">
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="cml" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Custo do material (opcional)
+                  </Label>
+                  <UnitTag>R$/m</UnitTag>
+                </div>
+                <CurrencyInput id="cml" value={custoMetroLinear} onChange={setCustoMetroLinear} />
+                <p className="text-xs text-muted-foreground">R$ por metro linear do material comprado.</p>
               </div>
-              <CurrencyInput id="cml" value={custoMetroLinear} onChange={setCustoMetroLinear} />
-              <p className="text-xs text-muted-foreground">R$ por metro linear do material comprado.</p>
-            </div>
+            )}
 
             <div className="space-y-2 pt-1">
               <Button onClick={calcular} className="h-11 w-full gap-2 text-base font-semibold" size="lg">
@@ -308,6 +425,8 @@ export default function StrapCalculator() {
                 <p className="text-sm text-amber-700 dark:text-amber-300">{active.error}</p>
               </CardContent>
             </Card>
+          ) : submitted.modo === 'necessidade' && needResult?.valid && submitted.rendimentoConfirmadoMPerM != null ? (
+            <ConfirmedNeedResult result={needResult} submitted={submitted} showCost={showCostNeed} />
           ) : submitted.modo === 'necessidade' && needResult?.valid ? (
             /* ── MODO INVERSO: quanto material preciso ─────────────────── */
             <div key={runId} className="space-y-4 duration-300 animate-in fade-in-50 slide-in-from-bottom-2">
@@ -349,36 +468,19 @@ export default function StrapCalculator() {
                     </p>
                   </div>
 
-                  {/* Passo a passo: bruto → perda aumenta → largura a cortar */}
+                  {/* Passo a passo: faixa exata → bandas físicas completas */}
                   <div className="mt-4 space-y-1.5 rounded-lg border border-red-500/20 bg-red-500/5 p-3">
                     <div className="flex items-baseline justify-between gap-3 text-xs">
                       <span className="text-red-700/80 dark:text-red-300/80">
-                        1. Largura bruta <span className="text-red-700/50 dark:text-red-300/50">(sem perda)</span>
+                        1. Faixa exata <span className="text-red-700/50 dark:text-red-300/50">({nf(needResult.tirasNecessarias, 2)} bandas)</span>
                       </span>
                       <span className="shrink-0 font-mono font-semibold tabular-nums text-red-700 dark:text-red-300">
                         {nfCm(needResult.larguraCortarBrutaMm, 2)} cm
                       </span>
                     </div>
-                    <div className="flex items-baseline justify-between gap-3 text-xs">
-                      <span className="text-red-700/80 dark:text-red-300/80">
-                        2. Perda de {nf(needResult.perdaPct, 0)}% <span className="text-red-700/50 dark:text-red-300/50">(corta mais)</span>
-                      </span>
-                      <span className="shrink-0 font-mono font-semibold tabular-nums text-red-700 dark:text-red-300">
-                        + {nfCm(needResult.larguraExtraPerdaMm, 2)} cm
-                      </span>
-                    </div>
-                    <div className="flex items-baseline justify-between gap-3 text-xs">
-                      <span className="text-red-700/80 dark:text-red-300/80">
-                        3. Cálculo exato{' '}
-                        <span className="text-red-700/50 dark:text-red-300/50">({nf(needResult.tirasNecessarias, 2)} bandas)</span>
-                      </span>
-                      <span className="shrink-0 font-mono font-semibold tabular-nums text-red-700 dark:text-red-300">
-                        {nfCm(needResult.larguraCortarMm, 2)} cm
-                      </span>
-                    </div>
                     <div className="flex items-baseline justify-between gap-3 border-t border-red-500/20 pt-1.5 text-xs">
                       <span className="font-semibold text-red-700 dark:text-red-300">
-                        4. Bandas inteiras{' '}
+                        2. Bandas inteiras{' '}
                         <span className="font-normal text-red-700/60 dark:text-red-300/60">
                           ({nf(needResult.tirasInteiras, 0)} × {nf(submitted.larguraTiraMm, 0)} mm)
                         </span>
@@ -415,8 +517,7 @@ export default function StrapCalculator() {
                         {nf(needResult.tirasInteiras, 0)} bandas × {nf(submitted.comprimentoRoloM, 0)} m — total bruto cortado
                       </div>
                       <div className="mt-1 text-xs text-muted-foreground">
-                        − perda {nf(needResult.perdaPct, 0)}% →{' '}
-                        <span className="font-mono font-semibold text-foreground">{nf(needResult.tiraLiquidaRealM, 2)} m</span> aproveitáveis
+                        <span className="font-mono font-semibold text-foreground">{nf(needResult.tiraLiquidaRealM, 2)} m</span> produzidos, sem perda adicional
                         {needResult.sobraTiraM > 0.005 && (
                           <span className="text-muted-foreground">
                             {' '}(sobra <span className="font-mono">{nf(needResult.sobraTiraM, 2)} m</span> além dos {nf(needResult.tiraDesejadaM, 2)} m pedidos)
@@ -498,7 +599,7 @@ export default function StrapCalculator() {
                 <CardContent className="py-6">
                   <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-red-600/80 dark:text-red-400/80">
                     <Scissors className="h-3.5 w-3.5" weight="fill" />
-                    Rendimento · por metro linear
+                    {submitted.rendimentoConfirmadoMPerM != null ? 'Rendimento confirmado da receita' : 'Rendimento teórico · por metro linear'}
                   </div>
                   <div className="mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
                     <span className="font-mono text-6xl font-bold leading-none tabular-nums text-red-600 dark:text-red-400">
@@ -507,8 +608,10 @@ export default function StrapCalculator() {
                     <span className="text-lg font-medium text-red-600/80 dark:text-red-400/80">m de tira / m linear</span>
                   </div>
                   <p className="mt-3 font-mono text-xs text-red-700/70 dark:text-red-300/70">
-                    {nfCm(submitted.larguraMaterialMm, 2)} cm ÷ {nfCm(submitted.larguraTiraMm, 2)} cm × (1 − {nf(rendResult.perdaPct, 2)}%) = {nf(rendResult.metragemPorMetroLiq, 3)} m/m
-                    <span className="text-red-600/50 dark:text-red-400/50"> · bruto {nf(rendResult.metragemPorMetroBruto, 3)} m/m</span>
+                    {submitted.rendimentoConfirmadoMPerM != null
+                      ? `${nf(rendResult.metragemPorMetroLiq, 6)} m/m confirmados · teto geométrico ${nf(rendResult.metragemPorMetroBruto, 0)} m/m`
+                      : `floor(${nfCm(submitted.larguraMaterialMm, 2)} cm ÷ ${nfCm(submitted.larguraTiraMm, 2)} cm) = ${nf(rendResult.bandasCompletas, 0)} bandas`}
+                    <span className="text-red-600/50 dark:text-red-400/50"> · sobra lateral {nf(submitted.larguraMaterialMm - rendResult.bandasCompletas * submitted.larguraTiraMm, 2)} mm</span>
                   </p>
                 </CardContent>
               </Card>
@@ -686,10 +789,14 @@ export default function StrapCalculator() {
             </div>
           ) : null}
 
-          {/* Aviso de estimativa (fixo) */}
+          {/* Fonte do cálculo */}
           <div className="flex items-start gap-2 rounded-lg border border-border/60 bg-muted/30 px-3 py-2.5 text-xs text-muted-foreground">
             <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-            <span>Estimativa. Confira no corte real — a % de perda cobre a variação do corte artesanal.</span>
+            <span>
+              {rendimentoConfirmadoPadrao != null
+                ? 'Cálculo operacional baseado na receita aprovada, sem percentual de perda adicional.'
+                : 'Sugestão geométrica para conferência. Cadastre e aprove o rendimento real antes de usar em estoque, custo ou produção.'}
+            </span>
           </div>
         </div>
       </div>

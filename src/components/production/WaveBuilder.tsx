@@ -2,6 +2,7 @@
 // Step 1 — select pending orders for the week.
 // Step 2 — review calculated timeline + material needs, then create wave.
 import React, { useState, useEffect, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,7 +24,7 @@ import {
 } from '@/services/productionWavesService';
 import {
   computeWaveTimeline, getWaveMaterialNeeds,
-  createWaveWithMaterialOrders, autoCreateArtisanalServiceOrders,
+  createWaveWithMaterialOrders,
   WaveTimeline, WaveMaterialNeed, ArtisanalOsNeed,
 } from '@/services/waveTimelineService';
 import { toast } from 'sonner';
@@ -176,42 +177,13 @@ function MaterialNeedsPanel({ needs, wavePurchaseDeadline }: {
         </div>
       )}
 
-      {/* Artisanal rows */}
+      {/* O RPC legado da onda não é fonte de identidade/quantidade de tira. */}
       {artisanal.length > 0 && (
-        <div className="rounded-lg border border-amber-500/20 overflow-hidden">
-          <div className="px-3 py-1.5 bg-amber-500/5 text-xs font-medium text-amber-600">Materiais artesanais — exigem OS ao terceirizado</div>
-          <div className="divide-y divide-border/50">
-            {artisanal.map(n => (
-              <div key={n.product_id + n.color} className="px-3 py-2 text-xs space-y-1">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-1 flex-wrap">
-                    <span className="font-medium">{n.product_name}</span>
-                    {n.color && <span className="text-muted-foreground">· {n.color}</span>}
-                    {n.shortage > 0
-                      ? <Badge variant="outline" className="text-xs py-0 bg-red-500/10 text-red-600 border-red-500/20">Falta {n.shortage.toFixed(2)} {n.unit}</Badge>
-                      : <Badge variant="outline" className="text-xs py-0 bg-green-500/10 text-green-600 border-green-500/20">Em estoque</Badge>
-                    }
-                  </div>
-                  {n.os_send_date && (
-                    <Badge variant="outline" className={cn('text-xs gap-1 shrink-0', new Date(n.os_send_date + 'T00:00:00') < new Date() ? 'bg-red-500/10 text-red-600 border-red-500/20' : 'bg-amber-500/10 text-amber-600 border-amber-500/20')}>
-                      <Clock className="h-2.5 w-2.5" /> OS até {fmtDateLong(n.os_send_date)}
-                    </Badge>
-                  )}
-                </div>
-                {n.base_product_name && (
-                  <div className="text-muted-foreground pl-2 border-l border-border/50">
-                    MP base: <span className="font-medium">{n.base_product_name}</span>
-                    {n.base_needed_qty != null && <span> — necessário {n.base_needed_qty.toFixed(3)} m</span>}
-                    {n.base_stock_qty != null && <span> / estoque {n.base_stock_qty.toFixed(3)} m</span>}
-                    {(n.base_shortage ?? 0) > 0
-                      ? <span className="text-red-600 font-medium"> · Falta {n.base_shortage!.toFixed(3)} m (OC gerada)</span>
-                      : <span className="text-green-600"> · OK</span>
-                    }
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
+        <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-amber-800 dark:text-amber-300">
+          Este pedido contém tiras. Identidades, quantidades e faltas são exibidas somente no motor canônico.{' '}
+          <Link className="font-semibold underline underline-offset-2" to="/tiras-artesanais?tab=demandas">
+            Abrir Demandas de tiras
+          </Link>
         </div>
       )}
 
@@ -393,12 +365,9 @@ export function WaveBuilder({
       }
       const result = await createWaveWithMaterialOrders({ weekStart, saleOrderIds: ids, waveId, generatePOs });
 
-      // Always auto-create artisanal service orders assigned to "nego"
-      const osCreated = await autoCreateArtisanalServiceOrders(result.artisanalOsNeeds);
-
       const parts: string[] = ['Onda criada!'];
       if (generatePOs && result.posCreated > 0) parts.push(`${result.posCreated} OC(s) gerada(s).`);
-      if (osCreated > 0) parts.push(`${osCreated} OS(s) artesanal(is) gerada(s) para "nego".`);
+      if (result.artisanalOsNeeds.length > 0) parts.push('Tiras seguem na fila canônica do hub.');
       toast.success(parts.join(' '));
 
       // Captura os order_ids das OPs criadas/atualizadas pela onda — usado
@@ -425,9 +394,7 @@ export function WaveBuilder({
         setStep('select');
       }
     } catch (err: any) {
-      // Surface the real error — could be from useCreateWave, createWaveWithMaterialOrders,
-      // or autoCreateArtisanalServiceOrders (which throws when "nego" contractor is missing).
-      // Invalidate queries so any partial results (wave + POs without artisanal OS) are visible.
+      // Surface the real error from wave/timeline or the general-material OC path.
       toast.error(`Erro ao criar onda: ${err?.message || 'desconhecido'}`);
     } finally {
       setCreating(false);
@@ -437,7 +404,7 @@ export function WaveBuilder({
   const selectableCount = pendingOrders.filter(o => !conflictIds.has(o.id)).length;
   const matchCount = clientGroups.reduce((s, g) => s + g.orders.length, 0);
   const totalPairs = pendingOrders.filter(o => selected.has(o.id)).reduce((s, o) => s + o.total_pairs, 0);
-  const hasShortages = materialNeeds.some(n => n.shortage > 0 || (n.base_shortage ?? 0) > 0);
+  const hasShortages = materialNeeds.some(n => !n.is_artisanal && n.shortage > 0);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

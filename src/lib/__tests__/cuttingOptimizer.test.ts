@@ -16,7 +16,7 @@ import { computeStrapRollCut, type ArtisanalStrapCutRow } from '@/lib/strapRollC
  * GATE do otimizador de corte do rolo (FFD multi-tira).
  *
  * Empacota várias tiras da mesma cor/base num rolo de 1370 mm via First-Fit-Decreasing.
- * Cada banda rende 34 m úteis (40 m × 0,85). A unidade de saída do empacotamento é a
+ * Cada banda rende os 40 m integrais do rolo, sem percentual adicional de perda. A unidade é a
  * LARGURA (mm) consumida na dimensão dos 1370 mm do rolo.
  */
 
@@ -27,8 +27,8 @@ const block = (recipe_id: string, cut_width_mm: number, recipe_name?: string): C
 });
 
 describe('constantes e helpers', () => {
-  it('metros úteis por banda = 34', () => {
-    expect(METROS_UTEIS_POR_BANDA).toBeCloseTo(34, 10);
+  it('metros úteis por banda = comprimento integral de 40 m', () => {
+    expect(METROS_UTEIS_POR_BANDA).toBeCloseTo(40, 10);
   });
 
   it('largura do rolo = 1370 mm', () => {
@@ -38,11 +38,11 @@ describe('constantes e helpers', () => {
   it('bandsForMeters arredonda pra cima (banda parcial conta inteira)', () => {
     expect(bandsForMeters(0)).toBe(0);
     expect(bandsForMeters(-10)).toBe(0);
-    expect(bandsForMeters(34)).toBe(1);
-    expect(bandsForMeters(35)).toBe(2);
-    expect(bandsForMeters(100)).toBe(3); // ceil(2.94)
-    expect(bandsForMeters(500)).toBe(15); // ceil(14.7)
-    expect(bandsForMeters(200)).toBe(6); // ceil(5.88)
+    expect(bandsForMeters(40)).toBe(1);
+    expect(bandsForMeters(41)).toBe(2);
+    expect(bandsForMeters(100)).toBe(3); // ceil(2,5)
+    expect(bandsForMeters(500)).toBe(13); // ceil(12,5)
+    expect(bandsForMeters(200)).toBe(5);
   });
 });
 
@@ -121,7 +121,7 @@ describe('planRollCutting — wrapper de alto nível', () => {
       { recipe_id: 'a', recipe_name: 'Tira chata 25mm', cut_width_mm: 25, m_needed: 30 },
     ]);
     expect(p.total_rolls).toBe(1);
-    expect(p.breakdown[0].n_bandas).toBe(1); // ceil(30/34)
+    expect(p.breakdown[0].n_bandas).toBe(1); // ceil(30/40)
     expect(p.breakdown[0].total_width_mm).toBe(25);
     expect(p.rolls[0].used_mm).toBe(25);
     expect(p.rolls[0].leftover_mm).toBe(1370 - 25);
@@ -138,15 +138,15 @@ describe('planRollCutting — wrapper de alto nível', () => {
     ];
     const p = planRollCutting(demands);
 
-    // bandas: 25→3 (75mm), 5→15 (75mm), 8→6 (48mm). Total 198mm.
+    // bandas: 25→3 (75mm), 5→13 (65mm), 8→5 (40mm). Total 180mm.
     expect(p.breakdown.find((b) => b.recipe_id === 'chata25')!.n_bandas).toBe(3);
-    expect(p.breakdown.find((b) => b.recipe_id === 'over5')!.n_bandas).toBe(15);
-    expect(p.breakdown.find((b) => b.recipe_id === 'chata8')!.n_bandas).toBe(6);
+    expect(p.breakdown.find((b) => b.recipe_id === 'over5')!.n_bandas).toBe(13);
+    expect(p.breakdown.find((b) => b.recipe_id === 'chata8')!.n_bandas).toBe(5);
 
     expect(p.total_rolls).toBe(1);
-    expect(p.total_used_mm).toBe(198);
-    expect(p.rolls[0].leftover_mm).toBe(1370 - 198); // 1172mm
-    expect(p.total_leftover_mm).toBe(1172);
+    expect(p.total_used_mm).toBe(180);
+    expect(p.rolls[0].leftover_mm).toBe(1370 - 180); // 1190mm
+    expect(p.total_leftover_mm).toBe(1190);
 
     // segmentos por receita (ordem descendente de largura) + sobra no fim.
     const segs = p.rolls[0].segments;
@@ -155,11 +155,11 @@ describe('planRollCutting — wrapper de alto nível', () => {
     expect(chata25.count).toBe(3);
     expect(chata25.width_mm).toBe(75);
     const over5 = segs.find((s) => s.recipe_id === 'over5')!;
-    expect(over5.count).toBe(15);
-    expect(over5.width_mm).toBe(75);
+    expect(over5.count).toBe(13);
+    expect(over5.width_mm).toBe(65);
 
-    // sobra de 1172mm ≥ 50 ⇒ reaproveitável, zero desperdício.
-    expect(p.reusable_leftover_mm).toBe(1172);
+    // sobra de 1190mm ≥ 50 ⇒ reaproveitável, zero desperdício.
+    expect(p.reusable_leftover_mm).toBe(1190);
     expect(p.waste_leftover_mm).toBe(0);
   });
 
@@ -273,8 +273,8 @@ describe('planRollsFromStrapRows — agrupamento por base+cor', () => {
     expect(plans[0].baseName).toBe('NAPA SOFT');
     expect(plans[0].color).toBe('Caramelo');
     expect(plans[0].rows).toHaveLength(3);
-    // 3×25=75, 15×5=75, 6×8=48 → 198mm → 1 rolo (caso real do Leonardo).
-    expect(plans[0].plan.total_used_mm).toBe(198);
+    // 3×25=75, 13×5=65, 5×8=40 → 180mm → 1 rolo.
+    expect(plans[0].plan.total_used_mm).toBe(180);
     expect(plans[0].plan.total_rolls).toBe(1);
   });
 
@@ -311,11 +311,11 @@ describe('planRollsFromStrapRows — agrupamento por base+cor', () => {
 
   it('uma tira que excede 1 rolo gera plano multi-rolo', () => {
     const rows = [
-      strapRow({ groupName: 'Tira larga', color: 'Azul', baseName: 'NAPA SOFT', largura_mm: 20, metros_necessarios: 2448 }),
+      strapRow({ groupName: 'Tira larga', color: 'Azul', baseName: 'NAPA SOFT', largura_mm: 20, metros_necessarios: 2800 }),
     ];
     const plans = planRollsFromStrapRows(rows);
     expect(plans).toHaveLength(1);
-    // ceil(2448/34)=72 bandas × 20mm = 1440mm > 1370 → 2 rolos
+    // ceil(2800/40)=70 bandas × 20mm = 1400mm > 1370 → 2 rolos
     expect(plans[0].plan.total_rolls).toBe(2);
   });
 

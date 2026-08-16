@@ -5,14 +5,14 @@
  * base/cor ele corta VÁRIAS tiras diferentes (ex.: Tira chata 8 mm + Tira Overlock 5 mm
  * + Tira chata 25 mm, todas CARAMELO). Cada tira tem sua `cut_width_mm` (largura da banda
  * cortada na dimensão dos 1370 mm). Cada banda rende o comprimento inteiro do rolo
- * (40 m → 34 m úteis após 15 % de perda) e vira 1 tira pronta.
+ * (40 m) e vira 1 tira pronta. Não existe perda percentual adicional.
  *
  * Este módulo NÃO altera `computeStrapRollCut` (corte de UMA tira, usado nos painéis do
- * PV). Ele REUSA as mesmas constantes (rolo, perda, metros úteis por banda) e empacota
+ * PV). Ele REUSA as mesmas constantes (rolo e metros por banda) e empacota
  * várias tiras no mesmo rolo, devolvendo um plano de corte pronto pro UI.
  *
  * Algoritmo (First-Fit-Decreasing — clássico de bin-packing 1D):
- *   1. Pra cada receita: n_bandas = ceil(m_necessarios ÷ 34); largura total = n × cut_width.
+ *   1. Pra cada receita: n_bandas = ceil(m_necessarios ÷ 40); largura total = n × cut_width.
  *   2. Expande em "blocos" unitários (1 banda de `cut_width` cada) — espelha o corte real.
  *   3. Ordena os blocos DECRESCENTE por largura.
  *   4. Cada bloco entra no PRIMEIRO rolo (aberto na ordem) com espaço suficiente; senão
@@ -30,15 +30,14 @@
 import {
   ROLO_LARGURA_MM,
   ROLO_COMPRIMENTO_M,
-  PERDA_PCT,
   normalizeWidthToMm,
   type ArtisanalStrapCutRow,
 } from './strapRollCut';
 
-export { ROLO_LARGURA_MM, ROLO_COMPRIMENTO_M, PERDA_PCT };
+export { ROLO_LARGURA_MM, ROLO_COMPRIMENTO_M };
 
-/** Metros lineares úteis por banda cortada (= 40 m × 0,85 = 34 m). Constante do rolo. */
-export const METROS_UTEIS_POR_BANDA = ROLO_COMPRIMENTO_M * (1 - PERDA_PCT);
+/** Metros lineares por banda cortada (= comprimento integral do rolo). */
+export const METROS_UTEIS_POR_BANDA = ROLO_COMPRIMENTO_M;
 
 /**
  * Sobra mínima (mm) pra considerar o pedaço reaproveitável. Abaixo disso a sobra é
@@ -46,7 +45,7 @@ export const METROS_UTEIS_POR_BANDA = ROLO_COMPRIMENTO_M * (1 - PERDA_PCT);
  */
 export const MIN_REUSABLE_LEFTOVER_MM = 50;
 
-/** Quantas bandas atendem `m` metros lineares (cada banda = 34 m úteis). 0 se m ≤ 0. */
+/** Quantas bandas atendem `m` metros lineares. 0 se m ≤ 0. */
 export function bandsForMeters(m: number): number {
   const meters = Math.max(0, Number(m) || 0);
   return meters > 0 ? Math.ceil(meters / METROS_UTEIS_POR_BANDA) : 0;

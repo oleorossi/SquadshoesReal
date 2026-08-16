@@ -11,9 +11,19 @@ import { searchMatchesAllTerms, searchNormOrFilter } from '@/lib/searchUtils';
 import { SearchInput } from '@/components/ui/search-input';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { NumberInput } from '@/components/ui/number-input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { SignatureCanvas } from '@/components/mobile/SignatureCanvas';
 import type { SaleOrderItemFormData } from '@/hooks/useSaleOrders';
+import { ensureTechnicalStrapLineIds, technicalStrapLineId } from '@/lib/technicalStrapLines';
+import { missingStrapSourcingLineIds, setStrapSourcing, type StrapSourcingMap } from '@/lib/strapSourcing';
+import { useStrapStockLines } from '@/hooks/useStrapStockLines';
+import { useArtisanalStrapCatalog, type ArtisanalStrapCatalog } from '@/hooks/useArtisanalStraps';
+import { isoToMonthWeek } from '@/lib/billingWeek';
+import { listMissingTechnicalStrapSnapshots } from '@/lib/strapSnapshotGuard';
+import { submitMobileSaleOrderAtomic } from '@/lib/mobile/atomicSaleOrder';
+import { officialStrapColorsForBase } from '@/lib/officialStrapColors';
 
 interface ClientLite {
   id: string;
@@ -28,6 +38,8 @@ interface RefLite {
   id: string;
   name: string;
   shoe_category_id?: string | null;
+  has_straps?: boolean | null;
+  strap_colors?: any[] | null;
 }
 
 interface VariantLite {
@@ -43,6 +55,8 @@ interface DraftItem {
   image_url?: string | null;
   grade: Record<string, number>;
   unit_price: number;
+  strap_colors?: any[];
+  strap_sourcing?: StrapSourcingMap;
 }
 
 type Step = 'client' | 'items' | 'review';
@@ -51,6 +65,13 @@ type Step = 'client' | 'items' | 'review';
 const newRequestId = () => crypto.randomUUID();
 
 const SIZE_RANGE_ADULT = ['33','34','35','36','37','38','39','40'];
+
+export function referencesWithMissingStrapSnapshot(items: DraftItem[], references: RefLite[]) {
+  const missingIndexes = new Set(
+    listMissingTechnicalStrapSnapshots(items, references).map((entry) => entry.index),
+  );
+  return items.filter((_, index) => missingIndexes.has(index));
+}
 
 function OrderProgress({ current }: { current: Step }) {
   const steps: Array<{ key: Step; label: string }> = [
@@ -73,6 +94,127 @@ function OrderProgress({ current }: { current: Step }) {
   );
 }
 
+function MobileStrapIdentityEditor({
+  item,
+  billingDate,
+  catalog,
+  onChange,
+}: {
+  item: DraftItem;
+  billingDate: string;
+  catalog?: ArtisanalStrapCatalog;
+  onChange: (item: DraftItem) => void;
+}) {
+  const quantity = Object.values(item.grade).reduce((sum, value) => sum + (value || 0), 0);
+  const { data: lines = [], isLoading } = useStrapStockLines({
+    referenceId: item.reference_id,
+    itemColor: item.color,
+    strapColors: item.strap_colors || [],
+    strapSourcing: item.strap_sourcing || {},
+    quantity,
+    grade: item.grade,
+    requiredAt: billingDate || null,
+    billingWeek: billingDate || null,
+  });
+  const lineById = useMemo(() => new Map(lines.map((line) => [line.technicalStrapLineId, line])), [lines]);
+
+  const selectOrigin = (strap: any, mode: 'internal' | 'buy_ready') => {
+    const lineId = technicalStrapLineId(strap);
+    const line = lineId ? lineById.get(lineId) : undefined;
+    const colorId = line?.colorId || strap.color_id || null;
+    if (!lineId || !line?.strapVariantId || !colorId) {
+      toast.error('Aguarde a resolução da cor e da variante canônica.');
+      return;
+    }
+    onChange({
+      ...item,
+      strap_sourcing: setStrapSourcing(item.strap_sourcing, lineId, {
+        source_mode: mode,
+        color_id: colorId,
+        strap_variant_id: line.strapVariantId,
+        recipe_id: mode === 'internal' ? line.recipeId : null,
+        gross_required_m: line.strapRequiredM,
+        required_at: line.requiredAt,
+        main_production_start: line.mainProductionStart,
+        schedule_revision: line.scheduleRevision,
+      }),
+    });
+  };
+
+  return (
+    <div className="mt-3 space-y-2 border-t pt-3">
+      <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Identidade e origem das tiras</p>
+      {!billingDate && (
+        <p className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-amber-700 dark:text-amber-400">
+          Informe a semana de faturamento acima para liberar a escolha de origem.
+        </p>
+      )}
+      {(item.strap_colors || []).map((strap, strapIndex) => {
+        const lineId = technicalStrapLineId(strap);
+        const line = lineId ? lineById.get(lineId) : undefined;
+        const selection = lineId ? item.strap_sourcing?.[lineId] : null;
+        const officialColors = officialStrapColorsForBase(catalog, line?.baseGroupId);
+        const selectedColor = catalog?.colors.find((entry) => entry.id === strap.color_id);
+        const colorIsOfficial = !!strap.color_id && officialColors.some((entry) => entry.id === strap.color_id);
+        const displayedColors = selectedColor && !colorIsOfficial
+          ? [selectedColor, ...officialColors]
+          : officialColors;
+        return (
+          <div key={lineId || strapIndex} className="space-y-2 rounded-md border p-2">
+            <p className="text-xs font-semibold">{strap.label || `Tira ${strapIndex + 1}`}</p>
+            <Select
+              value={strap.color_id || undefined}
+              disabled={!catalog || isLoading || !line?.baseGroupId}
+              onValueChange={(colorId) => {
+                const color = officialColors.find((entry) => entry.id === colorId);
+                if (!color) return;
+                const straps = [...(item.strap_colors || [])];
+                straps[strapIndex] = { ...strap, color_id: color.id, color: color.name };
+                onChange({
+                  ...item,
+                  strap_colors: straps,
+                  strap_sourcing: setStrapSourcing(item.strap_sourcing, lineId, null),
+                });
+              }}
+            >
+              <SelectTrigger className={!strap.color_id ? 'border-amber-500/60' : ''}>
+                <SelectValue placeholder={strap.color ? `${strap.color} — confirme` : 'Cor canônica'} />
+              </SelectTrigger>
+              <SelectContent>
+                {displayedColors.map((entry) => (
+                  <SelectItem key={entry.id} value={entry.id} disabled={!officialColors.some((color) => color.id === entry.id)}>{entry.name}{entry.id === strap.color_id && !colorIsOfficial ? ' · vínculo inválido' : ''}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {!isLoading && !line?.baseGroupId && <p className="text-xs text-destructive">A referência não identifica a napa-base por UUID. Corrija o cadastro no hub.</p>}
+            {!!line?.baseGroupId && officialColors.length === 0 && <p className="text-xs text-destructive">Esta napa-base não possui cor oficial ativa.</p>}
+            {!!strap.color_id && !colorIsOfficial && <p className="text-xs text-destructive">A cor atual não pertence à napa-base resolvida.</p>}
+            <div className="grid grid-cols-2 gap-1.5">
+              {([
+                ['internal', 'Produzir com napa'],
+                ['buy_ready', 'Comprar pronta'],
+              ] as const).map(([mode, label]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  disabled={!billingDate || isLoading || !line?.strapVariantId || !strap.color_id || !colorIsOfficial}
+                  onClick={() => selectOrigin(strap, mode)}
+                  className={`min-h-10 rounded-md border px-2 text-[11px] font-semibold disabled:opacity-50 ${selection?.source_mode === mode ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground'}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {selection?.source_mode && line?.blockReason && (
+              <p className="text-xs text-amber-700 dark:text-amber-400">{line.blockReason}</p>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function MobileNewOrder() {
   const navigate = useNavigate();
   const online = useOnlineStatus();
@@ -92,6 +234,8 @@ export default function MobileNewOrder() {
   const [variants, setVariants] = useState<VariantLite[]>([]);
   const [items, setItems] = useState<DraftItem[]>([]);
   const [refSearch, setRefSearch] = useState('');
+  const [billingDate, setBillingDate] = useState('');
+  const { data: strapCatalog } = useArtisanalStrapCatalog(false);
 
   // F3: assinatura do cliente
   const [signatureDataUrl, setSignatureDataUrl] = useState<string | null>(null);
@@ -111,6 +255,7 @@ export default function MobileNewOrder() {
           setRequestId(draftId);
           setSelectedClient(data.client);
           setItems(data.items || []);
+          setBillingDate(data.billingDate || '');
           if (data.client) setStep('items');
         }
       } else {
@@ -135,10 +280,10 @@ export default function MobileNewOrder() {
   useEffect(() => {
     if (!selectedClient && items.length === 0) return;
     const t = setTimeout(() => {
-      void saveDraft(requestId, { client: selectedClient, items });
+      void saveDraft(requestId, { client: selectedClient, items, billingDate });
     }, 500);
     return () => clearTimeout(t);
-  }, [selectedClient, items, requestId]);
+  }, [selectedClient, items, billingDate, requestId]);
 
   // ── Carrega clientes ──
   useEffect(() => {
@@ -167,10 +312,13 @@ export default function MobileNewOrder() {
     (async () => {
       const { data } = await supabase
         .from('technical_sheets')
-        .select('id, name, shoe_category_id')
+        .select('id, name, shoe_category_id, has_straps, strap_colors')
         .order('name')
         .limit(100);
-      setRefs(data ?? []);
+      setRefs((data ?? []).map((reference) => ({
+        ...reference,
+        strap_colors: Array.isArray(reference.strap_colors) ? reference.strap_colors : [],
+      })));
 
       const refIds = (data ?? []).map(r => r.id);
       if (refIds.length > 0) {
@@ -200,6 +348,18 @@ export default function MobileNewOrder() {
     (s, it) => s + Object.values(it.grade).reduce((a, b) => a + (b || 0), 0) * (it.unit_price || 0),
     0,
   );
+  const unresolvedStrapSnapshots = useMemo(
+    () => referencesWithMissingStrapSnapshot(items, refs),
+    [items, refs],
+  );
+  const unresolvedStrapReferenceIds = useMemo(
+    () => new Set(unresolvedStrapSnapshots.map((item) => item.reference_id)),
+    [unresolvedStrapSnapshots],
+  );
+
+  const strapsForReference = (reference: RefLite, color: string) =>
+    ensureTechnicalStrapLineIds(Array.isArray(reference.strap_colors) ? reference.strap_colors : [])
+      .map((strap) => ({ ...strap, color: strap.color || color }));
 
   // ── Submit ──
   const handleSubmit = async () => {
@@ -211,6 +371,28 @@ export default function MobileNewOrder() {
       toast.error('Adicione ao menos 1 item com quantidade');
       return;
     }
+    if (unresolvedStrapSnapshots.length > 0) {
+      toast.error('Há referência com tiras habilitadas, mas sem linhas técnicas no snapshot. Corrija a ficha técnica no desktop antes de enviar.');
+      setStep('items');
+      return;
+    }
+    const hasStraps = items.some((item) => (item.strap_colors || []).length > 0);
+    if (hasStraps && !billingDate) {
+      toast.error('Informe o primeiro dia da semana de faturamento para calcular a necessidade das tiras.');
+      setStep('items');
+      return;
+    }
+    const missingSource = items.flatMap((item) => missingStrapSourcingLineIds(
+      item.strap_sourcing,
+      item.strap_colors || [],
+    ));
+    if (missingSource.length > 0) {
+      toast.error('Confirme a cor canônica e a variante exata de cada tira antes de enviar.');
+      setStep('items');
+      return;
+    }
+
+    const billing = billingDate ? isoToMonthWeek(billingDate) : null;
 
     // Strings vazias em colunas date/numeric quebram o PostgREST com
     // "invalid input syntax" (auditoria 24/05/2026). Campos opcionais
@@ -224,9 +406,9 @@ export default function MobileNewOrder() {
       client_order_number: '',
       representative: '',
       payment_condition: '',
-      delivery_deadline: null, // date — null OK
-      delivery_week: '',
-      delivery_month: '',
+      delivery_deadline: billingDate || null,
+      delivery_week: billing?.week || '',
+      delivery_month: billing?.month || '',
       notes: '',
       status: 'Aprovado',
       nfe: '',
@@ -250,6 +432,8 @@ export default function MobileNewOrder() {
         grade: it.grade,
         unit_price: it.unit_price,
         observation: '',
+        strap_colors: it.strap_colors || [],
+        strap_sourcing: it.strap_sourcing || {},
       };
     });
 
@@ -263,26 +447,21 @@ export default function MobileNewOrder() {
     let pvNumberLocal: string | null = null;
     if (online) {
       try {
-        const { data: created, error } = await supabase
+        const created = await submitMobileSaleOrderAtomic({
+          order: orderPayload,
+          items: itemsPayload,
+          client_id: selectedClient.id,
+        });
+        const { data: createdHeader, error: headerError } = await supabase
           .from('sale_orders')
-          .insert(orderPayload)
-          .select()
+          .select('order_number')
+          .eq('id', created.order_id)
           .single();
-        if (!error && created?.id) {
-          const itemsToInsert = itemsPayload.map(i => ({ ...i, sale_order_id: created.id }));
-          const { error: itemsError } = await supabase.from('sale_order_items').insert(itemsToInsert);
-          if (itemsError) {
-            // C4 (auditoria): itens falharam — remove o header órfão e cai pro enqueue
-            // (header+itens juntos), SEM marcar sent nem apagar o rascunho. Evita PV
-            // sem itens + perda silenciosa de dados (e o trap do client_request_id UNIQUE).
-            await supabase.from('sale_orders').delete().eq('id', created.id);
-            throw itemsError;
-          }
-          sent = true;
-          pvNumberLocal = created.order_number || null;
-          setCreatedPvNumber(pvNumberLocal);
-          toast.success(`PV ${created.order_number || ''} enviado!`);
-        }
+        if (headerError) throw headerError;
+        sent = true;
+        pvNumberLocal = createdHeader?.order_number || null;
+        setCreatedPvNumber(pvNumberLocal);
+        toast.success(`PV ${createdHeader?.order_number || ''} enviado!`);
       } catch (e) {
         // Fall through to enqueue
       }
@@ -393,7 +572,7 @@ export default function MobileNewOrder() {
           </button>
           <button
             onClick={() => setStep('review')}
-            disabled={items.length === 0}
+            disabled={items.length === 0 || unresolvedStrapSnapshots.length > 0}
             className="text-primary font-bold disabled:text-muted-foreground"
           >
             Revisar →
@@ -409,6 +588,38 @@ export default function MobileNewOrder() {
           <h2 className="text-xl font-bold">Inclua os itens</h2>
           <p className="mt-1 text-sm text-muted-foreground">Revise grade e preço de cada referência antes de confirmar.</p>
         </div>
+
+        {unresolvedStrapSnapshots.length > 0 && (
+          <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm">
+            <p className="font-bold text-destructive">Demanda de tira não resolvida</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {unresolvedStrapSnapshots.map((entry) => entry.reference_name).join(', ')} usa tira, mas não possui linhas técnicas no snapshot. Corrija a ficha técnica no desktop; o app não infere cor ou variante.
+            </p>
+          </div>
+        )}
+
+        {items.some((entry) => (entry.strap_colors || []).length > 0) && (
+          <div className="space-y-1.5 rounded-lg border border-border bg-muted/20 p-3">
+            <label htmlFor="mobile-billing-week" className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+              Primeiro dia da semana de faturamento *
+            </label>
+            <Input
+              id="mobile-billing-week"
+              type="date"
+              value={billingDate}
+              onChange={(event) => {
+                setBillingDate(event.target.value);
+                setItems((current) => current.map((entry) => ({
+                  ...entry,
+                  strap_sourcing: (entry.strap_colors || []).length > 0 ? {} : entry.strap_sourcing,
+                })));
+              }}
+            />
+            <p className="text-xs text-muted-foreground">
+              A necessidade é calculada retroativamente a partir desta semana; mudar a data exige reconfirmar as origens.
+            </p>
+          </div>
+        )}
 
         {/* Items atuais */}
         {items.map((it, idx) => {
@@ -437,6 +648,11 @@ export default function MobileNewOrder() {
                   <Trash className="h-5 w-5" />
                 </button>
               </div>
+              {unresolvedStrapReferenceIds.has(it.reference_id) && (
+                <p className="mt-2 rounded-md border border-destructive/30 bg-destructive/5 px-2 py-1.5 text-xs font-medium text-destructive">
+                  Ficha com tiras habilitadas e snapshot vazio — item bloqueado.
+                </p>
+              )}
               <details className="mt-2">
                 <summary className="text-xs text-primary cursor-pointer">Editar grade</summary>
                 <GradeEditor
@@ -452,6 +668,14 @@ export default function MobileNewOrder() {
                   />
                 </div>
               </details>
+              {(it.strap_colors || []).length > 0 && (
+                <MobileStrapIdentityEditor
+                  item={it}
+                  billingDate={billingDate}
+                  catalog={strapCatalog}
+                  onChange={(next) => setItems(items.map((current, currentIndex) => currentIndex === idx ? next : current))}
+                />
+              )}
             </div>
           );
         })}
@@ -493,6 +717,8 @@ export default function MobileNewOrder() {
                             color: '',
                             grade: {},
                             unit_price: resolvePrice(priceLookup, r.id, null),
+                            strap_colors: strapsForReference(r, ''),
+                            strap_sourcing: {},
                           }]);
                           setRefSearch('');
                         }}
@@ -509,6 +735,8 @@ export default function MobileNewOrder() {
                             image_url: v.image_url || undefined,
                             grade: {},
                             unit_price: resolvePrice(priceLookup, r.id, v.color),
+                            strap_colors: strapsForReference(r, v.color),
+                            strap_sourcing: {},
                           }]);
                           setRefSearch('');
                         }}
@@ -596,6 +824,13 @@ export default function MobileNewOrder() {
         <p className="font-bold">{selectedClient?.razao_social}</p>
         <p className="text-xs text-muted-foreground">{selectedClient?.cnpj}</p>
       </div>
+
+      {billingDate && items.some((entry) => (entry.strap_colors || []).length > 0) && (
+        <div className="rounded-lg border border-border p-3 text-sm">
+          <p className="text-xs uppercase tracking-widest text-muted-foreground font-mono">Semana de faturamento</p>
+          <p className="font-semibold">{new Date(`${billingDate}T12:00:00`).toLocaleDateString('pt-BR')}</p>
+        </div>
+      )}
 
       {/* F3: Histórico do cliente (últimos 12 meses) */}
       {clientHistory && clientHistory.totalOrders > 0 && (

@@ -28,6 +28,7 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/fichas-tecnicas': 'produtos',
   '/fichas-tecnicas/padroes': 'produtos', // ferramenta de padrões da Engenharia
   '/escalonamento': 'produtos',
+  '/tiras-artesanais': 'produtos',
   '/calculadora-tiras': 'produtos',
   '/orders': 'ordens',
   '/setores': 'ordens',
@@ -131,7 +132,7 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/component-sheets': 'produtos',
   '/orders/summary': 'ordens',
   '/orders/grouped-summary': 'ordens',
-  '/artisanal-recipes': 'terceirizados', // virou aba do hub Terceirizados (2026-07-04)
+  '/artisanal-recipes': 'produtos',
   '/expedicao': 'expedicao',
   '/silk-registrations': 'produtos',
   '/silks': 'produtos',
@@ -172,6 +173,7 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/lgpd': 'sistema',
   '/security': 'sistema',
   // System pages — admin only
+  '/admin/aprovacao-ordens-compra': 'sistema',
   '/settings': 'sistema',
   '/automations': 'sistema',
   '/system-monitor': 'sistema',
@@ -283,8 +285,21 @@ const ADMIN_ONLY_MODULES = new Set(['sistema', 'financeiro_admin']);
 // uma rota navegada no modo granular por item. Calculado uma vez.
 const ALL_MENU_PATHS: string[] = grantableDestinations.map((i) => i.path);
 
+function resolveCanonicalAliasOwner(path: string): string | null {
+  const [pathname, query = ''] = path.split('?');
+  if (pathname === '/calculadora-tiras' || pathname === '/artisanal-recipes') {
+    return '/tiras-artesanais';
+  }
+  if (pathname === '/terceirizados' && new URLSearchParams(query).get('tab') === 'recipes') {
+    return '/tiras-artesanais';
+  }
+  return null;
+}
+
 /** Módulo associado a uma rota (maior prefixo do ROUTE_MODULE_MAP que casa). */
 export function resolveModuleForPath(path: string): string | null {
+  const aliasOwner = resolveCanonicalAliasOwner(path);
+  if (aliasOwner) return ROUTE_MODULE_MAP[aliasOwner] || null;
   const matchedKey = Object.keys(ROUTE_MODULE_MAP)
     .sort((a, b) => b.length - a.length)
     .find((prefix) => path === prefix || path.startsWith(prefix + '/') || path.startsWith(prefix + '?'));
@@ -295,6 +310,8 @@ export function resolveModuleForPath(path: string): string | null {
  *  Garante que liberar "/estoque" NÃO libere o item irmão "/estoque/historico"
  *  (que tem item próprio), mas cubra sub-rotas sem item próprio (/estoque/x). */
 export function resolveMenuOwner(path: string, allMenuPaths: string[] = ALL_MENU_PATHS): string | null {
+  const aliasOwner = resolveCanonicalAliasOwner(path);
+  if (aliasOwner && allMenuPaths.includes(aliasOwner)) return aliasOwner;
   let best: string | null = null;
   for (const p of allMenuPaths) {
     if (path === p || path.startsWith(p + '/') || path.startsWith(p + '?')) {

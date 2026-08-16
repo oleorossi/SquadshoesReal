@@ -16,6 +16,7 @@ export type Supplier = {
   state: string;
   zip_code: string;
   payment_terms: string;
+  payment_terms_structured?: Array<{ days: number; percentage: number }> | null;
   lead_time_days: number;
   notes: string;
   active: boolean;
@@ -89,7 +90,7 @@ export function useAddSupplier() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (form: Partial<Supplier> & { name: string }) => {
-      const { data, error } = await supabase.from('suppliers').insert(form).select().single();
+      const { data, error } = await (supabase as any).from('suppliers').insert(form).select().single();
       if (error) throw error;
       return data;
     },
@@ -102,7 +103,7 @@ export function useUpdateSupplier() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, data }: { id: string; data: Partial<Supplier> }) => {
-      const { error } = await supabase.from('suppliers').update(data).eq('id', id);
+      const { error } = await (supabase as any).from('suppliers').update(data).eq('id', id);
       if (error) throw error;
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['suppliers'] }); toast.success('Fornecedor atualizado!'); },

@@ -7,7 +7,6 @@ import {
   ROLO_LARGURA_MM,
   ROLO_LARGURA_CM,
   ROLO_COMPRIMENTO_M,
-  PERDA_PCT,
 } from '@/lib/strapRollCut';
 
 /**
@@ -15,30 +14,25 @@ import {
  *
  * Fórmula (confirmada pelo Leonardo em 2026-06-14, PV-00140): o valor de saída é a
  * LARGURA cortada do rolo (na dimensão dos 1370 mm), assumindo que cada banda tem o
- * comprimento inteiro do rolo (40 m → 34 m úteis após 15% de perda).
- *   n_bandas    = ceil(metros_necessarios ÷ 34)
+ * comprimento inteiro do rolo (40 m), sem perda percentual adicional.
+ *   n_bandas    = ceil(metros_necessarios ÷ 40)
  *   cm_a_cortar = (n_bandas × cut_width_mm) ÷ 10
  */
 
 // [cut_width_mm, metros_necessarios, n_bandas, cm_a_cortar] — valores do PV-00140 + extremos.
 const TABELA: Array<[number, number, number, number]> = [
-  [20, 2448, 72, 144], // PV-00140 (cut=20)
-  [20, 2148, 64, 128],
-  [20, 1509.6, 45, 90],
-  [20, 384, 12, 24],
-  [11, 4216, 124, 136.4], // Costurada 11mm — caso máximo de 1 rolo (4216/34 = 124 exatos)
-  [25, 1836, 54, 135], // Tira chata 25mm (1836/34 = 54 exatos)
+  [20, 2448, 62, 124],
+  [20, 2148, 54, 108],
+  [20, 1509.6, 38, 76],
+  [20, 384, 10, 20],
+  [11, 4216, 106, 116.6],
+  [25, 1836, 46, 115],
 ];
 
 describe('constantes', () => {
-  it('valores padrão do rolo e perda', () => {
+  it('valores padrão do rolo', () => {
     expect(ROLO_LARGURA_MM).toBe(1370);
     expect(ROLO_COMPRIMENTO_M).toBe(40);
-    expect(PERDA_PCT).toBeCloseTo(0.15, 10);
-  });
-
-  it('metros úteis por banda = 40 × 0,85 = 34', () => {
-    expect(ROLO_COMPRIMENTO_M * (1 - PERDA_PCT)).toBeCloseTo(34, 10);
   });
 });
 
@@ -49,12 +43,12 @@ describe('computeStrapRollCut — tabela do PV-00140', () => {
 
       expect(r.valid).toBe(true);
       expect(r.widthMissing).toBe(false);
-      expect(r.metros_uteis_por_banda).toBeCloseTo(34, 10);
+      expect(r.metros_uteis_por_banda).toBeCloseTo(40, 10);
       expect(r.n_bandas).toBe(nBandas);
       expect(r.cm_a_cortar).toBeCloseTo(cmEsperado, 6);
 
-      // bate com a derivação manual: ceil(metros / 34) × cut_width ÷ 10.
-      const cmManual = (Math.ceil(metros / 34) * largura) / 10;
+      // bate com a derivação manual: ceil(metros / 40) × cut_width ÷ 10.
+      const cmManual = (Math.ceil(metros / 40) * largura) / 10;
       expect(r.cm_a_cortar).toBeCloseTo(cmManual, 6);
     });
   }
@@ -62,15 +56,15 @@ describe('computeStrapRollCut — tabela do PV-00140', () => {
 
 describe('computeStrapRollCut — propriedades', () => {
   it('cm_a_cortar é a LARGURA cortada, não o comprimento percorrido', () => {
-    // 1 banda atende até 34 m; precisar de exatamente 34 m ⇒ 1 banda = cut_width mm.
-    const r = computeStrapRollCut({ largura_mm: 20, metros_necessarios: 34 });
+    // 1 banda atende até 40 m; precisar de exatamente 40 m ⇒ 1 banda = cut_width mm.
+    const r = computeStrapRollCut({ largura_mm: 20, metros_necessarios: 40 });
     expect(r.n_bandas).toBe(1);
     expect(r.cm_a_cortar).toBeCloseTo(2, 6); // 20mm = 2cm (NÃO os 40m de comprimento)
   });
 
   it('uma banda parcial conta inteira (ceil)', () => {
-    const r = computeStrapRollCut({ largura_mm: 20, metros_necessarios: 35 });
-    expect(r.n_bandas).toBe(2); // ceil(35/34)
+    const r = computeStrapRollCut({ largura_mm: 20, metros_necessarios: 41 });
+    expect(r.n_bandas).toBe(2); // ceil(41/40)
     expect(r.cm_a_cortar).toBeCloseTo(4, 6); // 40mm
   });
 
@@ -82,14 +76,14 @@ describe('computeStrapRollCut — propriedades', () => {
   });
 
   it('multi-rolos: largura cortada > 1370mm ⇒ rolos > 1 (nota informativa)', () => {
-    const r = computeStrapRollCut({ largura_mm: 20, metros_necessarios: 2448 });
-    expect(r.cm_a_cortar).toBeCloseTo(144, 6); // 1440mm
-    expect(r.rolos).toBeCloseTo(1440 / 1370, 6); // ≈ 1,05 rolos
+    const r = computeStrapRollCut({ largura_mm: 20, metros_necessarios: 2800 });
+    expect(r.cm_a_cortar).toBeCloseTo(140, 6); // 1400mm
+    expect(r.rolos).toBeCloseTo(1400 / 1370, 6); // ≈ 1,02 rolos
   });
 
   it('1 rolo: largura cortada ≤ 1370mm ⇒ rolos ≤ 1', () => {
     const r = computeStrapRollCut({ largura_mm: 11, metros_necessarios: 4216 });
-    expect(r.cm_a_cortar).toBeCloseTo(136.4, 6); // 1364mm < 1370mm
+    expect(r.cm_a_cortar).toBeCloseTo(116.6, 6); // 1166mm < 1370mm
     expect(r.rolos).toBeLessThanOrEqual(1);
   });
 });
@@ -129,7 +123,7 @@ describe('computeStrapRollCut — validações', () => {
     expect(r.valid).toBe(true);
     expect(r.widthMissing).toBe(false);
     expect(r.warning).toBeUndefined();
-    expect(r.n_bandas).toBe(Math.ceil(100 / 34)); // 3
+    expect(r.n_bandas).toBe(Math.ceil(100 / 40)); // 3
     expect(r.cm_a_cortar).toBeCloseTo(3, 6); // 3 bandas × 10mm = 30mm = 3cm
   });
 });
@@ -142,21 +136,21 @@ describe('breakdown multi-rolo (n_rolos_completos + cm_no_ultimo_rolo)', () => {
   // [descrição, cut_width_mm, metros, cm_a_cortar, n_rolos_completos, cm_no_ultimo_rolo]
   const CASOS: Array<[string, number, number, number, number, number]> = [
     // Caso 1 — CARAMELO PV-00144: 182 cm → 1 rolo completo + 45 cm.
-    ['CARAMELO PV-00144', 20, 3091.2, 182, 1, 45],
+    ['CARAMELO', 20, 3640, 182, 1, 45],
     // Caso 2 — OFF WHITE PV-00144: 130 cm → < 1 rolo (0 completos).
-    ['OFF WHITE PV-00144', 20, 2184, 130, 0, 130],
+    ['OFF WHITE', 20, 2600, 130, 0, 130],
     // Caso 3 — exatamente 137 cm → 1 rolo completo, sem sobra.
-    ['137 cm exato', 10, 4640, 137, 1, 0],
+    ['137 cm exato', 10, 5480, 137, 1, 0],
     // Caso 4 — 411 cm → 3 rolos completos, sem sobra.
-    ['411 cm = 3 rolos', 30, 4640, 411, 3, 0],
+    ['411 cm = 3 rolos', 30, 5480, 411, 3, 0],
     // Caso 5 — 274 cm → 2 rolos completos, sem sobra.
-    ['274 cm = 2 rolos', 20, 4640, 274, 2, 0],
+    ['274 cm = 2 rolos', 20, 5480, 274, 2, 0],
     // Caso 6 — 200 cm → 1 rolo completo + 63 cm.
-    ['200 cm = 1 rolo + 63', 20, 3400, 200, 1, 63],
+    ['200 cm = 1 rolo + 63', 20, 4000, 200, 1, 63],
     // Extra (Task 2) — 300 cm → 2 rolos completos + 26 cm.
-    ['300 cm = 2 rolos + 26', 30, 3400, 300, 2, 26],
+    ['300 cm = 2 rolos + 26', 30, 4000, 300, 2, 26],
     // Sub-rolo simples — 30 cm → 0 completos (sem breakdown).
-    ['30 cm simples', 20, 510, 30, 0, 30],
+    ['30 cm simples', 20, 600, 30, 0, 30],
   ];
 
   for (const [nome, cut, metros, cm, completos, sobra] of CASOS) {
@@ -184,10 +178,10 @@ describe('aggregateArtisanalStrapCut — soma metros ANTES de calcular', () => {
     expect(aggregateArtisanalStrapCut([])).toHaveLength(0);
   });
 
-  it('REGRESSÃO PV-00144 OFF WHITE: 5 tiras (4×312 + 1×936) → 1 linha de 130 cm (não 136)', () => {
+  it('soma as contribuições antes do ceil para não inflar o corte', () => {
     // Mesmo group_id (família TIRA OVERLOCK 5MM) com labels distintos e consumos
-    // diferentes. A soma dos ceils individuais daria 136 cm; somar os metros antes
-    // dá 130 cm — 6 cm a menos de rolo.
+    // diferentes. A soma dos ceils individuais daria 112 cm; somar os metros antes
+    // dá 110 cm — 2 cm a menos de rolo.
     const inputs = [
       { groupKey: 'g-overlock', groupName: 'TIRA OVERLOCK 5MM', color: 'OFF WHITE', metros: 312, largura_mm: 20 },
       { groupKey: 'g-overlock', groupName: 'TIRA OVERLOCK 5MM', color: 'OFF WHITE', metros: 312, largura_mm: 20 },
@@ -198,27 +192,27 @@ describe('aggregateArtisanalStrapCut — soma metros ANTES de calcular', () => {
     const rows = aggregateArtisanalStrapCut(inputs);
     expect(rows).toHaveLength(1);
     expect(rows[0].metros_necessarios).toBeCloseTo(2184, 6);
-    expect(rows[0].cut.cm_a_cortar).toBeCloseTo(130, 6);
+    expect(rows[0].cut.cm_a_cortar).toBeCloseTo(110, 6);
     expect(rows[0].cut.n_rolos_completos).toBe(0);
 
-    // Documenta que somar os ceils individuais seria PIOR (136 cm).
+    // Documenta que somar os ceils individuais seria PIOR (112 cm).
     const somaIndividual = inputs
       .map((i) => computeStrapRollCut({ largura_mm: i.largura_mm, metros_necessarios: i.metros }).cm_a_cortar)
       .reduce((s, v) => s + v, 0);
-    expect(somaIndividual).toBeCloseTo(136, 6);
+    expect(somaIndividual).toBeCloseTo(112, 6);
     expect(rows[0].cut.cm_a_cortar).toBeLessThan(somaIndividual);
   });
 
-  it('CARAMELO: soma 3091,2 m → 182 cm com breakdown 1 rolo + 45', () => {
+  it('CARAMELO: soma 3091,2 m → 156 cm com breakdown 1 rolo + 19', () => {
     const rows = aggregateArtisanalStrapCut([
       { groupKey: 'g-overlock', groupName: 'TIRA OVERLOCK 5MM', color: 'CARAMELO', metros: 3000, largura_mm: 20 },
       { groupKey: 'g-overlock', groupName: 'TIRA OVERLOCK 5MM', color: 'CARAMELO', metros: 91.2, largura_mm: 20 },
     ]);
     expect(rows).toHaveLength(1);
     expect(rows[0].metros_necessarios).toBeCloseTo(3091.2, 6);
-    expect(rows[0].cut.cm_a_cortar).toBeCloseTo(182, 6);
+    expect(rows[0].cut.cm_a_cortar).toBeCloseTo(156, 6);
     expect(rows[0].cut.n_rolos_completos).toBe(1);
-    expect(rows[0].cut.cm_no_ultimo_rolo).toBeCloseTo(45, 6);
+    expect(rows[0].cut.cm_no_ultimo_rolo).toBeCloseTo(19, 6);
   });
 
   it('separa por cor e por grupo; group_id colapsa labels distintos', () => {

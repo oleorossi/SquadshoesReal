@@ -21,7 +21,7 @@ import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import SaleOrderFormPanel, { removeItemsAtIndices, restoreItemsAt } from '@/components/sale-orders/SaleOrderFormPanel';
 import { PvServiceOrdersCard } from '@/components/sale-orders/PvServiceOrdersCard';
 import { GenerateServiceOrdersWizard } from '@/components/contractors/GenerateServiceOrdersWizard';
-import { useCreateSaleOrder, useUpdateSaleOrder, SaleOrderFormData, SaleOrderItemFormData } from '@/hooks/useSaleOrders';
+import { useCreateSaleOrder, useUpdateSaleOrder, SaleOrderFormData, SaleOrderItemFormData, listarTirasSemOrigem } from '@/hooks/useSaleOrders';
 import { calculateOrderCost, type OrderCostResult } from '@/services/costingService';
 import { useCancelOrdersBatch } from '@/hooks/useOrders';
 import { CancelOpsAndEditDialog, type BlockingOp } from '@/components/sale-orders/CancelOpsAndEditDialog';
@@ -45,9 +45,8 @@ import { SectorOverloadDialog } from '@/components/sale-orders/SectorOverloadDia
 import { computeMinBillingForNewOrder, fetchMinBillingDate, isBeforeMinDate, toISOWeek, type MinBillingResult } from '@/lib/minBillingDate';
 import { MinBillingDateSuggestionDialog } from '@/components/sale-orders/MinBillingDateSuggestionDialog';
 import { OverrideOutsourceCosturaDialog } from '@/components/sale-orders/OverrideOutsourceCosturaDialog';
-import { StrapShortageDialog } from '@/components/sale-orders/StrapShortageDialog';
-import { detectStrapShortagesForSaleOrder } from '@/lib/strapShortages';
 import { monthWeekToISODate, isoToMonthWeek } from '@/lib/billingWeek';
+import { listMissingTechnicalStrapSnapshots } from '@/lib/strapSnapshotGuard';
 
 const emptyForm: SaleOrderFormData = {
   client_id: null,
@@ -213,7 +212,7 @@ export function buildCopySeedPayload(args: {
       order_type: f.order_type,
       status: 'Rascunho',
     },
-    items: seedItems.map(({ id: _itemId, ...rest }) => ({
+    items: seedItems.map(({ id: _itemId, strap_sourcing_revision: _sourceRevision, ...rest }) => ({
       ...rest,
       material_variant_id:
         rest.material_variant_id && activeVariantIds.has(rest.material_variant_id)
@@ -256,10 +255,9 @@ export function mapLoadedSaleOrderItem(
     quantity: qty,
     fichas,
     strap_colors: (i.strap_colors as any[]) || [],
-    // Origem por linha de tira ("corto aqui" × "compro pronta"). Sem copiar na
-    // carga, reabrir o PV pra editar apagaria a escolha — e a tira voltaria a
-    // seguir products.is_artisanal sem ninguém perceber.
-    strap_sourcing: ((i as any).strap_sourcing as Record<string, 'in_house' | 'purchased'>) ?? null,
+    // Origem explícita por UUID da linha técnica; não existe fallback herdado.
+    strap_sourcing: ((i as any).strap_sourcing as SaleOrderItemFormData['strap_sourcing']) ?? null,
+    strap_sourcing_revision: Number((i as any).strap_sourcing_revision) || 0,
     observation: (i as any).observation || null,
     // Sem copiar na carga, editar o PV gravava null (o payload de update e o
     // RPC update_sale_order_atomic JÁ persistem a coluna) → perda silenciosa
@@ -339,15 +337,16 @@ export default function SaleOrderForm() {
   // strap_colors=[] inteiro. Resultado: o PV salvava e o débito da tira era
   // PULADO em silêncio na conversão pra OP (debit_strap_stock não resolve produto
   // sem cor). Não há fluxo legítimo de "tira sem cor até definir depois": o
-  // próprio StrapShortageDialog já trata item sem cor como BLOCKER pós-save
-  // ("Volte ao PV e preencha primeiro") — então bloqueamos ANTES, no save,
-  // apontando exatamente qual tira está sem cor.
+  // O resolvedor canônico não aceita texto/alias como identidade: bloqueamos
+  // ANTES do save e exigimos também o UUID de cor persistido no snapshot.
   const findTiraSemCor = (its: SaleOrderItemFormData[]): string | null => {
     for (let i = 0; i < its.length; i++) {
       const straps = Array.isArray((its[i] as any).strap_colors)
         ? ((its[i] as any).strap_colors as any[])
         : [];
-      const semCor = straps.filter((s) => s && !String(s.color || '').trim());
+      const semCor = straps.filter((s) => s && (
+        !String(s.color || '').trim() || !String(s.color_id || '').trim()
+      ));
       if (semCor.length === 0) continue;
       const ref = canonicalReferences.find((r: any) => r.id === its[i].reference_id) as any;
       const refLabel = ref
@@ -357,8 +356,8 @@ export default function SaleOrderForm() {
         .map((s) => String(s.label || s.group_name || 'TIRA').trim() || 'TIRA')
         .join(', ');
       return (
-        `Tira sem cor no item ${i + 1} (${refLabel}): ${tiras}. ` +
-        `Selecione a cor de cada tira antes de salvar — sem cor, o débito de estoque da tira é pulado.`
+        `Tira sem cor canônica no item ${i + 1} (${refLabel}): ${tiras}. ` +
+        `Selecione cada cor no catálogo; texto antigo não identifica estoque nem permite confirmar o pedido.`
       );
     }
     return null;
@@ -379,12 +378,12 @@ export default function SaleOrderForm() {
 
   // Itens com cor não cadastrada (cabedal/forração/tira) — BLOQUEIA o save até
   // cadastrar. Reportado por cada SaleOrderItemForm via onColorIssueChange.
-  const [colorIssues, setColorIssues] = useState<Record<number, { color: string; materials: string[] }>>({});
-  const handleColorIssueChange = useCallback((idx: number, info: { color: string; materials: string[] } | null) => {
+  const [colorIssues, setColorIssues] = useState<Record<number, { color: string; materials: string[]; message?: string }>>({});
+  const handleColorIssueChange = useCallback((idx: number, info: { color: string; materials: string[]; message?: string } | null) => {
     setColorIssues(prev => {
       if (!info) { if (!(idx in prev)) return prev; const n = { ...prev }; delete n[idx]; return n; }
       const ex = prev[idx];
-      if (ex && ex.color === info.color && ex.materials.join(',') === info.materials.join(',')) return prev;
+      if (ex && ex.color === info.color && ex.materials.join(',') === info.materials.join(',') && ex.message === info.message) return prev;
       return { ...prev, [idx]: info };
     });
   }, []);
@@ -550,7 +549,10 @@ export default function SaleOrderForm() {
       q: i.quantity,
       c: (i.color || '').trim().toUpperCase(),
       g: (i as any).grade || {},
-      s: Array.isArray((i as any).strap_colors) ? (i as any).strap_colors.map((x: any) => x?.color || '') : [],
+      s: Array.isArray((i as any).strap_colors)
+        ? (i as any).strap_colors.map((x: any) => ({ color: x?.color || '', color_id: x?.color_id || '' }))
+        : [],
+      so: (i as any).strap_sourcing || {},
     })).sort((a, b) => (a.r + a.c).localeCompare(b.r + b.c)),
   );
   // Alterações não salvas. Alimentado por evento de DOM vindo do painel — ver a
@@ -632,13 +634,6 @@ export default function SaleOrderForm() {
   const [outsourceCosturaOpen, setOutsourceCosturaOpen] = useState(false);
   const [outsourceCosturaPvId, setOutsourceCosturaPvId] = useState<string | null>(null);
   const [outsourceCosturaPendingNav, setOutsourceCosturaPendingNav] = useState<boolean>(false);
-  // Dialog de tira em falta (Artesanal vs Comprar Pronto). Aparece SEMPRE
-  // que o PV é salvo e há tira com shortage > 0 ou item sem cor preenchida.
-  const [strapShortageOpen, setStrapShortageOpen] = useState(false);
-  const [strapShortagePvId, setStrapShortagePvId] = useState<string | null>(null);
-  const [strapShortagePvNumber, setStrapShortagePvNumber] = useState<string | null>(null);
-  const [strapShortagePendingNav, setStrapShortagePendingNav] = useState<boolean>(false);
-
   // Atalho "Gerar OS por Pedido" — abre o assistente de terceirização já com este
   // PV selecionado. genOsNavAfter=true quando aberto na finalização (fechar → /sales).
   const queryClient = useQueryClient();
@@ -1034,11 +1029,9 @@ export default function SaleOrderForm() {
     if (statusOverride) orderData.status = statusOverride;
     const resolvedClientId = (f as any).client_id || selectedClientId || null;
 
-    // Post-save: dois popups em sequência (se aplicáveis).
-    //   1) Tiras com shortage → dialog Artesanal vs Comprar Pronto (sempre que houver)
-    //   2) Override admin → dialog de terceirização da Costura
-    // Quando há ambos, o de TIRAS abre primeiro (mais comum + atende ao
-    // pedido específico do user pra cor nova). Override entra depois.
+    // A origem das tiras já foi escolhida por linha no formulário. Ao salvar,
+    // trigger + fila canônicos fazem netting, lote e compra; não existe segundo
+    // escritor de OC/OS no cliente.
     const isOverride = !!(f as any).manual_billing_override;
     const handlePostSave = async (pvId: string | undefined) => {
       // Salvou: desarma a guarda. Sem isto o beforeunload continuaria disparando
@@ -1051,18 +1044,8 @@ export default function SaleOrderForm() {
       toast.dismiss(PV_ITEM_DELETE_TOAST_ID);
       void checkMarginAfterSave(pvId);
       if (!pvId) { navigate('/sales'); return; }
-      try {
-        const report = await detectStrapShortagesForSaleOrder(pvId);
-        const hasStrap = report.shortages.length > 0 || report.incomplete.length > 0;
-        if (hasStrap) {
-          setStrapShortagePvId(pvId);
-          setStrapShortagePvNumber(orderData.order_number || null);
-          setStrapShortagePendingNav(true);
-          setStrapShortageOpen(true);
-          return; // navegação acontece após o user fechar o dialog
-        }
-      } catch {
-        // Detecção é best-effort — se falhar, não bloqueia o save.
+      if (validItems.some((item) => Array.isArray(item.strap_colors) && item.strap_colors.length > 0)) {
+        toast.info('Demanda de tiras enviada ao processamento canônico. Acompanhe em Engenharia → Tiras artesanais → Demandas.');
       }
       if (isOverride) {
         setOutsourceCosturaPvId(pvId);
@@ -1139,6 +1122,17 @@ export default function SaleOrderForm() {
       const tiraSemCor = findTiraSemCor(validItems);
       if (tiraSemCor) { toast.error(tiraSemCor, { duration: 8000 }); return; }
     }
+    const targetStatus = statusOverride || f.status;
+    if (targetStatus === 'Aprovado' || targetStatus === 'Em Produção') {
+      const semOrigem = listarTirasSemOrigem(validItems);
+      if (semOrigem.length > 0) {
+        toast.error(
+          `Escolha como atender cada tira antes de confirmar: ${semOrigem.slice(0, 4).join('; ')}${semOrigem.length > 4 ? ` e mais ${semOrigem.length - 4}` : ''}.`,
+          { duration: 9000 },
+        );
+        return;
+      }
+    }
     if (validItems.some(i => i.quantity <= 0)) {
       toast.error('A quantidade dos itens deve ser maior que zero.');
       return;
@@ -1205,6 +1199,15 @@ export default function SaleOrderForm() {
     const validItems = items.filter(i => i.reference_id).map(normalizeItemReference);
     if (validItems.length === 0) { toast.error('Adicione pelo menos um item ao pedido.'); return; }
     if (validItems.some(i => !i.color?.trim())) { toast.error('Selecione uma cor para todos os itens.'); return; }
+    const missingStrapSnapshots = listMissingTechnicalStrapSnapshots(validItems, canonicalReferences as any[]);
+    if (missingStrapSnapshots.length > 0) {
+      toast.error(
+        `Demanda de tira não resolvida em ${missingStrapSnapshots[0].label}: a ficha exige tiras, mas o item está sem linhas técnicas. ` +
+        'Cadastre as tiras na ficha técnica e volte ao pedido; o sistema não infere cor ou variante.',
+        { duration: 8000 },
+      );
+      return;
+    }
     // GUARD: bloqueia salvar com TIRA de cor vazia (débito pulado em silêncio).
     {
       const tiraSemCor = findTiraSemCor(validItems);
@@ -1220,8 +1223,10 @@ export default function SaleOrderForm() {
       if (pendentes.length > 0) {
         const [, first] = pendentes[0];
         toast.error(
-          `Cor "${first.color}" não cadastrada em ${first.materials.join(', ')}. ` +
-          `Use o botão "Cadastrar" no item para registrar a cor antes de salvar o pedido.`,
+          first.message || (
+            `Cor "${first.color}" não cadastrada em ${first.materials.join(', ')}. ` +
+            `Use o botão "Cadastrar" no item para registrar a cor antes de salvar o pedido.`
+          ),
           { duration: 8000 },
         );
         return;
@@ -1416,8 +1421,8 @@ export default function SaleOrderForm() {
           }
         }
 
-        // TIRAS são tratadas EXCLUSIVAMENTE pelo StrapShortageDialog (pós-save, escolha
-        // Artesanal/Comprar). Remove tiras deste caminho antigo pra NÃO gerar OC DUPLICADA.
+        // TIRAS são tratadas EXCLUSIVAMENTE pela fila canônica após o save. Remove
+        // tiras deste caminho antigo pra NÃO gerar OC DUPLICADA.
         // Exclui: (a) product_id nulo = tira de cor nova sem produto (check_stock_availability
         // agora emite a falta, mas quem resolve é o dialog de tiras); (b) produtos cujo grupo
         // é de tira — identificado pelos group_ids das strap_colors dos itens (autoritativo) +
@@ -1784,6 +1789,7 @@ export default function SaleOrderForm() {
         />
 
         <SaleOrderFormPanel
+          saleOrderId={isEdit ? id : null}
           form={form}
           setForm={setForm}
           items={items}
@@ -2074,32 +2080,6 @@ export default function SaleOrderForm() {
           if (outsourceCosturaPendingNav) {
             setOutsourceCosturaPendingNav(false);
             navigate('/sales');
-          }
-        }}
-      />
-
-      <StrapShortageDialog
-        open={strapShortageOpen}
-        saleOrderId={strapShortagePvId}
-        saleOrderNumber={strapShortagePvNumber}
-        onClose={() => {
-          setStrapShortageOpen(false);
-          if (strapShortagePendingNav) {
-            setStrapShortagePendingNav(false);
-            // Após tira, se override admin estiver ativo, abre a próxima etapa.
-            const f = formLatestRef.current;
-            if ((f as any).manual_billing_override && strapShortagePvId) {
-              setOutsourceCosturaPvId(strapShortagePvId);
-              setOutsourceCosturaPendingNav(true);
-              setOutsourceCosturaOpen(true);
-            } else if (capacityOutsourceAfterSaveRef.current && strapShortagePvId) {
-              capacityOutsourceAfterSaveRef.current = false;
-              setGenOsPvId(strapShortagePvId);
-              setGenOsNavAfter(true);
-              setGenOsOpen(true);
-            } else {
-              navigate('/sales');
-            }
           }
         }}
       />

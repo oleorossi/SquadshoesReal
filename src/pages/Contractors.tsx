@@ -10,7 +10,7 @@ import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { useCan } from '@/hooks/useAccessControl';
-import { CircleNotch as Loader2, Plus, MagnifyingGlass as Search, PencilSimple as Pencil, Trash as Trash2, FileText, Handshake, Printer, X, Check, CaretUpDown as ChevronsUpDown, Upload, CheckCircle as CheckCircle2, Circle, ClipboardText as ClipboardList, CurrencyDollar as DollarSign, Clock, Users, ArrowRight, Package, Flask as FlaskConical, Scissors, Warning as AlertTriangle, WarningCircle as AlertCircle, CalendarBlank as Calendar, LockKey as Lock, ClockCounterClockwise, ChartLineUp, FileArrowDown as FileDown, Funnel, Truck, DotsThreeVertical as MoreVertical, Archive, List as ListIcon, SquaresFour } from '@phosphor-icons/react';
+import { CircleNotch as Loader2, Plus, MagnifyingGlass as Search, PencilSimple as Pencil, Trash as Trash2, FileText, Handshake, Printer, X, Check, CaretUpDown as ChevronsUpDown, Upload, CheckCircle as CheckCircle2, Circle, ClipboardText as ClipboardList, CurrencyDollar as DollarSign, Clock, Users, Package, Flask as FlaskConical, Scissors, Warning as AlertTriangle, WarningCircle as AlertCircle, CalendarBlank as Calendar, LockKey as Lock, ClockCounterClockwise, ChartLineUp, FileArrowDown as FileDown, Funnel, Truck, DotsThreeVertical as MoreVertical, Archive, List as ListIcon, SquaresFour } from '@phosphor-icons/react';
 import { SECTOR_LABEL, SectorKey } from '@/hooks/useSectorBottlenecks';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -41,6 +41,7 @@ import {
   useBulkReceiveServiceOrders, useArchiveServiceOrders,
   useCreateServiceOrder, useUpdateServiceOrder, useDeleteServiceOrder, useContractorSectorRate,
   Contractor, ServiceOrder, MaterialSent, ServiceOrderOverview,
+  isCanonicalStrapServiceOrder,
 } from '@/hooks/useContractors';
 import { SERVICE_ORDER_SECTORS } from '@/lib/serviceOrderSectors';
 import { opNumberByPvItem, opNumbersForServiceOrder, type OpRefWithReference } from '@/lib/serviceOrderOps';
@@ -52,18 +53,11 @@ import {
   osStatusColor, osStatusDot,
   normalizeOsStatus,
 } from '@/lib/osStatusMachine';
-import {
-  useArtisanalRecipes, useCreateArtisanalRecipe, useUpdateArtisanalRecipe, useDeleteArtisanalRecipe,
-  ArtisanalRecipe, calcArtisanalRequirement,
-} from '@/hooks/useArtisanalRecipes';
-import { Switch } from '@/components/ui/switch';
 import { useProducts, getBaseName } from '@/hooks/useProducts';
 import { ContractorHistoryDialog } from '@/components/contractors/ContractorHistoryDialog';
 import { ContractorRatesDialog } from '@/components/contractors/ContractorRatesDialog';
 import { OutsourcingPlanningTab } from '@/components/contractors/OutsourcingPlanningTab';
 import { ContractorOperationsOverview } from '@/components/contractors/ContractorOperationsOverview';
-const emptyRecipe: Partial<ArtisanalRecipe> = { name: '', artisanal_product_name: '', base_product_name: '', yield_per_meter: 1, labor_cost_per_meter: 0, active: true };
-
 import { useSaleOrders } from '@/hooks/useSaleOrders';
 import { useAllGroupColors } from '@/hooks/useGroupColors';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -193,17 +187,12 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
   const { data: osOverview } = useServiceOrderOverview(); // Map por service_order_id: pagamento (AP) + saldo de recebimento
   const { data: products = [] } = useProducts();
   const { data: saleOrders = [] } = useSaleOrders();
-  const { data: artisanalRecipes = [] } = useArtisanalRecipes({ onlyActive: true });
-  const recipes = artisanalRecipes;
   const createContractor = useCreateContractor();
   const updateContractor = useUpdateContractor();
   const deleteContractor = useDeleteContractor();
   const createOrder = useCreateServiceOrder();
   const updateOrder = useUpdateServiceOrder();
   const deleteOrder = useDeleteServiceOrder();
-  const createRecipe = useCreateArtisanalRecipe();
-  const updateRecipe = useUpdateArtisanalRecipe();
-  const deleteRecipe = useDeleteArtisanalRecipe();
   const bulkReceive = useBulkReceiveServiceOrders();
   const archiveOs = useArchiveServiceOrders();
   const queryClient = useQueryClient();
@@ -272,12 +261,9 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
   const [ratesContractor, setRatesContractor] = useState<Contractor | null>(null);
   const [contractorDialog, setContractorDialog] = useState(false);
   const [orderDialog, setOrderDialog] = useState(false);
-  const [recipeDialog, setRecipeDialog] = useState(false);
   const [editingContractor, setEditingContractor] = useState<Partial<Contractor>>(emptyContractor);
   const [editingOrder, setEditingOrder] = useState<Partial<ServiceOrder> & { materials_sent: MaterialSent[] }>(emptyOrder);
-  const [editingRecipe, setEditingRecipe] = useState<Partial<ArtisanalRecipe>>(emptyRecipe);
   const [isEditing, setIsEditing] = useState(false);
-  const [isEditingRecipe, setIsEditingRecipe] = useState(false);
   const [orderTab, setOrderTab] = useState('dados');
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   // Busca do seletor de pedido (PV/OP) — filtro manual (shouldFilter=false) sobre
@@ -288,13 +274,6 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
   // pedido): marca os itens cobertos e a soma dos pares vira a Quantidade da OS.
   const [osPvItemSel, setOsPvItemSel] = useState<Set<string>>(new Set());
   const osPvPrevRef = useRef<string | null>(null); // rastreia troca de PV p/ só sobrescrever a qtd numa mudança ativa
-  // Artisanal OS state
-  const [isArtisanal, setIsArtisanal] = useState(false);
-  const [artRecipeId, setArtRecipeId] = useState('');
-  const [artOutputColor, setArtOutputColor] = useState('');
-  const [artBaseColor, setArtBaseColor] = useState('');
-  const [artNeededForOrder, setArtNeededForOrder] = useState(0);
-
   // ── Rich color/material sources ──
   const { data: allGroupColors = [] } = useAllGroupColors();
   const { data: productGroups = [] } = useQuery({
@@ -671,6 +650,13 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
   // Uma ação principal por estado. As alternativas continuam no menu, mas a
   // linha deixa de apresentar quatro conclusões concorrentes ao mesmo tempo.
   const renderOsActions = (o: ServiceOrder) => {
+    if (isCanonicalStrapServiceOrder(o)) {
+      return (
+        <Button size="sm" variant="outline" className="h-9 gap-1 px-2.5 text-xs" onClick={() => navigate('/tiras-artesanais?tab=producao&origin=terceirizados')}>
+          <FlaskConical className="h-3.5 w-3.5" /> Abrir no Hub de Tiras
+        </Button>
+      );
+    }
     const active = isOsActive(o.status);
     const ov = osOverview?.get(o.id);
     const workflow = resolveServiceOrderWorkflow({
@@ -690,12 +676,12 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
     return (
       <div className="flex min-w-0 flex-wrap items-center justify-end gap-1">
         {workflow.primaryAction === 'conference' && (
-          <Button size="sm" variant="outline" className="h-9 gap-1 px-2.5 text-xs" onClick={() => setReturnDialogOs(o)}>
+          <Button size="sm" variant="outline" className="h-9 gap-1 px-2.5 text-xs" onClick={() => openCanonicalOrReturn(o)}>
             <CheckCircle2 className="h-3 w-3" /> Conferir retorno
           </Button>
         )}
         {workflow.primaryAction === 'dispatch' && (
-          <Button size="sm" variant="outline" className="h-9 gap-1 px-2.5 text-xs" onClick={() => setDispatchDialogOs(o)}>
+          <Button size="sm" variant="outline" className="h-9 gap-1 px-2.5 text-xs" onClick={() => openCanonicalOrDispatch(o)}>
             <Truck className="h-3 w-3" /> Enviar{workflow.qtyDispatched > 0 ? ' saldo' : ''}
           </Button>
         )}
@@ -710,10 +696,10 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-52">
             {workflow.canConference && workflow.primaryAction !== 'conference' && (
-              <DropdownMenuItem onClick={() => setReturnDialogOs(o)}><CheckCircle2 className="mr-2 h-3.5 w-3.5" /> Conferir retorno</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => openCanonicalOrReturn(o)}><CheckCircle2 className="mr-2 h-3.5 w-3.5" /> Conferir retorno</DropdownMenuItem>
             )}
             {workflow.canDispatch && workflow.primaryAction !== 'dispatch' && (
-              <DropdownMenuItem onClick={() => setDispatchDialogOs(o)}><Truck className="mr-2 h-3.5 w-3.5" /> Enviar saldo</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => openCanonicalOrDispatch(o)}><Truck className="mr-2 h-3.5 w-3.5" /> Enviar saldo</DropdownMenuItem>
             )}
             {workflow.canOpenFinance && workflow.primaryAction !== 'finance' && (
               <DropdownMenuItem onClick={() => navigate(`/finance?tab=payable&q=${encodeURIComponent(o.order_number)}`)}><DollarSign className="mr-2 h-3.5 w-3.5" /> Ver no financeiro</DropdownMenuItem>
@@ -778,8 +764,8 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
     return (
       <article key={o.id} className={cn('overflow-hidden rounded-lg border bg-card', selected && 'border-primary/50 ring-1 ring-primary/20')}>
         <div className="flex items-start gap-1 p-2.5">
-          <label htmlFor={checkboxId} className="flex h-11 w-10 shrink-0 cursor-pointer items-center justify-center" aria-label={`Selecionar OS ${o.order_number}`}>
-            <Checkbox id={checkboxId} checked={selected} onCheckedChange={() => toggleOsSelect(o.id)} />
+          <label htmlFor={checkboxId} className={cn('flex h-11 w-10 shrink-0 items-center justify-center', isCanonicalStrapServiceOrder(o) ? 'cursor-not-allowed opacity-50' : 'cursor-pointer')} aria-label={`Selecionar OS ${o.order_number}`}>
+            <Checkbox id={checkboxId} checked={selected} disabled={isCanonicalStrapServiceOrder(o)} onCheckedChange={() => toggleOsSelect(o.id)} />
           </label>
           <button
             type="button"
@@ -881,7 +867,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
   // conta a pagar de verdade. Trocar de prestador/chip depois de selecionar
   // podia cobrar OS que o usuário não estava mais vendo.
   const selectedOrders = useMemo(
-    () => filteredOrders.filter(o => selectedOsIds.has(o.id)),
+    () => filteredOrders.filter(o => selectedOsIds.has(o.id) && !isCanonicalStrapServiceOrder(o)),
     [filteredOrders, selectedOsIds],
   );
   const osSelectionSummary = useMemo(() => summarizeRows(selectedOrders.map(toOsCostRow)), [selectedOrders, toOsCostRow]);
@@ -916,13 +902,15 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
     const rows = Array.from(byContractor.values()).sort((a, b) => b.value - a.value);
     return { rows, skipped, total: rows.reduce((s, r) => s + r.value, 0) };
   }, [bulkReceivableLegacy, osOverview]);
-  const allOsSelected = filteredOrders.length > 0 && filteredOrders.every(o => selectedOsIds.has(o.id));
+  const selectableOrders = filteredOrders.filter((order) => !isCanonicalStrapServiceOrder(order));
+  const allOsSelected = selectableOrders.length > 0 && selectableOrders.every(o => selectedOsIds.has(o.id));
   const toggleSelectAllOs = useCallback(() => {
-    setSelectedOsIds(prev => (filteredOrders.length > 0 && filteredOrders.every(o => prev.has(o.id))) ? new Set() : new Set(filteredOrders.map(o => o.id)));
-  }, [filteredOrders]);
+    setSelectedOsIds(prev => (selectableOrders.length > 0 && selectableOrders.every(o => prev.has(o.id))) ? new Set() : new Set(selectableOrders.map(o => o.id)));
+  }, [selectableOrders]);
 
   const handleGenerateOsPdf = useCallback(async (scope: 'filtro' | 'selecao') => {
-    const src = scope === 'selecao' ? selectedOrders : filteredOrders;
+    const src = (scope === 'selecao' ? selectedOrders : filteredOrders)
+      .filter((order) => !isCanonicalStrapServiceOrder(order));
     if (src.length === 0) {
       toast.error(scope === 'selecao' ? 'Selecione ≥1 OS pra gerar o relatório.' : 'Nenhuma OS no filtro atual.');
       return;
@@ -950,77 +938,6 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
     }
   }, [selectedOrders, filteredOrders, toOsCostRow, osFromDate, osToDate, osBasis, contractorFilter, contractors]);
 
-  // ── Artisanal helpers ──────────────────────────────────────────────────────
-  const findProductByNameColor = useCallback((name: string, color: string) => {
-    const group = productGroups.find((g: any) => g.name === name);
-    return products.find(p => {
-      if (group && p.group_id === group.id) {
-        const pc = p.color?.trim() || '';
-        return pc === color || getDerivedProductColor(p) === color;
-      }
-      if (!group) {
-        const base = getBaseName(p.name) || p.name;
-        if (base !== name) return false;
-        const pc = p.color?.trim() || '';
-        return pc === color || getDerivedProductColor(p) === color;
-      }
-      return false;
-    });
-  }, [products, productGroups]);
-
-  const artisanalStockEntry = useCallback(async (
-    osId: string, osNumber: string,
-    outputName: string, outputColor: string,
-    outputMeters: number, forOrderMeters: number,
-  ) => {
-    const prod = findProductByNameColor(outputName, outputColor);
-    if (!prod) {
-      toast.error(`Produto artesanal não encontrado: ${outputName} (${outputColor}) — entrada não realizada`);
-      return;
-    }
-    const prevQty = Number(prod.quantity) || 0;
-    const afterEntry = prevQty + outputMeters;
-    const inResult = await adjustStockSafe({
-      productId: prod.id,
-      expectedPrevious: prevQty,
-      newQty: afterEntry,
-      reason: `Entrada produção artesanal OS ${osNumber}`,
-    });
-    if (!inResult.success) { toast.error('Erro ao dar entrada artesanal: ' + (inResult.errorMessage || '')); return; }
-    toast.success(`Entrada: +${outputMeters.toFixed(2)}m de ${outputName} (${outputColor})`);
-
-    // Immediate debit for the linked order
-    if (forOrderMeters > 0) {
-      const afterDebit = Math.max(0, afterEntry - forOrderMeters);
-      const debitResult = await adjustStockSafe({
-        productId: prod.id,
-        expectedPrevious: afterEntry,
-        newQty: afterDebit,
-        reason: `Débito artesanal para pedido OS ${osNumber}`,
-      });
-      if (!debitResult.success) { toast.error('Erro ao debitar artesanal: ' + (debitResult.errorMessage || '')); return; }
-      toast.info(`Baixa p/ pedido: -${forOrderMeters.toFixed(2)}m de ${outputName} (${outputColor})`);
-    }
-
-    const { error: eOS } = await supabase.from('service_orders').update({ artisanal_stock_entry_done: true }).eq('id', osId);
-    if (eOS) { toast.error('Erro ao atualizar OS: ' + eOS.message); return; }
-    queryClient.invalidateQueries({ queryKey: ['products'] });
-    queryClient.invalidateQueries({ queryKey: ['service_orders'] });
-  }, [findProductByNameColor, queryClient]);
-
-  // Computed artisanal requirement (live, based on current OS dialog state)
-  const artisanalCalc = useMemo(() => {
-    if (!isArtisanal || !artRecipeId || !artOutputColor) return null;
-    const recipe = recipes.find(r => r.id === artRecipeId);
-    if (!recipe) return null;
-    const outputProd = findProductByNameColor(recipe.artisanal_product_name, artOutputColor);
-    const currentStock = Number(outputProd?.quantity) || 0;
-    const minStock = Number(outputProd?.min_stock) || 0;
-    return calcArtisanalRequirement(recipe, artNeededForOrder, currentStock, minStock);
-  }, [isArtisanal, artRecipeId, artOutputColor, artNeededForOrder, recipes, findProductByNameColor]);
-
-  const resetArtisanal = () => { setIsArtisanal(false); setArtRecipeId(''); setArtOutputColor(''); setArtBaseColor(''); setArtNeededForOrder(0); };
-
   // ── Handlers ──
   const handleSaveContractor = () => {
     if (!editingContractor.name?.trim()) return;
@@ -1036,89 +953,6 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
   // × unit_price via service_order_payable_amount). O createPayableForOrder
   // client-side foi removido na Fase 1 de facção (3 escritores divergentes).
 
-  // Reverse artisanal stock entries when a Concluído OS is cancelled.
-  const cancelArtisanalOutput = useCallback(async (
-    osId: string,
-    orderNumber: string,
-    order: Partial<ServiceOrder>,
-  ) => {
-    if (!order.artisanal_stock_entry_done) return;
-    const recipe = artisanalRecipes.find((r) => r.id === order.artisanal_recipe_id);
-    if (!recipe) {
-      toast.warning('Receita artesanal não encontrada — verifique o estoque manualmente.');
-      return;
-    }
-
-    const outputMeters = Number(order.artisanal_output_meters) || 0;
-    // A base (MP) é estornada automaticamente pelo trigger server-side
-    // tg_revert_service_order_base_on_cancel ao cancelar a OS — não calcular aqui.
-    // Net stock credited = total output − for_order portion (which went directly to production)
-    const netCredited = outputMeters - (Number(order.artisanal_for_order_meters) || 0);
-    const outputName = (order.artisanal_output_name || recipe.artisanal_product_name || '').trim();
-
-    if (order.sale_order_id) {
-      // Path A (per-color PV distribution): a saída (tira) precisa de lookup por cor
-      // e não dá pra automatizar com segurança. Bloqueia o cancel pra evitar a corrida
-      // onde a AP é estornada + flag resetada mas o estoque da tira segue creditado.
-      // A base (MP) é estornada automaticamente pelo trigger ao cancelar a OS no banco.
-      toast.error(
-        `OS artesanal vinculada ao PV — cancele manualmente:\n` +
-        `1. Debite saída: -${netCredited.toFixed(2)}m de "${outputName}"\n` +
-        `2. Cancele a conta a pagar da OS ${orderNumber}\n` +
-        `(a base "${recipe.base_product_name}" é estornada automaticamente ao cancelar)`,
-        { duration: 15000 },
-      );
-      return; // do NOT cancel AP or reset the flag without stock reversal
-    } else {
-      const outputColor = (order.artisanal_output_color || '').trim();
-
-      // A base (MP) é estornada automaticamente pelo trigger server-side
-      // tg_revert_service_order_base_on_cancel — não reverter aqui (evita duplo estorno).
-
-      // Debit output product by the net credited amount
-      if (netCredited > 0) {
-        // Resolve por GRUPO (robusto p/ nomenclatura "GRUPO: COR"); fallback por nome.
-        const outGroup = productGroups.find((g: any) => g.name === outputName);
-        let outQuery = supabase.from('products').select('id, quantity, name, color, group_id');
-        outQuery = outGroup ? outQuery.eq('group_id', outGroup.id) : outQuery.ilike('name', `${outputName}%`);
-        const { data: outRows } = await outQuery.limit(50);
-        const outMatch = (outRows || []).find((p: any) => {
-          if (!outGroup) { const base = getBaseName(p.name) || p.name; if (base !== outputName) return false; }
-          const pc = (p.color || '').trim().toLowerCase();
-          return !outputColor || pc === outputColor.toLowerCase() || getDerivedProductColor(p).toLowerCase() === outputColor.toLowerCase();
-        });
-        if (outMatch) {
-          const prev = Number(outMatch.quantity);
-          const debitQty = Math.max(0, prev - netCredited);
-          const res = await adjustStockSafe({
-            productId: outMatch.id, expectedPrevious: prev, newQty: debitQty,
-            reason: `Estorno saída artesanal "${recipe.name}" — OS ${orderNumber} cancelada`, orderId: osId,
-          });
-          if (res.success) toast.info(`Saída estornada: -${netCredited.toFixed(2)}m de ${outputName}`);
-          else toast.error(`Erro ao estornar saída: ${res.errorMessage || ''}`);
-        } else {
-          toast.warning(`Produto "${outputName}" (${outputColor}) não encontrado — estorno manual necessário.`);
-        }
-      }
-    }
-
-    // Cancel the AP row (idempotent — skip if already paid)
-    const { error: apCancelErr } = await supabase.from('accounts_payable')
-      .update({ status: 'cancelled' })
-      .eq('reference_type', 'service_order')
-      .eq('reference_id', osId)
-      .neq('status', 'paid');
-    if (apCancelErr) { toast.error(`Erro ao cancelar conta a pagar: ${apCancelErr.message}`); return; }
-
-    // Reset flag so the OS could be re-completed if needed
-    const { error: flagErr } = await supabase.from('service_orders').update({ artisanal_stock_entry_done: false }).eq('id', osId);
-    if (flagErr) { toast.error(`Erro ao resetar flag da OS: ${flagErr.message} — cancele manualmente.`); return; }
-
-    queryClient.invalidateQueries({ queryKey: ['accounts_payable'] }); queryClient.invalidateQueries({ queryKey: ['service_order_overview'] });
-    queryClient.invalidateQueries({ queryKey: ['products'] });
-    queryClient.invalidateQueries({ queryKey: ['service_orders'] });
-    toast.success('OS cancelada: conta a pagar cancelada e entradas de estoque revertidas.');
-  }, [artisanalRecipes, productGroups, products, queryClient]);
 
   const debitStockForMaterials = async (materials: MaterialSent[], orderNumber: string, orderId?: string, saleOrderId?: string | null) => {
     const so = saleOrderId ? saleOrders.find((s: any) => s.id === saleOrderId) : null;
@@ -1148,242 +982,6 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
     queryClient.invalidateQueries({ queryKey: ['products'] });
   };
 
-  // ── Artisanal production: debit base material + register artisanal output stock ──
-  const produceArtisanalOutput = async (
-    order: Partial<ServiceOrder>,
-    orderNumber: string,
-    orderId?: string,
-  ) => {
-    if (!order.artisanal_recipe_id) return;
-    // Re-read the live flag from DB — the passed-in payload may come from a stale
-    // React Query cache, allowing double-debit if two tabs save simultaneously.
-    if (orderId) {
-      const { data: liveOs } = await supabase.from('service_orders').select('artisanal_stock_entry_done').eq('id', orderId).single();
-      if (liveOs?.artisanal_stock_entry_done) return;
-    } else if (order.artisanal_stock_entry_done) {
-      return;
-    }
-    const recipe = artisanalRecipes.find((r) => r.id === order.artisanal_recipe_id);
-    if (!recipe) {
-      toast.warning('Receita artesanal não encontrada — entrada de estoque ignorada.');
-      return;
-    }
-    const outputMeters = Number(order.artisanal_output_meters) || 0;
-    // A base (MP) é debitada na CRIAÇÃO da OS pelo trigger tg_debit_service_order_base.
-    // Aqui (conclusão) só lançamos a entrada da tira + a baixa for_order.
-    const outputName = (order.artisanal_output_name || recipe.artisanal_product_name || '').trim();
-    const stockMetersTotal = Number(order.artisanal_for_stock_meters) || 0;
-    const forOrderMetersTotal = Number(order.artisanal_for_order_meters) || 0;
-
-    if (outputMeters <= 0 || !outputName) return;
-
-    // Resolve o produto da tira (output) por GRUPO — robusto contra nomenclatura
-    // "GRUPO: COR" e diferença de caixa. Fallback por nome só quando o grupo não existe.
-    const outGroup = productGroups.find((g: any) => g.name === outputName);
-    const findOutputProd = (color: string) => {
-      const c = (color || '').trim().toLowerCase();
-      return products.find((p: any) => {
-        if (outGroup) { if (p.group_id !== outGroup.id) return false; }
-        else { const base = getBaseName(p.name) || p.name; if (base !== outputName) return false; }
-        const pc = (p.color || '').trim().toLowerCase();
-        return pc === c || getDerivedProductColor(p).toLowerCase() === c;
-      });
-    };
-
-    // ── Path A: OS vinculada a um PV → debit por cor dos itens do pedido ──
-    if (order.sale_order_id) {
-      const { data: soItems } = await supabase
-        .from('sale_order_items')
-        .select('color, quantity')
-        .eq('sale_order_id', order.sale_order_id);
-
-      const validItems = (soItems || []).filter(i => i.color && (i.quantity || 0) > 0);
-      const totalQty = validItems.reduce((s, i) => s + (i.quantity || 0), 0);
-
-      if (validItems.length > 0 && totalQty > 0) {
-        // Track quantity overrides to avoid stale reads in the same batch
-        const stockOverrides = new Map<string, number>();
-        const getQty = (p: { id: string; quantity: number | null }) =>
-          stockOverrides.has(p.id) ? stockOverrides.get(p.id)! : (p.quantity || 0);
-
-        // Only mark artisanal_stock_entry_done when ALL colors succeed.
-        let hadColorFailure = false;
-        for (const item of validItems) {
-          const fraction = (item.quantity || 0) / totalQty;
-          const stockForColor = stockMetersTotal * fraction;
-          const forOrderForColor = forOrderMetersTotal * fraction;
-          const itemColor = (item.color || '').trim();
-
-          // 1) A base (MP) já foi debitada na CRIAÇÃO da OS pelo trigger
-          //    tg_debit_service_order_base — não debitar aqui (evita duplo débito).
-
-          // 2) Register artisanal output in this color (for_stock portion).
-          // Track the output product ID so step 3 can use it even if the product
-          // was just created (stale React Query cache wouldn't have it yet).
-          let outputProdId: string | null = null;
-          if (stockForColor > 0) {
-            const existing = findOutputProd(itemColor);
-            if (existing) {
-              outputProdId = existing.id;
-              const prevOutQty = getQty(existing);
-              const newOutQty = prevOutQty + stockForColor;
-              const inResult = await adjustStockSafe({
-                productId: existing.id,
-                expectedPrevious: prevOutQty,
-                newQty: newOutQty,
-                reason: `Entrada artesanal "${recipe.name}" (${itemColor}) — OS ${orderNumber}`,
-                orderId: orderId || null,
-              });
-              if (!inResult.success) {
-                toast.error(`Erro ao registrar entrada artesanal (${itemColor}): ${inResult.errorMessage || ''}`);
-                hadColorFailure = true;
-                continue;
-              }
-              stockOverrides.set(existing.id, newOutQty);
-              toast.success(`Entrada artesanal: +${stockForColor.toFixed(2)}m de ${outputName} (${itemColor})`);
-            } else {
-              const { data: newProdId, error: createErr } = await supabase.rpc('create_artisanal_product_with_stock', {
-                p_name: outputName,
-                p_color: itemColor || '',
-                p_quantity: stockForColor,
-                p_unit: 'm',
-                p_order_id: orderId || null,
-                p_reason: `Criação + entrada artesanal "${recipe.name}" (${itemColor}) — OS ${orderNumber}`,
-              });
-              if (!createErr && newProdId) {
-                outputProdId = newProdId as string;
-                stockOverrides.set(newProdId as string, stockForColor);
-                toast.success(`Produto artesanal criado: ${outputName} (${itemColor}) +${stockForColor.toFixed(2)}m`);
-              } else if (createErr) {
-                toast.error('Erro ao criar produto artesanal: ' + createErr.message);
-                hadColorFailure = true;
-                continue;
-              }
-            }
-          } else {
-            // No stock entry — still resolve ID for immediate debit (step 3)
-            const p = findOutputProd(itemColor);
-            if (p) outputProdId = p.id;
-          }
-
-          // 3) Immediate debit for the order (for_order portion) in this color.
-          // Uses outputProdId resolved above — avoids stale-cache miss when product was created in step 2.
-          if (forOrderForColor > 0 && outputProdId) {
-            const baseAfterEntry = stockOverrides.has(outputProdId)
-              ? stockOverrides.get(outputProdId)!
-              : (products.find(p => p.id === outputProdId)?.quantity || 0);
-            const afterDebit = Math.max(0, baseAfterEntry - forOrderForColor);
-            const debitResult = await adjustStockSafe({
-              productId: outputProdId,
-              expectedPrevious: baseAfterEntry,
-              newQty: afterDebit,
-              reason: `Débito artesanal para pedido (${itemColor}) — OS ${orderNumber}`,
-              orderId: orderId || null,
-            });
-            if (!debitResult.success) {
-              toast.error(`Erro ao debitar OP (${itemColor}): ${debitResult.errorMessage || ''}`);
-              hadColorFailure = true;
-              continue;
-            }
-            stockOverrides.set(outputProdId, afterDebit);
-            toast.info(`Baixa p/ pedido: -${forOrderForColor.toFixed(2)}m de ${outputName} (${itemColor})`);
-          }
-        }
-
-        if (orderId && !hadColorFailure) {
-          const { error: doneErr } = await supabase.from('service_orders').update({ artisanal_stock_entry_done: true }).eq('id', orderId);
-          if (doneErr) toast.error(`Erro ao marcar OS como concluída: ${doneErr.message} — marque manualmente.`);
-        } else if (orderId && hadColorFailure) {
-          toast.warning('Saída artesanal parcialmente lançada — algumas cores falharam. Verifique o estoque e tente novamente.');
-        }
-        queryClient.invalidateQueries({ queryKey: ['products'] });
-        queryClient.invalidateQueries({ queryKey: ['service_orders'] });
-        return;
-      }
-    }
-
-    // ── Path B: OS sem vínculo de PV → cor única selecionada manualmente ──
-    const outputColor = (order.artisanal_output_color || '').trim();
-    let hadFailure = false;
-
-    // 1) A base (MP) já foi debitada na CRIAÇÃO da OS pelo trigger
-    //    tg_debit_service_order_base — não debitar aqui (evita duplo débito).
-
-    // Track output product info across steps 2 and 3
-    let artisanalOutputProdId: string | null = null;
-    let artisanalBaseAfterEntry = 0;
-
-    // 2) Register artisanal output (for_stock portion)
-    if (stockMetersTotal > 0) {
-      const existing = findOutputProd(outputColor);
-      if (existing) {
-        artisanalOutputProdId = existing.id;
-        artisanalBaseAfterEntry = (existing.quantity || 0) + stockMetersTotal;
-        const inResult = await adjustStockSafe({
-          productId: existing.id,
-          expectedPrevious: existing.quantity || 0,
-          newQty: artisanalBaseAfterEntry,
-          reason: `Entrada artesanal "${recipe.name}" — OS ${orderNumber}`,
-          orderId: orderId || null,
-        });
-        if (inResult.success) {
-          toast.success(`Entrada de estoque artesanal: +${stockMetersTotal.toFixed(2)}m de ${outputName}`);
-        } else {
-          hadFailure = true;
-          toast.error(`Erro ao registrar entrada artesanal: ${inResult.errorMessage || ''}`);
-        }
-      } else {
-        const { data: newProdId, error: createErr } = await supabase.rpc('create_artisanal_product_with_stock', {
-          p_name: outputName,
-          p_color: outputColor || '',
-          p_quantity: stockMetersTotal,
-          p_unit: 'm',
-          p_order_id: orderId || null,
-          p_reason: `Criação + entrada artesanal "${recipe.name}" — OS ${orderNumber}`,
-        });
-        if (!createErr && newProdId) {
-          artisanalOutputProdId = newProdId as string;
-          artisanalBaseAfterEntry = stockMetersTotal;
-          toast.success(`Produto artesanal criado: ${outputName} (+${stockMetersTotal.toFixed(2)}m)`);
-        } else if (createErr) {
-          hadFailure = true;
-          toast.error('Erro ao criar produto artesanal: ' + createErr.message);
-        }
-      }
-    }
-
-    // 3) Immediate debit for the order (for_order portion)
-    // Use artisanalOutputProdId tracked in step 2 — products.find() would miss
-    // a product created in this same call (not yet in React Query cache).
-    if (forOrderMetersTotal > 0 && artisanalOutputProdId) {
-      const afterDebit = Math.max(0, artisanalBaseAfterEntry - forOrderMetersTotal);
-      const debitResult = await adjustStockSafe({
-        productId: artisanalOutputProdId,
-        expectedPrevious: artisanalBaseAfterEntry,
-        newQty: afterDebit,
-        reason: `Débito artesanal para pedido — OS ${orderNumber}`,
-        orderId: orderId || null,
-      });
-      if (debitResult.success) {
-        toast.info(`Baixa p/ pedido: -${forOrderMetersTotal.toFixed(2)}m de ${outputName}`);
-      } else {
-        hadFailure = true;
-        toast.error(`Erro ao debitar OP: ${debitResult.errorMessage || ''}`);
-      }
-    } else if (forOrderMetersTotal > 0 && !artisanalOutputProdId) {
-      hadFailure = true;
-      toast.warning(`Débito p/ pedido não realizado — produto artesanal não encontrado. Ajuste manualmente.`);
-    }
-
-    if (orderId && !hadFailure) {
-      const { error: doneErr } = await supabase.from('service_orders').update({ artisanal_stock_entry_done: true }).eq('id', orderId);
-      if (doneErr) toast.error(`Erro ao marcar OS como concluída: ${doneErr.message} — marque manualmente.`);
-    } else if (orderId && hadFailure) {
-      toast.warning('Saída artesanal parcialmente lançada. Verifique o estoque e tente novamente.');
-    }
-    queryClient.invalidateQueries({ queryKey: ['products'] });
-    queryClient.invalidateQueries({ queryKey: ['service_orders'] });
-  };
 
   // ── Ações rápidas de status (1 clique na linha, sem abrir o form) ──────────
   // "Marcar como Entregue": status → 'Concluído' + delivered_at (data real).
@@ -1397,31 +995,37 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
   const [dispatchDialogOs, setDispatchDialogOs] = useState<ServiceOrder | null>(null);
   // Confirmação estilizada de exclusão de OS (substitui window.confirm nativo).
   const [deleteOsTarget, setDeleteOsTarget] = useState<ServiceOrder | null>(null);
+  const openCanonicalOrReturn = useCallback((order: ServiceOrder) => {
+    if (isCanonicalStrapServiceOrder(order)) {
+      navigate('/tiras-artesanais?tab=producao&origin=terceirizados');
+      return;
+    }
+    setReturnDialogOs(order);
+  }, [navigate]);
+  const openCanonicalOrDispatch = useCallback((order: ServiceOrder) => {
+    if (isCanonicalStrapServiceOrder(order)) {
+      navigate('/tiras-artesanais?tab=producao&origin=terceirizados');
+      return;
+    }
+    setDispatchDialogOs(order);
+  }, [navigate]);
   const handleReturnSaved = useCallback(async (info: { completed: boolean }) => {
     const o = returnDialogOs;
     if (!info.completed || !o) return;
-    // Efeito que era do fluxo antigo de conclusão: saída artesanal (1×).
-    if ((o as any).artisanal_recipe_id) {
-      const { data: fresh } = await (supabase as any)
-        .from('service_orders')
-        .select('order_number, artisanal_stock_entry_done')
-        .eq('id', o.id)
-        .maybeSingle();
-      if (fresh && !fresh.artisanal_stock_entry_done) {
-        await produceArtisanalOutput(
-          { ...o, artisanal_stock_entry_done: fresh.artisanal_stock_entry_done } as any,
-          fresh.order_number || '',
-          o.id,
-        );
-      }
+    if (isCanonicalStrapServiceOrder(o)) {
+      navigate('/tiras-artesanais?tab=producao&origin=terceirizados');
     }
-  }, [returnDialogOs, produceArtisanalOutput]);
+  }, [returnDialogOs, navigate]);
 
   // Dar baixa / reabrir um material da OS. Quando TODOS ficam baixados, a OS
   // fecha (status→Concluído) via claim atômico (.neq status) que evita
   // dupla-conta-a-pagar em clique duplo / abas concorrentes, e dispara a saída
   // de estoque artesanal 1×. Extraído do corpo da tabela pra reuso no card.
   const toggleMaterial = useCallback(async (o: ServiceOrder, index: number) => {
+    if (isCanonicalStrapServiceOrder(o)) {
+      navigate('/tiras-artesanais?tab=producao&origin=terceirizados');
+      return;
+    }
     const mats = getMaterials(o);
     const updatedMats = mats.map((mat, mi) => mi === index ? { ...mat, completed: !mat.completed } : mat);
     const allDone = updatedMats.length > 0 && updatedMats.every(mat => mat.completed);
@@ -1430,13 +1034,13 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
       // diálogo de retorno pra capturar pares bons/defeito — senão a conta a pagar
       // sai pelo valor CHEIO (qtd × preço) ignorando perda (auditoria 2026-07-02).
       // Persiste o check dos materiais e abre o retorno; NÃO conclui direto aqui.
-      if (!(o as any).artisanal_recipe_id && Number(o.unit_price) > 0) {
+      if (!isCanonicalStrapServiceOrder(o) && Number(o.unit_price) > 0) {
         await supabase.from('service_orders').update({ materials_sent: updatedMats as any }).eq('id', o.id);
         queryClient.invalidateQueries({ queryKey: ['service_orders'] });
         setReturnDialogOs({ ...o, materials_sent: updatedMats } as any);
         return;
       }
-      // Artesanal / valor fixo: mantém a conclusão direta (valor não depende de retorno).
+      // Valor fixo não-artesanal: mantém a conclusão direta.
       const { data: claimed } = await supabase
         .from('service_orders')
         .update({ status: 'Concluído', materials_sent: updatedMats as any })
@@ -1451,86 +1055,53 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
       queryClient.invalidateQueries({ queryKey: ['service_orders'] });
       queryClient.invalidateQueries({ queryKey: ['accounts_payable'] });
       queryClient.invalidateQueries({ queryKey: ['service_order_overview'] });
-      const freshOs = claimed[0] as any;
-      if ((o as any).artisanal_recipe_id && !freshOs.artisanal_stock_entry_done) {
-        await produceArtisanalOutput({ ...o, artisanal_stock_entry_done: freshOs.artisanal_stock_entry_done } as any, freshOs.order_number || '', o.id);
-      }
     } else {
       updateOrder.mutate({ id: o.id, materials_sent: updatedMats } as any);
     }
-  }, [updateOrder, queryClient, produceArtisanalOutput, setReturnDialogOs]);
+  }, [updateOrder, queryClient, setReturnDialogOs, navigate]);
 
 
   // ── Bloco C: form manual disciplinado ──────────────────────────────────────
   // Tarifa vigente da contratada+setor → pré-preenche o preço (só quando vazio).
   const { data: sectorRate } = useContractorSectorRate(editingOrder.contractor_id, editingOrder.target_sector);
   useEffect(() => {
-    if (!isArtisanal && sectorRate != null && sectorRate > 0 && !(Number(editingOrder.unit_price) > 0)) {
+    if (sectorRate != null && sectorRate > 0 && !(Number(editingOrder.unit_price) > 0)) {
       setEditingOrder(p => ({ ...p, unit_price: sectorRate }));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sectorRate]);
   const selectedOrderContractor = contractors.find(c => c.id === editingOrder.contractor_id);
   const isFabricaContractor = (selectedOrderContractor?.payment_days ?? 0) >= 999;
-  // Salvar exige contratado + setor + preço (exceto artesanal, que deriva da receita).
+  // Produção de tiras não pode mais nascer nesta tela; o hub é a porta única.
   const manualOsValid = !!editingOrder.contractor_id
-    && (isArtisanal || (!!editingOrder.target_sector && Number(editingOrder.unit_price) > 0));
+    && !!editingOrder.target_sector
+    && Number(editingOrder.unit_price) > 0;
 
   const handleSaveOrder = () => {
-    if (!editingOrder.contractor_id) return;
-    if (!isArtisanal && (!editingOrder.target_sector || !(Number(editingOrder.unit_price) > 0))) return;
-    const recipe = isArtisanal ? recipes.find(r => r.id === artRecipeId) : null;
-
-    // Build artisanal payload override
-    let artPayload: Partial<ServiceOrder> = {};
-    let artMaterials: MaterialSent[] = [];
-    if (isArtisanal && recipe && artOutputColor && artisanalCalc) {
-      const { forOrderMeters, forStockMeters, totalToProduce, baseMetersSend, laborCost } = artisanalCalc;
-      artPayload = {
-        artisanal_recipe_id: recipe.id,
-        artisanal_output_name: recipe.artisanal_product_name,
-        artisanal_output_color: artOutputColor,
-        artisanal_output_meters: totalToProduce,
-        artisanal_for_order_meters: forOrderMeters,
-        artisanal_for_stock_meters: forStockMeters,
-        artisanal_base_color: artOutputColor, // regra: a tira é cortada da NAPA da MESMA cor
-        artisanal_stock_entry_done: false,
-        description: editingOrder.description?.trim() ||
-          `Produção artesanal: ${recipe.artisanal_product_name} (${artOutputColor}) — ${totalToProduce.toFixed(2)}m`,
-        total_value: laborCost,
-        unit_price: laborCost,
-        // Produção artesanal conserva o fluxo legado de transformação de
-        // estoque; o despacho físico rastreado vale para OS de setor por pares.
-        dispatch_tracked: false,
-      };
-      if (artOutputColor && baseMetersSend > 0) {
-        artMaterials = [{ material: recipe.base_product_name, color: artOutputColor, meters: Number(baseMetersSend.toFixed(4)) }];
-      }
+    if (isCanonicalStrapServiceOrder(editingOrder as ServiceOrder)) {
+      toast.error('Esta OS pertence ao fluxo canônico de tiras. Faça a operação no Hub de Tiras Artesanais.');
+      navigate('/tiras-artesanais?tab=producao&origin=terceirizados');
+      return;
     }
+    if (!editingOrder.contractor_id) return;
+    if (!editingOrder.target_sector || !(Number(editingOrder.unit_price) > 0)) return;
 
     // Descrição é OPCIONAL (02/08/2026) e a coluna é NOT NULL → grava ''.
     // ⚠ Havia aqui um `if (!descFinal.trim()) return;` — early return SILENCIOSO.
     // Com a descrição nascendo vazia, ele transformaria "Salvar" num clique sem
     // efeito e sem mensagem em toda OS nova. O que o form realmente exige está
     // em `manualOsValid` (prestador + setor + preço), que nunca cobrou descrição.
-    const descFinal = (artPayload.description as string) || editingOrder.description || '';
+    const descFinal = editingOrder.description || '';
 
     // Fix do bug: total = qty × unit_price (não copia unit_price pra total).
-    // Artesanal mantém override via laborCost da receita (artPayload.total_value).
     const qty = Math.max(1, Number(editingOrder.quantity || 1));
-    const unitPriceFinal = isArtisanal
-      ? Number(artPayload.unit_price ?? editingOrder.unit_price ?? 0)
-      : Number(editingOrder.unit_price ?? 0);
-    const total = isArtisanal
-      ? Number(artPayload.total_value ?? editingOrder.total_value ?? unitPriceFinal)
-      : (qty * unitPriceFinal);
-    const validMaterials = isArtisanal && artMaterials.length > 0
-      ? artMaterials
-      : (editingOrder.materials_sent || []).filter(m => (m.material?.trim()) && (m.color?.trim()) && m.meters > 0);
+    const unitPriceFinal = Number(editingOrder.unit_price ?? 0);
+    const total = qty * unitPriceFinal;
+    const validMaterials = (editingOrder.materials_sent || [])
+      .filter(m => (m.material?.trim()) && (m.color?.trim()) && m.meters > 0);
 
     const payload = {
       ...editingOrder,
-      ...artPayload,
       description: descFinal,
       quantity: qty,
       unit_price: unitPriceFinal,
@@ -1557,20 +1128,6 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
     const justCancelled = editingOrder.status === 'Cancelado' && originalOrder?.status !== 'Cancelado';
     const contractorName = contractors.find(c => c.id === editingOrder.contractor_id)?.name || '';
 
-    const doArtisanalCompletion = async (osId: string, osNumber: string, ord: typeof payload) => {
-      if (
-        ord.artisanal_output_meters && ord.artisanal_output_meters > 0 &&
-        ord.artisanal_output_name && ord.artisanal_output_color &&
-        !ord.artisanal_stock_entry_done
-      ) {
-        await artisanalStockEntry(
-          osId, osNumber,
-          ord.artisanal_output_name, ord.artisanal_output_color,
-          ord.artisanal_output_meters, ord.artisanal_for_order_meters || 0,
-        );
-      }
-    };
-
     if (isEditing && editingOrder.id) {
       const osId = editingOrder.id;
       updateOrder.mutate(payload as ServiceOrder, {
@@ -1579,20 +1136,9 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
           if (justCompleted) {
             // Conta a pagar: gerada pelo banco na transição de status.
             queryClient.invalidateQueries({ queryKey: ['accounts_payable'] }); queryClient.invalidateQueries({ queryKey: ['service_order_overview'] });
-            if (payload.artisanal_recipe_id) {
-              try {
-                await produceArtisanalOutput(payload, originalOrder?.order_number || '', osId);
-              } catch (e: any) {
-                toast.error(`Falha ao registrar saída artesanal: ${e?.message || 'erro desconhecido'}`);
-              }
-            }
           } else if (justCancelled) {
             // Reverte estoque ao cancelar a OS.
             try {
-              if ((originalOrder as any)?.artisanal_recipe_id) {
-                // Artesanal: reversão da saída + base (trigger server-side).
-                await cancelArtisanalOutput(osId, originalOrder?.order_number || '', originalOrder as any);
-              } else {
                 // Não-artesanal: re-credita os materiais enviados (debitados na
                 // criação) — mesma resolução produto+cor do branch de diff.
                 const matsToRestore = getMaterials(originalOrder as any)
@@ -1610,7 +1156,6 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                   if (r.success) toast.info(`Material restituído: ${mat.material} (${mat.color}) +${mat.meters.toFixed(2)}m`);
                   else toast.error(`Erro ao restituir ${mat.material}: ${r.errorMessage || ''}`);
                 }
-              }
             } catch (e: any) {
               toast.error(`Falha ao estornar materiais: ${e?.message || 'erro desconhecido'}`);
             }
@@ -1675,13 +1220,6 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
           if (editingOrder.status === 'Concluído') {
             // Conta a pagar: gerada pelo banco na transição de status.
             queryClient.invalidateQueries({ queryKey: ['accounts_payable'] }); queryClient.invalidateQueries({ queryKey: ['service_order_overview'] });
-            if (payload.artisanal_recipe_id) {
-              try {
-                await produceArtisanalOutput(payload, data?.order_number, data?.id);
-              } catch (e: any) {
-                toast.error(`Falha ao registrar saída artesanal: ${e?.message || 'erro desconhecido'}`);
-              }
-            }
           }
         },
       });
@@ -1691,26 +1229,19 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
   const openEditContractor = (c: Contractor) => { setEditingContractor(c); setIsEditing(true); setContractorDialog(true); };
   const openNewContractor = () => { setEditingContractor({ ...emptyContractor }); setIsEditing(false); setContractorDialog(true); };
   const openEditOrder = (o: ServiceOrder) => {
+    if (isCanonicalStrapServiceOrder(o)) {
+      navigate('/tiras-artesanais?tab=producao&origin=terceirizados');
+      return;
+    }
     const mats = getMaterials(o);
     setEditingOrder({ ...o, materials_sent: mats.length > 0 ? mats : [{ ...emptyMaterial }] });
     setIsEditing(true);
     setOrderDialog(true);
-    // Restore artisanal state if order was artisanal
-    if (o.artisanal_recipe_id) {
-      setIsArtisanal(true);
-      setArtRecipeId(o.artisanal_recipe_id);
-      setArtOutputColor(o.artisanal_output_color || '');
-      setArtBaseColor(o.artisanal_base_color || '');
-      setArtNeededForOrder(o.artisanal_for_order_meters || 0);
-    } else {
-      resetArtisanal();
-    }
   };
   const openNewOrder = (contractorId?: string) => {
     setEditingOrder({ ...emptyOrder, materials_sent: [{ ...emptyMaterial }], ...(contractorId ? { contractor_id: contractorId } : {}) });
     setIsEditing(false);
     setOrderDialog(true);
-    resetArtisanal();
   };
 
   // Sinal do hub (/terceirizados): "Nova OS" pedida por outra aba (ex.: Na Rua)
@@ -1737,15 +1268,6 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
   // Cor e label do status delegadas à state machine canônica (osStatusMachine.ts).
   const statusColor = osStatusBadgeVariant;
   const statusLabel = osStatusLabel;
-
-  const handleSaveRecipe = () => {
-    if (!editingRecipe.name?.trim() || !editingRecipe.artisanal_product_name?.trim() || !editingRecipe.base_product_name?.trim()) return;
-    if (isEditingRecipe && editingRecipe.id) {
-      updateRecipe.mutate(editingRecipe as ArtisanalRecipe, { onSuccess: () => setRecipeDialog(false) });
-    } else {
-      createRecipe.mutate(editingRecipe, { onSuccess: () => setRecipeDialog(false) });
-    }
-  };
 
   // O catálogo completo de materiais é usado apenas nos formulários. A lista
   // operacional não deve ficar bloqueada enquanto ele carrega em segundo plano.
@@ -1795,7 +1317,6 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
               <TabsTrigger value="orders" className="gap-1.5"><ClipboardList className="h-3.5 w-3.5" /> Ordens de Serviço</TabsTrigger>
               <TabsTrigger value="planning" className="gap-1.5"><ChartLineUp className="h-3.5 w-3.5" /> Planejamento</TabsTrigger>
               <TabsTrigger value="contractors" className="gap-1.5"><Users className="h-3.5 w-3.5" /> Prestadores</TabsTrigger>
-              <TabsTrigger value="recipes" className="gap-1.5"><FlaskConical className="h-3.5 w-3.5" /> Receitas Artesanais</TabsTrigger>
             </TabsList>
           )}
 
@@ -1970,7 +1491,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                         <SquaresFour className="h-3.5 w-3.5" /> Cartões
                       </button>
                     </div>
-                    <button type="button" className="h-10 rounded px-1 transition-colors hover:text-foreground sm:h-auto" onClick={toggleSelectAllOs}>
+                    <button type="button" disabled={selectableOrders.length === 0} className="h-10 rounded px-1 transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 sm:h-auto" onClick={toggleSelectAllOs}>
                       {allOsSelected ? 'Limpar seleção' : 'Selecionar todas'}
                     </button>
                   </div>
@@ -2000,11 +1521,11 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                         {/* Cabeçalho: seleção + Nº/prestador · total/status */}
                         <div className="flex items-start justify-between gap-2">
                           <div className="flex min-w-0 items-start gap-2">
-                            <Checkbox checked={selected} onCheckedChange={() => toggleOsSelect(o.id)} className="mt-0.5 shrink-0" aria-label={`Selecionar OS ${o.order_number}`} />
+                            <Checkbox checked={selected} disabled={isCanonicalStrapServiceOrder(o)} onCheckedChange={() => toggleOsSelect(o.id)} className="mt-0.5 shrink-0" aria-label={`Selecionar OS ${o.order_number}`} />
                             <div className="min-w-0">
                               <div className="flex items-center gap-1.5">
                                 <span className="font-mono text-sm font-bold tracking-tight">{o.order_number}</span>
-                                {o.artisanal_recipe_id && <span title="Produção artesanal"><FlaskConical className="h-3.5 w-3.5 text-primary" /></span>}
+                                {isCanonicalStrapServiceOrder(o) && <span title="Produção canônica de tiras"><FlaskConical className="h-3.5 w-3.5 text-primary" /></span>}
                               </div>
                               <p className="truncate text-sm font-medium text-foreground">{o.contractors?.name || 'Sem prestador'}</p>
                             </div>
@@ -2106,7 +1627,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                   <Table>
                     <TableHeader>
                       <TableRow className="bg-muted/40 [&_th]:h-9 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
-                        <TableHead className="w-8"><Checkbox checked={allOsSelected} onCheckedChange={toggleSelectAllOs} aria-label="Selecionar todas" /></TableHead>
+                        <TableHead className="w-8"><Checkbox checked={allOsSelected} disabled={selectableOrders.length === 0} onCheckedChange={toggleSelectAllOs} aria-label="Selecionar todas" /></TableHead>
                         <TableHead>Nº OS</TableHead>
                         <TableHead>Prestador</TableHead>
                         <TableHead className="hidden md:table-cell">PV</TableHead>
@@ -2135,12 +1656,12 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                             onClick={e => { if ((e.target as HTMLElement).closest('button,[role="checkbox"]')) return; openEditOrder(o); }}
                           >
                             <TableCell onClick={e => e.stopPropagation()}>
-                              <Checkbox checked={selected} onCheckedChange={() => toggleOsSelect(o.id)} aria-label={`Selecionar OS ${o.order_number}`} />
+                              <Checkbox checked={selected} disabled={isCanonicalStrapServiceOrder(o)} onCheckedChange={() => toggleOsSelect(o.id)} aria-label={`Selecionar OS ${o.order_number}`} />
                             </TableCell>
                             <TableCell className="whitespace-nowrap font-mono text-sm font-bold">
                               <button type="button" onClick={() => openEditOrder(o)} className="inline-flex min-h-9 items-center gap-1 rounded px-1 text-left hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label={`Abrir OS ${o.order_number}`}>
                                 {o.order_number}
-                                {o.artisanal_recipe_id && <span title="Produção artesanal"><FlaskConical className="h-3 w-3 text-primary" /></span>}
+                                {isCanonicalStrapServiceOrder(o) && <span title="Produção canônica de tiras"><FlaskConical className="h-3 w-3 text-primary" /></span>}
                               </button>
                             </TableCell>
                             <TableCell className="text-sm">{o.contractors?.name || <span className="text-muted-foreground">Sem prestador</span>}</TableCell>
@@ -2336,125 +1857,6 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
 
   const overlays = (
     <>
-      {/* ── Artisanal Recipe Dialog ── */}
-      <Dialog open={recipeDialog} onOpenChange={open => { setRecipeDialog(open); if (!open) { setEditingRecipe({ ...emptyRecipe }); setIsEditingRecipe(false); } }}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2"><FlaskConical className="h-5 w-5 text-primary" /> {isEditingRecipe ? 'Editar' : 'Nova'} Receita Artesanal</DialogTitle>
-            <DialogDescription>Cadastre a transformação de matéria-prima em produto artesanal.</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3 mt-2">
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Nome da Receita *</Label>
-              <Input placeholder="Ex: Tira Overlock 5mm" value={editingRecipe.name || ''} onChange={e => setEditingRecipe(p => ({ ...p, name: e.target.value }))} className="h-9" />
-            </div>
-            <div className="rounded-lg border p-3 space-y-2 bg-muted/20">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Transformação</p>
-              <div className="flex items-center gap-2">
-                <div className="flex-1 space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">Matéria-Prima Base *</Label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button variant="outline" role="combobox" className="h-9 w-full justify-between text-sm font-normal">
-                        {editingRecipe.base_product_name || 'Material base'}
-                        <ChevronsUpDown className="ml-2 h-3.5 w-3.5 opacity-50" />
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-[260px] p-0" align="start">
-                       <Command>
-                         <CommandInput placeholder="Buscar grupo..." />
-                         <CommandList>
-                           <CommandEmpty>Nenhum grupo encontrado.</CommandEmpty>
-                           <CommandGroup>
-                             {productGroups.map((g: any) => (
-                               <CommandItem
-                                 key={g.id}
-                                 value={g.name}
-                                 onSelect={(v) => setEditingRecipe((p) => ({ ...p, base_product_name: v }))}
-                                >
-                                 <Check className={cn('mr-2 h-3.5 w-3.5', editingRecipe.base_product_name === g.name ? 'opacity-100' : 'opacity-0')} />
-                                 {g.name}
-                               </CommandItem>
-                             ))}
-                           </CommandGroup>
-                         </CommandList>
-                       </Command>
-                    </PopoverContent>
-                  </Popover>
-                </div>
-                <ArrowRight className="h-5 w-5 text-muted-foreground shrink-0 mt-5" />
-                <div className="flex-1 space-y-1.5">
-                   <Label className="text-xs text-muted-foreground">Produto Artesanal (Resultado) *</Label>
-                   <Popover>
-                     <PopoverTrigger asChild>
-                       <Button variant="outline" role="combobox" className="h-9 w-full justify-between text-sm font-normal">
-                         {editingRecipe.artisanal_product_name || 'Produto produzido'}
-                         <ChevronsUpDown className="ml-2 h-3.5 w-3.5 opacity-50" />
-                       </Button>
-                     </PopoverTrigger>
-                     <PopoverContent className="w-[260px] p-0" align="start">
-                       <Command>
-                         <CommandInput placeholder="Buscar grupo..." />
-                         <CommandList>
-                           <CommandEmpty>Nenhum grupo encontrado.</CommandEmpty>
-                           <CommandGroup>
-                             {productGroups.map((g: any) => (
-                               <CommandItem
-                                 key={g.id}
-                                 value={g.name}
-                                 onSelect={(v) => setEditingRecipe((p) => ({ ...p, artisanal_product_name: v }))}
-                               >
-                                 <Check className={cn('mr-2 h-3.5 w-3.5', editingRecipe.artisanal_product_name === g.name ? 'opacity-100' : 'opacity-0')} />
-                                 {g.name}
-                               </CommandItem>
-                             ))}
-                           </CommandGroup>
-                         </CommandList>
-                       </Command>
-                     </PopoverContent>
-                   </Popover>
-                </div>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">Rendimento (m saída / 1m base) *</Label>
-                  <NumberInput min={0.01} value={editingRecipe.yield_per_meter} onChange={n => setEditingRecipe(p => ({ ...p, yield_per_meter: n }))} className="h-9" placeholder="Ex: 88" />
-                  {(editingRecipe.yield_per_meter || 0) > 0 && (
-                    <p className="text-xs text-muted-foreground">1m base → {editingRecipe.yield_per_meter}m saída</p>
-                  )}
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">MO por metro saída (R$)</Label>
-                  <NumberInput min={0} value={editingRecipe.labor_cost_per_meter} onChange={n => setEditingRecipe(p => ({ ...p, labor_cost_per_meter: n }))} className="h-9" placeholder="0.00" />
-                </div>
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Prestador Padrão</Label>
-              <Select value={editingRecipe.default_contractor_id || '__none__'} onValueChange={v => setEditingRecipe(p => ({ ...p, default_contractor_id: v === '__none__' ? null : v }))}>
-                <SelectTrigger className="h-9"><SelectValue placeholder="Nenhum" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none__">Nenhum</SelectItem>
-                  {contractors.filter(c => c.active).map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Observações</Label>
-              <Input value={editingRecipe.notes || ''} onChange={e => setEditingRecipe(p => ({ ...p, notes: e.target.value }))} className="h-9" />
-            </div>
-            <div className="flex items-center gap-2">
-              <Switch checked={editingRecipe.active ?? true} onCheckedChange={v => setEditingRecipe(p => ({ ...p, active: v }))} />
-              <Label>Receita ativa</Label>
-            </div>
-          </div>
-          <DialogFooter className="gap-2 sm:gap-0 mt-4">
-            <Button variant="outline" onClick={() => setRecipeDialog(false)}>Cancelar</Button>
-            <Button onClick={handleSaveRecipe} disabled={createRecipe.isPending || updateRecipe.isPending}>Salvar</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       {/* ── Contractor Dialog ── */}
       <ContractorFormDialog
         open={contractorDialog}
@@ -2468,7 +1870,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
       />
 
       {/* ── Service Order Dialog ── */}
-      <Dialog open={orderDialog} onOpenChange={open => { setOrderDialog(open); if (!open) { setEditingOrder({ ...emptyOrder, materials_sent: [{ ...emptyMaterial }] }); setIsEditing(false); setOrderTab('dados'); resetArtisanal(); setOsPvItemSel(new Set()); osPvPrevRef.current = null; } }}>
+      <Dialog open={orderDialog} onOpenChange={open => { setOrderDialog(open); if (!open) { setEditingOrder({ ...emptyOrder, materials_sent: [{ ...emptyMaterial }] }); setIsEditing(false); setOrderTab('dados'); setOsPvItemSel(new Set()); osPvPrevRef.current = null; } }}>
         <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2"><FileText className="h-5 w-5 text-primary" /> {isEditing ? 'Editar' : 'Nova'} Ordem de Serviço</DialogTitle>
@@ -2506,7 +1908,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                   <Input value={editingOrder.description || ''} onChange={e => setEditingOrder(p => ({ ...p, description: e.target.value }))} className="h-9" />
                 </div>
                 <div className="sm:col-span-2 space-y-1.5">
-                  <Label className="text-xs font-medium text-muted-foreground">Setor / serviço {!isArtisanal && '*'}</Label>
+                  <Label className="text-xs font-medium text-muted-foreground">Setor / serviço *</Label>
                   <Select value={editingOrder.target_sector || ''} onValueChange={v => setEditingOrder(p => ({ ...p, target_sector: v }))}>
                     <SelectTrigger className="h-9"><SelectValue placeholder="Selecione o setor terceirizado" /></SelectTrigger>
                     <SelectContent>
@@ -2579,7 +1981,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                 </div>
 
                 {/* ── Itens do PV vinculado (mesmo modelo do atalho "Gerar OS" do pedido) ── */}
-                {editingOrder.sale_order_id && osPvItems.length > 0 && !isArtisanal && (
+                {editingOrder.sale_order_id && osPvItems.length > 0 && (
                   <div className="sm:col-span-2 space-y-2 rounded-lg border border-primary/20 bg-primary/5 p-3">
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-[10px] font-mono font-bold uppercase tracking-[0.16em] text-muted-foreground whitespace-nowrap">Itens do pedido</span>
@@ -2616,158 +2018,30 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                   <div className="flex items-center justify-between rounded-lg border px-3 py-2 bg-muted/20">
                     <div className="flex items-center gap-2">
                       <FlaskConical className="h-4 w-4 text-primary" />
-                      <span className="text-sm font-medium">Produção Artesanal</span>
+                      <div>
+                        <span className="block text-sm font-medium">Produção de tiras artesanais</span>
+                        <span className="block text-[11px] text-muted-foreground">Lotes, remessas e parciais ficam no hub canônico.</span>
+                      </div>
                     </div>
-                    <Switch checked={isArtisanal} onCheckedChange={v => { setIsArtisanal(v); if (!v) resetArtisanal(); }} />
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => navigate('/tiras-artesanais?tab=producao&origin=terceirizados')}
+                    >
+                      Abrir hub
+                    </Button>
                   </div>
 
-                  {isArtisanal && (
-                    <div className="mt-3 space-y-3 p-3 rounded-lg border border-primary/20 bg-primary/5">
-                      {/* Recipe picker */}
-                      <div className="space-y-1.5">
-                        <Label className="text-xs font-medium text-muted-foreground">Receita Artesanal</Label>
-                        <Select value={artRecipeId} onValueChange={v => { setArtRecipeId(v); setArtOutputColor(''); setArtBaseColor(''); const rec = recipes.find(r => r.id === v); if (rec?.default_contractor_id && !editingOrder.contractor_id) setEditingOrder(p => ({ ...p, contractor_id: rec.default_contractor_id! })); }}>
-                          <SelectTrigger className="h-9"><SelectValue placeholder="Selecione a receita..." /></SelectTrigger>
-                          <SelectContent>
-                            {recipes.filter(r => r.active).map(r => (
-                              <SelectItem key={r.id} value={r.id}>
-                                {r.name} — {r.base_product_name} → {r.artisanal_product_name} ({r.yield_per_meter}×)
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      {artRecipeId && (() => {
-                        const recipe = recipes.find(r => r.id === artRecipeId);
-                        if (!recipe) return null;
-                        return (
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            <div className="space-y-1.5">
-                              <Label className="text-xs text-muted-foreground">Cor do Produto Artesanal</Label>
-                              <Popover>
-                                <PopoverTrigger asChild>
-                                  <Button variant="outline" role="combobox" className="h-9 w-full justify-between text-sm font-normal">
-                                    {artOutputColor || 'Selecione a cor'}
-                                    <ChevronsUpDown className="ml-2 h-3.5 w-3.5 opacity-50" />
-                                  </Button>
-                                </PopoverTrigger>
-                                <PopoverContent className="w-[200px] p-0" align="start">
-                                   <Command>
-                                     <CommandInput placeholder="Buscar cor..." />
-                                     <CommandList>
-                                       <CommandEmpty>Nenhuma cor.</CommandEmpty>
-                                       <CommandGroup>
-                                         {getColorsForMaterial(recipe.artisanal_product_name).map(c => (
-                                           <CommandItem
-                                             key={c}
-                                             value={c}
-                                             onSelect={v => {
-                                               setArtOutputColor(v);
-                                               // Regra: a tira é cortada da NAPA da MESMA cor → base sempre = output
-                                               setArtBaseColor(v);
-                                             }}
-                                           >
-                                             <Check className={cn('mr-2 h-3.5 w-3.5', artOutputColor === c ? 'opacity-100' : 'opacity-0')} />
-                                             {c}
-                                           </CommandItem>
-                                         ))}
-                                       </CommandGroup>
-                                     </CommandList>
-                                   </Command>
-                                </PopoverContent>
-                              </Popover>
-                            </div>
-                            <div className="space-y-1.5">
-                              <Label className="text-xs text-muted-foreground">Cor da Matéria-Prima Base</Label>
-                              <Input value={artBaseColor || artOutputColor || '—'} disabled className="h-9 bg-muted/40" />
-                              <p className="text-[11px] text-muted-foreground">= cor do produto (a tira é cortada da NAPA da mesma cor).</p>
-                            </div>
-                            <div className="sm:col-span-2 space-y-1.5">
-                              <Label className="text-xs text-muted-foreground">Metros necessários para o pedido (m)</Label>
-                              <NumberInput min={0} value={artNeededForOrder} onChange={n => setArtNeededForOrder(n)} className="h-9" placeholder="0.00" />
-                            </div>
-                          </div>
-                        );
-                      })()}
-
-                      {/* Calculation panel */}
-                      {artisanalCalc && (() => {
-                        const recipe = recipes.find(r => r.id === artRecipeId)!;
-                        const { currentStock, minStock, forOrderMeters, forStockMeters, totalToProduce, baseMetersSend, laborCost, stockOk } = artisanalCalc;
-                        return (
-                          <div className="rounded-lg border bg-background p-3 space-y-2">
-                            <div className="flex items-center justify-between text-xs text-muted-foreground">
-                              <span>Estoque atual de {recipe.artisanal_product_name} ({artOutputColor})</span>
-                              <span className="font-mono font-semibold text-foreground">{currentStock.toFixed(2)}m</span>
-                            </div>
-                            <div className="flex items-center justify-between text-xs text-muted-foreground">
-                              <span>Estoque mínimo</span>
-                              <span className="font-mono">{minStock.toFixed(2)}m</span>
-                            </div>
-                            <Separator />
-
-                            {stockOk ? (
-                              <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-400 text-sm font-medium">
-                                <CheckCircle2 className="h-4 w-4" /> Estoque suficiente — produção não necessária
-                              </div>
-                            ) : (
-                              <div className="space-y-1.5">
-                                {forOrderMeters > 0 && (
-                                  <div className="flex items-center justify-between rounded bg-blue-500/10 px-2 py-1.5">
-                                    <span className="text-xs text-blue-700 dark:text-blue-400 font-medium">🔵 Para o pedido</span>
-                                    <span className="font-mono text-sm font-bold text-blue-700 dark:text-blue-400">{forOrderMeters.toFixed(2)}m</span>
-                                  </div>
-                                )}
-                                {forStockMeters > 0 && (
-                                  <div className="flex items-center justify-between rounded bg-amber-500/10 px-2 py-1.5">
-                                    <span className="text-xs text-amber-700 dark:text-amber-400 font-medium">🟡 Para repor estoque mínimo</span>
-                                    <span className="font-mono text-sm font-bold text-amber-700 dark:text-amber-400">{forStockMeters.toFixed(2)}m</span>
-                                  </div>
-                                )}
-                                <div className="flex items-center justify-between rounded bg-emerald-500/10 px-2 py-1.5">
-                                  <span className="text-xs text-emerald-700 dark:text-emerald-400 font-semibold">✅ Total a produzir</span>
-                                  <span className="font-mono text-sm font-bold text-emerald-700 dark:text-emerald-400">{totalToProduce.toFixed(2)}m</span>
-                                </div>
-                                <Separator />
-                                <div className="flex items-center justify-between text-xs">
-                                  <span className="text-muted-foreground">{recipe.base_product_name} ({artBaseColor || 'cor?'}) a enviar <span className="text-muted-foreground/70">(÷ {recipe.yield_per_meter})</span></span>
-                                  <span className="font-mono font-semibold">{baseMetersSend.toFixed(4)}m</span>
-                                </div>
-                                {laborCost > 0 && (
-                                  <div className="flex items-center justify-between text-xs">
-                                    <span className="text-muted-foreground">Custo MO ({totalToProduce.toFixed(2)}m × R${recipe.labor_cost_per_meter.toFixed(2)})</span>
-                                    <span className="font-mono font-semibold text-green-700 dark:text-green-400">
-                                      {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(laborCost)}
-                                    </span>
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })()}
-
-                      {!artisanalCalc && artRecipeId && (
-                        <div className="flex items-center gap-2 text-xs text-amber-600 bg-amber-500/10 rounded p-2">
-                          <AlertTriangle className="h-4 w-4 shrink-0" />
-                          Selecione a cor e informe os metros necessários para calcular a produção.
-                        </div>
-                      )}
-                    </div>
-                  )}
                 </div>
 
-                {/* Materials section — hidden in artisanal mode (auto-computed) */}
-                {!isArtisanal && (
+                {/* Materiais enviados da OS manual. Tiras usam o hub canônico. */}
                 <div className="sm:col-span-2 flex items-center gap-2.5 pt-1">
                   <span className="text-[10px] font-mono font-bold uppercase tracking-[0.16em] text-muted-foreground whitespace-nowrap">Materiais Enviados</span>
                   <span className="h-px flex-1 bg-border/70" />
                   <Button type="button" variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={addMaterial}><Plus className="h-3 w-3" /> Adicionar</Button>
                 </div>
-                )}
 
-                {!isArtisanal && (
                 <div className="sm:col-span-2 space-y-2">
                   {(editingOrder.materials_sent || []).map((mat, idx) => (
                     <div key={idx} className={cn("flex items-end gap-2 p-3 rounded-lg border bg-muted/20 transition-colors", mat.completed ? "border-green-500/40 bg-green-500/10" : "border-border")}>
@@ -2820,15 +2094,6 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                     ) : null;
                   })()}
                 </div>
-                )}
-
-                {/* Artisanal summary when stock ok (no production needed) */}
-                {isArtisanal && artisanalCalc?.stockOk && (
-                  <div className="sm:col-span-2 flex items-center gap-2 text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 rounded p-3 text-sm">
-                    <CheckCircle2 className="h-4 w-4" />
-                    Estoque suficiente — nenhum material precisa ser enviado para o terceirizado.
-                  </div>
-                )}
 
                 <div className="sm:col-span-2 flex items-center gap-2.5 pt-1">
                   <span className="text-[10px] font-mono font-bold uppercase tracking-[0.16em] text-muted-foreground whitespace-nowrap">Cobrança</span>
@@ -2843,27 +2108,19 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                   <Label className="text-xs font-medium text-muted-foreground">Hora</Label>
                   <Input type="time" value={editingOrder.service_time || ''} onChange={e => setEditingOrder(p => ({ ...p, service_time: e.target.value }))} className="h-9" />
                 </div>
-                {/* Quantidade × Valor por par = Total auto. Fix do bug em que o
-                    input setava total_value = unit_price sem multiplicar pela qty.
-                    Artesanal continua override via laborCost da receita. */}
+                {/* Quantidade × Valor por par = Total auto. */}
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-medium text-muted-foreground">
-                    Quantidade (pares) {isArtisanal && <span className="text-muted-foreground/70 font-normal">(não aplicável)</span>}
-                  </Label>
+                  <Label className="text-xs font-medium text-muted-foreground">Quantidade (pares)</Label>
                   <NumberInput
                     min={1}
                     decimals={0}
                     value={editingOrder.quantity ?? 1}
-                    disabled={isArtisanal}
                     onChange={n => setEditingOrder(p => ({ ...p, quantity: Math.max(1, Math.floor(n)) }))}
                     className="h-9"
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-medium text-muted-foreground">
-                    {isArtisanal ? 'Valor Total (R$)' : 'Valor por par (R$)'}
-                    {isArtisanal && artisanalCalc && <span className="text-primary font-normal"> (calculado pela receita)</span>}
-                  </Label>
+                  <Label className="text-xs font-medium text-muted-foreground">Valor por par (R$)</Label>
                   <NumberInput
                     min={0}
                     value={editingOrder.unit_price ?? ''}
@@ -2874,18 +2131,12 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                 <div className="sm:col-span-2 flex items-end justify-between gap-3 rounded-xl border border-border bg-muted/40 px-3.5 py-3">
                   <div className="text-xs text-muted-foreground">
                     <span className="font-semibold uppercase tracking-wide text-foreground">Total</span>
-                    {!isArtisanal && (
-                      <span className="mt-0.5 block">
-                        = {(editingOrder.quantity || 1).toLocaleString('pt-BR')} × {formatCurrency(editingOrder.unit_price || 0)}
-                      </span>
-                    )}
+                    <span className="mt-0.5 block">
+                      = {(editingOrder.quantity || 1).toLocaleString('pt-BR')} × {formatCurrency(editingOrder.unit_price || 0)}
+                    </span>
                   </div>
                   <p className="display text-2xl leading-none tabular-nums text-foreground">
-                    {formatCurrency(
-                      isArtisanal
-                        ? (editingOrder.total_value || editingOrder.unit_price || 0)
-                        : ((editingOrder.quantity || 1) * (editingOrder.unit_price || 0))
-                    )}
+                    {formatCurrency((editingOrder.quantity || 1) * (editingOrder.unit_price || 0))}
                   </p>
                 </div>
                 <div className="sm:col-span-2 flex items-center gap-2.5 pt-1">
@@ -2902,13 +2153,13 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                       {/* "Concluído" só p/ artesanal (valor fixo). OS por par conclui
                           pelo botão "Entregue" (registra pares bons/defeito) pra a
                           conta a pagar não sair pelo valor cheio. */}
-                      {(isArtisanal || editingOrder.status === 'Concluído') && (
+                      {editingOrder.status === 'Concluído' && (
                         <SelectItem value="Concluído">Recebida</SelectItem>
                       )}
                       <SelectItem value="Cancelado">Cancelada</SelectItem>
                     </SelectContent>
                   </Select>
-                  {!isArtisanal && editingOrder.status !== 'Concluído' && (
+                  {editingOrder.status !== 'Concluído' && (
                     <p className="text-[11px] text-muted-foreground">
                       Para concluir, use o botão <span className="font-medium">Entregue</span> na lista — ele registra os pares bons/defeito e calcula o pagamento correto.
                     </p>
@@ -2968,8 +2219,8 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                 Para salvar, faltam:
                 <ul className="mt-0.5 list-disc pl-4">
                   {!editingOrder.contractor_id && <li>selecionar o prestador</li>}
-                  {!isArtisanal && !editingOrder.target_sector && <li>selecionar o setor</li>}
-                  {!isArtisanal && !(Number(editingOrder.unit_price) > 0) && <li>informar o valor por par (maior que zero)</li>}
+                  {!editingOrder.target_sector && <li>selecionar o setor</li>}
+                  {!(Number(editingOrder.unit_price) > 0) && <li>informar o valor por par (maior que zero)</li>}
                 </ul>
               </div>
             </div>
@@ -3066,7 +2317,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
           contractorName: dispatchDialogOs.contractors?.name ?? null,
           contractorId: dispatchDialogOs.contractor_id ?? null,
         } : null}
-        onReceive={() => { const o = dispatchDialogOs; if (o) setReturnDialogOs(o); }}
+        onReceive={() => { const o = dispatchDialogOs; if (o) openCanonicalOrReturn(o); }}
       />
 
       <ContractorHistoryDialog

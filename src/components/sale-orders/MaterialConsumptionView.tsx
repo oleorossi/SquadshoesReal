@@ -18,7 +18,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { escapeHtml } from '@/lib/htmlUtils';
 import { computeBaseMaterialTotal, BASE_MATERIAL_COMPONENTS, BASE_GROUP_PATTERN } from '@/lib/baseMaterialTotal';
 import { soleMatrixHtml, buildColAvailability, sizeSortKey } from '@/lib/soleMatrixHtml';
-import { rollFillLabel, strapRollBarHtml, type ArtisanalStrapCutRow } from '@/lib/strapRollCut';
+import type { ArtisanalStrapCutRow } from '@/lib/strapRollCut';
 import ArtisanalStrapRollCutBlock from '@/components/sale-orders/ArtisanalStrapRollCutBlock';
 import ConsumptionDecisionRail, { type ConsumptionFilter } from '@/components/sale-orders/ConsumptionDecisionRail';
 import { type ConsumptionRow, COMPONENT_ORDER, normTxt } from '@/lib/consumptionRows';
@@ -480,24 +480,26 @@ export default function MaterialConsumptionView({
     // Bloco vermelho: tiras artesanais — corte do rolo (mesmo conteúdo da tela).
     const strapCutHtml = artisanalStrapRows.length === 0 ? '' : `
         <div style="break-inside:avoid;margin-top:10px">
-          <div style="background:#fef2f2;color:#dc2626;padding:4px 8px;font-weight:700;font-size:10pt;text-transform:uppercase;letter-spacing:.5px;border-radius:4px">✂️ Tiras artesanais — corte do rolo (40m × 1370mm)</div>
-          <p style="font-size:8.5pt;color:#dc2626;margin:4px 0">Cortar do rolo — não é consumo direto de estoque.</p>
+          <div style="background:#fef2f2;color:#dc2626;padding:4px 8px;font-weight:700;font-size:10pt;text-transform:uppercase;letter-spacing:.5px;border-radius:4px">✂️ Tiras artesanais — separação da napa-base</div>
+          <p style="font-size:8.5pt;color:#dc2626;margin:4px 0">Metragem calculada por tira pronta ÷ rendimento confirmado da receita aprovada.</p>
           <table style="width:100%;border-collapse:collapse;font-size:9.5pt;border:1px solid #fca5a5">
             <thead><tr style="color:#dc2626;background:#fef2f2">
-              <th style="padding:4px 6px;text-align:left;font-size:8.5pt;text-transform:uppercase">Tira (cor · largura)</th>
-              <th style="padding:4px 6px;text-align:right;font-size:8.5pt;text-transform:uppercase">Cortar do rolo (cm)</th>
+              <th style="padding:4px 6px;text-align:left;font-size:8.5pt;text-transform:uppercase">Tira e snapshot da receita</th>
+              <th style="padding:4px 6px;text-align:right;font-size:8.5pt;text-transform:uppercase">Separar napa</th>
             </tr></thead>
             <tbody>${artisanalStrapRows.map((r) => {
-              const { cut } = r;
-              const cortar = cut.valid
-                ? `<span style="font-weight:700;font-size:11pt">${cut.cm_a_cortar.toFixed(1)} cm</span>`
-                : `<span style="font-size:8.5pt">⚠ ${cut.warning || 'sem largura'}</span>`;
-              const fill = rollFillLabel(cut);
-              const breakdownHtml = fill ? `<div style="font-size:7.5pt;opacity:.85">${fill}</div>` : '';
-              const larguraTxt = cut.widthMissing ? '' : ` · ${r.largura_mm.toFixed(0)} mm`;
+              const snapshot = r.canonical;
+              const blocked = !snapshot || snapshot.baseRequiredM <= 0
+                || snapshot.confirmedYieldMPerM <= 0 || snapshot.blockingReasons.length > 0;
+              const separar = !blocked && snapshot
+                ? `<span style="font-weight:700;font-size:11pt">${snapshot.baseRequiredM.toLocaleString('pt-BR', { maximumFractionDigits: 6 })} m</span>`
+                : `<span style="font-size:8.5pt">⚠ ${escapeHtml(snapshot?.blockingReasons.join(' · ') || 'snapshot canônico incompleto')}</span>`;
+              const details = snapshot
+                ? `Tira ${r.metros_necessarios.toLocaleString('pt-BR', { maximumFractionDigits: 4 })} m · rendimento ${snapshot.confirmedYieldMPerM.toLocaleString('pt-BR', { maximumFractionDigits: 6 })} m/m${snapshot.usableBaseWidthMm > 0 ? ` · largura útil ${snapshot.usableBaseWidthMm.toLocaleString('pt-BR')} mm` : ''}${r.largura_mm > 0 ? ` · banda ${r.largura_mm.toLocaleString('pt-BR')} mm` : ''}`
+                : 'Sem receita canônica';
               return `<tr style="color:#dc2626">
-                <td style="padding:3px 6px;border-bottom:1px solid #fecaca;font-weight:600">${escapeHtml(r.groupName)}${r.color && r.color !== '—' ? ` · ${escapeHtml(r.color)}` : ''}${larguraTxt}</td>
-                <td style="padding:3px 6px;border-bottom:1px solid #fecaca;text-align:right;font-family:monospace">${cortar}${strapRollBarHtml(cut)}${breakdownHtml}</td>
+                <td style="padding:3px 6px;border-bottom:1px solid #fecaca;font-weight:600">${escapeHtml(r.groupName)}${r.color && r.color !== '—' ? ` · ${escapeHtml(r.color)}` : ''}${r.baseName ? ` · base ${escapeHtml(r.baseName)}` : ''}<div style="font-size:7.5pt;font-weight:400;color:#6b7280">${escapeHtml(details)}</div></td>
+                <td style="padding:3px 6px;border-bottom:1px solid #fecaca;text-align:right;font-family:monospace">${separar}</td>
               </tr>`;
             }).join('')}</tbody>
           </table>
@@ -625,9 +627,6 @@ export default function MaterialConsumptionView({
               <div className="mt-0.5 whitespace-nowrap text-[10px] font-normal text-muted-foreground">
                 ≈ {formatQty(row.artisanal.baseQty, 'm')} m {row.artisanal.baseName}
                 <span className="opacity-70"> · artesanal (1 m → {row.artisanal.yieldPerMeter} m)</span>
-                {row.artisanal.derivedFrom && (
-                  <span className="opacity-70"> · rendimento herdado de {row.artisanal.derivedFrom}</span>
-                )}
               </div>
             )
           )}

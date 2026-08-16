@@ -1,18 +1,14 @@
 /**
  * Calculadora de Tiras — RENDIMENTO de corte (metragem de tira por metro linear).
  *
- * Modelo (definido pelo Leonardo em 2026-07-04): rendimento CONTÍNUO, sem piso —
- *   metragem_por_metro_linear = (Lm / Lt) × (1 − perda%)
- * Ex.: 1370 mm ÷ 20 mm × (1 − 15%) = 68,5 × 0,85 = **58,225 m** de tira por metro
- * linear de material. No rolo inteiro: × comprimento do rolo.
- *
- * ⚠ INTENCIONALMENTE diferente do motor de corte do PV (`strapRollCut.ts`), que conta
- * BANDAS inteiras (piso) para dizer quanto cortar da largura do rolo. Aqui a régua é a
- * razão de larguras (idealizada, sem piso) — é o que o usuário quer para orçar
- * rendimento e custo de material, não o corte físico banda-a-banda. Os DEFAULTS dos
- * campos ainda vêm do rolo canônico (1370 mm × 40 m, 15%) via constantes de strapRollCut.
+ * Regra geométrica: somente bandas físicas completas contam.
+ *   bandas_completas = floor(Lm / Lt)
+ *   rendimento_m_por_m = bandas_completas
+ * Ex.: 1370 mm ÷ 20 mm = 68 bandas completas, com sobra lateral de 10 mm.
+ * O resultado geométrico é apenas o teto. Quando a receita informa rendimento confirmado,
+ * ele governa metragem, necessidade e custo, sem percentual de perda adicional.
  */
-import { ROLO_LARGURA_MM, ROLO_COMPRIMENTO_M, PERDA_PCT } from '@/lib/strapRollCut';
+import { ROLO_LARGURA_MM, ROLO_COMPRIMENTO_M } from '@/lib/strapRollCut';
 
 /** Defaults do formulário = rolo canônico de tira artesanal. Todos editáveis. */
 export const STRAP_YIELD_DEFAULTS = {
@@ -20,8 +16,6 @@ export const STRAP_YIELD_DEFAULTS = {
   larguraMaterialMm: ROLO_LARGURA_MM,
   /** Comprimento do rolo (m). Default = comprimento do rolo canônico (40 m). */
   comprimentoRoloM: ROLO_COMPRIMENTO_M,
-  /** Perda de processo (%). Default = perda canônica do rolo (15%). */
-  perdaPct: PERDA_PCT * 100,
 } as const;
 
 export interface StrapYieldInput {
@@ -29,12 +23,15 @@ export interface StrapYieldInput {
   larguraMaterialMm: number;
   /** `Lt` — largura da BANDA cortada no material (mm), não a medida final da tira. */
   larguraTiraMm: number;
-  /** `P` — perda de processo (%). */
-  perdaPct: number;
   /** `Cr` — comprimento do rolo (m). */
   comprimentoRoloM: number;
   /** `Cml` — custo por metro linear do material comprado (R$/m). Opcional. */
   custoMetroLinear?: number | null;
+  /**
+   * Rendimento real aprovado da receita (m de tira pronta por m de napa).
+   * Quando informado, governa necessidade e custo; a geometria fica apenas como teto.
+   */
+  rendimentoConfirmadoMPerM?: number | null;
 }
 
 export interface StrapYieldResult {
@@ -42,13 +39,13 @@ export interface StrapYieldResult {
   valid: boolean;
   /** Mensagem de validação (pt-BR) quando `valid` é `false`. */
   error?: string;
-  /** `Lm/Lt` — metragem de tira por metro linear, SEM perda (bruto). */
+  /** `floor(Lm/Lt)` — bandas físicas completas por metro linear. */
   metragemPorMetroBruto: number;
-  /** `(Lm/Lt)×(1−P/100)` — metragem por metro linear, líquida. NÚMERO-HERÓI. */
+  /** Rendimento confirmado quando fornecido; sem receita, sugestão geométrica teórica. */
   metragemPorMetroLiq: number;
-  /** Perda aplicada (%), ecoada pra exibição. */
-  perdaPct: number;
-  /** metragem líquida × comprimento do rolo — total de tira no rolo (m). */
+  /** Número de bandas físicas completas na largura útil. */
+  bandasCompletas: number;
+  /** rendimento operacional × comprimento do rolo — total de tira no rolo (m). */
   totalRoloLiq: number;
   /** metragem bruta × comprimento do rolo — total sem perda (m). */
   totalRoloBruto: number;
@@ -61,7 +58,7 @@ export interface StrapYieldResult {
 const EMPTY: Omit<StrapYieldResult, 'valid' | 'error'> = {
   metragemPorMetroBruto: 0,
   metragemPorMetroLiq: 0,
-  perdaPct: 0,
+  bandasCompletas: 0,
   totalRoloLiq: 0,
   totalRoloBruto: 0,
   custoMaterialRolo: null,
@@ -72,6 +69,24 @@ function fail(error: string): StrapYieldResult {
   return { valid: false, error, ...EMPTY };
 }
 
+function resolveOperationalYield(
+  confirmedValue: number | null | undefined,
+  theoreticalYield: number,
+): { value: number; error?: string } {
+  if (confirmedValue == null) return { value: theoreticalYield };
+  const confirmedYield = Number(confirmedValue);
+  if (!Number.isFinite(confirmedYield) || !(confirmedYield > 0)) {
+    return { value: 0, error: 'O rendimento confirmado deve ser maior que zero.' };
+  }
+  if (confirmedYield > theoreticalYield) {
+    return {
+      value: 0,
+      error: 'O rendimento confirmado não pode superar a capacidade geométrica da receita.',
+    };
+  }
+  return { value: confirmedYield };
+}
+
 /**
  * Calcula o rendimento (metragem) de tira. Degrada com elegância: entrada inválida →
  * `valid:false` + `error` (não lança). Cálculo interno em precisão total; a UI arredonda.
@@ -79,18 +94,18 @@ function fail(error: string): StrapYieldResult {
 export function computeStrapYield(input: StrapYieldInput): StrapYieldResult {
   const Lm = Number(input.larguraMaterialMm) || 0;
   const Lt = Number(input.larguraTiraMm) || 0;
-  const P = Number(input.perdaPct) || 0;
   const Cr = Number(input.comprimentoRoloM) || 0;
 
   if (!(Lm > 0)) return fail('Informe a largura útil do material.');
   if (!(Lt > 0)) return fail('Informe a largura da banda de corte.');
   if (!(Cr > 0)) return fail('Informe o comprimento do rolo.');
   if (Lt > Lm) return fail('A largura da banda de corte é maior que a largura do material.');
-  if (P < 0 || P >= 100) return fail('A perda deve estar entre 0 e 100%.');
-
-  const fator = 1 - P / 100;
-  const metragemPorMetroBruto = Lm / Lt; // razão de larguras, sem piso
-  const metragemPorMetroLiq = metragemPorMetroBruto * fator;
+  const bandasCompletas = Math.floor(Lm / Lt);
+  if (bandasCompletas < 1) return fail('A largura útil não comporta uma banda completa.');
+  const metragemPorMetroBruto = bandasCompletas;
+  const operationalYield = resolveOperationalYield(input.rendimentoConfirmadoMPerM, bandasCompletas);
+  if (operationalYield.error) return fail(operationalYield.error);
+  const metragemPorMetroLiq = operationalYield.value;
   const totalRoloBruto = metragemPorMetroBruto * Cr;
   const totalRoloLiq = metragemPorMetroLiq * Cr;
 
@@ -98,7 +113,7 @@ export function computeStrapYield(input: StrapYieldInput): StrapYieldResult {
     valid: true,
     metragemPorMetroBruto,
     metragemPorMetroLiq,
-    perdaPct: P,
+    bandasCompletas,
     totalRoloLiq,
     totalRoloBruto,
     custoMaterialRolo: null,
@@ -118,24 +133,11 @@ export function computeStrapYield(input: StrapYieldInput): StrapYieldResult {
 /* ─────────────────────────── Cálculo inverso ─────────────────────────────────
  * "Quanto preciso": dada a METRAGEM DE TIRA PRONTA desejada, quanto da LARGURA do
  * rolo é preciso cortar — e, de contexto, quanto material linear e quantos rolos.
- * Mesma geometria do direto (largura do material, largura da banda de corte, perda), só que
- * resolvida ao contrário.
+ * Mesma geometria física do direto, resolvida ao contrário.
  *
  * O corte físico fixa o COMPRIMENTO do rolo e fatia uma FAIXA da largura: cada tira
- * de `Lt` mm, cortada no comprimento cheio `Cr`, rende `Cr` m de tira (menos perda).
- * A conta sai em DOIS PASSOS (é assim que a UI exibe, pedido do Leonardo 2026-07-24):
- *
- *   1) largura BRUTA   (mm) = tira_desejada × Lt ÷ Cr          ← sem perda
- *   2) largura A CORTAR(mm) = largura_bruta ÷ (1 − perda%)     ← a perda AUMENTA
- *
- * Ex.: 80 m de tira 18 mm, rolo 40 m → bruto 36 mm → com 15% de perda, corta 42,4 mm.
- * A soma de TODAS as tiras da faixa é `tiraBrutaTotalM` = T ÷ (1−perda%) (= tiras × Cr),
- * dos quais `tiraDesejadaM` sobra aproveitável.
- *
- * Ex.: preciso de 1000 m de tira 18 mm, material 1370 mm, perda 15%, rolo 40 m →
- * 1000 × 18 ÷ (40 × 0,85) = 529,4 mm de largura (≈ 29,4 tiras). Isso equivale a
- * 15,458 m de material linear (largura cheia) = 0,39 rolo. A perda já entra na
- * conta (divide pela taxa líquida), então mais perda = mais largura — como esperado.
+ * de `Lt` mm, cortada no comprimento cheio `Cr`, rende `Cr` m de tira. A faixa exata é
+ * `tira_desejada × Lt ÷ Cr`; a execução arredonda o número de bandas para cima.
  *
  * Invariante: `larguraCortarMm = rolosNecessarios × Lm` (a faixa é a fração do rolo).
  * Quando `larguraCortarMm > Lm`, um único comprimento de rolo não basta — é preciso
@@ -152,24 +154,18 @@ export interface StrapMaterialNeededResult {
   valid: boolean;
   /** Mensagem de validação (pt-BR) quando `valid` é `false`. */
   error?: string;
-  /** `Lm/Lt` — metragem de tira por metro linear, SEM perda (bruto). */
+  /** `floor(Lm/Lt)` — bandas físicas completas por metro linear. */
   metragemPorMetroBruto: number;
-  /** `(Lm/Lt)×(1−P/100)` — taxa líquida usada na conta (m de tira / m linear). */
+  /** Taxa operacional confirmada; sem receita, sugestão igual às bandas completas. */
   metragemPorMetroLiq: number;
-  /** Perda aplicada (%), ecoada pra exibição. */
-  perdaPct: number;
+  bandasCompletas: number;
   /** Metragem de tira pronta desejada (m), ecoada. */
   tiraDesejadaM: number;
-  /** `T × Lt ÷ Cr` — largura BRUTA (mm): a faixa que bastaria se não houvesse
-   *  perda. É o 1º passo da conta; a perda depois AUMENTA esse valor. */
+  /** `T × Lt ÷ Cr` — faixa exata antes do arredondamento para bandas inteiras. */
   larguraCortarBrutaMm: number;
-  /** `T × Lt ÷ (Cr × (1−P/100))` — faixa da LARGURA do rolo a cortar (mm), no
-   *  comprimento cheio, JÁ com a perda. NÚMERO-HERÓI do modo inverso. */
+  /** Igual à faixa exata; não há percentual de perda. */
   larguraCortarMm: number;
-  /** `larguraCortarMm − larguraCortarBrutaMm` — quanto a perda acrescenta (mm). */
-  larguraExtraPerdaMm: number;
-  /** `T ÷ (1−P/100)` = `tirasNecessarias × Cr` — soma de TODAS as tiras cortadas
-   *  da faixa, em metros brutos (antes de descontar a perda). */
+  /** Soma exata solicitada antes do arredondamento físico. */
   tiraBrutaTotalM: number;
   /** `larguraCortarMm ÷ Lt` — nº de tiras (fracionário) do cálculo exato. */
   tirasNecessarias: number;
@@ -186,7 +182,7 @@ export interface StrapMaterialNeededResult {
   larguraRealPctDoRolo: number;
   /** `tirasInteiras × Cr` — soma de todas as bandas inteiras, em metros brutos. */
   tiraBrutaRealM: number;
-  /** `tiraBrutaRealM × (1−P/100)` — metros de tira aproveitáveis de fato. */
+  /** Metros de tira gerados pelas bandas inteiras. */
   tiraLiquidaRealM: number;
   /** `tiraLiquidaRealM − T` — sobra além do pedido (≥ 0) por causa do arredondamento. */
   sobraTiraM: number;
@@ -221,11 +217,10 @@ export interface StrapMaterialNeededResult {
 const EMPTY_NEEDED: Omit<StrapMaterialNeededResult, 'valid' | 'error'> = {
   metragemPorMetroBruto: 0,
   metragemPorMetroLiq: 0,
-  perdaPct: 0,
+  bandasCompletas: 0,
   tiraDesejadaM: 0,
   larguraCortarBrutaMm: 0,
   larguraCortarMm: 0,
-  larguraExtraPerdaMm: 0,
   tiraBrutaTotalM: 0,
   tirasNecessarias: 0,
   tirasInteiras: 0,
@@ -254,14 +249,13 @@ function failNeeded(error: string): StrapMaterialNeededResult {
 /**
  * Calcula quanto da LARGURA do rolo cortar (número-herói) — mais material linear e
  * rolos de contexto — pra produzir `tiraDesejadaM` metros de tira pronta, dadas as
- * mesmas larguras/perda. Inverso de `computeStrapYield`. Degrada com elegância:
+ * mesmas larguras. Inverso de `computeStrapYield`. Degrada com elegância:
  * entrada inválida → `valid:false` + `error` (não lança). O comprimento do rolo é
  * OBRIGATÓRIO aqui, pois é ele que fixa em que comprimento a faixa é cortada.
  */
 export function computeStrapMaterialNeeded(input: StrapMaterialNeededInput): StrapMaterialNeededResult {
   const Lm = Number(input.larguraMaterialMm) || 0;
   const Lt = Number(input.larguraTiraMm) || 0;
-  const P = Number(input.perdaPct) || 0;
   const Cr = Number(input.comprimentoRoloM) || 0;
   const T = Number(input.tiraDesejadaM) || 0;
 
@@ -270,21 +264,20 @@ export function computeStrapMaterialNeeded(input: StrapMaterialNeededInput): Str
   if (!(T > 0)) return failNeeded('Informe quantos metros de tira você precisa.');
   if (Lt > Lm) return failNeeded('A largura da banda de corte é maior que a largura do material.');
   if (!(Cr > 0)) return failNeeded('Informe o comprimento do rolo (define a largura a cortar).');
-  if (P < 0 || P >= 100) return failNeeded('A perda deve estar entre 0 e 100%.');
-
-  const fator = 1 - P / 100;
-  const metragemPorMetroBruto = Lm / Lt; // razão de larguras, sem piso
-  const metragemPorMetroLiq = metragemPorMetroBruto * fator;
+  const bandasCompletas = Math.floor(Lm / Lt);
+  if (bandasCompletas < 1) return failNeeded('A largura útil não comporta uma banda completa.');
+  const metragemPorMetroBruto = bandasCompletas;
+  const operationalYield = resolveOperationalYield(input.rendimentoConfirmadoMPerM, bandasCompletas);
+  if (operationalYield.error) return failNeeded(operationalYield.error);
+  const metragemPorMetroLiq = operationalYield.value;
   const materialNecessarioM = metragemPorMetroLiq > 0 ? T / metragemPorMetroLiq : 0;
+  const usesConfirmedYield = input.rendimentoConfirmadoMPerM != null;
 
-  // Faixa da largura a cortar (comprimento cheio do rolo). Equivale a rolos × Lm.
-  // 1º passo: largura bruta (o que bastaria sem perda). 2º passo: a perda aumenta.
+  // Faixa exata da largura a cortar no comprimento cheio do rolo.
   const larguraCortarBrutaMm = (T * Lt) / Cr;
-  const larguraCortarMm = fator > 0 ? larguraCortarBrutaMm / fator : 0;
-  const larguraExtraPerdaMm = larguraCortarMm - larguraCortarBrutaMm;
+  const larguraCortarMm = larguraCortarBrutaMm;
   const tirasNecessarias = larguraCortarMm / Lt;
-  // Soma de todas as tiras cortadas da faixa, em metros brutos (= tiras × Cr).
-  const tiraBrutaTotalM = fator > 0 ? T / fator : 0;
+  const tiraBrutaTotalM = T;
   const larguraPctDoRolo = Lm > 0 ? (larguraCortarMm / Lm) * 100 : 0;
 
   // ── Realidade: não se corta fração de tira → arredonda PRA CIMA ────────────
@@ -292,17 +285,29 @@ export function computeStrapMaterialNeeded(input: StrapMaterialNeededInput): Str
   const larguraRealMm = tirasInteiras * Lt;
   const larguraRealPctDoRolo = Lm > 0 ? (larguraRealMm / Lm) * 100 : 0;
   const tiraBrutaRealM = tirasInteiras * Cr;
-  const tiraLiquidaRealM = tiraBrutaRealM * fator;
+  const tiraLiquidaRealM = tiraBrutaRealM;
   const sobraTiraM = Math.max(0, tiraLiquidaRealM - T);
-  const materialRealM = Lm > 0 ? (larguraRealMm / Lm) * Cr : 0;
+  const materialRealM = usesConfirmedYield
+    ? materialNecessarioM
+    : Lm > 0
+      ? (larguraRealMm / Lm) * Cr
+      : 0;
   // `rolosRealNecessarios` é equivalência de ÁREA/material (pode ser fracionária).
   // Para saber quantos rolos FÍSICOS abrir, respeita a capacidade inteira de bandas
   // de cada rolo. Somar todas as larguras e dividir por Lm reaproveitaria, de forma
   // impossível, as sobras laterais de rolos diferentes (137 bandas de 20 mm em
   // 1370 mm: equivalem a 2 rolos, mas cabem 68 por rolo e exigem 3 rolos físicos).
-  const rolosRealNecessarios = Lm > 0 ? larguraRealMm / Lm : 0;
+  const rolosRealNecessarios = usesConfirmedYield
+    ? materialRealM / Cr
+    : Lm > 0
+      ? larguraRealMm / Lm
+      : 0;
   const bandasPorRolo = Math.floor(Lm / Lt);
-  const rolosRealInteiros = bandasPorRolo > 0 ? Math.ceil(tirasInteiras / bandasPorRolo) : 0;
+  const rolosRealInteiros = usesConfirmedYield
+    ? Math.ceil(rolosRealNecessarios)
+    : bandasPorRolo > 0
+      ? Math.ceil(tirasInteiras / bandasPorRolo)
+      : 0;
 
   // Aviso é sobre o que se corta DE FATO (largura real, já arredondada).
   const passaLargura = larguraRealMm > Lm;
@@ -314,11 +319,10 @@ export function computeStrapMaterialNeeded(input: StrapMaterialNeededInput): Str
     valid: true,
     metragemPorMetroBruto,
     metragemPorMetroLiq,
-    perdaPct: P,
+    bandasCompletas,
     tiraDesejadaM: T,
     larguraCortarBrutaMm,
     larguraCortarMm,
-    larguraExtraPerdaMm,
     tiraBrutaTotalM,
     tirasNecessarias,
     tirasInteiras,
