@@ -263,7 +263,7 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
   // que o modal de Consumo mostra, que é consumo, não compra.
   const baseInputsFor = (items: DraftPurchaseOrderItem[]) => items.map((it) => ({
     groupName: groupNameByProduct.get(it.material_id) || '',
-    unit: it.purchase_unit || it.unit,
+    unit: it.unit,
     qty: Number(it.quantity) || 0,
   }));
 

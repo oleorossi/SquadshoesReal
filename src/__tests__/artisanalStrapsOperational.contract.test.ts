@@ -245,4 +245,17 @@ describe('Tiras artesanais — contrato SQL canônico', () => {
     expect(HARDENING).toContain("broad.module = '/terceirizados'");
     expect(HARDENING).toContain('artisanal_strap_user_capabilities cap');
   });
+
+  it('mantém edição cadastral separada da administração operacional', () => {
+    const bundle = functionBody(
+      HARDENING,
+      'save_artisanal_strap_catalog_bundle',
+      '-- Override: preview_artisanal_strap_catalog_migration',
+    );
+
+    expect(bundle).toContain("assert_artisanal_strap_capability('manage_strap_catalog')");
+    expect(bundle).toContain("v_product_payload ? 'purchase_order_unit'");
+    expect(bundle).toContain('Campo legado purchase_order_unit nao e aceito; use purchase_unit');
+    expect(bundle).not.toContain('administer_strap_operations');
+  });
 });
