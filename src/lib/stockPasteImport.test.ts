@@ -11,8 +11,8 @@ function skuIndex(entries: Array<[string, SkuIndexEntry | "ambiguous"]>) {
 }
 
 const baseIndex = skuIndex([
-  ["SKU-001", { id: "p1", isSole: false, active: true }],
-  ["SKU-002", { id: "p2", isSole: false, active: true }],
+  ["SKU-001", { id: "p1", isSole: false, active: true, unit: "m" }],
+  ["SKU-002", { id: "p2", isSole: false, active: true, unit: "m" }],
 ]);
 
 describe("parseQuantityBR", () => {
@@ -74,10 +74,10 @@ describe("parseStockPaste", () => {
 
   it("retorna todos os motivos de rejeição com as linhas originais", () => {
     const index = skuIndex([
-      ["VALIDO", { id: "valid", isSole: false, active: true }],
+      ["VALIDO", { id: "valid", isSole: false, active: true, unit: "m" }],
       ["AMB", "ambiguous"],
-      ["INATIVO", { id: "inactive", isSole: false, active: false }],
-      ["SOLADO", { id: "sole", isSole: true, active: true }],
+      ["INATIVO", { id: "inactive", isSole: false, active: false, unit: "un" }],
+      ["SOLADO", { id: "sole", isSole: true, active: true, unit: "par" }],
     ]);
     const result = parseStockPaste([
       "SKU\tQuantidade",
@@ -116,6 +116,19 @@ describe("parseStockPaste", () => {
       { productId: "p1", sku: "SKU-001", qty: 25, line: 2 },
     ]);
     expect(result.rejected).toEqual([]);
+  });
+
+  it("rejeita fração colada em unidade de contagem", () => {
+    const index = skuIndex([
+      ["PAR-001", { id: "pair", isSole: false, active: true, unit: "par" }],
+    ]);
+
+    const result = parseStockPaste("PAR-001\t1,5", index);
+
+    expect(result.matched).toEqual([]);
+    expect(result.rejected).toEqual([
+      { line: 1, sku: "PAR-001", rawQty: "1,5", reason: "unidade par aceita somente quantidade inteira" },
+    ]);
   });
 
   it("ignora CRLF e linhas vazias preservando os números das linhas", () => {

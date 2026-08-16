@@ -18,27 +18,21 @@ import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { useCan } from '@/hooks/useAccessControl';
 import { StockPasteRejectedPanel } from '@/components/inventory/StockPasteRejectedPanel';
 import { normalizeSku, parseStockPaste, type PasteReject, type SkuIndexEntry } from '@/lib/stockPasteImport';
-import { parseBrlNumber } from '@/lib/parseBrlNumber';
-
-/**
- * Lê o valor digitado num campo de quantidade desta tela.
- *
- * Bug corrigido (auditoria 04/08/2026): usava `parseFloat(raw.replace(",", "."))`,
- * que troca só a PRIMEIRA vírgula e NÃO remove o ponto de milhar — então "10.500"
- * virava 10,5. A MESMA coluna renderiza o saldo em pt-BR ("10.500"), ou seja, o
- * usuário reeditava exatamente o texto que a tela mostrou e gravava ~1000× menos.
- *
- * `NaN` é sentinela LOAD-BEARING aqui: distingue "não digitado / inválido" de
- * "zero digitado" (parseBrlNumber devolveria 0 nos dois casos, o que zeraria
- * saldo sem o usuário ter pedido). Por isso o wrapper em vez do parser cru.
- */
-function parseQtyDraft(raw: string | undefined | null): number {
-  if (raw === undefined || raw === null) return NaN;
-  const s = String(raw).trim();
-  if (s === '') return NaN;
-  if (!/^-?[\d.,]+$/.test(s)) return NaN;
-  return parseBrlNumber(s);
-}
+import {
+  getStockQuantityIssue,
+  isDiscreteStockUnit,
+  parseStockQuantityDraft as parseQtyDraft,
+} from '@/lib/stockQuantity';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 interface Product {
   id: string;
@@ -216,6 +210,7 @@ export default function StockAdjustmentPage() {
     return detail ? `${presetLabel} — ${detail}` : presetLabel;
   }, [reasonPreset, reasonDetail]);
   const [saving, setSaving] = useState(false);
+  const [reservationConfirmOpen, setReservationConfirmOpen] = useState(false);
 
   // E1 (audit): snapshot dos valores atuais quando o usuário começa a editar.
   // Se outro usuário (ou o próprio em outra aba) salvar mudança no DB, a query
@@ -497,6 +492,37 @@ export default function StockAdjustmentPage() {
     [products, soleDrafts, getConjugationsFor]
   );
 
+  const draftIssues = useMemo(() => {
+    const issues: Array<{ product: Product; size?: string; message: string }> = [];
+    for (const product of products) {
+      if (isSole(product)) {
+        const sizeDrafts = soleDrafts[product.id];
+        if (!sizeDrafts) continue;
+        for (const [size, raw] of Object.entries(sizeDrafts)) {
+          const issue = getStockQuantityIssue(raw, product.unit);
+          if (issue) issues.push({ product, size, message: issue.message });
+        }
+      } else {
+        const issue = getStockQuantityIssue(drafts[product.id], product.unit);
+        if (issue) issues.push({ product, message: issue.message });
+      }
+    }
+    return issues;
+  }, [products, drafts, soleDrafts]);
+
+  const reservationImpacts = useMemo(() => {
+    return [
+      ...pendingRegular.map(({ product, newQty }) => ({ product, newQty })),
+      ...pendingSoles.map(({ product, newTotal }) => ({ product, newQty: newTotal })),
+    ]
+      .filter(({ product, newQty }) => product.reserved_stock > newQty)
+      .map(({ product, newQty }) => ({
+        product,
+        newQty,
+        shortage: product.reserved_stock - newQty,
+      }));
+  }, [pendingRegular, pendingSoles]);
+
   const totalPending = pendingRegular.length + pendingSoles.length;
   const visibleIds = useMemo(() => new Set(filtered.map((p) => p.id)), [filtered]);
   const hiddenPendingCount = useMemo(
@@ -510,12 +536,12 @@ export default function StockAdjustmentPage() {
       if (!product.sku) continue;
       const key = normalizeSku(product.sku);
       if (!product.active) {
-        if (!index.has(key)) index.set(key, { id: product.id, isSole: isSole(product), active: false });
+        if (!index.has(key)) index.set(key, { id: product.id, isSole: isSole(product), active: false, unit: product.unit });
         continue;
       }
       const previous = index.get(key);
       if (previous && previous !== 'ambiguous' && previous.active) index.set(key, 'ambiguous');
-      else index.set(key, { id: product.id, isSole: isSole(product), active: true });
+      else index.set(key, { id: product.id, isSole: isSole(product), active: true, unit: product.unit });
     }
     return index;
   }, [products]);
@@ -625,7 +651,16 @@ export default function StockAdjustmentPage() {
 
   // ── Save ───────────────────────────────────────────────────────────────
 
-  const handleSave = async () => {
+  const handleSave = async (reservationImpactConfirmed = false) => {
+    if (draftIssues.length > 0) {
+      const first = draftIssues[0];
+      toast.error(
+        `${first.product.name}${first.size ? ` · numeração ${first.size}` : ''}: ${first.message}` +
+        `${draftIssues.length > 1 ? ` Há mais ${draftIssues.length - 1} célula(s) para corrigir.` : ''}`,
+        { duration: 7000 },
+      );
+      return;
+    }
     if (totalPending === 0) {
       toast.info("Nenhuma alteração para salvar.");
       return;
@@ -671,6 +706,11 @@ export default function StockAdjustmentPage() {
       }
     }
 
+    if (reservationImpacts.length > 0 && !reservationImpactConfirmed) {
+      setReservationConfirmOpen(true);
+      return;
+    }
+
     const items = [
       ...pendingRegular.map(({ product, newQty }) => ({
         product_id: product.id,
@@ -713,6 +753,12 @@ export default function StockAdjustmentPage() {
         const negativeErrors = errors.filter((item) =>
           item.error === 'NEGATIVE_QTY_NOT_ALLOWED' || item.error === 'NEGATIVE_GRADE_BUCKET'
         );
+        const unitOrGradeErrors = errors.filter((item) => [
+          'FRACTIONAL_DISCRETE_UNIT',
+          'INVALID_GRADE_BUCKET',
+          'FRACTIONAL_GRADE_BUCKET',
+          'GRADE_TOTAL_MISMATCH',
+        ].includes(item.error));
 
         if (concurrencyErrors.length > 0) {
           setConflictedIds((previous) => {
@@ -744,6 +790,22 @@ export default function StockAdjustmentPage() {
             `${remaining > 0 ? ` … e mais ${remaining}` : ''}. Nenhum ajuste foi salvo.`,
             { duration: 8000 },
           );
+        } else if (unitOrGradeErrors.length > 0) {
+          const labels: Record<string, string> = {
+            FRACTIONAL_DISCRETE_UNIT: 'a unidade aceita somente quantidade inteira',
+            INVALID_GRADE_BUCKET: 'há uma quantidade inválida na grade',
+            FRACTIONAL_GRADE_BUCKET: 'a grade aceita somente pares inteiros',
+            GRADE_TOTAL_MISMATCH: 'o total não confere com a soma da grade',
+          };
+          const details = unitOrGradeErrors.slice(0, 3).map((item) => {
+            const name = item.product_id ? productsById.get(item.product_id)?.name ?? item.product_id : 'produto inválido';
+            return `"${name}": ${labels[item.error] ?? item.error}`;
+          }).join('; ');
+          const remaining = unitOrGradeErrors.length - 3;
+          toast.error(
+            `Ajuste rejeitado: ${details}${remaining > 0 ? ` … e mais ${remaining}` : ''}. Nenhum dado foi salvo.`,
+            { duration: 8000 },
+          );
         } else {
           const details = errors.slice(0, 3).map((item) => {
             const name = item.product_id ? productsById.get(item.product_id)?.name ?? item.product_id : 'produto inválido';
@@ -773,6 +835,7 @@ export default function StockAdjustmentPage() {
        setLastPaste(null);
        qc.invalidateQueries({ queryKey: ["products"] });
        qc.invalidateQueries({ queryKey: ["stock-adjustment-products"] });
+       qc.invalidateQueries({ queryKey: ["stock_movements"] });
      } catch (err: any) {
        toast.error("Erro ao salvar: " + err.message);
      } finally {
@@ -952,8 +1015,14 @@ export default function StockAdjustmentPage() {
         )}
 
         {totalPending > 0 && (
-          <span className="text-xs font-semibold text-amber-700 bg-amber-100 dark:bg-amber-900/40 dark:text-amber-300 rounded px-2 py-1 shrink-0">
+          <span className="text-xs font-semibold text-warning bg-warning/10 border border-warning/30 rounded px-2 py-1 shrink-0">
             {totalPending} pendente{totalPending > 1 ? "s" : ""}
+          </span>
+        )}
+
+        {draftIssues.length > 0 && (
+          <span className="text-xs font-semibold text-destructive bg-destructive/10 border border-destructive/30 rounded px-2 py-1 shrink-0">
+            {draftIssues.length} célula{draftIssues.length > 1 ? 's' : ''} inválida{draftIssues.length > 1 ? 's' : ''}
           </span>
         )}
 
@@ -962,12 +1031,14 @@ export default function StockAdjustmentPage() {
         {perm.canEdit && (
           <Button
             size="sm"
-            onClick={handleSave}
-            disabled={saving || totalPending === 0 || !reason.trim() || conflictedIds.size > 0}
+            onClick={() => void handleSave()}
+            disabled={saving || totalPending === 0 || !reason.trim() || conflictedIds.size > 0 || draftIssues.length > 0}
             className="h-8 gap-1.5 shrink-0"
             title={
               conflictedIds.size > 0
                 ? 'Há produtos alterados em outra sessão. Recarregue a página antes de salvar.'
+                : draftIssues.length > 0
+                  ? 'Corrija as células destacadas antes de salvar.'
                 : !reason.trim() && totalPending > 0
                   ? 'Preencha o motivo do ajuste antes de salvar'
                   : undefined
@@ -994,6 +1065,25 @@ export default function StockAdjustmentPage() {
           onDiscardPaste={discardLastPaste}
           onDismiss={() => setLastPaste(null)}
         />
+      )}
+
+      {reservationImpacts.length > 0 && (
+        <div className="my-2 flex items-start justify-between gap-4 border border-warning/40 bg-warning/10 px-3 py-2 text-sm">
+          <div className="flex min-w-0 items-start gap-2">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+            <div className="min-w-0">
+              <p className="font-semibold text-foreground">
+                {reservationImpacts.length} {reservationImpacts.length === 1 ? 'reserva ficará' : 'reservas ficarão'} sem cobertura
+              </p>
+              <p className="text-xs text-muted-foreground">
+                A contagem física pode ser salva, mas o saldo novo ficará abaixo do que já está reservado para produção.
+              </p>
+            </div>
+          </div>
+          <span className="shrink-0 font-mono text-xs font-semibold text-warning">
+            revisar {reservationImpacts.length} {reservationImpacts.length === 1 ? 'item' : 'itens'}
+          </span>
+        </div>
       )}
 
       {/* Spreadsheet */}
@@ -1233,7 +1323,8 @@ export default function StockAdjustmentPage() {
                                 const raw = sd[key];
                                 const origVal = getQtyForKey(existing, key);
                                 const draftVal = parseQtyDraft(raw);
-                                const isDirtyCell = raw !== undefined && !isNaN(draftVal) && draftVal !== origVal;
+                                const quantityIssue = getStockQuantityIssue(raw, product.unit);
+                                const isDirtyCell = raw !== undefined && !quantityIssue && !isNaN(draftVal) && draftVal !== origVal;
                                 const isConjugated = key.includes('/');
 
                                 if (!sizeRefs.current[product.id]) sizeRefs.current[product.id] = {};
@@ -1247,9 +1338,11 @@ export default function StockAdjustmentPage() {
                                     <input
                                       ref={(el) => { sizeRefs.current[product.id][key] = el; }}
                                       type="text"
-                                      inputMode="decimal"
+                                      inputMode={isDiscreteStockUnit(product.unit) ? "numeric" : "decimal"}
                                       value={raw ?? ""}
                                       placeholder={String(origVal)}
+                                      aria-invalid={!!quantityIssue}
+                                      title={quantityIssue?.message}
                                       onChange={(e) =>
                                         setSoleDrafts((prev) => ({
                                           ...prev,
@@ -1263,7 +1356,9 @@ export default function StockAdjustmentPage() {
                                         isConjugated ? "w-14 border-primary/40" : "w-12 border-border/60",
                                         "border rounded-sm outline-none",
                                         "placeholder:text-muted-foreground/30",
-                                        isDirtyCell
+                                        quantityIssue
+                                          ? "border-destructive bg-destructive/10 text-destructive focus:border-destructive focus:ring-1 focus:ring-destructive/50"
+                                          : isDirtyCell
                                           ? "border-amber-400 bg-amber-50 dark:bg-amber-950/40 font-semibold text-foreground"
                                           : "bg-background focus:border-primary focus:ring-1 focus:ring-primary/50"
                                       )}
@@ -1312,7 +1407,8 @@ export default function StockAdjustmentPage() {
                   // ── Regular product row ───────────────────────────────
                   const raw = drafts[product.id];
                   const draftNum = parseQtyDraft(raw);
-                  const hasDraft = raw !== undefined && raw !== "" && !isNaN(draftNum);
+                  const quantityIssue = getStockQuantityIssue(raw, product.unit);
+                  const hasDraft = raw !== undefined && raw !== "" && !quantityIssue && !isNaN(draftNum);
                   const isDirty = hasDraft && draftNum !== product.quantity;
                   const delta = isDirty ? draftNum - product.quantity : 0;
                   const isLow = product.min_stock > 0 && product.quantity <= product.min_stock;
@@ -1347,6 +1443,14 @@ export default function StockAdjustmentPage() {
                       <td className="px-3 py-1.5 border-r border-border/30">
                         <div className="flex items-center gap-1.5 min-w-0">
                           {isLow && <AlertTriangle className="h-3 w-3 text-amber-500 shrink-0" />}
+                          {isDiscreteStockUnit(product.unit) && !Number.isInteger(product.quantity) && (
+                            <span
+                              className="text-xs font-semibold uppercase tracking-wide bg-warning/10 text-warning border border-warning/30 rounded px-1 py-0.5 shrink-0"
+                              title="Saldo legado fracionado em uma unidade de contagem. Digite uma quantidade inteira para regularizar."
+                            >
+                              saldo fracionado
+                            </span>
+                          )}
                           {!product.active && <span className="text-xs font-semibold uppercase tracking-wide bg-muted text-muted-foreground rounded px-1 py-0.5 shrink-0">inativo</span>}
                           <span className="truncate font-medium text-foreground text-base">{product.name}</span>
                         </div>
@@ -1371,9 +1475,11 @@ export default function StockAdjustmentPage() {
                         <input
                           ref={(el) => { cellRefs.current[rowIndex] = el; }}
                           type="text"
-                          inputMode="decimal"
+                          inputMode={isDiscreteStockUnit(product.unit) ? "numeric" : "decimal"}
                           value={raw ?? ""}
                           placeholder={String(product.quantity)}
+                          aria-invalid={!!quantityIssue}
+                          title={quantityIssue?.message}
                           onChange={(e) => setDrafts((prev) => ({ ...prev, [product.id]: e.target.value }))}
                           onKeyDown={(e) => handleKeyDown(e, rowIndex)}
                           onFocus={(e) => e.target.select()}
@@ -1383,7 +1489,9 @@ export default function StockAdjustmentPage() {
                             "focus:bg-card",
                             "focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary/60",
                             "placeholder:text-muted-foreground/30",
-                            isDirty && "bg-amber-50 dark:bg-amber-950/30 font-semibold text-foreground"
+                            quantityIssue
+                              ? "bg-destructive/10 text-destructive focus:ring-destructive/60"
+                              : isDirty && "bg-amber-50 dark:bg-amber-950/30 font-semibold text-foreground"
                           )}
                         />
                       </td>
@@ -1440,6 +1548,45 @@ export default function StockAdjustmentPage() {
           </div>
         )}
       </div>
+
+      <AlertDialog open={reservationConfirmOpen} onOpenChange={setReservationConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-warning" />
+              Salvar contagem abaixo das reservas?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              A contagem física é a fonte de verdade e pode ser salva. Confirme sabendo que os itens abaixo passarão a ter reserva sem cobertura imediata.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <div className="max-h-64 overflow-y-auto border-y border-border">
+            {reservationImpacts.slice(0, 8).map(({ product, newQty, shortage }) => (
+              <div key={product.id} className="grid grid-cols-[1fr_auto] gap-4 border-b border-border/50 px-1 py-2.5 last:border-b-0">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-foreground">{product.name}</p>
+                  <p className="font-mono text-xs text-muted-foreground">{product.sku || 'sem SKU'} · reservado {product.reserved_stock.toLocaleString('pt-BR')}</p>
+                </div>
+                <div className="text-right font-mono text-xs">
+                  <p className="text-foreground">novo {newQty.toLocaleString('pt-BR', { maximumFractionDigits: 4 })} {product.unit}</p>
+                  <p className="font-semibold text-warning">falta {shortage.toLocaleString('pt-BR', { maximumFractionDigits: 4 })} {product.unit}</p>
+                </div>
+              </div>
+            ))}
+            {reservationImpacts.length > 8 && (
+              <p className="px-1 py-2 text-xs text-muted-foreground">E mais {reservationImpacts.length - 8} item(ns).</p>
+            )}
+          </div>
+
+          <AlertDialogFooter>
+            <AlertDialogCancel>Revisar ajustes</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void handleSave(true)}>
+              Salvar contagem mesmo assim
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* History dialog */}
       <Dialog open={isHistoryOpen} onOpenChange={setIsHistoryOpen}>

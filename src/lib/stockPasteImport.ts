@@ -1,7 +1,10 @@
+import { getStockQuantityIssue, parseStockQuantityBR } from "@/lib/stockQuantity";
+
 export interface SkuIndexEntry {
   id: string;
   isSole: boolean;
   active: boolean;
+  unit: string;
 }
 
 export interface PasteMatch {
@@ -28,22 +31,7 @@ export function normalizeSku(raw: string): string {
   return raw.trim().toUpperCase();
 }
 
-export function parseQuantityBR(raw: string): number | null {
-  const compact = raw.trim().replace(/[\s\u00a0]/g, "");
-  if (!compact) return null;
-
-  let normalized = compact;
-  if (normalized.includes(",")) {
-    normalized = normalized.replace(/\./g, "").replace(",", ".");
-  } else if (/^\d{1,3}(\.\d{3})+$/.test(normalized)) {
-    normalized = normalized.replace(/\./g, "");
-  }
-
-  if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(normalized)) return null;
-
-  const parsed = parseFloat(normalized);
-  return Number.isFinite(parsed) ? parsed : null;
-}
+export const parseQuantityBR = parseStockQuantityBR;
 
 export function parseStockPaste(
   text: string,
@@ -112,6 +100,16 @@ export function parseStockPaste(
     }
     if (qty < 0) {
       rejected.push({ line, sku, rawQty, reason: "quantidade negativa não permitida" });
+      return;
+    }
+    const quantityIssue = getStockQuantityIssue(rawQty, entry.unit);
+    if (quantityIssue?.code === "fractional_discrete") {
+      rejected.push({
+        line,
+        sku,
+        rawQty,
+        reason: `unidade ${entry.unit} aceita somente quantidade inteira`,
+      });
       return;
     }
 

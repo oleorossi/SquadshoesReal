@@ -14,6 +14,7 @@ import { normalizeForSearch } from '@/lib/searchUtils';
  import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
  import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
  import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+ import { getStockGradeChanges } from '@/lib/stockQuantity';
 
   export default function StockHistory({ filterProductId, hideHeader = false }: { filterProductId?: string; hideHeader?: boolean }) {
    const [typeFilter, setTypeFilter] = useState<string>('all');
@@ -25,7 +26,10 @@ import { normalizeForSearch } from '@/lib/searchUtils';
 
     // Busca SERVER-SIDE (spec R6): o termo vai pro banco via search_norm +
     // produtos que casam (nome/sku/cor) — acha movimentação além do limit local.
-    const { data: allMovements = [] as StockMovementWithProduct[], isLoading, isError, refetch } = useStockMovements({ search: searchQuery });
+    const { data: allMovements = [] as StockMovementWithProduct[], isLoading, isError, refetch } = useStockMovements({
+      search: searchQuery,
+      productId: filterProductId,
+    });
 
     const movements = useMemo<StockMovementWithProduct[]>(() => {
       let filtered = [...allMovements];
@@ -187,6 +191,7 @@ import { normalizeForSearch } from '@/lib/searchUtils';
        renderRow={(mov: StockMovementWithProduct) => {
          const prod = mov.products;
          const isOut = mov.movement_type === 'out';
+         const gradeChanges = getStockGradeChanges(mov.previous_grade, mov.new_grade);
           return (
             <>
               <TableCell>
@@ -202,7 +207,25 @@ import { normalizeForSearch } from '@/lib/searchUtils';
               <TableCell className="text-right font-mono">{Number(mov.quantity).toLocaleString('pt-BR', { maximumFractionDigits: 4 })} {prod?.unit ?? ''}</TableCell>
               <TableCell className="text-right font-mono text-muted-foreground">{Number(mov.previous_stock).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}</TableCell>
               <TableCell className="text-right font-mono">{Number(mov.new_stock).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}</TableCell>
-              <TableCell className="text-sm text-muted-foreground">{mov.description || '—'}</TableCell>
+              <TableCell className="text-sm text-muted-foreground">
+                <span>{mov.description || '—'}</span>
+                {gradeChanges.length > 0 && (
+                  <div className="mt-1.5 flex max-w-sm flex-wrap gap-1" aria-label="Alterações por numeração">
+                    {gradeChanges.slice(0, 8).map((change) => (
+                      <span
+                        key={change.size}
+                        className="border border-border bg-muted/40 px-1.5 py-0.5 font-mono text-[11px] text-foreground"
+                        title={`Numeração ${change.size}: ${change.previous} para ${change.next}`}
+                      >
+                        {change.size}: {change.previous.toLocaleString('pt-BR')}→{change.next.toLocaleString('pt-BR')}
+                      </span>
+                    ))}
+                    {gradeChanges.length > 8 && (
+                      <span className="px-1 py-0.5 text-[11px]">+{gradeChanges.length - 8}</span>
+                    )}
+                  </div>
+                )}
+              </TableCell>
               <TableCell className="text-sm text-muted-foreground">
                 {mov.created_at ? new Date(mov.created_at).toLocaleString('pt-BR') : '—'}
               </TableCell>

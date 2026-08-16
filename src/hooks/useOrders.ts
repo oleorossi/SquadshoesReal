@@ -572,8 +572,10 @@ export function useDeleteOrder() {
    created_at: string;
    user_email: string | null;
    order_id: string | null;
-  lot_number: string | null;
-  responsible: string | null;
+   lot_number: string | null;
+   responsible: string | null;
+   previous_grade: Record<string, unknown> | null;
+   new_grade: Record<string, unknown> | null;
    products: {
      name: string;
      sku: string;
@@ -581,10 +583,11 @@ export function useDeleteOrder() {
    } | null;
  }
  
-export function useStockMovements(opts?: { search?: string }) {
+export function useStockMovements(opts?: { search?: string; productId?: string }) {
   const search = (opts?.search ?? '').trim();
+  const productId = opts?.productId;
   return useQuery({
-    queryKey: ['stock_movements', search],
+    queryKey: ['stock_movements', productId ?? 'all', search],
     queryFn: async () => {
       // FK stock_movements.product_id → products.id NÃO existe no DB, então
       // o embed `products(...)` retorna erro "Could not find a relationship".
@@ -600,6 +603,7 @@ export function useStockMovements(opts?: { search?: string }) {
         .select('*')
         .order('created_at', { ascending: false })
         .limit(500);
+      if (productId) q = q.eq('product_id', productId) as typeof q;
       // Termo que normaliza pra vazio (só pontuação) ⇒ sem filtro — .or('')
       // viraria `or=()` = 400 no PostgREST (contrato do searchNormOrFilter).
       const norm = searchNormOrFilter(search);
@@ -640,6 +644,8 @@ export function useStockMovements(opts?: { search?: string }) {
         order_id: m.order_id || null,
         lot_number: m.lot_number || null,
         responsible: m.responsible || null,
+        previous_grade: m.previous_grade && typeof m.previous_grade === 'object' ? m.previous_grade : null,
+        new_grade: m.new_grade && typeof m.new_grade === 'object' ? m.new_grade : null,
         products: productsMap.get(m.product_id) || null,
       }));
     },
