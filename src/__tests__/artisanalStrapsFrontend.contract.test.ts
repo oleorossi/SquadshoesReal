@@ -266,9 +266,16 @@ describe('Tiras artesanais — contrato do frontend canônico', () => {
     expect(strapCutBlock).not.toContain('ROLO_COMPRIMENTO_M');
     expect(pickingList).toContain('separação da napa-base');
     expect(pickingList).not.toContain('ROLO_LARGURA_MM');
-    expect(hub).toContain('rendimentoConfirmadoInicialMPerM={Number(selectedRecipe.confirmed_yield_m_per_m)}');
+    expect(hub).toContain('rendimentoConfirmadoInicialMPerM={selectedRecipe ? Number(selectedRecipe.confirmed_yield_m_per_m) : undefined}');
     expect(calculator).toContain('A necessidade operacional usa exclusivamente o rendimento confirmado');
     expect(calculator).not.toContain('a % de perda cobre');
+  });
+
+  it('mantém a calculadora livre disponível mesmo sem receita aprovada', () => {
+    expect(hub).toContain('A calculadora não depende de receita aprovada');
+    expect(hub).toContain("key={selectedRecipe?.id || 'calculo-livre'}");
+    expect(hub).toContain('larguraMaterialInicialMm={selectedRecipe ?');
+    expect(hub).not.toContain('Nenhuma receita aprovada para calcular');
   });
 
   it('abre pelas demandas e organiza a jornada industrial em três grupos de trabalho', () => {
