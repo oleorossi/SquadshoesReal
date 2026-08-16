@@ -2275,7 +2275,7 @@ export default function SaleOrderFormPanel({
         });
         if (!form.payment_condition) issues.push({ type: 'warning', msg: 'Sem condição de pagamento' });
         if (!form.delivery_deadline) issues.push({ type: 'warning', msg: 'Sem prazo de entrega' });
-        const pricingContext = clientPricing?.lookup.context;
+        const pricingContext = clientPricing?.lookup?.context;
         if (pricingContext && !pricingContext.effective) {
           const reason = pricingContext.invalidReason === 'inactive' ? 'inativa'
             : pricingContext.invalidReason === 'not_started' ? 'ainda não vigente'
