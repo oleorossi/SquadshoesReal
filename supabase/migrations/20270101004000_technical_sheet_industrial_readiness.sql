@@ -203,8 +203,18 @@ SELECT
 
   COALESCE(ts.sole_drives_consumption, false)
     AND (
-      (NOT COALESCE(ts.insole_ready_made, false) AND NOT COALESCE(sp.sole_has_insole_specs, false))
-      OR (COALESCE(ts.lining_material, '') <> '' AND NOT COALESCE(sp.sole_has_lining_specs, false))
+      (
+        NOT COALESCE(ts.insole_ready_made, false)
+        AND NOT COALESCE(sp.sole_has_insole_specs, false)
+        AND COALESCE(ts.insole_consumption, 0) <= 0
+        AND (ts.insole_consumption_per_size IS NULL OR ts.insole_consumption_per_size = '{}'::jsonb)
+      )
+      OR (
+        COALESCE(ts.lining_material, '') <> ''
+        AND NOT COALESCE(sp.sole_has_lining_specs, false)
+        AND COALESCE(ts.lining_consumption, 0) <= 0
+        AND (ts.lining_consumption_per_size IS NULL OR ts.lining_consumption_per_size = '{}'::jsonb)
+      )
     ) AS sole_driven_but_specs_missing,
 
   COALESCE(ts.has_straps, false)
@@ -295,11 +305,35 @@ ALTER VIEW public.v_technical_sheets_audit_summary SET (security_invoker = true)
 
 CREATE OR REPLACE VIEW public.v_soles_audit AS
 WITH sheet_solados AS (
-  SELECT ts.id AS sheet_id, ts.primary_sole_id AS sole_product_id, COALESCE(ts.sole_drives_consumption, false) AS drives
+  SELECT
+    ts.id AS sheet_id,
+    ts.primary_sole_id AS sole_product_id,
+    COALESCE(ts.sole_drives_consumption, false) AS drives,
+    COALESCE(ts.sole_drives_consumption, false)
+      AND COALESCE(ts.lining_material, '') <> ''
+      AND COALESCE(ts.lining_consumption, 0) <= 0
+      AND (ts.lining_consumption_per_size IS NULL OR ts.lining_consumption_per_size = '{}'::jsonb)
+      AS needs_lining_specs,
+    COALESCE(ts.sole_drives_consumption, false)
+      AND NOT COALESCE(ts.insole_ready_made, false)
+      AND COALESCE(ts.insole_consumption, 0) <= 0
+      AND (ts.insole_consumption_per_size IS NULL OR ts.insole_consumption_per_size = '{}'::jsonb)
+      AS needs_insole_specs
     FROM public.technical_sheets ts
    WHERE ts.primary_sole_id IS NOT NULL
   UNION
-  SELECT tsc.sheet_id, tsc.sole_product_id, COALESCE(ts.sole_drives_consumption, false)
+  SELECT
+    tsc.sheet_id,
+    tsc.sole_product_id,
+    COALESCE(ts.sole_drives_consumption, false),
+    COALESCE(ts.sole_drives_consumption, false)
+      AND COALESCE(ts.lining_material, '') <> ''
+      AND COALESCE(ts.lining_consumption, 0) <= 0
+      AND (ts.lining_consumption_per_size IS NULL OR ts.lining_consumption_per_size = '{}'::jsonb),
+    COALESCE(ts.sole_drives_consumption, false)
+      AND NOT COALESCE(ts.insole_ready_made, false)
+      AND COALESCE(ts.insole_consumption, 0) <= 0
+      AND (ts.insole_consumption_per_size IS NULL OR ts.insole_consumption_per_size = '{}'::jsonb)
     FROM public.technical_sheet_sole_colors tsc
     JOIN public.technical_sheets ts ON ts.id = tsc.sheet_id
    WHERE tsc.sole_product_id IS NOT NULL
@@ -313,7 +347,9 @@ soles_in_use AS (
     p.unit_price,
     COALESCE(p.is_fachetado, false) AS is_fachetado,
     COUNT(DISTINCT ss.sheet_id) AS sheets_using,
-    bool_or(ss.drives) AS drives_consumption
+    bool_or(ss.drives) AS drives_consumption,
+    bool_or(ss.needs_lining_specs) AS needs_lining_specs,
+    bool_or(ss.needs_insole_specs) AS needs_insole_specs
   FROM sheet_solados ss
   JOIN public.products p ON p.id = ss.sole_product_id
   GROUP BY p.id, p.name, p.color, p.sku, p.unit_price, p.is_fachetado
@@ -330,16 +366,28 @@ SELECT
   (SELECT COUNT(*) FROM public.sole_technical_specs sts WHERE sts.sole_id = s.sole_id AND COALESCE(sts.lining_consumption_dm2, 0) > 0) AS sizes_with_lining,
   (SELECT COUNT(*) FROM public.sole_technical_specs sts WHERE sts.sole_id = s.sole_id AND COALESCE(sts.insole_consumption_dm2, 0) > 0) AS sizes_with_insole,
   (SELECT COUNT(*) FROM public.sole_technical_specs sts WHERE sts.sole_id = s.sole_id AND COALESCE(sts.fachete_lining_consumption_dm2, 0) > 0) AS sizes_with_fachete,
-  NOT EXISTS (SELECT 1 FROM public.sole_technical_specs sts WHERE sts.sole_id = s.sole_id AND COALESCE(sts.lining_consumption_dm2, 0) > 0) AS missing_lining_specs,
-  NOT EXISTS (SELECT 1 FROM public.sole_technical_specs sts WHERE sts.sole_id = s.sole_id AND COALESCE(sts.insole_consumption_dm2, 0) > 0) AS missing_insole_specs,
+  s.needs_lining_specs AND NOT EXISTS (
+    SELECT 1 FROM public.sole_technical_specs sts
+     WHERE sts.sole_id = s.sole_id AND COALESCE(sts.lining_consumption_dm2, 0) > 0
+  ) AS missing_lining_specs,
+  s.needs_insole_specs AND NOT EXISTS (
+    SELECT 1 FROM public.sole_technical_specs sts
+     WHERE sts.sole_id = s.sole_id AND COALESCE(sts.insole_consumption_dm2, 0) > 0
+  ) AS missing_insole_specs,
   s.is_fachetado AND NOT EXISTS (
     SELECT 1 FROM public.sole_technical_specs sts
      WHERE sts.sole_id = s.sole_id AND COALESCE(sts.fachete_lining_consumption_dm2, 0) > 0
   ) AS fachetado_missing_fachete_specs,
-  s.drives_consumption AND NOT EXISTS (
-    SELECT 1 FROM public.sole_technical_specs sts
-     WHERE sts.sole_id = s.sole_id
-       AND (COALESCE(sts.lining_consumption_dm2, 0) > 0 OR COALESCE(sts.insole_consumption_dm2, 0) > 0)
+  (
+    s.needs_lining_specs AND NOT EXISTS (
+      SELECT 1 FROM public.sole_technical_specs sts
+       WHERE sts.sole_id = s.sole_id AND COALESCE(sts.lining_consumption_dm2, 0) > 0
+    )
+  ) OR (
+    s.needs_insole_specs AND NOT EXISTS (
+      SELECT 1 FROM public.sole_technical_specs sts
+       WHERE sts.sole_id = s.sole_id AND COALESCE(sts.insole_consumption_dm2, 0) > 0
+    )
   ) AS drives_consumption_but_no_specs
 FROM soles_in_use s;
 

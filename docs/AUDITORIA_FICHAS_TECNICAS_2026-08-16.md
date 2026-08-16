@@ -86,6 +86,18 @@ o rendimento real e adicionar margem duplicaria a perda.
 8. Ações secundárias reunidas em “Ferramentas”, mantendo Auditoria e Nova Ficha
    como decisões principais.
 
+## Verificação pós-correção
+
+- os três falsos positivos medidos caíram para zero;
+- 47 fichas antigas receberam `primary_sole_id`; 6 permaneceram pendentes por
+  não terem grupo/produto de solado resolvível com segurança;
+- 4 fichas já atendem todos os bloqueios críticos de prontidão; as demais agora
+  mostram pendências reais de cadastro, sem usar “MOD ausente” como bloqueio;
+- NL01–NL04 continuam no diagnóstico baixo de forração legada, porém o motor
+  canônico suprime essa linha quando ela representa o mesmo forro de palmilha;
+  portanto não há débito duplo. O dado foi mantido para não alterar engenharia
+  histórica sem uma decisão de cadastro.
+
 ## Guardas de regressão
 
 - testes unitários da prontidão e da aplicação em massa;
