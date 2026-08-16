@@ -902,6 +902,7 @@ DO $$
 DECLARE v_definition text:=lower(pg_get_viewdef(
   'public.v_strap_cost_variance_operational'::regclass,true));
 BEGIN
+  RAISE EXCEPTION 'DEBUG cost variance view: %', v_definition;
   IF v_definition !~ 'c\.sale_order_strap_demand_id'
      OR v_definition !~ 'a\.purchase_demand_contribution_id'
      OR v_definition !~ 'a\.batch_contribution_id'
