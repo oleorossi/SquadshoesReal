@@ -27,7 +27,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 2  # precisa do parent commit pra diff
+          # O push pode conter varios commits; precisamos do SHA anterior inteiro,
+          # nao apenas de HEAD^, para nao omitir funcoes alteradas no meio do lote.
+          fetch-depth: 0
 
       - uses: supabase/setup-cli@v1
         with:
@@ -39,7 +41,15 @@ jobs:
           if [ -n "${{ inputs.function_name }}" ]; then
             echo "functions=${{ inputs.function_name }}" >> $GITHUB_OUTPUT
           else
-            CHANGED_FILES=$(git diff --name-only HEAD^ HEAD -- supabase/functions/)
+            if [ "${{ github.event_name }}" = "push" ] \
+              && [ -n "${{ github.event.before }}" ] \
+              && [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
+              DIFF_BASE="${{ github.event.before }}"
+            else
+              DIFF_BASE="HEAD^"
+            fi
+
+            CHANGED_FILES=$(git diff --name-only "$DIFF_BASE" HEAD -- supabase/functions/)
             CHANGED=$(printf '%s\n' "$CHANGED_FILES" \
               | awk -F'/' '$3 != "_shared" {print $3}' \
               | sort -u)
