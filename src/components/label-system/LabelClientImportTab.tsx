@@ -20,6 +20,9 @@ import {
   UploadSimple as Upload,
   FilePdf,
   Barcode,
+  Factory,
+  Palette,
+  CheckCircle,
   Warning,
   X,
   CircleNotch as Loader2,
@@ -29,11 +32,14 @@ import logoFornecedor from '@/assets/baby-nalin/marca-fornecedor.png';
 import {
   ART_HEIGHT_MM,
   ART_WIDTH_MM,
+  BARCODE_FORMAT,
   MEDIA_HEIGHT_MM,
   MEDIA_WIDTH_MM,
   MODULE_MM,
+  analyzeClientSkus,
   buildBabyNalinPdf,
   expandRows,
+  graphicPdfFilename,
   loadLogoDataUrl,
   measureBarcode,
   parseClientOrderFile,
@@ -51,11 +57,12 @@ export function LabelClientImportTab() {
   const [repeatByQuantity, setRepeatByQuantity] = useState(false);
   const [repeatMultiplier, setRepeatMultiplier] = useState(1);
   const [reading, setReading] = useState(false);
-  const [generating, setGenerating] = useState(false);
+  const [generating, setGenerating] = useState<'production' | 'graphic' | null>(null);
   const [search, setSearch] = useState('');
 
   const totalPaginas = expandRows(rows, repeatByQuantity, repeatMultiplier).length;
   const totalPares = rows.reduce((t, r) => t + r.quantidade, 0);
+  const skuAnalysis = analyzeClientSkus(rows);
   // Código que não respeita a zona de silêncio não pode virar etiqueta — a
   // barra sairia cortada e só se descobre no leitor da loja.
   const foraDoPadrao = rows.filter(r => !measureBarcode(r.codigoBarra).fits);
@@ -86,25 +93,39 @@ export function LabelClientImportTab() {
     }
   }
 
-  async function handleGenerate() {
+  async function handleGenerate(mode: 'production' | 'graphic') {
     if (rows.length === 0) return;
     if (foraDoPadrao.length > 0) {
       toast.error(`${foraDoPadrao.length} código(s) não cabem na etiqueta. Corrija o pedido antes de gerar.`);
       return;
     }
+    if (mode === 'graphic' && skuAnalysis.conflicts.length > 0) {
+      toast.error(`${skuAnalysis.conflicts.length} SKU(s) possuem códigos de barras conflitantes.`);
+      return;
+    }
 
-    setGenerating(true);
+    setGenerating(mode);
     try {
       const logo = await loadLogoDataUrl(logoFornecedor);
       if (!logo) toast.warning('Não carreguei a logomarca — o PDF sai sem ela.');
 
-      const doc = await buildBabyNalinPdf(rows, { repeatByQuantity, repeatMultiplier, logo });
-      doc.save(pdfFilename(fileName));
-      toast.success(`PDF com ${totalPaginas} etiqueta(s) gerado.`);
+      const doc = await buildBabyNalinPdf(rows, {
+        mode,
+        repeatByQuantity: mode === 'production' ? repeatByQuantity : false,
+        repeatMultiplier,
+        logo,
+      });
+      if (mode === 'graphic') {
+        doc.save(graphicPdfFilename(fileName));
+        toast.success(`Arquivo para gráfica com ${skuAnalysis.rows.length} SKU(s) gerado.`);
+      } else {
+        doc.save(pdfFilename(fileName));
+        toast.success(`PDF de produção com ${totalPaginas} etiqueta(s) gerado.`);
+      }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Falha ao gerar o PDF.');
     } finally {
-      setGenerating(false);
+      setGenerating(null);
     }
   }
 
@@ -121,7 +142,7 @@ export function LabelClientImportTab() {
       <Panel
         eyebrow="ETIQUETAS · CLIENTE"
         title="Importar pedido do cliente"
-        subtitle={`Arte ${ART_WIDTH_MM} × ${ART_HEIGHT_MM} mm centralizada em rolo ${MEDIA_WIDTH_MM} × ${MEDIA_HEIGHT_MM} mm · CODE128 com módulo de ${MODULE_MM.toFixed(4).replace('.', ',')} mm`}
+        subtitle={`Arte ${ART_WIDTH_MM} × ${ART_HEIGHT_MM} mm · ${BARCODE_FORMAT} com módulo de ${MODULE_MM.toFixed(4).replace('.', ',')} mm`}
         actions={
           rows.length > 0 ? (
             <Button variant="ghost" size="sm" onClick={limpar} className="h-9">
@@ -155,62 +176,125 @@ export function LabelClientImportTab() {
         ) : (
           <div className="space-y-4">
             <StatGrid>
-              <StatCard label="Etiquetas" value={rows.length} hint={fileName} />
+              <StatCard label="SKUs no arquivo" value={skuAnalysis.rows.length} hint={fileName} />
               <StatCard label="Pares no pedido" value={totalPares} unit="pares" />
               <StatCard
-                label="Páginas do PDF"
+                label="Etiquetas de produção"
                 value={totalPaginas}
                 hint={repeatByQuantity ? `${repeatMultiplier} por par` : 'uma por linha'}
               />
             </StatGrid>
 
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  id="repeat-by-quantity"
-                  checked={repeatByQuantity}
-                  onCheckedChange={v => setRepeatByQuantity(v === true)}
-                />
-                <Label htmlFor="repeat-by-quantity" className="text-sm font-normal cursor-pointer">
-                  Repetir cada etiqueta pela quantidade solicitada
-                </Label>
-              </div>
-
-              {repeatByQuantity && (
-                <div className="flex items-center gap-2 rounded-md border border-primary/20 bg-primary/5 px-2.5 py-1.5">
-                  <Label htmlFor="repeat-multiplier" className="whitespace-nowrap text-xs font-semibold text-foreground">
-                    Etiquetas por par
-                  </Label>
-                  <Input
-                    id="repeat-multiplier"
-                    type="number"
-                    min={1}
-                    max={100}
-                    step={1}
-                    value={repeatMultiplier}
-                    onChange={e => {
-                      const next = Math.trunc(Number(e.target.value));
-                      setRepeatMultiplier(Number.isFinite(next) ? Math.min(100, Math.max(1, next)) : 1);
-                    }}
-                    className="h-8 w-16 bg-background text-center font-mono"
-                    aria-describedby="repeat-multiplier-help"
-                  />
-                  <span id="repeat-multiplier-help" className="text-xs text-muted-foreground">
-                    {totalPaginas.toLocaleString('pt-BR')} etiquetas no total
-                  </span>
+            <div className="grid gap-3 lg:grid-cols-2">
+              <section className="rounded-lg border border-border bg-muted/20 p-4 space-y-4" aria-labelledby="production-output-title">
+                <div className="flex items-start gap-3">
+                  <div className="rounded-md border border-border bg-background p-2 text-foreground">
+                    <Factory className="h-5 w-5" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 id="production-output-title" className="font-semibold text-foreground">PDF para produção</h3>
+                      <Badge variant="outline">50 × 40 mm</Badge>
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Arquivo para imprimir no rolo, repetindo conforme a quantidade do pedido.
+                    </p>
+                  </div>
                 </div>
-              )}
 
-              <div className="ml-auto flex items-center gap-2">
-                <Button variant="outline" size="sm" className="h-9" onClick={() => inputRef.current?.click()}>
-                  <Upload className="h-4 w-4 mr-1.5" />
-                  Trocar arquivo
+                <div className="space-y-3 rounded-md border border-border bg-background p-3">
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="repeat-by-quantity"
+                      checked={repeatByQuantity}
+                      onCheckedChange={v => setRepeatByQuantity(v === true)}
+                    />
+                    <Label htmlFor="repeat-by-quantity" className="text-sm font-normal cursor-pointer">
+                      Usar quantidade solicitada
+                    </Label>
+                  </div>
+
+                  {repeatByQuantity && (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Label htmlFor="repeat-multiplier" className="whitespace-nowrap text-xs font-semibold text-foreground">
+                        Etiquetas por par
+                      </Label>
+                      <Input
+                        id="repeat-multiplier"
+                        type="number"
+                        min={1}
+                        max={100}
+                        step={1}
+                        value={repeatMultiplier}
+                        onChange={e => {
+                          const next = Math.trunc(Number(e.target.value));
+                          setRepeatMultiplier(Number.isFinite(next) ? Math.min(100, Math.max(1, next)) : 1);
+                        }}
+                        className="h-8 w-20 bg-background text-center font-mono"
+                        aria-describedby="repeat-multiplier-help"
+                      />
+                      <span id="repeat-multiplier-help" className="text-xs text-muted-foreground">
+                        {totalPaginas.toLocaleString('pt-BR')} etiquetas
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                <Button
+                  className="w-full"
+                  onClick={() => void handleGenerate('production')}
+                  disabled={generating !== null || foraDoPadrao.length > 0}
+                >
+                  {generating === 'production' ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <FilePdf className="h-4 w-4 mr-2" />}
+                  {generating === 'production' ? 'Gerando…' : `Gerar produção (${totalPaginas})`}
                 </Button>
-                <Button onClick={() => void handleGenerate()} disabled={generating || foraDoPadrao.length > 0}>
-                  {generating ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <FilePdf className="h-4 w-4 mr-2" />}
-                  {generating ? 'Gerando…' : `Gerar PDF (${totalPaginas})`}
+              </section>
+
+              <section className="rounded-lg border border-primary/25 bg-primary/5 p-4 space-y-4" aria-labelledby="graphic-output-title">
+                <div className="flex items-start gap-3">
+                  <div className="rounded-md border border-primary/20 bg-background p-2 text-primary">
+                    <Palette className="h-5 w-5" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 id="graphic-output-title" className="font-semibold text-foreground">Arquivo para gráfica</h3>
+                      <Badge className="bg-primary text-primary-foreground">46 × 38 mm</Badge>
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Uma página vetorial por SKU, sem repetir a quantidade do pedido.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="rounded-md border border-primary/20 bg-background p-3 space-y-2 text-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-muted-foreground">Artes no arquivo</span>
+                    <strong className="font-mono text-foreground">{skuAnalysis.rows.length}</strong>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-muted-foreground">Código de barras</span>
+                    <span className="inline-flex items-center gap-1.5 font-semibold text-foreground">
+                      <CheckCircle className="h-4 w-4 text-emerald-600" weight="fill" /> {BARCODE_FORMAT}
+                    </span>
+                  </div>
+                </div>
+
+                <Button
+                  className="w-full"
+                  onClick={() => void handleGenerate('graphic')}
+                  disabled={generating !== null || foraDoPadrao.length > 0 || skuAnalysis.conflicts.length > 0}
+                >
+                  {generating === 'graphic' ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <FilePdf className="h-4 w-4 mr-2" />}
+                  {generating === 'graphic' ? 'Gerando…' : `Gerar gráfica (${skuAnalysis.rows.length} SKUs)`}
                 </Button>
-              </div>
+              </section>
+            </div>
+
+            <div className="flex justify-end">
+              <Button variant="outline" size="sm" className="h-9" onClick={() => inputRef.current?.click()}>
+                <Upload className="h-4 w-4 mr-1.5" />
+                Trocar arquivo
+              </Button>
             </div>
 
             {foraDoPadrao.length > 0 && (
@@ -219,6 +303,16 @@ export function LabelClientImportTab() {
                 <span>
                   {foraDoPadrao.length} código(s) longos demais para a etiqueta de {ART_WIDTH_MM} mm — a barra sairia
                   cortada. Confira a coluna <strong>Codigo Barra</strong> do pedido.
+                </span>
+              </div>
+            )}
+
+            {skuAnalysis.conflicts.length > 0 && (
+              <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-700">
+                <Warning className="h-4 w-4 mt-0.5 shrink-0" weight="fill" />
+                <span>
+                  {skuAnalysis.conflicts.length} SKU(s) possuem mais de um código de barras. O arquivo para a gráfica
+                  fica bloqueado até a planilha ser corrigida.
                 </span>
               </div>
             )}
