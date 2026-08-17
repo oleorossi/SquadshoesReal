@@ -20,20 +20,29 @@ const UNLINK = '__unlink__';
 
 /**
  * Move em massa os grupos-folha selecionados para uma família (ou desvincula).
- * Alvos válidos = grupos-raiz SEM itens diretos (famílias ou raízes vazias),
- * fora da seleção. Ao vincular, o setor do grupo passa a ser o da família.
+ * Alvos válidos = famílias do MESMO setor, sem itens diretos e fora da seleção.
+ * Reclassificar setor é uma ação separada porque materiais de área podem exigir
+ * largura antes da mudança.
  */
 export default function MoveGroupsDialog({ open, onOpenChange, groups, rollups, selectedIds, onDone }: Props) {
   const move = useMoveGroupsToFamily();
   const [target, setTarget] = useState<string>('');
 
   const byId = useMemo(() => new Map(groups.map(g => [g.id, g])), [groups]);
+  const selectedSectors = useMemo(
+    () => new Set(Array.from(selectedIds).map((id) => byId.get(id)?.sector || '—')),
+    [selectedIds, byId],
+  );
+  const commonSector = selectedSectors.size === 1 ? Array.from(selectedSectors)[0] : null;
 
-  // Alvos: raízes sem itens diretos (podem receber subgrupos), fora da seleção.
+  // Alvos: famílias do mesmo setor e sem itens diretos, fora da seleção.
   const targetsBySector = useMemo(() => {
     const roots = groups.filter(g =>
+      commonSector != null &&
       !g.parent_group_id &&
       !selectedIds.has(g.id) &&
+      (g.sector || '—') === commonSector &&
+      (g.is_family === true || groups.some((candidate) => candidate.parent_group_id === g.id)) &&
       (rollups.get(g.id)?.item_count ?? 0) === 0,
     );
     const childCount = new Map<string, number>();
@@ -50,13 +59,9 @@ export default function MoveGroupsDialog({ open, onOpenChange, groups, rollups, 
       const ia = order.indexOf(a[0]), ib = order.indexOf(b[0]);
       return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
     });
-  }, [groups, rollups, selectedIds]);
+  }, [groups, rollups, selectedIds, commonSector]);
 
   const targetFamily = target && target !== UNLINK ? byId.get(target) : null;
-  const crossSector = useMemo(() => {
-    if (!targetFamily) return false;
-    return Array.from(selectedIds).some(id => (byId.get(id)?.sector || '—') !== (targetFamily.sector || '—'));
-  }, [targetFamily, selectedIds, byId]);
 
   const handleConfirm = async () => {
     if (!target) return;
@@ -65,7 +70,7 @@ export default function MoveGroupsDialog({ open, onOpenChange, groups, rollups, 
       if (target === UNLINK) {
         await move.mutateAsync({ familyId: null, groupIds });
       } else {
-        await move.mutateAsync({ familyId: target, familySector: targetFamily?.sector, groupIds });
+        await move.mutateAsync({ familyId: target, groupIds });
       }
       setTarget('');
       onDone();
@@ -99,9 +104,15 @@ export default function MoveGroupsDialog({ open, onOpenChange, groups, rollups, 
             </SelectContent>
           </Select>
 
-          {crossSector && targetFamily && (
-            <p className="rounded-md bg-primary/10 px-3 py-2 text-xs text-primary">
-              Alguns grupos são de outro setor — ao mover, o setor passará para <strong>{sectorLabel(targetFamily.sector)}</strong> e os itens serão reclassificados.
+          {!commonSector && target !== UNLINK && (
+            <p className="rounded-md bg-warning/10 px-3 py-2 text-xs text-warning">
+              A seleção reúne setores diferentes. Selecione grupos de um único setor para vinculá-los à mesma família.
+            </p>
+          )}
+
+          {commonSector && targetsBySector.length === 0 && target !== UNLINK && (
+            <p className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
+              Nenhuma família disponível em <strong>{sectorLabel(commonSector)}</strong>. Crie a família nesse setor antes de mover os grupos.
             </p>
           )}
         </div>

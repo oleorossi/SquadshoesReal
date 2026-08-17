@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { PencilSimple as Pencil, Palette, FloppyDisk as Save, Package, Plus, MagnifyingGlass as Search, Ruler, CircleNotch as Loader2, Cube as BoxIcon, Flask as FlaskConical, Stack as Layers, X, LinkSimple as Link2, ArrowRight, Check, Warning as AlertTriangle, ArrowsLeftRight, Rows, Info } from '@phosphor-icons/react';
+import { PencilSimple as Pencil, Palette, FloppyDisk as Save, Package, Plus, MagnifyingGlass as Search, Ruler, CircleNotch as Loader2, Flask as FlaskConical, Stack as Layers, X, LinkSimple as Link2, ArrowRight, Check, Warning as AlertTriangle, ArrowsLeftRight, Rows, Info, Factory, SquaresFour } from '@phosphor-icons/react';
 import { ProductGroup, useUpdateGroup, useGroups } from '@/hooks/useGroups';
 import { useProducts } from '@/hooks/useProducts';
 import GroupColorsTab from './GroupColorsTab';
+import { MaterialClassificationRail } from './MaterialClassificationRail';
 import { useForceDeleteProductFlow } from '@/components/inventory/ForceDeleteProductDialog';
 import { supabase } from '@/integrations/supabase/client';
-import { createGroupColorProduct } from '@/lib/groupColorProducts';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -15,7 +15,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from '@/components/ui/command';
@@ -24,14 +23,15 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { CONSUMPTION_UNITS_BY_GROUP } from '@/lib/measurementUnits';
 import { sectorOfGroup, sectorLabel, SECTOR_OPTIONS } from '@/lib/categoryFromGroup';
 import { CurrencyInput } from '@/components/ui/currency-input';
 import { NumberInput } from '@/components/ui/number-input';
-import { normalizeForSearch, searchMatchesAllTerms } from '@/lib/searchUtils';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { SearchInput } from '@/components/ui/search-input';
 import { EmptyState } from '@/components/ui/empty-state';
+import { getFootwearSectorGuide, normalizeTaxonomyName } from '@/lib/footwearMaterialTaxonomy';
 
 interface GroupEditDialogProps {
   open: boolean;
@@ -80,12 +80,11 @@ function getVisibleFields(type: GroupType) {
     artisanal:      isUpper,
     // Componente é consumo unitário — não tem variantes de cor que importam
     // no BOM (toda fivela "X" é igual independente da cor do calçado).
-    colorsManager:  isSole || isUpper || isInsole,
     unitWeight:     isSole,
     // Rendimento por numeração: só pra materiais cujo CONSUMO varia com o
     // tamanho do calçado (cabedal, forração, palmilha, solado). Componente
     // NÃO entra — fivela/ilhós/ABS consomem 1 unidade por par, fim.
-    yieldTab:       isSole || isUpper || isInsole,
+    dimensions:     isUpper || isInsole,
     // Embalagem: o débito de embalagem lê a caixa vinculada + pares/caixa DO
     // GRUPO DO SOLADO (product_groups.box_type_*_id). Sem esse elo o débito não
     // tem o que debitar. Aqui é somente leitura; a edição fica em /embalagens.
@@ -221,62 +220,69 @@ function AddItemsToGroupDialog({ open, onOpenChange, groupId, groupName }: {
 /* ──────────────────────────────────────────────────
    Sole-specific Yield Editor
    ────────────────────────────────────────────────── */
-function GroupDimensionsEditor({ groupId }: { groupId: string }) {
+function GroupDimensionsEditor({ group }: { group: ProductGroup }) {
   const queryClient = useQueryClient();
 
   // Ficha de componente do grupo — dimensões do material (usadas na conversão
   // dm²→metro/placa do consumo). Editar aqui aplica a TODAS as fichas do grupo.
   // (O rendimento por numeração × solado saiu daqui — vive na gestão de Solados.)
   const { data: sheets = [], isLoading } = useQuery({
-    queryKey: ['component_sheets_group', groupId],
+    queryKey: ['component_sheets_group', group.id],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('component_sheets')
-        .select('id, dimensions_length, dimensions_width, dimensions_thickness, dimensions_unit')
-        .eq('group_id', groupId);
+        .select('id, dimensions_length, dimensions_width, dimensions_thickness, dimensions_unit, products!inner(group_id)')
+        .eq('products.group_id', group.id);
       if (error) throw error;
       return data;
     },
   });
 
-  // Use the first sheet as the canonical one for group-level editing
-  const sheet = sheets[0] as any;
-
-  const [dimLength, setDimLength] = useState(0);
-  const [dimWidth, setDimWidth] = useState(0);
-  const [dimThickness, setDimThickness] = useState(0);
-  const [dimUnit, setDimUnit] = useState('mm');
+  const [dimLength, setDimLength] = useState(Number(group.dimensions_length) || 0);
+  const [dimWidth, setDimWidth] = useState(Number(group.dimensions_width) || 0);
+  const [dimThickness, setDimThickness] = useState(Number(group.dimensions_thickness) || 0);
+  const [dimUnit, setDimUnit] = useState(group.dimensions_unit || 'mm');
   const [saving, setSaving] = useState(false);
 
-  // Init dimensions from sheet
+  // O grupo é a fonte. A ficha só recebe uma cópia sincronizada porque os
+  // motores de consumo ainda leem component_sheets.dimensions_width.
   useEffect(() => {
-    if (sheet) {
-      setDimLength(Number(sheet.dimensions_length) || 0);
-      setDimWidth(Number(sheet.dimensions_width) || 0);
-      setDimThickness(Number(sheet.dimensions_thickness) || 0);
-      setDimUnit(sheet.dimensions_unit || 'mm');
-    }
-  }, [sheet]);
+    setDimLength(Number(group.dimensions_length) || 0);
+    setDimWidth(Number(group.dimensions_width) || 0);
+    setDimThickness(Number(group.dimensions_thickness) || 0);
+    setDimUnit(group.dimensions_unit || 'mm');
+  }, [group.id, group.dimensions_length, group.dimensions_width, group.dimensions_thickness, group.dimensions_unit]);
+
+  const toMm = (value: number) => dimUnit === 'm' ? value * 1000 : dimUnit === 'cm' ? value * 10 : value;
+  const widthMm = toMm(dimWidth);
+  const lengthMm = toMm(dimLength);
+  const previewLinearMeters = widthMm > 0 ? 100 / (widthMm / 10) : null;
+  const plateAreaDm2 = widthMm > 0 && lengthMm > 0 ? (widthMm * lengthMm) / 10_000 : null;
 
   const handleSaveDimensions = async () => {
-    if (!sheet) return;
+    if (widthMm <= 0) {
+      toast.error('Informe a largura útil da bobina ou placa.');
+      return;
+    }
     setSaving(true);
     try {
-      const sheetIds = sheets.map(s => s.id);
-      const { error } = await supabase
-        .from('component_sheets')
-        .update({
-          dimensions_length: dimLength,
-          dimensions_width: dimWidth,
-          dimensions_thickness: dimThickness,
-          dimensions_unit: dimUnit,
-        } as any)
-        .in('id', sheetIds);
+      const { data: syncedSheets, error } = await (supabase as any).rpc('update_material_group_dimensions', {
+        p_group_id: group.id,
+        p_length: dimLength,
+        p_width: dimWidth,
+        p_thickness: dimThickness,
+        p_unit: dimUnit,
+      });
       if (error) throw error;
 
-      queryClient.invalidateQueries({ queryKey: ['component_sheets_group', groupId] });
+      queryClient.invalidateQueries({ queryKey: ['component_sheets_group', group.id] });
       queryClient.invalidateQueries({ queryKey: ['component_sheets'] });
-      toast.success('Dimensões atualizadas para todo o grupo!');
+      queryClient.invalidateQueries({ queryKey: ['product_groups'] });
+      toast.success('Dimensões do grupo atualizadas', {
+        description: Number(syncedSheets) > 0
+          ? `${Number(syncedSheets)} ficha(s) de componente sincronizada(s).`
+          : 'A próxima ficha criada herdará estas medidas.',
+      });
     } catch (err: any) {
       toast.error(`Erro: ${err.message}`);
     } finally {
@@ -292,55 +298,77 @@ function GroupDimensionsEditor({ groupId }: { groupId: string }) {
     );
   }
 
-  if (sheets.length === 0) {
-    return (
-      <div className="text-center py-6 text-muted-foreground">
-        <Ruler className="h-6 w-6 mx-auto mb-2 opacity-50" />
-        <p className="text-sm">Nenhuma ficha de componente encontrada para este grupo.</p>
-        <p className="text-xs mt-1">Adicione materiais ao grupo primeiro.</p>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-4">
-      {/* Dimensions */}
-      <Card>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div className="border-l-2 border-primary bg-muted/20 px-3 py-2">
+          <p className="font-mono text-[9px] uppercase tracking-wider text-muted-foreground">Fonte técnica</p>
+          <p className="mt-1 text-sm font-semibold">Grupo de estoque</p>
+          <p className="text-[11px] text-muted-foreground">Uma medida para todas as cores.</p>
+        </div>
+        <div className="border-l-2 border-foreground/20 bg-muted/20 px-3 py-2">
+          <p className="font-mono text-[9px] uppercase tracking-wider text-muted-foreground">Conversão linear</p>
+          <p className="mt-1 font-mono text-sm font-semibold">
+            {previewLinearMeters == null ? 'Largura pendente' : `100 dm² = ${previewLinearMeters.toLocaleString('pt-BR', { maximumFractionDigits: 3 })} m`}
+          </p>
+          <p className="text-[11px] text-muted-foreground">Usa somente a largura útil.</p>
+        </div>
+        <div className="border-l-2 border-foreground/20 bg-muted/20 px-3 py-2">
+          <p className="font-mono text-[9px] uppercase tracking-wider text-muted-foreground">Área da placa</p>
+          <p className="mt-1 font-mono text-sm font-semibold">
+            {plateAreaDm2 == null ? 'Comprimento pendente' : `${plateAreaDm2.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} dm²`}
+          </p>
+          <p className="text-[11px] text-muted-foreground">Largura × comprimento.</p>
+        </div>
+      </div>
+
+      <Card className="border-foreground/20">
         <CardHeader className="pb-3">
           <CardTitle className="text-sm flex items-center gap-2">
             <Ruler className="h-4 w-4" />
-            Dimensões do Material
+            Geometria de compra e consumo
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <div>
-              <Label className="text-xs">Comprimento</Label>
-              <NumberInput value={dimLength} onChange={n => setDimLength(n)} className="h-8 text-xs mt-1" />
+              <Label className="text-xs">Largura útil *</Label>
+              <NumberInput value={dimWidth} onChange={n => setDimWidth(n)} min={0} className="h-9 text-xs mt-1" />
+              <p className="mt-1 text-[10px] text-muted-foreground">Largura da bobina; é o divisor dm² → m.</p>
             </div>
             <div>
-              <Label className="text-xs">Largura</Label>
-              <NumberInput value={dimWidth} onChange={n => setDimWidth(n)} className="h-8 text-xs mt-1" />
+              <Label className="text-xs">Comprimento da placa</Label>
+              <NumberInput value={dimLength} onChange={n => setDimLength(n)} min={0} className="h-8 text-xs mt-1" />
             </div>
             <div>
               <Label className="text-xs">Espessura</Label>
-              <NumberInput value={dimThickness} onChange={n => setDimThickness(n)} className="h-8 text-xs mt-1" />
+              <NumberInput value={dimThickness} onChange={n => setDimThickness(n)} min={0} className="h-9 text-xs mt-1" />
             </div>
             <div>
               <Label className="text-xs">Unidade</Label>
               <Select value={dimUnit} onValueChange={setDimUnit}>
-                <SelectTrigger className="h-8 text-xs mt-1"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="h-9 text-xs mt-1"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="mm">mm</SelectItem>
                   <SelectItem value="cm">cm</SelectItem>
-                  <SelectItem value="m">metro</SelectItem>
+                  <SelectItem value="m">m</SelectItem>
                 </SelectContent>
               </Select>
             </div>
           </div>
-          <div className="flex justify-end mt-3">
-            <Button size="sm" variant="outline" onClick={handleSaveDimensions} disabled={saving}>
-              <Save className="h-3.5 w-3.5 mr-1" /> Salvar Dimensões
+          {widthMm <= 0 && (
+            <div className="mt-3 flex items-start gap-2 border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" weight="fill" />
+              Sem largura, o consumo em dm² não pode ser convertido para a unidade física do estoque.
+            </div>
+          )}
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t pt-3">
+            <p className="text-[11px] text-muted-foreground">
+              {sheets.length} ficha(s) vinculada(s) serão sincronizadas ao salvar.
+            </p>
+            <Button size="sm" onClick={handleSaveDimensions} disabled={saving || widthMm <= 0}>
+              {saving ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Save className="mr-1 h-3.5 w-3.5" />}
+              Salvar dimensões
             </Button>
           </div>
         </CardContent>
@@ -411,12 +439,6 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
     return out;
   }, [childrenByParent]);
 
-  // Opções de PAI: exclui o próprio grupo e seus descendentes (evita ciclo).
-  const validParentOptions = useMemo(
-    () => groupsWithDepth.filter(g => g.id !== group.id && !descendantIds.has(g.id)),
-    [groupsWithDepth, group.id, descendantIds],
-  );
-
   // Filhos diretos desta família.
   const childrenGroups = useMemo(
     () => (childrenByParent.get(group.id) || []),
@@ -425,7 +447,9 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
 
   // Modelo Setor → Família → Grupo (specs/grupos-estoque.md):
   // tem filhos ⇒ família/container (não recebe item direto); sem filhos ⇒ grupo-folha.
-  const isContainer = childrenGroups.length > 0;
+  const [isFamily, setIsFamily] = useState(group.is_family === true || childrenGroups.length > 0);
+  const [isFamilyPersisted, setIsFamilyPersisted] = useState(group.is_family === true || childrenGroups.length > 0);
+  const isContainer = isFamily || childrenGroups.length > 0;
   const parentGroup = useMemo(
     () => (group.parent_group_id ? allGroups.find(g => g.id === group.parent_group_id) ?? null : null),
     [group.parent_group_id, allGroups],
@@ -453,26 +477,11 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
   const sectorChanged = sector !== savedSector;
   const groupType = useMemo(() => getGroupType(sector), [sector]);
   const show = useMemo(() => getVisibleFields(groupType), [groupType]);
-  const showYieldTab = show.yieldTab;
+  const showDimensionsTab = show.dimensions;
+  const sectorGuide = useMemo(() => getFootwearSectorGuide(sector), [sector]);
   const isCanonicalStrapGroup = group.is_artisanal_strap === true
     || products.some((product: any) => product.is_artisanal === true)
     || /tira|elastic|tranç/i.test(group.name || '');
-
-  /**
-   * Detecta se o grupo é de Solado pra mostrar campos específicos
-   * (Silk padrão, Tipos de Caixa). Heurística: produtos da categoria
-   * Solado/Sola, ou nome do grupo contém "solado".
-   */
-  const isSoleGroup = useMemo(() => {
-    const nameMatch = normalizeForSearch(group.name).includes('solado') ||
-                      normalizeForSearch(group.name).includes('sola');
-    const productMatch = products.some(p => {
-      const c = (p.category || '').toLowerCase();
-      return c === 'solado' || c === 'sola' || c.startsWith('solado');
-    });
-    return nameMatch || productMatch;
-  }, [group.name, products]);
-
   const [name, setName] = useState(group.name);
   const [description, setDescription] = useState(group.description || '');
   const [isBomColorSource, setIsBomColorSource] = useState(group.is_bom_color_source);
@@ -483,6 +492,7 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
   const [sharedSpecs, setSharedSpecs] = useState<boolean>(group.shared_specs ?? false);
   // Material base sem cor (EVA, cola): desliga o color_mismatch no consumo/débito.
   const [isColorAgnostic, setIsColorAgnostic] = useState<boolean>(group.is_color_agnostic ?? false);
+  const colorBehavior = isColorAgnostic ? 'agnostic' : isBomColorSource ? 'bom-source' : 'variant';
   // Aba de abertura do MasterVariantDialog: o link "Editar N cores" cai direto
   // na edição em massa, que é a porta única dos campos de `products` (R3.2).
   const [variantsDialogTab, setVariantsDialogTab] = useState<'variants' | 'group' | 'add'>('variants');
@@ -492,6 +502,7 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
 
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [variantsDialogOpen, setVariantsDialogOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState('general');
   // Hierarquia (product_groups.parent_group_id) + peso unitário. State perdido no
   // merge bec3ed0 (JSX entrou sem as declarações) → crash 'parentGroupId is not
   // defined' ao abrir a edição. Restaurado 2026-06-07. [[group-edit-dropped-state]]
@@ -500,6 +511,36 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
   const [unitWeightKg, setUnitWeightKg] = useState<number>(group.unit_weight_kg || 0);
   const [purchaseMultiple, setPurchaseMultiple] = useState<number>((group as any).purchase_multiple || 0);
 
+  const affectedProductsCount = useMemo(() => {
+    if (!isContainer) return products.length;
+    return allProducts.filter((product) => product.group_id && descendantIds.has(product.group_id)).length;
+  }, [allProducts, descendantIds, isContainer, products.length]);
+
+  const familyOptions = useMemo(
+    () => groupsWithDepth.filter((candidate) => {
+      if (candidate.id === group.id || descendantIds.has(candidate.id) || candidate.parent_group_id) return false;
+      if (sectorOfGroup(candidate) !== sector) return false;
+      const childCount = childrenByParent.get(candidate.id)?.length || 0;
+      return candidate.is_family === true || childCount > 0 || candidate.id === parentGroupId;
+    }),
+    [childrenByParent, descendantIds, group.id, groupsWithDepth, parentGroupId, sector],
+  );
+
+  const linkableChildren = useMemo(
+    () => availableToLinkAsChild.filter((candidate) => (
+      !candidate.parent_group_id
+      && candidate.is_family !== true
+      && sectorOfGroup(candidate) === sector
+      && (childrenByParent.get(candidate.id)?.length || 0) === 0
+    )),
+    [availableToLinkAsChild, childrenByParent, sector],
+  );
+
+  const selectedFamily = useMemo(
+    () => (parentGroupId ? allGroups.find((candidate) => candidate.id === parentGroupId) ?? null : null),
+    [allGroups, parentGroupId],
+  );
+
   // ── Embalagem: o estado saiu daqui em 02/08/2026 junto com a edição.
   // A aba `packaging` agora só aponta pra Embalagens → Configuração por Solado
   // (`SolePackagingPanel`), que grava direto em `product_groups`.
@@ -507,37 +548,6 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
 
   const queryClient = useQueryClient();
   const forceDeleteFlow = useForceDeleteProductFlow();
-
-  // Criar uma nova COR (produto) no grupo — cor = products.color (fonte única).
-  // Reusa o helper do cadastro em lote; idempotente por cor.
-  const [newColor, setNewColor] = useState('');
-  const [addingColor, setAddingColor] = useState(false);
-  const handleAddColor = async () => {
-    const c = newColor.trim();
-    if (!c) return;
-    if (isCanonicalStrapGroup) {
-      onOpenChange(false);
-      navigate(`/tiras-artesanais?tab=cadastro&editor=1&mode=create&origin=grupos&baseGroupId=${encodeURIComponent(group.id)}`);
-      return;
-    }
-    setAddingColor(true);
-    try {
-      const res = await createGroupColorProduct({ groupId: group.id, groupName: group.name, color: c });
-      if (res.status === 'created') {
-        toast.success(`Cor "${c}" cadastrada no grupo.`);
-        setNewColor('');
-        queryClient.invalidateQueries({ queryKey: ['products'] });
-        queryClient.invalidateQueries({ queryKey: ['products_for_colors'] });
-        queryClient.invalidateQueries({ queryKey: ['product_groups_colors'] });
-      } else if (res.status === 'skipped') {
-        toast.info(`"${c}" já existe neste grupo.`);
-      } else {
-        toast.error(`Erro ao criar cor: ${res.error}`);
-      }
-    } finally {
-      setAddingColor(false);
-    }
-  };
 
   useEffect(() => {
     setName(group.name);
@@ -548,13 +558,27 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
     setConsumptionUnit(group.consumption_unit || '__none__');
     setSharedSpecs(group.shared_specs ?? false);
     setParentGroupId(group.parent_group_id || '');
+    setIsFamily(group.is_family === true || childrenGroups.length > 0);
+    setIsFamilyPersisted(group.is_family === true || childrenGroups.length > 0);
     setUnitWeightKg(group.unit_weight_kg || 0);
-  }, [group, products.length]);
+    setPurchaseMultiple((group as any).purchase_multiple || 0);
+    setActiveTab('general');
+    // A hidratação pertence à abertura/troca do cadastro. Mudanças nas queries
+    // de filhos ou itens não podem apagar campos ainda não salvos.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [group.id, open]);
 
-  /** Largura do grupo × largura dos itens (R3.4). Divergência viva: a napa tem
-   *  1370 no grupo e 1000 nos itens. Não quebra consumo — os motores usam
-   *  GREATEST(comprimento, largura) — mas é sinal de que ninguém sabia qual dos
-   *  dois campos mandava. */
+  useEffect(() => {
+    // Receber o primeiro filho confirma o papel de família, sem reidratar o
+    // restante do formulário nem expulsar o usuário da aba Hierarquia.
+    if (childrenGroups.length > 0) {
+      setIsFamily(true);
+      setIsFamilyPersisted(true);
+    }
+  }, [childrenGroups.length]);
+
+  /** Largura do grupo × largura legada dos itens (R3.4). O consumo canônico usa
+   * dimensions_width da ficha; comprimento não substitui uma largura válida. */
   const larguraDivergente = useMemo(() => {
     const doGrupo = Number((group as any).dimensions_width) || 0;
     if (!doGrupo || products.length === 0) return null;
@@ -585,11 +609,12 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
           // Setor explícito do grupo. Mudar dispara o trigger de cascata no banco
           // (tg_group_sector_cascade) que reclassifica products.category dos itens.
           sector: sector || null,
-          is_bom_color_source: isBomColorSource,
+          is_bom_color_source: isColorAgnostic ? false : isBomColorSource,
           is_color_agnostic: isColorAgnostic,
           consumption_unit: finalUnit,
           shared_specs: sharedSpecs,
           parent_group_id: parentGroupId || null,
+          is_family: isContainer,
           unit_weight_kg: unitWeightKg,
           purchase_multiple: purchaseMultiple > 0 ? purchaseMultiple : null,
           // ⚠ Embalagem NÃO entra mais neste payload (02/08/2026). Este diálogo
@@ -607,7 +632,7 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
         queryClient.invalidateQueries({ queryKey: ['paginated_products'] });
         queryClient.invalidateQueries({ queryKey: ['product_groups'] });
         toast.success(
-          `Grupo movido para "${sectorLabel(sector)}" — ${products.length} ${products.length === 1 ? 'item reclassificado' : 'itens reclassificados'}.`,
+          `${isContainer ? 'Família' : 'Grupo'} movido para "${sectorLabel(sector)}" — ${affectedProductsCount} ${affectedProductsCount === 1 ? 'item reclassificado' : 'itens reclassificados'}.`,
         );
       }
 
@@ -677,13 +702,6 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                 <div className="min-w-0">
                   <DialogTitle className="truncate text-lg font-bold leading-tight">{group.name}</DialogTitle>
                   <DialogDescription className="sr-only">Edite setor, hierarquia, especificações e itens do grupo.</DialogDescription>
-                  {/* Breadcrumb Setor › Família › Grupo (specs/grupos-estoque.md R15) */}
-                  <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[11px] uppercase tracking-wider text-muted-foreground">
-                    <span>{sectorLabel(savedSector)}</span>
-                    {parentGroup && (<><span className="opacity-50">›</span><span>{parentGroup.name}</span></>)}
-                    <span className="opacity-50">›</span>
-                    <span className="text-primary">{group.name}</span>
-                  </div>
                   <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
                     <Badge variant="outline" className="h-5 gap-1 px-2 font-medium">
                       {isContainer ? `família · ${childrenGroups.length} subgrupo(s)` : 'grupo-folha'}
@@ -706,6 +724,14 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
             </div>
           </DialogHeader>
 
+          <MaterialClassificationRail
+            sector={sector}
+            family={isContainer ? name : selectedFamily?.name || parentGroup?.name}
+            group={isContainer ? null : name}
+            compact
+            className="mt-2"
+          />
+
           {isContainer && (
             <div className="mt-2 flex items-start gap-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-muted-foreground">
               <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
@@ -713,443 +739,419 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
             </div>
           )}
 
-          <Tabs defaultValue={showYieldTab ? "specs" : "general"} className="mt-2">
-            <TabsList className="grid w-full" style={{ gridTemplateColumns: `repeat(${4 + (showYieldTab ? 1 : 0) + (show.packaging ? 1 : 0)}, 1fr)` }}>
-              <TabsTrigger value="general">Geral</TabsTrigger>
-              <TabsTrigger value="hierarchy">Hierarquia</TabsTrigger>
-              {showYieldTab && <TabsTrigger value="specs">Dimensões</TabsTrigger>}
-              {show.packaging && <TabsTrigger value="packaging">Embalagem</TabsTrigger>}
-              <TabsTrigger value="colors">Cores</TabsTrigger>
-              <TabsTrigger value="items">Itens ({products.length})</TabsTrigger>
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-2">
+            <TabsList indicator="none" className="h-auto w-full justify-start gap-1 overflow-x-auto border-y border-foreground/15 bg-muted/20 p-1">
+              <TabsTrigger value="general" className="min-w-[132px] flex-1 justify-start gap-2 rounded-sm border border-transparent px-3 py-2 text-left font-sans normal-case tracking-normal data-[state=active]:border-foreground/20 data-[state=active]:bg-background data-[state=active]:shadow-sm">
+                <SquaresFour className="h-4 w-4 shrink-0" />
+                <span><span className="block text-xs font-semibold">Geral</span><span className="block text-[9px] font-normal text-muted-foreground">identidade e regras</span></span>
+              </TabsTrigger>
+              <TabsTrigger value="hierarchy" className="min-w-[132px] flex-1 justify-start gap-2 rounded-sm border border-transparent px-3 py-2 text-left font-sans normal-case tracking-normal data-[state=active]:border-foreground/20 data-[state=active]:bg-background data-[state=active]:shadow-sm">
+                <Factory className="h-4 w-4 shrink-0" />
+                <span><span className="block text-xs font-semibold">Hierarquia</span><span className="block text-[9px] font-normal text-muted-foreground">setor e família</span></span>
+              </TabsTrigger>
+              {!isContainer && showDimensionsTab && <TabsTrigger value="specs" className="min-w-[132px] flex-1 justify-start gap-2 rounded-sm border border-transparent px-3 py-2 text-left font-sans normal-case tracking-normal data-[state=active]:border-foreground/20 data-[state=active]:bg-background data-[state=active]:shadow-sm">
+                <Ruler className="h-4 w-4 shrink-0" />
+                <span><span className="block text-xs font-semibold">Dimensões</span><span className="block text-[9px] font-normal text-muted-foreground">conversão física</span></span>
+              </TabsTrigger>}
+              {!isContainer && show.packaging && <TabsTrigger value="packaging" className="min-w-[132px] flex-1 justify-start gap-2 rounded-sm border border-transparent px-3 py-2 text-left font-sans normal-case tracking-normal data-[state=active]:border-foreground/20 data-[state=active]:bg-background data-[state=active]:shadow-sm">
+                <Package className="h-4 w-4 shrink-0" />
+                <span><span className="block text-xs font-semibold">Embalagem</span><span className="block text-[9px] font-normal text-muted-foreground">caixas do solado</span></span>
+              </TabsTrigger>}
+              {!isContainer && <TabsTrigger value="colors" className="min-w-[132px] flex-1 justify-start gap-2 rounded-sm border border-transparent px-3 py-2 text-left font-sans normal-case tracking-normal data-[state=active]:border-foreground/20 data-[state=active]:bg-background data-[state=active]:shadow-sm">
+                <Palette className="h-4 w-4 shrink-0" />
+                <span><span className="block text-xs font-semibold">Cores</span><span className="block text-[9px] font-normal text-muted-foreground">{products.length} variante(s)</span></span>
+              </TabsTrigger>}
+              {!isContainer && <TabsTrigger value="items" className="min-w-[132px] flex-1 justify-start gap-2 rounded-sm border border-transparent px-3 py-2 text-left font-sans normal-case tracking-normal data-[state=active]:border-foreground/20 data-[state=active]:bg-background data-[state=active]:shadow-sm">
+                <Rows className="h-4 w-4 shrink-0" />
+                <span><span className="block text-xs font-semibold">Itens</span><span className="block text-[9px] font-normal text-muted-foreground">cadastro individual</span></span>
+              </TabsTrigger>}
             </TabsList>
 
             {/* Tab: General */}
-            <TabsContent value="general" className="space-y-4 mt-4">
-              {/* ── Setor do grupo (mover para outro setor) ─────────────────── */}
-              <div className="relative overflow-hidden rounded-xl border-2 border-primary/30 bg-gradient-to-b from-primary/[0.07] to-transparent p-4 sm:p-5">
-                <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(420px_120px_at_100%_0%,hsl(var(--primary)/0.08),transparent_70%)]" />
-                <div className="relative flex items-start gap-3">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-primary text-primary-foreground shadow-[0_4px_12px_-2px_hsl(var(--primary)/0.45)]">
-                    <ArrowsLeftRight className="h-5 w-5" weight="bold" />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-sm font-bold tracking-tight">Setor do grupo</h3>
-                      <span className="rounded-full bg-primary px-2 py-[3px] font-mono text-[9.5px] font-bold uppercase tracking-[0.12em] text-primary-foreground">novo</span>
-                    </div>
-                    <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                      Define em qual <strong>aba/setor</strong> do Estoque este grupo aparece. Mover
-                      reclassifica <strong>{products.length} {products.length === 1 ? 'item' : 'itens'}</strong> de uma vez.
-                    </p>
-                  </div>
-                </div>
-
-                {/* de → para */}
-                <div className="relative mt-4 flex flex-wrap items-center gap-3">
-                  <div className="min-w-[150px] flex-1 rounded-lg border border-border bg-card px-3 py-2.5">
-                    <div className="font-mono text-[9.5px] uppercase tracking-[0.12em] text-muted-foreground">Setor atual</div>
-                    <div className="mt-0.5 flex items-center gap-2 text-base font-bold">
-                      <span className="h-2 w-2 shrink-0 rounded-full bg-muted-foreground" />
-                      {sectorLabel(savedSector)}
-                    </div>
-                  </div>
-                  <ArrowRight className={`h-6 w-6 shrink-0 ${sectorChanged ? 'text-primary' : 'text-muted-foreground/40'}`} weight="bold" />
-                  <div className={`min-w-[150px] flex-1 rounded-lg border px-3 py-2.5 transition-colors ${sectorChanged ? 'border-primary ring-[3px] ring-primary/10' : 'border-border'}`}>
-                    <div className="font-mono text-[9.5px] uppercase tracking-[0.12em] text-muted-foreground">Mover para</div>
-                    <div className={`mt-0.5 flex items-center gap-2 text-base font-bold ${sectorChanged ? 'text-primary' : ''}`}>
-                      <span className={`h-2 w-2 shrink-0 rounded-full ${sectorChanged ? 'bg-primary' : 'bg-muted-foreground'}`} />
-                      {sectorLabel(sector)}
-                    </div>
-                  </div>
-                </div>
-
-                {/* chips de setor */}
-                <div className="relative mt-3.5 flex flex-wrap gap-2">
-                  {SECTOR_OPTIONS.map((o) => {
-                    const isCurrent = o.value === savedSector;
-                    const isTarget = o.value === sector && sectorChanged;
-                    return (
-                      <button
-                        key={o.value}
-                        type="button"
-                        onClick={() => setSector(o.value)}
-                        className={[
-                          'inline-flex h-9 items-center gap-2 rounded-full border px-3.5 text-[13px] font-semibold transition-all',
-                          isTarget
-                            ? 'border-primary bg-primary text-primary-foreground shadow-[0_6px_16px_-6px_hsl(var(--primary)/0.5)]'
-                            : isCurrent
-                              ? 'border-dashed border-border bg-muted/60 text-muted-foreground'
-                              : 'border-border bg-card hover:-translate-y-px hover:border-muted-foreground/50',
-                        ].join(' ')}
-                      >
-                        <span className={`h-2 w-2 rounded-full ${isTarget ? 'bg-primary-foreground' : 'bg-muted-foreground/40'}`} />
-                        {o.label}
-                        {isTarget && <Check className="h-3.5 w-3.5" weight="bold" />}
-                        {isCurrent && !isTarget && (
-                          <span className="rounded-full border border-border px-1.5 py-px font-mono text-[9px] uppercase tracking-wider">atual</span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* aviso ao vivo */}
-                {sectorChanged ? (
-                  <div className="relative mt-4 flex items-start gap-2.5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2.5 text-[12.5px] leading-relaxed text-amber-700 dark:text-amber-400">
-                    <AlertTriangle className="mt-px h-[17px] w-[17px] shrink-0" weight="fill" />
-                    <span>
-                      Mover <strong>"{name}"</strong> de <strong>{sectorLabel(savedSector)}</strong> para{' '}
-                      <strong>{sectorLabel(sector)}</strong> vai reclassificar{' '}
-                      <span className="rounded bg-card px-1.5 font-mono font-bold">{products.length} {products.length === 1 ? 'item' : 'itens'}</span>
-                      {' '}ao salvar — eles deixam a aba <strong>{sectorLabel(savedSector)}</strong> e passam a aparecer em <strong>{sectorLabel(sector)}</strong>.
-                    </span>
-                  </div>
-                ) : (
-                  <div className="relative mt-4 flex items-center gap-2.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2.5 text-[12.5px] text-emerald-700 dark:text-emerald-400">
-                    <Check className="h-4 w-4 shrink-0" weight="bold" />
-                    <span>Sem alteração — continua no setor <strong>{sectorLabel(savedSector)}</strong>.</span>
-                  </div>
-                )}
-              </div>
-
-              {show.bomColorSource && (
-                <div className="flex items-center justify-between rounded-lg border p-4 bg-muted/30">
-                  <div className="flex items-center gap-3">
-                    <Palette className="h-5 w-5 text-primary" />
-                    <div>
-                      <p className="text-sm font-medium">Fonte de cores para BOM</p>
-                      <p className="text-xs text-muted-foreground">
-                        Habilite para que as cores deste grupo apareçam como opções nas variantes de cor
-                      </p>
-                    </div>
-                  </div>
-                  <Switch checked={isBomColorSource} onCheckedChange={setIsBomColorSource} />
-                </div>
-              )}
-
-              {/* Cor não se aplica (material base) — desliga o guard "cor não cadastrada" */}
-              <div className="flex items-start justify-between gap-3 rounded-lg border border-border p-4">
-                <div className="flex items-start gap-3">
-                  <Palette className="h-5 w-5 text-muted-foreground mt-0.5 shrink-0" />
-                  <div>
-                    <p className="text-sm font-medium">Cor não se aplica (material base)</p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Ative para materiais cuja COR não importa no consumo (ex.: <strong>palmilha/EVA</strong>, <strong>cola</strong>): o
-                      consumo/débito resolvem pelo grupo e o item <strong>não</strong> dispara o aviso "cor não cadastrada".
-                      Mantenha desativado para materiais por cor (ex.: <strong>napa</strong>, forração).
-                    </p>
-                  </div>
-                </div>
-                <Switch checked={isColorAgnostic} onCheckedChange={setIsColorAgnostic} />
-              </div>
-
-              {/* Especificações Compartilhadas */}
-              {show.sharedSpecs && (
-              <div className="rounded-lg border-2 border-primary/20 p-4 bg-primary/5 space-y-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-start gap-3">
-                    <Layers className="h-5 w-5 text-primary mt-0.5 shrink-0" />
-                    <div>
-                      <p className="text-sm font-medium">Itens com mesmas especificações técnicas</p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Quando ativado, todos os itens do grupo compartilham a mesma unidade de consumo, valor e dimensões — útil para grupos como <strong>"Napa Soft"</strong> em que todas as cores têm o mesmo comportamento técnico.
-                        <br />
-                        Mantenha desativado quando o grupo contém variantes diferentes (ex.: <strong>"Cola"</strong>, em que cada cola tem composição, valor e consumo próprios).
-                      </p>
-                    </div>
-                  </div>
-                  <Switch checked={sharedSpecs} onCheckedChange={setSharedSpecs} />
-                </div>
-
-                <div>
-                  <Label className="text-xs">Unidade de Medida de Consumo</Label>
-                  <Select value={consumptionUnit} onValueChange={setConsumptionUnit}>
-                    <SelectTrigger className="mt-1 h-9">
-                      <SelectValue placeholder="Selecionar unidade..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__none__">Nenhuma (definida por item)</SelectItem>
-                      {Object.entries(CONSUMPTION_UNITS_BY_GROUP).map(([groupName, units]) => (
-                        <React.Fragment key={groupName}>
-                          <div className="px-2 py-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground bg-muted/50">
-                            {groupName}
-                          </div>
-                          {units.map(u => (
-                            <SelectItem key={u.value} value={u.value}>{u.label}</SelectItem>
-                          ))}
-                        </React.Fragment>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {sharedSpecs
-                      ? 'Esta unidade de consumo será aplicada a TODOS os itens deste grupo ao salvar. A unidade de estoque de cada item é preservada.'
-                      : 'Ao alterar esta unidade, ela será aplicada a todos os itens do grupo para padronização.'}
-                  </p>
-                </div>
-              </div>
-              )}
-
-              {/* Artesanal */}
-              {show.artisanal && (
-              <div className="rounded-lg border border-border bg-muted/30 p-4">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="flex items-start gap-3">
-                    <FlaskConical className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
-                    <div>
-                      <p className="text-sm font-medium">Tiras artesanais</p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Família, medida, napa, cor, rendimento e produto acabado são administrados juntos no cadastro canônico.
-                      </p>
-                    </div>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => {
-                      onOpenChange(false);
-                      navigate(`/tiras-artesanais?tab=cadastro&editor=1&mode=create&origin=grupos&baseGroupId=${encodeURIComponent(group.id)}`);
-                    }}
-                  >
-                    Abrir cadastro de tiras
-                  </Button>
-                </div>
-              </div>
-              )}
-
-              <div className="space-y-3">
-                <div>
-                  <Label htmlFor="edit-group-name">Nome do grupo de material *</Label>
-                  <Input id="edit-group-name" value={name} onChange={e => setName(e.target.value)} className="mt-1" placeholder="Ex: Solados, Santorine, Colas" />
-                </div>
-                {/* Grupo Pai + Subgrupos movidos para a aba "Hierarquia" (abaixo). */}
-
-                <div>
-                  <Label htmlFor="edit-group-desc">Descrição</Label>
-                  <Textarea id="edit-group-desc" value={description} onChange={e => setDescription(e.target.value)} className="mt-1" rows={2} />
-                </div>
-                {show.unitWeight && (
-                <div>
-                  <Label htmlFor="edit-group-weight">Peso Unitário (kg)</Label>
-                  <NumberInput
-                    id="edit-group-weight"
-                    value={unitWeightKg}
-                    onChange={n => setUnitWeightKg(n)}
-                    className="mt-1"
-                    placeholder="Ex: 0.250"
-                  />
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Peso de uma unidade (par de solados, um cabedal ou uma caixa) usado para cálculo do peso total de despacho.
-                  </p>
-                </div>
-                )}
-                {/* "Cores da família" (catálogo group_colors) + "Fontes de cores"
-                    REMOVIDOS em 2026-06-21: a cor de material agora vive SÓ nos
-                    PRODUTOS do grupo (aba Itens / Gerenciar variantes), que é a
-                    fonte do débito/consumo. Catálogo de cores estava vazio. */}
-
-              </div>
-
-              {/* Preço, localização e múltiplo de compra eram editados aqui E na
-                  aba de cores — duas portas na mesma coluna de `products`, e esta
-                  não tinha selo de divergência nem prévia. Virou link (R3.2). */}
-              <Card className="border-2 border-primary/10">
+            <TabsContent value="general" className="mt-4 space-y-4">
+              <Card className="border-foreground/20">
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-sm font-bold flex items-center gap-2">
-                    <Package className="h-4 w-4 text-primary" />
-                    Dados dos itens
+                  <CardTitle className="flex items-center gap-2 text-sm font-bold">
+                    <Rows className="h-4 w-4 text-primary" />
+                    {isContainer ? 'Identidade da família' : 'Identidade do grupo / linha'}
                   </CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <p className="text-xs text-muted-foreground max-w-md">
-                      Custo, localização, estoque mínimo, unidades e fornecedor são de cada
-                      cor. A edição em massa mostra onde as cores têm valor diferente e pede
-                      confirmação antes de sobrescrever.
-                    </p>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-9 gap-1.5 shrink-0"
-                      onClick={() => { setVariantsDialogTab('group'); setVariantsDialogOpen(true); }}
-                      disabled={products.length === 0}
-                    >
-                      <Palette className="h-4 w-4" />
-                      Editar {products.length} {products.length === 1 ? 'cor' : 'cores'}
-                    </Button>
-                  </div>
-
-                  {/* Múltiplo de compra fica AQUI: a coluna existe em
-                      `product_groups` e é propriedade da embalagem do grupo,
-                      não da cor (R2.11). */}
-                  <div className="space-y-1.5 border-t pt-3">
-                    <Label className="text-xs font-semibold">Múltiplo de Compra (embalagem)</Label>
-                    <NumberInput
-                      value={purchaseMultiple}
-                      onChange={v => setPurchaseMultiple(v || 0)}
-                      min={0}
-                      step="1"
-                      placeholder="Ex: 50"
-                      className="h-9 max-w-[220px]"
+                <CardContent className="grid gap-4 sm:grid-cols-2">
+                  <div className="sm:col-span-2">
+                    <Label htmlFor="edit-group-name">{isContainer ? 'Nome da família *' : 'Nome do grupo / linha *'}</Label>
+                    <Input
+                      id="edit-group-name"
+                      value={name}
+                      onChange={e => setName(e.target.value.toUpperCase())}
+                      className="mt-1"
+                      placeholder={isContainer ? 'Ex.: LAMINADOS SINTÉTICOS' : 'Ex.: NAPA SANTORINE PU 1,0 MM'}
                     />
-                    <p className="text-xs text-muted-foreground">
-                      Só vende em pacote fechado? Ao gerar a OC, a quantidade arredonda
-                      pra cima (187 → 200 com 50). 0 = não arredonda.
+                  </div>
+                  <div className={show.unitWeight ? '' : 'sm:col-span-2'}>
+                    <Label htmlFor="edit-group-desc">Descrição técnica</Label>
+                    <Textarea
+                      id="edit-group-desc"
+                      value={description}
+                      onChange={e => setDescription(e.target.value)}
+                      className="mt-1"
+                      rows={3}
+                      placeholder="Natureza, construção e uso deste cadastro."
+                    />
+                  </div>
+                  {show.unitWeight && !isContainer && (
+                    <div>
+                      <Label htmlFor="edit-group-weight">Peso unitário (kg)</Label>
+                      <NumberInput id="edit-group-weight" value={unitWeightKg} onChange={setUnitWeightKg} className="mt-1" placeholder="Ex.: 0,250" />
+                      <p className="mt-1 text-xs text-muted-foreground">Peso de um par de solados usado no despacho.</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {isContainer ? (
+                <div className="flex items-start gap-3 border-l-2 border-primary bg-primary/5 px-4 py-3">
+                  <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                  <div>
+                    <p className="text-sm font-semibold">Família técnica, não item de estoque</p>
+                    <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                      Use a aba Hierarquia para manter os grupos/linhas desta família. Cores, dimensões, custo e saldo pertencem aos grupos e itens abaixo dela.
                     </p>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <Card className="border-foreground/20">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="flex items-center gap-2 text-sm font-bold">
+                        <Palette className="h-4 w-4 text-primary" /> Como os itens variam
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-5">
+                      <div>
+                        <Label className="text-xs">Regra de cor</Label>
+                        <div role="radiogroup" aria-label="Regra de cor do grupo" className="mt-2 grid gap-2 sm:grid-cols-3">
+                          {[
+                            { value: 'variant', title: 'Varia por cor', text: 'Cada cor é um SKU com saldo e custo próprios.' },
+                            { value: 'bom-source', title: 'Origina cores no BOM', text: 'Além de variar, oferece suas cores às referências.' },
+                            { value: 'agnostic', title: 'Cor não se aplica', text: 'Consumo e débito resolvem apenas pelo grupo.' },
+                          ].map((option) => {
+                            const disabled = option.value === 'bom-source' && !show.bomColorSource;
+                            const selected = colorBehavior === option.value;
+                            return (
+                              <button
+                                key={option.value}
+                                type="button"
+                                role="radio"
+                                aria-checked={selected}
+                                disabled={disabled}
+                                onClick={() => {
+                                  if (option.value === 'agnostic') { setIsColorAgnostic(true); setIsBomColorSource(false); }
+                                  else if (option.value === 'bom-source') { setIsColorAgnostic(false); setIsBomColorSource(true); }
+                                  else { setIsColorAgnostic(false); setIsBomColorSource(false); }
+                                }}
+                                className={`border px-3 py-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${selected ? 'border-primary bg-primary/5' : 'border-foreground/15 bg-background hover:border-foreground/40'}`}
+                              >
+                                <span className="flex items-center justify-between gap-2 text-xs font-semibold">
+                                  {option.title}{selected && <Check className="h-3.5 w-3.5 text-primary" weight="bold" />}
+                                </span>
+                                <span className="mt-1 block text-[10px] leading-relaxed text-muted-foreground">{option.text}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {show.sharedSpecs && (
+                        <div className="border-t pt-4">
+                          <Label className="text-xs">Estrutura do grupo</Label>
+                          <div role="radiogroup" aria-label="Estrutura técnica do grupo" className="mt-2 grid gap-2 sm:grid-cols-2">
+                            <button
+                              type="button"
+                              role="radio"
+                              aria-checked={sharedSpecs}
+                              onClick={() => setSharedSpecs(true)}
+                              className={`border px-3 py-3 text-left ${sharedSpecs ? 'border-primary bg-primary/5' : 'border-foreground/15 bg-background'}`}
+                            >
+                              <span className="flex items-center justify-between text-xs font-semibold">Linha com variantes {sharedSpecs && <Check className="h-3.5 w-3.5 text-primary" />}</span>
+                              <span className="mt-1 block text-[10px] text-muted-foreground">Cores compartilham composição, unidade e comportamento técnico.</span>
+                            </button>
+                            <button
+                              type="button"
+                              role="radio"
+                              aria-checked={!sharedSpecs}
+                              onClick={() => setSharedSpecs(false)}
+                              className={`border px-3 py-3 text-left ${!sharedSpecs ? 'border-primary bg-primary/5' : 'border-foreground/15 bg-background'}`}
+                            >
+                              <span className="flex items-center justify-between text-xs font-semibold">Coleção de itens { !sharedSpecs && <Check className="h-3.5 w-3.5 text-primary" />}</span>
+                              <span className="mt-1 block text-[10px] text-muted-foreground">Itens independentes; use somente como pasta organizacional.</span>
+                            </button>
+                          </div>
+
+                          <div className="mt-4 max-w-md">
+                            <Label className="text-xs">Unidade de consumo do grupo</Label>
+                            <Select value={consumptionUnit} onValueChange={setConsumptionUnit}>
+                              <SelectTrigger className="mt-1 h-9"><SelectValue placeholder="Definida por item" /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="__none__">Definida por item</SelectItem>
+                                {Object.entries(CONSUMPTION_UNITS_BY_GROUP).map(([groupName, units]) => (
+                                  <React.Fragment key={groupName}>
+                                    <div className="bg-muted/50 px-2 py-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">{groupName}</div>
+                                    {units.map(unit => <SelectItem key={unit.value} value={unit.value}>{unit.label}</SelectItem>)}
+                                  </React.Fragment>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <p className="mt-1 text-[10px] text-muted-foreground">
+                              {sharedSpecs ? `Será aplicada às ${products.length} variantes ao salvar; a unidade de estoque é preservada.` : 'Deixe por item quando composição ou unidade mudarem dentro do grupo.'}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  {show.artisanal && (
+                    <div className="flex flex-col gap-3 border border-foreground/15 bg-muted/20 p-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex items-start gap-3">
+                        <FlaskConical className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+                        <div><p className="text-sm font-medium">Tiras artesanais</p><p className="mt-1 text-xs text-muted-foreground">Receita, cor, rendimento e produto acabado têm cadastro canônico próprio.</p></div>
+                      </div>
+                      <Button type="button" variant="outline" onClick={() => { onOpenChange(false); navigate(`/tiras-artesanais?tab=cadastro&editor=1&mode=create&origin=grupos&baseGroupId=${encodeURIComponent(group.id)}`); }}>Abrir cadastro de tiras</Button>
+                    </div>
+                  )}
+
+                  <Card className="border-foreground/20">
+                    <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-sm font-bold"><Package className="h-4 w-4 text-primary" /> Abastecimento compartilhado</CardTitle></CardHeader>
+                    <CardContent className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_220px] sm:items-end">
+                      <div>
+                        <p className="text-xs leading-relaxed text-muted-foreground">Custo, localização, estoque mínimo e fornecedor continuam próprios de cada SKU. Use a edição em massa somente quando quiser substituir esses valores nas variantes.</p>
+                        <Button type="button" variant="outline" size="sm" className="mt-3 h-9 gap-1.5" onClick={() => { setVariantsDialogTab('group'); setVariantsDialogOpen(true); }} disabled={products.length === 0}>
+                          <Palette className="h-4 w-4" /> Editar dados de {products.length} item(ns)
+                        </Button>
+                      </div>
+                      <div>
+                        <Label className="text-xs font-semibold">Múltiplo de compra</Label>
+                        <NumberInput value={purchaseMultiple} onChange={value => setPurchaseMultiple(value || 0)} min={0} step="1" placeholder="Ex.: 50" className="mt-1 h-9" />
+                        <p className="mt-1 text-[10px] text-muted-foreground">0 = sem arredondamento de embalagem.</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {larguraDivergente && (
+                    <div className="border border-warning/40 bg-warning/10 px-3 py-2.5 text-xs">
+                      <p className="font-semibold text-warning">Largura legada divergente</p>
+                      <p className="mt-0.5 text-muted-foreground">O grupo registra <span className="font-mono">{larguraDivergente.grupo}</span>; itens antigos registram <span className="font-mono">{larguraDivergente.itens.join(', ')}</span>. A largura canônica é a da ficha do grupo e nunca o maior lado.</p>
+                    </div>
+                  )}
+                </>
+              )}
+            </TabsContent>
+
+            {/* Tab: Hierarquia — Setor de aplicação → Família técnica → Grupo. */}
+            <TabsContent value="hierarchy" className="mt-4 space-y-4">
+              <Card className="border-foreground/20">
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center justify-between gap-3 text-sm">
+                    <span className="flex items-center gap-2"><Factory className="h-4 w-4 text-primary" /> 1. Setor de aplicação</span>
+                    <Badge variant="outline" className="font-mono text-[9px] uppercase">onde é usado</Badge>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    {SECTOR_OPTIONS.map((option) => {
+                      const guide = getFootwearSectorGuide(option.value);
+                      const selected = sector === option.value;
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => {
+                            setSector(option.value);
+                            if (selectedFamily && sectorOfGroup(selectedFamily) !== option.value) setParentGroupId('');
+                          }}
+                          className={`min-h-[70px] border px-3 py-2.5 text-left transition-colors ${selected ? 'border-primary bg-primary/5' : 'border-foreground/15 bg-background hover:border-foreground/40'}`}
+                        >
+                          <span className="flex items-center justify-between gap-2 text-xs font-semibold">
+                            {guide?.label || option.label}
+                            {selected && <Check className="h-3.5 w-3.5 shrink-0 text-primary" />}
+                          </span>
+                          <span className="mt-1 block text-[10px] leading-relaxed text-muted-foreground">{guide?.purpose || 'Aplicação principal deste material.'}</span>
+                        </button>
+                      );
+                    })}
                   </div>
                 </CardContent>
               </Card>
 
-              {/* R3.4 — divergência de largura entre o grupo e seus itens. Aviso,
-                  não bloqueio: os motores usam GREATEST(comprimento, largura),
-                  então o valor menor não está cortando consumo hoje. */}
-              {larguraDivergente && (
-                <div className="rounded-md border border-warning/40 bg-warning/10 px-3 py-2.5 text-xs">
-                  <p className="font-semibold text-warning">Largura divergente entre grupo e itens</p>
-                  <p className="text-muted-foreground mt-0.5">
-                    O grupo tem <span className="font-mono">{larguraDivergente.grupo}</span> e
-                    {' '}{larguraDivergente.itens.length === 1 ? 'um item tem' : `${larguraDivergente.itens.length} itens têm`}
-                    {' '}<span className="font-mono">{larguraDivergente.itens.join(', ')}</span>.
-                    A partir de agora a dimensão do grupo é a fonte; os valores dos itens
-                    não são mais editáveis e continuam como estão.
-                  </p>
+              {sectorChanged && (
+                <div className="flex items-start gap-3 border border-warning/40 bg-warning/10 px-3 py-2.5 text-xs">
+                  <ArrowsLeftRight className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+                  <div>
+                    <p className="font-semibold text-foreground">Mudança de setor: {sectorLabel(savedSector)} <ArrowRight className="inline h-3 w-3" /> {sectorLabel(sector)}</p>
+                    <p className="mt-0.5 text-muted-foreground">Ao salvar, {affectedProductsCount} {affectedProductsCount === 1 ? 'item será reclassificado' : 'itens serão reclassificados'} junto com {isContainer ? 'esta família e seus grupos' : 'este grupo'}.</p>
+                  </div>
                 </div>
               )}
-            </TabsContent>
 
-            {/* Tab: Hierarquia (Grupo Pai + Subgrupos da família) */}
-            <TabsContent value="hierarchy" className="space-y-4 mt-4">
-              <div>
-                <Label htmlFor="edit-group-parent" className="flex items-center gap-1.5">
-                  <Layers className="h-3.5 w-3.5" /> Grupo Pai
-                </Label>
-                <Select
-                  value={parentGroupId || '__root__'}
-                  onValueChange={(v) => setParentGroupId(v === '__root__' ? '' : v)}
-                >
-                  <SelectTrigger id="edit-group-parent" className="mt-1">
-                    <SelectValue placeholder="Sem pai (grupo raiz)" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__root__">Sem pai (grupo raiz)</SelectItem>
-                    {validParentOptions.map((g) => (
-                      <SelectItem key={g.id} value={g.id}>
-                        {`${'  '.repeat(g.depth)}${g.depth > 0 ? '└ ' : ''}${g.name}`}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Use pra agrupar variações (ex.: "Componentes" → "Tira chata", "Tira Strass").
-                  Próprio grupo e descendentes ficam ocultos pra evitar ciclos.
-                </p>
-              </div>
-
-              {/* Subgrupos — filhos diretos desta família */}
-              <div className="rounded-lg border p-3 bg-muted/20 space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Layers className="h-4 w-4 text-primary" />
-                    <span className="text-sm font-medium">
-                      Subgrupos da família ({childrenGroups.length})
-                    </span>
-                  </div>
-                  <Popover open={linkChildOpen} onOpenChange={setLinkChildOpen}>
-                    <PopoverTrigger asChild>
-                      <Button type="button" size="sm" variant="outline" className="h-7 text-xs gap-1.5">
-                        <Link2 className="h-3 w-3" /> Vincular grupo
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-80 p-0" align="end">
-                      <Command>
-                        <CommandInput placeholder="Buscar grupo..." />
-                        <CommandList>
-                          <CommandEmpty>Nenhum grupo disponível</CommandEmpty>
-                          <CommandGroup heading="Tornar filho deste grupo">
-                            {availableToLinkAsChild.map(g => (
-                              <CommandItem
-                                key={g.id}
-                                value={g.name}
-                                onSelect={async () => {
-                                  try {
-                                    await updateGroup.mutateAsync({
-                                      id: g.id,
-                                      data: { parent_group_id: group.id },
-                                    });
-                                    setLinkChildOpen(false);
-                                  } catch {
-                                    // toast tratado pelo hook
-                                  }
-                                }}
-                                className="text-sm"
-                              >
-                                <span className="text-muted-foreground mr-1.5">
-                                  {'  '.repeat(g.depth)}{g.depth > 0 ? '└ ' : ''}
-                                </span>
-                                <span className="truncate">{g.name}</span>
-                                {g.parent_group_id && (
-                                  <Badge variant="outline" className="ml-auto text-xs h-4">
-                                    tem pai
-                                  </Badge>
-                                )}
-                              </CommandItem>
-                            ))}
-                          </CommandGroup>
-                        </CommandList>
-                      </Command>
-                    </PopoverContent>
-                  </Popover>
-                </div>
-
-                {childrenGroups.length === 0 ? (
-                  <p className="text-xs text-muted-foreground py-1">
-                    Sem subgrupos. Vincule outros grupos como filhos desta família — ex.: "Forração" como pai de "Napa Sud Dani", "Napa Santorini", "Napa Soft", "Nobuck".
-                  </p>
-                ) : (
-                  <div className="space-y-1">
-                    {childrenGroups.map(c => (
-                      <div
-                        key={c.id}
-                        className="flex items-center justify-between rounded border bg-card px-2.5 py-1.5"
-                      >
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className="text-muted-foreground text-xs font-mono shrink-0">└</span>
-                          <span className="text-sm font-medium truncate">{c.name}</span>
-                          <Badge variant="secondary" className="text-xs h-4 font-mono shrink-0">
-                            {itemCountByGroup.get(c.id) ?? 0} itens
-                          </Badge>
-                        </div>
-                        <Button
+              <Card className="border-foreground/20">
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center justify-between gap-3 text-sm">
+                    <span className="flex items-center gap-2"><Layers className="h-4 w-4 text-primary" /> 2. Família técnica</span>
+                    <Badge variant="outline" className="font-mono text-[9px] uppercase">o que o material é</Badge>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {isContainer ? (
+                    <div className="border-l-2 border-primary bg-muted/20 px-3 py-2.5">
+                      <p className="text-xs font-semibold">{name}</p>
+                      <p className="mt-1 text-[11px] text-muted-foreground">Este cadastro é a família técnica. Ela organiza grupos/linhas e não armazena itens diretamente.</p>
+                    </div>
+                  ) : (
+                    <div>
+                      <Label htmlFor="edit-group-parent">Família deste grupo</Label>
+                      <Select value={parentGroupId || '__root__'} onValueChange={(value) => setParentGroupId(value === '__root__' ? '' : value)}>
+                        <SelectTrigger id="edit-group-parent" className="mt-1"><SelectValue placeholder="Selecione uma família" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__root__">Sem família — grupo solto no setor</SelectItem>
+                          {familyOptions.map((family) => <SelectItem key={family.id} value={family.id}>{family.name}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                      <p className="mt-1 text-xs text-muted-foreground">A família classifica a natureza do material; não use cor, fornecedor ou modelo como família.</p>
+                      {!parentGroupId && products.length === 0 && (
+                        <button
                           type="button"
-                          size="sm"
-                          variant="ghost"
-                          className="h-7 px-2 text-xs text-muted-foreground hover:text-destructive"
+                          disabled={updateGroup.isPending || sectorChanged}
                           onClick={async () => {
                             try {
                               await updateGroup.mutateAsync({
-                                id: c.id,
-                                data: { parent_group_id: null },
+                                id: group.id,
+                                data: { is_family: true, parent_group_id: null },
                               });
-                            } catch {
-                              // toast tratado pelo hook
-                            }
+                              setIsFamily(true);
+                              setIsFamilyPersisted(true);
+                              setParentGroupId('');
+                            } catch { /* toast pelo hook */ }
                           }}
-                          title="Desvincular (remove o pai, mas mantém o grupo)"
+                          className="mt-3 flex w-full items-start gap-2 border border-dashed border-foreground/25 px-3 py-2.5 text-left hover:border-primary hover:bg-primary/5"
                         >
-                          <X className="h-3 w-3 mr-0.5" /> Desvincular
-                        </Button>
+                          <Layers className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                          <span>
+                            <span className="block text-xs font-semibold">Transformar este cadastro vazio em família técnica</span>
+                            <span className="mt-0.5 block text-[10px] text-muted-foreground">
+                              {sectorChanged
+                                ? 'Salve primeiro a mudança de setor; depois transforme e vincule os grupos.'
+                                : 'A função de família será salva antes de liberar o vínculo de grupos/linhas.'}
+                            </span>
+                          </span>
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {sectorGuide && (
+                    <div>
+                      <p className="font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Vocabulário sugerido para {sectorGuide.label}</p>
+                      <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                        {sectorGuide.families.map((suggestion) => {
+                          const existing = familyOptions.find((family) => normalizeTaxonomyName(family.name) === normalizeTaxonomyName(suggestion.name));
+                          const active = existing?.id === parentGroupId || (isContainer && normalizeTaxonomyName(name) === normalizeTaxonomyName(suggestion.name));
+                          return (
+                            <button
+                              key={suggestion.name}
+                              type="button"
+                              disabled={isContainer || !existing}
+                              onClick={() => existing && setParentGroupId(existing.id)}
+                              className={`border px-3 py-2 text-left ${active ? 'border-primary bg-primary/5' : 'border-foreground/15 bg-background'} disabled:cursor-default disabled:opacity-100`}
+                            >
+                              <span className="flex items-center justify-between gap-2 text-xs font-semibold">
+                                {suggestion.name}
+                                {active ? <Check className="h-3.5 w-3.5 text-primary" /> : <Badge variant="outline" className="h-4 text-[8px]">{existing ? 'cadastrada' : 'sugerida'}</Badge>}
+                              </span>
+                              <span className="mt-1 block text-[10px] text-muted-foreground">{suggestion.examples}</span>
+                            </button>
+                          );
+                        })}
                       </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {isContainer && (
+                <Card className="border-foreground/20">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="flex items-center justify-between gap-3 text-sm">
+                      <span className="flex items-center gap-2"><Rows className="h-4 w-4 text-primary" /> 3. Grupos / linhas ({childrenGroups.length})</span>
+                      <Popover open={linkChildOpen} onOpenChange={setLinkChildOpen}>
+                        <PopoverTrigger asChild>
+                          <Button type="button" size="sm" variant="outline" disabled={!isFamilyPersisted || sectorChanged} className="h-8 gap-1.5 text-xs"><Link2 className="h-3.5 w-3.5" /> Vincular grupo existente</Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-80 p-0" align="end">
+                          <Command>
+                            <CommandInput placeholder="Buscar grupo do mesmo setor..." />
+                            <CommandList>
+                              <CommandEmpty>Nenhum grupo solto disponível em {sectorLabel(sector)}.</CommandEmpty>
+                              <CommandGroup heading={`Grupos soltos em ${sectorLabel(sector)}`}>
+                                {linkableChildren.map((candidate) => (
+                                  <CommandItem
+                                    key={candidate.id}
+                                    value={candidate.name}
+                                    onSelect={async () => {
+                                      try {
+                                        await updateGroup.mutateAsync({ id: candidate.id, data: { parent_group_id: group.id } });
+                                        setLinkChildOpen(false);
+                                      } catch { /* toast pelo hook */ }
+                                    }}
+                                  >
+                                    <Rows className="mr-2 h-3.5 w-3.5 text-muted-foreground" />
+                                    <span className="truncate">{candidate.name}</span>
+                                    <Badge variant="outline" className="ml-auto h-4 text-[8px]">{itemCountByGroup.get(candidate.id) || 0} itens</Badge>
+                                  </CommandItem>
+                                ))}
+                              </CommandGroup>
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {childrenGroups.length === 0 ? (
+                      <div className="border border-dashed border-foreground/20 px-3 py-5 text-center text-xs text-muted-foreground">Família vazia. Vincule um grupo/linha do mesmo setor para começar.</div>
+                    ) : (
+                      <div className="divide-y divide-foreground/10 border-y border-foreground/15">
+                        {childrenGroups.map((child) => (
+                          <div key={child.id} className="flex items-center justify-between gap-3 py-2.5">
+                            <div className="flex min-w-0 items-center gap-2">
+                              <Rows className="h-4 w-4 shrink-0 text-muted-foreground" />
+                              <span className="truncate text-xs font-semibold">{child.name}</span>
+                              <Badge variant="secondary" className="h-4 shrink-0 font-mono text-[8px]">{itemCountByGroup.get(child.id) || 0} itens</Badge>
+                            </div>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 shrink-0 px-2 text-xs text-muted-foreground hover:text-destructive"
+                              onClick={async () => {
+                                try { await updateGroup.mutateAsync({ id: child.id, data: { parent_group_id: null } }); }
+                                catch { /* toast pelo hook */ }
+                              }}
+                            >
+                              <X className="mr-1 h-3 w-3" /> Desvincular
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
             </TabsContent>
 
-            {/* Tab: Specs / Yield per Sole */}
-            {showYieldTab && (
+            {/* Tab: Dimensões — uma fonte no grupo, sincronizada com as fichas. */}
+            {!isContainer && showDimensionsTab && (
               <TabsContent value="specs" className="mt-4">
-                <GroupDimensionsEditor groupId={group.id} />
+                <GroupDimensionsEditor group={group} />
               </TabsContent>
             )}
 
@@ -1158,7 +1160,7 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                 grava exatamente nestas mesmas colunas de `product_groups`. Manter
                 os dois editando repetiria o padrão de "dois donos do mesmo dado"
                 que já custou caro em consumo de solado. Aqui fica só o ponteiro. */}
-            {show.packaging && (
+            {!isContainer && show.packaging && (
               <TabsContent value="packaging" className="space-y-4 mt-4">
                 <div className="flex items-start gap-2 rounded-lg border border-primary/20 bg-primary/[0.03] p-3 text-sm text-muted-foreground">
                   <Package className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
@@ -1186,24 +1188,36 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
 
             {/* Tab: Cores — único lugar que vê as cores do grupo como CONJUNTO
                 (duplicata, typo, largura divergente) e permite fundir. */}
-            <TabsContent value="colors" className="space-y-4 mt-4">
+            {!isContainer && <TabsContent value="colors" className="space-y-4 mt-4">
+              {isColorAgnostic && (
+                <div className="flex items-start justify-between gap-3 border border-foreground/20 bg-muted/20 px-3 py-3">
+                  <div className="flex items-start gap-2">
+                    <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                    <div>
+                      <p className="text-xs font-semibold">Cor não se aplica a este grupo</p>
+                      <p className="mt-0.5 text-[11px] text-muted-foreground">Os SKUs continuam na aba Itens, mas não são tratados como variantes de cor no consumo.</p>
+                    </div>
+                  </div>
+                  <Button type="button" size="sm" variant="outline" onClick={() => setActiveTab('general')}>Alterar regra</Button>
+                </div>
+              )}
               {isCanonicalStrapGroup ? (
                 <div className="flex flex-col gap-3 rounded-md border border-primary/30 bg-primary/5 p-4 sm:flex-row sm:items-center sm:justify-between">
                   <p className="text-xs text-muted-foreground">A fusão, criação e revisão de cores desta família pertencem ao catálogo canônico de Tiras.</p>
                   <Button type="button" variant="outline" onClick={() => { onOpenChange(false); navigate(`/tiras-artesanais?tab=cadastro&editor=1&mode=review&origin=grupos&baseGroupId=${encodeURIComponent(group.id)}`); }}>Revisar no Hub de Tiras</Button>
                 </div>
-              ) : (
+              ) : !isColorAgnostic ? (
                 <GroupColorsTab
                   groupId={group.id}
                   groupName={group.name}
                   products={products}
                   groupWidth={(group as any).dimensions_width}
                 />
-              )}
-            </TabsContent>
+              ) : null}
+            </TabsContent>}
 
             {/* Tab: Items */}
-            <TabsContent value="items" className="space-y-4 mt-4">
+            {!isContainer && <TabsContent value="items" className="space-y-4 mt-4">
               <div className="flex items-center justify-between">
                 <Label className="flex items-center gap-2 text-sm font-semibold">
                   <Package className="h-4 w-4" />
@@ -1224,24 +1238,19 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                     Abrir cadastro canônico
                   </Button>
                 </div>
-              ) : (
-                <div className="flex items-end gap-2 rounded-md border border-dashed border-border/70 bg-muted/20 p-2.5">
-                  <div className="flex-1">
-                    <Label className="text-[11px] text-muted-foreground">Criar nova cor neste grupo</Label>
-                    <Input
-                      value={newColor}
-                      onChange={e => setNewColor(e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddColor(); } }}
-                      placeholder="Ex.: COGUMELO"
-                      className="mt-0.5 h-8 text-xs uppercase"
-                    />
-                  </div>
-                  <Button type="button" size="sm" className="h-8 gap-1" disabled={addingColor || !newColor.trim()} onClick={handleAddColor}>
-                    <Plus className="h-3.5 w-3.5" />
-                    {addingColor ? 'Criando...' : 'Criar cor'}
-                  </Button>
-                </div>
-              )}
+              ) : !isColorAgnostic ? (
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('colors')}
+                  className="flex w-full items-start gap-2 border border-dashed border-foreground/25 bg-muted/20 px-3 py-2.5 text-left hover:border-primary hover:bg-primary/5"
+                >
+                  <Palette className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                  <span>
+                    <span className="block text-xs font-semibold">Adicionar novas cores pelo catálogo</span>
+                    <span className="mt-0.5 block text-[10px] text-muted-foreground">Use a aba Cores para buscar, comparar e criar uma ou várias variantes sem duplicar grafias.</span>
+                  </span>
+                </button>
+              ) : null}
               {products.length === 0 ? (
                 <p className="text-xs text-muted-foreground py-4 text-center">Nenhum item neste grupo.</p>
               ) : (
@@ -1312,7 +1321,7 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                   </Table>
                 </div>
               )}
-            </TabsContent>
+            </TabsContent>}
           </Tabs>
 
           {/* Footer global do dialog — Salvar visível em TODAS as abas (antes
@@ -1328,7 +1337,11 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                 : sectorChanged
                   ? <ArrowsLeftRight className="h-4 w-4 mr-1.5" weight="bold" />
                   : <Save className="h-4 w-4 mr-1" />}
-              {sectorChanged ? `Mover para ${sectorLabel(sector)} e salvar` : 'Salvar Grupo e Itens'}
+              {sectorChanged
+                ? `Mover para ${sectorLabel(sector)} e salvar`
+                : isContainer
+                  ? 'Salvar família'
+                  : 'Salvar grupo'}
             </Button>
           </DialogFooter>
         </DialogContent>

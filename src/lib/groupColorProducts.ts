@@ -14,6 +14,12 @@ const skuToken = (v: string, fb: string, max: number) => {
   return (clean || fb).slice(0, max) || fb;
 };
 
+const colorKey = (value: string) => (value || '')
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .trim()
+  .toUpperCase();
+
 async function uniqueSku(preferred: string, groupName: string, color: string): Promise<string> {
   const base = `${skuToken(groupName, 'TIRA', 6)}-${skuToken(color, 'COR', 4)}`;
   const candidates = [preferred.trim(), base, ...Array.from({ length: 6 }, (_, i) => `${base}-${i + 1}`)];
@@ -49,7 +55,7 @@ export async function createGroupColorProduct(spec: GroupColorSpec): Promise<Cre
   if (!color || !spec.groupId) return res;
 
   const { data: group } = await (supabase as any).from('product_groups')
-    .select('is_artisanal_strap')
+    .select('is_artisanal_strap, is_family, shared_specs, is_bom_color_source, is_color_agnostic, sector, dimensions_length, dimensions_width, dimensions_thickness, dimensions_unit')
     .eq('id', spec.groupId)
     .maybeSingle();
   const strapLikeName = /tira|elastic|tranç/i.test(spec.groupName || '');
@@ -58,6 +64,16 @@ export async function createGroupColorProduct(spec: GroupColorSpec): Promise<Cre
       ...res,
       status: 'error',
       error: 'Família de tira artesanal só pode ser criada pelo Hub de Tiras.',
+    };
+  }
+  if (group?.is_family === true) {
+    return { ...res, status: 'error', error: 'Família técnica não recebe variantes diretamente.' };
+  }
+  if (group?.is_color_agnostic === true || (!group?.shared_specs && !group?.is_bom_color_source)) {
+    return {
+      ...res,
+      status: 'error',
+      error: 'Converta o grupo explicitamente para “Linha com variantes” antes de criar cores.',
     };
   }
 
@@ -70,40 +86,71 @@ export async function createGroupColorProduct(spec: GroupColorSpec): Promise<Cre
       error: 'Grupo legado de tira detectado; resolva a identidade no Hub de Tiras.',
     };
   }
-  if ((existing || []).some((p: any) => (p.color || '').trim().toLowerCase() === color.toLowerCase())) {
+  if ((existing || []).some((p: any) => colorKey(p.color || '') === colorKey(color))) {
     return res; // já cadastrada nessa cor
   }
 
-  const { data: last } = await supabase.from('products')
+  let { data: last } = await supabase.from('products')
     .select('*').eq('group_id', spec.groupId).eq('active', true)
     .order('created_at', { ascending: false }).limit(1).maybeSingle();
+  if (!last) {
+    const { data: inactiveModel } = await supabase.from('products')
+      .select('*').eq('group_id', spec.groupId)
+      .order('created_at', { ascending: false }).limit(1).maybeSingle();
+    last = inactiveModel;
+  }
+  if (!last) {
+    return {
+      ...res,
+      status: 'error',
+      error: 'O grupo ainda não tem item-modelo. Crie a primeira variante no Cadastro rápido para definir unidade e conversão.',
+    };
+  }
 
   const baseSku = (last?.sku || '').trim();
   const preferredSku = baseSku
     ? `${baseSku.replace(/-[A-Z0-9]+$/i, '')}-${skuToken(color, 'COR', 4)}`
     : `${skuToken(spec.groupName, 'TIRA', 6)}-${skuToken(color, 'COR', 4)}`;
   const finalSku = await uniqueSku(preferredSku, spec.groupName, color);
+  const stockUnit = last?.unit || 'un';
+  const purchaseUnit = last?.purchase_unit || stockUnit;
+  const conversionRate = purchaseUnit === stockUnit
+    ? 1
+    : Number(last?.conversion_rate) > 0 ? Number(last?.conversion_rate) : 1;
 
   const productData = sanitizeUuidFields({
     name: `${spec.groupName}: ${color}`,
     sku: finalSku,
-    category: (last?.category || '').trim() || sectorOfGroup({ name: spec.groupName } as any),
+    category: sectorOfGroup(group) || (last?.category || '').trim() || sectorOfGroup({ name: spec.groupName } as any),
     color,
-    unit: last?.unit || 'un',
+    unit: stockUnit,
     unit_price: last?.unit_price || 0,
+    technical_name: last?.technical_name || '',
+    supplier_id: last?.supplier_id || null,
+    supplier_lead_time_days: last?.supplier_lead_time_days || 0,
     location: last?.location || '', // products.location é NOT NULL — nunca null (igual ao dialog)
     min_stock: last?.min_stock || 0,
     max_stock: last?.max_stock || 0,
+    safety_stock: last?.safety_stock || 0,
+    purchase_unit: purchaseUnit,
+    production_unit: last?.production_unit || stockUnit,
+    conversion_rate: conversionRate,
+    purchase_order_unit: last?.purchase_order_unit || purchaseUnit,
+    min_order_quantity: last?.min_order_quantity || 0,
+    lead_time_days: last?.lead_time_days || 0,
+    calculation_method: last?.calculation_method || 'weight',
+    price_wholesale: last?.price_wholesale || 0,
+    price_retail: last?.price_retail || 0,
     quantity: 0,
     group_id: spec.groupId,
     active: true,
     image_url: '',
     yield_per_meter: last?.yield_per_meter ?? null,
     yield_unit: last?.yield_unit ?? null,
-    dimensions_length: last?.dimensions_length ?? null,
-    dimensions_width: last?.dimensions_width ?? null,
-    dimensions_thickness: last?.dimensions_thickness ?? null,
-    dimensions_unit: last?.dimensions_unit ?? null,
+    dimensions_length: group?.dimensions_length ?? last?.dimensions_length ?? null,
+    dimensions_width: group?.dimensions_width ?? last?.dimensions_width ?? null,
+    dimensions_thickness: group?.dimensions_thickness ?? last?.dimensions_thickness ?? null,
+    dimensions_unit: group?.dimensions_unit ?? last?.dimensions_unit ?? null,
   });
 
   let { error } = await supabase.from('products').insert(productData as any);
@@ -123,7 +170,7 @@ export async function createGroupColorProducts(specs: GroupColorSpec[]): Promise
   const out: CreateColorResult[] = [];
   for (const s of specs) {
     const color = (s.color || '').trim();
-    const key = `${s.groupId}::${color.toLowerCase()}`;
+    const key = `${s.groupId}::${colorKey(color)}`;
     if (!color || !s.groupId || seen.has(key)) continue;
     seen.add(key);
     // sequencial de propósito: cada criação lê o "último produto do grupo" e

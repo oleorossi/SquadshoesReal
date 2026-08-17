@@ -1,21 +1,23 @@
 import { PageSkeleton } from '@/components/layout/PageSkeleton';
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
- import { useUpdateProduct, ProductSchema, useProducts } from '@/hooks/useProducts';
+import { useUpdateProduct, ProductSchema, useProducts } from '@/hooks/useProducts';
 import { useForceDeleteProductFlow } from '@/components/inventory/ForceDeleteProductDialog';
- import { useCurrentProfile } from '@/hooks/useUserManagement';
+import { MasterVariantDialog } from '@/components/inventory/MasterVariantDialog';
+import { MaterialClassificationRail } from '@/components/groups/MaterialClassificationRail';
+import { useCurrentProfile } from '@/hooks/useUserManagement';
 import { useGroups } from '@/hooks/useGroups';
 import { useSuppliers } from '@/hooks/useSuppliers';
 import { useComponentSheets, useAddComponentSheet, useUpdateComponentSheet } from '@/hooks/useComponentSheets';
-import { Product, ProductFormData, CATEGORIES, UNITS, LOCATIONS } from '@/types/inventory';
+import { Product, ProductFormData, UNITS, LOCATIONS } from '@/types/inventory';
 import AppLayout from '@/components/layout/AppLayout';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
- import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
- import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -24,21 +26,40 @@ import { Textarea } from '@/components/ui/textarea';
 import { NumberInput } from '@/components/ui/number-input';
 import { CurrencyInput } from '@/components/ui/currency-input';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
- import { ArrowLeft, FloppyDisk as Save, Trash as Trash2, CircleNotch as Loader2, Image as ImageIcon, X, Stack as Layers, Footprints, ClockCounterClockwise as History, PlusCircle, MinusCircle, Warning as AlertTriangle } from '@phosphor-icons/react';
-import { cn, stripColorFromName } from '@/lib/utils';
+import {
+  ArrowLeft,
+  FloppyDisk as Save,
+  CircleNotch as Loader2,
+  Image as ImageIcon,
+  X,
+  Stack as Layers,
+  Footprints,
+  ClockCounterClockwise as History,
+  PlusCircle,
+  MinusCircle,
+  Warning as AlertTriangle,
+  Palette,
+  Ruler,
+} from '@phosphor-icons/react';
+import { cn, formatMoney, formatNumber, getSoleModelName, stripColorFromName } from '@/lib/utils';
 import { toast } from 'sonner';
 import { z } from 'zod';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { adjustStockSafe } from '@/lib/stockAdjustments';
 import { PURCHASE_UNITS, PRODUCTION_UNITS, normalizePurchaseUnit, normalizeProductionUnit } from '@/lib/productUnits';
- import { SoleSilkPanel } from "@/components/technical-sheets/SoleSilkPanel";
- import StockHistory from './StockHistory';
+import { SoleSilkPanel } from '@/components/technical-sheets/SoleSilkPanel';
+import StockHistory from './StockHistory';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { Panel } from '@/components/ui/panel';
+import { sectorLabel, sectorOfGroup } from '@/lib/categoryFromGroup';
+import { getGroupPath } from '@/lib/groupHierarchy';
+import { useCan } from '@/hooks/useAccessControl';
 
 const SOLADO_COLORS = ['Preto', 'Caramelo'];
 const ADULT_SIZES = [34, 35, 36, 37, 38, 39, 40];
 const CHILD_SIZES = Array.from({ length: 16 }, (_, i) => 21 + i);
+const PRODUCT_DETAIL_TABS = ['general', 'stock', 'technical', 'purchase', 'history'] as const;
+const PRODUCT_DETAIL_TAB_ALIASES = { details: 'general' } as const;
 
 
 // Unidades e normalização vêm da fonte ÚNICA (src/lib/productUnits.ts). Os
@@ -52,17 +73,34 @@ const normalizeCalculationMethod = (value?: string | null): 'weight' | 'meter' |
   return 'weight';
 };
 
+const sumGrade = (grade: Record<string, number>) => Object.entries(grade)
+  .filter(([key]) => !key.startsWith('_'))
+  .reduce((sum, [, value]) => sum + (Number(value) || 0), 0);
+
+/** Mesma identidade usada pela lista de estoque: grupo heterogêneo não pode
+ * misturar Fivela, Ilhós e Binóculo como se fossem cores do mesmo material. */
+const getVariantBaseName = (product: Product) => {
+  if (product.category?.toLowerCase().includes('solado')) {
+    return getSoleModelName(product.name, product.color).toUpperCase();
+  }
+  const withoutColor = stripColorFromName(product.name, product.color).trim();
+  return withoutColor.replace(/\s+-\s+.*$/, '').trim().toUpperCase() || withoutColor.toUpperCase();
+};
+
 export default function ProductDetail() {
   // A aba mora na URL (contrato do lote L6): antes era <Tabs defaultValue>, então
   // F5 e o botão Voltar devolviam o usuário à primeira aba.
   const { value: abaUrl, setValue: setAbaUrl } = useUrlTabState({
-    values: ['details', 'history'] as const,
-    defaultValue: 'details',
+    values: PRODUCT_DETAIL_TABS,
+    defaultValue: 'general',
+    aliases: PRODUCT_DETAIL_TAB_ALIASES,
   });
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const perm = useCan('/estoque');
   const [zoomOpen, setZoomOpen] = useState(false);
+  const [variantDialogOpen, setVariantDialogOpen] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const { data: product, isLoading, isError } = useQuery({
@@ -82,6 +120,7 @@ export default function ProductDetail() {
   const forceDeleteFlow = useForceDeleteProductFlow({
     onSuccess: () => navigate('/estoque'),
   });
+  const variantDeleteFlow = useForceDeleteProductFlow();
   const { data: allProducts = [] } = useProducts();
   const addComponentSheet = useAddComponentSheet();
   const updateComponentSheet = useUpdateComponentSheet();
@@ -99,7 +138,6 @@ export default function ProductDetail() {
     linked_last_id: null, sole_material: null, heel_height: null,
   });
 
-  const [soladoColor, setSoladoColor] = useState('');
   const [soladoGrade, setSoladoGrade] = useState<Record<string, number>>({});
   const [minStockGrade, setMinStockGrade] = useState<Record<string, number>>({});
   const [shoeCategory, setShoeCategory] = useState<'adulto' | 'infantil'>('adulto');
@@ -109,20 +147,98 @@ export default function ProductDetail() {
   const [plateThickness, setPlateThickness] = useState(0);
   const [plateUnit, setPlateUnit] = useState('mm');
 
-  const existingSheet = useMemo(() => {
-    if (!product) return null;
-    return (componentSheets as any[]).find((s: any) => s.product_id === product.id) || null;
-  }, [product, componentSheets]);
+  const selectedGroup = useMemo(
+    () => groups.find(group => group.id === form.group_id) || null,
+    [groups, form.group_id],
+  );
+  const effectiveCategory = selectedGroup ? sectorOfGroup(selectedGroup) : form.category;
+  const selectedGroupPath = useMemo(
+    () => selectedGroup ? getGroupPath(groups, selectedGroup.id) : [],
+    [groups, selectedGroup],
+  );
+  const selectedFamily = useMemo(
+    () => [...selectedGroupPath].reverse().find(group => group.id !== selectedGroup?.id && group.is_family) || null,
+    [selectedGroupPath, selectedGroup],
+  );
+  const leafGroups = useMemo(() => {
+    const parentIds = new Set(groups.map(group => group.parent_group_id).filter(Boolean));
+    return groups
+      .filter(group => !group.is_family && !parentIds.has(group.id))
+      .sort((a, b) => {
+        const sectorOrder = sectorLabel(sectorOfGroup(a)).localeCompare(sectorLabel(sectorOfGroup(b)), 'pt-BR');
+        if (sectorOrder !== 0) return sectorOrder;
+        return a.name.localeCompare(b.name, 'pt-BR');
+      });
+  }, [groups]);
+  const groupOptionLabels = useMemo(() => new Map(
+    leafGroups.map(group => [
+      group.id,
+      getGroupPath(groups, group.id).map(pathItem => pathItem.name).join(' › '),
+    ]),
+  ), [groups, leafGroups]);
 
-  const isSolado = form.category.toLowerCase().includes('solado');
+  const isSolado = effectiveCategory.toLowerCase().includes('solado');
   const hasGrade = isSolado;
   const currentSizes = shoeCategory === 'infantil' ? CHILD_SIZES : ADULT_SIZES;
+
+  const variantBaseName = useMemo(
+    () => product ? getVariantBaseName(product) : '',
+    [product],
+  );
+  const groupVariants = useMemo(() => {
+    if (!product?.group_id || !variantBaseName) return [] as Product[];
+    return allProducts.filter(candidate => (
+      candidate.group_id === product.group_id && getVariantBaseName(candidate) === variantBaseName
+    ));
+  }, [allProducts, product, variantBaseName]);
+  const soladoColorOptions = useMemo(() => Array.from(new Set([
+    form.color,
+    ...groupVariants.map(variant => variant.color || ''),
+    ...SOLADO_COLORS,
+  ].map(color => color.trim()).filter(Boolean))), [form.color, groupVariants]);
+
+  const grossStock = hasGrade ? sumGrade(soladoGrade) : Number(form.quantity) || 0;
+  const reservedStock = Number(product?.reserved_stock) || 0;
+  const availableStock = grossStock - reservedStock;
+  const minimumStock = hasGrade ? sumGrade(minStockGrade) : Number(form.min_stock) || 0;
+  const stockValue = grossStock * (Number(form.unit_price) || 0);
+  const stockStatus = (() => {
+    if (availableStock < 0) return { label: 'Crítico', variant: 'destructive' as const };
+    if (minimumStock === 0) return { label: 'Normal', variant: 'success' as const };
+    const ratio = availableStock / minimumStock;
+    if (ratio <= 0.5) return { label: 'Crítico', variant: 'destructive' as const };
+    if (ratio <= 1) return { label: 'Baixo', variant: 'warning' as const };
+    return { label: 'Normal', variant: 'success' as const };
+  })();
+
+  const hasGroupDimensions = Boolean(selectedGroup && (
+    Number(selectedGroup.dimensions_width) > 0 ||
+    Number(selectedGroup.dimensions_length) > 0 ||
+    Number(selectedGroup.dimensions_thickness) > 0
+  ));
+  const matchesGroupDimensions = Boolean(selectedGroup && hasGroupDimensions &&
+    Number(plateWidth) === Number(selectedGroup.dimensions_width || 0) &&
+    Number(plateLength) === Number(selectedGroup.dimensions_length || 0) &&
+    Number(plateThickness) === Number(selectedGroup.dimensions_thickness || 0) &&
+    plateUnit === (selectedGroup.dimensions_unit || 'mm'));
+  const hasSizedYieldData = Object.entries(yieldPerSize).some(([key, value]) => (
+    !key.startsWith('_') && key !== 'unit' && Number(value) > 0
+  ));
+  const showTechnicalYield = !isSolado && (
+    hasSizedYieldData || ['Cabedal', 'Palmilha', 'Forração da Palmilha'].includes(effectiveCategory)
+  );
+
+  const existingSheet = useMemo(() => {
+    if (!product) return null;
+    return componentSheets.find(sheet => sheet.product_id === product.id) || null;
+  }, [product, componentSheets]);
 
   // Populate form from product
   useEffect(() => {
     if (!product) return;
     const { id: _id, created_at, updated_at, ...rest } = product;
     const cleanName = stripColorFromName(rest.name || '', rest.color);
+    const sheet = componentSheets.find(candidate => candidate.product_id === product.id);
     setForm({
       name: cleanName, technical_name: rest.technical_name || '', sku: rest.sku || '',
       category: rest.category || '', color: rest.color || '', quantity: rest.quantity ?? 0,
@@ -155,36 +271,41 @@ export default function ProductDetail() {
       sole_material: rest.sole_material || null,
       heel_height: rest.heel_height ?? null,
     });
-    setPlateLength(rest.dimensions_length || 0);
-    setPlateWidth(rest.dimensions_width || 0);
-    setPlateThickness(rest.dimensions_thickness || 0);
-    setPlateUnit(rest.dimensions_unit || 'mm');
+    // A ficha de componente é a fonte lida pelos motores de conversão. Só cai
+    // no snapshot do produto quando ainda não existe ficha para este item.
+    const dimensionSource = sheet || rest;
+    setPlateLength(Number(dimensionSource.dimensions_length) || 0);
+    setPlateWidth(Number(dimensionSource.dimensions_width) || 0);
+    setPlateThickness(Number(dimensionSource.dimensions_thickness) || 0);
+    setPlateUnit(dimensionSource.dimensions_unit || 'mm');
 
-    if (rest.stock_grade && typeof rest.stock_grade === 'object' && !Array.isArray(rest.stock_grade)) {
-      setSoladoGrade(rest.stock_grade as Record<string, number>);
-      const keys = Object.keys(rest.stock_grade as object).map(Number).filter(n => !isNaN(n));
-      if (keys.some(k => k < 34)) setShoeCategory('infantil');
-    }
-    if (rest.min_stock_grade && typeof rest.min_stock_grade === 'object') {
-      setMinStockGrade(rest.min_stock_grade as Record<string, number>);
-      const keys = Object.keys(rest.min_stock_grade as object).map(Number).filter(n => !isNaN(n));
-      if (keys.some(k => k < 34)) setShoeCategory('infantil');
-    }
-    if (rest.color) setSoladoColor(rest.color);
-
-    const sheet = (componentSheets as any[]).find((s: any) => s.product_id === product.id);
-    if (sheet) {
-      setYieldPerSize(sheet.yield_per_size && typeof sheet.yield_per_size === 'object' ? sheet.yield_per_size as Record<string, number> : {});
-    }
+    const nextGrade = rest.stock_grade && typeof rest.stock_grade === 'object' && !Array.isArray(rest.stock_grade)
+      ? rest.stock_grade as Record<string, number>
+      : {};
+    const nextMinimumGrade = rest.min_stock_grade && typeof rest.min_stock_grade === 'object' && !Array.isArray(rest.min_stock_grade)
+      ? rest.min_stock_grade as Record<string, number>
+      : {};
+    setSoladoGrade(nextGrade);
+    setMinStockGrade(nextMinimumGrade);
+    const nextYield = sheet?.yield_per_size && typeof sheet.yield_per_size === 'object'
+      ? sheet.yield_per_size as Record<string, number>
+      : {};
+    setYieldPerSize(nextYield);
+    const numericSizes = [...Object.keys(nextGrade), ...Object.keys(nextMinimumGrade), ...Object.keys(nextYield)]
+      .map(Number)
+      .filter(size => !Number.isNaN(size));
+    setShoeCategory(numericSizes.some(size => size < 34) ? 'infantil' : 'adulto');
   }, [product, componentSheets]);
 
   // Sync grade total into quantity
   useEffect(() => {
-    if (hasGrade) {
-      const total = Object.values(soladoGrade).reduce((s, v) => s + (v || 0), 0);
+    const productAlreadyUsesGrade = product?.category?.toLowerCase().includes('solado') ?? false;
+    const hasEditableGrade = Object.keys(soladoGrade).some(key => !key.startsWith('_'));
+    if (hasGrade && (productAlreadyUsesGrade || hasEditableGrade)) {
+      const total = sumGrade(soladoGrade);
       update('quantity', total);
     }
-  }, [soladoGrade, hasGrade]);
+  }, [soladoGrade, hasGrade, product?.category]);
 
   const update = <K extends keyof ProductFormData>(key: K, value: ProductFormData[K]) =>
     setForm(prev => {
@@ -206,14 +327,51 @@ export default function ProductDetail() {
       return next;
     });
 
+  const handleGroupChange = (value: string) => {
+    const nextGroupId = value === 'none' ? null : value;
+    const nextGroup = groups.find(group => group.id === nextGroupId) || null;
+    setForm(prev => ({
+      ...prev,
+      group_id: nextGroupId,
+      category: nextGroup ? sectorOfGroup(nextGroup) : prev.category,
+    }));
+  };
+
+  const applyGroupDimensions = () => {
+    if (!selectedGroup || !hasGroupDimensions) return;
+    // Largura e comprimento mantêm seus papéis próprios; não escolher a maior:
+    // a conversão de bobina depende exclusivamente de dimensions_width.
+    setPlateWidth(Number(selectedGroup.dimensions_width) || 0);
+    setPlateLength(Number(selectedGroup.dimensions_length) || 0);
+    setPlateThickness(Number(selectedGroup.dimensions_thickness) || 0);
+    setPlateUnit(selectedGroup.dimensions_unit || 'mm');
+  };
+
   const handleSave = async () => {
+    if (!perm.canEdit) {
+      toast.error('Seu acesso ao estoque é somente para consulta.');
+      return;
+    }
     if (!product) return;
+    const groupHasChildren = selectedGroup
+      ? groups.some(group => group.parent_group_id === selectedGroup.id)
+      : false;
+    if (selectedGroup && (selectedGroup.is_family || groupHasChildren)) {
+      toast.error('Escolha um grupo-folha. Famílias e grupos-pai não recebem itens.');
+      return;
+    }
+    const productAlreadyUsesGrade = product.category?.toLowerCase().includes('solado');
+    if (hasGrade && !productAlreadyUsesGrade && Number(product.quantity) > 0 && sumGrade(soladoGrade) === 0) {
+      toast.error('Distribua o saldo atual na grade antes de reclassificar este item como solado.');
+      return;
+    }
     setSaving(true);
     try {
       const baseData = { ...form };
+      baseData.category = effectiveCategory;
       if (hasGrade) {
         baseData.min_stock_grade = minStockGrade;
-        baseData.min_stock = Object.values(minStockGrade).reduce((s, v) => s + (v || 0), 0);
+        baseData.min_stock = sumGrade(minStockGrade);
         baseData.stock_grade = soladoGrade;
       }
       baseData.dimensions_length = plateLength;
@@ -235,7 +393,18 @@ export default function ProductDetail() {
       }
 
       const validatedData = ProductSchema.parse(baseData);
-      await updateProduct.mutateAsync({ id: product.id, data: validatedData as any });
+      await updateProduct.mutateAsync({ id: product.id, data: validatedData as ProductFormData });
+
+      // O limite por numeração não altera saldo e, portanto, não passa pelo RPC
+      // de ajuste. useUpdateProduct o remove junto das grades de quantidade;
+      // persisti-lo aqui evita que o mínimo editado suma ao recarregar a tela.
+      if (hasGrade) {
+        const { error: minimumGradeError } = await supabase
+          .from('products')
+          .update({ min_stock_grade: minStockGrade })
+          .eq('id', product.id);
+        if (minimumGradeError) throw minimumGradeError;
+      }
 
       // `useUpdateProduct` remove quantity/stock_grade do UPDATE plano (precisam
       // do audit trail + controle de concorrência do RPC adjust_stock). Sem este
@@ -275,6 +444,7 @@ export default function ProductDetail() {
 
       // Save component sheet
       const hasYieldData = Object.values(yieldPerSize).some(v => v > 0);
+      const hasDimensionData = plateWidth > 0 || plateLength > 0 || plateThickness > 0;
       const sheetData = {
         product_id: product.id,
         group_id: form.group_id || null,
@@ -289,7 +459,7 @@ export default function ProductDetail() {
       };
       if (existingSheet) {
         await updateComponentSheet.mutateAsync({ id: existingSheet.id, data: sheetData });
-      } else if (hasYieldData) {
+      } else if (hasYieldData || hasDimensionData) {
         await addComponentSheet.mutateAsync({ ...sheetData, notes: '' });
       }
 
@@ -313,6 +483,10 @@ export default function ProductDetail() {
   };
 
   const handleDelete = () => {
+    if (!perm.canDelete) {
+      toast.error('Você não tem permissão para excluir materiais.');
+      return;
+    }
     if (!product) return;
     forceDeleteFlow.tryDelete(product.id);
   };
@@ -350,149 +524,576 @@ export default function ProductDetail() {
     );
   }
 
-  const groupName = groups.find(g => g.id === product.group_id)?.name || '—';
+  const classificationItem = [form.name, form.color].filter(Boolean).join(' · ') || 'Item sem nome';
+  const selectedGroupIsLeaf = !selectedGroup || leafGroups.some(group => group.id === selectedGroup.id);
+  const canManageVariants = (
+    form.group_id === product.group_id &&
+    groupVariants.length > 1
+  );
 
-   return (
-     <AppLayout>
-       <div className="space-y-6 max-w-5xl">
-         {/* Header */}
-         <Button variant="ghost" size="sm" onClick={() => navigate('/estoque')} className="-ml-2 mb-1">
-           <ArrowLeft className="h-4 w-4 mr-1" /> Estoque
-         </Button>
-         <EditorialPageHeader
-           sectionLabel="ENGENHARIA · MATERIAL"
-           title={stripColorFromName(product.name, product.color)}
-           description={product.sku}
-           actions={
-             <>
-               {product.color && <Badge variant="secondary">{product.color}</Badge>}
-               <Button onClick={handleSave} disabled={saving} className="gap-1.5">
-                 {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-                 Salvar
-               </Button>
-               <DeleteConfirmButton onConfirm={handleDelete} title="Excluir material?" />
-             </>
-           }
-         />
+  return (
+    <AppLayout>
+      <div className="mx-auto max-w-6xl space-y-5">
+        <Button variant="ghost" size="sm" onClick={() => navigate('/estoque')} className="-ml-2">
+          <ArrowLeft className="mr-1 h-4 w-4" /> Estoque
+        </Button>
 
-         <Tabs value={abaUrl} onValueChange={setAbaUrl} className="w-full">
-           <TabsList className="grid w-full grid-cols-2 mb-6">
-             <TabsTrigger value="details">Informações e Dados</TabsTrigger>
-             <TabsTrigger value="history" className="gap-2">
-               <History className="h-4 w-4" />
-               Histórico e Ações
-             </TabsTrigger>
-           </TabsList>
- 
-           <TabsContent value="details" className="space-y-6">
-             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-           {/* Image */}
-           <Card>
-             <CardContent className="p-4 flex flex-col items-center gap-3">
-              {product.image_url ? (
-                <img src={product.image_url} alt={product.name}
-                  className="w-full max-h-64 object-contain rounded-lg cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all"
-                  onClick={() => setZoomOpen(true)} />
-              ) : (
-                <div className="w-full h-48 bg-muted rounded-lg flex items-center justify-center">
-                  <ImageIcon className="h-12 w-12 text-muted-foreground/30" />
-                </div>
+        <EditorialPageHeader
+          sectionLabel="ESTOQUE · ITEM INDIVIDUAL"
+          title={stripColorFromName(product.name, product.color)}
+          description={product.sku}
+          actions={
+            <>
+              {form.color && <Badge variant="secondary">{form.color}</Badge>}
+              {perm.canEdit && canManageVariants && (
+                <Button
+                  variant="outline"
+                  onClick={() => setVariantDialogOpen(true)}
+                  className="gap-1.5"
+                >
+                  <Palette className="h-3.5 w-3.5" />
+                  Variantes ({groupVariants.length})
+                </Button>
               )}
-              <div className="w-full">
-                <Label className="text-xs text-muted-foreground">URL da Imagem</Label>
-                <Input value={form.image_url} onChange={e => update('image_url', e.target.value)} className="mt-1 text-xs" placeholder="https://..." />
-              </div>
-            </CardContent>
-          </Card>
+              {perm.canEdit && <Button onClick={handleSave} disabled={saving} className="gap-1.5">
+                {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                Salvar
+              </Button>}
+              {perm.canDelete && <DeleteConfirmButton onConfirm={handleDelete} title="Excluir material?" />}
+            </>
+          }
+        />
 
-          {/* Basic Info */}
-          <Panel title="Informações Básicas" className="lg:col-span-2">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="col-span-2">
-                  <Label>Nome *</Label>
-                  <Input value={form.name} onChange={e => update('name', e.target.value)} className="mt-1" />
-                </div>
-                <div className="col-span-2">
-                  <Label>Nome Técnico</Label>
-                  <Textarea value={form.technical_name || ''} onChange={e => update('technical_name', e.target.value)} className="mt-1 min-h-[50px]" />
-                </div>
-                {!hasGrade && (
-                  <div>
-                    <Label>Cor</Label>
-                    <Input value={form.color} onChange={e => update('color', e.target.value)} className="mt-1" />
+        <MaterialClassificationRail
+          sector={effectiveCategory}
+          family={selectedFamily?.name}
+          group={selectedGroup?.name}
+          variant={classificationItem}
+        />
+
+        {!perm.canEdit && (
+          <div className="border border-foreground/20 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+            Modo somente leitura — você pode consultar todas as informações, mas não alterar o material ou movimentar estoque.
+          </div>
+        )}
+
+        <Panel
+          eyebrow="POSIÇÃO ATUAL"
+          title="Resumo de estoque"
+          subtitle="Disponível = saldo bruto menos o que já está reservado para OPs abertas."
+          flush
+        >
+          <dl className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
+            <div className="border-b border-r border-border p-4 xl:border-b-0">
+              <dt className="font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Bruto</dt>
+              <dd className="mt-1 font-mono text-lg font-bold tabular-nums text-foreground">
+                {formatNumber(grossStock, Number.isInteger(grossStock) ? 0 : 2)}
+                <span className="ml-1 text-xs font-normal text-muted-foreground">{form.unit}</span>
+              </dd>
+            </div>
+            <div className="border-b border-border p-4 md:border-r xl:border-b-0">
+              <dt className="font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Reservado</dt>
+              <dd className="mt-1 font-mono text-lg font-bold tabular-nums text-foreground">
+                {formatNumber(reservedStock, Number.isInteger(reservedStock) ? 0 : 2)}
+                <span className="ml-1 text-xs font-normal text-muted-foreground">{form.unit}</span>
+              </dd>
+            </div>
+            <div className="border-b border-r border-border p-4 xl:border-b-0">
+              <dt className="font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Disponível</dt>
+              <dd className={cn(
+                'mt-1 font-mono text-lg font-bold tabular-nums',
+                availableStock < 0 ? 'text-destructive' : 'text-foreground',
+              )}>
+                {formatNumber(availableStock, Number.isInteger(availableStock) ? 0 : 2)}
+                <span className="ml-1 text-xs font-normal text-muted-foreground">{form.unit}</span>
+              </dd>
+            </div>
+            <div className="border-b border-border p-4 md:border-r xl:border-b-0">
+              <dt className="font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Mínimo</dt>
+              <dd className="mt-1 font-mono text-lg font-bold tabular-nums text-foreground">
+                {formatNumber(minimumStock, Number.isInteger(minimumStock) ? 0 : 2)}
+                <span className="ml-1 text-xs font-normal text-muted-foreground">{form.unit}</span>
+              </dd>
+            </div>
+            <div className="border-r border-border p-4">
+              <dt className="font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Status</dt>
+              <dd className="mt-2"><Badge variant={stockStatus.variant}>{stockStatus.label}</Badge></dd>
+            </div>
+            <div className="p-4">
+              <dt className="font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Valor bruto</dt>
+              <dd className="mt-1 font-mono text-lg font-bold tabular-nums text-foreground">{formatMoney(stockValue)}</dd>
+            </div>
+          </dl>
+        </Panel>
+
+        <Tabs value={abaUrl} onValueChange={setAbaUrl} className="w-full">
+          <TabsList className="mb-6">
+            <TabsTrigger value="general" className="min-w-[120px] flex-1">Geral</TabsTrigger>
+            <TabsTrigger value="stock" className="min-w-[170px] flex-1">Estoque e custo</TabsTrigger>
+            <TabsTrigger value="technical" className="min-w-[125px] flex-1">Técnica</TabsTrigger>
+            <TabsTrigger value="purchase" className="min-w-[210px] flex-1">Compra / rastreio</TabsTrigger>
+            <TabsTrigger value="history" className="min-w-[135px] flex-1 gap-2">
+              <History className="h-4 w-4" />
+              Histórico
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="general" className="space-y-6">
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+              <Card>
+                <CardContent className="flex flex-col items-center gap-3 p-4">
+                  {form.image_url ? (
+                    <button
+                      type="button"
+                      className="w-full rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      onClick={() => setZoomOpen(true)}
+                      aria-label="Ampliar imagem do material"
+                    >
+                      <img
+                        src={form.image_url}
+                        alt={form.name || product.name}
+                        className="max-h-64 w-full rounded-lg object-contain transition-all hover:ring-2 hover:ring-primary/50"
+                      />
+                    </button>
+                  ) : (
+                    <div className="flex h-48 w-full items-center justify-center rounded-lg bg-muted">
+                      <ImageIcon className="h-12 w-12 text-muted-foreground/30" />
+                    </div>
+                  )}
+                  <div className="w-full">
+                    <Label className="text-xs text-muted-foreground">URL da imagem</Label>
+                    <Input
+                      value={form.image_url}
+                      onChange={event => update('image_url', event.target.value)}
+                      className="mt-1 text-xs"
+                      placeholder="https://..."
+                    />
                   </div>
-                )}
-                <div>
-                  <Label>Código (SKU) *</Label>
-                  <Input value={form.sku} onChange={e => update('sku', e.target.value)} className="mt-1 font-mono" />
-                </div>
-                <div>
-                  <Label>Categoria *</Label>
-                  <Select value={form.category} onValueChange={v => update('category', v)}>
-                    <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
+                </CardContent>
+              </Card>
 
-                {isSolado && (
-                  <>
-                    <div>
-                      <Label>Material do Solado</Label>
-                      <Input
-                        value={form.sole_material || ''}
-                        onChange={e => update('sole_material', e.target.value)}
-                        placeholder="TR, PVC, etc."
-                        className="mt-1"
-                      />
-                    </div>
-                    <div>
-                      <Label>Altura do Salto (mm)</Label>
-                      <NumberInput
-                        value={form.heel_height || 0}
-                        onChange={v => update('heel_height', v)}
-                        className="mt-1"
-                      />
-                    </div>
-                    <div className="col-span-2">
-                      <Label>Fôrma Vinculada</Label>
-                      <Select 
-                        value={form.linked_last_id || 'none'} 
-                        onValueChange={v => update('linked_last_id', v === 'none' ? null : v)}
-                      >
-                        <SelectTrigger className="mt-1">
-                          <SelectValue placeholder="Selecione a fôrma correspondente" />
-                        </SelectTrigger>
+              <Panel
+                title="Identificação e classificação"
+                subtitle="O setor é herdado do grupo; famílias e grupos-pai não recebem itens diretamente."
+                className="lg:col-span-2"
+              >
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div className="sm:col-span-2">
+                    <Label>Nome *</Label>
+                    <Input value={form.name} onChange={event => update('name', event.target.value)} className="mt-1" />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <Label>Nome técnico</Label>
+                    <Textarea
+                      value={form.technical_name || ''}
+                      onChange={event => update('technical_name', event.target.value)}
+                      className="mt-1 min-h-[58px]"
+                    />
+                  </div>
+                  <div>
+                    <Label>Código (SKU) *</Label>
+                    <Input value={form.sku} onChange={event => update('sku', event.target.value)} className="mt-1 font-mono" />
+                  </div>
+                  <div>
+                    <Label>{isSolado ? 'Cor do solado' : 'Cor / variante'}</Label>
+                    {isSolado ? (
+                      <Select value={form.color} onValueChange={value => update('color', value)}>
+                        <SelectTrigger className="mt-1"><SelectValue placeholder="Selecione a cor" /></SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="none">Nenhuma fôrma vinculada</SelectItem>
-                          {allProducts
-                            .filter(p => p.category === 'Fôrma' || p.category === 'Ferramentas' || p.id === form.linked_last_id)
-                            .map(p => (
-                              <SelectItem key={p.id} value={p.id}>
-                                {p.name} {p.sku ? `(${p.sku})` : ''}
-                              </SelectItem>
-                            ))}
+                          {soladoColorOptions.map(color => <SelectItem key={color} value={color}>{color}</SelectItem>)}
                         </SelectContent>
                       </Select>
+                    ) : (
+                      <Input value={form.color} onChange={event => update('color', event.target.value)} className="mt-1" />
+                    )}
+                  </div>
+
+                  <div>
+                    <Label>Grupo / linha *</Label>
+                    <Select value={form.group_id || 'none'} onValueChange={handleGroupChange}>
+                      <SelectTrigger className="mt-1"><SelectValue placeholder="Selecione um grupo-folha" /></SelectTrigger>
+                      <SelectContent className="max-h-[360px]">
+                        <SelectItem value="none">Sem grupo (cadastro legado)</SelectItem>
+                        {selectedGroup && !selectedGroupIsLeaf && (
+                          <SelectItem value={selectedGroup.id} disabled>
+                            {selectedGroup.name} — não é grupo-folha
+                          </SelectItem>
+                        )}
+                        {leafGroups.map(group => (
+                          <SelectItem key={group.id} value={group.id}>
+                            {sectorLabel(sectorOfGroup(group))} · {groupOptionLabels.get(group.id) || group.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {!selectedGroupIsLeaf && (
+                      <p className="mt-1 text-xs text-warning">
+                        Este vínculo legado aponta para uma família ou grupo-pai. Escolha uma linha final.
+                      </p>
+                    )}
+                  </div>
+                  <div>
+                    <Label>Setor / categoria</Label>
+                    <div className="mt-1 flex h-10 items-center justify-between rounded-md border border-border bg-muted/30 px-3">
+                      <span className="text-sm font-medium">{sectorLabel(effectiveCategory)}</span>
+                      <Badge variant={selectedGroup ? 'outline' : 'warning-soft'}>
+                        {selectedGroup ? 'derivado do grupo' : 'legado sem grupo'}
+                      </Badge>
+                    </div>
+                  </div>
+
+                  {isSolado && (
+                    <>
+                      <div>
+                        <Label>Material do solado</Label>
+                        <Input
+                          value={form.sole_material || ''}
+                          onChange={event => update('sole_material', event.target.value)}
+                          placeholder="TR, PVC, PU..."
+                          className="mt-1"
+                        />
+                      </div>
+                      <div>
+                        <Label>Altura do salto (mm)</Label>
+                        <NumberInput
+                          value={form.heel_height || 0}
+                          onChange={value => update('heel_height', value)}
+                          min={0}
+                          step="0.1"
+                          className="mt-1"
+                        />
+                      </div>
+                      <div className="sm:col-span-2">
+                        <Label>Fôrma vinculada</Label>
+                        <Select
+                          value={form.linked_last_id || 'none'}
+                          onValueChange={value => update('linked_last_id', value === 'none' ? null : value)}
+                        >
+                          <SelectTrigger className="mt-1">
+                            <SelectValue placeholder="Selecione a fôrma correspondente" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">Nenhuma fôrma vinculada</SelectItem>
+                            {allProducts
+                              .filter(candidate => (
+                                candidate.category === 'Fôrma' ||
+                                candidate.category === 'Ferramentas' ||
+                                candidate.id === form.linked_last_id
+                              ))
+                              .map(candidate => (
+                                <SelectItem key={candidate.id} value={candidate.id}>
+                                  {candidate.name} {candidate.sku ? '(' + candidate.sku + ')' : ''}
+                                </SelectItem>
+                              ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </>
+                  )}
+
+                  <div className="flex items-center gap-3 pt-4">
+                    <Switch id="active" checked={form.active} onCheckedChange={value => update('active', value)} />
+                    <Label htmlFor="active">Material ativo</Label>
+                  </div>
+                </div>
+              </Panel>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="stock" className="space-y-6">
+            {hasGrade && (
+              <Panel
+                title={<span className="flex items-center gap-2"><Footprints className="h-4 w-4 text-primary" /> Grade de numeração</span>}
+                subtitle="Saldo e mínimo são controlados por tamanho; os totais alimentam o resumo acima."
+                bodyClassName="space-y-4"
+              >
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant={shoeCategory === 'adulto' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setShoeCategory('adulto')}
+                  >
+                    Adulto (34–40)
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={shoeCategory === 'infantil' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setShoeCategory('infantil')}
+                  >
+                    Infantil (21–36)
+                  </Button>
+                </div>
+                <div className="overflow-x-auto pb-2">
+                  <div className={cn(
+                    'grid gap-2',
+                    shoeCategory === 'infantil' ? 'min-w-[720px] grid-cols-8' : 'min-w-[620px] grid-cols-7',
+                  )}>
+                    {currentSizes.map(size => (
+                      <div key={size} className="space-y-2 rounded-md border border-border bg-muted/15 p-2">
+                        <p className="text-center font-mono text-xs font-bold text-foreground">{size}</p>
+                        <div>
+                          <Label className="text-[9px] uppercase tracking-wide text-muted-foreground">Atual</Label>
+                          <NumberInput
+                            min={0}
+                            step="1"
+                            value={soladoGrade[String(size)] || 0}
+                            onChange={value => setSoladoGrade(prev => ({ ...prev, [String(size)]: value }))}
+                            className="h-8 px-1 text-center text-xs"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-[9px] uppercase tracking-wide text-muted-foreground">Mínimo</Label>
+                          <NumberInput
+                            min={0}
+                            step="1"
+                            value={minStockGrade[String(size)] || 0}
+                            onChange={value => setMinStockGrade(prev => ({ ...prev, [String(size)]: value }))}
+                            className="h-8 px-1 text-center text-xs"
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-4 border-t border-border pt-3 text-xs text-muted-foreground">
+                  <span>Saldo bruto: <strong className="font-mono text-foreground">{formatNumber(grossStock, 0)} pares</strong></span>
+                  <span>Mínimo: <strong className="font-mono text-foreground">{formatNumber(minimumStock, 0)} pares</strong></span>
+                </div>
+              </Panel>
+            )}
+
+            <Panel
+              title="Estoque e custo"
+              subtitle="Alterações de saldo continuam passando pelo ajuste auditado de estoque."
+            >
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {!hasGrade && (
+                  <>
+                    <div>
+                      <Label>Quantidade atual</Label>
+                      <NumberInput
+                        min={0}
+                        step="0.0001"
+                        value={form.quantity}
+                        onChange={value => update('quantity', value)}
+                        className="mt-1"
+                      />
+                    </div>
+                    <div>
+                      <Label>Estoque mínimo</Label>
+                      <NumberInput
+                        min={0}
+                        step="0.0001"
+                        value={form.min_stock}
+                        onChange={value => update('min_stock', value)}
+                        className="mt-1"
+                      />
                     </div>
                   </>
                 )}
-
                 <div>
-                  <Label>Grupo</Label>
-                  <Select value={form.group_id || 'none'} onValueChange={v => update('group_id', v === 'none' ? null : v)}>
-                    <SelectTrigger className="mt-1"><SelectValue placeholder="Sem grupo" /></SelectTrigger>
+                  <Label>Reservado para OPs</Label>
+                  <div className="mt-1 flex h-10 items-center rounded-md border border-border bg-muted/30 px-3 font-mono text-sm tabular-nums">
+                    {formatNumber(reservedStock, Number.isInteger(reservedStock) ? 0 : 2)} {form.unit}
+                  </div>
+                </div>
+                <div>
+                  <Label>Unidade-base</Label>
+                  <Select value={form.unit} onValueChange={value => update('unit', value)}>
+                    <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="none">Sem grupo</SelectItem>
-                      {groups.map(g => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}
+                      {UNITS.map(unit => <SelectItem key={unit} value={unit}>{unit}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
                 <div>
+                  <Label>Localização</Label>
+                  <Select value={form.location} onValueChange={value => update('location', value)}>
+                    <SelectTrigger className="mt-1"><SelectValue placeholder="Selecione" /></SelectTrigger>
+                    <SelectContent>
+                      {LOCATIONS.map(location => <SelectItem key={location} value={location}>{location}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Custo unitário (R$)</Label>
+                  <CurrencyInput value={form.unit_price} onChange={value => update('unit_price', value)} className="mt-1" />
+                </div>
+                <div>
+                  <Label>Cálculo de consumo</Label>
+                  <Select
+                    value={normalizeCalculationMethod(form.calculation_method)}
+                    onValueChange={value => update('calculation_method', value as ProductFormData['calculation_method'])}
+                  >
+                    <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="weight">Por peso (kg)</SelectItem>
+                      <SelectItem value="meter">Por metro / área</SelectItem>
+                      <SelectItem value="unit">Por unidade / par</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </Panel>
+          </TabsContent>
+
+          <TabsContent value="technical" className="space-y-6">
+            <Panel
+              title={<span className="flex items-center gap-2"><Ruler className="h-4 w-4 text-primary" /> Dimensões do material</span>}
+              subtitle="Largura e comprimento têm funções distintas no cálculo industrial."
+              actions={hasGroupDimensions ? (
+                <Button variant="outline" size="sm" onClick={applyGroupDimensions}>
+                  Usar dimensões do grupo
+                </Button>
+              ) : null}
+              bodyClassName="space-y-4"
+            >
+              {selectedGroup ? (
+                <div className="flex flex-col justify-between gap-3 border-l-2 border-primary bg-muted/20 px-3 py-2 sm:flex-row sm:items-center">
+                  <div>
+                    <p className="font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                      Referência do grupo {selectedGroup.name}
+                    </p>
+                    <p className="mt-1 text-sm font-medium text-foreground">
+                      Largura {formatNumber(Number(selectedGroup.dimensions_width) || 0, 2)}
+                      {' × '}comprimento {formatNumber(Number(selectedGroup.dimensions_length) || 0, 2)}
+                      {' × '}espessura {formatNumber(Number(selectedGroup.dimensions_thickness) || 0, 2)}
+                      {' '}{selectedGroup.dimensions_unit || 'mm'}
+                    </p>
+                  </div>
+                  <Badge variant={matchesGroupDimensions ? 'success-soft' : hasGroupDimensions ? 'warning-soft' : 'outline'}>
+                    {matchesGroupDimensions ? 'herdado do grupo' : hasGroupDimensions ? 'exceção neste item' : 'grupo sem dimensões'}
+                  </Badge>
+                </div>
+              ) : (
+                <div className="border-l-2 border-warning bg-warning/5 px-3 py-2 text-xs text-warning">
+                  Vincule um grupo-folha para comparar e herdar a especificação dimensional.
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <div>
+                  <Label>Largura útil</Label>
+                  <NumberInput value={plateWidth} onChange={setPlateWidth} min={0} step="0.1" className="mt-1" />
+                </div>
+                <div>
+                  <Label>Comprimento</Label>
+                  <NumberInput value={plateLength} onChange={setPlateLength} min={0} step="0.1" className="mt-1" />
+                </div>
+                <div>
+                  <Label>Espessura</Label>
+                  <NumberInput value={plateThickness} onChange={setPlateThickness} min={0} step="0.01" className="mt-1" />
+                </div>
+                <div>
+                  <Label>Unidade dimensional</Label>
+                  <Select value={plateUnit} onValueChange={setPlateUnit}>
+                    <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="mm">mm</SelectItem>
+                      <SelectItem value="cm">cm</SelectItem>
+                      <SelectItem value="m">m</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                A conversão de material de área para metro linear usa exclusivamente a <strong className="text-foreground">largura útil</strong>.
+                O comprimento só compõe a área de placas.
+              </p>
+            </Panel>
+
+            {showTechnicalYield && (
+              <Panel
+                title={<span className="flex items-center gap-2"><Layers className="h-4 w-4 text-primary" /> Rendimento técnico</span>}
+                subtitle="Consumo em dm² por par e numeração. Itens unitários, químicos, ferramentas e solados não exibem esta grade aqui."
+                bodyClassName="space-y-4"
+              >
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant={shoeCategory === 'adulto' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setShoeCategory('adulto')}
+                  >
+                    Adulto (34–40)
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={shoeCategory === 'infantil' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setShoeCategory('infantil')}
+                  >
+                    Infantil (21–36)
+                  </Button>
+                </div>
+                <div className="overflow-x-auto pb-2">
+                  <div className={cn(
+                    'grid gap-2',
+                    shoeCategory === 'infantil' ? 'min-w-[720px] grid-cols-8' : 'min-w-[620px] grid-cols-7',
+                  )}>
+                    {currentSizes.map(size => (
+                      <div key={'yield-' + size} className="text-center">
+                        <span className="font-mono text-xs font-medium text-muted-foreground">{size}</span>
+                        <NumberInput
+                          min={0}
+                          step="0.01"
+                          value={yieldPerSize[String(size)] || 0}
+                          onChange={value => setYieldPerSize(prev => ({ ...prev, [String(size)]: value }))}
+                          className="mt-1 h-8 px-1 text-center text-xs"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  {existingSheet
+                    ? <Badge variant="secondary">Ficha existente</Badge>
+                    : Object.values(yieldPerSize).some(value => Number(value) > 0)
+                      ? <Badge variant="outline" className="border-primary/30 text-primary">Nova ficha será criada</Badge>
+                      : <span className="text-xs italic text-muted-foreground">Sem ficha de componente</span>
+                  }
+                </div>
+              </Panel>
+            )}
+
+            {isSolado && (
+              <Panel
+                title={<span className="flex items-center gap-2"><Footprints className="h-4 w-4 text-primary" /> Grade e consumo do solado</span>}
+                subtitle="Numerações e consumo por par são cadastrados por modelo e valem para todas as cores."
+              >
+                <Button variant="outline" className="gap-2" onClick={() => navigate('/solados')}>
+                  <Footprints className="h-4 w-4" />
+                  Gerenciar em Solados
+                </Button>
+              </Panel>
+            )}
+
+            {isSolado && (
+              <Panel
+                title={<span className="flex items-center gap-2"><Layers className="h-4 w-4 text-primary" /> Cadastro de silk por solado</span>}
+                subtitle="Artes vinculadas a este solado, com diferenciação por cliente ou grupo econômico."
+              >
+                <SoleSilkPanel
+                  soleProductId={product.id}
+                  soleName={stripColorFromName(product.name, product.color)}
+                  readOnly={!perm.canEdit}
+                />
+              </Panel>
+            )}
+          </TabsContent>
+
+          <TabsContent value="purchase" className="space-y-6">
+            <Panel
+              title="Fornecedor e reposição"
+              subtitle="O código de cor pertence a esta variante e não é propagado para as cores irmãs."
+            >
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="lg:col-span-2">
                   <Label>Fornecedor</Label>
-                  <Select value={form.supplier_id || 'none'} onValueChange={v => {
-                    const supplierId = v === 'none' ? null : v;
+                  <Select value={form.supplier_id || 'none'} onValueChange={value => {
+                    const supplierId = value === 'none' ? null : value;
                     setForm(prev => ({
                       ...prev,
                       supplier_id: supplierId,
@@ -502,328 +1103,200 @@ export default function ProductDetail() {
                     <SelectTrigger className="mt-1"><SelectValue placeholder="Sem fornecedor" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">Sem fornecedor</SelectItem>
-                      {suppliers.filter(s => s.active).map(s => (
-                        <SelectItem key={s.id} value={s.id}>{s.trade_name || s.name}</SelectItem>
+                      {suppliers.filter(supplier => supplier.active).map(supplier => (
+                        <SelectItem key={supplier.id} value={supplier.id}>{supplier.trade_name || supplier.name}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
-                <div>
+                <div className="lg:col-span-2">
                   <Label htmlFor="supplier_color_code">Código da cor no fornecedor</Label>
                   <Input
                     id="supplier_color_code"
                     value={form.supplier_color_code || ''}
-                    onChange={e => update('supplier_color_code', e.target.value)}
+                    onChange={event => update('supplier_color_code', event.target.value)}
                     disabled={!form.supplier_id}
                     className="mt-1 font-mono"
                     placeholder={form.supplier_id ? 'Ex.: MAD-047' : 'Selecione um fornecedor primeiro'}
                   />
                 </div>
                 <div>
-                  <Label>Unidade de Medida</Label>
-                  <Select value={form.unit} onValueChange={v => update('unit', v)}>
+                  <Label>Lead time (dias)</Label>
+                  <NumberInput
+                    value={form.lead_time_days ?? 7}
+                    onChange={value => update('lead_time_days', value)}
+                    min={0}
+                    step="1"
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label>Lote mínimo de compra</Label>
+                  <NumberInput
+                    value={form.min_order_quantity ?? 1}
+                    onChange={value => update('min_order_quantity', value)}
+                    min={0}
+                    step="1"
+                    className="mt-1"
+                  />
+                </div>
+              </div>
+            </Panel>
+
+            <Panel
+              title="Conversão industrial"
+              subtitle="Uma unidade-base por produto; o fator só converte a unidade recebida para a unidade de estoque."
+            >
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <div>
+                  <Label>Unidade de compra</Label>
+                  <Select value={normalizePurchaseUnit(form.purchase_unit)} onValueChange={value => update('purchase_unit', value)}>
                     <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      {UNITS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+                      {PURCHASE_UNITS.map(unit => <SelectItem key={unit} value={unit}>{unit}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
                 <div>
-                  <Label>Localização</Label>
-                  <Select value={form.location} onValueChange={v => update('location', v)}>
-                    <SelectTrigger className="mt-1"><SelectValue placeholder="Selecione" /></SelectTrigger>
+                  <Label>Unidade de consumo</Label>
+                  <Select value={normalizeProductionUnit(form.production_unit)} onValueChange={value => update('production_unit', value)}>
+                    <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      {LOCATIONS.map(l => <SelectItem key={l} value={l}>{l}</SelectItem>)}
+                      {PRODUCTION_UNITS.map(unit => <SelectItem key={unit} value={unit}>{unit}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="flex items-center gap-3 pt-4">
-                  <Switch id="active" checked={form.active} onCheckedChange={v => update('active', v)} />
-                  <Label htmlFor="active">Material Ativo</Label>
-                </div>
-              </div>
-          </Panel>
-        </div>
-
-        {/* Solado-specific */}
-        {isSolado && (
-          <Panel title="Cor do Solado">
-              <Select value={soladoColor} onValueChange={setSoladoColor}>
-                <SelectTrigger className="w-48"><SelectValue placeholder="Selecione a cor" /></SelectTrigger>
-                <SelectContent>
-                  {SOLADO_COLORS.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                </SelectContent>
-              </Select>
-          </Panel>
-        )}
-
-        {/* Grade de numeração */}
-        {hasGrade && (
-          <Panel
-            title={<span className="flex items-center gap-2"><Footprints className="h-4 w-4 text-primary" /> Grade de Numeração</span>}
-            bodyClassName="space-y-4"
-          >
-              <div className="flex gap-2">
-                <Button type="button" variant={shoeCategory === 'adulto' ? 'default' : 'outline'} size="sm" onClick={() => setShoeCategory('adulto')}>
-                  Adulto (34-40)
-                </Button>
-                <Button type="button" variant={shoeCategory === 'infantil' ? 'default' : 'outline'} size="sm" onClick={() => setShoeCategory('infantil')}>
-                  Infantil (21-36)
-                </Button>
-              </div>
-              <div>
-                <Label className="text-xs font-semibold">Estoque por Tamanho (pares)</Label>
-                <div className={`grid gap-2 mt-2 ${shoeCategory === 'infantil' ? 'grid-cols-8' : 'grid-cols-7'}`}>
-                  {currentSizes.map(size => (
-                    <div key={size} className="text-center">
-                      <span className="text-xs text-muted-foreground font-medium">{size}</span>
-                      <NumberInput min={0} step="1" value={soladoGrade[String(size)] || 0}
-                        onChange={v => setSoladoGrade(prev => ({ ...prev, [String(size)]: v }))}
-                        className="h-8 text-xs text-center px-1" />
-                    </div>
-                  ))}
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Total: <span className="font-semibold text-foreground">{Object.values(soladoGrade).reduce((s, v) => s + (v || 0), 0)} pares</span>
-                </p>
-              </div>
-          </Panel>
-        )}
-
-        {/* Estoque & Custo */}
-        <Panel title="Estoque & Custo">
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-              {!hasGrade && (
                 <div>
-                  <Label>Quantidade Atual</Label>
-                  <NumberInput min={0} step="0.0001" value={form.quantity} onChange={v => update('quantity', v)} className="mt-1" />
+                  <Label>Fator de conversão</Label>
+                  <NumberInput
+                    value={form.conversion_rate ?? 1}
+                    onChange={value => update('conversion_rate', value)}
+                    min={0.0001}
+                    step="0.01"
+                    className="mt-1"
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    1 {normalizePurchaseUnit(form.purchase_unit)} = {form.conversion_rate ?? 1} {normalizeProductionUnit(form.production_unit)}
+                  </p>
                 </div>
-              )}
-              {/* "Estoque Máximo" e "Estoque de Segurança" removidos em 2026-05 a
-                  pedido do usuário — máximo não tinha uso e segurança duplicava
-                  conceitualmente o mínimo. Colunas seguem no DB com default 0. */}
-              <div>
-                <Label>Custo Unitário (R$)</Label>
-                <CurrencyInput value={form.unit_price} onChange={v => update('unit_price', v)} className="mt-1" />
-              </div>
-              <div>
-                <Label>Cálculo de Consumo</Label>
-                <Select value={normalizeCalculationMethod(form.calculation_method)} onValueChange={v => update('calculation_method', v as any)}>
-                  <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="weight">Por Peso (kg)</SelectItem>
-                    <SelectItem value="meter">Por Metro (m/dm²)</SelectItem>
-                    <SelectItem value="unit">Por Unidade (un/par/pc)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label>Lead Time (dias)</Label>
-                <NumberInput value={form.lead_time_days ?? 7} onChange={v => update('lead_time_days', v)} min={0} step="1" className="mt-1" />
-              </div>
-            </div>
-        </Panel>
-
-        {/* Dimensões */}
-        <Panel title="Dimensões do Material">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div>
-                <Label className="text-xs text-muted-foreground">Altura</Label>
-                <NumberInput value={plateLength} onChange={setPlateLength} min={0} step="0.1" className="mt-1" />
-              </div>
-              <div>
-                <Label className="text-xs text-muted-foreground">Largura</Label>
-                <NumberInput value={plateWidth} onChange={setPlateWidth} min={0} step="0.1" className="mt-1" />
-              </div>
-              <div>
-                <Label className="text-xs text-muted-foreground">Espessura</Label>
-                <NumberInput value={plateThickness} onChange={setPlateThickness} min={0} step="0.01" className="mt-1" />
-              </div>
-              <div>
-                <Label className="text-xs text-muted-foreground">Unidade</Label>
-                <Select value={plateUnit} onValueChange={setPlateUnit}>
-                  <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="mm">mm</SelectItem>
-                    <SelectItem value="cm">cm</SelectItem>
-                    <SelectItem value="m">m</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-        </Panel>
-
-        {/* Rendimento Técnico */}
-        <Panel
-          title={<span className="flex items-center gap-2"><Layers className="h-4 w-4 text-primary" /> Rendimento Técnico (dm²/par por numeração)</span>}
-          bodyClassName="space-y-4"
-        >
-            <p className="text-xs text-muted-foreground">
-              Consumo em dm² por par para cada numeração. Usado no cálculo de pares estimados no estoque.
-            </p>
-            <div className="flex gap-2 mb-2">
-              <Button type="button" variant={shoeCategory === 'adulto' ? 'default' : 'outline'} size="sm" onClick={() => setShoeCategory('adulto')}>
-                Adulto (34-40)
-              </Button>
-              <Button type="button" variant={shoeCategory === 'infantil' ? 'default' : 'outline'} size="sm" onClick={() => setShoeCategory('infantil')}>
-                Infantil (21-36)
-              </Button>
-            </div>
-            <div className={`grid gap-2 ${shoeCategory === 'infantil' ? 'grid-cols-8' : 'grid-cols-7'}`}>
-              {currentSizes.map(size => (
-                <div key={`yield-${size}`} className="text-center">
-                  <span className="text-xs text-muted-foreground font-medium">{size}</span>
-                  <NumberInput min={0} step="0.01" value={yieldPerSize[String(size)] || 0}
-                    onChange={v => setYieldPerSize(prev => ({ ...prev, [String(size)]: v }))}
-                    className="h-8 text-xs text-center px-1" />
+                <div>
+                  <Label>Unidade na OC</Label>
+                  <Select
+                    value={normalizePurchaseUnit(form.purchase_order_unit)}
+                    onValueChange={value => update('purchase_order_unit', value)}
+                  >
+                    <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {PURCHASE_UNITS.map(unit => <SelectItem key={unit} value={unit}>{unit}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
                 </div>
-              ))}
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="flex items-end">
-                {existingSheet
-                  ? <Badge variant="secondary" className="text-xs">Ficha existente</Badge>
-                  : Object.values(yieldPerSize).some(v => v > 0)
-                    ? <Badge variant="outline" className="text-xs text-primary border-primary/30">Nova ficha será criada</Badge>
-                    : <span className="text-xs text-muted-foreground italic">Sem ficha de componente</span>
-                }
               </div>
-            </div>
-        </Panel>
+            </Panel>
 
-        {/* Grade + consumo do solado saíram desta tela em 03/08/2026.
-            Eram dois editores paralelos do mesmo dado (sole_technical_specs e
-            sole_standard_items_consumption) e nenhum era a fonte da verdade —
-            gravavam por cima do que a tela de Solados define por MODELO. Aqui
-            fica só o atalho. */}
-        {isSolado && (
-          <Panel
-            title={<span className="flex items-center gap-2"><Footprints className="h-4 w-4 text-primary" /> Grade e Consumo do Solado</span>}
-            subtitle="Numerações e consumo por par são cadastrados por MODELO de solado — valem pra todas as cores de uma vez."
-          >
-            <Button variant="outline" className="gap-2" onClick={() => navigate('/solados')}>
-              <Footprints className="h-4 w-4" />
-              Gerenciar em Solados
-            </Button>
-          </Panel>
-        )}
-
-        {isSolado && (
-          <Panel
-            title={<span className="flex items-center gap-2"><Layers className="h-4 w-4 text-primary" /> Cadastro de Silk por Solado</span>}
-            subtitle="Artes de silk vinculadas a este solado. Podem ser diferenciadas por cliente ou grupo econômico."
-          >
-              <SoleSilkPanel
-                soleProductId={product.id}
-                soleName={stripColorFromName(product.name, product.color)}
-              />
-          </Panel>
-        )}
-
-        {/* Conversão Industrial */}
-
-        <Panel title="Conversão Industrial & Reposição">
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-              <div>
-                <Label className="text-xs text-muted-foreground">Unidade de Compra</Label>
-                <Select value={normalizePurchaseUnit(form.purchase_unit)} onValueChange={v => update('purchase_unit', v)}>
-                  <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {PURCHASE_UNITS.map(u => <SelectItem key={u} value={u}>{u === 'm' ? 'Metros' : u === 'm²' ? 'Metro quadrado (m²)' : u === 'dm²' ? 'Decímetro quadrado (dm²)' : u === 'placa' ? 'Chapa/Folha' : u === 'kg' ? 'Quilo' : u === 'rolo' ? 'Rolo' : u === 'cx' ? 'Caixa' : 'Unidade'}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+            <Panel title="Rastreabilidade">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <div>
+                  <Label>Nº do lote</Label>
+                  <Input
+                    value={form.lot_number || ''}
+                    onChange={event => update('lot_number', event.target.value || null)}
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label>Data de validade</Label>
+                  <Input
+                    type="date"
+                    value={form.expiration_date || ''}
+                    onChange={event => update('expiration_date', event.target.value || null)}
+                    className="mt-1"
+                  />
+                </div>
+                <div className="flex items-center gap-3 pt-6">
+                  <Switch
+                    id="is_chemical"
+                    checked={form.is_chemical ?? false}
+                    onCheckedChange={value => update('is_chemical', value)}
+                  />
+                  <Label htmlFor="is_chemical">Produto químico</Label>
+                </div>
               </div>
-              <div>
-                <Label className="text-xs text-muted-foreground">Unidade de Consumo</Label>
-                <Select value={normalizeProductionUnit(form.production_unit)} onValueChange={v => update('production_unit', v)}>
-                  <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {PRODUCTION_UNITS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label className="text-xs text-muted-foreground">Fator de Conversão</Label>
-                <NumberInput value={form.conversion_rate ?? 1} onChange={v => update('conversion_rate', v)} min={0.0001} step="0.01" className="mt-1" />
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  1 {normalizePurchaseUnit(form.purchase_unit)} = {form.conversion_rate ?? 1} {normalizeProductionUnit(form.production_unit)}
-                </p>
-              </div>
-              <div>
-                <Label className="text-xs text-muted-foreground">Unidade na OC</Label>
-                <Select value={normalizePurchaseUnit(form.purchase_order_unit)} onValueChange={v => update('purchase_order_unit', v)}>
-                  <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {PURCHASE_UNITS.map(u => <SelectItem key={u} value={u}>{u === 'm' ? 'Metros' : u === 'm²' ? 'Metro quadrado (m²)' : u === 'dm²' ? 'Decímetro quadrado (dm²)' : u === 'placa' ? 'Chapa' : u === 'kg' ? 'Quilo' : u === 'rolo' ? 'Rolo' : u === 'cx' ? 'Caixa' : 'Unidade'}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label className="text-xs text-muted-foreground">Lote Mínimo de Compra</Label>
-                <NumberInput value={form.min_order_quantity ?? 1} onChange={v => update('min_order_quantity', v)} min={0} step="1" className="mt-1" />
-              </div>
-            </div>
-        </Panel>
+            </Panel>
+          </TabsContent>
 
-             {/* Lote & Químico */}
-             <Panel title="Rastreabilidade">
-                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                   <div>
-                     <Label>Nº do Lote</Label>
-                     <Input value={form.lot_number || ''} onChange={e => update('lot_number', e.target.value || null)} className="mt-1" />
-                   </div>
-                   <div>
-                     <Label>Data de Validade</Label>
-                     <Input type="date" value={form.expiration_date || ''} onChange={e => update('expiration_date', e.target.value || null)} className="mt-1" />
-                   </div>
-                   <div className="flex items-center gap-3 pt-6">
-                     <Switch id="is_chemical" checked={form.is_chemical ?? false} onCheckedChange={v => update('is_chemical', v)} />
-                     <Label htmlFor="is_chemical">Produto Químico</Label>
-                   </div>
-                 </div>
-             </Panel>
-           </TabsContent>
-
-            <TabsContent value="history" className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <TabsContent value="history" className="space-y-6">
+            {perm.canEdit && (
+              <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                 <StockMovementForm product={product} type="in" />
                 <StockMovementForm product={product} type="out" />
               </div>
-              <Panel title="Histórico de Movimentações">
-                  <StockHistory filterProductId={product.id} hideHeader={true} />
-              </Panel>
-            </TabsContent>
-          </Tabs>
+            )}
+            <Panel title="Histórico de movimentações">
+              <StockHistory filterProductId={product.id} hideHeader={true} />
+            </Panel>
+          </TabsContent>
+        </Tabs>
+
+        <div className="sticky bottom-0 z-10 -mx-4 flex justify-end gap-3 border-t border-border bg-background/95 p-4 backdrop-blur-sm">
+          <Button variant="outline" onClick={() => navigate('/estoque')}>Cancelar</Button>
+          {perm.canEdit && <Button onClick={handleSave} disabled={saving} className="gap-1.5">
+            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+            Salvar alterações
+          </Button>}
+        </div>
+      </div>
+
+      {form.image_url && (
+        <Dialog open={zoomOpen} onOpenChange={setZoomOpen}>
+          <DialogContent className="max-w-3xl bg-background/95 p-2 backdrop-blur-sm">
+            <button
+              type="button"
+              className="absolute right-2 top-2 z-10 rounded-full bg-background/80 p-1.5 transition-colors hover:bg-muted"
+              onClick={() => setZoomOpen(false)}
+              aria-label="Fechar imagem ampliada"
+            >
+              <X className="h-4 w-4" />
+            </button>
+            <div className="flex min-h-[300px] items-center justify-center">
+              <img src={form.image_url} alt={form.name || product.name} className="max-h-[80vh] max-w-full rounded-lg object-contain" />
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {perm.canEdit && canManageVariants && (
+        <MasterVariantDialog
+          open={variantDialogOpen}
+          onOpenChange={open => {
+            setVariantDialogOpen(open);
+            if (!open) {
+              qc.invalidateQueries({ queryKey: ['product-detail', product.id] });
+            }
+          }}
+          baseName={variantBaseName}
+          variants={groupVariants}
+          onEditVariant={variant => {
+            setVariantDialogOpen(false);
+            if (variant.id !== product.id) navigate('/estoque/' + variant.id);
+          }}
+          onDeleteVariant={variantId => {
+            if (variantId === product.id) {
+              setVariantDialogOpen(false);
+              forceDeleteFlow.tryDelete(variantId);
+              return;
+            }
+            variantDeleteFlow.tryDelete(variantId);
+          }}
+        />
+      )}
+      {forceDeleteFlow.dialog}
+      {variantDeleteFlow.dialog}
+    </AppLayout>
+  );
+}
  
-         {/* Bottom save bar */}
-         <div className="sticky bottom-0 bg-background/95 backdrop-blur-sm border-t p-4 -mx-4 flex justify-end gap-3">
-           <Button variant="outline" onClick={() => navigate('/estoque')}>Cancelar</Button>
-           <Button onClick={handleSave} disabled={saving} className="gap-1.5">
-             {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-             Salvar Alterações
-           </Button>
-         </div>
-       </div>
- 
-       {/* Zoom dialog */}
-       {product.image_url && (
-         <Dialog open={zoomOpen} onOpenChange={setZoomOpen}>
-           <DialogContent className="max-w-3xl p-2 bg-background/95 backdrop-blur-sm">
-             <button className="absolute top-2 right-2 z-10 rounded-full bg-background/80 p-1.5 hover:bg-muted transition-colors" onClick={() => setZoomOpen(false)}>
-               <X className="h-4 w-4" />
-             </button>
-             <div className="flex items-center justify-center min-h-[300px]">
-               <img src={product.image_url} alt={product.name} className="max-w-full max-h-[80vh] object-contain rounded-lg" />
-             </div>
-           </DialogContent>
-         </Dialog>
-       )}
-       {forceDeleteFlow.dialog}
-     </AppLayout>
-   );
- }
- 
- function StockMovementForm({ product, type }: { product: Product, type: 'in' | 'out' }) {
+function StockMovementForm({ product, type }: { product: Product, type: 'in' | 'out' }) {
    const qc = useQueryClient();
    const { data: profile } = useCurrentProfile();
    const [quantity, setQuantity] = useState(0);
@@ -848,6 +1321,8 @@ export default function ProductDetail() {
        // products.quantity — qualquer débito de OP que tivesse acontecido no
        // meio-tempo era apagado sem erro nenhum. A RPC lê sob FOR UPDATE e
        // ainda barra saída avulsa que comeria material reservado pra OP.
+       // RPC posterior à última geração dos tipos do Supabase.
+       // eslint-disable-next-line @typescript-eslint/no-explicit-any
        const { data, error: rpcErr } = await (supabase as any).rpc('move_stock_delta', {
          p_product_id: product.id,
          p_type: type,
@@ -878,8 +1353,8 @@ export default function ProductDetail() {
        setDescription('');
        qc.invalidateQueries({ queryKey: ['product-detail', product.id] });
        qc.invalidateQueries({ queryKey: ['stock_movements'] });
-     } catch (error: any) {
-       toast.error(`Erro: ${error.message}`);
+     } catch (error) {
+       toast.error(`Erro: ${error instanceof Error ? error.message : 'Falha ao registrar movimentação'}`);
      } finally {
        setLoading(false);
      }

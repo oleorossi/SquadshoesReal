@@ -23,10 +23,12 @@ linhas sintéticas em `product_groups`, preservando todos os motores que hoje le
 ## Scope
 
 ### In scope (v1)
-- Árvore de 3 níveis **Setor → Família → Grupo** na tela `Grupos` (`/grupos`).
+- Árvore de 3 níveis **Setor → Família → Grupo** em `Estoque → Organização`
+  (`/estoque?tab=organization`), preservando `/grupos` como deep link.
 - **Setor = nó-raiz renderizado** a partir da coluna `sector` (9 valores). Sem linha física.
-- **Família** = grupo container (`parent_group_id IS NULL` com filhos); **Grupo-folha** =
-  grupo sem filhos (recebe itens). Família é **opcional** e **nunca recebe itens diretos**.
+- **Família** = grupo container explícito (`is_family = true`, `parent_group_id IS NULL`);
+  **Grupo-folha** = `is_family = false` e sem filhos (recebe itens). Família é **opcional**,
+  pode existir vazia e **nunca recebe itens diretos**.
 - **Métricas inline** por nível na árvore + **painel de detalhe expansível** por grupo (ambos):
   - Nº de itens, Valor em R$ (`Σ quantity × custo`), contagem "abaixo do mínimo".
   - Barra **Reservado (vermelho) vs Disponível/livre (verde)** — **só no nível Grupo**.
@@ -41,7 +43,8 @@ linhas sintéticas em `product_groups`, preservando todos os motores que hoje le
 - Auto-criação automática de famílias por heurística sem confirmação (Opção B de backfill).
 - Mais de 3 níveis (nenhuma família dentro de família).
 - Redesenhar os motores de consumo/MRP/débito/embalagem — só **leem** grupos; não mudam.
-- Gestão de cores no grupo (já migrou pra products/variants — não reintroduzir).
+- Alterar os motores de consumo por causa da hierarquia; a gestão visual das variantes
+  continua gravando a cor real somente em `products.color`.
 - Alterar a lista de 9 setores ou a semântica do cascade `sector → products.category`.
 
 ## Requirements
@@ -52,15 +55,16 @@ Numerados e testáveis. Cada um é um "must".
    (opcional) → Grupo. Grupos soltos aparecem direto sob o Setor.
 2. O Setor-raiz é derivado da coluna `product_groups.sector`; **nenhuma linha nova** é criada
    em `product_groups` para representar setores.
-3. Uma Família é um `product_groups` com `parent_group_id IS NULL` **que tem filhos**. Um
-   Grupo-folha é um `product_groups` **sem filhos**. A UI rotula cada nó (`família · container`
-   vs `grupo-folha`) a partir da contagem de filhos.
+3. Uma Família é um `product_groups` com `is_family = true` e `parent_group_id IS NULL`,
+   mesmo quando ainda não possui filhos. Um Grupo-folha tem `is_family = false` e não possui
+   filhos. A UI rotula cada nó (`família · container` vs `grupo-folha`) por essa identidade
+   explícita, mantendo a contagem de filhos como compatibilidade para legado.
 4. **Invariante container**: um grupo que tem filhos **não pode ter itens** (`products.group_id`
    apontando pra ele), e um grupo que tem itens **não pode receber filhos**. Enforçado na UI e
    no banco (trigger/constraint) — a violação retorna erro claro, nunca grava.
 5. Uma Família só pode conter Grupos do **mesmo setor** (o filho herda/segue o setor da mãe).
-   Vincular um grupo de setor diferente a uma família ou é bloqueado ou move o grupo para o
-   setor da família (comportamento definido: **move + avisa cascade**).
+   Vincular um grupo de setor diferente é **bloqueado**; o usuário primeiro move o grupo de
+   setor, confirma o aviso de cascade e depois faz o vínculo.
 6. Não é permitido aninhar Família dentro de Família (profundidade máx. = Grupo). A UI não
    oferece famílias como pai de outra família.
 7. Desvincular um Grupo de sua Família **não apaga** o grupo: ele volta a ser "grupo solto"
@@ -82,12 +86,14 @@ Numerados e testáveis. Cada um é um "must".
 
 **Edição (skin B1)**
 13. Existe uma tela de **edição de Grupo-folha** com abas condicionais ao tipo:
-    - **Geral** (nome, descrição, Setor por chip, flags do material, campos "aplicar a todos os
-      itens": custo/local/múltiplo de compra/unidade de consumo).
+    - **Geral** (nome, descrição, comportamento de cor, tipo linha/coleção, unidade de consumo
+      e acesso explícito à aplicação em lote de custo/local/reposição).
     - **Hierarquia** (Família pai opcional; mostra que é grupo-folha).
     - **Dimensões** — só material de **área**; largura obrigatória com **prévia da conversão
       dm²→metro**.
-    - **Embalagem** — só **solado**; 4 tipos de caixa + pares/caixa.
+    - **Embalagem** — só **solado**; aponta para o cadastro canônico em Embalagens, sem criar
+      uma segunda porta de gravação.
+    - **Cores** — catálogo, duplicidades/variações próximas, saldo por variante e criação em lote.
     - **Itens** — tabela dos produtos do grupo + adicionar/remover.
 14. Existe uma tela de **edição de Família** com: Geral (nome, descrição, Setor com aviso de
     cascade) e **Subgrupos** (vincular grupo existente / novo subgrupo / desvincular). Deixa
@@ -119,11 +125,11 @@ Numerados e testáveis. Cada um é um "must".
 
 ## Data model / Domain
 
-Tabela central: **`product_groups`** (sem colunas novas obrigatórias; reusar o que existe).
+Tabela central: **`product_groups`**.
 - Chaves do modelo: `id`, `name` (único ci global), `sector` (CHECK nos 9 valores),
-  `parent_group_id` (FK self, `ON DELETE SET NULL`), `description`.
-- Tipo derivado (não é coluna): **Família** ⇔ `EXISTS(SELECT 1 FROM product_groups c WHERE
-  c.parent_group_id = g.id)`; **Grupo-folha** ⇔ sem filhos.
+  `parent_group_id` (FK self, `ON DELETE SET NULL`), `description`, `is_family`.
+- Tipo explícito: **Família** ⇔ `is_family = true`; **Grupo-folha** ⇔ `is_family = false`
+  e sem filhos. O backfill marca como família toda raiz que já possuía filhos.
 - Campos por tipo já existentes (visibilidade das abas): `dimensions_width/length/thickness/unit`
   (área), `box_type_*_id` + `pairs_per_box_*` (solado), flags `is_bom_color_source`,
   `is_color_agnostic`, `shared_specs`, `auto_component_sheet`, `is_artisanal_strap`,
@@ -142,8 +148,8 @@ Produtos: **`products`**
 - Por Família/Setor: soma dos grupos descendentes de nº itens, valor R$ e alertas de mínimo.
 
 **Migração implicada:**
-- Trigger/constraint novo para o **invariante container** (req. 4) e para **família mono-setor**
-  (req. 5). Não destrutivo.
+- Coluna `is_family` + triggers para o **invariante container**, identidade explícita e
+  **família mono-setor** (req. 4–5). Não destrutivo.
 - **Nenhum** backfill que mova grupos automaticamente (req. do backfill = Opção A).
 - Função de leitura para o **relatório de sugestões** (req. 20) — read-only, não aplica nada.
 
@@ -155,7 +161,7 @@ Produtos: **`products`**
 3. Clica **"Nova família"** no setor → cria **NAPAS** (CAIXA ALTA, setor CABEDAL herdado).
 4. Seleciona NAPA SANTORINE + NAPA PU → **mover em massa** para a família NAPAS.
 5. A árvore passa a mostrar `CABEDAL › NAPAS › (NAPA SANTORINE, NAPA PU)` com rollup de itens/R$.
-6. Abre NAPA SANTORINE, aba **Dimensões**, cadastra a **largura (140mm)** → prévia dm²→m aparece.
+6. Abre NAPA SANTORINE, aba **Dimensões**, cadastra a **largura (1370 mm)** → prévia dm²→m aparece.
 7. Na lista, o grupo mostra a barra reservado/livre; um item abaixo do mínimo acende o alerta.
 
 ### Sugestão opt-in
@@ -175,8 +181,8 @@ Produtos: **`products`**
   direto; escolha um grupo-folha". (req. 4)
 - **Vincular filho a um grupo que já tem itens** → bloqueado ("este grupo tem itens; esvazie ou
   escolha outro pai"). (req. 4)
-- **Mover grupo para família de outro setor** → move o grupo para o setor da família e avisa que
-  reclassifica os itens (cascade). (req. 5)
+- **Mover grupo para família de outro setor** → vínculo bloqueado; a mudança de setor precisa
+  ser salva e confirmada antes, com aviso da reclassificação dos itens. (req. 5)
 - **Unidades mistas num grupo** → a barra reservado/livre mostra "—" com tooltip explicando que
   o grupo tem unidades diferentes; valor R$ continua válido.
 - **Grupo sem itens** → nº itens 0, valor R$ 0, sem barra; não é erro.
@@ -214,10 +220,10 @@ Produtos: **`products`**
   - Unicidade de nome é **global** case-insensitive (não por setor), reusando o índice existente.
   - Toggles "ligado" = verde (estado positivo), não vermelho.
 
-## Open questions
-- Read model do rollup: **view** vs **RPC** — decidir na implementação (perf com muitos itens).
-- Enforcement do invariante container: **constraint** vs **trigger** — decidir na implementação
-  (trigger permite mensagem em PT-BR mais clara).
+## Decisões de implementação
+- Read model do rollup: RPC `get_group_stock_rollups`, agregado no cliente para Família/Setor.
+- Invariantes de container, profundidade e mono-setor: triggers com mensagens em PT-BR.
+- Dimensões: RPC transacional sincroniza o grupo e uma `component_sheet` por item atual.
 
 ## Definition of Done
 Checklist verificável item a item.
@@ -228,7 +234,8 @@ Checklist verificável item a item.
       ('CABEDAL','SOLADO',…)` continua 0; nenhuma linha sintética criada. (req. 2)
 - [ ] **Família container** — tentar adicionar item a uma família retorna erro e não grava;
       tentar dar filho a um grupo com itens idem. (req. 4)
-- [ ] **Mono-setor** — vincular grupo de outro setor a uma família move-o + avisa cascade. (req. 5)
+- [ ] **Mono-setor** — vincular grupo de outro setor é bloqueado; mover o setor antes mostra o
+      aviso de cascade e reclassifica os itens. (req. 5)
 - [ ] **Desvincular preserva** — desvincular um subgrupo o transforma em solto (não apaga,
       `sector` mantém, `parent_group_id` nulo). (req. 7)
 - [ ] **Métricas inline no Grupo** — cada grupo mostra nº itens, valor R$ e barra reservado/livre
@@ -260,4 +267,4 @@ Checklist verificável item a item.
       cores hardcoded; `check:tokens` limpo) e responsivo em 360px.
 - [ ] **Sem regressão nos motores** — consumo/MRP/débito de embalagem/variantes continuam
       funcionando (nenhuma leitura de `product_groups` quebrou).
-- [ ] **Typecheck** — `bunx tsc -p tsconfig.app.json --noEmit` limpo; `npm run build` passa.
+- [ ] **Typecheck** — `bunx tsc -p tsconfig.app.json --noEmit` limpo; `bun run build` passa.

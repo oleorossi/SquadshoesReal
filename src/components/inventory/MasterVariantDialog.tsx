@@ -11,6 +11,7 @@ import { NumberInput } from '@/components/ui/number-input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -21,7 +22,7 @@ import GroupDialog from '@/components/groups/GroupDialog';
 import { BulkApplyPreview, buildBulkImpact, type BulkImpact } from './BulkApplyPreview';
 
  import { Plus, PencilSimple as Pencil, FloppyDisk as Save, CircleNotch as Loader2, X, Image as ImageIcon, Package, Stack as Layers, Gear as SettingsIcon, ArrowsLeftRight as ArrowRightLeft } from '@phosphor-icons/react';
-import { Product, ProductFormData, CATEGORIES, UNITS, LOCATIONS } from '@/types/inventory';
+import { Product, ProductFormData, UNITS, LOCATIONS } from '@/types/inventory';
 import { useAddProduct, useProducts } from '@/hooks/useProducts';
 import { findDuplicate, type DuplicateHit } from '@/lib/duplicateDetection';
 import { adjustStockSafe } from '@/lib/stockAdjustments';
@@ -33,6 +34,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { toast } from 'sonner';
 import { SoleSizeConjugationsEditor } from './SoleSizeConjugationsEditor';
+import { ColorsMultiSelect } from '@/components/references/ColorsMultiSelect';
+import { sectorOfGroup } from '@/lib/categoryFromGroup';
 
 const ALL_SIZES = Array.from({ length: 22 }, (_, i) => 20 + i); // 20–41
 const CALC_METHODS: Array<'weight' | 'meter' | 'unit'> = ['weight', 'meter', 'unit'];
@@ -377,7 +380,7 @@ interface MasterVariantDialogProps {
  *  `purchase_multiple` saíram daqui em 02/08/2026: moram em `product_groups` e
  *  agora têm porta única no GroupEditDialog (spec R2.11 / R3.3). */
 const BULK_FIELDS = [
-  'technical_name', 'category', 'group_id', 'supplier_id',
+  'technical_name', 'group_id', 'supplier_id',
   'yield_per_meter', 'yield_unit',
   'purchase_unit', 'production_unit', 'conversion_rate', 'purchase_order_unit',
   'lead_time_days', 'unit_price', 'price_wholesale', 'price_retail',
@@ -388,7 +391,6 @@ type BulkField = (typeof BULK_FIELDS)[number];
 
 const BULK_LABELS: Record<BulkField, string> = {
   technical_name: 'Nome técnico',
-  category: 'Categoria',
   group_id: 'Grupo de produtos',
   supplier_id: 'Fornecedor padrão',
   yield_per_meter: 'Rendimento por metro',
@@ -479,6 +481,7 @@ export function MasterVariantDialog({
   initialTab = 'variants',
 }: MasterVariantDialogProps) {
   const [activeTab, setActiveTab] = useState<'variants' | 'group' | 'add'>(initialTab);
+  const [selectedBulkIds, setSelectedBulkIds] = useState<Set<string>>(new Set());
 
   // ── add new variant
   const [newColor, setNewColor] = useState('');
@@ -518,7 +521,6 @@ export function MasterVariantDialog({
   // campo divergente nasce, e campo não preenchido nunca entra no payload.
   type GroupForm = {
     technical_name: string | null;
-    category: string | null;
     group_id: string | null;
     supplier_id: string | null;
     yield_per_meter: number | null;
@@ -553,6 +555,16 @@ export function MasterVariantDialog({
   const [previewOpen, setPreviewOpen] = useState(false);
 
   const divergence = useMemo(() => computeDivergence(variants), [variants]);
+  const bulkVariants = useMemo(
+    () => variants.filter((variant) => selectedBulkIds.has(variant.id)),
+    [selectedBulkIds, variants],
+  );
+  const bulkStockUnits = useMemo(
+    () => Array.from(new Set(bulkVariants.map((variant) => variant.unit).filter(Boolean))),
+    [bulkVariants],
+  );
+  const singleBulkStockUnit = bulkStockUnits.length === 1 ? bulkStockUnits[0] : '';
+  const bulkUnitLabel = singleBulkStockUnit || (bulkVariants.length > 0 ? 'unidades mistas' : 'un');
   const [openGroupEditor, setOpenGroupEditor] = useState(false);
   const groupOfVariants = useMemo(
     () => groups.find((g: any) => g.id === variants[0]?.group_id) ?? null,
@@ -563,9 +575,8 @@ export function MasterVariantDialog({
    *  Com o fator travado, o campo não aceita o 0 que zeraria consumo (R2.13). */
   const conversionTravada = useMemo(() => {
     const compra = groupForm?.purchase_unit ?? variants[0]?.purchase_unit ?? '';
-    const estoque = variants[0]?.unit ?? '';
-    return !!compra && compra === estoque;
-  }, [groupForm?.purchase_unit, variants]);
+    return !!compra && !!singleBulkStockUnit && compra === singleBulkStockUnit;
+  }, [groupForm?.purchase_unit, singleBulkStockUnit, variants]);
 
   useEffect(() => {
     if (conversionTravada && groupForm && groupForm.conversion_rate !== 1) {
@@ -585,6 +596,7 @@ export function MasterVariantDialog({
       setActiveGradeTab(variants[0].id);
       setRangeChanges({});
       setActiveTab(initialTab);
+      setSelectedBulkIds(new Set(variants.map((variant) => variant.id)));
       setDirty(new Set());
       const t = variants[0];
       const div = computeDivergence(variants);
@@ -593,7 +605,6 @@ export function MasterVariantDialog({
       const comum = <T,>(f: BulkField, valor: T): T | null => (div[f].divergente ? null : valor);
       setGroupForm({
         technical_name: comum('technical_name', t.technical_name || ''),
-        category: comum('category', t.category || ''),
         group_id: comum('group_id', t.group_id || null),
         supplier_id: comum('supplier_id', t.supplier_id || null),
         yield_per_meter: comum('yield_per_meter', Number(t.yield_per_meter) || 0),
@@ -632,8 +643,8 @@ export function MasterVariantDialog({
   const impacto = useMemo<BulkImpact[]>(() => {
     if (!groupForm) return [];
     const diff = Object.fromEntries(camposAlterados.map(f => [f, (groupForm as any)[f]]));
-    return buildBulkImpact(diff, BULK_LABELS, variants, (v, campo) => (v as any)[campo], v => v.color || v.sku);
-  }, [camposAlterados, groupForm, variants]);
+    return buildBulkImpact(diff, BULK_LABELS, bulkVariants, (v, campo) => (v as any)[campo], v => v.color || v.sku);
+  }, [bulkVariants, camposAlterados, groupForm]);
 
   const formatCurrency = (value: number) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 4 }).format(value);
@@ -658,7 +669,7 @@ export function MasterVariantDialog({
       name: nomeHerdado,
       technical_name: template.technical_name || '',
       sku: newSku.trim(),
-      category: template.category || '',
+      category: sectorOfGroup(groupOfVariants) || template.category || '',
       color: newColor.trim(),
       quantity: 0,
       min_stock: template.min_stock ?? 0,
@@ -671,11 +682,11 @@ export function MasterVariantDialog({
       image_url: '',
       yield_per_meter: template.yield_per_meter ?? null,
       yield_unit: template.yield_unit || 'dm²',
-      dimensions_length: template.dimensions_length ?? 0,
-      dimensions_width: template.dimensions_width ?? 0,
+      dimensions_length: groupOfVariants?.dimensions_length ?? template.dimensions_length ?? 0,
+      dimensions_width: groupOfVariants?.dimensions_width ?? template.dimensions_width ?? 0,
       dimensions_height: template.dimensions_height ?? 0,
-      dimensions_thickness: template.dimensions_thickness ?? 0,
-      dimensions_unit: template.dimensions_unit || 'mm',
+      dimensions_thickness: groupOfVariants?.dimensions_thickness ?? template.dimensions_thickness ?? 0,
+      dimensions_unit: groupOfVariants?.dimensions_unit || template.dimensions_unit || 'mm',
       purchase_unit: template.purchase_unit || 'un',
       production_unit: template.production_unit || 'un',
       conversion_rate: template.conversion_rate ?? 1,
@@ -704,13 +715,29 @@ export function MasterVariantDialog({
       toast.info('Nenhuma alteração para aplicar');
       return;
     }
+    if (bulkVariants.length === 0) {
+      toast.error('Selecione ao menos uma variante para aplicar as alterações');
+      return;
+    }
+
+    if (bulkStockUnits.length > 1 && (dirty.has('purchase_unit') || dirty.has('conversion_rate'))) {
+      toast.error('As variantes selecionadas usam unidades de estoque diferentes. Separe a aplicação por unidade antes de alterar compra ou conversão.');
+      return;
+    }
+    if (
+      dirty.has('conversion_rate')
+      && (groupForm.conversion_rate ?? 0) !== 1
+      && bulkVariants.some((variant) => (
+        dirty.has('purchase_unit') ? groupForm.purchase_unit : variant.purchase_unit
+      ) === variant.unit)
+    ) {
+      toast.error('Quando a unidade de compra é igual à unidade de estoque, a taxa de conversão precisa ser 1.');
+      return;
+    }
 
     // ─── Validações de consistência ───────────────────────────────────
     // Só validam campo que o usuário mexeu — campo intocado mantém o valor
     // próprio de cada cor e não precisa passar por aqui.
-    if (dirty.has('category') && !(groupForm.category || '').trim()) {
-      toast.error('Categoria é obrigatória'); return;
-    }
     if (dirty.has('conversion_rate') && (groupForm.conversion_rate ?? 0) <= 0) {
       toast.error('Taxa de conversão deve ser maior que 0 — caso contrário o cálculo de consumo quebra');
       return;
@@ -764,6 +791,11 @@ export function MasterVariantDialog({
       }
       if (payload.conversion_rate != null) payload.conversion_rate = safeNum(payload.conversion_rate, 1) || 1;
       if (payload.yield_per_meter != null) payload.yield_per_meter = safeNum(payload.yield_per_meter) || null;
+      // Mesmo se o usuário confirmar antes do effect visual rodar, a borda de
+      // persistência mantém compra=estoque ⇒ fator 1 para a seleção efetiva.
+      if (payload.purchase_unit && singleBulkStockUnit && payload.purchase_unit === singleBulkStockUnit) {
+        payload.conversion_rate = 1;
+      }
 
       // UMA declaração pra todas as cores. Antes era um UPDATE por variante num
       // laço sequencial: agora que o payload é idêntico (o `name` saiu), o laço
@@ -773,7 +805,7 @@ export function MasterVariantDialog({
       const { error } = await supabase
         .from('products')
         .update(payload)
-        .in('id', variants.map(v => v.id));
+        .in('id', bulkVariants.map(v => v.id));
       if (error) throw new Error(error.message);
       queryClient.invalidateQueries({ queryKey: ['products'] });
       // Invalida caches dependentes — fichas técnicas, BOM, consumo
@@ -781,7 +813,7 @@ export function MasterVariantDialog({
       queryClient.invalidateQueries({ queryKey: ['order-consumption'] });
       queryClient.invalidateQueries({ queryKey: ['sole_standard_items'] });
       toast.success(
-        `${camposAlterados.length} campo${camposAlterados.length === 1 ? '' : 's'} aplicado${camposAlterados.length === 1 ? '' : 's'} a ${variants.length} cor${variants.length === 1 ? '' : 'es'}`,
+        `${camposAlterados.length} campo${camposAlterados.length === 1 ? '' : 's'} aplicado${camposAlterados.length === 1 ? '' : 's'} a ${bulkVariants.length} cor${bulkVariants.length === 1 ? '' : 'es'}`,
       );
       setDirty(new Set());
       setPreviewOpen(false);
@@ -882,7 +914,7 @@ export function MasterVariantDialog({
               <TabsTrigger value="variants" className="gap-1.5"><Layers className="h-3.5 w-3.5" /> Variantes</TabsTrigger>
               {/* "Dados do Grupo" era enganoso: esta aba nunca tocou
                   `product_groups` — grava nos PRODUTOS, todos de uma vez (R2.4). */}
-              <TabsTrigger value="group" className="gap-1.5"><SettingsIcon className="h-3.5 w-3.5" /> Aplicar a todas as cores</TabsTrigger>
+              <TabsTrigger value="group" className="gap-1.5"><SettingsIcon className="h-3.5 w-3.5" /> Aplicar em lote</TabsTrigger>
               <TabsTrigger value="add" className="gap-1.5"><Plus className="h-3.5 w-3.5" /> Adicionar</TabsTrigger>
             </TabsList>
 
@@ -1040,8 +1072,42 @@ export function MasterVariantDialog({
                 <div className="flex flex-col space-y-4">
                   <div className="overflow-y-auto pr-2 sm:pr-4 max-h-[calc(92vh-260px)]">
                     <div className="space-y-6 pb-32 sm:pb-8">
+                      <section className="border border-foreground/20 bg-muted/20 p-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div>
+                            <p className="text-xs font-semibold">Variantes que receberão a alteração</p>
+                            <p className="mt-0.5 text-[10px] text-muted-foreground">{bulkVariants.length} de {variants.length} selecionada(s)</p>
+                          </div>
+                          <div className="flex gap-1">
+                            <Button type="button" size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setSelectedBulkIds(new Set(variants.map((variant) => variant.id)))}>Selecionar todas</Button>
+                            <Button type="button" size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setSelectedBulkIds(new Set())}>Limpar</Button>
+                          </div>
+                        </div>
+                        <div className="mt-3 grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
+                          {variants.map((variant) => {
+                            const selected = selectedBulkIds.has(variant.id);
+                            return (
+                              <label key={variant.id} className={`flex cursor-pointer items-center gap-2 border px-2.5 py-2 ${selected ? 'border-primary bg-primary/5' : 'border-foreground/15 bg-background'}`}>
+                                <Checkbox
+                                  checked={selected}
+                                  onCheckedChange={() => setSelectedBulkIds((current) => {
+                                    const next = new Set(current);
+                                    if (next.has(variant.id)) next.delete(variant.id); else next.add(variant.id);
+                                    return next;
+                                  })}
+                                />
+                                <span className="min-w-0">
+                                  <span className="block truncate text-xs font-semibold">{variant.color || 'Sem cor'}</span>
+                                  <span className="block truncate font-mono text-[9px] text-muted-foreground">{variant.sku}</span>
+                                </span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </section>
+
                       <div className="rounded-md border-l-4 border-l-primary bg-primary/5 p-3 text-xs text-muted-foreground">
-                        Preencha só o que deve valer para <strong>todas as {variants.length} cor{variants.length === 1 ? '' : 'es'}</strong>.
+                        Preencha só o que deve valer para <strong>as {bulkVariants.length} cor{bulkVariants.length === 1 ? '' : 'es'} selecionadas</strong>.
                         Campo deixado <strong>vazio não é gravado</strong> — cada cor mantém o valor próprio.
                         O nome dos produtos nunca é alterado aqui.
                       </div>
@@ -1056,11 +1122,11 @@ export function MasterVariantDialog({
                             <Input value={groupForm.technical_name ?? ''} onChange={e => updateGroup('technical_name', e.target.value)} className="mt-1 h-9" placeholder={divergence.technical_name.divergente ? 'Manter valor de cada cor' : ''} />
                           </div>
                           <div>
-                            <BulkLabel field="category" divergence={divergence}>Categoria</BulkLabel>
-                            <Select value={groupForm.category ?? ''} onValueChange={v => updateGroup('category', v)}>
-                              <SelectTrigger className="mt-1 h-9"><SelectValue placeholder="Manter valor de cada cor" /></SelectTrigger>
-                              <SelectContent>{CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
-                            </Select>
+                            <Label className="text-xs">Setor / aplicação</Label>
+                            <div className="mt-1 flex h-9 items-center border border-foreground/15 bg-muted/20 px-3 text-xs font-semibold">
+                              {sectorOfGroup(groupOfVariants) || 'Defina o grupo primeiro'}
+                            </div>
+                            <p className="mt-1 text-[10px] text-muted-foreground">Herdado do grupo; não varia por cor.</p>
                           </div>
                           <div>
                             <BulkLabel field="group_id" divergence={divergence}>Grupo de produtos</BulkLabel>
@@ -1068,7 +1134,7 @@ export function MasterVariantDialog({
                               <SelectTrigger className="mt-1 h-9"><SelectValue placeholder="Manter valor de cada cor" /></SelectTrigger>
                               <SelectContent>
                                 <SelectItem value={LIMPAR}>— Sem grupo —</SelectItem>
-                                {groups.map((g: any) => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}
+                                {groups.filter((group) => group.is_family !== true && !groups.some((candidate) => candidate.parent_group_id === group.id)).map((g: any) => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}
                               </SelectContent>
                             </Select>
                           </div>
@@ -1089,7 +1155,7 @@ export function MasterVariantDialog({
                         <h4 className="text-xs font-semibold uppercase text-muted-foreground tracking-wide">Preços Base</h4>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                           <div>
-                            <BulkLabel field="unit_price" divergence={divergence}>Custo unitário (R$ por {template?.unit || 'un'})</BulkLabel>
+                            <BulkLabel field="unit_price" divergence={divergence}>Custo unitário (R$ por {bulkUnitLabel})</BulkLabel>
                             <NumberInput value={groupForm.unit_price ?? undefined} onChange={v => updateGroup('unit_price', v)} step="0.0001" className="mt-1 h-9" />
                           </div>
                           <div>
@@ -1107,15 +1173,15 @@ export function MasterVariantDialog({
                         <h4 className="text-xs font-semibold uppercase text-muted-foreground tracking-wide">Estoque &amp; Localização</h4>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                           <div>
-                            <BulkLabel field="min_stock" divergence={divergence}>Estoque mínimo ({template?.unit || 'un'})</BulkLabel>
+                            <BulkLabel field="min_stock" divergence={divergence}>Estoque mínimo ({bulkUnitLabel})</BulkLabel>
                             <NumberInput value={groupForm.min_stock ?? undefined} onChange={v => updateGroup('min_stock', v)} className="mt-1 h-9" />
                           </div>
                           <div>
-                            <BulkLabel field="max_stock" divergence={divergence}>Estoque máximo ({template?.unit || 'un'})</BulkLabel>
+                            <BulkLabel field="max_stock" divergence={divergence}>Estoque máximo ({bulkUnitLabel})</BulkLabel>
                             <NumberInput value={groupForm.max_stock ?? undefined} onChange={v => updateGroup('max_stock', v)} className="mt-1 h-9" />
                           </div>
                           <div>
-                            <BulkLabel field="safety_stock" divergence={divergence}>Segurança ({template?.unit || 'un'})</BulkLabel>
+                            <BulkLabel field="safety_stock" divergence={divergence}>Segurança ({bulkUnitLabel})</BulkLabel>
                             <NumberInput value={groupForm.safety_stock ?? undefined} onChange={v => updateGroup('safety_stock', v)} className="mt-1 h-9" />
                           </div>
                           <div className="col-span-full">
@@ -1221,7 +1287,7 @@ export function MasterVariantDialog({
                       <section className="flex items-center justify-between rounded-md border px-3 py-2">
                         <div>
                           <BulkLabel field="active" divergence={divergence}>Status ativo</BulkLabel>
-                          <p className="text-xs text-muted-foreground">Desativar remove todas as cores de novos pedidos.</p>
+                          <p className="text-xs text-muted-foreground">Desativar remove as cores selecionadas de novos pedidos.</p>
                         </div>
                         <Switch checked={groupForm.active ?? false} onCheckedChange={v => updateGroup('active', v)} />
                       </section>
@@ -1235,7 +1301,7 @@ export function MasterVariantDialog({
                         : `${camposAlterados.length} campo${camposAlterados.length === 1 ? '' : 's'} para aplicar`}
                     </span>
                     <Button variant="ghost" onClick={() => setActiveTab('variants')} disabled={savingGroup}>Cancelar</Button>
-                    <Button onClick={handleSaveGroupForm} disabled={savingGroup || camposAlterados.length === 0} className="gap-1 min-w-[200px]">
+                    <Button onClick={handleSaveGroupForm} disabled={savingGroup || camposAlterados.length === 0 || bulkVariants.length === 0} className="gap-1 min-w-[200px]">
                       {savingGroup ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                       Revisar e aplicar
                     </Button>
@@ -1253,8 +1319,17 @@ export function MasterVariantDialog({
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <Label htmlFor="new-color" className="text-xs">Cor *</Label>
-                    <Input id="new-color" value={newColor} onChange={e => { setNewColor(e.target.value); setDupAddConfirmado(false); setDupAddVariant(null); }}
-                      placeholder="Ex: Preto, Caramelo" className="mt-1 h-9" />
+                    <ColorsMultiSelect
+                      value={newColor}
+                      onChange={(value) => {
+                        const selected = value.split(',').map((color) => color.trim()).filter(Boolean);
+                        setNewColor(selected[selected.length - 1] || '');
+                        setDupAddConfirmado(false);
+                        setDupAddVariant(null);
+                      }}
+                      excluded={variants.map((variant) => variant.color || '')}
+                      placeholder="Buscar cor no catálogo…"
+                    />
                   </div>
                   <div>
                     <Label htmlFor="new-sku" className="text-xs">SKU *</Label>
@@ -1296,7 +1371,7 @@ export function MasterVariantDialog({
           <AlertDialogHeader>
             <AlertDialogTitle>Alterar unidade de compra/produção?</AlertDialogTitle>
             <AlertDialogDescription>
-              Isso afeta o cálculo de consumo de TODAS as referências que usam estas variantes.
+              Isso afeta o cálculo de consumo das referências que usam as {bulkVariants.length} variantes selecionadas.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1315,7 +1390,7 @@ export function MasterVariantDialog({
         <AlertDialogContent className="max-w-lg">
           <AlertDialogHeader>
             <AlertDialogTitle>
-              Aplicar {camposAlterados.length} campo{camposAlterados.length === 1 ? '' : 's'} a {variants.length} cor{variants.length === 1 ? '' : 'es'}?
+              Aplicar {camposAlterados.length} campo{camposAlterados.length === 1 ? '' : 's'} a {bulkVariants.length} cor{bulkVariants.length === 1 ? '' : 'es'}?
             </AlertDialogTitle>
             <AlertDialogDescription>
               Os nomes dos produtos não são alterados. Campos não preenchidos ficam como estão.

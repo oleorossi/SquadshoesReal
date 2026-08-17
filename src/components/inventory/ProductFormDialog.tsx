@@ -216,7 +216,7 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
     const parentIds = new Set<string>();
     for (const g of allGroups) if (g.parent_group_id) parentIds.add(g.parent_group_id as string);
     const byId = new Map(allGroups.map(g => [g.id, g] as const));
-    const leaves = groups.filter(g => !parentIds.has(g.id));
+    const leaves = groups.filter(g => !g.is_family && !parentIds.has(g.id));
     const bucket = new Map<string, { g: (typeof leaves)[number]; label: string }[]>();
     for (const g of leaves) {
       const sec = (g.sector as string) || sectorOfGroup(g) || '—';

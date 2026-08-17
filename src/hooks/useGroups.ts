@@ -18,6 +18,9 @@ export type ProductGroup = {
   package_price: number;
   calculation_method: 'weight' | 'meter';
   parent_group_id: string | null;
+  /** Família técnica explícita. Diferente de grupo/linha mesmo quando ainda
+   * vazia; famílias nunca recebem produtos diretamente. */
+  is_family?: boolean;
   /** Caixas vinculadas ao grupo (solado) por tipo. Fonte que o débito de embalagem
    *  (SQL debit_packaging_for_order) lê pra saber qual box_type consumir. Elo
    *  solado↔caixa: se NULL, o débito não tem o que debitar. */
@@ -77,6 +80,7 @@ export function useAddGroup() {
       dimensions_width?: number | null;
       dimensions_unit?: string | null;
       parent_group_id?: string | null;
+      is_family?: boolean;
       pairs_per_box_individual?: number | null;
       pairs_per_box_master?: number | null;
       pairs_per_box_colmeia?: number | null;
