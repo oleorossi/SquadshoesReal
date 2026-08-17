@@ -301,6 +301,9 @@ export function LabelManualTab() {
   const totalPairs = grade.reduce((s, e) => s + e.qty, 0);
   const copies = Math.max(1, Math.floor(Number(form.copies) || 1));
   const mainMaterial = form.materials.filter(Boolean).join(', ');
+  const totalLabels = form.labelType === 'box'
+    ? copies
+    : grade.length > 0 ? totalPairs * copies : copies;
 
   const handlePrint = () => {
     const requested = grade.length > 0 ? totalPairs * copies : copies;
@@ -486,10 +489,13 @@ export function LabelManualTab() {
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
             <Printer className="h-4 w-4" />
-            Preenchimento Manual de Etiqueta
+            Lançamento avulso
           </CardTitle>
+          <p className="text-xs text-muted-foreground">Use para reimpressões e exceções. Sempre que possível, importe um PV ou uma OP para reduzir digitação.</p>
         </CardHeader>
         <CardContent className="space-y-5">
+
+          <div className="section-label">01 · Identificação e origem</div>
 
           {/* Row 1 — type + lote + obs */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -529,6 +535,8 @@ export function LabelManualTab() {
               <Input className="h-8 text-sm" value={form.preco} onChange={e => set('preco', e.target.value)} placeholder="R$ 0,00" />
             </div>
           </div>
+
+          <div className="section-label border-t border-border pt-5">02 · Conteúdo da etiqueta</div>
 
           {/* Materials */}
           <div className="space-y-2">
@@ -610,6 +618,7 @@ export function LabelManualTab() {
 
           {/* Size grid */}
           <div className="space-y-2">
+            <div className="section-label">03 · Grade e geração</div>
             <div className="flex items-center justify-between flex-wrap gap-2">
               <div className="flex items-center gap-2">
                 <Label className="text-xs font-semibold">Numeração / Grade</Label>
@@ -695,16 +704,24 @@ export function LabelManualTab() {
           <Separator />
 
           {/* Actions */}
-          <div className="flex gap-2 flex-wrap">
+          <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-muted/20 p-3">
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-bold uppercase tracking-wider text-foreground">Resumo da geração</p>
+              <p className="text-xs text-muted-foreground">
+                {totalPairs.toLocaleString('pt-BR')} pares na grade · {copies} {copies === 1 ? 'cópia' : 'cópias'} · {totalLabels.toLocaleString('pt-BR')} {totalLabels === 1 ? 'etiqueta' : 'etiquetas'} no PDF
+              </p>
+            </div>
             <Button onClick={handlePrint} className="gap-2">
               <Printer className="h-4 w-4" />
-              Imprimir
+              Gerar PDF para impressão
             </Button>
-            <Button variant="outline" onClick={handlePreview} className="gap-2">
-              <Eye className="h-4 w-4" />
-              Pré-visualizar
-            </Button>
-            <Button variant="ghost" onClick={() => setForm(EMPTY)} className="gap-2 ml-auto">
+            {form.labelType === 'thermal' && (
+              <Button variant="outline" onClick={handlePreview} className="gap-2">
+                <Eye className="h-4 w-4" />
+                Pré-visualizar uma
+              </Button>
+            )}
+            <Button variant="ghost" onClick={() => setForm(EMPTY)} className="gap-2">
               <RotateCcw className="h-3.5 w-3.5" />
               Limpar
             </Button>

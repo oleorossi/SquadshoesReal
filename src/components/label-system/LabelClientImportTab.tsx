@@ -15,6 +15,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { EmptyState } from '@/components/ui/empty-state';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
+import { SearchInput } from '@/components/ui/search-input';
 import {
   UploadSimple as Upload,
   FilePdf,
@@ -39,6 +40,7 @@ import {
   pdfFilename,
   type BabyNalinRow,
 } from '@/lib/babyNalinLabels';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 
 const ACCEPT = '.csv,.txt,.xlsx,.xls';
 
@@ -50,12 +52,21 @@ export function LabelClientImportTab() {
   const [repeatMultiplier, setRepeatMultiplier] = useState(1);
   const [reading, setReading] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [search, setSearch] = useState('');
 
   const totalPaginas = expandRows(rows, repeatByQuantity, repeatMultiplier).length;
   const totalPares = rows.reduce((t, r) => t + r.quantidade, 0);
   // Código que não respeita a zona de silêncio não pode virar etiqueta — a
   // barra sairia cortada e só se descobre no leitor da loja.
   const foraDoPadrao = rows.filter(r => !measureBarcode(r.codigoBarra).fits);
+  const visibleRows = rows.filter(row => searchMatchesAllTerms(
+    search,
+    row.referencia,
+    row.cor,
+    row.tamanho,
+    row.codProduto,
+    row.codigoBarra,
+  ));
 
   async function handleFile(file: File | undefined) {
     if (!file) return;
@@ -102,6 +113,7 @@ export function LabelClientImportTab() {
     setFileName('');
     setRepeatByQuantity(false);
     setRepeatMultiplier(1);
+    setSearch('');
   }
 
   return (
@@ -211,6 +223,15 @@ export function LabelClientImportTab() {
               </div>
             )}
 
+            <SearchInput
+              value={search}
+              onChange={setSearch}
+              placeholder="Buscar no arquivo por referência, cor, tamanho ou código…"
+              resultCount={visibleRows.length}
+              totalCount={rows.length}
+              className="max-w-lg"
+            />
+
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
@@ -225,7 +246,7 @@ export function LabelClientImportTab() {
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((row, i) => {
+                  {visibleRows.map((row, i) => {
                     const fit = measureBarcode(row.codigoBarra);
                     return (
                       <tr key={`${row.codigoBarra}-${i}`} className="border-b border-border/60 last:border-0">
