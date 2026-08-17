@@ -31,6 +31,7 @@ import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
+import { SearchInput } from '@/components/ui/search-input';
 import { SmartSearch, SmartSearchSuggestion } from '@/components/ui/smart-search';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
@@ -80,7 +81,7 @@ import { TableSkeleton } from '@/components/layout/PageSkeleton';
 import { getValidNextStatuses } from '@/lib/saleOrderStateMachine';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
-import { normalizeForSearch, splitSearchTerms } from '@/lib/searchUtils';
+import { normalizeForSearch, searchMatchesAllTerms, splitSearchTerms } from '@/lib/searchUtils';
 import { safeUrlAttr } from '@/lib/htmlUtils';
 import { warnPackagingDebit } from '@/lib/packagingDebitWarnings';
 import SalesOperationsRail, { SalesOperationsRailSkeleton } from '@/components/sale-orders/SalesOperationsRail';
@@ -3481,13 +3482,13 @@ export default function SaleOrders() {
             )}
 
             {dupGroupId && dupGroupClients.length > 0 && (() => {
-              const searchLower = dupClientSearch.toLowerCase().trim();
-              const filteredClients = searchLower
-                ? dupGroupClients.filter(c =>
-                    c.razao_social.toLowerCase().includes(searchLower) ||
-                    (c.nome_fantasia && c.nome_fantasia.toLowerCase().includes(searchLower)) ||
-                    (c.cnpj && c.cnpj.includes(searchLower))
-                  )
+              const filteredClients = dupClientSearch.trim()
+                ? dupGroupClients.filter(c => searchMatchesAllTerms(
+                    dupClientSearch,
+                    c.razao_social,
+                    c.nome_fantasia,
+                    c.cnpj,
+                  ))
                 : dupGroupClients;
               return (
               <div className="space-y-2">
@@ -3495,11 +3496,13 @@ export default function SaleOrders() {
                   <Label className="text-sm font-semibold">Lojas do Grupo</Label>
                   <Button type="button" variant="ghost" size="sm" onClick={toggleAllDupClients} className="text-xs">{dupSelectedClients.length === dupGroupClients.length ? 'Desmarcar todos' : 'Selecionar todos'}</Button>
                 </div>
-                <Input
-                  placeholder="Pesquisar loja..."
+                <SearchInput
+                  placeholder="Buscar loja por razão social, fantasia ou CNPJ…"
                   value={dupClientSearch}
-                  onChange={e => setDupClientSearch(e.target.value)}
-                  className="h-9"
+                  onChange={setDupClientSearch}
+                  resultCount={filteredClients.length}
+                  totalCount={dupGroupClients.length}
+                  inputClassName="h-9"
                 />
                 <div className="border rounded-md divide-y max-h-72 overflow-y-auto">
                   {filteredClients.map(c => {

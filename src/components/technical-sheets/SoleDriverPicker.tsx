@@ -7,6 +7,7 @@ import { Card } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Info, Lock, LockOpen as Unlock, Stack as Layers } from '@phosphor-icons/react';
 import { useQuery } from '@tanstack/react-query';
@@ -116,22 +117,26 @@ export function SoleDriverPicker({
       <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
         <div className="md:col-span-7">
           <Label className="text-xs font-bold text-muted-foreground uppercase">Solado principal</Label>
-          <select
-            className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
+          <Select
             value={primarySoleId ?? ''}
-            onChange={(e) => onChangePrimarySole(e.target.value || null)}
+            onValueChange={(value) => onChangePrimarySole(value || null)}
           >
-            <option value="">— Selecione um solado —</option>
-            {groupedSoles.map(([base, variants]) => (
-              <optgroup key={base} label={base}>
-                {variants.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name} {s.color ? `(${s.color})` : ''} — estoque: {s.quantity}
-                  </option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
+            <SelectTrigger className="h-10">
+              <SelectValue placeholder="Selecione um solado…" />
+            </SelectTrigger>
+            <SelectContent searchPlaceholder="Buscar solado por nome, cor ou SKU…" searchLabel="Localizar solado">
+              {groupedSoles.map(([base, variants]) => (
+                <SelectGroup key={base}>
+                  <SelectLabel>{base}</SelectLabel>
+                  {variants.map((s) => (
+                    <SelectItem key={s.id} value={s.id} textValue={`${s.name} ${s.color ?? ''} ${s.sku ?? ''}`}>
+                      {s.name} {s.color ? `(${s.color})` : ''} — estoque: {s.quantity}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              ))}
+            </SelectContent>
+          </Select>
           {selectedSole && (
             <div className="mt-2 text-xs text-muted-foreground">
               SKU: <span className="font-mono">{selectedSole.sku}</span> · Estoque atual:{' '}

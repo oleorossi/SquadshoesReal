@@ -1,12 +1,12 @@
 import AppLayout from "@/components/layout/AppLayout";
- import { CircleNotch as Loader2, ArrowDownRight, ArrowUpRight, Funnel as Filter, User, ArrowsClockwise as RefreshCw, Warning as AlertTriangle } from '@phosphor-icons/react';
+ import { CircleNotch as Loader2, ArrowDownRight, ArrowUpRight, Funnel as Filter, ArrowsClockwise as RefreshCw, Warning as AlertTriangle } from '@phosphor-icons/react';
  import { SearchInput } from '@/components/ui/search-input';
  import { TableCell, TableHead } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
  import { useStockMovements, StockMovementWithProduct } from '@/hooks/useOrders';
 import { SelectableTable } from '@/components/ui/selectable-table';
 import { useTableSelection } from '@/hooks/useTableSelection';
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
  import { useMemo, useState } from 'react';
  import { Input } from '@/components/ui/input';
  import { Button } from '@/components/ui/button';
@@ -42,9 +42,7 @@ import { normalizeForSearch } from '@/lib/searchUtils';
         if (typeFilter !== 'all' && mov.movement_type !== typeFilter) return false;
 
         if (userFilter) {
-          const matchesUser =
-            (normalizeForSearch(mov.user_email).includes(normalizeForSearch(userFilter))) ||
-            (normalizeForSearch(mov.responsible).includes(normalizeForSearch(userFilter)));
+          const matchesUser = searchMatchesAllTerms(userFilter, mov.user_email, mov.responsible);
           if (!matchesUser) return false;
         }
 
@@ -133,17 +131,13 @@ import { normalizeForSearch } from '@/lib/searchUtils';
            </Select>
          </div>
  
-         <div className="w-[180px]">
-           <div className="relative">
-             <User className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-             <Input
-               placeholder="Responsável..."
-               className="pl-9 h-9"
-               value={userFilter}
-               onChange={(e) => setUserFilter(e.target.value)}
-             />
-           </div>
-         </div>
+         <SearchInput
+           className="w-[180px]"
+           inputClassName="h-9"
+           placeholder="Buscar responsável…"
+           value={userFilter}
+           onChange={setUserFilter}
+         />
  
          <div className="flex gap-2">
            <div className="flex flex-col gap-1">

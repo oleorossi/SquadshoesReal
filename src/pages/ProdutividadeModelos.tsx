@@ -16,12 +16,12 @@ import {
   Plus,
   X,
   Trash,
-  MagnifyingGlass,
   CircleNotch as Loader2,
   Warning as AlertTriangle,
 } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { SearchInput } from "@/components/ui/search-input";
 import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
@@ -34,6 +34,7 @@ import {
 import { EmptyState } from "@/components/ui/empty-state";
 import { EditorialPageHeader } from "@/components/layout/EditorialPageHeader";
 import { cn, formatCurrency, formatNumber } from "@/lib/utils";
+import { searchMatchesAllTerms } from "@/lib/searchUtils";
 import { SectorTeamPanel } from "@/components/production/SectorTeamPanel";
 import { SectorOperationsDialog } from "@/components/production/SectorOperationsDialog";
 import {
@@ -258,12 +259,11 @@ export default function ProdutividadeModelos() {
   };
 
   const filteredOptions = useMemo(() => {
-    const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
-    const terms = norm(pickerSearch).split(/\s+/).filter(Boolean);
-    return (sheetOptions ?? []).filter((s) => {
-      const alvo = norm(`${s.name} ${s.shoe_category ?? ""}`);
-      return terms.every((t) => alvo.includes(t));
-    });
+    return (sheetOptions ?? []).filter((s) => searchMatchesAllTerms(
+      pickerSearch,
+      s.name,
+      s.shoe_category,
+    ));
   }, [sheetOptions, pickerSearch]);
 
   return (
@@ -591,16 +591,15 @@ export default function ProdutividadeModelos() {
             <DialogTitle>Adicionar fichas</DialogTitle>
             <DialogDescription>Compare até {MAX_MODELOS} referências ativas.</DialogDescription>
           </DialogHeader>
-          <div className="relative">
-            <MagnifyingGlass className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              autoFocus
-              placeholder="Buscar por nome ou categoria…"
-              value={pickerSearch}
-              onChange={(e) => setPickerSearch(e.target.value)}
-              className="pl-9 h-9"
-            />
-          </div>
+          <SearchInput
+            autoFocus
+            placeholder="Buscar por nome ou categoria…"
+            value={pickerSearch}
+            onChange={setPickerSearch}
+            resultCount={filteredOptions.length}
+            totalCount={sheetOptions?.length ?? 0}
+            inputClassName="h-9"
+          />
           <div className="max-h-72 overflow-y-auto -mx-1 px-1 space-y-0.5">
             {filteredOptions.map((s) => {
               const active = selectedIds.includes(s.id);

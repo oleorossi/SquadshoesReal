@@ -8,17 +8,18 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { SearchInput } from '@/components/ui/search-input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Progress } from '@/components/ui/progress';
-import { CheckCircle as CheckCircle2, ArrowRight, ArrowLeft, MagnifyingGlass as Search, TrendUp as TrendingUp, Package, Truck, Calendar, CurrencyDollar as DollarSign, ShoppingCart, Sparkle as Sparkles, CalendarBlank as CalendarDays } from '@phosphor-icons/react';
+import { CheckCircle as CheckCircle2, ArrowRight, ArrowLeft, TrendUp as TrendingUp, Package, Truck, Calendar, CurrencyDollar as DollarSign, ShoppingCart, Sparkle as Sparkles, CalendarBlank as CalendarDays } from '@phosphor-icons/react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { format, addDays, startOfWeek, endOfWeek, isAfter, isBefore } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { roundUpToPurchaseMultiple, applyPurchaseMultiple } from '@/lib/purchaseMultiple';
 
 const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -587,8 +588,7 @@ export default function PurchasePlanningWizard() {
     }
     let arr = Array.from(merged.values());
     if (search) {
-      const q = normalizeForSearch(search);
-      arr = arr.filter(m => normalizeForSearch(m.name).includes(q) || normalizeForSearch(m.type).includes(q));
+      arr = arr.filter(m => searchMatchesAllTerms(search, m.name, m.type));
     }
     return arr.sort((a, b) => a.stock_after - b.stock_after);
   }, [filteredSummaries, search]);
@@ -835,10 +835,11 @@ export default function PurchasePlanningWizard() {
                 </div>
                 <div className="flex-1">
                   <Label>Buscar material</Label>
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input placeholder="Nome do material..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
-                  </div>
+                  <SearchInput
+                    placeholder="Buscar material por nome…"
+                    value={search}
+                    onChange={setSearch}
+                  />
                 </div>
               </div>
 
@@ -904,8 +905,7 @@ export default function PurchasePlanningWizard() {
                           {(() => {
                             let mats = Array.from(week.materials.values());
                             if (search) {
-                              const q = normalizeForSearch(search);
-                              mats = mats.filter(m => normalizeForSearch(m.name).includes(q) || normalizeForSearch(m.type).includes(q));
+                              mats = mats.filter(m => searchMatchesAllTerms(search, m.name, m.type));
                             }
                             return mats.sort((a, b) => a.stock_after - b.stock_after).map(mat => (
                               // Área sem largura: linha NEUTRA (não vermelha) — a

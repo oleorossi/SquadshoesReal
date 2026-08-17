@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Users as Users2, Clock, Warning as AlertTriangle, CheckCircle as CheckCircle2, XCircle, TrendUp as TrendingUp, CalendarBlank as CalendarDays, CircleNotch as Loader2, ChartBar as BarChart3, MagnifyingGlass as Search, Funnel as Filter } from '@phosphor-icons/react';
+import { Users as Users2, Clock, Warning as AlertTriangle, CheckCircle as CheckCircle2, XCircle, TrendUp as TrendingUp, CalendarBlank as CalendarDays, CircleNotch as Loader2, ChartBar as BarChart3, Funnel as Filter } from '@phosphor-icons/react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { SearchInput } from '@/components/ui/search-input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -16,6 +17,7 @@ import { getBatchDateRange, resolveTimeControlFilters } from '@/lib/timeControlF
 import { computePeriodFolha } from '@/lib/salaryPayroll';
 import { findEmployeeMatch } from '@/lib/employeeMatching';
 import { resolveHolidaysForPayrollRange } from '@/lib/ponto/periodDates';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 
 function minutesToDisplay(mins: number) {
   const sign = mins < 0 ? '-' : '';
@@ -179,8 +181,7 @@ export default function OverviewTab() {
   const filteredOverviewData = useMemo(() => {
     let filtered = overviewData;
     if (searchEmployee.trim()) {
-      const term = searchEmployee.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-      filtered = filtered.filter(e => e.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').includes(term));
+      filtered = filtered.filter(e => searchMatchesAllTerms(searchEmployee, e.name));
     }
     switch (statusFilter) {
       case 'overtime':
@@ -265,15 +266,14 @@ export default function OverviewTab() {
         </div>
         <div className="w-56">
           <Label className="text-xs font-medium">Buscar Funcionário</Label>
-          <div className="relative mt-1">
-            <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
-            <Input
-              placeholder="Digitar nome..."
-              value={searchEmployee}
-              onChange={e => setSearchEmployee(e.target.value)}
-              className="pl-8"
-            />
-          </div>
+          <SearchInput
+            className="mt-1"
+            placeholder="Buscar funcionário…"
+            value={searchEmployee}
+            onChange={setSearchEmployee}
+            resultCount={filteredOverviewData.length}
+            totalCount={overviewData.length}
+          />
         </div>
         <div className="w-52">
           <Label className="text-xs font-medium flex items-center gap-1"><Filter className="h-3 w-3" /> Filtro</Label>

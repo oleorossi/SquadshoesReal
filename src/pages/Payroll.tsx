@@ -7,6 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { SearchableSelect } from '@/components/ui/searchable-select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -1221,15 +1222,15 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
           <div className="flex items-center gap-2 flex-wrap">
             <div className="flex items-center gap-1.5">
               <span className="text-xs text-muted-foreground">Setor</span>
-              <select
-                value={setorFilter}
-                onChange={e => setSetorFilter(e.target.value)}
-                className="h-8 rounded-md border bg-background px-2 text-xs"
-                aria-label="Filtrar por setor"
-              >
-                <option value="all">Todos os setores ({setoresDisponiveis.length})</option>
-                {setoresDisponiveis.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
+              <Select value={setorFilter} onValueChange={setSetorFilter}>
+                <SelectTrigger className="h-8 min-w-44 text-xs" aria-label="Filtrar por setor">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent searchPlaceholder="Buscar setor…" searchLabel="Localizar setor">
+                  <SelectItem value="all">Todos os setores ({setoresDisponiveis.length})</SelectItem>
+                  {setoresDisponiveis.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
             <Button
               type="button"
@@ -1445,9 +1446,15 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
         return (
           <Panel title={`Calendário de tempo · ${periodTitle}`} flush>
             <div className="p-4 space-y-3">
-              <select value={cur?.id || ''} onChange={e => setCalEmp(e.target.value)} className="h-9 w-full max-w-xs rounded-md border bg-background px-3 text-base md:text-sm">
-                {crows.map(r => <option key={r.id} value={r.id}>{employeeMap.get(r.id)?.name || r.name}</option>)}
-              </select>
+              <SearchableSelect
+                value={cur?.id || ''}
+                onChange={setCalEmp}
+                options={crows.map(r => ({ value: r.id, label: employeeMap.get(r.id)?.name || r.name }))}
+                placeholder="Selecionar funcionário…"
+                searchPlaceholder="Buscar funcionário…"
+                searchLabel="Localizar funcionário"
+                className="max-w-xs"
+              />
               {cur.result.payment_type === 'mensalista' && (
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
                   {[

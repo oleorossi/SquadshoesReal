@@ -3,15 +3,15 @@ import { useQuery } from '@tanstack/react-query';
 import {
   CheckCircle,
   Cube as Box,
-  MagnifyingGlass as Search,
   Warning as AlertTriangle,
 } from '@phosphor-icons/react';
 import { supabase } from '@/integrations/supabase/client';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
+import { SearchInput } from '@/components/ui/search-input';
 import { Skeleton } from '@/components/ui/skeleton';
 import SolePackagingPanel from '@/components/soles-hub/SolePackagingPanel';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 
 interface SoleGroupRow {
   id: string;
@@ -86,9 +86,7 @@ export default function SolePackagingConfigurationPanel({ initialSoleGroupId }: 
   }, [groups, selectedId]);
 
   const filtered = useMemo(() => {
-    const term = search.trim().toLocaleLowerCase('pt-BR');
-    if (!term) return groups;
-    return groups.filter(group => group.name.toLocaleLowerCase('pt-BR').includes(term));
+    return groups.filter(group => searchMatchesAllTerms(search, group.name));
   }, [groups, search]);
 
   const selected = groups.find(group => group.id === selectedId) ?? null;
@@ -112,15 +110,14 @@ export default function SolePackagingConfigurationPanel({ initialSoleGroupId }: 
               Cada configuração vale para todas as cores e referências vinculadas ao modelo.
             </p>
           </div>
-          <div className="relative">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              value={search}
-              onChange={event => setSearch(event.target.value)}
-              placeholder="Buscar tipo de solado..."
-              className="h-9 pl-8"
-            />
-          </div>
+          <SearchInput
+            value={search}
+            onChange={setSearch}
+            placeholder="Buscar tipo de solado…"
+            resultCount={filtered.length}
+            totalCount={groups.length}
+            inputClassName="h-9"
+          />
           <div className="max-h-[62vh] space-y-1 overflow-y-auto pr-1">
             {filtered.map(group => {
               const state = readiness(group);

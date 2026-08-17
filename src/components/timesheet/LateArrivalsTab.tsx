@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { WarningCircle as AlertCircle, CaretDown as ChevronDown, CaretRight as ChevronRight, Clock, MagnifyingGlass as Search, Users as Users2 } from '@phosphor-icons/react';
+import { WarningCircle as AlertCircle, CaretDown as ChevronDown, CaretRight as ChevronRight, Clock, Users as Users2 } from '@phosphor-icons/react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { SearchInput } from '@/components/ui/search-input';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -14,6 +15,7 @@ import {
 import { useEmployees } from '@/hooks/useEmployees';
 import { getBatchDateRange, resolveTimeControlFilters } from '@/lib/timeControlFilters';
 import { findEmployeeMatch, resolveEmployeeName } from '@/lib/employeeMatching';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 
 const DAYS_PT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
@@ -158,11 +160,7 @@ export default function LateArrivalsTab() {
   }, [records, employees, schedules, defaultSchedule, holidayDates, recurringHolidayMMDD, minLateMinutes]);
 
   const filteredRecords = useMemo(() => {
-    if (!searchEmployee.trim()) return lateRecords;
-    const term = searchEmployee.trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
-    return lateRecords.filter(r =>
-      r.employeeName.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').includes(term)
-    );
+    return lateRecords.filter(r => searchMatchesAllTerms(searchEmployee, r.employeeName));
   }, [lateRecords, searchEmployee]);
 
   const weekGroups = useMemo<WeekGroup[]>(() => {
@@ -245,15 +243,14 @@ export default function LateArrivalsTab() {
             </div>
             <div className="space-y-1.5 min-w-[180px]">
               <Label className="text-xs">Buscar Funcionário</Label>
-              <div className="relative">
-                <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
-                <Input
-                  placeholder="Digitar nome..."
-                  value={searchEmployee}
-                  onChange={e => setSearchEmployee(e.target.value)}
-                  className="h-9 pl-8"
-                />
-              </div>
+              <SearchInput
+                placeholder="Buscar funcionário…"
+                value={searchEmployee}
+                onChange={setSearchEmployee}
+                resultCount={filteredRecords.length}
+                totalCount={lateRecords.length}
+                inputClassName="h-9"
+              />
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">Mín. atraso (min)</Label>

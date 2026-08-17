@@ -1,6 +1,7 @@
 import { Stack as Layers, Scissors, Cube as Box, Info } from '@phosphor-icons/react';
 import { Card } from '@/components/ui/card';
 import { InlineEdit } from '../ui/InlineEdit';
+import { Select, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { parseSafeNumber, safeToFixed } from '@/lib/utils';
 import { useCan } from '@/hooks/useAccessControl';
 
@@ -54,9 +55,11 @@ export function ProductTechnicalSheet({ product }: ProductTechnicalSheetProps) {
             <div className="bg-muted/50 p-2 rounded">
               <label className="text-xs font-bold text-muted-foreground uppercase">SOLADO (Fator Principal)</label>
               <div className="font-medium text-primary">
-                <select className="w-full bg-transparent border-none focus:ring-0 text-sm">
-                  <option>Selecione um Solado...</option>
-                </select>
+                <Select disabled>
+                  <SelectTrigger className="border-0 bg-transparent px-0 text-sm">
+                    <SelectValue placeholder="Solado não vinculado" />
+                  </SelectTrigger>
+                </Select>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-2">

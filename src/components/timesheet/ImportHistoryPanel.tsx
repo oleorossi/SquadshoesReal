@@ -18,9 +18,10 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { EmptyState } from '@/components/ui/empty-state';
-import { Input } from '@/components/ui/input';
+import { SearchInput } from '@/components/ui/search-input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { downloadImportFile, TimeImportLog, useTimeImportLogs } from '@/hooks/useTimeImportLogs';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 
 const fmtSize = (bytes?: number | null) => {
   if (!bytes) return 'Tamanho não registrado';
@@ -85,15 +86,14 @@ export default function ImportHistoryPanel() {
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   const filteredLogs = useMemo(() => {
-    const term = search.trim().toLocaleLowerCase('pt-BR');
-    if (!term) return logs;
-    return logs.filter(log => [
+    return logs.filter(log => searchMatchesAllTerms(
+      search,
       log.file_name,
       log.batch_id,
       log.start_date,
       log.end_date,
       log.status,
-    ].some(value => String(value || '').toLocaleLowerCase('pt-BR').includes(term)));
+    ));
   }, [logs, search]);
 
   const availableFiles = useMemo(() => logs.filter(isAvailable).length, [logs]);
@@ -142,16 +142,15 @@ export default function ImportHistoryPanel() {
         </div>
       </div>
 
-      <div className="relative max-w-xl">
-        <MagnifyingGlass className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          value={search}
-          onChange={event => setSearch(event.target.value)}
-          placeholder="Buscar por nome do arquivo, lote, período ou status..."
-          className="pl-9"
-          aria-label="Buscar no histórico de arquivos de ponto"
-        />
-      </div>
+      <SearchInput
+        className="max-w-xl"
+        value={search}
+        onChange={setSearch}
+        placeholder="Buscar por arquivo, lote, período ou status…"
+        resultCount={filteredLogs.length}
+        totalCount={logs.length}
+        aria-label="Buscar no histórico de arquivos de ponto"
+      />
 
       {logs.length === 0 ? (
         <Card>

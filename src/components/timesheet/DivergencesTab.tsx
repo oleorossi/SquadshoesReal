@@ -11,13 +11,15 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { SearchInput } from '@/components/ui/search-input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
-import { Warning as AlertTriangle, Plus, Users as Users2, User, Clock, MagnifyingGlass as Search } from '@phosphor-icons/react';
+import { Warning as AlertTriangle, Plus, Users as Users2, User, Clock } from '@phosphor-icons/react';
 import { getBatchDateRange } from '@/lib/timeControlFilters';
 import { useEmployees } from '@/hooks/useEmployees';
 import { findEmployeeMatch } from '@/lib/employeeMatching';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 
 const DAYS_PT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
@@ -81,8 +83,7 @@ export default function DivergencesTab() {
     }
 
     if (searchEmployee.trim()) {
-      const term = searchEmployee.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-      filteredRecords = filteredRecords.filter(r => r.employee_name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').includes(term));
+      filteredRecords = filteredRecords.filter(r => searchMatchesAllTerms(searchEmployee, r.employee_name));
     }
 
     filteredRecords.forEach(rec => {
@@ -209,15 +210,12 @@ export default function DivergencesTab() {
             </div>
             <div className="space-y-1.5 min-w-[200px]">
               <Label className="text-xs">Buscar Funcionário</Label>
-              <div className="relative">
-                <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
-                <Input
-                  placeholder="Digitar nome..."
-                  value={searchEmployee}
-                  onChange={e => setSearchEmployee(e.target.value)}
-                  className="h-9 pl-8"
-                />
-              </div>
+              <SearchInput
+                placeholder="Buscar funcionário…"
+                value={searchEmployee}
+                onChange={setSearchEmployee}
+                inputClassName="h-9"
+              />
             </div>
           </div>
           <div className="flex gap-4 mt-4">
