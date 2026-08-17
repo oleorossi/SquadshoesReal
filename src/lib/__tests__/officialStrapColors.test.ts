@@ -3,8 +3,37 @@ import {
   canonicalStrapColorForProduct,
   officialStrapColorsForBase,
   purchasedReadyStrapColorsForGroup,
+  registeredBaseMaterialColorsForGroup,
   strapColorsForIdentity,
 } from '@/lib/officialStrapColors';
+
+describe('registeredBaseMaterialColorsForGroup', () => {
+  const catalog = {
+    colors: [
+      { id: 'preto', name: 'PRETO', active: true },
+      { id: 'off', name: 'OFF WHITE', active: true },
+      { id: 'caramelo', name: 'CARAMELO', active: true },
+    ],
+    aliases: [{ canonical_color_id: 'off', alias: 'OF WHITE', status: 'approved' }],
+    products: [
+      { id: 'soft-preto', group_id: 'napa-soft', color: 'PRETO', active: true },
+      { id: 'soft-off', group_id: 'napa-soft', color: 'OF WHITE', active: true },
+      { id: 'soft-inativo', group_id: 'napa-soft', color: 'CARAMELO', active: false },
+      { id: 'madrid-caramelo', group_id: 'napa-madrid', color: 'CARAMELO', active: true },
+    ],
+    official_products: [],
+  };
+
+  it('puxa as cores dos produtos ativos da NAPA SOFT sem exigir vínculo oficial', () => {
+    expect(registeredBaseMaterialColorsForGroup(catalog, 'napa-soft').map((color) => color.id))
+      .toEqual(['off', 'preto']);
+  });
+
+  it('não mistura cores de outra napa-base nem produtos inativos', () => {
+    expect(registeredBaseMaterialColorsForGroup(catalog, 'napa-madrid').map((color) => color.id))
+      .toEqual(['caramelo']);
+  });
+});
 
 describe('officialStrapColorsForBase', () => {
   it('lista somente vínculos oficiais ativos da base, inclusive produto com saldo zero', () => {
