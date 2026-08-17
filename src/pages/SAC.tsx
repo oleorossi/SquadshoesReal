@@ -5,6 +5,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Plus, ChatText as MessageSquare, ClockCounterClockwise as History, CaretDown as ChevronDown, CaretRight as ChevronRight } from '@phosphor-icons/react';
 import { format } from 'date-fns';
@@ -312,40 +313,48 @@ function NewSACDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v:
         <div className="space-y-3">
           <div>
             <label className="text-xs font-bold text-muted-foreground uppercase">Cliente</label>
-            <select value={form.client_id} onChange={e => setForm({ ...form, client_id: e.target.value })}
-              className="w-full mt-1 h-9 px-3 rounded-md border border-input bg-background text-sm">
-              <option value="">Selecione...</option>
-              {clients.map((c: any) => <option key={c.id} value={c.id}>{c.razao_social}</option>)}
-            </select>
+            <Select value={form.client_id} onValueChange={client_id => setForm({ ...form, client_id })}>
+              <SelectTrigger className="mt-1"><SelectValue placeholder="Selecione o cliente…" /></SelectTrigger>
+              <SelectContent searchPlaceholder="Buscar cliente por nome…" searchLabel="Localizar cliente">
+                {clients.map((c) => <SelectItem key={c.id} value={c.id}>{c.razao_social}</SelectItem>)}
+              </SelectContent>
+            </Select>
           </div>
           <div>
             <label className="text-xs font-bold text-muted-foreground uppercase">Tipo</label>
-            <select value={form.ticket_type} onChange={e => setForm({ ...form, ticket_type: e.target.value })}
-              className="w-full mt-1 h-9 px-3 rounded-md border border-input bg-background text-sm">
-              <option value="reclamacao">Reclamação</option>
-              <option value="troca">Troca</option>
-              <option value="garantia">Garantia</option>
-              <option value="sugestao">Sugestão</option>
-              <option value="duvida">Dúvida</option>
-              <option value="elogio">Elogio</option>
-            </select>
+            <Select value={form.ticket_type} onValueChange={ticket_type => setForm({ ...form, ticket_type })}>
+              <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="reclamacao">Reclamação</SelectItem>
+                <SelectItem value="troca">Troca</SelectItem>
+                <SelectItem value="garantia">Garantia</SelectItem>
+                <SelectItem value="sugestao">Sugestão</SelectItem>
+                <SelectItem value="duvida">Dúvida</SelectItem>
+                <SelectItem value="elogio">Elogio</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <div>
             <label className="text-xs font-bold text-muted-foreground uppercase">Categoria do defeito (opcional)</label>
-            <select value={form.defect_category} onChange={e => setForm({ ...form, defect_category: e.target.value })}
-              className="w-full mt-1 h-9 px-3 rounded-md border border-input bg-background text-sm">
-              <option value="">N/A</option>
-              <option value="costura">Costura</option>
-              <option value="solagem">Solagem</option>
-              <option value="colagem">Colagem</option>
-              <option value="material">Material</option>
-              <option value="cor">Cor</option>
-              <option value="numeracao">Numeração</option>
-              <option value="embalagem">Embalagem</option>
-              <option value="transporte">Transporte</option>
-              <option value="uso">Uso indevido</option>
-              <option value="outro">Outro</option>
-            </select>
+            <Select
+              value={form.defect_category || '__none__'}
+              onValueChange={defect_category => setForm({ ...form, defect_category: defect_category === '__none__' ? '' : defect_category })}
+            >
+              <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+              <SelectContent searchPlaceholder="Buscar categoria…" searchLabel="Localizar categoria">
+                <SelectItem value="__none__">N/A</SelectItem>
+                <SelectItem value="costura">Costura</SelectItem>
+                <SelectItem value="solagem">Solagem</SelectItem>
+                <SelectItem value="colagem">Colagem</SelectItem>
+                <SelectItem value="material">Material</SelectItem>
+                <SelectItem value="cor">Cor</SelectItem>
+                <SelectItem value="numeracao">Numeração</SelectItem>
+                <SelectItem value="embalagem">Embalagem</SelectItem>
+                <SelectItem value="transporte">Transporte</SelectItem>
+                <SelectItem value="uso">Uso indevido</SelectItem>
+                <SelectItem value="outro">Outro</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <div>
             <label className="text-xs font-bold text-muted-foreground uppercase">Pares afetados</label>

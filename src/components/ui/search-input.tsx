@@ -201,7 +201,7 @@ export const SearchInput = React.forwardRef<HTMLInputElement, SearchInputProps>(
           autoComplete="off"
           aria-label={ariaLabel ?? placeholder}
           className={cn(
-            'pl-9',
+            'h-11 pl-9 md:h-9',
             showCounter ? 'pr-[6.5rem]' : local ? 'pr-9' : 'pr-3',
             inputClassName,
           )}

@@ -39,6 +39,7 @@ import { useSuppliers } from '@/hooks/useSuppliers';
 import {
   canonicalStrapColorForProduct,
   purchasedReadyStrapColorsForGroup,
+  registeredBaseMaterialColorsForGroup,
 } from '@/lib/officialStrapColors';
 import { isPurchasedReadyStrap } from '@/lib/strapIdentity';
 import { StrapIdentityTrail } from './StrapIdentityTrail';
@@ -346,15 +347,10 @@ export function ArtisanalStrapEditor({
     && catalog.products.some((product) => (
       product.id === finishedProductId && product.group_id === baseGroupId
     ));
-  const officialColorIds = new Set(catalog.official_products
-    .filter((official) => official.base_group_id === form.baseGroupId && official.status === 'active')
-    .filter((official) => catalog.products.some(
-      (product) => product.id === official.official_product_id && product.active !== false,
-    ))
-    .map((official) => official.color_id));
-  const availableOfficialColors = catalog.colors
-    .filter((item) => item.active && officialColorIds.has(item.id))
-    .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+  const availableRegisteredBaseColors = registeredBaseMaterialColorsForGroup(
+    catalog,
+    form.baseGroupId,
+  );
   const availablePurchasedColors = purchasedReadyStrapColorsForGroup(catalog, form.identityGroupId);
   const availableIdentityColors = form.identityBasis === 'finished_product_group'
     ? exactBuyReadyProductPrefill
@@ -362,7 +358,7 @@ export function ArtisanalStrapEditor({
         .filter((item) => item.active)
         .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
       : availablePurchasedColors
-    : availableOfficialColors;
+    : availableRegisteredBaseColors;
   const selectedColorIsAvailable = !!form.colorId
     && availableIdentityColors.some((item) => item.id === form.colorId);
   const displayedColors = selectedColor && !selectedColorIsAvailable
@@ -480,7 +476,7 @@ export function ArtisanalStrapEditor({
     if (!selectedColorIsAvailable) {
       return form.identityBasis === 'finished_product_group'
         ? 'A cor selecionada não possui produto ativo no grupo acabado.'
-        : 'A cor selecionada não possui napa oficial ativa nesta base.';
+        : 'A cor selecionada não está cadastrada em um produto ativo desta napa-base.';
     }
     if (purchasedReady && form.internalProductionEnabled) {
       return 'Tira identificada pelo grupo acabado não pode habilitar produção interna.';
@@ -878,7 +874,9 @@ export function ArtisanalStrapEditor({
                       {displayedColors.map((item) => (
                         <SelectItem key={item.id} value={item.id}>
                           {item.name}{availableIdentityColors.some((color) => color.id === item.id)
-                            ? ' · Disponível para adicionar'
+                            ? form.identityBasis === 'reference_base'
+                              ? ' · Cadastrada na base'
+                              : ' · Disponível para adicionar'
                             : ' · vínculo inválido'}
                         </SelectItem>
                       ))}
@@ -890,7 +888,7 @@ export function ArtisanalStrapEditor({
                     <p className="text-xs text-amber-700 dark:text-amber-400">
                       {form.identityBasis === 'finished_product_group'
                         ? 'Nenhum produto ativo deste grupo possui cor canônica mapeada.'
-                        : 'Nenhuma cor tem napa oficial ativa nesta base. Cadastre/aprove o vínculo primeiro.'}
+                        : 'Nenhum produto ativo desta napa-base possui uma cor cadastrada.'}
                     </p>
                   )}
                   {form.colorId && !selectedColorIsAvailable && (
@@ -900,7 +898,7 @@ export function ArtisanalStrapEditor({
                       <AlertDescription>
                         {form.identityBasis === 'finished_product_group'
                           ? 'A cor precisa existir como produto ativo dentro do grupo acabado.'
-                          : 'Esta identidade histórica permanece bloqueada até existir napa oficial ativa.'}
+                          : 'Esta cor não está mais cadastrada em um produto ativo desta napa-base.'}
                       </AlertDescription>
                     </Alert>
                   )}

@@ -7,11 +7,15 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Plus, PencilSimple as Pencil, Trash as Trash2, Copy, Eye, PaintBucket, Star } from '@phosphor-icons/react';
+import { Plus, PencilSimple as Pencil, Trash as Trash2, Copy, Eye, PaintBucket, Star, Checks, Warning, Stack } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import type { LabelTemplate } from '@/types/label-system';
 import { useLabelTemplates } from '@/hooks/useLabelTemplates';
 import { validateLabelTemplate } from '@/lib/templateLabels';
+import { SearchInput } from '@/components/ui/search-input';
+import { EmptyState } from '@/components/ui/empty-state';
+import { StatCard, StatGrid } from '@/components/ui/stat-card';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 
 const CATEGORY_LABELS: Record<string, string> = {
   individual_box: 'Caixa Individual',
@@ -25,6 +29,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 export function LabelTemplatesTab() {
   const { templates, addTemplate, updateTemplate, deleteTemplate, duplicateTemplate, isBuiltinDefault } = useLabelTemplates();
   const [filter, setFilter] = useState('all');
+  const [search, setSearch] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<LabelTemplate | null>(null);
   const [designerTemplate, setDesignerTemplate] = useState<LabelTemplate | null>(null);
@@ -42,7 +47,19 @@ export function LabelTemplatesTab() {
     );
   }
 
-  const filtered = filter === 'all' ? templates : templates.filter(t => t.category === filter);
+  const filtered = templates.filter(template => {
+    const matchesCategory = filter === 'all' || template.category === filter;
+    return matchesCategory && searchMatchesAllTerms(
+      search,
+      template.name,
+      CATEGORY_LABELS[template.category] || template.category,
+      `${template.dimensions.width}x${template.dimensions.height}`,
+      template.is_active ? 'ativo' : 'inativo',
+    );
+  });
+  const activeCount = templates.filter(template => template.is_active).length;
+  const builtinCount = templates.filter(template => isBuiltinDefault(template.id)).length;
+  const reviewCount = templates.filter(template => !isBuiltinDefault(template.id) && validateLabelTemplate(template).length > 0).length;
 
   const handleToggleActive = async (id: string) => {
     const t = templates.find(x => x.id === id);
@@ -73,26 +90,51 @@ export function LabelTemplatesTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <Select value={filter} onValueChange={setFilter}>
-          <SelectTrigger className="w-48">
-            <SelectValue placeholder="Filtrar categoria" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todas categorias</SelectItem>
-            {Object.entries(CATEGORY_LABELS).map(([k, v]) => (
-              <SelectItem key={k} value={k}>{v}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Button onClick={() => { setEditingTemplate(null); setDialogOpen(true); }} className="gap-2">
-          <Plus className="h-4 w-4" /> Novo Template
-        </Button>
+      <StatGrid>
+        <StatCard label="Modelos cadastrados" value={templates.length} icon={Stack} />
+        <StatCard label="Ativos para geração" value={activeCount} icon={Checks} tone="success" />
+        <StatCard label="Oficiais protegidos" value={builtinCount} hint="não editáveis" icon={Star} tone="primary" />
+        <StatCard label="Exigem revisão" value={reviewCount} icon={Warning} tone={reviewCount > 0 ? 'warning' : 'default'} />
+      </StatGrid>
+
+      <div className="rounded-lg border border-border bg-card p-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+          <SearchInput
+            value={search}
+            onChange={setSearch}
+            placeholder="Buscar por nome, categoria, dimensão ou status…"
+            resultCount={filtered.length}
+            totalCount={templates.length}
+            className="w-full lg:max-w-md"
+          />
+          <Select value={filter} onValueChange={setFilter}>
+            <SelectTrigger className="w-full lg:w-52">
+              <SelectValue placeholder="Filtrar categoria" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas as categorias</SelectItem>
+              {Object.entries(CATEGORY_LABELS).map(([k, v]) => (
+                <SelectItem key={k} value={k}>{v}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button onClick={() => { setEditingTemplate(null); setDialogOpen(true); }} className="gap-2 lg:ml-auto">
+            <Plus className="h-4 w-4" /> Novo modelo
+          </Button>
+        </div>
+        <p className="mt-3 text-xs text-muted-foreground">
+          Os modelos oficiais preservam o padrão de impressão. Cópias personalizadas só entram na operação depois de validadas e ativadas.
+        </p>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      {filtered.length === 0 ? (
+        <div className="rounded-lg border border-border bg-card">
+          <EmptyState icon={Stack} title="Nenhum modelo encontrado" description="Ajuste a busca ou a categoria selecionada." />
+        </div>
+      ) : <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {filtered.map(t => {
           const isDefault = isBuiltinDefault(t.id);
+          const validationErrors = validateLabelTemplate(t);
           return (
             <Card key={t.id} className={`${!t.is_active ? 'opacity-60' : ''} ${isDefault ? 'ring-1 ring-primary/30' : ''}`}>
               <CardHeader className="pb-3">
@@ -100,12 +142,13 @@ export function LabelTemplatesTab() {
                   <div>
                     <div className="flex items-center gap-2">
                       <CardTitle className="text-sm">{t.name}</CardTitle>
-                      {isDefault && <Star className="h-3.5 w-3.5 text-amber-500 fill-amber-500" />}
+                      {isDefault && <Star className="h-3.5 w-3.5 text-primary" weight="fill" />}
                     </div>
                     <div className="flex gap-2 mt-1">
                       <Badge variant="outline">{CATEGORY_LABELS[t.category] || t.category}</Badge>
                       <Badge variant={t.is_active ? 'default' : 'secondary'}>{t.is_active ? 'Ativo' : 'Inativo'}</Badge>
-                      {isDefault && <Badge variant="outline" className="text-xs border-amber-500/50 text-amber-600">Padrão</Badge>}
+                      {isDefault && <Badge variant="outline" className="text-xs border-primary/40 text-primary">Oficial</Badge>}
+                      {!isDefault && validationErrors.length > 0 && <Badge variant="destructive" className="text-xs">Revisar</Badge>}
                     </div>
                   </div>
                 </div>
@@ -143,24 +186,24 @@ export function LabelTemplatesTab() {
                 <div className="flex gap-1">
                   {!isDefault && (
                     <>
-                      <Button size="sm" variant="ghost" onClick={() => setDesignerTemplate(t)} title="Abrir Designer">
+                      <Button size="sm" variant="ghost" onClick={() => setDesignerTemplate(t)} title="Abrir editor" aria-label={`Abrir editor do modelo ${t.name}`}>
                         <PaintBucket className="h-3.5 w-3.5" />
                       </Button>
-                      <Button size="sm" variant="ghost" onClick={() => void handleToggleActive(t.id)} title={t.is_active ? 'Desativar' : 'Ativar'}>
+                      <Button size="sm" variant="ghost" onClick={() => void handleToggleActive(t.id)} title={t.is_active ? 'Desativar' : 'Ativar'} aria-label={`${t.is_active ? 'Desativar' : 'Ativar'} modelo ${t.name}`}>
                         <Eye className="h-3.5 w-3.5" />
                       </Button>
-                      <Button size="sm" variant="ghost" onClick={() => { setEditingTemplate(t); setDialogOpen(true); }} title="Editar propriedades">
+                      <Button size="sm" variant="ghost" onClick={() => { setEditingTemplate(t); setDialogOpen(true); }} title="Editar propriedades" aria-label={`Editar propriedades do modelo ${t.name}`}>
                         <Pencil className="h-3.5 w-3.5" />
                       </Button>
                     </>
                   )}
-                  <Button size="sm" variant="ghost" onClick={() => void duplicateTemplate(t)
+                  <Button size="sm" variant="ghost" aria-label={`Duplicar modelo ${t.name}`} onClick={() => void duplicateTemplate(t)
                     .then(() => toast.success('Template duplicado'))
                     .catch(error => toast.error(error instanceof Error ? error.message : 'Não foi possível duplicar.'))}>
                     <Copy className="h-3.5 w-3.5" />
                   </Button>
                   {!isDefault && (
-                    <Button size="sm" variant="ghost" className="text-destructive" onClick={() => void handleDelete(t.id)}>
+                    <Button size="sm" variant="ghost" className="text-destructive" aria-label={`Excluir modelo ${t.name}`} onClick={() => void handleDelete(t.id)}>
                       <Trash2 className="h-3.5 w-3.5" />
                     </Button>
                   )}
@@ -169,12 +212,12 @@ export function LabelTemplatesTab() {
             </Card>
           );
         })}
-      </div>
+      </div>}
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>{editingTemplate ? 'Editar Template' : 'Novo Template'}</DialogTitle>
+            <DialogTitle>{editingTemplate ? 'Editar modelo' : 'Novo modelo'}</DialogTitle>
           </DialogHeader>
           <TemplateForm
             initial={editingTemplate}
@@ -185,7 +228,7 @@ export function LabelTemplatesTab() {
                 await addTemplate(t);
               }
               setDialogOpen(false);
-              toast.success(editingTemplate ? 'Template atualizado' : 'Template criado');
+              toast.success(editingTemplate ? 'Modelo atualizado' : 'Modelo criado');
             }}
           />
         </DialogContent>
@@ -267,7 +310,7 @@ function TemplateForm({ initial, onSave }: { initial: LabelTemplate | null; onSa
           </Select>
         </div>
       </div>
-      <Button onClick={handleSubmit} className="w-full">Salvar Template</Button>
+      <Button onClick={handleSubmit} className="w-full">Salvar modelo</Button>
     </div>
   );
 }

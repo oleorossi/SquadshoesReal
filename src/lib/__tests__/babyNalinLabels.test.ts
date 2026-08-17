@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { CODE128_PATTERNS, code128Bars, encodeCode128 } from '@/lib/code128';
 import {
   ART_WIDTH_MM,
+  ART_HEIGHT_MM,
+  BARCODE_FORMAT,
   MEDIA_HEIGHT_MM,
   MEDIA_WIDTH_MM,
   MIN_FONT_PT,
@@ -9,10 +11,13 @@ import {
   OFFSET_X_MM,
   OFFSET_Y_MM,
   QUIET_ZONE_MIN_MM,
+  analyzeClientSkus,
   assertBarcodeFits,
+  buildBabyNalinPdf,
   decodeOrderBytes,
   expandRows,
   fitText,
+  graphicPdfFilename,
   measureBarcode,
   parseOrderCsv,
   pdfFilename,
@@ -85,6 +90,10 @@ describe('encodeCode128', () => {
 });
 
 describe('geometria da etiqueta', () => {
+  it('mantém CODE128 como formato obrigatório do cliente', () => {
+    expect(BARCODE_FORMAT).toBe('CODE128');
+  });
+
   it('segue o módulo de 0,296 mm do padrão do cliente', () => {
     expect(MODULE_MM).toBeCloseTo(0.296, 4);
   });
@@ -205,6 +214,47 @@ describe('expansão por quantidade', () => {
   });
 });
 
+describe('arquivo para gráfica por SKU', () => {
+  const rows: BabyNalinRow[] = [
+    { tamanho: '34', cor: 'PRETO', referencia: 'NL02', codProduto: '905301', codigoBarra: '2260000303222', quantidade: 144 },
+    { tamanho: '34', cor: ' preto ', referencia: 'nl02', codProduto: '905301', codigoBarra: '2260000303222', quantidade: 288 },
+    { tamanho: '35', cor: 'PRETO', referencia: 'NL02', codProduto: '905301', codigoBarra: '2260000303239', quantidade: 288 },
+  ];
+
+  it('mantém uma arte por referência, cor e tamanho, na ordem do arquivo', () => {
+    const analysis = analyzeClientSkus(rows);
+    expect(analysis.conflicts).toHaveLength(0);
+    expect(analysis.rows).toHaveLength(2);
+    expect(analysis.rows.map(row => row.tamanho)).toEqual(['34', '35']);
+  });
+
+  it('detecta código de barras conflitante no mesmo SKU', () => {
+    const analysis = analyzeClientSkus([
+      rows[0],
+      { ...rows[0], codigoBarra: '2260000303291' },
+    ]);
+    expect(analysis.conflicts).toHaveLength(1);
+    expect(analysis.conflicts[0].codigosBarra).toEqual(['2260000303222', '2260000303291']);
+  });
+
+  it('gera PDF vetorial 46×38 com uma página por SKU, ignorando quantidade', async () => {
+    const doc = await buildBabyNalinPdf(rows, { mode: 'graphic', repeatByQuantity: true, repeatMultiplier: 10 });
+    expect(doc.getNumberOfPages()).toBe(2);
+    const page = doc.internal.pageSize;
+    expect(page.getWidth()).toBeCloseTo(ART_WIDTH_MM, 1);
+    expect(page.getHeight()).toBeCloseTo(ART_HEIGHT_MM, 1);
+  });
+
+  it('preserva o PDF de produção 50×40 com quantidade vezes multiplicador', async () => {
+    const pequenas = rows.map((row, index) => ({ ...row, quantidade: index + 1 }));
+    const doc = await buildBabyNalinPdf(pequenas, { mode: 'production', repeatByQuantity: true, repeatMultiplier: 2 });
+    expect(doc.getNumberOfPages()).toBe((1 + 2 + 3) * 2);
+    const page = doc.internal.pageSize;
+    expect(page.getWidth()).toBeCloseTo(MEDIA_WIDTH_MM, 1);
+    expect(page.getHeight()).toBeCloseTo(MEDIA_HEIGHT_MM, 1);
+  });
+});
+
 describe('fitText — texto nunca sai da arte', () => {
   /** Largura útil real da linha de texto: da coluna x=15 até a margem direita. */
   const LARGURA_UTIL = ART_WIDTH_MM - 2.0 - 15.0;
@@ -261,5 +311,10 @@ describe('pdfFilename', () => {
 
   it('não quebra com nome estranho', () => {
     expect(pdfFilename('---.csv')).toBe('Etiquetas_pedido.pdf');
+  });
+
+  it('nomeia separadamente o arquivo para a gráfica', () => {
+    expect(graphicPdfFilename('Exp_Etiquetas_PedCompra_303222.xlsx'))
+      .toBe('Artes_SKU_Exp_Etiquetas_PedCompra_303222.pdf');
   });
 });

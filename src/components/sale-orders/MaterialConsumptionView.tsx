@@ -1,7 +1,7 @@
 import { useState, useMemo, useCallback, type ReactNode } from 'react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
+import { SearchInput } from '@/components/ui/search-input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   CircleNotch as Loader2,
@@ -10,7 +10,6 @@ import {
   ArrowDown,
   Warning as WarningIcon,
   CheckCircle,
-  MagnifyingGlass,
   CaretRight,
   CaretDown,
 } from '@phosphor-icons/react';
@@ -20,9 +19,10 @@ import { buildColAvailability, sizeSortKey } from '@/lib/soleMatrixHtml';
 import type { ArtisanalStrapCutRow } from '@/lib/strapRollCut';
 import ArtisanalStrapRollCutBlock from '@/components/sale-orders/ArtisanalStrapRollCutBlock';
 import ConsumptionDecisionRail, { type ConsumptionFilter } from '@/components/sale-orders/ConsumptionDecisionRail';
-import { type ConsumptionRow, COMPONENT_ORDER, normTxt } from '@/lib/consumptionRows';
+import { type ConsumptionRow, COMPONENT_ORDER } from '@/lib/consumptionRows';
 import { isBuyListRow } from '@/lib/buyList';
 import { formatQty, formatUnit, pluralizeItens } from '@/lib/consumptionFormat';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { buildMaterialConsumptionReportHtml, materialConsumptionReportFilename } from '@/lib/materialConsumptionReport';
 import { openPrintTab, printHtmlAsPdf } from '@/lib/printPdf';
 import {
@@ -246,9 +246,8 @@ export default function MaterialConsumptionView({
   const isPendingRow = (r: ConsumptionRow) => !!(r.widthMissing || r.warning);
 
   const visibleRows = useMemo(() => {
-    const q = normTxt(search);
     return rows.filter((r) => {
-      if (q && !`${normTxt(r.groupName)} ${normTxt(r.materialName)} ${normTxt(r.color)}`.includes(q)) {
+      if (!searchMatchesAllTerms(search, r.groupName, r.materialName, r.color)) {
         return false;
       }
       switch (filter) {
@@ -618,16 +617,16 @@ export default function MaterialConsumptionView({
               </SelectContent>
             </Select>
           </div>
-          <div className="relative">
-            <MagnifyingGlass className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Buscar material, aplicação ou cor…"
-              aria-label="Buscar material, aplicação ou cor"
-              className="h-8 w-56 pl-7 text-xs"
-            />
-          </div>
+          <SearchInput
+            value={search}
+            onChange={setSearch}
+            placeholder="Buscar material, aplicação ou cor…"
+            aria-label="Buscar material, aplicação ou cor"
+            className="w-56"
+            inputClassName="h-8 text-xs"
+            resultCount={visibleRows.length}
+            totalCount={rows.length}
+          />
           <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
             {Array.from(totalsByUnit.entries()).map(([unit, total]) => (
               <span key={unit} className="flex items-center gap-1">

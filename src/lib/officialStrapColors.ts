@@ -67,6 +67,29 @@ export function canonicalStrapColorForProduct(
 }
 
 /**
+ * Cores cadastradas nos produtos ativos da napa-base selecionada. Esta lista
+ * alimenta o cadastro da identidade; a designação de um produto oficial segue
+ * sendo uma etapa operacional separada, pois também valida largura e receita.
+ */
+export function registeredBaseMaterialColorsForGroup(
+  catalog: OfficialColorCatalog | null | undefined,
+  baseGroupId: string | null | undefined,
+) {
+  if (!catalog || !baseGroupId) return [];
+  const ids = new Set<string>();
+  catalog.products
+    .filter((product) => product.active !== false && product.group_id === baseGroupId)
+    .forEach((product) => {
+      const color = canonicalStrapColorForProduct(catalog, product.id);
+      if (color) ids.add(color.id);
+    });
+
+  return catalog.colors
+    .filter((color) => color.active && ids.has(color.id))
+    .sort((left, right) => left.name.localeCompare(right.name, 'pt-BR'));
+}
+
+/**
  * Cores com alguma fonte válida para a base exata. O vínculo oficial ativo
  * oferece produção interna mesmo com saldo zero; uma variante híbrida cuja
  * base/cor foi descontinuada continua aparecendo enquanto houver tira pronta

@@ -6,14 +6,14 @@ import {
 import { SortableTableHead, useTableSort, SortDirection } from '@/components/ui/sortable-table-head';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { SearchInput } from '@/components/ui/search-input';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { MagnifyingGlass as Search, DotsThree as MoreHorizontal, CaretLeft as ChevronLeft, CaretRight as ChevronRight, CaretDoubleLeft as ChevronsLeft, CaretDoubleRight as ChevronsRight, X } from '@phosphor-icons/react';
+import { DotsThree as MoreHorizontal, CaretLeft as ChevronLeft, CaretRight as ChevronRight, CaretDoubleLeft as ChevronsLeft, CaretDoubleRight as ChevronsRight } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -97,13 +97,15 @@ export function DataTable<T>({
   // ─ Search filtering ─
   const filteredData = useMemo(() => {
     if (!search.trim()) return data;
-    const q = normalizeForSearch(search);
     const fields = searchFields || columns.map(c => c.key);
     return data.filter(row =>
-      fields.some(f => {
-        const val = (row as any)[f];
-        return val != null && normalizeForSearch(String(val)).includes(q);
-      })
+      searchMatchesAllTerms(
+        search,
+        ...fields.map(f => {
+          const val = (row as Record<PropertyKey, unknown>)[f as PropertyKey];
+          return val == null ? '' : String(val);
+        }),
+      )
     );
   }, [data, search, searchFields, columns]);
 
@@ -163,23 +165,15 @@ export function DataTable<T>({
       {showHeader && (
         <div className="flex flex-wrap items-center gap-3">
           {searchable && (
-            <div className="relative flex-1 min-w-[200px] max-w-sm">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                placeholder={searchPlaceholder}
-                className="pl-9 h-9 text-xs"
-              />
-              {search && (
-                <button
-                  onClick={() => setSearch('')}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              )}
-            </div>
+            <SearchInput
+              className="flex-1 min-w-[200px] max-w-sm"
+              inputClassName="h-9 text-xs"
+              value={search}
+              onChange={setSearch}
+              placeholder={searchPlaceholder}
+              resultCount={filteredData.length}
+              totalCount={data.length}
+            />
           )}
           {selectedIds.size > 0 && (
             <div className="flex items-center gap-2 px-3 py-1.5 bg-primary/5 border border-primary/20 rounded-lg">

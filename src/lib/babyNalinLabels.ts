@@ -37,6 +37,8 @@ export const PRINTER_DPI = 600;
 export const DOT_MM = 25.4 / PRINTER_DPI; // 0,0423 mm
 export const MODULE_DOTS = 7;
 export const MODULE_MM = 0.296;
+/** Formato obrigatório do cliente, inclusive quando o conteúdo tem 13 dígitos. */
+export const BARCODE_FORMAT = 'CODE128' as const;
 
 /** Mínimo em branco de cada lado do código. Nada pode invadir essa faixa. */
 export const QUIET_ZONE_MIN_MM = 3.1;
@@ -251,6 +253,8 @@ export function assertBarcodeFits(codigo: string): BarcodeFit {
 /* ──────────────────────────────── PDF ──────────────────────────────── */
 
 export interface BabyNalinPdfOptions {
+  /** Produção usa a mídia 50×40; gráfica entrega somente a arte 46×38. */
+  mode?: 'production' | 'graphic';
   /** Repete cada etiqueta pela `Qt. Solicitada` do pedido. Padrão: 1 por linha. */
   repeatByQuantity?: boolean;
   /** Etiquetas físicas por par quando a repetição por quantidade estiver ligada. */
@@ -260,6 +264,72 @@ export interface BabyNalinPdfOptions {
 }
 
 type PdfDoc = import('jspdf').jsPDF;
+
+export interface BabyNalinSkuConflict {
+  sku: string;
+  referencia: string;
+  cor: string;
+  tamanho: string;
+  codigosBarra: string[];
+}
+
+export interface BabyNalinSkuAnalysis {
+  rows: BabyNalinRow[];
+  conflicts: BabyNalinSkuConflict[];
+}
+
+function normalizeSkuPart(value: string): string {
+  return value.trim().replace(/\s+/g, ' ').toUpperCase();
+}
+
+/** SKU do arquivo do cliente: referência + cor + tamanho. */
+export function clientSkuKey(row: BabyNalinRow): string {
+  return [row.referencia, row.cor, row.tamanho].map(normalizeSkuPart).join(' · ');
+}
+
+/**
+ * Mantém uma arte por SKU na ordem da planilha. Duplicidade idêntica é
+ * descartada; código de barras divergente para o mesmo SKU vira conflito.
+ */
+export function analyzeClientSkus(rows: BabyNalinRow[]): BabyNalinSkuAnalysis {
+  const firstBySku = new Map<string, BabyNalinRow>();
+  const barcodesBySku = new Map<string, Set<string>>();
+
+  rows.forEach(row => {
+    const sku = clientSkuKey(row);
+    if (!firstBySku.has(sku)) firstBySku.set(sku, row);
+    const barcodes = barcodesBySku.get(sku) ?? new Set<string>();
+    barcodes.add(row.codigoBarra.trim());
+    barcodesBySku.set(sku, barcodes);
+  });
+
+  const conflicts = [...barcodesBySku.entries()]
+    .filter(([, barcodes]) => barcodes.size > 1)
+    .map(([sku, barcodes]) => {
+      const row = firstBySku.get(sku)!;
+      return {
+        sku,
+        referencia: row.referencia,
+        cor: row.cor,
+        tamanho: row.tamanho,
+        codigosBarra: [...barcodes],
+      };
+    });
+
+  return { rows: [...firstBySku.values()], conflicts };
+}
+
+export function uniqueClientSkuRows(rows: BabyNalinRow[]): BabyNalinRow[] {
+  const analysis = analyzeClientSkus(rows);
+  if (analysis.conflicts.length > 0) {
+    const first = analysis.conflicts[0];
+    throw new Error(
+      `O SKU ${first.referencia} / ${first.cor} / ${first.tamanho} possui mais de um código de barras. ` +
+        'Corrija a planilha antes de gerar o arquivo para a gráfica.',
+    );
+  }
+  return analysis.rows;
+}
 
 /** Piso de corpo do texto: abaixo disso não se lê no chão de fábrica. */
 export const MIN_FONT_PT = 6;
@@ -291,8 +361,9 @@ export function fitText(
 }
 
 function drawLabel(doc: PdfDoc, row: BabyNalinRow, options: BabyNalinPdfOptions): void {
-  const ox = OFFSET_X_MM;
-  const oy = OFFSET_Y_MM;
+  const graphicMode = options.mode === 'graphic';
+  const ox = graphicMode ? 0 : OFFSET_X_MM;
+  const oy = graphicMode ? 0 : OFFSET_Y_MM;
 
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(0, 0, 0);
@@ -333,7 +404,7 @@ export function expandRows(rows: BabyNalinRow[], repeatByQuantity: boolean, repe
   return rows.flatMap(r => Array.from({ length: Math.max(1, r.quantidade) * multiplier }, () => r));
 }
 
-/** Monta o PDF: uma página por etiqueta, no tamanho exato da mídia 50 × 40. */
+/** Monta o PDF de produção 50×40 ou o arquivo vetorial para gráfica 46×38. */
 export async function buildBabyNalinPdf(
   rows: BabyNalinRow[],
   options: BabyNalinPdfOptions = {},
@@ -341,18 +412,27 @@ export async function buildBabyNalinPdf(
   if (rows.length === 0) throw new Error('Nada para gerar: nenhuma etiqueta selecionada.');
 
   const { jsPDF } = await import('jspdf');
-  const paginas = expandRows(rows, options.repeatByQuantity ?? false, options.repeatMultiplier ?? 1);
+  const graphicMode = options.mode === 'graphic';
+  const paginas = graphicMode
+    ? uniqueClientSkuRows(rows)
+    : expandRows(rows, options.repeatByQuantity ?? false, options.repeatMultiplier ?? 1);
+  const pageWidth = graphicMode ? ART_WIDTH_MM : MEDIA_WIDTH_MM;
+  const pageHeight = graphicMode ? ART_HEIGHT_MM : MEDIA_HEIGHT_MM;
 
   const doc = new jsPDF({
     unit: 'mm',
-    format: [MEDIA_WIDTH_MM, MEDIA_HEIGHT_MM],
+    format: [pageWidth, pageHeight],
     orientation: 'landscape',
     compress: true,
   });
-  doc.setProperties({ title: `Etiquetas ${ART_WIDTH_MM}x${ART_HEIGHT_MM}mm CODE128` });
+  doc.setProperties({
+    title: graphicMode
+      ? `Artes por SKU ${ART_WIDTH_MM}x${ART_HEIGHT_MM}mm ${BARCODE_FORMAT}`
+      : `Etiquetas ${ART_WIDTH_MM}x${ART_HEIGHT_MM}mm ${BARCODE_FORMAT}`,
+  });
 
   paginas.forEach((row, i) => {
-    if (i > 0) doc.addPage([MEDIA_WIDTH_MM, MEDIA_HEIGHT_MM], 'landscape');
+    if (i > 0) doc.addPage([pageWidth, pageHeight], 'landscape');
     drawLabel(doc, row, options);
   });
 
@@ -394,4 +474,10 @@ export async function loadLogoDataUrl(url: string): Promise<BabyNalinPdfOptions[
 export function pdfFilename(origem: string): string {
   const base = origem.replace(/\.[^.]+$/, '').replace(/[^A-Za-z0-9]+/g, '_').replace(/^_|_$/g, '');
   return `Etiquetas_${base || 'pedido'}.pdf`;
+}
+
+/** Nome do PDF vetorial com uma página por SKU para envio à gráfica. */
+export function graphicPdfFilename(origem: string): string {
+  const base = origem.replace(/\.[^.]+$/, '').replace(/[^A-Za-z0-9]+/g, '_').replace(/^_|_$/g, '');
+  return `Artes_SKU_${base || 'pedido'}.pdf`;
 }

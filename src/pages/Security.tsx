@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { ShieldCheck, Lock, Eye, Key as KeyRound, ArrowsClockwise as RefreshCcw } from '@phosphor-icons/react';
 import { toast } from 'sonner';
@@ -234,15 +235,17 @@ function MfaCard() {
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <Label className="text-xs uppercase font-bold">Método</Label>
-                    <select
+                    <Select
                       value={mfa?.mfa_method ?? 'totp'}
-                      onChange={(e) => upsert.mutate({ mfa_method: e.target.value })}
-                      className="w-full mt-1 h-8 px-2 rounded-md border border-input bg-background text-sm"
+                      onValueChange={(mfa_method) => upsert.mutate({ mfa_method })}
                     >
-                      <option value="totp">TOTP (app autenticador)</option>
-                      <option value="sms">SMS</option>
-                      <option value="email">E-mail</option>
-                    </select>
+                      <SelectTrigger className="mt-1 h-8"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="totp">TOTP (app autenticador)</SelectItem>
+                        <SelectItem value="sms">SMS</SelectItem>
+                        <SelectItem value="email">E-mail</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div>
                     <Label className="text-xs uppercase font-bold">Telefone recuperação</Label>

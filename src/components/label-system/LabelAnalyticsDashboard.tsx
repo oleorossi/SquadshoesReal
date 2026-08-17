@@ -1,10 +1,12 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Printer, Warning as AlertTriangle, FilePdf, CheckCircle } from '@phosphor-icons/react';
+import { Printer, Warning as AlertTriangle, FilePdf, CheckCircle, ChartBar } from '@phosphor-icons/react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { supabase } from '@/integrations/supabase/client';
+import { Panel } from '@/components/ui/panel';
+import { EmptyState } from '@/components/ui/empty-state';
+import { StatCard, StatGrid } from '@/components/ui/stat-card';
 
 interface AnalyticsJob {
   created_at: string;
@@ -49,6 +51,7 @@ export function LabelAnalyticsDashboard() {
     const failed = jobs.filter(job => job.status === 'failed').length;
     const waiting = jobs.filter(job => job.status === 'generated').length;
     const errorRate = jobs.length > 0 ? (failed / jobs.length) * 100 : 0;
+    const confirmationRate = labelsGenerated > 0 ? (labelsConfirmed / labelsGenerated) * 100 : 0;
 
     const byDay = new Map<string, { date: string; geradas: number; confirmadas: number; falhas: number }>();
     const byType = new Map<string, number>();
@@ -68,6 +71,7 @@ export function LabelAnalyticsDashboard() {
       failed,
       waiting,
       errorRate,
+      confirmationRate,
       daily: [...byDay.values()],
       types: [...byType.entries()].map(([tipo, etiquetas]) => ({ tipo, etiquetas })),
     };
@@ -75,10 +79,11 @@ export function LabelAnalyticsDashboard() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-lg font-semibold">Analytics de Etiquetas</h2>
-          <p className="text-xs text-muted-foreground">Dados reais dos lotes registrados; sem telemetria fictícia de impressora.</p>
+          <p className="section-label">CONTROLE · INDICADORES</p>
+          <h2 className="mt-1 text-base font-bold">Desempenho da etiquetagem</h2>
+          <p className="text-xs text-muted-foreground">Somente lotes registrados no sistema; sem estimativas da impressora.</p>
         </div>
         <Select value={timeRange} onValueChange={setTimeRange}>
           <SelectTrigger className="w-[150px]"><SelectValue /></SelectTrigger>
@@ -90,18 +95,20 @@ export function LabelAnalyticsDashboard() {
         </Select>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card><CardContent className="py-4 text-center space-y-1"><FilePdf className="h-5 w-5 mx-auto text-primary" /><div className="text-2xl font-bold">{metrics.labelsGenerated}</div><div className="text-xs text-muted-foreground">Etiquetas em PDFs gerados</div></CardContent></Card>
-        <Card><CardContent className="py-4 text-center space-y-1"><CheckCircle className="h-5 w-5 mx-auto text-primary" /><div className="text-2xl font-bold">{metrics.labelsConfirmed}</div><div className="text-xs text-muted-foreground">Impressões confirmadas</div></CardContent></Card>
-        <Card><CardContent className="py-4 text-center space-y-1"><Printer className="h-5 w-5 mx-auto text-amber-600" /><div className="text-2xl font-bold">{metrics.waiting}</div><div className="text-xs text-muted-foreground">Aguardando confirmação</div></CardContent></Card>
-        <Card><CardContent className="py-4 text-center space-y-1"><AlertTriangle className="h-5 w-5 mx-auto text-destructive" /><div className="text-2xl font-bold">{metrics.errorRate.toFixed(1)}%</div><div className="text-xs text-muted-foreground">Falhas de geração ({metrics.failed})</div></CardContent></Card>
-      </div>
+      <StatGrid>
+        <StatCard label="Etiquetas nos PDFs" value={metrics.labelsGenerated} icon={FilePdf} tone="primary" />
+        <StatCard label="Impressões confirmadas" value={metrics.labelsConfirmed} icon={CheckCircle} tone="success" hint={`${metrics.confirmationRate.toFixed(1)}% do volume gerado`} />
+        <StatCard label="Aguardando confirmação" value={metrics.waiting} icon={Printer} tone="warning" />
+        <StatCard label="Taxa de falha" value={`${metrics.errorRate.toFixed(1)}%`} icon={AlertTriangle} tone="destructive" hint={`${metrics.failed} lotes`} />
+      </StatGrid>
 
-      {isLoading ? <p className="py-12 text-center text-sm text-muted-foreground">Carregando métricas…</p> : (
+      {isLoading ? <p className="py-12 text-center text-sm text-muted-foreground">Carregando métricas…</p> : jobs.length === 0 ? (
+        <div className="rounded-lg border border-border bg-card">
+          <EmptyState icon={ChartBar} title="Ainda não há dados no período" description="Gere e confirme as primeiras impressões ou amplie o intervalo." />
+        </div>
+      ) : (
         <div className="grid md:grid-cols-2 gap-4">
-          <Card>
-            <CardHeader className="pb-2"><CardTitle className="text-sm">Volume por dia</CardTitle></CardHeader>
-            <CardContent>
+          <Panel title="Volume por dia" subtitle="PDF gerado comparado à impressão física confirmada">
               <ResponsiveContainer width="100%" height={260}>
                 <BarChart data={metrics.daily}>
                   <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
@@ -110,11 +117,8 @@ export function LabelAnalyticsDashboard() {
                   <Bar dataKey="confirmadas" fill="hsl(var(--primary))" name="Impressão confirmada" radius={[3, 3, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2"><CardTitle className="text-sm">Etiquetas por tipo de lote</CardTitle></CardHeader>
-            <CardContent>
+          </Panel>
+          <Panel title="Etiquetas por tipo de lote" subtitle="Distribuição do volume gerado">
               <ResponsiveContainer width="100%" height={260}>
                 <BarChart data={metrics.types} layout="vertical">
                   <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
@@ -122,8 +126,7 @@ export function LabelAnalyticsDashboard() {
                   <Bar dataKey="etiquetas" fill="hsl(var(--primary))" name="Etiquetas" radius={[0, 3, 3, 0]} />
                 </BarChart>
               </ResponsiveContainer>
-            </CardContent>
-          </Card>
+          </Panel>
         </div>
       )}
     </div>

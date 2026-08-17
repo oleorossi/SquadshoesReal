@@ -15,7 +15,7 @@ export interface SearchableOption {
   keywords?: string;
 }
 
-interface SearchableSelectProps {
+export interface SearchableSelectProps {
   value: string;
   onChange: (value: string) => void;
   options: SearchableOption[];
@@ -26,8 +26,12 @@ interface SearchableSelectProps {
   className?: string;
   /** Ícone à esquerda do placeholder (quando nada selecionado). */
   icon?: ReactNode;
-  /** Heading do grupo (mostra a contagem filtrada); omitir = sem heading. */
+  /** Heading do grupo; omitir = sem heading. A contagem vive na faixa de busca. */
   heading?: string;
+  /** Rótulo curto da faixa de localização acima da busca. */
+  searchLabel?: string;
+  /** Nome acessível do gatilho; por padrão usa o placeholder. */
+  'aria-label'?: string;
 }
 
 /**
@@ -39,7 +43,7 @@ interface SearchableSelectProps {
 export function SearchableSelect({
   value, onChange, options,
   placeholder = 'Selecione...', searchPlaceholder = 'Buscar...', emptyText = 'Nada encontrado.',
-  disabled, className, icon, heading,
+  disabled, className, icon, heading, searchLabel = 'Localizar opção', 'aria-label': ariaLabel,
 }: SearchableSelectProps) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
@@ -62,7 +66,8 @@ export function SearchableSelect({
       <PopoverTrigger asChild>
         <Button
           type="button" variant="outline" role="combobox" aria-expanded={open} disabled={disabled}
-          className={cn('h-9 w-full justify-between text-sm font-normal', className)}
+          aria-label={ariaLabel ?? placeholder}
+          className={cn('h-11 w-full justify-between text-sm font-normal md:h-9', className)}
         >
           {selected ? (
             <span className="flex min-w-0 items-center gap-2">
@@ -81,11 +86,22 @@ export function SearchableSelect({
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-[--radix-popover-trigger-width] min-w-[260px] p-0" align="start">
-        <Command shouldFilter={false}>
-          <CommandInput placeholder={searchPlaceholder} value={search} onValueChange={setSearch} />
+        <Command shouldFilter={false} label={searchPlaceholder}>
+          <div className="flex items-center justify-between gap-3 border-b border-foreground/10 bg-muted-soft px-2.5 py-1.5 font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            <span>{searchLabel}</span>
+            <span aria-live="polite" className="shrink-0 tabular-nums">
+              {search ? `${filtered.length} de ` : ''}{options.length.toLocaleString('pt-BR')}
+            </span>
+          </div>
+          <CommandInput
+            placeholder={searchPlaceholder}
+            aria-label={searchPlaceholder}
+            value={search}
+            onValueChange={setSearch}
+          />
           <CommandList>
             <CommandEmpty>{emptyText}</CommandEmpty>
-            <CommandGroup heading={heading ? `${heading} (${filtered.length})` : undefined}>
+            <CommandGroup heading={heading}>
               {visible.map(o => (
                 <CommandItem
                   key={o.value} value={o.value}

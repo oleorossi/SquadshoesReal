@@ -1,14 +1,14 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Warning as AlertTriangle, CheckCircle as CheckCircle2, ClipboardText as ClipboardList, MagnifyingGlass as Search, CaretRight as ChevronRight } from '@phosphor-icons/react';
+import { Warning as AlertTriangle, CheckCircle as CheckCircle2, ClipboardText as ClipboardList, CaretRight as ChevronRight } from '@phosphor-icons/react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { SearchInput } from '@/components/ui/search-input';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 
 type AuditRow = {
   id: string;
@@ -175,8 +175,7 @@ export function SheetsAuditPanel({
       getGapsForRow(row).some(g => g.severity === 'critical')
     );
     if (search.trim()) {
-      const q = normalizeForSearch(search);
-      r = r.filter(row => normalizeForSearch(row.code).includes(q) || normalizeForSearch(row.name).includes(q));
+      r = r.filter(row => searchMatchesAllTerms(search, row.code, row.name));
     }
     return r;
   }, [rows, filter, search]);
@@ -323,8 +322,7 @@ function SheetsAuditTab({
       getGapsForRow(row).some(g => g.severity === 'critical')
     );
     if (search.trim()) {
-      const q = normalizeForSearch(search);
-      r = r.filter(row => normalizeForSearch(row.code).includes(q) || normalizeForSearch(row.name).includes(q));
+      r = r.filter(row => searchMatchesAllTerms(search, row.code, row.name));
     }
     return r;
   }, [rows, filter, search]);
@@ -407,11 +405,15 @@ function SheetsAuditTab({
               <TabsTrigger value="all" className="text-xs">Todas</TabsTrigger>
             </TabsList>
           </Tabs>
-          <div className="relative flex-1 max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input placeholder="Código ou nome…" value={search}
-              onChange={(e) => setSearch(e.target.value)} className="pl-9 h-8 text-xs" />
-          </div>
+          <SearchInput
+            className="flex-1 max-w-sm"
+            inputClassName="h-8 text-xs"
+            placeholder="Buscar ficha por código ou nome…"
+            value={search}
+            onChange={setSearch}
+            resultCount={filtered.length}
+            totalCount={rows.length}
+          />
         </div>
 
         {/* Lista */}

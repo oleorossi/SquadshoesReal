@@ -51,6 +51,7 @@ import { useCompanies } from '@/hooks/useNfe';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { SearchInput } from '@/components/ui/search-input';
 import { EmptyState } from '@/components/ui/empty-state';
+import { findLabelGroupForScan } from '@/lib/labelOperations';
 
 
 const LABEL_SIZES = [
@@ -821,6 +822,7 @@ export function LabelProductionTab() {
   // como "2026-05-S4" provenientes de sale_orders.billing_week
   const [billingWeekFilter, setBillingWeekFilter] = useState<string>('__all__');
   const [showScanner, setShowScanner] = useState(false);
+  const [scannerCode, setScannerCode] = useState('');
   const [thermalMode, setThermalMode] = useState<'quantity' | 'ficha'>('quantity');
   const [printMode, setPrintMode] = useState<'batch' | 'per_op'>('batch');
   const [selectedThermalTemplateId, setSelectedThermalTemplateId] = useState(SQUAD_THERMAL_DEFAULT_ID);
@@ -1008,6 +1010,30 @@ export function LabelProductionTab() {
       g.clientOrderNumber, g.colors.join(' '), g.orderNumbers.join(' '), g.strapsLabel,
     )
   );
+
+  const visibleSelectedGroups = filtered.filter(group => selected.has(group.groupKey));
+  const selectedPairs = visibleSelectedGroups.reduce((sum, group) => sum + group.totalQty, 0);
+  const selectedOrders = new Set(visibleSelectedGroups.flatMap(group => group.orders.map((order: any) => order.id))).size;
+
+  const handleScannerSubmit = () => {
+    const code = scannerCode.trim();
+    if (!code) return;
+    const group = findLabelGroupForScan(groupedRefs, code);
+    if (!group) {
+      setSearch(code);
+      toast.info('Código não identificado exatamente. A busca foi preenchida para conferência manual.');
+      return;
+    }
+
+    setSelected(previous => {
+      const next = printMode === 'per_op' ? new Set<string>() : new Set(previous);
+      next.add(group.groupKey);
+      return next;
+    });
+    setSearch('');
+    setScannerCode('');
+    toast.success(`${group.orderNumbers.join(', ')} selecionada para impressão.`);
+  };
 
   const groupedByEconomicGroup = useMemo(() => {
     const map = new Map<string, GroupedReference[]>();
@@ -1875,6 +1901,36 @@ export function LabelProductionTab() {
         </div>
       )}
 
+      {showScanner && (
+        <div className="rounded-lg border border-primary/25 bg-primary/5 p-4 animate-in slide-in-from-top-2">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
+            <div className="min-w-0 flex-1 space-y-1.5">
+              <Label htmlFor="label-scanner" className="text-xs font-bold uppercase tracking-wider">Leitura rápida</Label>
+              <Input
+                id="label-scanner"
+                autoFocus
+                value={scannerCode}
+                onChange={event => setScannerCode(event.target.value)}
+                onKeyDown={event => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    handleScannerSubmit();
+                  }
+                }}
+                placeholder="Bipe ou digite OP, PV, pedido do cliente ou referência…"
+                className="bg-background font-mono"
+              />
+            </div>
+            <Button onClick={handleScannerSubmit} disabled={!scannerCode.trim()} className="gap-2">
+              <ScanLine className="h-4 w-4" /> Localizar e selecionar
+            </Button>
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">
+            Enter confirma a leitura. No modo por OP, a nova leitura substitui a seleção anterior; no modo lote, ela é adicionada.
+          </p>
+        </div>
+      )}
+
       {showConfig && (
         <Card className="animate-in slide-in-from-top-2 border-primary/20 shadow-lg">
           <CardHeader className="bg-muted/50 py-3">
@@ -2034,8 +2090,18 @@ export function LabelProductionTab() {
           </div>
         </CardHeader>
         <CardContent className="pt-4">
-          {selected.size > 0 && (
+          {visibleSelectedGroups.length > 0 && (
             <div className="space-y-3 p-4 bg-primary/5 rounded-lg border border-primary/20 animate-in fade-in zoom-in-95">
+              <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-primary/20 pb-3">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-wider text-primary">Seleção pronta</p>
+                  <p className="text-xs text-muted-foreground">Confira o tipo antes de gerar o PDF.</p>
+                </div>
+                <Badge variant="secondary">{visibleSelectedGroups.length} {visibleSelectedGroups.length === 1 ? 'referência' : 'referências'}</Badge>
+                <Badge variant="outline">{selectedOrders} OP{selectedOrders === 1 ? '' : 's'}</Badge>
+                <Badge variant="outline">{selectedPairs.toLocaleString('pt-BR')} pares</Badge>
+                <Button variant="ghost" size="sm" className="ml-auto" onClick={() => setSelected(new Set())}>Limpar seleção</Button>
+              </div>
               {hasColmeiaSelected && (
                 <div className="flex items-center gap-2 p-2 rounded-md bg-amber-500/10 border border-amber-500/30 text-amber-700">
                   <Package className="h-4 w-4 flex-shrink-0" />
@@ -2046,7 +2112,7 @@ export function LabelProductionTab() {
               )}
               <div className="flex flex-wrap items-center gap-2">
                 {selectionLabelTypes.hangtag && (
-                  <Button onClick={handlePrintHangtags} className="gap-2 h-9 shadow-md bg-primary hover:bg-primary/90"><Tag className="h-4 w-4" />Hangtags ({selected.size})</Button>
+                  <Button onClick={handlePrintHangtags} className="gap-2 h-9 shadow-md bg-primary hover:bg-primary/90"><Tag className="h-4 w-4" />Hangtags ({visibleSelectedGroups.length})</Button>
                 )}
                 {selectionLabelTypes.thermal && (
                   <div className="flex flex-col gap-1">
@@ -2126,7 +2192,7 @@ export function LabelProductionTab() {
               </div>
             </div>
           )}
-          {selected.size === 0 && <div className="text-center py-4 text-xs text-muted-foreground italic flex items-center justify-center gap-2"><Tag className="h-3 w-3 opacity-40" /> Selecione itens abaixo para habilitar opções de impressão</div>}
+          {visibleSelectedGroups.length === 0 && <div className="text-center py-4 text-xs text-muted-foreground italic flex items-center justify-center gap-2"><Tag className="h-3 w-3 opacity-40" /> Selecione itens abaixo ou use o leitor para habilitar as opções de impressão</div>}
         </CardContent>
       </Card>
 

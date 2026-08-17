@@ -10,6 +10,7 @@ import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useApproveSopPlan, useCreateSopPlan, useSaveSopPlanItem, useSopPlanItems, useSopPlans, useSopSectorLoad, SopPlanItem } from '@/hooks/useSopPlanning';
 import { CheckCircle, Plus, Rows } from '@phosphor-icons/react';
@@ -147,15 +148,23 @@ function SopPlanning() {
           <Input type="month" value={periodMonth} onChange={e => setPeriodMonth(e.target.value)} className="w-40" />
         </label>
         <label className="grid gap-1 text-xs font-medium">Cenário
-          <select value={scenario} onChange={e => setScenario(e.target.value as typeof scenario)} className="h-9 rounded-sm border-[1.5px] border-foreground/15 bg-background px-3 text-sm">
-            <option value="conservador">Conservador</option><option value="base">Base</option><option value="agressivo">Agressivo</option>
-          </select>
+          <Select value={scenario} onValueChange={value => setScenario(value as typeof scenario)}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="conservador">Conservador</SelectItem>
+              <SelectItem value="base">Base</SelectItem>
+              <SelectItem value="agressivo">Agressivo</SelectItem>
+            </SelectContent>
+          </Select>
         </label>
         <Button disabled={!periodMonth || createPlan.isPending} onClick={() => createPlan.mutate({ periodMonth: `${periodMonth}-01`, scenario }, { onSuccess: id => { setSelectedId(id); setDrafts({}); } })}><Plus className="mr-1.5 h-4 w-4" /> Criar plano</Button>
         {plans.length > 0 && <label className="ml-auto grid gap-1 text-xs font-medium">Plano
-          <select value={plan?.id || ''} onChange={e => { setSelectedId(e.target.value); setDrafts({}); }} className="h-9 max-w-[290px] rounded-sm border-[1.5px] border-foreground/15 bg-background px-3 text-sm">
-            {plans.map(p => <option key={p.id} value={p.id}>{new Date(`${p.period_month}T12:00:00`).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })} · {p.scenario} · {p.status}</option>)}
-          </select>
+          <Select value={plan?.id || ''} onValueChange={value => { setSelectedId(value); setDrafts({}); }}>
+            <SelectTrigger className="max-w-[290px]"><SelectValue /></SelectTrigger>
+            <SelectContent searchPlaceholder="Buscar plano por mês, cenário ou status…" searchLabel="Localizar plano">
+              {plans.map(p => <SelectItem key={p.id} value={p.id}>{new Date(`${p.period_month}T12:00:00`).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })} · {p.scenario} · {p.status}</SelectItem>)}
+            </SelectContent>
+          </Select>
         </label>}
       </div>
       <p className="mt-3 text-xs text-muted-foreground">O S&OP consolida demanda e capacidade mensal; ele não cria nem reprioriza OPs da agenda diária.</p>

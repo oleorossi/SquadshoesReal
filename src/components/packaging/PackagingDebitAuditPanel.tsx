@@ -4,16 +4,16 @@ import {
   ArrowsClockwise as RefreshCw,
   CheckCircle,
   ClockCounterClockwise as History,
-  MagnifyingGlass as Search,
   Warning as AlertTriangle,
 } from '@phosphor-icons/react';
 import { supabase } from '@/integrations/supabase/client';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
+import { SearchInput } from '@/components/ui/search-input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 
 interface PackagingAuditRow {
   order_id: string;
@@ -87,16 +87,15 @@ export default function PackagingDebitAuditPanel() {
 
   const visible = useMemo(() => {
     const base = scope === 'active' ? activeRows : scope === 'issues' ? issueRows : rows;
-    const term = search.trim().toLocaleLowerCase('pt-BR');
-    if (!term) return base;
-    return base.filter(row => [
+    return base.filter(row => searchMatchesAllTerms(
+      search,
       row.order_number,
       row.sale_order_number,
       row.reference_name,
       row.sole_group_name,
       row.box_name,
       statusLabel[row.audit_status],
-    ].some(value => String(value ?? '').toLocaleLowerCase('pt-BR').includes(term)));
+    ));
   }, [activeRows, issueRows, rows, scope, search]);
 
   if (isLoading) return <Skeleton className="h-[480px] w-full" />;
@@ -148,15 +147,15 @@ export default function PackagingDebitAuditPanel() {
           </TabsList>
         </Tabs>
         <div className="flex gap-2">
-          <div className="relative min-w-0 flex-1 md:w-72">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              value={search}
-              onChange={event => setSearch(event.target.value)}
-              placeholder="Buscar OP, PV, referência, solado..."
-              className="h-9 pl-8"
-            />
-          </div>
+          <SearchInput
+            className="min-w-0 flex-1 md:w-72"
+            inputClassName="h-9"
+            value={search}
+            onChange={setSearch}
+            placeholder="Buscar OP, PV, referência ou solado…"
+            resultCount={visible.length}
+            totalCount={scope === 'active' ? activeRows.length : scope === 'issues' ? issueRows.length : rows.length}
+          />
           <Button
             type="button"
             variant="outline"

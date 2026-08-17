@@ -1192,43 +1192,6 @@ function TimesheetRecordsTab() {
         )}
       </Panel>
 
-      {/* Employee selector OCULTO (2026-06-20): o Ponto não mostra mais resumo
-          por funcionário — isso é visualização e vive no RH → Relatórios. */}
-      {false && employeeNames.length > 0 && (
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="w-64">
-            <Select value={selectedEmployee} onValueChange={setSelectedEmployee}>
-              <SelectTrigger><SelectValue placeholder="Selecione funcionário..." /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__all__">📊 Todos os Funcionários</SelectItem>
-                {employeeNames.map(n => (
-                  <SelectItem key={n} value={n}>{n}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="w-56 relative">
-            <Input
-              placeholder="Buscar funcionário..."
-              onChange={e => {
-                const term = e.target.value.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-                if (!term) { setSelectedEmployee('__all__'); return; }
-                const match = employeeNames.find(n => n.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').includes(term));
-                if (match) setSelectedEmployee(match);
-              }}
-              className="pl-8"
-            />
-            <FileText className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
-          </div>
-          <span className="text-xs text-muted-foreground">{employeeNames.length} funcionários</span>
-          {selectedEmployee && selectedEmployee !== '__all__' && (
-            <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setReportDialogOpen(true)}>
-              <Users2 className="h-3.5 w-3.5" /> Resumo Individual
-            </Button>
-          )}
-        </div>
-      )}
-
       {/* Resumo/financeiro/registro-diário por funcionário REMOVIDOS do Ponto
           (2026-06-20): tudo isso é visualização e vive no RH → Relatórios (Horas,
           Pagamento, Espelho, Calendário). O Ponto é SÓ ENTRADA. */}
