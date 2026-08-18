@@ -163,6 +163,10 @@ describe('Tiras artesanais — contrato do frontend canônico', () => {
     expect(technicalSheets).toContain('applyCanonicalTechnicalStrapMeasure');
     expect(technicalSheets).toContain('hasCanonicalTechnicalStrapIdentity');
     expect(technicalSheets).toContain("setAbaAtiva('range-aviamento')");
+    expect(technicalSheets).toContain('activeStrapMeasures.length === 0');
+    expect(technicalSheets).toContain('Nenhuma família e medida está ativa');
+    expect(technicalSheets).toContain('Catálogo sem família e medida ativa');
+    expect(technicalSheets).toContain('target="_blank"');
     expect(technicalSheets).not.toContain('<StrapGroupCombobox');
   });
 
