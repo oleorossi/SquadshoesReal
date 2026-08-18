@@ -4002,13 +4002,17 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
            <ProductionSectorsTab
              sectors={sheet.production_sectors || ['Corte Fibra', 'Corte Forração', 'Costura Palmilha', 'Costura Cabedal', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição']}
              insoleReadyMade={(sheet as any).insole_ready_made === true}
-             onChange={(sectors: string[]) => {
-               updateSheet.mutate({ id: sheet.id, data: { production_sectors: sectors } as any });
-             }}
              aviamentoSteps={Array.isArray((sheet as any).aviamento_steps) ? ((sheet as any).aviamento_steps as string[]) : []}
-             onChangeAviamentoSteps={(steps: string[]) => {
-               updateSheet.mutate({ id: sheet.id, data: { aviamento_steps: steps } as any });
+             onSave={(sectors: string[], steps: string[]) => {
+               updateSheet.mutate({
+                 id: sheet.id,
+                 data: {
+                   production_sectors: sectors,
+                   ...(sectors.includes('Aviamento') ? { aviamento_steps: steps } : {}),
+                 } as any,
+               });
              }}
+             saving={updateSheet.isPending}
            />
           <Separator />
           <OperationsTab
@@ -4337,17 +4341,18 @@ const STRAP_LABEL_OPTIONS = [
 ] as const;
 
 function ProductionSectorsTab({
-  sectors, onChange,
-  aviamentoSteps, onChangeAviamentoSteps,
+  sectors, onSave,
+  aviamentoSteps,
   insoleReadyMade = false,
+  saving = false,
 }: {
   sectors: string[];
-  onChange: (sectors: string[]) => void;
+  onSave: (sectors: string[], aviamentoSteps: string[]) => void;
   aviamentoSteps: string[];
-  onChangeAviamentoSteps: (steps: string[]) => void;
   /** Palmilha pronta na cor: o trigger do banco remove Corte Fibra/
    *  Corte Forração/Costura do roteiro — os chips ficam desabilitados. */
   insoleReadyMade?: boolean;
+  saving?: boolean;
 }) {
    const [localSectors, setLocalSectors] = useState<string[]>(sectors);
    const [localSteps, setLocalSteps] = useState<string[]>(aviamentoSteps);
@@ -4477,13 +4482,12 @@ function ProductionSectorsTab({
           </span>
           <Button
             size="sm"
-            onClick={() => {
-              onChange(localSectors);
-              if (isAviamentoActive) onChangeAviamentoSteps(localSteps);
-            }}
+            onClick={() => onSave(localSectors, localSteps)}
+            disabled={saving}
             className="gap-1"
           >
-            <Save className="h-3.5 w-3.5" /> Salvar
+            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+            {saving ? 'Salvando...' : 'Salvar'}
           </Button>
         </div>
       )}
