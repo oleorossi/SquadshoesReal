@@ -50,6 +50,7 @@ const emptyCatalog: ArtisanalStrapCatalog = {
   official_products: [],
   variants: [],
   recipes: [],
+  legacy_recipes: [],
   products: [],
   groups: [],
   capabilities,

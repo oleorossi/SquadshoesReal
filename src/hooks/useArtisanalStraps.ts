@@ -133,6 +133,25 @@ export interface ArtisanalStrapRecipe {
   updated_at?: string;
 }
 
+export interface LegacyArtisanalStrapRecipe {
+  id: string;
+  name: string;
+  artisanal_product_name: string;
+  base_product_name: string;
+  yield_per_meter: number;
+  labor_cost_per_meter: number | null;
+  base_time_minutes: number;
+  cut_width_mm: number | null;
+  default_contractor_id: string | null;
+  notes: string | null;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+  migration_status: string;
+  canonical_recipe_id: string | null;
+  migration_reason: string | null;
+}
+
 export interface ArtisanalStrapCatalogProduct {
   id: string;
   name: string;
@@ -179,6 +198,7 @@ export interface ArtisanalStrapCatalog {
   official_products: BaseMaterialOfficialProduct[];
   variants: ArtisanalStrapVariant[];
   recipes: ArtisanalStrapRecipe[];
+  legacy_recipes: LegacyArtisanalStrapRecipe[];
   products: ArtisanalStrapCatalogProduct[];
   groups: ArtisanalStrapCatalogGroup[];
   capabilities: ArtisanalStrapCapabilities;
@@ -908,6 +928,7 @@ function normalizeCatalog(value: unknown): ArtisanalStrapCatalog {
     variants: asArray<Partial<ArtisanalStrapVariant>>(raw.variants)
       .map(normalizeArtisanalStrapVariant),
     recipes: asArray<ArtisanalStrapRecipe>(raw.recipes),
+    legacy_recipes: asArray<LegacyArtisanalStrapRecipe>(raw.legacy_recipes),
     products: asArray<ArtisanalStrapCatalogProduct>(raw.products),
     groups: asArray<ArtisanalStrapCatalogGroup>(raw.groups),
     capabilities: { ...EMPTY_CAPABILITIES, ...capabilities },
@@ -935,11 +956,22 @@ export function useArtisanalStrapCatalog(includeArchived = false) {
   return useQuery({
     queryKey: ['artisanal-strap-catalog', includeArchived],
     queryFn: async () => {
-      const { data, error } = await untypedSupabase.rpc('list_artisanal_strap_catalog', {
-        p_include_archived: includeArchived,
-      });
-      if (error) throw error;
-      return normalizeCatalog(data);
+      const [catalogResult, legacyHistoryResult] = await Promise.all([
+        untypedSupabase.rpc('list_artisanal_strap_catalog', {
+          p_include_archived: includeArchived,
+        }),
+        untypedSupabase.rpc('list_legacy_artisanal_strap_recipe_history'),
+      ]);
+      if (catalogResult.error) throw catalogResult.error;
+      const legacyHistoryError = legacyHistoryResult.error as { code?: string } | null;
+      if (legacyHistoryError && legacyHistoryError.code !== 'PGRST202') {
+        throw legacyHistoryResult.error;
+      }
+      const catalog = normalizeCatalog(catalogResult.data);
+      return {
+        ...catalog,
+        legacy_recipes: asArray<LegacyArtisanalStrapRecipe>(legacyHistoryResult.data),
+      };
     },
     staleTime: 2 * 60 * 1000,
   });

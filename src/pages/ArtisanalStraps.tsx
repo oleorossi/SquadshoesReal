@@ -118,6 +118,7 @@ const EMPTY_CATALOG: ArtisanalStrapCatalog = {
   official_products: [],
   variants: [],
   recipes: [],
+  legacy_recipes: [],
   products: [],
   groups: [],
   capabilities: {
@@ -712,6 +713,7 @@ export default function ArtisanalStraps() {
 
   const reviewCount = catalog.variants.filter((item) => item.status === 'review_required' || item.status === 'suspended').length;
   const pendingRecipes = catalog.recipes.filter((item) => item.status === 'pending_approval').length;
+  const legacyRecipeCount = catalog.legacy_recipes.length;
   const activeVariants = catalog.variants.filter((item) => item.status === 'active').length;
   const openDemands = demandsQuery.data?.demands.filter((item) => !['fulfilled', 'cancelled', 'superseded'].includes(item.status)).length;
   const focusDemand = demandsQuery.data?.demands.find((item) => !['fulfilled', 'cancelled', 'superseded'].includes(item.status));
@@ -767,7 +769,12 @@ export default function ArtisanalStraps() {
         sectionLabel="ENGENHARIA · TIRAS"
         title="Tiras"
         description="Da necessidade do pedido à tira pronta: rendimento, estoque, produção e terceirização no mesmo fluxo."
-        meta={<><strong>{activeVariants}</strong> variantes ativas · <strong>{catalog.recipes.length}</strong> receitas registradas</>}
+        meta={(
+          <>
+            <strong>{activeVariants}</strong> variantes ativas · <strong>{catalog.recipes.length}</strong> conversões canônicas
+            {legacyRecipeCount > 0 && <> · <strong>{legacyRecipeCount}</strong> no histórico</>}
+          </>
+        )}
         actions={
           <>
             <Button
@@ -1327,6 +1334,16 @@ function RecipesTab({
       return includesSearch(search, type?.name, measure?.display_name, maps.groups.get(recipe.base_group_id)?.name, recipe.status);
     })
     .sort((a, b) => String(b.updated_at || b.created_at || '').localeCompare(String(a.updated_at || a.created_at || '')));
+  const legacyRecipes = catalog.legacy_recipes.filter((recipe) => includesSearch(
+    search,
+    recipe.name,
+    recipe.artisanal_product_name,
+    recipe.base_product_name,
+    recipe.active ? 'ativa' : 'inativa',
+    recipe.migration_status,
+  ));
+  const filteredCount = recipes.length + legacyRecipes.length;
+  const totalCount = catalog.recipes.length + catalog.legacy_recipes.length;
 
   return (
     <div className="space-y-4">
@@ -1335,9 +1352,9 @@ function RecipesTab({
           className="w-full sm:max-w-sm"
           value={search}
           onChange={setSearch}
-          placeholder="Buscar medida, base ou status…"
-          resultCount={recipes.length}
-          totalCount={catalog.recipes.length}
+          placeholder="Buscar conversão, medida, base ou status…"
+          resultCount={filteredCount}
+          totalCount={totalCount}
         />
         {catalog.capabilities.manage_strap_catalog && (
           <Button
@@ -1352,11 +1369,18 @@ function RecipesTab({
       <Panel
         flush
         eyebrow="RENDIMENTO"
-        title="Conversões versionadas"
+        title="Conversões canônicas versionadas"
         subtitle="Uma conversão por família, medida e napa-base, compartilhada por todas as cores."
       >
         {recipes.length === 0 ? (
-          <EmptyState icon={Scissors} title={search ? 'Nenhuma receita encontrada' : 'Nenhuma receita cadastrada'} size="sm" />
+          <EmptyState
+            icon={Scissors}
+            title={search ? 'Nenhuma conversão canônica encontrada' : 'Nenhuma conversão canônica cadastrada'}
+            description={catalog.legacy_recipes.length > 0
+              ? 'Os cadastros anteriores continuam disponíveis no histórico abaixo.'
+              : undefined}
+            size="sm"
+          />
         ) : (
           <div className="divide-y divide-border">
             {recipes.map((recipe) => {
@@ -1433,6 +1457,80 @@ function RecipesTab({
           </div>
         )}
       </Panel>
+
+      {catalog.legacy_recipes.length > 0 && (
+        <Panel
+          flush
+          eyebrow="HISTÓRICO"
+          title={`Cadastros do sistema anterior · ${catalog.legacy_recipes.length}`}
+          subtitle="Consulta somente leitura. Esses registros são preservados sem criar vínculos técnicos automáticos por nome."
+        >
+          {legacyRecipes.length === 0 ? (
+            <EmptyState
+              icon={ClockCounterClockwise}
+              title="Nenhuma conversão anterior encontrada"
+              description="Ajuste a busca para consultar os cadastros preservados."
+              size="sm"
+            />
+          ) : (
+            <div className="divide-y divide-border">
+              {legacyRecipes.map((recipe) => {
+                const executorLabel = recipe.default_contractor_id
+                  ? contractorNames.get(recipe.default_contractor_id) || 'Terceirizado não identificado'
+                  : 'Sem executor padrão';
+                const linkedToCanonical = recipe.migration_status === 'resolved' && Boolean(recipe.canonical_recipe_id);
+                return (
+                  <article key={recipe.id} className="p-4 hover:bg-muted/20">
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="font-semibold">
+                            {recipe.artisanal_product_name} · {recipe.base_product_name}
+                          </h3>
+                          <Badge variant={linkedToCanonical ? 'secondary' : 'outline'}>
+                            {linkedToCanonical ? 'Vinculada ao catálogo' : 'Histórico legado'}
+                          </Badge>
+                          <Badge variant="outline">{recipe.active ? 'Ativa no sistema anterior' : 'Inativa'}</Badge>
+                        </div>
+                        <p className="mt-1 truncate text-xs text-muted-foreground">{recipe.name}</p>
+                        <div className="mt-3 grid grid-cols-2 gap-2 text-sm sm:grid-cols-3 lg:grid-cols-5">
+                          <div>
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Banda</p>
+                            <p className="font-mono font-semibold">
+                              {recipe.cut_width_mm ? `${recipe.cut_width_mm} mm` : '—'}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Rendimento</p>
+                            <p className="font-mono font-semibold text-primary">{Number(recipe.yield_per_meter) || '—'} m/m</p>
+                          </div>
+                          <div>
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Executor</p>
+                            <p className="truncate font-semibold">{executorLabel}</p>
+                          </div>
+                          <div>
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Atualizada em</p>
+                            <p className="font-mono font-semibold">{formatDate(recipe.updated_at)}</p>
+                          </div>
+                          {catalog.capabilities.can_see_financial_values && (
+                            <div>
+                              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Mão de obra</p>
+                              <p className="font-mono font-semibold">{formatCurrencyValue(recipe.labor_cost_per_meter)}/m</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <LockKey className="h-4 w-4" /> Somente leitura
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </Panel>
+      )}
     </div>
   );
 }

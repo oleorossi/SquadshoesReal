@@ -39,6 +39,7 @@ const performanceHistory = read('src/components/artisanal-straps/ArtisanalStrapP
 const strapEditor = read('src/components/artisanal-straps/ArtisanalStrapEditor.tsx');
 const conversionEditor = read('src/components/artisanal-straps/ArtisanalStrapConversionEditor.tsx');
 const hubTabs = read('src/components/layout/HubTabs.tsx');
+const legacyRecipeHistoryMigration = read('supabase/migrations/20270101005000_expor_historico_receitas_tiras_legadas.sql');
 
 describe('Tiras artesanais — contrato do frontend canônico', () => {
   it('consulta somente RPCs e views operacionais nas áreas sensíveis', () => {
@@ -316,6 +317,20 @@ describe('Tiras artesanais — contrato do frontend canônico', () => {
     expect(hub).toContain('executorLabel');
     expect(hub).toContain('transformation_cost_per_m');
     expect(hub).toContain('catalog.capabilities.can_see_financial_values');
+  });
+
+  it('preserva as conversões anteriores em histórico somente leitura', () => {
+    expect(hooks).toContain("rpc('list_legacy_artisanal_strap_recipe_history')");
+    expect(hooks).toContain('legacy_recipes:');
+    expect(hub).toContain('Cadastros do sistema anterior');
+    expect(hub).toContain('Histórico legado');
+    expect(hub).toContain('Somente leitura');
+    expect(legacyRecipeHistoryMigration).toContain('FROM public.artisanal_recipes recipe');
+    expect(legacyRecipeHistoryMigration).toContain('LEFT JOIN public.legacy_artisanal_recipe_map mapping');
+    expect(legacyRecipeHistoryMigration).toContain('WHEN v_can_financial THEN recipe.labor_cost_per_meter');
+    expect(legacyRecipeHistoryMigration).toContain("coalesce(mapping.status, 'review_required')");
+    expect(legacyRecipeHistoryMigration).toContain('REVOKE ALL ON FUNCTION public.list_legacy_artisanal_strap_recipe_history()');
+    expect(legacyRecipeHistoryMigration).not.toMatch(/(?:INSERT|UPDATE|DELETE)\s+(?:INTO\s+|FROM\s+)?public\.artisanal_recipes/i);
   });
 
   it('usa linguagem operacional nas telas de rotina', () => {
