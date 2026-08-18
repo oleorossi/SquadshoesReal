@@ -11,6 +11,9 @@ const migration = read(
 const originalCacheMigration = read(
   'supabase/migrations/20261115120000_pv-min-billing-cache.sql',
 );
+const routingMigration = read(
+  'supabase/migrations/20270101005300_fix_corte_fibra_routing_normalization.sql',
+);
 const technicalSheets = read('src/pages/TechnicalSheets.tsx');
 
 function section(startMarker: string, endMarker: string): string {
@@ -48,5 +51,19 @@ describe('salvamento da rota de produção da ficha técnica', () => {
     expect(component).toContain('onSave(localSectors, localSteps)');
     expect(component).toContain('disabled={saving}');
     expect(component).not.toContain('onChangeAviamentoSteps');
+  });
+
+  it('persiste Corte Fibra e mantém Corte Palmilha apenas como alias histórico', () => {
+    expect(routingMigration).toContain("SET sector = 'Corte Fibra'");
+    expect(routingMigration).toContain("WHERE sector = 'Corte Palmilha'");
+    expect(routingMigration).toContain("WHEN 'corte palmilha'   THEN 'Corte Fibra'");
+    expect(routingMigration).toContain("WHEN 'corte fibra'      THEN 'Corte Fibra'");
+    expect(routingMigration).toContain("'Corte Fibra', 'Corte Forração', 'Corte Cabedal'");
+    expect(routingMigration).toContain(
+      "WHEN x IN ('Corte', 'Corte Palmilha') THEN 'Corte Fibra'",
+    );
+    expect(routingMigration).toContain(
+      "WHEN 'Corte Fibra'      THEN 'corte_palmilha'::public.production_stage_enum",
+    );
   });
 });
