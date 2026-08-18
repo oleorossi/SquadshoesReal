@@ -9,6 +9,7 @@ import { ArtisanalStrapConversionEditor } from '../ArtisanalStrapConversionEdito
 
 const mutations = vi.hoisted(() => ({
   approveWidth: vi.fn(),
+  reuseLegacy: vi.fn(),
   saveConversion: vi.fn(),
   saveWidth: vi.fn(),
 }));
@@ -17,6 +18,10 @@ vi.mock('@/hooks/useArtisanalStraps', () => ({
   useSaveArtisanalStrapConversion: () => ({
     isPending: false,
     mutateAsync: mutations.saveConversion,
+  }),
+  useReuseLegacyArtisanalStrapRecipe: () => ({
+    isPending: false,
+    mutateAsync: mutations.reuseLegacy,
   }),
   useSaveBaseMaterialWidthProfile: () => ({
     isPending: false,
@@ -80,9 +85,32 @@ const catalogWithApprovedWidth: ArtisanalStrapCatalog = {
   }],
 };
 
+const catalogWithLegacyRecipe: ArtisanalStrapCatalog = {
+  ...catalogWithoutWidth,
+  legacy_recipes: [{
+    id: 'legacy-recipe-1',
+    name: 'Receita Tira chata 8mm · NAPA SOFT',
+    artisanal_product_name: 'Tira chata 8mm',
+    base_product_name: 'NAPA SOFT',
+    yield_per_meter: 60,
+    labor_cost_per_meter: 0.5,
+    base_time_minutes: 0,
+    cut_width_mm: 20,
+    default_contractor_id: null,
+    notes: null,
+    active: true,
+    created_at: '2026-01-01T00:00:00Z',
+    updated_at: '2026-01-01T00:00:00Z',
+    migration_status: 'review_required',
+    canonical_recipe_id: null,
+    migration_reason: null,
+  }],
+};
+
 describe('ArtisanalStrapConversionEditor', () => {
   beforeEach(() => {
     mutations.approveWidth.mockReset().mockResolvedValue({});
+    mutations.reuseLegacy.mockReset().mockResolvedValue({ recipe_id: 'recipe-reused' });
     mutations.saveConversion.mockReset().mockResolvedValue({ recipe_id: 'recipe-1' });
     mutations.saveWidth.mockReset().mockResolvedValue('width-profile-1');
   });
@@ -183,5 +211,54 @@ describe('ArtisanalStrapConversionEditor', () => {
     })));
     expect(mutations.saveWidth).not.toHaveBeenCalled();
     expect(mutations.approveWidth).not.toHaveBeenCalled();
+  });
+
+  it('reaproveita uma receita anterior com dados herdados e exige a largura útil faltante', async () => {
+    const user = userEvent.setup();
+    const onOpenChange = vi.fn();
+    render(
+      <ArtisanalStrapConversionEditor
+        open
+        onOpenChange={onOpenChange}
+        catalog={catalogWithLegacyRecipe}
+        capabilities={capabilities}
+        mode="create"
+        origin="hub"
+        legacyRecipeId="legacy-recipe-1"
+      />,
+    );
+
+    expect(screen.getByRole('heading', { name: 'Reaproveitar receita anterior' })).toBeInTheDocument();
+    expect(screen.getByText(/Dados recuperados do sistema anterior/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Largura da banda/i)).toHaveValue('20');
+    expect(screen.getByLabelText(/Rendimento confirmado/i)).toHaveValue('60');
+
+    await user.type(screen.getByLabelText(/Largura útil da napa/i), '1370');
+    await user.click(screen.getByRole('button', { name: /Confirmar e ativar/i }));
+
+    await waitFor(() => expect(mutations.reuseLegacy).toHaveBeenCalledWith({
+      legacyRecipeId: 'legacy-recipe-1',
+      payload: {
+        type: { id: 'type-1' },
+        measure: { id: 'measure-1' },
+        base_group_id: 'base-1',
+        recipe: {
+          id: undefined,
+          base_width_profile_id: undefined,
+          cut_band_width_mm: 20,
+          confirmed_yield_m_per_m: 60,
+          executor_type: 'factory',
+          default_contractor_id: null,
+          transformation_cost_per_m: 0.5,
+        },
+      },
+      usableWidthMm: 1370,
+      editableWidthProfileId: undefined,
+      reason: 'Reaproveitamento da receita anterior: Receita Tira chata 8mm · NAPA SOFT',
+    }));
+    expect(mutations.saveWidth).not.toHaveBeenCalled();
+    expect(mutations.approveWidth).not.toHaveBeenCalled();
+    expect(mutations.saveConversion).not.toHaveBeenCalled();
+    expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 });

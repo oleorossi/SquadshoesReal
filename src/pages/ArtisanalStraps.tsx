@@ -545,6 +545,7 @@ interface OpenEditorArgs {
   buyReadyReviewId?: string;
   suggestedRecipeId?: string;
   suggestedYieldMPerM?: number;
+  legacyRecipeId?: string;
 }
 
 function TechnicalLineMigrationDialog({
@@ -692,6 +693,7 @@ export default function ArtisanalStraps() {
         ['buyReadyReviewId', args.buyReadyReviewId],
         ['suggestedRecipeId', args.suggestedRecipeId],
         ['suggestedYieldMPerM', args.suggestedYieldMPerM == null ? undefined : String(args.suggestedYieldMPerM)],
+        ['legacyRecipeId', args.legacyRecipeId],
       ];
       for (const [key, value] of values) {
         if (value) params.set(key, value);
@@ -706,7 +708,7 @@ export default function ArtisanalStraps() {
       const params = new URLSearchParams(previous);
       ['editor', 'mode', 'origin', 'purpose', 'recipeId', 'variantId', 'identityBasis', 'measureId', 'baseGroupId',
         'colorId', 'finishedProductId', 'buyReadyReviewId', 'suggestedRecipeId',
-        'suggestedYieldMPerM'].forEach((key) => params.delete(key));
+        'suggestedYieldMPerM', 'legacyRecipeId'].forEach((key) => params.delete(key));
       return params;
     }, { replace: true });
   };
@@ -948,6 +950,7 @@ export default function ArtisanalStraps() {
           suggestedYieldMPerM={searchParams.get('suggestedYieldMPerM') == null
             ? null
             : Number(searchParams.get('suggestedYieldMPerM'))}
+          legacyRecipeId={searchParams.get('legacyRecipeId')}
         />
       ) : (
         <ArtisanalStrapEditor
@@ -1463,7 +1466,7 @@ function RecipesTab({
           flush
           eyebrow="HISTÓRICO"
           title={`Cadastros do sistema anterior · ${catalog.legacy_recipes.length}`}
-          subtitle="Consulta somente leitura. Esses registros são preservados sem criar vínculos técnicos automáticos por nome."
+          subtitle="Os registros antigos são preservados. Reaproveitar cria uma conversão canônica somente depois da sua conferência."
         >
           {legacyRecipes.length === 0 ? (
             <EmptyState
@@ -1478,7 +1481,11 @@ function RecipesTab({
                 const executorLabel = recipe.default_contractor_id
                   ? contractorNames.get(recipe.default_contractor_id) || 'Terceirizado não identificado'
                   : 'Sem executor padrão';
-                const linkedToCanonical = recipe.migration_status === 'resolved' && Boolean(recipe.canonical_recipe_id);
+                const linkedToCanonical = Boolean(recipe.canonical_recipe_id);
+                const canReuse = catalog.capabilities.manage_strap_catalog
+                  && catalog.capabilities.approve_strap_recipe
+                  && catalog.capabilities.resolve_strap_migration
+                  && catalog.capabilities.can_see_financial_values === true;
                 return (
                   <article key={recipe.id} className="p-4 hover:bg-muted/20">
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -1520,9 +1527,36 @@ function RecipesTab({
                           )}
                         </div>
                       </div>
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <LockKey className="h-4 w-4" /> Somente leitura
-                      </div>
+                      {linkedToCanonical ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="gap-2"
+                          onClick={() => openEditor({
+                            purpose: 'conversion',
+                            mode: 'edit',
+                            recipeId: recipe.canonical_recipe_id || undefined,
+                          })}
+                        >
+                          <Pencil className="h-4 w-4" /> Abrir conversão
+                        </Button>
+                      ) : canReuse ? (
+                        <Button
+                          size="sm"
+                          className="gap-2"
+                          onClick={() => openEditor({
+                            purpose: 'conversion',
+                            mode: 'create',
+                            legacyRecipeId: recipe.id,
+                          })}
+                        >
+                          <ClockCounterClockwise className="h-4 w-4" /> Reaproveitar
+                        </Button>
+                      ) : (
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <LockKey className="h-4 w-4" /> Histórico preservado
+                        </div>
+                      )}
                     </div>
                   </article>
                 );

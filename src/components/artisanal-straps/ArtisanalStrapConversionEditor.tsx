@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
+  ClockCounterClockwise,
   Factory,
   FloppyDisk,
   LockKey,
@@ -28,6 +29,7 @@ import {
   type ArtisanalStrapCapabilities,
   type ArtisanalStrapCatalog,
   useApproveBaseMaterialWidthProfile,
+  useReuseLegacyArtisanalStrapRecipe,
   useSaveBaseMaterialWidthProfile,
   useSaveArtisanalStrapConversion,
 } from '@/hooks/useArtisanalStraps';
@@ -46,6 +48,7 @@ interface ArtisanalStrapConversionEditorProps {
   baseGroupId?: string | null;
   suggestedRecipeId?: string | null;
   suggestedYieldMPerM?: number | null;
+  legacyRecipeId?: string | null;
 }
 
 interface ConversionForm {
@@ -96,6 +99,24 @@ function numberOrZero(value: unknown) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function normalizedIdentity(value: unknown) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, ' ')
+    .trim();
+}
+
+function widthFromLegacyName(value: string) {
+  const match = value.match(/(\d+(?:[.,]\d+)?)\s*mm\b/i);
+  return match ? numberOrZero(match[1].replace(',', '.')) : 0;
+}
+
+function typeNameFromLegacy(value: string) {
+  return value.replace(/\s*\d+(?:[.,]\d+)?\s*mm\b.*$/i, '').trim();
+}
+
 function latestWidthProfile(
   catalog: ArtisanalStrapCatalog,
   baseGroupId: string,
@@ -126,6 +147,7 @@ export function ArtisanalStrapConversionEditor({
   baseGroupId,
   suggestedRecipeId,
   suggestedYieldMPerM,
+  legacyRecipeId,
 }: ArtisanalStrapConversionEditorProps) {
   const [form, setForm] = useState<ConversionForm>(EMPTY_FORM);
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -133,10 +155,56 @@ export function ArtisanalStrapConversionEditor({
   const saveWidthProfile = useSaveBaseMaterialWidthProfile();
   const approveWidthProfile = useApproveBaseMaterialWidthProfile();
   const saveConversion = useSaveArtisanalStrapConversion();
+  const reuseLegacyRecipe = useReuseLegacyArtisanalStrapRecipe();
   const { data: contractors = [] } = useContractors();
 
   useEffect(() => {
     if (!open) return;
+    const legacyRecipe = catalog.legacy_recipes.find((item) => item.id === legacyRecipeId);
+    if (legacyRecipe) {
+      const legacyProductIdentity = normalizedIdentity(legacyRecipe.artisanal_product_name);
+      const legacyWidthMm = widthFromLegacyName(legacyRecipe.artisanal_product_name);
+      const suggestedType = catalog.types
+        .filter((item) => item.active && legacyProductIdentity.includes(normalizedIdentity(item.name)))
+        .sort((left, right) => normalizedIdentity(right.name).length - normalizedIdentity(left.name).length)[0];
+      const suggestedMeasure = suggestedType
+        ? catalog.measures.find((item) => (
+            item.active
+            && item.strap_type_id === suggestedType.id
+            && legacyWidthMm > 0
+            && Math.abs(numberOrZero(item.finished_width_mm) - legacyWidthMm) < 0.000001
+          ))
+        : undefined;
+      const suggestedBase = catalog.groups.find((item) => (
+        normalizedIdentity(item.name) === normalizedIdentity(legacyRecipe.base_product_name)
+      ));
+      const selectedWidthProfile = suggestedBase
+        ? latestWidthProfile(catalog, suggestedBase.id, ['approved'])
+          || latestWidthProfile(catalog, suggestedBase.id, ['draft', 'pending_approval'])
+        : undefined;
+      const fallbackTypeName = typeNameFromLegacy(legacyRecipe.artisanal_product_name);
+
+      setForm({
+        ...EMPTY_FORM,
+        typeId: suggestedType?.id || '',
+        typeName: suggestedType?.name || fallbackTypeName,
+        measureId: suggestedMeasure?.id || '',
+        measureName: suggestedMeasure?.display_name || (legacyWidthMm > 0 ? `${legacyWidthMm}mm` : ''),
+        finishedWidthMm: numberOrZero(suggestedMeasure?.finished_width_mm) || legacyWidthMm,
+        baseGroupId: suggestedBase?.id || '',
+        usefulWidthMm: numberOrZero(selectedWidthProfile?.usable_width_mm),
+        cutBandWidthMm: numberOrZero(legacyRecipe.cut_width_mm),
+        confirmedYield: numberOrZero(legacyRecipe.yield_per_meter),
+        executorType: legacyRecipe.default_contractor_id ? 'contractor' : 'factory',
+        contractorId: legacyRecipe.default_contractor_id || '',
+        transformationCost: numberOrZero(legacyRecipe.labor_cost_per_meter),
+        reason: `Reaproveitamento da receita anterior: ${legacyRecipe.name}`,
+        recipeId: '',
+      });
+      setCreateRecipeVersion(false);
+      setValidationError(null);
+      return;
+    }
     const directRecipe = catalog.recipes.find((item) => (
       item.id === (suggestedRecipeId || recipeId)
     ));
@@ -180,8 +248,9 @@ export function ArtisanalStrapConversionEditor({
     });
     setCreateRecipeVersion(hasYieldSuggestion && Boolean(selectedRecipe));
     setValidationError(null);
-  }, [open, recipeId, measureId, baseGroupId, suggestedRecipeId, suggestedYieldMPerM, mode, catalog]);
+  }, [open, recipeId, measureId, baseGroupId, suggestedRecipeId, suggestedYieldMPerM, legacyRecipeId, mode, catalog]);
 
+  const legacyRecipe = catalog.legacy_recipes.find((item) => item.id === legacyRecipeId);
   const selectedType = catalog.types.find((item) => item.id === form.typeId);
   const selectedMeasure = catalog.measures.find((item) => item.id === form.measureId);
   const selectedBase = catalog.groups.find((item) => item.id === form.baseGroupId);
@@ -204,11 +273,16 @@ export function ArtisanalStrapConversionEditor({
   const canWrite = capabilities.manage_strap_catalog;
   const canApproveWidthInline = canWrite && capabilities.approve_strap_recipe;
   const canSeeFinancial = capabilities.can_see_financial_values === true;
-  const readOnly = !canWrite;
+  const canReuseLegacy = canWrite
+    && capabilities.approve_strap_recipe
+    && capabilities.resolve_strap_migration
+    && canSeeFinancial;
+  const readOnly = !canWrite || (Boolean(legacyRecipe) && !canReuseLegacy);
   const canEditRecipeFields = !readOnly && (recipeIsMutable || createRecipeVersion);
   const isSaving = saveWidthProfile.isPending
     || approveWidthProfile.isPending
-    || saveConversion.isPending;
+    || saveConversion.isPending
+    || reuseLegacyRecipe.isPending;
 
   const setField = <K extends keyof ConversionForm>(key: K, value: ConversionForm[K]) => {
     setForm((current) => ({ ...current, [key]: value }));
@@ -216,6 +290,12 @@ export function ArtisanalStrapConversionEditor({
   };
 
   const validate = (): string | null => {
+    if (legacyRecipe?.canonical_recipe_id) {
+      return 'Esta receita anterior já foi reaproveitada. Abra a conversão canônica vinculada.';
+    }
+    if (legacyRecipe && !canReuseLegacy) {
+      return 'Reaproveitar exige permissão de catálogo, aprovação, migração e acesso financeiro.';
+    }
     if (!form.typeId && !form.typeName.trim()) {
       return 'Selecione uma família ou informe uma nova.';
     }
@@ -238,6 +318,11 @@ export function ArtisanalStrapConversionEditor({
     if (form.executorType === 'contractor' && !form.contractorId) {
       return 'Selecione o terceirizado padrão da conversão.';
     }
+    if (form.executorType === 'contractor' && !contractors.some((item) => (
+      item.id === form.contractorId && item.active
+    ))) {
+      return 'Selecione um terceirizado ativo para a nova conversão.';
+    }
     if (!canSeeFinancial && (!currentRecipe || createRecipeVersion)) {
       return 'Uma nova versão exige acesso financeiro para informar o custo de transformação.';
     }
@@ -258,7 +343,7 @@ export function ArtisanalStrapConversionEditor({
     const reason = form.reason.trim();
     try {
       let resolvedWidthProfileId = widthProfile?.id;
-      if (!resolvedWidthProfileId) {
+      if (!legacyRecipe && !resolvedWidthProfileId) {
         resolvedWidthProfileId = await saveWidthProfile.mutateAsync({
           id: editableWidthProfile?.id,
           baseGroupId: form.baseGroupId,
@@ -271,9 +356,7 @@ export function ArtisanalStrapConversionEditor({
         });
       }
 
-      await saveConversion.mutateAsync({
-        reason,
-        payload: {
+      const payload = {
           type: form.typeId
             ? { id: form.typeId }
             : { name: form.typeName.trim(), active: true },
@@ -294,8 +377,19 @@ export function ArtisanalStrapConversionEditor({
             default_contractor_id: form.executorType === 'contractor' ? form.contractorId : null,
             ...(canSeeFinancial ? { transformation_cost_per_m: form.transformationCost } : {}),
           },
-        },
-      });
+        };
+
+      if (legacyRecipe) {
+        await reuseLegacyRecipe.mutateAsync({
+          legacyRecipeId: legacyRecipe.id,
+          payload,
+          usableWidthMm: widthProfile ? null : form.usefulWidthMm,
+          editableWidthProfileId: editableWidthProfile?.id,
+          reason,
+        });
+      } else {
+        await saveConversion.mutateAsync({ reason, payload });
+      }
       onOpenChange(false);
     } catch (saveError) {
       setValidationError(mutationErrorMessage(saveError));
@@ -309,12 +403,20 @@ export function ArtisanalStrapConversionEditor({
           <SheetHeader className="border-b border-border px-4 pb-4 pt-5 pr-12 sm:px-6">
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant="outline">{ORIGIN_LABEL[origin]}</Badge>
-              <Badge variant="secondary">Conversão técnica</Badge>
+              <Badge variant="secondary">
+                {legacyRecipe ? 'Histórico → conversão' : 'Conversão técnica'}
+              </Badge>
               <Badge variant="outline">Todas as cores</Badge>
             </div>
-            <SheetTitle>{mode === 'create' ? 'Cadastrar conversão' : 'Editar conversão'}</SheetTitle>
+            <SheetTitle>
+              {legacyRecipe
+                ? 'Reaproveitar receita anterior'
+                : mode === 'create' ? 'Cadastrar conversão' : 'Editar conversão'}
+            </SheetTitle>
             <SheetDescription>
-              Defina os números uma única vez por família, medida e napa-base. A cor será cadastrada somente no estoque.
+              {legacyRecipe
+                ? 'Confira os dados recuperados e complete os campos obrigatórios de rendimento. O registro antigo continuará preservado.'
+                : 'Defina os números uma única vez por família, medida e napa-base. A cor será cadastrada somente no estoque.'}
             </SheetDescription>
           </SheetHeader>
 
@@ -324,6 +426,31 @@ export function ArtisanalStrapConversionEditor({
                 <LockKey className="h-4 w-4" />
                 <AlertTitle>Consulta somente</AlertTitle>
                 <AlertDescription>Sua permissão não permite alterar conversões.</AlertDescription>
+              </Alert>
+            )}
+
+            {legacyRecipe && readOnly && canWrite && (
+              <Alert>
+                <LockKey className="h-4 w-4" />
+                <AlertTitle>Reaproveitamento restrito</AlertTitle>
+                <AlertDescription>
+                  Esta ação exige aprovação de receitas, resolução da migração e acesso aos valores financeiros.
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {legacyRecipe && (
+              <Alert>
+                <ClockCounterClockwise className="h-4 w-4" />
+                <AlertTitle>Dados recuperados do sistema anterior</AlertTitle>
+                <AlertDescription>
+                  <span className="font-semibold text-foreground">
+                    {legacyRecipe.artisanal_product_name} · {legacyRecipe.base_product_name}
+                  </span>
+                  {' · '}banda {numberOrZero(legacyRecipe.cut_width_mm) || '—'} mm
+                  {' · '}rendimento {numberOrZero(legacyRecipe.yield_per_meter) || '—'} m/m.
+                  Confira as sugestões e preencha a largura útil ou a identidade que estiver faltando.
+                </AlertDescription>
               </Alert>
             )}
 
@@ -620,7 +747,9 @@ export function ArtisanalStrapConversionEditor({
             {!readOnly && (
               <Button onClick={handleSave} disabled={isSaving} className="gap-2">
                 <FloppyDisk className="h-4 w-4" />
-                {isSaving ? 'Salvando…' : 'Salvar conversão'}
+                {isSaving
+                  ? 'Salvando…'
+                  : legacyRecipe ? 'Confirmar e ativar' : 'Salvar conversão'}
               </Button>
             )}
           </SheetFooter>

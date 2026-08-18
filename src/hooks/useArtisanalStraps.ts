@@ -295,6 +295,15 @@ export interface SaveArtisanalStrapConversionResult {
   recipe_id: string;
 }
 
+export interface ReuseLegacyArtisanalStrapRecipeResult {
+  legacy_recipe_id: string;
+  recipe_id: string;
+  width_profile_id: string;
+  conversion: SaveArtisanalStrapConversionResult;
+  resolution: Record<string, unknown>;
+  activated: true;
+}
+
 export interface OperationalStrapDemand {
   id: string;
   origin_type: 'sale_order' | 'stock_floor';
@@ -2272,6 +2281,48 @@ export function useSaveArtisanalStrapConversion() {
       }
       const message = error instanceof Error ? error.message : null;
       toast.error(message || 'Não foi possível salvar a conversão.');
+    },
+  });
+}
+
+export function useReuseLegacyArtisanalStrapRecipe() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      legacyRecipeId,
+      payload,
+      usableWidthMm,
+      editableWidthProfileId,
+      reason,
+    }: {
+      legacyRecipeId: string;
+      payload: SaveArtisanalStrapConversionPayload;
+      usableWidthMm?: number | null;
+      editableWidthProfileId?: string | null;
+      reason: string;
+    }) => {
+      const { data, error } = await untypedSupabase.rpc('reuse_legacy_artisanal_strap_recipe', {
+        p_legacy_recipe_id: legacyRecipeId,
+        p_payload: payload,
+        p_usable_width_mm: usableWidthMm ?? null,
+        p_editable_width_profile_id: editableWidthProfileId ?? null,
+        p_reason: reason,
+      });
+      if (error) throw error;
+      return data as ReuseLegacyArtisanalStrapRecipeResult;
+    },
+    onSuccess: () => {
+      invalidateArtisanalStrapOperations(queryClient);
+      queryClient.invalidateQueries({ queryKey: ['artisanal-strap-catalog-diagnostics'] });
+      queryClient.invalidateQueries({ queryKey: ['artisanal-strap-legacy-migration-diagnostics'] });
+      toast.success('Receita anterior reaproveitada e ativada.');
+    },
+    onError: (error: unknown) => {
+      if (error && typeof error === 'object') {
+        (error as Record<string, unknown>)._handled = true;
+      }
+      const message = error instanceof Error ? error.message : null;
+      toast.error(message || 'Não foi possível reaproveitar a receita anterior.');
     },
   });
 }

@@ -40,6 +40,7 @@ const strapEditor = read('src/components/artisanal-straps/ArtisanalStrapEditor.t
 const conversionEditor = read('src/components/artisanal-straps/ArtisanalStrapConversionEditor.tsx');
 const hubTabs = read('src/components/layout/HubTabs.tsx');
 const legacyRecipeHistoryMigration = read('supabase/migrations/20270101005000_expor_historico_receitas_tiras_legadas.sql');
+const legacyRecipeReuseMigration = read('supabase/migrations/20270101005100_reaproveitar_receitas_tiras_legadas.sql');
 
 describe('Tiras artesanais — contrato do frontend canônico', () => {
   it('consulta somente RPCs e views operacionais nas áreas sensíveis', () => {
@@ -319,18 +320,28 @@ describe('Tiras artesanais — contrato do frontend canônico', () => {
     expect(hub).toContain('catalog.capabilities.can_see_financial_values');
   });
 
-  it('preserva as conversões anteriores em histórico somente leitura', () => {
+  it('preserva o histórico anterior e oferece reaproveitamento explícito', () => {
     expect(hooks).toContain("rpc('list_legacy_artisanal_strap_recipe_history')");
+    expect(hooks).toContain("rpc('reuse_legacy_artisanal_strap_recipe'");
     expect(hooks).toContain('legacy_recipes:');
     expect(hub).toContain('Cadastros do sistema anterior');
     expect(hub).toContain('Histórico legado');
-    expect(hub).toContain('Somente leitura');
+    expect(hub).toContain('Reaproveitar');
+    expect(hub).toContain('legacyRecipeId: recipe.id');
+    expect(conversionEditor).toContain('Confirmar e ativar');
     expect(legacyRecipeHistoryMigration).toContain('FROM public.artisanal_recipes recipe');
     expect(legacyRecipeHistoryMigration).toContain('LEFT JOIN public.legacy_artisanal_recipe_map mapping');
     expect(legacyRecipeHistoryMigration).toContain('WHEN v_can_financial THEN recipe.labor_cost_per_meter');
     expect(legacyRecipeHistoryMigration).toContain("coalesce(mapping.status, 'review_required')");
     expect(legacyRecipeHistoryMigration).toContain('REVOKE ALL ON FUNCTION public.list_legacy_artisanal_strap_recipe_history()');
     expect(legacyRecipeHistoryMigration).not.toMatch(/(?:INSERT|UPDATE|DELETE)\s+(?:INTO\s+|FROM\s+)?public\.artisanal_recipes/i);
+    expect(legacyRecipeReuseMigration).toContain('CREATE OR REPLACE FUNCTION public.reuse_legacy_artisanal_strap_recipe');
+    expect(legacyRecipeReuseMigration).toContain('public.save_base_material_width_profile(');
+    expect(legacyRecipeReuseMigration).toContain('public.approve_base_material_width_profile(');
+    expect(legacyRecipeReuseMigration).toContain('public.save_artisanal_strap_conversion(');
+    expect(legacyRecipeReuseMigration).toContain('public.submit_artisanal_strap_recipe(');
+    expect(legacyRecipeReuseMigration).toContain('public.approve_artisanal_strap_recipe(');
+    expect(legacyRecipeReuseMigration).toContain('public.resolve_legacy_artisanal_recipe_migration(');
   });
 
   it('usa linguagem operacional nas telas de rotina', () => {
