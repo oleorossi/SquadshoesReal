@@ -1,4 +1,7 @@
-import { useTheme } from "next-themes";
+// Tema vem do provider PRÓPRIO do app (squad-shoes-theme), não do next-themes:
+// o provider do next-themes nunca é montado, então o hook dele devolvia
+// undefined e todo toast seguia o prefers-color-scheme do SO, ignorando o toggle.
+import { useTheme } from "@/components/theme-provider";
 import { Toaster as Sonner, toast } from "sonner";
 
 type ToasterProps = React.ComponentProps<typeof Sonner>;

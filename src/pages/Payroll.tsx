@@ -1542,14 +1542,14 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
             return (
               <>
                 <AlertDialogHeader>
-                  <AlertDialogTitle className="flex items-center gap-2 text-amber-700">
+                  <AlertDialogTitle className="flex items-center gap-2 text-amber-700 dark:text-amber-400">
                     <AlertTriangle className="h-5 w-5" />
                     Adiantamento já pago — confirmar?
                   </AlertDialogTitle>
                   <AlertDialogDescription asChild>
                     <div className="space-y-3 pt-2 text-sm">
                       <p>
-                        <strong>{emp?.name}</strong> recebeu <strong className="text-amber-700">{fmt(adv)}</strong> de
+                        <strong>{emp?.name}</strong> recebeu <strong className="text-amber-700 dark:text-amber-400">{fmt(adv)}</strong> de
                         adiantamento neste período. O líquido a pagar JÁ desconta esse valor.
                       </p>
                       <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3 space-y-1">
@@ -1557,7 +1557,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
                           <span className="text-muted-foreground">Bruto (salário + HE):</span>
                           <span className="font-mono tabular-nums">{fmt(r.total_proventos)}</span>
                         </div>
-                        <div className="flex justify-between text-amber-700">
+                        <div className="flex justify-between text-amber-700 dark:text-amber-400">
                           <span>Adiantamento já recebido:</span>
                           <span className="font-mono tabular-nums font-semibold">− {fmt(adv)}</span>
                         </div>
@@ -1665,12 +1665,12 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
                   <TableBody>
                     {lines.map((l, i) => (
                       <TableRow key={i} className={(l as any).highlight ? 'bg-amber-500/10' : ''}>
-                        <TableCell className={(l as any).highlight ? 'font-semibold text-amber-700' : ''}>
+                        <TableCell className={(l as any).highlight ? 'font-semibold text-amber-700 dark:text-amber-400' : ''}>
                           {(l as any).highlight && <Wallet className="inline h-3.5 w-3.5 mr-1 -mt-0.5" />}
                           {l.label}
                         </TableCell>
                         <TableCell className="text-right font-mono tabular-nums">{l.type === 'p' ? fmt(l.value) : ''}</TableCell>
-                        <TableCell className={`text-right font-mono tabular-nums ${(l as any).highlight ? 'text-amber-700 font-semibold' : 'text-destructive'}`}>
+                        <TableCell className={`text-right font-mono tabular-nums ${(l as any).highlight ? 'text-amber-700 dark:text-amber-400 font-semibold' : 'text-destructive'}`}>
                           {l.type === 'd' ? fmt(l.value) : ''}
                         </TableCell>
                       </TableRow>

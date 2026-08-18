@@ -595,7 +595,7 @@ export default function ProductionControlCenter() {
                     <div key={`${b.orderId}-${b.sector}-${i}`} className="p-3 flex items-center gap-3">
                       <Badge variant="outline" className={`text-xs capitalize ${
                         b.severity === 'critical' ? 'bg-destructive/10 text-destructive border-destructive/30'
-                                                  : 'bg-amber-500/10 text-amber-700 border-amber-500/30'
+                                                  : 'bg-amber-500/10 text-amber-600 border-amber-500/30'
                       }`}>
                         {b.severity === 'critical' ? 'Crítico' : 'Atenção'}
                       </Badge>
@@ -741,12 +741,12 @@ function AlertsSection({ alerts }: { alerts: any[] }) {
                     <p className="text-sm font-medium">{a.title}</p>
                     <Badge variant="outline" className={`text-xs capitalize ${
                       a.severity === 'critical' ? 'bg-destructive/10 text-destructive border-destructive/30'
-                                                : 'bg-amber-500/10 text-amber-700 border-amber-500/30'
+                                                : 'bg-amber-500/10 text-amber-600 border-amber-500/30'
                     }`}>
                       {a.severity}
                     </Badge>
                     {a.notification_status === 'sent' && (
-                      <Badge variant="outline" className="text-xs bg-emerald-500/10 text-emerald-700 border-emerald-500/30">
+                      <Badge variant="outline" className="text-xs bg-emerald-500/10 text-emerald-600 border-emerald-500/30">
                         WhatsApp enviado
                       </Badge>
                     )}
@@ -1107,8 +1107,8 @@ function OutsourceOsRow({ os, onConfirmDeadline }: { os: any; onConfirmDeadline:
   return (
     <div className="p-3 flex items-center gap-3">
       <Badge variant="outline" className={`text-xs capitalize ${
-        needsDeadline ? 'bg-amber-500/10 text-amber-700 border-amber-500/30'
-                      : 'bg-emerald-500/10 text-emerald-700 border-emerald-500/30'
+        needsDeadline ? 'bg-amber-500/10 text-amber-600 border-amber-500/30'
+                      : 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30'
       }`}>
         {needsDeadline ? 'Aguardando prazo' : 'Em andamento'}
       </Badge>

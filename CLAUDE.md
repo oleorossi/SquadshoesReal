@@ -156,12 +156,13 @@ passa `table` e ele monta `.select().order().limit()` + `.eq()` por `filters`.
 usuário, paginação, ou edição inline — aí o custo de contornar o componente passa o de
 escrever a tela. Não force `filters` a virar filtro complexo: ele só faz `.eq()`.
 
-⚠ **A query key é `[table, selectCols, orderBy, JSON.stringify(filters), limit]`** — a
-mutation da sua página tem que invalidar **`[table]`**. Medido em 10/08/2026: **4 dos 5
-call sites** (`LGPD`, `CNAB`, `BankReconciliation`, `SPED`) invalidam
-`queryKey: ['data-list-page']`, que **não é registrada por ninguém** — a invalidação é
-**no-op** e a lista não atualiza depois de criar o registro; só recarregando a página.
-Bug vivo, não corrigido aqui.
+⚠ **A query key vem de `dataListPageKey(table)`** (exportado do mesmo arquivo) — a
+mutation da sua página tem que invalidar com **`dataListPageKey(table)`**, nunca com a
+string literal `['data-list-page']` (chave morta que ninguém registra — era o bug medido
+em 10/08/2026, quando 4 dos 5 call sites invalidavam no-op). **CORRIGIDO** (verificado
+18/08/2026): os call sites importam o helper e o contrato está travado por
+`ui/__tests__/data-list-page-key.test.ts`, que prova que a chave literal antiga NÃO
+invalida. Em código novo, use sempre o helper.
 
 ⚠ **`limit` default = 100 e NÃO há paginação.** A 101ª linha some **sem aviso**. Acima
 disso, ou sobe o `limit`, ou a tela não é caso de `DataListPage` (ver `ui/list-pagination`).

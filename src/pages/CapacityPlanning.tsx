@@ -527,7 +527,7 @@ function HotspotsSection({
             <CheckCircle className="h-5 w-5 text-emerald-600" weight="fill" />
           </div>
           <div>
-            <div className="ed-eyebrow text-emerald-700">Status geral</div>
+            <div className="ed-eyebrow text-emerald-700 dark:text-emerald-400">Status geral</div>
             <div className="ed-display text-lg text-emerald-700 dark:text-emerald-400">Nenhum gargalo ativo</div>
             <p className="text-xs text-muted-foreground mt-0.5">
               Todos os setores estão abaixo de 100% de ocupação semanal.
@@ -597,7 +597,7 @@ function HotspotCard({
         <div className="flex items-center gap-3 md:w-72 md:shrink-0">
           <div className={cn(
             'h-11 w-11 rounded-md flex items-center justify-center',
-            isCritical ? 'bg-red-500/10 text-red-700' : 'bg-amber-500/10 text-amber-700'
+            isCritical ? 'bg-red-500/10 text-red-600' : 'bg-amber-500/10 text-amber-600'
           )}>
             <Icon className="h-5 w-5" weight="bold" />
           </div>
@@ -973,10 +973,10 @@ function DrillDownSection({
   const Icon = kpi.icon;
   const statusLabel = kpi.status === 'critical' ? 'Crítico' : kpi.status === 'warning' ? 'Atenção' : 'Normal';
   const statusCls = kpi.status === 'critical'
-    ? 'bg-red-500/10 text-red-700 border-red-500/30'
+    ? 'bg-red-500/10 text-red-600 border-red-500/30'
     : kpi.status === 'warning'
-      ? 'bg-amber-500/10 text-amber-700 border-amber-500/30'
-      : 'bg-emerald-500/10 text-emerald-700 border-emerald-500/30';
+      ? 'bg-amber-500/10 text-amber-600 border-amber-500/30'
+      : 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30';
 
   return (
     <Panel
