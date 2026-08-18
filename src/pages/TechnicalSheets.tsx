@@ -85,6 +85,7 @@ import {
   newTechnicalStrapLineId,
 } from '@/lib/technicalStrapLines';
 import { strapIdentityBasis } from '@/lib/strapIdentity';
+import { referenceStrapBaseGroups } from '@/lib/referenceStrapBaseGroups';
 
 import { useShoeCategories } from '@/hooks/useShoeCategories';
 import { SHOE_CATEGORIES } from '@/lib/shoeCategories';
@@ -1374,6 +1375,27 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
       )))
       .sort((left, right) => left.name.localeCompare(right.name, 'pt-BR'));
   }, [form.strap_colors, strapCatalog]);
+  const possibleReferenceNapaGroups = useMemo(() => referenceStrapBaseGroups({
+    sheet: {
+      id: sheet.id,
+      upper_material: form.upper_material,
+      upper_material_product_id: form.upper_material_product_id,
+      lining_material: form.lining_material,
+      lining_material_product_id: form.lining_material_product_id,
+    },
+    groups,
+    products,
+    variants: materialVariantsBySheet?.get(sheet.id) || [],
+  }), [
+    sheet.id,
+    form.upper_material,
+    form.upper_material_product_id,
+    form.lining_material,
+    form.lining_material_product_id,
+    groups,
+    products,
+    materialVariantsBySheet,
+  ]);
   const [dirty, setDirty] = useState(false);
 
   // Quando o sheet prop muda (após re-fetch pós-save), sincroniza form pra
@@ -3714,6 +3736,41 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                             </SelectContent>
                           </Select>
                         </div>
+                        {strapIdentityBasis(strap) === 'reference_base' && (
+                          <div className="space-y-1.5">
+                            <Label className="text-xs font-semibold">Napas possíveis da referência</Label>
+                            <div className={cn(
+                              'flex min-h-10 flex-wrap items-center gap-1.5 rounded-md border px-3 py-2',
+                              possibleReferenceNapaGroups.length === 0 && 'border-warning/40 bg-warning/5',
+                            )}>
+                              {possibleReferenceNapaGroups.length > 0 ? possibleReferenceNapaGroups.map((group) => (
+                                <Badge
+                                  key={group.id}
+                                  variant="secondary"
+                                  className="font-mono text-xs"
+                                  title={group.origins.join(' · ')}
+                                >
+                                  {group.name}
+                                </Badge>
+                              )) : (
+                                <span className="flex items-center gap-1.5 text-xs font-medium text-warning">
+                                  <AlertTriangle className="h-3.5 w-3.5" />
+                                  Nenhum grupo de napa resolvido
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              {possibleReferenceNapaGroups.length > 0
+                                ? 'O pedido seleciona automaticamente a napa correta conforme a variante de material.'
+                                : 'Configure o material padrão ou as variantes desta referência antes de liberar a produção.'}
+                            </p>
+                            {possibleReferenceNapaGroups.some((group) => !group.canonical) && (
+                              <p className="text-xs font-medium text-warning">
+                                O material padrão ainda está vinculado apenas por nome; selecione um SKU no cadastro de materiais para tornar a resolução operacional.
+                              </p>
+                            )}
+                          </div>
+                        )}
                         {strapIdentityBasis(strap) === 'finished_product_group' && (
                           <div className="space-y-1.5">
                             <Label className="text-xs font-semibold">
