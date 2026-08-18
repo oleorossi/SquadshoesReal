@@ -4004,12 +4004,16 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
              insoleReadyMade={(sheet as any).insole_ready_made === true}
              aviamentoSteps={Array.isArray((sheet as any).aviamento_steps) ? ((sheet as any).aviamento_steps as string[]) : []}
              onSave={(sectors: string[], steps: string[]) => {
+               const routingData: Partial<SheetFormData> & {
+                 production_sectors: string[];
+                 aviamento_steps?: string[];
+               } = {
+                 production_sectors: sectors,
+                 ...(sectors.includes('Aviamento') ? { aviamento_steps: steps } : {}),
+               };
                updateSheet.mutate({
                  id: sheet.id,
-                 data: {
-                   production_sectors: sectors,
-                   ...(sectors.includes('Aviamento') ? { aviamento_steps: steps } : {}),
-                 } as any,
+                 data: routingData,
                });
              }}
              saving={updateSheet.isPending}
