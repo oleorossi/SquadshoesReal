@@ -1000,81 +1000,20 @@ export default function ArtisanalStraps() {
 }
 
 function CalculatorTab({ catalog }: { catalog: ArtisanalStrapCatalog }) {
-  const approvedRecipes = catalog.recipes
-    .filter((recipe) => recipe.status === 'approved')
-    .sort((a, b) => Number(b.version) - Number(a.version));
-  const [recipeId, setRecipeId] = useState(approvedRecipes[0]?.id || '');
-  const selectedRecipe = approvedRecipes.find((recipe) => recipe.id === recipeId)
-    || approvedRecipes[0];
-  const maps = useMemo(() => mapsFor(catalog), [catalog]);
-  const measure = selectedRecipe ? maps.measures.get(selectedRecipe.measure_id) : undefined;
-  const type = measure ? maps.types.get(measure.strap_type_id) : undefined;
-  const base = selectedRecipe ? maps.groups.get(selectedRecipe.base_group_id) : undefined;
-
   return (
     <div className="space-y-4">
-      {selectedRecipe ? (
-        <Panel
-          eyebrow="RECEITA CANÔNICA"
-          title="Geometria carregada do catálogo"
-          subtitle="Troque a versão para comparar cenários sem alterar a receita persistida."
-        >
-          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(240px,0.45fr)] lg:items-end">
-            <div className="space-y-1.5">
-              <Label>Receita aprovada</Label>
-              <Select value={selectedRecipe.id} onValueChange={setRecipeId}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {approvedRecipes.map((recipe) => {
-                    const recipeMeasure = maps.measures.get(recipe.measure_id);
-                    const recipeType = recipeMeasure ? maps.types.get(recipeMeasure.strap_type_id) : undefined;
-                    const recipeBase = maps.groups.get(recipe.base_group_id);
-                    return (
-                      <SelectItem key={recipe.id} value={recipe.id}>
-                        {[recipeType?.name, recipeMeasure?.display_name, recipeBase?.name, `v${recipe.version}`].filter(Boolean).join(' · ')}
-                      </SelectItem>
-                    );
-                  })}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div className="rounded-md bg-muted/40 px-3 py-2">
-                <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Largura útil</p>
-                <p className="font-mono text-sm font-bold">{Number(selectedRecipe.usable_base_width_mm_snapshot).toLocaleString('pt-BR')} mm</p>
-              </div>
-              <div className="rounded-md bg-muted/40 px-3 py-2">
-                <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Confirmado</p>
-                <p className="font-mono text-sm font-bold">{Number(selectedRecipe.confirmed_yield_m_per_m).toLocaleString('pt-BR')} m/m</p>
-              </div>
-            </div>
-          </div>
-          <StrapIdentityTrail
-            typeName={type?.name}
-            measureName={measure?.display_name}
-            baseName={base?.name}
-            compact
-            className="mt-3"
-          />
-        </Panel>
-      ) : (
-        <div className="flex items-start gap-3 rounded-lg border border-border bg-muted/30 px-4 py-3">
-          <Calculator className="mt-0.5 h-5 w-5 shrink-0 text-primary" weight="bold" />
-          <div>
-            <p className="text-sm font-semibold text-foreground">Cálculo livre</p>
-            <p className="text-xs text-muted-foreground">
-              A calculadora não depende de receita aprovada. Preencha a geometria para simular rendimento, necessidade, custo e cortes parciais.
-            </p>
-          </div>
+      <div className="flex items-start gap-3 rounded-lg border border-border bg-muted/30 px-4 py-3">
+        <Calculator className="mt-0.5 h-5 w-5 shrink-0 text-primary" weight="bold" />
+        <div>
+          <p className="text-sm font-semibold text-foreground">Simulação livre de novas medidas</p>
+          <p className="text-xs text-muted-foreground">
+            Preencha largura, banda, rendimento real ou perda para testar cenários. Os valores são temporários e não são salvos nem alteram receitas do sistema.
+          </p>
         </div>
-      )}
+      </div>
 
       <StrapCalculator
-        key={selectedRecipe?.id || 'calculo-livre'}
         embedded
-        larguraMaterialInicialMm={selectedRecipe ? Number(selectedRecipe.usable_base_width_mm_snapshot) : undefined}
-        larguraBandaInicialMm={selectedRecipe ? Number(selectedRecipe.cut_band_width_mm) : undefined}
-        rendimentoConfirmadoInicialMPerM={selectedRecipe ? Number(selectedRecipe.confirmed_yield_m_per_m) : undefined}
         canShowFinancialValues={catalog.capabilities.can_see_financial_values === true}
       />
     </div>

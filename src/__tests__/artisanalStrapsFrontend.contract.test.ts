@@ -273,16 +273,24 @@ describe('Tiras artesanais — contrato do frontend canônico', () => {
     expect(strapCutBlock).not.toContain('ROLO_COMPRIMENTO_M');
     expect(pickingList).toContain('separação da napa-base');
     expect(pickingList).not.toContain('ROLO_LARGURA_MM');
-    expect(hub).toContain('rendimentoConfirmadoInicialMPerM={selectedRecipe ? Number(selectedRecipe.confirmed_yield_m_per_m) : undefined}');
-    expect(calculator).toContain('A necessidade operacional usa exclusivamente o rendimento confirmado');
+    expect(calculator).toContain("type BaseRendimento = 'teorico' | 'real' | 'perda'");
+    expect(calculator).toContain('rendimentoDaSimulacao');
+    expect(calculator).toContain('A necessidade usa o rendimento informado apenas nesta simulação');
     expect(calculator).not.toContain('a % de perda cobre');
   });
 
-  it('mantém a calculadora livre disponível mesmo sem receita aprovada', () => {
-    expect(hub).toContain('A calculadora não depende de receita aprovada');
-    expect(hub).toContain("key={selectedRecipe?.id || 'calculo-livre'}");
-    expect(hub).toContain('larguraMaterialInicialMm={selectedRecipe ?');
-    expect(hub).not.toContain('Nenhuma receita aprovada para calcular');
+  it('mantém a calculadora livre, temporária e independente das receitas persistidas', () => {
+    expect(hub).toContain('Simulação livre de novas medidas');
+    expect(hub).toContain('Os valores são temporários e não são salvos');
+    expect(hub).toContain('<StrapCalculator');
+    expect(hub).not.toContain('selectedRecipe');
+    expect(hub).not.toContain('approvedRecipes');
+    expect(hub).not.toContain('rendimentoConfirmadoInicialMPerM');
+    expect(calculator).toContain('Base desta simulação');
+    expect(calculator).toContain('Rendimento real medido');
+    expect(calculator).toContain('Perda estimada');
+    expect(calculator).toContain('nenhum valor desta aba é salvo');
+    expect(calculator).not.toMatch(/from\(['"]/);
   });
 
   it('abre pelas demandas e organiza a jornada industrial em três grupos de trabalho', () => {
