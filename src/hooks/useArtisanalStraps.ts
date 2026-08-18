@@ -244,6 +244,37 @@ export interface SaveArtisanalStrapBundleResult {
   finished_product_id: string;
 }
 
+export interface SaveArtisanalStrapConversionPayload {
+  type: {
+    id?: string;
+    name?: string;
+    active?: boolean;
+  };
+  measure: {
+    id?: string;
+    display_name?: string;
+    finished_width_mm?: number;
+    active?: boolean;
+  };
+  base_group_id: string;
+  recipe: {
+    id?: string;
+    base_width_profile_id?: string;
+    cut_band_width_mm: number;
+    confirmed_yield_m_per_m: number;
+    executor_type: 'factory' | 'contractor';
+    default_contractor_id?: string | null;
+    transformation_cost_per_m?: number;
+  };
+}
+
+export interface SaveArtisanalStrapConversionResult {
+  type_id: string;
+  measure_id: string;
+  base_group_id: string;
+  recipe_id: string;
+}
+
 export interface OperationalStrapDemand {
   id: string;
   origin_type: 'sale_order' | 'stock_floor';
@@ -2181,6 +2212,34 @@ export function useSaveArtisanalStrapBundle() {
       }
       const message = error instanceof Error ? error.message : null;
       toast.error(message || 'Não foi possível salvar a tira.');
+    },
+  });
+}
+
+export function useSaveArtisanalStrapConversion() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ payload, reason }: {
+      payload: SaveArtisanalStrapConversionPayload;
+      reason: string;
+    }) => {
+      const { data, error } = await untypedSupabase.rpc('save_artisanal_strap_conversion', {
+        p_payload: payload,
+        p_reason: reason,
+      });
+      if (error) throw error;
+      return data as SaveArtisanalStrapConversionResult;
+    },
+    onSuccess: () => {
+      invalidateArtisanalStraps(queryClient);
+      toast.success('Conversão salva para todas as cores.');
+    },
+    onError: (error: unknown) => {
+      if (error && typeof error === 'object') {
+        (error as Record<string, unknown>)._handled = true;
+      }
+      const message = error instanceof Error ? error.message : null;
+      toast.error(message || 'Não foi possível salvar a conversão.');
     },
   });
 }

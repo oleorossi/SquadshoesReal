@@ -37,6 +37,7 @@ const incrementalMigrationDialog = read('src/components/artisanal-straps/Artisan
 const incrementalMigrationHelper = read('src/lib/legacyStrapIncrementalApply.ts');
 const performanceHistory = read('src/components/artisanal-straps/ArtisanalStrapPerformanceHistory.tsx');
 const strapEditor = read('src/components/artisanal-straps/ArtisanalStrapEditor.tsx');
+const conversionEditor = read('src/components/artisanal-straps/ArtisanalStrapConversionEditor.tsx');
 const hubTabs = read('src/components/layout/HubTabs.tsx');
 
 describe('Tiras artesanais — contrato do frontend canônico', () => {
@@ -252,10 +253,10 @@ describe('Tiras artesanais — contrato do frontend canônico', () => {
     expect(performanceHistory).toContain('Confirmado × realizado');
     expect(performanceHistory).toContain('Variação prevista × realizada');
     expect(performanceHistory).toContain('Criar versão sugerida');
-    expect(strapEditor).toContain('Sugestão do rendimento realizado');
-    expect(strapEditor).toContain('nova versão em rascunho');
-    expect(strapEditor).toContain('id: createRecipeVersion ? undefined');
-    expect(strapEditor).not.toContain('status: \'approved\'');
+    expect(conversionEditor).toContain('rendimento realizado');
+    expect(conversionEditor).toContain('Nova versão em rascunho');
+    expect(conversionEditor).toContain('id: createRecipeVersion ? undefined');
+    expect(conversionEditor).not.toContain('status: \'approved\'');
   });
 
   it('orienta a fábrica pela napa e rendimento canônicos, sem rolo fixo legado', () => {

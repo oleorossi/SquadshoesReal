@@ -21,6 +21,7 @@ import {
   Wrench,
 } from '@phosphor-icons/react';
 import { ArtisanalStrapEditor, type ArtisanalStrapEditorMode, type ArtisanalStrapEditorOrigin } from '@/components/artisanal-straps/ArtisanalStrapEditor';
+import { ArtisanalStrapConversionEditor } from '@/components/artisanal-straps/ArtisanalStrapConversionEditor';
 import { ArtisanalStrapBatchMatrix } from '@/components/artisanal-straps/ArtisanalStrapBatchMatrix';
 import { ArtisanalStrapMigrationResolutionDialog } from '@/components/artisanal-straps/ArtisanalStrapMigrationDialogs';
 import { ArtisanalStrapLegacyProductMigrationDialog } from '@/components/artisanal-straps/ArtisanalStrapLegacyProductMigrationDialog';
@@ -530,8 +531,10 @@ function OfficialProductDialog({
 }
 
 interface OpenEditorArgs {
+  purpose?: 'conversion' | 'stock_variant';
   mode?: ArtisanalStrapEditorMode;
   origin?: ArtisanalStrapEditorOrigin;
+  recipeId?: string;
   variantId?: string;
   identityBasis?: ArtisanalStrapIdentityBasis;
   measureId?: string;
@@ -665,6 +668,10 @@ export default function ArtisanalStraps() {
   const editorOrigin = (['hub', 'estoque', 'grupos', 'compras', 'terceirizados', 'pv'].includes(searchParams.get('origin') || '')
     ? searchParams.get('origin')
     : 'hub') as ArtisanalStrapEditorOrigin;
+  const editorPurpose = searchParams.get('purpose') === 'conversion'
+    || (!searchParams.get('purpose') && activeTab === 'receitas')
+    ? 'conversion'
+    : 'stock_variant';
 
   const openEditor = (args: OpenEditorArgs = {}) => {
     setSearchParams((previous) => {
@@ -672,7 +679,9 @@ export default function ArtisanalStraps() {
       params.set('editor', '1');
       params.set('mode', args.mode || 'create');
       params.set('origin', args.origin || 'hub');
+      params.set('purpose', args.purpose || (activeTab === 'receitas' ? 'conversion' : 'stock_variant'));
       const values: Array<[string, string | undefined]> = [
+        ['recipeId', args.recipeId],
         ['variantId', args.variantId],
         ['identityBasis', args.identityBasis],
         ['measureId', args.measureId],
@@ -694,7 +703,7 @@ export default function ArtisanalStraps() {
   const closeEditor = () => {
     setSearchParams((previous) => {
       const params = new URLSearchParams(previous);
-      ['editor', 'mode', 'origin', 'variantId', 'identityBasis', 'measureId', 'baseGroupId',
+      ['editor', 'mode', 'origin', 'purpose', 'recipeId', 'variantId', 'identityBasis', 'measureId', 'baseGroupId',
         'colorId', 'finishedProductId', 'buyReadyReviewId', 'suggestedRecipeId',
         'suggestedYieldMPerM'].forEach((key) => params.delete(key));
       return params;
@@ -778,8 +787,15 @@ export default function ArtisanalStraps() {
               <RefreshCw className="h-4 w-4" /> Atualizar
             </Button>
             {catalog.capabilities.manage_strap_catalog && (
-              <Button size="sm" onClick={() => openEditor()} className="gap-2">
-                <Plus className="h-4 w-4" /> Nova variante
+              <Button
+                size="sm"
+                onClick={() => openEditor({
+                  purpose: activeTab === 'receitas' ? 'conversion' : 'stock_variant',
+                })}
+                className="gap-2"
+              >
+                <Plus className="h-4 w-4" />
+                {activeTab === 'receitas' ? 'Nova conversão' : 'Nova variante de estoque'}
               </Button>
             )}
           </>
@@ -910,27 +926,45 @@ export default function ArtisanalStraps() {
         </TabsContent>
       </Tabs>
 
-      <ArtisanalStrapEditor
-        open={editorOpen}
-        onOpenChange={(open) => { if (!open) closeEditor(); }}
-        catalog={catalog}
-        capabilities={catalog.capabilities}
-        mode={editorMode}
-        origin={editorOrigin}
-        variantId={searchParams.get('variantId')}
-        identityBasis={searchParams.get('identityBasis') === 'finished_product_group'
-          ? 'finished_product_group'
-          : null}
-        measureId={searchParams.get('measureId')}
-        baseGroupId={searchParams.get('baseGroupId')}
-        colorId={searchParams.get('colorId')}
-        finishedProductId={searchParams.get('finishedProductId')}
-        buyReadyReviewId={searchParams.get('buyReadyReviewId')}
-        suggestedRecipeId={searchParams.get('suggestedRecipeId')}
-        suggestedYieldMPerM={searchParams.get('suggestedYieldMPerM') == null
-          ? null
-          : Number(searchParams.get('suggestedYieldMPerM'))}
-      />
+      {editorPurpose === 'conversion' ? (
+        <ArtisanalStrapConversionEditor
+          open={editorOpen}
+          onOpenChange={(open) => { if (!open) closeEditor(); }}
+          catalog={catalog}
+          capabilities={catalog.capabilities}
+          mode={editorMode}
+          origin={editorOrigin}
+          recipeId={searchParams.get('recipeId')}
+          measureId={searchParams.get('measureId')}
+          baseGroupId={searchParams.get('baseGroupId')}
+          suggestedRecipeId={searchParams.get('suggestedRecipeId')}
+          suggestedYieldMPerM={searchParams.get('suggestedYieldMPerM') == null
+            ? null
+            : Number(searchParams.get('suggestedYieldMPerM'))}
+        />
+      ) : (
+        <ArtisanalStrapEditor
+          open={editorOpen}
+          onOpenChange={(open) => { if (!open) closeEditor(); }}
+          catalog={catalog}
+          capabilities={catalog.capabilities}
+          mode={editorMode}
+          origin={editorOrigin}
+          variantId={searchParams.get('variantId')}
+          identityBasis={searchParams.get('identityBasis') === 'finished_product_group'
+            ? 'finished_product_group'
+            : null}
+          measureId={searchParams.get('measureId')}
+          baseGroupId={searchParams.get('baseGroupId')}
+          colorId={searchParams.get('colorId')}
+          finishedProductId={searchParams.get('finishedProductId')}
+          buyReadyReviewId={searchParams.get('buyReadyReviewId')}
+          suggestedRecipeId={searchParams.get('suggestedRecipeId')}
+          suggestedYieldMPerM={searchParams.get('suggestedYieldMPerM') == null
+            ? null
+            : Number(searchParams.get('suggestedYieldMPerM'))}
+        />
+      )}
 
       <ReasonDialog state={reasonDialog} onClose={() => setReasonDialog(null)} />
       <WidthProfileDialog state={widthDialog} catalog={catalog} onClose={() => setWidthDialog(null)} />
@@ -1296,15 +1330,31 @@ function RecipesTab({
 
   return (
     <div className="space-y-4">
-      <SearchInput
-        className="w-full sm:max-w-sm"
-        value={search}
-        onChange={setSearch}
-        placeholder="Buscar medida, base ou status…"
-        resultCount={recipes.length}
-        totalCount={catalog.recipes.length}
-      />
-      <Panel flush eyebrow="RENDIMENTO" title="Receitas versionadas" subtitle="A receita é única por medida + napa-base e nunca é herdada de outra combinação.">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <SearchInput
+          className="w-full sm:max-w-sm"
+          value={search}
+          onChange={setSearch}
+          placeholder="Buscar medida, base ou status…"
+          resultCount={recipes.length}
+          totalCount={catalog.recipes.length}
+        />
+        {catalog.capabilities.manage_strap_catalog && (
+          <Button
+            size="sm"
+            onClick={() => openEditor({ purpose: 'conversion', mode: 'create' })}
+            className="gap-2"
+          >
+            <Plus className="h-4 w-4" /> Nova conversão
+          </Button>
+        )}
+      </div>
+      <Panel
+        flush
+        eyebrow="RENDIMENTO"
+        title="Conversões versionadas"
+        subtitle="Uma conversão por família, medida e napa-base, compartilhada por todas as cores."
+      >
         {recipes.length === 0 ? (
           <EmptyState icon={Scissors} title={search ? 'Nenhuma receita encontrada' : 'Nenhuma receita cadastrada'} size="sm" />
         ) : (
@@ -1313,9 +1363,6 @@ function RecipesTab({
               const measure = maps.measures.get(recipe.measure_id);
               const type = measure ? maps.types.get(measure.strap_type_id) : undefined;
               const base = maps.groups.get(recipe.base_group_id);
-              const variant = catalog.variants.find(
-                (item) => item.measure_id === recipe.measure_id && item.base_group_id === recipe.base_group_id,
-              );
               const theoretical = Number(recipe.theoretical_yield_m_per_m);
               const confirmed = Number(recipe.confirmed_yield_m_per_m);
               const executorLabel = recipe.executor_type === 'factory'
@@ -1359,8 +1406,11 @@ function RecipesTab({
                       <Button
                         variant="outline"
                         size="sm"
-                        disabled={!variant}
-                        onClick={() => variant && openEditor({ mode: 'edit', variantId: variant.id })}
+                        onClick={() => openEditor({
+                          purpose: 'conversion',
+                          mode: 'edit',
+                          recipeId: recipe.id,
+                        })}
                         className="gap-2"
                       >
                         <Pencil className="h-4 w-4" /> {catalog.capabilities.manage_strap_catalog ? 'Editar' : 'Consultar'}
@@ -1997,9 +2047,10 @@ function PerformanceTab({
       yieldQuery={realYieldQuery}
       costQuery={costVarianceQuery}
       onSuggestYield={(row) => openEditor({
+        purpose: 'conversion',
         mode: 'edit',
         origin: 'hub',
-        variantId: row.strap_variant_id,
+        recipeId: row.recipe_id,
         suggestedRecipeId: row.recipe_id,
         suggestedYieldMPerM: Number(row.actual_yield_m_per_m),
       })}
