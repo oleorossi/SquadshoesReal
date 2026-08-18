@@ -20,6 +20,7 @@ import {
   Warning as AlertTriangle,
 } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
+import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { Input } from "@/components/ui/input";
 import { SearchInput } from "@/components/ui/search-input";
 import { Badge } from "@/components/ui/badge";
@@ -845,15 +846,7 @@ export default function ProdutividadeModelos() {
                     <p>{s.total_cost_minute == null ? "—" : formatCurrency(s.total_cost_minute)} <span className="text-muted-foreground">c-min</span></p>
                     <p>{s.bottleneck_cost_per_pair == null ? "—" : formatCurrency(s.bottleneck_cost_per_pair)} <span className="text-muted-foreground">garg</span></p>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 w-7 p-0 shrink-0 text-muted-foreground hover:text-red-600"
-                    onClick={() => deleteSnapshotMutation.mutate(s.id)}
-                    title="Remover snapshot"
-                  >
-                    <Trash className="h-3.5 w-3.5" />
-                  </Button>
+                  <DeleteConfirmButton onConfirm={() => deleteSnapshotMutation.mutate(s.id)} title="Remover snapshot?" description="O registro histórico de produtividade será excluído." />
                 </div>
               ))}
             </div>

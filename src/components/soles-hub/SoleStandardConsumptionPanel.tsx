@@ -6,6 +6,7 @@ import {
 } from '@phosphor-icons/react';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
+import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -452,15 +453,7 @@ export default function SoleStandardConsumptionPanel({
                       {upsertItem.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
                       {d.dirty ? 'Salvar' : 'Salvo'}
                     </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => removeItem.mutate({ id: it.id, soleGroupId })}
-                      className="h-8 w-8 p-0 text-destructive hover:text-destructive"
-                      aria-label={`Remover ${it.products?.name || 'item'}`}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
+                    <DeleteConfirmButton onConfirm={() => removeItem.mutate({ id: it.id, soleGroupId })} title={`Remover ${it.products?.name || 'item'}?`} description="O consumo padrão deste item será removido." size="h-8 w-8" />
                   </div>
                   {d.open && sizes.length > 0 && (
                     <>

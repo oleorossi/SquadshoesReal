@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -98,16 +99,21 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    // Botão desabilitado não substitui feedback: o Enter no campo Nome dispara
+    // o submit nativo e, sem toast, o form "não faz nada" sem explicar por quê.
     if (duplicateMatch && !duplicateConfirmed) {
+      toast.error(`Já existe grupo com nome parecido ("${duplicateMatch.name}") — confirme a duplicata pra prosseguir.`);
       return;
     }
     if (!form.sector) {
+      toast.error('Selecione o Setor antes de criar o grupo.');
       return;
     }
     // Material de ÁREA cortado de bobina (napa/forro/palmilha) sem largura fica
     // com o consumo ~100× inflado: o dm²/par não tem como virar metro. Bloqueia
     // na criação em vez de deixar o erro aparecer lá na frente, no PV.
     if (AREA_SECTORS.has(form.sector) && !(Number(form.dimensions_width) > 0)) {
+      toast.error('Informe a largura da bobina (mm) — material de área sem largura infla o consumo ~100×.');
       return;
     }
 

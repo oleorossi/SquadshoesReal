@@ -25,7 +25,21 @@
 não instaláveis neste container por bloqueio de rede — sem relação com as mudanças) e
 `bun run check:tokens` sem violação nova.
 
-## 🎯 Top 10 prioridades (não aplicadas — exigem decisão/esforço)
+## ✅ Fase 1 do roadmap — APLICADA (segundo commit, 18/08/2026)
+
+| Correção | Onde |
+|---|---|
+| Confirmação de exclusão (`DeleteConfirmButton`, primitive já adotado em 35 arquivos) nos **9 pontos de hard-delete de 1 clique** | `MaintenancePage`, `AbsenceReport`, `EconomicGroupDetail` (nota + anexo), `FinanceAttachments`, `PricingByTechnicalSheetPanel`, `SoleStandardMaterialsEditor`, `SoleStandardConsumptionPanel`, `ProdutividadeModelos` |
+| Ramo de **`isError` no `DataListPage`**: falha de query agora mostra "Falha ao carregar os dados" + botão Tentar novamente, em vez do EmptyState "Nenhum registro" | `ui/data-list-page.tsx` (conserta os 5 call sites de uma vez; teste de contrato da queryKey segue verde) |
+| **Fechamento de dialog só no `onSuccess`** — erro de gravação não descarta mais o formulário digitado | `Clients.tsx` (cliente), `Finance.tsx` (lançamento avulso), `FinanceConfigPanel` (3 forms), `TechnicalSheets` (copiar materiais) |
+| **Guarda de duplo submit** (`isPending`/`disabled` + "Salvando…") | `FinanceConfigPanel` (3 botões), `RepresentativeTab`, `SupplierPanel` |
+| **`GroupCreateDialog`**: os 3 `return` mudos do submit ganharam `toast.error` nomeando o bloqueio (duplicata, setor, largura) — Enter não "falha em silêncio" | `groups/GroupCreateDialog.tsx` |
+| **`ClientFormDialog`**: caminho "Isento" com IE vazia gravava IE vazia (setForm assíncrono + closure stale do pai) — agora o submit recebe o valor corrigido sincronamente via override | `clients/ClientFormDialog.tsx` + `Clients.tsx` |
+| **Toast global de erro de query** em pt-BR: mensagem genérica no título, detalhe técnico na description (a queryKey em inglês saiu do texto de UI) | `App.tsx` |
+
+## 🎯 Top 10 prioridades restantes
+
+> Itens 1–3 originais (delete sem confirmação, isError, dialogs que descartam dados) foram aplicados na Fase 1 acima — seguem listados nos findings por dimensão como registro.
 
 1. **Exclusão irreversível em 1 clique, sem confirmação, em 10 pontos** — hard-delete
    direto no `onClick`, no projeto onde PVs já sumiram por delete acidental. Padronizar

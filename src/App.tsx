@@ -132,8 +132,14 @@ const queryClient = new QueryClient({
       const e = error as any;
       const isAuthError = e?.status === 401 || e?.status === 403 || e?.message?.includes('JWT');
       if (!isAuthError) {
+        // A queryKey é convenção interna em inglês ('clients', 'orders') — não é
+        // texto de UI. Mensagem principal em pt-BR; o detalhe técnico vai na
+        // description pra manter a diagnosticabilidade sem virar o título.
         const label = (query.queryKey[0] as string) || 'dados';
-        toast.error(`Falha ao carregar "${label}": ${e?.message || 'erro desconhecido'}`, { id: `qerr-${label}` });
+        toast.error('Falha ao carregar dados. Verifique a conexão e tente novamente.', {
+          id: `qerr-${label}`,
+          description: e?.message || undefined,
+        });
       }
     },
   }),

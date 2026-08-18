@@ -5841,8 +5841,7 @@ function SheetBOM({ sheetId, safetyPct, onSafetyChange, shoeCategory }: {
     if (!data?.length) { toast.error('Ficha sem materiais'); return; }
     const toAdd = (data as any[]).filter(m => !usedProductIds.has(m.product_id)).map(m => ({ ...m, sizes: m.sizes || '' }));
     if (!toAdd.length) { toast.info('Todos os materiais já estão na ficha'); return; }
-    bulkAdd.mutate({ sheetId, materials: toAdd });
-    setShowCopyDialog(false);
+    bulkAdd.mutate({ sheetId, materials: toAdd }, { onSuccess: () => setShowCopyDialog(false) });
   };
 
   if (isLoading) return <Loader2 className="h-4 w-4 animate-spin" />;

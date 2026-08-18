@@ -10,6 +10,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
+import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { NumberInput } from '@/components/ui/number-input';
@@ -540,13 +541,7 @@ export function SoleStandardMaterialsEditor({ soleGroupId, soleClassification }:
                     className="h-7 w-16 text-xs"
                     placeholder="un"
                   />
-                  <Button
-                    size="sm" variant="ghost"
-                    className="h-7 w-7 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
-                    onClick={() => removeMutation.mutate(m.id)}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
+                  <DeleteConfirmButton onConfirm={() => removeMutation.mutate(m.id)} title="Remover material do padrão?" description={`"${m.products?.name || 'Item'}" sai do padrão do solado.`} />
                 </div>
                 );
               })}

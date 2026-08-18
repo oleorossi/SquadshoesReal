@@ -184,20 +184,22 @@ export default function Clients() {
     setClientDialog(true);
   };
 
-  const handleClientSubmit = (e: React.FormEvent) => {
+  const handleClientSubmit = (e: React.FormEvent, override?: Partial<ClientFormData>) => {
     e.preventDefault();
-    const cnpjDigits = form.cnpj.replace(/\D/g, '');
+    const data = override ? { ...form, ...override } : form;
+    const cnpjDigits = data.cnpj.replace(/\D/g, '');
     if (cnpjDigits.length === 14 && !validateCnpj(cnpjDigits)) {
       toast.error('CNPJ inválido — verifique os dígitos verificadores.');
       return;
     }
+    // Fecha SÓ no onSuccess: fechar síncrono descartava os ~20 campos digitados
+    // quando o insert/update falhava (o onOpenChange reseta o form ao fechar).
     if (editingClient) {
       if (!perm.canEdit) return;
-      updateClient.mutate({ id: editingClient.id, data: form });
+      updateClient.mutate({ id: editingClient.id, data }, { onSuccess: () => setClientDialog(false) });
     } else {
-      createClient.mutate(form);
+      createClient.mutate(data, { onSuccess: () => setClientDialog(false) });
     }
-    setClientDialog(false);
   };
 
   const handleExcelImport = async (importedClients: ClientFormData[]) => {
