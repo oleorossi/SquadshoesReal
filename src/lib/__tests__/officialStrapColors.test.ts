@@ -44,8 +44,8 @@ describe('officialStrapColorsForBase', () => {
         { id: 'inativa', name: 'INATIVA', active: false },
       ],
       products: [
-        { id: 'napa-zero', active: true, quantity: 0 },
-        { id: 'napa-inativa', active: false, quantity: 10 },
+        { id: 'napa-zero', group_id: 'soft', active: true, quantity: 0 },
+        { id: 'napa-inativa', group_id: 'soft', active: false, quantity: 10 },
       ],
       official_products: [
         { base_group_id: 'soft', color_id: 'preto', official_product_id: 'napa-zero', status: 'active' },
@@ -55,6 +55,21 @@ describe('officialStrapColorsForBase', () => {
     };
 
     expect(officialStrapColorsForBase(catalog, 'soft').map((color) => color.id)).toEqual(['preto']);
+  });
+
+  it('não oferece a cor quando o produto oficial saiu do grupo da napa-base', () => {
+    const catalog = {
+      colors: [{ id: 'preto', name: 'PRETO', active: true }],
+      products: [{ id: 'napa-movida', group_id: 'madrid', active: true }],
+      official_products: [{
+        base_group_id: 'soft',
+        color_id: 'preto',
+        official_product_id: 'napa-movida',
+        status: 'active',
+      }],
+    };
+
+    expect(officialStrapColorsForBase(catalog, 'soft')).toEqual([]);
   });
 
   it('não oferece catálogo global quando a base ainda não foi resolvida', () => {

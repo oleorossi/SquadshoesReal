@@ -72,6 +72,7 @@ export interface BaseMaterialWidthProfile {
   usable_width_mm: number;
   status: string;
   valid_from?: string | null;
+  valid_to?: string | null;
 }
 
 export interface BaseMaterialOfficialProduct {
@@ -262,6 +263,25 @@ export interface SaveArtisanalStrapBundleResult {
   variant_id: string;
   recipe_id: string | null;
   finished_product_id: string;
+}
+
+export interface ResolveTechnicalStrapContextLineInput {
+  /** Posição zero-based da linha dentro de technical_sheets.strap_colors. */
+  ordinal: number;
+  measure_id: string;
+}
+
+export interface ResolveTechnicalStrapContextInput {
+  p_reference_id: string;
+  p_base_group_id: string;
+  p_lines: ResolveTechnicalStrapContextLineInput[];
+  p_reason: string;
+  p_expected_updated_at: string;
+}
+
+export interface ResolveTechnicalStrapContextResult {
+  strap_colors: Array<Record<string, unknown>>;
+  [key: string]: unknown;
 }
 
 export interface SaveArtisanalStrapConversionPayload {
@@ -2180,6 +2200,55 @@ export function useResolveTechnicalStrapLineMigration() {
     },
     onError: (error: unknown) => {
       toast.error(error instanceof Error ? error.message : 'Não foi possível resolver a linha técnica.');
+    },
+  });
+}
+
+/**
+ * Corrige, em uma única operação auditável, a napa-base da referência e a
+ * medida canônica de cada linha técnica. O retorno é o novo snapshot que o PV
+ * deve adotar imediatamente, sem exigir que o vendedor saia do pedido.
+ */
+export function useResolveTechnicalStrapContext() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: ResolveTechnicalStrapContextInput) => {
+      const { data, error } = await untypedSupabase.rpc(
+        'resolve_technical_strap_context_from_sale_order',
+        { ...payload },
+      );
+      if (error) throw error;
+
+      const result = data && typeof data === 'object'
+        ? data as Record<string, unknown>
+        : {};
+      if (!Array.isArray(result.strap_colors)) {
+        throw new Error('A correção foi concluída sem retornar as linhas atualizadas da ficha.');
+      }
+      return {
+        ...result,
+        strap_colors: result.strap_colors as Array<Record<string, unknown>>,
+      } as ResolveTechnicalStrapContextResult;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['strap_stock_lines_preview'] });
+      queryClient.invalidateQueries({ queryKey: ['artisanal-strap-catalog'] });
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      queryClient.invalidateQueries({ queryKey: ['products_for_colors'] });
+      queryClient.invalidateQueries({ queryKey: ['group_supplier_materials_for_colors'] });
+      queryClient.invalidateQueries({ queryKey: ['product_groups_colors'] });
+      queryClient.invalidateQueries({ queryKey: ['technical-sheets'] });
+      queryClient.invalidateQueries({ queryKey: ['technical_sheets'] });
+      toast.success('Contexto das tiras corrigido no estoque e aplicado ao pedido.');
+    },
+    onError: (error: unknown) => {
+      if (error && typeof error === 'object') {
+        (error as Record<string, unknown>)._handled = true;
+      }
+      const message = error && typeof error === 'object' && 'message' in error
+        ? String((error as { message?: unknown }).message || '')
+        : '';
+      toast.error(message || 'Não foi possível corrigir o contexto das tiras.');
     },
   });
 }

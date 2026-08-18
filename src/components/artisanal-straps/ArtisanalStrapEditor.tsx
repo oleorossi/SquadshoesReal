@@ -33,6 +33,7 @@ import {
   type ArtisanalStrapCatalog,
   type ArtisanalStrapIdentityBasis,
   type ArtisanalStrapSourceMode,
+  type SaveArtisanalStrapBundleResult,
   useSaveArtisanalStrapBundle,
 } from '@/hooks/useArtisanalStraps';
 import { useSuppliers } from '@/hooks/useSuppliers';
@@ -69,7 +70,15 @@ export interface ArtisanalStrapEditorProps {
   buyReadyReviewId?: string | null;
   suggestedRecipeId?: string | null;
   suggestedYieldMPerM?: number | null;
-  onSaved?: (variantId: string) => void;
+  /** O PV pode ativar uma identidade nova somente quando base, medida e cor
+   * ja vieram do contexto canonico. Os demais pontos de entrada continuam
+   * criando em revisao. */
+  activateOnCreate?: boolean;
+  onSaved?: (
+    variantId: string,
+    result: SaveArtisanalStrapBundleResult,
+    colorId: string,
+  ) => void;
 }
 
 interface EditorForm {
@@ -194,6 +203,7 @@ export function ArtisanalStrapEditor({
   buyReadyReviewId,
   suggestedRecipeId,
   suggestedYieldMPerM,
+  activateOnCreate = false,
   onSaved,
 }: ArtisanalStrapEditorProps) {
   const [form, setForm] = useState<EditorForm>(EMPTY_FORM);
@@ -568,9 +578,11 @@ export function ArtisanalStrapEditor({
           min_stock_replenishment_mode: form.floorMode,
           purchase_enabled: form.purchaseEnabled,
           status: (mode === 'review' && variant) || exactBuyReadyProductPrefill
+            || (mode === 'create' && activateOnCreate)
             ? 'active'
             : variant?.status || 'review_required',
           review_reason: (mode === 'review' && variant) || exactBuyReadyProductPrefill
+            || (mode === 'create' && activateOnCreate)
             ? null
             : variant?.review_reason || null,
         },
@@ -601,7 +613,7 @@ export function ArtisanalStrapEditor({
         recipe: undefined,
       },
     });
-    onSaved?.(result.variant_id);
+    onSaved?.(result.variant_id, result, form.colorId);
     onOpenChange(false);
   };
 

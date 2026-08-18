@@ -101,7 +101,7 @@ export function officialStrapColorsForBase(
 ) {
   if (!catalog || !baseGroupId) return [];
   const activeProducts = new Set(catalog.products
-    .filter((product) => product.active !== false)
+    .filter((product) => product.active !== false && product.group_id === baseGroupId)
     .map((product) => product.id));
   const ids = new Set(catalog.official_products
     .filter((official) => official.status === 'active'
