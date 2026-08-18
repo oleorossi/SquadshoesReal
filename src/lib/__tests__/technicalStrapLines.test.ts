@@ -38,6 +38,7 @@ describe('technicalStrapLines', () => {
       strap_type_id: crypto.randomUUID(),
       active: true,
     };
+    const type = { id: measure.strap_type_id, active: true };
     const selected = applyCanonicalTechnicalStrapMeasure({
       technical_strap_line_id: technicalLineId,
       group_id: 'legado-apenas-rotulo',
@@ -49,11 +50,13 @@ describe('technicalStrapLines', () => {
       strap_type_id: measure.strap_type_id,
       group_id: 'legado-apenas-rotulo',
     });
-    expect(hasCanonicalTechnicalStrapIdentity(selected, [measure])).toBe(true);
+    expect(hasCanonicalTechnicalStrapIdentity(selected, [measure], [type])).toBe(true);
     expect(hasCanonicalTechnicalStrapIdentity(
       { ...selected, strap_type_id: crypto.randomUUID() },
       [measure],
+      [type],
     )).toBe(false);
+    expect(hasCanonicalTechnicalStrapIdentity(selected, [measure], [{ ...type, active: false }])).toBe(false);
   });
 
   it('exige grupo estrutural na identidade de produto acabado', () => {
@@ -63,18 +66,19 @@ describe('technicalStrapLines', () => {
       strap_type_id: crypto.randomUUID(),
       active: true,
     };
+    const type = { id: measure.strap_type_id, active: true };
     const base = applyCanonicalTechnicalStrapMeasure({
       technical_strap_line_id: technicalLineId,
     }, measure);
 
     const missingGroup = applyTechnicalStrapIdentity(base, 'finished_product_group');
-    expect(hasCanonicalTechnicalStrapIdentity(missingGroup, [measure])).toBe(false);
+    expect(hasCanonicalTechnicalStrapIdentity(missingGroup, [measure], [type])).toBe(false);
 
     const withGroup = applyTechnicalStrapIdentity(
       base,
       'finished_product_group',
       crypto.randomUUID(),
     );
-    expect(hasCanonicalTechnicalStrapIdentity(withGroup, [measure])).toBe(true);
+    expect(hasCanonicalTechnicalStrapIdentity(withGroup, [measure], [type])).toBe(true);
   });
 });

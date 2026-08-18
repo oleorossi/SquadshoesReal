@@ -19,6 +19,11 @@ export interface TechnicalStrapMeasureLike {
   active?: boolean | null;
 }
 
+export interface TechnicalStrapTypeLike {
+  id: string;
+  active?: boolean | null;
+}
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export function isUuid(value: unknown): value is string {
@@ -98,11 +103,14 @@ export function applyTechnicalStrapIdentity<T extends TechnicalStrapLineLike>(
 export function hasCanonicalTechnicalStrapIdentity(
   line: TechnicalStrapLineLike,
   measures: TechnicalStrapMeasureLike[],
+  types: TechnicalStrapTypeLike[],
 ): boolean {
   if (!isUuid(line.technical_strap_line_id) || !isUuid(line.measure_id) || !isUuid(line.strap_type_id)) {
     return false;
   }
   const measure = measures.find((entry) => entry.id === line.measure_id && entry.active !== false);
   if (!measure || measure.strap_type_id !== line.strap_type_id) return false;
+  const type = types.find((entry) => entry.id === line.strap_type_id && entry.active !== false);
+  if (!type) return false;
   return strapIdentityBasis(line) !== 'finished_product_group' || isUuid(line.identity_group_id);
 }
