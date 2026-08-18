@@ -18,6 +18,41 @@ export const STRAP_YIELD_DEFAULTS = {
   comprimentoRoloM: ROLO_COMPRIMENTO_M,
 } as const;
 
+const YIELD_DECIMALS = 6;
+
+function roundYield(value: number) {
+  const factor = 10 ** YIELD_DECIMALS;
+  return Math.round((value + Number.EPSILON) * factor) / factor;
+}
+
+/**
+ * Converte a perda operacional informada na tela no rendimento confirmado canônico.
+ *
+ * A porcentagem é apenas uma forma alternativa de cadastrar o rendimento real. Ela
+ * não é persistida nem reaplicada no consumo, evitando descontar a mesma perda duas
+ * vezes. Ex.: 76 m/m teóricos com 10% de perda = 68,4 m/m confirmados.
+ */
+export function confirmedStrapYieldFromLossPercentage(
+  theoreticalYieldMPerM: number,
+  lossPercentage: number,
+) {
+  const theoreticalYield = Number(theoreticalYieldMPerM);
+  const loss = Number(lossPercentage);
+  if (!(theoreticalYield > 0) || !Number.isFinite(loss) || loss < 0 || loss >= 100) return 0;
+  return roundYield(theoreticalYield * (1 - loss / 100));
+}
+
+/** Calcula a perda equivalente para alternar de rendimento real para porcentagem. */
+export function strapYieldLossPercentageFromConfirmed(
+  theoreticalYieldMPerM: number,
+  confirmedYieldMPerM: number,
+) {
+  const theoreticalYield = Number(theoreticalYieldMPerM);
+  const confirmedYield = Number(confirmedYieldMPerM);
+  if (!(theoreticalYield > 0) || !(confirmedYield > 0) || confirmedYield > theoreticalYield) return 0;
+  return roundYield((1 - confirmedYield / theoreticalYield) * 100);
+}
+
 export interface StrapYieldInput {
   /** `Lm` — largura útil do material (mm). */
   larguraMaterialMm: number;

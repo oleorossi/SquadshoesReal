@@ -155,7 +155,7 @@ describe('ArtisanalStrapConversionEditor', () => {
 
     await user.type(usefulWidth, '1370');
     await user.type(screen.getByLabelText(/Largura da banda/i), '18');
-    await user.type(screen.getByLabelText(/Rendimento confirmado/i), '68');
+    await user.type(screen.getByLabelText(/Rendimento real/i), '68');
     await user.click(screen.getByRole('button', { name: /Salvar conversão/i }));
 
     await waitFor(() => expect(mutations.saveWidth).toHaveBeenCalledWith({
@@ -201,7 +201,7 @@ describe('ArtisanalStrapConversionEditor', () => {
     expect(usefulWidth).toHaveValue('1370');
 
     await user.type(screen.getByLabelText(/Largura da banda/i), '18');
-    await user.type(screen.getByLabelText(/Rendimento confirmado/i), '68');
+    await user.type(screen.getByLabelText(/Rendimento real/i), '68');
     await user.click(screen.getByRole('button', { name: /Salvar conversão/i }));
 
     await waitFor(() => expect(mutations.saveConversion).toHaveBeenCalledWith(expect.objectContaining({
@@ -211,6 +211,37 @@ describe('ArtisanalStrapConversionEditor', () => {
     })));
     expect(mutations.saveWidth).not.toHaveBeenCalled();
     expect(mutations.approveWidth).not.toHaveBeenCalled();
+  });
+
+  it('calcula o rendimento confirmado pela perda percentual e salva somente o resultado final', async () => {
+    const user = userEvent.setup();
+    render(
+      <ArtisanalStrapConversionEditor
+        open
+        onOpenChange={vi.fn()}
+        catalog={catalogWithApprovedWidth}
+        capabilities={capabilities}
+        mode="create"
+        origin="hub"
+        measureId="measure-1"
+        baseGroupId="base-1"
+      />,
+    );
+
+    await user.type(screen.getByLabelText(/Largura da banda/i), '18');
+    await user.click(screen.getByRole('button', { name: 'Perda percentual' }));
+    await user.type(screen.getByLabelText(/Perda percentual/i), '10');
+
+    expect(screen.getByText('68,4 m/m')).toBeInTheDocument();
+    expect(screen.getByText(/76 × \(1 − 10%\)/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /Salvar conversão/i }));
+
+    await waitFor(() => expect(mutations.saveConversion).toHaveBeenCalledTimes(1));
+    const recipePayload = mutations.saveConversion.mock.calls[0][0].payload.recipe;
+    expect(recipePayload.confirmed_yield_m_per_m).toBe(68.4);
+    expect(recipePayload).not.toHaveProperty('loss_percentage');
+    expect(recipePayload).not.toHaveProperty('waste_pct');
   });
 
   it('reaproveita uma receita anterior com dados herdados e exige a largura útil faltante', async () => {
@@ -231,7 +262,7 @@ describe('ArtisanalStrapConversionEditor', () => {
     expect(screen.getByRole('heading', { name: 'Reaproveitar receita anterior' })).toBeInTheDocument();
     expect(screen.getByText(/Dados recuperados do sistema anterior/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/Largura da banda/i)).toHaveValue('20');
-    expect(screen.getByLabelText(/Rendimento confirmado/i)).toHaveValue('60');
+    expect(screen.getByLabelText(/Rendimento real/i)).toHaveValue('60');
 
     await user.type(screen.getByLabelText(/Largura útil da napa/i), '1370');
     await user.click(screen.getByRole('button', { name: /Confirmar e ativar/i }));

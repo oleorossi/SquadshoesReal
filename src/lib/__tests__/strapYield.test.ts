@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  confirmedStrapYieldFromLossPercentage,
   computeStrapMaterialNeeded,
   computeStrapYield,
   PARTIAL_CUT_UNIT_TO_M,
   partialCutYield,
+  strapYieldLossPercentageFromConfirmed,
   STRAP_YIELD_DEFAULTS,
 } from '@/lib/strapYield';
 import { ROLO_COMPRIMENTO_M, ROLO_LARGURA_MM } from '@/lib/strapRollCut';
@@ -12,6 +14,16 @@ const round = (value: number, decimals = 6) =>
   Math.round(value * 10 ** decimals) / 10 ** decimals;
 
 describe('computeStrapYield — bandas físicas completas, sem perda adicional', () => {
+  it('transforma a perda informada em rendimento confirmado sem criar fator adicional', () => {
+    expect(confirmedStrapYieldFromLossPercentage(76, 10)).toBe(68.4);
+    expect(strapYieldLossPercentageFromConfirmed(76, 60)).toBeCloseTo(21.052632, 6);
+  });
+
+  it('recusa percentuais que zerariam ou inverteriam o rendimento', () => {
+    expect(confirmedStrapYieldFromLossPercentage(76, 100)).toBe(0);
+    expect(confirmedStrapYieldFromLossPercentage(76, -1)).toBe(0);
+  });
+
   it('usa floor(1370 / 20) = 68 m de tira por metro de napa', () => {
     const result = computeStrapYield({
       larguraMaterialMm: 1370,
