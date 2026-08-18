@@ -27,6 +27,8 @@ import { useContractors } from '@/hooks/useContractors';
 import {
   type ArtisanalStrapCapabilities,
   type ArtisanalStrapCatalog,
+  useApproveBaseMaterialWidthProfile,
+  useSaveBaseMaterialWidthProfile,
   useSaveArtisanalStrapConversion,
 } from '@/hooks/useArtisanalStraps';
 import type { ArtisanalStrapEditorMode, ArtisanalStrapEditorOrigin } from './ArtisanalStrapEditor';
@@ -54,6 +56,7 @@ interface ConversionForm {
   finishedWidthMm: number;
   baseGroupId: string;
   recipeId: string;
+  usefulWidthMm: number;
   cutBandWidthMm: number;
   confirmedYield: number;
   executorType: 'factory' | 'contractor';
@@ -70,6 +73,7 @@ const EMPTY_FORM: ConversionForm = {
   finishedWidthMm: 0,
   baseGroupId: '',
   recipeId: '',
+  usefulWidthMm: 0,
   cutBandWidthMm: 0,
   confirmedYield: 0,
   executorType: 'factory',
@@ -92,6 +96,24 @@ function numberOrZero(value: unknown) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function latestWidthProfile(
+  catalog: ArtisanalStrapCatalog,
+  baseGroupId: string,
+  statuses: string[],
+) {
+  return catalog.width_profiles
+    .filter((item) => item.base_group_id === baseGroupId && statuses.includes(item.status))
+    .sort((left, right) => Number(right.version) - Number(left.version))[0];
+}
+
+function mutationErrorMessage(error: unknown) {
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === 'object' && 'message' in error) {
+    return String((error as { message: unknown }).message);
+  }
+  return 'Não foi possível salvar a largura útil e a conversão.';
+}
+
 export function ArtisanalStrapConversionEditor({
   open,
   onOpenChange,
@@ -108,6 +130,8 @@ export function ArtisanalStrapConversionEditor({
   const [form, setForm] = useState<ConversionForm>(EMPTY_FORM);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [createRecipeVersion, setCreateRecipeVersion] = useState(false);
+  const saveWidthProfile = useSaveBaseMaterialWidthProfile();
+  const approveWidthProfile = useApproveBaseMaterialWidthProfile();
   const saveConversion = useSaveArtisanalStrapConversion();
   const { data: contractors = [] } = useContractors();
 
@@ -128,6 +152,8 @@ export function ArtisanalStrapConversionEditor({
     const selectedRecipe = directRecipe || fallbackRecipe;
     const selectedMeasure = catalog.measures.find((item) => item.id === selectedMeasureId);
     const selectedType = catalog.types.find((item) => item.id === selectedMeasure?.strap_type_id);
+    const selectedWidthProfile = latestWidthProfile(catalog, selectedBaseGroupId, ['approved'])
+      || latestWidthProfile(catalog, selectedBaseGroupId, ['draft', 'pending_approval']);
     const hasYieldSuggestion = Number.isFinite(Number(suggestedYieldMPerM))
       && Number(suggestedYieldMPerM) > 0;
 
@@ -140,6 +166,7 @@ export function ArtisanalStrapConversionEditor({
       finishedWidthMm: numberOrZero(selectedMeasure?.finished_width_mm),
       baseGroupId: selectedBaseGroupId,
       recipeId: selectedRecipe?.id || '',
+      usefulWidthMm: numberOrZero(selectedWidthProfile?.usable_width_mm),
       cutBandWidthMm: numberOrZero(selectedRecipe?.cut_band_width_mm),
       confirmedYield: hasYieldSuggestion
         ? numberOrZero(suggestedYieldMPerM)
@@ -159,10 +186,11 @@ export function ArtisanalStrapConversionEditor({
   const selectedMeasure = catalog.measures.find((item) => item.id === form.measureId);
   const selectedBase = catalog.groups.find((item) => item.id === form.baseGroupId);
   const currentRecipe = catalog.recipes.find((item) => item.id === form.recipeId);
-  const widthProfile = catalog.width_profiles
-    .filter((item) => item.base_group_id === form.baseGroupId && item.status === 'approved')
-    .sort((left, right) => String(right.valid_from || '').localeCompare(String(left.valid_from || '')))[0];
-  const usefulWidthMm = numberOrZero(widthProfile?.usable_width_mm);
+  const widthProfile = latestWidthProfile(catalog, form.baseGroupId, ['approved']);
+  const editableWidthProfile = latestWidthProfile(catalog, form.baseGroupId, ['draft', 'pending_approval']);
+  const usefulWidthMm = widthProfile
+    ? numberOrZero(widthProfile.usable_width_mm)
+    : form.usefulWidthMm;
   const theoreticalYield = form.cutBandWidthMm > 0 && usefulWidthMm > 0
     ? Math.floor(usefulWidthMm / form.cutBandWidthMm)
     : 0;
@@ -174,9 +202,13 @@ export function ArtisanalStrapConversionEditor({
     || currentRecipe.status === 'pending_approval';
   const identityLocked = Boolean(currentRecipe);
   const canWrite = capabilities.manage_strap_catalog;
+  const canApproveWidthInline = canWrite && capabilities.approve_strap_recipe;
   const canSeeFinancial = capabilities.can_see_financial_values === true;
   const readOnly = !canWrite;
   const canEditRecipeFields = !readOnly && (recipeIsMutable || createRecipeVersion);
+  const isSaving = saveWidthProfile.isPending
+    || approveWidthProfile.isPending
+    || saveConversion.isPending;
 
   const setField = <K extends keyof ConversionForm>(key: K, value: ConversionForm[K]) => {
     setForm((current) => ({ ...current, [key]: value }));
@@ -191,7 +223,10 @@ export function ArtisanalStrapConversionEditor({
       return 'Selecione uma medida ou informe nome e largura final.';
     }
     if (!form.baseGroupId) return 'Selecione a napa-base.';
-    if (!widthProfile) return 'A napa-base não possui perfil de largura útil aprovado.';
+    if (!widthProfile && form.usefulWidthMm <= 0) return 'Informe a largura útil da napa-base.';
+    if (!widthProfile && !canApproveWidthInline) {
+      return 'A napa-base não possui perfil aprovado e seu acesso não permite aprová-lo neste fluxo.';
+    }
     if (currentRecipe && !recipeIsMutable && !createRecipeVersion) {
       return 'A conversão aprovada é imutável. Crie uma nova versão para alterar os números.';
     }
@@ -220,32 +255,51 @@ export function ArtisanalStrapConversionEditor({
       return;
     }
 
-    await saveConversion.mutateAsync({
-      reason: form.reason.trim(),
-      payload: {
-        type: form.typeId
-          ? { id: form.typeId }
-          : { name: form.typeName.trim(), active: true },
-        measure: form.measureId
-          ? { id: form.measureId }
-          : {
-              display_name: form.measureName.trim(),
-              finished_width_mm: form.finishedWidthMm,
-              active: true,
-            },
-        base_group_id: form.baseGroupId,
-        recipe: {
-          id: createRecipeVersion ? undefined : form.recipeId || undefined,
-          base_width_profile_id: widthProfile?.id,
-          cut_band_width_mm: form.cutBandWidthMm,
-          confirmed_yield_m_per_m: form.confirmedYield,
-          executor_type: form.executorType,
-          default_contractor_id: form.executorType === 'contractor' ? form.contractorId : null,
-          ...(canSeeFinancial ? { transformation_cost_per_m: form.transformationCost } : {}),
+    const reason = form.reason.trim();
+    try {
+      let resolvedWidthProfileId = widthProfile?.id;
+      if (!resolvedWidthProfileId) {
+        resolvedWidthProfileId = await saveWidthProfile.mutateAsync({
+          id: editableWidthProfile?.id,
+          baseGroupId: form.baseGroupId,
+          usableWidthMm: form.usefulWidthMm,
+          reason,
+        });
+        await approveWidthProfile.mutateAsync({
+          profileId: resolvedWidthProfileId,
+          reason,
+        });
+      }
+
+      await saveConversion.mutateAsync({
+        reason,
+        payload: {
+          type: form.typeId
+            ? { id: form.typeId }
+            : { name: form.typeName.trim(), active: true },
+          measure: form.measureId
+            ? { id: form.measureId }
+            : {
+                display_name: form.measureName.trim(),
+                finished_width_mm: form.finishedWidthMm,
+                active: true,
+              },
+          base_group_id: form.baseGroupId,
+          recipe: {
+            id: createRecipeVersion ? undefined : form.recipeId || undefined,
+            base_width_profile_id: resolvedWidthProfileId,
+            cut_band_width_mm: form.cutBandWidthMm,
+            confirmed_yield_m_per_m: form.confirmedYield,
+            executor_type: form.executorType,
+            default_contractor_id: form.executorType === 'contractor' ? form.contractorId : null,
+            ...(canSeeFinancial ? { transformation_cost_per_m: form.transformationCost } : {}),
+          },
         },
-      },
-    });
-    onOpenChange(false);
+      });
+      onOpenChange(false);
+    } catch (saveError) {
+      setValidationError(mutationErrorMessage(saveError));
+    }
   };
 
   return (
@@ -378,7 +432,16 @@ export function ArtisanalStrapConversionEditor({
                   <Label>Napa-base *</Label>
                   <Select
                     value={form.baseGroupId}
-                    onValueChange={(value) => setField('baseGroupId', value)}
+                    onValueChange={(value) => {
+                      const selectedWidthProfile = latestWidthProfile(catalog, value, ['approved'])
+                        || latestWidthProfile(catalog, value, ['draft', 'pending_approval']);
+                      setForm((current) => ({
+                        ...current,
+                        baseGroupId: value,
+                        usefulWidthMm: numberOrZero(selectedWidthProfile?.usable_width_mm),
+                      }));
+                      setValidationError(null);
+                    }}
                     disabled={readOnly || identityLocked}
                   >
                     <SelectTrigger><SelectValue placeholder="Selecione a base" /></SelectTrigger>
@@ -421,21 +484,37 @@ export function ArtisanalStrapConversionEditor({
               {!widthProfile && form.baseGroupId && (
                 <Alert>
                   <Warning className="h-4 w-4" />
-                  <AlertTitle>Largura útil pendente</AlertTitle>
+                  <AlertTitle>{canApproveWidthInline ? 'Preencha a largura útil' : 'Largura útil pendente'}</AlertTitle>
                   <AlertDescription>
-                    Aprove o perfil de largura da napa-base na aba Catálogo antes de salvar a conversão.
+                    {canApproveWidthInline
+                      ? 'Ao salvar a conversão, o perfil da napa-base também será salvo e aprovado.'
+                      : 'Aprove o perfil de largura da napa-base na aba Catálogo antes de salvar a conversão.'}
                   </AlertDescription>
                 </Alert>
               )}
 
               <div className="grid gap-3 sm:grid-cols-3">
                 <div className="space-y-1.5">
-                  <Label>Largura útil da napa</Label>
-                  <NumberInput value={usefulWidthMm} onChange={() => undefined} unit="mm" disabled />
+                  <Label htmlFor="strap-conversion-useful-width">
+                    Largura útil da napa {!widthProfile && <span className="text-destructive">*</span>}
+                  </Label>
+                  <NumberInput
+                    id="strap-conversion-useful-width"
+                    value={usefulWidthMm}
+                    onChange={(value) => setField('usefulWidthMm', value)}
+                    unit="mm"
+                    disabled={Boolean(widthProfile) || !canApproveWidthInline || !canEditRecipeFields}
+                  />
+                  {!widthProfile && editableWidthProfile && (
+                    <p className="text-xs text-muted-foreground">
+                      Rascunho v{editableWidthProfile.version} será atualizado e aprovado.
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Largura da banda *</Label>
+                  <Label htmlFor="strap-conversion-cut-band">Largura da banda *</Label>
                   <NumberInput
+                    id="strap-conversion-cut-band"
                     value={form.cutBandWidthMm}
                     onChange={(value) => setField('cutBandWidthMm', value)}
                     unit="mm"
@@ -443,8 +522,9 @@ export function ArtisanalStrapConversionEditor({
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Rendimento confirmado *</Label>
+                  <Label htmlFor="strap-conversion-confirmed-yield">Rendimento confirmado *</Label>
                   <NumberInput
+                    id="strap-conversion-confirmed-yield"
                     value={form.confirmedYield}
                     onChange={(value) => setField('confirmedYield', value)}
                     unit="m/m"
@@ -538,9 +618,9 @@ export function ArtisanalStrapConversionEditor({
           <SheetFooter className="sticky bottom-0 border-t border-border bg-background px-4 py-4 sm:px-6">
             <Button variant="outline" onClick={() => onOpenChange(false)}>Fechar</Button>
             {!readOnly && (
-              <Button onClick={handleSave} disabled={saveConversion.isPending} className="gap-2">
+              <Button onClick={handleSave} disabled={isSaving} className="gap-2">
                 <FloppyDisk className="h-4 w-4" />
-                {saveConversion.isPending ? 'Salvando…' : 'Salvar conversão'}
+                {isSaving ? 'Salvando…' : 'Salvar conversão'}
               </Button>
             )}
           </SheetFooter>
