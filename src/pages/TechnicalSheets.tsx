@@ -1931,7 +1931,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
           setAbaAtiva('engineering');
           return;
         }
-        const upperHasActiveProduct = (products || []).some((product: any) =>
+        const upperHasActiveProduct = (products || []).some(product =>
           product.group_id === upperMaterialGroup.id && product.active !== false);
         if (!upperHasActiveProduct) {
           toast.error(
@@ -2960,13 +2960,13 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                             A média alimenta o custo do PV e a conversão para a unidade de estoque.
                           </p>
                           {renderSizeGrid(
-                            (form as any).upper_consumption_per_size || {},
+                            form.upper_consumption_per_size || {},
                             'dm²',
                             (newPerSize) => {
-                              updateField('upper_consumption_per_size' as any, newPerSize);
-                              const filled = Object.values(newPerSize).filter((v: any) => Number(v) > 0);
+                              updateField('upper_consumption_per_size', newPerSize);
+                              const filled = Object.values(newPerSize).filter(value => Number(value) > 0);
                               if (filled.length > 0) {
-                                const avg = filled.reduce((a: number, b: any) => a + Number(b), 0) / filled.length;
+                                const avg = filled.reduce((sum, value) => sum + Number(value), 0) / filled.length;
                                 updateField('upper_consumption', Math.round(avg * 10000) / 10000);
                               }
                             },

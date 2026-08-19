@@ -109,7 +109,7 @@ export async function createGroupColorProduct(spec: GroupColorSpec): Promise<Cre
   const productData = sanitizeUuidFields({
     name: `${spec.groupName}: ${color}`,
     sku: finalSku,
-    category: (last?.category || group?.sector || '').trim() || sectorOfGroup({ name: spec.groupName } as any),
+    category: (last?.category || group?.sector || '').trim() || sectorOfGroup({ name: spec.groupName }),
     color,
     unit: defaultUnit,
     purchase_unit: purchaseUnit,
