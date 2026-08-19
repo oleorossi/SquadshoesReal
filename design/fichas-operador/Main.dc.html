@@ -1,0 +1,140 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Fira+Sans:wght@400;600;700;800&family=Fira+Code:wght@400;500;600;700&display=swap">
+  <style>
+    body { margin: 0; background: #fff; color: #000; font-family: 'Fira Sans', system-ui, sans-serif; }
+    a { color: #C00000; } a:hover { color: #8a0000; }
+    .lbl { font-size: 10px; font-weight: 600; letter-spacing: 0.18em; text-transform: uppercase; line-height: 1; display: block; }
+    .mono { font-family: 'Fira Code', ui-monospace, monospace; }
+    .anton { font-family: 'Anton', Impact, sans-serif; text-transform: uppercase; letter-spacing: -0.025em; line-height: 1; }
+  </style>
+</helmet>
+
+<div style="width: 900px; box-sizing: border-box; padding: 34px 36px 30px; background: #fff; display: flex; flex-direction: column; gap: 18px">
+
+  <div style="display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; border-bottom: 2px solid #000; padding-bottom: 10px">
+    <div style="min-width: 0">
+      <span class="lbl">Fichas de operador · rodada 1 de 2</span>
+      <p class="anton" style="font-size: 42px; margin: 6px 0 0">Escolher a informação</p>
+    </div>
+    <p class="mono" style="font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; margin: 0; text-align: right; line-height: 1.6; max-width: 280px">
+      Estética vem depois.<br>Aqui as 3 opções usam o mesmo<br>estilo de hoje, de propósito.
+    </p>
+  </div>
+
+  <p style="margin: 0; font-size: 13px; line-height: 1.55; max-width: 62ch">
+    Cada setor tem três fichas lado a lado. Elas não diferem no visual — diferem em <strong>para quem a ficha existe</strong>,
+    e é isso que decide o que entra e o que sai. Escolha um modelo por setor; podem ser modelos diferentes em setores diferentes.
+  </p>
+
+  <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px">
+
+    <div style="border: 1.5px solid #000; display: flex; flex-direction: column">
+      <div style="border-bottom: 1.5px solid #000; padding: 8px 12px 10px">
+        <span class="lbl">Modelo A</span>
+        <p class="anton" style="font-size: 30px; margin: 5px 0 0">A mão</p>
+        <p class="mono" style="font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; margin: 5px 0 0">Instrução de trabalho</p>
+      </div>
+      <div style="padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 10px; flex-grow: 1">
+        <p style="margin: 0; font-size: 12px; line-height: 1.5">
+          Só o que a mão executa. Se o operador não age sobre a informação, ela sai do papel.
+        </p>
+        <div>
+          <span class="lbl" style="margin-bottom: 5px">Entra maior</span>
+          <p style="margin: 0; font-size: 11.5px; line-height: 1.5">Setor · referência e cor · foto · grade · controle de fichas.</p>
+        </div>
+        <div>
+          <span class="lbl" style="margin-bottom: 5px">Sai</span>
+          <p style="margin: 0; font-size: 11.5px; line-height: 1.5">PV, cliente, entrega, QR, trilho dos 11 setores, nº da OP, observações do pedido.</p>
+        </div>
+        <div style="margin-top: auto; border-top: 1px solid #000; padding-top: 8px">
+          <span class="lbl" style="color: #C00000; margin-bottom: 5px">Custo</span>
+          <p style="margin: 0; font-size: 11.5px; line-height: 1.5">A ficha deixa de responder “de quem é isso?”. Não serve para conferir pedido nem para reimprimir com rastreio.</p>
+        </div>
+      </div>
+    </div>
+
+    <div style="border: 1.5px solid #000; display: flex; flex-direction: column">
+      <div style="border-bottom: 1.5px solid #000; padding: 8px 12px 10px">
+        <span class="lbl">Modelo B</span>
+        <p class="anton" style="font-size: 30px; margin: 5px 0 0">O lote</p>
+        <p class="mono" style="font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; margin: 5px 0 0">Documento do lote físico</p>
+      </div>
+      <div style="padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 10px; flex-grow: 1">
+        <p style="margin: 0; font-size: 12px; line-height: 1.5">
+          A ficha é a identidade do lote que anda pela fábrica. Mantém o rastreio e corta a repetição.
+        </p>
+        <div>
+          <span class="lbl" style="margin-bottom: 5px">Entra maior</span>
+          <p style="margin: 0; font-size: 11.5px; line-height: 1.5">Uma linha única de rastreio: OP · PV · cliente · entrega. Identidade num bloco só.</p>
+        </div>
+        <div>
+          <span class="lbl" style="margin-bottom: 5px">Sai</span>
+          <p style="margin: 0; font-size: 11.5px; line-height: 1.5">A cor repetida 3× e a referência 2×, o trilho dos 11 setores, o índice “OP 08 /”, o resumo agregado do topo.</p>
+        </div>
+        <div style="margin-top: auto; border-top: 1px solid #000; padding-top: 8px">
+          <span class="lbl" style="color: #C00000; margin-bottom: 5px">Custo</span>
+          <p style="margin: 0; font-size: 11.5px; line-height: 1.5">Ainda mais densa que A. Exige que o operador atravesse uma linha de dados que ele não usa todo dia.</p>
+        </div>
+      </div>
+    </div>
+
+    <div style="border: 1.5px solid #000; display: flex; flex-direction: column">
+      <div style="border-bottom: 1.5px solid #000; padding: 8px 12px 10px">
+        <span class="lbl">Modelo C</span>
+        <p class="anton" style="font-size: 30px; margin: 5px 0 0">O turno</p>
+        <p class="mono" style="font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; margin: 5px 0 0">Registro de produção</p>
+      </div>
+      <div style="padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 10px; flex-grow: 1">
+        <p style="margin: 0; font-size: 12px; line-height: 1.5">
+          A ficha volta preenchida e vira dado. Captura no papel o que hoje se perde entre o setor e o sistema.
+        </p>
+        <div>
+          <span class="lbl" style="margin-bottom: 5px">Entra maior</span>
+          <p style="margin: 0; font-size: 11.5px; line-height: 1.5">Tudo de B, mais apontamento — início, fim, quem executou, bancada — refugo por numeração e material consumido.</p>
+        </div>
+        <div>
+          <span class="lbl" style="margin-bottom: 5px">Sai</span>
+          <p style="margin: 0; font-size: 11.5px; line-height: 1.5">Nada. É a ficha mais cheia das três.</p>
+        </div>
+        <div style="margin-top: auto; border-top: 1px solid #000; padding-top: 8px">
+          <span class="lbl" style="color: #C00000; margin-bottom: 5px">Custo</span>
+          <p style="margin: 0; font-size: 11.5px; line-height: 1.5">Mais campo é mais tempo de preenchimento e mais campo em branco. Só se paga se alguém digitar o retorno.</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div style="border-top: 1px solid #000; padding-top: 10px; display: flex; gap: 28px; align-items: flex-start">
+    <div style="min-width: 0; flex-grow: 1">
+      <span class="lbl" style="margin-bottom: 6px">Igual nos três</span>
+      <p style="margin: 0; font-size: 11.5px; line-height: 1.5">
+        Anton no display, Fira Sans no texto, Fira Code nos números. Preto puro, vermelho <span class="mono">#C00000</span> só em identidade,
+        e a regra que manda: a maior fonte que couber na moldura. Nenhuma dessas escolhas está em votação nesta rodada.
+      </p>
+    </div>
+    <div style="min-width: 0; flex-grow: 1">
+      <span class="lbl" style="margin-bottom: 6px">Os cinco setores</span>
+      <p class="mono" style="margin: 0; font-size: 11px; line-height: 1.7; letter-spacing: 0.06em; text-transform: uppercase">
+        Montagem · Corte de placa de fibra · Silk · Solagem · Expedição
+      </p>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+<script data-dc-script data-props='{"$preview":{"width":900,"height":780}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,316 @@
+{
+  "artboards": [
+    {
+      "file": "Main.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 900,
+      "h": 780,
+      "page": "page-guia",
+      "title": "Como escolher",
+      "print": "flow"
+    },
+    {
+      "file": "MontagemA.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 794,
+      "h": 1123,
+      "page": "page-montagem",
+      "title": "Montagem · A",
+      "print": "fixed"
+    },
+    {
+      "file": "MontagemB.dc.html",
+      "x": 874,
+      "y": 0,
+      "w": 794,
+      "h": 1123,
+      "page": "page-montagem",
+      "title": "Montagem · B",
+      "print": "fixed"
+    },
+    {
+      "file": "MontagemC.dc.html",
+      "x": 1748,
+      "y": 0,
+      "w": 794,
+      "h": 1123,
+      "page": "page-montagem",
+      "title": "Montagem · C",
+      "print": "fixed"
+    },
+    {
+      "file": "PalmilhaA.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 794,
+      "h": 1123,
+      "page": "page-palmilha",
+      "title": "Corte de Placa de Fibra · A",
+      "print": "fixed"
+    },
+    {
+      "file": "PalmilhaB.dc.html",
+      "x": 874,
+      "y": 0,
+      "w": 794,
+      "h": 1123,
+      "page": "page-palmilha",
+      "title": "Corte de Placa de Fibra · B",
+      "print": "fixed"
+    },
+    {
+      "file": "PalmilhaC.dc.html",
+      "x": 1748,
+      "y": 0,
+      "w": 794,
+      "h": 1123,
+      "page": "page-palmilha",
+      "title": "Corte de Placa de Fibra · C",
+      "print": "fixed"
+    },
+    {
+      "file": "SilkA.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 794,
+      "h": 1123,
+      "page": "page-silk",
+      "title": "Silk · A",
+      "print": "fixed"
+    },
+    {
+      "file": "SilkB.dc.html",
+      "x": 874,
+      "y": 0,
+      "w": 794,
+      "h": 1123,
+      "page": "page-silk",
+      "title": "Silk · B",
+      "print": "fixed"
+    },
+    {
+      "file": "SilkC.dc.html",
+      "x": 1748,
+      "y": 0,
+      "w": 794,
+      "h": 1123,
+      "page": "page-silk",
+      "title": "Silk · C",
+      "print": "fixed"
+    },
+    {
+      "file": "SolagemA.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 794,
+      "h": 1123,
+      "page": "page-solagem",
+      "title": "Solagem · A",
+      "print": "fixed"
+    },
+    {
+      "file": "SolagemB.dc.html",
+      "x": 874,
+      "y": 0,
+      "w": 794,
+      "h": 1123,
+      "page": "page-solagem",
+      "title": "Solagem · B",
+      "print": "fixed"
+    },
+    {
+      "file": "SolagemC.dc.html",
+      "x": 1748,
+      "y": 0,
+      "w": 794,
+      "h": 1123,
+      "page": "page-solagem",
+      "title": "Solagem · C",
+      "print": "fixed"
+    },
+    {
+      "file": "ExpedicaoA.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 794,
+      "h": 1123,
+      "page": "page-expedicao",
+      "title": "Expedição · A",
+      "print": "fixed"
+    },
+    {
+      "file": "ExpedicaoB.dc.html",
+      "x": 874,
+      "y": 0,
+      "w": 794,
+      "h": 1123,
+      "page": "page-expedicao",
+      "title": "Expedição · B",
+      "print": "fixed"
+    },
+    {
+      "file": "ExpedicaoC.dc.html",
+      "x": 1748,
+      "y": 0,
+      "w": 794,
+      "h": 1123,
+      "page": "page-expedicao",
+      "title": "Expedição · C",
+      "print": "fixed"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "montagem-a",
+      "x": 0,
+      "y": -190,
+      "w": 760,
+      "text": "MODELO A — A MAO\nSo o que a mao executa: setor, referencia, cor, solado, palmilha, grade e tally. Tudo em corpo grande.\nSai: PV, cliente, entrega, QR, OP, trilho dos 11 setores.",
+      "page": "page-montagem"
+    },
+    {
+      "id": "montagem-b",
+      "x": 874,
+      "y": -190,
+      "w": 760,
+      "text": "MODELO B — O LOTE\nUma unica linha de rastreio (OP, PV, cliente, entrega) e a identidade consolidada num bloco so.\nA cor deixa de aparecer 3x e a referencia 2x.",
+      "page": "page-montagem"
+    },
+    {
+      "id": "montagem-c",
+      "x": 1748,
+      "y": -190,
+      "w": 760,
+      "text": "MODELO C — O TURNO\nTudo de B mais as linhas PRODUZIDO e 2a QUALIDADE por numeracao, apontamento de inicio, fim, bancada e parada, e meta por hora.",
+      "page": "page-montagem"
+    },
+    {
+      "id": "palmilha-a",
+      "x": 0,
+      "y": -190,
+      "w": 760,
+      "text": "MODELO A — A MAO\nO numero de PLACAS e o heroi da folha. Solado, acao, pares, grade e tally. Nada de sandalias, PV ou cliente.",
+      "page": "page-palmilha"
+    },
+    {
+      "id": "palmilha-b",
+      "x": 874,
+      "y": -190,
+      "w": 760,
+      "text": "MODELO B — O LOTE\nAcrescenta a faixa de sandalias que usam esta palmilha, o rastreio dos PVs e o material da placa com a base da conversao.",
+      "page": "page-palmilha"
+    },
+    {
+      "id": "palmilha-c",
+      "x": 1748,
+      "y": -190,
+      "w": 760,
+      "text": "MODELO C — O TURNO\nAcrescenta PLACAS USADAS, SOBRA e REFUGO ao lado do previsto: e o unico jeito de medir rendimento real de placa.",
+      "page": "page-palmilha"
+    },
+    {
+      "id": "silk-a",
+      "x": 0,
+      "y": -190,
+      "w": 760,
+      "text": "MODELO A — A MAO\nA arte ocupa um quarto da folha. Peca, cor da tinta, referencia, cor, grade e tally. Sem PV, sem OP.",
+      "page": "page-silk"
+    },
+    {
+      "id": "silk-b",
+      "x": 874,
+      "y": -190,
+      "w": 760,
+      "text": "MODELO B — O LOTE\nAcrescenta o numero da tela, o solado, o rastreio completo e a observacao da arte.",
+      "page": "page-silk"
+    },
+    {
+      "id": "silk-c",
+      "x": 1748,
+      "y": -190,
+      "w": 760,
+      "text": "MODELO C — O TURNO\nAcrescenta a liberacao da arte antes do primeiro rodo, ESTAMPADO e REFUGO por numeracao e o apontamento do turno.",
+      "page": "page-silk"
+    },
+    {
+      "id": "solagem-a",
+      "x": 0,
+      "y": -190,
+      "w": 760,
+      "text": "MODELO A — A MAO\nA cor do solado em 76px, tipo e marcacao ao lado. Grade e tally grandes. Uma banda de cor por folha.",
+      "page": "page-solagem"
+    },
+    {
+      "id": "solagem-b",
+      "x": 874,
+      "y": -190,
+      "w": 760,
+      "text": "MODELO B — O LOTE\nVolta o divisor que separa o solado preto das demais cores, mais a faixa de sandalias, o rastreio e o total geral.",
+      "page": "page-solagem"
+    },
+    {
+      "id": "solagem-c",
+      "x": 1748,
+      "y": -190,
+      "w": 760,
+      "text": "MODELO C — O TURNO\nAcrescenta SOLADO e DESCOLOU por numeracao, apontamento com prensa e lote da cola, e meta por hora.",
+      "page": "page-solagem"
+    },
+    {
+      "id": "expedicao-a",
+      "x": 0,
+      "y": -190,
+      "w": 760,
+      "text": "MODELO A — A MAO\nCliente, volumes e pares em corpo grande, conferencia item a item e checklist. Sem CNPJ, IE, endereco ou NF.",
+      "page": "page-expedicao"
+    },
+    {
+      "id": "expedicao-b",
+      "x": 874,
+      "y": -190,
+      "w": 760,
+      "text": "MODELO B — O LOTE\nAcrescenta os dados fiscais e o endereco de entrega, a NF-e, a transportadora, as caixas por solado e a grade completa por item.",
+      "page": "page-expedicao"
+    },
+    {
+      "id": "expedicao-c",
+      "x": 1748,
+      "y": -190,
+      "w": 760,
+      "text": "MODELO C — O TURNO\nAcrescenta CAIXAS POR NUMERACAO — a folha que a bancada confere — mais peso bruto, volumes conferidos, motorista e hora da coleta.",
+      "page": "page-expedicao"
+    }
+  ],
+  "pages": [
+    {
+      "id": "page-guia",
+      "name": "Como escolher"
+    },
+    {
+      "id": "page-montagem",
+      "name": "Montagem"
+    },
+    {
+      "id": "page-palmilha",
+      "name": "Corte de Placa de Fibra"
+    },
+    {
+      "id": "page-silk",
+      "name": "Silk"
+    },
+    {
+      "id": "page-solagem",
+      "name": "Solagem"
+    },
+    {
+      "id": "page-expedicao",
+      "name": "Expedição"
+    }
+  ],
+  "launch": {
+    "view": "canvas",
+    "page": "page-guia"
+  }
+}
