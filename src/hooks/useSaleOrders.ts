@@ -83,8 +83,17 @@ export const opStageOrder = (name: string, idx: number): number => {
  *
  * Retorna mensagens "Tira X (item REF/cor)" — vazio quando está tudo ok.
  */
+type StrapColorValidationLine = {
+  technical_strap_line_id?: string | null;
+  identity_basis?: string | null;
+  color?: string | null;
+  color_id?: string | null;
+  label?: string | null;
+  group_name?: string | null;
+};
+
 export function listarTirasSemCor(
-  items: Array<{ strap_colors?: any[] | null; color?: string | null; reference_label?: string | null }>,
+  items: Array<{ strap_colors?: StrapColorValidationLine[] | null; color?: string | null; reference_label?: string | null }>,
 ): string[] {
   const problemas: string[] = [];
   for (const item of items || []) {
@@ -92,14 +101,14 @@ export function listarTirasSemCor(
     for (let i = 0; i < straps.length; i++) {
       const strap = straps[i];
       if (!strap || typeof strap !== 'object') continue;
-      const referenceBase = ((strap as any).identity_basis || 'reference_base') === 'reference_base';
+      const referenceBase = (strap.identity_basis || 'reference_base') === 'reference_base';
       // A linha artesanal recebe a cor principal no writer atômico. A cor
       // própria continua obrigatória somente para produto acabado/STRASS.
       if (referenceBase && String(item.color || '').trim()) continue;
-      const cor = String((strap as any).color ?? '').trim();
-      const colorId = String((strap as any).color_id ?? '').trim();
+      const cor = String(strap.color ?? '').trim();
+      const colorId = String(strap.color_id ?? '').trim();
       if (cor && colorId) continue;
-      const nomeTira = String((strap as any).label || (strap as any).group_name || '').trim() || `Tira ${i + 1}`;
+      const nomeTira = String(strap.label || strap.group_name || '').trim() || `Tira ${i + 1}`;
       const contexto = [item.reference_label, item.color].filter(Boolean).join(' / ');
       problemas.push(contexto ? `${nomeTira} (${contexto})` : nomeTira);
     }

@@ -81,6 +81,8 @@ interface SaleOrderStrapResolutionLine extends StrapCatalogResolutionLine {
   identity_group_id?: string | null;
 }
 
+type SaleOrderItemStrap = NonNullable<SaleOrderItemFormData['strap_colors']>[number];
+
 interface Props {
   item: SaleOrderItemFormData;
   index: number;
@@ -857,7 +859,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     if (!item.material_variant_id) return '';
     const v = activeMaterialVariants.find(x => x.id === item.material_variant_id);
     if (!v?.upper_material_product_id) return '';
-    const prod = (allProducts as any[]).find((p: any) => p.id === v.upper_material_product_id);
+    const prod = allProducts.find((p) => p.id === v.upper_material_product_id);
     return (prod?.color || '').trim().toUpperCase();
   }, [item.material_variant_id, activeMaterialVariants, allProducts]);
 
@@ -872,7 +874,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
   }, [item.strap_colors, selectedRef?.has_straps, selectedRef?.strap_colors, modelHasCabedal]);
   const strapSnapshotMissing = hasStrapsEffective
     && (!Array.isArray(item.strap_colors) || item.strap_colors.length === 0);
-  const hasReferenceBaseStraps = ((item.strap_colors as any[]) || []).some(
+  const hasReferenceBaseStraps = ((item.strap_colors as SaleOrderItemStrap[]) || []).some(
     (strap) => strapIdentityBasis(strap) === 'reference_base',
   );
   const strapCanonicalMainMissing = hasReferenceBaseStraps
@@ -1122,7 +1124,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
 
     let next = strapSourcingMap;
     let changed = false;
-    ((item.strap_colors as any[]) || []).forEach((strap) => {
+    ((item.strap_colors as SaleOrderItemStrap[]) || []).forEach((strap) => {
       if (strapIdentityBasis(strap) !== 'reference_base') return;
       const lineId = technicalStrapLineId(strap);
       if (!getStrapSourcingSelection(next, lineId)) return;
@@ -1139,7 +1141,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
   // congelado nem impedir uma edição não relacionada.
   // Linhas finished_product_group ficam fora deste efeito e seguem independentes.
   useEffect(() => {
-    const straps = (item.strap_colors as any[]) || [];
+    const straps = (item.strap_colors as SaleOrderItemStrap[]) || [];
     const currentItemId = item.id || null;
     const currentColorKey = normalizeStrapColorKey(item.color);
     const observed = previousStrapMainColorRef.current;
