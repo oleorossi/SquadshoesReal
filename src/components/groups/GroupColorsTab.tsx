@@ -9,10 +9,11 @@ import { Plus, X, WarningCircle as AlertTriangle, ArrowsMerge, CircleNotch as Lo
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import type { Product } from '@/types/inventory';
+import { UNITS, UNIT_LABELS, type Product } from '@/types/inventory';
 import { useProducts } from '@/hooks/useProducts';
 import { findDuplicate, levenshtein, type DuplicateHit } from '@/lib/duplicateDetection';
 import { DuplicateSuggestion } from '@/components/inventory/DuplicateSuggestion';
+import { createGroupColorProducts } from '@/lib/groupColorProducts';
 
 interface Props {
   groupId: string;
@@ -58,6 +59,7 @@ export default function GroupColorsTab({ groupId, groupName, products, groupWidt
     staleTime: 60_000,
   });
   const [bulk, setBulk] = useState('');
+  const [firstStockUnit, setFirstStockUnit] = useState('');
   /** Fila de cores a criar. Cada linha carrega o próprio veredito: linha
    *  suspeita não entra no insert até ser resolvida, e as demais seguem (R4.4). */
   const [pending, setPending] = useState<{ cor: string; hit: DuplicateHit | null; liberada: boolean }[]>([]);
@@ -123,28 +125,30 @@ export default function GroupColorsTab({ groupId, groupName, products, groupWidt
     if (!pending.some(x => !x.hit || x.liberada)) { toast.info('Resolva as cores marcadas antes de criar'); return; }
     setCreating(true);
     try {
-      const modelo = colored[0] || products[0];
       const aCriar = pending.filter(x => !x.hit || x.liberada);
-      const rows = aCriar.map(({ cor }) => ({
-        name: groupName,
+      const results = await createGroupColorProducts(aCriar.map(({ cor }) => ({
+        groupId,
+        groupName,
         color: cor,
-        sku: `${groupName.replace(/\s+/g, '').slice(0, 8).toUpperCase()}-${cor.replace(/\s+/g, '').slice(0, 6).toUpperCase()}`,
-        group_id: groupId,
-        // Herda do item existente o que é do MATERIAL, não da cor.
-        unit: modelo?.unit || 'un',
-        category: modelo?.category || null,
-        unit_price: modelo?.unit_price ?? 0,
-        location: modelo?.location || null,
-        quantity: 0,
-        min_stock: 0,
-        active: true,
-      }));
-      const { error } = await (supabase as any).from('products').insert(rows);
-      if (error) throw error;
-      toast.success(`${rows.length} cor(es) criada(s) em ${groupName}`);
+        stockUnit: products.length === 0 ? firstStockUnit : undefined,
+      })));
+      const created = results.filter(result => result.status === 'created');
+      const errors = results.filter(result => result.status === 'error');
+      if (created.length === 0 && errors.length > 0) {
+        throw new Error(errors.map(result => `${result.color}: ${result.error}`).join(' · '));
+      }
+      if (created.length > 0) toast.success(`${created.length} cor(es) criada(s) em ${groupName}`);
+      if (errors.length > 0) {
+        toast.warning(`${errors.length} cor(es) não foram criadas`, {
+          description: errors.slice(0, 3).map(result => `${result.color}: ${result.error}`).join('\n'),
+        });
+      }
       // Suspeita não resolvida permanece na fila.
-      setPending(prev => prev.filter(x => x.hit && !x.liberada));
+      const failedColors = new Set(errors.map(result => norm(result.color)));
+      setPending(prev => prev.filter(item => (item.hit && !item.liberada) || failedColors.has(norm(item.cor))));
       qc.invalidateQueries({ queryKey: ['products'] });
+      qc.invalidateQueries({ queryKey: ['products_for_colors'] });
+      qc.invalidateQueries({ queryKey: ['product_groups_colors'] });
     } catch (e: any) {
       toast.error('Não foi possível criar as cores', { description: e?.message });
     } finally {
@@ -166,6 +170,8 @@ export default function GroupColorsTab({ groupId, groupName, products, groupWidt
       });
       setMergeSource(''); setMergeTarget('');
       qc.invalidateQueries({ queryKey: ['products'] });
+      qc.invalidateQueries({ queryKey: ['products_for_colors'] });
+      qc.invalidateQueries({ queryKey: ['product_groups_colors'] });
     } catch (e: any) {
       toast.error('Fusão não concluída', { description: e?.message });
     } finally {
@@ -181,6 +187,26 @@ export default function GroupColorsTab({ groupId, groupName, products, groupWidt
       {/* ── Criar várias cores de uma vez ── */}
       <div className="rounded-md border border-dashed border-border/70 bg-muted/20 p-3 space-y-2">
         <Label className="text-xs font-medium">Adicionar cores a este grupo</Label>
+        {products.length === 0 && (
+          <div className="space-y-1.5 rounded-md border bg-background p-2.5">
+            <Label className="text-xs">Unidade de estoque da primeira cor</Label>
+            <Select value={firstStockUnit} onValueChange={setFirstStockUnit}>
+              <SelectTrigger className="h-8 text-xs">
+                <SelectValue placeholder="Selecione a unidade física" />
+              </SelectTrigger>
+              <SelectContent>
+                {UNITS.map(unit => (
+                  <SelectItem key={unit} value={unit} className="text-xs">
+                    {UNIT_LABELS[unit] || unit}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-[11px] text-muted-foreground">
+              Para dublados em rolo, escolha metro linear (m). O consumo da ficha continua em dm²/par.
+            </p>
+          </div>
+        )}
         <div className="flex gap-2">
           <Input
             value={bulk}
@@ -226,7 +252,13 @@ export default function GroupColorsTab({ groupId, groupName, products, groupWidt
               );
             })()}
 
-            <Button type="button" size="sm" className="h-8 gap-1" disabled={creating} onClick={criar}>
+            <Button
+              type="button"
+              size="sm"
+              className="h-8 gap-1"
+              disabled={creating || (products.length === 0 && !firstStockUnit)}
+              onClick={criar}
+            >
               {creating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
               Criar {pending.filter(x => !x.hit || x.liberada).length} cor(es)
             </Button>

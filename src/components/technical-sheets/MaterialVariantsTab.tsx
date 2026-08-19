@@ -31,8 +31,9 @@ import { useQuery } from '@tanstack/react-query';
    ReferenceMaterialVariant
  } from '@/hooks/useReferenceMaterialVariants';
  import { useProducts } from '@/hooks/useProducts';
- import { useGroups } from '@/hooks/useGroups';
+ import { useGroups, type ProductGroup } from '@/hooks/useGroups';
  import { sectorOfGroup } from '@/lib/categoryFromGroup';
+ import { getGroupPath } from '@/lib/groupHierarchy';
  import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -62,11 +63,12 @@ function skuSlug(groupName: string): string {
  * (limpa a seleção → o motor resolve pela ficha).
  */
 function GroupCombobox({
-  value, onChange, groups, describe, placeholder, allowInherit = false, ariaLabel,
+  value, onChange, groups, allGroups, describe, placeholder, allowInherit = false, ariaLabel,
 }: {
   value: string | null | undefined;
   onChange: (id: string | null) => void;
-  groups: { id: string; name: string }[];
+  groups: Array<ProductGroup & { pathLabel: string; familyLabel: string | null }>;
+  allGroups: ProductGroup[];
   describe?: (groupId: string) => string | null;
   placeholder: string;
   allowInherit?: boolean;
@@ -74,52 +76,102 @@ function GroupCombobox({
 }) {
   const [open, setOpen] = useState(false);
   const selected = value ? groups.find(g => g.id === value) : null;
+  const unavailableSelected = value && !selected ? allGroups.find(g => g.id === value) : null;
+  const unavailableIsContainer = !!unavailableSelected
+    && allGroups.some(group => group.parent_group_id === unavailableSelected.id);
+  const sections = useMemo(() => {
+    const byFamily = new Map<string, {
+      label: string;
+      options: Array<ProductGroup & { pathLabel: string; familyLabel: string | null }>;
+    }>();
+    for (const group of groups) {
+      const key = group.familyLabel || '__SEM_FAMILIA__';
+      const section = byFamily.get(key) || {
+        label: group.familyLabel || 'Grupos sem família',
+        options: [],
+      };
+      section.options.push(group);
+      byFamily.set(key, section);
+    }
+    return Array.from(byFamily.entries())
+      .map(([key, section]) => ({ key, ...section }))
+      .sort((a, b) => {
+        if (a.key === '__SEM_FAMILIA__') return 1;
+        if (b.key === '__SEM_FAMILIA__') return -1;
+        return a.label.localeCompare(b.label, 'pt-BR');
+      });
+  }, [groups]);
+
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          type="button"
-          variant="outline"
-          role="combobox"
-          aria-expanded={open}
-          aria-label={ariaLabel}
-          className="w-full justify-between font-normal h-9 text-sm"
-        >
-          <span className={cn('truncate', !selected && 'text-muted-foreground')}>
-            {selected ? selected.name : (allowInherit ? 'Herda a ficha' : placeholder)}
-          </span>
-          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
-        <Command>
-          <CommandInput placeholder="Buscar grupo por nome ou SKU…" className="h-9" />
-          <CommandList>
-            <CommandEmpty>Nenhum grupo encontrado.</CommandEmpty>
-            <CommandGroup>
+    <div>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            type="button"
+            variant="outline"
+            role="combobox"
+            aria-expanded={open}
+            aria-label={ariaLabel}
+            className="w-full justify-between font-normal h-9 text-sm"
+          >
+            <span className={cn('truncate', !selected && !unavailableSelected && 'text-muted-foreground')}>
+              {selected?.pathLabel
+                || unavailableSelected?.name
+                || (allowInherit ? 'Herda a ficha' : placeholder)}
+            </span>
+            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-[var(--radix-popover-trigger-width)] min-w-[300px] max-w-[calc(100vw-2rem)] p-0" align="start">
+          <Command>
+            <CommandInput placeholder="Buscar família, grupo, SKU ou cor…" className="h-9" />
+            <CommandList>
+              <CommandEmpty>Nenhum grupo-folha encontrado.</CommandEmpty>
               {allowInherit && (
+                <CommandGroup heading="Comportamento">
                 <CommandItem value="__herda__" onSelect={() => { onChange(null); setOpen(false); }} className="text-sm py-2">
                   <Check className={cn('mr-2 h-4 w-4', !value ? 'opacity-100' : 'opacity-0')} />
                   <span className="text-muted-foreground">Herda a ficha</span>
                 </CommandItem>
+                </CommandGroup>
               )}
-              {groups.map(g => {
-                const sub = describe?.(g.id);
-                return (
-                  <CommandItem key={g.id} value={g.name} keywords={sub ? [sub] : undefined} onSelect={() => { onChange(g.id); setOpen(false); }} className="text-sm py-2">
-                    <Check className={cn('mr-2 h-4 w-4', value === g.id ? 'opacity-100' : 'opacity-0')} />
-                    <div className="flex flex-col min-w-0">
-                      <span className="font-medium truncate">{g.name}</span>
-                      {sub && <span className="text-xs text-muted-foreground font-mono truncate">{sub}</span>}
-                    </div>
-                  </CommandItem>
-                );
-              })}
-            </CommandGroup>
-          </CommandList>
-        </Command>
-      </PopoverContent>
-    </Popover>
+              {sections.map(section => (
+                <CommandGroup
+                  key={section.key}
+                  heading={section.key === '__SEM_FAMILIA__'
+                    ? section.label
+                    : `${section.label} · família`}
+                >
+                  {section.options.map(group => {
+                    const sub = describe?.(group.id);
+                    return (
+                      <CommandItem
+                        key={group.id}
+                        value={group.pathLabel}
+                        keywords={sub ? [group.name, sub] : [group.name]}
+                        onSelect={() => { onChange(group.id); setOpen(false); }}
+                        className="text-sm py-2"
+                      >
+                        <Check className={cn('mr-2 h-4 w-4', value === group.id ? 'opacity-100' : 'opacity-0')} />
+                        <div className="flex flex-col min-w-0">
+                          <span className="font-medium truncate">{group.pathLabel}</span>
+                          {sub && <span className="text-xs text-muted-foreground font-mono truncate">{sub}</span>}
+                        </div>
+                      </CommandItem>
+                    );
+                  })}
+                </CommandGroup>
+              ))}
+            </CommandList>
+          </Command>
+        </PopoverContent>
+      </Popover>
+      {unavailableIsContainer && (
+        <p className="mt-1 text-xs text-warning">
+          {unavailableSelected?.name} é uma família. Escolha um grupo dentro dela.
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -163,9 +215,32 @@ function GroupCombobox({
    }, [sheetMaterials, variants, groups]);
 
    // Grupos por componente (Cabedal / Forro / Placa-EVA), filtrados pelo setor.
-   const cabedalGroups  = useMemo(() => groups.filter(g => sectorOfGroup(g) === SECTOR_CABEDAL), [groups]);
-   const forroGroups    = useMemo(() => groups.filter(g => sectorOfGroup(g) === SECTOR_FORRO), [groups]);
-   const palmilhaGroups = useMemo(() => groups.filter(g => sectorOfGroup(g) === SECTOR_PALMILHA), [groups]);
+   // Famílias/containers nunca são materiais: somente folhas entram nos quatro
+   // seletores da variante. O caminho preserva a orientação industrial na UI.
+   const parentGroupIds = useMemo(
+     () => new Set(groups.map(group => group.parent_group_id).filter(Boolean) as string[]),
+     [groups],
+   );
+   const activeProductGroupIds = useMemo(
+     () => new Set(products.filter(product => product.active && product.group_id).map(product => product.group_id as string)),
+     [products],
+   );
+   const leafGroups = useMemo(() => groups
+     .filter(group => !parentGroupIds.has(group.id))
+     .filter(group => activeProductGroupIds.has(group.id))
+     .map(group => {
+       const path = getGroupPath(groups, group.id);
+       const familyLabel = path.slice(0, -1).map(node => node.name).join(' › ') || null;
+       return {
+         ...group,
+         pathLabel: path.map(node => node.name).join(' › ') || group.name,
+         familyLabel,
+       };
+     })
+     .sort((a, b) => a.pathLabel.localeCompare(b.pathLabel, 'pt-BR')), [groups, parentGroupIds, activeProductGroupIds]);
+   const cabedalGroups  = useMemo(() => leafGroups.filter(g => sectorOfGroup(g) === SECTOR_CABEDAL), [leafGroups]);
+   const forroGroups    = useMemo(() => leafGroups.filter(g => sectorOfGroup(g) === SECTOR_FORRO), [leafGroups]);
+   const palmilhaGroups = useMemo(() => leafGroups.filter(g => sectorOfGroup(g) === SECTOR_PALMILHA), [leafGroups]);
 
    // Produto representativo de um grupo (1º ativo por nome) — fonte das sugestões
    // de SKU/NCM/preço e do resumo (cores) no seletor.
@@ -410,6 +485,32 @@ function GroupCombobox({
      }
      if (sku.length > MATERIAL_VARIANT_SKU_MAX_LENGTH) {
        toast.error(`O SKU deve ter no máximo ${MATERIAL_VARIANT_SKU_MAX_LENGTH} caracteres`);
+       return;
+     }
+
+     // Fichas legadas podem chegar com uma família-container gravada. Ela não
+     // aparece mais nas opções e também não pode ser salva de novo: sem um
+     // grupo-folha não existem SKUs/cores determinísticos para o PV resolver.
+     const selectedGroupIds = [
+       formData.main_material_group_id,
+       formData.upper_material_group_id,
+       formData.lining_material_group_id,
+       formData.insole_material_group_id,
+     ].filter(Boolean) as string[];
+     const selectedContainer = groups.find(group =>
+       selectedGroupIds.includes(group.id) && parentGroupIds.has(group.id));
+     if (selectedContainer) {
+       toast.error(`"${selectedContainer.name}" é uma família`, {
+         description: 'Escolha um grupo dentro dessa família para definir os SKUs e cores da variante.',
+       });
+       return;
+     }
+     const selectedWithoutActiveProduct = groups.find(group =>
+       selectedGroupIds.includes(group.id) && !activeProductGroupIds.has(group.id));
+     if (selectedWithoutActiveProduct) {
+       toast.error(`"${selectedWithoutActiveProduct.name}" não possui item ativo`, {
+         description: 'Cadastre ao menos um SKU/cor no grupo antes de usá-lo em uma variante.',
+       });
        return;
      }
 
@@ -700,6 +801,7 @@ function GroupCombobox({
                     value={formData.main_material_group_id}
                     onChange={handlePickMainGroup}
                     groups={cabedalGroups}
+                    allGroups={groups}
                     describe={describeGroup}
                     placeholder="Selecionar grupo de napa…"
                     ariaLabel="Material principal da variante"
@@ -734,6 +836,7 @@ function GroupCombobox({
                         value={formData.upper_material_group_id}
                         onChange={handlePickCabedalGroup}
                         groups={cabedalGroups}
+                        allGroups={groups}
                         describe={describeGroup}
                         placeholder="Segue o material principal"
                         allowInherit
@@ -747,6 +850,7 @@ function GroupCombobox({
                           value={formData.lining_material_group_id}
                           onChange={handlePickLiningGroup}
                           groups={forroGroups}
+                          allGroups={groups}
                           describe={describeGroup}
                           placeholder="Segue o material principal"
                           allowInherit
@@ -759,6 +863,7 @@ function GroupCombobox({
                           value={formData.insole_material_group_id}
                           onChange={handlePickInsoleGroup}
                           groups={palmilhaGroups}
+                          allGroups={groups}
                           describe={describeGroup}
                           placeholder="Segue o material principal"
                           allowInherit

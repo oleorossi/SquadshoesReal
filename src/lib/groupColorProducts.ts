@@ -29,6 +29,10 @@ export interface GroupColorSpec {
   groupId: string;
   groupName: string;
   color: string;
+  /** Unidade-base física informada explicitamente ao criar o primeiro SKU.
+   *  `product_groups.consumption_unit` não serve para isso: um grupo pode
+   *  consumir em dm² e manter o estoque em m ou placa. */
+  stockUnit?: string;
 }
 
 export type CreateColorResult = {
@@ -49,7 +53,7 @@ export async function createGroupColorProduct(spec: GroupColorSpec): Promise<Cre
   if (!color || !spec.groupId) return res;
 
   const { data: group } = await (supabase as any).from('product_groups')
-    .select('is_artisanal_strap')
+    .select('is_artisanal_strap, sector, consumption_unit, dimensions_length, dimensions_width, dimensions_thickness, dimensions_unit')
     .eq('id', spec.groupId)
     .maybeSingle();
   const strapLikeName = /tira|elastic|tranç/i.test(spec.groupName || '');
@@ -78,18 +82,41 @@ export async function createGroupColorProduct(spec: GroupColorSpec): Promise<Cre
     .select('*').eq('group_id', spec.groupId).eq('active', true)
     .order('created_at', { ascending: false }).limit(1).maybeSingle();
 
+  const explicitStockUnit = String(spec.stockUnit || '').trim();
+  if (!last && !explicitStockUnit) {
+    return {
+      ...res,
+      status: 'error',
+      error: 'Informe a unidade de estoque da primeira cor ou cadastre o primeiro item pelo formulário completo.',
+    };
+  }
+
   const baseSku = (last?.sku || '').trim();
   const preferredSku = baseSku
     ? `${baseSku.replace(/-[A-Z0-9]+$/i, '')}-${skuToken(color, 'COR', 4)}`
     : `${skuToken(spec.groupName, 'TIRA', 6)}-${skuToken(color, 'COR', 4)}`;
   const finalSku = await uniqueSku(preferredSku, spec.groupName, color);
 
+  // A primeira cor de um grupo-folha ainda não tem produto-modelo. Dimensões e
+  // setor vêm do grupo, mas a unidade-base precisa ser uma escolha explícita:
+  // nunca inferimos estoque a partir da unidade técnica de consumo.
+  const defaultUnit = String(last?.unit || explicitStockUnit).trim();
+  const purchaseUnit = last?.purchase_unit || defaultUnit;
+  const productionUnit = last?.production_unit || defaultUnit;
+  const purchaseOrderUnit = last?.purchase_order_unit || defaultUnit;
+  const consumptionUnit = last?.consumption_unit || defaultUnit;
+
   const productData = sanitizeUuidFields({
     name: `${spec.groupName}: ${color}`,
     sku: finalSku,
-    category: (last?.category || '').trim() || sectorOfGroup({ name: spec.groupName } as any),
+    category: (last?.category || group?.sector || '').trim() || sectorOfGroup({ name: spec.groupName } as any),
     color,
-    unit: last?.unit || 'un',
+    unit: defaultUnit,
+    purchase_unit: purchaseUnit,
+    production_unit: productionUnit,
+    purchase_order_unit: purchaseOrderUnit,
+    consumption_unit: consumptionUnit,
+    conversion_rate: Number(last?.conversion_rate) > 0 ? Number(last?.conversion_rate) : 1,
     unit_price: last?.unit_price || 0,
     location: last?.location || '', // products.location é NOT NULL — nunca null (igual ao dialog)
     min_stock: last?.min_stock || 0,
@@ -100,10 +127,10 @@ export async function createGroupColorProduct(spec: GroupColorSpec): Promise<Cre
     image_url: '',
     yield_per_meter: last?.yield_per_meter ?? null,
     yield_unit: last?.yield_unit ?? null,
-    dimensions_length: last?.dimensions_length ?? null,
-    dimensions_width: last?.dimensions_width ?? null,
-    dimensions_thickness: last?.dimensions_thickness ?? null,
-    dimensions_unit: last?.dimensions_unit ?? null,
+    dimensions_length: last?.dimensions_length ?? group?.dimensions_length ?? null,
+    dimensions_width: last?.dimensions_width ?? group?.dimensions_width ?? null,
+    dimensions_thickness: last?.dimensions_thickness ?? group?.dimensions_thickness ?? null,
+    dimensions_unit: last?.dimensions_unit ?? group?.dimensions_unit ?? null,
   });
 
   let { error } = await supabase.from('products').insert(productData as any);

@@ -3,6 +3,7 @@ import { PencilSimple as Pencil, Palette, FloppyDisk as Save, Package, Plus, Mag
 import { ProductGroup, useUpdateGroup, useGroups } from '@/hooks/useGroups';
 import { useProducts } from '@/hooks/useProducts';
 import GroupColorsTab from './GroupColorsTab';
+import GroupCompositionTab from './GroupCompositionTab';
 import { useForceDeleteProductFlow } from '@/components/inventory/ForceDeleteProductDialog';
 import { supabase } from '@/integrations/supabase/client';
 import { createGroupColorProduct } from '@/lib/groupColorProducts';
@@ -430,6 +431,17 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
     () => (group.parent_group_id ? allGroups.find(g => g.id === group.parent_group_id) ?? null : null),
     [group.parent_group_id, allGroups],
   );
+  const isCompositeMaterial = !isContainer && (
+    /dublag/i.test(parentGroup?.name || '') || /dublad/i.test(group.name || '')
+  );
+  const productColors = useMemo(
+    () => [...new Set(products
+      .filter(product => product.active !== false)
+      .map(product => String(product.color || '').trim())
+      .filter(Boolean))]
+      .sort((a, b) => a.localeCompare(b, 'pt-BR')),
+    [products],
+  );
 
   // Grupos que podem virar FILHO: nem o próprio, nem um ancestral, nem já-filho.
   const availableToLinkAsChild = useMemo(
@@ -714,11 +726,12 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
           )}
 
           <Tabs defaultValue={showYieldTab ? "specs" : "general"} className="mt-2">
-            <TabsList className="grid w-full" style={{ gridTemplateColumns: `repeat(${4 + (showYieldTab ? 1 : 0) + (show.packaging ? 1 : 0)}, 1fr)` }}>
+            <TabsList className="grid w-full" style={{ gridTemplateColumns: `repeat(${4 + (showYieldTab ? 1 : 0) + (show.packaging ? 1 : 0) + (isCompositeMaterial ? 1 : 0)}, 1fr)` }}>
               <TabsTrigger value="general">Geral</TabsTrigger>
               <TabsTrigger value="hierarchy">Hierarquia</TabsTrigger>
               {showYieldTab && <TabsTrigger value="specs">Dimensões</TabsTrigger>}
               {show.packaging && <TabsTrigger value="packaging">Embalagem</TabsTrigger>}
+              {isCompositeMaterial && <TabsTrigger value="composition">Composição</TabsTrigger>}
               <TabsTrigger value="colors">Cores</TabsTrigger>
               <TabsTrigger value="items">Itens ({products.length})</TabsTrigger>
             </TabsList>
@@ -1184,6 +1197,17 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
               </TabsContent>
             )}
 
+            {isCompositeMaterial && (
+              <TabsContent value="composition" className="space-y-4 mt-4">
+                <GroupCompositionTab
+                  groupId={group.id}
+                  groupName={group.name}
+                  groups={allGroups}
+                  colors={productColors}
+                />
+              </TabsContent>
+            )}
+
             {/* Tab: Cores — único lugar que vê as cores do grupo como CONJUNTO
                 (duplicata, typo, largura divergente) e permite fundir. */}
             <TabsContent value="colors" className="space-y-4 mt-4">
@@ -1196,7 +1220,7 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                 <GroupColorsTab
                   groupId={group.id}
                   groupName={group.name}
-                  products={products}
+                  products={products.filter(product => product.active !== false)}
                   groupWidth={(group as any).dimensions_width}
                 />
               )}

@@ -12,6 +12,10 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn, getSoleModelName } from '@/lib/utils';
 import { normalizeForSearch, searchMatchesAllTerms } from '@/lib/searchUtils';
+import { useGroups, type ProductGroup } from '@/hooks/useGroups';
+import { useProducts } from '@/hooks/useProducts';
+import { getGroupPath } from '@/lib/groupHierarchy';
+import { sectorOfGroup } from '@/lib/categoryFromGroup';
 
 /**
  * Seletores de cadastro da Ficha Tecnica.
@@ -81,87 +85,267 @@ export function ComponentGroupSelect({ label, value, onChange, groups, products,
 }
 
 /* ===== Group Material Select — seleciona o tipo de material (grupo) ===== */
-export function GroupMaterialSelect({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
-  const { data: groups = [] } = useQuery({
-    queryKey: ['product_groups_select'],
-    queryFn: async () => {
-      const { data, error } = await supabase.from('product_groups').select('id, name, description').order('name');
-      if (error) throw error;
-      return data;
-    },
-  });
-  // Produtos (SKU/cor) por grupo — permite ACHAR o material por SKU ou cor (não só
-  // pelo nome do grupo) e mostrar quantos produtos/cores cada grupo tem.
-  // Auditoria 2026-06-28: o caso "T32121-PALHA" não aparecia porque a busca só
-  // casava nome/descrição do grupo.
-  const { data: groupProducts = [] } = useQuery({
-    queryKey: ['products_for_group_select'],
-    queryFn: async () => {
-      const { data, error } = await supabase.from('products').select('group_id, name, sku, color, active').eq('active', true);
-      if (error) throw error;
-      return data ?? [];
-    },
-  });
+interface GroupMaterialSelectProps {
+  label: string;
+  /** Nome legado gravado na ficha técnica. */
+  value: string;
+  /** Mantido por compatibilidade com todos os consumidores existentes. */
+  onChange: (value: string) => void;
+  /** Entrega também a identidade estável do grupo-folha selecionado. */
+  onGroupSelect?: (group: ProductGroup) => void;
+  /** Restringe os grupos-folha a um setor industrial, quando informado. */
+  sector?: string;
+}
+
+type GroupSelectSummary = {
+  count: number;
+  colors: string[];
+  searchBlob: string;
+};
+
+type GroupSelectProduct = {
+  group_id?: string | null;
+  name?: string | null;
+  sku?: string | null;
+  color?: string | null;
+  active?: boolean | null;
+};
+
+type GroupSelectOption = {
+  group: ProductGroup;
+  pathLabel: string;
+  familyLabel: string | null;
+};
+
+/**
+ * Seletor industrial Setor → Família → Grupo.
+ *
+ * Família é container organizacional e nunca pode ser gravada como material:
+ * apenas grupos-folha disparam `onChange`. O callback legado por nome permanece,
+ * enquanto `onGroupSelect` permite aos fluxos novos persistirem o UUID do grupo.
+ */
+export function GroupMaterialSelect({
+  label,
+  value,
+  onChange,
+  onGroupSelect,
+  sector,
+}: GroupMaterialSelectProps) {
+  const { data: groups = [] } = useGroups();
+  const { data: allProducts = [] } = useProducts();
+  // Produtos ativos (SKU/cor) permitem localizar o material por sua identidade
+  // comercial e mostram a paleta REAL do grupo, não um catálogo desacoplado.
+  const groupProducts = useMemo(
+    () => (allProducts as GroupSelectProduct[]).filter(product => product.active !== false),
+    [allProducts],
+  );
   const groupIndex = useMemo(() => {
-    const map: Record<string, { count: number; colors: Set<string>; blob: string }> = {};
-    for (const p of groupProducts as any[]) {
+    const draft: Record<string, { count: number; colors: Set<string>; searchBlob: string }> = {};
+    for (const p of groupProducts) {
       if (!p.group_id) continue;
-      const e = map[p.group_id] || (map[p.group_id] = { count: 0, colors: new Set<string>(), blob: '' });
+      const e = draft[p.group_id] || (draft[p.group_id] = { count: 0, colors: new Set<string>(), searchBlob: '' });
       e.count++;
-      if (p.color?.trim()) e.colors.add(p.color.trim());
-      e.blob += ' ' + normalizeForSearch([p.name, p.sku, p.color].filter(Boolean).join(' '));
+      if (p.color?.trim()) {
+        p.color.split(',').forEach((rawColor: string) => {
+          const color = rawColor.trim();
+          if (color) e.colors.add(color);
+        });
+      }
+      e.searchBlob += ' ' + normalizeForSearch([p.name, p.sku, p.color].filter(Boolean).join(' '));
     }
+    const map: Record<string, GroupSelectSummary> = {};
+    Object.entries(draft).forEach(([groupId, summary]) => {
+      map[groupId] = {
+        count: summary.count,
+        colors: Array.from(summary.colors).sort((a, b) => a.localeCompare(b, 'pt-BR')),
+        searchBlob: summary.searchBlob,
+      };
+    });
     return map;
   }, [groupProducts]);
+
+  const parentIds = useMemo(
+    () => new Set(groups.map(group => group.parent_group_id).filter(Boolean) as string[]),
+    [groups],
+  );
+  const selectableGroups = useMemo<GroupSelectOption[]>(() => groups
+    .filter(group => !parentIds.has(group.id))
+    .filter(group => !sector || sectorOfGroup(group) === sector)
+    .filter(group => (groupIndex[group.id]?.count || 0) > 0)
+    .map(group => {
+      const path = getGroupPath(groups, group.id);
+      const familyPath = path.slice(0, -1).map(node => node.name).join(' › ');
+      return {
+        group,
+        pathLabel: path.map(node => node.name).join(' › ') || group.name,
+        familyLabel: familyPath || null,
+      };
+    })
+    .sort((a, b) => a.pathLabel.localeCompare(b.pathLabel, 'pt-BR')), [groups, parentIds, sector, groupIndex]);
 
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
 
   const filtered = useMemo(() => {
-    if (!search.trim()) return groups;
-    return groups.filter((g: any) =>
-      searchMatchesAllTerms(search, g.name, g.description, groupIndex[g.id]?.blob));
-  }, [groups, search, groupIndex]);
+    if (!search.trim()) return selectableGroups;
+    return selectableGroups.filter(({ group, pathLabel }) =>
+      searchMatchesAllTerms(
+        search,
+        pathLabel,
+        group.description,
+        groupIndex[group.id]?.searchBlob,
+      ));
+  }, [selectableGroups, search, groupIndex]);
+
+  const sections = useMemo(() => {
+    const byFamily = new Map<string, { label: string; options: GroupSelectOption[] }>();
+    for (const option of filtered) {
+      const key = option.familyLabel || '__SEM_FAMILIA__';
+      const section = byFamily.get(key) || {
+        label: option.familyLabel || 'Grupos sem família',
+        options: [],
+      };
+      section.options.push(option);
+      byFamily.set(key, section);
+    }
+    return Array.from(byFamily.entries())
+      .map(([key, section]) => ({ key, ...section }))
+      .sort((a, b) => {
+        if (a.key === '__SEM_FAMILIA__') return 1;
+        if (b.key === '__SEM_FAMILIA__') return -1;
+        return a.label.localeCompare(b.label, 'pt-BR');
+      });
+  }, [filtered]);
+
+  const selectedGroup = useMemo(() => groups.find(group =>
+    group.name.trim().localeCompare(value.trim(), 'pt-BR', { sensitivity: 'base' }) === 0), [groups, value]);
+  const selectedIsContainer = !!selectedGroup && parentIds.has(selectedGroup.id);
+  const selectedHasActiveProduct = !!selectedGroup && (groupIndex[selectedGroup.id]?.count || 0) > 0;
+  const selectedOption = selectedGroup
+    ? selectableGroups.find(option => option.group.id === selectedGroup.id)
+    : null;
+  const selectedSummary = selectedGroup ? groupIndex[selectedGroup.id] : undefined;
+
+  const chooseGroup = (group: ProductGroup) => {
+    // Ordem intencional: primeiro preserva o contrato por nome; depois entrega o
+    // UUID/metadados para consumidores novos persistirem a identidade estável.
+    onChange(group.name);
+    onGroupSelect?.(group);
+    setOpen(false);
+    setSearch('');
+  };
 
   return (
     <div>
       <Label className="text-xs text-muted-foreground">{label}</Label>
-      <Popover open={open} onOpenChange={setOpen}>
+      <Popover open={open} onOpenChange={(nextOpen) => {
+        setOpen(nextOpen);
+        if (!nextOpen) setSearch('');
+      }}>
         <PopoverTrigger asChild>
           <Button variant="outline" role="combobox" aria-expanded={open} className="mt-1 h-9 w-full justify-between text-sm font-normal">
-            {value || 'Selecionar material...'}
+            <span className={cn('min-w-0 truncate text-left', !value && 'text-muted-foreground')}>
+              {selectedOption?.pathLabel || value || 'Selecionar material...'}
+            </span>
+            {selectedIsContainer && (
+              <Badge variant="outline" className="ml-auto mr-2 h-5 shrink-0 text-[10px] text-warning">
+                família
+              </Badge>
+            )}
             <ChevronsUpDown className="ml-2 h-3.5 w-3.5 shrink-0 opacity-50" />
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-[350px] p-0" align="start">
+        <PopoverContent className="w-[var(--radix-popover-trigger-width)] min-w-[320px] max-w-[calc(100vw-2rem)] p-0" align="start">
           <Command shouldFilter={false}>
-            <CommandInput placeholder="Buscar por grupo, SKU ou cor..." value={search} onValueChange={setSearch} />
+            <CommandInput placeholder="Buscar família, grupo, SKU ou cor..." value={search} onValueChange={setSearch} />
             <CommandList>
-              <CommandEmpty>Nenhum grupo encontrado</CommandEmpty>
-              <CommandGroup heading={`Grupos disponíveis (${filtered.length})`}>
-                {filtered.map((g: any) => {
-                  const idx = groupIndex[g.id];
-                  return (
-                    <CommandItem key={g.id} value={g.id} onSelect={() => { onChange(g.name); setOpen(false); setSearch(''); }}>
-                      <Check className={cn("mr-2 h-4 w-4", value === g.name ? "opacity-100" : "opacity-0")} />
-                      <div className="flex flex-col">
-                        <span className="text-sm">{g.name}</span>
-                        {idx ? (
-                          <span className="text-xs text-muted-foreground tabular-nums">
-                            {idx.count} produto{idx.count !== 1 ? 's' : ''}{idx.colors.size > 0 ? ` · ${idx.colors.size} cor${idx.colors.size !== 1 ? 'es' : ''}` : ''}
-                          </span>
-                        ) : g.description ? (
-                          <span className="text-xs text-muted-foreground">{g.description}</span>
-                        ) : null}
-                      </div>
-                    </CommandItem>
-                  );
-                })}
-              </CommandGroup>
+              <CommandEmpty>Nenhum grupo-folha encontrado</CommandEmpty>
+              {sections.map(section => (
+                <CommandGroup
+                  key={section.key}
+                  heading={section.key === '__SEM_FAMILIA__'
+                    ? section.label
+                    : `${section.label} · família`}
+                >
+                  {section.options.map(({ group, pathLabel }) => {
+                    const summary = groupIndex[group.id];
+                    const selected = selectedGroup?.id === group.id;
+                    return (
+                      <CommandItem
+                        key={group.id}
+                        value={pathLabel}
+                        onSelect={() => chooseGroup(group)}
+                        className="items-start py-2"
+                      >
+                        <Check className={cn('mr-2 mt-0.5 h-4 w-4 shrink-0', selected ? 'opacity-100' : 'opacity-0')} />
+                        <div className="min-w-0 flex-1 space-y-1">
+                          <span className="block truncate text-sm font-medium">{pathLabel}</span>
+                          {summary ? (
+                            <div className="space-y-1">
+                              <span className="block text-xs text-muted-foreground tabular-nums">
+                                {summary.count} produto{summary.count !== 1 ? 's' : ''}
+                                {' · '}{summary.colors.length} cor{summary.colors.length !== 1 ? 'es' : ''}
+                              </span>
+                              {summary.colors.length > 0 && (
+                                <div className="flex flex-wrap gap-1">
+                                  {summary.colors.slice(0, 5).map(color => (
+                                    <Badge key={color} variant="outline" className="h-5 max-w-28 truncate px-1.5 text-[10px] font-normal">
+                                      {color}
+                                    </Badge>
+                                  ))}
+                                  {summary.colors.length > 5 && (
+                                    <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
+                                      +{summary.colors.length - 5}
+                                    </Badge>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          ) : group.description ? (
+                            <span className="block truncate text-xs text-muted-foreground">{group.description}</span>
+                          ) : (
+                            <span className="block text-xs text-warning">Sem produtos ativos</span>
+                          )}
+                        </div>
+                      </CommandItem>
+                    );
+                  })}
+                </CommandGroup>
+              ))}
             </CommandList>
           </Command>
         </PopoverContent>
       </Popover>
+      {selectedIsContainer && (
+        <p className="mt-1 flex items-center gap-1 text-xs text-warning">
+          <AlertTriangle className="h-3 w-3 shrink-0" weight="fill" />
+          Escolha um grupo dentro da família {selectedGroup?.name}.
+        </p>
+      )}
+      {selectedGroup && !selectedIsContainer && !selectedHasActiveProduct && (
+        <p className="mt-1 flex items-center gap-1 text-xs text-warning">
+          <AlertTriangle className="h-3 w-3 shrink-0" weight="fill" />
+          {selectedGroup.name} não possui item ativo. Cadastre ao menos um SKU/cor antes de usar este material.
+        </p>
+      )}
+      {!selectedIsContainer && selectedSummary && (
+        <div className="mt-1.5 flex flex-wrap items-center gap-1">
+          <span className="mr-1 text-[11px] text-muted-foreground tabular-nums">
+            {selectedSummary.count} produto{selectedSummary.count !== 1 ? 's' : ''}
+            {' · '}{selectedSummary.colors.length} cor{selectedSummary.colors.length !== 1 ? 'es' : ''}
+          </span>
+          {selectedSummary.colors.slice(0, 4).map(color => (
+            <Badge key={color} variant="outline" className="h-5 max-w-28 truncate px-1.5 text-[10px] font-normal">
+              {color}
+            </Badge>
+          ))}
+          {selectedSummary.colors.length > 4 && (
+            <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
+              +{selectedSummary.colors.length - 4}
+            </Badge>
+          )}
+        </div>
+      )}
     </div>
   );
 }
