@@ -1269,7 +1269,7 @@ SELECT seed.composite_id, seed.base_id, seed.base_name, 'Material externo', 0, t
        'Camada externa que orienta visualmente as cores do material acabado.'
   FROM seed
 UNION ALL
-SELECT seed.composite_id, NULL, 'CACHARREL / EVA', 'Base da dublagem', 1, false,
+SELECT seed.composite_id, NULL::uuid, 'CACHARREL / EVA', 'Base da dublagem', 1, false,
        'Camada livre confirmada pelo nome técnico; aguarda grupo canônico opcional.'
   FROM seed
 ON CONFLICT (composite_group_id, display_order) DO NOTHING;
@@ -1342,15 +1342,15 @@ INSERT INTO public.product_group_layers (
   composite_group_id, component_group_id, component_label, role,
   display_order, is_color_source, notes
 )
-SELECT seed.composite_id, NULL, 'SUEDE', 'Material externo', 0, true,
+SELECT seed.composite_id, NULL::uuid, 'SUEDE', 'Material externo', 0, true,
        'Camada externa confirmada pelo nome técnico.'
   FROM seed
 UNION ALL
-SELECT seed.composite_id, NULL, 'EVA', 'Estrutura', 1, false,
+SELECT seed.composite_id, NULL::uuid, 'EVA', 'Estrutura', 1, false,
        'Camada intermediária confirmada pelo nome técnico.'
   FROM seed
 UNION ALL
-SELECT seed.composite_id, NULL, 'CACHARREL', 'Base da dublagem', 2, false,
+SELECT seed.composite_id, NULL::uuid, 'CACHARREL', 'Base da dublagem', 2, false,
        'Camada de base confirmada pelo nome técnico.'
   FROM seed
 ON CONFLICT (composite_group_id, display_order) DO NOTHING;
