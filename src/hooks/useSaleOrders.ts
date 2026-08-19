@@ -10,8 +10,7 @@ import { isValidStatusTransition } from '@/lib/saleOrderStateMachine';
 import { logAuditEvent } from '@/services/auditService';
 import { recomputeMaterialGate } from '@/hooks/useMaterialGate';
 import { canonicalStageOrder } from '@/components/production/worksheet/stageOrder';
-import { missingStrapSourcingLineIds, pruneStrapSourcing } from '@/lib/strapSourcing';
-import { technicalStrapLineId } from '@/lib/technicalStrapLines';
+import { pruneStrapSourcing } from '@/lib/strapSourcing';
 import { resolveGroupSuppliers } from '@/lib/groupSupplierResolution';
 
 // Setores default de uma OP — nomes CANÔNICOS ('Aviamento', não o legado 'Mesa';
@@ -77,11 +76,10 @@ export const opStageOrder = (name: string, idx: number): number => {
 };
 
 /**
- * Achado D (auditoria 2026-07-01): tira com COR VAZIA em `strap_colors` gera
- * consumo fantasma — `debit_strap_stock` recebe o array cru do item e uma cor
- * em branco não resolve produto nenhum (o lado SQL passa a emitir warning, mas
- * a OP nasceria com débito furado). Este helper varre os itens e lista as
- * tiras sem cor pra BLOQUEAR a aprovação do PV antes de criar OP.
+ * Achado D (auditoria 2026-07-01): produto acabado sem COR CANÔNICA em
+ * `strap_colors` gera consumo fantasma. `reference_base` é a exceção derivada:
+ * sua cor vem de `item.color` no writer atômico; `finished_product_group`
+ * continua exigindo texto + UUID próprios antes de criar OP.
  *
  * Retorna mensagens "Tira X (item REF/cor)" — vazio quando está tudo ok.
  */
@@ -94,36 +92,16 @@ export function listarTirasSemCor(
     for (let i = 0; i < straps.length; i++) {
       const strap = straps[i];
       if (!strap || typeof strap !== 'object') continue;
+      const referenceBase = ((strap as any).identity_basis || 'reference_base') === 'reference_base';
+      // A linha artesanal recebe a cor principal no writer atômico. A cor
+      // própria continua obrigatória somente para produto acabado/STRASS.
+      if (referenceBase && String(item.color || '').trim()) continue;
       const cor = String((strap as any).color ?? '').trim();
-      if (cor) continue;
+      const colorId = String((strap as any).color_id ?? '').trim();
+      if (cor && colorId) continue;
       const nomeTira = String((strap as any).label || (strap as any).group_name || '').trim() || `Tira ${i + 1}`;
       const contexto = [item.reference_label, item.color].filter(Boolean).join(' / ');
       problemas.push(contexto ? `${nomeTira} (${contexto})` : nomeTira);
-    }
-  }
-  return problemas;
-}
-
-/** Lista linhas que ainda não receberam a escolha explícita de origem. */
-export function listarTirasSemOrigem(
-  items: Array<{
-    strap_colors?: any[] | null;
-    strap_sourcing?: SaleOrderItemFormData['strap_sourcing'];
-    color?: string | null;
-    reference_label?: string | null;
-  }>,
-): string[] {
-  const problemas: string[] = [];
-  for (const item of items || []) {
-    const straps = Array.isArray(item?.strap_colors) ? item.strap_colors : [];
-    const missing = new Set(missingStrapSourcingLineIds(item.strap_sourcing, straps));
-    for (let index = 0; index < straps.length; index++) {
-      const line = straps[index];
-      const lineId = technicalStrapLineId(line);
-      if (lineId && !missing.has(lineId)) continue;
-      const nome = String(line?.label || line?.group_name || '').trim() || `Tira ${index + 1}`;
-      const contexto = [item.reference_label, item.color].filter(Boolean).join(' / ');
-      problemas.push(contexto ? `${nome} (${contexto})` : nome);
     }
   }
   return problemas;
@@ -862,7 +840,7 @@ export function useUpdateSaleOrderStatus() {
       if (status === 'Aprovado' || isDirectPromotion) {
         const { data: itemsGuard, error: itemsGuardErr } = await supabase
           .from('sale_order_items')
-          .select('color, strap_colors, strap_sourcing, technical_sheets(name, code)')
+          .select('color, strap_colors, technical_sheets(name, code)')
           .eq('sale_order_id', id);
         if (itemsGuardErr) throw new Error(`Falha ao validar tiras do pedido: ${itemsGuardErr.message}`);
         const tirasSemCor = listarTirasSemCor(
@@ -877,21 +855,6 @@ export function useUpdateSaleOrderStatus() {
             `Não é possível prosseguir: tira sem COR definida — ${tirasSemCor.slice(0, 4).join('; ')}` +
             `${tirasSemCor.length > 4 ? ` e mais ${tirasSemCor.length - 4}` : ''}. ` +
             'Edite o item do pedido e defina a cor de cada tira antes de continuar.'
-          );
-        }
-        const tirasSemOrigem = listarTirasSemOrigem(
-          (itemsGuard || []).map((it: any) => ({
-            strap_colors: it.strap_colors,
-            strap_sourcing: it.strap_sourcing,
-            color: it.color,
-            reference_label: it.technical_sheets?.code || it.technical_sheets?.name || null,
-          })),
-        );
-        if (tirasSemOrigem.length > 0) {
-          throw new Error(
-            `Não é possível confirmar: escolha a origem de cada tira — ${tirasSemOrigem.slice(0, 4).join('; ')}` +
-            `${tirasSemOrigem.length > 4 ? ` e mais ${tirasSemOrigem.length - 4}` : ''}. ` +
-            'Selecione “Produzir com napa própria” ou “Comprar tira pronta”.',
           );
         }
       }

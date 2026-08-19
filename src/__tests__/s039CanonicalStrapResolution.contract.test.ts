@@ -6,11 +6,16 @@ const ROOT = resolve(__dirname, '../..');
 const read = (path: string) => readFileSync(resolve(ROOT, path), 'utf8');
 
 const migration = read('supabase/migrations/20270101005000_resolve_s039_strap_catalog.sql');
+const autoIntentMigration = read('supabase/migrations/20270101005500_auto_internal_strap_intent_from_pv.sql');
 const itemForm = read('src/components/sale-orders/SaleOrderItemForm.tsx');
 const drawer = read('src/components/sale-orders/StrapCatalogResolutionDrawer.tsx');
 const editor = read('src/components/artisanal-straps/ArtisanalStrapEditor.tsx');
 const createDialog = read('src/components/sale-orders/CreateStrapProductDialog.tsx');
 const hooks = read('src/hooks/useArtisanalStraps.ts');
+const saleOrderHooks = read('src/hooks/useSaleOrders.ts');
+const saleOrderForm = read('src/pages/SaleOrderForm.tsx');
+const saleOrders = read('src/pages/SaleOrders.tsx');
+const mobileNewOrder = read('src/pages/mobile/MobileNewOrder.tsx');
 
 function sqlFunction(name: string): string {
   const marker = `CREATE OR REPLACE FUNCTION public.${name}`;
@@ -169,8 +174,10 @@ describe('S-039 — resolução canônica das tiras', () => {
     expect(itemForm).toContain('setStrapResolutionOpen(true)');
     expect(itemForm).toContain('<StrapCatalogResolutionDrawer');
     expect(itemForm).toContain("onUpdate(index, 'strap_colors', resolvedWithItemColors)");
-    expect(itemForm).toContain("color_id: currentStraps[ordinal]?.color_id || null");
-    expect(itemForm).toContain("onUpdate(index, 'strap_sourcing', {})");
+    expect(itemForm).toContain('const currentByLineId = new Map(');
+    expect(itemForm).toContain('color_id: current?.color_id || null');
+    expect(itemForm).toContain("nextSourcing = setStrapSourcing(nextSourcing, lineId, null)");
+    expect(itemForm).toContain("onUpdate(index, 'strap_sourcing', nextSourcing)");
     expect(itemForm).not.toContain('Cadastrar todas');
 
     expect(drawer).toContain('<Sheet');
@@ -192,7 +199,7 @@ describe('S-039 — resolução canônica das tiras', () => {
     expect(hooks).toContain("toast.success('Contexto das tiras corrigido no estoque e aplicado ao pedido.')");
   });
 
-  it('ativa uma criação do PV somente com medida, napa e cor canônicas e devolve a cor escolhida', () => {
+  it('mantém o editor de catálogo seguro fora do fluxo automático do PV', () => {
     expect(editor).toContain('activateOnCreate?: boolean');
     expect(createDialog).toContain("const activateOnCreate = (origin === 'pv' || (!origin && Boolean(referenceId)))");
     expect(createDialog).toMatch(
@@ -211,31 +218,52 @@ describe('S-039 — resolução canônica das tiras', () => {
     );
     expect(editor).toContain('onSaved?.(result.variant_id, result, form.colorId)');
     expect(createDialog).toContain('colorId: savedColorId');
+    expect(itemForm).not.toContain('<CreateStrapProductDialog');
+    expect(itemForm).not.toContain("from './CreateStrapProductDialog'");
   });
 
-  it('grava color_id no item do PV e invalida catálogo e preview após criar a variante', () => {
-    expect(createDialog).toContain('onCreated: (created?: { variantId: string; colorId: string }) => void');
-    expect(itemForm).toContain("...(created?.colorId ? { color_id: created.colorId } : {})");
-    expect(itemForm).toContain("onUpdate(index, 'strap_colors', updated)");
-
-    const creationCallback = itemForm.slice(
-      itemForm.indexOf('onCreated={(created) => {'),
-      itemForm.indexOf('setPendingStrapIndex(null)', itemForm.indexOf('onCreated={(created) => {')),
-    );
-    expect(creationCallback).toContain("qc.invalidateQueries({ queryKey: ['artisanal-strap-catalog'] })");
-    expect(creationCallback).toContain("qc.invalidateQueries({ queryKey: ['strap_stock_lines_preview'] })");
+  it('materializa cor, variante e napa somente na transação atômica do save', () => {
+    expect(itemForm).toContain('A identidade exata da tira e a baixa da napa serão materializadas na mesma transação do salvamento.');
+    expect(itemForm).toContain('Produção interna automática');
+    expect(itemForm).not.toContain('usePrepareSaleOrderInternalStraps');
+    expect(autoIntentMigration).toContain('public.prepare_sale_order_item_internal_straps(item.value - \'id\')');
+    expect(autoIntentMigration).toContain('public.create_sale_order_atomic_pre_05500(');
+    expect(autoIntentMigration).toContain("'source_mode', 'internal'");
+    expect(autoIntentMigration).toContain("'base_product_id', v_ensured_line ->> 'base_product_id'");
+    expect(autoIntentMigration).toContain('tg_prepare_sale_order_straps_before_confirmation');
+    expect(itemForm).toContain("qc.invalidateQueries({ queryKey: ['artisanal-strap-catalog'] })");
+    expect(itemForm).toContain("qc.invalidateQueries({ queryKey: ['strap_stock_lines_preview'] })");
     expect(hooks).toContain("queryClient.invalidateQueries({ queryKey: ['artisanal-strap-catalog'] })");
   });
 
-  it('confirma automaticamente somente cor canônica única e coberta pela identidade da linha', () => {
+  it('faz reference_base seguir o cabedal e mantém finished_product_group independente', () => {
     expect(itemForm).toContain('const canonicalStrapColorByKey = useMemo(() => {');
     expect(itemForm).toContain("alias.status === 'approved'");
     expect(itemForm).toContain('if (ids.size !== 1) return');
+    expect(itemForm).toContain("if (strapIdentityBasis(strap) !== 'reference_base') return strap");
+    expect(itemForm).toContain('const targetColor = canonicalMainStrapColor?.name || item.color.trim()');
+    expect(itemForm).toContain('return { ...strap, color: targetColor, color_id: targetColorId }');
+    expect(itemForm).toContain("if (strapIdentityBasis(strap) === 'reference_base') return strap");
     expect(itemForm).toContain('strapColorsForIdentity(');
     expect(itemForm).toContain('.some((color) => color.id === canonical.id)');
     expect(itemForm).toContain('return { ...strap, color: canonical.name, color_id: canonical.id }');
-    expect(itemForm).toContain("straps.map(s => ({ ...s, color: item.color, color_id: null }))");
-    expect(itemForm).toContain("update(idx, 'strap_sourcing', {})");
-    expect(itemForm).toContain('ambiguidades exigem seleção');
+    expect(itemForm).toContain('cor do cabedal');
+    expect(itemForm).toContain('Comprada pronta · origem fixa');
+    expect(itemForm).toContain('Object.entries(candidate).every(');
+    expect(itemForm).not.toContain('JSON.stringify(current) === JSON.stringify(candidate)');
+  });
+
+  it('preserva snapshot histórico intocado e deriva as duas origens somente no servidor', () => {
+    expect(itemForm).toContain('const preserveHistoricalIdentity = !!item.id');
+    expect(itemForm).toContain('&& !mainColorChanged');
+    expect(itemForm).toContain("frozen.source_mode === 'buy_ready'");
+    expect(itemForm).toContain('isUuid(frozen.recipe_id) && isUuid(frozen.base_product_id)');
+    expect(itemForm).toContain('&& frozen?.color_id === strap.color_id');
+    expect(itemForm).toContain('if (preserveHistoricalIdentity) return strap');
+    expect(saleOrderHooks).not.toContain('export function listarTirasSemOrigem');
+    expect(saleOrderForm).not.toContain('listarTirasSemOrigem');
+    expect(saleOrders).not.toContain('listarTirasSemOrigem');
+    expect(mobileNewOrder).not.toContain('missingStrapSourcingLineIds');
+    expect(mobileNewOrder).toContain('mobileFinishedStrapIdentityIssues(items, strapCatalog)');
   });
 });

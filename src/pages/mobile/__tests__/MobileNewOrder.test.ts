@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildMobileSaleOrderItemsPayload,
   MOBILE_TECHNICAL_SHEET_SELECT,
+  mobileFinishedStrapIdentityIssues,
   mobileMaterialSelectionIssues,
   repriceMobileDraftItems,
   referencesWithMissingStrapSnapshot,
@@ -115,6 +116,79 @@ describe('identidade comercial material no PV mobile', () => {
     });
     expect(payload[0]).not.toHaveProperty('material_variant_name');
     expect(payload[0]).not.toHaveProperty('material_variant_sku');
+  });
+
+  it('alinha reference_base ao cabedal e preserva a cor própria do produto acabado', () => {
+    const lineBase = '11111111-1111-4111-8111-111111111111';
+    const lineReady = '22222222-2222-4222-8222-222222222222';
+    const draft = {
+      reference_id: 'ref-1',
+      reference_name: 'BT01',
+      color: 'OFF WHITE',
+      grade: { '37': 10 },
+      unit_price: 137.5,
+      strap_colors: [{
+        technical_strap_line_id: lineBase,
+        identity_basis: 'reference_base',
+        color: 'PRETO',
+        color_id: '33333333-3333-4333-8333-333333333333',
+      }, {
+        technical_strap_line_id: lineReady,
+        identity_basis: 'finished_product_group',
+        identity_group_id: '44444444-4444-4444-8444-444444444444',
+        strap_type_id: '55555555-5555-4555-8555-555555555555',
+        measure_id: '66666666-6666-4666-8666-666666666666',
+        color: 'STRASS PRATA',
+        color_id: '77777777-7777-4777-8777-777777777777',
+      }],
+      strap_sourcing: {},
+    };
+    const payload = buildMobileSaleOrderItemsPayload([draft]);
+
+    expect(payload[0].strap_colors?.[0]).toMatchObject({
+      color: 'OFF WHITE',
+      color_id: null,
+    });
+    expect(payload[0].strap_colors?.[1]).toMatchObject({
+      color: 'STRASS PRATA',
+      color_id: '77777777-7777-4777-8777-777777777777',
+    });
+    expect(mobileFinishedStrapIdentityIssues([draft])).toEqual([]);
+  });
+
+  it('não exige source client-side, mas bloqueia cor/estrutura incompleta do produto acabado', () => {
+    const baseItem = {
+      reference_id: 'ref-1',
+      reference_name: 'BT01',
+      color: 'OFF WHITE',
+      grade: { '37': 10 },
+      unit_price: 137.5,
+    };
+    const finished = {
+      technical_strap_line_id: '22222222-2222-4222-8222-222222222222',
+      identity_basis: 'finished_product_group',
+      identity_group_id: '44444444-4444-4444-8444-444444444444',
+      strap_type_id: '55555555-5555-4555-8555-555555555555',
+      measure_id: '66666666-6666-4666-8666-666666666666',
+      color: 'STRASS PRATA',
+      color_id: '77777777-7777-4777-8777-777777777777',
+    };
+
+    expect(mobileFinishedStrapIdentityIssues([{
+      ...baseItem,
+      strap_colors: [finished],
+      strap_sourcing: {},
+    }])).toEqual([]);
+    expect(mobileFinishedStrapIdentityIssues([{
+      ...baseItem,
+      strap_colors: [{ ...finished, color_id: null }],
+      strap_sourcing: {},
+    }])[0]).toContain('cor canônica própria');
+    expect(mobileFinishedStrapIdentityIssues([{
+      ...baseItem,
+      strap_colors: [{ ...finished, identity_group_id: null }],
+      strap_sourcing: {},
+    }])[0]).toContain('identidade estrutural completa');
   });
 
   it('carrega o preço-base da ficha e respeita tabela > variante > ficha', () => {

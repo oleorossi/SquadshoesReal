@@ -15,6 +15,8 @@ export interface StrapSourcingSelection {
   color_id?: string | null;
   strap_variant_id?: string | null;
   recipe_id?: string | null;
+  /** Napa oficial exata congelada para a produção interna. */
+  base_product_id?: string | null;
   gross_required_m?: number | null;
   required_at?: string | null;
   main_production_start?: string | null;

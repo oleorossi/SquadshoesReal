@@ -23,15 +23,19 @@ import { NumberInput } from '@/components/ui/number-input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { SignatureCanvas } from '@/components/mobile/SignatureCanvas';
 import type { SaleOrderItemFormData } from '@/hooks/useSaleOrders';
-import { ensureTechnicalStrapLineIds, technicalStrapLineId } from '@/lib/technicalStrapLines';
-import { missingStrapSourcingLineIds, setStrapSourcing, type StrapSourcingMap } from '@/lib/strapSourcing';
+import { ensureTechnicalStrapLineIds, isUuid, technicalStrapLineId } from '@/lib/technicalStrapLines';
+import {
+  normalizeStrapColorKey,
+  setStrapSourcing,
+  type StrapSourcingMap,
+} from '@/lib/strapSourcing';
 import { useStrapStockLines } from '@/hooks/useStrapStockLines';
 import { useArtisanalStrapCatalog, type ArtisanalStrapCatalog } from '@/hooks/useArtisanalStraps';
 import { isoToMonthWeek } from '@/lib/billingWeek';
 import { listMissingTechnicalStrapSnapshots } from '@/lib/strapSnapshotGuard';
 import { submitMobileSaleOrderAtomic } from '@/lib/mobile/atomicSaleOrder';
 import { strapColorsForIdentity } from '@/lib/officialStrapColors';
-import { isPurchasedReadyStrap, strapIdentityBasis } from '@/lib/strapIdentity';
+import { strapIdentityBasis } from '@/lib/strapIdentity';
 import {
   resolveSaleOrderItemPrice,
   type SaleOrderPriceSource,
@@ -174,18 +178,80 @@ export function referencesWithMissingStrapSnapshot(items: DraftItem[], reference
   return items.filter((_, index) => missingIndexes.has(index));
 }
 
+function alignReferenceBaseStrapsToMainColor(
+  straps: NonNullable<DraftItem['strap_colors']>,
+  mainColor: string,
+  sourcing: StrapSourcingMap | null | undefined,
+) {
+  const color = (mainColor || '').trim();
+  const colorKey = normalizeStrapColorKey(color);
+  const strapColors = straps.map((strap) => {
+    if (strapIdentityBasis(strap) === 'finished_product_group') return strap;
+
+    const sameColor = !!colorKey && normalizeStrapColorKey(strap.color) === colorKey;
+    if (sameColor && strap.color === color) return strap;
+    return {
+      ...strap,
+      color,
+      color_id: sameColor ? strap.color_id || null : null,
+    };
+  });
+
+  // O wrapper atômico compara cor + variante antes de decidir se uma origem
+  // histórica ainda é válida. O cliente conserva o snapshot completo e deixa
+  // essa decisão transacional para o servidor.
+  return { strapColors, strapSourcing: sourcing || {} };
+}
+
 export function buildMobileSaleOrderItemsPayload(items: DraftItem[]): SaleOrderItemFormData[] {
-  return items.map((item) => ({
-    reference_id: item.reference_id,
-    material_variant_id: item.material_variant_id || null,
-    color: item.color,
-    quantity: Object.values(item.grade).reduce((sum, value) => sum + (value || 0), 0),
-    grade: item.grade,
-    unit_price: item.unit_price,
-    observation: '',
-    strap_colors: item.strap_colors || [],
-    strap_sourcing: item.strap_sourcing || {},
-  } as SaleOrderItemFormData));
+  return items.map((item) => {
+    const aligned = alignReferenceBaseStrapsToMainColor(
+      item.strap_colors || [],
+      item.color,
+      item.strap_sourcing,
+    );
+    return {
+      reference_id: item.reference_id,
+      material_variant_id: item.material_variant_id || null,
+      color: item.color,
+      quantity: Object.values(item.grade).reduce((sum, value) => sum + (value || 0), 0),
+      grade: item.grade,
+      unit_price: item.unit_price,
+      observation: '',
+      strap_colors: aligned.strapColors,
+      strap_sourcing: aligned.strapSourcing,
+    } as SaleOrderItemFormData;
+  });
+}
+
+/**
+ * `finished_product_group` conserva cor própria, mas a origem buy_ready é
+ * derivada pelo writer atômico. O cliente valida somente a identidade que o
+ * servidor não pode inventar: linha/família/medida/grupo e cor canônica.
+ */
+export function mobileFinishedStrapIdentityIssues(
+  items: DraftItem[],
+  catalog?: ArtisanalStrapCatalog,
+): string[] {
+  return items.flatMap((item) => (item.strap_colors || []).flatMap((strap, index) => {
+    if (strapIdentityBasis(strap) !== 'finished_product_group') return [];
+    const label = String(strap.label || `Tira ${index + 1}`).trim();
+    const context = `${item.reference_name}: ${label}`;
+    if (!technicalStrapLineId(strap)
+        || !isUuid(strap.strap_type_id)
+        || !isUuid(strap.measure_id)
+        || !isUuid(strap.identity_group_id)) {
+      return [`${context} está sem identidade estrutural completa no cadastro.`];
+    }
+    if (!String(strap.color || '').trim() || !isUuid(strap.color_id)) {
+      return [`${context} exige uma cor canônica própria.`];
+    }
+    if (catalog && !strapColorsForIdentity(catalog, strap, undefined)
+      .some((color) => color.id === strap.color_id)) {
+      return [`${context} não possui produto ativo para a cor selecionada.`];
+    }
+    return [];
+  }));
 }
 
 export function mobileMaterialSelectionIssues(
@@ -253,13 +319,18 @@ function MobileStrapIdentityEditor({
   catalog?: ArtisanalStrapCatalog;
   onChange: (item: DraftItem) => void;
 }) {
+  const aligned = useMemo(() => alignReferenceBaseStrapsToMainColor(
+    item.strap_colors || [],
+    item.color,
+    item.strap_sourcing,
+  ), [item.color, item.strap_colors, item.strap_sourcing]);
   const quantity = Object.values(item.grade).reduce((sum, value) => sum + (value || 0), 0);
   const { data: lines = [], isLoading } = useStrapStockLines({
     referenceId: item.reference_id,
     materialVariantId: item.material_variant_id || null,
     itemColor: item.color,
-    strapColors: item.strap_colors || [],
-    strapSourcing: item.strap_sourcing || {},
+    strapColors: aligned.strapColors,
+    strapSourcing: aligned.strapSourcing,
     quantity,
     grade: item.grade,
     requiredAt: billingDate || null,
@@ -269,9 +340,11 @@ function MobileStrapIdentityEditor({
 
   useEffect(() => {
     if (!billingDate) return;
-    const fixed = (item.strap_colors || []).filter((strap) => isPurchasedReadyStrap(strap));
+    const fixed = aligned.strapColors.filter((strap) =>
+      strapIdentityBasis(strap) === 'finished_product_group'
+    );
     if (fixed.length === 0) return;
-    let next = item.strap_sourcing || {};
+    let next = aligned.strapSourcing;
     let changed = false;
     fixed.forEach((strap) => {
       const lineId = technicalStrapLineId(strap);
@@ -288,54 +361,60 @@ function MobileStrapIdentityEditor({
         main_production_start: line.mainProductionStart,
         schedule_revision: line.scheduleRevision,
       };
-      if (JSON.stringify(next[lineId]) === JSON.stringify(candidate)) return;
+      const current = next[lineId];
+      if (current && (Object.keys(candidate) as Array<keyof typeof candidate>).every(
+        (key) => current[key] === candidate[key],
+      )) return;
       next = setStrapSourcing(next, lineId, candidate);
       changed = true;
     });
-    if (changed) onChange({ ...item, strap_sourcing: next });
-  }, [billingDate, item, lineById, onChange]);
-
-  const selectOrigin = (strap: any, mode: 'internal' | 'buy_ready') => {
-    if (mode === 'internal' && isPurchasedReadyStrap(strap)) {
-      toast.error('Esta tira é comprada pronta e não permite produção interna.');
-      return;
-    }
-    const lineId = technicalStrapLineId(strap);
-    const line = lineId ? lineById.get(lineId) : undefined;
-    const colorId = line?.colorId || strap.color_id || null;
-    if (!lineId || !line?.strapVariantId || !colorId) {
-      toast.error('Aguarde a resolução da cor e da variante canônica.');
-      return;
-    }
-    onChange({
+    if (changed) onChange({
       ...item,
-      strap_sourcing: setStrapSourcing(item.strap_sourcing, lineId, {
-        source_mode: mode,
-        color_id: colorId,
-        strap_variant_id: line.strapVariantId,
-        recipe_id: mode === 'internal' ? line.recipeId : null,
-        gross_required_m: line.strapRequiredM,
-        required_at: line.requiredAt,
-        main_production_start: line.mainProductionStart,
-        schedule_revision: line.scheduleRevision,
-      }),
+      strap_colors: aligned.strapColors,
+      strap_sourcing: next,
     });
-  };
+  }, [aligned, billingDate, item, lineById, onChange]);
 
   return (
     <div className="mt-3 space-y-2 border-t pt-3">
-      <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Identidade e origem das tiras</p>
+      <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Identidade das tiras</p>
       {!billingDate && (
         <p className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-amber-700 dark:text-amber-400">
-          Informe a semana de faturamento acima para liberar a escolha de origem.
+          Informe a semana de faturamento acima para calcular quando as tiras serão necessárias.
         </p>
       )}
-      {(item.strap_colors || []).map((strap, strapIndex) => {
+      {aligned.strapColors.map((strap, strapIndex) => {
         const lineId = technicalStrapLineId(strap);
         const line = lineId ? lineById.get(lineId) : undefined;
-        const selection = lineId ? item.strap_sourcing?.[lineId] : null;
-        const purchasedReady = isPurchasedReadyStrap(strap);
+        const selection = lineId ? aligned.strapSourcing[lineId] : null;
         const usesFinishedGroup = strapIdentityBasis(strap) === 'finished_product_group';
+        if (!usesFinishedGroup) {
+          return (
+            <div key={lineId || strapIndex} className="space-y-2 rounded-md border p-2">
+              <p className="text-xs font-semibold">{strap.label || `Tira ${strapIndex + 1}`}</p>
+              <div className={`rounded-md border px-3 py-2 text-xs ${item.color ? 'bg-muted/30' : 'border-destructive/50 text-destructive'}`}>
+                <p className="font-semibold">{item.color || 'Defina a cor principal do item'}</p>
+                <p className="mt-0.5 text-[11px] text-muted-foreground">Mesma cor e mesma napa do cabedal</p>
+              </div>
+              <div className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-[11px]">
+                <p className="font-semibold text-primary">
+                  {selection?.source_mode === 'buy_ready'
+                    ? 'Origem comprada preservada do histórico'
+                    : 'Produção interna com a napa do cabedal'}
+                </p>
+                {!selection?.source_mode && (
+                  <p className="mt-0.5 text-muted-foreground">
+                    Ao enviar, o servidor cadastra a tira exata e registra a origem automaticamente.
+                  </p>
+                )}
+              </div>
+              {!isLoading && line && !line.baseGroupId && (
+                <p className="text-xs text-destructive">A referência não identifica a napa-base por UUID. Corrija o cadastro no hub.</p>
+              )}
+            </div>
+          );
+        }
+
         const identityColors = strapColorsForIdentity(catalog, strap, line?.baseGroupId);
         const selectedColor = catalog?.colors.find((entry) => entry.id === strap.color_id);
         const colorIsAvailable = !!strap.color_id
@@ -371,25 +450,15 @@ function MobileStrapIdentityEditor({
                 ))}
               </SelectContent>
             </Select>
-            {!isLoading && !identityGroupResolved && <p className="text-xs text-destructive">{usesFinishedGroup ? 'A ficha não identifica o grupo do produto acabado por UUID.' : 'A referência não identifica a napa-base por UUID. Corrija o cadastro no hub.'}</p>}
-            {identityGroupResolved && identityColors.length === 0 && <p className="text-xs text-destructive">{usesFinishedGroup ? 'O grupo comprado não possui produto ativo com cor canônica.' : 'Esta napa-base não possui cor oficial ativa.'}</p>}
-            {!!strap.color_id && !colorIsAvailable && <p className="text-xs text-destructive">A cor atual não pertence ao grupo de identidade resolvido.</p>}
-            <div className={`grid gap-1.5 ${purchasedReady ? 'grid-cols-1' : 'grid-cols-2'}`}>
-              {([
-                ['internal', 'Produzir com napa'],
-                ['buy_ready', 'Comprar pronta'],
-              ] as const).filter(([mode]) => !purchasedReady || mode === 'buy_ready').map(([mode, label]) => (
-                <button
-                  key={mode}
-                  type="button"
-                  disabled={!billingDate || isLoading || !line?.strapVariantId || !strap.color_id || !colorIsAvailable}
-                  onClick={() => selectOrigin(strap, mode)}
-                  className={`min-h-10 rounded-md border px-2 text-[11px] font-semibold disabled:opacity-50 ${selection?.source_mode === mode ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground'}`}
-                >
-                  {purchasedReady ? 'Comprada pronta · origem fixa' : label}
-                </button>
-              ))}
+            {!isLoading && !identityGroupResolved && <p className="text-xs text-destructive">A ficha não identifica o grupo do produto acabado por UUID.</p>}
+            {!!catalog && identityGroupResolved && identityColors.length === 0 && <p className="text-xs text-destructive">O grupo comprado não possui produto ativo com cor canônica.</p>}
+            {!!catalog && !!strap.color_id && !colorIsAvailable && <p className="text-xs text-destructive">A cor atual não pertence ao grupo de identidade resolvido.</p>}
+            <div className={`min-h-10 rounded-md border px-2 py-2 text-center text-[11px] font-semibold ${selection?.source_mode === 'buy_ready' ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground'}`}>
+              Comprada pronta · origem fixa
             </div>
+            {!!selection?.source_mode && selection.source_mode !== 'buy_ready' && (
+              <p className="text-xs text-destructive">A origem registrada não corresponde ao grupo comprado. Selecione novamente a cor.</p>
+            )}
             {selection?.source_mode && line?.blockReason && (
               <p className="text-xs text-amber-700 dark:text-amber-400">{line.blockReason}</p>
             )}
@@ -698,8 +767,11 @@ export default function MobileNewOrder() {
   }, [priceLookup, refs, materialVariants]);
 
   const strapsForReference = (reference: RefLite, color: string) =>
-    ensureTechnicalStrapLineIds(Array.isArray(reference.strap_colors) ? reference.strap_colors : [])
-      .map((strap) => ({ ...strap, color: strap.color || color }));
+    alignReferenceBaseStrapsToMainColor(
+      ensureTechnicalStrapLineIds(Array.isArray(reference.strap_colors) ? reference.strap_colors : []),
+      color,
+      {},
+    ).strapColors;
 
   // ── Submit ──
   const handleSubmit = async () => {
@@ -732,12 +804,20 @@ export default function MobileNewOrder() {
       setStep('items');
       return;
     }
-    const missingSource = items.flatMap((item) => missingStrapSourcingLineIds(
-      item.strap_sourcing,
-      item.strap_colors || [],
-    ));
-    if (missingSource.length > 0) {
-      toast.error('Confirme a cor canônica e a variante exata de cada tira antes de enviar.');
+    const missingMainStrapColor = items.find((item) =>
+      !item.color.trim()
+      && (item.strap_colors || []).some((strap) =>
+        strapIdentityBasis(strap) === 'reference_base'
+      )
+    );
+    if (missingMainStrapColor) {
+      toast.error(`${missingMainStrapColor.reference_name}: defina a cor principal do cabedal antes de enviar.`);
+      setStep('items');
+      return;
+    }
+    const finishedIdentityIssues = mobileFinishedStrapIdentityIssues(items, strapCatalog);
+    if (finishedIdentityIssues.length > 0) {
+      toast.error(finishedIdentityIssues[0]);
       setStep('items');
       return;
     }
@@ -951,7 +1031,7 @@ export default function MobileNewOrder() {
           <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm">
             <p className="font-bold text-destructive">Demanda de tira não resolvida</p>
             <p className="mt-1 text-xs text-muted-foreground">
-              {unresolvedStrapSnapshots.map((entry) => entry.reference_name).join(', ')} usa tira, mas não possui linhas técnicas no snapshot. Corrija a ficha técnica no desktop; o app não infere cor ou variante.
+              {unresolvedStrapSnapshots.map((entry) => entry.reference_name).join(', ')} usa tira, mas não possui linhas técnicas no snapshot. Corrija a ficha técnica no desktop; o app não inventa linhas de consumo.
             </p>
           </div>
         )}
@@ -972,16 +1052,10 @@ export default function MobileNewOrder() {
               id="mobile-billing-week"
               type="date"
               value={billingDate}
-              onChange={(event) => {
-                setBillingDate(event.target.value);
-                setItems((current) => current.map((entry) => ({
-                  ...entry,
-                  strap_sourcing: (entry.strap_colors || []).length > 0 ? {} : entry.strap_sourcing,
-                })));
-              }}
+              onChange={(event) => setBillingDate(event.target.value)}
             />
             <p className="text-xs text-muted-foreground">
-              A necessidade é calculada retroativamente a partir desta semana; mudar a data exige reconfirmar as origens.
+              A necessidade é recalculada retroativamente a partir desta semana, sem apagar identidades já resolvidas.
             </p>
           </div>
         )}

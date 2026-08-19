@@ -27,7 +27,6 @@ import {
   useUpdateSaleOrder,
   SaleOrderFormData,
   SaleOrderItemFormData,
-  listarTirasSemOrigem,
 } from '@/hooks/useSaleOrders';
 import { calculateOrderCost, type OrderCostResult } from '@/services/costingService';
 import { useCancelOrdersBatch } from '@/hooks/useOrders';
@@ -360,9 +359,14 @@ export default function SaleOrderForm() {
       const straps = Array.isArray((its[i] as any).strap_colors)
         ? ((its[i] as any).strap_colors as any[])
         : [];
-      const semCor = straps.filter((s) => s && (
-        !String(s.color || '').trim() || !String(s.color_id || '').trim()
-      ));
+      const semCor = straps.filter((s) => {
+        if (!s) return false;
+        const referenceBase = (s.identity_basis || 'reference_base') === 'reference_base';
+        // Para reference_base, a cor principal do item e a intenção: o writer
+        // atômico resolve o UUID e materializa a variante antes do INSERT/UPDATE.
+        if (referenceBase && String(its[i].color || '').trim()) return false;
+        return !String(s.color || '').trim() || !String(s.color_id || '').trim();
+      });
       if (semCor.length === 0) continue;
       const ref = canonicalReferences.find((r: any) => r.id === its[i].reference_id) as any;
       const refLabel = ref
@@ -373,7 +377,7 @@ export default function SaleOrderForm() {
         .join(', ');
       return (
         `Tira sem cor canônica no item ${i + 1} (${refLabel}): ${tiras}. ` +
-        `Selecione cada cor no catálogo; texto antigo não identifica estoque nem permite confirmar o pedido.`
+        `Selecione a cor no catálogo; texto antigo não identifica estoque nem permite confirmar o pedido.`
       );
     }
     return null;
@@ -1188,17 +1192,6 @@ export default function SaleOrderForm() {
     {
       const tiraSemCor = findTiraSemCor(validItems);
       if (tiraSemCor) { toast.error(tiraSemCor, { duration: 8000 }); return; }
-    }
-    const targetStatus = statusOverride || f.status;
-    if (targetStatus === 'Aprovado' || targetStatus === 'Em Produção') {
-      const semOrigem = listarTirasSemOrigem(validItems);
-      if (semOrigem.length > 0) {
-        toast.error(
-          `Escolha como atender cada tira antes de confirmar: ${semOrigem.slice(0, 4).join('; ')}${semOrigem.length > 4 ? ` e mais ${semOrigem.length - 4}` : ''}.`,
-          { duration: 9000 },
-        );
-        return;
-      }
     }
     if (validItems.some(i => i.quantity <= 0)) {
       toast.error('A quantidade dos itens deve ser maior que zero.');
