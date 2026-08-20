@@ -25,7 +25,7 @@ WITH refs AS (
   LIMIT 20
 )
 SELECT jsonb_pretty(jsonb_build_object(
-  'technical_sheets', coalesce((
+  'a_technical_sheets', coalesce((
     SELECT jsonb_agg(jsonb_build_object(
       'id', r.id,
       'code', r.code,
@@ -40,7 +40,7 @@ SELECT jsonb_pretty(jsonb_build_object(
       'status_ficha', r.status_ficha
     )) FROM refs r
   ), '[]'::jsonb),
-  'material_variants', coalesce((
+  'b_material_variants', coalesce((
     SELECT jsonb_agg(jsonb_build_object(
       'id', v.id,
       'reference_id', v.reference_id,
@@ -61,7 +61,7 @@ SELECT jsonb_pretty(jsonb_build_object(
     LEFT JOIN public.products up ON up.id = v.upper_material_product_id
     WHERE v.reference_id IN (SELECT id FROM refs)
   ), '[]'::jsonb),
-  'relevant_groups', coalesce((
+  'c_relevant_groups', coalesce((
     SELECT jsonb_agg(jsonb_build_object(
       'id', g.id,
       'name', g.name,
@@ -71,7 +71,7 @@ SELECT jsonb_pretty(jsonb_build_object(
       )
     ) ORDER BY g.name) FROM relevant_groups g
   ), '[]'::jsonb),
-  'gold_products', coalesce((
+  'd_gold_products', coalesce((
     SELECT jsonb_agg(jsonb_build_object(
       'id', p.id,
       'group_id', p.group_id,
@@ -84,11 +84,13 @@ SELECT jsonb_pretty(jsonb_build_object(
     ) ORDER BY pg.name, p.name)
     FROM public.products p
     LEFT JOIN public.product_groups pg ON pg.id = p.group_id
-    WHERE p.group_id IN (SELECT id FROM relevant_groups)
+    WHERE (p.group_id IN (
+             SELECT id FROM relevant_groups WHERE upper(name) LIKE '%GLOW%METAL%'
+           ))
        OR upper(coalesce(p.color, '')) LIKE '%OURO%LIGHT%'
        OR upper(p.name) LIKE '%OURO%LIGHT%'
   ), '[]'::jsonb),
-  'recent_sp120_items', coalesce((
+  'e_recent_sp120_items', coalesce((
     SELECT jsonb_agg(to_jsonb(i) ORDER BY i.created_at DESC) FROM recent_items i
   ), '[]'::jsonb)
 )) AS diagnostico;
