@@ -539,7 +539,7 @@ COMMENT ON FUNCTION public.preflight_sale_order_atomic_op_cancel(uuid, jsonb, js
 -- componente acabado. A RPC continua disparando a malha normal em uso futuro.
 SELECT set_config(
   'app.strap_change_reason',
-  'Correção 20270101006000: tira comprada pronta não possui napa-base',
+  'Correção 20270101006200: tira comprada pronta não possui napa-base',
   true
 );
 SELECT set_config('app.artisanal_strap_catalog_write', '1', true);
@@ -585,7 +585,7 @@ SELECT NULL,
        jsonb_build_object(
          'strap_base_group_id', NULL,
          'requires_reference_base', false,
-         'migration', '20270101006000'
+         'migration', '20270101006200'
        ),
        true,
        now()

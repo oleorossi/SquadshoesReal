@@ -6,7 +6,7 @@ const ROOT = resolve(__dirname, '../..');
 const read = (path: string) => readFileSync(resolve(ROOT, path), 'utf8');
 
 const migration = read(
-  'supabase/migrations/20270101006000_strass_buy_ready_without_reference_base.sql',
+  'supabase/migrations/20270101006200_strass_buy_ready_without_reference_base.sql',
 );
 const saleOrderHooks = read('src/hooks/useSaleOrders.ts');
 const saleOrderForm = read('src/pages/SaleOrderForm.tsx');

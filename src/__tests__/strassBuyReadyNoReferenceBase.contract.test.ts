@@ -10,7 +10,7 @@ const itemForm = read('src/components/sale-orders/SaleOrderItemForm.tsx');
 const formPanel = read('src/components/sale-orders/SaleOrderFormPanel.tsx');
 const hooks = read('src/hooks/useArtisanalStraps.ts');
 const migration = read(
-  'supabase/migrations/20270101006000_strass_buy_ready_without_reference_base.sql',
+  'supabase/migrations/20270101006200_strass_buy_ready_without_reference_base.sql',
 );
 
 function sqlFunction(name: string): string {
