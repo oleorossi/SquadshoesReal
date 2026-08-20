@@ -422,31 +422,73 @@ export function useUpdateSheet() {
   });
 }
 
+/** Vínculos que o BANCO realmente recusa na exclusão de ficha (FK NO ACTION/RESTRICT),
+ *  auditado em 20/08/2026 sobre as 41 FKs que apontam pra `technical_sheets`.
+ *
+ *  ⚠ `sheet_materials` NÃO entra aqui de propósito: a FK é ON DELETE **CASCADE** — o
+ *  banco leva os materiais junto. O guard antigo travava por material ("esvazie a ficha
+ *  antes de excluir") e, com isso, impedia apagar ficha duplicada/rascunho que não tinha
+ *  histórico nenhum, exigindo remover material por material à mão pra nada. */
+const SHEET_DELETE_BLOCKERS: { table: string; column: string; singular: string; plural: string }[] = [
+  { table: 'orders', column: 'reference_id', singular: 'OP', plural: 'OPs' },
+  { table: 'sale_order_items', column: 'reference_id', singular: 'item de pedido', plural: 'itens de pedido' },
+  { table: 'technical_sheet_snapshots', column: 'sheet_id', singular: 'snapshot', plural: 'snapshots' },
+  { table: 'technical_strap_line_identity_map', column: 'technical_sheet_id', singular: 'vínculo de tira', plural: 'vínculos de tira' },
+  { table: 'production_wave_items', column: 'reference_id', singular: 'item de onda', plural: 'itens de onda' },
+  { table: 'product_references', column: 'technical_sheet_id', singular: 'produto vinculado', plural: 'produtos vinculados' },
+  { table: 'ready_stock', column: 'reference_id', singular: 'saldo de pronta-entrega', plural: 'saldos de pronta-entrega' },
+  { table: 'reference_materials', column: 'reference_id', singular: 'material de referência', plural: 'materiais de referência' },
+  { table: 'sop_plan_items', column: 'reference_id', singular: 'item de plano S&OP', plural: 'itens de plano S&OP' },
+];
+
 export function useDeleteSheet() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      const [{ count: matCount, error: matErr }, { count: ordCount, error: ordErr }, { count: soiCount, error: soiErr }] = await Promise.all([
-        supabase.from('sheet_materials').select('id', { count: 'exact', head: true }).eq('sheet_id', id),
-        // FK real é reference_id → technical_sheets (a coluna technical_sheet_id
-        // nunca existiu — o guard quebrava com 400 e a exclusão nunca validava OPs/itens).
-        supabase.from('orders').select('id', { count: 'exact', head: true }).eq('reference_id', id),
-        supabase.from('sale_order_items').select('id', { count: 'exact', head: true }).eq('reference_id', id),
-      ]);
-      if (matErr) throw matErr;
-      if (ordErr) throw ordErr;
-      if (soiErr) throw soiErr;
-      if ((matCount ?? 0) > 0) throw new Error(`Ficha tem ${matCount} ${matCount === 1 ? 'material vinculado' : 'materiais vinculados'} — esvazie a ficha antes de excluir.`);
-      if ((ordCount ?? 0) > 0) throw new Error(`Ficha está vinculada a ${ordCount} ${ordCount === 1 ? 'OP' : 'OPs'} — não é possível excluir.`);
-      if ((soiCount ?? 0) > 0) throw new Error(`Ficha está vinculada a ${soiCount} ${soiCount === 1 ? 'item' : 'itens'} de pedido — não é possível excluir.`);
-      const { error } = await supabase
+      // As checagens abaixo servem pra MENSAGEM legível — a trava real é a FK do banco
+      // (tradução do 23503 mais abaixo). Por isso um erro de leitura (RLS, tabela nova)
+      // não bloqueia a exclusão: seguiria travando ficha limpa por causa de um SELECT.
+      const counts = await Promise.all(
+        SHEET_DELETE_BLOCKERS.map(async (b) => {
+          const { count, error } = await supabase
+            .from(b.table as any)
+            .select('id', { count: 'exact', head: true })
+            .eq(b.column, id);
+          if (error) {
+            console.warn('[useDeleteSheet] checagem de vínculo falhou:', b.table, error);
+            return 0;
+          }
+          return count ?? 0;
+        })
+      );
+      const blocking = SHEET_DELETE_BLOCKERS
+        .map((b, idx) => ({ ...b, count: counts[idx] }))
+        .filter((b) => b.count > 0);
+      if (blocking.length > 0) {
+        const lista = blocking.map((b) => `${b.count} ${b.count === 1 ? b.singular : b.plural}`).join(', ');
+        throw new Error(`Ficha em uso (${lista}) — não é possível excluir.`);
+      }
+
+      // .select('id') expõe o caso "0 linhas afetadas" (RLS bloqueando silenciosamente),
+      // que antes passava como sucesso — mesmo motivo do useUpdateSheet acima.
+      const { data: deleted, error } = await supabase
         .from('technical_sheets')
         .delete()
-        .eq('id', id);
-      if (error) throw error;
+        .eq('id', id)
+        .select('id');
+      if (error) {
+        console.error('[useDeleteSheet] erro Supabase:', { id, error });
+        if ((error as any).code === '23503') {
+          throw new Error('Ficha vinculada a registros de produção/venda — não é possível excluir.');
+        }
+        throw error;
+      }
+      if (!deleted || deleted.length === 0) {
+        throw new Error('Exclusão não persistiu. Verifique permissões (admin/gerente) ou se a ficha já foi excluída em outra aba.');
+      }
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['technical_sheets'] }); toast.success('Ficha técnica excluída!'); },
-    onError: (err: Error) => toast.error(`Erro: ${err.message}`),
+    onError: (err: Error) => toast.error(`Erro: ${err.message}`, { duration: 8000 }),
   });
 }
 
