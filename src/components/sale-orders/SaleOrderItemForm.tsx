@@ -37,6 +37,7 @@ import {
   type StrapSourcingMap,
 } from '@/lib/strapSourcing';
 import { useStrapStockLines } from '@/hooks/useStrapStockLines';
+import { useInternalStrapReadiness } from '@/hooks/useInternalStrapReadiness';
 import {
   useArtisanalStrapCatalog,
   useArtisanalStrapCatalogDiagnostics,
@@ -621,6 +622,18 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
   const strapLineByKey = useMemo(
     () => new Map(strapLines.map((l) => [l.key, l])),
     [strapLines],
+  );
+  // A linha `reference_base` sem `strap_sourcing` (todo item novo) nunca chega a
+  // `blocked` no bloco de Origem abaixo — `effective` é null —, então o cadastro
+  // faltando da napa-base só aparecia como texto cru do Postgres DEPOIS de o PV
+  // inteiro ser montado. Esta consulta espelha o writer do save, em leitura.
+  const { data: internalStrapReadiness } = useInternalStrapReadiness(
+    {
+      referenceId: item.reference_id,
+      materialVariantId: item.material_variant_id,
+      color: item.color,
+    },
+    !modelHasCabedal,
   );
   const canonicalStrapColorByKey = useMemo(() => {
     const candidates = new Map<string, Set<string>>();
@@ -1995,6 +2008,49 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                       Solicite a correção ao administrador.
                     </span>
                   )}
+                </div>
+              )}
+
+              {/* O save materializa a tira interna pela napa-base do cabedal e
+                  aborta o PV INTEIRO quando falta perfil de largura, SKU oficial
+                  da cor ou rendimento aprovado. Antes disso só se descobria pelo
+                  texto cru do RAISE, que não nomeia item nem napa. */}
+              {internalStrapReadiness?.requiresReferenceBase
+                && internalStrapReadiness.ready === false && (
+                <div className="flex flex-col gap-2 border-b border-amber-500/40 bg-amber-500/10 px-3 py-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="flex min-w-0 items-start gap-2">
+                    <Warning className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                    <div className="min-w-0 space-y-1">
+                      <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">
+                        Cadastro da tira interna incompleto
+                        {internalStrapReadiness.baseGroupName
+                          ? <> em <strong>{internalStrapReadiness.baseGroupName}</strong></>
+                          : null}
+                        {internalStrapReadiness.colorName
+                          ? <> · {internalStrapReadiness.colorName}</>
+                          : null}
+                      </p>
+                      <ul className="space-y-0.5">
+                        {internalStrapReadiness.issues.map((issue) => (
+                          <li
+                            key={`${issue.code}-${issue.message}`}
+                            className="text-[11px] leading-snug text-muted-foreground"
+                          >
+                            • {issue.message}
+                          </li>
+                        ))}
+                      </ul>
+                      <p className="text-[11px] leading-snug text-amber-800 dark:text-amber-300">
+                        Enquanto isso não for resolvido o pedido inteiro não salva.
+                      </p>
+                    </div>
+                  </div>
+                  <Button asChild type="button" variant="outline" size="sm" className="h-8 shrink-0 gap-1.5 border-amber-500/40 bg-background text-xs">
+                    <Link to="/tiras-artesanais?tab=cadastro" target="_blank" rel="noreferrer">
+                      Abrir Hub de Tiras
+                      <ExternalLink className="h-3 w-3" />
+                    </Link>
+                  </Button>
                 </div>
               )}
 
