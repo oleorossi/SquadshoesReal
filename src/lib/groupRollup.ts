@@ -38,7 +38,8 @@ export function buildGroupMetrics(groups: ProductGroup[], rollups: Map<string, G
     if (!childrenByParent.has(k)) childrenByParent.set(k, []);
     childrenByParent.get(k)!.push(g);
   }
-  const isLeaf = (id: string) => (childrenByParent.get(id)?.length ?? 0) === 0;
+  const groupsById = new Map(groups.map((group) => [group.id, group]));
+  const isLeaf = (id: string) => groupsById.get(id)?.is_family !== true && (childrenByParent.get(id)?.length ?? 0) === 0;
 
   const byGroup = new Map<string, NodeMetrics>();
   const visiting = new Set<string>(); // guarda anti-ciclo (dados corrompidos)
@@ -51,7 +52,7 @@ export function buildGroupMetrics(groups: ProductGroup[], rollups: Map<string, G
 
     const kids = childrenByParent.get(g.id) ?? [];
     let m: NodeMetrics;
-    if (kids.length === 0) {
+    if (kids.length === 0 && g.is_family !== true) {
       const r = rollups.get(g.id);
       m = r
         ? {
@@ -116,10 +117,15 @@ export function buildSectorTree(groups: ProductGroup[]): SectorNode[] {
     return n;
   };
 
+  // Os nove setores fazem parte do vocabulário industrial, mesmo quando ainda
+  // não possuem cadastro. Mantê-los visíveis dá uma porta clara para criar a
+  // primeira família e evita que recursos fabris “desapareçam” da organização.
+  SECTOR_OPTIONS.forEach((option) => ensure(option.value));
+
   for (const root of roots) {
     const kids = (childrenByParent.get(root.id) ?? []).slice().sort(byName);
     const node = ensure(root.sector || '—');
-    if (kids.length > 0) node.families.push({ family: root, children: kids });
+    if (root.is_family === true || kids.length > 0) node.families.push({ family: root, children: kids });
     else node.looseLeaves.push(root);
   }
 
