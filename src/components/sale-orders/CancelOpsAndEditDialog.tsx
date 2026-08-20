@@ -20,24 +20,29 @@ interface Props {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   ops: BlockingOp[];
+  isPreflighting?: boolean;
+  preflightError?: string | null;
   isCancelling: boolean;
-  /** Confirma cancelamento em batch e re-dispara o save do PV. */
+  /** Confirma cancelamento + save no writer transacional do PV. */
   onConfirm: () => void;
 }
 
 /**
  * Dialog disparado quando o usuário tenta editar um PV que tem OPs em produção
  * avançada. Lista as OPs bloqueadoras, alerta sobre perda de material físico
- * já consumido, e oferece botão "Cancelar todas e editar" que faz batch cancel
- * (estorno de estoque/grade) antes de re-disparar o save.
+ * já consumido, e oferece botão "Cancelar todas e editar" que executa o
+ * cancelamento e o save em uma única transação no servidor.
  */
 export function CancelOpsAndEditDialog({
   open,
   onOpenChange,
   ops,
+  isPreflighting = false,
+  preflightError,
   isCancelling,
   onConfirm,
 }: Props) {
+  const isBusy = isPreflighting || isCancelling;
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent className="max-w-xl">
@@ -51,7 +56,8 @@ export function CancelOpsAndEditDialog({
               <p className="text-foreground">
                 Editar este PV deleta+recria todas as OPs vinculadas. As OPs abaixo já
                 estão em produção avançada — pra liberar a edição preciso cancelá-las
-                antes (estorna estoque reservado e grade de solado).
+                no mesmo salvamento. Somente reservas ainda pendentes são liberadas;
+                consumo físico e grade já baixados permanecem consumidos.
               </p>
 
               <div className="rounded-md border border-border bg-muted/30 p-3">
@@ -81,17 +87,37 @@ export function CancelOpsAndEditDialog({
                   produção (cliente, prazo, observações), prefira cancelar este modal.
                 </p>
               </div>
+
+              {preflightError && (
+                <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3">
+                  <div className="mb-1 text-xs font-bold uppercase tracking-widest text-destructive">
+                    Não foi possível confirmar a edição
+                  </div>
+                  <p className="text-xs text-foreground/80">
+                    {preflightError} Uma recusa do servidor reverte a transação
+                    inteira. Se houve falha de conexão, recarregue o PV antes de
+                    tentar novamente para confirmar o estado gravado.
+                  </p>
+                </div>
+              )}
             </div>
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={isCancelling}>Cancelar</AlertDialogCancel>
+          <AlertDialogCancel disabled={isBusy}>Cancelar</AlertDialogCancel>
           <AlertDialogAction
-            onClick={onConfirm}
-            disabled={isCancelling}
+            onClick={(event) => {
+              // A Action do Radix fecha o dialog por padrão. Aqui ele só pode
+              // fechar depois do preflight e do writer confirmarem sucesso.
+              event.preventDefault();
+              onConfirm();
+            }}
+            disabled={isBusy}
             className="bg-amber-600 hover:bg-amber-700 text-white"
           >
-            {isCancelling
+            {isPreflighting
+              ? 'Validando e salvando de forma atômica...'
+              : isCancelling
               ? `Cancelando ${ops.length} OP${ops.length === 1 ? '' : 's'}...`
               : `Cancelar ${ops.length} OP${ops.length === 1 ? '' : 's'} e editar`}
           </AlertDialogAction>

@@ -3,6 +3,7 @@ import {
   CircleNotch as Loader2,
   Database,
   LockKey,
+  ShoppingBag,
   Warning,
   Wrench,
 } from '@phosphor-icons/react';
@@ -24,6 +25,10 @@ import {
   useArtisanalStrapCatalog,
   useResolveTechnicalStrapContext,
 } from '@/hooks/useArtisanalStraps';
+import {
+  strapIdentityBasis,
+  type StrapIdentityBasis,
+} from '@/lib/strapIdentity';
 import { isUuid } from '@/lib/technicalStrapLines';
 
 export interface StrapCatalogResolutionLine {
@@ -34,6 +39,9 @@ export interface StrapCatalogResolutionLine {
   group_name?: string | null;
   strap_type_id?: string | null;
   measure_id?: string | null;
+  identity_basis?: StrapIdentityBasis | null;
+  identity_group_id?: string | null;
+  internal_production_enabled?: boolean | null;
 }
 
 interface Props {
@@ -53,6 +61,8 @@ interface LineGroup {
   ordinals: number[];
   strapTypeIds: string[];
   initialMeasureId: string;
+  requiresReferenceBase: boolean;
+  hasPurchasedReady: boolean;
 }
 
 function lineGroupKey(line: StrapCatalogResolutionLine, ordinal: number): string {
@@ -69,6 +79,8 @@ function buildLineGroups(lines: StrapCatalogResolutionLine[]): LineGroup[] {
     ordinals: number[];
     strapTypeIds: Set<string>;
     measureIds: Set<string>;
+    requiresReferenceBase: boolean;
+    hasPurchasedReady: boolean;
   }>();
 
   lines.forEach((line, ordinal) => {
@@ -78,10 +90,14 @@ function buildLineGroups(lines: StrapCatalogResolutionLine[]): LineGroup[] {
       ordinals: [],
       strapTypeIds: new Set<string>(),
       measureIds: new Set<string>(),
+      requiresReferenceBase: false,
+      hasPurchasedReady: false,
     };
     current.ordinals.push(ordinal);
     if (isUuid(line.strap_type_id)) current.strapTypeIds.add(line.strap_type_id);
     if (isUuid(line.measure_id)) current.measureIds.add(line.measure_id);
+    current.requiresReferenceBase ||= strapIdentityBasis(line) === 'reference_base';
+    current.hasPurchasedReady ||= strapIdentityBasis(line) === 'finished_product_group';
     groups.set(key, current);
   });
 
@@ -91,6 +107,8 @@ function buildLineGroups(lines: StrapCatalogResolutionLine[]): LineGroup[] {
     ordinals: group.ordinals,
     strapTypeIds: Array.from(group.strapTypeIds),
     initialMeasureId: group.measureIds.size === 1 ? Array.from(group.measureIds)[0] : '',
+    requiresReferenceBase: group.requiresReferenceBase,
+    hasPurchasedReady: group.hasPurchasedReady,
   }));
 }
 
@@ -107,6 +125,18 @@ export default function StrapCatalogResolutionDrawer({
   const { data: catalog, isLoading, error: catalogError } = useArtisanalStrapCatalog(false);
   const resolveContext = useResolveTechnicalStrapContext();
   const lineGroups = useMemo(() => buildLineGroups(lines), [lines]);
+  const requiresReferenceBase = useMemo(
+    () => lines.some((line) => strapIdentityBasis(line) === 'reference_base'),
+    [lines],
+  );
+  const allPurchasedReady = lines.length > 0 && !requiresReferenceBase;
+  const missingFinishedGroupLines = useMemo(
+    () => lines.filter((line) => (
+      strapIdentityBasis(line) === 'finished_product_group'
+      && !isUuid(line.identity_group_id)
+    )),
+    [lines],
+  );
   const [baseGroupId, setBaseGroupId] = useState('');
   const [measureByGroup, setMeasureByGroup] = useState<Record<string, string>>({});
   const [reason, setReason] = useState('');
@@ -138,7 +168,9 @@ export default function StrapCatalogResolutionDrawer({
   useEffect(() => {
     if (!open) return;
     setBaseGroupId(
-      isUuid(suggestedBaseGroupId) && eligibleBaseGroupIds.has(suggestedBaseGroupId)
+      requiresReferenceBase
+        && isUuid(suggestedBaseGroupId)
+        && eligibleBaseGroupIds.has(suggestedBaseGroupId)
         ? suggestedBaseGroupId
         : '',
     );
@@ -147,7 +179,7 @@ export default function StrapCatalogResolutionDrawer({
     ));
     setReason('');
     setValidationError('');
-  }, [eligibleBaseGroupIds, lineGroups, open, referenceId, suggestedBaseGroupId]);
+  }, [eligibleBaseGroupIds, lineGroups, open, referenceId, requiresReferenceBase, suggestedBaseGroupId]);
   const typeNameById = useMemo(
     () => new Map((catalog?.types || []).map((type) => [type.id, type.name])),
     [catalog?.types],
@@ -187,7 +219,12 @@ export default function StrapCatalogResolutionDrawer({
       setValidationError('Recarregue a referência antes de confirmar a correção.');
       return;
     }
-    if (!isUuid(baseGroupId) || !groups.some((group) => group.id === baseGroupId)) {
+    if (missingFinishedGroupLines.length > 0) {
+      setValidationError('Grupo acabado ausente. Vincule o grupo na ficha técnica antes de corrigir as medidas.');
+      return;
+    }
+    if (requiresReferenceBase
+        && (!isUuid(baseGroupId) || !groups.some((group) => group.id === baseGroupId))) {
       setValidationError('Selecione a napa-base canônica da referência.');
       return;
     }
@@ -212,7 +249,7 @@ export default function StrapCatalogResolutionDrawer({
     try {
       const result = await resolveContext.mutateAsync({
         p_reference_id: referenceId,
-        p_base_group_id: baseGroupId,
+        p_base_group_id: requiresReferenceBase ? baseGroupId : null,
         p_lines: lineGroups
           .flatMap((group) => group.ordinals.map((ordinal) => ({
             ordinal,
@@ -249,7 +286,9 @@ export default function StrapCatalogResolutionDrawer({
             </div>
             <SheetTitle>Corrigir contexto das tiras</SheetTitle>
             <SheetDescription>
-              Vincule a napa-base e as medidas canônicas sem sair do pedido. A correção atualiza a ficha da referência e volta para este item.
+              {allPurchasedReady
+                ? 'Vincule as medidas canônicas sem sair do pedido. Estas tiras são compradas prontas e não usam napa-base.'
+                : 'Vincule a napa-base das linhas que seguem a referência e as medidas canônicas sem sair do pedido. A correção atualiza a ficha e volta para este item.'}
             </SheetDescription>
           </SheetHeader>
 
@@ -288,36 +327,67 @@ export default function StrapCatalogResolutionDrawer({
 
             {!isLoading && catalog && (
               <>
-                <section className="space-y-2" aria-labelledby="strap-base-group-label">
-                  <Label id="strap-base-group-label">Napa-base da referência *</Label>
-                  <Select value={baseGroupId || undefined} onValueChange={setBaseGroupId} disabled={!canResolve}>
-                    <SelectTrigger aria-invalid={!!validationError && !isUuid(baseGroupId)}>
-                      <SelectValue placeholder="Selecione o grupo da napa-base" />
-                    </SelectTrigger>
-                    <SelectContent
-                      searchable
-                      searchPlaceholder="Buscar grupo de napa…"
-                      searchLabel="Localizar napa-base"
-                      searchEmptyText="Nenhum grupo encontrado."
-                    >
-                      {groups.map((group) => (
-                        <SelectItem key={group.id} value={group.id}>{group.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-xs text-muted-foreground">
-                    Uma única base será gravada para o contexto técnico desta referência.
-                  </p>
-                  {groups.length === 0 && (
-                    <Alert>
-                      <Warning className="h-4 w-4" />
-                      <AlertTitle>Nenhuma napa-base apta</AlertTitle>
-                      <AlertDescription>
-                        O Estoque precisa ter ao menos uma base com perfil de largura aprovado e produto oficial ativo.
-                      </AlertDescription>
-                    </Alert>
-                  )}
-                </section>
+                {missingFinishedGroupLines.length > 0 && (
+                  <Alert variant="destructive">
+                    <Warning className="h-4 w-4" />
+                    <AlertTitle>Grupo acabado ausente</AlertTitle>
+                    <AlertDescription className="space-y-2">
+                      <p>
+                        Vincule o grupo do produto acabado na ficha técnica. Esta correção não infere grupos por nome e só poderá ajustar as medidas depois desse vínculo.
+                      </p>
+                      <Button asChild type="button" variant="outline" size="sm">
+                        <a
+                          href={`/fichas-tecnicas?ref=${encodeURIComponent(referenceId)}&tab=range-aviamento`}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Abrir ficha técnica
+                        </a>
+                      </Button>
+                    </AlertDescription>
+                  </Alert>
+                )}
+
+                {requiresReferenceBase ? (
+                  <section className="space-y-2" aria-labelledby="strap-base-group-label">
+                    <Label id="strap-base-group-label">Napa-base da referência *</Label>
+                    <Select value={baseGroupId || undefined} onValueChange={setBaseGroupId} disabled={!canResolve}>
+                      <SelectTrigger aria-invalid={!!validationError && !isUuid(baseGroupId)}>
+                        <SelectValue placeholder="Selecione o grupo da napa-base" />
+                      </SelectTrigger>
+                      <SelectContent
+                        searchable
+                        searchPlaceholder="Buscar grupo de napa…"
+                        searchLabel="Localizar napa-base"
+                        searchEmptyText="Nenhum grupo encontrado."
+                      >
+                        {groups.map((group) => (
+                          <SelectItem key={group.id} value={group.id}>{group.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      A base vale somente para linhas com identidade pela referência. Linhas por grupo acabado não usam este campo.
+                    </p>
+                    {groups.length === 0 && (
+                      <Alert>
+                        <Warning className="h-4 w-4" />
+                        <AlertTitle>Nenhuma napa-base apta</AlertTitle>
+                        <AlertDescription>
+                          O Estoque precisa ter ao menos uma base com perfil de largura aprovado e produto oficial ativo.
+                        </AlertDescription>
+                      </Alert>
+                    )}
+                  </section>
+                ) : (
+                  <Alert className="border-primary/30 bg-primary/5">
+                    <ShoppingBag className="h-4 w-4 text-primary" />
+                    <AlertTitle>Compra pronta — napa-base não se aplica</AlertTitle>
+                    <AlertDescription>
+                      O estoque baixa o SKU acabado da cor escolhida. Nenhuma napa será reservada, debitada ou enviada para produção interna.
+                    </AlertDescription>
+                  </Alert>
+                )}
 
                 <section className="space-y-3" aria-labelledby="strap-measures-label">
                   <div className="flex items-center gap-2">
@@ -337,6 +407,13 @@ export default function StrapCatalogResolutionDrawer({
                           </div>
                           <Badge variant="outline">
                             {group.ordinals.length} ocorrência{group.ordinals.length === 1 ? '' : 's'}
+                          </Badge>
+                          <Badge variant={group.requiresReferenceBase ? 'secondary' : 'outline'}>
+                            {group.requiresReferenceBase && group.hasPurchasedReady
+                              ? 'Identidade mista'
+                              : group.requiresReferenceBase
+                                ? 'Base da referência'
+                                : 'Produto acabado'}
                           </Badge>
                         </div>
                         <Select
@@ -400,7 +477,7 @@ export default function StrapCatalogResolutionDrawer({
                 type="button"
                 className="gap-2"
                 onClick={handleResolve}
-                disabled={resolveContext.isPending || isLoading || !!catalogError}
+                disabled={resolveContext.isPending || isLoading || !!catalogError || missingFinishedGroupLines.length > 0}
               >
                 {resolveContext.isPending
                   ? <Loader2 className="h-4 w-4 animate-spin" />

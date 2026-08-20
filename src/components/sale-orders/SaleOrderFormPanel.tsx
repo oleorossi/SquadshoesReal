@@ -2000,6 +2000,7 @@ export default function SaleOrderFormPanel({
               )}
               <SaleOrderItemForm
                 saleOrderId={saleOrderId}
+                saleOrderStatus={form.status}
                 billingWeek={form.delivery_month && form.delivery_week
                   ? `${form.delivery_month}-${form.delivery_week}`
                   : null}

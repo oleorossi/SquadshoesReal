@@ -171,6 +171,7 @@ export function TechnicalSheetCardGrid({
                   <DeleteConfirmButton
                     onConfirm={() => onDeleteSheet(sheet.id)}
                     title={`Excluir ficha ${sheet.name}?`}
+                    description="A ficha e os materiais vinculados a ela serão removidos juntos. Ficha usada em OP ou pedido é recusada. Esta ação não pode ser desfeita."
                     size="h-11 w-11 sm:h-8 sm:w-8"
                     iconSize="h-3.5 w-3.5"
                   />

@@ -273,7 +273,7 @@ export interface ResolveTechnicalStrapContextLineInput {
 
 export interface ResolveTechnicalStrapContextInput {
   p_reference_id: string;
-  p_base_group_id: string;
+  p_base_group_id: string | null;
   p_lines: ResolveTechnicalStrapContextLineInput[];
   p_reason: string;
   p_expected_updated_at: string;
@@ -2205,9 +2205,10 @@ export function useResolveTechnicalStrapLineMigration() {
 }
 
 /**
- * Corrige, em uma única operação auditável, a napa-base da referência e a
- * medida canônica de cada linha técnica. O retorno é o novo snapshot que o PV
- * deve adotar imediatamente, sem exigir que o vendedor saia do pedido.
+ * Corrige, em uma única operação auditável, a medida canônica de cada linha e,
+ * quando alguma usa identidade `reference_base`, a napa-base da referência.
+ * O retorno atualiza itens novos/rascunhos; pedidos já comprometidos preservam
+ * seu snapshot operacional e usam a ficha corrigida somente como contexto.
  */
 export function useResolveTechnicalStrapContext() {
   const queryClient = useQueryClient();
@@ -2239,7 +2240,7 @@ export function useResolveTechnicalStrapContext() {
       queryClient.invalidateQueries({ queryKey: ['product_groups_colors'] });
       queryClient.invalidateQueries({ queryKey: ['technical-sheets'] });
       queryClient.invalidateQueries({ queryKey: ['technical_sheets'] });
-      toast.success('Contexto das tiras corrigido no estoque e aplicado ao pedido.');
+      toast.success('Ficha técnica corrigida. Snapshots de pedidos já comprometidos foram preservados.');
     },
     onError: (error: unknown) => {
       if (error && typeof error === 'object') {

@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef, memo } from 'react';
+import { Link } from 'react-router-dom';
 import { NumberInput } from '@/components/ui/number-input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
@@ -43,7 +44,6 @@ import {
 import { ArtisanalStrapEditor } from '@/components/artisanal-straps/ArtisanalStrapEditor';
 import { listBuyReadyStrapGaps, type BuyReadyStrapGap } from '@/lib/buyReadyStrapGap';
 import {
-  ensureTechnicalStrapLineIds,
   isUuid,
   technicalStrapLineId,
 } from '@/lib/technicalStrapLines';
@@ -85,6 +85,7 @@ interface SaleOrderStrapResolutionLine extends StrapCatalogResolutionLine {
 }
 
 type SaleOrderItemStrap = NonNullable<SaleOrderItemFormData['strap_colors']>[number];
+type SaleOrderStrapPresentationLine = SaleOrderStrapResolutionLine & SaleOrderItemStrap;
 
 interface Props {
   item: SaleOrderItemFormData;
@@ -111,6 +112,8 @@ interface Props {
   onColorIssueChange?: (index: number, info: { color: string; materials: string[]; message?: string } | null) => void;
   /** Contexto do cronograma usado pelo preview canônico das tiras. */
   saleOrderId?: string | null;
+  /** Status canônico do PV. Aprovado/Em Produção congelam o snapshot operacional. */
+  saleOrderStatus?: string | null;
   billingWeek?: string | null;
   requiredAt?: string | null;
 }
@@ -134,7 +137,7 @@ const formatCurrency = (v: number) =>
 const EMPTY_VARIANTS_BY_REF = new Map<string, readonly ReferenceMaterialVariant[]>();
 const EMPTY_STRAP_SOURCING_MAP = Object.freeze({}) as StrapSourcingMap;
 
-function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, onUpdate, onRemove, onCopyGradeFromPrevious, onSaveStateAndNavigate, isSelected, onToggleSelect, priceLookup, maxDiscountPct = 0, variantsByRef = EMPTY_VARIANTS_BY_REF, onColorIssueChange, saleOrderId, billingWeek, requiredAt }: Props) {
+function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, onUpdate, onRemove, onCopyGradeFromPrevious, onSaveStateAndNavigate, isSelected, onToggleSelect, priceLookup, maxDiscountPct = 0, variantsByRef = EMPTY_VARIANTS_BY_REF, onColorIssueChange, saleOrderId, saleOrderStatus, billingWeek, requiredAt }: Props) {
   const qc = useQueryClient();
   const { canSeeFinancialValues } = useAccessControl();
   const { data: strapCatalog, isLoading: strapCatalogLoading } = useArtisanalStrapCatalog(false);
@@ -195,6 +198,10 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
   // re-running the sync whenever the query cache refreshes strap_colors for the
   // same reference (which would restore straps the user intentionally removed).
   const strapSyncedForRef = useRef<string>('');
+  // Um item comprometido (Aprovado/Em Produção) pode ter demanda/reserva
+  // congelada por identidade legada. A primeira hidratação nunca reescreve esse
+  // snapshot; rascunhos continuam corrigíveis pelo fluxo normal.
+  const preservedCommittedStrapItemId = useRef<string | null>(null);
   const previousStrapMaterialVariantRef = useRef({
     initialized: false,
     value: null as string | null,
@@ -212,6 +219,58 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
 
   const grade = item.grade as Record<string, number>;
   const selectedRef = references.find(r => r.id === item.reference_id);
+  const referenceStrapDefinitions = useMemo(
+    () => Array.isArray(selectedRef?.strap_colors)
+      ? selectedRef.strap_colors as SaleOrderStrapResolutionLine[]
+      : [],
+    [selectedRef?.strap_colors],
+  );
+  const preserveCommittedStrapSnapshot = !!item.id
+    && (saleOrderStatus === 'Aprovado' || saleOrderStatus === 'Em Produção');
+  const strapPresentationDefinitions = useMemo(() => {
+    const snapshots = Array.isArray(item.strap_colors)
+      ? item.strap_colors as SaleOrderStrapPresentationLine[]
+      : [];
+    if (referenceStrapDefinitions.length === 0) return snapshots;
+
+    // Somente apresentação/preview: a ficha publicada fornece identidade e
+    // medida; cor e demais escolhas históricas continuam vindo do item. UUID
+    // canônico nunca casa por ordinal com outro UUID — o fallback ordinal vale
+    // exclusivamente para snapshots legados sem identidade estável.
+    return snapshots.map((snapshot, ordinal) => {
+      const snapshotLineId = technicalStrapLineId(snapshot);
+      const exactReference = snapshotLineId
+        ? referenceStrapDefinitions.find(
+          (reference) => technicalStrapLineId(reference) === snapshotLineId,
+        )
+        : null;
+      const ordinalReference = referenceStrapDefinitions[ordinal];
+      const reference = exactReference
+        || (!snapshotLineId ? ordinalReference : null);
+      if (!reference) return snapshot;
+
+      const referenceLineId = technicalStrapLineId(reference);
+      return {
+        ...snapshot,
+        id: referenceLineId || snapshot.id,
+        technical_strap_line_id: referenceLineId || snapshot.technical_strap_line_id,
+        label: reference.label || snapshot.label,
+        strap_type_id: reference.strap_type_id || null,
+        measure_id: reference.measure_id || null,
+        identity_basis: strapIdentityBasis(reference),
+        identity_group_id: reference.identity_group_id || null,
+        internal_production_enabled: reference.internal_production_enabled ?? null,
+        group_id: reference.group_id || null,
+        group_name: reference.group_name || null,
+        consumption: (reference as SaleOrderItemStrap).consumption ?? snapshot.consumption,
+        consumption_per_size: (reference as SaleOrderItemStrap).consumption_per_size
+          ?? snapshot.consumption_per_size,
+        // Escolhas do PV nunca vêm da ficha.
+        color: snapshot.color,
+        color_id: snapshot.color_id || null,
+      } as SaleOrderStrapPresentationLine;
+    });
+  }, [item.strap_colors, referenceStrapDefinitions]);
 
   const gradeTotal = Object.values(grade).reduce((s, v) => s + (v || 0), 0);
   const totalPairs = gradeTotal * fichas;
@@ -548,7 +607,9 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
       referenceId: item.reference_id,
       materialVariantId: item.material_variant_id,
       itemColor: item.color,
-      strapColors: item.strap_colors,
+      // A projeção pode usar a estrutura atual da ficha para explicar o
+      // cadastro, sem reescrever o snapshot persistido do item.
+      strapColors: strapPresentationDefinitions,
       strapSourcing: strapSourcingMap,
       quantity: item.quantity,
       grade: item.grade,
@@ -591,16 +652,30 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
   );
   const strapStructuralContext = useMemo(() => {
     if (modelHasCabedal) {
-      return { hasIssue: false, issueCount: 0, suggestedBaseGroupId: null as string | null };
+      return {
+        hasIssue: false,
+        issueCount: 0,
+        suggestedBaseGroupId: null as string | null,
+        requiresReferenceBase: false,
+        hasPurchasedReady: false,
+      };
     }
-    const straps = (item.strap_colors as SaleOrderStrapResolutionLine[]) || [];
+    // A ficha publicada é a autoridade estrutural. O snapshot do item conserva
+    // somente escolhas comerciais (como cor) e pode ser legado/incompleto.
+    const straps = referenceStrapDefinitions;
     let issueCount = 0;
     const resolvedBaseGroups = new Set<string>();
+    let requiresReferenceBase = false;
+    let hasPurchasedReady = false;
     straps.forEach((strap) => {
       const lineId = technicalStrapLineId(strap);
       const resolvedLine = lineId ? strapLineByKey.get(lineId) : undefined;
       const resolvedBaseGroupId = resolvedLine?.baseGroupId;
-      const usesFinishedGroup = strapIdentityBasis(strap) === 'finished_product_group';
+      const identityBasis = strapIdentityBasis(strap);
+      const usesReferenceBase = identityBasis === 'reference_base';
+      const usesFinishedGroup = identityBasis === 'finished_product_group';
+      requiresReferenceBase ||= usesReferenceBase;
+      hasPurchasedReady ||= usesFinishedGroup;
       const identityGroupResolved = usesFinishedGroup
         ? isUuid(strap.identity_group_id)
         : isUuid(resolvedBaseGroupId);
@@ -611,7 +686,9 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
         && !!canonicalMeasure
         && canonicalMeasure.strap_type_id === strap.strap_type_id;
       const canonicalIdsMissing = !isUuid(strap.measure_id) || !isUuid(strap.strap_type_id);
-      if (isUuid(resolvedBaseGroupId)) resolvedBaseGroups.add(resolvedBaseGroupId);
+      if (!usesFinishedGroup && isUuid(resolvedBaseGroupId)) {
+        resolvedBaseGroups.add(resolvedBaseGroupId);
+      }
       // Enquanto o preview carrega, só a ausência já conhecida da medida abre
       // a pendência; isso evita piscar o CTA em fichas canônicas.
       if (canonicalIdsMissing
@@ -624,10 +701,12 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
       suggestedBaseGroupId: resolvedBaseGroups.size === 1
         ? Array.from(resolvedBaseGroups)[0]
         : null,
+      requiresReferenceBase,
+      hasPurchasedReady,
     };
   }, [
-    item.strap_colors,
     modelHasCabedal,
+    referenceStrapDefinitions,
     strapCatalog?.measures,
     strapCatalogLoading,
     strapLineByKey,
@@ -662,6 +741,9 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
   // A linha técnica por grupo acabado não oferece uma decisão de origem: assim
   // que cor e variante canônicas resolvem, congela buy_ready no snapshot do PV.
   useEffect(() => {
+    // Origem histórica comprometida só muda no writer após edição explícita;
+    // hidratar a tela não pode criar demanda/reserva nova.
+    if (preserveCommittedStrapSnapshot) return;
     const fixed = (item.strap_colors || [])
       .filter((strap) => isPurchasedReadyStrap(strap));
     if (fixed.length === 0) return;
@@ -690,7 +772,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
       changed = true;
     });
     if (changed) latestRef.current.onUpdate(latestRef.current.index, 'strap_sourcing', next);
-  }, [item.strap_colors, strapLineByKey, strapSourcingMap]);
+  }, [item.strap_colors, preserveCommittedStrapSnapshot, strapLineByKey, strapSourcingMap]);
 
   const availableColors: string[] = useMemo(() => {
     // Variante selecionada: a cor vem EXCLUSIVAMENTE do grupo efetivo que o
@@ -740,12 +822,12 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
   const hasStrapsEffective = useMemo(() => {
     if (modelHasCabedal) return false; // cabedal presente → não é modelo de tiras (MUTEX)
     const itemStraps = Array.isArray(item.strap_colors) ? (item.strap_colors as any[]) : [];
-    const refStrapDefs = Array.isArray(selectedRef?.strap_colors) ? selectedRef!.strap_colors : [];
+    const refStrapDefs = referenceStrapDefinitions;
     return itemStraps.length > 0 || !!selectedRef?.has_straps || refStrapDefs.length > 0;
-  }, [item.strap_colors, selectedRef?.has_straps, selectedRef?.strap_colors, modelHasCabedal]);
+  }, [item.strap_colors, modelHasCabedal, referenceStrapDefinitions, selectedRef?.has_straps]);
   const strapSnapshotMissing = hasStrapsEffective
     && (!Array.isArray(item.strap_colors) || item.strap_colors.length === 0);
-  const hasReferenceBaseStraps = ((item.strap_colors as SaleOrderItemStrap[]) || []).some(
+  const hasReferenceBaseStraps = strapPresentationDefinitions.some(
     (strap) => strapIdentityBasis(strap) === 'reference_base',
   );
   const strapCanonicalMainMissing = hasReferenceBaseStraps
@@ -835,44 +917,63 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     // tem tiras (independente do flag has_straps).
     const refStrapDefs = Array.isArray(selectedRef?.strap_colors) ? selectedRef!.strap_colors : [];
     const refHasStrapsEffective = (!!selectedRef?.has_straps || refStrapDefs.length > 0) && !modelHasCabedal;
+    if (preserveCommittedStrapSnapshot
+        && item.id
+        && preservedCommittedStrapItemId.current !== item.id) {
+      preservedCommittedStrapItemId.current = item.id;
+      strapSyncedForRef.current = refIdForStraps;
+      return;
+    }
     if (strapSyncedForRef.current !== refIdForStraps) {
       strapSyncedForRef.current = refIdForStraps;
 
       if (refHasStrapsEffective && refStrapDefs.length > 0 && currentStraps.length === 0) {
-        const stableDefinitions = ensureTechnicalStrapLineIds(refStrapDefs as any[]);
-        const straps = stableDefinitions.map((s: any) => ({
-          id: s.technical_strap_line_id,
-          technical_strap_line_id: s.technical_strap_line_id,
-          label: s.label || 'TIRA',
-          color: '',
-          strap_type_id: s.strap_type_id || null,
-          measure_id: s.measure_id || null,
-          identity_basis: s.identity_basis || 'reference_base',
-          identity_group_id: s.identity_group_id || null,
-          group_id: s.group_id || '',
-          group_name: s.group_name || '',
-          consumption: s.consumption || 0,
-          consumption_per_size: s.consumption_per_size || {},
-        }));
+        const straps = refStrapDefs.map((s: any) => {
+          const lineId = technicalStrapLineId(s);
+          return {
+            id: lineId || s.id || null,
+            technical_strap_line_id: lineId,
+            label: s.label || 'TIRA',
+            color: '',
+            strap_type_id: s.strap_type_id || null,
+            measure_id: s.measure_id || null,
+            identity_basis: s.identity_basis || 'reference_base',
+            identity_group_id: s.identity_group_id || null,
+            internal_production_enabled: s.internal_production_enabled ?? null,
+            group_id: s.group_id || '',
+            group_name: s.group_name || '',
+            consumption: s.consumption || 0,
+            consumption_per_size: s.consumption_per_size || {},
+          };
+        });
         update(idx, 'strap_colors', straps);
       } else if (refHasStrapsEffective && refStrapDefs.length > 0 && currentStraps.length > 0) {
         // Sync structure with current reference definition (straps added/removed in sheet)
-        // but preserve colors the user already selected.
-        const stableDefinitions = ensureTechnicalStrapLineIds(refStrapDefs as any[]);
-        const refStrapIds = new Set(stableDefinitions.map((s: any) => s.technical_strap_line_id));
-        const updatedStraps = stableDefinitions.map((refStrap: any) => {
-          const lineId = refStrap.technical_strap_line_id;
-          const existing = currentStraps.find((s) => technicalStrapLineId(s) === lineId);
+        // but preserve colors the user already selected. Snapshots legados sem
+        // UUID casam somente por ordinal; não geramos UUID local que a ficha não
+        // possua, pois ele seria persistido sem uma identidade server-side.
+        const refStrapIds = new Set(
+          refStrapDefs.map((strap) => technicalStrapLineId(strap)).filter(Boolean),
+        );
+        const updatedStraps = refStrapDefs.map((refStrap: any, ordinal: number) => {
+          const lineId = technicalStrapLineId(refStrap);
+          const existingByLineId = lineId
+            ? currentStraps.find((strap) => technicalStrapLineId(strap) === lineId)
+            : null;
+          const ordinalLegacy = currentStraps[ordinal];
+          const existing = existingByLineId
+            || (!technicalStrapLineId(ordinalLegacy) ? ordinalLegacy : null);
           return {
-            id: lineId,
+            id: lineId || refStrap.id || null,
             technical_strap_line_id: lineId,
             label: refStrap.label || 'TIRA',
             color: existing?.color || '',
-            color_id: existing?.color_id || null,
+            color_id: isUuid(existing?.color_id) ? existing.color_id : null,
             strap_type_id: refStrap.strap_type_id || null,
             measure_id: refStrap.measure_id || null,
             identity_basis: refStrap.identity_basis || 'reference_base',
             identity_group_id: refStrap.identity_group_id || null,
+            internal_production_enabled: refStrap.internal_production_enabled ?? null,
             group_id: refStrap.group_id || '',
             group_name: refStrap.group_name || '',
             consumption: refStrap.consumption || 0,
@@ -884,31 +985,45 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
         // ESTRUTURA (qtd/ids), então editar o material da tira na ficha (ex.:
         // 11mm→8mm) nunca chegava nos PVs já criados. A cor é sempre preservada
         // (o PV só escolhe cor; o material vem da ficha).
-        const materialChanged = updatedStraps.some((u: any) => {
-          const c = currentStraps.find((s) => technicalStrapLineId(s) === u.technical_strap_line_id);
+        const materialChanged = updatedStraps.some((u: any, ordinal: number) => {
+          const lineId = technicalStrapLineId(u);
+          const existingByLineId = lineId
+            ? currentStraps.find((strap) => technicalStrapLineId(strap) === lineId)
+            : null;
+          const ordinalLegacy = currentStraps[ordinal];
+          const c = existingByLineId
+            || (!technicalStrapLineId(ordinalLegacy) ? ordinalLegacy : null);
           if (!c) return true;
           return (c.group_id || '') !== (u.group_id || '')
             || (c.group_name || '') !== (u.group_name || '')
             || (c.identity_basis || 'reference_base') !== (u.identity_basis || 'reference_base')
             || (c.identity_group_id || '') !== (u.identity_group_id || '')
+            || (c.internal_production_enabled ?? null) !== (u.internal_production_enabled ?? null)
             || (c.label || '') !== (u.label || '')
             || Number(c.consumption || 0) !== Number(u.consumption || 0)
             || JSON.stringify(c.consumption_per_size || {}) !== JSON.stringify(u.consumption_per_size || {});
         });
         if (updatedStraps.length !== currentStraps.length
-            || !currentStraps.every((s) => refStrapIds.has(technicalStrapLineId(s)))
+            || !currentStraps.every((s) => {
+              const lineId = technicalStrapLineId(s);
+              return !lineId || refStrapIds.has(lineId);
+            })
             || materialChanged) {
           update(idx, 'strap_colors', updatedStraps);
           let nextSourcing = latestStrapSourcingMapRef.current;
           let sourcingChanged = false;
-          currentStraps.forEach((current) => {
+          currentStraps.forEach((current, ordinal) => {
             const lineId = technicalStrapLineId(current);
-            const updated = updatedStraps.find((strap) => technicalStrapLineId(strap) === lineId);
+            const updatedByLineId = lineId
+              ? updatedStraps.find((strap) => technicalStrapLineId(strap) === lineId)
+              : null;
+            const updated = updatedByLineId || (!lineId ? updatedStraps[ordinal] : null);
             const identityChanged = !updated
               || current.strap_type_id !== updated.strap_type_id
               || current.measure_id !== updated.measure_id
               || strapIdentityBasis(current) !== strapIdentityBasis(updated)
               || current.identity_group_id !== updated.identity_group_id
+              || current.internal_production_enabled !== updated.internal_production_enabled
               || current.group_id !== updated.group_id;
             if (!identityChanged || !getStrapSourcingSelection(nextSourcing, lineId)) return;
             nextSourcing = setStrapSourcing(nextSourcing, lineId, null);
@@ -918,7 +1033,15 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
         }
       }
     }
-  }, [item.reference_id, selectedRef?.id, selectedRef?.strap_colors]);
+  }, [
+    item.id,
+    item.reference_id,
+    item.strap_colors,
+    modelHasCabedal,
+    preserveCommittedStrapSnapshot,
+    referenceStrapDefinitions,
+    selectedRef,
+  ]);
 
   // Recalcula toda a cadeia comercial quando muda referência, material, cor,
   // quantidade/faixa ou tabela do cliente. Só substitui campo vazio ou o último
@@ -968,17 +1091,21 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
       update(idx, 'strap_colors', []);
       update(idx, 'strap_sourcing', {});
       update(idx, 'material_variant_id', null);
+      // A limpeza acima vence o update do efeito de sincronização neste render;
+      // libere a próxima passagem para materializar a estrutura da nova ficha.
+      strapSyncedForRef.current = '';
     }
     prevRefId.current = item.reference_id;
   }, [item.reference_id]);
 
   // Auto-select the only available material group when reference has exactly one.
   useEffect(() => {
+    if (preserveCommittedStrapSnapshot) return;
     if (activeMaterialVariants.length === 1 && !item.material_variant_id) {
       const { index: idx, onUpdate: update } = latestRef.current;
       update(idx, 'material_variant_id', activeMaterialVariants[0].id);
     }
-  }, [item.reference_id, activeMaterialVariants.length]);
+  }, [item.reference_id, activeMaterialVariants.length, preserveCommittedStrapSnapshot]);
 
   // Trocar o material do cabedal invalida somente a identidade das tiras que
   // dependem dele. A primeira hidratação preserva o fato histórico completo;
@@ -1034,20 +1161,27 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     const colorObservation = previousStrapMainColorRef.current;
     if (!item.color?.trim() || straps.length === 0 || !strapCatalog || strapCatalogLoading) return;
     const mainColorChanged = colorObservation.pendingChange;
+    // Abertura/refresh de PV comprometido é leitura: até snapshots legados ou
+    // incompletos permanecem congelados. Rascunho continua normalizável.
+    if (preserveCommittedStrapSnapshot && !mainColorChanged) {
+      colorObservation.pendingChange = false;
+      return;
+    }
 
     const targetColor = canonicalMainStrapColor?.name || item.color.trim();
     const targetColorId = canonicalMainStrapColor?.id || null;
     let nextSourcing = strapSourcingMap;
     let colorsChanged = false;
     let sourcingChanged = false;
-    const updated = straps.map((strap) => {
-      if (strapIdentityBasis(strap) !== 'reference_base') return strap;
+    const updated = straps.map((strap, ordinal) => {
+      const presentation = strapPresentationDefinitions[ordinal] || strap;
+      if (strapIdentityBasis(presentation) !== 'reference_base') return strap;
       const lineId = technicalStrapLineId(strap);
       const frozen = getStrapSourcingSelection(strapSourcingMap, lineId);
       const frozenSnapshotComplete = isCompleteStrapSourcingSelection(frozen)
         && (frozen.source_mode === 'buy_ready'
           || (isUuid(frozen.recipe_id) && isUuid(frozen.base_product_id)));
-      const preserveHistoricalIdentity = !!item.id
+      const preserveHistoricalIdentity = preserveCommittedStrapSnapshot
         && !mainColorChanged
         && isUuid(strap.color_id)
         && frozenSnapshotComplete
@@ -1074,8 +1208,10 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     item.color,
     item.id,
     item.strap_colors,
+    preserveCommittedStrapSnapshot,
     strapCatalog,
     strapCatalogLoading,
+    strapPresentationDefinitions,
     strapSourcingMap,
   ]);
 
@@ -1083,6 +1219,8 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
   // correspondência inequívoca já aprovada. Reference_base fica fora: sua
   // identidade é a cor principal e o writer atômico a materializa no save.
   useEffect(() => {
+    // Não normalize silenciosamente um snapshot histórico ao apenas abrir o PV.
+    if (preserveCommittedStrapSnapshot) return;
     if (!strapCatalog || strapLinesLoading) return;
     const straps = (item.strap_colors as any[]) || [];
     let changed = false;
@@ -1111,6 +1249,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
   }, [
     canonicalStrapColorByKey,
     item.strap_colors,
+    preserveCommittedStrapSnapshot,
     strapCatalog,
     strapLineByKey,
     strapLinesLoading,
@@ -1124,6 +1263,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
   // preservar override manual (forração/tiras podem ter cor própria) e não
   // quebrar o débito da forração por cor.
   useEffect(() => {
+    if (preserveCommittedStrapSnapshot && hasStrapsEffective) return;
     if (!variantCabedalColor) return;
     const current = (item.color || '').trim().toUpperCase();
     const shouldSync = hasStrapsEffective ? current === '' : current !== variantCabedalColor;
@@ -1131,7 +1271,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
       const { index: idx, onUpdate: update } = latestRef.current;
       update(idx, 'color', variantCabedalColor);
     }
-  }, [variantCabedalColor, hasStrapsEffective, item.color]);
+  }, [variantCabedalColor, hasStrapsEffective, item.color, preserveCommittedStrapSnapshot]);
 
   useEffect(() => {
     if (totalPairs !== item.quantity) {
@@ -1762,7 +1902,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
             Fallback: se o item já tem alguma tira com cor (edição de PV existente),
             sempre mostra. */}
         {(() => {
-          const straps = (item.strap_colors as any[]) || [];
+          const straps = strapPresentationDefinitions;
           if (straps.length === 0) return null;
           const anyStrapHasColor = straps.some((s: any) => !!s?.color);
           const principalDefined = !!item.color;
@@ -1779,7 +1919,13 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
           return null;
         })()}
         {(item.strap_colors as any[])?.length > 0 && (!!item.color || ((item.strap_colors as any[]) || []).some((s: any) => !!s?.color)) && (() => {
-          const straps = item.strap_colors as any[];
+          const straps = strapPresentationDefinitions;
+          const snapshotStraps = (item.strap_colors as SaleOrderItemStrap[]) || [];
+          const finishedGroupCount = straps.filter(
+            (strap) => strapIdentityBasis(strap) === 'finished_product_group',
+          ).length;
+          const hasOnlyFinishedGroups = finishedGroupCount === straps.length;
+          const hasMixedStrapIdentities = finishedGroupCount > 0 && !hasOnlyFinishedGroups;
 
           return (
             <div className="rounded-lg border border-border/60 overflow-hidden">
@@ -1788,13 +1934,21 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                   Cores das Tiras
                 </span>
                 <span className="text-xs text-muted-foreground">
-                  A tira artesanal segue o cabedal; produto acabado mantém cor própria.
+                  {hasOnlyFinishedGroups
+                    ? 'Produtos acabados mantêm cor própria e saem diretamente do estoque.'
+                    : hasMixedStrapIdentities
+                      ? 'Tiras internas seguem o cabedal; produtos acabados mantêm cor própria.'
+                      : 'As tiras por base da referência seguem a cor do cabedal.'}
                 </span>
               </div>
 
               <div className="px-3 py-2 border-b bg-muted/10">
                 <span className="text-xs text-muted-foreground">
-                  Ao salvar o pedido, o sistema prepara a tira interna e vincula sua baixa à napa do cabedal.
+                  {hasOnlyFinishedGroups
+                    ? 'Estas tiras são compradas prontas: o pedido baixa o SKU acabado da cor escolhida e não movimenta napa-base.'
+                    : hasMixedStrapIdentities
+                      ? 'O pedido prepara apenas as tiras internas com napa; as compradas prontas baixam o SKU acabado.'
+                      : 'Ao salvar, o sistema resolve estas tiras pela napa-base da referência e pela origem configurada no catálogo.'}
                 </span>
               </div>
 
@@ -1807,11 +1961,24 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                         Contexto estrutural incompleto em {strapStructuralContext.issueCount} tira{strapStructuralContext.issueCount === 1 ? '' : 's'}
                       </p>
                       <p className="text-xs leading-snug text-muted-foreground">
-                        Vincule a napa-base e as medidas canônicas da ficha para permitir a preparação automática.
+                        {strapStructuralContext.requiresReferenceBase
+                          ? strapStructuralContext.hasPurchasedReady
+                            ? 'Vincule a napa-base às linhas que seguem a referência e confirme as medidas e grupos acabados das demais.'
+                            : 'Vincule a napa-base e as medidas canônicas das linhas que seguem a referência.'
+                          : 'Vincule as medidas e os grupos acabados das tiras compradas. Napa-base não se aplica.'}
                       </p>
                     </div>
                   </div>
-                  {strapCatalogLoading ? (
+                  {preserveCommittedStrapSnapshot ? (
+                    <div className="flex shrink-0 flex-col items-start gap-1 sm:items-end">
+                      <span className="max-w-xs text-xs font-medium text-muted-foreground sm:text-right">
+                        Este pedido já está comprometido. Corrija a ficha para os próximos pedidos; o snapshot atual permanecerá histórico.
+                      </span>
+                      <ReferenceLink referenceId={item.reference_id} newTab className="text-xs font-semibold">
+                        Abrir ficha técnica
+                      </ReferenceLink>
+                    </div>
+                  ) : strapCatalogLoading ? (
                     <span className="shrink-0 text-xs text-muted-foreground">Verificando permissão…</span>
                   ) : strapCatalog?.capabilities.resolve_strap_migration ? (
                     <Button
@@ -1833,10 +2000,19 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
 
               <div className="p-3 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                 {straps.map((strap: any, sIdx: number) => {
+                  const snapshotStrap = snapshotStraps[sIdx];
                   const lineId = technicalStrapLineId(strap);
                   const resolvedLine = lineId ? strapLineByKey.get(lineId) : undefined;
                   const purchasedReady = isPurchasedReadyStrap(strap);
                   const usesFinishedGroup = strapIdentityBasis(strap) === 'finished_product_group';
+                  const persistedLegacySnapshot = preserveCommittedStrapSnapshot && !!snapshotStrap && (
+                    !technicalStrapLineId(snapshotStrap)
+                    || !isUuid(snapshotStrap.strap_type_id)
+                    || !isUuid(snapshotStrap.measure_id)
+                    || strapIdentityBasis(snapshotStrap) !== strapIdentityBasis(strap)
+                    || (usesFinishedGroup
+                      && snapshotStrap.identity_group_id !== strap.identity_group_id)
+                  );
                   const identityColors = strapColorsForIdentity(
                     strapCatalog,
                     strap,
@@ -1857,30 +2033,52 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                   const measureResolved = isUuid(strap.strap_type_id)
                     && !!canonicalMeasure
                     && canonicalMeasure.strap_type_id === strap.strap_type_id;
-                  const buyReadyGap = lineId ? buyReadyGapByLineId.get(lineId) : undefined;
+                  const buyReadyCatalogIncomplete = usesFinishedGroup
+                    && identityGroupResolved
+                    && measureResolved
+                    && isUuid(strap.color_id)
+                    && !strapLinesLoading
+                    && !!resolvedLine
+                    && (!resolvedLine.strapVariantId || !resolvedLine.canBuyReady);
+                  const hasBuyReadyVariant = isUuid(resolvedLine?.strapVariantId);
+                  const buyReadyCatalogHref = hasBuyReadyVariant
+                    ? `/tiras-artesanais?tab=cadastro&editor=1&mode=review&origin=pv&purpose=stock_variant&variantId=${encodeURIComponent(resolvedLine.strapVariantId)}`
+                    : '/tiras-artesanais?tab=diagnostico';
+                  const canManageBuyReadyCatalog = strapCatalog?.capabilities.manage_strap_catalog === true;
                   return (
                     <div key={strap.id || sIdx} className="space-y-1">
                       <div className="flex items-center justify-between gap-1">
                         <span className="text-xs font-bold text-muted-foreground uppercase truncate">{strap.label || `Tira ${sIdx + 1}`}</span>
                         {strap.group_name && <span className="text-xs text-muted-foreground opacity-70 truncate max-w-[80px]">({strap.group_name})</span>}
                       </div>
-                      {usesFinishedGroup ? (
+                      {usesFinishedGroup ? persistedLegacySnapshot ? (
+                        <div className="flex h-9 items-center justify-between gap-2 rounded-md border border-border/60 bg-muted/30 px-3 text-sm">
+                          <span className="truncate font-medium">
+                            {strap.color || 'Cor histórica não informada'}
+                          </span>
+                          <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                            histórico
+                          </span>
+                        </div>
+                      ) : (
                         <Select
                           value={strap.color_id || undefined}
                           disabled={!item.reference_id || !strapCatalog || strapLinesLoading || !identityGroupResolved || !measureResolved}
                           onValueChange={(colorId) => {
                             const canonical = identityColors.find((entry) => entry.id === colorId);
                             if (!canonical) return;
-                            const updated = [...straps];
+                            const updated = [...snapshotStraps];
+                            const snapshot = updated[sIdx];
+                            if (!snapshot) return;
                             updated[sIdx] = {
-                              ...updated[sIdx],
+                              ...snapshot,
                               color_id: canonical.id,
                               color: canonical.name,
                             };
                             onUpdate(index, 'strap_colors', updated);
                             onUpdate(index, 'strap_sourcing', setStrapSourcing(
                               strapSourcingMap,
-                              technicalStrapLineId(strap),
+                              technicalStrapLineId(snapshot),
                               null,
                             ));
                           }}
@@ -1932,44 +2130,38 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                             : 'A cor atual não possui napa oficial ativa nesta base. Escolha uma opção válida.'}
                         </p>
                       )}
-                      {usesFinishedGroup && !strap.color_id && strap.color && (
+                      {usesFinishedGroup && !persistedLegacySnapshot && !strap.color_id && strap.color && (
                         <p className="text-xs leading-tight text-amber-700 dark:text-amber-400">
                           A cor antiga é apenas texto. Selecione a identidade canônica para continuar.
                         </p>
                       )}
-                      {/* Tira comprada pronta sem variante comercial ativa: é o
-                          bloqueio exato do salvamento. O CTA cadastra SÓ esta
-                          medida/cor — não a lista inteira de tiras do hub. */}
-                      {!!buyReadyGap && (
-                        <div className="rounded-md border border-amber-500/50 bg-amber-500/10 px-2 py-1.5 space-y-1.5">
-                          <p className="text-[10px] leading-snug text-amber-700 dark:text-amber-400">
-                            <strong>Sem cadastro comercial.</strong> Esta tira é comprada pronta e
-                            precisa de uma variante ativa em{' '}
-                            <strong>{buyReadyGap.colorName || 'sua cor canônica'}</strong>
-                            {buyReadyGap.finishedProductName
-                              ? <> ({buyReadyGap.finishedProductName})</>
-                              : null}
-                            . Sem ela o pedido não salva.
-                          </p>
-                          {!strapCatalog?.capabilities.manage_strap_catalog ? (
-                            <p className="text-[10px] font-medium text-muted-foreground">
-                              Solicite o cadastro ao administrador.
+                      {persistedLegacySnapshot && (
+                        <p className="text-xs leading-tight text-muted-foreground">
+                          Snapshot histórico preservado: a ficha atual identifica esta tira como produto acabado, mas cor e origem deste item ficam somente para leitura para não alterar reservas existentes.
+                        </p>
+                      )}
+                      {buyReadyCatalogIncomplete && (
+                        <div className="space-y-2 rounded-md border border-amber-500/50 bg-amber-500/10 px-2.5 py-2">
+                          <div className="space-y-0.5">
+                            <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">
+                              Cadastro da compra pronta incompleto
                             </p>
-                          ) : !buyReadyGap.finishedProductId ? (
-                            <p className="text-[10px] font-medium text-muted-foreground">
-                              Nenhum produto ativo em metros identifica essa cor no grupo acabado.
-                              Regularize o produto no Estoque antes de cadastrar a tira.
+                            <p className="text-[10px] leading-snug text-muted-foreground">
+                              {resolvedLine?.blockReason || 'Cadastre e ative a variante exata deste grupo, medida e cor.'}{' '}
+                              Esta tira baixa o SKU acabado e não usa napa-base.
                             </p>
-                          ) : (
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              className="h-7 w-full gap-1 border-amber-500/40 bg-card text-[10px] text-amber-700 dark:text-amber-400"
-                              onClick={() => setBuyReadyGapTarget(buyReadyGap)}
-                            >
-                              <Plus className="h-3 w-3" /> Cadastrar tira comprada
+                          </div>
+                          {canManageBuyReadyCatalog ? (
+                            <Button asChild type="button" variant="outline" size="sm" className="h-7 gap-1.5 px-2 text-[10px]">
+                              <Link to={buyReadyCatalogHref} target="_blank" rel="noreferrer">
+                                {hasBuyReadyVariant ? 'Revisar variante no Hub de Tiras' : 'Abrir diagnóstico no Hub de Tiras'}
+                                <ExternalLink className="h-3 w-3" />
+                              </Link>
                             </Button>
+                          ) : (
+                            <p className="text-[10px] font-medium text-muted-foreground">
+                              Solicite ao administrador completar o cadastro comercial.
+                            </p>
                           )}
                         </div>
                       )}
@@ -2001,7 +2193,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                             </div>
                             {!usesFinishedGroup && !effective ? (
                               <p className="text-[10px] leading-snug text-muted-foreground">
-                                A identidade exata da tira e a baixa da napa serão materializadas na mesma transação do salvamento.
+                                A identidade exata pela napa-base e a origem de estoque serão materializadas na mesma transação do salvamento.
                               </p>
                             ) : strapLinesLoading && !line ? (
                               <p className="text-[10px] leading-tight text-muted-foreground">Resolvendo material e consumo…</p>
@@ -2109,9 +2301,25 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
             ? `${selectedRef.code} · ${selectedRef.name}`
             : item.reference_id}
           referenceUpdatedAt={selectedRef?.updated_at}
-          lines={(item.strap_colors as SaleOrderStrapResolutionLine[]) || []}
+          lines={referenceStrapDefinitions}
           suggestedBaseGroupId={strapStructuralContext.suggestedBaseGroupId}
           onResolved={(strapColors) => {
+            const invalidateResolvedStrapCaches = () => {
+              qc.invalidateQueries({ queryKey: ['strap_stock_lines_preview'] });
+              qc.invalidateQueries({ queryKey: ['artisanal-strap-catalog'] });
+              qc.invalidateQueries({ queryKey: ['products'] });
+              qc.invalidateQueries({ queryKey: ['products_for_colors'] });
+              qc.invalidateQueries({ queryKey: ['group_supplier_materials_for_colors'] });
+              qc.invalidateQueries({ queryKey: ['product_groups_colors'] });
+            };
+            // Em item comprometido, o RPC corrige apenas a ficha. Alterar o
+            // snapshot local faria o próximo save preparar uma demanda nova e
+            // poderia tocar reservas históricas antes de encontrar um bloqueio
+            // comercial. Itens novos ainda adotam a estrutura resolvida.
+            if (preserveCommittedStrapSnapshot) {
+              invalidateResolvedStrapCaches();
+              return;
+            }
             const currentStraps = (item.strap_colors as Array<Record<string, unknown>>) || [];
             const currentByLineId = new Map(
               currentStraps
@@ -2125,7 +2333,10 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
               // Copiar a cor da ficha faria OFF WHITE vencer um pedido COGUMELO.
               ...(() => {
                 const lineId = technicalStrapLineId(resolved);
-                const current = (lineId ? currentByLineId.get(lineId) : null) || currentStraps[ordinal];
+                const currentById = lineId ? currentByLineId.get(lineId) : null;
+                const ordinalLegacy = currentStraps[ordinal];
+                const current = currentById
+                  || (!technicalStrapLineId(ordinalLegacy) ? ordinalLegacy : null);
                 const structureChanged = !!current && (
                   current.strap_type_id !== resolved.strap_type_id
                   || current.measure_id !== resolved.measure_id
@@ -2137,7 +2348,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                 }
                 return {
                   color: current?.color || '',
-                  color_id: current?.color_id || null,
+                  color_id: isUuid(current?.color_id) ? current.color_id : null,
                 };
               })(),
             }));
@@ -2145,12 +2356,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
             if (JSON.stringify(strapSourcingMap) !== JSON.stringify(nextSourcing)) {
               onUpdate(index, 'strap_sourcing', nextSourcing);
             }
-            qc.invalidateQueries({ queryKey: ['strap_stock_lines_preview'] });
-            qc.invalidateQueries({ queryKey: ['artisanal-strap-catalog'] });
-            qc.invalidateQueries({ queryKey: ['products'] });
-            qc.invalidateQueries({ queryKey: ['products_for_colors'] });
-            qc.invalidateQueries({ queryKey: ['group_supplier_materials_for_colors'] });
-            qc.invalidateQueries({ queryKey: ['product_groups_colors'] });
+            invalidateResolvedStrapCaches();
           }}
         />
       )}

@@ -32,16 +32,44 @@ import { useQuery } from '@tanstack/react-query';
  } from '@/hooks/useReferenceMaterialVariants';
  import { useProducts } from '@/hooks/useProducts';
  import { useGroups, type ProductGroup } from '@/hooks/useGroups';
- import { sectorOfGroup } from '@/lib/categoryFromGroup';
+ import { sectorLabel, sectorOfGroup } from '@/lib/categoryFromGroup';
  import { getGroupPath } from '@/lib/groupHierarchy';
  import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 
-// Setores (product_groups.sector) que alimentam cada seletor de grupo do dialog.
-// Espelham SECTOR_OPTIONS em categoryFromGroup.ts.
-const SECTOR_CABEDAL = 'Cabedal';
-const SECTOR_FORRO = 'Forração da Palmilha';
-const SECTOR_PALMILHA = 'Palmilha';
+/**
+ * Setores (`product_groups.sector`) cujos grupos são MATERIAL cortado por par —
+ * os elegíveis nos quatro seletores da variante. Solado fica de fora porque tem
+ * pin próprio (`sole_material_product_id`); embalagem, ferramenta, fôrma e
+ * químico não são cortados por par.
+ *
+ * ⚠ NÃO voltar a filtrar UM setor por seletor. `sector` diz onde o grupo mora no
+ * Estoque, não o que ele pode virar: a MESMA napa é cabedal, forração e palmilha
+ * conforme a ficha — é exatamente isso que `variant_drives_*` faz. Filtrar
+ * "Material principal" por 'Cabedal' escondia GLOW METALIC (setor 'Componente'),
+ * NAPA SOFT ('Palmilha') e NAPA SUDANI ('Forração da Palmilha') — os 3 materiais
+ * que respondem por TODAS as variantes ativas de hoje. Nenhuma delas podia ser
+ * cadastrada por esta tela; as que existem vieram de migration, e o dono via no
+ * PV só as referências que alguma migration alcançou. Os seletores da própria
+ * ficha (`sheetSelectors.GroupMaterialSelect`) nunca restringiram setor.
+ */
+export const VARIANT_MATERIAL_SECTORS = [
+  'Cabedal',
+  'Forração da Palmilha',
+  'Palmilha',
+  'Componente',
+] as const;
+
+/** Grupo elegível como material de uma variante. Setor vazio cai na dedução por
+ *  nome de `sectorOfGroup` (grupo legado sem backfill) — que devolve
+ *  'Componente' quando não reconhece nada, então grupo sem grupo nenhum
+ *  passaria: daí o guard de entrada vazia. */
+export function isVariantMaterialGroup(
+  group: { sector?: string | null; name?: string | null } | null | undefined,
+): boolean {
+  if (!group) return false;
+  return (VARIANT_MATERIAL_SECTORS as readonly string[]).includes(sectorOfGroup(group));
+}
 
 /** Sugere um sufixo de SKU a partir do nome do grupo (2 primeiras palavras,
  *  sem acento, MAIÚSCULO, só alfanumérico). Ex.: "NAPA SANTORINE" → "NAPASANTORINE". */
@@ -214,9 +242,9 @@ function GroupCombobox({
      return cobertos.has(key(alvo)) ? '' : alvo;
    }, [sheetMaterials, variants, groups]);
 
-   // Grupos por componente (Cabedal / Forro / Placa-EVA), filtrados pelo setor.
-   // Famílias/containers nunca são materiais: somente folhas entram nos quatro
-   // seletores da variante. O caminho preserva a orientação industrial na UI.
+   // Pool dos quatro seletores da variante. Famílias/containers nunca são
+   // materiais: somente folhas COM item ativo entram (sem SKU/cor no grupo o PV
+   // não tem o que resolver). O setor não filtra — ver VARIANT_MATERIAL_SECTORS.
    const parentGroupIds = useMemo(
      () => new Set(groups.map(group => group.parent_group_id).filter(Boolean) as string[]),
      [groups],
@@ -238,9 +266,7 @@ function GroupCombobox({
        };
      })
      .sort((a, b) => a.pathLabel.localeCompare(b.pathLabel, 'pt-BR')), [groups, parentGroupIds, activeProductGroupIds]);
-   const cabedalGroups  = useMemo(() => leafGroups.filter(g => sectorOfGroup(g) === SECTOR_CABEDAL), [leafGroups]);
-   const forroGroups    = useMemo(() => leafGroups.filter(g => sectorOfGroup(g) === SECTOR_FORRO), [leafGroups]);
-   const palmilhaGroups = useMemo(() => leafGroups.filter(g => sectorOfGroup(g) === SECTOR_PALMILHA), [leafGroups]);
+   const materialGroups = useMemo(() => leafGroups.filter(isVariantMaterialGroup), [leafGroups]);
 
    // Produto representativo de um grupo (1º ativo por nome) — fonte das sugestões
    // de SKU/NCM/preço e do resumo (cores) no seletor.
@@ -258,11 +284,15 @@ function GroupCombobox({
    const repProduct = (groupId?: string | null) => (groupId ? groupProducts.get(groupId)?.[0] : undefined);
    const groupColorCount = (groupId?: string | null) =>
      groupId ? new Set((groupProducts.get(groupId) ?? []).map(p => (p.color || '').trim()).filter(Boolean)).size : 0;
-   // Subtítulo do item no seletor: SKU do produto representativo + nº de cores.
+   // Subtítulo do item no seletor: setor onde o grupo mora no Estoque + SKU do
+   // produto representativo + nº de cores. O setor entrou aqui quando deixou de
+   // filtrar a lista: sem ele, dois grupos de nome parecido ficam indistinguíveis.
    const describeGroup = (groupId: string): string | null => {
      const rp = repProduct(groupId);
      const cc = groupColorCount(groupId);
+     const grp = groups.find(g => g.id === groupId);
      const parts = [
+       grp ? sectorLabel(sectorOfGroup(grp)) : null,
        (rp as any)?.sku ? `SKU ${(rp as any).sku}` : null,
        cc > 0 ? `${cc} cor${cc > 1 ? 'es' : ''}` : null,
      ].filter(Boolean) as string[];
@@ -426,7 +456,7 @@ function GroupCombobox({
    // par, e o `unit_price` do grupo é o custo por dm² da napa — foi assim que o
    // EC23 ficou com "R$ 0,8668" de preço.
    const handlePickMainGroup = (groupId: string | null) => {
-     const group = groupId ? cabedalGroups.find(g => g.id === groupId) : null;
+     const group = groupId ? materialGroups.find(g => g.id === groupId) : null;
      const rep = repProduct(groupId);
      setFormData(prev => ({
        ...prev,
@@ -800,7 +830,7 @@ function GroupCombobox({
                   <GroupCombobox
                     value={formData.main_material_group_id}
                     onChange={handlePickMainGroup}
-                    groups={cabedalGroups}
+                    groups={materialGroups}
                     allGroups={groups}
                     describe={describeGroup}
                     placeholder="Selecionar grupo de napa…"
@@ -835,7 +865,7 @@ function GroupCombobox({
                       <GroupCombobox
                         value={formData.upper_material_group_id}
                         onChange={handlePickCabedalGroup}
-                        groups={cabedalGroups}
+                        groups={materialGroups}
                         allGroups={groups}
                         describe={describeGroup}
                         placeholder="Segue o material principal"
@@ -849,7 +879,7 @@ function GroupCombobox({
                         <GroupCombobox
                           value={formData.lining_material_group_id}
                           onChange={handlePickLiningGroup}
-                          groups={forroGroups}
+                          groups={materialGroups}
                           allGroups={groups}
                           describe={describeGroup}
                           placeholder="Segue o material principal"
@@ -862,7 +892,7 @@ function GroupCombobox({
                         <GroupCombobox
                           value={formData.insole_material_group_id}
                           onChange={handlePickInsoleGroup}
-                          groups={palmilhaGroups}
+                          groups={materialGroups}
                           allGroups={groups}
                           describe={describeGroup}
                           placeholder="Segue o material principal"

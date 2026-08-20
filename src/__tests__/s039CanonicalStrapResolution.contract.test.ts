@@ -175,14 +175,15 @@ describe('S-039 — resolução canônica das tiras', () => {
     expect(itemForm).toContain('<StrapCatalogResolutionDrawer');
     expect(itemForm).toContain("onUpdate(index, 'strap_colors', resolvedWithItemColors)");
     expect(itemForm).toContain('const currentByLineId = new Map(');
-    expect(itemForm).toContain('color_id: current?.color_id || null');
+    expect(itemForm).toContain('color_id: isUuid(current?.color_id) ? current.color_id : null');
     expect(itemForm).toContain("nextSourcing = setStrapSourcing(nextSourcing, lineId, null)");
     expect(itemForm).toContain("onUpdate(index, 'strap_sourcing', nextSourcing)");
     expect(itemForm).not.toContain('Cadastrar todas');
 
     expect(drawer).toContain('<Sheet');
     expect(drawer).toContain('Corrigir contexto das tiras');
-    expect(drawer).toContain('Napa-base da referência');
+    expect(drawer).toContain('requiresReferenceBase');
+    expect(drawer).toMatch(/requiresReferenceBase\s*\?\s*\([\s\S]*Napa-base da referência/);
     expect(drawer).toContain('Medidas por linha técnica');
     expect(drawer).toContain('useResolveTechnicalStrapContext()');
     expect(drawer).toContain('.flatMap((group) => group.ordinals.map((ordinal) => ({');
@@ -196,7 +197,7 @@ describe('S-039 — resolução canônica das tiras', () => {
     expect(drawer).not.toContain('Cadastrar todas');
 
     expect(hooks).toContain("'resolve_technical_strap_context_from_sale_order'");
-    expect(hooks).toContain("toast.success('Contexto das tiras corrigido no estoque e aplicado ao pedido.')");
+    expect(hooks).toContain("toast.success('Ficha técnica corrigida. Snapshots de pedidos já comprometidos foram preservados.')");
   });
 
   it('mantém o editor de catálogo seguro fora do fluxo automático do PV', () => {
@@ -222,8 +223,8 @@ describe('S-039 — resolução canônica das tiras', () => {
     expect(itemForm).not.toContain("from './CreateStrapProductDialog'");
   });
 
-  it('materializa cor, variante e napa somente na transação atômica do save', () => {
-    expect(itemForm).toContain('A identidade exata da tira e a baixa da napa serão materializadas na mesma transação do salvamento.');
+  it('materializa cor, variante e origem somente na transação atômica do save', () => {
+    expect(itemForm).toContain('A identidade exata pela napa-base e a origem de estoque serão materializadas na mesma transação do salvamento.');
     expect(itemForm).toContain('Produção interna automática');
     expect(itemForm).not.toContain('usePrepareSaleOrderInternalStraps');
     expect(autoIntentMigration).toContain('public.prepare_sale_order_item_internal_straps(item.value - \'id\')');
@@ -240,7 +241,7 @@ describe('S-039 — resolução canônica das tiras', () => {
     expect(itemForm).toContain('const canonicalStrapColorByKey = useMemo(() => {');
     expect(itemForm).toContain("alias.status === 'approved'");
     expect(itemForm).toContain('if (ids.size !== 1) return');
-    expect(itemForm).toContain("if (strapIdentityBasis(strap) !== 'reference_base') return strap");
+    expect(itemForm).toContain("if (strapIdentityBasis(presentation) !== 'reference_base') return strap");
     expect(itemForm).toContain('const targetColor = canonicalMainStrapColor?.name || item.color.trim()');
     expect(itemForm).toContain('return { ...strap, color: targetColor, color_id: targetColorId }');
     expect(itemForm).toContain("if (strapIdentityBasis(strap) === 'reference_base') return strap");
@@ -254,7 +255,7 @@ describe('S-039 — resolução canônica das tiras', () => {
   });
 
   it('preserva snapshot histórico intocado e deriva as duas origens somente no servidor', () => {
-    expect(itemForm).toContain('const preserveHistoricalIdentity = !!item.id');
+    expect(itemForm).toContain('const preserveHistoricalIdentity = preserveCommittedStrapSnapshot');
     expect(itemForm).toContain('&& !mainColorChanged');
     expect(itemForm).toContain("frozen.source_mode === 'buy_ready'");
     expect(itemForm).toContain('isUuid(frozen.recipe_id) && isUuid(frozen.base_product_id)');
