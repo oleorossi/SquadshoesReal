@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils';
 import { adaptiveFontSize } from '@/lib/adaptiveFontSize';
 import { SECTOR_FLOW } from '@/lib/sectors';
 import { SizeBandTags, type SizeBand } from './InfantilTag';
+import { showsFlowRail, showsQr, type FichaModel } from './fichaModel';
 
 interface Props {
   /** Nome do setor pra título principal. */
@@ -41,6 +42,13 @@ interface Props {
   /** Faixa etária da ficha (por numeração: < 33 = infantil). Renderiza selo
    *  "INFANTIL" e/ou "ADULTO" no header. 'misto' mostra os dois. */
   sizeBand?: SizeBand;
+  /** Modelo de informação da ficha (ver `fichaModel.ts`). Default 'legacy':
+   *  header inalterado. 'lote'/'mao' tiram o trilho dos 11 setores e o índice
+   *  editorial; 'mao' tira também o QR. */
+  model?: FichaModel;
+  /** Faixa de rastreio (OP · PV · cliente · entrega) do modelo 'lote'.
+   *  Renderiza logo abaixo do hero. Ignorada quando ausente. */
+  trace?: React.ReactNode;
 }
 
 /** Trilho do fluxo (11 setores canônicos) — wayfinding no topo da ficha.
@@ -115,6 +123,7 @@ const FlowRail = ({ current }: { current: number }) => (
 export const WorksheetHeader = ({
   sector, flowSector, icon: Icon,
   imageSlot, identification, qrLabel, qrValue, alerts, index, lotInfo, sizeBand,
+  model = 'legacy', trace,
 }: Props) => {
   const editorialIndex = index || `01 / ${sector.toUpperCase()}`;
   // Passo do fluxo (1–11) pro trilho.
@@ -186,15 +195,22 @@ export const WorksheetHeader = ({
       </div>
 
       {/* Editorial index strip — batch ID + data removidos em 2026-06-12
-          (pedido do dono: informação desnecessária na ficha). */}
-      <div className="flex items-baseline justify-between mb-0.5 gap-3">
-        <span className="section-label" style={{ color: '#000', fontFamily: "'Fira Sans', sans-serif" }}>
-          {editorialIndex}
-        </span>
-      </div>
+          (pedido do dono: informação desnecessária na ficha). Sai inteiro nos
+          modelos 'lote'/'mao' (rodada 1 do redesenho, 20/08/2026): o operador
+          não age sobre "OP 08 / MONTAGEM", e o nome do setor já está na barra
+          logo acima, em Anton grande. */}
+      {showsFlowRail(model) && (
+        <div className="flex items-baseline justify-between mb-0.5 gap-3">
+          <span className="section-label" style={{ color: '#000', fontFamily: "'Fira Sans', sans-serif" }}>
+            {editorialIndex}
+          </span>
+        </div>
+      )}
 
-      {/* Trilho do fluxo (exemplo 1 da melhoria estética 2026-06-30) */}
-      {hasFlow && <FlowRail current={flowStep} />}
+      {/* Trilho do fluxo (exemplo 1 da melhoria estética 2026-06-30). Também
+          sai nos modelos 'lote'/'mao' — a faixa de cor do setor no topo já
+          resolve o reconhecimento à distância. */}
+      {hasFlow && showsFlowRail(model) && <FlowRail current={flowStep} />}
 
       {/* Hero row — top hairline rules, no fills */}
       <div className="flex items-stretch gap-3 border-t border-b border-black py-1">
@@ -212,7 +228,9 @@ export const WorksheetHeader = ({
         </div>
 
         {/* QR — real escaneável (codifica o PV) quando `qrValue` é passado;
-            senão cai no glifo decorativo. Legenda embaixo NÃO trunca. */}
+            senão cai no glifo decorativo. Legenda embaixo NÃO trunca.
+            Sai no modelo 'mao': ali a ficha não responde "de quem é isso". */}
+        {showsQr(model) && (
         <div className="flex flex-col items-center justify-center shrink-0 border-l border-black pl-4">
           {qrValue ? (
             <div
@@ -244,7 +262,12 @@ export const WorksheetHeader = ({
             </span>
           )}
         </div>
+        )}
       </div>
+
+      {/* Rastreio do modelo 'lote' — OP · PV · cliente · entrega numa faixa
+          legível, em vez da linha mono de 9px truncada do sub-header. */}
+      {trace && <div className="mt-1 keep-together keep-with-next">{trace}</div>}
 
       {alerts && <div className="mt-1">{alerts}</div>}
     </div>

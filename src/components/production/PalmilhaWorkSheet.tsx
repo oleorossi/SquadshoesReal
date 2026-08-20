@@ -11,6 +11,8 @@ import { SectorAlerts, type SectorAlert } from './worksheet/SectorAlerts';
 import { CompletionFooter } from './worksheet/CompletionFooter';
 import { PaginatedSheet, type SheetBlock } from './worksheet/PaginatedSheet';
 import { formatOpNumber } from './worksheet/stageOrder';
+import { fichaModelFor } from './worksheet/fichaModel';
+import { TraceStrip } from './worksheet/TraceStrip';
 
 export interface PalmilhaGroup {
   soleName: string;
@@ -70,6 +72,9 @@ interface Props {
  * O Controle de Fichas (tally) renderiza SEMPRE (6º passe, 2026-06-12).
  */
 export const PalmilhaWorkSheet = ({ groups, allSizes, pairsPerCard = 12, sizeBand, sectorLabel }: Props) => {
+  // Modelo 'lote' (rodada 1, 20/08/2026). A chave e o setor CANONICO —
+  // a ficha se intitula "Corte de Placa de Fibra", mas o setor e 'Corte Palmilha'.
+  const model = fichaModelFor('Corte Palmilha');
   const grandTotal = groups.reduce((s, g) => s + g.totalPairs, 0);
   // Placas a cortar (saída deste setor). Mesma redação do "Consumo de
   // Materiais": valor com até 1 casa (61,3 placa(s)).
@@ -88,7 +93,13 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, pairsPerCard = 12, sizeBan
   const headerBlock = (
       <WorksheetHeader
         sector="Corte de Placa de Fibra"
-        flowSector="Corte Palmilha"
+        /* ⚠ O passo do fluxo se chama 'Corte Fibra' em SECTOR_FLOW — era
+           "Corte Palmilha" aqui, que dá indexOf === -1, e por isso esta
+           ficha NUNCA renderizou a faixa de cor do setor (mesmo defeito
+           de parse corrigido nas outras fichas em 31/07/2026). O nome do
+           SETOR no app segue sendo 'Corte Palmilha' (activeSectors,
+           includesSector, fichaModelFor); só o passo do trilho difere. */
+        flowSector="Corte Fibra"
         icon={Scissors}
         sizeBand={sizeBand}
         identification={(() => {
@@ -115,6 +126,14 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, pairsPerCard = 12, sizeBan
         qrValue={pvs.length ? pvs.join(',') : undefined}
         qrLabel={pvs.length === 1 ? pvs[0] : pvs.length > 1 ? `${pvs.length} PVs` : 'PLACA FIBRA'}
         index={`OP ${formatOpNumber('Corte Palmilha')} / CORTE DE PLACA DE FIBRA`}
+        model={model}
+        trace={model === 'lote' ? (
+          <TraceStrip
+            ops={Array.from(new Set(groups.flatMap(g => g.opNumbers || []).filter(Boolean)))}
+            pvNumbers={pvs}
+            clientNames={clientNames}
+          />
+        ) : undefined}
       />
   );
 
@@ -276,6 +295,11 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, pairsPerCard = 12, sizeBan
                             style={{ printColorAdjust: 'exact', WebkitPrintColorAdjust: 'exact' } as React.CSSProperties}
                           />
                         </div>
+                        {/* SEM a cor da sandalia: este setor agrupa SOMENTE por
+                            solado (docblock do componente) e a cor da palmilha e
+                            indiferente pro cortador. Exibi-la em vermelho fazia a
+                            faixa ler como agrupamento por cor — corrigido na
+                            rodada 1 do redesenho (20/08/2026). */}
                         <div className="text-center leading-tight">
                           <span
                             className="inline-block bg-black text-white font-bold px-1 py-0.5 rounded-sm uppercase"
@@ -283,11 +307,6 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, pairsPerCard = 12, sizeBan
                           >
                             {r.name || r.code || '—'}
                           </span>
-                          {r.color && (
-                            <div className="font-mono" style={{ fontSize: '7px', color: '#C00000', fontWeight: 800 }}>
-                              {r.color}
-                            </div>
-                          )}
                         </div>
                       </div>
                     ))}
