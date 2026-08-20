@@ -716,6 +716,59 @@ regra segura, **bloqueia o item** (`needsConfig`) em vez de gravar qtd errada. A
 adicionar unidade nova, atualizar `toCanonical` E `src/lib/materialConsumption.ts`
 (`LINEAR_UNITS`/`PLATE_UNITS`).
 
+## Tiras artesanais no PV — cadastro derivável vs. dado do dono (CANÔNICO, 20/08/2026)
+
+> `create_sale_order_atomic` chama `prepare_sale_order_item_internal_straps` →
+> `ensure_sale_order_internal_strap_intents` para **todo item, incondicionalmente e
+> antes de gravar qualquer linha**. Qualquer `RAISE` ali aborta o PV **inteiro**, e o
+> `onError` de `useSaleOrders.ts` joga a string crua do Postgres no toast
+> (`Erro: <mensagem>`), sem dizer qual dos itens travou.
+
+**A linha divisória.** O writer materializa sozinho o que o cadastro já determina; o que
+depende de julgamento do dono ele recusa, com mensagem que diz onde cadastrar.
+
+| Peça | Quem cria | Por quê |
+|---|---|---|
+| `base_material_width_profiles` (largura útil da napa) | **o writer**, via `ensure_base_material_width_profile` | o gatilho `tg_validate_base_material_official_product` só aceita perfil cuja largura seja **exatamente** `strap_material_product_width_mm(SKU oficial)` — o único valor possível já está na ficha de componente. Materializar não é decidir. |
+| `base_material_color_official_products` (SKU oficial da cor) | **o writer**, quando há 1 candidato inequívoco | regra pré-existente ("SKU unico e inequivoco"); 0 ou 2 candidatos bloqueiam |
+| `artisanal_strap_recipes` (rendimento m/m, custo, executor) | **o dono**, no Hub de Tiras | `confirmed_yield_m_per_m` e `transformation_cost_per_m` são engenharia/comercial — não se deriva de nada |
+| `artisanal_strap_variants` de tira **comprada pronta** | **o dono**, pelo CTA "Cadastrar esta tira agora" | identidade comercial do SKU acabado |
+
+**O bug que originou a regra (mig `20270101006300`):** `20270101005800` criou a variante
+GLOW METALIC da SP120 sem provisionar o catálogo de tiras da napa nova. Só NAPA SUDANI e
+NAPA SOFT tinham perfil de largura, então o PV morria em
+`Base sem perfil de largura util vigente e aprovado` — um número (1370 mm) que o próprio
+banco já conhecia por `component_sheets.dimensions_width`.
+
+⚠ **`resolve_base_group_usable_width_mm` devolve NULL de propósito** quando os SKUs
+lineares ativos da família divergem ou algum não tem largura. NULL = "decida no cadastro",
+**nunca** "assuma um valor" — não coloque `LIMIT 1` nem default ali. Lembre que
+`products.dimensions_width` está com **1000** (largura↔comprimento invertidos) em GLOW
+METALIC / SANTORINE / SOFT / SUDANI: hoje sai certo porque a função lê `component_sheets`
+primeiro, mas apagar a ficha derruba a largura para 1000 sem aviso.
+
+⚠ `ensure_base_material_width_profile` **só insere quando não existe perfil vigente**.
+Trocar largura é outra coisa: continua sendo `approve_base_material_width_profile`, que
+supersede o anterior **e suspende todas as receitas aprovadas da família** (largura nova
+invalida a geometria). Não faça a função nova mexer em receita.
+
+**Aviso antes do save.** `diagnose_sale_order_internal_strap_readiness(reference, variant,
+cor)` espelha o writer em modo somente-leitura; `useInternalStrapReadiness` +
+`SaleOrderItemForm` mostram os gaps no card do item, com link pro Hub. Foi criada porque a
+linha `reference_base` de um PV novo **nunca** chegava a `blocked` na UI — o bloco de
+Origem exige `effective` (o `strap_sourcing` persistido), que só existe depois do save.
+
+⚠ **O writer é redefinido na `20270101006300` copiando o corpo da `05500` + 1 chamada.**
+`src/__tests__/napaBaseWidthProfileAutoProvision.contract.test.ts` compara os dois corpos
+byte a byte justamente porque os testes da `05500` leem o **arquivo antigo** e não
+perceberiam uma cópia que perdesse um lock, uma guarda ou um `RAISE`.
+
+⚠ **Pendências de cadastro que este fix NÃO resolve** (medidas em 20/08/2026, são dado do
+dono): não existe receita para OVERLOCK 5 mm × GLOW METALIC; NAPA SUDANI não tem SKU
+ROSADO; e `artisanal_strap_variants` tem **zero** linhas
+`identity_basis='finished_product_group'` — ou seja, nenhuma tira comprada pronta é
+salvável ainda (13 fichas dependem disso). Todas aparecem agora na tela antes do save.
+
 ## Regra de empacotamento em caixas (CANÔNICA, 05/08/2026)
 
 > Fonte: `src/lib/boxPacking.ts` (TS) e `packing_boxes_for_grade()` (SQL, migration

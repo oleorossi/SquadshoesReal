@@ -1,4 +1,4 @@
- import { useState, useMemo } from 'react';
+ import { useState, useMemo, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
   import { Plus, CircleNotch as Loader2, Package, Tag, Barcode, Trash as Trash2, DotsSixVertical as GripVertical, PencilSimple as Pencil, Check, X, ToggleLeft, ToggleRight, Hash, ShoppingCart, CurrencyDollar as DollarSign, Info, CaretUpDown as ChevronsUpDown, MagnifyingGlass as Search, Copy, CaretUp as ChevronUp, CaretDown as ChevronDown, Sparkle as Sparkles } from '@phosphor-icons/react';
  import { Button } from '@/components/ui/button';
@@ -86,12 +86,41 @@ function skuSlug(groupName: string): string {
   }
 
 /**
+ * Ajuda longa que NÃO ocupa altura no formulário. O texto continua o mesmo — só
+ * sai do fluxo vertical.
+ *
+ * ⚠ Motivo de existir: os 2 parágrafos fixos sob "Material principal" somavam
+ * ~490 caracteres (~96px) contra um controle de 38px, e empurravam metade do
+ * diálogo pra fora da dobra. Não voltar a soltar parágrafo longo no fluxo —
+ * uma linha curta fica visível e o resto vem pra cá.
+ */
+function HelpPopover({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-label={label}
+          className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-border text-muted-foreground transition-colors hover:border-primary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <Info className="h-3 w-3" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-[300px] text-xs leading-relaxed text-muted-foreground">
+        {children}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/**
  * Seletor de grupo de material (product_groups) com busca. Reusado para
  * Cabedal / Forro / Placa-EVA da palmilha. `allowInherit` mostra "Herda a ficha"
  * (limpa a seleção → o motor resolve pela ficha).
  */
 function GroupCombobox({
   value, onChange, groups, allGroups, describe, placeholder, allowInherit = false, ariaLabel,
+  triggerClassName, invalid = false, footerNote,
 }: {
   value: string | null | undefined;
   onChange: (id: string | null) => void;
@@ -101,6 +130,12 @@ function GroupCombobox({
   placeholder: string;
   allowInherit?: boolean;
   ariaLabel?: string;
+  /** Altura/tipografia do gatilho. O seletor de material principal usa um
+   *  controle maior — é o campo que define o que a variante É. */
+  triggerClassName?: string;
+  invalid?: boolean;
+  /** Rodapé fixo do popover (fora do `Command`, pra a busca não filtrá-lo). */
+  footerNote?: string;
 }) {
   const [open, setOpen] = useState(false);
   const selected = value ? groups.find(g => g.id === value) : null;
@@ -140,7 +175,11 @@ function GroupCombobox({
             role="combobox"
             aria-expanded={open}
             aria-label={ariaLabel}
-            className="w-full justify-between font-normal h-9 text-sm"
+            className={cn(
+              'w-full justify-between font-normal h-9 text-sm',
+              invalid && 'border-destructive text-destructive-foreground ring-1 ring-destructive/40',
+              triggerClassName,
+            )}
           >
             <span className={cn('truncate', !selected && !unavailableSelected && 'text-muted-foreground')}>
               {selected?.pathLabel
@@ -192,6 +231,11 @@ function GroupCombobox({
               ))}
             </CommandList>
           </Command>
+          {footerNote && (
+            <div className="border-t border-border/60 px-3 py-2 font-mono text-[10px] leading-relaxed text-muted-foreground">
+              {footerNote}
+            </div>
+          )}
         </PopoverContent>
       </Popover>
       {unavailableIsContainer && (
@@ -217,11 +261,17 @@ function GroupCombobox({
      queryFn: async () => {
        const { data, error } = await (supabase as any)
          .from('technical_sheets')
-         .select('upper_material, lining_material')
+         .select('upper_material, lining_material, variant_drives_upper, variant_drives_lining, variant_drives_fachete')
          .eq('id', sheetId)
          .maybeSingle();
        if (error) throw error;
-       return data as { upper_material: string | null; lining_material: string | null } | null;
+       return data as {
+         upper_material: string | null;
+         lining_material: string | null;
+         variant_drives_upper: boolean | null;
+         variant_drives_lining: boolean | null;
+         variant_drives_fachete: boolean | null;
+       } | null;
      },
      enabled: !!sheetId,
      staleTime: 60_000,
@@ -241,6 +291,34 @@ function GroupCombobox({
      );
      return cobertos.has(key(alvo)) ? '' : alvo;
    }, [sheetMaterials, variants, groups]);
+
+   /**
+    * Componentes que o MATERIAL PRINCIPAL substitui, lidos de `variant_drives_*`
+    * na ficha. Vira chip no diálogo: escolher o grupo passou a responder
+    * "cascateia pra onde?" em vez de deixar isso num parágrafo.
+    *
+    * ⚠ Não existe `variant_drives_insole` — a coluna foi DROPADA (ver
+    * `variantMainMaterial.contract.test.ts`). A placa/EVA da palmilha só muda
+    * pelo seletor de exceção, nunca pelo material principal. Não invente um
+    * chip "Palmilha" aqui.
+    */
+   const drivenComponents = useMemo(() => ([
+     { key: 'upper', label: 'Cabedal', on: !!sheetMaterials?.variant_drives_upper },
+     { key: 'lining', label: 'Forração', on: !!sheetMaterials?.variant_drives_lining },
+     { key: 'fachete', label: 'Fachete', on: !!sheetMaterials?.variant_drives_fachete },
+   ]), [sheetMaterials]);
+   /**
+    * Ficha que não liberou componente nenhum: o material principal não cascateia
+    * pra lugar algum e a variante vira rótulo com SKU próprio — o mesmo no-op
+    * silencioso que fez o PV-00141 (EC23) vender NAPA SOFT e debitar NAPA SUDANI.
+    *
+    * ⚠ NÃO tratar o aviso como barulho de default. Medido em 20/08/2026: das 57
+    * fichas, 29 têm alguma flag e 28 não têm nenhuma — e as 29 que possuem
+    * variante ativa são EXATAMENTE as 29 com flag (zero variante ativa em ficha
+    * sem flag). Ou seja, o aviso só aparece em ficha ainda não preparada, que é
+    * precisamente quando ele é verdadeiro e acionável.
+    */
+   const nenhumComponenteLiberado = drivenComponents.every(component => !component.on);
 
    // Pool dos quatro seletores da variante. Famílias/containers nunca são
    // materiais: somente folhas COM item ativo entram (sem SKU/cor no grupo o PV
@@ -331,6 +409,24 @@ function GroupCombobox({
       sole_material_product_id: null,
       sole_consumption_override: null,
     });
+
+  /**
+   * Campos reprovados por `handleSave`. O toast continua — mas ele some em
+   * segundos e não diz QUAL campo, então o usuário voltava ao formulário sem
+   * saber onde corrigir. A marca fica até ele mexer no campo.
+   */
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const clearFieldError = (field: string) => setFieldErrors(prev => {
+    if (!prev[field]) return prev;
+    const next = { ...prev };
+    delete next[field];
+    return next;
+  });
+  /** Marca o campo E dispara o toast (o toast nunca deixa de existir). */
+  const failField = (field: string, inline: string, toastMessage: string, description?: string) => {
+    setFieldErrors({ [field]: inline });
+    toast.error(toastMessage, description ? { description } : undefined);
+  };
 
   const [suggestingNcm, setSuggestingNcm] = useState(false);
 
@@ -447,6 +543,7 @@ function GroupCombobox({
           display_order: variants.length
         });
       }
+     setFieldErrors({});
      setIsDialogOpen(true);
    };
 
@@ -500,21 +597,24 @@ function GroupCombobox({
        insole_material_group_id: source.insole_material_group_id,
        display_order: variants.length,
      });
+     setFieldErrors({});
      setIsDialogOpen(true);
    };
 
    const handleSave = async () => {
+     setFieldErrors({});
      if (!formData.material_name?.trim()) {
-       toast.error('O nome do material é obrigatório');
+       failField('material_name', 'Obrigatório.', 'O nome do material é obrigatório');
        return;
      }
      const sku = formData.sku?.trim() || '';
      if (formData.active && !sku) {
-       toast.error('O SKU é obrigatório para variante ativa');
+       failField('sku', 'Obrigatório enquanto a variante estiver ativa.', 'O SKU é obrigatório para variante ativa');
        return;
      }
      if (sku.length > MATERIAL_VARIANT_SKU_MAX_LENGTH) {
-       toast.error(`O SKU deve ter no máximo ${MATERIAL_VARIANT_SKU_MAX_LENGTH} caracteres`);
+       failField('sku', `Máximo ${MATERIAL_VARIANT_SKU_MAX_LENGTH} caracteres.`,
+         `O SKU deve ter no máximo ${MATERIAL_VARIANT_SKU_MAX_LENGTH} caracteres`);
        return;
      }
 
@@ -529,18 +629,27 @@ function GroupCombobox({
      ].filter(Boolean) as string[];
      const selectedContainer = groups.find(group =>
        selectedGroupIds.includes(group.id) && parentGroupIds.has(group.id));
+     // Qual dos quatro seletores está segurando o grupo reprovado — sem isso a
+     // marca cairia sempre no principal, mesmo quando o erro é de uma exceção.
+     const fieldOfGroup = (groupId: string) =>
+       formData.main_material_group_id === groupId ? 'main_material_group_id'
+       : formData.upper_material_group_id === groupId ? 'upper_material_group_id'
+       : formData.lining_material_group_id === groupId ? 'lining_material_group_id'
+       : 'insole_material_group_id';
      if (selectedContainer) {
-       toast.error(`"${selectedContainer.name}" é uma família`, {
-         description: 'Escolha um grupo dentro dessa família para definir os SKUs e cores da variante.',
-       });
+       failField(fieldOfGroup(selectedContainer.id),
+         `"${selectedContainer.name}" é uma família — escolha um grupo dentro dela.`,
+         `"${selectedContainer.name}" é uma família`,
+         'Escolha um grupo dentro dessa família para definir os SKUs e cores da variante.');
        return;
      }
      const selectedWithoutActiveProduct = groups.find(group =>
        selectedGroupIds.includes(group.id) && !activeProductGroupIds.has(group.id));
      if (selectedWithoutActiveProduct) {
-       toast.error(`"${selectedWithoutActiveProduct.name}" não possui item ativo`, {
-         description: 'Cadastre ao menos um SKU/cor no grupo antes de usá-lo em uma variante.',
-       });
+       failField(fieldOfGroup(selectedWithoutActiveProduct.id),
+         `"${selectedWithoutActiveProduct.name}" não tem SKU/cor ativo.`,
+         `"${selectedWithoutActiveProduct.name}" não possui item ativo`,
+         'Cadastre ao menos um SKU/cor no grupo antes de usá-lo em uma variante.');
        return;
      }
 
@@ -552,9 +661,10 @@ function GroupCombobox({
          && !formData.lining_material_group_id
          && !formData.insole_material_group_id
          && !formData.upper_material_product_id) {
-       toast.error('Escolha o material principal da variante', {
-         description: 'Sem ele a variante não troca material nenhum: o PV mostra um nome/SKU diferente, mas a produção continua cortando o material da ficha.',
-       });
+       failField('main_material_group_id',
+         'Sem ele a variante não troca material nenhum.',
+         'Escolha o material principal da variante',
+         'Sem ele a variante não troca material nenhum: o PV mostra um nome/SKU diferente, mas a produção continua cortando o material da ficha.');
        return;
      }
 
@@ -564,7 +674,8 @@ function GroupCombobox({
        v.material_name.trim().toLowerCase() === normalized
      );
      if (collision) {
-       toast.error(`Já existe variante com nome "${collision.material_name}" nesta ficha`);
+       failField('material_name', 'Já existe uma variante com este nome nesta ficha.',
+         `Já existe variante com nome "${collision.material_name}" nesta ficha`);
        return;
      }
 
@@ -572,9 +683,9 @@ function GroupCombobox({
        if (sku) {
          const skuCollision = await findMaterialVariantSkuCollision(sku, editingVariant?.id);
          if (skuCollision) {
-           toast.error(`O SKU "${sku}" já está em uso`, {
-             description: `Variante: ${skuCollision.material_name}. Espaços nas extremidades e diferença entre maiúsculas/minúsculas não criam outro SKU.`,
-           });
+           failField('sku', `Já em uso pela variante "${skuCollision.material_name}".`,
+             `O SKU "${sku}" já está em uso`,
+             `Variante: ${skuCollision.material_name}. Espaços nas extremidades e diferença entre maiúsculas/minúsculas não criam outro SKU.`);
            return;
          }
        }
@@ -798,7 +909,11 @@ function GroupCombobox({
        </div>
  
        <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) setDuplicatingFromId(null); }}>
-         <DialogContent className="sm:max-w-[500px]">
+         {/* 1040px em vez de 500px. O DialogContent já traz `max-h-[90dvh]
+             overflow-y-auto`, então o corpo NÃO leva scroll próprio: dois
+             contêineres roláveis aninhados era o que fazia o formulário rolar
+             por dentro numa tela de 1920px. */}
+         <DialogContent className="sm:max-w-[1040px]">
            <DialogHeader>
              <DialogTitle>
                {editingVariant ? 'Editar Variante' : duplicatingFromId ? 'Duplicar Variante' : 'Nova Variante de Material'}
@@ -816,39 +931,74 @@ function GroupCombobox({
              </div>
            )}
 
-            <div className="space-y-5 py-2 max-h-[65vh] overflow-y-auto px-0.5">
-              {/* SEÇÃO — Material (grupos). A variante aponta GRUPOS; a cor vem do PV.
+            <div className="grid grid-cols-1 gap-0 py-2 lg:grid-cols-2">
+              {/* COLUNA 1 — A DECISÃO. A variante aponta GRUPOS; a cor vem do PV.
                   Área (dm²/par) é sempre a da ficha; muda só a origem do material. */}
-              <section className="space-y-3">
+              <section className="space-y-3 px-0.5 pb-4 lg:pb-0 lg:pr-6">
                 <div className="flex items-center gap-2">
                   <Package className="h-3.5 w-3.5 text-primary" />
                   <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Material</h4>
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-medium">Material principal <span className="text-destructive">*</span></Label>
+                  {/* Campo herói: sem ele a variante não troca material nenhum, então
+                      não pode ter o mesmo peso tipográfico de "EAN / GTIN". */}
+                  <Label className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
+                    Material principal <span className="text-destructive">*</span>
+                    <HelpPopover label="O que o material principal substitui">
+                      É o que esta variante É. Substitui o material da ficha em todos os
+                      componentes que a ficha liberar (Cabedal, Forração, Fachete e a base
+                      da tira artesanal). A placa/EVA da palmilha usa o seletor próprio da
+                      exceção. Quais componentes seguem é definido na aba{' '}
+                      <strong>Materiais</strong> da ficha: componente não liberado mantém o
+                      material cadastrado — é o que preserva material de identidade
+                      (ex.: cabedal de palha).
+                    </HelpPopover>
+                  </Label>
                   <GroupCombobox
                     value={formData.main_material_group_id}
-                    onChange={handlePickMainGroup}
+                    onChange={groupId => { clearFieldError('main_material_group_id'); handlePickMainGroup(groupId); }}
                     groups={materialGroups}
                     allGroups={groups}
                     describe={describeGroup}
-                    placeholder="Selecionar grupo de napa…"
+                    placeholder="Buscar grupo de material…"
                     ariaLabel="Material principal da variante"
+                    triggerClassName="h-11 text-[15px]"
+                    invalid={!!fieldErrors.main_material_group_id}
+                    footerNote={`${materialGroups.length} grupos · ${VARIANT_MATERIAL_SECTORS.length} setores · solado não entra (tem pin próprio)`}
                   />
-                  <p className="text-xs text-muted-foreground">
-                    É o que esta variante É. Substitui o material da ficha em todos os
-                    componentes que a ficha liberar (Cabedal, Forração, Fachete e a base da
-                    tira artesanal). A placa/EVA da palmilha usa o seletor próprio abaixo. A
-                    área (dm²/par) continua sendo a da ficha.
-                  </p>
-                  {formData.main_material_group_id && (
-                    <p className="text-xs text-muted-foreground">
-                      Quais componentes seguem é definido na aba <strong>Materiais</strong> da ficha.
-                      Componente não liberado mantém o material cadastrado na ficha — é o que
-                      preserva material de identidade (ex.: cabedal de palha).
-                    </p>
+                  {fieldErrors.main_material_group_id && (
+                    <p className="text-xs text-destructive">{fieldErrors.main_material_group_id}</p>
                   )}
+                  <p className="text-xs text-muted-foreground">
+                    Substitui o material da ficha nos componentes liberados. A área (dm²/par)
+                    continua sendo a da ficha.
+                  </p>
+                  {formData.main_material_group_id && (nenhumComponenteLiberado ? (
+                    <p className="text-xs text-warning">
+                      A ficha não liberou nenhum componente para a variante — o material
+                      principal não vai cascatear. Libere na aba <strong>Materiais</strong>.
+                    </p>
+                  ) : (
+                    <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                      {drivenComponents.map(component => (
+                        <span
+                          key={component.key}
+                          className={cn(
+                            'rounded border px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wide',
+                            component.on
+                              ? 'border-primary/30 bg-primary/10 text-primary'
+                              : 'border-border/60 text-muted-foreground line-through',
+                          )}
+                        >
+                          {component.label}
+                        </span>
+                      ))}
+                      <span className="rounded border border-border bg-muted/40 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
+                        área da ficha mantida
+                      </span>
+                    </div>
+                  ))}
                 </div>
 
                 <details className="rounded-md border border-border/60 bg-muted/20 px-3 py-2">
@@ -864,41 +1014,53 @@ function GroupCombobox({
                       <Label className="text-xs font-medium">Cabedal</Label>
                       <GroupCombobox
                         value={formData.upper_material_group_id}
-                        onChange={handlePickCabedalGroup}
+                        onChange={groupId => { clearFieldError('upper_material_group_id'); handlePickCabedalGroup(groupId); }}
                         groups={materialGroups}
                         allGroups={groups}
                         describe={describeGroup}
                         placeholder="Segue o material principal"
                         allowInherit
                         ariaLabel="Grupo de cabedal"
+                        invalid={!!fieldErrors.upper_material_group_id}
                       />
+                      {fieldErrors.upper_material_group_id && (
+                        <p className="text-xs text-destructive">{fieldErrors.upper_material_group_id}</p>
+                      )}
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div className="space-y-1.5">
                         <Label className="text-xs font-medium">Forro</Label>
                         <GroupCombobox
                           value={formData.lining_material_group_id}
-                          onChange={handlePickLiningGroup}
+                          onChange={groupId => { clearFieldError('lining_material_group_id'); handlePickLiningGroup(groupId); }}
                           groups={materialGroups}
                           allGroups={groups}
                           describe={describeGroup}
                           placeholder="Segue o material principal"
                           allowInherit
                           ariaLabel="Grupo de forro"
+                          invalid={!!fieldErrors.lining_material_group_id}
                         />
+                        {fieldErrors.lining_material_group_id && (
+                          <p className="text-xs text-destructive">{fieldErrors.lining_material_group_id}</p>
+                        )}
                       </div>
                       <div className="space-y-1.5">
                         <Label className="text-xs font-medium">Placa / EVA da palmilha</Label>
                         <GroupCombobox
                           value={formData.insole_material_group_id}
-                          onChange={handlePickInsoleGroup}
+                          onChange={groupId => { clearFieldError('insole_material_group_id'); handlePickInsoleGroup(groupId); }}
                           groups={materialGroups}
                           allGroups={groups}
                           describe={describeGroup}
                           placeholder="Segue o material principal"
                           allowInherit
                           ariaLabel="Grupo da placa ou EVA da palmilha"
+                          invalid={!!fieldErrors.insole_material_group_id}
                         />
+                        {fieldErrors.insole_material_group_id && (
+                          <p className="text-xs text-destructive">{fieldErrors.insole_material_group_id}</p>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -906,7 +1068,8 @@ function GroupCombobox({
               </section>
 
               {/* SEÇÃO — Identidade fiscal (auto-preenchida do grupo, editável) */}
-              <section className="space-y-3 border-t border-border/60 pt-4">
+              {/* COLUNA 2 — O CADASTRO. Empilha e ganha borda superior abaixo de lg. */}
+              <section className="space-y-3 border-t border-border/60 px-0.5 pt-4 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
                     <Tag className="h-3.5 w-3.5 text-primary" />
@@ -920,11 +1083,15 @@ function GroupCombobox({
                   <Label htmlFor="material_name" className="text-xs font-medium">Nome da variante <span className="text-destructive">*</span></Label>
                   <Input
                     id="material_name"
-                    className="h-9"
+                    className={cn('h-9', fieldErrors.material_name && 'border-destructive focus-visible:ring-destructive')}
+                    aria-invalid={!!fieldErrors.material_name}
                     value={formData.material_name || ''}
-                    onChange={e => setFormData(prev => ({ ...prev, material_name: e.target.value }))}
+                    onChange={e => { clearFieldError('material_name'); setFormData(prev => ({ ...prev, material_name: e.target.value })); }}
                     placeholder="ex: NAPA SANTORINE"
                   />
+                  {fieldErrors.material_name && (
+                    <p className="text-xs text-destructive">{fieldErrors.material_name}</p>
+                  )}
                 </div>
 
                 <div className="space-y-1.5">
@@ -934,9 +1101,10 @@ function GroupCombobox({
                   <div className="flex items-center gap-2">
                     <Input
                       id="sku"
-                      className="h-9 flex-1 font-mono text-sm"
+                      className={cn('h-9 flex-1 font-mono text-sm', fieldErrors.sku && 'border-destructive focus-visible:ring-destructive')}
+                      aria-invalid={!!fieldErrors.sku}
                       value={formData.sku || ''}
-                      onChange={e => setFormData(prev => ({ ...prev, sku: e.target.value }))}
+                      onChange={e => { clearFieldError('sku'); setFormData(prev => ({ ...prev, sku: e.target.value })); }}
                       maxLength={MATERIAL_VARIANT_SKU_MAX_LENGTH}
                       placeholder="Código do produto"
                     />
@@ -945,12 +1113,15 @@ function GroupCombobox({
                       variant="outline"
                       size="sm"
                       className="h-9 shrink-0 gap-1.5"
-                      onClick={() => setFormData(prev => ({ ...prev, sku: generateNextSku() }))}
+                      onClick={() => { clearFieldError('sku'); setFormData(prev => ({ ...prev, sku: generateNextSku() })); }}
                       title="Gerar próximo SKU"
                     >
                       <Hash className="h-3.5 w-3.5" /> Gerar
                     </Button>
                   </div>
+                  {fieldErrors.sku && (
+                    <p className="text-xs text-destructive">{fieldErrors.sku}</p>
+                  )}
                   <p className="text-xs text-muted-foreground">
                     Identifica esta oferta comercial, deve ser único em todas as referências e ter até {MATERIAL_VARIANT_SKU_MAX_LENGTH} caracteres.
                   </p>
@@ -996,9 +1167,11 @@ function GroupCombobox({
                 <div className="space-y-1.5">
                   <Label htmlFor="price" className="text-xs font-medium flex items-center gap-1.5">
                     Preço de venda do par <span className="font-normal text-muted-foreground">(opcional)</span>
-                    <span title="Preço sugerido ao escolher esta variante no PV. A tabela de preço do cliente continua tendo prioridade. Não é custo — o custo vem do custeio da ficha.">
-                      <Info className="h-3.5 w-3.5 text-muted-foreground" />
-                    </span>
+                    <HelpPopover label="Como o preço da variante é usado">
+                      Preço sugerido ao escolher esta variante no PV, quando o preço do item
+                      ainda está zerado. Prioridade: tabela do cliente &gt; preço da variante
+                      &gt; preço da ficha. Não é custo — o custo vem do custeio da ficha.
+                    </HelpPopover>
                   </Label>
                   <Input
                     id="price"
@@ -1010,10 +1183,7 @@ function GroupCombobox({
                     onChange={e => setFormData(prev => ({ ...prev, unit_price_override: e.target.value ? parseFloat(e.target.value) : null }))}
                     placeholder="Sem preço próprio"
                   />
-                  <p className="text-xs text-muted-foreground">
-                    Sugerido no PV quando o preço do item ainda está zerado. Prioridade:
-                    tabela do cliente &gt; preço da variante &gt; preço da ficha.
-                  </p>
+
                 </div>
 
                 <div className="space-y-1.5">
