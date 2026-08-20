@@ -8,6 +8,7 @@ const read = (p: string) => readFileSync(resolve(ROOT, p), 'utf8');
 const CASCADE_SQL = read('supabase/migrations/20261027120000_variant-main-material-cascade.sql');
 const DROP_INSOLE_SQL = read('supabase/migrations/20261027120800_drop-variant-drives-insole.sql');
 const itemForm = read('src/components/sale-orders/SaleOrderItemForm.tsx');
+const materialVariantColorGroup = read('src/lib/materialVariantColorGroup.ts');
 const labelUtils = read('src/lib/labelUtils.ts');
 const orderConsumption = read('src/lib/orderConsumption.ts');
 const bomConsumption = read('src/lib/bomConsumption.ts');
@@ -64,9 +65,11 @@ describe('material principal da variante — todo consumidor enxerga', () => {
   it('o PV oferece as cores do material principal, não as do material da ficha', () => {
     expect(itemForm, 'o form precisa buscar as travas pra espelhar a cascata')
       .toContain('variant_drives_upper');
-    // Pelo menos: grupo pra cadastrar cor nova, alvo do guard de cor e o pool.
-    const usos = itemForm.match(/main_material_group_id/g) || [];
-    expect(usos.length).toBeGreaterThanOrEqual(3);
+    expect(itemForm).toContain('resolveMaterialVariantColorGroup');
+    // A resolução foi centralizada: o material principal escolhe UM grupo e o
+    // formulário lista somente os produtos ativos desse grupo exato.
+    expect(materialVariantColorGroup).toContain('variant.main_material_group_id');
+    expect(materialVariantColorGroup).toContain('activeProductColorsForGroup');
   });
 
   it('a etiqueta resolve o MATERIAL pelo material principal', () => {
