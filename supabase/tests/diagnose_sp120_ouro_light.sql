@@ -134,5 +134,24 @@ SELECT jsonb_pretty(jsonb_build_object(
   ), '[]'::jsonb),
   'e_recent_sp120_items', coalesce((
     SELECT jsonb_agg(to_jsonb(i) ORDER BY i.created_at DESC) FROM recent_items i
+  ), '[]'::jsonb),
+  'f_wrong_sudani_gold_usage', coalesce((
+    SELECT jsonb_agg(jsonb_build_object(
+      'id', p.id,
+      'sku', p.sku,
+      'name', p.name,
+      'color', p.color,
+      'active', p.active,
+      'quantity', p.quantity,
+      'reserved_stock', p.reserved_stock,
+      'stock_movements', (SELECT count(*) FROM public.stock_movements sm WHERE sm.product_id = p.id),
+      'reservations', (SELECT count(*) FROM public.material_reservations mr WHERE mr.product_id = p.id),
+      'open_reservations', (SELECT count(*) FROM public.material_reservations mr WHERE mr.product_id = p.id AND mr.status IN ('reserved', 'partially_consumed')),
+      'purchase_items', (SELECT count(*) FROM public.purchase_order_items poi WHERE poi.product_id = p.id),
+      'bom_lines', (SELECT count(*) FROM public.sheet_materials sm WHERE sm.product_id = p.id),
+      'variant_pins', (SELECT count(*) FROM public.reference_material_variants v WHERE v.upper_material_product_id = p.id OR v.lining_material_product_id = p.id OR v.insole_material_product_id = p.id)
+    ))
+    FROM public.products p
+    WHERE p.sku = 'NAPA-SUDANI-OURO-LIGHT'
   ), '[]'::jsonb)
 )) AS diagnostico;
