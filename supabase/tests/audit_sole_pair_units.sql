@@ -27,7 +27,6 @@ grade_totals AS (
 configured_sheets AS (
   SELECT ts.id,
          ts.name,
-         ts.internal_code,
          ts.status,
          ts.sole_consumption,
          ts.sole_group_id,
@@ -99,7 +98,7 @@ SELECT jsonb_pretty(jsonb_build_object(
     'configured', (SELECT count(*) FROM configured_sheets),
     'consumption_not_one_pair_per_pair', COALESCE((
       SELECT jsonb_agg(jsonb_build_object(
-        'id', cs.id, 'name', cs.name, 'internal_code', cs.internal_code,
+        'id', cs.id, 'name', cs.name,
         'status', cs.status, 'sole_consumption', cs.sole_consumption
       ) ORDER BY cs.name)
         FROM configured_sheets cs
