@@ -1761,18 +1761,10 @@ export function computeConsumptionForItems(
       warning: soleUnresolvedWarning,
       productUnit: 'par',
       color: soleColor,
-      // FIX auditoria motores 2026-07-01 (b): default 1 par/par. Com `|| 0`,
-      // `sole_consumption` 0/null zerava o total e addConsumptionRow APAGAVA o
-      // solado do modal/ficha — enquanto SQL/débito ignoram o campo e baixam
-      // 1 par por par (banco vivo 2026-07-02: 7 fichas com 0, 38 com 1, 1 com
-      // 2). 1 par/par é o CANÔNICO; o multiplicador > 1 é preservado porque a
-      // ficha STX usa 2 (⚠ o débito SQL não aplica o multiplicador — a linha
-      // do modal fica conservadora, nunca menor que o débito real).
-      // Override da variante (unidades de solado/par, raro ≠ 1) prevalece
-      // sobre o sole_consumption da ficha.
-      totalQuantity: ((variant?.sole_consumption_override != null
-        ? Number(variant.sole_consumption_override)
-        : Number(sheet?.sole_consumption)) || 1) * itemQuantity,
+      // Uma unidade de estoque é um PAR COMPLETO de solado. A grade do pedido
+      // também está em pares, então a relação é sempre 1:1. Não multiplicar
+      // por 2 por causa das peças esquerda/direita.
+      totalQuantity: itemQuantity,
       sizeBreakdown: Object.keys(scaledBreakdown).length > 0 ? scaledBreakdown : undefined,
       soleProductId: soleProductIdResolved,
     });

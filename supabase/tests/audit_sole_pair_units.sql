@@ -30,9 +30,11 @@ configured_sheets AS (
          ts.status,
          ts.sole_consumption,
          ts.sole_group_id,
+         ts.primary_sole_id,
          ts.sole_material
     FROM public.technical_sheets ts
    WHERE ts.sole_group_id IS NOT NULL
+      OR ts.primary_sole_id IS NOT NULL
       OR NULLIF(btrim(COALESCE(ts.sole_material, '')), '') IS NOT NULL
 ),
 sole_reservations AS (
@@ -79,14 +81,16 @@ SELECT jsonb_pretty(jsonb_build_object(
         'id', sp.id, 'name', sp.name,
         'stock_unit', sp.unit,
         'consumption_unit', sp.consumption_unit,
+        'production_unit', sp.production_unit,
         'purchase_unit', sp.purchase_unit,
+        'purchase_order_unit', sp.purchase_order_unit,
         'conversion_rate', sp.conversion_rate
       ) ORDER BY sp.name)
         FROM sole_products sp
-       WHERE (NULLIF(btrim(COALESCE(sp.consumption_unit, '')), '') IS NOT NULL
-              AND lower(btrim(sp.consumption_unit)) <> 'par')
-          OR (NULLIF(btrim(COALESCE(sp.purchase_unit, '')), '') IS NOT NULL
-              AND lower(btrim(sp.purchase_unit)) <> 'par')
+       WHERE lower(btrim(COALESCE(sp.consumption_unit, ''))) <> 'par'
+          OR lower(btrim(COALESCE(sp.purchase_unit, ''))) <> 'par'
+          OR lower(btrim(COALESCE(sp.production_unit, ''))) <> 'par'
+          OR lower(btrim(COALESCE(sp.purchase_order_unit, ''))) <> 'par'
           OR COALESCE(sp.conversion_rate, 1) <> 1
     ), '[]'::jsonb),
     'quantity_grade_drift', COALESCE((

@@ -991,11 +991,11 @@ describe('orderConsumption — motor canônico', () => {
     }
   });
 
-  it('sole_consumption > 1 mantém o multiplicador (banco vivo: ficha STX usa 2)', () => {
+  it('ignora multiplicador legado: duas peças físicas continuam sendo 1 par de estoque', () => {
     const item = buildItem({ technical_sheets: buildSheet({ sole_consumption: 2 }) });
     const rows = computeConsumptionForItems([item], buildContext());
     const solado = rows.find(r => r.componentType === 'Solado')!;
-    expect(solado.totalQuantity).toBe(48);
+    expect(solado.totalQuantity).toBe(24);
   });
 
   it('ficha SEM sole_material/consumption mas com solado resolvido por mapping não duplica com o BOM', () => {

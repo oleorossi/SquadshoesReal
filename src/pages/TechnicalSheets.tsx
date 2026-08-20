@@ -1595,10 +1595,11 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
     if (candidates.length > 0) {
       const src = candidates[0];
       const filled: string[] = [];
-      if (src.sole_consumption > 0) {
-        updateField('sole_consumption', src.sole_consumption);
-        filled.push(`consumo: ${src.sole_consumption}`);
-      }
+      // A ficha antiga pode ter herdado o legado "2 unidades por par". O
+      // estoque, a compra e a baixa trabalham com pares completos, portanto o
+      // consumo do solado é sempre 1 par/par.
+      updateField('sole_consumption', 1);
+      filled.push('consumo: 1 par/par');
       if (src.sole_process) {
         updateField('sole_process', src.sole_process);
         filled.push(`processo: ${src.sole_process}`);
@@ -2421,6 +2422,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                    updateField('sole_group_id', groupId);
                    updateField('primary_sole_id', productId || null);
                    autoFillSole(productName);
+                   updateField('sole_consumption', productName || groupId || productId ? 1 : 0);
                    // Auto-fill NCM da última ficha cadastrada para esse solado.
                    // Trigger DB `tg_autofill_ncm_from_sole` aplica essa mesma
                    // regra no INSERT/UPDATE — chamamos aqui pra dar feedback
@@ -2489,8 +2491,18 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                 </Select>
               </div>
               <div>
-                <Label className="text-xs text-muted-foreground">Consumo Solado (un/par)</Label>
-                <NumberInput value={form.sole_consumption || 0} onChange={v => updateField('sole_consumption', v)} className="mt-1 h-9 text-sm" placeholder="1" step="1" />
+                <Label className="text-xs text-muted-foreground">Consumo do solado (par/par)</Label>
+                <NumberInput
+                  value={form.sole_material || form.sole_group_id || form.primary_sole_id ? 1 : 0}
+                  onChange={() => undefined}
+                  className="mt-1 h-9 text-sm"
+                  step="1"
+                  decimals={0}
+                  disabled
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  1 par completo (pé esquerdo + pé direito) para cada par de calçado.
+                </p>
               </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3 items-end pt-2 border-t border-border/40">
