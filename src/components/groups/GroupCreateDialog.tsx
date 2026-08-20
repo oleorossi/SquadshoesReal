@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -10,11 +10,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { MagnifyingGlass as Search, CircleNotch as Loader2, Check, FileText, Stack as Layers, Truck, Package } from '@phosphor-icons/react';
- import { useAddGroup, useGroups } from "@/hooks/useGroups";
+import { useAddGroup, useGroups, type ProductGroup } from "@/hooks/useGroups";
+import { useProducts } from "@/hooks/useProducts";
 import { useAddGroupSupplier } from "@/hooks/useGroupSuppliers";
 import { useAddSupplier, useSuppliers, type Supplier } from "@/hooks/useSuppliers";
 import { flattenGroupTree } from "@/lib/groupHierarchy";
-import { SECTOR_OPTIONS, deriveCategoryFromGroup } from "@/lib/categoryFromGroup";
+import { SECTOR_OPTIONS, sectorOfGroup } from "@/lib/categoryFromGroup";
+import { getFootwearSectorGuide } from "@/lib/footwearMaterialTaxonomy";
 import { cn } from "@/lib/utils";
 
 interface GroupCreateDialogProps {
@@ -35,6 +37,7 @@ interface GroupCreateDialogProps {
 const AREA_SECTORS = new Set(['Cabedal', 'Forração da Palmilha', 'Palmilha']);
 
 export default function GroupCreateDialog({ open, onOpenChange, initialSector, initialParentId, lockHierarchy, titleText }: GroupCreateDialogProps) {
+  const isFamilyCreation = Boolean(lockHierarchy && initialSector && initialParentId == null);
   const [form, setForm] = useState({
     name: "",
     description: "",
@@ -47,13 +50,28 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
     dimensions_width: null as number | null,
     parent_group_id: (initialParentId ?? "") as string,
   });
-  // Setor segue a sugestão automática pelo nome até o usuário escolher manualmente.
-  // Se veio pré-preenchido (família/subgrupo), considera "tocado" pra não sobrescrever.
-  const [sectorTouched, setSectorTouched] = useState(!!initialSector);
-
-   const [duplicateMatch, setDuplicateMatch] = useState<any>(null);
+   const [duplicateMatch, setDuplicateMatch] = useState<ProductGroup | null>(null);
    const [duplicateConfirmed, setDuplicateConfirmed] = useState(false);
    const { data: allGroups = [] } = useGroups();
+   const { data: allProducts = [] } = useProducts();
+   const sectorGuide = getFootwearSectorGuide(form.sector);
+   const requiresWidth = AREA_SECTORS.has(form.sector) && !isFamilyCreation;
+   const itemCountByGroup = useMemo(() => {
+     const counts = new Map<string, number>();
+     for (const product of allProducts) {
+       if (product.group_id) counts.set(product.group_id, (counts.get(product.group_id) || 0) + 1);
+     }
+     return counts;
+   }, [allProducts]);
+   const parentOptions = useMemo(
+     () => flattenGroupTree(allGroups).filter((candidate) => (
+       !candidate.parent_group_id
+       && sectorOfGroup(candidate) === form.sector
+       && (candidate.is_family === true || candidate.childCount > 0)
+       && (itemCountByGroup.get(candidate.id) || 0) === 0
+     )),
+     [allGroups, form.sector, itemCountByGroup],
+   );
    const checkDuplicateName = (name: string) => {
      if (!name.trim()) { setDuplicateMatch(null); return; }
      const normalizedName = name.trim().toLowerCase();
@@ -93,7 +111,6 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
       dimensions_width: null,
       parent_group_id: initialParentId ?? "",
     });
-    setSectorTouched(!!initialSector);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -112,7 +129,7 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
     // Material de ÁREA cortado de bobina (napa/forro/palmilha) sem largura fica
     // com o consumo ~100× inflado: o dm²/par não tem como virar metro. Bloqueia
     // na criação em vez de deixar o erro aparecer lá na frente, no PV.
-    if (AREA_SECTORS.has(form.sector) && !(Number(form.dimensions_width) > 0)) {
+    if (requiresWidth && !(Number(form.dimensions_width) > 0)) {
       toast.error('Informe a largura da bobina (mm) — material de área sem largura infla o consumo ~100×.');
       return;
     }
@@ -123,9 +140,10 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
         description: form.description,
         sector: form.sector,
         auto_component_sheet: form.auto_component_sheet,
-        dimensions_width: form.dimensions_width,
-        dimensions_unit: form.dimensions_width ? 'mm' : null,
+        dimensions_width: isFamilyCreation ? null : form.dimensions_width,
+        dimensions_unit: !isFamilyCreation && form.dimensions_width ? 'mm' : null,
         parent_group_id: form.parent_group_id || null,
+        is_family: isFamilyCreation,
         // Embalagem NÃO entra: grupo de solado nasce sem caixa e a configuração
         // dos 3 modos é feita em Embalagens → Configuração por Solado.
       });
@@ -147,29 +165,60 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
       <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{titleText ?? 'Novo Grupo de Material'}</DialogTitle>
-        <DialogDescription>O setor define a aba do Estoque onde o grupo aparece.</DialogDescription>
+        <DialogDescription>
+          {isFamilyCreation
+            ? 'A família técnica organiza grupos da mesma natureza dentro deste setor e não recebe itens diretamente.'
+            : 'Classifique o material por aplicação, família técnica e grupo/linha.'}
+        </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4 mt-2">
           <div className="space-y-3">
+            {isFamilyCreation && sectorGuide && (
+              <div className="border-y border-foreground/15 bg-muted/20 px-3 py-3">
+                <p className="font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-primary">
+                  Famílias usuais em {sectorGuide.label}
+                </p>
+                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{sectorGuide.purpose}</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {sectorGuide.families.map((family) => (
+                    <button
+                      key={family.name}
+                      type="button"
+                      onClick={() => setForm((current) => ({
+                        ...current,
+                        name: family.name,
+                        description: family.description,
+                      }))}
+                      className={cn(
+                        'border px-2.5 py-1.5 text-left text-xs transition-colors',
+                        form.name.trim().toUpperCase() === family.name
+                          ? 'border-primary bg-primary/10 text-primary'
+                          : 'border-foreground/15 bg-background hover:border-foreground/40',
+                      )}
+                      title={`Exemplos: ${family.examples}`}
+                    >
+                      <span className="block font-semibold">{family.name}</span>
+                      <span className="mt-0.5 block text-[10px] text-muted-foreground">{family.examples}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             <div>
-              <Label htmlFor="group-name">Nome do Grupo *</Label>
+              <Label htmlFor="group-name">{isFamilyCreation ? 'Nome da Família *' : 'Nome do Grupo *'}</Label>
               <Input
                 id="group-name"
                  value={form.name}
                  onChange={(e) => {
                    const nextName = e.target.value;
-                   setForm((f) => ({
-                     ...f,
-                     name: nextName,
-                     sector: sectorTouched ? f.sector : deriveCategoryFromGroup(nextName),
-                   }));
+                   setForm((f) => ({ ...f, name: nextName }));
                    setDuplicateConfirmed(false);
                    setDuplicateMatch(null);
                  }}
                  onBlur={(e) => checkDuplicateName(e.target.value)}
                  required
                  className="mt-1"
-                 placeholder="Ex: NAPA SOFT, SOLADO EVA"
+                 placeholder={isFamilyCreation ? 'Ex.: LAMINADOS SINTÉTICOS' : 'Ex.: NAPA SOFT, SOLADO EVA'}
                />
                {duplicateMatch && !duplicateConfirmed && (
                  <div className="mt-2 p-3 rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-700 space-y-2">
@@ -211,7 +260,7 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
               <Select
                 value={form.sector || undefined}
                 disabled={lockHierarchy}
-                onValueChange={(v) => { setSectorTouched(true); setForm((f) => ({ ...f, sector: v })); }}
+                onValueChange={(v) => setForm((f) => ({ ...f, sector: v }))}
               >
                 <SelectTrigger id="group-sector" className="mt-1">
                   <SelectValue placeholder="Selecione o setor" />
@@ -223,10 +272,10 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground mt-1">
-                Define a categoria dos produtos deste grupo. Sugerido pelo nome — confira antes de criar.
+                {sectorGuide?.purpose ?? 'Define a aplicação principal dos produtos deste grupo.'}
               </p>
             </div>
-            {AREA_SECTORS.has(form.sector) && (
+            {requiresWidth && (
               <div>
                 <Label htmlFor="group-width">Largura útil (mm) *</Label>
                 <Input
@@ -265,9 +314,9 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
                 placeholder="Descrição opcional"
               />
             </div>
-            <div>
+            {!lockHierarchy && <div>
               <Label htmlFor="group-parent" className="flex items-center gap-1.5">
-                <Layers className="h-3.5 w-3.5" /> Grupo Pai (hierarquia)
+                <Layers className="h-3.5 w-3.5" /> Família técnica
               </Label>
               <Select
                 value={form.parent_group_id || "__root__"}
@@ -278,21 +327,21 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
                   <SelectValue placeholder="Sem pai (grupo raiz)" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="__root__">Sem pai (grupo raiz)</SelectItem>
-                  {flattenGroupTree(allGroups).map((g) => (
+                  <SelectItem value="__root__">Sem família (grupo solto)</SelectItem>
+                  {parentOptions.map((g) => (
                     <SelectItem key={g.id} value={g.id}>
-                      {`${"  ".repeat(g.depth)}${g.depth > 0 ? "└ " : ""}${g.name}`}
+                      {g.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground mt-1">
-                Use pra agrupar variações do mesmo material (ex: "Componentes" → "Tira chata", "Tira Strass").
+                A família descreve a natureza do material; o grupo descreve a linha técnica/comercial.
               </p>
-            </div>
+            </div>}
           </div>
 
-          <div className="flex items-center gap-3 rounded-lg border p-3 bg-muted/30">
+          {!isFamilyCreation && <div className="flex items-center gap-3 rounded-lg border p-3 bg-muted/30">
             <Switch
               id="auto-bom-create"
               checked={form.auto_component_sheet}
@@ -301,11 +350,11 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
             <Label htmlFor="auto-bom-create" className="cursor-pointer text-sm">
               Ficha de Componente (BOM) — itens deste grupo entram automaticamente
             </Label>
-          </div>
+          </div>}
 
           {/* Grupo de solado nasce vazio; a configuração tem porta única no
               setor de Embalagens e nunca é herdada em silêncio. */}
-          <div className="rounded-md border border-dashed bg-muted/20 p-3 flex items-start gap-2 text-xs text-muted-foreground">
+          {!isFamilyCreation && <div className="rounded-md border border-dashed bg-muted/20 p-3 flex items-start gap-2 text-xs text-muted-foreground">
             <Package className="h-4 w-4 text-primary shrink-0 mt-0.5" />
             <div>
               <p className="font-medium text-foreground">Embalagem</p>
@@ -315,9 +364,9 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
                 enquanto não configurar, o pedido entra mas nenhuma caixa é debitada.
               </p>
             </div>
-          </div>
+          </div>}
 
-          <div className="rounded-md border border-dashed bg-muted/20 p-3 flex items-start gap-2 text-xs text-muted-foreground">
+          {!isFamilyCreation && <div className="rounded-md border border-dashed bg-muted/20 p-3 flex items-start gap-2 text-xs text-muted-foreground">
             <Truck className="h-4 w-4 text-primary shrink-0 mt-0.5" />
             <div>
               <p className="font-medium text-foreground">Fornecedores</p>
@@ -327,7 +376,7 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
                 condição de pagamento próprios.
               </p>
             </div>
-          </div>
+          </div>}
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
@@ -338,10 +387,10 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
               disabled={
                 addGroup.isPending
                 || !form.sector
-                || (AREA_SECTORS.has(form.sector) && !(Number(form.dimensions_width) > 0))
+                || (requiresWidth && !(Number(form.dimensions_width) > 0))
               }
             >
-              Criar Grupo
+              {isFamilyCreation ? 'Criar Família' : 'Criar Grupo'}
             </Button>
           </DialogFooter>
         </form>

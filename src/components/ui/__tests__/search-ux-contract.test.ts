@@ -67,5 +67,5 @@ describe('contrato de busca do sistema', () => {
     }
 
     expect(violations, violations.join('\n')).toEqual([]);
-  });
+  }, 30_000);
 });

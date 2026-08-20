@@ -196,7 +196,7 @@ export default function GroupOrganizationPanel({ permPath, extraActions }: Props
             onDelete={(g) => deleteGroup.mutate(g.id)}
             onNewFamily={(sector) => openCreate({ sector, parentId: null, lock: true, title: `Nova família em ${sectorLabel(sector)}` })}
             onNewSubgroup={(family) => openCreate({ sector: family.sector ?? undefined, parentId: family.id, lock: true, title: `Novo subgrupo em ${family.name}` })}
-            onEditItem={openEditItem}
+            onEditItem={perm.canEdit ? openEditItem : undefined}
             onAddItem={openAddToGroup}
           />
         </div>
@@ -224,6 +224,7 @@ export default function GroupOrganizationPanel({ permPath, extraActions }: Props
         groups={groups}
         open={!!itemsGroup}
         onOpenChange={(o) => { if (!o) setItemsGroup(null); }}
+        canEdit={perm.canEdit}
       />
 
       <MoveGroupsDialog
@@ -257,7 +258,7 @@ export default function GroupOrganizationPanel({ permPath, extraActions }: Props
         />
       )}
 
-      {selectedLeafIds.size > 0 && (
+      {perm.canEdit && selectedLeafIds.size > 0 && (
         <BulkActionsBar
           selectedIds={selectedLeafIds}
           onClear={clearSelection}

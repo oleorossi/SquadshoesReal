@@ -26,6 +26,7 @@ interface Props {
   groups: ProductGroup[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  canEdit: boolean;
 }
 
 const matches = (p: Product, q: string) =>
@@ -34,7 +35,7 @@ const byName = (a: Product, b: Product) => String(a.name ?? '').localeCompare(St
 
 const ADD_LIMIT = 200;
 
-export default function GroupItemsManager({ group, groups, open, onOpenChange }: Props) {
+export default function GroupItemsManager({ group, groups, open, onOpenChange, canEdit }: Props) {
   const navigate = useNavigate();
   const { data: products = [] } = useProducts();
   const setGroup = useSetProductsGroup();
@@ -69,35 +70,44 @@ export default function GroupItemsManager({ group, groups, open, onOpenChange }:
   }, [products, group, addSearch]);
   const candidatesShown = candidates.slice(0, ADD_LIMIT);
 
-  const otherGroups = useMemo(() => groups.filter(g => g.id !== group?.id).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')), [groups, group]);
+  const otherGroups = useMemo(() => {
+    const parentIds = new Set(groups.map(item => item.parent_group_id).filter(Boolean));
+    return groups
+      .filter(item => item.id !== group?.id && !item.is_family && !parentIds.has(item.id))
+      .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+  }, [groups, group]);
 
   if (!group) return null;
 
   const toggle = (set: Set<string>, setter: (s: Set<string>) => void, id: string) => {
     const next = new Set(set);
-    next.has(id) ? next.delete(id) : next.add(id);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
     setter(next);
   };
   const busy = setGroup.isPending;
 
   const doMove = async () => {
-    if (!moveTarget || selected.size === 0) return;
+    if (!canEdit || !moveTarget || selected.size === 0) return;
     await setGroup.mutateAsync({ ids: [...selected], group_id: moveTarget });
     setSelected(new Set()); setMoveTarget('');
   };
   const doRemoveSelected = async () => {
-    if (selected.size === 0) return;
+    if (!canEdit || selected.size === 0) return;
     await setGroup.mutateAsync({ ids: [...selected], group_id: null });
     setSelected(new Set());
   };
-  const doRemoveOne = async (id: string) => { await setGroup.mutateAsync({ ids: [id], group_id: null }); };
+  const doRemoveOne = async (id: string) => {
+    if (!canEdit) return;
+    await setGroup.mutateAsync({ ids: [id], group_id: null });
+  };
   const doApplyPrice = async () => {
-    if (selected.size === 0 || !(bulkPrice > 0)) return;
+    if (!canEdit || selected.size === 0 || !(bulkPrice > 0)) return;
     await bulkSetPrice.mutateAsync({ ids: [...selected], unit_price: bulkPrice });
     setSelected(new Set()); setBulkPrice(0);
   };
   const doAdd = async () => {
-    if (addSelected.size === 0) return;
+    if (!canEdit || addSelected.size === 0) return;
     await setGroup.mutateAsync({ ids: [...addSelected], group_id: group.id });
     setAddSelected(new Set()); setMode('list');
   };
@@ -132,9 +142,9 @@ export default function GroupItemsManager({ group, groups, open, onOpenChange }:
                   totalCount={groupItems.length}
                   className="flex-1"
                 />
-                <Button onClick={() => setMode('add')} className="gap-1.5 h-9">
+                {canEdit && <Button onClick={() => setMode('add')} className="gap-1.5 h-9">
                   <Plus className="h-4 w-4" /> Adicionar itens
-                </Button>
+                </Button>}
               </div>
 
               <div className="flex-1 overflow-auto rounded-lg border border-border">
@@ -152,12 +162,12 @@ export default function GroupItemsManager({ group, groups, open, onOpenChange }:
                   <table className="w-full text-sm">
                     <thead className="sticky top-0 bg-muted/60 text-[11px] uppercase tracking-wider text-muted-foreground">
                       <tr>
-                        <th className="w-8 px-3 py-2">
+                        {canEdit && <th className="w-8 px-3 py-2">
                           <Checkbox checked={allChecked} onCheckedChange={() => {
                             if (allChecked) setSelected(new Set());
                             else setSelected(new Set(items.map(p => p.id)));
                           }} aria-label="Selecionar todos" />
-                        </th>
+                        </th>}
                         <th className={colCls}>Item</th>
                         <th className={colCls}>SKU</th>
                         <th className={colCls}>Cor</th>
@@ -168,7 +178,7 @@ export default function GroupItemsManager({ group, groups, open, onOpenChange }:
                     <tbody>
                       {items.map(p => (
                         <tr key={p.id} className={`border-t border-border ${selected.has(p.id) ? 'bg-primary/5' : ''}`}>
-                          <td className="px-3 py-2"><Checkbox checked={selected.has(p.id)} onCheckedChange={() => toggle(selected, setSelected, p.id)} /></td>
+                          {canEdit && <td className="px-3 py-2"><Checkbox checked={selected.has(p.id)} onCheckedChange={() => toggle(selected, setSelected, p.id)} /></td>}
                           <td className="px-3 py-2 font-medium text-foreground">
                             {p.name}{(p as any).active === false && <Badge variant="outline" className="ml-2 text-[10px]">inativo</Badge>}
                           </td>
@@ -176,12 +186,12 @@ export default function GroupItemsManager({ group, groups, open, onOpenChange }:
                           <td className="px-3 py-2 text-muted-foreground">{(p as any).color || '—'}</td>
                           <td className="px-3 py-2 text-right tabular-nums">{Number((p as any).quantity ?? 0).toLocaleString('pt-BR')} <span className="text-muted-foreground text-xs">{(p as any).unit || ''}</span></td>
                           <td className="px-3 py-2 text-right whitespace-nowrap">
-                            <Button variant="ghost" size="icon" className="h-7 w-7" title="Editar item" onClick={() => navigate(`/estoque/${p.id}`)}>
+                            {canEdit && <Button variant="ghost" size="icon" className="h-7 w-7" title="Editar item" onClick={() => navigate(`/estoque/${p.id}`)}>
                               <PencilSimple className="h-4 w-4" />
-                            </Button>
-                            <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-red-600 dark:hover:text-red-400" title="Remover do grupo" disabled={busy} onClick={() => doRemoveOne(p.id)}>
+                            </Button>}
+                            {canEdit && <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-red-600 dark:hover:text-red-400" title="Remover do grupo" disabled={busy} onClick={() => doRemoveOne(p.id)}>
                               <X className="h-4 w-4" />
-                            </Button>
+                            </Button>}
                           </td>
                         </tr>
                       ))}
@@ -191,7 +201,7 @@ export default function GroupItemsManager({ group, groups, open, onOpenChange }:
               </div>
 
               {/* barra de ações em massa */}
-              {selected.size > 0 && (
+              {canEdit && selected.size > 0 && (
                 <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2">
                   <span className="text-sm font-medium">{selected.size} selecionado{selected.size === 1 ? '' : 's'}</span>
                   <div className="ml-auto flex flex-wrap items-center gap-2">
@@ -226,7 +236,7 @@ export default function GroupItemsManager({ group, groups, open, onOpenChange }:
           )}
 
           {/* ───────── modo ADICIONAR ───────── */}
-          {mode === 'add' && (
+          {canEdit && mode === 'add' && (
             <div className="flex flex-col gap-3 min-h-0 flex-1">
               <div className="flex items-center gap-2">
                 <Button variant="outline" size="sm" className="h-9 gap-1.5" onClick={() => { setMode('list'); setAddSelected(new Set()); }}>

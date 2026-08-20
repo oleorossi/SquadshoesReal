@@ -79,8 +79,11 @@ describe('Cabedal dublado — contrato frontend e persistência', () => {
   });
 
   it('cria a primeira cor com unidade de estoque explícita e dimensões do grupo', () => {
-    expect(groupColorProducts).toContain(
-      ".select('is_artisanal_strap, sector, consumption_unit, dimensions_length, dimensions_width, dimensions_thickness, dimensions_unit')",
+    // O .select() ganhou as colunas da árvore de famílias (is_family, shared_specs,
+    // is_bom_color_source, is_color_agnostic). O contrato que importa é que
+    // consumption_unit e as quatro dimensões continuem sendo lidos.
+    expect(groupColorProducts).toMatch(
+      /\.select\('is_artisanal_strap,[^']*consumption_unit, dimensions_length, dimensions_width, dimensions_thickness, dimensions_unit'\)/,
     );
     expect(groupColorProducts).toContain("const explicitStockUnit = String(spec.stockUnit || '').trim();");
     expect(groupColorProducts).toContain('if (!last && !explicitStockUnit)');
@@ -98,20 +101,36 @@ describe('Cabedal dublado — contrato frontend e persistência', () => {
       'const productData = sanitizeUuidFields({',
       '\n\n  let { error }',
     );
-    expect(productData).toContain("category: (last?.category || group?.sector || '').trim()");
+    // Precedência do GRUPO, não do produto-irmão. O comentário logo acima de
+    // defaultUnit já diz "Dimensões e setor vêm do grupo": a expressão anterior
+    // (last?.category primeiro) só garantia isso na PRIMEIRA cor; a partir da
+    // segunda, o irmão mandava. sectorOfGroup(group) garante sempre, e é o que a
+    // árvore Setor→Família→Grupo exige — o setor do grupo cascateia para
+    // products.category. Vale o mesmo para as dimensões abaixo: copiar largura do
+    // irmão é como a TIRA OVERLOCK 5MM herdou 1370mm de napa (ver CLAUDE.md).
+    expect(productData).toContain('category: sectorOfGroup(group)');
     expect(productData).toContain('unit: defaultUnit');
     expect(productData).toContain('purchase_unit: purchaseUnit');
     expect(productData).toContain('production_unit: productionUnit');
     expect(productData).toContain('purchase_order_unit: purchaseOrderUnit');
     expect(productData).toContain('consumption_unit: consumptionUnit');
-    expect(productData).toContain("conversion_rate: Number(last?.conversion_rate) > 0 ? Number(last?.conversion_rate) : 1");
-    expect(productData).toContain('dimensions_length: last?.dimensions_length ?? group?.dimensions_length ?? null');
-    expect(productData).toContain('dimensions_width: last?.dimensions_width ?? group?.dimensions_width ?? null');
-    expect(productData).toContain('dimensions_thickness: last?.dimensions_thickness ?? group?.dimensions_thickness ?? null');
-    expect(productData).toContain('dimensions_unit: last?.dimensions_unit ?? group?.dimensions_unit ?? null');
+    // A expressão saiu inline e virou `conversionRate`, que além de copiar do
+    // irmão passou a impor o invariante canônico do CLAUDE.md:
+    // purchase_unit == unit ⇒ conversion_rate = 1 (rate 0 é sempre inválido).
+    expect(productData).toContain('conversion_rate: conversionRate');
+    expect(groupColorProducts).toContain('const conversionRate = purchaseUnit === defaultUnit');
+    expect(groupColorProducts).toContain('Number(last?.conversion_rate) > 0 ? Number(last?.conversion_rate) : 1');
+    expect(productData).toContain('dimensions_length: group?.dimensions_length ?? last?.dimensions_length ?? null');
+    expect(productData).toContain('dimensions_width: group?.dimensions_width ?? last?.dimensions_width ?? null');
+    expect(productData).toContain('dimensions_thickness: group?.dimensions_thickness ?? last?.dimensions_thickness ?? null');
+    expect(productData).toContain('dimensions_unit: group?.dimensions_unit ?? last?.dimensions_unit ?? null');
 
     expect(groupColorProducts).toContain("error: 'Família de tira artesanal só pode ser criada pelo Hub de Tiras.'");
-    expect(groupColorProducts).toContain("(p.color || '').trim().toLowerCase() === color.toLowerCase()");
+    // A comparação inline virou o helper colorKey(), que além de trim/case também
+    // normaliza acento (NFD + remove diacríticos) — pega "CAFÉ" vs "CAFE", que o
+    // .trim().toLowerCase() anterior deixava passar como cor nova.
+    expect(groupColorProducts).toContain('colorKey(p.color || \'\') === colorKey(color)');
+    expect(groupColorProducts).toContain(".replace(/[\\u0300-\\u036f]/g, '')");
     expect(groupColorProducts).toContain("(error as any).code === '23505'");
   });
 

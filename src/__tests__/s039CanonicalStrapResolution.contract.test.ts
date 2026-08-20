@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 const ROOT = resolve(__dirname, '../..');
 const read = (path: string) => readFileSync(resolve(ROOT, path), 'utf8');
 
-const migration = read('supabase/migrations/20270101005000_resolve_s039_strap_catalog.sql');
+const migration = read('supabase/migrations/20270101005050_resolve_s039_strap_catalog.sql');
 const autoIntentMigration = read('supabase/migrations/20270101005500_auto_internal_strap_intent_from_pv.sql');
 const itemForm = read('src/components/sale-orders/SaleOrderItemForm.tsx');
 const drawer = read('src/components/sale-orders/StrapCatalogResolutionDrawer.tsx');
