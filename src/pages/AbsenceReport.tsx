@@ -22,6 +22,7 @@ import {
   absenteeismRate, mandatoryHolidaySet,
 } from '@/lib/absenteeism';
 import { employeeOverlapsEmploymentRange } from '@/lib/employeeEmployment';
+import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 
 export default function AbsenceReport() {
   const today = new Date();
@@ -268,9 +269,7 @@ export default function AbsenceReport() {
                 <TableCell>{a.paid ? <span className="text-emerald-600 text-xs">Sim</span> : <span className="text-destructive text-xs">Não</span>}</TableCell>
                 <TableCell className="text-muted-foreground truncate max-w-[200px]">{a.notes || '—'}</TableCell>
                 <TableCell>
-                  <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => remove.mutate(a.id)}>
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
+                  <DeleteConfirmButton onConfirm={() => remove.mutate(a.id)} title="Remover ausência?" description="Os dias voltam a contar na folha. Esta ação não pode ser desfeita." />
                 </TableCell>
               </TableRow>
             ))}

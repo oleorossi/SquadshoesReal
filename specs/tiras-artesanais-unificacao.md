@@ -4,8 +4,21 @@
 > o domínio para Tiras e formaliza componentes `buy_ready` não artesanais, como
 > STRASS, com identidade independente da napa da referência.
 
-> Especificação normativa fechada com o usuário em 16/08/2026. Este documento define a fonte
-> única para todo o domínio de tiras artesanais. Ele substitui, nas partes em que
+> **Override prospectivo confirmado pelo usuário em 18/08/2026 — origem no PV.**
+> A partir desta decisão, uma linha `reference_base` não nasce sem origem e não oferece
+> escolha manual: ela herda a cor principal do item e o material estrutural do cabedal
+> resolvido pela ficha/variante, e nasce `internal`. Ao cadastrar ou alterar essa intenção
+> no PV, o escritor server-side deve criar ou reutilizar atomicamente somente a identidade
+> exata exigida e persistir o snapshot. Uma linha `finished_product_group` — inclusive
+> STRASS — mantém grupo/cor próprios e nasce `buy_ready`; Vendas escolhe sua cor própria,
+> não sua origem. Este override não migra implicitamente variantes híbridas históricas nem
+> reescreve PVs, demandas, documentos, movimentos ou custos já congelados. Em qualquer
+> origem, o atendimento consome primeiro a tira acabada exata; a napa só é debitada no
+> recebimento/apontamento da produção interna efetivamente realizada.
+
+> Especificação normativa-base fechada com o usuário em 16/08/2026 e atualizada pelo override
+> prospectivo de 18/08/2026 acima. Este documento define a fonte única para todo o domínio de
+> tiras artesanais. Ele substitui, nas partes em que
 > houver conflito, `cadastro-tira-artesanal-no-pv.md`,
 > `calculadora-tiras-cortes-parciais.md`,
 > `tira-artesanal-fonte-unica-e-os-cabedal.md` e os trechos de tiras de
@@ -17,11 +30,14 @@
 > e de falta de napa deve obedecer também a `automacao-ordens-compra-demanda-pv.md`; este
 > documento especializa aquela regra para tiras, sem criar um segundo motor de compras.
 >
-> Uma variante de tira é **híbrida**: sua capacidade de compra é independente de ser
-> artesanal. Para tiras, `source_mode` persistido no PV é quem decide produzir ou comprar;
-> um `procurement_type` cadastral exclusivo (`purchased` versus `artisanal`) não pode
-> sobrescrever essa decisão. O integrador deve representar essa capacidade por
-> `purchase_enabled`/equivalente.
+> Uma variante de tira pode conservar capacidade **híbrida** no catálogo e no histórico:
+> sua capacidade de compra é independente de ser artesanal. `source_mode` persistido no PV
+> continua governando o motor e não pode ser sobrescrito por um `procurement_type` cadastral
+> exclusivo (`purchased` versus `artisanal`). Para intenções novas ou deliberadamente
+> alteradas depois do override de 18/08/2026, porém, esse `source_mode` é derivado de
+> `identity_basis` (`reference_base → internal`; `finished_product_group → buy_ready`), não
+> escolhido pelo vendedor. O integrador deve representar a capacidade por
+> `purchase_enabled`/equivalente sem usar essa capability como default de origem.
 >
 > Esta especialização altera formalmente quatro contratos do motor geral de OCs para demandas
 > de tira: (1) aceita produto híbrido por `purchase_enabled + source_mode`; (2) aceita
@@ -33,25 +49,31 @@
 
 ## Authority and superseded decisions
 
-As reversões abaixo foram novamente apresentadas e confirmadas pelo usuário durante esta
-entrevista em 15/08/2026; não são inferências da implementação:
+As reversões abaixo foram novamente apresentadas e confirmadas pelo usuário durante a
+entrevista em 15/08/2026; a linha de origem do PV recebeu o override prospectivo expresso de
+18/08/2026 registrado acima. Não são inferências da implementação:
 
 | Tema | Regra anterior revogada | Regra normativa atual |
 |---|---|---|
 | Produto acabado | Um produto por tipo/medida + cor, compartilhado entre bases | Um produto e saldo por tipo + medida + **base** + cor |
-| Origem do PV | Default por `products.is_artisanal` | Começa vazia e exige escolha explícita por tira |
+| Origem do PV | Default por `products.is_artisanal`; depois, origem vazia com escolha manual por tira | Intenção prospectiva derivada de `identity_basis`: `reference_base` nasce `internal`; `finished_product_group` nasce `buy_ready`; fatos históricos permanecem congelados |
 | Base da tira | Seleção por receita/nome/OS | Derivada da ficha/variante e persistida por ID no PV |
 | Rendimento | Herança/escala ou estimativa com 15% | Receita exata, rendimento confirmado, nenhuma perda adicional |
 | Estoque de segurança | Não fazia parte da automação geral de PV | Foi confirmado para tira pronta, por variante exata, e é preservado quando um PV dispara o cálculo |
 
 Matriz de precedência documental:
 
+- `identidade-variantes-e-tiras-compradas.md`: preservar a identidade independente e a
+  origem fixa `buy_ready` de `finished_product_group`/STRASS, além das capabilities híbridas
+  já existentes; o override de 18/08/2026 vence somente qualquer leitura de que uma nova
+  intenção `reference_base` ainda possa escolher manualmente `buy_ready`.
 - `cadastro-tira-artesanal-no-pv.md`: preservar criação contextual/atômica; revogar produto
   compartilhado, default MADRID editável, escolha de base na OS e “sem migration”.
 - `calculadora-tiras-cortes-parciais.md`: preservar cenários de cortes parciais/unidades;
   revogar qualquer exemplo ou fórmula com perda de 15%.
-- `tira-artesanal-fonte-unica-e-os-cabedal.md`: preservar decisão por linha e base derivada da
-  ficha; revogar default de origem vindo de `is_artisanal`.
+- `tira-artesanal-fonte-unica-e-os-cabedal.md`: preservar identidade por linha e base derivada
+  da ficha; revogar default vindo de `is_artisanal` e, prospectivamente, a escolha manual de
+  origem para linhas classificadas por `identity_basis`.
 - `tira-base-napa-por-ficha-tecnica.md`: preservar roteamento pela ficha/variante e ausência de
   override manual no PV.
 - `os-consolidada-por-prestador.md`: preservar uma OS aberta por prestador e linhas
@@ -66,10 +88,12 @@ cálculo, garantindo que cada PV reserve, produza, compre, receba, custeie e deb
 e a napa-base corretas. O fluxo deve impedir, por construção, que uma tira feita de NAPA
 SOFT OFF WHITE seja confundida com a equivalente feita de NAPA MADRID OFF WHITE.
 
-O usuário de Vendas escolhe, para cada tira do PV, se a empresa produzirá com napa própria
-ou comprará a tira pronta. A partir dessa decisão, o sistema executa automaticamente o
-netting de estoque, o planejamento, a demanda de napa ou de tira pronta, a rastreabilidade
-por PV e a integração de estoque, custos, terceiros e financeiro.
+O usuário de Vendas define a identidade comercial: cor/material principal do item e, quando
+houver uma linha `finished_product_group`, a cor própria desse componente. A classificação da
+linha define automaticamente a origem prospectiva: produzir com a napa estrutural do cabedal
+para `reference_base`, comprar pronta para `finished_product_group`. A partir dessa intenção,
+o sistema executa o netting de estoque, o planejamento, a demanda de napa ou de tira pronta,
+a rastreabilidade por PV e a integração de estoque, custos, terceiros e financeiro.
 
 ## Background / Problem
 
@@ -113,8 +137,10 @@ entre elas.
 - Receita e rendimento exatos por medida + napa-base, com sugestão geométrica e aprovação
   do rendimento real.
 - Matriz de criação em lote de medidas × bases × cores existentes nas napas.
-- Escolha obrigatória por tira do PV entre produzir com napa própria e comprar pronta.
-- Estoque acabado separado por napa-base, inclusive para tira comprada pronta.
+- Origem prospectiva automática por `identity_basis` no PV: `reference_base` interna com
+  cor/material do cabedal; `finished_product_group` com cor própria e compra pronta.
+- Estoque acabado separado por identidade estrutural: napa-base em `reference_base` e grupo
+  próprio em `finished_product_group`.
 - Netting de estoque e preservação do estoque mínimo por variante exata.
 - Produção própria na fábrica ou transformação por terceirizado com napa da empresa.
 - Demanda automática da napa faltante ou da tira pronta faltante.
@@ -179,29 +205,38 @@ entre elas.
 
 ### B. Identidade, hierarquia e catálogo
 
-8. A hierarquia canônica é **família/tipo → medida → napa-base → cor canônica**. Exemplo:
-   `TIRA CHATA → 8 mm → NAPA SOFT → OFF WHITE`.
+8. Para `reference_base`, a hierarquia canônica é
+   **família/tipo → medida → napa-base → cor canônica**. Exemplo:
+   `TIRA CHATA → 8 mm → NAPA SOFT → OFF WHITE`. Para `finished_product_group`, a dimensão
+   estrutural é o grupo próprio do componente acabado, seguida de sua cor canônica; a napa da
+   referência não participa da identidade.
 9. Família/tipo descreve a construção, como TIRA CHATA. Medida descreve a largura final
    visível, como 8 mm, 9 mm ou 10 mm.
 10. A largura final e a largura da banda cortada são campos distintos. Somente a largura da
     banda cortada participa do cálculo geométrico.
 11. A largura da banda pode variar para a mesma medida conforme a napa-base; por exemplo,
     TIRA CHATA 8 mm + SOFT pode usar uma banda diferente de TIRA CHATA 8 mm + MADRID.
-12. A variante acabada possui identidade única por
-    `(familia_id, medida_id, base_group_id, color_id)` e aponta para exatamente um
-    `finished_product_id` com unidade-base `m`. Nome e SKU do produto acabado devem incluir
-    a base de forma inequívoca; `products.group_id` é classificação/apresentação, não chave
-    suficiente para resolução.
-13. SOFT OFF WHITE e MADRID OFF WHITE são variantes e saldos diferentes, ainda que usem o
-    mesmo `color_id`. Não pode haver alocação, substituição, reserva ou baixa cruzada.
-14. A tira comprada pronta também deve estar vinculada à napa-base/padrão material que ela
-    representa. Um item comprado como padrão SOFT não atende automaticamente MADRID.
+12. A variante acabada `reference_base` possui identidade única por
+    `(familia_id, medida_id, base_group_id, color_id)`. A variante
+    `finished_product_group` usa a mesma chave física, mas seu `base_group_id` armazena o
+    grupo próprio resolvido do `identity_group_id` da linha, não a napa da referência. Ambas
+    apontam para exatamente um `finished_product_id` com unidade-base `m`; nomes e SKUs devem
+    tornar a identidade física inequívoca, e nenhum lookup pode usar apenas
+    `products.group_id + texto de cor`.
+13. Em `reference_base`, SOFT OFF WHITE e MADRID OFF WHITE são variantes e saldos diferentes,
+    ainda que usem o mesmo `color_id`. Não pode haver alocação, substituição, reserva ou baixa
+    cruzada.
+14. Uma tira comprada pronta que represente uma base/padrão material continua vinculada a
+    essa base: padrão SOFT não atende MADRID. Já `finished_product_group`, como STRASS, é
+    deliberadamente independente da napa do calçado e resolve exclusivamente por seu grupo
+    próprio + medida + cor.
 15. Relações operacionais devem usar IDs imutáveis de família, medida, variante, cor,
-    produto-base, produto acabado e receita. A linha técnica carrega seu UUID estável e a
-    família/medida; como a cor só é escolhida no PV, `strap_variant_id` é resolvido e
-    persistido no snapshot do PV depois de combinar medida + base da referência + cor.
-    Nomes e `group_id + color` ficam apenas como rótulo/migração; é proibido lookup
-    operacional por eles, inclusive `LIMIT 1`.
+    produto-base quando aplicável, produto acabado e receita quando interna. A linha técnica
+    carrega UUID estável, `identity_basis` e família/medida. No PV, `reference_base` combina
+    medida + base estrutural do cabedal + cor principal do item; `finished_product_group`
+    combina medida + `identity_group_id` + cor própria da linha. O `strap_variant_id` exato é
+    persistido no snapshot. Nomes e `group_id + color` ficam apenas como rótulo/migração; é
+    proibido lookup operacional por eles, inclusive `LIMIT 1`.
 16. Deve existir um catálogo de cores canônicas e uma tabela de aliases. Normalização
     textual pode sugerir um alias, mas somente o Administrador pode aprová-lo. Um mesmo
     alias normalizado não pode estar aprovado para duas cores canônicas; conflito bloqueia
@@ -288,34 +323,54 @@ entre elas.
     decimais nas fronteiras operacionais e arredondar para 2 casas apenas na apresentação.
     Nunca arredondar cada contribuição antes de somar.
 
-### D. Pedido de venda e escolha da origem
+### D. Pedido de venda e origem derivada da intenção
 
-41. Ao criar/editar um PV com tiras habilitadas, cada linha de tira deve mostrar a variante
-    exata resolvida e exigir uma escolha explícita: **Produzir com napa própria** ou
-    **Comprar tira pronta**. A linha nasce na ficha/BOM com
-    `technical_strap_line_id UUID NOT NULL`, copiado para o snapshot do item do PV.
-42. A escolha começa vazia. Não pode existir default silencioso. Deve haver ação “Aplicar a
-    todas”, seguida de revisão individual; o usuário pode sobrescrever uma linha. `NULL` é
-    permitido enquanto o PV está em edição, mas a confirmação exige valor em todas as linhas.
+41. Ao criar/editar uma intenção prospectiva num PV com tiras habilitadas, cada linha deve
+    mostrar sua identidade e aplicar a origem por `identity_basis`, sem botões manuais de
+    origem:
+    - `reference_base`: usa a cor principal do item, a base estrutural do cabedal resolvida
+      pela ficha/variante e `source_mode='internal'`;
+    - `finished_product_group`: usa o grupo próprio persistido na ficha, a cor própria
+      escolhida para a linha e `source_mode='buy_ready'`. STRASS pertence a este caso.
+    A linha nasce na ficha/BOM com `technical_strap_line_id UUID NOT NULL` e
+    `identity_basis`, copiados para o snapshot do item do PV.
+42. Uma linha `reference_base` não começa com origem `NULL`, não oferece “Aplicar a todas” e
+    não pode ser sobrescrita para `buy_ready` no fluxo comum de Vendas. Ao cadastrar ou
+    alterar cor/material do item, o escritor server-side resolve a cor canônica, relê medida
+    e base estrutural por UUID, cria ou reutiliza somente a variante interna exata exigida e
+    persiste `strap_colors + strap_sourcing` na mesma transação do PV. Uma linha
+    `finished_product_group` exige sua cor canônica própria, mas sua origem `buy_ready` é
+    fixa. Snapshots históricos completos são preservados enquanto o fato permanece
+    intocado; não há backfill silencioso para converter combinações híbridas antigas.
 43. A quantidade bruta de tira vem da ficha técnica/consumo e da quantidade/grade do item do
     PV, usando a fórmula do requisito 39.
-44. A napa-base é derivada automaticamente da referência e da variante de material do item,
-    respeitando a precedência técnica canônica. Vendas não pode trocar a base manualmente.
-45. Se a ficha/variante não identificar uma base exata, ou se não houver produto-base oficial
-    naquela cor, o PV fica bloqueado com mensagem acionável para corrigir a ficha/cadastro.
-    Vendas vê diagnóstico read-only e a ação **Solicitar correção**; **Abrir cadastro** só
-    aparece para quem possui capability de gestão do catálogo.
-46. Para origem interna, a confirmação exige receita exata aprovada e custo de transformação
-    válido. Para compra pronta, exige preço de compra positivo; ausência de fornecedor segue
-    o fluxo de OC provisória, sem esconder a demanda. Por decisão expressa deste escopo,
-    variante legada sem preço também bloqueia a escolha de compra pronta e entra em revisão;
-    não se aplica a tolerância geral que deixa legado sem preço avançar até uma OC bloqueada.
-47. Na confirmação do PV, o sistema persiste por linha: variante e produtos exatos, origem,
-    quantidade, receita/versão, rendimento, data de necessidade, custo unitário escolhido,
-    composição explicativa e chave idempotente.
-48. A escolha de origem pode mudar normalmente somente antes de iniciar a OS/lote interno ou
-    de aprovar a OC de compra pronta. Depois desse ponto, somente Administrador, com reversão
-    transacional do que ainda for reversível, motivo obrigatório e trilha de auditoria.
+44. Para `reference_base`, napa-base e cor são derivadas automaticamente da referência,
+    variante de material e cor principal do item, respeitando a precedência técnica canônica
+    do cabedal. Vendas não pode trocar a base nem a cor da tira separadamente. Para
+    `finished_product_group`, o grupo próprio vem da ficha e a cor é independente da cor
+    principal do item.
+45. A inexistência prévia da variante acabada `reference_base` exata não deve abrir outro
+    formulário nem obrigar Vendas a sair do PV: o escritor cria/reutiliza atomicamente apenas
+    a combinação pedida. Se ficha/variante não identificar base, medida, receita ou produto-
+    base oficial inequívocos, ou se a cor principal não resolver para uma única cor canônica,
+    o PV fica bloqueado com mensagem acionável para corrigir o cadastro. Vendas vê diagnóstico
+    read-only e a ação **Solicitar correção**; **Abrir cadastro** só aparece para quem possui
+    capability de gestão do catálogo.
+46. Para a origem interna derivada de `reference_base`, a confirmação exige receita exata
+    aprovada e custo de transformação válido. Para `finished_product_group`/`buy_ready`, exige
+    preço de compra positivo; ausência de fornecedor segue o fluxo de OC provisória, sem
+    esconder a demanda. Por decisão expressa deste escopo, variante legada sem preço também
+    bloqueia a intenção de compra pronta e entra em revisão; não se aplica a tolerância geral
+    que deixa legado sem preço avançar até uma OC bloqueada.
+47. Na confirmação do PV, o sistema persiste por linha: `identity_basis`, variante e produtos
+    exatos, origem derivada, quantidade, receita/versão quando interna, rendimento, data de
+    necessidade, custo unitário aplicável, composição explicativa e chave idempotente.
+48. No fluxo prospectivo comum não existe troca manual de origem: editar cor/material
+    principal rederiva uma linha `reference_base`; editar a cor própria rederiva uma linha
+    `finished_product_group`. Isso só pode replanejar documentos ainda reversíveis. Override
+    administrativo de snapshot histórico ou troca depois de iniciar OS/lote interno ou
+    aprovar OC exige Administrador, reversão transacional do reversível, motivo obrigatório e
+    trilha de auditoria; fatos congelados não mudam implicitamente.
 49. Editar quantidade, grade, referência, variante, cor, semana de faturamento ou cancelar o
     PV deve recalcular apenas sua contribuição enquanto os documentos estiverem abertos.
     Documentos aprovados/iniciados não podem ser reescritos silenciosamente.
@@ -374,12 +429,16 @@ entre elas.
     persistida, com `purchase_product_id` exato e marcação `pre_netted`; o agregador geral de
     OCs consolida essa falta e aplica mínimo/múltiplo, mas não desconta estoque novamente.
 57. Exemplo obrigatório: saldo 100 m, mínimo 30 m, PV de 90 m. O sistema reserva 70 m e
-    produz/compra 20 m conforme a origem do PV, preservando 30 m.
+    produz/compra 20 m conforme a origem derivada e congelada da linha do PV, preservando
+    30 m.
 58. Tanto na origem interna quanto na compra pronta, usa-se primeiro o saldo acabado exato e
-    repõe-se somente a falta líquida.
+    repõe-se somente a falta líquida. Criar/aprovar o PV, reservar ou planejar nunca debita a
+    napa; a baixa da base pertence exclusivamente ao recebimento/apontamento da transformação
+    interna efetivamente realizada.
 59. Se PVs de origens diferentes disputarem o mesmo saldo, a prioridade é o início produtivo
     mais próximo; em empate, o PV confirmado primeiro. A falta remanescente de cada PV segue
-    a origem escolhida naquela linha. A parcela necessária apenas para recompor o estoque
+    o `source_mode` derivado ou historicamente congelado naquela linha. A parcela necessária
+    apenas para recompor o estoque
     mínimo não herda a origem do primeiro/último PV: ela segue sempre o
     `min_stock_replenishment_mode` da variante.
 60. Estoque acabado produzido internamente e comprado pronto forma um único saldo físico da
@@ -468,8 +527,10 @@ entre elas.
 
 ### G. Produção com napa própria
 
-74. Escolher “Produzir com napa própria” significa usar material pertencente à empresa,
-    podendo o executor ser a fábrica ou um terceirizado definido na receita.
+74. Em intenção prospectiva `reference_base`, a origem automática “Produzir com napa própria”
+    significa usar o material estrutural do cabedal pertencente à empresa, podendo o executor
+    ser a fábrica ou um terceirizado definido na receita. A mesma semântica continua valendo
+    para snapshots internos históricos preservados.
 75. Após descontar tira pronta disponível, a quantidade de napa a reservar é a falta líquida
     de tira dividida pelo rendimento confirmado da receita.
 76. A confirmação calcula e persiste separadamente:
@@ -581,9 +642,11 @@ entre elas.
 
 ### I. Compra da tira pronta
 
-100. Para “Comprar tira pronta”, o material comprado é o produto acabado da variante exata,
-     sem reserva, baixa ou saída da napa-base da fábrica. A data necessária entregue ao motor
-     geral de OC é a data-limite em que a tira deve estar pronta, definida no requisito 64.
+100. Para uma linha prospectiva `finished_product_group`, a origem fixa “Comprar tira pronta”
+     compra o produto acabado da variante exata de seu grupo/cor próprios, sem reserva, baixa
+     ou saída da napa-base da fábrica. A mesma regra física vale para snapshots `buy_ready`
+     históricos preservados. A data necessária entregue ao motor geral de OC é a data-limite
+     em que a tira deve estar pronta, definida no requisito 64.
 101. A variante deve declarar se compra pronta está habilitada. Quando habilitada, seu
      `finished_product_id` deve possuir, antes da ativação, `purchase_price > 0`, unidade de
      compra válida, `conversion_rate > 0` — e igual a 1 quando unidade de compra = unidade de
@@ -628,9 +691,10 @@ entre elas.
 
 109. Para compra pronta, o custo unitário previsto é o preço de compra vigente e válido da
      variante acabada, convertido para a unidade-base `m` quando necessário.
-110. O PV congela o custo da origem escolhida para **toda** a metragem daquela linha, mesmo
-     quando parte será atendida por saldo existente. Exemplo: precisa 100 m, há 60 m e faltam
-     40 m; se a origem escolhida foi interna, os 100 m usam o custo interno previsto.
+110. O PV congela o custo da origem derivada — ou do snapshot histórico preservado — para
+     **toda** a metragem daquela linha, mesmo quando parte será atendida por saldo existente.
+     Exemplo: precisa 100 m, há 60 m e faltam 40 m; se a origem congelada é interna, os 100 m
+     usam o custo interno previsto.
 111. Alterações posteriores em napa, rendimento, transformação, fornecedor ou preço de compra
      afetam somente novos PVs. A margem aprovada do PV não é recalculada retroativamente.
 112. Movimentos físicos continuam usando o custo efetivo de cada entrada e mantêm custo médio
@@ -644,12 +708,14 @@ entre elas.
 114. Administrador e usuários de Engenharia/Produtos explicitamente autorizados podem criar
      ou editar famílias, medidas, variantes e receitas; aprovação de rendimento exige uma
      capability separada de aprovação.
-115. Vendas pode consultar a identidade resolvida e escolher a origem no PV, mas não altera
-     base, receita, rendimento, custos mestres ou aliases.
+115. Vendas pode consultar a identidade resolvida, definir cor/material principal do item e
+     escolher a cor própria de `finished_product_group`; a origem é derivada automaticamente
+     e não possui controle manual. Vendas não altera base, receita, rendimento, custos
+     mestres ou aliases.
 116. Produção pode consultar lotes/OS e registrar execução, parciais, consumo e rejeição, mas
      não aprova receita nem resolve ambiguidade cadastral.
-117. Somente Administrador resolve alias, produto-base duplicado, migração ambígua, troca de
-     origem após compromisso, perda de terceirizado e desconto financeiro.
+117. Somente Administrador resolve alias, produto-base duplicado, migração ambígua, override
+     de origem histórica após compromisso, perda de terceirizado e desconto financeiro.
      Capabilities server-side mínimas são `manage_strap_catalog`, `approve_strap_recipe`,
      `execute_strap_batch` e `resolve_strap_migration`; acesso ao módulo, por si só, não concede
      todas as ações.
@@ -661,9 +727,9 @@ entre elas.
 119. Lotes/OS/contribuições devem distinguir estado operacional de criticidade. “Urgente” e
      “Atrasada” são indicadores derivados de data, não substituem `pending`, `in_progress`,
      `partial`, `completed` ou `cancelled`.
-120. Toda criação, edição, aprovação, inativação, escolha de origem, alocação, recálculo,
-     reserva, movimento, parcial, rejeição, cancelamento, perda e desconto deve registrar
-     antes/depois, usuário, horário, motivo e IDs de origem.
+120. Toda criação, edição, aprovação, inativação, derivação ou override administrativo de
+     origem, alocação, recálculo, reserva, movimento, parcial, rejeição, cancelamento, perda e
+     desconto deve registrar antes/depois, usuário, horário, motivo e IDs de origem.
 121. RLS e RPCs devem aplicar essas permissões no servidor. Esconder botão no frontend não é
      controle de acesso suficiente. Valores de custo, margem e financeiro exigem também o gate
      canônico `canSeeFinancialValues`/equivalente; Produção pode operar sem vê-los.
@@ -689,14 +755,19 @@ entre elas.
      continuam operando. PV, reserva ou OS aberta que dependa da variante ambígua fica
      suspensa/acionável e não continua sendo processada pelo motor legado. Decisões antigas
      guardadas por `group + color` só são remapeadas para o UUID/variante quando houver um
-     match único; PV aberto ambíguo volta à escolha explícita, sem default.
+     match único. PV aberto ambíguo e intocado não recebe origem nem identidade nova por
+     backfill; quando o usuário alterar deliberadamente sua intenção e ela ainda for
+     reversível, passa a valer a derivação prospectiva por `identity_basis`.
 126. Aliases como “OFF WHITE”/“OF WHITE” são apenas sugeridos; Administrador aprova ou rejeita.
      A migração não une cores automaticamente.
 127. Duplicatas da mesma base + cor devem ser unificadas/designadas antes de liberar o vínculo.
      Nenhum saldo é somado ou movido silenciosamente.
-128. Histórico finalizado mantém seus IDs e snapshots originais. Quando possível, adiciona-se
-     referência nova sem reescrever quantidade, custo ou movimento histórico. A evolução de
-     `artisanal_recipes` deve preservar/migrar seus IDs e FKs de OS por mapa explícito.
+128. Histórico finalizado mantém seus IDs, `source_mode` e snapshots originais. Variantes
+     híbridas históricas, inclusive combinações internas/compradas que deixaram de ser
+     selecionáveis prospectivamente, não são convertidas em massa. Quando possível,
+     adiciona-se referência nova sem reescrever quantidade, custo ou movimento histórico. A
+     evolução de `artisanal_recipes` deve preservar/migrar seus IDs e FKs de OS por mapa
+     explícito.
 129. O corte deve: criar catálogo/mapeamentos sem ativar; migrar inequívocos; congelar
      escritores antigos; reconciliar documentos abertos; ativar o resolvedor novo numa troca
      única; migrar grants/favoritos explícitos de `/calculadora-tiras` e
@@ -741,15 +812,22 @@ renomeadas, mas não podem permanecer como uma segunda fonte de verdade com sem�
   - Unique ativo por base + cor e FK para `products`; permite ao Administrador designar o
     oficial com histórico/auditoria.
 - `artisanal_strap_variants`
-  - `id`, `measure_id`, `base_group_id`, `color_id`, `finished_product_id`, `min_stock_m`,
+  - `id`, `measure_id`, `base_group_id`, `identity_basis`,
+    `internal_production_enabled`, `color_id`, `finished_product_id`, `min_stock_m`,
     `min_stock_replenishment_mode` (`internal`|`buy_ready`), `purchase_enabled`, `status`,
     `review_reason`, timestamps.
   - Unique `(measure_id, base_group_id, color_id)`.
+  - Em `reference_base`, `base_group_id` é a napa/material estrutural do cabedal. Em
+    `finished_product_group`, é o grupo próprio do componente acabado, resolvido do
+    `identity_group_id` da linha; nesse caso `internal_production_enabled=false`,
+    `purchase_enabled=true` e o piso é `buy_ready`.
   - `finished_product_id` único por variante; unidade do produto = `m`.
-  - O produto-base atual é resolvido exclusivamente por
+  - Para `reference_base`, o produto-base atual é resolvido exclusivamente por
     `base_material_color_official_products`; a variante não duplica esse vínculo. Ao confirmar
     o PV, o produto oficial exato é congelado em `sale_order_strap_demands.base_product_id`,
-    preservando o histórico caso a designação oficial mude depois.
+    preservando o histórico caso a designação oficial mude depois. Para
+    `finished_product_group`, `base_product_id` e receita interna são nulos; o produto acabado
+    pertence ao grupo próprio e é a identidade comprável.
   - O `finished_product_id` guarda o cadastro comercial canônico de compra pronta:
     `products.supplier_id`, `products.purchase_unit`, `products.conversion_rate`,
     `products.purchase_price`, `products.min_order_quantity`,
@@ -782,8 +860,10 @@ renomeadas, mas não podem permanecer como uma segunda fonte de verdade com sem�
 ### Demanda do PV
 
 - A ficha/BOM deve persistir `technical_strap_line_id UUID NOT NULL` e `measure_id` em cada
-  linha de tira. A cor e a base ainda não pertencem à linha genérica da ficha; o PV resolve a
-  variante exata. Se o armazenamento continuar em JSON durante a migração, os UUIDs são
+  linha de tira, além de `identity_basis`. Em `reference_base`, cor e base não pertencem à
+  linha genérica: o PV combina a cor principal do item com o material estrutural do cabedal.
+  Em `finished_product_group`, a ficha persiste também `identity_group_id` e o PV escolhe uma
+  cor própria da linha. Se o armazenamento continuar em JSON durante a migração, os UUIDs são
   estáveis e não podem ser regenerados a cada leitura/edição.
 - `sale_order_strap_demands`
   - `id`, `sale_order_id`, `sale_order_item_id`, `technical_strap_line_id UUID NOT NULL`,
@@ -803,6 +883,10 @@ renomeadas, mas não podem permanecer como uma segunda fonte de verdade com sem�
     mesma transação.
   - `UNIQUE(operation_type, idempotency_key)`: mesma chave + mesmo hash retorna o resultado;
     mesma chave + payload diferente retorna conflito.
+- Para intenção prospectiva, o writer deriva e congela `source_mode` exclusivamente de
+  `identity_basis`: `reference_base → internal`, `finished_product_group → buy_ready`. A
+  coluna continua necessária porque fatos históricos e demandas já comprometidas preservam
+  o snapshot que realmente os originou; sua existência não autoriza um seletor manual novo.
 - A tabela deve permitir retirar/recalcular a contribuição de um PV sem apagar as demais
   contribuições do mesmo lote, OS ou OC.
 - `strap_stock_floor_contributions`
@@ -983,8 +1067,10 @@ renomeadas, mas não podem permanecer como uma segunda fonte de verdade com sem�
 
 ### Happy path — PV com produção interna
 
-1. A ficha/variante do item resolve TIRA CHATA 8 mm + NAPA MADRID + OFF WHITE.
-2. Vendas escolhe **Produzir com napa própria** naquela tira e confirma o PV.
+1. A ficha classifica a linha como `reference_base`; a variante de material resolve NAPA
+   MADRID e Vendas define OFF WHITE como cor principal do item.
+2. Na própria gravação do PV, o servidor cria/reutiliza TIRA CHATA 8 mm + NAPA MADRID + OFF
+   WHITE e congela `source_mode='internal'`, sem pedir escolha manual de origem.
 3. O worker persiste a demanda, aloca tira pronta exata preservando o mínimo e calcula a falta.
 4. Para a falta, aplica o rendimento confirmado de 8 mm + MADRID e reserva NAPA MADRID OFF
    WHITE; jamais procura NAPA SOFT pela semelhança da cor.
@@ -994,7 +1080,8 @@ renomeadas, mas não podem permanecer como uma segunda fonte de verdade com sem�
 
 ### Happy path — PV com compra pronta
 
-1. A mesma variante exata é resolvida, mas Vendas escolhe **Comprar tira pronta**.
+1. A ficha classifica STRASS como `finished_product_group`; Vendas escolhe a cor própria dessa
+   linha e o servidor congela `source_mode='buy_ready'`.
 2. O worker usa primeiro o saldo acabado preservando o mínimo.
 3. A falta vai para a OC do fornecedor/quinzena da tira pronta, sem movimentar napa.
 4. O PDF abre os metros por PV. Após aprovação, a OC congela.
@@ -1019,8 +1106,8 @@ renomeadas, mas não podem permanecer como uma segunda fonte de verdade com sem�
   o documento aberto.
 - Depois de produção/recebimento: a quantidade já pronta vira saldo livre; fatos físicos e
   financeiros permanecem.
-- Depois de OC aprovada ou lote/OS iniciado: mudança de origem exige Administrador e não altera
-  snapshots sem reversão explícita.
+- Depois de OC aprovada ou lote/OS iniciado: editar a identidade prospectiva ou fazer override
+  de origem histórica exige Administrador e não altera snapshots sem reversão explícita.
 
 ### Migração
 
@@ -1033,7 +1120,9 @@ renomeadas, mas não podem permanecer como uma segunda fonte de verdade com sem�
    Administrador aprova aliases, escolhe produto oficial, confirma a origem de reposição do
    piso e confere/divide saldo com conservação obrigatória.
 5. Origem legada explícita mapeia `in_house → internal` e `purchased → buy_ready`; PV aberto
-   sem origem comprovada fica acionável e vazio, sem receber default.
+   sem origem comprovada e intocado fica acionável, sem backfill. Se o usuário alterar
+   deliberadamente uma intenção ainda reversível, a linha passa a seguir
+   `reference_base → internal` ou `finished_product_group → buy_ready`.
 6. Escritores antigos são congelados; reservas, demandas e documentos abertos são
    reconciliados; OS histórica conserva `artisanal_recipe_id` ou mapa/snapshot equivalente.
 7. O resolvedor novo é ativado numa única virada, permissões/favoritos são migrados e os
@@ -1057,8 +1146,10 @@ renomeadas, mas não podem permanecer como uma segunda fonte de verdade com sem�
 - **Contribuições muito pequenas** → somar em precisão total antes de arredondar; não desaparecer.
 - **Duas abas confirmam PVs simultâneos** → locks + unique keys produzem uma alocação e uma
   contribuição por origem, sem estoque negativo ou duplicação.
-- **PVs internos e comprados na mesma variante** → cada PV conserva sua escolha; somente a
-  parcela do piso segue `min_stock_replenishment_mode`, independentemente da ordem dos jobs.
+- **Snapshots históricos internos e comprados na mesma variante híbrida** → cada fato conserva
+  seu `source_mode`; nenhuma migração implícita os converte. Intenções prospectivas novas
+  seguem `identity_basis`; somente a parcela do piso segue
+  `min_stock_replenishment_mode`, independentemente da ordem dos jobs.
 - **Origem configurada do piso torna-se indisponível** → suspender e sinalizar apenas a
   contribuição `stock_floor`; não mudar de origem nem impedir a cobertura válida dos PVs.
 - **Worker falha depois do PV** → job permanece pendente/erro com retry e alerta; nunca some.
@@ -1148,22 +1239,26 @@ Nenhuma decisão de produto permanece aberta para implementação desta especifi
       combinação; nenhuma tela inventa rendimento SOFT/MADRID ou adiciona 15%.
 - [ ] **Reqs. 39–40 — paridade/precisão:** testes TS×RPC cobrem valores pequenos e provam que
       três parcelas de 0,0049 m totalizam 0,0147 m, sem zerar por arredondamento por linha.
-- [ ] **Reqs. 41–53 — PV:** cada tira começa sem origem, “Aplicar a todas” funciona e permite
-      override; ficha sem base e interna sem receita bloqueiam. A fila é persistida na mesma
-      operação do PV e sobrevive ao fechamento da aba; o worker cumpre SLO operacional de até
-      60 s em staging, com retry/dead-letter visível e sem duplicar.
+- [ ] **Reqs. 41–53 — PV:** `reference_base` copia cor principal + material estrutural do
+      cabedal, é materializada atomicamente e nasce `internal`; `finished_product_group` usa
+      cor própria e nasce `buy_ready`. Não há “Aplicar a todas” nem seletor manual de origem.
+      Ficha sem base/medida e interna sem receita bloqueiam. A fila é persistida na mesma
+      operação do PV, inclusive offline, e sobrevive ao fechamento da aba; o worker cumpre
+      SLO operacional de até 60 s em staging, com retry/dead-letter visível e sem duplicar.
 - [ ] **Reqs. 44–47 — napa correta:** num PV cuja ficha aponta MADRID OFF WHITE, consulta das
       reservas/movimentos mostra somente o `base_product_id` MADRID; não existe movimento SOFT.
 - [ ] **Reqs. 48–51 — edição/cancelamento:** antes do compromisso, editar/cancelar um PV remove
-      só sua contribuição; após produção, libera o acabado sem apagar baixa/custo; mudança de
-      origem comprometida exige Administrador e motivo.
+      só sua contribuição; após produção, libera o acabado sem apagar baixa/custo; alterar
+      identidade comprometida ou fazer override de origem histórica exige Administrador e
+      motivo.
 - [ ] **Reqs. 54–62 — netting:** saldo 100, mínimo 30 e demanda 90 gera 70 reservados + 20 de
       reposição. Dois PVs simultâneos não compartilham os mesmos metros; prioridade segue data
       e depois confirmação. Reprocessar depois de criar a reserva/lote mantém 20 m — não cria
       70/90 adicionais — e mesma chave com payload diferente falha.
-- [ ] **Reqs. 23, 56–59 e 73 — origem do piso:** com saldo 0, mínimo 30, PV interno de 40 e
-      PV `buy_ready` de 40, os 80 m seguem as escolhas dos PVs e os 30 m adicionais seguem
-      somente `min_stock_replenishment_mode`. Alternar a ordem de processamento produz o mesmo
+- [ ] **Reqs. 23, 56–59 e 73 — origem do piso:** com saldo 0, mínimo 30, uma linha
+      `reference_base/internal` de 40 e uma linha `finished_product_group/buy_ready` de 40, os
+      80 m seguem as origens derivadas e os 30 m adicionais seguem somente
+      `min_stock_replenishment_mode`. Alternar a ordem de processamento produz o mesmo
       resultado; a contribuição aparece como `stock_floor`, sem número de PV, e retry não a
       duplica. Com PVs em quinzenas diferentes, o piso usa o bucket do PV com menor data e muda
       de OC somente enquanto não comprometido. Origem padrão inválida suspende apenas o piso,
@@ -1173,17 +1268,18 @@ Nenhuma decisão de produto permanece aberta para implementação desta especifi
       campos de PV nulos. No modo interno, 30 m de tira com rendimento 60 geram 0,5 m de napa
       antes de aplicar MOQ/múltiplo do produto-base; no modo `buy_ready`, compra 30 m do produto
       acabado. Nenhum dos caminhos converte tira em napa 1:1 nem refaz o netting.
-- [ ] **Reqs. 54–62 e 76–77 — duas camadas:** um PV interno compra falta do
-      `base_product_id`; um PV de compra pronta compra falta do `finished_product_id`; o
-      construtor da OC não refaz o netting `pre_netted`. Duas medidas disputando a mesma napa
-      são serializadas sem sobrealocação.
-- [ ] **Reqs. 58–60 — origem híbrida:** a mesma variante atende um PV por produção interna e
-      outro por compra pronta, usando um único saldo físico e reposições distintas conforme a
-      prioridade, sem `procurement_type` sobrescrever `source_mode`.
+- [ ] **Reqs. 54–62 e 76–77 — duas camadas:** uma linha `reference_base/internal` compra falta
+      do `base_product_id`; uma linha `finished_product_group/buy_ready` compra falta do
+      `finished_product_id`; o construtor da OC não refaz o netting `pre_netted`. Duas medidas
+      disputando a mesma napa são serializadas sem sobrealocação.
+- [ ] **Reqs. 58–60 — histórico híbrido:** snapshots históricos da mesma variante, um interno
+      e outro comprado pronto, conservam seu `source_mode`, saldo físico e reposições sem
+      migração implícita nem `procurement_type` sobrescrevendo fatos. Novas intenções provam a
+      derivação por `identity_basis`.
 - [ ] **Reqs. 60 e 108–113 — custos:** estoque interno/comprado compartilha saldo e WAC com
       origem nos movimentos; PV de 100 m com 60 m em estoque congela os 100 m pelo custo da
-      origem escolhida e mostra variação contra o realizado sem recalcular margem. Com napa
-      R$ 20/m, rendimento 60 e transformação R$ 0,50/m, o custo previsto é
+      origem derivada/congelada e mostra variação contra o realizado sem recalcular margem.
+      Com napa R$ 20/m, rendimento 60 e transformação R$ 0,50/m, o custo previsto é
       R$ 0,833333/m e 100 m custam R$ 83,3333 antes da apresentação.
 - [ ] **Reqs. 63–73 — planejamento:** lote cai na semana fabril anterior; feriado/sábado
       produtivo alteram a data corretamente; dois PVs compatíveis formam um lote com uma linha
@@ -1197,7 +1293,8 @@ Nenhuma decisão de produto permanece aberta para implementação desta especifi
       do piso aparece separadamente como “Reposição de estoque mínimo”.
 - [ ] **Reqs. 74–85 — produção própria:** confirmação reserva a napa sem debitar; cada parcial
       debita somente consumo real, entra somente tira aprovada, mantém saldo e registra
-      rendimento; repetir a chave não duplica movimentos.
+      rendimento; o saldo acabado exato é usado antes de reservar base; repetir a chave não
+      duplica movimentos.
 - [ ] **Reqs. 76, 84–85 — integridade:** query de movimentos prova uma única baixa por parcial;
       criar/atualizar planejamento/OS gera zero movimento; somente a RPC de parcial move napa.
       `trg_debit_service_order_base` e a chamada manual de `waveTimelineService` deixaram de
@@ -1222,12 +1319,14 @@ Nenhuma decisão de produto permanece aberta para implementação desta especifi
       bloqueiam ativação mesmo se `procurement_type` continuar artesanal.
 - [ ] **Reqs. 114–121 — segurança/auditoria:** testes com perfis de Vendas, Produção,
       Engenharia e Administrador provam cada permissão tanto pela UI quanto por tentativa
-      direta no banco; Vendas/Produção/Consulta não aprovam receita; custo fica oculto sem gate
-      financeiro; audit log contém antes/depois e IDs.
+      direta no banco; Vendas não altera a origem derivada, e Vendas/Produção/Consulta não
+      aprovam receita; custo fica oculto sem gate financeiro; audit log contém antes/depois e
+      IDs.
 - [ ] **Reqs. 122–130 — migração:** dry-run classifica todos os registros; inequívocos migram;
       ambíguos ficam em revisão somente na variante. Checksums de `products.quantity`,
       reservas, inbounds e movimentos provam conservação; nenhuma OS perde receita/snapshot;
-      PV aberto sem origem continua acionável e sem default.
+      PV aberto intocado não recebe backfill de origem, e somente uma alteração deliberada
+      ainda reversível aplica a regra prospectiva.
 - [ ] **Regressão — retirada de regras antigas:** testes comportamentais cobrem
       `strapRollCut`, `strapYield`, `cuttingOptimizer`, BOM, picking e RPC; provam ausência de
       15%, herança/escala de receita e agrupamento somente por nome/cor.

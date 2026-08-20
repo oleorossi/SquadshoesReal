@@ -862,19 +862,15 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
     const soleColor = ((insoleSoleProd as any)?.color || orderColor || sheet?.sole_color || '—').trim() || '—';
     // BOM-7 (paridade com o motor canônico): agrupa pelo grupo do produto-solado
     // RESOLVIDO (qualquer fonte da cascata, não só pin de variante) — a ficha
-    // pode nem ter sole_material textual e o solado sumia da Lista. Consumo =
-    // override da variante > sole_consumption da ficha > default CANÔNICO de
-    // 1 par/par (com `? 1 : 0`, sole_consumption 0/null apagava a linha
-    // enquanto o débito baixa 1 par por par).
+    // pode nem ter sole_material textual e o solado sumia da Lista. Uma
+    // unidade de estoque é um PAR COMPLETO (esquerdo + direito), portanto a
+    // grade do pedido e a necessidade do solado têm relação fixa 1:1.
     const resolvedSoleGroupName = resolvedSolePid
       ? (groupNameById((insoleSoleProd as any)?.group_id) || (insoleSoleProd as any)?.name || '')
       : '';
-    const solePerPair = ((variant?.sole_consumption_override != null
-      ? Number(variant.sole_consumption_override)
-      : Number(sheet?.sole_consumption)) || 1);
     addConsumptionRow(consumptionMap, {
       componentType: 'Solado', groupName: resolvedSoleGroupName || sheet?.sole_material || '', materialName: 'Solado',
-      productUnit: 'par', color: soleColor, totalQuantity: solePerPair * itemQuantity,
+      productUnit: 'par', color: soleColor, totalQuantity: itemQuantity,
     });
 
     // FACHETE — forração EXTRA do salto fachetado (BOM-5). Espelha o motor

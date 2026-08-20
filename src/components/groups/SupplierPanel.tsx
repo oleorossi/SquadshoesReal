@@ -26,6 +26,7 @@ function MaterialsTable({ supplier }: { supplier: GroupSupplier }) {
   const openEditMat = (m: GroupSupplierMaterial) => { setEditingMat(m); setMatDialogOpen(true); };
 
   const handleMatSubmit = (data: Partial<GroupSupplierMaterial>) => {
+    if (addMaterial.isPending || updateMaterial.isPending) return; // evita gravação dupla por duplo clique
     if (editingMat) {
       updateMaterial.mutate({ id: editingMat.id, data });
     } else {

@@ -112,9 +112,10 @@ describe('religamento dos consumidores (débito + compras)', () => {
   });
 });
 
-describe('cadastro de tira no PV usa o editor canônico', () => {
-  it('o PV passa a variante do item para o diálogo', () => {
-    expect(itemForm).toContain('materialVariantId={item.material_variant_id || null}');
+describe('intenção de tira do PV e editor canônico do catálogo', () => {
+  it('o PV não abre editor de catálogo para a tira reference_base', () => {
+    expect(itemForm).not.toContain('CreateStrapProductDialog');
+    expect(itemForm).toContain("'Produção interna automática'");
   });
 
   it('o adaptador abre o mesmo editor atômico do hub', () => {

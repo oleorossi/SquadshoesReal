@@ -35,6 +35,10 @@ export interface GroupColorSpec {
   groupId: string;
   groupName: string;
   color: string;
+  /** Unidade-base física informada explicitamente ao criar o primeiro SKU.
+   *  `product_groups.consumption_unit` não serve para isso: um grupo pode
+   *  consumir em dm² e manter o estoque em m ou placa. */
+  stockUnit?: string;
 }
 
 export type CreateColorResult = {
@@ -55,7 +59,7 @@ export async function createGroupColorProduct(spec: GroupColorSpec): Promise<Cre
   if (!color || !spec.groupId) return res;
 
   const { data: group } = await (supabase as any).from('product_groups')
-    .select('is_artisanal_strap, is_family, shared_specs, is_bom_color_source, is_color_agnostic, sector, dimensions_length, dimensions_width, dimensions_thickness, dimensions_unit')
+    .select('is_artisanal_strap, is_family, shared_specs, is_bom_color_source, is_color_agnostic, sector, consumption_unit, dimensions_length, dimensions_width, dimensions_thickness, dimensions_unit')
     .eq('id', spec.groupId)
     .maybeSingle();
   const strapLikeName = /tira|elastic|tranç/i.test(spec.groupName || '');
@@ -107,12 +111,24 @@ export async function createGroupColorProduct(spec: GroupColorSpec): Promise<Cre
     };
   }
 
+  const explicitStockUnit = String(spec.stockUnit || '').trim();
+  if (!last && !explicitStockUnit) {
+    return {
+      ...res,
+      status: 'error',
+      error: 'Informe a unidade de estoque da primeira cor ou cadastre o primeiro item pelo formulário completo.',
+    };
+  }
+
   const baseSku = (last?.sku || '').trim();
   const preferredSku = baseSku
     ? `${baseSku.replace(/-[A-Z0-9]+$/i, '')}-${skuToken(color, 'COR', 4)}`
     : `${skuToken(spec.groupName, 'TIRA', 6)}-${skuToken(color, 'COR', 4)}`;
   const finalSku = await uniqueSku(preferredSku, spec.groupName, color);
-  const stockUnit = last?.unit || 'un';
+  // A primeira cor de um grupo-folha ainda não tem produto-modelo. Dimensões e
+  // setor vêm do grupo, mas a unidade-base precisa ser uma escolha explícita:
+  // nunca inferimos estoque a partir da unidade técnica de consumo.
+  const stockUnit = String(last?.unit || explicitStockUnit).trim();
   const purchaseUnit = last?.purchase_unit || stockUnit;
   const conversionRate = purchaseUnit === stockUnit
     ? 1
@@ -124,6 +140,7 @@ export async function createGroupColorProduct(spec: GroupColorSpec): Promise<Cre
     category: sectorOfGroup(group) || (last?.category || '').trim() || sectorOfGroup({ name: spec.groupName } as any),
     color,
     unit: stockUnit,
+    consumption_unit: last?.consumption_unit || stockUnit,
     unit_price: last?.unit_price || 0,
     technical_name: last?.technical_name || '',
     supplier_id: last?.supplier_id || null,

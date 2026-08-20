@@ -33,6 +33,7 @@ import {
   type ArtisanalStrapCatalog,
   type ArtisanalStrapIdentityBasis,
   type ArtisanalStrapSourceMode,
+  type SaveArtisanalStrapBundleResult,
   useSaveArtisanalStrapBundle,
 } from '@/hooks/useArtisanalStraps';
 import { useSuppliers } from '@/hooks/useSuppliers';
@@ -69,7 +70,15 @@ export interface ArtisanalStrapEditorProps {
   buyReadyReviewId?: string | null;
   suggestedRecipeId?: string | null;
   suggestedYieldMPerM?: number | null;
-  onSaved?: (variantId: string) => void;
+  /** O PV pode ativar uma identidade nova somente quando base, medida e cor
+   * ja vieram do contexto canonico. Os demais pontos de entrada continuam
+   * criando em revisao. */
+  activateOnCreate?: boolean;
+  onSaved?: (
+    variantId: string,
+    result: SaveArtisanalStrapBundleResult,
+    colorId: string,
+  ) => void;
 }
 
 interface EditorForm {
@@ -194,11 +203,11 @@ export function ArtisanalStrapEditor({
   buyReadyReviewId,
   suggestedRecipeId,
   suggestedYieldMPerM,
+  activateOnCreate = false,
   onSaved,
 }: ArtisanalStrapEditorProps) {
   const [form, setForm] = useState<EditorForm>(EMPTY_FORM);
   const [validationError, setValidationError] = useState<string | null>(null);
-  const [createRecipeVersion, setCreateRecipeVersion] = useState(false);
   const [minStockConfirmed, setMinStockConfirmed] = useState(false);
   const [floorModeConfirmed, setFloorModeConfirmed] = useState(false);
   const saveBundle = useSaveArtisanalStrapBundle();
@@ -286,8 +295,7 @@ export function ArtisanalStrapEditor({
       preparationDays: product?.material_preparation_days == null
         ? 2
         : numberOrZero(product.material_preparation_days),
-      includeRecipe: selectedInternalProductionEnabled
-        && (selectedFloorMode === 'internal' || Boolean(recipe) || !selectedVariant),
+      includeRecipe: selectedInternalProductionEnabled && Boolean(recipe),
       recipeId: recipe?.id || '',
       cutBandWidthMm: numberOrZero(recipe?.cut_band_width_mm),
       confirmedYield: hasYieldSuggestion
@@ -303,7 +311,6 @@ export function ArtisanalStrapEditor({
           : mode === 'create' ? 'Cadastro inicial da variante' : '',
     });
     setValidationError(null);
-    setCreateRecipeVersion(hasYieldSuggestion && selectedInternalProductionEnabled);
     setMinStockConfirmed(Boolean(selectedVariant));
     setFloorModeConfirmed(Boolean(selectedVariant) || !selectedInternalProductionEnabled);
   }, [open, variantId, identityBasis, measureId, baseGroupId, colorId, finishedProductId,
@@ -330,7 +337,6 @@ export function ArtisanalStrapEditor({
         transformationCost: numberOrZero(exactRecipe.transformation_cost_per_m),
       };
     });
-    setCreateRecipeVersion(false);
   }, [open, form.internalProductionEnabled, form.recipeId, form.measureId, form.baseGroupId, catalog.recipes]);
 
   const selectedType = catalog.types.find((item) => item.id === form.typeId);
@@ -400,8 +406,7 @@ export function ArtisanalStrapEditor({
   const recipeIsMutable = !currentRecipe
     || currentRecipe.status === 'draft'
     || currentRecipe.status === 'pending_approval';
-  const canEditRecipeFields = recipeIsMutable || createRecipeVersion;
-  const shouldWriteRecipe = form.includeRecipe && canEditRecipeFields;
+  const canEditRecipeFields = false;
   const purchasedReady = isPurchasedReadyStrap({
     identity_basis: form.identityBasis,
     internal_production_enabled: form.internalProductionEnabled,
@@ -418,7 +423,7 @@ export function ArtisanalStrapEditor({
       ...current,
       floorMode: value,
       purchaseEnabled: value === 'buy_ready' ? true : current.purchaseEnabled,
-      includeRecipe: value === 'internal' ? true : current.includeRecipe,
+      includeRecipe: value === 'internal' ? Boolean(current.recipeId) : current.includeRecipe,
     }));
     setFloorModeConfirmed(false);
     setValidationError(null);
@@ -445,7 +450,6 @@ export function ArtisanalStrapEditor({
     }));
     setFloorModeConfirmed(isFinishedProduct);
     setMinStockConfirmed(false);
-    setCreateRecipeVersion(false);
     setValidationError(null);
   };
 
@@ -455,11 +459,10 @@ export function ArtisanalStrapEditor({
       internalProductionEnabled: enabled,
       floorMode: enabled ? current.floorMode : 'buy_ready',
       purchaseEnabled: enabled ? current.purchaseEnabled : true,
-      includeRecipe: enabled ? current.includeRecipe : false,
+      includeRecipe: enabled ? Boolean(current.recipeId) : false,
       recipeId: enabled ? current.recipeId : '',
     }));
     setFloorModeConfirmed(!enabled);
-    setCreateRecipeVersion(false);
     setValidationError(null);
   };
 
@@ -510,25 +513,8 @@ export function ArtisanalStrapEditor({
     if (purchasedReady && (form.floorMode !== 'buy_ready' || !form.purchaseEnabled || form.includeRecipe)) {
       return 'Tira comprada pronta exige piso por compra, compra habilitada e nenhuma receita interna.';
     }
-    if (form.includeRecipe) {
-      if (!widthProfile) return 'A napa-base não possui perfil de largura útil aprovado.';
-      if (form.cutBandWidthMm <= 0) return 'A largura da banda deve ser maior que zero.';
-      if (theoreticalYield <= 0) return 'A largura útil não comporta uma banda completa.';
-      if (form.confirmedYield <= 0 || form.confirmedYield > theoreticalYield) {
-        return `O rendimento confirmado deve estar entre 0 e ${theoreticalYield} m/m.`;
-      }
-      if (form.executorType === 'contractor' && !form.contractorId) {
-        return 'Selecione o terceirizado padrão da receita.';
-      }
-      if (!canSeeFinancial && shouldWriteRecipe && (!currentRecipe || createRecipeVersion)) {
-        return 'Uma nova receita exige um usuário com acesso financeiro para informar o custo de transformação.';
-      }
-      if (canSeeFinancial && form.transformationCost < 0) {
-        return 'O custo de transformação não pode ser negativo.';
-      }
-    }
-    if (form.floorMode === 'internal' && !form.includeRecipe && !form.recipeId) {
-      return 'Reposição interna do piso exige uma receita configurada.';
+    if (form.floorMode === 'internal' && !form.recipeId) {
+      return 'Reposição interna exige uma conversão cadastrada na aba Receitas.';
     }
     if (form.purchaseEnabled) {
       if (!canSeeFinancial && !form.finishedProductId) {
@@ -592,9 +578,11 @@ export function ArtisanalStrapEditor({
           min_stock_replenishment_mode: form.floorMode,
           purchase_enabled: form.purchaseEnabled,
           status: (mode === 'review' && variant) || exactBuyReadyProductPrefill
+            || (mode === 'create' && activateOnCreate)
             ? 'active'
             : variant?.status || 'review_required',
           review_reason: (mode === 'review' && variant) || exactBuyReadyProductPrefill
+            || (mode === 'create' && activateOnCreate)
             ? null
             : variant?.review_reason || null,
         },
@@ -622,20 +610,10 @@ export function ArtisanalStrapEditor({
               purchase_multiple: form.purchaseMultiple,
               material_preparation_days: form.preparationDays,
             },
-        recipe: form.internalProductionEnabled && shouldWriteRecipe
-          ? {
-              id: createRecipeVersion ? undefined : form.recipeId || undefined,
-              cut_band_width_mm: form.cutBandWidthMm,
-              confirmed_yield_m_per_m: form.confirmedYield,
-              executor_type: form.executorType,
-              default_contractor_id: form.executorType === 'contractor' ? form.contractorId : null,
-              ...(canSeeFinancial ? { transformation_cost_per_m: form.transformationCost } : {}),
-              status: 'draft',
-            }
-          : undefined,
+        recipe: undefined,
       },
     });
-    onSaved?.(result.variant_id);
+    onSaved?.(result.variant_id, result, form.colorId);
     onOpenChange(false);
   };
 
@@ -652,7 +630,7 @@ export function ArtisanalStrapEditor({
             </div>
             <SheetTitle>{mode === 'create' ? 'Cadastrar tira' : 'Editar tira'}</SheetTitle>
             <SheetDescription>
-              Produto, variante e receita são salvos juntos pela operação canônica.
+              Cadastre a cor e o produto acabado no estoque. A conversão técnica é compartilhada entre todas as cores.
             </SheetDescription>
           </SheetHeader>
 
@@ -1039,16 +1017,8 @@ export function ArtisanalStrapEditor({
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
                   <Factory className="h-4 w-4 text-primary" />
-                  <h3 id="strap-editor-recipe" className="text-sm font-bold">Receita e rendimento</h3>
+                  <h3 id="strap-editor-recipe" className="text-sm font-bold">Conversão compartilhada</h3>
                 </div>
-                {!purchasedReady && (
-                  <Switch
-                    checked={form.includeRecipe}
-                    onCheckedChange={(checked) => setField('includeRecipe', checked)}
-                    disabled={readOnly || form.floorMode === 'internal' || Boolean(currentRecipe)}
-                    aria-label="Configurar receita interna"
-                  />
-                )}
               </div>
 
               {purchasedReady ? (
@@ -1058,6 +1028,10 @@ export function ArtisanalStrapEditor({
                 </p>
               ) : form.includeRecipe ? (
                 <div className="space-y-3">
+                  <p className="rounded-lg border border-dashed border-border p-3 text-sm text-muted-foreground">
+                    Esta conversão vale para todas as cores da mesma família, medida e napa-base.
+                    Para alterar banda ou rendimento, use a aba Receitas.
+                  </p>
                   {Number.isFinite(Number(suggestedYieldMPerM)) && Number(suggestedYieldMPerM) > 0 && (
                     <Alert>
                       <Warning className="h-4 w-4" />
@@ -1073,12 +1047,6 @@ export function ArtisanalStrapEditor({
                         <p className="text-sm font-semibold">Receita v{currentRecipe.version} preservada</p>
                         <p className="text-xs text-muted-foreground">Receitas vigentes e históricas são imutáveis.</p>
                       </div>
-                      {canWrite && !createRecipeVersion && (
-                        <Button type="button" variant="outline" size="sm" onClick={() => setCreateRecipeVersion(true)}>
-                          Criar nova versão
-                        </Button>
-                      )}
-                      {createRecipeVersion && <Badge variant="secondary">Nova versão em rascunho</Badge>}
                     </div>
                   )}
                   {!widthProfile && form.baseGroupId && (
@@ -1177,7 +1145,7 @@ export function ArtisanalStrapEditor({
                 </div>
               ) : (
                 <p className="rounded-lg border border-dashed border-border p-3 text-sm text-muted-foreground">
-                  A variante ficará disponível somente para compra pronta até receber uma receita aprovada.
+                  Nenhuma conversão cadastrada para esta medida e napa-base. Cadastre os números uma única vez na aba Receitas; depois, todas as cores reutilizarão a mesma conversão.
                 </p>
               )}
             </section>

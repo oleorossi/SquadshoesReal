@@ -85,6 +85,7 @@ import {
   newTechnicalStrapLineId,
 } from '@/lib/technicalStrapLines';
 import { strapIdentityBasis } from '@/lib/strapIdentity';
+import { referenceStrapBaseGroups } from '@/lib/referenceStrapBaseGroups';
 
 import { useShoeCategories } from '@/hooks/useShoeCategories';
 import { SHOE_CATEGORIES } from '@/lib/shoeCategories';
@@ -1323,7 +1324,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
       // consumption_unit ADICIONADO em 2026-05-31: sem ele, getUnitForGroupName
       // caía no fallback dimensions_unit (geralmente 'mm'), exibindo MM em
       // grupos cuja UoM canónica de BOM é 'm' (ex: ELÁSTICO SARJA).
-      const { data, error } = await supabase.from('product_groups').select('id, name, consumption_unit, dimensions_length, dimensions_width, dimensions_unit').order('name');
+      const { data, error } = await supabase.from('product_groups').select('id, name, parent_group_id, consumption_unit, dimensions_length, dimensions_width, dimensions_unit').order('name');
       if (error) {
         console.error('[TechnicalSheets] Falha ao carregar product_groups:', error);
         return [];
@@ -1360,7 +1361,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
       // reenviava o valor STALE (re-sync bloqueado com dirty=true) por cima do
       // que o painel acabou de salvar — setor removido "ressuscitava" e a
       // ficha dele voltava a sair na impressão.
-      'shoe_category_id', 'primary_sole_id',
+      'shoe_category_id', 'primary_sole_id', 'upper_material_group_id',
       'assembly_time_minutes', 'process_difficulty',
     ];
     for (const key of EXTRA_DB_FIELDS) {
@@ -1381,6 +1382,27 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
       )))
       .sort((left, right) => left.name.localeCompare(right.name, 'pt-BR'));
   }, [form.strap_colors, strapCatalog]);
+  const possibleReferenceNapaGroups = useMemo(() => referenceStrapBaseGroups({
+    sheet: {
+      id: sheet.id,
+      upper_material: form.upper_material,
+      upper_material_product_id: form.upper_material_product_id,
+      lining_material: form.lining_material,
+      lining_material_product_id: form.lining_material_product_id,
+    },
+    groups,
+    products,
+    variants: materialVariantsBySheet?.get(sheet.id) || [],
+  }), [
+    sheet.id,
+    form.upper_material,
+    form.upper_material_product_id,
+    form.lining_material,
+    form.lining_material_product_id,
+    groups,
+    products,
+    materialVariantsBySheet,
+  ]);
   const [dirty, setDirty] = useState(false);
 
   // Quando o sheet prop muda (após re-fetch pós-save), sincroniza form pra
@@ -1406,7 +1428,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
       // production_sectors fora do form — vide comentário do init acima.
       'costura_capacity_per_day','costura_cabedal_capacity_per_day',
       'costura_palmilha_capacity_per_day','shoe_category_id',
-      'primary_sole_id','assembly_time_minutes','process_difficulty',
+      'primary_sole_id','upper_material_group_id','assembly_time_minutes','process_difficulty',
     ];
     for (const key of EXTRA) {
       if (sheet[key] !== undefined && sheet[key] !== null) {
@@ -1452,6 +1474,64 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
 
     const updateField = (key: keyof SheetFormData, value: any) => {
       setForm(f => ({ ...f, [key]: value }));
+      setDirty(true);
+    };
+
+    type UpperMaterialIdentity = SheetFormData & { upper_material_group_id?: string | null };
+    const normalizeGroupName = (value?: string | null) => (value || '').trim().toLocaleLowerCase('pt-BR');
+    const storedUpperMaterialGroupId = ((form as UpperMaterialIdentity).upper_material_group_id || null) as string | null;
+    // UUID vence o texto legado. O fallback pelo nome mantém fichas anteriores à
+    // coluna upper_material_group_id editáveis e permite gravar o vínculo no
+    // próximo save sem exigir migração manual de cada ficha.
+    const upperMaterialGroup = (groups || []).find((group) => group.id === storedUpperMaterialGroupId)
+      || (groups || []).find((group) => normalizeGroupName(group.name) === normalizeGroupName(form.upper_material));
+
+    const applyUpperMaterialGroup = (groupName: string, groupId?: string | null) => {
+      const selectedGroup = (groupId
+        ? (groups || []).find((group) => group.id === groupId)
+        : null)
+        || (groups || []).find((group) => normalizeGroupName(group.name) === normalizeGroupName(groupName));
+      const nextGroupId = selectedGroup?.id || groupId || null;
+      const nextGroupName = selectedGroup?.name || groupName;
+      const previousGroupId = upperMaterialGroup?.id || storedUpperMaterialGroupId;
+
+      setForm(current => {
+        const currentUpperGroupId = ((current as UpperMaterialIdentity).upper_material_group_id || null) as string | null;
+        const predominantTracksUpper = !current.cor_predominante_id
+          || current.cor_predominante_id === previousGroupId
+          || current.cor_predominante_id === currentUpperGroupId;
+        // Preencher o UUID ausente de uma ficha legada não é troca de grupo e
+        // não deve apagar um SKU pinado que continua pertencendo ao mesmo nome.
+        const changedGroup = normalizeGroupName(current.upper_material) !== normalizeGroupName(nextGroupName)
+          || (!!currentUpperGroupId && !!nextGroupId && currentUpperGroupId !== nextGroupId);
+
+        return {
+          ...current,
+          upper_material: nextGroupName,
+          upper_material_group_id: nextGroupId,
+          // Não sobrescreve um grupo de cor escolhido manualmente nas
+          // harmonizações. Se ele ainda acompanhava o Cabedal, mantém a sincronia.
+          cor_predominante_id: predominantTracksUpper ? nextGroupId : current.cor_predominante_id,
+          upper_material_product_id: changedGroup ? null : current.upper_material_product_id,
+        };
+      });
+      setDirty(true);
+    };
+
+    const clearUpperMaterial = () => {
+      const previousGroupId = upperMaterialGroup?.id || storedUpperMaterialGroupId;
+      setForm(current => ({
+        ...current,
+        upper_material: '',
+        upper_material_group_id: null,
+        upper_material_product_id: null,
+        upper_consumption: 0,
+        upper_consumption_per_size: {},
+        // Um override manual de cor predominante continua intacto.
+        cor_predominante_id: previousGroupId && current.cor_predominante_id === previousGroupId
+          ? null
+          : current.cor_predominante_id,
+      }));
       setDirty(true);
     };
 
@@ -1515,10 +1595,11 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
     if (candidates.length > 0) {
       const src = candidates[0];
       const filled: string[] = [];
-      if (src.sole_consumption > 0) {
-        updateField('sole_consumption', src.sole_consumption);
-        filled.push(`consumo: ${src.sole_consumption}`);
-      }
+      // A ficha antiga pode ter herdado o legado "2 unidades por par". O
+      // estoque, a compra e a baixa trabalham com pares completos, portanto o
+      // consumo do solado é sempre 1 par/par.
+      updateField('sole_consumption', 1);
+      filled.push('consumo: 1 par/par');
       if (src.sole_process) {
         updateField('sole_process', src.sole_process);
         filled.push(`processo: ${src.sole_process}`);
@@ -1797,7 +1878,8 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
    /**
     * Puxa a grade do solado (yield_per_size do component_sheet do solado)
     * para preencher a grade de consumo por numeração de qualquer item de cabedal.
-    * Retorna mapa { '33': 0.28, '34': 0.30, ... } em metros/par.
+    * Retorna a grade vazia por numeração; o consumo do Cabedal é preenchido
+    * explicitamente em dm²/par pelo operador.
     */
    const fetchSoleGradeForCabedal = async (): Promise<Record<string, number> | null> => {
     if (!form.sole_group_id) {
@@ -1831,6 +1913,41 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
       // Cinto-e-suspensório: garante que production_sectors/aviamento_steps
       // jamais saem pelo save geral (escrita exclusiva do ProductionSectorsTab).
       const { production_sectors: _ps, aviamento_steps: _as, ...payload } = form as any;
+      const hasUpperMaterial = String(payload.upper_material || '').trim().length > 0;
+      if (hasUpperMaterial && !upperMaterialGroup) {
+        toast.error(
+          `O material de Cabedal “${payload.upper_material}” não corresponde a um grupo atual. Selecione novamente o tipo de material antes de salvar.`,
+          { duration: 8000 },
+        );
+        setAbaAtiva('engineering');
+        return;
+      }
+      if (hasUpperMaterial && upperMaterialGroup) {
+        const upperPointsToContainer = (groups || []).some((group) => group.parent_group_id === upperMaterialGroup.id);
+        if (upperPointsToContainer) {
+          toast.error(
+            `“${upperMaterialGroup.name}” é uma família de materiais. Escolha um tipo de material dentro dela antes de salvar.`,
+            { duration: 8000 },
+          );
+          setAbaAtiva('engineering');
+          return;
+        }
+        const upperHasActiveProduct = (products || []).some(product =>
+          product.group_id === upperMaterialGroup.id && product.active !== false);
+        if (!upperHasActiveProduct) {
+          toast.error(
+            `“${upperMaterialGroup.name}” ainda não possui item ativo. Cadastre ao menos um SKU/cor antes de usar este material.`,
+            { duration: 8000 },
+          );
+          setAbaAtiva('engineering');
+          return;
+        }
+
+        // Mantém o texto legado sincronizado, mas o UUID é a identidade estável.
+        // Assim, renomear o grupo não deixa a ficha apontando para outro material.
+        payload.upper_material_group_id = upperMaterialGroup.id;
+        payload.upper_material = upperMaterialGroup.name;
+      }
       const normalizedStraps = ensureTechnicalStrapLineIds(payload.strap_colors);
       if (form.has_straps) {
         if (!strapCatalog || strapCatalogQuery.isError) {
@@ -2305,6 +2422,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                    updateField('sole_group_id', groupId);
                    updateField('primary_sole_id', productId || null);
                    autoFillSole(productName);
+                   updateField('sole_consumption', productName || groupId || productId ? 1 : 0);
                    // Auto-fill NCM da última ficha cadastrada para esse solado.
                    // Trigger DB `tg_autofill_ncm_from_sole` aplica essa mesma
                    // regra no INSERT/UPDATE — chamamos aqui pra dar feedback
@@ -2373,8 +2491,18 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                 </Select>
               </div>
               <div>
-                <Label className="text-xs text-muted-foreground">Consumo Solado (un/par)</Label>
-                <NumberInput value={form.sole_consumption || 0} onChange={v => updateField('sole_consumption', v)} className="mt-1 h-9 text-sm" placeholder="1" step="1" />
+                <Label className="text-xs text-muted-foreground">Consumo do solado (par/par)</Label>
+                <NumberInput
+                  value={form.sole_material || form.sole_group_id || form.primary_sole_id ? 1 : 0}
+                  onChange={() => undefined}
+                  className="mt-1 h-9 text-sm"
+                  step="1"
+                  decimals={0}
+                  disabled
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  1 par completo (pé esquerdo + pé direito) para cada par de calçado.
+                </p>
               </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3 items-end pt-2 border-t border-border/40">
@@ -2449,7 +2577,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
               <h3 className="text-sm font-semibold">Especificações por Componente</h3>
             </div>
             <p className="text-xs text-muted-foreground">
-              Defina o grupo de material para cada componente. Para o Cabedal, informe o consumo na unidade do próprio item; demais componentes são tratados pela lógica técnica do solado.
+              Defina o grupo de material para cada componente. No Material 1 do Cabedal, informe a área consumida em <strong className="text-foreground">dm² por par</strong>; o sistema converte essa área para a unidade de estoque usando a largura cadastrada no material.
             </p>
 
             {/* Helper: unidade do grupo via 1º produto ativo do grupo */}
@@ -2648,7 +2776,9 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                   ? soleSizeKeys
                   : cabedalSizesNumeric;
 
-                // Renderiza grade de consumo por numeração (em metros/par)
+                // Renderiza a grade de consumo por numeração. No Cabedal
+                // principal, o valor canônico é sempre dm²/par; a unidade do
+                // produto só entra depois, na conversão para baixa de estoque.
                 // showPerFoot: readout "= X/pé" junto da média — guard anti-deriva
                 // pé×par do CABEDAL (spec consumo-cabedal-padrao-par). O canônico é
                 // POR PAR; o readout é só referência visual pra quem mede 1 peça.
@@ -2755,10 +2885,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                           label="Material 1 (Principal)"
                           value={form.upper_material}
                           onChange={v => {
-                            const prev = (form.upper_material || '').trim();
-                            updateField('upper_material', v);
-                            // Trocou de grupo → o pin de SKU do grupo anterior não vale mais.
-                            if (prev !== (v || '').trim()) updateField('upper_material_product_id' as any, null);
+                            applyUpperMaterialGroup(v);
                             autoFillConsumption(v, 'upper_material');
                             // MUTEX Cabedal × Tiras: selecionar cabedal significa que o modelo
                             // NÃO é de tiras. Auto-desliga has_straps + limpa strap_colors pra
@@ -2770,14 +2897,14 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                               toast.info('Modelo trocado pra Cabedal — Tiras desativadas');
                             }
                           }}
+                          // Callback estrutural opcional do seletor hierárquico. O
+                          // onChange acima mantém compatibilidade pelo nome; este
+                          // confirma o UUID estável da folha selecionada. O helper
+                          // é idempotente porque o seletor dispara os dois callbacks.
+                          onGroupSelect={(group) => applyUpperMaterialGroup(group.name, group.id)}
                         />
                         {form.upper_material && (
-                          <Button variant="ghost" size="icon" aria-label="Limpar material do cabedal" className="h-9 w-9 text-destructive hover:text-destructive" onClick={() => {
-                            updateField('upper_material', '');
-                            updateField('upper_material_product_id' as any, null);
-                            updateField('upper_consumption', 0);
-                            updateField('upper_consumption_per_size' as any, {});
-                          }}>
+                          <Button variant="ghost" size="icon" aria-label="Limpar material do cabedal" className="h-9 w-9 text-destructive hover:text-destructive" onClick={clearUpperMaterial}>
                             <Trash2 className="h-4 w-4" />
                           </Button>
                         )}
@@ -2790,7 +2917,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                           Fixa o produto exato pro débito (vence a cor do PV; perde só pra
                           variante). Em branco = resolve pela cor do PV. Auditoria 2026-06-28. */}
                       {form.upper_material && (() => {
-                        const grp = (groups || []).find((x: any) => (x.name || '').trim() === (form.upper_material || '').trim());
+                        const grp = upperMaterialGroup;
                         const itemsOfGroup = grp ? (products || []).filter((p: any) => p.group_id === grp.id) : [];
                         const activeItems = itemsOfGroup.filter((p: any) => p.active);
                         const pinId = (form as any).upper_material_product_id || '__none__';
@@ -2835,34 +2962,31 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                           achava. Renderiza imediatamente após o seletor.
                           (A tabela completa multi-material ainda aparece abaixo
                           como cross-check.) */}
-                      {form.upper_material && (() => {
-                        const upperUnit = getUnitForGroupName(form.upper_material);
-                        return (
-                          <div>
-                            <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                              Consumo de Cabedal por Numeração — POR PAR ({upperUnit}/par, não por pé)
-                            </Label>
-                            <p className="text-xs text-muted-foreground mt-0.5 mb-1.5">
-                              Preencha o consumo do <strong className="text-foreground">PAR (2 pés)</strong> número a número.
-                              A média alimenta o custo do PV automaticamente.
-                            </p>
-                            {renderSizeGrid(
-                              (form as any).upper_consumption_per_size || {},
-                              upperUnit,
-                              (newPerSize) => {
-                                updateField('upper_consumption_per_size' as any, newPerSize);
-                                const filled = Object.values(newPerSize).filter((v: any) => Number(v) > 0);
-                                if (filled.length > 0) {
-                                  const avg = filled.reduce((a: number, b: any) => a + Number(b), 0) / filled.length;
-                                  updateField('upper_consumption', Math.round(avg * 10000) / 10000);
-                                }
-                              },
-                              'amber',
-                              true, // showPerFoot — readout "= X/pé" anti-deriva pé×par
-                            )}
-                          </div>
-                        );
-                      })()}
+                      {form.upper_material && (
+                        <div>
+                          <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                            Consumo de Cabedal por Numeração — POR PAR (dm²/par, não por pé)
+                          </Label>
+                          <p className="text-xs text-muted-foreground mt-0.5 mb-1.5">
+                            Informe a <strong className="text-foreground">área consumida pelo par (2 pés)</strong> número a número, sempre em dm².
+                            A média alimenta o custo do PV e a conversão para a unidade de estoque.
+                          </p>
+                          {renderSizeGrid(
+                            form.upper_consumption_per_size || {},
+                            'dm²',
+                            (newPerSize) => {
+                              updateField('upper_consumption_per_size', newPerSize);
+                              const filled = Object.values(newPerSize).filter(value => Number(value) > 0);
+                              if (filled.length > 0) {
+                                const avg = filled.reduce((sum, value) => sum + Number(value), 0) / filled.length;
+                                updateField('upper_consumption', Math.round(avg * 10000) / 10000);
+                              }
+                            },
+                            'amber',
+                            true, // showPerFoot — readout "= X/pé" anti-deriva pé×par
+                          )}
+                        </div>
+                      )}
 
                       {/* Corte a fio (2026-06-12): cabedal sem costura — não
                           gera a ficha de operador "Costura Cabedal". Só camada
@@ -3470,8 +3594,8 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
               é editado na seção "Especificações por Componente → Cabedal"
               (via renderSizeGrid inline). Manter as duas confundia o user
               ("qual delas é a real?") e dobrava o trabalho de preenchimento.
-              A grade inline acima já mostra a unidade correta do grupo
-              (getUnitForGroupName) e suporta "Puxar Grade do Solado" +
+              A grade inline acima fixa o Cabedal principal em dm²/par e
+              suporta "Puxar Grade do Solado" +
               "Replicar 1º". Fonte única. */}
 
           {/* ═══ SECTION 2: Tiras ═══ */}
@@ -3494,12 +3618,10 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                     ]));
                   }
                   // MUTEX Tiras × Cabedal: ativar tiras significa que o modelo
-                  // NÃO tem cabedal. Limpa upper_material + consumption pra não
-                  // ficar custo fantasma duplicado (tira + cabedal somariam).
-                  if (v && form.upper_material) {
-                    updateField('upper_material', '');
-                    updateField('upper_consumption', 0);
-                    updateField('upper_consumption_per_size' as any, {});
+                  // NÃO tem cabedal. Limpa nome, UUID, pin e consumo juntos pra
+                  // não deixar identidade/custo fantasma (tira + cabedal somariam).
+                  if (v && (form.upper_material || storedUpperMaterialGroupId)) {
+                    clearUpperMaterial();
                     toast.info('Modelo trocado pra Tiras — Cabedal desativado');
                   }
                   // BUG ANTIGO: ao desmarcar 'Habilitar tiras', strap_colors
@@ -3721,6 +3843,41 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                             </SelectContent>
                           </Select>
                         </div>
+                        {strapIdentityBasis(strap) === 'reference_base' && (
+                          <div className="space-y-1.5">
+                            <Label className="text-xs font-semibold">Napas possíveis da referência</Label>
+                            <div className={cn(
+                              'flex min-h-10 flex-wrap items-center gap-1.5 rounded-md border px-3 py-2',
+                              possibleReferenceNapaGroups.length === 0 && 'border-warning/40 bg-warning/5',
+                            )}>
+                              {possibleReferenceNapaGroups.length > 0 ? possibleReferenceNapaGroups.map((group) => (
+                                <Badge
+                                  key={group.id}
+                                  variant="secondary"
+                                  className="font-mono text-xs"
+                                  title={group.origins.join(' · ')}
+                                >
+                                  {group.name}
+                                </Badge>
+                              )) : (
+                                <span className="flex items-center gap-1.5 text-xs font-medium text-warning">
+                                  <AlertTriangle className="h-3.5 w-3.5" />
+                                  Nenhum grupo de napa resolvido
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              {possibleReferenceNapaGroups.length > 0
+                                ? 'O pedido seleciona automaticamente a napa correta conforme a variante de material.'
+                                : 'Configure o material padrão ou as variantes desta referência antes de liberar a produção.'}
+                            </p>
+                            {possibleReferenceNapaGroups.some((group) => !group.canonical) && (
+                              <p className="text-xs font-medium text-warning">
+                                O material padrão ainda está vinculado apenas por nome; selecione um SKU no cadastro de materiais para tornar a resolução operacional.
+                              </p>
+                            )}
+                          </div>
+                        )}
                         {strapIdentityBasis(strap) === 'finished_product_group' && (
                           <div className="space-y-1.5">
                             <Label className="text-xs font-semibold">
@@ -3945,13 +4102,21 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
            <ProductionSectorsTab
              sectors={sheet.production_sectors || ['Corte Fibra', 'Corte Forração', 'Costura Palmilha', 'Costura Cabedal', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição']}
              insoleReadyMade={(sheet as any).insole_ready_made === true}
-             onChange={(sectors: string[]) => {
-               updateSheet.mutate({ id: sheet.id, data: { production_sectors: sectors } as any });
-             }}
              aviamentoSteps={Array.isArray((sheet as any).aviamento_steps) ? ((sheet as any).aviamento_steps as string[]) : []}
-             onChangeAviamentoSteps={(steps: string[]) => {
-               updateSheet.mutate({ id: sheet.id, data: { aviamento_steps: steps } as any });
+             onSave={(sectors: string[], steps: string[]) => {
+               const routingData: Partial<SheetFormData> & {
+                 production_sectors: string[];
+                 aviamento_steps?: string[];
+               } = {
+                 production_sectors: sectors,
+                 ...(sectors.includes('Aviamento') ? { aviamento_steps: steps } : {}),
+               };
+               updateSheet.mutate({
+                 id: sheet.id,
+                 data: routingData,
+               });
              }}
+             saving={updateSheet.isPending}
            />
           <Separator />
           <OperationsTab
@@ -4280,17 +4445,18 @@ const STRAP_LABEL_OPTIONS = [
 ] as const;
 
 function ProductionSectorsTab({
-  sectors, onChange,
-  aviamentoSteps, onChangeAviamentoSteps,
+  sectors, onSave,
+  aviamentoSteps,
   insoleReadyMade = false,
+  saving = false,
 }: {
   sectors: string[];
-  onChange: (sectors: string[]) => void;
+  onSave: (sectors: string[], aviamentoSteps: string[]) => void;
   aviamentoSteps: string[];
-  onChangeAviamentoSteps: (steps: string[]) => void;
   /** Palmilha pronta na cor: o trigger do banco remove Corte Fibra/
    *  Corte Forração/Costura do roteiro — os chips ficam desabilitados. */
   insoleReadyMade?: boolean;
+  saving?: boolean;
 }) {
    const [localSectors, setLocalSectors] = useState<string[]>(sectors);
    const [localSteps, setLocalSteps] = useState<string[]>(aviamentoSteps);
@@ -4420,13 +4586,12 @@ function ProductionSectorsTab({
           </span>
           <Button
             size="sm"
-            onClick={() => {
-              onChange(localSectors);
-              if (isAviamentoActive) onChangeAviamentoSteps(localSteps);
-            }}
+            onClick={() => onSave(localSectors, localSteps)}
+            disabled={saving}
             className="gap-1"
           >
-            <Save className="h-3.5 w-3.5" /> Salvar
+            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+            {saving ? 'Salvando...' : 'Salvar'}
           </Button>
         </div>
       )}
@@ -5819,8 +5984,7 @@ function SheetBOM({ sheetId, safetyPct, onSafetyChange, shoeCategory }: {
     if (!data?.length) { toast.error('Ficha sem materiais'); return; }
     const toAdd = (data as any[]).filter(m => !usedProductIds.has(m.product_id)).map(m => ({ ...m, sizes: m.sizes || '' }));
     if (!toAdd.length) { toast.info('Todos os materiais já estão na ficha'); return; }
-    bulkAdd.mutate({ sheetId, materials: toAdd });
-    setShowCopyDialog(false);
+    bulkAdd.mutate({ sheetId, materials: toAdd }, { onSuccess: () => setShowCopyDialog(false) });
   };
 
   if (isLoading) return <Loader2 className="h-4 w-4 animate-spin" />;

@@ -3,7 +3,7 @@ import * as React from "react";
 import { cn } from "@/lib/utils";
 
 const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<"input">>(
-  ({ className, type, onFocus, onClick, step, ...props }, ref) => {
+  ({ className, type, onFocus, onClick, onWheel, step, ...props }, ref) => {
     const isNumber = type === "number";
 
     return (
@@ -17,6 +17,16 @@ const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<"input">>(
         onClick={(e) => {
           if (isNumber) setTimeout(() => e.currentTarget.select(), 0);
           onClick?.(e);
+        }}
+        onWheel={(e) => {
+          // Roda do mouse sobre input numérico FOCADO altera o valor sem o
+          // usuário perceber (comportamento nativo do type="number") — em grade
+          // de PV isso corrompe quantidade silenciosamente. Blur cancela o
+          // spin sem bloquear o scroll da página.
+          if (isNumber && e.currentTarget === document.activeElement) {
+            e.currentTarget.blur();
+          }
+          onWheel?.(e);
         }}
         className={cn(
           // Industrial Editorial Pro (22/05/2026): borda 1.5px decisive em vez

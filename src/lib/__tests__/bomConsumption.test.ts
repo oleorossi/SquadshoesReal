@@ -351,13 +351,13 @@ describe('calculateBomForOrders — cascata canônica de solado (BOM-2/BOM-7)', 
     // por número abaixo usa o MESMO produto — validado no teste de BOM-4.
   });
 
-  it('BOM-7: sole_consumption=2 multiplica o total (2 pares de solado por par)', async () => {
+  it('BOM-7: ignora multiplicador legado e mantém 1 par de solado por par vendido', async () => {
     const t = withSole(buildBomTables());
     (t.technical_sheets[0] as any).sole_consumption = 2;
     mockDb.tables = t;
     const rows = await calculateBomForOrders(['op1']);
     const solado = rows.find(r => r.componentType === 'Solado');
-    expect(solado?.totalQuantity).toBe(1440);
+    expect(solado?.totalQuantity).toBe(720);
   });
 });
 

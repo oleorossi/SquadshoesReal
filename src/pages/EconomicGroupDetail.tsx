@@ -640,11 +640,11 @@ function FinanceiroTab({ groupId }: { groupId: string }) {
 
 function AgingBox({ label, value, color }: { label: string; value: number; color: string }) {
   const map: Record<string, string> = {
-    emerald: 'bg-emerald-500/10 text-emerald-700 border-emerald-500/30',
-    amber: 'bg-amber-500/10 text-amber-700 border-amber-500/30',
-    orange: 'bg-orange-500/10 text-orange-700 border-orange-500/30',
-    rose: 'bg-rose-500/10 text-rose-700 border-rose-500/30',
-    red: 'bg-red-500/10 text-red-700 border-red-500/30',
+    emerald: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30',
+    amber: 'bg-amber-500/10 text-amber-600 border-amber-500/30',
+    orange: 'bg-orange-500/10 text-orange-600 border-orange-500/30',
+    rose: 'bg-rose-500/10 text-rose-600 border-rose-500/30',
+    red: 'bg-red-500/10 text-red-600 border-red-500/30',
   };
   return (
     <div className={`rounded-lg border p-2 text-center ${map[color]}`}>
@@ -717,7 +717,7 @@ function ContatosTab({ groupId }: { groupId: string }) {
                   {c.phone && <p className="text-xs text-muted-foreground">{c.phone}</p>}
                   {c.whatsapp && (
                     <p className="text-xs">
-                      <a href={`https://wa.me/${c.whatsapp.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" className="text-emerald-700 hover:underline">
+                      <a href={`https://wa.me/${c.whatsapp.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" className="text-emerald-700 dark:text-emerald-400 hover:underline">
                         WhatsApp: {c.whatsapp}
                       </a>
                     </p>
@@ -850,9 +850,7 @@ function NotasAnexosTab({ groupId }: { groupId: string }) {
                         <Badge variant="outline" className="text-xs">{n.note_type}</Badge>
                         <span className="text-xs text-muted-foreground">{fmtDateTime(n.created_at)}</span>
                       </div>
-                      <Button size="icon" variant="ghost" className="h-6 w-6 opacity-0 group-hover:opacity-100 text-destructive" onClick={() => delNote.mutate({ id: n.id, groupId })}>
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
+                      <DeleteConfirmButton onConfirm={() => delNote.mutate({ id: n.id, groupId })} title="Excluir nota?" size="h-6 w-6 opacity-0 group-hover:opacity-100 focus-visible:opacity-100" iconSize="h-3 w-3" />
                     </div>
                     <p className="text-sm mt-1 whitespace-pre-wrap">{n.content}</p>
                   </div>
@@ -880,9 +878,7 @@ function NotasAnexosTab({ groupId }: { groupId: string }) {
                   <div key={a.id} className="flex items-center gap-2 border border-border/60 rounded p-2 group">
                     <FileText className="h-3 w-3 shrink-0 text-muted-foreground" />
                     <a href={a.file_url} target="_blank" rel="noopener noreferrer" className="text-xs hover:underline truncate flex-1" title={a.file_name}>{a.file_name}</a>
-                    <Button size="icon" variant="ghost" className="h-6 w-6 opacity-0 group-hover:opacity-100 text-destructive" onClick={() => delAtt.mutate({ id: a.id, groupId })}>
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
+                    <DeleteConfirmButton onConfirm={() => delAtt.mutate({ id: a.id, groupId })} title="Excluir anexo?" description={`"${a.file_name}" será removido permanentemente.`} size="h-6 w-6 opacity-0 group-hover:opacity-100 focus-visible:opacity-100" iconSize="h-3 w-3" />
                   </div>
                 ))}
               </div>

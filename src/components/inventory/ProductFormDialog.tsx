@@ -577,10 +577,32 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
   }, [allProducts, isEditing, autoFilled]);
 
   useEffect(() => {
-    if (hasGrade) {
-      update('unit', 'par');
-    }
-  }, [form.category]);
+    if (!hasGrade) return;
+
+    // Solado é armazenado, comprado, produzido e consumido em PARES
+    // completos. As duas peças físicas (esquerda + direita) nunca viram duas
+    // unidades de estoque.
+    setForm(prev => {
+      if (
+        prev.unit === 'par'
+        && prev.consumption_unit === 'par'
+        && prev.production_unit === 'par'
+        && prev.purchase_unit === 'par'
+        && prev.purchase_order_unit === 'par'
+        && Number(prev.conversion_rate) === 1
+      ) return prev;
+
+      return {
+        ...prev,
+        unit: 'par',
+        consumption_unit: 'par',
+        production_unit: 'par',
+        purchase_unit: 'par',
+        purchase_order_unit: 'par',
+        conversion_rate: 1,
+      };
+    });
+  }, [hasGrade]);
 
   useEffect(() => {
     if (hasGrade) {

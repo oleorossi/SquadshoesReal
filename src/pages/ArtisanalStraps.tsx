@@ -21,6 +21,7 @@ import {
   Wrench,
 } from '@phosphor-icons/react';
 import { ArtisanalStrapEditor, type ArtisanalStrapEditorMode, type ArtisanalStrapEditorOrigin } from '@/components/artisanal-straps/ArtisanalStrapEditor';
+import { ArtisanalStrapConversionEditor } from '@/components/artisanal-straps/ArtisanalStrapConversionEditor';
 import { ArtisanalStrapBatchMatrix } from '@/components/artisanal-straps/ArtisanalStrapBatchMatrix';
 import { ArtisanalStrapMigrationResolutionDialog } from '@/components/artisanal-straps/ArtisanalStrapMigrationDialogs';
 import { ArtisanalStrapLegacyProductMigrationDialog } from '@/components/artisanal-straps/ArtisanalStrapLegacyProductMigrationDialog';
@@ -117,6 +118,7 @@ const EMPTY_CATALOG: ArtisanalStrapCatalog = {
   official_products: [],
   variants: [],
   recipes: [],
+  legacy_recipes: [],
   products: [],
   groups: [],
   capabilities: {
@@ -530,8 +532,10 @@ function OfficialProductDialog({
 }
 
 interface OpenEditorArgs {
+  purpose?: 'conversion' | 'stock_variant';
   mode?: ArtisanalStrapEditorMode;
   origin?: ArtisanalStrapEditorOrigin;
+  recipeId?: string;
   variantId?: string;
   identityBasis?: ArtisanalStrapIdentityBasis;
   measureId?: string;
@@ -541,6 +545,7 @@ interface OpenEditorArgs {
   buyReadyReviewId?: string;
   suggestedRecipeId?: string;
   suggestedYieldMPerM?: number;
+  legacyRecipeId?: string;
 }
 
 function TechnicalLineMigrationDialog({
@@ -665,6 +670,10 @@ export default function ArtisanalStraps() {
   const editorOrigin = (['hub', 'estoque', 'grupos', 'compras', 'terceirizados', 'pv'].includes(searchParams.get('origin') || '')
     ? searchParams.get('origin')
     : 'hub') as ArtisanalStrapEditorOrigin;
+  const editorPurpose = searchParams.get('purpose') === 'conversion'
+    || (!searchParams.get('purpose') && activeTab === 'receitas')
+    ? 'conversion'
+    : 'stock_variant';
 
   const openEditor = (args: OpenEditorArgs = {}) => {
     setSearchParams((previous) => {
@@ -672,7 +681,9 @@ export default function ArtisanalStraps() {
       params.set('editor', '1');
       params.set('mode', args.mode || 'create');
       params.set('origin', args.origin || 'hub');
+      params.set('purpose', args.purpose || (activeTab === 'receitas' ? 'conversion' : 'stock_variant'));
       const values: Array<[string, string | undefined]> = [
+        ['recipeId', args.recipeId],
         ['variantId', args.variantId],
         ['identityBasis', args.identityBasis],
         ['measureId', args.measureId],
@@ -682,6 +693,7 @@ export default function ArtisanalStraps() {
         ['buyReadyReviewId', args.buyReadyReviewId],
         ['suggestedRecipeId', args.suggestedRecipeId],
         ['suggestedYieldMPerM', args.suggestedYieldMPerM == null ? undefined : String(args.suggestedYieldMPerM)],
+        ['legacyRecipeId', args.legacyRecipeId],
       ];
       for (const [key, value] of values) {
         if (value) params.set(key, value);
@@ -694,15 +706,16 @@ export default function ArtisanalStraps() {
   const closeEditor = () => {
     setSearchParams((previous) => {
       const params = new URLSearchParams(previous);
-      ['editor', 'mode', 'origin', 'variantId', 'identityBasis', 'measureId', 'baseGroupId',
+      ['editor', 'mode', 'origin', 'purpose', 'recipeId', 'variantId', 'identityBasis', 'measureId', 'baseGroupId',
         'colorId', 'finishedProductId', 'buyReadyReviewId', 'suggestedRecipeId',
-        'suggestedYieldMPerM'].forEach((key) => params.delete(key));
+        'suggestedYieldMPerM', 'legacyRecipeId'].forEach((key) => params.delete(key));
       return params;
     }, { replace: true });
   };
 
   const reviewCount = catalog.variants.filter((item) => item.status === 'review_required' || item.status === 'suspended').length;
   const pendingRecipes = catalog.recipes.filter((item) => item.status === 'pending_approval').length;
+  const legacyRecipeCount = catalog.legacy_recipes.length;
   const activeVariants = catalog.variants.filter((item) => item.status === 'active').length;
   const openDemands = demandsQuery.data?.demands.filter((item) => !['fulfilled', 'cancelled', 'superseded'].includes(item.status)).length;
   const focusDemand = demandsQuery.data?.demands.find((item) => !['fulfilled', 'cancelled', 'superseded'].includes(item.status));
@@ -758,7 +771,12 @@ export default function ArtisanalStraps() {
         sectionLabel="ENGENHARIA · TIRAS"
         title="Tiras"
         description="Da necessidade do pedido à tira pronta: rendimento, estoque, produção e terceirização no mesmo fluxo."
-        meta={<><strong>{activeVariants}</strong> variantes ativas · <strong>{catalog.recipes.length}</strong> receitas registradas</>}
+        meta={(
+          <>
+            <strong>{activeVariants}</strong> variantes ativas · <strong>{catalog.recipes.length}</strong> conversões canônicas
+            {legacyRecipeCount > 0 && <> · <strong>{legacyRecipeCount}</strong> no histórico</>}
+          </>
+        )}
         actions={
           <>
             <Button
@@ -778,8 +796,15 @@ export default function ArtisanalStraps() {
               <RefreshCw className="h-4 w-4" /> Atualizar
             </Button>
             {catalog.capabilities.manage_strap_catalog && (
-              <Button size="sm" onClick={() => openEditor()} className="gap-2">
-                <Plus className="h-4 w-4" /> Nova variante
+              <Button
+                size="sm"
+                onClick={() => openEditor({
+                  purpose: activeTab === 'receitas' ? 'conversion' : 'stock_variant',
+                })}
+                className="gap-2"
+              >
+                <Plus className="h-4 w-4" />
+                {activeTab === 'receitas' ? 'Nova conversão' : 'Nova variante de estoque'}
               </Button>
             )}
           </>
@@ -910,27 +935,46 @@ export default function ArtisanalStraps() {
         </TabsContent>
       </Tabs>
 
-      <ArtisanalStrapEditor
-        open={editorOpen}
-        onOpenChange={(open) => { if (!open) closeEditor(); }}
-        catalog={catalog}
-        capabilities={catalog.capabilities}
-        mode={editorMode}
-        origin={editorOrigin}
-        variantId={searchParams.get('variantId')}
-        identityBasis={searchParams.get('identityBasis') === 'finished_product_group'
-          ? 'finished_product_group'
-          : null}
-        measureId={searchParams.get('measureId')}
-        baseGroupId={searchParams.get('baseGroupId')}
-        colorId={searchParams.get('colorId')}
-        finishedProductId={searchParams.get('finishedProductId')}
-        buyReadyReviewId={searchParams.get('buyReadyReviewId')}
-        suggestedRecipeId={searchParams.get('suggestedRecipeId')}
-        suggestedYieldMPerM={searchParams.get('suggestedYieldMPerM') == null
-          ? null
-          : Number(searchParams.get('suggestedYieldMPerM'))}
-      />
+      {editorPurpose === 'conversion' ? (
+        <ArtisanalStrapConversionEditor
+          open={editorOpen}
+          onOpenChange={(open) => { if (!open) closeEditor(); }}
+          catalog={catalog}
+          capabilities={catalog.capabilities}
+          mode={editorMode}
+          origin={editorOrigin}
+          recipeId={searchParams.get('recipeId')}
+          measureId={searchParams.get('measureId')}
+          baseGroupId={searchParams.get('baseGroupId')}
+          suggestedRecipeId={searchParams.get('suggestedRecipeId')}
+          suggestedYieldMPerM={searchParams.get('suggestedYieldMPerM') == null
+            ? null
+            : Number(searchParams.get('suggestedYieldMPerM'))}
+          legacyRecipeId={searchParams.get('legacyRecipeId')}
+        />
+      ) : (
+        <ArtisanalStrapEditor
+          open={editorOpen}
+          onOpenChange={(open) => { if (!open) closeEditor(); }}
+          catalog={catalog}
+          capabilities={catalog.capabilities}
+          mode={editorMode}
+          origin={editorOrigin}
+          variantId={searchParams.get('variantId')}
+          identityBasis={searchParams.get('identityBasis') === 'finished_product_group'
+            ? 'finished_product_group'
+            : null}
+          measureId={searchParams.get('measureId')}
+          baseGroupId={searchParams.get('baseGroupId')}
+          colorId={searchParams.get('colorId')}
+          finishedProductId={searchParams.get('finishedProductId')}
+          buyReadyReviewId={searchParams.get('buyReadyReviewId')}
+          suggestedRecipeId={searchParams.get('suggestedRecipeId')}
+          suggestedYieldMPerM={searchParams.get('suggestedYieldMPerM') == null
+            ? null
+            : Number(searchParams.get('suggestedYieldMPerM'))}
+        />
+      )}
 
       <ReasonDialog state={reasonDialog} onClose={() => setReasonDialog(null)} />
       <WidthProfileDialog state={widthDialog} catalog={catalog} onClose={() => setWidthDialog(null)} />
@@ -956,81 +1000,20 @@ export default function ArtisanalStraps() {
 }
 
 function CalculatorTab({ catalog }: { catalog: ArtisanalStrapCatalog }) {
-  const approvedRecipes = catalog.recipes
-    .filter((recipe) => recipe.status === 'approved')
-    .sort((a, b) => Number(b.version) - Number(a.version));
-  const [recipeId, setRecipeId] = useState(approvedRecipes[0]?.id || '');
-  const selectedRecipe = approvedRecipes.find((recipe) => recipe.id === recipeId)
-    || approvedRecipes[0];
-  const maps = useMemo(() => mapsFor(catalog), [catalog]);
-  const measure = selectedRecipe ? maps.measures.get(selectedRecipe.measure_id) : undefined;
-  const type = measure ? maps.types.get(measure.strap_type_id) : undefined;
-  const base = selectedRecipe ? maps.groups.get(selectedRecipe.base_group_id) : undefined;
-
   return (
     <div className="space-y-4">
-      {selectedRecipe ? (
-        <Panel
-          eyebrow="RECEITA CANÔNICA"
-          title="Geometria carregada do catálogo"
-          subtitle="Troque a versão para comparar cenários sem alterar a receita persistida."
-        >
-          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(240px,0.45fr)] lg:items-end">
-            <div className="space-y-1.5">
-              <Label>Receita aprovada</Label>
-              <Select value={selectedRecipe.id} onValueChange={setRecipeId}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {approvedRecipes.map((recipe) => {
-                    const recipeMeasure = maps.measures.get(recipe.measure_id);
-                    const recipeType = recipeMeasure ? maps.types.get(recipeMeasure.strap_type_id) : undefined;
-                    const recipeBase = maps.groups.get(recipe.base_group_id);
-                    return (
-                      <SelectItem key={recipe.id} value={recipe.id}>
-                        {[recipeType?.name, recipeMeasure?.display_name, recipeBase?.name, `v${recipe.version}`].filter(Boolean).join(' · ')}
-                      </SelectItem>
-                    );
-                  })}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div className="rounded-md bg-muted/40 px-3 py-2">
-                <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Largura útil</p>
-                <p className="font-mono text-sm font-bold">{Number(selectedRecipe.usable_base_width_mm_snapshot).toLocaleString('pt-BR')} mm</p>
-              </div>
-              <div className="rounded-md bg-muted/40 px-3 py-2">
-                <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Confirmado</p>
-                <p className="font-mono text-sm font-bold">{Number(selectedRecipe.confirmed_yield_m_per_m).toLocaleString('pt-BR')} m/m</p>
-              </div>
-            </div>
-          </div>
-          <StrapIdentityTrail
-            typeName={type?.name}
-            measureName={measure?.display_name}
-            baseName={base?.name}
-            compact
-            className="mt-3"
-          />
-        </Panel>
-      ) : (
-        <div className="flex items-start gap-3 rounded-lg border border-border bg-muted/30 px-4 py-3">
-          <Calculator className="mt-0.5 h-5 w-5 shrink-0 text-primary" weight="bold" />
-          <div>
-            <p className="text-sm font-semibold text-foreground">Cálculo livre</p>
-            <p className="text-xs text-muted-foreground">
-              A calculadora não depende de receita aprovada. Preencha a geometria para simular rendimento, necessidade, custo e cortes parciais.
-            </p>
-          </div>
+      <div className="flex items-start gap-3 rounded-lg border border-border bg-muted/30 px-4 py-3">
+        <Calculator className="mt-0.5 h-5 w-5 shrink-0 text-primary" weight="bold" />
+        <div>
+          <p className="text-sm font-semibold text-foreground">Simulação livre de novas medidas</p>
+          <p className="text-xs text-muted-foreground">
+            Preencha largura, banda, rendimento real ou perda para testar cenários. Os valores são temporários e não são salvos nem alteram receitas do sistema.
+          </p>
         </div>
-      )}
+      </div>
 
       <StrapCalculator
-        key={selectedRecipe?.id || 'calculo-livre'}
         embedded
-        larguraMaterialInicialMm={selectedRecipe ? Number(selectedRecipe.usable_base_width_mm_snapshot) : undefined}
-        larguraBandaInicialMm={selectedRecipe ? Number(selectedRecipe.cut_band_width_mm) : undefined}
-        rendimentoConfirmadoInicialMPerM={selectedRecipe ? Number(selectedRecipe.confirmed_yield_m_per_m) : undefined}
         canShowFinancialValues={catalog.capabilities.can_see_financial_values === true}
       />
     </div>
@@ -1293,29 +1276,59 @@ function RecipesTab({
       return includesSearch(search, type?.name, measure?.display_name, maps.groups.get(recipe.base_group_id)?.name, recipe.status);
     })
     .sort((a, b) => String(b.updated_at || b.created_at || '').localeCompare(String(a.updated_at || a.created_at || '')));
+  const legacyRecipes = catalog.legacy_recipes.filter((recipe) => includesSearch(
+    search,
+    recipe.name,
+    recipe.artisanal_product_name,
+    recipe.base_product_name,
+    recipe.active ? 'ativa' : 'inativa',
+    recipe.migration_status,
+  ));
+  const filteredCount = recipes.length + legacyRecipes.length;
+  const totalCount = catalog.recipes.length + catalog.legacy_recipes.length;
 
   return (
     <div className="space-y-4">
-      <SearchInput
-        className="w-full sm:max-w-sm"
-        value={search}
-        onChange={setSearch}
-        placeholder="Buscar medida, base ou status…"
-        resultCount={recipes.length}
-        totalCount={catalog.recipes.length}
-      />
-      <Panel flush eyebrow="RENDIMENTO" title="Receitas versionadas" subtitle="A receita é única por medida + napa-base e nunca é herdada de outra combinação.">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <SearchInput
+          className="w-full sm:max-w-sm"
+          value={search}
+          onChange={setSearch}
+          placeholder="Buscar conversão, medida, base ou status…"
+          resultCount={filteredCount}
+          totalCount={totalCount}
+        />
+        {catalog.capabilities.manage_strap_catalog && (
+          <Button
+            size="sm"
+            onClick={() => openEditor({ purpose: 'conversion', mode: 'create' })}
+            className="gap-2"
+          >
+            <Plus className="h-4 w-4" /> Nova conversão
+          </Button>
+        )}
+      </div>
+      <Panel
+        flush
+        eyebrow="RENDIMENTO"
+        title="Conversões canônicas versionadas"
+        subtitle="Uma conversão por família, medida e napa-base, compartilhada por todas as cores."
+      >
         {recipes.length === 0 ? (
-          <EmptyState icon={Scissors} title={search ? 'Nenhuma receita encontrada' : 'Nenhuma receita cadastrada'} size="sm" />
+          <EmptyState
+            icon={Scissors}
+            title={search ? 'Nenhuma conversão canônica encontrada' : 'Nenhuma conversão canônica cadastrada'}
+            description={catalog.legacy_recipes.length > 0
+              ? 'Os cadastros anteriores continuam disponíveis no histórico abaixo.'
+              : undefined}
+            size="sm"
+          />
         ) : (
           <div className="divide-y divide-border">
             {recipes.map((recipe) => {
               const measure = maps.measures.get(recipe.measure_id);
               const type = measure ? maps.types.get(measure.strap_type_id) : undefined;
               const base = maps.groups.get(recipe.base_group_id);
-              const variant = catalog.variants.find(
-                (item) => item.measure_id === recipe.measure_id && item.base_group_id === recipe.base_group_id,
-              );
               const theoretical = Number(recipe.theoretical_yield_m_per_m);
               const confirmed = Number(recipe.confirmed_yield_m_per_m);
               const executorLabel = recipe.executor_type === 'factory'
@@ -1359,8 +1372,11 @@ function RecipesTab({
                       <Button
                         variant="outline"
                         size="sm"
-                        disabled={!variant}
-                        onClick={() => variant && openEditor({ mode: 'edit', variantId: variant.id })}
+                        onClick={() => openEditor({
+                          purpose: 'conversion',
+                          mode: 'edit',
+                          recipeId: recipe.id,
+                        })}
                         className="gap-2"
                       >
                         <Pencil className="h-4 w-4" /> {catalog.capabilities.manage_strap_catalog ? 'Editar' : 'Consultar'}
@@ -1383,6 +1399,111 @@ function RecipesTab({
           </div>
         )}
       </Panel>
+
+      {catalog.legacy_recipes.length > 0 && (
+        <Panel
+          flush
+          eyebrow="HISTÓRICO"
+          title={`Cadastros do sistema anterior · ${catalog.legacy_recipes.length}`}
+          subtitle="Os registros antigos são preservados. Reaproveitar cria uma conversão canônica somente depois da sua conferência."
+        >
+          {legacyRecipes.length === 0 ? (
+            <EmptyState
+              icon={ClockCounterClockwise}
+              title="Nenhuma conversão anterior encontrada"
+              description="Ajuste a busca para consultar os cadastros preservados."
+              size="sm"
+            />
+          ) : (
+            <div className="divide-y divide-border">
+              {legacyRecipes.map((recipe) => {
+                const executorLabel = recipe.default_contractor_id
+                  ? contractorNames.get(recipe.default_contractor_id) || 'Terceirizado não identificado'
+                  : 'Sem executor padrão';
+                const linkedToCanonical = Boolean(recipe.canonical_recipe_id);
+                const canReuse = catalog.capabilities.manage_strap_catalog
+                  && catalog.capabilities.approve_strap_recipe
+                  && catalog.capabilities.resolve_strap_migration
+                  && catalog.capabilities.can_see_financial_values === true;
+                return (
+                  <article key={recipe.id} className="p-4 hover:bg-muted/20">
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="font-semibold">
+                            {recipe.artisanal_product_name} · {recipe.base_product_name}
+                          </h3>
+                          <Badge variant={linkedToCanonical ? 'secondary' : 'outline'}>
+                            {linkedToCanonical ? 'Vinculada ao catálogo' : 'Histórico legado'}
+                          </Badge>
+                          <Badge variant="outline">{recipe.active ? 'Ativa no sistema anterior' : 'Inativa'}</Badge>
+                        </div>
+                        <p className="mt-1 truncate text-xs text-muted-foreground">{recipe.name}</p>
+                        <div className="mt-3 grid grid-cols-2 gap-2 text-sm sm:grid-cols-3 lg:grid-cols-5">
+                          <div>
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Banda</p>
+                            <p className="font-mono font-semibold">
+                              {recipe.cut_width_mm ? `${recipe.cut_width_mm} mm` : '—'}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Rendimento</p>
+                            <p className="font-mono font-semibold text-primary">{Number(recipe.yield_per_meter) || '—'} m/m</p>
+                          </div>
+                          <div>
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Executor</p>
+                            <p className="truncate font-semibold">{executorLabel}</p>
+                          </div>
+                          <div>
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Atualizada em</p>
+                            <p className="font-mono font-semibold">{formatDate(recipe.updated_at)}</p>
+                          </div>
+                          {catalog.capabilities.can_see_financial_values && (
+                            <div>
+                              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Mão de obra</p>
+                              <p className="font-mono font-semibold">{formatCurrencyValue(recipe.labor_cost_per_meter)}/m</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      {linkedToCanonical ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="gap-2"
+                          onClick={() => openEditor({
+                            purpose: 'conversion',
+                            mode: 'edit',
+                            recipeId: recipe.canonical_recipe_id || undefined,
+                          })}
+                        >
+                          <Pencil className="h-4 w-4" /> Abrir conversão
+                        </Button>
+                      ) : canReuse ? (
+                        <Button
+                          size="sm"
+                          className="gap-2"
+                          onClick={() => openEditor({
+                            purpose: 'conversion',
+                            mode: 'create',
+                            legacyRecipeId: recipe.id,
+                          })}
+                        >
+                          <ClockCounterClockwise className="h-4 w-4" /> Reaproveitar
+                        </Button>
+                      ) : (
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <LockKey className="h-4 w-4" /> Histórico preservado
+                        </div>
+                      )}
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </Panel>
+      )}
     </div>
   );
 }
@@ -1997,9 +2118,10 @@ function PerformanceTab({
       yieldQuery={realYieldQuery}
       costQuery={costVarianceQuery}
       onSuggestYield={(row) => openEditor({
+        purpose: 'conversion',
         mode: 'edit',
         origin: 'hub',
-        variantId: row.strap_variant_id,
+        recipeId: row.recipe_id,
         suggestedRecipeId: row.recipe_id,
         suggestedYieldMPerM: Number(row.actual_yield_m_per_m),
       })}

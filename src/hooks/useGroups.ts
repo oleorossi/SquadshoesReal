@@ -148,6 +148,13 @@ export function useDeleteGroup() {
         const { error: colErr } = await (supabase.from('technical_sheets') as any).update({ [col]: null }).eq(col, id);
         if (colErr) throw new Error(`Falha ao desvincular fichas técnicas (${col}): ${colErr.message}`);
       }
+      // Cabedal Material 1 tem vínculo canônico por UUID. Limpa também o nome
+      // espelho para não deixar a ficha apontando para um grupo já excluído.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error: upperErr } = await (supabase.from('technical_sheets') as any)
+        .update({ upper_material_group_id: null, upper_material: '' })
+        .eq('upper_material_group_id', id);
+      if (upperErr) throw new Error(`Falha ao desvincular cabedal das fichas técnicas: ${upperErr.message}`);
       // Detach products from group (keep them in stock)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { error: prodErr } = await (supabase.from('products') as any).update({ group_id: null }).eq('group_id', id);

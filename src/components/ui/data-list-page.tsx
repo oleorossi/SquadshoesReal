@@ -6,7 +6,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { CircleNotch as Loader2, Plus, Tray as Inbox, Trash as Trash2 } from '@phosphor-icons/react';
+import { CircleNotch as Loader2, Plus, Tray as Inbox, Trash as Trash2, WarningCircle } from '@phosphor-icons/react';
 import { Link } from 'react-router-dom';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
@@ -112,7 +112,7 @@ export function DataListPage({
     });
   };
   const clearSelection = () => setSelectedIds(new Set());
-  const { data: rows = [], isLoading } = useQuery({
+  const { data: rows = [], isLoading, isError, refetch } = useQuery({
     // O prefixo VEM de dataListPageKey pra que a chave registrada aqui e a
     // chave que os call sites invalidam não possam divergir em silêncio.
     queryKey: [...dataListPageKey(table), selectCols, orderBy, JSON.stringify(filters), limit],
@@ -199,6 +199,16 @@ export function DataListPage({
           <div className="py-10 flex items-center justify-center text-muted-foreground">
             <Loader2 className="h-5 w-5 animate-spin mr-2" /> Carregando...
           </div>
+        ) : isError ? (
+          // Erro ≠ vazio: sem este ramo, falha de rede/RLS caía no EmptyState
+          // "Nenhum registro" e o único sinal era o toast transiente global.
+          <EmptyState
+            icon={WarningCircle}
+            title="Falha ao carregar os dados"
+            description="Verifique a conexão e tente de novo."
+            size="sm"
+            action={<Button variant="outline" size="sm" onClick={() => refetch()}>Tentar novamente</Button>}
+          />
         ) : rows.length === 0 ? (
           <EmptyState icon={Inbox} title={emptyText} size="sm" />
         ) : (

@@ -4,6 +4,7 @@ import { ProductGroup, useUpdateGroup, useGroups } from '@/hooks/useGroups';
 import { useProducts } from '@/hooks/useProducts';
 import GroupColorsTab from './GroupColorsTab';
 import { MaterialClassificationRail } from './MaterialClassificationRail';
+import GroupCompositionTab from './GroupCompositionTab';
 import { useForceDeleteProductFlow } from '@/components/inventory/ForceDeleteProductDialog';
 import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
@@ -454,6 +455,17 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
     () => (group.parent_group_id ? allGroups.find(g => g.id === group.parent_group_id) ?? null : null),
     [group.parent_group_id, allGroups],
   );
+  const isCompositeMaterial = !isContainer && (
+    /dublag/i.test(parentGroup?.name || '') || /dublad/i.test(group.name || '')
+  );
+  const productColors = useMemo(
+    () => [...new Set(products
+      .filter(product => product.active !== false)
+      .map(product => String(product.color || '').trim())
+      .filter(Boolean))]
+      .sort((a, b) => a.localeCompare(b, 'pt-BR')),
+    [products],
+  );
 
   // Grupos que podem virar FILHO: nem o próprio, nem um ancestral, nem já-filho.
   const availableToLinkAsChild = useMemo(
@@ -756,6 +768,10 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
               {!isContainer && show.packaging && <TabsTrigger value="packaging" className="min-w-[132px] flex-1 justify-start gap-2 rounded-sm border border-transparent px-3 py-2 text-left font-sans normal-case tracking-normal data-[state=active]:border-foreground/20 data-[state=active]:bg-background data-[state=active]:shadow-sm">
                 <Package className="h-4 w-4 shrink-0" />
                 <span><span className="block text-xs font-semibold">Embalagem</span><span className="block text-[9px] font-normal text-muted-foreground">caixas do solado</span></span>
+              </TabsTrigger>}
+              {isCompositeMaterial && <TabsTrigger value="composition" className="min-w-[132px] flex-1 justify-start gap-2 rounded-sm border border-transparent px-3 py-2 text-left font-sans normal-case tracking-normal data-[state=active]:border-foreground/20 data-[state=active]:bg-background data-[state=active]:shadow-sm">
+                <Layers className="h-4 w-4 shrink-0" />
+                <span><span className="block text-xs font-semibold">Composição</span><span className="block text-[9px] font-normal text-muted-foreground">camadas da dublagem</span></span>
               </TabsTrigger>}
               {!isContainer && <TabsTrigger value="colors" className="min-w-[132px] flex-1 justify-start gap-2 rounded-sm border border-transparent px-3 py-2 text-left font-sans normal-case tracking-normal data-[state=active]:border-foreground/20 data-[state=active]:bg-background data-[state=active]:shadow-sm">
                 <Palette className="h-4 w-4 shrink-0" />
@@ -1186,6 +1202,17 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
               </TabsContent>
             )}
 
+            {isCompositeMaterial && (
+              <TabsContent value="composition" className="space-y-4 mt-4">
+                <GroupCompositionTab
+                  groupId={group.id}
+                  groupName={group.name}
+                  groups={allGroups}
+                  colors={productColors}
+                />
+              </TabsContent>
+            )}
+
             {/* Tab: Cores — único lugar que vê as cores do grupo como CONJUNTO
                 (duplicata, typo, largura divergente) e permite fundir. */}
             {!isContainer && <TabsContent value="colors" className="space-y-4 mt-4">
@@ -1210,7 +1237,7 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                 <GroupColorsTab
                   groupId={group.id}
                   groupName={group.name}
-                  products={products}
+                  products={products.filter(product => product.active !== false)}
                   groupWidth={(group as any).dimensions_width}
                 />
               ) : null}

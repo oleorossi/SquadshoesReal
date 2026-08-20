@@ -346,6 +346,7 @@ function ProductRows({ products, onEdit, onDelete, onStockOut, onGrade, onArtisa
       <ImageZoomDialog src={zoomImg?.src || ''} alt={zoomImg?.alt || ''} open={!!zoomImg} onOpenChange={(o) => { if (!o) setZoomImg(null); }} />
       {products.map((product) => {
         const status = getStockStatus(product);
+        const isSole = product.category.toLowerCase().includes('solado');
         const isInactive = !product.active;
         const isSelected = selectedIds?.has(product.id);
         const isPurchasedReadyStrap = purchasedReadyProductIds.has(product.id);
@@ -497,12 +498,13 @@ function ProductRows({ products, onEdit, onDelete, onStockOut, onGrade, onArtisa
              {isVisible('quantity') && (
              <TableCell className={cn("text-right font-mono", dCls.cell)}>
                {(() => {
-                 const isSolado = product.category.toLowerCase().includes('solado');
                  let freeQty = Number(product.quantity) || 0;
 
-                 if (isSolado && (product as any).stock_grade) {
+                 if (isSole && (product as any).stock_grade) {
                    const grade = (product as any).stock_grade as Record<string, number>;
-                   freeQty = Object.values(grade).reduce((sum, q) => sum + (Number(q) || 0), 0);
+                   freeQty = Object.entries(grade)
+                     .filter(([key]) => !key.startsWith('_'))
+                     .reduce((sum, [, quantity]) => sum + (Number(quantity) || 0), 0);
                  }
 
                  const inProd = Number((product as any).in_production_quantity) || 0;
@@ -609,22 +611,24 @@ function ProductRows({ products, onEdit, onDelete, onStockOut, onGrade, onArtisa
             {isVisible('actions') && (
             <TableCell className={cn("text-right", dCls.cell)}>
               <div className="flex justify-end gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 group-focus-within:opacity-100 focus-within:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button variant="ghost" size="icon" aria-label="Baixa manual" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => onStockOut(product)}>
-                      <PackageMinus className="h-4 w-4" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>Baixa manual</TooltipContent>
-                </Tooltip>
-                {product.category.toLowerCase().includes('solado') && (
+                {!isSole && (
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <Button variant="ghost" size="icon" aria-label="Estoque por numeração" className="h-8 w-8 text-primary hover:text-primary" onClick={() => onGrade(product)}>
+                      <Button variant="ghost" size="icon" aria-label="Baixa manual" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => onStockOut(product)}>
+                        <PackageMinus className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Baixa manual</TooltipContent>
+                  </Tooltip>
+                )}
+                {isSole && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button variant="ghost" size="icon" aria-label="Ajustar pares por numeração" className="h-8 w-8 text-primary hover:text-primary" onClick={() => onGrade(product)}>
                         <Grid3X3 className="h-4 w-4" />
                       </Button>
                     </TooltipTrigger>
-                    <TooltipContent>Estoque por numeração</TooltipContent>
+                    <TooltipContent>Ajustar ou baixar pares por numeração</TooltipContent>
                   </Tooltip>
                 )}
                 {!isPurchasedReadyStrap && <Tooltip>

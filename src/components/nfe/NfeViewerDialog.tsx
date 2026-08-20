@@ -26,11 +26,11 @@ interface Props {
 }
 
 const STATUS_VARIANT: Record<string, { label: string; className: string }> = {
-  autorizada: { label: 'Autorizada', className: 'bg-green-500/10 text-green-700 border-green-500/30' },
-  processando: { label: 'Processando', className: 'bg-amber-500/10 text-amber-700 border-amber-500/30' },
-  cancelada: { label: 'Cancelada', className: 'bg-red-500/10 text-red-700 border-red-500/30' },
-  rejeitada: { label: 'Rejeitada', className: 'bg-red-500/10 text-red-700 border-red-500/30' },
-  erro: { label: 'Erro', className: 'bg-red-500/10 text-red-700 border-red-500/30' },
+  autorizada: { label: 'Autorizada', className: 'bg-green-500/10 text-green-600 border-green-500/30' },
+  processando: { label: 'Processando', className: 'bg-amber-500/10 text-amber-600 border-amber-500/30' },
+  cancelada: { label: 'Cancelada', className: 'bg-red-500/10 text-red-600 border-red-500/30' },
+  rejeitada: { label: 'Rejeitada', className: 'bg-red-500/10 text-red-600 border-red-500/30' },
+  erro: { label: 'Erro', className: 'bg-red-500/10 text-red-600 border-red-500/30' },
 };
 
 function formatChave(chave: string | null) {
@@ -158,7 +158,7 @@ export function NfeViewerDialog({ nfe, open, onOpenChange, clientLabel, orderNum
               <div className="text-red-600 uppercase tracking-wider text-xs font-bold flex items-center gap-1">
                 <AlertTriangle className="h-3 w-3" /> Motivo Rejeição
               </div>
-              <div className="text-red-700 text-xs">{nfe.motivo_rejeicao}</div>
+              <div className="text-red-700 dark:text-red-400 text-xs">{nfe.motivo_rejeicao}</div>
             </div>
           )}
           {nfe.protocolo_cancelamento && (

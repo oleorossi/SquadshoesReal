@@ -1,16 +1,16 @@
 {
   "generatedFor": "Squad Shoes — reorganização de IA (menus, abas, perfis)",
   "totals": {
-    "routesDeclared": 181,
-    "screens": 97,
-    "redirects": 76,
+    "routesDeclared": 183,
+    "screens": 98,
+    "redirects": 77,
     "navEntries": 71,
     "menuItems": 46,
     "grantableDestinations": 80,
     "menuGroups": 9,
-    "pagesWithTabs": 44,
-    "tabsWithoutUrl": 16,
-    "tabsOverloaded": 9
+    "pagesWithTabs": 46,
+    "tabsWithoutUrl": 18,
+    "tabsOverloaded": 8
   },
   "findings": {
     "orphanRoutes": [],
@@ -29,6 +29,11 @@
         "path": "/auth",
         "component": "AuthRoute",
         "reason": "Fora do shell autenticado"
+      },
+      {
+        "path": "/producao/kanban/gestao",
+        "component": "ProducaoKanbanGestao",
+        "reason": "Modo dedicado alcançado pelo botão do Kanban — herda navegação e permissão de /producao/kanban"
       },
       {
         "path": "/m",
@@ -224,8 +229,8 @@
             "surface": "menuGroups"
           },
           {
-            "path": "/calculadora-tiras",
-            "label": "Calculadora de Tiras",
+            "path": "/tiras-artesanais",
+            "label": "Tiras",
             "group": "Engenharia",
             "surfaces": [
               "sidebar",
@@ -275,13 +280,13 @@
           },
           {
             "path": "/producao/kanban",
-            "label": "Kanban",
+            "label": "Modo Gestão",
             "group": "Produção",
             "surfaces": [
               "sidebar",
               "command"
             ],
-            "line": 60,
+            "line": 62,
             "surface": "menuGroups"
           },
           {
@@ -292,7 +297,7 @@
               "sidebar",
               "command"
             ],
-            "line": 61,
+            "line": 63,
             "surface": "menuGroups"
           },
           {
@@ -303,7 +308,7 @@
               "sidebar",
               "command"
             ],
-            "line": 63,
+            "line": 65,
             "surface": "menuGroups"
           },
           {
@@ -314,7 +319,7 @@
               "sidebar",
               "command"
             ],
-            "line": 64,
+            "line": 66,
             "surface": "menuGroups"
           },
           {
@@ -325,7 +330,7 @@
               "sidebar",
               "command"
             ],
-            "line": 65,
+            "line": 67,
             "surface": "menuGroups"
           }
         ]
@@ -342,7 +347,7 @@
               "sidebar",
               "command"
             ],
-            "line": 73,
+            "line": 74,
             "surface": "menuGroups"
           },
           {
@@ -353,7 +358,7 @@
               "sidebar",
               "command"
             ],
-            "line": 74,
+            "line": 75,
             "surface": "menuGroups"
           },
           {
@@ -364,7 +369,7 @@
               "sidebar",
               "command"
             ],
-            "line": 75,
+            "line": 76,
             "surface": "menuGroups"
           },
           {
@@ -375,7 +380,7 @@
               "sidebar",
               "command"
             ],
-            "line": 76,
+            "line": 77,
             "surface": "menuGroups"
           },
           {
@@ -386,7 +391,7 @@
               "sidebar",
               "command"
             ],
-            "line": 77,
+            "line": 78,
             "surface": "menuGroups"
           }
         ]
@@ -403,7 +408,7 @@
               "sidebar",
               "command"
             ],
-            "line": 81,
+            "line": 82,
             "surface": "menuGroups"
           },
           {
@@ -414,7 +419,7 @@
               "sidebar",
               "command"
             ],
-            "line": 82,
+            "line": 83,
             "surface": "menuGroups"
           },
           {
@@ -425,7 +430,7 @@
               "sidebar",
               "command"
             ],
-            "line": 83,
+            "line": 84,
             "surface": "menuGroups"
           },
           {
@@ -436,7 +441,7 @@
               "sidebar",
               "command"
             ],
-            "line": 84,
+            "line": 85,
             "surface": "menuGroups"
           },
           {
@@ -447,7 +452,7 @@
               "sidebar",
               "command"
             ],
-            "line": 85,
+            "line": 86,
             "surface": "menuGroups"
           },
           {
@@ -458,7 +463,7 @@
               "sidebar",
               "command"
             ],
-            "line": 86,
+            "line": 87,
             "surface": "menuGroups"
           },
           {
@@ -469,7 +474,7 @@
               "sidebar",
               "command"
             ],
-            "line": 87,
+            "line": 88,
             "surface": "menuGroups"
           },
           {
@@ -480,7 +485,7 @@
               "sidebar",
               "command"
             ],
-            "line": 88,
+            "line": 89,
             "surface": "menuGroups"
           }
         ]
@@ -497,18 +502,18 @@
               "sidebar",
               "command"
             ],
-            "line": 91,
+            "line": 92,
             "surface": "menuGroups"
           },
           {
             "path": "/label-system",
-            "label": "Sistema de Etiquetas",
+            "label": "ETIQUETAGEM",
             "group": "Logística",
             "surfaces": [
               "sidebar",
               "command"
             ],
-            "line": 94,
+            "line": 95,
             "surface": "menuGroups"
           },
           {
@@ -519,7 +524,7 @@
               "sidebar",
               "command"
             ],
-            "line": 95,
+            "line": 96,
             "surface": "menuGroups"
           },
           {
@@ -530,7 +535,7 @@
               "sidebar",
               "command"
             ],
-            "line": 97,
+            "line": 98,
             "surface": "menuGroups"
           },
           {
@@ -541,7 +546,7 @@
               "sidebar",
               "command"
             ],
-            "line": 98,
+            "line": 99,
             "surface": "menuGroups"
           }
         ]
@@ -558,7 +563,7 @@
               "sidebar",
               "command"
             ],
-            "line": 106,
+            "line": 107,
             "surface": "menuGroups"
           },
           {
@@ -569,7 +574,7 @@
               "sidebar",
               "command"
             ],
-            "line": 107,
+            "line": 108,
             "surface": "menuGroups"
           },
           {
@@ -580,7 +585,7 @@
               "sidebar",
               "command"
             ],
-            "line": 108,
+            "line": 109,
             "surface": "menuGroups"
           },
           {
@@ -591,7 +596,7 @@
               "sidebar",
               "command"
             ],
-            "line": 109,
+            "line": 110,
             "surface": "menuGroups"
           }
         ]
@@ -608,7 +613,7 @@
               "sidebar",
               "command"
             ],
-            "line": 111,
+            "line": 112,
             "surface": "menuGroups"
           },
           {
@@ -619,7 +624,7 @@
               "sidebar",
               "command"
             ],
-            "line": 112,
+            "line": 113,
             "surface": "menuGroups"
           },
           {
@@ -630,7 +635,7 @@
               "sidebar",
               "command"
             ],
-            "line": 113,
+            "line": 114,
             "surface": "menuGroups"
           },
           {
@@ -641,7 +646,7 @@
               "sidebar",
               "command"
             ],
-            "line": 114,
+            "line": 115,
             "surface": "menuGroups"
           },
           {
@@ -652,7 +657,7 @@
               "sidebar",
               "command"
             ],
-            "line": 115,
+            "line": 116,
             "surface": "menuGroups"
           }
         ]
@@ -669,7 +674,7 @@
               "sidebar",
               "command"
             ],
-            "line": 120,
+            "line": 121,
             "surface": "menuGroups"
           },
           {
@@ -680,7 +685,7 @@
               "sidebar",
               "command"
             ],
-            "line": 121,
+            "line": 122,
             "surface": "menuGroups"
           },
           {
@@ -691,13 +696,24 @@
               "sidebar",
               "command"
             ],
-            "line": 122,
+            "line": 123,
             "surface": "menuGroups"
           }
         ]
       }
     ],
     "systemItems": [
+      {
+        "path": "/admin/aprovacao-ordens-compra",
+        "label": "Aprovação de Ordens de Compra",
+        "group": "Sistema",
+        "surfaces": [
+          "sidebar",
+          "command"
+        ],
+        "line": 129,
+        "surface": "systemItems"
+      },
       {
         "path": "/settings",
         "label": "Configurações",
@@ -706,7 +722,7 @@
           "sidebar",
           "command"
         ],
-        "line": 128,
+        "line": 130,
         "surface": "systemItems"
       },
       {
@@ -717,7 +733,7 @@
           "sidebar",
           "command"
         ],
-        "line": 129,
+        "line": 131,
         "surface": "systemItems"
       },
       {
@@ -728,7 +744,7 @@
           "sidebar",
           "command"
         ],
-        "line": 130,
+        "line": 132,
         "surface": "systemItems"
       },
       {
@@ -739,7 +755,7 @@
           "sidebar",
           "command"
         ],
-        "line": 131,
+        "line": 133,
         "surface": "systemItems"
       }
     ],
@@ -774,17 +790,7 @@
           "command",
           "hub-shortcut"
         ],
-        "line": 66,
-        "surface": "secondaryRoutes"
-      },
-      {
-        "path": "/producao/kanban/gestao",
-        "label": "Kanban · Modo Gestão",
-        "group": "Produção",
-        "surfaces": [
-          "command"
-        ],
-        "line": 67,
+        "line": 68,
         "surface": "secondaryRoutes"
       },
       {
@@ -795,7 +801,7 @@
           "command",
           "quick-action"
         ],
-        "line": 70,
+        "line": 71,
         "surface": "secondaryRoutes"
       },
       {
@@ -805,7 +811,7 @@
         "surfaces": [
           "command"
         ],
-        "line": 78,
+        "line": 79,
         "surface": "secondaryRoutes"
       },
       {
@@ -826,7 +832,7 @@
           "command",
           "hub-shortcut"
         ],
-        "line": 102,
+        "line": 103,
         "surface": "secondaryRoutes"
       },
       {
@@ -837,7 +843,7 @@
           "command",
           "hub-shortcut"
         ],
-        "line": 103,
+        "line": 104,
         "surface": "secondaryRoutes"
       },
       {
@@ -848,7 +854,7 @@
           "command",
           "hub-shortcut"
         ],
-        "line": 110,
+        "line": 111,
         "surface": "secondaryRoutes"
       },
       {
@@ -858,7 +864,7 @@
         "surfaces": [
           "command"
         ],
-        "line": 116,
+        "line": 117,
         "surface": "secondaryRoutes"
       },
       {
@@ -868,7 +874,7 @@
         "surfaces": [
           "command"
         ],
-        "line": 117,
+        "line": 118,
         "surface": "secondaryRoutes"
       },
       {
@@ -878,7 +884,7 @@
         "surfaces": [
           "command"
         ],
-        "line": 125,
+        "line": 126,
         "surface": "secondaryRoutes"
       },
       {
@@ -888,7 +894,7 @@
         "surfaces": [
           "command"
         ],
-        "line": 134,
+        "line": 136,
         "surface": "secondaryRoutes"
       },
       {
@@ -898,7 +904,7 @@
         "surfaces": [
           "command"
         ],
-        "line": 135,
+        "line": 137,
         "surface": "secondaryRoutes"
       },
       {
@@ -908,7 +914,7 @@
         "surfaces": [
           "command"
         ],
-        "line": 136,
+        "line": 138,
         "surface": "secondaryRoutes"
       },
       {
@@ -918,7 +924,7 @@
         "surfaces": [
           "command"
         ],
-        "line": 137,
+        "line": 139,
         "surface": "secondaryRoutes"
       },
       {
@@ -928,7 +934,7 @@
         "surfaces": [
           "command"
         ],
-        "line": 138,
+        "line": 140,
         "surface": "secondaryRoutes"
       },
       {
@@ -938,7 +944,7 @@
         "surfaces": [
           "command"
         ],
-        "line": 139,
+        "line": 141,
         "surface": "secondaryRoutes"
       },
       {
@@ -948,7 +954,7 @@
         "surfaces": [
           "command"
         ],
-        "line": 140,
+        "line": 142,
         "surface": "secondaryRoutes"
       }
     ]
@@ -1043,7 +1049,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 517
+      "line": 543
     },
     {
       "path": "/",
@@ -1067,7 +1073,7 @@
       "isIndex": false,
       "isDetail": true,
       "isLayout": false,
-      "line": 521
+      "line": 547
     },
     {
       "path": "/references",
@@ -1079,7 +1085,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 526
+      "line": 552
     },
     {
       "path": "/imagens-cores",
@@ -1091,7 +1097,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 527
+      "line": 553
     },
     {
       "path": "/silk-registrations",
@@ -1103,7 +1109,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 528
+      "line": 554
     },
     {
       "path": "/technical-sheets",
@@ -1115,7 +1121,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 529
+      "line": 555
     },
     {
       "path": "/products",
@@ -1127,7 +1133,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 530
+      "line": 556
     },
     {
       "path": "/component-sheets",
@@ -1139,7 +1145,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 531
+      "line": 557
     },
     {
       "path": "/consumo-material",
@@ -1151,7 +1157,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 532
+      "line": 558
     },
     {
       "path": "/inventory",
@@ -1163,7 +1169,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 533
+      "line": 559
     },
     {
       "path": "/estoque/historico",
@@ -1175,7 +1181,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 534
+      "line": 560
     },
     {
       "path": "/pcp",
@@ -1187,7 +1193,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 537
+      "line": 563
     },
     {
       "path": "/pcp/ondas",
@@ -1199,7 +1205,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 538
+      "line": 564
     },
     {
       "path": "/lead-time",
@@ -1211,7 +1217,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 539
+      "line": 565
     },
     {
       "path": "/setores",
@@ -1223,7 +1229,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 540
+      "line": 566
     },
     {
       "path": "/shop-floor",
@@ -1235,7 +1241,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 541
+      "line": 567
     },
     {
       "path": "/pcp-dashboard",
@@ -1247,7 +1253,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 542
+      "line": 568
     },
     {
       "path": "/gargalos",
@@ -1259,7 +1265,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 543
+      "line": 569
     },
     {
       "path": "/producao/visao-agregada",
@@ -1271,7 +1277,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 544
+      "line": 570
     },
     {
       "path": "/order-flow-audit",
@@ -1283,7 +1289,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 545
+      "line": 571
     },
     {
       "path": "/producao",
@@ -1295,7 +1301,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 546
+      "line": 572
     },
     {
       "path": "/producao/live",
@@ -1303,11 +1309,11 @@
       "parentRaw": null,
       "component": "LegacyRouteRedirect",
       "isRedirect": true,
-      "redirectTo": "/producao/kanban",
+      "redirectTo": "/producao/kanban/gestao",
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 547
+      "line": 573
     },
     {
       "path": "/producao/timeline",
@@ -1319,7 +1325,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 548
+      "line": 574
     },
     {
       "path": "/production-dashboard",
@@ -1331,7 +1337,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 549
+      "line": 575
     },
     {
       "path": "/production",
@@ -1343,7 +1349,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 550
+      "line": 576
     },
     {
       "path": "/producao/fluxo",
@@ -1355,7 +1361,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 551
+      "line": 577
     },
     {
       "path": "/modules/production",
@@ -1367,7 +1373,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 552
+      "line": 578
     },
     {
       "path": "/capacity-planning",
@@ -1379,7 +1385,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 553
+      "line": 579
     },
     {
       "path": "/capacity-planning/distribuir",
@@ -1391,7 +1397,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 554
+      "line": 580
     },
     {
       "path": "/centro-controle",
@@ -1403,7 +1409,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 555
+      "line": 581
     },
     {
       "path": "/quality",
@@ -1415,7 +1421,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 556
+      "line": 582
     },
     {
       "path": "/cronoanalise",
@@ -1427,7 +1433,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 557
+      "line": 583
     },
     {
       "path": "/producao/paradas",
@@ -1439,7 +1445,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 558
+      "line": 584
     },
     {
       "path": "/producao/setup-times",
@@ -1451,7 +1457,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 559
+      "line": 585
     },
     {
       "path": "/corte",
@@ -1463,7 +1469,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 560
+      "line": 586
     },
     {
       "path": "/costura",
@@ -1475,7 +1481,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 561
+      "line": 587
     },
     {
       "path": "/aviamento",
@@ -1487,7 +1493,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 562
+      "line": 588
     },
     {
       "path": "/montagem",
@@ -1499,7 +1505,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 563
+      "line": 589
     },
     {
       "path": "/solagem",
@@ -1511,7 +1517,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 564
+      "line": 590
     },
     {
       "path": "/acabamento",
@@ -1523,7 +1529,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 565
+      "line": 591
     },
     {
       "path": "/employees",
@@ -1535,7 +1541,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 568
+      "line": 594
     },
     {
       "path": "/timesheet",
@@ -1547,7 +1553,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 569
+      "line": 595
     },
     {
       "path": "/time-control",
@@ -1559,7 +1565,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 570
+      "line": 596
     },
     {
       "path": "/ponto",
@@ -1571,7 +1577,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 571
+      "line": 597
     },
     {
       "path": "/rh/fechamento-semanal",
@@ -1583,7 +1589,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 572
+      "line": 598
     },
     {
       "path": "/rh/ausencias",
@@ -1595,7 +1601,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 573
+      "line": 599
     },
     {
       "path": "/rh/banco-de-horas",
@@ -1607,7 +1613,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 574
+      "line": 600
     },
     {
       "path": "/rh/bank-hours",
@@ -1619,7 +1625,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 575
+      "line": 601
     },
     {
       "path": "/rh/payroll",
@@ -1631,7 +1637,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 576
+      "line": 602
     },
     {
       "path": "/sales/consumo",
@@ -1643,7 +1649,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 579
+      "line": 605
     },
     {
       "path": "/sales-report",
@@ -1655,7 +1661,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 580
+      "line": 606
     },
     {
       "path": "/pedidos-venda",
@@ -1667,7 +1673,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 581
+      "line": 607
     },
     {
       "path": "/finance",
@@ -1679,7 +1685,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 582
+      "line": 608
     },
     {
       "path": "/mrp",
@@ -1691,7 +1697,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 583
+      "line": 609
     },
     {
       "path": "/mrp-advanced",
@@ -1703,7 +1709,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 584
+      "line": 610
     },
     {
       "path": "/weekly-purchasing-plan",
@@ -1715,7 +1721,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 585
+      "line": 611
     },
     {
       "path": "/compras",
@@ -1727,7 +1733,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 586
+      "line": 612
     },
     {
       "path": "/fornecedores",
@@ -1739,7 +1745,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 587
+      "line": 613
     },
     {
       "path": "/clientes",
@@ -1751,7 +1757,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 588
+      "line": 614
     },
     {
       "path": "/ordens-servico",
@@ -1763,7 +1769,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 589
+      "line": 615
     },
     {
       "path": "/contractors",
@@ -1775,7 +1781,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 590
+      "line": 616
     },
     {
       "path": "/terceiros",
@@ -1787,7 +1793,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 591
+      "line": 617
     },
     {
       "path": "/terceiros-na-rua",
@@ -1799,7 +1805,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 592
+      "line": 618
     },
     {
       "path": "/terceiros/relatorios",
@@ -1811,7 +1817,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 593
+      "line": 619
     },
     {
       "path": "/artisanal-recipes",
@@ -1819,11 +1825,11 @@
       "parentRaw": null,
       "component": "LegacyRouteRedirect",
       "isRedirect": true,
-      "redirectTo": "/terceirizados?tab=recipes",
+      "redirectTo": "/tiras-artesanais?tab=receitas",
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 594
+      "line": 620
     },
     {
       "path": "/labels",
@@ -1835,7 +1841,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 597
+      "line": 623
     },
     {
       "path": "/modules/quality",
@@ -1847,7 +1853,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 598
+      "line": 624
     },
     {
       "path": "/modules/reports",
@@ -1859,7 +1865,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 599
+      "line": 625
     },
     {
       "path": "/stock",
@@ -1871,7 +1877,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 600
+      "line": 626
     },
     {
       "path": "/auditoria",
@@ -1883,7 +1889,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 601
+      "line": 627
     },
     {
       "path": "/diagnostico",
@@ -1895,7 +1901,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 602
+      "line": 628
     },
     {
       "path": "/monitoramento",
@@ -1907,7 +1913,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 603
+      "line": 629
     },
     {
       "path": "/ordens-de-producao",
@@ -1919,7 +1925,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 604
+      "line": 630
     },
     {
       "path": "/ordens",
@@ -1931,7 +1937,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 605
+      "line": 631
     },
     {
       "path": "/design-preview",
@@ -1943,7 +1949,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 667
+      "line": 714
     },
     {
       "path": "/auth",
@@ -1955,7 +1961,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 677
+      "line": 724
     },
     {
       "path": "/producao/kanban/gestao",
@@ -1967,7 +1973,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 687
+      "line": 734
     },
     {
       "path": "/m",
@@ -1979,7 +1985,7 @@
       "isIndex": true,
       "isDetail": false,
       "isLayout": false,
-      "line": 717
+      "line": 764
     },
     {
       "path": "/m/new",
@@ -1991,7 +1997,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 730
+      "line": 777
     },
     {
       "path": "/m/pending",
@@ -2003,7 +2009,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 731
+      "line": 778
     },
     {
       "path": "/m/profile",
@@ -2015,7 +2021,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 732
+      "line": 779
     },
     {
       "path": "/m",
@@ -2027,7 +2033,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": true,
-      "line": 717
+      "line": 764
     },
     {
       "path": "/dashboard",
@@ -2039,7 +2045,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 756
+      "line": 803
     },
     {
       "path": "/producao/planejamento",
@@ -2051,7 +2057,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 768
+      "line": 815
     },
     {
       "path": "/producao/kanban",
@@ -2063,7 +2069,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 772
+      "line": 819
     },
     {
       "path": "/producao/estouro",
@@ -2075,7 +2081,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 776
+      "line": 823
     },
     {
       "path": "/producao/setores",
@@ -2087,7 +2093,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 780
+      "line": 827
     },
     {
       "path": "/producao/apontamento",
@@ -2099,7 +2105,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 784
+      "line": 831
     },
     {
       "path": "/producao/analises",
@@ -2111,7 +2117,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 788
+      "line": 835
     },
     {
       "path": "/producao/produtividade",
@@ -2123,7 +2129,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 794
+      "line": 841
     },
     {
       "path": "/pronta-entrega",
@@ -2135,7 +2141,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 798
+      "line": 845
     },
     {
       "path": "/catalogo",
@@ -2147,7 +2153,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 802
+      "line": 849
     },
     {
       "path": "/estoque",
@@ -2159,7 +2165,7 @@
       "isIndex": true,
       "isDetail": false,
       "isLayout": false,
-      "line": 806
+      "line": 853
     },
     {
       "path": "/estoque/:id",
@@ -2171,7 +2177,7 @@
       "isIndex": false,
       "isDetail": true,
       "isLayout": false,
-      "line": 809
+      "line": 856
     },
     {
       "path": "/grupos",
@@ -2183,7 +2189,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 814
+      "line": 861
     },
     {
       "path": "/ajuste-estoque",
@@ -2195,7 +2201,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 818
+      "line": 865
     },
     {
       "path": "/fichas-tecnicas",
@@ -2207,7 +2213,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 822
+      "line": 869
     },
     {
       "path": "/fichas-tecnicas/padroes",
@@ -2219,7 +2225,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 828
+      "line": 875
     },
     {
       "path": "/escalonamento",
@@ -2231,19 +2237,31 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 834
+      "line": 881
     },
     {
-      "path": "/calculadora-tiras",
-      "raw": "calculadora-tiras",
+      "path": "/tiras-artesanais",
+      "raw": "tiras-artesanais",
       "parentRaw": "/",
-      "component": "StrapCalculator",
+      "component": "ArtisanalStraps",
       "isRedirect": false,
       "redirectTo": null,
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 840
+      "line": 885
+    },
+    {
+      "path": "/calculadora-tiras",
+      "raw": "calculadora-tiras",
+      "parentRaw": "/",
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/tiras-artesanais?tab=calculadora",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 890
     },
     {
       "path": "/silks",
@@ -2255,7 +2273,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 844
+      "line": 894
     },
     {
       "path": "/consumo-base",
@@ -2267,7 +2285,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 850
+      "line": 900
     },
     {
       "path": "/alertas-estoque",
@@ -2279,7 +2297,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 856
+      "line": 906
     },
     {
       "path": "/reservas-estoque",
@@ -2291,7 +2309,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 860
+      "line": 910
     },
     {
       "path": "/solados",
@@ -2303,7 +2321,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 865
+      "line": 915
     },
     {
       "path": "/orders",
@@ -2315,7 +2333,7 @@
       "isIndex": true,
       "isDetail": false,
       "isLayout": false,
-      "line": 869
+      "line": 919
     },
     {
       "path": "/orders/:id/edit",
@@ -2327,7 +2345,7 @@
       "isIndex": false,
       "isDetail": true,
       "isLayout": false,
-      "line": 872
+      "line": 922
     },
     {
       "path": "/orders/summary",
@@ -2339,7 +2357,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 879
+      "line": 929
     },
     {
       "path": "/orders/grouped-summary",
@@ -2351,7 +2369,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 880
+      "line": 930
     },
     {
       "path": "/picking",
@@ -2363,7 +2381,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 884
+      "line": 934
     },
     {
       "path": "/terceirizados",
@@ -2375,7 +2393,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 891
+      "line": 941
     },
     {
       "path": "/rh/pendencias-ponto",
@@ -2387,7 +2405,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 897
+      "line": 947
     },
     {
       "path": "/navigation-audit",
@@ -2399,7 +2417,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 901
+      "line": 951
     },
     {
       "path": "/unit-audit",
@@ -2411,7 +2429,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 905
+      "line": 955
     },
     {
       "path": "/label-system",
@@ -2423,7 +2441,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 909
+      "line": 959
     },
     {
       "path": "/sales",
@@ -2435,7 +2453,7 @@
       "isIndex": true,
       "isDetail": false,
       "isLayout": false,
-      "line": 913
+      "line": 963
     },
     {
       "path": "/sales/new",
@@ -2447,7 +2465,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 928
+      "line": 978
     },
     {
       "path": "/sales/edit/:id",
@@ -2459,7 +2477,7 @@
       "isIndex": false,
       "isDetail": true,
       "isLayout": false,
-      "line": 929
+      "line": 979
     },
     {
       "path": "/suppliers",
@@ -2471,7 +2489,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 933
+      "line": 983
     },
     {
       "path": "/clients",
@@ -2483,7 +2501,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 937
+      "line": 987
     },
     {
       "path": "/grupos-economicos/:id",
@@ -2495,7 +2513,7 @@
       "isIndex": false,
       "isDetail": true,
       "isLayout": false,
-      "line": 941
+      "line": 991
     },
     {
       "path": "/custos-insumos",
@@ -2507,7 +2525,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 945
+      "line": 995
     },
     {
       "path": "/nfe",
@@ -2519,7 +2537,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 949
+      "line": 999
     },
     {
       "path": "/purchase-orders/per-pv",
@@ -2531,7 +2549,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 953
+      "line": 1003
     },
     {
       "path": "/purchase-orders",
@@ -2543,7 +2561,19 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 957
+      "line": 1007
+    },
+    {
+      "path": "/admin/aprovacao-ordens-compra",
+      "raw": "admin/aprovacao-ordens-compra",
+      "parentRaw": "/",
+      "component": "PurchaseOrderApprovals",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1011
     },
     {
       "path": "/purchase-planning",
@@ -2555,7 +2585,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 961
+      "line": 1015
     },
     {
       "path": "/pricing-calculator",
@@ -2567,7 +2597,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 965
+      "line": 1019
     },
     {
       "path": "/comercial",
@@ -2579,7 +2609,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 969
+      "line": 1023
     },
     {
       "path": "/financeiro",
@@ -2591,7 +2621,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 973
+      "line": 1027
     },
     {
       "path": "/rh",
@@ -2603,7 +2633,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 977
+      "line": 1031
     },
     {
       "path": "/rh/espelho-ponto/:employeeId",
@@ -2615,7 +2645,7 @@
       "isIndex": false,
       "isDetail": true,
       "isLayout": false,
-      "line": 982
+      "line": 1036
     },
     {
       "path": "/transporte",
@@ -2627,7 +2657,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 986
+      "line": 1040
     },
     {
       "path": "/embalagens",
@@ -2639,7 +2669,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 990
+      "line": 1044
     },
     {
       "path": "/expedicao",
@@ -2651,7 +2681,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 994
+      "line": 1048
     },
     {
       "path": "/conferencia-saida",
@@ -2663,7 +2693,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 998
+      "line": 1052
     },
     {
       "path": "/settings",
@@ -2675,7 +2705,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1002
+      "line": 1056
     },
     {
       "path": "/imprimir-fichas",
@@ -2687,7 +2717,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1006
+      "line": 1060
     },
     {
       "path": "/fichas-montadores",
@@ -2699,7 +2729,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1011
+      "line": 1065
     },
     {
       "path": "/reports",
@@ -2711,7 +2741,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1015
+      "line": 1069
     },
     {
       "path": "/relatorios",
@@ -2723,7 +2753,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1020
+      "line": 1074
     },
     {
       "path": "/cost-policies",
@@ -2735,7 +2765,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1025
+      "line": 1079
     },
     {
       "path": "/patrimonio",
@@ -2747,7 +2777,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1030
+      "line": 1084
     },
     {
       "path": "/sped/bloco-k",
@@ -2759,7 +2789,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1035
+      "line": 1089
     },
     {
       "path": "/perfis-tributarios",
@@ -2771,7 +2801,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1040
+      "line": 1094
     },
     {
       "path": "/apuracao-impostos",
@@ -2783,7 +2813,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1045
+      "line": 1099
     },
     {
       "path": "/estoque/qualidade",
@@ -2795,7 +2825,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1050
+      "line": 1104
     },
     {
       "path": "/compras/alcadas",
@@ -2807,7 +2837,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1055
+      "line": 1109
     },
     {
       "path": "/compras/inspecao",
@@ -2819,7 +2849,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1060
+      "line": 1114
     },
     {
       "path": "/estoque/inventario",
@@ -2831,7 +2861,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1065
+      "line": 1119
     },
     {
       "path": "/relatorios/diario-producao",
@@ -2843,7 +2873,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1070
+      "line": 1124
     },
     {
       "path": "/relatorios/op",
@@ -2855,7 +2885,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1074
+      "line": 1128
     },
     {
       "path": "/relatorios/oee",
@@ -2867,7 +2897,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1078
+      "line": 1132
     },
     {
       "path": "/relatorios/qualidade",
@@ -2879,7 +2909,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1082
+      "line": 1136
     },
     {
       "path": "/relatorios/refugo",
@@ -2891,7 +2921,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1086
+      "line": 1140
     },
     {
       "path": "/relatorios/semanal",
@@ -2903,7 +2933,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1090
+      "line": 1144
     },
     {
       "path": "/automations",
@@ -2915,7 +2945,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1094
+      "line": 1148
     },
     {
       "path": "/system-monitor",
@@ -2927,7 +2957,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1098
+      "line": 1152
     },
     {
       "path": "/system-diagnostics",
@@ -2939,7 +2969,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1102
+      "line": 1156
     },
     {
       "path": "/audit-logs",
@@ -2951,7 +2981,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1106
+      "line": 1160
     },
     {
       "path": "/price-lists",
@@ -2963,7 +2993,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1110
+      "line": 1164
     },
     {
       "path": "/crm",
@@ -2975,7 +3005,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1111
+      "line": 1165
     },
     {
       "path": "/notas",
@@ -2987,7 +3017,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1112
+      "line": 1166
     },
     {
       "path": "/tarefas",
@@ -2999,7 +3029,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1113
+      "line": 1167
     },
     {
       "path": "/sac",
@@ -3011,7 +3041,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1114
+      "line": 1168
     },
     {
       "path": "/forecast",
@@ -3023,7 +3053,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1115
+      "line": 1169
     },
     {
       "path": "/quotations",
@@ -3035,7 +3065,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1116
+      "line": 1170
     },
     {
       "path": "/cte",
@@ -3047,7 +3077,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1117
+      "line": 1171
     },
     {
       "path": "/mdfe",
@@ -3059,7 +3089,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1118
+      "line": 1172
     },
     {
       "path": "/cnab",
@@ -3071,7 +3101,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1119
+      "line": 1173
     },
     {
       "path": "/bank-reconciliation",
@@ -3083,7 +3113,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1120
+      "line": 1174
     },
     {
       "path": "/sped",
@@ -3095,7 +3125,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1121
+      "line": 1175
     },
     {
       "path": "/picking-sessions",
@@ -3107,7 +3137,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1122
+      "line": 1176
     },
     {
       "path": "/manifests",
@@ -3119,7 +3149,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1123
+      "line": 1177
     },
     {
       "path": "/transporters",
@@ -3131,7 +3161,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1124
+      "line": 1178
     },
     {
       "path": "/delivery-tracking",
@@ -3143,7 +3173,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1125
+      "line": 1179
     },
     {
       "path": "/entregas",
@@ -3155,7 +3185,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1126
+      "line": 1180
     },
     {
       "path": "/lgpd",
@@ -3167,7 +3197,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1127
+      "line": 1181
     },
     {
       "path": "/security",
@@ -3179,7 +3209,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1128
+      "line": 1182
     },
     {
       "path": "/*",
@@ -3191,7 +3221,7 @@
       "isIndex": false,
       "isDetail": true,
       "isLayout": false,
-      "line": 1132
+      "line": 1186
     },
     {
       "path": "/",
@@ -3203,7 +3233,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": true,
-      "line": 736
+      "line": 783
     }
   ],
   "tabs": [
@@ -3213,8 +3243,8 @@
       "labels": [
         "Range Aviamento",
         "Variantes",
-        "Fotos & Histórico",
-        "Ficha Imprimível",
+        "Imprimir Ficha",
+        "Documentação",
         "Terceirizados"
       ],
       "system": "shadcn+pill-manual",
@@ -3266,6 +3296,22 @@
       "overloaded": true
     },
     {
+      "file": "src/pages/CRM.tsx",
+      "triggerCount": 6,
+      "labels": [
+        "Interações",
+        "Inativos",
+        "Aniversariantes",
+        "Recompra Prevista",
+        "NPS"
+      ],
+      "system": "shadcn-default",
+      "urlSync": "full",
+      "persistsLocalStorage": false,
+      "heights": [],
+      "overloaded": true
+    },
+    {
       "file": "src/pages/Clients.tsx",
       "triggerCount": 6,
       "labels": [
@@ -3289,59 +3335,9 @@
         "Ordens de Serviço",
         "Planejamento",
         "Prestadores",
-        "Receitas Artesanais",
         "Dados",
-        "Foto Assinada"
-      ],
-      "system": "shadcn-default",
-      "urlSync": "none",
-      "persistsLocalStorage": false,
-      "heights": [],
-      "overloaded": true
-    },
-    {
-      "file": "src/pages/TerceirizadosHub.tsx",
-      "triggerCount": 6,
-      "labels": [
-        "Ordens de Serviço",
-        "Planejamento",
-        "Relatório",
-        "Prestadores",
-        "Tarifas por Referência",
-        "Receitas Artesanais"
-      ],
-      "system": "shadcn+pill-manual",
-      "urlSync": "full",
-      "persistsLocalStorage": false,
-      "heights": [
-        "h-auto"
-      ],
-      "overloaded": true
-    },
-    {
-      "file": "src/pages/CRM.tsx",
-      "triggerCount": 6,
-      "labels": [
-        "Interações",
-        "Inativos",
-        "Aniversariantes",
-        "Recompra Prevista",
-        "NPS"
-      ],
-      "system": "shadcn-default",
-      "urlSync": "full",
-      "persistsLocalStorage": false,
-      "heights": [],
-      "overloaded": true
-    },
-    {
-      "file": "src/components/technical-sheets/SheetsAuditPanel.tsx",
-      "triggerCount": 6,
-      "labels": [
-        "Incompletas",
-        "Críticas",
-        "100% OK",
-        "Todas"
+        "Foto Assinada",
+        "Histórico"
       ],
       "system": "shadcn-default",
       "urlSync": "none",
@@ -3365,6 +3361,39 @@
       "persistsLocalStorage": false,
       "heights": [],
       "overloaded": true
+    },
+    {
+      "file": "src/components/technical-sheets/SheetsAuditPanel.tsx",
+      "triggerCount": 6,
+      "labels": [
+        "Incompletas",
+        "Críticas",
+        "100% OK",
+        "Todas"
+      ],
+      "system": "shadcn-default",
+      "urlSync": "none",
+      "persistsLocalStorage": false,
+      "heights": [],
+      "overloaded": true
+    },
+    {
+      "file": "src/pages/TerceirizadosHub.tsx",
+      "triggerCount": 5,
+      "labels": [
+        "Ordens",
+        "Planejar",
+        "Relatório",
+        "Prestadores",
+        "Tarifas"
+      ],
+      "system": "shadcn+pill-manual",
+      "urlSync": "full",
+      "persistsLocalStorage": false,
+      "heights": [
+        "h-auto"
+      ],
+      "overloaded": false
     },
     {
       "file": "src/components/finance/FinanceReportsTab.tsx",
@@ -3429,21 +3458,6 @@
       "overloaded": false
     },
     {
-      "file": "src/components/sale-orders/SaleOrdersOverviewDialog.tsx",
-      "triggerCount": 4,
-      "labels": [
-        "Por Status",
-        "Por Semana",
-        "Por Cliente",
-        "Pedidos"
-      ],
-      "system": "shadcn-default",
-      "urlSync": "n/a",
-      "persistsLocalStorage": false,
-      "heights": [],
-      "overloaded": false
-    },
-    {
       "file": "src/components/inventory/MasterVariantDialog.tsx",
       "triggerCount": 4,
       "labels": [
@@ -3460,6 +3474,21 @@
       "overloaded": false
     },
     {
+      "file": "src/components/sale-orders/SaleOrdersOverviewDialog.tsx",
+      "triggerCount": 4,
+      "labels": [
+        "Por Status",
+        "Por Semana",
+        "Por Cliente",
+        "Pedidos"
+      ],
+      "system": "shadcn-default",
+      "urlSync": "n/a",
+      "persistsLocalStorage": false,
+      "heights": [],
+      "overloaded": false
+    },
+    {
       "file": "src/components/transport/OrderTransportCalculator.tsx",
       "triggerCount": 4,
       "labels": [
@@ -3467,20 +3496,6 @@
         "Veículos",
         "Métricas",
         "Transportadoras"
-      ],
-      "system": "shadcn-default",
-      "urlSync": "full",
-      "persistsLocalStorage": false,
-      "heights": [],
-      "overloaded": false
-    },
-    {
-      "file": "src/pages/MaintenancePage.tsx",
-      "triggerCount": 3,
-      "labels": [
-        "Equipamentos",
-        "Planos",
-        "Histórico"
       ],
       "system": "shadcn-default",
       "urlSync": "full",
@@ -3502,6 +3517,34 @@
       "heights": [
         "h-8"
       ],
+      "overloaded": false
+    },
+    {
+      "file": "src/pages/MaintenancePage.tsx",
+      "triggerCount": 3,
+      "labels": [
+        "Equipamentos",
+        "Planos",
+        "Histórico"
+      ],
+      "system": "shadcn-default",
+      "urlSync": "full",
+      "persistsLocalStorage": false,
+      "heights": [],
+      "overloaded": false
+    },
+    {
+      "file": "src/pages/ProducaoPlanejamento.tsx",
+      "triggerCount": 3,
+      "labels": [
+        "Grade setor × dia",
+        "Fila ( )",
+        "Gestão diária"
+      ],
+      "system": "shadcn-default",
+      "urlSync": "full",
+      "persistsLocalStorage": false,
+      "heights": [],
       "overloaded": false
     },
     {
@@ -3546,6 +3589,20 @@
       "overloaded": false
     },
     {
+      "file": "src/components/packaging/PackagingDebitAuditPanel.tsx",
+      "triggerCount": 3,
+      "labels": [
+        "OPs ativas ( )",
+        "Todas pendências ( )",
+        "Histórico ( )"
+      ],
+      "system": "shadcn-default",
+      "urlSync": "none",
+      "persistsLocalStorage": false,
+      "heights": [],
+      "overloaded": false
+    },
+    {
       "file": "src/components/settings/FinanceConfigPanel.tsx",
       "triggerCount": 3,
       "labels": [
@@ -3560,14 +3617,26 @@
       "overloaded": false
     },
     {
-      "file": "src/pages/ProductDetail.tsx",
+      "file": "src/pages/Automations.tsx",
       "triggerCount": 2,
       "labels": [
-        "Informações e Dados",
-        "Histórico e Ações"
+        "Workflows"
       ],
       "system": "shadcn-default",
       "urlSync": "full",
+      "persistsLocalStorage": false,
+      "heights": [],
+      "overloaded": false
+    },
+    {
+      "file": "src/pages/Forecast.tsx",
+      "triggerCount": 2,
+      "labels": [
+        "Forecast",
+        "S&OP"
+      ],
+      "system": "shadcn-default",
+      "urlSync": "none",
       "persistsLocalStorage": false,
       "heights": [],
       "overloaded": false
@@ -3587,23 +3656,11 @@
       "overloaded": false
     },
     {
-      "file": "src/pages/ProducaoPlanejamento.tsx",
+      "file": "src/pages/ProductDetail.tsx",
       "triggerCount": 2,
       "labels": [
-        "Grade setor × dia",
-        "Fila ( )"
-      ],
-      "system": "shadcn-default",
-      "urlSync": "full",
-      "persistsLocalStorage": false,
-      "heights": [],
-      "overloaded": false
-    },
-    {
-      "file": "src/pages/Automations.tsx",
-      "triggerCount": 2,
-      "labels": [
-        "Workflows"
+        "Informações e Dados",
+        "Histórico e Ações"
       ],
       "system": "shadcn-default",
       "urlSync": "full",
@@ -3638,40 +3695,27 @@
       "overloaded": false
     },
     {
-      "file": "src/components/own-delivery/FleetTab.tsx",
+      "file": "src/components/clients/ClientFormDialog.tsx",
       "triggerCount": 2,
       "labels": [
-        "Veículos",
-        "Motoristas"
+        "Dados",
+        "Representante"
       ],
       "system": "shadcn-default",
-      "urlSync": "full",
+      "urlSync": "n/a",
       "persistsLocalStorage": false,
       "heights": [],
       "overloaded": false
     },
     {
-      "file": "src/components/sales/OrderMatrixForm.tsx",
+      "file": "src/components/clients/ExcelImportDialog.tsx",
       "triggerCount": 2,
       "labels": [
-        "Infantil ( )",
-        "Adulto ( )"
+        "Excel",
+        "Word"
       ],
       "system": "shadcn-default",
-      "urlSync": "none",
-      "persistsLocalStorage": false,
-      "heights": [],
-      "overloaded": false
-    },
-    {
-      "file": "src/components/financial/WeeklyPurchasingContent.tsx",
-      "triggerCount": 2,
-      "labels": [
-        "Relatório por Semana",
-        "Matriz Consolidada"
-      ],
-      "system": "shadcn-default",
-      "urlSync": "none",
+      "urlSync": "n/a",
       "persistsLocalStorage": false,
       "heights": [],
       "overloaded": false
@@ -3703,29 +3747,14 @@
       "overloaded": false
     },
     {
-      "file": "src/components/sale-orders/StrapShortageDialog.tsx",
+      "file": "src/components/financial/WeeklyPurchasingContent.tsx",
       "triggerCount": 2,
       "labels": [
-        "Artesanal (OS)",
-        "Comprar pronto (OC)"
+        "Relatório por Semana",
+        "Matriz Consolidada"
       ],
       "system": "shadcn-default",
-      "urlSync": "n/a",
-      "persistsLocalStorage": false,
-      "heights": [
-        "h-8"
-      ],
-      "overloaded": false
-    },
-    {
-      "file": "src/components/settings/CreateUserDialog.tsx",
-      "triggerCount": 2,
-      "labels": [
-        "Perfil rápido (Role)",
-        "Permissões específicas (Menu a menu)"
-      ],
-      "system": "shadcn-default",
-      "urlSync": "n/a",
+      "urlSync": "none",
       "persistsLocalStorage": false,
       "heights": [],
       "overloaded": false
@@ -3757,41 +3786,42 @@
       "overloaded": false
     },
     {
-      "file": "src/components/clients/ExcelImportDialog.tsx",
+      "file": "src/components/own-delivery/FleetTab.tsx",
       "triggerCount": 2,
       "labels": [
-        "Excel",
-        "Word"
+        "Veículos",
+        "Motoristas"
       ],
       "system": "shadcn-default",
-      "urlSync": "n/a",
+      "urlSync": "full",
       "persistsLocalStorage": false,
       "heights": [],
       "overloaded": false
     },
     {
-      "file": "src/components/clients/ClientFormDialog.tsx",
+      "file": "src/components/sales/OrderMatrixForm.tsx",
       "triggerCount": 2,
       "labels": [
-        "Dados",
-        "Representante"
+        "Infantil ( )",
+        "Adulto ( )"
       ],
-      "system": "shadcn-default",
-      "urlSync": "n/a",
-      "persistsLocalStorage": false,
-      "heights": [],
-      "overloaded": false
-    },
-    {
-      "file": "src/pages/SectorAggregatedView.tsx",
-      "triggerCount": 1,
-      "labels": [],
       "system": "shadcn-default",
       "urlSync": "none",
       "persistsLocalStorage": false,
-      "heights": [
-        "h-auto"
+      "heights": [],
+      "overloaded": false
+    },
+    {
+      "file": "src/components/settings/CreateUserDialog.tsx",
+      "triggerCount": 2,
+      "labels": [
+        "Perfil rápido (Role)",
+        "Permissões específicas (Menu a menu)"
       ],
+      "system": "shadcn-default",
+      "urlSync": "n/a",
+      "persistsLocalStorage": false,
+      "heights": [],
       "overloaded": false
     },
     {
@@ -3807,13 +3837,39 @@
       "overloaded": false
     },
     {
-      "file": "src/components/mrp/MrpProjectionsTab.tsx",
+      "file": "src/pages/SectorAggregatedView.tsx",
       "triggerCount": 1,
       "labels": [],
       "system": "shadcn-default",
       "urlSync": "none",
       "persistsLocalStorage": false,
-      "heights": [],
+      "heights": [
+        "h-auto"
+      ],
+      "overloaded": false
+    },
+    {
+      "file": "src/pages/Timesheet.tsx",
+      "triggerCount": 1,
+      "labels": [],
+      "system": "shadcn+pill-manual",
+      "urlSync": "full",
+      "persistsLocalStorage": false,
+      "heights": [
+        "h-auto"
+      ],
+      "overloaded": false
+    },
+    {
+      "file": "src/components/inventory/SoladoGradeDialog.tsx",
+      "triggerCount": 1,
+      "labels": [],
+      "system": "shadcn-default",
+      "urlSync": "n/a",
+      "persistsLocalStorage": false,
+      "heights": [
+        "h-auto"
+      ],
       "overloaded": false
     },
     {
@@ -3827,15 +3883,13 @@
       "overloaded": false
     },
     {
-      "file": "src/components/inventory/SoladoGradeDialog.tsx",
+      "file": "src/components/mrp/MrpProjectionsTab.tsx",
       "triggerCount": 1,
       "labels": [],
       "system": "shadcn-default",
-      "urlSync": "n/a",
+      "urlSync": "none",
       "persistsLocalStorage": false,
-      "heights": [
-        "h-auto"
-      ],
+      "heights": [],
       "overloaded": false
     }
   ]

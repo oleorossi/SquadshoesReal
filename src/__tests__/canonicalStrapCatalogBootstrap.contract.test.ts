@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 const ROOT = resolve(__dirname, '../..');
 const MIGRATION = readFileSync(resolve(
   ROOT,
-  'supabase/migrations/20270101004800_bootstrap_canonical_strap_catalog.sql',
+  'supabase/migrations/20270101004900_bootstrap_canonical_strap_catalog.sql',
 ), 'utf8');
 
 describe('Catálogo canônico de tiras — bootstrap selecionável', () => {

@@ -22,7 +22,8 @@ interface Props {
   form: ClientFormData;
   setForm: React.Dispatch<React.SetStateAction<ClientFormData>>;
   economicGroups: EconomicGroup[];
-  onSubmit: (e: React.FormEvent) => void;
+  /** override: correções aplicadas na hora do submit (ex.: IE 'ISENTO') que o form assíncrono ainda não refletiu */
+  onSubmit: (e: React.FormEvent, override?: Partial<ClientFormData>) => void;
 }
 
 async function fetchWithTimeout(url: string, timeoutMs = 5000): Promise<Response> {
@@ -90,8 +91,14 @@ export default function ClientFormDialog({ open, onOpenChange, editingClient, fo
       }
     } else if (form.icms_contribuinte === false) {
       // Auto-fix: se Isento e IE vazia, preenche "ISENTO" automaticamente.
+      // ⚠ setForm é assíncrono e o onSubmit do pai lê o form do render ATUAL —
+      // sem o override, o cliente era gravado com IE vazia (o furo que este
+      // wrapper existe pra fechar). O override entrega o valor corrigido
+      // sincronamente; o setForm só mantém a UI coerente.
       if (!ie) {
         setForm(f => ({ ...f, inscricao_estadual: 'ISENTO' }));
+        onSubmit(e, { inscricao_estadual: 'ISENTO' });
+        return;
       }
     } else {
       // icms_contribuinte = null: fallback ao comportamento antigo

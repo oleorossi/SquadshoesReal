@@ -1,0 +1,144 @@
+{
+  "artboards": [
+    {
+      "file": "Main.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 900,
+      "h": 720,
+      "title": "Onde paramos",
+      "print": "flow"
+    },
+    {
+      "file": "MontagemB.dc.html",
+      "x": 0,
+      "y": 960,
+      "w": 794,
+      "h": 1123,
+      "title": "Montagem · B",
+      "print": "fixed"
+    },
+    {
+      "file": "PalmilhaB.dc.html",
+      "x": 874,
+      "y": 960,
+      "w": 794,
+      "h": 1123,
+      "title": "Corte de Placa de Fibra · B",
+      "print": "fixed"
+    },
+    {
+      "file": "SilkA.dc.html",
+      "x": 1748,
+      "y": 960,
+      "w": 794,
+      "h": 1123,
+      "title": "Silk · A",
+      "print": "fixed"
+    },
+    {
+      "file": "SolagemB.dc.html",
+      "x": 2622,
+      "y": 960,
+      "w": 794,
+      "h": 1123,
+      "title": "Solagem · B",
+      "print": "fixed"
+    },
+    {
+      "file": "ExpedicaoE1.dc.html",
+      "x": 0,
+      "y": 2280,
+      "w": 794,
+      "h": 1123,
+      "title": "Expedição · E1 folha por loja",
+      "print": "fixed"
+    },
+    {
+      "file": "ExpedicaoE2.dc.html",
+      "x": 874,
+      "y": 2280,
+      "w": 794,
+      "h": 1123,
+      "title": "Expedição · E2 matriz loja × item",
+      "print": "fixed"
+    },
+    {
+      "file": "ExpedicaoE3.dc.html",
+      "x": 1748,
+      "y": 2280,
+      "w": 794,
+      "h": 1123,
+      "title": "Expedição · E3 por referência",
+      "print": "fixed"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "nota-escolhidas",
+      "x": 0,
+      "y": 860,
+      "w": 900,
+      "text": "ESCOLHIDAS NA RODADA 1\nJa com os agrupamentos de cada setor corrigidos. Estetica ainda nao entrou — essas quatro seguem no estilo de hoje."
+    },
+    {
+      "id": "nota-expedicao",
+      "x": 0,
+      "y": 2160,
+      "w": 900,
+      "text": "EXPEDICAO — FALTA ESCOLHER\nMesmo pedido nas tres: 8 referencias, 3 lojas, 29 caixas, 364 pares, curva real com conjugadas 33/34 e 39/40.\nMuda so como a distribuicao e lida."
+    },
+    {
+      "id": "esc-0",
+      "x": 0,
+      "y": 900,
+      "w": 760,
+      "text": "MONTAGEM · B\nAgrupa por referencia + cor. Uma linha unica de rastreio (OP, PV, cliente, entrega)."
+    },
+    {
+      "id": "esc-1",
+      "x": 874,
+      "y": 900,
+      "w": 760,
+      "text": "CORTE DE PLACA DE FIBRA · B\nCORRIGIDO: agrupa so por solado. A cor saiu da tira de referencias — ela nao entra no corte."
+    },
+    {
+      "id": "esc-2",
+      "x": 1748,
+      "y": 900,
+      "w": 760,
+      "text": "SILK · A\nCORRIGIDO: o solado entrou na linha de identidade, porque o setor agrupa por solado + silk."
+    },
+    {
+      "id": "esc-3",
+      "x": 2622,
+      "y": 900,
+      "w": 760,
+      "text": "SOLAGEM · B\nAgrupa por cor do solado, com o preto separado das demais cores."
+    },
+    {
+      "id": "exp-0",
+      "x": 0,
+      "y": 2200,
+      "w": 760,
+      "text": "E1 · FOLHA POR LOJA\nCada loja ganha o seu maco; esta e a folha 1 de 3 (Niteroi, 16 cx / 200 pares).\nCusto: 3 folhas, e o total do pedido nao aparece inteiro em lugar nenhum."
+    },
+    {
+      "id": "exp-1",
+      "x": 874,
+      "y": 2200,
+      "w": 760,
+      "text": "E2 · MATRIZ LOJA x ITEM\nUma folha so: linhas sao referencia-cor, colunas sao as lojas. Numero grande = caixas, abaixo = pares.\nCusto: acima de 4 ou 5 lojas a matriz nao cabe na largura."
+    },
+    {
+      "id": "exp-2",
+      "x": 1748,
+      "y": 2200,
+      "w": 760,
+      "text": "E3 · POR REFERENCIA\nPega a referencia na prateleira e distribui nas 3 lojas antes de passar para a proxima.\nCusto: quem monta por loja precisa varrer a folha inteira."
+    }
+  ],
+  "launch": {
+    "view": "canvas"
+  }
+}

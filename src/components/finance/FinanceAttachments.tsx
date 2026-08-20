@@ -1,6 +1,7 @@
 import { useRef } from 'react';
 import { Paperclip, Trash as Trash2, Download, FileText, Image, CircleNotch as Loader2 } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
+import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { useFinanceAttachments, useUploadFinanceAttachment, useDeleteFinanceAttachment, type FinanceAttachment } from '@/hooks/useFinanceAttachments';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -87,16 +88,7 @@ export default function FinanceAttachments({ accountType, accountId }: { account
               <Button size="icon" variant="ghost" className="h-6 w-6" title="Baixar" onClick={() => handleDownload(att)}>
                 <Download className="h-3 w-3" />
               </Button>
-              <Button
-                size="icon"
-                variant="ghost"
-                className="h-6 w-6 text-destructive"
-                title="Remover"
-                disabled={remove.isPending}
-                onClick={() => remove.mutate(att)}
-              >
-                <Trash2 className="h-3 w-3" />
-              </Button>
+              <DeleteConfirmButton onConfirm={() => remove.mutate(att)} title="Remover anexo?" description={`"${att.file_name}" será removido permanentemente.`} size="h-6 w-6" iconSize="h-3 w-3" />
             </div>
           ))}
         </div>

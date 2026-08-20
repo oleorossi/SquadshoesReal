@@ -17,7 +17,7 @@ interface Props {
   groupId: string;
   groupName: string;
   color: string;
-  onCreated: () => void;
+  onCreated: (created?: { variantId: string; colorId: string }) => void;
   referenceId?: string | null;
   materialVariantId?: string | null;
   origin?: ArtisanalStrapEditorOrigin;
@@ -91,6 +91,12 @@ export default function CreateStrapProductDialog({
   const needsReview = (Boolean(colorKey) && resolvedColorIds.length !== 1)
     || unresolvedMaterialContext
     || (Boolean(groupId) && !contextualBaseGroupId);
+  const activateOnCreate = (origin === 'pv' || (!origin && Boolean(referenceId)))
+    && !variantId
+    && isUuid(measureId)
+    && Boolean(contextualBaseGroupId)
+    && Boolean(contextualColorId)
+    && !needsReview;
 
   return (
     <ArtisanalStrapEditor
@@ -104,7 +110,11 @@ export default function CreateStrapProductDialog({
       measureId={measureId}
       baseGroupId={contextualBaseGroupId}
       colorId={contextualColorId}
-      onSaved={() => onCreated()}
+      activateOnCreate={activateOnCreate}
+      onSaved={(savedVariantId, _result, savedColorId) => onCreated({
+        variantId: savedVariantId,
+        colorId: savedColorId,
+      })}
     />
   );
 }

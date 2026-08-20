@@ -43,10 +43,10 @@ const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', curren
 const fmtPct = (v: number) => `${(v * 100).toFixed(1)}%`;
 
 function MarginBadge({ pct }: { pct: number }) {
-  if (pct >= 0.30) return <Badge className="bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/20 gap-1"><TrendingUp className="h-3 w-3" />{fmtPct(pct)}</Badge>;
-  if (pct >= 0.15) return <Badge className="bg-amber-500/10 text-amber-700 hover:bg-amber-500/20 gap-1"><Minus className="h-3 w-3" />{fmtPct(pct)}</Badge>;
-  if (pct >= 0)    return <Badge className="bg-orange-500/10 text-orange-700 hover:bg-orange-500/20 gap-1"><TrendingDown className="h-3 w-3" />{fmtPct(pct)}</Badge>;
-  return <Badge className="bg-red-500/10 text-red-700 hover:bg-red-500/20 gap-1"><TrendingDown className="h-3 w-3" />{fmtPct(pct)}</Badge>;
+  if (pct >= 0.30) return <Badge className="bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20 gap-1"><TrendingUp className="h-3 w-3" />{fmtPct(pct)}</Badge>;
+  if (pct >= 0.15) return <Badge className="bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 gap-1"><Minus className="h-3 w-3" />{fmtPct(pct)}</Badge>;
+  if (pct >= 0)    return <Badge className="bg-orange-500/10 text-orange-600 hover:bg-orange-500/20 gap-1"><TrendingDown className="h-3 w-3" />{fmtPct(pct)}</Badge>;
+  return <Badge className="bg-red-500/10 text-red-600 hover:bg-red-500/20 gap-1"><TrendingDown className="h-3 w-3" />{fmtPct(pct)}</Badge>;
 }
 
 export default function MarginDialog({ open, onOpenChange, saleOrderId, orderNumber, total }: Props) {
@@ -220,7 +220,7 @@ export default function MarginDialog({ open, onOpenChange, saleOrderId, orderNum
                 <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Margem Líquida</p>
                 <p className={cn(
                   'text-lg font-bold tabular-nums mt-1',
-                  totalMargin >= 0 ? 'text-emerald-700' : 'text-red-700'
+                  totalMargin >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-700 dark:text-red-400'
                 )}>{fmt(totalMargin)}</p>
               </div>
               <div className="rounded-lg border bg-muted/30 p-3">
@@ -238,11 +238,11 @@ export default function MarginDialog({ open, onOpenChange, saleOrderId, orderNum
                   <p className="font-semibold text-amber-700 dark:text-amber-400">
                     {failCount} {failCount === 1 ? 'item' : 'itens'} sem custo calculado — margem total é parcial.
                   </p>
-                  <ul className="mt-1 text-amber-700 list-disc pl-4 space-y-0.5">
+                  <ul className="mt-1 text-amber-700 dark:text-amber-400 list-disc pl-4 space-y-0.5">
                     {errors.slice(0, 3).map((e, idx) => <li key={idx}>{e}</li>)}
                     {errors.length > 3 && <li className="italic">+ {errors.length - 3} outros…</li>}
                   </ul>
-                  <p className="mt-1.5 text-amber-700">
+                  <p className="mt-1.5 text-amber-700 dark:text-amber-400">
                     Geralmente acontece quando a ficha técnica não tem custo de materiais ou MOD configurados.
                   </p>
                 </div>
@@ -293,7 +293,7 @@ export default function MarginDialog({ open, onOpenChange, saleOrderId, orderNum
                       </TableCell>
                       <TableCell className={cn(
                         'text-right font-mono tabular-nums font-semibold',
-                        it.margin >= 0 ? 'text-emerald-700' : 'text-red-700'
+                        it.margin >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-700 dark:text-red-400'
                       )}>{it.error ? '—' : fmt(it.margin)}</TableCell>
                       <TableCell className="text-center">
                         {it.error ? <span className="text-xs text-amber-600">parcial</span> : <MarginBadge pct={it.marginPct} />}

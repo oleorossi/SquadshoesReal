@@ -100,6 +100,10 @@ export type SheetFormData = {
   status_ficha: string;
   // Technical fields
   upper_material: string;
+  /** Grupo-folha canônico do Cabedal Material 1. O nome continua salvo em
+   *  upper_material por compatibilidade com os motores legados, mas o UUID
+   *  evita perder o vínculo quando o grupo é renomeado. */
+  upper_material_group_id?: string | null;
   /** Pin do SKU exato do Cabedal Material 1 (2026-06-28). Precedência no débito:
    *  variante > este pin > grupo+cor. null = resolve pela cor do PV. */
   upper_material_product_id?: string | null;
@@ -206,7 +210,7 @@ export const emptySheetForm: SheetFormData = {
   collection: '', sale_price: 0, has_straps: false, strap_colors: [],
   cor_predominante_id: null, cor_solado_id: null, box_type_id: null,
   status_ficha: 'rascunho',
-  upper_material: '', upper_material_product_id: null, upper_thickness: '',
+  upper_material: '', upper_material_group_id: null, upper_material_product_id: null, upper_thickness: '',
   upper_corte_a_fio: false,
   lining_material: '', lining_material_product_id: null,
   fachete_material: '',

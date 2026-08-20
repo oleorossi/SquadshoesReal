@@ -75,9 +75,9 @@ function BanksTab() {
     setOpen(true);
   };
   const handleSave = () => {
-    if (editing) update.mutate({ id: editing.id, ...form });
-    else create.mutate(form);
-    setOpen(false);
+    // fecha só no sucesso — fechar síncrono descartava o form quando a gravação falhava
+    if (editing) update.mutate({ id: editing.id, ...form }, { onSuccess: () => setOpen(false) });
+    else create.mutate(form, { onSuccess: () => setOpen(false) });
   };
 
   return (
@@ -149,7 +149,7 @@ function BanksTab() {
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
-              <Button onClick={handleSave}>Salvar</Button>
+              <Button onClick={handleSave} disabled={create.isPending || update.isPending}>{create.isPending || update.isPending ? 'Salvando…' : 'Salvar'}</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
@@ -178,9 +178,9 @@ function ChartOfAccountsTab() {
     setOpen(true);
   };
   const handleSave = () => {
-    if (editing) update.mutate({ id: editing.id, ...form });
-    else create.mutate(form);
-    setOpen(false);
+    // fecha só no sucesso — fechar síncrono descartava o form quando a gravação falhava
+    if (editing) update.mutate({ id: editing.id, ...form }, { onSuccess: () => setOpen(false) });
+    else create.mutate(form, { onSuccess: () => setOpen(false) });
   };
 
   return (
@@ -256,7 +256,7 @@ function ChartOfAccountsTab() {
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
-              <Button onClick={handleSave}>Salvar</Button>
+              <Button onClick={handleSave} disabled={create.isPending || update.isPending}>{create.isPending || update.isPending ? 'Salvando…' : 'Salvar'}</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
@@ -285,9 +285,9 @@ function CostCentersTab() {
     setOpen(true);
   };
   const handleSave = () => {
-    if (editing) update.mutate({ id: editing.id, ...form });
-    else create.mutate(form);
-    setOpen(false);
+    // fecha só no sucesso — fechar síncrono descartava o form quando a gravação falhava
+    if (editing) update.mutate({ id: editing.id, ...form }, { onSuccess: () => setOpen(false) });
+    else create.mutate(form, { onSuccess: () => setOpen(false) });
   };
 
   return (
@@ -360,7 +360,7 @@ function CostCentersTab() {
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
-              <Button onClick={handleSave}>Salvar</Button>
+              <Button onClick={handleSave} disabled={create.isPending || update.isPending}>{create.isPending || update.isPending ? 'Salvando…' : 'Salvar'}</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>

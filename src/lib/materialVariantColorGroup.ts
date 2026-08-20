@@ -11,6 +11,13 @@ export interface MaterialVariantColorDrivers {
   variant_drives_lining?: boolean | null;
 }
 
+export interface SheetCommercialColorIdentity {
+  upper_material_group_id?: string | null;
+  upper_material?: string | null;
+  lining_material?: string | null;
+  has_straps?: boolean | null;
+}
+
 export interface MaterialVariantColorProduct {
   id: string;
   group_id?: string | null;
@@ -57,6 +64,42 @@ export function resolveMaterialVariantColorGroup({
   if (!groupId) return null;
   const group = groups.find((entry) => entry.id === groupId);
   return group ? { id: group.id, name: group.name } : null;
+}
+
+/**
+ * Resolve uma única família para a cor comercial quando a referência ainda
+ * não usa variantes explícitas.
+ *
+ * Cabedal vence forração. Em modelos de tiras sem cabedal, a napa-base é a
+ * forração da ficha. Nunca procura a cor em todos os grupos: cor identifica o
+ * SKU dentro da família, mas não pode escolher a família por conta própria.
+ */
+export function resolveSheetCommercialColorGroup({
+  sheet,
+  groups,
+}: {
+  sheet: SheetCommercialColorIdentity | null | undefined;
+  groups: MaterialVariantColorGroup[];
+}): MaterialVariantColorGroup | null {
+  if (!sheet) return null;
+
+  const normalize = (value?: string | null) => value?.trim().toLocaleLowerCase('pt-BR') || '';
+  const byId = (id?: string | null) => id ? groups.find((group) => group.id === id) : undefined;
+  const byName = (name?: string | null) => {
+    const normalized = normalize(name);
+    return normalized ? groups.find((group) => normalize(group.name) === normalized) : undefined;
+  };
+
+  const upper = byId(sheet.upper_material_group_id) || byName(sheet.upper_material);
+  if (upper) return { id: upper.id, name: upper.name };
+
+  // A ficha sem cabedal e com tiras usa a napa da forração como material-base.
+  // Mantemos o fallback de forração também para fichas legadas sem a flag,
+  // mas sempre como UM grupo exato — nunca como união de famílias.
+  const lining = byName(sheet.lining_material);
+  if (lining) return { id: lining.id, name: lining.name };
+
+  return null;
 }
 
 /** Produtos ativos e a coluna `products.color` são a fonte exata das opções. */

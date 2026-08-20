@@ -48,7 +48,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { useSaleOrders, useSaleOrderAllItems, useCreateSaleOrder, useDeleteSaleOrder, useUpdateSaleOrderStatus, useResyncOPsFromSheets, useResyncOPsFromPV, useCommitPickingForSaleOrder, useRealtimeSaleOrders, SaleOrderFormData, SaleOrderItemFormData, PackagingMode, ORDER_TYPE_LABELS, DEFAULT_OP_STAGES, opStageOrder, listarTirasSemCor, listarTirasSemOrigem } from '@/hooks/useSaleOrders';
+import { useSaleOrders, useSaleOrderAllItems, useCreateSaleOrder, useDeleteSaleOrder, useUpdateSaleOrderStatus, useResyncOPsFromSheets, useResyncOPsFromPV, useCommitPickingForSaleOrder, useRealtimeSaleOrders, SaleOrderFormData, SaleOrderItemFormData, PackagingMode, ORDER_TYPE_LABELS, DEFAULT_OP_STAGES, opStageOrder, listarTirasSemCor } from '@/hooks/useSaleOrders';
 import { useTechnicalSheetsLite } from '@/hooks/useTechnicalSheets';
 import { useClients, useEconomicGroups } from '@/hooks/useClients';
 import { supabase } from '@/integrations/supabase/client';
@@ -1580,7 +1580,7 @@ export default function SaleOrders() {
         {
           const { data: guardItems, error: guardErr } = await supabase
             .from('sale_order_items')
-            .select('color, strap_colors, strap_sourcing, technical_sheets(name, code)')
+            .select('color, strap_colors, technical_sheets(name, code)')
             .eq('sale_order_id', order.id);
           if (guardErr) { errors.push(`${order.order_number}: falha ao validar tiras — ${guardErr.message}`); continue; }
           const tirasSemCor = listarTirasSemCor(
@@ -1592,18 +1592,6 @@ export default function SaleOrders() {
           );
           if (tirasSemCor.length > 0) {
             errors.push(`${order.order_number}: tira sem COR definida (${tirasSemCor.slice(0, 3).join('; ')}) — defina a cor antes de aprovar.`);
-            continue;
-          }
-          const tirasSemOrigem = listarTirasSemOrigem(
-            (guardItems || []).map((it: any) => ({
-              strap_colors: it.strap_colors,
-              strap_sourcing: it.strap_sourcing,
-              color: it.color,
-              reference_label: it.technical_sheets?.code || it.technical_sheets?.name || null,
-            })),
-          );
-          if (tirasSemOrigem.length > 0) {
-            errors.push(`${order.order_number}: escolha a origem de cada tira (${tirasSemOrigem.slice(0, 3).join('; ')}).`);
             continue;
           }
         }

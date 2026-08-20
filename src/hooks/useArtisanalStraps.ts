@@ -72,6 +72,7 @@ export interface BaseMaterialWidthProfile {
   usable_width_mm: number;
   status: string;
   valid_from?: string | null;
+  valid_to?: string | null;
 }
 
 export interface BaseMaterialOfficialProduct {
@@ -133,6 +134,25 @@ export interface ArtisanalStrapRecipe {
   updated_at?: string;
 }
 
+export interface LegacyArtisanalStrapRecipe {
+  id: string;
+  name: string;
+  artisanal_product_name: string;
+  base_product_name: string;
+  yield_per_meter: number;
+  labor_cost_per_meter: number | null;
+  base_time_minutes: number;
+  cut_width_mm: number | null;
+  default_contractor_id: string | null;
+  notes: string | null;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+  migration_status: string;
+  canonical_recipe_id: string | null;
+  migration_reason: string | null;
+}
+
 export interface ArtisanalStrapCatalogProduct {
   id: string;
   name: string;
@@ -179,6 +199,7 @@ export interface ArtisanalStrapCatalog {
   official_products: BaseMaterialOfficialProduct[];
   variants: ArtisanalStrapVariant[];
   recipes: ArtisanalStrapRecipe[];
+  legacy_recipes: LegacyArtisanalStrapRecipe[];
   products: ArtisanalStrapCatalogProduct[];
   groups: ArtisanalStrapCatalogGroup[];
   capabilities: ArtisanalStrapCapabilities;
@@ -242,6 +263,65 @@ export interface SaveArtisanalStrapBundleResult {
   variant_id: string;
   recipe_id: string | null;
   finished_product_id: string;
+}
+
+export interface ResolveTechnicalStrapContextLineInput {
+  /** Posição zero-based da linha dentro de technical_sheets.strap_colors. */
+  ordinal: number;
+  measure_id: string;
+}
+
+export interface ResolveTechnicalStrapContextInput {
+  p_reference_id: string;
+  p_base_group_id: string;
+  p_lines: ResolveTechnicalStrapContextLineInput[];
+  p_reason: string;
+  p_expected_updated_at: string;
+}
+
+export interface ResolveTechnicalStrapContextResult {
+  strap_colors: Array<Record<string, unknown>>;
+  [key: string]: unknown;
+}
+
+export interface SaveArtisanalStrapConversionPayload {
+  type: {
+    id?: string;
+    name?: string;
+    active?: boolean;
+  };
+  measure: {
+    id?: string;
+    display_name?: string;
+    finished_width_mm?: number;
+    active?: boolean;
+  };
+  base_group_id: string;
+  recipe: {
+    id?: string;
+    base_width_profile_id?: string;
+    cut_band_width_mm: number;
+    confirmed_yield_m_per_m: number;
+    executor_type: 'factory' | 'contractor';
+    default_contractor_id?: string | null;
+    transformation_cost_per_m?: number;
+  };
+}
+
+export interface SaveArtisanalStrapConversionResult {
+  type_id: string;
+  measure_id: string;
+  base_group_id: string;
+  recipe_id: string;
+}
+
+export interface ReuseLegacyArtisanalStrapRecipeResult {
+  legacy_recipe_id: string;
+  recipe_id: string;
+  width_profile_id: string;
+  conversion: SaveArtisanalStrapConversionResult;
+  resolution: Record<string, unknown>;
+  activated: true;
 }
 
 export interface OperationalStrapDemand {
@@ -877,6 +957,7 @@ function normalizeCatalog(value: unknown): ArtisanalStrapCatalog {
     variants: asArray<Partial<ArtisanalStrapVariant>>(raw.variants)
       .map(normalizeArtisanalStrapVariant),
     recipes: asArray<ArtisanalStrapRecipe>(raw.recipes),
+    legacy_recipes: asArray<LegacyArtisanalStrapRecipe>(raw.legacy_recipes),
     products: asArray<ArtisanalStrapCatalogProduct>(raw.products),
     groups: asArray<ArtisanalStrapCatalogGroup>(raw.groups),
     capabilities: { ...EMPTY_CAPABILITIES, ...capabilities },
@@ -904,11 +985,22 @@ export function useArtisanalStrapCatalog(includeArchived = false) {
   return useQuery({
     queryKey: ['artisanal-strap-catalog', includeArchived],
     queryFn: async () => {
-      const { data, error } = await untypedSupabase.rpc('list_artisanal_strap_catalog', {
-        p_include_archived: includeArchived,
-      });
-      if (error) throw error;
-      return normalizeCatalog(data);
+      const [catalogResult, legacyHistoryResult] = await Promise.all([
+        untypedSupabase.rpc('list_artisanal_strap_catalog', {
+          p_include_archived: includeArchived,
+        }),
+        untypedSupabase.rpc('list_legacy_artisanal_strap_recipe_history'),
+      ]);
+      if (catalogResult.error) throw catalogResult.error;
+      const legacyHistoryError = legacyHistoryResult.error as { code?: string } | null;
+      if (legacyHistoryError && legacyHistoryError.code !== 'PGRST202') {
+        throw legacyHistoryResult.error;
+      }
+      const catalog = normalizeCatalog(catalogResult.data);
+      return {
+        ...catalog,
+        legacy_recipes: asArray<LegacyArtisanalStrapRecipe>(legacyHistoryResult.data),
+      };
     },
     staleTime: 2 * 60 * 1000,
   });
@@ -2112,6 +2204,55 @@ export function useResolveTechnicalStrapLineMigration() {
   });
 }
 
+/**
+ * Corrige, em uma única operação auditável, a napa-base da referência e a
+ * medida canônica de cada linha técnica. O retorno é o novo snapshot que o PV
+ * deve adotar imediatamente, sem exigir que o vendedor saia do pedido.
+ */
+export function useResolveTechnicalStrapContext() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: ResolveTechnicalStrapContextInput) => {
+      const { data, error } = await untypedSupabase.rpc(
+        'resolve_technical_strap_context_from_sale_order',
+        { ...payload },
+      );
+      if (error) throw error;
+
+      const result = data && typeof data === 'object'
+        ? data as Record<string, unknown>
+        : {};
+      if (!Array.isArray(result.strap_colors)) {
+        throw new Error('A correção foi concluída sem retornar as linhas atualizadas da ficha.');
+      }
+      return {
+        ...result,
+        strap_colors: result.strap_colors as Array<Record<string, unknown>>,
+      } as ResolveTechnicalStrapContextResult;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['strap_stock_lines_preview'] });
+      queryClient.invalidateQueries({ queryKey: ['artisanal-strap-catalog'] });
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      queryClient.invalidateQueries({ queryKey: ['products_for_colors'] });
+      queryClient.invalidateQueries({ queryKey: ['group_supplier_materials_for_colors'] });
+      queryClient.invalidateQueries({ queryKey: ['product_groups_colors'] });
+      queryClient.invalidateQueries({ queryKey: ['technical-sheets'] });
+      queryClient.invalidateQueries({ queryKey: ['technical_sheets'] });
+      toast.success('Contexto das tiras corrigido no estoque e aplicado ao pedido.');
+    },
+    onError: (error: unknown) => {
+      if (error && typeof error === 'object') {
+        (error as Record<string, unknown>)._handled = true;
+      }
+      const message = error && typeof error === 'object' && 'message' in error
+        ? String((error as { message?: unknown }).message || '')
+        : '';
+      toast.error(message || 'Não foi possível corrigir o contexto das tiras.');
+    },
+  });
+}
+
 export function useResolveLegacyArtisanalStrapRecipeMigration() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -2181,6 +2322,76 @@ export function useSaveArtisanalStrapBundle() {
       }
       const message = error instanceof Error ? error.message : null;
       toast.error(message || 'Não foi possível salvar a tira.');
+    },
+  });
+}
+
+export function useSaveArtisanalStrapConversion() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ payload, reason }: {
+      payload: SaveArtisanalStrapConversionPayload;
+      reason: string;
+    }) => {
+      const { data, error } = await untypedSupabase.rpc('save_artisanal_strap_conversion', {
+        p_payload: payload,
+        p_reason: reason,
+      });
+      if (error) throw error;
+      return data as SaveArtisanalStrapConversionResult;
+    },
+    onSuccess: () => {
+      invalidateArtisanalStraps(queryClient);
+      toast.success('Conversão salva para todas as cores.');
+    },
+    onError: (error: unknown) => {
+      if (error && typeof error === 'object') {
+        (error as Record<string, unknown>)._handled = true;
+      }
+      const message = error instanceof Error ? error.message : null;
+      toast.error(message || 'Não foi possível salvar a conversão.');
+    },
+  });
+}
+
+export function useReuseLegacyArtisanalStrapRecipe() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      legacyRecipeId,
+      payload,
+      usableWidthMm,
+      editableWidthProfileId,
+      reason,
+    }: {
+      legacyRecipeId: string;
+      payload: SaveArtisanalStrapConversionPayload;
+      usableWidthMm?: number | null;
+      editableWidthProfileId?: string | null;
+      reason: string;
+    }) => {
+      const { data, error } = await untypedSupabase.rpc('reuse_legacy_artisanal_strap_recipe', {
+        p_legacy_recipe_id: legacyRecipeId,
+        p_payload: payload,
+        p_usable_width_mm: usableWidthMm ?? null,
+        p_editable_width_profile_id: editableWidthProfileId ?? null,
+        p_reason: reason,
+      });
+      if (error) throw error;
+      return data as ReuseLegacyArtisanalStrapRecipeResult;
+    },
+    onSuccess: () => {
+      invalidateArtisanalStrapOperations(queryClient);
+      queryClient.invalidateQueries({ queryKey: ['artisanal-strap-catalog-diagnostics'] });
+      queryClient.invalidateQueries({ queryKey: ['artisanal-strap-legacy-migration-diagnostics'] });
+      toast.success('Receita anterior reaproveitada e ativada.');
+    },
+    onError: (error: unknown) => {
+      if (error && typeof error === 'object') {
+        (error as Record<string, unknown>)._handled = true;
+      }
+      const message = error instanceof Error ? error.message : null;
+      toast.error(message || 'Não foi possível reaproveitar a receita anterior.');
     },
   });
 }

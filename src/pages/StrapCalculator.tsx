@@ -3,7 +3,7 @@
  *
  * Ferramenta avulsa com DOIS sentidos, alternados por um seletor no topo das entradas:
  *  • "Quanto rende" (direto): largura do material, largura da banda de corte, rendimento
- *    confirmado e comprimento do rolo → quantos metros de tira saem por metro linear,
+ *    escolhido para a simulação e comprimento do rolo → quantos metros de tira saem por metro linear,
  *    total do rolo, custo e a tabela de cortes parciais.
  *  • "Quanto preciso" (inverso): a mesma geometria, mas partindo dos metros de TIRA
  *    PRONTA desejados → quantos metros de material (e quantos rolos / quanto custa) são
@@ -33,6 +33,7 @@ import { cn, formatCurrency } from '@/lib/utils';
 import {
   computeStrapYield,
   computeStrapMaterialNeeded,
+  confirmedStrapYieldFromLossPercentage,
   partialCutYield,
   PARTIAL_CUT_UNIT_TO_M,
   STRAP_YIELD_DEFAULTS,
@@ -83,18 +84,23 @@ function UnitTag({ children, className }: { children: React.ReactNode; className
 /** Sentido do cálculo: rendimento (direto) ou necessidade de material (inverso). */
 type Modo = 'rendimento' | 'necessidade';
 
-/** Snapshot submetido no clique de Calcular — inclui o modo e a tira desejada. */
-type Snapshot = StrapYieldInput & { modo: Modo; tiraDesejadaM?: number };
+/** Base operacional escolhida para esta simulação, sem persistência no catálogo. */
+type BaseRendimento = 'teorico' | 'real' | 'perda';
+
+/** Snapshot submetido no clique de Calcular — inclui as escolhas temporárias da tela. */
+type Snapshot = StrapYieldInput & {
+  modo: Modo;
+  baseRendimento: BaseRendimento;
+  perdaPercentual?: number;
+  tiraDesejadaM?: number;
+};
 
 interface StrapCalculatorProps {
   embedded?: boolean;
-  larguraMaterialInicialMm?: number;
-  larguraBandaInicialMm?: number;
-  rendimentoConfirmadoInicialMPerM?: number;
   canShowFinancialValues?: boolean;
 }
 
-function ConfirmedNeedResult({
+function OperationalNeedResult({
   result,
   submitted,
   showCost,
@@ -118,7 +124,7 @@ function ConfirmedNeedResult({
             <span className="text-lg font-medium text-red-600/80 dark:text-red-400/80">m lineares</span>
           </div>
           <p className="mt-3 font-mono text-xs text-red-700/70 dark:text-red-300/70">
-            {nf(result.tiraDesejadaM, 6)} m de tira ÷ {nf(result.metragemPorMetroLiq, 6)} m/m confirmados = {nf(result.materialNecessarioM, 6)} m de napa
+            {nf(result.tiraDesejadaM, 6)} m de tira ÷ {nf(result.metragemPorMetroLiq, 6)} m/m usados = {nf(result.materialNecessarioM, 6)} m de napa
           </p>
         </CardContent>
       </Card>
@@ -130,7 +136,7 @@ function ConfirmedNeedResult({
             <p className="mt-1 font-mono text-lg font-bold text-foreground">{nf(result.tiraDesejadaM, 6)} m</p>
           </div>
           <div>
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Rendimento confirmado</p>
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Rendimento usado</p>
             <p className="mt-1 font-mono text-lg font-bold text-foreground">{nf(result.metragemPorMetroLiq, 6)} m/m</p>
           </div>
           <div>
@@ -175,7 +181,7 @@ function ConfirmedNeedResult({
       <div className="flex items-start gap-2 rounded-lg border border-border/60 bg-muted/30 px-3 py-2.5 text-xs text-muted-foreground">
         <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
         <span>
-          A largura útil e a banda conferem o teto geométrico. A necessidade operacional usa exclusivamente o rendimento confirmado da receita aprovada.
+          A largura útil e a banda conferem o teto geométrico. A necessidade usa o rendimento informado apenas nesta simulação.
         </span>
       </div>
     </div>
@@ -184,26 +190,18 @@ function ConfirmedNeedResult({
 
 export default function StrapCalculator({
   embedded = false,
-  larguraMaterialInicialMm,
-  larguraBandaInicialMm,
-  rendimentoConfirmadoInicialMPerM,
   canShowFinancialValues = true,
 }: StrapCalculatorProps = {}) {
-  const larguraMaterialPadraoMm = larguraMaterialInicialMm && larguraMaterialInicialMm > 0
-    ? larguraMaterialInicialMm
-    : STRAP_YIELD_DEFAULTS.larguraMaterialMm;
-  const larguraBandaPadraoMm = larguraBandaInicialMm && larguraBandaInicialMm > 0
-    ? larguraBandaInicialMm
-    : 0;
-  const rendimentoConfirmadoPadrao = rendimentoConfirmadoInicialMPerM && rendimentoConfirmadoInicialMPerM > 0
-    ? rendimentoConfirmadoInicialMPerM
-    : null;
+  const larguraMaterialPadraoMm = STRAP_YIELD_DEFAULTS.larguraMaterialMm;
   const [modo, setModo] = useState<Modo>('rendimento');
+  const [baseRendimento, setBaseRendimento] = useState<BaseRendimento>('teorico');
   // Largura do material é digitada em CM na tela; o motor recebe em mm.
   const [larguraMaterialCm, setLarguraMaterialCm] = useState<number>(
     larguraMaterialPadraoMm / MM_POR_CM,
   );
-  const [larguraTiraMm, setLarguraTiraMm] = useState<number>(larguraBandaPadraoMm);
+  const [larguraTiraMm, setLarguraTiraMm] = useState<number>(0);
+  const [rendimentoRealMPerM, setRendimentoRealMPerM] = useState<number>(0);
+  const [perdaPercentual, setPerdaPercentual] = useState<number>(0);
   const [comprimentoRoloM, setComprimentoRoloM] = useState<number>(STRAP_YIELD_DEFAULTS.comprimentoRoloM);
   const [custoMetroLinear, setCustoMetroLinear] = useState<number>(0);
   // Modo inverso: quantos metros de tira pronta o usuário precisa produzir.
@@ -214,15 +212,32 @@ export default function StrapCalculator({
   const [submitted, setSubmitted] = useState<Snapshot | null>(null);
   const [runId, setRunId] = useState(0);
 
+  const rendimentoTeoricoMPerM = larguraMaterialCm > 0 && larguraTiraMm > 0
+    ? Math.floor((larguraMaterialCm * MM_POR_CM) / larguraTiraMm)
+    : 0;
+  const rendimentoDaPerdaMPerM = confirmedStrapYieldFromLossPercentage(
+    rendimentoTeoricoMPerM,
+    perdaPercentual,
+  );
+  const rendimentoDaSimulacao = baseRendimento === 'teorico'
+    ? null
+    : baseRendimento === 'real'
+      ? rendimentoRealMPerM
+      : rendimentoDaPerdaMPerM;
+
   const baseInput: StrapYieldInput = {
     larguraMaterialMm: larguraMaterialCm * MM_POR_CM,
     larguraTiraMm,
     comprimentoRoloM,
     custoMetroLinear: custoMetroLinear > 0 ? custoMetroLinear : null,
-    rendimentoConfirmadoMPerM: rendimentoConfirmadoPadrao,
+    // O motor usa este campo canônico como rendimento operacional. Aqui ele é
+    // apenas um valor temporário da simulação e nunca é persistido.
+    rendimentoConfirmadoMPerM: rendimentoDaSimulacao,
   };
   const current: Snapshot =
-    modo === 'necessidade' ? { ...baseInput, modo, tiraDesejadaM } : { ...baseInput, modo };
+    modo === 'necessidade'
+      ? { ...baseInput, modo, baseRendimento, perdaPercentual, tiraDesejadaM }
+      : { ...baseInput, modo, baseRendimento, perdaPercentual };
 
   const rendResult = useMemo(
     () => (submitted?.modo === 'rendimento' ? computeStrapYield(submitted) : null),
@@ -233,6 +248,13 @@ export default function StrapCalculator({
     [submitted],
   );
   const active = submitted?.modo === 'necessidade' ? needResult : rendResult;
+  const activeError = active?.error === 'O rendimento confirmado deve ser maior que zero.'
+    ? submitted?.baseRendimento === 'real'
+      ? 'Informe o rendimento real medido.'
+      : submitted?.baseRendimento === 'perda'
+        ? 'A perda estimada deve ser igual ou maior que 0% e menor que 100%.'
+        : active.error
+    : active?.error;
   const dirty = submitted != null && JSON.stringify(current) !== JSON.stringify(submitted);
 
   // ── Cortes parciais: tabela de trechos do rolo (só o comprimento varia) ──────
@@ -260,7 +282,10 @@ export default function StrapCalculator({
 
   const restaurar = () => {
     setLarguraMaterialCm(larguraMaterialPadraoMm / MM_POR_CM);
-    setLarguraTiraMm(larguraBandaPadraoMm);
+    setLarguraTiraMm(0);
+    setBaseRendimento('teorico');
+    setRendimentoRealMPerM(0);
+    setPerdaPercentual(0);
     setComprimentoRoloM(STRAP_YIELD_DEFAULTS.comprimentoRoloM);
     setCustoMetroLinear(0);
     setTiraDesejadaM(0);
@@ -278,7 +303,7 @@ export default function StrapCalculator({
         <EditorialPageHeader
           sectionLabel="ENGENHARIA · CORTE"
           title="Calculadora de Tiras"
-          description="Nos dois sentidos: quanto de tira sai de um material — ou quantas bandas e quantos rolos cortar para uma metragem de tira. A conta usa somente bandas físicas completas, sem perda percentual adicional. Largura útil em cm; banda de corte em mm."
+          description="Área livre para testar novas medidas nos dois sentidos: quanto rende e quanto material é necessário. Use capacidade teórica, rendimento real ou perda estimada; nenhum valor é salvo no sistema."
         />
       )}
 
@@ -349,17 +374,103 @@ export default function StrapCalculator({
               </p>
             </div>
 
-            {rendimentoConfirmadoPadrao != null && (
-              <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-2.5">
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  Rendimento confirmado da receita
+            <div className="space-y-3 rounded-lg border border-border/60 bg-muted/30 p-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-foreground">Base desta simulação</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Escolha como calcular a nova medida. Nada deste bloco é salvo no catálogo.
                 </p>
-                <p className="mt-1 font-mono text-lg font-bold text-foreground">
-                  {nf(rendimentoConfirmadoPadrao, 6)} m/m
-                </p>
-                <p className="mt-1 text-xs text-muted-foreground">Valor aprovado e usado em metragem, custo e estoque.</p>
               </div>
-            )}
+              <ToggleGroup
+                type="single"
+                value={baseRendimento}
+                onValueChange={(value) => value && setBaseRendimento(value as BaseRendimento)}
+                variant="outline"
+                className="grid grid-cols-3 gap-1 rounded-lg border border-border bg-background p-1"
+                aria-label="Base do rendimento da simulação"
+              >
+                <ToggleGroupItem
+                  value="teorico"
+                  className="h-auto min-h-9 rounded-md border-0 px-2 py-2 text-[11px] font-semibold text-muted-foreground data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+                >
+                  Teórico
+                </ToggleGroupItem>
+                <ToggleGroupItem
+                  value="real"
+                  className="h-auto min-h-9 rounded-md border-0 px-2 py-2 text-[11px] font-semibold text-muted-foreground data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+                >
+                  Rendimento real
+                </ToggleGroupItem>
+                <ToggleGroupItem
+                  value="perda"
+                  className="h-auto min-h-9 rounded-md border-0 px-2 py-2 text-[11px] font-semibold text-muted-foreground data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+                >
+                  Perda estimada
+                </ToggleGroupItem>
+              </ToggleGroup>
+
+              {baseRendimento === 'teorico' && (
+                <div className="flex items-end justify-between gap-3 rounded-md border border-border/60 bg-background px-3 py-2.5">
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Capacidade geométrica</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">Bandas completas que cabem na largura útil.</p>
+                  </div>
+                  <p className="shrink-0 font-mono text-lg font-bold text-foreground">
+                    {rendimentoTeoricoMPerM > 0 ? nf(rendimentoTeoricoMPerM, 0) : '—'} m/m
+                  </p>
+                </div>
+              )}
+
+              {baseRendimento === 'real' && (
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="rr">Rendimento real medido</Label>
+                    <UnitTag>m/m</UnitTag>
+                  </div>
+                  <NumberInput
+                    id="rr"
+                    value={rendimentoRealMPerM}
+                    onChange={setRendimentoRealMPerM}
+                    unit="m/m"
+                    decimals={3}
+                    placeholder="60"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Informe quantos metros de tira saem, na prática, de 1 metro linear do material.
+                  </p>
+                </div>
+              )}
+
+              {baseRendimento === 'perda' && (
+                <div className="space-y-2">
+                  <div className="space-y-1.5">
+                    <div className="flex items-center gap-2">
+                      <Label htmlFor="pe">Perda estimada</Label>
+                      <UnitTag>%</UnitTag>
+                    </div>
+                    <NumberInput
+                      id="pe"
+                      value={perdaPercentual}
+                      onChange={setPerdaPercentual}
+                      unit="%"
+                      decimals={2}
+                      placeholder="0"
+                    />
+                  </div>
+                  <div className="flex items-center justify-between gap-3 rounded-md border border-border/60 bg-background px-3 py-2">
+                    <span className="text-xs text-muted-foreground">
+                      {nf(rendimentoTeoricoMPerM, 0)} m/m teóricos após {nf(perdaPercentual, 2)}%
+                    </span>
+                    <span className="shrink-0 font-mono text-sm font-bold text-foreground">
+                      {rendimentoDaPerdaMPerM > 0 ? nf(rendimentoDaPerdaMPerM, 3) : '—'} m/m
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    A porcentagem apenas transforma o teto em rendimento efetivo nesta simulação; ela não é aplicada novamente.
+                  </p>
+                </div>
+              )}
+            </div>
 
             <div className="space-y-1.5">
               <div className="flex items-center gap-2">
@@ -422,11 +533,11 @@ export default function StrapCalculator({
             <Card className="border-amber-500/30 bg-amber-500/5">
               <CardContent className="flex items-center gap-3 py-8">
                 <Warning className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" weight="fill" />
-                <p className="text-sm text-amber-700 dark:text-amber-300">{active.error}</p>
+                <p className="text-sm text-amber-700 dark:text-amber-300">{activeError}</p>
               </CardContent>
             </Card>
           ) : submitted.modo === 'necessidade' && needResult?.valid && submitted.rendimentoConfirmadoMPerM != null ? (
-            <ConfirmedNeedResult result={needResult} submitted={submitted} showCost={showCostNeed} />
+            <OperationalNeedResult result={needResult} submitted={submitted} showCost={showCostNeed} />
           ) : submitted.modo === 'necessidade' && needResult?.valid ? (
             /* ── MODO INVERSO: quanto material preciso ─────────────────── */
             <div key={runId} className="space-y-4 duration-300 animate-in fade-in-50 slide-in-from-bottom-2">
@@ -599,7 +710,7 @@ export default function StrapCalculator({
                 <CardContent className="py-6">
                   <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-red-600/80 dark:text-red-400/80">
                     <Scissors className="h-3.5 w-3.5" weight="fill" />
-                    {submitted.rendimentoConfirmadoMPerM != null ? 'Rendimento confirmado da receita' : 'Rendimento teórico · por metro linear'}
+                    {submitted.rendimentoConfirmadoMPerM != null ? 'Rendimento usado na simulação' : 'Rendimento teórico · por metro linear'}
                   </div>
                   <div className="mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
                     <span className="font-mono text-6xl font-bold leading-none tabular-nums text-red-600 dark:text-red-400">
@@ -609,7 +720,7 @@ export default function StrapCalculator({
                   </div>
                   <p className="mt-3 font-mono text-xs text-red-700/70 dark:text-red-300/70">
                     {submitted.rendimentoConfirmadoMPerM != null
-                      ? `${nf(rendResult.metragemPorMetroLiq, 6)} m/m confirmados · teto geométrico ${nf(rendResult.metragemPorMetroBruto, 0)} m/m`
+                      ? `${nf(rendResult.metragemPorMetroLiq, 6)} m/m usados · teto geométrico ${nf(rendResult.metragemPorMetroBruto, 0)} m/m`
                       : `floor(${nfCm(submitted.larguraMaterialMm, 2)} cm ÷ ${nfCm(submitted.larguraTiraMm, 2)} cm) = ${nf(rendResult.bandasCompletas, 0)} bandas`}
                     <span className="text-red-600/50 dark:text-red-400/50"> · sobra lateral {nf(submitted.larguraMaterialMm - rendResult.bandasCompletas * submitted.larguraTiraMm, 2)} mm</span>
                   </p>
@@ -789,13 +900,18 @@ export default function StrapCalculator({
             </div>
           ) : null}
 
-          {/* Fonte do cálculo */}
+          {/* Escopo do cálculo */}
           <div className="flex items-start gap-2 rounded-lg border border-border/60 bg-muted/30 px-3 py-2.5 text-xs text-muted-foreground">
             <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
             <span>
-              {rendimentoConfirmadoPadrao != null
-                ? 'Cálculo operacional baseado na receita aprovada, sem percentual de perda adicional.'
-                : 'Sugestão geométrica para conferência. Cadastre e aprove o rendimento real antes de usar em estoque, custo ou produção.'}
+              Simulação temporária: nenhum valor desta aba é salvo em receitas, estoque, custos ou produção.
+              {submitted?.baseRendimento === 'teorico'
+                ? ' O resultado usa somente a capacidade geométrica.'
+                : submitted?.baseRendimento === 'real'
+                  ? ' O resultado usa o rendimento real que você informou.'
+                  : submitted?.baseRendimento === 'perda'
+                    ? ' A perda informada já foi convertida no rendimento efetivo e não é reaplicada.'
+                    : ''}
             </span>
           </div>
         </div>

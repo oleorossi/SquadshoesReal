@@ -44,6 +44,7 @@ export default function RepresentativeTab({ entityId, type }: Props) {
 
   const handleAdd = (rep: Representative) => {
     if (!entityId) return;
+    if (addClientRep.isPending || addGroupRep.isPending) return; // evita vínculo duplicado por duplo clique
     if (type === 'client') {
       addClientRep.mutate({ clientId: entityId, representativeId: rep.id });
     } else {
@@ -53,6 +54,7 @@ export default function RepresentativeTab({ entityId, type }: Props) {
 
   const handleRemove = (linkId: string) => {
     if (!entityId) return;
+    if (removeClientRep.isPending || removeGroupRep.isPending) return;
     if (type === 'client') {
       removeClientRep.mutate({ id: linkId, clientId: entityId });
     } else {

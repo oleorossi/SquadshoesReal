@@ -38,6 +38,7 @@ import { usePricingSimulations, useCreatePricingSimulation, useDeletePricingSimu
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { format, parseISO } from 'date-fns';
 import { parseBrlNumberNonNeg } from '@/lib/parseBrlNumber';
 import { parseDaysInput, parseDaysInstallments, computeMarkupPrice, deriveMarginFromTargetProfit } from '@/lib/markupCalc';
@@ -957,15 +958,7 @@ export default function PricingByTechnicalSheetPanel({ initialSheetId }: Props =
                       <td className="py-1.5 px-3 text-right font-mono tabular-nums font-bold text-primary">{fmtBRL(s.suggested_price)}</td>
                       <td className="py-1.5 px-3 text-right font-mono tabular-nums text-success">{fmtBRL(s.real_profit)}</td>
                       <td className="py-1.5 px-3 text-right">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6 text-destructive hover:text-destructive hover:bg-destructive/10"
-                          onClick={() => deleteSim.mutate(s.id)}
-                          title="Excluir simulação"
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
+                        <DeleteConfirmButton onConfirm={() => deleteSim.mutate(s.id)} title="Excluir simulação?" size="h-6 w-6" iconSize="h-3 w-3" />
                       </td>
                     </tr>
                   ))}

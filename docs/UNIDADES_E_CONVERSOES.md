@@ -143,9 +143,19 @@
 | Grade do pedido | `sale_order_items.grade[nº]` | **pares** | convenção calçadista |
 | Consumo BOM de material de área | `sheet_materials.quantity_per_unit` | **dm²/par** | corrigido 2026-05-30 (convertia errado) |
 | Cabedal/Forro/Palmilha | `technical_sheets.*_consumption(_per_size)` | **dm²/par** | implícito |
-| Solado | `technical_sheets.sole_consumption` | **par** | implícito |
+| Solado | `technical_sheets.sole_consumption` | **par/par** | fixo em `1`: um par completo (pé esquerdo + pé direito) por par de calçado |
 | Tira/elástico | `product_strap_definitions.consumption(_per_size)` | **cm/par** | implícito |
 | Cola/adesivo | consumo na ficha | **g/par** (produto em `kg`) | convertido em `calculate_order_cost` (fix 20260524150000) |
+
+### Regra física do solado
+
+- `products.unit`, `purchase_unit`, `purchase_order_unit`, `production_unit` e
+  `consumption_unit` são sempre **`par`** para a categoria Solado.
+- **1 par de estoque = 2 peças físicas**, uma para o pé esquerdo e outra para o
+  pé direito. Essas peças não são cadastradas separadamente.
+- Uma grade de pedido com 100 pares reserva e baixa **100 pares de solado**, não
+  200 unidades. O número 2 descreve a composição física do par, não um fator de
+  conversão do estoque.
 
 ---
 

@@ -37,7 +37,10 @@ const incrementalMigrationDialog = read('src/components/artisanal-straps/Artisan
 const incrementalMigrationHelper = read('src/lib/legacyStrapIncrementalApply.ts');
 const performanceHistory = read('src/components/artisanal-straps/ArtisanalStrapPerformanceHistory.tsx');
 const strapEditor = read('src/components/artisanal-straps/ArtisanalStrapEditor.tsx');
+const conversionEditor = read('src/components/artisanal-straps/ArtisanalStrapConversionEditor.tsx');
 const hubTabs = read('src/components/layout/HubTabs.tsx');
+const legacyRecipeHistoryMigration = read('supabase/migrations/20270101005000_expor_historico_receitas_tiras_legadas.sql');
+const legacyRecipeReuseMigration = read('supabase/migrations/20270101005100_reaproveitar_receitas_tiras_legadas.sql');
 
 describe('Tiras artesanais — contrato do frontend canônico', () => {
   it('consulta somente RPCs e views operacionais nas áreas sensíveis', () => {
@@ -256,10 +259,10 @@ describe('Tiras artesanais — contrato do frontend canônico', () => {
     expect(performanceHistory).toContain('Confirmado × realizado');
     expect(performanceHistory).toContain('Variação prevista × realizada');
     expect(performanceHistory).toContain('Criar versão sugerida');
-    expect(strapEditor).toContain('Sugestão do rendimento realizado');
-    expect(strapEditor).toContain('nova versão em rascunho');
-    expect(strapEditor).toContain('id: createRecipeVersion ? undefined');
-    expect(strapEditor).not.toContain('status: \'approved\'');
+    expect(conversionEditor).toContain('rendimento realizado');
+    expect(conversionEditor).toContain('Nova versão em rascunho');
+    expect(conversionEditor).toContain('id: createRecipeVersion ? undefined');
+    expect(conversionEditor).not.toContain('status: \'approved\'');
   });
 
   it('orienta a fábrica pela napa e rendimento canônicos, sem rolo fixo legado', () => {
@@ -270,16 +273,24 @@ describe('Tiras artesanais — contrato do frontend canônico', () => {
     expect(strapCutBlock).not.toContain('ROLO_COMPRIMENTO_M');
     expect(pickingList).toContain('separação da napa-base');
     expect(pickingList).not.toContain('ROLO_LARGURA_MM');
-    expect(hub).toContain('rendimentoConfirmadoInicialMPerM={selectedRecipe ? Number(selectedRecipe.confirmed_yield_m_per_m) : undefined}');
-    expect(calculator).toContain('A necessidade operacional usa exclusivamente o rendimento confirmado');
+    expect(calculator).toContain("type BaseRendimento = 'teorico' | 'real' | 'perda'");
+    expect(calculator).toContain('rendimentoDaSimulacao');
+    expect(calculator).toContain('A necessidade usa o rendimento informado apenas nesta simulação');
     expect(calculator).not.toContain('a % de perda cobre');
   });
 
-  it('mantém a calculadora livre disponível mesmo sem receita aprovada', () => {
-    expect(hub).toContain('A calculadora não depende de receita aprovada');
-    expect(hub).toContain("key={selectedRecipe?.id || 'calculo-livre'}");
-    expect(hub).toContain('larguraMaterialInicialMm={selectedRecipe ?');
-    expect(hub).not.toContain('Nenhuma receita aprovada para calcular');
+  it('mantém a calculadora livre, temporária e independente das receitas persistidas', () => {
+    expect(hub).toContain('Simulação livre de novas medidas');
+    expect(hub).toContain('Os valores são temporários e não são salvos');
+    expect(hub).toContain('<StrapCalculator');
+    expect(hub).not.toContain('selectedRecipe');
+    expect(hub).not.toContain('approvedRecipes');
+    expect(hub).not.toContain('rendimentoConfirmadoInicialMPerM');
+    expect(calculator).toContain('Base desta simulação');
+    expect(calculator).toContain('Rendimento real medido');
+    expect(calculator).toContain('Perda estimada');
+    expect(calculator).toContain('nenhum valor desta aba é salvo');
+    expect(calculator).not.toMatch(/from\(['"]/);
   });
 
   it('abre pelas demandas e organiza a jornada industrial em três grupos de trabalho', () => {
@@ -315,6 +326,30 @@ describe('Tiras artesanais — contrato do frontend canônico', () => {
     expect(hub).toContain('executorLabel');
     expect(hub).toContain('transformation_cost_per_m');
     expect(hub).toContain('catalog.capabilities.can_see_financial_values');
+  });
+
+  it('preserva o histórico anterior e oferece reaproveitamento explícito', () => {
+    expect(hooks).toContain("rpc('list_legacy_artisanal_strap_recipe_history')");
+    expect(hooks).toContain("rpc('reuse_legacy_artisanal_strap_recipe'");
+    expect(hooks).toContain('legacy_recipes:');
+    expect(hub).toContain('Cadastros do sistema anterior');
+    expect(hub).toContain('Histórico legado');
+    expect(hub).toContain('Reaproveitar');
+    expect(hub).toContain('legacyRecipeId: recipe.id');
+    expect(conversionEditor).toContain('Confirmar e ativar');
+    expect(legacyRecipeHistoryMigration).toContain('FROM public.artisanal_recipes recipe');
+    expect(legacyRecipeHistoryMigration).toContain('LEFT JOIN public.legacy_artisanal_recipe_map mapping');
+    expect(legacyRecipeHistoryMigration).toContain('WHEN v_can_financial THEN recipe.labor_cost_per_meter');
+    expect(legacyRecipeHistoryMigration).toContain("coalesce(mapping.status, 'review_required')");
+    expect(legacyRecipeHistoryMigration).toContain('REVOKE ALL ON FUNCTION public.list_legacy_artisanal_strap_recipe_history()');
+    expect(legacyRecipeHistoryMigration).not.toMatch(/(?:INSERT|UPDATE|DELETE)\s+(?:INTO\s+|FROM\s+)?public\.artisanal_recipes/i);
+    expect(legacyRecipeReuseMigration).toContain('CREATE OR REPLACE FUNCTION public.reuse_legacy_artisanal_strap_recipe');
+    expect(legacyRecipeReuseMigration).toContain('public.save_base_material_width_profile(');
+    expect(legacyRecipeReuseMigration).toContain('public.approve_base_material_width_profile(');
+    expect(legacyRecipeReuseMigration).toContain('public.save_artisanal_strap_conversion(');
+    expect(legacyRecipeReuseMigration).toContain('public.submit_artisanal_strap_recipe(');
+    expect(legacyRecipeReuseMigration).toContain('public.approve_artisanal_strap_recipe(');
+    expect(legacyRecipeReuseMigration).toContain('public.resolve_legacy_artisanal_recipe_migration(');
   });
 
   it('usa linguagem operacional nas telas de rotina', () => {

@@ -496,11 +496,14 @@ function FinancialEntriesTab() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialog(false)}>Cancelar</Button>
-            <Button onClick={() => {
+            <Button disabled={createEntry.isPending} onClick={() => {
               const { account_id, cost_center_id, bank_account_id, ...rest } = form;
-              createEntry.mutate({ ...rest, account_id: account_id || null, cost_center_id: cost_center_id || null, bank_account_id: bank_account_id || null });
-              setDialog(false);
-            }}>Salvar</Button>
+              // fecha só no sucesso — fechar síncrono descartava o lançamento digitado em caso de erro
+              createEntry.mutate(
+                { ...rest, account_id: account_id || null, cost_center_id: cost_center_id || null, bank_account_id: bank_account_id || null },
+                { onSuccess: () => setDialog(false) },
+              );
+            }}>{createEntry.isPending ? 'Salvando…' : 'Salvar'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

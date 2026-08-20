@@ -23,6 +23,7 @@ import { StatCard, StatGrid } from "@/components/ui/stat-card";
 import { Panel } from "@/components/ui/panel";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useAccessControl } from "@/hooks/useAccessControl";
+import DeleteConfirmButton from "@/components/ui/delete-confirm-button";
 
 function statusBadge(status: string) {
   const map: Record<string, { label: string; cls: string }> = {
@@ -312,7 +313,7 @@ export default function MaintenancePage() {
                         {canManage && (
                           <>
                             <EquipmentFormDialog equipment={eq}><Button variant="ghost" size="sm">Editar</Button></EquipmentFormDialog>
-                            <Button variant="ghost" size="sm" className="text-destructive" onClick={() => deleteEq.mutate(eq.id)}>Excluir</Button>
+                            <DeleteConfirmButton onConfirm={() => deleteEq.mutate(eq.id)} title="Excluir equipamento?" description={`"${eq.name}" e seu histórico de status serão removidos permanentemente.`} />
                           </>
                         )}
                       </TableCell>

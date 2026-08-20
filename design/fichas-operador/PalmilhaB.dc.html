@@ -1,0 +1,211 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Fira+Sans:wght@400;600;700;800&family=Fira+Code:wght@400;500;600;700&display=swap">
+  <style>
+    body { margin: 0; background: #fff; color: #000; font-family: 'Fira Sans', system-ui, sans-serif; }
+    a { color: #C00000; } a:hover { color: #8a0000; }
+    .sheet { width: 794px; min-height: 1123px; box-sizing: border-box; padding: 26px 30px 22px; background: #fff; display: flex; flex-direction: column; gap: 7px; }
+    .lbl { font-size: 10px; font-weight: 600; letter-spacing: 0.18em; text-transform: uppercase; line-height: 1; display: block; }
+    .mono { font-family: 'Fira Code', ui-monospace, monospace; }
+    .anton { font-family: 'Anton', Impact, sans-serif; text-transform: uppercase; letter-spacing: -0.025em; line-height: 1; }
+    .red { color: #C00000; }
+    table { border-collapse: collapse; width: 100%; table-layout: fixed; }
+    .chip { border: 1.5px solid #000; padding: 3px 10px; }
+    .fldline { border-bottom: 1.5px solid #000; height: 22px; margin-top: 4px; }
+    .tb { width: 25px; height: 25px; border: 1.5px solid #000; display: flex; align-items: center; justify-content: center; font-family: 'Fira Code', monospace; font-weight: 700; font-size: 11px; font-variant-numeric: tabular-nums; }
+    .tag { display: inline-flex; align-items: center; gap: 4px; border-radius: 4px; padding: 2px 7px; font-size: 11px; font-weight: 700; line-height: 1.4; text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap; }
+    .cbx { display: inline-block; width: 16px; height: 16px; border: 1.5px solid #000; flex-shrink: 0; }
+  </style>
+</helmet>
+
+<div class="sheet">
+
+  <div style="height: 7px; background: #2563eb"></div>
+
+  <div style="display: flex; align-items: center; gap: 12px; border-top: 2px solid #000; border-bottom: 2px solid #000; padding: 4px 8px">
+    <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0"><circle cx="6" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><line x1="20" y1="4" x2="8.12" y2="15.88"></line><line x1="14.47" y1="14.48" x2="20" y2="20"></line><line x1="8.12" y1="8.12" x2="12" y2="12"></line></svg>
+    <span class="anton" style="font-size: 30px; color: #2563eb; flex-grow: 1">Corte de Placa de Fibra</span>
+    <span class="tag" style="background: #FCE7F3; color: #9D174D; border: 1.5px solid #DB2777">Infantil</span>
+    <span class="lbl" style="padding-left: 10px; border-left: 1.5px solid #000">Ficha de Operador</span>
+  </div>
+
+  <div style="border: 1.5px solid #000; display: flex; align-items: stretch">
+    <div style="padding: 8px 12px; flex-grow: 1; min-width: 0">
+      <span class="lbl">Solado</span>
+      <p class="anton" style="font-size: 40px; margin: 5px 0 0">Infantil</p>
+    </div>
+    <div style="padding: 8px 12px; border-left: 1px solid #000; display: flex; flex-direction: column; justify-content: center">
+      <span class="lbl">Ação</span>
+      <p class="anton" style="font-size: 26px; margin: 5px 0 0">Cortar</p>
+    </div>
+    <div style="padding: 8px 12px; border-left: 1px solid #000; text-align: right; display: flex; flex-direction: column; justify-content: center">
+      <span class="lbl">Pares</span>
+      <p class="anton" style="font-size: 32px; margin: 5px 0 0">180</p>
+    </div>
+    <div style="flex-shrink: 0; border-left: 1px solid #000; padding: 6px 12px; display: flex; flex-direction: column; align-items: center; justify-content: center">
+      <div style="border: 1.5px solid #000; padding: 2px; line-height: 0"><svg width="46" height="46" viewBox="0 0 21 21" shape-rendering="crispEdges"><rect width="21" height="21" fill="#fff"/><g fill="#000"><path d="M0 0h7v7H0zM1 1v5h5V1z"/><path d="M2 2h3v3H2z"/><path d="M14 0h7v7h-7zM15 1v5h5V1z"/><path d="M16 2h3v3h-3z"/><path d="M0 14h7v7H0zM1 15v5h5v-5z"/><path d="M2 16h3v3H2z"/><path d="M8 0h1v1H8zM10 0h1v1h-1zM12 0h1v1h-1zM9 2h1v1H9zM11 2h1v1h-1zM8 3h1v1H8zM12 3h1v1h-1zM10 4h1v1h-1zM8 5h1v1H8zM11 5h1v1h-1zM9 6h1v1H9zM12 6h1v1h-1z"/><path d="M0 8h1v1H0zM2 8h1v1H2zM4 8h1v1H4zM6 8h1v1H6zM1 10h1v1H1zM3 10h1v1H3zM5 10h1v1H5zM0 12h1v1H0zM2 12h1v1H2zM4 12h1v1H4zM6 12h1v1H6z"/><path d="M8 8h1v1H8zM10 8h1v1h-1zM13 8h1v1h-1zM15 8h1v1h-1zM17 8h1v1h-1zM20 8h1v1h-1zM9 9h1v1H9zM12 9h1v1h-1zM16 9h1v1h-1zM19 9h1v1h-1zM8 10h1v1H8zM11 10h1v1h-1zM14 10h1v1h-1zM18 10h1v1h-1zM20 10h1v1h-1zM10 11h1v1h-1zM13 11h1v1h-1zM15 11h1v1h-1zM17 11h1v1h-1zM9 12h1v1H9zM12 12h1v1h-1zM16 12h1v1h-1zM19 12h1v1h-1z"/><path d="M8 14h1v1H8zM11 14h1v1h-1zM14 14h1v1h-1zM17 14h1v1h-1zM20 14h1v1h-1zM9 15h1v1H9zM13 15h1v1h-1zM16 15h1v1h-1zM19 15h1v1h-1zM8 16h1v1H8zM10 16h1v1h-1zM15 16h1v1h-1zM18 16h1v1h-1zM12 17h1v1h-1zM14 17h1v1h-1zM17 17h1v1h-1zM20 17h1v1h-1zM9 18h1v1H9zM11 18h1v1h-1zM16 18h1v1h-1zM19 18h1v1h-1zM8 19h1v1H8zM13 19h1v1h-1zM15 19h1v1h-1zM18 19h1v1h-1zM10 20h1v1h-1zM12 20h1v1h-1zM17 20h1v1h-1zM20 20h1v1h-1z"/></g></svg></div>
+      <span class="mono" style="font-size: 8px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; margin-top: 4px">2 PVs</span>
+    </div>
+  </div>
+
+  <!-- Saída do setor -->
+  <div style="background: #000; color: #fff; display: flex; align-items: center; justify-content: space-between; padding: 10px 14px">
+    <div style="min-width: 0">
+      <span class="lbl" style="color: #fff">Cortar placas</span>
+      <p class="mono" style="font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; margin: 5px 0 0; color: #fff">Placa EVA 10mm · 1000 × 1500 mm · 150 dm² / placa</p>
+    </div>
+    <div style="display: flex; align-items: baseline; gap: 7px; flex-shrink: 0">
+      <span class="anton" style="font-size: 52px; color: #fff">61,3</span>
+      <span class="mono" style="font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: #fff">placas</span>
+    </div>
+  </div>
+
+  <!-- Rastreio -->
+  <div style="border: 1.5px solid #000; display: flex; align-items: stretch">
+    <div style="padding: 5px 10px; border-right: 1px solid #000">
+      <span class="lbl">Pedidos</span>
+      <span class="mono" style="font-size: 12px; font-weight: 700; display: block; margin-top: 3px">PV-00151 · PV-00147</span>
+    </div>
+    <div style="padding: 5px 10px; border-right: 1px solid #000; flex-grow: 1; min-width: 0">
+      <span class="lbl">Cliente</span>
+      <span class="anton red" style="font-size: 16px; display: block; margin-top: 3px">Ponto Mix Confecções</span>
+    </div>
+    <div style="padding: 5px 10px; border-right: 1px solid #000">
+      <span class="lbl">Ordens</span>
+      <span class="mono" style="font-size: 12px; font-weight: 700; display: block; margin-top: 3px">3 OPs</span>
+    </div>
+    <div style="padding: 5px 10px; text-align: right">
+      <span class="lbl">Entrega</span>
+      <span class="mono" style="font-size: 12px; font-weight: 700; display: block; margin-top: 3px">03/09/2026</span>
+    </div>
+  </div>
+
+  <!-- Sandálias que usam esta palmilha -->
+  <div style="border: 1px solid #000; padding: 7px 12px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap">
+    <span class="lbl" style="flex-shrink: 0">Referências que usam este solado</span>
+    <div style="display: flex; align-items: center; gap: 6px">
+      <div style="width: 52px; height: 52px; border: 1.5px solid #000; display: flex; align-items: center; justify-content: center"><svg width="44" height="44" viewBox="0 0 100 100" fill="none" stroke="#000" stroke-width="2.4"><path d="M14 62c0-6 3-9 9-11 7-2 11-6 15-12 4-6 8-9 14-9 5 0 8 3 9 8 1 6 4 9 10 11l16 5c5 2 8 5 8 10v6H14z"></path><path d="M14 70h81"></path></svg></div>
+      <div>
+        <span style="display: inline-block; background: #000; color: #fff; font-size: 9px; font-weight: 700; padding: 1px 5px; text-transform: uppercase; letter-spacing: 0.04em">I90</span>
+        </div>
+    </div>
+    <div style="display: flex; align-items: center; gap: 6px">
+      <div style="width: 52px; height: 52px; border: 1.5px solid #000; display: flex; align-items: center; justify-content: center"><svg width="44" height="44" viewBox="0 0 100 100" fill="none" stroke="#000" stroke-width="2.4"><path d="M14 62c0-6 3-9 9-11 7-2 11-6 15-12 4-6 8-9 14-9 5 0 8 3 9 8 1 6 4 9 10 11l16 5c5 2 8 5 8 10v6H14z"></path><path d="M14 70h81"></path></svg></div>
+      <div>
+        <span style="display: inline-block; background: #000; color: #fff; font-size: 9px; font-weight: 700; padding: 1px 5px; text-transform: uppercase; letter-spacing: 0.04em">I90</span>
+        </div>
+    </div>
+    <div style="display: flex; align-items: center; gap: 6px">
+      <div style="width: 52px; height: 52px; border: 1.5px solid #000; display: flex; align-items: center; justify-content: center"><svg width="44" height="44" viewBox="0 0 100 100" fill="none" stroke="#000" stroke-width="2.4"><path d="M14 62c0-6 3-9 9-11 7-2 11-6 15-12 4-6 8-9 14-9 5 0 8 3 9 8 1 6 4 9 10 11l16 5c5 2 8 5 8 10v6H14z"></path><path d="M14 70h81"></path></svg></div>
+      <div>
+        <span style="display: inline-block; background: #000; color: #fff; font-size: 9px; font-weight: 700; padding: 1px 5px; text-transform: uppercase; letter-spacing: 0.04em">I92</span>
+        </div>
+    </div>
+    <span class="mono" style="margin-left: auto; font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase">Agrupado por solado · cor não entra no corte</span>
+  </div>
+
+  <!-- Grade -->
+  <div style="margin-top: 4px">
+    <div style="display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 5px">
+      <span class="lbl">Grade por numeração</span>
+      <span class="mono" style="font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase">Palmilhas a cortar</span>
+    </div>
+    <table style="border: 1.5px solid #000">
+      <thead>
+        <tr style="border-bottom: 1.5px solid #000">
+          <th class="lbl" style="width: 96px; border-right: 1px solid #000; padding: 4px 6px; text-align: left">Nº</th>
+          <th class="mono" style="font-size: 11px; font-weight: 700; padding: 4px 1px; border-right: 1px solid #000">28</th>
+          <th class="mono" style="font-size: 11px; font-weight: 700; padding: 4px 1px; border-right: 1px solid #000">29</th>
+          <th class="mono" style="font-size: 11px; font-weight: 700; padding: 4px 1px; border-right: 1px solid #000">30</th>
+          <th class="mono" style="font-size: 11px; font-weight: 700; padding: 4px 1px; border-right: 1px solid #000">31</th>
+          <th class="mono" style="font-size: 11px; font-weight: 700; padding: 4px 1px; border-right: 1px solid #000">32</th>
+          <th class="mono" style="font-size: 11px; font-weight: 700; padding: 4px 1px; border-right: 1px solid #000">33</th>
+          <th class="mono" style="font-size: 11px; font-weight: 700; padding: 4px 1px; border-right: 1px solid #000">34</th>
+          <th class="lbl" style="width: 64px; padding: 4px 4px">Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr style="border-bottom: 1.5px solid #000">
+          <td class="mono" style="font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; padding: 5px 6px; border-right: 1px solid #000; line-height: 1.2">Por ficha<br>(15p)</td>
+          <td class="mono" style="font-size: 12px; font-weight: 700; text-align: center; padding: 4px 1px; border-right: 1px solid #000">2</td>
+          <td class="mono" style="font-size: 12px; font-weight: 700; text-align: center; padding: 4px 1px; border-right: 1px solid #000">2</td>
+          <td class="mono" style="font-size: 12px; font-weight: 700; text-align: center; padding: 4px 1px; border-right: 1px solid #000">2</td>
+          <td class="mono" style="font-size: 12px; font-weight: 700; text-align: center; padding: 4px 1px; border-right: 1px solid #000">2</td>
+          <td class="mono" style="font-size: 12px; font-weight: 700; text-align: center; padding: 4px 1px; border-right: 1px solid #000">3</td>
+          <td class="mono" style="font-size: 12px; font-weight: 700; text-align: center; padding: 4px 1px; border-right: 1px solid #000">2</td>
+          <td class="mono" style="font-size: 12px; font-weight: 700; text-align: center; padding: 4px 1px; border-right: 1px solid #000">2</td>
+          <td class="mono" style="font-size: 12px; font-weight: 700; text-align: center; padding: 4px 1px">15</td>
+        </tr>
+        <tr>
+          <td class="mono" style="font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; padding: 6px; border-right: 1px solid #000; line-height: 1.2">Total<br>× 12 fichas</td>
+          <td class="anton" style="font-size: 22px; text-align: center; padding: 6px 1px; border-right: 1px solid #000">24</td>
+          <td class="anton" style="font-size: 22px; text-align: center; padding: 6px 1px; border-right: 1px solid #000">24</td>
+          <td class="anton" style="font-size: 22px; text-align: center; padding: 6px 1px; border-right: 1px solid #000">24</td>
+          <td class="anton" style="font-size: 22px; text-align: center; padding: 6px 1px; border-right: 1px solid #000">24</td>
+          <td class="anton" style="font-size: 22px; text-align: center; padding: 6px 1px; border-right: 1px solid #000">36</td>
+          <td class="anton" style="font-size: 22px; text-align: center; padding: 6px 1px; border-right: 1px solid #000">24</td>
+          <td class="anton" style="font-size: 22px; text-align: center; padding: 6px 1px; border-right: 1px solid #000">24</td>
+          <td class="anton" style="font-size: 22px; text-align: center; padding: 6px 1px">180</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div style="margin-top: 4px">
+    <div style="display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 5px">
+      <span class="lbl">Controle de fichas · 15 pares / ficha</span>
+      <span class="mono" style="font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase">12× · 180 pares</span>
+    </div>
+    <div style="border-top: 1px solid #000; padding-top: 8px">
+      <div style="display: flex; align-items: center">
+        <div style="display: flex; gap: 4px; padding-right: 8px; margin-right: 4px; border-right: 2px solid #000">
+          <div class="tb">1</div><div class="tb">2</div><div class="tb">3</div><div class="tb">4</div><div class="tb">5</div><div class="tb">6</div><div class="tb">7</div><div class="tb">8</div><div class="tb">9</div><div class="tb">10</div>
+        </div>
+        <div style="display: flex; gap: 4px"><div class="tb">11</div><div class="tb">12</div></div>
+        <span class="mono" style="margin-left: auto; padding-left: 12px; font-size: 9px; font-weight: 600">&#8592; 12</span>
+      </div>
+
+    </div>
+  </div>
+
+  <div style="margin-top: auto">
+  <div style="display: flex; align-items: stretch; margin-top: 12px">
+    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); flex-grow: 1; border: 1.5px solid #000">
+      <div style="padding: 6px 12px 8px">
+        <span class="mono" style="font-size: 8px; letter-spacing: 0.18em; font-weight: 700; text-transform: uppercase">Executado por</span>
+        <div class="fldline"></div>
+      </div>
+      <div style="padding: 6px 12px 8px; border-left: 1px solid #000">
+        <span class="mono" style="font-size: 8px; letter-spacing: 0.18em; font-weight: 700; text-transform: uppercase">Data</span>
+        <div class="fldline"></div>
+      </div>
+      <div style="padding: 6px 12px 8px; border-left: 1px solid #000">
+        <span class="mono" style="font-size: 8px; letter-spacing: 0.18em; font-weight: 700; text-transform: uppercase">Total conferido</span>
+        <div class="fldline"></div>
+      </div>
+    </div>
+    <div style="width: 150px; border: 1.5px solid #000; border-left: none; padding: 5px 10px 7px; text-align: center; display: flex; flex-direction: column; justify-content: center">
+      <span class="mono" style="font-size: 7.5px; letter-spacing: 0.18em; font-weight: 700; text-transform: uppercase">Visto do responsável</span>
+      <span class="anton" style="font-size: 18px; letter-spacing: 0.02em; margin-top: 3px">Concluído</span>
+      <div style="border-bottom: 1.5px solid #000; height: 15px; margin-top: 5px"></div>
+    </div>
+  </div>
+
+  </div>
+
+</div>
+</x-dc>
+<script data-dc-script data-props='{"$preview":{"width":794,"height":1123}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>
