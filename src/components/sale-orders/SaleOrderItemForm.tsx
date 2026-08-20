@@ -12,11 +12,9 @@ import { resolvePrice, type PriceLookup } from '@/lib/mobile/clientContext';
 import { resolveSaleOrderItemPrice, type SaleOrderPriceResolution } from '@/lib/saleOrderPricing';
 import { SaleOrderItemFormData } from '@/hooks/useSaleOrders';
 import { useAccessControl } from '@/hooks/useAccessControl';
-import { useSheetMaterials } from '@/hooks/useTechnicalSheets';
 // StockAvailabilityBadge removido do form — checagem só no save
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { useAllGroupColors } from '@/hooks/useGroupColors';
 import StrapCatalogResolutionDrawer, {
   type StrapCatalogResolutionLine,
 } from './StrapCatalogResolutionDrawer';
@@ -28,7 +26,6 @@ import { toast } from 'sonner';
 import { type ReferenceMaterialVariant, type VariantSummary } from '@/hooks/useReferenceMaterialVariants';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { normalizeForSearch, searchMatchesAllTerms } from '@/lib/searchUtils';
-import { productColorAliases } from '@/lib/productColorAliases';
 import {
   getStrapSourcingSelection,
   getStrapSourcingOverride,
@@ -54,6 +51,7 @@ import {
 import {
   activeProductColorsForGroup,
   resolveMaterialVariantColorGroup,
+  resolveSheetCommercialColorGroup,
 } from '@/lib/materialVariantColorGroup';
 import { SearchInput } from '@/components/ui/search-input';
 import { ItemSectorOutsourcingSection } from '@/components/sale-orders/ItemSectorOutsourcingSection';
@@ -211,8 +209,6 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
   const itemTotal = totalPairs * (item.unit_price || 0);
   const pdv = selectedRef?.suggested_price || selectedRef?.sale_price || 0;
 
-  const { data: refMaterials = [] } = useSheetMaterials(item.reference_id || null);
-
   const { data: sheetSpecs } = useQuery({
     queryKey: ['sheet_specs_for_colors', item.reference_id],
     enabled: !!item.reference_id,
@@ -222,7 +218,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
         // variant_drives_*: quais componentes seguem o MATERIAL PRINCIPAL da
         // variante (mig 20261027120000). Sem eles a tela não consegue espelhar a
         // cascata do motor e ofereceria as cores do grupo errado.
-        .select('upper_material, lining_material, insole_material, lining_accessories, components_accessories, sole_group_id, sole_material, variant_drives_upper, variant_drives_lining')
+        .select('upper_material, upper_material_group_id, lining_material, insole_material, lining_accessories, components_accessories, sole_group_id, sole_material, has_straps, variant_drives_upper, variant_drives_lining')
         .eq('id', item.reference_id!)
         .single();
       if (error) throw error;
@@ -427,19 +423,6 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     gcTime: 10 * 60 * 1000,
   });
 
-  const { data: groupSupplierMaterials = [] } = useQuery({
-    queryKey: ['group_supplier_materials_for_colors'],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from('group_supplier_materials')
-        .select('group_id, color, material_name')
-        .eq('active', true);
-      return data || [];
-    },
-    staleTime: 5 * 60 * 1000,
-    gcTime: 10 * 60 * 1000,
-  });
-
   const { data: productGroups = [] } = useQuery({
     queryKey: ['product_groups_colors'],
     queryFn: async () => {
@@ -450,74 +433,10 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     gcTime: 10 * 60 * 1000,
   });
 
-  const { data: allGroupColors = [] } = useAllGroupColors();
-  const normalizeGroupValue = (value?: string | null) => value?.trim().toLowerCase() || '';
-
-  const uniqueSortedColors = (colors: string[]) => {
-    // Normaliza pra UPPER antes do Set — o trigger DB normalize_product_color
-    // UPPER tudo no products.color, mas algumas fontes (nome derivado via
-    // getDerivedProductColor, lining_accessories antigas, group.colors CSV)
-    // ainda chegam com casing original. Set por string distingue case,
-    // então "PRETO" e "Preto" passavam como cores diferentes na BT01.
-    return Array.from(new Set(
-      colors.map(color => color.trim().toUpperCase()).filter(Boolean)
-    )).sort((a, b) => a.localeCompare(b, 'pt-BR'));
-  };
-
-  // `getDerivedProductColor` / `productColorAliases` vêm de
-  // '@/lib/productColorAliases' e mantêm o pool legado da cor principal coerente.
-  const getColorsFromProducts = (groupId: string) => {
-    return uniqueSortedColors(
-      allProducts.flatMap((product: any) => {
-        if (product.group_id !== groupId || product.active === false) return [];
-        return productColorAliases(product);
-      })
-    );
-  };
-
-  const getColorsFromGroupSupplierMaterials = (groupId: string) => {
-    return uniqueSortedColors(
-      groupSupplierMaterials.flatMap((material: any) => {
-        if (material.group_id !== groupId) return [];
-        const explicitColor = material.color?.trim();
-        if (explicitColor) return [explicitColor];
-        const materialName = material.material_name?.trim() || '';
-        if (materialName.includes(':')) return [materialName.split(':').pop()?.trim() || ''];
-        if (materialName.includes(' - ')) return [materialName.split(' - ').pop()?.trim() || ''];
-        return [];
-      })
-    );
-  };
-
-  // PRODUTOS = FONTE ÚNICA de cor (2026-06-21). Antes mesclava group.colors (CSV
-  // legado), group_supplier_materials e group_colors (catálogo) — todos vazios ou
-  // já migrados pra produto. A cor de um material agora é SÓ o produto do grupo
-  // (exatamente o que o débito/consumo usa via resolve_material_product), então o
-  // seletor não mostra mais cor "fantasma" sem estoque.
-  const mergeAllGroupColors = (group: any): string[] => {
-    return getColorsFromProducts(group.id);
-  };
-
-  const getColorsFromGroupName = (groupName: string): string[] => {
-    if (!groupName) return [];
-    const normalized = normalizeGroupValue(groupName);
-    const group = productGroups.find((g: any) => g.id === groupName || normalizeGroupValue(g.name) === normalized);
-    if (!group) return [];
-    return mergeAllGroupColors(group);
-  };
-
-  const getColorsFromGroupId = (groupId: string): string[] => {
-    if (!groupId) return [];
-    const normalized = normalizeGroupValue(groupId);
-    const group = productGroups.find((g: any) => g.id === groupId || normalizeGroupValue(g.name) === normalized);
-    if (!group) return [];
-    return mergeAllGroupColors(group);
-  };
-
   // Resolve o group_id da cor principal do item — usado pra cadastrar a cor
-  // do material no ProductFormDialog. Prioriza variant de material
-  // explicitamente selecionada; senão usa o primeiro grupo de forração/cabedal
-  // do BOM da ficha técnica. Retorna null quando não consegue inferir (UI
+  // do material no ProductFormDialog. Prioriza a variante explicitamente
+  // selecionada; sem variante, resolve UMA família canônica da ficha. Retorna
+  // null quando não consegue identificar a família (UI
   // esconde o botão "+ Cadastrar" nesse caso).
   const mainGroupForNewColor = useMemo<{ id: string; name: string } | null>(() => {
     if (item.material_variant_id) {
@@ -532,32 +451,11 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
         groups: productGroups,
       });
     }
-    // Fallback: primeiro material de forração/palmilha no BOM
-    const liningCategories = new Set(['Forração da Palmilha', 'Palmilha']);
-    for (const m of refMaterials as any[]) {
-      const category = (m.products as any)?.category;
-      const groupId = m.group_id || m.product_groups?.id || (m.products as any)?.group_id;
-      const groupName = m.product_groups?.name || (m.products as any)?.name || '';
-      if (groupId && liningCategories.has(category)) {
-        return { id: groupId, name: groupName };
-      }
-    }
-    // Fallback final: grupo do CABEDAL via upper_material textual. Adicionado
-    // 20/05/2026 — user reportou que ao cadastrar cor nova num PV cujo cabedal
-    // não tem variante (ex.: NAPA SANTORINE em ST 10), o botão "+ Cadastrar"
-    // sumia. Agora resolve o grupo pelo nome do upper_material.
-    if (sheetSpecs?.upper_material) {
-      const upperName = String(sheetSpecs.upper_material).trim();
-      const normalized = normalizeGroupValue(upperName);
-      const group = (productGroups as any[]).find((g: any) =>
-        normalizeGroupValue(g.name) === normalized
-      );
-      if (group?.id) {
-        return { id: group.id, name: group.name };
-      }
-    }
-    return null;
-  }, [item.material_variant_id, activeMaterialVariants, allProducts, refMaterials, sheetSpecs, productGroups]);
+    return resolveSheetCommercialColorGroup({
+      sheet: sheetSpecs,
+      groups: productGroups,
+    });
+  }, [item.material_variant_id, activeMaterialVariants, allProducts, sheetSpecs, productGroups]);
 
   // ── Cor não cadastrada (BLOQUEIA salvar o PV) ────────────────────────────
   // Materiais de área (cabedal/forração) cuja cor principal NÃO tem produto no
@@ -770,85 +668,24 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
         : [];
     }
 
-    const colorSet = new Set<string>();
-
-    // Sem variante selecionada, o pool auxiliar vem dos grupos de produtos
-    // apontados pelas variantes (upper/lining/insole
-    // _material_product_id → products.group_id → cores do grupo), unidas às dos
-    // materiais da ficha abaixo. Adicionado 11/06/2026 — user cadastrou variante
-    // NAPA SOFT na EC23 (grupo com 27 cores) e o PV só mostrava as 3 cores do
-    // forro da ficha. Sem variante selecionada, todas as ativas entram no pool —
-    // o dropdown principal fica travado até escolher material, mas esse pool
-    // alimenta o fallback de cor das TIRAS sem group_id (não travado). Solado
-    // fica de fora — cor de solado é campo próprio.
-    const variantsForColors = activeMaterialVariants;
-    variantsForColors.forEach(v => {
-      // Grupos apontados pela variante → cores dos produtos do grupo. O
-      // `main_material_group_id` entra aqui SEM depender de variant_drives_*:
-      // este pool é a UNIÃO de cores possíveis (alimenta o fallback de cor das
-      // tiras), então incluir a mais é seguro; omitir deixaria variante criada
-      // só com material principal sem cor nenhuma.
-      [v.main_material_group_id, v.upper_material_group_id, v.lining_material_group_id, v.insole_material_group_id]
-        .filter(Boolean)
-        .forEach(groupId => getColorsFromGroupId(groupId as string).forEach(color => colorSet.add(color)));
-      // Legado: variante que fixava produto → cores do grupo do produto.
-      [v.upper_material_product_id, v.lining_material_product_id, v.insole_material_product_id]
-        .filter(Boolean)
-        .forEach(productId => {
-          const prod = (allProducts as any[]).find((p: any) => p.id === productId);
-          if (prod?.group_id) {
-            getColorsFromGroupId(prod.group_id).forEach(color => colorSet.add(color));
-          }
-        });
-    });
-
-    // Primary source: colors from ALL BOM groups whose product category is lining/insole-related
-    const liningCategories = new Set(['Forração da Palmilha', 'Palmilha']);
-    refMaterials.forEach((m: any) => {
-      const category = (m.products as any)?.category;
-      const groupId = m.group_id || m.product_groups?.id || (m.products as any)?.group_id;
-      if (groupId && liningCategories.has(category)) {
-        getColorsFromGroupId(groupId).forEach(color => colorSet.add(color));
-      }
-    });
-
-    // Also merge BOM lining/insole + CABEDAL group names from sheet specs.
-    // upper_material adicionado em 20/05/2026 — user reportou que ao definir
-    // cabedal "Napa Santorine" (que é um grupo de produtos com várias cores),
-    // as cores não apareciam pra escolher no PV. As cores do cabedal são
-    // tão válidas quanto as de forração/palmilha pra o item do PV.
-    const sheetGroupNames: string[] = [
-      sheetSpecs?.upper_material,
-      sheetSpecs?.lining_material,
-      sheetSpecs?.insole_material,
-    ].filter(Boolean) as string[];
-
-    // Include lining_accessories materials (array of {material, consumption})
-    if (Array.isArray(sheetSpecs?.lining_accessories)) {
-      (sheetSpecs.lining_accessories as any[]).forEach((acc: any) => {
-        const mat = typeof acc === 'string' ? acc : acc?.material;
-        if (mat) sheetGroupNames.push(mat);
-      });
+    // Sem variante, a cor também vem de UMA família exata da ficha. A união
+    // anterior misturava NAPA SUDANI/NAPA SOFT/GLOW METALIC e permitia salvar
+    // OURO LIGHT como se fosse uma cor da napa errada.
+    if (activeMaterialVariants.length > 0) return [];
+    if (mainGroupForNewColor?.id) {
+      return activeProductColorsForGroup(allProducts, mainGroupForNewColor.id);
     }
 
-    sheetGroupNames.forEach(groupName => {
-      getColorsFromGroupName(groupName).forEach(color => colorSet.add(color));
-    });
-
-    // Fallback: all products categorized as "Forração da Palmilha"
-    if (colorSet.size === 0) {
-      const forracaoProducts = allProducts.filter((p: any) => p.category === 'Forração da Palmilha' && p.active !== false);
-      forracaoProducts.forEach((product: any) => {
-        productColorAliases(product).forEach((alias) => colorSet.add(alias));
-      });
-    }
-
-    // Fallback: reference-level colors field
-    if (colorSet.size === 0 && selectedRef?.colors) {
-      selectedRef.colors.split(',').forEach(color => colorSet.add(color.trim()));
-    }
-    return uniqueSortedColors(Array.from(colorSet));
-  }, [item.material_variant_id, mainGroupForNewColor, activeMaterialVariants, sheetSpecs, selectedRef?.colors, selectedRef?.has_straps, selectedRef?.strap_colors, refMaterials, productGroups, allProducts, groupSupplierMaterials, allGroupColors]);
+    // Último fallback apenas para fichas antigas sem identidade de material.
+    // Não infere família pela cor; mantém somente a lista comercial da própria
+    // referência até o cadastro ser regularizado.
+    return (selectedRef?.colors || '')
+      .split(',')
+      .map((color) => color.trim().toUpperCase())
+      .filter(Boolean)
+      .filter((color, position, colors) => colors.indexOf(color) === position)
+      .sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [item.material_variant_id, mainGroupForNewColor, activeMaterialVariants.length, selectedRef?.colors, allProducts]);
 
   // Cor da VARIAÇÃO do material (cabedal): products.color do produto apontado
   // por upper_material_product_id da variante selecionada. É o "nome da variação
@@ -1519,13 +1356,13 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
               da ficha (sheet_materials). Reportado em 20/05/2026 — user
               cadastrou Napa Santorine no campo Cabedal e estranhou não
               aparecer nada no PV. */}
-          {activeMaterialVariants.length === 0 && sheetSpecs?.upper_material && (
+          {activeMaterialVariants.length === 0 && mainGroupForNewColor && (
             <div className="md:col-span-3">
               <Label className="text-xs font-bold text-muted-foreground uppercase mb-1 block">
-                Cabedal
+                Material
               </Label>
               <div className="h-9 px-3 rounded-md border bg-muted/30 flex items-center text-xs text-muted-foreground">
-                {sheetSpecs.upper_material}
+                {mainGroupForNewColor.name}
                 <span className="ml-auto text-xs text-muted-foreground/70 uppercase tracking-wider">
                   da ficha
                 </span>

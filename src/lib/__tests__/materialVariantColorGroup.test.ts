@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   activeProductColorsForGroup,
   resolveMaterialVariantColorGroup,
+  resolveSheetCommercialColorGroup,
 } from '@/lib/materialVariantColorGroup';
 
 const groups = [
@@ -73,5 +74,50 @@ describe('activeProductColorsForGroup', () => {
       { id: '4', group_id: 'g', color: 'BRANCO', active: false },
       { id: '5', group_id: 'other', color: 'AZUL', active: true },
     ], 'g')).toEqual(['PRETO']);
+  });
+});
+
+describe('resolveSheetCommercialColorGroup', () => {
+  const materialGroups = [
+    { id: 'sudani', name: 'NAPA SUDANI' },
+    { id: 'glow', name: 'GLOW METALIC' },
+    { id: 'palmilha', name: 'PALMILHA' },
+  ];
+
+  it('usa o grupo exato de cabedal antes de qualquer material secundário', () => {
+    expect(resolveSheetCommercialColorGroup({
+      sheet: {
+        upper_material_group_id: 'glow',
+        upper_material: 'nome legado incorreto',
+        lining_material: 'NAPA SUDANI',
+      },
+      groups: materialGroups,
+    })?.id).toBe('glow');
+  });
+
+  it('em ficha de tiras sem cabedal usa somente a napa-base da forração', () => {
+    expect(resolveSheetCommercialColorGroup({
+      sheet: {
+        upper_material_group_id: null,
+        upper_material: '',
+        lining_material: 'NAPA SUDANI',
+        has_straps: true,
+      },
+      groups: materialGroups,
+    })).toEqual({ id: 'sudani', name: 'NAPA SUDANI' });
+  });
+
+  it('não infere a família a partir de uma cor disponível em outro grupo', () => {
+    const resolved = resolveSheetCommercialColorGroup({
+      sheet: { lining_material: 'NAPA SUDANI', has_straps: true },
+      groups: materialGroups,
+    });
+    const colors = activeProductColorsForGroup([
+      { id: 'sudani-preto', group_id: 'sudani', color: 'PRETO', active: true },
+      { id: 'glow-ouro', group_id: 'glow', color: 'OURO LIGHT', active: true },
+    ], resolved?.id);
+
+    expect(colors).toEqual(['PRETO']);
+    expect(colors).not.toContain('OURO LIGHT');
   });
 });
