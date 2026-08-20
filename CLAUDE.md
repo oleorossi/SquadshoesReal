@@ -590,6 +590,63 @@ agora com alarme.
 (`calculateGradeBasedDm2` com fallback 0). Os dois lados concordam no número errado — a
 tela mostra exatamente o que o estoque debita.
 
+### `stock_grade = '{}'` é "sem numeração" — NUNCA NULL (CANÔNICO, 20/08/2026)
+
+> A coluna `products.stock_grade` tem **`DEFAULT '{}'::jsonb`**. Medido em 20/08/2026:
+> **0 produtos com `stock_grade` NULL**, 200 com `'{}'` e 11 com numeração real.
+> Todo código que pergunta "esse produto tem grade?" tem que contar **buckets reais**
+> (chave que não começa com `_`) — testar `IS NOT NULL` responde "sim" para a base inteira.
+
+**O que quebrou.** `check_grade_quantity_coherence` (mig `20270101000900`) usava a guarda
+`WHEN (NEW.stock_grade IS NOT NULL)` e, dentro da função, comparava `sum(grade)` com
+`quantity`. Como `'{}'` não é NULL, ela rodava nos 211 produtos; nos 200 sem numeração a
+soma dava **0** e estourava contra qualquer `quantity <> 0`:
+
+```
+Incoerência de grade no produto 3b063cbb-…: soma 0 difere de quantity 89.8838…
+```
+
+Efeito prático: **toda escrita de saldo travada** — estorno de OP
+(`restore_product_stocks_for_order`, o sintoma reportado: cancelar as 3 OPs do PV
+3e33f8a3 falhava), débito, `/ajuste-estoque` (`adjust_stock_batch` abortava com o erro
+cru do gatilho, não com um `error` estruturado) e criação de produto com estoque inicial
+(`ProductFormDialog` envia `stock_grade: {}`).
+
+**Era regressão, não cadastro errado.** A versão original (mig `20260429230000`) tinha a
+escapatória escrita com todas as letras — *"evita falsos positivos com grades vazias =
+produto sem numeração configurada"* — e ela sumiu na reescrita de `20270101000900`.
+
+⚠ **Por que ninguém percebeu por meses:** `20260430175247` fez `DROP FUNCTION … CASCADE`,
+o que **derrubou o próprio gatilho junto**, e não o recriou. A função ficou errada e
+inofensiva até `20270101000900` recriar o gatilho — aí quebrou tudo de uma vez, e não
+gradualmente. Ao fazer `DROP … CASCADE` em função de gatilho, confira o que foi junto.
+
+**Como está agora** (mig `20270101006000`): a conferência é pulada quando o produto **não
+é rastreado por numeração** — nem a grade nova nem a antiga têm bucket real. O que
+continua barrado, de propósito:
+
+| Caso | Veredito |
+|---|---|
+| sem numeração (`{}`): mover `quantity`, INSERT com saldo inicial | ✅ passa |
+| com numeração: mexer só em `quantity` | ❌ barra (é a invariante) |
+| com numeração: esvaziar a grade **com saldo sobrando** | ❌ barra (perda silenciosa) |
+| com numeração: esvaziar a grade **junto com `quantity = 0`** | ✅ passa |
+| bucket negativo / não-numérico / fração em unidade discreta | ❌ barra (inalterado) |
+
+⚠ **`OLD` só existe em UPDATE.** O mesmo `check_grade_quantity_coherence` serve aos dois
+gatilhos (`trg_…` de UPDATE e `trg_…_insert`). Tocar `OLD.stock_grade` sem checar
+`TG_OP = 'UPDATE'` dá *"record old is not assigned yet"* em toda criação de produto.
+Travado por `src/__tests__/gradeCoherenceEmptyGradeMigration.contract.test.ts`.
+
+⚠ **Armadilha vizinha, NÃO resolvida** (decisão de produto em aberto): o ramo de "resíduo
+escalar" de `restore_product_stocks_for_order` credita `quantity` de produto **com**
+numeração **sem tocar `stock_grade`** — o que viola a invariante por construção e cai no
+mesmo `RAISE`. Hoje isso não afeta o estorno de solado (o `v_pending_sole` zera o
+resíduo), mas há resíduo vivo: medido em 20/08/2026, **8 OPs `Finalizado` do produto
+`238`** (12 a 16 un cada) estourariam se fossem canceladas. Corrigir exige decidir de onde
+sai a numeração desse crédito — não dá pra inventar dentro de migration. Não "conserte"
+pelos dois lados sozinho.
+
 ### Quando converter (sinal de decisão)
 Presença de **ficha de componente com largura > 0**. Caminhos que aplicam a regra:
 upper (cabedal), lining (forro), insole (palmilha) e **sheet_materials (BOM)** — este
