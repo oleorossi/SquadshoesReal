@@ -36,7 +36,12 @@ import {
   type StrapSourcingMap,
 } from '@/lib/strapSourcing';
 import { useStrapStockLines } from '@/hooks/useStrapStockLines';
-import { useArtisanalStrapCatalog } from '@/hooks/useArtisanalStraps';
+import {
+  useArtisanalStrapCatalog,
+  useArtisanalStrapCatalogDiagnostics,
+} from '@/hooks/useArtisanalStraps';
+import { ArtisanalStrapEditor } from '@/components/artisanal-straps/ArtisanalStrapEditor';
+import { listBuyReadyStrapGaps, type BuyReadyStrapGap } from '@/lib/buyReadyStrapGap';
 import {
   ensureTechnicalStrapLineIds,
   isUuid,
@@ -138,6 +143,10 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
 
   // editColorsDialog removido — variante de cor não é mais editada no PV.
   const [strapResolutionOpen, setStrapResolutionOpen] = useState(false);
+  // Cadastro comercial da tira COMPRADA PRONTA, aberto a partir da linha exata
+  // que trava o salvamento. Não relaxa a regra do servidor (o PV segue exigindo
+  // variante ativa); só evita que o operador tenha de caçar a pendência no hub.
+  const [buyReadyGapTarget, setBuyReadyGapTarget] = useState<BuyReadyStrapGap | null>(null);
 
   // Cadastro da COR PRINCIPAL (forração/cabedal) via a MESMA tela do Estoque
   // (ProductFormDialog), aberta como modal aqui no PV. Só o caminho da cor
@@ -624,6 +633,31 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     strapLineByKey,
     strapLinesLoading,
   ]);
+
+  // Tira comprada pronta sem variante comercial ativa: o servidor recusa o
+  // salvamento inteiro do PV com "Tira comprada pronta nao possui variante
+  // comercial ativa exata". Só as linhas por grupo acabado (STRASS) exigem esse
+  // cadastro — as demais tiras seguem sendo materializadas automaticamente.
+  const hasPurchasedReadyStrapLine = useMemo(
+    () => ((item.strap_colors as SaleOrderStrapResolutionLine[]) || [])
+      .some((strap) => strapIdentityBasis(strap) === 'finished_product_group'),
+    [item.strap_colors],
+  );
+  const { data: strapCatalogDiagnostics } = useArtisanalStrapCatalogDiagnostics(
+    hasPurchasedReadyStrapLine && !!strapCatalog?.capabilities.manage_strap_catalog,
+  );
+  const buyReadyStrapGaps = useMemo(
+    () => listBuyReadyStrapGaps(
+      (item.strap_colors as SaleOrderStrapResolutionLine[]) || [],
+      strapCatalog,
+      strapCatalogDiagnostics,
+    ),
+    [item.strap_colors, strapCatalog, strapCatalogDiagnostics],
+  );
+  const buyReadyGapByLineId = useMemo(
+    () => new Map(buyReadyStrapGaps.map((gap) => [gap.lineId, gap] as const)),
+    [buyReadyStrapGaps],
+  );
 
   // A linha técnica por grupo acabado não oferece uma decisão de origem: assim
   // que cor e variante canônicas resolvem, congela buy_ready no snapshot do PV.
@@ -1823,6 +1857,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                   const measureResolved = isUuid(strap.strap_type_id)
                     && !!canonicalMeasure
                     && canonicalMeasure.strap_type_id === strap.strap_type_id;
+                  const buyReadyGap = lineId ? buyReadyGapByLineId.get(lineId) : undefined;
                   return (
                     <div key={strap.id || sIdx} className="space-y-1">
                       <div className="flex items-center justify-between gap-1">
@@ -1902,6 +1937,42 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                           A cor antiga é apenas texto. Selecione a identidade canônica para continuar.
                         </p>
                       )}
+                      {/* Tira comprada pronta sem variante comercial ativa: é o
+                          bloqueio exato do salvamento. O CTA cadastra SÓ esta
+                          medida/cor — não a lista inteira de tiras do hub. */}
+                      {!!buyReadyGap && (
+                        <div className="rounded-md border border-amber-500/50 bg-amber-500/10 px-2 py-1.5 space-y-1.5">
+                          <p className="text-[10px] leading-snug text-amber-700 dark:text-amber-400">
+                            <strong>Sem cadastro comercial.</strong> Esta tira é comprada pronta e
+                            precisa de uma variante ativa em{' '}
+                            <strong>{buyReadyGap.colorName || 'sua cor canônica'}</strong>
+                            {buyReadyGap.finishedProductName
+                              ? <> ({buyReadyGap.finishedProductName})</>
+                              : null}
+                            . Sem ela o pedido não salva.
+                          </p>
+                          {!strapCatalog?.capabilities.manage_strap_catalog ? (
+                            <p className="text-[10px] font-medium text-muted-foreground">
+                              Solicite o cadastro ao administrador.
+                            </p>
+                          ) : !buyReadyGap.finishedProductId ? (
+                            <p className="text-[10px] font-medium text-muted-foreground">
+                              Nenhum produto ativo em metros identifica essa cor no grupo acabado.
+                              Regularize o produto no Estoque antes de cadastrar a tira.
+                            </p>
+                          ) : (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-7 w-full gap-1 border-amber-500/40 bg-card text-[10px] text-amber-700 dark:text-amber-400"
+                              onClick={() => setBuyReadyGapTarget(buyReadyGap)}
+                            >
+                              <Plus className="h-3 w-3" /> Cadastrar tira comprada
+                            </Button>
+                          )}
+                        </div>
+                      )}
                       {/* Origem derivada e congelada por UUID da linha técnica. */}
                       {!!technicalStrapLineId(strap) && (() => {
                         const key = strapSourcingKey(lineId);
@@ -1957,9 +2028,13 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                               </p>
                             ) : (
                               <p className="text-[10px] leading-snug text-muted-foreground">
-                                {usesFinishedGroup
-                                  ? 'Aguardando a identidade canônica do produto acabado.'
-                                  : 'A cor e a napa do cabedal serão vinculadas automaticamente.'}
+                                {!usesFinishedGroup
+                                  ? 'A cor e a napa do cabedal serão vinculadas automaticamente.'
+                                  : buyReadyGap
+                                    // Sem isto a tela dizia "aguardando" para um
+                                    // estado que só sai com cadastro manual.
+                                    ? 'Falta a variante comercial desta cor — cadastre acima para liberar o salvamento.'
+                                    : 'Aguardando a identidade canônica do produto acabado.'}
                               </p>
                             )}
                           </div>
@@ -2076,6 +2151,36 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
             qc.invalidateQueries({ queryKey: ['products_for_colors'] });
             qc.invalidateQueries({ queryKey: ['group_supplier_materials_for_colors'] });
             qc.invalidateQueries({ queryKey: ['product_groups_colors'] });
+          }}
+        />
+      )}
+
+      {/* Cadastro comercial da tira comprada pronta, na mesma tela do hub. O
+          editor recebe medida, grupo acabado, cor e produto EXATOS da linha
+          técnica; nada é inferido por nome aqui. */}
+      {buyReadyGapTarget && strapCatalog && (
+        <ArtisanalStrapEditor
+          open
+          onOpenChange={(open) => { if (!open) setBuyReadyGapTarget(null); }}
+          catalog={strapCatalog}
+          capabilities={strapCatalog.capabilities}
+          mode="create"
+          origin="pv"
+          identityBasis="finished_product_group"
+          measureId={buyReadyGapTarget.measureId}
+          baseGroupId={buyReadyGapTarget.identityGroupId}
+          colorId={buyReadyGapTarget.colorId}
+          finishedProductId={buyReadyGapTarget.finishedProductId}
+          buyReadyReviewId={buyReadyGapTarget.reviewId}
+          // Medida, grupo, cor e produto vieram do snapshot canônico da linha
+          // técnica: a identidade já está decidida, então nascer em revisão só
+          // devolveria o mesmo bloqueio ao operador.
+          activateOnCreate
+          onSaved={() => {
+            setBuyReadyGapTarget(null);
+            qc.invalidateQueries({ queryKey: ['artisanal-strap-catalog'] });
+            qc.invalidateQueries({ queryKey: ['artisanal-strap-catalog-diagnostics'] });
+            qc.invalidateQueries({ queryKey: ['strap_stock_lines_preview'] });
           }}
         />
       )}
