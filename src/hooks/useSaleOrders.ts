@@ -782,6 +782,19 @@ async function runPromotionEngine(
 
   const res = data as PromotionEngineResult;
 
+  await handlePromotionPurchaseSideEffects(res, soNumber);
+  return res;
+}
+
+/**
+ * Efeitos comerciais pós-promoção. Todas as falhas são best-effort e ficam
+ * visíveis sem rejeitar a mutation: a OP/PV já podem ter sido confirmados no
+ * servidor (especialmente no fluxo atômico de cancelar+editar).
+ */
+async function handlePromotionPurchaseSideEffects(
+  res: PromotionEngineResult,
+  soNumber: string,
+): Promise<void> {
   // Déficit de solado por numeração → OC automática, só nas OPs que realmente faltaram.
   for (const opId of res.sole_shortfall_order_ids || []) {
     try {
@@ -817,7 +830,6 @@ async function runPromotionEngine(
     }
   }
 
-  return res;
 }
 
 export function useUpdateSaleOrderStatus() {
@@ -1446,7 +1458,7 @@ export function useUpdateSaleOrderStatus() {
 export function useUpdateSaleOrder() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, order, items, client_id, representative_id, commission_value, packaging_product_id, packaging_quantity }: { id: string; order: SaleOrderFormData; items: SaleOrderItemFormData[]; client_id?: string | null; representative_id?: string | null; commission_value?: number; packaging_product_id?: string | null; packaging_quantity?: number }) => {
+    mutationFn: async ({ id, order, items, client_id, representative_id, commission_value, packaging_product_id, packaging_quantity, cancel_op_ids }: { id: string; order: SaleOrderFormData; items: SaleOrderItemFormData[]; client_id?: string | null; representative_id?: string | null; commission_value?: number; packaging_product_id?: string | null; packaging_quantity?: number; cancel_op_ids?: string[] }) => {
       const total = items.reduce((s, i) => s + (Number(i.unit_price) || 0) * (Number(i.quantity) || 0), 0);
       // Bug fix 20/05/2026 (PV-00122): mesma correção do useCreateSaleOrder —
       // valor_frete = totalPairs × shipping_rate, pra evitar divergência
@@ -1495,8 +1507,12 @@ export function useUpdateSaleOrder() {
         .in('status', PRODUCTION_ADVANCED_STATUSES);
       if (opsInProductionErr) throw new Error(`Falha ao verificar OPs em produção: ${opsInProductionErr.message}`);
       if (opsInProduction && opsInProduction.length > 0) {
-        const opNumbers = opsInProduction.map(op => op.order_number || op.id.substring(0, 8)).join(', ');
-        throw new Error(`Não é possível editar: existem OPs em produção (${opNumbers}). Cancele as OPs ou crie um novo PV.`);
+        const requestedCancelIds = new Set(cancel_op_ids || []);
+        const uncovered = opsInProduction.filter((op) => !requestedCancelIds.has(op.id));
+        if (uncovered.length > 0) {
+          const opNumbers = uncovered.map(op => op.order_number || op.id.substring(0, 8)).join(', ');
+          throw new Error(`Não é possível editar: existem OPs em produção (${opNumbers}). Cancele as OPs ou crie um novo PV.`);
+        }
       }
 
       // 0b. Fiscal guard: a PV with authorized/processing NF-e cannot be edited
@@ -1576,13 +1592,43 @@ export function useUpdateSaleOrder() {
       // useUpdateSaleOrderStatus which enforces the state machine. Including
       // status here would let the edit form bypass all status-change guards.
       const { status: _discardedStatus, ...headerForRpc } = updateData as any;
-      const { data: rpcOut, error: rpcErr } = await (supabase as any).rpc('update_sale_order_with_teardown', {
+      const atomicCancelIds = [...new Set(cancel_op_ids || [])];
+      let rpcOut: any;
+      let atomicPromotionResult: PromotionEngineResult | null = null;
+      const writerArgs = {
         p_order_id: id,
         p_header: headerForRpc,
         p_items: itemsPayload,
         p_teardown_op_ids: existingOpIds,
-      });
-      if (rpcErr) throw rpcErr;
+      };
+      if (atomicCancelIds.length > 0) {
+        const atomicArgs = {
+          ...writerArgs,
+          p_cancel_op_ids: atomicCancelIds,
+        };
+        // UX fail-fast com paridade integral: o servidor executa o MESMO writer
+        // em subtransaction e o reverte pela sentinela. A chamada efetiva logo
+        // abaixo continua atômica e é a garantia contra drift concorrente.
+        const { error: preflightErr } = await (supabase as any).rpc(
+          'preflight_sale_order_atomic_op_cancel',
+          atomicArgs,
+        );
+        if (preflightErr) throw preflightErr;
+        const { data, error } = await (supabase as any).rpc(
+          'update_sale_order_with_atomic_op_cancel',
+          atomicArgs,
+        );
+        if (error) throw error;
+        rpcOut = data;
+        atomicPromotionResult = (data as any)?.promotion_result || null;
+      } else {
+        const { data, error } = await (supabase as any).rpc(
+          'update_sale_order_with_teardown',
+          writerArgs,
+        );
+        if (error) throw error;
+        rpcOut = data;
+      }
 
       // Terceirização planejada (Fase A): o RPC update_sale_order_atomic NÃO lista
       // estas 2 colunas no UPDATE, então não as toca — um update direcionado é
@@ -1626,8 +1672,20 @@ export function useUpdateSaleOrder() {
           .from('sale_orders').select('status, order_number').eq('id', id).single();
         const canon = (soCanon as any)?.status;
         if (canon === 'Aprovado' || canon === 'Em Produção') {
-          const res = await runPromotionEngine(id, canon, (soCanon as any)?.order_number || id);
-          if (res.itens_falha.length > 0) {
+          const res = atomicCancelIds.length > 0
+            ? atomicPromotionResult
+            : await runPromotionEngine(id, canon, (soCanon as any)?.order_number || id);
+          if (atomicCancelIds.length > 0 && res) {
+            await handlePromotionPurchaseSideEffects(
+              res,
+              (soCanon as any)?.order_number || id,
+            );
+          }
+          if (!res) {
+            toast.warning('Edição salva, mas o resumo da recriação das OPs não foi retornado. Confira as Pendências.', {
+              duration: 12000,
+            });
+          } else if (res.itens_falha.length > 0) {
             toast.error(`${res.itens_falha.length} item(ns) não geraram OP — veja em Pendências.`, {
               duration: 12000,
             });
@@ -1636,7 +1694,15 @@ export function useUpdateSaleOrder() {
       }
 
       // Auto-sync financial records after edit
-      await syncFinancialRecords(id);
+      try {
+        await syncFinancialRecords(id);
+      } catch (error) {
+        if (atomicCancelIds.length === 0) throw error;
+        console.error('[useUpdateSaleOrder] sync financeiro pós-commit falhou:', error);
+        toast.warning('Pedido e OPs foram salvos, mas a sincronização financeira precisa ser reprocessada.', {
+          duration: 10000,
+        });
+      }
 
       return { id };
     },

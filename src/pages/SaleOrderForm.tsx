@@ -29,7 +29,6 @@ import {
   SaleOrderItemFormData,
 } from '@/hooks/useSaleOrders';
 import { calculateOrderCost, type OrderCostResult } from '@/services/costingService';
-import { useCancelOrdersBatch } from '@/hooks/useOrders';
 import { CancelOpsAndEditDialog, type BlockingOp } from '@/components/sale-orders/CancelOpsAndEditDialog';
 import {
   StrapSourcingAdminOverrideDialog,
@@ -299,7 +298,6 @@ export default function SaleOrderForm() {
   const { data: representatives = [] } = useRepresentatives();
   const createOrder = useCreateSaleOrder();
   const updateOrder = useUpdateSaleOrder();
-  const cancelOrdersBatch = useCancelOrdersBatch();
   const checkStock = useCheckStockAvailability();
   const { user } = useAuth();
   const perm = useCan('/sales');
@@ -314,14 +312,22 @@ export default function SaleOrderForm() {
     }
   }, [isEdit, navigate, perm.canCreate, perm.canEdit, perm.loading]);
 
-  // Diálogo "cancelar todas as OPs em produção e editar". Quando aberto,
-  // segura a submissão até o usuário confirmar — então faz batch cancel
-  // e re-dispara o save.
+  // Diálogo "cancelar todas as OPs em produção e editar". A confirmação
+  // envia cancelamento + liberação de reservas pendentes + save ao writer
+  // transacional único; nenhum
+  // cancelamento acontece antecipadamente no browser.
   const [cancelOpsDialog, setCancelOpsDialog] = useState<{
     open: boolean;
     ops: BlockingOp[];
     pendingStatusOverride?: string;
   }>({ open: false, ops: [] });
+  const [cancelOpsPreflight, setCancelOpsPreflight] = useState<{
+    isRunning: boolean;
+    error: string | null;
+  }>({ isRunning: false, error: null });
+  // Estado React desabilita o botão no render seguinte; o ref fecha também a
+  // janela de dois cliques no mesmo frame antes de qualquer OP ser cancelada.
+  const cancelOpsPreflightRunningRef = useRef(false);
 
   // Fonte ÚNICA dos papéis. Havia aqui um useQuery inline com a MESMA queryKey
   // do useUserRoles mas devolvendo string[] em vez de UserRole[] — o cache do
@@ -1053,7 +1059,7 @@ export default function SaleOrderForm() {
    * Executa de fato a mutação (sem pre-checks de OPs). Separado de doSubmit
    * pra permitir re-disparo após confirmação do CancelOpsAndEditDialog.
    */
-  const dispatchMutation = (statusOverride?: string) => {
+  const dispatchMutation = (statusOverride?: string, cancelOpIds: string[] = []) => {
     const f = formLatestRef.current;
     const validItems = items.filter(i => i.reference_id).map(normalizeItemReference);
     const total = validItems.reduce((s, i) => s + i.unit_price * i.quantity, 0);
@@ -1115,9 +1121,29 @@ export default function SaleOrderForm() {
         commission_value,
         packaging_product_id: packagingProductId || null,
         packaging_quantity: packagingQuantity,
+        cancel_op_ids: cancelOpIds,
       } as any, {
-        onSuccess: () => handlePostSave(id!),
+        onSuccess: () => {
+          if (cancelOpIds.length > 0) {
+            cancelOpsPreflightRunningRef.current = false;
+            setCancelOpsPreflight({ isRunning: false, error: null });
+            setCancelOpsDialog({ open: false, ops: [] });
+            toast.success(
+              `${cancelOpIds.length} OP${cancelOpIds.length === 1 ? '' : 's'} cancelada${cancelOpIds.length === 1 ? '' : 's'} e edição salva atomicamente.`,
+            );
+          }
+          handlePostSave(id!);
+        },
         onError: (error: unknown) => {
+          if (cancelOpIds.length > 0) {
+            const message = error instanceof Error
+              ? error.message
+              : error && typeof error === 'object' && 'message' in error
+                ? String((error as { message?: unknown }).message || 'O servidor recusou a edição atômica.')
+                : 'O servidor recusou a edição atômica.';
+            cancelOpsPreflightRunningRef.current = false;
+            setCancelOpsPreflight({ isRunning: false, error: message });
+          }
           if (!isCommittedStrapSourcingError(error)) return;
           if (!isAdmin) {
             toast.error(
@@ -1216,6 +1242,7 @@ export default function SaleOrderForm() {
         .eq('sale_order_id', id)
         .in('status', ['Em Produção', 'Concluída', 'Finalizado']);
       if (blocking && blocking.length > 0) {
+        setCancelOpsPreflight({ isRunning: false, error: null });
         setCancelOpsDialog({
           open: true,
           ops: blocking as BlockingOp[],
@@ -1229,21 +1256,12 @@ export default function SaleOrderForm() {
   };
 
   const handleConfirmCancelOps = () => {
+    if (cancelOpsPreflightRunningRef.current || updateOrder.isPending) return;
     const ops = cancelOpsDialog.ops;
     const pendingOverride = cancelOpsDialog.pendingStatusOverride;
-    cancelOrdersBatch.mutate(
-      ops.map(op => op.id),
-      {
-        onSuccess: () => {
-          setCancelOpsDialog({ open: false, ops: [] });
-          toast.success(`${ops.length} OP${ops.length === 1 ? '' : 's'} cancelada${ops.length === 1 ? '' : 's'} — salvando edição...`);
-          dispatchMutation(pendingOverride);
-        },
-        onError: () => {
-          // Toast já disparado pelo onError do hook. Mantém modal aberto pra retry.
-        },
-      },
-    );
+    cancelOpsPreflightRunningRef.current = true;
+    setCancelOpsPreflight({ isRunning: true, error: null });
+    dispatchMutation(pendingOverride, ops.map((op) => op.id));
   };
 
   const handleSubmit = async (
@@ -2169,10 +2187,16 @@ export default function SaleOrderForm() {
       <CancelOpsAndEditDialog
         open={cancelOpsDialog.open}
         onOpenChange={(v) => {
-          if (!v && !cancelOrdersBatch.isPending) setCancelOpsDialog({ open: false, ops: [] });
+          if (!v && !updateOrder.isPending && !cancelOpsPreflight.isRunning) {
+            cancelOpsPreflightRunningRef.current = false;
+            setCancelOpsDialog({ open: false, ops: [] });
+            setCancelOpsPreflight({ isRunning: false, error: null });
+          }
         }}
         ops={cancelOpsDialog.ops}
-        isCancelling={cancelOrdersBatch.isPending}
+        isPreflighting={cancelOpsPreflight.isRunning}
+        preflightError={cancelOpsPreflight.error}
+        isCancelling={updateOrder.isPending && cancelOpsDialog.open}
         onConfirm={handleConfirmCancelOps}
       />
 
