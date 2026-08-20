@@ -74,6 +74,21 @@ SELECT jsonb_pretty(jsonb_build_object(
         FROM sole_products sp
        WHERE lower(btrim(COALESCE(sp.unit, ''))) <> 'par'
     ), '[]'::jsonb),
+    'secondary_units_not_pair', COALESCE((
+      SELECT jsonb_agg(jsonb_build_object(
+        'id', sp.id, 'name', sp.name,
+        'stock_unit', sp.unit,
+        'consumption_unit', sp.consumption_unit,
+        'purchase_unit', sp.purchase_unit,
+        'conversion_rate', sp.conversion_rate
+      ) ORDER BY sp.name)
+        FROM sole_products sp
+       WHERE (NULLIF(btrim(COALESCE(sp.consumption_unit, '')), '') IS NOT NULL
+              AND lower(btrim(sp.consumption_unit)) <> 'par')
+          OR (NULLIF(btrim(COALESCE(sp.purchase_unit, '')), '') IS NOT NULL
+              AND lower(btrim(sp.purchase_unit)) <> 'par')
+          OR COALESCE(sp.conversion_rate, 1) <> 1
+    ), '[]'::jsonb),
     'quantity_grade_drift', COALESCE((
       SELECT jsonb_agg(jsonb_build_object(
         'id', sp.id, 'name', sp.name, 'quantity', sp.quantity, 'grade_total', gt.grade_total
