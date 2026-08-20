@@ -2045,6 +2045,9 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                     ? `/tiras-artesanais?tab=cadastro&editor=1&mode=review&origin=pv&purpose=stock_variant&variantId=${encodeURIComponent(resolvedLine.strapVariantId)}`
                     : '/tiras-artesanais?tab=diagnostico';
                   const canManageBuyReadyCatalog = strapCatalog?.capabilities.manage_strap_catalog === true;
+                  // Lacuna comercial EXATA desta linha (medida, grupo acabado e
+                  // cor por UUID). É o que o servidor recusa ao salvar o PV.
+                  const buyReadyGap = lineId ? buyReadyGapByLineId.get(lineId) : undefined;
                   return (
                     <div key={strap.id || sIdx} className="space-y-1">
                       <div className="flex items-center justify-between gap-1">
@@ -2140,7 +2143,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                           Snapshot histórico preservado: a ficha atual identifica esta tira como produto acabado, mas cor e origem deste item ficam somente para leitura para não alterar reservas existentes.
                         </p>
                       )}
-                      {buyReadyCatalogIncomplete && (
+                      {(buyReadyCatalogIncomplete || !!buyReadyGap) && (
                         <div className="space-y-2 rounded-md border border-amber-500/50 bg-amber-500/10 px-2.5 py-2">
                           <div className="space-y-0.5">
                             <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">
@@ -2150,14 +2153,39 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                               {resolvedLine?.blockReason || 'Cadastre e ative a variante exata deste grupo, medida e cor.'}{' '}
                               Esta tira baixa o SKU acabado e não usa napa-base.
                             </p>
+                            {/* Sem nomear a cor o operador não sabe QUAL das tiras do
+                                pedido está travando o salvamento. */}
+                            {buyReadyGap?.colorName && (
+                              <p className="text-[10px] leading-snug text-amber-800 dark:text-amber-300">
+                                Falta a variante de <strong>{buyReadyGap.colorName}</strong>
+                                {buyReadyGap.finishedProductName
+                                  ? <> — produto acabado <strong>{buyReadyGap.finishedProductName}</strong>.</>
+                                  : '.'}
+                              </p>
+                            )}
                           </div>
                           {canManageBuyReadyCatalog ? (
-                            <Button asChild type="button" variant="outline" size="sm" className="h-7 gap-1.5 px-2 text-[10px]">
-                              <Link to={buyReadyCatalogHref} target="_blank" rel="noreferrer">
-                                {hasBuyReadyVariant ? 'Revisar variante no Hub de Tiras' : 'Abrir diagnóstico no Hub de Tiras'}
-                                <ExternalLink className="h-3 w-3" />
-                              </Link>
-                            </Button>
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              {/* Cadastra SÓ a tira que este pedido usa, com a
+                                  identidade canônica já resolvida pela linha técnica. */}
+                              {buyReadyGap && !hasBuyReadyVariant && (
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 gap-1.5 px-2 text-[10px]"
+                                  onClick={() => setBuyReadyGapTarget(buyReadyGap)}
+                                >
+                                  Cadastrar esta tira agora
+                                </Button>
+                              )}
+                              <Button asChild type="button" variant="ghost" size="sm" className="h-7 gap-1.5 px-2 text-[10px]">
+                                <Link to={buyReadyCatalogHref} target="_blank" rel="noreferrer">
+                                  {hasBuyReadyVariant ? 'Revisar variante no Hub de Tiras' : 'Abrir diagnóstico no Hub de Tiras'}
+                                  <ExternalLink className="h-3 w-3" />
+                                </Link>
+                              </Button>
+                            </div>
                           ) : (
                             <p className="text-[10px] font-medium text-muted-foreground">
                               Solicite ao administrador completar o cadastro comercial.

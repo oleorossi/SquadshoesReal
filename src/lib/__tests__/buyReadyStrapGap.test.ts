@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   listBuyReadyStrapGaps,
@@ -193,5 +195,46 @@ describe('listBuyReadyStrapGaps', () => {
       }],
     });
     expect(purchasedReadyStrapProductForColor(aliased, GROUP, COLOR)?.id).toBe(PRODUCT);
+  });
+});
+
+/**
+ * A lacuna só serve pra alguma coisa se a tela ABRIR o cadastro. O typecheck
+ * pega símbolo indefinido, mas não pega editor montado que ninguém consegue
+ * abrir — foi assim que o `setBuyReadyGapTarget` ficou sem gatilho e a linha
+ * seguiu dizendo "aguardando" para um estado que exige cadastro manual.
+ */
+describe('SaleOrderItemForm — a lacuna vira um caminho clicável', () => {
+  const form = readFileSync(
+    resolve(__dirname, '../../components/sale-orders/SaleOrderItemForm.tsx'),
+    'utf8',
+  );
+
+  it('resolve a lacuna da própria linha técnica pelo UUID congelado', () => {
+    expect(form).toMatch(
+      /const buyReadyGap = lineId \? buyReadyGapByLineId\.get\(lineId\) : undefined;/,
+    );
+  });
+
+  it('oferece o cadastro na própria linha, não só o link para o hub', () => {
+    expect(form).toContain('onClick={() => setBuyReadyGapTarget(buyReadyGap)}');
+    expect(form).toMatch(/\{buyReadyGap && !hasBuyReadyVariant && \(/);
+  });
+
+  it('nomeia a cor que trava o salvamento', () => {
+    expect(form).toMatch(/Falta a variante de <strong>\{buyReadyGap\.colorName\}<\/strong>/);
+  });
+
+  it('abre o editor com a identidade EXATA da linha, e não com um cadastro em branco', () => {
+    expect(form).toMatch(
+      /<ArtisanalStrapEditor[\s\S]*?identityBasis="finished_product_group"[\s\S]*?measureId=\{buyReadyGapTarget\.measureId\}[\s\S]*?baseGroupId=\{buyReadyGapTarget\.identityGroupId\}[\s\S]*?colorId=\{buyReadyGapTarget\.colorId\}[\s\S]*?finishedProductId=\{buyReadyGapTarget\.finishedProductId\}/,
+    );
+  });
+
+  it('invalida catálogo, diagnóstico e preview depois de cadastrar', () => {
+    const saved = form.slice(form.indexOf('onSaved={() => {'));
+    expect(saved).toContain("queryKey: ['artisanal-strap-catalog']");
+    expect(saved).toContain("queryKey: ['artisanal-strap-catalog-diagnostics']");
+    expect(saved).toContain("queryKey: ['strap_stock_lines_preview']");
   });
 });
