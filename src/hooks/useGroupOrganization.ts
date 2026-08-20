@@ -75,7 +75,7 @@ export function useCreateFamily() {
     mutationFn: async ({ name, sector, description }: { name: string; sector: string; description?: string }) => {
       const { data, error } = await supabase
         .from('product_groups')
-        .insert({ name: name.trim().toUpperCase(), sector, description: description ?? '' } as any)
+        .insert({ name: name.trim().toUpperCase(), sector, description: description ?? '', is_family: true } as any)
         .select()
         .single();
       if (error) throw error;
@@ -91,17 +91,18 @@ export function useCreateFamily() {
 
 /**
  * Move grupos-folha para uma família (ou desvincula, se familyId === null).
- * Ao vincular, força `sector` = setor da família (mono-setor + cascata p/ itens).
- * Ao desvincular, mantém o setor e zera parent_group_id (grupo volta a ser solto).
+ * Vínculo não reclassifica setor: a UI oferece apenas famílias do mesmo setor e
+ * o banco recusa qualquer drift. Ao desvincular, mantém o setor atual.
  */
 export function useMoveGroupsToFamily() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ familyId, familySector, groupIds }: { familyId: string | null; familySector?: string | null; groupIds: string[] }) => {
+    mutationFn: async ({ familyId, groupIds }: { familyId: string | null; groupIds: string[] }) => {
       if (groupIds.length === 0) return;
-      const patch: Record<string, unknown> = { parent_group_id: familyId };
-      if (familyId && familySector) patch.sector = familySector;
-      const { error } = await supabase.from('product_groups').update(patch as any).in('id', groupIds);
+      const { error } = await supabase
+        .from('product_groups')
+        .update({ parent_group_id: familyId } as any)
+        .in('id', groupIds);
       if (error) throw error;
     },
     onSuccess: (_d, vars) => {
@@ -133,13 +134,13 @@ export function useApplyFamilySuggestion() {
     mutationFn: async ({ name, sector, memberGroupIds }: { name: string; sector: string; memberGroupIds: string[] }) => {
       const { data: family, error: cErr } = await supabase
         .from('product_groups')
-        .insert({ name: name.trim().toUpperCase(), sector, description: '' } as any)
+        .insert({ name: name.trim().toUpperCase(), sector, description: '', is_family: true } as any)
         .select()
         .single();
       if (cErr) throw cErr;
       const { error: mErr } = await supabase
         .from('product_groups')
-        .update({ parent_group_id: (family as any).id, sector } as any)
+        .update({ parent_group_id: (family as any).id } as any)
         .in('id', memberGroupIds);
       if (mErr) throw mErr;
       return family;

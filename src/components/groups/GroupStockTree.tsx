@@ -188,33 +188,6 @@ export default function GroupStockTree(props: Props) {
     return m;
   }, [products]);
 
-  // Reserva por VALOR: a única base comparável entre setores com unidades diferentes.
-  const reservation = useMemo(() => {
-    const sectorOf = new Map(groups.map(g => [g.id, g.sector || '—'] as const));
-    const bySectorValue = new Map<string, { reserved: number; total: number }>();
-    let reserved = 0;
-    let total = 0;
-    for (const p of products) {
-      if (!p.group_id) continue;
-      const sector = sectorOf.get(p.group_id);
-      if (!sector) continue;
-      const price = Number(p.unit_price) || 0;
-      const qtyValue = (Number(p.quantity) || 0) * price;
-      const reservedValue = (Number(p.reserved_stock) || 0) * price;
-      const current = bySectorValue.get(sector) ?? { reserved: 0, total: 0 };
-      current.reserved += reservedValue;
-      current.total += qtyValue;
-      bySectorValue.set(sector, current);
-      reserved += reservedValue;
-      total += qtyValue;
-    }
-    const pctBySector = new Map<string, number>();
-    for (const [sector, values] of bySectorValue) {
-      pctBySector.set(sector, values.total > 0 ? (values.reserved / values.total) * 100 : values.reserved > 0 ? 100 : 0);
-    }
-    return { pctBySector, totalPct: total > 0 ? (reserved / total) * 100 : reserved > 0 ? 100 : 0 };
-  }, [groups, products]);
-
   const summary = useMemo(() => {
     let items = 0;
     let value = 0;
@@ -239,7 +212,11 @@ export default function GroupStockTree(props: Props) {
   const [openDetail, setOpenDetail] = useState<string | null>(null);
 
   const toggleSet = (setter: React.Dispatch<React.SetStateAction<Set<string>>>, key: string) =>
-    setter(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
+    setter(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
 
   const metricsOf = (id: string): NodeMetrics =>
     byGroup.get(id) ?? { itemCount: 0, value: 0, belowMin: 0, reserved: 0, available: 0, unit: null, mixedUnits: false, isLeaf: true };
@@ -270,20 +247,21 @@ export default function GroupStockTree(props: Props) {
           <div className="hidden text-right font-mono text-xs font-semibold tabular-nums md:block">{formatMoney(m.value)}</div>
           <div className="hidden md:block"><ReservedBar m={m} /></div>
           <div className="col-start-2 row-start-2 mt-1 flex justify-start gap-0.5 md:col-auto md:row-auto md:mt-0 md:justify-end" onClick={e => e.stopPropagation()}>
-            <Button variant="ghost" size="icon" className="h-7 w-7" title="Gerir materiais" onClick={() => onManageItems(g)}><Package className="h-3.5 w-3.5" /></Button>
+            {perm.canEdit && <Button variant="ghost" size="icon" className="h-7 w-7" title="Gerir materiais" onClick={() => onManageItems(g)}><Package className="h-3.5 w-3.5" /></Button>}
             {perm.canEdit && <Button variant="ghost" size="icon" className="h-7 w-7" title="Editar grupo" onClick={() => onEdit(g)}><Pencil className="h-3.5 w-3.5" /></Button>}
             {perm.canDelete && <DeleteConfirmButton onConfirm={() => onDelete(g)} title="Excluir grupo?" size="h-7 w-7" iconSize="h-3.5 w-3.5" />}
           </div>
         </div>
-        {isOpen && <DetailPanel group={g} items={itemsByGroup.get(g.id) ?? []} onEditItem={onEditItem} onAddItem={onAddItem} canCreate={perm.canCreate} />}
+        {isOpen && <DetailPanel group={g} items={itemsByGroup.get(g.id) ?? []} onEditItem={perm.canEdit ? onEditItem : undefined} onAddItem={onAddItem} canCreate={perm.canCreate} />}
       </div>
     );
   };
 
   const familyBlock = (family: ProductGroup, children: ProductGroup[]) => {
     const m = metricsOf(family.id);
-    const visibleChildren = f ? children.filter(leafMatches) : children;
-    if (f && visibleChildren.length === 0) return null;
+    const familyMatches = Boolean(f && searchMatchesAllTerms(f, family.name));
+    const visibleChildren = f && !familyMatches ? children.filter(leafMatches) : children;
+    if (f && !familyMatches && visibleChildren.length === 0) return null;
     const collapsed = f ? false : collapsedFamilies.has(family.id);
     return (
       <div key={family.id}>
@@ -313,10 +291,11 @@ export default function GroupStockTree(props: Props) {
   const sectorBlocks = sectorTree.map(node => {
     const sm = bySector.get(node.sector) ?? { itemCount: 0, value: 0, belowMin: 0 };
     const visibleLoose = f ? node.looseLeaves.filter(leafMatches) : node.looseLeaves;
-    const visibleFamilies = f ? node.families.filter(fam => fam.children.some(leafMatches)) : node.families;
+    const visibleFamilies = f
+      ? node.families.filter((family) => searchMatchesAllTerms(f, family.family.name) || family.children.some(leafMatches))
+      : node.families;
     if (f && visibleLoose.length === 0 && visibleFamilies.length === 0) return null;
     const collapsed = f ? false : collapsedSectors.has(node.sector);
-    const reservedPct = reservation.pctBySector.get(node.sector) ?? 0;
     return (
       <section key={node.sector} className="border-t-2 border-foreground/70 first:border-t-0">
         <div className="grid gap-4 bg-card px-3 py-4 sm:px-5 lg:grid-cols-[minmax(240px,1fr)_minmax(330px,1.25fr)] lg:items-end">
@@ -325,7 +304,7 @@ export default function GroupStockTree(props: Props) {
               {collapsed ? <CaretRight className="h-4 w-4" /> : <CaretDown className="h-4 w-4" />}
             </button>
             <div className="min-w-0">
-              <p className="font-mono text-[9px] font-semibold uppercase tracking-[0.16em] text-primary">Setor de armazenagem</p>
+              <p className="font-mono text-[9px] font-semibold uppercase tracking-[0.16em] text-primary">Setor / aplicação principal</p>
               <h3 className="mt-1 truncate font-display text-2xl uppercase leading-none text-foreground sm:text-3xl">{sectorLabel(node.sector)}</h3>
               <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4">
                 <DocumentMetric value={String(sm.itemCount)} label="itens" />
@@ -335,8 +314,7 @@ export default function GroupStockTree(props: Props) {
               </dl>
             </div>
           </div>
-          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
-            <ReservationRuler pct={reservedPct} basis="sobre o valor do estoque" />
+          <div className="flex justify-end">
             {perm.canCreate && <Button variant="outline" size="sm" className="h-8 gap-1 px-2.5 text-xs" title={`Nova família em ${sectorLabel(node.sector)}`} onClick={() => onNewFamily(node.sector)}><Plus className="h-3.5 w-3.5" /> Família</Button>}
           </div>
         </div>
@@ -376,15 +354,12 @@ export default function GroupStockTree(props: Props) {
             <h2 className="mt-1 font-display text-3xl uppercase leading-none text-foreground sm:text-4xl">Controle de almoxarifado</h2>
             <p className="mt-2 max-w-xl text-xs leading-relaxed text-muted-foreground">Setores, famílias e grupos em uma folha contínua para conferência de saldo, reserva e reposição.</p>
           </div>
-          <div className="grid gap-4 sm:grid-cols-[minmax(260px,1fr)_minmax(220px,0.8fr)] sm:items-end">
-            <dl className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-[0.75fr_0.75fr_1.5fr_0.8fr]">
-              <DocumentMetric value={String(groups.length)} label="grupos" />
-              <DocumentMetric value={String(summary.items)} label="itens" />
-              <DocumentMetric value={formatMoney(summary.value)} label="valor total" />
-              <DocumentMetric value={String(summary.belowMin)} label="abaixo mín." danger={summary.belowMin > 0} />
-            </dl>
-            <ReservationRuler pct={reservation.totalPct} basis="reserva total por valor" />
-          </div>
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-[0.75fr_0.75fr_1.5fr_0.8fr]">
+            <DocumentMetric value={String(groups.length)} label="grupos" />
+            <DocumentMetric value={String(summary.items)} label="itens" />
+            <DocumentMetric value={formatMoney(summary.value)} label="valor total" />
+            <DocumentMetric value={String(summary.belowMin)} label="abaixo mín." danger={summary.belowMin > 0} />
+          </dl>
         </div>
       </header>
       {sectorBlocks}

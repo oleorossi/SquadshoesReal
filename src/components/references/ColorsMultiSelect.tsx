@@ -11,9 +11,18 @@ import { searchMatchesAllTerms } from '@/lib/searchUtils';
 interface ColorsMultiSelectProps {
   value: string;
   onChange: (value: string) => void;
+  /** Cores que já existem no grupo e não podem ser escolhidas novamente. */
+  excluded?: string[];
+  placeholder?: string;
 }
 
-export function ColorsMultiSelect({ value, onChange }: ColorsMultiSelectProps) {
+const normalizeColor = (value: string) => value
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .trim()
+  .toUpperCase();
+
+export function ColorsMultiSelect({ value, onChange, excluded = [], placeholder = 'Selecionar cores…' }: ColorsMultiSelectProps) {
   const { data: colors = [] } = useColors();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
@@ -22,6 +31,11 @@ export function ColorsMultiSelect({ value, onChange }: ColorsMultiSelectProps) {
     colors.map(c => ({ name: c.nome, hex: c.referencia_hex || '' })),
     [colors]
   );
+  const excludedNames = useMemo(() => new Set(excluded.map(normalizeColor)), [excluded]);
+  const availableColors = useMemo(
+    () => systemColors.filter((color) => !excludedNames.has(normalizeColor(color.name))),
+    [excludedNames, systemColors],
+  );
 
   const selected = useMemo(() => {
     if (!value) return [] as string[];
@@ -29,20 +43,21 @@ export function ColorsMultiSelect({ value, onChange }: ColorsMultiSelectProps) {
   }, [value]);
 
   const filteredColors = useMemo(() => {
-    if (!search.trim()) return systemColors;
-    return systemColors.filter(c => searchMatchesAllTerms(search, c.name));
-  }, [systemColors, search]);
+    if (!search.trim()) return availableColors;
+    return availableColors.filter(c => searchMatchesAllTerms(search, c.name));
+  }, [availableColors, search]);
 
   const toggle = (color: string) => {
-    const next = selected.includes(color)
-      ? selected.filter(c => c !== color)
+    const isSelected = selected.some((candidate) => normalizeColor(candidate) === normalizeColor(color));
+    const next = isSelected
+      ? selected.filter(c => normalizeColor(c) !== normalizeColor(color))
       : [...selected, color];
     onChange(next.join(', '));
   };
 
   const addCustom = () => {
-    const t = search.trim();
-    if (t && !selected.includes(t)) {
+    const t = search.trim().toUpperCase();
+    if (t && !excludedNames.has(normalizeColor(t)) && !selected.some((candidate) => normalizeColor(candidate) === normalizeColor(t))) {
       onChange([...selected, t].join(', '));
     }
     setSearch('');
@@ -52,9 +67,16 @@ export function ColorsMultiSelect({ value, onChange }: ColorsMultiSelectProps) {
     onChange(selected.filter(c => c !== color).join(', '));
   };
 
-  const showAddButton = search.trim() && !systemColors.some(c => c.name.toLowerCase() === search.trim().toLowerCase()) && !selected.includes(search.trim());
+  const searchedName = normalizeColor(search);
+  const searchIsExcluded = Boolean(searchedName && excludedNames.has(searchedName));
+  const showAddButton = Boolean(
+    search.trim()
+    && !searchIsExcluded
+    && !systemColors.some(c => normalizeColor(c.name) === searchedName)
+    && !selected.some((candidate) => normalizeColor(candidate) === searchedName),
+  );
 
-  const getHex = (name: string) => systemColors.find(c => c.name === name)?.hex || '';
+  const getHex = (name: string) => systemColors.find(c => normalizeColor(c.name) === normalizeColor(name))?.hex || '';
 
   return (
     <div className="mt-1 space-y-2">
@@ -88,7 +110,7 @@ export function ColorsMultiSelect({ value, onChange }: ColorsMultiSelectProps) {
             aria-expanded={open}
             className="w-full justify-between font-normal text-muted-foreground"
           >
-            {selected.length > 0 ? `${selected.length} ${selected.length === 1 ? 'cor selecionada' : 'cores selecionadas'}` : 'Selecionar cores...'}
+            {selected.length > 0 ? `${selected.length} ${selected.length === 1 ? 'cor selecionada' : 'cores selecionadas'}` : placeholder}
             <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
           </Button>
         </PopoverTrigger>
@@ -104,7 +126,7 @@ export function ColorsMultiSelect({ value, onChange }: ColorsMultiSelectProps) {
               }
             }}
             resultCount={filteredColors.length}
-            totalCount={systemColors.length}
+            totalCount={availableColors.length}
             className="mb-2"
           />
           <div className="max-h-48 overflow-y-auto space-y-0.5">
@@ -115,10 +137,10 @@ export function ColorsMultiSelect({ value, onChange }: ColorsMultiSelectProps) {
                 onClick={() => toggle(color.name)}
                 className={cn(
                   'flex items-center gap-2 w-full rounded-sm px-2 py-1.5 text-sm hover:bg-accent cursor-pointer',
-                  selected.includes(color.name) && 'bg-accent'
+                selected.some((candidate) => normalizeColor(candidate) === normalizeColor(color.name)) && 'bg-accent'
                 )}
               >
-                <Check className={cn('h-4 w-4 shrink-0', selected.includes(color.name) ? 'opacity-100' : 'opacity-0')} />
+                <Check className={cn('h-4 w-4 shrink-0', selected.some((candidate) => normalizeColor(candidate) === normalizeColor(color.name)) ? 'opacity-100' : 'opacity-0')} />
                 {color.hex && (
                   <span
                     className="inline-block h-3 w-3 rounded-full border border-border shrink-0"
@@ -129,7 +151,9 @@ export function ColorsMultiSelect({ value, onChange }: ColorsMultiSelectProps) {
               </button>
             ))}
             {filteredColors.length === 0 && !showAddButton && (
-              search.trim() ? (
+              searchIsExcluded ? (
+                <p className="px-2 py-2 text-sm text-muted-foreground">“{search.trim()}” já possui item neste grupo.</p>
+              ) : search.trim() ? (
                 <div className="flex items-center justify-between gap-2 px-2 py-1.5">
                   <p className="text-sm text-muted-foreground truncate">Nenhum resultado para "{search}"</p>
                   <Button type="button" variant="outline" size="sm" className="h-6 text-xs shrink-0" onClick={() => setSearch('')}>
