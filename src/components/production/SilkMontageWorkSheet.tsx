@@ -6,6 +6,7 @@ import { TallyBox } from './worksheet/TallyBox';
 import { WorksheetHeader } from './worksheet/WorksheetHeader';
 import { HeaderIdentification } from './worksheet/HeaderIdentification';
 import { GroupSubHeader } from './worksheet/GroupSubHeader';
+import { fichaModelFor, showsTrace } from './worksheet/fichaModel';
 import { ProductImageBlock, resolveImage } from './worksheet/ProductImageBlock';
 import { CompletionFooter } from './worksheet/CompletionFooter';
 import { TALLY_SIZE, HEADER_THUMB_PX, STEP_CHECKBOX_PX, canUseSlimConsumo } from './worksheet/density';
@@ -366,6 +367,10 @@ export function compactThumbPx(count: number): number {
 export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBand, sectorLabel, knives, facaRanges }: Props) => {
   const theme = SECTOR_THEME[sector];
   const Icon = theme.icon;
+  // Modelo de informação da ficha (rodada 1, 20/08/2026). Este componente
+  // serve 8 setores; só o Silk foi decidido ('mao'). Os demais seguem
+  // 'legacy' e não mudam em nada.
+  const model = fichaModelFor(sector);
 
   // ── Agregados do setor (header consolidado, padrão PalmilhaWorkSheet) ──
   const grandTotal = groups.reduce((s, g) => s + g.totalPairs, 0);
@@ -908,11 +913,18 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
         sector={sector}
         icon={Icon}
         sizeBand={sizeBand}
+        model={model}
         identification={
           // PVs do setor inteiro, lista COMPLETA com fonte adaptativa (não
           // "+N outros") — o operador vê exatamente quais pedidos estão no
           // maço. Razão social em vermelho logo abaixo (2026-06-12).
-          <HeaderIdentification pvNumbers={allPvs} clientNames={allClients}>
+          // No modelo 'mao' (Silk, rodada 1 de 20/08/2026) PV e cliente saem:
+          // ali o operador age sobre a ARTE, não sobre o pedido. O bloco
+          // "Resumo" fica — pares e nº de grupos são a carga do turno.
+          <HeaderIdentification
+            pvNumbers={showsTrace(model) ? allPvs : []}
+            clientNames={showsTrace(model) ? allClients : []}
+          >
             <span className="section-label block" style={{ color: '#000' }}>Resumo</span>
             <p
               className="text-black uppercase leading-none mt-0.5"

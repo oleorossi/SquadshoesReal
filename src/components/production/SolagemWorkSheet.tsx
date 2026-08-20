@@ -10,6 +10,8 @@ import { HeaderIdentification } from './worksheet/HeaderIdentification';
 import { CompletionFooter } from './worksheet/CompletionFooter';
 import { PaginatedSheet, type SheetBlock } from './worksheet/PaginatedSheet';
 import { formatOpNumber } from './worksheet/stageOrder';
+import { fichaModelFor } from './worksheet/fichaModel';
+import { TraceStrip } from './worksheet/TraceStrip';
 
 export interface SoleColorBand {
   soleColor: string;
@@ -76,6 +78,9 @@ const SectionDivider = ({ label, total }: { label: string; total: number }) => (
 );
 
 export const SolagemWorkSheet = ({ bands, allSizes, grandTotal, pairsPerCard = 12, sector = 'Solagem', sizeBand, clientNames, sectorLabel }: Props) => {
+  // Modelo de informacao da ficha (rodada 1, 20/08/2026): Solagem = 'lote',
+  // Colagem segue 'legacy' — a Colagem nao entrou na rodada de decisao.
+  const model = fichaModelFor(sector);
   // Solado preto deve ficar fisicamente separado das demais cores na ficha de
   // operador de Solagem — pedido em 2026-05 pra evitar mistura de banda preta
   // com bandas coloridas no fluxo da equipe.
@@ -329,6 +334,14 @@ export const SolagemWorkSheet = ({ bands, allSizes, grandTotal, pairsPerCard = 1
         qrValue={pvs.length ? pvs.join(',') : undefined}
         qrLabel={pvs.length === 1 ? pvs[0] : pvs.length > 1 ? `${pvs.length} PVs` : sector.toUpperCase()}
         index={`OP ${formatOpNumber(sector)} / ${sector.toUpperCase()}`}
+        model={model}
+        trace={model === 'lote' ? (
+          <TraceStrip
+            ops={Array.from(new Set(bands.flatMap(b => b.opNumbers || []).filter(Boolean)))}
+            pvNumbers={pvs}
+            clientNames={clientNames}
+          />
+        ) : undefined}
       />
   );
 

@@ -16,6 +16,8 @@ import { HeaderIdentification } from './worksheet/HeaderIdentification';
 import { GroupSubHeader } from './worksheet/GroupSubHeader';
 import { SignedImage } from '@/components/ui/signed-image';
 import { formatOpNumber } from './worksheet/stageOrder';
+import { fichaModelFor } from './worksheet/fichaModel';
+import { TraceStrip } from './worksheet/TraceStrip';
 import type { SizeBand } from './worksheet/InfantilTag';
 
 /** Um grupo/OP dentro do maço do setor (Montagem: ref+cor; Acabamento: OP). */
@@ -94,6 +96,11 @@ const SECTOR_ICONS: Record<string, React.ComponentType<{ className?: string; wei
 
 const OperatorWorkSheet = ({ sector, sectorLabel, items, pvNumbers = [], clientNames = [], sizeBand }: Props) => {
   const Icon = SECTOR_ICONS[sector] || Hammer;
+  // Modelo de informacao da ficha (rodada 1, 20/08/2026). Este componente
+  // serve varios setores; so a Montagem foi decidida ('lote'). Acabamento e
+  // os demais seguem 'legacy' e nao mudam em nada.
+  const model = fichaModelFor(sector);
+  const isLote = model === 'lote';
 
   const isMontagem        = sector === 'Montagem';
   const isSolagem         = sector === 'Solagem';
@@ -137,6 +144,7 @@ const OperatorWorkSheet = ({ sector, sectorLabel, items, pvNumbers = [], clientN
       qrValue={pvNumbers.length ? pvNumbers.join(',') : undefined}
       qrLabel={pvNumbers.length === 1 ? pvNumbers[0] : pvNumbers.length > 1 ? `${pvNumbers.length} PVs` : sector.toUpperCase()}
       index={`OP ${formatOpNumber(sector)} / ${sector.toUpperCase()}`}
+      model={model}
     />
   );
 
@@ -227,6 +235,12 @@ const OperatorWorkSheet = ({ sector, sectorLabel, items, pvNumbers = [], clientN
 
     // ── Sub-header compacto do grupo (faixa fina — NÃO o header gigante) ──
     const refName = order.master?.name || (order.master as any)?.reference_name || (order as any).reference_name || '—';
+    // `orders.due_date` é coluna DATE — formatada UMA vez aqui e reusada pela
+    // nota do sub-header e pela TraceStrip, pra não duplicar a armadilha de
+    // fuso descrita logo abaixo.
+    const dueDateLabel = order.due_date
+      ? new Date(`${String(order.due_date).slice(0, 10)}T00:00:00`).toLocaleDateString('pt-BR')
+      : undefined;
     const noteParts = [
       order.sale_order_number || (order as any).pv_number || null,
       clientName || null,
@@ -234,16 +248,24 @@ const OperatorWorkSheet = ({ sector, sectorLabel, items, pvNumbers = [], clientN
       // `new Date('2026-08-03')` é meia-noite UTC, que em America/Sao_Paulo (UTC−3)
       // volta pro dia ANTERIOR: a ficha imprimia 02/08 pra uma entrega em 03/08.
       // O sufixo 'T00:00:00' força meia-noite LOCAL (mesmo idioma de absenteeism.ts:33).
-      order.due_date ? `Entrega ${new Date(`${String(order.due_date).slice(0, 10)}T00:00:00`).toLocaleDateString('pt-BR')}` : null,
+      dueDateLabel ? `Entrega ${dueDateLabel}` : null,
     ].filter(Boolean) as string[];
     const subHeaderBlock = (
       <GroupSubHeader
         eyebrow={`${isAcabamento ? 'Pedido' : 'Grupo'} ${gi + 1}/${items.length}`}
-        title={`${refName}${resolvedColorName && resolvedColorName !== '—' ? ` · ${resolvedColorName}` : ''}`}
+        /* No modelo 'lote' a COR sai do título — ela aparece logo abaixo no
+           chip, com o swatch, e repetir aqui era uma das três ocorrências que
+           a rodada 1 mandou cortar. A referência fica só aqui (o hero
+           "Referência" do bloco de produto sai no 'lote'). */
+        title={isLote
+          ? refName
+          : `${refName}${resolvedColorName && resolvedColorName !== '—' ? ` · ${resolvedColorName}` : ''}`}
         pairs={totalPairs}
         lotInfo={lotInfo}
-        ops={(opNumbers && opNumbers.length > 0 ? opNumbers : [order.op_number]).filter(Boolean) as string[]}
-        note={noteParts.length > 0 ? noteParts.join(' · ') : undefined}
+        /* OPs e a nota (PV · cliente · entrega) migram pra TraceStrip no
+           'lote': em 9px truncado o dado existia mas não era lido. */
+        ops={isLote ? undefined : (opNumbers && opNumbers.length > 0 ? opNumbers : [order.op_number]).filter(Boolean) as string[]}
+        note={isLote || noteParts.length === 0 ? undefined : noteParts.join(' · ')}
         sizeBand={item.sizeBand}
       />
     );
@@ -309,7 +331,11 @@ const OperatorWorkSheet = ({ sector, sectorLabel, items, pvNumbers = [], clientN
 
         {/* Product details — Anton hero for ref */}
         <div className="flex-1 flex flex-col gap-2 min-w-0">
-          {/* Hero: REFERÊNCIA = nome do modelo (definido pelo usuário em 2026-05). */}
+          {/* Hero: REFERÊNCIA = nome do modelo (definido pelo usuário em 2026-05).
+              Sai no modelo 'lote' — ali a referência já é o título do
+              sub-header do grupo, e repetir era a duplicação que a rodada 1
+              (20/08/2026) mandou cortar. */}
+          {!isLote && (
           <div className="flex items-baseline justify-between gap-3 border-b border-black pb-1">
             <div className="min-w-0 flex-1">
               <span className="section-label block" style={{ color: '#000' }}>Referência</span>
@@ -326,6 +352,7 @@ const OperatorWorkSheet = ({ sector, sectorLabel, items, pvNumbers = [], clientN
               </p>
             </div>
           </div>
+          )}
 
           {/* Details grid */}
           {/* Combo de produção em CHIPS alinhados (melhoria estética 2026-06-30,
@@ -676,10 +703,20 @@ const OperatorWorkSheet = ({ sector, sectorLabel, items, pvNumbers = [], clientN
       </div>
     );
 
+    const traceBlock = isLote ? (
+      <TraceStrip
+        ops={(opNumbers && opNumbers.length > 0 ? opNumbers : [order.op_number]).filter(Boolean) as string[]}
+        pvNumbers={[order.sale_order_number || (order as { pv_number?: string }).pv_number].filter(Boolean) as string[]}
+        clientNames={clientName ? [clientName] : []}
+        dueDate={dueDateLabel}
+      />
+    ) : null;
+
     return [
       // Sub-header do grupo — keepWithNext: nunca fecha página sozinho
       // (título "Pedido N/M" órfão no pé da folha, conteúdo na seguinte).
       { node: subHeaderBlock, keepWithNext: true },
+      ...(traceBlock ? [{ node: traceBlock, keepWithNext: true }] : []),
       ...(silkBlock ? [silkBlock] : []),
       productInfoBlock,
       ...(strapsBlock ? [strapsBlock] : []),
