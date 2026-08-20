@@ -500,8 +500,8 @@ function ProductRows({ products, onEdit, onDelete, onStockOut, onGrade, onArtisa
                {(() => {
                  let freeQty = Number(product.quantity) || 0;
 
-                 if (isSole && (product as any).stock_grade) {
-                   const grade = (product as any).stock_grade as Record<string, number>;
+                 if (isSole && product.stock_grade) {
+                   const grade = product.stock_grade as Record<string, number>;
                    freeQty = Object.entries(grade)
                      .filter(([key]) => !key.startsWith('_'))
                      .reduce((sum, [, quantity]) => sum + (Number(quantity) || 0), 0);
