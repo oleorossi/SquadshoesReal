@@ -115,3 +115,121 @@ export function activeProductColorsForGroup(
       .filter(Boolean),
   )).sort((a, b) => a.localeCompare(b, 'pt-BR'));
 }
+
+// ── Cascata da variante: quais componentes seguem o MATERIAL PRINCIPAL ───────
+// A variante que aponta só `main_material_group_id` NÃO troca material nenhum
+// enquanto a ficha não liberar um slot em `technical_sheets.variant_drives_*`
+// (mig 20261027120000) — os resolvers SQL e os motores TS só caem no principal
+// depois de conferir essa trava. O resultado é um no-op SILENCIOSO: o PV mostra
+// nome/SKU da variante, a lista de cores vem vazia e a produção corta o material
+// da ficha. Foi o que aconteceu com SR02/GLOW METALIC em 20/08/2026.
+//
+// Estes helpers descrevem a decisão pra ela ser tomada onde a variante é
+// cadastrada, em vez de ficar escondida numa caixa de seleção da aba Materiais.
+
+/** Componente que pode seguir o material principal da variante. Palmilha fica
+ *  de fora de propósito: aquele slot aponta a PLACA (EVA), não napa — a flag
+ *  foi removida na mig 20261027120800. */
+export type VariantCascadeSlotKey = 'upper' | 'lining';
+
+export interface VariantCascadeSlot {
+  key: VariantCascadeSlotKey;
+  /** Rótulo do componente como a ficha o chama. */
+  label: string;
+  /** Material que a ficha usa hoje nesse componente. */
+  sheetMaterial: string;
+  /** Coluna da trava em `technical_sheets`. */
+  drivesField: 'variant_drives_upper' | 'variant_drives_lining';
+}
+
+export interface VariantCascadeSheet {
+  upper_material?: string | null;
+  lining_material?: string | null;
+  variant_drives_upper?: boolean | null;
+  variant_drives_lining?: boolean | null;
+  variant_drives_fachete?: boolean | null;
+}
+
+export type VariantCascadeSelection = Record<VariantCascadeSlotKey, boolean>;
+
+export interface VariantCascadePins {
+  upper_material_product_id?: string | null;
+  upper_material_group_id?: string | null;
+  lining_material_product_id?: string | null;
+  lining_material_group_id?: string | null;
+  insole_material_product_id?: string | null;
+  insole_material_group_id?: string | null;
+}
+
+const SLOTS: ReadonlyArray<VariantCascadeSlot & { material: keyof VariantCascadeSheet }> = [
+  { key: 'upper', label: 'Cabedal', sheetMaterial: '', drivesField: 'variant_drives_upper', material: 'upper_material' },
+  { key: 'lining', label: 'Forração', sheetMaterial: '', drivesField: 'variant_drives_lining', material: 'lining_material' },
+];
+
+/**
+ * Componentes que ESTA ficha realmente consome e que, por isso, podem seguir o
+ * material principal da variante. Slot sem material cadastrado não entra: ligar
+ * a trava nele não mudaria corte nenhum e só daria a impressão de configurado.
+ */
+export function listVariantCascadeSlots(
+  sheet: VariantCascadeSheet | null | undefined,
+): VariantCascadeSlot[] {
+  if (!sheet) return [];
+  return SLOTS
+    .map((slot) => ({ ...slot, sheetMaterial: (sheet[slot.material] as string | null | undefined)?.trim() || '' }))
+    .filter((slot) => !!slot.sheetMaterial)
+    .map(({ key, label, sheetMaterial, drivesField }) => ({ key, label, sheetMaterial, drivesField }));
+}
+
+/**
+ * Estado inicial das travas ao abrir o cadastro da variante.
+ *
+ * Ficha já configurada devolve o que está gravado — o valor é da FICHA e vale
+ * pra todas as variantes dela, então não pode ser sobrescrito por palpite.
+ * Ficha nunca configurada (as três travas desligadas) só ganha default quando
+ * existe UM único componente possível: aí não há o que decidir. Com dois, a
+ * escolha é do dono — é ela que protege material de identidade (a PALHA do
+ * cabedal do DS21 não vira napa porque o PV vendeu GLOW METALIC).
+ */
+export function seedVariantCascade(
+  sheet: VariantCascadeSheet | null | undefined,
+): VariantCascadeSelection {
+  const stored: VariantCascadeSelection = {
+    upper: !!sheet?.variant_drives_upper,
+    lining: !!sheet?.variant_drives_lining,
+  };
+  const configured = stored.upper || stored.lining || !!sheet?.variant_drives_fachete;
+  if (configured) return stored;
+
+  const slots = listVariantCascadeSlots(sheet);
+  if (slots.length !== 1) return stored;
+  return { ...stored, [slots[0].key]: true };
+}
+
+/** Exceção por componente já resolve o slot sozinha (vence o principal), então
+ *  a variante não depende da trava da ficha pra trocar material. */
+export function hasVariantComponentPin(variant: VariantCascadePins | null | undefined): boolean {
+  if (!variant) return false;
+  return !!(variant.upper_material_product_id
+    || variant.upper_material_group_id
+    || variant.lining_material_product_id
+    || variant.lining_material_group_id
+    || variant.insole_material_product_id
+    || variant.insole_material_group_id);
+}
+
+/**
+ * `true` quando salvar essa variante produziria o no-op silencioso: nenhum
+ * componente muda de material, mesmo com material principal escolhido.
+ */
+export function variantDrivesNoComponent({
+  variant, sheet, cascade,
+}: {
+  variant: VariantCascadePins | null | undefined;
+  sheet: VariantCascadeSheet | null | undefined;
+  cascade: VariantCascadeSelection;
+}): boolean {
+  if (hasVariantComponentPin(variant)) return false;
+  if (sheet?.variant_drives_fachete) return false;
+  return !listVariantCascadeSlots(sheet).some((slot) => cascade[slot.key]);
+}
