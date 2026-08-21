@@ -168,9 +168,15 @@ describe('STRASS comprada pronta — correção de contexto sem napa-base', () =
     expect(itemForm).toContain('Este pedido já está comprometido. Corrija a ficha para os próximos pedidos');
     expect(itemForm).toContain('Abrir ficha técnica');
     expect(hooks).toContain('Snapshots de pedidos já comprometidos foram preservados.');
-    expect(itemForm).toMatch(
-      /Auto-select the only available material group[\s\S]*?useEffect\(\(\) => \{[\s\S]*?if \(preserveCommittedStrapSnapshot\) return;/,
-    );
+    // A auto-seleção da variante única foi REMOVIDA em 21/08/2026 (regra do
+    // dono: variante acrescenta opção, não substitui o material da ficha; na
+    // SR02 ela escolhia GLOW METALIC sozinha e tornava a NAPA SOFT da ficha
+    // inalcançável). Este teste exigia que ela existisse e fosse guardada por
+    // `preserveCommittedStrapSnapshot`. O invariante protegido — item já
+    // comprometido não pode ser mutado por auto-seleção — passa a valer por
+    // construção, e a asserção abaixo é mais forte que a anterior: não existe
+    // efeito nenhum a guardar. Ver saleOrderSheetMaterialOptionContract.test.ts.
+    expect(itemForm).not.toMatch(/activeMaterialVariants\.length === 1 && !item\.material_variant_id/);
     expect(itemForm).toMatch(
       /Auto-preenche a Cor Principal[\s\S]*?useEffect\(\(\) => \{[\s\S]*?if \(preserveCommittedStrapSnapshot && hasStrapsEffective\) return;/,
     );

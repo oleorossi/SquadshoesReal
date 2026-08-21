@@ -138,6 +138,11 @@ const formatCurrency = (v: number) =>
 const EMPTY_VARIANTS_BY_REF = new Map<string, readonly ReferenceMaterialVariant[]>();
 const EMPTY_STRAP_SOURCING_MAP = Object.freeze({}) as StrapSourcingMap;
 
+// Sentinela do seletor de material: Radix nao aceita SelectItem com value "",
+// e nulo no item significa "material da propria ficha", que agora e escolha
+// legitima e nao mais ausencia de escolha.
+const SHEET_MATERIAL_OPTION = '__ficha__';
+
 function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, onUpdate, onRemove, onCopyGradeFromPrevious, onSaveStateAndNavigate, isSelected, onToggleSelect, priceLookup, maxDiscountPct = 0, variantsByRef = EMPTY_VARIANTS_BY_REF, onColorIssueChange, saleOrderId, saleOrderStatus, billingWeek, requiredAt }: Props) {
   const qc = useQueryClient();
   const { canSeeFinancialValues } = useAccessControl();
@@ -526,6 +531,28 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     });
   }, [item.material_variant_id, activeMaterialVariants, allProducts, sheetSpecs, productGroups]);
 
+  // Família do material da PRÓPRIA ficha, sempre — independente de haver
+  // variante selecionada. Regra do dono (21/08/2026): cadastrar variante NÃO
+  // substitui o material principal da ficha, apenas acrescenta uma opção no PV.
+  // Sem isto o material da ficha não tem como ser representado no seletor.
+  const sheetBaseGroup = useMemo(
+    () => resolveSheetCommercialColorGroup({ sheet: sheetSpecs, groups: productGroups }),
+    [sheetSpecs, productGroups],
+  );
+
+  // A família da ficha já é vendável por alguma variante? Compara o grupo
+  // EFETIVO de cada variante (mesma resolução do resolver estrutural), não o
+  // nome — variante chamada "NAPA SOFT" pode apontar outra família.
+  const baseCoveredByVariant = useMemo(() => {
+    if (!sheetBaseGroup) return false;
+    return activeMaterialVariants.some(v => {
+      const grp = resolveMaterialVariantColorGroup({
+        variant: v, sheet: sheetSpecs, products: allProducts, groups: productGroups,
+      });
+      return grp?.id === sheetBaseGroup.id;
+    });
+  }, [activeMaterialVariants, sheetBaseGroup, sheetSpecs, allProducts, productGroups]);
+
   // ── Cor não cadastrada (BLOQUEIA salvar o PV) ────────────────────────────
   // Materiais de área (cabedal/forração) cuja cor principal NÃO tem produto no
   // grupo (gerido por cor) → débito PULA (vira ruptura). Carrega o group_id pra
@@ -797,10 +824,24 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
         : [];
     }
 
-    // Sem variante, a cor também vem de UMA família exata da ficha. A união
-    // anterior misturava NAPA SUDANI/NAPA SOFT/GLOW METALIC e permitia salvar
-    // OURO LIGHT como se fosse uma cor da napa errada.
-    if (activeMaterialVariants.length > 0) return [];
+    // Sem variante selecionada, a cor vem de UMA família exata da ficha — a
+    // própria. A união antiga misturava NAPA SUDANI/NAPA SOFT/GLOW METALIC e
+    // deixava salvar OURO LIGHT como cor da napa errada; resolver UMA família
+    // não tem esse problema.
+    //
+    // ⚠ Aqui havia `if (activeMaterialVariants.length > 0) return [];`. Com ele,
+    // cadastrar UMA variante apagava o material da ficha das opções — e como o
+    // efeito era mudo (lista vazia, não erro), 27 das 30 referências com
+    // variante contornaram cadastrando uma variante que DUPLICA o material da
+    // própria ficha. As 3 que não contornaram (DS19, DS21, SR02) ficaram sem
+    // conseguir vender no material base.
+    // Quando a familia da ficha JA e vendavel por uma variante (as 27 que
+    // fizeram o contorno), continuar exigindo a escolha: deixar salvar sem
+    // variante entregaria o mesmo material sem o SKU/NCM que a variante carrega,
+    // e as duas opcoes sao indistinguiveis na tela. A mudanca de comportamento
+    // fica restrita as referencias em que o material da ficha nao tem variante
+    // nenhuma cobrindo — DS19, DS21 e SR02 na medicao de 21/08/2026.
+    if (baseCoveredByVariant) return [];
     if (mainGroupForNewColor?.id) {
       return activeProductColorsForGroup(allProducts, mainGroupForNewColor.id);
     }
@@ -814,7 +855,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
       .filter(Boolean)
       .filter((color, position, colors) => colors.indexOf(color) === position)
       .sort((a, b) => a.localeCompare(b, 'pt-BR'));
-  }, [item.material_variant_id, mainGroupForNewColor, activeMaterialVariants.length, selectedRef?.colors, allProducts]);
+  }, [item.material_variant_id, mainGroupForNewColor, baseCoveredByVariant, selectedRef?.colors, allProducts]);
 
   // Cor da VARIAÇÃO do material (cabedal): products.color do produto apontado
   // por upper_material_product_id da variante selecionada. É o "nome da variação
@@ -1111,14 +1152,12 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     prevRefId.current = item.reference_id;
   }, [item.reference_id]);
 
-  // Auto-select the only available material group when reference has exactly one.
-  useEffect(() => {
-    if (preserveCommittedStrapSnapshot) return;
-    if (activeMaterialVariants.length === 1 && !item.material_variant_id) {
-      const { index: idx, onUpdate: update } = latestRef.current;
-      update(idx, 'material_variant_id', activeMaterialVariants[0].id);
-    }
-  }, [item.reference_id, activeMaterialVariants.length, preserveCommittedStrapSnapshot]);
+  // ⚠ Aqui havia auto-selecao da variante quando existia exatamente UMA. Com o
+  // material da ficha valendo como opcao, auto-selecionar a unica variante
+  // escolhia por conta propria o material do item e tornava o material base
+  // inalcancavel — era o sintoma relatado na SR02 (uma variante, GLOW METALIC:
+  // "so aparece a selecao para o material Glow Metallic"). Nao ha nada a
+  // auto-escolher: nulo ja significa "material da ficha".
 
   // Trocar o material do cabedal invalida somente a identidade das tiras que
   // dependem dele. A primeira hidratação preserva o fato histórico completo;
@@ -1489,20 +1528,38 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
               </Label>
               <div className="flex gap-1">
                 <Select
-                  value={item.material_variant_id || ''}
+                  value={item.material_variant_id || SHEET_MATERIAL_OPTION}
                   onValueChange={v => {
-                    onUpdate(index, 'material_variant_id', v || null);
+                    onUpdate(index, 'material_variant_id',
+                      v === SHEET_MATERIAL_OPTION ? null : (v || null));
                     // Clear color — available colors may differ per material group
                     onUpdate(index, 'color', '');
                   }}
                 >
-                  <SelectTrigger className={cn(
-                    "h-9 text-xs flex-1",
-                    !item.material_variant_id && "border-amber-400/60 text-muted-foreground"
-                  )}>
+                  <SelectTrigger className="h-9 text-xs flex-1">
                     <SelectValue placeholder="Selecione o material…" />
                   </SelectTrigger>
                   <SelectContent>
+                    {/* O material da PROPRIA ficha e uma opcao como as demais:
+                        variante acrescenta, nao substitui (regra do dono).
+                        ⚠ So aparece quando NENHUMA variante ja resolve para a
+                        mesma familia. Das 30 referencias com variante, 27
+                        cadastraram uma variante que repete o material da ficha
+                        como contorno deste bug — e essas 27 carregam SKU
+                        proprio (25 com NCM, 1 ja usada em PV). Oferecer as duas
+                        criaria entradas identicas no seletor, uma delas sem o
+                        SKU, e escolher a errada e invisivel na tela. */}
+                    {sheetBaseGroup && !baseCoveredByVariant && (
+                      <SelectItem value={SHEET_MATERIAL_OPTION}>
+                        <span className="font-medium">{sheetBaseGroup.name}</span>
+                        <span className="ml-1.5 text-muted-foreground">
+                          {['da ficha',
+                            activeProductColorsForGroup(allProducts, sheetBaseGroup.id).length > 0
+                              ? `${activeProductColorsForGroup(allProducts, sheetBaseGroup.id).length} cores`
+                              : ''].filter(Boolean).join(' · ')}
+                        </span>
+                      </SelectItem>
+                    )}
                     {activeMaterialVariants.map(v => {
                       const effectiveGroup = resolveMaterialVariantColorGroup({
                         variant: v,
@@ -1586,30 +1643,20 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
             </div>
           )}
 
-          {/* Cor — disabled until material is selected (when groups exist) */}
+          {/* Cor — o material nunca fica "por escolher": nulo = material da ficha.
+              O bloqueio "escolha o material primeiro" saiu junto com o estado
+              que ele protegia; na SR02 ele deixava a cor sem opção alguma. */}
           {(() => {
-            const isLocked = activeMaterialVariants.length > 0 && !item.material_variant_id;
             // Sem tiras + variante com cor de cabedal resolvida: a cor fica
             // TRAVADA na variação (read-only) — garante o nome da variação de cor
             // no PV, NF-e e etiqueta. Com tiras, mantém o seletor (forração/tiras
             // podem ter cor própria).
             const lockedToVariation = !hasStrapsEffective && !!variantCabedalColor;
             return (
-          <div className={cn(
-            "md:col-span-3",
-            isLocked && "pointer-events-none"
-          )}>
-            <Label className={cn(
-              "text-xs font-bold uppercase mb-1 block flex items-center gap-1",
-              isLocked ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'
-            )}>
+          <div className="md:col-span-3">
+            <Label className="text-xs font-bold uppercase mb-1 block flex items-center gap-1 text-muted-foreground">
               Cor Principal
-              {isLocked && (
-                <span className="inline-flex items-center gap-1 ml-1 px-1.5 py-0.5 rounded bg-amber-500/15 text-xs font-bold border border-amber-500/30 normal-case">
-                  🔒 Escolha o material primeiro
-                </span>
-              )}
-              {!isLocked && lockedToVariation && (
+              {lockedToVariation && (
                 <span
                   className="inline-flex items-center gap-1 ml-1 px-1.5 py-0.5 rounded bg-primary/10 text-primary text-xs font-bold border border-primary/20 normal-case"
                   title="Sem tiras, a cor segue a variação do material (cabedal) — vai pro PV, NF-e e etiqueta"
@@ -1753,10 +1800,10 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
             </div>
           </div>
           <div className="flex min-w-0 items-center gap-2 px-3 py-2">
-            <span className={cn('flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold', activeMaterialVariants.length === 0 || selectedMaterialVariant ? 'bg-primary text-primary-foreground' : 'bg-amber-500/20 text-amber-700 dark:text-amber-300')}>2</span>
+            <span className={cn('flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold', 'bg-primary text-primary-foreground')}>2</span>
             <div className="min-w-0">
               <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Material</p>
-              <p className="truncate text-xs font-medium">{selectedMaterialVariant?.material_name || (activeMaterialVariants.length > 0 ? 'Escolha obrigatória' : sheetSpecs?.upper_material || 'Da ficha')}</p>
+              <p className="truncate text-xs font-medium">{selectedMaterialVariant?.material_name || sheetBaseGroup?.name || sheetSpecs?.upper_material || 'Da ficha'}</p>
             </div>
           </div>
           <div className="flex min-w-0 items-center gap-2 px-3 py-2">
