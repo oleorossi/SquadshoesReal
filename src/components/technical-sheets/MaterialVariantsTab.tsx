@@ -318,13 +318,13 @@ function GroupCombobox({
    const { data: soleCascadeContext } = useQuery({
      queryKey: ['sheet_variant_cascade_sole', sheetMaterials?.primary_sole_id],
      queryFn: async () => {
-       const { data, error } = await (supabase as any)
+       const { data, error } = await supabase
          .from('products')
          .select('is_fachetado, fachete_material_group_id')
-         .eq('id', sheetMaterials?.primary_sole_id)
+         .eq('id', sheetMaterials?.primary_sole_id ?? '')
          .maybeSingle();
        if (error) throw error;
-       return data as { is_fachetado: boolean | null; fachete_material_group_id: string | null } | null;
+       return data;
      },
      enabled: !!sheetMaterials?.primary_sole_id,
      staleTime: 60_000,
