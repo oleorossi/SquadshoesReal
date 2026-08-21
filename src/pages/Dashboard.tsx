@@ -89,8 +89,11 @@ export default function Dashboard() {
         // (faturamento, produção do mês).
         supabase.from('orders').select('id', { count: 'exact', head: true })
           .in('status', ['Reservado', 'Em Produção', 'Em produção']),
+        // 'Pendente' + 'Rascunho' = ainda não aprovado. Mesma convenção do claim
+        // de aprovação em SaleOrders.tsx:1605 — contar só Rascunho deixaria de
+        // fora todo PV criado pelo default do SaleOrderForm, que é 'Pendente'.
         supabase.from('sale_orders').select('id', { count: 'exact', head: true })
-          .in('status', ['Rascunho', 'rascunho']),
+          .in('status', ['Pendente', 'pendente', 'Rascunho', 'rascunho']),
         // Cobertura dos KPIs que dependem de apontamento: sem due_date não existe
         // atraso, sem parada apontada o OEE da view sai 100% em todo setor. Os
         // cards se escondem em vez de exibir número inventado (decisão do dono).

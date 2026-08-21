@@ -24,7 +24,16 @@ function useComercialData() {
         .limit(500);
       if (salesError) throw salesError;
 
-      const sales = salesData ?? [];
+      // ⚠ Exclusão na ORIGEM, não em cada KPI: faturamento, pares, top clientes,
+      // top grupos, top referências, top cores e ranking de representante liam a
+      // mesma lista. Filtrar num lugar só evita a próxima métrica nascer errada.
+      // Medido em 20/08/2026: cancelado (R$ 25.404,36) + rascunho (R$ 8.841,60)
+      // = R$ 34.245,96 entravam no "Faturamento Total" e na comissão do rep.
+      const NAO_E_CARTEIRA = new Set([
+        'Cancelado', 'cancelado', 'Cancelada', 'cancelada', 'Rascunho', 'rascunho',
+      ]);
+      const todasAsVendas = salesData ?? [];
+      const sales = todasAsVendas.filter(s => !NAO_E_CARTEIRA.has(s.status));
       const saleOrderIds = sales.map(s => s.id);
       const clientIds = Array.from(new Set(sales.map(s => s.client_id).filter(Boolean)));
       const [itemsRes, clientsRes] = await Promise.all([
@@ -94,7 +103,15 @@ function useComercialData() {
       const totalRevenue = sales.reduce((s, o) => s + o.total, 0);
       const totalOrders = sales.length;
       const totalPairs = items.reduce((s, i) => s + i.quantity, 0);
-      const pendingOrders = sales.filter(s => s.status === 'Pendente').length;
+      // ⚠ Era só `status === 'Pendente'`. 'Pendente' é status declarado (está em
+      // STATUS_OPTIONS e é o default do SaleOrderForm), mas hoje NENHUM PV está
+      // nele — os 6 povoados são Faturado, Em Produção, Cancelado, Aprovado,
+      // Finalizado s/ NF e Rascunho. O card marcava 0 com 2 rascunhos parados,
+      // e zero aqui passa por "não há nada aguardando". Contar o PAR
+      // Pendente+Rascunho é a convenção que o próprio código já usa pra
+      // "ainda não aprovado" (SaleOrders.tsx:1605, no claim da aprovação).
+      const AGUARDANDO = new Set(['Pendente', 'pendente', 'Rascunho', 'rascunho']);
+      const pendingOrders = todasAsVendas.filter(s => AGUARDANDO.has(s.status)).length;
 
        // Top Colors
        const colorTotals = new Map<string, { color: string; pairs: number; revenue: number }>();
@@ -152,8 +169,9 @@ export default function ComercialDashboard() {
         {/* KPIs */}
         <StatGrid>
           <StatCard
-            label="Faturamento Total"
+            label="Carteira"
             value={fmt(data.totalRevenue)}
+            hint="PVs sem cancelado/rascunho"
             icon={DollarSign}
             tone="primary"
           />
@@ -170,6 +188,7 @@ export default function ComercialDashboard() {
           <StatCard
             label="Pendentes"
             value={data.pendingOrders}
+            hint="Rascunhos aguardando"
             icon={TrendingUp}
             tone="destructive"
           />
