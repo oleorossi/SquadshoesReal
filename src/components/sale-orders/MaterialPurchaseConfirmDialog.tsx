@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { EmptyState } from '@/components/ui/empty-state';
 import {
   Calendar, Truck, Warning as AlertTriangle, ShoppingCart, CircleNotch as Loader2,
   FloppyDisk as Save, XCircle, Money, Storefront,
@@ -58,8 +59,14 @@ interface PurchaseLine {
   price: number;
   /** qty × price. */
   total: number;
-  /** Preenchido só quando a unidade de compra difere da de consumo. */
-  consumptionEquivalent: string | null;
+  /**
+   * Quanto falta de verdade, na unidade de consumo. Preenchido só quando o
+   * número de compra NÃO é o que falta — por MOQ, por arredondamento pra
+   * unidade fechada, ou por conversão de unidade. É o que restou da coluna
+   * "Faltam": ela era idêntica a "Necessário" na maioria das linhas (estoque
+   * zerado), então só aparece onde de fato explica alguma coisa.
+   */
+  shortfallLabel: string | null;
 }
 
 /** Quantidade: sem casas quando é inteiro (120 un), 2 casas quando fracionária. */
@@ -72,12 +79,10 @@ function resolveLine(s: MaterialShortage, override?: SupplierOverride): Purchase
   const price = s.purchase_unit_price ?? s.unit_price;
   const unit = s.purchase_unit ?? s.unit;
   const consumptionUnit = s.consumption_unit ?? s.unit;
-  // A equivalência só aparece quando o NÚMERO muda de fato. Comparar unidades
-  // não serve: `enrichMaterialShortages` só divide a quantidade quando
-  // `conversion_rate > 1` (materialAvailability.ts:282), então com taxa entre 0
-  // e 1 a unidade de compra muda mas a quantidade não — e a linha diria
-  // "1.200 placa = 1.200 dm²", que não informa nada.
-  const converted = Number(qty) !== Number(s.suggested_qty);
+  // Mostra a falta só quando o número de compra não a revela sozinho: unidade
+  // diferente, ou quantidade diferente (MOQ e o CEIL de unidade discreta em
+  // `enrichMaterialShortages`). Sem isso a linha repetiria "Necessário".
+  const explains = unit !== consumptionUnit || Number(qty) !== Number(s.shortage);
   return {
     shortage: s,
     supplierId: override?.supplier_id ?? s.supplier_id,
@@ -87,8 +92,8 @@ function resolveLine(s: MaterialShortage, override?: SupplierOverride): Purchase
     unit,
     price,
     total: (Number(qty) || 0) * (Number(price) || 0),
-    consumptionEquivalent: converted
-      ? `${qtyLabel(s.suggested_qty)} ${consumptionUnit}`
+    shortfallLabel: explains
+      ? `${qtyLabel(s.shortage)} ${consumptionUnit}`
       : null,
   };
 }
@@ -142,7 +147,10 @@ export function MaterialPurchaseConfirmDialog({ open, onOpenChange, result, sale
    * usa, então cada card na tela é exatamente uma OC. Sem fornecedor vem
    * primeiro: é o que trava a geração e o que o usuário precisa resolver.
    */
-  const { groups, blocked, artisanalCount, generableCount, generableTotal } = useMemo(() => {
+  const {
+    groups, blocked, artisanalCount, generableCount, generableTotal,
+    blockedTotal, missingPriceCount, generableLeadDays,
+  } = useMemo(() => {
     // Tiras artesanais nunca são materializadas por este diálogo. A escolha
     // produzir/comprar do PV é reconciliada pelo worker canônico, que conhece
     // variante, napa, receita, semana e contribuição exatas. Mantê-las aqui
@@ -170,9 +178,12 @@ export function MaterialPurchaseConfirmDialog({ open, onOpenChange, result, sale
     }));
 
     const blockedGroup = built.find(g => g.supplierId === null) || null;
+    // Ordem por consequência: o fornecedor que puxa mais dinheiro primeiro —
+    // é a variável da decisão. Desempate por nome pra a lista não dançar entre
+    // uma abertura e outra.
     const ready = built
       .filter(g => g.supplierId !== null)
-      .sort((a, b) => a.supplierName.localeCompare(b.supplierName, 'pt-BR'));
+      .sort((a, b) => b.total - a.total || a.supplierName.localeCompare(b.supplierName, 'pt-BR'));
 
     return {
       groups: blockedGroup ? [blockedGroup, ...ready] : ready,
@@ -180,6 +191,16 @@ export function MaterialPurchaseConfirmDialog({ open, onOpenChange, result, sale
       artisanalCount: artisanal.length,
       generableCount: ready.length,
       generableTotal: ready.reduce((sum, g) => sum + g.total, 0),
+      blockedTotal: blockedGroup?.total ?? 0,
+      // Sem preço de cadastro a linha entra no total como zero e o subtotal
+      // mente pra baixo. Contamos pra poder avisar em vez de somar em silêncio.
+      missingPriceCount: ready.reduce(
+        (count, g) => count + g.items.filter(i => !(Number(i.price) > 0)).length,
+        0,
+      ),
+      // Só o que de fato vai ser comprado — o lead time dos materiais sem
+      // fornecedor não vira prazo de nada.
+      generableLeadDays: ready.reduce((max, g) => Math.max(max, g.leadTimeDays || 0), 0),
     };
   }, [shortages, overrides]);
 
@@ -191,7 +212,9 @@ export function MaterialPurchaseConfirmDialog({ open, onOpenChange, result, sale
     : '—';
 
   const blockedCount = blocked?.items.length ?? 0;
-  const roundedForMoq = shortages.some(s => s.suggested_qty > s.shortage);
+  // Só as linhas que entram na compra: as artesanais não são materializadas
+  // aqui, então avisar sobre arredondamento delas apontaria pra número nenhum.
+  const roundedForMoq = shortages.some(s => !s.is_artisanal && s.suggested_qty > s.shortage);
 
   const handleAssignSupplier = (productId: string, supplierId: string) => {
     const supplier = suppliers.find(s => s.id === supplierId);
@@ -282,7 +305,13 @@ export function MaterialPurchaseConfirmDialog({ open, onOpenChange, result, sale
         return;
       }
       if (ocCount > 0) {
-        toast.success(`${ocCount} ${ocCount === 1 ? 'ordem de compra gerada' : 'ordens de compra geradas'}!`);
+        // "fornecedor", não "OC": a RPC pode ter agregado numa OC já aberta em
+        // vez de criar uma nova — o número de OCs novas não é conhecido aqui.
+        toast.success(
+          ocCount === 1
+            ? 'Compra enviada para 1 fornecedor.'
+            : `Compra enviada para ${ocCount} fornecedores.`,
+        );
       }
       onConfirm('with_po');
     } finally {
@@ -292,19 +321,29 @@ export function MaterialPurchaseConfirmDialog({ open, onOpenChange, result, sale
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
+      {/* `overflow-hidden` aqui derruba o `overflow-y-auto` do DialogContent base
+          (verificado: o tailwind-merge trata `overflow` e `overflow-y` como
+          grupos conflitantes). Quem rola é só a faixa do meio. */}
       <DialogContent className="w-[95vw] max-w-6xl max-h-[92dvh] p-0 sm:p-0 gap-0 sm:gap-0 flex flex-col overflow-hidden">
         {/* ── Cabeçalho fixo: contexto e decisão nunca saem da tela ──
             Antes o DialogContent inteiro rolava, então título, etapa, prazo e
             rodapé sumiam assim que a lista passava de meia dúzia de linhas. */}
-        <div className="shrink-0 border-b border-border px-4 sm:px-6 pt-4 sm:pt-5 pb-3 pr-12 space-y-3">
+        {/* Cabeçalho enxuto de propósito: num 1366×768 cada 20px aqui é uma
+            linha a menos de material visível na faixa que rola. */}
+        <div className="shrink-0 border-b border-border px-4 sm:px-6 pt-3 pb-2.5 pr-12 space-y-2">
           <SubmitFlowStepper current="material" />
-          <div className="space-y-1">
-            <DialogTitle className="flex items-center gap-2 text-xl sm:text-2xl">
+          <div className="space-y-0.5">
+            <DialogTitle className="flex items-center gap-2 text-lg sm:text-xl">
               <AlertTriangle className="h-5 w-5 text-warning shrink-0" />
               Materiais insuficientes
             </DialogTitle>
+            {/* ⚠ "vira uma OC" seria falso: `upsert_open_purchase_order` procura
+                uma OC ABERTA do fornecedor e agrega nela; só cria OC nova quando
+                não existe nenhuma. Por isso o texto (e o botão) falam em
+                fornecedor, não em número de OCs criadas. */}
             <DialogDescription className="text-sm">
-              Revise o que será comprado e de quem. Cada card abaixo vira uma ordem de compra.
+              Revise o que será comprado e de quem. Cada card vira uma ordem de compra — ou
+              entra na OC que o fornecedor já tem aberta.
             </DialogDescription>
           </div>
 
@@ -314,28 +353,38 @@ export function MaterialPurchaseConfirmDialog({ open, onOpenChange, result, sale
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
             <SummaryTile
               icon={ShoppingCart}
-              label="OCs a gerar"
+              label="Fornecedores"
               value={String(generableCount)}
-              hint={generableCount === 1 ? 'ordem de compra' : 'ordens de compra'}
+              hint={generableCount === 1 ? 'uma compra' : 'uma compra cada'}
             />
             <SummaryTile
               icon={Money}
               label="Valor estimado"
               value={formatMoney(generableTotal)}
-              hint="preço de cadastro"
+              hint={missingPriceCount > 0
+                ? `${missingPriceCount} sem preço — soma abaixo do real`
+                : 'preço de cadastro'}
+              tone={missingPriceCount > 0 ? 'destructive' : 'default'}
             />
             <SummaryTile
               icon={Calendar}
               label="Chegada estimada"
               value={formattedDate}
-              hint={`maior lead time: ${maxLeadTimeDays} dias`}
+              // A data vem do resultado (nível do pedido, considera TODOS os
+              // materiais). O lead exibido é o dos que vão ser comprados de
+              // fato — quando os dois divergem, a dica diz por quê.
+              hint={blockedCount > 0
+                ? `${generableLeadDays}d o que dá pra comprar · ${maxLeadTimeDays}d com os travados`
+                : `maior lead time: ${maxLeadTimeDays} dias`}
             />
             <SummaryTile
               icon={blockedCount > 0 ? XCircle : Truck}
               label="Sem fornecedor"
               value={String(blockedCount)}
-              hint={blockedCount > 0 ? 'ficam de fora da compra' : 'tudo pronto pra comprar'}
-              tone={blockedCount > 0 ? 'destructive' : 'ok'}
+              hint={blockedCount > 0
+                ? `${formatMoney(blockedTotal)} fora da compra`
+                : 'tudo pronto pra comprar'}
+              tone={blockedCount > 0 ? 'destructive' : 'default'}
             />
           </div>
         </div>
@@ -405,7 +454,8 @@ export function MaterialPurchaseConfirmDialog({ open, onOpenChange, result, sale
                     </>
                   )}
                   {isBlocked && (
-                    <span className="ml-auto text-xs font-semibold uppercase tracking-wide text-destructive">
+                    <span className="ml-auto flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-destructive">
+                      <span className="font-mono tabular-nums normal-case">{formatMoney(group.total)}</span>
                       Não será comprado
                     </span>
                   )}
@@ -416,8 +466,11 @@ export function MaterialPurchaseConfirmDialog({ open, onOpenChange, result, sale
                     <thead>
                       <tr className="border-b border-border/60 text-xs uppercase tracking-wide text-muted-foreground">
                         <th className="text-left font-semibold px-3 sm:px-4 py-2">Material</th>
+                        {/* "Estoque" saiu como coluna: com estoque zerado — o caso
+                            de 121 dos 206 produtos ativos — ela repetia o par
+                            Necessário/Comprar. Vira sub-linha no material só quando
+                            existe cobertura de verdade. */}
                         <th className="text-right font-semibold px-2 py-2 whitespace-nowrap">Necessário</th>
-                        <th className="text-right font-semibold px-2 py-2 whitespace-nowrap">Estoque</th>
                         <th className="text-right font-semibold px-2 py-2 whitespace-nowrap">Comprar</th>
                         {isBlocked ? (
                           <th className="text-left font-semibold px-2 sm:px-4 py-2 whitespace-nowrap">Fornecedor</th>
@@ -455,25 +508,31 @@ export function MaterialPurchaseConfirmDialog({ open, onOpenChange, result, sale
                                   </Badge>
                                 )}
                                 {s.moq > 0 && (
-                                  <span className="text-xs text-muted-foreground">MOQ {qtyLabel(s.moq)}</span>
+                                  <span className="text-xs text-muted-foreground">MOQ {qtyLabel(s.moq)} {s.unit}</span>
                                 )}
                               </div>
+                              {Number(s.available) > 0 && (
+                                <div className="text-xs text-muted-foreground font-mono mt-0.5">
+                                  em estoque: {qtyLabel(s.available)} {s.unit}
+                                </div>
+                              )}
                             </td>
                             <td className="px-2 py-2 text-right font-mono tabular-nums whitespace-nowrap">
                               {qtyLabel(s.required)}
                               <span className="text-xs text-muted-foreground ml-1">{s.unit}</span>
-                            </td>
-                            <td className="px-2 py-2 text-right font-mono tabular-nums whitespace-nowrap text-muted-foreground">
-                              {qtyLabel(s.available)}
                             </td>
                             <td className="px-2 py-2 text-right whitespace-nowrap">
                               <div className="font-mono tabular-nums font-bold">
                                 {qtyLabel(line.qty)}
                                 <span className="text-xs text-muted-foreground ml-1 font-normal">{line.unit}</span>
                               </div>
-                              {line.consumptionEquivalent && (
+                              {/* NÃO usar "=": `suggested_purchase_qty` leva CEIL
+                                  em unidade discreta, então o comprado é >= o
+                                  que falta. Dizer "180 saco = 8.959,06 kg" seria
+                                  aritmeticamente falso. */}
+                              {line.shortfallLabel && (
                                 <div className="text-xs text-muted-foreground font-mono">
-                                  = {line.consumptionEquivalent}
+                                  falta {line.shortfallLabel}
                                 </div>
                               )}
                             </td>
@@ -506,10 +565,20 @@ export function MaterialPurchaseConfirmDialog({ open, onOpenChange, result, sale
                                 {/* Preço UNITÁRIO usa formatCurrency (mantém a
                                     precisão cadastrada, até 4 casas); o total
                                     fechado usa formatMoney (2 casas). */}
-                                <td className="px-2 py-2 text-right font-mono tabular-nums whitespace-nowrap text-muted-foreground">
-                                  {formatCurrency(line.price)}
+                                <td
+                                  className={cn(
+                                    'px-2 py-2 text-right font-mono tabular-nums whitespace-nowrap',
+                                    Number(line.price) > 0 ? 'text-muted-foreground' : 'text-destructive',
+                                  )}
+                                >
+                                  {Number(line.price) > 0 ? formatCurrency(line.price) : 'sem preço'}
                                 </td>
-                                <td className="px-3 sm:px-4 py-2 text-right font-mono tabular-nums font-semibold whitespace-nowrap">
+                                <td
+                                  className={cn(
+                                    'px-3 sm:px-4 py-2 text-right font-mono tabular-nums font-semibold whitespace-nowrap',
+                                    Number(line.price) > 0 ? undefined : 'text-destructive',
+                                  )}
+                                >
                                   {formatMoney(line.total)}
                                 </td>
                               </>
@@ -524,9 +593,33 @@ export function MaterialPurchaseConfirmDialog({ open, onOpenChange, result, sale
             );
           })}
 
+          {/* Pedido só de tira artesanal: nada é comprado por este diálogo, de
+              propósito. Sem isto o corpo ficava vazio e os tiles zerados sem
+              dizer por quê. */}
+          {groups.length === 0 && (
+            <EmptyState
+              icon={ShoppingCart}
+              title="Nada a comprar neste pedido"
+              description="As faltas deste PV são todas de tiras artesanais, que seguem o planejamento automático. Salve o pedido e o lote interno ou a OS terceirizada cuidam delas."
+              size="sm"
+            />
+          )}
+
+          {/* A coluna "Faltam" saiu (era idêntica a "Necessário" sempre que o
+              estoque está zerado). Então a nota explica o desvio em termos das
+              colunas que continuam visíveis. */}
           {roundedForMoq && (
             <p className="text-xs text-muted-foreground">
-              ⚠ Quantidades arredondadas para atender o MOQ do fornecedor.
+              ⚠ <strong>Comprar</strong> pode passar do que falta: a quantidade é arredondada
+              para o MOQ do fornecedor e para a unidade fechada de compra.
+            </p>
+          )}
+          {missingPriceCount > 0 && (
+            <p className="text-xs text-destructive">
+              ⚠ {missingPriceCount === 1
+                ? '1 material está sem preço de cadastro e entra como R$ 0,00'
+                : `${missingPriceCount} materiais estão sem preço de cadastro e entram como R$ 0,00`}
+              {' '}— o valor estimado está <strong>abaixo</strong> do que será pago.
             </p>
           )}
         </div>
@@ -558,8 +651,11 @@ export function MaterialPurchaseConfirmDialog({ open, onOpenChange, result, sale
                 {generating
                   ? 'Gerando...'
                   : generableCount === 0
-                    ? 'Sem fornecedor para comprar'
-                    : `Gerar ${generableCount} ${generableCount === 1 ? 'OC' : 'OCs'} e salvar pedido`}
+                    // Nada comprável tem duas causas diferentes, e dizer "sem
+                    // fornecedor" quando o pedido só tem tira artesanal culpa
+                    // um cadastro que está certo.
+                    ? (blockedCount > 0 ? 'Sem fornecedor para comprar' : 'Nada a comprar aqui')
+                    : `Comprar de ${generableCount} ${generableCount === 1 ? 'fornecedor' : 'fornecedores'} e salvar`}
               </Button>
             </div>
           </div>
@@ -609,13 +705,13 @@ function SummaryTile({
       </div>
       <div
         className={cn(
-          'font-mono tabular-nums font-bold leading-tight mt-0.5 text-base',
+          'font-mono tabular-nums font-bold leading-tight text-sm',
           tone === 'destructive' && 'text-destructive',
         )}
       >
         {value}
       </div>
-      {hint && <div className="text-xs text-muted-foreground truncate">{hint}</div>}
+      {hint && <div className="text-[10px] leading-tight text-muted-foreground truncate" title={hint}>{hint}</div>}
     </div>
   );
 }
