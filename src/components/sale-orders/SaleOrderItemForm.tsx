@@ -111,6 +111,11 @@ interface Props {
   /** Reporta ao pai se este item tem cor não cadastrada (cabedal/forração/tira),
    *  pra BLOQUEAR o salvamento do PV até cadastrar. null = sem pendência. */
   onColorIssueChange?: (index: number, info: { color: string; materials: string[]; message?: string } | null) => void;
+  /** Reporta se o material da própria ficha está oferecido no seletor deste
+   *  item. Quem sabe disso é o item (resolve grupo da ficha × grupo efetivo de
+   *  cada variante); o painel precisa saber pra não barrar o salvamento
+   *  chamando de "sem escolha" o que é a escolha "material da ficha". */
+  onSheetMaterialSelectableChange?: (index: number, selectable: boolean) => void;
   /** Contexto do cronograma usado pelo preview canônico das tiras. */
   saleOrderId?: string | null;
   /** Status canônico do PV. Aprovado/Em Produção congelam o snapshot operacional. */
@@ -143,7 +148,7 @@ const EMPTY_STRAP_SOURCING_MAP = Object.freeze({}) as StrapSourcingMap;
 // legitima e nao mais ausencia de escolha.
 const SHEET_MATERIAL_OPTION = '__ficha__';
 
-function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, onUpdate, onRemove, onCopyGradeFromPrevious, onSaveStateAndNavigate, isSelected, onToggleSelect, priceLookup, maxDiscountPct = 0, variantsByRef = EMPTY_VARIANTS_BY_REF, onColorIssueChange, saleOrderId, saleOrderStatus, billingWeek, requiredAt }: Props) {
+function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, onUpdate, onRemove, onCopyGradeFromPrevious, onSaveStateAndNavigate, isSelected, onToggleSelect, priceLookup, maxDiscountPct = 0, variantsByRef = EMPTY_VARIANTS_BY_REF, onColorIssueChange, onSheetMaterialSelectableChange, saleOrderId, saleOrderStatus, billingWeek, requiredAt }: Props) {
   const qc = useQueryClient();
   const { canSeeFinancialValues } = useAccessControl();
   const { data: strapCatalog, isLoading: strapCatalogLoading } = useArtisanalStrapCatalog(false);
@@ -915,6 +920,14 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
       : null);
   }, [colorIssueKey, index]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => onColorIssueChange?.(index, null), []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const sheetMaterialSelectable = !!sheetBaseGroup && !baseCoveredByVariant;
+  useEffect(() => {
+    onSheetMaterialSelectableChange?.(index, sheetMaterialSelectable);
+  }, [index, sheetMaterialSelectable, onSheetMaterialSelectableChange]);
+  // Remover o item tem que limpar o report, senão o índice liberado por ele
+  // ficaria valendo pro item que assumir a posição.
+  useEffect(() => () => onSheetMaterialSelectableChange?.(index, false), []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Limpa strap_colors órfão quando o modelo é de CABEDAL (MUTEX tiras×cabedal).
   // Cobre a corrida do sheetSpecs (query async separada do selectedRef) e PVs já

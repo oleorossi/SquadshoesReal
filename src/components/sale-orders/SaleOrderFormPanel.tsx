@@ -473,6 +473,17 @@ export default function SaleOrderFormPanel({
    onSaveStateAndNavigate, onCopyToNewOrder, onDeleteSelectedItems,
    minBillingISO, computingMinBilling, onColorIssueChange,
  }: Props) {
+   // Índice do item → o material da ficha está oferecido no seletor dele?
+   // Quem resolve isso é o SaleOrderItemForm (ficha × grupo efetivo de cada
+   // variante); aqui só se guarda o report pra validação de salvamento não
+   // chamar de "sem escolha" a escolha "material da ficha".
+   const [sheetMaterialSelectableByIndex, setSheetMaterialSelectableByIndex] =
+     useState<Record<number, boolean>>({});
+   const handleSheetMaterialSelectable = useCallback((index: number, selectable: boolean) => {
+     setSheetMaterialSelectableByIndex(prev =>
+       prev[index] === selectable ? prev : { ...prev, [index]: selectable });
+   }, []);
+
    const [showDuplicateDialog, setShowDuplicateDialog] = useState(false);
    const [duplicateList, setDuplicateList] = useState<string[]>([]);
    const [confirmedDuplicate, setConfirmedDuplicate] = useState(false);
@@ -2008,6 +2019,7 @@ export default function SaleOrderFormPanel({
                 item={item}
                 index={idx}
                 onColorIssueChange={onColorIssueChange}
+                onSheetMaterialSelectableChange={handleSheetMaterialSelectable}
                 references={references}
                 canRemove={items.length > 1}
                 isAdmin={isAdmin}
@@ -2255,6 +2267,9 @@ export default function SaleOrderFormPanel({
             itemId: item.id,
             activeVariantCount: refVariants?.length ?? 0,
             materialVariantId: item.material_variant_id,
+            // O índice aqui é o de `validItems`; o report vem do índice de
+            // `items`. Casa pelo id/posição real do item na lista renderizada.
+            sheetMaterialSelectable: sheetMaterialSelectableByIndex[items.indexOf(item)] === true,
           });
           if (materialIssue) {
             // Item NOVO precisa nascer resolvido: a variante escolhe os grupos

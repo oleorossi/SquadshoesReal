@@ -29,6 +29,11 @@ const FORM_RAW = readFileSync(
 // que ele saiu, e a citação faria a asserção de ausência passar por presença.
 const FORM = FORM_RAW.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 
+const PANEL = readFileSync(
+  resolve(process.cwd(), 'src/components/sale-orders/SaleOrderFormPanel.tsx'),
+  'utf8',
+);
+
 const NAPA_SOFT = { id: 'grp-napa-soft', name: 'NAPA SOFT' };
 const GLOW = { id: 'grp-glow', name: 'GLOW METALIC' };
 const GROUPS = [NAPA_SOFT, GLOW];
@@ -95,5 +100,16 @@ describe('material da ficha como opção no PV', () => {
   it('a cor deixa de ser travada por "escolha o material primeiro"', () => {
     expect(FORM).not.toContain('Escolha o material primeiro');
     expect(FORM).not.toMatch(/const isLocked =/);
+  });
+
+  it('a validação de salvamento aceita "material da ficha" como escolha', () => {
+    // Sem isto o usuário escolhia "NAPA SOFT · da ficha" na SR02 e o PV ainda
+    // barrava com "Item 9: selecione o grupo de material" — a tela oferecia uma
+    // opção que o salvamento não reconhecia.
+    expect(PANEL).toContain('sheetMaterialSelectable:');
+    expect(PANEL).toContain('onSheetMaterialSelectableChange={handleSheetMaterialSelectable}');
+    // O item é quem resolve; o painel só guarda o report (fonte única).
+    expect(FORM).toContain('const sheetMaterialSelectable = !!sheetBaseGroup && !baseCoveredByVariant;');
+    expect(FORM).toContain('onSheetMaterialSelectableChange?.(index, sheetMaterialSelectable)');
   });
 });
