@@ -35,6 +35,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
  import { sectorLabel, sectorOfGroup } from '@/lib/categoryFromGroup';
 import {
   listVariantCascadeSlots,
+  resolveStrapBaseReadout,
   seedVariantCascade,
   variantDrivesNoComponent,
   type VariantCascadeSelection,
@@ -272,13 +273,17 @@ function GroupCombobox({
      queryFn: async () => {
        const { data, error } = await (supabase as any)
          .from('technical_sheets')
-         .select('upper_material, lining_material, variant_drives_upper, variant_drives_lining, variant_drives_fachete')
+         .select('upper_material, upper_material_group_id, lining_material, primary_sole_id, has_straps, strap_base_group_id, variant_drives_upper, variant_drives_lining, variant_drives_fachete')
          .eq('id', sheetId)
          .maybeSingle();
        if (error) throw error;
        return data as {
          upper_material: string | null;
+         upper_material_group_id: string | null;
          lining_material: string | null;
+         primary_sole_id: string | null;
+         has_straps: boolean | null;
+         strap_base_group_id: string | null;
          variant_drives_upper: boolean | null;
          variant_drives_lining: boolean | null;
          variant_drives_fachete: boolean | null;
@@ -302,6 +307,34 @@ function GroupCombobox({
      );
      return cobertos.has(key(alvo)) ? '' : alvo;
    }, [sheetMaterials, variants, groups]);
+
+   /**
+    * O fachete não é campo da ficha: o grupo vem de
+    * `products.fachete_material_group_id` do SOLADO principal (fallback no forro
+    * da ficha) e a trava só faz sentido quando o solado é fachetado. Sem esta
+    * consulta o slot não teria como aparecer no diálogo — foi por isso que a
+    * trava dele sobreviveu escondida na aba Materiais depois do PR #146.
+    */
+   const { data: soleCascadeContext } = useQuery({
+     queryKey: ['sheet_variant_cascade_sole', sheetMaterials?.primary_sole_id],
+     queryFn: async () => {
+       const { data, error } = await (supabase as any)
+         .from('products')
+         .select('is_fachetado, fachete_material_group_id')
+         .eq('id', sheetMaterials?.primary_sole_id)
+         .maybeSingle();
+       if (error) throw error;
+       return data as { is_fachetado: boolean | null; fachete_material_group_id: string | null } | null;
+     },
+     enabled: !!sheetMaterials?.primary_sole_id,
+     staleTime: 60_000,
+   });
+   const soleContext = useMemo(() => ({
+     soleIsFachetado: !!soleCascadeContext?.is_fachetado,
+     facheteGroupName: soleCascadeContext?.fachete_material_group_id
+       ? groups.find(group => group.id === soleCascadeContext.fachete_material_group_id)?.name ?? null
+       : null,
+   }), [soleCascadeContext, groups]);
 
    /**
     * Componentes que o MATERIAL PRINCIPAL substitui, lidos de `variant_drives_*`
@@ -406,12 +439,11 @@ function GroupCombobox({
    // configurada). Isso também evita travar o seed num render em que a query da
    // ficha ainda não tinha respondido.
    const [cascadeOverride, setCascadeOverride] = useState<VariantCascadeSelection | null>(null);
-   const cascadeSlots = useMemo(() => listVariantCascadeSlots(sheetMaterials), [sheetMaterials]);
-   const cascade = cascadeOverride ?? seedVariantCascade(sheetMaterials);
-   const cascadeDirty = !!sheetMaterials && (
-     cascade.upper !== !!sheetMaterials.variant_drives_upper
-     || cascade.lining !== !!sheetMaterials.variant_drives_lining
+   const cascadeSlots = useMemo(
+     () => listVariantCascadeSlots(sheetMaterials, soleContext),
+     [sheetMaterials, soleContext],
    );
+   const cascade = cascadeOverride ?? seedVariantCascade(sheetMaterials, soleContext);
    
    // Temporary state for the form
     const [formData, setFormData] = useState<Partial<ReferenceMaterialVariant>>({
@@ -435,6 +467,53 @@ function GroupCombobox({
       sole_material_product_id: null,
       sole_consumption_override: null,
     });
+
+   /**
+    * O bloco de checkboxes só é renderizado com material principal escolhido
+    * (ver `formData.main_material_group_id` no diálogo). A gravação tem que
+    * obedecer à MESMA condição.
+    *
+    * ⚠ Sem esta trava: numa ficha de UM slot ainda não configurada, salvar uma
+    * variante só com exceção por componente (sem material principal) passava
+    * pelas guardas, `seedVariantCascade` ligava aquele slot sozinho, e a ficha
+    * saía com `variant_drives_*` gravado que o usuário NUNCA viu na tela — a
+    * trava vale pra todas as variantes da ficha, então isso mudava o corte de
+    * outras variantes em silêncio. Regressão do PR #146, pega na revisão
+    * adversarial em 21/08/2026.
+    */
+   /**
+    * Base da napa da TIRA artesanal, espelhando `resolve_strap_base_group_id`.
+    * Só aparece em ficha de tiras — nas demais é ruído.
+    *
+    * `technical_sheets` não tem `lining_material_group_id`: o forro é resolvido
+    * por NOME (`lining_material`), então a tradução nome→grupo é feita aqui e o
+    * helper continua puro.
+    */
+   const strapBaseReadout = useMemo(() => {
+     if (!sheetMaterials?.has_straps) return null;
+     const liningGroupId = groups.find(group =>
+       (group.name || '').trim().toLocaleLowerCase('pt-BR')
+         === (sheetMaterials.lining_material || '').trim().toLocaleLowerCase('pt-BR'))?.id ?? null;
+     const readout = resolveStrapBaseReadout({
+       variant: formData,
+       sheet: { ...sheetMaterials, lining_material_group_id: liningGroupId },
+       cascade,
+     });
+     if (!readout) return null;
+     return {
+       ...readout,
+       groupName: groups.find(group => group.id === readout.groupId)?.name ?? 'material da ficha',
+       liningGroupName: groups.find(group => group.id === liningGroupId)?.name
+         ?? sheetMaterials.lining_material ?? 'forração da ficha',
+     };
+   }, [sheetMaterials, formData, cascade, groups]);
+
+   const cascadeEditable = !!formData.main_material_group_id;
+   const cascadeDirty = cascadeEditable && !!sheetMaterials && (
+     cascade.upper !== !!sheetMaterials.variant_drives_upper
+     || cascade.lining !== !!sheetMaterials.variant_drives_lining
+     || cascade.fachete !== !!sheetMaterials.variant_drives_fachete
+   );
 
   /**
    * Campos reprovados por `handleSave`. O toast continua — mas ele some em
@@ -640,6 +719,7 @@ function GroupCombobox({
        .update({
          variant_drives_upper: cascade.upper,
          variant_drives_lining: cascade.lining,
+         variant_drives_fachete: cascade.fachete,
        })
        .eq('id', sheetId)
        .select('id');
@@ -730,7 +810,7 @@ function GroupCombobox({
      // principal depois de conferir `variant_drives_*`, então salvar assim
      // devolve lista de cores vazia no PV e mantém o corte no material da ficha
      // — foi o que aconteceu com SR02/GLOW METALIC em 20/08/2026.
-     if (variantDrivesNoComponent({ variant: formData, sheet: sheetMaterials, cascade })) {
+     if (variantDrivesNoComponent({ variant: formData, sheet: sheetMaterials, sole: soleContext, cascade })) {
        toast.error('Nenhum componente segue esta variante', {
          description: cascadeSlots.length === 0
            ? 'A ficha não tem cabedal nem forração cadastrados: sem material na ficha não há o que a variante substitua. Preencha o material na aba Materiais e volte aqui.'
@@ -1109,9 +1189,25 @@ function GroupCombobox({
                         <p className="text-xs text-muted-foreground">
                           Vale para todas as variantes desta ficha. Desmarcar preserva material de
                           identidade (ex.: cabedal de palha, que não deve virar napa porque o PV
-                          vendeu outra variante). O Fachete tem caixa própria na aba
-                          <strong> Materiais</strong> da ficha.
+                          vendeu outra variante).
                         </p>
+                        {strapBaseReadout && (
+                          <p className={cn(
+                            'rounded-md border px-2 py-1.5 text-[11px] leading-snug',
+                            strapBaseReadout.divergesFromLining
+                              ? 'border-warning/40 bg-warning/10 text-warning'
+                              : 'border-border/60 bg-background/60 text-muted-foreground',
+                          )}>
+                            <strong className="text-foreground">Base da tira:</strong>{' '}
+                            sai de <strong className="text-foreground">{strapBaseReadout.groupName}</strong>
+                            {strapBaseReadout.divergesFromLining
+                              ? <> — ⚠ diferente da Forração (<strong>{strapBaseReadout.liningGroupName}</strong>).
+                                  O resolver da tira não olha estas caixas, então o modelo sairia com duas
+                                  napas. Iguale pelo seletor de Forro em "Exceção por componente".</>
+                              : <> · segue a Forração. Para trocar só a tira, use o seletor de
+                                  <strong> Forro</strong> em "Exceção por componente".</>}
+                          </p>
+                        )}
                       </>
                     )}
                   </div>
