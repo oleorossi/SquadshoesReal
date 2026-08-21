@@ -769,6 +769,36 @@ ROSADO; e `artisanal_strap_variants` tem **zero** linhas
 `identity_basis='finished_product_group'` — ou seja, nenhuma tira comprada pronta é
 salvável ainda (13 fichas dependem disso). Todas aparecem agora na tela antes do save.
 
+### Napa-base elegível — SKU oficial por cor NÃO é pré-requisito (21/08/2026)
+
+`base_material_color_official_products` é registro **por COR** materializado pelo próprio
+save do PV (`ensure_sale_order_internal_strap_intents`, regra do "SKU único e inequívoco").
+Exigi-lo **antes**, como faziam o drawer "Corrigir no estoque" e o writer
+`resolve_technical_strap_context_from_sale_order`, é **circular**: família que nunca vendeu
+tira interna nunca ganha designação e por isso nunca fica selecionável.
+
+**O que isso causou:** em 21/08/2026 a tabela só tinha NAPA SUDANI (COGUMELO e OFF WHITE),
+então o seletor oferecia **uma** opção para qualquer ficha. SR01 e SR02 — ambas de **NAPA
+SOFT** — foram pinadas em NAPA SUDANI por falta de alternativa, e o PV novo em ROSADO
+morria no aviso *"Não existe NAPA SUDANI ROSADO ativo no estoque"* nomeando a napa errada
+(NAPA SOFT ROSADO existe e está ativo).
+
+**Regra agora** (`strap_base_group_is_eligible`, mig `20270101006800` — fonte única do guard
+do writer e da lista da tela via `list_strap_base_group_candidates()`): largura útil
+(**perfil vigente OU derivável** por `resolve_base_group_usable_width_mm`) **+** ao menos um
+SKU **linear ativo** que não seja tira acabada, e o grupo não pode ser
+`is_artisanal_strap`. Passou de **1** para **15** famílias elegíveis.
+
+⚠ **Não devolva a exigência de produto oficial para o cliente.** A tela não consegue decidir
+isso: a largura derivável mora em `component_sheets`, que o catálogo não carrega — por isso
+a lista vem do servidor. Travado por `napaBaseElegibilidadeSemSkuOficial.contract.test.ts`.
+
+⚠ **`TIRA OVERLOCK 5MM` aparece na lista** (23 SKUs lineares, 1370 mm — o cadastro copiado
+de napa descrito na regra de consumo). É família de tira **acabada**, não napa-base; hoje
+nada a exclui porque **nenhum** grupo tem `is_artisanal_strap = true`. Marcar a flag resolve
+(a função já a honra), mas ela também governa compra e ajuste de estoque de 23 SKUs —
+decisão de cadastro do dono, não foi feita.
+
 ## Regra de empacotamento em caixas (CANÔNICA, 05/08/2026)
 
 > Fonte: `src/lib/boxPacking.ts` (TS) e `packing_boxes_for_grade()` (SQL, migration

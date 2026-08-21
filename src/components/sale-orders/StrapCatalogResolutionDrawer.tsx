@@ -24,6 +24,7 @@ import { Textarea } from '@/components/ui/textarea';
 import {
   useArtisanalStrapCatalog,
   useResolveTechnicalStrapContext,
+  useStrapBaseGroupCandidates,
 } from '@/hooks/useArtisanalStraps';
 import {
   strapIdentityBasis,
@@ -142,44 +143,41 @@ export default function StrapCatalogResolutionDrawer({
   const [reason, setReason] = useState('');
   const [validationError, setValidationError] = useState('');
 
-  const eligibleBaseGroupIds = useMemo(() => {
-    const approvedWidthGroups = new Set(
-      (catalog?.width_profiles || [])
-        .filter((profile) => profile.status === 'approved' && !profile.valid_to)
-        .map((profile) => profile.base_group_id),
-    );
-    return new Set(
-      (catalog?.official_products || [])
-        .filter((entry) => entry.status === 'active'
-          && approvedWidthGroups.has(entry.base_group_id)
-          && catalog?.products.some((product) => product.id === entry.official_product_id
-            && product.active !== false
-            && product.group_id === entry.base_group_id))
-        .map((entry) => entry.base_group_id),
-    );
-  }, [catalog?.official_products, catalog?.products, catalog?.width_profiles]);
+  // A elegibilidade vem do servidor (`strap_base_group_is_eligible`), a MESMA
+  // regra do writer. A tela derivava daqui exigindo produto oficial ativo —
+  // registro POR COR que o save do PV materializa —, então só a família que já
+  // tinha vendido tira aparecia: em 21/08/2026 o seletor oferecia UMA napa
+  // (NAPA SUDANI) para qualquer ficha, e fichas de NAPA SOFT foram pinadas na
+  // napa errada por falta de alternativa.
+  const { data: baseGroupCandidates = [], isLoading: candidatesLoading } =
+    useStrapBaseGroupCandidates(open && requiresReferenceBase);
+  const eligibleBaseGroupIds = useMemo(
+    () => new Set(baseGroupCandidates.map((candidate) => candidate.id)),
+    [baseGroupCandidates],
+  );
   const groups = useMemo(
-    () => (catalog?.groups || [])
-      .filter((group) => eligibleBaseGroupIds.has(group.id))
-      .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')),
-    [catalog?.groups, eligibleBaseGroupIds],
+    () => [...baseGroupCandidates].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')),
+    [baseGroupCandidates],
   );
 
   useEffect(() => {
     if (!open) return;
-    setBaseGroupId(
-      requiresReferenceBase
-        && isUuid(suggestedBaseGroupId)
-        && eligibleBaseGroupIds.has(suggestedBaseGroupId)
-        ? suggestedBaseGroupId
-        : '',
-    );
+    setBaseGroupId('');
     setMeasureByGroup(Object.fromEntries(
       lineGroups.map((group) => [group.key, group.initialMeasureId]),
     ));
     setReason('');
     setValidationError('');
-  }, [eligibleBaseGroupIds, lineGroups, open, referenceId, requiresReferenceBase, suggestedBaseGroupId]);
+  }, [lineGroups, open, referenceId]);
+
+  // A sugestão só pode ser aplicada quando as candidatas chegam do servidor.
+  // Deixá-la no efeito de reset acima faria a resposta da query apagar o motivo
+  // e as medidas que o usuário já tivesse digitado.
+  useEffect(() => {
+    if (!open || !requiresReferenceBase) return;
+    if (!isUuid(suggestedBaseGroupId) || !eligibleBaseGroupIds.has(suggestedBaseGroupId)) return;
+    setBaseGroupId((current) => (current ? current : suggestedBaseGroupId));
+  }, [eligibleBaseGroupIds, open, requiresReferenceBase, suggestedBaseGroupId]);
   const typeNameById = useMemo(
     () => new Map((catalog?.types || []).map((type) => [type.id, type.name])),
     [catalog?.types],
@@ -362,19 +360,24 @@ export default function StrapCatalogResolutionDrawer({
                         searchEmptyText="Nenhum grupo encontrado."
                       >
                         {groups.map((group) => (
-                          <SelectItem key={group.id} value={group.id}>{group.name}</SelectItem>
+                          <SelectItem key={group.id} value={group.id}>
+                            {group.name}
+                            {group.usable_width_mm
+                              ? ` · ${Math.round(Number(group.usable_width_mm))} mm`
+                              : ''}
+                          </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                     <p className="text-xs text-muted-foreground">
                       A base vale somente para linhas com identidade pela referência. Linhas por grupo acabado não usam este campo.
                     </p>
-                    {groups.length === 0 && (
+                    {!candidatesLoading && groups.length === 0 && (
                       <Alert>
                         <Warning className="h-4 w-4" />
                         <AlertTitle>Nenhuma napa-base apta</AlertTitle>
                         <AlertDescription>
-                          O Estoque precisa ter ao menos uma base com perfil de largura aprovado e produto oficial ativo.
+                          O Estoque precisa ter ao menos uma família com largura útil cadastrada (mesma largura de bobina em todos os SKUs, em Materiais &gt; Ficha de Componente &gt; Dimensões) e um SKU linear ativo.
                         </AlertDescription>
                       </Alert>
                     )}
