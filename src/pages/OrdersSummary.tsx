@@ -34,7 +34,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 export default function OrdersSummary() {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { data: orders = [], isLoading, isError } = useOrders();
   const { data: references = [] } = useTechnicalSheets();
   const orderIds = useMemo(() => orders.map(o => o.id), [orders]);
@@ -49,20 +49,27 @@ export default function OrdersSummary() {
   });
 
   const searchTerm = searchParams.get('search') || '';
-  const statusFilter = searchParams.get('status') || 'all';
+  // ⚠ O default era 'all', que inclui OP Cancelada. Medido em 20/08/2026:
+  // 17.880 dos 54.612 pares da base estão em OPs canceladas — 33% —, e este
+  // número vai impresso no relatório ("X OPs • Y pares") e no "Valor Total".
+  // Pior: a tela não tinha NENHUM controle de status (o filtro só vinha por
+  // URL), então não havia como tirá-las. 'ativas' = tudo menos Cancelada;
+  // '?status=all' continua existindo pra quem quiser o conjunto completo.
+  const statusFilter = searchParams.get('status') || 'ativas';
   const referenceFilter = searchParams.get('reference') || 'all';
   const colorFilter = searchParams.get('color') || 'all';
   const weekFilter = searchParams.get('week') || 'all';
 
   const filteredOrders = useMemo(() => {
-    // Use statusFilter directly - if 'all', don't filter by status
     const effectiveStatus = statusFilter;
     return orders.filter(order => {
+      if (effectiveStatus === 'ativas' && order.status === 'Cancelada') return false;
       if (searchTerm) {
         // "/" = refinamento AND (ex.: "stx / alcineu" = ref STX E cliente Alcineu)
         if (!searchMatchesAllTerms(searchTerm, (order as any).order_number, (order as any).technical_sheets?.name, (order as any).color)) return false;
       }
-      if (effectiveStatus !== 'all' && order.status !== effectiveStatus) return false;
+      if (effectiveStatus !== 'all' && effectiveStatus !== 'ativas'
+          && order.status !== effectiveStatus) return false;
       if (referenceFilter !== 'all' && order.reference_id !== referenceFilter) return false;
       if (colorFilter !== 'all' && (order as any).color !== colorFilter) return false;
       if (weekFilter !== 'all') {
@@ -75,6 +82,18 @@ export default function OrdersSummary() {
       return true;
     });
   }, [orders, searchTerm, statusFilter, referenceFilter, colorFilter, weekFilter]);
+
+  // Rótulo do recorte — o mesmo texto vai pro cabeçalho da tela e pro papel,
+  // pra folha impressa nunca circular sem dizer o que foi contado.
+  const escopoLabel =
+    statusFilter === 'ativas' ? 'sem OPs canceladas'
+    : statusFilter === 'all' ? 'todas as OPs, inclusive canceladas'
+    : `somente ${statusFilter}`;
+  const canceladasOcultas = useMemo(
+    () => (statusFilter === 'ativas' ? orders.filter(o => o.status === 'Cancelada') : []),
+    [orders, statusFilter],
+  );
+  const paresCancelados = canceladasOcultas.reduce((s, o) => s + o.quantity, 0);
 
   // Summary stats
   const totalPairs = filteredOrders.reduce((s, o) => s + o.quantity, 0);
@@ -263,7 +282,7 @@ export default function OrdersSummary() {
 
     const html = `
       <h1>Resumo de Produção</h1>
-      <p class="subtitle">Gerado em ${new Date().toLocaleString('pt-BR')} • ${totalOPs} OPs • ${totalPairs} pares</p>
+      <p class="subtitle">Gerado em ${new Date().toLocaleString('pt-BR')} • ${totalOPs} OPs • ${totalPairs} pares · ${escopoLabel}</p>
       
       <div style="display:flex;gap:16px;margin:12px 0;">
         <div style="border:1px solid #ccc;border-radius:6px;padding:8px 16px;text-align:center;flex:1">
@@ -351,7 +370,7 @@ export default function OrdersSummary() {
           className="print:hidden"
           sectionLabel="PEDIDOS · RESUMO"
           title="Resumo de Produção"
-          description={`${totalOPs} OPs • ${totalPairs} pares no filtro atual`}
+          description={`${totalOPs} OPs • ${totalPairs} pares · ${escopoLabel}`}
           actions={
             <>
               <Button variant="ghost" size="icon" onClick={() => navigate('/orders')} aria-label="Voltar para Ordens de Produção">
@@ -368,7 +387,7 @@ export default function OrdersSummary() {
         {/* Print header */}
         <div className="hidden print:block">
           <h1 className="display text-xl">Resumo de Produção</h1>
-          <p className="text-sm text-muted-foreground">Gerado em {new Date().toLocaleString('pt-BR')} • {totalOPs} OPs • {totalPairs} pares</p>
+          <p className="text-sm text-muted-foreground">Gerado em {new Date().toLocaleString('pt-BR')} • {totalOPs} OPs • {totalPairs} pares · {escopoLabel}</p>
         </div>
 
         {/* KPI Cards — kit editorial (StatCard) derivado de dados reais */}
@@ -424,17 +443,42 @@ export default function OrdersSummary() {
           </Panel>
         </div>
 
-        {/* Status breakdown */}
+        {/* Status breakdown — os badges viraram o controle de recorte que a tela
+            nunca teve (antes o status só entrava por URL, então não havia como
+            tirar as canceladas do total impresso). */}
         <Panel
           eyebrow="PEDIDOS · RESUMO"
           title={<span className="flex items-center gap-2"><Package className="h-4 w-4" /> Status das OPs</span>}
+          actions={
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 text-xs print:hidden"
+              onClick={() => {
+                const next = new URLSearchParams(searchParams);
+                if (statusFilter === 'ativas') next.set('status', 'all');
+                else next.delete('status');
+                setSearchParams(next, { replace: true });
+              }}
+            >
+              {statusFilter === 'ativas' ? 'Incluir canceladas' : 'Ocultar canceladas'}
+            </Button>
+          }
         >
-            <div className="flex flex-wrap gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               {statusBreakdown.map(([status, count]) => (
                 <Badge key={status} variant="outline" className={`${STATUS_COLORS[status] || ''} text-sm px-3 py-1`}>
                   {status}: {count}
                 </Badge>
               ))}
+              {canceladasOcultas.length > 0 && (
+                // O que ficou de fora aparece explícito: número omitido em
+                // silêncio é a mesma doença que somar cancelada sem avisar.
+                <span className="text-xs text-muted-foreground">
+                  + {canceladasOcultas.length} cancelada{canceladasOcultas.length > 1 ? 's' : ''} fora da conta
+                  {' '}({paresCancelados.toLocaleString('pt-BR')} pares)
+                </span>
+              )}
             </div>
         </Panel>
 
