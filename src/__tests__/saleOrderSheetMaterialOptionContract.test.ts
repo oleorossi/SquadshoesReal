@@ -39,6 +39,11 @@ const SQL_GUARD = readFileSync(
   'utf8',
 );
 
+const SQL_CONFIRM = readFileSync(
+  resolve(process.cwd(), 'supabase/migrations/20270101007100_confirmar-pv-com-material-da-ficha.sql'),
+  'utf8',
+);
+
 const NAPA_SOFT = { id: 'grp-napa-soft', name: 'NAPA SOFT' };
 const GLOW = { id: 'grp-glow', name: 'GLOW METALIC' };
 const GROUPS = [NAPA_SOFT, GLOW];
@@ -145,5 +150,30 @@ describe('material da ficha como opção no PV', () => {
     const posicoes = degraus.map(d => ordemSql.indexOf(d));
     expect(posicoes.every(pos => pos >= 0)).toBe(true);
     expect([...posicoes].sort((a, b) => a - b)).toEqual(posicoes);
+  });
+
+  it('a CONFIRMACAO do PV tambem aceita o material da ficha', () => {
+    // 4o dono da regra: capture_material_variant_snapshots_on_sale_order_confirmation
+    // recusava variante nula na aprovacao. Sem esta excecao o pedido SALVA e
+    // morre ao aprovar — pior que bloquear no salvamento, porque a parede
+    // aparece com o pedido ja montado.
+    expect(SQL_CONFIRM).toMatch(/AND NOT public\.sheet_material_is_selectable\(soi\.reference_id\)/);
+  });
+
+  it('a excecao da confirmacao NAO afrouxa os outros motivos de recusa', () => {
+    for (const motivo of [
+      'variante inexistente',
+      'variante pertence a outra referência',
+      'variante inativa',
+      'variante sem SKU comercial',
+      'o snapshot comercial final ficou sem SKU',
+    ]) {
+      expect(SQL_CONFIRM).toContain(motivo);
+    }
+    // A defesa final continua olhando SO itens COM variante.
+    expect(SQL_CONFIRM).toMatch(/AND soi\.material_variant_id IS NOT NULL\s*\n\s*AND NULLIF\(btrim\(COALESCE\(/);
+    // E a migration se recusa a aplicar se a guarda virar no-op.
+    expect(SQL_CONFIRM).toContain('Nenhuma referencia continua exigindo variante — a guarda foi anulada');
+    expect(SQL_CONFIRM).toContain('Motivo de recusa perdido na reescrita');
   });
 });
