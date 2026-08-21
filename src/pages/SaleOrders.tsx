@@ -1627,11 +1627,15 @@ export default function SaleOrders() {
           isFactoring: false,
           factoringReceivingDays: null,
         });
-        for (const inst of bulkSchedule) {
-          if (existingNums.has(inst.installment_number)) continue;
-          const installLabel = bulkSchedule.length > 1 ? ` (${inst.installment_number}/${bulkSchedule.length})` : '';
-          const { error: arError } = await supabase.from('accounts_receivable').insert({
-            description: `PV ${order.order_number} - ${order.client_name}${installLabel}`,
+        // Parcelas em UM insert. Eram N idas ao servidor em serie — numa condicao
+        // 30/60/90 isso e 3 round-trips por PV, e a aprovacao em lote percorre
+        // PV a PV. A idempotencia nao muda: continua filtrando por
+        // installment_number ja existente ANTES de montar o lote.
+        const arFaltantes = bulkSchedule
+          .filter(inst => !existingNums.has(inst.installment_number))
+          .map(inst => ({
+            description: `PV ${order.order_number} - ${order.client_name}`
+              + (bulkSchedule.length > 1 ? ` (${inst.installment_number}/${bulkSchedule.length})` : ''),
             client_name: order.client_name,
             client_cnpj: order.client_cnpj || '',
             sale_order_id: order.id,
@@ -1643,10 +1647,19 @@ export default function SaleOrders() {
             installment_number: inst.installment_number,
             total_installments: inst.total_installments,
             notes: order.payment_condition ? `Condição: ${order.payment_condition}` : '',
-          } as any);
-          if (arError) { errors.push(`${order.order_number}: ${arError.message}`); break; }
+          }));
+        if (arFaltantes.length > 0) {
+          const { error: arError } = await supabase.from('accounts_receivable').insert(arFaltantes as any);
+          if (arError) errors.push(`${order.order_number}: ${arError.message}`);
         }
-        const { data: pvItems } = await supabase.from('sale_order_items').select('*').eq('sale_order_id', order.id);
+        // ⚠ Era select('*'): trazia strap_colors, strap_sourcing e o snapshot
+        // comercial (jsonb pesados) que este laco NAO usa — ele so le id,
+        // reference_id, quantity, color, grade e fichas. Em PV de 9 itens isso
+        // e payload grande a toa, por PV, na aprovacao em lote.
+        const { data: pvItems } = await supabase
+          .from('sale_order_items')
+          .select('id, reference_id, quantity, color, grade, fichas')
+          .eq('sale_order_id', order.id);
         if (pvItems && pvItems.length > 0) {
           // O1 fix (audit PV 2026-06): o claim acima (status → 'Aprovado') dispara
           // o trigger do banco que JÁ cria 1 OP por item + reserva soft. Refetch
