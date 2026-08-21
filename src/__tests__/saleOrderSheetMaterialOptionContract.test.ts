@@ -34,6 +34,11 @@ const PANEL = readFileSync(
   'utf8',
 );
 
+const SQL_GUARD = readFileSync(
+  resolve(process.cwd(), 'supabase/migrations/20270101007000_material-da-ficha-vale-como-escolha-no-pv.sql'),
+  'utf8',
+);
+
 const NAPA_SOFT = { id: 'grp-napa-soft', name: 'NAPA SOFT' };
 const GLOW = { id: 'grp-glow', name: 'GLOW METALIC' };
 const GROUPS = [NAPA_SOFT, GLOW];
@@ -111,5 +116,34 @@ describe('material da ficha como opção no PV', () => {
     // O item é quem resolve; o painel só guarda o report (fonte única).
     expect(FORM).toContain('const sheetMaterialSelectable = !!sheetBaseGroup && !baseCoveredByVariant;');
     expect(FORM).toContain('onSheetMaterialSelectableChange?.(index, sheetMaterialSelectable)');
+  });
+
+  it('a guarda do BANCO conhece a mesma excecao que o front', () => {
+    // Terceira guarda da mesma regra: enforce_sale_order_item_material_variant
+    // recusava material_variant_id NULL sempre que a referencia tinha variante
+    // ativa — o PV parava em "Selecione a variação de material desta referência
+    // antes de salvar o item" mesmo com "NAPA SOFT · da ficha" escolhido.
+    expect(SQL_GUARD).toContain('sheet_material_is_selectable');
+    expect(SQL_GUARD).toMatch(/IF public\.sheet_material_is_selectable\(NEW\.reference_id\) THEN\s*RETURN NEW;/);
+    // A guarda continua valendo quando a base ja e coberta por variante.
+    expect(SQL_GUARD).toContain('Selecione a variação de material desta referência antes de salvar o item.');
+    // E a migration prova isso na propria aplicacao, nao so em teste.
+    expect(SQL_GUARD).toContain('Nenhuma referencia continua exigindo variante — a guarda foi anulada');
+  });
+
+  it('a resolucao SQL espelha a precedencia do TS (mesma ordem, mesmos degraus)', () => {
+    // resolveMaterialVariantColorGroup: pino cabedal > grupo cabedal >
+    // (drives_upper ? principal) > pino forro > grupo forro > (drives_lining ? principal)
+    const ordemSql = SQL_GUARD.slice(
+      SQL_GUARD.indexOf('material_variant_color_group_id'),
+      SQL_GUARD.indexOf('sheet_material_is_selectable'),
+    );
+    const degraus = [
+      'upper_material_product_id', 'upper_material_group_id', 'variant_drives_upper',
+      'lining_material_product_id', 'lining_material_group_id', 'variant_drives_lining',
+    ];
+    const posicoes = degraus.map(d => ordemSql.indexOf(d));
+    expect(posicoes.every(pos => pos >= 0)).toBe(true);
+    expect([...posicoes].sort((a, b) => a - b)).toEqual(posicoes);
   });
 });
