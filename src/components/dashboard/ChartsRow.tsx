@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { subMonths, format, startOfMonth, endOfMonth } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { getDashboardPeriodRange, type DashboardPeriod } from "@/lib/dashboardPeriod";
+import { isCancelledOrDraftOrder } from "@/lib/orderStatus";
 
 // Cores dos gráficos seguem o handoff Novidade (vermelho Squad como acento
 // principal). Antes tinha um verde escuro `hsl(162, 90%, 15%)` hardcoded —
@@ -75,12 +76,14 @@ export function ChartsRow({ period = 'current_month' }: { period?: DashboardPeri
     queryFn: async () => {
       const { data, error } = await supabase
         .from("sale_orders")
-        .select("created_at, total")
+        .select("created_at, total, status")
         .gte("created_at", range.startISO)
-        .lte("created_at", range.endISO)
-        .not("status", "eq", "cancelled");
+        .lte("created_at", range.endISO);
       if (error) throw error;
-      return data ?? [];
+      // Status canônico do PV é pt-BR (`Cancelado`/`Rascunho`). O filtro
+      // `.not("status","eq","cancelled")` não casava nada e o gráfico
+      // somava PVs cancelados — o card Carteira ao lado já os excluía.
+      return (data ?? []).filter((s: { status?: string }) => !isCancelledOrDraftOrder(s.status));
     },
     staleTime: 5 * 60_000,
   });
@@ -90,12 +93,11 @@ export function ChartsRow({ period = 'current_month' }: { period?: DashboardPeri
     queryFn: async () => {
       const { data, error } = await supabase
         .from("orders")
-        .select("created_at, quantity")
+        .select("created_at, quantity, status")
         .gte("created_at", range.startISO)
-        .lte("created_at", range.endISO)
-        .not("status", "eq", "cancelled");
+        .lte("created_at", range.endISO);
       if (error) throw error;
-      return data ?? [];
+      return (data ?? []).filter((o: { status?: string }) => !isCancelledOrDraftOrder(o.status));
     },
     staleTime: 5 * 60_000,
   });
