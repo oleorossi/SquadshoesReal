@@ -370,6 +370,14 @@ export function ArtisanalStrapEditor({
   const displayedColors = selectedColor && !selectedColorIsAvailable
     ? [selectedColor, ...availableIdentityColors]
     : availableIdentityColors;
+  // A cor canônica da tira comprada pronta NÃO é escolhida à mão: ela sai do
+  // produto acabado (mesma regra do servidor, em `validate_artisanal_strap_variant`).
+  // O campo fica bloqueado — então o save jamais pode responder "Selecione a cor
+  // canônica" aqui, que é um beco sem saída. A revisão nominal
+  // (`exactBuyReadyProductPrefill`) é a única exceção que libera a escolha.
+  const purchasedColorIsDerived = form.identityBasis === 'finished_product_group' && !exactBuyReadyProductPrefill;
+  const selectedFinishedProduct = catalog.products.find((item) => item.id === form.finishedProductId);
+  const finishedProductColorLabel = (selectedFinishedProduct?.color || '').trim();
   const identityGroupProducts = catalog.products
     .filter((product) => product.group_id === form.identityGroupId
       && (product.active !== false || product.id === form.finishedProductId))
@@ -475,6 +483,16 @@ export function ArtisanalStrapEditor({
     if (form.identityBasis === 'finished_product_group' && !form.identityGroupId) {
       return 'Selecione o grupo próprio da tira comprada pronta.';
     }
+    // Cor derivada: aponte o passo que o operador consegue executar, nunca o
+    // campo bloqueado. Foi assim que o cadastro do hub travava sem saída.
+    if (purchasedColorIsDerived && !form.colorId) {
+      if (!form.finishedProductId) {
+        return 'Selecione o produto comprado pronto em "Produto e estoque": a cor canônica vem dele.';
+      }
+      return finishedProductColorLabel
+        ? `A cor "${finishedProductColorLabel}" cadastrada no produto acabado não corresponde a nenhuma cor canônica nem a um alias aprovado. Cadastre essa identidade de cor antes de salvar.`
+        : 'O produto acabado selecionado não tem cor cadastrada, então a cor canônica não pode ser derivada. Informe a cor do produto no Estoque antes de salvar.';
+    }
     if (!form.colorId) return 'Selecione a cor canônica.';
     if (!selectedColorIsAvailable) {
       return form.identityBasis === 'finished_product_group'
@@ -500,7 +518,6 @@ export function ArtisanalStrapEditor({
     if (!form.finishedProductId && (!form.productName.trim() || !form.sku.trim())) {
       return 'Informe nome e SKU inequívocos para o produto acabado.';
     }
-    const selectedFinishedProduct = catalog.products.find((product) => product.id === form.finishedProductId);
     if (form.identityBasis === 'finished_product_group'
       && selectedFinishedProduct?.group_id !== form.identityGroupId) {
       return 'O produto acabado deve pertencer ao grupo próprio selecionado.';
@@ -843,11 +860,13 @@ export function ArtisanalStrapEditor({
                       }));
                       setValidationError(null);
                     }}
-                    disabled={readOnly || identityLocked || (
-                      form.identityBasis === 'finished_product_group' && !exactBuyReadyProductPrefill
-                    )}
+                    disabled={readOnly || identityLocked || purchasedColorIsDerived}
                   >
-                    <SelectTrigger><SelectValue placeholder="Selecione a cor" /></SelectTrigger>
+                    <SelectTrigger>
+                      <SelectValue placeholder={purchasedColorIsDerived
+                        ? 'Derivada do produto comprado pronto'
+                        : 'Selecione a cor'} />
+                    </SelectTrigger>
                     <SelectContent>
                       {displayedColors.map((item) => (
                         <SelectItem key={item.id} value={item.id}>
@@ -860,6 +879,22 @@ export function ArtisanalStrapEditor({
                       ))}
                     </SelectContent>
                   </Select>
+                  {purchasedColorIsDerived && (
+                    <p className="text-xs text-muted-foreground">
+                      A cor da tira comprada pronta vem do produto escolhido em <strong>Produto e estoque</strong>; ela não é selecionada aqui.
+                    </p>
+                  )}
+                  {purchasedColorIsDerived && !!form.finishedProductId && !form.colorId && (
+                    <Alert variant="destructive">
+                      <Warning className="h-4 w-4" />
+                      <AlertTitle>Cor do produto sem identidade canônica</AlertTitle>
+                      <AlertDescription>
+                        {finishedProductColorLabel
+                          ? `A cor "${finishedProductColorLabel}" cadastrada no produto acabado não corresponde a nenhuma cor canônica nem a um alias aprovado. Cadastre essa identidade de cor antes de salvar.`
+                          : 'O produto acabado selecionado não tem cor cadastrada, então a cor canônica não pode ser derivada.'}
+                      </AlertDescription>
+                    </Alert>
+                  )}
                   {(form.identityBasis === 'finished_product_group'
                     ? form.identityGroupId
                     : form.baseGroupId) && availableIdentityColors.length === 0 && (
