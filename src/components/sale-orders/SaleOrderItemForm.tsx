@@ -1534,6 +1534,24 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                     : ' · usa preço da tabela/ficha'}
                 </p>
               )}
+              {/* Variante que não resolve grupo nenhum: `variant_drives_*` da
+                  ficha está desligado e a variante não tem exceção por
+                  componente. O sintoma era mudo — a lista de cores vinha vazia
+                  ("Nenhuma cor encontrada") e a produção seguia cortando o
+                  material da ficha. Diz o motivo e leva ao lugar de resolver. */}
+              {selectedMaterialVariant && !mainGroupForNewColor && (
+                <p className="mt-1 text-[11px] leading-snug text-amber-600 dark:text-amber-400">
+                  Esta variante não substitui componente nenhum desta ficha: não há cores dela
+                  para escolher e o corte/débito continua saindo do material da ficha.{' '}
+                  <button
+                    type="button"
+                    className="underline font-medium"
+                    onClick={() => window.open(`/fichas-tecnicas?ref=${selectedRef?.id || ''}&tab=variants`, '_blank', 'noopener,noreferrer')}
+                  >
+                    Marque os componentes que seguem a variante
+                  </button>.
+                </p>
+              )}
             </div>
           )}
 
@@ -1604,6 +1622,11 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                 colors={availableColors}
                 value={item.color}
                 onSelect={(v) => onUpdate(index, 'color', v)}
+                emptyHint={selectedMaterialVariant && !mainGroupForNewColor
+                  ? `A variante ${selectedMaterialVariant.material_name} não substitui componente nenhum desta ficha, então não há cores dela para listar.`
+                  : mainGroupForNewColor
+                    ? `Nenhum item ativo com cor no grupo ${mainGroupForNewColor.name}.`
+                    : undefined}
                 onAddNew={mainGroupForNewColor ? (color) => {
                   // Cor principal (forração/cabedal) → abre a MESMA tela do
                   // Estoque (ProductFormDialog) como modal, com grupo + cor
@@ -2496,13 +2519,17 @@ const SaleOrderItemForm = memo(SaleOrderItemFormInner);
 export default SaleOrderItemForm;
 
 function ColorSearchSelect({
-  colors, value, onSelect, onAddNew,
+  colors, value, onSelect, onAddNew, emptyHint,
 }: {
   colors: string[];
   value: string;
   onSelect: (color: string) => void;
   /** Quando definido, mostra "+ Cadastrar 'X' no estoque" se a busca n\u00e3o casar nenhuma cor. */
   onAddNew?: (color: string) => void;
+  /** Por que a lista está vazia. Sem isso o popover terminava em "Nenhuma cor
+   *  encontrada." e o vendedor não tinha como saber que o problema era cadastro
+   *  da variante, não busca. */
+  emptyHint?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
@@ -2537,7 +2564,12 @@ function ColorSearchSelect({
                   <Button type="button" variant="outline" size="sm" onClick={() => setSearch('')}>Limpar busca</Button>
                 </div>
               ) : (
-                <p className="text-xs text-muted-foreground text-center py-4">Nenhuma cor encontrada.</p>
+                <div className="py-4 px-2 space-y-1">
+                  <p className="text-xs text-muted-foreground text-center">Nenhuma cor encontrada.</p>
+                  {emptyHint && (
+                    <p className="text-[11px] leading-snug text-amber-600 dark:text-amber-400 text-center">{emptyHint}</p>
+                  )}
+                </div>
               )
             )}
             {filtered.map(color => (

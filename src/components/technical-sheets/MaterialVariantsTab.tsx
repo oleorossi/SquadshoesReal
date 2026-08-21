@@ -1,5 +1,5 @@
  import { useState, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
   import { Plus, CircleNotch as Loader2, Package, Tag, Barcode, Trash as Trash2, DotsSixVertical as GripVertical, PencilSimple as Pencil, Check, X, ToggleLeft, ToggleRight, Hash, ShoppingCart, CurrencyDollar as DollarSign, Info, CaretUpDown as ChevronsUpDown, MagnifyingGlass as Search, Copy, CaretUp as ChevronUp, CaretDown as ChevronDown, Sparkle as Sparkles } from '@phosphor-icons/react';
  import { Button } from '@/components/ui/button';
  import { Input } from '@/components/ui/input';
@@ -33,6 +33,12 @@ import { useQuery } from '@tanstack/react-query';
  import { useProducts } from '@/hooks/useProducts';
  import { useGroups, type ProductGroup } from '@/hooks/useGroups';
  import { sectorLabel, sectorOfGroup } from '@/lib/categoryFromGroup';
+import {
+  listVariantCascadeSlots,
+  seedVariantCascade,
+  variantDrivesNoComponent,
+  type VariantCascadeSelection,
+} from '@/lib/materialVariantColorGroup';
  import { getGroupPath } from '@/lib/groupHierarchy';
  import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
@@ -204,6 +210,7 @@ function GroupCombobox({
 }
 
   export function MaterialVariantsTab({ sheetId, sheetCode }: MaterialVariantsTabProps) {
+   const qc = useQueryClient();
    const { data: variants = [], isLoading } = useReferenceMaterialVariants(sheetId);
    const { data: products = [] } = useProducts();
    const { data: groups = [] } = useGroups();
@@ -212,16 +219,26 @@ function GroupCombobox({
    // representa: nesse caso quem vender sem escolher variante recebe um material
    // diferente do que qualquer variante promete, em silêncio. Foi assim que o
    // PV-00141 (EC23) vendeu NAPA SOFT e a produção cortou NAPA SUDANI.
-   const { data: sheetMaterials } = useQuery({
-     queryKey: ['sheet_materials_for_variant_warning', sheetId],
+   //
+   // As travas `variant_drives_*` vêm junto: elas moram na FICHA mas a decisão
+   // ("este componente sai da napa da variante?") é tomada aqui, ao cadastrar a
+   // variante. Sem isso, material principal escolhido virava no-op silencioso.
+   const { data: sheetMaterials, refetch: refetchSheetCascade } = useQuery({
+     queryKey: ['sheet_variant_cascade', sheetId],
      queryFn: async () => {
        const { data, error } = await (supabase as any)
          .from('technical_sheets')
-         .select('upper_material, lining_material')
+         .select('upper_material, lining_material, variant_drives_upper, variant_drives_lining, variant_drives_fachete')
          .eq('id', sheetId)
          .maybeSingle();
        if (error) throw error;
-       return data as { upper_material: string | null; lining_material: string | null } | null;
+       return data as {
+         upper_material: string | null;
+         lining_material: string | null;
+         variant_drives_upper: boolean | null;
+         variant_drives_lining: boolean | null;
+         variant_drives_fachete: boolean | null;
+       } | null;
      },
      enabled: !!sheetId,
      staleTime: 60_000,
@@ -308,6 +325,21 @@ function GroupCombobox({
    const [isDialogOpen, setIsDialogOpen] = useState(false);
    const [editingVariant, setEditingVariant] = useState<Partial<ReferenceMaterialVariant> | null>(null);
    const [duplicatingFromId, setDuplicatingFromId] = useState<string | null>(null);
+
+   // Componentes que seguem o material principal desta variante. O valor mora na
+   // FICHA (`technical_sheets.variant_drives_*`) e vale pra TODAS as variantes
+   // dela — por isso o estado local é só um override do que está gravado, e é
+   // limpo a cada abertura do diálogo. `null` = "ainda não mexi", e aí a tela
+   // mostra o seed (o gravado, ou o único componente possível numa ficha nunca
+   // configurada). Isso também evita travar o seed num render em que a query da
+   // ficha ainda não tinha respondido.
+   const [cascadeOverride, setCascadeOverride] = useState<VariantCascadeSelection | null>(null);
+   const cascadeSlots = useMemo(() => listVariantCascadeSlots(sheetMaterials), [sheetMaterials]);
+   const cascade = cascadeOverride ?? seedVariantCascade(sheetMaterials);
+   const cascadeDirty = !!sheetMaterials && (
+     cascade.upper !== !!sheetMaterials.variant_drives_upper
+     || cascade.lining !== !!sheetMaterials.variant_drives_lining
+   );
    
    // Temporary state for the form
     const [formData, setFormData] = useState<Partial<ReferenceMaterialVariant>>({
@@ -425,6 +457,7 @@ function GroupCombobox({
  
    const handleOpenDialog = (variant?: ReferenceMaterialVariant) => {
      setDuplicatingFromId(null);
+     setCascadeOverride(null);
      if (variant) {
        setEditingVariant(variant);
        setFormData(variant);
@@ -485,6 +518,7 @@ function GroupCombobox({
    const handleOpenDuplicateDialog = (source: ReferenceMaterialVariant) => {
      setEditingVariant(null);
      setDuplicatingFromId(source.id);
+     setCascadeOverride(null);
      setFormData({
        material_name: `${source.material_name} (cópia)`,
        sku: generateNextSku(),
@@ -501,6 +535,35 @@ function GroupCombobox({
        display_order: variants.length,
      });
      setIsDialogOpen(true);
+   };
+
+   /**
+    * Grava as travas na ficha. `.select('id')` porque RLS que barra o UPDATE
+    * devolve 0 linhas sem erro — e aí a variante salvaria "configurada" com a
+    * ficha intacta, que é exatamente o no-op que este fluxo existe pra impedir.
+    */
+   const persistCascade = async () => {
+     const { data, error } = await supabase
+       .from('technical_sheets')
+       .update({
+         variant_drives_upper: cascade.upper,
+         variant_drives_lining: cascade.lining,
+       })
+       .eq('id', sheetId)
+       .select('id');
+     if (error || !data || data.length === 0) {
+       // O catch do handleSave é mudo de propósito (as mutations já avisam), e
+       // aqui não há mutation nenhuma — sem este toast a variante salvaria e a
+       // cascata falharia em silêncio.
+       toast.error('Variante salva, mas a cascata não foi gravada', {
+         description: error?.message
+           || 'A ficha não aceitou a alteração (permissão). Marque os componentes na aba Materiais da ficha.',
+         duration: 10000,
+       });
+       throw error || new Error('technical_sheets: 0 linhas afetadas');
+     }
+     await refetchSheetCascade();
+     qc.invalidateQueries({ queryKey: ['technical_sheets'] });
    };
 
    const handleSave = async () => {
@@ -554,6 +617,20 @@ function GroupCombobox({
          && !formData.upper_material_product_id) {
        toast.error('Escolha o material principal da variante', {
          description: 'Sem ele a variante não troca material nenhum: o PV mostra um nome/SKU diferente, mas a produção continua cortando o material da ficha.',
+       });
+       return;
+     }
+
+     // Segunda metade do MESMO no-op: material principal escolhido, mas nenhum
+     // componente liberado pra segui-lo. Os resolvers (TS e SQL) só caem no
+     // principal depois de conferir `variant_drives_*`, então salvar assim
+     // devolve lista de cores vazia no PV e mantém o corte no material da ficha
+     // — foi o que aconteceu com SR02/GLOW METALIC em 20/08/2026.
+     if (variantDrivesNoComponent({ variant: formData, sheet: sheetMaterials, cascade })) {
+       toast.error('Nenhum componente segue esta variante', {
+         description: cascadeSlots.length === 0
+           ? 'A ficha não tem cabedal nem forração cadastrados: sem material na ficha não há o que a variante substitua. Preencha o material na aba Materiais e volte aqui.'
+           : 'Marque em "Componentes que seguem esta variante" quais peças saem do material principal. Sem isso o PV mostra o SKU da variante mas a produção corta o material da ficha.',
        });
        return;
      }
@@ -620,8 +697,13 @@ function GroupCombobox({
            display_order: variants.length
          });
        }
+       // A trava mora na ficha, então só é gravada DEPOIS que a variante salvou:
+       // ligar a cascata e falhar o insert deixaria a ficha dirigida por uma
+       // variante que não existe.
+       if (cascadeDirty) await persistCascade();
        setIsDialogOpen(false);
        setDuplicatingFromId(null);
+       setCascadeOverride(null);
      } catch (err) {
        // Error handled by mutation
      }
@@ -842,14 +924,73 @@ function GroupCombobox({
                     tira artesanal). A placa/EVA da palmilha usa o seletor próprio abaixo. A
                     área (dm²/par) continua sendo a da ficha.
                   </p>
-                  {formData.main_material_group_id && (
-                    <p className="text-xs text-muted-foreground">
-                      Quais componentes seguem é definido na aba <strong>Materiais</strong> da ficha.
-                      Componente não liberado mantém o material cadastrado na ficha — é o que
-                      preserva material de identidade (ex.: cabedal de palha).
-                    </p>
-                  )}
                 </div>
+
+                {/* Quais componentes seguem o material principal. Vive em
+                    `technical_sheets.variant_drives_*` e vale pra TODAS as
+                    variantes da ficha — mas a decisão é tomada aqui, junto com
+                    o material. Antes esta caixa só existia escondida na aba
+                    Materiais, e o texto daqui apenas apontava pra lá: variante
+                    nova nascia sem cascata, sem cor no PV e cortando o material
+                    da ficha (SR02/GLOW METALIC, 20/08/2026). */}
+                {formData.main_material_group_id && (
+                  <div className="space-y-1.5 rounded-md border border-border/60 bg-muted/20 px-3 py-2.5">
+                    <Label className="text-xs font-medium">
+                      Componentes que seguem esta variante <span className="text-destructive">*</span>
+                    </Label>
+                    {cascadeSlots.length === 0 ? (
+                      <p className="text-xs text-warning">
+                        Esta ficha não tem Cabedal nem Forração cadastrados, então não há
+                        componente que a variante possa substituir. Preencha o material na aba
+                        <strong> Materiais</strong> da ficha antes de criar variantes.
+                      </p>
+                    ) : (
+                      <>
+                        {cascadeSlots.map(slot => {
+                          const pinnedGroupId = slot.key === 'upper'
+                            ? formData.upper_material_group_id
+                            : formData.lining_material_group_id;
+                          const pinnedGroup = pinnedGroupId
+                            ? groups.find(group => group.id === pinnedGroupId)
+                            : null;
+                          const mainGroupName = groups.find(g => g.id === formData.main_material_group_id)?.name || 'material principal';
+                          return (
+                            <label
+                              key={slot.key}
+                              className={cn(
+                                'flex items-start gap-2 rounded-md border border-border/60 bg-background/60 px-2 py-1.5',
+                                pinnedGroup ? 'opacity-70' : 'cursor-pointer',
+                              )}
+                            >
+                              <input
+                                type="checkbox"
+                                className="mt-0.5 h-3.5 w-3.5 accent-primary"
+                                checked={!pinnedGroup && cascade[slot.key]}
+                                disabled={!!pinnedGroup}
+                                onChange={e => setCascadeOverride({ ...cascade, [slot.key]: e.target.checked })}
+                                aria-label={`${slot.label} segue o material principal da variante`}
+                              />
+                              <span className="text-[11px] leading-snug text-muted-foreground">
+                                <strong className="text-foreground">{slot.label}</strong>
+                                {pinnedGroup
+                                  ? <> — exceção própria: sai de <strong className="text-foreground">{pinnedGroup.name}</strong>, não do material principal.</>
+                                  : cascade[slot.key]
+                                    ? <> — hoje <span className="line-through">{slot.sheetMaterial}</span> → sai de <strong className="text-foreground">{mainGroupName}</strong> ao vender esta variante.</>
+                                    : <> — continua saindo de <strong className="text-foreground">{slot.sheetMaterial}</strong> mesmo vendendo esta variante.</>}
+                              </span>
+                            </label>
+                          );
+                        })}
+                        <p className="text-xs text-muted-foreground">
+                          Vale para todas as variantes desta ficha. Desmarcar preserva material de
+                          identidade (ex.: cabedal de palha, que não deve virar napa porque o PV
+                          vendeu outra variante). O Fachete tem caixa própria na aba
+                          <strong> Materiais</strong> da ficha.
+                        </p>
+                      </>
+                    )}
+                  </div>
+                )}
 
                 <details className="rounded-md border border-border/60 bg-muted/20 px-3 py-2">
                   <summary className="cursor-pointer text-xs font-medium text-muted-foreground">
