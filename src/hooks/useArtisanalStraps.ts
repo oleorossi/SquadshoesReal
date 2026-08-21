@@ -75,6 +75,22 @@ export interface BaseMaterialWidthProfile {
   valid_to?: string | null;
 }
 
+/**
+ * Napa-base que o writer do PV aceita hoje (`strap_base_group_is_eligible`).
+ *
+ * Não se deriva do catálogo no cliente: a largura útil pode vir da ficha de
+ * componente, que o catálogo não carrega. Exigir designação oficial de cor —
+ * como a tela fazia — é circular: esse registro é POR COR e nasce no próprio
+ * save do PV, então napa nunca vendida em tira jamais ficaria selecionável.
+ */
+export interface StrapBaseGroupCandidate {
+  id: string;
+  name: string;
+  usable_width_mm?: number | null;
+  has_approved_width_profile?: boolean | null;
+  linear_sku_count?: number | null;
+}
+
 export interface BaseMaterialOfficialProduct {
   id?: string;
   base_group_id: string;
@@ -1001,6 +1017,19 @@ export function useArtisanalStrapCatalog(includeArchived = false) {
         ...catalog,
         legacy_recipes: asArray<LegacyArtisanalStrapRecipe>(legacyHistoryResult.data),
       };
+    },
+    staleTime: 2 * 60 * 1000,
+  });
+}
+
+export function useStrapBaseGroupCandidates(enabled = true) {
+  return useQuery({
+    queryKey: ['strap-base-group-candidates'],
+    enabled,
+    queryFn: async () => {
+      const { data, error } = await untypedSupabase.rpc('list_strap_base_group_candidates');
+      if (error) throw error;
+      return asArray<StrapBaseGroupCandidate>(data);
     },
     staleTime: 2 * 60 * 1000,
   });

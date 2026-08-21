@@ -2639,25 +2639,23 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                          O grupo vem do solado principal; o consumo por numeração vem das especificações do solado. Este valor não é duplicado na ficha.
                        </p>
                      </div>
-                     {/* Trava do fachete: o grupo acima vem do SOLADO, que é
-                         compartilhado entre referências e cores. Ligado, o fachete
-                         segue o material da variante vendida em vez do cadastro do
-                         solado (mig 20261027120000). Só aparece com variante. */}
+                     {/* A trava do fachete MUDOU DE LUGAR (21/08/2026): agora vive
+                         no diálogo da variante, junto de Cabedal e Forração, em
+                         "Componentes que seguem esta variante". Aqui ela era a
+                         terceira perna do no-op silencioso — quem cadastrava a
+                         variante estava noutra aba e não achava esta caixa. Só o
+                         estado atual é exibido; a edição é lá. */}
                      {((materialVariantsBySheet as any)?.get?.(sheet?.id) || []).length > 0 && (
-                       <label className="flex items-start gap-2 rounded-md border border-border/60 bg-background/60 px-2 py-1.5 cursor-pointer">
-                         <input
-                           type="checkbox"
-                           className="mt-0.5 h-3.5 w-3.5 accent-primary"
-                           checked={!!(form as any).variant_drives_fachete}
-                           onChange={e => updateField('variant_drives_fachete' as any, e.target.checked)}
-                         />
-                         <span className="text-[11px] leading-snug text-muted-foreground">
-                           <strong className="text-foreground">Fachete segue o material da variante</strong>
+                       <p className="rounded-md border border-border/60 bg-background/60 px-2 py-1.5 text-[11px] leading-snug text-muted-foreground">
+                         <strong className="text-foreground">
                            {(form as any).variant_drives_fachete
-                             ? ' — o salto sai da napa da variante vendida, não do grupo cadastrado no solado.'
-                             : ' — desligado: o salto usa sempre o grupo de fachete do solado, mesmo vendendo outra variante.'}
-                         </span>
-                       </label>
+                             ? 'O fachete segue o material da variante vendida.'
+                             : 'O fachete usa sempre o grupo cadastrado no solado.'}
+                         </strong>{' '}
+                         Para mudar, abra a aba <strong>Variantes</strong> e edite
+                         "Componentes que seguem esta variante" — a decisão vale para
+                         todas as variantes desta ficha.
+                       </p>
                      )}
                    </div>
                  )}
@@ -2736,11 +2734,14 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                     </div>
                   ) : null;
 
-                // Trava por componente do MATERIAL PRINCIPAL da variante
-                // (mig 20261027120000). Só aparece quando a ficha tem variante —
-                // sem variante é ruído. Desligado protege material de IDENTIDADE:
-                // a PALHA do cabedal do DS21 não deve virar napa porque o PV
-                // vendeu a variante GLOW METALIC.
+                // A trava por componente do MATERIAL PRINCIPAL da variante saiu
+                // DAQUI em 21/08/2026 e passou a viver no diálogo da variante
+                // (aba Variantes), junto com a escolha do material principal.
+                //
+                // ⚠ NÃO recriar esta caixa aqui. Ela era metade de uma duplicação:
+                // o mesmo `variant_drives_*` editável em duas abas, com semânticas
+                // diferentes — esta ignorava os pinos por componente, a do diálogo
+                // desabilita quando há pino. Só um lugar edita a decisão.
                 const sheetHasVariants = ((materialVariantsBySheet as any)?.get?.(sheet?.id) || []).length > 0;
                 const renderVariantDrivesToggle = (
                   field: 'variant_drives_upper' | 'variant_drives_lining',
@@ -2749,20 +2750,15 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                   if (!sheetHasVariants) return null;
                   const on = !!(form as any)[field];
                   return (
-                    <label className="mt-1.5 flex items-start gap-2 rounded-md border border-border/60 bg-muted/20 px-2 py-1.5 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        className="mt-0.5 h-3.5 w-3.5 accent-primary"
-                        checked={on}
-                        onChange={e => updateField(field as any, e.target.checked)}
-                      />
-                      <span className="text-[11px] leading-snug text-muted-foreground">
-                        <strong className="text-foreground">{componentLabel} segue o material da variante</strong>
+                    <p className="mt-1.5 rounded-md border border-border/60 bg-muted/20 px-2 py-1.5 text-[11px] leading-snug text-muted-foreground">
+                      <strong className="text-foreground">
                         {on
-                          ? ' — ao vender uma variante, este componente sai do material principal dela.'
-                          : ' — desligado: este componente usa sempre o material cadastrado aqui, mesmo vendendo outra variante.'}
-                      </span>
-                    </label>
+                          ? `${componentLabel} segue o material da variante vendida.`
+                          : `${componentLabel} usa sempre o material cadastrado aqui.`}
+                      </strong>{' '}
+                      Para mudar, abra a aba <strong>Variantes</strong> e edite
+                      "Componentes que seguem esta variante".
+                    </p>
                   );
                 };
                 // Tamanhos numéricos individuais (35, 36, 37...) e a versão

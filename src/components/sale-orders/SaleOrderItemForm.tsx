@@ -56,6 +56,7 @@ import {
 } from '@/lib/strapIdentity';
 import {
   activeProductColorsForGroup,
+  hasVariantComponentPin,
   resolveMaterialVariantColorGroup,
   resolveSheetCommercialColorGroup,
 } from '@/lib/materialVariantColorGroup';
@@ -1619,8 +1620,18 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                   ficha está desligado e a variante não tem exceção por
                   componente. O sintoma era mudo — a lista de cores vinha vazia
                   ("Nenhuma cor encontrada") e a produção seguia cortando o
-                  material da ficha. Diz o motivo e leva ao lugar de resolver. */}
-              {selectedMaterialVariant && !mainGroupForNewColor && (
+                  material da ficha. Diz o motivo e leva ao lugar de resolver.
+
+                  ⚠ `mainGroupForNewColor` sozinho NÃO prova no-op:
+                  `resolveMaterialVariantColorGroup` só olha cabedal e forração,
+                  então a variante que troca apenas a PLACA/EVA da palmilha
+                  (`insole_material_*`) resolve de verdade em
+                  `resolve_insole_material_for_variant` e cairia neste aviso
+                  dizendo uma falsidade. `hasVariantComponentPin` cobre os pinos
+                  de palmilha — é o mesmo helper que o guard de save usa. */}
+              {selectedMaterialVariant
+                && !mainGroupForNewColor
+                && !hasVariantComponentPin(selectedMaterialVariant) && (
                 <p className="mt-1 text-[11px] leading-snug text-amber-600 dark:text-amber-400">
                   Esta variante não substitui componente nenhum desta ficha: não há cores dela
                   para escolher e o corte/débito continua saindo do material da ficha.{' '}
@@ -1693,8 +1704,10 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                 colors={availableColors}
                 value={item.color}
                 onSelect={(v) => onUpdate(index, 'color', v)}
-                emptyHint={selectedMaterialVariant && !mainGroupForNewColor
+                emptyHint={selectedMaterialVariant && !mainGroupForNewColor && !hasVariantComponentPin(selectedMaterialVariant)
                   ? `A variante ${selectedMaterialVariant.material_name} não substitui componente nenhum desta ficha, então não há cores dela para listar.`
+                  : selectedMaterialVariant && !mainGroupForNewColor
+                  ? `A variante ${selectedMaterialVariant.material_name} troca só a placa/EVA da palmilha, que não tem cor comercial — a cor aqui continua vindo do material da ficha.`
                   : mainGroupForNewColor
                     ? `Nenhum item ativo com cor no grupo ${mainGroupForNewColor.name}.`
                     : undefined}

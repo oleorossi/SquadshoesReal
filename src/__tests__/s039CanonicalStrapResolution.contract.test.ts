@@ -189,11 +189,14 @@ describe('S-039 — resolução canônica das tiras', () => {
     expect(drawer).toContain('.flatMap((group) => group.ordinals.map((ordinal) => ({');
     expect(drawer).toContain('.sort((a, b) => a.ordinal - b.ordinal)');
     expect(drawer).toContain('p_expected_updated_at: referenceUpdatedAt');
-    expect(drawer).toContain("profile.status === 'approved' && !profile.valid_to");
-    expect(drawer).toContain("entry.status === 'active'");
-    expect(drawer).toContain('approvedWidthGroups.has(entry.base_group_id)');
-    expect(drawer).toContain('product.id === entry.official_product_id');
-    expect(drawer).toContain('product.active !== false');
+    // A elegibilidade da napa-base era derivada aqui de perfil de largura +
+    // produto oficial ATIVO. Exigir o produto oficial no cliente é circular
+    // (o registro é POR COR e nasce no save do PV) e chegou a reduzir o
+    // seletor a UMA napa, pinando fichas na família errada — 20270101006800
+    // moveu a regra para o servidor (`strap_base_group_is_eligible`).
+    expect(drawer).toContain('useStrapBaseGroupCandidates');
+    expect(drawer).toContain('const eligibleBaseGroupIds = useMemo(');
+    expect(drawer).not.toContain('official_products');
     expect(drawer).not.toContain('Cadastrar todas');
 
     expect(hooks).toContain("'resolve_technical_strap_context_from_sale_order'");

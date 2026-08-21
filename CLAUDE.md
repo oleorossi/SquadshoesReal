@@ -496,6 +496,43 @@ usa a largura da ficha de componente do grupo **da variante**. Débito/reserva/c
 derivam a variante server-side via `orders.sale_order_item_id` (não há coluna de
 variante em `orders`).
 
+⚠ **FURO ABERTO — variante ativa desliga o fallback do solado no DÉBITO (21/08/2026).**
+`debit_sole_stock_by_grade` tem hoje:
+
+```sql
+IF v_variant_id IS NULL AND v_resolved_product_id IS NULL THEN   -- cascata canônica
+```
+
+`resolve_sole_for_variant_color` é resolver de **override**: devolve ZERO linhas quando a
+variante não pina solado — e **as 68 variantes ativas não pinam** (medido 21/08/2026). Com
+variante presente a condição é falsa, a cascata canônica nunca roda e a função sai no
+`RETURN` **sem debitar nem reservar o solado**. O comentário dentro da própria função diz o
+contrário do código: *"Resolução canônica (cascata de cor) quando a variante não pina
+solado"*.
+
+Veio de `20270101002000_regras-cor-solado-pintavel.sql`, no mesmo bloco que (com
+justificativa) trocou o resolver por um color-aware e (sem justificativa nenhuma) trocou
+`IF v_resolved_product_id IS NULL` por `IF v_variant_id IS NULL AND ...`.
+
+⚠ **NÃO é o mesmo furo que a mig `20270101006600` consertou.** Aquela corrigiu o clobber
+`v_sole_product_id := v_variant_sole_pid` em `calculate_order_consumption_by_grade`
+(consumo/custeio/MRP). Este é o lado do DÉBITO e **continua aberto** — o commit e o PR #146
+afirmaram que `debit_sole_stock_by_grade` "faz o fallback CERTO"; **essa afirmação estava
+errada**.
+
+Estado medido em 21/08/2026: as 6 OPs vivas com variante têm solado reservado (288 un,
+`hard`), mas os snapshots foram congelados em **10/08**, antes da regressão. O risco é
+**prospectivo**: OP nova com variante nasce sem reserva de solado. Decisão do dono: registrar
+agora, tratar em rodada própria. Antes de "consertar", confirmar se o gate por
+`v_variant_id` foi intenção da regra de solado pintável ou descuido do patch.
+
+⚠ **`variantSoleClobber.contract.test.ts` é verde-congelado.** Ele lê o ARQUIVO da migration
+`20270101006600` e casa strings — prova que ela foi ESCRITA com `COALESCE`, não que o corpo
+vivo de `calculate_order_consumption_by_grade` tem. Como o repo recria essa função inteira
+com frequência (≥8 migrations até hoje), o clobber pode voltar sem nenhum teste ficar
+vermelho. A proteção de verdade seria um caso em `run_consumption_parity_tests()`, que roda
+contra o banco.
+
 ### Forro/palmilha: fonte de verdade = SOLADO da referência (anti-duplicidade)
 O consumo de **forro** e **palmilha** vem dos valores preenchidos no **solado** da
 referência (`sole_technical_specs`: `lining_consumption_dm2` = forro do cabedal,
@@ -768,6 +805,36 @@ dono): não existe receita para OVERLOCK 5 mm × GLOW METALIC; NAPA SUDANI não 
 ROSADO; e `artisanal_strap_variants` tem **zero** linhas
 `identity_basis='finished_product_group'` — ou seja, nenhuma tira comprada pronta é
 salvável ainda (13 fichas dependem disso). Todas aparecem agora na tela antes do save.
+
+### Napa-base elegível — SKU oficial por cor NÃO é pré-requisito (21/08/2026)
+
+`base_material_color_official_products` é registro **por COR** materializado pelo próprio
+save do PV (`ensure_sale_order_internal_strap_intents`, regra do "SKU único e inequívoco").
+Exigi-lo **antes**, como faziam o drawer "Corrigir no estoque" e o writer
+`resolve_technical_strap_context_from_sale_order`, é **circular**: família que nunca vendeu
+tira interna nunca ganha designação e por isso nunca fica selecionável.
+
+**O que isso causou:** em 21/08/2026 a tabela só tinha NAPA SUDANI (COGUMELO e OFF WHITE),
+então o seletor oferecia **uma** opção para qualquer ficha. SR01 e SR02 — ambas de **NAPA
+SOFT** — foram pinadas em NAPA SUDANI por falta de alternativa, e o PV novo em ROSADO
+morria no aviso *"Não existe NAPA SUDANI ROSADO ativo no estoque"* nomeando a napa errada
+(NAPA SOFT ROSADO existe e está ativo).
+
+**Regra agora** (`strap_base_group_is_eligible`, mig `20270101006800` — fonte única do guard
+do writer e da lista da tela via `list_strap_base_group_candidates()`): largura útil
+(**perfil vigente OU derivável** por `resolve_base_group_usable_width_mm`) **+** ao menos um
+SKU **linear ativo** que não seja tira acabada, e o grupo não pode ser
+`is_artisanal_strap`. Passou de **1** para **15** famílias elegíveis.
+
+⚠ **Não devolva a exigência de produto oficial para o cliente.** A tela não consegue decidir
+isso: a largura derivável mora em `component_sheets`, que o catálogo não carrega — por isso
+a lista vem do servidor. Travado por `napaBaseElegibilidadeSemSkuOficial.contract.test.ts`.
+
+⚠ **`TIRA OVERLOCK 5MM` aparece na lista** (23 SKUs lineares, 1370 mm — o cadastro copiado
+de napa descrito na regra de consumo). É família de tira **acabada**, não napa-base; hoje
+nada a exclui porque **nenhum** grupo tem `is_artisanal_strap = true`. Marcar a flag resolve
+(a função já a honra), mas ela também governa compra e ajuste de estoque de 23 SKUs —
+decisão de cadastro do dono, não foi feita.
 
 ## Regra de empacotamento em caixas (CANÔNICA, 05/08/2026)
 
