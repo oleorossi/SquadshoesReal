@@ -1353,6 +1353,17 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
             </div>
             <div className="flex flex-col text-left">
               <div className="flex items-center gap-2">
+                {/* Número do item DENTRO do pedido. Pedido do dono em 20/08/2026:
+                    com vários itens da mesma referência variando só cor/material,
+                    "o terceiro card" era a única forma de apontar um deles — na
+                    tela, no telefone e na conferência. O índice já existia no
+                    componente (só o aria-label do checkbox usava). */}
+                <span
+                  className="inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded border border-border bg-muted px-1 font-mono text-[11px] font-bold tabular-nums text-foreground"
+                  title={`Item ${index + 1} do pedido`}
+                >
+                  {index + 1}
+                </span>
                 <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Ref</span>
                 {/* Código da ref → abre a ficha técnica em NOVA ABA (não perde
                     o que está sendo editado no pedido). Pedido user 09/06/2026. */}

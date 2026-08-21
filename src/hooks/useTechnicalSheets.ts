@@ -348,6 +348,50 @@ export function useSheetMaterials(sheetId: string | null) {
 import { sanitizeUuidFields } from '@/lib/utils';
 
 
+/**
+ * Nome de ficha JÁ EM USO por outra ficha, ou null. É a trave de identidade
+ * pedida pelo dono em 20/08/2026: "não permitir cadastrar a mesma referência
+ * que já tem no sistema".
+ *
+ * ⚠ A identidade da ficha é o `name`, NÃO o `code`. O campo de código é
+ * rotulado "Código interno / SKU (opcional)" na própria tela e é reusado de
+ * propósito entre fichas diferentes — medido em 20/08/2026: BT01/BT02 dividem
+ * o code 'BT01', I100/I90/I91 dividem 'I90I', NL01/NL02 dividem 'NL02' e
+ * CF 07/CF 09 dividem 'CONFORTO'. Travar por código quebraria esses 11
+ * cadastros legítimos; travar por nome não quebra nenhum, porque `name` é
+ * único na base inteira (o único par repetido era SP130, uma duplicata
+ * acidental criada em 20/08 — foi ela que originou este pedido: a foto foi
+ * parar na cópia e a ficha em uso ficou sem imagem).
+ *
+ * Nome vazio não é travado: quem decide se ficha sem nome pode existir é outro
+ * lugar, e bloquear aqui impediria salvar as fichas legadas sem nome.
+ */
+type SheetNameRow = { id: string; name: string | null; code: string | null };
+
+export async function findSheetNameCollision(
+  name: string,
+  ignoreId?: string,
+): Promise<SheetNameRow | null> {
+  const alvo = (name || '').trim();
+  if (!alvo) return null;
+  const { data, error } = await supabase
+    .from('technical_sheets')
+    .select('id, name, code')
+    .ilike('name', alvo);
+  // Erro de leitura NÃO bloqueia o cadastro: a trave é uma conveniência, e
+  // derrubar o save por causa de um SELECT que falhou seria pior que o
+  // duplicado que ela evita.
+  if (error) {
+    console.warn('[findSheetNameCollision] checagem falhou, seguindo sem travar:', error);
+    return null;
+  }
+  const rows = (data || []) as SheetNameRow[];
+  return rows.find(sheet =>
+    sheet.id !== ignoreId
+    && (sheet.name || '').trim().toLowerCase() === alvo.toLowerCase()
+  ) ?? null;
+}
+
 export function useAddSheet() {
   const qc = useQueryClient();
   return useMutation({
@@ -357,6 +401,17 @@ export function useAddSheet() {
       // (pode ser intencional em versionamento da mesma ref).
       const code = (form as any).code?.toString().trim();
       const name = (form as any).name?.toString().trim();
+
+      // TRAVA (bloqueia): referência com o mesmo nome já existe.
+      const nameCollision = await findSheetNameCollision(name);
+      if (nameCollision) {
+        throw new Error(
+          `A referência "${nameCollision.name}" já existe no sistema`
+          + `${nameCollision.code ? ` (código ${nameCollision.code})` : ''}.`
+          + ' Abra a ficha existente em vez de criar outra, ou use um nome diferente.'
+        );
+      }
+
       if (code) {
         const { data: existing } = await supabase
           .from('technical_sheets')
@@ -389,6 +444,19 @@ export function useUpdateSheet() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, data }: { id: string; data: Partial<SheetFormData> }) => {
+      // Mesma trave do cadastro: renomear uma ficha PARA um nome já usado cria
+      // a duplicata pela porta dos fundos. Só checa quando o nome vem no
+      // payload — salvamento parcial de outros campos não paga o SELECT.
+      if (Object.prototype.hasOwnProperty.call(data, 'name')) {
+        const renameCollision = await findSheetNameCollision(data.name ?? '', id);
+        if (renameCollision) {
+          throw new Error(
+            `A referência "${renameCollision.name}" já existe no sistema`
+            + `${renameCollision.code ? ` (código ${renameCollision.code})` : ''}.`
+            + ' Escolha outro nome.'
+          );
+        }
+      }
       const payload = sanitizeUuidFields(data as any);
       // .select('id') retorna as linhas afetadas. Se RLS bloquear silently
       // (admin do client sem role admin no DB), data fica []. Antes esse caso
