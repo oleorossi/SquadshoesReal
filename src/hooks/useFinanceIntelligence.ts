@@ -53,6 +53,10 @@ export type DREMonth = {
 export type DREReport = {
   months: DREMonth[];
   company: { regime_tributario: string; razao_social: string } | null;
+  /** Quais fontes do regime de caixa vieram VAZIAS na janela. Zero linha não é
+   *  zero resultado: sem isto o DRE renderiza uma tabela toda zerada que lê
+   *  como "empresa sem atividade" em vez de "falta lançar baixa". */
+  origemVazia: { recebimentos: boolean; pagamentos: boolean; cmv: boolean };
 };
 
 /**
@@ -146,6 +150,11 @@ export function useCashFlowProjection(daysAhead: 30 | 60 | 90 = 90) {
       return {
         initialBalance,
         bankAccountsCount: (banksRes.data || []).length,
+        // Projeção sem NENHUMA saída não é projeção otimista — é projeção
+        // incompleta, e a curva só de entradas lê como folga de caixa. Medido
+        // em 20/08/2026: accounts_payable com 0 linhas e saldo bancário R$ 0,00.
+        semPagamentosCadastrados: (payRes.data || []).length === 0,
+        semSaldoBancario: initialBalance === 0,
         series,
         minBalance,
         firstNegativeDay,
@@ -232,6 +241,17 @@ export function useDREAuto(monthsBack: number = 6) {
       if (recRes.error) throw recRes.error;
       if (payRes.error) throw payRes.error;
       if (factRes.error) throw factRes.error;
+      // ⚠ O guard abaixo cobre FALHA de fonte, não fonte VAZIA — e vazio também
+      // vira lucro fictício, só que com outra cara: um DRE inteiro de zeros lê
+      // como "empresa sem atividade" em vez de "ninguém lançou recebimento nem
+      // pagamento". Medido em 20/08/2026: 0 AR com amount_received, 0 AP com
+      // amount_paid, 0 linha de CMV reconhecido. A UI usa isto pra dizer o que
+      // falta lançar em vez de renderizar a tabela zerada.
+      const origemVazia = {
+        recebimentos: (recRes.data || []).length === 0,
+        pagamentos: (payRes.data || []).length === 0,
+        cmv: ((cmvRes?.data as any[]) || []).length === 0,
+      };
       // DRE financeira não pode degradar CMV/regime tributário para zero: isso
       // transforma falha de fonte em lucro fictício. A UI mostra o erro e permite
       // tentar novamente sem apresentar números incompletos como verdadeiros.
@@ -331,6 +351,7 @@ export function useDREAuto(monthsBack: number = 6) {
       return {
         months: Object.values(months).sort((a, b) => a.period.localeCompare(b.period)),
         company: companyRes.data as DREReport['company'],
+        origemVazia,
       } satisfies DREReport;
     },
   });

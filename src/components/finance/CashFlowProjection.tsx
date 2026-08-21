@@ -120,6 +120,28 @@ export function CashFlowProjection() {
             </Card>
           </div>
 
+          {/* Ressalva de completude — vem ANTES do alerta de saldo negativo de
+              propósito: sem saída cadastrada a curva nunca fica negativa, então
+              a ausência do alerta vermelho seria lida como "está tudo bem". */}
+          {(data.semPagamentosCadastrados || data.semSaldoBancario) && (
+            <div className="flex items-center gap-3 rounded-lg border border-warning/40 bg-warning/5 p-3">
+              <Info className="h-5 w-5 text-warning shrink-0" />
+              <div>
+                <p className="text-sm font-semibold text-warning">Projeção incompleta</p>
+                <p className="text-xs text-muted-foreground">
+                  {data.semPagamentosCadastrados && (
+                    <>Não há nenhum título em <strong>Contas a Pagar</strong> na janela: a curva
+                    tem só entradas e o saldo não pode ficar negativo por construção. </>
+                  )}
+                  {data.semSaldoBancario && (
+                    <>O saldo inicial das contas bancárias ativas está em <strong>R$ 0,00</strong>,
+                    então a projeção parte do zero e não do caixa real.</>
+                  )}
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Alerta de saldo negativo */}
           {data.firstNegativeDay && (
             <div className="flex items-center gap-3 rounded-lg border border-destructive/40 bg-destructive/5 p-3">

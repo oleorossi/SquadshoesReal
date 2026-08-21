@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -50,6 +51,30 @@ export function DREAuto() {
           <Button size="sm" variant="outline" className="mt-4 gap-1.5" onClick={() => refetch()}>
             <RefreshCw className="h-3.5 w-3.5" /> Tentar novamente
           </Button>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // Fonte vazia não é resultado zero. Com 0 recebimento, 0 pagamento e 0 CMV
+  // reconhecido, a tabela abaixo sairia inteira zerada e passaria por DRE
+  // legítimo de uma empresa parada — quando o que falta é lançar as baixas.
+  const vazio = report?.origemVazia;
+  const semNenhumLancamento = Boolean(vazio?.recebimentos && vazio?.pagamentos && vazio?.cmv);
+  if (semNenhumLancamento) {
+    return (
+      <Card>
+        <CardContent className="py-10">
+          <EmptyState
+            icon={AlertTriangle}
+            title="Sem lançamentos no período"
+            description={
+              'A DRE é por regime de CAIXA: ela só enxerga título com baixa registrada. ' +
+              'Na janela selecionada não há nenhum recebimento em Contas a Receber, ' +
+              'nenhum pagamento em Contas a Pagar e nenhum CMV reconhecido — por isso ' +
+              'não há resultado a apurar. Registre as baixas para a apuração aparecer.'
+            }
+          />
         </CardContent>
       </Card>
     );
