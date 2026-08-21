@@ -106,10 +106,13 @@ describe('invariante volume ≥ saldo em aberto', () => {
 describe('isSettled / settledAmountOf', () => {
   it('encerra nos status certos de cada razão', () => {
     expect(isSettled(ap('paid', 1), 'payable')).toBe(true);
+    expect(isSettled(ap('pago', 1), 'payable')).toBe(true);
     expect(isSettled(ap('cancelled', 1), 'payable')).toBe(true);
+    expect(isSettled(ap('cancelado', 1), 'payable')).toBe(true);
     expect(isSettled(ap('parcial', 1), 'payable')).toBe(false);
     // 'received' não encerra uma conta a PAGAR, e vice-versa.
     expect(isSettled(ar('received', 1), 'receivable')).toBe(true);
+    expect(isSettled(ar('recebido', 1), 'receivable')).toBe(true);
     expect(isSettled(ar('received', 1), 'payable')).toBe(false);
     expect(isSettled(ap('paid', 1), 'receivable')).toBe(false);
   });
