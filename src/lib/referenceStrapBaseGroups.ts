@@ -18,7 +18,13 @@ interface ProductLike {
 interface ReferenceSheetLike {
   id: string;
   upper_material?: string | null;
+  upper_material_group_id?: string | null;
   upper_material_product_id?: string | null;
+  /** Base de tira escolhida explicitamente na ficha. Entra na cascata do SQL
+   *  (`resolve_strap_base_group_id`) logo depois do cabedal e ANTES do forro —
+   *  ficava de fora daqui, sumindo da lista justamente nas fichas que decidiram
+   *  a base à mão (4 das 33 com tira, medido em 21/08/2026). */
+  strap_base_group_id?: string | null;
   lining_material?: string | null;
   lining_material_product_id?: string | null;
 }
@@ -82,11 +88,21 @@ export function referenceStrapBaseGroups({
     return groupId ? groupsById.get(groupId) : undefined;
   };
 
+  // Ordem idêntica à do SQL `resolve_strap_base_group_id`: pino de PRODUTO do
+  // cabedal, grupo de cabedal, base de tira explícita, pino de produto do forro.
   const sheetGroup = groupFromProduct(sheet.upper_material_product_id)
+    || (sheet.upper_material_group_id ? groupsById.get(sheet.upper_material_group_id) : undefined)
+    || (sheet.strap_base_group_id ? groupsById.get(sheet.strap_base_group_id) : undefined)
     || groupFromProduct(sheet.lining_material_product_id);
 
   if (sheetGroup) {
-    addGroup(sheetGroup, 'Material padrão da ficha', true);
+    addGroup(
+      sheetGroup,
+      sheet.strap_base_group_id && sheetGroup.id === sheet.strap_base_group_id
+        ? 'Base de tira da ficha'
+        : 'Material padrão da ficha',
+      true,
+    );
   } else {
     const legacySheetGroup = groupsByName.get(normalizeName(sheet.upper_material))
       || groupsByName.get(normalizeName(sheet.lining_material));
@@ -96,10 +112,15 @@ export function referenceStrapBaseGroups({
   variants
     .filter((variant) => variant.reference_id === sheet.id && variant.active !== false)
     .forEach((variant) => {
-      const groupId = variant.upper_material_group_id
-        || groupIdByProductId.get(variant.upper_material_product_id || '')
-        || variant.lining_material_group_id
+      // ⚠ Pino de PRODUTO vence o grupo dentro do MESMO slot — é a ordem do
+      // `resolve_strap_base_group_id`, que é o lado que debita. Aqui estava
+      // invertido: com pino e grupo apontando famílias diferentes, a tela
+      // mostrava uma napa e o estoque baixava outra. Sem linha divergente hoje
+      // (medido 21/08/2026), mas a regra é que precisa bater.
+      const groupId = groupIdByProductId.get(variant.upper_material_product_id || '')
+        || variant.upper_material_group_id
         || groupIdByProductId.get(variant.lining_material_product_id || '')
+        || variant.lining_material_group_id
         || variant.main_material_group_id
         || sheetGroup?.id
         || null;
