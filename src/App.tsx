@@ -103,6 +103,7 @@ const TimePendingsPage = lazy(() => import("./pages/TimePendings"));
 // SectorAggregatedView é a visão legada "lote" de /producao/analises.
 const PrintWorkSheets = lazy(() => import("./pages/PrintWorkSheets"));
 const LabelSystem = lazy(() => import("./pages/LabelSystem"));
+const ClientLabeling = lazy(() => import("./pages/ClientLabeling"));
 const PurchasePlanning = lazy(() => import("./pages/PurchasePlanning"));
 const PricingCalculator = lazy(() => import("./pages/PricingCalculator"));
 const PCPHub = lazy(() => import("./pages/PCPHub"));
@@ -964,6 +965,10 @@ const router = createBrowserRouter([
       {
         path: "label-system",
         element: <LabelSystem />,
+      },
+      {
+        path: "etiquetagem-cliente",
+        element: <ClientLabeling />,
       },
       {
         path: "sales",

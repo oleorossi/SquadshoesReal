@@ -1,10 +1,10 @@
 /**
- * Aba "Cliente (importar)" — etiqueta de caixa no padrão do cliente.
+ * Módulo isolado "ETIQUETAGEM CLIENTE" — etiqueta no padrão do cliente.
  *
- * Lê o arquivo de exportação do pedido de compra do ERP do cliente e gera um
- * PDF no tamanho exato do rolo térmico (50 × 40 mm), uma etiqueta por página.
- * A arte 46 × 38 mm e o módulo do CODE128 são padrão fixo do cliente — a
- * geometria toda mora em `@/lib/babyNalinLabels`, não aqui.
+ * Lê o arquivo de exportação do pedido de compra do ERP do cliente e gera:
+ *   - produção no rolo térmico 50 × 40 mm;
+ *   - gráfica em duas etiquetas couchê 50 × 30 mm lado a lado.
+ * A geometria e o módulo do CODE128 moram em `@/lib/babyNalinLabels`.
  */
 import { useRef, useState } from 'react';
 import { Panel } from '@/components/ui/panel';
@@ -30,15 +30,17 @@ import {
 import { toast } from 'sonner';
 import logoFornecedor from '@/assets/baby-nalin/marca-fornecedor.png';
 import {
-  ART_HEIGHT_MM,
   ART_WIDTH_MM,
   BARCODE_FORMAT,
-  MEDIA_HEIGHT_MM,
-  MEDIA_WIDTH_MM,
+  COUCHE_COLUMNS,
+  COUCHE_LABEL_HEIGHT_MM,
+  COUCHE_LABEL_WIDTH_MM,
   MODULE_MM,
   analyzeClientSkus,
   buildBabyNalinPdf,
+  clientSkuKey,
   expandRows,
+  graphicPageCount,
   graphicPdfFilename,
   loadLogoDataUrl,
   measureBarcode,
@@ -50,7 +52,7 @@ import { searchMatchesAllTerms } from '@/lib/searchUtils';
 
 const ACCEPT = '.csv,.txt,.xlsx,.xls';
 
-export function LabelClientImportTab() {
+export function ClientLabelingWorkspace() {
   const inputRef = useRef<HTMLInputElement>(null);
   const [rows, setRows] = useState<BabyNalinRow[]>([]);
   const [fileName, setFileName] = useState('');
@@ -59,21 +61,33 @@ export function LabelClientImportTab() {
   const [reading, setReading] = useState(false);
   const [generating, setGenerating] = useState<'production' | 'graphic' | null>(null);
   const [search, setSearch] = useState('');
+  const [selectedSkuKeys, setSelectedSkuKeys] = useState<Set<string>>(new Set());
 
-  const totalPaginas = expandRows(rows, repeatByQuantity, repeatMultiplier).length;
-  const totalPares = rows.reduce((t, r) => t + r.quantidade, 0);
   const skuAnalysis = analyzeClientSkus(rows);
+  const selectedRows = rows.filter(row => selectedSkuKeys.has(clientSkuKey(row)));
+  const selectedSkuAnalysis = analyzeClientSkus(selectedRows);
+  const totalPaginas = expandRows(selectedRows, repeatByQuantity, repeatMultiplier).length;
+  const totalPares = selectedRows.reduce((t, r) => t + r.quantidade, 0);
+  const totalParesNoArquivo = rows.reduce((t, r) => t + r.quantidade, 0);
+  const paginasGrafica = graphicPageCount(selectedSkuAnalysis.rows.length);
+  const skuSelecionadoLabel = selectedSkuAnalysis.rows.length === 1 ? 'SKU' : 'SKUs';
   // Código que não respeita a zona de silêncio não pode virar etiqueta — a
   // barra sairia cortada e só se descobre no leitor da loja.
   const foraDoPadrao = rows.filter(r => !measureBarcode(r.codigoBarra).fits);
-  const visibleRows = rows.filter(row => searchMatchesAllTerms(
-    search,
-    row.referencia,
-    row.cor,
-    row.tamanho,
-    row.codProduto,
-    row.codigoBarra,
-  ));
+  const selecionadasForaDoPadrao = selectedRows.filter(r => !measureBarcode(r.codigoBarra).fits);
+  const visibleRows = rows
+    .map((row, sourceIndex) => ({ row, sourceIndex, skuKey: clientSkuKey(row) }))
+    .filter(({ row }) => searchMatchesAllTerms(
+      search,
+      row.referencia,
+      row.cor,
+      row.tamanho,
+      row.codProduto,
+      row.codigoBarra,
+    ));
+  const visibleSkuKeys = [...new Set(visibleRows.map(entry => entry.skuKey))];
+  const allVisibleSelected = visibleSkuKeys.length > 0 && visibleSkuKeys.every(key => selectedSkuKeys.has(key));
+  const someVisibleSelected = visibleSkuKeys.some(key => selectedSkuKeys.has(key));
 
   async function handleFile(file: File | undefined) {
     if (!file) return;
@@ -82,10 +96,12 @@ export function LabelClientImportTab() {
       const lidas = await parseClientOrderFile(file);
       setRows(lidas);
       setFileName(file.name);
+      setSelectedSkuKeys(new Set(analyzeClientSkus(lidas).rows.map(clientSkuKey)));
       toast.success(`${lidas.length} etiqueta(s) lidas de ${file.name}`);
     } catch (error) {
       setRows([]);
       setFileName('');
+      setSelectedSkuKeys(new Set());
       toast.error(error instanceof Error ? error.message : 'Não consegui ler o arquivo.');
     } finally {
       setReading(false);
@@ -94,13 +110,16 @@ export function LabelClientImportTab() {
   }
 
   async function handleGenerate(mode: 'production' | 'graphic') {
-    if (rows.length === 0) return;
-    if (foraDoPadrao.length > 0) {
-      toast.error(`${foraDoPadrao.length} código(s) não cabem na etiqueta. Corrija o pedido antes de gerar.`);
+    if (selectedRows.length === 0) {
+      toast.info('Selecione ao menos um SKU antes de gerar.');
       return;
     }
-    if (mode === 'graphic' && skuAnalysis.conflicts.length > 0) {
-      toast.error(`${skuAnalysis.conflicts.length} SKU(s) possuem códigos de barras conflitantes.`);
+    if (selecionadasForaDoPadrao.length > 0) {
+      toast.error(`${selecionadasForaDoPadrao.length} código(s) selecionado(s) não cabem na etiqueta.`);
+      return;
+    }
+    if (mode === 'graphic' && selectedSkuAnalysis.conflicts.length > 0) {
+      toast.error(`${selectedSkuAnalysis.conflicts.length} SKU(s) selecionado(s) possuem códigos de barras conflitantes.`);
       return;
     }
 
@@ -109,7 +128,7 @@ export function LabelClientImportTab() {
       const logo = await loadLogoDataUrl(logoFornecedor);
       if (!logo) toast.warning('Não carreguei a logomarca — o PDF sai sem ela.');
 
-      const doc = await buildBabyNalinPdf(rows, {
+      const doc = await buildBabyNalinPdf(selectedRows, {
         mode,
         repeatByQuantity: mode === 'production' ? repeatByQuantity : false,
         repeatMultiplier,
@@ -117,7 +136,7 @@ export function LabelClientImportTab() {
       });
       if (mode === 'graphic') {
         doc.save(graphicPdfFilename(fileName));
-        toast.success(`Arquivo para gráfica com ${skuAnalysis.rows.length} SKU(s) gerado.`);
+        toast.success(`Arquivo para gráfica com ${selectedSkuAnalysis.rows.length} SKU(s) gerado.`);
       } else {
         doc.save(pdfFilename(fileName));
         toast.success(`PDF de produção com ${totalPaginas} etiqueta(s) gerado.`);
@@ -135,6 +154,27 @@ export function LabelClientImportTab() {
     setRepeatByQuantity(false);
     setRepeatMultiplier(1);
     setSearch('');
+    setSelectedSkuKeys(new Set());
+  }
+
+  function setSkuSelected(skuKey: string, selected: boolean) {
+    setSelectedSkuKeys(current => {
+      const next = new Set(current);
+      if (selected) next.add(skuKey);
+      else next.delete(skuKey);
+      return next;
+    });
+  }
+
+  function setVisibleSelected(selected: boolean) {
+    setSelectedSkuKeys(current => {
+      const next = new Set(current);
+      visibleSkuKeys.forEach(key => {
+        if (selected) next.add(key);
+        else next.delete(key);
+      });
+      return next;
+    });
   }
 
   return (
@@ -142,7 +182,7 @@ export function LabelClientImportTab() {
       <Panel
         eyebrow="ETIQUETAS · CLIENTE"
         title="Importar pedido do cliente"
-        subtitle={`Arte ${ART_WIDTH_MM} × ${ART_HEIGHT_MM} mm · ${BARCODE_FORMAT} com módulo de ${MODULE_MM.toFixed(4).replace('.', ',')} mm`}
+        subtitle={`${BARCODE_FORMAT} com módulo de ${MODULE_MM.toFixed(4).replace('.', ',')} mm · produção 50 × 40 mm · gráfica couchê 2 × 50 × 30 mm`}
         actions={
           rows.length > 0 ? (
             <Button variant="ghost" size="sm" onClick={limpar} className="h-9">
@@ -176,8 +216,17 @@ export function LabelClientImportTab() {
         ) : (
           <div className="space-y-4">
             <StatGrid>
-              <StatCard label="SKUs no arquivo" value={skuAnalysis.rows.length} hint={fileName} />
-              <StatCard label="Pares no pedido" value={totalPares} unit="pares" />
+              <StatCard
+                label="SKUs selecionados"
+                value={selectedSkuAnalysis.rows.length}
+                hint={`${skuAnalysis.rows.length} no arquivo · ${fileName}`}
+              />
+              <StatCard
+                label="Pares selecionados"
+                value={totalPares}
+                unit="pares"
+                hint={`${totalParesNoArquivo.toLocaleString('pt-BR')} no arquivo`}
+              />
               <StatCard
                 label="Etiquetas de produção"
                 value={totalPaginas}
@@ -197,7 +246,7 @@ export function LabelClientImportTab() {
                       <Badge variant="outline">50 × 40 mm</Badge>
                     </div>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      Arquivo para imprimir no rolo, repetindo conforme a quantidade do pedido.
+                      Imprime somente os SKUs selecionados, repetindo conforme a quantidade do pedido.
                     </p>
                   </div>
                 </div>
@@ -243,7 +292,7 @@ export function LabelClientImportTab() {
                 <Button
                   className="w-full"
                   onClick={() => void handleGenerate('production')}
-                  disabled={generating !== null || foraDoPadrao.length > 0}
+                  disabled={generating !== null || selectedRows.length === 0 || selecionadasForaDoPadrao.length > 0}
                 >
                   {generating === 'production' ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <FilePdf className="h-4 w-4 mr-2" />}
                   {generating === 'production' ? 'Gerando…' : `Gerar produção (${totalPaginas})`}
@@ -258,18 +307,24 @@ export function LabelClientImportTab() {
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <h3 id="graphic-output-title" className="font-semibold text-foreground">Arquivo para gráfica</h3>
-                      <Badge className="bg-primary text-primary-foreground">46 × 38 mm</Badge>
+                      <Badge className="bg-primary text-primary-foreground">
+                        {COUCHE_COLUMNS} × {COUCHE_LABEL_WIDTH_MM} × {COUCHE_LABEL_HEIGHT_MM} mm
+                      </Badge>
                     </div>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      Uma página vetorial por SKU, sem repetir a quantidade do pedido.
+                      Duas etiquetas couchê lado a lado por página, sem repetir a quantidade do pedido.
                     </p>
                   </div>
                 </div>
 
                 <div className="rounded-md border border-primary/20 bg-background p-3 space-y-2 text-sm">
                   <div className="flex items-center justify-between gap-3">
-                    <span className="text-muted-foreground">Artes no arquivo</span>
-                    <strong className="font-mono text-foreground">{skuAnalysis.rows.length}</strong>
+                    <span className="text-muted-foreground">SKUs selecionados</span>
+                    <strong className="font-mono text-foreground">{selectedSkuAnalysis.rows.length}</strong>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-muted-foreground">Linhas de 2 colunas</span>
+                    <strong className="font-mono text-foreground">{paginasGrafica}</strong>
                   </div>
                   <div className="flex items-center justify-between gap-3">
                     <span className="text-muted-foreground">Código de barras</span>
@@ -282,10 +337,17 @@ export function LabelClientImportTab() {
                 <Button
                   className="w-full"
                   onClick={() => void handleGenerate('graphic')}
-                  disabled={generating !== null || foraDoPadrao.length > 0 || skuAnalysis.conflicts.length > 0}
+                  disabled={
+                    generating !== null
+                    || selectedRows.length === 0
+                    || selecionadasForaDoPadrao.length > 0
+                    || selectedSkuAnalysis.conflicts.length > 0
+                  }
                 >
                   {generating === 'graphic' ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <FilePdf className="h-4 w-4 mr-2" />}
-                  {generating === 'graphic' ? 'Gerando…' : `Gerar gráfica (${skuAnalysis.rows.length} SKUs)`}
+                  {generating === 'graphic'
+                    ? 'Gerando…'
+                    : `Gerar gráfica (${selectedSkuAnalysis.rows.length} ${skuSelecionadoLabel})`}
                 </Button>
               </section>
             </div>
@@ -302,34 +364,74 @@ export function LabelClientImportTab() {
                 <Warning className="h-4 w-4 mt-0.5 shrink-0" weight="fill" />
                 <span>
                   {foraDoPadrao.length} código(s) longos demais para a etiqueta de {ART_WIDTH_MM} mm — a barra sairia
-                  cortada. Confira a coluna <strong>Codigo Barra</strong> do pedido.
+                  cortada. {selecionadasForaDoPadrao.length > 0
+                    ? `${selecionadasForaDoPadrao.length} fazem parte da seleção e bloqueiam a geração.`
+                    : 'Nenhum faz parte da seleção atual.'}
                 </span>
               </div>
             )}
 
             {skuAnalysis.conflicts.length > 0 && (
-              <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-700">
+              <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-400">
                 <Warning className="h-4 w-4 mt-0.5 shrink-0" weight="fill" />
                 <span>
-                  {skuAnalysis.conflicts.length} SKU(s) possuem mais de um código de barras. O arquivo para a gráfica
-                  fica bloqueado até a planilha ser corrigida.
+                  {skuAnalysis.conflicts.length} SKU(s) possuem mais de um código de barras. {selectedSkuAnalysis.conflicts.length > 0
+                    ? `${selectedSkuAnalysis.conflicts.length} fazem parte da seleção e bloqueiam o arquivo para a gráfica.`
+                    : 'Nenhum faz parte da seleção atual.'}
                 </span>
               </div>
             )}
 
-            <SearchInput
-              value={search}
-              onChange={setSearch}
-              placeholder="Buscar no arquivo por referência, cor, tamanho ou código…"
-              resultCount={visibleRows.length}
-              totalCount={rows.length}
-              className="max-w-lg"
-            />
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <SearchInput
+                value={search}
+                onChange={setSearch}
+                placeholder="Buscar no arquivo por referência, cor, tamanho ou código…"
+                resultCount={visibleRows.length}
+                totalCount={rows.length}
+                className="w-full max-w-lg"
+              />
+              <div
+                className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-muted/20 px-3 py-2"
+                aria-live="polite"
+              >
+                <Badge variant="secondary" className="font-mono">
+                  {selectedSkuAnalysis.rows.length}/{skuAnalysis.rows.length}
+                </Badge>
+                <span className="text-xs text-muted-foreground">SKUs selecionados</span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 px-2 text-xs"
+                  onClick={() => setSelectedSkuKeys(new Set(visibleSkuKeys))}
+                  disabled={visibleSkuKeys.length === 0 || generating !== null}
+                >
+                  Selecionar só exibidos
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2 text-xs"
+                  onClick={() => setSelectedSkuKeys(new Set())}
+                  disabled={selectedSkuAnalysis.rows.length === 0 || generating !== null}
+                >
+                  Limpar seleção
+                </Button>
+              </div>
+            </div>
 
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border text-left">
+                    <th className="w-10 py-2 pr-3">
+                      <Checkbox
+                        checked={allVisibleSelected ? true : someVisibleSelected ? 'indeterminate' : false}
+                        onCheckedChange={value => setVisibleSelected(value === true)}
+                        disabled={visibleSkuKeys.length === 0 || generating !== null}
+                        aria-label={allVisibleSelected ? 'Desmarcar todos os SKUs exibidos' : 'Selecionar todos os SKUs exibidos'}
+                      />
+                    </th>
                     <th className="py-2 pr-3 font-medium text-muted-foreground">Referência</th>
                     <th className="py-2 pr-3 font-medium text-muted-foreground">Cor</th>
                     <th className="py-2 pr-3 font-medium text-muted-foreground">Tam.</th>
@@ -340,10 +442,23 @@ export function LabelClientImportTab() {
                   </tr>
                 </thead>
                 <tbody>
-                  {visibleRows.map((row, i) => {
+                  {visibleRows.map(({ row, sourceIndex, skuKey }) => {
                     const fit = measureBarcode(row.codigoBarra);
+                    const selected = selectedSkuKeys.has(skuKey);
                     return (
-                      <tr key={`${row.codigoBarra}-${i}`} className="border-b border-border/60 last:border-0">
+                      <tr
+                        key={`${skuKey}-${row.codigoBarra}-${sourceIndex}`}
+                        className={`border-b border-border/60 transition-colors last:border-0 ${selected ? 'bg-primary/5' : 'hover:bg-muted/30'}`}
+                        data-state={selected ? 'selected' : undefined}
+                      >
+                        <td className="w-10 py-2 pr-3">
+                          <Checkbox
+                            checked={selected}
+                            onCheckedChange={value => setSkuSelected(skuKey, value === true)}
+                            disabled={generating !== null}
+                            aria-label={`Selecionar SKU ${row.referencia || 'sem referência'}, ${row.cor || 'sem cor'}, tamanho ${row.tamanho || 'não informado'}`}
+                          />
+                        </td>
                         <td className="py-2 pr-3 font-medium text-foreground">{row.referencia || '—'}</td>
                         <td className="py-2 pr-3 text-muted-foreground">{row.cor || '—'}</td>
                         <td className="py-2 pr-3 text-muted-foreground">{row.tamanho || '—'}</td>

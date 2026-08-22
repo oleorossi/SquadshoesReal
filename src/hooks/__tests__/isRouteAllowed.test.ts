@@ -5,7 +5,7 @@ import { isRouteAllowed, isActionAllowed, resolveMenuOwner, resolveModuleForPath
 const MENU = [
   '/estoque', '/estoque/historico', '/estoque/qualidade',
   '/sales', '/pcp', '/producao/kanban', '/orders', '/imprimir-fichas', '/fichas-montadores',
-  '/label-system', '/rh', '/contractors',
+  '/label-system', '/etiquetagem-cliente', '/rh', '/contractors',
   '/tiras-artesanais',
 ];
 
@@ -17,6 +17,7 @@ describe('resolveModuleForPath', () => {
     // então não pode depender do módulo 'producao' — senão o RH não a enxerga.
     expect(resolveModuleForPath('/fichas-montadores')).toBe('ficha_montadores');
     expect(resolveModuleForPath('/label-system')).toBe('expedicao');
+    expect(resolveModuleForPath('/etiquetagem-cliente')).toBe('expedicao');
     expect(resolveModuleForPath('/estoque/historico')).toBe('estoque');
     expect(resolveModuleForPath('/sales/123')).toBe('vendas');
     // Modo Gestão é uma moldura dedicada do MESMO Kanban: herda a entrada pai,
@@ -67,6 +68,7 @@ describe('isRouteAllowed — RBAC por role (sem granular)', () => {
   it('rh NÃO vê produção/expedição', () => {
     expect(isRouteAllowed('/imprimir-fichas', rh)).toBe(false);
     expect(isRouteAllowed('/label-system', rh)).toBe(false);
+    expect(isRouteAllowed('/etiquetagem-cliente', rh)).toBe(false);
     expect(isRouteAllowed('/pcp', rh)).toBe(false);
   });
   it('módulos admin-only bloqueados pra não-admin', () => {
@@ -103,6 +105,18 @@ describe('isRouteAllowed — granular POR ITEM (allow-list de paths)', () => {
     expect(isRouteAllowed('/pcp', rhPlus)).toBe(false);
     expect(isRouteAllowed('/orders', rhPlus)).toBe(false);
     expect(isRouteAllowed('/sales', rhPlus)).toBe(false);
+    expect(isRouteAllowed('/etiquetagem-cliente', rhPlus)).toBe(false);
+  });
+
+  it('ETIQUETAGEM CLIENTE é um destino concedível separado da etiquetagem padrão', () => {
+    const clientLabelsOnly = {
+      isAdmin: false,
+      roles: ['consulta'],
+      perms: [perm('/etiquetagem-cliente')],
+      allMenuPaths: MENU,
+    };
+    expect(isRouteAllowed('/etiquetagem-cliente', clientLabelsOnly)).toBe(true);
+    expect(isRouteAllowed('/label-system', clientLabelsOnly)).toBe(false);
   });
 
   it('liberar item-pai NÃO libera item-irmão com path próprio', () => {

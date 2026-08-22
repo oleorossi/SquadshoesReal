@@ -1,5 +1,5 @@
 /**
- * Etiqueta de caixa do cliente — arte 46 × 38 mm em rolo térmico 50 × 40 mm.
+ * Etiqueta de caixa do cliente.
  *
  * Padrão fixo do cliente, validado contra a etiqueta física do fornecedor e
  * contra o documento "Padrão de Etiquetagem". As medidas em `LAYOUT` NÃO são
@@ -8,7 +8,9 @@
  *
  * Entrada: o arquivo de exportação do pedido de compra do ERP do cliente
  * (`Exp_Etiquetas_PedCompra_*.csv`, `;` em UTF-16/UTF-8/CP1252, ou XLSX).
- * Saída: um PDF no tamanho exato do rolo, uma etiqueta por página.
+ * Saídas:
+ *   - produção: rolo térmico 50 × 40 mm, uma etiqueta por página;
+ *   - gráfica: duas etiquetas couchê 50 × 30 mm lado a lado, com vão técnico.
  */
 import { code128Bars, encodeCode128 } from './code128';
 
@@ -23,6 +25,22 @@ export const MEDIA_WIDTH_MM = 50.0;
 export const MEDIA_HEIGHT_MM = 40.0;
 export const OFFSET_X_MM = (MEDIA_WIDTH_MM - ART_WIDTH_MM) / 2; // 2,0
 export const OFFSET_Y_MM = (MEDIA_HEIGHT_MM - ART_HEIGHT_MM) / 2; // 1,0
+
+/** Imposição da gráfica: duas etiquetas couchê de 50 × 30 mm por carreira. */
+export const COUCHE_LABEL_WIDTH_MM = 50.0;
+export const COUCHE_LABEL_HEIGHT_MM = 30.0;
+export const COUCHE_COLUMNS = 2;
+/** Vão físico entre as duas facas do rolo mostrado pelo usuário. */
+export const COUCHE_COLUMN_GAP_MM = 3.0;
+export const COUCHE_PAGE_WIDTH_MM =
+  COUCHE_LABEL_WIDTH_MM * COUCHE_COLUMNS + COUCHE_COLUMN_GAP_MM * (COUCHE_COLUMNS - 1);
+export const COUCHE_PAGE_HEIGHT_MM = COUCHE_LABEL_HEIGHT_MM;
+/** Área segura 46 × 28, centralizada dentro de cada etiqueta física 50 × 30. */
+export const COUCHE_ART_HEIGHT_MM = 28.0;
+export const COUCHE_OFFSET_X_MM = (COUCHE_LABEL_WIDTH_MM - ART_WIDTH_MM) / 2; // 2,0
+export const COUCHE_OFFSET_Y_MM = (COUCHE_LABEL_HEIGHT_MM - COUCHE_ART_HEIGHT_MM) / 2; // 1,0
+/** No perfil compacto, as barras terminam em y=29 mm e preservam 1 mm inferior. */
+export const COUCHE_BARCODE_TOP_Y_MM = 23.0;
 
 /**
  * Módulo do CODE128 definido pelo padrão do cliente: 7 dots a 600 dpi.
@@ -253,7 +271,7 @@ export function assertBarcodeFits(codigo: string): BarcodeFit {
 /* ──────────────────────────────── PDF ──────────────────────────────── */
 
 export interface BabyNalinPdfOptions {
-  /** Produção usa a mídia 50×40; gráfica entrega somente a arte 46×38. */
+  /** Produção usa mídia 50×40; gráfica impõe duas etiquetas couchê 50×30. */
   mode?: 'production' | 'graphic';
   /** Repete cada etiqueta pela `Qt. Solicitada` do pedido. Padrão: 1 por linha. */
   repeatByQuantity?: boolean;
@@ -360,10 +378,48 @@ export function fitText(
   return { pt: MIN_FONT_PT, texto: `${cortado.trimEnd()}…` };
 }
 
-function drawLabel(doc: PdfDoc, row: BabyNalinRow, options: BabyNalinPdfOptions): void {
-  const graphicMode = options.mode === 'graphic';
-  const ox = graphicMode ? 0 : OFFSET_X_MM;
-  const oy = graphicMode ? 0 : OFFSET_Y_MM;
+interface LabelPlacement {
+  xMm: number;
+  yMm: number;
+  barcodeTopYMm?: number;
+}
+
+export interface GraphicLabelPlacement extends LabelPlacement {
+  pageIndex: number;
+  column: number;
+  row: BabyNalinRow;
+}
+
+/**
+ * Planeja a imposição couchê sem depender do jsPDF: esquerda, direita e então
+ * a próxima página. A última página ímpar fica deliberadamente vazia à direita.
+ */
+export function planGraphicLabelPlacements(rows: BabyNalinRow[]): GraphicLabelPlacement[] {
+  return uniqueClientSkuRows(rows).map((row, index) => {
+    const column = index % COUCHE_COLUMNS;
+    return {
+      pageIndex: Math.floor(index / COUCHE_COLUMNS),
+      column,
+      xMm: column * (COUCHE_LABEL_WIDTH_MM + COUCHE_COLUMN_GAP_MM) + COUCHE_OFFSET_X_MM,
+      yMm: COUCHE_OFFSET_Y_MM,
+      barcodeTopYMm: COUCHE_BARCODE_TOP_Y_MM,
+      row,
+    };
+  });
+}
+
+export function graphicPageCount(skuCount: number): number {
+  return Math.ceil(Math.max(0, Math.trunc(skuCount)) / COUCHE_COLUMNS);
+}
+
+function drawLabel(
+  doc: PdfDoc,
+  row: BabyNalinRow,
+  options: BabyNalinPdfOptions,
+  placement: LabelPlacement,
+): void {
+  const ox = placement.xMm;
+  const oy = placement.yMm;
 
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(0, 0, 0);
@@ -390,7 +446,7 @@ function drawLabel(doc: PdfDoc, row: BabyNalinRow, options: BabyNalinPdfOptions)
 
   const fit = assertBarcodeFits(row.codigoBarra);
   const x0 = ox + (ART_WIDTH_MM - fit.widthMm) / 2;
-  const y0 = oy + LAYOUT.barcode.topY;
+  const y0 = oy + (placement.barcodeTopYMm ?? LAYOUT.barcode.topY);
   doc.setFillColor(0, 0, 0);
   for (const barra of code128Bars(row.codigoBarra)) {
     doc.rect(x0 + barra.start * MODULE_MM, y0, barra.width * MODULE_MM, LAYOUT.barcode.heightMm, 'F');
@@ -404,7 +460,7 @@ export function expandRows(rows: BabyNalinRow[], repeatByQuantity: boolean, repe
   return rows.flatMap(r => Array.from({ length: Math.max(1, r.quantidade) * multiplier }, () => r));
 }
 
-/** Monta o PDF de produção 50×40 ou o arquivo vetorial para gráfica 46×38. */
+/** Monta o PDF de produção 50×40 ou a imposição couchê 2-up para gráfica. */
 export async function buildBabyNalinPdf(
   rows: BabyNalinRow[],
   options: BabyNalinPdfOptions = {},
@@ -413,11 +469,8 @@ export async function buildBabyNalinPdf(
 
   const { jsPDF } = await import('jspdf');
   const graphicMode = options.mode === 'graphic';
-  const paginas = graphicMode
-    ? uniqueClientSkuRows(rows)
-    : expandRows(rows, options.repeatByQuantity ?? false, options.repeatMultiplier ?? 1);
-  const pageWidth = graphicMode ? ART_WIDTH_MM : MEDIA_WIDTH_MM;
-  const pageHeight = graphicMode ? ART_HEIGHT_MM : MEDIA_HEIGHT_MM;
+  const pageWidth = graphicMode ? COUCHE_PAGE_WIDTH_MM : MEDIA_WIDTH_MM;
+  const pageHeight = graphicMode ? COUCHE_PAGE_HEIGHT_MM : MEDIA_HEIGHT_MM;
 
   const doc = new jsPDF({
     unit: 'mm',
@@ -427,14 +480,25 @@ export async function buildBabyNalinPdf(
   });
   doc.setProperties({
     title: graphicMode
-      ? `Artes por SKU ${ART_WIDTH_MM}x${ART_HEIGHT_MM}mm ${BARCODE_FORMAT}`
+      ? `Etiquetas couche ${COUCHE_LABEL_WIDTH_MM}x${COUCHE_LABEL_HEIGHT_MM}mm 2 colunas ${BARCODE_FORMAT}`
       : `Etiquetas ${ART_WIDTH_MM}x${ART_HEIGHT_MM}mm ${BARCODE_FORMAT}`,
   });
 
-  paginas.forEach((row, i) => {
-    if (i > 0) doc.addPage([pageWidth, pageHeight], 'landscape');
-    drawLabel(doc, row, options);
-  });
+  if (graphicMode) {
+    const placements = planGraphicLabelPlacements(rows);
+    placements.forEach(placement => {
+      if (placement.pageIndex > 0 && placement.column === 0) {
+        doc.addPage([pageWidth, pageHeight], 'landscape');
+      }
+      drawLabel(doc, placement.row, options, placement);
+    });
+  } else {
+    const paginas = expandRows(rows, options.repeatByQuantity ?? false, options.repeatMultiplier ?? 1);
+    paginas.forEach((row, i) => {
+      if (i > 0) doc.addPage([pageWidth, pageHeight], 'landscape');
+      drawLabel(doc, row, options, { xMm: OFFSET_X_MM, yMm: OFFSET_Y_MM });
+    });
+  }
 
   return doc;
 }
@@ -476,7 +540,7 @@ export function pdfFilename(origem: string): string {
   return `Etiquetas_${base || 'pedido'}.pdf`;
 }
 
-/** Nome do PDF vetorial com uma página por SKU para envio à gráfica. */
+/** Nome do PDF vetorial couchê 2-up para envio à gráfica. */
 export function graphicPdfFilename(origem: string): string {
   const base = origem.replace(/\.[^.]+$/, '').replace(/[^A-Za-z0-9]+/g, '_').replace(/^_|_$/g, '');
   return `Artes_SKU_${base || 'pedido'}.pdf`;

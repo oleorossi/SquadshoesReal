@@ -42,6 +42,7 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/order-flow-audit': 'ordens',
   '/labels': 'expedicao',
   '/label-system': 'expedicao',
+  '/etiquetagem-cliente': 'expedicao',
   '/entregas': 'expedicao',
   '/sales': 'vendas',
   // PWA do representante (/m, /m/new, /m/pending, /m/profile). Cria PV, então
