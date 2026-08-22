@@ -209,6 +209,7 @@ export default function MaterialConsumptionView({
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [groupBy, setGroupBy] = useState<GroupBy>('componentType');
   const [filter, setFilter] = useState<ConsumptionFilter>('all');
+  const [napaOnly, setNapaOnly] = useState(false);
   const [search, setSearch] = useState('');
   const [openSoles, setOpenSoles] = useState<Record<string, boolean>>({});
 
@@ -247,18 +248,18 @@ export default function MaterialConsumptionView({
 
   const visibleRows = useMemo(() => {
     return rows.filter((r) => {
-      if (!searchMatchesAllTerms(search, r.groupName, r.materialName, r.color)) {
+      if (!searchMatchesAllTerms(search, r.groupName, r.materialName, r.color, r.componentType)) {
         return false;
       }
+      if (napaOnly && !isBuyListRow(r)) return false;
       switch (filter) {
         case 'short': return isShortRow(r);
         case 'pending': return isPendingRow(r);
-        case 'napa': return isBuyListRow(r);
         case 'ok': return !isPendingRow(r) && !isShortRow(r);
         default: return true;
       }
     });
-  }, [rows, search, filter, isShortRow]);
+  }, [rows, search, filter, napaOnly, isShortRow]);
 
   const sortedRows = useMemo(() => {
     const canonical = (a: ConsumptionRow, b: ConsumptionRow) => {
@@ -343,9 +344,9 @@ export default function MaterialConsumptionView({
 
   const totalsByUnit = useMemo(() => {
     const map = new Map<string, number>();
-    for (const row of rows) map.set(row.productUnit, (map.get(row.productUnit) || 0) + row.totalQuantity);
+    for (const row of visibleRows) map.set(row.productUnit, (map.get(row.productUnit) || 0) + row.totalQuantity);
     return map;
-  }, [rows]);
+  }, [visibleRows]);
 
   // ── Números do trilho (sempre sobre TODAS as linhas, não sobre o filtro) ──
   const baseTotal = useMemo(() => computeBaseMaterialTotal(rows), [rows]);
@@ -393,7 +394,10 @@ export default function MaterialConsumptionView({
     const known = rowKnown(row);
     const avail = rowAvailable(row);
     const short = rowShortfall(row);
-    const ok = known && short === 0;
+    const itemShort = isShortRow(row);
+    // Item curto (mesmo material em várias aplicações) não pode aparecer
+    // coberto só porque ESTA linha cabe no estoque — o balde inteiro não cabe.
+    const ok = known && short === 0 && !itemShort;
     const isSole = row.componentType === 'Solado';
     const hasQuantityPreview = !(row.totalQuantity > 0) && Number(row.previewQuantity) > 0;
     const soleKey = `${sectionKey}|${row.groupName}|${row.color}|${index}`;
@@ -555,8 +559,11 @@ export default function MaterialConsumptionView({
   };
 
   const filterLabel: Record<ConsumptionFilter, string> = {
-    all: '', short: 'em falta', pending: 'com cadastro incompleto', napa: 'de napa', ok: 'cobertas pelo estoque',
+    all: '', short: 'em falta', pending: 'com cadastro incompleto', ok: 'cobertas pelo estoque',
   };
+  const filterActive = filter !== 'all' || napaOnly || !!search;
+  const clearFilters = () => { setFilter('all'); setNapaOnly(false); setSearch(''); };
+  const visibleShortItems = countShort(visibleRows);
 
   return (
     <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
@@ -581,12 +588,36 @@ export default function MaterialConsumptionView({
           </dl>
           <dl className="border-r border-border px-3 py-3">
             <dt className="eyebrow">Em falta</dt>
-            <dd className="mt-1 font-mono text-xl font-bold leading-none tabular-nums text-destructive">{emFaltaCount}</dd>
+            <dd className="mt-1">
+              <button
+                type="button"
+                onClick={() => setFilter((f) => f === 'short' ? 'all' : 'short')}
+                aria-pressed={filter === 'short'}
+                aria-label={filter === 'short' ? 'Mostrar todos os itens' : `Ver ${emFaltaCount} itens em falta`}
+                className={`font-mono text-xl font-bold leading-none tabular-nums text-destructive hover:underline ${
+                  filter === 'short' ? 'underline' : ''
+                }`}
+              >
+                {emFaltaCount}
+              </button>
+            </dd>
             <dd className="mt-1 text-[10px] text-muted-foreground">itens para repor</dd>
           </dl>
           <dl className="px-3 py-3">
             <dt className="eyebrow">Pendências</dt>
-            <dd className="mt-1 font-mono text-xl font-bold leading-none tabular-nums">{pendingCount}</dd>
+            <dd className="mt-1">
+              <button
+                type="button"
+                onClick={() => setFilter((f) => f === 'pending' ? 'all' : 'pending')}
+                aria-pressed={filter === 'pending'}
+                aria-label={filter === 'pending' ? 'Mostrar todos os itens' : `Ver ${pendingCount} cadastros a revisar`}
+                className={`font-mono text-xl font-bold leading-none tabular-nums hover:underline ${
+                  filter === 'pending' ? 'underline' : ''
+                }`}
+              >
+                {pendingCount}
+              </button>
+            </dd>
             <dd className="mt-1 text-[10px] text-muted-foreground">cadastros a revisar</dd>
           </dl>
         </section>
@@ -634,23 +665,28 @@ export default function MaterialConsumptionView({
                 {formatUnit(unit)}
               </span>
             ))}
-            <span>{pluralizeItens(rows.length)}</span>
+            <span>{pluralizeItens(visibleRows.length)}{filterActive && visibleRows.length !== rows.length ? ` de ${rows.length}` : ''}</span>
           </span>
-          {(filter !== 'all' || search) && (
+          {filterActive && (
             <button
               type="button"
-              onClick={() => { setFilter('all'); setSearch(''); }}
+              onClick={clearFilters}
               className="ml-auto inline-flex items-center gap-1 rounded-md bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary"
             >
               mostrando {visibleRows.length} de {rows.length}
-              {filter !== 'all' ? ` · ${filterLabel[filter]}` : ''} · limpar
+              {filter !== 'all' ? ` · ${filterLabel[filter]}` : ''}
+              {napaOnly ? ' · de napa' : ''}
+              {filter === 'short' && visibleShortItems !== visibleRows.length
+                ? ` · ${visibleShortItems} ${visibleShortItems === 1 ? 'item' : 'itens'}`
+                : ''}
+              {' · limpar'}
             </button>
           )}
         </div>
 
         {visibleRows.length === 0 ? (
           <p className="py-8 text-center text-sm text-muted-foreground">
-            Nenhuma linha {filter !== 'all' ? filterLabel[filter] : ''} {search ? `para “${search}”` : ''}.
+            Nenhuma linha {filter !== 'all' ? filterLabel[filter] : ''}{napaOnly ? ' de napa' : ''} {search ? `para “${search}”` : ''}.
           </p>
         ) : (
           <div className="overflow-hidden overflow-x-auto rounded-lg border">
@@ -695,7 +731,11 @@ export default function MaterialConsumptionView({
                   const previewSubtotal = Array.from(previewSubt.entries())
                     .map(([u, v]) => `prévia ≈ ${formatQty(v, u)} ${formatUnit(u)}`)
                     .join(' · ');
-                  const short = countShort(sectionRows);
+                  const short = new Set(
+                    sectionRows
+                      .filter(isShortRow)
+                      .map((r) => (r.componentType === 'Solado' ? `sole||${r.groupName}||${r.color}` : itemKey(r))),
+                  ).size;
                   const [secLabel, secFamily] = String(sectionKey).split(SECTION_SEP);
                   out.push(
                     <TableRow key={`sec-${sectionKey}`} className="border-0 hover:bg-transparent">
@@ -752,6 +792,8 @@ export default function MaterialConsumptionView({
         totalItems={rows.length}
         filter={filter}
         onFilterChange={setFilter}
+        napaOnly={napaOnly}
+        onNapaOnlyChange={setNapaOnly}
         onGerarOC={onGerarOC}
         onRecalcular={onRecalcular}
         onPrintPdf={handlePrintPdf}
