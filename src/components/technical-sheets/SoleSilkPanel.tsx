@@ -16,6 +16,7 @@ import { toast } from 'sonner';
 interface Props {
   soleProductId: string;
   soleName: string;
+  readOnly?: boolean;
 }
 
 interface SilkForm {
@@ -27,7 +28,7 @@ interface SilkForm {
 
 const EMPTY_FORM: SilkForm = { silk_name: '', silk_url: '', client_id: '', economic_group_id: '' };
 
-export function SoleSilkPanel({ soleProductId, soleName }: Props) {
+export function SoleSilkPanel({ soleProductId, soleName, readOnly = false }: Props) {
   const qc = useQueryClient();
   const { data: clients = [] } = useClients();
   const { data: groups = [] } = useEconomicGroups();
@@ -66,6 +67,7 @@ export function SoleSilkPanel({ soleProductId, soleName }: Props) {
 
   const upsert = useMutation({
     mutationFn: async (data: SilkForm) => {
+      if (readOnly) throw new Error('Acesso somente para consulta.');
       const payload = {
         sole_product_id: soleProductId,
         sole_type: soleName,
@@ -93,6 +95,7 @@ export function SoleSilkPanel({ soleProductId, soleName }: Props) {
 
   const remove = useMutation({
     mutationFn: async (id: string) => {
+      if (readOnly) throw new Error('Acesso somente para consulta.');
       const { error } = await supabase.from('sole_silk_registrations').delete().eq('id', id);
       if (error) throw error;
     },
@@ -117,6 +120,7 @@ export function SoleSilkPanel({ soleProductId, soleName }: Props) {
   const closeDialog = () => { setDialogOpen(false); setEditingId(null); setForm(EMPTY_FORM); };
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (readOnly) return;
     const file = e.target.files?.[0];
     if (!file) return;
     if (!file.type.startsWith('image/')) { toast.error('Selecione um arquivo de imagem.'); return; }
@@ -151,9 +155,9 @@ export function SoleSilkPanel({ soleProductId, soleName }: Props) {
             Artes de silk aplicadas neste solado. A prioridade é: cliente específico → grupo econômico → padrão geral.
           </p>
         </div>
-        <Button size="sm" className="gap-1.5" onClick={openNew}>
+        {!readOnly && <Button size="sm" className="gap-1.5" onClick={openNew}>
           <Plus className="h-4 w-4" /> Adicionar Silk
-        </Button>
+        </Button>}
       </div>
 
       {isLoading ? (
@@ -165,7 +169,7 @@ export function SoleSilkPanel({ soleProductId, soleName }: Props) {
         <div className="flex flex-col items-center justify-center py-10 gap-2 text-center border rounded-lg bg-muted/20">
           <Layers className="h-8 w-8 text-muted-foreground/30" />
           <p className="text-sm font-medium text-muted-foreground">Nenhuma silk cadastrada para este solado</p>
-          <p className="text-xs text-muted-foreground">Use o botão acima para cadastrar artes de silk.</p>
+          {!readOnly && <p className="text-xs text-muted-foreground">Use o botão acima para cadastrar artes de silk.</p>}
         </div>
       ) : (
         <div className="rounded-md border overflow-hidden">
@@ -174,7 +178,7 @@ export function SoleSilkPanel({ soleProductId, soleName }: Props) {
               <TableRow className="bg-muted/30">
                 <TableHead>Arte / Silk</TableHead>
                 <TableHead>Aplicação</TableHead>
-                <TableHead className="w-20 text-right">Ações</TableHead>
+                {!readOnly && <TableHead className="w-20 text-right">Ações</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -195,7 +199,7 @@ export function SoleSilkPanel({ soleProductId, soleName }: Props) {
                     </div>
                   </TableCell>
                   <TableCell>{scopeLabel(r)}</TableCell>
-                  <TableCell className="text-right">
+                  {!readOnly && <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-1">
                       <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(r)}>
                         <Pencil className="h-3.5 w-3.5" />
@@ -206,7 +210,7 @@ export function SoleSilkPanel({ soleProductId, soleName }: Props) {
                         description="Esta ação não pode ser desfeita."
                       />
                     </div>
-                  </TableCell>
+                  </TableCell>}
                 </TableRow>
               ))}
             </TableBody>

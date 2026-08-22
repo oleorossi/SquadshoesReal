@@ -1,35 +1,35 @@
 /**
- * QuickFamilyDialog — atalho pra cadastrar uma "família com variações de cor"
+ * QuickFamilyDialog — atalho pra cadastrar um grupo/linha com variantes de cor
  * em uma única ação.
  *
  * Cenário: usuário quer cadastrar "Tira Chata 10mm" que tem 5 cores. Antes
  * precisava criar 1 grupo no menu de grupos + 5 produtos individuais (cada
  * um com group_id manual). Agora informa nome + cores + supplier e o sistema
- * cria grupo + N produtos atomicamente.
+ * cria o grupo e depois o lote de produtos. São duas operações; se o lote
+ * falhar, o grupo criado nesta tentativa é removido enquanto ainda está vazio.
  *
- * O conceito de "grupo" continua existindo no schema (sem ele, MRP/débito/
- * fichas técnicas não funcionam), mas pro usuário fica simples: "família de
- * tira chata" em vez de "grupo + 5 produtos".
+ * Família técnica e grupo/linha não são sinônimos: este fluxo cria o grupo que
+ * recebe os SKUs. A família, quando usada, fica um nível acima na organização.
  */
-import { useState, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { NumberInput } from '@/components/ui/number-input';
 import { RequiredMark } from '@/components/ui/required-mark';
-import { Stack as Layers, Plus, X, CircleNotch as Loader2, Sparkle as Sparkles } from '@phosphor-icons/react';
+import { Stack as Layers, Plus, CircleNotch as Loader2, Sparkle as Sparkles } from '@phosphor-icons/react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useProducts } from '@/hooks/useProducts';
 import { findDuplicate, type DuplicateHit } from '@/lib/duplicateDetection';
 import { DuplicateSuggestion } from './DuplicateSuggestion';
-import { useGroups } from '@/hooks/useGroups';
+import { useGroups, type ProductGroup } from '@/hooks/useGroups';
 import { useSuppliers } from '@/hooks/useSuppliers';
 import { useQueryClient } from '@tanstack/react-query';
-import { deriveCategoryFromGroup, sectorOfGroup } from '@/lib/categoryFromGroup';
+import { sectorOfGroup, SECTOR_OPTIONS } from '@/lib/categoryFromGroup';
+import { ColorsMultiSelect } from '@/components/references/ColorsMultiSelect';
 
 interface Props {
   open: boolean;
@@ -38,27 +38,61 @@ interface Props {
   defaultGroupId?: string | null;
 }
 
-const COMMON_COLORS = ['Preto', 'Branco', 'Bege', 'Caramelo', 'Café', 'Marrom', 'Cinza', 'Vermelho', 'Azul', 'Verde'];
+const AREA_SECTORS = new Set(['Cabedal', 'Palmilha', 'Forração da Palmilha']);
+const AREA_STOCK_UNITS = new Set(['m', 'cm', 'dm²']);
 
-function slugForSku(s: string): string {
-  return s
+function skuToken(value: string, fallback: string): string {
+  const token = value
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
     .replace(/[^a-zA-Z0-9]/g, '')
-    .toUpperCase()
-    .slice(0, 8);
+    .toUpperCase();
+  return token || fallback;
+}
+
+/** Gera SKUs estáveis na ordem das cores. O Set é atualizado a cada item para
+ * impedir colisão dentro do próprio lote e já nasce com todos os SKUs do banco. */
+function buildUniqueSkus(prefix: string, colors: string[], existingSkus: Array<string | null | undefined>): string[] {
+  const visiblePrefix = skuToken(prefix, 'MAT');
+  const used = new Set(existingSkus.map(sku => (sku || '').trim().toUpperCase()).filter(Boolean));
+
+  return colors.map((color, index) => {
+    const base = `${visiblePrefix}-${skuToken(color, `COR${index + 1}`)}`;
+    let candidate = base;
+    let suffix = 2;
+    while (used.has(candidate)) {
+      candidate = `${base}-${suffix}`;
+      suffix += 1;
+    }
+    used.add(candidate);
+    return candidate;
+  });
+}
+
+function groupNeedsWidth(group: ProductGroup | null | undefined): boolean {
+  if (!group) return false;
+  return AREA_SECTORS.has(sectorOfGroup(group)) || group.calculation_method === 'meter';
+}
+
+function isVariantLineGroup(group: ProductGroup | null | undefined): boolean {
+  if (!group) return false;
+  return Boolean((group.shared_specs || group.is_bom_color_source) && !group.is_color_agnostic);
 }
 
 export function QuickFamilyDialog({ open, onOpenChange, defaultGroupId }: Props) {
   const qc = useQueryClient();
   const { data: groups = [] } = useGroups();
   const { data: suppliers = [] } = useSuppliers();
+  const defaultExistingGroupId = defaultGroupId && defaultGroupId !== 'all' ? defaultGroupId : '';
 
   const [familyName, setFamilyName] = useState('');
   const [skuPrefix, setSkuPrefix] = useState('');
-  const [groupMode, setGroupMode] = useState<'new' | 'existing'>('new');
-  const [selectedGroupId, setSelectedGroupId] = useState<string>(defaultGroupId || '');
-  const [unit, setUnit] = useState('un');
+  const [skuPrefixTouched, setSkuPrefixTouched] = useState(false);
+  const [groupMode, setGroupMode] = useState<'new' | 'existing'>(defaultExistingGroupId ? 'existing' : 'new');
+  const [selectedGroupId, setSelectedGroupId] = useState<string>(defaultExistingGroupId);
+  const [newSector, setNewSector] = useState('');
+  const [dimensionsWidthMm, setDimensionsWidthMm] = useState(0);
+  const [unit, setUnit] = useState('');
   const [unitPrice, setUnitPrice] = useState(0);
   const [supplierId, setSupplierId] = useState<string>('');
   const [supplierLeadDays, setSupplierLeadDays] = useState(10);
@@ -67,39 +101,94 @@ export function QuickFamilyDialog({ open, onOpenChange, defaultGroupId }: Props)
   // resolvida, e as demais seguem.
   const { data: todosOsProdutos = [] } = useProducts();
   const [coresLiberadas, setCoresLiberadas] = useState<Set<string>>(new Set());
-  const [colorInput, setColorInput] = useState('');
   const [submitting, setSubmitting] = useState(false);
+
+  const selectedGroup = useMemo(
+    () => groups.find(group => group.id === selectedGroupId) || null,
+    [groups, selectedGroupId],
+  );
+  const selectedGroupTemplate = useMemo(() => (
+    todosOsProdutos.find(product => product.group_id === selectedGroupId && product.active !== false)
+    || todosOsProdutos.find(product => product.group_id === selectedGroupId)
+    || null
+  ), [selectedGroupId, todosOsProdutos]);
+  const selectableExistingGroups = useMemo(() => {
+    const parentIds = new Set(groups.map(group => group.parent_group_id).filter(Boolean));
+    return groups.filter(group => (
+      !group.is_family &&
+      !parentIds.has(group.id) &&
+      isVariantLineGroup(group)
+    ));
+  }, [groups]);
+  const selectedGroupCompatible = Boolean(
+    selectedGroup && selectableExistingGroups.some(group => group.id === selectedGroup.id),
+  );
+  const targetSector = groupMode === 'new'
+    ? newSector
+    : sectorOfGroup(selectedGroup);
+  const targetNeedsWidth = groupMode === 'new'
+    ? AREA_SECTORS.has(targetSector)
+    : groupNeedsWidth(selectedGroup);
+  const targetWidth = groupMode === 'new'
+    ? Number(dimensionsWidthMm) || 0
+    : Number(selectedGroup?.dimensions_width) || 0;
+  const unitIsCompatible = Boolean(unit) && (!targetNeedsWidth || AREA_STOCK_UNITS.has(unit));
+  const plannedSkus = useMemo(
+    () => buildUniqueSkus(
+      skuPrefix || skuToken(familyName, 'MAT'),
+      colors,
+      todosOsProdutos.map(product => product.sku),
+    ),
+    [skuPrefix, familyName, colors, todosOsProdutos],
+  );
+
+  // O diálogo permanece montado entre trocas de aba. Ao reabrir, sincroniza o
+  // grupo sugerido pela aba atual em vez de reutilizar a seleção anterior.
+  useEffect(() => {
+    if (!open) return;
+    setGroupMode(defaultExistingGroupId ? 'existing' : 'new');
+    setSelectedGroupId(defaultExistingGroupId);
+    setNewSector('');
+  }, [open, defaultExistingGroupId]);
+
+  // useGroups pode terminar depois da abertura. Quando o grupo selecionado
+  // chega, preenche a identidade da linha sem exigir uma nova seleção manual.
+  useEffect(() => {
+    if (!open || groupMode !== 'existing' || !selectedGroup) return;
+    setFamilyName(selectedGroup.name);
+    setSkuPrefix(skuToken(selectedGroup.name, 'MAT'));
+    setSkuPrefixTouched(false);
+    if (selectedGroupTemplate) {
+      setUnit(selectedGroupTemplate.unit || 'un');
+      setUnitPrice(Number(selectedGroupTemplate.unit_price) || 0);
+      setSupplierId(selectedGroupTemplate.supplier_id || '');
+      setSupplierLeadDays(Number(selectedGroupTemplate.supplier_lead_time_days) || 10);
+    } else {
+      setUnit('');
+      setUnitPrice(0);
+      setSupplierId('');
+      setSupplierLeadDays(10);
+    }
+  }, [open, groupMode, selectedGroup, selectedGroupTemplate]);
 
   const reset = () => {
     setFamilyName('');
     setSkuPrefix('');
-    setGroupMode('new');
-    setSelectedGroupId(defaultGroupId || '');
-    setUnit('un');
+    setSkuPrefixTouched(false);
+    setGroupMode(defaultExistingGroupId ? 'existing' : 'new');
+    setSelectedGroupId(defaultExistingGroupId);
+    setNewSector('');
+    setDimensionsWidthMm(0);
+    setUnit('');
     setUnitPrice(0);
     setSupplierId('');
     setSupplierLeadDays(10);
     setColors(['Preto']);
-    setColorInput('');
-  };
-
-  const addColor = (raw: string) => {
-    const c = raw.trim();
-    if (!c) return;
-    if (colors.some(x => x.toLowerCase() === c.toLowerCase())) return;
-    setColors(prev => [...prev, c]);
-    setColorInput('');
+    setCoresLiberadas(new Set());
   };
 
   const removeColor = (c: string) => {
     setColors(prev => prev.filter(x => x !== c));
-  };
-
-  const handleKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' || e.key === ',') {
-      e.preventDefault();
-      addColor(colorInput);
-    }
   };
 
   /** Cor da fila que bate com algo já cadastrado e ainda não foi liberada. */
@@ -114,86 +203,173 @@ export function QuickFamilyDialog({ open, onOpenChange, defaultGroupId }: Props)
   }, [colors, familyName, groupMode, selectedGroupId, todosOsProdutos, coresLiberadas]);
 
   const handleSubmit = async () => {
-    // Validações
-    if (!familyName.trim()) { toast.error('Nome da família é obrigatório'); return; }
+    if (!familyName.trim()) { toast.error('Nome do grupo/linha é obrigatório'); return; }
     if (colors.length === 0) { toast.error('Adicione ao menos 1 cor'); return; }
-    if (groupMode === 'existing' && !selectedGroupId) { toast.error('Selecione um grupo'); return; }
+    if (groupMode === 'new' && !newSector) { toast.error('Selecione o setor / aplicação do material'); return; }
+    if (!unit) { toast.error('Selecione a unidade-base de estoque e consumo'); return; }
+    if (!unitIsCompatible) {
+      toast.error('Materiais de área/lineares devem usar metro, centímetro ou dm² como unidade-base. Revise o item-modelo antes de adicionar variantes.');
+      return;
+    }
+    if (groupMode === 'existing' && !selectedGroup) { toast.error('Selecione uma linha de variantes válida'); return; }
+    if (groupMode === 'existing' && !selectedGroupCompatible) {
+      toast.error('Este grupo não é uma linha de variantes válida. Revise sua organização antes de adicionar cores.');
+      return;
+    }
     if (suspeitas.length > 0) { toast.error('Resolva as cores marcadas como possíveis duplicatas'); return; }
+    if (targetNeedsWidth && targetWidth <= 0) {
+      toast.error(groupMode === 'new'
+        ? 'Informe a largura útil em mm antes de criar variantes de ' + targetSector + '.'
+        : 'Este grupo linear/de área está sem largura. Edite o grupo e preencha Dimensões → Largura útil antes de adicionar variantes.');
+      return;
+    }
 
     setSubmitting(true);
+    let createdGroupId: string | null = null;
+    let productBatchCompleted = false;
+
     try {
-      // 1) Garantir grupo: cria novo OU usa existente
-      let groupId: string;
+      // 1) Garante o grupo. Quando o INSERT realmente cria uma linha, guardamos
+      // somente aquele ID para uma eventual compensação — grupo preexistente
+      // nunca entra no cleanup.
+      let resolvedGroup: ProductGroup | null = null;
+
       if (groupMode === 'new') {
-        const { data: newGroup, error: gErr } = await (supabase as any)
+        const sector = targetSector;
+        // is_family ainda pertence à migration compartilhada e pode não estar na
+        // versão gerada do client local.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data: newGroup, error: groupError } = await (supabase as any)
           .from('product_groups')
-          .insert({ name: familyName.trim(), description: `Família de ${familyName.trim()} — criada via Cadastro Rápido`, sector: deriveCategoryFromGroup(familyName) })
-          .select('id')
+          .insert({
+            name: familyName.trim(),
+            description: 'Grupo/linha ' + familyName.trim() + ' — criado via cadastro rápido de variantes',
+            sector,
+            is_family: false,
+            shared_specs: true,
+            ...(AREA_SECTORS.has(sector)
+              ? { dimensions_width: dimensionsWidthMm, dimensions_unit: 'mm' }
+              : {}),
+          })
+          .select('*')
           .single();
-        if (gErr) {
-          if (gErr.code === '23505') {
-            // Já existe — busca e usa
-            const { data: existing } = await (supabase as any)
-              .from('product_groups')
-              .select('id')
-              .eq('name', familyName.trim())
-              .single();
-            if (!existing) throw new Error(`Falha ao criar grupo: ${gErr.message}`);
-            groupId = existing.id;
-            toast.info(`Grupo "${familyName}" já existia — produtos adicionados a ele.`);
-          } else {
-            throw new Error(`Falha ao criar grupo: ${gErr.message}`);
+
+        if (groupError) {
+          if (groupError.code === '23505') {
+            throw new Error('Já existe um grupo com este nome. Troque para “Adicionar a grupo existente” e selecione a linha correta.');
           }
-        } else {
-          groupId = newGroup.id;
+          throw new Error('Falha ao criar grupo: ' + groupError.message);
         }
+        if (!newGroup?.id) throw new Error('O grupo foi criado sem retornar um identificador.');
+        resolvedGroup = newGroup as ProductGroup;
+        createdGroupId = newGroup.id;
       } else {
-        groupId = selectedGroupId;
+        resolvedGroup = selectedGroup;
+        if (!resolvedGroup) throw new Error('O grupo selecionado não está mais disponível. Atualize a tela e tente novamente.');
       }
 
-      // 2) Cria 1 produto por cor
-      const prefix = (skuPrefix || slugForSku(familyName)).toUpperCase();
-      // products.category vem do SETOR do grupo (explícito). Grupo novo recebe o
-      // setor sugerido pelo nome (no insert acima); grupo existente usa o setor
-      // já gravado. O trigger do banco reforça isso ao inserir com o group_id.
-      const category = groupMode === 'new'
-        ? deriveCategoryFromGroup(familyName)
-        : sectorOfGroup(groups.find(g => g.id === selectedGroupId));
-      const rows = colors.map(color => ({
-        name: `${familyName.trim()} - ${color}`,
-        sku: `${prefix}-${slugForSku(color)}`,
+      const resolvedWidth = Number(resolvedGroup.dimensions_width) || 0;
+      if (groupNeedsWidth(resolvedGroup) && resolvedWidth <= 0) {
+        throw new Error(
+          'Este grupo linear/de área está sem largura. Edite o grupo e preencha Dimensões → Largura útil antes de adicionar variantes.',
+        );
+      }
+
+      // 2) Cria uma linha por cor. Dimensões vêm do ProductGroup, a mesma fonte
+      // que alimenta a ficha de componente e a conversão de área.
+      const category = sectorOfGroup(resolvedGroup);
+      const calculationMethod = unit === 'm' || unit === 'cm'
+        ? 'meter'
+        : unit === 'kg'
+          ? 'weight'
+          : 'unit';
+      const rows = colors.map((color, index) => ({
+        purchase_unit: unit,
+        production_unit: unit,
+        purchase_order_unit: unit,
+        conversion_rate: 1,
+        calculation_method: calculationMethod,
+        ...(groupMode === 'existing' && selectedGroupTemplate ? {
+          technical_name: selectedGroupTemplate.technical_name || '',
+          min_stock: Number(selectedGroupTemplate.min_stock) || 0,
+          max_stock: Number(selectedGroupTemplate.max_stock) || 0,
+          safety_stock: Number(selectedGroupTemplate.safety_stock) || 0,
+          location: selectedGroupTemplate.location || '',
+          yield_per_meter: selectedGroupTemplate.yield_per_meter ?? null,
+          yield_unit: selectedGroupTemplate.yield_unit || null,
+          purchase_unit: selectedGroupTemplate.purchase_unit || selectedGroupTemplate.unit || 'un',
+          production_unit: selectedGroupTemplate.production_unit || selectedGroupTemplate.unit || 'un',
+          conversion_rate: Number(selectedGroupTemplate.conversion_rate) > 0 ? Number(selectedGroupTemplate.conversion_rate) : 1,
+          purchase_order_unit: selectedGroupTemplate.purchase_order_unit || selectedGroupTemplate.purchase_unit || selectedGroupTemplate.unit || 'un',
+          min_order_quantity: Number(selectedGroupTemplate.min_order_quantity) || 0,
+          lead_time_days: Number(selectedGroupTemplate.lead_time_days) || 0,
+          calculation_method: selectedGroupTemplate.calculation_method || 'weight',
+          price_wholesale: Number(selectedGroupTemplate.price_wholesale) || 0,
+          price_retail: Number(selectedGroupTemplate.price_retail) || 0,
+          pairs_per_package: Number(selectedGroupTemplate.pairs_per_package) || 1,
+        } : {}),
+        name: familyName.trim() + ' - ' + color,
+        sku: plannedSkus[index],
         color,
         category,
-        group_id: groupId,
+        group_id: resolvedGroup.id,
         unit,
         unit_price: unitPrice,
         supplier_id: supplierId || null,
         supplier_lead_time_days: supplierLeadDays,
         quantity: 0,
         active: true,
+        dimensions_length: Number(resolvedGroup.dimensions_length) || 0,
+        dimensions_width: resolvedWidth,
+        dimensions_thickness: Number(resolvedGroup.dimensions_thickness) || 0,
+        dimensions_unit: resolvedGroup.dimensions_unit || 'mm',
       }));
 
-      const { data: createdProducts, error: pErr } = await (supabase as any)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: createdProducts, error: productError } = await (supabase as any)
         .from('products')
         .insert(rows)
         .select('id, name');
 
-      if (pErr) {
-        // Se algum SKU já existe (conflito), notifica
-        if (pErr.code === '23505') {
-          throw new Error('Algum SKU já existe. Ajuste o prefixo do SKU e tente novamente.');
+      if (productError) {
+        if (productError.code === '23505') {
+          throw new Error('Um SKU ou uma cor foi cadastrado por outra operação. Tente novamente para recalcular os sufixos.');
         }
-        throw new Error(`Falha ao criar produtos: ${pErr.message}`);
+        throw new Error('Falha ao criar produtos: ' + productError.message);
       }
+      productBatchCompleted = true;
 
-      toast.success(`${createdProducts?.length || 0} produto(s) criado(s) na família "${familyName}"`);
+      toast.success((createdProducts?.length || 0) + ' variante(s) criada(s) no grupo "' + familyName + '"');
       qc.invalidateQueries({ queryKey: ['products'] });
       qc.invalidateQueries({ queryKey: ['product_groups'] });
       reset();
       onOpenChange(false);
-    } catch (err: any) {
-      console.error('[QuickFamilyDialog] erro:', err);
-      toast.error(err.message || 'Erro inesperado');
+    } catch (error) {
+      let cleanupFailure: string | null = null;
+
+      if (createdGroupId && !productBatchCompleted) {
+        // A RPC trava o grupo e revalida o vazio na mesma transação. Um
+        // COUNT+DELETE em duas requisições poderia desagrupar produto concorrente
+        // por causa do FK ON DELETE SET NULL.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data: removed, error: cleanupError } = await (supabase as any)
+          .rpc('delete_empty_material_group', { p_group_id: createdGroupId });
+        if (cleanupError) {
+          cleanupFailure = 'não foi possível compensar o grupo novo: ' + cleanupError.message;
+        } else if (!removed) {
+          cleanupFailure = 'o grupo novo não foi removido porque já recebeu itens ou subgrupos';
+        }
+      }
+
+      const message = error instanceof Error ? error.message : 'Erro inesperado';
+      console.error('[QuickFamilyDialog] erro:', error);
+      if (cleanupFailure) {
+        console.error('[QuickFamilyDialog] erro de compensação:', {
+          groupId: createdGroupId,
+          message: cleanupFailure,
+        });
+      }
+      toast.error(cleanupFailure ? message + ' Falha no cleanup: ' + cleanupFailure + '.' : message);
     } finally {
       setSubmitting(false);
     }
@@ -205,30 +381,30 @@ export function QuickFamilyDialog({ open, onOpenChange, defaultGroupId }: Props)
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Sparkles className="h-5 w-5 text-primary" />
-            Cadastro Rápido — Família com Cores
+            Cadastro rápido — grupo com variantes
           </DialogTitle>
           <DialogDescription>
-            Use pra cadastrar de uma vez um material que tem várias cores (ex: "Tira Chata 10mm" em
-            Preto, Branco, Caramelo). O sistema cria a família e os produtos automaticamente.
+            Crie uma linha comercial/técnica e depois seus SKUs de cor em um fluxo guiado. Se o lote falhar, o grupo novo ainda vazio é removido por compensação.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-5 mt-2">
-          {/* ── Família ── */}
+          {/* ── Grupo / linha ── */}
           <div className="rounded-lg border bg-card p-4 space-y-3">
             <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">
-              <Layers className="h-3.5 w-3.5" /> Família
+              <Layers className="h-3.5 w-3.5" /> Grupo / linha
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div className="md:col-span-2">
-                <Label htmlFor="fam-name" className="text-xs">Nome da família <RequiredMark /></Label>
+                <Label htmlFor="fam-name" className="text-xs">Nome do grupo / linha <RequiredMark /></Label>
                 <Input
                   id="fam-name"
                   value={familyName}
                   onChange={e => {
-                    setFamilyName(e.target.value);
-                    if (!skuPrefix) setSkuPrefix(slugForSku(e.target.value));
+                    const nextName = e.target.value;
+                    setFamilyName(nextName);
+                    if (!skuPrefixTouched) setSkuPrefix(skuToken(nextName, ''));
                   }}
                   className="mt-1 h-10"
                   placeholder="Ex: Tira Chata 10mm"
@@ -244,35 +420,78 @@ export function QuickFamilyDialog({ open, onOpenChange, defaultGroupId }: Props)
                 <Input
                   id="fam-sku-prefix"
                   value={skuPrefix}
-                  onChange={e => setSkuPrefix(e.target.value.toUpperCase().slice(0, 12))}
+                  onChange={e => {
+                    setSkuPrefixTouched(true);
+                    setSkuPrefix(e.target.value.toUpperCase());
+                  }}
                   className="mt-1 h-10 font-mono"
                   placeholder="TIRA"
                 />
                 <p className="text-xs text-muted-foreground mt-1">
-                  SKU final: <span className="font-mono">{(skuPrefix || 'TIRA')}-PRETO</span>
+                  Primeiro SKU disponível: <span className="font-mono">{plannedSkus[0] || '—'}</span>
                 </p>
               </div>
 
               <div>
                 <Label className="text-xs">Onde criar?</Label>
-                <Select value={groupMode} onValueChange={v => setGroupMode(v as any)}>
+                <Select value={groupMode} onValueChange={value => setGroupMode(value as 'new' | 'existing')}>
                   <SelectTrigger className="mt-1 h-10"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="new">Criar nova família</SelectItem>
-                    <SelectItem value="existing">Usar família existente</SelectItem>
+                    <SelectItem value="new">Criar novo grupo / linha</SelectItem>
+                    <SelectItem value="existing">Adicionar a grupo existente</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
-              {groupMode === 'existing' && (
+              {groupMode === 'new' && (
                 <div className="md:col-span-2">
-                  <Label className="text-xs">Família existente <RequiredMark /></Label>
-                  <Select value={selectedGroupId} onValueChange={setSelectedGroupId}>
-                    <SelectTrigger className="mt-1 h-10"><SelectValue placeholder="Selecione…" /></SelectTrigger>
+                  <Label className="text-xs">Setor / aplicação <RequiredMark /></Label>
+                  <Select value={newSector} onValueChange={(value) => {
+                    setNewSector(value);
+                    if (AREA_SECTORS.has(value) && unit && !AREA_STOCK_UNITS.has(unit)) setUnit('');
+                  }}>
+                    <SelectTrigger className="mt-1 h-10"><SelectValue placeholder="Selecione onde o material é aplicado…" /></SelectTrigger>
                     <SelectContent>
-                      {groups.map(g => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}
+                      {SECTOR_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Define onde o material é aplicado; a família técnica é organizada separadamente.
+                  </p>
+                </div>
+              )}
+
+              {groupMode === 'existing' && (
+                <div className="md:col-span-2">
+                  <Label className="text-xs">Grupo existente <RequiredMark /></Label>
+                  <Select value={selectedGroupId} onValueChange={(value) => {
+                    setSelectedGroupId(value);
+                    const selectedGroup = groups.find((group) => group.id === value);
+                    if (selectedGroup) {
+                      setFamilyName(selectedGroup.name);
+                      setSkuPrefix(skuToken(selectedGroup.name, 'MAT'));
+                      setSkuPrefixTouched(false);
+                    }
+                  }}>
+                    <SelectTrigger className="mt-1 h-10"><SelectValue placeholder="Selecione…" /></SelectTrigger>
+                    <SelectContent>
+                      {selectedGroup && !selectedGroupCompatible && (
+                        <SelectItem value={selectedGroup.id} disabled>
+                          {selectedGroup.name} — converter na edição do grupo
+                        </SelectItem>
+                      )}
+                      {selectableExistingGroups.map(group => (
+                        <SelectItem key={group.id} value={group.id}>{group.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {selectedGroup && !selectedGroupCompatible && (
+                    <p className="mt-1 text-xs text-warning">
+                      Este grupo é uma família, grupo-pai ou coleção sem modelo de variantes. Revise-o antes de continuar.
+                    </p>
+                  )}
                 </div>
               )}
             </div>
@@ -284,54 +503,14 @@ export function QuickFamilyDialog({ open, onOpenChange, defaultGroupId }: Props)
               <Plus className="h-3.5 w-3.5" /> Cores ({colors.length})
             </div>
 
-            <div className="flex gap-2">
-              <Input
-                value={colorInput}
-                onChange={e => setColorInput(e.target.value)}
-                onKeyDown={handleKey}
-                onBlur={() => colorInput.trim() && addColor(colorInput)}
-                className="h-10 flex-1"
-                placeholder="Digite uma cor e pressione Enter…"
-              />
-              <Button type="button" variant="outline" onClick={() => addColor(colorInput)} disabled={!colorInput.trim()}>
-                <Plus className="h-4 w-4" />
-              </Button>
-            </div>
-
-            {/* Atalhos */}
-            <div className="flex flex-wrap gap-1.5">
-              {COMMON_COLORS.filter(c => !colors.some(x => x.toLowerCase() === c.toLowerCase())).map(c => (
-                <button
-                  key={c}
-                  type="button"
-                  onClick={() => addColor(c)}
-                  className="text-xs px-2 py-1 rounded-md border border-dashed border-border hover:bg-accent hover:border-primary/40"
-                >
-                  + {c}
-                </button>
-              ))}
-            </div>
-
-            {/* Cores selecionadas */}
-            {colors.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 pt-2 border-t border-border/40">
-                {colors.map(c => {
-                  const suspeita = suspeitas.some(x => x.cor === c);
-                  return (
-                    <Badge
-                      key={c}
-                      variant="secondary"
-                      className={`gap-1 pr-1 ${suspeita ? 'bg-warning/15 text-warning border-warning/30' : ''}`}
-                    >
-                      {c}
-                      <button type="button" onClick={() => removeColor(c)} className="hover:bg-muted rounded-full p-0.5">
-                        <X className="h-3 w-3" />
-                      </button>
-                    </Badge>
-                  );
-                })}
-              </div>
-            )}
+            <ColorsMultiSelect
+              value={colors.join(', ')}
+              onChange={(value) => setColors(value.split(',').map((color) => color.trim()).filter(Boolean))}
+              excluded={groupMode === 'existing'
+                ? todosOsProdutos.filter((product) => product.group_id === selectedGroupId).map((product) => product.color || '')
+                : []}
+              placeholder="Buscar no catálogo ou cadastrar cor…"
+            />
 
             {/* Uma sugestão por vez — a primeira cor suspeita da fila (R4.5). */}
             {suspeitas[0] && (
@@ -343,7 +522,7 @@ export function QuickFamilyDialog({ open, onOpenChange, defaultGroupId }: Props)
             )}
 
             <p className="text-xs text-muted-foreground">
-              Serão criados <span className="font-bold text-primary">{colors.length} produto(s)</span> — um por cor, todos vinculados à mesma família.
+              Serão criados <span className="font-bold text-primary">{colors.length} SKU(s)</span> — um por cor, todos vinculados ao mesmo grupo/linha.
             </p>
           </div>
 
@@ -355,18 +534,28 @@ export function QuickFamilyDialog({ open, onOpenChange, defaultGroupId }: Props)
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div>
-                <Label className="text-xs">Unidade</Label>
-                <Select value={unit} onValueChange={setUnit}>
-                  <SelectTrigger className="mt-1 h-10"><SelectValue /></SelectTrigger>
+                <Label className="text-xs">Unidade-base <RequiredMark /></Label>
+                <Select
+                  value={unit}
+                  onValueChange={setUnit}
+                  disabled={groupMode === 'existing' && Boolean(selectedGroupTemplate)}
+                >
+                  <SelectTrigger className="mt-1 h-10"><SelectValue placeholder="Selecione…" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="un">Unidade</SelectItem>
                     <SelectItem value="m">Metro</SelectItem>
                     <SelectItem value="cm">Centímetro</SelectItem>
-                    <SelectItem value="kg">Quilograma</SelectItem>
                     <SelectItem value="dm²">dm²</SelectItem>
-                    <SelectItem value="par">Par</SelectItem>
+                    {!targetNeedsWidth && <SelectItem value="un">Unidade</SelectItem>}
+                    {!targetNeedsWidth && <SelectItem value="par">Par</SelectItem>}
+                    {!targetNeedsWidth && <SelectItem value="kg">Quilograma</SelectItem>}
                   </SelectContent>
                 </Select>
+                {groupMode === 'existing' && selectedGroupTemplate && (
+                  <p className="mt-1 text-xs text-muted-foreground">Herdada do item-modelo da linha.</p>
+                )}
+                {!unitIsCompatible && unit && (
+                  <p className="mt-1 text-xs text-destructive">Unidade incompatível com material de área/linear.</p>
+                )}
               </div>
               <div>
                 <Label className="text-xs">Preço unitário (R$)</Label>
@@ -376,6 +565,36 @@ export function QuickFamilyDialog({ open, onOpenChange, defaultGroupId }: Props)
                 <Label className="text-xs">Lead time fornecedor (dias)</Label>
                 <NumberInput value={supplierLeadDays} onChange={setSupplierLeadDays} min={1} step="1" className="mt-1 h-10" />
               </div>
+              {targetNeedsWidth && (
+                <div className="md:col-span-3">
+                  <Label className="text-xs">
+                    Largura útil do material {groupMode === 'new' ? '(mm)' : '(definida no grupo)'}
+                    {groupMode === 'new' && <RequiredMark />}
+                  </Label>
+                  {groupMode === 'new' ? (
+                    <NumberInput
+                      value={dimensionsWidthMm}
+                      onChange={setDimensionsWidthMm}
+                      min={0}
+                      step="0.1"
+                      className="mt-1 h-10"
+                    />
+                  ) : (
+                    <div className="mt-1 flex h-10 items-center rounded-md border border-border bg-muted/30 px-3 font-mono text-sm">
+                      {targetWidth > 0
+                        ? `${targetWidth} ${selectedGroup?.dimensions_unit || 'mm'}`
+                        : 'Não cadastrada'}
+                    </div>
+                  )}
+                  <p className={targetWidth > 0 ? 'mt-1 text-xs text-muted-foreground' : 'mt-1 text-xs text-warning'}>
+                    {groupMode === 'new'
+                      ? `Obrigatória para ${targetSector}; será gravada no grupo em milímetros e herdada por todas as cores.`
+                      : targetWidth > 0
+                        ? 'A largura vem do ProductGroup e será herdada por todas as novas variantes.'
+                        : 'Antes de continuar, abra o grupo, acesse Dimensões e preencha Largura útil.'}
+                  </p>
+                </div>
+              )}
               <div className="md:col-span-3">
                 <Label className="text-xs">Fornecedor</Label>
                 <Select value={supplierId || '__none__'} onValueChange={v => setSupplierId(v === '__none__' ? '' : v)}>
@@ -396,9 +615,22 @@ export function QuickFamilyDialog({ open, onOpenChange, defaultGroupId }: Props)
           <Button type="button" variant="outline" onClick={() => { reset(); onOpenChange(false); }} disabled={submitting}>
             Cancelar
           </Button>
-          <Button type="button" onClick={handleSubmit} disabled={submitting || !familyName.trim() || colors.length === 0} className="gap-2">
+          <Button
+            type="button"
+            onClick={handleSubmit}
+            disabled={
+              submitting ||
+              !familyName.trim() ||
+              colors.length === 0 ||
+              (groupMode === 'new' && !newSector) ||
+              !unitIsCompatible ||
+              (groupMode === 'existing' && !selectedGroupCompatible) ||
+              (targetNeedsWidth && targetWidth <= 0)
+            }
+            className="gap-2"
+          >
             {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
-            Criar família com {colors.length} cor{colors.length !== 1 ? 'es' : ''}
+            Criar {colors.length} variante{colors.length !== 1 ? 's' : ''}
           </Button>
         </DialogFooter>
       </DialogContent>
