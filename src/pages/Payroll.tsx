@@ -53,6 +53,13 @@ const fmtHoras = (min: number) => {
   return `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}`;
 };
 
+/** Minutos com sinal, para explicar a compensação de horas da folha. */
+const fmtSaldoHoras = (min: number) => {
+  const value = Math.round(Number(min) || 0);
+  if (value === 0) return '0h00';
+  return `${value > 0 ? '+' : '−'}${fmtHoras(Math.abs(value))}`;
+};
+
 const MONTHS_PT = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
 
 /** Último dia do mês "YYYY-MM" como "YYYY-MM-DD". */
@@ -297,6 +304,24 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
     });
   }, [comparativo.rows, runs]);
 
+  // Resumo gerencial de horas da mesma fonte canônica usada para calcular a
+  // folha. Pendência e crédito são brutos; saldo final é o que realmente sobra
+  // depois da compensação e entra como débito ou H.E. no fechamento.
+  const timeTotals = useMemo(() => {
+    const visibleEmployeeIds = new Set(runs.map(run => run.employee_id));
+    return reportComparativoRows.reduce((total, row) => {
+      if (!visibleEmployeeIds.has(row.id) || row.result.payment_type !== 'mensalista') return total;
+      total.rawDelay += Number(row.result.raw_delay_minutes) || 0;
+      total.rawCredit += Number(row.result.raw_credit_minutes) || 0;
+      total.compensated += Number(row.result.compensated_minutes) || 0;
+      total.payableDelay += Number(row.result.atraso_minutes) || 0;
+      total.payableOvertime += Number(row.result.he_minutes) || 0;
+      return total;
+    }, { rawDelay: 0, rawCredit: 0, compensated: 0, payableDelay: 0, payableOvertime: 0 });
+  }, [reportComparativoRows, runs]);
+
+  const finalTimeBalance = timeTotals.payableOvertime - timeTotals.payableDelay;
+
   /** Rascunho pode existir para conferência; aprovação só quando a mesma folha
    * está financeiramente fechável. O banco repete estas travas como proteção
    * contra chamada direta ou tela desatualizada. */
@@ -508,16 +533,9 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
   // Banco de horas REMOVIDO (reforma 2026-07-09): o Espelho não mostra mais saldo
   // de banco — passa a exibir realizado × esperado do período.
 
-  // Gerar PDF da FOLHA — tabela única de TODOS os funcionários com VALORES e HORAS
-  // (salário, HE, faltas, atrasos, líquido + horas trabalhadas/extra), do mesmo motor
-  // (computePeriodFolha via comparativo.rows). Respeita o filtro de setor da tela.
+  // PDF gerencial da folha salarial. Produção por par é fechada no módulo
+  // próprio e, portanto, não entra neste documento.
   const handlePrintFolhaPdf = () => {
-    const fmtHm = (min: number) => {
-      const m = Math.round(Number(min) || 0);
-      if (m <= 0) return '—';
-      const h = Math.floor(m / 60), mm = m % 60;
-      return mm === 0 ? `${h}h` : h === 0 ? `${mm}min` : `${h}h${String(mm).padStart(2, '0')}`;
-    };
     const dfmt = (iso: string) => (iso || '').split('-').reverse().join('/');
     const now = new Date();
     const generatedAt = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
@@ -536,15 +554,10 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
       !!r.result && (setorFilter === 'all' || r.department === setorFilter));
     if (src.length === 0) { toast.error('Nenhum funcionário na folha do período.'); return; }
 
-    // Duas formas de pagar, dois blocos: quem é medido pelo RELÓGIO DE PONTO
-    // (mensalista/remoto/diarista) e quem é pago POR PAR, cujos números vêm da
-    // Ficha de Montadores e não do ponto. Numa tabela só, cada linha teria metade
-    // das colunas em "—". Bloco sem ninguém não é impresso.
-    const isPorPar = (r: { result: SalaryPayrollResult }) => r.result?.payment_type === 'producao';
-    const srcPonto = src.filter(r => !isPorPar(r));
-    const srcPorPar = src.filter(r => isPorPar(r));
+    const srcPonto = src;
 
-    let tSal = 0, tHe = 0, tFalta = 0, tAtraso = 0, tValePonto = 0, tLiqPonto = 0, tWork = 0, tHeMin = 0;
+    let tSal = 0, tHe = 0, tFalta = 0, tValePonto = 0, tLiqPonto = 0;
+    let tRawDelay = 0, tRawCredit = 0, tFinalMinutes = 0;
     const rowsPonto = srcPonto.map((r): RhCell[] => {
       const res = r.result;
       // `base_salary` é o salário MENSAL cheio (referência p/ valor-dia/valor-hora);
@@ -552,131 +565,72 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
       // rótulo "Salário do período" o mensal saía ~2× numa folha quinzenal e o bloco
       // não fechava com o Líquido. A tela já faz essa distinção (linha ~1453).
       const sal = Number(res.period_base) || 0, he = Number(res.he_value) || 0;
-      const falta = Number(res.falta_desconto) || 0, atraso = Number(res.atraso_desconto) || 0;
+      const falta = Number(res.falta_desconto) || 0;
       const vale = Number(res.advances_total) || 0;
-      tSal += sal; tHe += he; tFalta += falta; tAtraso += atraso; tValePonto += vale;
-      tLiqPonto += Number(res.net_value) || 0; tWork += Number(res.worked_minutes) || 0; tHeMin += Number(res.he_minutes) || 0;
+      const rawDelay = Number(res.raw_delay_minutes) || 0;
+      const rawCredit = Number(res.raw_credit_minutes) || 0;
+      const finalMinutes = (Number(res.he_minutes) || 0) - (Number(res.atraso_minutes) || 0);
+      tSal += sal; tHe += he; tFalta += falta; tValePonto += vale;
+      tLiqPonto += Number(res.net_value) || 0;
+      tRawDelay += rawDelay; tRawCredit += rawCredit; tFinalMinutes += finalMinutes;
       return [
         { v: r.name },
         { v: r.department || '—' },
-        { v: String(res.paid_days ?? 0), align: 'r' },
-        { v: fmtHm(res.worked_minutes), align: 'r' },
-        { v: fmtHm(res.he_minutes), align: 'r' },
         { v: fmt(sal), align: 'r' },
+        { v: rawDelay > 0 ? fmtSaldoHoras(-rawDelay) : '—', align: 'r', neg: rawDelay > 0 },
+        { v: rawCredit > 0 ? fmtSaldoHoras(rawCredit) : '—', align: 'r' },
+        { v: fmtSaldoHoras(finalMinutes), align: 'r', neg: finalMinutes < 0, strong: true },
+        { v: falta > 0 ? `${res.falta_days || 0}d · − ${fmt(falta)}` : '—', align: 'r', neg: falta > 0 },
         { v: he > 0 ? fmt(he) : '—', align: 'r' },
-        { v: falta > 0 ? `− ${fmt(falta)}` : '—', align: 'r', neg: falta > 0 },
-        { v: atraso > 0 ? `− ${fmt(atraso)}` : '—', align: 'r', neg: atraso > 0 },
         { v: vale > 0 ? `− ${fmt(vale)}` : '—', align: 'r', neg: vale > 0 },
         { v: fmt(Number(res.net_value) || 0), align: 'r', strong: true },
       ];
     });
 
-    let tDias = 0, tFichas = 0, tPMed = 0, tPDif = 0, tBruto = 0, tVale = 0, tLiqPar = 0;
-    let algumaFichaDerivada = false;
-    let algumaTaxaVariou = false;
-    const rowsPorPar = srcPorPar.map((r): RhCell[] => {
-      const res = r.result;
-      const dias = Number(res.paid_days) || 0;
-      const fichas = Number(res.fichas) || 0;
-      const pMed = Number(res.pares_medio) || 0, pDif = Number(res.pares_dificil) || 0;
-      const bruto = Number(res.total_proventos) || 0, vale = Number(res.advances_total) || 0;
-      if (res.fichas_derivadas) algumaFichaDerivada = true;
-      if (res.taxa_variou) algumaTaxaVariou = true;
-      tDias += dias; tFichas += fichas; tPMed += pMed; tPDif += pDif;
-      tBruto += bruto; tVale += vale; tLiqPar += Number(res.net_value) || 0;
-      // A taxa vai COLADA nos pares que ela multiplica ("2.364 × 0,80"), e não
-      // numa coluna "R$/par" solta. Duas razões: médio e difícil têm taxas
-      // diferentes (uma coluna só teria de misturar as duas num número que não é
-      // taxa de nenhum dos dois), e assim o conferente refaz a conta na própria
-      // folha — pares × taxa tem de dar a coluna Produção.
-      const marca = res.taxa_variou ? '†' : '';
-      const cel = (pares: number, taxa: number) =>
-        pares > 0 ? `${pares.toLocaleString('pt-BR')} × ${fmt(taxa)}${marca}` : '—';
-      return [
-        { v: r.name },
-        { v: r.department || '—' },
-        { v: String(dias), align: 'r' },
-        { v: fichas > 0 ? `${fichas}${res.fichas_derivadas ? ' *' : ''}` : '—', align: 'r' },
-        { v: cel(pMed, Number(res.taxa_medio) || 0), align: 'r' },
-        { v: cel(pDif, Number(res.taxa_dificil) || 0), align: 'r' },
-        { v: fmt(bruto), align: 'r' },
-        { v: vale > 0 ? `− ${fmt(vale)}` : '—', align: 'r', neg: vale > 0 },
-        { v: fmt(Number(res.net_value) || 0), align: 'r', strong: true },
-      ];
-    });
-
-    const notas = [
-      srcPonto.length > 0 ? 'Excessos compensam atrasos parciais dentro do período. Só o saldo positivo acima de 10min vira H.E.; falta integral fica separada. H.E. conforme taxa individual cadastrada.' : '',
-      srcPorPar.length > 0 ? 'Por par: cada lançamento vale o R$/par gravado nele — o relógio de ponto não entra na conta. Pares × R$/par deve fechar com a coluna Produção.' : '',
-      algumaFichaDerivada ? '* Fichas inferidas (lote de 12): o lançamento é anterior ao registro de tamanho. Os PARES, que são a base do pagamento, não dependem disso.' : '',
-      algumaTaxaVariou ? '† O R$/par mudou dentro do período (reajuste): a taxa exibida é a média das gravadas em cada lançamento. A coluna Produção continua exata.' : '',
-    ].filter(Boolean).join(' ');
+    const notas = 'Pendência e horas extras são valores brutos. O saldo final é calculado depois da compensação e determina o débito de atraso ou a H.E. pagável. Faltas integrais e adiantamentos ficam separados.';
 
     printRhReport({
-      title: 'Folha — Relatório por Funcionário',
+      title: 'Folha — Resumo Gerencial',
       subtitle: setorFilter !== 'all' ? `Setor: ${setorFilter}` : 'Todos os setores',
       periodo: `${dfmt(appliedFrom)} – ${dfmt(appliedTo)}`,
       generatedAt,
       kpis: [
-        { label: 'Funcionários', value: String(rowsPonto.length + rowsPorPar.length) },
-        { label: 'Horas trab.', value: fmtHm(tWork) },
-        { label: 'Pares produzidos', value: (tPMed + tPDif).toLocaleString('pt-BR') },
-        { label: 'Proventos', value: fmt(tSal + tHe + tBruto) },
-        { label: 'Descontos', value: fmt(tFalta + tAtraso + tValePonto + tVale) },
-        { label: 'Líquido', value: fmt(tLiqPonto + tLiqPar) },
+        { label: 'Funcionários', value: String(rowsPonto.length) },
+        { label: 'Pendências', value: fmtSaldoHoras(-tRawDelay) },
+        { label: 'Horas extras', value: fmtSaldoHoras(tRawCredit) },
+        { label: 'Saldo final', value: fmtSaldoHoras(tFinalMinutes) },
+        { label: 'H.E. a pagar', value: fmt(tHe) },
+        { label: 'Líquido', value: fmt(tLiqPonto) },
       ],
       sections: [
         {
-          title: 'Mensalistas, remotos e diaristas · pelo relógio de ponto',
-          note: 'Salário do período, ajustado por faltas, atrasos e horas extras medidos contra a escala.',
+          title: 'Conciliação por funcionário · relógio de ponto',
+          note: 'A conta de horas explica o débito ou a H.E.; a coluna Faltas contém apenas dias integrais.',
           headers: [
-            { label: 'Funcionário' }, { label: 'Setor' }, { label: 'Dias', align: 'r' },
-            { label: 'H. trab.', align: 'r' }, { label: 'H. extra', align: 'r' },
-            { label: 'Salário', align: 'r' }, { label: 'H.E. (R$)', align: 'r' },
-            { label: 'Faltas', align: 'r' }, { label: 'Atraso líq.', align: 'r' },
+            { label: 'Funcionário' }, { label: 'Setor' }, { label: 'Base', align: 'r' },
+            { label: 'Pendências', align: 'r' }, { label: 'H. extras', align: 'r' },
+            { label: 'Saldo final', align: 'r' }, { label: 'Faltas', align: 'r' },
+            { label: 'H.E. (R$)', align: 'r' },
             { label: 'Adiant.', align: 'r' }, { label: 'Líquido', align: 'r' },
           ],
           rows: rowsPonto,
           totals: [
             { v: `Subtotal · ${rowsPonto.length} func.`, strong: true },
-            { v: '' }, { v: '', align: 'r' },
-            { v: fmtHm(tWork), align: 'r', strong: true },
-            { v: fmtHm(tHeMin), align: 'r', strong: true },
+            { v: '' },
             { v: fmt(tSal), align: 'r', strong: true },
-            { v: fmt(tHe), align: 'r', strong: true },
+            { v: fmtSaldoHoras(-tRawDelay), align: 'r', neg: tRawDelay > 0, strong: true },
+            { v: fmtSaldoHoras(tRawCredit), align: 'r', strong: true },
+            { v: fmtSaldoHoras(tFinalMinutes), align: 'r', neg: tFinalMinutes < 0, strong: true },
             { v: `− ${fmt(tFalta)}`, align: 'r', neg: true, strong: true },
-            { v: `− ${fmt(tAtraso)}`, align: 'r', neg: true, strong: true },
+            { v: fmt(tHe), align: 'r', strong: true },
             { v: `− ${fmt(tValePonto)}`, align: 'r', neg: true, strong: true },
             { v: fmt(tLiqPonto), align: 'r', strong: true },
           ],
         },
-        {
-          title: 'Por par · Ficha de Montadores',
-          note: 'Pares apontados no período, valorados pelo R$/par gravado em cada lançamento. Dias = dias produtivos (com pares lançados), não dias de ponto.',
-          headers: [
-            { label: 'Funcionário' }, { label: 'Setor' }, { label: 'Dias prod.', align: 'r' },
-            { label: 'Fichas', align: 'r' },
-            { label: 'Pares méd × R$', align: 'r' }, { label: 'Pares dif × R$', align: 'r' },
-            { label: 'Produção', align: 'r' },
-            { label: 'Adiant.', align: 'r' }, { label: 'Líquido', align: 'r' },
-          ],
-          rows: rowsPorPar,
-          totals: [
-            { v: `Subtotal · ${rowsPorPar.length} func.`, strong: true },
-            { v: '' },
-            { v: String(tDias), align: 'r', strong: true },
-            { v: String(tFichas), align: 'r', strong: true },
-            { v: `${tPMed.toLocaleString('pt-BR')} pares`, align: 'r', strong: true },
-            { v: tPDif > 0 ? `${tPDif.toLocaleString('pt-BR')} pares` : '—', align: 'r', strong: true },
-            { v: fmt(tBruto), align: 'r', strong: true },
-            { v: `− ${fmt(tVale)}`, align: 'r', neg: true, strong: true },
-            { v: fmt(tLiqPar), align: 'r', strong: true },
-          ],
-        },
       ],
       grandTotal: {
-        label: `Total geral · ${rowsPonto.length + rowsPorPar.length} funcionário(s)`,
-        value: fmt(tLiqPonto + tLiqPar),
+        label: `Total geral · ${rowsPonto.length} funcionário(s)`,
+        value: fmt(tLiqPonto),
       },
       footNote: notas,
     });
@@ -1144,8 +1098,8 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
   return (
     <div className="space-y-4 page-enter">
       <div className="text-xs text-muted-foreground">
-        <span className="font-semibold text-foreground">Folha salarial pelo relógio de ponto</span> · mensalistas, remotos e diaristas · créditos compensam atrasos parciais · faltas integrais ficam separadas ·
-        {' '}hora extra paga pela <span className="font-semibold text-foreground">taxa individual</span>
+        <span className="font-semibold text-foreground">Fechamento gerencial da folha</span> · confira a conta de horas, os descontos e o valor final antes de aprovar o pagamento.
+        {' '}Faltas integrais e adiantamentos permanecem separados da compensação de horas.
       </div>
 
       {filtersBar}
@@ -1195,21 +1149,34 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
 
       <StatGrid>
         <StatCard label="Funcionários" value={runs.length} hint="na folha do período" />
-        <StatCard label="Proventos" value={fmt(totals.proventos)} hint="salário + horas extras" tone="success" />
-        <StatCard label="Descontos" value={fmt(totals.descontos)} hint="faltas + atrasos" tone="warning" />
+        <StatCard label="Pendências de horas" value={fmtSaldoHoras(-timeTotals.rawDelay)} hint="antes da compensação" tone="warning" />
+        <StatCard label="Horas extras" value={fmtSaldoHoras(timeTotals.rawCredit)} hint="antes da compensação" tone="success" />
         <StatCard
-          label="Adiantamentos"
-          value={fmt(totals.advances)}
-          hint={totals.advances > 0 ? `${totals.advancesCount} func. com vale` : undefined}
-          tone="warning"
-          icon={Wallet}
+          label="Saldo final de horas"
+          value={fmtSaldoHoras(finalTimeBalance)}
+          hint={`${fmtHoras(timeTotals.compensated)} compensadas`}
+          tone={finalTimeBalance > 0 ? 'success' : finalTimeBalance < 0 ? 'warning' : undefined}
         />
         <StatCard label="Total líquido" value={fmt(totals.liquido)} tone="primary" />
       </StatGrid>
 
+      <div className="grid gap-px overflow-hidden rounded-lg border bg-border sm:grid-cols-3">
+        {[
+          ['Proventos', fmt(totals.proventos), 'salário + H.E. paga'],
+          ['Descontos', fmt(totals.descontos), 'faltas + saldo devedor'],
+          ['Adiantamentos', fmt(totals.advances), totals.advances > 0 ? `${totals.advancesCount} funcionário(s)` : 'nenhum no período'],
+        ].map(([label, value, hint]) => (
+          <div key={label} className="bg-card px-4 py-3">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{label}</div>
+            <div className="mt-0.5 font-mono text-base font-bold tabular-nums text-foreground">{value}</div>
+            <div className="text-[11px] text-muted-foreground">{hint}</div>
+          </div>
+        ))}
+      </div>
+
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="inline-flex items-center gap-1 rounded-lg border bg-muted/40 p-1">
-          {([['folha', 'Folha'], ['calendario', 'Calendário de tempo'], ['holerite', 'Holerite']] as const).map(([v, label]) => (
+          {([['folha', 'Resumo gerencial'], ['calendario', 'Calendário por pessoa'], ['holerite', 'Holerites']] as const).map(([v, label]) => (
             <button
               key={v} type="button" onClick={() => setView(v)}
               className={`text-xs font-medium px-3 py-1.5 rounded-md transition-colors ${view === v ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
@@ -1238,34 +1205,38 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
               size="sm"
               className="h-8 gap-1.5"
               onClick={handlePrintFolhaPdf}
-              title="Gerar PDF de todos os funcionários com valores e horas"
+              title="Gerar o resumo gerencial de todos os funcionários"
             >
-              <FilePdf className="h-4 w-4" /> Gerar PDF
+              <FilePdf className="h-4 w-4" /> PDF gerencial
             </Button>
           </div>
         )}
       </div>
 
       {view === 'folha' && (
-      <Panel title={`Folha · ${periodTitle}`} flush>
+      <Panel
+        eyebrow="CONFERÊNCIA ANTES DO PAGAMENTO"
+        title={`Resumo gerencial · ${periodTitle}`}
+        subtitle="Pendência e horas extras são valores brutos. O saldo final mostra o que restou depois da compensação."
+        flush
+      >
         <Table>
           <TableHeader>
             <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
               <TableHead>Funcionário</TableHead>
-              <TableHead className="text-right">Salário</TableHead>
+              <TableHead className="text-right">Pendências</TableHead>
+              <TableHead className="text-right">Horas extras</TableHead>
+              <TableHead className="text-right">Saldo final</TableHead>
               <TableHead className="text-right">Faltas</TableHead>
-              <TableHead className="text-right">Atraso líquido</TableHead>
-              <TableHead className="text-right">HE paga</TableHead>
-              <TableHead className="text-right">Adiant.</TableHead>
+              <TableHead className="text-right">HE a pagar</TableHead>
               <TableHead className="text-right">Líquido</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead></TableHead>
+              <TableHead>Fechamento</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {runs.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9} className="p-0">
+                <TableCell colSpan={8} className="p-0">
                   <EmptyState
                     icon={Calculator}
                     title="Nenhuma folha calculada"
@@ -1277,7 +1248,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
             <Fragment key={g.setor}>
               {/* Cabeçalho do setor + subtotais (Proventos · Descontos · Líquido) */}
               <TableRow className="bg-muted/60 hover:bg-muted/60 border-t-2 border-border">
-                <TableCell colSpan={9} className="py-2">
+                <TableCell colSpan={8} className="py-2">
                   <div className="flex items-center justify-between gap-3 flex-wrap">
                     <span className="font-bold uppercase tracking-wide text-sm">
                       {g.setor}
@@ -1299,18 +1270,14 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
               const approvalReason = approvalBlockReason(r);
               const sum = paySummaries[r.id];
               const parcial = r.status === 'aprovado' && !!sum && sum.paidTotal > 0.005 && sum.paidTotal < (r.total_liquido || 0) - 0.005;
-              // Regime por par: as colunas de ponto (Faltas/Atrasos/Hora extra)
-              // não existem pra ele. Em vez de três "—" mudos, a linha usa o
-              // espaço delas pra mostrar o que REALMENTE define o pagamento:
-              // dias produtivos, pares e o R$/par efetivo do período.
-              const prod = porParByEmp.get(r.employee_id);
-              const prodMed = Number(prod?.pares_medio) || 0;
-              const prodDif = Number(prod?.pares_dificil) || 0;
-              const prodPares = prodMed + prodDif;
-              // Taxa por dificuldade, nunca o bruto rateado: quando há par
-              // difícil, a "média" não é o R$/par de ninguém.
-              const prodTxM = Number(prod?.taxa_medio) || 0;
-              const prodTxD = Number(prod?.taxa_dificil) || 0;
+              const result = reportComparativoRows.find(row => row.id === r.employee_id)?.result;
+              const rawDelay = Number(result?.raw_delay_minutes) || 0;
+              const rawCredit = Number(result?.raw_credit_minutes) || 0;
+              const compensated = Number(result?.compensated_minutes) || 0;
+              const payableDelay = Number(result?.atraso_minutes) || 0;
+              const payableOvertime = Number(result?.he_minutes) || 0;
+              const finalBalance = payableOvertime - payableDelay;
+              const basePay = (r.total_proventos || 0) - (r.overtime_amount || 0);
               return (
                 <TableRow key={r.id} className={hasAdvance ? 'hover:bg-muted/30 bg-amber-500/5' : 'hover:bg-muted/30'}>
                   <TableCell className="font-medium">
@@ -1318,72 +1285,46 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
                       {emp?.name || '—'}
                       {hasAdvance && <Wallet className="h-3.5 w-3.5 text-amber-600" aria-label="Possui adiantamento" />}
                     </div>
-                    {prod && (
-                      <span className="mt-0.5 inline-block rounded bg-muted px-1.5 py-px font-mono text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
-                        Por par
-                      </span>
-                    )}
+                    <div className="mt-0.5 text-[10px] text-muted-foreground">
+                      Base do período {fmt(basePay)}
+                      {hasAdvance && <> · adiantamento −{fmt(r.advances_total || 0)}</>}
+                    </div>
                   </TableCell>
-                  <TableCell
-                    className="text-right font-mono text-muted-foreground tabular-nums"
-                    title={prod ? `Produção do período — ${prodPares.toLocaleString('pt-BR')} pares` : `Salário mensal ${fmt(r.base_salary)}`}
-                  >{fmt((r.total_proventos || 0) - (r.overtime_amount || 0))}</TableCell>
-                  {prod ? (
-                    <TableCell colSpan={3} className="text-right font-mono text-xs tabular-nums">
-                      <span className="text-foreground font-semibold">{Number(prod.paid_days) || 0}</span>
-                      <span className="text-muted-foreground"> dias prod. · </span>
-                      <span className="text-foreground font-semibold">{prodMed.toLocaleString('pt-BR')}</span>
-                      <span className="text-muted-foreground"> méd × {fmt(prodTxM)}</span>
-                      {prodDif > 0 && (
-                        <>
-                          <span className="text-muted-foreground"> · </span>
-                          <span className="text-foreground font-semibold">{prodDif.toLocaleString('pt-BR')}</span>
-                          <span className="text-muted-foreground"> dif × {fmt(prodTxD)}</span>
-                        </>
-                      )}
-                      {(Number(prod.fichas) || 0) > 0 && (
-                        <span className="text-muted-foreground"> · {prod.fichas} fichas{prod.fichas_derivadas ? '*' : ''}</span>
-                      )}
-                    </TableCell>
-                  ) : (
-                    <>
-                      <TableCell className="text-right font-mono tabular-nums">
-                        {(r.absent_days || 0) > 0
-                          ? <span className="text-red-600 font-semibold">{r.absent_days}d · −{fmt(r.absence_discount)}</span>
-                          : <span className="text-muted-foreground">—</span>}
-                      </TableCell>
-                      <TableCell className="text-right font-mono tabular-nums">
-                        {(r.deductions_amount || 0) > 0
-                          ? <span className="text-red-600">−{fmt(r.deductions_amount)}</span>
-                          : <span className="text-muted-foreground">—</span>}
-                      </TableCell>
-                      <TableCell className="text-right font-mono tabular-nums">
-                        {(r.overtime_amount || 0) > 0
-                          ? <span className="text-emerald-600 font-semibold">+{fmt(r.overtime_amount)}</span>
-                          : <span className="text-muted-foreground">—</span>}
-                      </TableCell>
-                    </>
-                  )}
                   <TableCell className="text-right font-mono tabular-nums">
-                    {hasAdvance
-                      ? <span className="text-amber-600 font-semibold">−{fmt(r.advances_total || 0)}</span>
+                    {rawDelay > 0
+                      ? <span className="font-semibold text-red-600">{fmtSaldoHoras(-rawDelay)}</span>
                       : <span className="text-muted-foreground">—</span>}
+                  </TableCell>
+                  <TableCell className="text-right font-mono tabular-nums">
+                    {rawCredit > 0
+                      ? <span className="font-semibold text-emerald-600">{fmtSaldoHoras(rawCredit)}</span>
+                      : <span className="text-muted-foreground">—</span>}
+                  </TableCell>
+                  <TableCell className="text-right font-mono tabular-nums">
+                    <span className={finalBalance > 0 ? 'font-bold text-emerald-600' : finalBalance < 0 ? 'font-bold text-red-600' : 'font-semibold text-foreground'}>
+                      {fmtSaldoHoras(finalBalance)}
+                    </span>
+                    {compensated > 0 && <div className="mt-0.5 text-[10px] text-muted-foreground">{fmtHoras(compensated)} compensadas</div>}
+                  </TableCell>
+                  <TableCell className="text-right font-mono tabular-nums">
+                    {(r.absent_days || 0) > 0
+                      ? <><span className="font-semibold text-red-600">{r.absent_days}d</span><div className="mt-0.5 text-[10px] text-red-600">−{fmt(r.absence_discount)}</div></>
+                      : <span className="text-muted-foreground">—</span>}
+                  </TableCell>
+                  <TableCell className="text-right font-mono tabular-nums">
+                    {payableOvertime > 0
+                      ? <><span className="font-semibold text-emerald-600">{fmtSaldoHoras(payableOvertime)}</span><div className="mt-0.5 text-[10px] text-emerald-600">+{fmt(r.overtime_amount || 0)}</div></>
+                      : <span className="text-muted-foreground">—</span>}
+                    {result?.he_rate_missing && <div className="mt-0.5 text-[10px] font-semibold text-amber-600">taxa não cadastrada</div>}
                   </TableCell>
                   <TableCell className="text-right font-mono tabular-nums font-bold">{fmt(r.total_liquido)}</TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1.5">
                       <Badge variant={sb.variant}>{sb.label}</Badge>
                       {sum?.hasReceipt && <Paperclip className="h-3.5 w-3.5 text-emerald-600" aria-label="Recibo anexado" />}
-                    </div>
-                    {parcial && <div className="text-[10px] text-amber-600 tabular-nums mt-0.5">parcial · {fmt(sum!.paidTotal)}</div>}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex gap-1">
-                      {/* Documentos (holerite/espelho/folha) saíram daqui pro botão único
-                          "Gerar documentos" no topo (2026-06-28). Sobram só ações de status. */}
                       {r.status === 'rascunho' && (
                         <Button
-                          size="sm" variant="ghost"
+                          size="icon" variant="ghost" className="h-7 w-7"
                           onClick={() => {
                             if (approvalReason) { toast.error(approvalReason); return; }
                             if (hasAdvance) setApproveRun(r.id);
@@ -1397,7 +1338,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
                       )}
                       {(r.status === 'aprovado' || r.status === 'pago') && (
                         <Button
-                          size="sm" variant="ghost"
+                          size="icon" variant="ghost" className="h-7 w-7"
                           onClick={() => setPayRun(r.id)}
                           title={r.status === 'pago' ? 'Ver pagamentos e recibos' : 'Registrar pagamento'}
                         >
@@ -1407,6 +1348,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
                         </Button>
                       )}
                     </div>
+                    {parcial && <div className="text-[10px] text-amber-600 tabular-nums mt-0.5">parcial · {fmt(sum!.paidTotal)}</div>}
                   </TableCell>
                 </TableRow>
               );

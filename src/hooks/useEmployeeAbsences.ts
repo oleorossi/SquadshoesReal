@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { assertNoClosedPayrollInRange } from '@/lib/ponto/absencePayrollGuard';
 
 export type AbsenceKind = 'ferias' | 'atestado' | 'licenca' | 'folga_compensatoria' | 'suspensao' | 'outro';
 
@@ -59,6 +60,12 @@ export function useCreateAbsence() {
       if (input.end_date < input.start_date) {
         throw new Error('Data final deve ser igual ou posterior ao início.');
       }
+      await assertNoClosedPayrollInRange(
+        input.employee_id,
+        input.start_date,
+        input.end_date,
+        'cadastrar a justificativa',
+      );
       const { data, error } = await (supabase as any)
         .from('employee_absences')
         .insert({
@@ -92,6 +99,18 @@ export function useDeleteAbsence() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
+      const { data: absence, error: absenceError } = await (supabase as any)
+        .from('employee_absences')
+        .select('employee_id, start_date, end_date')
+        .eq('id', id)
+        .single();
+      if (absenceError) throw new Error(absenceError.message);
+      await assertNoClosedPayrollInRange(
+        absence.employee_id,
+        absence.start_date,
+        absence.end_date,
+        'remover a justificativa',
+      );
       const { error } = await (supabase as any).from('employee_absences').delete().eq('id', id);
       if (error) throw new Error(error.message);
     },
