@@ -19,7 +19,7 @@
  * coluna de acordo, em vez de escrever o próprio reduce.
  */
 
-/** Forma mínima que as duas funções precisam — evita a lib depender dos hooks. */
+/** Forma mínima que as funções precisam — evita a lib depender dos hooks. */
 export interface LedgerRow {
   status: string;
   amount: number;
@@ -32,8 +32,8 @@ export type LedgerKind = 'payable' | 'receivable';
 
 /** Status que encerram a conta: nada mais entra ou sai. */
 const SETTLED_STATUSES: Record<LedgerKind, readonly string[]> = {
-  payable: ['paid', 'cancelled'],
-  receivable: ['received', 'cancelled'],
+  payable: ['paid', 'pago', 'cancelled', 'cancelado'],
+  receivable: ['received', 'recebido', 'cancelled', 'cancelado'],
 };
 
 /** Canceladas saem das DUAS visões — nunca foram obrigação real. */
