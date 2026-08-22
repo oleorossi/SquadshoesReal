@@ -57,6 +57,16 @@ import { searchMatchesAllTerms } from '@/lib/searchUtils';
 const ACCEPT = '.csv,.txt,.xlsx,.xls';
 const MAX_PROFILE_MEASURE_MM = 50;
 
+function initialPrintQuantities(rows: BabyNalinRow[]): Record<number, number> {
+  return Object.fromEntries(rows.map((row, sourceIndex) => [sourceIndex, row.quantidade]));
+}
+
+function clampPrintQuantity(rawValue: string, requestedQuantity: number): number {
+  const parsed = Math.trunc(Number(rawValue));
+  if (!Number.isFinite(parsed)) return 1;
+  return Math.min(requestedQuantity, Math.max(1, parsed));
+}
+
 const COUCHE_PROFILE_FIELDS: Array<{
   key: keyof CoucheRollProfile;
   label: string;
@@ -79,6 +89,7 @@ export function ClientLabelingWorkspace() {
   const [generating, setGenerating] = useState<'production' | 'graphic' | null>(null);
   const [search, setSearch] = useState('');
   const [selectedSkuKeys, setSelectedSkuKeys] = useState<Set<string>>(new Set());
+  const [printQuantities, setPrintQuantities] = useState<Record<number, number>>({});
   const [coucheProfile, setCoucheProfile] = useState<CoucheRollProfile>({
     ...DEFAULT_COUCHE_ROLL_PROFILE,
   });
@@ -93,9 +104,14 @@ export function ClientLabelingWorkspace() {
   }));
   const selectedEntries = rowEntries.filter(entry => selectedSkuKeys.has(entry.skuKey));
   const selectedRows = selectedEntries.map(entry => entry.row);
+  const productionRows = selectedEntries.map(({ row, sourceIndex }) => ({
+    ...row,
+    quantidade: printQuantities[sourceIndex] ?? row.quantidade,
+  }));
   const selectedSkuAnalysis = analyzeClientSkus(selectedRows);
-  const totalPaginas = countExpandedRows(selectedRows, repeatByQuantity, repeatMultiplier);
+  const totalPaginas = countExpandedRows(productionRows, repeatByQuantity, repeatMultiplier);
   const totalPares = selectedRows.reduce((t, r) => t + r.quantidade, 0);
+  const totalParesParaImpressao = productionRows.reduce((total, row) => total + row.quantidade, 0);
   const totalParesNoArquivo = rows.reduce((t, r) => t + r.quantidade, 0);
   const paginasGrafica = graphicPageCount(selectedSkuAnalysis.rows.length);
   const skuSelecionadoLabel = selectedSkuAnalysis.rows.length === 1 ? 'SKU' : 'SKUs';
@@ -132,12 +148,14 @@ export function ClientLabelingWorkspace() {
       setRows(lidas);
       setFileName(file.name);
       setSelectedSkuKeys(new Set(analyzeClientSkus(lidas).rows.map(clientSkuKey)));
+      setPrintQuantities(initialPrintQuantities(lidas));
       toast.success(`${lidas.length} etiqueta(s) lidas de ${file.name}`);
     } catch (error) {
       if (requestId !== fileRequestIdRef.current) return;
       setRows([]);
       setFileName('');
       setSelectedSkuKeys(new Set());
+      setPrintQuantities({});
       toast.error(error instanceof Error ? error.message : 'Não consegui ler o arquivo.');
     } finally {
       if (requestId === fileRequestIdRef.current) {
@@ -170,7 +188,7 @@ export function ClientLabelingWorkspace() {
       return;
     }
 
-    const generationRows = [...selectedRows];
+    const generationRows = mode === 'production' ? productionRows : selectedRows;
     const generationFileName = fileName;
     const generationRepeatByQuantity = repeatByQuantity;
     const generationRepeatMultiplier = repeatMultiplier;
@@ -212,6 +230,7 @@ export function ClientLabelingWorkspace() {
     setRepeatMultiplier(1);
     setSearch('');
     setSelectedSkuKeys(new Set());
+    setPrintQuantities({});
     setCoucheProfileConfirmed(false);
   }
 
@@ -242,6 +261,12 @@ export function ClientLabelingWorkspace() {
       });
       return next;
     });
+  }
+
+  function setPrintQuantity(sourceIndex: number, requestedQuantity: number, rawValue: string) {
+    const quantity = clampPrintQuantity(rawValue, requestedQuantity);
+    setPrintQuantities(current => ({ ...current, [sourceIndex]: quantity }));
+    setRepeatByQuantity(true);
   }
 
   return (
@@ -290,15 +315,15 @@ export function ClientLabelingWorkspace() {
                 hint={`${skuAnalysis.rows.length} no arquivo · ${fileName}`}
               />
               <StatCard
-                label="Pares selecionados"
-                value={totalPares}
+                label="Pares para imprimir"
+                value={totalParesParaImpressao}
                 unit="pares"
-                hint={`${totalParesNoArquivo.toLocaleString('pt-BR')} no arquivo`}
+                hint={`${totalPares.toLocaleString('pt-BR')} solicitados nos SKUs selecionados · ${totalParesNoArquivo.toLocaleString('pt-BR')} no arquivo`}
               />
               <StatCard
                 label="Etiquetas de produção"
                 value={totalPaginas}
-                hint={repeatByQuantity ? `${repeatMultiplier} por par` : 'uma por linha'}
+                hint={repeatByQuantity ? `${repeatMultiplier} por par definido` : 'uma por linha'}
               />
             </StatGrid>
 
@@ -314,7 +339,7 @@ export function ClientLabelingWorkspace() {
                       <Badge variant="outline">50 × 40 mm</Badge>
                     </div>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      Imprime somente os SKUs selecionados, repetindo conforme a quantidade do pedido.
+                      Imprime somente os SKUs selecionados. Ajuste a quantidade de cada item na tabela.
                     </p>
                   </div>
                 </div>
@@ -328,7 +353,7 @@ export function ClientLabelingWorkspace() {
                       disabled={isBusy}
                     />
                     <Label htmlFor="repeat-by-quantity" className="text-sm font-normal cursor-pointer">
-                      Usar quantidade solicitada
+                      Usar quantidades definidas na tabela
                     </Label>
                   </div>
 
@@ -364,7 +389,7 @@ export function ClientLabelingWorkspace() {
                   onClick={() => void handleGenerate('production')}
                   disabled={
                     isBusy
-                    || selectedRows.length === 0
+                    || productionRows.length === 0
                     || selecionadasForaDoPadrao.length > 0
                     || productionOverLimit
                   }
@@ -575,7 +600,8 @@ export function ClientLabelingWorkspace() {
                     <th className="py-2 pr-3 font-medium text-muted-foreground">Tam.</th>
                     <th className="py-2 pr-3 font-medium text-muted-foreground">Cód. produto</th>
                     <th className="py-2 pr-3 font-medium text-muted-foreground">Código de barras</th>
-                    <th className="py-2 pr-3 font-medium text-muted-foreground text-right">Qtd.</th>
+                    <th className="py-2 pr-3 font-medium text-muted-foreground text-right">Qtd. pedido</th>
+                    <th className="w-32 py-2 pr-3 font-medium text-muted-foreground text-right">Qtd. imprimir</th>
                     <th className="py-2 font-medium text-muted-foreground text-right">Largura</th>
                   </tr>
                 </thead>
@@ -606,6 +632,20 @@ export function ClientLabelingWorkspace() {
                         <td className="py-2 pr-3 text-muted-foreground">{row.codProduto || '—'}</td>
                         <td className="py-2 pr-3 font-mono text-xs text-foreground">{row.codigoBarra}</td>
                         <td className="py-2 pr-3 text-right text-muted-foreground">{row.quantidade}</td>
+                        <td className="w-32 py-2 pr-3 text-right">
+                          <Input
+                            type="number"
+                            min={1}
+                            max={row.quantidade}
+                            step={1}
+                            value={printQuantities[sourceIndex] ?? row.quantidade}
+                            disabled={isBusy}
+                            onFocus={event => event.currentTarget.select()}
+                            onChange={event => setPrintQuantity(sourceIndex, row.quantidade, event.target.value)}
+                            className="ml-auto h-8 w-24 bg-background text-center font-mono"
+                            aria-label={`Quantidade a imprimir do SKU ${row.referencia || 'sem referência'}, tamanho ${row.tamanho || 'não informado'}`}
+                          />
+                        </td>
                         <td className="py-2 text-right">
                           {barcodeFit.fits ? (
                             <span className="text-muted-foreground">{barcodeFit.widthMm.toFixed(1)} mm</span>

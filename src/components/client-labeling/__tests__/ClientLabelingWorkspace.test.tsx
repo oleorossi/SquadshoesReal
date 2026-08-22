@@ -118,6 +118,58 @@ describe('ClientLabelingWorkspace · seleção por SKU', () => {
     });
   });
 
+  it('permite reduzir a quantidade individual e gera somente o valor informado', async () => {
+    await importar([ROWS[0]]);
+
+    const quantityInput = screen.getByRole('spinbutton', {
+      name: 'Quantidade a imprimir do SKU NL02, tamanho 34',
+    });
+    expect(quantityInput).toHaveValue(144);
+
+    fireEvent.change(quantityInput, { target: { value: '20' } });
+
+    expect(screen.getByRole('checkbox', { name: 'Usar quantidades definidas na tabela' })).toBeChecked();
+    expect(screen.getByRole('button', { name: 'Gerar produção (20)' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Gerar produção (20)' }));
+
+    await waitFor(() => {
+      expect(mocks.buildBabyNalinPdf).toHaveBeenCalledWith(
+        [{ ...ROWS[0], quantidade: 20 }],
+        expect.objectContaining({ mode: 'production', repeatByQuantity: true }),
+      );
+    });
+  });
+
+  it('limita a quantidade individual entre 1 e o total solicitado', async () => {
+    await importar([ROWS[0]]);
+
+    const quantityInput = screen.getByRole('spinbutton', {
+      name: 'Quantidade a imprimir do SKU NL02, tamanho 34',
+    });
+    fireEvent.change(quantityInput, { target: { value: '999' } });
+    expect(quantityInput).toHaveValue(144);
+
+    fireEvent.change(quantityInput, { target: { value: '0' } });
+    expect(quantityInput).toHaveValue(1);
+  });
+
+  it('mantém a quantidade original no arquivo da gráfica', async () => {
+    await importar([ROWS[0]]);
+
+    fireEvent.change(screen.getByRole('spinbutton', {
+      name: 'Quantidade a imprimir do SKU NL02, tamanho 34',
+    }), { target: { value: '20' } });
+    confirmarPerfilCouche();
+    fireEvent.click(screen.getByRole('button', { name: 'Gerar gráfica (1 SKU)' }));
+
+    await waitFor(() => {
+      expect(mocks.buildBabyNalinPdf).toHaveBeenCalledWith(
+        [ROWS[0]],
+        expect.objectContaining({ mode: 'graphic', repeatByQuantity: false }),
+      );
+    });
+  });
+
   it('trata linhas repetidas como o mesmo SKU e alterna todas juntas', async () => {
     const duplicadas = [ROWS[0], { ...ROWS[0], cor: ' preto ', quantidade: 12 }, ROWS[1]];
     await importar(duplicadas);
@@ -303,7 +355,7 @@ describe('ClientLabelingWorkspace · seleção por SKU', () => {
 
     expect(screen.getByRole('button', { name: 'Limpar' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Trocar arquivo' })).toBeDisabled();
-    expect(screen.getByRole('checkbox', { name: 'Usar quantidade solicitada' })).toBeDisabled();
+    expect(screen.getByRole('checkbox', { name: 'Usar quantidades definidas na tabela' })).toBeDisabled();
 
     logo.resolve(null);
     await waitFor(() => expect(mocks.buildBabyNalinPdf).toHaveBeenCalled());
@@ -323,7 +375,7 @@ describe('ClientLabelingWorkspace · seleção por SKU', () => {
   it('calcula grandes quantidades sem expandir e protege o navegador', async () => {
     await importar([{ ...ROWS[0], quantidade: MAX_PDF_LABELS + 1 }]);
 
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Usar quantidade solicitada' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Usar quantidades definidas na tabela' }));
 
     expect(screen.getByText(/Divida o pedido em arquivos/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: `Gerar produção (${MAX_PDF_LABELS + 1})` })).toBeDisabled();
