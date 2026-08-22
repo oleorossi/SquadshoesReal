@@ -75,3 +75,16 @@ export function isValidStatusTransition(from: string, to: string): boolean {
 export function getValidNextStatuses(current: string): string[] {
   return VALID_TRANSITIONS[current] ?? [];
 }
+
+/** PV que já saiu do fluxo de demanda de material (faturado, expedido, concluído). */
+export const CLOSED_SALE_ORDER_STATUSES: readonly string[] = [
+  SALE_ORDER_STATUS.FATURADO,
+  SALE_ORDER_STATUS.EXPEDIDO,
+  SALE_ORDER_STATUS.CONCLUIDO,
+  SALE_ORDER_STATUS.FINALIZADO_SEM_NF,
+  SALE_ORDER_STATUS.CANCELADO,
+];
+
+export function isClosedSaleOrder(status: unknown): boolean {
+  return CLOSED_SALE_ORDER_STATUSES.includes(String(status ?? '').trim());
+}
