@@ -9,16 +9,18 @@ import { adjustStockSafe } from '@/lib/stockAdjustments';
 // 'Aviamento' é a grafia canônica desde 2026-07-01 (migration 20260902120000) —
 // gravar 'Mesa' aqui recriava a grafia dupla que some das telas de setor.
 const DEFAULT_STAGES = [
-  { name: 'Corte Palmilha', order: 1 },
+  { name: 'Corte Fibra', order: 1 },
   { name: 'Corte Forração', order: 2 },
-  { name: 'Costura', order: 3 },
-  { name: 'Aviamento', order: 4 },
-  { name: 'Silk', order: 5 },
-  { name: 'Colagem', order: 6 },
-  { name: 'Montagem', order: 7 },
-  { name: 'Solagem', order: 8 },
-  { name: 'Acabamento', order: 9 },
-  { name: 'Expedição', order: 10 },
+  { name: 'Corte Cabedal', order: 2 },
+  { name: 'Costura Palmilha', order: 3 },
+  { name: 'Costura Cabedal', order: 4 },
+  { name: 'Aviamento', order: 5 },
+  { name: 'Silk', order: 6 },
+  { name: 'Colagem', order: 7 },
+  { name: 'Montagem', order: 8 },
+  { name: 'Solagem', order: 9 },
+  { name: 'Acabamento', order: 10 },
+  { name: 'Expedição', order: 11 },
 ];
 
 /**
