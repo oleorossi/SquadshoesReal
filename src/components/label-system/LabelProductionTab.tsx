@@ -35,7 +35,9 @@ import logoImg from '@/assets/logo-squad-shoes.jpg';
 import { supabase } from '@/integrations/supabase/client';
 import { resolveProductImageWithSource } from '@/lib/imageFallback';
 import { resolveMaterialLabels, materialLabelKey, materialNameFromCommercialSnapshot, type MaterialLabelInput } from '@/lib/labelUtils';
-import { buildBoxIdentificationHtml, buildThermalLabelsHtml, buildHangtagHtml, type BoxIdentificationData, type ThermalLabelConfig, DEFAULT_THERMAL_CONFIG } from '@/lib/printLabels';
+import { buildBoxIdentificationHtml, buildThermalLabelsHtml, buildHangtagHtml, buildThermalLabelsZpl, zplPhotoBoxDots, type BoxIdentificationData, type ThermalLabelConfig, DEFAULT_THERMAL_CONFIG } from '@/lib/printLabels';
+import { loadImageAsMonochrome, type MonoBitmap } from '@/lib/zplImage';
+import ZplPreviewDialog, { type ZplPreviewLabel } from './ZplPreviewDialog';
 import { openPrintTab, printHtmlAsPdf } from '@/lib/printPdf';
 import { confirmPrintJob, createPrintJob, PRINT_JOB_STATUS_LABELS, setPrintJobStatus } from '@/lib/printJobs';
 import { buildTemplateLabelsHtml } from '@/lib/templateLabels';
@@ -329,8 +331,8 @@ export function summarizeSelectionLabelTypes(selectedGroups: { packagingMode: st
   const notes: string[] = [];
   if (thermalCount < total) {
     notes.push(thermalCount === 0
-      ? `Nenhum dos ${total} ${itens(total)} selecionados aceita etiqueta individual (térmica): embalagem ${[...thermalExcluded].join(' / ')} leva só rótulo de caixa externa.`
-      : `Etiqueta individual (térmica) sai para ${thermalCount} de ${total} ${itens(total)} — ${total - thermalCount} em ${[...thermalExcluded].join(' / ')} leva só rótulo de caixa externa.`);
+      ? `Nenhum dos ${total} ${itens(total)} selecionados aceita etiqueta individual: embalagem ${[...thermalExcluded].join(' / ')} leva só rótulo de caixa externa.`
+      : `Etiqueta individual sai para ${thermalCount} de ${total} ${itens(total)} — ${total - thermalCount} em ${[...thermalExcluded].join(' / ')} leva só rótulo de caixa externa.`);
   }
   if (boxCount < total) {
     notes.push(boxCount === 0
@@ -345,6 +347,78 @@ export function summarizeSelectionLabelTypes(selectedGroups: { packagingMode: st
     total, thermalCount, boxCount, hangtagCount,
     notes,
   };
+}
+
+/**
+ * Métricas da ficha de um item do PV. Pura — não depende do componente.
+ *
+ * A grade da FICHA é `sale_order_items.grade` (Σ = pares por ficha), NUNCA
+ * `orders.grade`, que usa a convenção oposta (Σ = quantity da OP). Reescalar a
+ * da OP distorceria a curva por arredondamento.
+ */
+// eslint-disable-next-line react-refresh/only-export-components
+export function getOrderFichaMetrics(order: any) {
+  const baseGrade = (order?.sale_order_item_grade && typeof order.sale_order_item_grade === 'object'
+    ? order.sale_order_item_grade : {}) as Record<string, number>;
+  const gradeEntries = Object.entries(baseGrade)
+    .map(([size, qty]) => [size, Number(qty) || 0] as const)
+    .filter(([, qty]) => qty > 0)
+    .sort(([a], [b]) => Number(a) - Number(b));
+  const pairsInOneFicha = gradeEntries.reduce((sum, [, qty]) => sum + qty, 0);
+  const numFichas = Number(order?.sale_order_item_fichas) || 0;
+  if (pairsInOneFicha <= 0 || numFichas <= 0) {
+    throw new Error(
+      `Grade/fichas do item do PV ausentes para ${order?.order_number || 'a OP selecionada'}. ` +
+      'Corrija o item do pedido antes de gerar por ficha.',
+    );
+  }
+  return {
+    gradeText: gradeEntries.map(([size, qty]) => `${size}(${qty})`).join(' '),
+    gradeEntries,
+    pairsInOneFicha,
+    numFichas,
+  };
+}
+
+/**
+ * Ordem das etiquetas no modo "Qtd. Total (1:1)": a GRADE DA FICHA, repetida
+ * ficha a ficha.
+ *
+ * Decisão do dono, 22/08/2026. Antes saía numeração a numeração — todos os 34,
+ * depois todos os 35 — e quem embala tinha que remontar a grade na mão. Agora
+ * sai 34,35,36…(uma grade inteira), 34,35,36…(a próxima), e cada maço que cai
+ * da Elgin já é uma ficha.
+ *
+ * Pedido SEM grade completa cai na ordem tradicional (também decisão do dono,
+ * na mesma conversa): a grade da PRÓPRIA OP, numeração a numeração. Assim o
+ * TOTAL de etiquetas nunca muda — só a ordem — e as OPs sem cadastro continuam
+ * imprimindo em vez de derrubar o lote. Medido em 22/08/2026: 116 das 119 OPs
+ * abertas têm grade+fichas; as 3 sem são do PV-00146.
+ */
+// eslint-disable-next-line react-refresh/only-export-components
+export function buildQuantitySizeSequence(orders: any[]): { sizes: string[]; fallbackOrders: string[] } {
+  const sizes: string[] = [];
+  const fallbackOrders: string[] = [];
+  for (const order of orders) {
+    let metrics: ReturnType<typeof getOrderFichaMetrics> | null = null;
+    try { metrics = getOrderFichaMetrics(order); } catch { metrics = null; }
+    if (metrics) {
+      for (let ficha = 0; ficha < metrics.numFichas; ficha++) {
+        for (const [size, qty] of metrics.gradeEntries) {
+          for (let i = 0; i < qty; i++) sizes.push(size);
+        }
+      }
+      continue;
+    }
+    if (order?.order_number && !fallbackOrders.includes(order.order_number)) {
+      fallbackOrders.push(order.order_number);
+    }
+    const orderGrade = (order?.grade && typeof order.grade === 'object' ? order.grade : {}) as Record<string, number>;
+    for (const [size, qty] of Object.entries(orderGrade).sort(([a], [b]) => Number(a) - Number(b))) {
+      for (let i = 0; i < (Number(qty) || 0); i++) sizes.push(size);
+    }
+  }
+  return { sizes, fallbackOrders };
 }
 
 function ReferenceCard({ group, selected, onToggle, hasOverride }: { group: GroupedReference; selected: boolean; onToggle: () => void; hasOverride?: boolean }) {
@@ -424,7 +498,7 @@ function ReferenceCard({ group, selected, onToggle, hasOverride }: { group: Grou
               </Badge>
               <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium uppercase tracking-tighter">
                 <span className={cn(allowed.thermal ? "text-primary" : "opacity-50")}>
-                  {allowed.thermal ? '✓' : '✗'} Térmica
+                  {allowed.thermal ? '✓' : '✗'} Individual
                 </span>
                 <span className="opacity-30">|</span>
                 <span className={cn(allowed.masterBox ? "text-primary" : "opacity-50")}>
@@ -870,6 +944,14 @@ export function LabelProductionTab() {
   });
   const [showConfig, setShowConfig] = useState(false);
   const [printRequest, setPrintRequest] = useState<{ html: string; jobId: string } | null>(null);
+  const [zplPreview, setZplPreview] = useState<{
+    labels: ZplPreviewLabel[];
+    graphics: { name: string; mono: MonoBitmap }[];
+    dimensions: { width: number; height: number };
+    zpl: string;
+    fileName: string;
+    missingPhotos: string[];
+  } | null>(null);
   // Aba de destino do PDF. Aberta DENTRO do clique (síncrono) — abrir depois do
   // await faz o celular tratar como pop-up e bloquear.
   const printTabRef = useRef<Window | null>(null);
@@ -1111,27 +1193,6 @@ export function LabelProductionTab() {
     [filtered, selected],
   );
 
-  const getOrderFichaMetrics = (order: any) => {
-    const baseGrade = (order?.sale_order_item_grade && typeof order.sale_order_item_grade === 'object'
-      ? order.sale_order_item_grade : {}) as Record<string, number>;
-    const gradeEntries = Object.entries(baseGrade)
-      .map(([size, qty]) => [size, Number(qty) || 0] as const)
-      .filter(([, qty]) => qty > 0)
-      .sort(([a], [b]) => Number(a) - Number(b));
-    const pairsInOneFicha = gradeEntries.reduce((sum, [, qty]) => sum + qty, 0);
-    const numFichas = Number(order?.sale_order_item_fichas) || 0;
-    if (pairsInOneFicha <= 0 || numFichas <= 0) {
-      throw new Error(
-        `Grade/fichas do item do PV ausentes para ${order?.order_number || 'a OP selecionada'}. ` +
-        'Corrija o item do pedido antes de gerar por ficha.',
-      );
-    }
-    return {
-      gradeText: gradeEntries.map(([size, qty]) => `${size}(${qty})`).join(' '),
-      pairsInOneFicha,
-      numFichas,
-    };
-  };
 
   // ── MATERIAL das etiquetas — cascata única (labelUtils.resolveMaterialLabels):
   // variação do PV > cabedal da ficha > (tiras) forração pick-one pela cor.
@@ -1264,7 +1325,15 @@ export function LabelProductionTab() {
     } finally { setIsGenerating(false); }
   };
 
-  const handlePrintIndividual = async () => {
+  /**
+   * Monta as etiquetas individuais e entrega em UM dos dois formatos.
+   *
+   * Os dois botões passam por aqui de propósito: resolução de foto, material,
+   * ordem por grade da ficha e contagem são exatamente os mesmos. Se o ZPL
+   * tivesse caminho próprio, os dois botões poderiam divergir sem ninguém notar
+   * — e a prévia perderia o sentido.
+   */
+  const handlePrintIndividual = async (output: 'html' | 'zpl' = 'html') => {
     const selectedGroups = filtered.filter(g => selected.has(g.groupKey));
     // Filter out groups that don't allow thermal labels
     const thermalGroups = selectedGroups.filter(g => getAllowedLabelTypes(g.packagingMode).thermal);
@@ -1277,10 +1346,15 @@ export function LabelProductionTab() {
         sum + Object.values(group.aggregatedGrade).reduce((a, qty) => a + (Number(qty) || 0), 0), 0);
       if (!validateJobSize(requested)) return;
     }
-    printTabRef.current = openPrintTab();
+    // ZPL não abre aba de impressão: o resultado é um arquivo, revisado na prévia.
+    if (output === 'html') printTabRef.current = openPrintTab();
     setIsGenerating(true);
     try {
       const labels: any[] = [];
+      // OPs que não puderam seguir a ordem por ficha (sem grade/fichas no item
+      // do PV). Avisadas no fim — silêncio aqui viraria "a ordem saiu errada e
+      // ninguém sabe por quê".
+      const fichaFallbackOrders = new Set<string>();
       const logoUrl = new URL(logoImg, window.location.origin).href;
       const uniqueRefIds = [...new Set(thermalGroups.map(g => g.referenceId))];
       const [refDataMap, materialMap] = await Promise.all([
@@ -1326,11 +1400,11 @@ export function LabelProductionTab() {
         const effRefCode = getEffectiveRefCode(group);
         const effRefName = getEffectiveRefName(group);
         if (thermalMode === 'quantity') {
-          for (const [size, qty] of Object.entries(group.aggregatedGrade)) {
-            const quantity = Number(qty) || 0;
-            for (let i = 0; i < quantity; i++) {
-              labels.push({ refCode: effRefCode, refName: effRefName, mainMaterial, color: getEffectiveColor(group, colorName), size, barcode: `${effRefCode || group.orders?.[0]?.order_number || group.groupKey}-${size}`, imageUrl: productImageUrl, imageIsFallback: productImageFallback, shoeCategory: refData?.shoe_category || '', strapsLabel: getEffectiveStrapsLabel(group) });
-            }
+          // Ordem = grade da ficha; ver buildQuantitySizeSequence.
+          const sequence = buildQuantitySizeSequence(group.orders);
+          sequence.fallbackOrders.forEach(n => fichaFallbackOrders.add(n));
+          for (const size of sequence.sizes) {
+            labels.push({ refCode: effRefCode, refName: effRefName, mainMaterial, color: getEffectiveColor(group, colorName), size, barcode: `${effRefCode || group.orders?.[0]?.order_number || group.groupKey}-${size}`, imageUrl: productImageUrl, imageIsFallback: productImageFallback, shoeCategory: refData?.shoe_category || '', strapsLabel: getEffectiveStrapsLabel(group) });
           }
         } else {
           for (const order of group.orders) {
@@ -1354,11 +1428,69 @@ export function LabelProductionTab() {
       const orderIds = thermalGroups.flatMap(g => g.orders.map((o: any) => o.id));
       const selectedTemplate = thermalTemplates.find(t => t.id === selectedThermalTemplateId);
       const dimensions = selectedTemplate?.dimensions || { width: currentSize.width, height: currentSize.height };
+      if (output === 'zpl') {
+        // Uma foto por URL DISTINTA. Em 203 dpi a moldura de 20×22 mm dá
+        // 160×176 dots; repetir esse bitmap em cada etiqueta poria 7,6 MB num
+        // lote de 1.136 — pior que o HTML. Com ~DG cada foto é gravada uma vez
+        // e as etiquetas só a chamam.
+        const box = zplPhotoBoxDots(dimensions);
+        const distinctUrls = [...new Set(labels.map(l => l.imageUrl).filter(Boolean))] as string[];
+        const nameByUrl = new Map<string, string>();
+        distinctUrls.forEach((url, i) => nameByUrl.set(url, `IMG${i}`));
+
+        const monos = await Promise.all(distinctUrls.map(url => loadImageAsMonochrome(url, box.width, box.height)));
+        const graphics: { name: string; mono: MonoBitmap }[] = [];
+        const failedUrls = new Set<string>();
+        distinctUrls.forEach((url, i) => {
+          const mono = monos[i];
+          if (mono) graphics.push({ name: nameByUrl.get(url)!, mono });
+          else failedUrls.add(url);
+        });
+
+        const zplLabels: ZplPreviewLabel[] = labels.map(l => ({
+          refCode: l.refCode, refName: l.refName, mainMaterial: l.mainMaterial,
+          color: l.color, size: l.size, barcode: l.barcode,
+          imageName: l.imageUrl && !failedUrls.has(l.imageUrl) ? nameByUrl.get(l.imageUrl) : undefined,
+        }));
+
+        // Referência da etiqueta, não a URL crua — 'SP130 · OFF WHITE' diz onde
+        // corrigir o cadastro; um link do storage não diz nada a quem lê.
+        const missingPhotos = [...new Set(labels
+          .filter(l => l.imageUrl && failedUrls.has(l.imageUrl))
+          .map(l => `${l.refName || l.refCode} · ${l.color}`))];
+
+        const zpl = buildThermalLabelsZpl(zplLabels, { width: dimensions.width, height: dimensions.height }, graphics);
+        const jobIdZpl = await createPrintJob({
+          batchName: `Etiqueta Individual ZPL - ${new Date().toLocaleString('pt-BR')}`,
+          totalLabels: zplLabels.length,
+          orderIds,
+          templateId: selectedThermalTemplateId,
+        });
+        void jobIdZpl;
+        queryClient.invalidateQueries({ queryKey: ['print_history'] });
+        setZplPreview({
+          labels: zplLabels, graphics,
+          dimensions: { width: dimensions.width, height: dimensions.height },
+          zpl,
+          fileName: `etiquetas-${new Date().toISOString().slice(0, 10)}.zpl`,
+          missingPhotos,
+        });
+        toast.success(`${zplLabels.length} etiquetas em ZPL — confira a prévia antes de baixar.`);
+        if (thermalMode === 'quantity' && fichaFallbackOrders.size > 0) {
+          toast.warning(
+            `Sem grade de ficha em ${[...fichaFallbackOrders].join(', ')} — nessas OPs as etiquetas saíram ` +
+            'na ordem por numeração, não por grade. Preencha grade e fichas no item do PV.',
+            { duration: 10000 },
+          );
+        }
+        return;
+      }
+
       const html = selectedTemplate && selectedTemplate.id !== SQUAD_THERMAL_DEFAULT_ID
         ? buildTemplateLabelsHtml(selectedTemplate, labels)
         : buildThermalLabelsHtml(labels, logoUrl, { width: dimensions.width, height: dimensions.height }, labelConfig, resolveSender().senderCnpj);
       const jobId = await createPrintJob({
-        batchName: `Térmicas - ${new Date().toLocaleString('pt-BR')}`,
+        batchName: `Etiqueta Individual - ${new Date().toLocaleString('pt-BR')}`,
         totalLabels: labels.length,
         orderIds,
         templateId: selectedThermalTemplateId,
@@ -1368,7 +1500,14 @@ export function LabelProductionTab() {
         html,
         jobId,
       });
-      toast.success(`${labels.length} etiquetas térmicas geradas.`);
+      toast.success(`${labels.length} etiquetas individuais geradas.`);
+      if (thermalMode === 'quantity' && fichaFallbackOrders.size > 0) {
+        toast.warning(
+          `Sem grade de ficha em ${[...fichaFallbackOrders].join(', ')} — nessas OPs as etiquetas saíram ` +
+          'na ordem por numeração, não por grade. Preencha grade e fichas no item do PV.',
+          { duration: 10000 },
+        );
+      }
     } catch (err: any) {
       printTabRef.current?.close();
       printTabRef.current = null;
@@ -1395,14 +1534,22 @@ export function LabelProductionTab() {
       const uniqueRefIds = [...new Set(boxGroups.map(g => g.referenceId))];
       const [materialMap] = await Promise.all([
         buildMaterialMap(boxGroups),
-        Promise.all(uniqueRefIds.map(async (refId) => {
-          const { data: refData } = await supabase
-            .from('technical_sheets')
-            .select('image_url, images, code, shoe_category, sole_group_id')
-            .eq('id', refId)
-            .single();
-          refDataMap.set(refId, refData);
-        })),
+        // UMA query com .in(), não N com .single(). O caminho da etiqueta
+        // individual já buscava assim (`.in('id', uniqueRefIds)`); só o do
+        // rótulo de caixa tinha ficado com o N+1 — 7  idas ao servidor na
+        // seleção medida em 22/08/2026, todas em paralelo mas todas cobrando
+        // latência. `id` entra no select porque agora é ele que dá a chave do
+        // mapa (antes vinha da variável do loop).
+        //
+        // Diferença de comportamento, verificada: com .single() uma referência
+        // inexistente gravava a chave com null; com .in() ela simplesmente não
+        // entra. Os três consumidores (capacidade, sole_group_id, refData do
+        // item) usam `?.`, então undefined e null se comportam igual.
+        supabase
+          .from('technical_sheets')
+          .select('id, image_url, images, code, shoe_category, sole_group_id')
+          .in('id', uniqueRefIds)
+          .then(({ data }) => { for (const r of data || []) refDataMap.set(r.id, r); }),
       ]);
       const imageKeys = new Set<string>();
       const imageRequests: { key: string; referenceId: string; colorName: string }[] = [];
@@ -2164,7 +2311,7 @@ export function LabelProductionTab() {
                 {selectionLabelTypes.thermal && (
                   <div className="flex flex-col gap-1">
                     <div className="flex items-center gap-1">
-                      <Button onClick={handlePrintIndividual} variant="secondary" className="gap-2 h-9 border shadow-sm rounded-r-none"><Barcode className="h-4 w-4" />Térmicas ({selectionLabelTypes.thermalCount})</Button>
+                      <Button onClick={() => void handlePrintIndividual('html')} variant="secondary" className="gap-2 h-9 border shadow-sm rounded-r-none"><Barcode className="h-4 w-4" />Etiqueta Individual ({selectionLabelTypes.thermalCount})</Button>
                       <Select value={thermalMode} onValueChange={(v: any) => setThermalMode(v)}>
                         <SelectTrigger className="h-9 w-[130px] text-xs rounded-l-none border-l-0 bg-secondary"><SelectValue /></SelectTrigger>
                         <SelectContent>
@@ -2175,6 +2322,23 @@ export function LabelProductionTab() {
                     </div>
                     <span className="text-xs text-muted-foreground truncate max-w-[200px]">
                       Template: {thermalTemplates.find(t => t.id === selectedThermalTemplateId)?.name || 'Padrão'}
+                    </span>
+                  </div>
+                )}
+                {selectionLabelTypes.thermal && (
+                  <div className="flex flex-col gap-1">
+                    <Button
+                      onClick={() => void handlePrintIndividual('zpl')}
+                      variant="outline"
+                      className="gap-2 h-9 shadow-sm border-primary/40 text-primary hover:bg-primary/10"
+                      title="Gera o arquivo ZPL com a foto em 1 bit e abre a prévia fiel antes de baixar"
+                      disabled={isGenerating}
+                    >
+                      <Barcode className="h-4 w-4" />
+                      ZPL + Prévia ({selectionLabelTypes.thermalCount})
+                    </Button>
+                    <span className="text-xs text-muted-foreground truncate max-w-[200px]">
+                      Arquivo p/ Elgin · foto 1 bit
                     </span>
                   </div>
                 )}
@@ -2605,6 +2769,19 @@ export function LabelProductionTab() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {zplPreview && (
+        <ZplPreviewDialog
+          open
+          onOpenChange={(open) => { if (!open) setZplPreview(null); }}
+          labels={zplPreview.labels}
+          graphics={zplPreview.graphics}
+          dimensions={zplPreview.dimensions}
+          zpl={zplPreview.zpl}
+          fileName={zplPreview.fileName}
+          missingPhotos={zplPreview.missingPhotos}
+        />
+      )}
 
       {isGenerating && (
         <div className="fixed inset-0 z-modal bg-black/60 backdrop-blur-sm flex items-center justify-center animate-in fade-in duration-300">

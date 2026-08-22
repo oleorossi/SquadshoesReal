@@ -1,3 +1,4 @@
+import { mmToDots, monoToZplDownloadGraphic, zplRecallGraphic, type MonoBitmap } from './zplImage';
 import { escapeHtml } from './htmlUtils';
 
 /** Sanitiza valor de barcode pra interpolação segura em <script> (evita XSS/quebra de tag). Barcodes/nº de pedido são alfanuméricos. */
@@ -442,11 +443,56 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
 
   // Código de barras (CODE128) por etiqueta — antes a caixa master saía SEM barcode
   // (o campo item.barcode era descartado), quebrando conferência na expedição.
-  const boxBarcodeInits = items.map((it, idx) => {
-    if (!it.barcode) return '';
+  /**
+   * UM JsBarcode por CÓDIGO DISTINTO — mesma técnica da etiqueta individual,
+   * e aqui o ganho é MAIOR.
+   *
+   * O código do rótulo de caixa é `order.order_number` (a OP), não algo por
+   * volume — então toda caixa da mesma OP repete o mesmo payload. E em
+   * `individual_fitilho`/`individual_amarrado` a capacidade é 1 par por caixa
+   * (resolveLabelBoxCapacity), ou seja, sai UM rótulo POR PAR.
+   *
+   * Medido em 22/08/2026 (seleção ELIANE): 1.759 rótulos para 23 códigos
+   * distintos — 76× de redundância, contra 12,9× na etiqueta individual. E o
+   * barcode daqui é mais caro: `displayValue:true` desenha também o texto.
+   *
+   * O primeiro slot de cada código é gerado de verdade; os demais recebem
+   * cloneNode(true) do SVG pronto. Mesmo payload + mesmas opções = SVG
+   * idêntico, então o rótulo impresso não muda.
+   *
+   * sanitizeBarcode continua sendo aplicado ANTES de agrupar: é ele que define
+   * o payload que o CODE128 realmente carrega, então dois itens só podem
+   * compartilhar SVG se coincidirem já sanitizados.
+   */
+  const boxBarcodeJobs = new Map<string, number[]>();
+  items.forEach((it, idx) => {
+    if (!it.barcode) return;
     const code = sanitizeBarcode(it.barcode);
-    return `try{JsBarcode("#bx-${idx}","${code}",{format:"CODE128",width:1.4,height:42,displayValue:true,fontSize:13,margin:0});}catch(e){}`;
-  }).filter(Boolean).join('\n');
+    if (!code) return;
+    const slots = boxBarcodeJobs.get(code);
+    if (slots) slots.push(idx);
+    else boxBarcodeJobs.set(code, [idx]);
+  });
+  // `<` → \u003c: o bloco <script> não escapa nada, e um payload com
+  // "</script>" fecharia a tag e derrubaria a página inteira.
+  const boxBarcodeJobsJson = JSON.stringify([...boxBarcodeJobs]).replace(/</g, '\\u003c');
+  const boxBarcodeInits = boxBarcodeJobs.size === 0 ? '' : `
+var _bxJobs=${boxBarcodeJobsJson};
+for(var j=0;j<_bxJobs.length;j++){
+  var code=_bxJobs[j][0], slots=_bxJobs[j][1];
+  var first=document.getElementById('bx-'+slots[0]);
+  if(!first) continue;
+  try{
+    JsBarcode(first,code,{format:"CODE128",width:1.4,height:42,displayValue:true,fontSize:13,margin:0});
+  }catch(e){continue;}
+  for(var k=1;k<slots.length;k++){
+    var el=document.getElementById('bx-'+slots[k]);
+    if(!el) continue;
+    var clone=first.cloneNode(true);
+    clone.id='bx-'+slots[k];
+    el.parentNode.replaceChild(clone,el);
+  }
+}`;
 
   return `<!DOCTYPE html>
 <html lang="pt-BR">
@@ -838,16 +884,54 @@ export function buildThermalLabelsHtml(labels: {
     </div>`;
   }).join('');
 
-  const barcodeInits = labels.map((l, idx) => {
-    if (!l.barcode || !c.showBarcode) return '';
-    // Em ficha-mode o barcode é "REF-34(2) 35(3) ..." (com espaços/parênteses,
-    // legais em CODE128). sanitizeBarcode os removia, alterando o payload
-    // codificado. jsStringLiteral preserva o valor inteiro e ainda é seguro
-    // dentro do <script> (escapa aspas e neutraliza </). Já é uma string
-    // entre aspas, então NÃO envolver em "" de novo.
-    const code = jsStringLiteral(l.barcode);
-    return `try{var el=document.querySelector("#bc-${idx}");JsBarcode(el,${code},{format:"CODE128",width:0.8,height:${barcodeHeightPx},displayValue:false,margin:0});if(el){el.removeAttribute("width");el.removeAttribute("height");el.style.width="100%";el.style.height="auto";}}catch(e){}`;
-  }).filter(Boolean).join('\n');
+  /**
+   * UM JsBarcode por PAYLOAD DISTINTO — não por etiqueta.
+   *
+   * No modo "Qtd. Total (1:1)" sai uma etiqueta por PAR. Caso medido em
+   * 22/08/2026: 1.136 pares (13 referências × ~7 numerações) geravam 1.136
+   * chamadas de JsBarcode para apenas ~91 códigos distintos, porque o payload é
+   * `REF-numeração` e todo par da mesma numeração repete o mesmo código. ~12× de
+   * trabalho redundante, tudo SÍNCRONO dentro de initBC(), mais ~200 KB de texto
+   * de <script> só de statements repetidos — era isso que fazia a janela de
+   * impressão demorar a ficar pronta.
+   *
+   * Agora o primeiro slot de cada payload é gerado de verdade e os demais
+   * recebem `cloneNode(true)` do SVG já pronto. Mesmo payload + mesmas opções
+   * produzem SVG idêntico, então NADA muda no que é impresso.
+   *
+   * Em ficha-mode o payload é "REF-34(2) 35(3) …" (espaços e parênteses são
+   * legais em CODE128) — por isso o valor vai inteiro, sem sanitizar: remover
+   * caractere aqui alteraria o código lido pelo scanner.
+   */
+  const barcodeJobs = new Map<string, number[]>();
+  labels.forEach((l, idx) => {
+    if (!l.barcode || !c.showBarcode) return;
+    const slots = barcodeJobs.get(l.barcode);
+    if (slots) slots.push(idx);
+    else barcodeJobs.set(l.barcode, [idx]);
+  });
+  // `<` → \u003c: safeScriptBlock NÃO escapa nada, então um payload contendo
+  // "</script>" fecharia a tag e derrubaria a página inteira.
+  const barcodeJobsJson = JSON.stringify([...barcodeJobs]).replace(/</g, '\\u003c');
+  const barcodeInits = barcodeJobs.size === 0 ? '' : `
+var _bcJobs=${barcodeJobsJson};
+for(var j=0;j<_bcJobs.length;j++){
+  var code=_bcJobs[j][0], slots=_bcJobs[j][1];
+  var first=document.getElementById('bc-'+slots[0]);
+  if(!first) continue;
+  try{
+    JsBarcode(first,code,{format:"CODE128",width:0.8,height:${barcodeHeightPx},displayValue:false,margin:0});
+    first.removeAttribute("width");first.removeAttribute("height");
+    first.style.width="100%";first.style.height="auto";
+  }catch(e){continue;}
+  for(var k=1;k<slots.length;k++){
+    var el=document.getElementById('bc-'+slots[k]);
+    if(!el) continue;
+    var clone=first.cloneNode(true);
+    clone.id='bc-'+slots[k];
+    el.parentNode.replaceChild(clone,el);
+  }
+}`;
 
   const cols: string[] = [];
   if (c.showImage) cols.push(`${photoColMm}mm`);   // FOTO (esquerda)
@@ -1519,6 +1603,89 @@ export async function buildThermalLabelsPdf(
  * Layout (landscape 100×30mm default):
  *   [SIZE BOX] | [REFERENCE / COLOR / MATERIAL] | [CODE128 BARCODE]
  */
+/**
+ * Moldura da foto na etiqueta ZPL, em MILÍMETROS.
+ *
+ * Fonte ÚNICA: quem monta o bitmap (a prévia) e quem posiciona o ^XG (esta
+ * função) leem daqui. Se os dois calculassem por conta própria, a prévia
+ * mostraria a foto num lugar e a impressora a poria em outro — que é
+ * exatamente o tipo de divergência que a prévia existe pra impedir.
+ */
+export const ZPL_PHOTO_MM = { width: 20, height: 22 } as const;
+
+/**
+ * Moldura da etiqueta em DOTS. Base compartilhada — `zplPhotoBoxDots` e
+ * `computeZplLayout` PRECISAM derivar daqui.
+ *
+ * Existiu um instante em que a foto era limitada em MILÍMETROS e a altura útil
+ * calculada em DOTS. Numa etiqueta de 20 mm isso dava 141 contra 140: a foto
+ * vazava um dot fora da área útil. Arredondar em unidades diferentes é
+ * suficiente pra prévia e impressora discordarem — pego pelo teste
+ * `moldura da foto cabe na altura útil`.
+ */
+function zplFrameDots(dimensions: { width: number; height: number }, dpi: number) {
+  const dpMm = dpi / 25.4;
+  const W = Math.round(dimensions.width * dpMm);
+  const H = Math.round(dimensions.height * dpMm);
+  const padX = Math.round(1.5 * dpMm);
+  const padY = Math.round(1.2 * dpMm);
+  return { dpMm, W, H, padX, padY, innerH: H - padY * 2 };
+}
+
+/** Tamanho da foto em DOTS, já limitado pela altura útil da etiqueta. */
+export function zplPhotoBoxDots(dimensions = { width: 100, height: 30 }, dpi = 203) {
+  const { innerH } = zplFrameDots(dimensions, dpi);
+  return {
+    width: mmToDots(ZPL_PHOTO_MM.width, dpi),
+    height: Math.max(0, Math.min(mmToDots(ZPL_PHOTO_MM.height, dpi), innerH)),
+  };
+}
+
+/**
+ * Coordenadas da etiqueta ZPL, em DOTS. Fonte ÚNICA.
+ *
+ * A prévia desenha a partir daqui e o gerador posiciona a partir daqui. Se cada
+ * um calculasse as suas, a prévia mostraria a foto num lugar e a impressora a
+ * poria em outro — que é justamente o que a prévia existe pra impedir. Toda
+ * mudança de layout entra NESTA função, nunca só num dos dois lados.
+ */
+export function computeZplLayout(dimensions = { width: 100, height: 30 }, hasPhoto = false, dpi = 203) {
+  const { dpMm, W, H, padX, padY, innerH } = zplFrameDots(dimensions, dpi);
+
+  // [FOTO] | DESCRIÇÃO | Nº | CÓDIGO. A coluna da foto só existe quando há
+  // gráfico no lote — etiqueta sem foto não ganha buraco à esquerda.
+  const photoBox = zplPhotoBoxDots(dimensions, dpi);
+  const photoX = padX;
+  const photoY = padY + Math.max(0, Math.round((innerH - photoBox.height) / 2));
+  const infoX = hasPhoto ? photoX + photoBox.width + Math.round(2 * dpMm) : padX;
+
+  const barcodeW = Math.round(W * 0.24);
+  const barcodeX = W - padX - barcodeW;
+  const sizeBoxW = Math.round(W * 0.16);
+  const sizeBoxH = innerH;
+  const sizeBoxX = barcodeX - Math.round(2.5 * dpMm) - sizeBoxW;
+  const infoW = sizeBoxX - infoX - Math.round(2 * dpMm);
+  const barcodeH = innerH - Math.round(1 * dpMm);
+
+  const sizeFont = Math.round(innerH * 0.78);
+  const refFont = Math.max(18, Math.round(innerH * 0.22));
+  const colorFont = Math.max(16, Math.round(innerH * 0.18));
+  const matFont = Math.max(14, Math.round(innerH * 0.15));
+
+  return {
+    dpi, dpMm, W, H, padX, padY, innerH,
+    hasPhoto, photoBox, photoX, photoY,
+    infoX, infoW, barcodeW, barcodeX, barcodeH,
+    sizeBoxX, sizeBoxW, sizeBoxH,
+    sizeFont, refFont, colorFont, matFont,
+    sizeCenterY: padY + Math.round((innerH - sizeFont) / 2),
+    /** Y de uma linha da descrição, como fração da altura útil. */
+    rowY: (frac: number) => padY + Math.round(innerH * frac),
+    /** Largura da fonte ZPL ≈ 85% da altura (aspecto condensado). */
+    fw: (h: number) => Math.round(h * 0.85),
+  };
+}
+
 export function buildThermalLabelsZpl(
   labels: {
     refCode: string;
@@ -1527,48 +1694,20 @@ export function buildThermalLabelsZpl(
     color: string;
     size: string;
     barcode: string;
+    /** Nome do gráfico já gravado por ~DG. Ausente = etiqueta sem foto. */
+    imageName?: string;
   }[],
-  dimensions = { width: 100, height: 30 }
+  dimensions = { width: 100, height: 30 },
+  /** Fotos distintas do lote. Gravadas UMA vez no topo; cada etiqueta só chama. */
+  graphics: { name: string; mono: MonoBitmap }[] = [],
 ): string {
-  const DPI = 203;
-  const dpMm = DPI / 25.4; // ≈ 7.987 dots per mm
-  const W = Math.round(dimensions.width  * dpMm);
-  const H = Math.round(dimensions.height * dpMm);
-
-  // Horizontal padding (dots)
-  const padX = Math.round(1.5 * dpMm);
-  const padY = Math.round(1.2 * dpMm);
-  const innerH = H - padY * 2;
-
-  // Layout 2026-06-17: DESCRIÇÃO (esquerda) | Nº | CÓDIGO. ZPL não tem foto.
-  // Info zone começa na esquerda.
-  const infoX = padX;
-  // Right zone: barcode — MENOR (~24% width).
-  const barcodeW = Math.round(W * 0.24);
-  const barcodeX = W - padX - barcodeW;
-  // Size box ENTRE a descrição e o código de barras — número em destaque (~16% width).
-  const sizeBoxW = Math.round(W * 0.16);
-  const sizeBoxH = innerH;
-  const sizeBoxX = barcodeX - Math.round(2.5 * dpMm) - sizeBoxW;
-  const infoW = sizeBoxX - infoX - Math.round(2 * dpMm);
-
-  // Barcode height: leave ~1.5mm headroom at top and bottom
-  const barcodeH = innerH - Math.round(1 * dpMm);
-
-  // Font heights (dots): scale proportionally to innerH
-  const sizeFont  = Math.round(innerH * 0.78); // número em destaque (preenche a altura útil)
-  const refFont   = Math.max(18, Math.round(innerH * 0.22));
-  const colorFont = Math.max(16, Math.round(innerH * 0.18));
-  const matFont   = Math.max(14, Math.round(innerH * 0.15));
-
-  // ZPL font width ≈ 85% of height (condensed appearance)
-  const fw = (h: number) => Math.round(h * 0.85);
-
-  // Vertical positions for info rows (evenly spaced in innerH)
-  const rowY = (frac: number) => padY + Math.round(innerH * frac);
-
-  // Size number centered vertically
-  const sizeCenterY = padY + Math.round((innerH - sizeFont) / 2);
+  const L = computeZplLayout(dimensions, graphics.length > 0);
+  const {
+    W, H, padX, padY, innerH, hasPhoto, photoBox, photoX, photoY,
+    infoX, infoW, barcodeX, barcodeH, sizeBoxX, sizeBoxW, sizeBoxH,
+    sizeFont, refFont, colorFont, matFont, sizeCenterY, rowY, fw,
+  } = L;
+  void infoW; // largura da descrição é informativa; ZPL não recorta por ela
 
   const blocks = labels.map(l => {
     // zplField + ^FH: `^` e `~` do cadastro viram hex e não comandam a
@@ -1580,12 +1719,17 @@ export function buildThermalLabelsZpl(
     // CODE128 não tem modo hex — aqui a defesa é a allow-list de caracteres.
     const barcode  = (l.barcode || l.refCode || '').replace(/[^A-Za-z0-9 ._/-]/g, '').slice(0, 50);
 
+    const photo = hasPhoto && l.imageName ? zplRecallGraphic(l.imageName, photoX, photoY) : '';
+
     return [
       '^XA',
       `^PW${W}`,        // print width
       `^LL${H}`,        // label length
       `^LH0,0`,         // label home (origin)
       `^CI28`,          // encoding: UTF-8
+
+      // ── Foto 1 bit, gravada no preâmbulo por ~DG ──
+      photo,
 
       // ── Size box border (entre descrição e código) ──
       `^FO${sizeBoxX},${padY}^GB${sizeBoxW},${sizeBoxH},2,B,2^FS`,
@@ -1613,7 +1757,15 @@ export function buildThermalLabelsZpl(
     ].filter(Boolean).join('\n');
   });
 
-  return blocks.join('\n\n');
+  // ~DG uma vez por foto DISTINTA, antes de qualquer ^XA. Repetir o bitmap em
+  // cada etiqueta poria 7,6 MB num lote de 1.136 — pior que o HTML que se quer
+  // substituir. Assim são 48 KB para as 7 fotos do lote medido.
+  const preamble = graphics
+    .map(g => monoToZplDownloadGraphic(g.name, g.mono))
+    .filter(Boolean)
+    .join('\n');
+
+  return preamble ? `${preamble}\n\n${blocks.join('\n\n')}` : blocks.join('\n\n');
 }
 
 /** Build HTML for individual box labels
