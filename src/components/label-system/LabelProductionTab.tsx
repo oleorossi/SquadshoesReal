@@ -1457,14 +1457,22 @@ export function LabelProductionTab() {
       const uniqueRefIds = [...new Set(boxGroups.map(g => g.referenceId))];
       const [materialMap] = await Promise.all([
         buildMaterialMap(boxGroups),
-        Promise.all(uniqueRefIds.map(async (refId) => {
-          const { data: refData } = await supabase
-            .from('technical_sheets')
-            .select('image_url, images, code, shoe_category, sole_group_id')
-            .eq('id', refId)
-            .single();
-          refDataMap.set(refId, refData);
-        })),
+        // UMA query com .in(), não N com .single(). O caminho da etiqueta
+        // individual já buscava assim (`.in('id', uniqueRefIds)`); só o do
+        // rótulo de caixa tinha ficado com o N+1 — 7  idas ao servidor na
+        // seleção medida em 22/08/2026, todas em paralelo mas todas cobrando
+        // latência. `id` entra no select porque agora é ele que dá a chave do
+        // mapa (antes vinha da variável do loop).
+        //
+        // Diferença de comportamento, verificada: com .single() uma referência
+        // inexistente gravava a chave com null; com .in() ela simplesmente não
+        // entra. Os três consumidores (capacidade, sole_group_id, refData do
+        // item) usam `?.`, então undefined e null se comportam igual.
+        supabase
+          .from('technical_sheets')
+          .select('id, image_url, images, code, shoe_category, sole_group_id')
+          .in('id', uniqueRefIds)
+          .then(({ data }) => { for (const r of data || []) refDataMap.set(r.id, r); }),
       ]);
       const imageKeys = new Set<string>();
       const imageRequests: { key: string; referenceId: string; colorName: string }[] = [];

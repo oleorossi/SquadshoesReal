@@ -442,11 +442,56 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
 
   // Código de barras (CODE128) por etiqueta — antes a caixa master saía SEM barcode
   // (o campo item.barcode era descartado), quebrando conferência na expedição.
-  const boxBarcodeInits = items.map((it, idx) => {
-    if (!it.barcode) return '';
+  /**
+   * UM JsBarcode por CÓDIGO DISTINTO — mesma técnica da etiqueta individual,
+   * e aqui o ganho é MAIOR.
+   *
+   * O código do rótulo de caixa é `order.order_number` (a OP), não algo por
+   * volume — então toda caixa da mesma OP repete o mesmo payload. E em
+   * `individual_fitilho`/`individual_amarrado` a capacidade é 1 par por caixa
+   * (resolveLabelBoxCapacity), ou seja, sai UM rótulo POR PAR.
+   *
+   * Medido em 22/08/2026 (seleção ELIANE): 1.759 rótulos para 23 códigos
+   * distintos — 76× de redundância, contra 12,9× na etiqueta individual. E o
+   * barcode daqui é mais caro: `displayValue:true` desenha também o texto.
+   *
+   * O primeiro slot de cada código é gerado de verdade; os demais recebem
+   * cloneNode(true) do SVG pronto. Mesmo payload + mesmas opções = SVG
+   * idêntico, então o rótulo impresso não muda.
+   *
+   * sanitizeBarcode continua sendo aplicado ANTES de agrupar: é ele que define
+   * o payload que o CODE128 realmente carrega, então dois itens só podem
+   * compartilhar SVG se coincidirem já sanitizados.
+   */
+  const boxBarcodeJobs = new Map<string, number[]>();
+  items.forEach((it, idx) => {
+    if (!it.barcode) return;
     const code = sanitizeBarcode(it.barcode);
-    return `try{JsBarcode("#bx-${idx}","${code}",{format:"CODE128",width:1.4,height:42,displayValue:true,fontSize:13,margin:0});}catch(e){}`;
-  }).filter(Boolean).join('\n');
+    if (!code) return;
+    const slots = boxBarcodeJobs.get(code);
+    if (slots) slots.push(idx);
+    else boxBarcodeJobs.set(code, [idx]);
+  });
+  // `<` → \u003c: o bloco <script> não escapa nada, e um payload com
+  // "</script>" fecharia a tag e derrubaria a página inteira.
+  const boxBarcodeJobsJson = JSON.stringify([...boxBarcodeJobs]).replace(/</g, '\\u003c');
+  const boxBarcodeInits = boxBarcodeJobs.size === 0 ? '' : `
+var _bxJobs=${boxBarcodeJobsJson};
+for(var j=0;j<_bxJobs.length;j++){
+  var code=_bxJobs[j][0], slots=_bxJobs[j][1];
+  var first=document.getElementById('bx-'+slots[0]);
+  if(!first) continue;
+  try{
+    JsBarcode(first,code,{format:"CODE128",width:1.4,height:42,displayValue:true,fontSize:13,margin:0});
+  }catch(e){continue;}
+  for(var k=1;k<slots.length;k++){
+    var el=document.getElementById('bx-'+slots[k]);
+    if(!el) continue;
+    var clone=first.cloneNode(true);
+    clone.id='bx-'+slots[k];
+    el.parentNode.replaceChild(clone,el);
+  }
+}`;
 
   return `<!DOCTYPE html>
 <html lang="pt-BR">
