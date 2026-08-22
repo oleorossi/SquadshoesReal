@@ -15,10 +15,8 @@ export function useInventoryStats() {
       // É muito mais rápido que baixar todos os produtos e somar no JS
       const { data, error } = await supabase.rpc('get_inventory_summary');
       
-      if (error) {
-        console.error("Erro ao buscar estatísticas do estoque:", error);
-        return { totalValue: 0, activeItems: 0, lowStockCount: 0 } as InventorySummary;
-      }
+      if (error) throw error;
+      if (!data) throw new Error('Resumo de estoque vazio — tente de novo.');
       
       return data as unknown as InventorySummary;
     },

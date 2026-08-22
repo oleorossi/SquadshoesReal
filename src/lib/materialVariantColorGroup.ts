@@ -93,16 +93,16 @@ export function resolveSheetCommercialColorGroup({
   const upper = byId(sheet.upper_material_group_id) || byName(sheet.upper_material);
   if (upper) return { id: upper.id, name: upper.name };
 
-  // A ficha sem cabedal e com tiras usa a napa da forração como material-base.
-  // Mantemos o fallback de forração também para fichas legadas sem a flag,
-  // mas sempre como UM grupo exato — nunca como união de famílias.
   const lining = byName(sheet.lining_material);
   if (lining) return { id: lining.id, name: lining.name };
 
   return null;
 }
 
-/** Produtos ativos e a coluna `products.color` são a fonte exata das opções. */
+/** Produtos ativos e a coluna `products.color` são a fonte exata das opções.
+ *  Nunca use paleta da ficha (`technical_sheets.colors`), CSV do grupo
+ *  (`product_groups.colors`) nem a cartela `colors` — o PV só vende cor que
+ *  existe como SKU no estoque. */
 export function activeProductColorsForGroup(
   products: MaterialVariantColorProduct[],
   groupId: string | null | undefined,
@@ -114,6 +114,27 @@ export function activeProductColorsForGroup(
       .map((product) => product.color?.trim().toUpperCase() || '')
       .filter(Boolean),
   )).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+}
+
+/** Lista de cores do item do PV. Sem grupo efetivo a lista fica vazia —
+ *  nunca cai na paleta livre da ficha. */
+export function saleOrderAvailableColors({
+  materialVariantId,
+  effectiveGroupId,
+  baseCoveredByVariant,
+  products,
+}: {
+  materialVariantId?: string | null;
+  effectiveGroupId?: string | null;
+  baseCoveredByVariant: boolean;
+  products: MaterialVariantColorProduct[];
+}): string[] {
+  if (materialVariantId) {
+    return effectiveGroupId ? activeProductColorsForGroup(products, effectiveGroupId) : [];
+  }
+  if (baseCoveredByVariant) return [];
+  if (effectiveGroupId) return activeProductColorsForGroup(products, effectiveGroupId);
+  return [];
 }
 
 // ── Cascata da variante: quais componentes seguem o MATERIAL PRINCIPAL ───────
@@ -200,8 +221,6 @@ export function listVariantCascadeSlots(
     .filter((slot) => !!slot.sheetMaterial)
     .map(({ key, label, sheetMaterial, drivesField }) => ({ key, label, sheetMaterial, drivesField }));
 
-  // O fachete existe pelo SOLADO, não pela ficha. Sem solado fachetado a trava
-  // não muda corte nenhum, então o slot nem aparece.
   if (sole?.soleIsFachetado) {
     const facheteMaterial = sole.facheteGroupName?.trim()
       || sheet.lining_material?.trim()
@@ -220,13 +239,6 @@ export function listVariantCascadeSlots(
 
 /**
  * Estado inicial das travas ao abrir o cadastro da variante.
- *
- * Ficha já configurada devolve o que está gravado — o valor é da FICHA e vale
- * pra todas as variantes dela, então não pode ser sobrescrito por palpite.
- * Ficha nunca configurada só ganha default quando existe UM único componente
- * possível: aí não há o que decidir. Com dois ou mais, a escolha é do dono — é
- * ela que protege material de identidade (a PALHA do cabedal do DS21 não vira
- * napa porque o PV vendeu GLOW METALIC).
  */
 export function seedVariantCascade(
   sheet: VariantCascadeSheet | null | undefined,
@@ -244,8 +256,6 @@ export function seedVariantCascade(
   return { ...stored, [slots[0].key]: true };
 }
 
-/** Exceção por componente já resolve o slot sozinha (vence o principal), então
- *  a variante não depende da trava da ficha pra trocar material. */
 export function hasVariantComponentPin(variant: VariantCascadePins | null | undefined): boolean {
   if (!variant) return false;
   return !!(variant.upper_material_product_id
@@ -256,15 +266,6 @@ export function hasVariantComponentPin(variant: VariantCascadePins | null | unde
     || variant.insole_material_group_id);
 }
 
-/**
- * `true` quando salvar essa variante produziria o no-op silencioso: nenhum
- * componente muda de material, mesmo com material principal escolhido.
- *
- * ⚠ `variant_drives_fachete` NÃO é mais escape-hatch. Antes bastava a flag estar
- * gravada na ficha pra este guard liberar o save, mesmo com cabedal e forração
- * desmarcados — e a caixa independente da aba Materiais tornava esse estado
- * alcançável. Agora o fachete é slot como os outros: conta pela SELEÇÃO.
- */
 export function variantDrivesNoComponent({
   variant, sheet, sole, cascade,
 }: {
@@ -277,27 +278,12 @@ export function variantDrivesNoComponent({
   return !listVariantCascadeSlots(sheet, sole).some((slot) => cascade[slot.key]);
 }
 
-// ── Base da napa da TIRA artesanal ───────────────────────────────────────────
-
 export interface StrapBaseReadout {
-  /** Grupo do qual a tira sai de fato. */
   groupId: string;
-  /** De onde veio na cascata — vira o rótulo "segue a Forração" etc. */
   origin: 'variant_upper' | 'variant_lining' | 'variant_main' | 'sheet';
-  /** `true` quando a base da tira NÃO é a mesma napa da forração do modelo. */
   divergesFromLining: boolean;
 }
 
-/**
- * Espelha `resolve_strap_base_group_id` (SQL) para a variante em edição.
- *
- * ⚠ O resolver do banco **não** checa `variant_drives_*`: o passo do material
- * principal dispara mesmo com a trava da Forração desligada. Então uma variante
- * que só tem material principal, numa ficha com a forração NÃO liberada, faz a
- * tira sair da napa da variante enquanto a forração continua na napa da ficha —
- * duas napas para o mesmo modelo, em silêncio. `divergesFromLining` existe pra
- * tela poder dizer isso em vez de escrever "= Forração" e mentir.
- */
 export function resolveStrapBaseReadout({
   variant, sheet, cascade,
 }: {
@@ -320,8 +306,6 @@ export function resolveStrapBaseReadout({
     || pick(sheet?.lining_material_group_id, 'sheet');
   if (!resolved) return null;
 
-  // De qual grupo a FORRAÇÃO sai — aí sim a trava conta, porque quem resolve o
-  // forro é `resolve_lining_material_for_variant`, e esse checa `variant_drives`.
   const liningGroupId = variant?.lining_material_group_id
     || (cascade.lining ? variant?.main_material_group_id : null)
     || sheet?.lining_material_group_id

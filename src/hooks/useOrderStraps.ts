@@ -13,28 +13,14 @@ type SaleOrderItemWithStraps = {
   created_at: string;
 };
 
-const normalizeText = (value: unknown) =>
-  String(value ?? '').trim().toUpperCase().normalize('NFC');
-
-const normalizeGrade = (grade: unknown) => {
-  if (!grade || typeof grade !== 'object') return '';
-  return Object.entries(grade as Record<string, number>)
-    .map(([size, qty]) => [size, Number(qty) || 0] as const)
-    .filter(([, qty]) => qty > 0)
-    .sort(([a], [b]) => Number(a) - Number(b))
-    .map(([size, qty]) => `${size}:${qty}`)
-    .join('|');
-};
-
 const toStraps = (item?: SaleOrderItemWithStraps | null): StrapInfo[] => {
   if (!item?.strap_colors || !Array.isArray(item.strap_colors)) return [];
   return item.strap_colors.filter((s: any) => s.label && s.color);
 };
 
 /**
- * Fetches sale_order_items with strap_colors for all orders that have a sale_order_id.
- * Returns a lookup function that first uses the exact sale_order_item_id from the OP,
- * then falls back to the best match by pedido + referência + cor + quantidade + grade.
+ * Fetches sale_order_items with strap_colors. Lookup is by exact
+ * sale_order_item_id — never by sibling color/qty/grade on the same PV.
  */
 export function useOrderStraps() {
   const { data: items = [] } = useQuery({
@@ -53,38 +39,10 @@ export function useOrderStraps() {
   const getStrapsForOrder = (order: any): StrapInfo[] => {
     if (!order.sale_order_id) return [];
 
-    if (order.sale_order_item_id) {
-      const itemById = items.find((item) => item.id === order.sale_order_item_id);
-      const exactStraps = toStraps(itemById);
-      if (exactStraps.length > 0) return exactStraps;
-    }
-
-    const orderColor = normalizeText(order.color);
-    const orderQty = Number(order.quantity) || 0;
-    const orderGrade = normalizeGrade(order.grade);
-
-    const candidates = items.filter(
-      (item) =>
-        item.sale_order_id === order.sale_order_id &&
-        item.reference_id === order.reference_id &&
-        normalizeText(item.color) === orderColor,
-    );
-
-    if (candidates.length === 0) return [];
-
-    const bestMatch = [...candidates].sort((a, b) => {
-      const aQtyScore = Number(a.quantity || 0) === orderQty ? 0 : 1;
-      const bQtyScore = Number(b.quantity || 0) === orderQty ? 0 : 1;
-      if (aQtyScore !== bQtyScore) return aQtyScore - bQtyScore;
-
-      const aGradeScore = normalizeGrade(a.grade) === orderGrade ? 0 : 1;
-      const bGradeScore = normalizeGrade(b.grade) === orderGrade ? 0 : 1;
-      if (aGradeScore !== bGradeScore) return aGradeScore - bGradeScore;
-
-      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
-    })[0];
-
-    return toStraps(bestMatch);
+    // Só o item exato. Fallback por cor+qty+grade pegava tira da irmã
+    // (mesma PV, outra cor) e o aviamento cortava a napa errada.
+    if (!order.sale_order_item_id) return [];
+    return toStraps(items.find((item) => item.id === order.sale_order_item_id));
   };
 
   /** Returns formatted string like "Tira 1: Branca - Tira 2: Preta" */
