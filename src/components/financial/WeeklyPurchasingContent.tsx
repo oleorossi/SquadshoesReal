@@ -3,7 +3,9 @@ import { useOrders } from '@/hooks/useOrders';
 import { useComponentSheets } from '@/hooks/useComponentSheets';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { generateWeeklyPurchasingPlan, WeeklyOrder, SheetMaterial, buyByKey } from '@/lib/weeklyPurchasingPlan';
+import { generateWeeklyPurchasingPlan, WeeklyOrder, SheetMaterial, buyByKey, type EngineDemandLine } from '@/lib/weeklyPurchasingPlan';
+import { type ComponentSheetCandidate } from '@/lib/materialConsumption';
+import { calculateConsumption } from '@/services/consumptionService';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -15,14 +17,31 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
 
+type PackagingModeRow = { id: string; packaging_mode: string | null };
+type TimelineBuyByRow = {
+  order_id: string | null;
+  material_id: string | null;
+  data_limite_compra: string | null;
+};
+type SoiVariantRow = { id: string; material_variant_id: string | null };
+type FloorOrderRow = {
+  id: string;
+  reference_id: string | null;
+  quantity: number | null;
+  planned_start: string | null;
+  planned_delivery: string | null;
+  created_at: string;
+  grade: Record<string, number> | null;
+  color: string | null;
+  sale_order_item_id: string | null;
+  sale_order_id: string | null;
+  status: string | null;
+};
+
 function useAllSheetMaterials() {
   return useQuery({
     queryKey: ['all_sheet_materials'],
     queryFn: async () => {
-      // Auditoria 2026-07-01 (achado A): consumption_per_size do BOM removido do
-      // plano — o motor usa só o ESCALAR quantity_per_unit (parity com o modal
-      // de consumo e o by_grade do servidor). `category` entra pro filtro de
-      // caixa por packaging_mode.
       const { data, error } = await supabase
         .from('sheet_materials')
         .select('sheet_id, product_id, quantity_per_unit, products(id, name, sku, unit, category, quantity, min_stock, reserved_stock, safety_stock, supplier_lead_time_days, lead_time_days, unit_price, is_artisanal)');
@@ -33,10 +52,6 @@ function useAllSheetMaterials() {
   });
 }
 
-/**
- * packaging_mode por PV (sale_orders) — a OP não guarda o modo; ele mora no
- * pedido. Usado pra filtrar a caixa ALTERNATIVA do BOM (colmeia × individual).
- */
 function usePvPackagingModes() {
   return useQuery({
     queryKey: ['weekly_pv_packaging_modes'],
@@ -46,30 +61,23 @@ function usePvPackagingModes() {
         .select('id, packaging_mode');
       if (error) throw error;
       const map = new Map<string, string | null>();
-      for (const r of (data || []) as any[]) map.set(r.id, r.packaging_mode ?? null);
+      for (const r of (data || []) as PackagingModeRow[]) map.set(r.id, r.packaging_mode ?? null);
       return map;
     },
     staleTime: 60 * 1000,
   });
 }
 
-/**
- * Data-limite de compra (just-in-time) por OP×material, vinda da view
- * `purchase_projection_timeline` (cronograma reverso: entrega do cliente − setores em
- * paralelo − buffer material − lead time do fornecedor). É a âncora robusta de QUANDO
- * comprar — o motor usa o planned_start da OP só como fallback (preenchido em ~49%).
- * Quando há mais de uma linha por OP×material, fica a data MAIS CEDO (conservador).
- */
 function useBuyByDates() {
   return useQuery({
     queryKey: ['weekly_buyby_dates'],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('purchase_projection_timeline' as any)
+        .from('purchase_projection_timeline')
         .select('order_id, material_id, data_limite_compra');
       if (error) throw error;
       const map = new Map<string, string>();
-      for (const r of (data || []) as any[]) {
+      for (const r of (data || []) as TimelineBuyByRow[]) {
         if (!r.order_id || !r.material_id || !r.data_limite_compra) continue;
         const k = buyByKey(r.order_id, r.material_id);
         const prev = map.get(k);
@@ -87,41 +95,120 @@ export default function WeeklyPurchasingContent() {
   const { data: allSheetMaterials, isLoading: loadingSM } = useAllSheetMaterials();
   const { data: buyByDates } = useBuyByDates();
   const { data: pvPackagingModes } = usePvPackagingModes();
+  const { data: variantBySoi } = useQuery({
+    queryKey: ['weekly_soi_variants'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('sale_order_items')
+        .select('id, material_variant_id');
+      if (error) throw error;
+      const map = new Map<string, string | null>();
+      for (const r of (data || []) as SoiVariantRow[]) map.set(r.id, r.material_variant_id ?? null);
+      return map;
+    },
+    staleTime: 60 * 1000,
+  });
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('active');
   const [viewMode, setViewMode] = useState<'matrix' | 'weekly'>('weekly');
   const [selectedWeek, setSelectedWeek] = useState<string>('all');
 
-  const isLoading = loadingOrders || loadingCS || loadingSM;
-
-  const result = useMemo(() => {
-    if (!orders || !allSheetMaterials) return null;
-
-    const filteredOrders: WeeklyOrder[] = (orders as any[])
+  const filteredOrders: WeeklyOrder[] = useMemo(() => {
+    if (!orders) return [];
+    return (orders as FloorOrderRow[])
       .filter((o) => {
+        if (!o.reference_id) return false;
         if (statusFilter === 'active') {
-          return !['Finalizado', 'Cancelado', 'Faturado'].includes(o.status);
+          return !['Finalizado', 'Cancelado', 'Faturado'].includes(o.status ?? '');
         }
         return true;
       })
       .map((o) => ({
         id: o.id,
-        reference_id: o.reference_id,
-        quantity: o.quantity,
+        reference_id: o.reference_id as string,
+        quantity: Number(o.quantity) || 0,
         planned_start: o.planned_start,
         planned_delivery: o.planned_delivery,
         created_at: o.created_at,
-        grade: o.grade as Record<string, number> | null,
-        // Achado A: modo de embalagem do PV — filtra caixa alternativa do BOM.
+        grade: o.grade,
+        color: o.color ?? null,
+        sale_order_item_id: o.sale_order_item_id ?? null,
         packaging_mode: o.sale_order_id ? (pvPackagingModes?.get(o.sale_order_id) ?? null) : null,
       }));
+  }, [orders, statusFilter, pvPackagingModes]);
 
-    // A5 (auditoria): passa as fichas de componente (largura + perda) p/ converter
-    // material de área dm²→unidade física pela largura da ficha (antes inflava ~137×).
-    // buyByDates: âncora JIT (data-limite de compra reverse-scheduled da view) — define
-    // a SEMANA de compra; planned_start vira só fallback.
-    return generateWeeklyPurchasingPlan(filteredOrders, allSheetMaterials, (componentSheets as any) || [], buyByDates || new Map());
-  }, [orders, allSheetMaterials, componentSheets, statusFilter, buyByDates, pvPackagingModes]);
+  const { data: engineDemand, isLoading: loadingEngine } = useQuery({
+    queryKey: [
+      'weekly-engine-demand',
+      filteredOrders.map((o) => `${o.id}:${o.quantity}:${o.color || ''}:${o.sale_order_item_id || ''}`).join('|'),
+    ],
+    enabled: filteredOrders.length > 0,
+    staleTime: 60 * 1000,
+    queryFn: async (): Promise<EngineDemandLine[]> => {
+      const lines: EngineDemandLine[] = [];
+      const summaries = await Promise.all(
+        filteredOrders.map(async (order) => {
+          if (!order.reference_id) return { order, summary: null as Awaited<ReturnType<typeof calculateConsumption>> | null };
+          try {
+            const summary = await calculateConsumption({
+              referenceId: order.reference_id,
+              quantity: Number(order.quantity) || 0,
+              color: order.color,
+              materialVariantId: order.sale_order_item_id
+                ? variantBySoi?.get(order.sale_order_item_id) ?? null
+                : null,
+              grade: order.grade ?? null,
+            });
+            return { order, summary };
+          } catch (err) {
+            console.error('[WeeklyPurchasing] falha no motor canônico da OP', order.id, err);
+            return { order, summary: null };
+          }
+        }),
+      );
+      const productIds = [...new Set(
+        summaries.flatMap(({ summary }) => (summary?.lines || []).map((l) => l.product_id).filter(Boolean)),
+      )] as string[];
+      const productById = new Map<string, NonNullable<SheetMaterial['products']>>();
+      if (productIds.length > 0) {
+        const { data, error } = await supabase
+          .from('products')
+          .select('id, name, sku, unit, category, quantity, min_stock, reserved_stock, safety_stock, supplier_lead_time_days, lead_time_days, unit_price, is_artisanal')
+          .in('id', productIds);
+        if (error) throw error;
+        for (const p of (data || []) as NonNullable<SheetMaterial['products']>[]) productById.set(p.id, p);
+      }
+      for (const { order, summary } of summaries) {
+        if (!summary) continue;
+        for (const line of summary.lines) {
+          if (!line.product_id || !(Number(line.required) > 0)) continue;
+          lines.push({
+            orderId: order.id,
+            productId: line.product_id,
+            required: Number(line.required) || 0,
+            unit: line.unit ?? null,
+            name: line.product_name,
+            category: line.category ?? null,
+            product: productById.get(line.product_id) ?? null,
+          });
+        }
+      }
+      return lines;
+    },
+  });
+
+  const isLoading = loadingOrders || loadingCS || loadingSM || (filteredOrders.length > 0 && loadingEngine);
+
+  const result = useMemo(() => {
+    if (!allSheetMaterials || filteredOrders.length === 0) return null;
+    return generateWeeklyPurchasingPlan(
+      filteredOrders,
+      allSheetMaterials,
+      (componentSheets as Array<ComponentSheetCandidate & { product_id: string }> | undefined) || [],
+      buyByDates || new Map(),
+      engineDemand ?? null,
+    );
+  }, [filteredOrders, allSheetMaterials, componentSheets, buyByDates, engineDemand]);
 
   const filteredPlan = useMemo(() => {
     if (!result) return [];
@@ -129,7 +216,6 @@ export default function WeeklyPurchasingContent() {
     return result.plan.filter((r) => searchMatchesAllTerms(search, r.name, r.sku));
   }, [result, search]);
 
-  // Per-week aggregated rows for the "weekly" view
   const weeklyReports = useMemo(() => {
     if (!result) return [] as { week: string; rows: { materialId: string; name: string; sku: string; unit: string; qty: number; unitPrice: number; cost: number; currentStock: number }[]; totalCost: number; totalItems: number }[];
     const weekToRows = new Map<string, { materialId: string; name: string; sku: string; unit: string; qty: number; unitPrice: number; cost: number; currentStock: number }[]>();
@@ -222,7 +308,6 @@ export default function WeeklyPurchasingContent() {
 
   return (
     <div className="space-y-6">
-      {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
           <CardContent className="p-4 flex items-center gap-3">
@@ -262,7 +347,6 @@ export default function WeeklyPurchasingContent() {
         </Card>
       </div>
 
-      {/* Explicador JIT */}
       <Card className="bg-muted/20 border-primary/20">
         <CardContent className="p-4 text-xs text-muted-foreground space-y-1">
           <p className="text-sm font-semibold text-foreground flex items-center gap-2">
@@ -281,7 +365,6 @@ export default function WeeklyPurchasingContent() {
         </CardContent>
       </Card>
 
-      {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-3 flex-wrap">
         <SearchInput
           value={search}
@@ -333,7 +416,6 @@ export default function WeeklyPurchasingContent() {
           </TabsTrigger>
         </TabsList>
 
-        {/* WEEKLY REPORT */}
         <TabsContent value="weekly" className="space-y-4 mt-4">
           {visibleWeeklyReports.length === 0 ? (
             <Card>
@@ -409,7 +491,6 @@ export default function WeeklyPurchasingContent() {
           )}
         </TabsContent>
 
-        {/* MATRIX VIEW (kept) */}
         <TabsContent value="matrix" className="mt-4">
           {filteredPlan.length === 0 ? (
             <Card>

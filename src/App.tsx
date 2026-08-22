@@ -103,6 +103,7 @@ const TimePendingsPage = lazy(() => import("./pages/TimePendings"));
 // SectorAggregatedView é a visão legada "lote" de /producao/analises.
 const PrintWorkSheets = lazy(() => import("./pages/PrintWorkSheets"));
 const LabelSystem = lazy(() => import("./pages/LabelSystem"));
+const ClientLabeling = lazy(() => import("./pages/ClientLabeling"));
 const PurchasePlanning = lazy(() => import("./pages/PurchasePlanning"));
 const PricingCalculator = lazy(() => import("./pages/PricingCalculator"));
 const PCPHub = lazy(() => import("./pages/PCPHub"));
@@ -321,11 +322,10 @@ function RouteGuard({ children }: { children: React.ReactNode }) {
   const location = useLocation();
    const { loading, isError, canAccessRoute, permsLoading, permsError, isAdmin } = useAccessControl();
 
-   // O alias antigo de receitas precisa atravessar a guarda com o dono do hub
-   // novo; o componente TerceirizadosHub faz o redirect logo depois.
-   const isLegacyStrapRecipes = location.pathname === '/terceirizados'
-     && new URLSearchParams(location.search).get('tab') === 'recipes';
-   const path = isLegacyStrapRecipes ? '/terceirizados?tab=recipes' : location.pathname;
+   // Inclui a query porque alguns aliases legados mudam o dono concedível da
+   // rota. Ex.: client-import pertence a /etiquetagem-cliente, não ao sistema
+   // padrão; resolveMenuOwner faz a canonicalização antes de avaliar o grant.
+   const path = `${location.pathname}${location.search}`;
    // URL que não resolve módulo nenhum é URL que não existe: cai no catch-all e
    // tem que renderizar o NotFound. Sem isso, errar o endereço devolveria
    // "Acesso Restrito" — mensagem de permissão pra um problema de digitação.
@@ -964,6 +964,10 @@ const router = createBrowserRouter([
       {
         path: "label-system",
         element: <LabelSystem />,
+      },
+      {
+        path: "etiquetagem-cliente",
+        element: <ClientLabeling />,
       },
       {
         path: "sales",

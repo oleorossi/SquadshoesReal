@@ -3,8 +3,10 @@ import {
   areaToStockDivisor,
   calcRequiredForGrade,
   calculateConsumptionWithUnit,
+  calculateGradeBasedDm2,
   convertDm2ToLinearMeters,
   convertDm2ToPlates,
+  pickConsumptionForSize,
 } from '@/lib/materialConsumption';
 
 /**
@@ -137,5 +139,88 @@ describe('calcRequiredForGrade — paridade com SQL calc_required_for_grade', ()
 
   it('cai no fallback quantityPerUnit × totalQuantity quando per_size vazio', () => {
     expect(calcRequiredForGrade({}, { '36': 2 }, 6.5, 2)).toBeCloseTo(13, 4);
+  });
+
+  it('chave conjugada 33/34 casa grade numérica 33 e 34', () => {
+    expect(
+      calcRequiredForGrade({ '33/34': 8, '36': 9 }, { '33': 2, '34': 3, '36': 1 }, 6.5, 6)
+    ).toBeCloseTo(2 * 8 + 3 * 8 + 1 * 9, 4);
+  });
+
+  it('grade conjugada 33/34 casa mapa numérico 33', () => {
+    expect(
+      calcRequiredForGrade({ '33': 7.5, '36': 9 }, { '33/34': 4, '36': 1 }, 6.5, 5)
+    ).toBeCloseTo(4 * 7.5 + 1 * 9, 4);
+  });
+
+  it('zero explícito no per_size vale 0 e não cai no escalar', () => {
+    expect(
+      calcRequiredForGrade({ '34': 6, '36': 0 }, { '34': 1, '36': 1 }, 6.5, 2)
+    ).toBeCloseTo(6, 4);
+  });
+});
+
+describe('pickConsumptionForSize', () => {
+  it('chave exata vence conjugada', () => {
+    const picked = pickConsumptionForSize({ '33': 5, '33/34': 8 }, '33');
+    expect(picked).toEqual({ found: true, value: 5, key: '33' });
+  });
+
+  it('grade 33 casa mapa 33/34', () => {
+    const picked = pickConsumptionForSize({ '33/34': 8, '36': 9 }, '33');
+    expect(picked).toEqual({ found: true, value: 8, key: '33/34' });
+  });
+
+  it('grade 33/34 casa mapa 33/34', () => {
+    const picked = pickConsumptionForSize({ '33/34': 8 }, '33/34');
+    expect(picked).toEqual({ found: true, value: 8, key: '33/34' });
+  });
+
+  it('zero explícito é encontrado', () => {
+    const picked = pickConsumptionForSize({ '36': 0, '37': 8 }, '36');
+    expect(picked).toEqual({ found: true, value: 0, key: '36' });
+  });
+
+  it('ausente devolve found=false', () => {
+    expect(pickConsumptionForSize({ '36': 8 }, '33')).toEqual({ found: false });
+    expect(pickConsumptionForSize({}, '36')).toEqual({ found: false });
+    expect(pickConsumptionForSize(null, '36')).toEqual({ found: false });
+  });
+
+  it('string vazia e nulo não contam como preenchido', () => {
+    expect(pickConsumptionForSize({ '36': '' }, '36')).toEqual({ found: false });
+    expect(pickConsumptionForSize({ '36': null }, '36')).toEqual({ found: false });
+  });
+});
+
+describe('calculateGradeBasedDm2 — conjugada e zero explícito', () => {
+  it('override conjugado 33/34 entra na grade numérica', () => {
+    const total = calculateGradeBasedDm2(
+      { grade: { '33': 2, '34': 2, '36': 1 }, quantity: 5, fichas: 1 },
+      6.5,
+      null,
+      { '33/34': 8, '36': 9 },
+    );
+    expect(total).toBeCloseTo(2 * 8 + 2 * 8 + 1 * 9, 4);
+  });
+
+  it('zero explícito no override não cai no escalar', () => {
+    const total = calculateGradeBasedDm2(
+      { grade: { '36': 2, '38': 2 }, quantity: 4, fichas: 1 },
+      6.5,
+      null,
+      { '36': 0, '38': 8 },
+    );
+    expect(total).toBeCloseTo(0 + 2 * 8, 4);
+  });
+
+  it('tamanho realmente ausente ainda cai no escalar', () => {
+    const total = calculateGradeBasedDm2(
+      { grade: { '36': 1, '38': 1 }, quantity: 2, fichas: 1 },
+      6.5,
+      null,
+      { '36': 8 },
+    );
+    expect(total).toBeCloseTo(8 + 6.5, 4);
   });
 });

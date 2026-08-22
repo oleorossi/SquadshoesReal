@@ -29,11 +29,11 @@ const TabLoader = () => (
 const TABS = ['funcionarios', 'ponto', 'espelho', 'folha'] as const;
 type Tab = typeof TABS[number];
 
-const tabs: { value: Tab; label: string; icon: typeof Users }[] = [
-  { value: 'funcionarios', label: 'Equipe',  icon: Users },
-  { value: 'ponto',        label: 'Ponto',   icon: AlarmClock },
-  { value: 'espelho',      label: 'Relatórios', icon: FileText },
-  { value: 'folha',        label: 'Folha',   icon: DollarSign },
+const tabs: { value: Tab; label: string; short: string; icon: typeof Users }[] = [
+  { value: 'funcionarios', label: 'Equipe', short: 'Cadastros e jornadas', icon: Users },
+  { value: 'ponto', label: 'Ponto', short: 'Batidas e pendências', icon: AlarmClock },
+  { value: 'espelho', label: 'Relatórios', short: 'Horas e conferência', icon: FileText },
+  { value: 'folha', label: 'Folha', short: 'Cálculo e pagamentos', icon: DollarSign },
 ];
 
 const TAB_HEADERS: Record<Tab, { section: string; title: string; description: string }> = {
@@ -76,18 +76,18 @@ function FolhaTab() {
   const [inner, setInner] = useState<'consolidada' | 'pagamentos'>('consolidada');
   return (
     <div className="space-y-4">
-      <div className="inline-flex gap-1 bg-muted/50 p-1 rounded-lg">
+      <div className="inline-flex max-w-full gap-1 overflow-x-auto rounded-lg border border-border/70 bg-muted/30 p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <button
           onClick={() => setInner('consolidada')}
-          className={cn('inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md transition-colors',
-            inner === 'consolidada' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:bg-muted/40')}
+          className={cn('inline-flex min-h-9 items-center gap-2 whitespace-nowrap rounded-md px-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+            inner === 'consolidada' ? 'bg-foreground text-background shadow-sm' : 'text-muted-foreground hover:bg-background hover:text-foreground')}
         >
           <DollarSign className="h-3.5 w-3.5" /> Fechamento
         </button>
         <button
           onClick={() => setInner('pagamentos')}
-          className={cn('inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md transition-colors',
-            inner === 'pagamentos' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:bg-muted/40')}
+          className={cn('inline-flex min-h-9 items-center gap-2 whitespace-nowrap rounded-md px-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+            inner === 'pagamentos' ? 'bg-foreground text-background shadow-sm' : 'text-muted-foreground hover:bg-background hover:text-foreground')}
         >
           <Receipt className="h-3.5 w-3.5" /> Pagamentos
         </button>
@@ -125,17 +125,24 @@ export default function RHHub() {
         <div>
           <TabsList
             indicator="none"
-            className="grid h-auto w-full grid-cols-4 gap-1 rounded-lg border border-border/70 bg-muted/30 p-1"
+            className="grid h-auto w-full grid-cols-2 gap-1.5 rounded-xl border border-border/70 bg-muted/25 p-1.5 lg:grid-cols-4"
             aria-label="Áreas de Gestão de Pessoas"
           >
             {tabs.map(tab => (
               <TabsTrigger
                 key={tab.value}
                 value={tab.value}
-                className="group relative min-h-11 min-w-0 gap-1 rounded-md border-b-0 px-2 py-2 font-sans text-xs font-semibold normal-case tracking-normal data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm sm:gap-2 sm:px-3 sm:text-sm"
+                className="group relative min-h-[58px] min-w-0 justify-start gap-2.5 overflow-hidden rounded-lg border border-transparent border-b-0 px-3 py-2.5 text-left font-sans normal-case tracking-normal transition-all before:absolute before:inset-y-2 before:left-0 before:w-[3px] before:scale-y-0 before:rounded-r-full before:bg-primary before:transition-transform data-[state=active]:border-border/70 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm data-[state=active]:before:scale-y-100"
               >
-                <tab.icon className="hidden h-4 w-4 shrink-0 text-muted-foreground group-data-[state=active]:text-primary sm:block" />
-                <span>{tab.label}</span>
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-background text-muted-foreground shadow-sm ring-1 ring-border/60 group-data-[state=active]:bg-primary group-data-[state=active]:text-primary-foreground group-data-[state=active]:ring-primary">
+                  <tab.icon className="h-4 w-4" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-center gap-1.5 text-sm font-bold leading-tight">
+                    {tab.label}
+                  </span>
+                  <span className="mt-0.5 block truncate text-[11px] font-normal leading-tight text-muted-foreground">{tab.short}</span>
+                </span>
                 {tab.value === 'ponto' && pendingTotal > 0 && (
                   <>
                     <span

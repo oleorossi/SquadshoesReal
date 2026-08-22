@@ -42,6 +42,7 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/order-flow-audit': 'ordens',
   '/labels': 'expedicao',
   '/label-system': 'expedicao',
+  '/etiquetagem-cliente': 'expedicao',
   '/entregas': 'expedicao',
   '/sales': 'vendas',
   // PWA do representante (/m, /m/new, /m/pending, /m/profile). Cria PV, então
@@ -287,6 +288,9 @@ const ALL_MENU_PATHS: string[] = grantableDestinations.map((i) => i.path);
 
 function resolveCanonicalAliasOwner(path: string): string | null {
   const [pathname, query = ''] = path.split('?');
+  if (pathname === '/label-system' && new URLSearchParams(query).get('tab') === 'client-import') {
+    return '/etiquetagem-cliente';
+  }
   if (pathname === '/calculadora-tiras' || pathname === '/artisanal-recipes') {
     return '/tiras-artesanais';
   }

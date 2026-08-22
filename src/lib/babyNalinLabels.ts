@@ -1,14 +1,16 @@
 /**
- * Etiqueta de caixa do cliente — arte 46 × 38 mm em rolo térmico 50 × 40 mm.
+ * Etiqueta de caixa do cliente.
  *
- * Padrão fixo do cliente, validado contra a etiqueta física do fornecedor e
- * contra o documento "Padrão de Etiquetagem". As medidas em `LAYOUT` NÃO são
- * ajustáveis: mudar qualquer uma gera etiqueta rejeitada no recebimento.
+ * A arte e o CODE128 seguem o padrão fixo do cliente. A geometria do liner do
+ * couchê (vão e margens) é um perfil separado, pois muda conforme a faca da
+ * gráfica e não pode ser deduzida por fotografia.
  * Milhares de pares são etiquetados por pedido — erro aqui custa caro.
  *
  * Entrada: o arquivo de exportação do pedido de compra do ERP do cliente
  * (`Exp_Etiquetas_PedCompra_*.csv`, `;` em UTF-16/UTF-8/CP1252, ou XLSX).
- * Saída: um PDF no tamanho exato do rolo, uma etiqueta por página.
+ * Saídas:
+ *   - produção L42PRO: duas etiquetas 50 × 30 mm por carreira, repetidas pela quantidade;
+ *   - gráfica: duas artes 50 × 30 mm lado a lado, uma por SKU, com vão técnico.
  */
 import { code128Bars, encodeCode128 } from './code128';
 
@@ -24,13 +26,55 @@ export const MEDIA_HEIGHT_MM = 40.0;
 export const OFFSET_X_MM = (MEDIA_WIDTH_MM - ART_WIDTH_MM) / 2; // 2,0
 export const OFFSET_Y_MM = (MEDIA_HEIGHT_MM - ART_HEIGHT_MM) / 2; // 1,0
 
+/** Imposição da gráfica: duas etiquetas couchê de 50 × 30 mm por carreira. */
+export const COUCHE_LABEL_WIDTH_MM = 50.0;
+export const COUCHE_LABEL_HEIGHT_MM = 30.0;
+export const COUCHE_COLUMNS = 2;
+
+/**
+ * Medidas variáveis da faca/liner. O perfil padrão preserva o PDF já usado,
+ * mas a tela deixa todas explícitas para conferência com a gráfica.
+ */
+export interface CoucheRollProfile {
+  columnGapMm: number;
+  leftMarginMm: number;
+  rightMarginMm: number;
+  topMarginMm: number;
+  bottomMarginMm: number;
+}
+
+export const DEFAULT_COUCHE_ROLL_PROFILE: Readonly<CoucheRollProfile> = Object.freeze({
+  columnGapMm: 3,
+  leftMarginMm: 0,
+  rightMarginMm: 0,
+  topMarginMm: 0,
+  bottomMarginMm: 0,
+});
+
+/** Compatibilidade para consumidores que exibem as medidas do perfil padrão. */
+export const COUCHE_COLUMN_GAP_MM = DEFAULT_COUCHE_ROLL_PROFILE.columnGapMm;
+export const COUCHE_PAGE_WIDTH_MM =
+  COUCHE_LABEL_WIDTH_MM * COUCHE_COLUMNS
+  + COUCHE_COLUMN_GAP_MM * (COUCHE_COLUMNS - 1)
+  + DEFAULT_COUCHE_ROLL_PROFILE.leftMarginMm
+  + DEFAULT_COUCHE_ROLL_PROFILE.rightMarginMm;
+export const COUCHE_PAGE_HEIGHT_MM =
+  DEFAULT_COUCHE_ROLL_PROFILE.topMarginMm
+  + COUCHE_LABEL_HEIGHT_MM
+  + DEFAULT_COUCHE_ROLL_PROFILE.bottomMarginMm;
+/** Área segura 46 × 28, centralizada dentro de cada etiqueta física 50 × 30. */
+export const COUCHE_ART_HEIGHT_MM = 28.0;
+export const COUCHE_OFFSET_X_MM = (COUCHE_LABEL_WIDTH_MM - ART_WIDTH_MM) / 2; // 2,0
+export const COUCHE_OFFSET_Y_MM = (COUCHE_LABEL_HEIGHT_MM - COUCHE_ART_HEIGHT_MM) / 2; // 1,0
+/** No perfil compacto, as barras terminam em y=29 mm e preservam 1 mm inferior. */
+export const COUCHE_BARCODE_TOP_Y_MM = 23.0;
+
 /**
  * Módulo do CODE128 definido pelo padrão do cliente: 7 dots a 600 dpi.
  *
  * A cabeça imprime em grade de dots; módulo que não é múltiplo inteiro de dot
- * sai com barras de larguras desiguais. Com 13 dígitos (123 módulos) o 2 dots
- * é o ÚNICO valor viável: 1 dot dá 0,125 mm — abaixo do que leitor de loja lê —
- * O desenho técnico entregue pelo cliente especifica 0,296 mm por módulo;
+ * sai com barras de larguras desiguais. O desenho técnico entregue pelo
+ * cliente especifica 7 dots, aproximadamente 0,296 mm por módulo;
  * manter esse valor evita que a leitura do código varie entre lotes.
  */
 export const PRINTER_DPI = 600;
@@ -224,14 +268,26 @@ export interface BarcodeFit {
   widthMm: number;
   quietZoneMm: number;
   fits: boolean;
+  /** Motivo pelo qual o conteúdo não pode ser codificado em CODE128. */
+  error?: string;
 }
 
 /** Mede o código no módulo travado e confere a zona de silêncio dos dois lados. */
 export function measureBarcode(codigo: string): BarcodeFit {
-  const { moduleCount } = encodeCode128(codigo);
-  const widthMm = moduleCount * MODULE_MM;
-  const quietZoneMm = (ART_WIDTH_MM - widthMm) / 2;
-  return { moduleCount, widthMm, quietZoneMm, fits: quietZoneMm >= QUIET_ZONE_MIN_MM };
+  try {
+    const { moduleCount } = encodeCode128(codigo);
+    const widthMm = moduleCount * MODULE_MM;
+    const quietZoneMm = (ART_WIDTH_MM - widthMm) / 2;
+    return { moduleCount, widthMm, quietZoneMm, fits: quietZoneMm >= QUIET_ZONE_MIN_MM };
+  } catch (error) {
+    return {
+      moduleCount: 0,
+      widthMm: 0,
+      quietZoneMm: 0,
+      fits: false,
+      error: error instanceof Error ? error.message : 'Conteúdo inválido para CODE128.',
+    };
+  }
 }
 
 /**
@@ -240,6 +296,9 @@ export function measureBarcode(codigo: string): BarcodeFit {
  */
 export function assertBarcodeFits(codigo: string): BarcodeFit {
   const fit = measureBarcode(codigo);
+  if (fit.error) {
+    throw new Error(`O código "${codigo}" é inválido para CODE128: ${fit.error}`);
+  }
   if (!fit.fits) {
     throw new Error(
       `O código "${codigo}" ocupa ${fit.widthMm.toFixed(1)} mm e deixa só ` +
@@ -253,12 +312,14 @@ export function assertBarcodeFits(codigo: string): BarcodeFit {
 /* ──────────────────────────────── PDF ──────────────────────────────── */
 
 export interface BabyNalinPdfOptions {
-  /** Produção usa a mídia 50×40; gráfica entrega somente a arte 46×38. */
+  /** Os dois modos usam o rolo de duas colunas 50×30; muda somente a repetição. */
   mode?: 'production' | 'graphic';
-  /** Repete cada etiqueta pela `Qt. Solicitada` do pedido. Padrão: 1 por linha. */
+  /** Repete cada etiqueta pela `Qt. Solicitada` do pedido. Na produção, o padrão é repetir. */
   repeatByQuantity?: boolean;
   /** Etiquetas físicas por par quando a repetição por quantidade estiver ligada. */
   repeatMultiplier?: number;
+  /** Medidas da faca/liner usadas apenas no arquivo couchê para a gráfica. */
+  coucheProfile?: Partial<CoucheRollProfile>;
   /** PNG em data URI + proporção, pra compor a logomarca. Sem ele, sai sem logo. */
   logo?: { dataUrl: string; width: number; height: number } | null;
 }
@@ -271,6 +332,7 @@ export interface BabyNalinSkuConflict {
   cor: string;
   tamanho: string;
   codigosBarra: string[];
+  codigosProduto: string[];
 }
 
 export interface BabyNalinSkuAnalysis {
@@ -289,11 +351,13 @@ export function clientSkuKey(row: BabyNalinRow): string {
 
 /**
  * Mantém uma arte por SKU na ordem da planilha. Duplicidade idêntica é
- * descartada; código de barras divergente para o mesmo SKU vira conflito.
+ * descartada; barcode ou código de produto divergente vira conflito porque os
+ * dois campos participam da impressão.
  */
 export function analyzeClientSkus(rows: BabyNalinRow[]): BabyNalinSkuAnalysis {
   const firstBySku = new Map<string, BabyNalinRow>();
   const barcodesBySku = new Map<string, Set<string>>();
+  const productCodesBySku = new Map<string, Set<string>>();
 
   rows.forEach(row => {
     const sku = clientSkuKey(row);
@@ -301,10 +365,13 @@ export function analyzeClientSkus(rows: BabyNalinRow[]): BabyNalinSkuAnalysis {
     const barcodes = barcodesBySku.get(sku) ?? new Set<string>();
     barcodes.add(row.codigoBarra.trim());
     barcodesBySku.set(sku, barcodes);
+    const productCodes = productCodesBySku.get(sku) ?? new Set<string>();
+    productCodes.add(normalizeSkuPart(row.codProduto));
+    productCodesBySku.set(sku, productCodes);
   });
 
   const conflicts = [...barcodesBySku.entries()]
-    .filter(([, barcodes]) => barcodes.size > 1)
+    .filter(([sku, barcodes]) => barcodes.size > 1 || (productCodesBySku.get(sku)?.size ?? 0) > 1)
     .map(([sku, barcodes]) => {
       const row = firstBySku.get(sku)!;
       return {
@@ -313,6 +380,7 @@ export function analyzeClientSkus(rows: BabyNalinRow[]): BabyNalinSkuAnalysis {
         cor: row.cor,
         tamanho: row.tamanho,
         codigosBarra: [...barcodes],
+        codigosProduto: [...(productCodesBySku.get(sku) ?? [])],
       };
     });
 
@@ -324,7 +392,7 @@ export function uniqueClientSkuRows(rows: BabyNalinRow[]): BabyNalinRow[] {
   if (analysis.conflicts.length > 0) {
     const first = analysis.conflicts[0];
     throw new Error(
-      `O SKU ${first.referencia} / ${first.cor} / ${first.tamanho} possui mais de um código de barras. ` +
+      `O SKU ${first.referencia} / ${first.cor} / ${first.tamanho} possui dados de impressão conflitantes. ` +
         'Corrija a planilha antes de gerar o arquivo para a gráfica.',
     );
   }
@@ -360,10 +428,91 @@ export function fitText(
   return { pt: MIN_FONT_PT, texto: `${cortado.trimEnd()}…` };
 }
 
-function drawLabel(doc: PdfDoc, row: BabyNalinRow, options: BabyNalinPdfOptions): void {
-  const graphicMode = options.mode === 'graphic';
-  const ox = graphicMode ? 0 : OFFSET_X_MM;
-  const oy = graphicMode ? 0 : OFFSET_Y_MM;
+interface LabelPlacement {
+  xMm: number;
+  yMm: number;
+  barcodeTopYMm?: number;
+}
+
+export interface GraphicLabelPlacement extends LabelPlacement {
+  pageIndex: number;
+  column: number;
+  row: BabyNalinRow;
+}
+
+export type ProductionLabelPlacement = GraphicLabelPlacement;
+
+export interface CoucheRollGeometry extends CoucheRollProfile {
+  pageWidthMm: number;
+  pageHeightMm: number;
+}
+
+const MAX_COUCHE_PROFILE_VALUE_MM = 50;
+
+/** Valida o perfil em vez de ajustar medidas silenciosamente. */
+export function resolveCoucheRollGeometry(
+  profile: Partial<CoucheRollProfile> = {},
+): CoucheRollGeometry {
+  const merged: CoucheRollProfile = { ...DEFAULT_COUCHE_ROLL_PROFILE, ...profile };
+  for (const [field, value] of Object.entries(merged)) {
+    if (!Number.isFinite(value) || value < 0 || value > MAX_COUCHE_PROFILE_VALUE_MM) {
+      throw new Error(`Medida inválida no perfil do rolo (${field}): use um valor entre 0 e ${MAX_COUCHE_PROFILE_VALUE_MM} mm.`);
+    }
+  }
+  return {
+    ...merged,
+    pageWidthMm:
+      merged.leftMarginMm
+      + COUCHE_LABEL_WIDTH_MM * COUCHE_COLUMNS
+      + merged.columnGapMm * (COUCHE_COLUMNS - 1)
+      + merged.rightMarginMm,
+    pageHeightMm: merged.topMarginMm + COUCHE_LABEL_HEIGHT_MM + merged.bottomMarginMm,
+  };
+}
+
+function couchePlacementAt(
+  row: BabyNalinRow,
+  index: number,
+  geometry: CoucheRollGeometry,
+): GraphicLabelPlacement {
+  const column = index % COUCHE_COLUMNS;
+  return {
+    pageIndex: Math.floor(index / COUCHE_COLUMNS),
+    column,
+    xMm:
+      geometry.leftMarginMm
+      + column * (COUCHE_LABEL_WIDTH_MM + geometry.columnGapMm)
+      + COUCHE_OFFSET_X_MM,
+    yMm: geometry.topMarginMm + COUCHE_OFFSET_Y_MM,
+    barcodeTopYMm: COUCHE_BARCODE_TOP_Y_MM,
+    row,
+  };
+}
+
+/**
+ * Planeja a imposição couchê sem depender do jsPDF: esquerda, direita e então
+ * a próxima página. A última página ímpar fica deliberadamente vazia à direita.
+ */
+export function planGraphicLabelPlacements(
+  rows: BabyNalinRow[],
+  profile: Partial<CoucheRollProfile> = {},
+): GraphicLabelPlacement[] {
+  const geometry = resolveCoucheRollGeometry(profile);
+  return uniqueClientSkuRows(rows).map((row, index) => couchePlacementAt(row, index, geometry));
+}
+
+export function graphicPageCount(skuCount: number): number {
+  return Math.ceil(Math.max(0, Math.trunc(skuCount)) / COUCHE_COLUMNS);
+}
+
+function drawLabel(
+  doc: PdfDoc,
+  row: BabyNalinRow,
+  options: BabyNalinPdfOptions,
+  placement: LabelPlacement,
+): void {
+  const ox = placement.xMm;
+  const oy = placement.yMm;
 
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(0, 0, 0);
@@ -390,7 +539,7 @@ function drawLabel(doc: PdfDoc, row: BabyNalinRow, options: BabyNalinPdfOptions)
 
   const fit = assertBarcodeFits(row.codigoBarra);
   const x0 = ox + (ART_WIDTH_MM - fit.widthMm) / 2;
-  const y0 = oy + LAYOUT.barcode.topY;
+  const y0 = oy + (placement.barcodeTopYMm ?? LAYOUT.barcode.topY);
   doc.setFillColor(0, 0, 0);
   for (const barra of code128Bars(row.codigoBarra)) {
     doc.rect(x0 + barra.start * MODULE_MM, y0, barra.width * MODULE_MM, LAYOUT.barcode.heightMm, 'F');
@@ -398,13 +547,60 @@ function drawLabel(doc: PdfDoc, row: BabyNalinRow, options: BabyNalinPdfOptions)
 }
 
 /** Expande as linhas em páginas — uma etiqueta por página, na ordem do arquivo. */
+export const MAX_PDF_LABELS = 20_000;
+
+export function countExpandedRows(
+  rows: BabyNalinRow[],
+  repeatByQuantity: boolean,
+  repeatMultiplier = 1,
+): number {
+  if (!repeatByQuantity) return rows.length;
+  const multiplier = Math.min(100, Math.max(1, Math.trunc(Number(repeatMultiplier) || 1)));
+  return rows.reduce((total, row) => {
+    const quantidade = Math.max(1, Math.trunc(Number(row.quantidade) || 1));
+    const next = total + quantidade * multiplier;
+    return next > Number.MAX_SAFE_INTEGER ? Number.MAX_SAFE_INTEGER : next;
+  }, 0);
+}
+
 export function expandRows(rows: BabyNalinRow[], repeatByQuantity: boolean, repeatMultiplier = 1): BabyNalinRow[] {
   if (!repeatByQuantity) return rows;
+  const total = countExpandedRows(rows, repeatByQuantity, repeatMultiplier);
+  if (total > MAX_PDF_LABELS) {
+    throw new Error(`A geração teria ${total.toLocaleString('pt-BR')} etiquetas. O limite seguro é ${MAX_PDF_LABELS.toLocaleString('pt-BR')} por PDF.`);
+  }
   const multiplier = Math.min(100, Math.max(1, Math.trunc(Number(repeatMultiplier) || 1)));
   return rows.flatMap(r => Array.from({ length: Math.max(1, r.quantidade) * multiplier }, () => r));
 }
 
-/** Monta o PDF de produção 50×40 ou o arquivo vetorial para gráfica 46×38. */
+/**
+ * Distribui a tiragem da L42PRO pelas duas colunas do rolo. Ex.: 144 etiquetas
+ * ocupam 72 carreiras; se a quantidade for ímpar, a última direita fica vazia.
+ */
+export function planProductionLabelPlacements(
+  rows: BabyNalinRow[],
+  profile: Partial<CoucheRollProfile> = {},
+  repeatMultiplier = 1,
+  repeatByQuantity = true,
+): ProductionLabelPlacement[] {
+  const total = countExpandedRows(rows, repeatByQuantity, repeatMultiplier);
+  if (total > MAX_PDF_LABELS) {
+    throw new Error(`A geração teria ${total.toLocaleString('pt-BR')} etiquetas. O limite seguro é ${MAX_PDF_LABELS.toLocaleString('pt-BR')} por PDF.`);
+  }
+
+  const geometry = resolveCoucheRollGeometry(profile);
+  const multiplier = Math.min(100, Math.max(1, Math.trunc(Number(repeatMultiplier) || 1)));
+  const placements: ProductionLabelPlacement[] = [];
+  rows.forEach(row => {
+    const copies = repeatByQuantity ? Math.max(1, Math.trunc(Number(row.quantidade) || 1)) * multiplier : 1;
+    for (let copy = 0; copy < copies; copy++) {
+      placements.push(couchePlacementAt(row, placements.length, geometry));
+    }
+  });
+  return placements;
+}
+
+/** Monta o PDF 2-up 50×30 para a L42PRO ou a matriz sem repetição para gráfica. */
 export async function buildBabyNalinPdf(
   rows: BabyNalinRow[],
   options: BabyNalinPdfOptions = {},
@@ -413,11 +609,9 @@ export async function buildBabyNalinPdf(
 
   const { jsPDF } = await import('jspdf');
   const graphicMode = options.mode === 'graphic';
-  const paginas = graphicMode
-    ? uniqueClientSkuRows(rows)
-    : expandRows(rows, options.repeatByQuantity ?? false, options.repeatMultiplier ?? 1);
-  const pageWidth = graphicMode ? ART_WIDTH_MM : MEDIA_WIDTH_MM;
-  const pageHeight = graphicMode ? ART_HEIGHT_MM : MEDIA_HEIGHT_MM;
+  const coucheGeometry = resolveCoucheRollGeometry(options.coucheProfile);
+  const pageWidth = coucheGeometry.pageWidthMm;
+  const pageHeight = coucheGeometry.pageHeightMm;
 
   const doc = new jsPDF({
     unit: 'mm',
@@ -427,13 +621,23 @@ export async function buildBabyNalinPdf(
   });
   doc.setProperties({
     title: graphicMode
-      ? `Artes por SKU ${ART_WIDTH_MM}x${ART_HEIGHT_MM}mm ${BARCODE_FORMAT}`
-      : `Etiquetas ${ART_WIDTH_MM}x${ART_HEIGHT_MM}mm ${BARCODE_FORMAT}`,
+      ? `Etiquetas couche ${COUCHE_LABEL_WIDTH_MM}x${COUCHE_LABEL_HEIGHT_MM}mm 2 colunas ${BARCODE_FORMAT}`
+      : `Etiquetas L42PRO 2x${COUCHE_LABEL_WIDTH_MM}x${COUCHE_LABEL_HEIGHT_MM}mm ${BARCODE_FORMAT}`,
   });
 
-  paginas.forEach((row, i) => {
-    if (i > 0) doc.addPage([pageWidth, pageHeight], 'landscape');
-    drawLabel(doc, row, options);
+  const placements = graphicMode
+    ? planGraphicLabelPlacements(rows, options.coucheProfile)
+    : planProductionLabelPlacements(
+        rows,
+        options.coucheProfile,
+        options.repeatMultiplier,
+        options.repeatByQuantity ?? true,
+      );
+  placements.forEach(placement => {
+    if (placement.pageIndex > 0 && placement.column === 0) {
+      doc.addPage([pageWidth, pageHeight], 'landscape');
+    }
+    drawLabel(doc, placement.row, options, placement);
   });
 
   return doc;
@@ -476,7 +680,7 @@ export function pdfFilename(origem: string): string {
   return `Etiquetas_${base || 'pedido'}.pdf`;
 }
 
-/** Nome do PDF vetorial com uma página por SKU para envio à gráfica. */
+/** Nome do PDF vetorial couchê 2-up para envio à gráfica. */
 export function graphicPdfFilename(origem: string): string {
   const base = origem.replace(/\.[^.]+$/, '').replace(/[^A-Za-z0-9]+/g, '_').replace(/^_|_$/g, '');
   return `Artes_SKU_${base || 'pedido'}.pdf`;

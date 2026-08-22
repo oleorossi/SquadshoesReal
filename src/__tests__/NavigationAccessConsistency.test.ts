@@ -52,6 +52,14 @@ describe('Navigation ↔ Access Control consistency', () => {
     }
   });
 
+  it('expõe a etiquetagem do cliente como destino próprio no grupo Etiquetagem', () => {
+    expect(navigationCatalog.find((item) => item.path === '/etiquetagem-cliente')).toMatchObject({
+      label: 'ETIQUETAGEM CLIENTE',
+      group: 'Etiquetagem',
+      surfaces: ['sidebar', 'command'],
+    });
+  });
+
   it('topItem deve ter rota mapeada (ou ser dashboard, que é livre)', () => {
     const mod = resolveModuleForPath(topItem.path);
     // Dashboard pode ficar fora do mapa (acesso livre a usuários autenticados).

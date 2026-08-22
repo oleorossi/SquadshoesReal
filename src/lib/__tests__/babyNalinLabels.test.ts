@@ -2,25 +2,40 @@ import { describe, it, expect } from 'vitest';
 import { CODE128_PATTERNS, code128Bars, encodeCode128 } from '@/lib/code128';
 import {
   ART_WIDTH_MM,
-  ART_HEIGHT_MM,
   BARCODE_FORMAT,
+  COUCHE_ART_HEIGHT_MM,
+  COUCHE_BARCODE_TOP_Y_MM,
+  COUCHE_COLUMN_GAP_MM,
+  COUCHE_LABEL_HEIGHT_MM,
+  COUCHE_LABEL_WIDTH_MM,
+  COUCHE_OFFSET_X_MM,
+  COUCHE_OFFSET_Y_MM,
+  COUCHE_PAGE_HEIGHT_MM,
+  COUCHE_PAGE_WIDTH_MM,
+  DEFAULT_COUCHE_ROLL_PROFILE,
+  LAYOUT,
+  MAX_PDF_LABELS,
   MEDIA_HEIGHT_MM,
   MEDIA_WIDTH_MM,
   MIN_FONT_PT,
   MODULE_MM,
-  OFFSET_X_MM,
-  OFFSET_Y_MM,
   QUIET_ZONE_MIN_MM,
   analyzeClientSkus,
   assertBarcodeFits,
   buildBabyNalinPdf,
+  clientSkuKey,
+  countExpandedRows,
   decodeOrderBytes,
   expandRows,
   fitText,
+  graphicPageCount,
   graphicPdfFilename,
   measureBarcode,
   parseOrderCsv,
+  planGraphicLabelPlacements,
+  planProductionLabelPlacements,
   pdfFilename,
+  resolveCoucheRollGeometry,
   type BabyNalinRow,
 } from '@/lib/babyNalinLabels';
 
@@ -98,13 +113,6 @@ describe('geometria da etiqueta', () => {
     expect(MODULE_MM).toBeCloseTo(0.296, 4);
   });
 
-  it('a arte 46×38 fica centralizada na mídia 50×40', () => {
-    expect(OFFSET_X_MM).toBe(2);
-    expect(OFFSET_Y_MM).toBe(1);
-    expect(MEDIA_WIDTH_MM).toBe(50);
-    expect(MEDIA_HEIGHT_MM).toBe(40);
-  });
-
   it('o código de 13 dígitos cabe com folga na zona de silêncio', () => {
     const fit = measureBarcode(EAN);
     expect(fit.moduleCount).toBe(123);
@@ -122,6 +130,13 @@ describe('geometria da etiqueta', () => {
     const longo = '1234567890'.repeat(6); // 60 dígitos
     expect(measureBarcode(longo).fits).toBe(false);
     expect(() => assertBarcodeFits(longo)).toThrow(/zona de silêncio/);
+  });
+
+  it('classifica conteúdo não codificável sem derrubar a tela de seleção', () => {
+    const fit = measureBarcode('ABCÉ123');
+    expect(fit.fits).toBe(false);
+    expect(fit.error).toMatch(/não imprimível/);
+    expect(() => assertBarcodeFits('ABCÉ123')).toThrow(/inválido para CODE128/);
   });
 });
 
@@ -212,6 +227,12 @@ describe('expansão por quantidade', () => {
     expect(expandRows(rows, true, 2)).toHaveLength(10);
     expect(expandRows(rows, true, 0)).toHaveLength(5);
   });
+
+  it('conta sem materializar e barra PDFs acima do limite seguro', () => {
+    const enorme = [{ ...rows[0], quantidade: MAX_PDF_LABELS + 1 }];
+    expect(countExpandedRows(enorme, true)).toBe(MAX_PDF_LABELS + 1);
+    expect(() => expandRows(enorme, true)).toThrow(/limite seguro/);
+  });
 });
 
 describe('arquivo para gráfica por SKU', () => {
@@ -219,39 +240,157 @@ describe('arquivo para gráfica por SKU', () => {
     { tamanho: '34', cor: 'PRETO', referencia: 'NL02', codProduto: '905301', codigoBarra: '2260000303222', quantidade: 144 },
     { tamanho: '34', cor: ' preto ', referencia: 'nl02', codProduto: '905301', codigoBarra: '2260000303222', quantidade: 288 },
     { tamanho: '35', cor: 'PRETO', referencia: 'NL02', codProduto: '905301', codigoBarra: '2260000303239', quantidade: 288 },
+    { tamanho: '36', cor: 'PRETO', referencia: 'NL02', codProduto: '905301', codigoBarra: '2260000303246', quantidade: 432 },
   ];
 
   it('mantém uma arte por referência, cor e tamanho, na ordem do arquivo', () => {
     const analysis = analyzeClientSkus(rows);
     expect(analysis.conflicts).toHaveLength(0);
-    expect(analysis.rows).toHaveLength(2);
-    expect(analysis.rows.map(row => row.tamanho)).toEqual(['34', '35']);
+    expect(analysis.rows).toHaveLength(3);
+    expect(analysis.rows.map(row => row.tamanho)).toEqual(['34', '35', '36']);
+  });
+
+  it('normaliza a identidade do SKU sem esconder conflito de código de barras', () => {
+    expect(clientSkuKey(rows[0])).toBe(clientSkuKey(rows[1]));
+    expect(clientSkuKey(rows[0])).not.toBe(clientSkuKey(rows[2]));
   });
 
   it('detecta código de barras conflitante no mesmo SKU', () => {
-    const analysis = analyzeClientSkus([
+    const conflitantes = [
       rows[0],
       { ...rows[0], codigoBarra: '2260000303291' },
-    ]);
+    ];
+    const analysis = analyzeClientSkus(conflitantes);
     expect(analysis.conflicts).toHaveLength(1);
     expect(analysis.conflicts[0].codigosBarra).toEqual(['2260000303222', '2260000303291']);
+    expect(() => planGraphicLabelPlacements(conflitantes)).toThrow(/dados de impressão conflitantes/);
   });
 
-  it('gera PDF vetorial 46×38 com uma página por SKU, ignorando quantidade', async () => {
+  it('detecta código de produto conflitante porque ele também é impresso', () => {
+    const conflitantes = [
+      rows[0],
+      { ...rows[0], codProduto: 'OUTRO' },
+    ];
+    const analysis = analyzeClientSkus(conflitantes);
+    expect(analysis.conflicts).toHaveLength(1);
+    expect(analysis.conflicts[0].codigosProduto).toEqual(['905301', 'OUTRO']);
+    expect(() => planGraphicLabelPlacements(conflitantes)).toThrow(/dados de impressão conflitantes/);
+  });
+
+  it('impõe duas etiquetas couchê 50×30 lado a lado e avança a carreira quando fica cheia', () => {
+    const placements = planGraphicLabelPlacements(rows);
+
+    expect(placements.map(({ pageIndex, column, xMm, yMm, row }) => ({
+      pageIndex,
+      column,
+      xMm,
+      yMm,
+      tamanho: row.tamanho,
+    }))).toEqual([
+      { pageIndex: 0, column: 0, xMm: COUCHE_OFFSET_X_MM, yMm: COUCHE_OFFSET_Y_MM, tamanho: '34' },
+      {
+        pageIndex: 0,
+        column: 1,
+        xMm: COUCHE_LABEL_WIDTH_MM + COUCHE_COLUMN_GAP_MM + COUCHE_OFFSET_X_MM,
+        yMm: COUCHE_OFFSET_Y_MM,
+        tamanho: '35',
+      },
+      { pageIndex: 1, column: 0, xMm: COUCHE_OFFSET_X_MM, yMm: COUCHE_OFFSET_Y_MM, tamanho: '36' },
+    ]);
+    expect(graphicPageCount(placements.length)).toBe(2);
+  });
+
+  it('mantém toda a arte dentro de cada etiqueta física 50×30', () => {
+    expect(COUCHE_OFFSET_X_MM + ART_WIDTH_MM).toBeLessThanOrEqual(COUCHE_LABEL_WIDTH_MM);
+    expect(COUCHE_OFFSET_Y_MM + COUCHE_ART_HEIGHT_MM).toBeLessThanOrEqual(COUCHE_LABEL_HEIGHT_MM);
+    expect(COUCHE_OFFSET_Y_MM + COUCHE_BARCODE_TOP_Y_MM + LAYOUT.barcode.heightMm)
+      .toBeLessThanOrEqual(COUCHE_LABEL_HEIGHT_MM);
+    const ptToMm = 25.4 / 72;
+    expect(LAYOUT.logo.y + LAYOUT.logo.box).toBeLessThanOrEqual(COUCHE_ART_HEIGHT_MM);
+    expect(LAYOUT.textLinesY.at(-1)! + LAYOUT.textPt * ptToMm).toBeLessThanOrEqual(LAYOUT.productCode.y);
+    expect(LAYOUT.productCode.y + LAYOUT.productCode.pt * ptToMm).toBeLessThanOrEqual(COUCHE_BARCODE_TOP_Y_MM);
+    expect(COUCHE_BARCODE_TOP_Y_MM + LAYOUT.barcode.heightMm).toBeLessThanOrEqual(COUCHE_ART_HEIGHT_MM);
+  });
+
+  it('aplica as medidas reais da faca e do liner sem alterar a etiqueta 50×30', () => {
+    const profile = {
+      columnGapMm: 3,
+      leftMarginMm: 1,
+      rightMarginMm: 1,
+      topMarginMm: 0.5,
+      bottomMarginMm: 1.5,
+    };
+    const geometry = resolveCoucheRollGeometry(profile);
+    const placements = planGraphicLabelPlacements(rows, profile);
+
+    expect(geometry.pageWidthMm).toBe(105);
+    expect(geometry.pageHeightMm).toBe(32);
+    expect(placements[0].xMm).toBe(1 + COUCHE_OFFSET_X_MM);
+    expect(placements[0].yMm).toBe(0.5 + COUCHE_OFFSET_Y_MM);
+    expect(placements[1].xMm).toBe(1 + COUCHE_LABEL_WIDTH_MM + 3 + COUCHE_OFFSET_X_MM);
+    expect(DEFAULT_COUCHE_ROLL_PROFILE.columnGapMm).toBe(COUCHE_COLUMN_GAP_MM);
+  });
+
+  it('recusa medidas físicas negativas ou absurdas', () => {
+    expect(() => resolveCoucheRollGeometry({ columnGapMm: -1 })).toThrow(/Medida inválida/);
+    expect(() => resolveCoucheRollGeometry({ leftMarginMm: 51 })).toThrow(/Medida inválida/);
+  });
+
+  it('gera PDF 2-up no passo do rolo, ignorando quantidade e multiplicador', async () => {
     const doc = await buildBabyNalinPdf(rows, { mode: 'graphic', repeatByQuantity: true, repeatMultiplier: 10 });
     expect(doc.getNumberOfPages()).toBe(2);
-    const page = doc.internal.pageSize;
-    expect(page.getWidth()).toBeCloseTo(ART_WIDTH_MM, 1);
-    expect(page.getHeight()).toBeCloseTo(ART_HEIGHT_MM, 1);
+    for (let pageNumber = 1; pageNumber <= doc.getNumberOfPages(); pageNumber++) {
+      const mediaBox = doc.getPageInfo(pageNumber).pageContext.mediaBox;
+      const widthMm = (mediaBox.topRightX - mediaBox.bottomLeftX) * 25.4 / 72;
+      const heightMm = (mediaBox.topRightY - mediaBox.bottomLeftY) * 25.4 / 72;
+      expect(widthMm).toBeCloseTo(COUCHE_PAGE_WIDTH_MM, 1);
+      expect(heightMm).toBeCloseTo(COUCHE_PAGE_HEIGHT_MM, 1);
+    }
   });
 
-  it('preserva o PDF de produção 50×40 com quantidade vezes multiplicador', async () => {
+  it('gera todas as páginas no tamanho do perfil informado pela gráfica', async () => {
+    const coucheProfile = {
+      columnGapMm: 2,
+      leftMarginMm: 1,
+      rightMarginMm: 2,
+      topMarginMm: 0.5,
+      bottomMarginMm: 1.5,
+    };
+    const geometry = resolveCoucheRollGeometry(coucheProfile);
+    const doc = await buildBabyNalinPdf(rows, { mode: 'graphic', coucheProfile });
+
+    for (let pageNumber = 1; pageNumber <= doc.getNumberOfPages(); pageNumber++) {
+      const mediaBox = doc.getPageInfo(pageNumber).pageContext.mediaBox;
+      expect((mediaBox.topRightX - mediaBox.bottomLeftX) * 25.4 / 72).toBeCloseTo(geometry.pageWidthMm, 1);
+      expect((mediaBox.topRightY - mediaBox.bottomLeftY) * 25.4 / 72).toBeCloseTo(geometry.pageHeightMm, 1);
+    }
+  });
+
+  it('distribui 144 etiquetas em 72 carreiras de duas colunas para a L42PRO', async () => {
+    const tiragem = [{ ...rows[0], quantidade: 144 }];
+    const placements = planProductionLabelPlacements(tiragem);
+
+    expect(placements).toHaveLength(144);
+    expect(placements[0]).toMatchObject({ pageIndex: 0, column: 0 });
+    expect(placements[1]).toMatchObject({ pageIndex: 0, column: 1 });
+    expect(placements[143]).toMatchObject({ pageIndex: 71, column: 1 });
+
+    const doc = await buildBabyNalinPdf(tiragem, { mode: 'production' });
+    expect(doc.getNumberOfPages()).toBe(72);
+    for (let pageNumber = 1; pageNumber <= doc.getNumberOfPages(); pageNumber++) {
+      const mediaBox = doc.getPageInfo(pageNumber).pageContext.mediaBox;
+      expect((mediaBox.topRightX - mediaBox.bottomLeftX) * 25.4 / 72).toBeCloseTo(COUCHE_PAGE_WIDTH_MM, 1);
+      expect((mediaBox.topRightY - mediaBox.bottomLeftY) * 25.4 / 72).toBeCloseTo(COUCHE_PAGE_HEIGHT_MM, 1);
+    }
+  });
+
+  it('gera a produção 2-up com quantidade vezes multiplicador', async () => {
     const pequenas = rows.map((row, index) => ({ ...row, quantidade: index + 1 }));
     const doc = await buildBabyNalinPdf(pequenas, { mode: 'production', repeatByQuantity: true, repeatMultiplier: 2 });
-    expect(doc.getNumberOfPages()).toBe((1 + 2 + 3) * 2);
+    expect(doc.getNumberOfPages()).toBe(((1 + 2 + 3 + 4) * 2) / 2);
     const page = doc.internal.pageSize;
-    expect(page.getWidth()).toBeCloseTo(MEDIA_WIDTH_MM, 1);
-    expect(page.getHeight()).toBeCloseTo(MEDIA_HEIGHT_MM, 1);
+    expect(page.getWidth()).toBeCloseTo(COUCHE_PAGE_WIDTH_MM, 1);
+    expect(page.getHeight()).toBeCloseTo(COUCHE_PAGE_HEIGHT_MM, 1);
   });
 });
 

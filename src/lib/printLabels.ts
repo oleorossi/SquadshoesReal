@@ -738,6 +738,45 @@ export const DEFAULT_THERMAL_CONFIG: ThermalLabelConfig = {
   showSize: true,
 };
 
+/**
+ * Cores de tira que MERECEM espaço na etiqueta individual.
+ *
+ * A linha de cor vinha assim: `OFF WHITE | TIRA 1: OFF WHITE · TRASEIRA: OFF
+ * WHITE`. Numa etiqueta de 100×30 mm a coluna de descrição não tem essa
+ * largura, então o texto era truncado pelo overflow — e o que se perdia era o
+ * NOME DO MATERIAL na linha de baixo ficar sem contexto, enquanto o espaço ia
+ * para uma repetição da cor que já estava escrita duas palavras antes.
+ *
+ * Decisão do dono (22/08/2026): não precisa ter todas as cores das tiras.
+ *
+ * Regra: some com toda tira cuja cor é a MESMA do produto — é redundância pura.
+ * Sobrando alguma diferente, mostra o CONJUNTO distinto dessas cores, sem
+ * enumerar tira por tira. Tira em cor diferente é distinção real de produção
+ * (dá pra encaixotar o par errado), então essa informação NÃO se apaga; o que
+ * se apaga é a repetição.
+ *
+ * Formato de entrada: `TIRA 1:OFF WHITE|TRASEIRA:PRETO` (o separador `|` vem de
+ * buildStrapSignature).
+ */
+export function compactStrapColors(mainColor: string, strapsLabel?: string, maxShown = 2): string {
+  if (!strapsLabel) return '';
+  const norm = (v: string) => v.normalize('NFC').toUpperCase().replace(/\s+/g, ' ').trim();
+  const main = norm(mainColor || '');
+
+  const distintas: string[] = [];
+  for (const parte of strapsLabel.split('|')) {
+    const sep = parte.indexOf(':');
+    const cor = norm(sep >= 0 ? parte.slice(sep + 1) : parte);
+    if (!cor || cor === main) continue;
+    if (!distintas.includes(cor)) distintas.push(cor);
+  }
+  if (distintas.length === 0) return '';
+
+  const mostrar = distintas.slice(0, maxShown);
+  const resto = distintas.length - mostrar.length;
+  return resto > 0 ? `${mostrar.join(' · ')} +${resto}` : mostrar.join(' · ');
+}
+
 export function buildThermalLabelsHtml(labels: {
   refCode: string; refName: string; mainMaterial: string; color: string;
   size: string; barcode: string; imageUrl?: string; shoeCategory?: string;
@@ -856,6 +895,9 @@ export function buildThermalLabelsHtml(labels: {
       ? `FABRICADO NO BRASIL &nbsp;·&nbsp; CNPJ ${escapeHtml(senderCnpj)}`
       : `FABRICADO NO BRASIL`;
 
+    // Só as cores de tira que DIFEREM da cor do produto — ver compactStrapColors.
+    const strapExtras = compactStrapColors(l.color || '', l.strapsLabel);
+
     return `<div class="print-page">
       ${headerHtml}
       <section class="label-shell" style="top:${thisShellTopMm}mm">
@@ -865,7 +907,7 @@ export function buildThermalLabelsHtml(labels: {
 
         <div class="label-info">
           <p class="info-reference">${escapeHtml(displayReference)}</p>
-          <p class="info-color">${escapeHtml(l.color || '—')}${l.strapsLabel ? ` <span class="info-straps">| ${escapeHtml(l.strapsLabel.replace(/\|/g, ' · ').replace(/:/g, ': '))}</span>` : ''}${!showHeader && l.qty ? ` <strong class="info-qty">×${l.qty}</strong>` : ''}</p>
+          <p class="info-color">${escapeHtml(l.color || '—')}${strapExtras ? ` <span class="info-straps">| TIRA ${escapeHtml(strapExtras)}</span>` : ''}${!showHeader && l.qty ? ` <strong class="info-qty">×${l.qty}</strong>` : ''}</p>
           ${c.showMaterial && l.mainMaterial ? `<p class="info-material">${escapeHtml(l.mainMaterial)}</p>` : ''}
           ${c.showPedido && l.clientOrderNumber ? `<p class="info-pedido">PED. ${escapeHtml(l.clientOrderNumber)}</p>` : ''}
           ${!showHeader && c.showCategory && l.shoeCategory ? `<p class="info-category">${escapeHtml(l.shoeCategory)}</p>` : ''}

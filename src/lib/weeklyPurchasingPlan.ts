@@ -1,4 +1,4 @@
- import { format, parseISO, addDays, isTuesday, nextTuesday, isBefore, startOfDay } from 'date-fns';
+import { format, parseISO, addDays, isTuesday, nextTuesday, isBefore, startOfDay } from 'date-fns';
 import { convertDm2ToLinearMeters, convertDm2ToPlates, isLinearWidthMissing, type ComponentSheetCandidate } from './materialConsumption';
 import { classifyBomMaterial } from './orderConsumption';
 import { caixaCollectiveTypeFromName, shouldShowCaixaForMode, wholePackagingDemand, type CollectiveType } from './packagingPairsPerBox';
@@ -19,12 +19,28 @@ export interface WeeklyOrder {
   planned_delivery: string | null;
   created_at: string;
   grade?: Record<string, number> | null;
+  color?: string | null;
+  sale_order_item_id?: string | null;
   /**
    * Modo de embalagem do PEDIDO (sale_orders.packaging_mode do PV da OP).
    * Usado pra filtrar caixas ALTERNATIVAS do BOM (colmeia × individual) —
    * sem ele o plano soma as duas e infla a compra de embalagem.
    */
   packaging_mode?: string | null;
+}
+
+/**
+ * Linha de demanda já calculada pelo motor SQL (consumptionService).
+ * Quando presente para uma OP, substitui a explosão do BOM nessa OP.
+ */
+export interface EngineDemandLine {
+  orderId: string;
+  productId: string;
+  required: number;
+  unit?: string | null;
+  name?: string | null;
+  category?: string | null;
+  product?: SheetMaterial['products'];
 }
 
 export interface SheetMaterial {
@@ -67,44 +83,21 @@ export interface WeeklyPlanResult {
   plan: MaterialPlanRow[];
 }
 
-/**
- * Calcula a quantidade necessária na UNIDADE FÍSICA do produto.
- *
- * Auditoria 2026-07-01 (achado A — parity com by_grade/modal): o consumo do BOM
- * usa SEMPRE o ESCALAR `quantity_per_unit` (por par), igual ao motor canônico
- * (orderConsumption.ts) e ao lado SQL (`calculate_order_consumption_by_grade`).
- * Antes este plano lia `sheet_materials.consumption_per_size` — a MESMA fonte
- * do bug da cola 5000× (valores gravados por cluster/agregado, não por par) —
- * e a projeção de compra explodia nos materiais afetados.
- *
- * A5 (auditoria): material de ÁREA cortado de bobina/placa (napa/couro/forro) tem o
- * consumo armazenado em dm²/par e precisa ser convertido pela LARGURA da ficha de
- * componente (regra canônica) — antes o valor cru era multiplicado pelo preço (R$/m),
- * inflando ~137×. Item linear DIRETO sem ficha (tira/elástico) já está na unidade
- * nativa e NÃO converte. O sistema NÃO acrescenta perda de corte em nenhum caminho —
- * o valor cadastrado já considera o rendimento real do material.
- */
 function calculateRequiredAmount(
   mat: SheetMaterial,
   order: WeeklyOrder,
   cs: ComponentSheetCandidate | null
 ): number {
-  // Total bruto na unidade de CONSUMO armazenada (dm²/par p/ material de área)
   const rawTotal = order.quantity * (Number(mat.quantity_per_unit) || 0);
-
   const unit = (mat.products?.unit || '').toLowerCase();
   const isLinear = ['m', 'metro', 'metros', 'cm'].includes(unit);
   const isPlate = unit === 'placa' || unit === 'chapa';
-
-  // Área → metros lineares (÷ largura da ficha) quando o produto é linear e a ficha tem largura.
   if (isLinear && cs && !isLinearWidthMissing(cs, unit)) {
     return convertDm2ToLinearMeters(rawTotal, cs);
   }
-  // Área → placas quando o produto é placa.
   if (isPlate && cs) {
     return convertDm2ToPlates(rawTotal, cs);
   }
-  // Linear direto / contagem / sem ficha: já está na unidade nativa.
   return rawTotal;
 }
 
@@ -112,14 +105,11 @@ export function generateWeeklyPurchasingPlan(
   orders: WeeklyOrder[],
   sheetMaterials: SheetMaterial[],
   componentSheets: Array<ComponentSheetCandidate & { product_id: string }> = [],
-  // Datas-limite de compra (ISO) por OP×material vindas da view
-  // purchase_projection_timeline (cronograma reverso = entrega − setores − buffer −
-  // lead do fornecedor). Quando presente, é a âncora de QUANDO comprar. Use buyByKey().
-  buyByDates: Map<string, string> = new Map()
+  buyByDates: Map<string, string> = new Map(),
+  engineDemand: EngineDemandLine[] | null = null,
 ): WeeklyPlanResult {
   const weeklyDemands: Record<string, Record<string, number>> = {};
 
-  // A5: ficha de componente por produto — fonte da LARGURA (conversão dm²→unidade física) e da perda.
   const csByProduct = new Map<string, ComponentSheetCandidate>();
   for (const cs of componentSheets) {
     if (cs && (cs as any).product_id) csByProduct.set((cs as any).product_id, cs);
@@ -132,11 +122,6 @@ export function generateWeeklyPurchasingPlan(
     materialsBySheet.set(sm.sheet_id, arr);
   }
 
-  // Achado A (auditoria 2026-07-01): a ficha pode listar VÁRIAS caixas no BOM
-  // (colmeia + individual) como ALTERNATIVAS — o pedido escolhe UMA via
-  // packaging_mode. Pré-varre os tipos de caixa presentes por ficha pra o
-  // filtro (shouldShowCaixaForMode, o MESMO helper do modal de consumo) só
-  // agir quando há alternativa real. Sem isso o plano somava as duas caixas.
   const caixaTypesBySheet = new Map<string, Set<CollectiveType>>();
   for (const sm of sheetMaterials) {
     const p = sm.products;
@@ -156,18 +141,93 @@ export function generateWeeklyPurchasingPlan(
     }
   }
 
+  const engineByOrder = new Map<string, EngineDemandLine[]>();
+  if (engineDemand) {
+    for (const line of engineDemand) {
+      if (!line.orderId || !line.productId) continue;
+      const arr = engineByOrder.get(line.orderId) || [];
+      arr.push(line);
+      engineByOrder.set(line.orderId, arr);
+      if (line.product && !productMap.has(line.productId)) {
+        productMap.set(line.productId, line.product);
+      }
+    }
+  }
+
   const today = startOfDay(new Date());
+
+  const addDemand = (
+    order: WeeklyOrder,
+    productId: string,
+    prod: NonNullable<SheetMaterial['products']>,
+    requiredAmount: number,
+    fallbackProdDate: Date | null,
+  ) => {
+    if (requiredAmount <= 0) return;
+    const vkey = buyByKey(order.id, productId);
+    let buyDate: Date | null = buyByDates.has(vkey) ? parseISO(buyByDates.get(vkey)!) : null;
+    if (!buyDate && fallbackProdDate) {
+      const leadDays = prod.supplier_lead_time_days ?? prod.lead_time_days ?? 0;
+      buyDate = leadDays > 0 ? addDays(fallbackProdDate, -leadDays) : fallbackProdDate;
+    }
+    if (!buyDate) return;
+    const effectiveBuyDate = isBefore(buyDate, today) ? today : buyDate;
+    const targetTuesday = isTuesday(effectiveBuyDate) ? effectiveBuyDate : nextTuesday(effectiveBuyDate);
+    const weekKey = format(targetTuesday, 'dd/MM/yyyy');
+    if (!weeklyDemands[weekKey]) weeklyDemands[weekKey] = {};
+    weeklyDemands[weekKey][productId] = (weeklyDemands[weekKey][productId] || 0) + requiredAmount;
+  };
 
   for (const order of orders) {
     const prodDateStr = order.planned_start || order.planned_delivery || order.created_at;
     const fallbackProdDate = prodDateStr ? parseISO(prodDateStr) : null;
 
+    const engineLines = engineByOrder.get(order.id);
+    if (engineLines) {
+      const caixaTypes = new Set<CollectiveType>();
+      for (const line of engineLines) {
+        const prod = line.product || productMap.get(line.productId);
+        if (!prod) continue;
+        if (classifyBomMaterial('', line.name || prod.name || '', line.category || prod.category || '') !== 'Embalagem') continue;
+        const t = caixaCollectiveTypeFromName(line.name || prod.name);
+        if (t) caixaTypes.add(t);
+      }
+      for (const line of engineLines) {
+        const prod = line.product || productMap.get(line.productId);
+        if (!prod || prod.is_artisanal) continue;
+        const materialName = line.name || prod.name || '';
+        const materialCategory = line.category || prod.category || '';
+        if (
+          order.packaging_mode &&
+          classifyBomMaterial('', materialName, materialCategory) === 'Embalagem' &&
+          !shouldShowCaixaForMode(materialName, order.packaging_mode, caixaTypes)
+        ) continue;
+
+        const cs = csByProduct.get(line.productId) || null;
+        const unit = (prod.unit || '').toLowerCase();
+        const isLinear = ['m', 'metro', 'metros', 'cm'].includes(unit);
+        const isPlate = unit === 'placa' || unit === 'chapa';
+        let requiredAmount = Number(line.required) || 0;
+        if (line.unit == null) {
+          if (isLinear && cs && !isLinearWidthMissing(cs, unit)) {
+            requiredAmount = convertDm2ToLinearMeters(requiredAmount, cs);
+          } else if (isPlate && cs) {
+            requiredAmount = convertDm2ToPlates(requiredAmount, cs);
+          } else if (isLinear || isPlate) {
+            continue;
+          }
+        }
+        if (classifyBomMaterial('', materialName, materialCategory) === 'Embalagem') {
+          requiredAmount = wholePackagingDemand(requiredAmount, prod.unit);
+        }
+        addDemand(order, line.productId, prod, requiredAmount, fallbackProdDate);
+      }
+      continue;
+    }
+
     const materials = materialsBySheet.get(order.reference_id) || [];
     for (const mat of materials) {
       if (!mat.products || mat.products.is_artisanal) continue;
-
-      // Achado A: caixa de embalagem que NÃO é a do packaging_mode do pedido
-      // é alternativa não usada — pula (só quando há ≥2 tipos na mesma ficha).
       if (
         order.packaging_mode &&
         classifyBomMaterial('', mat.products.name || '', mat.products.category || '') === 'Embalagem' &&
@@ -177,40 +237,12 @@ export function generateWeeklyPurchasingPlan(
           caixaTypesBySheet.get(order.reference_id) || new Set<CollectiveType>(),
         )
       ) continue;
-
-      // A5: a perda + a largura vêm da ficha de COMPONENTE do produto (não da reference_id).
       const cs = csByProduct.get(mat.product_id) || null;
       const rawRequiredAmount = calculateRequiredAmount(mat, order, cs);
       const requiredAmount = classifyBomMaterial('', mat.products.name || '', mat.products.category || '') === 'Embalagem'
         ? wholePackagingDemand(rawRequiredAmount, mat.products.unit)
         : rawRequiredAmount;
-      if (requiredAmount <= 0) continue;
-
-      // QUANDO comprar (just-in-time) — chegar pouco antes da produção, sem ficar parado:
-      //   1ª escolha: data-limite reverse-scheduled da view purchase_projection_timeline
-      //     (entrega cliente − cronograma de setores em paralelo − buffer material − lead
-      //      time do fornecedor). Robusta: ancora no delivery_deadline do PV.
-      //   Fallback: data de produção da OP (planned_start, só ~49% preenchido) − lead time
-      //     do material. Antes a demanda caía na semana da PRODUÇÃO (comprava tarde) ou em
-      //     created_at (passado) quando planned_start faltava — timing furado em ~metade.
-      const vkey = buyByKey(order.id, mat.product_id);
-      let buyDate: Date | null = buyByDates.has(vkey) ? parseISO(buyByDates.get(vkey)!) : null;
-      if (!buyDate && fallbackProdDate) {
-        const leadDays = mat.products.supplier_lead_time_days ?? mat.products.lead_time_days ?? 0;
-        buyDate = leadDays > 0 ? addDays(fallbackProdDate, -leadDays) : fallbackProdDate;
-      }
-      if (!buyDate) continue;
-
-      // Compra já vencida (data no passado) → próxima terça acionável: comprar agora.
-      const effectiveBuyDate = isBefore(buyDate, today) ? today : buyDate;
-      const targetTuesday = isTuesday(effectiveBuyDate) ? effectiveBuyDate : nextTuesday(effectiveBuyDate);
-      const weekKey = format(targetTuesday, 'dd/MM/yyyy');
-
-      if (!weeklyDemands[weekKey]) weeklyDemands[weekKey] = {};
-      if (!weeklyDemands[weekKey][mat.product_id]) {
-        weeklyDemands[weekKey][mat.product_id] = 0;
-      }
-      weeklyDemands[weekKey][mat.product_id] += requiredAmount;
+      addDemand(order, mat.product_id, mat.products, requiredAmount, fallbackProdDate);
     }
   }
 
@@ -231,14 +263,6 @@ export function generateWeeklyPurchasingPlan(
       unitPrice: prod!.unit_price || 0,
       currentStock: prod!.quantity || 0,
       minStock: prod!.min_stock || 0,
-      // Estoque virtual inicial = bruto − mínimo − segurança (estoque LIVRE real).
-      // NÃO subtrai reserved_stock de propósito: o plano é orientado por DEMANDA das
-      // OPs ativas (Reservado + Em Produção), e reserved_stock representa justamente o
-      // material já reservado por ESSAS MESMAS OPs. Subtrair os dois = dupla-contagem
-      // (descontava o material da disponibilidade E recontava como demanda da OP),
-      // inflando a compra. A depleção pela demanda das OPs é o único redutor.
-      // (Auditoria 2026-06-06: overlap real era 1 produto, mas vira dupla-compra real
-      // assim que as reservas voltam a sincronizar com as OPs ativas.)
       virtualStock: Math.max(0, (prod!.quantity || 0) - (prod!.min_stock || 0) - (prod!.safety_stock || 0)),
       weeklyPurchases: {},
       totalToBuy: 0,
@@ -250,7 +274,6 @@ export function generateWeeklyPurchasingPlan(
     for (const [materialId, demand] of Object.entries(weeklyDemands[week])) {
       const row = planMap.get(materialId);
       if (!row) continue;
-
       const available = row.virtualStock;
       if (available >= demand) {
         row.virtualStock -= demand;
@@ -268,8 +291,6 @@ export function generateWeeklyPurchasingPlan(
   const plan = Array.from(planMap.values()).filter(
     (r) => r.totalToBuy > 0 || Object.values(r.weeklyPurchases).some((v) => v > 0)
   );
-
   plan.sort((a, b) => b.totalToBuy - a.totalToBuy);
-
   return { sortedWeeks, plan };
 }

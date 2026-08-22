@@ -99,11 +99,10 @@ describe('calc_required_for_grade — paridade dm²/par × grade', () => {
     expect(calcRequiredForGrade(null, null, 6.5, 10)).toBeCloseTo(65, 4);
   });
 
-  it('numeração com per_size=0 cai no fallback quantityPerUnit', () => {
+  it('numeração com per_size=0 usa o zero e não cai no escalar', () => {
     const perSize = { '34': 6, '36': 0 };
     const grade = { '34': 1, '36': 1 };
-    // 1×6 + 1×6.5 (fallback) = 12.5
-    expect(calcRequiredForGrade(perSize, grade, 6.5, 2)).toBeCloseTo(12.5, 4);
+    expect(calcRequiredForGrade(perSize, grade, 6.5, 2)).toBeCloseTo(6, 4);
   });
 });
 

@@ -7,23 +7,26 @@ import {
 
 describe('canonicalStageOrder', () => {
   it('returns canonical numbers for known sectors', () => {
+    expect(canonicalStageOrder('Corte Fibra')).toBe(1);
     expect(canonicalStageOrder('Corte Palmilha')).toBe(1);
     expect(canonicalStageOrder('Corte Forração')).toBe(2);
+    expect(canonicalStageOrder('Costura Palmilha')).toBe(3);
     expect(canonicalStageOrder('Costura')).toBe(3);
-    expect(canonicalStageOrder('Aviamento')).toBe(4);
-    expect(canonicalStageOrder('Silk')).toBe(5);
-    expect(canonicalStageOrder('Colagem')).toBe(6);
-    expect(canonicalStageOrder('Montagem')).toBe(7);
-    expect(canonicalStageOrder('Solagem')).toBe(8);
-    expect(canonicalStageOrder('Acabamento')).toBe(9);
-    expect(canonicalStageOrder('Expedição')).toBe(10);
+    expect(canonicalStageOrder('Costura Cabedal')).toBe(4);
+    expect(canonicalStageOrder('Aviamento')).toBe(5);
+    expect(canonicalStageOrder('Silk')).toBe(6);
+    expect(canonicalStageOrder('Colagem')).toBe(7);
+    expect(canonicalStageOrder('Montagem')).toBe(8);
+    expect(canonicalStageOrder('Solagem')).toBe(9);
+    expect(canonicalStageOrder('Acabamento')).toBe(10);
+    expect(canonicalStageOrder('Expedição')).toBe(11);
   });
 
-  it('handles aliases (Mesa = Aviamento, Corte Cabedal/Forracao = Corte Forração)', () => {
-    expect(canonicalStageOrder('Mesa')).toBe(4);
+  it('handles aliases (Mesa = Aviamento, Corte Cabedal/Forracao)', () => {
+    expect(canonicalStageOrder('Mesa')).toBe(5);
     expect(canonicalStageOrder('Corte Cabedal')).toBe(2);
     expect(canonicalStageOrder('Corte Forracao')).toBe(2);
-    expect(canonicalStageOrder('Expedicao')).toBe(10);
+    expect(canonicalStageOrder('Expedicao')).toBe(11);
   });
 
   it('returns 99 (sentinel) for unknown sectors', () => {
@@ -34,23 +37,25 @@ describe('canonicalStageOrder', () => {
 
 describe('formatOpNumber', () => {
   it('zero-pads single digits', () => {
-    expect(formatOpNumber('Corte Palmilha')).toBe('01');
-    expect(formatOpNumber('Acabamento')).toBe('09');
+    expect(formatOpNumber('Corte Fibra')).toBe('01');
+    expect(formatOpNumber('Aviamento')).toBe('05');
   });
 
   it('does NOT pad double digits', () => {
-    expect(formatOpNumber('Expedição')).toBe('10');
+    expect(formatOpNumber('Acabamento')).toBe('10');
+    expect(formatOpNumber('Expedição')).toBe('11');
   });
 
   it('returns em-dash for unknown sectors', () => {
     expect(formatOpNumber('Inexistente')).toBe('—');
   });
 
-  it('matches SQL canonical_stage_order (smoke test)', () => {
-    // Garante que o mapa TS bate com o SQL — se alguém mexer no SQL
-    // sem atualizar TS (ou vice-versa), o teste pega.
+  it('matches SQL canonical_stage_order (mig 20270101005300)', () => {
+    expect(CANONICAL_STAGE_ORDER['Corte Fibra']).toBe(1);
     expect(CANONICAL_STAGE_ORDER['Corte Palmilha']).toBe(1);
-    expect(CANONICAL_STAGE_ORDER['Costura']).toBe(3);
-    expect(CANONICAL_STAGE_ORDER['Expedição']).toBe(10);
+    expect(CANONICAL_STAGE_ORDER['Costura Palmilha']).toBe(3);
+    expect(CANONICAL_STAGE_ORDER['Costura Cabedal']).toBe(4);
+    expect(CANONICAL_STAGE_ORDER['Aviamento']).toBe(5);
+    expect(CANONICAL_STAGE_ORDER['Expedição']).toBe(11);
   });
 });

@@ -1,4 +1,4 @@
-import { Package, ShoppingCart, Gear as Settings, Truck, Factory, Kanban, SquaresFour as LayoutDashboard, Wallet, FileText, Users, Briefcase, Ruler, ShieldCheck, Lightning as Zap, ShoppingBag, ChartBar as BarChart3, Receipt, Footprints, Sparkle as Sparkles, ClipboardText as ClipboardCheck, CurrencyDollar as DollarSign, Calendar, Cube as Box, ListChecks, Stack as Boxes, HandHeart as HeartHandshake, FileXls as FileSpreadsheet, Scales as Scale, Warning as AlertTriangle, Path as RouteIcon, Pulse as Activity, Printer, Tag, ChatText as MessageSquare, TrendUp as TrendingUp, Calculator, Lock, Monitor, Cpu, Buildings, Gavel, Gauge, FolderOpen, Scissors, Clock } from '@phosphor-icons/react';
+import { Package, ShoppingCart, Gear as Settings, Truck, Factory, Kanban, SquaresFour as LayoutDashboard, Wallet, FileText, Users, Briefcase, Ruler, ShieldCheck, Lightning as Zap, ShoppingBag, ChartBar as BarChart3, Receipt, Footprints, Sparkle as Sparkles, ClipboardText as ClipboardCheck, CurrencyDollar as DollarSign, Calendar, Cube as Box, ListChecks, Stack as Boxes, HandHeart as HeartHandshake, FileXls as FileSpreadsheet, Scales as Scale, Warning as AlertTriangle, Path as RouteIcon, Pulse as Activity, Printer, Tag, Barcode, ChatText as MessageSquare, TrendUp as TrendingUp, Calculator, Lock, Monitor, Cpu, Buildings, Gavel, Gauge, FolderOpen, Scissors, Clock } from '@phosphor-icons/react';
 
 /** Superfícies onde um recurso pode ser descoberto sem duplicar seu metadado. */
 export type NavigationSurface = 'sidebar' | 'command' | 'quick-action' | 'hub-shortcut';
@@ -90,9 +90,6 @@ export const navigationCatalog: NavigationResource[] = [
 
   // Logística
   { path: '/expedicao', label: 'Expedição', group: 'Logística', icon: Package, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/ExpedicaoHub') },
-  // Etiquetas pertence à expedição no controle de acesso; agrupá-la aqui evita
-  // um grupo de um item que quebra a leitura do fluxo da fábrica.
-  { path: '/label-system', label: 'ETIQUETAGEM', group: 'Logística', icon: Tag, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/LabelSystem') },
   { path: '/embalagens', label: 'Embalagens', group: 'Logística', icon: Box, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/PackagingManagement') },
   { path: '/transporte', label: 'Transporte', group: 'Logística', icon: Truck, surfaces: ['command'] /* Transporte: 0 tarifas cadastradas */, preload: () => import('@/pages/Transport') },
   { path: '/picking', label: 'Separação · Materiais', group: 'Logística', icon: ClipboardCheck, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/PickingListPage') },
@@ -102,6 +99,11 @@ export const navigationCatalog: NavigationResource[] = [
   { path: '/transporters', label: 'Transportadoras', group: 'Logística', icon: Truck, surfaces: ['command'] /* Transportadoras: 0 registros */, preload: () => import('@/pages/Transporters') },
   { path: '/picking-sessions', label: 'Separação · Bipagem (EAN)', group: 'Logística', icon: ClipboardCheck, surfaces: ['command', 'hub-shortcut'], preload: () => import('@/pages/Picking') },
   { path: '/delivery-tracking', label: 'Rastreamento', group: 'Logística', icon: Activity, surfaces: ['command', 'hub-shortcut'], preload: () => import('@/pages/DeliveryTracking') },
+
+  // Etiquetagem
+  { path: '/label-system', label: 'ETIQUETAGEM', group: 'Etiquetagem', icon: Tag, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/LabelSystem') },
+  // Fluxo do arquivo do cliente isolado da etiquetagem padrão da fábrica.
+  { path: '/etiquetagem-cliente', label: 'ETIQUETAGEM CLIENTE', group: 'Etiquetagem', icon: Barcode, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/ClientLabeling') },
 
   // Financeiro e obrigações
   { path: '/financeiro', label: 'Financeiro', group: 'Financeiro', icon: Wallet, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/Finance') },
@@ -186,7 +188,11 @@ const menuGroupsDeclarados: NavigationGroup[] = [
   },
   {
     label: 'Logística', icon: Truck,
-    items: [resource('/expedicao'), resource('/label-system'), resource('/embalagens'), resource('/transporte'), resource('/picking'), resource('/conferencia-saida'), resource('/manifests'), resource('/entregas'), resource('/transporters')],
+    items: [resource('/expedicao'), resource('/embalagens'), resource('/transporte'), resource('/picking'), resource('/conferencia-saida'), resource('/manifests'), resource('/entregas'), resource('/transporters')],
+  },
+  {
+    label: 'Etiquetagem', icon: Tag,
+    items: [resource('/label-system'), resource('/etiquetagem-cliente')],
   },
   {
     label: 'Financeiro', icon: Wallet,
@@ -307,7 +313,7 @@ export interface RoleMenuPresentation {
 
 const ORDEM_COMPLETA = [
   'Comercial', 'Engenharia', 'Produção', 'Estoque',
-  'Compras', 'Logística', 'Financeiro', 'Fiscal', 'RH',
+  'Compras', 'Logística', 'Etiquetagem', 'Financeiro', 'Fiscal', 'RH',
 ];
 
 // ════════════════════════════════════════════════════════════════════════
@@ -342,7 +348,7 @@ export const ROLE_MENU_PRESENTATION: Record<string, RoleMenuPresentation> = {
   consulta:{ home: '/dashboard', groupOrder: ORDEM_COMPLETA },
 
   // Quem aponta produção não começa o dia olhando KPI: começa apontando.
-  producao:     { home: '/producao/apontamento', groupOrder: ['Produção', 'Estoque', 'Logística', 'Engenharia', 'RH'] },
+  producao:     { home: '/producao/apontamento', groupOrder: ['Produção', 'Estoque', 'Logística', 'Etiquetagem', 'Engenharia', 'RH'] },
   comercial:    { home: '/comercial',            groupOrder: ['Comercial'] },
   nfe_operator: { home: '/nfe',                  groupOrder: ['Fiscal', 'Comercial'] },
   almoxarifado: { home: '/estoque',              groupOrder: ['Estoque'] },

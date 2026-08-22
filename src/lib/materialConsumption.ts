@@ -53,7 +53,75 @@ const asNumericRecord = (value: NumericRecordLike): Record<string, number> => {
    }, {});
  };
  
- /**
+export type PickedConsumption =
+  | { found: true; value: number; key: string }
+  | { found: false };
+
+const readFinitePerSize = (
+  perSize: Record<string, unknown>,
+  key: string,
+): number | null => {
+  if (!key || !Object.prototype.hasOwnProperty.call(perSize, key)) return null;
+  const raw = perSize[key];
+  if (raw === null || raw === undefined || raw === '') return null;
+  const numeric = Number(raw);
+  return Number.isFinite(numeric) ? numeric : null;
+};
+
+/**
+ * Lookup de consumo por numeração.
+ * Ordem: chave exata → forma numérica → chave conjugada no mapa que contém o
+ * tamanho ("33" casa "33/34") → partes individuais de uma chave conjugada da
+ * grade ("33/34" casa "33"). Zero explícito é valor válido (não cai no escalar).
+ */
+export const pickConsumptionForSize = (
+  perSize: Record<string, unknown> | null | undefined,
+  sizeKey: string | number | null | undefined,
+): PickedConsumption => {
+  if (!perSize || sizeKey == null || sizeKey === '') return { found: false };
+  const raw = String(sizeKey).trim();
+  if (!raw || raw.startsWith('_')) return { found: false };
+
+  const available = Object.keys(perSize);
+  const candidates: string[] = [];
+  const push = (key: string) => {
+    if (key && !candidates.includes(key) && Object.prototype.hasOwnProperty.call(perSize, key)) {
+      candidates.push(key);
+    }
+  };
+
+  push(raw);
+  const firstPart = raw.split('/')[0].trim();
+  if (firstPart !== raw) push(firstPart);
+
+  const parts = raw.split('/').map((part) => part.trim()).filter(Boolean);
+  const conjugated = available
+    .filter((key) => key.includes('/'))
+    .filter((key) => {
+      const keyParts = key.split('/').map((part) => part.trim());
+      return parts.some((part) => keyParts.includes(part));
+    })
+    .sort((a, b) => {
+      const aFirst = a.split('/')[0].trim();
+      const bFirst = b.split('/')[0].trim();
+      const aPreferred = parts.includes(aFirst);
+      const bPreferred = parts.includes(bFirst);
+      if (aPreferred !== bPreferred) return aPreferred ? -1 : 1;
+      return a.localeCompare(b);
+    });
+  for (const key of conjugated) push(key);
+  for (const part of parts) {
+    if (part !== raw) push(part);
+  }
+
+  for (const key of candidates) {
+    const value = readFinitePerSize(perSize, key);
+    if (value !== null) return { found: true, value, key };
+  }
+  return { found: false };
+};
+
+/**
   * Computes required quantity respecting per-size consumption.
   * Matches the PostgreSQL logic in calc_required_for_grade().
   */
@@ -69,20 +137,21 @@ const asNumericRecord = (value: NumericRecordLike): Record<string, number> => {
      Object.keys(consumptionPerSize).length > 0 && 
      Object.keys(grade).length > 0
    ) {
+     let processed = false;
      const total = Object.entries(grade).reduce((sum, [size, pairs]) => {
        const vPairs = Number(pairs) || 0;
-       if (vPairs <= 0) return sum;
- 
-       const vCons = (consumptionPerSize[size] && consumptionPerSize[size] !== 0)
-         ? Number(consumptionPerSize[size])
-         : Number(quantityPerUnit);
- 
+       if (vPairs <= 0 || size.startsWith('_')) return sum;
+
+       processed = true;
+       const picked = pickConsumptionForSize(consumptionPerSize, size);
+       const vCons = picked.found ? picked.value : Number(quantityPerUnit);
+
        return sum + (vPairs * vCons);
      }, 0);
- 
-     if (total > 0) return total;
+
+     if (processed) return total;
    }
- 
+
    return (Number(quantityPerUnit) || 0) * (Number(totalQuantity) || 0);
  };
  
@@ -241,13 +310,18 @@ export const calculateGradeBasedDm2 = (
 
   return gradeEntries.reduce((sum, [size, value]) => {
     const pairs = Number(value) * fichas;
-    let consumptionPerPair = (hasOverride && overridePerSize[size] > 0)
-      ? Number(overridePerSize[size])
-      : (Number(yieldMap[size]) || 0);
-
-    if (consumptionPerPair <= 0) {
-      const multiplier = useGradeMultipliers ? (DEFAULT_SIZE_MULTIPLIERS[size] || 1) : 1;
-      consumptionPerPair = fallbackConsumption * multiplier;
+    const fromOverride = hasOverride ? pickConsumptionForSize(overridePerSize, size) : { found: false as const };
+    let consumptionPerPair: number;
+    if (fromOverride.found) {
+      consumptionPerPair = fromOverride.value;
+    } else {
+      const fromYield = pickConsumptionForSize(yieldMap, size);
+      if (fromYield.found && fromYield.value > 0) {
+        consumptionPerPair = fromYield.value;
+      } else {
+        const multiplier = useGradeMultipliers ? (DEFAULT_SIZE_MULTIPLIERS[size] || 1) : 1;
+        consumptionPerPair = fallbackConsumption * multiplier;
+      }
     }
 
     return sum + (pairs * consumptionPerPair);

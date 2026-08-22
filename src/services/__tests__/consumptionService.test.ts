@@ -136,6 +136,19 @@ describe('consumptionService — nova hierarquia de fontes', () => {
     expect(rpcMock.mock.calls[0][0]).toBe('calculate_order_consumption');
   });
 
+  it('grade válida com quantity 0 cai no wrapper escalar (não explode a grade inteira)', async () => {
+    rpcMock.mockResolvedValueOnce({ data: [], error: null });
+    await calculateConsumption({
+      referenceId: 'ref-zero',
+      quantity: 0,
+      grade: { '37': 1104 },
+    });
+    const [fnName, params] = rpcMock.mock.calls[0];
+    expect(fnName).toBe('calculate_order_consumption');
+    expect(params.p_order_quantity).toBe(0);
+    expect(params.p_grade).toBeUndefined();
+  });
+
   it('lança erro descritivo quando a RPC falha', async () => {
     rpcMock.mockResolvedValueOnce({ data: null, error: { message: 'function does not exist' } });
     await expect(

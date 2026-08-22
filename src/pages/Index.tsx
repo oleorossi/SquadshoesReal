@@ -1,7 +1,7 @@
-import { useEffect, useState, useMemo, useRef, lazy, Suspense } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { Package, GridFour as LayoutGrid, Bell, Minus, ClockCounterClockwise as History, Medal as Ribbon, ArrowsLeftRight as ArrowRightLeft } from '@phosphor-icons/react';
+import { Package, GridFour as LayoutGrid, Bell, ClockCounterClockwise as History, Medal as Ribbon, ArrowsLeftRight as ArrowRightLeft, Stack as Layers } from '@phosphor-icons/react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useIsAdmin } from '@/hooks/useUserManagement';
 import { Button } from '@/components/ui/button';
@@ -15,6 +15,7 @@ import AuditLogTab from '@/components/inventory/tabs/AuditLogTab';
  import StrapStockLogTab from '@/components/inventory/tabs/StrapStockLogTab';
  import StockHistory from './StockHistory';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import GroupOrganizationPanel from '@/components/groups/GroupOrganizationPanel';
 
 // Categorias de material para filtro inline (chips).
 // 'Solado' REMOVIDO em 18/05/2026 — gestão de solados vive em /solados (SolesHub).
@@ -23,16 +24,16 @@ import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 const MATERIAL_CATEGORIES = [
   { value: 'all',       label: 'Todos' },
   { value: 'Cabedal',   label: 'Cabedal' },
-  { value: 'Forração',     label: 'Forração' },
+  { value: 'Forração da Palmilha', label: 'Forração' },
   { value: 'Palmilha',  label: 'Palmilha' },
-  { value: 'Químico',   label: 'Químicos' },
+  { value: 'Cola / Químico', label: 'Químicos' },
   { value: 'Componente',label: 'Componentes' },
   // 'Embalagem' REMOVIDO em 04/07/2026 — embalagem tem módulo próprio em
   // /embalagens (box_types). O silo products/Embalagem estava vazio (0 itens).
 ];
 
 // Tabs principais
-const MAIN_TABS = ['materials', 'overview', 'alerts', 'conversion'] as const;
+const MAIN_TABS = ['materials', 'organization', 'overview', 'alerts', 'conversion'] as const;
 
 // Admin-only tabs — removidas da barra principal
 const ADMIN_TABS = new Set(['audit', 'strap-stock']);
@@ -75,6 +76,8 @@ export default function Index() {
       report: 'overview',
       painel: 'overview',
       notifications: 'alerts',
+      grupos: 'organization',
+      organizacao: 'organization',
     },
   });
 
@@ -102,41 +105,48 @@ export default function Index() {
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         {/* ── Tab bar principal ── */}
-        <TabsList indicator="none" className="h-auto gap-1 bg-muted/50 p-1 rounded-lg">
+        <TabsList indicator="none" className="h-auto w-full justify-start gap-1 overflow-x-auto border-y border-foreground/15 bg-muted/20 p-1">
           <TabsTrigger
             value="materials"
-            className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm px-3 py-1.5 rounded-md"
+            className="min-w-[145px] justify-start gap-2 border border-transparent px-3 py-2 text-left font-sans normal-case tracking-normal data-[state=active]:border-foreground/20 data-[state=active]:bg-background data-[state=active]:shadow-sm"
           >
-            <Package className="h-3.5 w-3.5" />
-            Materiais
+            <Package className="h-4 w-4 shrink-0" />
+            <span><span className="block text-xs font-semibold">Materiais</span><span className="block text-[9px] font-normal text-muted-foreground">buscar e movimentar</span></span>
+          </TabsTrigger>
+          <TabsTrigger
+            value="organization"
+            className="min-w-[145px] justify-start gap-2 border border-transparent px-3 py-2 text-left font-sans normal-case tracking-normal data-[state=active]:border-foreground/20 data-[state=active]:bg-background data-[state=active]:shadow-sm"
+          >
+            <Layers className="h-4 w-4 shrink-0" />
+            <span><span className="block text-xs font-semibold">Organização</span><span className="block text-[9px] font-normal text-muted-foreground">setor, família e grupo</span></span>
           </TabsTrigger>
           <TabsTrigger
             value="overview"
-            className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm px-3 py-1.5 rounded-md"
+            className="min-w-[145px] justify-start gap-2 border border-transparent px-3 py-2 text-left font-sans normal-case tracking-normal data-[state=active]:border-foreground/20 data-[state=active]:bg-background data-[state=active]:shadow-sm"
           >
-            <LayoutGrid className="h-3.5 w-3.5" />
-            Visão Geral
+            <LayoutGrid className="h-4 w-4 shrink-0" />
+            <span><span className="block text-xs font-semibold">Visão geral</span><span className="block text-[9px] font-normal text-muted-foreground">posição do estoque</span></span>
           </TabsTrigger>
           <TabsTrigger
             value="alerts"
-            className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm px-3 py-1.5 rounded-md"
+            className="min-w-[145px] justify-start gap-2 border border-transparent px-3 py-2 text-left font-sans normal-case tracking-normal data-[state=active]:border-foreground/20 data-[state=active]:bg-background data-[state=active]:shadow-sm"
           >
-            <Bell className="h-3.5 w-3.5" />
-            Alertas
+            <Bell className="h-4 w-4 shrink-0" />
+            <span><span className="block text-xs font-semibold">Alertas</span><span className="block text-[9px] font-normal text-muted-foreground">ruptura e reposição</span></span>
           </TabsTrigger>
            <TabsTrigger
              value="conversion"
-             className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm px-3 py-1.5 rounded-md"
+             className="min-w-[145px] justify-start gap-2 border border-transparent px-3 py-2 text-left font-sans normal-case tracking-normal data-[state=active]:border-foreground/20 data-[state=active]:bg-background data-[state=active]:shadow-sm"
            >
-             <ArrowRightLeft className="h-3.5 w-3.5" />
-             Conversões
+             <ArrowRightLeft className="h-4 w-4 shrink-0" />
+             <span><span className="block text-xs font-semibold">Conversões</span><span className="block text-[9px] font-normal text-muted-foreground">compra e consumo</span></span>
            </TabsTrigger>
            <TabsTrigger
              value="history"
-             className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm px-3 py-1.5 rounded-md"
+             className="min-w-[145px] justify-start gap-2 border border-transparent px-3 py-2 text-left font-sans normal-case tracking-normal data-[state=active]:border-foreground/20 data-[state=active]:bg-background data-[state=active]:shadow-sm"
            >
-             <History className="h-3.5 w-3.5" />
-             Histórico
+             <History className="h-4 w-4 shrink-0" />
+             <span><span className="block text-xs font-semibold">Histórico</span><span className="block text-[9px] font-normal text-muted-foreground">entradas e saídas</span></span>
            </TabsTrigger>
 
           {/* ── Admin tabs — separadas visualmente ── */}
@@ -145,14 +155,14 @@ export default function Index() {
               <Separator orientation="vertical" className="h-5 mx-1" />
               <TabsTrigger
                 value="audit"
-                className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm px-3 py-1.5 rounded-md opacity-60 data-[state=active]:opacity-100"
+                className="min-w-[120px] gap-1.5 border border-transparent px-3 py-2 text-xs opacity-60 data-[state=active]:border-foreground/20 data-[state=active]:bg-background data-[state=active]:opacity-100"
               >
                 <History className="h-3.5 w-3.5" />
                 Auditoria
               </TabsTrigger>
               <TabsTrigger
                 value="strap-stock"
-                className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm px-3 py-1.5 rounded-md opacity-60 data-[state=active]:opacity-100"
+                className="min-w-[120px] gap-1.5 border border-transparent px-3 py-2 text-xs opacity-60 data-[state=active]:border-foreground/20 data-[state=active]:bg-background data-[state=active]:opacity-100"
               >
                 <Ribbon className="h-3.5 w-3.5" />
                 Corte Tiras
@@ -162,6 +172,11 @@ export default function Index() {
         </TabsList>
 
         <div className="mt-4">
+          {/* ── Organização industrial ── */}
+          <TabsContent value="organization">
+            <GroupOrganizationPanel permPath="/estoque" />
+          </TabsContent>
+
           {/* ── Visão Geral ── */}
           <TabsContent value="overview">
             <ReportTab />

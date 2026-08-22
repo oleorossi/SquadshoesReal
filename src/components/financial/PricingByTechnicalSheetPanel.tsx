@@ -42,6 +42,7 @@ import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { format, parseISO } from 'date-fns';
 import { parseBrlNumberNonNeg } from '@/lib/parseBrlNumber';
 import { parseDaysInput, parseDaysInstallments, computeMarkupPrice, deriveMarginFromTargetProfit } from '@/lib/markupCalc';
+import { calculateConsumption, type ConsumptionLine } from '@/services/consumptionService';
 
 const STORAGE_KEY = 'pricing-by-sheet-state';
 
@@ -49,6 +50,13 @@ const STORAGE_KEY = 'pricing-by-sheet-state';
  *  resultado é dividido de volta pra R$/par — evita distorção de itens com
  *  arredondamento por ficha (caixa colmeia, tiras via CEIL de fichas). */
 const GRADE_BASE_QTY = 12;
+
+type PricingProduct = {
+  id: string;
+  name: string | null;
+  unit: string | null;
+  unit_price: number | null;
+};
 
 function fmt(v: number) {
   return v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -122,8 +130,8 @@ export default function PricingByTechnicalSheetPanel({ initialSheetId }: Props =
     () =>
       (bomOperations || [])
         // Espelho do filtro do custeio: active IS NOT FALSE + tempo/custo não-nulos.
-        .filter((op: any) => op.active !== false && op.standard_time_minutes != null && op.cost_per_hour != null)
-        .map((op: any) => ({
+        .filter((op) => op.active !== false && op.standard_time_minutes != null && op.cost_per_hour != null)
+        .map((op) => ({
           id: op.id as string,
           operation: (op.operation_name as string) || '—',
           hourCost: Number(op.cost_per_hour) || 0,
@@ -136,8 +144,8 @@ export default function PricingByTechnicalSheetPanel({ initialSheetId }: Props =
   const legacyLaborBreakdown = useMemo(
     () =>
       (laborCosts || [])
-        .filter((l: any) => l.active)
-        .map((l: any) => ({
+        .filter((l) => l.active)
+        .map((l) => ({
           id: l.id as string,
           operation: (l.operation_name as string) || '—',
           hourCost: Number(l.hour_cost) || 0,
@@ -207,22 +215,23 @@ export default function PricingByTechnicalSheetPanel({ initialSheetId }: Props =
     enabled: !!sheetId,
     staleTime: 60_000,
     queryFn: async () => {
-      const { data, error } = await supabase.rpc('calculate_order_consumption', {
-        p_reference_id: sheetId,
-        p_order_quantity: GRADE_BASE_QTY,
-        p_color: '',
+      const summary = await calculateConsumption({
+        referenceId: sheetId,
+        quantity: GRADE_BASE_QTY,
+        color: '',
       });
-      if (error) throw error;
-      const lines = (Array.isArray(data) ? data : []) as any[];
-      const ids = Array.from(new Set(lines.map((l: any) => l?.product_id).filter(Boolean))) as string[];
-      let products: any[] = [];
+      const lines = summary.lines;
+      const ids = Array.from(
+        new Set(lines.map((l) => l.product_id).filter((id): id is string => Boolean(id))),
+      );
+      let products: PricingProduct[] = [];
       if (ids.length > 0) {
         const { data: prods, error: prodErr } = await supabase
           .from('products')
           .select('id, name, unit, unit_price')
           .in('id', ids);
         if (prodErr) throw prodErr;
-        products = prods || [];
+        products = (prods || []) as PricingProduct[];
       }
       return { lines, products };
     },
@@ -237,24 +246,24 @@ export default function PricingByTechnicalSheetPanel({ initialSheetId }: Props =
       qtyPerPair: number; unitPrice: number; costPerPair: number;
       resolved: boolean; unitMismatch: boolean; warning: string | null;
     }>;
-    const productMap = new Map<string, any>(engineData.products.map((p: any) => [p.id, p]));
+    const productMap = new Map<string, PricingProduct>(engineData.products.map((p) => [p.id, p]));
     const presentCaixaTypes = new Set<CollectiveType>();
-    engineData.lines.forEach((l: any) => {
-      const prod = productMap.get(l?.product_id);
-      const t = caixaCollectiveTypeFromName(prod?.name ?? l?.product_name);
+    engineData.lines.forEach((l: ConsumptionLine) => {
+      const prod = l.product_id ? productMap.get(l.product_id) : undefined;
+      const t = caixaCollectiveTypeFromName(prod?.name ?? l.product_name);
       if (t) presentCaixaTypes.add(t);
     });
     return engineData.lines
-      .filter((l: any) => {
-        const prod = productMap.get(l?.product_id);
-        return shouldShowCaixaForMode(prod?.name ?? l?.product_name, packagingMode, presentCaixaTypes);
+      .filter((l: ConsumptionLine) => {
+        const prod = l.product_id ? productMap.get(l.product_id) : undefined;
+        return shouldShowCaixaForMode(prod?.name ?? l.product_name, packagingMode, presentCaixaTypes);
       })
-      .map((l: any, idx: number) => {
-        const prod = productMap.get(l?.product_id);
-        const resolved = !!l?.product_id && !!prod;
+      .map((l: ConsumptionLine, idx: number) => {
+        const prod = l.product_id ? productMap.get(l.product_id) : undefined;
+        const resolved = !!l.product_id && !!prod;
         const unitPrice = Number(prod?.unit_price) || 0;
-        const required = Number(l?.required) || 0;
-        const lineUnit = String(l?.unit ?? prod?.unit ?? '').trim();
+        const required = Number(l.required) || 0;
+        const lineUnit = String(l.unit ?? prod?.unit ?? '').trim();
         const productUnit = String(prod?.unit ?? '').trim();
         // Guard de unidade (espírito do convert_to_product_unit do custeio): o
         // motor já emite na unidade do produto; se divergir, NÃO precifica —
@@ -262,16 +271,16 @@ export default function PricingByTechnicalSheetPanel({ initialSheetId }: Props =
         const unitMismatch = !!(lineUnit && productUnit && lineUnit.toLowerCase() !== productUnit.toLowerCase());
         const costPerPair = resolved && !unitMismatch ? (unitPrice * required) / GRADE_BASE_QTY : 0;
         return {
-          key: `${l?.product_id ?? 'sem-produto'}-${l?.component ?? ''}-${idx}`,
-          component: String(l?.component ?? '—'),
-          name: String(prod?.name ?? l?.product_name ?? l?.material ?? '—'),
+          key: `${l.product_id ?? 'sem-produto'}-${l.component ?? ''}-${idx}`,
+          component: String(l.component ?? '—'),
+          name: String(prod?.name ?? l.product_name ?? '—'),
           unit: lineUnit || productUnit || 'un',
           qtyPerPair: required / GRADE_BASE_QTY,
           unitPrice,
           costPerPair,
           resolved,
           unitMismatch,
-          warning: (l?.consumption_warning || l?.conversion_warning || null) as string | null,
+          warning: (l.consumption_warning || l.conversion_warning || null) as string | null,
         };
       });
   }, [engineData, packagingMode]);
@@ -282,7 +291,7 @@ export default function PricingByTechnicalSheetPanel({ initialSheetId }: Props =
   );
 
   const selectedSheet = useMemo(
-    () => sheets.find((s: any) => s.id === sheetId),
+    () => sheets.find((s) => s.id === sheetId),
     [sheets, sheetId]
   );
 
@@ -383,7 +392,7 @@ export default function PricingByTechnicalSheetPanel({ initialSheetId }: Props =
               <SelectValue placeholder={loadingSheets ? 'Carregando fichas...' : 'Selecione uma ficha técnica...'} />
             </SelectTrigger>
             <SelectContent className="max-h-[60vh]">
-              {sheets.map((s: any) => (
+              {sheets.map((s) => (
                 <SelectItem key={s.id} value={s.id} className="text-xs">
                   {s.code ? `${s.code} — ${s.name}` : s.name}
                 </SelectItem>
@@ -393,11 +402,11 @@ export default function PricingByTechnicalSheetPanel({ initialSheetId }: Props =
 
           {selectedSheet && (
             <div className="mt-3 flex items-center gap-2 flex-wrap text-xs">
-              <Badge variant="secondary">{(selectedSheet as any).code || '—'}</Badge>
-              <span className="font-medium">{(selectedSheet as any).name}</span>
+              <Badge variant="secondary">{selectedSheet.code || '—'}</Badge>
+              <span className="font-medium">{selectedSheet.name}</span>
               <span className="text-muted-foreground">·</span>
               <span className="text-muted-foreground">
-                Solado: {(selectedSheet as any).sole_material || '—'}
+                Solado: {selectedSheet.sole_material || '—'}
               </span>
             </div>
           )}
@@ -495,7 +504,7 @@ export default function PricingByTechnicalSheetPanel({ initialSheetId }: Props =
                   1 solado resolvido, caixa filtrada pelo modo de embalagem) × preço unitário
                   de estoque — mesma composição do custeio do pedido.
                 </p>
-                {(selectedSheet as any)?.has_straps && (
+                {selectedSheet?.has_straps && (
                   <div className="rounded-lg border border-warning/40 bg-warning/5 p-3 flex items-start gap-2 text-xs">
                     <AlertTriangle className="h-4 w-4 text-warning shrink-0 mt-0.5" />
                     <div>
@@ -815,7 +824,7 @@ export default function PricingByTechnicalSheetPanel({ initialSheetId }: Props =
               className="gap-1.5 h-7 text-xs"
               disabled={createSim.isPending}
               onClick={() => {
-                const sheetMeta = sheets.find((s: any) => s.id === sheetId) as any;
+                const sheetMeta = sheets.find((s) => s.id === sheetId);
                 createSim.mutate({
                   sheet_id: sheetId,
                   sheet_code: sheetMeta?.code ?? null,

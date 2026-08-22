@@ -231,6 +231,39 @@ describe('calculateConsumptionMultiSku — agregação por material', () => {
     expect(result.perItem[1].summary.lines).toHaveLength(2);
   });
 
+  it('linhas unresolved (product_id null) NÃO se misturam no mesmo bucket', async () => {
+    rpcMock
+      .mockResolvedValueOnce(rpcResult([
+        line({
+          product_id: null,
+          product_name: 'Fachete sem spec',
+          component: 'Fachete',
+          required: 0,
+          source: 'unresolved',
+          consumption_warning: 'sem fachete cadastrado',
+        }),
+      ]))
+      .mockResolvedValueOnce(rpcResult([
+        line({
+          product_id: null,
+          product_name: 'Componente órfão',
+          component: 'Aviamento',
+          required: 0,
+          source: 'unresolved',
+          consumption_warning: 'produto deletado',
+        }),
+      ]));
+
+    const result = await calculateConsumptionMultiSku([
+      { referenceId: 'r1', quantity: 10 },
+      { referenceId: 'r2', quantity: 10 },
+    ]);
+
+    expect(result.aggregatedLines).toHaveLength(2);
+    const names = result.aggregatedLines.map((l) => l.product_name).sort();
+    expect(names).toEqual(['Componente órfão', 'Fachete sem spec']);
+  });
+
   it('lista vazia → resultado neutro (não chama a RPC)', async () => {
     const result = await calculateConsumptionMultiSku([]);
     expect(rpcMock).not.toHaveBeenCalled();

@@ -9,6 +9,7 @@ import {
   getPreferredComponentSheet as getPreferredComponentSheetFromCandidates,
   normalizeText,
   normalizeColorKey,
+  pickConsumptionForSize,
   LINEAR_UNITS,
 } from '@/lib/materialConsumption';
 import { calculateStrapConsumptionCm, resolveOrderStraps } from '@/lib/strapConsumption';
@@ -292,16 +293,17 @@ export const TECHNICAL_SHEET_CONSUMPTION_COLUMNS = `
 
 /**
  * Junta mapas de consumo por numeração da menor para a maior precedência.
- * Valores zero/vazios significam "sem override" (mesma semântica do
- * `NULLIF(..., 0)` no motor SQL).
+ * Chave presente com 0 é override explícito (não "sem valor"). Vazio/nulo
+ * continua significando "esta fonte não define o tamanho".
  */
 export const mergePerSizeConsumption = (...sources: unknown[]): Record<string, number> => {
   const merged: Record<string, number> = {};
   for (const source of sources) {
     if (!source || typeof source !== 'object' || Array.isArray(source)) continue;
     for (const [size, value] of Object.entries(source as Record<string, unknown>)) {
+      if (value === null || value === undefined || value === '') continue;
       const consumption = Number(value);
-      if (Number.isFinite(consumption) && consumption > 0) merged[String(size)] = consumption;
+      if (Number.isFinite(consumption)) merged[String(size)] = consumption;
     }
   }
   return merged;
@@ -1088,7 +1090,7 @@ export function computeConsumptionForItems(
     const missing: string[] = [];
     for (const [k, v] of Object.entries(grade)) {
       if (k.startsWith('_') || !((Number(v) || 0) > 0)) continue;
-      if (!((Number(perSize[k]) || 0) > 0)) missing.push(k);
+      if (!pickConsumptionForSize(perSize, k).found) missing.push(k);
     }
     return missing;
   };
@@ -1424,11 +1426,11 @@ export function computeConsumptionForItems(
             sheet?.lining_consumption_per_size,
           )
         : {};
-      const liningSoleVals = Object.values(liningSolePerSize).filter((v) => Number(v) > 0) as number[];
+      const hasLiningSolePerSize = Object.keys(liningSolePerSize).length > 0;
       const liningWidthMissing = isLinearWidthMissing(liningSheet, 'm');
       let liningTotal: number;
       let liningWarning: string | undefined;
-      if (isPrincipalLining && liningSoleVals.length > 0) {
+      if (isPrincipalLining && hasLiningSolePerSize) {
         // sheet=null → usa o override PURO em dm² (não trata como metro); depois
         // converte dm²→metro pela largura da ficha do material (igual fachete).
         // Tamanho SEM spec no solado cai no ESCALAR da ficha (contrato SQL
@@ -1524,13 +1526,11 @@ export function computeConsumptionForItems(
             insoleConsumptionPerSizeBySole.get(soleProductIdForInsole || ''),
             sheet?.insole_consumption_per_size,
           );
-      const insoleSoleVals = Object.values(insoleSolePerSize).filter((v) => Number(v) > 0) as number[];
-      const computeInsoleDm2 = () => insoleSoleVals.length > 0
+      const hasInsoleSolePerSize = Object.keys(insoleSolePerSize).length > 0;
+      const computeInsoleDm2 = () => hasInsoleSolePerSize
         ? calculateGradeBasedDm2(item, insoleScalarConsumption, null, insoleSolePerSize, soleProductIdForInsole)
         : calculateGradeBasedDm2(item, insoleScalarConsumption, insoleSheet, undefined, soleProductIdForInsole);
-      // Aviso de fallback (tamanho sem spec → escalar), espelho do
-      // consumption_warning/fallback_average do SQL. Mantido visível na UI.
-      const insoleMissing = insoleSoleVals.length > 0 ? sizesMissingFromSpec(item, insoleSolePerSize) : [];
+      const insoleMissing = hasInsoleSolePerSize ? sizesMissingFromSpec(item, insoleSolePerSize) : [];
       const insoleWarning = sizeWarning(insoleMissing, insoleScalarConsumption);
       // Unidade de estoque = a do produto RESOLVIDO (pin > resolve canônico);
       // fallback: unidade do produto da ficha de componente. null = desconhecida
@@ -1550,7 +1550,7 @@ export function computeConsumptionForItems(
       // mesmo padrão do fachete sem specs. Com grupo mas sem produto ativo, a
       // linha continua saindo com a quantidade — só ganha o aviso, porque o
       // débito/reserva SQL descartam a linha e o operador precisa saber.
-      const insoleHasConsumption = insoleScalarConsumption > 0 || insoleSoleVals.length > 0;
+      const insoleHasConsumption = insoleScalarConsumption > 0 || Object.values(insoleSolePerSize).some((v) => Number(v) > 0);
       // `!resolvedPalmProduct && !palmProductId` é load-bearing: sem grupo mas
       // COM pin de produto (technical_sheet_palmilha_colors.palmilha_product_id
       // ou pin da variante) a palmilha resolve normalmente — sem esse guard a
@@ -1657,10 +1657,9 @@ export function computeConsumptionForItems(
         insoleLiningConsumptionPerSizeBySole.get(soleProductIdForInsole || ''),
         sheet?.insole_lining_consumption_per_size,
       );
-      const insoleLiningSoleVals = Object.values(insoleLiningSolePerSize).filter((v) => Number(v) > 0) as number[];
-      // Emite quando há consumo escalar OU o solado tem valores por número — senão a
-      // forração-de-palmilha dirigida pelo solado nunca sairia se o escalar fosse 0.
-      if ((insoleLiningCons > 0 || insoleLiningSoleVals.length > 0) && liningGroupForPalm && sheet?.insole_has_lining !== false) {
+      const hasInsoleLiningSolePerSize = Object.keys(insoleLiningSolePerSize).length > 0;
+      const insoleLiningHasPositive = Object.values(insoleLiningSolePerSize).some((v) => Number(v) > 0);
+      if ((insoleLiningCons > 0 || insoleLiningHasPositive) && liningGroupForPalm && sheet?.insole_has_lining !== false) {
         // Sem regra EXATA para a cor do cabedal, o SQL resolve o forro pela
         // própria cor do pedido. Não aplicar `__DEFAULT__` evita que o painel
         // mande separar napa diferente da que será reservada e debitada.
@@ -1675,7 +1674,7 @@ export function computeConsumptionForItems(
         // Sem valores → caminho antigo (escalar flat).
         let forrTotal: number;
         let forrWarning: string | undefined;
-        if (insoleLiningSoleVals.length > 0) {
+        if (hasInsoleLiningSolePerSize) {
           const forrDm2 = calculateGradeBasedDm2(item, insoleLiningCons, null, insoleLiningSolePerSize, soleProductIdForInsole);
           forrTotal = forrWidthMissing ? forrDm2 : convertDm2ToLinearMeters(forrDm2, forrSheet);
           forrWarning = sizeWarning(sizesMissingFromSpec(item, insoleLiningSolePerSize), insoleLiningCons);
@@ -1891,8 +1890,8 @@ export function computeConsumptionForItems(
           for (const std of groupStdItemsForSole) {
             // Grade preenchida vence o valor por par nesta numeração; sem
             // entrada na grade, o valor por par vale para todos os tamanhos.
-            const fromGrid = Number(std.perSize?.[String(sizeInt)]);
-            const consumption = Number.isFinite(fromGrid) && fromGrid > 0 ? fromGrid : std.perPair;
+            const picked = pickConsumptionForSize(std.perSize, sizeKey);
+            const consumption = picked.found ? picked.value : std.perPair;
             if (!(consumption > 0)) continue;
             const a = stdAcc.get(std.standardItemId) || { required: 0, unit: std.unit };
             a.required += consumption * pairs;

@@ -9,6 +9,7 @@ import {
   isLinearWidthMissing,
   normalizeText,
   normalizeColorKey,
+  pickConsumptionForSize,
   LINEAR_UNITS,
 } from '@/lib/materialConsumption';
 import { calculateStrapConsumptionCm, resolveOrderStraps } from '@/lib/strapConsumption';
@@ -487,7 +488,7 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
     const missing: string[] = [];
     for (const [k, v] of Object.entries(grade)) {
       if (k.startsWith('_') || !((Number(v) || 0) > 0)) continue;
-      if (!((Number(perSize[k]) || 0) > 0)) missing.push(k);
+      if (!pickConsumptionForSize(perSize, k).found) missing.push(k);
     }
     return missing;
   };
@@ -707,11 +708,11 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
             sheet?.lining_consumption_per_size,
           )
         : {};
-      const liningSoleVals = Object.values(liningSolePerSize).filter((v) => Number(v) > 0) as number[];
+      const hasLiningSolePerSize = Object.keys(liningSolePerSize).length > 0;
       const liningWidthMissing = isLinearWidthMissing(liningSheet, 'm');
       let liningTotal: number;
       let liningWarning: string | undefined;
-      if (isPrincipalLining && liningSoleVals.length > 0) {
+      if (isPrincipalLining && hasLiningSolePerSize) {
         const liningDm2 = calculateGradeBasedDm2(item, liningMatch.consumption, null, liningSolePerSize, soleProductId);
         liningTotal = liningWidthMissing ? liningDm2 : convertDm2ToLinearMeters(liningDm2, liningSheet);
         const missing = sizesMissingFromSpec(item.grade, liningSolePerSize);
@@ -764,11 +765,11 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
             insoleConsumptionPerSizeBySole.get(soleProductIdForInsole || ''),
             sheet?.insole_consumption_per_size,
           );
-      const insoleSoleVals = Object.values(insoleSolePerSize).filter((v) => Number(v) > 0) as number[];
-      const insoleDm2 = insoleSoleVals.length > 0
+      const hasInsoleSolePerSize = Object.keys(insoleSolePerSize).length > 0;
+      const insoleDm2 = hasInsoleSolePerSize
         ? calculateGradeBasedDm2(item, insoleScalarConsumption, null, insoleSolePerSize, soleProductIdForInsole)
         : calculateGradeBasedDm2(item, insoleScalarConsumption, insoleSheet, undefined, soleProductIdForInsole);
-      const insoleMissing = insoleSoleVals.length > 0 ? sizesMissingFromSpec(item.grade, insoleSolePerSize) : [];
+      const insoleMissing = hasInsoleSolePerSize ? sizesMissingFromSpec(item.grade, insoleSolePerSize) : [];
       const insoleWarning = (insoleMissing.length > 0 && insoleScalarConsumption > 0)
         ? fallbackAverageWarning(insoleMissing)
         : undefined;
@@ -830,8 +831,9 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
         insoleLiningConsumptionPerSizeBySole.get(soleProductIdForInsole || ''),
         sheet?.insole_lining_consumption_per_size,
       );
-      const insoleLiningSoleVals = Object.values(insoleLiningSolePerSize).filter((v) => Number(v) > 0) as number[];
-      if ((insoleLiningCons > 0 || insoleLiningSoleVals.length > 0) && liningGroupForPalm && sheet?.insole_has_lining !== false) {
+      const hasInsoleLiningSolePerSize = Object.keys(insoleLiningSolePerSize).length > 0;
+      const insoleLiningHasPositive = Object.values(insoleLiningSolePerSize).some((v) => Number(v) > 0);
+      if ((insoleLiningCons > 0 || insoleLiningHasPositive) && liningGroupForPalm && sheet?.insole_has_lining !== false) {
         // Mesma ficha de conversão do Forro do cabedal (cs do pin primeiro —
         // F2-04): o SQL converte as duas linhas pela mesma
         // get_material_conversion_info(v_lining_pid).
@@ -839,7 +841,7 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
         const forrWidthMissing = isLinearWidthMissing(forrSheet, 'm');
         let forrTotal: number;
         let forrWarning: string | undefined;
-        if (insoleLiningSoleVals.length > 0) {
+        if (hasInsoleLiningSolePerSize) {
           const forrDm2 = calculateGradeBasedDm2(item, insoleLiningCons, null, insoleLiningSolePerSize, soleProductIdForInsole);
           forrTotal = forrWidthMissing ? forrDm2 : convertDm2ToLinearMeters(forrDm2, forrSheet);
           const missing = sizesMissingFromSpec(item.grade, insoleLiningSolePerSize);
@@ -976,8 +978,8 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
           for (const std of groupStdItemsForSole) {
             // Grade preenchida vence o valor por par nesta numeração; sem
             // entrada na grade, o valor por par vale para todos os tamanhos.
-            const fromGrid = Number(std.perSize?.[String(sizeInt)]);
-            const consumption = Number.isFinite(fromGrid) && fromGrid > 0 ? fromGrid : std.perPair;
+            const picked = pickConsumptionForSize(std.perSize, sizeKey);
+            const consumption = picked.found ? picked.value : std.perPair;
             if (!(consumption > 0)) continue;
             const a = stdAcc.get(std.standardItemId) || { required: 0, unit: std.unit };
             a.required += consumption * pairs;

@@ -65,7 +65,7 @@ describe('MaterialConsumptionView — tela buy-first', () => {
     expect(hero).toHaveTextContent('2,00');
     expect(hero).toHaveTextContent('NAPA SOFT');
     // 4 itens em falta: EVA, OURO LIGHT, NAPA SOFT OFF WHITE e o solado.
-    const faltaCard = screen.getByText('Itens em falta').closest('div')!;
+    const faltaCard = screen.getByRole('button', { name: 'Ver itens em falta' });
     expect(within(faltaCard).getByText('4')).toBeInTheDocument();
   });
 
@@ -98,7 +98,7 @@ describe('MaterialConsumptionView — tela buy-first', () => {
     expect(screen.getByText('OURO LIGHT')).toBeInTheDocument();
     expect(screen.getAllByText('PRETO').length).toBeGreaterThan(0);
 
-    await user.click(screen.getByRole('button', { name: /Em falta/i }));
+    await user.click(screen.getByRole('button', { name: /^Em falta/i }));
     // NAPA SOFT PRETO tem 5,01 em estoque pra 1,00 de consumo → sai da lista.
     expect(screen.getByText(/mostrando 4 de 5/)).toBeInTheDocument();
     expect(screen.getByText('OURO LIGHT')).toBeInTheDocument();
@@ -109,6 +109,62 @@ describe('MaterialConsumptionView — tela buy-first', () => {
     renderView();
     await user.type(screen.getByLabelText(/Buscar material/i), 'ouro');
     expect(screen.getByText(/mostrando 1 de 5/)).toBeInTheDocument();
+  });
+
+  it('a busca também encontra o componente (Cabedal, Solado…)', async () => {
+    const user = userEvent.setup();
+    renderView();
+    await user.type(screen.getByLabelText(/Buscar material/i), 'solado');
+    expect(screen.getByText(/mostrando 1 de 5/)).toBeInTheDocument();
+    expect(within(screen.getByRole('table')).getByText('SOLADO 01')).toBeInTheDocument();
+    expect(screen.queryByText('OURO LIGHT')).not.toBeInTheDocument();
+  });
+
+  it('os totais da barra acompanham o filtro — Napa esconde par e palmilha', async () => {
+    const user = userEvent.setup();
+    renderView();
+    // Sem filtro a barra soma tudo, inclusive o solado em pares.
+    expect(screen.getByText('5 itens')).toBeInTheDocument();
+    expect(screen.getAllByText('198').length).toBeGreaterThan(0);
+
+    await user.click(screen.getByRole('button', { name: /^Napa/i }));
+    expect(screen.getByRole('button', { name: /mostrando 2 de 5 · de napa/i })).toBeInTheDocument();
+    expect(screen.getByText('2 itens de 5')).toBeInTheDocument();
+    const table = screen.getByRole('table');
+    expect(within(table).queryByText('OURO LIGHT')).not.toBeInTheDocument();
+    expect(within(table).queryByText('SOLADO 01')).not.toBeInTheDocument();
+    expect(within(table).getByText('OFF WHITE')).toBeInTheDocument();
+  });
+
+  it('Napa combina com Em falta — não desliga o recorte de status', async () => {
+    const user = userEvent.setup();
+    renderView();
+    await user.click(screen.getByRole('button', { name: /^Em falta/i }));
+    await user.click(screen.getByRole('button', { name: /^Napa/i }));
+    // Das 2 napas, só OFF WHITE está em falta (PRETO tem 5,01 p/ 1,00).
+    expect(screen.getByRole('button', { name: /mostrando 1 de 5 · em falta · de napa/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Em falta/i })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: /^Napa/i })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('estoque compartilhado não pinta de verde uma linha de item em falta', async () => {
+    const user = userEvent.setup();
+    const shared: ConsumptionRow[] = [
+      row({
+        componentType: 'Forração', groupName: 'NAPA SOFT', materialName: 'Forração',
+        color: 'PRETO', totalQuantity: 2, available: 5, productUnit: 'm',
+      }),
+      row({
+        componentType: 'Forração Palmilha', groupName: 'NAPA SOFT', materialName: 'Forração Palmilha',
+        color: 'PRETO', totalQuantity: 4, available: 5, productUnit: 'm',
+      }),
+    ];
+    renderView({ rows: shared });
+    // Linha a linha as duas cabem em 5; juntas pedem 6 → 1 item em falta.
+    await user.click(screen.getByRole('button', { name: /^Em falta/i }));
+    expect(screen.getByText(/mostrando 2 de 2/)).toBeInTheDocument();
+    expect(screen.getAllByText('Forração Palmilha').length).toBeGreaterThan(0);
+    expect(screen.queryByLabelText('em estoque')).not.toBeInTheDocument();
   });
 
   it('“Gerar OC” só aparece quando o escopo sabe gerar', async () => {

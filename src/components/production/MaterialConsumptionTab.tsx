@@ -10,7 +10,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pi
 import { Package, TrendUp as TrendingUp, Stack as Layers, Funnel as Filter, Palette } from '@phosphor-icons/react';
 import { startOfWeek, endOfWeek, startOfMonth, endOfMonth, format, parseISO, isWithinInterval, isValid } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { calculateConsumption, type ConsumptionLine, validateConsumptionPayload } from '@/services/consumptionService';
+import { calculateConsumption, type ConsumptionLine } from '@/services/consumptionService';
 
 type PeriodFilter = 'week' | 'month' | 'all';
 
@@ -86,8 +86,6 @@ function useConsumptionFromSheets() {
       const activeOrders = orders.filter(order => order.reference_id);
       if (activeOrders.length === 0) return { orders, groups, consumptionRows: [] as ConsumptionRow[] };
 
-      // Variante do item do PV: mesma resolução usada pelo Wizard antes de
-      // chamar o motor canônico por OP.
       const saleOrderItemIds = [...new Set(activeOrders.map(order => order.sale_order_item_id).filter(Boolean))] as string[];
       const variantBySaleOrderItem = new Map<string, string | null>();
       if (saleOrderItemIds.length > 0) {
@@ -99,34 +97,20 @@ function useConsumptionFromSheets() {
         for (const item of itemRows || []) variantBySaleOrderItem.set(item.id, item.material_variant_id ?? null);
       }
 
-      // Consumo CANÔNICO por OP. Grade presente usa o by_grade; OP legada sem
-      // grade cai no wrapper escalar exatamente como no PurchasePlanningWizard.
       const consumptionByOrder = await Promise.all(
         activeOrders.map(async (order): Promise<ConsumptionLine[]> => {
           const variantId = order.sale_order_item_id
             ? variantBySaleOrderItem.get(order.sale_order_item_id) ?? null
             : null;
           const grade = order.grade && typeof order.grade === 'object' && !Array.isArray(order.grade)
-            && Object.keys(order.grade).length > 0
-            ? order.grade
+            ? (order.grade as Record<string, number>)
             : null;
-
-          if (grade) {
-            const { data, error } = await supabase.rpc('calculate_order_consumption_by_grade', {
-              p_reference_id: order.reference_id!,
-              p_grade: grade,
-              p_color: order.color ?? '',
-              ...(variantId ? { p_material_variant_id: variantId } : {}),
-            });
-            if (error) throw error;
-            return validateConsumptionPayload((data as unknown) ?? []);
-          }
-
           const summary = await calculateConsumption({
             referenceId: order.reference_id!,
             quantity: Number(order.quantity) || 0,
             color: order.color,
             materialVariantId: variantId,
+            grade,
           });
           return summary.lines;
         }),
@@ -145,9 +129,6 @@ function useConsumptionFromSheets() {
         for (const product of productRows || []) productsMap.set(product.id, product);
       }
 
-      // Linhas de área vêm sem unidade no contrato do RPC. A conversão usa a
-      // largura da ficha de componente, como no Wizard; sem largura, conserva
-      // dm² e o valor cru em vez de fingir que são metros.
       const areaProductIds = new Set<string>();
       for (const lines of consumptionByOrder) {
         for (const line of lines) {
@@ -254,11 +235,9 @@ export default function MaterialConsumptionTab() {
       orders = orders.filter(o => o.id === selectedOrder);
     }
 
-    // Build group name map
     const groupNameMap: Record<string, string> = {};
     for (const g of data.groups) groupNameMap[g.id] = g.name;
 
-    // Aggregate consumption from technical sheets
     const consumptionMap = new Map<string, ConsumptionRow>();
 
     const addRow = (row: ConsumptionRow) => {
@@ -290,7 +269,6 @@ export default function MaterialConsumptionTab() {
       a.groupName.localeCompare(b.groupName, 'pt-BR')
     );
 
-    // Aggregate by group
     const groupMap: Record<string, GroupData> = {};
     for (const row of consumptionRows) {
       const gKey = row.groupName;
@@ -300,7 +278,6 @@ export default function MaterialConsumptionTab() {
     }
     const byGroup = Object.values(groupMap).sort((a, b) => b.qty - a.qty);
 
-    // Color & Product breakdown (filtered by selectedGroup)
     const colorMap: Record<string, ColorData> = {};
     const productMap: Record<string, ProductData> = {};
 
@@ -362,7 +339,6 @@ export default function MaterialConsumptionTab() {
 
   return (
     <div className="space-y-6">
-      {/* Filters */}
       <div className="flex flex-wrap items-center gap-3">
         <h2 className="text-lg font-semibold mr-auto">Consumo de Material (Ficha Técnica)</h2>
 
@@ -416,7 +392,6 @@ export default function MaterialConsumptionTab() {
 
       <p className="text-sm text-muted-foreground -mt-3">{periodLabel} — Consumo teórico baseado nas fichas técnicas × quantidade dos pedidos</p>
 
-      {/* Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card>
           <CardContent className="pt-5 pb-4">
@@ -472,7 +447,6 @@ export default function MaterialConsumptionTab() {
         </Card>
       </div>
 
-      {/* Charts Row 1: Group Bar Chart */}
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-base flex items-center gap-2">
@@ -502,7 +476,6 @@ export default function MaterialConsumptionTab() {
         </CardContent>
       </Card>
 
-      {/* Charts Row 2: Color breakdown */}
       <div className="grid md:grid-cols-2 gap-6">
         <Card>
           <CardHeader className="pb-2">
@@ -586,7 +559,6 @@ export default function MaterialConsumptionTab() {
         </Card>
       </div>
 
-      {/* Detailed Table */}
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-base">

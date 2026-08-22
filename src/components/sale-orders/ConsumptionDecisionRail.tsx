@@ -27,8 +27,13 @@ import type { ShortfallEntry } from '@/lib/consumptionAvailability';
  * baixo da dobra; a auditoria de cadastro é conferência pontual, não a missão
  * permanente da tela. O texto de cada motivo continua acessível — só não abre
  * expandido.
+ *
+ * Filtros (22/08/2026): "Napa" é um recorte de TIPO e combina com o recorte de
+ * STATUS (Em falta / Coberto / cadastro incompleto). Antes os três chips eram
+ * rádio — clicar Napa depois de Em falta desfazia o primeiro, e os totais da
+ * tabela não acompanhavam, então parecia que o filtro não pegava.
  */
-export type ConsumptionFilter = 'all' | 'short' | 'pending' | 'napa' | 'ok';
+export type ConsumptionFilter = 'all' | 'short' | 'pending' | 'ok';
 
 type Props = {
   /** Total de material base (napa) — o número que decide o pedido de compra. */
@@ -43,6 +48,9 @@ type Props = {
   totalItems: number;
   filter: ConsumptionFilter;
   onFilterChange: (f: ConsumptionFilter) => void;
+  /** Recorte de material base; combina com o status (não é exclusivo). */
+  napaOnly: boolean;
+  onNapaOnlyChange: (v: boolean) => void;
   /** Ação primária: abre a geração de OC do(s) PV(s). Omitida ⇒ botão não aparece. */
   onGerarOC?: () => void;
   onRecalcular?: () => void;
@@ -61,13 +69,22 @@ export default function ConsumptionDecisionRail({
   totalItems,
   filter,
   onFilterChange,
+  napaOnly,
+  onNapaOnlyChange,
   onGerarOC,
   onRecalcular,
   onPrintPdf,
   loading = false,
 }: Props) {
+  const chipClass = (active: boolean) =>
+    `inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold transition-colors ${
+      active
+        ? 'bg-primary text-primary-foreground'
+        : 'border border-border bg-muted/40 text-muted-foreground hover:bg-muted'
+    }`;
+
   return (
-    <aside className="space-y-3 lg:sticky lg:top-3">
+    <aside className="relative z-20 space-y-3 lg:sticky lg:top-3">
       {/* ── Hero: material base + itens em falta ───────────────────────── */}
       <div className="rounded-lg border border-border bg-card p-3">
         <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
@@ -101,7 +118,15 @@ export default function ConsumptionDecisionRail({
         )}
       </div>
 
-      <div className="rounded-lg border border-border bg-card p-3">
+      <button
+        type="button"
+        onClick={() => onFilterChange(filter === 'short' ? 'all' : 'short')}
+        aria-pressed={filter === 'short'}
+        aria-label={filter === 'short' ? 'Mostrar todos os itens' : 'Ver itens em falta'}
+        className={`w-full rounded-lg border border-border bg-card p-3 text-left transition-colors hover:bg-muted/40 ${
+          filter === 'short' ? 'ring-2 ring-primary' : ''
+        }`}
+      >
         <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
           Itens em falta
         </p>
@@ -117,10 +142,10 @@ export default function ConsumptionDecisionRail({
         <p className="mt-1 text-[11px] text-muted-foreground">
           de {totalItems} {totalItems === 1 ? 'item' : 'itens'} · comparado ao estoque líquido
         </p>
-      </div>
+      </button>
 
       {onGerarOC && (
-        <Button className="w-full gap-2" onClick={onGerarOC}>
+        <Button type="button" className="w-full gap-2" onClick={onGerarOC}>
           <ShoppingCart className="h-4 w-4" />
           Gerar OC deste consumo
         </Button>
@@ -164,6 +189,7 @@ export default function ConsumptionDecisionRail({
             {pendingCount} {pendingCount === 1 ? 'linha' : 'linhas'} marcada{pendingCount === 1 ? '' : 's'} com ▲.
           </p>
           <Button
+            type="button"
             variant="outline"
             size="sm"
             className="mt-2 h-7 w-full gap-1.5 border-amber-500/40 text-xs text-amber-700 hover:bg-amber-500/10 dark:text-amber-400"
@@ -211,32 +237,43 @@ export default function ConsumptionDecisionRail({
           Ver apenas
         </p>
         <div className="flex flex-wrap gap-1.5">
-          {([
-            { key: 'short', label: 'Em falta', count: shortCount },
-            { key: 'napa', label: 'Napa', count: napaCount },
-            { key: 'ok', label: 'Coberto', count: okCount },
-          ] as const).map(({ key, label, count }) => (
-            <button
-              key={key}
-              type="button"
-              aria-pressed={filter === key}
-              onClick={() => onFilterChange(filter === key ? 'all' : key)}
-              className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold transition-colors ${
-                filter === key
-                  ? 'bg-primary text-primary-foreground'
-                  : 'border border-border bg-muted/40 text-muted-foreground hover:bg-muted'
-              }`}
-            >
-              {label}
-              <span className="font-mono tabular-nums opacity-70">{count}</span>
-            </button>
-          ))}
+          <button
+            type="button"
+            aria-pressed={filter === 'short'}
+            onClick={() => onFilterChange(filter === 'short' ? 'all' : 'short')}
+            className={chipClass(filter === 'short')}
+          >
+            Em falta
+            <span className="font-mono tabular-nums opacity-70">{shortCount}</span>
+          </button>
+          <button
+            type="button"
+            aria-pressed={napaOnly}
+            onClick={() => onNapaOnlyChange(!napaOnly)}
+            className={chipClass(napaOnly)}
+          >
+            Napa
+            <span className="font-mono tabular-nums opacity-70">{napaCount}</span>
+          </button>
+          <button
+            type="button"
+            aria-pressed={filter === 'ok'}
+            onClick={() => onFilterChange(filter === 'ok' ? 'all' : 'ok')}
+            className={chipClass(filter === 'ok')}
+          >
+            Coberto
+            <span className="font-mono tabular-nums opacity-70">{okCount}</span>
+          </button>
         </div>
+        <p className="mt-2 text-[10px] leading-snug text-muted-foreground">
+          Napa combina com Em falta ou Coberto. Clique de novo pra soltar.
+        </p>
       </div>
 
       <div className="flex gap-2">
         {onRecalcular && (
           <Button
+            type="button"
             variant="outline"
             size="sm"
             className="flex-1 gap-1.5"
@@ -247,7 +284,7 @@ export default function ConsumptionDecisionRail({
             Recalcular
           </Button>
         )}
-        <Button variant="outline" size="sm" className="flex-1 gap-1.5" onClick={onPrintPdf}>
+        <Button type="button" variant="outline" size="sm" className="flex-1 gap-1.5" onClick={onPrintPdf}>
           <FileText className="h-4 w-4" /> Gerar PDF
         </Button>
       </div>

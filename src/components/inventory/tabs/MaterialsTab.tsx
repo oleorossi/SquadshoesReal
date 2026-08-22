@@ -467,26 +467,25 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
                   <DropdownMenuSeparator />
                   <DropdownMenuLabel>Organização</DropdownMenuLabel>
                   <DropdownMenuItem onClick={() => setQuickFamilyOpen(true)}>
-                    <Layers className="h-4 w-4 mr-2" /> Cadastro rápido com cores (família)
+                    <Layers className="h-4 w-4 mr-2" /> Cadastro rápido: grupo + cores
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setGroupDialogOpen(true)}>
-                    <Layers className="h-4 w-4 mr-2" /> Nova família (vazia)
+                    <Layers className="h-4 w-4 mr-2" /> Novo grupo / linha vazio
                   </DropdownMenuItem>
                 </>}
               </DropdownMenuContent>
             </DropdownMenu>
 
-            {/* Ponte para a árvore de grupos (Setor → Família → Grupo) em /grupos. */}
+            {/* Ponte para a árvore Setor → Família → Grupo dentro do estoque. */}
             <Button
               variant="outline"
               size="sm"
               className="h-9 gap-1.5 shrink-0 whitespace-nowrap"
-              onClick={() => navigate('/grupos')}
+              onClick={() => navigate('/estoque?tab=organization')}
               title="Abrir a árvore de grupos (Setor → Família → Grupo)"
             >
               <Layers className="h-4 w-4" />
               <span className="hidden sm:inline">Organizar grupos</span>
-              <span aria-hidden>↗</span>
             </Button>
 
             {perm.canCreate && (
