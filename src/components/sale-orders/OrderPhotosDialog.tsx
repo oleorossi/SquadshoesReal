@@ -83,8 +83,15 @@ export default function OrderPhotosDialog({ open, onOpenChange, orderNumber, cli
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="relative w-[95vw] max-w-5xl max-h-[92vh] overflow-hidden p-0 gap-0">
-        <DialogHeader className="border-b bg-muted/40 px-5 py-4 pr-12 space-y-0">
+      {/*
+        Tela cheia no viewport do cliente. O DialogContent-base é `grid` +
+        `max-w-3xl` + `overflow-y-auto`: em nested dialog o segundo filho
+        (a galeria) colapsava pra 0px — só o cabeçalho aparecia, uma faixa
+        branca no meio da tela. `flex flex-col` + altura explícita em dvh
+        preenche a resolução; a galeria (`flex-1 min-h-0`) rola o resto.
+      */}
+      <DialogContent className="flex h-[96dvh] w-[96vw] max-h-[96dvh] max-w-none flex-col gap-0 overflow-hidden p-0">
+        <DialogHeader className="shrink-0 border-b bg-muted/40 px-5 py-4 pr-12 space-y-0 text-left">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <DialogTitle className="flex items-center gap-2 text-2xl">
@@ -108,7 +115,7 @@ export default function OrderPhotosDialog({ open, onOpenChange, orderNumber, cli
           </div>
         </DialogHeader>
 
-        <div className="max-h-[min(72vh,720px)] space-y-7 overflow-y-auto px-5 py-5">
+        <div className="min-h-0 flex-1 space-y-7 overflow-y-auto px-5 py-5">
           {photos.length === 0 ? (
             <p className="py-10 text-center text-sm text-muted-foreground">
               Nenhum item neste pedido.
@@ -126,7 +133,7 @@ export default function OrderPhotosDialog({ open, onOpenChange, orderNumber, cli
                   {g.items.length} {g.items.length === 1 ? 'cor' : 'cores'} · {g.items.reduce((s, i) => s + i.quantity, 0)} pares
                 </p>
               </div>
-              <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+              <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
                 {g.items.map((photo) => (
                   <li key={photo.id}>
                     <button
