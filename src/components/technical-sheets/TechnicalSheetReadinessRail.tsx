@@ -19,6 +19,7 @@ import {
   type TechnicalSheetAuditSignals,
   type TechnicalSheetReadinessInput,
   type TechnicalSheetReadinessStageKey,
+  type TechnicalSheetReadinessTab,
 } from '@/lib/technicalSheetReadiness';
 
 const STAGE_ICONS = {
@@ -31,12 +32,17 @@ const STAGE_ICONS = {
 
 interface Props {
   sheet: TechnicalSheetReadinessInput;
-  audit?: TechnicalSheetAuditSignals;
-  onSelectTab: (tab: 'id' | 'engineering' | 'production' | 'costs') => void;
+  audit?: TechnicalSheetAuditSignals | null;
+  auditLoaded?: boolean;
+  onSelectTab: (tab: TechnicalSheetReadinessTab) => void;
 }
 
-export function TechnicalSheetReadinessRail({ sheet, audit, onSelectTab }: Props) {
-  const stages = useMemo(() => evaluateTechnicalSheetReadiness(sheet, audit), [sheet, audit]);
+export function TechnicalSheetReadinessRail({ sheet, audit, auditLoaded, onSelectTab }: Props) {
+  const resolvedAudit = auditLoaded ? (audit || {}) : undefined;
+  const stages = useMemo(
+    () => evaluateTechnicalSheetReadiness(sheet, resolvedAudit),
+    [sheet, resolvedAudit],
+  );
   const readyCount = stages.filter((stage) => stage.ready).length;
   const { data: usage } = useQuery({
     queryKey: ['technical_sheet_operational_usage', sheet.id],
@@ -132,7 +138,9 @@ export function TechnicalSheetReadinessRail({ sheet, audit, onSelectTab }: Props
                 )}
               </div>
               <p className={cn('mt-3 text-xs leading-relaxed', stage.ready ? 'text-success' : 'text-muted-foreground')}>
-                {stage.ready ? 'Etapa pronta' : `Revisar: ${stage.issues.slice(0, 2).join(', ')}`}
+                {stage.ready
+                  ? 'Etapa pronta'
+                  : `Revisar: ${stage.issues.join(', ')}`}
               </p>
             </button>
           );
