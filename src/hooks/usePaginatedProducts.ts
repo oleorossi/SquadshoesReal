@@ -188,7 +188,7 @@ export function usePaginatedProducts(params: PaginatedProductsParams = {}) {
         items: result.items.map((p: any) => ({
           ...p,
           quantity: Number(p.quantity) || 0,
-          min_stock: Number(p.min_stock) || 1,
+          min_stock: Number(p.min_stock) || 0,
           max_stock: Number(p.max_stock) || Infinity,
           in_production_quantity: Number(p.in_production_quantity) || 0,
           // Callers leem `product.product_groups?.consumption_unit` (UoM canônica
