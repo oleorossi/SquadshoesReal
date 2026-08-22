@@ -113,15 +113,53 @@ function findChildren(src, tagName, openEnd) {
 
 const HAS_NAME = /\baria-label\s*=|\baria-labelledby\s*=|\btitle\s*=/;
 
+/**
+ * Devolve a tag de abertura INTEIRA a partir do fim do nome da tag.
+ *
+ * Existe porque a versão anterior usava `[^>]*?` e parava no primeiro `>` — que
+ * numa tag JSX quase nunca é o fim da tag: `onClick={() => x()}` tem um `>`
+ * dentro da arrow function. Todo atributo escrito DEPOIS de um handler assim
+ * ficava fora da janela, então um botão corretamente rotulado era acusado de
+ * não ter nome acessível (caso `OrderPhotosDialog.tsx`, 22/08/2026 — o
+ * `aria-label` vinha depois do `onClick` e o build de produção caiu).
+ *
+ * Varre caractere a caractere ignorando `>` dentro de string ('", crase) e
+ * dentro de `{}`; o fim é o primeiro `>` em profundidade zero.
+ */
+function readOpeningTag(src, from) {
+  let depth = 0;
+  let quote = null;
+  for (let i = from; i < src.length; i++) {
+    const c = src[i];
+    if (quote) {
+      if (c === '\\') { i++; continue; }
+      if (c === quote) quote = null;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === '`') { quote = c; continue; }
+    if (c === '{') { depth++; continue; }
+    if (c === '}') { depth--; continue; }
+    if (c === '>' && depth === 0) {
+      const selfClosing = src[i - 1] === '/' ? '/' : '';
+      return { attrs: src.slice(from, selfClosing ? i - 1 : i), selfClosing, end: i + 1 };
+    }
+  }
+  return null;
+}
+
 function scanFile(file) {
   const src = readFileSync(file, 'utf8');
   const hits = [];
   let total = 0;
 
   // pega a tag de abertura inteira, mesmo quebrada em várias linhas
-  const re = /<(Button|button)\b([^>]*?)(\/?)>/gs;
+  const re = /<(Button|button)\b/g;
   for (const m of src.matchAll(re)) {
-    const [full, tagName, attrs, selfClosing] = m;
+    const tagName = m[1];
+    const span = readOpeningTag(src, m.index + m[0].length);
+    if (!span) continue;
+    const { attrs, selfClosing, end } = span;
+    const full = src.slice(m.index, end);
     if (!/size\s*=\s*["']icon["']/.test(attrs)) continue;
     total++;
 
