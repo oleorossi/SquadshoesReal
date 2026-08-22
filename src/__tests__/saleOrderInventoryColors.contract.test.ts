@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { activeProductColorsForGroup } from '@/lib/materialVariantColorGroup';
+import { activeProductColorsForGroup, saleOrderAvailableColors } from '@/lib/materialVariantColorGroup';
 
 const FORM = readFileSync(
   resolve(process.cwd(), 'src/components/sale-orders/SaleOrderItemForm.tsx'),
@@ -27,9 +27,9 @@ describe('PV so oferece cores cadastradas no estoque', () => {
   });
 
   it('a lista de cores do item vem so de products.color ativos do grupo', () => {
-    expect(FORM).toContain('activeProductColorsForGroup(allProducts, effectiveGroupId)');
-    expect(FORM).toContain('activeProductColorsForGroup(allProducts, mainGroupForNewColor.id)');
-    expect(FORM).toMatch(/if \(baseCoveredByVariant\) return \[\];/);
+    expect(FORM).toContain('saleOrderAvailableColors({');
+    expect(FORM).toContain('effectiveGroupId: mainGroupForNewColor?.id');
+    expect(FORM).toContain('baseCoveredByVariant');
   });
 
   it('sem grupo efetivo a lista fica vazia — nunca inventa cor', () => {
@@ -37,7 +37,7 @@ describe('PV so oferece cores cadastradas no estoque', () => {
       FORM.indexOf('const availableColors'),
       FORM.indexOf('const variantCabedalColor'),
     );
-    expect(availableBlock).toMatch(/return \[\];\s*\}, \[item\.material_variant_id/);
+    expect(availableBlock).toContain('saleOrderAvailableColors');
     expect(availableBlock).not.toContain('split');
   });
 
@@ -61,5 +61,29 @@ describe('PV so oferece cores cadastradas no estoque', () => {
       { id: '3', group_id: 'napa', color: null, active: true },
       { id: '4', group_id: 'outra', color: 'OURO LIGHT', active: true },
     ], 'napa')).toEqual(['PRETO']);
+  });
+
+  it('saleOrderAvailableColors nao inventa cor sem grupo efetivo', () => {
+    const products = [
+      { id: '1', group_id: 'napa', color: 'PRETO', active: true },
+    ];
+    expect(saleOrderAvailableColors({
+      materialVariantId: 'v1',
+      effectiveGroupId: null,
+      baseCoveredByVariant: false,
+      products,
+    })).toEqual([]);
+    expect(saleOrderAvailableColors({
+      materialVariantId: null,
+      effectiveGroupId: 'napa',
+      baseCoveredByVariant: true,
+      products,
+    })).toEqual([]);
+    expect(saleOrderAvailableColors({
+      materialVariantId: null,
+      effectiveGroupId: 'napa',
+      baseCoveredByVariant: false,
+      products,
+    })).toEqual(['PRETO']);
   });
 });
