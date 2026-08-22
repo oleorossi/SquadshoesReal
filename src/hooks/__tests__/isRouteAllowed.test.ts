@@ -45,6 +45,10 @@ describe('resolveMenuOwner', () => {
     expect(resolveMenuOwner('/terceirizados?foo=1&tab=recipes', MENU)).toBe('/tiras-artesanais');
     expect(resolveModuleForPath('/terceirizados?tab=recipes')).toBe('produtos');
   });
+  it('a antiga aba de cliente pertence ao módulo novo, não à etiquetagem padrão', () => {
+    expect(resolveMenuOwner('/label-system?tab=client-import', MENU)).toBe('/etiquetagem-cliente');
+    expect(resolveModuleForPath('/label-system?tab=client-import')).toBe('expedicao');
+  });
 });
 
 describe('isRouteAllowed — admin', () => {
@@ -116,7 +120,17 @@ describe('isRouteAllowed — granular POR ITEM (allow-list de paths)', () => {
       allMenuPaths: MENU,
     };
     expect(isRouteAllowed('/etiquetagem-cliente', clientLabelsOnly)).toBe(true);
+    expect(isRouteAllowed('/label-system?tab=client-import', clientLabelsOnly)).toBe(true);
     expect(isRouteAllowed('/label-system', clientLabelsOnly)).toBe(false);
+
+    const factoryLabelsOnly = {
+      isAdmin: false,
+      roles: ['consulta'],
+      perms: [perm('/label-system')],
+      allMenuPaths: MENU,
+    };
+    expect(isRouteAllowed('/label-system', factoryLabelsOnly)).toBe(true);
+    expect(isRouteAllowed('/label-system?tab=client-import', factoryLabelsOnly)).toBe(false);
   });
 
   it('liberar item-pai NÃO libera item-irmão com path próprio', () => {

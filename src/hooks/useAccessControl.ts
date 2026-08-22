@@ -288,6 +288,9 @@ const ALL_MENU_PATHS: string[] = grantableDestinations.map((i) => i.path);
 
 function resolveCanonicalAliasOwner(path: string): string | null {
   const [pathname, query = ''] = path.split('?');
+  if (pathname === '/label-system' && new URLSearchParams(query).get('tab') === 'client-import') {
+    return '/etiquetagem-cliente';
+  }
   if (pathname === '/calculadora-tiras' || pathname === '/artisanal-recipes') {
     return '/tiras-artesanais';
   }

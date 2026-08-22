@@ -6,7 +6,7 @@
  *   - gráfica em duas etiquetas couchê 50 × 30 mm lado a lado.
  * A geometria e o módulo do CODE128 moram em `@/lib/babyNalinLabels`.
  */
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Panel } from '@/components/ui/panel';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -33,27 +33,44 @@ import {
   ART_WIDTH_MM,
   BARCODE_FORMAT,
   COUCHE_COLUMNS,
+  DEFAULT_COUCHE_ROLL_PROFILE,
   COUCHE_LABEL_HEIGHT_MM,
   COUCHE_LABEL_WIDTH_MM,
+  MAX_PDF_LABELS,
   MODULE_MM,
   analyzeClientSkus,
   buildBabyNalinPdf,
   clientSkuKey,
-  expandRows,
+  countExpandedRows,
   graphicPageCount,
   graphicPdfFilename,
   loadLogoDataUrl,
   measureBarcode,
   parseClientOrderFile,
   pdfFilename,
+  resolveCoucheRollGeometry,
   type BabyNalinRow,
+  type CoucheRollProfile,
 } from '@/lib/babyNalinLabels';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
 
 const ACCEPT = '.csv,.txt,.xlsx,.xls';
+const MAX_PROFILE_MEASURE_MM = 50;
+
+const COUCHE_PROFILE_FIELDS: Array<{
+  key: keyof CoucheRollProfile;
+  label: string;
+}> = [
+  { key: 'columnGapMm', label: 'Vão entre colunas' },
+  { key: 'leftMarginMm', label: 'Margem esquerda' },
+  { key: 'rightMarginMm', label: 'Margem direita' },
+  { key: 'topMarginMm', label: 'Margem superior' },
+  { key: 'bottomMarginMm', label: 'Margem inferior / avanço' },
+];
 
 export function ClientLabelingWorkspace() {
   const inputRef = useRef<HTMLInputElement>(null);
+  const fileRequestIdRef = useRef(0);
   const [rows, setRows] = useState<BabyNalinRow[]>([]);
   const [fileName, setFileName] = useState('');
   const [repeatByQuantity, setRepeatByQuantity] = useState(false);
@@ -62,22 +79,30 @@ export function ClientLabelingWorkspace() {
   const [generating, setGenerating] = useState<'production' | 'graphic' | null>(null);
   const [search, setSearch] = useState('');
   const [selectedSkuKeys, setSelectedSkuKeys] = useState<Set<string>>(new Set());
+  const [coucheProfile, setCoucheProfile] = useState<CoucheRollProfile>({
+    ...DEFAULT_COUCHE_ROLL_PROFILE,
+  });
 
   const skuAnalysis = analyzeClientSkus(rows);
-  const selectedRows = rows.filter(row => selectedSkuKeys.has(clientSkuKey(row)));
+  const rowEntries = rows.map((row, sourceIndex) => ({
+    row,
+    sourceIndex,
+    skuKey: clientSkuKey(row),
+    barcodeFit: measureBarcode(row.codigoBarra),
+  }));
+  const selectedEntries = rowEntries.filter(entry => selectedSkuKeys.has(entry.skuKey));
+  const selectedRows = selectedEntries.map(entry => entry.row);
   const selectedSkuAnalysis = analyzeClientSkus(selectedRows);
-  const totalPaginas = expandRows(selectedRows, repeatByQuantity, repeatMultiplier).length;
+  const totalPaginas = countExpandedRows(selectedRows, repeatByQuantity, repeatMultiplier);
   const totalPares = selectedRows.reduce((t, r) => t + r.quantidade, 0);
   const totalParesNoArquivo = rows.reduce((t, r) => t + r.quantidade, 0);
   const paginasGrafica = graphicPageCount(selectedSkuAnalysis.rows.length);
   const skuSelecionadoLabel = selectedSkuAnalysis.rows.length === 1 ? 'SKU' : 'SKUs';
   // Código que não respeita a zona de silêncio não pode virar etiqueta — a
   // barra sairia cortada e só se descobre no leitor da loja.
-  const foraDoPadrao = rows.filter(r => !measureBarcode(r.codigoBarra).fits);
-  const selecionadasForaDoPadrao = selectedRows.filter(r => !measureBarcode(r.codigoBarra).fits);
-  const visibleRows = rows
-    .map((row, sourceIndex) => ({ row, sourceIndex, skuKey: clientSkuKey(row) }))
-    .filter(({ row }) => searchMatchesAllTerms(
+  const foraDoPadrao = rowEntries.filter(entry => !entry.barcodeFit.fits);
+  const selecionadasForaDoPadrao = selectedEntries.filter(entry => !entry.barcodeFit.fits);
+  const visibleRows = rowEntries.filter(({ row }) => searchMatchesAllTerms(
       search,
       row.referencia,
       row.cor,
@@ -85,31 +110,44 @@ export function ClientLabelingWorkspace() {
       row.codProduto,
       row.codigoBarra,
     ));
+  const coucheGeometry = resolveCoucheRollGeometry(coucheProfile);
   const visibleSkuKeys = [...new Set(visibleRows.map(entry => entry.skuKey))];
   const allVisibleSelected = visibleSkuKeys.length > 0 && visibleSkuKeys.every(key => selectedSkuKeys.has(key));
   const someVisibleSelected = visibleSkuKeys.some(key => selectedSkuKeys.has(key));
+  const isBusy = reading || generating !== null;
+  const productionOverLimit = totalPaginas > MAX_PDF_LABELS;
+
+  useEffect(() => () => {
+    fileRequestIdRef.current += 1;
+  }, []);
 
   async function handleFile(file: File | undefined) {
     if (!file) return;
+    const requestId = ++fileRequestIdRef.current;
     setReading(true);
     try {
       const lidas = await parseClientOrderFile(file);
+      if (requestId !== fileRequestIdRef.current) return;
       setRows(lidas);
       setFileName(file.name);
       setSelectedSkuKeys(new Set(analyzeClientSkus(lidas).rows.map(clientSkuKey)));
       toast.success(`${lidas.length} etiqueta(s) lidas de ${file.name}`);
     } catch (error) {
+      if (requestId !== fileRequestIdRef.current) return;
       setRows([]);
       setFileName('');
       setSelectedSkuKeys(new Set());
       toast.error(error instanceof Error ? error.message : 'Não consegui ler o arquivo.');
     } finally {
-      setReading(false);
-      if (inputRef.current) inputRef.current.value = '';
+      if (requestId === fileRequestIdRef.current) {
+        setReading(false);
+        if (inputRef.current) inputRef.current.value = '';
+      }
     }
   }
 
   async function handleGenerate(mode: 'production' | 'graphic') {
+    if (isBusy) return;
     if (selectedRows.length === 0) {
       toast.info('Selecione ao menos um SKU antes de gerar.');
       return;
@@ -119,27 +157,39 @@ export function ClientLabelingWorkspace() {
       return;
     }
     if (mode === 'graphic' && selectedSkuAnalysis.conflicts.length > 0) {
-      toast.error(`${selectedSkuAnalysis.conflicts.length} SKU(s) selecionado(s) possuem códigos de barras conflitantes.`);
+      toast.error(`${selectedSkuAnalysis.conflicts.length} SKU(s) selecionado(s) possuem dados de impressão conflitantes.`);
+      return;
+    }
+    if (mode === 'production' && productionOverLimit) {
+      toast.error(`O limite seguro é ${MAX_PDF_LABELS.toLocaleString('pt-BR')} etiquetas por PDF.`);
       return;
     }
 
+    const generationRows = [...selectedRows];
+    const generationFileName = fileName;
+    const generationRepeatByQuantity = repeatByQuantity;
+    const generationRepeatMultiplier = repeatMultiplier;
+    const generationTotalPages = totalPaginas;
+    const generationSkuCount = selectedSkuAnalysis.rows.length;
+    const generationCoucheProfile = { ...coucheProfile };
     setGenerating(mode);
     try {
       const logo = await loadLogoDataUrl(logoFornecedor);
       if (!logo) toast.warning('Não carreguei a logomarca — o PDF sai sem ela.');
 
-      const doc = await buildBabyNalinPdf(selectedRows, {
+      const doc = await buildBabyNalinPdf(generationRows, {
         mode,
-        repeatByQuantity: mode === 'production' ? repeatByQuantity : false,
-        repeatMultiplier,
+        repeatByQuantity: mode === 'production' ? generationRepeatByQuantity : false,
+        repeatMultiplier: generationRepeatMultiplier,
+        coucheProfile: generationCoucheProfile,
         logo,
       });
       if (mode === 'graphic') {
-        doc.save(graphicPdfFilename(fileName));
-        toast.success(`Arquivo para gráfica com ${selectedSkuAnalysis.rows.length} SKU(s) gerado.`);
+        doc.save(graphicPdfFilename(generationFileName));
+        toast.success(`Arquivo para gráfica com ${generationSkuCount} SKU(s) gerado.`);
       } else {
-        doc.save(pdfFilename(fileName));
-        toast.success(`PDF de produção com ${totalPaginas} etiqueta(s) gerado.`);
+        doc.save(pdfFilename(generationFileName));
+        toast.success(`PDF de produção com ${generationTotalPages} etiqueta(s) gerado.`);
       }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Falha ao gerar o PDF.');
@@ -149,12 +199,22 @@ export function ClientLabelingWorkspace() {
   }
 
   function limpar() {
+    fileRequestIdRef.current += 1;
+    setReading(false);
     setRows([]);
     setFileName('');
     setRepeatByQuantity(false);
     setRepeatMultiplier(1);
     setSearch('');
     setSelectedSkuKeys(new Set());
+  }
+
+  function setCoucheProfileMeasure(field: keyof CoucheRollProfile, rawValue: string) {
+    const parsed = Number(rawValue);
+    const value = Number.isFinite(parsed)
+      ? Math.min(MAX_PROFILE_MEASURE_MM, Math.max(0, parsed))
+      : 0;
+    setCoucheProfile(current => ({ ...current, [field]: value }));
   }
 
   function setSkuSelected(skuKey: string, selected: boolean) {
@@ -185,7 +245,7 @@ export function ClientLabelingWorkspace() {
         subtitle={`${BARCODE_FORMAT} com módulo de ${MODULE_MM.toFixed(4).replace('.', ',')} mm · produção 50 × 40 mm · gráfica couchê 2 × 50 × 30 mm`}
         actions={
           rows.length > 0 ? (
-            <Button variant="ghost" size="sm" onClick={limpar} className="h-9">
+            <Button variant="ghost" size="sm" onClick={limpar} className="h-9" disabled={isBusy}>
               <X className="h-4 w-4 mr-1.5" />
               Limpar
             </Button>
@@ -198,6 +258,7 @@ export function ClientLabelingWorkspace() {
           accept={ACCEPT}
           className="hidden"
           id="client-order-upload"
+          disabled={isBusy}
           onChange={e => void handleFile(e.target.files?.[0])}
         />
 
@@ -207,7 +268,7 @@ export function ClientLabelingWorkspace() {
             title="Nenhum pedido importado"
             description="Selecione o arquivo de exportação de etiquetas do pedido de compra (CSV ou XLSX). Uma etiqueta por linha do arquivo."
             action={
-              <Button onClick={() => inputRef.current?.click()} disabled={reading}>
+              <Button onClick={() => inputRef.current?.click()} disabled={isBusy}>
                 {reading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Upload className="h-4 w-4 mr-2" />}
                 {reading ? 'Lendo…' : 'Escolher arquivo'}
               </Button>
@@ -257,6 +318,7 @@ export function ClientLabelingWorkspace() {
                       id="repeat-by-quantity"
                       checked={repeatByQuantity}
                       onCheckedChange={v => setRepeatByQuantity(v === true)}
+                      disabled={isBusy}
                     />
                     <Label htmlFor="repeat-by-quantity" className="text-sm font-normal cursor-pointer">
                       Usar quantidade solicitada
@@ -275,6 +337,7 @@ export function ClientLabelingWorkspace() {
                         max={100}
                         step={1}
                         value={repeatMultiplier}
+                        disabled={isBusy}
                         onChange={e => {
                           const next = Math.trunc(Number(e.target.value));
                           setRepeatMultiplier(Number.isFinite(next) ? Math.min(100, Math.max(1, next)) : 1);
@@ -292,7 +355,12 @@ export function ClientLabelingWorkspace() {
                 <Button
                   className="w-full"
                   onClick={() => void handleGenerate('production')}
-                  disabled={generating !== null || selectedRows.length === 0 || selecionadasForaDoPadrao.length > 0}
+                  disabled={
+                    isBusy
+                    || selectedRows.length === 0
+                    || selecionadasForaDoPadrao.length > 0
+                    || productionOverLimit
+                  }
                 >
                   {generating === 'production' ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <FilePdf className="h-4 w-4 mr-2" />}
                   {generating === 'production' ? 'Gerando…' : `Gerar produção (${totalPaginas})`}
@@ -334,11 +402,46 @@ export function ClientLabelingWorkspace() {
                   </div>
                 </div>
 
+                <details className="rounded-md border border-primary/20 bg-background p-3 text-sm">
+                  <summary className="cursor-pointer font-semibold text-foreground">
+                    Medidas da faca e do liner
+                  </summary>
+                  <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+                    Confirme estas medidas na ficha da gráfica. Elas alteram somente o arquivo couchê deste módulo.
+                  </p>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    {COUCHE_PROFILE_FIELDS.map(field => (
+                      <div key={field.key} className="space-y-1">
+                        <Label htmlFor={`couche-${field.key}`} className="text-xs font-medium">
+                          {field.label} (mm)
+                        </Label>
+                        <Input
+                          id={`couche-${field.key}`}
+                          type="number"
+                          min={0}
+                          max={MAX_PROFILE_MEASURE_MM}
+                          step={0.1}
+                          value={coucheProfile[field.key]}
+                          disabled={isBusy}
+                          onChange={event => setCoucheProfileMeasure(field.key, event.target.value)}
+                          className="h-8 bg-background font-mono"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3 text-xs">
+                    <span className="text-muted-foreground">Mídia calculada do PDF</span>
+                    <strong className="font-mono text-foreground">
+                      {coucheGeometry.pageWidthMm.toLocaleString('pt-BR')} × {coucheGeometry.pageHeightMm.toLocaleString('pt-BR')} mm
+                    </strong>
+                  </div>
+                </details>
+
                 <Button
                   className="w-full"
                   onClick={() => void handleGenerate('graphic')}
                   disabled={
-                    generating !== null
+                    isBusy
                     || selectedRows.length === 0
                     || selecionadasForaDoPadrao.length > 0
                     || selectedSkuAnalysis.conflicts.length > 0
@@ -353,9 +456,15 @@ export function ClientLabelingWorkspace() {
             </div>
 
             <div className="flex justify-end">
-              <Button variant="outline" size="sm" className="h-9" onClick={() => inputRef.current?.click()}>
-                <Upload className="h-4 w-4 mr-1.5" />
-                Trocar arquivo
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9"
+                onClick={() => inputRef.current?.click()}
+                disabled={isBusy}
+              >
+                {reading ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Upload className="h-4 w-4 mr-1.5" />}
+                {reading ? 'Lendo novo arquivo…' : 'Trocar arquivo'}
               </Button>
             </div>
 
@@ -363,8 +472,8 @@ export function ClientLabelingWorkspace() {
               <div className="flex items-start gap-2 rounded-md border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-600">
                 <Warning className="h-4 w-4 mt-0.5 shrink-0" weight="fill" />
                 <span>
-                  {foraDoPadrao.length} código(s) longos demais para a etiqueta de {ART_WIDTH_MM} mm — a barra sairia
-                  cortada. {selecionadasForaDoPadrao.length > 0
+                  {foraDoPadrao.length} código(s) inválidos para CODE128 ou largos demais para a etiqueta de {ART_WIDTH_MM} mm.
+                  {' '}{selecionadasForaDoPadrao.length > 0
                     ? `${selecionadasForaDoPadrao.length} fazem parte da seleção e bloqueiam a geração.`
                     : 'Nenhum faz parte da seleção atual.'}
                 </span>
@@ -375,9 +484,19 @@ export function ClientLabelingWorkspace() {
               <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-400">
                 <Warning className="h-4 w-4 mt-0.5 shrink-0" weight="fill" />
                 <span>
-                  {skuAnalysis.conflicts.length} SKU(s) possuem mais de um código de barras. {selectedSkuAnalysis.conflicts.length > 0
+                  {skuAnalysis.conflicts.length} SKU(s) possuem código de barras ou código de produto divergente. {selectedSkuAnalysis.conflicts.length > 0
                     ? `${selectedSkuAnalysis.conflicts.length} fazem parte da seleção e bloqueiam o arquivo para a gráfica.`
                     : 'Nenhum faz parte da seleção atual.'}
+                </span>
+              </div>
+            )}
+
+            {productionOverLimit && (
+              <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-400">
+                <Warning className="h-4 w-4 mt-0.5 shrink-0" weight="fill" />
+                <span>
+                  A seleção produziria {totalPaginas.toLocaleString('pt-BR')} etiquetas. Divida o pedido em arquivos de até{' '}
+                  {MAX_PDF_LABELS.toLocaleString('pt-BR')} etiquetas para evitar travar o navegador.
                 </span>
               </div>
             )}
@@ -404,7 +523,7 @@ export function ClientLabelingWorkspace() {
                   size="sm"
                   className="h-7 px-2 text-xs"
                   onClick={() => setSelectedSkuKeys(new Set(visibleSkuKeys))}
-                  disabled={visibleSkuKeys.length === 0 || generating !== null}
+                  disabled={visibleSkuKeys.length === 0 || isBusy}
                 >
                   Selecionar só exibidos
                 </Button>
@@ -413,7 +532,7 @@ export function ClientLabelingWorkspace() {
                   size="sm"
                   className="h-7 px-2 text-xs"
                   onClick={() => setSelectedSkuKeys(new Set())}
-                  disabled={selectedSkuAnalysis.rows.length === 0 || generating !== null}
+                  disabled={selectedSkuAnalysis.rows.length === 0 || isBusy}
                 >
                   Limpar seleção
                 </Button>
@@ -428,7 +547,7 @@ export function ClientLabelingWorkspace() {
                       <Checkbox
                         checked={allVisibleSelected ? true : someVisibleSelected ? 'indeterminate' : false}
                         onCheckedChange={value => setVisibleSelected(value === true)}
-                        disabled={visibleSkuKeys.length === 0 || generating !== null}
+                        disabled={visibleSkuKeys.length === 0 || isBusy}
                         aria-label={allVisibleSelected ? 'Desmarcar todos os SKUs exibidos' : 'Selecionar todos os SKUs exibidos'}
                       />
                     </th>
@@ -442,8 +561,7 @@ export function ClientLabelingWorkspace() {
                   </tr>
                 </thead>
                 <tbody>
-                  {visibleRows.map(({ row, sourceIndex, skuKey }) => {
-                    const fit = measureBarcode(row.codigoBarra);
+                  {visibleRows.map(({ row, sourceIndex, skuKey, barcodeFit }) => {
                     const selected = selectedSkuKeys.has(skuKey);
                     return (
                       <tr
@@ -455,8 +573,12 @@ export function ClientLabelingWorkspace() {
                           <Checkbox
                             checked={selected}
                             onCheckedChange={value => setSkuSelected(skuKey, value === true)}
-                            disabled={generating !== null}
-                            aria-label={`Selecionar SKU ${row.referencia || 'sem referência'}, ${row.cor || 'sem cor'}, tamanho ${row.tamanho || 'não informado'}`}
+                            disabled={isBusy}
+                            aria-label={
+                              `Selecionar linha ${sourceIndex + 1}: SKU ${row.referencia || 'sem referência'}, `
+                              + `${row.cor || 'sem cor'}, tamanho ${row.tamanho || 'não informado'}, `
+                              + `produto ${row.codProduto || 'não informado'}, código ${row.codigoBarra}`
+                            }
                           />
                         </td>
                         <td className="py-2 pr-3 font-medium text-foreground">{row.referencia || '—'}</td>
@@ -466,11 +588,11 @@ export function ClientLabelingWorkspace() {
                         <td className="py-2 pr-3 font-mono text-xs text-foreground">{row.codigoBarra}</td>
                         <td className="py-2 pr-3 text-right text-muted-foreground">{row.quantidade}</td>
                         <td className="py-2 text-right">
-                          {fit.fits ? (
-                            <span className="text-muted-foreground">{fit.widthMm.toFixed(1)} mm</span>
+                          {barcodeFit.fits ? (
+                            <span className="text-muted-foreground">{barcodeFit.widthMm.toFixed(1)} mm</span>
                           ) : (
                             <Badge variant="outline" className="bg-red-500/10 text-red-600 border-red-500/30">
-                              não cabe
+                              {barcodeFit.error ? 'inválido' : 'não cabe'}
                             </Badge>
                           )}
                         </td>
