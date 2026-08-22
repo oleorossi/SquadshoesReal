@@ -5,7 +5,7 @@
  * diferem só na cor. Ao editar uma, alguns campos (preço, unidade, dimensões,
  * conversão…) normalmente valem pra TODAS as irmãs. Antes essa lista + o diff
  * viviam soltos no `ProductFormDialog`; aqui viram a fonte compartilhada
- * (o `MasterVariantDialog` usa um mecanismo próprio de overwrite total e não
+ * (o `VariantBulkEditPanel` usa um mecanismo próprio de overwrite total e não
  * redefine esta lista).
  */
 import { supabase } from '@/integrations/supabase/client';

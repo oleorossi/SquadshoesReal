@@ -1006,6 +1006,58 @@ o gatilho compartilhado não mudou.
   Valores válidos = `SECTOR_OPTIONS` (`src/lib/categoryFromGroup.ts`), com `CHECK`
   constraint espelhando no banco (migration `20260901140000`).
 
+### A janela do grupo é a PORTA ÚNICA de edição (CANÔNICO, 22/08/2026)
+
+> Decisão do dono, olhando as duas telas lado a lado: *"essa janela de edição de
+> grupo deve se tornar padrão; quando clico em editar itens abre outra coisa, não
+> faz sentido"*. Fecha o **M4** de `specs/inventory-packaging-overhaul.md`, que
+> estava aberto desde 07/2026.
+
+Editar um grupo de estoque acontece em **um** lugar: `GroupEditDialog` (via
+`GroupDialog`), com `initialTab` escolhendo por onde a janela abre.
+
+| Ação na lista de estoque | Abre |
+|---|---|
+| `+ Cor` | janela do grupo, aba **Cores** |
+| `Editar N itens` / `Editar N cores` | janela do grupo, aba **Em massa** |
+| clique no nome do grupo · `⋯ → Abrir grupo de estoque` | janela do grupo, aba **Geral** |
+| lápis da sub-linha de COR | editor do item (`ProductFormDialog`) — um SKU, não o conjunto |
+
+**O que existia antes:** `MasterVariantDialog`, um SEGUNDO Dialog com abas
+próprias (Variantes · Aplicar a todas as cores · Adicionar). "Editar N itens"
+abria ele; o menu `⋯` da mesma linha abria a janela do grupo. Cada um tinha
+metade dos campos, e de dentro da janela do grupo o outro ainda era **empilhado
+por cima** — havia inclusive ciclo de import (`GroupEditDialog` →
+`MasterVariantDialog` → `GroupDialog` → `GroupEditDialog`).
+
+Hoje ele é `src/components/inventory/VariantManagerPanel.tsx`, exportando dois
+**painéis** (sem Dialog): `VariantListPanel` (aba Itens) e `VariantBulkEditPanel`
+(aba Em massa).
+
+⚠ **Não recrie um Dialog ali.** Quem tem janela é o dono do grupo. Travado por
+`src/__tests__/grupoEstoquePortaUnica.contract.test.ts`.
+
+⚠ **A divisão de campos continua valendo** (spec `estoque-cores-e-editores.md`):
+`products.*` (custo, unidades, estoque mín./máx., fornecedor, localização) só na
+aba **Em massa**; `product_groups.*` (dimensões, embalagem, múltiplo de compra)
+só nas abas do grupo. Duas portas para o mesmo campo foi a origem do 1370 no
+grupo × 1000 nos itens.
+
+⚠ **O painel reidrata pela COMPOSIÇÃO da lista, não pela identidade do array.**
+`variantsSignature` (ids concatenados) é a dependência do efeito, e o
+`GroupEditDialog` memoiza `products`. Com `[variants]` cru — que era o estado
+anterior — todo refetch do React Query apagava o formulário em massa pela metade
+do preenchimento.
+
+⚠ **Cadastro de cor tem DOIS caminhos, de propósito.** A aba **Cores**
+(`createGroupColorProducts`) cria em lote pelo catálogo, mas **recusa** grupo que
+não é "Linha com variantes"; a aba **Itens** tem o cadastro rápido que copia o
+item-modelo e funciona sempre. A recusa agora aparece **antes** do submit, com
+link para as duas saídas. Em grupo **heterogêneo** (mais de um material) o
+cadastro rápido fica desligado nos dois lugares — copiaria unidade, conversão e
+custo de um irmão arbitrário. A regra mora em `src/lib/materialIdentity.ts`
+(`isHeterogeneousGroup`), fonte única compartilhada com a lista de estoque.
+
 ## Design Token System — DO NOT use hardcoded colors
 
 This project uses **CSS custom property tokens** defined in `src/index.css`. Using

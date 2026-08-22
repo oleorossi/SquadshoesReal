@@ -11,7 +11,9 @@ const emitNfe = read('supabase/functions/emit-nfe/index.ts');
 const emitNfeDevolucao = read('supabase/functions/emit-nfe-devolucao/index.ts');
 const clickNotasIdentity = read('supabase/functions/_shared/clickNotasProductIdentity.ts');
 const productForm = read('src/components/inventory/ProductFormDialog.tsx');
-const masterVariant = read('src/components/inventory/MasterVariantDialog.tsx');
+// Renomeado em 22/08/2026: o `MasterVariantDialog` virou painel da janela do
+// grupo de estoque (`VariantListPanel`/`VariantBulkEditPanel`).
+const masterVariant = read('src/components/inventory/VariantManagerPanel.tsx');
 const materialVariants = read('src/components/technical-sheets/MaterialVariantsTab.tsx');
 const labelProduction = read('src/components/label-system/LabelProductionTab.tsx');
 const productDetail = read('src/pages/ProductDetail.tsx');

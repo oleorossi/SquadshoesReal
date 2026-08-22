@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useRef, useCallback, useEffect } from 'react';
+import React, { useMemo, useState, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Product } from '@/types/inventory';
 import { supabase } from '@/integrations/supabase/client';
@@ -18,13 +18,17 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { useMaterialsConfigIssuesByProduct, ISSUE_LABELS } from '@/hooks/useMaterialsConfigIssues';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
-import { cn, getSoleModelName, stripColorFromName } from '@/lib/utils';
+import { cn, stripColorFromName } from '@/lib/utils';
+// Identidade de material (nome sem cor) — fonte única, compartilhada com a
+// janela do grupo de estoque, que decide pelo mesmo critério se mostra a
+// coluna Nome e se libera o cadastro rápido de cor.
+import { materialIdentity } from '@/lib/materialIdentity';
 import { useGroups, ProductGroup } from '@/hooks/useGroups';
 import { ManualStockOutDialog } from './ManualStockOutDialog';
 import { SoladoGradeDialog } from './SoladoGradeDialog';
 import { SoleTechnicalEditDialog } from './SoleTechnicalEditDialog';
 import GroupDialog from '@/components/groups/GroupDialog';
-import { MasterVariantDialog } from './MasterVariantDialog';
+import type { GroupEditTab } from '@/components/groups/GroupEditDialog';
 import { SelectionMarquee } from '@/components/ui/selection-marquee';
 import { BulkActionsBar } from '@/components/ui/bulk-actions-bar';
 import { InlineEdit } from '@/components/ui/InlineEdit';
@@ -80,21 +84,6 @@ const costLabel = (u?: string | null) => u === 'kg' ? 'Custo por kg' : isMeterUn
 type SortKey = 'sku' | 'name' | 'category' | 'quantity' | 'est_pairs' | 'status' | 'unit_price' | 'total_value' | null;
 type SortDir = 'asc' | 'desc';
 
-/** Extract base name while preserving the full sole model (ex.: "01", "204", "Saltinho bloco") */
-function getBaseName(product: Product): string {
-  if (product.category === 'Solado') {
-    return getSoleModelName(product.name, product.color).toUpperCase();
-  }
-
-  const colonIdx = product.name.indexOf(':');
-  if (colonIdx > 0) return product.name.substring(0, colonIdx).trim().toUpperCase();
-  const dashIdx = product.name.indexOf(' - ');
-  if (dashIdx > 0) return product.name.substring(0, dashIdx).trim().toUpperCase();
-  const words = product.name.trim().split(/\s+/);
-  if (words.length <= 1) return '';
-  return words.slice(0, -1).join(' ').toUpperCase();
-}
-
 /** Saldo LÍQUIDO — o que sobra depois das reservas de OP. É o número que responde
  *  "dá pra fechar o pedido?", e desde 02/08/2026 é o que a lista mostra em
  *  destaque (spec `estoque-cores-e-editores.md` R1.6). */
@@ -133,23 +122,6 @@ function getStockStatus(product: Product) {
   if (ratio <= 0.5) return { label: 'Crítico', variant: 'destructive' as const };
   if (ratio <= 1) return { label: 'Baixo', variant: 'warning' as const };
   return { label: 'Normal', variant: 'success' as const };
-}
-
-/** Identidade do MATERIAL dentro do grupo: o nome sem o sufixo de cor. Serve só
- *  pra decidir se o grupo é homogêneo (só variações de cor) ou heterogêneo —
- *  9 dos 32 grupos guardam materiais diferentes, e `COMPONENTES DIVERSOS` tem 8
- *  (Binóculo, Fivela, Ilhós…). NÃO usa o corte-de-última-palavra do
- *  `getBaseName`, que produzia rótulos falsos como "NAPA". */
-function materialIdentity(product: Product): string {
-  // `stripColorFromName` só corta o sufixo se ele bater com a cor ATUAL. Como
-  // trocar a cor deixou de renomear o produto (R0.1), um nome antigo tipo
-  // "NAPA SOFT - PRETO" com cor AZUL manteria o sufixo velho e viraria uma
-  // segunda identidade do mesmo material — jogando o grupo pra heterogêneo e
-  // fazendo toda linha exibir o nome com a cor errada. Cortar qualquer sufixo
-  // " - X" é inócuo hoje (nenhum produto ativo usa esse padrão no nome) e
-  // fecha o caso.
-  const semCor = stripColorFromName(product.name, product.color).trim();
-  return semCor.replace(/\s+-\s+.*$/, '').trim().toUpperCase() || semCor.toUpperCase();
 }
 
 type GroupStats = {
@@ -734,60 +706,37 @@ export function ProductTable({ products, onEdit, onDelete, externalSort, searchT
    const [soleEditProduct, setSoleEditProduct] = useState<Product | null>(null);
    const [artisanalProducts, setArtisanalProducts] = useState<Product[] | null>(null);
 
-  // Intercept edit clicks: rota Solado pro dialog técnico dedicado, e produtos
-  // que pertencem a um grupo (group_id) abrem o MasterVariantDialog pra gerenciar
-  // variantes de cor (incluir/excluir/editar). Antes só abria edit simples,
-  // sem como acessar as variantes a partir do row.
+  // Intercept edit clicks: só o Solado tem editor técnico dedicado.
+  //
+  // O lápis da SUB-LINHA edita UM SKU — e é isso que ele faz. Até 22/08/2026 ele
+  // desviava pro `MasterVariantDialog` sempre que o item tivesse cores irmãs:
+  // clicar em "editar" numa cor abria um gerenciador de várias, e o desvio ainda
+  // precisava de escopo por nome-base pra o lápis do Binóculo não trazer Fivela
+  // e Ilhós junto. O conjunto de cores agora tem porta própria e explícita — o
+  // botão "Editar N itens" da linha do material, que abre a janela do grupo.
   const handleEditIntercepted = useCallback((product: Product) => {
     if (product.category === 'Solado' || product.category?.toLowerCase().includes('solado')) {
       setSoleEditProduct(product);
       return;
     }
-    // O LÁPIS DA LINHA continua escopado por nome-base, não pelo group_id: em
-    // grupo heterogêneo (COMPONENTES DIVERSOS tem 8 materiais) abrir por
-    // group_id faria o lápis do Binóculo trazer Fivela e Ilhós como se fossem
-    // cores dele. Diferente do COLAPSO da lista, que é por group_id de propósito
-    // — ali o objetivo é espelhar a unidade que o débito usa pra resolver cor.
-    if (product.group_id) {
-      const baseKey = getBaseName(product) || product.name.toUpperCase();
-      const colorVariants = products.filter(p =>
-        p.group_id === product.group_id &&
-        (getBaseName(p) || p.name.toUpperCase()) === baseKey,
-      );
-      if (colorVariants.length > 1) {
-        setMasterVariant({ baseName: baseKey, groupId: product.group_id, baseKey });
-        return;
-      }
-    }
     onEdit(product);
-  }, [onEdit, products]);
-  const [editingGroup, setEditingGroup] = useState<ProductGroup | null>(null);
+  }, [onEdit]);
+  // PORTA ÚNICA de edição de grupo: todas as ações da linha do material abrem
+  // ESTA janela (`GroupDialog` → `GroupEditDialog`), mudando só a aba de
+  // abertura. Antes "+ Cor" e "Editar N itens" abriam um diálogo paralelo
+  // (`MasterVariantDialog`) enquanto o menu ⋯ abria a janela do grupo — dois
+  // editores para o mesmo grupo, cada um com metade dos campos.
+  //
+  // A janela deriva os itens do `group_id` na hora (`useProducts`), então não há
+  // snapshot congelado: editar uma cor lá dentro reflete na lista na hora, e a
+  // edição em massa alcança TODAS as cores do grupo, inclusive as que o chip de
+  // zeradas escondeu desta tela.
+  const [editingGroup, setEditingGroup] = useState<{ group: ProductGroup; tab: GroupEditTab } | null>(null);
+  const openGroup = useCallback((groupId: string | null, tab: GroupEditTab) => {
+    const g = groupId ? groups.find(gr => gr.id === groupId) : null;
+    if (g) setEditingGroup({ group: g, tab });
+  }, [groups]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  // Guarda só a IDENTIDADE do grupo aberto (não um snapshot dos produtos): as
-  // variantes exibidas são DERIVADAS da lista viva `products` a cada render, pra que
-  // editar cor/nome/etc dentro do modal reflita NA HORA. Antes o estado segurava um
-  // snapshot congelado de Product[] → salvar atualizava o banco mas o modal continuava
-  // mostrando o valor antigo ("aparece que salvou, porém não altera").
-  // baseKey != null ⇒ aberto por SUBGRUPO (deriva por nome-base, escopado ao group_id);
-  // senão ⇒ aberto pela linha (deriva por group_id, igual ao comportamento anterior).
-  const [masterVariant, setMasterVariant] = useState<{ baseName: string; groupId: string | null; baseKey: string | null; tab?: 'variants' | 'group' | 'add' } | null>(null);
-  const masterVariantProducts = useMemo(() => {
-    if (!masterVariant) return [] as Product[];
-    const { groupId, baseKey } = masterVariant;
-    if (baseKey != null) {
-      return products.filter(p =>
-        (getBaseName(p) || p.name.toUpperCase()) === baseKey &&
-        (groupId == null || p.group_id === groupId));
-    }
-    // Sem filtro: gravar em massa tem que atingir TODAS as cores do grupo,
-    // inclusive as que o chip de zeradas escondeu.
-    if (groupId) return (allProducts ?? products).filter(p => p.group_id === groupId);
-    return [] as Product[];
-  }, [masterVariant, products, allProducts]);
-  // Se todas as variantes do grupo aberto sumirem (ex.: excluiu a última), fecha o modal.
-  useEffect(() => {
-    if (masterVariant && masterVariantProducts.length === 0) setMasterVariant(null);
-  }, [masterVariant, masterVariantProducts]);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const handleMarqueeSelection = useCallback((_indices: number[], keys: string[]) => {
@@ -1020,7 +969,6 @@ export function ProductTable({ products, onEdit, onDelete, externalSort, searchT
         <ManualStockOutDialog open={!!stockOutProduct} onOpenChange={(o) => { if (!o) setStockOutProduct(null); }} product={stockOutProduct} />
         <SoladoGradeDialog open={!!gradeProduct} onOpenChange={(o) => { if (!o) setGradeProduct(null); }} product={gradeProduct} />
         <SoleTechnicalEditDialog open={!!soleEditProduct} onOpenChange={(o) => { if (!o) setSoleEditProduct(null); }} product={soleEditProduct} />
-        {masterVariant && <MasterVariantDialog open={!!masterVariant} onOpenChange={(o) => { if (!o) setMasterVariant(null); }} baseName={masterVariant.baseName} variants={masterVariantProducts} initialTab={masterVariant.tab} onEditVariant={handleEditIntercepted} onDeleteVariant={onDelete} />}
       </>
     );
   }
@@ -1049,7 +997,6 @@ export function ProductTable({ products, onEdit, onDelete, externalSort, searchT
         </SelectionMarquee>
         <ManualStockOutDialog open={!!stockOutProduct} onOpenChange={(o) => { if (!o) setStockOutProduct(null); }} product={stockOutProduct} />
         <SoladoGradeDialog open={!!gradeProduct} onOpenChange={(o) => { if (!o) setGradeProduct(null); }} product={gradeProduct} /><SoleTechnicalEditDialog open={!!soleEditProduct} onOpenChange={(o) => { if (!o) setSoleEditProduct(null); }} product={soleEditProduct} />
-        {masterVariant && <MasterVariantDialog open={!!masterVariant} onOpenChange={(o) => { if (!o) setMasterVariant(null); }} baseName={masterVariant.baseName} variants={masterVariantProducts} initialTab={masterVariant.tab} onEditVariant={handleEditIntercepted} onDeleteVariant={onDelete} />}
         <ArtisanalProductDialog products={artisanalProducts || []} open={!!artisanalProducts} onOpenChange={(o) => { if (!o) setArtisanalProducts(null); }} />
       </>
     );
@@ -1092,10 +1039,7 @@ export function ProductTable({ products, onEdit, onDelete, externalSort, searchT
                       {groupId ? (
                         <button
                           className="font-semibold text-base text-foreground hover:text-primary transition-colors truncate"
-                          onClick={() => {
-                            const g = groups.find(gr => gr.id === groupId);
-                            if (g) setEditingGroup(g);
-                          }}
+                          onClick={() => openGroup(groupId, 'general')}
                         >
                           {groupName}
                         </button>
@@ -1142,10 +1086,8 @@ export function ProductTable({ products, onEdit, onDelete, externalSort, searchT
                     {/* R1.16 — ações do CONJUNTO, sempre visíveis. Baixa manual e
                         excluir NÃO existem aqui: só na cor (R1.18). */}
                     <div className="flex items-center gap-1">
-                      {/* Só com grupo: `masterVariantProducts` deriva por
-                          `group_id`, então em "Sem Grupo" o diálogo abriria
-                          vazio e o guard o fecharia no mesmo frame — um
-                          piscar e nada mais. */}
+                      {/* Só com grupo: a janela edita um `product_groups`, e a
+                          linha "Sem Grupo" não é um — não há o que abrir. */}
                       {groupId && (
                         <>
                           {/* Só em grupo que varia por COR: em grupo com vários
@@ -1153,13 +1095,15 @@ export function ProductTable({ products, onEdit, onDelete, externalSort, searchT
                               cor" herdaria os dados de um irmão arbitrário —
                               a cor VERMELHO de uma Fivela sairia com nome,
                               unidade e conversão de Binóculo. Ali o caminho é
-                              "Adicionar material", pelo formulário completo. */}
+                              "Adicionar material", pelo formulário completo.
+                              A janela do grupo aplica a MESMA regra na aba
+                              Itens (`isHeterogeneousGroup`), fonte única. */}
                           {!stats.heterogeneo && (
                             <Button
                               variant="outline"
                               size="sm"
                               className="h-8 gap-1.5 px-2.5"
-                              onClick={() => setMasterVariant({ baseName: groupName, groupId, baseKey: null, tab: 'add' })}
+                              onClick={() => openGroup(groupId, 'colors')}
                             >
                               <Plus className="h-3.5 w-3.5" />
                               <span className="hidden md:inline">Cor</span>
@@ -1169,7 +1113,7 @@ export function ProductTable({ products, onEdit, onDelete, externalSort, searchT
                             variant="outline"
                             size="sm"
                             className="h-8 gap-1.5 px-2.5"
-                            onClick={() => setMasterVariant({ baseName: groupName, groupId, baseKey: null, tab: 'group' })}
+                            onClick={() => openGroup(groupId, 'bulk')}
                           >
                             <Pencil className="h-3.5 w-3.5" />
                             <span className="hidden md:inline">Editar {contador}</span>
@@ -1184,10 +1128,7 @@ export function ProductTable({ products, onEdit, onDelete, externalSort, searchT
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           {groupId && (
-                            <DropdownMenuItem onClick={() => {
-                              const g = groups.find(gr => gr.id === groupId);
-                              if (g) setEditingGroup(g);
-                            }}>
+                            <DropdownMenuItem onClick={() => openGroup(groupId, 'general')}>
                               <Settings2 className="h-4 w-4 mr-2" /> Abrir grupo de estoque
                             </DropdownMenuItem>
                           )}
@@ -1234,9 +1175,13 @@ export function ProductTable({ products, onEdit, onDelete, externalSort, searchT
       <ManualStockOutDialog open={!!stockOutProduct} onOpenChange={(o) => { if (!o) setStockOutProduct(null); }} product={stockOutProduct} />
       <SoladoGradeDialog open={!!gradeProduct} onOpenChange={(o) => { if (!o) setGradeProduct(null); }} product={gradeProduct} /><SoleTechnicalEditDialog open={!!soleEditProduct} onOpenChange={(o) => { if (!o) setSoleEditProduct(null); }} product={soleEditProduct} />
       {editingGroup && (
-        <GroupDialog open={!!editingGroup} onOpenChange={(o) => { if (!o) setEditingGroup(null); }} group={editingGroup} />
+        <GroupDialog
+          open
+          onOpenChange={(o) => { if (!o) setEditingGroup(null); }}
+          group={editingGroup.group}
+          initialTab={editingGroup.tab}
+        />
       )}
-      {masterVariant && <MasterVariantDialog open={!!masterVariant} onOpenChange={(o) => { if (!o) setMasterVariant(null); }} baseName={masterVariant.baseName} variants={masterVariantProducts} initialTab={masterVariant.tab} onEditVariant={handleEditIntercepted} onDeleteVariant={onDelete} />}
        <ArtisanalProductDialog products={artisanalProducts || []} open={!!artisanalProducts} onOpenChange={(o) => { if (!o) setArtisanalProducts(null); }} />
     </>
   );

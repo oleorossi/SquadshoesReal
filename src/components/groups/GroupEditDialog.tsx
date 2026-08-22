@@ -11,7 +11,7 @@ import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { MasterVariantDialog } from '@/components/inventory/MasterVariantDialog';
+import { VariantListPanel, VariantBulkEditPanel } from '@/components/inventory/VariantManagerPanel';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -33,11 +33,21 @@ import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { SearchInput } from '@/components/ui/search-input';
 import { EmptyState } from '@/components/ui/empty-state';
 import { getFootwearSectorGuide, normalizeTaxonomyName } from '@/lib/footwearMaterialTaxonomy';
+import { isHeterogeneousGroup } from '@/lib/materialIdentity';
+
+/** Abas da janela de grupo. `bulk` e `items` chegaram aqui em 22/08/2026, quando
+ *  o `MasterVariantDialog` deixou de ser um segundo diálogo e virou painel. */
+export type GroupEditTab =
+  | 'general' | 'hierarchy' | 'specs' | 'packaging' | 'composition'
+  | 'colors' | 'items' | 'bulk';
 
 interface GroupEditDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   group: ProductGroup;
+  /** Aba de abertura. A lista de estoque tem um botão por assunto e todos abrem
+   *  ESTA janela — nunca um diálogo paralelo. */
+  initialTab?: GroupEditTab;
 }
 
 // Renderização condicional por tipo de grupo: campos só aparecem quando fazem
@@ -382,11 +392,19 @@ function GroupDimensionsEditor({ group }: { group: ProductGroup }) {
 /* ──────────────────────────────────────────────────
    Main Group Edit Dialog
    ────────────────────────────────────────────────── */
-export default function GroupEditDialog({ open, onOpenChange, group }: GroupEditDialogProps) {
+export default function GroupEditDialog({ open, onOpenChange, group, initialTab }: GroupEditDialogProps) {
   const updateGroup = useUpdateGroup();
   const { data: allProducts = [] } = useProducts();
   const { data: allGroups = [] } = useGroups();
-  const products = allProducts.filter(p => p.group_id === group.id);
+  // Memoizado de propósito: os painéis de variante reidratam o formulário quando
+  // a lista MUDA DE COMPOSIÇÃO. Um array novo a cada render (refetch do React
+  // Query, digitação em outro campo) apagaria o que o usuário digitou.
+  const products = useMemo(
+    () => allProducts.filter(p => p.group_id === group.id),
+    [allProducts, group.id],
+  );
+  /** Mais de um material no mesmo grupo (COMPONENTES DIVERSOS tem 8). */
+  const grupoHeterogeneo = useMemo(() => isHeterogeneousGroup(products), [products]);
 
   // ── Hierarquia de grupos (product_groups.parent_group_id) ─────────────────
   // Derivados perdidos no merge bec3ed0 (a UI de Pai/Subgrupos entrou sem eles).
@@ -505,16 +523,12 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
   // Material base sem cor (EVA, cola): desliga o color_mismatch no consumo/débito.
   const [isColorAgnostic, setIsColorAgnostic] = useState<boolean>(group.is_color_agnostic ?? false);
   const colorBehavior = isColorAgnostic ? 'agnostic' : isBomColorSource ? 'bom-source' : 'variant';
-  // Aba de abertura do MasterVariantDialog: o link "Editar N cores" cai direto
-  // na edição em massa, que é a porta única dos campos de `products` (R3.2).
-  const [variantsDialogTab, setVariantsDialogTab] = useState<'variants' | 'group' | 'add'>('variants');
   const [saving, setSaving] = useState(false);
-  const [editingProductId, setEditingProductId] = useState<string | null>(null);
-  const [editProductName, setEditProductName] = useState('');
 
   const [addDialogOpen, setAddDialogOpen] = useState(false);
-  const [variantsDialogOpen, setVariantsDialogOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState('general');
+  // Aba única desta janela. Cores, itens e edição em massa deixaram de morar num
+  // segundo Dialog (`MasterVariantDialog`) em 22/08/2026 — são abas daqui.
+  const [activeTab, setActiveTab] = useState<GroupEditTab>(initialTab ?? 'general');
   // Hierarquia (product_groups.parent_group_id) + peso unitário. State perdido no
   // merge bec3ed0 (JSX entrou sem as declarações) → crash 'parentGroupId is not
   // defined' ao abrir a edição. Restaurado 2026-06-07. [[group-edit-dropped-state]]
@@ -574,11 +588,32 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
     setIsFamilyPersisted(group.is_family === true || childrenGroups.length > 0);
     setUnitWeightKg(group.unit_weight_kg || 0);
     setPurchaseMultiple((group as any).purchase_multiple || 0);
-    setActiveTab('general');
+    setActiveTab(initialTab ?? 'general');
     // A hidratação pertence à abertura/troca do cadastro. Mudanças nas queries
     // de filhos ou itens não podem apagar campos ainda não salvos.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [group.id, open]);
+  }, [group.id, open, initialTab]);
+
+  /** Abas que EXISTEM neste grupo. Família não tem Cores/Itens/Em massa, e
+   *  Dimensões/Embalagem/Composição dependem do setor. */
+  const abasVisiveis = useMemo<GroupEditTab[]>(() => {
+    const out: GroupEditTab[] = ['general', 'hierarchy'];
+    if (!isContainer) {
+      if (showDimensionsTab) out.push('specs');
+      if (show.packaging) out.push('packaging');
+      if (isCompositeMaterial) out.push('composition');
+      out.push('colors', 'items', 'bulk');
+    }
+    return out;
+  }, [isContainer, showDimensionsTab, show.packaging, isCompositeMaterial]);
+
+  useEffect(() => {
+    // Aba pedida que não existe aqui deixaria a janela ABERTA E VAZIA: o Radix
+    // não acha `TabsContent` com esse valor e não renderiza nada, sem erro. Pode
+    // acontecer com `initialTab` vindo da lista, e também quando o usuário troca
+    // o setor/estrutura na aba Geral e a aba corrente deixa de existir.
+    if (!abasVisiveis.includes(activeTab)) setActiveTab('general');
+  }, [abasVisiveis, activeTab]);
 
   useEffect(() => {
     // Receber o primeiro filho confirma o papel de família, sem reidratar o
@@ -662,8 +697,8 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
         // Preço, localização e múltiplo de compra saíram daqui em 02/08/2026:
         // eram uma SEGUNDA porta gravando `products`, sem selo de divergência e
         // sem prévia, então achatavam valor próprio em silêncio. Porta única
-        // agora é a aba "Aplicar a todas as cores" do MasterVariantDialog
-        // (spec `estoque-cores-e-editores.md` R3.1).
+        // agora é a aba "Em massa" desta mesma janela (`VariantBulkEditPanel`,
+        // spec `estoque-cores-e-editores.md` R3.1).
 
         if (Object.keys(updateData).length > 0) {
           const { error } = await supabase
@@ -691,20 +726,10 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
     }
   };
 
-  const handleSaveProductName = async (productId: string) => {
-    const { error } = await supabase.from('products').update({ name: editProductName }).eq('id', productId);
-    if (error) {
-      toast.error('Erro ao renomear produto');
-    } else {
-      toast.success('Produto renomeado!');
-    }
-    setEditingProductId(null);
-  };
-
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-5xl max-h-[95vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-6xl max-h-[95vh] overflow-y-auto">
           <DialogHeader>
             <div className="flex items-start justify-between gap-3 pr-6">
               <div className="flex min-w-0 items-center gap-3">
@@ -727,7 +752,7 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                   variant="outline"
                   size="sm"
                   className="shrink-0 gap-1.5"
-                  onClick={() => setVariantsDialogOpen(true)}
+                  onClick={() => setActiveTab('items')}
                 >
                   <Palette className="h-3.5 w-3.5" />
                   Variantes de cor
@@ -751,7 +776,7 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
             </div>
           )}
 
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-2">
+          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as GroupEditTab)} className="mt-2">
             <TabsList indicator="none" className="h-auto w-full justify-start gap-1 overflow-x-auto border-y border-foreground/15 bg-muted/20 p-1">
               <TabsTrigger value="general" className="min-w-[132px] flex-1 justify-start gap-2 rounded-sm border border-transparent px-3 py-2 text-left font-sans normal-case tracking-normal data-[state=active]:border-foreground/20 data-[state=active]:bg-background data-[state=active]:shadow-sm">
                 <SquaresFour className="h-4 w-4 shrink-0" />
@@ -775,11 +800,18 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
               </TabsTrigger>}
               {!isContainer && <TabsTrigger value="colors" className="min-w-[132px] flex-1 justify-start gap-2 rounded-sm border border-transparent px-3 py-2 text-left font-sans normal-case tracking-normal data-[state=active]:border-foreground/20 data-[state=active]:bg-background data-[state=active]:shadow-sm">
                 <Palette className="h-4 w-4 shrink-0" />
-                <span><span className="block text-xs font-semibold">Cores</span><span className="block text-[9px] font-normal text-muted-foreground">{products.length} variante(s)</span></span>
+                <span><span className="block text-xs font-semibold">Cores</span><span className="block text-[9px] font-normal text-muted-foreground">catálogo e duplicatas</span></span>
               </TabsTrigger>}
               {!isContainer && <TabsTrigger value="items" className="min-w-[132px] flex-1 justify-start gap-2 rounded-sm border border-transparent px-3 py-2 text-left font-sans normal-case tracking-normal data-[state=active]:border-foreground/20 data-[state=active]:bg-background data-[state=active]:shadow-sm">
                 <Rows className="h-4 w-4 shrink-0" />
-                <span><span className="block text-xs font-semibold">Itens</span><span className="block text-[9px] font-normal text-muted-foreground">cadastro individual</span></span>
+                <span><span className="block text-xs font-semibold">Itens</span><span className="block text-[9px] font-normal text-muted-foreground">{products.length} variante(s)</span></span>
+              </TabsTrigger>}
+              {/* Edição em massa dos campos de `products`. Era a aba "Aplicar a
+                  todas as cores" de um SEGUNDO diálogo, que o botão "Editar N
+                  itens" da lista de estoque abria no lugar desta janela. */}
+              {!isContainer && <TabsTrigger value="bulk" className="min-w-[132px] flex-1 justify-start gap-2 rounded-sm border border-transparent px-3 py-2 text-left font-sans normal-case tracking-normal data-[state=active]:border-foreground/20 data-[state=active]:bg-background data-[state=active]:shadow-sm">
+                <ArrowsLeftRight className="h-4 w-4 shrink-0" />
+                <span><span className="block text-xs font-semibold">Em massa</span><span className="block text-[9px] font-normal text-muted-foreground">aplicar a todas as cores</span></span>
               </TabsTrigger>}
             </TabsList>
 
@@ -941,7 +973,7 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                     <CardContent className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_220px] sm:items-end">
                       <div>
                         <p className="text-xs leading-relaxed text-muted-foreground">Custo, localização, estoque mínimo e fornecedor continuam próprios de cada SKU. Use a edição em massa somente quando quiser substituir esses valores nas variantes.</p>
-                        <Button type="button" variant="outline" size="sm" className="mt-3 h-9 gap-1.5" onClick={() => { setVariantsDialogTab('group'); setVariantsDialogOpen(true); }} disabled={products.length === 0}>
+                        <Button type="button" variant="outline" size="sm" className="mt-3 h-9 gap-1.5" onClick={() => setActiveTab('bulk')} disabled={products.length === 0}>
                           <Palette className="h-4 w-4" /> Editar dados de {products.length} item(ns)
                         </Button>
                       </div>
@@ -1228,6 +1260,29 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                   <Button type="button" size="sm" variant="outline" onClick={() => setActiveTab('general')}>Alterar regra</Button>
                 </div>
               )}
+              {/* `createGroupColorProduct` recusa grupo que não é "Linha com
+                  variantes" — a recusa só aparecia no submit, depois de o
+                  usuário digitar a fila de cores inteira. Aqui ela aparece antes,
+                  com as duas saídas: mudar a regra do grupo ou usar o cadastro
+                  rápido da aba Itens, que copia o item-modelo e funciona sempre. */}
+              {!isColorAgnostic && !isCanonicalStrapGroup && !sharedSpecs && !isBomColorSource && (
+                <div className="flex flex-col gap-3 border border-warning/40 bg-warning/10 px-3 py-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" weight="fill" />
+                    <div>
+                      <p className="text-xs font-semibold">Cadastro em lote indisponível nesta regra</p>
+                      <p className="mt-0.5 text-[11px] text-muted-foreground">
+                        O grupo está como <strong>Coleção de itens</strong>, então criar cor pelo catálogo é recusado.
+                        Use o cadastro rápido da aba Itens ou mude a estrutura para <strong>Linha com variantes</strong> na aba Geral.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 gap-2">
+                    <Button type="button" size="sm" variant="outline" onClick={() => setActiveTab('items')}>Cadastro rápido</Button>
+                    <Button type="button" size="sm" variant="outline" onClick={() => setActiveTab('general')}>Alterar regra</Button>
+                  </div>
+                </div>
+              )}
               {isCanonicalStrapGroup ? (
                 <div className="flex flex-col gap-3 rounded-md border border-primary/30 bg-primary/5 p-4 sm:flex-row sm:items-center sm:justify-between">
                   <p className="text-xs text-muted-foreground">A fusão, criação e revisão de cores desta família pertencem ao catálogo canônico de Tiras.</p>
@@ -1243,9 +1298,12 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
               ) : null}
             </TabsContent>}
 
-            {/* Tab: Items */}
+            {/* Tab: Itens — lista de variantes de cor.
+                Antes era uma tabela crua (nome · SKU · cor · estoque) e a lista
+                RICA vivia no `MasterVariantDialog`, um segundo diálogo. Agora é
+                o mesmo painel nos dois lugares: uma janela só. */}
             {!isContainer && <TabsContent value="items" className="space-y-4 mt-4">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <Label className="flex items-center gap-2 text-sm font-semibold">
                   <Package className="h-4 w-4" />
                   Itens do Grupo ({products.length})
@@ -1254,18 +1312,19 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                   ? navigate(`/tiras-artesanais?tab=cadastro&editor=1&mode=create&origin=grupos&baseGroupId=${encodeURIComponent(group.id)}`)
                   : setAddDialogOpen(true)}>
                   <Plus className="h-3.5 w-3.5" />
-                  {isCanonicalStrapGroup ? 'Cadastrar no Hub' : 'Adicionar'}
+                  {isCanonicalStrapGroup ? 'Cadastrar no Hub' : 'Mover item existente'}
                 </Button>
               </div>
               {/* Tiras acabadas têm um único writer: o catálogo canônico. */}
-              {isCanonicalStrapGroup ? (
+              {isCanonicalStrapGroup && (
                 <div className="flex flex-col gap-2 rounded-md border border-primary/30 bg-primary/5 p-3 sm:flex-row sm:items-center sm:justify-between">
                   <p className="text-xs text-muted-foreground">Cores, produto acabado, piso e receita desta família são criados juntos no hub de Tiras.</p>
                   <Button type="button" size="sm" variant="outline" onClick={() => { onOpenChange(false); navigate(`/tiras-artesanais?tab=cadastro&editor=1&mode=create&origin=grupos&baseGroupId=${encodeURIComponent(group.id)}`); }}>
                     Abrir cadastro canônico
                   </Button>
                 </div>
-              ) : !isColorAgnostic ? (
+              )}
+              {!isCanonicalStrapGroup && !isColorAgnostic && (
                 <button
                   type="button"
                   onClick={() => setActiveTab('colors')}
@@ -1273,80 +1332,42 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                 >
                   <Palette className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
                   <span>
-                    <span className="block text-xs font-semibold">Adicionar novas cores pelo catálogo</span>
-                    <span className="mt-0.5 block text-[10px] text-muted-foreground">Use a aba Cores para buscar, comparar e criar uma ou várias variantes sem duplicar grafias.</span>
+                    <span className="block text-xs font-semibold">Cadastrar várias cores de uma vez</span>
+                    <span className="mt-0.5 block text-[10px] text-muted-foreground">A aba Cores busca no catálogo, compara grafias parecidas e cria em lote sem duplicar.</span>
                   </span>
                 </button>
-              ) : null}
-              {products.length === 0 ? (
-                <p className="text-xs text-muted-foreground py-4 text-center">Nenhum item neste grupo.</p>
-              ) : (
-                <div className="rounded-md border overflow-x-auto max-h-80 overflow-y-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="bg-muted/30 hover:bg-muted/30">
-                        <TableHead className="text-xs">Nome</TableHead>
-                        <TableHead className="text-xs">SKU</TableHead>
-                        <TableHead className="text-xs">Cor</TableHead>
-                        <TableHead className="text-xs text-right">Estoque</TableHead>
-                        <TableHead className="text-xs text-center">Ações</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {products.map(p => (
-                        <TableRow key={p.id}>
-                          <TableCell className="text-xs font-medium">
-                            {!isCanonicalStrapGroup && editingProductId === p.id ? (
-                              <div className="flex gap-1">
-                                <Input
-                                  value={editProductName}
-                                  onChange={e => setEditProductName(e.target.value)}
-                                  className="h-6 text-xs"
-                                  onKeyDown={e => { if (e.key === 'Enter') handleSaveProductName(p.id); if (e.key === 'Escape') setEditingProductId(null); }}
-                                  autoFocus
-                                />
-                                <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={() => handleSaveProductName(p.id)}>
-                                  <Save className="h-3 w-3" />
-                                </Button>
-                              </div>
-                            ) : (
-                              p.name
-                            )}
-                          </TableCell>
-                          <TableCell className="text-xs font-mono text-muted-foreground">{p.sku}</TableCell>
-                          <TableCell className="text-xs">{p.color || '—'}</TableCell>
-                          <TableCell className="text-xs text-right font-mono">{p.quantity} {p.unit}</TableCell>
-                          <TableCell className="text-center">
-                            <div className="flex justify-center gap-1">
-                              {!isCanonicalStrapGroup && <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-6 w-6"
-                                onClick={() => {
-                                  setEditingProductId(p.id);
-                                  setEditProductName(p.name);
-                                }}
-                                title="Renomear"
-                              >
-                                <Pencil className="h-3 w-3" />
-                              </Button>}
-                              {!isCanonicalStrapGroup && <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-6 w-6 text-primary"
-                                onClick={() => window.open(`/estoque/${p.id}`, '_blank')}
-                                title="Editar Material Completo"
-                              >
-                                <Package className="h-3.5 w-3.5" />
-                              </Button>}
-                              {isCanonicalStrapGroup && <Button variant="ghost" size="sm" onClick={() => { onOpenChange(false); navigate(`/tiras-artesanais?tab=cadastro&editor=1&mode=review&origin=grupos&baseGroupId=${encodeURIComponent(group.id)}`); }}>Abrir no Hub</Button>}
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+              )}
+              {grupoHeterogeneo && (
+                <div className="flex items-start gap-2 border border-warning/40 bg-warning/10 px-3 py-2 text-xs">
+                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" weight="fill" />
+                  <span className="text-muted-foreground">
+                    Este grupo guarda <strong className="text-foreground">mais de um material</strong> — a coluna Nome distingue cada um.
+                    O cadastro rápido de cor fica desligado aqui: ele copiaria os dados de um irmão qualquer.
+                  </span>
                 </div>
+              )}
+              <VariantListPanel
+                groupName={group.name}
+                variants={products}
+                showName={grupoHeterogeneo}
+                // Tira acabada nasce no Hub; grupo heterogêneo não tem irmão de
+                // quem copiar unidade, conversão e custo sem inventar cadastro.
+                allowAdd={!isCanonicalStrapGroup && !isColorAgnostic && !grupoHeterogeneo}
+                onDeleteVariant={(id: string) => { forceDeleteFlow.tryDelete(id); }}
+              />
+            </TabsContent>}
+
+            {/* Tab: Em massa — porta única dos campos que só existem em
+                `products` (R2.12). Os de `product_groups` ficam nas outras abas. */}
+            {!isContainer && <TabsContent value="bulk" className="space-y-4 mt-4">
+              {products.length === 0 ? (
+                <p className="py-6 text-center text-xs text-muted-foreground">Nenhum item neste grupo para editar em massa.</p>
+              ) : (
+                <VariantBulkEditPanel
+                  variants={products}
+                  onCancel={() => setActiveTab('items')}
+                  onOpenGroupSpecs={() => setActiveTab(showDimensionsTab ? 'specs' : 'general')}
+                />
               )}
             </TabsContent>}
           </Tabs>
@@ -1381,19 +1402,6 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
         groupName={group.name}
       />
 
-      {/* Gerenciador de variantes de cor — pra incluir/excluir/editar variantes
-          do grupo direto daqui, sem precisar ir até a tabela do estoque. */}
-      {variantsDialogOpen && (
-        <MasterVariantDialog
-          open={variantsDialogOpen}
-          onOpenChange={(o) => { setVariantsDialogOpen(o); if (!o) setVariantsDialogTab('variants'); }}
-          baseName={group.name}
-          initialTab={variantsDialogTab}
-          variants={products}
-          onEditVariant={() => { /* no-op: o usuário já está no GroupEditDialog */ }}
-          onDeleteVariant={(id: string) => { forceDeleteFlow.tryDelete(id); }}
-        />
-      )}
       {forceDeleteFlow.dialog}
     </>
   );
