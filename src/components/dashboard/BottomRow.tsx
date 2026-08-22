@@ -5,6 +5,7 @@ import { ArrowRight } from '@phosphor-icons/react';
 import { cn } from "@/lib/utils";
 import { getDashboardPeriodRange, type DashboardPeriod } from "@/lib/dashboardPeriod";
 import { parseDateOnly } from "@/lib/dateOnly";
+import { isCancelledOrDraftOrder, isFinishedOrder } from "@/lib/orderStatus";
 
 type OPStatus = "ok" | "warn" | "err";
 
@@ -21,11 +22,12 @@ const STATUS_TAG: Record<OPStatus, string> = {
 };
 
 const STATUS_LABEL: Record<string, string> = {
-  completed:   "Concluída",
-  in_progress: "Em andamento",
-  pending:     "Aguardando",
-  approved:    "Aprovada",
-  cancelled:   "Cancelada",
+  Finalizado: "Concluída",
+  "Em Produção": "Em andamento",
+  "Em produção": "Em andamento",
+  Reservado: "Aguardando",
+  Cancelada: "Cancelada",
+  Cancelado: "Cancelada",
 };
 
 export function BottomRow({ period = 'current_month' }: { period?: DashboardPeriod } = {}) {
@@ -49,12 +51,13 @@ export function BottomRow({ period = 'current_month' }: { period?: DashboardPeri
         // dia do prazo. Atrasada só a partir de D+1 (meia-noite local).
         const todayStart = new Date();
         todayStart.setHours(0, 0, 0, 0);
+        const closed = isFinishedOrder(op.status) || isCancelledOrDraftOrder(op.status);
         const isLate = op.planned_delivery
           && parseDateOnly(op.planned_delivery) < todayStart
-          && op.status !== "completed";
+          && !closed;
         let status: OPStatus = "ok";
         if (isLate) status = "err";
-        else if (op.status === "pending" || op.status === "awaiting") status = "warn";
+        else if (op.status === "Reservado") status = "warn";
         return {
           // Auditoria visual 11/06/2026: order_number já vem com o prefixo
           // "OP-" do banco — concatenar de novo gerava "OP-OP-2026-00951".
