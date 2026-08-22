@@ -1382,8 +1382,6 @@ export default function Timesheet() {
       step: undefined,
     },
   ] as const;
-  const activeSection = sections.find(section => section.value === activeTab) ?? sections[0];
-
   return (
     <div className="space-y-4 page-enter">
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
@@ -1391,10 +1389,14 @@ export default function Timesheet() {
             batidas + feriados. Resolução HE, divergências, atrasos, validação
             de jornada e escala foram aposentados — o modelo por hora não usa
             jornada esperada. */}
-        <div className="rounded-lg border border-border/70 bg-card p-2">
+        <div className="overflow-hidden rounded-xl border border-border/70 bg-card shadow-sm">
+          <div className="flex items-center justify-between border-b border-border/60 bg-muted/20 px-3 py-2">
+            <span className="eyebrow text-[9px]">Fluxo do ponto</span>
+            <span className="hidden text-[11px] text-muted-foreground sm:block">Importe, corrija e justifique antes de conferir</span>
+          </div>
           <TabsList
             indicator="none"
-            className="grid h-auto w-full grid-cols-6 gap-1 border-0 bg-transparent p-0 md:flex"
+            className="grid h-auto w-full grid-cols-2 gap-px border-0 bg-border/60 p-0 sm:grid-cols-3 xl:grid-cols-6"
             aria-label="Fluxo do controle de ponto"
           >
             {sections.map((section, index) => (
@@ -1402,19 +1404,28 @@ export default function Timesheet() {
                 key={section.value}
                 value={section.value}
                 className={cn(
-                  'group min-h-10 gap-1.5 rounded-md border-b-0 px-2 py-2 font-sans text-xs font-semibold normal-case tracking-normal data-[state=active]:bg-muted data-[state=active]:text-foreground md:col-auto md:flex-1 md:px-3',
-                  'col-span-2',
-                  index === 3 && 'md:ml-2',
+                  'group relative min-h-[66px] min-w-0 justify-start gap-2.5 rounded-none border-0 border-b-0 bg-card px-3 py-2.5 text-left font-sans normal-case tracking-normal transition-colors hover:bg-muted/40 data-[state=active]:bg-primary/[0.06] data-[state=active]:text-foreground',
+                  'after:absolute after:inset-x-3 after:bottom-0 after:h-0.5 after:scale-x-0 after:rounded-full after:bg-primary after:transition-transform data-[state=active]:after:scale-x-100',
+                  index === 3 && 'xl:before:absolute xl:before:inset-y-3 xl:before:-left-px xl:before:w-px xl:before:bg-border',
                 )}
               >
                 {section.step ? (
-                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-border bg-background text-[10px] font-bold text-muted-foreground group-data-[state=active]:border-primary group-data-[state=active]:bg-primary group-data-[state=active]:text-primary-foreground">
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-border bg-background text-[11px] font-bold text-muted-foreground shadow-sm group-data-[state=active]:border-primary group-data-[state=active]:bg-primary group-data-[state=active]:text-primary-foreground">
                     {section.step}
                   </span>
                 ) : (
-                  <section.icon className="h-4 w-4 shrink-0 text-muted-foreground group-data-[state=active]:text-primary" />
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground group-data-[state=active]:bg-primary/10 group-data-[state=active]:text-primary">
+                    <section.icon className="h-4 w-4" />
+                  </span>
                 )}
-                {section.label}
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-center gap-1.5 text-xs font-bold leading-tight">
+                    {section.label}
+                  </span>
+                  <span className="mt-1 line-clamp-2 block text-[10px] font-normal leading-tight text-muted-foreground">
+                    {section.description}
+                  </span>
+                </span>
                 {section.value === 'manual' && pendingTotal > 0 && (
                   <>
                     <span
@@ -1426,7 +1437,7 @@ export default function Timesheet() {
                       variant="outline"
                       aria-hidden="true"
                       className={cn(
-                        'ml-0.5 hidden h-5 shrink-0 px-1.5 text-[10px] tabular-nums sm:inline-flex',
+                        'absolute right-2 top-2 h-5 shrink-0 px-1.5 text-[10px] tabular-nums',
                         overdueTotal > 0
                           ? 'border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-400'
                           : 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400',
@@ -1440,7 +1451,6 @@ export default function Timesheet() {
               </TabsTrigger>
             ))}
           </TabsList>
-          <p className="px-2 pb-1 pt-2 text-xs text-muted-foreground">{activeSection.description}</p>
         </div>
 
         <TabsContent value="records"><TimesheetRecordsTab /></TabsContent>
