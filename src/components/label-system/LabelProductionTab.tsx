@@ -347,6 +347,78 @@ export function summarizeSelectionLabelTypes(selectedGroups: { packagingMode: st
   };
 }
 
+/**
+ * Métricas da ficha de um item do PV. Pura — não depende do componente.
+ *
+ * A grade da FICHA é `sale_order_items.grade` (Σ = pares por ficha), NUNCA
+ * `orders.grade`, que usa a convenção oposta (Σ = quantity da OP). Reescalar a
+ * da OP distorceria a curva por arredondamento.
+ */
+// eslint-disable-next-line react-refresh/only-export-components
+export function getOrderFichaMetrics(order: any) {
+  const baseGrade = (order?.sale_order_item_grade && typeof order.sale_order_item_grade === 'object'
+    ? order.sale_order_item_grade : {}) as Record<string, number>;
+  const gradeEntries = Object.entries(baseGrade)
+    .map(([size, qty]) => [size, Number(qty) || 0] as const)
+    .filter(([, qty]) => qty > 0)
+    .sort(([a], [b]) => Number(a) - Number(b));
+  const pairsInOneFicha = gradeEntries.reduce((sum, [, qty]) => sum + qty, 0);
+  const numFichas = Number(order?.sale_order_item_fichas) || 0;
+  if (pairsInOneFicha <= 0 || numFichas <= 0) {
+    throw new Error(
+      `Grade/fichas do item do PV ausentes para ${order?.order_number || 'a OP selecionada'}. ` +
+      'Corrija o item do pedido antes de gerar por ficha.',
+    );
+  }
+  return {
+    gradeText: gradeEntries.map(([size, qty]) => `${size}(${qty})`).join(' '),
+    gradeEntries,
+    pairsInOneFicha,
+    numFichas,
+  };
+}
+
+/**
+ * Ordem das etiquetas no modo "Qtd. Total (1:1)": a GRADE DA FICHA, repetida
+ * ficha a ficha.
+ *
+ * Decisão do dono, 22/08/2026. Antes saía numeração a numeração — todos os 34,
+ * depois todos os 35 — e quem embala tinha que remontar a grade na mão. Agora
+ * sai 34,35,36…(uma grade inteira), 34,35,36…(a próxima), e cada maço que cai
+ * da Elgin já é uma ficha.
+ *
+ * Pedido SEM grade completa cai na ordem tradicional (também decisão do dono,
+ * na mesma conversa): a grade da PRÓPRIA OP, numeração a numeração. Assim o
+ * TOTAL de etiquetas nunca muda — só a ordem — e as OPs sem cadastro continuam
+ * imprimindo em vez de derrubar o lote. Medido em 22/08/2026: 116 das 119 OPs
+ * abertas têm grade+fichas; as 3 sem são do PV-00146.
+ */
+// eslint-disable-next-line react-refresh/only-export-components
+export function buildQuantitySizeSequence(orders: any[]): { sizes: string[]; fallbackOrders: string[] } {
+  const sizes: string[] = [];
+  const fallbackOrders: string[] = [];
+  for (const order of orders) {
+    let metrics: ReturnType<typeof getOrderFichaMetrics> | null = null;
+    try { metrics = getOrderFichaMetrics(order); } catch { metrics = null; }
+    if (metrics) {
+      for (let ficha = 0; ficha < metrics.numFichas; ficha++) {
+        for (const [size, qty] of metrics.gradeEntries) {
+          for (let i = 0; i < qty; i++) sizes.push(size);
+        }
+      }
+      continue;
+    }
+    if (order?.order_number && !fallbackOrders.includes(order.order_number)) {
+      fallbackOrders.push(order.order_number);
+    }
+    const orderGrade = (order?.grade && typeof order.grade === 'object' ? order.grade : {}) as Record<string, number>;
+    for (const [size, qty] of Object.entries(orderGrade).sort(([a], [b]) => Number(a) - Number(b))) {
+      for (let i = 0; i < (Number(qty) || 0); i++) sizes.push(size);
+    }
+  }
+  return { sizes, fallbackOrders };
+}
+
 function ReferenceCard({ group, selected, onToggle, hasOverride }: { group: GroupedReference; selected: boolean; onToggle: () => void; hasOverride?: boolean }) {
   const sizes = Object.entries(group.aggregatedGrade)
     .filter(([, v]) => (v as number) > 0)
@@ -1111,27 +1183,6 @@ export function LabelProductionTab() {
     [filtered, selected],
   );
 
-  const getOrderFichaMetrics = (order: any) => {
-    const baseGrade = (order?.sale_order_item_grade && typeof order.sale_order_item_grade === 'object'
-      ? order.sale_order_item_grade : {}) as Record<string, number>;
-    const gradeEntries = Object.entries(baseGrade)
-      .map(([size, qty]) => [size, Number(qty) || 0] as const)
-      .filter(([, qty]) => qty > 0)
-      .sort(([a], [b]) => Number(a) - Number(b));
-    const pairsInOneFicha = gradeEntries.reduce((sum, [, qty]) => sum + qty, 0);
-    const numFichas = Number(order?.sale_order_item_fichas) || 0;
-    if (pairsInOneFicha <= 0 || numFichas <= 0) {
-      throw new Error(
-        `Grade/fichas do item do PV ausentes para ${order?.order_number || 'a OP selecionada'}. ` +
-        'Corrija o item do pedido antes de gerar por ficha.',
-      );
-    }
-    return {
-      gradeText: gradeEntries.map(([size, qty]) => `${size}(${qty})`).join(' '),
-      pairsInOneFicha,
-      numFichas,
-    };
-  };
 
   // ── MATERIAL das etiquetas — cascata única (labelUtils.resolveMaterialLabels):
   // variação do PV > cabedal da ficha > (tiras) forração pick-one pela cor.
@@ -1281,6 +1332,10 @@ export function LabelProductionTab() {
     setIsGenerating(true);
     try {
       const labels: any[] = [];
+      // OPs que não puderam seguir a ordem por ficha (sem grade/fichas no item
+      // do PV). Avisadas no fim — silêncio aqui viraria "a ordem saiu errada e
+      // ninguém sabe por quê".
+      const fichaFallbackOrders = new Set<string>();
       const logoUrl = new URL(logoImg, window.location.origin).href;
       const uniqueRefIds = [...new Set(thermalGroups.map(g => g.referenceId))];
       const [refDataMap, materialMap] = await Promise.all([
@@ -1326,11 +1381,11 @@ export function LabelProductionTab() {
         const effRefCode = getEffectiveRefCode(group);
         const effRefName = getEffectiveRefName(group);
         if (thermalMode === 'quantity') {
-          for (const [size, qty] of Object.entries(group.aggregatedGrade)) {
-            const quantity = Number(qty) || 0;
-            for (let i = 0; i < quantity; i++) {
-              labels.push({ refCode: effRefCode, refName: effRefName, mainMaterial, color: getEffectiveColor(group, colorName), size, barcode: `${effRefCode || group.orders?.[0]?.order_number || group.groupKey}-${size}`, imageUrl: productImageUrl, imageIsFallback: productImageFallback, shoeCategory: refData?.shoe_category || '', strapsLabel: getEffectiveStrapsLabel(group) });
-            }
+          // Ordem = grade da ficha; ver buildQuantitySizeSequence.
+          const sequence = buildQuantitySizeSequence(group.orders);
+          sequence.fallbackOrders.forEach(n => fichaFallbackOrders.add(n));
+          for (const size of sequence.sizes) {
+            labels.push({ refCode: effRefCode, refName: effRefName, mainMaterial, color: getEffectiveColor(group, colorName), size, barcode: `${effRefCode || group.orders?.[0]?.order_number || group.groupKey}-${size}`, imageUrl: productImageUrl, imageIsFallback: productImageFallback, shoeCategory: refData?.shoe_category || '', strapsLabel: getEffectiveStrapsLabel(group) });
           }
         } else {
           for (const order of group.orders) {
@@ -1369,6 +1424,13 @@ export function LabelProductionTab() {
         jobId,
       });
       toast.success(`${labels.length} etiquetas individuais geradas.`);
+      if (thermalMode === 'quantity' && fichaFallbackOrders.size > 0) {
+        toast.warning(
+          `Sem grade de ficha em ${[...fichaFallbackOrders].join(', ')} — nessas OPs as etiquetas saíram ` +
+          'na ordem por numeração, não por grade. Preencha grade e fichas no item do PV.',
+          { duration: 10000 },
+        );
+      }
     } catch (err: any) {
       printTabRef.current?.close();
       printTabRef.current = null;
