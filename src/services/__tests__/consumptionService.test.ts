@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// Mock do cliente Supabase ANTES do import do serviço.
 const rpcMock = vi.fn();
 vi.mock('@/integrations/supabase/client', () => ({
   supabase: { rpc: (...args: unknown[]) => rpcMock(...args) },
@@ -13,7 +12,6 @@ import {
   type ConsumptionLine,
 } from '../consumptionService';
 
-/** Helper: monta uma linha com defaults sãos para os testes. */
 function line(over: Partial<ConsumptionLine>): ConsumptionLine {
   return {
     component: 'Cabedal',
@@ -49,7 +47,7 @@ describe('consumptionService — nova hierarquia de fontes', () => {
     const summary = await calculateConsumption({ referenceId: 'sheet-1', quantity: 10, color: 'Preto', size: 37 });
 
     expect(summary.lines.filter(l => l.source === 'sheet_per_size')).toHaveLength(3);
-    expect(summary.soldDriven).toBe(false); // sheet_per_size não conta como sole-driven
+    expect(summary.soldDriven).toBe(false);
     expect(summary.totalRequired).toBeCloseTo(92.9 + 57 + 41.6 + 10, 2);
   });
 
@@ -105,6 +103,39 @@ describe('consumptionService — nova hierarquia de fontes', () => {
     expect(params.p_size).toBeNull();
   });
 
+  it('com grade válida chama by_grade (não o wrapper escalar)', async () => {
+    rpcMock.mockResolvedValueOnce({ data: [], error: null });
+    await calculateConsumption({
+      referenceId: 'ref-g',
+      quantity: 1104,
+      color: 'Preto',
+      grade: { '37': 1104 },
+    });
+    const [fnName, params] = rpcMock.mock.calls[0];
+    expect(fnName).toBe('calculate_order_consumption_by_grade');
+    expect(params.p_grade).toEqual({ '37': 1104 });
+    expect(params.p_order_quantity).toBeUndefined();
+  });
+
+  it('escala grade BASE/ratio antes de chamar by_grade (PV-00145)', async () => {
+    rpcMock.mockResolvedValueOnce({ data: [], error: null });
+    await calculateConsumption({
+      referenceId: 'pv-00145',
+      quantity: 1104,
+      grade: { '35': 1, '36': 2, '37': 3, '38': 3, '39': 2, '40': 1 },
+    });
+    const [, params] = rpcMock.mock.calls[0];
+    const scaled = params.p_grade as Record<string, number>;
+    const sum = Object.values(scaled).reduce((a, b) => a + Number(b), 0);
+    expect(sum).toBe(1104);
+  });
+
+  it('grade vazia ou sem tamanhos cai no wrapper escalar', async () => {
+    rpcMock.mockResolvedValueOnce({ data: [], error: null });
+    await calculateConsumption({ referenceId: 'ref-e', quantity: 10, grade: {} });
+    expect(rpcMock.mock.calls[0][0]).toBe('calculate_order_consumption');
+  });
+
   it('lança erro descritivo quando a RPC falha', async () => {
     rpcMock.mockResolvedValueOnce({ data: null, error: { message: 'function does not exist' } });
     await expect(
@@ -158,7 +189,6 @@ describe('consumptionService — nova hierarquia de fontes', () => {
 
 describe('consumptionService — cenário ST15 (regressão da nova hierarquia)', () => {
   it('ST15 com per-size uniforme retorna o mesmo consumo do escalar (sem regressão)', async () => {
-    // ST15: lining 5.7, insole 4.16, upper 9.29 — repetidos por todos os tamanhos.
     rpcMock.mockResolvedValueOnce({
       data: [
         line({ component: 'Cabedal',  source: 'sheet_per_size', consumption_per_unit: 9.29, required: 92.9 }),
