@@ -329,8 +329,8 @@ export function summarizeSelectionLabelTypes(selectedGroups: { packagingMode: st
   const notes: string[] = [];
   if (thermalCount < total) {
     notes.push(thermalCount === 0
-      ? `Nenhum dos ${total} ${itens(total)} selecionados aceita etiqueta individual (térmica): embalagem ${[...thermalExcluded].join(' / ')} leva só rótulo de caixa externa.`
-      : `Etiqueta individual (térmica) sai para ${thermalCount} de ${total} ${itens(total)} — ${total - thermalCount} em ${[...thermalExcluded].join(' / ')} leva só rótulo de caixa externa.`);
+      ? `Nenhum dos ${total} ${itens(total)} selecionados aceita etiqueta individual: embalagem ${[...thermalExcluded].join(' / ')} leva só rótulo de caixa externa.`
+      : `Etiqueta individual sai para ${thermalCount} de ${total} ${itens(total)} — ${total - thermalCount} em ${[...thermalExcluded].join(' / ')} leva só rótulo de caixa externa.`);
   }
   if (boxCount < total) {
     notes.push(boxCount === 0
@@ -424,7 +424,7 @@ function ReferenceCard({ group, selected, onToggle, hasOverride }: { group: Grou
               </Badge>
               <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium uppercase tracking-tighter">
                 <span className={cn(allowed.thermal ? "text-primary" : "opacity-50")}>
-                  {allowed.thermal ? '✓' : '✗'} Térmica
+                  {allowed.thermal ? '✓' : '✗'} Individual
                 </span>
                 <span className="opacity-30">|</span>
                 <span className={cn(allowed.masterBox ? "text-primary" : "opacity-50")}>
@@ -1358,7 +1358,7 @@ export function LabelProductionTab() {
         ? buildTemplateLabelsHtml(selectedTemplate, labels)
         : buildThermalLabelsHtml(labels, logoUrl, { width: dimensions.width, height: dimensions.height }, labelConfig, resolveSender().senderCnpj);
       const jobId = await createPrintJob({
-        batchName: `Térmicas - ${new Date().toLocaleString('pt-BR')}`,
+        batchName: `Etiqueta Individual - ${new Date().toLocaleString('pt-BR')}`,
         totalLabels: labels.length,
         orderIds,
         templateId: selectedThermalTemplateId,
@@ -1368,7 +1368,7 @@ export function LabelProductionTab() {
         html,
         jobId,
       });
-      toast.success(`${labels.length} etiquetas térmicas geradas.`);
+      toast.success(`${labels.length} etiquetas individuais geradas.`);
     } catch (err: any) {
       printTabRef.current?.close();
       printTabRef.current = null;
@@ -2164,7 +2164,7 @@ export function LabelProductionTab() {
                 {selectionLabelTypes.thermal && (
                   <div className="flex flex-col gap-1">
                     <div className="flex items-center gap-1">
-                      <Button onClick={handlePrintIndividual} variant="secondary" className="gap-2 h-9 border shadow-sm rounded-r-none"><Barcode className="h-4 w-4" />Térmicas ({selectionLabelTypes.thermalCount})</Button>
+                      <Button onClick={handlePrintIndividual} variant="secondary" className="gap-2 h-9 border shadow-sm rounded-r-none"><Barcode className="h-4 w-4" />Etiqueta Individual ({selectionLabelTypes.thermalCount})</Button>
                       <Select value={thermalMode} onValueChange={(v: any) => setThermalMode(v)}>
                         <SelectTrigger className="h-9 w-[130px] text-xs rounded-l-none border-l-0 bg-secondary"><SelectValue /></SelectTrigger>
                         <SelectContent>

@@ -838,16 +838,54 @@ export function buildThermalLabelsHtml(labels: {
     </div>`;
   }).join('');
 
-  const barcodeInits = labels.map((l, idx) => {
-    if (!l.barcode || !c.showBarcode) return '';
-    // Em ficha-mode o barcode é "REF-34(2) 35(3) ..." (com espaços/parênteses,
-    // legais em CODE128). sanitizeBarcode os removia, alterando o payload
-    // codificado. jsStringLiteral preserva o valor inteiro e ainda é seguro
-    // dentro do <script> (escapa aspas e neutraliza </). Já é uma string
-    // entre aspas, então NÃO envolver em "" de novo.
-    const code = jsStringLiteral(l.barcode);
-    return `try{var el=document.querySelector("#bc-${idx}");JsBarcode(el,${code},{format:"CODE128",width:0.8,height:${barcodeHeightPx},displayValue:false,margin:0});if(el){el.removeAttribute("width");el.removeAttribute("height");el.style.width="100%";el.style.height="auto";}}catch(e){}`;
-  }).filter(Boolean).join('\n');
+  /**
+   * UM JsBarcode por PAYLOAD DISTINTO — não por etiqueta.
+   *
+   * No modo "Qtd. Total (1:1)" sai uma etiqueta por PAR. Caso medido em
+   * 22/08/2026: 1.136 pares (13 referências × ~7 numerações) geravam 1.136
+   * chamadas de JsBarcode para apenas ~91 códigos distintos, porque o payload é
+   * `REF-numeração` e todo par da mesma numeração repete o mesmo código. ~12× de
+   * trabalho redundante, tudo SÍNCRONO dentro de initBC(), mais ~200 KB de texto
+   * de <script> só de statements repetidos — era isso que fazia a janela de
+   * impressão demorar a ficar pronta.
+   *
+   * Agora o primeiro slot de cada payload é gerado de verdade e os demais
+   * recebem `cloneNode(true)` do SVG já pronto. Mesmo payload + mesmas opções
+   * produzem SVG idêntico, então NADA muda no que é impresso.
+   *
+   * Em ficha-mode o payload é "REF-34(2) 35(3) …" (espaços e parênteses são
+   * legais em CODE128) — por isso o valor vai inteiro, sem sanitizar: remover
+   * caractere aqui alteraria o código lido pelo scanner.
+   */
+  const barcodeJobs = new Map<string, number[]>();
+  labels.forEach((l, idx) => {
+    if (!l.barcode || !c.showBarcode) return;
+    const slots = barcodeJobs.get(l.barcode);
+    if (slots) slots.push(idx);
+    else barcodeJobs.set(l.barcode, [idx]);
+  });
+  // `<` → \u003c: safeScriptBlock NÃO escapa nada, então um payload contendo
+  // "</script>" fecharia a tag e derrubaria a página inteira.
+  const barcodeJobsJson = JSON.stringify([...barcodeJobs]).replace(/</g, '\\u003c');
+  const barcodeInits = barcodeJobs.size === 0 ? '' : `
+var _bcJobs=${barcodeJobsJson};
+for(var j=0;j<_bcJobs.length;j++){
+  var code=_bcJobs[j][0], slots=_bcJobs[j][1];
+  var first=document.getElementById('bc-'+slots[0]);
+  if(!first) continue;
+  try{
+    JsBarcode(first,code,{format:"CODE128",width:0.8,height:${barcodeHeightPx},displayValue:false,margin:0});
+    first.removeAttribute("width");first.removeAttribute("height");
+    first.style.width="100%";first.style.height="auto";
+  }catch(e){continue;}
+  for(var k=1;k<slots.length;k++){
+    var el=document.getElementById('bc-'+slots[k]);
+    if(!el) continue;
+    var clone=first.cloneNode(true);
+    clone.id='bc-'+slots[k];
+    el.parentNode.replaceChild(clone,el);
+  }
+}`;
 
   const cols: string[] = [];
   if (c.showImage) cols.push(`${photoColMm}mm`);   // FOTO (esquerda)
