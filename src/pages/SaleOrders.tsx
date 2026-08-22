@@ -6,6 +6,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { useDebounce } from 'use-debounce';
 import { getSignedUrl } from '@/lib/getSignedUrl';
+import { loadPvConsumption, pvConsumptionQueryKey, PV_CONSUMPTION_STALE_MS } from '@/lib/pvConsumption';
 import { resolveMaterialLabels, materialLabelKey } from '@/lib/labelUtils';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
@@ -20,6 +21,7 @@ import { cn } from "@/lib/utils";
 // primeiro paint e o ganho é zero. (auditoria PV 07/08/2026)
 const MarginDialog = lazy(() => import('@/components/sale-orders/MarginDialog'));
 const OrderPhotosDialog = lazy(() => import('@/components/sale-orders/OrderPhotosDialog'));
+const OrderConsumptionDialog = lazy(() => import('@/components/sale-orders/OrderConsumptionDialog'));
 const OperatorFichasDialog = lazy(() => import('@/components/sale-orders/OperatorFichasDialog'));
 const GenerateServiceOrdersWizard = lazy(() => import('@/components/contractors/GenerateServiceOrdersWizard').then(m => ({ default: m.GenerateServiceOrdersWizard })));
 const GeneratePurchaseOrdersDialog = lazy(() => import('@/components/purchase/GeneratePurchaseOrdersDialog'));
@@ -473,6 +475,7 @@ export default function SaleOrders() {
   const [overviewOpen, setOverviewOpen] = useState(false);
   const [marginDialogOpen, setMarginDialogOpen] = useState(false);
   const [photosDialogOpen, setPhotosDialogOpen] = useState(false);
+  const [consumoDialog, setConsumoDialog] = useState<{ ids: string[]; numbers: string[] } | null>(null);
   // "Ficha Montagem": abre a seleção de OPs em vez de imprimir o PV inteiro.
   const [operatorFichasOpen, setOperatorFichasOpen] = useState(false);
   // Canal "Compras por Pedido" — alvo do modal de geração de OCs (1 ou N PVs).
@@ -1130,7 +1133,13 @@ export default function SaleOrders() {
 
   const handleBulkConsumption = () => {
     if (selectedIds.size === 0) return;
-    navigate(`/sales?view=consumo&ids=${Array.from(selectedIds).join(',')}`);
+    const ids = Array.from(selectedIds);
+    void queryClient.prefetchQuery({
+      queryKey: pvConsumptionQueryKey(ids),
+      queryFn: () => loadPvConsumption(ids),
+      staleTime: PV_CONSUMPTION_STALE_MS,
+    });
+    navigate(`/sales?view=consumo&ids=${ids.join(',')}`);
   };
 
   const handleBulkPurchaseOrders = () => {
@@ -1479,9 +1488,21 @@ export default function SaleOrders() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pvParam, isLoading, orders, detailDialogOpen]);
 
+  const prefetchPvConsumption = (id: string) => {
+    void queryClient.prefetchQuery({
+      queryKey: pvConsumptionQueryKey([id]),
+      queryFn: () => loadPvConsumption([id]),
+      staleTime: PV_CONSUMPTION_STALE_MS,
+    });
+  };
+
   const openOrderDetails = async (order: any) => {
     setSelectedOrder(order);
     setDetailDialogOpen(true);
+    // Prefetch do consumo + chunk do diálogo enquanto o detalhe ainda carrega
+    // os itens — o clique em "Consumo de materiais" reaproveita o cache.
+    prefetchPvConsumption(order.id);
+    void import('@/components/sale-orders/OrderConsumptionDialog');
     // ?pv= na URL: o detalhe passa a sobreviver ao F5, abrir em duas abas e ser
     // mandado por link — antes ele só existia em estado local.
     //
@@ -1970,13 +1991,11 @@ export default function SaleOrders() {
     );
   }
 
-  // Consumo de Materiais — PÁGINA (1 ou N PVs pelo `?ids=`).
+  // Consumo de Materiais — PÁGINA multi-PV (`?ids=`).
   //
-  // Era um modal de 92vh: com os avisos de cadastro no topo, o primeiro número
-  // de consumo caía abaixo da dobra. Como página, o layout cabe em duas colunas
-  // (tabela + trilho de decisão), sobrevive a F5 e pode ser mandada por link.
-  // O escopo de UM PV usa o MESMO componente — antes tinha um modal só pra ele,
-  // com uma segunda cópia do carregamento.
+  // 1 PV abre no diálogo (OrderConsumptionDialog) pra não perder o detalhe
+  // nem o `?pv=` da URL. Esta página continua no lote (N PVs, URL
+  // compartilhável, F5). As duas usam `loadPvConsumption` + o mesmo motor.
   if (isConsumptionView) {
     return (
       <>
@@ -2406,7 +2425,7 @@ export default function SaleOrders() {
                     </button>
                   </div>
                   <div className="mt-3 flex gap-2 border-t pt-3">
-                    <Button variant="outline" size="sm" className="min-h-10 flex-1 gap-1.5" onClick={() => navigate(`/sales?view=consumo&ids=${order.id}`)}>
+                    <Button variant="outline" size="sm" className="min-h-10 flex-1 gap-1.5" onMouseEnter={() => prefetchPvConsumption(order.id)} onClick={() => setConsumoDialog({ ids: [order.id], numbers: [order.order_number] })}>
                       <Package className="h-4 w-4" /> Consumo
                     </Button>
                     <Button variant="outline" size="sm" className="min-h-10 flex-1 gap-1.5" disabled={!canEditPv} onClick={() => navigate(`/sales/edit/${order.id}`)}>
@@ -2636,7 +2655,7 @@ export default function SaleOrders() {
                           <Button variant="ghost" size="icon" className="h-7 w-7" title="Editar" disabled={!canEditPv} onClick={() => navigate(`/sales/edit/${order.id}`)}>
                             <Pencil className="h-3.5 w-3.5" />
                           </Button>
-                          <Button variant="ghost" size="icon" className="h-7 w-7" title="Consumo de materiais" onClick={() => navigate(`/sales?view=consumo&ids=${order.id}`)}>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" title="Consumo de materiais" onMouseEnter={() => prefetchPvConsumption(order.id)} onClick={() => setConsumoDialog({ ids: [order.id], numbers: [order.order_number] })}>
                             <Package className="h-3.5 w-3.5" />
                           </Button>
                           {isAdmin && order.status === 'Faturado' && (
@@ -2928,7 +2947,7 @@ export default function SaleOrders() {
                       {resyncPVOPs.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />} Resync OPs
                     </Button>
                   )}
-                  <Button variant="outline" size="sm" className="gap-2" onClick={() => navigate(`/sales?view=consumo&ids=${selectedOrder.id}`)}><ClipboardList className="h-3.5 w-3.5" /> Consumo de materiais</Button>
+                  <Button variant="outline" size="sm" className="gap-2" title="O que comprar, quanto falta e a grade do solado" onMouseEnter={() => prefetchPvConsumption(selectedOrder.id)} onClick={() => setConsumoDialog({ ids: [selectedOrder.id], numbers: [selectedOrder.order_number] })}><Package className="h-3.5 w-3.5" /> Consumo de materiais</Button>
                   {canBuy && (
                     <Button
                       variant="outline"
@@ -3632,6 +3651,22 @@ export default function SaleOrders() {
             orderNumber={selectedOrder?.order_number || ''}
             clientName={selectedOrder?.client_name || ''}
             items={selectedOrderItems}
+          />
+        </Suspense>
+      )}
+
+      {consumoDialog && (
+        <Suspense fallback={null}>
+          <OrderConsumptionDialog
+            open={!!consumoDialog}
+            onOpenChange={(v) => { if (!v) setConsumoDialog(null); }}
+            saleOrderIds={consumoDialog.ids}
+            orderNumbers={consumoDialog.numbers}
+            onGerarOC={canBuy ? () => {
+              const { ids, numbers } = consumoDialog;
+              setConsumoDialog(null);
+              setPoGenTarget({ ids, numbers });
+            } : undefined}
           />
         </Suspense>
       )}
