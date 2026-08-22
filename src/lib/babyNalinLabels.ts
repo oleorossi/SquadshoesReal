@@ -9,8 +9,8 @@
  * Entrada: o arquivo de exportação do pedido de compra do ERP do cliente
  * (`Exp_Etiquetas_PedCompra_*.csv`, `;` em UTF-16/UTF-8/CP1252, ou XLSX).
  * Saídas:
- *   - produção: rolo térmico 50 × 40 mm, uma etiqueta por página;
- *   - gráfica: duas etiquetas couchê 50 × 30 mm lado a lado, com vão técnico.
+ *   - produção L42PRO: duas etiquetas 50 × 30 mm por carreira, repetidas pela quantidade;
+ *   - gráfica: duas artes 50 × 30 mm lado a lado, uma por SKU, com vão técnico.
  */
 import { code128Bars, encodeCode128 } from './code128';
 
@@ -312,9 +312,9 @@ export function assertBarcodeFits(codigo: string): BarcodeFit {
 /* ──────────────────────────────── PDF ──────────────────────────────── */
 
 export interface BabyNalinPdfOptions {
-  /** Produção usa mídia 50×40; gráfica impõe duas etiquetas couchê 50×30. */
+  /** Os dois modos usam o rolo de duas colunas 50×30; muda somente a repetição. */
   mode?: 'production' | 'graphic';
-  /** Repete cada etiqueta pela `Qt. Solicitada` do pedido. Padrão: 1 por linha. */
+  /** Repete cada etiqueta pela `Qt. Solicitada` do pedido. Na produção, o padrão é repetir. */
   repeatByQuantity?: boolean;
   /** Etiquetas físicas por par quando a repetição por quantidade estiver ligada. */
   repeatMultiplier?: number;
@@ -440,6 +440,8 @@ export interface GraphicLabelPlacement extends LabelPlacement {
   row: BabyNalinRow;
 }
 
+export type ProductionLabelPlacement = GraphicLabelPlacement;
+
 export interface CoucheRollGeometry extends CoucheRollProfile {
   pageWidthMm: number;
   pageHeightMm: number;
@@ -468,6 +470,25 @@ export function resolveCoucheRollGeometry(
   };
 }
 
+function couchePlacementAt(
+  row: BabyNalinRow,
+  index: number,
+  geometry: CoucheRollGeometry,
+): GraphicLabelPlacement {
+  const column = index % COUCHE_COLUMNS;
+  return {
+    pageIndex: Math.floor(index / COUCHE_COLUMNS),
+    column,
+    xMm:
+      geometry.leftMarginMm
+      + column * (COUCHE_LABEL_WIDTH_MM + geometry.columnGapMm)
+      + COUCHE_OFFSET_X_MM,
+    yMm: geometry.topMarginMm + COUCHE_OFFSET_Y_MM,
+    barcodeTopYMm: COUCHE_BARCODE_TOP_Y_MM,
+    row,
+  };
+}
+
 /**
  * Planeja a imposição couchê sem depender do jsPDF: esquerda, direita e então
  * a próxima página. A última página ímpar fica deliberadamente vazia à direita.
@@ -477,20 +498,7 @@ export function planGraphicLabelPlacements(
   profile: Partial<CoucheRollProfile> = {},
 ): GraphicLabelPlacement[] {
   const geometry = resolveCoucheRollGeometry(profile);
-  return uniqueClientSkuRows(rows).map((row, index) => {
-    const column = index % COUCHE_COLUMNS;
-    return {
-      pageIndex: Math.floor(index / COUCHE_COLUMNS),
-      column,
-      xMm:
-        geometry.leftMarginMm
-        + column * (COUCHE_LABEL_WIDTH_MM + geometry.columnGapMm)
-        + COUCHE_OFFSET_X_MM,
-      yMm: geometry.topMarginMm + COUCHE_OFFSET_Y_MM,
-      barcodeTopYMm: COUCHE_BARCODE_TOP_Y_MM,
-      row,
-    };
-  });
+  return uniqueClientSkuRows(rows).map((row, index) => couchePlacementAt(row, index, geometry));
 }
 
 export function graphicPageCount(skuCount: number): number {
@@ -565,7 +573,34 @@ export function expandRows(rows: BabyNalinRow[], repeatByQuantity: boolean, repe
   return rows.flatMap(r => Array.from({ length: Math.max(1, r.quantidade) * multiplier }, () => r));
 }
 
-/** Monta o PDF de produção 50×40 ou a imposição couchê 2-up para gráfica. */
+/**
+ * Distribui a tiragem da L42PRO pelas duas colunas do rolo. Ex.: 144 etiquetas
+ * ocupam 72 carreiras; se a quantidade for ímpar, a última direita fica vazia.
+ */
+export function planProductionLabelPlacements(
+  rows: BabyNalinRow[],
+  profile: Partial<CoucheRollProfile> = {},
+  repeatMultiplier = 1,
+  repeatByQuantity = true,
+): ProductionLabelPlacement[] {
+  const total = countExpandedRows(rows, repeatByQuantity, repeatMultiplier);
+  if (total > MAX_PDF_LABELS) {
+    throw new Error(`A geração teria ${total.toLocaleString('pt-BR')} etiquetas. O limite seguro é ${MAX_PDF_LABELS.toLocaleString('pt-BR')} por PDF.`);
+  }
+
+  const geometry = resolveCoucheRollGeometry(profile);
+  const multiplier = Math.min(100, Math.max(1, Math.trunc(Number(repeatMultiplier) || 1)));
+  const placements: ProductionLabelPlacement[] = [];
+  rows.forEach(row => {
+    const copies = repeatByQuantity ? Math.max(1, Math.trunc(Number(row.quantidade) || 1)) * multiplier : 1;
+    for (let copy = 0; copy < copies; copy++) {
+      placements.push(couchePlacementAt(row, placements.length, geometry));
+    }
+  });
+  return placements;
+}
+
+/** Monta o PDF 2-up 50×30 para a L42PRO ou a matriz sem repetição para gráfica. */
 export async function buildBabyNalinPdf(
   rows: BabyNalinRow[],
   options: BabyNalinPdfOptions = {},
@@ -574,9 +609,9 @@ export async function buildBabyNalinPdf(
 
   const { jsPDF } = await import('jspdf');
   const graphicMode = options.mode === 'graphic';
-  const coucheGeometry = graphicMode ? resolveCoucheRollGeometry(options.coucheProfile) : null;
-  const pageWidth = coucheGeometry?.pageWidthMm ?? MEDIA_WIDTH_MM;
-  const pageHeight = coucheGeometry?.pageHeightMm ?? MEDIA_HEIGHT_MM;
+  const coucheGeometry = resolveCoucheRollGeometry(options.coucheProfile);
+  const pageWidth = coucheGeometry.pageWidthMm;
+  const pageHeight = coucheGeometry.pageHeightMm;
 
   const doc = new jsPDF({
     unit: 'mm',
@@ -587,35 +622,23 @@ export async function buildBabyNalinPdf(
   doc.setProperties({
     title: graphicMode
       ? `Etiquetas couche ${COUCHE_LABEL_WIDTH_MM}x${COUCHE_LABEL_HEIGHT_MM}mm 2 colunas ${BARCODE_FORMAT}`
-      : `Etiquetas ${ART_WIDTH_MM}x${ART_HEIGHT_MM}mm ${BARCODE_FORMAT}`,
+      : `Etiquetas L42PRO 2x${COUCHE_LABEL_WIDTH_MM}x${COUCHE_LABEL_HEIGHT_MM}mm ${BARCODE_FORMAT}`,
   });
 
-  if (graphicMode) {
-    const placements = planGraphicLabelPlacements(rows, options.coucheProfile);
-    placements.forEach(placement => {
-      if (placement.pageIndex > 0 && placement.column === 0) {
-        doc.addPage([pageWidth, pageHeight], 'landscape');
-      }
-      drawLabel(doc, placement.row, options, placement);
-    });
-  } else {
-    const repeatByQuantity = options.repeatByQuantity ?? false;
-    const multiplier = Math.min(100, Math.max(1, Math.trunc(Number(options.repeatMultiplier) || 1)));
-    const totalPages = countExpandedRows(rows, repeatByQuantity, multiplier);
-    if (totalPages > MAX_PDF_LABELS) {
-      throw new Error(`A geração teria ${totalPages.toLocaleString('pt-BR')} etiquetas. O limite seguro é ${MAX_PDF_LABELS.toLocaleString('pt-BR')} por PDF.`);
+  const placements = graphicMode
+    ? planGraphicLabelPlacements(rows, options.coucheProfile)
+    : planProductionLabelPlacements(
+        rows,
+        options.coucheProfile,
+        options.repeatMultiplier,
+        options.repeatByQuantity ?? true,
+      );
+  placements.forEach(placement => {
+    if (placement.pageIndex > 0 && placement.column === 0) {
+      doc.addPage([pageWidth, pageHeight], 'landscape');
     }
-
-    let pageIndex = 0;
-    rows.forEach(row => {
-      const copies = repeatByQuantity ? Math.max(1, Math.trunc(Number(row.quantidade) || 1)) * multiplier : 1;
-      for (let copy = 0; copy < copies; copy++) {
-        if (pageIndex > 0) doc.addPage([pageWidth, pageHeight], 'landscape');
-        drawLabel(doc, row, options, { xMm: OFFSET_X_MM, yMm: OFFSET_Y_MM });
-        pageIndex++;
-      }
-    });
-  }
+    drawLabel(doc, placement.row, options, placement);
+  });
 
   return doc;
 }

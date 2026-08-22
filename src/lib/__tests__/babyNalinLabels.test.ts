@@ -19,8 +19,6 @@ import {
   MEDIA_WIDTH_MM,
   MIN_FONT_PT,
   MODULE_MM,
-  OFFSET_X_MM,
-  OFFSET_Y_MM,
   QUIET_ZONE_MIN_MM,
   analyzeClientSkus,
   assertBarcodeFits,
@@ -35,6 +33,7 @@ import {
   measureBarcode,
   parseOrderCsv,
   planGraphicLabelPlacements,
+  planProductionLabelPlacements,
   pdfFilename,
   resolveCoucheRollGeometry,
   type BabyNalinRow,
@@ -112,13 +111,6 @@ describe('geometria da etiqueta', () => {
 
   it('segue o módulo de 0,296 mm do padrão do cliente', () => {
     expect(MODULE_MM).toBeCloseTo(0.296, 4);
-  });
-
-  it('a arte 46×38 fica centralizada na mídia 50×40', () => {
-    expect(OFFSET_X_MM).toBe(2);
-    expect(OFFSET_Y_MM).toBe(1);
-    expect(MEDIA_WIDTH_MM).toBe(50);
-    expect(MEDIA_HEIGHT_MM).toBe(40);
   });
 
   it('o código de 13 dígitos cabe com folga na zona de silêncio', () => {
@@ -374,13 +366,31 @@ describe('arquivo para gráfica por SKU', () => {
     }
   });
 
-  it('preserva o PDF de produção 50×40 com quantidade vezes multiplicador', async () => {
+  it('distribui 144 etiquetas em 72 carreiras de duas colunas para a L42PRO', async () => {
+    const tiragem = [{ ...rows[0], quantidade: 144 }];
+    const placements = planProductionLabelPlacements(tiragem);
+
+    expect(placements).toHaveLength(144);
+    expect(placements[0]).toMatchObject({ pageIndex: 0, column: 0 });
+    expect(placements[1]).toMatchObject({ pageIndex: 0, column: 1 });
+    expect(placements[143]).toMatchObject({ pageIndex: 71, column: 1 });
+
+    const doc = await buildBabyNalinPdf(tiragem, { mode: 'production' });
+    expect(doc.getNumberOfPages()).toBe(72);
+    for (let pageNumber = 1; pageNumber <= doc.getNumberOfPages(); pageNumber++) {
+      const mediaBox = doc.getPageInfo(pageNumber).pageContext.mediaBox;
+      expect((mediaBox.topRightX - mediaBox.bottomLeftX) * 25.4 / 72).toBeCloseTo(COUCHE_PAGE_WIDTH_MM, 1);
+      expect((mediaBox.topRightY - mediaBox.bottomLeftY) * 25.4 / 72).toBeCloseTo(COUCHE_PAGE_HEIGHT_MM, 1);
+    }
+  });
+
+  it('gera a produção 2-up com quantidade vezes multiplicador', async () => {
     const pequenas = rows.map((row, index) => ({ ...row, quantidade: index + 1 }));
     const doc = await buildBabyNalinPdf(pequenas, { mode: 'production', repeatByQuantity: true, repeatMultiplier: 2 });
-    expect(doc.getNumberOfPages()).toBe((1 + 2 + 3 + 4) * 2);
+    expect(doc.getNumberOfPages()).toBe(((1 + 2 + 3 + 4) * 2) / 2);
     const page = doc.internal.pageSize;
-    expect(page.getWidth()).toBeCloseTo(MEDIA_WIDTH_MM, 1);
-    expect(page.getHeight()).toBeCloseTo(MEDIA_HEIGHT_MM, 1);
+    expect(page.getWidth()).toBeCloseTo(COUCHE_PAGE_WIDTH_MM, 1);
+    expect(page.getHeight()).toBeCloseTo(COUCHE_PAGE_HEIGHT_MM, 1);
   });
 });
 
