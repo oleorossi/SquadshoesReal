@@ -59,6 +59,7 @@ interface RefLite {
   name: string;
   sale_price?: number | null;
   shoe_category_id?: string | null;
+  shoe_category?: { name?: string | null } | null;
   has_straps?: boolean | null;
   strap_colors?: any[] | null;
   variant_drives_upper?: boolean | null;
@@ -127,8 +128,9 @@ type Step = 'client' | 'items' | 'review';
 const newRequestId = () => crypto.randomUUID();
 
 const SIZE_RANGE_ADULT = ['33','34','35','36','37','38','39','40'];
+const SIZE_RANGE_CHILD = ['21','22','23','24','25','26','27','28','29','30','31','32','33'];
 
-export const MOBILE_TECHNICAL_SHEET_SELECT = 'id, name, sale_price, shoe_category_id, has_straps, strap_colors, variant_drives_upper, variant_drives_lining';
+export const MOBILE_TECHNICAL_SHEET_SELECT = 'id, name, sale_price, shoe_category_id, shoe_category:silk_shoe_category(name), has_straps, strap_colors, variant_drives_upper, variant_drives_lining';
 
 const draftItemQuantity = (item: DraftItem) =>
   Object.values(item.grade).reduce((sum, value) => sum + (value || 0), 0);
@@ -1201,6 +1203,7 @@ export default function MobileNewOrder() {
                 <summary className="text-xs text-primary cursor-pointer">Editar grade</summary>
                 <GradeEditor
                   grade={it.grade}
+                  sizes={reference?.shoe_category?.name === 'Infantil' ? SIZE_RANGE_CHILD : SIZE_RANGE_ADULT}
                   onChange={(grade) => setItems((current) => {
                     const withGrade = current.map((entry, currentIndex) =>
                       currentIndex === idx ? { ...entry, grade } : entry
@@ -1533,10 +1536,10 @@ export default function MobileNewOrder() {
 
 // ── Helper: editor de grade ─────────────────────────────────────────────────
 
-function GradeEditor({ grade, onChange }: { grade: Record<string, number>; onChange: (g: Record<string, number>) => void }) {
+function GradeEditor({ grade, sizes, onChange }: { grade: Record<string, number>; sizes: string[]; onChange: (g: Record<string, number>) => void }) {
   return (
     <div className="grid grid-cols-4 gap-2 mt-2">
-      {SIZE_RANGE_ADULT.map(sz => (
+      {sizes.map(sz => (
         <div key={sz} className="border rounded p-1 text-center">
           <p className="text-[10px] font-mono uppercase">{sz}</p>
           <NumberInput

@@ -155,7 +155,7 @@ function YieldFromPlate({ groupName, consumptionDm2, groups }: { groupName: stri
 }
 
 const ADULT_SIZES = [34, 35, 36, 37, 38, 39, 40];
-const CHILD_SIZES = [25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36];
+const CHILD_SIZES = [21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33];
 
 function getSizesForCategory(shoeCategory?: string): number[] {
   return shoeCategory === 'Infantil' ? CHILD_SIZES : ADULT_SIZES;
@@ -1044,7 +1044,7 @@ function QuickCreateForm({ onCreated, onCancel }: { onCreated: (id: string) => v
 
           <div>
             <Label htmlFor="qc-category" className="text-xs">Categoria <RequiredMark /></Label>
-            <Select value={form.shoe_category} onValueChange={v => setForm(f => ({ ...f, shoe_category: v, sizes: v === 'Infantil' ? '25-36' : '34-40' }))}>
+            <Select value={form.shoe_category} onValueChange={v => setForm(f => ({ ...f, shoe_category: v, sizes: v === 'Infantil' ? '21-33' : '34-40' }))}>
               <SelectTrigger id="qc-category" className={cn("mt-1 h-9", categoryMissing && "border-destructive")}>
                 <SelectValue placeholder="Selecione…" />
               </SelectTrigger>
@@ -1092,9 +1092,9 @@ function QuickCreateForm({ onCreated, onCancel }: { onCreated: (id: string) => v
               onClick={() => setForm(f => ({ ...f, sizes: '34-40' }))}>
               <Footprints className="h-3.5 w-3.5" /> Adulto (34-40)
             </Button>
-            <Button type="button" variant={form.sizes === '25-36' ? 'default' : 'outline'} size="sm" className="gap-1.5 h-8"
-              onClick={() => setForm(f => ({ ...f, sizes: '25-36' }))}>
-              <Footprints className="h-3.5 w-3.5" /> Infantil (25-36)
+            <Button type="button" variant={form.sizes === '21-33' ? 'default' : 'outline'} size="sm" className="gap-1.5 h-8"
+              onClick={() => setForm(f => ({ ...f, sizes: '21-33' }))}>
+              <Footprints className="h-3.5 w-3.5" /> Infantil (21-33)
             </Button>
           </div>
           <div className="rounded-lg border overflow-hidden">
@@ -2185,7 +2185,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                   value={form.shoe_category}
                   onChange={v => {
                     updateField('shoe_category', v);
-                    updateField('sizes', v === 'Infantil' ? '25-36' : '34-40');
+                    updateField('sizes', v === 'Infantil' ? '21-33' : '34-40');
                   }}
                   options={[...shoeCategoryOptions]}
                   placeholder="Tipo"
@@ -2199,7 +2199,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                   <div className="text-sm font-mono text-foreground font-bold mt-0.5 break-words">
                     {soleSizeKeys.length > 0
                       ? soleSizeKeys.join(', ')
-                      : (form.sizes || (form.shoe_category === 'Infantil' ? '25-36' : '34-40'))}
+                      : (form.sizes || (form.shoe_category === 'Infantil' ? '21-33' : '34-40'))}
                     <span className="text-muted-foreground text-xs ml-2 font-sans normal-case font-normal">
                       derivada da categoria{form.sole_material ? ` + solado "${form.sole_material}"` : ''}
                     </span>
