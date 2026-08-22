@@ -25,13 +25,84 @@ import { roundUpToPurchaseMultiple, applyPurchaseMultiple } from '@/lib/purchase
 const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const fmtQty = (v: number) => v.toLocaleString('pt-BR', { maximumFractionDigits: 2 });
 
+function errorMessage(err: unknown, fallback: string): string {
+  if (err instanceof Error && err.message) return err.message;
+  if (typeof err === 'object' && err && 'message' in err) {
+    const message = (err as { message?: unknown }).message;
+    if (typeof message === 'string' && message.trim()) return message;
+  }
+  return fallback;
+}
+
+type SupplierRef = {
+  name?: string | null;
+  trade_name?: string | null;
+};
+
+type WizardProduct = {
+  id: string;
+  name?: string | null;
+  sku?: string | null;
+  quantity?: number | null;
+  unit?: string | null;
+  unit_price?: number | null;
+  reserved_stock?: number | null;
+  safety_stock?: number | null;
+  min_order_quantity?: number | null;
+  category?: string | null;
+  group_id?: string | null;
+  supplier_id?: string | null;
+  purchase_order_unit?: string | null;
+  conversion_rate?: number | null;
+  purchase_multiple?: number | null;
+  is_artisanal?: boolean | null;
+  supplier_ref?: SupplierRef | null;
+  product_groups?: { purchase_multiple?: number | null } | null;
+};
+
+type SaleOrderRel = {
+  order_number?: string | null;
+  delivery_deadline?: string | null;
+  delivery_week?: string | null;
+  delivery_month?: string | null;
+  client_name?: string | null;
+  packaging_mode?: string | null;
+};
+
+type PlanningOrder = {
+  id: string;
+  order_number: string;
+  quantity: number | null;
+  status: string | null;
+  planned_delivery: string | null;
+  reference_id: string | null;
+  color: string | null;
+  grade: Record<string, number> | null;
+  sale_order_id: string | null;
+  sale_order_item_id: string | null;
+  sale_orders?: SaleOrderRel | SaleOrderRel[] | null;
+};
+
+type TimelineRow = { order_id: string | null; data_limite_compra: string | null };
+type SoiRow = { id: string; material_variant_id: string | null };
+type ReservationRow = {
+  product_id: string | null;
+  quantity_reserved: number | null;
+  quantity_consumed: number | null;
+};
+type SheetNameRow = { id: string; name: string | null };
+type ConversionInfoRow = {
+  dm2_per_unit?: number | string | null;
+  conversion_warning?: string | null;
+};
+
 interface ConsumptionResult {
   needs: OrderMaterialNeed[];
-  productsMap: Map<string, any>;
+  productsMap: Map<string, WizardProduct>;
 }
 
 const EMPTY_NEEDS: OrderMaterialNeed[] = [];
-const EMPTY_PRODUCTS_MAP = new Map<string, any>();
+const EMPTY_PRODUCTS_MAP = new Map<string, WizardProduct>();
 const MISSING_PURCHASE_DEADLINE_LABEL = 'Sem prazo de compra — resolver planejamento';
 const UNSCHEDULED_WEEK_START = new Date(8640000000000000);
 
@@ -59,8 +130,12 @@ interface MaterialLine {
   total_needed_converted: number;
   unit: string;
   purchase_unit: string;
-  conversion_rate: number;
+  conversion_rate: number | null;
   width_missing?: boolean;
+  stock: number;
+  price: number;
+  supplier: string;
+  supplierId?: string;
 }
 
 interface WeeklyMaterialSummary {
@@ -104,7 +179,7 @@ export default function PurchasePlanningWizard() {
   const [currentStep, setCurrentStep] = useState(0);
   const [search, setSearch] = useState('');
   const [selectedWeek, setSelectedWeek] = useState('all');
-  const computeBuyQty = (deficit: number, prod: any): number => {
+  const computeBuyQty = (deficit: number, prod: WizardProduct | null | undefined): number => {
     const moq = Number(prod?.min_order_quantity) || 0;
     let qty = Math.ceil(Math.max(0, deficit));
     if (moq > 1) qty = Math.ceil(qty / moq) * moq;
@@ -117,6 +192,7 @@ export default function PurchasePlanningWizard() {
     data: consumption,
     isPending: loading,
     error: consumptionError,
+    refetch,
   } = useQuery({
     queryKey: ['purchase_planning_consumption'],
     queryFn: fetchOrderConsumption,
@@ -126,7 +202,7 @@ export default function PurchasePlanningWizard() {
   const orderNeeds = consumption?.needs ?? EMPTY_NEEDS;
   const productsMap = consumption?.productsMap ?? EMPTY_PRODUCTS_MAP;
   const loadError = consumptionError
-    ? ((consumptionError as any)?.message || 'Não foi possível carregar o planejamento de compras.')
+    ? errorMessage(consumptionError, 'Não foi possível carregar o planejamento de compras.')
     : null;
 
   async function fetchOrderConsumption(): Promise<ConsumptionResult> {
@@ -148,20 +224,20 @@ export default function PurchasePlanningWizard() {
         .order('planned_delivery', { ascending: true });
       if (ordersError) throw ordersError;
 
-      const activeOrders = (orders as any[]).filter(o => o.reference_id);
+      const activeOrders = ((orders ?? []) as PlanningOrder[]).filter((o) => o.reference_id);
       if (activeOrders.length === 0) {
-        return { needs: [], productsMap: new Map<string, any>() };
+        return { needs: [], productsMap: new Map<string, WizardProduct>() };
       }
 
       const orderIds = Array.from(new Set(activeOrders.map(o => o.id).filter(Boolean)));
       const purchaseDeadlineByOrder = new Map<string, string>();
       if (orderIds.length > 0) {
-        const { data: timelineRows, error: timelineRowsErr } = await (supabase as any)
+        const { data: timelineRows, error: timelineRowsErr } = await supabase
           .from('purchase_projection_timeline')
           .select('order_id, data_limite_compra')
           .in('order_id', orderIds);
         if (timelineRowsErr) throw timelineRowsErr;
-        for (const row of (timelineRows || []) as any[]) {
+        for (const row of (timelineRows || []) as TimelineRow[]) {
           if (!row.order_id || !row.data_limite_compra) continue;
           const prev = purchaseDeadlineByOrder.get(row.order_id);
           if (!prev || row.data_limite_compra < prev) {
@@ -170,8 +246,8 @@ export default function PurchasePlanningWizard() {
         }
       }
 
-      const soiIds = Array.from(new Set(activeOrders.map(o => o.sale_order_item_id).filter(Boolean)));
-      const refIds = Array.from(new Set(activeOrders.map(o => o.reference_id).filter(Boolean)));
+      const soiIds = Array.from(new Set(activeOrders.map(o => o.sale_order_item_id).filter((id): id is string => Boolean(id))));
+      const refIds = Array.from(new Set(activeOrders.map(o => o.reference_id).filter((id): id is string => Boolean(id))));
       const [productsRes, soiRes, resvRes, sheetsRes] = await Promise.all([
         supabase
           .from('products')
@@ -184,7 +260,7 @@ export default function PurchasePlanningWizard() {
           `),
         soiIds.length > 0
           ? supabase.from('sale_order_items').select('id, material_variant_id').in('id', soiIds)
-          : Promise.resolve({ data: [], error: null } as any),
+          : Promise.resolve({ data: [] as SoiRow[], error: null }),
         supabase
           .from('material_reservations')
           .select('product_id, quantity_reserved, quantity_consumed')
@@ -197,24 +273,24 @@ export default function PurchasePlanningWizard() {
         console.error('[PurchasePlanning] Products query error:', productsRes.error);
       }
 
-      const productRows = (productsRes.data ?? []) as any[];
-      const getSupplierName = (product: any) =>
+      const productRows = (productsRes.data ?? []) as WizardProduct[];
+      const getSupplierName = (product: WizardProduct | undefined) =>
         product?.supplier_ref?.trade_name || product?.supplier_ref?.name || '';
-      const pMap = new Map<string, any>(productRows.map(p => [p.id, p]));
+      const pMap = new Map<string, WizardProduct>(productRows.map(p => [p.id, p]));
       const sheetNameById = new Map<string, string>();
-      for (const s of (sheetsRes.data ?? []) as any[]) sheetNameById.set(s.id, s.name || '');
+      for (const s of (sheetsRes.data ?? []) as SheetNameRow[]) sheetNameById.set(s.id, s.name || '');
       const variantBySoi = new Map<string, string | null>();
-      for (const r of (soiRes.data ?? []) as any[]) {
+      for (const r of (soiRes.data ?? []) as SoiRow[]) {
         variantBySoi.set(r.id, r.material_variant_id ?? null);
       }
       const ownReservedByProduct = new Map<string, number>();
-      for (const r of (resvRes.data ?? []) as any[]) {
+      for (const r of (resvRes.data ?? []) as ReservationRow[]) {
         if (!r.product_id) continue;
         const give = Math.max(0, (Number(r.quantity_reserved) || 0) - (Number(r.quantity_consumed) || 0));
         ownReservedByProduct.set(r.product_id, (ownReservedByProduct.get(r.product_id) || 0) + give);
       }
-      const availableStock = (p: any) =>
-        Math.max(0, (Number(p?.quantity) || 0) - (Number(p?.reserved_stock) || 0) + (ownReservedByProduct.get(p?.id) || 0));
+      const availableStock = (p: WizardProduct) =>
+        Math.max(0, (Number(p.quantity) || 0) - (Number(p.reserved_stock) || 0) + (ownReservedByProduct.get(p.id) || 0));
 
       let failedOrders = 0;
       const consumptionByOrder = await Promise.all(
@@ -228,7 +304,7 @@ export default function PurchasePlanningWizard() {
                 ? (order.grade as Record<string, number>)
                 : null;
             const summary = await calculateConsumption({
-              referenceId: order.reference_id,
+              referenceId: order.reference_id!,
               quantity: Number(order.quantity) || 0,
               color: order.color,
               materialVariantId: variantId,
@@ -256,7 +332,8 @@ export default function PurchasePlanningWizard() {
       await Promise.all(
         Array.from(areaProductIds).map(async (pid) => {
           const { data } = await supabase.rpc('get_material_conversion_info', { p_product_id: pid });
-          const row: any = Array.isArray(data) ? data[0] : data;
+          const raw = Array.isArray(data) ? data[0] : data;
+          const row = (raw ?? null) as ConversionInfoRow | null;
           if (row) {
             convInfo.set(pid, {
               dm2_per_unit: Number(row.dm2_per_unit) || 1,
@@ -309,7 +386,7 @@ export default function PurchasePlanningWizard() {
             ? required / Math.max(conv?.dm2_per_unit || 1, 1)
             : required;
           const purchaseUnit = prod?.purchase_order_unit || stockUnit;
-          const convRate = prod?.conversion_rate;
+          const convRate = prod?.conversion_rate ?? null;
           const { stockToPurchaseDivisor } = resolveConversionFactors(stockUnit, stockUnit, purchaseUnit, convRate);
           const totalNeededConverted = needInStock / stockToPurchaseDivisor;
           const stockInPurchaseUnit = (prod ? availableStock(prod) : 0) / stockToPurchaseDivisor;
@@ -325,19 +402,18 @@ export default function PurchasePlanningWizard() {
             purchase_unit: purchaseUnit,
             conversion_rate: convRate,
             width_missing: widthMissing,
-            _stock: stockInPurchaseUnit,
-            _price: priceInPurchaseUnit,
-            _supplier: getSupplierName(prod),
-            _supplier_id: prod?.supplier_id ?? undefined,
-            _product_id: line.product_id,
-          } as any);
+            stock: stockInPurchaseUnit,
+            price: priceInPurchaseUnit,
+            supplier: getSupplierName(prod),
+            supplierId: prod?.supplier_id ?? undefined,
+          });
         }
         needs.push({
           order_id: order.id,
           order_number: order.order_number,
           sale_order_number: saleOrder?.order_number || '',
           client_name: saleOrder?.client_name || '',
-          reference_name: sheetNameById.get(order.reference_id) || '',
+          reference_name: sheetNameById.get(order.reference_id!) || '',
           quantity: qty,
           delivery_date: deliveryDate,
           purchase_deadline: purchaseDeadline,
@@ -349,8 +425,8 @@ export default function PurchasePlanningWizard() {
       });
       needs.sort((a, b) => a.week_start.getTime() - b.week_start.getTime());
       return { needs, productsMap: pMap };
-    } catch (err: any) {
-      console.error('[PurchasePlanning] Error fetching order consumption:', err, err?.message, err?.details, err?.hint);
+    } catch (err: unknown) {
+      console.error('[PurchasePlanning] Error fetching order consumption:', err, errorMessage(err, ''));
       throw err;
     }
   }
@@ -381,8 +457,7 @@ export default function PurchasePlanningWizard() {
       week.total_pairs += order.quantity;
       week.has_missing_purchase_deadline ||= order.missing_purchase_deadline;
       for (const mat of order.materials) {
-        const matAny = mat as any;
-        const key = matAny._product_id || `${mat.name.toLowerCase()}_${mat.type}`;
+        const key = mat.product_id || `${mat.name.toLowerCase()}_${mat.type}`;
         if (!week.materials.has(key)) {
           week.materials.set(key, {
             material_key: key,
@@ -390,23 +465,23 @@ export default function PurchasePlanningWizard() {
             type: mat.type,
             total_needed: 0,
             unit: mat.purchase_unit,
-            current_stock: matAny._stock || 0,
+            current_stock: mat.stock || 0,
             stock_after: 0,
-            unit_price: matAny._price || 0,
+            unit_price: mat.price || 0,
             estimated_cost: 0,
             selected: false,
-            supplier_name: matAny._supplier || undefined,
-            supplier_id: matAny._supplier_id || undefined,
+            supplier_name: mat.supplier || undefined,
+            supplier_id: mat.supplierId || undefined,
             orders: [],
             earliest_purchase_deadline: order.purchase_deadline || null,
             missing_purchase_deadline: order.missing_purchase_deadline,
-            product_id: matAny._product_id || undefined,
-            width_missing: matAny.width_missing || false,
+            product_id: mat.product_id || undefined,
+            width_missing: mat.width_missing || false,
           });
         }
         const agg = week.materials.get(key)!;
         agg.total_needed += mat.total_needed_converted;
-        if (matAny.width_missing) agg.width_missing = true;
+        if (mat.width_missing) agg.width_missing = true;
         if (order.missing_purchase_deadline) agg.missing_purchase_deadline = true;
         agg.orders.push(order.order_number);
         if (order.purchase_deadline && (!agg.earliest_purchase_deadline || order.purchase_deadline < agg.earliest_purchase_deadline)) {
@@ -534,8 +609,8 @@ export default function PurchasePlanningWizard() {
       toast.success(`${count} ${count === 1 ? 'Ordem de Compra criada' : 'Ordens de Compra criadas'} com sucesso!`);
       setCurrentStep(0);
       setSelectedMaterials([]);
-    } catch (err: any) {
-      toast.error(`Erro ao criar OCs: ${err.message}`);
+    } catch (err: unknown) {
+      toast.error(`Erro ao criar OCs: ${errorMessage(err, 'falha desconhecida')}`);
     } finally {
       setCreating(false);
     }
@@ -569,7 +644,7 @@ export default function PurchasePlanningWizard() {
             <p className="font-semibold">Não foi possível carregar o planejamento</p>
             <p className="text-sm text-muted-foreground">{loadError}</p>
           </div>
-          <Button variant="outline" onClick={() => void fetchOrderConsumption()}>Tentar novamente</Button>
+          <Button variant="outline" onClick={() => void refetch()}>Tentar novamente</Button>
         </CardContent>
       </Card>
     );

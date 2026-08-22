@@ -16,12 +16,13 @@ export function useOrderConsumption(params: {
   color?: string | null;
   size?: number | null;
   materialVariantId?: string | null;
+  grade?: Record<string, number> | null;
   enabled?: boolean;
 }) {
-  const { referenceId, quantity, color, size, materialVariantId, enabled = true } = params;
+  const { referenceId, quantity, color, size, materialVariantId, grade, enabled = true } = params;
 
   const query = useQuery<ConsumptionSummary>({
-    queryKey: ['order-consumption', referenceId, quantity, color ?? '', size ?? null, materialVariantId ?? null],
+    queryKey: ['order-consumption', referenceId, quantity, color ?? '', size ?? null, materialVariantId ?? null, grade ?? null],
     enabled: Boolean(enabled && referenceId && quantity && quantity > 0),
     queryFn: async () => {
       return calculateConsumption({
@@ -30,6 +31,7 @@ export function useOrderConsumption(params: {
         color,
         size,
         materialVariantId,
+        grade,
       });
     },
     staleTime: 15_000,

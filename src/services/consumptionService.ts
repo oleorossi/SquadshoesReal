@@ -227,7 +227,10 @@ export async function calculateConsumption(params: {
   grade?: Record<string, number> | null;
 }): Promise<ConsumptionSummary> {
   const { referenceId, quantity, color, size, materialVariantId, grade } = params;
-  const rpc = isUsableGrade(grade)
+  // Grade utilizável SÓ entra no by_grade quando há pares a produzir.
+  // quantity ≤ 0 + grade absoluta faria o motor debitar a grade inteira
+  // (scaleGradeToTotal devolve a grade intacta quando total não é > 0).
+  const rpc = isUsableGrade(grade) && quantity > 0
     ? supabase.rpc('calculate_order_consumption_by_grade', {
         p_reference_id: referenceId,
         p_grade: scaleGradeToTotal(grade, quantity),
@@ -308,7 +311,9 @@ export async function calculateConsumptionMultiSku(
   for (const { summary } of perItem) {
     if (summary.soldDriven) soldDriven = true;
     for (const line of summary.lines) {
-      const key = `${line.product_id}::${line.color ?? ''}`;
+      const key = line.product_id
+        ? `${line.product_id}::${line.color ?? ''}`
+        : `unresolved::${line.component}::${line.product_name}::${line.color ?? ''}::${line.source}`;
       const existing = bucket.get(key);
       if (existing) {
         existing.required += Number(line.required || 0);

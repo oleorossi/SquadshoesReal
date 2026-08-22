@@ -4,6 +4,7 @@ import { useComponentSheets } from '@/hooks/useComponentSheets';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { generateWeeklyPurchasingPlan, WeeklyOrder, SheetMaterial, buyByKey, type EngineDemandLine } from '@/lib/weeklyPurchasingPlan';
+import { type ComponentSheetCandidate } from '@/lib/materialConsumption';
 import { calculateConsumption } from '@/services/consumptionService';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -15,6 +16,27 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
+
+type PackagingModeRow = { id: string; packaging_mode: string | null };
+type TimelineBuyByRow = {
+  order_id: string | null;
+  material_id: string | null;
+  data_limite_compra: string | null;
+};
+type SoiVariantRow = { id: string; material_variant_id: string | null };
+type FloorOrderRow = {
+  id: string;
+  reference_id: string | null;
+  quantity: number | null;
+  planned_start: string | null;
+  planned_delivery: string | null;
+  created_at: string;
+  grade: Record<string, number> | null;
+  color: string | null;
+  sale_order_item_id: string | null;
+  sale_order_id: string | null;
+  status: string | null;
+};
 
 function useAllSheetMaterials() {
   return useQuery({
@@ -39,7 +61,7 @@ function usePvPackagingModes() {
         .select('id, packaging_mode');
       if (error) throw error;
       const map = new Map<string, string | null>();
-      for (const r of (data || []) as any[]) map.set(r.id, r.packaging_mode ?? null);
+      for (const r of (data || []) as PackagingModeRow[]) map.set(r.id, r.packaging_mode ?? null);
       return map;
     },
     staleTime: 60 * 1000,
@@ -51,11 +73,11 @@ function useBuyByDates() {
     queryKey: ['weekly_buyby_dates'],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('purchase_projection_timeline' as any)
+        .from('purchase_projection_timeline')
         .select('order_id, material_id, data_limite_compra');
       if (error) throw error;
       const map = new Map<string, string>();
-      for (const r of (data || []) as any[]) {
+      for (const r of (data || []) as TimelineBuyByRow[]) {
         if (!r.order_id || !r.material_id || !r.data_limite_compra) continue;
         const k = buyByKey(r.order_id, r.material_id);
         const prev = map.get(k);
@@ -81,7 +103,7 @@ export default function WeeklyPurchasingContent() {
         .select('id, material_variant_id');
       if (error) throw error;
       const map = new Map<string, string | null>();
-      for (const r of (data || []) as any[]) map.set(r.id, r.material_variant_id ?? null);
+      for (const r of (data || []) as SoiVariantRow[]) map.set(r.id, r.material_variant_id ?? null);
       return map;
     },
     staleTime: 60 * 1000,
@@ -93,21 +115,22 @@ export default function WeeklyPurchasingContent() {
 
   const filteredOrders: WeeklyOrder[] = useMemo(() => {
     if (!orders) return [];
-    return (orders as any[])
+    return (orders as FloorOrderRow[])
       .filter((o) => {
+        if (!o.reference_id) return false;
         if (statusFilter === 'active') {
-          return !['Finalizado', 'Cancelado', 'Faturado'].includes(o.status);
+          return !['Finalizado', 'Cancelado', 'Faturado'].includes(o.status ?? '');
         }
         return true;
       })
       .map((o) => ({
         id: o.id,
-        reference_id: o.reference_id,
-        quantity: o.quantity,
+        reference_id: o.reference_id as string,
+        quantity: Number(o.quantity) || 0,
         planned_start: o.planned_start,
         planned_delivery: o.planned_delivery,
         created_at: o.created_at,
-        grade: o.grade as Record<string, number> | null,
+        grade: o.grade,
         color: o.color ?? null,
         sale_order_item_id: o.sale_order_item_id ?? null,
         packaging_mode: o.sale_order_id ? (pvPackagingModes?.get(o.sale_order_id) ?? null) : null,
@@ -153,7 +176,7 @@ export default function WeeklyPurchasingContent() {
           .select('id, name, sku, unit, category, quantity, min_stock, reserved_stock, safety_stock, supplier_lead_time_days, lead_time_days, unit_price, is_artisanal')
           .in('id', productIds);
         if (error) throw error;
-        for (const p of (data || []) as any[]) productById.set(p.id, p);
+        for (const p of (data || []) as NonNullable<SheetMaterial['products']>[]) productById.set(p.id, p);
       }
       for (const { order, summary } of summaries) {
         if (!summary) continue;
@@ -181,7 +204,7 @@ export default function WeeklyPurchasingContent() {
     return generateWeeklyPurchasingPlan(
       filteredOrders,
       allSheetMaterials,
-      (componentSheets as any) || [],
+      (componentSheets as Array<ComponentSheetCandidate & { product_id: string }> | undefined) || [],
       buyByDates || new Map(),
       engineDemand ?? null,
     );
