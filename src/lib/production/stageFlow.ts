@@ -88,9 +88,31 @@ export function findBlockingStage<T extends StageLike>(stageName: string, allSta
   );
 }
 
+export function isStageSkipped(s: Pick<StageLike, 'status' | 'quantity_processed'>): boolean {
+  return s.status === 'concluido' && (s.quantity_processed ?? 0) === 0;
+}
+
+export function isStageFullyProduced(s: Pick<StageLike, 'quantity_processed' | 'quantity_total'>): boolean {
+  const total = s.quantity_total ?? 0;
+  return total > 0 && (s.quantity_processed ?? 0) >= total;
+}
+
+/**
+ * Pares que este setor realmente entrega adiante. Pulo (concluído com 0)
+ * NÃO conta como entrega total — passa adiante o inbound dos predecessores.
+ * Sem isso, pular Colagem liberava Montagem a apontar 288 pares que nunca
+ * foram colados.
+ */
+export function stageEffectiveOutput(s: StageLike, allStages: StageLike[]): number {
+  const processed = s.quantity_processed ?? 0;
+  if (!isStageSkipped(s)) return processed;
+  const thru = inboundAvailability(s.stage_name, allStages);
+  return thru ?? 0;
+}
+
 /**
  * Pares disponíveis vindos dos setores pré-requisito (fluxo parcial):
- * min(quantity_processed) entre eles. null = setor sem pré-requisito
+ * min(output efetivo) entre eles. null = setor sem pré-requisito
  * (prep) ou pré-requisito não encontrado na OP.
  */
 export function inboundAvailability(stageName: string, allStages: StageLike[]): number | null {
@@ -100,7 +122,5 @@ export function inboundAvailability(stageName: string, allStages: StageLike[]): 
     .map((r) => allStages.find((s) => sameStage(r, s.stage_name)))
     .filter((s): s is StageLike => !!s);
   if (preds.length === 0) return null;
-  return Math.min(
-    ...preds.map((s) => (s.status === 'concluido' ? s.quantity_total : s.quantity_processed ?? 0))
-  );
+  return Math.min(...preds.map((s) => stageEffectiveOutput(s, allStages)));
 }

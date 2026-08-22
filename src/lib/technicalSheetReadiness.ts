@@ -5,10 +5,17 @@ export type TechnicalSheetReadinessStageKey =
   | 'production'
   | 'release';
 
+export type TechnicalSheetReadinessTab =
+  | 'id'
+  | 'engineering'
+  | 'production'
+  | 'costs'
+  | 'range-aviamento';
+
 export interface TechnicalSheetReadinessStage {
   key: TechnicalSheetReadinessStageKey;
   label: string;
-  tab: 'id' | 'engineering' | 'production' | 'costs';
+  tab: TechnicalSheetReadinessTab;
   ready: boolean;
   issues: string[];
 }
@@ -66,23 +73,31 @@ const hasConfiguredStrap = (line: unknown): boolean => {
   return hasIdentity && hasMeasure;
 };
 
+const RELEASE_STATUSES = new Set(['validada', 'publicada']);
+
 export function evaluateTechnicalSheetReadiness(
   sheet: TechnicalSheetReadinessInput,
-  audit: TechnicalSheetAuditSignals = {},
+  audit?: TechnicalSheetAuditSignals | null,
 ): TechnicalSheetReadinessStage[] {
   const identityIssues: string[] = [];
   if (!String(sheet.name || '').trim()) identityIssues.push('referência');
   if (!String(sheet.shoe_category || '').trim()) identityIssues.push('categoria');
-  if (sheet.status_ficha === 'publicada' && !hasValidNcm(sheet.ncm)) identityIssues.push('NCM válido');
+  // NCM é exigido na TRANSIÇÃO para validada/publicada — não depois que já
+  // publicou. Senão a rail só reclama quando o dano comercial já está feito.
+  if (RELEASE_STATUSES.has(String(sheet.status_ficha || '')) && !hasValidNcm(sheet.ncm)) {
+    identityIssues.push('NCM válido');
+  }
 
   const engineeringIssues: string[] = [];
   if (!sheet.primary_sole_id) engineeringIssues.push('solado principal');
   if (!hasPositiveScalar(sheet.sole_consumption)) engineeringIssues.push('consumo do solado');
 
+  let strapIssues = false;
   if (sheet.has_straps) {
     const straps = Array.isArray(sheet.strap_colors) ? sheet.strap_colors : [];
     if (straps.length === 0 || straps.some((line: unknown) => !hasConfiguredStrap(line))) {
       engineeringIssues.push('tiras com identidade e consumo');
+      strapIssues = true;
     }
   } else {
     if (!String(sheet.upper_material || '').trim()) engineeringIssues.push('material do cabedal');
@@ -98,12 +113,18 @@ export function evaluateTechnicalSheetReadiness(
       engineeringIssues.push('consumo da palmilha');
     }
   }
-  if (audit.sole_driven_but_specs_missing) engineeringIssues.push('consumos por numeração do solado');
-  if (audit.upper_per_size_partial_no_fallback) engineeringIssues.push('grade completa do cabedal');
+  if (audit?.sole_driven_but_specs_missing) engineeringIssues.push('consumos por numeração do solado');
+  if (audit?.upper_per_size_partial_no_fallback) engineeringIssues.push('grade completa do cabedal');
 
   const stockIssues: string[] = [];
-  if (audit.unit_configuration_issue) stockIssues.push('unidade ou conversão de estoque');
-  if (audit.area_material_width_missing) stockIssues.push('largura de material de área');
+  // Auditoria ausente ≠ estoque pronto. Sem o sinal, a etapa fica pendente
+  // em vez de pintar verde por omissão.
+  if (audit == null) {
+    stockIssues.push('auditoria de estoque');
+  } else {
+    if (audit.unit_configuration_issue) stockIssues.push('unidade ou conversão de estoque');
+    if (audit.area_material_width_missing) stockIssues.push('largura de material de área');
+  }
 
   const productionIssues: string[] = [];
   if (!Array.isArray(sheet.production_sectors) || sheet.production_sectors.length === 0) {
@@ -111,17 +132,30 @@ export function evaluateTechnicalSheetReadiness(
   }
 
   const releaseIssues: string[] = [];
-  if (!['validada', 'publicada'].includes(String(sheet.status_ficha || ''))) {
+  if (!RELEASE_STATUSES.has(String(sheet.status_ficha || ''))) {
     releaseIssues.push('validação da engenharia');
   }
 
   return [
     { key: 'identity', label: 'Identificação', tab: 'id', ready: identityIssues.length === 0, issues: identityIssues },
-    { key: 'engineering', label: 'Engenharia', tab: 'engineering', ready: engineeringIssues.length === 0, issues: engineeringIssues },
+    {
+      key: 'engineering',
+      label: 'Engenharia',
+      tab: strapIssues ? 'range-aviamento' : 'engineering',
+      ready: engineeringIssues.length === 0,
+      issues: engineeringIssues,
+    },
     { key: 'stock', label: 'Estoque', tab: 'engineering', ready: stockIssues.length === 0, issues: stockIssues },
     { key: 'production', label: 'Produção', tab: 'production', ready: productionIssues.length === 0, issues: productionIssues },
-    { key: 'release', label: 'Liberação', tab: 'costs', ready: releaseIssues.length === 0, issues: releaseIssues },
+    { key: 'release', label: 'Liberação', tab: 'id', ready: releaseIssues.length === 0, issues: releaseIssues },
   ];
+}
+
+export function firstBlockingReadinessStage(
+  sheet: TechnicalSheetReadinessInput,
+  audit?: TechnicalSheetAuditSignals | null,
+): TechnicalSheetReadinessStage | undefined {
+  return evaluateTechnicalSheetReadiness(sheet, audit).find((stage) => !stage.ready);
 }
 
 export function buildBulkSolePatch(
@@ -148,6 +182,5 @@ export function buildBulkSolePatch(
   if (source.sole_process && (overwrite || !target.sole_process) && target.sole_process !== source.sole_process) {
     patch.sole_process = source.sole_process;
   }
-
   return patch;
 }
