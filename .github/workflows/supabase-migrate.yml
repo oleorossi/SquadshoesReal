@@ -7,9 +7,8 @@ name: Supabase — Apply Migrations
 #   • workflow_dispatch        → manual, via GitHub UI (Actions tab > Run)
 #                                Tem opção `dry_run: true` que só lista pendentes
 #                                sem aplicar — recomendado pra primeira vez.
-#   • push em main             → automático SOMENTE quando arquivos em
-#                                supabase/migrations/** ou no próprio workflow
-#                                mudarem. Outras alterações em main não disparam.
+#   • push em main             → automático quando arquivos em
+#                                supabase/migrations/** ou neste workflow mudarem.
 #
 # Pré-requisitos (settings repo > Secrets and variables > Actions > Secrets):
 #   SUPABASE_ACCESS_TOKEN   → personal access token
@@ -36,18 +35,11 @@ on:
         options:
           - 'true'
           - 'false'
-  # NOTA: trigger automático em push foi desativado em 2026-05-12 porque o banco
-  # tem backlog de migrations aplicadas via MCP que ainda não estão registradas
-  # em supabase_migrations.schema_migrations — cada push falhava no apply.
-  # Pra reativar: descomente o bloco abaixo APÓS rodar
-  # scripts/repair-applied-migrations.sh com a lista completa de timestamps
-  # já aplicados, e validar via dry_run manual.
-  #
-  # push:
-  #   branches: [main]
-  #   paths:
-  #     - 'supabase/migrations/**'
-  #     - '.github/workflows/supabase-migrate.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/**'
+      - '.github/workflows/supabase-migrate.yml'
 
 # Cancela runs antigas se uma nova começar (evita race ao rebase rápido)
 concurrency:
