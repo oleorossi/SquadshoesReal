@@ -82,6 +82,7 @@ export function ClientLabelingWorkspace() {
   const [coucheProfile, setCoucheProfile] = useState<CoucheRollProfile>({
     ...DEFAULT_COUCHE_ROLL_PROFILE,
   });
+  const [coucheProfileConfirmed, setCoucheProfileConfirmed] = useState(false);
 
   const skuAnalysis = analyzeClientSkus(rows);
   const rowEntries = rows.map((row, sourceIndex) => ({
@@ -160,6 +161,10 @@ export function ClientLabelingWorkspace() {
       toast.error(`${selectedSkuAnalysis.conflicts.length} SKU(s) selecionado(s) possuem dados de impressão conflitantes.`);
       return;
     }
+    if (mode === 'graphic' && !coucheProfileConfirmed) {
+      toast.info('Confirme as medidas da faca e do liner antes de gerar para a gráfica.');
+      return;
+    }
     if (mode === 'production' && productionOverLimit) {
       toast.error(`O limite seguro é ${MAX_PDF_LABELS.toLocaleString('pt-BR')} etiquetas por PDF.`);
       return;
@@ -207,6 +212,7 @@ export function ClientLabelingWorkspace() {
     setRepeatMultiplier(1);
     setSearch('');
     setSelectedSkuKeys(new Set());
+    setCoucheProfileConfirmed(false);
   }
 
   function setCoucheProfileMeasure(field: keyof CoucheRollProfile, rawValue: string) {
@@ -215,6 +221,7 @@ export function ClientLabelingWorkspace() {
       ? Math.min(MAX_PROFILE_MEASURE_MM, Math.max(0, parsed))
       : 0;
     setCoucheProfile(current => ({ ...current, [field]: value }));
+    setCoucheProfileConfirmed(false);
   }
 
   function setSkuSelected(skuKey: string, selected: boolean) {
@@ -435,6 +442,17 @@ export function ClientLabelingWorkspace() {
                       {coucheGeometry.pageWidthMm.toLocaleString('pt-BR')} × {coucheGeometry.pageHeightMm.toLocaleString('pt-BR')} mm
                     </strong>
                   </div>
+                  <div className="mt-3 flex items-start gap-2 rounded-md bg-muted/40 p-2.5">
+                    <Checkbox
+                      id="couche-profile-confirmed"
+                      checked={coucheProfileConfirmed}
+                      disabled={isBusy}
+                      onCheckedChange={value => setCoucheProfileConfirmed(value === true)}
+                    />
+                    <Label htmlFor="couche-profile-confirmed" className="cursor-pointer text-xs font-normal leading-relaxed">
+                      Confirmo que estas medidas foram conferidas com a gráfica.
+                    </Label>
+                  </div>
                 </details>
 
                 <Button
@@ -445,6 +463,7 @@ export function ClientLabelingWorkspace() {
                     || selectedRows.length === 0
                     || selecionadasForaDoPadrao.length > 0
                     || selectedSkuAnalysis.conflicts.length > 0
+                    || !coucheProfileConfirmed
                   }
                 >
                   {generating === 'graphic' ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <FilePdf className="h-4 w-4 mr-2" />}

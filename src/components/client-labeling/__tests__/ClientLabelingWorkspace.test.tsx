@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ClientLabelingWorkspace } from '../ClientLabelingWorkspace';
-import { clientSkuKey, type BabyNalinRow } from '@/lib/babyNalinLabels';
+import { MAX_PDF_LABELS, clientSkuKey, type BabyNalinRow } from '@/lib/babyNalinLabels';
 
 const mocks = vi.hoisted(() => ({
   parseClientOrderFile: vi.fn(),
@@ -55,6 +55,13 @@ function skuCheckbox(tamanho: string) {
   });
 }
 
+function confirmarPerfilCouche() {
+  fireEvent.click(screen.getByText('Medidas da faca e do liner'));
+  fireEvent.click(screen.getByRole('checkbox', {
+    name: 'Confirmo que estas medidas foram conferidas com a gráfica.',
+  }));
+}
+
 async function importar(rows: BabyNalinRow[] = ROWS) {
   mocks.parseClientOrderFile.mockResolvedValueOnce(rows);
   const view = render(<ClientLabelingWorkspace />);
@@ -84,6 +91,7 @@ describe('ClientLabelingWorkspace · seleção por SKU', () => {
 
     fireEvent.click(skuCheckbox('35'));
     expect(screen.getByText('2/3')).toBeInTheDocument();
+    confirmarPerfilCouche();
 
     fireEvent.click(screen.getByRole('button', { name: 'Gerar gráfica (2 SKUs)' }));
 
@@ -96,6 +104,20 @@ describe('ClientLabelingWorkspace · seleção por SKU', () => {
     expect(mocks.save).toHaveBeenCalledWith('Artes_SKU_pedido_cliente.pdf');
   });
 
+  it('gera produção somente com as linhas dos SKUs selecionados', async () => {
+    await importar();
+
+    fireEvent.click(skuCheckbox('35'));
+    fireEvent.click(screen.getByRole('button', { name: 'Gerar produção (2)' }));
+
+    await waitFor(() => {
+      expect(mocks.buildBabyNalinPdf).toHaveBeenCalledWith(
+        [ROWS[0], ROWS[2]],
+        expect.objectContaining({ mode: 'production', repeatByQuantity: false }),
+      );
+    });
+  });
+
   it('trata linhas repetidas como o mesmo SKU e alterna todas juntas', async () => {
     const duplicadas = [ROWS[0], { ...ROWS[0], cor: ' preto ', quantidade: 12 }, ROWS[1]];
     await importar(duplicadas);
@@ -106,6 +128,7 @@ describe('ClientLabelingWorkspace · seleção por SKU', () => {
 
     expect(checkboxes[0]).toHaveAttribute('data-state', 'unchecked');
     expect(checkboxes[1]).toHaveAttribute('data-state', 'unchecked');
+    expect(checkboxes[0]).not.toHaveAccessibleName(checkboxes[1].getAttribute('aria-label')!);
     expect(screen.getByText('1/2')).toBeInTheDocument();
   });
 
@@ -116,6 +139,7 @@ describe('ClientLabelingWorkspace · seleção por SKU', () => {
     const gerar = screen.getByRole('button', { name: 'Gerar gráfica (2 SKUs)' });
     expect(gerar).toBeDisabled();
 
+    confirmarPerfilCouche();
     fireEvent.click(skuCheckbox('35'));
     const gerarValido = screen.getByRole('button', { name: 'Gerar gráfica (1 SKU)' });
     expect(gerarValido).toBeEnabled();
@@ -143,6 +167,7 @@ describe('ClientLabelingWorkspace · seleção por SKU', () => {
     expect(skuCheckbox('35')).toHaveAttribute('data-state', 'unchecked');
     expect(skuCheckbox('36')).toHaveAttribute('data-state', 'checked');
 
+    confirmarPerfilCouche();
     fireEvent.click(screen.getByRole('button', { name: 'Gerar gráfica (2 SKUs)' }));
     await waitFor(() => {
       expect(mocks.buildBabyNalinPdf).toHaveBeenCalledWith(
@@ -179,6 +204,7 @@ describe('ClientLabelingWorkspace · seleção por SKU', () => {
     expect(screen.getByText('inválido')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Gerar gráfica (2 SKUs)' })).toBeDisabled();
 
+    confirmarPerfilCouche();
     fireEvent.click(skuCheckbox('35'));
     expect(screen.getByRole('button', { name: 'Gerar gráfica (1 SKU)' })).toBeEnabled();
   });
@@ -187,7 +213,28 @@ describe('ClientLabelingWorkspace · seleção por SKU', () => {
     await importar([ROWS[0], { ...ROWS[0], codProduto: 'OUTRO' }]);
 
     expect(screen.getByText(/código de barras ou código de produto divergente/)).toBeInTheDocument();
+    confirmarPerfilCouche();
     expect(screen.getByRole('button', { name: 'Gerar gráfica (1 SKU)' })).toBeDisabled();
+  });
+
+  it('não deixa conflito de um SKU desmarcado bloquear os demais', async () => {
+    const conflito = { ...ROWS[0], codigoBarra: '2260000303291' };
+    await importar([ROWS[0], conflito, ROWS[1]]);
+
+    const sku34 = screen.getAllByRole('checkbox', { name: /Selecionar linha \d+: SKU NL02, PRETO, tamanho 34,/ });
+    fireEvent.click(sku34[0]);
+    confirmarPerfilCouche();
+
+    const gerar = screen.getByRole('button', { name: 'Gerar gráfica (1 SKU)' });
+    expect(gerar).toBeEnabled();
+    fireEvent.click(gerar);
+
+    await waitFor(() => {
+      expect(mocks.buildBabyNalinPdf).toHaveBeenCalledWith(
+        [ROWS[1]],
+        expect.objectContaining({ mode: 'graphic' }),
+      );
+    });
   });
 
   it('envia o perfil físico informado para o gerador couchê', async () => {
@@ -196,6 +243,9 @@ describe('ClientLabelingWorkspace · seleção por SKU', () => {
     fireEvent.click(screen.getByText('Medidas da faca e do liner'));
     fireEvent.change(screen.getByLabelText('Vão entre colunas (mm)'), { target: { value: '2.5' } });
     fireEvent.change(screen.getByLabelText('Margem esquerda (mm)'), { target: { value: '1' } });
+    fireEvent.click(screen.getByRole('checkbox', {
+      name: 'Confirmo que estas medidas foram conferidas com a gráfica.',
+    }));
     fireEvent.click(screen.getByRole('button', { name: 'Gerar gráfica (3 SKUs)' }));
 
     await waitFor(() => {
@@ -257,5 +307,25 @@ describe('ClientLabelingWorkspace · seleção por SKU', () => {
 
     logo.resolve(null);
     await waitFor(() => expect(mocks.buildBabyNalinPdf).toHaveBeenCalled());
+  });
+
+  it('exige confirmação explícita das medidas antes de gerar para a gráfica', async () => {
+    await importar();
+
+    expect(screen.getByRole('button', { name: 'Gerar gráfica (3 SKUs)' })).toBeDisabled();
+    confirmarPerfilCouche();
+    expect(screen.getByRole('button', { name: 'Gerar gráfica (3 SKUs)' })).toBeEnabled();
+
+    fireEvent.change(screen.getByLabelText('Vão entre colunas (mm)'), { target: { value: '2' } });
+    expect(screen.getByRole('button', { name: 'Gerar gráfica (3 SKUs)' })).toBeDisabled();
+  });
+
+  it('calcula grandes quantidades sem expandir e protege o navegador', async () => {
+    await importar([{ ...ROWS[0], quantidade: MAX_PDF_LABELS + 1 }]);
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Usar quantidade solicitada' }));
+
+    expect(screen.getByText(/Divida o pedido em arquivos/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: `Gerar produção (${MAX_PDF_LABELS + 1})` })).toBeDisabled();
   });
 });
