@@ -35,7 +35,9 @@ import logoImg from '@/assets/logo-squad-shoes.jpg';
 import { supabase } from '@/integrations/supabase/client';
 import { resolveProductImageWithSource } from '@/lib/imageFallback';
 import { resolveMaterialLabels, materialLabelKey, materialNameFromCommercialSnapshot, type MaterialLabelInput } from '@/lib/labelUtils';
-import { buildBoxIdentificationHtml, buildThermalLabelsHtml, buildHangtagHtml, type BoxIdentificationData, type ThermalLabelConfig, DEFAULT_THERMAL_CONFIG } from '@/lib/printLabels';
+import { buildBoxIdentificationHtml, buildThermalLabelsHtml, buildHangtagHtml, buildThermalLabelsZpl, zplPhotoBoxDots, type BoxIdentificationData, type ThermalLabelConfig, DEFAULT_THERMAL_CONFIG } from '@/lib/printLabels';
+import { loadImageAsMonochrome, type MonoBitmap } from '@/lib/zplImage';
+import ZplPreviewDialog, { type ZplPreviewLabel } from './ZplPreviewDialog';
 import { openPrintTab, printHtmlAsPdf } from '@/lib/printPdf';
 import { confirmPrintJob, createPrintJob, PRINT_JOB_STATUS_LABELS, setPrintJobStatus } from '@/lib/printJobs';
 import { buildTemplateLabelsHtml } from '@/lib/templateLabels';
@@ -942,6 +944,14 @@ export function LabelProductionTab() {
   });
   const [showConfig, setShowConfig] = useState(false);
   const [printRequest, setPrintRequest] = useState<{ html: string; jobId: string } | null>(null);
+  const [zplPreview, setZplPreview] = useState<{
+    labels: ZplPreviewLabel[];
+    graphics: { name: string; mono: MonoBitmap }[];
+    dimensions: { width: number; height: number };
+    zpl: string;
+    fileName: string;
+    missingPhotos: string[];
+  } | null>(null);
   // Aba de destino do PDF. Aberta DENTRO do clique (síncrono) — abrir depois do
   // await faz o celular tratar como pop-up e bloquear.
   const printTabRef = useRef<Window | null>(null);
@@ -1315,7 +1325,15 @@ export function LabelProductionTab() {
     } finally { setIsGenerating(false); }
   };
 
-  const handlePrintIndividual = async () => {
+  /**
+   * Monta as etiquetas individuais e entrega em UM dos dois formatos.
+   *
+   * Os dois botões passam por aqui de propósito: resolução de foto, material,
+   * ordem por grade da ficha e contagem são exatamente os mesmos. Se o ZPL
+   * tivesse caminho próprio, os dois botões poderiam divergir sem ninguém notar
+   * — e a prévia perderia o sentido.
+   */
+  const handlePrintIndividual = async (output: 'html' | 'zpl' = 'html') => {
     const selectedGroups = filtered.filter(g => selected.has(g.groupKey));
     // Filter out groups that don't allow thermal labels
     const thermalGroups = selectedGroups.filter(g => getAllowedLabelTypes(g.packagingMode).thermal);
@@ -1328,7 +1346,8 @@ export function LabelProductionTab() {
         sum + Object.values(group.aggregatedGrade).reduce((a, qty) => a + (Number(qty) || 0), 0), 0);
       if (!validateJobSize(requested)) return;
     }
-    printTabRef.current = openPrintTab();
+    // ZPL não abre aba de impressão: o resultado é um arquivo, revisado na prévia.
+    if (output === 'html') printTabRef.current = openPrintTab();
     setIsGenerating(true);
     try {
       const labels: any[] = [];
@@ -1409,6 +1428,64 @@ export function LabelProductionTab() {
       const orderIds = thermalGroups.flatMap(g => g.orders.map((o: any) => o.id));
       const selectedTemplate = thermalTemplates.find(t => t.id === selectedThermalTemplateId);
       const dimensions = selectedTemplate?.dimensions || { width: currentSize.width, height: currentSize.height };
+      if (output === 'zpl') {
+        // Uma foto por URL DISTINTA. Em 203 dpi a moldura de 20×22 mm dá
+        // 160×176 dots; repetir esse bitmap em cada etiqueta poria 7,6 MB num
+        // lote de 1.136 — pior que o HTML. Com ~DG cada foto é gravada uma vez
+        // e as etiquetas só a chamam.
+        const box = zplPhotoBoxDots(dimensions);
+        const distinctUrls = [...new Set(labels.map(l => l.imageUrl).filter(Boolean))] as string[];
+        const nameByUrl = new Map<string, string>();
+        distinctUrls.forEach((url, i) => nameByUrl.set(url, `IMG${i}`));
+
+        const monos = await Promise.all(distinctUrls.map(url => loadImageAsMonochrome(url, box.width, box.height)));
+        const graphics: { name: string; mono: MonoBitmap }[] = [];
+        const failedUrls = new Set<string>();
+        distinctUrls.forEach((url, i) => {
+          const mono = monos[i];
+          if (mono) graphics.push({ name: nameByUrl.get(url)!, mono });
+          else failedUrls.add(url);
+        });
+
+        const zplLabels: ZplPreviewLabel[] = labels.map(l => ({
+          refCode: l.refCode, refName: l.refName, mainMaterial: l.mainMaterial,
+          color: l.color, size: l.size, barcode: l.barcode,
+          imageName: l.imageUrl && !failedUrls.has(l.imageUrl) ? nameByUrl.get(l.imageUrl) : undefined,
+        }));
+
+        // Referência da etiqueta, não a URL crua — 'SP130 · OFF WHITE' diz onde
+        // corrigir o cadastro; um link do storage não diz nada a quem lê.
+        const missingPhotos = [...new Set(labels
+          .filter(l => l.imageUrl && failedUrls.has(l.imageUrl))
+          .map(l => `${l.refName || l.refCode} · ${l.color}`))];
+
+        const zpl = buildThermalLabelsZpl(zplLabels, { width: dimensions.width, height: dimensions.height }, graphics);
+        const jobIdZpl = await createPrintJob({
+          batchName: `Etiqueta Individual ZPL - ${new Date().toLocaleString('pt-BR')}`,
+          totalLabels: zplLabels.length,
+          orderIds,
+          templateId: selectedThermalTemplateId,
+        });
+        void jobIdZpl;
+        queryClient.invalidateQueries({ queryKey: ['print_history'] });
+        setZplPreview({
+          labels: zplLabels, graphics,
+          dimensions: { width: dimensions.width, height: dimensions.height },
+          zpl,
+          fileName: `etiquetas-${new Date().toISOString().slice(0, 10)}.zpl`,
+          missingPhotos,
+        });
+        toast.success(`${zplLabels.length} etiquetas em ZPL — confira a prévia antes de baixar.`);
+        if (thermalMode === 'quantity' && fichaFallbackOrders.size > 0) {
+          toast.warning(
+            `Sem grade de ficha em ${[...fichaFallbackOrders].join(', ')} — nessas OPs as etiquetas saíram ` +
+            'na ordem por numeração, não por grade. Preencha grade e fichas no item do PV.',
+            { duration: 10000 },
+          );
+        }
+        return;
+      }
+
       const html = selectedTemplate && selectedTemplate.id !== SQUAD_THERMAL_DEFAULT_ID
         ? buildTemplateLabelsHtml(selectedTemplate, labels)
         : buildThermalLabelsHtml(labels, logoUrl, { width: dimensions.width, height: dimensions.height }, labelConfig, resolveSender().senderCnpj);
@@ -2234,7 +2311,7 @@ export function LabelProductionTab() {
                 {selectionLabelTypes.thermal && (
                   <div className="flex flex-col gap-1">
                     <div className="flex items-center gap-1">
-                      <Button onClick={handlePrintIndividual} variant="secondary" className="gap-2 h-9 border shadow-sm rounded-r-none"><Barcode className="h-4 w-4" />Etiqueta Individual ({selectionLabelTypes.thermalCount})</Button>
+                      <Button onClick={() => void handlePrintIndividual('html')} variant="secondary" className="gap-2 h-9 border shadow-sm rounded-r-none"><Barcode className="h-4 w-4" />Etiqueta Individual ({selectionLabelTypes.thermalCount})</Button>
                       <Select value={thermalMode} onValueChange={(v: any) => setThermalMode(v)}>
                         <SelectTrigger className="h-9 w-[130px] text-xs rounded-l-none border-l-0 bg-secondary"><SelectValue /></SelectTrigger>
                         <SelectContent>
@@ -2245,6 +2322,23 @@ export function LabelProductionTab() {
                     </div>
                     <span className="text-xs text-muted-foreground truncate max-w-[200px]">
                       Template: {thermalTemplates.find(t => t.id === selectedThermalTemplateId)?.name || 'Padrão'}
+                    </span>
+                  </div>
+                )}
+                {selectionLabelTypes.thermal && (
+                  <div className="flex flex-col gap-1">
+                    <Button
+                      onClick={() => void handlePrintIndividual('zpl')}
+                      variant="outline"
+                      className="gap-2 h-9 shadow-sm border-primary/40 text-primary hover:bg-primary/10"
+                      title="Gera o arquivo ZPL com a foto em 1 bit e abre a prévia fiel antes de baixar"
+                      disabled={isGenerating}
+                    >
+                      <Barcode className="h-4 w-4" />
+                      ZPL + Prévia ({selectionLabelTypes.thermalCount})
+                    </Button>
+                    <span className="text-xs text-muted-foreground truncate max-w-[200px]">
+                      Arquivo p/ Elgin · foto 1 bit
                     </span>
                   </div>
                 )}
@@ -2675,6 +2769,19 @@ export function LabelProductionTab() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {zplPreview && (
+        <ZplPreviewDialog
+          open
+          onOpenChange={(open) => { if (!open) setZplPreview(null); }}
+          labels={zplPreview.labels}
+          graphics={zplPreview.graphics}
+          dimensions={zplPreview.dimensions}
+          zpl={zplPreview.zpl}
+          fileName={zplPreview.fileName}
+          missingPhotos={zplPreview.missingPhotos}
+        />
+      )}
 
       {isGenerating && (
         <div className="fixed inset-0 z-modal bg-black/60 backdrop-blur-sm flex items-center justify-center animate-in fade-in duration-300">
