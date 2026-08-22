@@ -287,6 +287,66 @@ function getPackagingBadge(mode: string) {
   }
 }
 
+/**
+ * Resume quais tipos de etiqueta a SELEÇÃO atual habilita.
+ *
+ * UNIÃO, não interseção: o botão aparece quando PELO MENOS UM item selecionado
+ * aceita o tipo. Os handlers já imprimem só o subconjunto elegível
+ * (`handlePrintIndividual` filtra por `allowed.thermal`; `selectedBoxGroups`
+ * filtra por `masterBox || boxLabel`), então esconder o botão por causa de um
+ * item incompatível tirava do usuário uma ação que funcionaria para todos os
+ * outros — era isso que sumia com as "Térmicas" quando um PV em Colméia entrava
+ * numa seleção de PVs Individual + Fitilho (caso ELIANE, 22/08/2026).
+ *
+ * Os contadores existem para a tela dizer a verdade: "Térmicas (12)" numa
+ * seleção de 13 avisa que um item fica de fora, em vez de imprimir a menos em
+ * silêncio.
+ */
+// eslint-disable-next-line react-refresh/only-export-components
+export function summarizeSelectionLabelTypes(selectedGroups: { packagingMode: string }[]) {
+  const total = selectedGroups.length;
+  if (total === 0) {
+    return {
+      thermal: true, box: true, hangtag: true,
+      total: 0, thermalCount: 0, boxCount: 0, hangtagCount: 0,
+      notes: [] as string[],
+    };
+  }
+
+  let thermalCount = 0, boxCount = 0, hangtagCount = 0;
+  const thermalExcluded = new Set<string>();
+  const boxExcluded = new Set<string>();
+
+  for (const g of selectedGroups) {
+    const allowed = getAllowedLabelTypes(g.packagingMode);
+    const label = getPackagingBadge(g.packagingMode).label;
+    if (allowed.thermal) thermalCount++; else thermalExcluded.add(label);
+    if (allowed.masterBox || allowed.boxLabel) boxCount++; else boxExcluded.add(label);
+    if (allowed.hangtag) hangtagCount++;
+  }
+
+  const itens = (n: number) => (n === 1 ? 'item' : 'itens');
+  const notes: string[] = [];
+  if (thermalCount < total) {
+    notes.push(thermalCount === 0
+      ? `Nenhum dos ${total} ${itens(total)} selecionados aceita etiqueta individual (térmica): embalagem ${[...thermalExcluded].join(' / ')} leva só rótulo de caixa externa.`
+      : `Etiqueta individual (térmica) sai para ${thermalCount} de ${total} ${itens(total)} — ${total - thermalCount} em ${[...thermalExcluded].join(' / ')} leva só rótulo de caixa externa.`);
+  }
+  if (boxCount < total) {
+    notes.push(boxCount === 0
+      ? `Nenhum dos ${total} ${itens(total)} selecionados aceita rótulo de caixa externa.`
+      : `Rótulo de caixa externa sai para ${boxCount} de ${total} ${itens(total)} — ${total - boxCount} em ${[...boxExcluded].join(' / ')} fica de fora.`);
+  }
+
+  return {
+    thermal: thermalCount > 0,
+    box: boxCount > 0,
+    hangtag: hangtagCount > 0,
+    total, thermalCount, boxCount, hangtagCount,
+    notes,
+  };
+}
+
 function ReferenceCard({ group, selected, onToggle, hasOverride }: { group: GroupedReference; selected: boolean; onToggle: () => void; hasOverride?: boolean }) {
   const sizes = Object.entries(group.aggregatedGrade)
     .filter(([, v]) => (v as number) > 0)
@@ -1045,26 +1105,11 @@ export function LabelProductionTab() {
     return Array.from(map.entries()).sort(([a], [b]) => a.localeCompare(b));
   }, [filtered]);
 
-  // Determine which label types are allowed for the current selection
-  const selectionLabelTypes = useMemo(() => {
-    const selectedGroups = filtered.filter(g => selected.has(g.groupKey));
-    if (selectedGroups.length === 0) return { thermal: true, boxLabel: true, masterBox: true, hangtag: true };
-    // Intersection: only show types that ALL selected items support
-    let thermal = true, boxLabel = true, masterBox = true, hangtag = true;
-    for (const g of selectedGroups) {
-      const allowed = getAllowedLabelTypes(g.packagingMode);
-      if (!allowed.thermal) thermal = false;
-      if (!allowed.boxLabel) boxLabel = false;
-      if (!allowed.masterBox) masterBox = false;
-      if (!allowed.hangtag) hangtag = false;
-    }
-    return { thermal, boxLabel, masterBox, hangtag };
-  }, [filtered, selected]);
-
-  // Check if any selected group uses colmeia (to show warning)
-  const hasColmeiaSelected = useMemo(() => {
-    return filtered.filter(g => selected.has(g.groupKey)).some(g => g.packagingMode === 'colmeia');
-  }, [filtered, selected]);
+  // Que tipos de etiqueta a seleção habilita (união + contagem elegível).
+  const selectionLabelTypes = useMemo(
+    () => summarizeSelectionLabelTypes(filtered.filter(g => selected.has(g.groupKey))),
+    [filtered, selected],
+  );
 
   const getOrderFichaMetrics = (order: any) => {
     const baseGrade = (order?.sale_order_item_grade && typeof order.sale_order_item_grade === 'object'
@@ -2102,22 +2147,24 @@ export function LabelProductionTab() {
                 <Badge variant="outline">{selectedPairs.toLocaleString('pt-BR')} pares</Badge>
                 <Button variant="ghost" size="sm" className="ml-auto" onClick={() => setSelected(new Set())}>Limpar seleção</Button>
               </div>
-              {hasColmeiaSelected && (
-                <div className="flex items-center gap-2 p-2 rounded-md bg-amber-500/10 border border-amber-500/30 text-amber-700">
-                  <Package className="h-4 w-4 flex-shrink-0" />
-                  <p className="text-xs">
-                    <strong>Atenção:</strong> Itens com embalagem <strong>Colméia</strong> não geram etiquetas individuais — apenas rótulo de caixa externa.
-                  </p>
+              {selectionLabelTypes.notes.length > 0 && (
+                <div className="flex items-start gap-2 p-2 rounded-md bg-amber-500/10 border border-amber-500/30 text-amber-700">
+                  <Package className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                  <div className="text-xs space-y-0.5">
+                    {selectionLabelTypes.notes.map(note => (
+                      <p key={note}><strong>Atenção:</strong> {note}</p>
+                    ))}
+                  </div>
                 </div>
               )}
               <div className="flex flex-wrap items-center gap-2">
                 {selectionLabelTypes.hangtag && (
-                  <Button onClick={handlePrintHangtags} className="gap-2 h-9 shadow-md bg-primary hover:bg-primary/90"><Tag className="h-4 w-4" />Hangtags ({visibleSelectedGroups.length})</Button>
+                  <Button onClick={handlePrintHangtags} className="gap-2 h-9 shadow-md bg-primary hover:bg-primary/90"><Tag className="h-4 w-4" />Hangtags ({selectionLabelTypes.hangtagCount})</Button>
                 )}
                 {selectionLabelTypes.thermal && (
                   <div className="flex flex-col gap-1">
                     <div className="flex items-center gap-1">
-                      <Button onClick={handlePrintIndividual} variant="secondary" className="gap-2 h-9 border shadow-sm rounded-r-none"><Barcode className="h-4 w-4" />Térmicas</Button>
+                      <Button onClick={handlePrintIndividual} variant="secondary" className="gap-2 h-9 border shadow-sm rounded-r-none"><Barcode className="h-4 w-4" />Térmicas ({selectionLabelTypes.thermalCount})</Button>
                       <Select value={thermalMode} onValueChange={(v: any) => setThermalMode(v)}>
                         <SelectTrigger className="h-9 w-[130px] text-xs rounded-l-none border-l-0 bg-secondary"><SelectValue /></SelectTrigger>
                         <SelectContent>
@@ -2131,10 +2178,10 @@ export function LabelProductionTab() {
                     </span>
                   </div>
                 )}
-                {(selectionLabelTypes.masterBox || selectionLabelTypes.boxLabel) && (
+                {selectionLabelTypes.box && (
                   <div className="flex flex-col gap-1">
                     <div className="flex items-center gap-1">
-                      <Button onClick={handlePrintBoxLabels} variant="outline" className="gap-2 h-9 shadow-sm rounded-r-none"><BoxIcon className="h-4 w-4" />Rótulo Caixa Externa</Button>
+                      <Button onClick={handlePrintBoxLabels} variant="outline" className="gap-2 h-9 shadow-sm rounded-r-none"><BoxIcon className="h-4 w-4" />Rótulo Caixa Externa ({selectionLabelTypes.boxCount})</Button>
                       <Button
                         variant="outline"
                         className="h-9 px-2 rounded-l-none border-l-0"
