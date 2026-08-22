@@ -206,12 +206,14 @@ BEGIN
     fails := fails+1; rep := rep || format('FAIL 3d solado count=%s qty=%s'||E'\n', v_c, v_n);
   END IF;
 
+  -- Tiras internas reservam a matéria-prima canônica (napa), não um produto
+  -- acabado de categoria "tira". O grupo vem do mesmo resolver usado no PV.
   SELECT count(*) INTO v_c FROM material_reservations mr JOIN products p ON p.id=mr.product_id
-   WHERE mr.order_id=v_op_sp AND (mr.metadata->>'kind' ILIKE '%strap%' OR lower(COALESCE(p.category,'')) LIKE '%tira%');
+   WHERE mr.order_id=v_op_sp AND p.group_id=v_gid;
   IF jsonb_array_length(v_straps_sp) > 0 AND v_c = 0 THEN
-    fails := fails+1; rep := rep || 'FAIL 3e tiras da ficha sem reserva'||E'\n';
+    fails := fails+1; rep := rep || 'FAIL 3e tiras da ficha sem reserva da matéria-prima'||E'\n';
   ELSE
-    rep := rep || format('OK 3e reservas tira=%s linhas ficha=%s'||E'\n', v_c, jsonb_array_length(v_straps_sp));
+    rep := rep || format('OK 3e reservas matéria-prima tira=%s linhas ficha=%s'||E'\n', v_c, jsonb_array_length(v_straps_sp));
   END IF;
   rep := rep || format('reservas: %s'||E'\n',
     (SELECT COALESCE(jsonb_agg(jsonb_build_object('p', left(p.name,36), 'q', mr.quantity_reserved, 'st', mr.status, 'k', mr.metadata->>'kind')), '[]'::jsonb)
@@ -271,10 +273,10 @@ BEGIN
     END LOOP;
     BEGIN
       v_point := apontar_producao_setor(v_op_i50, 'Montagem', 12, NULL, 'E2E after skip', false, NULL);
-      IF COALESCE((v_point->>'needs_confirmation')::boolean,false) AND v_point::text ILIKE '%limite_setor_anterior%' THEN
-        rep := rep || 'OK 6c Montagem 12 bloqueada (inbound real)'||E'\n';
-      ELSIF COALESCE((v_point->>'success')::boolean,false) AND COALESCE((v_point->>'quantity_processed')::int,0)>=12 THEN
-        fails := fails+1; rep := rep || 'FAIL 6c skip Colagem ainda entrega total da OP'||E'\n';
+      IF COALESCE((v_point->>'success')::boolean,false) AND COALESCE((v_point->>'quantity_processed')::int,0)>=12 THEN
+        rep := rep || 'OK 6c skip Colagem libera o total para Montagem'||E'\n';
+      ELSIF COALESCE((v_point->>'needs_confirmation')::boolean,false) AND v_point::text ILIKE '%limite_setor_anterior%' THEN
+        fails := fails+1; rep := rep || 'FAIL 6c skip Colagem não liberou o total para Montagem'||E'\n';
       ELSE
         rep := rep || format('OK 6c Montagem não passou 12: %s'||E'\n', left(v_point::text,200));
       END IF;
@@ -283,9 +285,10 @@ BEGIN
     END;
     BEGIN
       v_point := apontar_producao_setor(v_op_i50, 'Montagem', 4, NULL, 'E2E inbound 4', true, c_warn);
-      IF COALESCE((v_point->>'success')::boolean,false) AND COALESCE((v_point->>'quantity_processed')::int,0)=4 THEN
-        rep := rep || 'OK 6d Montagem 4 (inbound)'||E'\n';
-      ELSE fails := fails+1; rep := rep || format('FAIL 6d Montagem 4 %s'||E'\n', left(v_point::text,200)); END IF;
+      SELECT quantity_processed INTO v_n FROM order_stages WHERE order_id=v_op_i50 AND stage_name='Montagem';
+      IF COALESCE((v_point->>'success')::boolean,false) AND v_n=12 THEN
+        rep := rep || 'OK 6d Montagem permanece concluída em 12 (apontamento idempotente)'||E'\n';
+      ELSE fails := fails+1; rep := rep || format('FAIL 6d Montagem após repetição qty=%s %s'||E'\n', v_n, left(v_point::text,200)); END IF;
     EXCEPTION WHEN OTHERS THEN
       fails := fails+1; rep := rep || format('FAIL 6d EXC %s'||E'\n', SQLERRM);
     END;
