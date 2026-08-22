@@ -4,6 +4,8 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import type { ProductGroup } from '@/hooks/useGroups';
+import type { Product } from '@/types/inventory';
 
 /**
  * Smoke de RENDER da janela do grupo de estoque.
@@ -20,7 +22,7 @@ import { TooltipProvider } from '@/components/ui/tooltip';
  * typecheck não vê: as abas existem, trocam, e cada painel monta sem explodir.
  */
 
-const PRODUCTS = [
+const PRODUCTS: Array<Partial<Product>> = [
   {
     id: 'p1', name: 'NAPA SANTORINE', sku: 'NAP-PRT', color: 'PRETO', quantity: 12, unit: 'm',
     unit_price: 24.9, group_id: 'g1', active: true, category: 'Cabedal', purchase_unit: 'm',
@@ -40,10 +42,10 @@ const GROUP = {
   sector: 'Cabedal', parent_group_id: null, is_family: false,
   is_bom_color_source: false, is_color_agnostic: false, shared_specs: true,
   consumption_unit: 'dm²', unit_weight_kg: 0, dimensions_width: 1370,
-};
+} as unknown as ProductGroup;
 
 vi.mock('@/hooks/useProducts', () => ({
-  useProducts: () => ({ data: PRODUCTS, isLoading: false }),
+  useProducts: () => ({ data: PRODUCTS as Product[], isLoading: false }),
   useAddProduct: () => ({ mutateAsync: vi.fn() }),
 }));
 
@@ -66,9 +68,10 @@ vi.mock('@/components/inventory/ForceDeleteProductDialog', () => ({
 
 /** Builder encadeável: qualquer método devolve a si mesmo e o await resolve vazio. */
 vi.mock('@/integrations/supabase/client', () => {
-  const builder: any = new Proxy({}, {
+  type Builder = Record<string, unknown>;
+  const builder: Builder = new Proxy({} as Builder, {
     get(_t, prop) {
-      if (prop === 'then') return (resolve: any) => resolve({ data: [], error: null });
+      if (prop === 'then') return (resolve: (r: unknown) => void) => resolve({ data: [], error: null });
       return () => builder;
     },
   });
@@ -78,13 +81,14 @@ vi.mock('@/integrations/supabase/client', () => {
 vi.mock('sonner', () => ({ toast: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn(), info: vi.fn() }) }));
 
 const { default: GroupEditDialog } = await import('@/components/groups/GroupEditDialog');
+import type { GroupEditTab } from '@/components/groups/GroupEditDialog';
 
 /** Cada aba tem título + sublabel; o sublabel de "Em massa" contém "cores" e
  *  casaria no seletor da aba Cores. Ancora no TÍTULO, que é o primeiro nó. */
 const aberturaDaAba = (titulo: string) =>
   screen.getAllByRole('tab').find(tab => tab.querySelector('span > span')?.textContent === titulo)!;
 
-const renderDialog = (initialTab?: any) => {
+const renderDialog = (initialTab?: GroupEditTab) => {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
@@ -92,7 +96,7 @@ const renderDialog = (initialTab?: any) => {
           são Tooltips do radix, que exigem o provider da raiz. */}
       <TooltipProvider>
         <MemoryRouter>
-          <GroupEditDialog open onOpenChange={() => {}} group={GROUP as any} initialTab={initialTab} />
+          <GroupEditDialog open onOpenChange={() => {}} group={GROUP} initialTab={initialTab} />
         </MemoryRouter>
       </TooltipProvider>
     </QueryClientProvider>,
@@ -171,8 +175,8 @@ describe('GroupEditDialog — janela única do grupo de estoque', () => {
             <GroupEditDialog
               open
               onOpenChange={() => {}}
-              group={{ ...GROUP, id: 'g9', is_family: true } as any}
-              initialTab={'bulk' as any}
+              group={{ ...GROUP, id: 'g9', is_family: true }}
+              initialTab="bulk"
             />
           </MemoryRouter>
         </TooltipProvider>

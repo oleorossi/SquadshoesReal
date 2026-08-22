@@ -340,7 +340,7 @@ function VariantDetailSheet({ open, onOpenChange, product, otherVariants }: {
                 <SelectTrigger className="mt-1 h-9"><SelectValue placeholder="Sem fornecedor" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__none__">— Sem fornecedor —</SelectItem>
-                  {suppliers.map((s: any) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                  {suppliers.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
@@ -471,8 +471,22 @@ function BulkLabel({ field, divergence, children }: {
 /** Helper compartilhado: NaN/null/undefined → fallback (0 por default). Usado
  *  nos onChange dos inputs numéricos pra evitar que o state segure NaN, e no
  *  payload de save pra blindar valores que escaparam. */
-const safeNum = (v: any, fallback = 0): number =>
+const safeNum = (v: unknown, fallback = 0): number =>
   Number.isFinite(Number(v)) ? Number(v) : fallback;
+
+/** Mensagem legível de um erro de origem desconhecida. O `catch (err: any)` que
+ *  o repo usa em outros arquivos é erro no gate de lint das linhas novas — e
+ *  `err.message` cru some quando o que foi lançado não é um Error. O erro do
+ *  supabase-js é objeto simples com `message`, então ele entra pelo segundo ramo. */
+const mensagemDoErro = (err: unknown): string => {
+  if (err instanceof Error) return err.message;
+  if (err && typeof err === 'object' && 'message' in err) return String((err as { message: unknown }).message);
+  return String(err);
+};
+
+/** `products.stock_grade`: saldo por numeração mais os sentinelas de faixa que
+ *  o cadastro do solado grava (`_size_from` / `_size_to`). */
+type StockGrade = Record<string, number | null | undefined>;
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 4 }).format(value);
@@ -627,7 +641,7 @@ export function VariantListPanel({
     try {
       for (const [productId, { sizeFrom, sizeTo }] of updates) {
         const variant = variants.find(v => v.id === productId);
-        const existingGrade = (variant?.stock_grade as Record<string, any>) || {};
+        const existingGrade = (variant?.stock_grade as StockGrade | null) || {};
         const gradeObj = {
           ...existingGrade,
           _size_from: sizeFrom,
@@ -635,7 +649,7 @@ export function VariantListPanel({
         };
 
         const { error } = await supabase.from('products').update({
-          stock_grade: gradeObj as any
+          stock_grade: gradeObj as Record<string, number>,
         }).eq('id', productId);
 
         if (error) throw error;
@@ -647,8 +661,8 @@ export function VariantListPanel({
       queryClient.invalidateQueries({ queryKey: ['sole_size_range_specific'] });
       queryClient.invalidateQueries({ queryKey: ['sole_size_conjugations'] });
       toast.success(`Faixa atualizada para ${updates.length} variante(s)!`);
-    } catch (err: any) {
-      toast.error(`Erro: ${err.message}`);
+    } catch (err) {
+      toast.error(`Erro: ${mensagemDoErro(err)}`);
     } finally {
       setSavingGrade(false);
     }
@@ -679,8 +693,8 @@ export function VariantListPanel({
       queryClient.invalidateQueries({ queryKey: ['products'] });
       toast.success('Cor atualizada');
       cancelEditColor();
-    } catch (err: any) {
-      toast.error(`Erro ao salvar cor: ${err.message}`);
+    } catch (err) {
+      toast.error(`Erro ao salvar cor: ${mensagemDoErro(err)}`);
     } finally {
       setSavingColorId(null);
     }
@@ -702,8 +716,8 @@ export function VariantListPanel({
       queryClient.invalidateQueries({ queryKey: ['products'] });
       toast.success('Produto renomeado');
       cancelEditName();
-    } catch (err: any) {
-      toast.error(`Erro ao renomear: ${err.message}`);
+    } catch (err) {
+      toast.error(`Erro ao renomear: ${mensagemDoErro(err)}`);
     } finally {
       setSavingNameId(null);
     }
@@ -839,7 +853,7 @@ export function VariantListPanel({
           <Tabs value={activeGradeTab} onValueChange={setActiveGradeTab}>
             <TabsList className="w-full flex flex-wrap h-auto gap-1 p-1">
               {variants.map(v => {
-                const existing = v.stock_grade as Record<string, any> | null;
+                const existing = v.stock_grade as StockGrade | null;
                 const from = rangeChanges[v.id]?.sizeFrom ?? (existing?._size_from ?? null);
                 const to = rangeChanges[v.id]?.sizeTo ?? (existing?._size_to ?? null);
                 const label = from != null && to != null ? `${from}–${to}` : '—';
@@ -868,7 +882,7 @@ export function VariantListPanel({
           {/* ── Numerações conjugadas (compartilhadas pelo grupo) ── */}
           {(() => {
             const activeVariant = variants.find(v => v.id === activeGradeTab) || variants[0];
-            const existing = activeVariant?.stock_grade as Record<string, any> | null;
+            const existing = activeVariant?.stock_grade as StockGrade | null;
             const sizeFrom = rangeChanges[activeVariant?.id]?.sizeFrom
               ?? (existing?._size_from != null ? Number(existing._size_from) : null);
             const sizeTo = rangeChanges[activeVariant?.id]?.sizeTo
@@ -1161,8 +1175,8 @@ export function VariantBulkEditPanel({ variants, onCancel, onOpenGroupSpecs }: V
       );
       setDirty(new Set());
       setPreviewOpen(false);
-    } catch (err: any) {
-      toast.error(`Erro ao salvar grupo: ${err.message}`);
+    } catch (err) {
+      toast.error(`Erro ao salvar grupo: ${mensagemDoErro(err)}`);
     } finally {
       setSavingGroup(false);
     }
@@ -1203,7 +1217,7 @@ export function VariantBulkEditPanel({ variants, onCancel, onOpenGroupSpecs }: V
                 <SelectTrigger className="mt-1 h-9"><SelectValue placeholder="Manter valor de cada cor" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value={LIMPAR}>— Sem grupo —</SelectItem>
-                  {groups.map((g: any) => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}
+                  {groups.map(g => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
@@ -1213,7 +1227,7 @@ export function VariantBulkEditPanel({ variants, onCancel, onOpenGroupSpecs }: V
                 <SelectTrigger className="mt-1 h-9"><SelectValue placeholder="Manter valor de cada cor" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value={LIMPAR}>— Sem fornecedor —</SelectItem>
-                  {suppliers.map((s: any) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                  {suppliers.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
