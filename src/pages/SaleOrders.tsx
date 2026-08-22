@@ -10,7 +10,7 @@ import { resolveMaterialLabels, materialLabelKey } from '@/lib/labelUtils';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import PendenciasView from '@/components/sale-orders/PendenciasView';
-import { ArrowUp, ArrowsDownUp, Baby, Buildings, ShoppingCart, Plus, CircleNotch as Loader2, Copy, Printer, Factory, PencilSimple as Pencil, FileText, Funnel as Filter, X, MagnifyingGlass as Search, Package, Clock, CaretDown, ChartBar as BarChart3, ClipboardText as ClipboardList, ArrowsClockwise as RefreshCw, Tag, SquaresFour as LayoutDashboard, Lightning as Zap, FileXls as FileSpreadsheet, Receipt, XCircle, CheckCircle, Check, Download, TrendUp as TrendingUp, Warning as AlertTriangle, ArrowCounterClockwise as RotateCcw, HandPalm as Hand, UploadSimple as Upload, Trash as Trash2, ListChecks, ArrowSquareOut as ExternalLink, DotsThree } from '@phosphor-icons/react';
+import { ArrowUp, ArrowsDownUp, Baby, Buildings, ShoppingCart, Plus, CircleNotch as Loader2, Copy, Printer, Factory, PencilSimple as Pencil, FileText, Funnel as Filter, X, MagnifyingGlass as Search, Package, Clock, CaretDown, ChartBar as BarChart3, ClipboardText as ClipboardList, ArrowsClockwise as RefreshCw, Tag, SquaresFour as LayoutDashboard, Lightning as Zap, FileXls as FileSpreadsheet, Receipt, XCircle, CheckCircle, Check, Download, TrendUp as TrendingUp, Warning as AlertTriangle, ArrowCounterClockwise as RotateCcw, HandPalm as Hand, UploadSimple as Upload, Trash as Trash2, ListChecks, ArrowSquareOut as ExternalLink, DotsThree, Images } from '@phosphor-icons/react';
 import { useMarqueeSelection } from '@/hooks/useMarqueeSelection';
 import { BulkActionsBar, MarqueeOverlay } from '@/components/ui/bulk-actions-bar';
 import { cn } from "@/lib/utils";
@@ -19,6 +19,7 @@ import { cn } from "@/lib/utils";
 // incondicionalmente com open={false} — o React monta, o chunk é buscado no
 // primeiro paint e o ganho é zero. (auditoria PV 07/08/2026)
 const MarginDialog = lazy(() => import('@/components/sale-orders/MarginDialog'));
+const OrderPhotosDialog = lazy(() => import('@/components/sale-orders/OrderPhotosDialog'));
 const OperatorFichasDialog = lazy(() => import('@/components/sale-orders/OperatorFichasDialog'));
 const GenerateServiceOrdersWizard = lazy(() => import('@/components/contractors/GenerateServiceOrdersWizard').then(m => ({ default: m.GenerateServiceOrdersWizard })));
 const GeneratePurchaseOrdersDialog = lazy(() => import('@/components/purchase/GeneratePurchaseOrdersDialog'));
@@ -471,6 +472,7 @@ export default function SaleOrders() {
   const [generatingOPs, setGeneratingOPs] = useState(false);
   const [overviewOpen, setOverviewOpen] = useState(false);
   const [marginDialogOpen, setMarginDialogOpen] = useState(false);
+  const [photosDialogOpen, setPhotosDialogOpen] = useState(false);
   // "Ficha Montagem": abre a seleção de OPs em vez de imprimir o PV inteiro.
   const [operatorFichasOpen, setOperatorFichasOpen] = useState(false);
   // Canal "Compras por Pedido" — alvo do modal de geração de OCs (1 ou N PVs).
@@ -2870,6 +2872,7 @@ export default function SaleOrders() {
                   <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Ações do pedido">
                   {canEditPv && <Button variant="outline" size="sm" className="gap-2" onClick={() => { setDetailDialogOpen(false); navigate(`/sales/edit/${selectedOrder.id}`); }}><Pencil className="h-3.5 w-3.5" /> Editar</Button>}
                   <Button variant="outline" size="sm" className="gap-2" onClick={() => setMarginDialogOpen(true)}><TrendingUp className="h-3.5 w-3.5" /> Margem</Button>
+                  <Button variant="outline" size="sm" className="gap-2" onClick={() => setPhotosDialogOpen(true)} disabled={loadingOrderItems || selectedOrderItems.length === 0}><Images className="h-3.5 w-3.5" /> Fotos</Button>
                   {/* Botão "Aprovar" individual — só aparece em Rascunho.
                       Sem esse botão, o usuário só conseguia aprovar via "Gerar OPs"
                       em massa (o que aprovava TODOS os Rascunhos de uma vez).
@@ -3617,6 +3620,18 @@ export default function SaleOrders() {
             saleOrderId={selectedOrder?.id || null}
             orderNumber={selectedOrder?.order_number || ''}
             total={Number(selectedOrder?.total) || 0}
+          />
+        </Suspense>
+      )}
+
+      {photosDialogOpen && (
+        <Suspense fallback={null}>
+          <OrderPhotosDialog
+            open={photosDialogOpen}
+            onOpenChange={setPhotosDialogOpen}
+            orderNumber={selectedOrder?.order_number || ''}
+            clientName={selectedOrder?.client_name || ''}
+            items={selectedOrderItems}
           />
         </Suspense>
       )}

@@ -1,10 +1,13 @@
 // =============================================================================
 // consumptionService.ts
-// Serviço único que chama calculate_order_consumption no Supabase.
-// Frontend e backend usam a MESMA lógica (sem duplicação).
+// Porta TS única do motor SQL de consumo.
+// Com grade válida: calculate_order_consumption_by_grade + scaleGradeToTotal
+// (espelho de public.scale_grade_to_total). Sem grade: wrapper escalar,
+// que no banco já delega ao by_grade.
 // =============================================================================
 import { supabase } from '@/integrations/supabase/client';
 import { z } from 'zod';
+import { isUsableGrade, scaleGradeToTotal } from '@/lib/scaleGrade';
 
 // ---------------------------------------------------------------------------
 // SCHEMA DE VALIDAÇÃO (Zod)
@@ -168,8 +171,6 @@ export function validateConsumptionPayload(raw: unknown): ConsumptionLine[] {
   const parsed = ConsumptionResponseSchema.safeParse(arr);
   if (!parsed.success) {
     const err = new ConsumptionSchemaError(parsed.error, raw);
-    // Notifica observadores globais (ex.: alerta no Dashboard).
-    // Em ambientes sem `window` (SSR/teste node), o emit é silencioso.
     if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
       try {
         window.dispatchEvent(
@@ -199,11 +200,7 @@ export type ConsumptionLine = {
   matched_by?: string;
   category?: string;
   unit?: string;
-  /** Aviso de get_material_conversion_info quando o material não tem largura
-   *  cadastrada em component_sheets — o valor pode estar ~100x inflado. */
   conversion_warning?: string | null;
-  /** Aviso não-bloqueante do motor (ex.: fallback_average de tamanho sem spec,
-   *  fachete sem consumo cadastrado). Presente nas linhas de AVISO. */
   consumption_warning?: string | null;
 };
 
@@ -221,28 +218,36 @@ export async function calculateConsumption(params: {
   color?: string | null;
   size?: number | null;
   materialVariantId?: string | null;
+  /**
+   * Grade do item/OP. Presente e válida → motor único
+   * `calculate_order_consumption_by_grade` (escalada p/ `quantity` via
+   * `scaleGradeToTotal`, idempotente se a grade já for absoluta).
+   * Ausente → wrapper escalar (grade sintética de 1 numeração).
+   */
+  grade?: Record<string, number> | null;
 }): Promise<ConsumptionSummary> {
-  const { referenceId, quantity, color, size, materialVariantId } = params;
-  // p_material_variant_id agora ATIVO: a RPC SQL (mig 20260629210000) aplica
-  // overrides de produto e consumo dm²/par dos 4 componentes principais
-  // (cabedal/forro/palmilha/solado) quando variant_id é passado. Sem variant
-  // (NULL) o comportamento é idêntico à versão anterior.
-  const { data, error } = await supabase.rpc('calculate_order_consumption', {
-    p_reference_id: referenceId,
-    p_order_quantity: quantity,
-    p_color: color ?? '',
-    p_size: size ?? null,
-    p_material_variant_id: materialVariantId ?? null,
-  });
+  const { referenceId, quantity, color, size, materialVariantId, grade } = params;
+  const rpc = isUsableGrade(grade)
+    ? supabase.rpc('calculate_order_consumption_by_grade', {
+        p_reference_id: referenceId,
+        p_grade: scaleGradeToTotal(grade, quantity),
+        p_color: color ?? '',
+        p_material_variant_id: materialVariantId ?? null,
+      })
+    : supabase.rpc('calculate_order_consumption', {
+        p_reference_id: referenceId,
+        p_order_quantity: quantity,
+        p_color: color ?? '',
+        p_size: size ?? null,
+        p_material_variant_id: materialVariantId ?? null,
+      });
+  const { data, error } = await rpc;
 
   if (error) {
     console.error('[consumptionService] erro:', error);
     throw new Error(`Erro ao calcular consumo: ${error.message}`);
   }
 
-  // Validação de schema: trava regressões silenciosas vindas da RPC.
-  // Em produção, capturamos e logamos o detalhe — o erro detalhado já vem
-  // formatado via ConsumptionSchemaError.
   const lines = validateConsumptionPayload((data as unknown) ?? []);
   const missing = lines.filter((l) => !l.stock_ok);
   const totalRequired = lines.reduce((acc, l) => acc + Number(l.required || 0), 0);
@@ -272,61 +277,28 @@ export function validateConsumption(summary: ConsumptionSummary): {
   return { ok: errors.length === 0, errors };
 }
 
-/**
- * Item de um pedido com múltiplos SKUs (ex.: PV com várias referências e/ou
- * variações de cor/tamanho). Cada item dispara uma chamada à RPC de consumo.
- */
 export type MultiSkuItem = {
   referenceId: string;
   quantity: number;
   color?: string | null;
   size?: number | null;
-  /** Identificador opcional do item dentro do pedido (para rastreio). */
+  materialVariantId?: string | null;
+  grade?: Record<string, number> | null;
   itemKey?: string;
 };
 
-/**
- * Resultado agregado de um pedido multi-SKU. As linhas são consolidadas por
- * `product_id` (mesma matéria-prima usada por múltiplos SKUs vira UMA linha
- * com `required` somado) e o detalhamento por componente é preservado.
- */
 export type MultiSkuConsumptionSummary = {
-  /** Linhas agregadas por product_id (com required somado entre SKUs). */
   aggregatedLines: ConsumptionLine[];
-  /** Soma de `required` de todas as linhas. */
   totalRequired: number;
-  /** True se TODOS os materiais agregados têm estoque. */
   allStockOk: boolean;
-  /** Linhas agregadas com falta. */
   missing: ConsumptionLine[];
-  /** Resultados por SKU (na ordem dos itens recebidos), para inspeção. */
   perItem: Array<{ item: MultiSkuItem; summary: ConsumptionSummary }>;
-  /** True se algum SKU foi resolvido por sole_spec. */
   soldDriven: boolean;
 };
 
-/**
- * Calcula consumo para múltiplos SKUs do mesmo pedido e agrega por material.
- *
- * Regras de agregação:
- *  • mesma `(product_id, color)` em vários SKUs → soma `required`;
- *  • `available` é o snapshot do estoque — preservamos o MENOR observado
- *    (a chamada paralela ao Supabase retorna o mesmo valor, mas defendemos
- *    contra mudanças entre chamadas);
- *  • `consumption_per_unit` perde sentido após agregação (cada SKU pode ter
- *    o seu) — devolvemos a média ponderada por `required` para diagnóstico;
- *  • `stock_ok` é recalculado: `required <= available` da linha agregada.
- *
- * IMPORTANT: agregamos por `(product_id, color)` porque a mesma matéria-prima
- * em cores diferentes é tratada como SKUs distintos no estoque.
- */
 export async function calculateConsumptionMultiSku(
   items: MultiSkuItem[],
 ): Promise<MultiSkuConsumptionSummary> {
-  // Execução PARALELA: cada SKU dispara uma chamada independente à RPC.
-  // A agregação é determinística porque acontece DEPOIS do Promise.all
-  // sobre uma ordem estável (a mesma do `items` recebido) — não há
-  // condição de corrida na escrita do bucket.
   const summaries = await Promise.all(items.map((item) => calculateConsumption(item)));
   const perItem = items.map((item, i) => ({ item, summary: summaries[i] }));
 
