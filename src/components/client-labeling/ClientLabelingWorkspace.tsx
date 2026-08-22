@@ -2,7 +2,7 @@
  * Módulo isolado "ETIQUETAGEM CLIENTE" — etiqueta no padrão do cliente.
  *
  * Lê o arquivo de exportação do pedido de compra do ERP do cliente e gera:
- *   - produção no rolo térmico 50 × 40 mm;
+ *   - produção na L42PRO Full, em rolo de duas colunas 50 × 30 mm;
  *   - gráfica em duas etiquetas couchê 50 × 30 mm lado a lado.
  * A geometria e o módulo do CODE128 moram em `@/lib/babyNalinLabels`.
  */
@@ -83,8 +83,6 @@ export function ClientLabelingWorkspace() {
   const fileRequestIdRef = useRef(0);
   const [rows, setRows] = useState<BabyNalinRow[]>([]);
   const [fileName, setFileName] = useState('');
-  const [repeatByQuantity, setRepeatByQuantity] = useState(false);
-  const [repeatMultiplier, setRepeatMultiplier] = useState(1);
   const [reading, setReading] = useState(false);
   const [generating, setGenerating] = useState<'production' | 'graphic' | null>(null);
   const [search, setSearch] = useState('');
@@ -109,7 +107,8 @@ export function ClientLabelingWorkspace() {
     quantidade: printQuantities[sourceIndex] ?? row.quantidade,
   }));
   const selectedSkuAnalysis = analyzeClientSkus(selectedRows);
-  const totalPaginas = countExpandedRows(productionRows, repeatByQuantity, repeatMultiplier);
+  const totalEtiquetas = countExpandedRows(productionRows, true);
+  const carreirasProducao = graphicPageCount(totalEtiquetas);
   const totalPares = selectedRows.reduce((t, r) => t + r.quantidade, 0);
   const totalParesParaImpressao = productionRows.reduce((total, row) => total + row.quantidade, 0);
   const totalParesNoArquivo = rows.reduce((t, r) => t + r.quantidade, 0);
@@ -132,7 +131,7 @@ export function ClientLabelingWorkspace() {
   const allVisibleSelected = visibleSkuKeys.length > 0 && visibleSkuKeys.every(key => selectedSkuKeys.has(key));
   const someVisibleSelected = visibleSkuKeys.some(key => selectedSkuKeys.has(key));
   const isBusy = reading || generating !== null;
-  const productionOverLimit = totalPaginas > MAX_PDF_LABELS;
+  const productionOverLimit = totalEtiquetas > MAX_PDF_LABELS;
 
   useEffect(() => () => {
     fileRequestIdRef.current += 1;
@@ -179,8 +178,8 @@ export function ClientLabelingWorkspace() {
       toast.error(`${selectedSkuAnalysis.conflicts.length} SKU(s) selecionado(s) possuem dados de impressão conflitantes.`);
       return;
     }
-    if (mode === 'graphic' && !coucheProfileConfirmed) {
-      toast.info('Confirme as medidas da faca e do liner antes de gerar para a gráfica.');
+    if (!coucheProfileConfirmed) {
+      toast.info('Confirme as medidas do rolo de duas colunas antes de gerar.');
       return;
     }
     if (mode === 'production' && productionOverLimit) {
@@ -190,9 +189,8 @@ export function ClientLabelingWorkspace() {
 
     const generationRows = mode === 'production' ? productionRows : selectedRows;
     const generationFileName = fileName;
-    const generationRepeatByQuantity = repeatByQuantity;
-    const generationRepeatMultiplier = repeatMultiplier;
-    const generationTotalPages = totalPaginas;
+    const generationTotalLabels = totalEtiquetas;
+    const generationProductionRows = carreirasProducao;
     const generationSkuCount = selectedSkuAnalysis.rows.length;
     const generationCoucheProfile = { ...coucheProfile };
     setGenerating(mode);
@@ -202,8 +200,7 @@ export function ClientLabelingWorkspace() {
 
       const doc = await buildBabyNalinPdf(generationRows, {
         mode,
-        repeatByQuantity: mode === 'production' ? generationRepeatByQuantity : false,
-        repeatMultiplier: generationRepeatMultiplier,
+        repeatByQuantity: mode === 'production',
         coucheProfile: generationCoucheProfile,
         logo,
       });
@@ -212,7 +209,7 @@ export function ClientLabelingWorkspace() {
         toast.success(`Arquivo para gráfica com ${generationSkuCount} SKU(s) gerado.`);
       } else {
         doc.save(pdfFilename(generationFileName));
-        toast.success(`PDF de produção com ${generationTotalPages} etiqueta(s) gerado.`);
+        toast.success(`PDF da L42PRO com ${generationTotalLabels} etiqueta(s) em ${generationProductionRows} carreira(s) gerado.`);
       }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Falha ao gerar o PDF.');
@@ -226,8 +223,6 @@ export function ClientLabelingWorkspace() {
     setReading(false);
     setRows([]);
     setFileName('');
-    setRepeatByQuantity(false);
-    setRepeatMultiplier(1);
     setSearch('');
     setSelectedSkuKeys(new Set());
     setPrintQuantities({});
@@ -266,7 +261,6 @@ export function ClientLabelingWorkspace() {
   function setPrintQuantity(sourceIndex: number, requestedQuantity: number, rawValue: string) {
     const quantity = clampPrintQuantity(rawValue, requestedQuantity);
     setPrintQuantities(current => ({ ...current, [sourceIndex]: quantity }));
-    setRepeatByQuantity(true);
   }
 
   return (
@@ -274,7 +268,7 @@ export function ClientLabelingWorkspace() {
       <Panel
         eyebrow="ETIQUETAS · CLIENTE"
         title="Importar pedido do cliente"
-        subtitle={`${BARCODE_FORMAT} com módulo de ${MODULE_MM.toFixed(4).replace('.', ',')} mm · produção 50 × 40 mm · gráfica couchê 2 × 50 × 30 mm`}
+        subtitle={`${BARCODE_FORMAT} com módulo de ${MODULE_MM.toFixed(4).replace('.', ',')} mm · produção L42PRO e gráfica em 2 × 50 × 30 mm`}
         actions={
           rows.length > 0 ? (
             <Button variant="ghost" size="sm" onClick={limpar} className="h-9" disabled={isBusy}>
@@ -322,8 +316,8 @@ export function ClientLabelingWorkspace() {
               />
               <StatCard
                 label="Etiquetas de produção"
-                value={totalPaginas}
-                hint={repeatByQuantity ? `${repeatMultiplier} por par definido` : 'uma por linha'}
+                value={totalEtiquetas}
+                hint={`${carreirasProducao.toLocaleString('pt-BR')} carreiras de 2 colunas`}
               />
             </StatGrid>
 
@@ -335,8 +329,8 @@ export function ClientLabelingWorkspace() {
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <h3 id="production-output-title" className="font-semibold text-foreground">PDF para produção</h3>
-                      <Badge variant="outline">50 × 40 mm</Badge>
+                      <h3 id="production-output-title" className="font-semibold text-foreground">PDF para L42PRO Full</h3>
+                      <Badge variant="outline">2 × 50 × 30 mm</Badge>
                     </div>
                     <p className="mt-1 text-xs text-muted-foreground">
                       Imprime somente os SKUs selecionados. Ajuste a quantidade de cada item na tabela.
@@ -344,44 +338,15 @@ export function ClientLabelingWorkspace() {
                   </div>
                 </div>
 
-                <div className="space-y-3 rounded-md border border-border bg-background p-3">
-                  <div className="flex items-center gap-2">
-                    <Checkbox
-                      id="repeat-by-quantity"
-                      checked={repeatByQuantity}
-                      onCheckedChange={v => setRepeatByQuantity(v === true)}
-                      disabled={isBusy}
-                    />
-                    <Label htmlFor="repeat-by-quantity" className="text-sm font-normal cursor-pointer">
-                      Usar quantidades definidas na tabela
-                    </Label>
+                <div className="rounded-md border border-border bg-background p-3 text-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-muted-foreground">Tiragem selecionada</span>
+                    <strong className="font-mono text-foreground">{totalEtiquetas.toLocaleString('pt-BR')} etiquetas</strong>
                   </div>
-
-                  {repeatByQuantity && (
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Label htmlFor="repeat-multiplier" className="whitespace-nowrap text-xs font-semibold text-foreground">
-                        Etiquetas por par
-                      </Label>
-                      <Input
-                        id="repeat-multiplier"
-                        type="number"
-                        min={1}
-                        max={100}
-                        step={1}
-                        value={repeatMultiplier}
-                        disabled={isBusy}
-                        onChange={e => {
-                          const next = Math.trunc(Number(e.target.value));
-                          setRepeatMultiplier(Number.isFinite(next) ? Math.min(100, Math.max(1, next)) : 1);
-                        }}
-                        className="h-8 w-20 bg-background text-center font-mono"
-                        aria-describedby="repeat-multiplier-help"
-                      />
-                      <span id="repeat-multiplier-help" className="text-xs text-muted-foreground">
-                        {totalPaginas.toLocaleString('pt-BR')} etiquetas
-                      </span>
-                    </div>
-                  )}
+                  <div className="mt-2 flex items-center justify-between gap-3">
+                    <span className="text-muted-foreground">Avanços do rolo</span>
+                    <strong className="font-mono text-foreground">{carreirasProducao.toLocaleString('pt-BR')}</strong>
+                  </div>
                 </div>
 
                 <Button
@@ -392,10 +357,11 @@ export function ClientLabelingWorkspace() {
                     || productionRows.length === 0
                     || selecionadasForaDoPadrao.length > 0
                     || productionOverLimit
+                    || !coucheProfileConfirmed
                   }
                 >
                   {generating === 'production' ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <FilePdf className="h-4 w-4 mr-2" />}
-                  {generating === 'production' ? 'Gerando…' : `Gerar produção (${totalPaginas})`}
+                  {generating === 'production' ? 'Gerando…' : `Gerar L42PRO (${totalEtiquetas} etiquetas)`}
                 </Button>
               </section>
 
@@ -436,10 +402,10 @@ export function ClientLabelingWorkspace() {
 
                 <details className="rounded-md border border-primary/20 bg-background p-3 text-sm">
                   <summary className="cursor-pointer font-semibold text-foreground">
-                    Medidas da faca e do liner
+                    Medidas do rolo de duas colunas
                   </summary>
                   <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-                    Confirme estas medidas na ficha da gráfica. Elas alteram somente o arquivo couchê deste módulo.
+                    Confirme o vão, as margens e o avanço do rolo. Estas medidas valem para a L42PRO e para a gráfica.
                   </p>
                   <div className="mt-3 grid gap-3 sm:grid-cols-2">
                     {COUCHE_PROFILE_FIELDS.map(field => (
@@ -475,7 +441,7 @@ export function ClientLabelingWorkspace() {
                       onCheckedChange={value => setCoucheProfileConfirmed(value === true)}
                     />
                     <Label htmlFor="couche-profile-confirmed" className="cursor-pointer text-xs font-normal leading-relaxed">
-                      Confirmo que estas medidas foram conferidas com a gráfica.
+                      Confirmo que estas medidas correspondem ao rolo usado na L42PRO e pela gráfica.
                     </Label>
                   </div>
                 </details>
@@ -539,7 +505,7 @@ export function ClientLabelingWorkspace() {
               <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-400">
                 <Warning className="h-4 w-4 mt-0.5 shrink-0" weight="fill" />
                 <span>
-                  A seleção produziria {totalPaginas.toLocaleString('pt-BR')} etiquetas. Divida o pedido em arquivos de até{' '}
+                  A seleção produziria {totalEtiquetas.toLocaleString('pt-BR')} etiquetas. Divida o pedido em arquivos de até{' '}
                   {MAX_PDF_LABELS.toLocaleString('pt-BR')} etiquetas para evitar travar o navegador.
                 </span>
               </div>

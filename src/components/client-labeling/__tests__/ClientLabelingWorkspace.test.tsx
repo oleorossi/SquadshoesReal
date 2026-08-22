@@ -56,9 +56,9 @@ function skuCheckbox(tamanho: string) {
 }
 
 function confirmarPerfilCouche() {
-  fireEvent.click(screen.getByText('Medidas da faca e do liner'));
+  fireEvent.click(screen.getByText('Medidas do rolo de duas colunas'));
   fireEvent.click(screen.getByRole('checkbox', {
-    name: 'Confirmo que estas medidas foram conferidas com a gráfica.',
+    name: 'Confirmo que estas medidas correspondem ao rolo usado na L42PRO e pela gráfica.',
   }));
 }
 
@@ -108,12 +108,13 @@ describe('ClientLabelingWorkspace · seleção por SKU', () => {
     await importar();
 
     fireEvent.click(skuCheckbox('35'));
-    fireEvent.click(screen.getByRole('button', { name: 'Gerar produção (2)' }));
+    confirmarPerfilCouche();
+    fireEvent.click(screen.getByRole('button', { name: 'Gerar L42PRO (576 etiquetas)' }));
 
     await waitFor(() => {
       expect(mocks.buildBabyNalinPdf).toHaveBeenCalledWith(
         [ROWS[0], ROWS[2]],
-        expect.objectContaining({ mode: 'production', repeatByQuantity: false }),
+        expect.objectContaining({ mode: 'production', repeatByQuantity: true }),
       );
     });
   });
@@ -127,10 +128,12 @@ describe('ClientLabelingWorkspace · seleção por SKU', () => {
     expect(quantityInput).toHaveValue(144);
 
     fireEvent.change(quantityInput, { target: { value: '20' } });
+    confirmarPerfilCouche();
 
-    expect(screen.getByRole('checkbox', { name: 'Usar quantidades definidas na tabela' })).toBeChecked();
-    expect(screen.getByRole('button', { name: 'Gerar produção (20)' })).toBeEnabled();
-    fireEvent.click(screen.getByRole('button', { name: 'Gerar produção (20)' }));
+    expect(screen.getByText('20 etiquetas')).toBeInTheDocument();
+    expect(screen.getByText('10')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Gerar L42PRO (20 etiquetas)' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Gerar L42PRO (20 etiquetas)' }));
 
     await waitFor(() => {
       expect(mocks.buildBabyNalinPdf).toHaveBeenCalledWith(
@@ -244,7 +247,7 @@ describe('ClientLabelingWorkspace · seleção por SKU', () => {
 
     fireEvent.click(screen.getByRole('checkbox', { name: 'Desmarcar todos os SKUs exibidos' }));
 
-    expect(screen.getByRole('button', { name: 'Gerar produção (0)' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Gerar L42PRO (0 etiquetas)' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Gerar gráfica (0 SKUs)' })).toBeDisabled();
     expect(mocks.buildBabyNalinPdf).not.toHaveBeenCalled();
   });
@@ -292,11 +295,11 @@ describe('ClientLabelingWorkspace · seleção por SKU', () => {
   it('envia o perfil físico informado para o gerador couchê', async () => {
     await importar();
 
-    fireEvent.click(screen.getByText('Medidas da faca e do liner'));
+    fireEvent.click(screen.getByText('Medidas do rolo de duas colunas'));
     fireEvent.change(screen.getByLabelText('Vão entre colunas (mm)'), { target: { value: '2.5' } });
     fireEvent.change(screen.getByLabelText('Margem esquerda (mm)'), { target: { value: '1' } });
     fireEvent.click(screen.getByRole('checkbox', {
-      name: 'Confirmo que estas medidas foram conferidas com a gráfica.',
+      name: 'Confirmo que estas medidas correspondem ao rolo usado na L42PRO e pela gráfica.',
     }));
     fireEvent.click(screen.getByRole('button', { name: 'Gerar gráfica (3 SKUs)' }));
 
@@ -326,7 +329,7 @@ describe('ClientLabelingWorkspace · seleção por SKU', () => {
 
     expect(screen.getByRole('button', { name: 'Lendo novo arquivo…' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Limpar' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: /Gerar produção/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Gerar L42PRO/ })).toBeDisabled();
 
     // Simula dois eventos do seletor entregues quase juntos pelo browser.
     input.disabled = false;
@@ -351,33 +354,37 @@ describe('ClientLabelingWorkspace · seleção por SKU', () => {
     const logo = deferred<null>();
     mocks.loadLogoDataUrl.mockReturnValueOnce(logo.promise);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Gerar produção (3)' }));
+    confirmarPerfilCouche();
+    fireEvent.click(screen.getByRole('button', { name: 'Gerar L42PRO (864 etiquetas)' }));
 
     expect(screen.getByRole('button', { name: 'Limpar' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Trocar arquivo' })).toBeDisabled();
-    expect(screen.getByRole('checkbox', { name: 'Usar quantidades definidas na tabela' })).toBeDisabled();
+    expect(screen.getByRole('spinbutton', {
+      name: 'Quantidade a imprimir do SKU NL02, tamanho 34',
+    })).toBeDisabled();
 
     logo.resolve(null);
     await waitFor(() => expect(mocks.buildBabyNalinPdf).toHaveBeenCalled());
   });
 
-  it('exige confirmação explícita das medidas antes de gerar para a gráfica', async () => {
+  it('exige confirmação explícita das medidas antes de gerar para a L42PRO ou gráfica', async () => {
     await importar();
 
+    expect(screen.getByRole('button', { name: 'Gerar L42PRO (864 etiquetas)' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Gerar gráfica (3 SKUs)' })).toBeDisabled();
     confirmarPerfilCouche();
+    expect(screen.getByRole('button', { name: 'Gerar L42PRO (864 etiquetas)' })).toBeEnabled();
     expect(screen.getByRole('button', { name: 'Gerar gráfica (3 SKUs)' })).toBeEnabled();
 
     fireEvent.change(screen.getByLabelText('Vão entre colunas (mm)'), { target: { value: '2' } });
+    expect(screen.getByRole('button', { name: 'Gerar L42PRO (864 etiquetas)' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Gerar gráfica (3 SKUs)' })).toBeDisabled();
   });
 
   it('calcula grandes quantidades sem expandir e protege o navegador', async () => {
     await importar([{ ...ROWS[0], quantidade: MAX_PDF_LABELS + 1 }]);
 
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Usar quantidades definidas na tabela' }));
-
     expect(screen.getByText(/Divida o pedido em arquivos/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: `Gerar produção (${MAX_PDF_LABELS + 1})` })).toBeDisabled();
+    expect(screen.getByRole('button', { name: `Gerar L42PRO (${MAX_PDF_LABELS + 1} etiquetas)` })).toBeDisabled();
   });
 });
