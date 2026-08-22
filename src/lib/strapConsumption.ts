@@ -1,3 +1,5 @@
+import { pickConsumptionForSize } from '@/lib/materialConsumption';
+
 type StrapDefinition = {
   id?: string | number | null;
   label?: string | null;
@@ -71,7 +73,8 @@ export const calculateStrapConsumptionCm = (strap: StrapDefinition, context: Str
   if (hasPerSizeConsumption(perSize) && gradeEntries.length > 0) {
     const totalPerFicha = gradeEntries.reduce((sum, [size, pairs]) => {
       const pairsNum = Number(pairs) || 0;
-      const cmPerPair = Number(perSize[size]) || defaultConsumption;
+      const picked = pickConsumptionForSize(perSize, size);
+      const cmPerPair = picked.found ? picked.value : defaultConsumption;
       return sum + pairsNum * cmPerPair;
     }, 0);
 

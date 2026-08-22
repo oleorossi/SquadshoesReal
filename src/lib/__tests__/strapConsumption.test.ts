@@ -90,6 +90,22 @@ describe('calculateStrapConsumptionCm — per-size por numeração (espelha o SQ
     );
     expect(cm).toBe(76); // só 35: 2×38
   });
+
+  it('chave conjugada 33/34 casa grade 33 e 34', () => {
+    const cm = calculateStrapConsumptionCm(
+      { consumption: 40, consumption_per_size: { '33/34': 38 } },
+      { grade: { '33': 2, '34': 2 }, quantity: 4, fichas: 1 },
+    );
+    expect(cm).toBe(152);
+  });
+
+  it('zero explícito no per-size não cai no consumption default', () => {
+    const cm = calculateStrapConsumptionCm(
+      { consumption: 40, consumption_per_size: { '35': 0, '36': 40 } },
+      { grade: { '35': 2, '36': 1 }, quantity: 3, fichas: 1 },
+    );
+    expect(cm).toBe(40);
+  });
 });
 
 describe('calculateStrapConsumptionCm — valor por PAR (não por pé)', () => {

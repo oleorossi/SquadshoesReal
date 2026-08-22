@@ -250,6 +250,34 @@ describe('orderConsumption — motor canônico', () => {
     expect(insole.totalQuantity).toBeCloseTo(136 / 50, 6);
   });
 
+  it('grade 33/34 casa consumo por numeração conjugada da ficha (cabedal)', () => {
+    const item = buildItem({
+      quantity: 10,
+      grade: { '33': 4, '34': 6 },
+      technical_sheets: buildSheet({
+        upper_consumption: 99,
+        upper_consumption_per_size: { '33/34': 5 },
+      }),
+    });
+    const rows = computeConsumptionForItems([item], buildContext());
+    const cabedal = rows.find(r => r.componentType === 'Cabedal')!;
+    expect(cabedal.totalQuantity).toBeCloseTo(50 / 100, 6);
+  });
+
+  it('zero explícito no consumo por numeração do cabedal não cai no escalar', () => {
+    const item = buildItem({
+      quantity: 8,
+      grade: { '36': 4, '38': 4 },
+      technical_sheets: buildSheet({
+        upper_consumption: 6,
+        upper_consumption_per_size: { '36': 0, '38': 5 },
+      }),
+    });
+    const rows = computeConsumptionForItems([item], buildContext());
+    const cabedal = rows.find(r => r.componentType === 'Cabedal')!;
+    expect(cabedal.totalQuantity).toBeCloseTo(20 / 100, 6);
+  });
+
   it('forração de palmilha do SOLADO é emitida mesmo com insole_lining_consumption escalar = 0', () => {
     const ctx = buildContext();
     ctx.sheetPrimarySoleMap = new Map([['sheet-1', 'p-solado']]);
