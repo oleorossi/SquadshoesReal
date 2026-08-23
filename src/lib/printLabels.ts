@@ -698,10 +698,10 @@ window._imagesReady=waitForImages();
  */
 export type ThermalLabelConfig = {
   marginPct: number;        // margem adicional em %, além da proteção técnica (default 0)
-  fontSizeName: number;     // pt for reference name (default 12.5)
+  fontSizeName: number;     // pt for reference name (default 18)
   fontSizeCode: number;     // pt for code (default 6.5)
-  fontSizeColor: number;    // pt for color row (default 7.5)
-  fontSizeMaterial: number; // pt for material (default 6.5)
+  fontSizeColor: number;    // pt for color row (default 11)
+  fontSizeMaterial: number; // pt for material (default 10)
   fontSizeSize: number;     // pt para numeração individual de até 2 dígitos (default 34)
   fontSizePed: number;      // pt for pedido (default 6)
   imgWidthMm: number;       // image width in mm (default 28)
@@ -719,10 +719,10 @@ export type ThermalLabelConfig = {
 
 export const DEFAULT_THERMAL_CONFIG: ThermalLabelConfig = {
   marginPct: 0,
-  fontSizeName: 12.5,
+  fontSizeName: 18,
   fontSizeCode: 5.5,
-  fontSizeColor: 7.5,
-  fontSizeMaterial: 6.5,
+  fontSizeColor: 11,
+  fontSizeMaterial: 10,
   fontSizeSize: 34,
   fontSizePed: 5.5,
   imgWidthMm: 28,
@@ -834,7 +834,7 @@ export function buildThermalLabelsHtml(labels: {
   size: string; barcode: string; imageUrl?: string; shoeCategory?: string;
   clientOrderNumber?: string; qty?: number; strapsLabel?: string;
   /** True quando imageUrl é fallback (foto mestra, não retrata a cor real
-   *  pedida). Aplica grayscale + selo "FOTO GENÉRICA" na moldura da foto. */
+   *  pedida). Aplica grayscale à foto, sem acrescentar texto à etiqueta. */
   imageIsFallback?: boolean;
 }[], logoUrl: string, dimensions = THERMAL_DEFAULT_DIMENSIONS, config: ThermalLabelConfig = DEFAULT_THERMAL_CONFIG, senderCnpj?: string): string {
   const { width: W, height: H } = dimensions;
@@ -891,7 +891,26 @@ export function buildThermalLabelsHtml(labels: {
   // Foto recebe TODA a coluna da esquerda (o Nº saiu de lá) → imagem maior.
   const photoColMm = c.showImage ? +Math.max(leftColumnMm, 8).toFixed(1) : 0;
   // Nº em destaque (número grande), em chip que preenche a altura útil.
-  const sizeColMm = c.showSize ? +clamp(sizeBoxWidthMm, 10, 13).toFixed(1) : 0;
+  // O número de 34 pt precisa de 15 mm para acomodar dois dígitos sem corte.
+  // A expansão acontece PARA A DIREITA: usa 2 mm da coluna do barcode e 1 mm
+  // dos vãos visuais do grid; o 1 mm restante é absorvido pela descrição
+  // flexível. O barcode conserva 1 mm de respiro em cada lado e continua
+  // legível; foto, página, margem e configurações permanecem iguais.
+  const sizeColMm = c.showSize ? +clamp(sizeBoxWidthMm + 4 * scaleW, 14, 17).toFixed(1) : 0;
+  const sizeColExpansionMm = Math.max(0, sizeColMm - +clamp(sizeBoxWidthMm, 10, 13).toFixed(1));
+  const barcodeColumnRecoveryMm = Math.min(2 * scaleW, sizeColExpansionMm);
+  const barcodeColMm = hasRightColumn
+    ? +Math.max(rightColumnMm - barcodeColumnRecoveryMm, 12).toFixed(1)
+    : 0;
+  const barcodePadXmm = hasRightColumn ? +(1 * scaleW).toFixed(1) : 0;
+  const gridGapRecoveryMm = Math.min(
+    gapCount * columnGapMm,
+    Math.max(0, sizeColExpansionMm - barcodeColumnRecoveryMm),
+    1 * scaleW,
+  );
+  const effectiveColumnGapMm = gapCount > 0
+    ? +Math.max(0, columnGapMm - gridGapRecoveryMm / gapCount).toFixed(3)
+    : 0;
   const barcodeHeightPx = Math.max(24, Math.round(innerH * 3.5));
   const barcodeHeightMm = Math.max(6, +(innerH - 1.5).toFixed(1));
 
@@ -942,7 +961,7 @@ export function buildThermalLabelsHtml(labels: {
       ${headerHtml}
       <section class="label-shell" style="top:${thisShellTopMm}mm">
         ${c.showImage ? `<div class="label-image-frame">${l.imageUrl
-            ? `${l.imageIsFallback ? `<div class="img-fallback-badge">FOTO GENÉRICA</div>` : ''}<img src="${escapeHtml(l.imageUrl)}" class="label-img" crossorigin="anonymous" ${l.imageIsFallback ? `style="filter:grayscale(100%);-webkit-filter:grayscale(100%);" ` : ''}onerror="this.onerror=null;this.style.display='none'" />`
+            ? `<img src="${escapeHtml(l.imageUrl)}" class="label-img" crossorigin="anonymous" ${l.imageIsFallback ? `style="filter:grayscale(100%);-webkit-filter:grayscale(100%);" ` : ''}onerror="this.onerror=null;this.style.display='none'" />`
             : `<img src="${escapeHtml(logoUrl)}" class="label-img" crossorigin="anonymous" alt="Logo" />`}</div>` : ''}
 
         <div class="label-info">
@@ -1019,7 +1038,7 @@ for(var j=0;j<_bcJobs.length;j++){
   if (c.showImage) cols.push(`${photoColMm}mm`);   // FOTO (esquerda)
   cols.push(`1fr`);                                 // DESCRIÇÃO
   if (c.showSize) cols.push(`${sizeColMm}mm`);      // Nº (entre descrição e código)
-  if (hasRightColumn) cols.push(`${rightColumnMm}mm`); // CÓDIGO DE BARRAS (direita)
+  if (hasRightColumn) cols.push(`${barcodeColMm}mm`); // CÓDIGO DE BARRAS (direita)
   const gridCols = cols.join(' ');
 
   // Collect unique image URLs for preloading
@@ -1124,7 +1143,7 @@ ${preloadLinks}
     bottom:${shellBottomMm}mm;
     display:grid;
     grid-template-columns:${gridCols};
-    column-gap:${columnGapMm}mm;
+    column-gap:${effectiveColumnGapMm}mm;
     align-items:center;
     overflow:hidden;
   }
@@ -1139,22 +1158,6 @@ ${preloadLinks}
     justify-content:center;
     position:relative;
   }
-  /* Selo "FOTO GENÉRICA" (análogo ao .photo-fallback-badge da caixa externa):
-     marca que a foto é ilustrativa e não retrata a cor real do produto. */
-  .img-fallback-badge{
-    position:absolute;
-    top:0;left:0;
-    z-index:1;
-    background:#000;
-    color:#fff;
-    font-size:3pt;
-    font-weight:800;
-    line-height:1;
-    letter-spacing:0.2px;
-    padding:0.3mm 0.5mm;
-    text-transform:uppercase;
-    white-space:nowrap;
-  }
   .label-img{
     width:auto;
     height:auto;
@@ -1168,11 +1171,11 @@ ${preloadLinks}
     height:100%;
     align-self:stretch;
     padding:0.4mm 0.4mm;
-    display:grid;
-    grid-template-rows:auto minmax(0,1fr);
-    align-items:stretch;
-    justify-items:stretch;
-    text-align:right;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    position:relative;
+    text-align:center;
     overflow:hidden;
     background:#000;
     color:#fff;
@@ -1183,8 +1186,9 @@ ${preloadLinks}
   }
   .sz-nr{
     display:block;
-    justify-self:start;
-    align-self:start;
+    position:absolute;
+    top:0.4mm;
+    left:0.4mm;
     font-size:${+(3.0 * scaleH).toFixed(1)}pt;
     font-weight:600;
     letter-spacing:0.8px;
@@ -1195,8 +1199,8 @@ ${preloadLinks}
   }
   .sz-value{
     display:block;
-    align-self:end;
-    justify-self:end;
+    align-self:center;
+    margin:auto;
     max-width:100%;
     font-family:"Arial Narrow",Arial,Helvetica,sans-serif;
     font-weight:900;
@@ -1205,8 +1209,6 @@ ${preloadLinks}
     white-space:nowrap;
   }
   .sz-value--long{
-    align-self:center;
-    justify-self:center;
     line-height:0.95;
     letter-spacing:-0.3px;
     white-space:normal;
@@ -1272,7 +1274,7 @@ ${preloadLinks}
     align-items:center;
     justify-content:center;
     overflow:hidden;
-    padding:0.3mm 1.5mm;
+    padding:0.3mm ${barcodePadXmm}mm;
   }
   .label-barcode{
     width:100%;
@@ -1429,8 +1431,8 @@ export async function buildThermalLabelsPdf(
     qty?: number;
     strapsLabel?: string;
     imageUrl?: string;
-    /** True quando imageUrl é fallback — desenha a foto em escala de cinza
-     *  e adiciona texto "FOTO GENÉRICA" junto à moldura. */
+    /** True quando imageUrl é fallback — desenha a foto em escala de cinza,
+     *  sem acrescentar texto à etiqueta individual. */
     imageIsFallback?: boolean;
   }[],
   dimensions = THERMAL_DEFAULT_DIMENSIONS,
@@ -1628,14 +1630,6 @@ export async function buildThermalLabelsPdf(
       const ix = imgFrameX + (imgFrameW - drawW) / 2;
       const iy = bodyTop + (bodyH - drawH) / 2;
       try { doc.addImage(imgData.dataUrl, 'PNG', ix, iy, drawW, drawH, undefined, 'FAST'); } catch { /* ignora foto que falhar */ }
-      // Texto "FOTO GENÉRICA" junto à moldura quando a foto é fallback.
-      if (l.imageIsFallback) {
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(3);
-        doc.setTextColor(120, 120, 120);
-        doc.text('FOTO GENÉRICA', imgFrameX, bodyTop + 0.4, { baseline: 'top' });
-        doc.setTextColor(0, 0, 0);
-      }
     }
 
     // Info column (ref name, color, material, pedido)

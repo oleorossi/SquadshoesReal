@@ -1377,8 +1377,8 @@ export function LabelProductionTab() {
         }
       }
       // imageFallbackMap: true quando a foto resolvida NÃO corresponde à cor
-      // pedida (caiu no master/variante de outra cor). A térmica aplica
-      // grayscale + selo "FOTO GENÉRICA" via imageIsFallback.
+      // pedida (caiu no master/variante de outra cor). A térmica mantém a foto
+      // em grayscale, sem acrescentar texto à etiqueta individual.
       const imageFallbackMap = new Map<string, boolean>();
       const imageResults = await Promise.all(imageRequests.map(async ({ key, referenceId, colorName }) => {
         try {

@@ -90,6 +90,25 @@ describe('buildThermalLabelsHtml — barcode por payload distinto', () => {
     expect(html).toContain('bottom:1mm;\n    left:1mm;');
   });
 
+  it('mantém configurações físicas e amplia somente a hierarquia visual', () => {
+    expect(DEFAULT_THERMAL_CONFIG.marginPct).toBe(0);
+    expect(DEFAULT_THERMAL_CONFIG.leftColumnMm).toBe(29);
+    expect(DEFAULT_THERMAL_CONFIG.rightColumnMm).toBe(24);
+    expect(DEFAULT_THERMAL_CONFIG.imgWidthMm).toBe(28);
+    expect(DEFAULT_THERMAL_CONFIG.imgHeightMm).toBe(24);
+    expect(DEFAULT_THERMAL_CONFIG.fontSizeName).toBe(18);
+    expect(DEFAULT_THERMAL_CONFIG.fontSizeColor).toBe(11);
+    expect(DEFAULT_THERMAL_CONFIG.fontSizeMaterial).toBe(10);
+
+    const html = buildThermalLabelsHtml([label('SP130-36', '36')], 'logo.png');
+    expect(html).toContain('grid-template-columns:29mm 1fr 15mm 22mm;');
+    expect(html).toContain('column-gap:0.167mm;');
+    expect(html).toContain('font-size:18pt;');
+    expect(html).toContain('font-size:11pt;');
+    expect(html).toContain('font-size:10pt;');
+    expect(html).toContain('padding:0.3mm 1mm;');
+  });
+
   it('não mistura a caixa individual 100×30 com a etiquetagem cliente 2×50×30', () => {
     expect(THERMAL_LABEL_WIDTH_MM).toBe(100);
     expect(THERMAL_LABEL_HEIGHT_MM).toBe(30);
@@ -102,19 +121,30 @@ describe('buildThermalLabelsHtml — barcode por payload distinto', () => {
     expect(THERMAL_LABEL_WIDTH_MM).not.toBe(COUCHE_PAGE_WIDTH_MM);
   });
 
-  it('amplia a numeração curta e ancora o valor no canto inferior direito', () => {
+  it('amplia a numeração curta e centraliza o valor no bloco preto', () => {
     const html = buildThermalLabelsHtml([label('SP130-34', '34')], 'logo.png');
 
     expect(DEFAULT_THERMAL_CONFIG.fontSizeSize).toBe(34);
     expect(html).toContain('class="sz-value" style="font-size:34pt">34</span>');
-    expect(html).toContain('align-self:end;');
-    expect(html).toContain('justify-self:end;');
+    expect(html).toContain('align-items:center;');
+    expect(html).toContain('justify-content:center;');
+    expect(html).toContain('align-self:center;');
+    expect(html).toContain('margin:auto;');
   });
 
   it('reduz somente o valor quando o modo por ficha envia uma grade longa', () => {
     const html = buildThermalLabelsHtml([label('SP130-GRADE', '34(2) 35(3)')], 'logo.png');
 
     expect(html).toContain('class="sz-value sz-value--long" style="font-size:10pt">34(2) 35(3)</span>');
+  });
+
+  it('não imprime a frase de foto genérica na etiqueta individual', () => {
+    const html = buildThermalLabelsHtml([
+      { ...label('SP130-36', '36'), imageUrl: 'produto.png', imageIsFallback: true },
+    ], 'logo.png');
+
+    expect(html).not.toContain('FOTO GENÉRICA');
+    expect(html).toContain('filter:grayscale(100%)');
   });
 
   it('respeita margem extra escolhida pelo operador sem impor 3% ocultos', () => {
