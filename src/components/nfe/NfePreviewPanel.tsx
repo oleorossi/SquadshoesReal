@@ -65,7 +65,7 @@ export function NfePreviewPanel({ preview }: { preview: NfePreviewResponse['prev
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Operação</p>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-1 text-xs">
             <div><span className="text-muted-foreground">Natureza:</span> {operacao.natureza_operacao}</div>
-            <div><span className="text-muted-foreground">CFOP:</span> <span className="font-mono">{operacao.cfop}</span> {operacao.cfop_interstate ? '(inter)' : '(intra)'}</div>
+            <div><span className="text-muted-foreground">CFOP:</span> <span className="font-mono">{operacao.cfop}</span> {operacao.cfop_interstate ? '(inter)' : '(intra)'}{operacao.cfop_kind === 'revenda' ? ' · revenda' : ' · indústria'}</div>
             <div><span className="text-muted-foreground">Finalidade:</span> {operacao.finalidade}</div>
             <div><span className="text-muted-foreground">Tipo NF:</span> {operacao.tipo_nf}</div>
             <div><span className="text-muted-foreground">Forma emissão:</span> {operacao.tipo_emissao}</div>
@@ -109,7 +109,7 @@ export function NfePreviewPanel({ preview }: { preview: NfePreviewResponse['prev
                     </td>
                     <td className="px-2 py-1.5">{p.marca || '—'}</td>
                     <td className="px-2 py-1.5 font-mono">{p.ncm}</td>
-                    <td className="px-2 py-1.5 font-mono">{p.cfop}</td>
+                    <td className="px-2 py-1.5 font-mono">{p.cfop}{p.origem === 'revenda' ? ' · R' : ''}</td>
                     <td className="px-2 py-1.5 text-right tabular-nums">{p.quantidade.toLocaleString('pt-BR')}</td>
                     <td className="px-2 py-1.5">{p.unidade}</td>
                     <td className="px-2 py-1.5 text-right tabular-nums">{fmtMoney(p.valor_unitario)}</td>

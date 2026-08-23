@@ -38,7 +38,7 @@ export default function NfeDiagnosticPanel() {
       // 1. Empresa cadastrada
       const { data: companies } = await supabase
         .from('companies')
-        .select('id, cnpj, razao_social, ambiente, regime_tributario, pis_cofins_regime')
+        .select('id, cnpj, razao_social, ambiente, regime_tributario, pis_cofins_regime, is_primary')
         .eq('active', true);
 
       if (!companies || companies.length === 0) {
@@ -47,7 +47,7 @@ export default function NfeDiagnosticPanel() {
           description: 'Nenhuma empresa cadastrada.',
         });
       } else {
-        const c = companies[0] as any;
+        const c = (companies.find((row: any) => row.is_primary) ?? companies[0]) as any;
         items.push({
           key: 'company', label: 'Empresa emitente', severity: 'ok',
           description: `${c.razao_social} · CNPJ ${c.cnpj}`,
