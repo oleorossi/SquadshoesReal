@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildThermalLabelsHtml } from '../printLabels';
+import { buildThermalLabelsHtml, computeThermalLabelFrame, DEFAULT_THERMAL_CONFIG } from '../printLabels';
 
 const label = (barcode: string, size: string) => ({
   refCode: 'SP130', refName: 'SP130', mainMaterial: 'NAPA SOFT',
@@ -49,6 +49,32 @@ describe('buildThermalLabelsHtml — barcode por payload distinto', () => {
   it('sem barcode nenhum, não emite o laço', () => {
     const html = buildThermalLabelsHtml([{ ...label('', '34') }], 'logo.png');
     expect(html).not.toContain('var _bcJobs=');
+  });
+
+  it('ocupa praticamente toda a etiqueta física de 100×30 mm', () => {
+    const frame = computeThermalLabelFrame({ width: 100, height: 30 });
+
+    expect(DEFAULT_THERMAL_CONFIG.marginPct).toBe(0);
+    expect(frame.safePadX).toBe(0.4);
+    expect(frame.safePadY).toBe(0.3);
+    expect(frame.innerW).toBe(99.2);
+    expect(frame.innerH).toBeGreaterThanOrEqual(23.5);
+    expect(frame.shellTopMm + frame.innerH + frame.shellBottomMm).toBeCloseTo(30, 6);
+
+    const html = buildThermalLabelsHtml([label('SP130-34', '34')], 'logo.png');
+    expect(html).toContain('@page{size:100mm 30mm;margin:0;}');
+    expect(html).toContain('width:100mm;\n    height:30mm;');
+    expect(html).toContain('left:0.4mm;');
+    expect(html).toContain('right:0.4mm;');
+  });
+
+  it('respeita margem extra escolhida pelo operador sem impor 3% ocultos', () => {
+    const semMargem = computeThermalLabelFrame({ width: 100, height: 30 }, 0);
+    const comMargem = computeThermalLabelFrame({ width: 100, height: 30 }, 3);
+
+    expect(semMargem.safePadX).toBe(0.4);
+    expect(comMargem.safePadX).toBe(3.4);
+    expect(comMargem.innerW).toBeLessThan(semMargem.innerW);
   });
 });
 

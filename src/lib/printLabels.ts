@@ -691,22 +691,22 @@ window._imagesReady=waitForImages();
  *   Direita:  Código de barras (EAN-13/CODE-128) com quiet zone
  * Rodapé:     Dados de composição / categoria
  *
- * Margem de segurança: 1.5mm sup/inf, 2mm laterais
+ * Proteção técnica: 0,3mm sup/inf e 0,4mm laterais no padrão 100×30
  * Quiet zone barras: 3mm antes/depois
  * Fontes: Arial/Helvetica sem serifa para nitidez térmica
  * Cores: Preto puro 100% (#000)
  */
 export type ThermalLabelConfig = {
-  marginPct: number;        // margin % on all sides (default 5)
-  fontSizeName: number;     // pt for reference name (default 10)
+  marginPct: number;        // margem adicional em %, além da proteção técnica (default 0)
+  fontSizeName: number;     // pt for reference name (default 12.5)
   fontSizeCode: number;     // pt for code (default 6.5)
-  fontSizeColor: number;    // pt for color row (default 6)
-  fontSizeMaterial: number; // pt for material (default 5.5)
-  fontSizeSize: number;     // pt for size box (default 11)
+  fontSizeColor: number;    // pt for color row (default 7.5)
+  fontSizeMaterial: number; // pt for material (default 6.5)
+  fontSizeSize: number;     // pt for size box (default 24)
   fontSizePed: number;      // pt for pedido (default 6)
-  imgWidthMm: number;       // image width in mm (default 24)
-  imgHeightMm: number;      // image height in mm (default 20)
-  leftColumnMm: number;     // left column width mm (default 26)
+  imgWidthMm: number;       // image width in mm (default 28)
+  imgHeightMm: number;      // image height in mm (default 24)
+  leftColumnMm: number;     // left column width mm (default 29)
   rightColumnMm: number;    // right column (barcode) width mm (default 24)
   showImage: boolean;
   showBarcode: boolean;
@@ -718,17 +718,17 @@ export type ThermalLabelConfig = {
 };
 
 export const DEFAULT_THERMAL_CONFIG: ThermalLabelConfig = {
-  marginPct: 3,
-  fontSizeName: 11,
+  marginPct: 0,
+  fontSizeName: 12.5,
   fontSizeCode: 5.5,
-  fontSizeColor: 6.5,
-  fontSizeMaterial: 5.5,
-  fontSizeSize: 20,
+  fontSizeColor: 7.5,
+  fontSizeMaterial: 6.5,
+  fontSizeSize: 24,
   fontSizePed: 5.5,
-  imgWidthMm: 20,
-  imgHeightMm: 22,
-  leftColumnMm: 26,
-  rightColumnMm: 17,
+  imgWidthMm: 28,
+  imgHeightMm: 24,
+  leftColumnMm: 29,
+  rightColumnMm: 24,
   showImage: true,
   showBarcode: true,
   showCode: true,
@@ -737,6 +737,41 @@ export const DEFAULT_THERMAL_CONFIG: ThermalLabelConfig = {
   showPedido: true,
   showSize: true,
 };
+
+/**
+ * Geometria física da arte térmica.
+ *
+ * A etiqueta já é a própria página de 100×30 mm, portanto não pode receber a
+ * margem percentual de uma folha comum. O pequeno `bleedGuard` existe apenas
+ * para não perder o primeiro/último dot na L42 Pro; todo o restante da mídia é
+ * ocupado por cabeçalho, conteúdo e rodapé.
+ */
+export function computeThermalLabelFrame(
+  dimensions = { width: 100, height: 30 },
+  marginPct = DEFAULT_THERMAL_CONFIG.marginPct,
+  showHeader = true,
+) {
+  const W = Math.max(1, Number(dimensions.width) || 100);
+  const H = Math.max(1, Number(dimensions.height) || 30);
+  const effectiveMarginPct = clamp(Number.isFinite(marginPct) ? marginPct : 0, 0, 20);
+  const bleedGuardX = Math.max(W * 0.004, 0.4);
+  const bleedGuardY = Math.max(H * 0.01, 0.3);
+  const safePadX = +(W * effectiveMarginPct / 100 + bleedGuardX).toFixed(1);
+  const safePadY = +(H * effectiveMarginPct / 100 + bleedGuardY).toFixed(1);
+  const headerHeightMm = showHeader ? +Math.max(H * 0.14, 3.8).toFixed(1) : 0;
+  const footerHeightMm = +Math.max(H * 0.055, 1.6).toFixed(1);
+  const bandGapMm = +Math.max(safePadY * 0.5, 0.2).toFixed(1);
+  const shellTopMm = showHeader ? +(headerHeightMm + bandGapMm).toFixed(1) : safePadY;
+  const shellBottomMm = +(footerHeightMm + bandGapMm).toFixed(1);
+  const innerW = Math.max(24, +(W - safePadX * 2).toFixed(1));
+  const innerH = Math.max(12, +(H - shellTopMm - shellBottomMm).toFixed(1));
+
+  return {
+    W, H, effectiveMarginPct, safePadX, safePadY,
+    headerHeightMm, footerHeightMm, bandGapMm,
+    shellTopMm, shellBottomMm, innerW, innerH,
+  };
+}
 
 /**
  * Cores de tira que MERECEM espaço na etiqueta individual.
@@ -787,6 +822,12 @@ export function buildThermalLabelsHtml(labels: {
 }[], logoUrl: string, dimensions = { width: 100, height: 30 }, config: ThermalLabelConfig = DEFAULT_THERMAL_CONFIG, senderCnpj?: string): string {
   const { width: W, height: H } = dimensions;
   const c = { ...DEFAULT_THERMAL_CONFIG, ...config };
+  const showHeader = c.showCode;
+  const frame = computeThermalLabelFrame(dimensions, c.marginPct, showHeader);
+  const {
+    safePadX, safePadY, headerHeightMm, footerHeightMm,
+    shellTopMm, shellBottomMm, innerW, innerH,
+  } = frame;
 
   // Auto-scale proportional to label dimensions (reference: 100×30mm)
   const scaleH = H / 30;
@@ -805,23 +846,10 @@ export function buildThermalLabelsHtml(labels: {
   // Scaled column and image widths — grow/shrink with label width
   const scaledLeftColMm  = +(c.leftColumnMm  * scaleW).toFixed(1);
   const scaledRightColMm = +(c.rightColumnMm * scaleW).toFixed(1);
-  const scaledImgWidthMm  = +(c.imgWidthMm  * scaleW).toFixed(1);
-  const scaledImgHeightMm = +(c.imgHeightMm * scaleH).toFixed(1);
-
-  // Safe padding: tight enough to use most of the label, safe enough to avoid printer cutoff
-  const effectiveMarginPct = Math.max(c.marginPct, 3);
-  const baseMarginX = W * effectiveMarginPct / 100;
-  const baseMarginY = H * effectiveMarginPct / 100;
-  const printerBleedGuardX = Math.max(W * 0.015, 1.5);
-  const printerBleedGuardY = Math.max(H * 0.04, 1.0);
-  const safePadX = +(baseMarginX + printerBleedGuardX).toFixed(1);
-  const safePadY = +(baseMarginY + printerBleedGuardY).toFixed(1);
-  const innerW = Math.max(24, +(W - safePadX * 2).toFixed(1));
-  const innerH = Math.max(12, +(H - safePadY * 2).toFixed(1));
-  const hasLeftColumn = c.showImage || c.showSize;
+  const hasLeftColumn = c.showImage;
   const hasRightColumn = c.showBarcode;
   const gapCount = (c.showImage ? 1 : 0) + (c.showSize ? 1 : 0) + (hasRightColumn ? 1 : 0);
-  const columnGapMm = +(0.8 * scaleW).toFixed(1);
+  const columnGapMm = +(0.5 * scaleW).toFixed(1);
   const totalGapMm = gapCount * columnGapMm;
   const minInfoWidthMm = clamp(+(innerW * 0.28).toFixed(1), 14, 40);
   const requestedLeftMm = hasLeftColumn ? scaledLeftColMm : 0;
@@ -837,17 +865,7 @@ export function buildThermalLabelsHtml(labels: {
   const rightColumnMm = hasRightColumn
     ? +Math.min(requestedRightMm * sideScale, sideColumnsBudgetMm * 0.55).toFixed(1)
     : 0;
-  const infoColumnMm = +(innerW - leftColumnMm - rightColumnMm - totalGapMm).toFixed(1);
   const sizeBoxWidthMm = c.showSize && hasLeftColumn ? +clamp(leftColumnMm * 0.38, 7, 14).toFixed(1) : 0;
-  const imageFrameWidthMm = c.showImage && hasLeftColumn
-    ? Math.max(5, +(leftColumnMm - (c.showSize ? sizeBoxWidthMm + 0.8 : 0)).toFixed(1))
-    : 0;
-  const imageMaxWidthMm = c.showImage
-    ? Math.max(4, Math.min(scaledImgWidthMm, +(imageFrameWidthMm - 0.5).toFixed(1)))
-    : 0;
-  const imageMaxHeightMm = c.showImage
-    ? Math.max(6, Math.min(scaledImgHeightMm, +(innerH - 2).toFixed(1)))
-    : 0;
   // ── Layout 2026-06-17: [FOTO] [DESCRIÇÃO] [Nº] [CÓDIGO] ──
   // A numeração saiu da esquerda e passou a ficar ENTRE a descrição e o código
   // de barras (caixa preta, coluna própria). A foto do produto ocupa a coluna
@@ -860,17 +878,11 @@ export function buildThermalLabelsHtml(labels: {
   const barcodeHeightPx = Math.max(24, Math.round(innerH * 3.5));
   const barcodeHeightMm = Math.max(6, +(innerH - 1.5).toFixed(1));
 
-  // Header strip: dark band with ref code + optional category
-  const showHeader = c.showCode;
-  const headerHeightMm = showHeader ? +(Math.max(H * 0.20, 4.5)).toFixed(1) : 0;
-  const headerFontPt   = +(5.4 * scaleH).toFixed(1);
-  const headerCatFontPt = +(4.6 * scaleH).toFixed(1);
+  // Faixas compactas: dão hierarquia sem roubar altura da arte principal.
+  const headerFontPt   = +(6.2 * scaleH).toFixed(1);
+  const headerCatFontPt = +(5.0 * scaleH).toFixed(1);
   // Footer strip: "FABRICADO NO BRASIL · CNPJ" — required by INMETRO 576/2014
-  const footerHeightMm = +(Math.max(H * 0.115, 3.0)).toFixed(1);
-  const footerFontPt   = +(3.8 * scaleH).toFixed(1);
-  // Shell top accounts for header + small gap; bottom clears footer
-  const shellTopMm    = showHeader ? +(headerHeightMm + Math.max(safePadY * 0.4, 0.6)).toFixed(1) : safePadY;
-  const shellBottomMm = +(+footerHeightMm + Math.max(safePadY * 0.3, 0.4)).toFixed(1);
+  const footerFontPt   = +(3.4 * scaleH).toFixed(1);
 
   const labelHtml = labels.map((l, idx) => {
     // Referência = SOMENTE o nome do modelo. O SKU/refCode (ex: '3213131')
@@ -1025,7 +1037,7 @@ ${preloadLinks}
     page-break-after:always;
     break-after:page;
     background:#fff;
-    border:0.4mm solid #000;
+    border:0.25mm solid #000;
   }
   .print-page:last-child{page-break-after:auto;break-after:auto;}
   .lbl-hdr{
@@ -1149,7 +1161,7 @@ ${preloadLinks}
     justify-content:center;
     gap:0.3mm;
     overflow:hidden;
-    padding:0.3mm 1.2mm;
+    padding:0.2mm 0.6mm;
     ${c.showImage ? 'border-left:0.22mm solid #000;' : ''}
     ${(c.showSize || hasRightColumn) ? 'border-right:0.22mm solid #000;' : ''}
   }
@@ -1200,7 +1212,7 @@ ${preloadLinks}
     align-items:center;
     justify-content:center;
     overflow:hidden;
-    padding:0.5mm 0;
+    padding:0.3mm 1.5mm;
   }
   .label-barcode{
     width:100%;
@@ -1235,7 +1247,7 @@ ${preloadLinks}
     html,body{background:#fff !important;}
     body{padding:0 !important;margin:0 !important;}
     .preview-shell{display:block;padding:0;margin:0;}
-    .print-page{box-shadow:none;border:0.4mm solid #000;}
+    .print-page{box-shadow:none;border:0.25mm solid #000;}
     /* Fix 2026-06-22: o LABEL_PRINT_HARDENING ("body *{overflow:visible;
        max-height:none}") reabre o clip da moldura e tira o teto da imagem,
        fazendo a foto do produto vazar pra fora do frame na impressão. Reafirma
