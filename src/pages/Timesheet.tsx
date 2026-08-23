@@ -1331,10 +1331,17 @@ export default function Timesheet() {
     values: ['records', 'manual', 'ausencias', 'arquivos', 'config'] as const,
     defaultValue: 'records',
     param: 'subtab',
+    clearOnChange: ['correction'],
     aliases: {
       overview: 'records', late: 'manual', occurrences: 'manual', pending: 'manual',
       reports: 'records', overtime: 'records', calendario: 'records', history: 'arquivos', schedule: 'config', holidays: 'config',
     },
+  });
+  const { value: correctionView, setValue: setCorrectionView } = useUrlTabState({
+    values: ['queue', 'calendar', 'exceptions'] as const,
+    defaultValue: 'queue',
+    param: 'correction',
+    aliases: { pendencias: 'queue', lancamento: 'calendar', excecoes: 'exceptions' },
   });
   const { total: pendingTotal, overdueTotal } = usePendingTotal(30);
   const sections = [
@@ -1374,6 +1381,28 @@ export default function Timesheet() {
       step: undefined,
     },
   ] as const;
+  const processSections = sections.filter(section => section.step);
+  const supportSections = sections.filter(section => !section.step);
+  const correctionModes = [
+    {
+      value: 'queue',
+      label: 'Fila de pendências',
+      description: 'Resolva primeiro o que impede o cálculo.',
+      icon: ClipboardEdit,
+    },
+    {
+      value: 'calendar',
+      label: 'Lançamento manual',
+      description: 'Edite uma data específica no calendário.',
+      icon: Calendar,
+    },
+    {
+      value: 'exceptions',
+      label: 'Exceções',
+      description: 'Analise ocorrências fora do padrão.',
+      icon: Shield,
+    },
+  ] as const;
   return (
     <div className="space-y-4 page-enter">
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
@@ -1381,43 +1410,33 @@ export default function Timesheet() {
             batidas + feriados. Resolução HE, divergências, atrasos, validação
             de jornada e escala foram aposentados — o modelo por hora não usa
             jornada esperada. */}
-        <div className="overflow-hidden rounded-xl border border-border/70 bg-card shadow-sm">
-          <div className="flex items-center justify-between border-b border-border/60 bg-muted/20 px-3 py-2">
-            <span className="eyebrow text-[9px]">Fluxo do ponto</span>
-            <span className="hidden text-[11px] text-muted-foreground sm:block">Três etapas para preparar o ponto; arquivos e ajustes ficam separados.</span>
-          </div>
-          <TabsList
-            indicator="none"
-            className="grid h-auto w-full grid-cols-2 gap-px border-0 bg-border/60 p-0 sm:grid-cols-3 xl:grid-cols-5"
-            aria-label="Fluxo do controle de ponto"
-          >
-            {sections.map((section, index) => (
+        <div className="rounded-xl border border-border/70 bg-card p-2 shadow-sm">
+          <div className="flex flex-col gap-2 xl:flex-row xl:items-center">
+            <div className="flex min-w-[132px] items-center gap-2 px-2 py-1">
+              <AlarmClock className="h-4 w-4 text-primary" />
+              <div>
+                <span className="eyebrow block text-[9px]">Fluxo do ponto</span>
+                <span className="block text-[10px] text-muted-foreground">Importe, corrija e justifique</span>
+              </div>
+            </div>
+            <TabsList
+              indicator="none"
+              className="grid h-auto min-w-0 flex-1 grid-cols-3 gap-1 border-0 bg-muted/35 p-1"
+              aria-label="Etapas do controle de ponto"
+            >
+              {processSections.map(section => (
               <TabsTrigger
                 key={section.value}
                 value={section.value}
                 className={cn(
-                  'group relative min-h-[66px] min-w-0 justify-start gap-2.5 rounded-none border-0 border-b-0 bg-card px-3 py-2.5 text-left font-sans normal-case tracking-normal transition-colors hover:bg-muted/40 data-[state=active]:bg-primary/[0.06] data-[state=active]:text-foreground',
-                  'after:absolute after:inset-x-3 after:bottom-0 after:h-0.5 after:scale-x-0 after:rounded-full after:bg-primary after:transition-transform data-[state=active]:after:scale-x-100',
-                  index === 3 && 'xl:before:absolute xl:before:inset-y-3 xl:before:-left-px xl:before:w-px xl:before:bg-border',
+                  'group relative min-h-10 min-w-0 justify-center gap-2 rounded-md border-0 border-b-0 px-2 py-2 font-sans text-xs font-semibold normal-case tracking-normal transition-colors',
+                  'data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm',
                 )}
               >
-                {section.step ? (
-                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-border bg-background text-[11px] font-bold text-muted-foreground shadow-sm group-data-[state=active]:border-primary group-data-[state=active]:bg-primary group-data-[state=active]:text-primary-foreground">
-                    {section.step}
-                  </span>
-                ) : (
-                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground group-data-[state=active]:bg-primary/10 group-data-[state=active]:text-primary">
-                    <section.icon className="h-4 w-4" />
-                  </span>
-                )}
-                <span className="min-w-0 flex-1">
-                  <span className="flex items-center gap-1.5 text-xs font-bold leading-tight">
-                    {section.label}
-                  </span>
-                  <span className="mt-1 line-clamp-2 block text-[10px] font-normal leading-tight text-muted-foreground">
-                    {section.description}
-                  </span>
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-border bg-background text-[10px] font-bold text-muted-foreground group-data-[state=active]:border-primary group-data-[state=active]:bg-primary group-data-[state=active]:text-primary-foreground">
+                  {section.step}
                 </span>
+                <span className="truncate">{section.label}</span>
                 {section.value === 'manual' && pendingTotal > 0 && (
                   <>
                     <span
@@ -1429,7 +1448,7 @@ export default function Timesheet() {
                       variant="outline"
                       aria-hidden="true"
                       className={cn(
-                        'absolute right-2 top-2 h-5 shrink-0 px-1.5 text-[10px] tabular-nums',
+                        'hidden h-5 shrink-0 px-1.5 text-[10px] tabular-nums sm:inline-flex',
                         overdueTotal > 0
                           ? 'border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-400'
                           : 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400',
@@ -1442,21 +1461,60 @@ export default function Timesheet() {
                 )}
               </TabsTrigger>
             ))}
-          </TabsList>
+            </TabsList>
+            <TabsList
+              indicator="none"
+              className="grid h-auto grid-cols-2 gap-1 border-0 bg-transparent p-0 xl:w-auto"
+              aria-label="Ferramentas do controle de ponto"
+            >
+              {supportSections.map(section => (
+                <TabsTrigger
+                  key={section.value}
+                  value={section.value}
+                  className="min-h-10 gap-2 rounded-md border border-transparent border-b-0 px-3 py-2 font-sans text-xs font-semibold normal-case tracking-normal text-muted-foreground data-[state=active]:border-border data-[state=active]:bg-muted data-[state=active]:text-foreground"
+                >
+                  <section.icon className="h-4 w-4" />
+                  {section.label}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </div>
         </div>
 
         <TabsContent value="records"><TimesheetRecordsTab /></TabsContent>
-        {/* Lançamento + Pendências UNIFICADOS (2026-06-21, pedido do dono): as duas
-            abas se complementavam — Pendências lista os dias com batida ímpar/faltando
-            (fix inline + "18:00 a todos"); o Lançamento é a grade livre pra editar
-            qualquer dia. Juntas numa tela só → vê o que falta e resolve no mesmo lugar.
-            Ordem: pendências (o que resolver) → grade (onde resolver) → exceções. */}
-        <TabsContent value="manual" className="space-y-6">
-          <PendingTimeRecordsPanel />
-          <Separator />
-          <ManualEntryTab />
-          <Separator />
-          <ExceptionsTab />
+        <TabsContent value="manual">
+          <Tabs value={correctionView} onValueChange={setCorrectionView} className="space-y-3">
+            <div className="rounded-xl border border-border/70 bg-card p-3 shadow-sm">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <span className="eyebrow text-[9px]">Central de correção</span>
+                  <h2 className="mt-0.5 text-base font-bold">Escolha uma ferramenta por vez</h2>
+                </div>
+                <TabsList
+                  indicator="none"
+                  className="grid h-auto w-full grid-cols-1 gap-1 bg-muted/40 p-1 sm:grid-cols-3 lg:w-auto"
+                  aria-label="Ferramentas de correção do ponto"
+                >
+                  {correctionModes.map(mode => (
+                    <TabsTrigger
+                      key={mode.value}
+                      value={mode.value}
+                      className="group min-h-11 justify-start gap-2 rounded-md border-b-0 px-3 py-2 text-left font-sans normal-case tracking-normal data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
+                    >
+                      <mode.icon className="h-4 w-4 shrink-0 text-muted-foreground group-data-[state=active]:text-primary" />
+                      <span className="min-w-0">
+                        <span className="block truncate text-xs font-bold">{mode.label}</span>
+                        <span className="hidden truncate text-[10px] font-normal text-muted-foreground xl:block">{mode.description}</span>
+                      </span>
+                    </TabsTrigger>
+                  ))}
+                </TabsList>
+              </div>
+            </div>
+            <TabsContent value="queue"><PendingTimeRecordsPanel /></TabsContent>
+            <TabsContent value="calendar"><ManualEntryTab /></TabsContent>
+            <TabsContent value="exceptions"><ExceptionsTab /></TabsContent>
+          </Tabs>
         </TabsContent>
         {/* Faltas/atrasos justificados (spec req.10): registra a ausência em
             employee_absences → o motor da folha ABONA (não desconta falta nem atraso
