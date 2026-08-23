@@ -223,4 +223,33 @@ describe('calculateGradeBasedDm2 — conjugada e zero explícito', () => {
     );
     expect(total).toBeCloseTo(8 + 6.5, 4);
   });
+
+  it('PV-00125 CF 09 PRETO: grade 33/34 e 39/40 casam o mapa da ficha', () => {
+    const grade = { '35': 2, '36': 2, '37': 3, '38': 2, '33/34': 1, '39/40': 2 };
+    const map = { '35': 20, '36': 20, '37': 20, '38': 20, '33/34': 20, '39/40': 20 };
+    expect(pickConsumptionForSize(map, '33/34')).toEqual({ found: true, value: 20, key: '33/34' });
+    expect(pickConsumptionForSize(map, '39/40')).toEqual({ found: true, value: 20, key: '39/40' });
+    expect(pickConsumptionForSize(map, '33')).toEqual({ found: true, value: 20, key: '33/34' });
+    expect(pickConsumptionForSize(map, '39')).toEqual({ found: true, value: 20, key: '39/40' });
+    const total = calculateGradeBasedDm2(
+      { grade, quantity: 12, fichas: 1 },
+      20,
+      null,
+      map,
+    );
+    expect(total).toBeCloseTo(240, 4);
+  });
+
+  it('PV-00125: se 33/34 e 39/40 fossem diferentes do escalar, o lookup velho erraria', () => {
+    const grade = { '35': 2, '36': 2, '37': 3, '38': 2, '33/34': 1, '39/40': 2 };
+    const map = { '35': 20, '36': 20, '37': 20, '38': 20, '33/34': 8, '39/40': 12 };
+    const novo = calculateGradeBasedDm2({ grade, quantity: 12, fichas: 1 }, 20, null, map);
+    // Velho: split_part('33/34','/',1)='33' não está no mapa → NULLIF → escalar 20.
+    const velho =
+      1 * 20 + 2 * 20 + 2 * 20 + 3 * 20 + 2 * 20 + 2 * 20;
+    expect(velho).toBe(240);
+    expect(novo).toBeCloseTo(1 * 8 + 2 * 20 + 2 * 20 + 3 * 20 + 2 * 20 + 2 * 12, 4);
+    expect(novo).toBeCloseTo(212, 4);
+    expect(novo).not.toBe(velho);
+  });
 });
