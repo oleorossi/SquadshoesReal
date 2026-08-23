@@ -6,6 +6,7 @@ import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { useMenuFavorites } from '@/hooks/useMenuFavorites';
 import { useAccessControl } from '@/hooks/useAccessControl';
+import { desktopAsidePx, useViewport } from '@/hooks/use-mobile';
 import { useCurrentProfile, useCurrentUserRoles, ROLES } from '@/hooks/useUserManagement';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -100,6 +101,7 @@ export default function AppLayout({ children, printMode = false }: { children: R
   // que dependem dele.
   const roleNames = React.useMemo(() => currentRoles.map((r) => r.role), [currentRoles]);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const { formFactor, isTablet } = useViewport();
   // O drawer mobile é um aside artesanal (não usa o primitive Sheet): prender o
   // foco, fechar no Escape e DEVOLVER o foco ao gatilho são responsabilidade
   // nossa. Antes só o foco inicial e o Escape estavam feitos (achado F17): o Tab
@@ -149,6 +151,9 @@ export default function AppLayout({ children, printMode = false }: { children: R
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try { return localStorage.getItem('sidebar-collapsed') === 'true'; } catch { return false; }
   });
+  // iPad retrato (768–1023) fica no rail 68px — a preferência de expandir
+  // só vale no desktop. Sem isso o tablet herda a sidebar de 232px.
+  const railPx = desktopAsidePx(formFactor, sidebarCollapsed);
   const isInsideLayout = useContext(AppLayoutContext);
   const navigate = useNavigate();
   const location = useLocation();
@@ -248,6 +253,7 @@ export default function AppLayout({ children, printMode = false }: { children: R
     );
 
   const toggleSidebar = () => {
+    if (isTablet) return;
     setSidebarCollapsed(prev => {
       const next = !prev;
       try { localStorage.setItem('sidebar-collapsed', String(next)); } catch {}
@@ -406,7 +412,7 @@ export default function AppLayout({ children, printMode = false }: { children: R
 
   // ── Sidebar content ──────────────────────────────────────
   const sidebarContent = (mobile: boolean) => {
-    const isCollapsed = !mobile && sidebarCollapsed;
+    const isCollapsed = !mobile && railPx === 68;
 
     return (
       <div className={cn("flex flex-col h-full bg-sidebar text-sidebar-foreground overflow-hidden glass-sidebar", mobile && "safe-top")}>
@@ -443,7 +449,7 @@ export default function AppLayout({ children, printMode = false }: { children: R
                   <ModeToggle className="h-7 w-7 text-sidebar-muted hover:text-sidebar-foreground hover:bg-sidebar-accent" />
                <NotificationBell key="sidebar-mobile-notif" className="h-7 w-7" />
                   {mobile && (
-                    <Button variant="ghost" size="icon" aria-label="Fechar menu lateral" className="shrink-0 md:hidden h-7 w-7 text-sidebar-muted" onClick={() => setMobileOpen(false)}>
+                    <Button variant="ghost" size="icon" aria-label="Fechar menu lateral" className="shrink-0 md:hidden h-11 w-11 text-sidebar-muted" onClick={() => setMobileOpen(false)}>
                       <X className="h-4 w-4" aria-hidden="true" />
                     </Button>
                   )}
@@ -798,17 +804,19 @@ export default function AppLayout({ children, printMode = false }: { children: R
         )}>
           {isCollapsed ? (
             <>
+              {!isTablet && (
+                <Tooltip delayDuration={0}>
+                  <TooltipTrigger asChild>
+                    <button onClick={toggleSidebar} aria-label="Expandir menu" className="flex items-center justify-center h-11 w-11 rounded-lg text-sidebar-muted hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors">
+                      <PanelLeftOpen className="h-4 w-4" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="right">Expandir menu</TooltipContent>
+                </Tooltip>
+              )}
               <Tooltip delayDuration={0}>
                 <TooltipTrigger asChild>
-                  <button onClick={toggleSidebar} className="flex items-center justify-center h-8 w-8 rounded-lg text-sidebar-muted hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors">
-                    <PanelLeftOpen className="h-4 w-4" />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="right">Expandir menu</TooltipContent>
-              </Tooltip>
-              <Tooltip delayDuration={0}>
-                <TooltipTrigger asChild>
-                  <button onClick={signOut} className="flex items-center justify-center h-8 w-8 rounded-lg text-sidebar-foreground/60 hover:text-destructive hover:bg-destructive/10 transition-all duration-150">
+                  <button onClick={signOut} aria-label="Sair" className="flex items-center justify-center h-11 w-11 rounded-lg text-sidebar-foreground/60 hover:text-destructive hover:bg-destructive/10 transition-all duration-150">
                     <LogOut className="h-4 w-4" />
                   </button>
                 </TooltipTrigger>
@@ -864,7 +872,7 @@ export default function AppLayout({ children, printMode = false }: { children: R
   const mobileSystemMenu = filteredSystemItems.length > 0 ? (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" aria-label="Menu do sistema" className="h-9 w-9 text-foreground/60 hover:text-foreground">
+        <Button variant="ghost" size="icon" aria-label="Menu do sistema" className="h-11 w-11 text-foreground/60 hover:text-foreground">
           <Settings className="h-5 w-5" aria-hidden="true" />
         </Button>
       </DropdownMenuTrigger>
@@ -896,7 +904,10 @@ export default function AppLayout({ children, printMode = false }: { children: R
         >
           Pular para o conteúdo
         </a>
-        <div className={cn('min-h-screen flex bg-background overflow-x-hidden', printMode && 'print:bg-background')}>
+        <div
+          className={cn('min-h-screen flex bg-background overflow-x-hidden', printMode && 'print:bg-background')}
+          data-chrome={formFactor}
+        >
           {mobileOpen && (
             <div
               className={cn('fixed inset-0 bg-black/50 backdrop-blur-sm z-40 md:hidden transition-opacity', printMode && 'print:hidden')}
@@ -924,7 +935,7 @@ export default function AppLayout({ children, printMode = false }: { children: R
           {/* Desktop sidebar — dimensões do handoff: 232px expandida / 68px colapsada */}
           <aside className={cn(
             'hidden md:flex shrink-0 border-r border-sidebar-border flex-col sticky top-0 h-screen transition-all duration-200 ease-in-out overflow-hidden',
-            sidebarCollapsed ? 'w-[68px]' : 'w-[232px]',
+            railPx === 68 ? 'w-[68px]' : 'w-[232px]',
             printMode && 'print:hidden'
           )}>
             {sidebarContent(false)}
@@ -937,11 +948,11 @@ export default function AppLayout({ children, printMode = false }: { children: R
               printMode && 'print:hidden'
             )}>
               {!isDashboard ? (
-                <Button variant="ghost" size="icon" aria-label="Voltar para a tela anterior" className="h-9 w-9" onClick={() => navigate(-1)}>
+                <Button variant="ghost" size="icon" aria-label="Voltar para a tela anterior" className="h-11 w-11" onClick={() => navigate(-1)}>
                   <ArrowLeft className="h-5 w-5" aria-hidden="true" />
                 </Button>
               ) : (
-                <Button variant="ghost" size="icon" aria-label="Abrir menu lateral" className="h-9 w-9" onClick={() => setMobileOpen(true)}>
+                <Button variant="ghost" size="icon" aria-label="Abrir menu lateral" className="h-11 w-11" onClick={() => setMobileOpen(true)}>
                   <Menu className="h-5 w-5" aria-hidden="true" />
                 </Button>
               )}

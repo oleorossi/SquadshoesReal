@@ -132,7 +132,7 @@ export function BottomNav() {
               ref={closeBtnRef}
               onClick={() => setMoreOpen(false)}
               aria-label="Fechar menu"
-              className="h-7 w-7 rounded-full bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground"
+              className="h-11 w-11 rounded-full bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground"
             >
               <X className="h-3.5 w-3.5" aria-hidden="true" />
             </button>
