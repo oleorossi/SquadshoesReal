@@ -10,20 +10,26 @@
  * (`Exp_Etiquetas_PedCompra_*.csv`, `;` em UTF-16/UTF-8/CP1252, ou XLSX).
  * Saídas:
  *   - produção L42PRO: duas etiquetas 50 × 30 mm por carreira, repetidas pela quantidade;
- *   - gráfica: duas artes 50 × 30 mm lado a lado, uma por SKU, com vão técnico.
+ *   - gráfica: duas artes 50 × 30 mm lado a lado, uma por SKU; vão e margens são opcionais.
  */
 import { code128Bars, encodeCode128 } from './code128';
 
 /* ─────────────────────── medidas oficiais (mm) ─────────────────────── */
 
-/** Arte da etiqueta — o desenho em si. */
-export const ART_WIDTH_MM = 46.0;
+/**
+ * Arte útil de cada coluna 50 × 30.
+ *
+ * Repete a proteção da etiqueta individual 100 × 30 da fábrica: 1 mm para
+ * dentro da faca em cada lado. Assim cada metade física de 50 mm usa 48 mm de
+ * arte, sem criar uma segunda margem entre as duas colunas.
+ */
+export const ART_WIDTH_MM = 48.0;
 export const ART_HEIGHT_MM = 38.0;
 
-/** Mídia física: o rolo comprado é 50 × 40; a arte fica centralizada nela. */
+/** Compatibilidade do desenho legado 50 × 40; o gerador atual usa o perfil 2-up abaixo. */
 export const MEDIA_WIDTH_MM = 50.0;
 export const MEDIA_HEIGHT_MM = 40.0;
-export const OFFSET_X_MM = (MEDIA_WIDTH_MM - ART_WIDTH_MM) / 2; // 2,0
+export const OFFSET_X_MM = (MEDIA_WIDTH_MM - ART_WIDTH_MM) / 2; // 1,0
 export const OFFSET_Y_MM = (MEDIA_HEIGHT_MM - ART_HEIGHT_MM) / 2; // 1,0
 
 /** Imposição da gráfica: duas etiquetas couchê de 50 × 30 mm por carreira. */
@@ -44,7 +50,10 @@ export interface CoucheRollProfile {
 }
 
 export const DEFAULT_COUCHE_ROLL_PROFILE: Readonly<CoucheRollProfile> = Object.freeze({
-  columnGapMm: 3,
+  // A L42PRO recebe uma mídia única de 100 × 30 mm: 50 mm à esquerda +
+  // 50 mm à direita. Vão adicional só entra quando o operador informar uma
+  // faca diferente no perfil avançado.
+  columnGapMm: 0,
   leftMarginMm: 0,
   rightMarginMm: 0,
   topMarginMm: 0,
@@ -62,9 +71,9 @@ export const COUCHE_PAGE_HEIGHT_MM =
   DEFAULT_COUCHE_ROLL_PROFILE.topMarginMm
   + COUCHE_LABEL_HEIGHT_MM
   + DEFAULT_COUCHE_ROLL_PROFILE.bottomMarginMm;
-/** Área segura 46 × 28, centralizada dentro de cada etiqueta física 50 × 30. */
+/** Área segura 48 × 28, centralizada dentro de cada etiqueta física 50 × 30. */
 export const COUCHE_ART_HEIGHT_MM = 28.0;
-export const COUCHE_OFFSET_X_MM = (COUCHE_LABEL_WIDTH_MM - ART_WIDTH_MM) / 2; // 2,0
+export const COUCHE_OFFSET_X_MM = (COUCHE_LABEL_WIDTH_MM - ART_WIDTH_MM) / 2; // 1,0
 export const COUCHE_OFFSET_Y_MM = (COUCHE_LABEL_HEIGHT_MM - COUCHE_ART_HEIGHT_MM) / 2; // 1,0
 /** No perfil compacto, as barras terminam em y=29 mm e preservam 1 mm inferior. */
 export const COUCHE_BARCODE_TOP_Y_MM = 23.0;
@@ -318,7 +327,7 @@ export interface BabyNalinPdfOptions {
   repeatByQuantity?: boolean;
   /** Etiquetas físicas por par quando a repetição por quantidade estiver ligada. */
   repeatMultiplier?: number;
-  /** Medidas da faca/liner usadas apenas no arquivo couchê para a gráfica. */
+  /** Medidas opcionais de uma faca/liner que não use o padrão exato 100 × 30. */
   coucheProfile?: Partial<CoucheRollProfile>;
   /** PNG em data URI + proporção, pra compor a logomarca. Sem ele, sai sem logo. */
   logo?: { dataUrl: string; width: number; height: number } | null;
@@ -546,7 +555,7 @@ function drawLabel(
   }
 }
 
-/** Expande as linhas em páginas — uma etiqueta por página, na ordem do arquivo. */
+/** Limite e expansão da tiragem antes da imposição em duas colunas. */
 export const MAX_PDF_LABELS = 20_000;
 
 export function countExpandedRows(

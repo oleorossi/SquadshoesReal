@@ -91,7 +91,7 @@ export function ClientLabelingWorkspace() {
   const [coucheProfile, setCoucheProfile] = useState<CoucheRollProfile>({
     ...DEFAULT_COUCHE_ROLL_PROFILE,
   });
-  const [coucheProfileConfirmed, setCoucheProfileConfirmed] = useState(false);
+  const [coucheProfileConfirmed, setCoucheProfileConfirmed] = useState(true);
 
   const skuAnalysis = analyzeClientSkus(rows);
   const rowEntries = rows.map((row, sourceIndex) => ({
@@ -130,6 +130,8 @@ export function ClientLabelingWorkspace() {
   const visibleSkuKeys = [...new Set(visibleRows.map(entry => entry.skuKey))];
   const allVisibleSelected = visibleSkuKeys.length > 0 && visibleSkuKeys.every(key => selectedSkuKeys.has(key));
   const someVisibleSelected = visibleSkuKeys.some(key => selectedSkuKeys.has(key));
+  const visibleSelectedCount = visibleSkuKeys.filter(key => selectedSkuKeys.has(key)).length;
+  const hiddenSelectedCount = Math.max(0, selectedSkuAnalysis.rows.length - visibleSelectedCount);
   const isBusy = reading || generating !== null;
   const productionOverLimit = totalEtiquetas > MAX_PDF_LABELS;
 
@@ -146,9 +148,12 @@ export function ClientLabelingWorkspace() {
       if (requestId !== fileRequestIdRef.current) return;
       setRows(lidas);
       setFileName(file.name);
-      setSelectedSkuKeys(new Set(analyzeClientSkus(lidas).rows.map(clientSkuKey)));
+      // Começa vazio: marcar tudo silenciosamente fazia a busca esconder SKUs
+      // ainda selecionados. O operador clicava apenas no tamanho desejado, mas
+      // o PDF continuava incluindo quase todo o arquivo.
+      setSelectedSkuKeys(new Set());
       setPrintQuantities(initialPrintQuantities(lidas));
-      toast.success(`${lidas.length} etiqueta(s) lidas de ${file.name}`);
+      toast.success(`${lidas.length} etiqueta(s) lidas. Selecione os SKUs que deseja imprimir.`);
     } catch (error) {
       if (requestId !== fileRequestIdRef.current) return;
       setRows([]);
@@ -226,7 +231,7 @@ export function ClientLabelingWorkspace() {
     setSearch('');
     setSelectedSkuKeys(new Set());
     setPrintQuantities({});
-    setCoucheProfileConfirmed(false);
+    setCoucheProfileConfirmed(true);
   }
 
   function setCoucheProfileMeasure(field: keyof CoucheRollProfile, rawValue: string) {
@@ -268,7 +273,7 @@ export function ClientLabelingWorkspace() {
       <Panel
         eyebrow="ETIQUETAS · CLIENTE"
         title="Importar pedido do cliente"
-        subtitle={`${BARCODE_FORMAT} com módulo de ${MODULE_MM.toFixed(4).replace('.', ',')} mm · produção L42PRO e gráfica em 2 × 50 × 30 mm`}
+        subtitle={`${BARCODE_FORMAT} com módulo de ${MODULE_MM.toFixed(4).replace('.', ',')} mm · mídia 100 × 30 mm em 2 colunas de 50 × 30 mm`}
         actions={
           rows.length > 0 ? (
             <Button variant="ghost" size="sm" onClick={limpar} className="h-9" disabled={isBusy}>
@@ -333,7 +338,7 @@ export function ClientLabelingWorkspace() {
                       <Badge variant="outline">2 × 50 × 30 mm</Badge>
                     </div>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      Imprime somente os SKUs selecionados. Ajuste a quantidade de cada item na tabela.
+                      Mídia física 100 × 30 mm: coluna esquerda 50 × 30 e coluna direita 50 × 30. Ajuste a quantidade de cada item na tabela.
                     </p>
                   </div>
                 </div>
@@ -363,6 +368,11 @@ export function ClientLabelingWorkspace() {
                   {generating === 'production' ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <FilePdf className="h-4 w-4 mr-2" />}
                   {generating === 'production' ? 'Gerando…' : `Gerar L42PRO (${totalEtiquetas} etiquetas)`}
                 </Button>
+                {!coucheProfileConfirmed && (
+                  <p className="text-xs text-amber-700 dark:text-amber-400">
+                    Medidas do rolo alteradas — confirme o perfil em “Medidas do rolo de duas colunas” para liberar a geração.
+                  </p>
+                )}
               </section>
 
               <section className="rounded-lg border border-primary/25 bg-primary/5 p-4 space-y-4" aria-labelledby="graphic-output-title">
@@ -405,7 +415,7 @@ export function ClientLabelingWorkspace() {
                     Medidas do rolo de duas colunas
                   </summary>
                   <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-                    Confirme o vão, as margens e o avanço do rolo. Estas medidas valem para a L42PRO e para a gráfica.
+                    O padrão é 100 × 30 mm sem vão adicional: duas colunas consecutivas de 50 × 30 mm. Altere apenas se a faca do rolo tiver margens ou separação extras.
                   </p>
                   <div className="mt-3 grid gap-3 sm:grid-cols-2">
                     {COUCHE_PROFILE_FIELDS.map(field => (
@@ -462,6 +472,11 @@ export function ClientLabelingWorkspace() {
                     ? 'Gerando…'
                     : `Gerar gráfica (${selectedSkuAnalysis.rows.length} ${skuSelecionadoLabel})`}
                 </Button>
+                {!coucheProfileConfirmed && (
+                  <p className="text-xs text-amber-700 dark:text-amber-400">
+                    Medidas do rolo alteradas — confirme o perfil em “Medidas do rolo de duas colunas” para liberar a geração.
+                  </p>
+                )}
               </section>
             </div>
 
@@ -528,6 +543,11 @@ export function ClientLabelingWorkspace() {
                   {selectedSkuAnalysis.rows.length}/{skuAnalysis.rows.length}
                 </Badge>
                 <span className="text-xs text-muted-foreground">SKUs selecionados</span>
+                {hiddenSelectedCount > 0 && (
+                  <Badge variant="outline" className="font-mono text-xs">
+                    {hiddenSelectedCount} fora da busca
+                  </Badge>
+                )}
                 <Button
                   variant="outline"
                   size="sm"
@@ -535,7 +555,7 @@ export function ClientLabelingWorkspace() {
                   onClick={() => setSelectedSkuKeys(new Set(visibleSkuKeys))}
                   disabled={visibleSkuKeys.length === 0 || isBusy}
                 >
-                  Selecionar só exibidos
+                  Selecionar exibidos ({visibleSkuKeys.length})
                 </Button>
                 <Button
                   variant="ghost"
