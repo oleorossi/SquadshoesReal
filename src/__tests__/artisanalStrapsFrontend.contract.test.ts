@@ -38,7 +38,6 @@ const incrementalMigrationHelper = read('src/lib/legacyStrapIncrementalApply.ts'
 const performanceHistory = read('src/components/artisanal-straps/ArtisanalStrapPerformanceHistory.tsx');
 const strapEditor = read('src/components/artisanal-straps/ArtisanalStrapEditor.tsx');
 const conversionEditor = read('src/components/artisanal-straps/ArtisanalStrapConversionEditor.tsx');
-const hubTabs = read('src/components/layout/HubTabs.tsx');
 const legacyRecipeHistoryMigration = read('supabase/migrations/20270101005000_expor_historico_receitas_tiras_legadas.sql');
 const legacyRecipeReuseMigration = read('supabase/migrations/20270101005100_reaproveitar_receitas_tiras_legadas.sql');
 
@@ -295,15 +294,26 @@ describe('Tiras artesanais — contrato do frontend canônico', () => {
     expect(calculator).not.toMatch(/from\(['"]/);
   });
 
-  it('abre pelas demandas e organiza a jornada industrial em três grupos de trabalho', () => {
-    expect(hub).toContain("defaultValue: 'demandas'");
-    expect(hub).toContain("group: 'Operação'");
-    expect(hub).toContain("group: 'Engenharia'");
-    expect(hub).toContain("group: 'Controle'");
-    expect(hub).toContain('<TabsContent value="desempenho"');
-    expect(hub).toContain('<TabsContent value="diagnostico"');
-    expect(hubTabs).toContain('group?: string');
-    expect(hubTabs).toContain('beginsGroup');
+  it('abre em Operação e reduz a navegação principal a três áreas sem perder os links antigos', () => {
+    expect(hub).toContain("defaultValue: 'operacao'");
+    expect(hub).toContain("type PrimaryTab = 'operacao' | 'configuracao' | 'controle'");
+    expect(hub).toContain("receitas: 'configuracao'");
+    expect(hub).toContain("variantes: 'configuracao'");
+    expect(hub).toContain("diagnostico: 'controle'");
+    expect(hub).toContain('<TabsContent value="operacao"');
+    expect(hub).toContain('<TabsContent value="configuracao"');
+    expect(hub).toContain('<TabsContent value="controle"');
+    expect(hub).not.toContain('<TabsContent value="receitas"');
+    expect(hub).not.toContain('<TabsContent value="diagnostico"');
+  });
+
+  it('oferece configuração guiada em duas etapas e concentra histórico e simulação', () => {
+    expect(hub).toContain('Configure em duas etapas');
+    expect(hub).toContain('Tipo, material e rendimento');
+    expect(hub).toContain('Origem, cor e estoque');
+    expect(hub).toContain("type ConfigurationView = 'cadastro' | 'variantes' | 'ferramentas'");
+    expect(hub).toContain('Histórico e simulação');
+    expect(hub).toMatch(/configurationView === 'ferramentas'[\s\S]*<RecipesTab[\s\S]*<CalculatorTab/);
   });
 
   it('mantém o planejamento junto da produção, fora do catálogo de engenharia', () => {

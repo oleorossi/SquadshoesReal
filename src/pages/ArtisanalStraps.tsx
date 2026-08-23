@@ -21,6 +21,7 @@ import {
   Warning,
   Wrench,
 } from '@phosphor-icons/react';
+import type { Icon as PhosphorIcon } from '@phosphor-icons/react';
 import { ArtisanalStrapEditor, type ArtisanalStrapEditorMode, type ArtisanalStrapEditorOrigin } from '@/components/artisanal-straps/ArtisanalStrapEditor';
 import { ArtisanalStrapConversionEditor } from '@/components/artisanal-straps/ArtisanalStrapConversionEditor';
 import { ArtisanalStrapBatchMatrix } from '@/components/artisanal-straps/ArtisanalStrapBatchMatrix';
@@ -58,6 +59,7 @@ import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { useContractors } from '@/hooks/useContractors';
+import { cn } from '@/lib/utils';
 import {
   type ArtisanalStrapCatalog,
   type ArtisanalStrapCatalogDiagnostic,
@@ -96,6 +98,9 @@ import { useUpdateGroup } from '@/hooks/useGroups';
 import StrapCalculator from './StrapCalculator';
 
 const TAB_VALUES = [
+  'operacao',
+  'configuracao',
+  'controle',
   'demandas',
   'producao',
   'cadastro',
@@ -107,6 +112,82 @@ const TAB_VALUES = [
 ] as const;
 
 type HubTab = (typeof TAB_VALUES)[number];
+type PrimaryTab = 'operacao' | 'configuracao' | 'controle';
+type OperationView = 'demandas' | 'producao';
+type ConfigurationView = 'cadastro' | 'variantes' | 'ferramentas';
+type ControlView = 'desempenho' | 'diagnostico';
+
+const PRIMARY_TAB_BY_HUB_TAB: Record<HubTab, PrimaryTab> = {
+  operacao: 'operacao',
+  configuracao: 'configuracao',
+  controle: 'controle',
+  demandas: 'operacao',
+  producao: 'operacao',
+  cadastro: 'configuracao',
+  receitas: 'configuracao',
+  variantes: 'configuracao',
+  calculadora: 'configuracao',
+  desempenho: 'controle',
+  diagnostico: 'controle',
+};
+
+interface WorkspaceNavItem<T extends string> {
+  value: T;
+  label: string;
+  description: string;
+  icon: PhosphorIcon;
+  badge?: number;
+}
+
+function WorkspaceSectionNav<T extends string>({
+  eyebrow,
+  title,
+  value,
+  items,
+  onChange,
+}: {
+  eyebrow: string;
+  title: string;
+  value: T;
+  items: WorkspaceNavItem<T>[];
+  onChange: (value: T) => void;
+}) {
+  return (
+    <section className="overflow-hidden rounded-lg border border-border bg-card" aria-label={title}>
+      <div className="border-b border-border px-4 py-3">
+        <p className="font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-muted-foreground">{eyebrow}</p>
+        <h2 className="mt-0.5 text-sm font-semibold text-foreground">{title}</h2>
+      </div>
+      <div className={cn('grid gap-px bg-border', items.length === 2 ? 'sm:grid-cols-2' : 'lg:grid-cols-3')} role="tablist">
+        {items.map((item) => {
+          const selected = item.value === value;
+          return (
+            <button
+              key={item.value}
+              type="button"
+              role="tab"
+              aria-selected={selected}
+              onClick={() => onChange(item.value)}
+              className={cn(
+                'flex min-h-16 items-start gap-3 bg-card px-4 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
+                selected ? 'bg-accent text-accent-foreground' : 'hover:bg-muted/50',
+              )}
+            >
+              <item.icon className={cn('mt-0.5 h-4 w-4 shrink-0', selected ? 'text-primary' : 'text-muted-foreground')} weight={selected ? 'bold' : 'regular'} />
+              <span className="min-w-0 flex-1">
+                <span className="flex items-center gap-2 text-xs font-semibold">
+                  {item.label}
+                  {item.badge ? <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">{item.badge}</Badge> : null}
+                </span>
+                <span className="mt-0.5 block text-[11px] leading-4 text-muted-foreground">{item.description}</span>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
 
 const EMPTY_CATALOG: ArtisanalStrapCatalog = {
   types: [],
@@ -544,7 +625,7 @@ function TechnicalLineMigrationDialog({
 export default function ArtisanalStraps() {
   const { value: activeTab, setValue: setActiveTab } = useUrlTabState<HubTab>({
     values: TAB_VALUES,
-    defaultValue: 'demandas',
+    defaultValue: 'operacao',
     aliases: {
       recipes: 'receitas',
       optimizer: 'calculadora',
@@ -554,6 +635,14 @@ export default function ArtisanalStraps() {
     },
   });
   const [searchParams, setSearchParams] = useSearchParams();
+  const activeArea = PRIMARY_TAB_BY_HUB_TAB[activeTab];
+  const operationView: OperationView = activeTab === 'producao' ? 'producao' : 'demandas';
+  const configurationView: ConfigurationView = activeTab === 'variantes'
+    ? 'variantes'
+    : activeTab === 'receitas' || activeTab === 'calculadora'
+      ? 'ferramentas'
+      : 'cadastro';
+  const controlView: ControlView = activeTab === 'diagnostico' ? 'diagnostico' : 'desempenho';
   const [reasonDialog, setReasonDialog] = useState<ReasonDialogState | null>(null);
   const [colorDialog, setColorDialog] = useState(false);
   const [officialProductDialog, setOfficialProductDialog] = useState(false);
@@ -564,15 +653,15 @@ export default function ArtisanalStraps() {
 
   const catalogQuery = useArtisanalStrapCatalog(true);
   const catalog = catalogQuery.data || EMPTY_CATALOG;
-  const demandsQuery = useArtisanalStrapDemands(activeTab === 'demandas' || activeTab === 'diagnostico');
-  const productionQuery = useArtisanalStrapProduction(activeTab === 'producao' || activeTab === 'diagnostico');
-  const externalOperationsQuery = useArtisanalStrapExternalOperations(activeTab === 'producao');
-  const catalogDiagnosticsQuery = useArtisanalStrapCatalogDiagnostics(activeTab === 'diagnostico');
+  const demandsQuery = useArtisanalStrapDemands(true);
+  const productionQuery = useArtisanalStrapProduction(operationView === 'producao' || controlView === 'diagnostico');
+  const externalOperationsQuery = useArtisanalStrapExternalOperations(operationView === 'producao' && activeArea === 'operacao');
+  const catalogDiagnosticsQuery = useArtisanalStrapCatalogDiagnostics(activeArea === 'controle' && controlView === 'diagnostico');
   const legacyMigrationDiagnosticsQuery = useArtisanalStrapLegacyMigrationDiagnostics(
-    activeTab === 'diagnostico' && catalog.capabilities.resolve_strap_migration,
+    activeArea === 'controle' && controlView === 'diagnostico' && catalog.capabilities.resolve_strap_migration,
   );
-  const realYieldQuery = useArtisanalStrapRealYieldHistory(activeTab === 'desempenho');
-  const costVarianceQuery = useArtisanalStrapCostVariance(activeTab === 'desempenho');
+  const realYieldQuery = useArtisanalStrapRealYieldHistory(activeArea === 'controle' && controlView === 'desempenho');
+  const costVarianceQuery = useArtisanalStrapCostVariance(activeArea === 'controle' && controlView === 'desempenho');
 
   const submitRecipe = useSubmitArtisanalStrapRecipe();
   const approveRecipe = useApproveArtisanalStrapRecipe();
@@ -587,7 +676,7 @@ export default function ArtisanalStraps() {
     ? searchParams.get('origin')
     : 'hub') as ArtisanalStrapEditorOrigin;
   const editorPurpose = searchParams.get('purpose') === 'conversion'
-    || (!searchParams.get('purpose') && (activeTab === 'cadastro' || activeTab === 'receitas'))
+    || (!searchParams.get('purpose') && activeArea === 'configuracao' && configurationView !== 'variantes')
     ? 'conversion'
     : 'stock_variant';
 
@@ -598,7 +687,7 @@ export default function ArtisanalStraps() {
       params.set('mode', args.mode || 'create');
       params.set('origin', args.origin || 'hub');
       params.set('purpose', args.purpose || (
-        activeTab === 'cadastro' || activeTab === 'receitas' ? 'conversion' : 'stock_variant'
+        activeArea === 'configuracao' && configurationView !== 'variantes' ? 'conversion' : 'stock_variant'
       ));
       const values: Array<[string, string | undefined]> = [
         ['recipeId', args.recipeId],
@@ -645,15 +734,10 @@ export default function ArtisanalStraps() {
     ? catalog.products.find((item) => item.id === focusVariant.finished_product_id)
     : null;
 
-  const tabs = [
-    { value: 'demandas', label: 'Demandas', icon: ListChecks, badge: openDemands || undefined, group: 'Operação' },
-    { value: 'producao', label: 'Produção e planejamento', icon: Factory, group: 'Operação' },
-    { value: 'cadastro', label: 'Cadastro de tiras', icon: TreeStructure, group: 'Engenharia' },
-    { value: 'receitas', label: 'Receitas', icon: Scissors, badge: pendingRecipes || undefined, group: 'Engenharia' },
-    { value: 'variantes', label: 'Variantes e estoque', icon: Package, badge: reviewCount || undefined, group: 'Engenharia' },
-    { value: 'calculadora', label: 'Calculadora', icon: Calculator, group: 'Engenharia' },
-    { value: 'desempenho', label: 'Desempenho', icon: ClockCounterClockwise, group: 'Controle' },
-    { value: 'diagnostico', label: 'Diagnóstico', icon: Warning, group: 'Controle' },
+  const tabs: WorkspaceNavItem<PrimaryTab>[] = [
+    { value: 'operacao', label: 'Operação', description: 'Demandas e produção', icon: Factory, badge: openDemands || undefined },
+    { value: 'configuracao', label: 'Configuração', description: 'Rendimento, origem e estoque', icon: TreeStructure, badge: reviewCount || pendingRecipes || undefined },
+    { value: 'controle', label: 'Controle', description: 'Desempenho e integridade', icon: Wrench },
   ];
 
   if (catalogQuery.isLoading) {
@@ -702,9 +786,9 @@ export default function ArtisanalStraps() {
               size="sm"
               onClick={() => {
                 catalogQuery.refetch();
-                if (activeTab === 'demandas' || activeTab === 'diagnostico') demandsQuery.refetch();
-                if (activeTab === 'producao' || activeTab === 'diagnostico') productionQuery.refetch();
-                if (activeTab === 'desempenho') {
+                demandsQuery.refetch();
+                if (operationView === 'producao' || controlView === 'diagnostico') productionQuery.refetch();
+                if (activeArea === 'controle' && controlView === 'desempenho') {
                   realYieldQuery.refetch();
                   costVarianceQuery.refetch();
                 }
@@ -717,16 +801,18 @@ export default function ArtisanalStraps() {
               <Button
                 size="sm"
                 onClick={() => openEditor({
-                  purpose: activeTab === 'cadastro' || activeTab === 'receitas'
-                    ? 'conversion'
-                    : 'stock_variant',
+                  purpose: activeArea === 'configuracao' && configurationView === 'variantes'
+                    ? 'stock_variant'
+                    : 'conversion',
                 })}
                 className="gap-2"
               >
                 <Plus className="h-4 w-4" />
-                {activeTab === 'cadastro'
-                  ? 'Cadastrar tipo e material'
-                  : activeTab === 'receitas' ? 'Nova conversão' : 'Nova variante de estoque'}
+                {activeArea === 'configuracao' && configurationView === 'variantes'
+                  ? 'Nova variante de estoque'
+                  : configurationView === 'ferramentas' && activeArea === 'configuracao'
+                    ? 'Nova conversão'
+                    : 'Configurar tira'}
               </Button>
             )}
           </>
@@ -765,88 +851,122 @@ export default function ArtisanalStraps() {
         </div>
       )}
 
-      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as HubTab)} className="space-y-4">
+      <Tabs value={activeArea} onValueChange={(value) => setActiveTab(value as PrimaryTab)} className="space-y-4">
         <HubTabsList tabs={tabs} ariaLabel="Áreas de Tiras" />
 
-        <TabsContent value="demandas" className="mt-0">
-          <DemandsTab catalog={catalog} query={demandsQuery} />
-        </TabsContent>
-
-        <TabsContent value="producao" className="mt-0">
-          <ProductionTab catalog={catalog} query={productionQuery} externalQuery={externalOperationsQuery} />
-        </TabsContent>
-
-        <TabsContent value="cadastro" className="mt-0">
-          <CatalogTab catalog={catalog} openEditor={openEditor} />
-        </TabsContent>
-
-        <TabsContent value="receitas" className="mt-0">
-          <RecipesTab
-            catalog={catalog}
-            openEditor={openEditor}
-            onSubmit={(recipe) => setReasonDialog({
-              title: 'Enviar receita para aprovação',
-              description: 'O rendimento permanecerá indisponível para novos PVs até ser aprovado.',
-              confirmLabel: 'Enviar',
-              onConfirm: (reason) => submitRecipe.mutateAsync({ recipeId: recipe.id, reason }),
-            })}
-            onApprove={(recipe) => setReasonDialog({
-              title: 'Aprovar rendimento confirmado',
-              description: `A versão ${recipe.version} valerá para os próximos pedidos; pedidos e lotes já registrados não mudam.`,
-              confirmLabel: 'Aprovar receita',
-              onConfirm: (reason) => approveRecipe.mutateAsync({ recipeId: recipe.id, reason }),
-            })}
+        <TabsContent value="operacao" className="mt-0 space-y-4">
+          <WorkspaceSectionNav<OperationView>
+            eyebrow="ROTINA"
+            title="Da necessidade ao lote pronto"
+            value={operationView}
+            onChange={(value) => setActiveTab(value)}
+            items={[
+              { value: 'demandas', label: 'Demandas', description: 'Necessidades de PV e reposição', icon: ListChecks, badge: openDemands || undefined },
+              { value: 'producao', label: 'Produção e planejamento', description: 'Lotes, capacidade e terceirização', icon: Factory },
+            ]}
           />
+          {operationView === 'demandas'
+            ? <DemandsTab catalog={catalog} query={demandsQuery} />
+            : <ProductionTab catalog={catalog} query={productionQuery} externalQuery={externalOperationsQuery} />}
         </TabsContent>
 
-        <TabsContent value="variantes" className="mt-0">
-          <VariantsTab
-            catalog={catalog}
-            openEditor={openEditor}
-            onOpenColor={() => setColorDialog(true)}
-            onOpenOfficialProduct={() => setOfficialProductDialog(true)}
-            onApproveAlias={(alias) => setReasonDialog({
-              title: `Aprovar alias “${alias.alias}”`,
-              description: 'Depois da aprovação, esse nome alternativo passa a identificar a cor padronizada.',
-              confirmLabel: 'Aprovar alias',
-              onConfirm: (reason) => approveAlias.mutateAsync({ aliasId: alias.id, reason }),
-            })}
+        <TabsContent value="configuracao" className="mt-0 space-y-4">
+          <ConfigurationRail
+            canManage={catalog.capabilities.manage_strap_catalog}
+            onConfigureYield={() => openEditor({ purpose: 'conversion', mode: 'create' })}
+            onConfigureStock={() => openEditor({ purpose: 'stock_variant', mode: 'create' })}
           />
-        </TabsContent>
-
-        <TabsContent value="calculadora" className="mt-0">
-          <CalculatorTab catalog={catalog} />
-        </TabsContent>
-
-        <TabsContent value="desempenho" className="mt-0">
-          <PerformanceTab
-            catalog={catalog}
-            realYieldQuery={realYieldQuery}
-            costVarianceQuery={costVarianceQuery}
-            openEditor={openEditor}
+          <WorkspaceSectionNav<ConfigurationView>
+            eyebrow="CENTRAL DE CONFIGURAÇÃO"
+            title="Tudo que define uma tira"
+            value={configurationView}
+            onChange={(value) => setActiveTab(value === 'ferramentas' ? 'receitas' : value)}
+            items={[
+              { value: 'cadastro', label: 'Tipos e rendimento', description: 'Material-base e conversão sem cor', icon: TreeStructure },
+              { value: 'variantes', label: 'Origem e estoque', description: 'Produção interna ou compra pronta', icon: Package, badge: reviewCount || undefined },
+              { value: 'ferramentas', label: 'Histórico e simulação', description: 'Versões técnicas e calculadora', icon: Calculator, badge: pendingRecipes || undefined },
+            ]}
           />
+
+          {configurationView === 'cadastro' && <CatalogTab catalog={catalog} openEditor={openEditor} />}
+
+          {configurationView === 'variantes' && (
+            <VariantsTab
+              catalog={catalog}
+              openEditor={openEditor}
+              onOpenColor={() => setColorDialog(true)}
+              onOpenOfficialProduct={() => setOfficialProductDialog(true)}
+              onApproveAlias={(alias) => setReasonDialog({
+                title: `Aprovar alias “${alias.alias}”`,
+                description: 'Depois da aprovação, esse nome alternativo passa a identificar a cor padronizada.',
+                confirmLabel: 'Aprovar alias',
+                onConfirm: (reason) => approveAlias.mutateAsync({ aliasId: alias.id, reason }),
+              })}
+            />
+          )}
+
+          {configurationView === 'ferramentas' && (
+            <div className="space-y-6">
+              <RecipesTab
+                catalog={catalog}
+                openEditor={openEditor}
+                onSubmit={(recipe) => setReasonDialog({
+                  title: 'Enviar receita para aprovação',
+                  description: 'O rendimento permanecerá indisponível para novos PVs até ser aprovado.',
+                  confirmLabel: 'Enviar',
+                  onConfirm: (reason) => submitRecipe.mutateAsync({ recipeId: recipe.id, reason }),
+                })}
+                onApprove={(recipe) => setReasonDialog({
+                  title: 'Aprovar rendimento confirmado',
+                  description: `A versão ${recipe.version} valerá para os próximos pedidos; pedidos e lotes já registrados não mudam.`,
+                  confirmLabel: 'Aprovar receita',
+                  onConfirm: (reason) => approveRecipe.mutateAsync({ recipeId: recipe.id, reason }),
+                })}
+              />
+              <CalculatorTab catalog={catalog} />
+            </div>
+          )}
         </TabsContent>
 
-        <TabsContent value="diagnostico" className="mt-0">
-          <DiagnosticsTab
-            catalog={catalog}
-            demandsQuery={demandsQuery}
-            productionQuery={productionQuery}
-            catalogDiagnosticsQuery={catalogDiagnosticsQuery}
-            legacyMigrationDiagnosticsQuery={legacyMigrationDiagnosticsQuery}
-            migrationDryRun={runMigrationDryRun}
-            openEditor={openEditor}
-            onRequestDryRun={() => setReasonDialog({
-              title: 'Executar dry-run da migração',
-              description: 'O relatório cria checksums e pendências de revisão, sem alterar saldos, PVs, OCs ou OSs legadas.',
-              confirmLabel: 'Executar dry-run',
-              onConfirm: (reason) => runMigrationDryRun.mutateAsync({ reason }),
-            })}
-            onResolveTechnicalLine={setTechnicalLineMapId}
-            onResolveMigrationItem={setMigrationDiagnostic}
-            onResolveLegacyProduct={setLegacyProductDiagnostic}
-            onApplyIncrementalResolution={setIncrementalApplyDiagnostic}
+        <TabsContent value="controle" className="mt-0 space-y-4">
+          <WorkspaceSectionNav<ControlView>
+            eyebrow="CONTROLE"
+            title="Resultado e integridade do fluxo"
+            value={controlView}
+            onChange={(value) => setActiveTab(value)}
+            items={[
+              { value: 'desempenho', label: 'Desempenho', description: 'Rendimento real e variação de custo', icon: ClockCounterClockwise },
+              { value: 'diagnostico', label: 'Diagnóstico', description: 'Pendências de cadastro e migração', icon: Warning },
+            ]}
           />
+          {controlView === 'desempenho' ? (
+            <PerformanceTab
+              catalog={catalog}
+              realYieldQuery={realYieldQuery}
+              costVarianceQuery={costVarianceQuery}
+              openEditor={openEditor}
+            />
+          ) : (
+            <DiagnosticsTab
+              catalog={catalog}
+              demandsQuery={demandsQuery}
+              productionQuery={productionQuery}
+              catalogDiagnosticsQuery={catalogDiagnosticsQuery}
+              legacyMigrationDiagnosticsQuery={legacyMigrationDiagnosticsQuery}
+              migrationDryRun={runMigrationDryRun}
+              openEditor={openEditor}
+              onRequestDryRun={() => setReasonDialog({
+                title: 'Executar dry-run da migração',
+                description: 'O relatório cria checksums e pendências de revisão, sem alterar saldos, PVs, OCs ou OSs legadas.',
+                confirmLabel: 'Executar dry-run',
+                onConfirm: (reason) => runMigrationDryRun.mutateAsync({ reason }),
+              })}
+              onResolveTechnicalLine={setTechnicalLineMapId}
+              onResolveMigrationItem={setMigrationDiagnostic}
+              onResolveLegacyProduct={setLegacyProductDiagnostic}
+              onApplyIncrementalResolution={setIncrementalApplyDiagnostic}
+            />
+          )}
         </TabsContent>
       </Tabs>
 
@@ -910,6 +1030,70 @@ export default function ArtisanalStraps() {
         onClose={() => setIncrementalApplyDiagnostic(null)}
       />
     </div>
+  );
+}
+
+function ConfigurationRail({
+  canManage,
+  onConfigureYield,
+  onConfigureStock,
+}: {
+  canManage: boolean;
+  onConfigureYield: () => void;
+  onConfigureStock: () => void;
+}) {
+  return (
+    <section className="overflow-hidden rounded-lg border border-border bg-card" aria-labelledby="strap-configuration-flow">
+      <div className="flex flex-col gap-2 border-b border-border px-4 py-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-primary">FLUXO DA TIRA</p>
+          <h2 id="strap-configuration-flow" className="mt-0.5 text-base font-bold text-foreground">Configure em duas etapas</h2>
+        </div>
+        <p className="max-w-xl text-xs text-muted-foreground">
+          O rendimento é único por tipo e material. Cor e SKU entram somente quando a tira pronta realmente existir no estoque.
+        </p>
+      </div>
+      <ol className="grid items-stretch gap-px bg-border md:grid-cols-[minmax(0,1fr)_80px_minmax(0,1fr)]">
+        <li className="bg-card p-4">
+          <button
+            type="button"
+            disabled={!canManage}
+            onClick={onConfigureYield}
+            className="group flex h-full w-full items-start gap-3 rounded-md p-2 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary font-mono text-xs font-bold text-primary-foreground">1</span>
+            <span>
+              <span className="block text-sm font-semibold text-foreground">Tipo, material e rendimento</span>
+              <span className="mt-1 block text-xs leading-5 text-muted-foreground">
+                Um formulário lê as medidas físicas da napa, confirma a conversão e salva sem criar cores.
+              </span>
+              <span className="mt-2 block text-xs font-semibold text-primary group-hover:underline">Abrir cadastro-base</span>
+            </span>
+          </button>
+        </li>
+        <li aria-hidden="true" className="hidden bg-card md:flex md:flex-col md:items-center md:justify-center">
+          <span className="h-px w-10 bg-border" />
+          <span className="mt-1 font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-muted-foreground">depois</span>
+        </li>
+        <li className="bg-card p-4">
+          <button
+            type="button"
+            disabled={!canManage}
+            onClick={onConfigureStock}
+            className="group flex h-full w-full items-start gap-3 rounded-md p-2 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border bg-muted font-mono text-xs font-bold text-foreground">2</span>
+            <span>
+              <span className="block text-sm font-semibold text-foreground">Origem, cor e estoque</span>
+              <span className="mt-1 block text-xs leading-5 text-muted-foreground">
+                Escolha produção interna ou compra pronta e crie a cor somente quando houver necessidade real.
+              </span>
+              <span className="mt-2 block text-xs font-semibold text-primary group-hover:underline">Abrir variante de estoque</span>
+            </span>
+          </button>
+        </li>
+      </ol>
+    </section>
   );
 }
 
