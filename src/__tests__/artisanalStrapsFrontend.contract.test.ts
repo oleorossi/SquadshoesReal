@@ -109,6 +109,8 @@ describe('Tiras artesanais — contrato do frontend canônico', () => {
     expect(saleOrderItemForm).not.toContain('Cadastrar todas');
     expect(groupEditDialog).toContain('isCanonicalStrapGroup');
     expect(groupEditDialog).toContain('Abrir cadastro canônico');
+    expect(groupEditDialog).toContain('id="edit-is-artisanal-strap"');
+    expect(groupEditDialog).toContain('is_artisanal_strap: isContainer ? false : isArtisanalStrap');
     expect(groupColorProducts).toContain('Família de tira artesanal só pode ser criada pelo Hub');
     expect(groupColorProducts).not.toMatch(/is_artisanal:\s*true/);
     expect(contractors).not.toMatch(/use(Create|Update|Delete)ArtisanalRecipe/);

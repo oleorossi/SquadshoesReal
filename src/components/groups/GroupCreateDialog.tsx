@@ -49,13 +49,14 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
     // largura errada infla o consumo linear.
     dimensions_width: null as number | null,
     parent_group_id: (initialParentId ?? "") as string,
+    is_artisanal_strap: false,
   });
    const [duplicateMatch, setDuplicateMatch] = useState<ProductGroup | null>(null);
    const [duplicateConfirmed, setDuplicateConfirmed] = useState(false);
    const { data: allGroups = [] } = useGroups();
    const { data: allProducts = [] } = useProducts();
    const sectorGuide = getFootwearSectorGuide(form.sector);
-   const requiresWidth = AREA_SECTORS.has(form.sector) && !isFamilyCreation;
+   const requiresWidth = AREA_SECTORS.has(form.sector) && !isFamilyCreation && !form.is_artisanal_strap;
    const itemCountByGroup = useMemo(() => {
      const counts = new Map<string, number>();
      for (const product of allProducts) {
@@ -108,6 +109,7 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
       description: "",
       sector: initialSector ?? "",
       auto_component_sheet: false,
+      is_artisanal_strap: false,
       dimensions_width: null,
       parent_group_id: initialParentId ?? "",
     });
@@ -139,7 +141,8 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
         name: form.name.trim().toUpperCase(),
         description: form.description,
         sector: form.sector,
-        auto_component_sheet: form.auto_component_sheet,
+        auto_component_sheet: form.is_artisanal_strap ? false : form.auto_component_sheet,
+        is_artisanal_strap: form.is_artisanal_strap,
         dimensions_width: isFamilyCreation ? null : form.dimensions_width,
         dimensions_unit: !isFamilyCreation && form.dimensions_width ? 'mm' : null,
         parent_group_id: form.parent_group_id || null,
@@ -343,8 +346,24 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
 
           {!isFamilyCreation && <div className="flex items-center gap-3 rounded-lg border p-3 bg-muted/30">
             <Switch
+              id="is-artisanal-strap"
+              checked={form.is_artisanal_strap}
+              onCheckedChange={(v) => setForm((f) => ({
+                ...f,
+                is_artisanal_strap: v,
+                auto_component_sheet: v ? false : f.auto_component_sheet,
+              }))}
+            />
+            <Label htmlFor="is-artisanal-strap" className="cursor-pointer text-sm">
+              Tira acabada (Hub) — não é a napa de origem. Desliga a ficha de componente automática.
+            </Label>
+          </div>}
+
+          {!isFamilyCreation && <div className="flex items-center gap-3 rounded-lg border p-3 bg-muted/30">
+            <Switch
               id="auto-bom-create"
               checked={form.auto_component_sheet}
+              disabled={form.is_artisanal_strap}
               onCheckedChange={(v) => setForm((f) => ({ ...f, auto_component_sheet: v }))}
             />
             <Label htmlFor="auto-bom-create" className="cursor-pointer text-sm">
