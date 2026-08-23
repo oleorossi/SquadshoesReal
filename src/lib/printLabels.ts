@@ -698,10 +698,10 @@ window._imagesReady=waitForImages();
  */
 export type ThermalLabelConfig = {
   marginPct: number;        // margem adicional em %, além da proteção técnica (default 0)
-  fontSizeName: number;     // pt for reference name (default 15)
+  fontSizeName: number;     // pt for reference name (default 18)
   fontSizeCode: number;     // pt for code (default 6.5)
-  fontSizeColor: number;    // pt for color row (default 9)
-  fontSizeMaterial: number; // pt for material (default 8)
+  fontSizeColor: number;    // pt for color row (default 11)
+  fontSizeMaterial: number; // pt for material (default 10)
   fontSizeSize: number;     // pt para numeração individual de até 2 dígitos (default 34)
   fontSizePed: number;      // pt for pedido (default 6)
   imgWidthMm: number;       // image width in mm (default 28)
@@ -719,10 +719,10 @@ export type ThermalLabelConfig = {
 
 export const DEFAULT_THERMAL_CONFIG: ThermalLabelConfig = {
   marginPct: 0,
-  fontSizeName: 15,
+  fontSizeName: 18,
   fontSizeCode: 5.5,
-  fontSizeColor: 9,
-  fontSizeMaterial: 8,
+  fontSizeColor: 11,
+  fontSizeMaterial: 10,
   fontSizeSize: 34,
   fontSizePed: 5.5,
   imgWidthMm: 28,
@@ -1171,11 +1171,11 @@ ${preloadLinks}
     height:100%;
     align-self:stretch;
     padding:0.4mm 0.4mm;
-    display:grid;
-    grid-template-rows:auto minmax(0,1fr);
-    align-items:stretch;
-    justify-items:stretch;
-    text-align:right;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    position:relative;
+    text-align:center;
     overflow:hidden;
     background:#000;
     color:#fff;
@@ -1186,8 +1186,9 @@ ${preloadLinks}
   }
   .sz-nr{
     display:block;
-    justify-self:start;
-    align-self:start;
+    position:absolute;
+    top:0.4mm;
+    left:0.4mm;
     font-size:${+(3.0 * scaleH).toFixed(1)}pt;
     font-weight:600;
     letter-spacing:0.8px;
@@ -1198,8 +1199,8 @@ ${preloadLinks}
   }
   .sz-value{
     display:block;
-    align-self:end;
-    justify-self:end;
+    align-self:center;
+    margin:auto;
     max-width:100%;
     font-family:"Arial Narrow",Arial,Helvetica,sans-serif;
     font-weight:900;
@@ -1208,8 +1209,6 @@ ${preloadLinks}
     white-space:nowrap;
   }
   .sz-value--long{
-    align-self:center;
-    justify-self:center;
     line-height:0.95;
     letter-spacing:-0.3px;
     white-space:normal;

@@ -96,16 +96,16 @@ describe('buildThermalLabelsHtml — barcode por payload distinto', () => {
     expect(DEFAULT_THERMAL_CONFIG.rightColumnMm).toBe(24);
     expect(DEFAULT_THERMAL_CONFIG.imgWidthMm).toBe(28);
     expect(DEFAULT_THERMAL_CONFIG.imgHeightMm).toBe(24);
-    expect(DEFAULT_THERMAL_CONFIG.fontSizeName).toBe(15);
-    expect(DEFAULT_THERMAL_CONFIG.fontSizeColor).toBe(9);
-    expect(DEFAULT_THERMAL_CONFIG.fontSizeMaterial).toBe(8);
+    expect(DEFAULT_THERMAL_CONFIG.fontSizeName).toBe(18);
+    expect(DEFAULT_THERMAL_CONFIG.fontSizeColor).toBe(11);
+    expect(DEFAULT_THERMAL_CONFIG.fontSizeMaterial).toBe(10);
 
     const html = buildThermalLabelsHtml([label('SP130-36', '36')], 'logo.png');
     expect(html).toContain('grid-template-columns:29mm 1fr 15mm 22mm;');
     expect(html).toContain('column-gap:0.167mm;');
-    expect(html).toContain('font-size:15pt;');
-    expect(html).toContain('font-size:9pt;');
-    expect(html).toContain('font-size:8pt;');
+    expect(html).toContain('font-size:18pt;');
+    expect(html).toContain('font-size:11pt;');
+    expect(html).toContain('font-size:10pt;');
     expect(html).toContain('padding:0.3mm 1mm;');
   });
 
@@ -121,13 +121,15 @@ describe('buildThermalLabelsHtml — barcode por payload distinto', () => {
     expect(THERMAL_LABEL_WIDTH_MM).not.toBe(COUCHE_PAGE_WIDTH_MM);
   });
 
-  it('amplia a numeração curta e ancora o valor no canto inferior direito', () => {
+  it('amplia a numeração curta e centraliza o valor no bloco preto', () => {
     const html = buildThermalLabelsHtml([label('SP130-34', '34')], 'logo.png');
 
     expect(DEFAULT_THERMAL_CONFIG.fontSizeSize).toBe(34);
     expect(html).toContain('class="sz-value" style="font-size:34pt">34</span>');
-    expect(html).toContain('align-self:end;');
-    expect(html).toContain('justify-self:end;');
+    expect(html).toContain('align-items:center;');
+    expect(html).toContain('justify-content:center;');
+    expect(html).toContain('align-self:center;');
+    expect(html).toContain('margin:auto;');
   });
 
   it('reduz somente o valor quando o modo por ficha envia uma grade longa', () => {
