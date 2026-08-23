@@ -41,6 +41,25 @@ type OrderRow = {
   sale_order_id: string | null;
 };
 
+type ProductRow = {
+  id: string;
+  name: string;
+  unit: string | null;
+  unit_price: number | null;
+  quantity: number | null;
+  min_stock: number | null;
+  is_artisanal?: boolean | null;
+};
+
+type MovementRow = {
+  product_id: string | null;
+  quantity: number | null;
+};
+
+type SaleNumberRow = {
+  order_number?: string | null;
+};
+
 export default function FichaVariancePanel() {
   const [orderId, setOrderId] = useState<string>('');
   const [creating, setCreating] = useState(false);
@@ -67,6 +86,17 @@ export default function FichaVariancePanel() {
       const order = (ordersQuery.data || []).find((o) => o.id === orderId);
       if (!order?.reference_id) throw new Error('OP sem referência');
 
+      const movementsQuery = supabase
+        .from('stock_movements')
+        .select('product_id, quantity, movement_type, description')
+        .eq('movement_type', 'out')
+        .or(`description.ilike.%${order.order_number || order.id}%,description.ilike.%${order.id}%`)
+        .limit(500);
+
+      const saleQuery = order.sale_order_id
+        ? supabase.from('sale_orders').select('order_number').eq('id', order.sale_order_id).maybeSingle()
+        : Promise.resolve({ data: null as SaleNumberRow | null });
+
       const [summary, movementsRes, productsRes, saleRes] = await Promise.all([
         calculateConsumption({
           referenceId: order.reference_id,
@@ -74,23 +104,13 @@ export default function FichaVariancePanel() {
           color: order.color,
           grade: order.grade,
         }),
-        (supabase as any)
-          .from('stock_movements')
-          .select('product_id, quantity, movement_type, description')
-          .eq('movement_type', 'out')
-          .or(`description.ilike.%${order.order_number || order.id}%,description.ilike.%${order.id}%`)
-          .limit(500),
+        movementsQuery,
         supabase.from('products').select('id, name, unit, unit_price, quantity, min_stock, is_artisanal').limit(4000),
-        order.sale_order_id
-          ? (supabase.from('sale_orders') as any).select('order_number').eq('id', order.sale_order_id).maybeSingle()
-          : Promise.resolve({ data: null }),
+        saleQuery,
       ]);
 
       const products = new Map(
-        ((productsRes.data || []) as Array<{
-          id: string; name: string; unit: string | null; unit_price: number | null;
-          quantity: number | null; min_stock: number | null; is_artisanal?: boolean | null;
-        }>).map((p) => [p.id, p]),
+        ((productsRes.data || []) as ProductRow[]).map((p) => [p.id, p]),
       );
 
       const theoretical = summary.lines
@@ -104,7 +124,7 @@ export default function FichaVariancePanel() {
         }));
 
       const actualBucket = new Map<string, number>();
-      for (const mov of (movementsRes.data || []) as Array<{ product_id: string; quantity: number }>) {
+      for (const mov of (movementsRes.data || []) as MovementRow[]) {
         if (!mov.product_id) continue;
         actualBucket.set(mov.product_id, (actualBucket.get(mov.product_id) || 0) + Math.abs(Number(mov.quantity) || 0));
       }
@@ -126,11 +146,13 @@ export default function FichaVariancePanel() {
         };
       }
 
+      const saleData = saleRes.data as SaleNumberRow | null;
+
       return {
         order,
         lines,
         stockByProduct,
-        pvNumber: (saleRes as any)?.data?.order_number || order.order_number || 'OP',
+        pvNumber: saleData?.order_number || order.order_number || 'OP',
         summary: varianceSummary(lines),
       };
     },
@@ -153,8 +175,9 @@ export default function FichaVariancePanel() {
       } else {
         toast.success(`${pos.length} ${pos.length === 1 ? 'OC' : 'OCs'}: ${pos.map((p) => p.poNumber).join(', ')}`);
       }
-    } catch (err: any) {
-      toast.error(err?.message || 'Falha ao gerar OC');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Falha ao gerar OC';
+      toast.error(message);
     } finally {
       setCreating(false);
     }
