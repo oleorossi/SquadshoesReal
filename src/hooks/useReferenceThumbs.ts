@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { resolveReferenceImageUrl } from '@/lib/referenceImage';
 
 /**
  * Foto da referência por `technical_sheets.id`, pro card do Kanban.
@@ -29,8 +30,7 @@ export function useReferenceThumbs(referenceIds: (string | null | undefined)[]) 
       if (error) throw error;
       const map = new Map<string, string>();
       for (const row of (data || []) as { id: string; images: unknown; image_url: string | null }[]) {
-        const first = Array.isArray(row.images) && typeof row.images[0] === 'string' ? row.images[0] : null;
-        const url = first || row.image_url || '';
+        const url = resolveReferenceImageUrl(row);
         if (url) map.set(row.id, url);
       }
       return map;
