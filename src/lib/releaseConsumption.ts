@@ -16,7 +16,7 @@ import { guardDebitForOrder, guardDebitForSaleOrder } from '@/lib/fichaDebitGuar
  * Agora a liberação pra produção consome as reservas — é o gesto em que o material
  * sai da prateleira de verdade.
  *
- * ── Regra load-bearing (NÃO simplificar) ──────────────────────────────────────
+ * ── Regra load-bearing (NÃO simplificar) ────────────────────────────────────
  * `commit_picking_for_sale_order` consome SÓ linhas em `status = 'reserved'`, e
  * `convert_reservation_to_out` (faturamento) também. Como esta função marca as
  * linhas como 'consumed', o faturamento simplesmente não as encontra depois —
@@ -41,13 +41,13 @@ import { guardDebitForOrder, guardDebitForSaleOrder } from '@/lib/fichaDebitGuar
  * pegaria material de OP que ainda não foi liberada. Ao construir liberação
  * parcial, trocar esta RPC por uma variante que receba os order_ids liberados.
  *
- * ── O que entra na baixa ──────────────────────────────────────────────────────
+ * ── O que entra na baixa ──────────────────────────────────────────────
  * Tudo que está reservado: componente (napa, forro, palmilha, cola), tira e
  * SOLADO — este último com baixa parcial por numeração. Embalagem NÃO entra:
  * ela é baixa dura na própria promoção (`debit_packaging_for_order`) e não
  * cria linha em `material_reservations`, então não há risco de dobrar.
  *
- * ── Onda B (2026-08-23) ───────────────────────────────────────────────────────
+ * ── Onda B (2026-08-23) ───────────────────────────────────────────
  * Sem ficha técnica a baixa é BLOQUEADA (não a produção nem o faturamento).
  * Vale na liberação, no picking e no convert_reservation_to_out.
  */
@@ -125,7 +125,7 @@ export async function convertReservationToOutGuarded(orderId: string): Promise<{
     );
     return { blocked_no_sheet: true };
   }
-  const { error } = await (supabase as any).rpc('convert_reservation_to_out', { p_order_id: orderId });
+  const { error } = await supabase.rpc('convert_reservation_to_out' as never, { p_order_id: orderId } as never);
   if (error) throw new Error(error.message);
   return {};
 }
