@@ -28,7 +28,8 @@ async function stampPoLeadTiming(params: {
     const { data } = await supabase.rpc('compute_po_purchase_by_date' as never, {
       p_sale_order_ids: [params.saleOrderId],
     } as never);
-    const computed = typeof data === 'string' ? data : data ?? null;
+    const rawComputed = data as unknown;
+    const computed = typeof rawComputed === 'string' ? rawComputed : null;
     if (computed && (!purchaseBy || computed < purchaseBy)) purchaseBy = computed;
   }
   const { data: leadRaw } = await supabase.rpc('get_effective_supplier_lead_days' as never, {

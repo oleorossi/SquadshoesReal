@@ -13,6 +13,7 @@ import {
   LINEAR_UNITS,
 } from '@/lib/materialConsumption';
 import { calculateStrapConsumptionCm, resolveOrderStraps } from '@/lib/strapConsumption';
+import { strapIdentityBasis } from '@/lib/strapIdentity';
 import { scaleGradeWithLargestRemainder } from '@/lib/scaleGrade';
 import { caixaCollectiveTypeFromName, shouldShowCaixaForMode, wholePackagingDemand, type CollectiveType } from '@/lib/packagingPairsPerBox';
 import {
@@ -136,6 +137,7 @@ export type ConsumptionItem = {
 export type MaterialVariantResolution = {
   id: string;
   reference_id: string;
+  active?: boolean | null;
   upper_material_product_id: string | null;
   upper_material_group_id: string | null;
   upper_consumption_override: number | null;
@@ -262,7 +264,9 @@ export type ConsumptionContext = {
  */
 export const TECHNICAL_SHEET_CONSUMPTION_COLUMNS = `
   id,
+  has_straps,
   upper_material,
+  upper_material_group_id,
   upper_material_product_id,
   upper_consumption,
   upper_consumption_per_size,
@@ -286,6 +290,7 @@ export const TECHNICAL_SHEET_CONSUMPTION_COLUMNS = `
   components_accessories,
   direct_components,
   component_colors_enabled,
+  strap_base_group_id,
   variant_drives_upper,
   variant_drives_lining,
   variant_drives_fachete
@@ -669,7 +674,7 @@ export async function fetchConsumptionContext(
     // (item.material_variant_id) com a MESMA precedência dos resolvers SQL.
     client
       .from('reference_material_variants')
-      .select('id, reference_id, upper_material_product_id, upper_material_group_id, upper_consumption_override, lining_material_product_id, lining_material_group_id, lining_consumption_override, insole_material_product_id, insole_material_group_id, insole_consumption_override, sole_material_product_id, sole_consumption_override, main_material_group_id')
+      .select('id, reference_id, active, upper_material_product_id, upper_material_group_id, upper_consumption_override, lining_material_product_id, lining_material_group_id, lining_consumption_override, insole_material_product_id, insole_material_group_id, insole_consumption_override, sole_material_product_id, sole_consumption_override, main_material_group_id')
       .in('reference_id', unique),
     // Padrões GLOBAIS por cor (component_color_defaults) — regra por GRUPO,
     // não por ficha: carrega tudo que está ativo (tabela pequena, sem .in()).
@@ -1214,8 +1219,16 @@ export function computeConsumptionForItems(
     // da ficha. A ÁREA (dm²/par, per-size) permanece a da ficha — a variante só
     // troca a ORIGEM do material (grupo/produto), e portanto a largura usada na
     // conversão dm²→m passa a ser a da ficha de componente do grupo DA VARIANTE.
-    const variant = item.material_variant_id
+    const variantCandidate = item.material_variant_id
       ? materialVariantsById.get(item.material_variant_id)
+      : undefined;
+    // Mesmo contrato dos resolvers SQL: o UUID precisa pertencer à referência
+    // deste item e a variante não pode estar explicitamente inativa. O fetch é
+    // em lote, então só procurar pelo id permitiria cruzar duas referências do
+    // mesmo contexto no caminho TS.
+    const variant = variantCandidate?.reference_id === item.reference_id
+      && variantCandidate.active !== false
+      ? variantCandidate
       : undefined;
     const groupNameById = (gid: string | null | undefined): string =>
       gid ? ((productGroups || []).find((g: any) => g.id === gid)?.name || '') : '';
@@ -1923,15 +1936,47 @@ export function computeConsumptionForItems(
       }
     }
 
-    // Família de napa da tira = napa da FICHA TÉCNICA da referência (cabedal
-    // primeiro, forro como fallback — nas fichas de sandália o cabedal costuma
-    // ficar vazio e a napa vive em lining_material). Regra do usuário: a tira
-    // segue o material da referência, sem mistura. NÃO é variant-aware ainda
-    // (igual ao split do Corte Forração) — variante de napa por cor fica pra
-    // depois. Ver specs/tira-base-napa-por-ficha-tecnica.md.
-    const refNapaFamily = ((sheet?.upper_material || '').toString().trim())
-      || ((sheet?.lining_material || '').toString().trim())
-      || null;
+    // Família de napa da tira = o mesmo grupo estrutural dos resolvers SQL.
+    // A regra especial só existe quando has_straps está ativo e cabedal está
+    // ausente por TEXTO, GRUPO e PIN. Nesse caso, a Forração efetiva é a fonte
+    // única. Alternativas legadas por cor não entram: o resolver SQL da tira
+    // não recebe cor e decide somente por UUIDs da ficha/variante.
+    const groupNameForProduct = (productId: string | null | undefined): string => {
+      const product = productId
+        ? (allProducts || []).find((candidate: any) => candidate.id === productId)
+        : null;
+      return product ? groupNameById(product.group_id) : '';
+    };
+    const strapsFollowLining = sheet?.has_straps === true
+      && !(sheet?.upper_material || '').toString().trim()
+      && !sheet?.upper_material_group_id
+      && !sheet?.upper_material_product_id;
+    const variantUpperFamily = variant
+      ? groupNameForProduct(variant.upper_material_product_id)
+        || groupNameById(variant.upper_material_group_id)
+      : '';
+    const variantLiningFamily = variant
+      ? groupNameForProduct(variant.lining_material_product_id)
+        || groupNameById(variant.lining_material_group_id)
+      : '';
+    const variantMainFamily = variant ? groupNameById(variant.main_material_group_id) : '';
+    const sheetUpperFamily = groupNameForProduct(sheet?.upper_material_product_id)
+      || groupNameById(sheet?.upper_material_group_id)
+      || (sheet?.upper_material || '').toString().trim();
+    const sheetLiningFamily = groupNameForProduct(sheet?.lining_material_product_id)
+      || (sheet?.lining_material || '').toString().trim();
+    const sheetStrapBaseFamily = groupNameById(sheet?.strap_base_group_id);
+    const refNapaFamily = (strapsFollowLining
+      ? variantLiningFamily
+        || (sheet?.variant_drives_lining ? variantMainFamily : '')
+        || sheetLiningFamily
+        || sheetStrapBaseFamily
+      : variantUpperFamily
+        || variantLiningFamily
+        || variantMainFamily
+        || sheetUpperFamily
+        || sheetStrapBaseFamily
+        || sheetLiningFamily) || null;
     const itemStraps = Array.isArray(item.strap_colors) ? (item.strap_colors as any[]) : [];
     const sheetStraps: any[] = sheetStrapsMap.get(item.reference_id) || [];
     const resolvedStraps = resolveOrderStraps(itemStraps, sheetStraps);
@@ -1971,7 +2016,9 @@ export function computeConsumptionForItems(
         productUnit: 'metro',
         color: strap.color || orderColor,
         totalQuantity: strapConsumptionCm / 100,
-        materialFamily: refNapaFamily,
+        materialFamily: strapIdentityBasis(strap) === 'reference_base'
+          ? refNapaFamily
+          : null,
         productIds: strapRulePids,
       });
     }

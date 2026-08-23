@@ -8,6 +8,7 @@ type StrapDefinition = {
   group_name?: string | null;
   consumption?: number | null;
   consumption_per_size?: Record<string, number> | null;
+  identity_basis?: 'reference_base' | 'finished_product_group' | null;
 };
 
 type StrapContext = {

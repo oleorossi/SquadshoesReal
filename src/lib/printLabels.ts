@@ -750,10 +750,14 @@ export const DEFAULT_THERMAL_CONFIG: ThermalLabelConfig = {
  */
 export const THERMAL_LABEL_WIDTH_MM = 100;
 export const THERMAL_LABEL_HEIGHT_MM = 30;
-export const THERMAL_DEFAULT_DIMENSIONS = {
+export interface ThermalLabelDimensions {
+  width: number;
+  height: number;
+}
+export const THERMAL_DEFAULT_DIMENSIONS: Readonly<ThermalLabelDimensions> = {
   width: THERMAL_LABEL_WIDTH_MM,
   height: THERMAL_LABEL_HEIGHT_MM,
-} as const;
+};
 export const THERMAL_SAFE_EDGE_MM = 1;
 
 export function computeThermalLabelFrame(

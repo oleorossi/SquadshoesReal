@@ -1142,6 +1142,92 @@ describe('orderConsumption — motor canônico', () => {
       expect(cabedal.totalQuantity).toBeCloseTo(1.44, 6);
     });
 
+    it('em sandália sem cabedal, a tira segue exatamente a Forração efetiva', () => {
+      const strap = [{
+        id: '1', label: 'FRENTE', color: 'PRETO',
+        group_id: 'g-tira', group_name: 'Tira chata 8mm',
+        consumption: 58,
+        consumption_per_size: { '34': 58, '35': 58, '36': 58, '37': 58, '38': 58, '39': 58 },
+      }];
+      const item = (variantDrivesLining: boolean) => buildItem({
+        material_variant_id: 'var-main',
+        strap_colors: strap,
+        technical_sheets: buildSheet({
+          has_straps: true,
+          upper_material: '',
+          lining_material: 'NAPA FORRO',
+          variant_drives_lining: variantDrivesLining,
+        }),
+      });
+
+      const fromSheet = computeConsumptionForItems([item(false)], buildVariantContext())
+        .find(row => row.componentType === 'Tiras')!;
+      const fromVariant = computeConsumptionForItems([item(true)], buildVariantContext())
+        .find(row => row.componentType === 'Tiras')!;
+
+      expect(fromSheet.materialFamily).toBe('NAPA FORRO');
+      expect(fromVariant.materialFamily).toBe('GLOW METALIC');
+    });
+
+    it('só ativa a herança especial com tiras ligadas e cabedal estruturalmente ausente', () => {
+      const strap = [{
+        id: '1', label: 'FRENTE', color: 'PRETO',
+        group_id: 'g-tira', group_name: 'Tira chata 8mm',
+        identity_basis: 'reference_base' as const,
+        consumption: 58,
+      }];
+      const family = (sheet: Record<string, unknown>) => computeConsumptionForItems([
+        buildItem({
+          material_variant_id: 'var-glow',
+          strap_colors: strap,
+          technical_sheets: buildSheet({
+            upper_material: '',
+            lining_material: 'NAPA FORRO',
+            ...sheet,
+          }),
+        }),
+      ], buildVariantContext()).find(row => row.componentType === 'Tiras')?.materialFamily;
+
+      // Com a regra ativa, o slot Cabedal da variante é ignorado.
+      expect(family({ has_straps: true })).toBe('NAPA FORRO');
+      // Sem o botão, preserva a precedência geral do resolvedor.
+      expect(family({ has_straps: false })).toBe('GLOW METALIC');
+      // Um UUID de cabedal também desativa a regra, mesmo com texto vazio.
+      expect(family({ has_straps: true, upper_material_group_id: 'g-napa' })).toBe('GLOW METALIC');
+      expect(family({ has_straps: true, upper_material_product_id: 'p-napa-preto' })).toBe('GLOW METALIC');
+    });
+
+    it('ignora variante inativa ou pertencente a outra referência', () => {
+      const strap = [{
+        id: '1', label: 'FRENTE', color: 'PRETO',
+        group_id: 'g-tira', group_name: 'Tira chata 8mm',
+        identity_basis: 'reference_base' as const,
+        consumption: 58,
+      }];
+      const item = buildItem({
+        material_variant_id: 'var-main',
+        strap_colors: strap,
+        technical_sheets: buildSheet({
+          has_straps: true,
+          upper_material: '',
+          lining_material: 'NAPA FORRO',
+          variant_drives_lining: true,
+        }),
+      });
+      const familyWith = (variantPatch: Record<string, unknown>) => {
+        const ctx = buildVariantContext();
+        ctx.materialVariantsById!.set('var-main', {
+          ...ctx.materialVariantsById!.get('var-main')!,
+          ...variantPatch,
+        });
+        return computeConsumptionForItems([item], ctx)
+          .find(row => row.componentType === 'Tiras')?.materialFamily;
+      };
+
+      expect(familyWith({ active: false })).toBe('NAPA FORRO');
+      expect(familyWith({ reference_id: 'outra-ficha' })).toBe('NAPA FORRO');
+    });
+
     it('pino do slot vence o material principal (precedência dos resolvers SQL)', () => {
       const ctx = buildVariantContext();
       ctx.productGroups.push({ id: 'g-sudani', name: 'NAPA SUDANI', dimensions_length: null, dimensions_width: null, dimensions_unit: null } as any);
@@ -1423,6 +1509,55 @@ describe('orderConsumption — contrato de colunas do fetch', () => {
     expect(tiras.map(t => t.materialFamily).sort()).toEqual(['NAPA MADRID', 'NAPA SOFT']);
     // Cada linha carrega a mesma metragem (mesma tira/qtd), só muda a napa-base.
     expect(tiras[0].totalQuantity).toBeCloseTo(tiras[1].totalQuantity, 5);
+  });
+
+  it('tira comprada pronta mantém grupo próprio e não recebe família de napa', () => {
+    const strap = [{
+      id: '1', label: 'FRENTE', color: 'PRETO',
+      group_id: 'g-tira-pronta', group_name: 'Tira pronta 8mm',
+      identity_basis: 'finished_product_group' as const,
+      consumption: 58,
+    }];
+    const item = buildItem({
+      strap_colors: strap,
+      technical_sheets: buildSheet({ upper_material: '', lining_material: 'NAPA FORRO' }),
+    });
+    const tira = computeConsumptionForItems([item], buildContext())
+      .find(row => row.componentType === 'Tiras')!;
+
+    expect(tira.materialFamily ?? null).toBeNull();
+  });
+
+  it('a base estrutural da tira não muda por alternativa legada de Forração/cor', () => {
+    const ctx = buildContext();
+    ctx.productGroups.push({
+      id: 'g-glow', name: 'GLOW METALIC',
+      dimensions_length: null, dimensions_width: null, dimensions_unit: null,
+    } as any);
+    ctx.allProducts.push({
+      id: 'p-glow-capuccino', name: 'GLOW METALIC CAPUCCINO', color: 'CAPUCCINO',
+      group_id: 'g-glow', quantity: 0, reserved_stock: 0, stock_grade: null,
+      sole_classification: null,
+    } as any);
+    const strap = [{
+      id: '1', label: 'FRENTE', color: 'CAPUCCINO',
+      group_id: 'g-tira', group_name: 'Tira chata 8mm',
+      identity_basis: 'reference_base' as const,
+      consumption: 58,
+    }];
+    const item = buildItem({
+      color: 'CAPUCCINO',
+      strap_colors: strap,
+      technical_sheets: buildSheet({
+        upper_material: '',
+        lining_material: 'NAPA FORRO',
+        lining_accessories: [{ material: 'GLOW METALIC', consumption: 4 }],
+      }),
+    });
+    const rows = computeConsumptionForItems([item], ctx);
+
+    expect(rows.find(row => row.componentType === 'Forração')?.groupName).toBe('GLOW METALIC');
+    expect(rows.find(row => row.componentType === 'Tiras')?.materialFamily).toBe('NAPA FORRO');
   });
 
   // Fallback: sem napa na ficha, a tira segue como antes (uma linha, sem família).

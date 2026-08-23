@@ -42,6 +42,7 @@ import { SoleGradeEditorDialog } from '@/components/purchases/SoleGradeEditorDia
 import { isPerPvPurchaseOrder } from '@/lib/perPvPurchasing';
 import { useCan } from '@/hooks/useAccessControl';
 import { applyPrintSandbox } from '@/lib/htmlUtils';
+import { exportPurchaseOrdersXlsx, summarizePurchaseOrders } from '@/lib/purchaseOrderReport';
 
 const STATUS_MAP: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
   pending: { label: 'Pendente', variant: 'outline' },
@@ -211,6 +212,11 @@ export default function PurchaseOrders() {
   const [searchParams, setSearchParams] = useSearchParams();
   const search = searchParams.get('q') ?? '';
   const supplierFilter = searchParams.get('supplier') ?? 'all';
+  const itemFilter = searchParams.get('item') ?? '';
+  const contentFilter = (searchParams.get('content') ?? 'all') as POContentType | 'all';
+  const originFilter = searchParams.get('origin') ?? 'all';
+  const minValue = searchParams.get('minValue') ?? '';
+  const maxValue = searchParams.get('maxValue') ?? '';
   const fromDate = searchParams.get('from') ?? '';
   const toDate = searchParams.get('to') ?? '';
   const basis: DateBasis = searchParams.get('basis') === 'criacao' ? 'criacao' : 'vencimento';
@@ -231,11 +237,11 @@ export default function PurchaseOrders() {
     if (next.has(value)) next.delete(value); else next.add(value);
     setParam('status', next.size > 0 ? Array.from(next).join(',') : null);
   }, [statusSet, setParam]);
-  const hasActiveFilters = !!(search || (supplierFilter && supplierFilter !== 'all') || fromDate || toDate || statusSet.size > 0);
+  const hasActiveFilters = !!(search || itemFilter || contentFilter !== 'all' || originFilter !== 'all' || minValue || maxValue || (supplierFilter && supplierFilter !== 'all') || fromDate || toDate || statusSet.size > 0);
   const clearFilters = useCallback(() => {
     setSearchParams(prev => {
       const p = new URLSearchParams(prev);
-      ['q', 'supplier', 'status', 'from', 'to', 'basis'].forEach(k => p.delete(k));
+      ['q', 'item', 'content', 'origin', 'minValue', 'maxValue', 'supplier', 'status', 'from', 'to', 'basis'].forEach(k => p.delete(k));
       return p;
     }, { replace: true });
   }, [setSearchParams]);
@@ -282,13 +288,24 @@ export default function PurchaseOrders() {
     if (!showPerPv && isPerPvPurchaseOrder(o)) return false;
     if (statusSet.size > 0 && !statusSet.has(o.status)) return false;
     if (supplierFilter !== 'all' && o.supplier_name !== supplierFilter) return false;
-    if (!searchMatchesAllTerms(search, o.order_number, o.supplier_name)) return false;
+    const itemSummary = itemSummaries?.get(o.id);
+    if (!searchMatchesAllTerms(search, o.order_number, o.supplier_name, itemSummary?.searchText)) return false;
+    if (!searchMatchesAllTerms(itemFilter, itemSummary?.searchText)) return false;
+    if (contentFilter !== 'all' && itemSummary?.contentType !== contentFilter) return false;
+    if (originFilter === 'manual' && (o.auto_generated || isPerPvPurchaseOrder(o))) return false;
+    if (originFilter === 'automatic' && !o.auto_generated) return false;
+    if (originFilter === 'per_pv' && !isPerPvPurchaseOrder(o)) return false;
+    const total = Number(o.total_value) || 0;
+    if (minValue && total < Number(minValue)) return false;
+    if (maxValue && total > Number(maxValue)) return false;
     if (fromDate || toDate) {
       const r = toCostRow(o);
       if (!inDateRange(rowDateForBasis(r, basis), fromDate || null, toDate || null)) return false;
     }
     return true;
-  }), [orders, statusSet, supplierFilter, search, showPerPv, fromDate, toDate, basis, toCostRow]);
+  }), [orders, statusSet, supplierFilter, search, itemFilter, contentFilter, originFilter, minValue, maxValue, itemSummaries, showPerPv, fromDate, toDate, basis, toCostRow]);
+
+  const filteredSummary = useMemo(() => summarizePurchaseOrders(filtered, new Date().toISOString().slice(0, 10)), [filtered]);
 
   const selectedOrders = useMemo(() => orders.filter(o => selectedIds.has(o.id)), [orders, selectedIds]);
   const selectionSummary = useMemo(() => summarizeRows(selectedOrders.map(toCostRow)), [selectedOrders, toCostRow]);
@@ -318,6 +335,12 @@ export default function PurchaseOrders() {
       setPdfBusy(false);
     }
   }, [selectedOrders, filtered, toCostRow, fromDate, toDate, basis, supplierFilter]);
+
+  const handleExportExcel = useCallback(() => {
+    if (!filtered.length) return toast.error('Nenhuma OC no filtro atual.');
+    exportPurchaseOrdersXlsx(filtered, itemSummaries, status => STATUS_MAP[status]?.label ?? status);
+    toast.success('Relatório Excel detalhado gerado.');
+  }, [filtered, itemSummaries]);
 
   const pendingCount = orders.filter(o => o.status === 'pending').length;
   const pendingOrders = orders.filter(o => o.status === 'pending');
@@ -471,7 +494,7 @@ export default function PurchaseOrders() {
                   className="flex-1 min-w-[200px]"
                   value={search}
                   onChange={v => setParam('q', v || null)}
-                  placeholder="Buscar por nº da OC ou fornecedor…"
+                  placeholder="Buscar OC, fornecedor, item, SKU ou cor…"
                   resultCount={filtered.length}
                   totalCount={orders.length}
                 />
@@ -521,16 +544,51 @@ export default function PurchaseOrders() {
                     <SelectItem value="criacao">Por criação</SelectItem>
                   </SelectContent>
                 </Select>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="sm" className="h-9 gap-1.5">
+                      <Funnel className="h-4 w-4" /> Mais filtros
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent align="start" className="w-[360px] space-y-3">
+                    <div className="space-y-1.5">
+                      <Label>Item, SKU, categoria ou cor</Label>
+                      <Input value={itemFilter} onChange={e => setParam('item', e.target.value || null)} placeholder="Ex.: napa soft, 204 preto…" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1.5"><Label>Tipo de item</Label><Select value={contentFilter} onValueChange={v => setParam('content', v === 'all' ? null : v)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Todos</SelectItem><SelectItem value="material">Material</SelectItem><SelectItem value="solado">Solado</SelectItem><SelectItem value="palmilha">Palmilha</SelectItem><SelectItem value="misto">Misto</SelectItem></SelectContent></Select></div>
+                      <div className="space-y-1.5"><Label>Origem</Label><Select value={originFilter} onValueChange={v => setParam('origin', v === 'all' ? null : v)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Todas</SelectItem><SelectItem value="manual">Manual</SelectItem><SelectItem value="automatic">Automática</SelectItem><SelectItem value="per_pv">Por pedido</SelectItem></SelectContent></Select></div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1.5"><Label>Valor mínimo</Label><Input type="number" min="0" step="0.01" value={minValue} onChange={e => setParam('minValue', e.target.value || null)} placeholder="R$ 0,00" /></div>
+                      <div className="space-y-1.5"><Label>Valor máximo</Label><Input type="number" min="0" step="0.01" value={maxValue} onChange={e => setParam('maxValue', e.target.value || null)} placeholder="Sem limite" /></div>
+                    </div>
+                  </PopoverContent>
+                </Popover>
                 {hasActiveFilters && (
                   <Button variant="ghost" size="sm" className="h-9 gap-1.5 text-muted-foreground" onClick={clearFilters}>
                     <XIcon className="h-3.5 w-3.5" /> Limpar filtros
                   </Button>
                 )}
-                <Button variant="outline" size="sm" className="h-9 gap-1.5 ml-auto" disabled={pdfBusy} onClick={() => handleGeneratePdf('filtro')}>
+                <Button variant="outline" size="sm" className="h-9 gap-1.5 ml-auto" onClick={handleExportExcel}>
+                  <FileDown className="h-4 w-4" /> Excel detalhado
+                </Button>
+                <Button variant="outline" size="sm" className="h-9 gap-1.5" disabled={pdfBusy} onClick={() => handleGeneratePdf('filtro')}>
                   {pdfBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
                   Relatório PDF ({filtered.length})
                 </Button>
               </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
+              {[
+                ['OCs no recorte', filteredSummary.count.toLocaleString('pt-BR')],
+                ['Valor total', fmt(filteredSummary.total)],
+                ['Em aberto', fmt(filteredSummary.openTotal)],
+                ['Ticket médio', fmt(filteredSummary.average)],
+                ['Fornecedores', filteredSummary.supplierCount.toLocaleString('pt-BR')],
+                ['Em atraso', filteredSummary.overdueCount.toLocaleString('pt-BR')],
+              ].map(([label, value]) => <Panel key={label} className="p-3"><p className="text-xs text-muted-foreground">{label}</p><p className="mt-1 text-lg font-semibold tabular-nums">{value}</p></Panel>)}
             </div>
 
             {/* Toggle do canal "Compras por Pedido" (escondido por padrão pra não

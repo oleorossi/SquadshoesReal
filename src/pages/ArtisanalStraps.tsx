@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
   ArrowsClockwise as RefreshCw,
@@ -20,6 +21,7 @@ import {
   Warning,
   Wrench,
 } from '@phosphor-icons/react';
+import type { Icon as PhosphorIcon } from '@phosphor-icons/react';
 import { ArtisanalStrapEditor, type ArtisanalStrapEditorMode, type ArtisanalStrapEditorOrigin } from '@/components/artisanal-straps/ArtisanalStrapEditor';
 import { ArtisanalStrapConversionEditor } from '@/components/artisanal-straps/ArtisanalStrapConversionEditor';
 import { ArtisanalStrapBatchMatrix } from '@/components/artisanal-straps/ArtisanalStrapBatchMatrix';
@@ -57,6 +59,7 @@ import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { useContractors } from '@/hooks/useContractors';
+import { cn } from '@/lib/utils';
 import {
   type ArtisanalStrapCatalog,
   type ArtisanalStrapCatalogDiagnostic,
@@ -64,13 +67,11 @@ import {
   type ArtisanalStrapLegacyMigrationDiagnostic,
   type ArtisanalStrapRecipe,
   type ArtisanalStrapVariant,
-  type BaseMaterialWidthProfile,
   type CanonicalStrapColorAlias,
   type OperationalStrapDemand,
   type StrapProductionBatch,
   type StrapProductionBatchItem,
   useApproveArtisanalStrapRecipe,
-  useApproveBaseMaterialWidthProfile,
   useApproveCanonicalColorAlias,
   useArtisanalStrapCatalog,
   useArtisanalStrapCatalogDiagnostics,
@@ -81,7 +82,6 @@ import {
   useArtisanalStrapProduction,
   useArtisanalStrapRealYieldHistory,
   useDesignateBaseMaterialOfficialProduct,
-  useSaveBaseMaterialWidthProfile,
   useSaveCanonicalColorAlias,
   useSaveCanonicalStrapColor,
   useRunArtisanalStrapMigrationDryRun,
@@ -94,9 +94,13 @@ import {
   useSubmitArtisanalStrapRecipe,
 } from '@/hooks/useArtisanalStraps';
 import { printArtisanalStrapBatch } from '@/lib/printArtisanalStrapBatch';
+import { useUpdateGroup } from '@/hooks/useGroups';
 import StrapCalculator from './StrapCalculator';
 
 const TAB_VALUES = [
+  'operacao',
+  'configuracao',
+  'controle',
   'demandas',
   'producao',
   'cadastro',
@@ -108,6 +112,82 @@ const TAB_VALUES = [
 ] as const;
 
 type HubTab = (typeof TAB_VALUES)[number];
+type PrimaryTab = 'operacao' | 'configuracao' | 'controle';
+type OperationView = 'demandas' | 'producao';
+type ConfigurationView = 'cadastro' | 'variantes' | 'ferramentas';
+type ControlView = 'desempenho' | 'diagnostico';
+
+const PRIMARY_TAB_BY_HUB_TAB: Record<HubTab, PrimaryTab> = {
+  operacao: 'operacao',
+  configuracao: 'configuracao',
+  controle: 'controle',
+  demandas: 'operacao',
+  producao: 'operacao',
+  cadastro: 'configuracao',
+  receitas: 'configuracao',
+  variantes: 'configuracao',
+  calculadora: 'configuracao',
+  desempenho: 'controle',
+  diagnostico: 'controle',
+};
+
+interface WorkspaceNavItem<T extends string> {
+  value: T;
+  label: string;
+  description: string;
+  icon: PhosphorIcon;
+  badge?: number;
+}
+
+function WorkspaceSectionNav<T extends string>({
+  eyebrow,
+  title,
+  value,
+  items,
+  onChange,
+}: {
+  eyebrow: string;
+  title: string;
+  value: T;
+  items: WorkspaceNavItem<T>[];
+  onChange: (value: T) => void;
+}) {
+  return (
+    <section className="overflow-hidden rounded-lg border border-border bg-card" aria-label={title}>
+      <div className="border-b border-border px-4 py-3">
+        <p className="font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-muted-foreground">{eyebrow}</p>
+        <h2 className="mt-0.5 text-sm font-semibold text-foreground">{title}</h2>
+      </div>
+      <div className={cn('grid gap-px bg-border', items.length === 2 ? 'sm:grid-cols-2' : 'lg:grid-cols-3')} role="tablist">
+        {items.map((item) => {
+          const selected = item.value === value;
+          return (
+            <button
+              key={item.value}
+              type="button"
+              role="tab"
+              aria-selected={selected}
+              onClick={() => onChange(item.value)}
+              className={cn(
+                'flex min-h-16 items-start gap-3 bg-card px-4 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
+                selected ? 'bg-accent text-accent-foreground' : 'hover:bg-muted/50',
+              )}
+            >
+              <item.icon className={cn('mt-0.5 h-4 w-4 shrink-0', selected ? 'text-primary' : 'text-muted-foreground')} weight={selected ? 'bold' : 'regular'} />
+              <span className="min-w-0 flex-1">
+                <span className="flex items-center gap-2 text-xs font-semibold">
+                  {item.label}
+                  {item.badge ? <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">{item.badge}</Badge> : null}
+                </span>
+                <span className="mt-0.5 block text-[11px] leading-4 text-muted-foreground">{item.description}</span>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
 
 const EMPTY_CATALOG: ArtisanalStrapCatalog = {
   types: [],
@@ -236,87 +316,6 @@ function ReasonDialog({
           <Button variant="outline" onClick={close}>Cancelar</Button>
           <Button onClick={confirm} disabled={!reason.trim() || submitting}>
             {submitting ? 'Confirmando…' : state?.confirmLabel}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-interface WidthDialogState {
-  groupId: string;
-  profile?: BaseMaterialWidthProfile;
-}
-
-function WidthProfileDialog({
-  state,
-  catalog,
-  onClose,
-}: {
-  state: WidthDialogState | null;
-  catalog: ArtisanalStrapCatalog;
-  onClose: () => void;
-}) {
-  const [width, setWidth] = useState(0);
-  const [reason, setReason] = useState('');
-  const save = useSaveBaseMaterialWidthProfile();
-  const group = catalog.groups.find((item) => item.id === state?.groupId);
-
-  useEffect(() => {
-    if (!state) return;
-    setWidth(Number(state.profile?.usable_width_mm) || 0);
-    setReason('');
-  }, [state]);
-
-  const close = () => {
-    if (save.isPending) return;
-    setWidth(0);
-    setReason('');
-    onClose();
-  };
-
-  return (
-    <Dialog
-      open={Boolean(state)}
-      onOpenChange={(open) => {
-        if (!open) close();
-      }}
-    >
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Perfil de largura útil</DialogTitle>
-          <DialogDescription>
-            {group?.name || 'Napa-base'} compartilha esta largura entre todas as cores.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="space-y-4">
-          <div className="space-y-1.5">
-            <Label>Largura útil *</Label>
-            <NumberInput value={width} onChange={setWidth} unit="mm" />
-          </div>
-          <div className="space-y-1.5">
-            <Label>Motivo *</Label>
-            <Textarea value={reason} onChange={(event) => setReason(event.target.value)} rows={2} />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={close}>Cancelar</Button>
-          <Button
-            disabled={width <= 0 || !reason.trim() || save.isPending || !state}
-            onClick={async () => {
-              if (!state) return;
-              await save.mutateAsync({
-                id: state.profile && ['draft', 'pending_approval'].includes(state.profile.status)
-                  ? state.profile.id
-                  : undefined,
-                baseGroupId: state.groupId,
-                usableWidthMm: width,
-                reason: reason.trim(),
-              });
-              close();
-            }}
-          >
-            {save.isPending ? 'Salvando…' : 'Salvar para aprovação'}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -626,7 +625,7 @@ function TechnicalLineMigrationDialog({
 export default function ArtisanalStraps() {
   const { value: activeTab, setValue: setActiveTab } = useUrlTabState<HubTab>({
     values: TAB_VALUES,
-    defaultValue: 'demandas',
+    defaultValue: 'operacao',
     aliases: {
       recipes: 'receitas',
       optimizer: 'calculadora',
@@ -636,8 +635,15 @@ export default function ArtisanalStraps() {
     },
   });
   const [searchParams, setSearchParams] = useSearchParams();
+  const activeArea = PRIMARY_TAB_BY_HUB_TAB[activeTab];
+  const operationView: OperationView = activeTab === 'producao' ? 'producao' : 'demandas';
+  const configurationView: ConfigurationView = activeTab === 'variantes'
+    ? 'variantes'
+    : activeTab === 'receitas' || activeTab === 'calculadora'
+      ? 'ferramentas'
+      : 'cadastro';
+  const controlView: ControlView = activeTab === 'diagnostico' ? 'diagnostico' : 'desempenho';
   const [reasonDialog, setReasonDialog] = useState<ReasonDialogState | null>(null);
-  const [widthDialog, setWidthDialog] = useState<WidthDialogState | null>(null);
   const [colorDialog, setColorDialog] = useState(false);
   const [officialProductDialog, setOfficialProductDialog] = useState(false);
   const [technicalLineMapId, setTechnicalLineMapId] = useState<string | null>(null);
@@ -647,20 +653,19 @@ export default function ArtisanalStraps() {
 
   const catalogQuery = useArtisanalStrapCatalog(true);
   const catalog = catalogQuery.data || EMPTY_CATALOG;
-  const demandsQuery = useArtisanalStrapDemands(activeTab === 'demandas' || activeTab === 'diagnostico');
-  const productionQuery = useArtisanalStrapProduction(activeTab === 'producao' || activeTab === 'diagnostico');
-  const externalOperationsQuery = useArtisanalStrapExternalOperations(activeTab === 'producao');
-  const catalogDiagnosticsQuery = useArtisanalStrapCatalogDiagnostics(activeTab === 'diagnostico');
+  const demandsQuery = useArtisanalStrapDemands(true);
+  const productionQuery = useArtisanalStrapProduction(operationView === 'producao' || controlView === 'diagnostico');
+  const externalOperationsQuery = useArtisanalStrapExternalOperations(operationView === 'producao' && activeArea === 'operacao');
+  const catalogDiagnosticsQuery = useArtisanalStrapCatalogDiagnostics(activeArea === 'controle' && controlView === 'diagnostico');
   const legacyMigrationDiagnosticsQuery = useArtisanalStrapLegacyMigrationDiagnostics(
-    activeTab === 'diagnostico' && catalog.capabilities.resolve_strap_migration,
+    activeArea === 'controle' && controlView === 'diagnostico' && catalog.capabilities.resolve_strap_migration,
   );
-  const realYieldQuery = useArtisanalStrapRealYieldHistory(activeTab === 'desempenho');
-  const costVarianceQuery = useArtisanalStrapCostVariance(activeTab === 'desempenho');
+  const realYieldQuery = useArtisanalStrapRealYieldHistory(activeArea === 'controle' && controlView === 'desempenho');
+  const costVarianceQuery = useArtisanalStrapCostVariance(activeArea === 'controle' && controlView === 'desempenho');
 
   const submitRecipe = useSubmitArtisanalStrapRecipe();
   const approveRecipe = useApproveArtisanalStrapRecipe();
   const approveAlias = useApproveCanonicalColorAlias();
-  const approveWidth = useApproveBaseMaterialWidthProfile();
   const runMigrationDryRun = useRunArtisanalStrapMigrationDryRun();
 
   const editorOpen = searchParams.get('editor') === '1';
@@ -671,7 +676,7 @@ export default function ArtisanalStraps() {
     ? searchParams.get('origin')
     : 'hub') as ArtisanalStrapEditorOrigin;
   const editorPurpose = searchParams.get('purpose') === 'conversion'
-    || (!searchParams.get('purpose') && activeTab === 'receitas')
+    || (!searchParams.get('purpose') && activeArea === 'configuracao' && configurationView !== 'variantes')
     ? 'conversion'
     : 'stock_variant';
 
@@ -681,7 +686,9 @@ export default function ArtisanalStraps() {
       params.set('editor', '1');
       params.set('mode', args.mode || 'create');
       params.set('origin', args.origin || 'hub');
-      params.set('purpose', args.purpose || (activeTab === 'receitas' ? 'conversion' : 'stock_variant'));
+      params.set('purpose', args.purpose || (
+        activeArea === 'configuracao' && configurationView !== 'variantes' ? 'conversion' : 'stock_variant'
+      ));
       const values: Array<[string, string | undefined]> = [
         ['recipeId', args.recipeId],
         ['variantId', args.variantId],
@@ -727,15 +734,10 @@ export default function ArtisanalStraps() {
     ? catalog.products.find((item) => item.id === focusVariant.finished_product_id)
     : null;
 
-  const tabs = [
-    { value: 'demandas', label: 'Demandas', icon: ListChecks, badge: openDemands || undefined, group: 'Operação' },
-    { value: 'producao', label: 'Produção e planejamento', icon: Factory, group: 'Operação' },
-    { value: 'cadastro', label: 'Catálogo', icon: TreeStructure, group: 'Engenharia' },
-    { value: 'receitas', label: 'Receitas', icon: Scissors, badge: pendingRecipes || undefined, group: 'Engenharia' },
-    { value: 'variantes', label: 'Variantes e estoque', icon: Package, badge: reviewCount || undefined, group: 'Engenharia' },
-    { value: 'calculadora', label: 'Calculadora', icon: Calculator, group: 'Engenharia' },
-    { value: 'desempenho', label: 'Desempenho', icon: ClockCounterClockwise, group: 'Controle' },
-    { value: 'diagnostico', label: 'Diagnóstico', icon: Warning, group: 'Controle' },
+  const tabs: WorkspaceNavItem<PrimaryTab>[] = [
+    { value: 'operacao', label: 'Operação', description: 'Demandas e produção', icon: Factory, badge: openDemands || undefined },
+    { value: 'configuracao', label: 'Configuração', description: 'Rendimento, origem e estoque', icon: TreeStructure, badge: reviewCount || pendingRecipes || undefined },
+    { value: 'controle', label: 'Controle', description: 'Desempenho e integridade', icon: Wrench },
   ];
 
   if (catalogQuery.isLoading) {
@@ -784,9 +786,9 @@ export default function ArtisanalStraps() {
               size="sm"
               onClick={() => {
                 catalogQuery.refetch();
-                if (activeTab === 'demandas' || activeTab === 'diagnostico') demandsQuery.refetch();
-                if (activeTab === 'producao' || activeTab === 'diagnostico') productionQuery.refetch();
-                if (activeTab === 'desempenho') {
+                demandsQuery.refetch();
+                if (operationView === 'producao' || controlView === 'diagnostico') productionQuery.refetch();
+                if (activeArea === 'controle' && controlView === 'desempenho') {
                   realYieldQuery.refetch();
                   costVarianceQuery.refetch();
                 }
@@ -799,12 +801,18 @@ export default function ArtisanalStraps() {
               <Button
                 size="sm"
                 onClick={() => openEditor({
-                  purpose: activeTab === 'receitas' ? 'conversion' : 'stock_variant',
+                  purpose: activeArea === 'configuracao' && configurationView === 'variantes'
+                    ? 'stock_variant'
+                    : 'conversion',
                 })}
                 className="gap-2"
               >
                 <Plus className="h-4 w-4" />
-                {activeTab === 'receitas' ? 'Nova conversão' : 'Nova variante de estoque'}
+                {activeArea === 'configuracao' && configurationView === 'variantes'
+                  ? 'Nova variante de estoque'
+                  : configurationView === 'ferramentas' && activeArea === 'configuracao'
+                    ? 'Nova conversão'
+                    : 'Configurar tira'}
               </Button>
             )}
           </>
@@ -843,95 +851,122 @@ export default function ArtisanalStraps() {
         </div>
       )}
 
-      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as HubTab)} className="space-y-4">
+      <Tabs value={activeArea} onValueChange={(value) => setActiveTab(value as PrimaryTab)} className="space-y-4">
         <HubTabsList tabs={tabs} ariaLabel="Áreas de Tiras" />
 
-        <TabsContent value="demandas" className="mt-0">
-          <DemandsTab catalog={catalog} query={demandsQuery} />
-        </TabsContent>
-
-        <TabsContent value="producao" className="mt-0">
-          <ProductionTab catalog={catalog} query={productionQuery} externalQuery={externalOperationsQuery} />
-        </TabsContent>
-
-        <TabsContent value="cadastro" className="mt-0">
-          <CatalogTab
-            catalog={catalog}
-            openEditor={openEditor}
-            onOpenColor={() => setColorDialog(true)}
-            onOpenOfficialProduct={() => setOfficialProductDialog(true)}
-            onOpenWidth={setWidthDialog}
-            onApproveAlias={(alias) => setReasonDialog({
-              title: `Aprovar alias “${alias.alias}”`,
-              description: 'Depois da aprovação, esse nome alternativo passa a identificar a cor padronizada.',
-              confirmLabel: 'Aprovar alias',
-              onConfirm: (reason) => approveAlias.mutateAsync({ aliasId: alias.id, reason }),
-            })}
-            onApproveWidth={(profile) => setReasonDialog({
-              title: 'Aprovar largura útil',
-              description: 'A nova largura passará a governar a sugestão geométrica das receitas.',
-              confirmLabel: 'Aprovar perfil',
-              onConfirm: (reason) => approveWidth.mutateAsync({ profileId: profile.id, reason }),
-            })}
+        <TabsContent value="operacao" className="mt-0 space-y-4">
+          <WorkspaceSectionNav<OperationView>
+            eyebrow="ROTINA"
+            title="Da necessidade ao lote pronto"
+            value={operationView}
+            onChange={(value) => setActiveTab(value)}
+            items={[
+              { value: 'demandas', label: 'Demandas', description: 'Necessidades de PV e reposição', icon: ListChecks, badge: openDemands || undefined },
+              { value: 'producao', label: 'Produção e planejamento', description: 'Lotes, capacidade e terceirização', icon: Factory },
+            ]}
           />
+          {operationView === 'demandas'
+            ? <DemandsTab catalog={catalog} query={demandsQuery} />
+            : <ProductionTab catalog={catalog} query={productionQuery} externalQuery={externalOperationsQuery} />}
         </TabsContent>
 
-        <TabsContent value="receitas" className="mt-0">
-          <RecipesTab
-            catalog={catalog}
-            openEditor={openEditor}
-            onSubmit={(recipe) => setReasonDialog({
-              title: 'Enviar receita para aprovação',
-              description: 'O rendimento permanecerá indisponível para novos PVs até ser aprovado.',
-              confirmLabel: 'Enviar',
-              onConfirm: (reason) => submitRecipe.mutateAsync({ recipeId: recipe.id, reason }),
-            })}
-            onApprove={(recipe) => setReasonDialog({
-              title: 'Aprovar rendimento confirmado',
-              description: `A versão ${recipe.version} valerá para os próximos pedidos; pedidos e lotes já registrados não mudam.`,
-              confirmLabel: 'Aprovar receita',
-              onConfirm: (reason) => approveRecipe.mutateAsync({ recipeId: recipe.id, reason }),
-            })}
+        <TabsContent value="configuracao" className="mt-0 space-y-4">
+          <ConfigurationRail
+            canManage={catalog.capabilities.manage_strap_catalog}
+            onConfigureYield={() => openEditor({ purpose: 'conversion', mode: 'create' })}
+            onConfigureStock={() => openEditor({ purpose: 'stock_variant', mode: 'create' })}
           />
-        </TabsContent>
-
-        <TabsContent value="variantes" className="mt-0">
-          <VariantsTab catalog={catalog} openEditor={openEditor} />
-        </TabsContent>
-
-        <TabsContent value="calculadora" className="mt-0">
-          <CalculatorTab catalog={catalog} />
-        </TabsContent>
-
-        <TabsContent value="desempenho" className="mt-0">
-          <PerformanceTab
-            catalog={catalog}
-            realYieldQuery={realYieldQuery}
-            costVarianceQuery={costVarianceQuery}
-            openEditor={openEditor}
+          <WorkspaceSectionNav<ConfigurationView>
+            eyebrow="CENTRAL DE CONFIGURAÇÃO"
+            title="Tudo que define uma tira"
+            value={configurationView}
+            onChange={(value) => setActiveTab(value === 'ferramentas' ? 'receitas' : value)}
+            items={[
+              { value: 'cadastro', label: 'Tipos e rendimento', description: 'Material-base e conversão sem cor', icon: TreeStructure },
+              { value: 'variantes', label: 'Origem e estoque', description: 'Produção interna ou compra pronta', icon: Package, badge: reviewCount || undefined },
+              { value: 'ferramentas', label: 'Histórico e simulação', description: 'Versões técnicas e calculadora', icon: Calculator, badge: pendingRecipes || undefined },
+            ]}
           />
+
+          {configurationView === 'cadastro' && <CatalogTab catalog={catalog} openEditor={openEditor} />}
+
+          {configurationView === 'variantes' && (
+            <VariantsTab
+              catalog={catalog}
+              openEditor={openEditor}
+              onOpenColor={() => setColorDialog(true)}
+              onOpenOfficialProduct={() => setOfficialProductDialog(true)}
+              onApproveAlias={(alias) => setReasonDialog({
+                title: `Aprovar alias “${alias.alias}”`,
+                description: 'Depois da aprovação, esse nome alternativo passa a identificar a cor padronizada.',
+                confirmLabel: 'Aprovar alias',
+                onConfirm: (reason) => approveAlias.mutateAsync({ aliasId: alias.id, reason }),
+              })}
+            />
+          )}
+
+          {configurationView === 'ferramentas' && (
+            <div className="space-y-6">
+              <RecipesTab
+                catalog={catalog}
+                openEditor={openEditor}
+                onSubmit={(recipe) => setReasonDialog({
+                  title: 'Enviar receita para aprovação',
+                  description: 'O rendimento permanecerá indisponível para novos PVs até ser aprovado.',
+                  confirmLabel: 'Enviar',
+                  onConfirm: (reason) => submitRecipe.mutateAsync({ recipeId: recipe.id, reason }),
+                })}
+                onApprove={(recipe) => setReasonDialog({
+                  title: 'Aprovar rendimento confirmado',
+                  description: `A versão ${recipe.version} valerá para os próximos pedidos; pedidos e lotes já registrados não mudam.`,
+                  confirmLabel: 'Aprovar receita',
+                  onConfirm: (reason) => approveRecipe.mutateAsync({ recipeId: recipe.id, reason }),
+                })}
+              />
+              <CalculatorTab catalog={catalog} />
+            </div>
+          )}
         </TabsContent>
 
-        <TabsContent value="diagnostico" className="mt-0">
-          <DiagnosticsTab
-            catalog={catalog}
-            demandsQuery={demandsQuery}
-            productionQuery={productionQuery}
-            catalogDiagnosticsQuery={catalogDiagnosticsQuery}
-            legacyMigrationDiagnosticsQuery={legacyMigrationDiagnosticsQuery}
-            migrationDryRun={runMigrationDryRun}
-            openEditor={openEditor}
-            onRequestDryRun={() => setReasonDialog({
-              title: 'Executar dry-run da migração',
-              description: 'O relatório cria checksums e pendências de revisão, sem alterar saldos, PVs, OCs ou OSs legadas.',
-              confirmLabel: 'Executar dry-run',
-              onConfirm: (reason) => runMigrationDryRun.mutateAsync({ reason }),
-            })}
-            onResolveTechnicalLine={setTechnicalLineMapId}
-            onResolveMigrationItem={setMigrationDiagnostic}
-            onResolveLegacyProduct={setLegacyProductDiagnostic}
-            onApplyIncrementalResolution={setIncrementalApplyDiagnostic}
+        <TabsContent value="controle" className="mt-0 space-y-4">
+          <WorkspaceSectionNav<ControlView>
+            eyebrow="CONTROLE"
+            title="Resultado e integridade do fluxo"
+            value={controlView}
+            onChange={(value) => setActiveTab(value)}
+            items={[
+              { value: 'desempenho', label: 'Desempenho', description: 'Rendimento real e variação de custo', icon: ClockCounterClockwise },
+              { value: 'diagnostico', label: 'Diagnóstico', description: 'Pendências de cadastro e migração', icon: Warning },
+            ]}
           />
+          {controlView === 'desempenho' ? (
+            <PerformanceTab
+              catalog={catalog}
+              realYieldQuery={realYieldQuery}
+              costVarianceQuery={costVarianceQuery}
+              openEditor={openEditor}
+            />
+          ) : (
+            <DiagnosticsTab
+              catalog={catalog}
+              demandsQuery={demandsQuery}
+              productionQuery={productionQuery}
+              catalogDiagnosticsQuery={catalogDiagnosticsQuery}
+              legacyMigrationDiagnosticsQuery={legacyMigrationDiagnosticsQuery}
+              migrationDryRun={runMigrationDryRun}
+              openEditor={openEditor}
+              onRequestDryRun={() => setReasonDialog({
+                title: 'Executar dry-run da migração',
+                description: 'O relatório cria checksums e pendências de revisão, sem alterar saldos, PVs, OCs ou OSs legadas.',
+                confirmLabel: 'Executar dry-run',
+                onConfirm: (reason) => runMigrationDryRun.mutateAsync({ reason }),
+              })}
+              onResolveTechnicalLine={setTechnicalLineMapId}
+              onResolveMigrationItem={setMigrationDiagnostic}
+              onResolveLegacyProduct={setLegacyProductDiagnostic}
+              onApplyIncrementalResolution={setIncrementalApplyDiagnostic}
+            />
+          )}
         </TabsContent>
       </Tabs>
 
@@ -977,7 +1012,6 @@ export default function ArtisanalStraps() {
       )}
 
       <ReasonDialog state={reasonDialog} onClose={() => setReasonDialog(null)} />
-      <WidthProfileDialog state={widthDialog} catalog={catalog} onClose={() => setWidthDialog(null)} />
       <ColorDialog open={colorDialog} catalog={catalog} onClose={() => setColorDialog(false)} />
       <OfficialProductDialog open={officialProductDialog} catalog={catalog} onClose={() => setOfficialProductDialog(false)} />
       <TechnicalLineMigrationDialog mapId={technicalLineMapId} catalog={catalog} onClose={() => setTechnicalLineMapId(null)} />
@@ -996,6 +1030,70 @@ export default function ArtisanalStraps() {
         onClose={() => setIncrementalApplyDiagnostic(null)}
       />
     </div>
+  );
+}
+
+function ConfigurationRail({
+  canManage,
+  onConfigureYield,
+  onConfigureStock,
+}: {
+  canManage: boolean;
+  onConfigureYield: () => void;
+  onConfigureStock: () => void;
+}) {
+  return (
+    <section className="overflow-hidden rounded-lg border border-border bg-card" aria-labelledby="strap-configuration-flow">
+      <div className="flex flex-col gap-2 border-b border-border px-4 py-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-primary">FLUXO DA TIRA</p>
+          <h2 id="strap-configuration-flow" className="mt-0.5 text-base font-bold text-foreground">Configure em duas etapas</h2>
+        </div>
+        <p className="max-w-xl text-xs text-muted-foreground">
+          O rendimento é único por tipo e material. Cor e SKU entram somente quando a tira pronta realmente existir no estoque.
+        </p>
+      </div>
+      <ol className="grid items-stretch gap-px bg-border md:grid-cols-[minmax(0,1fr)_80px_minmax(0,1fr)]">
+        <li className="bg-card p-4">
+          <button
+            type="button"
+            disabled={!canManage}
+            onClick={onConfigureYield}
+            className="group flex h-full w-full items-start gap-3 rounded-md p-2 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary font-mono text-xs font-bold text-primary-foreground">1</span>
+            <span>
+              <span className="block text-sm font-semibold text-foreground">Tipo, material e rendimento</span>
+              <span className="mt-1 block text-xs leading-5 text-muted-foreground">
+                Um formulário lê as medidas físicas da napa, confirma a conversão e salva sem criar cores.
+              </span>
+              <span className="mt-2 block text-xs font-semibold text-primary group-hover:underline">Abrir cadastro-base</span>
+            </span>
+          </button>
+        </li>
+        <li aria-hidden="true" className="hidden bg-card md:flex md:flex-col md:items-center md:justify-center">
+          <span className="h-px w-10 bg-border" />
+          <span className="mt-1 font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-muted-foreground">depois</span>
+        </li>
+        <li className="bg-card p-4">
+          <button
+            type="button"
+            disabled={!canManage}
+            onClick={onConfigureStock}
+            className="group flex h-full w-full items-start gap-3 rounded-md p-2 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border bg-muted font-mono text-xs font-bold text-foreground">2</span>
+            <span>
+              <span className="block text-sm font-semibold text-foreground">Origem, cor e estoque</span>
+              <span className="mt-1 block text-xs leading-5 text-muted-foreground">
+                Escolha produção interna ou compra pronta e crie a cor somente quando houver necessidade real.
+              </span>
+              <span className="mt-2 block text-xs font-semibold text-primary group-hover:underline">Abrir variante de estoque</span>
+            </span>
+          </button>
+        </li>
+      </ol>
+    </section>
   );
 }
 
@@ -1023,31 +1121,28 @@ function CalculatorTab({ catalog }: { catalog: ArtisanalStrapCatalog }) {
 function CatalogTab({
   catalog,
   openEditor,
-  onOpenColor,
-  onOpenOfficialProduct,
-  onOpenWidth,
-  onApproveAlias,
-  onApproveWidth,
 }: {
   catalog: ArtisanalStrapCatalog;
   openEditor: (args?: OpenEditorArgs) => void;
-  onOpenColor: () => void;
-  onOpenOfficialProduct: () => void;
-  onOpenWidth: (state: WidthDialogState) => void;
-  onApproveAlias: (alias: CanonicalStrapColorAlias) => void;
-  onApproveWidth: (profile: BaseMaterialWidthProfile) => void;
 }) {
   const [search, setSearch] = useState('');
   const maps = useMemo(() => mapsFor(catalog), [catalog]);
-  const visibleTypes = catalog.types.filter((type) => {
-    const measures = catalog.measures.filter((measure) => measure.strap_type_id === type.id);
-    return includesSearch(search, type.name, ...measures.map((measure) => measure.display_name));
-  });
-  const baseGroupIds = Array.from(new Set([
-    ...catalog.variants.map((item) => item.base_group_id),
-    ...catalog.width_profiles.map((item) => item.base_group_id),
-  ]));
-  const pendingAliases = catalog.aliases.filter((item) => item.status === 'pending');
+  const currentRecipes = catalog.recipes.filter((recipe) => (
+    recipe.status === 'approved' && !recipe.valid_to
+  ));
+  const visibleMeasures = catalog.measures
+    .filter((measure) => {
+      const type = maps.types.get(measure.strap_type_id);
+      const materials = currentRecipes
+        .filter((recipe) => recipe.measure_id === measure.id)
+        .map((recipe) => maps.groups.get(recipe.base_group_id)?.name);
+      return includesSearch(search, type?.name, measure.display_name, ...materials);
+    })
+    .sort((left, right) => {
+      const leftType = maps.types.get(left.strap_type_id)?.name || '';
+      const rightType = maps.types.get(right.strap_type_id)?.name || '';
+      return `${leftType} ${left.display_name}`.localeCompare(`${rightType} ${right.display_name}`, 'pt-BR');
+    });
 
   return (
     <div className="space-y-4">
@@ -1056,194 +1151,125 @@ function CatalogTab({
           className="w-full sm:max-w-sm"
           value={search}
           onChange={setSearch}
-          placeholder="Buscar família ou medida…"
-          resultCount={visibleTypes.length}
-          totalCount={catalog.types.length}
+          placeholder="Buscar tipo ou material…"
+          resultCount={visibleMeasures.length}
+          totalCount={catalog.measures.length}
         />
         {catalog.capabilities.manage_strap_catalog && (
-          <div className="flex flex-wrap gap-2">
-            <Button variant="outline" size="sm" onClick={onOpenColor} className="gap-2">
-              <Palette className="h-4 w-4" /> Cores e nomes alternativos
-            </Button>
-            {catalog.capabilities.resolve_strap_migration && (
-              <Button variant="outline" size="sm" onClick={onOpenOfficialProduct} className="gap-2">
-                <CheckCircle className="h-4 w-4" /> Produto-base oficial
-              </Button>
-            )}
-            <Button size="sm" onClick={() => openEditor()} className="gap-2">
-              <Plus className="h-4 w-4" /> Nova variante
-            </Button>
-            <ArtisanalStrapBatchMatrix catalog={catalog} />
-          </div>
+          <Button
+            size="sm"
+            onClick={() => openEditor({ purpose: 'conversion', mode: 'create' })}
+            className="gap-2"
+          >
+            <Plus className="h-4 w-4" /> Cadastrar tipo e material
+          </Button>
         )}
       </div>
 
       <Panel
-        eyebrow="CATÁLOGO"
-        title="Famílias e medidas"
-        subtitle="A largura final pertence à medida; a banda cortada varia por napa-base na receita."
+        eyebrow="CADASTRO"
+        title="Tipos de tira e materiais possíveis"
+        subtitle="Escolha o tipo, vincule os materiais que podem originá-lo e confirme o rendimento. Cor e estoque de tira pronta ficam fora deste cadastro."
       >
-        {visibleTypes.length === 0 ? (
+        {visibleMeasures.length === 0 ? (
           <EmptyState
             icon={TreeStructure}
-            title={search ? 'Nenhuma família encontrada' : 'Nenhuma família cadastrada'}
-            description={search ? 'Ajuste os termos da busca.' : 'Cadastre a primeira variante pelo cadastro principal.'}
+            title={search ? 'Nenhum tipo ou material encontrado' : 'Nenhum tipo de tira cadastrado'}
+            description={search
+              ? 'Ajuste os termos da busca.'
+              : 'Cadastre o tipo, escolha um material do estoque e confirme o primeiro rendimento.'}
             action={search
               ? <Button variant="outline" size="sm" onClick={() => setSearch('')}>Limpar busca</Button>
               : catalog.capabilities.manage_strap_catalog
-                ? <Button size="sm" onClick={() => openEditor()}>Nova variante</Button>
+                ? <Button size="sm" onClick={() => openEditor({ purpose: 'conversion' })}>Cadastrar primeiro tipo</Button>
                 : undefined}
             size="sm"
           />
         ) : (
           <div className="grid gap-3 lg:grid-cols-2">
-            {visibleTypes.map((type) => {
-              const measures = catalog.measures
-                .filter((measure) => measure.strap_type_id === type.id)
-                .sort((a, b) => Number(a.finished_width_mm) - Number(b.finished_width_mm));
+            {visibleMeasures.map((measure) => {
+              const type = maps.types.get(measure.strap_type_id);
+              const materialRecipes = currentRecipes
+                .filter((recipe) => recipe.measure_id === measure.id)
+                .sort((left, right) => (
+                  (maps.groups.get(left.base_group_id)?.name || '').localeCompare(
+                    maps.groups.get(right.base_group_id)?.name || '',
+                    'pt-BR',
+                  )
+                ));
               return (
-                <article key={type.id} className="rounded-lg border border-border bg-card p-4">
+                <article key={measure.id} className="rounded-lg border border-border bg-card p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Família</p>
-                      <h3 className="text-base font-bold text-foreground">{type.name}</h3>
+                      <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Tipo de tira</p>
+                      <h3 className="text-base font-bold text-foreground">
+                        {type?.name || 'Tipo'} · {measure.display_name}
+                      </h3>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Largura final {Number(measure.finished_width_mm).toLocaleString('pt-BR')} mm
+                      </p>
                     </div>
-                    <Badge variant={type.active ? 'default' : 'secondary'}>{type.active ? 'Ativa' : 'Inativa'}</Badge>
+                    <Badge variant={type?.active && measure.active ? 'default' : 'secondary'}>
+                      {type?.active && measure.active ? 'Ativo' : 'Inativo'}
+                    </Badge>
                   </div>
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    {measures.length === 0 ? (
-                      <span className="text-sm text-muted-foreground">Sem medidas</span>
-                    ) : measures.map((measure) => {
-                      const count = catalog.variants.filter((variant) => variant.measure_id === measure.id).length;
-                      return (
-                        <button
-                          key={measure.id}
-                          type="button"
-                          onClick={() => openEditor({ mode: 'create', measureId: measure.id })}
-                          className="rounded-md border border-border bg-muted/30 px-3 py-2 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        >
-                          <span className="block text-sm font-semibold">{measure.display_name}</span>
-                          <span className="block text-[10px] text-muted-foreground">{count} {count === 1 ? 'variante' : 'variantes'}</span>
-                        </button>
-                      );
-                    })}
+                  <div className="mt-4 space-y-2">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
+                      Materiais possíveis
+                    </p>
+                    {materialRecipes.length === 0 ? (
+                      <p className="rounded-md border border-dashed border-border px-3 py-2 text-sm text-muted-foreground">
+                        Nenhum material confirmado.
+                      </p>
+                    ) : materialRecipes.map((recipe) => (
+                      <button
+                        key={recipe.id}
+                        type="button"
+                        onClick={() => openEditor({
+                          purpose: 'conversion',
+                          mode: 'edit',
+                          recipeId: recipe.id,
+                        })}
+                        className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-md border border-border bg-muted/20 px-3 py-2 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm font-semibold">
+                            {maps.groups.get(recipe.base_group_id)?.name || 'Material-base'}
+                          </span>
+                          <span className="block text-[10px] text-muted-foreground">
+                            Ficha física {Number(recipe.usable_base_width_mm_snapshot).toLocaleString('pt-BR')} mm
+                            {' · '}banda {Number(recipe.cut_band_width_mm).toLocaleString('pt-BR')} mm
+                          </span>
+                        </span>
+                        <span className="text-right">
+                          <span className="block font-mono text-sm font-bold text-primary">
+                            {Number(recipe.confirmed_yield_m_per_m).toLocaleString('pt-BR')} m/m
+                          </span>
+                          <span className="block text-[10px] text-muted-foreground">
+                            {recipe.status === 'approved' ? 'Confirmado' : 'Em revisão'}
+                          </span>
+                        </span>
+                      </button>
+                    ))}
                   </div>
+                  {catalog.capabilities.manage_strap_catalog && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="mt-3 w-full gap-2"
+                      onClick={() => openEditor({
+                        purpose: 'conversion',
+                        mode: 'create',
+                        measureId: measure.id,
+                      })}
+                    >
+                      <Plus className="h-4 w-4" /> Adicionar material possível
+                    </Button>
+                  )}
                 </article>
               );
             })}
-          </div>
-        )}
-      </Panel>
-
-      <div className="grid gap-4 xl:grid-cols-2">
-        <Panel
-          eyebrow="GEOMETRIA"
-          title="Largura útil por napa-base"
-          subtitle="Uma fonte por base, compartilhada por todas as cores."
-        >
-          {baseGroupIds.length === 0 ? (
-            <EmptyState icon={Scissors} title="Nenhuma napa-base vinculada" size="sm" />
-          ) : (
-            <div className="space-y-2">
-              {baseGroupIds.map((groupId) => {
-                const profiles = catalog.width_profiles
-                  .filter((item) => item.base_group_id === groupId)
-                  .sort((a, b) => Number(b.version) - Number(a.version));
-                const profile = profiles[0];
-                return (
-                  <div key={groupId} className="flex flex-col gap-2 rounded-md border border-border px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <p className="text-sm font-semibold">{maps.groups.get(groupId)?.name || groupId}</p>
-                      <p className="font-mono text-xs text-muted-foreground">
-                        {profile ? `${Number(profile.usable_width_mm).toLocaleString('pt-BR')} mm` : 'Largura não cadastrada'}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {profile && <StrapStatusBadge status={profile.status} />}
-                      {catalog.capabilities.manage_strap_catalog && (
-                        <Button variant="outline" size="sm" onClick={() => onOpenWidth({ groupId, profile })}>
-                          {!profile
-                            ? 'Definir largura'
-                            : ['draft', 'pending_approval'].includes(profile.status)
-                              ? 'Editar'
-                              : 'Nova versão'}
-                        </Button>
-                      )}
-                      {profile && ['draft', 'pending_approval'].includes(profile.status) && catalog.capabilities.approve_strap_recipe && (
-                        <Button size="sm" onClick={() => onApproveWidth(profile)}>Aprovar</Button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </Panel>
-
-        <Panel
-          eyebrow="NORMALIZAÇÃO"
-          title="Aliases de cor pendentes"
-          subtitle="Sugestões não participam da resolução até aprovação administrativa."
-        >
-          {pendingAliases.length === 0 ? (
-            <EmptyState icon={CheckCircle} title="Nenhum alias pendente" description="A resolução de cores não possui sugestões aguardando decisão." size="sm" />
-          ) : (
-            <div className="space-y-2">
-              {pendingAliases.map((alias) => (
-                <div key={alias.id} className="flex flex-col gap-2 rounded-md border border-border px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <p className="text-sm font-semibold">{alias.alias}</p>
-                    <p className="text-xs text-muted-foreground">
-                      Sugestão para {maps.colors.get(alias.canonical_color_id)?.name || 'cor não encontrada'}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <StrapStatusBadge status={alias.status} />
-                    {catalog.capabilities.resolve_strap_migration && (
-                      <Button size="sm" onClick={() => onApproveAlias(alias)}>Revisar e aprovar</Button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </Panel>
-      </div>
-
-      <Panel
-        eyebrow="FONTE FÍSICA"
-        title="Produtos-base oficiais por cor"
-        subtitle="Cada combinação aponta para um único SKU físico; duplicidades ficam explícitas e não são resolvidas por nome."
-        actions={catalog.capabilities.resolve_strap_migration
-          ? <Button variant="outline" size="sm" onClick={onOpenOfficialProduct}>Definir produto oficial</Button>
-          : undefined}
-      >
-        {catalog.official_products.filter((item) => item.status === 'active').length === 0 ? (
-          <EmptyState
-            icon={Package}
-            title="Nenhum produto-base oficial definido"
-            description={catalog.capabilities.resolve_strap_migration
-              ? 'Defina o SKU oficial de cada napa e cor antes de ativar variantes internas.'
-              : 'Peça a um Administrador para resolver os SKUs de napa por cor.'}
-            action={catalog.capabilities.resolve_strap_migration
-              ? <Button size="sm" onClick={onOpenOfficialProduct}>Definir primeiro produto</Button>
-              : undefined}
-            size="sm"
-          />
-        ) : (
-          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-            {catalog.official_products
-              .filter((item) => item.status === 'active')
-              .map((item) => {
-                const product = maps.products.get(item.official_product_id);
-                return (
-                  <div key={item.id || `${item.base_group_id}-${item.color_id}`} className="rounded-md border border-border p-3">
-                    <p className="truncate text-sm font-semibold">{maps.groups.get(item.base_group_id)?.name || item.base_group_id}</p>
-                    <p className="text-xs text-muted-foreground">{maps.colors.get(item.color_id)?.name || item.color_id}</p>
-                    <p className="mt-2 truncate font-mono text-[10px] text-foreground">{product?.sku || product?.name || item.official_product_id}</p>
-                  </div>
-                );
-              })}
           </div>
         )}
       </Panel>
@@ -1508,13 +1534,29 @@ function RecipesTab({
   );
 }
 
-function VariantsTab({ catalog, openEditor }: { catalog: ArtisanalStrapCatalog; openEditor: (args?: OpenEditorArgs) => void }) {
+function VariantsTab({
+  catalog,
+  openEditor,
+  onOpenColor,
+  onOpenOfficialProduct,
+  onApproveAlias,
+}: {
+  catalog: ArtisanalStrapCatalog;
+  openEditor: (args?: OpenEditorArgs) => void;
+  onOpenColor: () => void;
+  onOpenOfficialProduct: () => void;
+  onApproveAlias: (alias: CanonicalStrapColorAlias) => void;
+}) {
   const [search, setSearch] = useState('');
   const maps = useMemo(() => mapsFor(catalog), [catalog]);
+  const pendingAliases = catalog.aliases.filter((item) => item.status === 'pending');
   const variants = catalog.variants.filter((variant) => {
     const identity = identityForVariant(catalog, variant);
     const product = maps.products.get(variant.finished_product_id);
-    return includesSearch(search, identity.typeName, identity.measureName, identity.baseName, identity.colorName, product?.sku, variant.status);
+    const sourceLabel = variant.identity_basis === 'reference_base' && variant.internal_production_enabled
+      ? 'produção interna artesanal'
+      : 'comprada pronta';
+    return includesSearch(search, identity.typeName, identity.measureName, identity.baseName, identity.colorName, product?.sku, variant.status, sourceLabel);
   });
 
   return (
@@ -1529,9 +1571,30 @@ function VariantsTab({ catalog, openEditor }: { catalog: ArtisanalStrapCatalog; 
           totalCount={catalog.variants.length}
         />
         {catalog.capabilities.manage_strap_catalog && (
-          <Button size="sm" onClick={() => openEditor()} className="gap-2"><Plus className="h-4 w-4" /> Nova variante</Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" onClick={onOpenColor} className="gap-2">
+              <Palette className="h-4 w-4" /> Cores e aliases
+            </Button>
+            {catalog.capabilities.resolve_strap_migration && (
+              <Button variant="outline" size="sm" onClick={onOpenOfficialProduct} className="gap-2">
+                <CheckCircle className="h-4 w-4" /> Napa oficial por cor
+              </Button>
+            )}
+            <ArtisanalStrapBatchMatrix catalog={catalog} />
+            <Button size="sm" onClick={() => openEditor({ purpose: 'stock_variant' })} className="gap-2">
+              <Plus className="h-4 w-4" /> Nova tira no estoque
+            </Button>
+          </div>
         )}
       </div>
+
+      <Alert>
+        <Package className="h-4 w-4" />
+        <AlertTitle>Defina a modalidade da tira no estoque</AlertTitle>
+        <AlertDescription>
+          Produção interna (artesanal) debita o material-base e gera a tira pronta. Comprada pronta, como STRASS, movimenta diretamente o SKU acabado e não usa rendimento de napa.
+        </AlertDescription>
+      </Alert>
 
       {variants.length === 0 ? (
         <Panel><EmptyState icon={Package} title={search ? 'Nenhuma variante encontrada' : 'Nenhuma variante cadastrada'} size="sm" /></Panel>
@@ -1543,6 +1606,8 @@ function VariantsTab({ catalog, openEditor }: { catalog: ArtisanalStrapCatalog; 
             const stock = Number(product?.quantity) || 0;
             const minimum = Number(variant.min_stock_m) || 0;
             const belowFloor = stock < minimum;
+            const internallyProduced = variant.identity_basis === 'reference_base'
+              && variant.internal_production_enabled;
             return (
               <article key={variant.id} className="rounded-lg border border-border bg-card p-4">
                 <div className="flex items-start justify-between gap-3">
@@ -1550,7 +1615,12 @@ function VariantsTab({ catalog, openEditor }: { catalog: ArtisanalStrapCatalog; 
                     <p className="truncate text-sm font-bold">{product?.name || 'Produto acabado sem rótulo'}</p>
                     <p className="font-mono text-[10px] text-muted-foreground">{product?.sku || variant.id}</p>
                   </div>
-                  <StrapStatusBadge status={variant.status} />
+                  <div className="flex flex-col items-end gap-1.5">
+                    <StrapStatusBadge status={variant.status} />
+                    <Badge variant={internallyProduced ? 'default' : 'secondary'}>
+                      {internallyProduced ? 'Produção interna' : 'Comprada pronta'}
+                    </Badge>
+                  </div>
                 </div>
                 <StrapIdentityTrail {...identity} compact className="mt-3" />
                 <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -1596,6 +1666,30 @@ function VariantsTab({ catalog, openEditor }: { catalog: ArtisanalStrapCatalog; 
             );
           })}
         </div>
+      )}
+
+      {pendingAliases.length > 0 && (
+        <Panel
+          eyebrow="CORES DO ESTOQUE"
+          title={`Aliases aguardando revisão · ${pendingAliases.length}`}
+          subtitle="O alias só passa a identificar uma cor depois da aprovação administrativa."
+        >
+          <div className="space-y-2">
+            {pendingAliases.map((alias) => (
+              <div key={alias.id} className="flex flex-col gap-2 rounded-md border border-border px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-semibold">{alias.alias}</p>
+                  <p className="text-xs text-muted-foreground">
+                    Sugestão para {maps.colors.get(alias.canonical_color_id)?.name || 'cor não encontrada'}
+                  </p>
+                </div>
+                {catalog.capabilities.resolve_strap_migration && (
+                  <Button size="sm" onClick={() => onApproveAlias(alias)}>Revisar e aprovar</Button>
+                )}
+              </div>
+            ))}
+          </div>
+        </Panel>
       )}
     </div>
   );
@@ -2048,7 +2142,40 @@ const DIAGNOSTIC_COPY: Record<string, { title: string; correction: string }> = {
     title: 'Item legado exige decisão administrativa',
     correction: 'Use a ação concreta indicada pelo tipo da revisão. Somente a origem do piso aceita resolução administrativa genérica.',
   },
+  finished_strap_group_unflagged: {
+    title: 'Grupo de tira acabada ainda sem a flag',
+    correction: 'Confirme e marque como tira acabada. Isso tira o grupo da lista de napa-base. Se houver ficha de componente com largura de napa, apague-a antes — o banco recusa a flag.',
+  },
+  strap_component_sheet_looks_like_napa: {
+    title: 'Ficha de componente copiada de napa em grupo de tira',
+    correction: 'Apague a ficha (tira não converte área). Não normalize para 5 mm: o cadastro 1370×1000 é cópia, não a largura da tira.',
+  },
+  napa_width_inverted: {
+    title: 'Largura do produto linear invertida em relação à ficha',
+    correction: 'Espelhe a largura da ficha de componente (1370 mm) no produto. Não use GREATEST. Palmilha 1000×1500 fica de fora.',
+  },
+  buy_ready_line_without_variant: {
+    title: 'Linha comprada pronta sem variante no catálogo',
+    correction: 'Cadastre a variante finished_product_group com o SKU e o preço reais. O sistema não inventa identidade.',
+  },
+  internal_recipe_missing: {
+    title: 'Receita interna ausente para medida × napa-base',
+    correction: 'Informe o rendimento confirmado (m/m) e aprove a receita. O teto geométrico não substitui o número do dono.',
+  },
+  missing_base_color_sku: {
+    title: 'Napa-base sem SKU linear na cor da ficha',
+    correction: 'Crie o SKU da cor que falta neste grupo. Não infira a cor pelo nome da tira.',
+  },
 };
+
+const HYGIENE_ISSUE_CODES = new Set([
+  'finished_strap_group_unflagged',
+  'strap_component_sheet_looks_like_napa',
+  'napa_width_inverted',
+  'buy_ready_line_without_variant',
+  'internal_recipe_missing',
+  'missing_base_color_sku',
+]);
 
 const LEGACY_MIGRATION_COPY: Record<string, { title: string; correction: string }> = {
   legacy_product_mapping_required: {
@@ -2158,11 +2285,25 @@ function DiagnosticsTab({
 }) {
   const jobs = demandsQuery.data?.jobs || [];
   const catalogIssues = catalogDiagnosticsQuery.data || [];
+  const hygieneIssues = catalogIssues.filter((issue) => HYGIENE_ISSUE_CODES.has(issue.issue_code));
+  const otherCatalogIssues = catalogIssues.filter((issue) => !HYGIENE_ISSUE_CODES.has(issue.issue_code));
   const legacyMigrationIssues = legacyMigrationDiagnosticsQuery.data || [];
   const reviewVariants = catalog.variants.filter((item) => item.status === 'review_required' || item.status === 'suspended');
   const archivedRecipes = catalog.recipes.filter((item) => item.status === 'superseded' || item.status === 'archived');
   const failedJobs = jobs.filter((item) => item.status === 'dead_letter' || item.status === 'error');
   const retryJob = useRetryArtisanalStrapDemandJob();
+  const updateGroup = useUpdateGroup();
+  const queryClient = useQueryClient();
+
+  const flagFinishedStrapGroup = async (groupId: string) => {
+    try {
+      await updateGroup.mutateAsync({ id: groupId, data: { is_artisanal_strap: true } });
+      queryClient.invalidateQueries({ queryKey: ['artisanal-strap-catalog-diagnostics'] });
+      queryClient.invalidateQueries({ queryKey: ['artisanal-strap-catalog'] });
+    } catch {
+      /* toast pelo hook */
+    }
+  };
 
   if (demandsQuery.isLoading || productionQuery.isLoading || catalogDiagnosticsQuery.isLoading
     || (catalog.capabilities.resolve_strap_migration && legacyMigrationDiagnosticsQuery.isLoading)) {
@@ -2180,12 +2321,82 @@ function DiagnosticsTab({
         </Alert>
       )}
 
+      <Panel
+        eyebrow="HIGIENE DO CADASTRO"
+        title="Inventário para o dono confirmar"
+        subtitle="Sugestão, nunca correção automática. A elegibilidade de napa-base continua só por UUID e pela flag is_artisanal_strap."
+        actions={<Badge variant={hygieneIssues.length ? 'outline' : 'secondary'}>{hygieneIssues.length} {hygieneIssues.length === 1 ? 'ocorrência' : 'ocorrências'}</Badge>}
+      >
+        {catalogDiagnosticsQuery.isError ? (
+          <EmptyState
+            icon={Warning}
+            title="Inventário indisponível"
+            description="Recarregue a consulta; o hub não infere grupo pelo nome."
+            action={<Button variant="outline" size="sm" onClick={() => catalogDiagnosticsQuery.refetch()}>Tentar novamente</Button>}
+            size="sm"
+          />
+        ) : hygieneIssues.length === 0 ? (
+          <EmptyState icon={CheckCircle} title="Nenhuma pendência de higiene" description="Grupos de tira, fichas de componente e larguras de napa estão coerentes com as regras atuais." size="sm" />
+        ) : (
+          <div className="space-y-2">
+            {hygieneIssues.slice(0, 80).map((issue) => {
+              const copy = DIAGNOSTIC_COPY[issue.issue_code] || {
+                title: issue.issue_code,
+                correction: 'Confirme o cadastro pelo UUID; o hub não inventa rendimento, SKU nem preço.',
+              };
+              const groupName = typeof issue.details?.group_name === 'string'
+                ? issue.details.group_name
+                : typeof issue.details?.base_group_name === 'string'
+                  ? issue.details.base_group_name
+                  : typeof issue.details?.identity_group_name === 'string'
+                    ? issue.details.identity_group_name
+                    : '';
+              const canFlagGroup = issue.issue_code === 'finished_strap_group_unflagged'
+                && catalog.capabilities.manage_strap_catalog
+                && typeof issue.details?.group_id === 'string';
+              const looksLikeNapaBase = issue.details?.eligible_as_napa_base === true;
+              return (
+                <div key={`${issue.issue_code}-${issue.entity_id}`} className="flex flex-col gap-2 rounded-md border border-border p-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold">{copy.title}{groupName ? ` · ${groupName}` : ''}</p>
+                    <p className="text-xs text-muted-foreground">{copy.correction}</p>
+                    {looksLikeNapaBase && (
+                      <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
+                        Este grupo ainda aparece como napa-base. Marcar a flag o remove da lista — e passa a governar compra/ajuste dos SKUs lineares.
+                      </p>
+                    )}
+                    <p className="mt-1 truncate font-mono text-[9px] text-muted-foreground">{issue.entity_id}</p>
+                    <details className="mt-2 rounded-md bg-muted/30 p-2">
+                      <summary className="cursor-pointer text-xs font-semibold">Detalhes do servidor</summary>
+                      <pre className="mt-2 max-h-44 overflow-auto whitespace-pre-wrap text-[10px] text-muted-foreground">{JSON.stringify(issue.details, null, 2)}</pre>
+                    </details>
+                  </div>
+                  {canFlagGroup && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={updateGroup.isPending}
+                      onClick={() => flagFinishedStrapGroup(String(issue.details.group_id))}
+                    >
+                      Marcar como tira acabada
+                    </Button>
+                  )}
+                </div>
+              );
+            })}
+            {hygieneIssues.length > 80 && (
+              <p className="text-xs text-muted-foreground">Mais {hygieneIssues.length - 80} ocorrências permanecem no relatório do servidor.</p>
+            )}
+          </div>
+        )}
+      </Panel>
+
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,0.6fr)]">
         <Panel
           eyebrow="INTEGRIDADE DOS DADOS"
           title="Diagnósticos acionáveis"
           subtitle="O servidor aponta a combinação exata; o hub nunca corrige ou infere dados automaticamente."
-          actions={<Badge variant={catalogIssues.length ? 'outline' : 'secondary'}>{catalogIssues.length} {catalogIssues.length === 1 ? 'pendência' : 'pendências'}</Badge>}
+          actions={<Badge variant={otherCatalogIssues.length ? 'outline' : 'secondary'}>{otherCatalogIssues.length} {otherCatalogIssues.length === 1 ? 'pendência' : 'pendências'}</Badge>}
         >
           {catalogDiagnosticsQuery.isError ? (
             <EmptyState
@@ -2195,11 +2406,11 @@ function DiagnosticsTab({
               action={<Button variant="outline" size="sm" onClick={() => catalogDiagnosticsQuery.refetch()}>Tentar novamente</Button>}
               size="sm"
             />
-          ) : catalogIssues.length === 0 ? (
+          ) : otherCatalogIssues.length === 0 ? (
             <EmptyState icon={CheckCircle} title="Nenhuma inconsistência detectada" description="As regras do catálogo estão coerentes." size="sm" />
           ) : (
             <div className="space-y-2">
-              {catalogIssues.slice(0, 60).map((issue) => {
+              {otherCatalogIssues.slice(0, 60).map((issue) => {
                 const copy = DIAGNOSTIC_COPY[issue.issue_code] || {
                   title: issue.issue_code,
                   correction: 'Abra o cadastro relacionado e saneie a origem da inconsistência.',
@@ -2289,8 +2500,8 @@ function DiagnosticsTab({
                   </div>
                 );
               })}
-              {catalogIssues.length > 60 && (
-                <p className="text-xs text-muted-foreground">Mais {catalogIssues.length - 60} pendências permanecem no relatório do servidor.</p>
+              {otherCatalogIssues.length > 60 && (
+                <p className="text-xs text-muted-foreground">Mais {otherCatalogIssues.length - 60} pendências permanecem no relatório do servidor.</p>
               )}
             </div>
           )}

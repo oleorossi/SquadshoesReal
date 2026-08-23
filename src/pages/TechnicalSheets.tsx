@@ -106,6 +106,8 @@ const SOLE_PROCESSES = ['Injetada', 'Colada', 'Costurada', 'Vulcanizada'] as con
 const ACABAMENTOS_TIRAS = ['brilho', 'fosco', 'metálico', 'metalic', 'glow', 'texturizado', 'envernizado'] as const;
 const MATERIAIS_SOLADO = ['TR', 'EVA', 'Borracha', 'PVC', 'TPU'] as const;
 type CatalogView = 'cards' | 'list';
+const normalizeGroupName = (value?: string | null) =>
+  (value || '').trim().toLocaleLowerCase('pt-BR');
 
 const COMPONENT_CATEGORIES = [
   // === Base do Solado (padrão, independente de cor) ===
@@ -1382,23 +1384,49 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
       )))
       .sort((left, right) => left.name.localeCompare(right.name, 'pt-BR'));
   }, [form.strap_colors, strapCatalog]);
-  const possibleReferenceNapaGroups = useMemo(() => referenceStrapBaseGroups({
-    sheet: {
-      id: sheet.id,
-      upper_material: form.upper_material,
-      upper_material_product_id: form.upper_material_product_id,
-      lining_material: form.lining_material,
-      lining_material_product_id: form.lining_material_product_id,
-    },
-    groups,
-    products,
-    variants: materialVariantsBySheet?.get(sheet.id) || [],
-  }), [
-    sheet.id,
+  const hasReferenceBaseStrapLine = useMemo(
+    () => (form.strap_colors || []).some(line => strapIdentityBasis(line) === 'reference_base'),
+    [form.strap_colors],
+  );
+  const strapsFollowLining = !!form.has_straps
+    && !normalizeGroupName(form.upper_material)
+    && !form.upper_material_group_id
+    && !form.upper_material_product_id;
+  const possibleReferenceNapaGroups = useMemo(() => {
+    const liningGroupId = products.find(product => product.id === form.lining_material_product_id)?.group_id
+      || groups.find(group => normalizeGroupName(group.name) === normalizeGroupName(form.lining_material))?.id
+      || null;
+    return referenceStrapBaseGroups({
+      sheet: {
+        id: sheet.id,
+        has_straps: form.has_straps,
+        upper_material: form.upper_material,
+        upper_material_group_id: form.upper_material_group_id,
+        upper_material_product_id: form.upper_material_product_id,
+        lining_material: form.lining_material,
+        lining_material_product_id: form.lining_material_product_id,
+        variant_drives_lining: form.variant_drives_lining,
+        // O trigger persiste exatamente este UUID no save. Antecipá-lo aqui
+        // faz a aba Range mostrar imediatamente a mesma identidade operacional.
+        strap_base_group_id: strapsFollowLining && hasReferenceBaseStrapLine
+          ? liningGroupId
+          : sheet.strap_base_group_id || null,
+      },
+      groups,
+      products,
+      variants: materialVariantsBySheet?.get(sheet.id) || [],
+    });
+  }, [
+    sheet,
+    strapsFollowLining,
+    form.has_straps,
+    hasReferenceBaseStrapLine,
     form.upper_material,
+    form.upper_material_group_id,
     form.upper_material_product_id,
     form.lining_material,
     form.lining_material_product_id,
+    form.variant_drives_lining,
     groups,
     products,
     materialVariantsBySheet,
@@ -1478,7 +1506,6 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
     };
 
     type UpperMaterialIdentity = SheetFormData & { upper_material_group_id?: string | null };
-    const normalizeGroupName = (value?: string | null) => (value || '').trim().toLocaleLowerCase('pt-BR');
     const storedUpperMaterialGroupId = ((form as UpperMaterialIdentity).upper_material_group_id || null) as string | null;
     // UUID vence o texto legado. O fallback pelo nome mantém fichas anteriores à
     // coluna upper_material_group_id editáveis e permite gravar o vínculo no
@@ -1965,6 +1992,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
       }
       payload.strap_colors = normalizedStraps;
       await updateSheet.mutateAsync({ id: sheet.id, data: payload });
+      await queryClient.invalidateQueries({ queryKey: ['sheet_variant_cascade', sheet.id] });
       setDirty(false);
       onSaveSuccess();
     } catch (err) {
@@ -2062,7 +2090,16 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
         onSelectTab={setAbaAtiva}
       />
 
-      <Tabs value={abaAtiva} onValueChange={setAbaAtiva}>
+      <Tabs
+        value={abaAtiva}
+        onValueChange={(nextTab) => {
+          if (nextTab === 'variants' && dirty) {
+            toast.info('Salve a ficha antes de editar as variantes de material.');
+            return;
+          }
+          setAbaAtiva(nextTab as typeof abaAtiva);
+        }}
+      >
         <div className="rounded-xl border bg-muted/20 p-2 sm:p-3">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0 px-1">
@@ -3290,6 +3327,12 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                         )}
                       </div>
 
+                      {form.has_straps && hasReferenceBaseStrapLine && !form.upper_material && !storedUpperMaterialGroupId && !form.upper_material_product_id && (
+                        <p className="rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-muted-foreground">
+                          Neste modelo sem cabedal, a <strong className="text-foreground">Forração é o material principal da referência</strong> e também será usada como napa-base das tiras.
+                        </p>
+                      )}
+
                       {renderWidthWarn(form.lining_material)}
                       {renderVariantDrivesToggle('variant_drives_lining', 'Forração')}
 
@@ -3634,7 +3677,9 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
             </div>
             {form.has_straps && (
               <p className="text-xs text-muted-foreground">
-                As tiras agora são configuradas na aba <strong className="text-foreground">Range Aviamento</strong>.
+                {hasReferenceBaseStrapLine
+                  ? <>As tiras que seguem a referência usam o material definido em <strong className="text-foreground">Forração</strong>; tiras compradas prontas mantêm o próprio grupo.</>
+                  : <>Estas tiras são compradas prontas e usam o próprio grupo configurado na aba <strong className="text-foreground">Range Aviamento</strong>.</>}
               </p>
             )}
  
@@ -3841,7 +3886,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                         </div>
                         {strapIdentityBasis(strap) === 'reference_base' && (
                           <div className="space-y-1.5">
-                            <Label className="text-xs font-semibold">Napas possíveis da referência</Label>
+                            <Label className="text-xs font-semibold">Napa-base definida pela referência</Label>
                             <div className={cn(
                               'flex min-h-10 flex-wrap items-center gap-1.5 rounded-md border px-3 py-2',
                               possibleReferenceNapaGroups.length === 0 && 'border-warning/40 bg-warning/5',
@@ -3864,12 +3909,16 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                             </div>
                             <p className="text-xs text-muted-foreground">
                               {possibleReferenceNapaGroups.length > 0
-                                ? 'O pedido seleciona automaticamente a napa correta conforme a variante de material.'
-                                : 'Configure o material padrão ou as variantes desta referência antes de liberar a produção.'}
+                                ? (strapsFollowLining
+                                  ? 'A tira usa a Forração da ficha; quando a variante também dirige a Forração, ambas mudam juntas.'
+                                  : 'O pedido seleciona automaticamente a napa correta conforme a variante de material.')
+                                : (strapsFollowLining
+                                  ? 'Selecione o grupo de Forração antes de liberar a produção.'
+                                  : 'Configure o material padrão ou as variantes desta referência antes de liberar a produção.')}
                             </p>
                             {possibleReferenceNapaGroups.some((group) => !group.canonical) && (
                               <p className="text-xs font-medium text-warning">
-                                O material padrão ainda está vinculado apenas por nome; selecione um SKU no cadastro de materiais para tornar a resolução operacional.
+                                Salve a ficha para consolidar o vínculo operacional deste grupo.
                               </p>
                             )}
                           </div>

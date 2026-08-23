@@ -10,7 +10,7 @@ const technicalSheets = readFileSync(
 describe('Range Aviamento — napas da referência', () => {
   it('exibe os grupos possíveis quando a tira segue a napa da referência', () => {
     expect(technicalSheets).toContain("strapIdentityBasis(strap) === 'reference_base'");
-    expect(technicalSheets).toContain('Napas possíveis da referência');
+    expect(technicalSheets).toContain('Napa-base definida pela referência');
     expect(technicalSheets).toContain('possibleReferenceNapaGroups.map');
   });
 

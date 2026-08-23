@@ -172,6 +172,7 @@ export interface VariantCascadeSlot {
 }
 
 export interface VariantCascadeSheet {
+  has_straps?: boolean | null;
   upper_material?: string | null;
   lining_material?: string | null;
   variant_drives_upper?: boolean | null;
@@ -290,6 +291,7 @@ export function resolveStrapBaseReadout({
   variant: VariantCascadePins & { main_material_group_id?: string | null } | null | undefined;
   sheet: (VariantCascadeSheet & {
     upper_material_group_id?: string | null;
+    upper_material_product_id?: string | null;
     strap_base_group_id?: string | null;
     lining_material_group_id?: string | null;
   }) | null | undefined;
@@ -298,12 +300,22 @@ export function resolveStrapBaseReadout({
   const pick = (groupId: string | null | undefined, origin: StrapBaseReadout['origin']) =>
     groupId ? { groupId, origin } : null;
 
-  const resolved = pick(variant?.upper_material_group_id, 'variant_upper')
-    || pick(variant?.lining_material_group_id, 'variant_lining')
-    || pick(variant?.main_material_group_id, 'variant_main')
-    || pick(sheet?.upper_material_group_id, 'sheet')
-    || pick(sheet?.strap_base_group_id, 'sheet')
-    || pick(sheet?.lining_material_group_id, 'sheet');
+  const strapsFollowLining = sheet?.has_straps === true
+    && !sheet.upper_material?.trim()
+    && !sheet.upper_material_group_id
+    && !sheet.upper_material_product_id;
+
+  const resolved = strapsFollowLining
+    ? pick(variant?.lining_material_group_id, 'variant_lining')
+      || (cascade.lining ? pick(variant?.main_material_group_id, 'variant_main') : null)
+      || pick(sheet?.lining_material_group_id, 'sheet')
+      || pick(sheet?.strap_base_group_id, 'sheet')
+    : pick(variant?.upper_material_group_id, 'variant_upper')
+      || pick(variant?.lining_material_group_id, 'variant_lining')
+      || pick(variant?.main_material_group_id, 'variant_main')
+      || pick(sheet?.upper_material_group_id, 'sheet')
+      || pick(sheet?.strap_base_group_id, 'sheet')
+      || pick(sheet?.lining_material_group_id, 'sheet');
   if (!resolved) return null;
 
   const liningGroupId = variant?.lining_material_group_id
