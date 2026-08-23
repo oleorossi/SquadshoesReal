@@ -25,16 +25,16 @@ async function stampPoLeadTiming(params: {
 }): Promise<{ purchaseByDate: string | null; etaDays: number }> {
   let purchaseBy: string | null = params.existingPurchaseBy ?? null;
   if (params.saleOrderId) {
-    const { data } = await (supabase as any).rpc('compute_po_purchase_by_date', {
+    const { data } = await supabase.rpc('compute_po_purchase_by_date' as never, {
       p_sale_order_ids: [params.saleOrderId],
-    });
+    } as never);
     const computed = typeof data === 'string' ? data : data ?? null;
     if (computed && (!purchaseBy || computed < purchaseBy)) purchaseBy = computed;
   }
-  const { data: leadRaw } = await (supabase as any).rpc('get_effective_supplier_lead_days', {
+  const { data: leadRaw } = await supabase.rpc('get_effective_supplier_lead_days' as never, {
     p_product_id: params.productId,
     p_prod_deadline_days: null,
-  });
+  } as never);
   const etaDays = Math.max(0, Number(leadRaw) || 10);
   const patch: Record<string, unknown> = { eta_days: etaDays };
   if (purchaseBy) {
@@ -43,7 +43,7 @@ async function stampPoLeadTiming(params: {
     d.setDate(d.getDate() + etaDays);
     patch.promised_date = d.toISOString().slice(0, 10);
   }
-  await (supabase as any).from('purchase_orders').update(patch).eq('id', params.poId);
+  await supabase.from('purchase_orders').update(patch as never).eq('id', params.poId);
   return { purchaseByDate: purchaseBy, etaDays };
 }
 
