@@ -449,6 +449,7 @@ function RouteGuard({ children }: { children: React.ReactNode }) {
 function AuthRoute() {
   const { user, loading } = useAuth();
   const [salesRepLoaded, setSalesRepLoaded] = useState<boolean | null>(null);
+  const { data: roleNames = [] } = useUserRoleNames(user?.id);
 
   // F3 (24/05/2026): se profile.is_sales_rep=true, redireciona pra /m
   // (app mobile) em vez do dashboard desktop. Vendedor logando no celular
@@ -475,7 +476,7 @@ function AuthRoute() {
   }
   if (user) {
     if (salesRepLoaded === null) return <PageLoader />;
-    return <Navigate to={salesRepLoaded ? '/m' : '/dashboard'} replace />;
+    return <Navigate to={salesRepLoaded ? '/m' : resolveRoleHome(roleNames)} replace />;
   }
   return <Auth />;
 }

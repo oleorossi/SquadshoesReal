@@ -32,10 +32,10 @@ const buttonVariants = cva(
         "editorial-red": "bg-primary text-primary-foreground font-mono uppercase tracking-widest text-[11px] hover:bg-primary/90 shadow-stamp-red",
       },
       size: {
-        default: "h-10 px-5 py-2.5",
-        sm: "h-9 px-4",
-        lg: "h-12 px-10 text-base",
-        icon: "h-10 w-10",
+        default: "h-10 min-h-11 px-5 py-2.5",
+        sm: "h-9 min-h-9 px-4",
+        lg: "h-12 min-h-11 px-10 text-base",
+        icon: "h-10 w-10 min-h-11 min-w-11",
         // Variantes icon por densidade — usar em vez de className="h-7 w-7" ad-hoc.
         // Convenção (CLAUDE.md): xs=toolbar de tabela, sm=filter row, default/icon=header de página, lg=CTA modal.
         "icon-xs": "h-7 w-7",

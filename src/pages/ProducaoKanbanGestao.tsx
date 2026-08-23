@@ -1356,7 +1356,8 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
                         card={card}
                         compact
                         photoUrl={refThumbs?.get(card.q.reference_id || '') || null}
-                        draggable={canEdit && !selectMode}
+                        draggable={canEdit && !selectMode && !coarsePointer}
+                        floorTouch={coarsePointer}
                         dragging={dragCard?.q.order_id === card.q.order_id}
                         dimmed={viewMode === 'destacar' && !!matchedIds && !matchedIds.has(card.q.order_id)}
                         // Anel só no 'destacar', onde separa o achado do resto

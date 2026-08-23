@@ -279,7 +279,7 @@ export default function OrderPickingPage() {
       {pickupGroups.length > 0 && (
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="h-auto flex-wrap">
-            <TabsTrigger value="all" className="gap-1.5 text-xs h-8">
+            <TabsTrigger value="all" className="gap-1.5 text-xs min-h-11 h-11">
               <CalendarDays className="h-3.5 w-3.5" />
               Todas ({searchFiltered.length})
             </TabsTrigger>
@@ -292,7 +292,7 @@ export default function OrderPickingPage() {
                   key={g.key}
                   value={g.key}
                   className={cn(
-                    'gap-1.5 text-xs h-8',
+                    'gap-1.5 text-xs min-h-11 h-11',
                     isTue && 'data-[state=active]:bg-blue-500/10 data-[state=active]:text-blue-700',
                     isFri && 'data-[state=active]:bg-emerald-500/10 data-[state=active]:text-emerald-700',
                   )}
@@ -318,7 +318,7 @@ export default function OrderPickingPage() {
         totalCount={orders.length}
       />
 
-      {/* Table */}
+      {/* Lista: cards no celular, tabela no iPad/desktop */}
       {isLoading ? (
         <div className="flex items-center justify-center py-20 text-muted-foreground text-sm">
           Carregando pedidos...
@@ -345,134 +345,249 @@ export default function OrderPickingPage() {
           )}
         </Panel>
       ) : (
-        <Panel
-          eyebrow="LOGÍSTICA · SEPARAÇÃO"
-          title={
-            <span className="flex items-center gap-2">
+        <>
+          <div className="space-y-2 md:hidden">
+            <label className="flex min-h-11 items-center gap-2 rounded-lg border bg-card px-3 text-sm font-medium">
               <Checkbox
                 checked={selected.size === filtered.length && filtered.length > 0}
                 onCheckedChange={toggleAll}
+                className="h-5 w-5"
+                aria-label="Selecionar todos os pedidos visíveis"
               />
               Selecionar todos ({filtered.length})
-            </span>
-          }
-          flush
-        >
-          <div className="overflow-x-auto">
-            <Table className="min-w-[640px]">
-              <TableHeader>
-                <TableRow className="sticky top-0 z-sticky bg-muted/40 backdrop-blur-sm hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
-                  <TableHead className="w-10 pl-4" />
-                  <TableHead className="w-8" />
-                  <TableHead>Pedido</TableHead>
-                  <TableHead>Cliente</TableHead>
-                  <TableHead className="text-right tabular-nums">Pares</TableHead>
-                  <TableHead>Embalagem</TableHead>
-                  <TableHead>Prazo</TableHead>
-                  <TableHead className="text-right pr-4">Ação</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filtered.map(order => {
-                  const days = daysUntil(order.delivery_deadline);
-                  const isOverdue = days !== null && days < 0;
-                  const isDueToday = days === 0;
-                  const isDueSoon = days !== null && days > 0 && days <= 2;
-                  const isExpanded = expanded.has(order.id);
-
-                  return (
-                    <React.Fragment key={order.id}>
-                      <TableRow
-                        className={cn(
-                          'cursor-pointer hover:bg-muted/30 transition-colors',
-                          isOverdue && 'bg-destructive/5 hover:bg-destructive/10',
-                          isDueToday && 'bg-amber-500/5 hover:bg-amber-500/10',
-                        )}
-                        onClick={() => toggleExpand(order.id)}
-                      >
-                        <TableCell className="pl-4" onClick={e => e.stopPropagation()}>
-                          <Checkbox
-                            checked={selected.has(order.id)}
-                            onCheckedChange={() => toggleSelect(order.id)}
-                          />
-                        </TableCell>
-                        <TableCell>
-                          {isExpanded
-                            ? <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                            : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
-                        </TableCell>
-                        <TableCell className="font-mono font-semibold text-sm">
+            </label>
+            {filtered.map(order => {
+              const days = daysUntil(order.delivery_deadline);
+              const isOverdue = days !== null && days < 0;
+              const isDueToday = days === 0;
+              const isDueSoon = days !== null && days > 0 && days <= 2;
+              const isExpanded = expanded.has(order.id);
+              return (
+                <article
+                  key={order.id}
+                  className={cn(
+                    'rounded-xl border bg-card p-4 shadow-sm',
+                    selected.has(order.id) && 'border-primary bg-primary/5',
+                    isOverdue && 'border-l-4 border-l-destructive',
+                    isDueToday && 'border-l-4 border-l-amber-500',
+                  )}
+                >
+                  <div className="flex items-start gap-3">
+                    <Checkbox
+                      checked={selected.has(order.id)}
+                      onCheckedChange={() => toggleSelect(order.id)}
+                      aria-label={`Selecionar pedido ${order.order_number}`}
+                      className="mt-1 h-5 w-5"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => toggleExpand(order.id)}
+                      className="min-w-0 flex-1 text-left"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-mono text-sm font-bold text-primary">
                           {order.order_number ?? '—'}
-                        </TableCell>
-                        <TableCell className="max-w-[200px] truncate">
-                          {order.client_name ?? '—'}
-                        </TableCell>
-                        <TableCell className="text-right tabular-nums font-medium">
-                          {order.total_pairs}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className="text-xs">
-                            {order.packaging_mode || 'Padrão'}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          {order.delivery_deadline ? (
-                            <span className={cn(
-                              'text-sm font-medium flex items-center gap-1 tabular-nums',
-                              isOverdue ? 'text-destructive' : isDueToday ? 'text-amber-600' : isDueSoon ? 'text-amber-500' : 'text-muted-foreground',
-                            )}>
-                              {isOverdue && <XCircle className="h-3 w-3" />}
-                              {isDueToday && <Clock className="h-3 w-3" />}
-                              {isDueSoon && !isDueToday && <AlertTriangle className="h-3 w-3" />}
-                              {format(new Date(order.delivery_deadline + 'T00:00:00'), 'dd/MM/yy', { locale: ptBR })}
-                              {days !== null && days < 0 && ` (${Math.abs(days)}d atraso)`}
-                              {days === 0 && ' (hoje)'}
-                            </span>
-                          ) : <span className="text-muted-foreground text-sm">—</span>}
-                        </TableCell>
-                        <TableCell className="text-right pr-4" onClick={e => e.stopPropagation()}>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => confirmShipment.mutate([order.id])}
-                            disabled={confirmShipment.isPending}
-                          >
-                            <Truck className="w-3 h-3 mr-1" />
-                            Expedir
-                          </Button>
-                        </TableCell>
-                      </TableRow>
+                        </span>
+                        <Badge variant="outline" className="shrink-0 text-xs">
+                          {order.packaging_mode || 'Padrão'}
+                        </Badge>
+                      </div>
+                      <p className="mt-1 truncate text-sm font-semibold">{order.client_name ?? '—'}</p>
+                      <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+                        <span>
+                          <strong className="block font-mono text-sm text-foreground">{order.total_pairs}</strong>
+                          pares
+                        </span>
+                        <span className={cn(
+                          'text-right',
+                          isOverdue && 'font-semibold text-destructive',
+                          isDueToday && 'font-semibold text-amber-600',
+                          isDueSoon && !isDueToday && 'text-amber-500',
+                        )}>
+                          <strong className="block text-sm">{order.delivery_deadline
+                            ? format(new Date(order.delivery_deadline + 'T00:00:00'), 'dd/MM/yy', { locale: ptBR })
+                            : '—'}</strong>
+                          {isOverdue && days !== null ? `${Math.abs(days)}d atraso` : isDueToday ? 'hoje' : 'prazo'}
+                        </span>
+                      </div>
+                    </button>
+                  </div>
+                  {isExpanded && (
+                    <div className="mt-3 space-y-1.5 border-t pt-3">
+                      {order.items.map(item => (
+                        <div key={item.id} className="flex items-center gap-2 text-sm">
+                          <span className="min-w-0 flex-1 truncate font-medium">
+                            {item.reference_name ?? '—'}
+                          </span>
+                          {item.color && (
+                            <Badge variant="outline" className="shrink-0 text-xs">{item.color}</Badge>
+                          )}
+                          <span className="shrink-0 font-mono text-xs text-muted-foreground">
+                            {gradeLabel(item.grade, item.quantity)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div className="mt-3 flex border-t pt-3">
+                    <Button
+                      className="min-h-11 flex-1 gap-1.5"
+                      variant="outline"
+                      onClick={() => confirmShipment.mutate([order.id])}
+                      disabled={confirmShipment.isPending}
+                    >
+                      <Truck className="h-4 w-4" />
+                      Expedir
+                    </Button>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
 
-                      {isExpanded && (
-                        <TableRow key={`${order.id}-detail`} className="bg-muted/20 hover:bg-muted/30">
-                          <TableCell colSpan={8} className="pl-12 py-3">
-                            <div className="space-y-1.5">
-                              {order.items.map(item => (
-                                <div key={item.id} className="flex items-center gap-3 text-sm">
-                                  <span className="font-medium w-48 truncate">
-                                    {item.reference_name ?? '—'}
-                                  </span>
-                                  {item.color && (
-                                    <Badge variant="outline" className="text-xs shrink-0">
-                                      {item.color}
-                                    </Badge>
-                                  )}
-                                  <span className="text-muted-foreground font-mono text-xs">
-                                    {gradeLabel(item.grade, item.quantity)}
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
+          <Panel
+            eyebrow="LOGÍSTICA · SEPARAÇÃO"
+            title={
+              <span className="flex items-center gap-2">
+                <Checkbox
+                  checked={selected.size === filtered.length && filtered.length > 0}
+                  onCheckedChange={toggleAll}
+                />
+                Selecionar todos ({filtered.length})
+              </span>
+            }
+            flush
+            className="hidden md:block"
+          >
+            <div className="overflow-x-auto">
+              <Table className="min-w-[640px]">
+                <TableHeader>
+                  <TableRow className="sticky top-0 z-sticky bg-muted/40 backdrop-blur-sm hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                    <TableHead className="w-10 pl-4" />
+                    <TableHead className="w-8" />
+                    <TableHead>Pedido</TableHead>
+                    <TableHead>Cliente</TableHead>
+                    <TableHead className="text-right tabular-nums">Pares</TableHead>
+                    <TableHead>Embalagem</TableHead>
+                    <TableHead>Prazo</TableHead>
+                    <TableHead className="text-right pr-4">Ação</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filtered.map(order => {
+                    const days = daysUntil(order.delivery_deadline);
+                    const isOverdue = days !== null && days < 0;
+                    const isDueToday = days === 0;
+                    const isDueSoon = days !== null && days > 0 && days <= 2;
+                    const isExpanded = expanded.has(order.id);
+
+                    return (
+                      <React.Fragment key={order.id}>
+                        <TableRow
+                          className={cn(
+                            'cursor-pointer hover:bg-muted/30 transition-colors',
+                            isOverdue && 'bg-destructive/5 hover:bg-destructive/10',
+                            isDueToday && 'bg-amber-500/5 hover:bg-amber-500/10',
+                          )}
+                          onClick={() => toggleExpand(order.id)}
+                        >
+                          <TableCell className="pl-4" onClick={e => e.stopPropagation()}>
+                            <Checkbox
+                              checked={selected.has(order.id)}
+                              onCheckedChange={() => toggleSelect(order.id)}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            {isExpanded
+                              ? <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                              : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+                          </TableCell>
+                          <TableCell className="font-mono font-semibold text-sm">
+                            {order.order_number ?? '—'}
+                          </TableCell>
+                          <TableCell className="max-w-[200px] truncate">
+                            {order.client_name ?? '—'}
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums font-medium">
+                            {order.total_pairs}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className="text-xs">
+                              {order.packaging_mode || 'Padrão'}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            {order.delivery_deadline ? (
+                              <span className={cn(
+                                'text-sm font-medium flex items-center gap-1 tabular-nums',
+                                isOverdue ? 'text-destructive' : isDueToday ? 'text-amber-600' : isDueSoon ? 'text-amber-500' : 'text-muted-foreground',
+                              )}>
+                                {isOverdue && <XCircle className="h-3 w-3" />}
+                                {isDueToday && <Clock className="h-3 w-3" />}
+                                {isDueSoon && !isDueToday && <AlertTriangle className="h-3 w-3" />}
+                                {format(new Date(order.delivery_deadline + 'T00:00:00'), 'dd/MM/yy', { locale: ptBR })}
+                                {days !== null && days < 0 && ` (${Math.abs(days)}d atraso)`}
+                                {days === 0 && ' (hoje)'}
+                              </span>
+                            ) : <span className="text-muted-foreground text-sm">—</span>}
+                          </TableCell>
+                          <TableCell className="text-right pr-4" onClick={e => e.stopPropagation()}>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => confirmShipment.mutate([order.id])}
+                              disabled={confirmShipment.isPending}
+                            >
+                              <Truck className="w-3 h-3 mr-1" />
+                              Expedir
+                            </Button>
                           </TableCell>
                         </TableRow>
-                      )}
-                    </React.Fragment>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </div>
-        </Panel>
+
+                        {isExpanded && (
+                          <TableRow key={`${order.id}-detail`} className="bg-muted/20 hover:bg-muted/30">
+                            <TableCell colSpan={8} className="pl-12 py-3">
+                              <div className="space-y-1.5">
+                                {order.items.map(item => (
+                                  <div key={item.id} className="flex items-center gap-3 text-sm">
+                                    <span className="font-medium w-48 truncate">
+                                      {item.reference_name ?? '—'}
+                                    </span>
+                                    {item.color && (
+                                      <Badge variant="outline" className="text-xs shrink-0">
+                                        {item.color}
+                                      </Badge>
+                                    )}
+                                    <span className="text-muted-foreground font-mono text-xs">
+                                      {gradeLabel(item.grade, item.quantity)}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          </Panel>
+
+          {selected.size > 0 && (
+            <div className="fixed inset-x-0 bottom-16 z-40 p-3 md:hidden pb-[calc(4.5rem+env(safe-area-inset-bottom))]">
+              <Button
+                className="min-h-11 w-full shadow-lg"
+                onClick={() => confirmShipment.mutate(Array.from(selected))}
+                disabled={confirmShipment.isPending}
+              >
+                <Truck className="mr-1.5 h-4 w-4" />
+                Registrar expedição ({selected.size})
+              </Button>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

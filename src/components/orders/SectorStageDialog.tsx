@@ -1,7 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  AdaptiveDialog,
+  AdaptiveDialogContent,
+  AdaptiveDialogHeader,
+  AdaptiveDialogTitle,
+} from '@/components/ui/adaptive-dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -277,14 +282,14 @@ export default function SectorStageDialog({ stage, open, onOpenChange, orderNumb
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-lg">
+    <AdaptiveDialog open={open} onOpenChange={onOpenChange}>
+      <AdaptiveDialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
+        <AdaptiveDialogHeader>
+          <AdaptiveDialogTitle className="flex items-center gap-2 text-lg">
             <StageIcon className="h-5 w-5 shrink-0" />
             {stage.stage_name} — {orderNumber || 'OP'}
-          </DialogTitle>
-        </DialogHeader>
+          </AdaptiveDialogTitle>
+        </AdaptiveDialogHeader>
 
         <div className="space-y-4 mt-2">
           {/* Status badge */}
@@ -526,8 +531,8 @@ export default function SectorStageDialog({ stage, open, onOpenChange, orderNumb
           onCancel={() => setPendingConfirm(null)}
           confirming={apontar.isPending}
         />
-      </DialogContent>
-    </Dialog>
+      </AdaptiveDialogContent>
+    </AdaptiveDialog>
   );
 }
 

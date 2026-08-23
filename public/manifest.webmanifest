@@ -6,7 +6,7 @@
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "orientation": "portrait",
+  "orientation": "any",
   "background_color": "#F7F9FA",
   "theme_color": "#D9264E",
   "icons": [
@@ -25,6 +25,15 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Squad Vendas",
+      "short_name": "Vendas",
+      "description": "Novo PV em campo, fila offline e perfil",
+      "url": "/m",
+      "icons": [{ "src": "/icons/pwa-192.png", "sizes": "192x192" }]
     }
   ]
 }

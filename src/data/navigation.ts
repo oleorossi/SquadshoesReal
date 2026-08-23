@@ -362,8 +362,12 @@ export const ROLE_MENU_PRESENTATION: Record<string, RoleMenuPresentation> = {
  */
 const PRIORIDADE_DE_PAPEL = ['admin', 'gerente', 'consulta', 'producao', 'comercial', 'nfe_operator', 'almoxarifado', 'rh'];
 
+export function dominantRole(roles: readonly string[]): string | undefined {
+  return PRIORIDADE_DE_PAPEL.find((r) => roles.includes(r));
+}
+
 export function resolveRoleHome(roles: readonly string[]): string {
-  const papel = PRIORIDADE_DE_PAPEL.find((r) => roles.includes(r));
+  const papel = dominantRole(roles);
   return (papel && ROLE_MENU_PRESENTATION[papel]?.home) || '/dashboard';
 }
 

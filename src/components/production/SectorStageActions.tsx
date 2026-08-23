@@ -49,7 +49,7 @@ export function SectorStageActions({ stage, orderNumber, className }: Props) {
         <Button
           size="sm"
           variant="outline"
-          className="h-7 gap-1.5 text-xs"
+          className="h-11 min-h-11 gap-1.5 text-xs"
           onClick={start}
           disabled={update.isPending}
           title="Marcar início desta etapa (registra a hora de início para gargalo e lead time real)"

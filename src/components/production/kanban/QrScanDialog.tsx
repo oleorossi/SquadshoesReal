@@ -1,5 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  AdaptiveDialog,
+  AdaptiveDialogContent,
+  AdaptiveDialogHeader,
+  AdaptiveDialogTitle,
+} from '@/components/ui/adaptive-dialog';
+import { haptic } from '@/lib/haptic';
 import { QrCode, Warning as AlertTriangle } from '@phosphor-icons/react';
 
 interface Props {
@@ -60,7 +66,7 @@ export function QrScanDialog({ open, onClose, onDetect }: Props) {
       if (cancelled) return;
       try {
         stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'environment' },
+          video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
           audio: false,
         });
         if (cancelled) { stream.getTracks().forEach(t => t.stop()); return; }
@@ -93,6 +99,7 @@ export function QrScanDialog({ open, onClose, onDetect }: Props) {
             }
             if (raw) {
               firedRef.current = true;
+              haptic(25);
               onDetect(raw);
             }
           } catch { /* frame ainda não pronto — tenta no próximo tick */ }
@@ -111,13 +118,13 @@ export function QrScanDialog({ open, onClose, onDetect }: Props) {
   }, [open]);
 
   return (
-    <Dialog open={open} onOpenChange={v => { if (!v) onClose(); }}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-base">
+    <AdaptiveDialog open={open} onOpenChange={v => { if (!v) onClose(); }}>
+      <AdaptiveDialogContent className="sm:max-w-lg h-[92dvh] max-h-[92dvh] flex flex-col">
+        <AdaptiveDialogHeader>
+          <AdaptiveDialogTitle className="flex items-center gap-2 text-base">
             <QrCode className="h-5 w-5" /> Bipar QR da ficha
-          </DialogTitle>
-        </DialogHeader>
+          </AdaptiveDialogTitle>
+        </AdaptiveDialogHeader>
         {error ? (
           <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-300 flex gap-2">
             <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
@@ -132,15 +139,15 @@ export function QrScanDialog({ open, onClose, onDetect }: Props) {
           </div>
         ) : (
           <>
-            <div className="overflow-hidden rounded-md border border-border bg-black">
-              <video ref={videoRef} className="w-full aspect-square object-cover" muted playsInline />
+            <div className="min-h-0 flex-1 overflow-hidden rounded-md border border-border bg-black">
+              <video ref={videoRef} className="h-full w-full object-cover" muted playsInline autoPlay />
             </div>
             <p className="text-xs text-muted-foreground">
               Aponte pro QR no canto da ficha de operador — a OP aparece destacada no quadro na hora.
             </p>
           </>
         )}
-      </DialogContent>
-    </Dialog>
+      </AdaptiveDialogContent>
+    </AdaptiveDialog>
   );
 }

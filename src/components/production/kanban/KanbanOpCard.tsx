@@ -1,8 +1,9 @@
 import { Link } from 'react-router-dom';
+import { useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Warning as AlertTriangle, CalendarBlank, Package, Timer } from '@phosphor-icons/react';
+import { Warning as AlertTriangle, CalendarBlank, Package, Timer, Camera, ArrowRight, ClipboardText } from '@phosphor-icons/react';
 import { thumbUrl } from '@/lib/imageThumb';
 import { fmtDate, KanbanCardData } from './kanbanDerive';
 
@@ -30,6 +31,8 @@ interface Props {
    *  `reference_photo_url` vazio — ver o hook). Cai pro campo da view quando
    *  ausente, então o card funciona mesmo se a view for corrigida no futuro. */
   photoUrl?: string | null;
+  /** Chão de fábrica (dedo): mostra Apontar / Encaminhar / Foto em alvos 44px. */
+  floorTouch?: boolean;
   /** Acabou de chegar neste setor por apontamento → halo de pouso (some em
    *  ~1s). Âmbar quando a entrega veio incompleta, tinta quando veio inteira. */
   landed?: boolean;
@@ -64,8 +67,10 @@ export function KanbanOpCard({
   compact = false, dimmed = false, highlighted = false,
   selectable = false, selected = false, onToggleSelect, photoUrl, landed = false,
   materialGateDate = null, materialGateReason = null,
+  floorTouch = false,
 }: Props) {
   const { q, front, delivered, isPartial, columnStage, upstreamGap, parallelSiblings } = card;
+  const [photoOpen, setPhotoOpen] = useState(false);
   const total = columnStage?.quantity_total || q.quantity;
   const idade = stageAge(columnStage);
   // O card compacto cresce para 40px no celular; pedir a miniatura já nessa
@@ -264,6 +269,49 @@ export function KanbanOpCard({
           )}
         </div>
       </div>
+      {floorTouch && !selectable && (
+        <div
+          className="mt-2 grid grid-cols-3 gap-1"
+          onClick={e => e.stopPropagation()}
+          onKeyDown={e => e.stopPropagation()}
+        >
+          <button
+            type="button"
+            aria-label={`Apontar ${q.order_number}`}
+            onClick={onOpen}
+            className="flex h-11 items-center justify-center gap-1 rounded-md bg-primary text-primary-foreground text-[11px] font-semibold"
+          >
+            <ClipboardText className="h-3.5 w-3.5" /> Apontar
+          </button>
+          <button
+            type="button"
+            aria-label={`Encaminhar ${q.order_number}`}
+            onClick={onOpen}
+            className="flex h-11 items-center justify-center gap-1 rounded-md border border-border bg-background text-[11px] font-semibold"
+          >
+            <ArrowRight className="h-3.5 w-3.5" /> Encaminhar
+          </button>
+          <button
+            type="button"
+            aria-label={`Ver foto de ${q.reference_name || q.order_number}`}
+            disabled={!thumb}
+            onClick={() => setPhotoOpen(true)}
+            className="flex h-11 items-center justify-center gap-1 rounded-md border border-border bg-background text-[11px] font-semibold disabled:opacity-40"
+          >
+            <Camera className="h-3.5 w-3.5" /> Foto
+          </button>
+        </div>
+      )}
+      {photoOpen && thumb && (
+        <div
+          className="fixed inset-0 z-overlay flex items-center justify-center bg-black/80 p-6"
+          onClick={e => { e.stopPropagation(); setPhotoOpen(false); }}
+          role="dialog"
+          aria-label="Foto da referência"
+        >
+          <img src={thumbUrl(photoUrl || q.reference_photo_url, 512)} alt={q.reference_name || ''} className="max-h-[80dvh] max-w-full rounded-md object-contain" />
+        </div>
+      )}
     </Card>
   );
 }

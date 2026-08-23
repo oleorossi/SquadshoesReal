@@ -11,13 +11,13 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
  import { Switch } from '@/components/ui/switch';
  import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
  import {
-   Dialog,
-   DialogContent,
-   DialogHeader,
-   DialogTitle,
-   DialogDescription,
-   DialogFooter,
- } from '@/components/ui/dialog';
+   AdaptiveDialog,
+   AdaptiveDialogContent,
+   AdaptiveDialogHeader,
+   AdaptiveDialogTitle,
+   AdaptiveDialogDescription,
+   AdaptiveDialogFooter,
+ } from '@/components/ui/adaptive-dialog';
  import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
  import {
    useReferenceMaterialVariants,
@@ -1092,20 +1092,20 @@ function GroupCombobox({
          </Table>
        </div>
  
-       <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) setDuplicatingFromId(null); }}>
+       <AdaptiveDialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) setDuplicatingFromId(null); }}>
          {/* 1040px em vez de 500px. O DialogContent já traz `max-h-[90dvh]
              overflow-y-auto`, então o corpo NÃO leva scroll próprio: dois
              contêineres roláveis aninhados era o que fazia o formulário rolar
              por dentro numa tela de 1920px. */}
-         <DialogContent className="sm:max-w-[1040px]">
-           <DialogHeader>
-             <DialogTitle>
+         <AdaptiveDialogContent className="sm:max-w-[1040px]">
+           <AdaptiveDialogHeader>
+             <AdaptiveDialogTitle>
                {editingVariant ? 'Editar Variante' : duplicatingFromId ? 'Duplicar Variante' : 'Nova Variante de Material'}
-             </DialogTitle>
-             <DialogDescription className="sr-only">
+             </AdaptiveDialogTitle>
+             <AdaptiveDialogDescription className="sr-only">
                Nome do material, SKU, EAN/GTIN e status da variante.
-             </DialogDescription>
-           </DialogHeader>
+             </AdaptiveDialogDescription>
+           </AdaptiveDialogHeader>
 
            {duplicatingFromId && (
              <div className="rounded-md border border-primary/20 bg-primary/5 p-3 text-xs text-muted-foreground">
@@ -1452,15 +1452,15 @@ function GroupCombobox({
              </section>
             </div>
 
-           <DialogFooter>
+           <AdaptiveDialogFooter>
              <Button variant="outline" onClick={() => { setIsDialogOpen(false); setDuplicatingFromId(null); }}>Cancelar</Button>
              <Button onClick={handleSave} disabled={addVariant.isPending || updateVariant.isPending || duplicateVariant.isPending}>
                {(addVariant.isPending || updateVariant.isPending || duplicateVariant.isPending) && <Loader2 className="h-3 w-3 mr-2 animate-spin" />}
                {duplicatingFromId ? 'Duplicar Variante' : 'Salvar Variante'}
              </Button>
-           </DialogFooter>
-         </DialogContent>
-       </Dialog>
+           </AdaptiveDialogFooter>
+         </AdaptiveDialogContent>
+       </AdaptiveDialog>
      </div>
    );
  }

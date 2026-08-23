@@ -123,6 +123,19 @@ export const markAttemptFailed = async (
   notifyPendingOrdersChanged();
 };
 
+export const resetQueueAttempts = async (client_request_id: string): Promise<void> => {
+  const db = await getDb();
+  const existing = (await db.get('pending-orders', client_request_id)) as QueuedOrder | undefined;
+  if (!existing) return;
+  await db.put('pending-orders', {
+    ...existing,
+    attempts: 0,
+    lastError: existing.lastError,
+    lastAttemptAt: null,
+  });
+  notifyPendingOrdersChanged();
+};
+
 export const countPendingOrders = async (): Promise<number> => {
   const db = await getDb();
   return db.count('pending-orders');

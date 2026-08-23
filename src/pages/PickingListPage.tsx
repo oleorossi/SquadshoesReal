@@ -589,7 +589,7 @@ export default function PickingListPage() {
               onClick={() => switchScope(opt.key)}
               title={opt.hint}
               className={cn(
-                'h-7 px-3 rounded text-xs font-semibold transition-colors',
+                'min-h-11 px-3 rounded text-xs font-semibold transition-colors',
                 scopeMode === opt.key
                   ? 'bg-background text-foreground shadow-sm'
                   : 'text-muted-foreground hover:text-foreground',
@@ -687,7 +687,7 @@ export default function PickingListPage() {
               onClick={() => setSelectedPvIds(new Set())} disabled={selectedPvIds.size === 0}>
               Limpar
             </Button>
-            <Button size="sm" className="h-8 gap-1.5"
+            <Button size="sm" className="min-h-11 h-11 gap-1.5"
               onClick={handleGenerateSelectedPvs} disabled={selectedPvIds.size === 0 || isCalculating}>
               <CheckCircle2 className="h-4 w-4" />
               Gerar separação ({selectedPvIds.size})
@@ -717,10 +717,10 @@ export default function PickingListPage() {
               const stale = days != null && days > 30;
               return (
                 <button key={g.soId} type="button" onClick={() => togglePv(g.soId)}
-                  className={cn('w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left transition-colors hover:bg-muted/40', checked && 'bg-primary/5')}>
+                  className={cn('w-full flex items-center gap-2 px-3 min-h-11 py-2 text-sm text-left transition-colors hover:bg-muted/40', checked && 'bg-primary/5')}>
                   {checked
-                    ? <CheckSquare className="h-4 w-4 text-primary shrink-0" weight="fill" />
-                    : <Square className="h-4 w-4 text-muted-foreground shrink-0" />}
+                    ? <CheckSquare className="h-5 w-5 text-primary shrink-0" weight="fill" />
+                    : <Square className="h-5 w-5 text-muted-foreground shrink-0" />}
                   <span className="font-medium font-mono">{g.pvNumber}</span>
                   <Badge variant="outline" className="text-[10px] h-4 px-1.5">{g.opCount} OP{g.opCount !== 1 ? 's' : ''}</Badge>
                   <span className="text-xs text-muted-foreground ml-auto flex items-center gap-2">
@@ -938,15 +938,15 @@ export default function PickingListPage() {
                             <TableRow
                               key={key}
                               className={cn(
-                                'cursor-pointer transition-colors',
+                                'cursor-pointer transition-colors min-h-11',
                                 isPicked ? 'bg-green-500/5 opacity-60 hover:opacity-80' : 'hover:bg-muted/30',
                               )}
                               onClick={() => togglePicked(key)}
                             >
                               <TableCell className="py-2">
                                 {isPicked
-                                  ? <CheckSquare className="h-4 w-4 text-green-600" />
-                                  : <Square className="h-4 w-4 text-muted-foreground" />}
+                                  ? <CheckSquare className="h-5 w-5 text-green-600" />
+                                  : <Square className="h-5 w-5 text-muted-foreground" />}
                               </TableCell>
                               <TableCell className={cn('py-2 font-medium', isPicked && 'line-through text-muted-foreground')}>
                                 {srow.soleGroup}
@@ -1018,15 +1018,15 @@ export default function PickingListPage() {
                           <TableRow
                             key={key}
                             className={cn(
-                              'cursor-pointer transition-colors',
+                              'cursor-pointer transition-colors min-h-11',
                               isPicked ? 'bg-green-500/5 opacity-60 hover:opacity-80' : 'hover:bg-muted/30',
                             )}
                             onClick={() => togglePicked(key)}
                           >
                             <TableCell className="py-2">
                               {isPicked
-                                ? <CheckSquare className="h-4 w-4 text-green-600" />
-                                : <Square className="h-4 w-4 text-muted-foreground" />}
+                                ? <CheckSquare className="h-5 w-5 text-green-600" />
+                                : <Square className="h-5 w-5 text-muted-foreground" />}
                             </TableCell>
                             <TableCell className={cn('py-2 font-medium', isPicked && 'line-through text-muted-foreground')}>
                               {row.groupName}

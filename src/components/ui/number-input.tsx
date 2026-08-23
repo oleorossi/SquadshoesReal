@@ -20,12 +20,17 @@ interface NumberInputProps {
    * estava em kg.
    */
   unit?: string;
+  /**
+   * Teclado virtual. Default `decimal` (vírgula/ponto). Grade de numeração
+   * e pares inteiros devem passar `numeric` — no iOS abre o pad de inteiros.
+   */
+  inputMode?: "decimal" | "numeric" | "text";
   /** Foca o campo automaticamente ao montar (ex.: input de quantidade que abre
    *  em dialog). Opcional — sem efeito nos demais usos. */
   autoFocus?: boolean;
 }
 
-export function NumberInput({ value, onChange, id, className, required, min = 0, step = "0.0001", placeholder, decimals = 6, disabled, unit, autoFocus }: NumberInputProps) {
+export function NumberInput({ value, onChange, id, className, required, min = 0, step = "0.0001", placeholder, decimals = 6, disabled, unit, autoFocus, inputMode = "decimal" }: NumberInputProps) {
   const [displayValue, setDisplayValue] = React.useState("");
 
   const formatValue = (num: number | string | null | undefined): string => {
@@ -93,7 +98,7 @@ export function NumberInput({ value, onChange, id, className, required, min = 0,
     <input
       id={id}
       type="text"
-      inputMode="decimal"
+      inputMode={inputMode}
       value={displayValue}
       onChange={handleChange}
       onFocus={handleFocus}

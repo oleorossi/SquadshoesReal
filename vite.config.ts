@@ -74,25 +74,10 @@ const versionJsonPlugin = (): Plugin => ({
       // novos users instalam squad-vendas-sw.js direto.
       filename: 'squad-vendas-sw.js',
       strategies: 'generateSW',
-      // start_url e scope abrem o app direto em /m quando instalado
-      manifest: {
-        name: 'Squad Vendas',
-        short_name: 'Squad Vendas',
-        description: 'Pedidos de venda Squad Shoes em campo',
-        start_url: '/m',
-        scope: '/',
-        display: 'standalone',
-        orientation: 'portrait',
-        theme_color: '#D9264E', // squad red
-        background_color: '#FAFAF7', // paper cream
-        lang: 'pt-BR',
-        icons: [
-          { src: '/icons/pwa-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
-          { src: '/icons/pwa-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
-          { src: '/icons/pwa-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
-          { src: '/icons/apple-touch-icon.png', sizes: '180x180', type: 'image/png', purpose: 'any' },
-        ],
-      },
+      // Manifest canônico é public/manifest.webmanifest (ERP + atalho Squad Vendas).
+      // VitePWA NÃO emite o segundo manifest — start_url:/m aqui sequestrava
+      // toda instalação da fábrica pro app de vendas.
+      manifest: false,
       // ⚠ CÓDIGO MORTO enquanto `selfDestroying: true` (acima): o vite-plugin-pwa
       // ignora SILENCIOSAMENTE todo este objeto `workbox` quando selfDestroying
       // está ligado (gera só o SW destruidor, sem precache/runtimeCaching). Mantido
