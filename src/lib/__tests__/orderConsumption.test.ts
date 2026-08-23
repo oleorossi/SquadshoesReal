@@ -278,6 +278,25 @@ describe('orderConsumption — motor canônico', () => {
     expect(cabedal.totalQuantity).toBeCloseTo(20 / 100, 6);
   });
 
+  it('PV-00125 CF 09 PRETO: motor da tela casa grade conjugada da ficha', () => {
+    const item = buildItem({
+      quantity: 12,
+      fichas: 1,
+      color: 'PRETO',
+      grade: { '35': 2, '36': 2, '37': 3, '38': 2, '33/34': 1, '39/40': 2 },
+      technical_sheets: buildSheet({
+        upper_consumption: 20,
+        upper_consumption_per_size: {
+          '35': 20, '36': 20, '37': 20, '38': 20, '33/34': 20, '39/40': 20,
+        },
+      }),
+    });
+    const rows = computeConsumptionForItems([item], buildContext());
+    const cabedal = rows.find(r => r.componentType === 'Cabedal')!;
+    // 12 pares × 20 dm² = 240 dm² ÷ 100 dm/m (largura 1 m) = 2.40 m
+    expect(cabedal.totalQuantity).toBeCloseTo(2.4, 6);
+  });
+
   it('forração de palmilha do SOLADO é emitida mesmo com insole_lining_consumption escalar = 0', () => {
     const ctx = buildContext();
     ctx.sheetPrimarySoleMap = new Map([['sheet-1', 'p-solado']]);
