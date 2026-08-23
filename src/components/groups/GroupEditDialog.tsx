@@ -590,7 +590,7 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
     setUnitWeightKg(group.unit_weight_kg || 0);
     setPurchaseMultiple((group as any).purchase_multiple || 0);
     setIsArtisanalStrap(group.is_artisanal_strap === true);
-    setActiveTab('general');
+    setActiveTab(initialTab ?? 'general');
     // A hidratação pertence à abertura/troca do cadastro. Mudanças nas queries
     // de filhos ou itens não podem apagar campos ainda não salvos.
     // eslint-disable-next-line react-hooks/exhaustive-deps
