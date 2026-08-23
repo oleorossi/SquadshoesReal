@@ -19,9 +19,9 @@ import { code128Bars, encodeCode128 } from './code128';
 /**
  * Arte útil de cada coluna 50 × 30.
  *
- * Repete a proteção da etiqueta individual 100 × 30 da fábrica: 1 mm para
- * dentro da faca em cada lado. Assim cada metade física de 50 mm usa 48 mm de
- * arte, sem criar uma segunda margem entre as duas colunas.
+ * 1 mm para dentro da faca em cada lado. Cada etiqueta física de 50 mm
+ * usa 48 mm de arte. O vão entre colunas é o liner da faca — sem ele a
+ * coluna da direita imprime em cima do intervalo e corta logo e código.
  */
 export const ART_WIDTH_MM = 48.0;
 export const ART_HEIGHT_MM = 38.0;
@@ -50,10 +50,9 @@ export interface CoucheRollProfile {
 }
 
 export const DEFAULT_COUCHE_ROLL_PROFILE: Readonly<CoucheRollProfile> = Object.freeze({
-  // A L42PRO recebe uma mídia única de 100 × 30 mm: 50 mm à esquerda +
-  // 50 mm à direita. Vão adicional só entra quando o operador informar uma
-  // faca diferente no perfil avançado.
-  columnGapMm: 0,
+  // Faca 2 × 50 × 30 mm com 6 mm de liner entre as colunas (página 106 × 30).
+  // Vão 0 colava a arte da direita no intervalo e cortava logo e o 9 do código.
+  columnGapMm: 6,
   leftMarginMm: 0,
   rightMarginMm: 0,
   topMarginMm: 0,
@@ -327,7 +326,7 @@ export interface BabyNalinPdfOptions {
   repeatByQuantity?: boolean;
   /** Etiquetas físicas por par quando a repetição por quantidade estiver ligada. */
   repeatMultiplier?: number;
-  /** Medidas opcionais de uma faca/liner que não use o padrão exato 100 × 30. */
+  /** Medidas opcionais de uma faca/liner que não use o padrão 2 × 50 × 30 com vão 6 mm. */
   coucheProfile?: Partial<CoucheRollProfile>;
   /** PNG em data URI + proporção, pra compor a logomarca. Sem ele, sai sem logo. */
   logo?: { dataUrl: string; width: number; height: number } | null;
