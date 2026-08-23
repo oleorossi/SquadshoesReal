@@ -55,6 +55,10 @@ function skuCheckbox(tamanho: string) {
   });
 }
 
+function selecionar(...tamanhos: string[]) {
+  tamanhos.forEach(tamanho => fireEvent.click(skuCheckbox(tamanho)));
+}
+
 function confirmarPerfilCouche() {
   fireEvent.click(screen.getByText('Medidas do rolo de duas colunas'));
   const box = screen.getByRole('checkbox', {
@@ -77,7 +81,7 @@ async function importar(rows: BabyNalinRow[] = ROWS) {
 
   const skuCount = new Set(rows.map(clientSkuKey)).size;
   await waitFor(() => {
-    expect(screen.getByText(`${skuCount}/${skuCount}`)).toBeInTheDocument();
+    expect(screen.getByText(`0/${skuCount}`)).toBeInTheDocument();
   });
   return view;
 }
@@ -89,18 +93,19 @@ describe('ClientLabelingWorkspace · seleção por SKU', () => {
     mocks.buildBabyNalinPdf.mockResolvedValue({ save: mocks.save });
   });
 
-  it('seleciona todos ao importar e gera somente sobre os SKUs marcados', async () => {
+  it('inicia sem seleção e gera somente o SKU marcado', async () => {
     await importar();
 
-    fireEvent.click(skuCheckbox('35'));
-    expect(screen.getByText('2/3')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Gerar gráfica (0 SKUs)' })).toBeDisabled();
+    selecionar('36');
+    expect(screen.getByText('1/3')).toBeInTheDocument();
     confirmarPerfilCouche();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Gerar gráfica (2 SKUs)' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Gerar gráfica (1 SKU)' }));
 
     await waitFor(() => {
       expect(mocks.buildBabyNalinPdf).toHaveBeenCalledWith(
-        [ROWS[0], ROWS[2]],
+        [ROWS[2]],
         expect.objectContaining({ mode: 'graphic', repeatByQuantity: false }),
       );
     });
@@ -110,7 +115,7 @@ describe('ClientLabelingWorkspace · seleção por SKU', () => {
   it('gera produção somente com as linhas dos SKUs selecionados', async () => {
     await importar();
 
-    fireEvent.click(skuCheckbox('35'));
+    selecionar('34', '36');
     confirmarPerfilCouche();
     fireEvent.click(screen.getByRole('button', { name: 'Gerar L42PRO (576 etiquetas)' }));
 
@@ -124,6 +129,7 @@ describe('ClientLabelingWorkspace · seleção por SKU', () => {
 
   it('permite reduzir a quantidade individual e gera somente o valor informado', async () => {
     await importar([ROWS[0]]);
+    selecionar('34');
 
     const quantityInput = screen.getByRole('spinbutton', {
       name: 'Quantidade a imprimir do SKU NL02, tamanho 34',
@@ -161,6 +167,7 @@ describe('ClientLabelingWorkspace · seleção por SKU', () => {
 
   it('mantém a quantidade original no arquivo da gráfica', async () => {
     await importar([ROWS[0]]);
+    selecionar('34');
 
     fireEvent.change(screen.getByRole('spinbutton', {
       name: 'Quantidade a imprimir do SKU NL02, tamanho 34',
@@ -184,8 +191,8 @@ describe('ClientLabelingWorkspace · seleção por SKU', () => {
     expect(checkboxes).toHaveLength(2);
     fireEvent.click(checkboxes[0]);
 
-    expect(checkboxes[0]).toHaveAttribute('data-state', 'unchecked');
-    expect(checkboxes[1]).toHaveAttribute('data-state', 'unchecked');
+    expect(checkboxes[0]).toHaveAttribute('data-state', 'checked');
+    expect(checkboxes[1]).toHaveAttribute('data-state', 'checked');
     expect(checkboxes[0]).not.toHaveAccessibleName(checkboxes[1].getAttribute('aria-label')!);
     expect(screen.getByText('1/2')).toBeInTheDocument();
   });
@@ -194,11 +201,8 @@ describe('ClientLabelingWorkspace · seleção por SKU', () => {
     const codigoLongo = { ...ROWS[1], codigoBarra: '1234567890'.repeat(6) };
     await importar([ROWS[0], codigoLongo]);
 
-    const gerar = screen.getByRole('button', { name: 'Gerar gráfica (2 SKUs)' });
-    expect(gerar).toBeDisabled();
-
     confirmarPerfilCouche();
-    fireEvent.click(skuCheckbox('35'));
+    selecionar('34');
     const gerarValido = screen.getByRole('button', { name: 'Gerar gráfica (1 SKU)' });
     expect(gerarValido).toBeEnabled();
     fireEvent.click(gerarValido);
@@ -213,23 +217,25 @@ describe('ClientLabelingWorkspace · seleção por SKU', () => {
 
   it('usa a busca só como filtro visual e preserva a seleção dos outros SKUs', async () => {
     await importar();
+    selecionar('34', '36');
 
     const busca = screen.getByPlaceholderText('Buscar no arquivo por referência, cor, tamanho ou código…');
     fireEvent.change(busca, { target: { value: '35' } });
 
     expect(screen.queryByRole('checkbox', { name: /Selecionar linha \d+: SKU NL02, PRETO, tamanho 34,/ })).not.toBeInTheDocument();
+    expect(screen.getByText('2 fora da busca')).toBeInTheDocument();
     fireEvent.click(skuCheckbox('35'));
     fireEvent.change(busca, { target: { value: '' } });
 
     expect(skuCheckbox('34')).toHaveAttribute('data-state', 'checked');
-    expect(skuCheckbox('35')).toHaveAttribute('data-state', 'unchecked');
+    expect(skuCheckbox('35')).toHaveAttribute('data-state', 'checked');
     expect(skuCheckbox('36')).toHaveAttribute('data-state', 'checked');
 
     confirmarPerfilCouche();
-    fireEvent.click(screen.getByRole('button', { name: 'Gerar gráfica (2 SKUs)' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Gerar gráfica (3 SKUs)' }));
     await waitFor(() => {
       expect(mocks.buildBabyNalinPdf).toHaveBeenCalledWith(
-        [ROWS[0], ROWS[2]],
+        ROWS,
         expect.objectContaining({ mode: 'graphic' }),
       );
     });
@@ -238,17 +244,15 @@ describe('ClientLabelingWorkspace · seleção por SKU', () => {
   it('permite selecionar separadamente SKUs diferentes com o mesmo código de barras', async () => {
     await importar([ROWS[0], { ...ROWS[1], codigoBarra: ROWS[0].codigoBarra }]);
 
-    fireEvent.click(skuCheckbox('35'));
+    selecionar('35');
 
-    expect(skuCheckbox('34')).toHaveAttribute('data-state', 'checked');
-    expect(skuCheckbox('35')).toHaveAttribute('data-state', 'unchecked');
+    expect(skuCheckbox('34')).toHaveAttribute('data-state', 'unchecked');
+    expect(skuCheckbox('35')).toHaveAttribute('data-state', 'checked');
     expect(screen.getByText('1/2')).toBeInTheDocument();
   });
 
   it('desabilita as duas gerações quando nenhum SKU está selecionado', async () => {
     await importar();
-
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Desmarcar todos os SKUs exibidos' }));
 
     expect(screen.getByRole('button', { name: 'Gerar L42PRO (0 etiquetas)' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Gerar gráfica (0 SKUs)' })).toBeDisabled();
@@ -260,10 +264,10 @@ describe('ClientLabelingWorkspace · seleção por SKU', () => {
     await importar([ROWS[0], invalido]);
 
     expect(screen.getByText('inválido')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Gerar gráfica (2 SKUs)' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Gerar gráfica (0 SKUs)' })).toBeDisabled();
 
     confirmarPerfilCouche();
-    fireEvent.click(skuCheckbox('35'));
+    selecionar('34');
     expect(screen.getByRole('button', { name: 'Gerar gráfica (1 SKU)' })).toBeEnabled();
   });
 
@@ -271,6 +275,7 @@ describe('ClientLabelingWorkspace · seleção por SKU', () => {
     await importar([ROWS[0], { ...ROWS[0], codProduto: 'OUTRO' }]);
 
     expect(screen.getByText(/código de barras ou código de produto divergente/)).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole('checkbox', { name: /Selecionar linha \d+: SKU NL02, PRETO, tamanho 34,/ })[0]);
     confirmarPerfilCouche();
     expect(screen.getByRole('button', { name: 'Gerar gráfica (1 SKU)' })).toBeDisabled();
   });
@@ -279,8 +284,7 @@ describe('ClientLabelingWorkspace · seleção por SKU', () => {
     const conflito = { ...ROWS[0], codigoBarra: '2260000303291' };
     await importar([ROWS[0], conflito, ROWS[1]]);
 
-    const sku34 = screen.getAllByRole('checkbox', { name: /Selecionar linha \d+: SKU NL02, PRETO, tamanho 34,/ });
-    fireEvent.click(sku34[0]);
+    selecionar('35');
     confirmarPerfilCouche();
 
     const gerar = screen.getByRole('button', { name: 'Gerar gráfica (1 SKU)' });
@@ -297,6 +301,7 @@ describe('ClientLabelingWorkspace · seleção por SKU', () => {
 
   it('envia o perfil físico informado para o gerador couchê', async () => {
     await importar();
+    selecionar('34', '35', '36');
 
     fireEvent.click(screen.getByText('Medidas do rolo de duas colunas'));
     fireEvent.change(screen.getByLabelText('Vão entre colunas (mm)'), { target: { value: '2.5' } });
@@ -354,6 +359,7 @@ describe('ClientLabelingWorkspace · seleção por SKU', () => {
 
   it('congela arquivo e configurações durante a geração', async () => {
     await importar();
+    selecionar('34', '35', '36');
     const logo = deferred<null>();
     mocks.loadLogoDataUrl.mockReturnValueOnce(logo.promise);
 
@@ -372,6 +378,7 @@ describe('ClientLabelingWorkspace · seleção por SKU', () => {
 
   it('libera geração no perfil padrão e só exige nova confirmação se as medidas mudarem', async () => {
     await importar();
+    selecionar('34', '35', '36');
 
     expect(screen.getByRole('button', { name: 'Gerar L42PRO (864 etiquetas)' })).toBeEnabled();
     expect(screen.getByRole('button', { name: 'Gerar gráfica (3 SKUs)' })).toBeEnabled();
@@ -391,8 +398,42 @@ describe('ClientLabelingWorkspace · seleção por SKU', () => {
 
   it('calcula grandes quantidades sem expandir e protege o navegador', async () => {
     await importar([{ ...ROWS[0], quantidade: MAX_PDF_LABELS + 1 }]);
+    selecionar('34');
 
     expect(screen.getByText(/Divida o pedido em arquivos/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: `Gerar L42PRO (${MAX_PDF_LABELS + 1} etiquetas)` })).toBeDisabled();
+  });
+
+  it('regressão: selecionar apenas o 36 cappuccino gera somente suas 288 etiquetas', async () => {
+    const cappuccino36 = {
+      ...ROWS[2],
+      cor: 'CAPPUCCINO',
+      quantidade: 288,
+    };
+    const outras = Array.from({ length: 20 }, (_, index) => ({
+      ...ROWS[index % ROWS.length],
+      referencia: `REF${String(index).padStart(2, '0')}`,
+      cor: index < 6 ? 'CAPPUCCINO' : 'PRETO',
+      tamanho: String(20 + index),
+      codigoBarra: `22600003${String(index).padStart(5, '0')}`,
+      quantidade: 144,
+    }));
+    await importar([...outras, cappuccino36]);
+
+    const busca = screen.getByPlaceholderText('Buscar no arquivo por referência, cor, tamanho ou código…');
+    fireEvent.change(busca, { target: { value: 'cappuccino 36' } });
+    fireEvent.click(screen.getByRole('checkbox', { name: /CAPPUCCINO, tamanho 36,/i }));
+
+    expect(screen.getByText('1/21')).toBeInTheDocument();
+    expect(screen.getByText('288 etiquetas')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Gerar L42PRO (288 etiquetas)' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Gerar L42PRO (288 etiquetas)' }));
+
+    await waitFor(() => {
+      expect(mocks.buildBabyNalinPdf).toHaveBeenCalledWith(
+        [cappuccino36],
+        expect.objectContaining({ mode: 'production', repeatByQuantity: true }),
+      );
+    });
   });
 });

@@ -130,6 +130,8 @@ export function ClientLabelingWorkspace() {
   const visibleSkuKeys = [...new Set(visibleRows.map(entry => entry.skuKey))];
   const allVisibleSelected = visibleSkuKeys.length > 0 && visibleSkuKeys.every(key => selectedSkuKeys.has(key));
   const someVisibleSelected = visibleSkuKeys.some(key => selectedSkuKeys.has(key));
+  const visibleSelectedCount = visibleSkuKeys.filter(key => selectedSkuKeys.has(key)).length;
+  const hiddenSelectedCount = Math.max(0, selectedSkuAnalysis.rows.length - visibleSelectedCount);
   const isBusy = reading || generating !== null;
   const productionOverLimit = totalEtiquetas > MAX_PDF_LABELS;
 
@@ -146,9 +148,12 @@ export function ClientLabelingWorkspace() {
       if (requestId !== fileRequestIdRef.current) return;
       setRows(lidas);
       setFileName(file.name);
-      setSelectedSkuKeys(new Set(analyzeClientSkus(lidas).rows.map(clientSkuKey)));
+      // Começa vazio: marcar tudo silenciosamente fazia a busca esconder SKUs
+      // ainda selecionados. O operador clicava apenas no tamanho desejado, mas
+      // o PDF continuava incluindo quase todo o arquivo.
+      setSelectedSkuKeys(new Set());
       setPrintQuantities(initialPrintQuantities(lidas));
-      toast.success(`${lidas.length} etiqueta(s) lidas de ${file.name}`);
+      toast.success(`${lidas.length} etiqueta(s) lidas. Selecione os SKUs que deseja imprimir.`);
     } catch (error) {
       if (requestId !== fileRequestIdRef.current) return;
       setRows([]);
@@ -538,6 +543,11 @@ export function ClientLabelingWorkspace() {
                   {selectedSkuAnalysis.rows.length}/{skuAnalysis.rows.length}
                 </Badge>
                 <span className="text-xs text-muted-foreground">SKUs selecionados</span>
+                {hiddenSelectedCount > 0 && (
+                  <Badge variant="outline" className="font-mono text-xs">
+                    {hiddenSelectedCount} fora da busca
+                  </Badge>
+                )}
                 <Button
                   variant="outline"
                   size="sm"
@@ -545,7 +555,7 @@ export function ClientLabelingWorkspace() {
                   onClick={() => setSelectedSkuKeys(new Set(visibleSkuKeys))}
                   disabled={visibleSkuKeys.length === 0 || isBusy}
                 >
-                  Selecionar só exibidos
+                  Selecionar exibidos ({visibleSkuKeys.length})
                 </Button>
                 <Button
                   variant="ghost"
