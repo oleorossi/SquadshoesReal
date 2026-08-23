@@ -35,7 +35,7 @@ describe('conversão de tiras independente de cor', () => {
   });
 
   it('abre o fluxo correto em Receitas e edita a conversão sem depender de variante', () => {
-    expect(hub).toContain("activeTab === 'receitas' ? 'conversion' : 'stock_variant'");
+    expect(hub).toContain("activeTab === 'cadastro' || activeTab === 'receitas'");
     expect(hub).toContain("purpose: 'conversion'");
     expect(hub).toContain('recipeId: recipe.id');
     expect(hub).toContain('Nova conversão');

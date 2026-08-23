@@ -83,4 +83,51 @@ describe('referenceStrapBaseGroups', () => {
       canonical: false,
     }]);
   });
+
+  it('em tiras sem cabedal, usa a Forração e ignora o principal da variante sem cascata', () => {
+    const result = referenceStrapBaseGroups({
+      sheet: {
+        id: 'ref-1',
+        has_straps: true,
+        upper_material: '',
+        lining_material: 'NAPA SOFT',
+        strap_base_group_id: 'g-soft',
+        variant_drives_lining: false,
+      },
+      groups,
+      products,
+      variants: [{
+        reference_id: 'ref-1',
+        active: true,
+        material_name: 'Glow',
+        main_material_group_id: 'g-glow',
+      }],
+    });
+
+    expect(result.map((group) => group.name)).toEqual(['NAPA SOFT']);
+    expect(result[0].canonical).toBe(true);
+  });
+
+  it('em tiras sem cabedal, o principal da variante acompanha a Forração quando a cascata está ligada', () => {
+    const result = referenceStrapBaseGroups({
+      sheet: {
+        id: 'ref-1',
+        has_straps: true,
+        upper_material: '',
+        lining_material: 'NAPA SOFT',
+        strap_base_group_id: 'g-soft',
+        variant_drives_lining: true,
+      },
+      groups,
+      products,
+      variants: [{
+        reference_id: 'ref-1',
+        active: true,
+        material_name: 'Glow',
+        main_material_group_id: 'g-glow',
+      }],
+    });
+
+    expect(result.map((group) => group.name)).toEqual(['GLOW METALIC', 'NAPA SOFT']);
+  });
 });

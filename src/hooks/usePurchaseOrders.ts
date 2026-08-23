@@ -87,6 +87,18 @@ export type POContentType = 'solado' | 'material' | 'palmilha' | 'misto' | 'vazi
 /** Resumo dos itens de UMA OC, pra surfar especificidade na lista sem abrir o modal. */
 export type PurchaseOrderItemSummary = {
   itemCount: number;
+  items: Array<{
+    productId: string;
+    name: string;
+    sku: string;
+    category: string;
+    color: string | null;
+    quantity: number;
+    unit: string;
+    unitPrice: number;
+  }>;
+  /** Índice textual normalizado usado pelos filtros da listagem. */
+  searchText: string;
   /** Nome do item representativo (solado quando houver, senão o primeiro). */
   label: string;
   color: string | null;
@@ -134,7 +146,7 @@ export function usePurchaseOrderItemSummaries(orderIds: string[]) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('purchase_order_items')
-        .select('purchase_order_id, product_id, quantity, color, grade, products(name, category, color)')
+        .select('purchase_order_id, product_id, quantity, unit, unit_price, color, grade, products(name, sku, category, color)')
         .in('purchase_order_id', ids);
       if (error) throw error;
 
@@ -186,6 +198,17 @@ export function usePurchaseOrderItemSummaries(orderIds: string[]) {
 
         summaries.set(orderId, {
           itemCount: items.length,
+          items: items.map(i => ({
+            productId: i.product_id,
+            name: i.products?.name || 'Item',
+            sku: i.products?.sku || '',
+            category: i.products?.category || '',
+            color: i.color || i.products?.color || null,
+            quantity: Number(i.quantity) || 0,
+            unit: i.unit || '',
+            unitPrice: Number(i.unit_price) || 0,
+          })),
+          searchText: items.map(i => [i.products?.name, i.products?.sku, i.products?.category, i.color, i.products?.color].filter(Boolean).join(' ')).join(' '),
           label: repName,
           color: repColor,
           contentType,

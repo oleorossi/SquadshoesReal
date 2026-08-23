@@ -461,19 +461,6 @@ export function ArtisanalStrapEditor({
     setValidationError(null);
   };
 
-  const setInternalProductionEnabled = (enabled: boolean) => {
-    setForm((current) => ({
-      ...current,
-      internalProductionEnabled: enabled,
-      floorMode: enabled ? current.floorMode : 'buy_ready',
-      purchaseEnabled: enabled ? current.purchaseEnabled : true,
-      includeRecipe: enabled ? Boolean(current.recipeId) : false,
-      recipeId: enabled ? current.recipeId : '',
-    }));
-    setFloorModeConfirmed(!enabled);
-    setValidationError(null);
-  };
-
   const validate = (): string | null => {
     if (!form.typeId && !form.typeName.trim()) return 'Selecione uma família ou informe uma nova.';
     if (!form.measureId && (!form.measureName.trim() || form.finishedWidthMm <= 0)) {
@@ -647,7 +634,7 @@ export function ArtisanalStrapEditor({
             </div>
             <SheetTitle>{mode === 'create' ? 'Cadastrar tira' : 'Editar tira'}</SheetTitle>
             <SheetDescription>
-              Cadastre a cor e o produto acabado no estoque. A conversão técnica é compartilhada entre todas as cores.
+              Defina se a tira será produzida internamente ou comprada pronta. A modalidade governa estoque, baixa e reposição.
             </SheetDescription>
           </SheetHeader>
 
@@ -686,27 +673,31 @@ export function ArtisanalStrapEditor({
             <section className="space-y-3" aria-labelledby="strap-editor-identity">
               <div className="flex items-center gap-2">
                 <Scissors className="h-4 w-4 text-primary" />
-                <h3 id="strap-editor-identity" className="text-sm font-bold">Identidade exata</h3>
+                <h3 id="strap-editor-identity" className="text-sm font-bold">Origem e tipo da tira</h3>
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5 sm:col-span-2">
-                  <Label>Base da identidade *</Label>
+                  <Label>Como esta tira entra no estoque? *</Label>
                   <Select
-                    value={form.identityBasis}
-                    onValueChange={(value) => setIdentityBasis(value as ArtisanalStrapIdentityBasis)}
+                    value={form.identityBasis === 'reference_base' && form.internalProductionEnabled
+                      ? 'internal'
+                      : 'buy_ready'}
+                    onValueChange={(value) => setIdentityBasis(
+                      value === 'internal' ? 'reference_base' : 'finished_product_group',
+                    )}
                     disabled={readOnly || identityLocked || exactBuyReadyProductPrefill}
                   >
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="reference_base">Segue a napa da referência</SelectItem>
-                      <SelectItem value="finished_product_group">Grupo próprio do produto acabado</SelectItem>
+                      <SelectItem value="internal">Produção interna (artesanal)</SelectItem>
+                      <SelectItem value="buy_ready">Comprada pronta</SelectItem>
                     </SelectContent>
                   </Select>
-                  <p className="text-xs text-muted-foreground">
-                    {form.identityBasis === 'finished_product_group'
-                      ? 'Tira comprada pronta: não muda quando a referência troca SOFT por MADRI.'
-                      : 'Tira cortada da napa efetiva da referência ou da variante de material.'}
-                  </p>
+                  <div className="rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                    {form.identityBasis === 'reference_base' && form.internalProductionEnabled
+                      ? 'Produção interna: debita a napa-base da cor do pedido, aplica o rendimento confirmado e gera saldo do produto final.'
+                      : 'Comprada pronta: movimenta diretamente o SKU acabado do fornecedor. Não debita napa e não exige conversão de rendimento.'}
+                  </div>
                 </div>
                 <div className="space-y-1.5">
                   <Label>Família/tipo *</Label>
@@ -773,7 +764,7 @@ export function ArtisanalStrapEditor({
 
                 {form.identityBasis === 'reference_base' ? (
                   <div className="space-y-1.5">
-                    <Label>Napa-base *</Label>
+                    <Label>Material-base que será debitado *</Label>
                     <Select
                       value={form.baseGroupId}
                       onValueChange={(value) => {
@@ -799,7 +790,7 @@ export function ArtisanalStrapEditor({
                   </div>
                 ) : (
                   <div className="space-y-1.5">
-                    <Label>Grupo próprio da tira *</Label>
+                    <Label>Grupo do produto comprado pronto *</Label>
                     <Select
                       value={form.identityGroupId}
                       onValueChange={(value) => {
@@ -827,24 +818,6 @@ export function ArtisanalStrapEditor({
                     </Select>
                   </div>
                 )}
-
-                <div className="flex items-center justify-between gap-3 rounded-md border border-border p-3 sm:col-span-2">
-                  <div>
-                    <Label htmlFor="strap-internal-production">Produção interna</Label>
-                    <p className="text-xs text-muted-foreground">
-                      {form.identityBasis === 'finished_product_group'
-                        ? 'Indisponível para identidade por produto acabado.'
-                        : 'Permite cortar esta tira da napa-base e usar receita/rendimento.'}
-                    </p>
-                  </div>
-                  <Switch
-                    id="strap-internal-production"
-                    checked={form.internalProductionEnabled}
-                    onCheckedChange={setInternalProductionEnabled}
-                    disabled={readOnly || form.identityBasis === 'finished_product_group'}
-                    aria-label="Habilitar produção interna da tira"
-                  />
-                </div>
 
                 <div className="space-y-1.5">
                   <Label>Cor canônica *</Label>
@@ -1057,10 +1030,10 @@ export function ArtisanalStrapEditor({
               </div>
 
               {purchasedReady ? (
-                <p className="rounded-lg border border-dashed border-border p-3 text-sm text-muted-foreground">
+                <div className="rounded-lg border border-dashed border-border p-3 text-sm text-muted-foreground">
                   <Badge variant="secondary" className="mr-2">Comprada pronta</Badge>
                   Receita, rendimento, lote interno e transformação não se aplicam a esta identidade.
-                </p>
+                </div>
               ) : form.includeRecipe ? (
                 <div className="space-y-3">
                   <p className="rounded-lg border border-dashed border-border p-3 text-sm text-muted-foreground">

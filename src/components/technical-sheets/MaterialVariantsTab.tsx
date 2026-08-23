@@ -40,6 +40,7 @@ import {
   variantDrivesNoComponent,
   type VariantCascadeSelection,
 } from '@/lib/materialVariantColorGroup';
+import { strapIdentityBasis } from '@/lib/strapIdentity';
  import { getGroupPath } from '@/lib/groupHierarchy';
  import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
@@ -273,16 +274,21 @@ function GroupCombobox({
      queryFn: async () => {
        const { data, error } = await (supabase as any)
          .from('technical_sheets')
-         .select('upper_material, upper_material_group_id, lining_material, primary_sole_id, has_straps, strap_base_group_id, variant_drives_upper, variant_drives_lining, variant_drives_fachete')
+         .select('upper_material, upper_material_group_id, upper_material_product_id, lining_material, lining_material_product_id, primary_sole_id, has_straps, strap_colors, strap_base_group_id, variant_drives_upper, variant_drives_lining, variant_drives_fachete')
          .eq('id', sheetId)
          .maybeSingle();
        if (error) throw error;
        return data as {
          upper_material: string | null;
          upper_material_group_id: string | null;
+         upper_material_product_id: string | null;
          lining_material: string | null;
+         lining_material_product_id: string | null;
          primary_sole_id: string | null;
          has_straps: boolean | null;
+         strap_colors: Array<{
+           identity_basis?: 'reference_base' | 'finished_product_group' | null;
+         }> | null;
          strap_base_group_id: string | null;
          variant_drives_upper: boolean | null;
          variant_drives_lining: boolean | null;
@@ -491,12 +497,30 @@ function GroupCombobox({
     */
    const strapBaseReadout = useMemo(() => {
      if (!sheetMaterials?.has_straps) return null;
-     const liningGroupId = groups.find(group =>
-       (group.name || '').trim().toLocaleLowerCase('pt-BR')
-         === (sheetMaterials.lining_material || '').trim().toLocaleLowerCase('pt-BR'))?.id ?? null;
+     const hasReferenceBaseLine = (sheetMaterials.strap_colors || [])
+       .some(line => strapIdentityBasis(line) === 'reference_base');
+     if (!hasReferenceBaseLine) return null;
+     const groupFromProduct = (productId?: string | null) =>
+       products.find(product => product.id === productId)?.group_id ?? null;
+     const liningGroupId = groupFromProduct(sheetMaterials.lining_material_product_id)
+       || groups.find(group =>
+         (group.name || '').trim().toLocaleLowerCase('pt-BR')
+           === (sheetMaterials.lining_material || '').trim().toLocaleLowerCase('pt-BR'))?.id
+       || null;
      const readout = resolveStrapBaseReadout({
-       variant: formData,
-       sheet: { ...sheetMaterials, lining_material_group_id: liningGroupId },
+       variant: {
+         ...formData,
+         upper_material_group_id: groupFromProduct(formData.upper_material_product_id)
+           || formData.upper_material_group_id,
+         lining_material_group_id: groupFromProduct(formData.lining_material_product_id)
+           || formData.lining_material_group_id,
+       },
+       sheet: {
+         ...sheetMaterials,
+         upper_material_group_id: groupFromProduct(sheetMaterials.upper_material_product_id)
+           || sheetMaterials.upper_material_group_id,
+         lining_material_group_id: liningGroupId,
+       },
        cascade,
      });
      if (!readout) return null;
@@ -506,7 +530,7 @@ function GroupCombobox({
        liningGroupName: groups.find(group => group.id === liningGroupId)?.name
          ?? sheetMaterials.lining_material ?? 'forração da ficha',
      };
-   }, [sheetMaterials, formData, cascade, groups]);
+   }, [sheetMaterials, formData, cascade, groups, products]);
 
    const cascadeEditable = !!formData.main_material_group_id;
    const cascadeDirty = cascadeEditable && !!sheetMaterials && (
@@ -700,6 +724,10 @@ function GroupCombobox({
        main_material_group_id: source.main_material_group_id,
        upper_material_product_id: source.upper_material_product_id,
        upper_material_group_id: source.upper_material_group_id,
+       // O pin fica apenas no estado visual: a duplicação continua copiando-o
+       // da origem via sourceData, mas o readout precisa enxergar o mesmo grupo
+       // que será efetivamente persistido.
+       lining_material_product_id: source.lining_material_product_id,
        lining_material_group_id: source.lining_material_group_id,
        insole_material_group_id: source.insole_material_group_id,
        display_order: variants.length,
@@ -1202,10 +1230,9 @@ function GroupCombobox({
                             sai de <strong className="text-foreground">{strapBaseReadout.groupName}</strong>
                             {strapBaseReadout.divergesFromLining
                               ? <> — ⚠ diferente da Forração (<strong>{strapBaseReadout.liningGroupName}</strong>).
-                                  O resolver da tira não olha estas caixas, então o modelo sairia com duas
-                                  napas. Iguale pelo seletor de Forro em "Exceção por componente".</>
-                              : <> · segue a Forração. Para trocar só a tira, use o seletor de
-                                  <strong> Forro</strong> em "Exceção por componente".</>}
+                                  Revise a Forração da ficha antes de liberar esta variante.</>
+                              : <> · segue a Forração. Para trocar esse material na variante, altere a
+                                  <strong> Forração</strong>; Forração e tira mudam juntas.</>}
                           </p>
                         )}
                       </>

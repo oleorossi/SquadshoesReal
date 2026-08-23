@@ -9,6 +9,7 @@ import { ArtisanalStrapConversionEditor } from '../ArtisanalStrapConversionEdito
 
 const mutations = vi.hoisted(() => ({
   approveWidth: vi.fn(),
+  confirmConversion: vi.fn(),
   reuseLegacy: vi.fn(),
   saveConversion: vi.fn(),
   saveWidth: vi.fn(),
@@ -18,6 +19,21 @@ vi.mock('@/hooks/useArtisanalStraps', () => ({
   useSaveArtisanalStrapConversion: () => ({
     isPending: false,
     mutateAsync: mutations.saveConversion,
+  }),
+  useConfirmArtisanalStrapMaterialConversion: () => ({
+    isPending: false,
+    mutateAsync: mutations.confirmConversion,
+  }),
+  useStrapBaseGroupCandidates: (enabled: boolean) => ({
+    data: enabled ? [{
+      id: 'base-1',
+      name: 'NAPA SOFT',
+      usable_width_mm: 1370,
+      has_approved_width_profile: false,
+      linear_sku_count: 43,
+    }] : [],
+    isLoading: false,
+    isError: false,
   }),
   useReuseLegacyArtisanalStrapRecipe: () => ({
     isPending: false,
@@ -110,6 +126,7 @@ const catalogWithLegacyRecipe: ArtisanalStrapCatalog = {
 describe('ArtisanalStrapConversionEditor', () => {
   beforeEach(() => {
     mutations.approveWidth.mockReset().mockResolvedValue({});
+    mutations.confirmConversion.mockReset().mockResolvedValue({ recipe_id: 'recipe-confirmed', status: 'approved' });
     mutations.reuseLegacy.mockReset().mockResolvedValue({ recipe_id: 'recipe-reused' });
     mutations.saveConversion.mockReset().mockResolvedValue({ recipe_id: 'recipe-1' });
     mutations.saveWidth.mockReset().mockResolvedValue('width-profile-1');
@@ -127,13 +144,13 @@ describe('ArtisanalStrapConversionEditor', () => {
       />,
     );
 
-    expect(screen.getByRole('heading', { name: 'Cadastrar conversão' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Cadastrar tipo e material' })).toBeInTheDocument();
     expect(screen.getByText(/Nenhuma cor é gravada aqui/i)).toBeInTheDocument();
     expect(screen.queryByText(/Cor canônica/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Produto e estoque/i)).not.toBeInTheDocument();
   });
 
-  it('permite preencher a largura pendente e aprova o perfil antes de salvar a conversão', async () => {
+  it('puxa a largura física do estoque e confirma a conversão sem digitação manual', async () => {
     const user = userEvent.setup();
     const onOpenChange = vi.fn();
     render(
@@ -149,36 +166,27 @@ describe('ArtisanalStrapConversionEditor', () => {
       />,
     );
 
-    const usefulWidth = screen.getByLabelText(/Largura útil da napa/i);
-    expect(usefulWidth).toBeEnabled();
-    expect(screen.getByText(/também será salvo e aprovado/i)).toBeInTheDocument();
+    const usefulWidth = screen.getByLabelText(/Largura do material/i);
+    expect(usefulWidth).toBeDisabled();
+    expect(usefulWidth).toHaveValue('1370');
+    expect(screen.getByText(/Largura encontrada no estoque/i)).toBeInTheDocument();
 
-    await user.type(usefulWidth, '1370');
     await user.type(screen.getByLabelText(/Largura da banda/i), '18');
     await user.type(screen.getByLabelText(/Rendimento real/i), '68');
-    await user.click(screen.getByRole('button', { name: /Salvar conversão/i }));
+    await user.click(screen.getByRole('button', { name: /Confirmar rendimento e salvar/i }));
 
-    await waitFor(() => expect(mutations.saveWidth).toHaveBeenCalledWith({
-      id: undefined,
-      baseGroupId: 'base-1',
-      usableWidthMm: 1370,
-      reason: 'Cadastro inicial da conversão',
-    }));
-    expect(mutations.approveWidth).toHaveBeenCalledWith({
-      profileId: 'width-profile-1',
-      reason: 'Cadastro inicial da conversão',
-    });
-    expect(mutations.saveConversion).toHaveBeenCalledWith(expect.objectContaining({
+    await waitFor(() => expect(mutations.confirmConversion).toHaveBeenCalledWith(expect.objectContaining({
       payload: expect.objectContaining({
-        recipe: expect.objectContaining({ base_width_profile_id: 'width-profile-1' }),
+        recipe: expect.objectContaining({
+          cut_band_width_mm: 18,
+          confirmed_yield_m_per_m: 68,
+        }),
       }),
-    }));
+    })));
+    expect(mutations.saveWidth).not.toHaveBeenCalled();
+    expect(mutations.approveWidth).not.toHaveBeenCalled();
+    expect(mutations.saveConversion).not.toHaveBeenCalled();
     expect(onOpenChange).toHaveBeenCalledWith(false);
-
-    expect(mutations.saveWidth.mock.invocationCallOrder[0])
-      .toBeLessThan(mutations.approveWidth.mock.invocationCallOrder[0]);
-    expect(mutations.approveWidth.mock.invocationCallOrder[0])
-      .toBeLessThan(mutations.saveConversion.mock.invocationCallOrder[0]);
   });
 
   it('preserva o perfil aprovado e salva somente a conversão', async () => {
@@ -196,15 +204,15 @@ describe('ArtisanalStrapConversionEditor', () => {
       />,
     );
 
-    const usefulWidth = screen.getByLabelText(/Largura útil da napa/i);
+    const usefulWidth = screen.getByLabelText(/Largura do material/i);
     expect(usefulWidth).toBeDisabled();
     expect(usefulWidth).toHaveValue('1370');
 
     await user.type(screen.getByLabelText(/Largura da banda/i), '18');
     await user.type(screen.getByLabelText(/Rendimento real/i), '68');
-    await user.click(screen.getByRole('button', { name: /Salvar conversão/i }));
+    await user.click(screen.getByRole('button', { name: /Confirmar rendimento e salvar/i }));
 
-    await waitFor(() => expect(mutations.saveConversion).toHaveBeenCalledWith(expect.objectContaining({
+    await waitFor(() => expect(mutations.confirmConversion).toHaveBeenCalledWith(expect.objectContaining({
       payload: expect.objectContaining({
         recipe: expect.objectContaining({ base_width_profile_id: 'width-profile-approved' }),
       }),
@@ -235,10 +243,10 @@ describe('ArtisanalStrapConversionEditor', () => {
     expect(screen.getByText('68,4 m/m')).toBeInTheDocument();
     expect(screen.getByText(/76 × \(1 − 10%\)/i)).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /Salvar conversão/i }));
+    await user.click(screen.getByRole('button', { name: /Confirmar rendimento e salvar/i }));
 
-    await waitFor(() => expect(mutations.saveConversion).toHaveBeenCalledTimes(1));
-    const recipePayload = mutations.saveConversion.mock.calls[0][0].payload.recipe;
+    await waitFor(() => expect(mutations.confirmConversion).toHaveBeenCalledTimes(1));
+    const recipePayload = mutations.confirmConversion.mock.calls[0][0].payload.recipe;
     expect(recipePayload.confirmed_yield_m_per_m).toBe(68.4);
     expect(recipePayload).not.toHaveProperty('loss_percentage');
     expect(recipePayload).not.toHaveProperty('waste_pct');
@@ -264,7 +272,7 @@ describe('ArtisanalStrapConversionEditor', () => {
     expect(screen.getByLabelText(/Largura da banda/i)).toHaveValue('20');
     expect(screen.getByLabelText(/Rendimento real/i)).toHaveValue('60');
 
-    await user.type(screen.getByLabelText(/Largura útil da napa/i), '1370');
+    await user.type(screen.getByLabelText(/Largura do material/i), '1370');
     await user.click(screen.getByRole('button', { name: /Confirmar e ativar/i }));
 
     await waitFor(() => expect(mutations.reuseLegacy).toHaveBeenCalledWith({

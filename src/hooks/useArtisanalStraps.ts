@@ -143,6 +143,7 @@ export interface ArtisanalStrapRecipe {
   transformation_cost_per_m: number | null;
   status: ArtisanalStrapRecipeStatus;
   valid_from?: string | null;
+  valid_to?: string | null;
   approved_by?: string | null;
   approved_at?: string | null;
   supersedes_recipe_id?: string | null;
@@ -329,6 +330,13 @@ export interface SaveArtisanalStrapConversionResult {
   measure_id: string;
   base_group_id: string;
   recipe_id: string;
+}
+
+export interface ConfirmArtisanalStrapMaterialConversionResult
+  extends SaveArtisanalStrapConversionResult {
+  status: 'approved';
+  usable_width_mm: number;
+  color_scope: 'all';
 }
 
 export interface ReuseLegacyArtisanalStrapRecipeResult {
@@ -2380,6 +2388,38 @@ export function useSaveArtisanalStrapConversion() {
       }
       const message = error instanceof Error ? error.message : null;
       toast.error(message || 'Não foi possível salvar a conversão.');
+    },
+  });
+}
+
+export function useConfirmArtisanalStrapMaterialConversion() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ payload, reason }: {
+      payload: SaveArtisanalStrapConversionPayload;
+      reason: string;
+    }) => {
+      const { data, error } = await untypedSupabase.rpc(
+        'confirm_artisanal_strap_material_conversion',
+        {
+          p_payload: payload,
+          p_reason: reason,
+        },
+      );
+      if (error) throw error;
+      return data as ConfirmArtisanalStrapMaterialConversionResult;
+    },
+    onSuccess: () => {
+      invalidateArtisanalStraps(queryClient);
+      queryClient.invalidateQueries({ queryKey: ['strap-base-group-candidates'] });
+      toast.success('Rendimento confirmado e disponível para todas as cores.');
+    },
+    onError: (error: unknown) => {
+      if (error && typeof error === 'object') {
+        (error as Record<string, unknown>)._handled = true;
+      }
+      const message = error instanceof Error ? error.message : null;
+      toast.error(message || 'Não foi possível confirmar o rendimento.');
     },
   });
 }
