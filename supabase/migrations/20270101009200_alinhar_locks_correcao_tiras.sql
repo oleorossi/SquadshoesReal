@@ -9,8 +9,19 @@
 
 BEGIN;
 
-ALTER FUNCTION public.resolve_technical_strap_line_migration(uuid, uuid, text)
-  RENAME TO resolve_technical_strap_line_migration_locked_impl_091;
+-- O apply_migration registra uma versão operacional própria. Se o CI reenviar
+-- o arquivo versionado depois disso, a implementação privada já existe; nesse
+-- caso preservamos o corpo e apenas reconstruímos o wrapper abaixo.
+DO $preserve_impl$
+BEGIN
+  IF to_regprocedure(
+       'public.resolve_technical_strap_line_migration_locked_impl_091(uuid,uuid,text)'
+     ) IS NULL THEN
+    ALTER FUNCTION public.resolve_technical_strap_line_migration(uuid, uuid, text)
+      RENAME TO resolve_technical_strap_line_migration_locked_impl_091;
+  END IF;
+END;
+$preserve_impl$;
 
 REVOKE ALL ON FUNCTION
   public.resolve_technical_strap_line_migration_locked_impl_091(uuid, uuid, text)
@@ -20,7 +31,7 @@ ALTER FUNCTION
   public.resolve_technical_strap_line_migration_locked_impl_091(uuid, uuid, text)
 SET lock_timeout TO '1500ms';
 
-CREATE FUNCTION public.resolve_technical_strap_line_migration(
+CREATE OR REPLACE FUNCTION public.resolve_technical_strap_line_migration(
   p_map_id uuid,
   p_measure_id uuid,
   p_reason text

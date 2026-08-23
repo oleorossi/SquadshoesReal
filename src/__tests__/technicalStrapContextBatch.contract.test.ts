@@ -162,7 +162,7 @@ describe('correção estrutural de tiras — writer em lote 091', () => {
 
   it('mantém o helper público e o batch sob o mesmo lock global em produção', () => {
     const wrapperStart = lockOrderMigration.indexOf(
-      'CREATE FUNCTION public.resolve_technical_strap_line_migration(',
+      'CREATE OR REPLACE FUNCTION public.resolve_technical_strap_line_migration(',
     );
     const advisoryLock = lockOrderMigration.indexOf(
       'pg_try_advisory_xact_lock(',
@@ -174,6 +174,9 @@ describe('correção estrutural de tiras — writer em lote 091', () => {
     );
 
     expect(wrapperStart).toBeGreaterThanOrEqual(0);
+    expect(lockOrderMigration).toContain(
+      "to_regprocedure(\n       'public.resolve_technical_strap_line_migration_locked_impl_091(uuid,uuid,text)'\n     ) IS NULL",
+    );
     expect(advisoryLock).toBeGreaterThan(wrapperStart);
     expect(implementationCall).toBeGreaterThan(advisoryLock);
     expect(lockOrderMigration).toContain(
