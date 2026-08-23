@@ -62,6 +62,9 @@ import {
 } from '@/lib/materialVariantColorGroup';
 import { SearchInput } from '@/components/ui/search-input';
 import { ItemSectorOutsourcingSection } from '@/components/sale-orders/ItemSectorOutsourcingSection';
+import { SignedImage } from '@/components/ui/signed-image';
+import { resolveReferenceThumbnailUrl } from '@/lib/referenceImage';
+
 interface ReferenceOption {
   id: string;
   code: string;
@@ -70,6 +73,7 @@ interface ReferenceOption {
   sale_price?: number;
   sizes?: string | null;
   shoe_category?: string | null;
+  images?: unknown;
   image_url?: string | null;
   ncm?: string | null;
   suggested_price?: number | null;
@@ -1388,15 +1392,15 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
           <div className="flex items-center gap-3">
             <div className="h-16 w-16 rounded-md border bg-muted overflow-hidden flex-shrink-0">
               {(() => {
-                // Priority: ref images[] → ref image_url
-                // (color variant images removidas — variante de cor não existe mais)
-                const refImages = (selectedRef as any)?.images;
-                const refFirstImage = Array.isArray(refImages) && refImages.length > 0
-                  ? (typeof refImages[0] === 'string' ? refImages[0] : refImages[0]?.url)
-                  : null;
-                const imgSrc = refFirstImage || selectedRef?.image_url;
+                const imgSrc = resolveReferenceThumbnailUrl(selectedRef, 64);
                 return imgSrc ? (
-                  <img src={imgSrc} alt={selectedRef?.name} className="h-full w-full object-cover" />
+                  <SignedImage
+                    src={imgSrc}
+                    alt={selectedRef?.name || selectedRef?.code || 'Referência'}
+                    width={64}
+                    height={64}
+                    className="h-full w-full"
+                  />
                 ) : (
                   <div className="h-full w-full flex items-center justify-center text-muted-foreground">
                     <Package className="h-7 w-7" />
@@ -2689,7 +2693,7 @@ function ColorSearchSelect({
   );
 }
 
-function ReferenceSearch({
+export function ReferenceSearch({
   references, onSelect, selectedId, variantsByRef, onRefresh, refreshing, onCreate,
 }: {
   references: ReferenceOption[];
@@ -2747,6 +2751,7 @@ function ReferenceSearch({
         )}
         {filtered.slice(0, 50).map(ref => {
           const variants = variantsByRef?.get(ref.id) ?? [];
+          const thumbnailUrl = resolveReferenceThumbnailUrl(ref, 56);
           return (
             <button
               key={ref.id}
@@ -2758,8 +2763,14 @@ function ReferenceSearch({
             >
               <div className="flex items-start gap-3 flex-1 min-w-0">
                 <div className="h-14 w-14 rounded-md border bg-muted overflow-hidden flex-shrink-0">
-                  {ref.image_url ? (
-                    <img src={ref.image_url} alt={ref.name} loading="lazy" decoding="async" className="h-full w-full object-cover" />
+                  {thumbnailUrl ? (
+                    <SignedImage
+                      src={thumbnailUrl}
+                      alt={ref.name || ref.code || 'Referência'}
+                      width={56}
+                      height={56}
+                      className="h-full w-full"
+                    />
                   ) : (
                     <div className="h-full w-full flex items-center justify-center text-muted-foreground/30">
                       <Package className="h-5 w-5" />
