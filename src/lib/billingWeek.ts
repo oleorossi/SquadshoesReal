@@ -64,3 +64,102 @@ export function isoToMonthWeek(iso: string): { month: string; week: string } | n
     week: `S${weekNum}`,
   };
 }
+
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const MONTH_WEEK_TOKEN_RE = /^(\d{4}-\d{2})-(S\d{1,2})$/i;
+
+/**
+ * Converte qualquer token de faturamento que o PV possa carregar em
+ * `delivery_deadline` (ISO, "2026-09-S3", vazio) para YYYY-MM-DD.
+ *
+ * Sem isto o writer atômico faz `jsonb_populate_record` numa coluna `date` e
+ * o Postgres recusa com `invalid input syntax for type date: "2026-09-S3"`.
+ */
+export function coerceToISODate(
+  value: string | null | undefined,
+  month?: string | null,
+  week?: string | null,
+): string | null {
+  const raw = String(value ?? '').trim();
+  if (ISO_DATE_RE.test(raw)) return raw;
+
+  const monthWeek = raw.match(MONTH_WEEK_TOKEN_RE);
+  if (monthWeek) return monthWeekToISODate(monthWeek[1], monthWeek[2].toUpperCase());
+
+  if (raw) return null;
+
+  const derived = monthWeekToISODate(String(month ?? '').trim(), String(week ?? '').trim());
+  if (derived) return derived;
+  return null;
+}
+
+/**
+ * Chave canônica persistida em `sale_orders.billing_week` (texto): "YYYY-MM-S#".
+ * Espelha o que `useCreateSaleOrder` já gravava; a edição precisava da mesma
+ * regra pra não deixar a semana do header defasada do mês/semana do form.
+ */
+export function billingWeekFromMonthWeek(
+  month?: string | null,
+  week?: string | null,
+): string | null {
+  const m = String(month ?? '').trim();
+  const w = String(week ?? '').trim();
+  if (m && w) {
+    const already = w.match(MONTH_WEEK_TOKEN_RE);
+    if (already) return `${already[1]}-${already[2].toUpperCase()}`;
+    return `${m}-${w}`;
+  }
+  if (w && MONTH_WEEK_TOKEN_RE.test(w)) {
+    const already = w.match(MONTH_WEEK_TOKEN_RE)!;
+    return `${already[1]}-${already[2].toUpperCase()}`;
+  }
+  return w || null;
+}
+
+const DATE_HEADER_KEYS = [
+  'delivery_deadline',
+  'original_min_billing_date',
+  'nfe_first_due_date',
+] as const;
+
+/**
+ * Normaliza o header do PV antes de ir pra RPC. Colunas `date` só saem como
+ * ISO ou null — nunca como "2026-09-S3".
+ */
+export function sanitizeSaleOrderHeaderDates<T extends Record<string, unknown>>(
+  header: T,
+): T & {
+  delivery_deadline: string | null;
+  billing_week?: string | null;
+  original_min_billing_date?: string | null;
+  nfe_first_due_date?: string | null;
+} {
+  const month = typeof header.delivery_month === 'string' ? header.delivery_month : '';
+  const week = typeof header.delivery_week === 'string' ? header.delivery_week : '';
+  const next: Record<string, unknown> = { ...header };
+
+  for (const key of DATE_HEADER_KEYS) {
+    if (!(key in next)) continue;
+    next[key] = coerceToISODate(
+      typeof next[key] === 'string' || next[key] == null ? (next[key] as string | null) : String(next[key]),
+      month,
+      week,
+    );
+  }
+
+  if (!('delivery_deadline' in next) || !next.delivery_deadline) {
+    const derived = coerceToISODate(null, month, week);
+    if (derived) next.delivery_deadline = derived;
+    else next.delivery_deadline = null;
+  }
+
+  const billing = billingWeekFromMonthWeek(month, week);
+  if (billing) next.billing_week = billing;
+
+  return next as T & {
+    delivery_deadline: string | null;
+    billing_week?: string | null;
+    original_min_billing_date?: string | null;
+    nfe_first_due_date?: string | null;
+  };
+}
