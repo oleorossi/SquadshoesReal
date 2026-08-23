@@ -165,7 +165,7 @@ export default function FichaVariancePanel() {
       <div className="flex flex-wrap items-end gap-3">
         <div className="min-w-[240px]">
           <Select value={orderId} onValueChange={setOrderId}>
-            <SelectTrigger className="h-9">
+            <SelectTrigger className="h-9" aria-label="Escolher OP para auditoria da ficha">
               <SelectValue placeholder="Escolher OP" />
             </SelectTrigger>
             <SelectContent>

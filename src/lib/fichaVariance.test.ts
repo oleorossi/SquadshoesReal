@@ -48,9 +48,11 @@ describe('fichaVariance', () => {
     const cola = lines.find((l) => l.productId === 'c');
     expect(napa?.delta).toBe(2);
     expect(napa?.extraCost).toBe(16);
+    // 12/10 = +20% → acima de 15% ↔ crítico, além de sem_baixa e sem_ficha
+    expect(napa?.status).toBe('critico');
     expect(solado?.diagnosis).toBe('ficha_sem_baixa');
     expect(cola?.diagnosis).toBe('baixa_sem_ficha');
-    expect(varianceSummary(lines).critico).toBe(2);
+    expect(varianceSummary(lines).critico).toBe(3);
   });
 
   it('compra overage + furo do mínimo, não o que a ficha não baixou', () => {
