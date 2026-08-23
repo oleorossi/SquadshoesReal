@@ -2,7 +2,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import type { LegacyStrapProductAllocationInput } from '@/lib/legacyStrapMigration';
+import { createSingleFlightCooldown } from '@/lib/singleFlightCooldown';
 import type { StrapIdentityBasis } from '@/lib/strapIdentity';
+import {
+  technicalStrapContextErrorCode,
+  technicalStrapContextErrorMessage,
+} from '@/lib/technicalStrapContextError';
 
 interface UntypedQueryResult {
   data: unknown;
@@ -21,6 +26,15 @@ interface UntypedSupabaseClient {
 }
 
 const untypedSupabase = supabase as unknown as UntypedSupabaseClient;
+const TECHNICAL_STRAP_CONTEXT_COOLDOWN_MS = 10_000;
+// O backend serializa este writer. A chave por ficha contém duplo envio/retry
+// imediato sem bloquear uma correção independente em outra referência.
+const technicalStrapContextGate = createSingleFlightCooldown({
+  cooldownMs: TECHNICAL_STRAP_CONTEXT_COOLDOWN_MS,
+  // Falha stale dispara refetch da ficha; a nova tentativa com o snapshot
+  // atualizado não deve ficar presa no cooldown da tentativa obsoleta.
+  cooldownAfterError: false,
+});
 
 export type ArtisanalStrapStatus = 'active' | 'review_required' | 'suspended' | 'archived';
 export type ArtisanalStrapRecipeStatus =
@@ -2250,24 +2264,28 @@ export function useResolveTechnicalStrapLineMigration() {
 export function useResolveTechnicalStrapContext() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (payload: ResolveTechnicalStrapContextInput) => {
-      const { data, error } = await untypedSupabase.rpc(
-        'resolve_technical_strap_context_from_sale_order',
-        { ...payload },
-      );
-      if (error) throw error;
+    mutationFn: (payload: ResolveTechnicalStrapContextInput) => technicalStrapContextGate.run(
+      payload.p_reference_id,
+      async () => {
+        const { data, error } = await untypedSupabase.rpc(
+          'resolve_technical_strap_context_from_sale_order',
+          { ...payload },
+        );
+        if (error) throw error;
 
-      const result = data && typeof data === 'object'
-        ? data as Record<string, unknown>
-        : {};
-      if (!Array.isArray(result.strap_colors)) {
-        throw new Error('A correção foi concluída sem retornar as linhas atualizadas da ficha.');
-      }
-      return {
-        ...result,
-        strap_colors: result.strap_colors as Array<Record<string, unknown>>,
-      } as ResolveTechnicalStrapContextResult;
-    },
+        const result = data && typeof data === 'object'
+          ? data as Record<string, unknown>
+          : {};
+        if (!Array.isArray(result.strap_colors)) {
+          throw new Error('A correção foi concluída sem retornar as linhas atualizadas da ficha.');
+        }
+        return {
+          ...result,
+          strap_colors: result.strap_colors as Array<Record<string, unknown>>,
+        } as ResolveTechnicalStrapContextResult;
+      },
+    ),
+    retry: false,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['strap_stock_lines_preview'] });
       queryClient.invalidateQueries({ queryKey: ['artisanal-strap-catalog'] });
@@ -2279,13 +2297,28 @@ export function useResolveTechnicalStrapContext() {
       queryClient.invalidateQueries({ queryKey: ['technical_sheets'] });
       toast.success('Ficha técnica corrigida. Snapshots de pedidos já comprometidos foram preservados.');
     },
-    onError: (error: unknown) => {
+    onError: async (error: unknown) => {
       if (error && typeof error === 'object') {
         (error as Record<string, unknown>)._handled = true;
       }
-      const message = error && typeof error === 'object' && 'message' in error
-        ? String((error as { message?: unknown }).message || '')
-        : '';
+      let staleRefreshFailed = false;
+      if (technicalStrapContextErrorCode(error) === 'technical_sheet_stale') {
+        try {
+          await queryClient.refetchQueries({
+            queryKey: ['technical_sheets'],
+            type: 'active',
+          }, { throwOnError: true });
+        } catch {
+          staleRefreshFailed = true;
+          await queryClient.invalidateQueries({
+            queryKey: ['technical_sheets'],
+            refetchType: 'none',
+          });
+        }
+      }
+      const message = staleRefreshFailed
+        ? 'A ficha técnica mudou e não foi possível atualizar os dados automaticamente. Recarregue a tela antes de tentar novamente.'
+        : technicalStrapContextErrorMessage(error);
       toast.error(message || 'Não foi possível corrigir o contexto das tiras.');
     },
   });

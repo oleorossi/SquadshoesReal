@@ -2499,20 +2499,11 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
           lines={referenceStrapDefinitions}
           suggestedBaseGroupId={strapStructuralContext.suggestedBaseGroupId}
           onResolved={(strapColors) => {
-            const invalidateResolvedStrapCaches = () => {
-              qc.invalidateQueries({ queryKey: ['strap_stock_lines_preview'] });
-              qc.invalidateQueries({ queryKey: ['artisanal-strap-catalog'] });
-              qc.invalidateQueries({ queryKey: ['products'] });
-              qc.invalidateQueries({ queryKey: ['products_for_colors'] });
-              qc.invalidateQueries({ queryKey: ['group_supplier_materials_for_colors'] });
-              qc.invalidateQueries({ queryKey: ['product_groups_colors'] });
-            };
             // Em item comprometido, o RPC corrige apenas a ficha. Alterar o
             // snapshot local faria o próximo save preparar uma demanda nova e
             // poderia tocar reservas históricas antes de encontrar um bloqueio
             // comercial. Itens novos ainda adotam a estrutura resolvida.
             if (preserveCommittedStrapSnapshot) {
-              invalidateResolvedStrapCaches();
               return;
             }
             const currentStraps = (item.strap_colors as Array<Record<string, unknown>>) || [];
@@ -2551,7 +2542,6 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
             if (JSON.stringify(strapSourcingMap) !== JSON.stringify(nextSourcing)) {
               onUpdate(index, 'strap_sourcing', nextSourcing);
             }
-            invalidateResolvedStrapCaches();
           }}
         />
       )}
