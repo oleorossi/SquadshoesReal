@@ -13,6 +13,7 @@ import { canonicalStageOrder } from '@/components/production/worksheet/stageOrde
 import { pruneStrapSourcing } from '@/lib/strapSourcing';
 import { resolveGroupSuppliers } from '@/lib/groupSupplierResolution';
 import { convertReservadoOpsOnBilling } from '@/lib/billingReservationConvert';
+import { sanitizeSaleOrderHeaderDates } from '@/lib/billingWeek';
 
 // Setores default de uma OP — nomes CANÔNICOS ('Aviamento', não o legado 'Mesa';
 // inclui 'Costura' desde o PR 2). A numeração vem de CANONICAL_STAGE_ORDER
@@ -636,6 +637,7 @@ export function useCreateSaleOrder() {
       const shippingRate = Number((order as any).shipping_rate_per_pair) || 0;
       const computedFrete = shippingRate > 0 ? Number((totalPairsCalc * shippingRate).toFixed(2)) : 0;
       const insertData: any = { ...order, total, valor_frete: computedFrete > 0 ? computedFrete : (order as any).valor_frete ?? null };
+      Object.assign(insertData, sanitizeSaleOrderHeaderDates(insertData));
       // Sync billing_week from delivery_month + delivery_week
       if (order.delivery_month && order.delivery_week) {
         insertData.billing_week = `${order.delivery_month}-${order.delivery_week}`;
@@ -1464,6 +1466,7 @@ export function useUpdateSaleOrder() {
       const shippingRate = Number((order as any).shipping_rate_per_pair) || 0;
       const computedFrete = shippingRate > 0 ? Number((totalPairsCalc * shippingRate).toFixed(2)) : 0;
       const updateData: any = { ...order, total, valor_frete: computedFrete > 0 ? computedFrete : (order as any).valor_frete ?? null };
+      Object.assign(updateData, sanitizeSaleOrderHeaderDates(updateData));
       if (client_id !== undefined) updateData.client_id = client_id || null;
       if (!updateData.delivery_deadline) updateData.delivery_deadline = null;
       if (representative_id) updateData.representative_id = representative_id; else updateData.representative_id = null;
