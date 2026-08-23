@@ -259,3 +259,62 @@ export function deriveCard(q: QueueDetailRow, stagesRaw: OrderStage[], flowOrder
 
   return buildCard(q, stages, column);
 }
+
+/**
+ * Coluna sintética pra OP na fila SEM order_stages. Não é setor de apontamento
+ * — só impede a OP de sumir do quadro. `buildPointingPlan` recusa
+ * `columnStage === null`.
+ */
+export const ORPHAN_COLUMN = 'Sem rota';
+
+/**
+ * Card de VISIBILIDADE quando `deriveCards` não emite nada (rota concluída /
+ * último setor pulado) ou a OP não tem estágios. Não altera a matemática de
+ * `deriveCard` — o quadro Gestão precisa de 1:1 com a fila.
+ *
+ * `columnStage` fica null de propósito: arrastar/apontar é noop. Sem rota
+ * cai em `ORPHAN_COLUMN`; com rota concluída, no último setor da ficha.
+ */
+export function orphanVisibilityCard(
+  q: QueueDetailRow,
+  stagesRaw: OrderStage[] = [],
+): KanbanCardData {
+  const ordered = [...stagesRaw].sort(
+    (a, b) => a.stage_order - b.stage_order,
+  );
+  const last = ordered[ordered.length - 1] ?? null;
+  const column = last ? norm(last.stage_name) : ORPHAN_COLUMN;
+  const hasProgress = (s: OrderStage) =>
+    s.quantity_processed > 0 || s.status === 'concluido';
+  let front: OrderStage | null = null;
+  for (const s of ordered) if (hasProgress(s)) front = s;
+  const leftover = q.remaining_pairs_net ?? q.quantity ?? 0;
+  return {
+    key: `${q.order_id}::${column}`,
+    parallelSiblings: [],
+    q,
+    stages: ordered,
+    column,
+    front,
+    delivered: front?.quantity_processed ?? 0,
+    isPartial: leftover > 0,
+    columnStage: null,
+    upstreamGap: null,
+  };
+}
+
+/**
+ * Porta única do quadro Gestão: cada linha da fila vira pelo menos um card.
+ * `deriveCards` segue intacto (paralelo, buraco, parcial). Só entra o card
+ * órfão quando a derivação devolveria lista vazia.
+ */
+export function cardsForQueueRow(
+  q: QueueDetailRow,
+  stagesRaw: OrderStage[] | undefined,
+  flowOrder: Map<string, number>,
+  levelOf?: Map<string, number>,
+): KanbanCardData[] {
+  const stages = stagesRaw ?? [];
+  const cards = stages.length ? deriveCards(q, stages, flowOrder, levelOf) : [];
+  return cards.length ? cards : [orphanVisibilityCard(q, stages)];
+}
