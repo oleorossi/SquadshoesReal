@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
   ArrowsClockwise as RefreshCw,
@@ -91,6 +92,7 @@ import {
   useSubmitArtisanalStrapRecipe,
 } from '@/hooks/useArtisanalStraps';
 import { printArtisanalStrapBatch } from '@/lib/printArtisanalStrapBatch';
+import { useUpdateGroup } from '@/hooks/useGroups';
 import StrapCalculator from './StrapCalculator';
 
 const TAB_VALUES = [
@@ -1956,7 +1958,40 @@ const DIAGNOSTIC_COPY: Record<string, { title: string; correction: string }> = {
     title: 'Item legado exige decisão administrativa',
     correction: 'Use a ação concreta indicada pelo tipo da revisão. Somente a origem do piso aceita resolução administrativa genérica.',
   },
+  finished_strap_group_unflagged: {
+    title: 'Grupo de tira acabada ainda sem a flag',
+    correction: 'Confirme e marque como tira acabada. Isso tira o grupo da lista de napa-base. Se houver ficha de componente com largura de napa, apague-a antes — o banco recusa a flag.',
+  },
+  strap_component_sheet_looks_like_napa: {
+    title: 'Ficha de componente copiada de napa em grupo de tira',
+    correction: 'Apague a ficha (tira não converte área). Não normalize para 5 mm: o cadastro 1370×1000 é cópia, não a largura da tira.',
+  },
+  napa_width_inverted: {
+    title: 'Largura do produto linear invertida em relação à ficha',
+    correction: 'Espelhe a largura da ficha de componente (1370 mm) no produto. Não use GREATEST. Palmilha 1000×1500 fica de fora.',
+  },
+  buy_ready_line_without_variant: {
+    title: 'Linha comprada pronta sem variante no catálogo',
+    correction: 'Cadastre a variante finished_product_group com o SKU e o preço reais. O sistema não inventa identidade.',
+  },
+  internal_recipe_missing: {
+    title: 'Receita interna ausente para medida × napa-base',
+    correction: 'Informe o rendimento confirmado (m/m) e aprove a receita. O teto geométrico não substitui o número do dono.',
+  },
+  missing_base_color_sku: {
+    title: 'Napa-base sem SKU linear na cor da ficha',
+    correction: 'Crie o SKU da cor que falta neste grupo. Não infira a cor pelo nome da tira.',
+  },
 };
+
+const HYGIENE_ISSUE_CODES = new Set([
+  'finished_strap_group_unflagged',
+  'strap_component_sheet_looks_like_napa',
+  'napa_width_inverted',
+  'buy_ready_line_without_variant',
+  'internal_recipe_missing',
+  'missing_base_color_sku',
+]);
 
 const LEGACY_MIGRATION_COPY: Record<string, { title: string; correction: string }> = {
   legacy_product_mapping_required: {
@@ -2066,11 +2101,25 @@ function DiagnosticsTab({
 }) {
   const jobs = demandsQuery.data?.jobs || [];
   const catalogIssues = catalogDiagnosticsQuery.data || [];
+  const hygieneIssues = catalogIssues.filter((issue) => HYGIENE_ISSUE_CODES.has(issue.issue_code));
+  const otherCatalogIssues = catalogIssues.filter((issue) => !HYGIENE_ISSUE_CODES.has(issue.issue_code));
   const legacyMigrationIssues = legacyMigrationDiagnosticsQuery.data || [];
   const reviewVariants = catalog.variants.filter((item) => item.status === 'review_required' || item.status === 'suspended');
   const archivedRecipes = catalog.recipes.filter((item) => item.status === 'superseded' || item.status === 'archived');
   const failedJobs = jobs.filter((item) => item.status === 'dead_letter' || item.status === 'error');
   const retryJob = useRetryArtisanalStrapDemandJob();
+  const updateGroup = useUpdateGroup();
+  const queryClient = useQueryClient();
+
+  const flagFinishedStrapGroup = async (groupId: string) => {
+    try {
+      await updateGroup.mutateAsync({ id: groupId, data: { is_artisanal_strap: true } });
+      queryClient.invalidateQueries({ queryKey: ['artisanal-strap-catalog-diagnostics'] });
+      queryClient.invalidateQueries({ queryKey: ['artisanal-strap-catalog'] });
+    } catch {
+      /* toast pelo hook */
+    }
+  };
 
   if (demandsQuery.isLoading || productionQuery.isLoading || catalogDiagnosticsQuery.isLoading
     || (catalog.capabilities.resolve_strap_migration && legacyMigrationDiagnosticsQuery.isLoading)) {
@@ -2088,12 +2137,82 @@ function DiagnosticsTab({
         </Alert>
       )}
 
+      <Panel
+        eyebrow="HIGIENE DO CADASTRO"
+        title="Inventário para o dono confirmar"
+        subtitle="Sugestão, nunca correção automática. A elegibilidade de napa-base continua só por UUID e pela flag is_artisanal_strap."
+        actions={<Badge variant={hygieneIssues.length ? 'outline' : 'secondary'}>{hygieneIssues.length} {hygieneIssues.length === 1 ? 'ocorrência' : 'ocorrências'}</Badge>}
+      >
+        {catalogDiagnosticsQuery.isError ? (
+          <EmptyState
+            icon={Warning}
+            title="Inventário indisponível"
+            description="Recarregue a consulta; o hub não infere grupo pelo nome."
+            action={<Button variant="outline" size="sm" onClick={() => catalogDiagnosticsQuery.refetch()}>Tentar novamente</Button>}
+            size="sm"
+          />
+        ) : hygieneIssues.length === 0 ? (
+          <EmptyState icon={CheckCircle} title="Nenhuma pendência de higiene" description="Grupos de tira, fichas de componente e larguras de napa estão coerentes com as regras atuais." size="sm" />
+        ) : (
+          <div className="space-y-2">
+            {hygieneIssues.slice(0, 80).map((issue) => {
+              const copy = DIAGNOSTIC_COPY[issue.issue_code] || {
+                title: issue.issue_code,
+                correction: 'Confirme o cadastro pelo UUID; o hub não inventa rendimento, SKU nem preço.',
+              };
+              const groupName = typeof issue.details?.group_name === 'string'
+                ? issue.details.group_name
+                : typeof issue.details?.base_group_name === 'string'
+                  ? issue.details.base_group_name
+                  : typeof issue.details?.identity_group_name === 'string'
+                    ? issue.details.identity_group_name
+                    : '';
+              const canFlagGroup = issue.issue_code === 'finished_strap_group_unflagged'
+                && catalog.capabilities.manage_strap_catalog
+                && typeof issue.details?.group_id === 'string';
+              const looksLikeNapaBase = issue.details?.eligible_as_napa_base === true;
+              return (
+                <div key={`${issue.issue_code}-${issue.entity_id}`} className="flex flex-col gap-2 rounded-md border border-border p-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold">{copy.title}{groupName ? ` · ${groupName}` : ''}</p>
+                    <p className="text-xs text-muted-foreground">{copy.correction}</p>
+                    {looksLikeNapaBase && (
+                      <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
+                        Este grupo ainda aparece como napa-base. Marcar a flag o remove da lista — e passa a governar compra/ajuste dos SKUs lineares.
+                      </p>
+                    )}
+                    <p className="mt-1 truncate font-mono text-[9px] text-muted-foreground">{issue.entity_id}</p>
+                    <details className="mt-2 rounded-md bg-muted/30 p-2">
+                      <summary className="cursor-pointer text-xs font-semibold">Detalhes do servidor</summary>
+                      <pre className="mt-2 max-h-44 overflow-auto whitespace-pre-wrap text-[10px] text-muted-foreground">{JSON.stringify(issue.details, null, 2)}</pre>
+                    </details>
+                  </div>
+                  {canFlagGroup && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={updateGroup.isPending}
+                      onClick={() => flagFinishedStrapGroup(String(issue.details.group_id))}
+                    >
+                      Marcar como tira acabada
+                    </Button>
+                  )}
+                </div>
+              );
+            })}
+            {hygieneIssues.length > 80 && (
+              <p className="text-xs text-muted-foreground">Mais {hygieneIssues.length - 80} ocorrências permanecem no relatório do servidor.</p>
+            )}
+          </div>
+        )}
+      </Panel>
+
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,0.6fr)]">
         <Panel
           eyebrow="INTEGRIDADE DOS DADOS"
           title="Diagnósticos acionáveis"
           subtitle="O servidor aponta a combinação exata; o hub nunca corrige ou infere dados automaticamente."
-          actions={<Badge variant={catalogIssues.length ? 'outline' : 'secondary'}>{catalogIssues.length} {catalogIssues.length === 1 ? 'pendência' : 'pendências'}</Badge>}
+          actions={<Badge variant={otherCatalogIssues.length ? 'outline' : 'secondary'}>{otherCatalogIssues.length} {otherCatalogIssues.length === 1 ? 'pendência' : 'pendências'}</Badge>}
         >
           {catalogDiagnosticsQuery.isError ? (
             <EmptyState
@@ -2103,11 +2222,11 @@ function DiagnosticsTab({
               action={<Button variant="outline" size="sm" onClick={() => catalogDiagnosticsQuery.refetch()}>Tentar novamente</Button>}
               size="sm"
             />
-          ) : catalogIssues.length === 0 ? (
+          ) : otherCatalogIssues.length === 0 ? (
             <EmptyState icon={CheckCircle} title="Nenhuma inconsistência detectada" description="As regras do catálogo estão coerentes." size="sm" />
           ) : (
             <div className="space-y-2">
-              {catalogIssues.slice(0, 60).map((issue) => {
+              {otherCatalogIssues.slice(0, 60).map((issue) => {
                 const copy = DIAGNOSTIC_COPY[issue.issue_code] || {
                   title: issue.issue_code,
                   correction: 'Abra o cadastro relacionado e saneie a origem da inconsistência.',
@@ -2197,8 +2316,8 @@ function DiagnosticsTab({
                   </div>
                 );
               })}
-              {catalogIssues.length > 60 && (
-                <p className="text-xs text-muted-foreground">Mais {catalogIssues.length - 60} pendências permanecem no relatório do servidor.</p>
+              {otherCatalogIssues.length > 60 && (
+                <p className="text-xs text-muted-foreground">Mais {otherCatalogIssues.length - 60} pendências permanecem no relatório do servidor.</p>
               )}
             </div>
           )}
