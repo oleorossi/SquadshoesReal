@@ -91,7 +91,7 @@ export function ClientLabelingWorkspace() {
   const [coucheProfile, setCoucheProfile] = useState<CoucheRollProfile>({
     ...DEFAULT_COUCHE_ROLL_PROFILE,
   });
-  const [coucheProfileConfirmed, setCoucheProfileConfirmed] = useState(false);
+  const [coucheProfileConfirmed, setCoucheProfileConfirmed] = useState(true);
 
   const skuAnalysis = analyzeClientSkus(rows);
   const rowEntries = rows.map((row, sourceIndex) => ({
@@ -226,7 +226,7 @@ export function ClientLabelingWorkspace() {
     setSearch('');
     setSelectedSkuKeys(new Set());
     setPrintQuantities({});
-    setCoucheProfileConfirmed(false);
+    setCoucheProfileConfirmed(true);
   }
 
   function setCoucheProfileMeasure(field: keyof CoucheRollProfile, rawValue: string) {
@@ -363,6 +363,11 @@ export function ClientLabelingWorkspace() {
                   {generating === 'production' ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <FilePdf className="h-4 w-4 mr-2" />}
                   {generating === 'production' ? 'Gerando…' : `Gerar L42PRO (${totalEtiquetas} etiquetas)`}
                 </Button>
+                {!coucheProfileConfirmed && (
+                  <p className="text-xs text-amber-700 dark:text-amber-400">
+                    Medidas do rolo alteradas — confirme o perfil em “Medidas do rolo de duas colunas” para liberar a geração.
+                  </p>
+                )}
               </section>
 
               <section className="rounded-lg border border-primary/25 bg-primary/5 p-4 space-y-4" aria-labelledby="graphic-output-title">
@@ -462,6 +467,11 @@ export function ClientLabelingWorkspace() {
                     ? 'Gerando…'
                     : `Gerar gráfica (${selectedSkuAnalysis.rows.length} ${skuSelecionadoLabel})`}
                 </Button>
+                {!coucheProfileConfirmed && (
+                  <p className="text-xs text-amber-700 dark:text-amber-400">
+                    Medidas do rolo alteradas — confirme o perfil em “Medidas do rolo de duas colunas” para liberar a geração.
+                  </p>
+                )}
               </section>
             </div>
 
