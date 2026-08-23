@@ -125,18 +125,16 @@ export function useAllNfeEmitidas(filters?: { status?: string; search?: string; 
     queryFn: async () => {
       let query = supabase
         .from('nfe_emitidas')
-        .select('*, sale_orders!nfe_emitidas_sale_order_id_fkey(order_number, client_name, total)')
+        .select(`${NFE_LIST_COLUMNS}, sale_orders!nfe_emitidas_sale_order_id_fkey(order_number, client_name, total)`)
         .order('created_at', { ascending: false });
       if (filters?.status) query = query.eq('status', filters.status);
       if (filters?.company_id) query = query.eq('company_id', filters.company_id);
       query = query.limit(500);
       const { data, error } = await query;
       if (error) {
-        // Log com detalhes pra DevTools — facilita debug quando lista fica vazia.
         console.error('[useAllNfeEmitidas] error:', error);
         throw error;
       }
-      console.info(`[useAllNfeEmitidas] ${data?.length ?? 0} NF-es carregadas`);
       return data || [];
     },
   });
@@ -418,8 +416,10 @@ export function useEmitStandaloneNfe() {
 
 export interface NfePreviewProduto {
   descricao: string;
+  codigo?: string;
   ncm: string;
   cfop: string;
+  origem?: 'industrial' | 'revenda';
   quantidade: number;
   unidade: string;
   valor_unitario: number;
@@ -466,6 +466,7 @@ export interface NfePreviewResponse {
     operacao: {
       natureza_operacao: string;
       cfop: string;
+      cfop_kind?: 'industrial' | 'revenda';
       cfop_interstate: boolean;
       modelo: string;
       finalidade: string;
