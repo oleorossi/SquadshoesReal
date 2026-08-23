@@ -126,7 +126,14 @@ const DATE_HEADER_KEYS = [
  * Normaliza o header do PV antes de ir pra RPC. Colunas `date` só saem como
  * ISO ou null — nunca como "2026-09-S3".
  */
-export function sanitizeSaleOrderHeaderDates<T extends Record<string, unknown>>(header: T): T {
+export function sanitizeSaleOrderHeaderDates<T extends Record<string, unknown>>(
+  header: T,
+): T & {
+  delivery_deadline: string | null;
+  billing_week?: string | null;
+  original_min_billing_date?: string | null;
+  nfe_first_due_date?: string | null;
+} {
   const month = typeof header.delivery_month === 'string' ? header.delivery_month : '';
   const week = typeof header.delivery_week === 'string' ? header.delivery_week : '';
   const next: Record<string, unknown> = { ...header };
@@ -149,5 +156,10 @@ export function sanitizeSaleOrderHeaderDates<T extends Record<string, unknown>>(
   const billing = billingWeekFromMonthWeek(month, week);
   if (billing) next.billing_week = billing;
 
-  return next as T;
+  return next as T & {
+    delivery_deadline: string | null;
+    billing_week?: string | null;
+    original_min_billing_date?: string | null;
+    nfe_first_due_date?: string | null;
+  };
 }
