@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { buildThermalLabelsHtml, computeThermalLabelFrame, DEFAULT_THERMAL_CONFIG } from '../printLabels';
+import {
+  buildThermalLabelsHtml,
+  buildBoxIdentificationHtml,
+  computeThermalLabelFrame,
+  DEFAULT_THERMAL_CONFIG,
+  THERMAL_SAFE_EDGE_MM,
+  type BoxIdentificationData,
+} from '../printLabels';
 
 const label = (barcode: string, size: string) => ({
   refCode: 'SP130', refName: 'SP130', mainMaterial: 'NAPA SOFT',
@@ -51,42 +58,60 @@ describe('buildThermalLabelsHtml — barcode por payload distinto', () => {
     expect(html).not.toContain('var _bcJobs=');
   });
 
-  it('ocupa praticamente toda a etiqueta física de 100×30 mm', () => {
+  it('mantém a página 100×30 mm e centraliza a arte na área segura de 98×28 mm', () => {
     const frame = computeThermalLabelFrame({ width: 100, height: 30 });
 
     expect(DEFAULT_THERMAL_CONFIG.marginPct).toBe(0);
-    expect(frame.safePadX).toBe(0.4);
-    expect(frame.safePadY).toBe(0.3);
-    expect(frame.innerW).toBe(99.2);
-    expect(frame.innerH).toBeGreaterThanOrEqual(23.5);
+    expect(THERMAL_SAFE_EDGE_MM).toBe(1);
+    expect(frame.safePadX).toBe(1);
+    expect(frame.safePadY).toBe(1);
+    expect(frame.artWidthMm).toBe(98);
+    expect(frame.artHeightMm).toBe(28);
+    expect(frame.innerW).toBe(98);
     expect(frame.shellTopMm + frame.innerH + frame.shellBottomMm).toBeCloseTo(30, 6);
 
     const html = buildThermalLabelsHtml([label('SP130-34', '34')], 'logo.png');
     expect(html).toContain('@page{size:100mm 30mm;margin:0;}');
     expect(html).toContain('width:100mm;\n    height:30mm;');
-    expect(html).toContain('left:0.4mm;');
-    expect(html).toContain('right:0.4mm;');
+    expect(html).toContain('top:1mm;left:1mm;right:1mm;');
+    expect(html).toContain('bottom:1mm;left:1mm;right:1mm;');
+    expect(html).toContain('bottom:1mm;\n    left:1mm;');
+  });
+
+  it('amplia a numeração curta e ancora o valor no canto inferior direito', () => {
+    const html = buildThermalLabelsHtml([label('SP130-34', '34')], 'logo.png');
+
+    expect(DEFAULT_THERMAL_CONFIG.fontSizeSize).toBe(34);
+    expect(html).toContain('class="sz-value" style="font-size:34pt">34</span>');
+    expect(html).toContain('align-self:end;');
+    expect(html).toContain('justify-self:end;');
+  });
+
+  it('reduz somente o valor quando o modo por ficha envia uma grade longa', () => {
+    const html = buildThermalLabelsHtml([label('SP130-GRADE', '34(2) 35(3)')], 'logo.png');
+
+    expect(html).toContain('class="sz-value sz-value--long" style="font-size:10pt">34(2) 35(3)</span>');
   });
 
   it('respeita margem extra escolhida pelo operador sem impor 3% ocultos', () => {
     const semMargem = computeThermalLabelFrame({ width: 100, height: 30 }, 0);
     const comMargem = computeThermalLabelFrame({ width: 100, height: 30 }, 3);
 
-    expect(semMargem.safePadX).toBe(0.4);
-    expect(comMargem.safePadX).toBe(3.4);
+    expect(semMargem.safePadX).toBe(1);
+    expect(comMargem.safePadX).toBe(4);
     expect(comMargem.innerW).toBeLessThan(semMargem.innerW);
   });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { buildBoxIdentificationHtml } from '../printLabels';
-
-const boxItem = (barcode: string, n: number) => ({
+const boxItem = (barcode: string, n: number): BoxIdentificationData => ({
+  orderNumber: barcode,
   refCode: 'SP130', refName: 'SP130', color: 'OFF WHITE', mainMaterial: 'NAPA SOFT',
-  clientName: 'ELIANE', boxNumber: n, totalBoxes: 100, quantity: 1,
+  recipientName: 'ELIANE', senderName: 'SQUAD SHOES', senderCnpj: '',
+  boxNumber: n, totalBoxes: 100,
   grade: [{ size: '34', qty: 1 }], barcode,
-}) as any;
+});
 
 /**
  * O rótulo de caixa é o caso MAIS extremo: o código é `order.order_number`, e

@@ -691,7 +691,7 @@ window._imagesReady=waitForImages();
  *   Direita:  Código de barras (EAN-13/CODE-128) com quiet zone
  * Rodapé:     Dados de composição / categoria
  *
- * Proteção técnica: 0,3mm sup/inf e 0,4mm laterais no padrão 100×30
+ * Área segura: 1mm em cada borda (arte útil de 98×28mm no padrão 100×30)
  * Quiet zone barras: 3mm antes/depois
  * Fontes: Arial/Helvetica sem serifa para nitidez térmica
  * Cores: Preto puro 100% (#000)
@@ -702,7 +702,7 @@ export type ThermalLabelConfig = {
   fontSizeCode: number;     // pt for code (default 6.5)
   fontSizeColor: number;    // pt for color row (default 7.5)
   fontSizeMaterial: number; // pt for material (default 6.5)
-  fontSizeSize: number;     // pt for size box (default 24)
+  fontSizeSize: number;     // pt para numeração individual de até 2 dígitos (default 34)
   fontSizePed: number;      // pt for pedido (default 6)
   imgWidthMm: number;       // image width in mm (default 28)
   imgHeightMm: number;      // image height in mm (default 24)
@@ -723,7 +723,7 @@ export const DEFAULT_THERMAL_CONFIG: ThermalLabelConfig = {
   fontSizeCode: 5.5,
   fontSizeColor: 7.5,
   fontSizeMaterial: 6.5,
-  fontSizeSize: 24,
+  fontSizeSize: 34,
   fontSizePed: 5.5,
   imgWidthMm: 28,
   imgHeightMm: 24,
@@ -741,11 +741,13 @@ export const DEFAULT_THERMAL_CONFIG: ThermalLabelConfig = {
 /**
  * Geometria física da arte térmica.
  *
- * A etiqueta já é a própria página de 100×30 mm, portanto não pode receber a
- * margem percentual de uma folha comum. O pequeno `bleedGuard` existe apenas
- * para não perder o primeiro/último dot na L42 Pro; todo o restante da mídia é
- * ocupado por cabeçalho, conteúdo e rodapé.
+ * A página continua exatamente em 100×30 mm. A arte, porém, precisa ficar 1 mm
+ * para dentro da faca em todos os lados: o avanço e o corte do rolo têm pequena
+ * tolerância mecânica e elementos colados na borda podem sair cortados. No
+ * padrão físico isso produz uma moldura útil centralizada de 98×28 mm.
  */
+export const THERMAL_SAFE_EDGE_MM = 1;
+
 export function computeThermalLabelFrame(
   dimensions = { width: 100, height: 30 },
   marginPct = DEFAULT_THERMAL_CONFIG.marginPct,
@@ -754,20 +756,23 @@ export function computeThermalLabelFrame(
   const W = Math.max(1, Number(dimensions.width) || 100);
   const H = Math.max(1, Number(dimensions.height) || 30);
   const effectiveMarginPct = clamp(Number.isFinite(marginPct) ? marginPct : 0, 0, 20);
-  const bleedGuardX = Math.max(W * 0.004, 0.4);
-  const bleedGuardY = Math.max(H * 0.01, 0.3);
-  const safePadX = +(W * effectiveMarginPct / 100 + bleedGuardX).toFixed(1);
-  const safePadY = +(H * effectiveMarginPct / 100 + bleedGuardY).toFixed(1);
+  const safePadX = +(W * effectiveMarginPct / 100 + THERMAL_SAFE_EDGE_MM).toFixed(1);
+  const safePadY = +(H * effectiveMarginPct / 100 + THERMAL_SAFE_EDGE_MM).toFixed(1);
   const headerHeightMm = showHeader ? +Math.max(H * 0.14, 3.8).toFixed(1) : 0;
   const footerHeightMm = +Math.max(H * 0.055, 1.6).toFixed(1);
-  const bandGapMm = +Math.max(safePadY * 0.5, 0.2).toFixed(1);
-  const shellTopMm = showHeader ? +(headerHeightMm + bandGapMm).toFixed(1) : safePadY;
-  const shellBottomMm = +(footerHeightMm + bandGapMm).toFixed(1);
-  const innerW = Math.max(24, +(W - safePadX * 2).toFixed(1));
+  const bandGapMm = +Math.max(H * 0.006, 0.2).toFixed(1);
+  const shellTopMm = showHeader
+    ? +(safePadY + headerHeightMm + bandGapMm).toFixed(1)
+    : safePadY;
+  const shellBottomMm = +(safePadY + footerHeightMm + bandGapMm).toFixed(1);
+  const artWidthMm = Math.max(1, +(W - safePadX * 2).toFixed(1));
+  const artHeightMm = Math.max(1, +(H - safePadY * 2).toFixed(1));
+  const innerW = Math.max(24, artWidthMm);
   const innerH = Math.max(12, +(H - shellTopMm - shellBottomMm).toFixed(1));
 
   return {
     W, H, effectiveMarginPct, safePadX, safePadY,
+    artWidthMm, artHeightMm,
     headerHeightMm, footerHeightMm, bandGapMm,
     shellTopMm, shellBottomMm, innerW, innerH,
   };
@@ -909,6 +914,17 @@ export function buildThermalLabelsHtml(labels: {
 
     // Só as cores de tira que DIFEREM da cor do produto — ver compactStrapColors.
     const strapExtras = compactStrapColors(l.color || '', l.strapsLabel);
+    const sizeText = String(l.size || '—').trim();
+    const sizeLength = Array.from(sizeText).length;
+    // A tiragem 1:1 usa numerações curtas (34, 35, 36...) e deve aproveitar o
+    // bloco inteiro. O modo por ficha pode carregar uma grade longa no mesmo
+    // campo; nesses casos reduzimos só esse valor para ele não invadir barcode.
+    const sizeValueFontPt = sizeLength <= 2
+      ? fs.size
+      : sizeLength <= 5
+        ? Math.min(fs.size, Math.round(20 * scaleH))
+        : Math.min(fs.size, Math.round(10 * scaleH));
+    const sizeValueClass = sizeLength <= 2 ? 'sz-value' : 'sz-value sz-value--long';
 
     return `<div class="print-page">
       ${headerHtml}
@@ -925,7 +941,7 @@ export function buildThermalLabelsHtml(labels: {
           ${!showHeader && c.showCategory && l.shoeCategory ? `<p class="info-category">${escapeHtml(l.shoeCategory)}</p>` : ''}
         </div>
 
-        ${c.showSize ? `<div class="label-size-box"><span class="sz-nr">Nº</span>${escapeHtml(l.size || '—')}</div>` : ''}
+        ${c.showSize ? `<div class="label-size-box"><span class="sz-nr">Nº</span><span class="${sizeValueClass}" style="font-size:${sizeValueFontPt}pt">${escapeHtml(sizeText)}</span></div>` : ''}
 
         ${hasRightColumn ? `<div class="label-right">
           ${l.barcode
@@ -1037,12 +1053,23 @@ ${preloadLinks}
     page-break-after:always;
     break-after:page;
     background:#fff;
-    border:0.25mm solid #000;
+    border:0;
   }
   .print-page:last-child{page-break-after:auto;break-after:auto;}
+  .print-page::after{
+    content:'';
+    position:absolute;
+    top:${safePadY}mm;
+    right:${safePadX}mm;
+    bottom:${safePadY}mm;
+    left:${safePadX}mm;
+    border:0.25mm solid #000;
+    pointer-events:none;
+    z-index:5;
+  }
   .lbl-hdr{
     position:absolute;
-    top:0;left:0;right:0;
+    top:${safePadY}mm;left:${safePadX}mm;right:${safePadX}mm;
     height:${headerHeightMm}mm;
     background:#000;
     color:#fff;
@@ -1129,29 +1156,50 @@ ${preloadLinks}
     height:100%;
     align-self:stretch;
     padding:0.4mm 0.4mm;
-    display:flex;
-    flex-direction:column;
-    align-items:center;
-    justify-content:center;
-    text-align:center;
+    display:grid;
+    grid-template-rows:auto minmax(0,1fr);
+    align-items:stretch;
+    justify-items:stretch;
+    text-align:right;
     overflow:hidden;
     background:#000;
     color:#fff;
     border-radius:1mm;
-    font-size:${fs.size}pt;
     font-weight:900;
     line-height:1;
     letter-spacing:-0.5px;
   }
   .sz-nr{
     display:block;
+    justify-self:start;
+    align-self:start;
     font-size:${+(3.0 * scaleH).toFixed(1)}pt;
     font-weight:600;
     letter-spacing:0.8px;
     opacity:0.55;
     line-height:1;
-    margin-bottom:0.3mm;
+    margin:0;
     text-transform:uppercase;
+  }
+  .sz-value{
+    display:block;
+    align-self:end;
+    justify-self:end;
+    max-width:100%;
+    font-family:"Arial Narrow",Arial,Helvetica,sans-serif;
+    font-weight:900;
+    line-height:0.78;
+    letter-spacing:-1.2px;
+    white-space:nowrap;
+  }
+  .sz-value--long{
+    align-self:center;
+    justify-self:center;
+    line-height:0.95;
+    letter-spacing:-0.3px;
+    white-space:normal;
+    overflow-wrap:anywhere;
+    text-align:center;
   }
   .label-info{
     min-width:0;
@@ -1228,7 +1276,7 @@ ${preloadLinks}
   }
   .lbl-ftr{
     position:absolute;
-    bottom:0;left:0;right:0;
+    bottom:${safePadY}mm;left:${safePadX}mm;right:${safePadX}mm;
     height:${footerHeightMm}mm;
     display:flex;
     align-items:center;
@@ -1247,7 +1295,7 @@ ${preloadLinks}
     html,body{background:#fff !important;}
     body{padding:0 !important;margin:0 !important;}
     .preview-shell{display:block;padding:0;margin:0;}
-    .print-page{box-shadow:none;border:0.25mm solid #000;}
+    .print-page{box-shadow:none;border:0;}
     /* Fix 2026-06-22: o LABEL_PRINT_HARDENING ("body *{overflow:visible;
        max-height:none}") reabre o clip da moldura e tira o teto da imagem,
        fazendo a foto do produto vazar pra fora do frame na impressão. Reafirma

@@ -2171,7 +2171,9 @@ export function LabelProductionTab() {
                           <span className="text-xs font-mono text-muted-foreground">{labelConfig.marginPct}%</span>
                         </div>
                         <Slider value={[labelConfig.marginPct]} onValueChange={([v]) => setLabelConfig({ ...labelConfig, marginPct: v })} min={0} max={20} step={1} className="py-2" />
-                        <p className="text-xs text-muted-foreground">0% usa toda a área útil de 100 × 30 mm.</p>
+                        <p className="text-xs text-muted-foreground">
+                          0% usa a área segura de 98 × 28 mm, centralizada no papel físico de 100 × 30 mm.
+                        </p>
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-x-6 gap-y-2">
