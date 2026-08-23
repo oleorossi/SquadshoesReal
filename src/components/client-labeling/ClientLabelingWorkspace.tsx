@@ -273,7 +273,7 @@ export function ClientLabelingWorkspace() {
       <Panel
         eyebrow="ETIQUETAS · CLIENTE"
         title="Importar pedido do cliente"
-        subtitle={`${BARCODE_FORMAT} com módulo de ${MODULE_MM.toFixed(4).replace('.', ',')} mm · mídia 100 × 30 mm em 2 colunas de 50 × 30 mm`}
+        subtitle={`${BARCODE_FORMAT} com módulo de ${MODULE_MM.toFixed(4).replace('.', ',')} mm · 2 × ${COUCHE_LABEL_WIDTH_MM} × ${COUCHE_LABEL_HEIGHT_MM} mm, vão ${DEFAULT_COUCHE_ROLL_PROFILE.columnGapMm} mm`}
         actions={
           rows.length > 0 ? (
             <Button variant="ghost" size="sm" onClick={limpar} className="h-9" disabled={isBusy}>
@@ -338,7 +338,7 @@ export function ClientLabelingWorkspace() {
                       <Badge variant="outline">2 × 50 × 30 mm</Badge>
                     </div>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      Mídia física 100 × 30 mm: coluna esquerda 50 × 30 e coluna direita 50 × 30. Ajuste a quantidade de cada item na tabela.
+                      2 × 50 × 30 mm com vão de {DEFAULT_COUCHE_ROLL_PROFILE.columnGapMm} mm entre as colunas (página 106 × 30). Não é a térmica 100 × 30 da caixa individual.
                     </p>
                   </div>
                 </div>
@@ -415,7 +415,7 @@ export function ClientLabelingWorkspace() {
                     Medidas do rolo de duas colunas
                   </summary>
                   <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-                    O padrão é 100 × 30 mm sem vão adicional: duas colunas consecutivas de 50 × 30 mm. Altere apenas se a faca do rolo tiver margens ou separação extras.
+                    O padrão é 2 × 50 × 30 mm com {DEFAULT_COUCHE_ROLL_PROFILE.columnGapMm} mm de vão (página {COUCHE_LABEL_WIDTH_MM * COUCHE_COLUMNS + DEFAULT_COUCHE_ROLL_PROFILE.columnGapMm} × {COUCHE_LABEL_HEIGHT_MM} mm). Altere só se a faca do rolo for outra.
                   </p>
                   <div className="mt-3 grid gap-3 sm:grid-cols-2">
                     {COUCHE_PROFILE_FIELDS.map(field => (
@@ -439,8 +439,14 @@ export function ClientLabelingWorkspace() {
                   </div>
                   <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3 text-xs">
                     <span className="text-muted-foreground">Mídia calculada do PDF</span>
-                    <strong className="font-mono text-foreground">
-                      {coucheGeometry.pageWidthMm.toLocaleString('pt-BR')} × {coucheGeometry.pageHeightMm.toLocaleString('pt-BR')} mm
+                    <strong className="font-mono text-foreground text-right">
+                      {COUCHE_COLUMNS} × {COUCHE_LABEL_WIDTH_MM} × {COUCHE_LABEL_HEIGHT_MM} mm
+                      <span className="block font-normal text-muted-foreground">
+                        página {coucheGeometry.pageWidthMm.toLocaleString('pt-BR')} × {coucheGeometry.pageHeightMm.toLocaleString('pt-BR')} mm
+                        {coucheGeometry.columnGapMm > 0
+                          ? ` (vão ${coucheGeometry.columnGapMm.toLocaleString('pt-BR')} mm)`
+                          : ''}
+                      </span>
                     </strong>
                   </div>
                   <div className="mt-3 flex items-start gap-2 rounded-md bg-muted/40 p-2.5">

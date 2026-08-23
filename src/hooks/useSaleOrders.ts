@@ -12,6 +12,7 @@ import { recomputeMaterialGate } from '@/hooks/useMaterialGate';
 import { canonicalStageOrder } from '@/components/production/worksheet/stageOrder';
 import { pruneStrapSourcing } from '@/lib/strapSourcing';
 import { resolveGroupSuppliers } from '@/lib/groupSupplierResolution';
+import { convertReservadoOpsOnBilling } from '@/lib/billingReservationConvert';
 
 // Setores default de uma OP — nomes CANÔNICOS ('Aviamento', não o legado 'Mesa';
 // inclui 'Costura' desde o PR 2). A numeração vem de CANONICAL_STAGE_ORDER
@@ -1332,12 +1333,7 @@ export function useUpdateSaleOrderStatus() {
             // (permissão/DB) e continua abortando — não mascarar falha real.
             // O aviso do que ficou devendo sai DEPOIS de finalizar, lendo as
             // pendências preservadas (abaixo) em vez de adivinhar pela mensagem.
-            for (const op of reservadoOps) {
-              const { error: convErr } = await (supabase as any).rpc('convert_reservation_to_out', { p_order_id: op.id });
-              if (convErr) {
-                throw new Error(`Falha ao consumir reservas da OP ${op.id} no faturamento: ${convErr.message}`);
-              }
-            }
+            await convertReservadoOpsOnBilling(reservadoOps);
           }
 
           const opIds = linkedOps.map(op => op.id);

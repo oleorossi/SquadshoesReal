@@ -35,7 +35,7 @@ import logoImg from '@/assets/logo-squad-shoes.jpg';
 import { supabase } from '@/integrations/supabase/client';
 import { resolveProductImageWithSource } from '@/lib/imageFallback';
 import { resolveMaterialLabels, materialLabelKey, materialNameFromCommercialSnapshot, type MaterialLabelInput } from '@/lib/labelUtils';
-import { buildBoxIdentificationHtml, buildThermalLabelsHtml, buildHangtagHtml, buildThermalLabelsZpl, zplPhotoBoxDots, type BoxIdentificationData, type ThermalLabelConfig, DEFAULT_THERMAL_CONFIG } from '@/lib/printLabels';
+import { buildBoxIdentificationHtml, buildThermalLabelsHtml, buildHangtagHtml, buildThermalLabelsZpl, zplPhotoBoxDots, type BoxIdentificationData, type ThermalLabelConfig, DEFAULT_THERMAL_CONFIG, THERMAL_LABEL_WIDTH_MM, THERMAL_LABEL_HEIGHT_MM, THERMAL_SAFE_EDGE_MM } from '@/lib/printLabels';
 import { loadImageAsMonochrome, type MonoBitmap } from '@/lib/zplImage';
 import ZplPreviewDialog, { type ZplPreviewLabel } from './ZplPreviewDialog';
 import { openPrintTab, printHtmlAsPdf } from '@/lib/printPdf';
@@ -57,7 +57,7 @@ import { findLabelGroupForScan } from '@/lib/labelOperations';
 
 
 const LABEL_SIZES = [
-  { id: '100x30', label: '100 × 30 mm', width: 100, height: 30, description: 'Padrão caixa individual (Elgin)' },
+  { id: '100x30', label: `${THERMAL_LABEL_WIDTH_MM} × ${THERMAL_LABEL_HEIGHT_MM} mm`, width: THERMAL_LABEL_WIDTH_MM, height: THERMAL_LABEL_HEIGHT_MM, description: 'Padrão caixa individual (Elgin)' },
   { id: '110x30', label: '110 × 30 mm', width: 110, height: 30, description: 'Caixa individual grande' },
   { id: '100x40', label: '100 × 40 mm', width: 100, height: 40, description: 'Etiqueta média' },
   { id: '100x50', label: '100 × 50 mm', width: 100, height: 50, description: 'Etiqueta grande' },
@@ -915,7 +915,7 @@ export function LabelProductionTab() {
 
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [labelSize, setLabelSize] = useState('100x30');
+  const [labelSize, setLabelSize] = useState(`${THERMAL_LABEL_WIDTH_MM}x${THERMAL_LABEL_HEIGHT_MM}`);
   const [activeTab, setActiveTab] = useState('individual');
   const [statusTab, setStatusTab] = useState<'producao' | 'imprimidos' | 'finalizados'>('producao');
 
@@ -2172,7 +2172,7 @@ export function LabelProductionTab() {
                         </div>
                         <Slider value={[labelConfig.marginPct]} onValueChange={([v]) => setLabelConfig({ ...labelConfig, marginPct: v })} min={0} max={20} step={1} className="py-2" />
                         <p className="text-xs text-muted-foreground">
-                          0% usa a área segura de 98 × 28 mm, centralizada no papel físico de 100 × 30 mm.
+                          0% usa a área segura de {currentSize.width - THERMAL_SAFE_EDGE_MM * 2} × {currentSize.height - THERMAL_SAFE_EDGE_MM * 2} mm, centralizada no papel físico de {currentSize.width} × {currentSize.height} mm. Padrão da caixa individual: {THERMAL_LABEL_WIDTH_MM} × {THERMAL_LABEL_HEIGHT_MM} mm — não usar o rolo 2 × 50 × 30 da etiquetagem cliente.
                         </p>
                       </div>
                     </div>

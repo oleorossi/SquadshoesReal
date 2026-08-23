@@ -739,22 +739,30 @@ export const DEFAULT_THERMAL_CONFIG: ThermalLabelConfig = {
 };
 
 /**
- * Geometria física da arte térmica.
+ * Geometria física da arte térmica da caixa individual.
  *
- * A página continua exatamente em 100×30 mm. A arte, porém, precisa ficar 1 mm
- * para dentro da faca em todos os lados: o avanço e o corte do rolo têm pequena
- * tolerância mecânica e elementos colados na borda podem sair cortados. No
- * padrão físico isso produz uma moldura útil centralizada de 98×28 mm.
+ * Padrão próprio da Squad: 1 etiqueta 100 × 30 mm por avanço. Não misturar com
+ * a etiquetagem cliente (2 × 50 × 30 mm + vão 6 mm = página 106 × 30).
+ *
+ * A arte fica 1 mm para dentro da faca em todos os lados: o avanço e o corte
+ * do rolo têm pequena tolerância e elementos colados na borda saem cortados.
+ * No padrão isso produz uma moldura útil centralizada de 98 × 28 mm.
  */
+export const THERMAL_LABEL_WIDTH_MM = 100;
+export const THERMAL_LABEL_HEIGHT_MM = 30;
+export const THERMAL_DEFAULT_DIMENSIONS = {
+  width: THERMAL_LABEL_WIDTH_MM,
+  height: THERMAL_LABEL_HEIGHT_MM,
+} as const;
 export const THERMAL_SAFE_EDGE_MM = 1;
 
 export function computeThermalLabelFrame(
-  dimensions = { width: 100, height: 30 },
+  dimensions = THERMAL_DEFAULT_DIMENSIONS,
   marginPct = DEFAULT_THERMAL_CONFIG.marginPct,
   showHeader = true,
 ) {
-  const W = Math.max(1, Number(dimensions.width) || 100);
-  const H = Math.max(1, Number(dimensions.height) || 30);
+  const W = Math.max(1, Number(dimensions.width) || THERMAL_LABEL_WIDTH_MM);
+  const H = Math.max(1, Number(dimensions.height) || THERMAL_LABEL_HEIGHT_MM);
   const effectiveMarginPct = clamp(Number.isFinite(marginPct) ? marginPct : 0, 0, 20);
   const safePadX = +(W * effectiveMarginPct / 100 + THERMAL_SAFE_EDGE_MM).toFixed(1);
   const safePadY = +(H * effectiveMarginPct / 100 + THERMAL_SAFE_EDGE_MM).toFixed(1);
@@ -824,7 +832,7 @@ export function buildThermalLabelsHtml(labels: {
   /** True quando imageUrl é fallback (foto mestra, não retrata a cor real
    *  pedida). Aplica grayscale + selo "FOTO GENÉRICA" na moldura da foto. */
   imageIsFallback?: boolean;
-}[], logoUrl: string, dimensions = { width: 100, height: 30 }, config: ThermalLabelConfig = DEFAULT_THERMAL_CONFIG, senderCnpj?: string): string {
+}[], logoUrl: string, dimensions = THERMAL_DEFAULT_DIMENSIONS, config: ThermalLabelConfig = DEFAULT_THERMAL_CONFIG, senderCnpj?: string): string {
   const { width: W, height: H } = dimensions;
   const c = { ...DEFAULT_THERMAL_CONFIG, ...config };
   const showHeader = c.showCode;
@@ -1421,7 +1429,7 @@ export async function buildThermalLabelsPdf(
      *  e adiciona texto "FOTO GENÉRICA" junto à moldura. */
     imageIsFallback?: boolean;
   }[],
-  dimensions = { width: 100, height: 30 },
+  dimensions = THERMAL_DEFAULT_DIMENSIONS,
   senderCnpj?: string,
 ): Promise<Blob> {
   const [{ default: jsPDF }, { default: JsBarcode }] = await Promise.all([
@@ -1735,7 +1743,7 @@ function zplFrameDots(dimensions: { width: number; height: number }, dpi: number
 }
 
 /** Tamanho da foto em DOTS, já limitado pela altura útil da etiqueta. */
-export function zplPhotoBoxDots(dimensions = { width: 100, height: 30 }, dpi = 203) {
+export function zplPhotoBoxDots(dimensions = THERMAL_DEFAULT_DIMENSIONS, dpi = 203) {
   const { innerH } = zplFrameDots(dimensions, dpi);
   return {
     width: mmToDots(ZPL_PHOTO_MM.width, dpi),
@@ -1751,7 +1759,7 @@ export function zplPhotoBoxDots(dimensions = { width: 100, height: 30 }, dpi = 2
  * poria em outro — que é justamente o que a prévia existe pra impedir. Toda
  * mudança de layout entra NESTA função, nunca só num dos dois lados.
  */
-export function computeZplLayout(dimensions = { width: 100, height: 30 }, hasPhoto = false, dpi = 203) {
+export function computeZplLayout(dimensions = THERMAL_DEFAULT_DIMENSIONS, hasPhoto = false, dpi = 203) {
   const { dpMm, W, H, padX, padY, innerH } = zplFrameDots(dimensions, dpi);
 
   // [FOTO] | DESCRIÇÃO | Nº | CÓDIGO. A coluna da foto só existe quando há
@@ -1799,7 +1807,7 @@ export function buildThermalLabelsZpl(
     /** Nome do gráfico já gravado por ~DG. Ausente = etiqueta sem foto. */
     imageName?: string;
   }[],
-  dimensions = { width: 100, height: 30 },
+  dimensions = THERMAL_DEFAULT_DIMENSIONS,
   /** Fotos distintas do lote. Gravadas UMA vez no topo; cada etiqueta só chama. */
   graphics: { name: string; mono: MonoBitmap }[] = [],
 ): string {
