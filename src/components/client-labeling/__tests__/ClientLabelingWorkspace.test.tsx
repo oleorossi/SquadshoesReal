@@ -57,9 +57,12 @@ function skuCheckbox(tamanho: string) {
 
 function confirmarPerfilCouche() {
   fireEvent.click(screen.getByText('Medidas do rolo de duas colunas'));
-  fireEvent.click(screen.getByRole('checkbox', {
+  const box = screen.getByRole('checkbox', {
     name: 'Confirmo que estas medidas correspondem ao rolo usado na L42PRO e pela gráfica.',
-  }));
+  });
+  if (box.getAttribute('data-state') !== 'checked') {
+    fireEvent.click(box);
+  }
 }
 
 async function importar(rows: BabyNalinRow[] = ROWS) {
@@ -367,18 +370,23 @@ describe('ClientLabelingWorkspace · seleção por SKU', () => {
     await waitFor(() => expect(mocks.buildBabyNalinPdf).toHaveBeenCalled());
   });
 
-  it('exige confirmação explícita das medidas antes de gerar para a L42PRO ou gráfica', async () => {
+  it('libera geração no perfil padrão e só exige nova confirmação se as medidas mudarem', async () => {
     await importar();
 
-    expect(screen.getByRole('button', { name: 'Gerar L42PRO (864 etiquetas)' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Gerar gráfica (3 SKUs)' })).toBeDisabled();
-    confirmarPerfilCouche();
     expect(screen.getByRole('button', { name: 'Gerar L42PRO (864 etiquetas)' })).toBeEnabled();
     expect(screen.getByRole('button', { name: 'Gerar gráfica (3 SKUs)' })).toBeEnabled();
 
+    fireEvent.click(screen.getByText('Medidas do rolo de duas colunas'));
     fireEvent.change(screen.getByLabelText('Vão entre colunas (mm)'), { target: { value: '2' } });
     expect(screen.getByRole('button', { name: 'Gerar L42PRO (864 etiquetas)' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Gerar gráfica (3 SKUs)' })).toBeDisabled();
+    expect(screen.getAllByText(/Medidas do rolo alteradas/).length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByRole('checkbox', {
+      name: 'Confirmo que estas medidas correspondem ao rolo usado na L42PRO e pela gráfica.',
+    }));
+    expect(screen.getByRole('button', { name: 'Gerar L42PRO (864 etiquetas)' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Gerar gráfica (3 SKUs)' })).toBeEnabled();
   });
 
   it('calcula grandes quantidades sem expandir e protege o navegador', async () => {
