@@ -72,7 +72,7 @@ import { useRepresentatives } from '@/hooks/useRepresentatives';
 import { printHtml, buildSaleOrderHtmlWithData, printSaleOrderPdf, fetchCompanySettings } from '@/lib/printOrder';
 import { printAllSectorsForSaleOrder } from '@/lib/printSaleOrderOPs';
 import { autoCreateSolePO, autoCreateSolePOFromShortfall } from '@/lib/soleAutoPO';
-import { buildThermalLabelsHtml } from '@/lib/printLabels';
+import { buildThermalLabelsHtml, THERMAL_DEFAULT_DIMENSIONS } from '@/lib/printLabels';
 import { resolveSenderCnpj } from '@/lib/companySender';
 import { openPrintTab, printHtmlAsPdf } from '@/lib/printPdf';
 import { createPrintJob, setPrintJobStatus } from '@/lib/printJobs';
@@ -1317,7 +1317,7 @@ export default function SaleOrders() {
       }
       const logoUrl = new URL(logoImg, window.location.origin).href;
       const senderCnpj = resolveSenderCnpj(companies, (selectedOrders[0] as any)?.company_id);
-      const html = buildThermalLabelsHtml(labels, logoUrl, { width: 100, height: 30 }, undefined, senderCnpj);
+      const html = buildThermalLabelsHtml(labels, logoUrl, THERMAL_DEFAULT_DIMENSIONS, undefined, senderCnpj);
       const jobId = await createPrintJob({
         batchName: `Térmicas de pedidos - ${new Date().toLocaleString('pt-BR')}`,
         totalLabels: labels.length,

@@ -12,6 +12,13 @@ import {
   type ClickNotasProductCompletionResult,
   type ClickNotasProductReconciliationResult,
 } from "../_shared/clickNotasProductIdentity.ts";
+import {
+  assertNfeCfopColumns,
+  classifyNfeItemOrigin,
+  resolveHeaderNfeCfop,
+  resolveNfeCfop,
+  type NfeCfopKind,
+} from "../_shared/nfeCfop.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": Deno.env.get("ALLOWED_ORIGIN") || "https://squadshoes-real.vercel.app",
@@ -190,14 +197,17 @@ async function resolveGcLojaId(fiscal: any): Promise<{ lojaId: string | null; bl
 // `transportadora_id` (FK pra /transportadoras). Solução: criar a transportadora
 // "Squad Shoes" uma vez (idempotente por CNPJ) e referenciar pelo ID.
 // 19/05/2026: bug visto em PV-00107+, transportador saía em branco no DANFE.
-let _gcTransportadoraIdCache: string | null = null;
+// Cache do id da transportadora "própria" no ClickNotas, POR CNPJ do emitente.
+// Cache global misturava Matriz e LRMS no mesmo isolate (auditoria NF-e).
+const _gcTransportadoraIdByCnpj = new Map<string, string>();
 async function resolveGcTransportadoraEmitenteId(fiscal: any): Promise<string | null> {
-  if (_gcTransportadoraIdCache) return _gcTransportadoraIdCache;
   const cnpjDigits = (fiscal?.cnpj || "").replace(/\D/g, "");
   if (cnpjDigits.length !== 14) {
     console.warn("[emit-nfe] resolveGcTransportadoraEmitenteId: CNPJ do emitente inválido — pulando");
     return null;
   }
+  const cached = _gcTransportadoraIdByCnpj.get(cnpjDigits);
+  if (cached) return cached;
   try {
     // 1. Tenta achar transportadora existente com mesmo CNPJ. GC filtra por
     // nome (não por CNPJ), então buscamos pelo nome e validamos no client.
@@ -209,9 +219,10 @@ async function resolveGcTransportadoraEmitenteId(fiscal: any): Promise<string | 
       return tCnpj && tCnpj === cnpjDigits;
     });
     if (match?.id) {
-      _gcTransportadoraIdCache = String(match.id);
-      console.log(`[emit-nfe] Transportadora emitente já existe no GC: id=${_gcTransportadoraIdCache}`);
-      return _gcTransportadoraIdCache;
+      const id = String(match.id);
+      _gcTransportadoraIdByCnpj.set(cnpjDigits, id);
+      console.log(`[emit-nfe] Transportadora emitente já existe no GC: id=${id}`);
+      return id;
     }
 
     // 2. Não achou — cria. POST /transportadoras.
@@ -246,9 +257,10 @@ async function resolveGcTransportadoraEmitenteId(fiscal: any): Promise<string | 
     });
     const newId = createResp.json?.data?.id;
     if (createResp.ok && newId) {
-      _gcTransportadoraIdCache = String(newId);
-      console.log(`[emit-nfe] Transportadora emitente criada no GC: id=${_gcTransportadoraIdCache}`);
-      return _gcTransportadoraIdCache;
+      const id = String(newId);
+      _gcTransportadoraIdByCnpj.set(cnpjDigits, id);
+      console.log(`[emit-nfe] Transportadora emitente criada no GC: id=${id}`);
+      return id;
     }
     console.warn("[emit-nfe] Falha ao criar transportadora emitente:", createResp.status, JSON.stringify(createResp.json).slice(0, 300));
     return null;
@@ -615,23 +627,18 @@ Deno.serve(async (req) => {
     const valorFrete = Number(order.valor_frete) || 0;
     const nfTotal = sumItems;
 
-    // CFOP por código (ClickNotas aceita `codigo_cfop` diretamente).
-    // Auditoria A14: valida formato do CFOP configurado. Se preenchido mas
-    // não tem 4 dígitos começando em 5 ou 6, bloqueia emissão — sem isso
-    // SEFAZ rejeita com mensagem confusa.
+    // CFOP: indústria (ficha) vs revenda (avulso) × intra vs inter.
+    // A tela de tributação grava 4 colunas; até agora a emissão só lia
+    // companies.cfop e flipava 5↔6 — o CFOP de revenda nunca saía.
     const isInterstate = !!(client?.estado && fiscal.uf && client.estado.toUpperCase() !== String(fiscal.uf).toUpperCase());
-    const defaultCfop = isInterstate ? "6101" : "5101";
-    const cfopConfigured = fiscal.cfop ? String(fiscal.cfop).trim() : "";
-    if (cfopConfigured && !/^[56]\d{3}$/.test(cfopConfigured)) {
+    try {
+      assertNfeCfopColumns(fiscal);
+    } catch (cfopErr) {
       return new Response(JSON.stringify({
-        error: `CFOP configurado inválido: "${cfopConfigured}". Deve ter 4 dígitos começando em 5 (intra-estadual) ou 6 (inter-estadual). Edite a configuração fiscal antes de emitir.`,
+        error: cfopErr instanceof Error ? cfopErr.message : String(cfopErr),
       }), { status: 400, headers: corsHeaders });
     }
-    let resolvedCfop = cfopConfigured || defaultCfop;
-    if (cfopConfigured && /^[56]\d{3}$/.test(cfopConfigured)) {
-      if (isInterstate && cfopConfigured.startsWith("5")) resolvedCfop = "6" + cfopConfigured.slice(1);
-      if (!isInterstate && cfopConfigured.startsWith("6")) resolvedCfop = "5" + cfopConfigured.slice(1);
-    }
+    const itemCfopResolutions: Array<{ cfop: string; kind: NfeCfopKind }> = [];
 
     const { count: priorCount, error: countErr } = await adminClient
       .from("nfe_emitidas").select("id", { count: "exact", head: true }).eq("sale_order_id", sale_order_id);
@@ -809,6 +816,7 @@ Deno.serve(async (req) => {
       codigo: string;
       ncm: string;
       cfop: string;
+      origem: NfeCfopKind;
       quantidade: number;
       unidade: string;
       valor_unitario: number;
@@ -823,6 +831,13 @@ Deno.serve(async (req) => {
       const variant = it._variantSnapshot;
       const hasMaterialVariant = it._hasMaterialVariant;
       const isStandalone = !ts && !!prod;
+      const itemKind = classifyNfeItemOrigin({
+        technical_sheets: ts,
+        reference_id: it.reference_id,
+        products: prod,
+      });
+      const itemCfop = resolveNfeCfop({ isInterstate, kind: itemKind, fiscal });
+      itemCfopResolutions.push(itemCfop);
       const ncm = String((
         hasMaterialVariant ? variant?.ncm : (ts?.ncm || prod?.ncm)
       ) || "").trim();
@@ -1060,8 +1075,8 @@ Deno.serve(async (req) => {
         // quantidade internamente. Antes mandávamos (qtd × preço) e o
         // total saía qtd² × preço (ex: R$ 8.3M em vez de R$ 25k).
         valor_venda: price.toFixed(2),
-        cfop: resolvedCfop,
-        unidade: "UN",
+        cfop: itemCfop.cfop,
+        unidade: unidade,
         NCM: ncm,
         tipo: "P",
         marca: itemBrand, // marca por item = silk do solado (fallback Squad Shoes)
@@ -1070,9 +1085,10 @@ Deno.serve(async (req) => {
         descricao: nomeProduto,
         codigo: codigoNf,
         ncm,
-        cfop: resolvedCfop,
+        cfop: itemCfop.cfop,
+        origem: itemKind,
         quantidade: qty,
-        unidade: "UN",
+        unidade,
         valor_unitario: price,
         valor_total: Number((qty * price).toFixed(2)),
         marca: itemBrand,
@@ -1080,6 +1096,12 @@ Deno.serve(async (req) => {
         gc_id: gcProductId,
       });
     }
+
+    const headerCfop = resolveHeaderNfeCfop(itemCfopResolutions);
+    const resolvedCfop = headerCfop.cfop;
+    const ncmChapterWarnings = produtosPreview
+      .filter((p) => p.origem === 'industrial' && p.ncm && !p.ncm.startsWith('64'))
+      .map((p) => `${p.codigo || p.descricao} (NCM ${p.ncm})`);
 
     // ---------- Calcula peso bruto/líquido via RPC ----------
     // Soma SUM(items.quantity × technical_sheets.weight_per_pair_kg) e
@@ -1305,7 +1327,7 @@ Deno.serve(async (req) => {
     const complementoOperacional = [
       ocPart,
       livrePart,
-      order.numero_pv ? `Pedido de Venda: ${order.numero_pv}` : null,
+      order.order_number ? `Pedido de Venda: ${order.order_number}` : null,
       weightWarning,
     ].filter(Boolean).join(" · ");
     // Aviso legal e texto operacional separados por quebra de linha (o " · "
@@ -1544,6 +1566,11 @@ Deno.serve(async (req) => {
       if (weightWarning) previewWarnings.push(weightWarning);
       if (packagingModeWarning) previewWarnings.push(packagingModeWarning);
       if (volumesWarning) previewWarnings.push(volumesWarning);
+      if (ncmChapterWarnings.length > 0) {
+        previewWarnings.push(
+          `NCM fora do capítulo 64 (calçados) em item de produção: ${ncmChapterWarnings.join("; ")}. Confira se a classificação está certa pra indústria.`,
+        );
+      }
       if (!gcClientId) {
         previewWarnings.push(
           `Cliente ainda não está cadastrado no ClickNotas — será criado automaticamente na emissão.`,
@@ -1595,6 +1622,7 @@ Deno.serve(async (req) => {
           operacao: {
             natureza_operacao: naturezaEsperada,
             cfop: resolvedCfop,
+            cfop_kind: headerCfop.kind,
             cfop_interstate: isInterstate,
             modelo: '55',
             finalidade: '1 (NF-e normal)',

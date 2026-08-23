@@ -338,7 +338,7 @@ export function ClientLabelingWorkspace() {
                       <Badge variant="outline">2 × 50 × 30 mm</Badge>
                     </div>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      2 × 50 × 30 mm com vão de {DEFAULT_COUCHE_ROLL_PROFILE.columnGapMm} mm entre as colunas. Ajuste a quantidade de cada item na tabela.
+                      2 × 50 × 30 mm com vão de {DEFAULT_COUCHE_ROLL_PROFILE.columnGapMm} mm entre as colunas (página 106 × 30). Não é a térmica 100 × 30 da caixa individual.
                     </p>
                   </div>
                 </div>

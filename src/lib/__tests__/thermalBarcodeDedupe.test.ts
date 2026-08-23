@@ -5,8 +5,18 @@ import {
   computeThermalLabelFrame,
   DEFAULT_THERMAL_CONFIG,
   THERMAL_SAFE_EDGE_MM,
+  THERMAL_LABEL_WIDTH_MM,
+  THERMAL_LABEL_HEIGHT_MM,
   type BoxIdentificationData,
 } from '../printLabels';
+import {
+  COUCHE_COLUMNS,
+  COUCHE_LABEL_HEIGHT_MM,
+  COUCHE_LABEL_WIDTH_MM,
+  COUCHE_PAGE_HEIGHT_MM,
+  COUCHE_PAGE_WIDTH_MM,
+  DEFAULT_COUCHE_ROLL_PROFILE,
+} from '../babyNalinLabels';
 
 const label = (barcode: string, size: string) => ({
   refCode: 'SP130', refName: 'SP130', mainMaterial: 'NAPA SOFT',
@@ -63,6 +73,8 @@ describe('buildThermalLabelsHtml — barcode por payload distinto', () => {
 
     expect(DEFAULT_THERMAL_CONFIG.marginPct).toBe(0);
     expect(THERMAL_SAFE_EDGE_MM).toBe(1);
+    expect(THERMAL_LABEL_WIDTH_MM).toBe(100);
+    expect(THERMAL_LABEL_HEIGHT_MM).toBe(30);
     expect(frame.safePadX).toBe(1);
     expect(frame.safePadY).toBe(1);
     expect(frame.artWidthMm).toBe(98);
@@ -76,6 +88,18 @@ describe('buildThermalLabelsHtml — barcode por payload distinto', () => {
     expect(html).toContain('top:1mm;left:1mm;right:1mm;');
     expect(html).toContain('bottom:1mm;left:1mm;right:1mm;');
     expect(html).toContain('bottom:1mm;\n    left:1mm;');
+  });
+
+  it('não mistura a caixa individual 100×30 com a etiquetagem cliente 2×50×30', () => {
+    expect(THERMAL_LABEL_WIDTH_MM).toBe(100);
+    expect(THERMAL_LABEL_HEIGHT_MM).toBe(30);
+    expect(COUCHE_LABEL_WIDTH_MM).toBe(50);
+    expect(COUCHE_LABEL_HEIGHT_MM).toBe(30);
+    expect(COUCHE_COLUMNS).toBe(2);
+    expect(DEFAULT_COUCHE_ROLL_PROFILE.columnGapMm).toBe(6);
+    expect(COUCHE_PAGE_WIDTH_MM).toBe(106);
+    expect(COUCHE_PAGE_HEIGHT_MM).toBe(30);
+    expect(THERMAL_LABEL_WIDTH_MM).not.toBe(COUCHE_PAGE_WIDTH_MM);
   });
 
   it('amplia a numeração curta e ancora o valor no canto inferior direito', () => {
