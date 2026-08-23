@@ -16,6 +16,18 @@ describe('shortageCandidatesFromVariance', () => {
     expect(cands).toHaveLength(1);
     expect(cands[0].productId).toBe('napa');
     expect(cands[0].reason).toBe('both');
-    expect(cands[0].qty).toBe(4);
+    expect(cands[0].qty).toBe(11);
+  });
+
+  it('compra ruptura da ficha mesmo sem overage', () => {
+    const lines = buildVarianceLines([
+      { productId: 'solado', name: 'Solado', theoretical: 36, actual: 0 },
+    ]);
+    const cands = shortageCandidatesFromVariance(lines, {
+      solado: { stock: 10, minStock: 0 },
+    });
+    expect(cands).toHaveLength(1);
+    expect(cands[0].reason).toBe('shortage');
+    expect(cands[0].qty).toBe(26);
   });
 });

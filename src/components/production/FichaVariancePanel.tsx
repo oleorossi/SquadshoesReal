@@ -171,7 +171,7 @@ export default function FichaVariancePanel() {
         orderRef: String(auditQuery.data.pvNumber),
       });
       if (pos.length === 0) {
-        toast.message('Nada pra comprar — sem overage nem furo de mínimo.');
+        toast.message('Nada pra comprar — estoque cobre a ficha e o mínimo.');
       } else {
         toast.success(`${pos.length} ${pos.length === 1 ? 'OC' : 'OCs'}: ${pos.map((p) => p.poNumber).join(', ')}`);
       }

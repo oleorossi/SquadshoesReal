@@ -48,16 +48,20 @@ describe('fichaVariance', () => {
     const cola = lines.find((l) => l.productId === 'c');
     expect(napa?.delta).toBe(2);
     expect(napa?.extraCost).toBe(16);
-    // 12/10 = +20% → acima de 15% ↔ crítico, além de sem_baixa e sem_ficha
     expect(napa?.status).toBe('critico');
     expect(solado?.diagnosis).toBe('ficha_sem_baixa');
     expect(cola?.diagnosis).toBe('baixa_sem_ficha');
     expect(varianceSummary(lines).critico).toBe(3);
   });
 
-  it('compra overage + furo do mínimo, não o que a ficha não baixou', () => {
-    expect(qtyToBuyFromVariance({ theoretical: 10, actual: 13, stock: 2, minStock: 5 })).toBe(6);
+  it('compra o furo da ficha + o piso, sem dobrar overage', () => {
+    // 10 da OP + piso 5 − 2 em estoque
+    expect(qtyToBuyFromVariance({ theoretical: 10, actual: 13, stock: 2, minStock: 5 })).toBe(13);
+    // estoque cobre a OP e o piso
     expect(qtyToBuyFromVariance({ theoretical: 10, actual: 4, stock: 20, minStock: 5 })).toBe(0);
-    expect(qtyToBuyFromVariance({ theoretical: 10, actual: 4, stock: 1, minStock: 5 })).toBe(4);
+    // 10 + 5 − 1
+    expect(qtyToBuyFromVariance({ theoretical: 10, actual: 4, stock: 1, minStock: 5 })).toBe(14);
+    // sem linha de ficha: só recompõe mínimo
+    expect(qtyToBuyFromVariance({ theoretical: 0, actual: 8, stock: 1, minStock: 5 })).toBe(4);
   });
 });
