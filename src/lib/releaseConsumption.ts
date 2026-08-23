@@ -1,5 +1,6 @@
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { guardDebitForSaleOrder } from '@/lib/fichaDebitGuard';
 
 /**
  * Baixa de estoque no momento da LIBERAÇÃO PRA PRODUÇÃO (decisão do dono, 31/07/2026).
@@ -45,12 +46,17 @@ import { toast } from 'sonner';
  * SOLADO — este último com baixa parcial por numeração. Embalagem NÃO entra:
  * ela é baixa dura na própria promoção (`debit_packaging_for_order`) e não
  * cria linha em `material_reservations`, então não há risco de dobrar.
+ *
+ * ── Onda B (2026-08-22) ───────────────────────────────────────────────────────
+ * Sem ficha técnica a baixa é BLOQUEADA (não a produção). Reserva sem explosão
+ * da ficha é saída avulsa e some do radar teórico×real.
  */
 
 export interface ReleaseConsumptionResult {
   picked_count: number;
   skipped_count: number;
   insufficient: string[];
+  blocked_no_sheet?: boolean;
 }
 
 /**
@@ -63,6 +69,16 @@ export async function consumeReservationsOnRelease(
   saleOrderLabel?: string | null,
 ): Promise<ReleaseConsumptionResult | null> {
   try {
+    const guard = await guardDebitForSaleOrder(saleOrderId);
+    if (!guard.allowed) {
+      toast.warning(
+        `Baixa de estoque não rodou: ${guard.reason || 'ficha técnica ausente'}. ` +
+        'A produção segue; acerte a ficha antes de debitar.',
+        { duration: 10000 },
+      );
+      return { picked_count: 0, skipped_count: 0, insufficient: [], blocked_no_sheet: true };
+    }
+
     const { data, error } = await (supabase as any).rpc('commit_picking_for_sale_order', {
       p_sale_order_id: saleOrderId,
     });
