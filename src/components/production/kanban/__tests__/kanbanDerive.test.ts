@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { deriveCard, deriveCards } from '../kanbanDerive';
+import { deriveCard, deriveCards, orphanVisibilityCard, cardsForQueueRow, ORPHAN_COLUMN } from '../kanbanDerive';
 import type { OrderStage } from '@/hooks/useOrderStages';
 import type { QueueDetailRow } from '@/hooks/useProductionEngine';
 
@@ -124,7 +124,7 @@ describe('deriveCard — setor PULADO não pode virar entrega completa', () => {
     expect(card.upstreamGap).toEqual({ sector: 'Corte Palmilha', missing: 24 });
   });
 
-  it('pulo com o lote CHEIO segue legítimo: sem buraco e sem âmbar', () => {
+  it('pulo com o lote CHEIO segue legitimo: sem buraco e sem âmbar', () => {
     const stages = [
       stage('Corte Palmilha', 1, done(288)),
       stage('Corte Forração', 2, done(288)),
@@ -140,9 +140,6 @@ describe('deriveCard — setor PULADO não pode virar entrega completa', () => {
 
 describe('deriveCard — ordem da rota manda, não a config global', () => {
   it('usa stage_order da OP mesmo quando o flow_order global discorda', () => {
-    // Rota legada: Aviamento (4) vem antes de Silk (5), mas o global põe
-    // Aviamento em 50 e Silk em 60 — mesma ordem relativa. O que não pode é a
-    // função reordenar pela config e fechar setor que a OP ainda não passou.
     const stages = [
       stage('Corte Palmilha', 1, done(288)),
       stage('Aviamento', 4),
@@ -158,17 +155,7 @@ describe('deriveCard — ordem da rota manda, não a config global', () => {
   });
 });
 
-/**
- * SETORES EM PARALELO (decisão do dono 06/08/2026, substitui a de 12/07).
- *
- * O motor agenda o mesmo `parallel_group` no mesmo nível — a OP roda em Corte
- * Palmilha E Corte Forração no mesmo dia. O quadro serial deixava a coluna do
- * par vazia: medido em 06/08, Corte Forração tinha 514 pares em 28 OPs e dizia
- * "Sem OP aguardando".
- */
 describe('deriveCards — setores em paralelo', () => {
-  // Espelha sector_settings de produção: grupo "corte" (10,20) colapsa em 10;
-  // grupo "costura_aviamento" (30,40,50) colapsa em 30; o resto é serial.
   const LEVEL = new Map<string, number>([
     ['Corte Palmilha', 10], ['Corte Forração', 10],
     ['Costura Palmilha', 30], ['Costura Cabedal', 30], ['Aviamento', 30],
@@ -233,11 +220,9 @@ describe('deriveCards — setores em paralelo', () => {
 
   it('o irmão herda a matemática de entrega — não inventa número próprio', () => {
     const stages = rota();
-    // Corte Palmilha entregou parcial; ambos os cards do nível seguinte...
     stages[0] = stage('Corte Palmilha', 1, done(288));
-    stages[1] = stage('Corte Forração', 2, done(0));   // pulado, fechado com zero
+    stages[1] = stage('Corte Forração', 2, done(0));
     const cards = deriveCards(queue(), stages, FLOW, LEVEL);
-    // ...caem no grupo da costura, todos com o buraco do Corte Forração visível
     expect(cards.map(c => c.column)).toEqual(['Costura Palmilha', 'Costura Cabedal', 'Aviamento']);
     for (const c of cards) {
       expect(c.delivered).toBe(0);
@@ -247,11 +232,6 @@ describe('deriveCards — setores em paralelo', () => {
   });
 });
 
-/**
- * REGRESSÕES da opção C pegas no code-review de 07/08/2026. A opção C tinha
- * ensinado `deriveCards` a enxergar níveis, mas a matemática de cada card
- * continuava serial — e nos casos NORMAIS de duas bancadas ela mentia.
- */
 describe('deriveCards — regressões do code-review', () => {
   const LEVEL = new Map<string, number>([
     ['Corte Palmilha', 10], ['Corte Forração', 10],
@@ -267,12 +247,11 @@ describe('deriveCards — regressões do code-review', () => {
   it('setor paralelo NÃO perde o card ao receber apontamento parcial', () => {
     const stages = rota();
     stages[0] = stage('Corte Palmilha', 1, done(288));
-    // A bancada do Corte Forração aponta 100 de 288 no card dela.
     stages[1] = stage('Corte Forração', 2, { status: 'em_andamento', quantity_processed: 100 });
     const cards = deriveCards(queue(), stages, FLOW, LEVEL);
     const forracao = cards.find(c => c.column === 'Corte Forração');
-    expect(forracao).toBeDefined();               // sumia do quadro inteiro
-    expect(forracao!.delivered).toBe(100);        // e com o SEU número
+    expect(forracao).toBeDefined();
+    expect(forracao!.delivered).toBe(100);
     expect(forracao!.columnStage!.quantity_total - forracao!.delivered).toBe(188);
   });
 
@@ -283,11 +262,9 @@ describe('deriveCards — regressões do code-review', () => {
     stages[2] = stage('Costura Palmilha', 3, { status: 'em_andamento', quantity_processed: 100 });
     const cards = deriveCards(queue(), stages, FLOW, LEVEL);
     const cabedal = cards.find(c => c.column === 'Costura Cabedal')!;
-    // Ela recebe do CORTE (lote cheio), não da irmã que está com 100.
     expect(cabedal.delivered).toBe(288);
     expect(cabedal.isPartial).toBe(false);
-    expect(cabedal.upstreamGap).toBeNull();       // dizia "−188 em Costura Palmilha"
-    // E a que está trabalhando mostra o PRÓPRIO progresso.
+    expect(cabedal.upstreamGap).toBeNull();
     expect(cards.find(c => c.column === 'Costura Palmilha')!.delivered).toBe(100);
   });
 
@@ -300,8 +277,8 @@ describe('deriveCards — regressões do code-review', () => {
     ];
     const cards = deriveCards(queue(), stages, FLOW, LEVEL);
     const colunas = cards.map(c => c.column);
-    expect(colunas).toContain('Acabamento');      // o card que já existia
-    expect(colunas).toContain('Corte Palmilha');  // os 108 pares órfãos, agora visíveis
+    expect(colunas).toContain('Acabamento');
+    expect(colunas).toContain('Corte Palmilha');
     expect(cards.find(c => c.column === 'Corte Palmilha')!.delivered).toBe(180);
     expect(cards.find(c => c.column === 'Acabamento')!.upstreamGap)
       .toEqual({ sector: 'Corte Palmilha', missing: 108 });
@@ -314,10 +291,58 @@ describe('deriveCards — regressões do code-review', () => {
       stage('Setor Legado B', 3),
     ];
     const cards = deriveCards(queue(), stages, FLOW, LEVEL);
-    // Antes, ambos caíam no nível 0 e ganhavam card simultâneo como se fossem
-    // paralelos. Cada desconhecido fica no seu próprio nível.
     expect(cards).toHaveLength(1);
     expect(cards[0].column).toBe('Setor Legado A');
     expect(cards[0].parallelSiblings).toEqual([]);
+  });
+});
+
+describe('orphanVisibilityCard / cardsForQueueRow — paridade 1:1 com a fila', () => {
+  it('OP sem estágios cai em Sem rota, sem columnStage (apontar é noop)', () => {
+    const card = orphanVisibilityCard(queue({ remaining_pairs_net: 288 }), []);
+    expect(card.column).toBe(ORPHAN_COLUMN);
+    expect(card.columnStage).toBeNull();
+    expect(card.key).toBe('op-1::Sem rota');
+    expect(card.isPartial).toBe(true);
+    expect(card.delivered).toBe(0);
+  });
+
+  it('rota concluída (deriveCard null) ainda emite card no último setor', () => {
+    const stages = [stage('Corte Palmilha', 1, done(288)), stage('Acabamento', 2, done(288))];
+    expect(deriveCard(queue(), stages, FLOW)).toBeNull();
+    expect(deriveCards(queue(), stages, FLOW)).toEqual([]);
+    const cards = cardsForQueueRow(queue({ remaining_pairs_net: 0 }), stages, FLOW);
+    expect(cards).toHaveLength(1);
+    expect(cards[0].column).toBe('Acabamento');
+    expect(cards[0].columnStage).toBeNull();
+    expect(cards[0].front?.stage_name).toBe('Acabamento');
+    expect(cards[0].isPartial).toBe(false);
+  });
+
+  it('ultimo setor pulado (concluído com 0) não some da fila', () => {
+    const stages = [
+      stage('Corte Palmilha', 1, done(288)),
+      stage('Acabamento', 2, done(0)),
+    ];
+    expect(deriveCard(queue(), stages, FLOW)).toBeNull();
+    const cards = cardsForQueueRow(queue({ remaining_pairs_net: 288 }), stages, FLOW);
+    expect(cards).toHaveLength(1);
+    expect(cards[0].column).toBe('Acabamento');
+    expect(cards[0].columnStage).toBeNull();
+    expect(cards[0].isPartial).toBe(true);
+  });
+
+  it('fila sem stages ainda devolve 1 card (não dropa em silêncio)', () => {
+    const cards = cardsForQueueRow(queue({ remaining_pairs_net: 12 }), undefined, FLOW);
+    expect(cards).toHaveLength(1);
+    expect(cards[0].column).toBe(ORPHAN_COLUMN);
+  });
+
+  it('caminho normal NÃO troca deriveCards pelo órfão', () => {
+    const stages = [stage('Corte Palmilha', 1), stage('Acabamento', 2)];
+    const cards = cardsForQueueRow(queue(), stages, FLOW);
+    expect(cards).toHaveLength(1);
+    expect(cards[0].column).toBe('Corte Palmilha');
+    expect(cards[0].columnStage?.stage_name).toBe('Corte Palmilha');
   });
 });
