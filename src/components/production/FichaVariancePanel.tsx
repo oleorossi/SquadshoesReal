@@ -8,6 +8,7 @@ import {
   varianceSummary,
   type VarianceStatus,
 } from '@/lib/fichaVariance';
+import { mergeActualQty } from '@/lib/fichaActual';
 import { createPOsFromVariance } from '@/lib/fichaShortagePO';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -51,11 +52,6 @@ type ProductRow = {
   is_artisanal?: boolean | null;
 };
 
-type MovementRow = {
-  product_id: string | null;
-  quantity: number | null;
-};
-
 type SaleNumberRow = {
   order_number?: string | null;
 };
@@ -88,16 +84,22 @@ export default function FichaVariancePanel() {
 
       const movementsQuery = supabase
         .from('stock_movements')
-        .select('product_id, quantity, movement_type, description')
+        .select('product_id, quantity, movement_type, order_id')
         .eq('movement_type', 'out')
-        .or(`description.ilike.%${order.order_number || order.id}%,description.ilike.%${order.id}%`)
+        .eq('order_id', order.id)
+        .limit(500);
+
+      const reservationsQuery = supabase
+        .from('material_reservations')
+        .select('product_id, quantity_consumed, quantity_reserved, status')
+        .eq('order_id', order.id)
         .limit(500);
 
       const saleQuery = order.sale_order_id
         ? supabase.from('sale_orders').select('order_number').eq('id', order.sale_order_id).maybeSingle()
         : Promise.resolve({ data: null as SaleNumberRow | null });
 
-      const [summary, movementsRes, productsRes, saleRes] = await Promise.all([
+      const [summary, movementsRes, reservationsRes, productsRes, saleRes] = await Promise.all([
         calculateConsumption({
           referenceId: order.reference_id,
           quantity: Number(order.quantity) || 0,
@@ -105,6 +107,7 @@ export default function FichaVariancePanel() {
           grade: order.grade,
         }),
         movementsQuery,
+        reservationsQuery,
         supabase.from('products').select('id, name, unit, unit_price, quantity, min_stock, is_artisanal').limit(4000),
         saleQuery,
       ]);
@@ -123,17 +126,14 @@ export default function FichaVariancePanel() {
           unitCost: products.get(l.product_id || '')?.unit_price ?? null,
         }));
 
-      const actualBucket = new Map<string, number>();
-      for (const mov of (movementsRes.data || []) as MovementRow[]) {
-        if (!mov.product_id) continue;
-        actualBucket.set(mov.product_id, (actualBucket.get(mov.product_id) || 0) + Math.abs(Number(mov.quantity) || 0));
-      }
-
-      const actual = [...actualBucket.entries()].map(([productId, qty]) => ({
-        productId,
-        name: products.get(productId)?.name,
-        unit: products.get(productId)?.unit,
-        qty,
+      const actual = mergeActualQty({
+        reservations: reservationsRes.data || [],
+        movements: movementsRes.data || [],
+      }).map((row) => ({
+        productId: row.productId,
+        name: products.get(row.productId)?.name,
+        unit: products.get(row.productId)?.unit,
+        qty: row.qty,
       }));
 
       const lines = mergeTheoreticalAndActual({ theoretical, actual });
