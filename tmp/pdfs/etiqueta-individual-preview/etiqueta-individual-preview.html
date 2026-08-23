@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Etiquetas - Elgin L42 Pro Full</title>
+<link rel="preload" as="image" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0MjAiIGhlaWdodD0iMzAwIiB2aWV3Qm94PSIwIDAgNDIwIDMwMCI+CiAgPHJlY3Qgd2lkdGg9IjQyMCIgaGVpZ2h0PSIzMDAiIGZpbGw9IndoaXRlIi8+CiAgPGVsbGlwc2UgY3g9IjIxNCIgY3k9IjIzOSIgcng9IjE0MCIgcnk9IjE4IiBmaWxsPSIjZDdkN2Q3Ii8+CiAgPHBhdGggZD0iTTgyIDIyMmM0OSAyIDkzLTE3IDEzOS02MCAzNC0zMiA2MS02MCA5My02MyAyNS0yIDQwIDEzIDMwIDMwLTE2IDI4LTY1IDY3LTExMiA5NC00NSAyNi0xMTEgMzUtMTUwIDIyLTE2LTYtMTYtMTggMC0yM3oiIGZpbGw9IiNjOWM5YzkiIHN0cm9rZT0iIzY2NiIgc3Ryb2tlLXdpZHRoPSI3Ii8+CiAgPHBhdGggZD0iTTE3MiAxODRjMzQtNDkgNzUtODkgMTI2LTk3TTE4MiAxODhjMzAtMjIgNjQtMzYgMTExLTM5IiBmaWxsPSJub25lIiBzdHJva2U9IiM3NzciIHN0cm9rZS13aWR0aD0iMTMiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgo8L3N2Zz4=" crossorigin="anonymous" />
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html,body{
+    margin:0;
+    padding:0;
+    background:#fff;
+    color:#000;
+    font-family:Arial,Helvetica,sans-serif;
+    -webkit-font-smoothing:none;
+    -webkit-print-color-adjust:exact;
+    print-color-adjust:exact;
+  }
+  .preview-shell{
+    display:flex;
+    flex-direction:column;
+    align-items:flex-start;
+    gap:10px;
+    padding:16px;
+  }
+  @media screen {
+    body{background:#e5e7eb;}
+    .print-page{
+      box-shadow:0 2px 10px rgba(0,0,0,0.18);
+      border:1px solid #d4d4d8;
+      background:#fff;
+    }
+  }
+  .print-page{
+    width:100mm;
+    height:30mm;
+    overflow:hidden;
+    position:relative;
+    flex:none;
+    page-break-after:always;
+    break-after:page;
+    background:#fff;
+    border:0;
+  }
+  .print-page:last-child{page-break-after:auto;break-after:auto;}
+  .print-page::after{
+    content:'';
+    position:absolute;
+    top:1mm;
+    right:1mm;
+    bottom:1mm;
+    left:1mm;
+    border:0.25mm solid #000;
+    pointer-events:none;
+    z-index:5;
+  }
+  .lbl-hdr{
+    position:absolute;
+    top:1mm;left:1mm;right:1mm;
+    height:4.2mm;
+    background:#000;
+    color:#fff;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:0 1mm;
+    overflow:hidden;
+  }
+  .lbl-hdr::before{
+    content:'';
+    position:absolute;
+    left:0;top:0;bottom:0;
+    width:1.2mm;
+    background:rgba(255,255,255,0.18);
+  }
+  .lbl-hdr-code{
+    font-size:6.2pt;
+    font-weight:800;
+    text-transform:uppercase;
+    letter-spacing:0.4px;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+  .lbl-hdr-right{
+    font-size:5pt;
+    font-weight:500;
+    opacity:0.75;
+    text-transform:uppercase;
+    white-space:nowrap;
+    flex-shrink:0;
+    margin-left:1mm;
+  }
+  .label-shell{
+    position:absolute;
+    left:1mm;
+    top:1mm;
+    right:1mm;
+    bottom:2.8mm;
+    display:grid;
+    grid-template-columns:29mm 1fr 15mm 22mm;
+    column-gap:0.167mm;
+    align-items:center;
+    overflow:hidden;
+  }
+  .label-image-frame{
+    width:100%;
+    height:100%;
+    min-width:0;
+    min-height:0;
+    overflow:hidden;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    position:relative;
+  }
+  .label-img{
+    width:auto;
+    height:auto;
+    max-width:100%;
+    max-height:100%;
+    object-fit:contain;
+    display:block;
+  }
+  .label-size-box{
+    width:100%;
+    height:100%;
+    align-self:stretch;
+    padding:0.4mm 0.4mm;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    position:relative;
+    text-align:center;
+    overflow:hidden;
+    background:#000;
+    color:#fff;
+    border-radius:1mm;
+    font-weight:900;
+    line-height:1;
+    letter-spacing:-0.5px;
+  }
+  .sz-nr{
+    display:block;
+    position:absolute;
+    top:0.4mm;
+    left:0.4mm;
+    font-size:3pt;
+    font-weight:600;
+    letter-spacing:0.8px;
+    opacity:0.55;
+    line-height:1;
+    margin:0;
+    text-transform:uppercase;
+  }
+  .sz-value{
+    display:block;
+    align-self:center;
+    margin:auto;
+    max-width:100%;
+    font-family:"Arial Narrow",Arial,Helvetica,sans-serif;
+    font-weight:900;
+    line-height:0.78;
+    letter-spacing:-1.2px;
+    white-space:nowrap;
+  }
+  .sz-value--long{
+    line-height:0.95;
+    letter-spacing:-0.3px;
+    white-space:normal;
+    overflow-wrap:anywhere;
+    text-align:center;
+  }
+  .label-info{
+    min-width:0;
+    height:100%;
+    display:flex;
+    flex-direction:column;
+    justify-content:center;
+    gap:0.3mm;
+    overflow:hidden;
+    padding:0.2mm 0.6mm;
+    border-left:0.22mm solid #000;
+    border-right:0.22mm solid #000;
+  }
+  .info-reference,
+  .info-code,
+  .info-color,
+  .info-material,
+  .info-pedido,
+  .info-category{
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    text-transform:uppercase;
+  }
+  .info-reference{
+    font-size:18pt;
+    font-weight:900;
+    line-height:1;
+    letter-spacing:0.3px;
+  }
+  .info-code{
+    font-size:5.5pt;
+    font-weight:700;
+    line-height:1;
+  }
+  .info-color{
+    font-size:11pt;
+    font-weight:800;
+    line-height:1.02;
+  }
+  .info-material{
+    font-size:10pt;
+    font-weight:600;
+    line-height:1.02;
+    opacity:0.72;
+  }
+  .info-pedido,
+  .info-category{
+    font-size:5.5pt;
+    font-weight:600;
+    line-height:1;
+    opacity:0.65;
+  }
+  .label-right{
+    height:100%;
+    min-width:0;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    overflow:hidden;
+    padding:0.3mm 1mm;
+  }
+  .label-barcode{
+    width:100%;
+    max-width:100%;
+    height:auto;
+    max-height:20.3mm;
+    display:block;
+  }
+  .label-no-barcode{
+    font-size:6.5pt;
+    font-weight:700;
+    color:#000;
+  }
+  .lbl-ftr{
+    position:absolute;
+    bottom:1mm;left:1mm;right:1mm;
+    height:1.6mm;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:0 1mm;
+    font-size:3.4pt;
+    font-weight:700;
+    letter-spacing:0.6px;
+    text-transform:uppercase;
+    background:#f5f5f5;
+    border-top:0.4mm solid #000;
+    overflow:hidden;
+    white-space:nowrap;
+  }
+  @media print{
+    html,body{background:#fff !important;}
+    body{padding:0 !important;margin:0 !important;}
+    .preview-shell{display:block;padding:0;margin:0;}
+    .print-page{box-shadow:none;border:0;}
+    /* Fix 2026-06-22: o LABEL_PRINT_HARDENING ("body *{overflow:visible;
+       max-height:none}") reabre o clip da moldura e tira o teto da imagem,
+       fazendo a foto do produto vazar pra fora do frame na impressão. Reafirma
+       a contenção (mesmo bug corrigido na etiqueta de caixa externa). */
+    .print-page,.label-shell,.label-image-frame{overflow:hidden !important;}
+    .label-img{max-width:100% !important;max-height:100% !important;}
+    .print-setup-notice{display:none !important;}
+  }
+  @page{size:100mm 30mm;margin:0;}
+  
+@media print{
+  *{
+    -webkit-print-color-adjust:exact !important;
+    color-adjust:exact !important;
+    print-color-adjust:exact !important;
+  }
+  html,body{overflow:visible !important;background:#fff !important;}
+  body *{overflow:visible !important;max-height:none !important;}
+  img{image-rendering:-webkit-optimize-contrast;image-rendering:crisp-edges;}
+  *{animation:none !important;transition:none !important;}
+}
+  /* Screen-only setup guidance */
+  .print-setup-notice{
+    font-family:Arial,Helvetica,sans-serif;
+    background:#fffbeb;
+    border:1.5px solid #f59e0b;
+    border-radius:6px;
+    padding:10px 14px;
+    margin:0 auto 14px auto;
+    max-width:200mm;
+    font-size:11px;
+    line-height:1.5;
+    color:#444;
+  }
+  .print-setup-notice strong{color:#b45309;}
+  .print-setup-notice ol{margin:4px 0 0 16px;padding:0;}
+</style>
+</head><body>
+<div class="print-setup-notice">
+  <strong>Configurações de impressão para etiquetadora Elgin (100&times;30&nbsp;mm)</strong>
+  <ol>
+    <li>No diálogo de impressão: <strong>Mais configurações &rarr; Tamanho do papel: Personalizado 100&times;30&nbsp;mm</strong></li>
+    <li>Margens: <strong>Nenhuma (0)</strong> &nbsp;|&nbsp; Escala: <strong>100%</strong> &nbsp;|&nbsp; Desmarca &ldquo;Cabeçalhos e rodapés&rdquo;</li>
+    <li>Na etiquetadora: selecione o papel correspondente (100&times;30&nbsp;mm) antes de imprimir.</li>
+  </ol>
+</div>
+<main class="preview-shell"><div class="print-page">
+      
+      <header class="lbl-hdr">
+        <span class="lbl-hdr-code">SP130</span>
+        <span class="lbl-hdr-right">RASTEIRINHA</span>
+      </header>
+      <section class="label-shell" style="top:5.4mm">
+        <div class="label-image-frame"><img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0MjAiIGhlaWdodD0iMzAwIiB2aWV3Qm94PSIwIDAgNDIwIDMwMCI+CiAgPHJlY3Qgd2lkdGg9IjQyMCIgaGVpZ2h0PSIzMDAiIGZpbGw9IndoaXRlIi8+CiAgPGVsbGlwc2UgY3g9IjIxNCIgY3k9IjIzOSIgcng9IjE0MCIgcnk9IjE4IiBmaWxsPSIjZDdkN2Q3Ii8+CiAgPHBhdGggZD0iTTgyIDIyMmM0OSAyIDkzLTE3IDEzOS02MCAzNC0zMiA2MS02MCA5My02MyAyNS0yIDQwIDEzIDMwIDMwLTE2IDI4LTY1IDY3LTExMiA5NC00NSAyNi0xMTEgMzUtMTUwIDIyLTE2LTYtMTYtMTggMC0yM3oiIGZpbGw9IiNjOWM5YzkiIHN0cm9rZT0iIzY2NiIgc3Ryb2tlLXdpZHRoPSI3Ii8+CiAgPHBhdGggZD0iTTE3MiAxODRjMzQtNDkgNzUtODkgMTI2LTk3TTE4MiAxODhjMzAtMjIgNjQtMzYgMTExLTM5IiBmaWxsPSJub25lIiBzdHJva2U9IiM3NzciIHN0cm9rZS13aWR0aD0iMTMiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgo8L3N2Zz4=" class="label-img" crossorigin="anonymous" style="filter:grayscale(100%);-webkit-filter:grayscale(100%);" onerror="this.onerror=null;this.style.display='none'" /></div>
+
+        <div class="label-info">
+          <p class="info-reference">SP130</p>
+          <p class="info-color">OFF WHITE</p>
+          <p class="info-material">NAPA SOFT</p>
+          
+          
+        </div>
+
+        <div class="label-size-box"><span class="sz-nr">Nº</span><span class="sz-value" style="font-size:34pt">36</span></div>
+
+        <div class="label-right">
+          <svg id="bc-0" class="label-barcode"></svg>
+        </div>
+      </section>
+      <footer class="lbl-ftr">FABRICADO NO BRASIL &nbsp;·&nbsp; CNPJ 62.406.033/0001-93</footer>
+    </div></main>
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+<script>
+var _bcRetry=0;
+function initBC(){
+  if(typeof JsBarcode==='undefined'){_bcRetry++;if(_bcRetry>40){console.warn('JsBarcode CDN timeout');return;}setTimeout(initBC,150);return;}
+  
+var _bcJobs=[["7891234567890",[0]]];
+for(var j=0;j<_bcJobs.length;j++){
+  var code=_bcJobs[j][0], slots=_bcJobs[j][1];
+  var first=document.getElementById('bc-'+slots[0]);
+  if(!first) continue;
+  try{
+    JsBarcode(first,code,{format:"CODE128",width:0.8,height:76,displayValue:false,margin:0});
+    first.removeAttribute("width");first.removeAttribute("height");
+    first.style.width="100%";first.style.height="auto";
+  }catch(e){continue;}
+  for(var k=1;k<slots.length;k++){
+    var el=document.getElementById('bc-'+slots[k]);
+    if(!el) continue;
+    var clone=first.cloneNode(true);
+    clone.id='bc-'+slots[k];
+    el.parentNode.replaceChild(clone,el);
+  }
+}
+}
+initBC();
+
+// Wait for all images before allowing print
+function waitForImages(){
+  var imgs=document.querySelectorAll('img');
+  var promises=[];
+  imgs.forEach(function(img){
+    if(!img.complete){
+      promises.push(new Promise(function(resolve){
+        img.onload=resolve;
+        img.onerror=resolve;
+        setTimeout(resolve,6000);
+      }));
+    }
+  });
+  return Promise.all(promises);
+}
+window._imagesReady=waitForImages();
+</script>
+</body></html>
