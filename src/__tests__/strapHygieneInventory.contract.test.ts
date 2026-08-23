@@ -6,7 +6,7 @@ const ROOT = resolve(__dirname, '../..');
 const read = (path: string) => readFileSync(resolve(ROOT, path), 'utf8');
 
 const MIGRATION_PATH =
-  'supabase/migrations/20270101008500_strap-hygiene-inventory-and-guards.sql';
+  'supabase/migrations/20270101008900_strap-hygiene-inventory-and-guards.sql';
 const migration = read(MIGRATION_PATH);
 const hub = read('src/pages/ArtisanalStraps.tsx');
 const groupEditDialog = read('src/components/groups/GroupEditDialog.tsx');

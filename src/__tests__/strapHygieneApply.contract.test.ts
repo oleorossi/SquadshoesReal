@@ -6,7 +6,7 @@ const ROOT = resolve(__dirname, '../..');
 const read = (path: string) => readFileSync(resolve(ROOT, path), 'utf8');
 
 const MIGRATION_PATH =
-  'supabase/migrations/20270101008600_strap-hygiene-apply-owner-lists.sql';
+  'supabase/migrations/20270101009000_strap-hygiene-apply-owner-lists.sql';
 const migration = read(MIGRATION_PATH);
 
 function sqlFunction(source: string, name: string): string {

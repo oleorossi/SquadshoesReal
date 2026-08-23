@@ -7,7 +7,7 @@
 -- F2a: espelha 1370 mm em products.dimensions_width das quatro napas cuja
 --      ficha ja tem 1370. Sem GREATEST. Palmilha e Dublagem ficam de fora.
 -- F3:  marca is_artisanal_strap nos grupos confirmados, DEPOIS de F2b, para
---      o trigger da 08500 aceitar. Overlock sai da elegibilidade de napa-base
+--      o trigger da 08900 aceitar. Overlock sai da elegibilidade de napa-base
 --      e passa a governar compra/ajuste dos SKUs lineares.
 --
 -- TRANÇA so entra se o diagnostico de higiene a listaria por UUID (identity
@@ -188,7 +188,7 @@ $$;
 DO $$
 DECLARE
   v_reason constant text :=
-    'Migration 20270101008600: higiene de tiras aprovada pelo dono (F2+F3)';
+    'Migration 20270101009000: higiene de tiras aprovada pelo dono (F2+F3)';
   v_seed record;
   v_group_id uuid;
   v_overlock_id uuid;
