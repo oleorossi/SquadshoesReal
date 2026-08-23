@@ -9,9 +9,9 @@ import { normalizeOsStatus, osStatusLabel, isOsDone, isOsCancelled } from '@/lib
 
 /**
  * Card read-only "Ordens de Serviço deste pedido" no detalhe do PV. Lista as OS
- * geradas a partir deste pedido (fluxo por-OP no hub Terceirizados, além de OS
+ * geradas a partir deste pedido (fluxo por-OP no hub de Ordens de Serviço, além de OS
  * antigas/manuais vinculadas). A geração acontece em /terceirizados?tab=orders
- * ("Gerar OS por Pedido") — aqui é só acompanhamento.
+ * ("Nova OS → Gerar por pedido") — aqui é só acompanhamento.
  */
 export function PvServiceOrdersCard({ saleOrderId }: { saleOrderId: string }) {
   const { data: rows = [], isLoading } = useQuery({
@@ -62,7 +62,7 @@ export function PvServiceOrdersCard({ saleOrderId }: { saleOrderId: string }) {
       </div>
 
       <p className="text-[11px] text-muted-foreground">
-        Gere OS por serviço e OP em <strong>Terceirizados → Gerar OS por Pedido</strong>. Cada OS fica atrelada à OP correta.
+        Gere OS por serviço e OP em <strong>Produção → Ordens de Serviço → Nova OS</strong>. Cada OS fica atrelada à OP correta.
       </p>
 
       <div className="rounded-lg border border-border/60 overflow-x-auto">

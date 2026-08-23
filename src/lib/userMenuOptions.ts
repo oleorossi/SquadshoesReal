@@ -32,6 +32,7 @@ export const MENU_OPTIONS: MenuOption[] = [
   // PRODUÇÃO
   { module: 'producao', label: 'Produção (PCP)', description: 'PCP, capacidade, gargalos, imprimir fichas, centro de controle, timeline', group: 'Produção' },
   { module: 'ordens', label: 'Ordens (OPs)', description: 'Listar e editar OPs, picking, shop-floor, auditoria de fluxo', group: 'Produção' },
+  { module: 'terceirizados', label: 'Ordens de Serviço', description: 'Gestão de OS, prestadores, tarifas e pagamento da terceirização', group: 'Produção' },
 
   // ENGENHARIA
   { module: 'produtos', label: 'Fichas Técnicas', description: 'Fichas técnicas, solados, silks, receitas artesanais, imagens', group: 'Engenharia' },
@@ -58,7 +59,6 @@ export const MENU_OPTIONS: MenuOption[] = [
   // consegue apertar o botão que paga. Existe separado de 'rh_folha' pra dar o
   // pagamento da produção a um encarregado sem abrir a folha inteira do RH.
   { module: 'ficha_pagamento', label: 'Pagar produção (Ficha de Montadores)', description: 'Registrar o pagamento da semana de um montador/solador direto na Ficha. Gera folha e recibo — conceder só a quem entrega o dinheiro.', group: 'RH' },
-  { module: 'terceirizados', label: 'Terceirizados', description: 'Cadastro de prestadores PJ e ordens de serviço', group: 'RH' },
 
   // RELATÓRIOS / SISTEMA
   { module: 'reports', label: 'Relatórios Operacionais', description: 'Relatórios de OP, OEE, qualidade, refugo, diário de produção', group: 'Sistema' },

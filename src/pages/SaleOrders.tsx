@@ -3030,7 +3030,7 @@ export default function SaleOrders() {
                 {/* Atalho: cria uma Ordem de Serviço com os itens deste pedido
                     (terceirização) — mesmo fluxo/tabela da OS do menu. Primário
                     (vermelho) por ser uma ação de criação, igual Gerar OCs/OPs. */}
-                <Button size="sm" className="gap-2" onClick={() => setOsDialogOpen(true)} title="Gerar Ordem de Serviço com os itens deste pedido — mesmo fluxo do menu Terceirizados">
+                <Button size="sm" className="gap-2" onClick={() => setOsDialogOpen(true)} title="Gerar Ordem de Serviço com os itens deste pedido — mesmo fluxo de Produção → Ordens de Serviço">
                   <Buildings className="h-3.5 w-3.5" /> Gerar OS
                 </Button>
                   </div>
@@ -3684,8 +3684,8 @@ export default function SaleOrders() {
         </Suspense>
       )}
 
-      {/* Atalho "Gerar OS" do PV — usa o mesmo assistente do pós-cadastro e do
-          menu de Terceirizados. A unidade de emissão é OP × setor; assim não há
+      {/* Atalho "Gerar OS" do PV — usa o mesmo assistente do pós-cadastro e de
+          Produção → Ordens de Serviço. A unidade de emissão é OP × setor; assim não há
           um segundo modelo de OS criado diretamente pelos itens do pedido. */}
       {/* Guarda por `osDialogOpen`, não só por `selectedOrder`: este nunca volta a
           null depois do primeiro PV aberto, então sozinho ele montaria o diálogo

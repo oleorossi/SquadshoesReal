@@ -1,4 +1,4 @@
-import { Package, ShoppingCart, Gear as Settings, Truck, Factory, Kanban, SquaresFour as LayoutDashboard, Wallet, FileText, Users, Briefcase, Ruler, ShieldCheck, Lightning as Zap, ShoppingBag, ChartBar as BarChart3, Receipt, Footprints, Sparkle as Sparkles, ClipboardText as ClipboardCheck, CurrencyDollar as DollarSign, Calendar, Cube as Box, ListChecks, Stack as Boxes, HandHeart as HeartHandshake, FileXls as FileSpreadsheet, Scales as Scale, Warning as AlertTriangle, Path as RouteIcon, Pulse as Activity, Printer, Tag, Barcode, ChatText as MessageSquare, TrendUp as TrendingUp, Calculator, Lock, Monitor, Cpu, Buildings, Gavel, Gauge, FolderOpen, Scissors, Clock } from '@phosphor-icons/react';
+import { Package, ShoppingCart, Gear as Settings, Truck, Factory, Kanban, SquaresFour as LayoutDashboard, Wallet, FileText, Users, Briefcase, Ruler, ShieldCheck, Lightning as Zap, ShoppingBag, ChartBar as BarChart3, Receipt, Footprints, Sparkle as Sparkles, ClipboardText as ClipboardCheck, CurrencyDollar as DollarSign, Calendar, Cube as Box, ListChecks, Stack as Boxes, HandHeart as HeartHandshake, Handshake, FileXls as FileSpreadsheet, Scales as Scale, Warning as AlertTriangle, Path as RouteIcon, Pulse as Activity, Printer, Tag, Barcode, ChatText as MessageSquare, TrendUp as TrendingUp, Calculator, Lock, Monitor, Cpu, Buildings, Gavel, Gauge, FolderOpen, Scissors, Clock } from '@phosphor-icons/react';
 
 /** Superfícies onde um recurso pode ser descoberto sem duplicar seu metadado. */
 export type NavigationSurface = 'sidebar' | 'command' | 'quick-action' | 'hub-shortcut';
@@ -60,6 +60,10 @@ export const navigationCatalog: NavigationResource[] = [
   // Mantém o path concedível histórico para não invalidar permissões por item;
   // a rota redireciona imediatamente para a Central em Modo Gestão.
   { path: '/producao/kanban', label: 'Modo Gestão', group: 'Produção', icon: Kanban, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/ProducaoKanban') },
+  // OS é operação de chão (sair/voltar/pagar), não cadastro de gente. Mora em
+  // Produção — depois do quadro e antes do estouro — pra quem aponta achar a
+  // fila na rua sem descer até RH. O módulo de permissão continua 'terceirizados'.
+  { path: '/terceirizados', label: 'Ordens de Serviço', group: 'Produção', icon: Handshake, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/TerceirizadosHub') },
   { path: '/producao/estouro', label: 'Estouro de Produção', group: 'Produção', icon: AlertTriangle, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/ProducaoEstouro') },
   { path: '/producao/setores', label: 'Setores', group: 'Produção', icon: Factory, surfaces: ['command'] /* configuração global do motor, não entrada diária */, preload: () => import('@/pages/ProducaoSetoresConfig') },
   { path: '/producao/apontamento', label: 'Apontamento', group: 'Produção', icon: ListChecks, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/Setores') },
@@ -122,7 +126,6 @@ export const navigationCatalog: NavigationResource[] = [
   // Pessoas
   { path: '/rh', label: 'Pessoas', group: 'RH', icon: Users, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/RHHub') },
   { path: '/fichas-montadores', label: 'Ficha Montadores', group: 'RH', icon: ClipboardCheck, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/FichaMontadoresPage') },
-  { path: '/terceirizados', label: 'Terceirizados', group: 'RH', icon: Truck, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/TerceirizadosHub') },
   // Esta fila tem filtros, sugestões por padrão e aplicação em lote; não é a
   // mesma revisão manual embutida no Ponto do RH, então permanece no Cmd+K.
   { path: '/rh/pendencias-ponto', label: 'Pendências de Ponto', group: 'RH', icon: Clock, surfaces: ['command'], preload: () => import('@/pages/TimePendings') },
@@ -176,7 +179,7 @@ const menuGroupsDeclarados: NavigationGroup[] = [
   },
   {
     label: 'Produção', icon: Factory,
-    items: [resource('/producao/planejamento'), resource('/producao/kanban'), resource('/producao/estouro'), resource('/producao/setores'), resource('/producao/apontamento'), resource('/imprimir-fichas'), resource('/producao/analises')],
+    items: [resource('/producao/planejamento'), resource('/producao/kanban'), resource('/terceirizados'), resource('/producao/estouro'), resource('/producao/setores'), resource('/producao/apontamento'), resource('/imprimir-fichas'), resource('/producao/analises')],
   },
   {
     label: 'Estoque', icon: Package,
@@ -204,7 +207,7 @@ const menuGroupsDeclarados: NavigationGroup[] = [
   },
   {
     label: 'RH', icon: Users,
-    items: [resource('/rh'), resource('/fichas-montadores'), resource('/terceirizados')],
+    items: [resource('/rh'), resource('/fichas-montadores')],
   },
 ];
 
@@ -352,7 +355,7 @@ export const ROLE_MENU_PRESENTATION: Record<string, RoleMenuPresentation> = {
   comercial:    { home: '/comercial',            groupOrder: ['Comercial'] },
   nfe_operator: { home: '/nfe',                  groupOrder: ['Fiscal', 'Comercial'] },
   almoxarifado: { home: '/estoque',              groupOrder: ['Estoque'] },
-  rh:           { home: '/rh',                   groupOrder: ['RH'] },
+  rh:           { home: '/rh',                   groupOrder: ['RH', 'Produção'] },
 };
 
 /**
