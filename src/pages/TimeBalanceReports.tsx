@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   CalendarBlank,
+  ChartBar,
   CheckCircle,
   Clock,
   Printer,
@@ -23,6 +24,7 @@ import { useHolidays, useSwapSets, useTimesheetCoverage, useWorkSchedules } from
 import { fetchTimeRecordsInRange } from '@/lib/ponto/fetchTimeRecords';
 import { expandAbsenceDatesByEmployee, resolveHolidaysForPayrollRange } from '@/lib/ponto/periodDates';
 import {
+  buildEmployeeTimeBalanceReport,
   buildTimeBalanceReports,
   formatBalanceMinutes,
   reportsForKind,
@@ -32,7 +34,7 @@ import {
   type TimeBalanceWeek,
 } from '@/lib/ponto/timeBalanceReports';
 import { computeComparativoRows } from '@/lib/payrollComparativo';
-import { printTimeBalanceReports } from '@/lib/printTimeBalanceReports';
+import { printTimeBalanceManagementReport, printTimeBalanceReports } from '@/lib/printTimeBalanceReports';
 import { cn } from '@/lib/utils';
 
 const DAY_LABELS = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
@@ -67,6 +69,16 @@ function shortDate(date: string): string {
 
 function daySlot(dayOfWeek: number): number {
   return dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+}
+
+function formatBRL(value: number): string {
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value || 0);
+}
+
+function balanceOutcome(minutes: number): { label: string; className: string } {
+  if (minutes > 0) return { label: 'Horas extras a pagar', className: 'text-success' };
+  if (minutes < 0) return { label: 'Débito de horas', className: 'text-destructive' };
+  return { label: 'Horas compensadas', className: 'text-foreground' };
 }
 
 function dayBalanceLabel(day: TimeBalanceDay): string {
@@ -150,6 +162,7 @@ function WeekSummaryCell({ week }: { week: TimeBalanceWeek }) {
 function EmployeeBalanceCalendar({ report, kind }: { report: EmployeeTimeBalanceReport; kind: TimeBalanceReportKind }) {
   const mainMinutes = kind === 'overtime' ? report.totalOvertimeMinutes : -report.totalDeficitMinutes;
   const mainWeeks = kind === 'overtime' ? report.overtimeWeeks : report.deficitWeeks;
+  const outcome = balanceOutcome(report.finalPayableBalanceMinutes);
   return (
     <Panel
       eyebrow={kind === 'overtime' ? 'CRÉDITO SEMANAL' : 'ABAIXO DA META SEMANAL'}
@@ -185,10 +198,32 @@ function EmployeeBalanceCalendar({ report, kind }: { report: EmployeeTimeBalance
           })}
         </div>
       </div>
+      <div className="grid border-t border-border sm:grid-cols-2 xl:grid-cols-4">
+        <div className="border-b border-border px-4 py-3 sm:border-r xl:border-b-0">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Pendências de horas</p>
+          <p className="mt-1 font-mono text-lg font-bold tabular-nums text-destructive">{formatBalanceMinutes(-report.totalRawDebitMinutes)}</p>
+        </div>
+        <div className="border-b border-border px-4 py-3 xl:border-b-0 xl:border-r">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Horas extras</p>
+          <p className="mt-1 font-mono text-lg font-bold tabular-nums text-success">{formatBalanceMinutes(report.totalRawCreditMinutes)}</p>
+        </div>
+        <div className="border-b border-border px-4 py-3 sm:border-b-0 sm:border-r">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Resultado final</p>
+          <p className={cn('mt-1 font-mono text-lg font-bold tabular-nums', outcome.className)}>{formatBalanceMinutes(report.finalPayableBalanceMinutes)}</p>
+          <p className={cn('mt-0.5 text-[10px] font-semibold', outcome.className)}>{outcome.label}</p>
+        </div>
+        <div className="px-4 py-3">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Valor de HE a pagar</p>
+          <p className="mt-1 font-mono text-lg font-bold tabular-nums text-foreground">{formatBRL(report.overtimeValue)}</p>
+          <p className="mt-0.5 text-[10px] text-muted-foreground">{formatBalanceMinutes(report.totalPayableOvertimeMinutes, false)} após compensação</p>
+        </div>
+      </div>
       <div className="flex flex-wrap gap-x-5 gap-y-1 border-t border-border px-4 py-3 text-[11px] text-muted-foreground">
         <span><strong className="text-foreground">Célula:</strong> batidas · trabalhado/meta · saldo diário</span>
         <span><strong className="text-foreground">Semana:</strong> créditos e débitos se compensam somente dentro dela</span>
+        <span><strong className="text-foreground">Resultado final:</strong> mesma compensação do período usada pela folha</span>
         {report.pendingPunchDays > 0 && <span className="font-semibold text-warning">{report.pendingPunchDays} {report.pendingPunchDays === 1 ? 'dia com batida pendente' : 'dias com batida pendente'}</span>}
+        {report.overtimeRateMissing && <span className="font-semibold text-warning">Taxa de hora extra não cadastrada</span>}
       </div>
     </Panel>
   );
@@ -228,7 +263,7 @@ export default function TimeBalanceReports() {
   );
   const employeeMap = useMemo(() => new Map(employees.map(employee => [employee.id, employee])), [employees]);
 
-  const reports = useMemo(() => {
+  const reportInputs = useMemo(() => {
     if (!validRange) return [];
     const period = appliedRange.from.slice(0, 7);
     const calculated = computeComparativoRows({
@@ -246,7 +281,7 @@ export default function TimeBalanceReports() {
       period,
       maxCovered: coverage?.maxCovered || null,
     });
-    return buildTimeBalanceReports(calculated.rows.map(row => {
+    return calculated.rows.map(row => {
       const employee = employeeMap.get(row.id);
       return {
         id: row.id,
@@ -254,9 +289,24 @@ export default function TimeBalanceReports() {
         department: employee?.department,
         paymentType: employee?.payment_type,
         ledger: row.result.day_ledger,
+        rawCreditMinutes: row.result.raw_credit_minutes,
+        rawDebitMinutes: row.result.raw_delay_minutes,
+        compensatedMinutes: row.result.compensated_minutes,
+        payableOvertimeMinutes: row.result.he_minutes,
+        payableDebitMinutes: row.result.atraso_minutes,
+        overtimeValue: row.result.he_value,
+        overtimeRateMissing: row.result.he_rate_missing,
       };
-    }));
+    });
   }, [validRange, appliedRange, employees, schedules, defaultSchedule, holidaysSet, swapWorkedSet, swapOffSet, timeRecords, absenceDatesByEmployee, coverage?.maxCovered, employeeMap]);
+
+  const reports = useMemo(() => buildTimeBalanceReports(reportInputs), [reportInputs]);
+  const managementReports = useMemo(
+    () => reportInputs
+      .map(buildEmployeeTimeBalanceReport)
+      .sort((left, right) => left.name.localeCompare(right.name, 'pt-BR')),
+    [reportInputs],
+  );
 
   const overtimeReports = useMemo(() => reportsForKind(reports, 'overtime'), [reports]);
   const deficitReports = useMemo(() => reportsForKind(reports, 'deficit'), [reports]);
@@ -287,6 +337,11 @@ export default function TimeBalanceReports() {
   const handlePrint = () => {
     if (visibleReports.length === 0) return;
     printTimeBalanceReports(visibleReports, kind, title);
+  };
+
+  const handleManagementReport = () => {
+    if (managementReports.length === 0) return;
+    printTimeBalanceManagementReport(managementReports, title);
   };
 
   return (
@@ -383,10 +438,16 @@ export default function TimeBalanceReports() {
               heading="Funcionários"
             />
           </div>
-          <Button type="button" className="gap-2" onClick={handlePrint} disabled={visibleReports.length === 0}>
-            <Printer className="h-4 w-4" />
-            {scope === 'all' ? `Imprimir todos (${visibleReports.length})` : 'Imprimir funcionário'}
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="outline" className="gap-2" onClick={handleManagementReport} disabled={managementReports.length === 0}>
+              <ChartBar className="h-4 w-4" />
+              Relatório gerência
+            </Button>
+            <Button type="button" className="gap-2" onClick={handlePrint} disabled={visibleReports.length === 0}>
+              <Printer className="h-4 w-4" />
+              {scope === 'all' ? `Imprimir todos (${visibleReports.length})` : 'Imprimir funcionário'}
+            </Button>
+          </div>
         </div>
 
         <div className="mt-4 grid gap-2 border-t border-border pt-4 sm:grid-cols-3">

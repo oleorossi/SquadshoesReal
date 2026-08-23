@@ -54,7 +54,7 @@ const KIND_STYLE: Record<string, string> = {
 };
 
 export default function EmployeeAbsencesPage({ embedded = false }: { embedded?: boolean } = {}) {
-  const { data: absences = [], isLoading } = useEmployeeAbsences();
+  const { data: absences = [], isLoading, isError, error } = useEmployeeAbsences();
   const { data: employees = [] } = useEmployees();
   const createAbsence = useCreateAbsence();
   const deleteAbsence = useDeleteAbsence();
@@ -105,15 +105,19 @@ export default function EmployeeAbsencesPage({ embedded = false }: { embedded?: 
   }, [absences]);
 
   const handleCreate = async () => {
-    await createAbsence.mutateAsync({
-      employee_id: form.employee_id,
-      start_date: form.start_date,
-      end_date: form.end_date,
-      absence_type: form.absence_type,
-      notes: form.notes,
-    });
-    resetForm();
-    setCreateOpen(false);
+    try {
+      await createAbsence.mutateAsync({
+        employee_id: form.employee_id,
+        start_date: form.start_date,
+        end_date: form.end_date,
+        absence_type: form.absence_type,
+        notes: form.notes,
+      });
+      resetForm();
+      setCreateOpen(false);
+    } catch {
+      // O hook mantém o diálogo aberto e apresenta a mensagem específica no toast.
+    }
   };
 
   const handleDelete = (id: string, label: string) => {
@@ -133,6 +137,16 @@ export default function EmployeeAbsencesPage({ embedded = false }: { embedded?: 
     return <div className="py-12 text-center text-muted-foreground text-sm">Carregando ausências...</div>;
   }
 
+  if (isError) {
+    return (
+      <EmptyState
+        icon={FirstAid}
+        title="Não foi possível carregar as justificativas"
+        description={error instanceof Error ? error.message : 'Atualize a página e tente novamente.'}
+      />
+    );
+  }
+
   return (
     <div className="space-y-5 page-enter">
       {/* Quando embutida na aba Ponto do RHHub (embedded), esconde o próprio header
@@ -140,31 +154,31 @@ export default function EmployeeAbsencesPage({ embedded = false }: { embedded?: 
       {!embedded && (
       <EditorialPageHeader
         sectionLabel="RH · PONTO · AUSÊNCIAS"
-        title="Ausências Justificadas"
-        description="Férias, atestados, licenças e folgas. Dias cadastrados aqui ficam ISENTOS do desconto de falta/atraso da folha — não descontam."
+        title="Justificativas de ausência"
+        description="Férias, atestados, licenças e folgas de dia inteiro. Os períodos cadastrados deixam de gerar desconto na folha."
         actions={
           <Button size="sm" className="h-9 gap-1.5" onClick={() => setCreateOpen(true)}>
             <Plus className="h-3.5 w-3.5" />
-            Nova ausência
+            Nova justificativa
           </Button>
         }
       />
       )}
       {embedded && (
         <div className="flex items-center justify-between gap-3 flex-wrap">
-          <p className="text-xs text-muted-foreground">
-            Férias, atestados, licenças e folgas cadastrados aqui ficam <strong className="text-foreground">isentos</strong> do desconto de falta/atraso da folha.
+          <p className="max-w-3xl text-xs leading-relaxed text-muted-foreground">
+            Justifique ausências de <strong className="text-foreground">dia inteiro</strong>. Para completar uma batida ou corrigir um atraso parcial, use a etapa <strong className="text-foreground">Corrigir</strong>.
           </p>
           <Button size="sm" className="h-9 gap-1.5" onClick={() => setCreateOpen(true)}>
             <Plus className="h-3.5 w-3.5" />
-            Nova ausência
+            Nova justificativa
           </Button>
         </div>
       )}
 
       <StatGrid>
         <StatCard
-          label="Ausências ativas hoje"
+          label="Justificativas ativas"
           value={summary.active}
           icon={Vacation}
           tone={summary.active > 0 ? 'warning' : 'default'}
@@ -177,13 +191,13 @@ export default function EmployeeAbsencesPage({ embedded = false }: { embedded?: 
           hint="ainda não começaram"
         />
         <StatCard
-          label="Dias isentados total"
+          label="Dias abonados"
           value={summary.totalDays}
           icon={FirstAid}
           hint="soma de todas as ausências"
         />
         <StatCard
-          label="Funcionários cobertos"
+          label="Pessoas justificadas"
           value={summary.employeesAffected}
           icon={Users}
           hint="com pelo menos 1 ausência"
@@ -191,7 +205,7 @@ export default function EmployeeAbsencesPage({ embedded = false }: { embedded?: 
       </StatGrid>
 
       <Panel
-        title="Histórico de ausências"
+        title="Justificativas registradas"
         subtitle={hasFilters
           ? `Filtrado: ${filtered.length} de ${absences.length}`
           : `${absences.length} ${absences.length === 1 ? 'registro' : 'registros'}`}
@@ -242,13 +256,13 @@ export default function EmployeeAbsencesPage({ embedded = false }: { embedded?: 
         {filtered.length === 0 ? (
           <EmptyState
             icon={Vacation}
-            title={hasFilters ? 'Nenhuma ausência com esses filtros' : 'Nenhuma ausência cadastrada'}
+            title={hasFilters ? 'Nenhuma justificativa com esses filtros' : 'Nenhuma justificativa cadastrada'}
             description={hasFilters
               ? 'Limpe os filtros pra ver todas.'
-              : 'Cadastre férias, atestados ou folgas pra que esses dias não sejam descontados na folha.'}
+              : 'Cadastre férias, atestados ou folgas para abonar os dias correspondentes na folha.'}
             action={!hasFilters ? (
               <Button size="sm" onClick={() => setCreateOpen(true)}>
-                <Plus className="h-3.5 w-3.5 mr-1" /> Nova ausência
+                <Plus className="h-3.5 w-3.5 mr-1" /> Nova justificativa
               </Button>
             ) : (
               <Button variant="outline" size="sm" onClick={clearFilters}>Limpar filtros</Button>
@@ -329,10 +343,10 @@ export default function EmployeeAbsencesPage({ embedded = false }: { embedded?: 
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Vacation className="h-5 w-5 text-primary" />
-              Nova ausência
+              Nova justificativa
             </DialogTitle>
             <DialogDescription>
-              Os dias selecionados ficam isentos do desconto de falta/atraso da folha.
+              O período selecionado será abonado integralmente no cálculo da folha.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">

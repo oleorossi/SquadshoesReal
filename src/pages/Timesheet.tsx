@@ -1,5 +1,4 @@
 import ExceptionsTab from '@/components/timesheet/ExceptionsTab';
-import CoverageCalendar from '@/components/timesheet/CoverageCalendar';
 import ManualEntryTab from '@/components/timesheet/ManualEntryTab';
 import ImportHistoryPanel from '@/components/timesheet/ImportHistoryPanel';
 import PendingTimeRecordsPanel from '@/components/timesheet/PendingTimeRecordsPanel';
@@ -1329,12 +1328,12 @@ function TimesheetRecordsTab() {
 // ── Main Page ──────────────────────────────────────────
 export default function Timesheet() {
   const { value: activeTab, setValue: setActiveTab } = useUrlTabState({
-    values: ['records', 'manual', 'ausencias', 'calendario', 'arquivos', 'config'] as const,
+    values: ['records', 'manual', 'ausencias', 'arquivos', 'config'] as const,
     defaultValue: 'records',
     param: 'subtab',
     aliases: {
       overview: 'records', late: 'manual', occurrences: 'manual', pending: 'manual',
-      reports: 'records', overtime: 'records', history: 'arquivos', schedule: 'config', holidays: 'config',
+      reports: 'records', overtime: 'records', calendario: 'records', history: 'arquivos', schedule: 'config', holidays: 'config',
     },
   });
   const { total: pendingTotal, overdueTotal } = usePendingTotal(30);
@@ -1342,42 +1341,35 @@ export default function Timesheet() {
     {
       value: 'records',
       label: 'Importar',
-      description: 'Envie o arquivo do relógio e escolha o período que deseja conferir.',
+      description: 'Leia as batidas do relógio.',
       icon: FileSpreadsheet,
       step: '1',
     },
     {
       value: 'manual',
       label: 'Corrigir',
-      description: 'Resolva batidas ímpares, esquecidas ou lançamentos manuais.',
+      description: 'Resolva batidas pendentes.',
       icon: ClipboardEdit,
       step: '2',
     },
     {
       value: 'ausencias',
       label: 'Justificar',
-      description: 'Registre faltas e atrasos justificados antes de fechar a folha.',
+      description: 'Abone ausências de dia inteiro.',
       icon: FirstAid,
       step: '3',
     },
     {
-      value: 'calendario',
-      label: 'Cobertura',
-      description: 'Consulte a cobertura da equipe no calendário.',
-      icon: Calendar,
-      step: undefined,
-    },
-    {
       value: 'arquivos',
       label: 'Arquivos',
-      description: 'Consulte e baixe os arquivos originais preservados em cada importação.',
+      description: 'Baixe os arquivos importados.',
       icon: ArchiveBox,
       step: undefined,
     },
     {
       value: 'config',
       label: 'Ajustes',
-      description: 'Gerencie feriados e trocas de dias de trabalho.',
+      description: 'Feriados e trocas de dias.',
       icon: Settings2,
       step: undefined,
     },
@@ -1392,11 +1384,11 @@ export default function Timesheet() {
         <div className="overflow-hidden rounded-xl border border-border/70 bg-card shadow-sm">
           <div className="flex items-center justify-between border-b border-border/60 bg-muted/20 px-3 py-2">
             <span className="eyebrow text-[9px]">Fluxo do ponto</span>
-            <span className="hidden text-[11px] text-muted-foreground sm:block">Importe, corrija e justifique antes de conferir</span>
+            <span className="hidden text-[11px] text-muted-foreground sm:block">Três etapas para preparar o ponto; arquivos e ajustes ficam separados.</span>
           </div>
           <TabsList
             indicator="none"
-            className="grid h-auto w-full grid-cols-2 gap-px border-0 bg-border/60 p-0 sm:grid-cols-3 xl:grid-cols-6"
+            className="grid h-auto w-full grid-cols-2 gap-px border-0 bg-border/60 p-0 sm:grid-cols-3 xl:grid-cols-5"
             aria-label="Fluxo do controle de ponto"
           >
             {sections.map((section, index) => (
@@ -1470,7 +1462,6 @@ export default function Timesheet() {
             employee_absences → o motor da folha ABONA (não desconta falta nem atraso
             do dia). Mesma tela reaproveitada de /rh/ausencias. */}
         <TabsContent value="ausencias"><EmployeeAbsences embedded /></TabsContent>
-        <TabsContent value="calendario"><CoverageCalendar /></TabsContent>
         <TabsContent value="arquivos"><ImportHistoryPanel /></TabsContent>
         <TabsContent value="config" className="space-y-6">
           <HolidaysTab />

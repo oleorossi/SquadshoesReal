@@ -9,6 +9,13 @@ export interface TimeBalanceEmployeeInput {
   department?: string | null;
   paymentType?: string | null;
   ledger?: SalaryDayLedger[] | null;
+  rawCreditMinutes?: number | null;
+  rawDebitMinutes?: number | null;
+  compensatedMinutes?: number | null;
+  payableOvertimeMinutes?: number | null;
+  payableDebitMinutes?: number | null;
+  overtimeValue?: number | null;
+  overtimeRateMissing?: boolean | null;
 }
 
 export interface TimeBalanceDay {
@@ -48,6 +55,14 @@ export interface EmployeeTimeBalanceReport {
   overtimeWeeks: number;
   deficitWeeks: number;
   pendingPunchDays: number;
+  totalRawCreditMinutes: number;
+  totalRawDebitMinutes: number;
+  totalCompensatedMinutes: number;
+  totalPayableOvertimeMinutes: number;
+  totalPayableDebitMinutes: number;
+  finalPayableBalanceMinutes: number;
+  overtimeValue: number;
+  overtimeRateMissing: boolean;
 }
 
 function effectiveExpectedMinutes(day: SalaryDayLedger): number {
@@ -119,6 +134,17 @@ export function buildEmployeeTimeBalanceReport(input: TimeBalanceEmployeeInput):
     } satisfies TimeBalanceWeek;
   });
 
+  const totalRawCreditMinutes = input.rawCreditMinutes
+    ?? sortedLedger.reduce((sum, day) => sum + (Number(day.raw_credit_minutes) || 0), 0);
+  const totalRawDebitMinutes = input.rawDebitMinutes
+    ?? sortedLedger.reduce((sum, day) => sum + (Number(day.raw_delay_minutes) || 0), 0);
+  const totalCompensatedMinutes = input.compensatedMinutes
+    ?? Math.min(totalRawCreditMinutes, totalRawDebitMinutes);
+  const totalPayableOvertimeMinutes = input.payableOvertimeMinutes
+    ?? sortedLedger.reduce((sum, day) => sum + (Number(day.payable_overtime_minutes) || 0), 0);
+  const totalPayableDebitMinutes = input.payableDebitMinutes
+    ?? sortedLedger.reduce((sum, day) => sum + (Number(day.payable_delay_minutes) || 0), 0);
+
   return {
     id: input.id,
     name: input.name,
@@ -132,6 +158,14 @@ export function buildEmployeeTimeBalanceReport(input: TimeBalanceEmployeeInput):
     overtimeWeeks: weeks.filter(week => week.overtimeMinutes > 0).length,
     deficitWeeks: weeks.filter(week => week.deficitMinutes > 0).length,
     pendingPunchDays: weeks.reduce((sum, week) => sum + week.days.filter(day => day.status === 'pending').length, 0),
+    totalRawCreditMinutes,
+    totalRawDebitMinutes,
+    totalCompensatedMinutes,
+    totalPayableOvertimeMinutes,
+    totalPayableDebitMinutes,
+    finalPayableBalanceMinutes: totalPayableOvertimeMinutes - totalPayableDebitMinutes,
+    overtimeValue: Math.max(0, Number(input.overtimeValue) || 0),
+    overtimeRateMissing: input.overtimeRateMissing === true,
   };
 }
 

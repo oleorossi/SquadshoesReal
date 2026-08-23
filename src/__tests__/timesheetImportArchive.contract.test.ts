@@ -50,7 +50,9 @@ describe('arquivo permanente das importações do relógio de ponto', () => {
   });
 
   it('expõe os arquivos em uma aba própria do módulo de ponto', () => {
-    expect(PAGE).toContain("values: ['records', 'manual', 'ausencias', 'calendario', 'arquivos', 'config']");
+    expect(PAGE).toContain("values: ['records', 'manual', 'ausencias', 'arquivos', 'config']");
+    expect(PAGE).toContain("calendario: 'records'");
+    expect(PAGE).not.toContain('value="calendario"');
     expect(PAGE).toContain("value: 'arquivos'");
     expect(PAGE).toContain('<TabsContent value="arquivos"><ImportHistoryPanel /></TabsContent>');
     expect(HISTORY_PANEL).toContain('Os documentos não podem ser excluídos');

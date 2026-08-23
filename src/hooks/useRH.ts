@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import type { BenefitsConfig } from '@/lib/benefitsConfig';
+import { assertNoClosedPayrollInRange } from '@/lib/ponto/absencePayrollGuard';
 
 // ── benefits_config ──────────────────────────────────────────────────
 export function useBenefitsConfig() {
@@ -43,26 +44,6 @@ export function useSaveBenefitsConfig() {
 
 // Banco de horas REMOVIDO (reforma Gestão de Pessoas 2026-07-09): hooks de
 // movimentos/saldo descontinuados junto com as tabelas bank_hours_*.
-
-/** Guard compartilhado: lança erro se existir folha NÃO-rascunho cujo período
- *  ('YYYY-MM' ou intervalo 'YYYY-MM-DD_YYYY-MM-DD') cubra a data informada. */
-async function assertNoClosedPayroll(employeeId: string, dateISO: string, acao: string) {
-  const { data: runs, error } = await (supabase as any)
-    .from('payroll_runs')
-    .select('id, status, period')
-    .eq('employee_id', employeeId)
-    .neq('status', 'rascunho');
-  if (error) throw new Error(`Falha ao verificar folha de pagamento: ${error.message}`);
-  const d = dateISO.slice(0, 10);
-  const run = (runs || []).find((r: any) => {
-    const p = String(r.period || '');
-    if (/^\d{4}-\d{2}$/.test(p)) return d.slice(0, 7) === p;
-    const mInt = p.match(/^(\d{4}-\d{2}-\d{2})_(\d{4}-\d{2}-\d{2})$/);
-    if (mInt) return d >= mInt[1] && d <= mInt[2];
-    return false;
-  });
-  if (run) throw new Error(`Folha do período ${run.period} já ${run.status === 'pago' ? 'paga' : 'aprovada'} — desfaça antes de ${acao}.`);
-}
 
 // (Hooks de lançamento/pagamento de banco de horas removidos na reforma 2026-07-09.)
 
@@ -127,7 +108,7 @@ export function useUpsertAbsence() {
   return useMutation({
     mutationFn: async (a: Partial<Absence> & { id?: string; employee_id: string; start_date: string; end_date: string; absence_type: AbsenceType }) => {
       const { id, ...rest } = a;
-      await assertNoClosedPayroll(a.employee_id, a.start_date, 'alterar ausências');
+      await assertNoClosedPayrollInRange(a.employee_id, a.start_date, a.end_date, 'alterar ausências');
       if (id) {
         const { error } = await (supabase as any).from('employee_absences').update(rest).eq('id', id);
         if (error) throw error;
@@ -151,9 +132,9 @@ export function useDeleteAbsence() {
       // Block delete if a non-draft payroll run for the absence's period already exists,
       // to prevent retroactive edits to closed/paid payroll history.
       const { data: abs, error: absErr } = await (supabase as any)
-        .from('employee_absences').select('employee_id, start_date').eq('id', id).single();
+        .from('employee_absences').select('employee_id, start_date, end_date').eq('id', id).single();
       if (absErr) throw absErr;
-      await assertNoClosedPayroll(abs.employee_id, abs.start_date as string, 'remover ausência');
+      await assertNoClosedPayrollInRange(abs.employee_id, abs.start_date as string, abs.end_date as string, 'remover ausências');
       const { error } = await (supabase as any).from('employee_absences').delete().eq('id', id);
       if (error) throw error;
     },

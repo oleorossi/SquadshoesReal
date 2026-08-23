@@ -17,6 +17,16 @@ function daySlot(dayOfWeek: number): number {
   return dayOfWeek === 0 ? 6 : dayOfWeek - 1;
 }
 
+function formatBRL(value: number): string {
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value || 0);
+}
+
+function outcomeLabel(minutes: number): string {
+  if (minutes > 0) return 'PAGAR HORAS EXTRAS';
+  if (minutes < 0) return 'DÉBITO DE HORAS';
+  return 'COMPENSADO';
+}
+
 function renderDay(day?: TimeBalanceDay): string {
   if (!day) return '<td class="day empty"></td>';
   const balance = day.balanceMinutes;
@@ -61,6 +71,9 @@ function renderEmployee(report: EmployeeTimeBalanceReport, kind: TimeBalanceRepo
       ${slots.map(renderDay).join('')}
     </tr>`;
   }).join('');
+  const finalClass = report.finalPayableBalanceMinutes > 0
+    ? 'positive-text'
+    : report.finalPayableBalanceMinutes < 0 ? 'negative-text' : '';
 
   return `<section class="employee${index > 0 ? ' page-break' : ''}">
     <h1>${kind === 'overtime' ? 'Relatório de horas extras' : 'Relatório de pendências semanais'}</h1>
@@ -76,7 +89,14 @@ function renderEmployee(report: EmployeeTimeBalanceReport, kind: TimeBalanceRepo
       <thead><tr><th>Semana</th>${DAY_LABELS.map(label => `<th>${label}</th>`).join('')}</tr></thead>
       <tbody>${weekRows}</tbody>
     </table>
+    <div class="final-summary">
+      <div><span>Pendências de horas</span><strong class="negative-text">${formatBalanceMinutes(-report.totalRawDebitMinutes)}</strong></div>
+      <div><span>Horas extras</span><strong class="positive-text">${formatBalanceMinutes(report.totalRawCreditMinutes)}</strong></div>
+      <div><span>Resultado final</span><strong class="${finalClass}">${formatBalanceMinutes(report.finalPayableBalanceMinutes)}</strong><small class="${finalClass}">${outcomeLabel(report.finalPayableBalanceMinutes)}</small></div>
+      <div><span>Valor de HE a pagar</span><strong>${formatBRL(report.overtimeValue)}</strong><small>${formatBalanceMinutes(report.totalPayableOvertimeMinutes, false)} após compensação</small></div>
+    </div>
     <p class="legend">Cada célula mostra: batidas · trabalhado/meta · saldo do dia. O fechamento é semanal; crédito e débito se compensam apenas dentro da mesma semana. Dias abonados e sem cobertura não geram débito.</p>
+    ${report.overtimeRateMissing ? '<p class="rate-warning">Atenção: há hora extra a pagar sem taxa cadastrada.</p>' : ''}
   </section>`;
 }
 
@@ -113,8 +133,79 @@ export function buildTimeBalanceReportHtml(
     .negative-text, .day.negative .balance { color:#b91c1c; }
     .pending-text, .day.pending .balance { color:#b45309; }
     .legend { margin-top:5px; font-size:8px; color:#333; }
+    .final-summary { display:grid; grid-template-columns:repeat(4, 1fr); margin-top:6px; border:1px solid #777; }
+    .final-summary > div { padding:5px 7px; border-right:1px solid #aaa; }
+    .final-summary > div:last-child { border-right:0; }
+    .final-summary span, .final-summary small { display:block; font-size:8px; text-transform:uppercase; color:#444; }
+    .final-summary strong { display:block; margin-top:2px; font-size:14px; }
+    .final-summary small { margin-top:2px; font-weight:700; }
+    .rate-warning { margin-top:4px; font-size:8px; font-weight:700; color:#b45309; }
     @media print { .employee { break-inside:avoid; } .page-break { break-before:page; } }
   </style>${body}`;
+}
+
+export function buildTimeBalanceManagementHtml(
+  reports: EmployeeTimeBalanceReport[],
+  periodLabel: string,
+): string {
+  const salaryReports = reports.filter(report => report.paymentType === 'mensalista');
+  const totalDebit = salaryReports.reduce((sum, report) => sum + report.totalRawDebitMinutes, 0);
+  const totalCredit = salaryReports.reduce((sum, report) => sum + report.totalRawCreditMinutes, 0);
+  const totalFinal = salaryReports.reduce((sum, report) => sum + report.finalPayableBalanceMinutes, 0);
+  const totalValue = salaryReports.reduce((sum, report) => sum + report.overtimeValue, 0);
+
+  const rows = reports.map((report) => {
+    const applies = report.paymentType === 'mensalista';
+    const finalClass = report.finalPayableBalanceMinutes > 0
+      ? 'positive-text'
+      : report.finalPayableBalanceMinutes < 0 ? 'negative-text' : '';
+    const situation = applies ? outcomeLabel(report.finalPayableBalanceMinutes) : 'REGIME NÃO SEMANAL';
+    return `<tr>
+      <td><strong>${escapeHtml(report.name)}</strong></td>
+      <td>${escapeHtml(report.department)}</td>
+      <td class="number negative-text">${applies ? formatBalanceMinutes(-report.totalRawDebitMinutes) : '—'}</td>
+      <td class="number positive-text">${applies ? formatBalanceMinutes(report.totalRawCreditMinutes) : '—'}</td>
+      <td class="number">${applies ? formatBalanceMinutes(report.totalCompensatedMinutes, false) : '—'}</td>
+      <td class="number ${finalClass}">${applies ? formatBalanceMinutes(report.finalPayableBalanceMinutes) : '—'}</td>
+      <td class="status ${finalClass}">${situation}</td>
+      <td class="number">${applies ? formatBalanceMinutes(report.totalPayableOvertimeMinutes, false) : '—'}</td>
+      <td class="number">${applies ? formatBRL(report.overtimeValue) : '—'}${report.overtimeRateMissing ? '<small>taxa pendente</small>' : ''}</td>
+    </tr>`;
+  }).join('');
+
+  return `<style>
+    .management h1 { margin:0; font-size:20px; }
+    .management .subtitle { margin:2px 0 8px; font-size:10px; color:#444; }
+    .management-summary { display:grid; grid-template-columns:repeat(4,1fr); gap:5px; margin-bottom:8px; }
+    .management-summary > div { border:1px solid #777; padding:6px 8px; }
+    .management-summary span { display:block; font-size:8px; text-transform:uppercase; color:#444; }
+    .management-summary strong { display:block; margin-top:2px; font-size:14px; }
+    .management-table { width:100%; border-collapse:collapse; font-size:9px; }
+    .management-table th { background:#1f2937; color:#fff; padding:5px; text-align:left; text-transform:uppercase; font-size:8px; }
+    .management-table td { border:1px solid #aaa; padding:5px; }
+    .management-table .number { text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; font-weight:700; }
+    .management-table .status { white-space:nowrap; font-size:8px; font-weight:800; }
+    .management-table small { display:block; margin-top:2px; color:#b45309; font-weight:700; }
+    .positive-text { color:#047857; }
+    .negative-text { color:#b91c1c; }
+    .management-note { margin-top:7px; font-size:8px; color:#333; }
+    @media print { .management { break-inside:auto; } .management-table tr { break-inside:avoid; } }
+  </style>
+  <section class="management">
+    <h1>Relatório gerência · saldo de horas</h1>
+    <p class="subtitle">${escapeHtml(periodLabel)} · ${reports.length} funcionário(s) no período</p>
+    <div class="management-summary">
+      <div><span>Pendências de horas</span><strong class="negative-text">${formatBalanceMinutes(-totalDebit)}</strong></div>
+      <div><span>Horas extras</span><strong class="positive-text">${formatBalanceMinutes(totalCredit)}</strong></div>
+      <div><span>Resultado consolidado</span><strong class="${totalFinal > 0 ? 'positive-text' : totalFinal < 0 ? 'negative-text' : ''}">${formatBalanceMinutes(totalFinal)}</strong></div>
+      <div><span>HE total a pagar</span><strong>${formatBRL(totalValue)}</strong></div>
+    </div>
+    <table class="management-table">
+      <thead><tr><th>Funcionário</th><th>Setor</th><th>Pendências</th><th>Horas extras</th><th>Compensadas</th><th>Saldo final</th><th>Situação</th><th>HE a pagar</th><th>Valor HE</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <p class="management-note">Pendências e horas extras são os valores brutos do período. O saldo final e o valor de HE vêm do mesmo cálculo usado pela Folha. Faltas de dia inteiro, adiantamentos e demais descontos aparecem no fechamento da folha e não são convertidos em horas nesta tabela.</p>
+  </section>`;
 }
 
 export function printTimeBalanceReports(
@@ -124,4 +215,11 @@ export function printTimeBalanceReports(
 ): void {
   const title = kind === 'overtime' ? 'Horas extras' : 'Pendências semanais';
   printHtml(`${title} · ${periodLabel}`, buildTimeBalanceReportHtml(reports, kind, periodLabel), { landscape: true });
+}
+
+export function printTimeBalanceManagementReport(
+  reports: EmployeeTimeBalanceReport[],
+  periodLabel: string,
+): void {
+  printHtml(`Relatório gerência · ${periodLabel}`, buildTimeBalanceManagementHtml(reports, periodLabel), { landscape: true });
 }

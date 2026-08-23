@@ -27,8 +27,8 @@ function ledgerDay(
     raw_delay_minutes: Math.max(0, expected - worked),
     compensated_credit_minutes: 0,
     compensated_delay_minutes: 0,
-    payable_overtime_minutes: 0,
-    payable_delay_minutes: 0,
+    payable_overtime_minutes: Math.max(0, worked - expected),
+    payable_delay_minutes: Math.max(0, expected - worked),
     discarded_tolerance_minutes: 0,
     status,
   };
@@ -68,6 +68,25 @@ describe('timeBalanceReports — fechamento semanal', () => {
     expect(report.totalOvertimeMinutes).toBe(90);
     expect(report.deficitWeeks).toBe(1);
     expect(report.overtimeWeeks).toBe(1);
+  });
+
+  it('expõe pendência, hora extra e saldo final exatamente como a folha compensa o período', () => {
+    const report = buildEmployeeTimeBalanceReport({
+      id: 'gerencia',
+      name: 'Gerência',
+      ledger: [],
+      rawDebitMinutes: 360,
+      rawCreditMinutes: 300,
+      compensatedMinutes: 300,
+      payableDebitMinutes: 60,
+      payableOvertimeMinutes: 0,
+      overtimeValue: 0,
+    });
+
+    expect(report.totalRawDebitMinutes).toBe(360);
+    expect(report.totalRawCreditMinutes).toBe(300);
+    expect(report.totalCompensatedMinutes).toBe(300);
+    expect(report.finalPayableBalanceMinutes).toBe(-60);
   });
 
   it('não cria débito em dia abonado ou sem cobertura', () => {
