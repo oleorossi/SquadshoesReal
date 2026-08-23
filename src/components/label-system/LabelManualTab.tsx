@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { Printer, Upload, Plus, Minus, ArrowCounterClockwise as RotateCcw, Eye, ArrowSquareIn as Import, X } from '@phosphor-icons/react';
-import { buildThermalLabelsHtml, buildBoxIdentificationHtml, DEFAULT_THERMAL_CONFIG } from '@/lib/printLabels';
+import { buildThermalLabelsHtml, buildBoxIdentificationHtml, DEFAULT_THERMAL_CONFIG, THERMAL_DEFAULT_DIMENSIONS } from '@/lib/printLabels';
 import { openPrintTab, printHtmlAsPdf } from '@/lib/printPdf';
 import { createPrintJob, setPrintJobStatus } from '@/lib/printJobs';
 import { supabase } from '@/integrations/supabase/client';
@@ -334,7 +334,7 @@ export function LabelManualTab() {
             clientOrderNumber: form.lote || undefined,
           }));
       openPrint(
-        buildThermalLabelsHtml(rows, '', { width: 100, height: 30 }, DEFAULT_THERMAL_CONFIG, resolveSender().senderCnpj),
+        buildThermalLabelsHtml(rows, '', THERMAL_DEFAULT_DIMENSIONS, DEFAULT_THERMAL_CONFIG, resolveSender().senderCnpj),
         buildFilename('etiquetas-termicas', form.lote || form.referencia),
         rows.length,
         importedRef?.kind === 'op' ? [importedRef.id] : [],
@@ -387,7 +387,7 @@ export function LabelManualTab() {
       };
       const w = window.open('', '_blank');
       if (!w) return;
-      w.document.write(buildThermalLabelsHtml([label], '', { width: 100, height: 30 }, DEFAULT_THERMAL_CONFIG, resolveSender().senderCnpj));
+      w.document.write(buildThermalLabelsHtml([label], '', THERMAL_DEFAULT_DIMENSIONS, DEFAULT_THERMAL_CONFIG, resolveSender().senderCnpj));
       w.document.close();
     } else if (form.labelType === 'foot') {
       handlePrint();
