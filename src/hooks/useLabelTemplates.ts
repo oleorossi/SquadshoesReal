@@ -14,7 +14,7 @@ export const BUILTIN_TEMPLATES: LabelTemplate[] = [
     name: 'Squad Shoes — Térmica Padrão',
     category: 'thermal',
     type: 'thermal',
-    dimensions: { width: 100, height: 30, unit: 'mm' },
+    dimensions: { width: 100, height: 30, unit: 'mm' }, // caixa individual; não é o 2×50×30 do cliente
     fields: [
       { id: 'f1', name: 'Referência', type: 'text', position: { x: 26, y: 2, width: 48, height: 8 }, styling: { font_size: 11, font_weight: 'bold', text_align: 'left', text_transform: 'uppercase' }, data_source: 'product_name' },
       { id: 'f2', name: 'Cor', type: 'dynamic_text', position: { x: 26, y: 11, width: 48, height: 6 }, styling: { font_size: 6, font_weight: 'normal', text_align: 'left', text_transform: 'none' }, data_source: 'color' },

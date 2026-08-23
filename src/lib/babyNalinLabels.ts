@@ -1,6 +1,9 @@
 /**
  * Etiqueta de caixa do cliente.
  *
+ * Padrão próprio: 2 × 50 × 30 mm com 6 mm de vão (página 106 × 30). Não misturar
+ * com a etiqueta térmica de caixa individual da Squad (100 × 30 mm, um avanço).
+ *
  * A arte e o CODE128 seguem o padrão fixo do cliente. A geometria do liner do
  * couchê (vão e margens) é um perfil separado, pois muda conforme a faca da
  * gráfica e não pode ser deduzida por fotografia.

@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { escapeHtml, safeUrlAttr } from '@/lib/htmlUtils';
 import { Plus, Trash as Trash2, CircleNotch as Loader2, MagnifyingGlass, Package, ShoppingBag, PencilSimple as Pencil, MapPin, Note as StickyNote, FileArrowDown as FileDown, Tag, Package as BoxIcon, Printer, ImageSquare as ImagePlus } from '@phosphor-icons/react';
-import { buildStockBoxLabelsHtml, buildThermalLabelsHtml } from '@/lib/printLabels';
+import { buildStockBoxLabelsHtml, buildThermalLabelsHtml, THERMAL_DEFAULT_DIMENSIONS } from '@/lib/printLabels';
 import { resolveMaterialLabels, materialLabelKey } from '@/lib/labelUtils';
 import { DEFAULT_MANUFACTURER_CNPJ } from '@/lib/companySender';
 import { printHtml, writeRawPrintWindow, openPrintWindow } from '@/lib/printOrder';
@@ -554,7 +554,7 @@ ${cardsHtml}
                     }))
                   )
                 );
-                const html = buildThermalLabelsHtml(thermal, '', { width: 100, height: 30 }, undefined, DEFAULT_MANUFACTURER_CNPJ);
+                const html = buildThermalLabelsHtml(thermal, '', THERMAL_DEFAULT_DIMENSIONS, undefined, DEFAULT_MANUFACTURER_CNPJ);
                 const jobId = await createPrintJob({
                   batchName: `Térmicas pronta-entrega - ${new Date().toLocaleString('pt-BR')}`,
                   totalLabels: thermal.length,
