@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   CircleNotch as Loader2,
   Database,
@@ -142,6 +142,7 @@ export default function StrapCatalogResolutionDrawer({
   const [measureByGroup, setMeasureByGroup] = useState<Record<string, string>>({});
   const [reason, setReason] = useState('');
   const [validationError, setValidationError] = useState('');
+  const submittingRef = useRef(false);
 
   // A elegibilidade vem do servidor (`strap_base_group_is_eligible`), a MESMA
   // regra do writer. A tela derivava daqui exigindo produto oficial ativo —
@@ -204,6 +205,7 @@ export default function StrapCatalogResolutionDrawer({
   };
 
   const handleResolve = async () => {
+    if (submittingRef.current || resolveContext.isPending) return;
     setValidationError('');
     if (!canResolve) {
       setValidationError('Seu perfil não possui permissão para corrigir este cadastro.');
@@ -244,6 +246,7 @@ export default function StrapCatalogResolutionDrawer({
       return;
     }
 
+    submittingRef.current = true;
     try {
       const result = await resolveContext.mutateAsync({
         p_reference_id: referenceId,
@@ -261,6 +264,8 @@ export default function StrapCatalogResolutionDrawer({
       onOpenChange(false);
     } catch {
       // O hook mantém o drawer aberto e já apresenta o erro retornado pelo RPC.
+    } finally {
+      submittingRef.current = false;
     }
   };
 

@@ -178,6 +178,11 @@ describe('S-039 — resolução canônica das tiras', () => {
     expect(itemForm).toContain('color_id: isUuid(current?.color_id) ? current.color_id : null');
     expect(itemForm).toContain("nextSourcing = setStrapSourcing(nextSourcing, lineId, null)");
     expect(itemForm).toContain("onUpdate(index, 'strap_sourcing', nextSourcing)");
+    const resolvedCallbackStart = itemForm.indexOf('onResolved={(strapColors)');
+    const resolvedCallbackEnd = itemForm.indexOf('          }}\n        />', resolvedCallbackStart);
+    expect(resolvedCallbackStart).toBeGreaterThanOrEqual(0);
+    expect(resolvedCallbackEnd).toBeGreaterThan(resolvedCallbackStart);
+    expect(itemForm.slice(resolvedCallbackStart, resolvedCallbackEnd)).not.toContain('invalidateQueries');
     expect(itemForm).not.toContain('Cadastrar todas');
 
     expect(drawer).toContain('<Sheet');

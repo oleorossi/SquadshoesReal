@@ -181,9 +181,16 @@ describe('STRASS comprada pronta — correção de contexto sem napa-base', () =
       /Auto-preenche a Cor Principal[\s\S]*?useEffect\(\(\) => \{[\s\S]*?if \(preserveCommittedStrapSnapshot && hasStrapsEffective\) return;/,
     );
 
-    expect(itemForm).toMatch(
-      /onResolved=\{\(strapColors\) => \{[\s\S]*?if \(preserveCommittedStrapSnapshot\) \{[\s\S]*?invalidateResolvedStrapCaches\(\);[\s\S]*?return;[\s\S]*?const currentStraps/,
+    const resolvedCallbackStart = itemForm.indexOf('onResolved={(strapColors)');
+    const resolvedCallbackEnd = itemForm.indexOf('          }}\n        />', resolvedCallbackStart);
+    const resolvedCallback = itemForm.slice(resolvedCallbackStart, resolvedCallbackEnd);
+    expect(resolvedCallback).toMatch(
+      /if \(preserveCommittedStrapSnapshot\) \{[\s\S]*?return;[\s\S]*?const currentStraps/,
     );
+    // A invalidação pertence ao hook da mutation; duplicá-la aqui gerava seis
+    // refetches extras depois da mesma correção.
+    expect(resolvedCallback).not.toContain('invalidateQueries');
+    expect(hooks).toContain("queryClient.invalidateQueries({ queryKey: ['strap_stock_lines_preview'] })");
     expect(itemForm).toMatch(
       /if \(preserveCommittedStrapSnapshot && !mainColorChanged\) \{[\s\S]*?return;/,
     );
