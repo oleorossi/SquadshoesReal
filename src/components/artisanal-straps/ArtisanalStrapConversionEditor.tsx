@@ -4,6 +4,7 @@ import {
   Factory,
   FloppyDisk,
   LockKey,
+  Ruler,
   Scissors,
   Warning,
 } from '@phosphor-icons/react';
@@ -33,9 +34,11 @@ import {
   type ArtisanalStrapCapabilities,
   type ArtisanalStrapCatalog,
   useApproveBaseMaterialWidthProfile,
+  useConfirmArtisanalStrapMaterialConversion,
   useReuseLegacyArtisanalStrapRecipe,
   useSaveBaseMaterialWidthProfile,
   useSaveArtisanalStrapConversion,
+  useStrapBaseGroupCandidates,
 } from '@/hooks/useArtisanalStraps';
 import type { ArtisanalStrapEditorMode, ArtisanalStrapEditorOrigin } from './ArtisanalStrapEditor';
 import { StrapIdentityTrail } from './StrapIdentityTrail';
@@ -164,7 +167,9 @@ export function ArtisanalStrapConversionEditor({
   const saveWidthProfile = useSaveBaseMaterialWidthProfile();
   const approveWidthProfile = useApproveBaseMaterialWidthProfile();
   const saveConversion = useSaveArtisanalStrapConversion();
+  const confirmConversion = useConfirmArtisanalStrapMaterialConversion();
   const reuseLegacyRecipe = useReuseLegacyArtisanalStrapRecipe();
+  const baseCandidatesQuery = useStrapBaseGroupCandidates(open && !legacyRecipeId);
   const { data: contractors = [] } = useContractors();
 
   useEffect(() => {
@@ -269,12 +274,23 @@ export function ArtisanalStrapConversionEditor({
   const selectedType = catalog.types.find((item) => item.id === form.typeId);
   const selectedMeasure = catalog.measures.find((item) => item.id === form.measureId);
   const selectedBase = catalog.groups.find((item) => item.id === form.baseGroupId);
+  const selectedBaseCandidate = baseCandidatesQuery.data?.find((item) => item.id === form.baseGroupId);
+  const materialOptions = [...(baseCandidatesQuery.data || [])];
+  if (selectedBase && !materialOptions.some((item) => item.id === selectedBase.id)) {
+    materialOptions.push({
+      id: selectedBase.id,
+      name: selectedBase.name,
+      usable_width_mm: numberOrZero(latestWidthProfile(catalog, selectedBase.id, ['approved'])?.usable_width_mm) || null,
+      has_approved_width_profile: Boolean(latestWidthProfile(catalog, selectedBase.id, ['approved'])),
+      linear_sku_count: 0,
+    });
+  }
   const currentRecipe = catalog.recipes.find((item) => item.id === form.recipeId);
   const widthProfile = latestWidthProfile(catalog, form.baseGroupId, ['approved']);
   const editableWidthProfile = latestWidthProfile(catalog, form.baseGroupId, ['draft', 'pending_approval']);
   const usefulWidthMm = widthProfile
     ? numberOrZero(widthProfile.usable_width_mm)
-    : form.usefulWidthMm;
+    : numberOrZero(selectedBaseCandidate?.usable_width_mm) || form.usefulWidthMm;
   const theoreticalYield = form.cutBandWidthMm > 0 && usefulWidthMm > 0
     ? Math.floor(usefulWidthMm / form.cutBandWidthMm)
     : 0;
@@ -290,6 +306,7 @@ export function ArtisanalStrapConversionEditor({
   const identityLocked = Boolean(currentRecipe);
   const canWrite = capabilities.manage_strap_catalog;
   const canApproveWidthInline = canWrite && capabilities.approve_strap_recipe;
+  const canConfirmImmediately = canWrite && capabilities.approve_strap_recipe && !legacyRecipe;
   const canSeeFinancial = capabilities.can_see_financial_values === true;
   const canReuseLegacy = canWrite
     && capabilities.approve_strap_recipe
@@ -297,9 +314,15 @@ export function ArtisanalStrapConversionEditor({
     && canSeeFinancial;
   const readOnly = !canWrite || (Boolean(legacyRecipe) && !canReuseLegacy);
   const canEditRecipeFields = !readOnly && (recipeIsMutable || createRecipeVersion);
+  const canEnterLegacyWidth = Boolean(legacyRecipe)
+    && !widthProfile
+    && !selectedBaseCandidate?.usable_width_mm
+    && canApproveWidthInline
+    && canEditRecipeFields;
   const isSaving = saveWidthProfile.isPending
     || approveWidthProfile.isPending
     || saveConversion.isPending
+    || confirmConversion.isPending
     || reuseLegacyRecipe.isPending;
 
   const setField = <K extends keyof ConversionForm>(key: K, value: ConversionForm[K]) => {
@@ -327,15 +350,17 @@ export function ArtisanalStrapConversionEditor({
       return 'Reaproveitar exige permissão de catálogo, aprovação, migração e acesso financeiro.';
     }
     if (!form.typeId && !form.typeName.trim()) {
-      return 'Selecione uma família ou informe uma nova.';
+      return 'Selecione um tipo de tira ou informe um novo.';
     }
     if (!form.measureId && (!form.measureName.trim() || form.finishedWidthMm <= 0)) {
       return 'Selecione uma medida ou informe nome e largura final.';
     }
-    if (!form.baseGroupId) return 'Selecione a napa-base.';
-    if (!widthProfile && form.usefulWidthMm <= 0) return 'Informe a largura útil da napa-base.';
-    if (!widthProfile && !canApproveWidthInline) {
-      return 'A napa-base não possui perfil aprovado e seu acesso não permite aprová-lo neste fluxo.';
+    if (!form.baseGroupId) return 'Selecione um material possível para esta tira.';
+    if (!widthProfile && usefulWidthMm <= 0) {
+      return 'O material não possui uma largura física única no estoque. Corrija a Ficha de Componente antes de confirmar.';
+    }
+    if (!widthProfile && !canApproveWidthInline && !canConfirmImmediately) {
+      return 'O material ainda não possui perfil físico aprovado e seu acesso não permite confirmá-lo neste fluxo.';
     }
     if (currentRecipe && !recipeIsMutable && !createRecipeVersion) {
       return 'A conversão aprovada é imutável. Crie uma nova versão para alterar os números.';
@@ -380,11 +405,11 @@ export function ArtisanalStrapConversionEditor({
     const reason = form.reason.trim();
     try {
       let resolvedWidthProfileId = widthProfile?.id;
-      if (!legacyRecipe && !resolvedWidthProfileId) {
+      if (!legacyRecipe && !resolvedWidthProfileId && !canConfirmImmediately) {
         resolvedWidthProfileId = await saveWidthProfile.mutateAsync({
           id: editableWidthProfile?.id,
           baseGroupId: form.baseGroupId,
-          usableWidthMm: form.usefulWidthMm,
+          usableWidthMm: usefulWidthMm,
           reason,
         });
         await approveWidthProfile.mutateAsync({
@@ -420,10 +445,12 @@ export function ArtisanalStrapConversionEditor({
         await reuseLegacyRecipe.mutateAsync({
           legacyRecipeId: legacyRecipe.id,
           payload,
-          usableWidthMm: widthProfile ? null : form.usefulWidthMm,
+          usableWidthMm: widthProfile ? null : usefulWidthMm,
           editableWidthProfileId: editableWidthProfile?.id,
           reason,
         });
+      } else if (canConfirmImmediately && mode === 'create') {
+        await confirmConversion.mutateAsync({ reason, payload });
       } else {
         await saveConversion.mutateAsync({ reason, payload });
       }
@@ -448,12 +475,12 @@ export function ArtisanalStrapConversionEditor({
             <SheetTitle>
               {legacyRecipe
                 ? 'Reaproveitar receita anterior'
-                : mode === 'create' ? 'Cadastrar conversão' : 'Editar conversão'}
+                : mode === 'create' ? 'Cadastrar tipo e material' : 'Editar conversão'}
             </SheetTitle>
             <SheetDescription>
               {legacyRecipe
                 ? 'Confira os dados recuperados e complete os campos obrigatórios de rendimento. O registro antigo continuará preservado.'
-                : 'Defina os números uma única vez por família, medida e napa-base. A cor será cadastrada somente no estoque.'}
+                : 'Defina os números uma única vez por família, medida e napa-base. Na rotina, escolha o tipo e o material; as medidas físicas vêm do estoque e valem para todas as cores.'}
             </SheetDescription>
           </SheetHeader>
 
@@ -508,114 +535,135 @@ export function ArtisanalStrapConversionEditor({
             <section className="space-y-3" aria-labelledby="strap-conversion-identity">
               <div className="flex items-center gap-2">
                 <Scissors className="h-4 w-4 text-primary" />
-                <h3 id="strap-conversion-identity" className="text-sm font-bold">Identidade da conversão</h3>
+                <h3 id="strap-conversion-identity" className="text-sm font-bold">Tipo e material</h3>
               </div>
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-3">
                 <div className="space-y-1.5">
-                  <Label>Família/tipo *</Label>
-                  <Select
-                    value={form.typeId || '__new__'}
-                    onValueChange={(value) => {
-                      const typeId = value === '__new__' ? '' : value;
-                      setForm((current) => ({
-                        ...current,
-                        typeId,
-                        typeName: typeId ? catalog.types.find((item) => item.id === typeId)?.name || '' : '',
-                        measureId: '',
-                        measureName: '',
-                        finishedWidthMm: 0,
-                      }));
-                      setValidationError(null);
-                    }}
-                    disabled={readOnly || identityLocked}
-                  >
-                    <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__new__">Nova família…</SelectItem>
-                      {catalog.types.filter((item) => item.active).map((item) => (
-                        <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {!form.typeId && (
-                    <Input
-                      value={form.typeName}
-                      onChange={(event) => setField('typeName', event.target.value)}
-                      placeholder="Ex.: TIRA CHATA"
-                      disabled={readOnly || identityLocked}
-                    />
-                  )}
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label>Medida final *</Label>
+                  <Label>Tipo de tira *</Label>
                   <Select
                     value={form.measureId || '__new__'}
                     onValueChange={(value) => {
-                      const selectedId = value === '__new__' ? '' : value;
-                      const measure = catalog.measures.find((item) => item.id === selectedId);
+                      const selectedMeasureId = value === '__new__' ? '' : value;
+                      const measure = catalog.measures.find((item) => item.id === selectedMeasureId);
+                      const type = catalog.types.find((item) => item.id === measure?.strap_type_id);
                       setForm((current) => ({
                         ...current,
-                        measureId: selectedId,
+                        typeId: type?.id || '',
+                        typeName: type?.name || '',
+                        measureId: measure?.id || '',
                         measureName: measure?.display_name || '',
                         finishedWidthMm: numberOrZero(measure?.finished_width_mm),
                       }));
                       setValidationError(null);
                     }}
-                    disabled={readOnly || identityLocked || (!form.typeId && !form.typeName.trim())}
+                    disabled={readOnly || identityLocked}
                   >
-                    <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                    <SelectTrigger><SelectValue placeholder="Selecione o tipo" /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="__new__">Nova medida…</SelectItem>
+                      <SelectItem value="__new__">Novo tipo de tira…</SelectItem>
                       {catalog.measures
-                        .filter((item) => item.active && item.strap_type_id === form.typeId)
-                        .map((item) => (
-                          <SelectItem key={item.id} value={item.id}>{item.display_name}</SelectItem>
+                        .filter((measure) => measure.active && catalog.types.some((type) => (
+                          type.id === measure.strap_type_id && type.active
+                        )))
+                        .sort((left, right) => {
+                          const leftType = catalog.types.find((item) => item.id === left.strap_type_id)?.name || '';
+                          const rightType = catalog.types.find((item) => item.id === right.strap_type_id)?.name || '';
+                          return `${leftType} ${left.display_name}`.localeCompare(`${rightType} ${right.display_name}`, 'pt-BR');
+                        })
+                        .map((measure) => (
+                          <SelectItem key={measure.id} value={measure.id}>
+                            {catalog.types.find((item) => item.id === measure.strap_type_id)?.name || 'Tira'} · {measure.display_name}
+                          </SelectItem>
                         ))}
                     </SelectContent>
                   </Select>
                   {!form.measureId && (
-                    <div className="grid grid-cols-[1fr_110px] gap-2">
-                      <Input
-                        value={form.measureName}
-                        onChange={(event) => setField('measureName', event.target.value)}
-                        placeholder="Ex.: 8 mm"
-                        disabled={readOnly || identityLocked}
-                      />
-                      <NumberInput
-                        value={form.finishedWidthMm}
-                        onChange={(value) => setField('finishedWidthMm', value)}
-                        unit="mm"
-                        disabled={readOnly || identityLocked}
-                      />
+                    <div className="grid gap-2 sm:grid-cols-[1fr_150px]">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="strap-new-type-name">Nome do tipo</Label>
+                        <Input
+                          id="strap-new-type-name"
+                          value={form.typeName}
+                          onChange={(event) => setField('typeName', event.target.value)}
+                          placeholder="Ex.: TIRA CHATA"
+                          disabled={readOnly || identityLocked}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="strap-new-type-width">Medida final</Label>
+                        <NumberInput
+                          id="strap-new-type-width"
+                          value={form.finishedWidthMm}
+                          onChange={(value) => {
+                            setForm((current) => ({
+                              ...current,
+                              finishedWidthMm: value,
+                              measureName: value > 0 ? `${value.toLocaleString('pt-BR')} mm` : '',
+                            }));
+                            setValidationError(null);
+                          }}
+                          unit="mm"
+                          disabled={readOnly || identityLocked}
+                        />
+                      </div>
                     </div>
                   )}
                 </div>
 
-                <div className="space-y-1.5 sm:col-span-2">
-                  <Label>Napa-base *</Label>
+                <div className="space-y-1.5">
+                  <Label>Material possível *</Label>
                   <Select
                     value={form.baseGroupId}
                     onValueChange={(value) => {
                       const selectedWidthProfile = latestWidthProfile(catalog, value, ['approved'])
                         || latestWidthProfile(catalog, value, ['draft', 'pending_approval']);
+                      const candidate = baseCandidatesQuery.data?.find((item) => item.id === value);
                       setForm((current) => ({
                         ...current,
                         baseGroupId: value,
-                        usefulWidthMm: numberOrZero(selectedWidthProfile?.usable_width_mm),
+                        usefulWidthMm: numberOrZero(selectedWidthProfile?.usable_width_mm)
+                          || numberOrZero(candidate?.usable_width_mm),
                       }));
                       setValidationError(null);
                     }}
                     disabled={readOnly || identityLocked}
                   >
-                    <SelectTrigger><SelectValue placeholder="Selecione a base" /></SelectTrigger>
+                    <SelectTrigger><SelectValue placeholder={baseCandidatesQuery.isLoading ? 'Buscando materiais no estoque…' : 'Selecione o material'} /></SelectTrigger>
                     <SelectContent>
-                      {catalog.groups.map((item) => (
-                        <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>
+                      {materialOptions.map((item) => (
+                        <SelectItem key={item.id} value={item.id} disabled={!numberOrZero(item.usable_width_mm)}>
+                          {item.name}{numberOrZero(item.usable_width_mm) > 0
+                            ? ` · ${numberOrZero(item.usable_width_mm).toLocaleString('pt-BR')} mm`
+                            : ' · dimensões pendentes'}
+                        </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
+                  {baseCandidatesQuery.isError && !legacyRecipe && (
+                    <p className="text-xs text-destructive">Não foi possível consultar as medidas físicas do estoque.</p>
+                  )}
                 </div>
+
+                {form.baseGroupId && (
+                  <div className="rounded-lg border border-border bg-muted/30 p-3">
+                    <div className="flex items-start gap-3">
+                      <Ruler className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold">Medidas físicas do estoque</p>
+                        <p className="mt-1 text-sm text-foreground">
+                          <strong>{selectedBase?.name || 'Material'}</strong>
+                          {' · '}largura {usefulWidthMm > 0 ? `${usefulWidthMm.toLocaleString('pt-BR')} mm` : 'pendente'}
+                          {' · '}unidade linear m
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {selectedBaseCandidate?.linear_sku_count
+                            ? `${selectedBaseCandidate.linear_sku_count} SKU(s) ativo(s) confirmam esta medida.`
+                            : 'A medida vem da Ficha de Componente do material e não varia por cor.'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </section>
 
@@ -625,7 +673,7 @@ export function ArtisanalStrapConversionEditor({
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
                   <Factory className="h-4 w-4 text-primary" />
-                  <h3 id="strap-conversion-numbers" className="text-sm font-bold">Números da conversão</h3>
+                  <h3 id="strap-conversion-numbers" className="text-sm font-bold">Confirmar rendimento</h3>
                 </div>
                 {currentRecipe && <Badge variant="outline">v{currentRecipe.version}</Badge>}
               </div>
@@ -646,13 +694,15 @@ export function ArtisanalStrapConversionEditor({
               )}
 
               {!widthProfile && form.baseGroupId && (
-                <Alert>
-                  <Warning className="h-4 w-4" />
-                  <AlertTitle>{canApproveWidthInline ? 'Preencha a largura útil' : 'Largura útil pendente'}</AlertTitle>
+                <Alert variant={usefulWidthMm > 0 ? 'default' : 'destructive'}>
+                  {usefulWidthMm > 0 ? <Ruler className="h-4 w-4" /> : <Warning className="h-4 w-4" />}
+                  <AlertTitle>{usefulWidthMm > 0 ? 'Largura encontrada no estoque' : 'Dimensão física pendente'}</AlertTitle>
                   <AlertDescription>
-                    {canApproveWidthInline
-                      ? 'Ao salvar a conversão, o perfil da napa-base também será salvo e aprovado.'
-                      : 'Aprove o perfil de largura da napa-base na aba Catálogo antes de salvar a conversão.'}
+                    {usefulWidthMm > 0
+                      ? `A largura de ${usefulWidthMm.toLocaleString('pt-BR')} mm será vinculada automaticamente ao confirmar. Você não precisa digitá-la.`
+                      : legacyRecipe && canEnterLegacyWidth
+                        ? 'Este registro histórico não possui uma dimensão inequívoca no estoque. Informe-a somente para concluir a migração assistida.'
+                        : 'Corrija a largura em Materiais > Ficha de Componente > Dimensões. O cadastro de tiras não aceita uma medida manual diferente do estoque.'}
                   </AlertDescription>
                 </Alert>
               )}
@@ -696,15 +746,13 @@ export function ArtisanalStrapConversionEditor({
 
               <div className="grid gap-3 sm:grid-cols-3">
                 <div className="space-y-1.5">
-                  <Label htmlFor="strap-conversion-useful-width">
-                    Largura útil da napa {!widthProfile && <span className="text-destructive">*</span>}
-                  </Label>
+                  <Label htmlFor="strap-conversion-useful-width">Largura do material (estoque)</Label>
                   <NumberInput
                     id="strap-conversion-useful-width"
                     value={usefulWidthMm}
                     onChange={(value) => setField('usefulWidthMm', value)}
                     unit="mm"
-                    disabled={Boolean(widthProfile) || !canApproveWidthInline || !canEditRecipeFields}
+                    disabled={!canEnterLegacyWidth}
                   />
                   {!widthProfile && editableWidthProfile && (
                     <p className="text-xs text-muted-foreground">
@@ -781,53 +829,59 @@ export function ArtisanalStrapConversionEditor({
                 </div>
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="space-y-1.5">
-                  <Label>Executor padrão *</Label>
-                  <Select
-                    value={form.executorType}
-                    onValueChange={(value) => setField('executorType', value as 'factory' | 'contractor')}
-                    disabled={!canEditRecipeFields}
-                  >
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="factory">Fábrica</SelectItem>
-                      <SelectItem value="contractor">Terceirizado</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                {form.executorType === 'contractor' && (
+              <details className="rounded-lg border border-border bg-muted/20 p-3" open={Boolean(currentRecipe || legacyRecipe)}>
+                <summary className="cursor-pointer text-sm font-semibold">Produção e custo</summary>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Configuração operacional avançada. O rendimento continua independente da cor.
+                </p>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
                   <div className="space-y-1.5">
-                    <Label>Terceirizado *</Label>
+                    <Label>Executor padrão *</Label>
                     <Select
-                      value={form.contractorId}
-                      onValueChange={(value) => setField('contractorId', value)}
+                      value={form.executorType}
+                      onValueChange={(value) => setField('executorType', value as 'factory' | 'contractor')}
                       disabled={!canEditRecipeFields}
                     >
-                      <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        {contractors.filter((item) => item.active).map((item) => (
-                          <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>
-                        ))}
+                        <SelectItem value="factory">Fábrica</SelectItem>
+                        <SelectItem value="contractor">Terceirizado</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
-                )}
-                {canSeeFinancial && (
-                  <div className="space-y-1.5">
-                    <Label>Custo de transformação</Label>
-                    <NumberInput
-                      value={form.transformationCost}
-                      onChange={(value) => setField('transformationCost', value)}
-                      unit="R$/m"
-                      disabled={!canEditRecipeFields}
-                    />
-                  </div>
-                )}
-              </div>
+                  {form.executorType === 'contractor' && (
+                    <div className="space-y-1.5">
+                      <Label>Terceirizado *</Label>
+                      <Select
+                        value={form.contractorId}
+                        onValueChange={(value) => setField('contractorId', value)}
+                        disabled={!canEditRecipeFields}
+                      >
+                        <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                        <SelectContent>
+                          {contractors.filter((item) => item.active).map((item) => (
+                            <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                  {canSeeFinancial && (
+                    <div className="space-y-1.5">
+                      <Label>Custo de transformação</Label>
+                      <NumberInput
+                        value={form.transformationCost}
+                        onChange={(value) => setField('transformationCost', value)}
+                        unit="R$/m"
+                        disabled={!canEditRecipeFields}
+                      />
+                    </div>
+                  )}
+                </div>
+              </details>
             </section>
 
-            {!readOnly && (
+            {!readOnly && (mode !== 'create' || Boolean(legacyRecipe)) && (
               <section className="space-y-1.5" aria-labelledby="strap-conversion-audit">
                 <Label id="strap-conversion-audit">Motivo da alteração *</Label>
                 <Textarea
@@ -855,7 +909,11 @@ export function ArtisanalStrapConversionEditor({
                 <FloppyDisk className="h-4 w-4" />
                 {isSaving
                   ? 'Salvando…'
-                  : legacyRecipe ? 'Confirmar e ativar' : 'Salvar conversão'}
+                  : legacyRecipe
+                    ? 'Confirmar e ativar'
+                    : canConfirmImmediately && mode === 'create'
+                      ? 'Confirmar rendimento e salvar'
+                      : 'Salvar conversão'}
               </Button>
             )}
           </SheetFooter>
