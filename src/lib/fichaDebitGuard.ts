@@ -38,6 +38,16 @@ export function evaluateFichaDebitGuard(orders: Array<{
 
 type IdRow = { id?: string | null; reference_id?: string | null };
 
+type SheetLookup = {
+  select: (cols: string) => {
+    in: (col: string, values: string[]) => Promise<{ data: IdRow[] | null }>;
+  };
+};
+
+function sheetsTable(): SheetLookup {
+  return supabase.from('technical_sheets') as unknown as SheetLookup;
+}
+
 export async function guardDebitForSaleOrder(saleOrderId: string): Promise<FichaDebitGuardResult> {
   const { data, error } = await supabase
     .from('orders')
@@ -58,19 +68,13 @@ export async function guardDebitForSaleOrder(saleOrderId: string): Promise<Ficha
 
   const sheetIds = new Set<string>();
   if (refs.length > 0) {
-    const { data: byId } = await supabase
-      .from('technical_sheets')
-      .select('id')
-      .in('id', refs);
-    for (const s of (byId || []) as IdRow[]) if (s?.id) sheetIds.add(s.id);
+    const { data: byId } = await sheetsTable().select('id').in('id', refs);
+    for (const s of byId || []) if (s?.id) sheetIds.add(s.id);
 
     const missing = refs.filter((id) => !sheetIds.has(id));
     if (missing.length > 0) {
-      const { data: byRef } = await supabase
-        .from('technical_sheets')
-        .select('id, reference_id')
-        .in('reference_id', missing);
-      for (const s of (byRef || []) as IdRow[]) {
+      const { data: byRef } = await sheetsTable().select('id, reference_id').in('reference_id', missing);
+      for (const s of byRef || []) {
         if (s?.id) sheetIds.add(s.id);
         if (s?.reference_id) sheetIds.add(s.reference_id);
       }
