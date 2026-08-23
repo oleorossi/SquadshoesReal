@@ -268,7 +268,7 @@ export function ClientLabelingWorkspace() {
       <Panel
         eyebrow="ETIQUETAS · CLIENTE"
         title="Importar pedido do cliente"
-        subtitle={`${BARCODE_FORMAT} com módulo de ${MODULE_MM.toFixed(4).replace('.', ',')} mm · produção L42PRO e gráfica em 2 × 50 × 30 mm`}
+        subtitle={`${BARCODE_FORMAT} com módulo de ${MODULE_MM.toFixed(4).replace('.', ',')} mm · mídia 100 × 30 mm em 2 colunas de 50 × 30 mm`}
         actions={
           rows.length > 0 ? (
             <Button variant="ghost" size="sm" onClick={limpar} className="h-9" disabled={isBusy}>
@@ -333,7 +333,7 @@ export function ClientLabelingWorkspace() {
                       <Badge variant="outline">2 × 50 × 30 mm</Badge>
                     </div>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      Imprime somente os SKUs selecionados. Ajuste a quantidade de cada item na tabela.
+                      Mídia física 100 × 30 mm: coluna esquerda 50 × 30 e coluna direita 50 × 30. Ajuste a quantidade de cada item na tabela.
                     </p>
                   </div>
                 </div>
@@ -410,7 +410,7 @@ export function ClientLabelingWorkspace() {
                     Medidas do rolo de duas colunas
                   </summary>
                   <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-                    Confirme o vão, as margens e o avanço do rolo. Estas medidas valem para a L42PRO e para a gráfica.
+                    O padrão é 100 × 30 mm sem vão adicional: duas colunas consecutivas de 50 × 30 mm. Altere apenas se a faca do rolo tiver margens ou separação extras.
                   </p>
                   <div className="mt-3 grid gap-3 sm:grid-cols-2">
                     {COUCHE_PROFILE_FIELDS.map(field => (

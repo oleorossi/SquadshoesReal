@@ -280,6 +280,10 @@ describe('arquivo para gráfica por SKU', () => {
   it('impõe duas etiquetas couchê 50×30 lado a lado e avança a carreira quando fica cheia', () => {
     const placements = planGraphicLabelPlacements(rows);
 
+    expect(COUCHE_PAGE_WIDTH_MM).toBe(100);
+    expect(COUCHE_PAGE_HEIGHT_MM).toBe(30);
+    expect(DEFAULT_COUCHE_ROLL_PROFILE.columnGapMm).toBe(0);
+
     expect(placements.map(({ pageIndex, column, xMm, yMm, row }) => ({
       pageIndex,
       column,
@@ -301,7 +305,9 @@ describe('arquivo para gráfica por SKU', () => {
   });
 
   it('mantém toda a arte dentro de cada etiqueta física 50×30', () => {
-    expect(COUCHE_OFFSET_X_MM + ART_WIDTH_MM).toBeLessThanOrEqual(COUCHE_LABEL_WIDTH_MM);
+    expect(ART_WIDTH_MM).toBe(48);
+    expect(COUCHE_OFFSET_X_MM).toBe(1);
+    expect(COUCHE_OFFSET_X_MM * 2 + ART_WIDTH_MM).toBe(COUCHE_LABEL_WIDTH_MM);
     expect(COUCHE_OFFSET_Y_MM + COUCHE_ART_HEIGHT_MM).toBeLessThanOrEqual(COUCHE_LABEL_HEIGHT_MM);
     expect(COUCHE_OFFSET_Y_MM + COUCHE_BARCODE_TOP_Y_MM + LAYOUT.barcode.heightMm)
       .toBeLessThanOrEqual(COUCHE_LABEL_HEIGHT_MM);
@@ -346,6 +352,8 @@ describe('arquivo para gráfica por SKU', () => {
       expect(widthMm).toBeCloseTo(COUCHE_PAGE_WIDTH_MM, 1);
       expect(heightMm).toBeCloseTo(COUCHE_PAGE_HEIGHT_MM, 1);
     }
+    expect(COUCHE_PAGE_WIDTH_MM).toBe(100);
+    expect(COUCHE_PAGE_HEIGHT_MM).toBe(30);
   });
 
   it('gera todas as páginas no tamanho do perfil informado pela gráfica', async () => {
