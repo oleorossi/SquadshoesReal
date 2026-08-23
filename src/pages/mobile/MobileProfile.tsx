@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { SignOut, DeviceMobile, Globe, Target } from '@phosphor-icons/react';
+import { SignOut, DeviceMobile, Globe, Target, Monitor } from '@phosphor-icons/react';
 import { supabase } from '@/integrations/supabase/client';
+import { useAccessControl } from '@/hooks/useAccessControl';
 
 interface ProfileData {
   email?: string;
@@ -17,6 +18,7 @@ interface MonthStats {
 
 export default function MobileProfile() {
   const navigate = useNavigate();
+  const { canAccessRoute } = useAccessControl();
   const [user, setUser] = useState<ProfileData | null>(null);
   const [isStandalone, setIsStandalone] = useState(false);
   const [stats, setStats] = useState<MonthStats | null>(null);
@@ -141,6 +143,17 @@ export default function MobileProfile() {
           </p>
         )}
       </div>
+
+      {canAccessRoute('/sales') && (
+        <button
+          type="button"
+          onClick={() => navigate('/sales')}
+          className="w-full min-h-11 border-[1.5px] border-foreground/20 rounded-lg py-3 font-bold uppercase tracking-wide flex items-center justify-center gap-2"
+        >
+          <Monitor className="h-5 w-5" />
+          Abrir no ERP
+        </button>
+      )}
 
       <button
         onClick={handleLogout}

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Check, MagnifyingGlass, Trash, WhatsappLogo, Share, ChartBar, Clock } from '@phosphor-icons/react';
+import { ArrowLeft, Check, MagnifyingGlass, Trash, WhatsappLogo, Share, ChartBar, Clock, Monitor } from '@phosphor-icons/react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import {
@@ -35,6 +35,7 @@ import { isoToMonthWeek } from '@/lib/billingWeek';
 import { listMissingTechnicalStrapSnapshots } from '@/lib/strapSnapshotGuard';
 import { submitMobileSaleOrderAtomic } from '@/lib/mobile/atomicSaleOrder';
 import { strapColorsForIdentity } from '@/lib/officialStrapColors';
+import { useAccessControl } from '@/hooks/useAccessControl';
 import { strapIdentityBasis } from '@/lib/strapIdentity';
 import {
   resolveSaleOrderItemPrice,
@@ -129,6 +130,25 @@ const newRequestId = () => crypto.randomUUID();
 
 const SIZE_RANGE_ADULT = ['33','34','35','36','37','38','39','40'];
 const SIZE_RANGE_CHILD = ['21','22','23','24','25','26','27','28','29','30','31','32','33'];
+const RECENT_CLIENTS_KEY = 'mobile-recent-clients';
+
+function readRecentClients(): ClientLite[] {
+  try {
+    const raw = localStorage.getItem(RECENT_CLIENTS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as ClientLite[];
+    return Array.isArray(parsed) ? parsed.slice(0, 5) : [];
+  } catch {
+    return [];
+  }
+}
+
+function rememberClient(client: ClientLite) {
+  try {
+    const next = [client, ...readRecentClients().filter((c) => c.id !== client.id)].slice(0, 5);
+    localStorage.setItem(RECENT_CLIENTS_KEY, JSON.stringify(next));
+  } catch { /* quota */ }
+}
 
 export const MOBILE_TECHNICAL_SHEET_SELECT = 'id, name, sale_price, shoe_category_id, shoe_category:silk_shoe_category(name), has_straps, strap_colors, variant_drives_upper, variant_drives_lining';
 
@@ -474,8 +494,11 @@ function MobileStrapIdentityEditor({
 export default function MobileNewOrder() {
   const navigate = useNavigate();
   const online = useOnlineStatus();
+  const { canAccessRoute } = useAccessControl();
   const [step, setStep] = useState<Step>('client');
   const [requestId, setRequestId] = useState<string>(newRequestId());
+  const [recentClients, setRecentClients] = useState<ClientLite[]>(() => readRecentClients());
+  const [createdOrderId, setCreatedOrderId] = useState<string | null>(null);
 
   // Cliente
   const [clientSearch, setClientSearch] = useState('');
@@ -881,6 +904,7 @@ export default function MobileNewOrder() {
         sent = true;
         pvNumberLocal = createdHeader?.order_number || null;
         setCreatedPvNumber(pvNumberLocal);
+        setCreatedOrderId(created.order_id);
         toast.success(`PV ${createdHeader?.order_number || ''} enviado!`);
       } catch (e) {
         // Fall through to enqueue
@@ -942,12 +966,44 @@ export default function MobileNewOrder() {
           hideHint
           autoFocus
         />
+        {clientSearch.trim().length < 2 && recentClients.length > 0 && (
+          <div>
+            <p className="text-xs font-mono uppercase tracking-wider text-muted-foreground mb-1">Recentes</p>
+            <ul className="divide-y divide-border rounded-lg border border-border">
+              {recentClients.map((c) => (
+                <li key={c.id}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      rememberClient(c);
+                      setRecentClients(readRecentClients());
+                      setPriceLookup({ byRefColor: new Map(), byRef: new Map() });
+                      setPriceLookupLoading(online);
+                      setClientHistory(null);
+                      setSelectedClient(c);
+                      setStep('items');
+                    }}
+                    className="min-h-14 w-full rounded-md p-3 text-left transition-colors active:bg-muted/40"
+                  >
+                    <p className="font-bold text-foreground">{c.nome_fantasia || c.razao_social}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {c.cidade || '—'}{c.estado ? `/${c.estado}` : ''}
+                    </p>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         <ul className="divide-y divide-border">
           {clients.map(c => (
             <li key={c.id}>
               <button
                 onClick={() => {
+                  rememberClient(c);
+                  setRecentClients(readRecentClients());
                   // Nunca deixa a tabela do cliente anterior precificar o novo.
+                  setPriceLookup({ byRefColor: new Map(), byRef: new Map() });
                   setPriceLookup({ byRefColor: new Map(), byRef: new Map() });
                   setPriceLookupLoading(online);
                   setClientHistory(null);
@@ -1379,6 +1435,15 @@ export default function MobileNewOrder() {
           >
             Voltar ao início
           </button>
+          {canAccessRoute('/sales') && createdOrderId && (
+            <button
+              onClick={() => navigate(`/sales/edit/${createdOrderId}`)}
+              className="w-full min-h-11 border-[1.5px] border-foreground/20 rounded-lg py-3 font-bold uppercase tracking-wide flex items-center justify-center gap-2"
+            >
+              <Monitor className="h-4 w-4" />
+              Abrir no ERP
+            </button>
+          )}
         </div>
       </div>
     );
@@ -1545,6 +1610,7 @@ function GradeEditor({ grade, sizes, onChange }: { grade: Record<string, number>
           <NumberInput
             min={0}
             decimals={0}
+            inputMode="numeric"
             value={grade[sz]}
             onChange={n => onChange({ ...grade, [sz]: n })}
             className="w-full text-center text-sm font-mono py-1"

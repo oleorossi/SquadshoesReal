@@ -36,6 +36,7 @@ interface TableViewContextValue {
   visibleColumns: Set<TableColumnKey>;
   toggleColumn: (key: TableColumnKey) => void;
   resetColumns: () => void;
+  applyEssentialColumns: () => void;
   isVisible: (key: TableColumnKey) => boolean;
   visibleCount: number;
 }
@@ -86,6 +87,10 @@ export function TableViewProvider({ children }: { children: ReactNode }) {
       });
     },
     resetColumns: () => setVisibleColumns(new Set(DEFAULT_VISIBLE)),
+    applyEssentialColumns: () => {
+      setDensityState('compact');
+      setVisibleColumns(new Set(['quantity', 'status', 'actions']));
+    },
     isVisible: (key) => visibleColumns.has(key),
     visibleCount: visibleColumns.size,
   }), [density, visibleColumns]);
@@ -102,6 +107,7 @@ export function useTableView(): TableViewContextValue {
     visibleColumns: new Set(DEFAULT_VISIBLE),
     toggleColumn: () => { /* noop */ },
     resetColumns: () => { /* noop */ },
+    applyEssentialColumns: () => { /* noop */ },
     isVisible: () => true,
     visibleCount: DEFAULT_VISIBLE.length,
   };

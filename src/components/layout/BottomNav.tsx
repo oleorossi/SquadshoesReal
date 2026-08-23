@@ -1,11 +1,12 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { House as Home, Factory, Package, ShoppingCart, DotsThree as MoreHorizontal, X, Star } from '@phosphor-icons/react';
+import { House as Home, Factory, Package, ShoppingCart, DotsThree as MoreHorizontal, X, Star, ClipboardText, Scan, Truck } from '@phosphor-icons/react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { menuGroups, orderGroupsForRoles, secondaryRoutes } from '@/data/navigation';
 import { useAccessControl } from '@/hooks/useAccessControl';
 import { useMenuFavorites } from '@/hooks/useMenuFavorites';
 import { useCurrentUserRoles } from '@/hooks/useUserManagement';
+import { floorPrimaryItems, type FloorNavItem } from '@/lib/floorChrome';
 
 const PRIMARY_ITEMS = [
   { icon: Home,         label: 'Painel',   path: '/dashboard' },
@@ -16,6 +17,14 @@ const PRIMARY_ITEMS = [
   { icon: Package,      label: 'Estoque',  path: '/estoque' },
 ];
 
+const FLOOR_ICONS: Record<FloorNavItem['key'], typeof Home> = {
+  apontar: ClipboardText,
+  kanban: Factory,
+  estoque: Package,
+  separar: Scan,
+  conferencia: Truck,
+};
+
 export function BottomNav() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -23,9 +32,17 @@ export function BottomNav() {
   // Mesma regra de acesso da sidebar: só mostra o que o usuário pode abrir
   // (permissão por menu). Sem isso o nav mobile expunha itens não liberados.
   const { canAccessRoute } = useAccessControl();
-  const primaryItems = useMemo(() => PRIMARY_ITEMS.filter(i => canAccessRoute(i.path)), [canAccessRoute]);
   const { data: currentRoles = [] } = useCurrentUserRoles();
   const roleNames = useMemo(() => currentRoles.map(role => role.role), [currentRoles]);
+  const primaryItems = useMemo(() => {
+    const floor = floorPrimaryItems(roleNames);
+    if (floor) {
+      return floor
+        .map((item) => ({ ...item, icon: FLOOR_ICONS[item.key] }))
+        .filter((item) => canAccessRoute(item.path));
+    }
+    return PRIMARY_ITEMS.filter(i => canAccessRoute(i.path));
+  }, [canAccessRoute, roleNames]);
   const visibleGroups = useMemo(
     () => orderGroupsForRoles(
       menuGroups

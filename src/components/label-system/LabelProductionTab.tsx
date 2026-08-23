@@ -14,6 +14,7 @@
  */
 /* eslint-disable @typescript-eslint/no-explicit-any -- joins JSONB/Supabase heterogêneos deste módulo legado */
 import { useState, useEffect, useMemo, useRef } from 'react';
+import { useViewport } from '@/hooks/use-mobile';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { Tag, MagnifyingGlass as Search, Barcode, Gear as Settings2, Package as BoxIcon, Package, ArrowCounterClockwise as RotateCcw, Factory, Scan as ScanLine, CalendarBlank as CalendarDays, Buildings as Building2, CircleNotch as Loader2, Stack as Layers, CheckCircle as CheckCircle2, PencilSimple as Pencil, CaretLeft, CaretRight, Plus, X } from '@phosphor-icons/react';
@@ -586,6 +587,7 @@ function PrintHistoryTable() {
 
 export function LabelProductionTab() {
   const queryClient = useQueryClient();
+  const { isPhone } = useViewport();
   const { data: allOrders = [] } = useQuery({
     queryKey: ['orders_for_labels_all'],
     queryFn: () => fetchAllLabelPages((from, to) => supabase
@@ -2331,7 +2333,7 @@ export function LabelProductionTab() {
                     </span>
                   </div>
                 )}
-                {selectionLabelTypes.thermal && (
+                {selectionLabelTypes.thermal && !isPhone && (
                   <div className="flex flex-col gap-1">
                     <Button
                       onClick={() => void handlePrintIndividual('zpl')}

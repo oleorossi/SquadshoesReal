@@ -1493,8 +1493,18 @@ a:focus-visible {
    viewports menores. gap-2.5 dá respiro visual. */
 .grid-kpi-fluid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: 1fr;
   gap: 0.625rem;
+}
+@media (min-width: 420px) {
+  .grid-kpi-fluid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+@media (min-width: 1280px) {
+  .grid-kpi-fluid {
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  }
 }
 
 /* Container constraint pra 4K / monitores muito largos.

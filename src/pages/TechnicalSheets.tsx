@@ -2117,7 +2117,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
         <TabsList indicator="none" aria-label="Etapas da ficha técnica" className="mt-3 flex h-auto flex-nowrap gap-1 overflow-x-auto rounded-lg border bg-muted/50 p-1.5 sm:flex-wrap sm:overflow-visible">
           {/* Cada tab agora mostra um indicador discreto de "completude" ou
               contagem (badge) pro usuário saber onde tem trabalho pendente. */}
-          <TabsTrigger value="id" className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md px-3 py-1.5">
+          <TabsTrigger value="id" className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md px-3 py-1.5 min-h-11">
             <Tag className="h-3.5 w-3.5" /> Identificação
             {form.name && form.code && form.shoe_category ? (
               <span className="ml-1 inline-flex items-center justify-center h-4 w-4 rounded-full bg-success/10 text-success text-xs font-bold">✓</span>
@@ -2125,7 +2125,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
               <span className="ml-1 inline-flex items-center justify-center h-4 w-4 rounded-full bg-warning/10 text-warning text-xs font-bold">!</span>
             )}
           </TabsTrigger>
-          <TabsTrigger value="engineering" className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md px-3 py-1.5">
+          <TabsTrigger value="engineering" className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md px-3 py-1.5 min-h-11">
             <Wrench className="h-3.5 w-3.5" /> Materiais & Consumo
             <Badge variant="outline" className="ml-1 h-4 px-1.5 text-xs font-mono">
               {sheetMaterials.length}
@@ -2134,14 +2134,14 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
           {/* Aba só existe quando o modelo TEM tiras (config de tiras + range P/M/G). */}
           {form.has_straps && (
             <>
-              <TabsTrigger value="range-aviamento" className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md px-3 py-1.5">
+              <TabsTrigger value="range-aviamento" className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md px-3 py-1.5 min-h-11">
                 <Paperclip className="h-3.5 w-3.5" /> Range Aviamento
               </TabsTrigger>
             </>
           )}
           {/* Aba "Escalonamento" movida pra menu lateral (/escalonamento) em 2026-06-28
               — virou calculadora independente (EscalonamentoCadPage). */}
-          <TabsTrigger value="production" className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md px-3 py-1.5">
+          <TabsTrigger value="production" className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md px-3 py-1.5 min-h-11">
             <Factory className="h-3.5 w-3.5" /> Produção
             {form.sole_group_id ? (
               <span className="ml-1 inline-flex items-center justify-center h-4 w-4 rounded-full bg-success/10 text-success text-xs font-bold">✓</span>
@@ -2149,7 +2149,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
               <span className="ml-1 inline-flex items-center justify-center h-4 w-4 rounded-full bg-muted text-muted-foreground text-xs font-bold">·</span>
             )}
           </TabsTrigger>
-          <TabsTrigger value="costs" className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md px-3 py-1.5">
+          <TabsTrigger value="costs" className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md px-3 py-1.5 min-h-11">
             <DollarSign className="h-3.5 w-3.5" /> Precificação
             {materialCost > 0 && (
               <span className="ml-1 text-xs font-mono text-muted-foreground">
@@ -2157,16 +2157,16 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
               </span>
             )}
           </TabsTrigger>
-          <TabsTrigger value="variants" className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md px-3 py-1.5">
+          <TabsTrigger value="variants" className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md px-3 py-1.5 min-h-11">
             <Palette className="h-3.5 w-3.5" /> Variantes
           </TabsTrigger>
-          <TabsTrigger value="ficha-corte" className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md px-3 py-1.5">
+          <TabsTrigger value="ficha-corte" className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md px-3 py-1.5 min-h-11">
             <Scissors className="h-3.5 w-3.5" /> Imprimir Ficha
           </TabsTrigger>
-          <TabsTrigger value="media" className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md px-3 py-1.5">
+          <TabsTrigger value="media" className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md px-3 py-1.5 min-h-11">
             <History className="h-3.5 w-3.5" /> Documentação
           </TabsTrigger>
-          <TabsTrigger value="terceirizados" className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md px-3 py-1.5">
+          <TabsTrigger value="terceirizados" className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md px-3 py-1.5 min-h-11">
             <Handshake className="h-3.5 w-3.5" /> Terceirizados
           </TabsTrigger>
         </TabsList>

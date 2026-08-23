@@ -1,7 +1,7 @@
 import * as React from "react";
 
-import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { Sheet, SheetContent } from "@/components/ui/sheet";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from "@/components/ui/sheet";
 import { shouldPresentAsSheet, useViewport } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 
@@ -55,7 +55,7 @@ export const AdaptiveDialogContent = React.forwardRef<
         ref={ref}
         side={side}
         data-adaptive="sheet"
-        className={cn("safe-bot", className)}
+        className={cn("safe-bot", side === "bottom" && "max-h-[92dvh]", className)}
         {...props}
       >
         {children}
@@ -68,3 +68,27 @@ export const AdaptiveDialogContent = React.forwardRef<
     </DialogContent>
   );
 });
+
+export function AdaptiveDialogHeader(props: React.HTMLAttributes<HTMLDivElement>) {
+  const asSheet = React.useContext(AdaptiveCtx);
+  return asSheet ? <SheetHeader {...props} /> : <DialogHeader {...props} />;
+}
+
+export function AdaptiveDialogTitle(props: React.ComponentPropsWithoutRef<typeof DialogTitle>) {
+  const asSheet = React.useContext(AdaptiveCtx);
+  return asSheet ? <SheetTitle {...props} /> : <DialogTitle {...props} />;
+}
+
+export function AdaptiveDialogDescription(props: React.ComponentPropsWithoutRef<typeof DialogDescription>) {
+  const asSheet = React.useContext(AdaptiveCtx);
+  return asSheet ? <SheetDescription {...props} /> : <DialogDescription {...props} />;
+}
+
+export function AdaptiveDialogFooter(props: React.HTMLAttributes<HTMLDivElement>) {
+  const asSheet = React.useContext(AdaptiveCtx);
+  return asSheet ? <SheetFooter {...props} /> : <DialogFooter {...props} />;
+}
+
+export function useAdaptiveSheet() {
+  return React.useContext(AdaptiveCtx);
+}

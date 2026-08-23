@@ -3,7 +3,13 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { NumberInput } from '@/components/ui/number-input';
 import { Label } from '@/components/ui/label';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  AdaptiveDialog,
+  AdaptiveDialogContent,
+  AdaptiveDialogHeader,
+  AdaptiveDialogTitle,
+} from '@/components/ui/adaptive-dialog';
+import { useIsCoarsePointer } from '@/hooks/use-mobile';
 import { ArrowRight, CheckCircle, SkipForward, Warning as AlertTriangle, UserCircle } from '@phosphor-icons/react';
 import { useApontarProducao, PointingWarning } from '@/hooks/useOrderStages';
 import { useCurrentProfile } from '@/hooks/useUserManagement';
@@ -40,6 +46,7 @@ export function BulkMoveDialog({
   onClose: () => void;
 }) {
   const { data: profile } = useCurrentProfile();
+  const isCoarse = useIsCoarsePointer();
   // Congela a seleção na abertura: cada apontamento invalida as queries e o
   // pai re-renderiza com cards novos — sem o snapshot o wizard trocaria de
   // passo/coluna no meio do preenchimento.
@@ -148,9 +155,9 @@ export function BulkMoveDialog({
   // Nada elegível: informa e sai (não abre wizard vazio)
   if (steps.length === 0) {
     return (
-      <Dialog open onOpenChange={v => { if (!v) onClose(); }}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader><DialogTitle className="text-base">Mover {frozen.length} OPs pra {target}</DialogTitle></DialogHeader>
+      <AdaptiveDialog open onOpenChange={v => { if (!v) onClose(); }}>
+        <AdaptiveDialogContent className="sm:max-w-md">
+          <AdaptiveDialogHeader><AdaptiveDialogTitle className="text-base">Mover {frozen.length} OPs pra {target}</AdaptiveDialogTitle></AdaptiveDialogHeader>
           <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-300 space-y-1">
             <p className="font-semibold flex items-center gap-1.5">
               <AlertTriangle className="h-4 w-4" /> Nenhuma das OPs selecionadas pode ir pra {target}.
@@ -166,23 +173,23 @@ export function BulkMoveDialog({
           <div className="flex justify-end pt-2 border-t">
             <Button className="h-11 md:h-10" onClick={onClose}>Fechar</Button>
           </div>
-        </DialogContent>
-      </Dialog>
+        </AdaptiveDialogContent>
+      </AdaptiveDialog>
     );
   }
 
   return (
     <>
-      <Dialog open onOpenChange={v => { if (!v) { if (finished) closeWithSummary(); else onClose(); } }}>
-        <DialogContent className="sm:max-w-md">
+      <AdaptiveDialog open onOpenChange={v => { if (!v) { if (finished) closeWithSummary(); else onClose(); } }}>
+        <AdaptiveDialogContent className="sm:max-w-md">
           {finished ? (
             /* ── Resumo do lote ── */
             <>
-              <DialogHeader>
-                <DialogTitle className="text-base flex items-center gap-2">
+              <AdaptiveDialogHeader>
+                <AdaptiveDialogTitle className="text-base flex items-center gap-2">
                   <CheckCircle className="h-5 w-5 text-green-600" weight="fill" /> Lote concluído
-                </DialogTitle>
-              </DialogHeader>
+                </AdaptiveDialogTitle>
+              </AdaptiveDialogHeader>
               <div className="space-y-3">
                 <div className="rounded-md border border-border bg-muted/30 p-3 font-mono text-sm space-y-1">
                   <p><strong className="text-base">{totalOk}</strong> OP{totalOk === 1 ? '' : 's'} movida{totalOk === 1 ? '' : 's'} pra <strong>{target}</strong></p>
@@ -206,11 +213,11 @@ export function BulkMoveDialog({
           ) : current && (
             /* ── Passo N: uma OP por vez ── */
             <>
-              <DialogHeader>
-                <DialogTitle className="text-base">
+              <AdaptiveDialogHeader>
+                <AdaptiveDialogTitle className="text-base">
                   Mover em lote — {idx + 1} de {steps.length}
-                </DialogTitle>
-              </DialogHeader>
+                </AdaptiveDialogTitle>
+              </AdaptiveDialogHeader>
               <div className="space-y-3">
                 {/* Progresso do lote */}
                 <div className="h-1.5 rounded-full bg-muted overflow-hidden" role="progressbar" aria-valuenow={idx} aria-valuemin={0} aria-valuemax={steps.length}>
@@ -263,7 +270,8 @@ export function BulkMoveDialog({
                   </Label>
                   <div className="flex items-center gap-2 mt-1">
                     <NumberInput
-                      autoFocus
+                      autoFocus={!isCoarse}
+                      inputMode="numeric"
                       min={0}
                       decimals={0}
                       value={qty}
@@ -314,8 +322,8 @@ export function BulkMoveDialog({
               </div>
             </>
           )}
-        </DialogContent>
-      </Dialog>
+        </AdaptiveDialogContent>
+      </AdaptiveDialog>
 
       {/* R6.3: avisos do servidor no passo atual — confirmar grava com autoria */}
       <ConfirmPointingWarnings

@@ -37,7 +37,14 @@ import { Input } from '@/components/ui/input';
 import { SearchInput } from '@/components/ui/search-input';
 import { SmartSearch, SmartSearchSuggestion } from '@/components/ui/smart-search';
 import { Label } from '@/components/ui/label';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import {
+  AdaptiveDialog,
+  AdaptiveDialogContent,
+  AdaptiveDialogHeader,
+  AdaptiveDialogTitle,
+  AdaptiveDialogDescription,
+  AdaptiveDialogFooter,
+} from '@/components/ui/adaptive-dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -2764,19 +2771,19 @@ export default function SaleOrders() {
       )}
 
       {/* Alterar Status em LOTE — select arbitrário do status alvo */}
-      <Dialog open={bulkStatusOpen} onOpenChange={setBulkStatusOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
+      <AdaptiveDialog open={bulkStatusOpen} onOpenChange={setBulkStatusOpen}>
+        <AdaptiveDialogContent className="max-w-md">
+          <AdaptiveDialogHeader>
+            <AdaptiveDialogTitle className="flex items-center gap-2">
               <ListChecks className="h-4 w-4" />
               Alterar status em lote
-            </DialogTitle>
-            <DialogDescription>
+            </AdaptiveDialogTitle>
+            <AdaptiveDialogDescription>
               {sel.count} pedido(s) selecionado(s) — escolha o status alvo.
               Cancelado/Rascunho não checam viabilidade; Aprovado/Em Produção
               alertam se houver datas inviáveis.
-            </DialogDescription>
-          </DialogHeader>
+            </AdaptiveDialogDescription>
+          </AdaptiveDialogHeader>
           <div className="space-y-2.5 pt-1">
             <Label className="text-xs uppercase tracking-wider text-muted-foreground font-bold">Status alvo</Label>
             <Select value={bulkStatusTarget} onValueChange={setBulkStatusTarget}>
@@ -2793,7 +2800,7 @@ export default function SaleOrders() {
               </SelectContent>
             </Select>
           </div>
-          <DialogFooter className="pt-3">
+          <AdaptiveDialogFooter className="pt-3">
             <Button variant="outline" onClick={() => setBulkStatusOpen(false)}>Cancelar</Button>
             <Button
               disabled={!bulkStatusTarget}
@@ -2805,9 +2812,9 @@ export default function SaleOrders() {
             >
               Aplicar para {sel.count} PV(s)
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </AdaptiveDialogFooter>
+        </AdaptiveDialogContent>
+      </AdaptiveDialog>
 
       {/* IMPORT CLIENTS DIALOG */}
       {importClientsOpen && (
@@ -2822,7 +2829,7 @@ export default function SaleOrders() {
           técnica) navegam para FORA de /sales logo em seguida, e mexer em
           searchParams durante essa transição é pedir aviso de setState em
           componente desmontado. Ali o param some junto com a rota. */}
-      <Dialog
+      <AdaptiveDialog
         open={detailDialogOpen}
         onOpenChange={(open) => {
           setDetailDialogOpen(open);
@@ -2835,8 +2842,8 @@ export default function SaleOrders() {
           }
         }}
       >
-        <DialogContent className="w-[96vw] max-w-[1440px] max-h-[94vh] gap-0 overflow-y-auto p-0">
-          <DialogHeader className="sticky top-0 z-30 space-y-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/90">
+        <AdaptiveDialogContent className="w-[96vw] max-w-[1440px] max-h-[94vh] gap-0 overflow-y-auto p-0">
+          <AdaptiveDialogHeader className="sticky top-0 z-30 space-y-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/90">
             <div className={cn(
               'border-b px-6 py-4 pr-12',
               STATUS_BAND[selectedOrder?.status || ''] || 'bg-muted/30'
@@ -2845,7 +2852,7 @@ export default function SaleOrders() {
               <div className="min-w-0">
                 <p className="eyebrow">Comercial · Pedido de Venda</p>
                 <div className="flex items-center gap-2.5 flex-wrap mt-1">
-                  <DialogTitle className="display text-3xl sm:text-4xl m-0 leading-none">{selectedOrder?.order_number || ''}</DialogTitle>
+                  <AdaptiveDialogTitle className="display text-3xl sm:text-4xl m-0 leading-none">{selectedOrder?.order_number || ''}</AdaptiveDialogTitle>
                   {selectedOrder && <Badge variant="outline" className={STATUS_COLORS[selectedOrder.status] || ''}><span className={`h-1.5 w-1.5 rounded-full mr-1.5 ${STATUS_DOT[selectedOrder.status]}`} />{selectedOrder.status}</Badge>}
                   <PvOutdatedBadge saleOrderId={selectedOrder?.id || null} />
                   {/* Badge "Picking individual realizado" — exclui o PV do Picking Semanal. */}
@@ -2878,14 +2885,14 @@ export default function SaleOrders() {
               )}
             </div>
             </div>
-            <DialogDescription className="sr-only">Detalhes, totais e ações do pedido {selectedOrder?.order_number || ''}</DialogDescription>
-          </DialogHeader>
+            <AdaptiveDialogDescription className="sr-only">Detalhes, totais e ações do pedido {selectedOrder?.order_number || ''}</AdaptiveDialogDescription>
+          </AdaptiveDialogHeader>
 
           {selectedOrder && (
             <div className="space-y-4 px-6 pb-6 pt-4">
               {/* Mesa de liberação do PV: as ações seguem a ordem de trabalho
                   (pedido → materiais/produção → documentos/terceiros). */}
-              <div className="grid overflow-hidden rounded-lg border bg-card lg:grid-cols-[0.72fr_1.55fr_0.9fr] [&_button]:h-8 [&_button]:px-2.5 [&_button]:text-xs [&_button]:gap-1.5">
+              <div className="grid overflow-hidden rounded-lg border bg-card lg:grid-cols-[0.72fr_1.55fr_0.9fr] [&_button]:min-h-11 [&_button]:h-11 sm:[&_button]:h-8 sm:[&_button]:min-h-8 [&_button]:px-2.5 [&_button]:text-xs [&_button]:gap-1.5">
                 <section className="border-b border-border p-2.5 lg:border-b-0 lg:border-r" aria-labelledby="pv-actions-order">
                   <p id="pv-actions-order" className="eyebrow mb-2"><span className="mr-1 font-mono text-primary">01</span> Pedido</p>
                   <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Ações do pedido">
@@ -3369,17 +3376,17 @@ export default function SaleOrders() {
               )}
             </div>
           )}
-        </DialogContent>
-      </Dialog>
+        </AdaptiveDialogContent>
+      </AdaptiveDialog>
 
       {/* NF-e cancel dialog */}
-      <Dialog open={!!cancelNfeTarget} onOpenChange={() => setCancelNfeTarget(null)}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-red-600">
+      <AdaptiveDialog open={!!cancelNfeTarget} onOpenChange={() => setCancelNfeTarget(null)}>
+        <AdaptiveDialogContent className="max-w-md">
+          <AdaptiveDialogHeader>
+            <AdaptiveDialogTitle className="flex items-center gap-2 text-red-600">
               <XCircle className="h-4 w-4" /> Cancelar NF-e {cancelNfeTarget?.numero}
-            </DialogTitle>
-          </DialogHeader>
+            </AdaptiveDialogTitle>
+          </AdaptiveDialogHeader>
           <div className="space-y-3 py-2">
             <p className="text-sm text-muted-foreground">A justificativa deve ter ao menos 15 caracteres e será enviada à SEFAZ.</p>
             <div>
@@ -3393,7 +3400,7 @@ export default function SaleOrders() {
               <p className="text-xs text-muted-foreground mt-1">{cancelJustificativa.length}/15 mínimo</p>
             </div>
           </div>
-          <DialogFooter>
+          <AdaptiveDialogFooter>
             <Button variant="outline" onClick={() => setCancelNfeTarget(null)}>Voltar</Button>
             <Button variant="destructive"
               disabled={cancelJustificativa.trim().length < 15 || cancelNfe.isPending}
@@ -3405,9 +3412,9 @@ export default function SaleOrders() {
               {cancelNfe.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <XCircle className="h-4 w-4 mr-2" />}
               Confirmar Cancelamento
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </AdaptiveDialogFooter>
+        </AdaptiveDialogContent>
+      </AdaptiveDialog>
 
       {/* NF-e devolução dialog */}
       {devolucaoTarget && selectedOrder && (
@@ -3451,9 +3458,9 @@ export default function SaleOrders() {
       )}
 
       {/* DUPLICATE DIALOG */}
-      <Dialog open={dupDialog} onOpenChange={setDupDialog}>
-        <DialogContent className="sm:max-w-2xl">
-          <DialogHeader><DialogTitle>Duplicar por Grupo Econômico</DialogTitle></DialogHeader>
+      <AdaptiveDialog open={dupDialog} onOpenChange={setDupDialog}>
+        <AdaptiveDialogContent className="sm:max-w-2xl">
+          <AdaptiveDialogHeader><AdaptiveDialogTitle>Duplicar por Grupo Econômico</AdaptiveDialogTitle></AdaptiveDialogHeader>
           {/* Audit visual: aviso explícito sobre impacto de estoque/reservas.
               Usuário não esperava que duplicar PV gerasse N reservas novas. */}
           <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-3 mt-2 flex items-start gap-2">
@@ -3578,8 +3585,8 @@ export default function SaleOrders() {
               </Button>
             </div>
           </div>
-        </DialogContent>
-      </Dialog>
+        </AdaptiveDialogContent>
+      </AdaptiveDialog>
 
       {/* Confirmação estruturada genérica (substitui confirm() nativo) */}
       <AlertDialog open={pendingConfirm !== null} onOpenChange={(o) => { if (!o) setPendingConfirm(null); }}>

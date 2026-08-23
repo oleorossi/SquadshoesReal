@@ -3,16 +3,23 @@ import { Button } from '@/components/ui/button';
 import { NumberInput } from '@/components/ui/number-input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  AdaptiveDialog,
+  AdaptiveDialogContent,
+  AdaptiveDialogHeader,
+  AdaptiveDialogTitle,
+} from '@/components/ui/adaptive-dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Info, UserCircle, ClockCounterClockwise } from '@phosphor-icons/react';
 import { useApontarProducao, PointingWarning } from '@/hooks/useOrderStages';
 import { useOrderPointings } from '@/hooks/useOrderPointings';
 import { useCurrentProfile } from '@/hooks/useUserManagement';
+import { useIsCoarsePointer, useViewport } from '@/hooks/use-mobile';
 import ConfirmPointingWarnings from '@/components/production/ConfirmPointingWarnings';
 import { toast } from 'sonner';
 import { thumbUrl } from '@/lib/imageThumb';
+import { haptic } from '@/lib/haptic';
 import { norm, fmtDate, KanbanCardData } from './kanbanDerive';
 import { buildPointingPlan, moveOptions, applyPointing, skipBlockedByPartial } from './pointingPlan';
 
@@ -46,6 +53,9 @@ export function DropApontarDialog({
   const { data: profile } = useCurrentProfile();
   const { data: pointings = [], isLoading: pointingsLoading } = useOrderPointings(q.order_id);
   const referencePhoto = thumbUrl(photoUrl || q.reference_photo_url, 112);
+  const { isPhone } = useViewport();
+  const isCoarse = useIsCoarsePointer();
+  const [floorStep, setFloorStep] = useState(0);
 
   // Modo detalhe (target=null): o usuário pode escolher um destino no select —
   // vale como se tivesse arrastado o card até lá.
@@ -111,14 +121,14 @@ export function DropApontarDialog({
 
   if (!pointedStage) {
     return (
-      <Dialog open onOpenChange={v => { if (!v) onClose(); }}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader><DialogTitle>{q.order_number}</DialogTitle></DialogHeader>
+      <AdaptiveDialog open onOpenChange={v => { if (!v) onClose(); }}>
+        <AdaptiveDialogContent className="sm:max-w-md">
+          <AdaptiveDialogHeader><AdaptiveDialogTitle>{q.order_number}</AdaptiveDialogTitle></AdaptiveDialogHeader>
           <p className="text-sm text-muted-foreground">
             {plan.unavailableReason ?? 'Nenhum setor pendente pra apontar nesta OP.'}
           </p>
-        </DialogContent>
-      </Dialog>
+        </AdaptiveDialogContent>
+      </AdaptiveDialog>
     );
   }
 
@@ -139,6 +149,7 @@ export function DropApontarDialog({
       }
       if (res.status === 'ok') {
         const gravado = res.quantity;
+        haptic(20);
         toast.success(
           isBackward
             ? `Estornado ${Math.abs(gravado)} pares de ${pointedStage.stage_name}.`
@@ -181,13 +192,13 @@ export function DropApontarDialog({
 
   return (
     <>
-      <Dialog open onOpenChange={v => { if (!v) onClose(); }}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="text-base">
+      <AdaptiveDialog open onOpenChange={v => { if (!v) onClose(); }}>
+        <AdaptiveDialogContent className="sm:max-w-md">
+          <AdaptiveDialogHeader>
+            <AdaptiveDialogTitle className="text-base">
               {isBackward ? 'Estornar produção' : `Apontar ${pointedStage.stage_name}`} — {q.order_number}
-            </DialogTitle>
-          </DialogHeader>
+            </AdaptiveDialogTitle>
+          </AdaptiveDialogHeader>
           <div className="space-y-3">
             {/* Identidade da referência: a foto GRANDE é o que confirma, num
                 relance, que a OP arrastada é mesmo a que se quer apontar —
@@ -298,13 +309,23 @@ export function DropApontarDialog({
               </div>
             )}
 
+            {isPhone && floorStep === 0 && (
+              <div className="flex justify-end gap-2 pt-2 border-t">
+                <Button variant="outline" className="h-11" onClick={onClose}>Cancelar</Button>
+                <Button className="h-11" onClick={() => setFloorStep(1)}>Continuar</Button>
+              </div>
+            )}
+
+            {(!isPhone || floorStep === 1) && (
+            <>
             <div>
               <Label className="text-xs">
                 {isBackward ? 'Pares a estornar' : 'Quantidade executada (pares)'}
               </Label>
               <div className="flex items-center gap-2 mt-1">
                 <NumberInput
-                  autoFocus
+                  autoFocus={!isCoarse}
+                  inputMode="numeric"
                   min={0}
                   decimals={0}
                   value={qty}
@@ -433,6 +454,9 @@ export function DropApontarDialog({
             </div>
 
             <div className="flex justify-end gap-2 pt-2 border-t">
+              {isPhone && (
+                <Button variant="outline" className="h-11 md:h-10" onClick={() => setFloorStep(0)}>Voltar</Button>
+              )}
               <Button variant="outline" className="h-11 md:h-10" onClick={onClose}>Cancelar</Button>
               <Button
                 className="h-11 md:h-10"
@@ -442,9 +466,11 @@ export function DropApontarDialog({
                 {isBackward ? 'Estornar' : 'Apontar'}
               </Button>
             </div>
+            </>
+            )}
           </div>
-        </DialogContent>
-      </Dialog>
+        </AdaptiveDialogContent>
+      </AdaptiveDialog>
 
       {/* R6.3: avisos do servidor — confirmar grava com autoria */}
       <ConfirmPointingWarnings

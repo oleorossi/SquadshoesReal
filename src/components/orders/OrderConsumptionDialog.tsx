@@ -1,6 +1,11 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { escapeHtml } from '@/lib/htmlUtils';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  AdaptiveDialog,
+  AdaptiveDialogContent,
+  AdaptiveDialogHeader,
+  AdaptiveDialogTitle,
+} from '@/components/ui/adaptive-dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -219,14 +224,14 @@ export default function OrderConsumptionDialog({ open, onOpenChange, orderIds, t
   }, [sortedRows, totalsByUnit, title, orderIds.length, rows.length]);
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-5xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
+    <AdaptiveDialog open={open} onOpenChange={onOpenChange}>
+      <AdaptiveDialogContent className="sm:max-w-5xl max-h-[90vh] overflow-y-auto">
+        <AdaptiveDialogHeader>
+          <AdaptiveDialogTitle className="flex items-center gap-2">
             <Package className="h-5 w-5 text-primary" />
             Consumo — {title}
-          </DialogTitle>
-        </DialogHeader>
+          </AdaptiveDialogTitle>
+        </AdaptiveDialogHeader>
 
         {loading ? (
           <div className="flex items-center justify-center py-12">
@@ -308,7 +313,7 @@ export default function OrderConsumptionDialog({ open, onOpenChange, orderIds, t
             ))}
           </div>
         )}
-      </DialogContent>
-    </Dialog>
+      </AdaptiveDialogContent>
+    </AdaptiveDialog>
   );
 }

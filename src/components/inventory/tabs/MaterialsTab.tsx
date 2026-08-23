@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { ProductTable } from '@/components/inventory/ProductTable';
 import { TableViewProvider, useTableView, ALL_COLUMNS } from '@/components/inventory/TableViewContext';
+import { useViewport } from '@/hooks/use-mobile';
 import { ProductFormDialog } from '@/components/inventory/ProductFormDialog';
 import { useCan } from '@/hooks/useAccessControl';
 import { QuickFamilyDialog } from '@/components/inventory/QuickFamilyDialog';
@@ -59,7 +60,16 @@ export function MaterialsTab(props: { defaultGroupName?: string, title?: string 
 }
 
 function ViewControls() {
-  const { density, setDensity, isVisible, toggleColumn, resetColumns, visibleCount } = useTableView();
+  const { density, setDensity, isVisible, toggleColumn, resetColumns, visibleCount, applyEssentialColumns } = useTableView();
+  const { isPhone, isTablet } = useViewport();
+  useEffect(() => {
+    if (!(isPhone || isTablet)) return;
+    try {
+      if (window.localStorage.getItem('inventory.touchColumns') === '1') return;
+      applyEssentialColumns();
+      window.localStorage.setItem('inventory.touchColumns', '1');
+    } catch { /* noop */ }
+  }, [isPhone, isTablet, applyEssentialColumns]);
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
