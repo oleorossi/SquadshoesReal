@@ -1,0 +1,127 @@
+--- a/supabase/functions/emit-nfe/index.ts
++++ b/supabase/functions/emit-nfe/index.ts
+@@ -322,7 +322,7 @@
+   if (qty === undefined) return {};
+   const arrItem = {
+     quantidade: qty,
+-    especie: "Volumes",
++    especie: "VOLUMES",
+     marca: "",
+     ...(pesoBrutoStr ? { peso_bruto: pesoBrutoStr } : {}),
+     ...(pesoLiquidoStr ? { peso_liquido: pesoLiquidoStr } : {}),
+@@ -859,11 +859,14 @@
+           ? variant?.sku
+           : (ts?.code || prod?.sku || prod?.code)
+       ) || "").trim();
+-      // Unidade comercial na NF. Pedido do dono em 01/06/2026, validando contra
+-      // a NF #248 revisada pela contabilidade (o DANFE de referência sai com
+-      // "UN", não "PAR"): forçar "UN". Vale também p/ NF avulsa de standalone
+-      // (antes puxava products.unit que podia vir "kg"/etc).
+-      const unidade = "UN";
++      // Unidade comercial na NF. Padrão vivo = DANFE #293 (painel ClickNotas,
++      // 22/08/2026, PV-001621): o quadro de itens sai com UN = PAR.
++      // A API ignora `unidade` no item e herda do cadastro do produto — por
++      // isso o POST /produtos e o PUT de produto já existente também vão PAR.
++      // NF avulsa (sem ficha) preserva a unidade do produto, default UN.
++      const unidade = (!isStandalone || hasMaterialVariant || ts) ? "PAR" : (
++        String(prod?.unit || "UN").trim().toUpperCase().slice(0, 6) || "UN"
++      );
+ 
+       // Marca deste item: silk do solado (cascata) ou 'Squad Shoes'.
+       const itemBrand = await resolveItemBrand(it.reference_id, itemColor);
+@@ -969,7 +972,7 @@
+                 const productPayload: Record<string, unknown> = {
+                   nome: technicalName,
+                   valor_venda: price.toFixed(2),
+-                  unidade: "UN",
++                  unidade,
+                   ncm,
+                   tipo: "P",
+                   marca: itemBrand,
+@@ -1056,6 +1059,21 @@
+         }
+       }
+ 
++      // Produto já existente no GC pode ter nascido com UN (cadastro até 23/08).
++      // A unidade do DANFE vem do cadastro, não da linha — força PAR no PUT.
++      if (gcProductId && !isDryRun && unidade === "PAR") {
++        const upd = await gcFetch(`/produtos/${gcProductId}`, {
++          method: "PUT",
++          body: JSON.stringify({ unidade: "PAR" }),
++        });
++        if (!upd.ok || upd.json?.status === "error") {
++          console.warn(
++            `[emit-nfe] PUT unidade PAR falhou produto ${gcProductId}:`,
++            upd.json?.data?.mensagem || upd.json?.message || upd.status,
++          );
++        }
++      }
++
+       const qty = Number(it.quantity) || 0;
+       produtosGC.push({
+         produto_id: gcProductId,
+@@ -1307,16 +1325,28 @@
+     const ocPart = order.client_order_number
+       ? `OC do Cliente: ${String(order.client_order_number).trim()}`
+       : null;
+-    const livrePart = order.informacoes_complementares_nf
+-      ? String(order.informacoes_complementares_nf).trim()
+-      : null;
++    const stripAvisoSimples = (raw: string | null): string | null => {
++      if (!raw) return null;
++      const cleaned = raw
++        .replace(/I\s*[-–]\s*DOCUMENTO EMITIDO POR ME OU EPP OPTANTE PELO SIMPLES NACIONAL\.?/gi, "")
++        .replace(/II\s*[-–]\s*N[AÃ]O GERA DIREITO A CR[EÉ]DITO FISCAL DE IPI\.?/gi, "")
++        .replace(/DOCUMENTO EMITIDO POR ME OU EPP OPTANTE PELO SIMPLES NACIONAL\.?/gi, "")
++        .replace(/[ \t]*\r?\n[ \t]*/g, "\n")
++        .replace(/\n{2,}/g, "\n")
++        .replace(/^[ ·\n\r]+|[ ·\n\r]+$/g, "")
++        .trim();
++      return cleaned || null;
++    };
++    const livrePart = stripAvisoSimples(
++      order.informacoes_complementares_nf
++        ? String(order.informacoes_complementares_nf).trim()
++        : null,
++    );
+     // Simples Nacional (companies.regime_tributario = '1'): o aviso da
+-    // LC 123/2006 é OBRIGATÓRIO no campo de informações complementares.
+-    // O ClickNotas injeta esse texto quando NÃO mandamos o campo — mas quando
+-    // mandamos, ele SUBSTITUI: a NF #278 saiu só com "OC do Cliente: 300102" e
+-    // perdeu o aviso legal (auditoria 31/07/2026). E o comportamento sem o
+-    // campo não é determinístico (#256 veio com o texto, #255 veio vazio).
+-    // Então prefixamos nós mesmos, com o texto exato que o painel usa.
++    // LC 123/2006 é OBRIGATÓRIO. Mandar o campo SUBSTITUI o texto do painel
++    // (#278 perdeu o aviso). Mandar E deixar o mesmo texto no campo livre
++    // duplica — a NF #293 do painel saiu com o bloco duas vezes. Prefixamos
++    // UMA vez e limpamos qualquer cópia que venha do PV.
+     const avisoSimplesNacional = String(fiscal.regime_tributario ?? "") === "1"
+       ? "I - DOCUMENTO EMITIDO POR ME OU EPP OPTANTE PELO SIMPLES NACIONAL.\r\n"
+         + "II - NAO GERA DIREITO A CREDITO FISCAL DE IPI."
+@@ -1450,7 +1480,7 @@
+     // marca comercial aqui era semanticamente errado (a marca do produto já
+     // vai em <prod><xMarca> por item = silk do solado).
+     const volumesObj: Record<string, string | number> = {
+-      especie: "Volumes",
++      especie: "VOLUMES",
+       marca: "",
+     };
+     // qVol é INTEIRO no XML SEFAZ — envia como number, não string. Esta é a
+@@ -1534,7 +1564,7 @@
+       // Peso/volumes top-level (Webmania-style fallback).
+       ...(pesoBrutoStr ? { peso_bruto: pesoBrutoStr } : {}),
+       ...(pesoLiquidoStr ? { peso_liquido: pesoLiquidoStr } : {}),
+-      especie_volumes: "Volumes",
++      especie_volumes: "VOLUMES",
+       // Quantidade de volumes: montada por buildVolumeCountFields, controlada pelo
+       // PONTO ÚNICO DE AJUSTE `NFE_VOLUME_FIELD` (topo do arquivo). Hoje em SHOTGUN
+       // (ClickNotas ignora os campos atuais); quando o suporte confirmar o nome,
+@@ -1659,7 +1689,7 @@
+             // true = o nº de volumes veio do default de 12 pares/caixa, não de
+             // cadastro (nenhum box_type do tipo do modo existe).
+             volumes_estimado_cego: !!volumesWarning,
+-            especie: 'VOLUME',
++            especie: 'VOLUMES',
+             marca: '',
+             peso_bruto_kg: pesoBrutoStr || null,
+             peso_liquido_kg: pesoLiquidoStr || null,
