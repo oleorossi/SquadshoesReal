@@ -26,3 +26,32 @@ export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABL
     timeout: 30_000,
   },
 });
+
+// Onda B (faturamento): useSaleOrders ainda chama convert_reservation_to_out
+// cru. Interceptar aqui aplica o guard da ficha em TODO call-site sem tocar
+// no hook de 2.5k linhas. Sem ficha a baixa não roda; o PV segue.
+// Dynamic import evita ciclo com fichaDebitGuard (que importa este client).
+const rawRpc = supabase.rpc.bind(supabase);
+(supabase as unknown as { rpc: typeof supabase.rpc }).rpc = (async (
+  fn: string,
+  args?: Record<string, unknown>,
+  opts?: unknown,
+) => {
+  if (fn === 'convert_reservation_to_out') {
+    const orderId = typeof args?.p_order_id === 'string' ? args.p_order_id : '';
+    if (orderId) {
+      const { guardDebitForOrder } = await import('@/lib/fichaDebitGuard');
+      const guard = await guardDebitForOrder(orderId);
+      if (!guard.allowed) {
+        const { toast } = await import('sonner');
+        toast.warning(
+          `Baixa no faturamento não rodou: ${guard.reason || 'ficha técnica ausente'}. ` +
+            'O PV segue; acerte a ficha antes de debitar.',
+          { duration: 10000 },
+        );
+        return { data: { blocked_no_sheet: true }, error: null };
+      }
+    }
+  }
+  return rawRpc(fn as never, args as never, opts as never);
+}) as typeof supabase.rpc;
