@@ -32,7 +32,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { stripColorFromName } from '@/lib/utils';
 import { BulkApplyPreview, buildBulkImpact, type BulkImpact } from './BulkApplyPreview';
 
- import { Plus, PencilSimple as Pencil, FloppyDisk as Save, CircleNotch as Loader2, X, Image as ImageIcon, Package, Stack as Layers, Gear as SettingsIcon, ArrowsLeftRight as ArrowRightLeft } from '@phosphor-icons/react';
+ import { Plus, PencilSimple as Pencil, FloppyDisk as Save, CircleNotch as Loader2, X, Image as ImageIcon, Package, Gear as SettingsIcon, ArrowsLeftRight as ArrowRightLeft } from '@phosphor-icons/react';
 import { Product, ProductFormData, UNITS, LOCATIONS } from '@/types/inventory';
 import { useAddProduct, useProducts } from '@/hooks/useProducts';
 import { findDuplicate, type DuplicateHit } from '@/lib/duplicateDetection';
@@ -470,17 +470,11 @@ function BulkLabel({ field, divergence, children }: {
   );
 }
 
-export function MasterVariantDialog({
-  open,
-  onOpenChange,
-  baseName,
-  variants,
-  onEditVariant: _onEditVariant, // legacy escape-hatch (full ProductFormDialog)
-  onDeleteVariant,
-  initialTab = 'variants',
-}: MasterVariantDialogProps) {
-  const [activeTab, setActiveTab] = useState<'variants' | 'group' | 'add'>(initialTab);
-  const [selectedBulkIds, setSelectedBulkIds] = useState<Set<string>>(new Set());
+/** Helper compartilhado: NaN/null/undefined → fallback (0 por default). Usado
+ *  nos onChange dos inputs numéricos pra evitar que o state segure NaN, e no
+ *  payload de save pra blindar valores que escaparam. */
+const safeNum = (v: unknown, fallback = 0): number =>
+  Number.isFinite(Number(v)) ? Number(v) : fallback;
 
 /** Mensagem legível de um erro de origem desconhecida. O `catch (err: any)` que
  *  o repo usa em outros arquivos é erro no gate de lint das linhas novas — e
@@ -568,6 +562,11 @@ export function VariantListPanel({
   // Lista COMPLETA — nunca `variants`, que pode vir filtrada pelo chip de
   // zeradas da lista: comparar contra ela deixaria recadastrar cor escondida.
   const { data: todosOsProdutos = [] } = useProducts();
+  const { data: groups = [] } = useGroups();
+  const groupOfVariants = useMemo(
+    () => groups.find((g: { id: string }) => g.id === variants[0]?.group_id) ?? null,
+    [groups, variants],
+  );
   const [dupAddVariant, setDupAddVariant] = useState<DuplicateHit | null>(null);
   const [dupAddConfirmado, setDupAddConfirmado] = useState(false);
   const [dupColorInline, setDupColorInline] = useState<DuplicateHit | null>(null);
@@ -575,137 +574,13 @@ export function VariantListPanel({
 
   const isSolado = useMemo(() => variants.some(v => v.category === 'Solado'), [variants]);
   const template = variants[0];
-
-  // Form da edição em massa. `null` num campo = "não preencher" — é assim que
-  // campo divergente nasce, e campo não preenchido nunca entra no payload.
-  type GroupForm = {
-    technical_name: string | null;
-    group_id: string | null;
-    supplier_id: string | null;
-    yield_per_meter: number | null;
-    yield_unit: string | null;
-    purchase_unit: string | null;
-    production_unit: string | null;
-    conversion_rate: number | null;
-    purchase_order_unit: string | null;
-    lead_time_days: number | null;
-    unit_price: number | null;
-    price_wholesale: number | null;
-    price_retail: number | null;
-    min_stock: number | null;
-    max_stock: number | null;
-    safety_stock: number | null;
-    location: string | null;
-    active: boolean | null;
-    min_order_quantity: number | null;
-  };
-  const [groupForm, setGroupForm] = useState<GroupForm | null>(null);
-  /**
-   * Sentinela de LIMPAR. `null` no form significa "não preencher" e é descartado
-   * do payload — o que tornava impossível escolher "Sem grupo"/"Sem fornecedor":
-   * a escolha virava null, era filtrada fora, e o Select voltava sozinho pro
-   * placeholder. Com o sentinela, limpar é uma intenção explícita que sobrevive
-   * até virar `null` no payload.
-   */
-  /** Só o que o usuário mexeu é gravado (R2.6). */
-  const [dirty, setDirty] = useState<Set<BulkField>>(new Set());
-  const [savingGroup, setSavingGroup] = useState(false);
-  const [confirmUnitOpen, setConfirmUnitOpen] = useState(false);
-  const [previewOpen, setPreviewOpen] = useState(false);
-
-  const divergence = useMemo(() => computeDivergence(variants), [variants]);
-  const bulkVariants = useMemo(
-    () => variants.filter((variant) => selectedBulkIds.has(variant.id)),
-    [selectedBulkIds, variants],
-  );
-  const bulkStockUnits = useMemo(
-    () => Array.from(new Set(bulkVariants.map((variant) => variant.unit).filter(Boolean))),
-    [bulkVariants],
-  );
-  const singleBulkStockUnit = bulkStockUnits.length === 1 ? bulkStockUnits[0] : '';
-  const bulkUnitLabel = singleBulkStockUnit || (bulkVariants.length > 0 ? 'unidades mistas' : 'un');
-  const [openGroupEditor, setOpenGroupEditor] = useState(false);
-  const groupOfVariants = useMemo(
-    () => groups.find((g: any) => g.id === variants[0]?.group_id) ?? null,
-    [groups, variants],
-  );
-
-  /** Invariante do CLAUDE.md: `purchase_unit == unit` ⇒ `conversion_rate = 1`.
-   *  Com o fator travado, o campo não aceita o 0 que zeraria consumo (R2.13). */
-  const conversionTravada = useMemo(() => {
-    const compra = groupForm?.purchase_unit ?? variants[0]?.purchase_unit ?? '';
-    return !!compra && !!singleBulkStockUnit && compra === singleBulkStockUnit;
-  }, [groupForm?.purchase_unit, singleBulkStockUnit, variants]);
+  const variantsKey = variantsSignature(variants);
 
   useEffect(() => {
     setActiveGradeTab(variants[0]?.id ?? '');
     setRangeChanges({});
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conversionTravada]);
-
-  // Helper compartilhado: NaN/null/undefined → fallback (0 por default).
-  // Usado nos onChange dos inputs numéricos pra evitar que o state segure
-  // NaN, e no payload de save pra blindar valores que escaparam.
-  const safeNum = (v: any, fallback = 0): number =>
-    Number.isFinite(Number(v)) ? Number(v) : fallback;
-
-  useEffect(() => {
-    if (open && variants.length > 0) {
-      setActiveGradeTab(variants[0].id);
-      setRangeChanges({});
-      setActiveTab(initialTab);
-      setSelectedBulkIds(new Set(variants.map((variant) => variant.id)));
-      setDirty(new Set());
-      const t = variants[0];
-      const div = computeDivergence(variants);
-      // Campo homogêneo nasce com o valor comum (R2.7); divergente nasce vazio
-      // (R2.6), pra que salvar não achate o valor próprio de cada cor.
-      const comum = <T,>(f: BulkField, valor: T): T | null => (div[f].divergente ? null : valor);
-      setGroupForm({
-        technical_name: comum('technical_name', t.technical_name || ''),
-        group_id: comum('group_id', t.group_id || null),
-        supplier_id: comum('supplier_id', t.supplier_id || null),
-        yield_per_meter: comum('yield_per_meter', Number(t.yield_per_meter) || 0),
-        yield_unit: comum('yield_unit', t.yield_unit || 'dm²'),
-        purchase_unit: comum('purchase_unit', t.purchase_unit || 'un'),
-        production_unit: comum('production_unit', t.production_unit || 'un'),
-        conversion_rate: comum('conversion_rate', Number(t.conversion_rate) || 1),
-        purchase_order_unit: comum('purchase_order_unit', t.purchase_order_unit || 'un'),
-        lead_time_days: comum('lead_time_days', Number(t.lead_time_days) || 0),
-        unit_price: comum('unit_price', Number(t.unit_price) || 0),
-        price_wholesale: comum('price_wholesale', Number(t.price_wholesale) || 0),
-        price_retail: comum('price_retail', Number(t.price_retail) || 0),
-        min_stock: comum('min_stock', Number(t.min_stock) || 0),
-        max_stock: comum('max_stock', Number(t.max_stock) || 0),
-        safety_stock: comum('safety_stock', Number(t.safety_stock) || 0),
-        location: comum('location', t.location || ''),
-        active: comum('active', t.active ?? true),
-        min_order_quantity: comum('min_order_quantity', Number(t.min_order_quantity) || 0),
-      });
-    }
-  }, [open, variants, initialTab]);
-
-  const updateGroup = <K extends keyof GroupForm>(k: K, v: GroupForm[K]) => {
-    setGroupForm(prev => (prev ? { ...prev, [k]: v } : prev));
-    setDirty(prev => new Set(prev).add(k as BulkField));
-  };
-
-  /** Campos que o usuário mexeu e que vão pro payload. */
-  const camposAlterados = useMemo<BulkField[]>(() => {
-    if (!groupForm) return [];
-    return BULK_FIELDS.filter(f => dirty.has(f) && (groupForm as any)[f] != null);
-  }, [groupForm, dirty]);
-
-  /** Quantas cores perdem valor PRÓPRIO em cada campo alterado — é o que a
-   *  prévia mostra antes de gravar (R2.8). */
-  const impacto = useMemo<BulkImpact[]>(() => {
-    if (!groupForm) return [];
-    const diff = Object.fromEntries(camposAlterados.map(f => [f, (groupForm as any)[f]]));
-    return buildBulkImpact(diff, BULK_LABELS, bulkVariants, (v, campo) => (v as any)[campo], v => v.color || v.sku);
-  }, [bulkVariants, camposAlterados, groupForm]);
-
-  const formatCurrency = (value: number) =>
-    new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 4 }).format(value);
+  }, [variantsKey]);
 
   const handleAddVariant = async () => {
     if (!template) { toast.error('O grupo ainda não tem um item-modelo para copiar'); return; }
@@ -741,6 +616,8 @@ export function VariantListPanel({
       image_url: '',
       yield_per_meter: template.yield_per_meter ?? null,
       yield_unit: template.yield_unit || 'dm²',
+      // Dimensão é do GRUPO (a largura que converte dm²→metro mora lá); o
+      // item-modelo só entra como último recurso.
       dimensions_length: groupOfVariants?.dimensions_length ?? template.dimensions_length ?? 0,
       dimensions_width: groupOfVariants?.dimensions_width ?? template.dimensions_width ?? 0,
       dimensions_height: template.dimensions_height ?? 0,
@@ -1043,8 +920,17 @@ export function VariantListPanel({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <Label htmlFor="new-color" className="text-xs">Cor *</Label>
-              <Input id="new-color" value={newColor} onChange={e => { setNewColor(e.target.value); setDupAddConfirmado(false); setDupAddVariant(null); }}
-                placeholder="Ex: Preto, Caramelo" className="mt-1 h-9" />
+              <ColorsMultiSelect
+                value={newColor}
+                onChange={(value) => {
+                  const selected = value.split(',').map((color) => color.trim()).filter(Boolean);
+                  setNewColor(selected[selected.length - 1] || '');
+                  setDupAddConfirmado(false);
+                  setDupAddVariant(null);
+                }}
+                excluded={variants.map((variant) => variant.color || '')}
+                placeholder="Buscar cor no catálogo…"
+              />
             </div>
             <div>
               <Label htmlFor="new-sku" className="text-xs">SKU *</Label>
@@ -1113,7 +999,6 @@ export function VariantBulkEditPanel({ variants, onCancel, onOpenGroupSpecs }: V
   // campo divergente nasce, e campo não preenchido nunca entra no payload.
   type GroupForm = {
     technical_name: string | null;
-    category: string | null;
     group_id: string | null;
     supplier_id: string | null;
     yield_per_meter: number | null;
@@ -1150,13 +1035,35 @@ export function VariantBulkEditPanel({ variants, onCancel, onOpenGroupSpecs }: V
   const divergence = useMemo(() => computeDivergence(variants), [variants]);
   const variantsKey = variantsSignature(variants);
 
+  /** Quem recebe a alteração. Nasce com TODAS marcadas — o default continua
+   *  sendo "aplicar ao grupo inteiro" —, mas dá para aplicar a um subconjunto
+   *  sem ter que abrir cor por cor. */
+  const [selectedBulkIds, setSelectedBulkIds] = useState<Set<string>>(new Set());
+  const bulkVariants = useMemo(
+    () => variants.filter((variant) => selectedBulkIds.has(variant.id)),
+    [selectedBulkIds, variants],
+  );
+  /** A unidade de ESTOQUE da seleção. Grupo com unidades mistas (COMPONENTES
+   *  DIVERSOS tem cm e un) não pode ter compra/conversão editadas de uma vez. */
+  const bulkStockUnits = useMemo(
+    () => Array.from(new Set(bulkVariants.map((variant) => variant.unit).filter(Boolean))),
+    [bulkVariants],
+  );
+  const singleBulkStockUnit = bulkStockUnits.length === 1 ? bulkStockUnits[0] : '';
+  const bulkUnitLabel = singleBulkStockUnit || (bulkVariants.length > 0 ? 'unidades mistas' : 'un');
+  const groupOfVariants = useMemo(
+    () => groups.find((g: { id: string }) => g.id === variants[0]?.group_id) ?? null,
+    [groups, variants],
+  );
+
   /** Invariante do CLAUDE.md: `purchase_unit == unit` ⇒ `conversion_rate = 1`.
-   *  Com o fator travado, o campo não aceita o 0 que zeraria consumo (R2.13). */
+   *  Com o fator travado, o campo não aceita o 0 que zeraria consumo (R2.13).
+   *  Ancorado na unidade da SELEÇÃO — com unidades mistas não há invariante
+   *  única a travar. */
   const conversionTravada = useMemo(() => {
     const compra = groupForm?.purchase_unit ?? variants[0]?.purchase_unit ?? '';
-    const estoque = variants[0]?.unit ?? '';
-    return !!compra && compra === estoque;
-  }, [groupForm?.purchase_unit, variants]);
+    return !!compra && !!singleBulkStockUnit && compra === singleBulkStockUnit;
+  }, [groupForm?.purchase_unit, singleBulkStockUnit, variants]);
 
   const updateGroup = <K extends keyof GroupForm>(k: K, v: GroupForm[K]) => {
     setGroupForm(prev => (prev ? { ...prev, [k]: v } : prev));
@@ -1172,6 +1079,7 @@ export function VariantBulkEditPanel({ variants, onCancel, onOpenGroupSpecs }: V
 
   useEffect(() => {
     if (variants.length === 0) { setGroupForm(null); return; }
+    setSelectedBulkIds(new Set(variants.map((variant) => variant.id)));
     setDirty(new Set());
     const t = variants[0];
     const div = computeDivergence(variants);
@@ -1180,7 +1088,6 @@ export function VariantBulkEditPanel({ variants, onCancel, onOpenGroupSpecs }: V
     const comum = <T,>(f: BulkField, valor: T): T | null => (div[f].divergente ? null : valor);
     setGroupForm({
       technical_name: comum('technical_name', t.technical_name || ''),
-      category: comum('category', t.category || ''),
       group_id: comum('group_id', t.group_id || null),
       supplier_id: comum('supplier_id', t.supplier_id || null),
       yield_per_meter: comum('yield_per_meter', Number(t.yield_per_meter) || 0),
@@ -1216,8 +1123,8 @@ export function VariantBulkEditPanel({ variants, onCancel, onOpenGroupSpecs }: V
   const impacto = useMemo<BulkImpact[]>(() => {
     if (!groupForm) return [];
     const diff = Object.fromEntries(camposAlterados.map(f => [f, (groupForm as any)[f]]));
-    return buildBulkImpact(diff, BULK_LABELS, variants, (v, campo) => (v as any)[campo], v => v.color || v.sku);
-  }, [camposAlterados, groupForm, variants]);
+    return buildBulkImpact(diff, BULK_LABELS, bulkVariants, (v, campo) => (v as any)[campo], v => v.color || v.sku);
+  }, [bulkVariants, camposAlterados, groupForm]);
 
   const handleSaveGroupForm = async () => {
     if (!groupForm) return;
@@ -1230,7 +1137,6 @@ export function VariantBulkEditPanel({ variants, onCancel, onOpenGroupSpecs }: V
       toast.error('Selecione ao menos uma variante para aplicar as alterações');
       return;
     }
-
     if (bulkStockUnits.length > 1 && (dirty.has('purchase_unit') || dirty.has('conversion_rate'))) {
       toast.error('As variantes selecionadas usam unidades de estoque diferentes. Separe a aplicação por unidade antes de alterar compra ou conversão.');
       return;
@@ -1342,26 +1248,92 @@ export function VariantBulkEditPanel({ variants, onCancel, onOpenGroupSpecs }: V
   return (
     <div className="flex flex-col space-y-4">
       <div className="space-y-6">
+        <section className="border border-foreground/20 bg-muted/20 p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="text-xs font-semibold">Variantes que receberão a alteração</p>
+              <p className="mt-0.5 text-[10px] text-muted-foreground">{bulkVariants.length} de {variants.length} selecionada(s)</p>
+            </div>
+            <div className="flex gap-1">
+              <Button type="button" size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setSelectedBulkIds(new Set(variants.map((variant) => variant.id)))}>Selecionar todas</Button>
+              <Button type="button" size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setSelectedBulkIds(new Set())}>Limpar</Button>
+            </div>
+          </div>
+          <div className="mt-3 grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
+            {variants.map((variant) => {
+              const selected = selectedBulkIds.has(variant.id);
+              return (
+                <label key={variant.id} className={`flex cursor-pointer items-center gap-2 border px-2.5 py-2 ${selected ? 'border-primary bg-primary/5' : 'border-foreground/15 bg-background'}`}>
+                  <Checkbox
+                    checked={selected}
+                    onCheckedChange={() => setSelectedBulkIds((current) => {
+                      const next = new Set(current);
+                      if (next.has(variant.id)) next.delete(variant.id); else next.add(variant.id);
+                      return next;
+                    })}
+                  />
+                  <span className="min-w-0">
+                    <span className="block truncate text-xs font-semibold">{variant.color || 'Sem cor'}</span>
+                    <span className="block truncate font-mono text-[9px] text-muted-foreground">{variant.sku}</span>
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        </section>
+
         <div className="rounded-md border-l-4 border-l-primary bg-primary/5 p-3 text-xs text-muted-foreground">
-          Preencha só o que deve valer para <strong>todas as {variants.length} cor{variants.length === 1 ? '' : 'es'}</strong>.
+          Preencha só o que deve valer para <strong>as {bulkVariants.length} cor{bulkVariants.length === 1 ? '' : 'es'} selecionadas</strong>.
           Campo deixado <strong>vazio não é gravado</strong> — cada cor mantém o valor próprio.
           O nome dos produtos nunca é alterado aqui.
         </div>
 
-          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="mt-2">
-            <TabsList className="grid grid-cols-3 w-full">
-              <TabsTrigger value="variants" className="gap-1.5"><Layers className="h-3.5 w-3.5" /> Variantes</TabsTrigger>
-              {/* "Dados do Grupo" era enganoso: esta aba nunca tocou
-                  `product_groups` — grava nos PRODUTOS, todos de uma vez (R2.4). */}
-              <TabsTrigger value="group" className="gap-1.5"><SettingsIcon className="h-3.5 w-3.5" /> Aplicar em lote</TabsTrigger>
-              <TabsTrigger value="add" className="gap-1.5"><Plus className="h-3.5 w-3.5" /> Adicionar</TabsTrigger>
-            </TabsList>
+        <section className="space-y-3">
+          <h4 className="text-xs font-semibold uppercase text-muted-foreground tracking-wide flex items-center gap-2">
+            <Package className="h-3 w-3" /> Identificação
+          </h4>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <BulkLabel field="technical_name" divergence={divergence}>Nome técnico</BulkLabel>
+              <Input value={groupForm.technical_name ?? ''} onChange={e => updateGroup('technical_name', e.target.value)} className="mt-1 h-9" placeholder={divergence.technical_name.divergente ? 'Manter valor de cada cor' : ''} />
+            </div>
+            <div>
+              <Label className="text-xs">Setor / aplicação</Label>
+              <div className="mt-1 flex h-9 items-center border border-foreground/15 bg-muted/20 px-3 text-xs font-semibold">
+                {sectorOfGroup(groupOfVariants) || 'Defina o grupo primeiro'}
+              </div>
+              <p className="mt-1 text-[10px] text-muted-foreground">Herdado do grupo; não varia por cor.</p>
+            </div>
+            <div>
+              <BulkLabel field="group_id" divergence={divergence}>Grupo de produtos</BulkLabel>
+              <Select value={groupForm.group_id ?? ''} onValueChange={v => updateGroup('group_id', v)}>
+                <SelectTrigger className="mt-1 h-9"><SelectValue placeholder="Manter valor de cada cor" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={LIMPAR}>— Sem grupo —</SelectItem>
+                  {groups
+                    .filter((group) => group.is_family !== true && !groups.some((candidate) => candidate.parent_group_id === group.id))
+                    .map(g => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <BulkLabel field="supplier_id" divergence={divergence}>Fornecedor padrão</BulkLabel>
+              <Select value={groupForm.supplier_id ?? ''} onValueChange={v => updateGroup('supplier_id', v)}>
+                <SelectTrigger className="mt-1 h-9"><SelectValue placeholder="Manter valor de cada cor" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={LIMPAR}>— Sem fornecedor —</SelectItem>
+                  {suppliers.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </section>
 
         <section className="space-y-3">
           <h4 className="text-xs font-semibold uppercase text-muted-foreground tracking-wide">Preços Base</h4>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
-              <BulkLabel field="unit_price" divergence={divergence}>Custo unitário (R$ por {template?.unit || 'un'})</BulkLabel>
+              <BulkLabel field="unit_price" divergence={divergence}>Custo unitário (R$ por {bulkUnitLabel})</BulkLabel>
               <NumberInput value={groupForm.unit_price ?? undefined} onChange={v => updateGroup('unit_price', v)} step="0.0001" className="mt-1 h-9" />
             </div>
             <div>
@@ -1379,15 +1351,15 @@ export function VariantBulkEditPanel({ variants, onCancel, onOpenGroupSpecs }: V
           <h4 className="text-xs font-semibold uppercase text-muted-foreground tracking-wide">Estoque &amp; Localização</h4>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
-              <BulkLabel field="min_stock" divergence={divergence}>Estoque mínimo ({template?.unit || 'un'})</BulkLabel>
+              <BulkLabel field="min_stock" divergence={divergence}>Estoque mínimo ({bulkUnitLabel})</BulkLabel>
               <NumberInput value={groupForm.min_stock ?? undefined} onChange={v => updateGroup('min_stock', v)} className="mt-1 h-9" />
             </div>
             <div>
-              <BulkLabel field="max_stock" divergence={divergence}>Estoque máximo ({template?.unit || 'un'})</BulkLabel>
+              <BulkLabel field="max_stock" divergence={divergence}>Estoque máximo ({bulkUnitLabel})</BulkLabel>
               <NumberInput value={groupForm.max_stock ?? undefined} onChange={v => updateGroup('max_stock', v)} className="mt-1 h-9" />
             </div>
             <div>
-              <BulkLabel field="safety_stock" divergence={divergence}>Segurança ({template?.unit || 'un'})</BulkLabel>
+              <BulkLabel field="safety_stock" divergence={divergence}>Segurança ({bulkUnitLabel})</BulkLabel>
               <NumberInput value={groupForm.safety_stock ?? undefined} onChange={v => updateGroup('safety_stock', v)} className="mt-1 h-9" />
             </div>
             <div className="col-span-full">
@@ -1453,244 +1425,7 @@ export function VariantBulkEditPanel({ variants, onCancel, onOpenGroupSpecs }: V
                   <span className="text-xs text-muted-foreground">compra = estoque</span>
                 </div>
               ) : (
-                <div className="flex flex-col space-y-4">
-                  <div className="overflow-y-auto pr-2 sm:pr-4 max-h-[calc(92vh-260px)]">
-                    <div className="space-y-6 pb-32 sm:pb-8">
-                      <section className="border border-foreground/20 bg-muted/20 p-3">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <div>
-                            <p className="text-xs font-semibold">Variantes que receberão a alteração</p>
-                            <p className="mt-0.5 text-[10px] text-muted-foreground">{bulkVariants.length} de {variants.length} selecionada(s)</p>
-                          </div>
-                          <div className="flex gap-1">
-                            <Button type="button" size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setSelectedBulkIds(new Set(variants.map((variant) => variant.id)))}>Selecionar todas</Button>
-                            <Button type="button" size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setSelectedBulkIds(new Set())}>Limpar</Button>
-                          </div>
-                        </div>
-                        <div className="mt-3 grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
-                          {variants.map((variant) => {
-                            const selected = selectedBulkIds.has(variant.id);
-                            return (
-                              <label key={variant.id} className={`flex cursor-pointer items-center gap-2 border px-2.5 py-2 ${selected ? 'border-primary bg-primary/5' : 'border-foreground/15 bg-background'}`}>
-                                <Checkbox
-                                  checked={selected}
-                                  onCheckedChange={() => setSelectedBulkIds((current) => {
-                                    const next = new Set(current);
-                                    if (next.has(variant.id)) next.delete(variant.id); else next.add(variant.id);
-                                    return next;
-                                  })}
-                                />
-                                <span className="min-w-0">
-                                  <span className="block truncate text-xs font-semibold">{variant.color || 'Sem cor'}</span>
-                                  <span className="block truncate font-mono text-[9px] text-muted-foreground">{variant.sku}</span>
-                                </span>
-                              </label>
-                            );
-                          })}
-                        </div>
-                      </section>
-
-                      <div className="rounded-md border-l-4 border-l-primary bg-primary/5 p-3 text-xs text-muted-foreground">
-                        Preencha só o que deve valer para <strong>as {bulkVariants.length} cor{bulkVariants.length === 1 ? '' : 'es'} selecionadas</strong>.
-                        Campo deixado <strong>vazio não é gravado</strong> — cada cor mantém o valor próprio.
-                        O nome dos produtos nunca é alterado aqui.
-                      </div>
-
-                      <section className="space-y-3">
-                        <h4 className="text-xs font-semibold uppercase text-muted-foreground tracking-wide flex items-center gap-2">
-                          <Package className="h-3 w-3" /> Identificação
-                        </h4>
-                        <div className="grid grid-cols-2 gap-3">
-                          <div>
-                            <BulkLabel field="technical_name" divergence={divergence}>Nome técnico</BulkLabel>
-                            <Input value={groupForm.technical_name ?? ''} onChange={e => updateGroup('technical_name', e.target.value)} className="mt-1 h-9" placeholder={divergence.technical_name.divergente ? 'Manter valor de cada cor' : ''} />
-                          </div>
-                          <div>
-                            <Label className="text-xs">Setor / aplicação</Label>
-                            <div className="mt-1 flex h-9 items-center border border-foreground/15 bg-muted/20 px-3 text-xs font-semibold">
-                              {sectorOfGroup(groupOfVariants) || 'Defina o grupo primeiro'}
-                            </div>
-                            <p className="mt-1 text-[10px] text-muted-foreground">Herdado do grupo; não varia por cor.</p>
-                          </div>
-                          <div>
-                            <BulkLabel field="group_id" divergence={divergence}>Grupo de produtos</BulkLabel>
-                            <Select value={groupForm.group_id ?? ''} onValueChange={v => updateGroup('group_id', v)}>
-                              <SelectTrigger className="mt-1 h-9"><SelectValue placeholder="Manter valor de cada cor" /></SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value={LIMPAR}>— Sem grupo —</SelectItem>
-                                {groups.filter((group) => group.is_family !== true && !groups.some((candidate) => candidate.parent_group_id === group.id)).map((g: any) => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div>
-                            <BulkLabel field="supplier_id" divergence={divergence}>Fornecedor padrão</BulkLabel>
-                            <Select value={groupForm.supplier_id ?? ''} onValueChange={v => updateGroup('supplier_id', v)}>
-                              <SelectTrigger className="mt-1 h-9"><SelectValue placeholder="Manter valor de cada cor" /></SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value={LIMPAR}>— Sem fornecedor —</SelectItem>
-                                {suppliers.map((s: any) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        </div>
-                      </section>
-
-                      <section className="space-y-3">
-                        <h4 className="text-xs font-semibold uppercase text-muted-foreground tracking-wide">Preços Base</h4>
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                          <div>
-                            <BulkLabel field="unit_price" divergence={divergence}>Custo unitário (R$ por {bulkUnitLabel})</BulkLabel>
-                            <NumberInput value={groupForm.unit_price ?? undefined} onChange={v => updateGroup('unit_price', v)} step="0.0001" className="mt-1 h-9" />
-                          </div>
-                          <div>
-                            <BulkLabel field="price_wholesale" divergence={divergence}>Atacado (R$)</BulkLabel>
-                            <NumberInput value={groupForm.price_wholesale ?? undefined} onChange={v => updateGroup('price_wholesale', v)} step="0.01" className="mt-1 h-9" />
-                          </div>
-                          <div>
-                            <BulkLabel field="price_retail" divergence={divergence}>Varejo (R$)</BulkLabel>
-                            <NumberInput value={groupForm.price_retail ?? undefined} onChange={v => updateGroup('price_retail', v)} step="0.01" className="mt-1 h-9" />
-                          </div>
-                        </div>
-                      </section>
-
-                      <section className="space-y-3">
-                        <h4 className="text-xs font-semibold uppercase text-muted-foreground tracking-wide">Estoque &amp; Localização</h4>
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                          <div>
-                            <BulkLabel field="min_stock" divergence={divergence}>Estoque mínimo ({bulkUnitLabel})</BulkLabel>
-                            <NumberInput value={groupForm.min_stock ?? undefined} onChange={v => updateGroup('min_stock', v)} className="mt-1 h-9" />
-                          </div>
-                          <div>
-                            <BulkLabel field="max_stock" divergence={divergence}>Estoque máximo ({bulkUnitLabel})</BulkLabel>
-                            <NumberInput value={groupForm.max_stock ?? undefined} onChange={v => updateGroup('max_stock', v)} className="mt-1 h-9" />
-                          </div>
-                          <div>
-                            <BulkLabel field="safety_stock" divergence={divergence}>Segurança ({bulkUnitLabel})</BulkLabel>
-                            <NumberInput value={groupForm.safety_stock ?? undefined} onChange={v => updateGroup('safety_stock', v)} className="mt-1 h-9" />
-                          </div>
-                          <div className="col-span-full">
-                            <BulkLabel field="location" divergence={divergence}>Localização física</BulkLabel>
-                            <Select value={groupForm.location ?? ''} onValueChange={v => updateGroup('location', v)}>
-                              <SelectTrigger className="mt-1 h-9"><SelectValue placeholder="Manter valor de cada cor" /></SelectTrigger>
-                              <SelectContent>{LOCATIONS.map(l => <SelectItem key={l} value={l}>{l}</SelectItem>)}</SelectContent>
-                            </Select>
-                          </div>
-                        </div>
-                      </section>
-
-                      {/* Dimensões saíram daqui em 02/08/2026: moram em
-                          `product_groups` e são cadastradas no grupo de estoque
-                          (spec R2.11 / R3.3). Duas portas gravando o mesmo
-                          conceito era a origem do 1370 no grupo × 1000 nos itens. */}
-                      <section className="rounded-md border border-dashed px-3 py-2.5 flex items-center justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="text-xs font-medium">Dimensões, embalagem e múltiplo de compra</p>
-                          <p className="text-xs text-muted-foreground">
-                            Pertencem ao grupo de estoque, não à cor — inclusive a largura que converte dm² em metro.
-                          </p>
-                        </div>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-8 shrink-0 gap-1.5"
-                          disabled={!groupForm.group_id && !template?.group_id}
-                          onClick={() => setOpenGroupEditor(true)}
-                        >
-                          <SettingsIcon className="h-3.5 w-3.5" /> Editar no grupo
-                        </Button>
-                      </section>
-
-                      <section className="space-y-3">
-                        <h4 className="text-xs font-semibold uppercase text-muted-foreground tracking-wide flex items-center gap-2">
-                          <ArrowRightLeft className="h-3 w-3" /> Conversão de Unidades
-                        </h4>
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                          <div>
-                            <BulkLabel field="purchase_unit" divergence={divergence}>Unidade de compra</BulkLabel>
-                            <Select value={groupForm.purchase_unit ?? ''} onValueChange={v => updateGroup('purchase_unit', v)}>
-                              <SelectTrigger className="mt-1 h-9"><SelectValue placeholder="Manter" /></SelectTrigger>
-                              <SelectContent>{UNITS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
-                            </Select>
-                          </div>
-                          <div>
-                            <BulkLabel field="production_unit" divergence={divergence}>Unidade de produção</BulkLabel>
-                            <Select value={groupForm.production_unit ?? ''} onValueChange={v => updateGroup('production_unit', v)}>
-                              <SelectTrigger className="mt-1 h-9"><SelectValue placeholder="Manter" /></SelectTrigger>
-                              <SelectContent>{UNITS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
-                            </Select>
-                          </div>
-                          <div>
-                            <BulkLabel field="conversion_rate" divergence={divergence}>Taxa de conversão</BulkLabel>
-                            {/* Invariante do CLAUDE.md: unidade de compra igual à de
-                                estoque ⇒ fator 1. Travado em leitura pra não voltar
-                                o `conversion_rate = 0`, que zera consumo (R2.13). */}
-                            {conversionTravada ? (
-                              <div className="mt-1 h-9 flex items-center gap-2 rounded-md border bg-muted/40 px-3">
-                                <span className="font-mono text-sm">1×</span>
-                                <span className="text-xs text-muted-foreground">compra = estoque</span>
-                              </div>
-                            ) : (
-                              <NumberInput value={groupForm.conversion_rate ?? undefined} onChange={v => updateGroup('conversion_rate', v)} step="0.0001" className="mt-1 h-9" />
-                            )}
-                          </div>
-                          <div>
-                            <BulkLabel field="yield_per_meter" divergence={divergence}>Rendimento por metro</BulkLabel>
-                            <NumberInput value={groupForm.yield_per_meter ?? undefined} onChange={v => updateGroup('yield_per_meter', v)} step="0.0001" className="mt-1 h-9" />
-                          </div>
-                          <div>
-                            <BulkLabel field="yield_unit" divergence={divergence}>Unidade de rendimento</BulkLabel>
-                            <Select value={groupForm.yield_unit ?? ''} onValueChange={v => updateGroup('yield_unit', v)}>
-                              <SelectTrigger className="mt-1 h-9"><SelectValue placeholder="Manter" /></SelectTrigger>
-                              <SelectContent>{['dm²', 'cm²', 'm²', 'cm', 'm'].map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
-                            </Select>
-                          </div>
-                          <div>
-                            <BulkLabel field="purchase_order_unit" divergence={divergence}>Unidade de OC</BulkLabel>
-                            <Select value={groupForm.purchase_order_unit ?? ''} onValueChange={v => updateGroup('purchase_order_unit', v)}>
-                              <SelectTrigger className="mt-1 h-9"><SelectValue placeholder="Manter" /></SelectTrigger>
-                              <SelectContent>{UNITS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
-                            </Select>
-                          </div>
-                        </div>
-                      </section>
-
-                      <section className="space-y-3">
-                        <h4 className="text-xs font-semibold uppercase text-muted-foreground tracking-wide">Reposição</h4>
-                        <div className="grid grid-cols-2 gap-3">
-                          <div>
-                            <BulkLabel field="lead_time_days" divergence={divergence}>Lead time padrão (dias)</BulkLabel>
-                            <NumberInput value={groupForm.lead_time_days ?? undefined} onChange={v => updateGroup('lead_time_days', v)} className="mt-1 h-9" />
-                          </div>
-                          <div>
-                            <BulkLabel field="min_order_quantity" divergence={divergence}>Qtd mínima de compra ({groupForm.purchase_unit ?? template?.purchase_unit ?? 'un'})</BulkLabel>
-                            <NumberInput value={groupForm.min_order_quantity ?? undefined} onChange={v => updateGroup('min_order_quantity', v)} className="mt-1 h-9" />
-                          </div>
-                        </div>
-                      </section>
-
-                      <section className="flex items-center justify-between rounded-md border px-3 py-2">
-                        <div>
-                          <BulkLabel field="active" divergence={divergence}>Status ativo</BulkLabel>
-                          <p className="text-xs text-muted-foreground">Desativar remove as cores selecionadas de novos pedidos.</p>
-                        </div>
-                        <Switch checked={groupForm.active ?? false} onCheckedChange={v => updateGroup('active', v)} />
-                      </section>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-end gap-2 pt-4 border-t bg-background">
-                    <span className="mr-auto text-xs text-muted-foreground">
-                      {camposAlterados.length === 0
-                        ? 'Nenhum campo preenchido'
-                        : `${camposAlterados.length} campo${camposAlterados.length === 1 ? '' : 's'} para aplicar`}
-                    </span>
-                    <Button variant="ghost" onClick={() => setActiveTab('variants')} disabled={savingGroup}>Cancelar</Button>
-                    <Button onClick={handleSaveGroupForm} disabled={savingGroup || camposAlterados.length === 0 || bulkVariants.length === 0} className="gap-1 min-w-[200px]">
-                      {savingGroup ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                      Revisar e aplicar
-                    </Button>
-                  </div>
-                </div>
+                <NumberInput value={groupForm.conversion_rate ?? undefined} onChange={v => updateGroup('conversion_rate', v)} step="0.0001" className="mt-1 h-9" />
               )}
             </div>
             <div>
@@ -1714,58 +1449,24 @@ export function VariantBulkEditPanel({ variants, onCancel, onOpenGroupSpecs }: V
           </div>
         </section>
 
-            {/* ─── ABA: Adicionar variante ─── */}
-            <TabsContent value="add" className="mt-4">
-              <div className="border rounded-lg p-4 space-y-3 bg-muted/20">
-                <p className="text-sm font-semibold flex items-center gap-2">
-                  <Plus className="h-4 w-4" /> Nova variante de cor
-                </p>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label htmlFor="new-color" className="text-xs">Cor *</Label>
-                    <ColorsMultiSelect
-                      value={newColor}
-                      onChange={(value) => {
-                        const selected = value.split(',').map((color) => color.trim()).filter(Boolean);
-                        setNewColor(selected[selected.length - 1] || '');
-                        setDupAddConfirmado(false);
-                        setDupAddVariant(null);
-                      }}
-                      excluded={variants.map((variant) => variant.color || '')}
-                      placeholder="Buscar cor no catálogo…"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="new-sku" className="text-xs">SKU *</Label>
-                    <Input id="new-sku" value={newSku} onChange={e => { setNewSku(e.target.value); setDupAddConfirmado(false); setDupAddVariant(null); }}
-                      placeholder="Ex: DUB-PRETO-001" className="mt-1 h-9 font-mono" />
-                  </div>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Dados técnicos (categoria, grupo, dimensões, custo, fornecedor) serão copiados das variantes existentes.
-                  Você pode ajustá-los depois clicando em <strong>Editar completo</strong>.
-                </p>
-                {dupAddVariant && !dupAddConfirmado && (
-                  <DuplicateSuggestion
-                    hit={dupAddVariant}
-                    onSameProduct={() => { setDupAddVariant(null); setActiveTab('variants'); toast.info(`"${dupAddVariant.product.color || dupAddVariant.product.name}" já está na lista de cores.`); }}
-                    onDifferent={() => { setDupAddConfirmado(true); setDupAddVariant(null); }}
-                  />
-                )}
-                <Button onClick={handleAddVariant} disabled={adding} size="sm" className="gap-1">
-                  <Plus className="h-3.5 w-3.5" />
-                  {adding ? 'Adicionando...' : 'Adicionar Variante'}
-                </Button>
-              </div>
-            </TabsContent>
-          </Tabs>
-        </DialogContent>
-      </Dialog>
+        <section className="space-y-3">
+          <h4 className="text-xs font-semibold uppercase text-muted-foreground tracking-wide">Reposição</h4>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <BulkLabel field="lead_time_days" divergence={divergence}>Lead time padrão (dias)</BulkLabel>
+              <NumberInput value={groupForm.lead_time_days ?? undefined} onChange={v => updateGroup('lead_time_days', v)} className="mt-1 h-9" />
+            </div>
+            <div>
+              <BulkLabel field="min_order_quantity" divergence={divergence}>Qtd mínima de compra ({groupForm.purchase_unit ?? template?.purchase_unit ?? 'un'})</BulkLabel>
+              <NumberInput value={groupForm.min_order_quantity ?? undefined} onChange={v => updateGroup('min_order_quantity', v)} className="mt-1 h-9" />
+            </div>
+          </div>
+        </section>
 
         <section className="flex items-center justify-between rounded-md border px-3 py-2">
           <div>
             <BulkLabel field="active" divergence={divergence}>Status ativo</BulkLabel>
-            <p className="text-xs text-muted-foreground">Desativar remove todas as cores de novos pedidos.</p>
+            <p className="text-xs text-muted-foreground">Desativar remove as cores selecionadas de novos pedidos.</p>
           </div>
           <Switch checked={groupForm.active ?? false} onCheckedChange={v => updateGroup('active', v)} />
         </section>
@@ -1778,7 +1479,7 @@ export function VariantBulkEditPanel({ variants, onCancel, onOpenGroupSpecs }: V
             : `${camposAlterados.length} campo${camposAlterados.length === 1 ? '' : 's'} para aplicar`}
         </span>
         {onCancel && <Button variant="ghost" onClick={onCancel} disabled={savingGroup}>Cancelar</Button>}
-        <Button onClick={handleSaveGroupForm} disabled={savingGroup || camposAlterados.length === 0} className="gap-1 min-w-[200px]">
+        <Button onClick={handleSaveGroupForm} disabled={savingGroup || camposAlterados.length === 0 || bulkVariants.length === 0} className="gap-1 min-w-[200px]">
           {savingGroup ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
           Revisar e aplicar
         </Button>

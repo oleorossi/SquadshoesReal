@@ -6,7 +6,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useUpdateProduct, ProductSchema, useProducts } from '@/hooks/useProducts';
 import { useForceDeleteProductFlow } from '@/components/inventory/ForceDeleteProductDialog';
-import { MasterVariantDialog } from '@/components/inventory/MasterVariantDialog';
+import { VariantListPanel } from '@/components/inventory/VariantManagerPanel';
 import { MaterialClassificationRail } from '@/components/groups/MaterialClassificationRail';
 import { useCurrentProfile } from '@/hooks/useUserManagement';
 import { useGroups } from '@/hooks/useGroups';
@@ -25,7 +25,7 @@ import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { NumberInput } from '@/components/ui/number-input';
 import { CurrencyInput } from '@/components/ui/currency-input';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import {
   ArrowLeft,
   FloppyDisk as Save,
@@ -1265,8 +1265,11 @@ export default function ProductDetail() {
         </Dialog>
       )}
 
+      {/* A lista de variantes é um PAINEL sem janela própria (22/08/2026): quem
+          abre é que decide o invólucro. Na tela de estoque ela é aba da janela
+          do grupo; aqui, na ficha do item, é este modal. */}
       {perm.canEdit && canManageVariants && (
-        <MasterVariantDialog
+        <Dialog
           open={variantDialogOpen}
           onOpenChange={open => {
             setVariantDialogOpen(open);
@@ -1274,21 +1277,28 @@ export default function ProductDetail() {
               qc.invalidateQueries({ queryKey: ['product-detail', product.id] });
             }
           }}
-          baseName={variantBaseName}
-          variants={groupVariants}
-          onEditVariant={variant => {
-            setVariantDialogOpen(false);
-            if (variant.id !== product.id) navigate('/estoque/' + variant.id);
-          }}
-          onDeleteVariant={variantId => {
-            if (variantId === product.id) {
-              setVariantDialogOpen(false);
-              forceDeleteFlow.tryDelete(variantId);
-              return;
-            }
-            variantDeleteFlow.tryDelete(variantId);
-          }}
-        />
+        >
+          <DialogContent className="sm:max-w-5xl max-h-[92vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="text-lg font-bold">{variantBaseName}</DialogTitle>
+              <DialogDescription>
+                Cores deste grupo. Editar em massa e as dimensões ficam na janela do grupo de estoque.
+              </DialogDescription>
+            </DialogHeader>
+            <VariantListPanel
+              groupName={variantBaseName}
+              variants={groupVariants}
+              onDeleteVariant={variantId => {
+                if (variantId === product.id) {
+                  setVariantDialogOpen(false);
+                  forceDeleteFlow.tryDelete(variantId);
+                  return;
+                }
+                variantDeleteFlow.tryDelete(variantId);
+              }}
+            />
+          </DialogContent>
+        </Dialog>
       )}
       {forceDeleteFlow.dialog}
       {variantDeleteFlow.dialog}

@@ -121,7 +121,20 @@ describe('GroupEditDialog — janela única do grupo de estoque', () => {
     expect(aberturaDaAba('Em massa')).toHaveAttribute('data-state', 'active');
     // O painel de edição em massa montou de fato.
     expect(screen.getByText(/Campo deixado/i)).toBeInTheDocument();
-    expect(screen.getByText(/todas as 2 cores/i)).toBeInTheDocument();
+    // A alteração vale para a SELEÇÃO, que nasce com todas marcadas (feature
+    // que veio da main em 22/08/2026 — aplicar a um subconjunto sem abrir cor
+    // por cor). O texto acompanha a contagem selecionada, não o total.
+    expect(screen.getByText(/as 2 cores selecionadas/i)).toBeInTheDocument();
+    expect(screen.getByText('2 de 2 selecionada(s)')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Selecionar todas/i })).toBeInTheDocument();
+  });
+
+  it('sem variante selecionada, a edição em massa não deixa aplicar', async () => {
+    const user = userEvent.setup();
+    renderDialog('bulk');
+    await user.click(screen.getByRole('button', { name: /^Limpar$/i }));
+    expect(screen.getByText('0 de 2 selecionada(s)')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Revisar e aplicar/i })).toBeDisabled();
   });
 
   it('a edição em massa nasce com campo divergente VAZIO e homogêneo preenchido', () => {
