@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { guardDebitForOrder } from '@/lib/fichaDebitGuard';
 
 export function useOrderReservations(orderId?: string) {
   return useQuery({
@@ -63,7 +64,11 @@ export function useReservationStatusCounts() {
 export function useConfirmPicking() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ reservationId, pickedBy }: { reservationId: string; pickedBy?: string }) => {
+    mutationFn: async ({ reservationId, pickedBy, orderId }: { reservationId: string; pickedBy?: string; orderId?: string }) => {
+      if (orderId) {
+        const guard = await guardDebitForOrder(orderId);
+        if (!guard.allowed) throw new Error(guard.reason || 'Ficha técnica ausente — baixa bloqueada.');
+      }
       const { error } = await supabase.rpc('confirm_picking_reservation', {
         p_reservation_id: reservationId,
         p_picked_by: pickedBy || '',
@@ -87,6 +92,8 @@ export function useConfirmAllPicking() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ orderId, pickedBy }: { orderId: string; pickedBy?: string }) => {
+      const guard = await guardDebitForOrder(orderId);
+      if (!guard.allowed) throw new Error(guard.reason || 'Ficha técnica ausente — baixa bloqueada.');
       const { data, error } = await supabase.rpc('consume_all_reservations_for_order' as any, {
         p_order_id: orderId,
         p_picked_by: pickedBy || '',

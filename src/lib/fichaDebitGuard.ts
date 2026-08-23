@@ -1,11 +1,11 @@
 import { supabase } from '@/integrations/supabase/client';
 
 /**
- * Onda B: débito de estoque na liberação só roda se o PV tiver OP com referência
- * e ficha técnica. Sem ficha a baixa vira saída avulsa — o estoque mente.
+ * Onda B: débito de estoque só roda se a OP/PV tiver referência e ficha.
+ * Sem ficha a baixa vira saída avulsa — o estoque mente.
  *
- * NÃO trava a liberação da produção (regra load-bearing em releaseConsumption).
- * Só recusa o commit_picking. Faturamento continua como rede.
+ * NÃO trava produção nem faturamento. Só recusa o RPC de baixa
+ * (commit_picking, consume_all_reservations, convert_reservation_to_out).
  */
 
 export interface FichaDebitGuardResult {
@@ -36,7 +36,7 @@ export function evaluateFichaDebitGuard(orders: Array<{
   return { allowed: true, orderCount, missingSheet: 0 };
 }
 
-type IdRow = { id?: string | null; reference_id?: string | null };
+type IdRow = { id?: string | null; reference_id?: string | null; sale_order_id?: string | null };
 
 type SheetLookup = {
   select: (cols: string) => {
@@ -46,6 +46,23 @@ type SheetLookup = {
 
 function sheetsTable(): SheetLookup {
   return supabase.from('technical_sheets') as unknown as SheetLookup;
+}
+
+async function sheetIdsForRefs(refs: string[]): Promise<Set<string>> {
+  const sheetIds = new Set<string>();
+  if (refs.length === 0) return sheetIds;
+  const { data: byId } = await sheetsTable().select('id').in('id', refs);
+  for (const s of byId || []) if (s?.id) sheetIds.add(s.id);
+
+  const missing = refs.filter((id) => !sheetIds.has(id));
+  if (missing.length > 0) {
+    const { data: byRef } = await sheetsTable().select('id, reference_id').in('reference_id', missing);
+    for (const s of byRef || []) {
+      if (s?.id) sheetIds.add(s.id);
+      if (s?.reference_id) sheetIds.add(s.reference_id);
+    }
+  }
+  return sheetIds;
 }
 
 export async function guardDebitForSaleOrder(saleOrderId: string): Promise<FichaDebitGuardResult> {
@@ -65,21 +82,7 @@ export async function guardDebitForSaleOrder(saleOrderId: string): Promise<Ficha
 
   const rows = (data || []) as IdRow[];
   const refs = [...new Set(rows.map((r) => r.reference_id).filter((id): id is string => Boolean(id)))];
-
-  const sheetIds = new Set<string>();
-  if (refs.length > 0) {
-    const { data: byId } = await sheetsTable().select('id').in('id', refs);
-    for (const s of byId || []) if (s?.id) sheetIds.add(s.id);
-
-    const missing = refs.filter((id) => !sheetIds.has(id));
-    if (missing.length > 0) {
-      const { data: byRef } = await sheetsTable().select('id, reference_id').in('reference_id', missing);
-      for (const s of byRef || []) {
-        if (s?.id) sheetIds.add(s.id);
-        if (s?.reference_id) sheetIds.add(s.reference_id);
-      }
-    }
-  }
+  const sheetIds = await sheetIdsForRefs(refs);
 
   return evaluateFichaDebitGuard(
     rows.map((row) => ({
@@ -88,4 +91,38 @@ export async function guardDebitForSaleOrder(saleOrderId: string): Promise<Ficha
       has_sheet: Boolean(row.reference_id && sheetIds.has(row.reference_id)),
     })),
   );
+}
+
+/** Mesma régua do PV, a partir de uma OP (picking / convert no faturamento). */
+export async function guardDebitForOrder(orderId: string): Promise<FichaDebitGuardResult> {
+  const { data, error } = await supabase
+    .from('orders')
+    .select('id, reference_id, sale_order_id')
+    .eq('id', orderId)
+    .maybeSingle();
+
+  if (error) {
+    return {
+      allowed: false,
+      reason: `Não deu pra checar ficha: ${error.message}`,
+      orderCount: 0,
+      missingSheet: 0,
+    };
+  }
+  if (!data) {
+    return { allowed: false, reason: 'OP não encontrada pra checar ficha.', orderCount: 0, missingSheet: 0 };
+  }
+
+  const row = data as IdRow;
+  if (row.sale_order_id) return guardDebitForSaleOrder(row.sale_order_id);
+
+  const refs = row.reference_id ? [row.reference_id] : [];
+  const sheetIds = await sheetIdsForRefs(refs);
+  return evaluateFichaDebitGuard([
+    {
+      id: row.id ?? undefined,
+      reference_id: row.reference_id,
+      has_sheet: Boolean(row.reference_id && sheetIds.has(row.reference_id)),
+    },
+  ]);
 }
