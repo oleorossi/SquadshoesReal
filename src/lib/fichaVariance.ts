@@ -7,7 +7,7 @@
  *   critico   acima disso, ou saída sem linha de ficha, ou ficha sem baixa.
  *
  * Não inventa quantidade: só compara o que o motor pediu com o que o estoque
- * registrou. Compra (onda C) usa qtyToBuyFromVariance — overage + ponto de pedido.
+ * registrou. Compra (onda C) usa qtyToBuyFromVariance — ruptura da ficha + piso.
  */
 
 export type VarianceStatus = 'no_ponto' | 'alerta' | 'critico' | 'sem_ficha' | 'sem_baixa';
@@ -157,8 +157,9 @@ export function varianceSummary(lines: VarianceLine[]) {
 }
 
 /**
- * Quanto comprar: overage já gasto além da ficha + o que falta pra bater o mínimo.
- * Não compra o que a ficha pediu e não foi baixado (isso é furo de processo, não ruptura).
+ * Quanto comprar pra não parar a OP e ainda deixar o piso.
+ * Estoque já reflete o que saiu (overage incluso). Não soma overage de novo.
+ * Baixa avulsa sem linha de ficha (theoretical=0) só recompõe o mínimo.
  */
 export function qtyToBuyFromVariance(params: {
   theoretical: number;
@@ -166,11 +167,11 @@ export function qtyToBuyFromVariance(params: {
   stock: number;
   minStock: number;
 }): number {
-  const overage = Math.max(0, (Number(params.actual) || 0) - (Number(params.theoretical) || 0));
+  const theoretical = Math.max(0, Number(params.theoretical) || 0);
   const stock = Number(params.stock) || 0;
   const minStock = Math.max(0, Number(params.minStock) || 0);
-  const belowMin = Math.max(0, minStock - stock);
-  return overage + belowMin;
+  void params.actual;
+  return Math.max(0, theoretical + minStock - stock);
 }
 
 export function diagnosisLabel(d: VarianceDiagnosis): string {

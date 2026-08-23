@@ -6,7 +6,7 @@ export interface ShortagePOCandidate {
   name: string;
   qty: number;
   unit?: string | null;
-  reason: 'overage' | 'min_stock' | 'both';
+  reason: 'shortage' | 'min_stock' | 'both';
 }
 
 export function shortageCandidatesFromVariance(
@@ -25,14 +25,15 @@ export function shortageCandidatesFromVariance(
       minStock: stock.minStock,
     });
     if (qty <= 0) continue;
-    const overage = Math.max(0, line.actual - line.theoretical);
-    const belowMin = Math.max(0, stock.minStock - stock.stock);
+    const shortVsNeed = Math.max(0, line.theoretical - stock.stock);
+    const stockAfterNeed = Math.max(0, stock.stock - line.theoretical);
+    const belowMinAfter = Math.max(0, stock.minStock - stockAfterNeed);
     out.push({
       productId: line.productId,
       name: line.name,
       qty,
       unit: line.unit,
-      reason: overage > 0 && belowMin > 0 ? 'both' : overage > 0 ? 'overage' : 'min_stock',
+      reason: shortVsNeed > 0 && belowMinAfter > 0 ? 'both' : shortVsNeed > 0 ? 'shortage' : 'min_stock',
     });
   }
   return out;

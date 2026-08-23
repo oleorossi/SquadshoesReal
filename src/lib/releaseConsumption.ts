@@ -1,6 +1,6 @@
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { guardDebitForSaleOrder } from '@/lib/fichaDebitGuard';
+import { guardDebitForOrder, guardDebitForSaleOrder } from '@/lib/fichaDebitGuard';
 
 /**
  * Baixa de estoque no momento da LIBERAÇÃO PRA PRODUÇÃO (decisão do dono, 31/07/2026).
@@ -16,7 +16,7 @@ import { guardDebitForSaleOrder } from '@/lib/fichaDebitGuard';
  * Agora a liberação pra produção consome as reservas — é o gesto em que o material
  * sai da prateleira de verdade.
  *
- * ── Regra load-bearing (NÃO simplificar) ──────────────────────────────────────
+ * ── Regra load-bearing (NÃO simplificar) ────────────────────────────────────
  * `commit_picking_for_sale_order` consome SÓ linhas em `status = 'reserved'`, e
  * `convert_reservation_to_out` (faturamento) também. Como esta função marca as
  * linhas como 'consumed', o faturamento simplesmente não as encontra depois —
@@ -41,15 +41,15 @@ import { guardDebitForSaleOrder } from '@/lib/fichaDebitGuard';
  * pegaria material de OP que ainda não foi liberada. Ao construir liberação
  * parcial, trocar esta RPC por uma variante que receba os order_ids liberados.
  *
- * ── O que entra na baixa ──────────────────────────────────────────────────────
+ * ── O que entra na baixa ──────────────────────────────────────────────
  * Tudo que está reservado: componente (napa, forro, palmilha, cola), tira e
  * SOLADO — este último com baixa parcial por numeração. Embalagem NÃO entra:
  * ela é baixa dura na própria promoção (`debit_packaging_for_order`) e não
  * cria linha em `material_reservations`, então não há risco de dobrar.
  *
- * ── Onda B (2026-08-22) ───────────────────────────────────────────────────────
- * Sem ficha técnica a baixa é BLOQUEADA (não a produção). Reserva sem explosão
- * da ficha é saída avulsa e some do radar teórico×real.
+ * ── Onda B (2026-08-23) ───────────────────────────────────────────
+ * Sem ficha técnica a baixa é BLOQUEADA (não a produção nem o faturamento).
+ * Vale na liberação, no picking e no convert_reservation_to_out.
  */
 
 export interface ReleaseConsumptionResult {
@@ -105,7 +105,6 @@ export async function consumeReservationsOnRelease(
 
     return result;
   } catch (err: any) {
-    // Não propaga: o PV já foi promovido e o faturamento continua como rede.
     console.error('Falha ao baixar material na liberação pra produção:', err?.message);
     toast.warning(
       'O pedido foi liberado, mas a baixa do material falhou — o estoque será baixado no faturamento. ' +
@@ -114,4 +113,19 @@ export async function consumeReservationsOnRelease(
     );
     return null;
   }
+}
+
+export async function convertReservationToOutGuarded(orderId: string): Promise<{ blocked_no_sheet?: boolean }> {
+  const guard = await guardDebitForOrder(orderId);
+  if (!guard.allowed) {
+    toast.warning(
+      `Baixa no faturamento não rodou: ${guard.reason || 'ficha técnica ausente'}. ` +
+      'O PV segue; acerte a ficha antes de debitar.',
+      { duration: 10000 },
+    );
+    return { blocked_no_sheet: true };
+  }
+  const { error } = await supabase.rpc('convert_reservation_to_out' as never, { p_order_id: orderId } as never);
+  if (error) throw new Error(error.message);
+  return {};
 }
