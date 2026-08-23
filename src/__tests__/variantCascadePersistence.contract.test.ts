@@ -49,6 +49,7 @@ describe('O aviso do PV não acusa no-op falso', () => {
 
 describe('resolveStrapBaseReadout espelha resolve_strap_base_group_id', () => {
   const sheet = {
+    has_straps: true,
     upper_material: '', lining_material: 'NAPA SOFT',
     upper_material_group_id: null, strap_base_group_id: null,
     lining_material_group_id: 'g-soft',
@@ -70,22 +71,28 @@ describe('resolveStrapBaseReadout espelha resolve_strap_base_group_id', () => {
     })).toMatchObject({ groupId: 'g-glow', origin: 'variant_main', divergesFromLining: false });
   });
 
-  // ⚠ O resolver da tira NÃO checa variant_drives_*; o do forro checa. Com a
-  // trava da Forração desmarcada, o modelo sai com DUAS napas.
-  it('acusa divergência quando a Forração não segue a variante mas a tira segue', () => {
+  it('mantém a tira na Forração da ficha quando a cascata da variante está desligada', () => {
     expect(resolveStrapBaseReadout({
       variant: { main_material_group_id: 'g-glow' },
       sheet,
       cascade: EMPTY_VARIANT_CASCADE,
-    })).toMatchObject({ groupId: 'g-glow', origin: 'variant_main', divergesFromLining: true });
+    })).toMatchObject({ groupId: 'g-soft', origin: 'sheet', divergesFromLining: false });
   });
 
-  it('honra a base de tira explícita da ficha antes do forro', () => {
+  it('a Forração vence uma base de tira residual divergente', () => {
     expect(resolveStrapBaseReadout({
       variant: {},
       sheet: { ...sheet, strap_base_group_id: 'g-base' },
       cascade: EMPTY_VARIANT_CASCADE,
-    })).toMatchObject({ groupId: 'g-base', origin: 'sheet' });
+    })).toMatchObject({ groupId: 'g-soft', origin: 'sheet', divergesFromLining: false });
+  });
+
+  it('ignora o slot de Cabedal da variante porque o modelo não tem Cabedal', () => {
+    expect(resolveStrapBaseReadout({
+      variant: { upper_material_group_id: 'g-glow' },
+      sheet,
+      cascade: EMPTY_VARIANT_CASCADE,
+    })).toMatchObject({ groupId: 'g-soft', origin: 'sheet', divergesFromLining: false });
   });
 
   it('sem nenhuma fonte, devolve null em vez de inventar grupo', () => {

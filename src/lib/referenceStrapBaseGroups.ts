@@ -17,16 +17,17 @@ interface ProductLike {
 
 interface ReferenceSheetLike {
   id: string;
+  has_straps?: boolean | null;
   upper_material?: string | null;
   upper_material_group_id?: string | null;
   upper_material_product_id?: string | null;
-  /** Base de tira escolhida explicitamente na ficha. Entra na cascata do SQL
-   *  (`resolve_strap_base_group_id`) logo depois do cabedal e ANTES do forro —
-   *  ficava de fora daqui, sumindo da lista justamente nas fichas que decidiram
-   *  a base à mão (4 das 33 com tira, medido em 21/08/2026). */
+  /** Base materializada da tira. Em modelos sem cabedal ela é derivada da
+   *  Forração pelo servidor; nos demais modelos conserva a posição histórica
+   *  na cascata de `resolve_strap_base_group_id`. */
   strap_base_group_id?: string | null;
   lining_material?: string | null;
   lining_material_product_id?: string | null;
+  variant_drives_lining?: boolean | null;
 }
 
 interface ReferenceVariantLike {
@@ -88,24 +89,36 @@ export function referenceStrapBaseGroups({
     return groupId ? groupsById.get(groupId) : undefined;
   };
 
-  // Ordem idêntica à do SQL `resolve_strap_base_group_id`: pino de PRODUTO do
-  // cabedal, grupo de cabedal, base de tira explícita, pino de produto do forro.
-  const sheetGroup = groupFromProduct(sheet.upper_material_product_id)
-    || (sheet.upper_material_group_id ? groupsById.get(sheet.upper_material_group_id) : undefined)
-    || (sheet.strap_base_group_id ? groupsById.get(sheet.strap_base_group_id) : undefined)
-    || groupFromProduct(sheet.lining_material_product_id);
+  const strapsFollowLining = sheet.has_straps === true
+    && !normalizeName(sheet.upper_material)
+    && !sheet.upper_material_group_id
+    && !sheet.upper_material_product_id;
+
+  // Em modelo de tiras sem cabedal, a Forração é a fonte única da napa-base.
+  // Nos demais modelos, preserva a precedência geral do resolver SQL.
+  const sheetGroup = strapsFollowLining
+    ? groupFromProduct(sheet.lining_material_product_id)
+      || (sheet.strap_base_group_id ? groupsById.get(sheet.strap_base_group_id) : undefined)
+    : groupFromProduct(sheet.upper_material_product_id)
+      || (sheet.upper_material_group_id ? groupsById.get(sheet.upper_material_group_id) : undefined)
+      || (sheet.strap_base_group_id ? groupsById.get(sheet.strap_base_group_id) : undefined)
+      || groupFromProduct(sheet.lining_material_product_id);
 
   if (sheetGroup) {
     addGroup(
       sheetGroup,
-      sheet.strap_base_group_id && sheetGroup.id === sheet.strap_base_group_id
+      strapsFollowLining
+        ? 'Forração da ficha'
+        : sheet.strap_base_group_id && sheetGroup.id === sheet.strap_base_group_id
         ? 'Base de tira da ficha'
         : 'Material padrão da ficha',
       true,
     );
   } else {
-    const legacySheetGroup = groupsByName.get(normalizeName(sheet.upper_material))
-      || groupsByName.get(normalizeName(sheet.lining_material));
+    const legacySheetGroup = strapsFollowLining
+      ? groupsByName.get(normalizeName(sheet.lining_material))
+      : groupsByName.get(normalizeName(sheet.upper_material))
+        || groupsByName.get(normalizeName(sheet.lining_material));
     addGroup(legacySheetGroup, 'Nome legado da ficha', false);
   }
 
@@ -117,13 +130,19 @@ export function referenceStrapBaseGroups({
       // invertido: com pino e grupo apontando famílias diferentes, a tela
       // mostrava uma napa e o estoque baixava outra. Sem linha divergente hoje
       // (medido 21/08/2026), mas a regra é que precisa bater.
-      const groupId = groupIdByProductId.get(variant.upper_material_product_id || '')
-        || variant.upper_material_group_id
-        || groupIdByProductId.get(variant.lining_material_product_id || '')
-        || variant.lining_material_group_id
-        || variant.main_material_group_id
-        || sheetGroup?.id
-        || null;
+      const groupId = strapsFollowLining
+        ? groupIdByProductId.get(variant.lining_material_product_id || '')
+          || variant.lining_material_group_id
+          || (sheet.variant_drives_lining ? variant.main_material_group_id : null)
+          || sheetGroup?.id
+          || null
+        : groupIdByProductId.get(variant.upper_material_product_id || '')
+          || variant.upper_material_group_id
+          || groupIdByProductId.get(variant.lining_material_product_id || '')
+          || variant.lining_material_group_id
+          || variant.main_material_group_id
+          || sheetGroup?.id
+          || null;
       const group = groupId ? groupsById.get(groupId) : undefined;
       const variantName = variant.material_name?.trim();
       addGroup(group, variantName ? `Variante ${variantName}` : 'Variante da referência', true);
