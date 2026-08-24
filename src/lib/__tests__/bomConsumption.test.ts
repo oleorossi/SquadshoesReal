@@ -168,6 +168,105 @@ describe('calculateBomForOrders — tiras sem fichas hardcoded (achado b)', () =
   });
 });
 
+// ─── Netting canônico de tiras na Lista de Separação ───────────────────────
+
+describe('calculateBomForOrders — usa a falta líquida persistida de tiras', () => {
+  const lineId = '11111111-1111-4111-8111-111111111111';
+  const demandId = '22222222-2222-4222-8222-222222222222';
+  const variantId = '33333333-3333-4333-8333-333333333333';
+  const recipeId = '44444444-4444-4444-8444-444444444444';
+  const baseProductId = '55555555-5555-4555-8555-555555555555';
+
+  function buildCanonicalNetTables(replenishmentRequiredM: number) {
+    const tables = buildBomTables({ grade: GRADE_REAL });
+    (tables.sale_order_items[0] as any).strap_colors = [{
+      ...buildSheet().strap_colors[0],
+      technical_strap_line_id: lineId,
+    }];
+    tables.v_strap_picking_operational = [{
+      sale_order_strap_demand_id: demandId,
+      sale_order_id: 'so1',
+      sale_order_item_id: 'si1',
+      technical_strap_line_id: lineId,
+      strap_variant_id: variantId,
+      recipe_id: recipeId,
+      base_product_id: baseProductId,
+      base_product_name: 'NAPA SOFT PRETO',
+      finished_product_id: 'p-tira-pronta',
+      finished_product_name: 'TIRA CHATA 8MM · NAPA SOFT',
+      color_name: 'PRETO',
+      source_mode: 'internal',
+      planned_finished_m: 72,
+      remaining_finished_m: 52,
+      finished_stock_reserved_m: 12,
+      base_required_m: replenishmentRequiredM / 60,
+      base_reserved_m: replenishmentRequiredM / 60,
+      base_consumed_m: 20 / 60,
+      confirmed_yield_snapshot: 60,
+      status: 'partial',
+    }];
+    tables.v_strap_demands_operational = [{
+      id: demandId,
+      origin_type: 'sale_order',
+      sale_order_id: 'so1',
+      sale_order_item_id: 'si1',
+      technical_strap_line_id: lineId,
+      strap_variant_id: variantId,
+      recipe_id: recipeId,
+      base_product_id: baseProductId,
+      source_mode: 'internal',
+      required_m: 72,
+      fulfilled_m: 20,
+      finished_stock_reserved_m: 12,
+      committed_finished_inbound_m: 10,
+      replenishment_required_m: replenishmentRequiredM,
+      base_required_m: replenishmentRequiredM / 60,
+      status: 'partial',
+    }];
+    return tables;
+  }
+
+  it('desconta parcial, tira pronta reservada e inbound — não usa planned/remaining bruto', async () => {
+    // 72 bruto - 20 atendido = 52 aberto; 12 em estoque + 10 inbound deixam
+    // somente 30 m para produzir. planned=72 e remaining=52 são sentinelas.
+    mockDb.tables = buildCanonicalNetTables(30);
+    const rows = await calculateBomForOrders(['op1']);
+    const tiras = rows.filter((row) => row.componentType === 'Tiras');
+
+    expect(tiras).toHaveLength(1);
+    expect(tiras[0].totalQuantity).toBe(30);
+    expect(tiras[0].strapVariantId).toBe(variantId);
+    expect(tiras[0].recipeId).toBe(recipeId);
+    expect(tiras[0].baseProductId).toBe(baseProductId);
+    expect(tiras[0].strapBaseRequiredM).toBeCloseTo(30 / 60, 6);
+    expect(tiras[0].strapBaseName).toBe('NAPA SOFT PRETO');
+    expect(tiras[0].strapConfirmedYieldMPerM).toBe(60);
+  });
+
+  it('remove a linha quando estoque acabado/inbound cobrem todo o saldo', async () => {
+    mockDb.tables = buildCanonicalNetTables(0);
+    const rows = await calculateBomForOrders(['op1']);
+    expect(rows.some((row) => row.componentType === 'Tiras')).toBe(false);
+  });
+
+  it('prefere a demanda canônica mesmo se o JSON legado do item estiver ausente', async () => {
+    const tables = buildCanonicalNetTables(30);
+    (tables.sale_order_items[0] as any).strap_colors = null;
+    mockDb.tables = tables;
+
+    const rows = await calculateBomForOrders(['op1']);
+    expect(rows.find((row) => row.componentType === 'Tiras')?.totalQuantity).toBe(30);
+  });
+
+  it('falha fechado se a identidade de picking não tiver o saldo líquido correspondente', async () => {
+    const tables = buildCanonicalNetTables(30);
+    tables.v_strap_demands_operational = [];
+    mockDb.tables = tables;
+
+    await expect(calculateBomForOrders(['op1'])).rejects.toThrow('sem saldo líquido canônico');
+  });
+});
+
 // ─── (c) Embalagem filtrada por packaging_mode ───────────────────────────────
 
 describe('calculateBomForOrders — filtro de caixa por packaging_mode (achado c)', () => {
@@ -226,6 +325,12 @@ describe('calculateBomForOrders — palmilha em dm² quando o produto é dm² (a
 describe('calculateArtisanalStrapRollCut — separação canônica não multiplica por fichas (achado a)', () => {
   const saleOrderId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
   const saleOrderItemId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+  const technicalStrapLineId = '11111111-1111-4111-8111-111111111111';
+  const strapVariantId = '22222222-2222-4222-8222-222222222222';
+  const recipeId = '33333333-3333-4333-8333-333333333333';
+  const baseProductId = '44444444-4444-4444-8444-444444444444';
+  const finishedProductId = '55555555-5555-4555-8555-555555555555';
+  const demandId = '66666666-6666-4666-8666-666666666666';
 
   function buildRollTables(): Record<string, unknown[]> {
     // Espelha OP-2026-00729: grade REAL (Σ = quantity = 720) + fichas=60 no
@@ -252,20 +357,59 @@ describe('calculateArtisanalStrapRollCut — separação canônica não multipli
       }],
       products: [],
       artisanal_recipes: [],
+      v_strap_picking_operational: [{
+        sale_order_strap_demand_id: demandId,
+        sale_order_id: saleOrderId,
+        sale_order_item_id: saleOrderItemId,
+        technical_strap_line_id: technicalStrapLineId,
+        strap_variant_id: strapVariantId,
+        recipe_id: recipeId,
+        base_product_id: baseProductId,
+        base_product_name: 'NAPA SOFT PRETO',
+        finished_product_id: finishedProductId,
+        finished_product_name: 'TIRA CHATA 8MM',
+        color_name: 'PRETO',
+        source_mode: 'internal',
+        planned_finished_m: 86.4,
+        remaining_finished_m: 86.4,
+        finished_stock_reserved_m: 0,
+        base_required_m: 86.4 / 34,
+        base_reserved_m: 86.4 / 34,
+        base_consumed_m: 0,
+        confirmed_yield_snapshot: 34,
+        status: 'planned',
+      }],
+      v_strap_demands_operational: [{
+        id: demandId,
+        origin_type: 'sale_order',
+        sale_order_id: saleOrderId,
+        sale_order_item_id: saleOrderItemId,
+        technical_strap_line_id: technicalStrapLineId,
+        strap_variant_id: strapVariantId,
+        recipe_id: recipeId,
+        base_product_id: baseProductId,
+        source_mode: 'internal',
+        required_m: 86.4,
+        fulfilled_m: 0,
+        finished_stock_reserved_m: 0,
+        committed_finished_inbound_m: 0,
+        replenishment_required_m: 86.4,
+        base_required_m: 86.4 / 34,
+        status: 'planned',
+      }],
     };
   }
 
-  it('grade REAL + fichas=60 no item: metros = Σ(pares × cm/par), UMA vez (não ×60)', async () => {
-    mockDb.tables = buildRollTables();
-    mockDb.rpc.preview_sale_order_strap_demand = [{
+  function buildRollPreview() {
+    return [{
       sale_order_item_id: saleOrderItemId,
-      technical_strap_line_id: '11111111-1111-4111-8111-111111111111',
-      strap_variant_id: '22222222-2222-4222-8222-222222222222',
+      technical_strap_line_id: technicalStrapLineId,
+      strap_variant_id: strapVariantId,
       source_mode: 'internal',
       gross_required_m: 86.4,
-      recipe_id: '33333333-3333-4333-8333-333333333333',
-      base_product_id: '44444444-4444-4444-8444-444444444444',
-      finished_product_id: '55555555-5555-4555-8555-555555555555',
+      recipe_id: recipeId,
+      base_product_id: baseProductId,
+      finished_product_id: finishedProductId,
       blocking_reasons: [],
       resolved: {
         strap_product_name: 'TIRA CHATA 8MM',
@@ -278,6 +422,11 @@ describe('calculateArtisanalStrapRollCut — separação canônica não multipli
         theoretical_yield_m_per_m: 34,
       },
     }];
+  }
+
+  it('grade REAL + fichas=60 no item: metros = Σ(pares × cm/par), UMA vez (não ×60)', async () => {
+    mockDb.tables = buildRollTables();
+    mockDb.rpc.preview_sale_order_strap_demand = buildRollPreview();
     const rows = await calculateArtisanalStrapRollCut(['op1']);
     expect(rows).toHaveLength(1);
     // 720 pares × 12 cm/par = 8640 cm = 86,4 m (bug antigo: 86,4 × 60 = 5184 m).
@@ -290,6 +439,37 @@ describe('calculateArtisanalStrapRollCut — separação canônica não multipli
     expect(rows[0].cut.n_bandas).toBe(0);
     expect(rows[0].cut.cm_a_cortar).toBe(0);
     expect(rows[0].cut.valid).toBe(false);
+  });
+
+  it('usa falta líquida/base remanescente do worker após cobertura e parcial, nunca a preview bruta', async () => {
+    const tables = buildRollTables();
+    Object.assign((tables.v_strap_picking_operational as any[])[0], {
+      planned_finished_m: 86.4,
+      remaining_finished_m: 56.4,
+      finished_stock_reserved_m: 12,
+      // Consumo histórico pode superar a NOVA base_required remanescente; não
+      // deve ser subtraído outra vez pelo frontend.
+      base_consumed_m: 30 / 34,
+      status: 'partial',
+    });
+    Object.assign((tables.v_strap_demands_operational as any[])[0], {
+      fulfilled_m: 30,
+      finished_stock_reserved_m: 12,
+      committed_finished_inbound_m: 20.4,
+      replenishment_required_m: 24,
+      base_required_m: 24 / 34,
+      status: 'partial',
+    });
+    mockDb.tables = tables;
+    mockDb.rpc.preview_sale_order_strap_demand = buildRollPreview();
+
+    const rows = await calculateArtisanalStrapRollCut(['op1']);
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].metros_necessarios).toBeCloseTo(24, 6);
+    expect(rows[0].canonical?.baseRequiredM).toBeCloseTo(24 / 34, 6);
+    expect(rows[0].metros_necessarios).not.toBeCloseTo(86.4, 6);
+    expect(rows[0].metros_necessarios).not.toBeCloseTo(56.4, 6);
   });
 });
 

@@ -4,9 +4,9 @@ import { Scissors, Warning } from '@phosphor-icons/react';
 import type { ArtisanalStrapCutRow } from '@/lib/strapRollCut';
 
 /**
- * Orientação operacional derivada exclusivamente do snapshot da receita aprovada.
- * Mostra metros de napa a separar, rendimento e dimensões de conferência; o rolo
- * fixo legado de 40 m × 1370 mm não participa do cálculo.
+ * Orientação operacional derivada do saldo líquido persistido pelo worker e do
+ * snapshot da receita aprovada. Mostra metros de napa a separar, rendimento e
+ * dimensões de conferência; o rolo fixo legado não participa do cálculo.
  */
 /** Uma linha de tira: identidade exata + napa requerida pelo rendimento aprovado. */
 function StrapLine({ row }: { row: ArtisanalStrapCutRow }) {
@@ -25,7 +25,7 @@ function StrapLine({ row }: { row: ArtisanalStrapCutRow }) {
           )}
           {row.baseName && <span className="text-red-600/70 dark:text-red-400/70"> · base {row.baseName}</span>}
           <div className="mt-1 text-xs text-muted-foreground">
-            Tira {row.metros_necessarios.toLocaleString('pt-BR', { maximumFractionDigits: 4 })} m
+            Tira líquida a produzir {row.metros_necessarios.toLocaleString('pt-BR', { maximumFractionDigits: 4 })} m
             {snapshot?.confirmedYieldMPerM ? ` · rendimento ${snapshot.confirmedYieldMPerM.toLocaleString('pt-BR', { maximumFractionDigits: 6 })} m/m` : ''}
             {snapshot?.usableBaseWidthMm ? ` · largura útil ${snapshot.usableBaseWidthMm.toLocaleString('pt-BR')} mm` : ''}
             {row.largura_mm > 0 ? ` · banda ${row.largura_mm.toLocaleString('pt-BR')} mm` : ''}
@@ -67,13 +67,13 @@ export default function ArtisanalStrapRollCutBlock({ rows }: { rows: ArtisanalSt
           Tiras artesanais — separação da napa-base
         </h3>
         <Badge className="ml-1 bg-red-500/15 text-red-600 dark:text-red-400 border border-red-500/30 text-[10px] uppercase tracking-wide hover:bg-red-500/15">
-          Receita aprovada
+          Saldo líquido
         </Badge>
       </div>
       <p className="px-3 text-xs text-red-600/80 dark:text-red-400/80">
-        A metragem é calculada por <strong>tira pronta ÷ rendimento confirmado</strong> da
-        receita exata. Largura útil, banda e rendimento teórico aparecem apenas para conferência.
-        A baixa da napa ocorre gradualmente nos recebimentos da produção.
+        Atendimento parcial, tira pronta reservada e entradas comprometidas já estão descontados.
+        A napa é calculada por <strong>saldo líquido a produzir ÷ rendimento confirmado</strong> da
+        receita exata; sua baixa ocorre gradualmente nos recebimentos da produção.
       </p>
 
       <div className="rounded-lg border border-red-500/30 divide-y divide-red-500/20 overflow-hidden keep-together">

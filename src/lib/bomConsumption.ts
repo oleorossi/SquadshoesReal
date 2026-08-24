@@ -55,6 +55,24 @@ export type ConsumptionRow = {
   recipeId?: string | null;
   baseProductId?: string | null;
   technicalStrapLineIds?: string[];
+  /** Napa remanescente já persistida pelo netting (não recalcular na UI). */
+  strapBaseRequiredM?: number;
+  strapBaseName?: string | null;
+  strapConfirmedYieldMPerM?: number | null;
+};
+
+type CanonicalStrapNetDemandRow = {
+  id: string;
+  origin_type?: string | null;
+  sale_order_item_id?: string | null;
+  technical_strap_line_id?: string | null;
+  strap_variant_id?: string | null;
+  recipe_id?: string | null;
+  base_product_id?: string | null;
+  source_mode?: string | null;
+  replenishment_required_m?: number | null;
+  base_required_m?: number | null;
+  status?: string | null;
 };
 
 export const COMPONENT_ORDER = [
@@ -114,6 +132,14 @@ const addConsumptionRow = (map: Map<string, ConsumptionRow>, row: ConsumptionRow
         ...row.technicalStrapLineIds,
       ]));
     }
+    if (row.strapBaseRequiredM != null) {
+      existing.strapBaseRequiredM = (existing.strapBaseRequiredM || 0)
+        + nonNegativeQuantity(row.strapBaseRequiredM);
+    }
+    if (!existing.strapBaseName && row.strapBaseName) existing.strapBaseName = row.strapBaseName;
+    if (!existing.strapConfirmedYieldMPerM && row.strapConfirmedYieldMPerM) {
+      existing.strapConfirmedYieldMPerM = row.strapConfirmedYieldMPerM;
+    }
     // Equivalência em placas soma junto (é linear na mesma proporção do dm²).
     if (row.plateEquivalent) existing.plateEquivalent = (existing.plateEquivalent || 0) + row.plateEquivalent;
     return;
@@ -133,8 +159,70 @@ const addConsumptionRow = (map: Map<string, ConsumptionRow>, row: ConsumptionRow
     recipeId: row.recipeId,
     baseProductId: row.baseProductId,
     technicalStrapLineIds: row.technicalStrapLineIds,
+    strapBaseRequiredM: row.strapBaseRequiredM,
+    strapBaseName: row.strapBaseName,
+    strapConfirmedYieldMPerM: row.strapConfirmedYieldMPerM,
   });
 };
+
+const nonNegativeQuantity = (value: unknown): number => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+};
+
+/**
+ * O worker de tiras já persiste o netting completo. A view de picking guarda a
+ * identidade e os rótulos, mas `planned_finished_m` é bruto e
+ * `remaining_finished_m` ainda inclui estoque acabado/inbound comprometidos.
+ * A quantidade operacional líquida vive em `v_strap_demands_operational`.
+ */
+async function fetchCanonicalStrapNetDemands(
+  saleOrderItemIds: string[],
+): Promise<Map<string, CanonicalStrapNetDemandRow>> {
+  if (saleOrderItemIds.length === 0) return new Map();
+
+  const { data, error } = await (supabase as any)
+    .from('v_strap_demands_operational')
+    .select('id, origin_type, sale_order_item_id, technical_strap_line_id, strap_variant_id, recipe_id, base_product_id, source_mode, replenishment_required_m, base_required_m, status')
+    .in('sale_order_item_id', saleOrderItemIds)
+    .eq('origin_type', 'sale_order')
+    .not('status', 'in', '(superseded,cancelled,error)');
+  if (error) throw error;
+
+  return new Map(
+    ((data || []) as CanonicalStrapNetDemandRow[])
+      .filter((row) => row.id)
+      .map((row) => [row.id, row]),
+  );
+}
+
+function netDemandForPickingRow(
+  pickingRow: Record<string, unknown>,
+  netDemandById: Map<string, CanonicalStrapNetDemandRow>,
+): CanonicalStrapNetDemandRow {
+  const demandId = String(pickingRow.sale_order_strap_demand_id || '').trim();
+  const demand = demandId ? netDemandById.get(demandId) : undefined;
+  if (!demand) {
+    throw new Error(
+      'A Lista de Separação encontrou uma tira sem saldo líquido canônico. ' +
+      'Reprocesse o pedido na aba Tiras; nenhum valor bruto foi usado.',
+    );
+  }
+
+  const pickingItemId = String(pickingRow.sale_order_item_id || '').trim();
+  const demandItemId = String(demand.sale_order_item_id || '').trim();
+  const pickingLineId = String(pickingRow.technical_strap_line_id || '').trim();
+  const demandLineId = String(demand.technical_strap_line_id || '').trim();
+  if ((pickingItemId && demandItemId && pickingItemId !== demandItemId)
+      || (pickingLineId && demandLineId && pickingLineId !== demandLineId)) {
+    throw new Error(
+      'A Lista de Separação encontrou identidade divergente no saldo canônico de tiras. ' +
+      'Reprocesse o pedido antes de separar.',
+    );
+  }
+
+  return demand;
+}
 
 export async function calculateBomForOrders(orderIds: string[]): Promise<ConsumptionRow[]> {
   if (orderIds.length === 0) return [];
@@ -1224,13 +1312,19 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
   // Substitui as tiras calculadas por rótulo pelos snapshots persistidos do
   // worker. O restante do BOM continua no motor existente. Esta leitura ocorre
   // depois da confirmação do PV (picking), quando a view canônica já conhece
-  // variante/base/receita exatas e a origem escolhida.
+  // variante/base/receita exatas e a origem escolhida. Quantidade vem da view
+  // de demandas: `planned_finished_m`/`remaining_finished_m` da view de picking
+  // não descontam toda a cobertura já comprometida.
   if (saleOrderItemIds.length > 0) {
-    const { data: canonicalStraps, error: canonicalStrapsError } = await (supabase as any)
-      .from('v_strap_picking_operational')
-      .select('*')
-      .in('sale_order_item_id', saleOrderItemIds)
-      .not('status', 'in', '(superseded,cancelled,error)');
+    const [canonicalStrapsResult, netDemandById] = await Promise.all([
+      (supabase as any)
+        .from('v_strap_picking_operational')
+        .select('*')
+        .in('sale_order_item_id', saleOrderItemIds)
+        .not('status', 'in', '(superseded,cancelled,error)'),
+      fetchCanonicalStrapNetDemands(saleOrderItemIds),
+    ]);
+    const { data: canonicalStraps, error: canonicalStrapsError } = canonicalStrapsResult;
     if (canonicalStrapsError) throw canonicalStrapsError;
 
     const expectedTechnicalLineIds = new Set<string>();
@@ -1252,24 +1346,42 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
           'Reprocesse o pedido na aba Tiras antes de separar; nenhum cálculo legado foi usado.',
         );
       }
+    }
 
+    // Snapshot antigo pode não carregar mais `strap_colors`, embora a demanda
+    // persistida exista. A presença da linha canônica basta para substituir o
+    // cálculo legado; exigir o JSON do item faria o bruto reaparecer nesses PVs.
+    if ((canonicalStraps || []).length > 0) {
       for (const [key, row] of consumptionMap) {
         if (row.componentType === 'Tiras') consumptionMap.delete(key);
       }
       for (const row of canonicalStraps as any[]) {
+        const netDemand = netDemandForPickingRow(row, netDemandById);
         addConsumptionRow(consumptionMap, {
           componentType: 'Tiras',
           groupName: row.finished_product_name || 'Tira sem cadastro',
           materialName: row.source_mode === 'buy_ready' ? 'Comprada pronta' : 'Produção interna',
           productUnit: 'm',
           color: row.color_name || '—',
-          totalQuantity: Number(row.planned_finished_m) || 0,
+          // Falta líquida ainda operacional: já desconta atendimento parcial,
+          // tira pronta reservada e inbound acabado comprometido. Zero é
+          // cobertura completa e, portanto, não gera linha de separação.
+          totalQuantity: nonNegativeQuantity(netDemand.replenishment_required_m),
           strapVariantId: row.strap_variant_id || null,
           recipeId: row.recipe_id || null,
           baseProductId: row.base_product_id || null,
           technicalStrapLineIds: row.technical_strap_line_id
             ? [row.technical_strap_line_id]
             : [],
+          strapBaseRequiredM: row.source_mode === 'internal'
+            ? nonNegativeQuantity(netDemand.base_required_m)
+            : undefined,
+          strapBaseName: row.source_mode === 'internal'
+            ? row.base_product_name || null
+            : null,
+          strapConfirmedYieldMPerM: row.source_mode === 'internal'
+            ? nonNegativeQuantity(row.confirmed_yield_snapshot) || null
+            : null,
         });
       }
     }
@@ -1504,8 +1616,10 @@ export async function calculateSoleBreakdownByGrade(orderIds: string[]): Promise
  * reconstrói rolo, bandas ou largura genéricos. O bloco permanece separado dos
  * materiais BOM normais na Lista de Separação e no Resumo de Consumo do PV.
  *
- * Identidade, metragem, origem, receita e largura vêm da preview canônica do PV.
- * Não há fallback por nome/grupo/cor nem consulta à tabela de receitas legada.
+ * Identidade e snapshots de conferência vêm das fontes canônicas do PV. A
+ * quantidade operacional vem obrigatoriamente do netting persistido pelo
+ * worker: estoque acabado, inbound comprometido e atendimento parcial já foram
+ * descontados antes deste código. Não há fallback bruto por nome/grupo/cor.
  */
 export async function calculateArtisanalStrapRollCut(orderIds: string[]): Promise<ArtisanalStrapCutRow[]> {
   if (orderIds.length === 0) return [];
@@ -1524,19 +1638,107 @@ export async function calculateArtisanalStrapRollCut(orderIds: string[]): Promis
     .filter(Boolean));
   if (saleOrderIds.length === 0 || selectedItemIds.size === 0) return [];
 
-  const results = await Promise.all(saleOrderIds.map((saleOrderId) =>
-    (supabase as any).rpc('preview_sale_order_strap_demand', {
-      p_sale_order_id: saleOrderId,
-    })));
+  const selectedItemIdList = [...selectedItemIds] as string[];
+  const [results, pickingResult, netDemandById] = await Promise.all([
+    Promise.all(saleOrderIds.map((saleOrderId) =>
+      (supabase as any).rpc('preview_sale_order_strap_demand', {
+        p_sale_order_id: saleOrderId,
+      }))),
+    (supabase as any)
+      .from('v_strap_picking_operational')
+      .select('*')
+      .in('sale_order_item_id', selectedItemIdList)
+      .eq('source_mode', 'internal')
+      .not('status', 'in', '(superseded,cancelled,error)'),
+    fetchCanonicalStrapNetDemands(selectedItemIdList),
+  ]);
+  if (pickingResult.error) throw pickingResult.error;
 
-  const previews = [];
+  const previewByLine = new Map<string, ReturnType<typeof parseCanonicalStrapDemandPreview>>();
   for (const result of results as Array<{ data?: unknown; error?: { message?: string } | null }>) {
     if (result.error) throw result.error;
     for (const raw of (Array.isArray(result.data) ? result.data : []) as Record<string, unknown>[]) {
       const preview = parseCanonicalStrapDemandPreview(raw);
-      if (preview.saleOrderItemId && selectedItemIds.has(preview.saleOrderItemId)) previews.push(preview);
+      if (preview.saleOrderItemId && selectedItemIds.has(preview.saleOrderItemId)
+          && preview.technicalStrapLineId) {
+        previewByLine.set(
+          `${preview.saleOrderItemId}::${preview.technicalStrapLineId}`,
+          preview,
+        );
+      }
     }
   }
 
-  return canonicalStrapCutRows(previews);
+  const pickingRows = ((pickingResult.data || []) as Record<string, unknown>[])
+    .filter((row) => row.source_mode === 'internal'
+      && selectedItemIds.has(String(row.sale_order_item_id || '')));
+  const resolvedPickingKeys = new Set(pickingRows.map((row) =>
+    `${String(row.sale_order_item_id || '')}::${String(row.technical_strap_line_id || '')}`));
+  const missingPickingLines = [...previewByLine.entries()]
+    .filter(([, preview]) => preview.sourceMode === 'internal')
+    .map(([key]) => key)
+    .filter((key) => !resolvedPickingKeys.has(key));
+  if (missingPickingLines.length > 0) {
+    throw new Error(
+      `A separação encontrou ${missingPickingLines.length} tira(s) interna(s) sem demanda canônica. ` +
+      'Reprocesse o pedido na aba Tiras; a metragem bruta da preview não foi usada.',
+    );
+  }
+
+  const netPreviews: ReturnType<typeof parseCanonicalStrapDemandPreview>[] = [];
+  for (const row of pickingRows) {
+    const netDemand = netDemandForPickingRow(row, netDemandById);
+    const netFinishedM = nonNegativeQuantity(netDemand.replenishment_required_m);
+    if (netFinishedM <= 0) continue;
+
+    const saleOrderItemId = String(row.sale_order_item_id || '');
+    const technicalStrapLineId = String(row.technical_strap_line_id || '');
+    const preview = previewByLine.get(`${saleOrderItemId}::${technicalStrapLineId}`)
+      || parseCanonicalStrapDemandPreview({
+        sale_order_item_id: saleOrderItemId,
+        technical_strap_line_id: technicalStrapLineId,
+        strap_variant_id: row.strap_variant_id,
+        source_mode: 'internal',
+        recipe_id: row.recipe_id,
+        base_product_id: row.base_product_id,
+        finished_product_id: row.finished_product_id,
+        resolved: {
+          strap_product_name: row.finished_product_name,
+          strap_color_name: row.color_name,
+          base_product_name: row.base_product_name,
+          confirmed_yield_m_per_m: row.confirmed_yield_snapshot,
+        },
+      });
+    const baseRequiredM = nonNegativeQuantity(netDemand.base_required_m);
+    const confirmedYieldMPerM = nonNegativeQuantity(row.confirmed_yield_snapshot)
+      || nonNegativeQuantity(preview.confirmedYieldMPerM);
+    const blockingReasons = [...preview.blockingReasons];
+    if (!row.strap_variant_id) blockingReasons.push('Variante canônica da tira ausente');
+    if (!row.recipe_id) blockingReasons.push('Receita canônica da tira ausente');
+    if (!row.base_product_id) blockingReasons.push('Material-base canônico ausente');
+    if (!(confirmedYieldMPerM > 0)) blockingReasons.push('Rendimento confirmado ausente');
+    if (!(baseRequiredM > 0)) blockingReasons.push('Necessidade líquida de napa não persistida');
+
+    netPreviews.push({
+      ...preview,
+      saleOrderItemId,
+      technicalStrapLineId,
+      strapVariantId: String(row.strap_variant_id || '') || null,
+      sourceMode: 'internal',
+      // `canonicalStrapCutRows` agrega o campo de metragem recebido. Nesta
+      // fronteira ele recebe a falta LÍQUIDA persistida, nunca o bruto da RPC.
+      grossRequiredM: netFinishedM,
+      recipeId: String(row.recipe_id || '') || null,
+      baseProductId: String(row.base_product_id || '') || null,
+      finishedProductId: String(row.finished_product_id || '') || null,
+      strapProductName: String(row.finished_product_name || preview.strapProductName || 'Tira sem cadastro'),
+      strapColorName: String(row.color_name || preview.strapColorName || '—'),
+      baseProductName: String(row.base_product_name || preview.baseProductName || '') || null,
+      confirmedYieldMPerM,
+      baseRequiredM,
+      blockingReasons: Array.from(new Set(blockingReasons)),
+    });
+  }
+
+  return canonicalStrapCutRows(netPreviews);
 }
