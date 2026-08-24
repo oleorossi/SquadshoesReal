@@ -173,6 +173,9 @@ export function useSectorSettings() {
   return useQuery({
     queryKey: ['sector_settings'],
     staleTime: 60_000,
+    // Ordem, ativação e grupos paralelos governam colunas e elegibilidade do
+    // Kanban; precisam do mesmo piso de frescor das views do motor.
+    refetchInterval: ENGINE_REFETCH_MS,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('sector_settings')

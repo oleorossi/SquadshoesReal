@@ -1,8 +1,9 @@
 import { Link } from 'react-router-dom';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Warning as AlertTriangle, CalendarBlank, Package, Timer } from '@phosphor-icons/react';
+import {
+  CheckSquare, Square, Warning as AlertTriangle, CalendarBlank, Package, Timer,
+} from '@phosphor-icons/react';
 import { thumbUrl } from '@/lib/imageThumb';
 import { fmtDate, KanbanCardData } from './kanbanDerive';
 
@@ -26,6 +27,8 @@ interface Props {
   selectable?: boolean;
   selected?: boolean;
   onToggleSelect?: () => void;
+  /** Usuário pode consultar o card, mas não registrar apontamentos. */
+  readOnly?: boolean;
   /** Foto da referência resolvida por `useReferenceThumbs` (a view manda
    *  `reference_photo_url` vazio — ver o hook). Cai pro campo da view quando
    *  ausente, então o card funciona mesmo se a view for corrigida no futuro. */
@@ -62,7 +65,7 @@ function stageAge(stage: { started_at: string | null; created_at: string } | nul
 export function KanbanOpCard({
   card, draggable, dragging, onDragStart, onDragEnd, onOpen,
   compact = false, dimmed = false, highlighted = false,
-  selectable = false, selected = false, onToggleSelect, photoUrl, landed = false,
+  selectable = false, selected = false, onToggleSelect, readOnly = false, photoUrl, landed = false,
   materialGateDate = null, materialGateReason = null,
 }: Props) {
   const { q, front, delivered, isPartial, columnStage, upstreamGap, parallelSiblings } = card;
@@ -116,22 +119,21 @@ export function KanbanOpCard({
       aria-checked={selectable ? selected : undefined}
       aria-label={
         selectable
-          ? undefined
+          ? `${selected ? 'Desmarcar' : 'Selecionar'} ${q.order_number}, setor ${card.column}, `
+            + `${q.reference_name || 'sem referência'}${q.color ? `, cor ${q.color}` : ''}.`
           : `${q.order_number}, ${q.reference_name || 'sem referência'}${q.color ? `, cor ${q.color}` : ''}, ` +
             `${front ? delivered : 0} de ${total} pares` +
             `${isPartial ? ', entrega parcial' : ''}${q.late_days > 0 ? `, ${q.late_days} dias de atraso` : ''}. ` +
-            'Abrir apontamento.'
+            (readOnly ? 'Abrir detalhes.' : 'Abrir apontamento.')
       }
     >
       <div className="flex items-start gap-2">
         {selectable && (
-          <Checkbox
-            checked={selected}
-            onCheckedChange={() => onToggleSelect?.()}
-            onClick={e => e.stopPropagation()}
-            className="mt-0.5 shrink-0 h-5 w-5"
-            aria-label={`Selecionar ${q.order_number}`}
-          />
+          <span className="mt-0.5 shrink-0 text-primary" aria-hidden="true">
+            {selected
+              ? <CheckSquare className="h-5 w-5" weight="fill" />
+              : <Square className="h-5 w-5 text-muted-foreground" />}
+          </span>
         )}
         {thumb ? (
           <img
@@ -145,13 +147,22 @@ export function KanbanOpCard({
         )}
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-1.5">
-            <Link
-              to={`/orders/${q.order_id}/edit`}
-              onClick={e => e.stopPropagation()}
-              className={`font-mono ${compact ? 'text-xs md:text-[11px]' : 'text-xs'} font-bold hover:underline truncate`}
-            >
-              {q.order_number}
-            </Link>
+            {selectable ? (
+              // No modo seleção o card inteiro tem uma única ação. Manter o
+              // número como Link fazia o clique mais provável navegar pra fora
+              // da tarefa em vez de marcar a OP.
+              <span className={`font-mono ${compact ? 'text-xs md:text-[11px]' : 'text-xs'} truncate font-bold`}>
+                {q.order_number}
+              </span>
+            ) : (
+              <Link
+                to={`/orders/${q.order_id}/edit`}
+                onClick={e => e.stopPropagation()}
+                className={`font-mono ${compact ? 'text-xs md:text-[11px]' : 'text-xs'} font-bold hover:underline truncate`}
+              >
+                {q.order_number}
+              </Link>
+            )}
             {/* Os estados quebram dentro do próprio card. Antes o grupo inteiro
                 era `shrink-0`: em colunas estreitas ele empurrava o número da OP
                 e os últimos selos eram cortados pelo `overflow-hidden`. */}

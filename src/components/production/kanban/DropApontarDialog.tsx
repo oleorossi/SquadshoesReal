@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { NumberInput } from '@/components/ui/number-input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Info, UserCircle, ClockCounterClockwise } from '@phosphor-icons/react';
@@ -28,7 +28,7 @@ const MOVE_ATUAL = '__atual';
  * Pulo de setor / volta (R5.5): avisar + confirmar, tudo pela mesma RPC.
  */
 export function DropApontarDialog({
-  card, target, flowOrder, levelOf, apontar, onClose, photoUrl, onApontado,
+  card, target, flowOrder, levelOf, apontar, onClose, photoUrl, onApontado, readOnly = false,
 }: {
   card: KanbanCardData;
   target: string | null;
@@ -41,6 +41,8 @@ export function DropApontarDialog({
   photoUrl?: string | null;
   /** Apontou com sucesso — a página usa pra dar o halo de pouso no card. */
   onApontado?: (orderId: string) => void;
+  /** Consulta progresso/histórico sem expor ações de apontamento. */
+  readOnly?: boolean;
 }) {
   const { q, stages, column } = card;
   const { data: profile } = useCurrentProfile();
@@ -53,14 +55,10 @@ export function DropApontarDialog({
   const effTarget = target ?? (moveTarget || null);
 
   const plan = buildPointingPlan(card, effTarget, flowOrder, levelOf);
-  const { pointedStage, isBackward, skipped, remaining } = plan;
+  const { pointedStage, isBackward, skipped, remaining, stageRemaining } = plan;
 
-  const { fwdOptions, backOption } = moveOptions(card, flowOrder);
-  const showMove = target === null && (fwdOptions.length > 0 || backOption !== null);
-
-  const columnRemaining = card.columnStage
-    ? card.columnStage.quantity_total - card.columnStage.quantity_processed
-    : 0;
+  const { fwdOptions, backOption } = moveOptions(card, flowOrder, levelOf);
+  const showMove = !readOnly && target === null && (fwdOptions.length > 0 || backOption !== null);
 
   const [qty, setQty] = useState<number>(() => (isBackward ? 0 : Math.max(0, remaining)));
   const [pendingWarnings, setPendingWarnings] = useState<PointingWarning[] | null>(null);
@@ -88,21 +86,11 @@ export function DropApontarDialog({
   const handleMoveChange = (v: string) => {
     const t = v === MOVE_ATUAL ? '' : v;
     setMoveTarget(t);
-    // Reancora a quantidade no novo sentido: frente = saldo do setor atual;
-    // trás = 0 (o usuário digita quantos pares estorna), igual ao drop.
-    // ⚠ Sentido pela ROTA DA OP, não pela config global. Todo o resto do módulo
-    // usa `stage_order` e só cai no `flow_order` como desempate; esta linha era
-    // a única a decidir por `flow_order` direto. Hoje as duas ordens coincidem,
-    // mas na divergência (rota legada, setor recadastrado — histórico deste
-    // arquivo) `back` sairia false num movimento de VOLTA e o campo de estorno
-    // nasceria com o saldo cheio: um clique devolveria o lote inteiro.
-    const ordem = new Map(card.stages.map(x => [norm(x.stage_name), x.stage_order]));
-    const oCur = ordem.get(column);
-    const oTgt = t !== '' ? ordem.get(t) : undefined;
-    const back = t !== '' && (oCur !== undefined && oTgt !== undefined
-      ? oTgt < oCur
-      : (flowOrder.get(t) ?? 0) < (flowOrder.get(column) ?? 0));
-    setQty(back ? 0 : Math.max(0, columnRemaining));
+    // Recalcula pelo mesmo plano do submit. Usar o saldo bruto da coluna aqui
+    // ignorava o limite realmente recebido do setor anterior e pré-preenchia
+    // mais pares do que estavam disponíveis.
+    const nextPlan = buildPointingPlan(card, t || null, flowOrder, levelOf);
+    setQty(nextPlan.isBackward ? 0 : Math.max(0, nextPlan.remaining));
     // O aceite de pulo vale pro conjunto de setores do destino ANTERIOR: trocar
     // o destino tem que exigir novo aceite, senão confirmar o pulo de 1 setor
     // autoriza silenciosamente o de 5.
@@ -113,7 +101,10 @@ export function DropApontarDialog({
     return (
       <Dialog open onOpenChange={v => { if (!v) onClose(); }}>
         <DialogContent className="sm:max-w-md">
-          <DialogHeader><DialogTitle>{q.order_number}</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>{q.order_number}</DialogTitle>
+            <DialogDescription>Esta OP não possui um setor disponível para apontamento.</DialogDescription>
+          </DialogHeader>
           <p className="text-sm text-muted-foreground">
             {plan.unavailableReason ?? 'Nenhum setor pendente pra apontar nesta OP.'}
           </p>
@@ -123,6 +114,7 @@ export function DropApontarDialog({
   }
 
   const doApontar = async (confirmed?: string[]) => {
+    if (readOnly) return;
     if (qty === 0) { onClose(); return; }
     try {
       const res = await applyPointing({
@@ -139,11 +131,12 @@ export function DropApontarDialog({
       }
       if (res.status === 'ok') {
         const gravado = res.quantity;
+        const canUndo = !isBackward && skipped.length === 0;
         toast.success(
           isBackward
             ? `Estornado ${Math.abs(gravado)} pares de ${pointedStage.stage_name}.`
             : `${pointedStage.stage_name}: +${gravado} pares (${Math.min(pointedStage.quantity_processed + gravado, pointedStage.quantity_total)}/${pointedStage.quantity_total}).`,
-          {
+          canUndo ? {
             // DESFAZER: apontamento errado no chão de fábrica era caro de
             // corrigir — tinha que reencontrar a OP, entender o estorno e
             // redigitar. O lançamento inverso já existe (quantidade negativa na
@@ -158,9 +151,6 @@ export function DropApontarDialog({
                     stageName: pointedStage.stage_name,
                     quantity: -gravado,
                     note: `Desfeito pelo operador (lançamento de ${gravado > 0 ? '+' : ''}${gravado} pares)`,
-                    // O inverso de um apontamento recém-feito não deve reabrir
-                    // o interrogatório de avisos: o servidor já os aceitou agora.
-                    confirmedWarnings: ['limite_setor_anterior', 'material_nao_reservado', 'acima_do_total'],
                   });
                   toast.success(`Desfeito: ${pointedStage.stage_name} voltou ${Math.abs(gravado)} pares.`);
                 } catch {
@@ -168,7 +158,7 @@ export function DropApontarDialog({
                 }
               },
             },
-          },
+          } : undefined,
         );
         onApontado?.(q.order_id);
       }
@@ -185,8 +175,15 @@ export function DropApontarDialog({
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="text-base">
-              {isBackward ? 'Estornar produção' : `Apontar ${pointedStage.stage_name}`} — {q.order_number}
+              {readOnly
+                ? `Detalhes da produção — ${q.order_number}`
+                : <>{isBackward ? 'Estornar produção' : `Apontar ${pointedStage.stage_name}`} — {q.order_number}</>}
             </DialogTitle>
+            <DialogDescription>
+              {readOnly
+                ? 'Consulte a identificação, o progresso por setor e o histórico da OP.'
+                : 'Confira o setor e a quantidade antes de registrar o lançamento.'}
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
             {/* Identidade da referência: a foto GRANDE é o que confirma, num
@@ -224,7 +221,7 @@ export function DropApontarDialog({
               </dl>
             </div>
 
-            {effTarget && !isBackward && (
+            {effTarget && !isBackward && plan.available && (
               <p className="font-mono text-[11px] uppercase tracking-wider text-muted-foreground">
                 De <strong className="text-foreground">{column}</strong>{' '}
                 <span className="text-primary">→</span>{' '}
@@ -260,7 +257,17 @@ export function DropApontarDialog({
               </div>
             )}
 
-            {skipped.length > 0 && !skipBlocked && (
+            {!readOnly && !plan.available && (
+              <div
+                role="alert"
+                className="rounded-md border border-red-500/50 bg-red-500/10 p-2.5 text-xs text-red-700 dark:text-red-300"
+              >
+                <strong>Movimento indisponível.</strong>{' '}
+                {plan.unavailableReason ?? 'Atualize o quadro e tente novamente.'}
+              </div>
+            )}
+
+            {!readOnly && skipped.length > 0 && !skipBlocked && (
               <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2.5 text-xs text-amber-700 dark:text-amber-300">
                 <strong>Pulando setor{skipped.length > 1 ? 'es' : ''}:</strong> {skipped.join(', ')}.
                 Eles serão marcados como concluídos <strong>sem produção apontada</strong> — fica registrado
@@ -281,29 +288,30 @@ export function DropApontarDialog({
                 </label>
               </div>
             )}
-            {skipBlocked && (
+            {!readOnly && skipBlocked && (
               <div className="rounded-md border border-red-500/50 bg-red-500/10 p-2.5 text-xs text-red-700 dark:text-red-300">
                 <strong>Pra pular setor, {pointedStage.stage_name} tem que fechar.</strong>{' '}
-                Você está apontando {qty} de {remaining} pares — os{' '}
-                <strong>{remaining - qty} restantes</strong> ficariam sem passar por{' '}
+                Você está apontando {qty} de {stageRemaining} pares — os{' '}
+                <strong>{stageRemaining - qty} restantes</strong> ficariam sem passar por{' '}
                 {skipped.join(', ')}, e sem aparecer como pendência em lugar nenhum do quadro.
                 <br />
-                Aponte os {remaining} pares pra pular, ou mande a OP pro próximo setor da rota.
+                Aponte os {stageRemaining} pares pra pular, ou mande a OP pro próximo setor da rota.
               </div>
             )}
-            {isBackward && (
+            {!readOnly && isBackward && (
               <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2.5 text-xs text-amber-700 dark:text-amber-300">
                 <strong>Voltando no fluxo:</strong> os pares informados serão estornados de{' '}
                 <strong>{pointedStage.stage_name}</strong> (lançamento negativo no ledger).
               </div>
             )}
 
-            <div>
-              <Label className="text-xs">
+            {!readOnly && <div>
+              <Label htmlFor="kanban-pointing-quantity" className="text-xs">
                 {isBackward ? 'Pares a estornar' : 'Quantidade executada (pares)'}
               </Label>
               <div className="flex items-center gap-2 mt-1">
                 <NumberInput
+                  id="kanban-pointing-quantity"
                   autoFocus
                   min={0}
                   decimals={0}
@@ -326,12 +334,12 @@ export function DropApontarDialog({
                   se foi engano, corrija aqui.
                 </p>
               )}
-            </div>
+            </div>}
 
             {/* Prévia da consequência: mostra COMO o card vai ficar antes do
                 clique. Apontou menos que o total do setor → o bloco fica âmbar
                 aqui mesmo, igualzinho ao card que vai nascer no destino. */}
-            {!isBackward && (
+            {!readOnly && !isBackward && plan.available && (
               <div
                 className={`flex items-center gap-3 rounded-lg border p-2.5 transition-colors ${
                   willBePartial
@@ -357,11 +365,11 @@ export function DropApontarDialog({
 
             {/* Autoria: quem responde pelo lançamento é o usuário logado — não
                 se escolhe operário aqui (decisão do dono 2026-07-26). */}
-            <p className="text-[11px] text-muted-foreground flex items-center gap-1.5">
+            {!readOnly && <p className="text-[11px] text-muted-foreground flex items-center gap-1.5">
               <UserCircle className="h-4 w-4 shrink-0" />
               Lançamento registrado como{' '}
               <strong className="text-foreground">{profile?.full_name || profile?.email || 'usuário logado'}</strong>
-            </p>
+            </p>}
 
             {/* Progresso por setor (transparência do card único) + trilha real */}
             <div className="flex flex-wrap items-center gap-1">
@@ -433,32 +441,38 @@ export function DropApontarDialog({
             </div>
 
             <div className="flex justify-end gap-2 pt-2 border-t">
-              <Button variant="outline" className="h-11 md:h-10" onClick={onClose}>Cancelar</Button>
-              <Button
-                className="h-11 md:h-10"
-                onClick={() => doApontar()}
-                disabled={apontar.isPending || qty === 0 || skipBlocked || (skipped.length > 0 && !skipOk)}
-              >
-                {isBackward ? 'Estornar' : 'Apontar'}
+              <Button variant="outline" className="h-11 md:h-10" onClick={onClose}>
+                {readOnly ? 'Fechar' : 'Cancelar'}
               </Button>
+              {!readOnly && (
+                <Button
+                  className="h-11 md:h-10"
+                  onClick={() => doApontar()}
+                  disabled={!plan.available || apontar.isPending || qty === 0 || skipBlocked || (skipped.length > 0 && !skipOk)}
+                >
+                  {isBackward ? 'Estornar' : 'Apontar'}
+                </Button>
+              )}
             </div>
           </div>
         </DialogContent>
       </Dialog>
 
       {/* R6.3: avisos do servidor — confirmar grava com autoria */}
-      <ConfirmPointingWarnings
-        open={!!pendingWarnings}
-        warnings={pendingWarnings || []}
-        contextLabel={`${pointedStage.stage_name} — ${q.order_number}, ${isBackward ? '-' : '+'}${qty} pares`}
-        onConfirm={() => {
-          const codes = (pendingWarnings || []).map(w => w.code);
-          setPendingWarnings(null);
-          doApontar(codes);
-        }}
-        onCancel={() => setPendingWarnings(null)}
-        confirming={apontar.isPending}
-      />
+      {!readOnly && (
+        <ConfirmPointingWarnings
+          open={!!pendingWarnings}
+          warnings={pendingWarnings || []}
+          contextLabel={`${pointedStage.stage_name} — ${q.order_number}, ${isBackward ? '-' : '+'}${qty} pares`}
+          onConfirm={() => {
+            const codes = (pendingWarnings || []).map(w => w.code);
+            setPendingWarnings(null);
+            doApontar(codes);
+          }}
+          onCancel={() => setPendingWarnings(null)}
+          confirming={apontar.isPending}
+        />
+      )}
     </>
   );
 }
