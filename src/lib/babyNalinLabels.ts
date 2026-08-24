@@ -12,7 +12,7 @@
  * Entrada: o arquivo de exportação do pedido de compra do ERP do cliente
  * (`Exp_Etiquetas_PedCompra_*.csv`, `;` em UTF-16/UTF-8/CP1252, ou XLSX).
  * Saídas:
- *   - produção L42PRO: uma etiqueta 100 × 30 mm por página, repetida pela quantidade;
+ *   - produção L42PRO: duas etiquetas 50 × 30 mm por carreira, repetidas pela quantidade;
  *   - gráfica: duas artes 50 × 30 mm lado a lado, uma por SKU; vão e margens são opcionais.
  */
 import { code128Bars, encodeCode128 } from './code128';
@@ -39,29 +39,6 @@ export const OFFSET_Y_MM = (MEDIA_HEIGHT_MM - ART_HEIGHT_MM) / 2; // 1,0
 export const COUCHE_LABEL_WIDTH_MM = 50.0;
 export const COUCHE_LABEL_HEIGHT_MM = 30.0;
 export const COUCHE_COLUMNS = 2;
-
-/** Impressão térmica: uma etiqueta física inteira por página, como a caixa individual. */
-export const PRODUCTION_PAGE_WIDTH_MM = 100.0;
-export const PRODUCTION_PAGE_HEIGHT_MM = 30.0;
-export const PRODUCTION_SAFE_EDGE_MM = 1.0;
-export const PRODUCTION_ART_WIDTH_MM = PRODUCTION_PAGE_WIDTH_MM - PRODUCTION_SAFE_EDGE_MM * 2;
-export const PRODUCTION_ART_HEIGHT_MM = PRODUCTION_PAGE_HEIGHT_MM - PRODUCTION_SAFE_EDGE_MM * 2;
-
-/**
- * Mesma hierarquia da etiqueta individual 100 × 30 da fábrica:
- * marca à esquerda, identificação, grade em bloco preto e CODE128 à direita.
- */
-export const PRODUCTION_LAYOUT = {
-  header: { x: 1.0, y: 1.0, width: 54.0, height: 3.8, pt: 5.5 },
-  logo: { x: 2.0, y: 6.0, box: 17.0 },
-  info: { x: 20.5, width: 23.5 },
-  referenceY: 6.0,
-  colorY: 11.3,
-  productCodeY: 17.2,
-  size: { x: 45.0, y: 5.0, width: 10.0, height: 23.5, idealPt: 28 },
-  barcodeRegion: { x: 56.0, y: 1.0, width: 43.0, height: 28.0 },
-  barcode: { topY: 4.0, heightMm: 17.0, valueY: 22.8, valuePt: 6 },
-} as const;
 
 /**
  * Medidas variáveis da faca/liner. O perfil padrão preserva o PDF já usado,
@@ -346,7 +323,7 @@ export function assertBarcodeFits(codigo: string): BarcodeFit {
 /* ──────────────────────────────── PDF ──────────────────────────────── */
 
 export interface BabyNalinPdfOptions {
-  /** Produção usa uma página 100×30; gráfica usa duas artes 50×30 lado a lado. */
+  /** Os dois modos usam o rolo de duas colunas 50×30; muda somente a repetição. */
   mode?: 'production' | 'graphic';
   /** Repete cada etiqueta pela `Qt. Solicitada` do pedido. Na produção, o padrão é repetir. */
   repeatByQuantity?: boolean;
@@ -474,12 +451,7 @@ export interface GraphicLabelPlacement extends LabelPlacement {
   row: BabyNalinRow;
 }
 
-export interface ProductionLabelPlacement extends LabelPlacement {
-  pageIndex: number;
-  /** Mantido em zero para facilitar auditoria e impedir uma segunda coluna térmica. */
-  column: 0;
-  row: BabyNalinRow;
-}
+export type ProductionLabelPlacement = GraphicLabelPlacement;
 
 export interface CoucheRollGeometry extends CoucheRollProfile {
   pageWidthMm: number;
@@ -585,89 +557,7 @@ function drawLabel(
   }
 }
 
-/** Desenha a arte térmica ocupando uma etiqueta física inteira de 100 × 30 mm. */
-function drawProductionLabel(
-  doc: PdfDoc,
-  row: BabyNalinRow,
-  options: BabyNalinPdfOptions,
-): void {
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(0, 0, 0);
-
-  const header = PRODUCTION_LAYOUT.header;
-  doc.setFillColor(0, 0, 0);
-  doc.rect(header.x, header.y, header.width, header.height, 'F');
-  doc.setTextColor(255, 255, 255);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(header.pt);
-  doc.text('ETIQUETA CLIENTE', header.x + 1.2, header.y + header.height / 2, {
-    baseline: 'middle',
-  });
-
-  if (options.logo && options.logo.width > 0 && options.logo.height > 0) {
-    const { dataUrl, width, height } = options.logo;
-    const logo = PRODUCTION_LAYOUT.logo;
-    const escala = Math.min(logo.box / width, logo.box / height);
-    const drawnWidth = width * escala;
-    const drawnHeight = height * escala;
-    doc.addImage(
-      dataUrl,
-      'PNG',
-      logo.x + (logo.box - drawnWidth) / 2,
-      logo.y + (logo.box - drawnHeight) / 2,
-      drawnWidth,
-      drawnHeight,
-    );
-  }
-
-  const info = PRODUCTION_LAYOUT.info;
-  doc.setTextColor(0, 0, 0);
-  doc.setFont('helvetica', 'bold');
-  const referencia = fitText(doc, row.referencia || 'SEM REFERÊNCIA', 11.5, info.width);
-  doc.setFontSize(referencia.pt);
-  doc.text(referencia.texto, info.x, PRODUCTION_LAYOUT.referenceY, { baseline: 'top' });
-
-  doc.setFont('helvetica', 'normal');
-  const cor = fitText(doc, row.cor || 'SEM COR', 9.5, info.width);
-  doc.setFontSize(cor.pt);
-  doc.text(cor.texto, info.x, PRODUCTION_LAYOUT.colorY, { baseline: 'top' });
-
-  doc.setFont('helvetica', 'bold');
-  const produto = fitText(doc, row.codProduto || 'SEM CÓDIGO', 12.5, info.width);
-  doc.setFontSize(produto.pt);
-  doc.text(produto.texto, info.x, PRODUCTION_LAYOUT.productCodeY, { baseline: 'top' });
-
-  const size = PRODUCTION_LAYOUT.size;
-  doc.setFillColor(0, 0, 0);
-  doc.rect(size.x, size.y, size.width, size.height, 'F');
-  doc.setTextColor(255, 255, 255);
-  doc.setFont('helvetica', 'bold');
-  const grade = fitText(doc, row.tamanho || '-', size.idealPt, size.width - 1.0);
-  doc.setFontSize(grade.pt);
-  doc.text(grade.texto, size.x + size.width / 2, size.y + size.height / 2, {
-    align: 'center',
-    baseline: 'middle',
-  });
-
-  const fit = assertBarcodeFits(row.codigoBarra);
-  const barcodeRegion = PRODUCTION_LAYOUT.barcodeRegion;
-  const barcode = PRODUCTION_LAYOUT.barcode;
-  const x0 = barcodeRegion.x + (barcodeRegion.width - fit.widthMm) / 2;
-  doc.setFillColor(0, 0, 0);
-  for (const barra of code128Bars(row.codigoBarra)) {
-    doc.rect(x0 + barra.start * MODULE_MM, barcode.topY, barra.width * MODULE_MM, barcode.heightMm, 'F');
-  }
-  doc.setTextColor(0, 0, 0);
-  doc.setFont('helvetica', 'normal');
-  const barcodeValue = fitText(doc, row.codigoBarra, barcode.valuePt, barcodeRegion.width);
-  doc.setFontSize(barcodeValue.pt);
-  doc.text(barcodeValue.texto, barcodeRegion.x + barcodeRegion.width / 2, barcode.valueY, {
-    align: 'center',
-    baseline: 'top',
-  });
-}
-
-/** Limite e expansão da tiragem antes da paginação. */
+/** Limite e expansão da tiragem antes da imposição em duas colunas. */
 export const MAX_PDF_LABELS = 20_000;
 
 export function countExpandedRows(
@@ -694,10 +584,13 @@ export function expandRows(rows: BabyNalinRow[], repeatByQuantity: boolean, repe
   return rows.flatMap(r => Array.from({ length: Math.max(1, r.quantidade) * multiplier }, () => r));
 }
 
-/** Distribui a tiragem da L42PRO em uma página física 100 × 30 por etiqueta. */
+/**
+ * Distribui a tiragem da L42PRO pelas duas colunas do rolo. Ex.: 144 etiquetas
+ * ocupam 72 carreiras; se a quantidade for ímpar, a última direita fica vazia.
+ */
 export function planProductionLabelPlacements(
   rows: BabyNalinRow[],
-  _profile: Partial<CoucheRollProfile> = {},
+  profile: Partial<CoucheRollProfile> = {},
   repeatMultiplier = 1,
   repeatByQuantity = true,
 ): ProductionLabelPlacement[] {
@@ -706,24 +599,19 @@ export function planProductionLabelPlacements(
     throw new Error(`A geração teria ${total.toLocaleString('pt-BR')} etiquetas. O limite seguro é ${MAX_PDF_LABELS.toLocaleString('pt-BR')} por PDF.`);
   }
 
+  const geometry = resolveCoucheRollGeometry(profile);
   const multiplier = Math.min(100, Math.max(1, Math.trunc(Number(repeatMultiplier) || 1)));
   const placements: ProductionLabelPlacement[] = [];
   rows.forEach(row => {
     const copies = repeatByQuantity ? Math.max(1, Math.trunc(Number(row.quantidade) || 1)) * multiplier : 1;
     for (let copy = 0; copy < copies; copy++) {
-      placements.push({
-        pageIndex: placements.length,
-        column: 0,
-        xMm: PRODUCTION_SAFE_EDGE_MM,
-        yMm: PRODUCTION_SAFE_EDGE_MM,
-        row,
-      });
+      placements.push(couchePlacementAt(row, placements.length, geometry));
     }
   });
   return placements;
 }
 
-/** Monta o PDF 100×30 (L42PRO) ou a matriz 2-up 50×30 sem repetição (gráfica). */
+/** Monta o PDF 2-up 50×30 para a L42PRO ou a matriz sem repetição para gráfica. */
 export async function buildBabyNalinPdf(
   rows: BabyNalinRow[],
   options: BabyNalinPdfOptions = {},
@@ -733,8 +621,8 @@ export async function buildBabyNalinPdf(
   const { jsPDF } = await import('jspdf');
   const graphicMode = options.mode === 'graphic';
   const coucheGeometry = resolveCoucheRollGeometry(options.coucheProfile);
-  const pageWidth = graphicMode ? coucheGeometry.pageWidthMm : PRODUCTION_PAGE_WIDTH_MM;
-  const pageHeight = graphicMode ? coucheGeometry.pageHeightMm : PRODUCTION_PAGE_HEIGHT_MM;
+  const pageWidth = coucheGeometry.pageWidthMm;
+  const pageHeight = coucheGeometry.pageHeightMm;
 
   const doc = new jsPDF({
     unit: 'mm',
@@ -745,7 +633,7 @@ export async function buildBabyNalinPdf(
   doc.setProperties({
     title: graphicMode
       ? `Etiquetas couche ${COUCHE_LABEL_WIDTH_MM}x${COUCHE_LABEL_HEIGHT_MM}mm 2 colunas ${BARCODE_FORMAT}`
-      : `Etiquetas L42PRO ${PRODUCTION_PAGE_WIDTH_MM}x${PRODUCTION_PAGE_HEIGHT_MM}mm ${BARCODE_FORMAT}`,
+      : `Etiquetas L42PRO 2x${COUCHE_LABEL_WIDTH_MM}x${COUCHE_LABEL_HEIGHT_MM}mm ${BARCODE_FORMAT}`,
   });
 
   const placements = graphicMode
@@ -757,11 +645,10 @@ export async function buildBabyNalinPdf(
         options.repeatByQuantity ?? true,
       );
   placements.forEach(placement => {
-    if (placement.pageIndex > 0 && (graphicMode ? placement.column === 0 : true)) {
+    if (placement.pageIndex > 0 && placement.column === 0) {
       doc.addPage([pageWidth, pageHeight], 'landscape');
     }
-    if (graphicMode) drawLabel(doc, placement.row, options, placement);
-    else drawProductionLabel(doc, placement.row, options);
+    drawLabel(doc, placement.row, options, placement);
   });
 
   return doc;

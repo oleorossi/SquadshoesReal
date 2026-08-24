@@ -19,12 +19,6 @@ import {
   MEDIA_WIDTH_MM,
   MIN_FONT_PT,
   MODULE_MM,
-  PRODUCTION_ART_HEIGHT_MM,
-  PRODUCTION_ART_WIDTH_MM,
-  PRODUCTION_LAYOUT,
-  PRODUCTION_PAGE_HEIGHT_MM,
-  PRODUCTION_PAGE_WIDTH_MM,
-  PRODUCTION_SAFE_EDGE_MM,
   QUIET_ZONE_MIN_MM,
   analyzeClientSkus,
   assertBarcodeFits,
@@ -382,48 +376,31 @@ describe('arquivo para gráfica por SKU', () => {
     }
   });
 
-  it('gera 144 etiquetas em 144 páginas individuais 100×30 para a L42PRO', async () => {
+  it('distribui 144 etiquetas em 72 carreiras de duas colunas para a L42PRO', async () => {
     const tiragem = [{ ...rows[0], quantidade: 144 }];
     const placements = planProductionLabelPlacements(tiragem);
 
     expect(placements).toHaveLength(144);
     expect(placements[0]).toMatchObject({ pageIndex: 0, column: 0 });
-    expect(placements[1]).toMatchObject({ pageIndex: 1, column: 0 });
-    expect(placements[143]).toMatchObject({ pageIndex: 143, column: 0 });
-    expect(placements.every(placement => placement.column === 0)).toBe(true);
+    expect(placements[1]).toMatchObject({ pageIndex: 0, column: 1 });
+    expect(placements[143]).toMatchObject({ pageIndex: 71, column: 1 });
 
     const doc = await buildBabyNalinPdf(tiragem, { mode: 'production' });
-    expect(doc.getNumberOfPages()).toBe(144);
+    expect(doc.getNumberOfPages()).toBe(72);
     for (let pageNumber = 1; pageNumber <= doc.getNumberOfPages(); pageNumber++) {
       const mediaBox = doc.getPageInfo(pageNumber).pageContext.mediaBox;
-      expect((mediaBox.topRightX - mediaBox.bottomLeftX) * 25.4 / 72).toBeCloseTo(PRODUCTION_PAGE_WIDTH_MM, 1);
-      expect((mediaBox.topRightY - mediaBox.bottomLeftY) * 25.4 / 72).toBeCloseTo(PRODUCTION_PAGE_HEIGHT_MM, 1);
+      expect((mediaBox.topRightX - mediaBox.bottomLeftX) * 25.4 / 72).toBeCloseTo(COUCHE_PAGE_WIDTH_MM, 1);
+      expect((mediaBox.topRightY - mediaBox.bottomLeftY) * 25.4 / 72).toBeCloseTo(COUCHE_PAGE_HEIGHT_MM, 1);
     }
   });
 
-  it('gera uma página de produção por etiqueta, inclusive com multiplicador', async () => {
+  it('gera a produção 2-up com quantidade vezes multiplicador', async () => {
     const pequenas = rows.map((row, index) => ({ ...row, quantidade: index + 1 }));
     const doc = await buildBabyNalinPdf(pequenas, { mode: 'production', repeatByQuantity: true, repeatMultiplier: 2 });
-    expect(doc.getNumberOfPages()).toBe((1 + 2 + 3 + 4) * 2);
+    expect(doc.getNumberOfPages()).toBe(((1 + 2 + 3 + 4) * 2) / 2);
     const page = doc.internal.pageSize;
-    expect(page.getWidth()).toBeCloseTo(PRODUCTION_PAGE_WIDTH_MM, 1);
-    expect(page.getHeight()).toBeCloseTo(PRODUCTION_PAGE_HEIGHT_MM, 1);
-  });
-
-  it('preenche a arte segura 98×28 e preserva a zona silenciosa do barcode na página inteira', () => {
-    const fit = measureBarcode(EAN);
-    const barcodeRegion = PRODUCTION_LAYOUT.barcodeRegion;
-
-    expect(PRODUCTION_PAGE_WIDTH_MM).toBe(100);
-    expect(PRODUCTION_PAGE_HEIGHT_MM).toBe(30);
-    expect(PRODUCTION_ART_WIDTH_MM).toBe(98);
-    expect(PRODUCTION_ART_HEIGHT_MM).toBe(28);
-    expect(PRODUCTION_SAFE_EDGE_MM).toBe(1);
-    expect((barcodeRegion.width - fit.widthMm) / 2).toBeGreaterThanOrEqual(QUIET_ZONE_MIN_MM);
-    expect(barcodeRegion.x + barcodeRegion.width).toBeLessThanOrEqual(PRODUCTION_PAGE_WIDTH_MM - PRODUCTION_SAFE_EDGE_MM);
-    expect(PRODUCTION_LAYOUT.size.x + PRODUCTION_LAYOUT.size.width).toBeLessThan(barcodeRegion.x);
-    expect(PRODUCTION_LAYOUT.barcode.topY + PRODUCTION_LAYOUT.barcode.heightMm)
-      .toBeLessThanOrEqual(PRODUCTION_PAGE_HEIGHT_MM - PRODUCTION_SAFE_EDGE_MM);
+    expect(page.getWidth()).toBeCloseTo(COUCHE_PAGE_WIDTH_MM, 1);
+    expect(page.getHeight()).toBeCloseTo(COUCHE_PAGE_HEIGHT_MM, 1);
   });
 });
 

@@ -60,9 +60,9 @@ function selecionar(...tamanhos: string[]) {
 }
 
 function confirmarPerfilCouche() {
-  fireEvent.click(screen.getByText('Medidas do arquivo de duas colunas para a gráfica'));
+  fireEvent.click(screen.getByText('Medidas do rolo de duas colunas'));
   const box = screen.getByRole('checkbox', {
-    name: 'Confirmo que estas medidas correspondem ao arquivo solicitado pela gráfica.',
+    name: 'Confirmo que estas medidas correspondem ao rolo usado na L42PRO e pela gráfica.',
   });
   if (box.getAttribute('data-state') !== 'checked') {
     fireEvent.click(box);
@@ -140,7 +140,7 @@ describe('ClientLabelingWorkspace · seleção por SKU', () => {
     confirmarPerfilCouche();
 
     expect(screen.getByText('20 etiquetas')).toBeInTheDocument();
-    expect(screen.getByText('Páginas 100 × 30').parentElement).toHaveTextContent('20');
+    expect(screen.getByText('10')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Gerar L42PRO (20 etiquetas)' })).toBeEnabled();
     fireEvent.click(screen.getByRole('button', { name: 'Gerar L42PRO (20 etiquetas)' }));
 
@@ -303,11 +303,11 @@ describe('ClientLabelingWorkspace · seleção por SKU', () => {
     await importar();
     selecionar('34', '35', '36');
 
-    fireEvent.click(screen.getByText('Medidas do arquivo de duas colunas para a gráfica'));
+    fireEvent.click(screen.getByText('Medidas do rolo de duas colunas'));
     fireEvent.change(screen.getByLabelText('Vão entre colunas (mm)'), { target: { value: '2.5' } });
     fireEvent.change(screen.getByLabelText('Margem esquerda (mm)'), { target: { value: '1' } });
     fireEvent.click(screen.getByRole('checkbox', {
-      name: 'Confirmo que estas medidas correspondem ao arquivo solicitado pela gráfica.',
+      name: 'Confirmo que estas medidas correspondem ao rolo usado na L42PRO e pela gráfica.',
     }));
     fireEvent.click(screen.getByRole('button', { name: 'Gerar gráfica (3 SKUs)' }));
 
@@ -376,21 +376,21 @@ describe('ClientLabelingWorkspace · seleção por SKU', () => {
     await waitFor(() => expect(mocks.buildBabyNalinPdf).toHaveBeenCalled());
   });
 
-  it('mantém a L42PRO independente e exige confirmação apenas no arquivo da gráfica', async () => {
+  it('libera geração no perfil padrão e só exige nova confirmação se as medidas mudarem', async () => {
     await importar();
     selecionar('34', '35', '36');
 
     expect(screen.getByRole('button', { name: 'Gerar L42PRO (864 etiquetas)' })).toBeEnabled();
     expect(screen.getByRole('button', { name: 'Gerar gráfica (3 SKUs)' })).toBeEnabled();
 
-    fireEvent.click(screen.getByText('Medidas do arquivo de duas colunas para a gráfica'));
+    fireEvent.click(screen.getByText('Medidas do rolo de duas colunas'));
     fireEvent.change(screen.getByLabelText('Vão entre colunas (mm)'), { target: { value: '2' } });
-    expect(screen.getByRole('button', { name: 'Gerar L42PRO (864 etiquetas)' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Gerar L42PRO (864 etiquetas)' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Gerar gráfica (3 SKUs)' })).toBeDisabled();
-    expect(screen.getByText(/Medidas da gráfica alteradas/)).toBeInTheDocument();
+    expect(screen.getAllByText(/Medidas do rolo alteradas/).length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByRole('checkbox', {
-      name: 'Confirmo que estas medidas correspondem ao arquivo solicitado pela gráfica.',
+      name: 'Confirmo que estas medidas correspondem ao rolo usado na L42PRO e pela gráfica.',
     }));
     expect(screen.getByRole('button', { name: 'Gerar L42PRO (864 etiquetas)' })).toBeEnabled();
     expect(screen.getByRole('button', { name: 'Gerar gráfica (3 SKUs)' })).toBeEnabled();
