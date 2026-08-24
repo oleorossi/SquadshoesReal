@@ -17,7 +17,7 @@ import { FloppyDisk as Save, Gear as Settings2, Stack as Layers, Palette, Link a
 import { toast } from 'sonner';
 // SoleSizeConjugationsEditor removido SÓ desta tela em 2026-05-31.
 // Componente continua existindo e é usado em ProductFormDialog +
-// MasterVariantDialog + TechnicalSheets — feature de numeração conjugada
+// VariantListPanel (janela do grupo) + TechnicalSheets — numeração conjugada
 // continua ativa no backend.
 import { useDisplaySizeKeys } from '@/lib/soleGradeKeys';
 import { formatCurrency } from '@/lib/utils';
@@ -478,7 +478,7 @@ export default function SolesCadastroTab({ sole }: Props) {
               em /estoque) continuam funcionando normal com a feature
               de numeração conjugada. Pra editar conjugações use
               /estoque → solado → Editar (ProductFormDialog) ou via
-              MasterVariantDialog. */}
+              VariantListPanel (aba Itens da janela do grupo). */}
           {!groupId && classification === 'conjugado' && (
             <div className="rounded-md border bg-muted/20 p-3">
               <GroupBindingFallback soleId={sole.id} />

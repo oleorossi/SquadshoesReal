@@ -2247,7 +2247,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
               {/* Editor de conjugações inline. Aparece quando há solado vinculado.
                   Sem ele, o user tinha que ir em Solados Hub pra cadastrar — fluxo
                   quebrado quando estava editando uma ficha. Reuso do componente
-                  compartilhado que já existe em SolesCadastroTab/MasterVariantDialog. */}
+                  compartilhado que já existe em SolesCadastroTab/VariantListPanel. */}
               {form.sole_group_id && (
                 <details className="rounded-md border bg-muted/20" open={soleSizeKeys.some(k => k.includes('/'))}>
                   <summary className="px-3 py-2 cursor-pointer text-xs font-semibold flex items-center gap-2 select-none">

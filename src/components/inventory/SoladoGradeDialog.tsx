@@ -390,7 +390,7 @@ export function SoladoGradeDialog({ open, onOpenChange, product }: SoladoGradeDi
       .sort((a, b) => (a.color || '').localeCompare(b.color || ''));
   }, [product, allProducts]);
 
-  // The size range is defined per-variant when registering the sole (MasterVariantDialog).
+  // The size range is defined per-variant when registering the sole (VariantListPanel).
   // We use the range saved on the active variant — adulto/infantil toggle removed.
   const activeVariant = useMemo(
     () => colorVariants.find(v => v.id === activeTab) || product,

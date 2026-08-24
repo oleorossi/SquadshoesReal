@@ -908,7 +908,7 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
       // (SaleOrderItemForm: 'sole_size_range_specific'/'sole_size_conjugations',
       // staleTime 5min). Editar/criar solado aqui sem invalidar deixava o PV
       // mostrando o range ANTIGO (mesmo gap corrigido em SolesCadastroTab e
-      // MasterVariantDialog). Invalidação incondicional — barata e cobre
+      // VariantListPanel). Invalidação incondicional — barata e cobre
       // edição própria, sync de siblings e criação de variante nova no grupo.
       queryClient.invalidateQueries({ queryKey: ['sole_size_range_specific'] });
       queryClient.invalidateQueries({ queryKey: ['sole_size_conjugations'] });

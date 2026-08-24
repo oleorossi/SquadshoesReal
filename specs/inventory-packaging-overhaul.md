@@ -138,7 +138,10 @@ Linhas de box_type (Estoque/Demanda/Sugestão); "Gerar OC" cria PO contra o box_
 - **M2 — Editor de grupo unificado:** `GroupDialog` (Hierarquia + Embalagem). *Médio.*
 - **M3 — Editor de produto unificado:** promover `ProductDetail`, shell de criar. *Médio.*
 - **M4 — Variação de cor:** `VariantManagerPanel`; `MasterVariantDialog` → wrapper → removido.
-  ***Maior risco (frontend).***
+  ***Maior risco (frontend).*** ✅ **Feito em 22/08/2026** (fora do PR original, a
+  pedido do dono): o diálogo virou `VariantListPanel` + `VariantBulkEditPanel`,
+  abas do `GroupEditDialog`. Ver errata de `estoque-cores-e-editores.md` e a
+  regra canônica no `CLAUDE.md`.
 - **M5 — Embalagem módulo próprio:** `/embalagens` no menu (Logística); remover
   `inventory/PackagingStockPanel` + chip "Embalagem" (silo vazio). *Baixo risco.*
 - **M6 — Débito correto:** corrigir os 5 furos + remover overload divergente em

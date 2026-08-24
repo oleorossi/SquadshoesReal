@@ -4,6 +4,31 @@
 > Fase 1 é **só renderização e formulário** — nenhuma linha de `products` é
 > criada, fundida ou renomeada. A higiene de dados é a Fase 2, fora deste spec.
 
+> ## ⚠ ERRATA (22/08/2026) — o `MasterVariantDialog` não existe mais
+>
+> Este spec entregou a divisão certa de CAMPOS (`products` × `product_groups`) e
+> as travas contra achatamento (R2.5–R2.9) — tudo isso continua valendo. O que
+> ele errou foi a **embalagem**: manteve dois DIÁLOGOS para o mesmo grupo, e o
+> dono derrubou isso olhando as duas telas lado a lado.
+>
+> O `MasterVariantDialog` virou `src/components/inventory/VariantManagerPanel.tsx`,
+> exportando dois painéis sem janela própria — `VariantListPanel` e
+> `VariantBulkEditPanel` — que agora são **abas do `GroupEditDialog`**. Leia,
+> daqui pra frente:
+>
+> | Onde o spec diz | Leia |
+> |---|---|
+> | R1.16 `+ Cor` abre o `MasterVariantDialog` na aba Adicionar | abre a **janela do grupo** na aba **Cores** |
+> | R1.16 `Editar N cores` abre o `MasterVariantDialog` na edição em massa | abre a **janela do grupo** na aba **Em massa** |
+> | Parte 2 — "Edição em massa (`MasterVariantDialog.tsx`)" | `VariantBulkEditPanel`, aba **Em massa** da janela do grupo |
+> | R2.4 aba `Aplicar a todas as cores` | aba **Em massa · aplicar a todas as cores** |
+> | R2.11 link `Editar no grupo de estoque →` | botão que troca de ABA, não abre janela |
+> | R3.2 link `Editar as N cores →` abre o `MasterVariantDialog` | troca para a aba **Em massa** |
+>
+> Fecha o **M4** de `inventory-packaging-overhaul.md`. A regra canônica está no
+> `CLAUDE.md` ("A janela do grupo é a PORTA ÚNICA de edição") e travada por
+> `src/__tests__/grupoEstoquePortaUnica.contract.test.ts`.
+
 ---
 
 ## Contexto: o que o banco diz hoje

@@ -1,6 +1,6 @@
 import type { ProductGroup } from '@/hooks/useGroups';
 import GroupCreateDialog from './GroupCreateDialog';
-import GroupEditDialog from './GroupEditDialog';
+import GroupEditDialog, { type GroupEditTab } from './GroupEditDialog';
 
 /**
  * Entry ÚNICO para o diálogo de grupo de material. Delega para o fluxo de criação
@@ -15,11 +15,14 @@ export interface GroupDialogProps {
   onOpenChange: (open: boolean) => void;
   /** Ausente = criar novo grupo; presente = editar o grupo informado. */
   group?: ProductGroup | null;
+  /** Aba de abertura na edição — a lista de estoque tem um botão por assunto
+   *  ("+ Cor" → cores, "Editar N itens" → em massa) e todos abrem ESTA janela. */
+  initialTab?: GroupEditTab;
 }
 
-export default function GroupDialog({ open, onOpenChange, group }: GroupDialogProps) {
+export default function GroupDialog({ open, onOpenChange, group, initialTab }: GroupDialogProps) {
   if (group) {
-    return <GroupEditDialog open={open} onOpenChange={onOpenChange} group={group} />;
+    return <GroupEditDialog open={open} onOpenChange={onOpenChange} group={group} initialTab={initialTab} />;
   }
   return <GroupCreateDialog open={open} onOpenChange={onOpenChange} />;
 }

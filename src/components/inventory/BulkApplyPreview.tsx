@@ -8,7 +8,7 @@
  *
  * Usada nos dois caminhos que gravam várias cores de uma vez (spec
  * `estoque-cores-e-editores.md` R2.8 / R4.8):
- *   - MasterVariantDialog → aba "Aplicar a todas as cores"
+ *   - VariantBulkEditPanel → aba "Em massa" da janela do grupo de estoque
  *   - ProductFormDialog   → propagação para as irmãs de cor
  */
 import React from 'react';
