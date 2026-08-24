@@ -1,3 +1,4 @@
+-- Versão local única 20270101009150; os helpers `pre_09100` mantêm o nome já ativo no banco.
 -- O PV persiste a semana de faturamento como texto "YYYY-MM-S#" (ex.: 2026-09-S3).
 -- jsonb_populate_record / SELECT INTO date / ::date no writer atômico recusam
 -- esse token com: invalid input syntax for type date: "2026-09-S3".

@@ -6,7 +6,7 @@ const ROOT = resolve(__dirname, '../..');
 const read = (path: string) => readFileSync(resolve(ROOT, path), 'utf8');
 
 const migration = read(
-  'supabase/migrations/20270101009100_sanitize-sale-order-header-dates.sql',
+  'supabase/migrations/20270101009150_sanitize-sale-order-header-dates.sql',
 );
 const hooks = read('src/hooks/useSaleOrders.ts');
 
