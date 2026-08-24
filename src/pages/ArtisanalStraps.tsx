@@ -1105,7 +1105,7 @@ function CalculatorTab({ catalog }: { catalog: ArtisanalStrapCatalog }) {
         <div>
           <p className="text-sm font-semibold text-foreground">Simulação livre de novas medidas</p>
           <p className="text-xs text-muted-foreground">
-            Preencha largura, banda, rendimento real ou perda para testar cenários. Os valores são temporários e não são salvos nem alteram receitas do sistema.
+            Preencha largura, banda e, quando necessário, o rendimento real para testar cenários. Os valores são temporários e não são salvos nem alteram receitas do sistema.
           </p>
         </div>
       </div>

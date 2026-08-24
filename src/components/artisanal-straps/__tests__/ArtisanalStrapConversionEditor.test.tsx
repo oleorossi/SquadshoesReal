@@ -221,7 +221,7 @@ describe('ArtisanalStrapConversionEditor', () => {
     expect(mutations.approveWidth).not.toHaveBeenCalled();
   });
 
-  it('calcula o rendimento confirmado pela perda percentual e salva somente o resultado final', async () => {
+  it('salva somente o rendimento real confirmado e não oferece entrada de perda percentual', async () => {
     const user = userEvent.setup();
     render(
       <ArtisanalStrapConversionEditor
@@ -237,17 +237,15 @@ describe('ArtisanalStrapConversionEditor', () => {
     );
 
     await user.type(screen.getByLabelText(/Largura da banda/i), '18');
-    await user.click(screen.getByRole('button', { name: 'Perda percentual' }));
-    await user.type(screen.getByLabelText(/Perda percentual/i), '10');
-
-    expect(screen.getByText('68,4 m/m')).toBeInTheDocument();
-    expect(screen.getByText(/76 × \(1 − 10%\)/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Perda percentual/i })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Perda percentual/i)).not.toBeInTheDocument();
+    await user.type(screen.getByLabelText(/Rendimento real confirmado/i), '68');
 
     await user.click(screen.getByRole('button', { name: /Confirmar rendimento e salvar/i }));
 
     await waitFor(() => expect(mutations.confirmConversion).toHaveBeenCalledTimes(1));
     const recipePayload = mutations.confirmConversion.mock.calls[0][0].payload.recipe;
-    expect(recipePayload.confirmed_yield_m_per_m).toBe(68.4);
+    expect(recipePayload.confirmed_yield_m_per_m).toBe(68);
     expect(recipePayload).not.toHaveProperty('loss_percentage');
     expect(recipePayload).not.toHaveProperty('waste_pct');
   });

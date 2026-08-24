@@ -274,10 +274,13 @@ describe('Tiras artesanais — contrato do frontend canônico', () => {
     expect(strapCutBlock).not.toContain('ROLO_COMPRIMENTO_M');
     expect(pickingList).toContain('separação da napa-base');
     expect(pickingList).not.toContain('ROLO_LARGURA_MM');
-    expect(calculator).toContain("type BaseRendimento = 'teorico' | 'real' | 'perda'");
+    expect(calculator).toContain("type BaseRendimento = 'teorico' | 'real'");
     expect(calculator).toContain('rendimentoDaSimulacao');
     expect(calculator).toContain('A necessidade usa o rendimento informado apenas nesta simulação');
-    expect(calculator).not.toContain('a % de perda cobre');
+    expect(calculator).not.toContain('confirmedStrapYieldFromLossPercentage');
+    expect(calculator).not.toContain('perdaPercentual');
+    expect(conversionEditor).not.toContain('loss_percentage');
+    expect(conversionEditor).not.toContain('Perda percentual');
   });
 
   it('mantém a calculadora livre, temporária e independente das receitas persistidas', () => {
@@ -289,9 +292,15 @@ describe('Tiras artesanais — contrato do frontend canônico', () => {
     expect(hub).not.toContain('rendimentoConfirmadoInicialMPerM');
     expect(calculator).toContain('Base desta simulação');
     expect(calculator).toContain('Rendimento real medido');
-    expect(calculator).toContain('Perda estimada');
+    expect(calculator).not.toContain('Perda estimada');
     expect(calculator).toContain('nenhum valor desta aba é salvo');
     expect(calculator).not.toMatch(/from\(['"]/);
+  });
+
+  it('abre variantes de grupos no editor canônico de estoque', () => {
+    const strapEditorLinks = groupEditDialog.match(/\/tiras-artesanais\?tab=cadastro&editor=1[^`]+/g) || [];
+    expect(strapEditorLinks.length).toBeGreaterThan(0);
+    strapEditorLinks.forEach((link) => expect(link).toContain('purpose=stock_variant'));
   });
 
   it('abre em Operação e reduz a navegação principal a três áreas sem perder os links antigos', () => {

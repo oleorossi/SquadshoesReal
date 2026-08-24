@@ -27,10 +27,6 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { useContractors } from '@/hooks/useContractors';
 import {
-  confirmedStrapYieldFromLossPercentage,
-  strapYieldLossPercentageFromConfirmed,
-} from '@/lib/strapYield';
-import {
   type ArtisanalStrapCapabilities,
   type ArtisanalStrapCatalog,
   useApproveBaseMaterialWidthProfile,
@@ -74,8 +70,6 @@ interface ConversionForm {
   transformationCost: number;
   reason: string;
 }
-
-type YieldInputMode = 'actual' | 'loss_percentage';
 
 const EMPTY_FORM: ConversionForm = {
   typeId: '',
@@ -159,9 +153,6 @@ export function ArtisanalStrapConversionEditor({
   legacyRecipeId,
 }: ArtisanalStrapConversionEditorProps) {
   const [form, setForm] = useState<ConversionForm>(EMPTY_FORM);
-  const [yieldInputMode, setYieldInputMode] = useState<YieldInputMode>('actual');
-  const [lossPercentage, setLossPercentage] = useState(0);
-  const [lossPercentageProvided, setLossPercentageProvided] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [createRecipeVersion, setCreateRecipeVersion] = useState(false);
   const saveWidthProfile = useSaveBaseMaterialWidthProfile();
@@ -216,9 +207,6 @@ export function ArtisanalStrapConversionEditor({
         recipeId: '',
       });
       setCreateRecipeVersion(false);
-      setYieldInputMode('actual');
-      setLossPercentage(0);
-      setLossPercentageProvided(false);
       setValidationError(null);
       return;
     }
@@ -264,9 +252,6 @@ export function ArtisanalStrapConversionEditor({
         : mode === 'create' ? 'Cadastro inicial da conversão' : '',
     });
     setCreateRecipeVersion(hasYieldSuggestion && Boolean(selectedRecipe));
-    setYieldInputMode('actual');
-    setLossPercentage(0);
-    setLossPercentageProvided(false);
     setValidationError(null);
   }, [open, recipeId, measureId, baseGroupId, suggestedRecipeId, suggestedYieldMPerM, legacyRecipeId, mode, catalog]);
 
@@ -297,9 +282,7 @@ export function ArtisanalStrapConversionEditor({
   const lateralRemainder = theoreticalYield > 0
     ? usefulWidthMm - theoreticalYield * form.cutBandWidthMm
     : 0;
-  const confirmedYield = yieldInputMode === 'loss_percentage'
-    ? confirmedStrapYieldFromLossPercentage(theoreticalYield, lossPercentage)
-    : form.confirmedYield;
+  const confirmedYield = form.confirmedYield;
   const recipeIsMutable = !currentRecipe
     || currentRecipe.status === 'draft'
     || currentRecipe.status === 'pending_approval';
@@ -330,18 +313,6 @@ export function ArtisanalStrapConversionEditor({
     setValidationError(null);
   };
 
-  const changeYieldInputMode = (nextMode: YieldInputMode) => {
-    if (nextMode === yieldInputMode) return;
-    if (nextMode === 'loss_percentage') {
-      setLossPercentage(strapYieldLossPercentageFromConfirmed(theoreticalYield, form.confirmedYield));
-      setLossPercentageProvided(form.confirmedYield > 0 && form.confirmedYield <= theoreticalYield);
-    } else {
-      setForm((current) => ({ ...current, confirmedYield }));
-    }
-    setYieldInputMode(nextMode);
-    setValidationError(null);
-  };
-
   const validate = (): string | null => {
     if (legacyRecipe?.canonical_recipe_id) {
       return 'Esta receita anterior já foi reaproveitada. Abra a conversão canônica vinculada.';
@@ -367,13 +338,6 @@ export function ArtisanalStrapConversionEditor({
     }
     if (form.cutBandWidthMm <= 0) return 'A largura da banda deve ser maior que zero.';
     if (theoreticalYield <= 0) return 'A largura útil não comporta uma banda completa.';
-    if (yieldInputMode === 'loss_percentage' && !lossPercentageProvided) {
-      return 'Informe a perda percentual do rendimento.';
-    }
-    if (yieldInputMode === 'loss_percentage'
-      && (!Number.isFinite(lossPercentage) || lossPercentage < 0 || lossPercentage >= 100)) {
-      return 'A perda percentual deve ser igual ou maior que 0% e menor que 100%.';
-    }
     if (confirmedYield <= 0 || confirmedYield > theoreticalYield) {
       return `O rendimento confirmado deve estar entre 0 e ${theoreticalYield} m/m.`;
     }
@@ -707,43 +671,6 @@ export function ArtisanalStrapConversionEditor({
                 </Alert>
               )}
 
-              <div className="space-y-2 rounded-lg border border-border bg-muted/20 p-3">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <p className="text-sm font-semibold">Como deseja informar o rendimento?</p>
-                    <p className="text-xs text-muted-foreground">
-                      Informe o resultado medido ou a perda percentual. O sistema salva somente o rendimento final.
-                    </p>
-                  </div>
-                  <div
-                    role="group"
-                    aria-label="Forma de informar o rendimento"
-                    className="grid grid-cols-2 gap-1 rounded-md border border-border bg-background p-1"
-                  >
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant={yieldInputMode === 'actual' ? 'default' : 'ghost'}
-                      aria-pressed={yieldInputMode === 'actual'}
-                      onClick={() => changeYieldInputMode('actual')}
-                      disabled={!canEditRecipeFields}
-                    >
-                      Rendimento real
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant={yieldInputMode === 'loss_percentage' ? 'default' : 'ghost'}
-                      aria-pressed={yieldInputMode === 'loss_percentage'}
-                      onClick={() => changeYieldInputMode('loss_percentage')}
-                      disabled={!canEditRecipeFields}
-                    >
-                      Perda percentual
-                    </Button>
-                  </div>
-                </div>
-              </div>
-
               <div className="grid gap-3 sm:grid-cols-3">
                 <div className="space-y-1.5">
                   <Label htmlFor="strap-conversion-useful-width">Largura do material (estoque)</Label>
@@ -771,33 +698,14 @@ export function ArtisanalStrapConversionEditor({
                   />
                 </div>
                 <div className="space-y-1.5">
-                  {yieldInputMode === 'actual' ? (
-                    <>
-                      <Label htmlFor="strap-conversion-confirmed-yield">Rendimento real *</Label>
-                      <NumberInput
-                        id="strap-conversion-confirmed-yield"
-                        value={form.confirmedYield}
-                        onChange={(value) => setField('confirmedYield', value)}
-                        unit="m/m"
-                        disabled={!canEditRecipeFields}
-                      />
-                    </>
-                  ) : (
-                    <>
-                      <Label htmlFor="strap-conversion-loss-percentage">Perda percentual *</Label>
-                      <NumberInput
-                        id="strap-conversion-loss-percentage"
-                        value={lossPercentage}
-                        onChange={(value) => {
-                          setLossPercentage(value);
-                          setLossPercentageProvided(true);
-                          setValidationError(null);
-                        }}
-                        unit="%"
-                        disabled={!canEditRecipeFields}
-                      />
-                    </>
-                  )}
+                  <Label htmlFor="strap-conversion-confirmed-yield">Rendimento real confirmado *</Label>
+                  <NumberInput
+                    id="strap-conversion-confirmed-yield"
+                    value={form.confirmedYield}
+                    onChange={(value) => setField('confirmedYield', value)}
+                    unit="m/m"
+                    disabled={!canEditRecipeFields}
+                  />
                 </div>
               </div>
 
@@ -811,17 +719,10 @@ export function ArtisanalStrapConversionEditor({
                   <p className="font-mono text-lg font-bold">{theoreticalYield ? `${theoreticalYield} m/m` : '—'}</p>
                 </div>
                 <div>
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                    {yieldInputMode === 'loss_percentage' ? 'Rendimento calculado' : 'Rendimento usado'}
-                  </p>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Rendimento usado</p>
                   <p className="font-mono text-lg font-bold" aria-live="polite">
                     {confirmedYield > 0 ? `${confirmedYield.toLocaleString('pt-BR')} m/m` : '—'}
                   </p>
-                  {yieldInputMode === 'loss_percentage' && theoreticalYield > 0 && (
-                    <p className="text-xs text-muted-foreground">
-                      {theoreticalYield.toLocaleString('pt-BR')} × (1 − {lossPercentage.toLocaleString('pt-BR')}%)
-                    </p>
-                  )}
                 </div>
                 <div>
                   <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Sobra lateral</p>
