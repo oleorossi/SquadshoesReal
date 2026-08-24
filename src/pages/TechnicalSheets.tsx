@@ -3734,7 +3734,9 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
               </div>
               <div className="mb-4 rounded-lg border bg-muted/20 p-3">
                 <p className="text-xs font-semibold">Setor de consumo dos componentes técnicos</p>
-                <p className="mt-1 text-xs text-muted-foreground">A baixa é registrada no início do setor selecionado.</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Informe o setor físico responsável pelo consumo. O roteamento é obrigatório para liberar fichas novas.
+                </p>
                 <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
                   {[
                     ['fibra', 'Fibra'],
@@ -6187,7 +6189,9 @@ function SheetBOM({ sheetId, safetyPct, onSafetyChange, shoeCategory }: {
                   {CONSUMPTION_SECTORS.map(sector => <SelectItem key={sector} value={sector}>{sector}</SelectItem>)}
                 </SelectContent>
               </Select>
-              <p className="mt-1 text-xs text-muted-foreground">Baixa no início deste setor. A sugestão pode ser ajustada.</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Setor físico responsável pelo consumo deste material.
+              </p>
             </div>
           </div>
 
