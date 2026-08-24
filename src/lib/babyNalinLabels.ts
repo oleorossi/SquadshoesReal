@@ -98,6 +98,30 @@ export const BARCODE_FORMAT = 'CODE128' as const;
 /** Mínimo em branco de cada lado do código. Nada pode invadir essa faixa. */
 export const QUIET_ZONE_MIN_MM = 3.1;
 
+/** Ajuste horizontal do número + CODE128 medido na etiqueta física oficial. */
+export const CODE_BLOCK_SHIFT_X_MM = 1.5;
+
+export function barcodeOriginXMm(
+  artOriginXMm: number,
+  artWidthMm: number,
+  barcodeWidthMm: number,
+  shiftMm = CODE_BLOCK_SHIFT_X_MM,
+): number {
+  return artOriginXMm + (artWidthMm - barcodeWidthMm) / 2 + shiftMm;
+}
+
+export function barcodeQuietZonesMm(
+  artWidthMm: number,
+  barcodeWidthMm: number,
+  shiftMm = CODE_BLOCK_SHIFT_X_MM,
+): { leftMm: number; rightMm: number } {
+  const centered = (artWidthMm - barcodeWidthMm) / 2;
+  return {
+    leftMm: centered + shiftMm,
+    rightMm: centered - shiftMm,
+  };
+}
+
 /** Posições ancoradas no topo-esquerdo da ARTE (não da mídia). */
 export const LAYOUT = {
   logo: { x: 2.5, y: 2.0, box: 10.5 },
@@ -277,7 +301,10 @@ export async function parseClientOrderFile(file: File): Promise<BabyNalinRow[]> 
 export interface BarcodeFit {
   moduleCount: number;
   widthMm: number;
+  /** Menor zona de silêncio depois do ajuste horizontal de 1,5 mm. */
   quietZoneMm: number;
+  quietZoneLeftMm: number;
+  quietZoneRightMm: number;
   fits: boolean;
   /** Motivo pelo qual o conteúdo não pode ser codificado em CODE128. */
   error?: string;
@@ -288,17 +315,32 @@ export function measureBarcode(codigo: string): BarcodeFit {
   try {
     const { moduleCount } = encodeCode128(codigo);
     const widthMm = moduleCount * MODULE_MM;
-    const quietZoneMm = (ART_WIDTH_MM - widthMm) / 2;
-    return { moduleCount, widthMm, quietZoneMm, fits: quietZoneMm >= QUIET_ZONE_MIN_MM };
+    const { leftMm, rightMm } = barcodeQuietZonesMm(ART_WIDTH_MM, widthMm);
+    const quietZoneMm = Math.min(leftMm, rightMm);
+    return {
+      moduleCount,
+      widthMm,
+      quietZoneMm,
+      quietZoneLeftMm: leftMm,
+      quietZoneRightMm: rightMm,
+      fits: quietZoneMm >= QUIET_ZONE_MIN_MM,
+    };
   } catch (error) {
     return {
       moduleCount: 0,
       widthMm: 0,
       quietZoneMm: 0,
+      quietZoneLeftMm: 0,
+      quietZoneRightMm: 0,
       fits: false,
       error: error instanceof Error ? error.message : 'Conteúdo inválido para CODE128.',
     };
   }
+}
+
+/** Posição do número impresso acima do CODE128, com o mesmo ajuste físico. */
+export function productCodeOriginXMm(artOriginXMm: number): number {
+  return artOriginXMm + LAYOUT.productCode.x + CODE_BLOCK_SHIFT_X_MM;
 }
 
 /**
@@ -542,14 +584,15 @@ function drawLabel(
     doc.text(texto, ox + LAYOUT.textX, oy + LAYOUT.textLinesY[i], { baseline: 'top' });
   });
 
-  // O código do produto começa na margem esquerda, então tem a arte inteira.
-  const larguraCodigo = ART_WIDTH_MM - 2 * LAYOUT.productCode.x;
+  // Número e CODE128 avançam juntos 1,5 mm para reproduzir a mídia física.
+  const productCodeX = productCodeOriginXMm(ox);
+  const larguraCodigo = ART_WIDTH_MM - 2 * LAYOUT.productCode.x - CODE_BLOCK_SHIFT_X_MM;
   const codigo = fitText(doc, row.codProduto, LAYOUT.productCode.pt, larguraCodigo);
   doc.setFontSize(codigo.pt);
-  doc.text(codigo.texto, ox + LAYOUT.productCode.x, oy + LAYOUT.productCode.y, { baseline: 'top' });
+  doc.text(codigo.texto, productCodeX, oy + LAYOUT.productCode.y, { baseline: 'top' });
 
   const fit = assertBarcodeFits(row.codigoBarra);
-  const x0 = ox + (ART_WIDTH_MM - fit.widthMm) / 2;
+  const x0 = barcodeOriginXMm(ox, ART_WIDTH_MM, fit.widthMm);
   const y0 = oy + (placement.barcodeTopYMm ?? LAYOUT.barcode.topY);
   doc.setFillColor(0, 0, 0);
   for (const barra of code128Bars(row.codigoBarra)) {

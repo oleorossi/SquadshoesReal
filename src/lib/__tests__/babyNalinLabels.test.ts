@@ -3,6 +3,7 @@ import { CODE128_PATTERNS, code128Bars, encodeCode128 } from '@/lib/code128';
 import {
   ART_WIDTH_MM,
   BARCODE_FORMAT,
+  CODE_BLOCK_SHIFT_X_MM,
   COUCHE_ART_HEIGHT_MM,
   COUCHE_BARCODE_TOP_Y_MM,
   COUCHE_COLUMN_GAP_MM,
@@ -22,6 +23,8 @@ import {
   QUIET_ZONE_MIN_MM,
   analyzeClientSkus,
   assertBarcodeFits,
+  barcodeOriginXMm,
+  barcodeQuietZonesMm,
   buildBabyNalinPdf,
   clientSkuKey,
   countExpandedRows,
@@ -34,6 +37,7 @@ import {
   parseOrderCsv,
   planGraphicLabelPlacements,
   planProductionLabelPlacements,
+  productCodeOriginXMm,
   pdfFilename,
   resolveCoucheRollGeometry,
   type BabyNalinRow,
@@ -118,12 +122,39 @@ describe('geometria da etiqueta', () => {
     expect(fit.moduleCount).toBe(123);
     expect(fit.widthMm).toBeCloseTo(36.41, 1);
     expect(fit.quietZoneMm).toBeGreaterThanOrEqual(QUIET_ZONE_MIN_MM);
+    expect(fit.quietZoneLeftMm - fit.quietZoneRightMm).toBeCloseTo(CODE_BLOCK_SHIFT_X_MM * 2, 6);
     expect(fit.fits).toBe(true);
   });
 
   it('preserva zona de silêncio de pelo menos 3,1 mm em cada lado', () => {
     const fit = measureBarcode(EAN);
-    expect(fit.quietZoneMm).toBeGreaterThanOrEqual(3.1);
+    expect(fit.quietZoneLeftMm).toBeGreaterThanOrEqual(3.1);
+    expect(fit.quietZoneRightMm).toBeGreaterThanOrEqual(3.1);
+    expect(fit.quietZoneMm).toBe(fit.quietZoneRightMm);
+  });
+
+  it('desloca o número do produto 1,5 mm para a direita junto com o CODE128', () => {
+    expect(CODE_BLOCK_SHIFT_X_MM).toBe(1.5);
+    expect(productCodeOriginXMm(0)).toBe(LAYOUT.productCode.x + 1.5);
+    expect(productCodeOriginXMm(COUCHE_OFFSET_X_MM)).toBe(
+      COUCHE_OFFSET_X_MM + LAYOUT.productCode.x + 1.5,
+    );
+  });
+
+  it('calcula a origem deslocada do CODE128 e suas zonas reais', () => {
+    const fit = measureBarcode(EAN);
+    const quietZones = barcodeQuietZonesMm(ART_WIDTH_MM, fit.widthMm);
+    expect(barcodeOriginXMm(COUCHE_OFFSET_X_MM, ART_WIDTH_MM, fit.widthMm)).toBeCloseTo(8.296, 3);
+    expect(quietZones.leftMm).toBeCloseTo(7.296, 3);
+    expect(quietZones.rightMm).toBeCloseTo(4.296, 3);
+  });
+
+  it('recusa código que só caberia antes do deslocamento para a direita', () => {
+    const limiteAnterior = measureBarcode('AAAAAAAAA');
+    expect(limiteAnterior.moduleCount).toBe(134);
+    expect(limiteAnterior.quietZoneRightMm).toBeCloseTo(2.668, 3);
+    expect(limiteAnterior.fits).toBe(false);
+    expect(() => assertBarcodeFits('AAAAAAAAA')).toThrow(/zona de silêncio/);
   });
 
   it('barra a geração quando o código não respeita a zona de silêncio', () => {
@@ -319,6 +350,46 @@ describe('arquivo para gráfica por SKU', () => {
     expect(LAYOUT.productCode.y + LAYOUT.productCode.pt * ptToMm).toBeLessThanOrEqual(COUCHE_BARCODE_TOP_Y_MM);
     expect(COUCHE_BARCODE_TOP_Y_MM + LAYOUT.barcode.heightMm).toBeLessThanOrEqual(COUCHE_ART_HEIGHT_MM);
   });
+
+  it.each(['graphic', 'production'] as const)(
+    'desenha somente número e CODE128 deslocados nas duas colunas do modo %s',
+    async mode => {
+      const duasColunas = [rows[0], rows[2]];
+      const doc = await buildBabyNalinPdf(duasColunas, {
+        mode,
+        repeatByQuantity: false,
+      });
+      const commands = ((doc.internal as unknown as { pages: string[][] }).pages[1] ?? []);
+      const pointToMm = 25.4 / 72;
+
+      const textOrigins = (text: string): number[] => {
+        const escaped = text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const expression = new RegExp(`([0-9.]+) [-0-9.]+ Td\\n\\(${escaped}\\) Tj`, 'g');
+        return [...commands.join('\n').matchAll(expression)].map(match => Number(match[1]) * pointToMm);
+      };
+      const barOrigins = commands
+        .filter(command => command.endsWith(' re'))
+        .map(command => Number(command.split(' ')[0]) * pointToMm);
+
+      expect(textOrigins('905301')).toEqual([
+        expect.closeTo(5, 3),
+        expect.closeTo(61, 3),
+      ]);
+      expect([
+        Math.min(...barOrigins.filter(x => x < 56)),
+        Math.min(...barOrigins.filter(x => x >= 56)),
+      ]).toEqual([
+        expect.closeTo(8.296, 3),
+        expect.closeTo(64.296, 3),
+      ]);
+
+      // Logo e bloco textual conservam os anchors anteriores; só o bloco inferior avança.
+      expect(textOrigins('TAM 34')).toEqual([expect.closeTo(16, 3)]);
+      expect(textOrigins('TAM 35')).toEqual([expect.closeTo(72, 3)]);
+      expect(doc.internal.pageSize.getWidth()).toBeCloseTo(106, 3);
+      expect(doc.internal.pageSize.getHeight()).toBeCloseTo(30, 3);
+    },
+  );
 
   it('aplica as medidas reais da faca e do liner sem alterar a etiqueta 50×30', () => {
     const profile = {
