@@ -8,7 +8,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import {
-  ArrowLeft, ArrowsInSimple, ArrowsOutSimple, CaretLeft, CaretRight, CheckSquare, Funnel, Highlighter,
+  ArrowLeft, ArrowRight, ArrowsInSimple, ArrowsOutSimple, CaretLeft, CaretRight, CheckSquare, Funnel, Highlighter,
   Info, Kanban as KanbanIcon, Package, QrCode, Warning as AlertTriangle, X,
 } from '@phosphor-icons/react';
 import {
@@ -25,6 +25,13 @@ import { searchMatchesAllTerms, searchMatchesAny, splitSearchTerms, normalizeFor
 import { toast } from 'sonner';
 import { deriveCards, todayISO, KanbanCardData } from '@/components/production/kanban/kanbanDerive';
 import { buildPointingPlan } from '@/components/production/kanban/pointingPlan';
+import {
+  addUniqueOrderCards,
+  buildBulkMoveBatch,
+  pruneSelectedCardKeys,
+  toggleUniqueOrderCard,
+  uniqueCardsByOrder,
+} from '@/components/production/kanban/bulkMovePlan';
 import { KanbanOpCard } from '@/components/production/kanban/KanbanOpCard';
 import { DropApontarDialog } from '@/components/production/kanban/DropApontarDialog';
 import { BulkMoveDialog } from '@/components/production/kanban/BulkMoveDialog';
@@ -103,7 +110,10 @@ function countsForConstraint(c: KanbanCardData): boolean {
 export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: boolean } = {}) {
   useEnsureFreshSchedule();
   useRealtimeOrderStages();
-  const { data: sectors = [] } = useSectorSettings();
+  const {
+    data: sectors = [], isLoading: sectorsLoading, isError: sectorsError,
+    error: sectorsErrObj, refetch: refetchSectors,
+  } = useSectorSettings();
   // ⚠ `isError` NÃO é decorativo aqui. Sem ele, falha de rede/RLS caía no
   // default `[]` e o quadro dizia "Nenhuma OP em produção" — indistinguível de
   // fábrica vazia. No chão de fábrica isso vira "não tem o que fazer hoje".
@@ -149,7 +159,13 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [bulkTarget, setBulkTarget] = useState('');
-  const [bulkOpen, setBulkOpen] = useState(false);
+  // Snapshot do lote: o primeiro apontamento muda o setor e, portanto, a chave
+  // do card no realtime. Manter os cards aqui impede o wizard de desmontar no
+  // meio da distribuição quando a seleção viva deixa de casar com o quadro.
+  const [bulkRequest, setBulkRequest] = useState<{
+    cards: KanbanCardData[];
+    target: string;
+  } | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [now, setNow] = useState(() => new Date());
   const [activeSector, setActiveSector] = useState('');
@@ -266,6 +282,11 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
     () => (matchedIds ? allCards.filter(c => matchedIds.has(c.q.order_id)) : []),
     [matchedIds, allCards],
   );
+  // Setores paralelos podem renderizar mais de um card da mesma OP. Busca e
+  // seleção comunicam OPs, então a contagem e o "selecionar encontradas" usam
+  // uma ocorrência por order_id — o resumo por setor abaixo continua contando
+  // cards, porque ali cada bancada é uma ocorrência real.
+  const matchedOrders = useMemo(() => uniqueCardsByOrder(matches), [matches]);
 
   // Onde as OPs achadas estão, agrupadas por setor e na ordem do fluxo — é o
   // mapa que a faixa de resultados mostra (um botão por setor).
@@ -282,7 +303,8 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
     if (!matches.length) return;
     const el = cardEls.current.get(matches[0].key);
     if (!el) return;
-    const t = setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' }), 150);
+    const behavior = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
+    const t = setTimeout(() => el.scrollIntoView({ behavior, block: 'center', inline: 'center' }), 150);
     return () => clearTimeout(t);
   }, [matches]);
 
@@ -418,6 +440,7 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
       : columns),
     [columns, filtering, matchedColumns],
   );
+  const navigableColumnSet = useMemo(() => new Set(navigableColumns), [navigableColumns]);
 
   const navCountBySector = useMemo(() => {
     const counts = new Map<string, number>();
@@ -458,11 +481,13 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
         const rect = column.getBoundingClientRect();
         const distance = Math.abs(rect.left + rect.width / 2 - center);
         const sector = column.dataset.kbCol;
-        if (sector && (!nearest || distance < nearest.distance)) nearest = { sector, distance };
+        if (sector && navigableColumnSet.has(sector) && (!nearest || distance < nearest.distance)) {
+          nearest = { sector, distance };
+        }
       });
       if (nearest) setActiveSector(nearest.sector);
     });
-  }, []);
+  }, [navigableColumnSet]);
 
   useEffect(() => () => cancelAnimationFrame(boardScrollRaf.current), []);
 
@@ -487,21 +512,29 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
   };
 
   const selectedCards = useMemo(
-    () => allCards.filter(c => selectedIds.has(c.key)),
+    () => uniqueCardsByOrder(allCards.filter(c => selectedIds.has(c.key))),
     [allCards, selectedIds],
   );
   const selectedPares = useMemo(
-    () => selectedCards.reduce((s, c) => s + (c.columnStage?.quantity_total || c.q.quantity), 0),
+    () => selectedCards.reduce((s, c) => s + (c.q.quantity || 0), 0),
     [selectedCards],
   );
+  const selectedOrigins = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const card of selectedCards) counts.set(card.column, (counts.get(card.column) || 0) + 1);
+    return [...counts.entries()]
+      .sort((a, b) => (flowOrder.get(a[0]) ?? 999) - (flowOrder.get(b[0]) ?? 999))
+      .map(([sector, count]) => `${sector}: ${count}`);
+  }, [selectedCards, flowOrder]);
 
-  const toggleSelect = (id: string) => {
-    setSelectedIds(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+  // O realtime troca `order_id::setor` assim que uma OP avança. Sem esta poda,
+  // a barra mantinha uma seleção invisível e habilitava ações com payload vazio.
+  useEffect(() => {
+    setSelectedIds(previous => pruneSelectedCardKeys(previous, allCards));
+  }, [allCards]);
+
+  const toggleSelect = (card: KanbanCardData) => {
+    setSelectedIds(previous => toggleUniqueOrderCard(previous, allCards, card));
   };
 
   const exitSelectMode = () => {
@@ -539,6 +572,26 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
     return m;
   }, [dragCard, columns, dropEligibility]);
 
+  /**
+   * Prévia por destino da seleção em lote. Usa o mesmo planejador que o
+   * diálogo, inclusive para destino igual à origem e etapas fora da rota.
+   */
+  const bulkDestinations = useMemo(() => columns.map(sector => {
+    const batch = buildBulkMoveBatch(selectedCards, sector, flowOrder, levelOf);
+    return {
+      sector,
+      eligible: batch.steps.length,
+      blocked: batch.blocked.length,
+    };
+  }), [columns, selectedCards, flowOrder, levelOf]);
+  const selectedDestination = bulkDestinations.find(item => item.sector === bulkTarget) || null;
+  const canReviewBulk = selectedCards.length > 0 && !!bulkTarget && !!selectedDestination?.eligible;
+
+  const openBulkReview = () => {
+    if (!canReviewBulk) return;
+    setBulkRequest({ cards: selectedCards, target: bulkTarget });
+  };
+
   const handleDrop = (target: string) => {
     if (!dragCard) return;
     const card = dragCard;
@@ -562,12 +615,13 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
     toast.success(`QR lido: ${payload}`);
   };
 
-  const isLoading = queueLoading || stagesLoading;
-  const loadError = queueError || stagesError;
+  const isLoading = sectorsLoading || queueLoading || stagesLoading;
+  const loadError = sectorsError || queueError || stagesError;
   const loadErrorMsg = (queueErrObj as Error | null)?.message
     || (stagesErrObj as Error | null)?.message
+    || (sectorsErrObj as Error | null)?.message
     || 'Falha ao consultar o servidor.';
-  const retryLoad = () => { void refetchQueue(); void refetchStages(); };
+  const retryLoad = () => { void refetchSectors(); void refetchQueue(); void refetchStages(); };
 
   /**
    * SELO DE FRESCOR — substitui o relógio nu.
@@ -760,8 +814,8 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
           autoFocus={!coarsePointer}
           enterKeyHint="search"
           placeholder="Buscar OP, referência, cor, cliente, PV — ou bipe o QR da ficha…"
-          resultCount={matches.length}
-          totalCount={allCards.length}
+          resultCount={matchedOrders.length}
+          totalCount={kpis.ops}
           className="w-full min-w-0 max-w-none 2xl:max-w-xl"
           inputClassName="h-11 md:h-9"
         />
@@ -805,9 +859,23 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
               onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
               aria-pressed={selectMode}
             >
-              <CheckSquare className="h-4 w-4" /> Selecionar
+              <CheckSquare className="h-4 w-4" /> {selectMode ? 'Sair da seleção' : 'Selecionar OPs'}
             </Button>
           )}
+          {/* No celular os KPIs somem, mas o frescor não pode sumir: é onde o
+              operador mais depende do realtime sem ter espaço pra diagnóstico. */}
+          <span
+            className={`flex h-11 shrink-0 items-center gap-1.5 rounded-md border px-2.5 font-mono text-[10px] md:hidden ${
+              stale ? 'border-warning/40 bg-warning/10 text-warning' : 'border-border bg-muted/30 text-muted-foreground'
+            }`}
+            role="status"
+            title={stale
+              ? `Nenhum dado novo há ${staleMin} minutos.`
+              : `Último dado recebido às ${updatedLabel}.`}
+          >
+            <span className={`h-2 w-2 rounded-full ${stale ? 'bg-warning' : 'bg-success'}`} aria-hidden="true" />
+            {stale ? `sem atualizar · ${staleMin} min` : `dados · ${updatedLabel}`}
+          </span>
           {/* Dentro do ERP o atalho é abrir a Central (tela cheia dedicada);
               fullscreen do navegador só faz sentido na rota própria. */}
           {embedded ? (
@@ -851,57 +919,110 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
 
       {/* ── Barra da seleção em lote ─────────────────────────────────────── */}
       {selectMode && (
-        <div className="shrink-0 border-b border-border bg-primary/5 px-3 py-2 flex items-center gap-2 flex-wrap">
-          {selectedIds.size === 0 ? (
-            <span className="text-xs text-muted-foreground">
-              Toque nos cards pra selecionar as OPs que vão mudar de setor.
-            </span>
-          ) : (
-            <span className="text-xs font-semibold font-mono shrink-0">
-              {selectedIds.size} OP{selectedIds.size > 1 ? 's' : ''} · {selectedPares.toLocaleString('pt-BR')} pares
-            </span>
-          )}
-          {searchActive && matches.length > 0 && (
+        <div className="shrink-0 border-b border-border bg-primary/5 px-2 py-2 md:px-3">
+          {/* Jornada única e explícita. No desktop vira um trilho compacto; no
+              celular empilha sem comprimir o destino nem o botão principal. */}
+          <div className="grid gap-2 md:grid-cols-[minmax(14rem,1fr)_auto_minmax(13rem,0.8fr)_auto_minmax(12rem,auto)] md:items-center">
+            <div className="flex min-w-0 items-center gap-2 rounded-md border border-primary/25 bg-card px-2.5 py-2">
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary font-mono text-xs font-bold text-primary-foreground">1</span>
+              <div className="min-w-0 flex-1">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Selecionar OPs</p>
+                {selectedCards.length === 0 ? (
+                  <p className="truncate text-xs text-muted-foreground">Toque nos cards do quadro</p>
+                ) : (
+                  <p
+                    className="truncate font-mono text-xs font-semibold"
+                    title={`${selectedOrigins.join(' · ')} · ${selectedPares.toLocaleString('pt-BR')} pares`}
+                  >
+                    {selectedCards.length} OP{selectedCards.length > 1 ? 's' : ''} · {selectedPares.toLocaleString('pt-BR')} pares
+                    {selectedOrigins.length > 0 ? ` · ${selectedOrigins.join(' · ')}` : ''}
+                  </p>
+                )}
+              </div>
+              {searchActive && matchedOrders.length > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-9 shrink-0 px-2 text-xs"
+                  onClick={() => setSelectedIds(previous => addUniqueOrderCards(previous, allCards, matchedOrders))}
+                  title="Selecionar uma ocorrência de cada OP encontrada"
+                >
+                  + {matchedOrders.length} da busca
+                </Button>
+              )}
+              {selectedCards.length > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-9 w-9 shrink-0 p-0"
+                  onClick={() => setSelectedIds(new Set())}
+                  aria-label="Limpar OPs selecionadas"
+                  title="Limpar seleção"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+
+            <ArrowRight className="hidden h-4 w-4 text-muted-foreground md:block" aria-hidden="true" />
+
+            <div className="flex min-w-0 items-center gap-2 rounded-md border border-border bg-card px-2.5 py-2">
+              <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full font-mono text-xs font-bold ${
+                selectedCards.length > 0 ? 'bg-foreground text-background' : 'bg-muted text-muted-foreground'
+              }`}>2</span>
+              <div className="min-w-0 flex-1">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Setor de destino</p>
+                <Select value={bulkTarget} onValueChange={setBulkTarget} disabled={selectedCards.length === 0}>
+                  <SelectTrigger className="h-8 w-full border-0 bg-transparent px-0 shadow-none focus:ring-0">
+                    <SelectValue placeholder="Escolher setor…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {bulkDestinations.map(destination => (
+                      <SelectItem
+                        key={destination.sector}
+                        value={destination.sector}
+                        disabled={destination.eligible === 0}
+                      >
+                        <span className="flex w-full items-center justify-between gap-3">
+                          <span>{destination.sector}</span>
+                          <span className="font-mono text-[10px] text-muted-foreground">
+                            {destination.eligible} apta{destination.eligible === 1 ? '' : 's'}
+                            {destination.blocked > 0 ? ` · ${destination.blocked} bloqueada${destination.blocked === 1 ? '' : 's'}` : ''}
+                          </span>
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <ArrowRight className="hidden h-4 w-4 text-muted-foreground md:block" aria-hidden="true" />
+
             <Button
-              variant="ghost"
-              size="sm"
-              className="h-9 text-xs"
-              onClick={() => setSelectedIds(new Set(matches.map(m => m.q.order_id)))}
-            >
-              Selecionar as {matches.length} encontradas
-            </Button>
-          )}
-          {selectedIds.size > 0 && (
-            <Button variant="ghost" size="sm" className="h-9 text-xs gap-1" onClick={() => setSelectedIds(new Set())}>
-              <X className="h-3.5 w-3.5" /> Limpar
-            </Button>
-          )}
-          {/* w-full no celular: com w-[180px] fixo o rótulo truncava em
-              "Mover para o…", escondendo justamente o que o campo faz. */}
-          <div className="flex w-full items-center gap-2 md:ml-auto md:w-auto">
-            <Select value={bulkTarget} onValueChange={setBulkTarget}>
-              <SelectTrigger className="h-11 md:h-9 flex-1 md:w-[180px] md:flex-none">
-                <SelectValue placeholder="Mover para o setor…" />
-              </SelectTrigger>
-              <SelectContent>
-                {columns.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-              </SelectContent>
-            </Select>
-            <Button
-              className="h-11 shrink-0 md:h-9"
-              disabled={!bulkTarget || selectedIds.size === 0}
-              // Botão cinza sem explicação era adivinhação: agora o title diz
-              // exatamente o que falta pra habilitar.
+              className="h-12 w-full gap-2 md:h-[3.25rem] md:w-auto"
+              disabled={!canReviewBulk}
               title={
-                selectedIds.size === 0
-                  ? 'Toque nos cards pra escolher quais OPs mover'
+                selectedCards.length === 0
+                  ? 'Selecione pelo menos uma OP'
                   : !bulkTarget
                     ? 'Escolha o setor de destino'
-                    : `Mover ${selectedIds.size} OP${selectedIds.size > 1 ? 's' : ''} para ${bulkTarget}`
+                    : !selectedDestination?.eligible
+                      ? `Nenhuma OP selecionada pode ir para ${bulkTarget}`
+                      : `Revisar ${selectedDestination.eligible} OP${selectedDestination.eligible > 1 ? 's' : ''} para ${bulkTarget}`
               }
-              onClick={() => setBulkOpen(true)}
+              onClick={openBulkReview}
             >
-              Mover{selectedIds.size > 0 ? ` ${selectedIds.size}` : ''}
+              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary-foreground/15 font-mono text-xs font-bold">3</span>
+              <span className="text-left leading-tight">
+                <span className="block">Revisar distribuição</span>
+                {selectedDestination && selectedCards.length > 0 && (
+                  <span className="block text-[10px] font-normal opacity-80">
+                    {selectedDestination.eligible} apta{selectedDestination.eligible === 1 ? '' : 's'}
+                    {selectedDestination.blocked > 0 ? ` · ${selectedDestination.blocked} bloqueada${selectedDestination.blocked === 1 ? '' : 's'}` : ''}
+                  </span>
+                )}
+              </span>
             </Button>
           </div>
         </div>
@@ -925,16 +1046,14 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
                   destino. O que a faixa precisa responder é "onde está o que eu
                   procuro", e isso são 2 botões, não 22. Clicar rola até lá. */}
               <span className="text-muted-foreground shrink-0">
-                {matches.length} OP{matches.length > 1 ? 's' : ''} em {matchSummary.length} setor{matchSummary.length > 1 ? 'es' : ''}:
+                {matchedOrders.length} OP{matchedOrders.length > 1 ? 's' : ''} em {matchSummary.length} setor{matchSummary.length > 1 ? 'es' : ''}:
               </span>
               {matchSummary.map(({ sector, n }) => (
                 <button
                   key={sector}
                   type="button"
                   className="shrink-0 rounded-md border border-border bg-card px-2.5 py-1.5 md:px-2 md:py-0.5 hover:bg-muted/60 transition-colors"
-                  onClick={() => boardEl.current
-                    ?.querySelector<HTMLElement>(`[data-kb-col="${CSS.escape(sector)}"]`)
-                    ?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' })}
+                  onClick={() => scrollToSector(sector)}
                   title={`Rolar o quadro até ${sector}`}
                 >
                   <strong className="uppercase tracking-wide">{sector}</strong>
@@ -1319,8 +1438,8 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
                       // recusa depois de soltar ("Esta OP não passa por X").
                       ? (dragEligibilityBySector?.get(sector)?.ok
                           ? (dragEligibilityBySector.get(sector)?.kind === 'pulo'
-                              ? 'kb-drop-target border-amber-500 bg-amber-500/10'
-                              : 'kb-drop-target border-primary bg-primary/5')
+                              ? 'kb-drop-target border-warning bg-warning/10'
+                              : 'kb-drop-target border-success bg-success/10')
                           : 'border-dashed border-muted-foreground/40 bg-muted/40 opacity-60 cursor-no-drop')
                       : ''
                   }`}
@@ -1357,7 +1476,7 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
                         compact
                         photoUrl={refThumbs?.get(card.q.reference_id || '') || null}
                         draggable={canEdit && !selectMode}
-                        dragging={dragCard?.q.order_id === card.q.order_id}
+                        dragging={dragCard?.key === card.key}
                         dimmed={viewMode === 'destacar' && !!matchedIds && !matchedIds.has(card.q.order_id)}
                         // Anel só no 'destacar', onde separa o achado do resto
                         // esmaecido. No 'filtrar' o quadro JÁ é só o que casou:
@@ -1366,10 +1485,11 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
                         highlighted={!selectMode && viewMode === 'destacar' && !!matchedIds && matchedIds.has(card.q.order_id)}
                         selectable={selectMode}
                         selected={selectedIds.has(card.key)}
+                        readOnly={!canEdit}
                         landed={landedId === card.q.order_id}
                         materialGateDate={gateMap?.get(card.q.order_id)?.ready_date ?? null}
                         materialGateReason={gateMap?.get(card.q.order_id)?.reason ?? null}
-                        onToggleSelect={() => toggleSelect(card.key)}
+                        onToggleSelect={() => toggleSelect(card)}
                         onDragStart={() => setDragCard(card)}
                         onDragEnd={() => { setDragCard(null); setDragOverSector(null); }}
                         onOpen={() => setDetailStage({ card })}
@@ -1384,7 +1504,7 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
         </div>
       )}
 
-      {dropTarget && (
+      {dropTarget && canEdit && (
         <DropApontarDialog
           card={dropTarget.card}
           target={dropTarget.target}
@@ -1405,17 +1525,19 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
           apontar={apontar}
           photoUrl={refThumbs?.get(detailStage.card.q.reference_id || '') || null}
           onApontado={markLanded}
+          readOnly={!canEdit}
           onClose={() => setDetailStage(null)}
         />
       )}
-      {bulkOpen && bulkTarget && selectedCards.length > 0 && (
+      {bulkRequest && canEdit && (
         <BulkMoveDialog
-          cards={selectedCards}
-          target={bulkTarget}
+          cards={bulkRequest.cards}
+          target={bulkRequest.target}
           flowOrder={flowOrder}
           levelOf={levelOf}
           apontar={apontar}
-          onClose={() => { setBulkOpen(false); exitSelectMode(); }}
+          onBack={() => setBulkRequest(null)}
+          onClose={() => { setBulkRequest(null); exitSelectMode(); }}
         />
       )}
       <QrScanDialog open={scanOpen} onClose={() => setScanOpen(false)} onDetect={handleScan} />

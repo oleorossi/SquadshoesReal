@@ -111,6 +111,118 @@ describe('buildPointingPlan', () => {
     expect(plan.unavailableReason).toMatch(/não passa por Silk/i);
   });
 
+  it('setor global anterior, mas ausente da rota, não vira estorno', () => {
+    const flow = new Map(FLOW);
+    flow.set('Preparação', 0);
+    const stages = [stage('Corte Palmilha', 1), stage('Corte Forração', 2)];
+    const plan = buildPointingPlan(
+      makeCard({ stages, column: 'Corte Forração', front: stages[0] }),
+      'Preparação',
+      flow,
+    );
+    expect(plan.available).toBe(false);
+    expect(plan.isBackward).toBe(false);
+    expect(plan.unavailableReason).toMatch(/não passa/i);
+  });
+
+  it('irmãos do mesmo nível não viram estorno um do outro', () => {
+    const stages = [
+      stage('Corte Palmilha', 1, { status: 'concluido', quantity_processed: 100 }),
+      stage('Corte Forração', 2),
+      stage('Costura', 3),
+    ];
+    const levels = new Map([
+      ['Corte Palmilha', 1], ['Corte Forração', 1], ['Costura', 2],
+    ]);
+    const plan = buildPointingPlan(
+      makeCard({ stages, column: 'Corte Forração', front: stages[0] }),
+      'Corte Palmilha',
+      FLOW,
+      levels,
+    );
+    expect(plan.available).toBe(false);
+    expect(plan.unavailableReason).toMatch(/paralelo/i);
+  });
+
+  it('volta distante não altera uma etapa diferente da mostrada como destino', () => {
+    const stages = [
+      stage('Corte Palmilha', 1, { status: 'concluido', quantity_processed: 100 }),
+      stage('Corte Forração', 2, { status: 'concluido', quantity_processed: 100 }),
+      stage('Costura', 3),
+    ];
+    const plan = buildPointingPlan(
+      makeCard({ stages, column: 'Costura', front: stages[1] }),
+      'Corte Palmilha',
+      FLOW,
+    );
+    expect(plan.available).toBe(false);
+    expect(plan.unavailableReason).toMatch(/estornar Corte Forração.*volte para Corte Forração/i);
+  });
+
+  it('setor final parcial estorna o próprio setor ao voltar um nível', () => {
+    const stages = [
+      stage('Corte Palmilha', 1, { status: 'concluido', quantity_processed: 100 }),
+      stage('Corte Forração', 2, { status: 'em_andamento', quantity_processed: 40 }),
+    ];
+    const card = makeCard({ stages, column: 'Corte Forração', front: stages[1] });
+    const plan = buildPointingPlan(card, 'Corte Palmilha', FLOW);
+
+    expect(plan.available).toBe(true);
+    expect(plan.isBackward).toBe(true);
+    expect(plan.pointedStage).toBe(stages[1]);
+    expect(plan.remaining).toBe(40);
+  });
+
+  it('ignora setor concluído com zero e estorna a etapa anterior que produziu', () => {
+    const stages = [
+      stage('Corte Palmilha', 1, { status: 'concluido', quantity_processed: 100 }),
+      stage('Corte Forração', 2, { status: 'concluido', quantity_processed: 0 }),
+      stage('Costura', 3),
+    ];
+    const card = makeCard({ stages, column: 'Costura', front: stages[1] });
+
+    const safe = buildPointingPlan(card, 'Corte Palmilha', FLOW);
+    expect(safe.available).toBe(true);
+    expect(safe.pointedStage).toBe(stages[0]);
+    expect(safe.remaining).toBe(100);
+
+    const skippedZero = buildPointingPlan(card, 'Corte Forração', FLOW);
+    expect(skippedZero.available).toBe(false);
+  });
+
+  it('não promete avanço enquanto um irmão paralelo continua aberto', () => {
+    const stages = [
+      stage('Corte Palmilha', 1),
+      stage('Corte Forração', 2),
+      stage('Costura', 3),
+    ];
+    const levels = new Map([
+      ['Corte Palmilha', 1], ['Corte Forração', 1], ['Costura', 2],
+    ]);
+    const openSibling = buildPointingPlan(
+      makeCard({ stages, column: 'Corte Palmilha' }),
+      'Costura',
+      FLOW,
+      levels,
+    );
+    expect(openSibling.available).toBe(false);
+    expect(openSibling.unavailableReason).toMatch(/conclua primeiro Corte Forração/i);
+    expect(moveOptions(
+      makeCard({ stages, column: 'Corte Palmilha' }),
+      FLOW,
+      levels,
+    ).fwdOptions).toEqual([]);
+
+    stages[1] = { ...stages[1], status: 'concluido', quantity_processed: 100 };
+    const completedSibling = buildPointingPlan(
+      makeCard({ stages, column: 'Corte Palmilha' }),
+      'Costura',
+      FLOW,
+      levels,
+    );
+    expect(completedSibling.available).toBe(true);
+  });
+
   it('sem destino aponta no próprio setor atual', () => {
     const stages = [stage('Corte Palmilha', 1, { quantity_processed: 40 }), stage('Costura', 3)];
     const plan = buildPointingPlan(makeCard({ stages, column: 'Corte Palmilha' }), null, FLOW);
@@ -197,6 +309,47 @@ describe('moveOptions', () => {
     expect(opts.backOption).toBeNull();
     expect(opts.fwdOptions).toEqual(['Costura']);
   });
+
+  it('não oferece irmão paralelo nem avanço enquanto ele continua aberto', () => {
+    const stages = [
+      stage('Corte Palmilha', 1), stage('Corte Forração', 2), stage('Costura', 3),
+    ];
+    const levels = new Map([
+      ['Corte Palmilha', 1], ['Corte Forração', 1], ['Costura', 2],
+    ]);
+    const opts = moveOptions(
+      makeCard({ stages, column: 'Corte Palmilha' }),
+      FLOW,
+      levels,
+    );
+    expect(opts.fwdOptions).toEqual([]);
+    expect(opts.backOption).toBeNull();
+  });
+
+  it('oferece o nível anterior quando o próprio setor está parcial', () => {
+    const stages = [
+      stage('Corte Palmilha', 1, { status: 'concluido', quantity_processed: 100 }),
+      stage('Corte Forração', 2, { status: 'em_andamento', quantity_processed: 40 }),
+    ];
+    const opts = moveOptions(
+      makeCard({ stages, column: 'Corte Forração', front: stages[1] }),
+      FLOW,
+    );
+    expect(opts.backOption).toBe('Corte Palmilha');
+  });
+
+  it('não oferece setor pulado com zero como origem de estorno', () => {
+    const stages = [
+      stage('Corte Palmilha', 1, { status: 'concluido', quantity_processed: 100 }),
+      stage('Corte Forração', 2, { status: 'concluido', quantity_processed: 0 }),
+      stage('Costura', 3),
+    ];
+    const opts = moveOptions(
+      makeCard({ stages, column: 'Costura', front: stages[1] }),
+      FLOW,
+    );
+    expect(opts.backOption).toBe('Corte Palmilha');
+  });
 });
 
 /**
@@ -242,6 +395,25 @@ describe('skipBlockedByPartial', () => {
     expect(plan.isBackward).toBe(true);
     expect(skipBlockedByPartial(plan, 10)).toBe(false);
   });
+
+  it('não confunde disponibilidade a montante com saldo necessário para fechar um pulo', () => {
+    const limitedFlow = new Map<string, number>([
+      ['Corte Palmilha', 1], ['Costura Palmilha', 2], ['Silk', 3], ['Montagem', 4],
+    ]);
+    const limitedStages = [
+      stage('Corte Palmilha', 1, { status: 'em_andamento', quantity_processed: 50 }),
+      stage('Costura Palmilha', 2),
+      stage('Silk', 3),
+      stage('Montagem', 4),
+    ];
+    const limitedCard = makeCard({ stages: limitedStages, column: 'Costura Palmilha' });
+    const plan = buildPointingPlan(limitedCard, 'Montagem', limitedFlow);
+
+    expect(plan.remaining).toBe(50);      // pode apontar 50 agora
+    expect(plan.stageRemaining).toBe(100); // mas só 100 fecha a origem
+    expect(plan.skipped).toEqual(['Silk']);
+    expect(skipBlockedByPartial(plan, 50)).toBe(true);
+  });
 });
 
 /**
@@ -272,6 +444,25 @@ describe('applyPointing — confirmação humana do pulo', () => {
     expect((apontar as unknown as { calls: unknown[] }).calls).toHaveLength(0);
   });
 
+  it('recusa qualquer plano indisponível, SEM gravar nada', async () => {
+    const apontar = fakeApontar();
+    const parallelStages = [
+      stage('Corte Palmilha', 1), stage('Corte Forração', 2), stage('Costura', 3),
+    ];
+    const levels = new Map([
+      ['Corte Palmilha', 1], ['Corte Forração', 1], ['Costura', 2],
+    ]);
+    const parallelCard = makeCard({ stages: parallelStages, column: 'Corte Palmilha' });
+    const plan = buildPointingPlan(parallelCard, 'Costura', FLOW, levels);
+
+    const res = await applyPointing({
+      card: parallelCard, plan, target: 'Costura', qty: 100, apontar,
+    });
+
+    expect(res).toMatchObject({ status: 'blocked' });
+    expect((apontar as unknown as { calls: unknown[] }).calls).toHaveLength(0);
+  });
+
   it('com aceite, grava a origem e fecha os pulados', async () => {
     const apontar = fakeApontar();
     const plan = buildPointingPlan(card, 'Aviamento', FLOW);
@@ -289,5 +480,31 @@ describe('applyPointing — confirmação humana do pulo', () => {
     const res = await applyPointing({ card, plan, target: 'Corte Forração', qty: 100, apontar });
     expect(res.status).toBe('ok');
     expect((apontar as unknown as { calls: unknown[] }).calls).toHaveLength(1);
+  });
+});
+
+describe('applyPointing — estorno do setor atual parcial', () => {
+  it('grava o lançamento negativo na etapa parcial, não no destino visual', async () => {
+    const stages = [
+      stage('Corte Palmilha', 1, { status: 'concluido', quantity_processed: 100 }),
+      stage('Corte Forração', 2, { status: 'em_andamento', quantity_processed: 40 }),
+    ];
+    const card = makeCard({ stages, column: 'Corte Forração', front: stages[1] });
+    const plan = buildPointingPlan(card, 'Corte Palmilha', FLOW);
+    const calls: Array<Record<string, unknown>> = [];
+    const apontar = {
+      mutateAsync: async (payload: Record<string, unknown>) => {
+        calls.push(payload);
+        return { success: true };
+      },
+    } as never;
+
+    const result = await applyPointing({
+      card, plan, target: 'Corte Palmilha', qty: 10, apontar,
+    });
+
+    expect(result).toEqual({ status: 'ok', quantity: -10 });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({ stageName: 'Corte Forração', quantity: -10 });
   });
 });
