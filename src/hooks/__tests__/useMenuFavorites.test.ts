@@ -7,17 +7,17 @@ import { canonicalizeFavorites } from '../useMenuFavorites';
 describe('canonicalizeFavorites', () => {
   it('reescreve rota legada (/ordens-servico) pro hub canônico /terceirizados', () => {
     const out = canonicalizeFavorites([{ name: 'Ordens de Serviço', path: '/ordens-servico' }]);
-    expect(out).toEqual([{ name: 'Terceirizados', path: '/terceirizados' }]);
+    expect(out).toEqual([{ name: 'Ordens de Serviço', path: '/terceirizados' }]);
   });
 
-  it('deduplica: Terceirizados + Ordens de Serviço (fantasma) viram UM item', () => {
+  it('deduplica: Terceirizados (nome antigo) + Ordens de Serviço (fantasma) viram UM item', () => {
     const out = canonicalizeFavorites([
       { name: 'Terceirizados', path: '/terceirizados' },
       { name: 'Ordens de Compra', path: '/purchase-orders' },
       { name: 'Ordens de Serviço', path: '/ordens-servico' },
     ]);
     expect(out).toEqual([
-      { name: 'Terceirizados', path: '/terceirizados' },
+      { name: 'Ordens de Serviço', path: '/terceirizados' },
       { name: 'Ordens de Compra', path: '/purchase-orders' },
     ]);
   });
@@ -47,6 +47,7 @@ describe('canonicalizeFavorites', () => {
     ];
     const once = canonicalizeFavorites(favs);
     expect(canonicalizeFavorites(once)).toEqual(once);
+    expect(once).toEqual([{ name: 'Ordens de Serviço', path: '/terceirizados' }]);
   });
 
   it('todos os redirects de terceirização caem em /terceirizados', () => {

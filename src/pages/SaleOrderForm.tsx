@@ -1,7 +1,7 @@
 import { FormSkeleton } from '@/components/layout/PageSkeleton';
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, FileMagnifyingGlass as FileSearch, ArrowCounterClockwise as RotateCcw, Handshake, CheckCircle, Warning as AlertTriangle, PaperPlaneTilt } from '@phosphor-icons/react';
+import { ArrowLeft, FileMagnifyingGlass as FileSearch, ArrowCounterClockwise as RotateCcw, Handshake, CheckCircle, Warning as AlertTriangle, PaperPlaneTilt, CaretDown } from '@phosphor-icons/react';
 import { SendSectorToContractorDialog } from '@/components/sale-orders/SendSectorToContractorDialog';
 // `newISO` é date-only: `new Date(iso)` parseia UTC e o toast confirmava o dia
 // ANTERIOR ao que era gravado em `delivery_deadline`.
@@ -10,6 +10,9 @@ import { fetchClientCreditExposure } from '@/lib/clientCreditExposure';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -1844,23 +1847,35 @@ export default function SaleOrderForm() {
                 </Badge>
               )}
               {isEdit && id && (
-                <Button
-                  variant="outline" size="sm" className="h-9 gap-1.5"
-                  onClick={() => { setGenOsPvId(id); setGenOsNavAfter(false); setGenOsOpen(true); }}
-                >
-                  <Handshake className="h-4 w-4" /> Gerar OS
-                </Button>
-              )}
-              {/* Envio POSTERIOR: setor que não foi marcado nos itens antes da OP
-                  nascer, ou OS que falhou na criação automática (o trigger engole
-                  o erro de propósito — falhar a OS não pode travar a OP). */}
-              {isEdit && id && (
-                <Button
-                  variant="outline" size="sm" className="h-9 gap-1.5"
-                  onClick={() => setSendSectorOpen(true)}
-                >
-                  <PaperPlaneTilt className="h-4 w-4" /> Enviar pra prestador
-                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="outline" size="sm" className="h-9 gap-1.5"
+                      aria-label="Ações de ordem de serviço deste pedido"
+                    >
+                      <Handshake className="h-4 w-4" /> Terceirizar
+                      <CaretDown className="h-3 w-3" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-64">
+                    <DropdownMenuLabel>Ordens de Serviço</DropdownMenuLabel>
+                    <DropdownMenuItem className="items-start gap-2" onClick={() => { setGenOsPvId(id); setGenOsNavAfter(false); setGenOsOpen(true); }}>
+                      <Handshake className="mt-0.5 h-4 w-4 shrink-0" />
+                      <span>
+                        <span className="block font-medium">Gerar OS por pedido</span>
+                        <span className="block text-[11px] text-muted-foreground">Assistente canônico — serviço × OP</span>
+                      </span>
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem className="items-start gap-2" onClick={() => setSendSectorOpen(true)}>
+                      <PaperPlaneTilt className="mt-0.5 h-4 w-4 shrink-0" />
+                      <span>
+                        <span className="block font-medium">Enviar setor ao prestador</span>
+                        <span className="block text-[11px] text-muted-foreground">Setor que não foi marcado antes da OP nascer</span>
+                      </span>
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               )}
             </>
           }
@@ -1901,7 +1916,7 @@ export default function SaleOrderForm() {
           onColorIssueChange={handleColorIssueChange}
         />
 
-        {/* OS deste pedido (read-only) — geração fica em Terceirizados → Gerar OS por Pedido */}
+        {/* OS deste pedido (read-only) — geração fica no menu Produção → Ordens de Serviço */}
         {isEdit && id && (
           <div className="mt-4">
             <PvServiceOrdersCard saleOrderId={id} />

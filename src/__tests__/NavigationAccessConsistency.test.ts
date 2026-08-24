@@ -60,6 +60,23 @@ describe('Navigation ↔ Access Control consistency', () => {
     });
   });
 
+  it('coloca Ordens de Serviço em Produção, não em RH', () => {
+    expect(navigationCatalog.find((item) => item.path === '/terceirizados')).toMatchObject({
+      label: 'Ordens de Serviço',
+      group: 'Produção',
+      surfaces: ['sidebar', 'command'],
+    });
+    const producao = menuGroups.find((g) => g.label === 'Produção');
+    const rh = menuGroups.find((g) => g.label === 'RH');
+    expect(producao?.items.some((i) => i.path === '/terceirizados')).toBe(true);
+    expect(rh?.items.some((i) => i.path === '/terceirizados')).toBe(false);
+    const kanbanIdx = producao!.items.findIndex((i) => i.path === '/producao/kanban');
+    const osIdx = producao!.items.findIndex((i) => i.path === '/terceirizados');
+    const estouroIdx = producao!.items.findIndex((i) => i.path === '/producao/estouro');
+    expect(osIdx).toBeGreaterThan(kanbanIdx);
+    expect(osIdx).toBeLessThan(estouroIdx);
+  });
+
   it('topItem deve ter rota mapeada (ou ser dashboard, que é livre)', () => {
     const mod = resolveModuleForPath(topItem.path);
     // Dashboard pode ficar fora do mapa (acesso livre a usuários autenticados).

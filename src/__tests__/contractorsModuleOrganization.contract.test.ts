@@ -15,7 +15,28 @@ const standaloneServiceOrder = read('src/components/contractors/ServiceOrderForm
 const serviceFocus = read('src/lib/contractorServiceFocus.ts');
 const primaryServicesMigration = read('supabase/migrations/20270101004600_priorizar_costura_cabedal_e_aviamento_nas_os.sql');
 
+const hub = read('src/pages/TerceirizadosHub.tsx');
+const nav = read('src/data/navigation.ts');
+const menuOptions = read('src/lib/userMenuOptions.ts');
+
 describe('Terceirizados — contrato visual e organizacional do módulo', () => {
+  it('expõe o hub de OS no menu Produção com as cinco áreas', () => {
+    expect(nav).toContain("path: '/terceirizados', label: 'Ordens de Serviço', group: 'Produção'");
+    expect(hub).toContain("label: 'Ordens de Serviço'");
+    expect(hub).toContain("label: 'Planejar'");
+    expect(hub).toContain("label: 'Pagamentos'");
+    expect(hub).toContain("label: 'Prestadores'");
+    expect(hub).toContain("label: 'Tarifas'");
+    expect(hub).toContain('HubTabsList');
+    expect(hub).not.toContain("label: 'Relatório'");
+    expect(contractors).toContain('Nova OS');
+    expect(contractors).toContain('Exportar PDF');
+    expect(contractors).toContain("group: 'ops'");
+    expect(contractors).toContain("group: 'status'");
+    expect(menuOptions).toContain("{ module: 'terceirizados', label: 'Ordens de Serviço', description: 'Gestão de OS, prestadores, tarifas e pagamento da terceirização', group: 'Produção' }");
+    expect(reports).toContain('title="Pagamentos"');
+    expect(reports).not.toContain('Relatório de Terceirizados');
+  });
   it('mantém a mesma hierarquia nas cinco áreas operacionais', () => {
     expect(contractors).toContain('OPERAÇÃO · EXPEDIÇÃO EXTERNA');
     expect(contractors).toContain('CADASTRO · REDE PRODUTIVA');

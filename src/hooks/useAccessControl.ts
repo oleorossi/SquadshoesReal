@@ -111,13 +111,12 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/optimized-production': 'producao',
   '/capacity-planning': 'producao',
   '/gargalos': 'producao',
-  // Hub unificado "Terceirizados" (rota canônica /terceirizados): Na Rua + OS +
-  // Planejamento + Prestadores + Receitas + Relatório. Governado pelo módulo
-  // 'terceirizados' (mesmo do antigo /contractors) — e o papel 'producao' recebe
-  // esse módulo em ROLE_MODULES, então quem acessava QUALQUER uma das duas telas
-  // antigas continua com acesso.
+  // Hub unificado "Ordens de Serviço" (rota canônica /terceirizados): lista +
+  // Planejamento + Pagamentos + Prestadores + Tarifas. Governado pelo módulo
+  // 'terceirizados' (mesmo do antigo /contractors). Sidebar vive em Produção;
+  // o papel 'producao' recebe o módulo em ROLE_MODULES.
   '/terceirizados': 'terceirizados',
-  '/ordens-servico': 'terceirizados',       // atalho no menu Compras → aba OS do hub
+  '/ordens-servico': 'terceirizados',       // atalho legado → aba OS do hub
   '/terceiros': 'terceirizados',            // nome canônico anterior → redireciona pro hub
   '/terceiros-na-rua': 'terceirizados',     // legado → redireciona pro hub
   '/terceiros/relatorios': 'terceirizados', // legado → redireciona pro hub
@@ -229,10 +228,9 @@ export const ROLE_MODULES: Record<string, string[]> = {
   ],
   producao: [
     'dashboard', 'estoque', 'produtos', 'ordens', 'producao', 'vendas', 'expedicao', 'ficha_montadores',
-    // 'terceirizados': o hub /terceiros (Na Rua + cadastro de contratadas) é função
-    // operacional de produção. Antes a produção via /terceiros pelo módulo 'producao';
-    // como o hub passou a ser governado por 'terceirizados', concedemos aqui pra não
-    // tirar acesso de ninguém na unificação.
+    // 'terceirizados': o hub de OS é função operacional de produção. Antes a
+    // produção via /terceiros pelo módulo 'producao'; como o hub passou a ser
+    // governado por 'terceirizados', concedemos aqui pra não tirar acesso.
     'terceirizados',
   ],
   almoxarifado: [

@@ -101,7 +101,7 @@ export function OverrideOutsourceCosturaDialog({ open, saleOrderId, onClose }: P
         effectiveOps = (created || []) as Array<{ id: string; order_number: string }>;
         setOps(effectiveOps);
         if (effectiveOps.length === 0) {
-          toast.warning('PV aprovado, mas nenhuma OP foi criada — confira ficha/estoque e terceirize pela aba Terceirizados.');
+          toast.warning('PV aprovado, mas nenhuma OP foi criada — confira ficha/estoque e terceirize em Produção → Ordens de Serviço.');
           onClose();
           return;
         }

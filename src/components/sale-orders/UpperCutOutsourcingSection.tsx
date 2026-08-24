@@ -190,7 +190,7 @@ export default function UpperCutOutsourcingSection({ saleOrderId, orderNumber }:
       } else if (res?.upper_material === false) {
         toast.success(`OS ${osNumber} criada — modelo sem cabedal na ficha, nenhum material debitado.`);
       } else {
-        toast.success(`OS ${osNumber} criada — visível no menu Terceirizados.`);
+        toast.success(`OS ${osNumber} criada — visível em Produção → Ordens de Serviço.`);
       }
 
       for (const s of shortfall) {
@@ -216,8 +216,8 @@ export default function UpperCutOutsourcingSection({ saleOrderId, orderNumber }:
       </h3>
       <p className="text-xs text-muted-foreground">
         Referências deste pedido com corte de cabedal (modelo sem tiras). Selecione a terceirizada e
-        gere a Ordem de Serviço direto daqui — ela entra como <strong>Pendente</strong> nas listas do
-        menu Terceirizados. Quando a ficha tem cabedal, gerar a OS <strong>dá baixa na napa do
+        gere a Ordem de Serviço direto daqui — ela entra como <strong>Pendente</strong> em
+        Produção → Ordens de Serviço. Quando a ficha tem cabedal, gerar a OS <strong>dá baixa na napa do
         cabedal</strong> na metragem deste lote (o material sai da fábrica com a terceirizada).
       </p>
       <div className="overflow-hidden overflow-x-auto rounded-lg border">
@@ -255,7 +255,7 @@ export default function UpperCutOutsourcingSection({ saleOrderId, orderNumber }:
                         <SelectContent>
                           {activeContractors.length === 0 && (
                             <div className="px-3 py-2 text-xs text-muted-foreground">
-                              Nenhuma terceirizada ativa. Cadastre em Terceirizados.
+                              Nenhuma terceirizada ativa. Cadastre em Produção → Ordens de Serviço → Prestadores.
                             </div>
                           )}
                           {activeContractors.map((c) => (

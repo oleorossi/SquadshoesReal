@@ -941,9 +941,8 @@ const router = createBrowserRouter([
         element: <PickingListPage />,
       },
       {
-        // Hub "Terceirizados" (rota canônica) — unifica Na Rua + OS +
-        // Planejamento + Prestadores + Receitas + Relatório em abas.
-        // Ver src/pages/TerceirizadosHub.tsx.
+        // Hub de Ordens de Serviço (rota canônica /terceirizados) — lista +
+        // Planejar + Pagamentos + Prestadores + Tarifas. Ver TerceirizadosHub.
         path: "terceirizados",
         element: <TerceirizadosHub />,
       },

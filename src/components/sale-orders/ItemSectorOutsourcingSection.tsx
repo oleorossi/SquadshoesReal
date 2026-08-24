@@ -88,7 +88,7 @@ export function ItemSectorOutsourcingSection({
       {semPrestador ? (
         <p className="text-[11px] text-amber-700 dark:text-amber-400 flex items-center gap-1.5">
           <Warning className="h-3.5 w-3.5 shrink-0" />
-          Nenhum prestador ativo cadastrado — cadastre em Terceirizados pra poder
+          Nenhum prestador ativo cadastrado — cadastre em Produção → Ordens de Serviço → Prestadores pra poder
           mandar setor pra fora.
         </p>
       ) : (

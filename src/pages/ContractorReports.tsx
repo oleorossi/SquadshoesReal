@@ -442,8 +442,8 @@ export default function ContractorReportsPage({ embedded }: { embedded?: boolean
     <div className={cn('space-y-5', !embedded && 'page-enter')}>
       {!embedded && (
         <EditorialPageHeader
-          sectionLabel="PRODUÇÃO · RELATÓRIOS · TERCEIROS"
-          title="Relatório de Terceirizados"
+          sectionLabel="PRODUÇÃO · TERCEIRIZAÇÃO"
+          title="Pagamentos"
           description="Produção, prazo e pagamento por serviço terceirizado. Costura de cabedal e Aviamento têm recorte próprio."
         />
       )}

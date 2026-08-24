@@ -11,7 +11,7 @@ import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { useCan } from '@/hooks/useAccessControl';
-import { CircleNotch as Loader2, Plus, MagnifyingGlass as Search, PencilSimple as Pencil, Trash as Trash2, FileText, Handshake, Printer, X, Check, CaretUpDown as ChevronsUpDown, Upload, CheckCircle as CheckCircle2, Circle, ClipboardText as ClipboardList, CurrencyDollar as DollarSign, Clock, Users, Package, Flask as FlaskConical, Scissors, Warning as AlertTriangle, WarningCircle as AlertCircle, CalendarBlank as Calendar, LockKey as Lock, ClockCounterClockwise, ChartLineUp, FileArrowDown as FileDown, Funnel, Truck, DotsThreeVertical as MoreVertical, Archive, List as ListIcon, SquaresFour, IdentificationCard, PhoneCall } from '@phosphor-icons/react';
+import { CircleNotch as Loader2, Plus, MagnifyingGlass as Search, PencilSimple as Pencil, Trash as Trash2, FileText, Handshake, Printer, X, Check, CaretUpDown as ChevronsUpDown, CaretDown, Upload, CheckCircle as CheckCircle2, Circle, ClipboardText as ClipboardList, CurrencyDollar as DollarSign, Clock, Users, Package, Flask as FlaskConical, Scissors, Warning as AlertTriangle, WarningCircle as AlertCircle, CalendarBlank as Calendar, LockKey as Lock, ClockCounterClockwise, ChartLineUp, FileArrowDown as FileDown, Funnel, Truck, DotsThreeVertical as MoreVertical, Archive, List as ListIcon, SquaresFour, IdentificationCard, PhoneCall } from '@phosphor-icons/react';
 import { SECTOR_LABEL, SectorKey } from '@/hooks/useSectorBottlenecks';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -33,7 +33,7 @@ import { useMarqueeSelection } from '@/hooks/useMarqueeSelection';
 import { confirmAndBulkDelete } from '@/lib/bulkConfirm';
 import { Separator } from '@/components/ui/separator';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { cn } from '@/lib/utils';
@@ -105,23 +105,16 @@ const emptyOrder: Partial<ServiceOrder> & { materials_sent: MaterialSent[] } = {
 // Chips de filtro da lista de OSs. Labels seguem a linguagem do dono:
 // 'Em Andamento' (DB) → "Em Processamento", 'Concluído' (DB) → "Entregue".
 // Default 'active' = só Pendente + Em Processamento (o que precisa de ação).
-const STATUS_CHIPS: { value: string; label: string }[] = [
-  { value: 'active', label: 'Ativas' },
-  { value: 'all', label: 'Todas' },
-  // "Na rua" e "Atrasados" vieram da antiga aba "Na Rua" (fundida aqui em
-  // 2026-06-30). Filtram por pares em campo (qty_in_field) + prazo vencido —
-  // tratados à parte de matchesStatusChip (precisam do overview/prazo).
-  { value: 'na_rua', label: 'Na rua' },
-  { value: 'atrasados', label: 'Atrasados' },
-  { value: 'paradas', label: 'Paradas +15d' },
-  // Rótulos = os canônicos de osStatusLabel (Pendente · Enviada · Recebida ·
-  // Cancelada). Antes os chips diziam "Em Processamento"/"Entregue" enquanto o
-  // badge da MESMA lista dizia "Enviada"/"Recebida" — três nomes pro mesmo
-  // estado sem sair da página.
-  { value: 'Pendente', label: 'Pendente' },
-  { value: 'Em Andamento', label: 'Enviada' },
-  { value: 'Concluído', label: 'Recebida' },
-  { value: 'Cancelado', label: 'Cancelada' },
+const STATUS_CHIPS: { value: string; label: string; group: 'ops' | 'status' }[] = [
+  { value: 'active', label: 'Ativas', group: 'ops' },
+  { value: 'na_rua', label: 'Na rua', group: 'ops' },
+  { value: 'atrasados', label: 'Atrasados', group: 'ops' },
+  { value: 'paradas', label: 'Paradas +15d', group: 'ops' },
+  { value: 'Pendente', label: 'Pendente', group: 'status' },
+  { value: 'Em Andamento', label: 'Enviada', group: 'status' },
+  { value: 'Concluído', label: 'Recebida', group: 'status' },
+  { value: 'Cancelado', label: 'Cancelada', group: 'status' },
+  { value: 'all', label: 'Todas', group: 'status' },
 ];
 function matchesStatusChip(status: string, chip: string): boolean {
   switch (chip) {
@@ -1316,9 +1309,9 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
         {/* Header — escondido quando embutido no hub /terceiros (o hub provê o seu) */}
         {!embedded && (
           <EditorialPageHeader
-            sectionLabel="RH · TERCEIROS"
-            title="Terceirizados"
-            description="Gestão de prestadores, ordens de serviço e recibos"
+            sectionLabel="PRODUÇÃO · TERCEIRIZAÇÃO"
+            title="Ordens de Serviço"
+            description="Gestão de prestadores, fila na rua e recibos"
           />
         )}
 
@@ -1358,7 +1351,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
           {!embedded && (
             <TabsList>
               <TabsTrigger value="orders" className="gap-1.5"><ClipboardList className="h-3.5 w-3.5" /> Ordens de Serviço</TabsTrigger>
-              <TabsTrigger value="planning" className="gap-1.5"><ChartLineUp className="h-3.5 w-3.5" /> Planejamento</TabsTrigger>
+              <TabsTrigger value="planning" className="gap-1.5"><ChartLineUp className="h-3.5 w-3.5" /> Planejar</TabsTrigger>
               <TabsTrigger value="contractors" className="gap-1.5"><Users className="h-3.5 w-3.5" /> Prestadores</TabsTrigger>
             </TabsList>
           )}
@@ -1379,11 +1372,10 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                 />
 
                 <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:justify-end">
-                  {/* Filtros de relatório (prestador / período / base) + PDF num popover. */}
                   <Popover>
                     <PopoverTrigger asChild>
                       <Button variant="outline" size="sm" className="relative h-10 gap-1.5 lg:h-9">
-                        <FileDown className="h-4 w-4" /> Relatório
+                        <FileDown className="h-4 w-4" /> Exportar PDF
                         {hasOsReportFilters && <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-primary" aria-hidden />}
                       </Button>
                     </PopoverTrigger>
@@ -1434,14 +1426,31 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                     </PopoverContent>
                   </Popover>
                   {osPerm.canCreate && (
-                    <Button variant="outline" size="sm" onClick={() => openNewOrder()} className="h-10 gap-1.5 lg:h-9">
-                      <Plus className="h-4 w-4" /> OS avulsa
-                    </Button>
-                  )}
-                  {osPerm.canCreate && (
-                    <Button size="sm" onClick={() => setGenOsOpen(true)} className="col-span-2 h-10 gap-1.5 sm:col-span-1 lg:h-9">
-                      <Handshake className="h-4 w-4" /> Gerar por pedido
-                    </Button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button size="sm" className="col-span-2 h-10 gap-1.5 sm:col-span-1 lg:h-9">
+                          <Plus className="h-4 w-4" /> Nova OS
+                          <CaretDown className="h-3 w-3" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-64">
+                        <DropdownMenuLabel>Criar ordem de serviço</DropdownMenuLabel>
+                        <DropdownMenuItem className="items-start gap-2" onClick={() => setGenOsOpen(true)}>
+                          <Handshake className="mt-0.5 h-4 w-4 shrink-0" />
+                          <span>
+                            <span className="block font-medium">Gerar por pedido</span>
+                            <span className="block text-[11px] text-muted-foreground">PV e OP já no sistema — caminho canônico</span>
+                          </span>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem className="items-start gap-2" onClick={() => openNewOrder()}>
+                          <Plus className="mt-0.5 h-4 w-4 shrink-0" />
+                          <span>
+                            <span className="block font-medium">OS avulsa</span>
+                            <span className="block text-[11px] text-muted-foreground">Sem pedido vinculado — retrabalho, extra</span>
+                          </span>
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   )}
                 </div>
               </div>
@@ -1451,10 +1460,15 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
               <div className="flex items-center gap-2 border-t bg-muted/20 px-3 py-2">
                 <div role="group" aria-label="Filtrar ordens por situação" className="min-w-0 flex-1 overflow-x-auto">
                   <div className="flex min-w-max items-center gap-1">
-                {STATUS_CHIPS.filter(chip =>
-                  chip.value === 'active' || chip.value === 'all' ||
-                  chip.value === statusFilter || (statusChipCounts[chip.value] ?? 0) > 0
-                ).map(chip => (
+                {(['ops', 'status'] as const).flatMap((group, gi) => {
+                  const chips = STATUS_CHIPS.filter(chip => chip.group === group).filter(chip =>
+                    chip.value === 'active' || chip.value === 'all' ||
+                    chip.value === statusFilter || (statusChipCounts[chip.value] ?? 0) > 0
+                  );
+                  if (chips.length === 0) return [];
+                  return [
+                    gi > 0 ? <span key={`sep-${group}`} aria-hidden className="mx-1 h-6 w-px shrink-0 self-center bg-border" /> : null,
+                    ...chips.map(chip => (
                   <Button
                     key={chip.value}
                     size="sm"
@@ -1470,7 +1484,9 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                       {statusChipCounts[chip.value] ?? 0}
                     </span>
                   </Button>
-                ))}
+                    )),
+                  ];
+                })}
                   </div>
                 </div>
                 <Button
@@ -1492,7 +1508,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                   icon={orderSearch ? Search : ClipboardList}
                   title={orderSearch ? `Nenhum resultado para "${orderSearch}"` : 'Nenhuma OS encontrada'}
                   description={orderSearch || hasOsReportFilters || statusFilter !== 'all'
-                    ? 'Ajuste a busca, os chips de status ou os filtros de relatório.'
+                    ? 'Ajuste a busca, os chips de status ou os filtros do PDF.'
                     : 'Crie a primeira ordem de serviço para uma contratada.'}
                   action={orderSearch
                     ? <Button variant="outline" size="sm" onClick={() => setOrderSearch('')}>Limpar busca</Button>
