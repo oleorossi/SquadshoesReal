@@ -1117,7 +1117,9 @@ export default function SaleOrders() {
           throw new Error(`status mudou para ${header.status}`);
         }
 
-        const expectedOrderVersion = Number((header as any).order_version) || 0;
+        const expectedOrderVersion = Number(
+          (header as unknown as { order_version?: number | null }).order_version,
+        ) || 0;
         const preflight = await preflightSaleOrderCommand({
           saleOrderId: orderId,
           command: 'update',

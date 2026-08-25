@@ -134,9 +134,9 @@ export class SaleOrderCommandExecutionError extends Error {
   }
 }
 
-const asRecord = (value: unknown): Record<string, any> => (
+const asRecord = (value: unknown): Record<string, unknown> => (
   value && typeof value === 'object' && !Array.isArray(value)
-    ? value as Record<string, any>
+    ? value as Record<string, unknown>
     : {}
 );
 
@@ -215,6 +215,7 @@ export function normalizeSaleOrderCommandReceipt<TResult = Record<string, unknow
   if (missing.length > 0) {
     throw new Error(`Resposta inválida do comando de PV: faltando ${missing.join(', ')}.`);
   }
+  const receiptError = raw.error == null ? null : asRecord(raw.error);
 
   return {
     // Recibo só é sucesso com confirmação positiva explícita. `undefined`
@@ -231,10 +232,10 @@ export function normalizeSaleOrderCommandReceipt<TResult = Record<string, unknow
       : null,
     result: asRecord(raw.result) as TResult,
     readiness: normalizeSaleOrderReadiness(raw.readiness ?? raw.preflight),
-    error: raw.error == null ? null : {
-      code: raw.error.code == null ? null : String(raw.error.code),
-      message: raw.error.message == null ? null : String(raw.error.message),
-      detail: raw.error.detail == null ? null : String(raw.error.detail),
+    error: receiptError == null ? null : {
+      code: receiptError.code == null ? null : String(receiptError.code),
+      message: receiptError.message == null ? null : String(receiptError.message),
+      detail: receiptError.detail == null ? null : String(receiptError.detail),
     },
   };
 }
@@ -248,6 +249,7 @@ export function normalizeCreateSaleOrderCommandReceipt<TResult = Record<string, 
   if (missing.length > 0) {
     throw new Error(`Resposta inválida do comando create: faltando ${missing.join(', ')}.`);
   }
+  const receiptError = raw.error == null ? null : asRecord(raw.error);
   const receipt: CreateSaleOrderCommandReceipt<TResult> = {
     ok: raw.ok === true,
     replayed: Boolean(raw.replayed ?? raw.idempotent_replay),
@@ -256,10 +258,10 @@ export function normalizeCreateSaleOrderCommandReceipt<TResult = Record<string, 
     command: 'create',
     order_version: Number(raw.order_version ?? raw.order_version_after) || 0,
     result: asRecord(raw.result) as TResult,
-    error: raw.error == null ? null : {
-      code: raw.error.code == null ? null : String(raw.error.code),
-      message: raw.error.message == null ? null : String(raw.error.message),
-      detail: raw.error.detail == null ? null : String(raw.error.detail),
+    error: receiptError == null ? null : {
+      code: receiptError.code == null ? null : String(receiptError.code),
+      message: receiptError.message == null ? null : String(receiptError.message),
+      detail: receiptError.detail == null ? null : String(receiptError.detail),
     },
   };
   if (receipt.ok && !receipt.sale_order_id) {
@@ -271,13 +273,13 @@ export function normalizeCreateSaleOrderCommandReceipt<TResult = Record<string, 
 export async function preflightSaleOrderCommand(
   input: PreflightSaleOrderCommandInput,
 ): Promise<SaleOrderCommandPreflight> {
-  const { data, error } = await (supabase as any).rpc('preflight_sale_order_command', {
+  const { data, error } = await supabase.rpc('preflight_sale_order_command' as never, {
     p_sale_order_id: input.saleOrderId,
     p_command: input.command,
     p_expected_order_version: input.expectedOrderVersion ?? null,
     p_override_id: input.overrideId ?? null,
     p_payload: input.payload ?? {},
-  });
+  } as never);
   if (error) throw error;
   return normalizeSaleOrderCommandPreflight(data, input);
 }
@@ -285,14 +287,14 @@ export async function preflightSaleOrderCommand(
 export async function executeSaleOrderCommand<TResult = Record<string, unknown>>(
   input: ExecuteSaleOrderCommandInput,
 ): Promise<SaleOrderCommandReceipt<TResult>> {
-  const { data, error } = await (supabase as any).rpc('execute_sale_order_command', {
+  const { data, error } = await supabase.rpc('execute_sale_order_command' as never, {
     p_sale_order_id: input.saleOrderId,
     p_command: input.command,
     p_expected_order_version: input.expectedOrderVersion,
     p_idempotency_key: input.idempotencyKey,
     p_payload: input.payload ?? {},
     p_override_id: input.overrideId ?? null,
-  });
+  } as never);
   if (error) throw error;
   const receipt = normalizeSaleOrderCommandReceipt<TResult>(data);
   if (!receipt.ok) throw new SaleOrderCommandExecutionError(receipt);
@@ -302,12 +304,12 @@ export async function executeSaleOrderCommand<TResult = Record<string, unknown>>
 export async function createSaleOrderCommand<TResult = Record<string, unknown>>(
   input: CreateSaleOrderCommandInput,
 ): Promise<CreateSaleOrderCommandReceipt<TResult>> {
-  const { data, error } = await (supabase as any).rpc('create_sale_order_command', {
+  const { data, error } = await supabase.rpc('create_sale_order_command' as never, {
     p_header: input.header,
     p_items: input.items,
     p_idempotency_key: input.idempotencyKey,
     p_client_request_id: input.clientRequestId,
-  });
+  } as never);
   if (error) throw error;
   const receipt = normalizeCreateSaleOrderCommandReceipt<TResult>(data);
   if (!receipt.ok) throw new SaleOrderCommandExecutionError(receipt);
@@ -324,11 +326,11 @@ export async function createSaleOrderReadinessOverride(input: {
     throw new Error('A justificativa do override é obrigatória.');
   }
 
-  const { data, error } = await (supabase as any).rpc('create_sale_order_readiness_override', {
+  const { data, error } = await supabase.rpc('create_sale_order_readiness_override' as never, {
     p_sale_order_id: input.saleOrderId,
     p_command: input.command,
     p_justification: justification,
-  });
+  } as never);
   if (error) throw error;
   if (!data) throw new Error('O servidor não retornou o identificador do override.');
   return String(data);

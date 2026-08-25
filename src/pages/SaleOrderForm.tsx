@@ -941,8 +941,8 @@ export default function SaleOrderForm() {
         external_nfe_number: (order as any).external_nfe_number || '',
         // Terceirização planejada faz parte do mesmo agregado do PV. Sem
         // hidratar estes campos, reabrir e salvar apagava a escolha existente.
-        outsource_to_contractor_id: (order as any).outsource_to_contractor_id || null,
-        outsource_to_sector: (order as any).outsource_to_sector || null,
+        outsource_to_contractor_id: order.outsource_to_contractor_id || null,
+        outsource_to_sector: order.outsource_to_sector || null,
       };
       const nextPackagingProductId = order.packaging_product_id || '';
       const nextPackagingQuantity = Number(order.packaging_quantity) || 0;
@@ -981,7 +981,9 @@ export default function SaleOrderForm() {
         packagingQuantity: nextPackagingQuantity,
       });
       editorBaselineReadyRef.current = true;
-      loadedOrderVersionRef.current = Number((order as any).order_version) || 1;
+      loadedOrderVersionRef.current = Number(
+        (order as unknown as { order_version?: number | null }).order_version,
+      ) || 1;
       setForm(nextForm);
       setItems(nextItems);
       setPackagingProductId(nextPackagingProductId);
@@ -1240,7 +1242,7 @@ export default function SaleOrderForm() {
     const commission_value = rep ? total * (rep.commission_pct ?? 0) / 100 : 0;
     const orderData = { ...f, representative: rep?.name || f.representative };
     if (statusOverride) orderData.status = statusOverride;
-    const resolvedClientId = (f as any).client_id || editorSnapshot.selectedClientId || null;
+    const resolvedClientId = f.client_id || editorSnapshot.selectedClientId || null;
     // Snapshot exato associado à mutation. A revisão pode continuar mudando na
     // tela enquanto a rede responde; o sucesso só limpa/navega se ainda for esta.
     const submittedRevision = buildSaleOrderEditorRevision(editorSnapshot);

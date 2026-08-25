@@ -114,11 +114,16 @@ export function useRetryItemPromotion() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (itemId: string) => {
-      const { data: item, error } = await (supabase as any)
+      const { data: rawItem, error } = await supabase
         .from('sale_order_items')
         .select('sale_order_id, sale_orders(status, order_version)')
         .eq('id', itemId)
         .single();
+      const item = rawItem as unknown as {
+        sale_order_id: string | null;
+        sale_orders: { status: string; order_version: number | null } |
+          Array<{ status: string; order_version: number | null }> | null;
+      } | null;
       if (error || !item?.sale_order_id) throw error || new Error('Item/PV não encontrado');
       const order = Array.isArray(item.sale_orders) ? item.sale_orders[0] : item.sale_orders;
       if (!order) throw new Error('PV do item não encontrado');
@@ -130,7 +135,7 @@ export function useRetryItemPromotion() {
         expectedOrderVersion,
       });
       if (!preflight.ready) throw new SaleOrderReadinessBlockedError(preflight);
-      const receipt = await executeSaleOrderCommand<Record<string, any>>({
+      const receipt = await executeSaleOrderCommand<Record<string, unknown>>({
         saleOrderId: item.sale_order_id,
         command,
         expectedOrderVersion,

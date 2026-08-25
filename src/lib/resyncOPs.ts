@@ -13,6 +13,15 @@ export interface ResyncOPRecord {
   sale_order_id?: string | null;
 }
 
+interface SaleOrderVersionRecord {
+  id: string;
+  order_version: number | null;
+}
+
+interface ResyncCommandResult {
+  skipped?: boolean;
+}
+
 /**
  * Executa resync somente pela fronteira canônica do agregado PV.
  *
@@ -27,14 +36,15 @@ export async function resyncOPRecords(
   const saleOrderIds = [...new Set(
     ops.map((op) => op.sale_order_id).filter((id): id is string => Boolean(id)),
   )];
-  const { data: saleOrders, error: versionsError } = await (supabase as any)
+  const { data: rawSaleOrders, error: versionsError } = await supabase
     .from('sale_orders')
     .select('id, order_version')
     .in('id', saleOrderIds);
   if (versionsError) throw versionsError;
+  const saleOrders = (rawSaleOrders || []) as unknown as SaleOrderVersionRecord[];
 
   const versionBySaleOrder = new Map<string, number>(
-    (saleOrders || []).map((saleOrder: any) => [
+    saleOrders.map((saleOrder) => [
       String(saleOrder.id),
       Number(saleOrder.order_version),
     ]),
@@ -56,14 +66,14 @@ export async function resyncOPRecords(
     }
 
     try {
-      const receipt = await executeSaleOrderCommand<Record<string, any>>({
+      const receipt = await executeSaleOrderCommand<ResyncCommandResult>({
         saleOrderId,
         command: 'resync',
         expectedOrderVersion: expectedOrderVersion as number,
         idempotencyKey: `pv:${saleOrderId}:resync:${op.id}:${crypto.randomUUID()}`,
         payload: { order_id: op.id },
       });
-      if (Boolean(receipt.result?.skipped)) {
+      if (receipt.result?.skipped) {
         skipped += 1;
       } else {
         totalResyncedOPs += 1;

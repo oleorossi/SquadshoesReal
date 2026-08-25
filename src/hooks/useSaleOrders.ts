@@ -750,12 +750,17 @@ export function useUpdateSaleOrderStatus(options?: {
   return useMutation({
     mutationFn: async ({ id, status, override_id }: UpdateSaleOrderStatusVars) => {
       // Validate transition before touching the DB
-      const { data: current, error: fetchError } = await (supabase as any)
+      const { data: rawCurrent, error: fetchError } = await supabase
         .from('sale_orders')
         .select('status, order_version, order_number')
         .eq('id', id)
         .single();
       if (fetchError) throw fetchError;
+      const current = rawCurrent as unknown as {
+        status: string;
+        order_version: number | null;
+        order_number: string | null;
+      };
 
       const currentStatus: string = current.status;
       if (!isValidStatusTransition(currentStatus, status)) {
@@ -801,7 +806,7 @@ export function useUpdateSaleOrderStatus(options?: {
 
       // Toda transição pertence ao SaleOrderCommand. O navegador não altera
       // sale_orders/orders nem reconcilia estoque por passos separados.
-      const expectedOrderVersion = Number((current as any).order_version) || 0;
+      const expectedOrderVersion = Number(current.order_version) || 0;
       const preflight = await preflightSaleOrderCommand({
         saleOrderId: id,
         command: saleOrderCommand,
@@ -817,7 +822,7 @@ export function useUpdateSaleOrderStatus(options?: {
         });
       }
 
-      const receipt = await executeSaleOrderCommand<Record<string, any>>({
+      const receipt = await executeSaleOrderCommand<Record<string, unknown>>({
         saleOrderId: id,
         command: saleOrderCommand,
         expectedOrderVersion,
@@ -827,7 +832,7 @@ export function useUpdateSaleOrderStatus(options?: {
       });
 
       const engineResult = saleOrderCommand === 'confirm' || saleOrderCommand === 'promote'
-        ? receipt.result as PromotionEngineResult
+        ? receipt.result as unknown as PromotionEngineResult
         : null;
       try {
         await recomputeMaterialGate([id]);
@@ -980,7 +985,7 @@ export function useUpdateSaleOrder() {
         is_factoring: _derivedIsFactoring,
         factoring_config_id,
         ...headerForRpc
-      } = updateData as any;
+      } = updateData;
       const billingPatch = {
         delivery_month: delivery_month || null,
         delivery_week: delivery_week || null,
@@ -1020,7 +1025,7 @@ export function useUpdateSaleOrder() {
       // Cabeçalho, itens, desmontagem reversível, cancelamento administrativo
       // de OPs e rematerialização do PV ativo pertencem ao mesmo commit. O
       // navegador não chama mais nenhum writer interno em sequência.
-      const receipt = await executeSaleOrderCommand<Record<string, any>>({
+      const receipt = await executeSaleOrderCommand<Record<string, unknown>>({
         saleOrderId: id,
         command: 'update',
         expectedOrderVersion,
@@ -1028,7 +1033,7 @@ export function useUpdateSaleOrder() {
         payload: commandPayload,
       });
       const rpcOut = receipt.result;
-      const atomicPromotionResult = (rpcOut as any)?.promotion_result as PromotionEngineResult | null;
+      const atomicPromotionResult = rpcOut.promotion_result as PromotionEngineResult | null;
 
       // Origem da tira e intenção de terceirização já vieram gravadas pela RPC
       // (fase 1b) — eram 2 laços de UPDATE serial aqui, até 24 idas e voltas num
