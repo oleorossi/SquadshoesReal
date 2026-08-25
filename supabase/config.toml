@@ -7,6 +7,14 @@ project_id = "ssvxfoybzmjlypnipqzn"
 [functions.gc-probe-temp]
 verify_jwt = true
 
+# Tombstones gerenciados de utilitários fiscais temporários que existiam apenas
+# no projeto remoto. Ambos respondem 410 sem acessar segredos ou provedor.
+[functions.gc-diag]
+verify_jwt = true
+
+[functions.setup-nfe-certificate]
+verify_jwt = true
+
 [functions.emit-nfe]
 verify_jwt = false
 

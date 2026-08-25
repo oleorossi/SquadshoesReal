@@ -167,11 +167,15 @@ validar somente o item atual que ainda existe ao fim da transação. Um tombston
 apagado deixa de causar falso erro, enquanto uma origem de tira inválida que
 realmente sobrevive continua bloqueada.
 
-A auditoria também encontrou a Edge Function remota órfã `gc-probe-temp`, sem
-fonte no repositório e com autenticação desligada. Ela foi incorporada como
-tombstone versionado: não lê segredo, não chama provedor, responde `410` quando
-autenticada e agora exige JWT no gateway. Assim a superfície deixa de ser um
-proxy fiscal oculto sem depender de uma exclusão irreversível no painel.
+A comparação completa entre o release canônico e o projeto remoto encontrou
+três utilitários fiscais fora do Git. `gc-probe-temp` tinha autenticação
+desligada; `gc-diag` aceitava um `nfe_id` arbitrário de usuário autenticado e
+consultava dados do provedor com os segredos do projeto;
+`setup-nfe-certificate` já era um encerramento inofensivo, mas não tinha fonte
+versionada. Os três foram incorporados como tombstones gerenciados: não leem
+segredo, não chamam provedor, respondem `410` quando autenticados e exigem JWT no
+gateway. Assim toda a superfície remota fica no release canônico sem depender
+de exclusões irreversíveis no painel.
 
 ## Correções da tela e do relatório
 
@@ -219,7 +223,7 @@ A candidata retificada foi validada em 25/08/2026 com:
 - PV-00146 com três escopos e zero divergência de `effective_grade`; PV-00162
   com paridade de material, embalagem e tiras, inclusive delta zero entre o
   motor operacional e o relatório no recorte de OP;
-- preflight ESM das 18 Edge Functions e contratos de ordenação de deploy 2/2;
+- preflight ESM das 20 Edge Functions e contratos de ordenação de deploy 2/2;
 - revisão da cadeia `main → CI → banco → Edge/Vercel`, sem bloqueador P0/P1.
 
 Os 8 skips não foram tratados como evidência de banco. O replay transacional,
