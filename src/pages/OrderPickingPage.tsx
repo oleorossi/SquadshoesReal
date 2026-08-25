@@ -15,7 +15,6 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { READY_TO_SHIP_STATUSES } from '@/lib/logistics/routeManagement';
 import { getISOWeekFromString, fmtDayMonthBR } from '@/lib/isoWeek';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
@@ -32,6 +31,7 @@ interface OrderItem {
 
 interface ReadyOrder {
   id: string;
+  order_version: number;
   order_number: string | null;
   client_name: string | null;
   delivery_deadline: string | null;
@@ -78,16 +78,30 @@ export default function OrderPickingPage() {
       const { data, error } = await supabase
         .from('sale_orders')
         .select(`
-          id, order_number, client_name, delivery_deadline, packaging_mode,
+          id, order_version, order_number, client_name, delivery_deadline,
+          packaging_mode, status, nfe_required, nfe_external,
+          orders(id, status),
           sale_order_items(id, reference_id, color, quantity, grade,
             technical_sheets:reference_id(name))
         `)
-        .in('status', [...READY_TO_SHIP_STATUSES])
+        .in('status', ['Faturado', 'Em Produção'])
         .is('shipped_at' as any, null)
         .order('delivery_deadline', { ascending: true, nullsFirst: false });
       if (error) throw error;
 
-      const baseOrders = (data ?? []).map((so: any) => {
+      const readyCandidates = (data ?? []).filter((so: any) => {
+        if (so.status === 'Faturado') return true;
+        if (so.status !== 'Em Produção') return false;
+        if (so.nfe_required && !so.nfe_external) return false;
+        const productionOrders = Array.isArray(so.orders) ? so.orders : [];
+        return productionOrders.length > 0 && productionOrders.every((op: any) =>
+          [
+            'Finalizado', 'FINALIZADO', 'Faturado', 'Concluída',
+            'Concluído', 'Concluido', 'completed',
+          ].includes(op.status),
+        );
+      });
+      const baseOrders = readyCandidates.map((so: any) => {
         const items: OrderItem[] = (so.sale_order_items ?? []).map((i: any) => ({
           id: i.id,
           reference_name: i.technical_sheets?.name ?? null,
@@ -98,6 +112,7 @@ export default function OrderPickingPage() {
         const total_pairs = items.reduce((s, i) => s + i.quantity, 0);
         return {
           id: so.id,
+          order_version: Number(so.order_version),
           order_number: so.order_number,
           client_name: so.client_name,
           delivery_deadline: so.delivery_deadline,
@@ -122,15 +137,25 @@ export default function OrderPickingPage() {
   // ── Confirm shipment ────────────────────────────────────────────────────────
   const confirmShipment = useMutation({
     mutationFn: async (ids: string[]) => {
-      // Atomic: sets shipped_at + optional manifest link via SELECT FOR UPDATE
-      const { data: count, error: rpcErr } = await supabase.rpc('register_order_shipment' as any, {
+      const selectedOrders = ids.map(id => orders.find(order => order.id === id));
+      if (selectedOrders.some(order => !order || !Number.isInteger(order.order_version))) {
+        throw new Error('Versão de um ou mais PVs não está disponível. Recarregue a conferência.');
+      }
+      const expectedVersions = Object.fromEntries(
+        selectedOrders.map(order => [order!.id, order!.order_version]),
+      );
+      // PV, OPs, rota e vínculo com manifesto fecham na mesma transação.
+      const requestId = crypto.randomUUID();
+      const { data, error: rpcErr } = await (supabase.rpc as any)('register_order_shipment_command', {
         p_sale_order_ids: ids,
+        p_expected_versions: expectedVersions,
         p_manifest_id: null,
         p_checked_by: null,
+        p_client_request_id: requestId,
       });
       if (rpcErr) throw rpcErr;
-      // register_order_shipment already sets status='Expedido' server-side
-      return Number(count ?? ids.length);
+      if (!data?.ok) throw new Error(data?.error?.message || 'Expedição recusada pelo servidor.');
+      return Number(data.shipped_count ?? ids.length);
     },
     onSuccess: (count, ids) => {
       if (count < ids.length) {

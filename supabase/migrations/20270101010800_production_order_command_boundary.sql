@@ -21,7 +21,8 @@ CREATE TABLE public.operational_command_receipts (
     'create_order', 'ensure_order_stages', 'transition_order',
     'cancel_order', 'delete_order', 'register_shipment',
     'force_sale_order_production', 'soft_delete_sale_order',
-    'restore_sale_order', 'revert_invoiced_sale_order'
+    'restore_sale_order', 'revert_invoiced_sale_order',
+    'auto_promote_sale_order', 'auto_bill_sale_order'
   )),
   aggregate_key text NOT NULL CHECK (length(btrim(aggregate_key)) > 0),
   client_request_id uuid NOT NULL,
@@ -358,7 +359,11 @@ BEGIN
              FROM public.stock_movements sm
             WHERE sm.order_id = v_order.id
               AND sm.movement_type = 'out'
-              AND sm.description ILIKE 'Debito Solado por grade%'
+              AND (
+                sm.description ILIKE 'Debito Solado por grade%'
+                OR sm.description ILIKE 'Débito Solado por grade%'
+                OR sm.description ILIKE 'Baixa na finalização — Solado por grade%'
+              )
          ),
          EXISTS (
            SELECT 1
@@ -398,7 +403,12 @@ BEGIN
 
   -- Reserva soft de solado não altera stock_grade. Só chamar o restore quando
   -- existir a saída física correspondente evita inflar a grade de Reservados.
-  IF v_has_physical_sole THEN
+  -- A saída pode nascer tanto no débito inicial quanto no settle tolerante da
+  -- finalização; os dois textos canônicos são reconhecidos acima.
+  -- No fluxo legado o restore de solado sempre precedia o restore geral, que
+  -- registra a entrada. Se já há IN completa, repetir o restore de grade seria
+  -- inflação; se há IN parcial, o guard acima já abortou para reconciliação.
+  IF v_has_physical_sole AND NOT v_has_prior_inbound THEN
     PERFORM public.restore_sole_grade_for_order(v_order.id);
   END IF;
   IF v_has_positive_net_debit THEN
@@ -415,7 +425,7 @@ BEGIN
     'status_before', v_status_before,
     'status', 'Cancelada',
     'already_cancelled', false,
-    'restored_sole_grade', v_has_physical_sole,
+    'restored_sole_grade', v_has_physical_sole AND NOT v_has_prior_inbound,
     'restored_product_stock', v_has_positive_net_debit
   );
 END;
@@ -520,6 +530,35 @@ BEGIN
         USING ERRCODE = '22023';
     END IF;
     RETURN v_receipt.response;
+  END IF;
+
+  -- Ordem global de locks entre agregados: PV -> OP. Os commands comerciais
+  -- seguem a mesma ordem; inverter aqui (OP -> PV) permite deadlock entre
+  -- cancelamento de OP e promoção/edição do PV.
+  IF p_order_id IS NULL THEN
+    BEGIN
+      v_sale_order_id := NULLIF(
+        btrim(COALESCE(v_payload ->> 'sale_order_id', '')),
+        ''
+      )::uuid;
+    EXCEPTION WHEN invalid_text_representation THEN
+      RAISE EXCEPTION 'sale_order_id inválido'
+        USING ERRCODE = '22023';
+    END;
+  ELSE
+    SELECT o.sale_order_id INTO v_sale_order_id
+      FROM public.orders o
+     WHERE o.id = p_order_id;
+  END IF;
+  IF v_sale_order_id IS NOT NULL THEN
+    PERFORM pg_advisory_xact_lock(pg_catalog.hashtextextended(
+      'sale-order-command:' || v_sale_order_id::text,
+      0
+    ));
+    PERFORM 1
+      FROM public.sale_orders so
+     WHERE so.id = v_sale_order_id
+     FOR UPDATE;
   END IF;
 
   IF p_order_id IS NOT NULL THEN
@@ -995,6 +1034,33 @@ CREATE POLICY orders_select_approved
 
 REVOKE INSERT, UPDATE, DELETE ON TABLE public.orders
   FROM PUBLIC, anon, authenticated;
+-- TRUNCATE não dispara trigger nem respeita RLS; REFERENCES/TRIGGER também
+-- não pertencem à superfície do browser.
+REVOKE TRUNCATE, REFERENCES, TRIGGER ON TABLE public.orders
+  FROM PUBLIC, anon, authenticated;
+-- Grants por coluna sobrevivem ao REVOKE da tabela.
+DO $revoke_orders_column_writes$
+DECLARE
+  v_columns text;
+BEGIN
+  SELECT string_agg(format('%I', a.attname), ', ' ORDER BY a.attnum)
+    INTO v_columns
+    FROM pg_catalog.pg_attribute a
+   WHERE a.attrelid = 'public.orders'::regclass
+     AND a.attnum > 0
+     AND NOT a.attisdropped;
+  IF v_columns IS NOT NULL THEN
+    EXECUTE format(
+      'REVOKE INSERT (%s) ON TABLE public.orders FROM PUBLIC, anon, authenticated',
+      v_columns
+    );
+    EXECUTE format(
+      'REVOKE UPDATE (%s) ON TABLE public.orders FROM PUBLIC, anon, authenticated',
+      v_columns
+    );
+  END IF;
+END;
+$revoke_orders_column_writes$;
 GRANT SELECT ON TABLE public.orders TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.orders TO service_role;
 
@@ -1016,12 +1082,31 @@ SET search_path = ''
 AS $$
 DECLARE
   v_previous_internal text;
+  v_sale_order_id uuid;
   v_result jsonb;
 BEGIN
   IF NOT public.can_execute_production_pointing() THEN
     RAISE EXCEPTION USING
       ERRCODE = '42501',
       MESSAGE = 'Permission denied: usuário sem permissão de edição para apontar produção';
+  END IF;
+
+  -- Mantém a mesma ordem PV -> OP do command boundary antes de o impl tocar
+  -- etapa/OP. Sem isto, o trigger automático que promove o PV poderia entrar
+  -- em deadlock com uma edição comercial concorrente.
+  SELECT o.sale_order_id INTO v_sale_order_id
+    FROM public.orders o
+   WHERE o.id = p_order_id
+     AND o.deleted_at IS NULL;
+  IF v_sale_order_id IS NOT NULL THEN
+    PERFORM pg_advisory_xact_lock(pg_catalog.hashtextextended(
+      'sale-order-command:' || v_sale_order_id::text,
+      0
+    ));
+    PERFORM 1
+      FROM public.sale_orders so
+     WHERE so.id = v_sale_order_id
+     FOR UPDATE;
   END IF;
 
   v_previous_internal := pg_catalog.current_setting(
@@ -1057,6 +1142,302 @@ REVOKE ALL ON FUNCTION public.apontar_producao_setor(
 GRANT EXECUTE ON FUNCTION public.apontar_producao_setor(
   uuid, text, integer, uuid, text, boolean, text[]
 ) TO authenticated, service_role;
+
+-- Os dois gatilhos históricos de order_stages promoviam/faturavam o PV com
+-- UPDATE direto. Depois do boundary 105 isso abortaria o apontamento inteiro.
+-- Este command interno preserva somente as duas arestas históricas, com lock,
+-- versão na identidade idempotente, receipt e marcador explícito do agregado.
+CREATE OR REPLACE FUNCTION public.apply_sale_order_stage_transition_internal(
+  p_sale_order_id uuid,
+  p_target_status text,
+  p_source_stage_id uuid
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_so public.sale_orders%ROWTYPE;
+  v_command_name text;
+  v_request_id uuid;
+  v_request_hash text;
+  v_receipt public.operational_command_receipts%ROWTYPE;
+  v_pending_count integer := 0;
+  v_previous_sale_internal text;
+  v_result jsonb;
+BEGIN
+  IF p_sale_order_id IS NULL OR p_source_stage_id IS NULL THEN
+    RAISE EXCEPTION 'sale_order_id e source_stage_id são obrigatórios'
+      USING ERRCODE = '22004';
+  END IF;
+  IF p_target_status NOT IN ('Em Produção', 'Faturado') THEN
+    RAISE EXCEPTION 'Transição automática não suportada: %', p_target_status
+      USING ERRCODE = '22023';
+  END IF;
+  IF pg_catalog.pg_trigger_depth() = 0
+     AND COALESCE(
+       pg_catalog.current_setting('app.production_order_command_internal', true),
+       ''
+     ) <> '1'
+     AND COALESCE(
+       pg_catalog.current_setting('app.sale_order_command_internal', true),
+       ''
+     ) <> '1'
+     AND COALESCE(
+       pg_catalog.current_setting('request.jwt.claim.role', true),
+       ''
+     ) <> 'service_role' THEN
+    RAISE EXCEPTION 'Função interna: transição exige gatilho de etapa'
+      USING ERRCODE = '42501';
+  END IF;
+
+  PERFORM pg_advisory_xact_lock(pg_catalog.hashtextextended(
+    'sale-order-command:' || p_sale_order_id::text,
+    0
+  ));
+  SELECT * INTO v_so
+    FROM public.sale_orders so
+   WHERE so.id = p_sale_order_id
+     AND so.deleted_at IS NULL
+   FOR UPDATE;
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('ok', true, 'skipped', 'sale_order_not_found');
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+      FROM public.order_stages os
+      JOIN public.orders o ON o.id = os.order_id
+     WHERE os.id = p_source_stage_id
+       AND o.sale_order_id = v_so.id
+       AND o.deleted_at IS NULL
+  ) THEN
+    RAISE EXCEPTION 'Etapa % não pertence ao PV %',
+      p_source_stage_id,
+      p_sale_order_id USING ERRCODE = '22023';
+  END IF;
+
+  IF p_target_status = 'Em Produção' THEN
+    IF v_so.status <> 'Aprovado' THEN
+      RETURN jsonb_build_object(
+        'ok', true,
+        'skipped', 'status_not_approved',
+        'status', v_so.status
+      );
+    END IF;
+    IF NOT EXISTS (
+      SELECT 1
+        FROM public.order_stages os
+       WHERE os.id = p_source_stage_id
+         AND os.status IN ('em_andamento', 'in_progress', 'iniciado')
+    ) THEN
+      RETURN jsonb_build_object('ok', true, 'skipped', 'stage_not_started');
+    END IF;
+    v_command_name := 'auto_promote_sale_order';
+  ELSE
+    IF NOT COALESCE(v_so.nfe_required, true)
+       OR v_so.status IN (
+         'Faturado', 'Finalizado s/ NF', 'Expedido', 'Concluído',
+         'Cancelado', 'Rascunho'
+       ) THEN
+      RETURN jsonb_build_object(
+        'ok', true,
+        'skipped', 'billing_not_applicable',
+        'status', v_so.status
+      );
+    END IF;
+    IF NOT EXISTS (
+      SELECT 1
+        FROM public.order_stages os
+       WHERE os.id = p_source_stage_id
+         AND os.stage_name = 'Acabamento'
+         AND os.status = 'concluido'
+    ) THEN
+      RETURN jsonb_build_object('ok', true, 'skipped', 'finishing_not_completed');
+    END IF;
+
+    SELECT count(*)::integer INTO v_pending_count
+      FROM public.orders o
+     WHERE o.sale_order_id = v_so.id
+       AND COALESCE(o.status, '') NOT IN (
+         'cancelada', 'Cancelada', 'cancelled'
+       )
+       AND NOT EXISTS (
+         SELECT 1
+           FROM public.order_stages os
+          WHERE os.order_id = o.id
+            AND os.stage_name = 'Acabamento'
+            AND os.status = 'concluido'
+       );
+    IF v_pending_count <> 0 THEN
+      RETURN jsonb_build_object(
+        'ok', true,
+        'skipped', 'finishing_stages_pending',
+        'pending_count', v_pending_count
+      );
+    END IF;
+    v_command_name := 'auto_bill_sale_order';
+  END IF;
+
+  -- A versão faz uma nova passagem válida após um estorno gerar outra chave,
+  -- sem permitir que dois triggers concorrentes apliquem a mesma aresta.
+  v_request_id := md5(
+    'stage-transition:' || v_so.id::text || ':' || p_target_status || ':' ||
+    COALESCE(v_so.order_version, 0)::text
+  )::uuid;
+  v_request_hash := md5(jsonb_build_object(
+    'sale_order_id', v_so.id,
+    'status_before', v_so.status,
+    'target_status', p_target_status,
+    'expected_order_version', v_so.order_version
+  )::text);
+  SELECT * INTO v_receipt
+    FROM public.operational_command_receipts r
+   WHERE r.client_request_id = v_request_id;
+  IF FOUND THEN
+    IF v_receipt.command_name <> v_command_name
+       OR v_receipt.request_hash <> v_request_hash THEN
+      RAISE EXCEPTION 'Colisão na identidade da transição automática do PV'
+        USING ERRCODE = '22023';
+    END IF;
+    RETURN v_receipt.response;
+  END IF;
+
+  v_previous_sale_internal := pg_catalog.current_setting(
+    'app.sale_order_command_internal', true
+  );
+  PERFORM pg_catalog.set_config('app.sale_order_command_internal', '1', true);
+  UPDATE public.sale_orders
+     SET status = p_target_status,
+         updated_at = now()
+   WHERE id = v_so.id;
+  PERFORM pg_catalog.set_config(
+    'app.sale_order_command_internal',
+    COALESCE(v_previous_sale_internal, ''),
+    true
+  );
+
+  v_result := jsonb_build_object(
+    'ok', true,
+    'sale_order_id', v_so.id,
+    'status_before', v_so.status,
+    'status', p_target_status,
+    'expected_order_version', v_so.order_version,
+    'source_stage_id', p_source_stage_id
+  );
+  INSERT INTO public.operational_command_receipts (
+    command_name, aggregate_key, client_request_id, request_hash,
+    actor_id, response
+  ) VALUES (
+    v_command_name,
+    'sale-order:' || v_so.id::text,
+    v_request_id,
+    v_request_hash,
+    auth.uid(),
+    v_result
+  );
+  INSERT INTO public.audit_logs (
+    user_id, action, resource, resource_id, old_data, new_data,
+    success, created_at
+  ) VALUES (
+    auth.uid(),
+    v_command_name,
+    'sale_orders',
+    v_so.id,
+    jsonb_build_object(
+      'status', v_so.status,
+      'order_version', v_so.order_version
+    ),
+    v_result,
+    true,
+    now()
+  );
+  RETURN v_result;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.apply_sale_order_stage_transition_internal(
+  uuid, text, uuid
+) FROM PUBLIC, anon, authenticated, service_role;
+
+CREATE OR REPLACE FUNCTION public.auto_promote_sale_order_to_production()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_sale_order_id uuid;
+BEGIN
+  IF NEW.status NOT IN ('em_andamento', 'in_progress', 'iniciado') THEN
+    RETURN NEW;
+  END IF;
+  IF TG_OP = 'UPDATE' AND OLD.status = NEW.status THEN
+    RETURN NEW;
+  END IF;
+  SELECT o.sale_order_id INTO v_sale_order_id
+    FROM public.orders o
+   WHERE o.id = NEW.order_id
+     AND o.deleted_at IS NULL;
+  IF v_sale_order_id IS NOT NULL THEN
+    PERFORM public.apply_sale_order_stage_transition_internal(
+      v_sale_order_id,
+      'Em Produção',
+      NEW.id
+    );
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.auto_promote_sale_order_to_production()
+  FROM PUBLIC, anon, authenticated, service_role;
+DROP TRIGGER IF EXISTS trg_auto_promote_sale_order_to_production
+  ON public.order_stages;
+CREATE TRIGGER trg_auto_promote_sale_order_to_production
+AFTER INSERT OR UPDATE OF status ON public.order_stages
+FOR EACH ROW
+EXECUTE FUNCTION public.auto_promote_sale_order_to_production();
+
+CREATE OR REPLACE FUNCTION public.auto_bill_sale_order_on_finishing()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_sale_order_id uuid;
+BEGIN
+  IF NEW.stage_name <> 'Acabamento' OR NEW.status <> 'concluido' THEN
+    RETURN NEW;
+  END IF;
+  IF TG_OP = 'UPDATE' AND OLD.status = NEW.status THEN
+    RETURN NEW;
+  END IF;
+  SELECT o.sale_order_id INTO v_sale_order_id
+    FROM public.orders o
+   WHERE o.id = NEW.order_id
+     AND o.deleted_at IS NULL;
+  IF v_sale_order_id IS NOT NULL THEN
+    PERFORM public.apply_sale_order_stage_transition_internal(
+      v_sale_order_id,
+      'Faturado',
+      NEW.id
+    );
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.auto_bill_sale_order_on_finishing()
+  FROM PUBLIC, anon, authenticated, service_role;
+DROP TRIGGER IF EXISTS trg_auto_bill_sale_order_on_finishing
+  ON public.order_stages;
+CREATE TRIGGER trg_auto_bill_sale_order_on_finishing
+AFTER INSERT OR UPDATE ON public.order_stages
+FOR EACH ROW
+EXECUTE FUNCTION public.auto_bill_sale_order_on_finishing();
 
 -- ---------------------------------------------------------------------------
 -- 5) Expedição: PV + estágios + OP + manifesto na mesma transação
@@ -1098,14 +1479,12 @@ BEGIN
         FROM public.user_permissions up
        WHERE up.user_id = v_user_id
          AND up.can_view
-         AND (
-           up.module = 'expedicao'
-           OR (up.module = '/conferencia-saida' AND up.can_edit)
-         )
+         AND up.can_edit
+         AND up.module IN ('expedicao', '/conferencia-saida')
     );
   END IF;
 
-  RETURN public.user_has_any_role(ARRAY['gerente', 'producao', 'consulta']);
+  RETURN public.user_has_any_role(ARRAY['gerente', 'producao']);
 END;
 $$;
 
@@ -1196,6 +1575,19 @@ BEGIN
     RETURN v_receipt.response;
   END IF;
 
+  -- Mesmo lock lógico do command boundary comercial, adquirido em ordem
+  -- determinística antes dos row locks do lote.
+  FOR v_so IN
+    SELECT x.id
+      FROM unnest(v_ids) AS x(id)
+     ORDER BY x.id
+  LOOP
+    PERFORM pg_advisory_xact_lock(pg_catalog.hashtextextended(
+      'sale-order-command:' || v_so.id::text,
+      0
+    ));
+  END LOOP;
+
   -- Locks determinísticos e TODO o preflight acontecem antes da primeira
   -- escrita. Assim o lote nunca fica parcialmente expedido.
   FOR v_so IN
@@ -1225,6 +1617,34 @@ BEGIN
         v_so.order_number,
         v_expected,
         v_so.order_version USING ERRCODE = '40001';
+    END IF;
+
+    -- O status comercial ainda fica Em Produção nos dois caminhos que o
+    -- próprio shipment vai fechar (informal e NF externa). Neles a prontidão
+    -- vem das OPs: pelo menos uma ativa e nenhuma ainda aberta.
+    IF v_so.status = 'Em Produção'
+       AND (
+         NOT EXISTS (
+           SELECT 1
+             FROM public.orders o
+            WHERE o.sale_order_id = v_so.id
+              AND o.deleted_at IS NULL
+              AND o.status NOT IN ('Cancelado', 'Cancelada')
+         )
+         OR EXISTS (
+           SELECT 1
+             FROM public.orders o
+            WHERE o.sale_order_id = v_so.id
+              AND o.deleted_at IS NULL
+              AND o.status NOT IN (
+                'Finalizado', 'FINALIZADO', 'Faturado',
+                'Concluída', 'Concluído', 'Concluido', 'completed',
+                'Cancelado', 'Cancelada'
+              )
+         )
+       ) THEN
+      RAISE EXCEPTION 'PV % ainda possui OP em produção', v_so.order_number
+        USING ERRCODE = 'PZ216';
     END IF;
 
     IF v_so.nfe_required AND NOT COALESCE(v_so.nfe_external, false) THEN
@@ -1446,6 +1866,10 @@ BEGIN
     RETURN v_receipt.response;
   END IF;
 
+  PERFORM pg_advisory_xact_lock(pg_catalog.hashtextextended(
+    'sale-order-command:' || p_sale_order_id::text,
+    0
+  ));
   SELECT * INTO v_so
     FROM public.sale_orders so
    WHERE so.id = p_sale_order_id
@@ -1474,21 +1898,26 @@ BEGIN
     p_override_id
   );
   IF NOT COALESCE((v_envelope ->> 'ok')::boolean, false) THEN
-    RAISE EXCEPTION '%', COALESCE(
-      v_envelope #>> '{error,message}',
-      'Promoção recusada pelo command boundary de PV'
-    ) USING ERRCODE = COALESCE(
-      NULLIF(v_envelope #>> '{error,code}', ''),
-      'P0001'
+    v_result := jsonb_build_object(
+      'ok', false,
+      'sale_order_id', p_sale_order_id,
+      'error', COALESCE(
+        v_envelope -> 'error',
+        jsonb_build_object(
+          'code', 'P0001',
+          'message', 'Promoção recusada pelo command boundary de PV'
+        )
+      ),
+      'sale_order_receipt_id', v_envelope -> 'receipt_id'
+    );
+  ELSE
+    v_result := jsonb_build_object(
+      'ok', true,
+      'sale_order_id', p_sale_order_id,
+      'result', COALESCE(v_envelope -> 'result', '{}'::jsonb),
+      'sale_order_receipt_id', v_envelope -> 'receipt_id'
     );
   END IF;
-
-  v_result := jsonb_build_object(
-    'ok', true,
-    'sale_order_id', p_sale_order_id,
-    'result', COALESCE(v_envelope -> 'result', '{}'::jsonb),
-    'sale_order_receipt_id', v_envelope -> 'receipt_id'
-  );
   INSERT INTO public.operational_command_receipts (
     command_name, aggregate_key, client_request_id, request_hash,
     actor_id, response
@@ -1524,11 +1953,6 @@ BEGIN
   END IF;
 END;
 $rename_sale_order_legacy_writers$;
-
-REVOKE ALL ON FUNCTION public.soft_delete_sale_order_internal_108(uuid)
-  FROM PUBLIC, anon, authenticated, service_role;
-REVOKE ALL ON FUNCTION public.revert_invoiced_sale_order_internal_108(uuid, text)
-  FROM PUBLIC, anon, authenticated, service_role;
 
 CREATE OR REPLACE FUNCTION public.soft_delete_sale_order_command(
   p_sale_order_id uuid,
@@ -1590,6 +2014,10 @@ BEGIN
     RETURN v_receipt.response;
   END IF;
 
+  PERFORM pg_advisory_xact_lock(pg_catalog.hashtextextended(
+    'sale-order-command:' || p_sale_order_id::text,
+    0
+  ));
   SELECT * INTO v_so
     FROM public.sale_orders so
    WHERE so.id = p_sale_order_id
@@ -1745,6 +2173,10 @@ BEGIN
     RETURN v_receipt.response;
   END IF;
 
+  PERFORM pg_advisory_xact_lock(pg_catalog.hashtextextended(
+    'sale-order-command:' || p_sale_order_id::text,
+    0
+  ));
   SELECT * INTO v_so
     FROM public.sale_orders so
    WHERE so.id = p_sale_order_id
@@ -1894,6 +2326,10 @@ BEGIN
     RETURN v_receipt.response;
   END IF;
 
+  PERFORM pg_advisory_xact_lock(pg_catalog.hashtextextended(
+    'sale-order-command:' || p_sale_order_id::text,
+    0
+  ));
   SELECT * INTO v_so
     FROM public.sale_orders so
    WHERE so.id = p_sale_order_id
@@ -1960,3 +2396,237 @@ REVOKE ALL ON FUNCTION public.force_sale_order_production(uuid)
   FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.restore_sale_order(uuid)
   FROM PUBLIC, anon, authenticated, service_role;
+
+-- ---------------------------------------------------------------------------
+-- 7) Contrato executável da fronteira
+-- ---------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.run_production_order_command_contract_tests()
+RETURNS TABLE(case_name text, passed boolean, details text)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_execute text;
+  v_materialize text;
+  v_cancel text;
+  v_boundary text;
+  v_shipment text;
+  v_force text;
+  v_delete text;
+  v_restore text;
+  v_revert text;
+  v_stage_transition text;
+  v_auto_promote text;
+  v_auto_bill text;
+  v_initializer text;
+BEGIN
+  IF COALESCE(
+       pg_catalog.current_setting('request.jwt.claim.role', true),
+       ''
+     ) <> 'service_role'
+     AND (
+       NOT public.is_approved_user()
+       OR NOT public.user_has_any_role(ARRAY['admin', 'gerente'])
+     ) THEN
+    RAISE EXCEPTION 'Contratos de OP exigem Administração/Gerência'
+      USING ERRCODE = '42501';
+  END IF;
+
+  v_execute := pg_catalog.pg_get_functiondef(
+    'public.execute_production_order_command(text,uuid,uuid,jsonb)'::regprocedure
+  );
+  v_materialize := pg_catalog.pg_get_functiondef(
+    'public.materialize_production_order_internal(uuid)'::regprocedure
+  );
+  v_cancel := pg_catalog.pg_get_functiondef(
+    'public.cancel_production_order_internal(uuid)'::regprocedure
+  );
+  v_boundary := pg_catalog.pg_get_functiondef(
+    'public.tg_enforce_production_order_command_boundary()'::regprocedure
+  );
+  v_shipment := pg_catalog.pg_get_functiondef(
+    'public.register_order_shipment_command(uuid[],jsonb,uuid,text,uuid)'::regprocedure
+  );
+  v_force := pg_catalog.pg_get_functiondef(
+    'public.force_sale_order_production_command(uuid,bigint,uuid,uuid)'::regprocedure
+  );
+  v_delete := pg_catalog.pg_get_functiondef(
+    'public.soft_delete_sale_order_command(uuid,bigint,uuid)'::regprocedure
+  );
+  v_restore := pg_catalog.pg_get_functiondef(
+    'public.restore_sale_order_command(uuid,bigint,uuid)'::regprocedure
+  );
+  v_revert := pg_catalog.pg_get_functiondef(
+    'public.revert_invoiced_sale_order_command(uuid,bigint,text,uuid)'::regprocedure
+  );
+  v_stage_transition := pg_catalog.pg_get_functiondef(
+    'public.apply_sale_order_stage_transition_internal(uuid,text,uuid)'::regprocedure
+  );
+  v_auto_promote := pg_catalog.pg_get_functiondef(
+    'public.auto_promote_sale_order_to_production()'::regprocedure
+  );
+  v_auto_bill := pg_catalog.pg_get_functiondef(
+    'public.auto_bill_sale_order_on_finishing()'::regprocedure
+  );
+  v_initializer := pg_catalog.pg_get_functiondef(
+    'public.initialize_order_material_reservations(uuid,boolean)'::regprocedure
+  );
+
+  case_name := 'orders_acl_cutover';
+  passed := NOT pg_catalog.has_table_privilege(
+      'authenticated', 'public.orders', 'INSERT'
+    )
+    AND NOT pg_catalog.has_table_privilege(
+      'authenticated', 'public.orders', 'UPDATE'
+    )
+    AND NOT pg_catalog.has_table_privilege(
+      'authenticated', 'public.orders', 'DELETE'
+    )
+    AND NOT pg_catalog.has_table_privilege(
+      'authenticated', 'public.orders', 'TRUNCATE'
+    )
+    AND pg_catalog.has_table_privilege(
+      'authenticated', 'public.orders', 'SELECT'
+    )
+    AND NOT EXISTS (
+      SELECT 1
+        FROM pg_catalog.pg_attribute a
+       WHERE a.attrelid = 'public.orders'::regclass
+         AND a.attnum > 0
+         AND NOT a.attisdropped
+         AND (
+           pg_catalog.has_column_privilege(
+             'authenticated', 'public.orders', a.attname, 'INSERT'
+           )
+           OR pg_catalog.has_column_privilege(
+             'authenticated', 'public.orders', a.attname, 'UPDATE'
+           )
+         )
+    )
+    AND EXISTS (
+      SELECT 1
+        FROM pg_catalog.pg_trigger t
+       WHERE t.tgrelid = 'public.orders'::regclass
+         AND t.tgname = 'trg_000_enforce_production_order_command_boundary'
+         AND NOT t.tgisinternal
+         AND t.tgenabled <> 'D'
+    )
+    AND position('app.production_order_command_internal' IN v_boundary) > 0
+    AND position('app.sale_order_command_internal' IN v_boundary) > 0;
+  details := 'Browser só lê orders; trigger admite apenas commands/triggers internos.';
+  RETURN NEXT;
+
+  case_name := 'production_order_command_surface';
+  passed := pg_catalog.has_function_privilege(
+      'authenticated',
+      'public.execute_production_order_command(text,uuid,uuid,jsonb)',
+      'EXECUTE'
+    )
+    AND NOT pg_catalog.has_function_privilege(
+      'authenticated',
+      'public.materialize_production_order_internal(uuid)',
+      'EXECUTE'
+    )
+    AND position('operational_command_receipts' IN v_execute) > 0
+    AND position('pg_advisory_xact_lock' IN v_execute) > 0
+    AND position('expected_status' IN v_execute) > 0
+    AND position('FOR UPDATE' IN v_execute) > 0;
+  details := 'Create/status/cancel/delete têm receipt, lock e CAS server-side.';
+  RETURN NEXT;
+
+  case_name := 'canonical_stock_materialization';
+  passed := position('initialize_order_material_reservations' IN v_materialize) > 0
+    AND position('debit_sole_stock_by_grade' IN v_materialize) > 0
+    AND position('debit_packaging_for_order' IN v_materialize) > 0
+    AND position('ensure_production_order_stages_internal' IN v_materialize) > 0
+    AND position('waste_pct' IN v_materialize) = 0
+    AND position('consumption_loss_pct' IN v_materialize) = 0
+    AND position('app.production_order_command_internal' IN v_initializer) > 0;
+  details := 'Materialização delega aos motores canônicos e não reintroduz perda.';
+  RETURN NEXT;
+
+  case_name := 'cancel_and_delete_preserve_audit';
+  passed := position('release_order_reservations' IN v_cancel) > 0
+    AND position('restore_sole_grade_for_order' IN v_cancel) > 0
+    AND position('restore_product_stocks_for_order' IN v_cancel) > 0
+    AND position('v_has_physical_sole' IN v_cancel) > 0
+    AND position('v_has_prior_inbound' IN v_cancel) > 0
+    AND position('deleted_at = now()' IN v_execute) > 0
+    AND position('audit_preserved' IN v_execute) > 0;
+  details := 'Cancel estorna uma vez; delete é lógico e mantém ledger/consumos.';
+  RETURN NEXT;
+
+  case_name := 'shipment_is_one_transaction';
+  passed := position('p_expected_versions' IN v_shipment) > 0
+    AND position('FOR UPDATE' IN v_shipment) > 0
+    AND position('v_preflight_count' IN v_shipment) > 0
+    AND position('nfe_emitidas' IN v_shipment) > 0
+    AND position('nfe_external' IN v_shipment) > 0
+    AND position('UPDATE public.order_stages' IN v_shipment) > 0
+    AND position('UPDATE public.orders' IN v_shipment) > 0
+    AND position('loading_manifest_items' IN v_shipment) > 0
+    AND position('operational_command_receipts' IN v_shipment) > 0;
+  details := 'Preflight do lote precede PV/rota/OP/manifesto e fecha tudo atomicamente.';
+  RETURN NEXT;
+
+  case_name := 'legacy_sale_order_commands_wrapped';
+  passed := position('p_expected_order_version' IN v_force) > 0
+    AND position('execute_sale_order_command' IN v_force) > 0
+    AND position('p_expected_order_version' IN v_delete) > 0
+    AND position('soft_delete_sale_order_internal_108' IN v_delete) > 0
+    AND position('p_expected_order_version' IN v_restore) > 0
+    AND position('app.production_order_command_internal' IN v_restore) > 0
+    AND position('length(v_reason) < 10' IN v_revert) > 0
+    AND position('is_standalone_nfe' IN v_revert) > 0
+    AND position('revert_invoiced_sale_order_internal_108' IN v_revert) > 0
+    AND pg_catalog.to_regprocedure(
+      'public.soft_delete_sale_order(uuid)'
+    ) IS NULL
+    AND pg_catalog.to_regprocedure(
+      'public.revert_invoiced_sale_order(uuid,text)'
+    ) IS NULL
+    AND NOT pg_catalog.has_function_privilege(
+      'authenticated',
+      'public.register_order_shipment(uuid[],uuid,text)',
+      'EXECUTE'
+    )
+    AND NOT pg_catalog.has_function_privilege(
+      'authenticated',
+      'public.force_sale_order_production(uuid)',
+      'EXECUTE'
+    )
+    AND NOT pg_catalog.has_function_privilege(
+      'authenticated',
+      'public.restore_sale_order(uuid)',
+      'EXECUTE'
+    );
+  details := 'Legados viraram implementações privadas ou foram revogados.';
+  RETURN NEXT;
+
+  case_name := 'stage_automation_crosses_boundary';
+  passed := position('operational_command_receipts' IN v_stage_transition) > 0
+    AND position('order_version' IN v_stage_transition) > 0
+    AND position('app.sale_order_command_internal' IN v_stage_transition) > 0
+    AND position('apply_sale_order_stage_transition_internal' IN v_auto_promote) > 0
+    AND position('apply_sale_order_stage_transition_internal' IN v_auto_bill) > 0
+    AND position('UPDATE public.sale_orders' IN v_auto_promote) = 0
+    AND position('UPDATE public.sale_orders' IN v_auto_bill) = 0;
+  details := 'Início/Acabamento não furam o boundary nem abortam PZ117.';
+  RETURN NEXT;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.run_production_order_command_contract_tests()
+  FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.run_production_order_command_contract_tests()
+  TO authenticated, service_role;
+
+COMMENT ON FUNCTION public.run_production_order_command_contract_tests() IS
+  'Guard live de ACL, receipts, estoque canônico, logística e automações de OP/PV.';
+
+COMMIT;
+
+NOTIFY pgrst, 'reload schema';

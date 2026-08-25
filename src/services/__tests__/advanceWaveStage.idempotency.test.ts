@@ -27,16 +27,20 @@ describe('advanceWaveStage — idempotência', () => {
   });
 
   it('chama a RPC com os parâmetros corretos', async () => {
-    rpcMock.mockResolvedValue({ data: 'corte_palmilha', error: null });
+    rpcMock.mockResolvedValue({ data: { next_stage: 'corte_palmilha' }, error: null });
     await advanceWaveStage(WAVE_ID, 'corte_palmilha');
     expect(rpcMock).toHaveBeenCalledTimes(1);
-    expect(rpcMock).toHaveBeenCalledWith('advance_wave_stage', { p_wave_id: WAVE_ID, p_stage: 'corte_palmilha' });
+    expect(rpcMock).toHaveBeenCalledWith('execute_production_wave_stage_command', {
+      p_wave_id: WAVE_ID,
+      p_expected_stage: 'corte_palmilha',
+      p_client_request_id: expect.any(String),
+    });
   });
 
   it('retorna o mesmo estágio em chamadas consecutivas (no-op no backend)', async () => {
     rpcMock
-      .mockResolvedValueOnce({ data: 'montagem', error: null })
-      .mockResolvedValueOnce({ data: 'montagem', error: null });
+      .mockResolvedValueOnce({ data: { next_stage: 'montagem' }, error: null })
+      .mockResolvedValueOnce({ data: { next_stage: 'montagem' }, error: null });
 
     const a = await advanceWaveStage(WAVE_ID, 'montagem');
     const b = await advanceWaveStage(WAVE_ID, 'montagem');
@@ -47,13 +51,13 @@ describe('advanceWaveStage — idempotência', () => {
   });
 
   it('retorna null quando a onda chegou ao estágio terminal', async () => {
-    rpcMock.mockResolvedValue({ data: null, error: null });
+    rpcMock.mockResolvedValue({ data: { next_stage: null }, error: null });
     const stage = await advanceWaveStage(WAVE_ID, 'expedicao');
     expect(stage).toBeNull();
   });
 
   it('chamadas concorrentes para a mesma onda resolvem no mesmo estágio', async () => {
-    rpcMock.mockResolvedValue({ data: 'acabamento', error: null });
+    rpcMock.mockResolvedValue({ data: { next_stage: 'acabamento' }, error: null });
 
     const results = await Promise.all([
       advanceWaveStage(WAVE_ID, 'acabamento'),

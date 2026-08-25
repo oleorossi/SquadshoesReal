@@ -66,6 +66,9 @@ CREATE TABLE public.standalone_nfe_stock_hold_items (
   UNIQUE (hold_id, product_id)
 );
 
+CREATE INDEX standalone_nfe_stock_hold_items_product_idx
+  ON public.standalone_nfe_stock_hold_items(product_id, hold_id);
+
 ALTER TABLE public.standalone_nfe_stock_holds ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.standalone_nfe_stock_hold_items ENABLE ROW LEVEL SECURITY;
 
@@ -99,6 +102,25 @@ DECLARE
 BEGIN
   IF TG_TABLE_NAME = 'sale_orders' THEN
     v_sale_order_id := OLD.id;
+
+    IF TG_OP = 'UPDATE'
+       AND NEW.is_standalone_nfe IS DISTINCT FROM OLD.is_standalone_nfe THEN
+      RAISE EXCEPTION 'Identidade standalone da NF-e avulsa é imutável (%)', OLD.id
+        USING ERRCODE = '23514';
+    END IF;
+
+    -- `tg_sync_nfe_numero_to_sale_order` é alfabeticamente anterior ao trigger
+    -- de settlement em nfe_emitidas: ao receber autorização ele grava somente
+    -- nfe/updated_at enquanto o hold ainda está prepared. O trigger de versão
+    -- (alfabeticamente anterior a este) também incrementa order_version. Essa
+    -- escrita fiscal service-role é segura e precisa passar; qualquer outro
+    -- campo continua congelado até commit/release/reverse mudar o hold.
+    IF TG_OP = 'UPDATE'
+       AND COALESCE(current_setting('request.jwt.claim.role', true), '') = 'service_role'
+       AND (to_jsonb(NEW) - 'nfe' - 'updated_at' - 'order_version')
+           = (to_jsonb(OLD) - 'nfe' - 'updated_at' - 'order_version') THEN
+      RETURN NEW;
+    END IF;
   ELSE
     IF TG_OP = 'INSERT' THEN
       v_sale_order_id := NEW.sale_order_id;
@@ -151,6 +173,9 @@ REVOKE ALL ON FUNCTION public.tg_guard_standalone_nfe_active_hold_mutation()
 ALTER TABLE public.stock_movements
   ADD COLUMN IF NOT EXISTS standalone_nfe_stock_hold_item_id uuid
   REFERENCES public.standalone_nfe_stock_hold_items(id) ON DELETE RESTRICT;
+
+COMMENT ON COLUMN public.stock_movements.standalone_nfe_stock_hold_item_id IS
+  'Item do hold fiscal que originou a baixa/estorno idempotente da NF-e avulsa.';
 
 CREATE UNIQUE INDEX standalone_nfe_stock_movement_correlation_uq
   ON public.stock_movements(correlation_id)
@@ -1108,7 +1133,8 @@ BEGIN
 
   UPDATE public.standalone_nfe_stock_holds
      SET status = 'released', released_at = now(),
-         release_reason = left(btrim(p_reason), 2000), updated_at = now()
+         release_reason = left(btrim(p_reason), 2000),
+         reconciliation_reason = NULL, updated_at = now()
    WHERE id = p_hold_id;
   RETURN jsonb_build_object('ok', true, 'idempotent_replay', false,
     'hold_id', p_hold_id, 'status', 'released');
@@ -1377,7 +1403,8 @@ BEGIN
   END LOOP;
 
   UPDATE public.standalone_nfe_stock_holds
-     SET status = 'reversed', reversed_at = now(), updated_at = now()
+     SET status = 'reversed', reversed_at = now(),
+         reconciliation_reason = NULL, updated_at = now()
    WHERE id = v_hold.id;
   UPDATE public.sale_orders
      SET status = 'Rascunho', nfe = NULL, nfe_first_due_date = NULL,
@@ -1477,10 +1504,9 @@ BEGIN
     RETURN NEW;
   END IF;
 
-  -- Browser não pode fabricar autorização/rejeição/cancelamento e deixar o
-  -- estoque fora do ledger. Edge Functions fiscais usam service_role.
-  IF COALESCE(current_setting('request.jwt.claim.role', true), '') <> 'service_role'
-     AND NEW.status IN ('autorizada', 'rejeitada', 'cancelada') THEN
+  -- Browser não pode fabricar nenhuma transição fiscal e deixar o estoque
+  -- fora do ledger. Edge Functions fiscais usam service_role.
+  IF COALESCE(current_setting('request.jwt.claim.role', true), '') <> 'service_role' THEN
     RAISE EXCEPTION 'Status fiscal de NF-e avulsa exige service_role'
       USING ERRCODE = '42501';
   END IF;
@@ -1545,7 +1571,8 @@ SELECT h.id AS hold_id,
          AND (h.nfe_id IS NULL OR n.status IN ('rejeitada', 'cancelada'))
        ) AS auto_release_safe,
        (
-         h.status = 'reconciliation_required'
+         h.reconciliation_reason IS NOT NULL
+         OR h.status = 'reconciliation_required'
          OR (
            h.expires_at <= now()
            AND n.status IN ('processando', 'autorizada', 'cancelando', 'erro')

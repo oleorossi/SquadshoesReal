@@ -14,18 +14,38 @@ export interface RevertInvoiceResult {
 /**
  * Reverte um PV erroneamente marcado como "Faturado" quando a NF NÃO foi
  * efetivamente emitida na SEFAZ. RPC backend é atômica e bloqueia se houver
- * NF autorizada. Veja migration 20260526120000_revert_invoiced_sale_order.
+ * NF autorizada. O wrapper atual adiciona CAS/receipt e recusa NF-e avulsa,
+ * que possui estorno fiscal próprio.
  */
 export function useRevertInvoicedSaleOrder() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ saleOrderId, reason }: { saleOrderId: string; reason: string }) => {
-      const { data, error } = await (supabase as any).rpc('revert_invoiced_sale_order', {
+      const justification = reason.trim();
+      if (justification.length < 10) throw new Error('Informe uma justificativa com pelo menos 10 caracteres.');
+      const { data: current, error: currentError } = await (supabase as any)
+        .from('sale_orders')
+        .select('order_version, is_standalone_nfe')
+        .eq('id', saleOrderId)
+        .single();
+      if (currentError) throw currentError;
+      if (current?.is_standalone_nfe) {
+        throw new Error('NF-e avulsa deve ser estornada pelo fluxo próprio de cancelamento da NF-e.');
+      }
+      const expectedVersion = Number(current?.order_version);
+      if (!Number.isInteger(expectedVersion) || expectedVersion < 0) {
+        throw new Error('Versão do PV indisponível. Recarregue antes de reverter.');
+      }
+      const requestId = crypto.randomUUID();
+      const { data, error } = await (supabase as any).rpc('revert_invoiced_sale_order_command', {
         p_sale_order_id: saleOrderId,
-        p_reason: reason,
+        p_expected_order_version: expectedVersion,
+        p_reason: justification,
+        p_client_request_id: requestId,
       });
       if (error) throw error;
-      return data as RevertInvoiceResult;
+      if (!data?.ok) throw new Error(data?.error?.message || 'Reversão recusada pelo servidor.');
+      return data.result as RevertInvoiceResult;
     },
     onSuccess: (result) => {
       // Invalida tudo que pode estar mostrando estado antigo

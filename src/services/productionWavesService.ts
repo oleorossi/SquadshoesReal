@@ -174,9 +174,22 @@ export async function autoStartDueWaves(): Promise<number> {
 }
 
 export async function advanceWaveStage(waveId: string, stage: ProductionStage): Promise<ProductionStage | null> {
-  const { data, error } = await supabase.rpc('advance_wave_stage' as any, { p_wave_id: waveId, p_stage: stage });
+  type WaveStageCommandResult = {
+    data: { next_stage?: ProductionStage | null } | null;
+    error: { message?: string } | null;
+  };
+  const callRpc = supabase.rpc as unknown as (
+    functionName: string,
+    args: Record<string, unknown>,
+  ) => PromiseLike<WaveStageCommandResult>;
+  const { data, error } = await callRpc('execute_production_wave_stage_command', {
+    p_wave_id: waveId,
+    p_expected_stage: stage,
+    p_client_request_id: crypto.randomUUID(),
+  });
   if (error) throw error;
-  return (data as ProductionStage) ?? null;
+  const nextStage = data?.next_stage;
+  return nextStage ?? null;
 }
 
 export async function getFinishingPackages(waveId: string): Promise<FinishingPackage[]> {

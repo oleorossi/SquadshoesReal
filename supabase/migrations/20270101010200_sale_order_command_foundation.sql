@@ -48,6 +48,9 @@ BEFORE UPDATE ON public.sale_orders
 FOR EACH ROW
 EXECUTE FUNCTION public.tg_bump_sale_order_order_version();
 
+REVOKE ALL ON FUNCTION public.tg_bump_sale_order_order_version()
+  FROM PUBLIC, anon, authenticated, service_role;
+
 CREATE OR REPLACE FUNCTION public.tg_touch_sale_order_version_from_item()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -1030,6 +1033,95 @@ REVOKE ALL ON FUNCTION public.resolve_sale_order_item_commercial_price(
   uuid, text, numeric, uuid, uuid, date
 ) FROM PUBLIC, anon, authenticated, service_role;
 
+-- Predicado único para impedir que uma edição de item reescreva a demanda de
+-- uma OP que já materializou qualquer fato fabril/contábil. O status nominal
+-- da OP não é suficiente: integrações legadas podem ter mantido a OP como
+-- Rascunho/Pendente enquanto já existem apontamentos, lotes ou movimentos.
+CREATE OR REPLACE FUNCTION public.order_has_non_reversible_production_facts(
+  p_order_id uuid
+)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT
+    EXISTS (
+      SELECT 1 FROM public.stock_movements sm
+       WHERE sm.order_id = p_order_id
+    )
+    OR EXISTS (
+      SELECT 1 FROM public.production_consumptions pc
+       WHERE pc.order_id = p_order_id
+    )
+    OR EXISTS (
+      SELECT 1
+        FROM public.material_reservations mr
+       WHERE mr.order_id = p_order_id
+         AND (
+           COALESCE(mr.quantity_consumed, 0) > 0
+           OR mr.consumed_at IS NOT NULL
+           OR COALESCE(mr.status, '') NOT IN (
+             'reserved', 'cancelled', 'released'
+           )
+         )
+    )
+    OR EXISTS (
+      SELECT 1
+        FROM public.order_stages os
+       WHERE os.order_id = p_order_id
+         AND (
+           COALESCE(os.quantity_processed, 0) > 0
+           OR os.started_at IS NOT NULL
+           OR os.completed_at IS NOT NULL
+           OR lower(btrim(COALESCE(os.status, ''))) NOT IN (
+             'pendente', 'pending', 'aguardando',
+             'bloqueado', 'blocked', 'nao iniciado', 'não iniciado'
+           )
+         )
+    )
+    OR EXISTS (
+      SELECT 1
+        FROM public.order_lots ol
+       WHERE ol.order_id = p_order_id
+         AND (
+           ol.started_at IS NOT NULL
+           OR ol.completed_at IS NOT NULL
+           OR lower(btrim(COALESCE(ol.status, ''))) NOT IN (
+             '', 'pendente', 'pending'
+           )
+         )
+    )
+    OR EXISTS (
+      SELECT 1 FROM public.production_pointings pp
+       WHERE pp.order_id = p_order_id
+    )
+    OR EXISTS (
+      SELECT 1 FROM public.production_stops ps
+       WHERE ps.order_id = p_order_id
+    )
+    OR EXISTS (
+      SELECT 1 FROM public.quality_records qr
+       WHERE qr.order_id = p_order_id
+    )
+    OR EXISTS (
+      SELECT 1 FROM public.goods_issues gi
+       WHERE gi.order_id = p_order_id
+    )
+    OR EXISTS (
+      SELECT 1 FROM public.finished_goods_receipts fgr
+       WHERE fgr.order_id = p_order_id
+    )
+    OR EXISTS (
+      SELECT 1 FROM public.wip_ledger wl
+       WHERE wl.order_id = p_order_id
+    );
+$$;
+
+REVOKE ALL ON FUNCTION public.order_has_non_reversible_production_facts(uuid)
+  FROM PUBLIC, anon, authenticated, service_role;
+
 CREATE OR REPLACE FUNCTION public.preflight_sale_order_command(
   p_sale_order_id uuid,
   p_command text,
@@ -1063,6 +1155,22 @@ DECLARE
   v_update_billing_patch jsonb := p_payload -> 'billing_patch';
   v_update_factoring_patch jsonb := p_payload -> 'factoring_patch';
   v_update_factoring_config_id uuid;
+  v_update_items jsonb := p_payload -> 'items';
+  v_update_item_ids uuid[] := '{}'::uuid[];
+  v_update_item_id_count integer := 0;
+  v_update_derived_teardown_op_ids uuid[] := '{}'::uuid[];
+  v_update_advanced_op_ids uuid[] := '{}'::uuid[];
+  v_update_non_reversible_removed_op_ids uuid[] := '{}'::uuid[];
+  v_update_non_reversible_changed_op_ids uuid[] := '{}'::uuid[];
+  v_update_removed_allocated_item_ids uuid[] := '{}'::uuid[];
+  v_update_requested_cancel_op_ids uuid[] := '{}'::uuid[];
+  v_update_requested_teardown_op_ids uuid[] := '{}'::uuid[];
+  v_update_missing_cancel_op_ids uuid[] := '{}'::uuid[];
+  v_update_invalid_cancel_op_ids uuid[] := '{}'::uuid[];
+  v_update_invalid_teardown_op_ids uuid[] := '{}'::uuid[];
+  v_update_payload_inspected boolean := false;
+  v_billing_target_override boolean;
+  v_billing_target_reason text;
   v_target_status text := NULLIF(btrim(COALESCE(p_payload ->> 'target_status', '')), '');
 BEGIN
   IF COALESCE(current_setting('request.jwt.claim.role', true), '') <> 'service_role'
@@ -1185,11 +1293,14 @@ BEGIN
         END IF;
 
         IF v_commercial.price_list_id IS NULL THEN
-          v_blockers := v_blockers || jsonb_build_array(jsonb_build_object(
-            'code', 'commercial_policy_required',
+          -- Lista explícita é preferível, mas não é a única fonte canônica:
+          -- variante e ficha publicada continuam resolvendo preço-base. O
+          -- blocker real é item_price_missing, avaliado item a item abaixo.
+          v_warnings := v_warnings || jsonb_build_array(jsonb_build_object(
+            'code', 'price_list_missing_using_fallback',
             'scope', 'commercial',
-            'message', 'Cliente/grupo não possui política/lista de preço efetiva.',
-            'overridable', true
+            'message', 'Cliente/grupo sem lista efetiva; preço será resolvido por variante/ficha.',
+            'overridable', false
           ));
         END IF;
 
@@ -1497,6 +1608,516 @@ BEGIN
     END IF;
   END IF;
 
+  -- O preflight devolve o impacto operacional calculado no servidor. É uma
+  -- fotografia read-only para UX; execute_sale_order_command repete a mesma
+  -- derivação depois de travar PV + OPs e continua sendo a autoridade TOCTOU.
+  IF v_command = 'update' AND p_payload ? 'items' THEN
+    v_update_payload_inspected := true;
+
+    IF jsonb_typeof(v_update_items) IS DISTINCT FROM 'array'
+       OR jsonb_array_length(v_update_items) = 0 THEN
+      v_blockers := v_blockers || jsonb_build_array(jsonb_build_object(
+        'code', 'invalid_update_items_payload',
+        'scope', 'production',
+        'message', 'items deve ser array não vazio no preflight de update.',
+        'overridable', false
+      ));
+    ELSIF EXISTS (
+      SELECT 1
+        FROM jsonb_array_elements(v_update_items) AS item(value)
+       WHERE NULLIF(item.value ->> 'id', '') IS NOT NULL
+         AND (item.value ->> 'id') !~*
+           '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+    ) THEN
+      v_blockers := v_blockers || jsonb_build_array(jsonb_build_object(
+        'code', 'invalid_update_item_id',
+        'scope', 'production',
+        'message', 'items contém UUID inválido.',
+        'overridable', false
+      ));
+    ELSE
+      SELECT count(*)::integer,
+             COALESCE(array_agg(DISTINCT item_id ORDER BY item_id), '{}'::uuid[])
+        INTO v_update_item_id_count, v_update_item_ids
+        FROM (
+          SELECT NULLIF(item.value ->> 'id', '')::uuid AS item_id
+            FROM jsonb_array_elements(v_update_items) AS item(value)
+        ) parsed
+       WHERE item_id IS NOT NULL;
+
+      IF v_update_item_id_count <> cardinality(v_update_item_ids) THEN
+        v_blockers := v_blockers || jsonb_build_array(jsonb_build_object(
+          'code', 'duplicate_update_item_id',
+          'scope', 'production',
+          'message', 'items contém id duplicado.',
+          'overridable', false
+        ));
+      ELSIF EXISTS (
+        SELECT 1
+          FROM unnest(v_update_item_ids) AS payload_item(id)
+         WHERE NOT EXISTS (
+           SELECT 1
+             FROM public.sale_order_items soi
+            WHERE soi.id = payload_item.id
+              AND soi.sale_order_id = p_sale_order_id
+         )
+      ) THEN
+        v_blockers := v_blockers || jsonb_build_array(jsonb_build_object(
+          'code', 'foreign_update_item_id',
+          'scope', 'production',
+          'message', 'items contém id que não pertence ao PV.',
+          'details', jsonb_build_object(
+            'item_ids', to_jsonb(v_update_item_ids)
+          ),
+          'overridable', false
+        ));
+      ELSE
+        SELECT COALESCE(array_agg(soi.id ORDER BY soi.id), '{}'::uuid[])
+          INTO v_update_removed_allocated_item_ids
+          FROM public.sale_order_items soi
+         WHERE soi.sale_order_id = p_sale_order_id
+           AND NOT (soi.id = ANY(v_update_item_ids))
+           AND EXISTS (
+             SELECT 1
+               FROM public.sale_order_lot_allocations sola
+              WHERE sola.sale_order_item_id = soi.id
+           );
+
+        IF cardinality(v_update_removed_allocated_item_ids) > 0 THEN
+          v_blockers := v_blockers || jsonb_build_array(jsonb_build_object(
+            'code', 'removed_items_have_lot_allocations',
+            'scope', 'traceability',
+            'message', 'Item removido possui alocação de lote/recall.',
+            'details', jsonb_build_object(
+              'item_ids', to_jsonb(v_update_removed_allocated_item_ids)
+            ),
+            'overridable', false
+          ));
+        END IF;
+
+        SELECT COALESCE(array_agg(o.id ORDER BY o.id) FILTER (
+                 WHERE (
+                   o.sale_order_item_id IS NULL
+                   OR NOT (o.sale_order_item_id = ANY(v_update_item_ids))
+                 )
+                   AND COALESCE(o.status, '') IN (
+                     'Rascunho', 'Pendente', 'Reservado'
+                   )
+                   AND NOT EXISTS (
+                     SELECT 1 FROM public.stock_movements sm
+                      WHERE sm.order_id = o.id
+                   )
+                   AND NOT EXISTS (
+                     SELECT 1 FROM public.production_consumptions pc
+                      WHERE pc.order_id = o.id
+                   )
+                   AND NOT EXISTS (
+                     SELECT 1
+                       FROM public.material_reservations mr
+                      WHERE mr.order_id = o.id
+                        AND (
+                          COALESCE(mr.quantity_consumed, 0) > 0
+                          OR mr.consumed_at IS NOT NULL
+                          OR mr.status NOT IN (
+                            'reserved', 'cancelled', 'released'
+                          )
+                        )
+                   )
+                   AND NOT EXISTS (
+                     SELECT 1
+                       FROM public.order_stages os
+                      WHERE os.order_id = o.id
+                        AND (
+                          COALESCE(os.quantity_processed, 0) > 0
+                          OR os.started_at IS NOT NULL
+                          OR os.completed_at IS NOT NULL
+                          OR lower(btrim(COALESCE(os.status, ''))) NOT IN (
+                            'pendente', 'pending', 'aguardando',
+                            'bloqueado', 'blocked', 'nao iniciado',
+                            'não iniciado'
+                          )
+                        )
+                   )
+                   AND NOT EXISTS (
+                     SELECT 1
+                       FROM public.order_lots ol
+                      WHERE ol.order_id = o.id
+                        AND (
+                          ol.started_at IS NOT NULL
+                          OR ol.completed_at IS NOT NULL
+                          OR lower(COALESCE(ol.status, '')) NOT IN (
+                            '', 'pendente', 'pending'
+                          )
+                        )
+                   )
+                   AND NOT EXISTS (
+                     SELECT 1 FROM public.production_pointings pp
+                      WHERE pp.order_id = o.id
+                   )
+                   AND NOT EXISTS (
+                     SELECT 1 FROM public.production_stops ps
+                      WHERE ps.order_id = o.id
+                   )
+                   AND NOT EXISTS (
+                     SELECT 1 FROM public.quality_records qr
+                      WHERE qr.order_id = o.id
+                   )
+                   AND NOT EXISTS (
+                     SELECT 1 FROM public.goods_issues gi
+                      WHERE gi.order_id = o.id
+                   )
+                   AND NOT EXISTS (
+                     SELECT 1 FROM public.finished_goods_receipts fgr
+                      WHERE fgr.order_id = o.id
+                   )
+                   AND NOT EXISTS (
+                     SELECT 1 FROM public.wip_ledger wl
+                      WHERE wl.order_id = o.id
+                   )
+               ), '{}'::uuid[]),
+               COALESCE(array_agg(o.id ORDER BY o.id) FILTER (
+                 WHERE o.status IN (
+                   'Em Produção', 'Concluída', 'Finalizado'
+                 )
+               ), '{}'::uuid[]),
+               COALESCE(array_agg(o.id ORDER BY o.id) FILTER (
+                 WHERE (
+                   o.sale_order_item_id IS NULL
+                   OR NOT (o.sale_order_item_id = ANY(v_update_item_ids))
+                 )
+                   AND COALESCE(o.status, '') NOT IN (
+                     'Em Produção', 'Concluída', 'Finalizado',
+                     'Cancelada', 'Cancelado'
+                   )
+                   AND NOT (
+                     COALESCE(o.status, '') IN (
+                       'Rascunho', 'Pendente', 'Reservado'
+                     )
+                     AND NOT EXISTS (
+                       SELECT 1 FROM public.stock_movements sm
+                        WHERE sm.order_id = o.id
+                     )
+                     AND NOT EXISTS (
+                       SELECT 1 FROM public.production_consumptions pc
+                        WHERE pc.order_id = o.id
+                     )
+                     AND NOT EXISTS (
+                       SELECT 1
+                         FROM public.material_reservations mr
+                        WHERE mr.order_id = o.id
+                          AND (
+                            COALESCE(mr.quantity_consumed, 0) > 0
+                            OR mr.consumed_at IS NOT NULL
+                            OR mr.status NOT IN (
+                              'reserved', 'cancelled', 'released'
+                            )
+                          )
+                     )
+                     AND NOT EXISTS (
+                       SELECT 1
+                         FROM public.order_stages os
+                        WHERE os.order_id = o.id
+                          AND (
+                            COALESCE(os.quantity_processed, 0) > 0
+                            OR os.started_at IS NOT NULL
+                            OR os.completed_at IS NOT NULL
+                            OR lower(btrim(COALESCE(os.status, ''))) NOT IN (
+                              'pendente', 'pending', 'aguardando',
+                              'bloqueado', 'blocked', 'nao iniciado',
+                              'não iniciado'
+                            )
+                          )
+                     )
+                     AND NOT EXISTS (
+                       SELECT 1
+                         FROM public.order_lots ol
+                        WHERE ol.order_id = o.id
+                          AND (
+                            ol.started_at IS NOT NULL
+                            OR ol.completed_at IS NOT NULL
+                            OR lower(COALESCE(ol.status, '')) NOT IN (
+                              '', 'pendente', 'pending'
+                            )
+                          )
+                     )
+                     AND NOT EXISTS (
+                       SELECT 1 FROM public.production_pointings pp
+                        WHERE pp.order_id = o.id
+                     )
+                     AND NOT EXISTS (
+                       SELECT 1 FROM public.production_stops ps
+                        WHERE ps.order_id = o.id
+                     )
+                     AND NOT EXISTS (
+                       SELECT 1 FROM public.quality_records qr
+                        WHERE qr.order_id = o.id
+                     )
+                     AND NOT EXISTS (
+                       SELECT 1 FROM public.goods_issues gi
+                        WHERE gi.order_id = o.id
+                     )
+                     AND NOT EXISTS (
+                       SELECT 1 FROM public.finished_goods_receipts fgr
+                        WHERE fgr.order_id = o.id
+                     )
+                     AND NOT EXISTS (
+                       SELECT 1 FROM public.wip_ledger wl
+                        WHERE wl.order_id = o.id
+                     )
+                   )
+               ), '{}'::uuid[])
+          INTO v_update_derived_teardown_op_ids,
+               v_update_advanced_op_ids,
+               v_update_non_reversible_removed_op_ids
+          FROM public.orders o
+         WHERE o.sale_order_id = p_sale_order_id
+           AND o.deleted_at IS NULL;
+
+        -- Uma OP pode continuar nominalmente em estado inicial e ainda assim já
+        -- ter fatos físicos. Se o item correspondente permanece no payload mas
+        -- muda qualquer fonte de demanda/roteiro, o writer legado sobrescreveria
+        -- a OP por baixo do histórico. Header, observação e preço não entram: são
+        -- edições comerciais que não alteram a materialização fabril.
+        SELECT COALESCE(array_agg(o.id ORDER BY o.id), '{}'::uuid[])
+          INTO v_update_non_reversible_changed_op_ids
+          FROM public.orders o
+          JOIN public.sale_order_items soi
+            ON soi.id = o.sale_order_item_id
+          JOIN LATERAL (
+            SELECT item.value
+              FROM jsonb_array_elements(v_update_items) AS item(value)
+             WHERE item.value ->> 'id' = soi.id::text
+             LIMIT 1
+          ) proposed ON true
+         WHERE o.sale_order_id = p_sale_order_id
+           AND o.deleted_at IS NULL
+           AND COALESCE(o.status, '') IN (
+             'Rascunho', 'Pendente', 'Reservado'
+           )
+           AND public.order_has_non_reversible_production_facts(o.id)
+           AND (
+             NULLIF(proposed.value ->> 'reference_id', '')::uuid
+               IS DISTINCT FROM soi.reference_id
+             OR COALESCE(
+                  NULLIF(proposed.value ->> 'quantity', '')::integer,
+                  0
+                ) IS DISTINCT FROM soi.quantity
+             OR COALESCE(proposed.value ->> 'color', '')
+                IS DISTINCT FROM COALESCE(soi.color, '')
+             OR COALESCE(proposed.value -> 'grade', '{}'::jsonb)
+                IS DISTINCT FROM COALESCE(soi.grade, '{}'::jsonb)
+             OR COALESCE(
+                  NULLIF(proposed.value ->> 'fichas', '')::integer,
+                  1
+                ) IS DISTINCT FROM COALESCE(soi.fichas, 1)
+             OR NULLIF(proposed.value ->> 'material_variant_id', '')::uuid
+                IS DISTINCT FROM soi.material_variant_id
+             OR CASE
+                  WHEN jsonb_typeof(proposed.value -> 'strap_colors') = 'array'
+                    THEN proposed.value -> 'strap_colors'
+                  ELSE '[]'::jsonb
+                END IS DISTINCT FROM COALESCE(soi.strap_colors, '[]'::jsonb)
+             OR (
+               proposed.value ? 'strap_sourcing'
+               AND CASE
+                 WHEN jsonb_typeof(proposed.value -> 'strap_sourcing') = 'object'
+                   THEN proposed.value -> 'strap_sourcing'
+                 ELSE NULL
+               END IS DISTINCT FROM soi.strap_sourcing
+             )
+             OR (
+               proposed.value ? 'selected_terceirizacao_ids'
+               AND CASE
+                 WHEN jsonb_typeof(
+                   proposed.value -> 'selected_terceirizacao_ids'
+                 ) = 'array' THEN ARRAY(
+                   SELECT NULLIF(selected_id, '')::uuid
+                     FROM jsonb_array_elements_text(
+                       proposed.value -> 'selected_terceirizacao_ids'
+                     ) AS selected(selected_id)
+                    WHERE NULLIF(selected_id, '') IS NOT NULL
+                 )
+                 ELSE '{}'::uuid[]
+               END IS DISTINCT FROM COALESCE(
+                 soi.selected_terceirizacao_ids,
+                 '{}'::uuid[]
+               )
+             )
+             OR (
+               proposed.value ? 'terceirizacao_quantities'
+               AND CASE
+                 WHEN jsonb_typeof(
+                   proposed.value -> 'terceirizacao_quantities'
+                 ) = 'object' THEN proposed.value -> 'terceirizacao_quantities'
+                 ELSE '{}'::jsonb
+               END IS DISTINCT FROM COALESCE(
+                 soi.terceirizacao_quantities,
+                 '{}'::jsonb
+               )
+             )
+             OR (
+               proposed.value ? 'outsourced_sectors'
+               AND CASE
+                 WHEN jsonb_typeof(proposed.value -> 'outsourced_sectors') = 'object'
+                   THEN proposed.value -> 'outsourced_sectors'
+                 ELSE '{}'::jsonb
+               END IS DISTINCT FROM COALESCE(
+                 soi.outsourced_sectors,
+                 '{}'::jsonb
+               )
+             )
+           );
+
+        IF cardinality(v_update_non_reversible_changed_op_ids) > 0 THEN
+          v_blockers := v_blockers || jsonb_build_array(jsonb_build_object(
+            'code', 'non_reversible_changed_orders',
+            'scope', 'production',
+            'message', 'OP mantida possui fato físico e sua demanda foi alterada.',
+            'details', jsonb_build_object(
+              'order_ids', to_jsonb(v_update_non_reversible_changed_op_ids)
+            ),
+            'overridable', false
+          ));
+        END IF;
+
+        IF p_payload ? 'cancel_op_ids' THEN
+          IF jsonb_typeof(p_payload -> 'cancel_op_ids') IS DISTINCT FROM 'array'
+             OR EXISTS (
+               SELECT 1
+                 FROM jsonb_array_elements_text(
+                   CASE
+                     WHEN jsonb_typeof(p_payload -> 'cancel_op_ids') = 'array'
+                     THEN p_payload -> 'cancel_op_ids'
+                     ELSE '[]'::jsonb
+                   END
+                 ) AS requested(value)
+                WHERE requested.value !~*
+                  '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+             ) THEN
+            v_blockers := v_blockers || jsonb_build_array(jsonb_build_object(
+              'code', 'invalid_cancel_op_ids',
+              'scope', 'production',
+              'message', 'cancel_op_ids deve ser array de UUIDs.',
+              'overridable', false
+            ));
+          ELSE
+            SELECT COALESCE(
+                     array_agg(requested.value::uuid ORDER BY requested.ordinality),
+                     '{}'::uuid[]
+                   )
+              INTO v_update_requested_cancel_op_ids
+              FROM jsonb_array_elements_text(p_payload -> 'cancel_op_ids')
+                WITH ORDINALITY AS requested(value, ordinality);
+
+            IF (
+              SELECT count(*) <> count(DISTINCT requested_id)
+                FROM unnest(v_update_requested_cancel_op_ids) requested(requested_id)
+            ) THEN
+              v_blockers := v_blockers || jsonb_build_array(jsonb_build_object(
+                'code', 'duplicate_cancel_op_id',
+                'scope', 'production',
+                'message', 'cancel_op_ids contém UUID repetido.',
+                'overridable', false
+              ));
+            END IF;
+          END IF;
+        END IF;
+
+        SELECT COALESCE(array_agg(advanced.id ORDER BY advanced.id), '{}'::uuid[])
+          INTO v_update_missing_cancel_op_ids
+          FROM unnest(v_update_advanced_op_ids) AS advanced(id)
+         WHERE NOT (advanced.id = ANY(v_update_requested_cancel_op_ids));
+        IF cardinality(v_update_missing_cancel_op_ids) > 0 THEN
+          v_blockers := v_blockers || jsonb_build_array(jsonb_build_object(
+            'code', 'advanced_orders_require_cancel_confirmation',
+            'scope', 'production',
+            'message', 'Existem OPs avançadas fora de cancel_op_ids.',
+            'details', jsonb_build_object(
+              'required_cancel_op_ids', to_jsonb(v_update_advanced_op_ids),
+              'missing_cancel_op_ids', to_jsonb(v_update_missing_cancel_op_ids)
+            ),
+            'overridable', false
+          ));
+        END IF;
+
+        SELECT COALESCE(array_agg(requested.id ORDER BY requested.id), '{}'::uuid[])
+          INTO v_update_invalid_cancel_op_ids
+          FROM unnest(v_update_requested_cancel_op_ids) AS requested(id)
+         WHERE NOT (requested.id = ANY(v_update_advanced_op_ids));
+        IF cardinality(v_update_invalid_cancel_op_ids) > 0 THEN
+          v_blockers := v_blockers || jsonb_build_array(jsonb_build_object(
+            'code', 'invalid_cancel_op_ids',
+            'scope', 'production',
+            'message', 'cancel_op_ids contém OP alheia ou sem estado avançado cancelável.',
+            'details', jsonb_build_object(
+              'invalid_cancel_op_ids', to_jsonb(v_update_invalid_cancel_op_ids)
+            ),
+            'overridable', false
+          ));
+        END IF;
+
+        IF cardinality(v_update_non_reversible_removed_op_ids) > 0 THEN
+          v_blockers := v_blockers || jsonb_build_array(jsonb_build_object(
+            'code', 'non_reversible_removed_orders',
+            'scope', 'production',
+            'message', 'OP removida possui fato/estado não compensável pelo update.',
+            'details', jsonb_build_object(
+              'order_ids', to_jsonb(v_update_non_reversible_removed_op_ids)
+            ),
+            'overridable', false
+          ));
+        END IF;
+
+        IF p_payload ? 'teardown_op_ids' THEN
+          IF jsonb_typeof(p_payload -> 'teardown_op_ids') IS DISTINCT FROM 'array'
+             OR EXISTS (
+               SELECT 1
+                 FROM jsonb_array_elements_text(
+                   CASE
+                     WHEN jsonb_typeof(p_payload -> 'teardown_op_ids') = 'array'
+                     THEN p_payload -> 'teardown_op_ids'
+                     ELSE '[]'::jsonb
+                   END
+                 ) AS requested(value)
+                WHERE requested.value !~*
+                  '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+             ) THEN
+            v_blockers := v_blockers || jsonb_build_array(jsonb_build_object(
+              'code', 'invalid_teardown_op_ids',
+              'scope', 'production',
+              'message', 'teardown_op_ids deve ser array de UUIDs.',
+              'overridable', false
+            ));
+          ELSE
+            SELECT COALESCE(
+                     array_agg(requested.value::uuid ORDER BY requested.ordinality),
+                     '{}'::uuid[]
+                   )
+              INTO v_update_requested_teardown_op_ids
+              FROM jsonb_array_elements_text(p_payload -> 'teardown_op_ids')
+                WITH ORDINALITY AS requested(value, ordinality);
+            SELECT COALESCE(array_agg(requested.id ORDER BY requested.id), '{}'::uuid[])
+              INTO v_update_invalid_teardown_op_ids
+              FROM unnest(v_update_requested_teardown_op_ids) AS requested(id)
+             WHERE NOT (requested.id = ANY(v_update_derived_teardown_op_ids));
+            IF cardinality(v_update_invalid_teardown_op_ids) > 0 THEN
+              v_blockers := v_blockers || jsonb_build_array(jsonb_build_object(
+                'code', 'invalid_teardown_op_ids',
+                'scope', 'production',
+                'message', 'teardown_op_ids contém OP não derivada pelo servidor.',
+                'details', jsonb_build_object(
+                  'invalid_teardown_op_ids',
+                  to_jsonb(v_update_invalid_teardown_op_ids)
+                ),
+                'overridable', false
+              ));
+            END IF;
+          END IF;
+        END IF;
+      END IF;
+    END IF;
+  END IF;
+
   -- Subpatches opcionais pertencem ao mesmo intent/receipt do update, mas
   -- preservam allow-list, estados e fronteiras dos commands estreitos.
   IF v_command = 'update' AND p_payload ? 'billing_patch' THEN
@@ -1537,20 +2158,75 @@ BEGIN
         'message', 'manual_billing_override deve ser boolean.',
         'overridable', false
       ));
-    ELSIF COALESCE(
-            (v_update_billing_patch ->> 'manual_billing_override')::boolean,
-            false
-          )
-          AND length(btrim(COALESCE(
-            v_update_billing_patch ->> 'manual_override_reason',
-            ''
-          ))) < 10 THEN
+    ELSE
+      v_billing_target_override := CASE
+        WHEN v_update_billing_patch ? 'manual_billing_override'
+          THEN (v_update_billing_patch ->> 'manual_billing_override')::boolean
+        ELSE COALESCE(v_so.manual_billing_override, false)
+      END;
+      v_billing_target_reason := CASE
+        WHEN v_update_billing_patch ? 'manual_override_reason'
+          THEN NULLIF(btrim(v_update_billing_patch ->> 'manual_override_reason'), '')
+        ELSE v_so.manual_override_reason
+      END;
+      IF v_billing_target_override
+         AND length(COALESCE(v_billing_target_reason, '')) < 10 THEN
+        v_blockers := v_blockers || jsonb_build_array(jsonb_build_object(
+          'code', 'invalid_update_billing_patch',
+          'scope', 'commercial',
+          'message', 'Override manual de faturamento exige motivo (10+ caracteres).',
+          'overridable', false
+        ));
+      END IF;
+    END IF;
+  END IF;
+
+  IF v_command = 'billing' THEN
+    IF p_payload = '{}'::jsonb OR EXISTS (
+      SELECT 1
+        FROM jsonb_object_keys(p_payload) AS patch_key(key)
+       WHERE patch_key.key NOT IN (
+         'delivery_month', 'delivery_week', 'billing_week',
+         'delivery_deadline', 'manual_billing_override',
+         'original_min_billing_date', 'manual_override_reason'
+       )
+    ) THEN
       v_blockers := v_blockers || jsonb_build_array(jsonb_build_object(
-        'code', 'invalid_update_billing_patch',
+        'code', 'invalid_billing_patch',
         'scope', 'commercial',
-        'message', 'Override manual de faturamento exige motivo (10+ caracteres).',
+        'message', 'Payload de billing vazio ou com campo não permitido.',
         'overridable', false
       ));
+    ELSIF p_payload ? 'manual_billing_override'
+          AND jsonb_typeof(
+            p_payload -> 'manual_billing_override'
+          ) IS DISTINCT FROM 'boolean' THEN
+      v_blockers := v_blockers || jsonb_build_array(jsonb_build_object(
+        'code', 'invalid_billing_patch',
+        'scope', 'commercial',
+        'message', 'manual_billing_override deve ser boolean.',
+        'overridable', false
+      ));
+    ELSE
+      v_billing_target_override := CASE
+        WHEN p_payload ? 'manual_billing_override'
+          THEN (p_payload ->> 'manual_billing_override')::boolean
+        ELSE COALESCE(v_so.manual_billing_override, false)
+      END;
+      v_billing_target_reason := CASE
+        WHEN p_payload ? 'manual_override_reason'
+          THEN NULLIF(btrim(p_payload ->> 'manual_override_reason'), '')
+        ELSE v_so.manual_override_reason
+      END;
+      IF v_billing_target_override
+         AND length(COALESCE(v_billing_target_reason, '')) < 10 THEN
+        v_blockers := v_blockers || jsonb_build_array(jsonb_build_object(
+          'code', 'invalid_billing_patch',
+          'scope', 'commercial',
+          'message', 'Override manual de faturamento exige motivo (10+ caracteres).',
+          'overridable', false
+        ));
+      END IF;
     END IF;
   END IF;
 
@@ -1713,6 +2389,19 @@ BEGIN
     'effective_blocking_count', v_effective_count,
     'blockers', v_blockers,
     'warnings', v_warnings,
+    'update_impact', CASE WHEN v_command = 'update' THEN jsonb_build_object(
+      'payload_inspected', v_update_payload_inspected,
+      'derived_teardown_op_ids', to_jsonb(v_update_derived_teardown_op_ids),
+      'required_cancel_op_ids', to_jsonb(v_update_advanced_op_ids),
+      'missing_cancel_op_ids', to_jsonb(v_update_missing_cancel_op_ids),
+      'non_reversible_removed_op_ids',
+        to_jsonb(v_update_non_reversible_removed_op_ids),
+      'non_reversible_changed_op_ids',
+        to_jsonb(v_update_non_reversible_changed_op_ids),
+      'removed_allocated_item_ids',
+        to_jsonb(v_update_removed_allocated_item_ids),
+      'ignored_cancelled_history', true
+    ) ELSE NULL END,
     'override', CASE WHEN v_override_valid THEN jsonb_build_object(
       'id', v_override.id,
       'order_version', v_override.order_version,

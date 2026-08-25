@@ -99,7 +99,6 @@ describe('sale order command — fundação e readiness', () => {
       'client_inactive',
       'commercial_orders_blocked',
       'payment_condition_required',
-      'commercial_policy_required',
       'credit_limit_exceeded',
       'active_nfe_blocks_cancel',
       'stale_order_version',
@@ -145,6 +144,8 @@ describe('sale order command — fundação e readiness', () => {
     expect(FOUNDATION).toContain("'item_manual_price'");
     expect(FOUNDATION).toContain('COALESCE(v_commercial.discount_pct, 0)');
     expect(FOUNDATION).toContain('v_warnings := v_warnings || v_price_warnings');
+    expect(FOUNDATION).toContain("'price_list_missing_using_fallback'");
+    expect(FOUNDATION).not.toContain("'commercial_policy_required'");
 
     // Contrato de fronteira: base 100 e teto 10% aceita exatamente 90,
     // bloqueia abaixo da tolerância centesimal e ausência de base é fail-closed.
@@ -152,6 +153,42 @@ describe('sale order command — fundação e readiness', () => {
     expect(90).toBeGreaterThanOrEqual(minimumPrice - 0.01);
     expect(89.98).toBeLessThan(minimumPrice - 0.01);
     expect(0).toBeLessThanOrEqual(0);
+  });
+
+  it('preflight deriva teardown e consentimento de OP sem confiar no browser', () => {
+    expect(FOUNDATION).toContain("v_command = 'update' AND p_payload ? 'items'");
+    expect(FOUNDATION).toContain("'derived_teardown_op_ids'");
+    expect(FOUNDATION).toContain("'required_cancel_op_ids'");
+    expect(FOUNDATION).toContain("'missing_cancel_op_ids'");
+    expect(FOUNDATION).toContain("'non_reversible_removed_op_ids'");
+    expect(FOUNDATION).toContain("'non_reversible_changed_op_ids'");
+    expect(FOUNDATION).toContain("'removed_allocated_item_ids'");
+    expect(FOUNDATION).toContain("'advanced_orders_require_cancel_confirmation'");
+    expect(FOUNDATION).toContain("'non_reversible_removed_orders'");
+    expect(FOUNDATION).toContain("'non_reversible_changed_orders'");
+    expect(FOUNDATION).toContain("'removed_items_have_lot_allocations'");
+    expect(FOUNDATION).toContain('o.sale_order_item_id IS NULL');
+    expect(FOUNDATION).toContain('public.stock_movements sm');
+    expect(FOUNDATION).toContain('public.production_consumptions pc');
+    expect(FOUNDATION).toContain('public.material_reservations mr');
+    expect(FOUNDATION).toContain('public.order_stages os');
+    expect(FOUNDATION).toContain('public.order_lots ol');
+    expect(FOUNDATION).toContain('public.sale_order_lot_allocations sola');
+    expect(FOUNDATION).toContain(
+      'public.order_has_non_reversible_production_facts(o.id)',
+    );
+    expect(FOUNDATION).toContain('o.deleted_at IS NULL');
+    expect(FOUNDATION).toContain("'ignored_cancelled_history', true");
+  });
+
+  it('billing conserva a justificativa do estado resultante', () => {
+    expect(FOUNDATION.match(/v_billing_target_override := CASE/g)?.length)
+      .toBe(2);
+    expect(FOUNDATION.match(/v_billing_target_reason := CASE/g)?.length)
+      .toBe(2);
+    expect(FOUNDATION).toContain(
+      "length(COALESCE(v_billing_target_reason, '')) < 10",
+    );
   });
 
   it('espelha a allow-list granular de /sales sem remover o fallback RBAC', () => {

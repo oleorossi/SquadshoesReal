@@ -687,16 +687,27 @@ DECLARE
   v_items jsonb;
   v_billing_patch jsonb;
   v_factoring_patch jsonb;
+  v_payload_item_ids uuid[] := '{}'::uuid[];
+  v_payload_item_id_count integer := 0;
+  v_requested_teardown_op_ids uuid[] := '{}'::uuid[];
+  v_derived_teardown_op_ids uuid[] := '{}'::uuid[];
+  v_advanced_op_ids uuid[] := '{}'::uuid[];
+  v_non_reversible_removed_op_ids uuid[] := '{}'::uuid[];
+  v_non_reversible_changed_op_ids uuid[] := '{}'::uuid[];
+  v_removed_allocated_item_ids uuid[] := '{}'::uuid[];
   v_teardown_op_ids uuid[] := '{}'::uuid[];
   v_cancel_op_ids uuid[] := '{}'::uuid[];
   v_order_id uuid;
+  v_op_id uuid;
   v_outsource_contractor_id uuid;
   v_outsource_sector text;
   v_box_grouping text;
   v_external_nfe_number text;
   v_target_status text;
   v_factoring_config_id uuid;
+  v_factoring_config_active boolean;
   v_manual_billing_override boolean;
+  v_target_manual_override_reason text;
   v_version_after bigint;
   v_previous_internal text;
   v_previous_override_source_version text;
@@ -758,6 +769,26 @@ BEGIN
       v_command
       USING ERRCODE = '42501';
   END IF;
+
+  -- Writers fiscais vivos já possuem a row de NF-e quando seus triggers
+  -- atualizam o PV. Adotar a mesma ordem NF-e -> PV evita o ciclo
+  -- command(PV->NF) × fiscal(NF->PV). Depois do lock do PV fazemos um segundo
+  -- passe NOWAIT para capturar qualquer phantom inserido neste intervalo.
+  IF v_command IN (
+    'update', 'cancel', 'billing', 'factoring', 'transition'
+  ) THEN
+    PERFORM nfe.id
+      FROM public.nfe_emitidas nfe
+     WHERE nfe.sale_order_id = p_sale_order_id
+     ORDER BY nfe.id
+     FOR UPDATE;
+  END IF;
+
+  -- Writers canônicos/legados de tiras adotam coarse -> PV/item. Tomar o
+  -- coarse antes do advisory do command e de qualquer row lock impede o ciclo
+  -- command(PV/item->coarse) × correção de tira(coarse->item).
+  PERFORM pg_advisory_xact_lock(hashtextextended('strap-pv-auto-intent', 0));
+
   PERFORM pg_advisory_xact_lock(hashtextextended(
     'sale-order-command:' || p_sale_order_id::text,
     0
@@ -885,9 +916,20 @@ BEGIN
       );
     END IF;
 
-    -- Revalidação TOCTOU dentro da subtransação: o preflight já emitiu o
-    -- blocker, mas uma NF pode ter sido criada por outro fluxo entre a leitura
-    -- inicial e a mutação do cabeçalho.
+    -- Revalidação TOCTOU dentro da subtransação. O lock do PV impede nova NF
+    -- pela FK. O segundo passe captura phantoms que entraram antes desse lock;
+    -- NOWAIT transforma um writer fiscal concorrente em falha observável do
+    -- command, sem reintroduzir ordem PV -> NF capaz de deadlock.
+    IF v_command IN (
+      'update', 'cancel', 'billing', 'factoring', 'transition'
+    ) THEN
+      PERFORM nfe.id
+        FROM public.nfe_emitidas nfe
+       WHERE nfe.sale_order_id = p_sale_order_id
+       ORDER BY nfe.id
+       FOR UPDATE NOWAIT;
+    END IF;
+
     IF v_command IN ('update', 'cancel', 'billing', 'factoring')
        AND EXISTS (
          SELECT 1
@@ -942,16 +984,507 @@ BEGIN
         -- readiness gate. Campos de terceirização continuam no mesmo header.
         v_header := v_header || jsonb_build_object('status', v_so.status);
 
+        -- A autoridade sobre teardown é server-side. IDs de itens do payload
+        -- identificam o conjunto mantido; OPs órfãs ou de item removido são
+        -- derivadas sob a mesma trava do agregado. O array legado do browser é
+        -- aceito somente como subset de compatibilidade, nunca como baseline.
+        SELECT count(*)::integer,
+               COALESCE(array_agg(DISTINCT item_id ORDER BY item_id), '{}'::uuid[])
+          INTO v_payload_item_id_count, v_payload_item_ids
+          FROM (
+            SELECT NULLIF(item.value ->> 'id', '')::uuid AS item_id
+              FROM jsonb_array_elements(v_items) AS item(value)
+          ) parsed
+         WHERE item_id IS NOT NULL;
+        IF v_payload_item_id_count <> cardinality(v_payload_item_ids) THEN
+          RAISE EXCEPTION 'items contém id duplicado'
+            USING ERRCODE = '22023';
+        END IF;
+        IF EXISTS (
+          SELECT 1
+            FROM unnest(v_payload_item_ids) AS payload_item(id)
+           WHERE NOT EXISTS (
+             SELECT 1
+               FROM public.sale_order_items soi
+              WHERE soi.id = payload_item.id
+                AND soi.sale_order_id = p_sale_order_id
+           )
+        ) THEN
+          RAISE EXCEPTION 'items contém id que não pertence ao PV'
+            USING ERRCODE = '40001';
+        END IF;
+
+        -- Writers legados de item/OP/estágio podem ter adquirido a row filha
+        -- antes de seus triggers tocarem o PV. Como o command já trava o PV,
+        -- NOWAIT recusa a concorrência em vez de formar um ciclo de deadlock;
+        -- a falha fica persistida no receipt externo à subtransação.
+        PERFORM soi.id
+          FROM public.sale_order_items soi
+         WHERE soi.sale_order_id = p_sale_order_id
+         ORDER BY soi.id
+         FOR UPDATE NOWAIT;
+        PERFORM sola.id
+          FROM public.sale_order_lot_allocations sola
+          JOIN public.sale_order_items soi
+            ON soi.id = sola.sale_order_item_id
+         WHERE soi.sale_order_id = p_sale_order_id
+         ORDER BY sola.sale_order_item_id, sola.id
+         FOR UPDATE OF sola NOWAIT;
+        SELECT COALESCE(array_agg(soi.id ORDER BY soi.id), '{}'::uuid[])
+          INTO v_removed_allocated_item_ids
+          FROM public.sale_order_items soi
+         WHERE soi.sale_order_id = p_sale_order_id
+           AND NOT (soi.id = ANY(v_payload_item_ids))
+           AND EXISTS (
+             SELECT 1
+               FROM public.sale_order_lot_allocations sola
+              WHERE sola.sale_order_item_id = soi.id
+           );
+        IF cardinality(v_removed_allocated_item_ids) > 0 THEN
+          RAISE EXCEPTION
+            'Item removido possui alocação de lote/recall: %',
+            array_to_string(v_removed_allocated_item_ids, ', ')
+            USING ERRCODE = 'PZ122';
+        END IF;
+
+        -- Mesma ordem global usada por cancel/resync e pelos motores de
+        -- reserva/débito: agregado do PV -> namespaces físicos da OP -> rows
+        -- da OP/filhos. Sem esta pré-aquisição, teardown poderia segurar uma
+        -- reserva e esperar product enquanto outro writer segura o namespace
+        -- físico e espera a OP, formando um ciclo.
+        FOR v_op_id IN
+          SELECT o.id
+            FROM public.orders o
+           WHERE o.sale_order_id = p_sale_order_id
+             AND o.deleted_at IS NULL
+             AND o.status NOT IN ('Cancelada', 'Cancelado')
+           ORDER BY o.id
+        LOOP
+          PERFORM pg_advisory_xact_lock(
+            hashtext('hybrid_debit:' || v_op_id::text)
+          );
+          PERFORM pg_advisory_xact_lock(
+            hashtext('debit_sole:' || v_op_id::text)
+          );
+          PERFORM pg_advisory_xact_lock(
+            hashtext('stock_debit:' || v_op_id::text)
+          );
+          PERFORM pg_advisory_xact_lock(
+            hashtext('packaging_debit:' || v_op_id::text)
+          );
+          PERFORM pg_advisory_xact_lock(
+            ('x' || substr(
+              md5('debit_strap:' || v_op_id::text),
+              1,
+              16
+            ))::bit(64)::bigint
+          );
+          PERFORM pg_advisory_xact_lock(
+            hashtext('reserve:' || v_op_id::text)
+          );
+          PERFORM pg_advisory_xact_lock(
+            hashtext('reserve_missing:' || v_op_id::text)
+          );
+          PERFORM pg_advisory_xact_lock(
+            hashtext('try_reserve_materials:' || v_op_id::text)
+          );
+          PERFORM pg_advisory_xact_lock(
+            hashtext('consume_reservations:' || v_op_id::text)
+          );
+          PERFORM pg_advisory_xact_lock(
+            hashtext('convert_reservation:' || v_op_id::text)
+          );
+          PERFORM pg_advisory_xact_lock(
+            hashtext('settle_reservations:' || v_op_id::text)
+          );
+        END LOOP;
+
+        PERFORM o.id
+          FROM public.orders o
+         WHERE o.sale_order_id = p_sale_order_id
+         ORDER BY o.id
+         FOR UPDATE NOWAIT;
+
+        -- FOR UPDATE na OP bloqueia INSERT filho via FK. Updates de filhos já
+        -- existentes, porém, não precisam tocar o pai; travá-los em ordem
+        -- determinística fecha a janela factless -> factual antes da derivação.
+        PERFORM os.id
+          FROM public.order_stages os
+          JOIN public.orders o ON o.id = os.order_id
+         WHERE o.sale_order_id = p_sale_order_id
+         ORDER BY os.order_id, os.id
+         FOR UPDATE OF os NOWAIT;
+        PERFORM ol.id
+          FROM public.order_lots ol
+          JOIN public.orders o ON o.id = ol.order_id
+         WHERE o.sale_order_id = p_sale_order_id
+         ORDER BY ol.order_id, ol.id
+         FOR UPDATE OF ol NOWAIT;
+        PERFORM pp.id
+          FROM public.production_pointings pp
+          JOIN public.orders o ON o.id = pp.order_id
+         WHERE o.sale_order_id = p_sale_order_id
+         ORDER BY pp.order_id, pp.id
+         FOR UPDATE OF pp NOWAIT;
+        PERFORM ps.id
+          FROM public.production_stops ps
+          JOIN public.orders o ON o.id = ps.order_id
+         WHERE o.sale_order_id = p_sale_order_id
+         ORDER BY ps.order_id, ps.id
+         FOR UPDATE OF ps NOWAIT;
+        PERFORM qr.id
+          FROM public.quality_records qr
+          JOIN public.orders o ON o.id = qr.order_id
+         WHERE o.sale_order_id = p_sale_order_id
+         ORDER BY qr.order_id, qr.id
+         FOR UPDATE OF qr NOWAIT;
+        PERFORM gi.id
+          FROM public.goods_issues gi
+          JOIN public.orders o ON o.id = gi.order_id
+         WHERE o.sale_order_id = p_sale_order_id
+         ORDER BY gi.order_id, gi.id
+         FOR UPDATE OF gi NOWAIT;
+        PERFORM fgr.id
+          FROM public.finished_goods_receipts fgr
+          JOIN public.orders o ON o.id = fgr.order_id
+         WHERE o.sale_order_id = p_sale_order_id
+         ORDER BY fgr.order_id, fgr.id
+         FOR UPDATE OF fgr NOWAIT;
+        PERFORM wl.id
+          FROM public.wip_ledger wl
+          JOIN public.orders o ON o.id = wl.order_id
+         WHERE o.sale_order_id = p_sale_order_id
+         ORDER BY wl.order_id, wl.id
+         FOR UPDATE OF wl NOWAIT;
+        PERFORM mr.id
+          FROM public.material_reservations mr
+          JOIN public.orders o ON o.id = mr.order_id
+         WHERE o.sale_order_id = p_sale_order_id
+         ORDER BY mr.order_id, mr.id
+         FOR UPDATE OF mr NOWAIT;
+        PERFORM pc.id
+          FROM public.production_consumptions pc
+          JOIN public.orders o ON o.id = pc.order_id
+         WHERE o.sale_order_id = p_sale_order_id
+         ORDER BY pc.order_id, pc.id
+         FOR UPDATE OF pc NOWAIT;
+        PERFORM sm.id
+          FROM public.stock_movements sm
+          JOIN public.orders o ON o.id = sm.order_id
+         WHERE o.sale_order_id = p_sale_order_id
+         ORDER BY sm.order_id, sm.id
+         FOR UPDATE OF sm NOWAIT;
+
+        SELECT COALESCE(array_agg(o.id ORDER BY o.id) FILTER (
+                 WHERE (
+                   o.sale_order_item_id IS NULL
+                   OR NOT (o.sale_order_item_id = ANY(v_payload_item_ids))
+                 )
+                   -- Espelha exatamente o preflight do writer de teardown.
+                   -- OP com qualquer fato fica fora desta lista: o update não
+                   -- pode transformar cancelamento em estorno físico implícito.
+                   AND COALESCE(o.status, '') IN (
+                     'Rascunho', 'Pendente', 'Reservado'
+                   )
+                   AND NOT EXISTS (
+                     SELECT 1
+                       FROM public.stock_movements sm
+                      WHERE sm.order_id = o.id
+                   )
+                   AND NOT EXISTS (
+                     SELECT 1
+                       FROM public.production_consumptions pc
+                      WHERE pc.order_id = o.id
+                   )
+                   AND NOT EXISTS (
+                     SELECT 1
+                       FROM public.material_reservations mr
+                      WHERE mr.order_id = o.id
+                        AND (
+                          COALESCE(mr.quantity_consumed, 0) > 0
+                          OR mr.consumed_at IS NOT NULL
+                          OR mr.status NOT IN (
+                            'reserved', 'cancelled', 'released'
+                          )
+                        )
+                   )
+                   AND NOT EXISTS (
+                     SELECT 1
+                       FROM public.order_stages os
+                      WHERE os.order_id = o.id
+                        AND (
+                          COALESCE(os.quantity_processed, 0) > 0
+                          OR os.started_at IS NOT NULL
+                          OR os.completed_at IS NOT NULL
+                          OR lower(btrim(COALESCE(os.status, ''))) NOT IN (
+                            'pendente', 'pending', 'aguardando',
+                            'bloqueado', 'blocked', 'nao iniciado',
+                            'não iniciado'
+                          )
+                        )
+                   )
+                   AND NOT EXISTS (
+                     SELECT 1
+                       FROM public.order_lots ol
+                      WHERE ol.order_id = o.id
+                        AND (
+                          ol.started_at IS NOT NULL
+                          OR ol.completed_at IS NOT NULL
+                          OR lower(COALESCE(ol.status, '')) NOT IN (
+                            '', 'pendente', 'pending'
+                          )
+                        )
+                   )
+                   AND NOT EXISTS (
+                     SELECT 1 FROM public.production_pointings pp
+                      WHERE pp.order_id = o.id
+                   )
+                   AND NOT EXISTS (
+                     SELECT 1 FROM public.production_stops ps
+                      WHERE ps.order_id = o.id
+                   )
+                   AND NOT EXISTS (
+                     SELECT 1 FROM public.quality_records qr
+                      WHERE qr.order_id = o.id
+                   )
+                   AND NOT EXISTS (
+                     SELECT 1 FROM public.goods_issues gi
+                      WHERE gi.order_id = o.id
+                   )
+                   AND NOT EXISTS (
+                     SELECT 1 FROM public.finished_goods_receipts fgr
+                      WHERE fgr.order_id = o.id
+                   )
+                   AND NOT EXISTS (
+                     SELECT 1 FROM public.wip_ledger wl
+                      WHERE wl.order_id = o.id
+                   )
+               ), '{}'::uuid[]),
+               COALESCE(array_agg(o.id ORDER BY o.id) FILTER (
+                 -- "Avançada" preserva o contrato vivo do modal e do writer
+                 -- atômico: todas precisam de consentimento explícito, mesmo
+                 -- quando o item correspondente continua no payload.
+                 WHERE o.status IN (
+                   'Em Produção', 'Concluída', 'Finalizado'
+                 )
+               ), '{}'::uuid[]),
+               COALESCE(array_agg(o.id ORDER BY o.id) FILTER (
+                 -- OP removida que não é desmontável e também não pertence ao
+                 -- fluxo administrativo de cancelamento avançado deve recusar
+                 -- o update. Canceladas ficam preservadas como histórico e o
+                 -- FK ON DELETE SET NULL as desacopla do item removido.
+                 WHERE (
+                   o.sale_order_item_id IS NULL
+                   OR NOT (o.sale_order_item_id = ANY(v_payload_item_ids))
+                 )
+                   AND COALESCE(o.status, '') NOT IN (
+                     'Em Produção', 'Concluída', 'Finalizado',
+                     'Cancelada', 'Cancelado'
+                   )
+                   AND NOT (
+                     COALESCE(o.status, '') IN (
+                       'Rascunho', 'Pendente', 'Reservado'
+                     )
+                     AND NOT EXISTS (
+                       SELECT 1
+                         FROM public.stock_movements sm
+                        WHERE sm.order_id = o.id
+                     )
+                     AND NOT EXISTS (
+                       SELECT 1
+                         FROM public.production_consumptions pc
+                        WHERE pc.order_id = o.id
+                     )
+                     AND NOT EXISTS (
+                       SELECT 1
+                         FROM public.material_reservations mr
+                        WHERE mr.order_id = o.id
+                          AND (
+                            COALESCE(mr.quantity_consumed, 0) > 0
+                            OR mr.consumed_at IS NOT NULL
+                            OR mr.status NOT IN (
+                              'reserved', 'cancelled', 'released'
+                            )
+                          )
+                     )
+                     AND NOT EXISTS (
+                       SELECT 1
+                         FROM public.order_stages os
+                        WHERE os.order_id = o.id
+                          AND (
+                            COALESCE(os.quantity_processed, 0) > 0
+                            OR os.started_at IS NOT NULL
+                            OR os.completed_at IS NOT NULL
+                            OR lower(btrim(COALESCE(os.status, ''))) NOT IN (
+                              'pendente', 'pending', 'aguardando',
+                              'bloqueado', 'blocked', 'nao iniciado',
+                              'não iniciado'
+                            )
+                          )
+                     )
+                     AND NOT EXISTS (
+                       SELECT 1
+                         FROM public.order_lots ol
+                        WHERE ol.order_id = o.id
+                          AND (
+                            ol.started_at IS NOT NULL
+                            OR ol.completed_at IS NOT NULL
+                            OR lower(COALESCE(ol.status, '')) NOT IN (
+                              '', 'pendente', 'pending'
+                            )
+                          )
+                     )
+                     AND NOT EXISTS (
+                       SELECT 1 FROM public.production_pointings pp
+                        WHERE pp.order_id = o.id
+                     )
+                     AND NOT EXISTS (
+                       SELECT 1 FROM public.production_stops ps
+                        WHERE ps.order_id = o.id
+                     )
+                     AND NOT EXISTS (
+                       SELECT 1 FROM public.quality_records qr
+                        WHERE qr.order_id = o.id
+                     )
+                     AND NOT EXISTS (
+                       SELECT 1 FROM public.goods_issues gi
+                        WHERE gi.order_id = o.id
+                     )
+                     AND NOT EXISTS (
+                       SELECT 1 FROM public.finished_goods_receipts fgr
+                        WHERE fgr.order_id = o.id
+                     )
+                     AND NOT EXISTS (
+                       SELECT 1 FROM public.wip_ledger wl
+                        WHERE wl.order_id = o.id
+                     )
+                   )
+               ), '{}'::uuid[])
+          INTO v_derived_teardown_op_ids,
+               v_advanced_op_ids,
+               v_non_reversible_removed_op_ids
+          FROM public.orders o
+         WHERE o.sale_order_id = p_sale_order_id
+           AND o.deleted_at IS NULL;
+
+        SELECT COALESCE(array_agg(o.id ORDER BY o.id), '{}'::uuid[])
+          INTO v_non_reversible_changed_op_ids
+          FROM public.orders o
+          JOIN public.sale_order_items soi
+            ON soi.id = o.sale_order_item_id
+          JOIN LATERAL (
+            SELECT item.value
+              FROM jsonb_array_elements(v_items) AS item(value)
+             WHERE item.value ->> 'id' = soi.id::text
+             LIMIT 1
+          ) proposed ON true
+         WHERE o.sale_order_id = p_sale_order_id
+           AND o.deleted_at IS NULL
+           AND COALESCE(o.status, '') IN (
+             'Rascunho', 'Pendente', 'Reservado'
+           )
+           AND public.order_has_non_reversible_production_facts(o.id)
+           AND (
+             NULLIF(proposed.value ->> 'reference_id', '')::uuid
+               IS DISTINCT FROM soi.reference_id
+             OR COALESCE(
+                  NULLIF(proposed.value ->> 'quantity', '')::integer,
+                  0
+                ) IS DISTINCT FROM soi.quantity
+             OR COALESCE(proposed.value ->> 'color', '')
+                IS DISTINCT FROM COALESCE(soi.color, '')
+             OR COALESCE(proposed.value -> 'grade', '{}'::jsonb)
+                IS DISTINCT FROM COALESCE(soi.grade, '{}'::jsonb)
+             OR COALESCE(
+                  NULLIF(proposed.value ->> 'fichas', '')::integer,
+                  1
+                ) IS DISTINCT FROM COALESCE(soi.fichas, 1)
+             OR NULLIF(proposed.value ->> 'material_variant_id', '')::uuid
+                IS DISTINCT FROM soi.material_variant_id
+             OR CASE
+                  WHEN jsonb_typeof(proposed.value -> 'strap_colors') = 'array'
+                    THEN proposed.value -> 'strap_colors'
+                  ELSE '[]'::jsonb
+                END IS DISTINCT FROM COALESCE(soi.strap_colors, '[]'::jsonb)
+             OR (
+               proposed.value ? 'strap_sourcing'
+               AND CASE
+                 WHEN jsonb_typeof(proposed.value -> 'strap_sourcing') = 'object'
+                   THEN proposed.value -> 'strap_sourcing'
+                 ELSE NULL
+               END IS DISTINCT FROM soi.strap_sourcing
+             )
+             OR (
+               proposed.value ? 'selected_terceirizacao_ids'
+               AND CASE
+                 WHEN jsonb_typeof(
+                   proposed.value -> 'selected_terceirizacao_ids'
+                 ) = 'array' THEN ARRAY(
+                   SELECT NULLIF(selected_id, '')::uuid
+                     FROM jsonb_array_elements_text(
+                       proposed.value -> 'selected_terceirizacao_ids'
+                     ) AS selected(selected_id)
+                    WHERE NULLIF(selected_id, '') IS NOT NULL
+                 )
+                 ELSE '{}'::uuid[]
+               END IS DISTINCT FROM COALESCE(
+                 soi.selected_terceirizacao_ids,
+                 '{}'::uuid[]
+               )
+             )
+             OR (
+               proposed.value ? 'terceirizacao_quantities'
+               AND CASE
+                 WHEN jsonb_typeof(
+                   proposed.value -> 'terceirizacao_quantities'
+                 ) = 'object' THEN proposed.value -> 'terceirizacao_quantities'
+                 ELSE '{}'::jsonb
+               END IS DISTINCT FROM COALESCE(
+                 soi.terceirizacao_quantities,
+                 '{}'::jsonb
+               )
+             )
+             OR (
+               proposed.value ? 'outsourced_sectors'
+               AND CASE
+                 WHEN jsonb_typeof(proposed.value -> 'outsourced_sectors') = 'object'
+                   THEN proposed.value -> 'outsourced_sectors'
+                 ELSE '{}'::jsonb
+               END IS DISTINCT FROM COALESCE(
+                 soi.outsourced_sectors,
+                 '{}'::jsonb
+               )
+             )
+           );
+
+        IF cardinality(v_non_reversible_changed_op_ids) > 0 THEN
+          RAISE EXCEPTION
+            'OP mantida possui fato físico e sua demanda foi alterada: %',
+            array_to_string(v_non_reversible_changed_op_ids, ', ')
+            USING ERRCODE = 'PZ123';
+        END IF;
+
         IF p_payload ? 'teardown_op_ids' THEN
           IF jsonb_typeof(p_payload -> 'teardown_op_ids') <> 'array' THEN
             RAISE EXCEPTION 'teardown_op_ids deve ser array de UUIDs'
               USING ERRCODE = '22023';
           END IF;
           SELECT COALESCE(array_agg(x.value::uuid ORDER BY x.ordinality), '{}'::uuid[])
-            INTO v_teardown_op_ids
+            INTO v_requested_teardown_op_ids
             FROM jsonb_array_elements_text(p_payload -> 'teardown_op_ids')
               WITH ORDINALITY AS x(value, ordinality);
+          IF EXISTS (
+            SELECT 1
+              FROM unnest(v_requested_teardown_op_ids) AS requested(id)
+             WHERE NOT (requested.id = ANY(v_derived_teardown_op_ids))
+          ) THEN
+            RAISE EXCEPTION
+              'teardown_op_ids contém OP que o payload de itens não remove'
+              USING ERRCODE = '40001';
+          END IF;
         END IF;
+        v_teardown_op_ids := v_derived_teardown_op_ids;
+
         IF p_payload ? 'cancel_op_ids' THEN
           IF jsonb_typeof(p_payload -> 'cancel_op_ids') <> 'array' THEN
             RAISE EXCEPTION 'cancel_op_ids deve ser array de UUIDs'
@@ -961,6 +1494,36 @@ BEGIN
             INTO v_cancel_op_ids
             FROM jsonb_array_elements_text(p_payload -> 'cancel_op_ids')
               WITH ORDINALITY AS x(value, ordinality);
+        END IF;
+
+        IF EXISTS (
+          SELECT 1
+            FROM unnest(v_advanced_op_ids) AS advanced(id)
+           WHERE NOT (advanced.id = ANY(v_cancel_op_ids))
+        ) THEN
+          RAISE EXCEPTION
+            'Existem OPs avançadas fora de cancel_op_ids; confirme o cancelamento antes de editar'
+            USING ERRCODE = 'PZ120';
+        END IF;
+        IF cardinality(v_non_reversible_removed_op_ids) > 0 THEN
+          RAISE EXCEPTION
+            'OP removida possui fato/estado não compensável pelo update: %',
+            array_to_string(v_non_reversible_removed_op_ids, ', ')
+            USING ERRCODE = 'PZ121';
+        END IF;
+        IF EXISTS (
+          SELECT 1
+            FROM unnest(v_cancel_op_ids) AS requested(id)
+            LEFT JOIN public.orders o
+              ON o.id = requested.id
+             AND o.sale_order_id = p_sale_order_id
+           WHERE o.id IS NULL
+              OR NOT (requested.id = ANY(v_advanced_op_ids))
+              OR o.status NOT IN ('Em Produção', 'Concluída', 'Finalizado')
+        ) THEN
+          RAISE EXCEPTION
+            'cancel_op_ids contém OP alheia, não avançada ou sem estado cancelável seguro'
+            USING ERRCODE = '40001';
         END IF;
 
         IF cardinality(v_cancel_op_ids) > 0 THEN
@@ -979,6 +1542,15 @@ BEGIN
             v_teardown_op_ids
           );
         END IF;
+        v_result := COALESCE(v_result, '{}'::jsonb) || jsonb_build_object(
+          'derived_teardown_op_ids', to_jsonb(v_teardown_op_ids),
+          'cancel_op_ids', to_jsonb(v_cancel_op_ids),
+          'non_reversible_removed_op_ids',
+          to_jsonb(v_non_reversible_removed_op_ids),
+          'non_reversible_changed_op_ids',
+          to_jsonb(v_non_reversible_changed_op_ids),
+          'removed_allocated_item_ids', to_jsonb(v_removed_allocated_item_ids)
+        );
 
         -- Os wrappers vivos ainda não fazem round-trip de todos os campos do
         -- cabeçalho. Completa-os dentro da MESMA subtransação; chave ausente
@@ -1029,15 +1601,6 @@ BEGIN
             v_outsource_sector := NULL;
           END IF;
 
-          IF v_so.status = 'Cancelado' AND v_target_status = 'Rascunho' THEN
-            -- Fecha também ponteiros legados que possam ter sobrevivido a um
-            -- cancelamento anterior ao command boundary; não altera o estado
-            -- nem o conteúdo da revisão histórica comprometida.
-            UPDATE public.sale_order_material_plan_revisions
-               SET is_current = false
-             WHERE sale_order_id = p_sale_order_id
-               AND is_current;
-          END IF;
           UPDATE public.sale_orders
              SET box_grouping = v_box_grouping,
                  external_nfe_number = v_external_nfe_number,
@@ -1074,7 +1637,10 @@ BEGIN
               USING ERRCODE = 'PZ119';
           END IF;
 
-          v_manual_billing_override := NULL;
+          v_manual_billing_override := COALESCE(
+            v_so.manual_billing_override,
+            false
+          );
           IF v_billing_patch ? 'manual_billing_override' THEN
             BEGIN
               v_manual_billing_override := (
@@ -1088,15 +1654,20 @@ BEGIN
               RAISE EXCEPTION 'manual_billing_override não pode ser NULL'
                 USING ERRCODE = '22023';
             END IF;
-            IF v_manual_billing_override
-               AND length(btrim(COALESCE(
-                 v_billing_patch ->> 'manual_override_reason',
-                 ''
-               ))) < 10 THEN
-              RAISE EXCEPTION
-                'Override manual de faturamento exige motivo (10+ caracteres)'
-                USING ERRCODE = '22023';
-            END IF;
+          END IF;
+          v_target_manual_override_reason := CASE
+            WHEN v_billing_patch ? 'manual_override_reason'
+              THEN NULLIF(
+                btrim(v_billing_patch ->> 'manual_override_reason'),
+                ''
+              )
+            ELSE v_so.manual_override_reason
+          END;
+          IF v_manual_billing_override
+             AND length(COALESCE(v_target_manual_override_reason, '')) < 10 THEN
+            RAISE EXCEPTION
+              'Override manual de faturamento exige motivo (10+ caracteres)'
+              USING ERRCODE = '22023';
           END IF;
 
           UPDATE public.sale_orders so
@@ -1175,14 +1746,17 @@ BEGIN
                 'factoring_patch exige Administração/Gerência e can_edit em /financeiro'
                 USING ERRCODE = '42501';
             END IF;
-            IF v_factoring_config_id IS NOT NULL AND NOT EXISTS (
-              SELECT 1
+            IF v_factoring_config_id IS NOT NULL THEN
+              v_factoring_config_active := NULL;
+              SELECT fc.active
+                INTO v_factoring_config_active
                 FROM public.factoring_config fc
                WHERE fc.id = v_factoring_config_id
-                 AND fc.active
-            ) THEN
-              RAISE EXCEPTION 'Configuração de factoring inexistente/inativa'
-                USING ERRCODE = 'PZ107';
+               FOR SHARE;
+              IF NOT FOUND OR NOT COALESCE(v_factoring_config_active, false) THEN
+                RAISE EXCEPTION 'Configuração de factoring inexistente/inativa'
+                  USING ERRCODE = 'PZ107';
+              END IF;
             END IF;
             UPDATE public.sale_orders
                SET factoring_config_id = v_factoring_config_id,
@@ -1345,6 +1919,16 @@ BEGIN
           ''
         );
 
+        IF v_so.status = 'Cancelado' AND v_target_status = 'Rascunho' THEN
+          -- Fecha ponteiros legados que possam ter sobrevivido a cancelamentos
+          -- anteriores ao command boundary. A revisão comprometida permanece
+          -- imutável e reconstruível; somente deixa de ser a revisão vigente.
+          UPDATE public.sale_order_material_plan_revisions
+             SET is_current = false
+           WHERE sale_order_id = p_sale_order_id
+             AND is_current;
+        END IF;
+
         -- O preflight já validou a aresta, a política de NF-e e a NF-e
         -- autorizada. Revalidamos fatos destrutivos no helper de cancelamento;
         -- todas as alterações abaixo continuam dentro da mesma subtransação.
@@ -1429,6 +2013,10 @@ BEGIN
           RAISE EXCEPTION 'billing contém campo ausente/não permitido'
             USING ERRCODE = '22023';
         END IF;
+        v_manual_billing_override := COALESCE(
+          v_so.manual_billing_override,
+          false
+        );
         IF p_payload ? 'manual_billing_override' THEN
           BEGIN
             v_manual_billing_override := (p_payload ->> 'manual_billing_override')::boolean;
@@ -1440,11 +2028,16 @@ BEGIN
             RAISE EXCEPTION 'manual_billing_override não pode ser NULL'
               USING ERRCODE = '22023';
           END IF;
-          IF v_manual_billing_override
-             AND length(btrim(COALESCE(p_payload ->> 'manual_override_reason', ''))) < 10 THEN
-            RAISE EXCEPTION 'Override manual de faturamento exige motivo (10+ caracteres)'
-              USING ERRCODE = '22023';
-          END IF;
+        END IF;
+        v_target_manual_override_reason := CASE
+          WHEN p_payload ? 'manual_override_reason'
+            THEN NULLIF(btrim(p_payload ->> 'manual_override_reason'), '')
+          ELSE v_so.manual_override_reason
+        END;
+        IF v_manual_billing_override
+           AND length(COALESCE(v_target_manual_override_reason, '')) < 10 THEN
+          RAISE EXCEPTION 'Override manual de faturamento exige motivo (10+ caracteres)'
+            USING ERRCODE = '22023';
         END IF;
 
         UPDATE public.sale_orders so
@@ -1505,14 +2098,17 @@ BEGIN
           btrim(COALESCE(p_payload ->> 'factoring_config_id', '')),
           ''
         )::uuid;
-        IF v_factoring_config_id IS NOT NULL AND NOT EXISTS (
-          SELECT 1
+        IF v_factoring_config_id IS NOT NULL THEN
+          v_factoring_config_active := NULL;
+          SELECT fc.active
+            INTO v_factoring_config_active
             FROM public.factoring_config fc
            WHERE fc.id = v_factoring_config_id
-             AND fc.active
-        ) THEN
-          RAISE EXCEPTION 'Configuração de factoring inexistente/inativa'
-            USING ERRCODE = 'PZ107';
+           FOR SHARE;
+          IF NOT FOUND OR NOT COALESCE(v_factoring_config_active, false) THEN
+            RAISE EXCEPTION 'Configuração de factoring inexistente/inativa'
+              USING ERRCODE = 'PZ107';
+          END IF;
         END IF;
         UPDATE public.sale_orders
            SET factoring_config_id = v_factoring_config_id,

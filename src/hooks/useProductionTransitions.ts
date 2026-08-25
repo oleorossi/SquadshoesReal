@@ -69,8 +69,8 @@ export function useProductionTransitions() {
    * (`/producao/apontamento`: Corte, Silk, Colagem, Montagem, Solagem,
    * Acabamento, Costura) no botão "Finalizar OPs selecionadas".
    *
-   * ⚠ PASSA PELA RPC CANÔNICA `apontar_producao_setor`, não mais direto em
-   * `finalize_production_sector`.
+   * ⚠ PASSA PELO COMMAND CANÔNICO `execute_production_pointing_command`, não
+   * mais direto em `finalize_production_sector`.
    *
    * Motivo (auditoria 2026-07-29, medido em produção): `finalize_production_sector`
    * só faz UPDATE em `order_stages`/`orders` e NUNCA insere em
@@ -96,7 +96,7 @@ export function useProductionTransitions() {
     // evita que o caller apontasse o total de novo em cima do que já existia.
     const { data: stage, error: stageErr } = await supabase
       .from('order_stages')
-      .select('stage_name, quantity_processed, quantity_total, status')
+      .select('stage_name, quantity_processed, quantity_total, status, updated_at')
       .eq('order_id', orderId)
       .or(`stage_name.eq.${currentSector}${currentSector === 'Aviamento' ? ',stage_name.eq.Mesa' : ''}`)
       .maybeSingle();
@@ -108,16 +108,28 @@ export function useProductionTransitions() {
 
     const alvo = opts?.quantityProcessed ?? stage.quantity_total ?? 0;
     const incremento = Math.max(0, alvo - (stage.quantity_processed ?? 0));
+    const clientRequestId = crypto.randomUUID();
+
+    type PointingCommandResult = {
+      data: unknown;
+      error: { message?: string } | null;
+    };
+    const callRpc = supabase.rpc as unknown as (
+      functionName: string,
+      args: Record<string, unknown>,
+    ) => PromiseLike<PointingCommandResult>;
 
     const call = (confirmed?: string[]) =>
-      supabase.rpc('apontar_producao_setor', {
+      callRpc('execute_production_pointing_command', {
         p_order_id: orderId,
         p_stage_name: stage.stage_name,
         p_quantity: incremento,
         p_finalize: true,
         p_note: 'Finalizado na tela do setor',
-        ...(opts?.operatorEmployeeId ? { p_operator_employee_id: opts.operatorEmployeeId } : {}),
-        ...(confirmed?.length ? { p_confirmed_warnings: confirmed } : {}),
+        p_operator_employee_id: opts?.operatorEmployeeId ?? null,
+        p_confirmed_warnings: confirmed ?? null,
+        p_expected_stage_updated_at: stage.updated_at,
+        p_client_request_id: clientRequestId,
       });
 
     let { data, error } = await call();

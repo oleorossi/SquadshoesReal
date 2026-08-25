@@ -28,6 +28,20 @@ const corsHeaders = {
 };
 
 const CLICKNOTAS_BASE = "https://api.clicknotas.com";
+const SALE_ORDER_ITEMS_FOR_NFE_SELECT = "*, technical_sheets(id, name, code, ncm, gestaoclick_id, description, shoe_category, upper_material, lining_material, insole_material, sole_material, weight_per_pair_kg), products(id, name, sku, ncm, gestaoclick_id, unit, unit_price, active, quantity, stock_grade)";
+
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map(stableJson).join(",")}]`;
+  }
+  if (value && typeof value === "object") {
+    const object = value as Record<string, unknown>;
+    return `{${Object.keys(object).sort().map((key) =>
+      `${JSON.stringify(key)}:${stableJson(object[key])}`
+    ).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
 
 // Marca default — usada quando o PV não tem brand cadastrada explícita.
 // Era hardcoded até 15/05/2026; agora é override-able via sale_orders.brand.
@@ -395,9 +409,9 @@ Deno.serve(async (req) => {
       can_view: boolean;
       can_create: boolean;
     }) =>
-      p.can_view === true && (
-        p.module === "nfe" || (p.module === "/nfe" && p.can_create === true)
-      )
+      p.can_view === true &&
+      p.can_create === true &&
+      (p.module === "nfe" || p.module === "/nfe")
     );
     if (hasGranularAllowList && !canCreateNfe) {
       return new Response(JSON.stringify({
@@ -479,7 +493,7 @@ Deno.serve(async (req) => {
 
     const { data: items, error: itemsErr } = await adminClient
       .from("sale_order_items")
-      .select("*, technical_sheets(id, name, code, ncm, gestaoclick_id, description, shoe_category, upper_material, lining_material, insole_material, sole_material, weight_per_pair_kg), products(id, name, sku, ncm, gestaoclick_id, unit)")
+      .select(SALE_ORDER_ITEMS_FOR_NFE_SELECT)
       .eq("sale_order_id", sale_order_id)
       .order("created_at", { ascending: true })
       .order("id", { ascending: true });
@@ -739,6 +753,40 @@ Deno.serve(async (req) => {
         }), { status: 409, headers: corsHeaders });
       }
       standaloneHoldId = String(prepared.hold_id);
+
+      // O preflight/prepare validou o estado atual, mas order/items/client
+      // foram carregados antes da transação. Releitura após o hold fecha essa
+      // janela: os triggers do ledger já congelam cabeçalho/itens e qualquer
+      // diferença aborta antes do primeiro acesso remoto.
+      const [freshOrderResult, freshItemsResult, freshClientResult] = await Promise.all([
+        adminClient.from("sale_orders").select("*").eq("id", sale_order_id).single(),
+        adminClient.from("sale_order_items")
+          .select(SALE_ORDER_ITEMS_FOR_NFE_SELECT)
+          .eq("sale_order_id", sale_order_id)
+          .order("created_at", { ascending: true })
+          .order("id", { ascending: true }),
+        adminClient.from("clients").select("*").eq("id", order.client_id).single(),
+      ]);
+      const refreshError = freshOrderResult.error
+        || freshItemsResult.error
+        || freshClientResult.error;
+      if (refreshError) {
+        return new Response(JSON.stringify({
+          error: `Falha ao confirmar snapshot da NF-e avulsa: ${refreshError.message}`,
+        }), { status: 409, headers: corsHeaders });
+      }
+      const loadedSnapshot = stableJson({ order, items, client });
+      const heldSnapshot = stableJson({
+        order: freshOrderResult.data,
+        items: freshItemsResult.data,
+        client: freshClientResult.data,
+      });
+      if (loadedSnapshot !== heldSnapshot) {
+        return new Response(JSON.stringify({
+          error: "PV, itens, produto ou cliente mudou durante a preparação. Revise e emita novamente.",
+          conflict: true,
+        }), { status: 409, headers: corsHeaders });
+      }
     }
 
     // ---------- Sync lazy: cliente no ClickNotas ----------
@@ -1852,6 +1900,9 @@ Deno.serve(async (req) => {
 
     let createResp;
     try {
+      // Falta de credencial é falha comprovadamente pré-provedor: valida antes
+      // de acender o marcador de ambiguidade para que o finally libere o hold.
+      if (isStandaloneOrder) gcHeaders();
       standaloneProviderNfeCalled = isStandaloneOrder;
       createResp = await gcFetch("/notas_fiscais_produtos", {
         method: "POST",
@@ -2211,13 +2262,19 @@ Deno.serve(async (req) => {
     // Se o POST fiscal ainda não começou, liberar é comprovadamente seguro.
     if (standaloneHoldId && adminClientForStockCompensation && !standaloneProviderNfeCalled) {
       try {
-        await adminClientForStockCompensation.rpc(
+        const { data: released, error: releaseError } = await adminClientForStockCompensation.rpc(
           "release_standalone_nfe_stock_hold",
           {
             p_hold_id: standaloneHoldId,
             p_reason: "Emissão encerrada antes de criar o documento no provedor",
           },
         );
+        if (releaseError || released?.ok !== true) {
+          console.error(
+            "emit-nfe: compensação final exige reconciliação:",
+            releaseError?.message || released?.code || "resultado inválido",
+          );
+        }
       } catch (releaseError) {
         console.error("emit-nfe: falha na compensação final do hold:", releaseError);
       }

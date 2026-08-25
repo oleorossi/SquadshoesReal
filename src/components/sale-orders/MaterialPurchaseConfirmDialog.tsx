@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -7,12 +7,11 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { EmptyState } from '@/components/ui/empty-state';
 import {
-  Calendar, Truck, Warning as AlertTriangle, ShoppingCart, CircleNotch as Loader2,
+  Calendar, Truck, Warning as AlertTriangle, ShoppingCart,
   FloppyDisk as Save, XCircle, Money, Storefront,
 } from '@phosphor-icons/react';
 import { MaterialAvailabilityResult, MaterialShortage } from '@/lib/materialAvailability';
 import { SubmitFlowStepper } from './SubmitFlowStepper';
-import { useUpsertOpenPurchaseOrder } from '@/hooks/usePurchaseOrders';
 import { useSuppliers } from '@/hooks/useSuppliers';
 import { supabase } from '@/integrations/supabase/client';
 import { formatCurrency, formatMoney, formatNumber, cn } from '@/lib/utils';
@@ -22,10 +21,8 @@ interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   result: MaterialAvailabilityResult | null;
-  /** ID do PV que está sendo criado/editado — vinculado nas OCs/OSs geradas. */
-  saleOrderId?: string | null;
   /** Called when user confirms with the action chosen. */
-  onConfirm: (action: 'with_po' | 'without_po' | 'draft') => void;
+  onConfirm: (action: 'continue' | 'draft') => void;
 }
 
 /** Fornecedor atribuído aqui na tela, ainda não refletido no `result` do pai. */
@@ -38,20 +35,21 @@ interface SupplierOverride {
 const NO_SUPPLIER = '__sem_fornecedor__';
 
 /**
- * A linha como o usuário a lê E como ela será gravada na OC — os mesmos campos
- * que `handleGeneratePOs` manda pro `upsert_open_purchase_order`.
+ * Prévia comercial da linha que o usuário revisa antes de salvar. A OC não é
+ * gravada por este componente: depois do commit, o worker recalcula a falta e
+ * normaliza unidade/preço no servidor antes de criar a sugestão versionada.
  *
  * ⚠ Antes a tabela mostrava `suggested_qty` (unidade de CONSUMO: m, kg) enquanto
  * a OC gravava `suggested_purchase_qty` (unidade de COMPRA: rolo, saco). Com
  * `conversion_rate != 1` o número aprovado na tela não era o número comprado.
- * Aqui a resolução é feita UMA vez e alimenta tela e gravação.
+ * Aqui a resolução alimenta a prévia; a gravação final é recalculada no servidor.
  */
 interface PurchaseLine {
   shortage: MaterialShortage;
   supplierId: string | null;
   supplierName: string;
   leadTimeDays: number;
-  /** Quantidade que vai pro item da OC. */
+  /** Quantidade estimada para o item da OC. */
   qty: number;
   /** Unidade dessa quantidade. */
   unit: string;
@@ -98,26 +96,12 @@ function resolveLine(s: MaterialShortage, override?: SupplierOverride): Purchase
   };
 }
 
-export function MaterialPurchaseConfirmDialog({ open, onOpenChange, result, saleOrderId, onConfirm }: Props) {
-  const upsertPO = useUpsertOpenPurchaseOrder();
+export function MaterialPurchaseConfirmDialog({ open, onOpenChange, result, onConfirm }: Props) {
   const queryClient = useQueryClient();
-  const [generating, setGenerating] = useState(false);
   const [overrides, setOverrides] = useState<Record<string, SupplierOverride>>({});
-  /**
-   * Grupos já gravados com sucesso nesta sessão do diálogo. Antes, um erro no
-   * meio do loop deixava as OCs anteriores criadas e o botão pronto pra rodar
-   * tudo de novo — a segunda tentativa somava quantidade nas mesmas OCs abertas.
-   */
-  const generatedSuppliers = useRef<Set<string>>(new Set());
 
-  // Cada abertura é uma decisão nova: o pedido pode ter mudado entre uma
-  // tentativa e outra. Sem isto, um fornecedor gravado na abertura anterior
-  // continuaria na lista de "já gerados" e seria pulado em silêncio agora.
   useEffect(() => {
-    if (open) {
-      generatedSuppliers.current = new Set();
-      setOverrides({});
-    }
+    if (open) setOverrides({});
   }, [open]);
 
   // Só busca a lista de fornecedores quando o diálogo está aberto — a tela de
@@ -143,9 +127,9 @@ export function MaterialPurchaseConfirmDialog({ open, onOpenChange, result, sale
   const shortages = useMemo(() => result?.shortages ?? [], [result]);
 
   /**
-   * Agrupado por fornecedor — a MESMA chave que `upsert_open_purchase_order`
-   * usa, então cada card na tela é exatamente uma OC. Sem fornecedor vem
-   * primeiro: é o que trava a geração e o que o usuário precisa resolver.
+   * Prévia agrupada por fornecedor. O servidor refaz o agrupamento depois do
+   * commit; sem fornecedor vem primeiro porque precisa ser corrigido antes de
+   * o worker conseguir criar uma sugestão automática.
    */
   const {
     groups, blocked, artisanalCount, generableCount, generableTotal,
@@ -228,9 +212,8 @@ export function MaterialPurchaseConfirmDialog({ open, onOpenChange, result, sale
         lead_time_days: Number(supplier.lead_time_days) || 0,
       },
     }));
-    // Persiste no cadastro do produto pra o próximo PV já nascer resolvido.
-    // Se falhar, desfaz o override — a tela não pode prometer uma OC que a
-    // geração não vai conseguir agrupar.
+    // Persiste no cadastro do produto antes do save: o worker lê o fornecedor
+    // canônico do produto, não o estado otimista deste diálogo.
     assignSupplier.mutate(
       { productId, supplierId },
       {
@@ -245,78 +228,6 @@ export function MaterialPurchaseConfirmDialog({ open, onOpenChange, result, sale
         },
       },
     );
-  };
-
-  const handleGeneratePOs = async () => {
-    setGenerating(true);
-    const failures: string[] = [];
-    let ocCount = 0;
-    try {
-      for (const group of groups) {
-        if (!group.supplierId) continue;
-        if (generatedSuppliers.current.has(group.key)) continue;
-        try {
-          // O3: usa suggested_purchase_qty + purchase_unit (já convertidos pra
-          // unidade do fornecedor: m → rolo, kg → saco). Sem conversão, vira
-          // OC em unidade interna e o comprador refaz manualmente.
-          // Auditoria 2026-09-25: o preço tem que vir na MESMA unidade da
-          // quantidade — usar `unit_price` (R$/unidade de estoque) junto de
-          // `suggested_purchase_qty` (unidade de compra) subfaturava a OC pelo
-          // conversion_rate. `purchase_unit_price` já é R$/unidade de compra.
-          // Os valores vêm de `resolveLine`, os MESMOS exibidos na tabela.
-          await upsertPO.mutateAsync({
-            supplier_id: group.supplierId,
-            supplier_name: group.supplierName,
-            sale_order_id: saleOrderId || null,
-            notes: `Itens adicionados automaticamente pelo PV.`,
-            items: group.items.map(line => ({
-              product_id: line.shortage.product_id,
-              quantity: line.qty,
-              unit_price: line.price,
-              unit: line.unit,
-              current_stock: line.shortage.available,
-              min_stock: line.shortage.min_stock,
-              // Antes: 0 hardcoded — toda OC gerada por PV nascia sem teto de
-              // estoque. Agora vem do cadastro do produto.
-              max_stock: line.shortage.max_stock ?? 0,
-              // Solados saem com cor + grade preenchidos pra fornecedor entregar
-              // a matriz de tamanhos correta. Materiais sem variação por cor
-              // (forros/tiras/etc.) vêm com color=null/grade=null do
-              // enrichMaterialShortages que colapsa cores nesses casos.
-              color: line.shortage.color ?? null,
-              grade: line.shortage.grade ?? null,
-            })),
-          });
-          generatedSuppliers.current.add(group.key);
-          ocCount++;
-        } catch (err) {
-          const message = err instanceof Error ? err.message : String(err);
-          failures.push(`${group.supplierName}: ${message || 'erro desconhecido'}`);
-        }
-      }
-
-      if (failures.length > 0) {
-        // Não avança o fluxo com OC faltando — o usuário decide entre tentar de
-        // novo (os grupos já gravados são pulados) ou salvar sem OC.
-        toast.error(
-          `${failures.length} ${failures.length === 1 ? 'OC não foi gerada' : 'OCs não foram geradas'}.`,
-          { description: failures.join(' · ') },
-        );
-        return;
-      }
-      if (ocCount > 0) {
-        // "fornecedor", não "OC": a RPC pode ter agregado numa OC já aberta em
-        // vez de criar uma nova — o número de OCs novas não é conhecido aqui.
-        toast.success(
-          ocCount === 1
-            ? 'Compra enviada para 1 fornecedor.'
-            : `Compra enviada para ${ocCount} fornecedores.`,
-        );
-      }
-      onConfirm('with_po');
-    } finally {
-      setGenerating(false);
-    }
   };
 
   return (
@@ -337,13 +248,9 @@ export function MaterialPurchaseConfirmDialog({ open, onOpenChange, result, sale
               <AlertTriangle className="h-5 w-5 text-warning shrink-0" />
               Materiais insuficientes
             </DialogTitle>
-            {/* ⚠ "vira uma OC" seria falso: `upsert_open_purchase_order` procura
-                uma OC ABERTA do fornecedor e agrega nela; só cria OC nova quando
-                não existe nenhuma. Por isso o texto (e o botão) falam em
-                fornecedor, não em número de OCs criadas. */}
             <DialogDescription className="text-sm">
-              Revise o que será comprado e de quem. Cada card vira uma ordem de compra — ou
-              entra na OC que o fornecedor já tem aberta.
+              Revise a estimativa e os fornecedores. Nenhuma OC é criada nesta etapa:
+              depois do commit, o servidor recalcula e versiona as sugestões do pedido.
             </DialogDescription>
           </div>
 
@@ -382,7 +289,7 @@ export function MaterialPurchaseConfirmDialog({ open, onOpenChange, result, sale
               label="Sem fornecedor"
               value={String(blockedCount)}
               hint={blockedCount > 0
-                ? `${formatMoney(blockedTotal)} fora da compra`
+                ? `${formatMoney(blockedTotal)} em rascunho a definir`
                 : 'tudo pronto pra comprar'}
               tone={blockedCount > 0 ? 'destructive' : 'default'}
             />
@@ -391,17 +298,27 @@ export function MaterialPurchaseConfirmDialog({ open, onOpenChange, result, sale
 
         {/* ── Corpo rolável ── */}
         <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 space-y-4">
+          <Alert className="border-primary/40 bg-primary/5">
+            <ShoppingCart className="h-4 w-4" />
+            <AlertTitle>Compra processada depois do pedido</AlertTitle>
+            <AlertDescription className="text-xs">
+              Em Rascunho, nenhuma OC nasce. Ao aprovar ou enviar para produção, a outbox
+              cria ou reconcilia somente sugestões ainda editáveis; divergências viram atenção operacional.
+            </AlertDescription>
+          </Alert>
+
           {blockedCount > 0 && (
             <Alert variant="destructive">
               <XCircle className="h-4 w-4" />
               <AlertTitle>
                 {blockedCount === 1
-                  ? '1 material não tem fornecedor e não entra na compra'
-                  : `${blockedCount} materiais não têm fornecedor e não entram na compra`}
+                  ? '1 material ainda não tem fornecedor'
+                  : `${blockedCount} materiais ainda não têm fornecedor`}
               </AlertTitle>
               <AlertDescription className="text-xs">
-                Escolha o fornecedor na própria linha para incluir na OC — a escolha também fica
-                salva no cadastro do produto.
+                Escolha o fornecedor na própria linha para a sugestão nascer pronta. Se continuar
+                sem definir, o servidor agrupa essas linhas em uma OC rascunho “A definir”; a escolha
+                feita aqui também fica salva no cadastro do produto.
               </AlertDescription>
             </Alert>
           )}
@@ -456,7 +373,7 @@ export function MaterialPurchaseConfirmDialog({ open, onOpenChange, result, sale
                   {isBlocked && (
                     <span className="ml-auto flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-destructive">
                       <span className="font-mono tabular-nums normal-case">{formatMoney(group.total)}</span>
-                      Não será comprado
+                      Rascunho a definir
                     </span>
                   )}
                 </header>
@@ -541,7 +458,7 @@ export function MaterialPurchaseConfirmDialog({ open, onOpenChange, result, sale
                                 <Select
                                   value={line.supplierId ?? NO_SUPPLIER}
                                   onValueChange={(value) => handleAssignSupplier(s.product_id, value)}
-                                  disabled={generating}
+                                  disabled={assignSupplier.isPending}
                                 >
                                   <SelectTrigger className="h-8 text-xs" aria-label={`Fornecedor de ${s.product_name}`}>
                                     <SelectValue placeholder="Escolher fornecedor" />
@@ -617,9 +534,9 @@ export function MaterialPurchaseConfirmDialog({ open, onOpenChange, result, sale
           {missingPriceCount > 0 && (
             <p className="text-xs text-destructive">
               ⚠ {missingPriceCount === 1
-                ? '1 material está sem preço de cadastro e entra como R$ 0,00'
-                : `${missingPriceCount} materiais estão sem preço de cadastro e entram como R$ 0,00`}
-              {' '}— o valor estimado está <strong>abaixo</strong> do que será pago.
+                ? '1 material está sem preço de cadastro e ficará fora da sugestão automática'
+                : `${missingPriceCount} materiais estão sem preço de cadastro e ficarão fora da sugestão automática`}
+              {' '}— corrija o cadastro; o valor estimado está <strong>abaixo</strong> do que será pago.
             </p>
           )}
         </div>
@@ -627,42 +544,28 @@ export function MaterialPurchaseConfirmDialog({ open, onOpenChange, result, sale
         {/* ── Rodapé fixo ── */}
         <div className="shrink-0 border-t border-border bg-background px-4 sm:px-6 py-3">
           <div className="flex flex-col-reverse sm:flex-row gap-2 sm:items-center sm:justify-between">
-            <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={generating}>
+            <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={assignSupplier.isPending}>
               Cancelar
             </Button>
             <div className="flex flex-col-reverse sm:flex-row gap-2 sm:flex-wrap sm:justify-end">
-              <Button variant="secondary" onClick={() => onConfirm('draft')} disabled={generating} className="gap-1.5">
+              <Button variant="secondary" onClick={() => onConfirm('draft')} disabled={assignSupplier.isPending} className="gap-1.5">
                 <Save className="h-4 w-4" />
                 Salvar Rascunho
               </Button>
-              <Button variant="outline" onClick={() => onConfirm('without_po')} disabled={generating}>
-                Salvar pedido sem OC
-              </Button>
-              {/* O rótulo diz o número REAL de OCs que serão criadas. Antes o botão
-                  prometia "Gerar OCs" e pulava em silêncio todo material sem
-                  fornecedor, avisando só por toast depois do fato. */}
               <Button
-                onClick={handleGeneratePOs}
-                disabled={generating || generableCount === 0}
+                onClick={() => onConfirm('continue')}
+                disabled={assignSupplier.isPending}
                 className="gap-2"
-                title={generableCount === 0 ? 'Nenhum material tem fornecedor definido' : undefined}
               >
-                {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShoppingCart className="h-4 w-4" />}
-                {generating
-                  ? 'Gerando...'
-                  : generableCount === 0
-                    // Nada comprável tem duas causas diferentes, e dizer "sem
-                    // fornecedor" quando o pedido só tem tira artesanal culpa
-                    // um cadastro que está certo.
-                    ? (blockedCount > 0 ? 'Sem fornecedor para comprar' : 'Nada a comprar aqui')
-                    : `Comprar de ${generableCount} ${generableCount === 1 ? 'fornecedor' : 'fornecedores'} e salvar`}
+                <ShoppingCart className="h-4 w-4" />
+                Continuar e salvar pedido
               </Button>
             </div>
           </div>
-          {blockedCount > 0 && generableCount > 0 && (
+          {blockedCount > 0 && (
             <p className="text-xs text-destructive mt-2 sm:text-right">
-              {blockedCount === 1 ? '1 material ficará' : `${blockedCount} materiais ficarão`} de fora
-              por falta de fornecedor.
+              {blockedCount === 1 ? '1 material ficará' : `${blockedCount} materiais ficarão`}
+              {' '}em rascunho “A definir” se o PV for aprovado sem fornecedor.
             </p>
           )}
         </div>

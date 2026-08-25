@@ -386,7 +386,9 @@ BEGIN
     RAISE EXCEPTION 'Outbox worker exige service_role' USING ERRCODE = '42501';
   END IF;
   IF length(btrim(COALESCE(p_worker_id, ''))) NOT BETWEEN 1 AND 200
+     OR p_limit IS NULL
      OR p_limit NOT BETWEEN 1 AND 500
+     OR p_lease_seconds IS NULL
      OR p_lease_seconds NOT BETWEEN 30 AND 3600 THEN
     RAISE EXCEPTION 'Parâmetros inválidos para claim da outbox'
       USING ERRCODE = '22023';
@@ -496,6 +498,7 @@ BEGIN
     RAISE EXCEPTION 'Outbox worker exige service_role' USING ERRCODE = '42501';
   END IF;
   IF length(btrim(COALESCE(p_error, ''))) = 0
+     OR p_retry_after_seconds IS NULL
      OR p_retry_after_seconds NOT BETWEEN 0 AND 86400 THEN
     RAISE EXCEPTION 'Falha da outbox exige erro e retry válido'
       USING ERRCODE = '22023';

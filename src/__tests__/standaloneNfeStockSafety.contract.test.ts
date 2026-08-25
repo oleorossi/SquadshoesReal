@@ -84,6 +84,9 @@ describe('NF-e avulsa — contrato comercial e hold de estoque', () => {
     expect(prepare).toContain('v_preflight := public.preflight_standalone_nfe_emission');
     expect(MIGRATION).toContain('trg_guard_standalone_nfe_hold_order');
     expect(MIGRATION).toContain('trg_guard_standalone_nfe_hold_items');
+    expect(MIGRATION).toContain('Identidade standalone da NF-e avulsa é imutável');
+    expect(MIGRATION).toContain('tg_sync_nfe_numero_to_sale_order');
+    expect(MIGRATION).toContain("- 'nfe' - 'updated_at' - 'order_version'");
   });
 
   it('release compensa uma vez e jamais força reserved_stock negativo', () => {
@@ -125,6 +128,7 @@ describe('NF-e avulsa — contrato comercial e hold de estoque', () => {
     expect(reverse).toContain("movement_type, quantity");
     expect(reverse).toContain("'estorno', NULL");
     expect(reverse).toContain("SET status = 'Rascunho'");
+    expect(reverse).toContain('reconciliation_reason = NULL');
     expect(reverse).not.toContain("SET status = 'Em Produção'");
   });
 
@@ -158,6 +162,11 @@ describe('NF-e avulsa — contrato comercial e hold de estoque', () => {
     expect(MIGRATION).toContain("GRANT EXECUTE ON FUNCTION public.%s TO service_role");
     expect(MIGRATION).toContain("ARRAY['admin', 'gerente', 'nfe_operator']");
     expect(MIGRATION).toContain("up.module = '/nfe'");
+    const statusGuard = sqlFunction('tg_settle_standalone_nfe_stock');
+    expect(statusGuard).toContain('Status fiscal de NF-e avulsa exige service_role');
+    expect(statusGuard).not.toContain(
+      "AND NEW.status IN ('autorizada', 'rejeitada', 'cancelada')",
+    );
   });
 });
 
@@ -172,11 +181,15 @@ describe('NF-e avulsa — guards das Edge Functions', () => {
     expect(firstProviderAccessAt).toBeGreaterThan(prepareAt);
     expect(providerPostAt).toBeGreaterThan(prepareAt);
     expect(EMIT.slice(preflightAt - 100, prepareAt)).toContain('supabase.rpc');
-    expect(EMIT.slice(prepareAt - 300, prepareAt)).toContain(
+    expect(EMIT.slice(prepareAt - 800, prepareAt)).toContain(
       'isStandaloneOrder && !isDryRun',
     );
     expect(EMIT).toContain('bind_standalone_nfe_stock_hold');
-    expect(EMIT).toContain('p.module === "/nfe" && p.can_create === true');
+    expect(EMIT).toMatch(
+      /p\.can_view === true &&\s*p\.can_create === true &&\s*\(p\.module === "nfe" \|\| p\.module === "\/nfe"\)/,
+    );
+    expect(EMIT).toContain('const loadedSnapshot = stableJson({ order, items, client })');
+    expect(EMIT).toContain('PV, itens, produto ou cliente mudou durante a preparação');
   });
 
   it('emit-nfe compensa falha/rejeição e mantém ambiguidade para reconciliação', () => {
@@ -192,14 +205,23 @@ describe('NF-e avulsa — guards das Edge Functions', () => {
     expect(EMIT).toContain('É fail-safe contra emissão dupla');
   });
 
-  it('cancel-nfe suporta replay local e nunca reabre avulsa em produção', () => {
-    const replayAt = CANCEL.indexOf('nfe.status === "cancelada" && isStandaloneNfe');
+  it('cancel-nfe delega claim/commit/replay ao command e nunca escreve NF/PV cru', () => {
+    const beginAt = CANCEL.indexOf('"begin_nfe_cancellation_command"');
     const providerAt = CANCEL.indexOf('`${CLICKNOTAS_BASE}/notas_fiscais_produtos/cancelar/');
-    expect(replayAt).toBeGreaterThanOrEqual(0);
-    expect(providerAt).toBeGreaterThan(replayAt);
-    expect(CANCEL).toContain('reverse_standalone_nfe_stock_for_cancel');
-    expect(CANCEL).toContain('isStandaloneNfe ? "Rascunho" : "Em Produção"');
-    expect(CANCEL).toContain('p.module === "/nfe" && p.can_edit === true');
+    const completeAt = CANCEL.indexOf('"complete_nfe_cancellation_command"');
+    expect(beginAt).toBeGreaterThanOrEqual(0);
+    expect(providerAt).toBeGreaterThan(beginAt);
+    expect(completeAt).toBeGreaterThan(providerAt);
+    expect(CANCEL).toContain('"abort_nfe_cancellation_command"');
+    expect(CANCEL).toContain('provider_call_required === true');
+    expect(CANCEL).toContain('provider_call_skipped: true');
+    expect(CANCEL).not.toContain('.from("nfe_emitidas")');
+    expect(CANCEL).not.toContain('.from("sale_orders")');
+    expect(CANCEL).not.toContain('reverse_standalone_nfe_stock_for_cancel');
+    expect(CANCEL).toMatch(
+      /p\.can_view === true &&\s*p\.can_edit === true &&\s*\(p\.module === "nfe" \|\| p\.module === "\/nfe"\)/,
+    );
     expect(CANCEL).toContain('reconciliation_needed: true');
+    expect(CANCEL).toContain('NF-e mantida em cancelando para reconciliação');
   });
 });

@@ -69,6 +69,11 @@ describe('sale order command — execução transacional', () => {
     expect(execute).toContain('cancel_sale_order_atomic_internal(');
     expect(execute).toContain('shipped_at = COALESCE(shipped_at, now())');
     expect(execute).toContain('transition não aceita readiness override');
+    const nfeLock = execute.indexOf('PERFORM nfe.id');
+    const nfeGuard = execute.indexOf("nfe.status IN ('autorizada', 'processando', 'cancelando')");
+    expect(nfeLock).toBeGreaterThanOrEqual(0);
+    expect(nfeLock).toBeLessThan(nfeGuard);
+    expect(execute.slice(nfeLock, nfeGuard)).toContain('FOR UPDATE');
   });
 
   it('billing/factoring são comandos CAS com payload allow-list', () => {
@@ -105,6 +110,17 @@ describe('sale order command — execução transacional', () => {
     expect(execute).toContain("'idempotent_replay', true");
   });
 
+  it('adota a ordem global NFe → coarse de tiras → command → PV', () => {
+    const nfe = execute.indexOf('PERFORM nfe.id');
+    const coarse = execute.indexOf("hashtextextended('strap-pv-auto-intent', 0)");
+    const command = execute.indexOf("'sale-order-command:' || p_sale_order_id::text");
+    const saleOrder = execute.indexOf('FROM public.sale_orders so', command);
+    expect(nfe).toBeGreaterThanOrEqual(0);
+    expect(coarse).toBeGreaterThan(nfe);
+    expect(command).toBeGreaterThan(coarse);
+    expect(saleOrder).toBeGreaterThan(command);
+  });
+
   it('update usa writers vivos, fecha campos extras e rematerializa PV ativo', () => {
     expect(execute).toContain('public.update_sale_order_with_teardown(');
     expect(execute).toContain('public.update_sale_order_with_atomic_op_cancel(');
@@ -139,6 +155,75 @@ describe('sale order command — execução transacional', () => {
       /cardinality\(v_cancel_op_ids\) = 0[\s\S]*?promote_sale_order_atomic_internal/,
     );
     expect(execute).toContain("v_so.status IN ('Aprovado', 'Em Produção')");
+  });
+
+  it('update deriva teardown sob lock e preserva histórico/fatos não reversíveis', () => {
+    const lock = execute.indexOf('PERFORM o.id\n          FROM public.orders o');
+    const derivation = execute.indexOf(
+      'INTO v_derived_teardown_op_ids,\n               v_advanced_op_ids,',
+    );
+    expect(lock).toBeGreaterThanOrEqual(0);
+    expect(derivation).toBeGreaterThan(lock);
+    expect(execute.slice(lock, derivation)).toContain('FOR UPDATE');
+    for (const child of [
+      'public.order_stages os',
+      'public.order_lots ol',
+      'public.production_pointings pp',
+      'public.production_stops ps',
+      'public.quality_records qr',
+      'public.goods_issues gi',
+      'public.finished_goods_receipts fgr',
+      'public.wip_ledger wl',
+      'public.material_reservations mr',
+      'public.production_consumptions pc',
+      'public.stock_movements sm',
+    ]) {
+      expect(execute.slice(lock, derivation)).toContain(child);
+    }
+    expect(execute.slice(lock, derivation).match(/FOR UPDATE OF/g)?.length).toBe(11);
+    expect(execute.slice(lock, derivation)).toContain('FOR UPDATE NOWAIT');
+    expect(execute.slice(lock, derivation).match(/NOWAIT/g)?.length).toBeGreaterThanOrEqual(12);
+    expect(execute).toContain('public.sale_order_lot_allocations sola');
+    expect(execute).toContain('FOR UPDATE OF sola NOWAIT');
+    expect(execute).toContain('removed_allocated_item_ids');
+    expect(execute).toContain("USING ERRCODE = 'PZ122'");
+    expect(execute).toContain('v_teardown_op_ids := v_derived_teardown_op_ids');
+    expect(execute).toContain(
+      "COALESCE(o.status, '') IN (\n                     'Rascunho', 'Pendente', 'Reservado'",
+    );
+    expect(execute).toContain(
+      "o.status IN (\n                   'Em Produção', 'Concluída', 'Finalizado'",
+    );
+    expect(execute).toContain("'Cancelada', 'Cancelado'");
+    expect(execute).toContain('o.deleted_at IS NULL');
+    expect(execute).toContain('public.stock_movements sm');
+    expect(execute).toContain('public.production_consumptions pc');
+    expect(execute).toContain('public.material_reservations mr');
+    expect(execute).toContain('public.order_stages os');
+    expect(execute).toContain('public.order_lots ol');
+    expect(execute).toContain('mr.consumed_at IS NOT NULL');
+    expect(execute).toContain('os.started_at IS NOT NULL');
+    expect(execute).toContain('os.completed_at IS NOT NULL');
+    expect(execute).toContain('teardown_op_ids contém OP que o payload de itens não remove');
+    expect(execute).toContain('Existem OPs avançadas fora de cancel_op_ids');
+    expect(execute).toContain("USING ERRCODE = 'PZ120'");
+    expect(execute).toContain("USING ERRCODE = 'PZ121'");
+    expect(execute).toContain('public.order_has_non_reversible_production_facts(o.id)');
+    expect(execute).toContain('non_reversible_changed_op_ids');
+    expect(execute).toContain("USING ERRCODE = 'PZ123'");
+    expect(execute).toContain("hashtext('hybrid_debit:' || v_op_id::text)");
+    expect(execute).toContain("hashtext('settle_reservations:' || v_op_id::text)");
+  });
+
+  it('factoring trava a configuração e billing valida o estado resultante', () => {
+    expect(execute.match(/FROM public\.factoring_config fc[\s\S]{0,160}?FOR SHARE/g)?.length)
+      .toBe(2);
+    expect(execute).toContain('v_factoring_config_active');
+    expect(execute.match(/v_target_manual_override_reason := CASE/g)?.length)
+      .toBe(2);
+    expect(execute).toContain(
+      "length(COALESCE(v_target_manual_override_reason, '')) < 10",
+    );
   });
 
   it('billing/factoring recusam fatos comerciais e financeiros já materializados', () => {

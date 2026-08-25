@@ -22,6 +22,8 @@ interface OutboxEvent {
   aggregate_version: number;
   payload: Record<string, unknown>;
   attempts: number;
+  locked_at: string;
+  lock_token: string;
 }
 
 function errorMessage(error: unknown): string {
@@ -71,6 +73,7 @@ Deno.serve(async (req) => {
   let failed = 0;
   let deadLetter = 0;
   let topLevelError: string | null = null;
+  const maintenance: Record<string, unknown> = {};
   const results: Array<{
     id: string;
     event_type: string;
@@ -79,10 +82,34 @@ Deno.serve(async (req) => {
     error?: string;
   }> = [];
 
+  // Manutenção independente do claim: só libera holds standalone expirados que
+  // não têm fato fiscal ambíguo/autorizado. Falha aqui vira telemetria e não
+  // impede o processamento da outbox.
+  const { data: staleHolds, error: staleHoldsError } = await admin.rpc(
+    "release_stale_standalone_nfe_stock_holds",
+    { p_before: new Date().toISOString() },
+  );
+  if (staleHoldsError) {
+    maintenance.standalone_nfe_stock_holds = {
+      ok: false,
+      error: staleHoldsError.message,
+    };
+    console.warn(
+      "outbox: falha no sweep de holds standalone",
+      staleHoldsError.message,
+    );
+  } else {
+    maintenance.standalone_nfe_stock_holds = {
+      ok: true,
+      result: staleHolds,
+    };
+  }
+
   try {
     const { data, error } = await admin.rpc("claim_sale_order_outbox", {
       p_worker_id: workerId,
       p_limit: limit,
+      p_lease_seconds: 300,
     });
     if (error) throw new Error(`claim: ${error.message}`);
     const events = (data || []) as OutboxEvent[];
@@ -119,6 +146,7 @@ Deno.serve(async (req) => {
           {
             p_event_id: event.id,
             p_worker_id: workerId,
+            p_lock_token: event.lock_token,
             p_effect_result: effectResult,
           },
         );
@@ -133,6 +161,7 @@ Deno.serve(async (req) => {
           {
             p_event_id: event.id,
             p_worker_id: workerId,
+            p_lock_token: event.lock_token,
             p_error: message,
             p_max_attempts: 8,
           },
@@ -163,6 +192,7 @@ Deno.serve(async (req) => {
     p_failed: failed,
     p_dead_letter: deadLetter,
     p_duration_ms: Math.max(0, Date.now() - startedAt),
+    p_maintenance_result: maintenance,
     p_error: topLevelError,
   });
   if (heartbeatError) {
@@ -175,6 +205,7 @@ Deno.serve(async (req) => {
     published,
     failed,
     dead_letter: deadLetter,
+    maintenance,
     error: topLevelError,
     results,
   };

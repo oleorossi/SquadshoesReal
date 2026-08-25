@@ -684,10 +684,10 @@ export default function SaleOrderForm() {
   const [materialResult, setMaterialResult] = useState<MaterialAvailabilityResult | null>(null);
   const [materialDialogOpen, setMaterialDialogOpen] = useState(false);
 
-  // Bug fix (2026-06-02): só re-checar estoque/solado (que abre "gerar Ordem de
-  // Compra?") quando os itens que afetam COMPRA mudarem. Assinatura dos itens do
+  // Bug fix (2026-06-02): só re-checar estoque/solado (prévia de compra) quando
+  // os itens que afetam COMPRA mudarem. Assinatura dos itens do
   // pedido carregado em edição, comparada no submit. Sem isto, qualquer edição
-  // (data, obs, cliente) reabria o prompt de OC porque a falta de estoque persiste.
+  // (data, obs, cliente) reabria a prévia porque a falta de estoque persiste.
   // Alterações não salvas derivam da revisão completa do estado persistível.
   // Isso cobre Selects Radix e mudanças programáticas legítimas que não emitem
   // input/change. Na edição, a baseline só fica pronta depois de cabeçalho e
@@ -1704,7 +1704,7 @@ export default function SaleOrderForm() {
 
     // Bug fix (2026-06-02): em EDIÇÃO, não re-perguntar sobre compra/capacidade
     // quando nada relevante mudou. Itens de compra inalterados (ref/qtd/cor/grade/
-    // tiras) → não re-checa estoque/solado (prompt "gerar Ordem de Compra?"). Se a
+    // tiras) → não re-checa estoque/solado (prévia da compra). Se a
     // data de faturamento também não mudou → salva direto (pula a capacidade tb).
     // Só itens OU data mudando é que volta a checar. Na dúvida, checa (seguro).
     if (isEdit && originalItemsSigRef.current !== null
@@ -1781,7 +1781,7 @@ export default function SaleOrderForm() {
         }
 
         // TIRAS são tratadas EXCLUSIVAMENTE pela fila canônica após o save. Remove
-        // tiras deste caminho antigo pra NÃO gerar OC DUPLICADA.
+        // tiras desta prévia porque elas seguem outro planejamento operacional.
         // Exclui: (a) product_id nulo = tira de cor nova sem produto (check_stock_availability
         // agora emite a falta, mas quem resolve é o dialog de tiras); (b) produtos cujo grupo
         // é de tira — identificado pelos group_ids das strap_colors dos itens (autoritativo) +
@@ -1862,7 +1862,7 @@ export default function SaleOrderForm() {
         setCheckingStock(false);
         setUnverifiedConfirm({
           what: 'a disponibilidade de materiais e de solado deste pedido',
-          consequence: 'O pedido pode ser salvo com material ou solado em falta, sem a Ordem de Compra ser oferecida.',
+          consequence: 'O pedido pode ser salvo sem a prévia de compra. O servidor ainda recalcula as faltas após o commit e registra qualquer bloqueio como atenção operacional.',
           detail: err?.message,
           resume: () => { void runCapacityCheck(validItems); },
         });
@@ -1896,7 +1896,7 @@ export default function SaleOrderForm() {
         what: unverifiedItems.length === 1
           ? `o estoque de 1 item: ${unverifiedItems[0]}`
           : `o estoque de ${unverifiedItems.length} itens: ${listados}`,
-        consequence: 'Pode faltar material na produção sem a Ordem de Compra ser oferecida. Os itens que responderam seguem sendo checados normalmente.',
+        consequence: 'A prévia pode omitir faltas deste item. O servidor ainda recalcula o pedido após o commit; os itens que responderam seguem sendo mostrados normalmente.',
         detail: failed ? (failed.reason?.message ?? String(failed.reason)) : undefined,
         resume: () => { setCheckingStock(true); void continueAfterStockCheck(); },
       });
@@ -2051,7 +2051,7 @@ export default function SaleOrderForm() {
     setTimeout(() => doSubmit(), 100);
   };
 
-  const handleSoleConfirm = (_generatedPO: boolean) => {
+  const handleSoleConfirm = () => {
     setSoleDialogOpen(false);
     if (soleResult?.minBillingDateISO && !form.delivery_deadline) {
       setForm(f => ({ ...f, delivery_deadline: soleResult.minBillingDateISO! }));
@@ -2084,7 +2084,7 @@ export default function SaleOrderForm() {
     });
   };
 
-  const handleMaterialConfirm = (action: 'with_po' | 'without_po' | 'draft') => {
+  const handleMaterialConfirm = (action: 'continue' | 'draft') => {
     setMaterialDialogOpen(false);
     if (action !== 'draft' && materialResult?.minPurchaseDateISO && !form.delivery_deadline) {
       setForm(f => ({ ...f, delivery_deadline: materialResult.minPurchaseDateISO! }));
@@ -2267,7 +2267,6 @@ export default function SaleOrderForm() {
         open={materialDialogOpen}
         onOpenChange={abortSubmit(setMaterialDialogOpen, 'compra de material')}
         result={materialResult}
-        saleOrderId={isEdit ? id : null}
         onConfirm={handleMaterialConfirm}
       />
 

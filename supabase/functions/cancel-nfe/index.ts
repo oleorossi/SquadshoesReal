@@ -25,7 +25,7 @@ function gcHeaders() {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
-  let _adminClientForRollback: ReturnType<typeof createClient> | null = null;
+  let _adminClientForAbort: ReturnType<typeof createClient> | null = null;
   let _claimedNfeId: string | null = null;
   let _providerCalled = false;
   try {
@@ -50,7 +50,7 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
-    _adminClientForRollback = adminClient;
+    _adminClientForAbort = adminClient;
     const { data: roles, error: rolesErr } = await adminClient
       .from("user_roles").select("role").eq("user_id", userId);
     if (rolesErr) {
@@ -75,9 +75,9 @@ Deno.serve(async (req) => {
       can_view: boolean;
       can_edit: boolean;
     }) =>
-      p.can_view === true && (
-        p.module === "nfe" || (p.module === "/nfe" && p.can_edit === true)
-      )
+      p.can_view === true &&
+      p.can_edit === true &&
+      (p.module === "nfe" || p.module === "/nfe")
     );
     if (hasGranularAllowList && !canCancelNfe) {
       return new Response(JSON.stringify({
@@ -97,134 +97,125 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: "Justificativa deve ter ao menos 15 caracteres" }), { status: 400, headers: corsHeaders });
     }
 
-    const { data: nfe, error: nfeErr } = await adminClient
-      .from("nfe_emitidas").select("*").eq("id", nfe_id).single();
-    if (nfeErr || !nfe) {
-      return new Response(JSON.stringify({ error: "NF-e não encontrada" }), { status: 404, headers: corsHeaders });
+    // NF-e e PV são lidos/travados no banco na ordem fiscal canônica. A Edge
+    // nunca faz UPDATE service-role cru desses agregados.
+    const { data: beginRaw, error: beginErr } = await adminClient.rpc(
+      "begin_nfe_cancellation_command",
+      { p_nfe_id: nfe_id, p_justification: justificativa.trim() },
+    );
+    if (beginErr || !beginRaw?.ok) {
+      const code = beginErr?.code;
+      const status = code === "P0002" ? 404
+        : ["PZ220", "PZ221", "40001", "55P03"].includes(String(code)) ? 409
+        : 400;
+      return new Response(JSON.stringify({
+        error: beginErr?.message || beginRaw?.code || "Cancelamento recusado pelo banco.",
+      }), { status, headers: corsHeaders });
     }
-    let standaloneOrder: { id: string; is_standalone_nfe: boolean } | null = null;
-    if (nfe.sale_order_id) {
-      const { data: saleOrder } = await adminClient
-        .from("sale_orders")
-        .select("id, is_standalone_nfe")
-        .eq("id", nfe.sale_order_id)
-        .maybeSingle();
-      standaloneOrder = saleOrder as typeof standaloneOrder;
-    }
-    const isStandaloneNfe = standaloneOrder?.is_standalone_nfe === true;
+    const begin = beginRaw as any;
+    const providerCallRequired = begin.provider_call_required === true;
+    _claimedNfeId = providerCallRequired ? nfe_id : null;
 
-    // Retry seguro depois de o provedor já ter confirmado o cancelamento: não
-    // chama o ClickNotas de novo; apenas conclui/reexecuta o estorno local.
-    if (nfe.status === "cancelada" && isStandaloneNfe) {
-      const { data: reversed, error: reverseErr } = await adminClient.rpc(
-        "reverse_standalone_nfe_stock_for_cancel",
-        { p_nfe_id: nfe_id },
+    const abortClaim = async (reason: string) => {
+      const { data, error } = await adminClient.rpc(
+        "abort_nfe_cancellation_command",
+        { p_nfe_id: nfe_id, p_reason: reason },
       );
-      if (reverseErr || reversed?.ok !== true) {
-        return new Response(JSON.stringify({
-          error: reverseErr?.message || reversed?.code || "Cancelamento fiscal confirmado, mas o estorno de estoque segue pendente.",
-          reconciliation_needed: true,
-        }), { status: 500, headers: corsHeaders });
+      if (error || data?.ok !== true) {
+        console.error("cancel-nfe: falha ao abortar claim:", error || data);
+        return false;
       }
-      return new Response(JSON.stringify({
-        success: true,
-        idempotent_replay: true,
-        stock_reversal: reversed,
-      }), { status: 200, headers: corsHeaders });
-    }
-    if (nfe.status !== "autorizada") {
-      return new Response(JSON.stringify({ error: "Somente NF-e autorizadas podem ser canceladas" }), { status: 400, headers: corsHeaders });
-    }
-    if (!nfe.provider_nfe_id) {
-      return new Response(JSON.stringify({
-        error: "NF-e sem ID do provedor — impossível cancelar via API. Use o painel do ClickNotas.",
-      }), { status: 400, headers: corsHeaders });
-    }
-
-    const { data: claimed, error: claimErr } = await adminClient
-      .from("nfe_emitidas")
-      .update({ status: "cancelando" })
-      .eq("id", nfe_id)
-      .eq("status", "autorizada")
-      .select("id, data_emissao");
-    if (claimErr) throw new Error(`Falha ao reservar cancelamento: ${claimErr.message}`);
-    if (!claimed || claimed.length === 0) {
-      return new Response(JSON.stringify({
-        error: "NF-e já está sendo cancelada ou seu status foi alterado por outro processo.",
-      }), { status: 409, headers: corsHeaders });
-    }
-    _claimedNfeId = nfe_id;
-
-    // Auditoria A1: usar data_emissao do CLAIM (UPDATE returning) ao invés do
-    // SELECT inicial. Se sync-nfe-from-provider rodou em paralelo e mudou a
-    // data, o cálculo de 24h ficaria stale. Pós-claim, o status está
-    // 'cancelando' (lockado) e o registro retornado é a fonte da verdade.
-    const dataEmissaoForCheck = (claimed[0] as any).data_emissao || nfe.data_emissao;
-    if (!dataEmissaoForCheck) {
-      await adminClient.from("nfe_emitidas")
-        .update({ status: "autorizada" })
-        .eq("id", nfe_id)
-        .eq("status", "cancelando");
       _claimedNfeId = null;
-      return new Response(JSON.stringify({
-        error: "NF-e sem data de emissão registrada — impossível verificar prazo de 24h. Sincronize o status da NF-e antes de tentar cancelar.",
-      }), { status: 400, headers: corsHeaders });
-    }
-    {
+      return true;
+    };
+
+    let providerData: any = providerCallRequired
+      ? null
+      : { idempotent_replay: true, provider_call_skipped: true };
+    let cancellationProtocol: string | null = null;
+
+    if (providerCallRequired) {
+      // data_emissao e provider_nfe_id vêm do mesmo claim transacional que
+      // recusou PV Expedido/Concluído/Finalizado.
+      const dataEmissaoForCheck = begin.data_emissao;
+      if (!dataEmissaoForCheck) {
+        const aborted = await abortClaim("Claim sem data de emissão; provedor não chamado");
+        return new Response(JSON.stringify({
+          error: "NF-e sem data de emissão registrada — impossível verificar prazo de 24h. Sincronize o status da NF-e antes de tentar cancelar.",
+          ...(!aborted ? { reconciliation_needed: true } : {}),
+        }), { status: aborted ? 400 : 500, headers: corsHeaders });
+      }
       const raw = String(dataEmissaoForCheck);
       // Sem timezone explícito, normaliza como horário de Brasília (−03:00),
-      // IDÊNTICO ao que emit-nfe grava (t + "-03:00"). Antes anexava "Z" (UTC) →
-      // a data lida ficava 3h "mais cedo", inflando hoursSince e podendo bloquear
-      // indevidamente um cancelamento ainda dentro das 24h. Auditoria 2026-06-14, #10.
+      // idêntico ao que emit-nfe grava.
       const normalized = /Z$|[+-]\d{2}:\d{2}$/.test(raw) ? raw : raw + "-03:00";
       const emittedAt = new Date(normalized).getTime();
       if (Number.isNaN(emittedAt)) {
-        await adminClient.from("nfe_emitidas")
-          .update({ status: "autorizada" })
-          .eq("id", nfe_id)
-          .eq("status", "cancelando");
-        _claimedNfeId = null;
+        const aborted = await abortClaim("Data de emissão inválida; provedor não chamado");
         return new Response(JSON.stringify({
           error: "Data de emissão da NF-e inválida — impossível verificar prazo de 24h.",
-        }), { status: 400, headers: corsHeaders });
+          ...(!aborted ? { reconciliation_needed: true } : {}),
+        }), { status: aborted ? 400 : 500, headers: corsHeaders });
       }
       const hoursSince = (Date.now() - emittedAt) / 36e5;
       if (hoursSince > 24) {
-        await adminClient.from("nfe_emitidas")
-          .update({ status: "autorizada" })
-          .eq("id", nfe_id)
-          .eq("status", "cancelando");
-        _claimedNfeId = null;
+        const aborted = await abortClaim("Prazo de 24h expirado; provedor não chamado");
         return new Response(JSON.stringify({
           error: `Prazo de cancelamento expirado (NF emitida há ${hoursSince.toFixed(1)}h, limite é 24h). Use Carta de Correção (CC-e) se aplicável.`,
-        }), { status: 400, headers: corsHeaders });
+          ...(!aborted ? { reconciliation_needed: true } : {}),
+        }), { status: aborted ? 400 : 500, headers: corsHeaders });
       }
-    }
 
-    _providerCalled = true;
-    const providerResp = await fetch(
-      `${CLICKNOTAS_BASE}/notas_fiscais_produtos/cancelar/${nfe.provider_nfe_id}`,
-      {
-        method: "POST",
-        headers: gcHeaders(),
-        body: JSON.stringify({ motivo: justificativa.trim() }),
-        signal: AbortSignal.timeout(30_000),
-      },
-    );
-    const providerText = await providerResp.text();
-    if (providerText.length > 524_288) throw new Error("Resposta do ClickNotas excede o tamanho máximo permitido.");
-    let providerData: any;
-    try { providerData = JSON.parse(providerText); } catch { providerData = { mensagem: providerText }; }
+      const providerHeaders = gcHeaders();
+      _providerCalled = true;
+      const providerResp = await fetch(
+        `${CLICKNOTAS_BASE}/notas_fiscais_produtos/cancelar/${begin.provider_nfe_id}`,
+        {
+          method: "POST",
+          headers: providerHeaders,
+          body: JSON.stringify({ motivo: justificativa.trim() }),
+          signal: AbortSignal.timeout(30_000),
+        },
+      );
+      const providerText = await providerResp.text();
+      if (providerText.length > 524_288) {
+        throw new Error("Resposta do ClickNotas excede o tamanho máximo permitido.");
+      }
+      try { providerData = JSON.parse(providerText); } catch { providerData = { mensagem: providerText }; }
 
-    const success = providerResp.ok
-      && providerData?.status !== "error"
-      && providerData?.data?.ok !== false;
+      const providerConfirmed = providerResp.ok
+        && providerData?.status !== "error"
+        && providerData?.data?.ok !== false;
+      if (!providerConfirmed) {
+        // 4xx e erro funcional em resposta 2xx são rejeições conclusivas. Em
+        // 5xx/timeout a resposta é ambígua: mantém cancelando para reconciliação
+        // e jamais reautoriza uma NF que pode ter sido cancelada externamente.
+        const deterministicRejection =
+          (providerResp.status >= 400 && providerResp.status < 500)
+          || providerResp.ok;
+        let claimAborted = false;
+        if (deterministicRejection) {
+          claimAborted = await abortClaim(
+            `Provedor recusou o cancelamento (HTTP ${providerResp.status})`,
+          );
+        }
+        const reconciliationNeeded = !deterministicRejection || !claimAborted;
+        return new Response(JSON.stringify({
+          success: false,
+          provider_response: providerData,
+          ...(reconciliationNeeded ? {
+            reconciliation_needed: true,
+            error: "Resposta do provedor/local é ambígua; NF-e mantida em cancelando para reconciliação.",
+          } : {}),
+        }), {
+          status: reconciliationNeeded ? 502 : 422,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
 
-    let cancellationProtocol: string | null = null;
-    if (success) {
       try {
-        const detailResp = await fetch(`${CLICKNOTAS_BASE}/notas_fiscais_produtos/${nfe.provider_nfe_id}`, {
-          headers: gcHeaders(),
+        const detailResp = await fetch(`${CLICKNOTAS_BASE}/notas_fiscais_produtos/${begin.provider_nfe_id}`, {
+          headers: providerHeaders,
           signal: AbortSignal.timeout(15_000),
         });
         const detailText = await detailResp.text();
@@ -235,151 +226,62 @@ Deno.serve(async (req) => {
       }
     }
 
-    const updatePayload: Record<string, unknown> = {
-      status: success ? "cancelada" : nfe.status,
-      justificativa_cancelamento: justificativa.trim(),
-      data_cancelamento: success ? new Date().toISOString() : null,
-      updated_at: new Date().toISOString(),
-    };
-    if (cancellationProtocol) updatePayload.protocolo_cancelamento = cancellationProtocol;
-
-    const { error: updateErr } = await adminClient.from("nfe_emitidas")
-      .update(updatePayload).eq("id", nfe_id);
-    if (updateErr) throw new Error(`Falha ao salvar cancelamento: ${updateErr.message}`);
+    const { data: localRaw, error: localErr } = await adminClient.rpc(
+      "complete_nfe_cancellation_command",
+      {
+        p_nfe_id: nfe_id,
+        p_justification: justificativa.trim(),
+        p_cancellation_protocol: cancellationProtocol,
+      },
+    );
+    if (localErr || localRaw?.ok !== true) {
+      return new Response(JSON.stringify({
+        error: localErr?.message || localRaw?.code || "Provedor confirmou, mas o commit local falhou.",
+        reconciliation_needed: true,
+        provider_response: providerData,
+      }), { status: 500, headers: corsHeaders });
+    }
+    _claimedNfeId = null;
+    const localCancellation = localRaw as any;
 
     const cleanupWarnings: string[] = [];
-    let standaloneStockWarning: string | null = null;
-    if (success && isStandaloneNfe) {
-      const { data: reversed, error: reverseErr } = await adminClient.rpc(
-        "reverse_standalone_nfe_stock_for_cancel",
-        { p_nfe_id: nfe_id },
-      );
-      if (reverseErr || reversed?.ok !== true) {
-        standaloneStockWarning = reverseErr?.message || reversed?.code
-          || "Falha ao estornar estoque da NF-e avulsa cancelada.";
-        cleanupWarnings.push(`Estorno de estoque pendente: ${standaloneStockWarning}`);
-      }
+    const standaloneStockWarning = localCancellation.reconciliation_needed === true
+      ? String(localCancellation.reconciliation_reason || "Estorno de estoque avulso pendente")
+      : null;
+    if (standaloneStockWarning) {
+      cleanupWarnings.push(`Estorno de estoque pendente: ${standaloneStockWarning}`);
     }
-    if (success && nfe.sale_order_id) {
-      // Auditoria A3: ordem invertida — antes era AR cancel → estorno; agora
-      // estorno PRIMEIRO. Razão: se estorno falhar (FK violation, conflict),
-      // AR fica intacta (status pendente original) e operador pode tentar de
-      // novo sem ficar com AR cancelada + receita órfã. Estorno bem-sucedido
-      // pode coexistir com AR cancelada ou pendente — ambos resolvíveis.
-      // Idempotência do estorno: se já existe estorno desta NF
-      // (reference_type='sale_order_cancel_nfe', reference_id=nfe_id), NÃO insere
-      // de novo — senão um retry geraria receita negativa em DOBRO. O pré-check é
-      // seguro contra corrida porque o claim status='cancelando' (acima) já
-      // serializa o cancelamento. Auditoria 2026-06-14, #10.
-      const { data: existingReversals } = await adminClient.from("financial_entries")
-        .select("id")
-        .eq("reference_id", nfe_id)
-        .eq("reference_type", "sale_order_cancel_nfe")
-        .limit(1);
-      const alreadyReversed = !!(existingReversals && existingReversals.length > 0);
-
-      const { data: feToReverse, error: feFetchErr } = await adminClient.from("financial_entries")
-        .select("id, amount, type, description, account_id, entry_date, due_date, status")
-        .eq("reference_id", nfe.sale_order_id)
-        .eq("reference_type", "sale_order");
-      if (alreadyReversed) {
-        cleanupWarnings.push("Estorno da NF-e já havia sido lançado anteriormente — pulado (idempotência).");
-      } else if (feFetchErr) {
-        cleanupWarnings.push(`Lançamento financeiro não localizado: ${feFetchErr.message}`);
-      } else if (feToReverse && feToReverse.length > 0) {
-        const protectedStatuses = new Set(["posted", "reconciled", "paid", "confirmed"]);
-        const reversals: any[] = [];
-        const deletableIds: string[] = [];
-        for (const fe of feToReverse) {
-          if (protectedStatuses.has(fe.status)) {
-            // Estorno: entry com valor negativo + reference_type marcando estorno NF-e.
-            // Auditoria A15: vincula nfe_id pra rastreabilidade direta via JOIN
-            // (antes só dava pra ligar via reference_id text — sem FK formal).
-            reversals.push({
-              type: fe.type,
-              amount: -Number(fe.amount || 0),
-              description: `Estorno NF-e cancelada — ${fe.description || ''}`,
-              account_id: fe.account_id,
-              entry_date: new Date().toISOString().slice(0, 10),
-              due_date: fe.due_date,
-              status: "confirmed",
-              reference_id: nfe_id,
-              reference_type: "sale_order_cancel_nfe",
-              nfe_id,
-            });
-          } else {
-            deletableIds.push(fe.id);
-          }
-        }
-        if (reversals.length > 0) {
-          const { error: revErr } = await adminClient.from("financial_entries").insert(reversals);
-          if (revErr) cleanupWarnings.push(`Estorno não inserido: ${revErr.message}`);
-        }
-        if (deletableIds.length > 0) {
-          const { error: delErr } = await adminClient.from("financial_entries")
-            .delete().in("id", deletableIds);
-          if (delErr) cleanupWarnings.push(`Lançamento não removido: ${delErr.message}`);
-        }
-      }
-
-      // AR cancel: depois do estorno (auditoria A3 — antes era ao contrário).
-      const { error: arErr } = await adminClient.from("accounts_receivable")
-        .update({ status: "cancelled" })
-        .eq("sale_order_id", nfe.sale_order_id)
-        .not("status", "in", "(received,cancelled)");
-      if (arErr) cleanupWarnings.push(`AR não cancelada: ${arErr.message}`);
-
-      // FIX S3: reabrir PV pra 'Em Produção' quando a NF cancelada era a única ativa.
-      // Antes ficava em 'Faturado' órfão sem NF-e nem AR.
-      // Auditoria A9: cleanupWarnings já cobre falhas no reopen (linhas
-      // soErr abaixo). UI deve mostrar warning pra operador conferir status do PV.
-      const { data: otherActiveNfes } = await adminClient.from("nfe_emitidas")
-        .select("id")
-        .eq("sale_order_id", nfe.sale_order_id)
-        .in("status", ["autorizada", "processando"])
-        .neq("id", nfe_id);
-      const reopenStatus = (!otherActiveNfes || otherActiveNfes.length === 0)
-        ? (isStandaloneNfe ? "Rascunho" : "Em Produção")
-        : null;
-
-      if (nfe.numero) {
-        const soUpdate: any = { nfe: null };
-        if (reopenStatus) soUpdate.status = reopenStatus;
-        const { error: soErr } = await adminClient.from("sale_orders")
-          .update(soUpdate)
-          .eq("id", nfe.sale_order_id)
-          .eq("nfe", String(nfe.numero));
-        if (soErr) cleanupWarnings.push(`PV ${nfe.sale_order_id} pode ter ficado em 'Faturado' órfão — ${soErr.message}. Conferir manualmente.`);
-      } else if (reopenStatus) {
-        const { error: soErr } = await adminClient.from("sale_orders")
-          .update({ status: reopenStatus })
-          .eq("id", nfe.sale_order_id)
-          .eq("status", "Faturado");
-        if (soErr) cleanupWarnings.push(`PV ${nfe.sale_order_id} pode ter ficado em 'Faturado' órfão — ${soErr.message}. Conferir manualmente.`);
-      }
-    }
-
     return new Response(JSON.stringify({
-      success,
+      success: true,
+      idempotent_replay: localCancellation.idempotent_replay === true,
       provider_response: providerData,
+      local_cancellation: localCancellation,
       ...(standaloneStockWarning ? {
         reconciliation_needed: true,
         stock_reconciliation_warning: standaloneStockWarning,
       } : {}),
       ...(cleanupWarnings.length > 0 ? { partial_cleanup_warning: cleanupWarnings.join("; ") } : {}),
     }), {
-      status: success ? 200 : 422,
+      status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : "Erro desconhecido";
     console.error("cancel-nfe error:", error);
-    if (!_providerCalled && _adminClientForRollback && _claimedNfeId) {
-      await _adminClientForRollback.from("nfe_emitidas")
-        .update({ status: "autorizada" })
-        .eq("id", _claimedNfeId)
-        .eq("status", "cancelando");
+    let reconciliationNeeded = _providerCalled && _claimedNfeId !== null;
+    if (!_providerCalled && _adminClientForAbort && _claimedNfeId) {
+      const { error: abortErr } = await _adminClientForAbort.rpc(
+        "abort_nfe_cancellation_command",
+        {
+          p_nfe_id: _claimedNfeId,
+          p_reason: "Falha local antes da chamada ao provedor",
+        },
+      );
+      reconciliationNeeded = !!abortErr;
     }
-    return new Response(JSON.stringify({ error: msg }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    return new Response(JSON.stringify({
+      error: msg,
+      ...(reconciliationNeeded ? { reconciliation_needed: true } : {}),
+    }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 });

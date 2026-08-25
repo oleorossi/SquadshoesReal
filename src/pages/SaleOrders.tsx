@@ -2527,9 +2527,20 @@ export default function SaleOrders() {
                                 actionLabel: 'Forçar produção',
                                 onConfirm: async () => {
                                 try {
-                                  const { data, error } = await supabase.rpc('force_sale_order_production', { p_sale_order_id: order.id } as any);
+                                  const expectedVersion = Number((order as any).order_version);
+                                  if (!Number.isInteger(expectedVersion) || expectedVersion < 0) {
+                                    throw new Error('Versão do PV indisponível. Recarregue a lista antes de promover.');
+                                  }
+                                  const requestId = crypto.randomUUID();
+                                  const { data, error } = await (supabase.rpc as any)('force_sale_order_production_command', {
+                                    p_sale_order_id: order.id,
+                                    p_expected_order_version: expectedVersion,
+                                    p_client_request_id: requestId,
+                                    p_override_id: null,
+                                  });
                                   if (error) throw error;
-                                  const r = (data as any) || {};
+                                  if (!(data as any)?.ok) throw new Error((data as any)?.error?.message || 'Promoção recusada pelo servidor.');
+                                  const r = (data as any)?.result || {};
                                   toast.success(`Produção forçada • ${r.created_ops ?? 0} OP(s) criada(s), ${r.updated_ops ?? 0} atualizada(s), ${r.created_stages ?? 0} etapa(s) geradas`);
                                   queryClient.invalidateQueries({ queryKey: ['sale_orders'] });
                                   queryClient.invalidateQueries({ queryKey: ['orders'] });

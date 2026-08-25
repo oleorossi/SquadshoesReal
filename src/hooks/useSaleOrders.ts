@@ -673,20 +673,9 @@ export function useCreateSaleOrder() {
         if (insertData[f] === '') insertData[f] = null;
       }
 
-      // Defensivo: packaging_product_id tem FK em products(id), mas estava
-      // chegando aqui com box_type_id (FK em box_types) em alguns fluxos
-      // legados. Verifica existência em products; se inválido, null.
-      if (insertData.packaging_product_id) {
-        const { data: pkg } = await supabase
-          .from('products')
-          .select('id')
-          .eq('id', insertData.packaging_product_id)
-          .maybeSingle();
-        if (!pkg) {
-          console.warn('[useCreateSaleOrder] packaging_product_id inválido (não existe em products), zerando:', insertData.packaging_product_id);
-          insertData.packaging_product_id = null;
-        }
-      }
+      // A FK da embalagem é validada dentro do command. Não fazemos uma
+      // consulta anterior que possa ficar obsoleta entre leitura e commit, nem
+      // transformamos silenciosamente um identificador inválido em NULL.
 
       // Fase 1b: as 4 colunas extras (origem da tira + intenção de terceirização)
       // vão DENTRO do payload — `create_sale_order_atomic` agora as grava na mesma
@@ -969,89 +958,17 @@ export function useUpdateSaleOrder() {
         if (updateData[f] === '') updateData[f] = null;
       }
 
-      // Defensivo: packaging_product_id tem FK em products(id). Em fluxos
-      // legados chegava com box_type_id (FK em box_types) → quebrava o save.
-      // Verifica existência em products; se inválido, null.
-      if (updateData.packaging_product_id) {
-        const { data: pkg } = await supabase
-          .from('products')
-          .select('id')
-          .eq('id', updateData.packaging_product_id)
-          .maybeSingle();
-        if (!pkg) {
-          console.warn('[useUpdateSaleOrder] packaging_product_id inválido, zerando:', updateData.packaging_product_id);
-          updateData.packaging_product_id = null;
-        }
-      }
-
-      // 0a. Bloqueia edição se alguma OP vinculada estiver em produção avançada.
-      // Editar PV deleta+recria OPs — se já houve corte/costura, a edição
-      // descarta material e mão-de-obra. Force o usuário a cancelar/clonar.
-      const PRODUCTION_ADVANCED_STATUSES = ['Em Produção', 'Concluída', 'Finalizado'];
-      const { data: opsInProduction, error: opsInProductionErr } = await supabase
-        .from('orders')
-        .select('id, status, order_number')
-        .eq('sale_order_id', id)
-        .in('status', PRODUCTION_ADVANCED_STATUSES);
-      if (opsInProductionErr) throw new Error(`Falha ao verificar OPs em produção: ${opsInProductionErr.message}`);
-      if (opsInProduction && opsInProduction.length > 0) {
-        const requestedCancelIds = new Set(cancel_op_ids || []);
-        const uncovered = opsInProduction.filter((op) => !requestedCancelIds.has(op.id));
-        if (uncovered.length > 0) {
-          const opNumbers = uncovered.map(op => op.order_number || op.id.substring(0, 8)).join(', ');
-          throw new Error(`Não é possível editar: existem OPs em produção (${opNumbers}). Cancele as OPs ou crie um novo PV.`);
-        }
-      }
-
-      // 0b. Fiscal guard: a PV with authorized/processing NF-e cannot be edited
-      // either — the NF-e was issued for the EXACT items present at emission
-      // time. Editing items now would diverge the SEFAZ record from the
-      // physical order. Force user to cancel NF-e first or clone the PV.
-      const { data: blockingNfe, error: blockingNfeEditErr } = await supabase
-        .from('nfe_emitidas')
-        .select('id, status, ref_nfe')
-        .eq('sale_order_id', id)
-        .in('status', ['autorizada', 'processando', 'cancelando']);
-      if (blockingNfeEditErr) throw new Error(`Falha ao verificar NF-e vinculadas: ${blockingNfeEditErr.message}`);
-      if (blockingNfe && blockingNfe.length > 0) {
-        const refs = blockingNfe.map(n => n.ref_nfe || n.id).join(', ');
-        throw new Error(
-          `Não é possível editar: pedido tem NF-e ${blockingNfe[0].status} (${refs}). ` +
-          `Cancele a NF-e antes ou crie um novo PV.`,
-        );
-      }
-
-      // 1. Fetch existing OPs BEFORE the atomic update so we can tear down the
-      //    ones that this save deixa órfãs.
-      const { data: allExistingOPs, error: existingOpsError } = await supabase
-        .from('orders')
-        .select('id, reference_id, quantity, status, sale_order_item_id')
-        .eq('sale_order_id', id);
-      if (existingOpsError) throw existingOpsError;
-
-      // Só desmonta a OP de item REMOVIDO (ou já órfã). Antes desmontava TODAS
-      // e contava com o gatilho pra recriar — o que, além de liberar e re-reservar
-      // material a cada salvamento, abriu a janela do incidente PV-00146: duas
-      // chamadas concorrentes, a segunda leu a lista de OPs antes da primeira
-      // criar as dela, não desmontou nada, e o DELETE de itens orfanou as novas.
-      // Com identidade estável (RPC faz UPDATE), a OP do item que ficou é
-      // atualizada pelo próprio gatilho, sem churn de reserva.
-      const keptItemIds = new Set((items || []).map(i => i.id).filter(Boolean) as string[]);
-      const existingOPs = (allExistingOPs || []).filter(
-        op => !op.sale_order_item_id || !keptItemIds.has(op.sale_order_item_id),
-      );
-      const existingOpIds = existingOPs.map(op => op.id);
-
-      // Guard against saving an order with no items — the RPC would DELETE all
-      // existing items and leave an empty order with total=0, silently zeroing AR.
+      // Guard local de UX; a autoridade e todas as leituras sensíveis (FK da
+      // embalagem, NF-e e OPs factuais) ficam no preflight/writer sob os mesmos
+      // locks. Consultá-las antes no browser abria TOCTOU e adicionava quatro
+      // viagens de rede ao save.
       if (!items || items.length === 0) {
         throw new Error('Não é possível salvar um pedido sem itens.');
       }
 
-      // 2. The database tears down these orphaned/removed-item OPs and applies
-      //    the header/items replace in one transaction. This preserves the
-      //    canonical reservation → sole grade → product stock order while
-      //    preventing a failed request from leaving a partial teardown.
+      // O banco deriva a desmontagem a partir do diff de itens sob lock. O
+      // cliente só informa quais OPs avançadas o administrador confirmou
+      // cancelar; nunca escolhe quais OPs são desmontadas.
       const itemsPayload = items.map(i => ({
         // Manda o id quando o item já existe → a RPC faz UPDATE no lugar.
         // Sem isto o item seria recriado e todo vínculo se romperia.
@@ -1107,14 +1024,18 @@ export function useUpdateSaleOrder() {
         factoring_config_id: factoring_config_id || null,
       };
       const atomicCancelIds = [...new Set(cancel_op_ids || [])];
+      const commandPayload = {
+        header: headerForRpc,
+        items: itemsPayload,
+        cancel_op_ids: atomicCancelIds,
+        billing_patch: billingPatch,
+        factoring_patch: factoringPatch,
+      };
       const preflight = await preflightSaleOrderCommand({
         saleOrderId: id,
         command: 'update',
         expectedOrderVersion,
-        payload: {
-          billing_patch: billingPatch,
-          factoring_patch: factoringPatch,
-        },
+        payload: commandPayload,
       });
       if (!preflight.ready) {
         throw new SaleOrderReadinessBlockedError(preflight);
@@ -1134,27 +1055,10 @@ export function useUpdateSaleOrder() {
         command: 'update',
         expectedOrderVersion,
         idempotencyKey: `pv:${id}:update:${idempotency_key.trim()}`,
-        payload: {
-          header: headerForRpc,
-          items: itemsPayload,
-          teardown_op_ids: existingOpIds,
-          cancel_op_ids: atomicCancelIds,
-          billing_patch: billingPatch,
-          factoring_patch: factoringPatch,
-        },
+        payload: commandPayload,
       });
       const rpcOut = receipt.result;
       const atomicPromotionResult = (rpcOut as any)?.promotion_result as PromotionEngineResult | null;
-
-      const insertedIds: string[] = ((rpcOut as any)?.inserted_item_ids as string[] | undefined) || [];
-      // Re-hydrate the same shape the older code returned so downstream MRP loop matches by index.
-      const insertedItems: { id: string; reference_id: string; color: string | null; quantity: number | null }[] =
-        insertedIds.map((newId, idx) => ({
-          id: newId,
-          reference_id: items[idx]?.reference_id || '',
-          color: items[idx]?.color ?? null,
-          quantity: items[idx]?.quantity ?? null,
-        }));
 
       // Origem da tira e intenção de terceirização já vieram gravadas pela RPC
       // (fase 1b) — eram 2 laços de UPDATE serial aqui, até 24 idas e voltas num
@@ -1162,30 +1066,13 @@ export function useUpdateSaleOrder() {
       // ambas estão gravadas ANTES da recriação das OPs logo abaixo, que é quem
       // dispara reserva/débito da tira.
 
-      // 4. Recreate OPs if status is Aprovado or Em Produção (regardless of whether OPs existed before)
-      //
-      // Requisito 29: a recriação passa pelo MESMO motor da promoção. Ter duas
-      // implementações de "criar OP + debitar" é exatamente o padrão que já custou
-      // caro neste projeto (3 sistemas de PCP isolados, terceiro motor do Consumo
-      // Consolidado, modal × ficha de operador).
-      if (order.status === 'Aprovado' || order.status === 'Em Produção') {
-        // O status canônico vem do BANCO, nunca do formulário — o form poderia
-        // injetar um status e pular as guardas da máquina de estados.
-        const { data: soCanon } = await supabase
-          .from('sale_orders').select('status, order_number').eq('id', id).single();
-        const canon = (soCanon as any)?.status;
-        if (canon === 'Aprovado' || canon === 'Em Produção') {
-          const res = atomicPromotionResult;
-          if (!res) {
-            toast.warning('Edição salva, mas o resumo da recriação das OPs não foi retornado. Confira as Pendências.', {
-              duration: 12000,
-            });
-          } else if (res.itens_falha.length > 0) {
-            toast.error(`${res.itens_falha.length} item(ns) não geraram OP — veja em Pendências.`, {
-              duration: 12000,
-            });
-          }
-        }
+      // O receipt é a resposta canônica do mesmo commit; consultar o PV outra
+      // vez aqui faria a UI observar outra revisão e ultrapassaria o orçamento
+      // de duas chamadas (preflight + execute).
+      if (atomicPromotionResult?.itens_falha?.length > 0) {
+        toast.error(`${atomicPromotionResult.itens_falha.length} item(ns) não geraram OP — veja em Pendências.`, {
+          duration: 12000,
+        });
       }
 
       return { id, receipt };
@@ -1341,9 +1228,25 @@ export function useDeleteSaleOrder() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      const { data, error } = await (supabase as any).rpc('soft_delete_sale_order', { p_id: id });
+      const { data: current, error: currentError } = await supabase
+        .from('sale_orders')
+        .select('order_version')
+        .eq('id', id)
+        .single();
+      if (currentError) throw currentError;
+      const expectedVersion = Number((current as any)?.order_version);
+      if (!Number.isInteger(expectedVersion) || expectedVersion < 0) {
+        throw new Error('Versão do PV indisponível. Recarregue antes de excluir.');
+      }
+      const requestId = crypto.randomUUID();
+      const { data, error } = await (supabase as any).rpc('soft_delete_sale_order_command', {
+        p_sale_order_id: id,
+        p_expected_order_version: expectedVersion,
+        p_client_request_id: requestId,
+      });
       if (error) throw error;
-      return data;
+      if (!data?.ok) throw new Error(data?.error?.message || 'Exclusão recusada pelo servidor.');
+      return data.result;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['sale_orders'] });
@@ -1361,8 +1264,23 @@ export function useRestoreSaleOrder() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      const { data, error } = await (supabase as any).rpc('restore_sale_order', { p_id: id });
+      const { data: context, error: contextError } = await (supabase as any).rpc(
+        'get_deleted_sale_order_restore_context',
+        { p_sale_order_id: id },
+      );
+      if (contextError) throw contextError;
+      const expectedVersion = Number(context?.order_version);
+      if (!Number.isInteger(expectedVersion) || expectedVersion < 0) {
+        throw new Error('Versão do PV excluído indisponível. Atualize a lixeira antes de restaurar.');
+      }
+      const requestId = crypto.randomUUID();
+      const { data, error } = await (supabase as any).rpc('restore_sale_order_command', {
+        p_sale_order_id: id,
+        p_expected_order_version: expectedVersion,
+        p_client_request_id: requestId,
+      });
       if (error) throw error;
+      if (!data?.ok) throw new Error(data?.error?.message || 'Restauração recusada pelo servidor.');
       return data;
     },
     onSuccess: (data: any) => {

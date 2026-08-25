@@ -18,7 +18,7 @@ interface Props {
 
 /**
  * Botão "Reverter Faturamento" — aparece quando PV está em status 'Faturado'.
- * Abre dialog pedindo justificativa (min 5 chars) e dispara RPC atômica.
+ * Abre dialog pedindo justificativa (mín. 10 chars) e dispara RPC atômica.
  * Bloqueia automaticamente se houver NF autorizada (vide RPC).
  */
 export function RevertInvoiceButton({ saleOrderId, orderNumber, size = 'icon' }: Props) {
@@ -27,7 +27,7 @@ export function RevertInvoiceButton({ saleOrderId, orderNumber, size = 'icon' }:
   const revert = useRevertInvoicedSaleOrder();
 
   const submit = async () => {
-    if (reason.trim().length < 5) return;
+    if (reason.trim().length < 10) return;
     try {
       await revert.mutateAsync({ saleOrderId, reason: reason.trim() });
       setOpen(false);
@@ -83,7 +83,7 @@ export function RevertInvoiceButton({ saleOrderId, orderNumber, size = 'icon' }:
           </AlertDialogHeader>
 
           <div className="space-y-2">
-            <Label htmlFor="revert-reason">Justificativa (obrigatória, mín. 5 caracteres)</Label>
+            <Label htmlFor="revert-reason">Justificativa (obrigatória, mín. 10 caracteres)</Label>
             <Textarea
               id="revert-reason"
               value={reason}
@@ -98,7 +98,7 @@ export function RevertInvoiceButton({ saleOrderId, orderNumber, size = 'icon' }:
             <AlertDialogCancel disabled={revert.isPending}>Cancelar</AlertDialogCancel>
             <AlertDialogAction
               onClick={(e) => { e.preventDefault(); submit(); }}
-              disabled={reason.trim().length < 5 || revert.isPending}
+              disabled={reason.trim().length < 10 || revert.isPending}
             >
               {revert.isPending ? 'Revertendo…' : 'Reverter'}
             </AlertDialogAction>

@@ -8,7 +8,6 @@ import { BulkActionsBar, MarqueeOverlay } from '@/components/ui/bulk-actions-bar
 import { useMarqueeSelection } from '@/hooks/useMarqueeSelection';
 import OrdersKanbanBoard from '@/components/orders/OrdersKanbanBoard';
 import { EmptyState } from '@/components/ui/empty-state';
-import { autoCreateSolePO, autoCreateSolePOFromShortfall } from '@/lib/soleAutoPO';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { SearchInput } from '@/components/ui/search-input';
@@ -31,11 +30,11 @@ import { StatusPill, canonicalStatusToKey } from '@/components/ui/badges';
 import { Checkbox } from '@/components/ui/checkbox';
 import { MaterialReservationErrorBadge } from '@/components/orders/MaterialReservationErrorBadge';
 
-import { useOrders, useCreateOrder, useDeleteOrder, useCheckStockAvailability, useUpdateOrderStatus, ORDERS_QUERY_LIMIT } from '@/hooks/useOrders';
+import { useOrders, useCreateOrder, useDeleteOrder, useCheckStockAvailability, useUpdateOrderStatus, useCancelOrdersBatch, useEnsureOrderStages, ORDERS_QUERY_LIMIT } from '@/hooks/useOrders';
 import { isInactiveOrder } from '@/lib/orderStatus';
 import { useTechnicalSheets, useSheetMaterials } from '@/hooks/useTechnicalSheets';
 import { useProducts } from '@/hooks/useProducts';
-import { useAllOrderStages, useCreateOrderStages, useRealtimeOrderStages, OrderStage } from '@/hooks/useOrderStages';
+import { useAllOrderStages, useRealtimeOrderStages, OrderStage } from '@/hooks/useOrderStages';
 import { supabase } from '@/integrations/supabase/client';
 import { printHtml, buildProductionOrderPrintHtml, openPrintWindow, writePrintWindow } from '@/lib/printOrder';
 import { getClientLogoUrl } from '@/lib/getClientLogo';
@@ -271,7 +270,8 @@ function getWeekOptions() {
   const deleteOrder = useDeleteOrder();
   const checkStock = useCheckStockAvailability();
   const updateStatus = useUpdateOrderStatus();
-  const createStages = useCreateOrderStages();
+  const cancelOrdersBatch = useCancelOrdersBatch();
+  const ensureOrderStages = useEnsureOrderStages();
 
   useRealtimeOrderStages();
 
@@ -642,11 +642,7 @@ function getWeekOptions() {
     setBulkCancelIds(null);
     if (!ids || ids.size === 0) return;
     try {
-      const { error } = await supabase
-        .from('orders')
-        .update({ status: 'Cancelada', updated_at: new Date().toISOString() } as any)
-        .in('id', Array.from(ids));
-      if (error) throw error;
+      await cancelOrdersBatch.mutateAsync(Array.from(ids));
       toast.success(`${ids.size} OP(s) cancelada(s)`);
       sel.clear();
     } catch (err: any) {
@@ -669,57 +665,15 @@ function getWeekOptions() {
     }
     setApproving(true);
     try {
-      // 1. Create stages for orders that don't have them yet
+      // O servidor deriva a rota da ficha técnica e faz UPSERT idempotente.
+      // Rascunho não entra no Kanban antes da materialização de estoque.
       const ordersWithoutStages = effectiveOrders.filter(o => {
         const stages = stagesByOrderId.get(o.id) || [];
-        return stages.length === 0;
+        return stages.length === 0
+          && !['Rascunho', 'Cancelada', 'Cancelado', 'Finalizado'].includes(o.status);
       });
-
-      // Fetch production_sectors for all unique references
-      const refIds = [...new Set(ordersWithoutStages.map(o => o.reference_id))];
-      const sectorsMap = new Map<string, string[]>();
-      if (refIds.length > 0) {
-        const { data: sheetsData, error: sheetsErr } = await supabase
-          .from('technical_sheets')
-          .select('id, production_sectors')
-          .in('id', refIds);
-        if (sheetsErr) throw new Error(`Falha ao carregar fichas técnicas: ${sheetsErr.message}`);
-        sheetsData?.forEach((s: any) => {
-          const sectors = Array.isArray(s.production_sectors) && s.production_sectors.length > 0
-            ? s.production_sectors.map((x: any) => String(x))
-            : ['Corte Palmilha', 'Corte Forração', 'Mesa', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição'];
-          sectorsMap.set(s.id, sectors);
-        });
-      }
-
-      const DEFAULT_STAGES = [
-        { name: 'Corte Palmilha', order: 1 }, { name: 'Corte Forração', order: 2 },
-        { name: 'Mesa', order: 3 }, { name: 'Silk', order: 4 },
-        { name: 'Colagem', order: 5 }, { name: 'Montagem', order: 6 },
-        { name: 'Solagem', order: 7 }, { name: 'Acabamento', order: 8 },
-        { name: 'Expedição', order: 9 },
-      ];
-
-      // Build all rows up-front so we can do a single bulk insert (was N+1 inside loop).
-      const allRows = ordersWithoutStages.flatMap(order => {
-        const sectorNames = sectorsMap.get(order.reference_id) || DEFAULT_STAGES.map(s => s.name);
-        return sectorNames.map((name: string, idx: number) => {
-          const defaultStage = DEFAULT_STAGES.find(s => s.name === name);
-          return {
-            order_id: order.id,
-            stage_name: name,
-            stage_order: defaultStage?.order || idx + 1,
-            status: 'pendente',
-            quantity_total: order.quantity,
-            quantity_processed: 0,
-            observations: '',
-            defects: '',
-          };
-        });
-      });
-      if (allRows.length > 0) {
-        const { error: stagesErr } = await supabase.from('order_stages').insert(allRows);
-        if (stagesErr) throw new Error(`Falha ao criar etapas de produção: ${stagesErr.message}`);
+      if (ordersWithoutStages.length > 0) {
+        await ensureOrderStages.mutateAsync(ordersWithoutStages.map(order => order.id));
       }
       if (ordersWithoutStages.length > 0) {
         toast.success(`Controle por setor criado para ${ordersWithoutStages.length} OP(s)`);
@@ -734,106 +688,14 @@ function getWeekOptions() {
   };
   const handleManualStatusChange = async (order: any, newStatus: string) => {
     const prevStatus = order.status as string;
-    // Reservado → Em Produção preserva as reservas. A baixa física é feita no
-    // início de cada setor, proporcional aos pares apontados.
-    if (newStatus === 'Em Produção' && prevStatus === 'Reservado') {
-      updateStatus.mutate({ id: order.id, status: newStatus });
-      return;
+    try {
+      await updateStatus.mutateAsync({ id: order.id, status: newStatus, expectedStatus: prevStatus });
+      // O efeito de compra pertence à outbox do PV. O browser não cria nem
+      // acumula OC após a transição: isso evitaria receipt/serialização e
+      // competiria com o owner único de compras por pedido.
+    } catch {
+      // O hook já exibe a mensagem do command boundary.
     }
-    if (newStatus === 'Em Produção' && prevStatus === 'Rascunho') {
-      try {
-        // Atomic claim: prevent double-debit when two tabs/clicks race on the same OP.
-        // Only one caller can flip from 'Rascunho' to 'Em Debito'; the loser gets 0 rows.
-        const { data: claimed, error: claimErr } = await supabase
-          .from('orders')
-          .update({ status: 'Em Debito' as any, updated_at: new Date().toISOString() })
-          .eq('id', order.id)
-          .eq('status', 'Rascunho')
-          .select('id');
-        if (claimErr) { toast.error(`Erro ao iniciar débito: ${claimErr.message}`); return; }
-        if (!claimed || claimed.length === 0) {
-          toast.warning('Status já alterado por outro usuário — recarregue.');
-          return;
-        }
-        const stockCheck = await checkStock(order.reference_id, order.quantity, order.color);
-        const insufficient = (stockCheck || []).filter((s: any) => !s.sufficient);
-        if (insufficient.length > 0) {
-          // Release the claim so the OP goes back to Rascunho
-          await supabase.from('orders').update({ status: 'Rascunho', updated_at: new Date().toISOString() }).eq('id', order.id);
-          const msg = insufficient.map((s: any) => `${s.product_name}: necessário ${Number(s.required ?? 0).toFixed(2)}, disponível ${Number(s.available ?? 0).toFixed(2)}`).join(' | ');
-          toast.error(`Estoque insuficiente — ${msg}`);
-          return;
-        }
-        const grade = order.grade && Object.keys(order.grade).length > 0 ? order.grade : null;
-        // Reserve→Debit (Phase 1): cria reservas soft primeiro
-        const { error: debitErr } = await (supabase.rpc as any)('initialize_order_material_reservations', {
-          p_order_id: order.id,
-          p_force_soft: true,
-        });
-        if (debitErr) {
-          await supabase.from('orders').update({ status: 'Rascunho', updated_at: new Date().toISOString() }).eq('id', order.id);
-          toast.error(`Erro ao reservar estoque: ${debitErr.message}`);
-          return;
-        }
-        const { error: soleErr } = await supabase.rpc('debit_sole_stock_by_grade', {
-          p_reference_id: order.reference_id,
-          p_order_id: order.id,
-          p_color: order.color || '',
-          p_order_grade: grade || {},
-          p_force_soft: true,
-        } as any);
-        if (soleErr) {
-          // Roll back in canonical order: release reservations → sole grade → product stocks
-          await (supabase.rpc as any)('release_order_reservations', { p_order_id: order.id });
-          await (supabase.rpc as any)('restore_sole_grade_for_order', { p_order_id: order.id });
-          await supabase.rpc('restore_product_stocks_for_order', { p_order_id: order.id } as any);
-          await supabase.from('orders').update({ status: 'Rascunho', updated_at: new Date().toISOString() }).eq('id', order.id);
-          const po = await autoCreateSolePO({
-            referenceId: order.reference_id,
-            orderId: order.id,
-            color: order.color || '',
-            grade: grade || {},
-            orderRef: (order as any).order_number || String(order.id).slice(0, 8),
-          });
-          if (po) {
-            toast.warning(
-              `Solado insuficiente — OC ${po.poNumber} criada automaticamente (${po.supplierName}). OP mantida em Rascunho.`,
-              { duration: 8000 }
-            );
-          } else {
-            toast.error(`Estoque de solado insuficiente: ${soleErr.message}`);
-          }
-          return;
-        }
-        // Achado C (auditoria 2026-07-01): com p_force_soft=true o RPC não erra por
-        // falta (o if acima era caminho quase morto) — a OC automática dispara do
-        // RESULTADO do débito (déficit por numeração da reserva sole_grade vs
-        // stock_grade), ANTES do consume: o consumo abaixo fará débito parcial e a
-        // OC cobre o que faltou. O caminho por erro segue como fallback.
-        try {
-          const po = await autoCreateSolePOFromShortfall({
-            orderId: order.id,
-            orderRef: (order as any).order_number || String(order.id).slice(0, 8),
-          });
-          if (po) {
-            toast.warning(
-              `Solado em falta (parcial) — OC ${po.poNumber} ${po.accumulated ? 'acumulada' : 'criada'} (${po.supplierName}) pra cobrir o déficit.`,
-              { duration: 8000 }
-            );
-          }
-        } catch (poErr: any) {
-          console.error('Erro ao gerar OC de solado por déficit (OP → Em Produção):', poErr?.message);
-        }
-        // Reserva concluída: a baixa física será atômica e proporcional quando
-        // cada setor iniciar; não consumir a OP inteira na liberação.
-      } catch (err: any) {
-        // Release the 'Em Debito' claim so the OP returns to Rascunho on any unexpected error.
-        await supabase.from('orders').update({ status: 'Rascunho', updated_at: new Date().toISOString() }).eq('id', order.id).eq('status', 'Em Debito' as any);
-        toast.error(`Erro ao validar estoque: ${err.message}`);
-        return;
-      }
-    }
-    updateStatus.mutate({ id: order.id, status: newStatus });
   };
 
   const handleExportExcel = async (ordersToExport: typeof filteredOrders) => {
@@ -1038,7 +900,9 @@ function getWeekOptions() {
   };
 
   const handleInitStages = (orderId: string, quantity: number, referenceId?: string) => {
-    createStages.mutate({ orderId, quantity, referenceId });
+    void quantity;
+    void referenceId;
+    ensureOrderStages.mutate([orderId]);
   };
 
   const allSufficient = stockCheckResult.every(s => s.sufficient);
