@@ -23,6 +23,7 @@ describe('Compras por Pedido — geração atômica e idempotente', () => {
   it('uma RPC substitui o loop de INSERTs do cliente', () => {
     expect(hook).toContain("rpc('create_per_pv_purchase_orders_atomic'");
     expect(hook).toContain('grade: item.grade ?? null');
+    expect(hook).toContain('net_of_stock: item.net_of_stock');
     expect(hook).toContain('it.unit_price <= 0');
     expect(hook).not.toContain(".from('purchase_orders')\n          .insert");
     expect(hook).not.toContain(".from('purchase_order_items').insert");
@@ -43,12 +44,15 @@ describe('Compras por Pedido — geração atômica e idempotente', () => {
     expect(migration).toContain('shortage_grade');
     expect(migration).toContain("po.source_type IS DISTINCT FROM 'strap_demand'");
     expect(migration).toContain('p_allow_existing_open');
-    expect(hook).toContain("rpc('compute_per_pv_purchase_needs'");
+    expect(hook).toContain("rpc('compute_per_pv_purchase_needs_v2'");
     expect(dialog).toContain('overrideOpenPurchases');
   });
 
   it('alinha o gate visual às roles autorizadas pela RPC/RLS', () => {
     expect(saleOrders).toContain("const canBuy = isAdmin || roles.includes('gerente')");
+    expect(saleOrders).toMatch(
+      /<SummaryConsumptionPanel[\s\S]*?onGerarOC=\{canBuy \? \(\) => setPoGenTarget/,
+    );
     expect(migration).toContain("user_has_any_role(ARRAY['admin', 'gerente'])");
     expect(migration).toContain("FROM PUBLIC, anon");
   });

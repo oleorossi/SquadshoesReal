@@ -38,7 +38,7 @@ const ROWS: ConsumptionRow[] = [
   row({ componentType: 'Forração Palmilha', groupName: 'NAPA SOFT', materialName: 'Forração Palmilha', color: 'PRETO', totalQuantity: 1, available: 5.01 }),
   row({
     componentType: 'Solado', groupName: 'SOLADO 01', materialName: 'Solado', color: 'PRETO',
-    productUnit: 'par', totalQuantity: 198,
+    productUnit: 'par', totalQuantity: 198, soleProductId: 'p-solado-01',
     sizeBreakdown: { '35': 90, '36': 108 },
     soleSizeStock: { '35': 12, '36': 0 },
   }),
@@ -99,7 +99,9 @@ describe('MaterialConsumptionView — tela buy-first', () => {
         groupName: 'Solado Ricardo Tratorado',
         materialName: 'Solado',
         productUnit: 'par',
-        totalQuantity: 0,
+        totalQuantity: 80,
+        sizeBreakdown: { '34': 20, '35': 20, '36': 20, '37': 20 },
+        soleProductId: null,
         warning: 'Solado não resolve produto ativo no estoque — não será reservado nem debitado.',
       })],
     });
@@ -108,6 +110,8 @@ describe('MaterialConsumptionView — tela buy-first', () => {
     expect(within(soles).getByText('Cadastro incompleto')).toBeInTheDocument();
     expect(within(soles).getByText(/não será reservado nem debitado/i)).toBeInTheDocument();
     expect(within(soles).queryByText('Grade coberta')).not.toBeInTheDocument();
+    expect(within(soles).queryByText(/Comprar 80/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Ver itens em falta' })).toHaveTextContent('0');
   });
 
   it('o filtro "Em falta" esconde o que está coberto', async () => {
@@ -148,7 +152,10 @@ describe('MaterialConsumptionView — tela buy-first', () => {
     await user.click(screen.getByRole('button', { name: /^Napa/i }));
     expect(screen.getByRole('button', { name: /mostrando 2 de 5 · de napa/i })).toBeInTheDocument();
     expect(screen.getByText('2 itens de 5')).toBeInTheDocument();
-    const table = screen.getByRole('table');
+    // O recorte vale para a tabela/totais. O mapa prioritário de solados não
+    // pode desaparecer por causa de um filtro de materiais gerais.
+    expect(screen.getByRole('region', { name: 'Solados por numeração' })).toBeInTheDocument();
+    const table = screen.getByRole('table', { name: 'Materiais gerais' });
     expect(within(table).queryByText('OURO LIGHT')).not.toBeInTheDocument();
     expect(within(table).queryByText('SOLADO 01')).not.toBeInTheDocument();
     expect(within(table).getByText('OFF WHITE')).toBeInTheDocument();

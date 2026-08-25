@@ -1,11 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
 import {
-  fetchConsumptionContext,
-  fetchTechnicalSheetsForConsumption,
-  computeConsumptionForItems,
-  type ConsumptionItem,
-  type MaterialConsumptionRow,
-} from '@/lib/orderConsumption';
+  adaptCanonicalConsumptionLines,
+  applyCanonicalStrapsForPresentation,
+  canonicalStrapPreviews,
+  fetchCanonicalConsumptionReport,
+} from '@/lib/canonicalConsumptionReport';
+import type { MaterialConsumptionRow } from '@/lib/orderConsumption';
 import { formatUnitLabel } from '@/lib/unitLabels';
 
 export type ConsumptionComponent =
@@ -44,6 +44,9 @@ export interface ConsumptionRow {
 }
 
 export interface BulkOrderConsumptionInput {
+  /** UUID da OP. O servidor deriva referência, grade, variante e embalagem;
+   *  campos abaixo permanecem só para a chave/lookup da ficha. */
+  order_id: string;
   reference_id: string;
   quantity: number;
   color: string | null;
@@ -52,8 +55,7 @@ export interface BulkOrderConsumptionInput {
    *  Sem ela, o motor cai no consumo médio escalar (menos preciso). */
   grade?: Record<string, number> | null;
   fichas?: number | null;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  strap_colors?: any[] | null;
+  strap_colors?: Array<{ label?: string; color?: string }> | null;
   /** Variante de material do item do PV (via orders.sale_order_item_id).
    *  Troca a origem dos materiais no motor — ver ConsumptionItem. */
   material_variant_id?: string | null;
@@ -86,7 +88,9 @@ export const toBulkConsumptionRow = (r: MaterialConsumptionRow): ConsumptionRow 
   component: COMPONENT_TYPE_TO_BULK[r.componentType] ?? 'Outros',
   // Família entra na chave sintética: tiras de napas diferentes (NAPA SOFT ×
   // NAPA MADRID, por ficha da referência) não colapsam ao agregar OPs.
-  product_id: `${r.componentType}::${r.groupName}::${r.color}::${r.productUnit}::${(r.materialFamily || '').trim()}`,
+  product_id: r.productIds?.[0]
+    || r.boxTypeIds?.[0]
+    || `${r.componentType}::${r.groupName}::${r.color}::${r.productUnit}::${(r.materialFamily || '').trim()}`,
   product_name: r.groupName || r.materialName,
   color: r.color,
   consumption_per_unit: 0,
@@ -101,27 +105,23 @@ export const toBulkConsumptionRow = (r: MaterialConsumptionRow): ConsumptionRow 
 });
 
 /**
- * Hook bulk pra fichas de operador: calcula consumo de N OPs (deduplicadas por
- * (ref, cor, qtd)) e retorna mapa pra lookup rápido.
+ * Hook bulk pra fichas de operador: projeta N OPs pelo mesmo motor SQL de
+ * reserva/baixa e retorna mapa pra lookup rápido.
  *
- * RELIGADO (2026-06-02) ao motor CANÔNICO `@/lib/orderConsumption` — o MESMO
- * que alimenta o modal "Consumo de Materiais" do PV. Antes usava o RPC SQL
- * `calculate_order_consumption`, caminho divergente que produzia nomes/
- * quantidades desalinhados na ficha. Agora 1 OP = 1 item e o resultado bate
- * com o modal por construção (ver `src/lib/__tests__/orderConsumption.test.ts`).
- *
- * O RPC SQL continua existindo pra custeio/MRP (agregação de compra) — só a
- * UI da ficha deixou de usá-lo.
+ * Desde a migration 123 não existe cálculo de consumo neste hook: a RPC batch
+ * deriva cada OP no servidor, chama `calculate_order_consumption_by_grade`,
+ * embalagem de box_types e preview canônica de tiras. TS apenas adapta o shape.
  */
 export const useBulkOrderConsumption = (inputs: BulkOrderConsumptionInput[]) => {
-  // Dedup determinístico pelo MESMO contrato de bulkConsumptionKey (inclui
-  // grade + tiras — antes era só ref::COR::qtd e a 2ª OP "igual" era dropada).
+  const hasConsumptionCandidates = inputs.some(i => i.reference_id && i.quantity > 0);
+  // A identidade da OP entra na chave: duas OPs visualmente iguais ainda podem
+  // ter sourcing/revisão canônica de tira distintos no servidor.
   const uniqueInputs = Array.from(
     new Map(
       inputs
-        .filter(i => i.reference_id && i.quantity > 0)
+        .filter(i => i.order_id && i.reference_id && i.quantity > 0)
         .map(i => [
-          bulkConsumptionKey(i.reference_id, i.color, i.quantity, i.grade, i.strap_colors as any, i.material_variant_id),
+          bulkConsumptionKey(i.reference_id, i.color, i.quantity, i.grade, i.strap_colors, i.material_variant_id, i.order_id),
           i,
         ]),
     ).values(),
@@ -131,46 +131,39 @@ export const useBulkOrderConsumption = (inputs: BulkOrderConsumptionInput[]) => 
     queryKey: [
       'bulk-order-consumption',
       uniqueInputs
-        .map(i => bulkConsumptionKey(i.reference_id, i.color, i.quantity, i.grade, i.strap_colors as any, i.material_variant_id))
+        .map(i => bulkConsumptionKey(i.reference_id, i.color, i.quantity, i.grade, i.strap_colors, i.material_variant_id, i.order_id))
         .sort()
         .join('|'),
     ],
-    enabled: uniqueInputs.length > 0,
+    // Se houver candidato sem UUID, mantém a query habilitada para que o
+    // queryFn falhe alto. Desabilitar pelo array já filtrado esconderia o erro
+    // justamente quando TODAS as OPs viessem sem identidade.
+    enabled: hasConsumptionCandidates,
     staleTime: 60 * 1000,
     queryFn: async (): Promise<Map<string, ConsumptionRow[]>> => {
       const byKey = new Map<string, ConsumptionRow[]>();
-
-      const refIds = [...new Set(uniqueInputs.map(i => i.reference_id).filter(Boolean))];
-      // Contexto + fichas técnicas em batch (1 par de fetches pra todas as OPs).
-      const [ctx, sheetMap] = await Promise.all([
-        fetchConsumptionContext(refIds),
-        fetchTechnicalSheetsForConsumption(refIds),
-      ]);
+      if (inputs.some(i => i.reference_id && i.quantity > 0 && !i.order_id)) {
+        throw new Error('Há OP sem identidade UUID; consumo da ficha não foi calculado.');
+      }
+      const report = await fetchCanonicalConsumptionReport({
+        orderIds: uniqueInputs.map((input) => input.order_id),
+      });
 
       for (const input of uniqueInputs) {
-        const key = bulkConsumptionKey(input.reference_id, input.color, input.quantity, input.grade, input.strap_colors as any, input.material_variant_id);
-        try {
-          const item: ConsumptionItem = {
-            reference_id: input.reference_id,
-            color: input.color,
-            quantity: input.quantity,
-            grade: input.grade ?? null,
-            fichas: input.fichas ?? null,
-            strap_colors: input.strap_colors ?? null,
-            material_variant_id: input.material_variant_id ?? null,
-            technical_sheets: sheetMap.get(input.reference_id) ?? null,
-          };
-          const rows = computeConsumptionForItems([item], ctx);
-          // Linhas SÓ de aviso (ex.: fachete sem specs, qtd 0) existem pro modal
-          // do PV alertar o cadastro — não vão pra ficha do operador, senão
-          // imprimiriam "0,00" sem quantidade real. Linha com consumo real E
-          // aviso (ex.: fallback_average de tamanho sem spec — F2-02) CONTINUA
-          // passando: a quantidade é válida, o warning é só contexto do modal.
-          byKey.set(key, rows.filter(r => !(r.warning && !(r.totalQuantity > 0))).map(toBulkConsumptionRow));
-        } catch (e) {
-          console.warn(`[useBulkOrderConsumption] erro ao calcular ${key}:`, e);
-          byKey.set(key, []);
-        }
+        const key = bulkConsumptionKey(input.reference_id, input.color, input.quantity, input.grade, input.strap_colors, input.material_variant_id, input.order_id);
+        const scope = new Set([input.order_id]);
+        const baseRows = adaptCanonicalConsumptionLines(report.lines, scope);
+        const previews = canonicalStrapPreviews(report, scope).map(({ preview }) => preview);
+        const rows = applyCanonicalStrapsForPresentation(baseRows, previews);
+        // Linhas só de aviso permanecem no relatório de planejamento, mas não
+        // imprimem "0,00" na ficha fabril. Erro de RPC/schema rejeita o lote
+        // inteiro acima; não há fallback para o motor TS antigo.
+        byKey.set(
+          key,
+          rows
+            .filter((row) => !(row.warning && !(row.totalQuantity > 0)))
+            .map(toBulkConsumptionRow),
+        );
       }
       return byKey;
     },
@@ -205,7 +198,8 @@ export const bulkConsumptionKey = (
   grade?: Record<string, number> | null,
   straps?: Array<{ label?: string; color?: string }> | null,
   materialVariantId?: string | null,
-): string => `${reference_id}::${(color || '').toUpperCase()}::${quantity}::${consumptionVariantSig(grade, straps)}::${materialVariantId || ''}`;
+  orderId?: string | null,
+): string => `${reference_id}::${(color || '').toUpperCase()}::${quantity}::${consumptionVariantSig(grade, straps)}::${materialVariantId || ''}::${orderId || ''}`;
 
 /**
  * Filtra componentes relevantes a um setor. Padrão de mercado: cada

@@ -15,7 +15,7 @@ import {
 import { calculateStrapConsumptionCm, resolveOrderStraps } from '@/lib/strapConsumption';
 import { strapIdentityBasis } from '@/lib/strapIdentity';
 import { scaleGradeWithLargestRemainder } from '@/lib/scaleGrade';
-import { caixaCollectiveTypeFromName, shouldShowCaixaForMode, wholePackagingDemand, type CollectiveType } from '@/lib/packagingPairsPerBox';
+import { resolveCanonicalPackaging, type PackagingBoxType } from '@/lib/packagingConsumption';
 import {
   findSoleProductForColor,
   getSoleTargetColor,
@@ -24,18 +24,20 @@ import {
 } from '@/lib/soleColorResolution';
 
 /**
- * Motor CANÔNICO de consumo de materiais.
+ * Oráculo TypeScript legado de consumo de materiais.
  *
  * Extração FIEL do cálculo que vivia inline no modal "Consumo de Materiais" do
  * PV (`MaterialConsumptionDialog.loadConsumption`, aposentado em 05/08/2026 —
- * hoje `SummaryConsumptionPanel`). Agora é a fonte única usada por:
- *   - a tela "Consumo de Materiais" (por PEDIDO/PV ou lote — agrega os itens), e
- *   - a ficha do operador (por ORDEM DE PRODUÇÃO via `useBulkOrderConsumption`,
- *     onde 1 OP = 1 `sale_order_item` = referência + cor + grade).
+ * hoje `SummaryConsumptionPanel`). Desde a migration 123, a tela de Consumo,
+ * `OrderConsumptionDialog` e as fichas do operador NÃO chamam
+ * `computeConsumptionForItems`: recebem o fato do SQL
+ * `calculate_order_consumption_by_grade` por uma RPC batch e usam TypeScript
+ * somente para adaptação/apresentação e disponibilidade.
  *
- * Antes a ficha puxava de um caminho SQL divergente (`calculate_order_consumption`),
- * o que produzia nomes/quantidades desalinhados vs. o modal. Religar os dois ao
- * MESMO motor garante paridade por construção.
+ * Este módulo permanece como oráculo de paridade, base de testes e fornecedor
+ * de tipos/resolvers compartilhados por fluxos especializados. Em especial, a
+ * Lista de Separação mantém seu cálculo líquido próprio (reservado/debitado e
+ * saldo canônico de tiras), que não é um relatório bruto de consumo do PV/OP.
  *
  * Regra de cálculo: ver CLAUDE.md → "Regra de cálculo de consumo de materiais
  * (CANÔNICA)". Em resumo: um valor armazenado como dm²/par (área) NUNCA é exibido
@@ -48,8 +50,9 @@ import {
  * (verde/vermelho) é responsabilidade de quem exibe — vive no modal, pois depende
  * do momento da consulta e a ficha do operador não precisa dela.
  *
- * ⚠ O caminho SQL (`calculate_order_consumption*`) CONTINUA existindo para
- * custeio/MRP (agregação de compra) — fora do escopo deste motor de UI.
+ * ⚠ Não religar consumidores operacionais ou relatórios diretamente a
+ * `computeConsumptionForItems`. Quantidade/identidade oficial vêm da RPC SQL;
+ * mudanças neste oráculo precisam continuar cobertas pelos testes de paridade.
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -97,6 +100,8 @@ export type MaterialConsumptionRow = {
    * derivadas de grupo+cor (cabedal/forro/palmilha), que seguem no match por cor.
    */
   productIds?: string[];
+  /** Identidade canônica de embalagem. Nunca misturar com products.id. */
+  boxTypeIds?: string[];
 };
 
 /**
@@ -159,6 +164,9 @@ export type ConsumptionContext = {
   materials: any[];
   allProducts: any[];
   productGroups: any[];
+  boxTypes?: PackagingBoxType[];
+  /** Allow-list explícita dos products legados que representam embalagem BOM. */
+  legacyPackagingProductIds?: Set<string>;
   componentSheets: any[];
   soleColorMap: Map<string, string>;
   palmilhaColorMap: Map<string, { color: string; productId: string | null }>;
@@ -565,7 +573,8 @@ const addConsumptionRow = (map: Map<string, MaterialConsumptionRow>, row: Materi
   // distintas — sem isso colapsariam e a napa da minoria sumiria. Vazio nas
   // linhas de napa direta (a groupName já é a família) → chave inalterada.
   const materialFamily = (row.materialFamily || '').trim();
-  const key = `${row.componentType}||${groupName}||${materialName}||${color}||${productUnit}||${materialFamily}`;
+  const boxIdentity = [...new Set((row.boxTypeIds || []).filter(Boolean))].sort().join(',');
+  const key = `${row.componentType}||${groupName}||${materialName}||${color}||${productUnit}||${materialFamily}||box:${boxIdentity}`;
   const existing = map.get(key);
 
   if (existing) {
@@ -588,6 +597,11 @@ const addConsumptionRow = (map: Map<string, MaterialConsumptionRow>, row: Materi
       for (const id of row.productIds) if (id) merged.add(id);
       existing.productIds = [...merged];
     }
+    if (row.boxTypeIds?.length) {
+      const merged = new Set(existing.boxTypeIds || []);
+      for (const id of row.boxTypeIds) if (id) merged.add(id);
+      existing.boxTypeIds = [...merged];
+    }
     return;
   }
 
@@ -604,6 +618,7 @@ const addConsumptionRow = (map: Map<string, MaterialConsumptionRow>, row: Materi
     soleProductId: row.soleProductId,
     materialFamily: row.materialFamily || null,
     productIds: row.productIds?.length ? [...new Set(row.productIds.filter(Boolean))] : undefined,
+    boxTypeIds: row.boxTypeIds?.length ? [...new Set(row.boxTypeIds.filter(Boolean))] : undefined,
   });
 };
 
@@ -652,6 +667,8 @@ export async function fetchConsumptionContext(
     { data: componentColorMappings, error: componentColorMappingsError },
     { data: materialVariants, error: materialVariantsError },
     { data: componentColorDefaults, error: componentColorDefaultsError },
+    { data: boxTypes, error: boxTypesError },
+    { data: packagingBridges, error: packagingBridgesError },
   ] = await Promise.all([
     client
       .from('sheet_materials')
@@ -670,7 +687,7 @@ export async function fetchConsumptionContext(
       .eq('active', true),
     client
       .from('product_groups')
-      .select('id, name, dimensions_length, dimensions_width, dimensions_unit'),
+      .select('id, name, dimensions_length, dimensions_width, dimensions_unit, box_type_id, box_type_master_id, box_type_colmeia_id, box_type_fitilho_id, pairs_per_box_individual, pairs_per_box_master, pairs_per_box_colmeia, pairs_per_box_fitilho'),
     client
       .from('component_sheets')
       .select('product_id, dimensions_width, dimensions_length, dimensions_unit, yield_per_size, yield_per_sole, products!inner(group_id, name, color, unit)'),
@@ -695,6 +712,12 @@ export async function fetchConsumptionContext(
       .from('component_color_defaults')
       .select('group_id, cabedal_color, product_id, is_default')
       .eq('active', true),
+    client
+      .from('box_types')
+      .select('id, nome, tipo, quantity, unit_price, supplier_id, active, pairs_per_box_default, metros_per_amarrado_default'),
+    client
+      .from('legacy_packaging_product_bridges')
+      .select('product_id, box_type_id'),
   ]);
 
   const contextError = [
@@ -710,6 +733,8 @@ export async function fetchConsumptionContext(
     componentColorMappingsError,
     materialVariantsError,
     componentColorDefaultsError,
+    boxTypesError,
+    packagingBridgesError,
   ].find(Boolean);
   if (contextError) throw contextError;
 
@@ -987,6 +1012,10 @@ export async function fetchConsumptionContext(
     materials: materials || [],
     allProducts: allProducts || [],
     productGroups: productGroups || [],
+    boxTypes: (boxTypes || []) as PackagingBoxType[],
+    legacyPackagingProductIds: new Set(
+      ((packagingBridges || []) as any[]).map((bridge: any) => bridge.product_id).filter(Boolean),
+    ),
     componentSheets: componentSheets || [],
     soleColorMap,
     palmilhaColorMap,
@@ -1058,6 +1087,8 @@ export function computeConsumptionForItems(
     ?? new Map<string, Array<{ standardItemId: string; size: number; consumption: number; unit: string | null }>>();
   const soleGroupStandardItemsBySole = ctx.soleGroupStandardItemsBySole
     ?? new Map<string, Array<{ standardItemId: string; perPair: number; perSize: Record<string, number>; unit: string | null }>>();
+  const boxTypes = ctx.boxTypes ?? [];
+  const legacyPackagingProductIds = ctx.legacyPackagingProductIds ?? new Set<string>();
 
   // Normalização case/acento-insensitive ("Caramelo" = "CARAMELO", "Café" = "Cafe").
   const normColor = (s: string | null | undefined): string =>
@@ -1239,6 +1270,33 @@ export function computeConsumptionForItems(
     const orderColor = item.color || '—';
     const itemQuantity = Number(item.quantity) || 0;
     const sheet = item.technical_sheets as any;
+
+    // Embalagem operacional vem SOMENTE dos slots UUID do grupo de solado.
+    // A linha BOM legada é descartada abaixo pela allow-list explícita.
+    const packagingSoleGroupId = sheet?.sole_group_id
+      || sheetSoleGroupMap.get(item.reference_id)
+      || null;
+    const packagingSoleGroup = packagingSoleGroupId
+      ? (productGroups || []).find((group: any) => group.id === packagingSoleGroupId) || null
+      : null;
+    for (const packaging of resolveCanonicalPackaging({
+      mode: item.packagingMode,
+      quantity: itemQuantity,
+      grade: item.grade,
+      soleGroup: packagingSoleGroup,
+      boxTypes,
+    })) {
+      addConsumptionRow(consumptionMap, {
+        componentType: 'Embalagem',
+        groupName: 'EMBALAGEM',
+        materialName: packaging.name,
+        productUnit: packaging.unit,
+        color: '—',
+        totalQuantity: packaging.required,
+        warning: packaging.warning,
+        boxTypeIds: packaging.boxTypeId ? [packaging.boxTypeId] : undefined,
+      });
+    }
 
     // ── Variante de material do item (sale_order_items.material_variant_id) ──
     // Espelha os resolvers SQL (mig 20260907120500): por componente, o produto
@@ -2196,28 +2254,15 @@ export function computeConsumptionForItems(
       ...variantBomLines,
     ];
 
-    // Embalagem: a ficha pode listar VÁRIAS caixas no BOM (colmeia + individual)
-    // como ALTERNATIVAS. Quando o pedido define um packaging_mode, mostra só a
-    // caixa do modo escolhido — senão addConsumptionRow somaria as duas no grupo
-    // "EMBALAGEM" (qtd inflada) e rotularia com a primeira. Pré-varre os tipos de
-    // caixa presentes nesta ficha pra o filtro só agir quando há alternativa.
-    const itemPackagingMode = item.packagingMode;
-    const presentCaixaTypes = new Set<CollectiveType>();
-    if (itemPackagingMode) {
-      for (const m of itemMaterials) {
-        const p = m.products as any;
-        if (!p) continue;
-        const gName = (m.product_groups as any)?.name || p.category || p.name || '';
-        if (classifyBomMaterial(gName, p.name || '', p.category || '') !== 'Embalagem') continue;
-        const t = caixaCollectiveTypeFromName(p.name);
-        if (t) presentCaixaTypes.add(t);
-      }
-    }
-
     for (const material of itemMaterials) {
       const product = material.products as any;
       const group = material.product_groups as any;
       if (!product) continue;
+
+      // Ponte explícita criada pela migration 116. Não inferir caixa por nome,
+      // grupo, categoria nem pelo box_type_id genérico de products (há solados
+      // antigos com essa coluna preenchida indevidamente).
+      if (legacyPackagingProductIds.has(material.product_id)) continue;
 
       const groupName = group?.name || product.category || product.name || 'Outros';
       const groupKey = groupName.toLowerCase();
@@ -2241,11 +2286,6 @@ export function computeConsumptionForItems(
       // além dos 1668 reais da matriz por numeração). Pula sempre que a ficha
       // define um solado; sem solado na ficha, o BOM segue como fallback.
       const bomComponentType = classifyBomMaterial(groupName, product.name || '', product.category || '');
-
-      // Embalagem com modo definido: pula a caixa que NÃO é a do packaging_mode
-      // do pedido (só quando há alternativas reais na ficha — ver pré-varredura).
-      if (bomComponentType === 'Embalagem'
-        && !shouldShowCaixaForMode(product.name, itemPackagingMode, presentCaixaTypes)) continue;
 
       const isSoleBom = normalizeText(product.category) === 'solado'
         || bomComponentType === 'Solado';
@@ -2317,14 +2357,6 @@ export function computeConsumptionForItems(
       const rawQty = (Number(material.quantity_per_unit) || 0) * itemQuantity;
       let totalQty = rawQty;
       let widthMissing = false;
-
-      // Caixa física não admite fração. A ficha guarda 0,083 caixa/par, mas a
-      // OP precisa de CEIL por item antes da consolidação (288 × 0,083 =
-      // 23,904 → 24 caixas). Sem isto a tela escondia a fração ao formatar 72,
-      // enquanto o valor interno/OC continuava 71,712.
-      if (bomComponentType === 'Embalagem') {
-        totalQty = wholePackagingDemand(rawQty, productUnit);
-      }
 
       // Materiais de ÁREA cortados de bobina (napa/couro): têm ficha de componente
       // e quantity_per_unit está em dm²/par. Converter para metros lineares pela

@@ -424,8 +424,9 @@ export default function ProductDetail() {
       } else {
         newQty = Number(form.quantity ?? 0);
       }
-      const currentGrade = (product.stock_grade && typeof product.stock_grade === 'object' && !Array.isArray(product.stock_grade))
-        ? (product.stock_grade as Record<string, number>) : {};
+      const expectedGrade = (product.stock_grade && typeof product.stock_grade === 'object' && !Array.isArray(product.stock_grade))
+        ? (product.stock_grade as Record<string, number>) : null;
+      const currentGrade = expectedGrade ?? {};
       const qtyChanged = Math.abs(newQty - previousQty) > 1e-9;
       const gradeChanged = hasGrade && JSON.stringify(newGrade) !== JSON.stringify(currentGrade);
       if (qtyChanged || gradeChanged) {
@@ -434,6 +435,7 @@ export default function ProductDetail() {
           expectedPrevious: previousQty,
           newQty,
           reason: 'Ajuste manual pelo cadastro do material',
+          expectedGrade,
           newGrade,
         });
         if (!res.success) {
@@ -1316,37 +1318,23 @@ function StockMovementForm({ product, type }: { product: Product, type: 'in' | '
      try {
        const finalResponsible = responsible || profile?.full_name || profile?.email || 'Sistema';
 
-       // Movimento por DELTA no banco (auditoria T4/concorrência). Antes a tela
+       // Movimento pelo comando canônico (auditoria T4/concorrência). Antes a tela
        // calculava `prevStock ± qty` do snapshot React e gravava o ABSOLUTO em
        // products.quantity — qualquer débito de OP que tivesse acontecido no
        // meio-tempo era apagado sem erro nenhum. A RPC lê sob FOR UPDATE e
        // ainda barra saída avulsa que comeria material reservado pra OP.
-       // RPC posterior à última geração dos tipos do Supabase.
-       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-       const { data, error: rpcErr } = await (supabase as any).rpc('move_stock_delta', {
-         p_product_id: product.id,
-         p_type: type,
-         p_qty: quantity,
-         p_description: description || null,
-         p_lot_number: lotNumber || null,
-         p_created_at: new Date(date).toISOString(),
-         p_responsible: finalResponsible,
+       const previousQty = Number(product.quantity) || 0;
+       const result = await adjustStockSafe({
+         productId: product.id,
+         expectedPrevious: previousQty,
+         newQty: type === 'in' ? previousQty + quantity : previousQty - quantity,
+         reason: description || (type === 'in' ? 'Entrada manual' : 'Saída manual'),
+         lotNumber: lotNumber || null,
+         occurredAt: new Date(date).toISOString(),
+         responsible: finalResponsible,
+         enforceReserved: type === 'out',
        });
-       if (rpcErr) throw rpcErr;
-       if (data && data.success === false) {
-         if (data.erro === 'RESERVADO_PARA_OP') {
-           throw new Error(
-             `Saída maior que o disponível: ${Number(data.disponivel).toLocaleString('pt-BR')} livre ` +
-             `(${Number(data.reservado).toLocaleString('pt-BR')} reservado pra OP aberta de um estoque de ` +
-             `${Number(data.estoque).toLocaleString('pt-BR')}). Libere a reserva ou ajuste por inventário.`,
-           );
-         }
-         throw new Error(
-           data.erro === 'ESTOQUE_INSUFICIENTE'
-             ? `Estoque insuficiente: ${Number(data.disponivel).toLocaleString('pt-BR')} disponível.`
-             : (data.erro || 'Falha ao registrar o movimento'),
-         );
-       }
+       if (!result.success) throw new Error(result.errorMessage || 'Falha ao registrar o movimento');
 
        toast.success(type === 'in' ? 'Entrada registrada!' : 'Saída registrada!');
        setQuantity(0);

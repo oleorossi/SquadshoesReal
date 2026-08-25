@@ -19,13 +19,12 @@ import {
 } from '@/hooks/useBulkOrderConsumption';
 
 /**
- * GATE DE PARIDADE (ficha do operador ↔ modal "Consumo de Materiais").
+ * ORÁCULO TS DE PARIDADE E CONTRATO DO ADAPTADOR.
  *
- * Ambos os caminhos chamam `computeConsumptionForItems` — a ficha só adapta o
- * shape via `toBulkConsumptionRow`, preservando a QUANTIDADE 1:1. Este teste
- * trava isso com valores golden hand-computados que exercitam TODAS as regras
- * canônicas (CLAUDE.md): dm²/par → metro linear pela largura da ficha; placa
- * via área do grupo; palmilha = PLACA + FORRAÇÃO; solado por numeração.
+ * O relatório e a ficha não chamam mais `computeConsumptionForItems`: a
+ * migration 123 os alimenta pelo motor SQL operacional. Estes goldens mantêm
+ * o antigo motor como oráculo independente e travam que o adaptador visual
+ * `toBulkConsumptionRow` não altera a quantidade recebida.
  *
  * Cenário (espelha o exemplo do user — setor Corte Fibra):
  *   item: ref 'sheet-1', cor PRETO, quantity 24, grade base soma 6 (→ 4 fichas)
@@ -428,11 +427,10 @@ describe('orderConsumption — motor canônico', () => {
     expect(rows.find(r => r.componentType === 'Solado')).toBeDefined();
   });
 
-  // ── Embalagem: filtro de caixa por packaging_mode (bug PV-00141) ───────────
-  // A ficha lista DUAS caixas no BOM como alternativas (colmeia 0.083/par +
-  // individual 1/par), ambas no grupo "EMBALAGEM". Sem filtro, addConsumptionRow
-  // funde as duas e soma a qtd; com packaging_mode, mostra só a do modo. Caixa
-  // física fecha por item/OP, então o motor faz CEIL antes de consolidar.
+  // ── Embalagem canônica por packaging_mode/slots UUID ──────────────────────
+  // As duas caixas antigas continuam no BOM para preservar histórico, mas a
+  // allow-list estrutural as remove do cálculo operacional. A linha exibida
+  // vem exclusivamente do slot box_types do grupo de solado.
   function ctxComCaixas(): ConsumptionContext {
     const ctx = buildContext();
     ctx.materials = [
@@ -440,20 +438,42 @@ describe('orderConsumption — motor canônico', () => {
       { sheet_id: 'sheet-1', product_id: 'p-cx-colmeia', group_id: 'g-embal', quantity_per_unit: 0.083, color: null, products: { name: 'CAIXA COLMEIA 11', unit: 'un', category: 'Embalagem' }, product_groups: { name: 'EMBALAGEM' } },
       { sheet_id: 'sheet-1', product_id: 'p-cx-individual', group_id: 'g-embal', quantity_per_unit: 1, color: null, products: { name: 'CAIXA INDIVIDUAL 11', unit: 'un', category: 'Embalagem' }, product_groups: { name: 'EMBALAGEM' } },
     ];
+    ctx.productGroups.push({
+      id: 'g-sole', name: 'SOLADO 11', dimensions_length: null, dimensions_width: null,
+      dimensions_unit: null, box_type_id: 'bt-individual', box_type_master_id: 'bt-master',
+      box_type_colmeia_id: 'bt-colmeia', box_type_fitilho_id: 'bt-fitilho',
+      pairs_per_box_individual: 1, pairs_per_box_master: 12,
+      pairs_per_box_colmeia: 12, pairs_per_box_fitilho: 12,
+    });
+    ctx.boxTypes = [
+      { id: 'bt-individual', nome: 'CAIXA INDIVIDUAL 11', tipo: 'individual', quantity: 100, unit_price: 1, active: true },
+      { id: 'bt-master', nome: 'CAIXA MASTER 11', tipo: 'master', quantity: 100, unit_price: 8, active: true },
+      { id: 'bt-colmeia', nome: 'CAIXA COLMEIA 11', tipo: 'colmeia', quantity: 100, unit_price: 4, active: true },
+      { id: 'bt-fitilho', nome: 'FITILHO', tipo: 'fitilho', quantity: 100, unit_price: 0.2, active: true, metros_per_amarrado_default: 1.5 },
+    ];
+    ctx.legacyPackagingProductIds = new Set(['p-cx-colmeia', 'p-cx-individual']);
     return ctx;
   }
 
   it('packaging_mode colmeia → mostra só CAIXA COLMEIA (não soma a individual)', () => {
-    const item = buildItem({ packagingMode: 'colmeia' });
+    const item = buildItem({
+      packagingMode: 'colmeia',
+      technical_sheets: buildSheet({ sole_group_id: 'g-sole' }),
+    });
     const rows = computeConsumptionForItems([item], ctxComCaixas());
     const embal = rows.filter(r => r.componentType === 'Embalagem');
     expect(embal).toHaveLength(1);
     expect(embal[0].materialName).toBe('CAIXA COLMEIA 11');
-    expect(embal[0].totalQuantity).toBe(2); // ceil(1,992), não 26
+    // Regra de sobra por numeração: a grade de 6 pares é menor que a caixa de
+    // 12; cada uma das 4 fichas viaja como uma caixa parcial.
+    expect(embal[0].totalQuantity).toBe(4);
   });
 
   it('packaging_mode individual → mostra só CAIXA INDIVIDUAL', () => {
-    const item = buildItem({ packagingMode: 'individual' });
+    const item = buildItem({
+      packagingMode: 'individual',
+      technical_sheets: buildSheet({ sole_group_id: 'g-sole' }),
+    });
     const rows = computeConsumptionForItems([item], ctxComCaixas());
     const embal = rows.filter(r => r.componentType === 'Embalagem');
     expect(embal).toHaveLength(1);
@@ -461,19 +481,31 @@ describe('orderConsumption — motor canônico', () => {
     expect(embal[0].totalQuantity).toBeCloseTo(24, 6);
   });
 
-  it('SEM packaging_mode → lista as duas caixas em linhas separadas (cada uma na sua qtd)', () => {
-    // Sem modo definido não dá pra escolher a alternativa, mas as duas caixas
-    // são PRODUTOS distintos: cada uma vira sua própria linha com a quantidade
-    // física. Antes fundiam numa linha só do grupo EMBALAGEM, somando colmeia
-    // fracionária + individual e rotulando tudo com o primeiro nome.
-    const item = buildItem(); // sem packagingMode
+  it('individual_fitilho → mostra somente individual + fitilho em metros', () => {
+    const item = buildItem({
+      packagingMode: 'individual_fitilho',
+      technical_sheets: buildSheet({ sole_group_id: 'g-sole' }),
+    });
     const rows = computeConsumptionForItems([item], ctxComCaixas());
     const embal = rows.filter(r => r.componentType === 'Embalagem');
     expect(embal).toHaveLength(2);
-    const colmeia = embal.find(r => r.materialName === 'CAIXA COLMEIA 11');
     const individual = embal.find(r => r.materialName === 'CAIXA INDIVIDUAL 11');
-    expect(colmeia?.totalQuantity).toBe(2);
+    const fitilho = embal.find(r => r.materialName === 'FITILHO');
     expect(individual?.totalQuantity).toBeCloseTo(24, 6);
+    expect(fitilho?.productUnit).toBe('m');
+    expect(fitilho?.totalQuantity).toBe(3);
+  });
+
+  it('SEM packaging_mode falha fechado e não escolhe nenhuma caixa do BOM', () => {
+    const item = buildItem({ technical_sheets: buildSheet({ sole_group_id: 'g-sole' }) });
+    const rows = computeConsumptionForItems([item], ctxComCaixas());
+    const embal = rows.filter(r => r.componentType === 'Embalagem');
+    expect(embal).toHaveLength(1);
+    expect(embal[0]).toMatchObject({
+      materialName: 'Embalagem não resolvida',
+      totalQuantity: 0,
+    });
+    expect(embal[0].warning).toContain('Modo de embalagem');
   });
 
   it('produtos distintos no mesmo grupo/cor/unidade NÃO se fundem (PV-00147: dois binóculos)', () => {
@@ -1501,6 +1533,11 @@ describe('orderConsumption — contrato de colunas do fetch', () => {
     expect(bomSrc).toContain('insoleLiningSpecBySole');
     const dialogSrc = readFileSync(resolve(process.cwd(), 'src/components/orders/OrderConsumptionDialog.tsx'), 'utf8');
     expect(dialogSrc).not.toMatch(/fichas:\s*1[,\s]/);
+    expect(dialogSrc).toContain('fetchCanonicalConsumptionReport');
+    expect(dialogSrc).not.toContain('computeConsumptionForItems');
+    const bulkSrc = readFileSync(resolve(process.cwd(), 'src/hooks/useBulkOrderConsumption.ts'), 'utf8');
+    expect(bulkSrc).toContain('fetchCanonicalConsumptionReport');
+    expect(bulkSrc).not.toContain('computeConsumptionForItems');
   });
 
   // Segmentação por cor × família de napa (2026-07-22, specs/tira-base-napa-por-

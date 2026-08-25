@@ -12,6 +12,10 @@ import {
 import { format, addDays, isAfter, isBefore, parseISO, startOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
+import {
+  executePurchaseOrderCommand,
+  purchaseOrderLogicalKey,
+} from '@/services/purchaseOrderCommandService';
 
 interface Projection {
   order_id: string;
@@ -142,7 +146,7 @@ export function PurchaseTimeline() {
     try {
       const { data: pendingPOs, error: fetchErr } = await supabase
         .from('purchase_orders')
-        .select('id, order_number')
+        .select('id, order_number, updated_at')
         .eq('status', 'pending');
       if (fetchErr) throw fetchErr;
 
@@ -151,12 +155,15 @@ export function PurchaseTimeline() {
         return;
       }
 
-      const ids = pendingPOs.map((p) => p.id);
-      const { error: updErr } = await supabase
-        .from('purchase_orders')
-        .update({ status: 'approved' })
-        .in('id', ids);
-      if (updErr) throw updErr;
+      for (const po of pendingPOs) {
+        await executePurchaseOrderCommand({
+          command: 'update',
+          purchaseOrderId: po.id,
+          expectedUpdatedAt: po.updated_at,
+          payload: { header_patch: { status: 'approved' } },
+          logicalKey: purchaseOrderLogicalKey('approve-timeline', po.id),
+        });
+      }
 
       toast.success(`${pendingPOs.length} solicitação(ões) aprovada(s) com sucesso!`);
       queryClient.invalidateQueries({ queryKey: ['purchase_orders'] });

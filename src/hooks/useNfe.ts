@@ -698,10 +698,14 @@ export function useCheckNfeStatus() {
       if (data?.error) throw new Error(data.error);
       return data;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ['nfe_emitidas'] });
       qc.invalidateQueries({ queryKey: ['nfe_emitidas_all'] });
-      toast.success('Status da NF-e atualizado!');
+      if (data?.reconciliation_needed === true) {
+        toast.warning('Status consultado, mas o cancelamento ainda aguarda reconciliação do provedor.');
+      } else {
+        toast.success('Status da NF-e atualizado!');
+      }
     },
     onError: (err: Error) => toast.error(`Erro: ${err.message}`),
   });
@@ -757,22 +761,39 @@ export function getNfeCancelHoursLeft(dataEmissao: string | null | undefined): n
   return remainingMs / 3600000;
 }
 
+interface NfeDevolucaoCommandResponse {
+  success?: boolean;
+  pending?: boolean;
+  error?: string;
+  terminal_rejected?: boolean;
+  reconciliation_required?: boolean;
+  devolucao?: {
+    rejected?: boolean;
+    provider_submission_state?: string;
+    chave_acesso?: string | null;
+  };
+}
+
 /**
  * Emite NF-e de devolução (entrada modelo 55, finalidade 4) referenciando a
  * NF de saída original. Usado quando a janela de 24h pra cancelar passou.
  * Após autorizada, mercadoria volta ao estoque + AR ajustado proporcionalmente.
  *
- * Auditoria A2: gera idempotency_key UUID por tentativa. Se o request falha
- * (timeout, rede) e o operador retenta, o edge function reconhece a chave
- * idêntica e retorna o resultado original — bloqueia devolução duplicada
- * (cada retry criava nfe_devolucoes + 2× redução de AR).
+ * O requestId nasce no diálogo e sobrevive a timeout/reload. Gerá-lo dentro da
+ * mutation faria cada retry parecer uma devolução nova justamente quando não
+ * sabemos se o provedor recebeu o primeiro POST.
  */
 export function useEmitNfeDevolucao() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (payload: {
       nfeOriginalId: string;
-      itens: Array<{ sale_order_item_id: string; qty: number }>;
+      requestId: string;
+      itens: Array<{
+        sale_order_item_id: string;
+        qty: number;
+        grade: Record<string, number>;
+      }>;
       motivo: string;
     }) => {
       if (!payload.motivo || payload.motivo.trim().length < 15) {
@@ -781,22 +802,55 @@ export function useEmitNfeDevolucao() {
       if (!payload.itens || payload.itens.length === 0) {
         throw new Error('Informe ao menos 1 item a devolver.');
       }
-      // crypto.randomUUID() padrão moderno — suporte universal navegadores recentes
-      const idempotency_key = (globalThis.crypto as any)?.randomUUID?.()
-        || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-      const { data, error } = await supabase.functions.invoke('emit-nfe-devolucao', {
-        body: {
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(payload.requestId)) {
+        throw new Error('Identificador durável da devolução inválido. Reabra o diálogo.');
+      }
+
+      // Fetch direto preserva o corpo dos 202/409/422. O invoke esconderia a
+      // razão de reconciliação atrás de um erro HTTP genérico.
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) throw new Error('Sessão expirada. Faça login novamente.');
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const publishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+      const response = await fetch(`${supabaseUrl}/functions/v1/emit-nfe-devolucao`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+          apikey: publishableKey,
+        },
+        body: JSON.stringify({
           nfe_original_id: payload.nfeOriginalId,
           itens: payload.itens,
           motivo: payload.motivo.trim(),
-          idempotency_key,
-        },
+          idempotency_key: payload.requestId,
+        }),
       });
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
+      const text = await response.text();
+      let data: NfeDevolucaoCommandResponse | null = null;
+      try { data = JSON.parse(text) as NfeDevolucaoCommandResponse; } catch { /* resposta não-JSON */ }
+      if (!response.ok || data?.success === false || data?.pending) {
+        const message = data?.error
+          || (data?.pending
+            ? 'NF criada e ainda em processamento. Tente novamente com esta mesma intenção.'
+            : text || `HTTP ${response.status} ao emitir devolução.`);
+        const commandError = new Error(String(message)) as Error & {
+          response?: NfeDevolucaoCommandResponse | null;
+          status?: number;
+          terminalRejected?: boolean;
+        };
+        commandError.response = data;
+        commandError.status = response.status;
+        commandError.terminalRejected = data?.terminal_rejected === true
+          || (response.status === 422 && (
+            data?.devolucao?.rejected === true
+            || data?.devolucao?.provider_submission_state === 'rejected'
+          ));
+        throw commandError;
+      }
       return data;
     },
-    onSuccess: (data: any) => {
+    onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ['nfe_emitidas'] });
       qc.invalidateQueries({ queryKey: ['nfe_emitidas_all'] });
       qc.invalidateQueries({ queryKey: ['nfe_devolucoes'] });
@@ -804,15 +858,22 @@ export function useEmitNfeDevolucao() {
       qc.invalidateQueries({ queryKey: ['accounts_receivable'] });
       qc.invalidateQueries({ queryKey: ['stock_movements'] });
       qc.invalidateQueries({ queryKey: ['products'] });
-      if (data?.partial_cleanup_warning) {
-        toast.warning(`NF de devolução emitida, mas: ${data.partial_cleanup_warning}`, { duration: 8000 });
-      } else if (data?.success) {
+      qc.invalidateQueries({ queryKey: ['ready_stock'] });
+      if (data?.success) {
         toast.success(`NF de devolução autorizada! Chave: ${data?.devolucao?.chave_acesso?.slice(-6) || '—'}`);
       } else {
         toast.warning('NF de devolução cadastrada mas não autorizada — verifique status.');
       }
     },
-    onError: (err: Error) => toast.error(`Erro: ${err.message}`),
+    onError: (err: Error & { response?: NfeDevolucaoCommandResponse | null }) => {
+      if (err.response?.reconciliation_required) {
+        toast.error(`Reconciliação fiscal necessária: ${err.message}`, { duration: 10000 });
+      } else if (err.response?.pending) {
+        toast.warning(err.message, { duration: 8000 });
+      } else {
+        toast.error(`Erro: ${err.message}`);
+      }
+    },
   });
 }
 
@@ -823,7 +884,7 @@ export function useNfeDevolucoes(nfeOriginalId?: string) {
   return useQuery({
     queryKey: ['nfe_devolucoes', nfeOriginalId || 'all'],
     queryFn: async () => {
-      let q = (supabase as any).from('nfe_devolucoes').select('*').order('created_at', { ascending: false });
+      let q = supabase.from('nfe_devolucoes').select('*').order('created_at', { ascending: false });
       if (nfeOriginalId) q = q.eq('nfe_original_id', nfeOriginalId);
       const { data, error } = await q;
       if (error) throw error;
@@ -870,6 +931,9 @@ export function useCancelNfe() {
       let parsed: any = null;
       try { parsed = JSON.parse(txt); } catch { /* resposta não-JSON */ }
 
+      if (res.status === 202 && parsed?.pending === true) {
+        return parsed;
+      }
       if (!res.ok || parsed?.success === false) {
         const pr = parsed?.provider_response;
         const prMsg = pr?.mensagem
@@ -894,7 +958,9 @@ export function useCancelNfe() {
       qc.invalidateQueries({ queryKey: ['accounts_receivable'] });
       qc.invalidateQueries({ queryKey: ['financial_entries'] });
       qc.invalidateQueries({ queryKey: ['nfe_devolucoes'] });
-      if (data?.partial_cleanup_warning) {
+      if (data?.pending === true && data?.reconciliation_needed === true) {
+        toast.warning('Cancelamento mantido em análise até a confirmação do provedor.');
+      } else if (data?.partial_cleanup_warning) {
         toast.warning(`NF-e cancelada, mas houve aviso financeiro: ${data.partial_cleanup_warning}`);
       } else {
         toast.success('NF-e cancelada com sucesso!');

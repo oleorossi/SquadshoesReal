@@ -17,7 +17,11 @@ import { rateGradeToTotal } from '@/lib/gradeDistribution';
 
 /** Uma necessidade de material vinda da RPC compute_materials_per_pv. */
 export interface PvMaterialNeed {
-  material_id: string;
+  /** Identidade de estoque XOR: material comum usa products; embalagem usa
+   *  box_types diretamente, sem produto espelho/nome inferido. */
+  material_id: string | null;
+  box_type_id?: string | null;
+  packaging_type?: string | null;
   product_name: string;
   unit: string;
   color?: string | null;
@@ -80,7 +84,10 @@ export interface PvMaterialNeed {
 }
 
 export interface DraftPurchaseOrderItem {
-  material_id: string;
+  /** Exatamente um entre material_id e box_type_id deve estar preenchido. */
+  material_id: string | null;
+  box_type_id?: string | null;
+  packaging_type?: string | null;
   product_name: string;
   unit: string;
   color: string | null;
@@ -90,6 +97,9 @@ export interface DraftPurchaseOrderItem {
   technical_name?: string | null;
   /** Quantidade a comprar (default = needed_qty bruto; editável na UI). */
   quantity: number;
+  /** Decisão explícita do operador: true compra só a falta; false preserva o
+   * estoque e permite comprar até a necessidade bruta atual. */
+  net_of_stock: boolean;
   needed_qty: number;
   stock_qty: number;
   unit_price: number;
@@ -290,6 +300,26 @@ function colorKey(c: string | null | undefined): string {
   return (c ?? '').trim().toLowerCase();
 }
 
+export function perPvStockIdentity(item: {
+  material_id?: string | null;
+  box_type_id?: string | null;
+}): { kind: 'product' | 'box_type'; id: string } | null {
+  const productId = nonEmptyId(item.material_id);
+  const boxTypeId = nonEmptyId(item.box_type_id);
+  if ((productId === null) === (boxTypeId === null)) return null;
+  return productId
+    ? { kind: 'product', id: productId }
+    : { kind: 'box_type', id: boxTypeId! };
+}
+
+export function perPvStockIdentityKey(item: {
+  material_id?: string | null;
+  box_type_id?: string | null;
+}): string {
+  const identity = perPvStockIdentity(item);
+  return identity ? `${identity.kind}:${identity.id}` : 'invalid';
+}
+
 /**
  * Unidades de COMPRA contáveis (vendidas por inteiro) — a quantidade da OC
  * arredonda pra cima pro inteiro. Espelha DISCRETE_PURCHASE_UNITS de
@@ -322,11 +352,13 @@ export function buildPerPvPurchaseOrders(
 ): DraftPurchaseOrder[] {
   const netOfStock = opts.netOfStock ?? false;
 
-  // 1) Mescla por (material_id + cor).
+  // 1) Mescla por (tipo de identidade + UUID + cor).
   const merged = new Map<string, DraftPurchaseOrderItem & { supplier_id: string | null; supplier_name: string | null; conversion_factor: number; purchase_unit: string | null }>();
   for (const n of needs) {
-    if (!n || !n.material_id) continue;
-    const key = `${n.material_id}::${colorKey(n.color)}`;
+    if (!n) continue;
+    const identity = perPvStockIdentity(n);
+    if (!identity) continue;
+    const key = `${identity.kind}:${identity.id}::${colorKey(n.color)}`;
     const needed = Number(n.needed_qty) || 0;
     const stock = Number(n.stock_qty) || 0;
     const price = Number(n.last_unit_price) || 0;
@@ -348,13 +380,16 @@ export function buildPerPvPurchaseOrders(
       existing.product_group_id = existing.product_group_id || n.product_group_id || null;
     } else {
       merged.set(key, {
-        material_id: n.material_id,
+        material_id: identity.kind === 'product' ? identity.id : null,
+        box_type_id: identity.kind === 'box_type' ? identity.id : null,
+        packaging_type: n.packaging_type ?? null,
         product_name: n.product_name,
         unit: n.unit || 'un',
         color: (n.color ?? null) || null,
         sku: n.sku ?? null,
         technical_name: n.technical_name ?? null,
         quantity: 0, // definido abaixo
+        net_of_stock: netOfStock,
         needed_qty: round3(needed),
         stock_qty: round3(stock),
         unit_price: price,
@@ -440,12 +475,15 @@ export function buildPerPvPurchaseOrders(
     }
     g.items.push({
       material_id: it.material_id,
+      box_type_id: it.box_type_id ?? null,
+      packaging_type: it.packaging_type ?? null,
       product_name: it.product_name,
       unit: it.unit,
       color: it.color,
       sku: it.sku ?? null,
       technical_name: it.technical_name ?? null,
       quantity: it.quantity,
+      net_of_stock: it.net_of_stock,
       needed_qty: it.needed_qty,
       stock_qty: it.stock_qty,
       unit_price: it.unit_price,
@@ -477,7 +515,8 @@ export function buildPerPvPurchaseOrders(
 
 /** Uma necessidade que a RPC devolveu com aviso — a UI precisa mostrar. */
 export interface PvNeedWarning {
-  material_id: string;
+  material_id: string | null;
+  box_type_id?: string | null;
   product_name: string;
   color: string | null;
   unit: string;
@@ -506,11 +545,12 @@ export function collectPvNeedWarnings(needs: PvMaterialNeed[]): PvNeedWarning[] 
   for (const n of needs || []) {
     const message = (n?.conversion_warning ?? '').trim();
     if (!message) continue;
-    const key = `${n.material_id}::${colorKey(n.color)}::${message}`;
+    const key = `${perPvStockIdentityKey(n)}::${colorKey(n.color)}::${message}`;
     if (seen.has(key)) continue;
     seen.add(key);
     out.push({
       material_id: n.material_id,
+      box_type_id: n.box_type_id ?? null,
       product_name: n.product_name,
       color: (n.color ?? null) || null,
       unit: n.unit || 'un',
@@ -532,11 +572,12 @@ export function collectOpenPurchaseWarnings(needs: PvMaterialNeed[]): PvNeedWarn
   for (const n of needs || []) {
     const message = (n?.open_purchase_warning ?? '').trim();
     if (!message) continue;
-    const key = `${n.material_id}::${message}`;
+    const key = `${perPvStockIdentityKey(n)}::${message}`;
     if (seen.has(key)) continue;
     seen.add(key);
     out.push({
       material_id: n.material_id,
+      box_type_id: n.box_type_id ?? null,
       product_name: n.product_name,
       color: (n.color ?? null) || null,
       unit: n.unit || 'un',
@@ -569,6 +610,20 @@ export function summarizePerPvDrafts(drafts: DraftPurchaseOrder[]): PerPvDraftSu
     total: round3(drafts.reduce((s, d) => s + d.total, 0)),
     colorMismatchCount: drafts.reduce((s, d) => s + d.items.filter((i) => i.color_mismatch).length, 0),
   };
+}
+
+/**
+ * Embalagem canônica (`box_types`) não possui o balde operacional "Sem
+ * Fornecedor": a fronteira atômica exige o fornecedor cadastrado no próprio
+ * tipo de embalagem. Materiais de `products` continuam podendo formar a OC
+ * manual sem fornecedor, portanto a guarda precisa discriminar a identidade.
+ */
+export function collectPerPvPackagingWithoutSupplier(
+  drafts: DraftPurchaseOrder[],
+): DraftPurchaseOrderItem[] {
+  return drafts.flatMap((draft) => draft.supplier_id === null
+    ? draft.items.filter((item) => perPvStockIdentity(item)?.kind === 'box_type')
+    : []);
 }
 
 /**

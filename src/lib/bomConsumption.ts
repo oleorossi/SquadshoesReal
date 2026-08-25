@@ -18,9 +18,10 @@ import {
   reduceSoleTechnicalSpecsByRecency,
   resolveSoleProductIdCanonical,
   resolveMaterialProductCanonical,
+  resolveInsoleBaseProductCanonical,
 } from '@/lib/orderConsumption';
 import { scaleGradeWithLargestRemainder } from '@/lib/scaleGrade';
-import { caixaCollectiveTypeFromName, shouldShowCaixaForMode, wholePackagingDemand, type CollectiveType } from '@/lib/packagingPairsPerBox';
+import { resolveCanonicalPackaging, type PackagingBoxType } from '@/lib/packagingConsumption';
 import { resolvePinnedSoleProductIdByColor, type SoleColorRule } from '@/lib/soleColorResolution';
 import {
   type ArtisanalStrapCutRow,
@@ -60,6 +61,8 @@ export type ConsumptionRow = {
   strapBaseRequiredM?: number;
   strapBaseName?: string | null;
   strapConfirmedYieldMPerM?: number | null;
+  /** Identidade do estoque de embalagem; não é products.id. */
+  boxTypeId?: string | null;
 };
 
 type CanonicalStrapNetDemandRow = {
@@ -150,7 +153,8 @@ const addConsumptionRow = (map: Map<string, ConsumptionRow>, row: ConsumptionRow
   const strapIdentity = row.componentType === 'Tiras' && row.strapVariantId
     ? `||${row.strapVariantId}||${row.recipeId || ''}||${row.baseProductId || ''}`
     : '';
-  const key = `${row.componentType}||${groupName}||${materialName}||${color}||${productUnit}${strapIdentity}`;
+  const boxIdentity = row.boxTypeId ? `||box:${row.boxTypeId}` : '';
+  const key = `${row.componentType}||${groupName}||${materialName}||${color}||${productUnit}${strapIdentity}${boxIdentity}`;
   const existing = map.get(key);
 
   if (existing) {
@@ -171,6 +175,7 @@ const addConsumptionRow = (map: Map<string, ConsumptionRow>, row: ConsumptionRow
     if (!existing.strapConfirmedYieldMPerM && row.strapConfirmedYieldMPerM) {
       existing.strapConfirmedYieldMPerM = row.strapConfirmedYieldMPerM;
     }
+    if (!existing.boxTypeId && row.boxTypeId) existing.boxTypeId = row.boxTypeId;
     // Equivalência em placas soma junto (é linear na mesma proporção do dm²).
     if (row.plateEquivalent) existing.plateEquivalent = (existing.plateEquivalent || 0) + row.plateEquivalent;
     return;
@@ -193,12 +198,37 @@ const addConsumptionRow = (map: Map<string, ConsumptionRow>, row: ConsumptionRow
     strapBaseRequiredM: row.strapBaseRequiredM,
     strapBaseName: row.strapBaseName,
     strapConfirmedYieldMPerM: row.strapConfirmedYieldMPerM,
+    boxTypeId: row.boxTypeId,
   });
 };
 
 const nonNegativeQuantity = (value: unknown): number => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+};
+
+type QueryResultLike<T = unknown> = {
+  data?: T | null;
+  error?: { message?: string | null } | Error | null;
+};
+
+/**
+ * A Lista de Separação é um documento operacional: uma consulta incompleta
+ * não pode virar silenciosamente um BOM parcial. Mantemos o nome da fonte no
+ * erro para que a tela consiga orientar o diagnóstico sem publicar quantidades
+ * aparentemente válidas.
+ */
+const assertQuerySucceeded = (
+  label: string,
+  result: QueryResultLike,
+): void => {
+  if (!result?.error) return;
+  const detail = result.error instanceof Error
+    ? result.error.message
+    : result.error.message;
+  throw new Error(
+    `Não foi possível gerar a Lista de Separação: falha ao carregar ${label}${detail ? ` (${detail})` : ''}. Nenhum BOM parcial foi gerado.`,
+  );
 };
 
 /**
@@ -271,14 +301,16 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
   const saleOrderIds = [...new Set(ordersData.map(o => o.sale_order_id).filter(Boolean))] as string[];
 
   const [
-    { data: sheetsData },
-    { data: materials, error: materialsError },
-    { data: allProducts },
-    { data: productGroups },
-    { data: componentSheets },
-    { data: saleOrderItems },
-    { data: soleColorMappings },
-    { data: saleOrdersPkg },
+    sheetsResult,
+    materialsResult,
+    productsResult,
+    productGroupsResult,
+    componentSheetsResult,
+    saleOrderItemsResult,
+    soleColorMappingsResult,
+    saleOrdersPkgResult,
+    boxTypesResult,
+    packagingBridgesResult,
   ] = await Promise.all([
     supabase
       .from('technical_sheets')
@@ -295,13 +327,13 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
     // `fachete_material_group_id` pro componente Fachete (BOM-2/BOM-5);
     // `category` pra classificar itens-padrão do solado (F2-01).
     supabase.from('products').select('id, name, color, category, group_id, quantity, unit, sole_classification, is_fachetado, fachete_material_group_id').eq('active', true),
-    supabase.from('product_groups').select('id, name, dimensions_length, dimensions_width, dimensions_unit'),
+    supabase.from('product_groups').select('id, name, dimensions_length, dimensions_width, dimensions_unit, box_type_id, box_type_master_id, box_type_colmeia_id, box_type_fitilho_id, pairs_per_box_individual, pairs_per_box_master, pairs_per_box_colmeia, pairs_per_box_fitilho'),
     supabase
       .from('component_sheets')
       .select('product_id, dimensions_width, dimensions_length, dimensions_unit, yield_per_size, yield_per_sole, products!inner(group_id, name, color, unit)'),
     saleOrderItemIds.length > 0
       ? supabase.from('sale_order_items').select('id, strap_colors, fichas, material_variant_id').in('id', saleOrderItemIds)
-      : Promise.resolve({ data: [] }),
+      : Promise.resolve({ data: [], error: null }),
     (supabase as any)
       .from('technical_sheet_sole_colors')
       .select('sheet_id, product_color, sole_product_id, sole_group_id')
@@ -311,13 +343,53 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
     // Lista de Separação deve mostrar SÓ a do modo (espelha o modal/orderConsumption).
     saleOrderIds.length > 0
       ? supabase.from('sale_orders').select('id, packaging_mode').in('id', saleOrderIds)
-      : Promise.resolve({ data: [] }),
+      : Promise.resolve({ data: [], error: null }),
+    supabase
+      .from('box_types' as never)
+      .select('id, nome, tipo, quantity, unit_price, supplier_id, active, pairs_per_box_default, metros_per_amarrado_default'),
+    supabase
+      .from('legacy_packaging_product_bridges' as never)
+      .select('product_id, box_type_id'),
   ]);
 
-  if (materialsError) throw materialsError;
+  const requiredQueries: Array<[string, QueryResultLike]> = [
+    ['fichas técnicas', sheetsResult],
+    ['materiais da ficha', materialsResult],
+    ['produtos ativos', productsResult],
+    ['grupos de produtos', productGroupsResult],
+    ['fichas de componentes', componentSheetsResult],
+    ['itens dos pedidos', saleOrderItemsResult],
+    ['mapeamentos de cor do solado', soleColorMappingsResult],
+    ['modo de embalagem dos pedidos', saleOrdersPkgResult],
+    ['tipos de embalagem', boxTypesResult],
+    ['ponte de embalagem legada', packagingBridgesResult],
+  ];
+  for (const [label, result] of requiredQueries) assertQuerySucceeded(label, result);
+
+  const sheetsData = sheetsResult.data || [];
+  const materials = materialsResult.data || [];
+  const allProducts = productsResult.data || [];
+  const productGroups = productGroupsResult.data || [];
+  const componentSheets = componentSheetsResult.data || [];
+  const saleOrderItems = saleOrderItemsResult.data || [];
+  const soleColorMappings = soleColorMappingsResult.data || [];
+  const saleOrdersPkg = saleOrdersPkgResult.data || [];
+  const boxTypes = (boxTypesResult.data || []) as PackagingBoxType[];
+  const legacyPackagingProductIds = new Set<string>(
+    ((packagingBridgesResult.data || []) as unknown as Array<{ product_id?: string | null }>)
+      .map((bridge) => bridge.product_id)
+      .filter(Boolean),
+  );
 
   const sheetsMap = new Map((sheetsData || []).map(s => [s.id, s]));
   const saleItemsMap = new Map((saleOrderItems || []).map((si: any) => [si.id, si]));
+  const ordersWithoutSheet = ordersData.filter((order) => !sheetsMap.has(order.reference_id));
+  if (ordersWithoutSheet.length > 0) {
+    const labels = ordersWithoutSheet.map((order) => order.id).join(', ');
+    throw new Error(
+      `Não foi possível gerar a Lista de Separação: ${ordersWithoutSheet.length} OP(s) sem ficha técnica carregada (${labels}). Nenhum BOM parcial foi gerado.`,
+    );
+  }
 
   // Variantes de material das fichas envolvidas (troca de grupo por componente
   // + pin de solado). Mesma precedência do motor canônico/resolvers SQL.
@@ -325,10 +397,12 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
   {
     const variantIds = [...new Set((saleOrderItems || []).map((si: any) => si.material_variant_id).filter(Boolean))];
     if (variantIds.length > 0) {
-      const { data: variantRows } = await (supabase as any)
-        .from('reference_material_variants')
+      const variantResult = await supabase
+        .from('reference_material_variants' as never)
         .select('id, reference_id, upper_material_product_id, upper_material_group_id, lining_material_product_id, lining_material_group_id, insole_material_product_id, insole_material_group_id, insole_consumption_override, sole_material_product_id, sole_consumption_override, main_material_group_id')
         .in('id', variantIds);
+      assertQuerySucceeded('variantes de material', variantResult);
+      const variantRows = variantResult.data || [];
       for (const v of (variantRows || []) as any[]) variantsById.set(v.id, v);
     }
   }
@@ -358,11 +432,13 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
   {
     const soleGroupIds = Array.from(new Set(sheetSoleGroupMap.values()));
     if (soleGroupIds.length > 0) {
-      const { data: conjugations } = await (supabase as any)
-        .from('sole_color_conjugations')
+      const conjugationsResult = await supabase
+        .from('sole_color_conjugations' as never)
         .select('sole_group_id, cabedal_color, palmilha_color, resolution_mode, is_default, active')
         .in('sole_group_id', soleGroupIds)
         .eq('active', true);
+      assertQuerySucceeded('coligações de cor do solado', conjugationsResult);
+      const conjugations = conjugationsResult.data || [];
       for (const c of (conjugations || []) as any[]) {
         const arr = soleConjugationsByGroup.get(c.sole_group_id) || [];
         arr.push({
@@ -380,10 +456,12 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
   // (sheet_id::corNormalizada), mesma paridade de match do SQL/motor canônico.
   const componentColorMap = new Map<string, Array<{ productId: string; quantityPerUnit: number }>>();
   {
-    const { data: componentColorMappings } = await (supabase as any)
-      .from('technical_sheet_component_colors')
+    const componentColorMappingsResult = await supabase
+      .from('technical_sheet_component_colors' as never)
       .select('sheet_id, cabedal_color, product_id, quantity_per_unit')
       .in('sheet_id', refIds);
+    assertQuerySucceeded('componentes por cor', componentColorMappingsResult);
+    const componentColorMappings = componentColorMappingsResult.data || [];
     for (const m of (componentColorMappings || []) as any[]) {
       if (!m.product_id) continue;
       const key = `${m.sheet_id}::${normalizeColorKey(m.cabedal_color)}`;
@@ -400,10 +478,12 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
   // (orderConsumption.ts).
   const componentColorDefaultMap = new Map<string, string>();
   {
-    const { data: componentColorDefaults } = await (supabase as any)
-      .from('component_color_defaults')
+    const componentColorDefaultsResult = await supabase
+      .from('component_color_defaults' as never)
       .select('group_id, cabedal_color, product_id, is_default')
       .eq('active', true);
+    assertQuerySucceeded('padrões globais de componentes por cor', componentColorDefaultsResult);
+    const componentColorDefaults = componentColorDefaultsResult.data || [];
     for (const d of (componentColorDefaults || []) as any[]) {
       if (!d.group_id || !d.product_id) continue;
       const key = d.is_default ? `${d.group_id}::*` : `${d.group_id}::${normalizeColorKey(d.cabedal_color)}`;
@@ -416,10 +496,12 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
   const liningColorMap = new Map<string, string>();
   const liningDefaultMap = new Map<string, string>();
   {
-    const { data: liningColorMappings } = await (supabase as any)
-      .from('technical_sheet_lining_colors')
+    const liningColorMappingsResult = await supabase
+      .from('technical_sheet_lining_colors' as never)
       .select('sheet_id, cabedal_color, lining_color')
       .in('sheet_id', refIds);
+    assertQuerySucceeded('mapeamentos de cor da forração', liningColorMappingsResult);
+    const liningColorMappings = liningColorMappingsResult.data || [];
     for (const m of (liningColorMappings || []) as any[]) {
       liningColorMap.set(`${m.sheet_id}::${normalizeColorKey(m.cabedal_color)}`, m.lining_color);
       if (m.cabedal_color === '__DEFAULT__') liningDefaultMap.set(m.sheet_id, m.lining_color);
@@ -448,9 +530,11 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
   const insoleLiningConsumptionPerSizeBySole = new Map<string, Record<string, number>>();
   const facheteConsumptionPerSizeBySole = new Map<string, Record<string, number>>();
   {
-    const { data: liningSpecs } = await (supabase as any)
-      .from('sole_technical_specs')
+    const liningSpecsResult = await supabase
+      .from('sole_technical_specs' as never)
       .select('sole_id, size, updated_at, lining_consumption_dm2, insole_lining_consumption_dm2, insole_consumption_dm2, fachete_lining_consumption_dm2, lining_consumption_per_size, insole_lining_consumption_per_size, insole_consumption_per_size, fachete_lining_consumption_per_size');
+    assertQuerySucceeded('consumos técnicos do solado', liningSpecsResult);
+    const liningSpecs = liningSpecsResult.data || [];
     for (const r of reduceSoleTechnicalSpecsByRecency(liningSpecs as any[])) {
       const v = Number(r.lining_consumption_dm2) || 0;
       if (v > 0 && r.size != null) {
@@ -520,11 +604,13 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
       if (v?.sole_material_product_id) candidateIds.add(v.sole_material_product_id);
     }
     if (candidateIds.size > 0) {
-      const { data: stdItems } = await (supabase as any)
-        .from('sole_standard_items_consumption')
+      const stdItemsResult = await supabase
+        .from('sole_standard_items_consumption' as never)
         .select('sole_product_id, standard_item_id, size, consumption, unit')
         .in('sole_product_id', [...candidateIds])
         .gt('consumption', 0);
+      assertQuerySucceeded('itens-padrão legados do solado', stdItemsResult);
+      const stdItems = stdItemsResult.data || [];
       for (const r of (stdItems || []) as any[]) {
         const cons = Number(r.consumption) || 0;
         if (cons <= 0 || r.size == null || !r.standard_item_id) continue;
@@ -542,10 +628,12 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
       if (candidateIds.has(p.id) && p.group_id) groupIdsForStd.add(p.group_id);
     }
     if (groupIdsForStd.size > 0) {
-      const { data: groupItems } = await (supabase as any)
-        .from('sole_group_standard_items')
+      const groupItemsResult = await supabase
+        .from('sole_group_standard_items' as never)
         .select('sole_group_id, material_product_id, consumption_per_pair, consumption_per_size, unit')
         .in('sole_group_id', [...groupIdsForStd]);
+      assertQuerySucceeded('itens-padrão vigentes do grupo de solado', groupItemsResult);
+      const groupItems = groupItemsResult.data || [];
       const byGroup = new Map<string, any[]>();
       for (const r of (groupItems || []) as any[]) {
         const arr = byGroup.get(r.sole_group_id) || [];
@@ -672,7 +760,11 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
 
   for (const order of ordersData) {
     const sheet = sheetsMap.get(order.reference_id) as any;
-    if (!sheet) continue;
+    if (!sheet) {
+      throw new Error(
+        `Não foi possível gerar a Lista de Separação: a OP ${order.id} está sem ficha técnica carregada. Nenhum BOM parcial foi gerado.`,
+      );
+    }
 
     const saleItem = order.sale_order_item_id ? saleItemsMap.get(order.sale_order_item_id) as any : null;
     const item = {
@@ -690,6 +782,31 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
     };
     const itemQuantity = Number(item.quantity) || 0;
     const orderColor = item.color || '—';
+    const itemPackagingMode = order.sale_order_id
+      ? (packagingModeBySaleOrder.get(order.sale_order_id) ?? null)
+      : null;
+
+    const packagingSoleGroup = sheet?.sole_group_id
+      ? (productGroups || []).find((group) => group.id === sheet.sole_group_id) || null
+      : null;
+    for (const packaging of resolveCanonicalPackaging({
+      mode: itemPackagingMode,
+      quantity: itemQuantity,
+      grade: item.grade,
+      soleGroup: packagingSoleGroup,
+      boxTypes,
+    })) {
+      addConsumptionRow(consumptionMap, {
+        componentType: 'Embalagem',
+        groupName: 'EMBALAGEM',
+        materialName: packaging.name,
+        productUnit: packaging.unit,
+        color: '—',
+        totalQuantity: packaging.required,
+        warning: packaging.warning,
+        boxTypeId: packaging.boxTypeId,
+      });
+    }
 
     // Variante de material do item do PV: troca a ORIGEM (grupo/produto) por
     // componente, com a área da ficha — espelha o motor canônico
@@ -862,15 +979,15 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
     if (!isPalmilhaPronta) {
       const insoleGroupName = insoleVariantGroup || sheet?.insole_material || '';
       const insoleGroup = (productGroups || []).find((g: any) => g.name === insoleGroupName);
-      // Produto de palmilha RESOLVIDO como no SQL (F2-03): pin da variante >
-      // resolve_material_product (cor exata > cor no nome > maior estoque do
-      // grupo). É o produto que débito/reserva/custeio baixam — a unidade da
-      // linha segue a DELE.
+      // Produto de palmilha RESOLVIDO como no SQL: pin da variante > produto de
+      // área do grupo (cor exata > cor no nome > maior estoque). Grupos legados
+      // podem conter também palmilha pronta/linear; uma ficha não-pronta nunca
+      // deve escolher esse SKU só porque ele tem mais saldo.
       const insoleVariantPin = variant?.insole_material_product_id
         ? (allProducts || []).find((p: any) => p.id === variant.insole_material_product_id) || null
         : null;
       const resolvedPalmProd = insoleVariantPin
-        || resolveMaterialProductCanonical(insoleGroupName, orderColor, allProducts || [], productGroups || []);
+        || resolveInsoleBaseProductCanonical(insoleGroupName, orderColor, allProducts || [], productGroups || []);
       // Ficha de conversão: cs do produto resolvido primeiro (F2-04).
       const insoleSheet = getConversionSheetForProduct(resolvedPalmProd?.id, insoleGroupName, { mode: 'plate', preferYield: true });
       // PLACA por número: ficha por número > mapa canônico do tipo de solado >
@@ -989,9 +1106,14 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
     const resolvedSoleGroupName = resolvedSolePid
       ? (groupNameById((insoleSoleProd as any)?.group_id) || (insoleSoleProd as any)?.name || '')
       : '';
+    const unresolvedSoleGroupName = (sheet?.sole_material || '').toString().trim();
+    const soleUnresolvedWarning = !resolvedSolePid && unresolvedSoleGroupName
+      ? `Solado "${unresolvedSoleGroupName}" não resolve produto no estoque (texto livre na ficha, sem grupo de solado, sem solado principal e sem mapeamento por cor) — NÃO será reservado nem debitado, e não entra no custeio. Vincule o solado em Ficha Técnica → Solado.`
+      : undefined;
     addConsumptionRow(consumptionMap, {
       componentType: 'Solado', groupName: resolvedSoleGroupName || sheet?.sole_material || '', materialName: 'Solado',
       productUnit: 'par', color: soleColor, totalQuantity: itemQuantity,
+      warning: soleUnresolvedWarning,
     });
 
     // FACHETE — forração EXTRA do salto fachetado (BOM-5). Espelha o motor
@@ -1238,31 +1360,11 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
       ...variantBomLines,
     ];
 
-    // Embalagem: a ficha pode listar VÁRIAS caixas no BOM (colmeia + individual)
-    // como ALTERNATIVAS. Quando o pedido define um packaging_mode, mostra só a
-    // caixa do modo escolhido — senão a Lista de Separação somava/exibia os dois
-    // modos no grupo "Embalagem". Pré-varre os tipos de caixa presentes nesta
-    // ficha pra o filtro só agir quando há alternativa real (espelha o modal —
-    // orderConsumption.ts / shouldShowCaixaForMode).
-    const itemPackagingMode = order.sale_order_id
-      ? (packagingModeBySaleOrder.get(order.sale_order_id) ?? null)
-      : null;
-    const presentCaixaTypes = new Set<CollectiveType>();
-    if (itemPackagingMode) {
-      for (const m of itemMaterials) {
-        const p = m.products as any;
-        if (!p) continue;
-        const gName = (m.product_groups as any)?.name || p.category || p.name || '';
-        if (classifyBomMaterial(gName, p.name || '', p.category || '') !== 'Embalagem') continue;
-        const t = caixaCollectiveTypeFromName(p.name);
-        if (t) presentCaixaTypes.add(t);
-      }
-    }
-
     for (const material of itemMaterials) {
       const product = material.products as any;
       const group = material.product_groups as any;
       if (!product) continue;
+      if (legacyPackagingProductIds.has(material.product_id)) continue;
 
       // Skip se já entrou via componentes diretos/por cor (BOM-6) — direct tem
       // prioridade; BOM é fallback pra materiais não declarados direto (mesma
@@ -1276,11 +1378,6 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
       const groupKey = groupName.toLowerCase();
       const specHasGroup = specGroupsWithConsumption.has(groupKey);
       const bomType = classifyBomMaterial(groupName, product.name || '', product.category || '');
-
-      // Embalagem com modo definido: pula a caixa que NÃO é a do packaging_mode
-      // do pedido (só quando há alternativas reais na ficha — ver pré-varredura).
-      if (bomType === 'Embalagem'
-        && !shouldShowCaixaForMode(product.name, itemPackagingMode, presentCaixaTypes)) continue;
 
       if (specHasGroup) {
         const isUpperGroup = upperMatch?.group?.toLowerCase() === groupKey;
@@ -1302,12 +1399,6 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
       const rawQty = (Number(material.quantity_per_unit) || 0) * itemQuantity;
       let totalQty = rawQty;
       let widthMissing = false;
-
-      // Espelha o consumo do PV e o débito SQL: caixa é inteira e fecha por
-      // item/OP antes de consolidar. Fitilho em metro permanece fracionário.
-      if (bomType === 'Embalagem') {
-        totalQty = wholePackagingDemand(rawQty, productUnit);
-      }
 
       // Materiais de ÁREA cortados de bobina (napa/couro): têm ficha de
       // componente e quantity_per_unit está em dm²/par. Converter para metros
@@ -1478,11 +1569,11 @@ export async function calculateSoleBreakdownByGrade(orderIds: string[]): Promise
   const saleOrderItemIds = [...new Set(ordersData.map(o => (o as any).sale_order_item_id).filter(Boolean))] as string[];
 
   const [
-    { data: sheets },
-    { data: soleMappings },
-    { data: allProducts },
-    { data: productGroups },
-    { data: saleOrderItems },
+    sheetsResult,
+    soleMappingsResult,
+    productsResult,
+    productGroupsResult,
+    saleOrderItemsResult,
   ] = await Promise.all([
     supabase
       .from('technical_sheets')
@@ -1497,8 +1588,23 @@ export async function calculateSoleBreakdownByGrade(orderIds: string[]): Promise
     supabase.from('product_groups').select('id, name'),
     saleOrderItemIds.length > 0
       ? supabase.from('sale_order_items').select('id, material_variant_id').in('id', saleOrderItemIds)
-      : Promise.resolve({ data: [] as any[] }),
+      : Promise.resolve({ data: [] as Array<{ id: string; material_variant_id: string | null }>, error: null }),
   ]);
+
+  const requiredQueries: Array<[string, QueryResultLike]> = [
+    ['fichas técnicas da grade de solados', sheetsResult],
+    ['mapeamentos de cor da grade de solados', soleMappingsResult],
+    ['produtos da grade de solados', productsResult],
+    ['grupos da grade de solados', productGroupsResult],
+    ['itens dos pedidos da grade de solados', saleOrderItemsResult],
+  ];
+  for (const [label, result] of requiredQueries) assertQuerySucceeded(label, result);
+
+  const sheets = sheetsResult.data || [];
+  const soleMappings = soleMappingsResult.data || [];
+  const allProducts = productsResult.data || [];
+  const productGroups = productGroupsResult.data || [];
+  const saleOrderItems = saleOrderItemsResult.data || [];
 
   const sheetMap = new Map<string, any>((sheets || []).map((s: any) => [s.id, s]));
   const groupNameById = new Map<string, string>((productGroups || []).map((g: any) => [g.id, g.name]));
@@ -1522,11 +1628,13 @@ export async function calculateSoleBreakdownByGrade(orderIds: string[]): Promise
   {
     const soleGroupIds = Array.from(new Set(sheetSoleGroupMap.values()));
     if (soleGroupIds.length > 0) {
-      const { data: conjugations } = await (supabase as any)
-        .from('sole_color_conjugations')
+      const conjugationsResult = await supabase
+        .from('sole_color_conjugations' as never)
         .select('sole_group_id, cabedal_color, palmilha_color, resolution_mode, is_default, active')
         .in('sole_group_id', soleGroupIds)
         .eq('active', true);
+      assertQuerySucceeded('coligações de cor da grade de solados', conjugationsResult);
+      const conjugations = conjugationsResult.data || [];
       for (const c of (conjugations || []) as any[]) {
         const arr = soleConjugationsByGroup.get(c.sole_group_id) || [];
         arr.push({
@@ -1546,10 +1654,12 @@ export async function calculateSoleBreakdownByGrade(orderIds: string[]): Promise
     const variantIds = [...new Set((saleOrderItems || []).map((si: any) => si.material_variant_id).filter(Boolean))];
     const variantSoleById = new Map<string, string>();
     if (variantIds.length > 0) {
-      const { data: variantRows } = await (supabase as any)
-        .from('reference_material_variants')
+      const variantRowsResult = await supabase
+        .from('reference_material_variants' as never)
         .select('id, sole_material_product_id')
         .in('id', variantIds);
+      assertQuerySucceeded('variantes de solado da grade', variantRowsResult);
+      const variantRows = variantRowsResult.data || [];
       for (const v of (variantRows || []) as any[]) {
         if (v.sole_material_product_id) variantSoleById.set(v.id, v.sole_material_product_id);
       }
@@ -1565,7 +1675,11 @@ export async function calculateSoleBreakdownByGrade(orderIds: string[]): Promise
 
   for (const order of ordersData) {
     const sheet = sheetMap.get(order.reference_id);
-    if (!sheet) continue;
+    if (!sheet) {
+      throw new Error(
+        `Não foi possível gerar a grade de solados: a OP ${order.id} está sem ficha técnica carregada. Nenhuma grade parcial foi gerada.`,
+      );
+    }
     const variantPid = (order as any).sale_order_item_id
       ? variantSoleByItem.get((order as any).sale_order_item_id)
       : undefined;
@@ -1595,10 +1709,17 @@ export async function calculateSoleBreakdownByGrade(orderIds: string[]): Promise
       : (((sheet.sole_material || '').toString().trim() || '—').trim() || '—');
     const soleColor = resolvedProd
       ? (((resolvedProd.color || '').toString().trim() || '—').trim() || '—')
-      : (((sheet.sole_color || '').toString().trim() || '—').trim() || '—');
+      : ((((order.color || sheet.sole_color || '').toString().trim()) || '—').trim() || '—');
 
     const grade = (order.grade as Record<string, number> | null) || {};
-    const baseSum = Object.values(grade).reduce((s, v) => s + (Number(v) || 0), 0);
+    const baseGrade: Record<string, number> = {};
+    for (const [size, raw] of Object.entries(grade)) {
+      const quantity = Number(raw);
+      if (!size.startsWith('_') && Number.isFinite(quantity) && quantity > 0) {
+        baseGrade[size] = quantity;
+      }
+    }
+    const baseSum = Object.values(baseGrade).reduce((s, v) => s + v, 0);
     const orderTotal = Number(order.quantity) || 0;
     if (orderTotal <= 0) continue;
     const multiplier = baseSum > 0 ? orderTotal / baseSum : 0;
@@ -1610,8 +1731,8 @@ export async function calculateSoleBreakdownByGrade(orderIds: string[]): Promise
     const row = breakdown.get(key)!;
 
     if (baseSum > 0) {
-      for (const [size, qty] of Object.entries(grade)) {
-        const scaled = Math.round((Number(qty) || 0) * multiplier);
+      const scaledGrade = scaleGradeWithLargestRemainder(baseGrade, multiplier, orderTotal);
+      for (const [size, scaled] of Object.entries(scaledGrade)) {
         if (scaled > 0) {
           row.sizes[size] = (row.sizes[size] || 0) + scaled;
           sizeSet.add(size);

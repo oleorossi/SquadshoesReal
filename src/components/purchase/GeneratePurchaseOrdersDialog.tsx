@@ -27,10 +27,12 @@ import { effectiveConversionFactorStrict } from '@/lib/purchaseConversion';
 import { normalizeUnit } from '@/lib/unitConversion';
 import {
   buildPerPvPurchaseOrders,
+  collectPerPvPackagingWithoutSupplier,
   collectOpenPurchaseWarnings,
   collectPvNeedWarnings,
   createPerPvStrapIdentityGuard,
   NO_SUPPLIER_LABEL,
+  perPvStockIdentityKey,
   partitionPerPvStrapPurchaseItems,
   summarizePerPvDrafts,
   type DraftPurchaseOrderItem,
@@ -186,7 +188,9 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
 
   const conversionWarnings = useMemo(
     () => [...new Set(purchasableNeeds
-      .map((need) => conversionByProduct.get(need.material_id)?.conversion_warning)
+      .map((need) => need.material_id
+        ? conversionByProduct.get(need.material_id)?.conversion_warning
+        : null)
       .filter((warning): warning is string => !!warning))],
     [purchasableNeeds, conversionByProduct],
   );
@@ -223,9 +227,11 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
   }, [products]);
 
   const enrichedNeeds = useMemo(
-    () => purchasableNeeds.filter((need) => !conversionByProduct.get(need.material_id)?.conversion_warning).map((n) => {
-      const conv = conversionByProduct.get(n.material_id);
-      const ident = identityByProduct.get(n.material_id);
+    () => purchasableNeeds.filter((need) => !need.material_id
+      || !conversionByProduct.get(need.material_id)?.conversion_warning).map((n) => {
+      const materialId = n.material_id || '';
+      const conv = materialId ? conversionByProduct.get(materialId) : undefined;
+      const ident = materialId ? identityByProduct.get(materialId) : undefined;
       return {
         ...n,
         // Cor: a do consumo manda; na falta dela cai no cadastro do produto.
@@ -236,10 +242,12 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
         color: (n.color || '').trim() || ident?.color || '',
         sku: ident?.sku ?? null,
         technical_name: ident?.technical_name ?? null,
-        purchase_multiple: multipleByProduct.get(n.material_id) ?? null,
+        purchase_multiple: materialId ? (multipleByProduct.get(materialId) ?? null) : null,
         purchase_unit: conv?.purchase_unit ?? null,
         conversion_factor: conv?.conversion_factor,
-        product_group_id: n.product_group_id || strapIdentityGuard.productGroupByProductId.get(n.material_id) || null,
+        product_group_id: n.product_group_id
+          || (materialId ? strapIdentityGuard.productGroupByProductId.get(materialId) : null)
+          || null,
       };
     }),
     [purchasableNeeds, multipleByProduct, conversionByProduct, identityByProduct, strapIdentityGuard.productGroupByProductId],
@@ -253,6 +261,16 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
   const invalidPriceItems = useMemo(
     () => drafts.flatMap((draft) => draft.items.filter((item) =>
       !Number.isFinite(item.unit_price) || item.unit_price <= 0)),
+    [drafts],
+  );
+  const packagingWithoutSupplier = useMemo(
+    () => collectPerPvPackagingWithoutSupplier(drafts),
+    [drafts],
+  );
+  const commonWithoutSupplierCount = useMemo(
+    () => drafts.reduce((count, draft) => count + (draft.supplier_id === null
+      ? draft.items.filter((item) => !item.box_type_id).length
+      : 0), 0),
     [drafts],
   );
 
@@ -276,7 +294,7 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
   // valor acompanha o toggle "Descontar estoque" e pode ficar ABAIXO do total
   // que o modal de Consumo mostra, que é consumo, não compra.
   const baseInputsFor = (items: DraftPurchaseOrderItem[]) => items.map((it) => ({
-    groupName: groupNameByProduct.get(it.material_id) || '',
+    groupName: it.material_id ? (groupNameByProduct.get(it.material_id) || '') : '',
     unit: it.unit,
     qty: Number(it.quantity) || 0,
   }));
@@ -314,6 +332,10 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
     }
     if (invalidPriceItems.length > 0) {
       toast.error('Cadastre preço maior que zero nos materiais indicados. Nenhuma OC foi gerada.');
+      return;
+    }
+    if (packagingWithoutSupplier.length > 0) {
+      toast.error('Cadastre o fornecedor das embalagens indicadas antes de gerar as OCs.');
       return;
     }
     if (openPurchaseWarnings.length > 0 && !overrideOpenPurchases) {
@@ -436,7 +458,7 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
                 produção vai reservar.
                 <ul className="mt-1.5 space-y-1.5">
                   {needWarnings.map((w) => (
-                    <li key={`${w.material_id}-${w.color ?? ''}-${w.message}`} className="text-xs leading-snug">
+                    <li key={`${perPvStockIdentityKey(w)}-${w.color ?? ''}-${w.message}`} className="text-xs leading-snug">
                       <span className="font-mono">
                         {w.product_name} · <strong>{w.color || '—'}</strong>
                         {' · '}
@@ -527,13 +549,26 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
             )}
 
             {/* Aviso "Sem Fornecedor" */}
-            {summary.hasNoSupplier && (
+            {commonWithoutSupplierCount > 0 && (
               <div className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-700">
                 <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
                 <span>
-                  {summary.noSupplierItemCount} item(ns) sem fornecedor cadastrado serão agrupados
+                  {commonWithoutSupplierCount} item(ns) sem fornecedor cadastrado serão agrupados
                   numa única OC <strong>"{NO_SUPPLIER_LABEL}"</strong>. Cadastre o fornecedor do
                   produto pra direcionar automaticamente nas próximas vezes.
+                </span>
+              </div>
+            )}
+
+            {packagingWithoutSupplier.length > 0 && (
+              <div className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>
+                  <strong>{packagingWithoutSupplier.length} embalagem(ns) sem fornecedor.</strong>{' '}
+                  Embalagem canônica não pode gerar OC “Sem Fornecedor”. Cadastre o fornecedor em{' '}
+                  <strong>Materiais → Tipos de embalagem</strong> antes de confirmar: {packagingWithoutSupplier
+                    .map((item) => item.product_name)
+                    .join(', ')}.
                 </span>
               </div>
             )}
@@ -558,7 +593,7 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
                     <strong>Já existem compras abertas para {openPurchaseWarnings.length} material(is).</strong>
                     <ul className="mt-1 list-disc space-y-1 pl-4 text-xs">
                       {openPurchaseWarnings.map((warning) => (
-                        <li key={`${warning.material_id}-${warning.message}`}>{warning.message}</li>
+                        <li key={`${perPvStockIdentityKey(warning)}-${warning.message}`}>{warning.message}</li>
                       ))}
                     </ul>
                   </div>
@@ -582,9 +617,9 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
                     (ou marque o override abaixo se for um material sem cor, ex.: base).
                     <ul className="mt-1.5 space-y-1">
                       {drafts.flatMap((d) => d.items.filter((i) => i.color_mismatch).map((i) => {
-                        const grp = resolveGroupForMaterial(i.material_id);
+                        const grp = i.material_id ? resolveGroupForMaterial(i.material_id) : null;
                         return (
-                          <li key={`${i.material_id}-${i.color ?? ''}`} className="flex items-center gap-2 text-xs">
+                          <li key={`${perPvStockIdentityKey(i)}-${i.color ?? ''}`} className="flex items-center gap-2 text-xs">
                             <span className="leading-none">{i.product_name} · <strong>{i.color || '—'}</strong></span>
                             {grp && (i.color || '').trim() && (
                               <Button
@@ -663,7 +698,7 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
                       {d.items.map((it) => {
                         const gradeSizes = it.grade ? Object.keys(it.grade).filter((k) => (it.grade![k] ?? 0) > 0) : [];
                         return (
-                        <Fragment key={`${it.material_id}::${it.color ?? ''}`}>
+                        <Fragment key={`${perPvStockIdentityKey(it)}::${it.color ?? ''}`}>
                         <TableRow className={gradeSizes.length > 0 ? '[&>td]:border-b-0' : ''}>
                           <TableCell className="font-mono text-xs text-muted-foreground">{it.sku || '—'}</TableCell>
                           <TableCell className={`font-medium ${it.color_mismatch ? 'text-destructive' : ''}`}>
@@ -759,8 +794,8 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
             )}
             <Button
               onClick={handleGenerate}
-              disabled={isLoading || isError || generate.isPending || drafts.length === 0 || invalidPriceItems.length > 0 || conversionWarnings.length > 0 || (openPurchaseWarnings.length > 0 && !overrideOpenPurchases) || (summary.colorMismatchCount > 0 && !overrideColorMismatch) || (needWarnings.length > 0 && !overrideNeedWarnings)}
-              title={invalidPriceItems.length > 0 ? 'Há materiais sem preço maior que zero' : openPurchaseWarnings.length > 0 && !overrideOpenPurchases ? 'Há OCs/ROPs abertas — confira ou confirme a compra adicional' : conversionWarnings.length > 0 ? 'Há materiais com conversão inválida' : summary.colorMismatchCount > 0 && !overrideColorMismatch ? 'Há itens com cor não cadastrada — cadastre a cor ou marque o override' : needWarnings.length > 0 && !overrideNeedWarnings ? 'Há materiais fora da compra por falta de cadastro — resolva ou marque o override' : undefined}
+              disabled={isLoading || isError || generate.isPending || drafts.length === 0 || invalidPriceItems.length > 0 || packagingWithoutSupplier.length > 0 || conversionWarnings.length > 0 || (openPurchaseWarnings.length > 0 && !overrideOpenPurchases) || (summary.colorMismatchCount > 0 && !overrideColorMismatch) || (needWarnings.length > 0 && !overrideNeedWarnings)}
+              title={invalidPriceItems.length > 0 ? 'Há materiais sem preço maior que zero' : packagingWithoutSupplier.length > 0 ? 'Há embalagens sem fornecedor cadastrado' : openPurchaseWarnings.length > 0 && !overrideOpenPurchases ? 'Há OCs/ROPs abertas — confira ou confirme a compra adicional' : conversionWarnings.length > 0 ? 'Há materiais com conversão inválida' : summary.colorMismatchCount > 0 && !overrideColorMismatch ? 'Há itens com cor não cadastrada — cadastre a cor ou marque o override' : needWarnings.length > 0 && !overrideNeedWarnings ? 'Há materiais fora da compra por falta de cadastro — resolva ou marque o override' : undefined}
               className="gap-2"
             >
               {generate.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShoppingCart className="h-4 w-4" />}

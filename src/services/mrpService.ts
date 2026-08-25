@@ -1,5 +1,6 @@
 // Serviço de MRP (Patch 5)
 import { supabase } from "@/integrations/supabase/client";
+import { generatePurchaseOrdersFromMrpCommand } from "@/services/purchaseOrderCommandService";
 
 export interface MrpNeed {
   product_id: string;
@@ -48,10 +49,6 @@ export async function listMrpNeeds(): Promise<MrpNeed[]> {
 export async function generatePurchaseOrdersFromMrp(
   productIds?: string[],
 ): Promise<string[]> {
-  const { data, error } = await supabase.rpc(
-    "generate_purchase_orders_from_mrp" as any,
-    { p_product_ids: productIds ?? null },
-  );
-  if (error) throw error;
-  return (data ?? []) as string[];
+  const result = await generatePurchaseOrdersFromMrpCommand(productIds);
+  return result.purchase_order_ids ?? [];
 }

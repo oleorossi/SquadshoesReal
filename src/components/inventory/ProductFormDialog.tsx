@@ -41,6 +41,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import React from 'react';
 import { SoleSizeConjugationsEditor } from './SoleSizeConjugationsEditor';
 import { useSoleConjugations } from '@/hooks/useSoleConjugations';
+import { configureProductGrades } from '@/lib/stockCommand';
 
 // Constantes vazias estáveis pra evitar loop de re-render quando hooks
 // retornam data=undefined (loading) e o default `?? []` cria array novo.
@@ -777,7 +778,7 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
       if (!isSolado || !form.group_id || sizeFrom == null || sizeTo == null) return;
       const { data: siblings } = await supabase
         .from('products')
-        .select('id, stock_grade')
+        .select('id, quantity, stock_grade')
         .eq('group_id', form.group_id)
         .eq('active', true)
         .neq('id', productId);
@@ -790,14 +791,20 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
       });
       if (!toUpdate.length) return;
 
-      await Promise.all(toUpdate.map(sib => {
+      const result = await configureProductGrades(toUpdate.map(sib => {
         const g = (sib.stock_grade && typeof sib.stock_grade === 'object' && !Array.isArray(sib.stock_grade))
           ? (sib.stock_grade as Record<string, any>) : {};
-        return supabase
-          .from('products')
-          .update({ stock_grade: { ...g, _size_from: sizeFrom, _size_to: sizeTo } })
-          .eq('id', sib.id);
+        return {
+          product_id: sib.id,
+          expected_previous_qty: Number(sib.quantity ?? 0),
+          expected_grade: g,
+          new_grade: { ...g, _size_from: sizeFrom, _size_to: sizeTo },
+          reason: 'Sincronizacao da faixa de numeracao entre variantes do solado',
+        };
       }));
+      if (!result.success) {
+        throw new Error(result.errors?.[0]?.error || 'Falha ao sincronizar a faixa do solado');
+      }
 
       queryClient.invalidateQueries({ queryKey: ['products'] });
       toast.success(

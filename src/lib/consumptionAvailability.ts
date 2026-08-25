@@ -33,12 +33,15 @@ export const rowAvailable = (r: ConsumptionRow): number =>
 /**
  * O consumo da linha é comparável com estoque?
  *
- * `widthMissing` = dm² tratado como metro (consumo ~100× inflado) e
- * `warning` sem quantidade = consumo não calculado. Nos dois casos a comparação
- * com estoque é inválida — a linha fica NEUTRA, nunca vermelha.
+ * `widthMissing` = dm² tratado como metro (consumo ~100× inflado), solado
+ * sem `soleProductId` = texto sem identidade de estoque e `warning` sem
+ * quantidade = consumo não calculado. Nesses casos a comparação é inválida
+ * — a linha fica NEUTRA, nunca vermelha.
  */
 export const rowKnown = (r: ConsumptionRow): boolean =>
-  !r.widthMissing && !(r.warning && !(r.totalQuantity > 0));
+  !r.widthMissing
+  && !(r.componentType === 'Solado' && !r.soleProductId)
+  && !(r.warning && !(r.totalQuantity > 0));
 
 /** Falta do solado por numeração: soma do que cada número não cobre. */
 const soleShortfall = (r: ConsumptionRow): number => {
@@ -98,6 +101,11 @@ export type ItemGroup = {
 };
 
 export const itemKey = (r: ConsumptionRow) => {
+  const boxTypeIds = [...new Set((r.boxTypeIds || []).map((id) => id.trim()).filter(Boolean))]
+    .sort();
+  if (boxTypeIds.length > 0) {
+    return `box_types||${boxTypeIds.join(',')}||${r.productUnit}`;
+  }
   const productIds = [...new Set((r.productIds || []).map((id) => id.trim()).filter(Boolean))]
     .sort();
   if (productIds.length > 0) {

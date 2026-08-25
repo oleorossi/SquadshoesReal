@@ -1,10 +1,16 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { forceDeleteProductCommand } from '@/services/purchaseOrderCommandService';
 import { ProductFormData } from '@/types/inventory';
 import { toast } from 'sonner';
 import { sanitizeUuidFields } from '@/lib/utils';
 import { SECTOR_OPTIONS } from '@/lib/categoryFromGroup';
 import { z } from 'zod';
+import {
+  createProductWithStock,
+  createProductsWithStock,
+  type CreateProductWithStockInput,
+} from '@/lib/stockCommand';
 
 export const ProductSchema = z.object({
   name: z.string().min(1, "Nome é obrigatório").max(255),
@@ -58,6 +64,22 @@ export function normalizeProductSupplierColor<T extends {
   return { ...data, supplier_color_code: supplierColorCode };
 }
 
+export function stripProductPhysicalFields<T extends Record<string, unknown>>(data: T) {
+  const {
+    quantity,
+    current_stock,
+    reserved_stock,
+    stock_grade,
+    blocked_qty,
+    quarantine_qty,
+    ...metadata
+  } = data;
+  return {
+    metadata,
+    physical: { quantity, current_stock, reserved_stock, stock_grade, blocked_qty, quarantine_qty },
+  };
+}
+
 
 export function useProducts() {
   return useQuery({
@@ -108,11 +130,23 @@ export function useAddProduct() {
   return useMutation({
     mutationFn: async (form: ProductFormData) => {
       const normalized = normalizeProductSupplierColor(form);
-      const payload = { ...sanitizeUuidFields(normalized), max_stock: form.max_stock ?? 0 };
+      const sanitized = {
+        ...sanitizeUuidFields(normalized),
+        max_stock: form.max_stock ?? 0,
+      } as ProductFormData;
+      const product: CreateProductWithStockInput = {
+        ...sanitized,
+        quantity: Number(sanitized.quantity ?? 0),
+        reason: 'Cadastro manual de produto com saldo/grade inicial',
+      };
+      const result = await createProductWithStock(product);
+      if (!result.success || !result.product_id) {
+        throw new Error(result.errors?.[0]?.error || 'Falha ao cadastrar produto');
+      }
       const { data, error } = await supabase
         .from('products')
-        .insert(payload as any)
         .select()
+        .eq('id', result.product_id)
         .single();
       if (error) throw error;
       return data;
@@ -200,14 +234,15 @@ export function useUpdateProduct() {
       // concurrency control). A direct write races with debit RPCs and bypasses
       // the audit trail; same guard applied to usePackaging (audit-37 [3]).
       const normalized = normalizeProductSupplierColor(data);
-      const { quantity, stock_grade, min_stock_grade, ...safeData } = normalized;
-      if (quantity !== undefined || stock_grade !== undefined) {
+      const { metadata: safeData, physical } = stripProductPhysicalFields(normalized);
+      const { min_stock_grade: _ignoredMinStockGrade, ...metadata } = safeData;
+      if (physical.quantity !== undefined || physical.stock_grade !== undefined || physical.reserved_stock !== undefined) {
         // Surface a developer warning; the stock adjustment page is the correct path.
-        console.warn('[useUpdateProduct] quantity/stock_grade stripped — use adjust_stock RPC or stock adjustment page.');
+        console.warn('[useUpdateProduct] physical stock fields stripped — use the canonical stock command.');
       }
       const { error } = await supabase
         .from('products')
-        .update(sanitizeUuidFields(safeData) as any)
+        .update(sanitizeUuidFields(metadata) as never)
         .eq('id', id);
       if (error) throw error;
     },
@@ -295,6 +330,15 @@ export interface ProductLinksSummary {
   hasAny: boolean;
 }
 
+interface ForceDeleteProductSummary {
+  product_name: string;
+  sheet_materials_count: number;
+  reservations_count: number;
+  purchase_items_count: number;
+  stock_movements_count: number;
+  direct_components_count: number;
+}
+
 /** Conta vínculos antes de excluir — útil pra mostrar resumo no AlertDialog. */
 export async function fetchProductLinks(id: string): Promise<ProductLinksSummary> {
   const [
@@ -344,9 +388,17 @@ export function useDeleteProduct() {
       const force = typeof input === 'string' ? false : Boolean(input.force);
 
       if (force) {
-        const { data, error } = await (supabase as any).rpc('force_delete_product', { p_product_id: id });
-        if (error) throw error;
-        return { force: true, summary: data as Record<string, any> };
+        const { data: product, error: productError } = await supabase
+          .from('products')
+          .select('updated_at')
+          .eq('id', id)
+          .single();
+        if (productError) throw productError;
+        const summary = await forceDeleteProductCommand({
+          productId: id,
+          expectedUpdatedAt: product.updated_at,
+        });
+        return { force: true, summary: summary as unknown as ForceDeleteProductSummary };
       }
 
       const links = await fetchProductLinks(id);
@@ -398,12 +450,31 @@ export function useBatchAddProducts() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (items: ProductFormData[]) => {
+      const split = items.map((item) => {
+        const normalized = normalizeProductSupplierColor(item);
+        return sanitizeUuidFields(normalized) as ProductFormData;
+      });
+      const result = await createProductsWithStock(split.map((item) => ({
+        ...item,
+        quantity: Number(item.quantity ?? 0),
+        reason: 'Cadastro manual em lote com saldo/grade inicial',
+      })));
+      if (!result.success) {
+        throw new Error(result.errors?.[0]?.error || 'Falha ao cadastrar produtos em lote');
+      }
+      const ids = (result.results ?? [])
+        .map((row) => row.product_id)
+        .filter((id): id is string => typeof id === 'string');
+      if (ids.length !== split.length) {
+        throw new Error('Comando de estoque retornou lote de produtos incompleto');
+      }
       const { data, error } = await supabase
         .from('products')
-        .insert(items.map(i => sanitizeUuidFields(i)) as any)
-        .select();
+        .select()
+        .in('id', ids);
       if (error) throw error;
-      return data;
+      const byId = new Map((data || []).map((product) => [product.id, product]));
+      return ids.map((id) => byId.get(id)).filter(Boolean);
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['products'] });

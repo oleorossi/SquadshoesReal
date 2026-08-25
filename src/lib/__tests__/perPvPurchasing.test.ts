@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   buildPerPvPurchaseOrders,
+  collectPerPvPackagingWithoutSupplier,
   createPerPvStrapIdentityGuard,
   excludeStrapsFromPerPvDrafts,
   partitionPerPvStrapPurchaseItems,
@@ -97,6 +98,52 @@ describe('guard color_mismatch', () => {
 });
 
 describe('buildPerPvPurchaseOrders', () => {
+  it('embalagem canônica preserva box_type_id sem criar product_id espelho', () => {
+    const drafts = buildPerPvPurchaseOrders([
+      need({
+        material_id: null,
+        box_type_id: 'bt-colmeia',
+        packaging_type: 'colmeia',
+        product_name: 'CAIXA COLMEIA 11',
+        unit: 'un',
+        needed_qty: 4,
+        stock_qty: 1,
+      }),
+    ], { netOfStock: true });
+    expect(drafts[0].items[0]).toMatchObject({
+      material_id: null,
+      box_type_id: 'bt-colmeia',
+      packaging_type: 'colmeia',
+      quantity: 3,
+      unit: 'un',
+    });
+  });
+
+  it('fitilho de box_types permanece contínuo em metros', () => {
+    const drafts = buildPerPvPurchaseOrders([
+      need({
+        material_id: null,
+        box_type_id: 'bt-fitilho',
+        packaging_type: 'fitilho',
+        product_name: 'FITILHO',
+        unit: 'm',
+        needed_qty: 2.75,
+      }),
+    ]);
+    expect(drafts[0].items[0]).toMatchObject({
+      box_type_id: 'bt-fitilho',
+      quantity: 2.75,
+      unit: 'm',
+    });
+  });
+
+  it('identidade XOR rejeita linha com product e box_type simultâneos', () => {
+    const drafts = buildPerPvPurchaseOrders([
+      need({ material_id: 'produto', box_type_id: 'caixa', needed_qty: 4 }),
+    ]);
+    expect(drafts).toEqual([]);
+  });
+
   it('1 PV, 1 material, 1 fornecedor → 1 OC com 1 item', () => {
     const drafts = buildPerPvPurchaseOrders([
       need({ material_id: 'm1', product_name: 'Napa', supplier_id: 's1', supplier_name: 'Couros SA', needed_qty: 30, last_unit_price: 5 }),
@@ -177,6 +224,7 @@ describe('buildPerPvPurchaseOrders', () => {
       need({ material_id: 'm1', needed_qty: 30, stock_qty: 20, last_unit_price: 1 }),
     ]);
     expect(drafts[0].items[0].quantity).toBe(30);
+    expect(drafts[0].items[0].net_of_stock).toBe(false);
   });
 
   it('netOfStock=true neta o estoque e descarta itens cobertos', () => {
@@ -191,6 +239,7 @@ describe('buildPerPvPurchaseOrders', () => {
     expect(drafts[0].items).toHaveLength(1);
     expect(drafts[0].items[0].material_id).toBe('m1');
     expect(drafts[0].items[0].quantity).toBe(10); // 30 − 20
+    expect(drafts[0].items[0].net_of_stock).toBe(true);
   });
 
   it('converte estoque→compra: dm² vira placa INTEIRA (PLACA EVA, fator 150)', () => {
@@ -263,6 +312,35 @@ describe('summarizePerPvDrafts', () => {
     expect(s.noSupplierItemCount).toBe(1);
     expect(s.itemCount).toBe(3);
     expect(s.total).toBe(23); // 10 + 10 + 3
+  });
+});
+
+describe('fornecedor obrigatório da embalagem canônica', () => {
+  it('bloqueia apenas box_types sem fornecedor; product comum mantém o balde manual', () => {
+    const drafts = buildPerPvPurchaseOrders([
+      need({
+        material_id: null,
+        box_type_id: 'bt-colmeia',
+        product_name: 'CAIXA COLMEIA 11',
+        unit: 'un',
+        supplier_id: null,
+        needed_qty: 4,
+      }),
+      need({
+        material_id: 'produto-sem-fornecedor',
+        product_name: 'MATERIAL COMUM',
+        supplier_id: null,
+        needed_qty: 2,
+      }),
+    ]);
+
+    expect(collectPerPvPackagingWithoutSupplier(drafts)).toEqual([
+      expect.objectContaining({
+        material_id: null,
+        box_type_id: 'bt-colmeia',
+        product_name: 'CAIXA COLMEIA 11',
+      }),
+    ]);
   });
 });
 

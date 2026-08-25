@@ -210,6 +210,7 @@ function SoleCoveragePanel({ rows }: { rows: ConsumptionRow[] }) {
           <h3 className="display mt-1 text-xl leading-none sm:text-2xl">Mapa de solados · grade por numeração</h3>
           <p className="mt-1 text-xs text-muted-foreground">
             Necessidade, estoque aproveitável e quantidade a comprar em cada número.
+            Este mapa permanece visível ao filtrar os materiais gerais.
           </p>
         </div>
         <Badge variant="outline" className="font-mono tabular-nums">
@@ -226,7 +227,7 @@ function SoleCoveragePanel({ rows }: { rows: ConsumptionRow[] }) {
           const hasShortage = known && shortage > 0;
           return (
             <article
-              key={`${row.groupName}-${row.color}-${row.productIds?.join(',') || index}`}
+              key={`${row.groupName}-${row.color}-${row.boxTypeIds?.join(',') || row.productIds?.join(',') || index}`}
               className="px-4 py-3"
             >
               <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
@@ -356,9 +357,13 @@ export default function MaterialConsumptionView({
     });
   }, [rows, search, filter, napaOnly, isShortRow]);
 
+  // Solado é o mapa prioritário da tela e não participa dos filtros da tabela
+  // de materiais gerais. Antes, clicar em "Napa", buscar outro material ou
+  // filtrar "Coberto" desmontava o bloco inteiro e recriava o relato original
+  // de que a parte de solados não aparecia.
   const visibleSoleRows = useMemo(
-    () => visibleRows.filter((row) => row.componentType === 'Solado'),
-    [visibleRows],
+    () => rows.filter((row) => row.componentType === 'Solado'),
+    [rows],
   );
   const visibleMaterialRows = useMemo(
     () => visibleRows.filter((row) => row.componentType !== 'Solado'),

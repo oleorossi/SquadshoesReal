@@ -1,146 +1,204 @@
-# Auditoria dos motores de consumo, compra e baixa — 25/08/2026
+# Auditoria dos motores de consumo, compra, estoque e produção — 25/08/2026
 
 ## Conclusão executiva
 
-O sistema **não usa hoje um único motor de cálculo de ponta a ponta**.
+O cálculo exibido em **Consumo de Materiais** e nas fichas de operador passou a
+usar a mesma fronteira SQL que sustenta reserva, baixa, custeio, MRP e compra.
+O frontend não mantém mais um segundo motor autoritativo: ele adapta o retorno
+canônico, calcula a disponibilidade corrente e apresenta os avisos da mesma
+identidade de material, conversão e grade resolvidas no banco.
 
-| Uso | Motor atual | Resultado da auditoria |
+| Uso | Fonte após os ajustes | Situação |
 |---|---|---|
-| Tela/PDF de Consumo de Materiais | TypeScript (`orderConsumption`) | Recalcula a ficha vigente e o estoque atual |
-| Fichas de operador | TypeScript (`orderConsumption`) | Compartilha o motor da tela |
-| Lista de Separação/BOM | TypeScript (`bomConsumption`) | Reimplementação independente, agora com guards adicionais |
-| Reserva, baixa, custeio e MRP | SQL (`calculate_order_consumption_by_grade`) + snapshot da OP | Caminho separado do relatório |
-| Compra exclusiva por PV | SQL (`compute_materials_per_pv`) | Escopo por PV correto, mas a gravação antiga não era atômica |
+| Tela/PDF de Consumo de Materiais | `calculate_consumption_report_batch` → motor SQL por grade | Canônico |
+| Fichas de operador | Mesmo relatório canônico em lote | Canônico |
+| Reserva, baixa e snapshot da OP | `calculate_order_consumption_by_grade` | Canônico |
+| Custeio e MRP | Motor SQL operacional e snapshots versionados | Canônico |
+| Compra exclusiva por PV | Cálculo por PV + comandos transacionais idempotentes | Canônico |
+| Embalagem | Motor único de slots/caixas | Canônico |
+| Tiras | Necessidade canônica por família/medida e lote | Canônico |
+| Lista de Separação | Consumo bruto + camada própria de separação líquida | Especialização deliberada |
 
-Logo, o relatório ainda não é apenas uma visualização do mesmo fato consumido
-pelo estoque. A estratégia segura é manter o SQL como fronteira operacional,
-congelar seu resultado por versão e fazer tela, PDF, reserva, baixa, custeio, MRP
-e compra lerem esse mesmo cálculo/snapshot. Enquanto essa consolidação não for
-concluída, a paridade TS×SQL precisa continuar sendo bloqueada por testes reais.
+A **Lista de Separação** continua tendo uma camada especializada de saldo já
+separado/reservado. Ela não é fonte para reserva, baixa, custeio, MRP ou OC. A
+geometria autoritativa permanece no SQL; essa exceção deve continuar coberta por
+paridade para não voltar a ser um motor concorrente.
 
 ## Evidências reproduzidas
 
 ### PV-00162
 
-- 12 itens, 780 pares, status `Em Produção`.
-- O solado **não estava ausente no cálculo**: `SOLADO 01 CARAMELO`, 780 pares.
-- Grade necessária: 34=65, 35=68, 36=192, 37=133, 38=192, 39=65, 40=65.
+- 12 itens e 780 pares, em produção.
+- O solado calculado é `SOLADO 01 CARAMELO`, com 780 pares.
+- Grade necessária: 34=65, 35=68, 36=192, 37=133, 38=192, 39=65 e 40=65.
 - Estoque útil por grade: zero; falta total: 780 pares.
-- Na tela anterior, o bloco começava abaixo da primeira dobra e ainda precisava
-  ser expandido. Isso explicava a percepção de que o solado não aparecia.
-- A ficha NL03 repetia literalmente o mesmo `ELÁSTICO 6MM` três vezes em
-  `direct_components`. O SQL deduplicava o `product_id` original; o TS somava
-  três vezes: 2.160 cm em vez de 720 cm para 36 pares.
+- A tela anterior deixava o bloco de solado abaixo da primeira dobra e fechado.
+  O novo layout o mantém aberto, no topo, com necessidade, saldo e compra por
+  numeração.
+- A ficha NL03 repetia o mesmo componente direto três vezes. A consolidação por
+  identidade impede a multiplicação artificial desse consumo.
 
-### Divergência TS × SQL
+### Divergências TS × SQL eliminadas
 
-A suíte real de paridade falhou com seis diferenças nas referências S-039/DS21:
+A paridade real encontrou duas causas de diferença:
 
-- palmilha: o SQL podia escolher um SKU linear num grupo heterogêneo, enquanto
-  o TS escolhia o SKU físico de área;
-- embalagem: o TS arredondava caixa discreta por item (`CEIL`), enquanto o SQL
-  somava frações como 0,498/0,581 caixa.
+- grupos heterogêneos podiam levar TS e SQL a escolherem produtos físicos
+  diferentes para uma mesma palmilha;
+- a embalagem discreta era arredondada por item no cliente e somada como fração
+  no servidor.
 
-A migration autônoma `20270101011600_consumption_parity_hotfix.sql` corrige
-essas duas causas para novos cálculos, sem alterar snapshots históricos.
+A migration `20270101011600_consumption_parity_hotfix.sql` corrige a escolha de
+identidade e a migration `20270101012300_canonical_consumption_report_batch.sql`
+remove o segundo cálculo do relatório. A embalagem passou a usar o contrato
+canônico criado em `20270101012400_per_pv_canonical_packaging_purchase.sql`.
 
 ### Snapshot operacional × simulação atual
 
-- A tela/PDF usam ficha e estoque **atuais**.
-- Reserva/baixa da OP podem usar o snapshot congelado na criação/materialização.
-- Entre 43 OPs ativas com snapshot, 37 apresentaram diferença maior que 0,01
-  contra o consumo SQL atual (116 linhas divergentes).
-- No PV-00162, 6 de 12 snapshots estavam desatualizados. O solado permanecia
-  780 em ambos, mas a palmilha atual não reproduzia o histórico congelado.
+O relatório mostra a ficha e a disponibilidade **atuais**. Uma OP já criada pode
+ter um snapshot histórico diferente, porque ele representa a verdade operacional
+congelada no momento da materialização. A interface identifica essa diferença e
+não promete reescrever silenciosamente uma OP existente.
 
-Por isso a interface agora nomeia o resultado como **“Simulação atual · ficha e
-estoque agora”**; “Atualizar simulação” não promete reescrever uma OP existente.
+Nenhum saldo ou snapshot histórico foi recalculado em massa. Gaps antigos ficam
+visíveis nos diagnósticos e exigem reconciliação explícita.
 
 ### Lacunas cadastrais de solado
 
-- Três itens em produção (PV-00139 e PV-00142) têm “Solado Ricardo Tratorado”
-  apenas como texto, sem `sole_group_id`, `primary_sole_id` ou mapeamento.
-- Dois itens em rascunho do PV-00138 têm o mesmo problema com “Solado Barato”.
-- Nesses casos o SQL omite o solado de reserva, baixa e custeio. A auditoria não
-  inventou o produto correto: o vínculo precisa ser decidido no cadastro.
+Há itens legados cujo texto informa um solado, mas sem vínculo por
+`sole_group_id`, `primary_sole_id` ou mapeamento de referência. O motor agora
+falha fechado e o diagnóstico lista a pendência; a auditoria não inventou um SKU
+para esses pedidos.
+
+Também permanecem lacunas de especificação por numeração em solados que dirigem
+forro/palmilha. `list_sole_spec_gaps()` e o relatório de consistência mostram a
+faixa vendida sem cadastro. Preencher dm² por numeração é dado de engenharia do
+produto, não uma aproximação que possa ser criada por migration.
 
 ## Ordem de compra exclusiva por pedido
 
-O recorte de exclusividade estava correto: os dois atalhos passam exatamente o
-ID do PV escolhido, e o SQL filtra por `sale_order_id = ANY(p_pv_ids)`.
+O recorte de exclusividade foi confirmado: os atalhos enviam somente o ID do PV
+selecionado e o servidor filtra esse conjunto antes de calcular necessidade.
 
-O processo de gravação, porém, não era seguro:
+Os riscos encontrados no fluxo antigo foram fechados em duas camadas:
 
-- criava uma OC por fornecedor em chamadas sequenciais;
-- um preço zero podia falhar no último fornecedor após as OCs anteriores já
-  terem sido criadas;
-- o retry só tinha uma janela curta e podia duplicar o lote;
-- a grade do solado era exibida, mas não era gravada em `purchase_order_items`;
-- a falta do solado era abatida pelo saldo total, não por numeração;
-- OCs/ROPs abertas para o mesmo produto não bloqueavam nova compra;
-- o botão podia aparecer para um papel que o backend recusaria.
+1. O comando atômico por PV valida preço, fornecedor, unidade, grade, tiras e
+   embalagem antes de gravar qualquer OC; usa `requestId` durável e impede retry
+   duplicado.
+2. A fronteira genérica de OC serializa criação, alteração, cancelamento,
+   recebimento e reflexos financeiros/estoque, com receipt idempotente e ACL
+   fechada.
 
-A migration `20270101011000_atomic_per_pv_purchase_orders.sql` e o novo hook:
+O fluxo persiste a grade de solado, desconta estoque por numeração, considera
+OCs/ROPs já abertas e grava o snapshot comercial necessário para que uma futura
+alteração de cadastro não mude retroativamente a compra já emitida.
 
-- pré-validam preço, fornecedor, unidade, grade e itens de tira;
-- gravam todos os fornecedores/itens numa única transação;
-- usam `requestId` durável para retry idempotente;
-- persistem a grade e descontam `stock_grade` número a número;
-- bloqueiam compra já aberta, com override explícito;
-- alinham a permissão a admin/gerente.
+## Consumo, embalagem e tiras
+
+- `calculate_consumption_report_batch` recebe uma lista deduplicada de PVs e
+  chama o cálculo SQL canônico por grade.
+- O adapter TypeScript valida o schema, preserva identidade de produto/variante,
+  transforma o retorno para tela/impressão e calcula disponibilidade atual.
+- Consumos de área usam largura da ficha de componente; solado é sempre por
+  numeração; item linear direto não é convertido.
+- Nenhum caminho reintroduz perda de corte.
+- Embalagens são calculadas por slots/caixas discretas e não por frações
+  acumuladas divergentes.
+- Tiras usam a mesma necessidade por família e medida na visualização, produção,
+  estoque e compra, com diagnóstico de configuração incompleta.
 
 ## Estoque e produção
 
-Foram encontrados dois caminhos vivos perigosos:
+Foram encontrados overloads legados, estornos sem prova no ledger e mutações
+diretas espalhadas no cliente. A sequência de migrations:
 
-- o overload legado de cinco argumentos de `hybrid_debit_stock_for_order` era
-  executável por `PUBLIC/anon` e mantinha uma implementação divergente;
-- os estornos de produto e solado haviam regredido: o primeiro podia creditar
-  novamente todas as saídas; o segundo usava a grade original da OP, sem
-  movimento de entrada e sem marcador idempotente.
+- neutraliza e revoga o débito legado divergente;
+- calcula estorno apenas pelo líquido comprovado `SUM(out) - SUM(in)`;
+- serializa OP, produto, grade e tipo de caixa;
+- usa a `effective_grade` realmente consumida, sem fabricar distribuição;
+- transforma reserva pendente na finalização em baixa real ou pendência de
+  reconciliação visível;
+- expõe furos atuais sem alterar o histórico;
+- concentra ajustes manuais, cadastro, configuração de grade e estoque pronto
+  em comandos idempotentes com comparação de versão/saldo e ledger.
 
-A migration `20270101011200_restore_stock_net_ledger_and_debit_guards.sql`:
+Quando não há estoque suficiente, a finalização da OP continua tolerante: baixa
+o disponível e registra a diferença como pendência. Ela não volta a usar a
+função estrita que impediria o chão de fábrica de finalizar uma OP.
 
-- neutraliza e revoga o overload legado;
-- calcula estorno escalar por `SUM(out) - SUM(in)`;
-- serializa por OP e trata `products`, `stock_grade` e `box_types`;
-- estorna solado somente pela `effective_grade` consumida e comprovada pelo
-  ledger; consumo sem saída física não cria estoque fantasma;
-- quando existe débito parcial sem distribuição confiável por número, falha
-  alto e exige reconciliação, em vez de inventar a grade;
-- registra `stock_movements` de entrada e `sole_restored_at`.
+## NF-e e integridade financeira
 
-Nenhum saldo ou snapshot histórico foi reconciliado por esta auditoria.
+A auditoria ampliada também fechou caminhos que podiam deixar estoque, status
+fiscal e financeiro em estados incompatíveis:
+
+- devolução usa comando durável, request idempotente, grade efetiva e aborta a
+  reserva quando o provedor não foi chamado;
+- cancelamento só avança de forma monotônica após evidência do provedor;
+- retries ambíguos não promovem um cancelamento local por inferência;
+- consultas e sincronizadores de status passam pela mesma função de observação,
+  em vez de atualizar `nfe_emitidas` diretamente;
+- saúde de faturamento e diagnósticos compõem NF-e, contas a receber, reservas,
+  baixa e fluxo canônico de tiras.
+
+A migration experimental de emissão `20270101012700` não integra ainda a Edge
+Function emissora e, por isso, **não faz parte da promoção**. Seu conteúdo é
+preservado como rascunho técnico, fora de `supabase/migrations`, para impedir que
+o workflow registre uma versão incompleta e nunca a reaplique.
 
 ## Correções da tela e do relatório
 
-- mapa de solados sempre aberto e colocado no topo da coluna principal;
-- necessidade, estoque útil e compra por numeração visíveis na mesma matriz;
-- cadastro incompleto deixa de aparecer como “grade coberta”;
-- ação “Gerar OC” permanece visível no trilho lateral;
-- produtos exatos distintos deixam de compartilhar falsamente o mesmo balde de
-  estoque por terem grupo/cor iguais;
-- IDs repetidos na URL são deduplicados antes das consultas/RPCs;
-- qualquer falha de leitura do contexto interrompe o relatório, em vez de
-  devolver resultado parcial como se fosse completo;
-- PDF e tela identificam explicitamente a natureza de simulação atual;
-- BOM alerta tamanho sem spec que contribuiu zero e normaliza cores com acento.
+- mapa de solados sempre aberto e no topo da área principal;
+- mapa de solados calculado antes dos filtros de material, para continuar
+  visível ao pesquisar ou selecionar somente napa, palmilha ou outro grupo;
+- necessidade, estoque útil e compra por número na mesma matriz;
+- cadastro incompleto nunca aparece como “coberto”;
+- ação **Gerar OC** permanece visível no trilho lateral;
+- foco em um único pedido preservado na URL e no RPC;
+- embalagem sem fornecedor bloqueia a OC antes do envio; produto comum sem
+  fornecedor continua no agrupamento manual permitido pelo contrato;
+- IDs repetidos são deduplicados;
+- falha de contexto interrompe o relatório, em vez de apresentar um parcial
+  como se fosse completo;
+- produtos distintos não compartilham falsamente saldo por grupo/cor;
+- hierarquia visual, largura, densidade, estados vazios e avisos foram ajustados
+  para leitura operacional em desktop e impressão.
 
-## Validação executada
+## Sequência promovível
 
-- 220/220 testes focados do relatório, UI, compra e estoque.
-- 3.179 testes da suíte completa passaram; 7 integrações condicionais ficaram
-  explicitamente em `skip` (a paridade real foi executada à parte na auditoria).
-- Typecheck canônico: `bunx tsc -p tsconfig.app.json --noEmit`.
-- Build de produção concluído.
-- Design tokens e nomes acessíveis: nenhuma regressão nova.
-- As três migrations da auditoria compilaram e executaram seus self-tests no
-  schema real dentro de transações encerradas com `ROLLBACK`.
-- Conferido após o teste: nenhuma função, tabela, OC, migração ou alteração de
-  saldo permaneceu no banco de produção.
+As migrations formam uma única sequência linear `20270101010100` →
+`20270101012600`. A ordem é obrigatória: versões registradas no Supabase não são
+reaplicadas pelo workflow. Em especial, 109 precede 117; 117→120 compõem os
+diagnósticos; 121 fecha OC genérica; 122 devolução; 123 relatório canônico; 124
+embalagem por PV; 125 estoque; 126 status fiscal monotônico.
+
+## Validação final
+
+A candidata final foi validada em 25/08/2026 com:
+
+- **3.341 testes aprovados** em 340 arquivos; 8 testes de integração em 5
+  arquivos ficaram `skip` somente porque exigem o ambiente DB/CI explícito;
+- contratos focados adicionais verdes: 348/348 no recorte amplo, 91/91 após a
+  limpeza de tipos, 78/78 na UI/OC, 86/86 em estoque e 42/42 após o freeze SQL;
+- typecheck canônico `bunx tsc -p tsconfig.app.json --noEmit`,
+  `lint:baseline`, build de produção, tokens, ARIA, branding, navegação e
+  `git diff --check` verdes;
+- parse `pglast` dos 26 arquivos SQL e replay lossless das migrations 101→126
+  no Supabase de produção, em uma transação: **1.066 statements**, 18 gates e
+  `ROLLBACK` confirmado;
+- PV-00146 com três escopos e zero divergência de `effective_grade`; PV-00162
+  com paridade de material, embalagem e tiras, inclusive delta zero entre o
+  motor operacional e o relatório no recorte de OP;
+- preflight ESM das 17 Edge Functions e contratos de ordenação de deploy 2/2;
+- revisão da cadeia `main → CI → banco → Edge/Vercel`, sem bloqueador P0/P1.
+
+Os 8 skips não foram tratados como evidência de banco. O replay transacional,
+os self-tests SQL e os casos vivos foram executados separadamente contra o
+projeto real para cobrir essa lacuna sem persistir dados durante a auditoria.
 
 ## Estado de entrega
 
-As mudanças estão preparadas no workspace. As migrations **não foram aplicadas
-em produção** durante a auditoria. Até o deploy, a produção continua com os
-riscos e divergências descritos acima.
+O pacote possui GO técnico para uma promoção única. A própria cadeia impede
+publicação parcial: migrations, Edge Functions e Vercel usam o SHA aprovado pelo
+CI; frontend e Edge aguardam todas as versões SQL pós-cutover; jobs obsoletos são
+recusados. A confirmação operacional final pertence aos runs e ao deployment do
+commit promovido, pois esse estado externo pode mudar depois da emissão deste
+documento.

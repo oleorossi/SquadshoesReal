@@ -1251,18 +1251,28 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public, vault, net
 AS $$
-DECLARE v_secret text; v_request_id bigint;
+DECLARE
+  v_secret text;
+  v_request_id bigint;
+  v_project_url text;
 BEGIN
-  SELECT decrypted_secret
-    INTO v_secret
+  SELECT max(decrypted_secret) FILTER (WHERE name = 'nfe_sync_cron_secret'),
+         max(decrypted_secret) FILTER (WHERE name = 'project_url')
+    INTO v_secret, v_project_url
     FROM vault.decrypted_secrets
-   WHERE name = 'nfe_sync_cron_secret'
-   LIMIT 1;
+   WHERE name IN ('nfe_sync_cron_secret', 'project_url');
   IF v_secret IS NULL THEN
     RAISE EXCEPTION 'nfe_sync_cron_secret não encontrado no vault';
   END IF;
+  IF v_project_url IS NULL THEN
+    RAISE EXCEPTION 'project_url não encontrado no vault';
+  END IF;
+  v_project_url := regexp_replace(btrim(v_project_url), '/+$', '');
+  IF v_project_url !~ '^https://[a-z0-9-]+[.]supabase[.]co$' THEN
+    RAISE EXCEPTION 'project_url inválido para o ambiente atual';
+  END IF;
   SELECT net.http_post(
-    url := 'https://ssvxfoybzmjlypnipqzn.supabase.co/functions/v1/process-sale-order-outbox',
+    url := v_project_url || '/functions/v1/process-sale-order-outbox',
     headers := jsonb_build_object(
       'Content-Type', 'application/json',
       'X-Cron-Secret', v_secret
@@ -1280,7 +1290,13 @@ REVOKE ALL ON FUNCTION public.trigger_sale_order_outbox_cron()
 DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron')
-     AND EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_net') THEN
+     AND EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_net')
+     AND EXISTS (
+       SELECT 1 FROM vault.secrets WHERE name = 'nfe_sync_cron_secret'
+     )
+     AND EXISTS (
+       SELECT 1 FROM vault.secrets WHERE name = 'project_url'
+     ) THEN
     IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'sale-order-outbox') THEN
       PERFORM cron.unschedule('sale-order-outbox');
     END IF;
@@ -1290,7 +1306,7 @@ BEGIN
       $cron$SELECT public.trigger_sale_order_outbox_cron();$cron$
     );
   ELSE
-    RAISE WARNING 'pg_cron/pg_net ausente: configure dispatcher externo para process-sale-order-outbox';
+    RAISE WARNING 'pg_cron/pg_net ou segredos do ambiente ausentes: configure project_url e nfe_sync_cron_secret antes de agendar process-sale-order-outbox';
   END IF;
 END;
 $$;

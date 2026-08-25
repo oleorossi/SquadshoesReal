@@ -19,6 +19,7 @@ import { toast } from 'sonner';
 import { MagnifyingGlass, Plus, Package, Palette, Info, Link as Link2, Check } from '@phosphor-icons/react';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { getGradeQuantityForKey } from '@/lib/gradeDistribution';
+import { adjustProductsStock } from '@/lib/stockCommand';
 
 interface SoladoGradeDialogProps {
   open: boolean;
@@ -537,27 +538,28 @@ export function SoladoGradeDialog({ open, onOpenChange, product }: SoladoGradeDi
         return;
       }
 
-      for (const { id, grade, total } of updates) {
+      const stockResult = await adjustProductsStock(updates.map(({ id, grade, total }) => {
         const variant = colorVariants.find(v => v.id === id);
         const previousQty = Number(variant?.quantity ?? 0);
-        const delta = total - previousQty;
-        const { data, error } = await supabase.rpc('adjust_stock' as any, {
-          p_product_id: id,
-          p_expected_previous_qty: previousQty,
-          p_new_qty: total,
-          p_delta: delta,
-          p_reason: `Ajuste manual de grade — ${variant?.name || id}`,
-          p_new_grade: grade,
-        });
-        if (error) throw error;
-        const result = Array.isArray(data) ? data[0] : data;
-        if (result && result.success === false) {
-          throw new Error(
-            result.error_message === 'CONCURRENCY_ERROR'
-              ? `Estoque do solado "${variant?.name || id}" foi alterado por outro usuário. Recarregue.`
-              : (result.error_message || 'Falha ao salvar grade'),
-          );
-        }
+        return {
+          product_id: id,
+          expected_previous_qty: previousQty,
+          new_qty: total,
+          expected_grade: (variant?.stock_grade as Record<string, unknown> | null) ?? null,
+          reason: `Ajuste manual de grade — ${variant?.name || id}`,
+          new_grade: grade,
+        };
+      }));
+      if (!stockResult.success) {
+        const first = stockResult.errors?.[0];
+        const variant = first?.product_id
+          ? colorVariants.find(item => item.id === first.product_id)
+          : null;
+        throw new Error(
+          first?.error === 'CONCURRENCY_ERROR'
+            ? `Estoque do solado "${variant?.name || first?.product_id || ''}" foi alterado por outro usuário. Recarregue.`
+            : (first?.error || 'Falha ao salvar as grades do solado'),
+        );
       }
 
       queryClient.invalidateQueries({ queryKey: ['products'] });

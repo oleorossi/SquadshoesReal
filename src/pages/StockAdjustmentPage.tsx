@@ -33,6 +33,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { adjustProductsStock } from '@/lib/stockCommand';
 
 interface Product {
   id: string;
@@ -730,22 +731,19 @@ export default function StockAdjustmentPage() {
 
     setSaving(true);
     try {
-      // types.ts é gerado e ainda não conhece a RPC aditiva; o cast é o padrão do projeto.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data, error: rpcErr } = await supabase.rpc('adjust_stock_batch' as any, { p_items: items });
-      if (rpcErr) throw rpcErr;
-
       type BatchError = {
         product_id: string | null;
         error: string;
         current_db_qty: number | null;
       };
-      const result = (Array.isArray(data) ? data[0] : data) as {
+      const result = await adjustProductsStock(items.map((item) => ({
+        ...item,
+        expected_grade: productsById.get(item.product_id)?.stock_grade ?? null,
+      }))) as {
         success: boolean;
         applied: number;
         errors: BatchError[];
-      } | null;
-      if (!result) throw new Error('Resposta vazia da RPC adjust_stock_batch.');
+      };
 
       if (!result.success) {
         const errors = result.errors ?? [];

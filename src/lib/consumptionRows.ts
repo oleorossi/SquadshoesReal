@@ -125,6 +125,12 @@ export async function annotateConsumptionAvailability(
   };
 
   const rowAvailable = (row: ConsumptionRow): number => {
+    if (row.boxTypeIds && row.boxTypeIds.length > 0) {
+      const wanted = new Set(row.boxTypeIds);
+      return (ctx.boxTypes || [])
+        .filter((box) => wanted.has(box.id))
+        .reduce((total, box) => total + Math.max(0, Number(box.quantity) || 0), 0);
+    }
     if (row.productIds && row.productIds.length > 0) {
       const wanted = new Set(row.productIds);
       return (ctx.allProducts || [])
@@ -147,12 +153,10 @@ export async function annotateConsumptionAvailability(
     if (row.soleProductId) {
       return extractStockGrade((ctx.allProducts || []).find((product: any) => product.id === row.soleProductId));
     }
-    const product = (ctx.allProducts || []).find((candidate: any) =>
-      normTxt(candidate.name) === normTxt(row.groupName)
-      && colorMatchesProduct(candidate, row.color))
-      || (ctx.allProducts || []).find((candidate: any) =>
-        normTxt(candidate.name) === normTxt(row.groupName));
-    return extractStockGrade(product);
+    // Sem UUID canônico não existe balde de estoque confiável. Resolver pelo
+    // texto podia escolher outro solado homônimo/cor e transformar pendência de
+    // cadastro em uma falsa falta (ou falsa cobertura) na tela e na OC.
+    return {};
   };
 
   for (const row of canonicalRows) {

@@ -2553,10 +2553,17 @@ BEGIN
     AND position('restore_sole_grade_for_order' IN v_cancel) > 0
     AND position('restore_product_stocks_for_order' IN v_cancel) > 0
     AND position('v_has_physical_sole' IN v_cancel) > 0
-    AND position('v_has_prior_inbound' IN v_cancel) > 0
+    AND (
+      position('v_has_prior_inbound' IN v_cancel) > 0
+      OR (
+        position('net_debit' IN v_cancel) > 0
+        AND position('restore_basis' IN v_cancel) > 0
+        AND position('v_has_prior_inbound' IN v_cancel) = 0
+      )
+    )
     AND position('deleted_at = now()' IN v_execute) > 0
     AND position('audit_preserved' IN v_execute) > 0;
-  details := 'Cancel estorna uma vez; delete é lógico e mantém ledger/consumos.';
+  details := 'Cancel estorna pelo ledger líquido uma vez; delete é lógico e mantém auditoria.';
   RETURN NEXT;
 
   case_name := 'shipment_is_one_transaction';

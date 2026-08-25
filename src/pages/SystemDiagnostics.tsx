@@ -36,6 +36,58 @@ type DiagnosticItem = {
 type ConsistencyRow = { check_name: string; severity: string; item_count: number; sample: string | null };
 type ParityRow = { case_name: string; ok: boolean; message: string | null };
 type PvSystemDiagnosticRow = ConsistencyRow & { category: string };
+type CapacityCheckRow = { categoria: string; severidade: string; referencia: string; detalhe: string };
+type LinkCheckRow = { check_name: string; severity: string; qtd: number; detalhe: string };
+type StaleReservationRow = {
+  order_number: string;
+  sale_order_number: string;
+  reference_name: string;
+  product_name: string;
+  required_qty: number;
+  consumption_source: string;
+};
+type SaleOrderOutboxHealth = {
+  pending?: number;
+  failed?: number;
+  dead_letter?: number;
+  attention_required?: number;
+  oldest_available_at?: string | null;
+  last_run?: { ran_at?: string; error?: string | null } | null;
+};
+
+type DiagnosticsRpcResults = {
+  pcp_freshness_report: ConsistencyRow[];
+  component_colors_consistency_report: ConsistencyRow[];
+  debit_consistency_report: DebitRow[];
+  run_debit_guard_tests: ParityRow[];
+  capacity_consistency_report: CapacityCheckRow[];
+  broken_sale_order_links_report: LinkCheckRow[];
+  list_ops_with_stale_reservations: StaleReservationRow[];
+  cost_consistency_report: ConsistencyRow[];
+  timeclock_identity_report: ConsistencyRow[];
+  get_sale_order_outbox_health: SaleOrderOutboxHealth;
+};
+
+/** RPCs de diagnóstico criadas por migrations que podem anteceder o types.ts
+ * gerado. O recorte mantém nomes e retornos tipados sem abrir o cliente inteiro. */
+const diagnosticsRpcClient = supabase as unknown as {
+  rpc<Name extends keyof DiagnosticsRpcResults>(
+    functionName: Name,
+  ): PromiseLike<{
+    data: DiagnosticsRpcResults[Name] | null;
+    error: { message: string } | null;
+  }>;
+};
+
+function errorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message) return error.message;
+  if (error && typeof error === 'object' && 'message' in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === 'string' && message) return message;
+  }
+  return fallback;
+}
+
 const pvSystemDiagnosticsClient = supabase as unknown as {
   rpc(
     functionName: 'get_sale_order_command_diagnostics',
@@ -56,6 +108,22 @@ const REQUIRED_PV_SYSTEM_SIGNALS = [
   'sale_order_outbox_worker',
   'sale_order_purchase_attention',
   'consumption_parity_skipped',
+  'billing_health_aggregate_drift',
+  'authorized_nfe_unlinked_strong_match',
+  'faturado_without_authorized_nfe',
+  'faturado_ar_reconciliation_queue',
+  'faturado_op_integrity',
+  'finalized_consumption_zero_without_pending',
+  'op_stock_movement_without_reservation_trace',
+  'strap_migration_review_required',
+  'strap_napa_width_inverted',
+  'strap_executor_calendar_missing',
+  'strap_executor_capacity_missing',
+  'strap_demand_capacity_suspended',
+  'strap_identity_dead_letter',
+  'strap_batch_unscheduled_balance',
+  'strap_legacy_billed_service_order_open',
+  'strap_production_receipt_stock_ledger_gap',
 ] as const;
 
 const PV_SYSTEM_SIGNAL_LABELS: Record<string, string> = {
@@ -68,6 +136,22 @@ const PV_SYSTEM_SIGNAL_LABELS: Record<string, string> = {
   sale_order_outbox_worker: 'Outbox de PV sem processamento durável',
   sale_order_purchase_attention: 'Faltas de compra exigindo correção de cadastro',
   consumption_parity_skipped: 'Paridade SQL sem execução comprovada',
+  billing_health_aggregate_drift: 'Agregados de NF-e e contas a receber divergentes',
+  authorized_nfe_unlinked_strong_match: 'NF-e autorizada com vínculo seguro ainda pendente',
+  faturado_without_authorized_nfe: 'PV faturado sem NF-e autorizada',
+  faturado_ar_reconciliation_queue: 'PV faturado aguardando reconciliação financeira',
+  faturado_op_integrity: 'PV faturado sem cobertura íntegra de OP',
+  finalized_consumption_zero_without_pending: 'OP finalizada com consumo zero/parcial sem pendência',
+  op_stock_movement_without_reservation_trace: 'Movimento de OP sem rastreio da reserva',
+  strap_migration_review_required: 'Tiras: item de migração aguardando revisão',
+  strap_napa_width_inverted: 'Tiras: largura da napa possivelmente invertida',
+  strap_executor_calendar_missing: 'Tiras: executor sem calendário operacional',
+  strap_executor_capacity_missing: 'Tiras: executor sem capacidade cadastrada',
+  strap_demand_capacity_suspended: 'Tiras: demanda suspensa por falta de capacidade',
+  strap_identity_dead_letter: 'Tiras: processamento bloqueado por identidade',
+  strap_batch_unscheduled_balance: 'Tiras: saldo de lote fora da programação',
+  strap_legacy_billed_service_order_open: 'Tiras: OS histórica faturada ainda aberta',
+  strap_production_receipt_stock_ledger_gap: 'Tiras: recebimento divergente do estoque',
 };
 /** Linha do debit_consistency_report() — esperado (ficha × grade) × debitado
  *  (stock_movements) por OP×produto, tolerância 1% + piso 0,01. */
@@ -133,13 +217,13 @@ export default function SystemDiagnostics() {
   // que distorcem gargalo/pares-dia/custo-par — tempo faltando, setor sem
   // equipe, divergência minutos×capacidade da ficha, taxa órfã.
   const [capacityChecks, setCapacityChecks] = useState<
-    Array<{ categoria: string; severidade: string; referencia: string; detalhe: string }> | null
+    CapacityCheckRow[] | null
   >(null);
   // Vínculos quebrados do PV (migration 20260919120000): OP ativa sem item,
   // OS sem vínculo com o item, item com 2+ OPs ativas. Nasceram do incidente
   // PV-00146 — a duplicação de OP só foi descoberta por etiqueta duplicada.
   const [linkChecks, setLinkChecks] = useState<
-    Array<{ check_name: string; severity: string; qtd: number; detalhe: string }> | null
+    LinkCheckRow[] | null
   >(null);
   // Reserva defasada (investigação PV-00147): OP ativa cuja reserva NÃO cobre o
   // que a ficha pede hoje. Nasceu do furo de baixa do PV-00145 — as OPs foram
@@ -147,7 +231,7 @@ export default function SystemDiagnostics() {
   // resync de ficha não re-reserva material. Como o débito na finalização
   // converte RESERVA em movimento, o que entrou depois sai da fábrica sem baixa.
   const [staleResRows, setStaleResRows] = useState<
-    Array<{ order_number: string; sale_order_number: string; reference_name: string; product_name: string; required_qty: number; consumption_source: string }> | null
+    StaleReservationRow[] | null
   >(null);
   // Custeio (auditoria 2026-08-03): o custo saía errado em silêncio — solado a
   // R$ 0,00 desde 11/07 e custo apoiado em snapshot já marcado desatualizado
@@ -194,25 +278,25 @@ export default function SystemDiagnostics() {
       const [consRes, parRes, freshRes, cpcRes, debitRes, guardRes, capRes, linkRes, staleResRes, costRes, clockRes] = await Promise.all([
         supabase.rpc('consumption_consistency_report'),
         supabase.rpc('run_consumption_parity_tests'),
-        // pcp_freshness_report é função nova (ainda não nos tipos gerados) → cast.
-        (supabase as any).rpc('pcp_freshness_report'),
+        // RPCs pós-types gerados usam o recorte tipado local declarado acima.
+        diagnosticsRpcClient.rpc('pcp_freshness_report'),
         // component_colors_consistency_report — auditoria componentes-por-cor
-        // (migration 20260910140000, ainda não nos tipos gerados) → cast.
-        (supabase as any).rpc('component_colors_consistency_report'),
+        // (migration 20260910140000, ainda não nos tipos gerados).
+        diagnosticsRpcClient.rpc('component_colors_consistency_report'),
         // debit_consistency_report / run_debit_guard_tests — auditoria débito
-        // ficha×grade (migration 20260915100000/110000, não nos tipos) → cast.
-        (supabase as any).rpc('debit_consistency_report'),
-        (supabase as any).rpc('run_debit_guard_tests'),
+        // ficha×grade (migration 20260915100000/110000, não nos tipos).
+        diagnosticsRpcClient.rpc('debit_consistency_report'),
+        diagnosticsRpcClient.rpc('run_debit_guard_tests'),
         // capacity_consistency_report — engine de capacidade (mig 20260719120100).
-        (supabase as any).rpc('capacity_consistency_report'),
+        diagnosticsRpcClient.rpc('capacity_consistency_report'),
         // broken_sale_order_links_report — identidade do item do PV (mig 20260919120000).
-        (supabase as any).rpc('broken_sale_order_links_report'),
+        diagnosticsRpcClient.rpc('broken_sale_order_links_report'),
         // list_ops_with_stale_reservations — reserva defasada vs ficha atual.
-        (supabase as any).rpc('list_ops_with_stale_reservations'),
+        diagnosticsRpcClient.rpc('list_ops_with_stale_reservations'),
         // cost_consistency_report — lacunas que fazem o custo sair errado (mig 20261104120200).
-        (supabase as any).rpc('cost_consistency_report'),
+        diagnosticsRpcClient.rpc('cost_consistency_report'),
         // timeclock_identity_report — saúde do casamento ponto×funcionário (mig 20261227120000).
-        (supabase as any).rpc('timeclock_identity_report'),
+        diagnosticsRpcClient.rpc('timeclock_identity_report'),
       ]);
 
       const queryError = [consRes, parRes, freshRes, cpcRes, debitRes, guardRes, capRes, linkRes, staleResRes, costRes, clockRes]
@@ -232,9 +316,10 @@ export default function SystemDiagnostics() {
       setStaleResRows(staleResRes.data ?? []);
       setParityChecks((parRes.data ?? []) as ParityRow[]);
       toast.success('Verificação de consumo concluída');
-    } catch (e: any) {
-      setConsChecksError(e.message || 'Falha ao consultar as verificações de consumo.');
-      toast.error('Falha na verificação de consumo: ' + e.message);
+    } catch (error: unknown) {
+      const message = errorMessage(error, 'Falha ao consultar as verificações de consumo.');
+      setConsChecksError(message);
+      toast.error('Falha na verificação de consumo: ' + message);
     } finally {
       setConsRunning(false);
     }
@@ -273,7 +358,7 @@ export default function SystemDiagnostics() {
       const [diagRes, parityRes, outboxRes] = await Promise.all([
         pvSystemDiagnosticsClient.rpc('get_sale_order_command_diagnostics', { p_sale_order_id: null }),
         supabase.rpc('run_consumption_parity_tests'),
-        (supabase as any).rpc('get_sale_order_outbox_health'),
+        diagnosticsRpcClient.rpc('get_sale_order_outbox_health'),
       ]);
 
       if (diagRes.error) throw diagRes.error;
@@ -301,14 +386,7 @@ export default function SystemDiagnostics() {
               : `${parityRows.length} caso(s) executado(s), todos aprovados.`,
       });
 
-      const outbox = (outboxRes.data || {}) as {
-        pending?: number;
-        failed?: number;
-        dead_letter?: number;
-        attention_required?: number;
-        oldest_available_at?: string | null;
-        last_run?: { ran_at?: string; error?: string | null } | null;
-      };
+      const outbox: SaleOrderOutboxHealth = outboxRes.data || {};
       const failedEvents = Number(outbox.failed || 0) + Number(outbox.dead_letter || 0);
       const lastRunAt = outbox.last_run?.ran_at ? Date.parse(outbox.last_run.ran_at) : Number.NaN;
       const workerStale = !Number.isFinite(lastRunAt) || Date.now() - lastRunAt > 5 * 60_000;
@@ -347,7 +425,7 @@ export default function SystemDiagnostics() {
 
     // 1) Versão local vs servidor
     try {
-      const localVersion = (import.meta as any).env?.VITE_APP_VERSION ?? 'desconhecida';
+      const localVersion = import.meta.env?.VITE_APP_VERSION ?? 'desconhecida';
       const resp = await fetch(`/version.json?t=${Date.now()}`, {
         cache: 'no-cache',
         headers: { 'Cache-Control': 'no-cache' },
@@ -371,12 +449,12 @@ export default function SystemDiagnostics() {
           hint: same ? undefined : 'Sua aba está rodando uma versão antiga. Force a atualização para baixar os módulos novos.',
         });
       }
-    } catch (e: any) {
+    } catch (error: unknown) {
       results.push({
         id: 'version',
         label: 'Versão do build',
         status: 'fail',
-        detail: `Falha ao consultar version.json: ${e.message}`,
+        detail: `Falha ao consultar version.json: ${errorMessage(error, 'erro desconhecido')}`,
         hint: 'Verifique sua conexão de rede.',
       });
     }
@@ -400,8 +478,8 @@ export default function SystemDiagnostics() {
           detail: 'API não suportada neste navegador',
         });
       }
-    } catch (e: any) {
-      results.push({ id: 'sw', label: 'Service Worker', status: 'fail', detail: e.message });
+    } catch (error: unknown) {
+      results.push({ id: 'sw', label: 'Service Worker', status: 'fail', detail: errorMessage(error, 'Erro desconhecido') });
     }
 
     // 3) Cache Storage
@@ -418,8 +496,8 @@ export default function SystemDiagnostics() {
           hint: keys.length > 5 ? 'Caches em excesso podem servir módulos antigos. Use o botão "Limpar cache".' : undefined,
         });
       }
-    } catch (e: any) {
-      results.push({ id: 'caches', label: 'Cache Storage', status: 'fail', detail: e.message });
+    } catch (error: unknown) {
+      results.push({ id: 'caches', label: 'Cache Storage', status: 'fail', detail: errorMessage(error, 'Erro desconhecido') });
     }
 
     // 4) Conectividade
@@ -442,12 +520,12 @@ export default function SystemDiagnostics() {
         status: 'ok',
         detail: `Resposta em ${dt}ms`,
       });
-    } catch (e: any) {
+    } catch (error: unknown) {
       results.push({
         id: 'fetch',
         label: 'Fetch de recurso estático',
         status: 'fail',
-        detail: e.message,
+        detail: errorMessage(error, 'Erro desconhecido'),
         hint: 'Falha ao carregar recursos. Verifique CORS/CDN/cache de proxy.',
       });
     }
@@ -458,12 +536,12 @@ export default function SystemDiagnostics() {
       localStorage.setItem(k, '1');
       localStorage.removeItem(k);
       results.push({ id: 'storage', label: 'localStorage', status: 'ok', detail: 'Disponível e gravável' });
-    } catch (e: any) {
+    } catch (error: unknown) {
       results.push({
         id: 'storage',
         label: 'localStorage',
         status: 'fail',
-        detail: e.message,
+        detail: errorMessage(error, 'Erro desconhecido'),
         hint: 'Modo privado/anônimo pode bloquear o storage e quebrar o carregamento de chunks.',
       });
     }
@@ -492,8 +570,8 @@ export default function SystemDiagnostics() {
       sessionStorage.clear();
       toast.success('Cache limpo. Recarregando…');
       setTimeout(() => window.location.reload(), 600);
-    } catch (e: any) {
-      toast.error('Falha ao limpar cache: ' + e.message);
+    } catch (error: unknown) {
+      toast.error('Falha ao limpar cache: ' + errorMessage(error, 'erro desconhecido'));
     }
   };
 
@@ -502,7 +580,7 @@ export default function SystemDiagnostics() {
       timestamp: new Date().toISOString(),
       url: window.location.href,
       userAgent: navigator.userAgent,
-      version: (import.meta as any).env?.VITE_APP_VERSION,
+      version: import.meta.env?.VITE_APP_VERSION,
       diagnostics: diag,
       schema: schemaObjects,
       migrationsCount: migrations?.length ?? 0,
@@ -692,7 +770,7 @@ export default function SystemDiagnostics() {
           <Panel
             eyebrow="PV · FICHA · ESTOQUE"
             title="Saúde dos comandos de pedido"
-            subtitle="Receipts idempotentes, plano/readiness, ressincronização, delta de débito, grants e atomicidade da promoção. Fonte: get_sale_order_command_diagnostics(NULL) + run_consumption_parity_tests()."
+            subtitle="Receipts idempotentes, plano/readiness, integridade fiscal/financeira, cobertura OP↔estoque e fluxo canônico de Tiras. Fonte: get_sale_order_command_diagnostics(NULL) + run_consumption_parity_tests()."
             actions={
               <Button
                 size="sm"

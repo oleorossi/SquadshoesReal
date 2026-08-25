@@ -38,7 +38,7 @@ export function useMaterialsPerPv(pvIds: string[] | null | undefined) {
     queryKey: ['materials_per_pv', ids.slice().sort().join(',')],
     enabled: ids.length > 0,
     queryFn: async () => {
-      const { data, error } = await untypedRpc.rpc('compute_per_pv_purchase_needs', {
+      const { data, error } = await untypedRpc.rpc('compute_per_pv_purchase_needs_v2', {
         p_pv_ids: ids,
       });
       if (error) throw error;
@@ -76,10 +76,14 @@ export interface GeneratePerPvInput {
 
 async function loadPerPvStrapIdentityGuard(drafts: DraftPurchaseOrder[]) {
   const materialIds = [...new Set(
-    drafts.flatMap((draft) => draft.items.map((item) => item.material_id.trim())).filter(Boolean),
+    drafts.flatMap((draft) => draft.items
+      .map((item) => item.material_id?.trim() || '')
+      .filter(Boolean)),
   )];
   if (materialIds.length === 0) {
-    throw new Error('Nenhum produto válido foi informado para validar esta compra.');
+    // Lote exclusivamente de box_types: não existe identidade products para
+    // consultar nem risco de cair no canal artesanal de tiras.
+    return createPerPvStrapIdentityGuard({ products: [], groups: [] });
   }
 
   const [catalogResult, productsResult] = await Promise.all([
@@ -164,9 +168,12 @@ export function useGeneratePerPvPurchaseOrders() {
 
       const rpcDrafts = valid.map((draft) => ({
         supplier_id: draft.supplier_id,
+        supplier_name: draft.supplier_name,
         items: draft.items.map((item) => ({
           material_id: item.material_id,
+          box_type_id: item.box_type_id ?? null,
           quantity: item.quantity,
+          net_of_stock: item.net_of_stock,
           unit_price: item.unit_price,
           unit: item.unit,
           current_stock: item.stock_qty,

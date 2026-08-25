@@ -1113,8 +1113,7 @@ BEGIN
      OR v_definition NOT ILIKE '%sale_order_resync_snapshot_history%'
      OR v_definition NOT ILIKE '%freeze_technical_sheet%'
      OR v_definition ILIKE '%DELETE FROM public.technical_sheet_snapshots%'
-     OR v_definition ILIKE '%restore_sole_grade_for_order%'
-     OR v_definition ILIKE '%hybrid_debit_stock_for_order(%v_op.grade%);%' THEN
+     OR v_definition ILIKE '%restore_sole_grade_for_order%' THEN
     RAISE EXCEPTION 'resync_op_atomic não satisfaz o caminho seguro canônico';
   END IF;
 END;

@@ -2,13 +2,12 @@ import CreatePurchaseOrderDialog from "@/components/purchase/CreatePurchaseOrder
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { LancamentoAvulsoDialog } from "@/components/avulso/LancamentoAvulsoDialog";
 import { Plus, Receipt } from '@phosphor-icons/react';
-import { adjustStockSafe } from '@/lib/stockAdjustments';
-import { receiptConversionFactor, weightedAverageUnitPrice } from '@/lib/purchaseConversion';
+import { receiptConversionFactor } from '@/lib/purchaseConversion';
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { usePurchaseOrders, usePurchaseOrderItems, usePurchaseOrderItemSummaries, usePurchaseOrderPayments, useUpdatePurchaseOrder, useUpdatePurchaseOrderItem, useDeletePurchaseOrder, type PurchaseOrder, type PurchaseOrderItem, type PurchaseOrderItemSummary, type POContentType } from '@/hooks/usePurchaseOrders';
+import { usePurchaseOrders, usePurchaseOrderItems, usePurchaseOrderItemSummaries, usePurchaseOrderPayments, useUpdatePurchaseOrder, useDeletePurchaseOrder, type PurchaseOrder, type PurchaseOrderItem, type PurchaseOrderItemSummary, type POContentType } from '@/hooks/usePurchaseOrders';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -33,6 +32,10 @@ import { format } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import {
+  executePurchaseOrderCommand,
+  purchaseOrderLogicalKey,
+} from '@/services/purchaseOrderCommandService';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
@@ -60,6 +63,7 @@ const CONTENT_TYPE_META: Record<POContentType, { label: string; cls: string }> =
   solado:   { label: 'Solado',   cls: 'bg-violet-500/10 text-violet-600 border-violet-500/20' },
   material: { label: 'Material', cls: 'bg-blue-500/10 text-blue-600 border-blue-500/20' },
   palmilha: { label: 'Palmilha', cls: 'bg-teal-500/10 text-teal-600 border-teal-500/20' },
+  embalagem:{ label: 'Embalagem',cls: 'bg-amber-500/10 text-amber-600 border-amber-500/20' },
   misto:    { label: 'Misto',    cls: 'bg-muted text-muted-foreground border-border' },
   vazio:    { label: '—',        cls: 'bg-muted text-muted-foreground border-border' },
 };
@@ -119,16 +123,25 @@ function mergeReceivedGrade(
   factor: number,
   productName: string,
 ): Record<string, number> | null {
-  const entries = Object.entries(itemGrade || {}).filter(([, v]) => Number(v) > 0);
+  const entries = Object.entries(itemGrade || {}).filter(([size]) => !size.startsWith('_'));
   if (entries.length === 0) return null;
-  if (!prodStockGrade || typeof prodStockGrade !== 'object' || Array.isArray(prodStockGrade)) return null;
-  if (factor !== 1) return null;
-  const gradeSum = entries.reduce((s, [, v]) => s + Number(v), 0);
-  if (Math.abs(gradeSum - itemQty) > 0.01) {
+  for (const [, value] of entries) {
+    if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || !Number.isInteger(value)) {
+      throw new Error(
+        `${productName}: a grade deve conter apenas quantidades inteiras e não negativas.`,
+      );
+    }
+  }
+  const gradeSum = entries.reduce((sum, [, value]) => sum + value, 0);
+  if (gradeSum !== itemQty) {
     throw new Error(
       `${productName}: a grade do item soma ${gradeSum} pares mas a quantidade é ${itemQty} — corrija a grade da OC (lápis na coluna Grade) antes de receber.`,
     );
   }
+  if (factor !== 1) {
+    throw new Error(`${productName}: item com grade não pode usar conversão de unidade no recebimento.`);
+  }
+  if (!prodStockGrade || typeof prodStockGrade !== 'object' || Array.isArray(prodStockGrade)) return null;
   const merged: Record<string, number> = {};
   for (const [k, v] of Object.entries(prodStockGrade as Record<string, unknown>)) {
     merged[k] = Number(v) || 0;
@@ -151,16 +164,17 @@ async function preflightReceive(items: PurchaseOrderItem[]): Promise<void> {
     const already = Number(it.received_quantity ?? 0);
     return !it.received_at && Number(it.quantity) - already > 0.0001;
   });
-  const ids = [...new Set(pending.map((it) => it.product_id))];
+  const productItems = pending.filter((it) => Boolean(it.product_id));
+  const ids = [...new Set(productItems.map((it) => it.product_id as string))];
   if (ids.length === 0) return;
   const { data: prods, error } = await supabase
     .from('products')
     .select('id, name, stock_grade, conversion_rate, unit, purchase_unit, dimensions_width, dimensions_unit')
     .in('id', ids);
   if (error) throw new Error(error.message);
-  const byId = new Map((prods || []).map((p: any) => [p.id, p]));
-  for (const it of pending) {
-    const prod: any = byId.get(it.product_id);
+  const byId = new Map((prods || []).map((p) => [p.id, p]));
+  for (const it of productItems) {
+    const prod = byId.get(it.product_id as string);
     if (!prod) continue;
     // F3-1/F5-02: fator ciente da unidade da LINHA — item em unidade de estoque
     // (geradores ROP legados) recebe fator 1; item em unidade de compra usa o
@@ -402,16 +416,33 @@ export default function PurchaseOrders() {
         .in('purchase_order_id', ids);
       if (error) throw error;
 
-      const productIds = [...new Set((rawItems || []).map((i: any) => i.product_id))];
-      const { data: products } = await supabase
-        .from('products')
-        .select('id, name, sku, category, color')
-        .in('id', productIds);
+      const productIds = [...new Set((rawItems || []).map((i) => i.product_id).filter(Boolean))];
+      const boxTypeIds = [...new Set((rawItems || []).map((i) => i.box_type_id).filter(Boolean))];
+      const [productsResult, boxTypesResult] = await Promise.all([
+        productIds.length > 0
+          ? supabase.from('products').select('id, name, sku, category, color').in('id', productIds)
+          : Promise.resolve({ data: [], error: null }),
+        boxTypeIds.length > 0
+          ? supabase.from('box_types').select('id, nome, tipo').in('id', boxTypeIds)
+          : Promise.resolve({ data: [], error: null }),
+      ]);
+      if (productsResult.error) throw productsResult.error;
+      if (boxTypesResult.error) throw boxTypesResult.error;
+      const products = productsResult.data;
+      const boxTypes = boxTypesResult.data;
 
       const productMap = new Map((products || []).map(p => [p.id, p]));
+      const boxTypeMap = new Map((boxTypes || []).map(box => [box.id, {
+        name: box.nome,
+        sku: '',
+        category: 'Embalagem',
+        color: null,
+      }]));
       const items = (rawItems || []).map((item: any) => ({
         ...item,
-        product: productMap.get(item.product_id) || { name: '?', sku: '?', category: '?', color: null },
+        product: productMap.get(item.product_id)
+          || boxTypeMap.get(item.box_type_id)
+          || { name: '?', sku: '?', category: '?', color: null },
       }));
 
       const selectedOrders = orders.filter(o => selectedIds.has(o.id));
@@ -556,7 +587,7 @@ export default function PurchaseOrders() {
                       <Input value={itemFilter} onChange={e => setParam('item', e.target.value || null)} placeholder="Ex.: napa soft, 204 preto…" />
                     </div>
                     <div className="grid grid-cols-2 gap-2">
-                      <div className="space-y-1.5"><Label>Tipo de item</Label><Select value={contentFilter} onValueChange={v => setParam('content', v === 'all' ? null : v)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Todos</SelectItem><SelectItem value="material">Material</SelectItem><SelectItem value="solado">Solado</SelectItem><SelectItem value="palmilha">Palmilha</SelectItem><SelectItem value="misto">Misto</SelectItem></SelectContent></Select></div>
+                      <div className="space-y-1.5"><Label>Tipo de item</Label><Select value={contentFilter} onValueChange={v => setParam('content', v === 'all' ? null : v)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Todos</SelectItem><SelectItem value="material">Material</SelectItem><SelectItem value="solado">Solado</SelectItem><SelectItem value="palmilha">Palmilha</SelectItem><SelectItem value="embalagem">Embalagem</SelectItem><SelectItem value="misto">Misto</SelectItem></SelectContent></Select></div>
                       <div className="space-y-1.5"><Label>Origem</Label><Select value={originFilter} onValueChange={v => setParam('origin', v === 'all' ? null : v)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Todas</SelectItem><SelectItem value="manual">Manual</SelectItem><SelectItem value="automatic">Automática</SelectItem><SelectItem value="per_pv">Por pedido</SelectItem></SelectContent></Select></div>
                     </div>
                     <div className="grid grid-cols-2 gap-2">
@@ -925,11 +956,11 @@ export default function PurchaseOrders() {
 function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () => void }) {
   const { data: orders = [] } = usePurchaseOrders();
   const { data: items = [], isLoading } = usePurchaseOrderItems(orderId);
-  const updateItem = useUpdatePurchaseOrderItem();
   const updateOrder = useUpdatePurchaseOrder();
   const qc = useQueryClient();
   const order = orders.find(o => o.id === orderId);
   const [editingItems, setEditingItems] = useState<Record<string, { quantity: number; unit_price: number }>>({});
+  const [savingItems, setSavingItems] = useState(false);
   const [receiving, setReceiving] = useState(false);
   const [approving, setApproving] = useState(false);
   const [gradeEditorItemId, setGradeEditorItemId] = useState<string | null>(null);
@@ -991,34 +1022,43 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
   };
 
   const handleSaveItems = async () => {
+    if (savingItems) return;
+    setSavingItems(true);
     try {
-      for (const [itemId, data] of Object.entries(editingItems)) {
-        // Só as colunas editáveis — o objeto completo carrega campos mapeados
-        // (ex.: `product`) que não são colunas e o PostgREST rejeita.
-        await updateItem.mutateAsync({
-          id: itemId,
-          data: { quantity: data.quantity, unit_price: data.unit_price },
-        });
-      }
-      // Recalculate total
-      const allItems = items.map(i => editingItems[i.id] ? { ...i, ...editingItems[i.id] } : i);
-      const newTotal = allItems.reduce((s, i) => s + i.quantity * i.unit_price, 0);
-      await updateOrder.mutateAsync({ id: orderId, data: { total_value: newTotal } });
+      const edits = Object.entries(editingItems).map(([itemId, data]) => ({
+        item_id: itemId,
+        quantity: data.quantity,
+        unit_price: data.unit_price,
+      }));
+      await executePurchaseOrderCommand({
+        command: 'edit',
+        purchaseOrderId: orderId,
+        expectedUpdatedAt: order.updated_at,
+        payload: { items: edits },
+        logicalKey: purchaseOrderLogicalKey('edit-items', orderId, JSON.stringify(edits)),
+      });
       setEditingItems({});
+      qc.invalidateQueries({ queryKey: ['purchase_order_items'] });
+      qc.invalidateQueries({ queryKey: ['purchase_orders'] });
       toast.success('Quantidades atualizadas!');
     } catch (err: any) {
       toast.error(err.message);
+    } finally {
+      setSavingItems(false);
     }
   };
 
   const resolvePaymentDays = async (): Promise<number[]> => {
-    if (!order.supplier_id) return [30];
-    const { data: supplier } = await (supabase as any)
-      .from('suppliers')
-      .select('payment_terms')
-      .eq('id', order.supplier_id)
-      .maybeSingle();
-    const terms: string | null = supplier?.payment_terms ?? null;
+    let terms: string | null = order.payment_terms ?? null;
+    if (!order.quotation_award_snapshot_id) {
+      if (!order.supplier_id) return [30];
+      const { data: supplier } = await supabase
+        .from('suppliers')
+        .select('payment_terms')
+        .eq('id', order.supplier_id)
+        .maybeSingle();
+      terms = supplier?.payment_terms ?? null;
+    }
     if (!terms) return [30];
     const lower = terms.toLowerCase();
     if (lower.includes('vista') || lower.includes('avista')) return [0];
@@ -1026,64 +1066,24 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
     return matched && matched.length > 0 ? matched.map(Number) : [30];
   };
 
-  const buildInstallments = (total: number, days: number[]) => {
-    if (!days.length) return [];
-    return days.map((d, i) => {
-      const base = Math.floor((total / days.length) * 100) / 100;
-      const remainder = i === 0 ? Math.round((total - base * days.length) * 100) / 100 : 0;
-      return { days: d, amount: base + remainder };
-    });
-  };
-
-  const createAPEntries = async (paymentDays: number[]) => {
-    // Guard: nothing to do when the OC has no value
-    if ((order.total_value ?? 0) <= 0) {
-      toast.warning('OC com valor zero — conta a pagar não gerada.');
-      return;
-    }
-    // Idempotency: use a delimited unique token [OC#<uuid>] in notes to avoid
-    // substring collisions between order numbers (e.g. "0001" matching "00010").
-    const idToken = `[OC#${orderId}]`;
-    const { data: existing, error: existingErr } = await (supabase as any)
-      .from('accounts_payable')
-      .select('id')
-      .ilike('notes', `%${idToken}%`)
-      .limit(1);
-    if (existingErr) throw new Error(`Falha ao verificar parcelas existentes: ${existingErr.message}`);
-    if (existing && existing.length > 0) {
-      toast.info('Parcelas já lançadas anteriormente — nenhuma entrada duplicada criada.');
-      return;
-    }
-    // Ancora o vencimento na EMISSÃO da OC (created_at), não no clique de
-    // aprovar/finalizar — senão as parcelas 30/60/90 escorregam para frente e
-    // distorcem aging e fluxo de caixa (auditoria 2026-07-02).
-    const anchor = (order as any).created_at ? new Date((order as any).created_at) : new Date();
-    const installments = buildInstallments(order.total_value, paymentDays);
-    for (let i = 0; i < installments.length; i++) {
-      const { days, amount } = installments[i];
-      if (amount <= 0) continue; // skip zero-amount installments
-      const dueDate = new Date(anchor);
-      dueDate.setDate(dueDate.getDate() + days);
-      const { error } = await supabase.from('accounts_payable').insert({
-        description: `OC ${order.order_number}${installments.length > 1 ? ` — Parcela ${i + 1}/${installments.length}` : ''}`,
-        amount,
-        due_date: dueDate.toISOString().slice(0, 10),
-        category: 'material',
-        supplier_id: order.supplier_id,
-        status: 'pending',
-        notes: `OC: ${order.order_number} - ${order.supplier_name} ${idToken}`,
-      });
-      if (error) throw error;
-    }
-  };
-
   const handleSendToFinance = async () => {
     if (approving) return;
     setApproving(true);
     try {
       const paymentDays = await resolvePaymentDays();
-      await createAPEntries(paymentDays);
-      await updateOrder.mutateAsync({ id: orderId, data: { status: 'approved' } });
+      await executePurchaseOrderCommand({
+        command: 'update',
+        purchaseOrderId: orderId,
+        expectedUpdatedAt: order.updated_at,
+        payload: {
+          header_patch: { status: 'approved' },
+          create_payables: true,
+          payment_days: paymentDays,
+        },
+        logicalKey: purchaseOrderLogicalKey('send-finance', orderId),
+      });
+      qc.invalidateQueries({ queryKey: ['purchase_orders'] });
+      qc.invalidateQueries({ queryKey: ['accounts_payable'] });
       toast.success(`Aprovada — ${paymentDays.length} parcela(s) lançadas no financeiro!`);
     } catch (err: any) {
       toast.error(err.message);
@@ -1095,148 +1095,36 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
   const handleFinalize = async () => {
     if (receiving) return;
     setReceiving(true);
-    const previousStatus = order.status;
-    let claimed = false;
     try {
-      // Atomic claim: transition to intermediate 'receiving' state only when not
-      // already received/receiving. Returns 0 rows when a concurrent call already
-      // claimed it — prevents double stock credit across browser tabs/users.
-      const { data: claimedRows, error: claimErr } = await supabase
-        .from('purchase_orders')
-        .update({ status: 'receiving' })
-        .eq('id', orderId)
-        .neq('status', 'received')
-        .neq('status', 'receiving')
-        .select('id');
-      if (claimErr) throw new Error(claimErr.message);
-      if (!claimedRows || claimedRows.length === 0) {
-        toast.info('OC já foi recebida (operação concorrente).');
-        return;
-      }
-      claimed = true;
-
-      // 0. Pré-voo: valida conversões e grades do lote inteiro antes de creditar
-      // ou lançar financeiro — evita crédito parcial por 1 item mal-configurado.
       await preflightReceive(items);
-
-      // 1. Create AP entries (idempotent)
       const paymentDays = await resolvePaymentDays();
-      await createAPEntries(paymentDays);
-
-      // 2. Receive stock (atomic via SELECT FOR UPDATE)
-      // Conversão usa effectiveConversionFactor: prioriza dimensions_width pra m→dm²,
-      // depois conversion_rate. Garante que Napa/tecidos com largura cadastrada
-      // virem dm² corretamente.
-      const todayStr = new Date().toISOString().slice(0, 10);
-      for (const item of items) {
-        // M6: idempotência por item — retry após falha parcial pula itens cujo
-        // estoque já foi creditado (received_at é marcado logo após o crédito).
-        // Fase C: respeita recebimento parcial — credita só o que falta
-        // (quantity − received_quantity).
-        const alreadyRecv = Number(item.received_quantity ?? 0);
-        const remainingToReceive = Number(item.quantity) - alreadyRecv;
-        if (item.received_at || remainingToReceive <= 0.0001) continue;
-        const { data: prod } = await supabase
-          .from('products')
-          .select('name, quantity, unit_price, stock_grade, conversion_rate, unit, purchase_unit, dimensions_width, dimensions_unit, supplier_id')
-          .eq('id', item.product_id)
-          .single();
-        // F3-1/F5-02: fator ciente da unidade da LINHA da OC — item denominado
-        // em unidade de ESTOQUE (geradores ROP legados) recebe fator 1; item em
-        // unidade de COMPRA usa o fator estrito; sem regra segura → bloqueia
-        // (igual ao fluxo de NF). Nunca aplica fator cego.
-        const rc = receiptConversionFactor(item.unit, {
-          name: (prod as any)?.name,
-          unit: (prod as any)?.unit || 'un',
-          purchase_unit: (prod as any)?.purchase_unit,
-          conversion_rate: (prod as any)?.conversion_rate,
-          dimensions_width: (prod as any)?.dimensions_width,
-          dimensions_unit: (prod as any)?.dimensions_unit,
-        });
-        if (!rc.ok) throw new Error(rc.reason);
-        const factor = rc.factor;
-        const receivedQty = remainingToReceive * factor;
-        const prev = Number(prod?.quantity ?? 0);
-        const newQty = prev + receivedQty;
-        // M3: solado com grade — soma a grade recebida ao stock_grade na MESMA
-        // chamada que credita quantity (adjust_stock faz o UPDATE atômico).
-        const mergedGrade = mergeReceivedGrade(
-          item.grade,
-          item.quantity,
-          (prod as any)?.stock_grade,
-          factor,
-          (prod as any)?.name || 'Produto',
-        );
-        const result = await adjustStockSafe({
-          productId: item.product_id,
-          expectedPrevious: prev,
-          newQty,
+      await executePurchaseOrderCommand({
+        command: 'receive',
+        purchaseOrderId: orderId,
+        expectedUpdatedAt: order.updated_at,
+        payload: {
+          receive_all: true,
+          received_date: new Date().toISOString().slice(0, 10),
           reason: `Finalização OC ${order.order_number} — ${order.supplier_name}`,
-          newGrade: mergedGrade,
-        });
-        if (!result.success) throw new Error(result.errorMessage);
-        // M6: marca o item como recebido IMEDIATAMENTE após o crédito, pra um
-        // retry não re-creditar. Falha aqui não aborta (o crédito já aconteceu;
-        // abortar deixaria itens seguintes sem crédito e ESTE re-creditável).
-        const { error: markErr } = await supabase
-          .from('purchase_order_items')
-          .update({ received_at: new Date().toISOString(), received_quantity: item.quantity })
-          .eq('id', item.id);
-        if (markErr) console.error(`[PO finalize] Falha ao marcar received_at do item ${item.id}:`, markErr);
-        // F5-05: WAC igual ao caminho da NF — crédito primeiro, preço depois.
-        // item.unit_price está na MESMA unidade da linha; ÷factor traz pra
-        // R$/unidade de estoque (linha em unidade de estoque tem factor=1).
-        const addPrice = (Number(item.unit_price) || 0) / factor;
-        const productPatch: Record<string, any> = {};
-        if (addPrice > 0 && Number.isFinite(addPrice)) {
-          productPatch.unit_price = weightedAverageUnitPrice(
-            prev, Number((prod as any)?.unit_price) || 0, receivedQty, addPrice,
-          );
-        }
-        if (order.supplier_id && !(prod as any)?.supplier_id) {
-          productPatch.supplier_id = order.supplier_id;
-        }
-        if (Object.keys(productPatch).length > 0) {
-          // Não-crítico pra concorrência de estoque: falha aqui não desfaz o
-          // crédito (mesmo tratamento do XmlImportDialog) — loga e segue.
-          const { error: patchErr } = await supabase.from('products').update(productPatch).eq('id', item.product_id);
-          if (patchErr) console.error(`[PO finalize] Falha ao atualizar preço/fornecedor de "${(prod as any)?.name}":`, patchErr);
-        }
-      }
-
-      // 3. Mark as received — update direto: o guard de useUpdatePurchaseOrder
-      // rejeita rows em 'receiving', que é exatamente o estado do claim.
-      const { data: doneRows, error: doneErr } = await supabase
-        .from('purchase_orders')
-        .update({ status: 'received', received_date: todayStr })
-        .eq('id', orderId)
-        .eq('status', 'receiving')
-        .select('id');
-      if (doneErr) throw new Error(doneErr.message);
-      if (!doneRows || doneRows.length === 0) {
-        throw new Error('OC saiu do estado de recebimento durante a finalização — verifique o status antes de tentar de novo.');
-      }
-      claimed = false; // Successfully completed — no need to rollback
+          create_payables: true,
+          payment_days: paymentDays,
+        },
+        logicalKey: purchaseOrderLogicalKey('finalize', orderId),
+      });
       qc.invalidateQueries({ queryKey: ['purchase_orders'] });
       qc.invalidateQueries({ queryKey: ['purchase_order_items'] });
       qc.invalidateQueries({ queryKey: ['mrp-needs'] });
       qc.invalidateQueries({ queryKey: ['products'] });
+      qc.invalidateQueries({ queryKey: ['box_types'] });
+      qc.invalidateQueries({ queryKey: ['box_types_stock'] });
       qc.invalidateQueries({ queryKey: ['stock_movements'] });
       qc.invalidateQueries({ queryKey: ['accounts_payable'] });
       toast.success(`OC finalizada — ${paymentDays.length} parcela(s) lançadas e estoque atualizado!`);
     } catch (err: any) {
-      // Roll back the 'receiving' transient state so the operator can retry
-      if (claimed) {
-        await supabase.from('purchase_orders')
-          .update({ status: previousStatus })
-          .eq('id', orderId)
-          .eq('status', 'receiving');
-      }
-      // Recarrega itens/estoque: um retry precisa enxergar received_at atualizado
-      // pra NÃO re-creditar o que já entrou (o cache tinha staleTime alto → o
-      // fechamento de `items` ficava obsoleto e re-creditava tudo no 2º clique).
       qc.invalidateQueries({ queryKey: ['purchase_order_items'] });
       qc.invalidateQueries({ queryKey: ['products'] });
+      qc.invalidateQueries({ queryKey: ['box_types'] });
+      qc.invalidateQueries({ queryKey: ['box_types_stock'] });
       toast.error(err.message);
     } finally {
       setReceiving(false);
@@ -1246,135 +1134,32 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
   const handleMarkReceived = async () => {
     if (receiving) return;
     setReceiving(true);
-    const previousStatus = order.status;
-    let claimed = false;
     try {
-      // Atomic claim — same pattern as handleFinalize to prevent double credit.
-      const { data: claimedRows, error: claimErr } = await supabase
-        .from('purchase_orders')
-        .update({ status: 'receiving' })
-        .eq('id', orderId)
-        .neq('status', 'received')
-        .neq('status', 'receiving')
-        .select('id');
-      if (claimErr) throw new Error(claimErr.message);
-      if (!claimedRows || claimedRows.length === 0) {
-        toast.info('OC já foi recebida (operação concorrente).');
-        return;
-      }
-      claimed = true;
-
-      // 0. Pré-voo: valida conversões e grades do lote antes de creditar
-      // qualquer item (evita crédito parcial por 1 item mal-configurado).
       await preflightReceive(items);
-
-      const today = new Date().toISOString().slice(0, 10);
-      // Give stock to each item (atomic via SELECT FOR UPDATE).
-      // item.quantity is in purchase_unit (e.g. placa, m linear).
-      // product.quantity is stored in stock unit (e.g. dm²).
-      // effectiveConversionFactor cobre tanto conversion_rate fixo (1 placa = 144 dm²)
-      // quanto largura para linear→área (1 m × dimensions_width dm = dm²).
-      for (const item of items) {
-        // M6: idempotência por item — retry após falha parcial pula itens cujo
-        // estoque já foi creditado (received_at é marcado logo após o crédito).
-        // Fase C: respeita recebimento parcial — credita só o que falta
-        // (quantity − received_quantity).
-        const alreadyRecv = Number(item.received_quantity ?? 0);
-        const remainingToReceive = Number(item.quantity) - alreadyRecv;
-        if (item.received_at || remainingToReceive <= 0.0001) continue;
-        const { data: prod } = await supabase
-          .from('products')
-          .select('name, quantity, unit_price, stock_grade, conversion_rate, unit, purchase_unit, dimensions_width, dimensions_unit, supplier_id')
-          .eq('id', item.product_id)
-          .single();
-        // F3-1/F5-02: fator ciente da unidade da LINHA da OC (estoque → 1,
-        // compra → estrito, sem regra/unidade desconhecida → bloqueia).
-        const rc = receiptConversionFactor(item.unit, {
-          name: (prod as any)?.name,
-          unit: (prod as any)?.unit || 'un',
-          purchase_unit: (prod as any)?.purchase_unit,
-          conversion_rate: (prod as any)?.conversion_rate,
-          dimensions_width: (prod as any)?.dimensions_width,
-          dimensions_unit: (prod as any)?.dimensions_unit,
-        });
-        if (!rc.ok) throw new Error(rc.reason);
-        const factor = rc.factor;
-        const receivedInStockUnit = remainingToReceive * factor;
-        const prev = Number(prod?.quantity ?? 0);
-        const newQty = prev + receivedInStockUnit;
-        // M3: solado com grade — soma a grade recebida ao stock_grade na MESMA
-        // chamada que credita quantity (adjust_stock faz o UPDATE atômico).
-        const mergedGrade = mergeReceivedGrade(
-          item.grade,
-          item.quantity,
-          (prod as any)?.stock_grade,
-          factor,
-          (prod as any)?.name || 'Produto',
-        );
-        const result = await adjustStockSafe({
-          productId: item.product_id,
-          expectedPrevious: prev,
-          newQty,
+      await executePurchaseOrderCommand({
+        command: 'receive',
+        purchaseOrderId: orderId,
+        expectedUpdatedAt: order.updated_at,
+        payload: {
+          receive_all: true,
+          received_date: new Date().toISOString().slice(0, 10),
           reason: `Recebimento OC ${order.order_number} — ${order.supplier_name}`,
-          newGrade: mergedGrade,
-        });
-        if (!result.success) throw new Error(result.errorMessage);
-        // M6: marca o item como recebido IMEDIATAMENTE após o crédito, pra um
-        // retry não re-creditar. Falha aqui não aborta (o crédito já aconteceu;
-        // abortar deixaria itens seguintes sem crédito e ESTE re-creditável).
-        const { error: markErr } = await supabase
-          .from('purchase_order_items')
-          .update({ received_at: new Date().toISOString(), received_quantity: item.quantity })
-          .eq('id', item.id);
-        if (markErr) console.error(`[PO receive] Falha ao marcar received_at do item ${item.id}:`, markErr);
-        // F5-05: WAC igual ao caminho da NF — crédito primeiro, preço depois.
-        const addPrice = (Number(item.unit_price) || 0) / factor;
-        const productPatch: Record<string, any> = {};
-        if (addPrice > 0 && Number.isFinite(addPrice)) {
-          productPatch.unit_price = weightedAverageUnitPrice(
-            prev, Number((prod as any)?.unit_price) || 0, receivedInStockUnit, addPrice,
-          );
-        }
-        if (order.supplier_id && !(prod as any)?.supplier_id) {
-          productPatch.supplier_id = order.supplier_id;
-        }
-        if (Object.keys(productPatch).length > 0) {
-          const { error: patchErr } = await supabase.from('products').update(productPatch).eq('id', item.product_id);
-          if (patchErr) console.error(`[PO receive] Falha ao atualizar preço/fornecedor de "${(prod as any)?.name}":`, patchErr);
-        }
-      }
-      // Update direto: o guard de useUpdatePurchaseOrder rejeita rows em
-      // 'receiving', que é exatamente o estado do claim.
-      const { data: doneRows, error: doneErr } = await supabase
-        .from('purchase_orders')
-        .update({ status: 'received', received_date: today })
-        .eq('id', orderId)
-        .eq('status', 'receiving')
-        .select('id');
-      if (doneErr) throw new Error(doneErr.message);
-      if (!doneRows || doneRows.length === 0) {
-        throw new Error('OC saiu do estado de recebimento durante a finalização — verifique o status antes de tentar de novo.');
-      }
-      claimed = false; // Successfully completed — no rollback needed
+        },
+        logicalKey: purchaseOrderLogicalKey('receive-all', orderId),
+      });
       qc.invalidateQueries({ queryKey: ['purchase_orders'] });
       qc.invalidateQueries({ queryKey: ['purchase_order_items'] });
       qc.invalidateQueries({ queryKey: ['mrp-needs'] });
       qc.invalidateQueries({ queryKey: ['products'] });
+      qc.invalidateQueries({ queryKey: ['box_types'] });
+      qc.invalidateQueries({ queryKey: ['box_types_stock'] });
       qc.invalidateQueries({ queryKey: ['stock_movements'] });
       toast.success('OC marcada como recebida — estoque atualizado!');
     } catch (err: any) {
-      // Roll back the 'receiving' transient state so the operator can retry
-      if (claimed) {
-        await supabase.from('purchase_orders')
-          .update({ status: previousStatus })
-          .eq('id', orderId)
-          .eq('status', 'receiving');
-      }
-      // Recarrega itens/estoque: um retry precisa enxergar received_at atualizado
-      // pra NÃO re-creditar o que já entrou (o cache tinha staleTime alto → o
-      // fechamento de `items` ficava obsoleto e re-creditava tudo no 2º clique).
       qc.invalidateQueries({ queryKey: ['purchase_order_items'] });
       qc.invalidateQueries({ queryKey: ['products'] });
+      qc.invalidateQueries({ queryKey: ['box_types'] });
+      qc.invalidateQueries({ queryKey: ['box_types_stock'] });
       toast.error(err.message);
     } finally {
       setReceiving(false);
@@ -1397,73 +1182,34 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
     if (qty > remaining + 0.0001) { toast.error(`Máximo a receber agora: ${remaining} ${item.unit}.`); return; }
     setPartialBusy(true);
     try {
-      const { data: prod } = await supabase
-        .from('products')
-        .select('name, quantity, unit_price, conversion_rate, unit, purchase_unit, dimensions_width, dimensions_unit, supplier_id')
-        .eq('id', item.product_id)
-        .single();
-      // F3-1/F5-02: fator ciente da unidade da LINHA da OC (estoque → 1,
-      // compra → estrito, sem regra/unidade desconhecida → bloqueia).
-      const rc = receiptConversionFactor(item.unit, {
-        name: (prod as any)?.name,
-        unit: (prod as any)?.unit || 'un',
-        purchase_unit: (prod as any)?.purchase_unit,
-        conversion_rate: (prod as any)?.conversion_rate,
-        dimensions_width: (prod as any)?.dimensions_width,
-        dimensions_unit: (prod as any)?.dimensions_unit,
-      });
-      if (!rc.ok) throw new Error(rc.reason);
-      const factor = rc.factor;
-      const prev = Number(prod?.quantity ?? 0);
-      const receivedInStockUnit = qty * factor;
-      const newQty = prev + receivedInStockUnit;
-      // Concorrência: adjustStockSafe valida expectedPrevious — dois recebimentos
-      // simultâneos do mesmo produto fazem o 2º falhar com erro de concorrência.
-      const result = await adjustStockSafe({
-        productId: item.product_id,
-        expectedPrevious: prev,
-        newQty,
-        reason: `Recebimento parcial OC ${order.order_number} — ${order.supplier_name}`,
-        newGrade: null,
-      });
-      if (!result.success) throw new Error(result.errorMessage);
-      // F5-05: WAC igual ao caminho da NF — crédito primeiro, preço depois.
-      const addPrice = (Number(item.unit_price) || 0) / factor;
-      if (addPrice > 0 && Number.isFinite(addPrice)) {
-        const newPrice = weightedAverageUnitPrice(
-          prev, Number((prod as any)?.unit_price) || 0, receivedInStockUnit, addPrice,
-        );
-        const { error: priceErr } = await supabase.from('products').update({ unit_price: newPrice }).eq('id', item.product_id);
-        if (priceErr) console.error(`[PO parcial] Falha ao atualizar WAC de "${(prod as any)?.name}":`, priceErr);
-      }
       const newReceived = already + qty;
       const fullyReceived = newReceived >= Number(item.quantity) - 0.0001;
-      const { error: itemErr } = await supabase
-        .from('purchase_order_items')
-        .update({ received_quantity: newReceived, received_at: fullyReceived ? new Date().toISOString() : null })
-        .eq('id', item.id);
-      if (itemErr) throw new Error(itemErr.message);
-      if (order.supplier_id && !(prod as any)?.supplier_id) {
-        await supabase.from('products').update({ supplier_id: order.supplier_id }).eq('id', item.product_id);
-      }
-      // Status da OC: todos os itens fechados → 'received', senão 'parcial'.
       const allReceived = items.every(it =>
         it.id === item.id
           ? fullyReceived
           : (!!it.received_at || Number(it.received_quantity ?? 0) >= Number(it.quantity) - 0.0001),
       );
-      const todayStr = new Date().toISOString().slice(0, 10);
-      await supabase
-        .from('purchase_orders')
-        .update(allReceived ? { status: 'received', received_date: todayStr } : { status: 'parcial' })
-        .eq('id', orderId)
-        .neq('status', 'received')
-        .neq('status', 'cancelled')
-        .neq('status', 'receiving');
+      await executePurchaseOrderCommand({
+        command: 'receive',
+        purchaseOrderId: orderId,
+        expectedUpdatedAt: order.updated_at,
+        payload: {
+          receipts: [{
+            item_id: item.id,
+            quantity: qty,
+            expected_received_quantity: already,
+          }],
+          received_date: new Date().toISOString().slice(0, 10),
+          reason: `Recebimento parcial OC ${order.order_number} — ${order.supplier_name}`,
+        },
+        logicalKey: purchaseOrderLogicalKey('receive-partial', orderId, item.id, qty),
+      });
       qc.invalidateQueries({ queryKey: ['purchase_orders'] });
       qc.invalidateQueries({ queryKey: ['purchase_order_items'] });
       qc.invalidateQueries({ queryKey: ['mrp-needs'] });
       qc.invalidateQueries({ queryKey: ['products'] });
+      qc.invalidateQueries({ queryKey: ['box_types'] });
+      qc.invalidateQueries({ queryKey: ['box_types_stock'] });
       qc.invalidateQueries({ queryKey: ['stock_movements'] });
       const restante = remaining - qty;
       toast.success(fullyReceived
@@ -1807,7 +1553,7 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
             <FileText className="h-4 w-4" /> PDF Agrupado
           </Button>
           {isEditable && Object.keys(editingItems).length > 0 && (
-            <Button onClick={handleSaveItems} disabled={updateItem.isPending}>
+              <Button onClick={handleSaveItems} disabled={savingItems}>
               Salvar Alterações
             </Button>
           )}
@@ -1949,16 +1695,32 @@ function PendingSummaryDialog({ orderIds, orders, onClose }: { orderIds: string[
         .in('purchase_order_id', orderIds);
       if (error) throw error;
 
-      const productIds = [...new Set(data.map((i: any) => i.product_id))];
-      const { data: products } = await supabase
-        .from('products')
-        .select('id, name, sku, category')
-        .in('id', productIds);
+      const productIds = [...new Set(data.map((i) => i.product_id).filter(Boolean))] as string[];
+      const boxTypeIds = [...new Set(data.map((i) => i.box_type_id).filter(Boolean))] as string[];
+      let products: Array<{ id: string; name: string; sku: string | null; category: string | null }> = [];
+      let boxTypes: Array<{ id: string; nome: string; tipo: string | null }> = [];
+      if (productIds.length > 0) {
+        const result = await supabase.from('products').select('id, name, sku, category').in('id', productIds);
+        if (result.error) throw result.error;
+        products = result.data || [];
+      }
+      if (boxTypeIds.length > 0) {
+        const result = await supabase.from('box_types').select('id, nome, tipo').in('id', boxTypeIds);
+        if (result.error) throw result.error;
+        boxTypes = result.data || [];
+      }
 
       const productMap = new Map((products || []).map(p => [p.id, p]));
+      const boxTypeMap = new Map((boxTypes || []).map(box => [box.id, {
+        name: box.nome,
+        sku: '',
+        category: 'Embalagem',
+      }]));
       return data.map((item: any) => ({
         ...item,
-        product: productMap.get(item.product_id) || { name: '?', sku: '?', category: '?' },
+        product: productMap.get(item.product_id)
+          || boxTypeMap.get(item.box_type_id)
+          || { name: '?', sku: '?', category: '?' },
       }));
     },
   });
@@ -1970,7 +1732,7 @@ function PendingSummaryDialog({ orderIds, orders, onClose }: { orderIds: string[
     const byProduct = new Map<string, SummaryItem>();
 
     for (const item of allItems) {
-      const key = item.product_id;
+      const key = item.product_id || `box:${item.box_type_id}`;
       const existing = byProduct.get(key);
       const orderNum = orderMap.get(item.purchase_order_id)?.order_number || '?';
 

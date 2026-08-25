@@ -8,8 +8,8 @@ name: Supabase — Apply Migrations
 #   • workflow_dispatch        → manual, via GitHub UI (Actions tab > Run)
 #                                Tem opção `dry_run: true` que executa o dry-run
 #                                real da CLI sem aplicar.
-#   • push em main             → automático quando arquivos em
-#                                supabase/migrations/** ou neste workflow mudarem.
+#   • CI concluída em main     → automático somente quando o gate integral passa.
+#                                Rodar sem migration pendente é um no-op seguro.
 #
 # Pré-requisitos (settings repo > Secrets and variables > Actions > Secrets):
 #   SUPABASE_ACCESS_TOKEN   → personal access token
@@ -23,6 +23,10 @@ name: Supabase — Apply Migrations
 # ─────────────────────────────────────────────────────────────────────────────
 
 on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
     inputs:
       dry_run:
@@ -33,13 +37,6 @@ on:
         options:
           - 'true'
           - 'false'
-  push:
-    branches: [main]
-    paths:
-      - 'supabase/migrations/**'
-      - 'scripts/check-supabase-migration-cutover.mjs'
-      - '.github/workflows/supabase-migrate.yml'
-
 # Cancela runs antigas se uma nova começar (evita race ao rebase rápido)
 concurrency:
   group: supabase-migrate
@@ -49,6 +46,7 @@ jobs:
   migrate:
     name: Apply migrations to Supabase
     runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     timeout-minutes: 15
     env:
       SUPABASE_MIGRATION_CUTOFF: '20270101009300'
@@ -56,6 +54,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - name: Setup Supabase CLI
         uses: supabase/setup-cli@v1
@@ -184,7 +184,7 @@ jobs:
           echo "🟡 DRY RUN concluído — nenhuma migration foi aplicada."
 
       - name: Apply pending migrations
-        if: github.event_name == 'push' || github.event.inputs.dry_run == 'false'
+        if: github.event_name == 'workflow_run' || github.event.inputs.dry_run == 'false'
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_DB_PASSWORD:  ${{ secrets.SUPABASE_DB_PASSWORD }}

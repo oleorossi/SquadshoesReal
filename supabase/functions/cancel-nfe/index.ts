@@ -9,6 +9,31 @@ const corsHeaders = {
 
 const CLICKNOTAS_BASE = "https://api.clicknotas.com";
 
+interface CancellationBeginResult {
+  ok: boolean;
+  code?: string;
+  provider_call_required?: boolean;
+  reconciliation_required?: boolean;
+  cancellation_state?: string | null;
+  next_retry_at?: string | null;
+  data_emissao?: string | null;
+  provider_nfe_id?: string | null;
+}
+
+interface CancellationProviderResponse {
+  status?: string;
+  mensagem?: string;
+  data?: { ok?: boolean };
+  [key: string]: unknown;
+}
+
+interface LocalCancellationResult {
+  reconciliation_needed?: boolean;
+  reconciliation_reason?: string | null;
+  idempotent_replay?: boolean;
+  [key: string]: unknown;
+}
+
 function gcHeaders() {
   const access = Deno.env.get("CLICKNOTAS_ACCESS_TOKEN");
   const secret = Deno.env.get("CLICKNOTAS_SECRET_TOKEN");
@@ -112,8 +137,34 @@ Deno.serve(async (req) => {
         error: beginErr?.message || beginRaw?.code || "Cancelamento recusado pelo banco.",
       }), { status, headers: corsHeaders });
     }
-    const begin = beginRaw as any;
+    const begin = beginRaw as unknown as CancellationBeginResult;
     const providerCallRequired = begin.provider_call_required === true;
+    const resumableProviderConfirmedStates = new Set([
+      "provider_cancelled",
+      "manual_review",
+      "completed",
+    ]);
+    if (
+      !providerCallRequired &&
+      begin.reconciliation_required === true &&
+      !resumableProviderConfirmedStates.has(String(begin.cancellation_state || ""))
+    ) {
+      // Um POST anterior pode ter chegado ao provedor e a resposta ter se
+      // perdido. Nesse estado, completar localmente seria tão perigoso quanto
+      // repetir cegamente o cancelamento externo: o poller monotônico precisa
+      // primeiro observar uma confirmação conclusiva do ClickNotas.
+      return new Response(JSON.stringify({
+        success: false,
+        pending: true,
+        reconciliation_needed: true,
+        error: "Cancelamento ainda sem confirmação conclusiva do provedor.",
+        cancellation_state: begin.cancellation_state,
+        next_retry_at: begin.next_retry_at,
+      }), {
+        status: 202,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
     _claimedNfeId = providerCallRequired ? nfe_id : null;
 
     const abortClaim = async (reason: string) => {
@@ -129,7 +180,7 @@ Deno.serve(async (req) => {
       return true;
     };
 
-    let providerData: any = providerCallRequired
+    let providerData: CancellationProviderResponse | null = providerCallRequired
       ? null
       : { idempotent_replay: true, provider_call_skipped: true };
     let cancellationProtocol: string | null = null;
@@ -181,7 +232,7 @@ Deno.serve(async (req) => {
       if (providerText.length > 524_288) {
         throw new Error("Resposta do ClickNotas excede o tamanho máximo permitido.");
       }
-      try { providerData = JSON.parse(providerText); } catch { providerData = { mensagem: providerText }; }
+      try { providerData = JSON.parse(providerText) as CancellationProviderResponse; } catch { providerData = { mensagem: providerText }; }
 
       const providerConfirmed = providerResp.ok
         && providerData?.status !== "error"
@@ -226,14 +277,29 @@ Deno.serve(async (req) => {
       }
     }
 
-    const { data: localRaw, error: localErr } = await adminClient.rpc(
-      "complete_nfe_cancellation_command",
-      {
-        p_nfe_id: nfe_id,
-        p_justification: justificativa.trim(),
-        p_cancellation_protocol: cancellationProtocol,
-      },
-    );
+    const { data: localRaw, error: localErr } = providerCallRequired
+      ? await adminClient.rpc(
+        "observe_nfe_provider_status_126",
+        {
+          p_nfe_id: nfe_id,
+          p_provider_status: "cancelada",
+          p_snapshot: {
+            provider_nfe_id: begin.provider_nfe_id,
+            ...(cancellationProtocol
+              ? { protocolo_cancelamento: cancellationProtocol }
+              : {}),
+          },
+          p_source: "cancel-nfe",
+        },
+      )
+      : await adminClient.rpc(
+        "complete_nfe_cancellation_command",
+        {
+          p_nfe_id: nfe_id,
+          p_justification: justificativa.trim(),
+          p_cancellation_protocol: cancellationProtocol,
+        },
+      );
     if (localErr || localRaw?.ok !== true) {
       return new Response(JSON.stringify({
         error: localErr?.message || localRaw?.code || "Provedor confirmou, mas o commit local falhou.",
@@ -242,7 +308,7 @@ Deno.serve(async (req) => {
       }), { status: 500, headers: corsHeaders });
     }
     _claimedNfeId = null;
-    const localCancellation = localRaw as any;
+    const localCancellation = localRaw as unknown as LocalCancellationResult;
 
     const cleanupWarnings: string[] = [];
     const standaloneStockWarning = localCancellation.reconciliation_needed === true

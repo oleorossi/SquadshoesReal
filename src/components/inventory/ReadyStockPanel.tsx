@@ -25,7 +25,7 @@ import { useTechnicalSheets } from '@/hooks/useTechnicalSheets';
 import { useProducts } from '@/hooks/useProducts';
 import {
   useReadyStock, useUpsertReadyStock, useBatchUpsertReadyStock,
-  useUpdateReadyStock, useDeleteReadyStock,
+  useUpdateReadyStock, useDeleteReadyStock, useBatchDeleteReadyStock,
 } from '@/hooks/useReadyStock';
 import { cn } from '@/lib/utils';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
@@ -64,6 +64,7 @@ export default function ReadyStockPanel() {
   const batchUpsert = useBatchUpsertReadyStock();
   const updateStock = useUpdateReadyStock();
   const deleteStock = useDeleteReadyStock();
+  const batchDeleteStock = useBatchDeleteReadyStock();
 
   const [search, setSearch] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -406,6 +407,12 @@ ${cardsHtml}
         color: selColor,
         size,
         quantity,
+        expectedQuantity: stock.find((item) =>
+          item.reference_id === selRef
+          && item.color === selColor
+          && item.size === size
+          && !item.material_variant_id
+        )?.quantity ?? 0,
         location,
         notes,
       }));
@@ -430,9 +437,13 @@ ${cardsHtml}
   const executeConfirmedRemove = async () => {
     if (!confirmRemove) return;
     if (confirmRemove.type === 'item') {
-      deleteStock.mutate(confirmRemove.id);
+      const item = stock.find((row) => row.id === confirmRemove.id);
+      deleteStock.mutate({ id: confirmRemove.id, expectedQuantity: item?.quantity });
     } else {
-      await Promise.allSettled(confirmRemove.items.map(i => deleteStock.mutateAsync(i.id)));
+      await batchDeleteStock.mutateAsync(confirmRemove.items.map(i => {
+        const item = stock.find((row) => row.id === i.id);
+        return { id: i.id, expectedQuantity: item?.quantity };
+      }));
     }
     setConfirmRemove(null);
   };
@@ -834,6 +845,8 @@ ${cardsHtml}
 
   async function group_items_delete(g: typeof grouped[number]) {
     if (!confirm('Remover todos os itens desta referência/cor do estoque?')) return;
-    await Promise.allSettled(g.items.map(i => deleteStock.mutateAsync(i.id)));
+    await batchDeleteStock.mutateAsync(
+      g.items.map(i => ({ id: i.id, expectedQuantity: i.quantity })),
+    );
   }
 }

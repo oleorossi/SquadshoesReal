@@ -31,7 +31,7 @@ on:
 # Evita 2 deploys paralelos se vários pushes chegarem em sequência
 concurrency:
   group: vercel-prod
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 env:
   VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
@@ -44,7 +44,7 @@ jobs:
     # decide quando forçar). workflow_run.conclusion pode ser:
     # success/failure/cancelled/skipped/timed_out — só deploya em success.
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
-    timeout-minutes: 15
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -61,7 +61,7 @@ jobs:
           node-version: 20
 
       - name: Install Vercel CLI
-        run: npm install -g vercel@latest
+        run: npm install -g vercel@59.5.0
 
       - name: Diagnose secrets (sem expor valores sensíveis)
         env:
@@ -103,7 +103,7 @@ jobs:
       - name: Setup Bun (for tsc gate)
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: 1.3.13
 
       - name: Install deps for tsc gate
         run: bun install --frozen-lockfile
@@ -120,6 +120,25 @@ jobs:
 
       - name: Build for production
         run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Wait for database migrations from this commit
+        timeout-minutes: 25
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+        run: bash scripts/wait-for-supabase-migrations.sh
+
+      - name: Refuse a stale main commit
+        if: github.event_name == 'workflow_run'
+        run: |
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          checked_out_sha=$(git rev-parse HEAD)
+          main_sha=$(git rev-parse origin/main)
+          if [ "$checked_out_sha" != "$main_sha" ]; then
+            echo "Commit obsoleto: checkout=$checked_out_sha main=$main_sha" >&2
+            exit 1
+          fi
+          echo "✓ SHA ainda é a ponta de main: $checked_out_sha"
 
       - name: Deploy to production
         env:

@@ -18,6 +18,8 @@ import {
   type MaterialConsumptionRow,
 } from '@/lib/orderConsumption';
 import { validateConsumptionPayload, type ConsumptionLine } from '@/services/consumptionService';
+import { resolveCanonicalPackaging } from '@/lib/packagingConsumption';
+import { buildPerPvPurchaseOrders } from '@/lib/perPvPurchasing';
 
 // orderConsumption/consumptionService oferecem o singleton do browser como
 // default, mas esta suíte sempre injeta o cliente service-role abaixo. O mock
@@ -27,6 +29,18 @@ vi.mock('@/integrations/supabase/client', () => ({ supabase: null }));
 
 const ENABLED = process.env.RUN_DB_INTEGRATION === '1';
 const REFERENCE_NAMES = ['CF 09 ', 'DS21', 'S-039'] as const;
+
+interface PackagingConsumptionSqlRow {
+  box_type_id: string;
+  box_name: string;
+  packaging_type: string;
+  unit: string;
+  required: number;
+  available: number;
+  supplier_id: string | null;
+  unit_price: number;
+  warning?: string | null;
+}
 
 /**
  * `technical_sheets` exige usuário aprovado. Quando a integração é habilitada,
@@ -232,7 +246,7 @@ const aggregateSqlByProduct = (rows: ConsumptionLine[]): {
           p_grade: grade,
           p_color: color,
           p_material_variant_id: null,
-        },
+        } as never,
       );
       if (sqlError) throw sqlError;
       const sqlRows = validateConsumptionPayload((sqlPayload as unknown) ?? []);
@@ -278,5 +292,99 @@ const aggregateSqlByProduct = (rows: ConsumptionLine[]): {
     }
 
     expect(mismatches, JSON.stringify(mismatches, null, 2)).toEqual([]);
+  }, 30_000);
+
+  it('DS21 seleciona uma única caixa por modo e mantém fitilho em metros', async () => {
+    const supabase = dbClient();
+    const { data: reference, error: referenceError } = await supabase
+      .from('technical_sheets')
+      .select('id, sole_group_id')
+      .eq('name', 'DS21')
+      .single();
+    if (referenceError) throw referenceError;
+    expect(reference?.sole_group_id, 'DS21 precisa continuar vinculada ao grupo de solado').toBeTruthy();
+
+    const ctx = await fetchConsumptionContext([reference.id], supabase);
+    const soleGroup = ctx.productGroups.find((group) => group.id === reference.sole_group_id);
+    expect(soleGroup, 'Grupo de solado da DS21 não foi carregado').toBeTruthy();
+
+    const grade = { '34': 6 };
+    for (const mode of ['colmeia', 'individual', 'individual_fitilho'] as const) {
+      const tsRows = resolveCanonicalPackaging({
+        mode,
+        quantity: 24,
+        grade,
+        soleGroup,
+        boxTypes: ctx.boxTypes || [],
+      }).filter((row) => row.boxTypeId && !row.warning);
+
+      const { data, error } = await supabase.rpc(
+        'calculate_packaging_consumption' as never,
+        {
+          p_reference_id: reference.id,
+          p_order_quantity: 24,
+          p_packaging_mode: mode,
+          p_grade: grade,
+        } as never,
+      );
+      if (error) throw error;
+      const sqlRows = ((data || []) as unknown as PackagingConsumptionSqlRow[])
+        .filter((row) => row.box_type_id && !row.warning);
+
+      expect(
+        sqlRows.map((row) => row.packaging_type).sort(),
+        `${mode}: quantidade de slots SQL inesperada`,
+      ).toEqual(mode === 'individual_fitilho' ? ['fitilho', 'individual'] : [mode]);
+      expect(
+        tsRows.map((row) => ({
+          box_type_id: row.boxTypeId,
+          packaging_type: row.packagingType,
+          unit: row.unit,
+          required: row.required,
+        })).sort((a, b) => a.packaging_type.localeCompare(b.packaging_type)),
+      ).toEqual(
+        sqlRows.map((row) => ({
+          box_type_id: row.box_type_id,
+          packaging_type: row.packaging_type,
+          unit: row.unit,
+          required: Number(row.required),
+        })).sort((a, b) => a.packaging_type.localeCompare(b.packaging_type)),
+      );
+
+      // O mesmo payload discriminado alimenta o botão de OC exclusiva sem
+      // inventar um products.id para a caixa. O draft mantém exatamente o(s)
+      // slot(s) selecionado(s) pelo modo — um para colmeia/individual e dois
+      // apenas quando o modo pede individual + fitilho.
+      const purchaseDrafts = buildPerPvPurchaseOrders(sqlRows.map((row) => ({
+        material_id: null,
+        box_type_id: row.box_type_id,
+        packaging_type: row.packaging_type,
+        product_name: row.box_name,
+        unit: row.unit,
+        color: null,
+        needed_qty: Number(row.required),
+        stock_qty: Number(row.available) || 0,
+        shortage: Math.max(0, Number(row.required) - (Number(row.available) || 0)),
+        supplier_id: row.supplier_id,
+        supplier_name: null,
+        last_unit_price: Number(row.unit_price) || 0,
+      })));
+      const purchaseItems = purchaseDrafts.flatMap((draft) => draft.items);
+      expect(
+        purchaseItems.map((item) => ({
+          material_id: item.material_id,
+          box_type_id: item.box_type_id,
+          unit: item.unit,
+          quantity: item.quantity,
+        })).sort((a, b) => (a.box_type_id || '').localeCompare(b.box_type_id || '')),
+      ).toEqual(
+        sqlRows.map((row) => ({
+          material_id: null,
+          box_type_id: row.box_type_id,
+          unit: row.unit,
+          quantity: Number(row.required),
+        })).sort((a, b) => a.box_type_id.localeCompare(b.box_type_id)),
+      );
+    }
   }, 30_000);
 });

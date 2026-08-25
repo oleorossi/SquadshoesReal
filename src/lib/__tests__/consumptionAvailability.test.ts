@@ -49,6 +49,7 @@ describe('solado — avaliado por numeração', () => {
     componentType: 'Solado',
     groupName: 'SOLADO 01',
     productUnit: 'par',
+    soleProductId: 'p-solado-01',
     totalQuantity: 540,
     sizeBreakdown: { '35': 90, '36': 108, '37': 90 },
     soleSizeStock: { '35': 12, '36': 0, '37': 416 },
@@ -64,9 +65,30 @@ describe('solado — avaliado por numeração', () => {
   it('sem quebra por numeração cai no total', () => {
     const semGrade = row({
       componentType: 'Solado', productUnit: 'par', totalQuantity: 540,
+      soleProductId: 'p-solado-01',
       soleSizeStock: { '36': 300 },
     });
     expect(rowShortfall(semGrade)).toBe(240);
+  });
+
+  it('solado textual sem produto canônico fica neutro mesmo com quantidade positiva', () => {
+    const naoResolvido = row({
+      componentType: 'Solado',
+      groupName: 'Solado Ricardo Tratorado',
+      productUnit: 'par',
+      totalQuantity: 80,
+      sizeBreakdown: { '34': 20, '35': 20, '36': 20, '37': 20 },
+      soleSizeStock: {},
+      soleProductId: null,
+      warning: 'Solado não resolve produto no estoque — não será reservado nem debitado.',
+    });
+
+    expect(rowKnown(naoResolvido)).toBe(false);
+    expect(rowIsShort(naoResolvido)).toBe(false);
+    expect(rowShortfall(naoResolvido)).toBe(0);
+    expect(soleShortSizes(naoResolvido)).toEqual(['34', '35', '36', '37']);
+    expect(countShort([naoResolvido])).toBe(0);
+    expect(topShortfalls([naoResolvido])).toEqual([]);
   });
 });
 
@@ -145,6 +167,7 @@ describe('topShortfalls', () => {
       row({ groupName: 'NAPA SOFT', color: 'PRETO', totalQuantity: 1, available: 5.01 }),
       row({
         componentType: 'Solado', groupName: 'SOLADO 01', productUnit: 'par',
+        soleProductId: 'p-solado-01',
         totalQuantity: 198, sizeBreakdown: { '35': 90, '36': 108 }, soleSizeStock: {},
       }),
     ], 3);

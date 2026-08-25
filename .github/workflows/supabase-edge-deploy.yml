@@ -1,7 +1,10 @@
 name: Deploy Supabase Edge Functions
 
-# Auto-deploy de Edge Functions quando arquivos em supabase/functions/** mudam em main.
-# Roda em paralelo ao supabase-migrate.yml (migrations) e ao Vercel (frontend).
+# Publica as Edge Functions somente depois do CI de main. A execução automática
+# republica o conjunto completo: assim um deploy Edge que falhou em um commit
+# anterior não é mascarado quando o commit corretivo mexe só no frontend.
+# Antes da publicação, o job aguarda TODAS as migrations pós-cutover do mesmo
+# commit e recusa um SHA que já deixou de ser a ponta de main.
 #
 # Setup (uma vez):
 # 1. Secrets já configurados (mesmos do supabase-migrate.yml):
@@ -10,10 +13,10 @@ name: Deploy Supabase Edge Functions
 # 2. Para disparar manualmente: Actions tab → "Deploy Supabase Edge Functions" → Run workflow.
 
 on:
-  push:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
     branches: [main]
-    paths:
-      - 'supabase/functions/**'
   workflow_dispatch:
     inputs:
       function_name:
@@ -21,56 +24,106 @@ on:
         required: false
         type: string
 
+concurrency:
+  group: supabase-edge-production
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@v4
         with:
-          # O push pode conter varios commits; precisamos do SHA anterior inteiro,
-          # nao apenas de HEAD^, para nao omitir funcoes alteradas no meio do lote.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           fetch-depth: 0
 
       - uses: supabase/setup-cli@v1
         with:
-          version: latest
+          version: 2.115.0
 
-      - name: Detect changed functions
-        id: detect
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.13
+
+      - name: Validate secrets
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
         run: |
-          if [ -n "${{ inputs.function_name }}" ]; then
-            echo "functions=${{ inputs.function_name }}" >> $GITHUB_OUTPUT
-          else
-            if [ "${{ github.event_name }}" = "push" ] \
-              && [ -n "${{ github.event.before }}" ] \
-              && [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
-              DIFF_BASE="${{ github.event.before }}"
-            else
-              DIFF_BASE="HEAD^"
-            fi
+          : "${SUPABASE_ACCESS_TOKEN:?SUPABASE_ACCESS_TOKEN não configurado em Secrets}"
+          : "${SUPABASE_PROJECT_ID:?SUPABASE_PROJECT_ID não configurado em Secrets}"
+          echo "✓ Secrets presentes"
 
-            CHANGED_FILES=$(git diff --name-only "$DIFF_BASE" HEAD -- supabase/functions/)
-            CHANGED=$(printf '%s\n' "$CHANGED_FILES" \
-              | awk -F'/' '$3 != "_shared" {print $3}' \
-              | sort -u)
-            if printf '%s\n' "$CHANGED_FILES" | grep -q '^supabase/functions/_shared/'; then
-              SHARED_CONSUMERS=$(
-                printf '%s\n' "$CHANGED_FILES" \
-                  | awk '/^supabase\/functions\/_shared\/.*\.ts$/' \
-                  | while IFS= read -r shared_file; do
-                      shared_import="../${shared_file#supabase/functions/}"
-                      grep -rlF "$shared_import" supabase/functions --include='*.ts' || true
-                    done \
-                  | awk -F'/' '$3 != "_shared" {print $3}' \
-                  | sort -u
-              )
-              CHANGED=$(printf '%s\n%s\n' "$CHANGED" "$SHARED_CONSUMERS" \
-                | sed '/^$/d' | sort -u)
-            fi
-            CHANGED=$(printf '%s\n' "$CHANGED" | tr '\n' ' ')
-            echo "functions=$CHANGED" >> $GITHUB_OUTPUT
-            echo "Detected changed functions: $CHANGED"
+      - name: Bundle preflight for all Edge Functions
+        shell: bash
+        run: |
+          preflight_dir="${RUNNER_TEMP}/edge-preflight"
+          mkdir -p "$preflight_dir"
+          total=0
+          while IFS= read -r entry; do
+            function_name=${entry#supabase/functions/}
+            function_name=${function_name%%/*}
+            total=$((total + 1))
+            bunx esbuild@0.27.0 "$entry" \
+              --bundle \
+              --platform=neutral \
+              --format=esm \
+              --outfile="$preflight_dir/${function_name}.mjs" \
+              '--external:https://*' \
+              '--external:http://*' \
+              '--external:npm:*' \
+              '--external:jsr:*' \
+              '--external:@supabase/*' \
+              --log-level=warning
+          done < <(find supabase/functions -mindepth 2 -maxdepth 2 \
+            -type f -name 'index.ts' ! -path '*/_shared/*' | sort)
+          if [ "$total" -eq 0 ]; then
+            echo "Nenhuma Edge Function encontrada para validar." >&2
+            exit 1
           fi
+          echo "✓ $total Edge Functions empacotadas"
+
+      - name: Select functions for this release
+        id: detect
+        env:
+          REQUESTED_FUNCTION: ${{ inputs.function_name }}
+        run: |
+          if [ -n "$REQUESTED_FUNCTION" ]; then
+            if [[ ! "$REQUESTED_FUNCTION" =~ ^[a-z0-9][a-z0-9-]*$ ]] \
+              || [ ! -d "supabase/functions/$REQUESTED_FUNCTION" ]; then
+              echo "Edge Function inválida: $REQUESTED_FUNCTION" >&2
+              exit 1
+            fi
+            echo "functions=$REQUESTED_FUNCTION" >> "$GITHUB_OUTPUT"
+          else
+            FUNCTIONS=$(find supabase/functions -mindepth 1 -maxdepth 1 \
+              -type d ! -name '_shared' -exec basename {} \; \
+              | sort | tr '\n' ' ')
+            echo "functions=$FUNCTIONS" >> "$GITHUB_OUTPUT"
+            echo "Functions in the canonical release: $FUNCTIONS"
+          fi
+
+      - name: Wait for database migrations from this commit
+        if: steps.detect.outputs.functions != ''
+        timeout-minutes: 25
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+        run: bash scripts/wait-for-supabase-migrations.sh
+
+      - name: Refuse a stale main commit
+        if: github.event_name == 'workflow_run' && steps.detect.outputs.functions != ''
+        run: |
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          checked_out_sha=$(git rev-parse HEAD)
+          main_sha=$(git rev-parse origin/main)
+          if [ "$checked_out_sha" != "$main_sha" ]; then
+            echo "Commit obsoleto: checkout=$checked_out_sha main=$main_sha" >&2
+            exit 1
+          fi
+          echo "✓ SHA ainda é a ponta de main: $checked_out_sha"
 
       - name: Deploy each function
         if: steps.detect.outputs.functions != ''
@@ -84,7 +137,7 @@ jobs:
               # `--no-verify-jwt=false` forçava verify_jwt=TRUE em TODA função,
               # quebrando emit-nfe/nfe-status/recolor-image/time-control que
               # exigem verify_jwt=false (autenticam por conta própria). Sem o
-              # flag, o CLI (setup-cli@latest) respeita [functions.<nome>]
+              # flag, o CLI pinado respeita [functions.<nome>]
               # verify_jwt do supabase/config.toml — fonte única da verdade.
               supabase functions deploy "$fn" \
                 --project-ref ${{ secrets.SUPABASE_PROJECT_ID }}

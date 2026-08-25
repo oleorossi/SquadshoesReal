@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { mutateReadyStock, type ReadyStockOperation } from '@/lib/stockCommand';
 
 export type ReadyStockItem = {
   id: string;
@@ -12,6 +13,7 @@ export type ReadyStockItem = {
   notes: string;
   created_at: string;
   updated_at: string;
+  material_variant_id?: string | null;
   technical_sheets?: {
     name: string;
     code: string;
@@ -26,6 +28,41 @@ export type ReadyStockItem = {
     brand: string | null;
   } | null;
 };
+
+type ReadyStockDeltaInput = {
+  reference_id: string;
+  material_variant_id?: string | null;
+  color: string;
+  size: string;
+  quantity: number;
+  expectedQuantity?: number;
+  location?: string;
+  notes?: string;
+};
+
+function assertReadyStockCommand(result: { success: boolean; errors?: Array<{ error: string }> }) {
+  if (result.success) return;
+  const code = result.errors?.[0]?.error;
+  if (code === 'CONCURRENCY_ERROR') {
+    throw new Error('Quantidade foi alterada por outro usuário — recarregue e tente novamente.');
+  }
+  throw new Error(code || 'Falha ao atualizar a pronta-entrega.');
+}
+
+async function currentReadyStockQuantity(item: ReadyStockDeltaInput): Promise<number> {
+  let query = supabase
+    .from('ready_stock')
+    .select('quantity')
+    .eq('reference_id', item.reference_id)
+    .eq('color', item.color)
+    .eq('size', item.size);
+  query = item.material_variant_id
+    ? query.eq('material_variant_id' as never, item.material_variant_id as never)
+    : query.is('material_variant_id' as never, null);
+  const { data, error } = await query.maybeSingle();
+  if (error) throw error;
+  return Number(data?.quantity ?? 0);
+}
 
 export function useReadyStock() {
   return useQuery({
@@ -46,16 +83,21 @@ export function useReadyStock() {
 export function useUpsertReadyStock() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (item: { reference_id: string; color: string; size: string; quantity: number; location?: string; notes?: string }) => {
-      const { error } = await supabase.rpc('upsert_ready_stock_atomic', {
-        p_reference_id: item.reference_id,
-        p_color: item.color,
-        p_size: item.size,
-        p_qty_delta: item.quantity,
-        p_location: item.location ?? null,
-        p_notes: item.notes ?? null,
-      });
-      if (error) throw error;
+    mutationFn: async (item: ReadyStockDeltaInput) => {
+      const expectedQuantity = item.expectedQuantity ?? await currentReadyStockQuantity(item);
+      const result = await mutateReadyStock([{
+        action: 'delta',
+        reference_id: item.reference_id,
+        material_variant_id: item.material_variant_id ?? null,
+        color: item.color,
+        size: item.size,
+        delta: item.quantity,
+        expected_quantity: expectedQuantity,
+        location: item.location ?? null,
+        notes: item.notes ?? null,
+        reason: 'Lançamento manual em pronta-entrega',
+      }]);
+      assertReadyStockCommand(result);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['ready_stock'] });
@@ -68,46 +110,26 @@ export function useUpsertReadyStock() {
 export function useBatchUpsertReadyStock() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (items: { reference_id: string; color: string; size: string; quantity: number; location?: string; notes?: string }[]) => {
-      const applied: typeof items = [];
-      try {
-        for (const item of items) {
-          const { error } = await supabase.rpc('upsert_ready_stock_atomic', {
-            p_reference_id: item.reference_id,
-            p_color: item.color,
-            p_size: item.size,
-            p_qty_delta: item.quantity,
-            p_location: item.location ?? null,
-            p_notes: item.notes ?? null,
-          });
-          if (error) throw error;
-          applied.push(item);
-        }
-      } catch (err) {
-        // Best-effort reverse-delta: undo items already applied so the batch
-        // is all-or-nothing from the operator's perspective. A network error
-        // mid-rollback can still leave partial state — a server-side atomic
-        // batch RPC is the only durable fix.
-        const failedRollbacks: string[] = [];
-        for (const item of applied.slice().reverse()) {
-          const { error: rollErr } = await supabase.rpc('upsert_ready_stock_atomic', {
-            p_reference_id: item.reference_id,
-            p_color: item.color,
-            p_size: item.size,
-            p_qty_delta: -item.quantity,
-            p_location: null,
-            p_notes: null,
-          });
-          if (rollErr) failedRollbacks.push(`${item.reference_id}/${item.color}/${item.size}: ${rollErr.message}`);
-        }
-        if (failedRollbacks.length > 0) {
-          throw new Error(
-            `Erro original: ${(err as Error).message}. ` +
-            `Atenção: ${failedRollbacks.length} ${failedRollbacks.length === 1 ? 'reversão falhou' : 'reversões falharam'} — estoque pode estar inconsistente: ${failedRollbacks.join('; ')}`
-          );
-        }
-        throw err;
-      }
+    mutationFn: async (items: ReadyStockDeltaInput[]) => {
+      const expected = await Promise.all(items.map((item) =>
+        item.expectedQuantity === undefined ? currentReadyStockQuantity(item) : item.expectedQuantity
+      ));
+      const operations: ReadyStockOperation[] = items.map((item, index) => ({
+        action: 'delta',
+        reference_id: item.reference_id,
+        material_variant_id: item.material_variant_id ?? null,
+        color: item.color,
+        size: item.size,
+        delta: item.quantity,
+        expected_quantity: expected[index],
+        location: item.location ?? null,
+        notes: item.notes ?? null,
+        reason: 'Lançamento manual em lote na pronta-entrega',
+      }));
+      // Uma chamada = uma transação. Sai o rollback compensatório do cliente,
+      // que podia falhar no meio e deixar somente parte da grade aplicada.
+      const result = await mutateReadyStock(operations);
+      assertReadyStockCommand(result);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['ready_stock'] });
@@ -127,21 +149,18 @@ export function useUpdateReadyStock() {
       notes?: string;
       expectedQuantity?: number;
     }) => {
-      const update: any = { quantity };
-      if (location !== undefined) update.location = location;
-      if (notes !== undefined) update.notes = notes;
-      const query = supabase.from('ready_stock').update(update).eq('id', id);
-      if (expectedQuantity !== undefined) {
-        // Optimistic concurrency: refuse if another tab already changed the quantity.
-        const { data: claimed, error } = await query.eq('quantity', expectedQuantity).select('id');
+      let expected = expectedQuantity;
+      if (expected === undefined) {
+        const { data, error } = await supabase.from('ready_stock').select('quantity').eq('id', id).single();
         if (error) throw error;
-        if (!claimed || claimed.length === 0) {
-          throw new Error('Quantidade foi alterada por outro usuário — recarregue e tente novamente.');
-        }
-        return;
+        expected = Number(data.quantity);
       }
-      const { error } = await query;
-      if (error) throw error;
+      const result = await mutateReadyStock([{
+        action: 'set', id, quantity, expected_quantity: expected,
+        location: location ?? null, notes: notes ?? null,
+        reason: 'Edição manual da pronta-entrega',
+      }]);
+      assertReadyStockCommand(result);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['ready_stock'] });
@@ -154,13 +173,54 @@ export function useUpdateReadyStock() {
 export function useDeleteReadyStock() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (id: string) => {
-      const { error } = await supabase.from('ready_stock').delete().eq('id', id);
-      if (error) throw error;
+    mutationFn: async (input: string | { id: string; expectedQuantity?: number }) => {
+      const id = typeof input === 'string' ? input : input.id;
+      let expected = typeof input === 'string' ? undefined : input.expectedQuantity;
+      if (expected === undefined) {
+        const { data, error } = await supabase.from('ready_stock').select('quantity').eq('id', id).single();
+        if (error) throw error;
+        expected = Number(data.quantity);
+      }
+      const result = await mutateReadyStock([{
+        action: 'delete', id, expected_quantity: expected,
+        reason: 'Remoção manual da pronta-entrega',
+      }]);
+      assertReadyStockCommand(result);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['ready_stock'] });
       toast.success('Item removido!');
+    },
+    onError: (err: Error) => toast.error(`Erro: ${err.message}`),
+  });
+}
+
+export function useBatchDeleteReadyStock() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (items: Array<{ id: string; expectedQuantity?: number }>) => {
+      if (items.length === 0) return;
+      const expected = await Promise.all(items.map(async (item) => {
+        if (item.expectedQuantity !== undefined) return item.expectedQuantity;
+        const { data, error } = await supabase
+          .from('ready_stock')
+          .select('quantity')
+          .eq('id', item.id)
+          .single();
+        if (error) throw error;
+        return Number(data.quantity);
+      }));
+      const result = await mutateReadyStock(items.map((item, index) => ({
+        action: 'delete' as const,
+        id: item.id,
+        expected_quantity: expected[index],
+        reason: 'Remocao manual em lote da pronta-entrega',
+      })));
+      assertReadyStockCommand(result);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['ready_stock'] });
+      toast.success('Itens removidos!');
     },
     onError: (err: Error) => toast.error(`Erro: ${err.message}`),
   });

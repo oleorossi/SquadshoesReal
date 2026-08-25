@@ -36,6 +36,7 @@ import { toast } from 'sonner';
 import { SoleSizeConjugationsEditor } from './SoleSizeConjugationsEditor';
 import { ColorsMultiSelect } from '@/components/references/ColorsMultiSelect';
 import { sectorOfGroup } from '@/lib/categoryFromGroup';
+import { configureProductGrades } from '@/lib/stockCommand';
 
 const ALL_SIZES = Array.from({ length: 22 }, (_, i) => 20 + i); // 20–41
 const CALC_METHODS: Array<'weight' | 'meter' | 'unit'> = ['weight', 'meter', 'unit'];
@@ -829,7 +830,7 @@ export function MasterVariantDialog({
     if (updates.length === 0) { toast.info('Nenhuma alteração'); return; }
     setSavingGrade(true);
     try {
-      for (const [productId, { sizeFrom, sizeTo }] of updates) {
+      const gradeUpdates = updates.map(([productId, { sizeFrom, sizeTo }]) => {
         const variant = variants.find(v => v.id === productId);
         const existingGrade = (variant?.stock_grade as Record<string, any>) || {};
         const gradeObj = {
@@ -837,12 +838,17 @@ export function MasterVariantDialog({
           _size_from: sizeFrom,
           _size_to: sizeTo
         };
-        
-        const { error } = await supabase.from('products').update({ 
-          stock_grade: gradeObj as any 
-        }).eq('id', productId);
-        
-        if (error) throw error;
+        return {
+          product_id: productId,
+          expected_previous_qty: Number(variant?.quantity ?? 0),
+          expected_grade: existingGrade,
+          new_grade: gradeObj,
+          reason: 'Edicao da faixa de numeracao da variante do solado',
+        };
+      });
+      const result = await configureProductGrades(gradeUpdates);
+      if (!result.success) {
+        throw new Error(result.errors?.[0]?.error || 'Falha ao atualizar a faixa das variantes');
       }
       queryClient.invalidateQueries({ queryKey: ['products'] });
       // O grid de numeração do PV (SaleOrderItemForm) cacheia o range do solado

@@ -977,6 +977,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
   // OPs visíveis e indexado por (ref, cor, qtd) pra lookup nas worksheets.
   const consumptionInputs = useMemo(
     () => orders.map((o: any) => ({
+      order_id: o.id,
       reference_id: o.reference_id,
       quantity: Number(o.total_pairs ?? o.quantity ?? 0),
       color: o.color ?? null,
@@ -1033,6 +1034,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
           (o.grid ?? null) as Record<string, number> | null,
           Array.isArray(o.strap_colors) ? o.strap_colors : null,
           (o.material_variant_id ?? null) as string | null,
+          o.id,
         );
         const rows = consumptionByKey.get(key) ?? [];
         for (const r of rows) {

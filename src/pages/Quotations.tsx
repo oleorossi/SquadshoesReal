@@ -1,6 +1,10 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import {
+  createPurchaseOrderFromQuotation,
+  selectPurchaseQuotationWinner,
+} from '@/services/purchaseOrderCommandService';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -221,24 +225,12 @@ function QuotationDetail({ id, onBack }: { id: string; onBack: () => void }) {
 
   const setWinner = useMutation({
     mutationFn: async (response: any) => {
-      // Marca apenas este response como winner
-      const { error: e1 } = await (supabase as any)
-        .from('purchase_quotation_responses')
-        .update({ is_winner: false }).eq('quotation_id', id);
-      if (e1) throw e1;
-      const { error: e2 } = await (supabase as any)
-        .from('purchase_quotation_responses')
-        .update({ is_winner: true }).eq('id', response.id);
-      if (e2) throw e2;
-      const { error: e3 } = await (supabase as any)
-        .from('purchase_quotations')
-        .update({
-          selected_supplier_id: response.supplier_id,
-          status: 'aprovada',
-          decision_at: new Date().toISOString(),
-        })
-        .eq('id', id);
-      if (e3) throw e3;
+      await selectPurchaseQuotationWinner({
+        quotationId: id,
+        responseId: response.id,
+        expectedStatus: q.status,
+        expectedSupplierId: q.selected_supplier_id ?? null,
+      });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['purchase_quotation', id] });
@@ -251,9 +243,8 @@ function QuotationDetail({ id, onBack }: { id: string; onBack: () => void }) {
 
   const genPo = useMutation({
     mutationFn: async () => {
-      const { data, error } = await (supabase as any).rpc('create_po_from_quotation', { p_quotation_id: id });
-      if (error) throw error;
-      return data as string;
+      const result = await createPurchaseOrderFromQuotation(id);
+      return result.purchase_order_id;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['purchase_orders'] });
@@ -284,7 +275,7 @@ function QuotationDetail({ id, onBack }: { id: string; onBack: () => void }) {
               <ArrowLeft className="h-4 w-4" /> Voltar
             </Button>
             <Badge variant="outline" className={cn('capitalize', STATUS_COLOR[q.status])}>{q.status}</Badge>
-            {(q.status === 'aprovada' || q.selected_supplier_id) && (
+            {q.status === 'aprovada' && (
               <Button onClick={() => genPo.mutate()} disabled={genPo.isPending} className="h-9 gap-1.5">
                 <FileSpreadsheet className="h-4 w-4" /> {genPo.isPending ? 'Gerando…' : 'Gerar OC do vencedor'}
               </Button>

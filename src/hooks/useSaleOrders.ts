@@ -18,6 +18,10 @@ import {
   type SaleOrderCommandAction,
 } from '@/lib/saleOrderCommand';
 import { resyncOPRecords } from '@/lib/resyncOPs';
+import {
+  executePurchaseOrderCommand,
+  purchaseOrderLogicalKey,
+} from '@/services/purchaseOrderCommandService';
 
 // Rota default viva de uma OP. Usa Corte Fibra (Corte Palmilha é só alias
 // histórico) e mantém as duas costuras independentes. A numeração vem de
@@ -232,7 +236,7 @@ async function generateAutoPurchaseOrders(saleOrderNumber: string, systemOrderNu
 
   const { data: existingPOs } = await (supabase as any)
     .from('purchase_orders')
-    .select('id, supplier_id, supplier_name, linked_sale_order_ids')
+    .select('id, supplier_id, supplier_name, linked_sale_order_ids, updated_at')
     .eq('status', 'pending')
     .eq('auto_generated', true)
     .order('created_at', { ascending: false });
@@ -245,10 +249,10 @@ async function generateAutoPurchaseOrders(saleOrderNumber: string, systemOrderNu
 
   // Índice de reuso por chave estável (supplier_id real, ou o balde sem-fornecedor)
   // — o balde "__sem_fornecedor" agora É reusado (antes ficava de fora e duplicava).
-  const reuseByKey = new Map<string, { id: string }>();
+  const reuseByKey = new Map<string, { id: string; updated_at: string | null }>();
   for (const po of (existingPOs || []) as any[]) {
     const key = po.supplier_id || (po.supplier_name === 'Sem Fornecedor' ? '__sem_fornecedor' : `name:${po.supplier_name}`);
-    if (!reuseByKey.has(key)) reuseByKey.set(key, { id: po.id });
+    if (!reuseByKey.has(key)) reuseByKey.set(key, { id: po.id, updated_at: po.updated_at ?? null });
   }
 
   // Produtos já presentes em cada OC reusada — só adicionamos os AUSENTES (evita
@@ -289,94 +293,60 @@ async function generateAutoPurchaseOrders(saleOrderNumber: string, systemOrderNu
       // Acumula só os produtos AINDA NÃO presentes na OC em pé (anti-double-count).
       const present = existingItemsByPO.get(reuse.id) || new Set<string>();
       const toAdd = poItems.filter(i => !present.has(i.product_id));
-      for (const item of toAdd) {
-        const { error: rpcErr } = await supabase.rpc('upsert_po_item_atomic' as any, {
-          p_po_id:         reuse.id,
-          p_product_id:    item.product_id,
-          p_qty_delta:     item.quantity,
-          p_unit_price:    item.unit_price,
-          p_unit:          item.unit,
-          p_current_stock: item.current_stock,
-          p_min_stock:     item.min_stock,
-          p_max_stock:     item.max_stock || 0,
-          p_color:         item.color,
-        });
-        if (rpcErr) console.error('Erro ao upsert item OC existente:', rpcErr.message);
-        else present.add(item.product_id);
-      }
-      // Mantém notes + vincula este PV (rastreabilidade / some "Sem PV").
-      const upd: Record<string, any> = { notes };
-      if (saleOrderId) {
-        const existing = (existingPOs || []).find((p: any) => p.id === reuse.id);
-        const linked = new Set<string>([...((existing?.linked_sale_order_ids as string[]) || []), saleOrderId]);
-        upd.linked_sale_order_ids = [...linked];
-      }
-      await supabase.from('purchase_orders').update(upd).eq('id', reuse.id);
+      if (toAdd.length === 0 && !saleOrderId) continue;
+      await executePurchaseOrderCommand({
+        command: 'append',
+        purchaseOrderId: reuse.id,
+        expectedUpdatedAt: reuse.updated_at,
+        payload: {
+          header_patch: {
+            notes,
+            linked_sale_order_ids_add: saleOrderId ? [saleOrderId] : [],
+            source_pv_ids_add: saleOrderId ? [saleOrderId] : [],
+          },
+          // O comando exige lote não vazio. Quando só falta vincular o PV, o
+          // item já presente seria somado; esse caso é impedido pelo retorno
+          // idempotente por PV acima.
+          items: toAdd,
+        },
+        logicalKey: purchaseOrderLogicalKey(
+          'sale-order-auto-append',
+          saleOrderId || saleOrderNumber,
+          supplierKey,
+        ),
+      });
+      for (const item of toAdd) present.add(item.product_id);
       updatedCount++;
     } else {
-      // Cria nova OC; total_value parte de 0 e é acumulado pelo upsert_po_item_atomic.
-      //
-      // Auditoria 2026-09-25 — três correções neste INSERT:
-      //  1. `source_type`/`source_pv_ids` passam a ser preenchidos (eram
-      //     'manual'/NULL em 52/52 das OCs, mesmo com auto_generated=true);
-      //  2. a `idempotency_key` determinística agora é protegida por UNIQUE
-      //     INDEX parcial permanente (migration 20260925132000) — antes só
-      //     valia a janela de 30s do trigger, que não impedia a duplicação de
-      //     um dia pro outro;
-      //  3. a conversão estoque→compra dos itens (unidade, preço, CEIL) é feita
-      //     server-side dentro do `upsert_po_item_atomic`, então `item.unit` /
-      //     `item.unit_price` podem continuar vindo em unidade de ESTOQUE aqui.
-      const { data: po, error: poErr } = await (supabase as any).from('purchase_orders').insert({
-        supplier_name: group.supplier_name,
-        supplier_id: group.supplier_id || null,
-        notes,
-        total_value: 0,
-        auto_generated: true,
-        source_type: 'auto_pv',
-        linked_sale_order_ids: saleOrderId ? [saleOrderId] : null,
-        source_pv_ids: saleOrderId ? [saleOrderId] : null,
-        idempotency_key: `auto:${saleOrderId || saleOrderNumber}:${supplierKey}`,
-      }).select('id').single();
-
-      // 23505 = já existe OC viva com essa key (mesmo PV + mesmo fornecedor).
-      // Não é erro: o disparo é duplicado, segue pro próximo fornecedor.
-      if (poErr || !po) continue;
-
-      let anyItemFailed = false;
-      for (const item of poItems) {
-        const { error: rpcErr } = await supabase.rpc('upsert_po_item_atomic' as any, {
-          p_po_id:         po.id,
-          p_product_id:    item.product_id,
-          p_qty_delta:     item.quantity,
-          p_unit_price:    item.unit_price,
-          p_unit:          item.unit,
-          p_current_stock: item.current_stock,
-          p_min_stock:     item.min_stock,
-          p_max_stock:     item.max_stock || 0,
-          p_color:         item.color,
-        });
-        if (rpcErr) {
-          console.error('Erro ao inserir item OC nova:', rpcErr.message);
-          anyItemFailed = true;
-        }
-      }
-      if (anyItemFailed) {
-        // If all items failed the header has no items — delete the orphan header.
-        const { count } = await supabase
-          .from('purchase_order_items')
-          .select('id', { count: 'exact', head: true })
-          .eq('purchase_order_id', po.id);
-        if (!count) {
-          await supabase.from('purchase_orders').delete().eq('id', po.id);
-          continue;
-        }
-        toast.warning(`OC criada parcialmente — verifique a OC ${po.id.slice(0, 8)}`);
-      }
+      const result = await executePurchaseOrderCommand({
+        command: 'create',
+        payload: {
+          header: {
+            supplier_name: group.supplier_name,
+            supplier_id: group.supplier_id || null,
+            notes,
+            auto_generated: true,
+            source_type: 'auto_pv',
+            linked_sale_order_ids: saleOrderId ? [saleOrderId] : [],
+            source_pv_ids: saleOrderId ? [saleOrderId] : [],
+            idempotency_key: `auto:${saleOrderId || saleOrderNumber}:${supplierKey}`,
+          },
+          items: poItems,
+          return_existing_on_idempotency: true,
+        },
+        logicalKey: purchaseOrderLogicalKey(
+          'sale-order-auto-create',
+          saleOrderId || saleOrderNumber,
+          supplierKey,
+        ),
+      });
+      const poId = result.purchase_order_id;
 
       // Registra a OC recém-criada pra reuso dentro do mesmo disparo.
-      reuseByKey.set(supplierKey, { id: po.id });
-      existingItemsByPO.set(po.id, new Set(poItems.map(i => i.product_id)));
-      createdCount++;
+      reuseByKey.set(supplierKey, { id: poId, updated_at: null });
+      existingItemsByPO.set(poId, new Set(poItems.map(i => i.product_id)));
+      if (result.deduplicated) updatedCount++;
+      else createdCount++;
     }
   }
 
@@ -1224,29 +1194,42 @@ export function useResyncOPsFromSheets() {
 // Guards de NF-e ativa permanecem (impossível esconder PV com NF autorizada).
 // Exclusão física foi retirada: cancelamento compensatório + soft delete
 // preservam ledger fiscal, financeiro, estoque e a trilha de auditoria.
+interface SaleOrderLifecycleCommandResponse {
+  ok: boolean;
+  order_number?: string | null;
+  result?: unknown;
+  error?: { message?: string };
+}
+
+interface DeletedSaleOrderRestoreContext {
+  order_version?: number | null;
+}
+
 export function useDeleteSaleOrder() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      const { data: current, error: currentError } = await supabase
+      const { data: currentData, error: currentError } = await supabase
         .from('sale_orders')
-        .select('order_version')
+        .select('order_version' as never)
         .eq('id', id)
         .single();
       if (currentError) throw currentError;
-      const expectedVersion = Number((current as any)?.order_version);
+      const current = currentData as unknown as { order_version?: number | null };
+      const expectedVersion = Number(current?.order_version);
       if (!Number.isInteger(expectedVersion) || expectedVersion < 0) {
         throw new Error('Versão do PV indisponível. Recarregue antes de excluir.');
       }
       const requestId = crypto.randomUUID();
-      const { data, error } = await (supabase as any).rpc('soft_delete_sale_order_command', {
+      const { data, error } = await supabase.rpc('soft_delete_sale_order_command' as never, {
         p_sale_order_id: id,
         p_expected_order_version: expectedVersion,
         p_client_request_id: requestId,
-      });
+      } as never);
       if (error) throw error;
-      if (!data?.ok) throw new Error(data?.error?.message || 'Exclusão recusada pelo servidor.');
-      return data.result;
+      const response = data as unknown as SaleOrderLifecycleCommandResponse;
+      if (!response?.ok) throw new Error(response?.error?.message || 'Exclusão recusada pelo servidor.');
+      return response.result;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['sale_orders'] });
@@ -1264,26 +1247,28 @@ export function useRestoreSaleOrder() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      const { data: context, error: contextError } = await (supabase as any).rpc(
-        'get_deleted_sale_order_restore_context',
-        { p_sale_order_id: id },
+      const { data: contextData, error: contextError } = await supabase.rpc(
+        'get_deleted_sale_order_restore_context' as never,
+        { p_sale_order_id: id } as never,
       );
       if (contextError) throw contextError;
+      const context = contextData as unknown as DeletedSaleOrderRestoreContext;
       const expectedVersion = Number(context?.order_version);
       if (!Number.isInteger(expectedVersion) || expectedVersion < 0) {
         throw new Error('Versão do PV excluído indisponível. Atualize a lixeira antes de restaurar.');
       }
       const requestId = crypto.randomUUID();
-      const { data, error } = await (supabase as any).rpc('restore_sale_order_command', {
+      const { data, error } = await supabase.rpc('restore_sale_order_command' as never, {
         p_sale_order_id: id,
         p_expected_order_version: expectedVersion,
         p_client_request_id: requestId,
-      });
+      } as never);
       if (error) throw error;
-      if (!data?.ok) throw new Error(data?.error?.message || 'Restauração recusada pelo servidor.');
-      return data;
+      const response = data as unknown as SaleOrderLifecycleCommandResponse;
+      if (!response?.ok) throw new Error(response?.error?.message || 'Restauração recusada pelo servidor.');
+      return response;
     },
-    onSuccess: (data: any) => {
+    onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ['sale_orders'] });
       qc.invalidateQueries({ queryKey: ['sale_orders_with_nfe'] });
       // Restaurar o PV reexibe as OPs escondidas pela cascata.

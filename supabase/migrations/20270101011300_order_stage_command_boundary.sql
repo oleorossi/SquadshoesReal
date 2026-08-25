@@ -156,6 +156,9 @@ BEGIN
     RETURN v_receipt.response;
   END IF;
 
+  -- A 111 estabelece época -> produtos para impedir ciclo com cálculo de OC.
+  PERFORM public.lock_sale_order_purchase_allocation();
+
   -- Ordem global de locks: PV -> OP -> etapa. É a mesma dos boundaries 103,
   -- 104 e 108 e evita deadlock com promoção/faturamento automáticos.
   SELECT o.sale_order_id INTO v_sale_order_id
@@ -722,6 +725,8 @@ BEGIN
     RETURN v_receipt.response;
   END IF;
 
+  PERFORM public.lock_sale_order_purchase_allocation();
+
   SELECT o.sale_order_id INTO v_sale_order_id
     FROM public.orders o
    WHERE o.id = p_order_id
@@ -927,6 +932,8 @@ BEGIN
     RETURN v_receipt.response;
   END IF;
 
+  PERFORM public.lock_sale_order_purchase_allocation();
+
   -- O snapshot inicial serve apenas para descobrir a ordem dos locks. Depois de
   -- travar a onda e suas linhas de composição, o escopo é relido e comparado.
   SELECT COALESCE(
@@ -1114,7 +1121,7 @@ BEGIN
       'expected_stage', p_expected_stage,
       'next_stage', v_next_stage
     );
-  END;
+  END IF;
 
   INSERT INTO public.operational_command_receipts (
     command_name, aggregate_key, client_request_id, request_hash,
@@ -1255,7 +1262,7 @@ BEGIN
     'public.execute_production_pointing_command(uuid,text,integer,uuid,text,boolean,text[],timestamptz,uuid)'::regprocedure
   );
   v_wave := pg_catalog.pg_get_functiondef(
-    'public.execute_production_wave_stage_command(uuid,production_stage_enum,uuid)'::regprocedure
+    'public.execute_production_wave_stage_command(uuid,public.production_stage_enum,uuid)'::regprocedure
   );
 
   case_name := 'order_stages_acl_cutover';
@@ -1368,7 +1375,7 @@ BEGIN
     AND position('v_target_status <> ''in_progress''' IN v_wave) > 0
     AND NOT pg_catalog.has_function_privilege(
       'authenticated',
-      'public.advance_wave_stage_impl_113(uuid,production_stage_enum)',
+      'public.advance_wave_stage_impl_113(uuid,public.production_stage_enum)',
       'EXECUTE'
     );
   details := 'Apontamento/onda têm receipt, CAS e escopo travado; atalhos redundantes estão revogados.';

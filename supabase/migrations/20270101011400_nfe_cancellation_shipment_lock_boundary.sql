@@ -536,7 +536,7 @@ BEGIN
            justificativa_cancelamento = pg_catalog.btrim(p_justification),
            data_cancelamento = pg_catalog.now(),
            protocolo_cancelamento = COALESCE(
-             pg_catalog.nullif(pg_catalog.btrim(p_cancellation_protocol), ''),
+             nullif(pg_catalog.btrim(p_cancellation_protocol), ''),
              ne.protocolo_cancelamento
            ),
            updated_at = pg_catalog.now()

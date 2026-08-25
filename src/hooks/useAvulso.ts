@@ -1,8 +1,11 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { adjustStockSafe } from '@/lib/stockAdjustments';
 import { generateServiceOrderNumber } from '@/lib/serviceOrderStock';
+import {
+  executePurchaseOrderCommand,
+  purchaseOrderLogicalKey,
+} from '@/services/purchaseOrderCommandService';
 
 /**
  * Lançamento AVULSO de Ordem de Compra e Ordem de Serviço.
@@ -55,91 +58,37 @@ export function useCreateAvulsoPurchaseOrder() {
       if (!Number.isFinite(total) || total <= 0) throw new Error('Valor total da OC deve ser maior que zero.');
       if (total > 1e12) throw new Error('Total da OC fora de limite.');
 
-      // 1. Cria a OC avulsa. Começa 'approved' (financeiro lançado, aguardando
-      //    mercadoria). Só vira 'received' DEPOIS que o estoque é creditado com
-      //    sucesso (abaixo), pra não marcar como recebida se o crédito falhar.
       const idemKey = `avulsa::${input.supplier_id}::${input.product_id}::${input.quantity}::${input.unit_price}::${input.payment_due_date}`;
-      const { data: po, error: poErr } = await supabase.from('purchase_orders').insert({
-        supplier_id: input.supplier_id,
-        supplier_name: input.supplier_name,
-        notes: input.notes || '',
-        total_value: total,
-        auto_generated: false,
-        source_type: 'manual_avulsa',
-        status: 'approved',
-        idempotency_key: idemKey,
-      } as any).select().single();
-      if (poErr) {
-        if (poErr.code === '23505' && /idempotency/.test(poErr.message || '')) {
-          throw new Error('Esta OC avulsa foi lançada há menos de 30s — confira a lista antes de repetir.');
-        }
-        throw poErr;
-      }
-
-      // 2. Item único (na unidade de estoque — sem conversão).
-      const { error: itemErr } = await supabase.from('purchase_order_items').insert({
-        purchase_order_id: po.id,
-        product_id: input.product_id,
-        quantity: input.quantity,
-        suggested_quantity: input.quantity,
-        unit_price: input.unit_price,
-        unit: input.unit,
-        current_stock: input.current_stock,
-        min_stock: input.min_stock,
-        max_stock: input.max_stock,
-      } as any);
-      if (itemErr) {
-        await supabase.from('purchase_orders').delete().eq('id', po.id);
-        throw itemErr;
-      }
-
-      // 3. Conta a pagar com a data escolhida (o objetivo central). Token
-      //    [OC#id] em notes mantém compatível o cancelamento de AP do
-      //    useDeletePurchaseOrder; reference_type/id habilitam a idempotência.
-      const idToken = `[OC#${po.id}]`;
-      const { error: apErr } = await supabase.from('accounts_payable').insert({
-        description: `OC ${po.order_number} — ${input.product_name}`.slice(0, 200),
-        amount: total,
-        due_date: input.payment_due_date,
-        category: 'material',
-        supplier_id: input.supplier_id,
-        status: 'pending',
-        reference_type: 'purchase_order',
-        reference_id: po.id,
-        notes: `OC avulsa: ${po.order_number} - ${input.supplier_name} ${idToken}`,
-      } as any);
-      if (apErr && apErr.code !== '23505') {
-        // Falhou em lançar no financeiro (o objetivo) — reverte a OC pra não
-        // deixar uma OC sem conta a pagar. (Estoque ainda não foi creditado.)
-        await supabase.from('purchase_orders').delete().eq('id', po.id);
-        throw new Error(`Falha ao lançar no financeiro: ${apErr.message}`);
-      }
-
-      // 4. Crédito de estoque (opcional). Best-effort: se falhar, a OC fica
-      //    'approved' com a AP criada e o usuário pode receber pelo fluxo normal
-      //    (que é idempotente na AP via token [OC#id]).
-      let stockWarning: string | undefined;
-      if (input.add_to_stock) {
-        const result = await adjustStockSafe({
-          productId: input.product_id,
-          expectedPrevious: input.current_stock,
-          newQty: input.current_stock + input.quantity,
-          reason: `Entrada avulsa — OC ${po.order_number} (${input.supplier_name})`,
-          orderId: null,
-        });
-        if (result.success) {
-          await supabase.from('purchase_orders')
-            .update({ status: 'received', received_date: todayISO() } as any)
-            .eq('id', po.id);
-          await supabase.from('purchase_order_items')
-            .update({ received_at: new Date().toISOString(), received_quantity: input.quantity } as any)
-            .eq('purchase_order_id', po.id);
-        } else {
-          stockWarning = result.errorMessage || 'Falha ao creditar estoque.';
-        }
-      }
-
-      return { po, stockWarning };
+      const result = await executePurchaseOrderCommand({
+        command: 'create',
+        payload: {
+          header: {
+            supplier_id: input.supplier_id,
+            supplier_name: input.supplier_name,
+            notes: input.notes || '',
+            auto_generated: false,
+            source_type: 'manual_avulsa',
+            status: 'approved',
+            idempotency_key: idemKey,
+          },
+          items: [{
+            product_id: input.product_id,
+            quantity: input.quantity,
+            unit_price: input.unit_price,
+            unit: input.unit,
+            current_stock: input.current_stock,
+            min_stock: input.min_stock,
+            max_stock: input.max_stock,
+          }],
+          payable_due_date: input.payment_due_date,
+          payable_description: `OC avulsa — ${input.product_name}`,
+          receive_all: input.add_to_stock,
+          received_date: todayISO(),
+          reason: `Entrada avulsa — ${input.supplier_name}`,
+        },
+        logicalKey: purchaseOrderLogicalKey('avulsa', idemKey),
+      });
+      return { po: result.purchase_order, stockWarning: undefined };
     },
     onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ['purchase_orders'] });

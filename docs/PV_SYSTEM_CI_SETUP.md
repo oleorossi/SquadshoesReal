@@ -11,6 +11,9 @@ projeto de produção `ssvxfoybzmjlypnipqzn`.
 2. Aplicar nesse projeto, por um processo externo aprovado, todas as migrations
    do repositório em ordem — inclusive todas as versões posteriores ao cutover
    `20270101009300` — antes de disparar o cron.
+   Antes da migration `20270101010900`, grave no Vault desse próprio ambiente
+   `project_url=https://<project-ref-ci>.supabase.co`. O worker lê essa URL do
+   Vault e nunca pode conter ou reutilizar o endereço de produção.
 3. Carregar o seed sanitizado e versionado exigido pela suíte de paridade real
    (detalhes abaixo), depois das migrations e antes de disparar o cron.
 4. Cadastrar estes GitHub Actions secrets:
@@ -22,6 +25,11 @@ O workflow deliberadamente não recebe access token nem senha de banco e não
 executa `db push`. Migração de schema e execução de fixtures permanecem etapas
 separadas. A service role é injetada somente no step de integração e nunca usa
 prefixo `VITE_`.
+
+O cron `sale-order-outbox` só é agendado quando `pg_cron`, `pg_net`,
+`nfe_sync_cron_secret` e `project_url` existem no mesmo banco. A ausência de
+qualquer um deles gera aviso e mantém o cron desativado, em vez de fazer o CI
+chamar uma Edge Function de outro ambiente.
 
 ## Dataset obrigatório da paridade TS × SQL
 

@@ -44,6 +44,32 @@ interface ReadyOrder {
   wave_code: string | null;
 }
 
+interface ShipmentCommandResponse {
+  ok: boolean;
+  shipped_count?: number;
+  error?: { message?: string };
+}
+
+interface ReadySaleOrderRow {
+  id: string;
+  order_version: number;
+  order_number: string | null;
+  client_name: string | null;
+  delivery_deadline: string | null;
+  packaging_mode: string | null;
+  status: string;
+  nfe_required: boolean | null;
+  nfe_external: boolean | null;
+  orders: Array<{ id: string; status: string }> | null;
+  sale_order_items: Array<{
+    id: string;
+    color: string | null;
+    quantity: number | null;
+    grade: Record<string, number> | null;
+    technical_sheets: { name: string | null } | null;
+  }> | null;
+}
+
 type PickupTabKey = string; // ex: "W2026-19::tuesday" ou "no-wave"
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -83,26 +109,27 @@ export default function OrderPickingPage() {
           orders(id, status),
           sale_order_items(id, reference_id, color, quantity, grade,
             technical_sheets:reference_id(name))
-        `)
+        ` as never)
         .in('status', ['Faturado', 'Em Produção'])
-        .is('shipped_at' as any, null)
+        .is('shipped_at' as never, null)
         .order('delivery_deadline', { ascending: true, nullsFirst: false });
       if (error) throw error;
 
-      const readyCandidates = (data ?? []).filter((so: any) => {
+      const rows = (data ?? []) as unknown as ReadySaleOrderRow[];
+      const readyCandidates = rows.filter((so) => {
         if (so.status === 'Faturado') return true;
         if (so.status !== 'Em Produção') return false;
         if (so.nfe_required && !so.nfe_external) return false;
         const productionOrders = Array.isArray(so.orders) ? so.orders : [];
-        return productionOrders.length > 0 && productionOrders.every((op: any) =>
+        return productionOrders.length > 0 && productionOrders.every((op) =>
           [
             'Finalizado', 'FINALIZADO', 'Faturado', 'Concluída',
             'Concluído', 'Concluido', 'completed',
           ].includes(op.status),
         );
       });
-      const baseOrders = readyCandidates.map((so: any) => {
-        const items: OrderItem[] = (so.sale_order_items ?? []).map((i: any) => ({
+      const baseOrders = readyCandidates.map((so) => {
+        const items: OrderItem[] = (so.sale_order_items ?? []).map((i) => ({
           id: i.id,
           reference_name: i.technical_sheets?.name ?? null,
           color: i.color ?? null,
@@ -146,16 +173,17 @@ export default function OrderPickingPage() {
       );
       // PV, OPs, rota e vínculo com manifesto fecham na mesma transação.
       const requestId = crypto.randomUUID();
-      const { data, error: rpcErr } = await (supabase.rpc as any)('register_order_shipment_command', {
+      const { data, error: rpcErr } = await supabase.rpc('register_order_shipment_command' as never, {
         p_sale_order_ids: ids,
         p_expected_versions: expectedVersions,
         p_manifest_id: null,
         p_checked_by: null,
         p_client_request_id: requestId,
-      });
+      } as never);
       if (rpcErr) throw rpcErr;
-      if (!data?.ok) throw new Error(data?.error?.message || 'Expedição recusada pelo servidor.');
-      return Number(data.shipped_count ?? ids.length);
+      const response = data as unknown as ShipmentCommandResponse;
+      if (!response?.ok) throw new Error(response?.error?.message || 'Expedição recusada pelo servidor.');
+      return Number(response.shipped_count ?? ids.length);
     },
     onSuccess: (count, ids) => {
       if (count < ids.length) {

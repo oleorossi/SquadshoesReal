@@ -9,8 +9,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
  *      supercontagem de 30–92× (OP-2026-00729: 60×).
  *  (b) `calculateBomForOrders` não hardcoda `fichas: 1` — o fallback exato
  *      (quantity ÷ gradeTotal) é escala-invariante (grade base OU real).
- *  (c) Embalagem filtrada por `packaging_mode` do PV (shouldShowCaixaForMode) —
- *      antes a Lista mostrava colmeia E individual juntas.
+ *  (c) Embalagem resolvida pelo `packaging_mode` + slots UUID de box_types —
+ *      antes a Lista mostrava colmeia E individual do BOM juntas.
  *  (d) Palmilha sai na unidade de ESTOQUE do produto-placa quando ela é dm²
  *      (ex.: PLACA 1.0 EVA, unit='dm²'), com equivalência em placas como info
  *      secundária — antes saía só em "placas" e a comparação com estoque
@@ -22,14 +22,15 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const mockDb = vi.hoisted(() => ({
   tables: {} as Record<string, unknown[]>,
   rpc: {} as Record<string, unknown>,
+  errors: {} as Record<string, { message: string }>,
 }));
 
 vi.mock('@/integrations/supabase/client', () => {
   /* eslint-disable @typescript-eslint/no-explicit-any */
-  const makeBuilder = (rows: any[]) => {
+  const makeBuilder = (rows: any[], error: { message: string } | null = null) => {
     const builder: any = {
       then: (onFulfilled: any, onRejected: any) =>
-        Promise.resolve({ data: rows, error: null }).then(onFulfilled, onRejected),
+        Promise.resolve({ data: error ? null : rows, error }).then(onFulfilled, onRejected),
     };
     for (const method of ['select', 'in', 'eq', 'gt', 'or', 'not', 'order', 'limit']) {
       builder[method] = () => builder;
@@ -38,13 +39,20 @@ vi.mock('@/integrations/supabase/client', () => {
   };
   return {
     supabase: {
-      from: (table: string) => makeBuilder((mockDb.tables[table] as any[]) ?? []),
+      from: (table: string) => makeBuilder(
+        (mockDb.tables[table] as any[]) ?? [],
+        mockDb.errors[table] ?? null,
+      ),
       rpc: (name: string) => Promise.resolve({ data: mockDb.rpc[name] ?? [], error: null }),
     },
   };
 });
 
-import { calculateBomForOrders, calculateArtisanalStrapRollCut } from '@/lib/bomConsumption';
+import {
+  calculateBomForOrders,
+  calculateArtisanalStrapRollCut,
+  calculateSoleBreakdownByGrade,
+} from '@/lib/bomConsumption';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -70,7 +78,7 @@ function buildSheet(over: Record<string, any> = {}) {
     sole_material: '',
     sole_consumption: 0,
     sole_color: '',
-    sole_group_id: null,
+    sole_group_id: 'g-packaging-sole',
     lining_accessories: [],
     components_accessories: [],
     strap_colors: [{
@@ -113,6 +121,23 @@ function buildBomTables(over: {
       { id: 'g-palm', name: 'PALMILHA', dimensions_length: null, dimensions_width: null, dimensions_unit: 'mm' },
       { id: 'g-cx-col', name: 'CAIXA COLMEIA 11', dimensions_length: null, dimensions_width: null, dimensions_unit: 'mm' },
       { id: 'g-cx-ind', name: 'CAIXA INDIVIDUAL 11', dimensions_length: null, dimensions_width: null, dimensions_unit: 'mm' },
+      {
+        id: 'g-packaging-sole', name: 'SOLADO 11', dimensions_length: null, dimensions_width: null,
+        dimensions_unit: 'mm', box_type_id: 'bt-individual', box_type_master_id: 'bt-master',
+        box_type_colmeia_id: 'bt-colmeia', box_type_fitilho_id: 'bt-fitilho',
+        pairs_per_box_individual: 1, pairs_per_box_master: 12,
+        pairs_per_box_colmeia: 12, pairs_per_box_fitilho: 12,
+      },
+    ],
+    box_types: [
+      { id: 'bt-individual', nome: 'CAIXA INDIVIDUAL 11', tipo: 'individual', quantity: 1000, unit_price: 1, active: true },
+      { id: 'bt-master', nome: 'CAIXA MASTER 11', tipo: 'master', quantity: 1000, unit_price: 8, active: true },
+      { id: 'bt-colmeia', nome: 'CAIXA COLMEIA 11', tipo: 'colmeia', quantity: 1000, unit_price: 4, active: true },
+      { id: 'bt-fitilho', nome: 'FITILHO', tipo: 'fitilho', quantity: 1000, unit_price: 0.2, active: true, metros_per_amarrado_default: 1.5 },
+    ],
+    legacy_packaging_product_bridges: [
+      { product_id: 'p-cx-col', box_type_id: 'bt-colmeia' },
+      { product_id: 'p-cx-ind', box_type_id: 'bt-individual' },
     ],
     // Placa 1000 × 1500 mm = 150 dm²/placa; produto estocado em dm².
     component_sheets: [{
@@ -145,9 +170,48 @@ function buildBomTables(over: {
 beforeEach(() => {
   mockDb.tables = {};
   mockDb.rpc = {};
+  mockDb.errors = {};
 });
 
 // ─── (b) fichas hardcoded — fallback exato escala-invariante ─────────────────
+
+describe('calculateBomForOrders — falha fechada contra BOM parcial', () => {
+  it.each([
+    'technical_sheets',
+    'sheet_materials',
+    'products',
+    'product_groups',
+    'component_sheets',
+    'sale_order_items',
+    'technical_sheet_sole_colors',
+    'sale_orders',
+    'box_types',
+    'legacy_packaging_product_bridges',
+  ])('não publica resultado quando a consulta paralela %s falha', async (table) => {
+    mockDb.tables = buildBomTables();
+    mockDb.errors[table] = { message: `falha sentinela em ${table}` };
+
+    await expect(calculateBomForOrders(['op1']))
+      .rejects.toThrow(/Nenhum BOM parcial foi gerado/);
+  });
+
+  it('também propaga erro de uma fonte complementar em vez de omitir o componente', async () => {
+    mockDb.tables = buildBomTables();
+    mockDb.errors.sole_technical_specs = { message: 'specs indisponíveis' };
+
+    await expect(calculateBomForOrders(['op1']))
+      .rejects.toThrow(/consumos técnicos do solado.*specs indisponíveis/i);
+  });
+
+  it('recusa OP sem ficha técnica em vez de gerar a separação das demais fontes', async () => {
+    const tables = buildBomTables();
+    tables.technical_sheets = [];
+    mockDb.tables = tables;
+
+    await expect(calculateBomForOrders(['op1']))
+      .rejects.toThrow(/OP\(s\) sem ficha técnica.*Nenhum BOM parcial/i);
+  });
+});
 
 describe('calculateBomForOrders — tiras sem fichas hardcoded (achado b)', () => {
   it('grade BASE (Σ=12, qty=720): consumo da tira escala por quantity/gradeTotal (60×)', async () => {
@@ -276,7 +340,8 @@ describe('calculateBomForOrders — filtro de caixa por packaging_mode (achado c
     const caixas = rows.filter(r => r.componentType === 'Embalagem');
     expect(caixas).toHaveLength(1);
     expect(caixas[0].materialName).toBe('CAIXA COLMEIA 11');
-    expect(caixas[0].totalQuantity).toBe(720);
+    expect(caixas[0].totalQuantity).toBe(60);
+    expect(caixas[0].boxTypeId).toBe('bt-colmeia');
   });
 
   it('packaging_mode=individual: só a CAIXA INDIVIDUAL aparece', async () => {
@@ -285,13 +350,32 @@ describe('calculateBomForOrders — filtro de caixa por packaging_mode (achado c
     const caixas = rows.filter(r => r.componentType === 'Embalagem');
     expect(caixas).toHaveLength(1);
     expect(caixas[0].materialName).toBe('CAIXA INDIVIDUAL 11');
+    expect(caixas[0].totalQuantity).toBe(720);
+    expect(caixas[0].boxTypeId).toBe('bt-individual');
   });
 
-  it('sem packaging_mode: NÃO filtra (degrada com elegância, mostra as duas)', async () => {
+  it('packaging_mode=individual_fitilho: seleciona individual + fitilho em metros', async () => {
+    mockDb.tables = buildBomTables({ packagingMode: 'individual_fitilho' });
+    const rows = await calculateBomForOrders(['op1']);
+    const caixas = rows.filter(r => r.componentType === 'Embalagem');
+    expect(caixas.map((row) => row.boxTypeId)).toEqual(['bt-individual', 'bt-fitilho']);
+    expect(caixas.find((row) => row.boxTypeId === 'bt-fitilho')).toMatchObject({
+      productUnit: 'm',
+      totalQuantity: 90,
+    });
+  });
+
+  it('sem packaging_mode: falha fechado e não recupera as duas caixas do BOM', async () => {
     mockDb.tables = buildBomTables({ packagingMode: null });
     const rows = await calculateBomForOrders(['op1']);
     const caixas = rows.filter(r => r.componentType === 'Embalagem');
-    expect(caixas).toHaveLength(2);
+    expect(caixas).toHaveLength(1);
+    expect(caixas[0]).toMatchObject({
+      boxTypeId: null,
+      materialName: 'Embalagem não resolvida',
+      totalQuantity: 0,
+    });
+    expect(caixas[0].warning).toContain('Modo de embalagem');
   });
 });
 
@@ -317,6 +401,31 @@ describe('calculateBomForOrders — palmilha em dm² quando o produto é dm² (a
     expect(palmilha?.productUnit).toBe('placa');
     expect(palmilha?.totalQuantity).toBeCloseTo(24, 6);
     expect(palmilha?.plateEquivalent).toBeUndefined();
+  });
+
+  it('grupo heterogêneo prioriza a placa de área, não o SKU linear com mais estoque', async () => {
+    const tables = buildBomTables();
+    tables.products = [
+      ...(tables.products as any[]).map((product) => product.id === 'p-placa'
+        ? { ...product, unit: 'dm²', quantity: 0 }
+        : product),
+      {
+        id: 'p-palmilha-linear',
+        name: 'PALMILHA PRONTA OURO LIGHT',
+        color: 'OURO LIGHT',
+        unit: 'm',
+        group_id: 'g-palm',
+        quantity: 999,
+        sole_classification: null,
+      },
+    ];
+    mockDb.tables = tables;
+
+    const rows = await calculateBomForOrders(['op1']);
+    const palmilha = rows.find((row) => row.componentType === 'Palmilha');
+    expect(palmilha?.materialName).toBe('PLACA 1.0 EVA');
+    expect(palmilha?.productUnit).toBe('dm²');
+    expect(palmilha?.totalQuantity).toBeCloseTo(3600, 6);
   });
 });
 
@@ -538,6 +647,55 @@ describe('calculateBomForOrders — cascata canônica de solado (BOM-2/BOM-7)', 
     const rows = await calculateBomForOrders(['op1']);
     const solado = rows.find(r => r.componentType === 'Solado');
     expect(solado?.totalQuantity).toBe(720);
+  });
+
+  it('solado textual sem identidade permanece visível, mas com aviso não operacional', async () => {
+    const tables = buildBomTables();
+    Object.assign(tables.technical_sheets[0] as any, {
+      sole_material: 'Solado Ricardo Tratorado',
+      sole_color: null,
+      sole_group_id: null,
+      primary_sole_id: null,
+    });
+    (tables.orders[0] as any).color = 'WHISKY';
+    mockDb.tables = tables;
+
+    const rows = await calculateBomForOrders(['op1']);
+    const solado = rows.find((row) => row.componentType === 'Solado');
+
+    expect(solado).toMatchObject({
+      groupName: 'Solado Ricardo Tratorado',
+      color: 'WHISKY',
+      totalQuantity: 720,
+    });
+    expect(solado?.warning).toMatch(/não resolve produto.*NÃO será reservado nem debitado/i);
+  });
+});
+
+describe('calculateSoleBreakdownByGrade — grade operacional', () => {
+  it('usa largest remainder, preserva o total e usa a cor do pedido no fallback textual', async () => {
+    const tables = buildBomTables();
+    Object.assign(tables.technical_sheets[0] as any, {
+      sole_material: 'Solado Ricardo Tratorado',
+      sole_color: null,
+      sole_group_id: null,
+      primary_sole_id: null,
+    });
+    Object.assign(tables.orders[0] as any, {
+      color: 'WHISKY',
+      quantity: 10,
+      grade: { '34': 1, '35': 1, '36': 1, _fichas: 99 },
+    });
+    mockDb.tables = tables;
+
+    const result = await calculateSoleBreakdownByGrade(['op1']);
+
+    expect(result.grandTotal).toBe(10);
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0].soleColor).toBe('WHISKY');
+    expect(result.rows[0].sizes).toEqual({ '34': 4, '35': 3, '36': 3 });
+    expect(Object.values(result.rows[0].sizes).reduce((sum, value) => sum + value, 0)).toBe(10);
+    expect(result.allSizes).not.toContain('_fichas');
   });
 });
 

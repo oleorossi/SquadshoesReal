@@ -10,6 +10,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Product } from '@/types/inventory';
 import { Package as PackageMinus, Warning as AlertTriangle } from '@phosphor-icons/react';
+import { adjustStockSafe } from '@/lib/stockAdjustments';
 
 interface ManualStockOutDialogProps {
   open: boolean;
@@ -63,31 +64,17 @@ export function ManualStockOutDialog({ open, onOpenChange, product }: ManualStoc
         orderId = so?.id ?? null;
       }
 
-      // Concurrency-safe via SELECT FOR UPDATE inside the RPC; rejects if the
-      // expected_previous no longer matches the DB row.
-      const { data, error: rpcErr } = await supabase.rpc('adjust_stock' as any, {
-        p_product_id: product.id,
-        p_expected_previous_qty: previousStock,
-        p_new_qty: newStock,
-        p_delta: -quantity,
-        p_reason: description,
-        p_order_id: orderId,
+      const result = await adjustStockSafe({
+        productId: product.id,
+        expectedPrevious: previousStock,
+        newQty: newStock,
+        reason: description,
+        orderId,
         // Baixa manual é CONSUMO — não pode comer material reservado pra OP.
         // (Contagem de inventário continua podendo: lá o padrão é false.)
-        p_enforce_reserved: true,
+        enforceReserved: true,
       });
-      if (rpcErr) throw rpcErr;
-      const result = Array.isArray(data) ? data[0] : data;
-      if (result && result.success === false) {
-        throw new Error(
-          result.error_message === 'CONCURRENCY_ERROR'
-            ? 'Estoque foi alterado por outro usuário. Recarregue e tente novamente.'
-            : result.error_message === 'RESERVADO_PARA_OP'
-              ? 'A baixa deixaria o estoque abaixo do que já está reservado pra OP aberta. '
-                + 'Libere a reserva ou registre por ajuste de inventário.'
-              : (result.error_message || 'Falha ao ajustar estoque'),
-        );
-      }
+      if (!result.success) throw new Error(result.errorMessage || 'Falha ao ajustar estoque');
 
       qc.invalidateQueries({ queryKey: ['products'] });
       qc.invalidateQueries({ queryKey: ['stock_movements'] });

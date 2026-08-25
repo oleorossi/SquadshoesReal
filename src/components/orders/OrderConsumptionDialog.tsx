@@ -5,13 +5,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { CircleNotch as Loader2, Package, FileText, ArrowsDownUp as ArrowUpDown, ArrowUp, ArrowDown } from '@phosphor-icons/react';
-import { supabase } from '@/integrations/supabase/client';
 import {
-  fetchConsumptionContext,
-  fetchTechnicalSheetsForConsumption,
-  computeConsumptionForItems,
-  type ConsumptionItem,
-} from '@/lib/orderConsumption';
+  adaptCanonicalConsumptionLines,
+  applyCanonicalStrapsForPresentation,
+  canonicalStrapPreviews,
+  fetchCanonicalConsumptionReport,
+} from '@/lib/canonicalConsumptionReport';
 
 type Props = {
   open: boolean;
@@ -30,6 +29,7 @@ type ConsumptionRow = {
   /** Material de área (dm²) sem largura na ficha de componente → não dá pra
    *  converter pra unidade física; valor fica ~100× inflado e a linha vira neutra. */
   widthMissing?: boolean;
+  warning?: string;
 };
 
 const COMPONENT_ORDER = ['Cabedal', 'Forração', 'Palmilha', 'Solado', 'Tiras', 'Químicos', 'Embalagem', 'Outros'] as const;
@@ -48,64 +48,13 @@ export default function OrderConsumptionDialog({ open, onOpenChange, orderIds, t
     setLoading(true);
 
     try {
-      // OPs de produção. sale_order_id puxa o packaging_mode do PV.
-      const { data: ordersData, error: ordersError } = await supabase
-        .from('orders')
-        .select('id, reference_id, color, quantity, grade, sale_order_item_id, sale_order_id')
-        .in('id', orderIds);
-
-      if (ordersError) throw ordersError;
-      if (!ordersData || ordersData.length === 0) { setRows([]); return; }
-
-      const refIds = [...new Set(ordersData.map(o => o.reference_id).filter(Boolean))] as string[];
-      const saleOrderItemIds = [...new Set(ordersData.map(o => o.sale_order_item_id).filter(Boolean))] as string[];
-      const saleOrderIds = [...new Set(ordersData.map(o => (o as any).sale_order_id).filter(Boolean))] as string[];
-
-      // Motor CANÔNICO (@/lib/orderConsumption — o MESMO do modal por PV e da ficha
-      // do operador). Substitui a lógica duplicada que esta tela reimplementava e que
-      // NÃO filtrava a caixa por packaging_mode (caixa dupla/fantasma no consumo de OP).
-      const [ctx, sheetMap, strapRes, pkgRes] = await Promise.all([
-        fetchConsumptionContext(refIds),
-        fetchTechnicalSheetsForConsumption(refIds),
-        saleOrderItemIds.length > 0
-          ? supabase.from('sale_order_items').select('id, strap_colors, material_variant_id').in('id', saleOrderItemIds)
-          : Promise.resolve({ data: [] as any[] }),
-        saleOrderIds.length > 0
-          ? supabase.from('sale_orders').select('id, packaging_mode').in('id', saleOrderIds)
-          : Promise.resolve({ data: [] as any[] }),
-      ]);
-
-      const strapByItem = new Map<string, any>(((strapRes as any).data || []).map((si: any) => [si.id, si.strap_colors]));
-      const variantByItem = new Map<string, string | null>(((strapRes as any).data || []).map((si: any) => [si.id, si.material_variant_id ?? null]));
-      const pkgByOrder = new Map<string, string | null>(((pkgRes as any).data || []).map((s: any) => [s.id, s.packaging_mode ?? null]));
-
-      const items: ConsumptionItem[] = ordersData
-        .filter((o) => o.reference_id && sheetMap.get(o.reference_id))
-        .map((o) => ({
-          reference_id: o.reference_id as string,
-          color: o.color || '—',
-          quantity: Number(o.quantity) || 0,
-          grade: (o.grade as Record<string, number> | null) ?? null,
-          // `fichas: null` deixa o fallback EXATO (quantity ÷ gradeTotal) dos
-          // motores agir — escala-invariante: grade REAL (Σ = quantity ⇒ 1×) e
-          // grade BASE legada (Σ = 1 ficha ⇒ quantity/base) saem certas. Com 1
-          // fixo, OP legada com grade base subcontava per-size/tiras até ~50×
-          // (auditoria 2026-07-19, TS-1 — mesmo fix do bomConsumption).
-          fichas: null,
-          strap_colors: o.sale_order_item_id ? (strapByItem.get(o.sale_order_item_id) ?? null) : null,
-          // Variante de material do item do PV — resolve os materiais da OP
-          // (cabedal/forro/palmilha/solado/BOM) pela variante escolhida.
-          material_variant_id: o.sale_order_item_id ? (variantByItem.get(o.sale_order_item_id) ?? null) : null,
-          technical_sheets: sheetMap.get(o.reference_id),
-          packagingMode: (o as any).sale_order_id ? (pkgByOrder.get((o as any).sale_order_id) ?? null) : null,
-        }));
-
-      // Linhas SÓ de aviso (ex.: fachete sem specs, qtd 0) são exibidas no modal
-      // de Consumo do PV (planejamento); aqui, na visão por OP, ficam de fora pra
-      // não imprimir "0,00" sem quantidade real. Linha com consumo real E aviso
-      // (fallback_average de tamanho sem spec — F2-02) CONTINUA: a qtd é válida.
-      const computed = (computeConsumptionForItems(items, ctx) as ConsumptionRow[])
-        .filter(r => !((r as any).warning && !(r.totalQuantity > 0)));
+      const report = await fetchCanonicalConsumptionReport({ orderIds });
+      const baseRows = adaptCanonicalConsumptionLines(report.lines);
+      const previews = canonicalStrapPreviews(report).map(({ preview }) => preview);
+      // Quantidades e identidades já vêm do motor operacional. Esta tela só
+      // agrega/adapta; linhas exclusivamente diagnósticas (qtd 0) não imprimem.
+      const computed = applyCanonicalStrapsForPresentation(baseRows, previews)
+        .filter((row) => !(row.warning && !(row.totalQuantity > 0))) as ConsumptionRow[];
 
       const sortedRows = [...computed].sort((a, b) => {
         const typeDiff = COMPONENT_ORDER.indexOf(a.componentType as any) - COMPONENT_ORDER.indexOf(b.componentType as any);

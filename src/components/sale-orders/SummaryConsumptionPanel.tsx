@@ -10,9 +10,9 @@ import {
 } from '@/lib/pvConsumption';
 
 /**
- * Consumo de materiais de UM ou MAIS PVs. Roda o MOTOR CANÔNICO
- * (`computeConsumptionForItems`) sobre os itens agregados dos pedidos e
- * apresenta pela `MaterialConsumptionView` (tela + PDF).
+ * Consumo de materiais de UM ou MAIS PVs. Lê a projeção batch do MESMO motor
+ * SQL usado por reserva/baixa/custeio/MRP/compra e apresenta pela
+ * `MaterialConsumptionView` (tela + PDF). Não recalcula quantidades no browser.
  *
  * Padronizado em 2026-07-22 (`specs/consumo-consolidado-padronizacao.md`) — antes
  * reimplementava o motor inline e divergia (variante, tira-base, supressão de

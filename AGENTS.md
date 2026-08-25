@@ -2,7 +2,8 @@
 
 ## Deployment Architecture
 
-- **Deploy:** Vercel (auto-deploy a cada push em `main`).
+- **Deploy:** Vercel via GitHub Action após o CI verde; a integração Git nativa
+  não publica produção diretamente.
 - **Production URL:** https://squadshoes-real.vercel.app
 - **Branch de deploy:** `main`
 - **Branch de trabalho:** `Codex/zen-knuth-4c26c5` (ou qualquer `Codex/*`).
@@ -29,15 +30,18 @@ git commit + push (manual ou via stop hook)
 GitHub feature branch atualizada
      ↓ (stop hook auto-merge)
 GitHub main atualizada
-     ↓ (Vercel GitHub integration)
-Vercel build → site live em ~1-2min
-     ↓ (se mexeu em supabase/migrations/**)
-GitHub Action `supabase-migrate.yml`
      ↓
-supabase db push → DB live
+CI integral
+     ↓ (somente se verde, sempre no mesmo SHA)
+GitHub Action `supabase-migrate.yml` → supabase db push
+     ↓ (frontend e Edge aguardam todas as migrations do commit)
+Vercel Production Deploy + publicação das Edge Functions
+     ↓
+site e backend live
 ```
 
-**Status / configuração**: rode `bash scripts/setup-cicd.sh` pra ver o status atual, URLs e os passos pendentes (especialmente os 3 secrets do Supabase que precisam ser cadastrados manualmente).
+**Status / configuração**: rode `bash scripts/setup-cicd.sh` pra ver o status
+atual, URLs e os secrets exigidos pelos workflows.
 
 ## Conflict Resolution Strategy
 

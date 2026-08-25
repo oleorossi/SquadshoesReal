@@ -106,5 +106,11 @@ describe('sale-order outbox worker — contrato', () => {
     );
     expect(MIGRATION).toContain("'sale-order-outbox'");
     expect(MIGRATION).toContain("'* * * * *'");
+    expect(MIGRATION).toContain("WHERE name IN ('nfe_sync_cron_secret', 'project_url')");
+    expect(MIGRATION).toContain("v_project_url || '/functions/v1/process-sale-order-outbox'");
+    expect(MIGRATION).toContain("WHERE name = 'project_url'");
+    expect(MIGRATION).not.toContain(
+      'https://ssvxfoybzmjlypnipqzn.supabase.co/functions/v1/process-sale-order-outbox',
+    );
   });
 });

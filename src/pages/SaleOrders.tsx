@@ -117,6 +117,16 @@ interface SaleOrderItemLabelMaterialRow {
   material_variant_commercial_snapshot: unknown;
 }
 
+interface ForceProductionCommandResponse {
+  ok: boolean;
+  error?: { message?: string };
+  result?: {
+    created_ops?: number;
+    updated_ops?: number;
+    created_stages?: number;
+  };
+}
+
 const SORT_ACCESSORS: Record<SortKey, (o: any, pairs: Record<string, number>) => string | number | null> = {
   order_number: (o) => o.order_number ?? null,
   client_name: (o) => o.client_name ?? null,
@@ -1880,10 +1890,10 @@ export default function SaleOrders() {
           ) : (
             <SummaryConsumptionPanel
               saleOrderIds={consumptionViewIds}
-              onGerarOC={() => setPoGenTarget({
+              onGerarOC={canBuy ? () => setPoGenTarget({
                 ids: consumptionViewIds,
                 numbers: consumptionViewOrders.map((o: any) => o.order_number),
-              })}
+              }) : undefined}
             />
           )}
         </div>
@@ -2527,20 +2537,21 @@ export default function SaleOrders() {
                                 actionLabel: 'Forçar produção',
                                 onConfirm: async () => {
                                 try {
-                                  const expectedVersion = Number((order as any).order_version);
+                                  const expectedVersion = Number(order.order_version);
                                   if (!Number.isInteger(expectedVersion) || expectedVersion < 0) {
                                     throw new Error('Versão do PV indisponível. Recarregue a lista antes de promover.');
                                   }
                                   const requestId = crypto.randomUUID();
-                                  const { data, error } = await (supabase.rpc as any)('force_sale_order_production_command', {
+                                  const { data, error } = await supabase.rpc('force_sale_order_production_command' as never, {
                                     p_sale_order_id: order.id,
                                     p_expected_order_version: expectedVersion,
                                     p_client_request_id: requestId,
                                     p_override_id: null,
-                                  });
+                                  } as never);
                                   if (error) throw error;
-                                  if (!(data as any)?.ok) throw new Error((data as any)?.error?.message || 'Promoção recusada pelo servidor.');
-                                  const r = (data as any)?.result || {};
+                                  const response = data as unknown as ForceProductionCommandResponse;
+                                  if (!response?.ok) throw new Error(response?.error?.message || 'Promoção recusada pelo servidor.');
+                                  const r = response.result || {};
                                   toast.success(`Produção forçada • ${r.created_ops ?? 0} OP(s) criada(s), ${r.updated_ops ?? 0} atualizada(s), ${r.created_stages ?? 0} etapa(s) geradas`);
                                   queryClient.invalidateQueries({ queryKey: ['sale_orders'] });
                                   queryClient.invalidateQueries({ queryKey: ['orders'] });

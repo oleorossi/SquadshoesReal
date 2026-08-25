@@ -122,6 +122,18 @@ const renderSoleGrade = (row: ConsumptionRow): string => {
   </div>`;
 };
 
+/**
+ * A soma bruta de `stock_grade` pode estar concentrada em numerações que o
+ * pedido não usa. O PDF mostra o mesmo "Estoque útil" da tela: necessidade
+ * menos a falta calculada pela distribuição canônica dos baldes conjugados.
+ */
+const reportRowAvailable = (row: ConsumptionRow): number => {
+  if (row.componentType !== 'Solado' || Object.keys(row.sizeBreakdown || {}).length === 0) {
+    return rowAvailable(row);
+  }
+  return Math.max(0, (Number(row.totalQuantity) || 0) - rowShortfall(row));
+};
+
 const renderMaterialSections = (rows: ConsumptionRow[]): string => {
   const sectionMap = new Map<string, string[]>();
   const append = (componentType: string, html: string) => {
@@ -162,13 +174,14 @@ const renderMaterialSections = (rows: ConsumptionRow[]): string => {
   for (const row of soles) {
     const short = rowShortfall(row);
     const known = rowKnown(row);
+    const usefulStock = reportRowAvailable(row);
     const shortSizes = soleShortSizes(row);
     append('Solado', `<tr class="material-row${short > 0 ? ' is-short' : ''}${!known ? ' is-pending' : ''}">
       <td><strong>${escapeHtml(row.groupName)}</strong>${row.warning ? `<div class="row-warning">▲ ${escapeHtml(row.warning)}</div>` : ''}</td>
       <td>${escapeHtml(row.materialName || 'Solado')}</td>
       <td>${escapeHtml(row.color || '—')}</td>
       <td class="num strong">${formatQty(row.totalQuantity, row.productUnit)}</td>
-      <td class="num">${known ? formatQty(rowAvailable(row), row.productUnit) : '—'}</td>
+      <td class="num">${known ? formatQty(usefulStock, row.productUnit) : '—'}</td>
       <td class="num${short > 0 ? ' shortage' : ''}">${known && short > 0 ? `${formatQty(short, row.productUnit)}${shortSizes.length ? `<small>${shortSizes.length} nº</small>` : ''}` : '—'}</td>
       <td class="unit">${escapeHtml(formatUnit(row.productUnit))}</td>
     </tr>

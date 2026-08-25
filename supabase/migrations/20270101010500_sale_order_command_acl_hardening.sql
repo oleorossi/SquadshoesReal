@@ -933,10 +933,30 @@ BEGIN
       'public.hybrid_debit_stock_for_order(uuid,numeric,text,uuid,jsonb,boolean)',
       'EXECUTE'
     )
-    AND has_function_privilege(
-      'authenticated',
-      'public.initialize_order_material_reservations(uuid,boolean)',
-      'EXECUTE'
+    AND (
+      -- No ponto desta migration o orquestrador autenticado ainda chama o
+      -- inicializador. A 115 fecha a fronteira e o torna owner-only; o contrato
+      -- precisa continuar executável no estado final da cadeia.
+      has_function_privilege(
+        'authenticated',
+        'public.initialize_order_material_reservations(uuid,boolean)',
+        'EXECUTE'
+      )
+      OR (
+        to_regprocedure(
+          'public.run_command_boundary_compatibility_contract_tests()'
+        ) IS NOT NULL
+        AND NOT has_function_privilege(
+          'authenticated',
+          'public.initialize_order_material_reservations(uuid,boolean)',
+          'EXECUTE'
+        )
+        AND NOT has_function_privilege(
+          'service_role',
+          'public.initialize_order_material_reservations(uuid,boolean)',
+          'EXECUTE'
+        )
+      )
     )
     AND NOT has_function_privilege(
       'authenticated',

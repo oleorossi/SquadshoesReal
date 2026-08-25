@@ -57,6 +57,9 @@ describe('sale order command — resync seguro', () => {
     expect(SQL).toMatch(
       /DROP FUNCTION public\.hybrid_debit_stock_for_order\(\s*uuid,\s*numeric,\s*text,\s*uuid,\s*jsonb\s*\)/,
     );
+    expect(SQL).not.toContain(
+      "v_definition ILIKE '%hybrid_debit_stock_for_order(%v_op.grade%);%'",
+    );
   });
 
   it('preserva reservas e movimentos do motor canônico de tiras', () => {

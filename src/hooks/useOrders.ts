@@ -32,6 +32,15 @@ type CreateOrderData = {
 
 type ProductionOrderCommand = 'create' | 'ensure_stages' | 'transition' | 'cancel' | 'delete';
 
+interface ProductionOrderCommandResponse {
+  ok: boolean;
+  order_id?: string;
+  order?: Record<string, unknown> & { order_number?: string | null };
+  materialization?: { packaging?: unknown };
+  result?: Record<string, unknown>;
+  error?: { message?: string };
+}
+
 async function executeProductionOrderCommand(
   command: ProductionOrderCommand,
   orderId: string | null,
@@ -40,15 +49,16 @@ async function executeProductionOrderCommand(
   // Um UUID nasce uma vez por gesto do usuário e é reaproveitado pelo
   // Postgres caso a resposta da mesma chamada seja reentregue/reexecutada.
   const requestId = crypto.randomUUID();
-  const { data, error } = await (supabase.rpc as any)('execute_production_order_command', {
+  const { data, error } = await supabase.rpc('execute_production_order_command' as never, {
     p_command: command,
     p_order_id: orderId,
     p_client_request_id: requestId,
     p_payload: payload,
-  });
+  } as never);
   if (error) throw error;
-  if (!data?.ok) throw new Error(data?.error?.message || 'Comando de OP recusado pelo servidor.');
-  return data as any;
+  const response = data as unknown as ProductionOrderCommandResponse;
+  if (!response?.ok) throw new Error(response?.error?.message || 'Comando de OP recusado pelo servidor.');
+  return response;
 }
 
 export function useOrders() {

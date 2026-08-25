@@ -29,8 +29,11 @@ describe('materialConsumptionReport', () => {
           color: 'CARAMELO',
           productUnit: 'par',
           totalQuantity: 24,
+          soleProductId: 'sole-1',
           sizeBreakdown: { '34': 12, '35': 12 },
-          soleSizeStock: { '34': 2, '35': 12 },
+          // O estoque excedente do 40 não atende a necessidade 34/35 e não
+          // pode inflar a coluna "Estoque" do PDF.
+          soleSizeStock: { '34': 2, '35': 12, '40': 100 },
         }),
       ],
     });
@@ -41,6 +44,8 @@ describe('materialConsumptionReport', () => {
     expect(html).toContain('72');
     expect(html).toContain('SOLADO 01');
     expect(html).toContain('10'); // falta do nº 34: 12 − 2
+    expect(html).toContain('<td class="num">14</td>'); // estoque útil = 2 + 12
+    expect(html).not.toContain('<td class="num">114</td>'); // soma bruta da grade
     expect(html).toContain('16/08/2026');
   });
 

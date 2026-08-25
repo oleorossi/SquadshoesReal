@@ -213,7 +213,9 @@ describe('PV System — contratos versionados', () => {
   });
 
   it('revoga PUBLIC de todos os overloads críticos e não concede helpers internos', () => {
-    const migration = latestMigrationContaining('unsafe_stock_debit_overloads');
+    const migration = latestMigrationContaining(
+      'CREATE OR REPLACE FUNCTION public.run_sale_order_command_contract_tests',
+    );
     const sql = compact(migration.sql);
     const sqlWithoutWhitespace = sql.replace(/\s+/g, '');
     const allNewSystemSql = compact(
