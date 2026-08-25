@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import { fetchAllPages } from '@/lib/supabasePaginate';
+import type { ServiceOrderMaterialRequirements } from '@/hooks/useContractors';
 
 // A view financeira foi criada depois da última geração de `types.ts` e as
 // outras duas ganharam colunas novas. Centralizar o escape de tipagem mantém os
@@ -99,7 +100,7 @@ export interface ContractorHistoryOrder {
   status: string;
   punctuality: 'on_time' | 'late' | 'no_deadline';
   days_late: number;
-  is_artisanal: boolean;
+  material_requirements: ServiceOrderMaterialRequirements | null;
   materials_sent: Array<{ material: string; color: string; meters: number }>;
   signed_photo_url: string | null;
   created_at: string;

@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   MagnifyingGlass as Search, ClipboardText as ClipboardList, Users, Package, FileText,
   X, ArrowRight, House as Home, Buildings, ClockCounterClockwise as Clock, Star,
-  Receipt, ShoppingBag, Truck, FolderOpen, UserCircle, Lightning, Plus,
+  Receipt, ShoppingBag, Truck, FolderOpen, UserCircle, Lightning, Plus, Scissors,
 } from '@phosphor-icons/react';
 import { menuGroups, navigationCatalog } from '@/data/navigation';
 import { useMenuFavorites } from '@/hooks/useMenuFavorites';
@@ -16,6 +16,8 @@ import { Badge } from '@/components/ui/badge';
 import { cn, formatCurrency } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { normalizeForSearch, searchNormOrFilter, searchMatchesAllTerms } from '@/lib/searchUtils';
+import { isStrapServiceOrder } from '@/lib/strapServiceOrderIdentity';
+import { isMissingPostgrestRelation } from '@/lib/postgrestErrors';
 
 type QueryType = 'cnpj' | 'barcode' | 'invoice' | 'order_number' | 'group' | 'general';
 type Scope =
@@ -87,6 +89,13 @@ const SCOPES: { key: Scope; label: string }[] = [
 ];
 
 const RECENT_KEY = 'global-search-recent';
+const GLOBAL_SERVICE_ORDER_LIMIT = 6;
+const SERVICE_ORDER_IDENTITY_SELECT = [
+  'id', 'order_number', 'sector', 'status', 'total_value', 'contractor_id', 'created_at',
+  'artisanal_recipe_id', 'canonical_strap_recipe_id', 'artisanal_output_name',
+  'artisanal_output_color', 'artisanal_output_meters', 'artisanal_for_order_meters',
+  'artisanal_for_stock_meters', 'artisanal_base_color', 'artisanal_stock_entry_done',
+].join(', ');
 function loadRecent(): string[] {
   try { return JSON.parse(localStorage.getItem(RECENT_KEY) || '[]'); } catch { return []; }
 }
@@ -217,8 +226,10 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
   // Permissões de menu: seções novas só aparecem se o usuário pode acessar a
   // tela correspondente (spec R8). canAccessRoute é a mesma régua do sidebar.
   const { canAccessRoute } = useAccessControl();
+  const canSearchContractorServiceOrders = canAccessRoute('/terceirizados');
+  const canSearchStrapServiceOrders = canAccessRoute('/tiras-artesanais');
 
-  const [ordersQuery, clientsQuery, productsQuery, saleOrdersQuery, referencesQuery, suppliersQuery, purchaseOrdersQuery, serviceOrdersQuery, nfeQuery, employeesQuery, stockGroupsQuery, groupQuery] = useQueries({
+  const [ordersQuery, clientsQuery, productsQuery, saleOrdersQuery, referencesQuery, suppliersQuery, purchaseOrdersQuery, contractorServiceOrdersQuery, strapServiceOrdersQuery, nfeQuery, employeesQuery, stockGroupsQuery, groupQuery] = useQueries({
     queries: [
       {
         queryKey: ['global-search-orders', searchTerm],
@@ -361,29 +372,161 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
         },
       },
       {
-        // OSs — nº/descrição/material/setor via search_norm + nome do PRESTADOR
-        // resolvido em 2 passos (contractors.search_norm → contractor_id IN).
-        queryKey: ['global-search-service-orders', searchTerm],
-        enabled: searchEnabled && inScope('os') && canAccessRoute('/terceirizados'),
+        // Domínio Terceirizados: a view exclui Tiras no servidor. Esta consulta
+        // nem é habilitada para quem só possui acesso à Central de Tiras.
+        queryKey: ['global-search-contractor-service-orders', searchTerm],
+        enabled: searchEnabled && inScope('os') && canSearchContractorServiceOrders,
         staleTime: 60_000,
         placeholderData: keepPreviousData,
         queryFn: async () => {
           const orParts = [searchNormOrFilter(searchTerm)].filter(Boolean);
-          const { data: byContractor } = await (supabase as any)
+          const { data: byContractor, error: contractorSearchError } = await (supabase as any)
             .from('contractors')
             .select('id')
             .or(searchNormOrFilter(searchTerm))
             .limit(20);
+          if (contractorSearchError) throw contractorSearchError;
           const contractorIds = (byContractor ?? []).map((c: any) => c.id);
           if (contractorIds.length > 0) orParts.push(`contractor_id.in.(${contractorIds.join(',')})`);
-          const { data, error } = await (supabase as any)
-            .from('service_orders')
-            .select('id, order_number, sector, status, total_value, contractors(name)')
+          let { data, error } = await (supabase as any)
+            .from('v_non_strap_service_orders')
+            .select('id, order_number, sector, status, total_value, contractor_id, created_at')
             .or(orParts.join(','))
             .order('created_at', { ascending: false })
-            .limit(6);
-          if (error) throw error;
-          return data ?? [];
+            .limit(GLOBAL_SERVICE_ORDER_LIMIT);
+          if (error) {
+            if (!isMissingPostgrestRelation(error, 'v_non_strap_service_orders')) throw error;
+            // Rollout fail-closed: carrega candidatos no schema antigo e remove
+            // toda identidade de Tiras antes de expor um resultado genérico.
+            const fallback = await (supabase as any)
+              .from('service_orders')
+              .select(SERVICE_ORDER_IDENTITY_SELECT)
+              .or(orParts.join(','))
+              .order('created_at', { ascending: false })
+              .limit(GLOBAL_SERVICE_ORDER_LIMIT * 8);
+            if (fallback.error) throw fallback.error;
+            const candidates = fallback.data ?? [];
+            const candidateIds = candidates.map((row: any) => row.id).filter(Boolean);
+            const canonicalResult = candidateIds.length > 0
+              ? await (supabase as any)
+                .from('v_strap_service_order_items_operational')
+                .select('service_order_id')
+                .in('service_order_id', candidateIds)
+              : { data: [], error: null };
+            if (canonicalResult.error) throw canonicalResult.error;
+            const canonicalIds = new Set((canonicalResult.data ?? []).map((row: any) => row.service_order_id));
+            data = candidates
+              .filter((row: any) => !isStrapServiceOrder({
+                ...row,
+                is_canonical_strap: canonicalIds.has(row.id),
+              }))
+              .slice(0, GLOBAL_SERVICE_ORDER_LIMIT);
+            error = null;
+          }
+          const rows = data ?? [];
+          if (rows.length === 0) return rows;
+          const resultContractorIds = Array.from(new Set(rows.map((row: any) => row.contractor_id).filter(Boolean)));
+          const { data: contractors, error: contractorsError } = await (supabase as any)
+            .from('contractors')
+            .select('id, name')
+            .in('id', resultContractorIds);
+          if (contractorsError) throw contractorsError;
+          const contractorNameById = new Map((contractors ?? []).map((row: any) => [row.id, row.name]));
+          return rows.map((row: any) => ({
+            ...row,
+            contractors: { name: contractorNameById.get(row.contractor_id) || null },
+          }));
+        },
+      },
+      {
+        // Domínio Tiras: a view operacional traz a identidade canônica sem
+        // materializar OS genéricas. A segunda fonte é a view positiva de
+        // identidade legada/canônica, preservando OS antigas sem consultar o
+        // dataset de Terceirizados para quem não pode acessá-lo.
+        queryKey: ['global-search-strap-service-orders', searchTerm],
+        enabled: searchEnabled && inScope('os') && canSearchStrapServiceOrders,
+        staleTime: 60_000,
+        placeholderData: keepPreviousData,
+        queryFn: async () => {
+          const [{ data: canonicalRows, error: canonicalError }, contractorSearch] = await Promise.all([
+            (supabase as any)
+              .from('v_strap_service_order_items_operational')
+              .select('service_order_id, service_order_number, service_order_status, contractor_id, contractor_name, base_product_name, finished_product_name, needed_at')
+              .or(multiWordOr([
+                'service_order_number',
+                'service_order_status',
+                'contractor_name',
+                'base_product_name',
+                'finished_product_name',
+              ], searchTerm))
+              .order('needed_at', { ascending: false })
+              .limit(GLOBAL_SERVICE_ORDER_LIMIT),
+            (supabase as any)
+              .from('contractors')
+              .select('id')
+              .or(searchNormOrFilter(searchTerm))
+              .limit(20),
+          ]);
+          if (canonicalError) throw canonicalError;
+          if (contractorSearch.error) throw contractorSearch.error;
+
+          const legacySearchParts = [searchNormOrFilter(searchTerm)].filter(Boolean);
+          const contractorIds = (contractorSearch.data ?? []).map((row: any) => row.id);
+          if (contractorIds.length > 0) legacySearchParts.push(`contractor_id.in.(${contractorIds.join(',')})`);
+          let { data: legacyRows, error: legacyError } = await (supabase as any)
+            .from('v_strap_service_orders')
+            .select(SERVICE_ORDER_IDENTITY_SELECT)
+            .or(legacySearchParts.join(','))
+            .order('created_at', { ascending: false })
+            .limit(GLOBAL_SERVICE_ORDER_LIMIT);
+          if (legacyError) {
+            if (!isMissingPostgrestRelation(legacyError, 'v_strap_service_orders')) throw legacyError;
+            const fallback = await (supabase as any)
+              .from('service_orders')
+              .select(SERVICE_ORDER_IDENTITY_SELECT)
+              .or(legacySearchParts.join(','))
+              .order('created_at', { ascending: false })
+              .limit(GLOBAL_SERVICE_ORDER_LIMIT * 8);
+            if (fallback.error) throw fallback.error;
+            legacyRows = (fallback.data ?? [])
+              .filter((row: any) => isStrapServiceOrder(row))
+              .slice(0, GLOBAL_SERVICE_ORDER_LIMIT);
+            legacyError = null;
+          }
+
+          const legacyContractorIds = Array.from(new Set((legacyRows ?? []).map((row: any) => row.contractor_id).filter(Boolean)));
+          const legacyContractorsResult = legacyContractorIds.length > 0
+            ? await (supabase as any).from('contractors').select('id, name').in('id', legacyContractorIds)
+            : { data: [], error: null };
+          if (legacyContractorsResult.error) throw legacyContractorsResult.error;
+          const legacyContractorNames = new Map((legacyContractorsResult.data ?? []).map((row: any) => [row.id, row.name]));
+
+          const unique = new Map<string, any>();
+          for (const row of canonicalRows ?? []) {
+            if (!unique.has(row.service_order_id)) {
+              unique.set(row.service_order_id, {
+                id: row.service_order_id,
+                order_number: row.service_order_number,
+                sector: 'Tiras',
+                status: row.service_order_status,
+                total_value: null,
+                contractors: { name: row.contractor_name || null },
+                is_canonical_strap: true,
+              });
+            }
+          }
+          for (const row of legacyRows ?? []) {
+            if (!unique.has(row.id)) {
+              unique.set(row.id, {
+                ...row,
+                contractors: { name: legacyContractorNames.get(row.contractor_id) || null },
+                is_canonical_strap: false,
+              });
+            }
+          }
+          return [...unique.values()]
+            .sort((a, b) => (b.order_number || '').localeCompare(a.order_number || '', 'pt-BR', { numeric: true }))
+            .slice(0, GLOBAL_SERVICE_ORDER_LIMIT);
         },
       },
       {
@@ -496,7 +639,12 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
   const references = searchEnabled ? (referencesQuery.data ?? []) : [];
   const suppliers = searchEnabled ? (suppliersQuery.data ?? []) : [];
   const purchaseOrders = searchEnabled ? (purchaseOrdersQuery.data ?? []) : [];
-  const serviceOrders = searchEnabled ? (serviceOrdersQuery.data ?? []) : [];
+  const serviceOrders = searchEnabled && canSearchContractorServiceOrders
+    ? (contractorServiceOrdersQuery.data ?? [])
+    : [];
+  const strapServiceOrders = searchEnabled && canSearchStrapServiceOrders
+    ? (strapServiceOrdersQuery.data ?? [])
+    : [];
   const nfes = searchEnabled ? (nfeQuery.data ?? []) : [];
   const employees = searchEnabled ? (employeesQuery.data ?? []) : [];
   const stockGroups = searchEnabled ? (stockGroupsQuery.data ?? []) : [];
@@ -562,19 +710,19 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
   const isLoading = searchEnabled && (
     ordersQuery.isFetching || clientsQuery.isFetching || productsQuery.isFetching ||
     saleOrdersQuery.isFetching || referencesQuery.isFetching || suppliersQuery.isFetching ||
-    purchaseOrdersQuery.isFetching || serviceOrdersQuery.isFetching || nfeQuery.isFetching ||
+    purchaseOrdersQuery.isFetching || contractorServiceOrdersQuery.isFetching || strapServiceOrdersQuery.isFetching || nfeQuery.isFetching ||
     employeesQuery.isFetching || stockGroupsQuery.isFetching
   );
   const groupLoading = groupEnabled && groupQuery.isFetching;
   const totalResults = filteredNavItems.length + quickActions.length + orders.length + clients.length +
     products.length + saleOrders.length + references.length + suppliers.length +
-    purchaseOrders.length + serviceOrders.length + nfes.length + employees.length + stockGroups.length;
+    purchaseOrders.length + serviceOrders.length + strapServiceOrders.length + nfes.length + employees.length + stockGroups.length;
   const groupTotal = groupResult
     ? groupResult.groups.length + groupResult.saleOrders.length + groupResult.orders.length
     : 0;
   const queryError = ordersQuery.error || clientsQuery.error || productsQuery.error ||
     saleOrdersQuery.error || referencesQuery.error || suppliersQuery.error ||
-    purchaseOrdersQuery.error || serviceOrdersQuery.error || nfeQuery.error ||
+    purchaseOrdersQuery.error || contractorServiceOrdersQuery.error || strapServiceOrdersQuery.error || nfeQuery.error ||
     employeesQuery.error || stockGroupsQuery.error || groupQuery.error;
 
   return (
@@ -1069,6 +1217,46 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
                         <Badge variant="outline" className="text-xs shrink-0">{os.status}</Badge>
                       </CommandItem>
                     ))}
+                  </CommandGroup>
+                </>
+              )}
+
+              {strapServiceOrders.length > 0 && (
+                <>
+                  <CommandSeparator />
+                  <CommandGroup heading={`Ordens de Tiras (${strapServiceOrders.length})`}>
+                    {strapServiceOrders.map((os: any) => {
+                      const href = os.is_canonical_strap
+                        ? `/tiras-artesanais?tab=producao&q=${encodeURIComponent(os.order_number || '')}`
+                        : '/tiras-artesanais?tab=diagnostico';
+                      return (
+                        <CommandItem
+                          key={os.id}
+                          onSelect={() => goTo(href, query, {
+                            type: 'os',
+                            id: os.id,
+                            label: `${os.order_number} · ${os.contractors?.name ?? 'Sem prestador'}`,
+                            href,
+                            meta: 'Tiras',
+                          })}
+                        >
+                          <Scissors className="mr-2 h-3.5 w-3.5 text-primary" />
+                          <div className="min-w-0 flex-1">
+                            <span className="font-mono text-xs font-semibold">
+                              <Highlight text={os.order_number} term={searchTerm} />
+                            </span>
+                            {os.contractors?.name && (
+                              <span className="ml-2 truncate text-xs text-muted-foreground">
+                                <Highlight text={os.contractors.name} term={searchTerm} />
+                              </span>
+                            )}
+                          </div>
+                          <Badge variant="outline" className="shrink-0 text-xs">
+                            {os.is_canonical_strap ? os.status : 'Histórica'}
+                          </Badge>
+                        </CommandItem>
+                      );
+                    })}
                   </CommandGroup>
                 </>
               )}

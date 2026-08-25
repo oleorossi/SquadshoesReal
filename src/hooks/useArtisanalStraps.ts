@@ -16,6 +16,7 @@ interface UntypedQueryResult {
 
 interface UntypedQueryBuilder extends PromiseLike<UntypedQueryResult> {
   select: (columns?: string) => UntypedQueryBuilder;
+  eq: (column: string, value: unknown) => UntypedQueryBuilder;
   order: (column: string, options?: { ascending?: boolean }) => UntypedQueryBuilder;
   limit: (count: number) => UntypedQueryBuilder;
 }
@@ -1099,13 +1100,23 @@ export function useArtisanalStrapProduction(enabled = true) {
   });
 }
 
-export function useArtisanalStrapExternalOperations(enabled = true) {
+export function useArtisanalStrapExternalOperations(
+  enabled = true,
+  focusedServiceOrderNumber?: string | null,
+) {
+  const normalizedFocus = focusedServiceOrderNumber?.trim() || null;
   return useQuery({
-    queryKey: ['artisanal-strap-external-operations'],
+    queryKey: ['artisanal-strap-external-operations', normalizedFocus],
     enabled,
     queryFn: async (): Promise<ArtisanalStrapExternalOperationsData> => {
+      const serviceItemsQuery = untypedSupabase
+        .from('v_strap_service_order_items_operational')
+        .select('*')
+        .order('sent_at', { ascending: false });
       const [serviceResult, purchaseResult, claimsResult, cyclesResult, custodyResult, reworkResult] = await Promise.all([
-        untypedSupabase.from('v_strap_service_order_items_operational').select('*').order('sent_at', { ascending: false }).limit(600),
+        normalizedFocus
+          ? serviceItemsQuery.eq('service_order_number', normalizedFocus).limit(600)
+          : serviceItemsQuery.limit(600),
         untypedSupabase.from('v_strap_purchase_order_items_operational').select('*').order('purchase_by_date', { ascending: true }).limit(600),
         untypedSupabase.from('v_strap_contractor_loss_claims_operational').select('*').order('created_at', { ascending: false }).limit(300),
         untypedSupabase.from('v_strap_contractor_payment_cycles_operational').select('*').order('cycle_start', { ascending: false }).limit(300),

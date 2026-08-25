@@ -15,31 +15,76 @@ import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { ReferenceTerceirizacoesPanel } from '@/components/technical-sheets/ReferenceTerceirizacoesPanel';
 import { ContractorSectionHeader } from '@/components/contractors/ContractorSectionHeader';
 import { ContractorSummaryRail } from '@/components/contractors/ContractorSummaryRail';
+import {
+  REFERENCE_OUTSOURCE_SECTORS,
+  hasValidServiceOrderMaterialComponents,
+  isValidOutsourceCapacity,
+  isValidOutsourceRate,
+  isServiceOrderReturnAllowed,
+  serviceOrderReturnSectorsFromSettings,
+  type ServiceOrderOption,
+} from '@/lib/serviceOrderSectors';
+import { useSectorSettings } from '@/hooks/useProductionEngine';
 
 /**
  * Cobertura de Terceirização por Referência.
  *
- * O cadastro em si (contratada · descrição · R$/par) já mora na aba "Terceirizados"
+ * O cadastro em si (atividade · prestador · capacidade · materiais · R$/par) mora na aba "Terceirizados"
  * de cada ficha técnica (ReferenceTerceirizacoesPanel). O problema é escala: pra
  * configurar dezenas de fichas o usuário abriria uma por uma. Este painel junta
- * TODAS as fichas num lugar só, marca quais já têm config (verde) e quais faltam
- * (âmbar), e expande inline o MESMO painel da ficha pro cadastro rápido — sem
+ * TODAS as fichas num lugar só, marca quais têm configuração operacional completa
+ * (verde) e quais ainda não permitem calcular prazo/material (âmbar),
+ * e expande inline o MESMO painel da ficha pro cadastro rápido — sem
  * duplicar lógica. Sem essa config, `get_pv_terceirizacao_lines` fica mudo e o
  * caminho automático do pedido não gera OS.
  */
 
 type SheetRow = { id: string; code: string | null; name: string | null };
 type TercRow = {
-  id: string; reference_id: string; description: string; value_per_pair: number; active: boolean;
-  contractors?: { name: string; trade_name: string | null } | null;
+  id: string;
+  reference_id: string;
+  description: string;
+  value_per_pair: number;
+  active: boolean;
+  sector: string | null;
+  capacity_pairs_per_day: number | null;
+  return_before_sector: string | null;
+  material_components: string[] | null;
+  contractors?: { name: string; trade_name: string | null; active: boolean } | null;
 };
+
+const isPlanningReady = (
+  entry: TercRow,
+  returnSectors: ReadonlyArray<ServiceOrderOption>,
+) => entry.active
+  && entry.contractors?.active === true
+  && REFERENCE_OUTSOURCE_SECTORS.some((option) => option.value === entry.sector)
+  && isValidOutsourceCapacity(entry.capacity_pairs_per_day)
+  && isValidOutsourceRate(entry.value_per_pair)
+  && isServiceOrderReturnAllowed(entry.sector, entry.return_before_sector, returnSectors)
+  && hasValidServiceOrderMaterialComponents(entry.material_components);
 
 export function TerceirizacaoCoberturaPanel() {
   const [search, setSearch] = useState('');
   const [onlyGaps, setOnlyGaps] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const {
+    data: sectorSettings = [],
+    isLoading: loadingSettings,
+    isError: settingsFailed,
+    refetch: refetchSettings,
+  } = useSectorSettings();
+  const liveReturnSectors = useMemo(
+    () => serviceOrderReturnSectorsFromSettings(sectorSettings),
+    [sectorSettings],
+  );
 
-  const { data: sheets = [], isLoading: loadingSheets } = useQuery({
+  const {
+    data: sheets = [],
+    isLoading: loadingSheets,
+    isError: sheetsFailed,
+    refetch: refetchSheets,
+  } = useQuery({
     queryKey: ['technical_sheets_cobertura'],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -54,12 +99,17 @@ export function TerceirizacaoCoberturaPanel() {
   // Chave começando em 'reference_terceirizacoes' → as mutações do painel da ficha
   // (invalidate(['reference_terceirizacoes'])) refazem esta query por match de prefixo,
   // mantendo os contadores em dia após cadastro inline.
-  const { data: tercs = [], isLoading: loadingTercs } = useQuery({
+  const {
+    data: tercs = [],
+    isLoading: loadingTercs,
+    isError: tercsFailed,
+    refetch: refetchTercs,
+  } = useQuery({
     queryKey: ['reference_terceirizacoes', 'all-overview'],
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from('reference_terceirizacoes')
-        .select('id, reference_id, description, value_per_pair, active, contractors(name, trade_name)');
+        .select('id, reference_id, description, value_per_pair, active, sector, capacity_pairs_per_day, return_before_sector, material_components, contractors(name, trade_name, active)');
       if (error) throw error;
       return (data || []) as TercRow[];
     },
@@ -76,26 +126,33 @@ export function TerceirizacaoCoberturaPanel() {
   }, [tercs]);
 
   const configuredCount = useMemo(
-    () => sheets.filter(s => (byRef.get(s.id)?.length || 0) > 0).length,
-    [sheets, byRef],
+    () => sheets.filter(s => (
+      byRef.get(s.id) || []
+    ).some((entry) => isPlanningReady(entry, liveReturnSectors))).length,
+    [sheets, byRef, liveReturnSectors],
   );
 
   const rows = useMemo(() => {
     return sheets
       .map(s => ({ sheet: s, entries: byRef.get(s.id) || [] }))
       .filter(r => {
-        if (onlyGaps && r.entries.length > 0) return false;
+        if (onlyGaps && r.entries.some((entry) => isPlanningReady(entry, liveReturnSectors))) return false;
         return searchMatchesAllTerms(
           search,
           r.sheet.code, r.sheet.name,
           ...r.entries.map(e => e.contractors?.trade_name || e.contractors?.name),
         );
       });
-  }, [sheets, byRef, search, onlyGaps]);
+  }, [sheets, byRef, search, onlyGaps, liveReturnSectors]);
 
-  const loading = loadingSheets || loadingTercs;
+  const loading = loadingSettings || loadingSheets || loadingTercs;
+  const dataFailed = settingsFailed || sheetsFailed || tercsFailed
+    || (!loadingSettings && sectorSettings.length === 0);
   const gapCount = sheets.length - configuredCount;
-  const activeServices = tercs.filter(t => t.active).length;
+  const activeServices = tercs.filter((entry) => isPlanningReady(entry, liveReturnSectors)).length;
+  const incompleteServices = tercs.filter((entry) => (
+    entry.active && !isPlanningReady(entry, liveReturnSectors)
+  )).length;
   const configuredProviders = new Set(
     tercs.map(t => t.contractors?.trade_name || t.contractors?.name).filter(Boolean),
   ).size;
@@ -106,8 +163,29 @@ export function TerceirizacaoCoberturaPanel() {
       <ContractorSectionHeader
         eyebrow="CADASTRO · TARIFA POR REFERÊNCIA"
         title="Cobertura da terceirização"
-        description="Defina quem executa cada serviço e o R$/par usado pelo pedido para gerar a OS sem digitação repetida."
+        description="Defina atividade, prestador, capacidade, retorno, materiais e R$/par para gerar cada OS com planejamento automático."
       />
+
+      {dataFailed ? (
+        <Panel flush>
+          <EmptyState
+            size="sm"
+            icon={Warning}
+            title="Não foi possível conferir a cobertura"
+            description="O fluxo vivo de produção e as configurações precisam carregar antes de classificar uma ficha como pronta ou pendente."
+            action={(
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void Promise.all([refetchSettings(), refetchSheets(), refetchTercs()])}
+              >
+                Tentar novamente
+              </Button>
+            )}
+          />
+        </Panel>
+      ) : (
+        <>
 
       <ContractorSummaryRail
         ariaLabel="Resumo da cobertura de tarifas"
@@ -121,7 +199,7 @@ export function TerceirizacaoCoberturaPanel() {
         }}
         metrics={[
           { label: 'Pendências', value: gapCount, hint: 'referências sem configuração', icon: Warning, tone: gapCount > 0 ? 'warning' : 'success' },
-          { label: 'Serviços ativos', value: activeServices, hint: 'linhas válidas para gerar OS', icon: CheckCircle, tone: 'success' },
+          { label: 'Serviços prontos', value: activeServices, hint: incompleteServices > 0 ? `${incompleteServices} ativos ainda incompletos` : 'capacidade e materiais válidos', icon: CheckCircle, tone: incompleteServices > 0 ? 'warning' : 'success' },
           { label: 'Prestadores', value: configuredProviders, hint: 'presentes nas referências', icon: Users },
           { label: 'Regra de preço', value: 'R$/par', hint: 'valor aplicado ao pedido', icon: CurrencyDollar },
         ]}
@@ -165,6 +243,7 @@ export function TerceirizacaoCoberturaPanel() {
         <div className="space-y-2">
           {rows.map(({ sheet, entries }) => {
             const isOpen = expanded === sheet.id;
+            const readyEntries = entries.filter((entry) => isPlanningReady(entry, liveReturnSectors));
             const contractorNames = Array.from(new Set(
               entries.map(e => e.contractors?.trade_name || e.contractors?.name).filter(Boolean),
             ));
@@ -189,13 +268,13 @@ export function TerceirizacaoCoberturaPanel() {
                       <p className="mt-0.5 truncate text-xs text-muted-foreground">{contractorNames.join(' · ')}</p>
                     )}
                   </div>
-                  {entries.length > 0 ? (
+                  {readyEntries.length > 0 ? (
                     <Badge variant="outline" className="shrink-0 gap-1 border-emerald-500/30 bg-emerald-500/10 text-[10px] text-emerald-600">
-                      <CheckCircle className="h-3 w-3" /> {entries.length} {entries.length === 1 ? 'serviço' : 'serviços'}
+                      <CheckCircle className="h-3 w-3" /> {readyEntries.length} {readyEntries.length === 1 ? 'serviço pronto' : 'serviços prontos'}
                     </Badge>
                   ) : (
                     <Badge variant="outline" className="shrink-0 gap-1 border-amber-500/30 bg-amber-500/10 text-[10px] text-amber-600">
-                      <Warning className="h-3 w-3" /> sem config
+                      <Warning className="h-3 w-3" /> {entries.length > 0 ? 'config incompleta' : 'sem config'}
                     </Badge>
                   )}
                 </button>
@@ -208,6 +287,8 @@ export function TerceirizacaoCoberturaPanel() {
             );
           })}
         </div>
+      )}
+        </>
       )}
     </div>
   );

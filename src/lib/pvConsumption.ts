@@ -85,7 +85,10 @@ export async function loadPvConsumption(ids: string[]): Promise<PvConsumptionRes
     if (result.error) throw result.error;
     for (const value of (Array.isArray(result.data) ? result.data : []) as Record<string, unknown>[]) {
       const parsed = parseCanonicalStrapDemandPreview(value);
-      if (parsed.technicalStrapLineId) strapPreviews.push(parsed);
+      // A própria ausência da linha técnica é uma pendência canônica devolvida
+      // pela RPC. Mantê-la no fluxo impede que outra tira já resolvida do mesmo
+      // PV faça a demanda bloqueada desaparecer da tela.
+      strapPreviews.push(parsed);
     }
   }
 

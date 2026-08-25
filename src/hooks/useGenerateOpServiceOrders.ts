@@ -28,6 +28,28 @@ export interface OutsourceableLine {
   default_contractor_id: string | null;
   default_contractor_name: string | null;
   default_rate: number | null;
+  /** Configuração da ficha usada pelo servidor para calcular esta prévia. */
+  default_terceirizacao_id?: string | null;
+  /** Capacidade do prestador padrão; informativa — o servidor recalcula ao gerar. */
+  capacity_pairs_per_day?: number | null;
+  /** Setor interno que depende do retorno deste serviço. */
+  return_before_sector?: string | null;
+  /** Etapa efetivamente encontrada no cronograma quando a rota pula a anterior. */
+  planning_anchor_sector?: string | null;
+  /** Componentes canônicos do motor que devem acompanhar a terceirização. */
+  material_components?: string[] | null;
+  execution_days?: number | null;
+  queue_days?: number | null;
+  /** Nome atual do RPC; `total_lead_days` fica aceito durante o rollout. */
+  lead_days?: number | null;
+  total_lead_days?: number | null;
+  recommended_send_date?: string | null;
+  required_return_date?: string | null;
+  planning_source?: string | null;
+  planning_warning?: string | null;
+  /** Configuração completa da ficha usada para autorizar a geração planejada. */
+  planning_config_ready?: boolean;
+  planning_config_issue?: string | null;
   already_has_os: boolean;
   existing_os_status: string | null;
 }
@@ -55,6 +77,9 @@ export interface GenerateOsLine {
   unit_price: number;
   quantity: number;
   quoted_deadline?: string | null;
+  /** Fail-closed: callers precisam declarar se usam o plano da ficha ou a
+   * contingência manual legada. O assistente normal sempre envia `true`. */
+  require_planning_config: boolean;
 }
 
 export interface GenerateOsResultLine {
@@ -84,23 +109,13 @@ export function useGenerateOpServiceOrders() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['service_orders'] });
+      qc.invalidateQueries({ queryKey: ['pv_service_orders'] });
       qc.invalidateQueries({ queryKey: ['service_order_overview'] });
       qc.invalidateQueries({ queryKey: ['service_order_generation_gaps'] });
       qc.invalidateQueries({ queryKey: ['v_contractor_metrics'] });
       qc.invalidateQueries({ queryKey: ['pv_outsourceable_lines'] });
     },
   });
-}
-
-/** Tarifa vigente (contratada × setor) — pré-preenche o R$/par ao trocar de contratada. */
-export async function fetchContractorRate(contractorId: string, sector: string): Promise<number | null> {
-  const { data, error } = await (supabase as any).rpc('get_contractor_rate', {
-    p_contractor_id: contractorId,
-    p_sector: sector,
-    p_date: new Date().toISOString().slice(0, 10),
-  });
-  if (error || data == null) return null;
-  return Number(data);
 }
 
 export interface ServiceOrderGenerationGap {
@@ -147,6 +162,7 @@ export function useRetryServiceOrderGenerationGap() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['service_order_generation_gaps'] });
       qc.invalidateQueries({ queryKey: ['service_orders'] });
+      qc.invalidateQueries({ queryKey: ['pv_service_orders'] });
       qc.invalidateQueries({ queryKey: ['service_order_overview'] });
       qc.invalidateQueries({ queryKey: ['pv_outsourceable_lines'] });
       toast.success('OS pendente gerada pelo fluxo canônico.');

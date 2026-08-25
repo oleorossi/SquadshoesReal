@@ -14,11 +14,14 @@ export const LOCAL_LEGACY_BASELINE = Object.freeze({
   sha256: '2733d2a64fecaadb239ed5ad17b8bd2046c1eb2106fb485c7b65aca1f08b0460',
 });
 
-// Histórico vivo de produção em 24/08/2026. Marcadores temporários podem ter
-// qualquer nome descritivo: o contrato do Supabase compara os timestamps.
+// Histórico vivo de produção em 24/08/2026, incluindo os três reparos do worker
+// de Tiras aplicados antes do cutover: 20260824202803 (UUID ordering),
+// 20260824204847 (status de aprovação da OC) e 20260824205556 (alias de
+// purchase_order_id). Marcadores temporários podem ter qualquer nome descritivo:
+// o contrato do Supabase compara os timestamps.
 export const REMOTE_LEGACY_BASELINE = Object.freeze({
-  count: 2287,
-  sha256: 'ef2c1169a9fda3916f946c142c5b7431961648ce087536e8c699f4c7d4d03d6a',
+  count: 2290,
+  sha256: '784c51d4e09d921c83a37e0dc56d3a70d4a3cae2c270eb8d82958fea14c5ee3e',
 });
 
 const MIGRATION_FILE = /^(\d{14})_(.+)\.sql$/;

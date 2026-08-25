@@ -1163,6 +1163,12 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
       update(idx, 'strap_colors', []);
       update(idx, 'strap_sourcing', {});
       update(idx, 'material_variant_id', null);
+      // A configuração externa pertence à ficha anterior. Preservá-la na
+      // troca de referência poderia mandar a nova OP para um prestador/setor
+      // que o usuário nunca escolheu para este produto.
+      update(idx, 'selected_terceirizacao_ids', []);
+      update(idx, 'terceirizacao_quantities', {});
+      update(idx, 'outsourced_sectors', {});
       // A limpeza acima vence o update do efeito de sincronização neste render;
       // libere a próxima passagem para materializar a estrutura da nova ficha.
       strapSyncedForRef.current = '';
@@ -2481,6 +2487,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
             OP futura pra receber a OS. */}
         {item.reference_id && (
           <ItemSectorOutsourcingSection
+            referenceId={item.reference_id}
             value={item.outsourced_sectors}
             onChange={(next) => onUpdate(index, 'outsourced_sectors', next)}
           />

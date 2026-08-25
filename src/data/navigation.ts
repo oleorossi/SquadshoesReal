@@ -50,7 +50,9 @@ export const navigationCatalog: NavigationResource[] = [
   // Engenharia
   { path: '/fichas-tecnicas', label: 'Fichas Técnicas', group: 'Engenharia', icon: Ruler, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/TechnicalSheets') },
   { path: '/escalonamento', label: 'Escalonamento', group: 'Engenharia', icon: Calculator, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/EscalonamentoCadPage') },
-  { path: '/tiras-artesanais', label: 'Tiras', group: 'Engenharia', icon: Scissors, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/ArtisanalStraps') },
+  // Módulo vertical próprio: cadastro, rendimento, estoque, produção,
+  // terceirização especializada e controle vivem na mesma fronteira.
+  { path: '/tiras-artesanais', label: 'Central de Tiras', group: 'Tiras', icon: Scissors, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/ArtisanalStraps') },
   { path: '/solados', label: 'Solados', group: 'Engenharia', icon: Footprints, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/SolesHub') },
   { path: '/silks', label: 'Silks', group: 'Engenharia', icon: Sparkles, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/Silks') },
   { path: '/fichas-tecnicas/padroes', label: 'Padrões por Cor', group: 'Engenharia', icon: Sparkles, surfaces: ['command'], preload: () => import('@/pages/ColorStandards') },
@@ -172,7 +174,11 @@ const menuGroupsDeclarados: NavigationGroup[] = [
   },
   {
     label: 'Engenharia', icon: Ruler,
-    items: [resource('/fichas-tecnicas'), resource('/escalonamento'), resource('/tiras-artesanais'), resource('/solados'), resource('/silks')],
+    items: [resource('/fichas-tecnicas'), resource('/escalonamento'), resource('/solados'), resource('/silks')],
+  },
+  {
+    label: 'Tiras', icon: Scissors,
+    items: [resource('/tiras-artesanais')],
   },
   {
     label: 'Produção', icon: Factory,
@@ -312,7 +318,7 @@ export interface RoleMenuPresentation {
 }
 
 const ORDEM_COMPLETA = [
-  'Comercial', 'Engenharia', 'Produção', 'Estoque',
+  'Comercial', 'Engenharia', 'Tiras', 'Produção', 'Estoque',
   'Compras', 'Logística', 'Etiquetagem', 'Financeiro', 'Fiscal', 'RH',
 ];
 
@@ -348,7 +354,7 @@ export const ROLE_MENU_PRESENTATION: Record<string, RoleMenuPresentation> = {
   consulta:{ home: '/dashboard', groupOrder: ORDEM_COMPLETA },
 
   // Quem aponta produção não começa o dia olhando KPI: começa apontando.
-  producao:     { home: '/producao/apontamento', groupOrder: ['Produção', 'Estoque', 'Logística', 'Etiquetagem', 'Engenharia', 'RH'] },
+  producao:     { home: '/producao/apontamento', groupOrder: ['Produção', 'Tiras', 'Estoque', 'Logística', 'Etiquetagem', 'Engenharia', 'RH'] },
   comercial:    { home: '/comercial',            groupOrder: ['Comercial'] },
   nfe_operator: { home: '/nfe',                  groupOrder: ['Fiscal', 'Comercial'] },
   almoxarifado: { home: '/estoque',              groupOrder: ['Estoque'] },

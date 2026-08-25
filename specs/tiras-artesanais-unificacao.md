@@ -16,8 +16,16 @@
 > origem, o atendimento consome primeiro a tira acabada exata; a napa só é debitada no
 > recebimento/apontamento da produção interna efetivamente realizada.
 
-> Especificação normativa-base fechada com o usuário em 16/08/2026 e atualizada pelo override
-> prospectivo de 18/08/2026 acima. Este documento define a fonte única para todo o domínio de
+> **Decisão confirmada em 24/08/2026 — rendimento sem cor e menu próprio.** A receita de
+> conversão pertence ao tipo/medida da tira e à família do material-base; a cor não participa
+> do rendimento. Portanto, NAPA SOFT 1370 × 1000 mm → Tira Meia Cana 10 mm com rendimento
+> confirmado de 55 m/m usa os mesmos 55 m/m em todas as cores da NAPA SOFT. As cores ainda
+> possuem variantes e saldos físicos separados. O domínio também passa a aparecer no grupo
+> principal **Tiras**, independente de **Terceirizados** e de **Engenharia**; ordens canônicas
+> de tiras não entram nas listas, métricas nem relatórios genéricos de Terceirizados.
+>
+> Especificação normativa-base fechada com o usuário em 16/08/2026 e atualizada pelos overrides
+> prospectivos de 18/08/2026 e 24/08/2026 acima. Este documento define a fonte única para todo o domínio de
 > tiras artesanais. Ele substitui, nas partes em que
 > houver conflito, `cadastro-tira-artesanal-no-pv.md`,
 > `calculadora-tiras-cortes-parciais.md`,
@@ -130,7 +138,8 @@ entre elas.
 
 ### In scope
 
-- Um hub único **Engenharia → Tiras Artesanais**.
+- Um hub único no grupo principal **Tiras → Central de Tiras**, separado de Engenharia e
+  Terceirizados.
 - Cadastro hierárquico de família/tipo, medida, napa-base e cor da tira.
 - Separação entre largura final visível e largura efetivamente cortada da napa.
 - Cor canônica e aliases aprovados, sem decisão operacional por comparação de texto.
@@ -172,8 +181,8 @@ entre elas.
 
 ### A. Hub único e fonte única
 
-1. Deve existir a rota protegida e concedível `/tiras-artesanais`, no menu
-   **Engenharia → Tiras Artesanais** e módulo de acesso `produtos`,
+1. Deve existir a rota protegida e concedível `/tiras-artesanais`, no grupo próprio do menu
+   **Tiras → Central de Tiras** e módulo de acesso `produtos`,
    contendo cadastro, receitas/rendimento, variantes/cores, estoque, demandas, lotes de
    produção, ordens terceirizadas e histórico. Abas mínimas: **Cadastro**, **Receitas e
    rendimento**, **Variantes e estoque**, **Demandas**, **Produção**, **Histórico/diagnóstico**
@@ -273,7 +282,10 @@ entre elas.
 ### C. Receita, rendimento e precisão
 
 26. A receita oficial é única e versionada por `(medida_id, base_group_id)`; cores da mesma
-    medida/base compartilham a receita. Seu ciclo é
+    medida/base compartilham a receita e o rendimento confirmado. Cor não pode existir no
+    payload, na chave única nem no formulário de receita. Exemplo normativo: NAPA SOFT
+    1370 × 1000 mm + Tira Meia Cana 10 mm + 55 m/m continua em 55 m/m para PRETO, OFF WHITE
+    e qualquer outra cor pertencente à família NAPA SOFT. Seu ciclo é
     `draft → pending_approval → approved → superseded`, com saídas auditadas para
     `suspended` ou `archived`; somente `approved` vigente atende novos PVs.
 27. Cada receita deve conter, no mínimo: largura final, largura da banda, largura útil da
@@ -1054,7 +1066,7 @@ renomeadas, mas não podem permanecer como uma segunda fonte de verdade com sem�
 
 ### Happy path — cadastrar uma família/medidas/cores
 
-1. Usuário autorizado abre **Engenharia → Tiras Artesanais** e cria TIRA CHATA.
+1. Usuário autorizado abre **Tiras → Central de Tiras** e cria TIRA CHATA.
 2. Adiciona medidas 8, 9 e 10 mm.
 3. Para 8 mm, vincula NAPA SOFT e NAPA MADRID; informa a banda real para cada base.
 4. O sistema lê a largura útil das napas, calcula bandas completas e sugere o rendimento.
@@ -1214,8 +1226,9 @@ Nenhuma decisão de produto permanece aberta para implementação desta especifi
 ## Definition of Done
 
 - [ ] **Reqs. 1–7 — hub/fonte única:** `/tiras-artesanais` existe no módulo `produtos`; abas,
-      redirects, favoritos/grants e editor contextual funcionam; PV, Estoque, Grupos, Compras
-      e Terceirizados abrem o mesmo editor. Um teste arquitetural com allowlist prova que
+      redirects, favoritos/grants e editor contextual funcionam no grupo próprio **Tiras**;
+      nenhuma OS canônica de tira aparece nas listas, métricas ou relatórios genéricos de
+      Terceirizados; PV, Estoque, Grupos e Compras abrem o mesmo editor. Um teste arquitetural prova que
       somente RPCs/tabelas canônicas gravam o domínio.
 - [ ] **Reqs. 8–25 — identidade:** criar TIRA CHATA 8 mm em SOFT OFF WHITE e MADRID OFF WHITE
       resulta em duas variantes/produtos/saldos. Unique constraints impedem duplicatas e
@@ -1231,7 +1244,8 @@ Nenhuma decisão de produto permanece aberta para implementação desta especifi
       e origem de reposição do piso explícitos por variante.
 - [ ] **Reqs. 26–40 — rendimento:** com base 1370 mm e banda 20 mm, teórico = 68 e sobra =
       10 mm; confirmado 64 salva, 70 é rejeitado. Para 640 m, consumo com confirmado 64 é
-      exatamente 10 m antes da formatação.
+      exatamente 10 m antes da formatação. NAPA SOFT + Tira Meia Cana 10 mm com rendimento
+      55 m/m devolve os mesmos 55 m/m para todas as cores da família, sem cadastro duplicado.
 - [ ] **Reqs. 26–37 — aprovação/versionamento:** receita percorre
       `draft → pending_approval → approved`; nova versão supersede prospectivamente a anterior,
       sem reprecificar PV/lote/OS comprometido e sem perder FK histórica.

@@ -5,9 +5,18 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { normalizeOsStatus, type OsStatus } from '@/lib/osStatusMachine';
+import { normalizeOsStatus, OS_STATUS, type OsStatus } from '@/lib/osStatusMachine';
+import { isStrapServiceOrder } from '@/lib/strapServiceOrderIdentity';
 
 const KEY = ['consolidated_service_orders'] as const;
+const RELATED_QUERY_KEYS = [
+  ['service_orders'],
+  ['service_order_overview'],
+  ['pv_service_orders'],
+  ['v_contractor_metrics'],
+  ['v_contractor_history_orders'],
+  ['v_contractor_os_financials'],
+] as const;
 
 export interface ConsolidatedOsLine {
   id: string;
@@ -58,31 +67,32 @@ export function useConsolidatedServiceOrders() {
         .from('service_orders')
         .select(`
           id, order_number, contractor_id, status, total_value, created_at,
+          artisanal_recipe_id, canonical_strap_recipe_id, artisanal_output_name,
+          artisanal_output_color, artisanal_output_meters, artisanal_for_order_meters,
+          artisanal_for_stock_meters, artisanal_base_color, artisanal_stock_entry_done,
           contractors(name, trade_name),
           service_order_items(
             id, material_name, description, color, target_sector, sale_order_id, order_id,
             quantity, unit, meters, unit_price, total_value, line_status, delivered_at,
+            strap_variant_id, strap_recipe_id, strap_batch_item_id,
+            sale_order_strap_demand_id, strap_stock_floor_contribution_id,
             sale_orders(order_number), orders(order_number)
           )
         `)
         .order('created_at', { ascending: false })
         .limit(500);
-      if (error) {
-        // Enquanto a migration 20260913120000 (tabela service_order_items) não
-        // estiver aplicada, o embed falha. Degrada pro estado vazio em vez de
-        // ficar em erro/retry — a aba mostra "Nenhuma OS consolidada ainda".
-        const code = String((error as any).code || '');
-        const msg = String((error as any).message || '');
-        if (code === 'PGRST200' || code === 'PGRST205' || code === '42P01'
-          || /service_order_items|could not find|schema cache|does not exist|relationship/i.test(msg)) {
-          return [];
-        }
-        throw error;
-      }
+      if (error) throw error;
 
       // Só os contêineres do NOVO modelo (que têm linhas). OS flat legadas ficam
       // na aba "Ordens de Serviço" antiga.
-      const rows = ((data || []) as any[]).filter(o => Array.isArray(o.service_order_items) && o.service_order_items.length > 0);
+      const rows = ((data || []) as any[]).filter((o) => {
+        if (!Array.isArray(o.service_order_items) || o.service_order_items.length === 0) return false;
+        const hasCanonicalStrapLine = o.service_order_items.some((line: any) => (
+          line.strap_variant_id || line.strap_recipe_id || line.strap_batch_item_id
+          || line.sale_order_strap_demand_id || line.strap_stock_floor_contribution_id
+        ));
+        return !isStrapServiceOrder({ ...o, is_canonical_strap: hasCanonicalStrapLine });
+      });
 
       return rows.map((o): ConsolidatedOs => {
         const lines: ConsolidatedOsLine[] = (o.service_order_items as any[]).map(li => ({
@@ -133,14 +143,27 @@ export function useSendServiceOrder() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (osId: string) => {
-      const { error } = await (supabase as any)
+      const { data: current, error: readError } = await (supabase as any)
+        .from('service_orders')
+        .select('status')
+        .eq('id', osId)
+        .single();
+      if (readError) throw readError;
+      if (normalizeOsStatus(current?.status) !== OS_STATUS.PENDENTE) {
+        throw new Error('Somente uma OS pendente pode ser enviada. Uma OS final exige um novo cabeçalho.');
+      }
+      const { data, error } = await (supabase as any)
         .from('service_orders')
         .update({ status: 'Enviada', dispatch_tracked: true, updated_at: new Date().toISOString() })
-        .eq('id', osId);
+        .eq('id', osId)
+        .eq('status', current.status)
+        .select('id');
       if (error) throw error;
+      if (!data?.length) throw new Error('A OS mudou enquanto era enviada. Recarregue e tente novamente.');
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: KEY });
+      RELATED_QUERY_KEYS.forEach((queryKey) => qc.invalidateQueries({ queryKey }));
       toast.success('Material enviado — OS travada. Novas demandas abrem uma OS nova.');
     },
     onError: (e: any) => toast.error(`Erro ao enviar: ${e.message}`),
@@ -153,14 +176,18 @@ export function useDeliverServiceOrderLine() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (line: { id: string; quantity: number }) => {
-      const { error } = await (supabase as any)
+      const { data, error } = await (supabase as any)
         .from('service_order_items')
         .update({ line_status: 'Entregue', delivered_at: new Date().toISOString(), delivered_qty: line.quantity, updated_at: new Date().toISOString() })
-        .eq('id', line.id);
+        .eq('id', line.id)
+        .eq('line_status', 'Pendente')
+        .select('id');
       if (error) throw error;
+      if (!data?.length) throw new Error('A linha mudou enquanto era entregue. Recarregue e tente novamente.');
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: KEY });
+      RELATED_QUERY_KEYS.forEach((queryKey) => qc.invalidateQueries({ queryKey }));
       toast.success('Linha entregue.');
     },
     onError: (e: any) => toast.error(`Erro ao entregar: ${e.message}`),

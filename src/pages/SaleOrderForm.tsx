@@ -1,8 +1,7 @@
 import { FormSkeleton } from '@/components/layout/PageSkeleton';
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, FileMagnifyingGlass as FileSearch, ArrowCounterClockwise as RotateCcw, Handshake, CheckCircle, Warning as AlertTriangle, PaperPlaneTilt } from '@phosphor-icons/react';
-import { SendSectorToContractorDialog } from '@/components/sale-orders/SendSectorToContractorDialog';
+import { ArrowLeft, FileMagnifyingGlass as FileSearch, ArrowCounterClockwise as RotateCcw, Handshake, CheckCircle, Warning as AlertTriangle } from '@phosphor-icons/react';
 // `newISO` é date-only: `new Date(iso)` parseia UTC e o toast confirmava o dia
 // ANTERIOR ao que era gravado em `delivery_deadline`.
 import { formatDateBR } from '@/lib/dateOnly';
@@ -660,10 +659,6 @@ export default function SaleOrderForm() {
     minDateISO: string;
   }>(null);
   const [billingOverrideReason, setBillingOverrideReason] = useState('');
-  // Dialog de terceirização da costura: abre após save quando o PV foi
-  // salvo com manual_billing_override=true. saleOrderId fica setado pra
-  // o dialog buscar as OPs criadas e disparar a RPC.
-  const [sendSectorOpen, setSendSectorOpen] = useState(false);
   const [outsourceCosturaOpen, setOutsourceCosturaOpen] = useState(false);
   const [outsourceCosturaPvId, setOutsourceCosturaPvId] = useState<string | null>(null);
   const [outsourceCosturaPendingNav, setOutsourceCosturaPendingNav] = useState<boolean>(false);
@@ -1085,7 +1080,7 @@ export default function SaleOrderForm() {
       void checkMarginAfterSave(pvId);
       if (!pvId) { navigate('/sales'); return; }
       if (validItems.some((item) => Array.isArray(item.strap_colors) && item.strap_colors.length > 0)) {
-        toast.info('Demanda de tiras enviada ao processamento canônico. Acompanhe em Engenharia → Tiras → Demandas.');
+        toast.info('Demanda de tiras enviada ao processamento canônico. Acompanhe em Central de Tiras → Operação → Demandas.');
       }
       if (isOverride) {
         setOutsourceCosturaPvId(pvId);
@@ -1847,19 +1842,10 @@ export default function SaleOrderForm() {
                 <Button
                   variant="outline" size="sm" className="h-9 gap-1.5"
                   onClick={() => { setGenOsPvId(id); setGenOsNavAfter(false); setGenOsOpen(true); }}
+                  disabled={hasUnsavedEdits}
+                  title={hasUnsavedEdits ? 'Salve o pedido antes de gerar OS sobre os dados persistidos.' : undefined}
                 >
                   <Handshake className="h-4 w-4" /> Gerar OS
-                </Button>
-              )}
-              {/* Envio POSTERIOR: setor que não foi marcado nos itens antes da OP
-                  nascer, ou OS que falhou na criação automática (o trigger engole
-                  o erro de propósito — falhar a OS não pode travar a OP). */}
-              {isEdit && id && (
-                <Button
-                  variant="outline" size="sm" className="h-9 gap-1.5"
-                  onClick={() => setSendSectorOpen(true)}
-                >
-                  <PaperPlaneTilt className="h-4 w-4" /> Enviar pra prestador
                 </Button>
               )}
             </>
@@ -1908,14 +1894,6 @@ export default function SaleOrderForm() {
           </div>
         )}
 
-        {isEdit && id && (
-          <SendSectorToContractorDialog
-            open={sendSectorOpen}
-            onOpenChange={setSendSectorOpen}
-            saleOrderId={id}
-            saleOrderLabel={form?.order_number || null}
-          />
-        )}
       </div>
 
       {/* Dialog de rascunho — opt-in pra restaurar / descartar */}

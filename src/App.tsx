@@ -942,7 +942,7 @@ const router = createBrowserRouter([
       },
       {
         // Hub "Terceirizados" (rota canônica) — unifica Na Rua + OS +
-        // Planejamento + Prestadores + Receitas + Relatório em abas.
+        // Planejamento + Prestadores + Relatório em abas.
         // Ver src/pages/TerceirizadosHub.tsx.
         path: "terceirizados",
         element: <TerceirizadosHub />,

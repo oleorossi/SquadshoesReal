@@ -25,7 +25,7 @@ const getStrapKey = (strap: StrapDefinition) => {
 
 const hasPerSizeConsumption = (perSize?: Record<string, number> | null) => {
   if (!perSize) return false;
-  return Object.values(perSize).some((value) => Number(value) > 0);
+  return Object.keys(perSize).length > 0;
 };
 
 export const resolveOrderStraps = (

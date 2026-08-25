@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
@@ -31,6 +31,7 @@ import { ArtisanalStrapIncrementalApplyDialog } from '@/components/artisanal-str
 import { ArtisanalStrapMigrationControl } from '@/components/artisanal-straps/ArtisanalStrapMigrationControl';
 import { ArtisanalStrapPlanningConfig } from '@/components/artisanal-straps/ArtisanalStrapPlanningConfig';
 import { ArtisanalStrapPerformanceHistory } from '@/components/artisanal-straps/ArtisanalStrapPerformanceHistory';
+import StrapStockLogTab from '@/components/inventory/tabs/StrapStockLogTab';
 import {
   ArtisanalStrapExternalOperations,
   type ReceiptTarget,
@@ -59,6 +60,7 @@ import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { useContractors } from '@/hooks/useContractors';
+import { useIsAdmin } from '@/hooks/useUserManagement';
 import { cn } from '@/lib/utils';
 import {
   type ArtisanalStrapCatalog,
@@ -108,6 +110,7 @@ const TAB_VALUES = [
   'variantes',
   'calculadora',
   'desempenho',
+  'historico-estoque',
   'diagnostico',
 ] as const;
 
@@ -115,7 +118,7 @@ type HubTab = (typeof TAB_VALUES)[number];
 type PrimaryTab = 'operacao' | 'configuracao' | 'controle';
 type OperationView = 'demandas' | 'producao';
 type ConfigurationView = 'cadastro' | 'variantes' | 'ferramentas';
-type ControlView = 'desempenho' | 'diagnostico';
+type ControlView = 'desempenho' | 'historico-estoque' | 'diagnostico';
 
 const PRIMARY_TAB_BY_HUB_TAB: Record<HubTab, PrimaryTab> = {
   operacao: 'operacao',
@@ -128,6 +131,7 @@ const PRIMARY_TAB_BY_HUB_TAB: Record<HubTab, PrimaryTab> = {
   variantes: 'configuracao',
   calculadora: 'configuracao',
   desempenho: 'controle',
+  'historico-estoque': 'controle',
   diagnostico: 'controle',
 };
 
@@ -623,6 +627,7 @@ function TechnicalLineMigrationDialog({
 }
 
 export default function ArtisanalStraps() {
+  const isAdmin = useIsAdmin();
   const { value: activeTab, setValue: setActiveTab } = useUrlTabState<HubTab>({
     values: TAB_VALUES,
     defaultValue: 'operacao',
@@ -635,6 +640,7 @@ export default function ArtisanalStraps() {
     },
   });
   const [searchParams, setSearchParams] = useSearchParams();
+  const focusedServiceOrderNumber = searchParams.get('q')?.trim() || null;
   const activeArea = PRIMARY_TAB_BY_HUB_TAB[activeTab];
   const operationView: OperationView = activeTab === 'producao' ? 'producao' : 'demandas';
   const configurationView: ConfigurationView = activeTab === 'variantes'
@@ -642,7 +648,11 @@ export default function ArtisanalStraps() {
     : activeTab === 'receitas' || activeTab === 'calculadora'
       ? 'ferramentas'
       : 'cadastro';
-  const controlView: ControlView = activeTab === 'diagnostico' ? 'diagnostico' : 'desempenho';
+  const controlView: ControlView = activeTab === 'diagnostico'
+    ? 'diagnostico'
+    : activeTab === 'historico-estoque' && isAdmin
+      ? 'historico-estoque'
+      : 'desempenho';
   const [reasonDialog, setReasonDialog] = useState<ReasonDialogState | null>(null);
   const [colorDialog, setColorDialog] = useState(false);
   const [officialProductDialog, setOfficialProductDialog] = useState(false);
@@ -655,7 +665,10 @@ export default function ArtisanalStraps() {
   const catalog = catalogQuery.data || EMPTY_CATALOG;
   const demandsQuery = useArtisanalStrapDemands(true);
   const productionQuery = useArtisanalStrapProduction(operationView === 'producao' || controlView === 'diagnostico');
-  const externalOperationsQuery = useArtisanalStrapExternalOperations(operationView === 'producao' && activeArea === 'operacao');
+  const externalOperationsQuery = useArtisanalStrapExternalOperations(
+    operationView === 'producao' && activeArea === 'operacao',
+    focusedServiceOrderNumber,
+  );
   const catalogDiagnosticsQuery = useArtisanalStrapCatalogDiagnostics(activeArea === 'controle' && controlView === 'diagnostico');
   const legacyMigrationDiagnosticsQuery = useArtisanalStrapLegacyMigrationDiagnostics(
     activeArea === 'controle' && controlView === 'diagnostico' && catalog.capabilities.resolve_strap_migration,
@@ -770,7 +783,7 @@ export default function ArtisanalStraps() {
   return (
     <div className="space-y-5 page-enter">
       <EditorialPageHeader
-        sectionLabel="ENGENHARIA · TIRAS"
+        sectionLabel="CENTRAL DE TIRAS"
         title="Tiras"
         description="Da necessidade do pedido à tira pronta: rendimento, estoque, produção e terceirização no mesmo fluxo."
         meta={(
@@ -867,7 +880,19 @@ export default function ArtisanalStraps() {
           />
           {operationView === 'demandas'
             ? <DemandsTab catalog={catalog} query={demandsQuery} />
-            : <ProductionTab catalog={catalog} query={productionQuery} externalQuery={externalOperationsQuery} />}
+            : (
+              <ProductionTab
+                catalog={catalog}
+                query={productionQuery}
+                externalQuery={externalOperationsQuery}
+                focusedServiceOrderNumber={focusedServiceOrderNumber}
+                onClearServiceOrderFocus={() => setSearchParams((previous) => {
+                  const params = new URLSearchParams(previous);
+                  params.delete('q');
+                  return params;
+                })}
+              />
+            )}
         </TabsContent>
 
         <TabsContent value="configuracao" className="mt-0 space-y-4">
@@ -936,6 +961,12 @@ export default function ArtisanalStraps() {
             onChange={(value) => setActiveTab(value)}
             items={[
               { value: 'desempenho', label: 'Desempenho', description: 'Rendimento real e variação de custo', icon: ClockCounterClockwise },
+              ...(isAdmin ? [{
+                value: 'historico-estoque' as const,
+                label: 'Histórico de estoque',
+                description: 'Entradas, saídas e estornos',
+                icon: Package,
+              }] : []),
               { value: 'diagnostico', label: 'Diagnóstico', description: 'Pendências de cadastro e migração', icon: Warning },
             ]}
           />
@@ -946,6 +977,8 @@ export default function ArtisanalStraps() {
               costVarianceQuery={costVarianceQuery}
               openEditor={openEditor}
             />
+          ) : controlView === 'historico-estoque' ? (
+            <StrapStockLogTab />
           ) : (
             <DiagnosticsTab
               catalog={catalog}
@@ -1836,10 +1869,14 @@ function ProductionTab({
   catalog,
   query,
   externalQuery,
+  focusedServiceOrderNumber,
+  onClearServiceOrderFocus,
 }: {
   catalog: ArtisanalStrapCatalog;
   query: ReturnType<typeof useArtisanalStrapProduction>;
   externalQuery: ReturnType<typeof useArtisanalStrapExternalOperations>;
+  focusedServiceOrderNumber?: string | null;
+  onClearServiceOrderFocus: () => void;
 }) {
   const [search, setSearch] = useState('');
   const batches = (query.data?.batches || []).filter((batch) => includesSearch(
@@ -1851,9 +1888,21 @@ function ProductionTab({
     batch.status,
     batch.criticality,
   ));
+  const serviceOrderItems = externalQuery.data?.serviceItems || [];
+  const matchingServiceOrders = new Set(serviceOrderItems
+    .filter((item) => includesSearch(
+      search,
+      item.service_order_number,
+      item.service_order_status,
+      item.contractor_name,
+      item.base_product_name,
+      item.finished_product_name,
+    ))
+    .map((item) => item.service_order_id)).size;
+  const totalServiceOrders = new Set(serviceOrderItems.map((item) => item.service_order_id)).size;
 
   if (query.isLoading) return <TableSkeleton rows={6} />;
-  if (query.isError) {
+  if (query.isError && !focusedServiceOrderNumber) {
     return (
       <Alert variant="destructive">
         <Warning className="h-4 w-4" />
@@ -1870,19 +1919,25 @@ function ProductionTab({
 
   return (
     <div className="space-y-4">
+      {query.isError && (
+        <Alert variant="destructive">
+          <Warning className="h-4 w-4" />
+          <AlertTitle>Planejamento de lotes indisponível</AlertTitle>
+          <AlertDescription>
+            A OS em foco continua disponível abaixo; apenas os lotes internos não responderam.
+          </AlertDescription>
+        </Alert>
+      )}
       <ArtisanalStrapPlanningConfig />
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <SearchInput
           className="w-full sm:max-w-sm"
           value={search}
           onChange={setSearch}
-          placeholder="Buscar semana, executor ou status…"
-          resultCount={batches.length}
-          totalCount={query.data?.batches.length || 0}
+          placeholder="Buscar lote, OS, executor ou status…"
+          resultCount={batches.length + matchingServiceOrders}
+          totalCount={(query.data?.batches.length || 0) + totalServiceOrders}
         />
-        <Button variant="outline" size="sm" asChild className="gap-2">
-          <Link to="/terceirizados?tab=orders"><Wrench className="h-4 w-4" /> Ordens terceirizadas</Link>
-        </Button>
       </div>
 
       {batches.length === 0 ? (
@@ -1905,6 +1960,9 @@ function ProductionTab({
         isLoading={externalQuery.isLoading}
         isError={externalQuery.isError}
         onRetry={() => externalQuery.refetch()}
+        serviceOrderSearch={search}
+        focusedServiceOrderNumber={focusedServiceOrderNumber}
+        onClearServiceOrderFocus={onClearServiceOrderFocus}
       />
     </div>
   );

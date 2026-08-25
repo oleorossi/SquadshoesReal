@@ -5,13 +5,16 @@ import { GenerateServiceOrdersWizard } from '@/components/contractors/GenerateSe
 import { ServiceOrderFormDialog } from '@/components/contractors/ServiceOrderFormDialog';
 import { ServiceOrderGenerationGapsAlert } from '@/components/contractors/ServiceOrderGenerationGapsAlert';
 import { ServiceOrderTimeline } from '@/components/contractors/ServiceOrderTimeline';
-import { printServiceOrderReceipt, expandBaseGrade } from '@/lib/printServiceOrderReceipt';
-import { thumbUrl } from '@/lib/imageThumb';
+import {
+  mapPvItemsForReceipt,
+  printServiceOrderReceipt,
+  type ReceiptPvItemRow,
+} from '@/lib/printServiceOrderReceipt';
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { useCan } from '@/hooks/useAccessControl';
-import { CircleNotch as Loader2, Plus, MagnifyingGlass as Search, PencilSimple as Pencil, Trash as Trash2, FileText, Handshake, Printer, X, Check, CaretUpDown as ChevronsUpDown, Upload, CheckCircle as CheckCircle2, Circle, ClipboardText as ClipboardList, CurrencyDollar as DollarSign, Clock, Users, Package, Flask as FlaskConical, Scissors, Warning as AlertTriangle, WarningCircle as AlertCircle, CalendarBlank as Calendar, LockKey as Lock, ClockCounterClockwise, ChartLineUp, FileArrowDown as FileDown, Funnel, Truck, DotsThreeVertical as MoreVertical, Archive, List as ListIcon, SquaresFour, IdentificationCard, PhoneCall } from '@phosphor-icons/react';
+import { CircleNotch as Loader2, Plus, MagnifyingGlass as Search, PencilSimple as Pencil, Trash as Trash2, FileText, Handshake, Printer, X, Check, CaretUpDown as ChevronsUpDown, Upload, CheckCircle as CheckCircle2, Circle, ClipboardText as ClipboardList, CurrencyDollar as DollarSign, Clock, Users, Package, Warning as AlertTriangle, WarningCircle as AlertCircle, CalendarBlank as Calendar, LockKey as Lock, ClockCounterClockwise, ChartLineUp, FileArrowDown as FileDown, Funnel, Truck, DotsThreeVertical as MoreVertical, Archive, List as ListIcon, SquaresFour, IdentificationCard, PhoneCall } from '@phosphor-icons/react';
 import { SECTOR_LABEL, SectorKey } from '@/hooks/useSectorBottlenecks';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -40,9 +43,8 @@ import { cn } from '@/lib/utils';
 import {
   useContractors, useServiceOrders, useServiceOrderOverview, useCreateContractor, useUpdateContractor, useDeleteContractor,
   useBulkReceiveServiceOrders, useArchiveServiceOrders,
-  useCreateServiceOrder, useUpdateServiceOrder, useDeleteServiceOrder, useContractorSectorRate,
+  useCreateServiceOrder, useUpdateServiceOrder, useContractorSectorRate,
   Contractor, ServiceOrder, MaterialSent, ServiceOrderOverview,
-  isCanonicalStrapServiceOrder,
 } from '@/hooks/useContractors';
 import { SERVICE_ORDER_SECTORS } from '@/lib/serviceOrderSectors';
 import { opNumberByPvItem, opNumbersForServiceOrder, type OpRefWithReference } from '@/lib/serviceOrderOps';
@@ -53,6 +55,7 @@ import {
   isOsDone, isOsCancelled, isOsActive, osStatusLabel, osStatusBadgeVariant,
   osStatusColor, osStatusDot,
   normalizeOsStatus,
+  isValidOsTransition,
 } from '@/lib/osStatusMachine';
 import { useProducts, getBaseName } from '@/hooks/useProducts';
 import { ContractorHistoryDialog } from '@/components/contractors/ContractorHistoryDialog';
@@ -88,14 +91,6 @@ const emptyOrder: Partial<ServiceOrder> & { materials_sent: MaterialSent[] } = {
   is_avulsa: true,         // toda OS criada pelo form manual é avulsa
   dispatch_tracked: true,  // OS nova só entra "na rua" depois de uma remessa explícita
   order_id: null,          // vínculo opcional com a OP
-  artisanal_recipe_id: null,
-  artisanal_output_name: '',
-  artisanal_output_color: '',
-  artisanal_output_meters: 0,
-  artisanal_for_order_meters: 0,
-  artisanal_for_stock_meters: 0,
-  artisanal_base_color: '',
-  artisanal_stock_entry_done: false,
 };
 
 // Vocabulário canônico de status de OS centralizado em src/lib/osStatusMachine.ts
@@ -144,44 +139,54 @@ function getMaterials(order: ServiceOrder): MaterialSent[] {
   return [];
 }
 
+function isLegacyIntegratedAggregateServiceOrder(order: ServiceOrder): boolean {
+  return Boolean(order.source_terceirizacao_id)
+    && !order.target_sector
+    && !order.planning_source
+    && order.dispatch_tracked === false;
+}
+
+function isGenericConsolidatedServiceOrder(order: ServiceOrder): boolean {
+  return (order.service_order_items?.length || 0) > 0;
+}
+
+/** O saldo da view só representa realidade física quando a OS participa do
+ * fluxo operacional. Avulsa financeira pura também pode ser legacy
+ * `dispatch_tracked=false`, mas não é um lote de pares na rua. */
+function serviceOrderRequiresPhysicalReturn(
+  order: ServiceOrder,
+  overview?: ServiceOrderOverview,
+): boolean {
+  const hasGenericContainerLines = isGenericConsolidatedServiceOrder(order);
+  const hasPhysicalLedger = Number(overview?.qty_dispatched || 0) > 0
+    || Number(overview?.qty_returned_good || 0) > 0
+    || Number(overview?.qty_returned_defect || 0) > 0
+    || Number(overview?.qty_loss || 0) > 0;
+  // O contêiner consolidado possui estado/retorno por linha. O cabeçalho não
+  // pode cair nos dialogs de despacho/retorno da OS flat, mesmo que um dado
+  // legado tenha deixado ledger no header.
+  if (hasGenericContainerLines) return false;
+  return order.dispatch_tracked === true
+    || hasPhysicalLedger
+    || Boolean(
+      order.order_id
+      || order.related_order_id
+      || order.sale_order_id
+      || order.source_sale_order_id
+      || order.source_sale_order_item_id
+      || order.source_terceirizacao_id
+      || order.source_item_key
+      || order.planning_source
+      || order.planning_anchor_sector
+      || order.provider_capacity_pairs_per_day
+      || order.return_before_sector
+      || order.linked_sale_order_ids?.length
+      || order.selected_sale_order_item_ids?.length,
+    );
+}
+
 /** Colunas de `sale_order_items` que o papel da OS precisa (grade + foto). */
 const OS_PV_ITEM_COLUMNS = 'id, color, quantity, grade, reference_id, technical_sheets(code, name, image_url)';
-
-interface PvItemRow {
-  id: string;
-  color?: string | null;
-  quantity?: number | null;
-  grade?: unknown;
-  reference_id?: string | null;
-  technical_sheets?: { code?: string | null; name?: string | null; image_url?: string | null } | null;
-}
-
-/**
- * Linhas de `sale_order_items` → itens do papel da OS. Compartilhado entre o
- * seletor do dialog e a impressão pelo menu da lista, pra que os dois papéis
- * saiam idênticos (era só o dialog que montava isso).
- */
-function mapPvItemsForReceipt(rows: PvItemRow[]) {
-  return (rows || []).map((it) => {
-    const ts = it.technical_sheets;
-    const code = ts?.name || ts?.code || '';
-    const pairs = Number(it.quantity) || 0;
-    return {
-      id: it.id as string,
-      label: [code, it.color || '—'].filter(Boolean).join(' · '),
-      pairs,
-      ref_code: code || null,
-      ref_name: ts?.name || null,
-      color: it.color || null,
-      // `grade` do item é a grade BASE (1 ficha, ~12 pares) — expandir pro
-      // total do item antes de imprimir.
-      size_breakdown: expandBaseGrade(it.grade as Record<string, number> | null, pairs),
-      // 80px de exibição (quadro de 20mm); o dpr 3 default já entrega
-      // nitidez pra A4 a 300dpi sem inflar o arquivo.
-      photo_url: ts?.image_url ? thumbUrl(ts.image_url, 80) || null : null,
-    };
-  }).filter((i) => i.pairs > 0);
-}
 
 export default function Contractors({ embedded = false, activeTab, onActiveTabChange, openCreateOS, onCreateOSConsumed }: { embedded?: boolean; activeTab?: string; onActiveTabChange?: (v: string) => void; openCreateOS?: { contractorId?: string } | null; onCreateOSConsumed?: () => void } = {}) {
   const navigate = useNavigate();
@@ -195,13 +200,12 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
   const deleteContractor = useDeleteContractor();
   const createOrder = useCreateServiceOrder();
   const updateOrder = useUpdateServiceOrder();
-  const deleteOrder = useDeleteServiceOrder();
   const bulkReceive = useBulkReceiveServiceOrders();
   const archiveOs = useArchiveServiceOrders();
   const queryClient = useQueryClient();
 
   const [genOsOpen, setGenOsOpen] = useState(false);
-  // Gates de ação da área Terceirizados (criar OS / excluir OS). Admin e
+  // Gates de ação da área Terceirizados. Admin e
   // usuários sem permissão granular sempre passam.
   const osPerm = useCan('/terceirizados');
   // Buscas independentes: um termo digitado em OS não deve esvaziar a lista de
@@ -318,7 +322,18 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
     },
     staleTime: 60_000,
   });
-  const osPvItems = useMemo(() => mapPvItemsForReceipt(osPvItemsRaw as any[]), [osPvItemsRaw]);
+  const plannedPairOverrides = useMemo(() => {
+    const ids = editingOrder.selected_sale_order_item_ids;
+    const quantity = Number(editingOrder.quantity);
+    if (!editingOrder.planning_source || !Array.isArray(ids) || ids.length !== 1 || quantity <= 0) {
+      return undefined;
+    }
+    return new Map([[ids[0], quantity]]);
+  }, [editingOrder.planning_source, editingOrder.quantity, editingOrder.selected_sale_order_item_ids]);
+  const osPvItems = useMemo(
+    () => mapPvItemsForReceipt(osPvItemsRaw as unknown as ReceiptPvItemRow[], plannedPairOverrides),
+    [osPvItemsRaw, plannedPairOverrides],
+  );
   const osSelItems = useMemo(() => osPvItems.filter((i) => osPvItemSel.has(i.id)), [osPvItems, osPvItemSel]);
   const osSelPares = osSelItems.reduce((s, i) => s + i.pairs, 0);
 
@@ -388,9 +403,9 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
    * Linha descritiva da OS na lista. O que VOCÊ escreveu vence sempre; só quando
    * não há descrição (padrão das OS novas desde 02/08/2026) cai no derivado
    * "OP-00231 · I901 · OFF WHITE".
-   */
+  */
   const osListLine = useCallback(
-    (o: ServiceOrder): string => (o?.description?.trim() || o?.artisanal_output_name?.trim()
+    (o: ServiceOrder): string => (o?.description?.trim()
       || (o?.id ? opInfoByOsId.get(o.id)?.label : null) || '—'),
     [opInfoByOsId],
   );
@@ -411,7 +426,16 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
       .select(OS_PV_ITEM_COLUMNS)
       .in('id', ids);
     if (error) { toast.error('Não foi possível carregar os itens do pedido para o papel.'); return []; }
-    return mapPvItemsForReceipt(data as unknown as PvItemRow[]);
+    if (o.planning_source && ids.length !== 1) {
+      // Sem uma alocação inequívoca não se inventa grade: o papel ainda usa a
+      // quantidade correta da OS no cabeçalho, mas omite cartões contraditórios.
+      toast.error('A OS planejada não possui um único item de origem para imprimir a grade.');
+      return [];
+    }
+    const overrides = o.planning_source
+      ? new Map([[ids[0], Number(o.quantity) || 0]])
+      : undefined;
+    return mapPvItemsForReceipt(data as unknown as ReceiptPvItemRow[], overrides);
   }, []);
 
   // Ao carregar os itens do PV: pré-marca a seleção GRAVADA na OS; sem registro
@@ -443,8 +467,12 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
 
   // Liga/desliga um item do PV e recalcula a Quantidade (Σ pares marcados).
   const toggleOsPvItem = (id: string) => {
+    // O escopo da OS planejada é derivado da OP no servidor. Alterar apenas os
+    // itens visuais deixaria grade/foto diferentes do snapshot de materiais.
+    if (editingOrder.planning_source) return;
     const next = new Set(osPvItemSel);
-    next.has(id) ? next.delete(id) : next.add(id);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
     setOsPvItemSel(next);
     const sum = osPvItems.filter((i) => next.has(i.id)).reduce((s, i) => s + i.pairs, 0);
     if (sum > 0) setEditingOrder((p) => ({ ...p, quantity: sum }));
@@ -574,7 +602,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
       return searchMatchesAllTerms(
         orderSearch,
         o.description, o.order_number, o.contractors?.name,
-        o.receipt_number, o.artisanal_output_name,
+        o.receipt_number,
         ...linkedOrders.flatMap(so => [so.order_number, so.client_order_number]),
         ...opNumbersOf(o),
       );
@@ -686,15 +714,15 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
   // Uma ação principal por estado. As alternativas continuam no menu, mas a
   // linha deixa de apresentar quatro conclusões concorrentes ao mesmo tempo.
   const renderOsActions = (o: ServiceOrder) => {
-    if (isCanonicalStrapServiceOrder(o)) {
-      return (
-        <Button size="sm" variant="outline" className="h-9 gap-1 px-2.5 text-xs" onClick={() => navigate('/tiras-artesanais?tab=producao&origin=terceirizados')}>
-          <FlaskConical className="h-3.5 w-3.5" /> Abrir no Hub de Tiras
-        </Button>
-      );
-    }
     const active = isOsActive(o.status);
     const ov = osOverview?.get(o.id);
+    if (isGenericConsolidatedServiceOrder(o)) {
+      return (
+        <span className="inline-flex min-h-9 items-center gap-1.5 rounded-md border border-border bg-muted/40 px-2.5 text-xs text-muted-foreground">
+          <Lock className="h-3.5 w-3.5" /> Gerida por linhas
+        </span>
+      );
+    }
     const workflow = resolveServiceOrderWorkflow({
       status: o.status,
       dispatchTracked: o.dispatch_tracked,
@@ -712,12 +740,12 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
     return (
       <div className="flex min-w-0 flex-wrap items-center justify-end gap-1">
         {workflow.primaryAction === 'conference' && (
-          <Button size="sm" variant="outline" className="h-9 gap-1 px-2.5 text-xs" onClick={() => openCanonicalOrReturn(o)}>
+          <Button size="sm" variant="outline" className="h-9 gap-1 px-2.5 text-xs" onClick={() => setReturnDialogOs(o)}>
             <CheckCircle2 className="h-3 w-3" /> Conferir retorno
           </Button>
         )}
         {workflow.primaryAction === 'dispatch' && (
-          <Button size="sm" variant="outline" className="h-9 gap-1 px-2.5 text-xs" onClick={() => openCanonicalOrDispatch(o)}>
+          <Button size="sm" variant="outline" className="h-9 gap-1 px-2.5 text-xs" onClick={() => setDispatchDialogOs(o)}>
             <Truck className="h-3 w-3" /> Enviar{workflow.qtyDispatched > 0 ? ' saldo' : ''}
           </Button>
         )}
@@ -732,16 +760,22 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-52">
             {workflow.canConference && workflow.primaryAction !== 'conference' && (
-              <DropdownMenuItem onClick={() => openCanonicalOrReturn(o)}><CheckCircle2 className="mr-2 h-3.5 w-3.5" /> Conferir retorno</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setReturnDialogOs(o)}><CheckCircle2 className="mr-2 h-3.5 w-3.5" /> Conferir retorno</DropdownMenuItem>
             )}
             {workflow.canDispatch && workflow.primaryAction !== 'dispatch' && (
-              <DropdownMenuItem onClick={() => openCanonicalOrDispatch(o)}><Truck className="mr-2 h-3.5 w-3.5" /> Enviar saldo</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setDispatchDialogOs(o)}><Truck className="mr-2 h-3.5 w-3.5" /> Enviar saldo</DropdownMenuItem>
             )}
             {workflow.canOpenFinance && workflow.primaryAction !== 'finance' && (
               <DropdownMenuItem onClick={() => navigate(`/finance?tab=payable&q=${encodeURIComponent(o.order_number)}`)}><DollarSign className="mr-2 h-3.5 w-3.5" /> Ver no financeiro</DropdownMenuItem>
             )}
             {active && <DropdownMenuSeparator />}
-            <DropdownMenuItem onClick={() => openEditOrder(o)}><Pencil className="mr-2 h-3.5 w-3.5" /> Editar</DropdownMenuItem>
+            {isLegacyIntegratedAggregateServiceOrder(o) ? (
+              <DropdownMenuItem disabled title="Atualize a quantidade pela terceirização do PV de origem.">
+                <Lock className="mr-2 h-3.5 w-3.5" /> Ajuste pelo PV de origem
+              </DropdownMenuItem>
+            ) : (
+              <DropdownMenuItem onClick={() => openEditOrder(o)}><Pencil className="mr-2 h-3.5 w-3.5" /> Editar</DropdownMenuItem>
+            )}
             {/* Impressão do papel da OS. O guard antigo era `o.receipt_number &&`,
                 mas 385 das 386 OS têm essa coluna como string VAZIA (falsy) —
                 o item de menu nunca aparecia. Quem identifica a OS é o
@@ -763,6 +797,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                   quoted_deadline: o.quoted_deadline || null,
                   quantity: Number(o.quantity || 0),
                   notes: o.notes || '',
+                  material_requirements: o.material_requirements,
                   materials_sent: getMaterials(o),
                   sale_order_number: so?.order_number || null,
                   client_order_number: so?.client_order_number || null,
@@ -775,15 +810,6 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
             }}>
               <Printer className="mr-2 h-3.5 w-3.5" /> Imprimir OS
             </DropdownMenuItem>
-            {osPerm.canDelete && <>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                className="text-destructive focus:text-destructive"
-                onSelect={() => setDeleteOsTarget(o)}
-              >
-                <Trash2 className="mr-2 h-3.5 w-3.5" /> Excluir
-              </DropdownMenuItem>
-            </>}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
@@ -792,6 +818,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
 
   const renderMobileOsRow = (o: ServiceOrder) => {
     const selected = selectedOsIds.has(o.id);
+    const isContainer = isGenericConsolidatedServiceOrder(o);
     const linkedPvId = linkedSaleOrderIdsOf(o)[0] || null;
     const so = linkedPvId ? (saleOrders as SaleOrderLookup[]).find(s => s.id === linkedPvId) : null;
     const noValue = Number(o.total_value) === 0 && isOsActive(o.status);
@@ -800,8 +827,8 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
     return (
       <article key={o.id} className={cn('overflow-hidden rounded-lg border bg-card', selected && 'border-primary/50 ring-1 ring-primary/20')}>
         <div className="flex items-start gap-1 p-2.5">
-          <label htmlFor={checkboxId} className={cn('flex h-11 w-10 shrink-0 items-center justify-center', isCanonicalStrapServiceOrder(o) ? 'cursor-not-allowed opacity-50' : 'cursor-pointer')} aria-label={`Selecionar OS ${o.order_number}`}>
-            <Checkbox id={checkboxId} checked={selected} disabled={isCanonicalStrapServiceOrder(o)} onCheckedChange={() => toggleOsSelect(o.id)} />
+          <label htmlFor={checkboxId} className="flex h-11 w-10 shrink-0 cursor-pointer items-center justify-center" aria-label={`Selecionar OS ${o.order_number}`}>
+            <Checkbox id={checkboxId} checked={selected} onCheckedChange={() => toggleOsSelect(o.id)} />
           </label>
           <button
             type="button"
@@ -832,12 +859,12 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
         <div className="flex flex-wrap items-center justify-between gap-2 border-t bg-muted/30 px-3 py-2">
           <div className="min-w-0">
             <OsPaymentBadge ov={osOverview?.get(o.id)} osStatus={o.status} expectsPayable={Number(o.contractors?.payment_days ?? 30) < 999} />
-            <OsBalanceLine ov={osOverview?.get(o.id)} />
+            {!isContainer && <OsBalanceLine ov={osOverview?.get(o.id)} />}
           </div>
           {renderOsActions(o)}
         </div>
         <div className="border-t px-3 pb-2">
-          <OsWorkflowRail order={o} ov={osOverview?.get(o.id)} />
+          {!isContainer && <OsWorkflowRail order={o} ov={osOverview?.get(o.id)} />}
         </div>
       </article>
     );
@@ -850,7 +877,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
       id: o.id,
       number: o.order_number,
       provider: o.contractors?.name || '—',
-      description: o.description || o.artisanal_output_name || '—',
+      description: o.description || '—',
       total: Number(o.total_value) || 0,
       createdAt: o.created_at,
       date: o.service_date || o.created_at,
@@ -903,14 +930,18 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
   // conta a pagar de verdade. Trocar de prestador/chip depois de selecionar
   // podia cobrar OS que o usuário não estava mais vendo.
   const selectedOrders = useMemo(
-    () => filteredOrders.filter(o => selectedOsIds.has(o.id) && !isCanonicalStrapServiceOrder(o)),
+    () => filteredOrders.filter(o => selectedOsIds.has(o.id)),
     [filteredOrders, selectedOsIds],
   );
   const osSelectionSummary = useMemo(() => summarizeRows(selectedOrders.map(toOsCostRow)), [selectedOrders, toOsCostRow]);
   // Triagem P0.3: elegíveis pro recebimento total em lote (ativas, não arquivadas).
 
   const bulkReceivable = useMemo(
-    () => selectedOrders.filter(o => isOsActive(o.status) && !o.archived_at),
+    () => selectedOrders.filter(o => (
+      isOsActive(o.status)
+      && !o.archived_at
+      && !isGenericConsolidatedServiceOrder(o)
+    )),
     [selectedOrders],
   );
   const bulkReceivableLegacy = useMemo(
@@ -938,15 +969,14 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
     const rows = Array.from(byContractor.values()).sort((a, b) => b.value - a.value);
     return { rows, skipped, total: rows.reduce((s, r) => s + r.value, 0) };
   }, [bulkReceivableLegacy, osOverview]);
-  const selectableOrders = filteredOrders.filter((order) => !isCanonicalStrapServiceOrder(order));
+  const selectableOrders = filteredOrders;
   const allOsSelected = selectableOrders.length > 0 && selectableOrders.every(o => selectedOsIds.has(o.id));
   const toggleSelectAllOs = useCallback(() => {
     setSelectedOsIds(prev => (selectableOrders.length > 0 && selectableOrders.every(o => prev.has(o.id))) ? new Set() : new Set(selectableOrders.map(o => o.id)));
   }, [selectableOrders]);
 
   const handleGenerateOsPdf = useCallback(async (scope: 'filtro' | 'selecao') => {
-    const src = (scope === 'selecao' ? selectedOrders : filteredOrders)
-      .filter((order) => !isCanonicalStrapServiceOrder(order));
+    const src = scope === 'selecao' ? selectedOrders : filteredOrders;
     if (src.length === 0) {
       toast.error(scope === 'selecao' ? 'Selecione ≥1 OS pra gerar o relatório.' : 'Nenhuma OS no filtro atual.');
       return;
@@ -1022,7 +1052,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
   // ── Ações rápidas de status (1 clique na linha, sem abrir o form) ──────────
   // "Marcar como Entregue": status → 'Concluído' + delivered_at (data real).
   // Reusa o mesmo claim atômico do checkbox de materiais pra evitar dupla conta
-  // a pagar / duplo lançamento artesanal em duplo-clique ou abas concorrentes.
+  // a pagar / duplo lançamento em duplo-clique ou abas concorrentes.
   // "Entregue" agora REGISTRA RETORNO (Fase 1 facção): dialog com pares
   // bons/defeito/perda — o banco fecha a OS, grava delivered_at e gera a
   // conta a pagar pelos pares bons. Caso comum (retorno total) = 2 cliques.
@@ -1030,71 +1060,34 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
   // Envio parcial em parcelas (checklist "Enviar pra rua" + movimentos).
   const [dispatchDialogOs, setDispatchDialogOs] = useState<ServiceOrder | null>(null);
   // Confirmação estilizada de exclusão de OS (substitui window.confirm nativo).
-  const [deleteOsTarget, setDeleteOsTarget] = useState<ServiceOrder | null>(null);
-  const openCanonicalOrReturn = useCallback((order: ServiceOrder) => {
-    if (isCanonicalStrapServiceOrder(order)) {
-      navigate('/tiras-artesanais?tab=producao&origin=terceirizados');
-      return;
-    }
-    setReturnDialogOs(order);
-  }, [navigate]);
-  const openCanonicalOrDispatch = useCallback((order: ServiceOrder) => {
-    if (isCanonicalStrapServiceOrder(order)) {
-      navigate('/tiras-artesanais?tab=producao&origin=terceirizados');
-      return;
-    }
-    setDispatchDialogOs(order);
-  }, [navigate]);
-  const handleReturnSaved = useCallback(async (info: { completed: boolean }) => {
-    const o = returnDialogOs;
-    if (!info.completed || !o) return;
-    if (isCanonicalStrapServiceOrder(o)) {
-      navigate('/tiras-artesanais?tab=producao&origin=terceirizados');
-    }
-  }, [returnDialogOs, navigate]);
 
-  // Dar baixa / reabrir um material da OS. Quando TODOS ficam baixados, a OS
-  // fecha (status→Concluído) via claim atômico (.neq status) que evita
-  // dupla-conta-a-pagar em clique duplo / abas concorrentes, e dispara a saída
-  // de estoque artesanal 1×. Extraído do corpo da tabela pra reuso no card.
+  // Dar baixa / reabrir um material da OS. Quando TODOS ficam baixados, abre a
+  // conferência do retorno; só o ledger físico pode encerrar o lote. Extraído
+  // do corpo da tabela pra reuso no card.
   const toggleMaterial = useCallback(async (o: ServiceOrder, index: number) => {
-    if (isCanonicalStrapServiceOrder(o)) {
-      navigate('/tiras-artesanais?tab=producao&origin=terceirizados');
+    if (isGenericConsolidatedServiceOrder(o)) {
+      toast.info('Materiais e retorno desta OS são controlados pelas linhas consolidadas.');
       return;
     }
     const mats = getMaterials(o);
     const updatedMats = mats.map((mat, mi) => mi === index ? { ...mat, completed: !mat.completed } : mat);
     const allDone = updatedMats.length > 0 && updatedMats.every(mat => mat.completed);
     if (allDone && o.status !== 'Concluído') {
-      // OS por par (não-artesanal, valor por par): a conclusão TEM que passar pelo
-      // diálogo de retorno pra capturar pares bons/defeito — senão a conta a pagar
-      // sai pelo valor CHEIO (qtd × preço) ignorando perda (auditoria 2026-07-02).
-      // Persiste o check dos materiais e abre o retorno; NÃO conclui direto aqui.
-      if (!isCanonicalStrapServiceOrder(o) && Number(o.unit_price) > 0) {
-        await supabase.from('service_orders').update({ materials_sent: updatedMats as any }).eq('id', o.id);
-        queryClient.invalidateQueries({ queryKey: ['service_orders'] });
-        setReturnDialogOs({ ...o, materials_sent: updatedMats } as any);
-        return;
-      }
-      // Valor fixo não-artesanal: mantém a conclusão direta.
-      const { data: claimed } = await supabase
+      // Toda OS física deste módulo conclui pelo retorno. A antiga exceção de
+      // valor fixo mudava apenas o status e fazia o saldo em campo desaparecer
+      // sem service_order_returns. Persiste os checks e abre a conferência; o
+      // banco fecha a OS somente depois de zerar o saldo real.
+      await supabase
         .from('service_orders')
-        .update({ status: 'Concluído', materials_sent: updatedMats as any })
-        .eq('id', o.id)
-        .neq('status', 'Concluído')
-        .select('id, order_number, artisanal_stock_entry_done');
-      if (!claimed || claimed.length === 0) {
-        queryClient.invalidateQueries({ queryKey: ['service_orders'] });
-        return;
-      }
-      toast.success('Todos os itens concluídos! OS marcada como Concluída.');
+        .update({ materials_sent: updatedMats as any })
+        .eq('id', o.id);
       queryClient.invalidateQueries({ queryKey: ['service_orders'] });
-      queryClient.invalidateQueries({ queryKey: ['accounts_payable'] });
-      queryClient.invalidateQueries({ queryKey: ['service_order_overview'] });
+      setReturnDialogOs({ ...o, materials_sent: updatedMats } as any);
+      return;
     } else {
       updateOrder.mutate({ id: o.id, materials_sent: updatedMats } as any);
     }
-  }, [updateOrder, queryClient, setReturnDialogOs, navigate]);
+  }, [updateOrder, queryClient, setReturnDialogOs]);
 
 
   // ── Bloco C: form manual disciplinado ──────────────────────────────────────
@@ -1108,17 +1101,34 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
   }, [sectorRate]);
   const selectedOrderContractor = contractors.find(c => c.id === editingOrder.contractor_id);
   const isFabricaContractor = (selectedOrderContractor?.payment_days ?? 0) >= 999;
-  // Produção de tiras não pode mais nascer nesta tela; o hub é a porta única.
+  // Formulário exclusivo para serviços genéricos deste módulo.
   const manualOsValid = !!editingOrder.contractor_id
     && !!editingOrder.target_sector
     && Number(editingOrder.unit_price) > 0;
+  const persistedEditingOrder = editingOrder.id
+    ? orders.find((order) => order.id === editingOrder.id)
+    : undefined;
+  const persistedOrderIsPlanned = !!persistedEditingOrder && Boolean(
+    persistedEditingOrder.planning_source
+    || persistedEditingOrder.planning_anchor_sector
+    || persistedEditingOrder.provider_capacity_pairs_per_day
+    || persistedEditingOrder.return_before_sector,
+  );
+  const terminalStatusLocked = !!persistedEditingOrder && (
+    isOsDone(persistedEditingOrder?.status)
+    || isOsCancelled(persistedEditingOrder?.status)
+  );
+  const requiresPhysicalReturn = !!persistedEditingOrder
+    && serviceOrderRequiresPhysicalReturn(
+      persistedEditingOrder,
+      osOverview?.get(persistedEditingOrder.id),
+    );
+  const physicalBalanceUnavailable = requiresPhysicalReturn
+    && (!osOverview || !osOverview.has(persistedEditingOrder!.id));
+  const pairsInField = requiresPhysicalReturn
+    && Number(osOverview?.get(persistedEditingOrder.id)?.qty_in_field ?? 0) > 0;
 
   const handleSaveOrder = () => {
-    if (isCanonicalStrapServiceOrder(editingOrder as ServiceOrder)) {
-      toast.error('Esta OS pertence ao fluxo canônico de tiras. Faça a operação no Hub de Tiras.');
-      navigate('/tiras-artesanais?tab=producao&origin=terceirizados');
-      return;
-    }
     if (!editingOrder.contractor_id) return;
     if (!editingOrder.target_sector || !(Number(editingOrder.unit_price) > 0)) return;
 
@@ -1152,11 +1162,13 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
       // "todos marcados" e salvaria isso por cima do escopo real. Sem PV, não
       // há o que registrar.
       selected_sale_order_item_ids: editingOrder.sale_order_id
-        ? osPvItems.filter((i) => osPvItemSel.has(i.id)).map((i) => i.id)
+        ? editingOrder.planning_source
+          ? editingOrder.selected_sale_order_item_ids ?? null
+          : osPvItems.filter((i) => osPvItemSel.has(i.id)).map((i) => i.id)
         : null,
     };
 
-    const originalOrder = orders.find(o => o.id === editingOrder.id);
+    const originalOrder = persistedEditingOrder;
     const justCompleted = editingOrder.status === 'Concluído' && originalOrder?.status !== 'Concluído';
     // Qualquer transição → Cancelado (não só de Concluído): senão cancelar uma OS
     // Pendente/Em Andamento caía no diff (zero) e NÃO estornava os materiais que
@@ -1175,7 +1187,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
           } else if (justCancelled) {
             // Reverte estoque ao cancelar a OS.
             try {
-                // Não-artesanal: re-credita os materiais enviados (debitados na
+                // Recredita os materiais enviados (debitados na
                 // criação) — mesma resolução produto+cor do branch de diff.
                 const matsToRestore = getMaterials(originalOrder as any)
                   .filter(m => m.material?.trim() && m.color?.trim() && Number(m.meters) > 0);
@@ -1265,8 +1277,12 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
   const openEditContractor = (c: Contractor) => { setEditingContractor(c); setIsEditing(true); setContractorDialog(true); };
   const openNewContractor = () => { setEditingContractor({ ...emptyContractor }); setIsEditing(false); setContractorDialog(true); };
   const openEditOrder = (o: ServiceOrder) => {
-    if (isCanonicalStrapServiceOrder(o)) {
-      navigate('/tiras-artesanais?tab=producao&origin=terceirizados');
+    if (isGenericConsolidatedServiceOrder(o)) {
+      toast.info('Esta OS é um contêiner consolidado. Edite e entregue suas linhas no fluxo consolidado.');
+      return;
+    }
+    if (isLegacyIntegratedAggregateServiceOrder(o)) {
+      toast.info('Esta OS agregada é atualizada pelo PV de origem. Use “Atualizar quantidade” na terceirização do pedido.');
       return;
     }
     const mats = getMaterials(o);
@@ -1543,6 +1559,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                 <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
                   {orderedFilteredOrders.map(o => {
                     const mats = getMaterials(o);
+                    const isContainer = isGenericConsolidatedServiceOrder(o);
                     // Vínculo direto (legacy) OU terceirização integrada (source_sale_order_id).
                     const linkedPvId = linkedSaleOrderIdsOf(o)[0] || null;
                     const so = linkedPvId ? saleOrders.find((s: any) => s.id === linkedPvId) : null;
@@ -1564,12 +1581,9 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                         {/* Cabeçalho: seleção + Nº/prestador · total/status */}
                         <div className="flex items-start justify-between gap-2">
                           <div className="flex min-w-0 items-start gap-2">
-                            <Checkbox checked={selected} disabled={isCanonicalStrapServiceOrder(o)} onCheckedChange={() => toggleOsSelect(o.id)} className="mt-0.5 shrink-0" aria-label={`Selecionar OS ${o.order_number}`} />
+                            <Checkbox checked={selected} onCheckedChange={() => toggleOsSelect(o.id)} className="mt-0.5 shrink-0" aria-label={`Selecionar OS ${o.order_number}`} />
                             <div className="min-w-0">
-                              <div className="flex items-center gap-1.5">
-                                <span className="font-mono text-sm font-bold tracking-tight">{o.order_number}</span>
-                                {isCanonicalStrapServiceOrder(o) && <span title="Produção canônica de tiras"><FlaskConical className="h-3.5 w-3.5 text-primary" /></span>}
-                              </div>
+                              <span className="font-mono text-sm font-bold tracking-tight">{o.order_number}</span>
                               <p className="truncate text-sm font-medium text-foreground">{o.contractors?.name || 'Sem prestador'}</p>
                             </div>
                           </div>
@@ -1602,13 +1616,6 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                             )}
                           </div>
 
-                          {o.artisanal_output_name && (
-                            <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                              <span>{o.artisanal_output_name} ({o.artisanal_output_color}) · {Number(o.artisanal_output_meters).toFixed(2)}m</span>
-                              {o.artisanal_stock_entry_done && <CheckCircle2 className="h-3 w-3 text-emerald-600" />}
-                            </div>
-                          )}
-
                           {mats.length > 0 && (
                             <div className="flex flex-wrap gap-1">
                               {mats.map((m, i) => (
@@ -1616,9 +1623,11 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                                   key={i}
                                   type="button"
                                   title={m.completed ? 'Reabrir este item' : 'Dar baixa neste item'}
+                                  disabled={isContainer}
                                   onClick={() => toggleMaterial(o, i)}
                                   className={cn(
                                     'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] transition-colors',
+                                    isContainer && 'cursor-not-allowed opacity-60',
                                     m.completed
                                       ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600 line-through'
                                       : 'border-border text-muted-foreground hover:bg-muted hover:text-foreground',
@@ -1651,11 +1660,11 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <div className="flex min-w-0 flex-col gap-0.5">
                               <OsPaymentBadge ov={osOverview?.get(o.id)} osStatus={o.status} orderNumber={o.order_number} expectsPayable={Number(o.contractors?.payment_days ?? 30) < 999} />
-                              <OsBalanceLine ov={osOverview?.get(o.id)} />
+                              {!isContainer && <OsBalanceLine ov={osOverview?.get(o.id)} />}
                             </div>
                             {renderOsActions(o)}
                           </div>
-                          <OsWorkflowRail order={o} ov={osOverview?.get(o.id)} />
+                          {!isContainer && <OsWorkflowRail order={o} ov={osOverview?.get(o.id)} />}
                         </div>
                       </div>
                     );
@@ -1685,6 +1694,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                     <TableBody>
                       {orderedFilteredOrders.map(o => {
                         const mats = getMaterials(o);
+                        const isContainer = isGenericConsolidatedServiceOrder(o);
                         const linkedPvId = linkedSaleOrderIdsOf(o)[0] || null;
                         const so = linkedPvId ? saleOrders.find((s: any) => s.id === linkedPvId) : null;
                         const isAuto = !!o.source_sale_order_id;
@@ -1699,12 +1709,11 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                             onClick={e => { if ((e.target as HTMLElement).closest('button,[role="checkbox"]')) return; openEditOrder(o); }}
                           >
                             <TableCell onClick={e => e.stopPropagation()}>
-                              <Checkbox checked={selected} disabled={isCanonicalStrapServiceOrder(o)} onCheckedChange={() => toggleOsSelect(o.id)} aria-label={`Selecionar OS ${o.order_number}`} />
+                              <Checkbox checked={selected} onCheckedChange={() => toggleOsSelect(o.id)} aria-label={`Selecionar OS ${o.order_number}`} />
                             </TableCell>
                             <TableCell className="whitespace-nowrap font-mono text-sm font-bold">
                               <button type="button" onClick={() => openEditOrder(o)} className="inline-flex min-h-9 items-center gap-1 rounded px-1 text-left hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label={`Abrir OS ${o.order_number}`}>
                                 {o.order_number}
-                                {isCanonicalStrapServiceOrder(o) && <span title="Produção canônica de tiras"><FlaskConical className="h-3 w-3 text-primary" /></span>}
                               </button>
                             </TableCell>
                             <TableCell className="text-sm">{o.contractors?.name || <span className="text-muted-foreground">Sem prestador</span>}</TableCell>
@@ -1728,7 +1737,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                             <TableCell className="whitespace-nowrap">
                               <div className="flex flex-col gap-0.5">
                                 <OsPaymentBadge ov={osOverview?.get(o.id)} osStatus={o.status} orderNumber={o.order_number} expectsPayable={Number(o.contractors?.payment_days ?? 30) < 999} />
-                                <OsBalanceLine ov={osOverview?.get(o.id)} />
+                                {!isContainer && <OsBalanceLine ov={osOverview?.get(o.id)} />}
                               </div>
                             </TableCell>
                             <TableCell className="text-right" onClick={e => e.stopPropagation()}>{renderOsActions(o)}</TableCell>
@@ -1985,7 +1994,11 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                 </div>
                 <div className="sm:col-span-2 space-y-1.5">
                   <Label className="text-xs font-medium text-muted-foreground">Prestador *</Label>
-                  <Select value={editingOrder.contractor_id || ''} onValueChange={v => setEditingOrder(p => ({ ...p, contractor_id: v }))}>
+                  <Select
+                    value={editingOrder.contractor_id || ''}
+                    onValueChange={v => setEditingOrder(p => ({ ...p, contractor_id: v }))}
+                    disabled={!!editingOrder.planning_source}
+                  >
                     <SelectTrigger className="h-9"><SelectValue placeholder="Selecione o prestador" /></SelectTrigger>
                     <SelectContent>
                       {contractors.filter(c => c.active).map(c => (
@@ -2000,7 +2013,11 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                 </div>
                 <div className="sm:col-span-2 space-y-1.5">
                   <Label className="text-xs font-medium text-muted-foreground">Setor / serviço *</Label>
-                  <Select value={editingOrder.target_sector || ''} onValueChange={v => setEditingOrder(p => ({ ...p, target_sector: v }))}>
+                  <Select
+                    value={editingOrder.target_sector || ''}
+                    onValueChange={v => setEditingOrder(p => ({ ...p, target_sector: v }))}
+                    disabled={!!editingOrder.planning_source}
+                  >
                     <SelectTrigger className="h-9"><SelectValue placeholder="Selecione o setor terceirizado" /></SelectTrigger>
                     <SelectContent>
                       {SERVICE_ORDER_SECTORS.map(s => (
@@ -2030,9 +2047,22 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                       </span>
                     )}
                   </Label>
-                  <Popover open={pvOpen} onOpenChange={(o) => { setPvOpen(o); if (!o) setPvSearch(''); }}>
+                  <Popover
+                    open={editingOrder.planning_source ? false : pvOpen}
+                    onOpenChange={(o) => {
+                      if (editingOrder.planning_source) return;
+                      setPvOpen(o);
+                      if (!o) setPvSearch('');
+                    }}
+                  >
                     <PopoverTrigger asChild>
-                      <Button variant="outline" role="combobox" aria-expanded={pvOpen} className="h-9 w-full justify-between text-sm font-normal">
+                      <Button
+                        variant="outline"
+                        role="combobox"
+                        aria-expanded={pvOpen}
+                        disabled={!!editingOrder.planning_source}
+                        className="h-9 w-full justify-between text-sm font-normal"
+                      >
                         {editingOrder.sale_order_id
                           ? (() => { const so = saleOrders.find((s: any) => s.id === editingOrder.sale_order_id); return so ? `${so.order_number}${so.client_order_number ? ` — ${so.client_order_number}` : ''}${so.client_name ? ` (${so.client_name})` : ''}` : 'Selecione'; })()
                           : 'Nenhum (opcional)'}
@@ -2084,9 +2114,13 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                         const opNo = osOpByItem.get(it.id);
                         return (
                           <button
-                            type="button" key={it.id} onClick={() => toggleOsPvItem(it.id)}
+                            type="button"
+                            key={it.id}
+                            onClick={() => toggleOsPvItem(it.id)}
+                            disabled={!!editingOrder.planning_source}
                             className={cn(
                               'w-full flex items-center gap-2.5 rounded-md border px-3 py-2 text-left transition-colors',
+                              'disabled:cursor-not-allowed disabled:opacity-70',
                               on ? 'border-primary/40 bg-primary/10' : 'border-border bg-background hover:bg-muted/50',
                             )}
                           >
@@ -2100,33 +2134,15 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                         );
                       })}
                     </div>
-                    <p className="text-[11px] text-muted-foreground">Marque os itens desta OS — a soma dos pares vira a <b className="text-foreground">Quantidade</b>, define as <b className="text-foreground">OPs</b> da OS e alimenta a guia de remessa.</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      {editingOrder.planning_source
+                        ? 'Escopo travado pela OP que gerou o plano; grade, fotos e materiais permanecem no mesmo vínculo.'
+                        : <>Marque os itens desta OS — a soma dos pares vira a <b className="text-foreground">Quantidade</b>, define as <b className="text-foreground">OPs</b> da OS e alimenta a guia de remessa.</>}
+                    </p>
                   </div>
                 )}
 
-                {/* ── Artisanal Production Panel ── */}
-                <div className="sm:col-span-2">
-                  <div className="flex items-center justify-between rounded-lg border px-3 py-2 bg-muted/20">
-                    <div className="flex items-center gap-2">
-                      <FlaskConical className="h-4 w-4 text-primary" />
-                      <div>
-                        <span className="block text-sm font-medium">Produção de tiras artesanais</span>
-                        <span className="block text-[11px] text-muted-foreground">Lotes, remessas e parciais ficam no hub canônico.</span>
-                      </div>
-                    </div>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      onClick={() => navigate('/tiras-artesanais?tab=producao&origin=terceirizados')}
-                    >
-                      Abrir hub
-                    </Button>
-                  </div>
-
-                </div>
-
-                {/* Materiais enviados da OS manual. Tiras usam o hub canônico. */}
+                {/* Materiais enviados da OS manual. */}
                 <div className="sm:col-span-2 flex items-center gap-2.5 pt-1">
                   <span className="text-[10px] font-mono font-bold uppercase tracking-[0.16em] text-muted-foreground whitespace-nowrap">Materiais Enviados</span>
                   <span className="h-px flex-1 bg-border/70" />
@@ -2192,8 +2208,21 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-medium text-muted-foreground">Data</Label>
-                  <Input type="date" value={editingOrder.service_date || ''} onChange={e => setEditingOrder(p => ({ ...p, service_date: e.target.value }))} className="h-9" />
+                  <Label className="text-xs font-medium text-muted-foreground">
+                    {editingOrder.planning_source ? 'Saída recomendada' : 'Data'}
+                  </Label>
+                  <Input
+                    type="date"
+                    value={editingOrder.service_date || ''}
+                    onChange={e => setEditingOrder(p => ({ ...p, service_date: e.target.value }))}
+                    disabled={!!editingOrder.planning_source}
+                    className="h-9"
+                  />
+                  {editingOrder.planning_source && (
+                    <p className="text-[10px] text-muted-foreground">
+                      Calculada pela capacidade, fila e retorno necessário. O envio real é registrado no despacho.
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs font-medium text-muted-foreground">Hora</Label>
@@ -2207,8 +2236,14 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                     decimals={0}
                     value={editingOrder.quantity ?? 1}
                     onChange={n => setEditingOrder(p => ({ ...p, quantity: Math.max(1, Math.floor(n)) }))}
+                    disabled={!!editingOrder.planning_source}
                     className="h-9"
                   />
+                  {editingOrder.planning_source && (
+                    <p className="text-[10px] text-muted-foreground">
+                      Quantidade planejada da remessa, vinculada à OP para preservar grade e materiais.
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs font-medium text-muted-foreground">Valor por par (R$)</Label>
@@ -2236,25 +2271,58 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                 </div>
                 <div className="sm:col-span-2 space-y-1.5">
                   <Label className="text-xs font-medium text-muted-foreground">Status</Label>
-                  <Select value={editingOrder.status || 'Pendente'} onValueChange={v => setEditingOrder(p => ({ ...p, status: v }))}>
+                  <Select
+                    value={editingOrder.status || 'Pendente'}
+                    onValueChange={v => {
+                      if (persistedEditingOrder
+                          && !isValidOsTransition(persistedEditingOrder.status, v)) {
+                        toast.error('O fluxo da OS não pode voltar para uma etapa anterior.');
+                        return;
+                      }
+                      setEditingOrder(p => ({ ...p, status: v }));
+                    }}
+                    disabled={terminalStatusLocked}
+                  >
                     <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="Pendente">Pendente</SelectItem>
+                      <SelectItem
+                        value="Pendente"
+                        disabled={!!persistedEditingOrder
+                          && !isValidOsTransition(persistedEditingOrder.status, 'Pendente')}
+                      >
+                        Pendente
+                      </SelectItem>
                       <SelectItem value="Em Andamento">Enviada</SelectItem>
-                      {/* "Concluído" só p/ artesanal (valor fixo). OS por par conclui
-                          pelo botão "Entregue" (registra pares bons/defeito) pra a
-                          conta a pagar não sair pelo valor cheio. */}
+                      {/* OS por par conclui pelo botão "Entregue" (registra pares
+                          bons/defeito) para a conta a pagar não sair pelo valor cheio. */}
                       {editingOrder.status === 'Concluído' && (
                         <SelectItem value="Concluído">Recebida</SelectItem>
                       )}
-                      <SelectItem value="Cancelado">Cancelada</SelectItem>
+                      <SelectItem
+                        value="Cancelado"
+                        disabled={pairsInField || physicalBalanceUnavailable}
+                      >
+                        Cancelada
+                      </SelectItem>
                     </SelectContent>
                   </Select>
-                  {editingOrder.status !== 'Concluído' && (
+                  {terminalStatusLocked ? (
+                    <p className="text-[11px] font-medium text-muted-foreground">
+                      O status final desta OS é imutável. Para refazer o serviço, gere uma nova OS.
+                    </p>
+                  ) : pairsInField ? (
+                    <p className="text-[11px] font-medium text-warning">
+                      Há pares em campo. Registre o retorno físico antes de cancelar esta OS.
+                    </p>
+                  ) : physicalBalanceUnavailable ? (
+                    <p className="text-[11px] font-medium text-warning">
+                      O saldo físico ainda não pôde ser confirmado. Recarregue antes de cancelar.
+                    </p>
+                  ) : editingOrder.status !== 'Concluído' ? (
                     <p className="text-[11px] text-muted-foreground">
                       Para concluir, use o botão <span className="font-medium">Entregue</span> na lista — ele registra os pares bons/defeito e calcula o pagamento correto.
                     </p>
-                  )}
+                  ) : null}
                 </div>
                 <div className="sm:col-span-2 space-y-1.5">
                   <Label className="text-xs font-medium text-muted-foreground">Observações</Label>
@@ -2319,7 +2387,45 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
 
           <DialogFooter className="gap-2 sm:gap-0 flex-wrap">
             <Button variant="outline" onClick={() => setOrderDialog(false)} className="h-9">Cancelar</Button>
-            <Button className="h-9 gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90" onClick={() => {
+            <Button
+              className="h-9 gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90"
+              title={isEditing ? 'Imprime a última versão salva; salve antes para incluir as alterações.' : undefined}
+              onClick={async () => {
+              // Uma OS planejada carrega um snapshot de materiais calculado no
+              // save. Misturar campos ainda não salvos com esse snapshot antigo
+              // produziria um papel internamente contraditório. Em edição,
+              // portanto, a impressão usa integralmente o registro persistido.
+              if (isEditing && editingOrder.id) {
+                const persisted = orders.find((order) => order.id === editingOrder.id);
+                if (!persisted) {
+                  toast.error('Salve e reabra a OS antes de imprimir.');
+                  return;
+                }
+                const persistedSaleOrder = (saleOrders as SaleOrderLookup[])
+                  .find((saleOrder) => linkedSaleOrderIdsOf(persisted).includes(saleOrder.id));
+                const persistedItems = await fetchReceiptItemsForOs(persisted);
+                printServiceOrderReceipt(
+                  {
+                    order_number: persisted.order_number,
+                    target_sector: persisted.target_sector || null,
+                    description: persisted.description || '',
+                    service_date: persisted.service_date || '',
+                    quoted_deadline: persisted.quoted_deadline || null,
+                    quantity: Number(persisted.quantity || 0),
+                    notes: persisted.notes || '',
+                    material_requirements: persisted.material_requirements,
+                    materials_sent: getMaterials(persisted),
+                    sale_order_number: persistedSaleOrder?.order_number || null,
+                    client_order_number: persistedSaleOrder?.client_order_number || null,
+                    op_numbers: opNumbersOf(persisted),
+                    client_name: persistedSaleOrder?.client_name || null,
+                  },
+                  contractors.find((contractor) => contractor.id === persisted.contractor_id),
+                  { items: persistedItems },
+                );
+                return;
+              }
+
               const contractor = contractors.find(c => c.id === editingOrder.contractor_id);
               const so = (saleOrders as any[]).find(s => s.id === editingOrder.sale_order_id);
               const validMats = (editingOrder.materials_sent || []).filter(m => m.material?.trim());
@@ -2335,6 +2441,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                   quoted_deadline: editingOrder.quoted_deadline || null,
                   quantity: qtyVal,
                   notes: editingOrder.notes || '',
+                  material_requirements: editingOrder.material_requirements,
                   materials_sent: validMats,
                   sale_order_number: so?.order_number || null,
                   client_order_number: so?.client_order_number || null,
@@ -2351,30 +2458,11 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                 } : undefined,
                 { items: osSelItems },
               );
-            }}><Printer className="h-4 w-4" /> Imprimir OS</Button>
+            }}><Printer className="h-4 w-4" /> {isEditing ? 'Imprimir versão salva' : 'Imprimir OS'}</Button>
             <Button onClick={handleSaveOrder} disabled={!manualOsValid || createOrder.isPending || updateOrder.isPending} className="h-9">Salvar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {/* Confirmação de exclusão de OS */}
-      <AlertDialog open={!!deleteOsTarget} onOpenChange={(open) => { if (!open) setDeleteOsTarget(null); }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Excluir a OS {deleteOsTarget?.order_number}?</AlertDialogTitle>
-            <AlertDialogDescription>Esta ação não pode ser desfeita.</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={() => { if (deleteOsTarget) deleteOrder.mutate(deleteOsTarget.id); setDeleteOsTarget(null); }}
-            >
-              Excluir
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
 
       {/* Overlays de fluxo da OS — precisam ficar FORA do Dialog da OS: o Radix
           desmonta o conteúdo do Dialog quando open=false, e os botões
@@ -2394,7 +2482,6 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
           unitPrice: returnDialogOs.unit_price ?? 0,
           paymentDays: contractors.find((c) => c.id === returnDialogOs.contractor_id)?.payment_days ?? 30,
         } : null}
-        onSaved={handleReturnSaved}
       />
 
       <ServiceOrderDispatchDialog
@@ -2408,7 +2495,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
           contractorName: dispatchDialogOs.contractors?.name ?? null,
           contractorId: dispatchDialogOs.contractor_id ?? null,
         } : null}
-        onReceive={() => { const o = dispatchDialogOs; if (o) openCanonicalOrReturn(o); }}
+        onReceive={() => { if (dispatchDialogOs) setReturnDialogOs(dispatchDialogOs); }}
       />
 
       <ContractorHistoryDialog

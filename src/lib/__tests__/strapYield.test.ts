@@ -1,11 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
-  confirmedStrapYieldFromLossPercentage,
   computeStrapMaterialNeeded,
   computeStrapYield,
   PARTIAL_CUT_UNIT_TO_M,
   partialCutYield,
-  strapYieldLossPercentageFromConfirmed,
   STRAP_YIELD_DEFAULTS,
 } from '@/lib/strapYield';
 import { ROLO_COMPRIMENTO_M, ROLO_LARGURA_MM } from '@/lib/strapRollCut';
@@ -14,16 +12,6 @@ const round = (value: number, decimals = 6) =>
   Math.round(value * 10 ** decimals) / 10 ** decimals;
 
 describe('computeStrapYield — bandas físicas completas, sem perda adicional', () => {
-  it('transforma a perda informada em rendimento confirmado sem criar fator adicional', () => {
-    expect(confirmedStrapYieldFromLossPercentage(76, 10)).toBe(68.4);
-    expect(strapYieldLossPercentageFromConfirmed(76, 60)).toBeCloseTo(21.052632, 6);
-  });
-
-  it('recusa percentuais que zerariam ou inverteriam o rendimento', () => {
-    expect(confirmedStrapYieldFromLossPercentage(76, 100)).toBe(0);
-    expect(confirmedStrapYieldFromLossPercentage(76, -1)).toBe(0);
-  });
-
   it('usa floor(1370 / 20) = 68 m de tira por metro de napa', () => {
     const result = computeStrapYield({
       larguraMaterialMm: 1370,
@@ -111,6 +99,24 @@ describe('computeStrapYield — bandas físicas completas, sem perda adicional',
     ['banda maior que a napa', { larguraMaterialMm: 100, larguraTiraMm: 120, comprimentoRoloM: 40 }],
   ])('bloqueia %s', (_label, input) => {
     expect(computeStrapYield(input).valid).toBe(false);
+  });
+
+  it.each([
+    'larguraMaterialMm',
+    'larguraTiraMm',
+    'comprimentoRoloM',
+    'custoMetroLinear',
+    'rendimentoConfirmadoMPerM',
+  ] as const)('recusa NaN/Infinity em %s', (field) => {
+    const base = {
+      larguraMaterialMm: 1370,
+      larguraTiraMm: 20,
+      comprimentoRoloM: 40,
+      custoMetroLinear: 20,
+      rendimentoConfirmadoMPerM: 64,
+    };
+    expect(computeStrapYield({ ...base, [field]: Number.NaN }).valid).toBe(false);
+    expect(computeStrapYield({ ...base, [field]: Number.POSITIVE_INFINITY }).valid).toBe(false);
   });
 
   it('mantém os defaults alinhados ao rolo canônico', () => {
@@ -226,6 +232,26 @@ describe('computeStrapMaterialNeeded — execução em bandas inteiras', () => {
   ])('bloqueia %s', (_label, input) => {
     expect(computeStrapMaterialNeeded(input).valid).toBe(false);
   });
+
+  it.each([
+    'larguraMaterialMm',
+    'larguraTiraMm',
+    'comprimentoRoloM',
+    'tiraDesejadaM',
+    'custoMetroLinear',
+    'rendimentoConfirmadoMPerM',
+  ] as const)('recusa NaN/Infinity em %s', (field) => {
+    const base = {
+      larguraMaterialMm: 1370,
+      larguraTiraMm: 20,
+      comprimentoRoloM: 40,
+      tiraDesejadaM: 640,
+      custoMetroLinear: 20,
+      rendimentoConfirmadoMPerM: 64,
+    };
+    expect(computeStrapMaterialNeeded({ ...base, [field]: Number.NaN }).valid).toBe(false);
+    expect(computeStrapMaterialNeeded({ ...base, [field]: Number.POSITIVE_INFINITY }).valid).toBe(false);
+  });
 });
 
 describe('partialCutYield — cortes parciais', () => {
@@ -254,4 +280,13 @@ describe('partialCutYield — cortes parciais', () => {
     expect(partialCutYield(rate, 0)).toEqual({ tiraM: 0, custo: null });
     expect(partialCutYield(rate, 0.3, -1).custo).toBeNull();
   });
+
+  it.each([Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
+    'não propaga valor não-finito (%s) em cortes parciais',
+    (invalid) => {
+      expect(partialCutYield(invalid, 0.3, 19.9)).toEqual({ tiraM: 0, custo: 0 });
+      expect(partialCutYield(rate, invalid, 19.9)).toEqual({ tiraM: 0, custo: 0 });
+      expect(partialCutYield(rate, 0.3, invalid)).toEqual({ tiraM: 22.8, custo: null });
+    },
+  );
 });

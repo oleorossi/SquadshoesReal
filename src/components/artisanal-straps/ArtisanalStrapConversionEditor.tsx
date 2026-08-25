@@ -492,7 +492,7 @@ export function ArtisanalStrapConversionEditor({
               <Scissors className="h-4 w-4" />
               <AlertTitle>Conversão compartilhada</AlertTitle>
               <AlertDescription>
-                Banda, rendimento, executor e custo são iguais para todas as cores desta combinação. Nenhuma cor é gravada aqui.
+                Para o mesmo tipo/medida e a mesma família do material-base, banda, rendimento, executor e custo valem para todas as cores. Ex.: NAPA SOFT 1370 × 1000 mm → Tira Meia Cana 10 mm = 55 m/m em qualquer cor. Nenhuma cor é gravada aqui.
               </AlertDescription>
             </Alert>
 

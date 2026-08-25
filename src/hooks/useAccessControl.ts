@@ -112,7 +112,7 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/capacity-planning': 'producao',
   '/gargalos': 'producao',
   // Hub unificado "Terceirizados" (rota canônica /terceirizados): Na Rua + OS +
-  // Planejamento + Prestadores + Receitas + Relatório. Governado pelo módulo
+  // Planejamento + Prestadores + Relatório. Governado pelo módulo
   // 'terceirizados' (mesmo do antigo /contractors) — e o papel 'producao' recebe
   // esse módulo em ROLE_MODULES, então quem acessava QUALQUER uma das duas telas
   // antigas continua com acesso.

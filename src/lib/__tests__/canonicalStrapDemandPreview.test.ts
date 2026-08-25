@@ -108,6 +108,31 @@ describe('preview canônica de tiras', () => {
     expect(rows.map((row) => row.baseProductId)).toEqual(['base-soft', 'base-madrid']);
   });
 
+  it('não deixa uma linha resolvida esconder outra sem linha técnica', () => {
+    const pending = preview({
+      technical_strap_line_id: null,
+      strap_variant_id: null,
+      source_mode: null,
+      gross_required_m: 0,
+      blocking_reasons: [{
+        code: 'technical_line_missing',
+        message: 'Linha técnica não resolvida.',
+      }],
+      resolved: {},
+    });
+
+    const rows = replaceWithCanonicalStrapRows([], ctx, [preview(), pending]) as any[];
+    expect(rows).toHaveLength(2);
+    expect(rows).toEqual(expect.arrayContaining([
+      expect.objectContaining({ strapVariantId: 'variant-soft' }),
+      expect.objectContaining({
+        strapVariantId: null,
+        technicalStrapLineIds: [''],
+        warning: 'Linha técnica não resolvida.',
+      }),
+    ]));
+  });
+
   it('usa a metragem de napa e o rendimento canônicos sem reconstruir rolo fixo', () => {
     const rows = canonicalStrapCutRows([preview()]);
     expect(rows).toHaveLength(1);

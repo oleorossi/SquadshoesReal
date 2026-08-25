@@ -1,5 +1,16 @@
 # Gerar OS por Pedido — Terceirização opcional (setor a setor) + fim do passo Revisão
 
+> **Atualização de domínio (24/08/2026):** este documento continua sendo a
+> fonte do fluxo opcional (zero, algumas ou todas as OS; dois passos; parcial
+> permitida). A evolução posterior de capacidade/prazo/materiais substituiu
+> apenas a escolha livre de prestador: cada ficha agora admite **um prestador
+> ativo por atividade**, e uma linha só fica `ready` quando essa configuração
+> exata contém prestador, capacidade, retorno e materiais válidos. O wizard
+> exibe o prestador da ficha e não oferece override; tarifa manual e quantidade
+> parcial continuam permitidas. Assim, as menções antigas abaixo a `ready` como
+> somente `contractorId && rate > 0 && qty > 0` descrevem o estado anterior e
+> devem ser lidas junto desse gate adicional de configuração.
+
 ## Goal
 Permitir que o usuário **conclua** o assistente "Gerar Ordem de Serviço" (aberto a
 partir de um Pedido de Venda) decidindo fazer **tudo internamente** — sem gerar

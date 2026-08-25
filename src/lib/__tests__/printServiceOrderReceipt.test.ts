@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { expandBaseGrade } from '@/lib/printServiceOrderReceipt';
+import {
+  buildReceiptMaterialSectionsHtml,
+  expandBaseGrade,
+  mapPvItemsForReceipt,
+  normalizeMaterialRequirements,
+} from '@/lib/printServiceOrderReceipt';
 
 /**
  * Invariante do canhoto: a soma por numeração TEM que fechar com o total de
@@ -69,5 +74,157 @@ describe('expandBaseGrade', () => {
   it('arredonda o total fracionário em vez de vazar meio par', () => {
     expect(sum(expandBaseGrade(BASE_REAL, 36.4))).toBe(36);
     expect(sum(expandBaseGrade(BASE_REAL, 36.6))).toBe(37);
+  });
+});
+
+describe('itens do papel de uma OS planejada', () => {
+  it('usa a quantidade parcial da OS em vez do total integral do item do PV', () => {
+    const rows = [{
+      id: 'item-1',
+      color: 'OFF WHITE',
+      quantity: 120,
+      grade: BASE_REAL,
+      technical_sheets: { code: 'I90', name: 'I90' },
+    }];
+
+    const [item] = mapPvItemsForReceipt(rows, new Map([['item-1', 60]]));
+
+    expect(item.pairs).toBe(60);
+    expect(sum(item.size_breakdown || {})).toBe(60);
+    expect(item.label).toBe('I90 · OFF WHITE');
+  });
+});
+
+describe('materiais da impressão de OS', () => {
+  it('preserva materiais calculados em múltiplas unidades no snapshot v1', () => {
+    const normalized = normalizeMaterialRequirements({
+      version: 1,
+      calculated_at: '2026-08-24T12:00:00Z',
+      basis: 'order_consumption',
+      order_quantity: 120,
+      service_quantity: 60,
+      generated_for_quantity: 60,
+      scale: 0.5,
+      components: ['Cabedal', 'Palmilha', 'BOM'],
+      warnings: [
+        'Quantidade parcial escalada proporcionalmente sobre a grade integral da OP; a grade parcial ainda não é informada por este fluxo.',
+        'Fachete: nenhuma linha calculada',
+      ],
+      items: [
+        { material: 'NAPA SOFT', color: 'PRETO', quantity: 4.75, unit: 'm', component: 'Cabedal' },
+        { material: 'PLACA EVA', color: null, quantity: 2, unit: 'placa', component: 'Palmilha' },
+        { material: 'COLA PU', color: null, quantity: 0.85, unit: 'kg', component: 'BOM' },
+      ],
+    });
+
+    expect(normalized.items.map((item) => [item.material, item.quantity, item.unit])).toEqual([
+      ['NAPA SOFT', 4.75, 'm'],
+      ['PLACA EVA', 2, 'placa'],
+      ['COLA PU', 0.85, 'kg'],
+    ]);
+    expect(normalized.components).toEqual(['Cabedal', 'Palmilha', 'BOM']);
+    expect(normalized).toMatchObject({
+      order_quantity: 120,
+      service_quantity: 60,
+      generated_for_quantity: 60,
+      scale: 0.5,
+    });
+    expect(normalized.warnings).toContain(
+      'Quantidade parcial escalada proporcionalmente sobre a grade integral da OP; a grade parcial ainda não é informada por este fluxo.',
+    );
+
+    const sections = buildReceiptMaterialSectionsHtml({
+      material_requirements: normalized,
+      materials_sent: [],
+    });
+    expect(sections.requirementsHtml).toContain('4,75 m');
+    expect(sections.requirementsHtml).toContain('2 placa');
+    expect(sections.requirementsHtml).toContain('0,85 kg');
+    expect(sections.requirementsHtml).toContain('Quantidade parcial escalada proporcionalmente');
+  });
+
+  it('aceita array legado e aliases product_name/required sem recalcular', () => {
+    const normalized = normalizeMaterialRequirements([
+      {
+        product_name: 'FORRO CACHARREL',
+        required: '3.125',
+        product_unit: 'm',
+        component_type: 'Forração',
+        conversion_warning: 'Conferir largura cadastrada',
+      },
+    ]);
+
+    expect(normalized).toMatchObject({
+      version: 1,
+      components: ['Forração'],
+      items: [{
+        material: 'FORRO CACHARREL',
+        quantity: 3.125,
+        unit: 'm',
+        component: 'Forração',
+        warning: 'Conferir largura cadastrada',
+      }],
+    });
+  });
+
+  it('mantém cálculo necessário e remessa enviada em seções independentes', () => {
+    const sections = buildReceiptMaterialSectionsHtml({
+      material_requirements: {
+        version: 1,
+        items: [{
+          material: 'NAPA CALCULADA',
+          color: 'OFF WHITE',
+          quantity: 5.5,
+          unit: 'm',
+          component: 'Fachete',
+          warning: 'Estoque insuficiente',
+        }],
+      },
+      materials_sent: [{ material: 'NAPA ENVIADA', color: 'PRETO', meters: 4 }],
+    });
+
+    expect(sections.requirementsHtml).toContain('Materiais necessários (cálculo)');
+    expect(sections.requirementsHtml).toContain('NAPA CALCULADA');
+    expect(sections.requirementsHtml).toContain('Fachete');
+    expect(sections.requirementsHtml).toContain('⚠ Estoque insuficiente');
+    expect(sections.requirementsHtml).not.toContain('NAPA ENVIADA');
+
+    expect(sections.sentHtml).toContain('Materiais enviados');
+    expect(sections.sentHtml).toContain('NAPA ENVIADA');
+    expect(sections.sentHtml).toContain('4 m');
+    expect(sections.sentHtml).not.toContain('NAPA CALCULADA');
+  });
+
+  it('não arredonda uma necessidade positiva pequena para zero na impressão', () => {
+    const sections = buildReceiptMaterialSectionsHtml({
+      material_requirements: {
+        version: 1,
+        items: [
+          { material: 'PIGMENTO', quantity: 0.004, unit: 'kg', component: 'BOM' },
+          { material: 'CATALISADOR', quantity: 0.000001, unit: 'kg', component: 'BOM' },
+        ],
+      },
+      materials_sent: [],
+    });
+
+    expect(sections.requirementsHtml).toContain('0,004 kg');
+    expect(sections.requirementsHtml).toContain('0,000001 kg');
+    expect(sections.requirementsHtml).not.toMatch(/>0 kg</);
+  });
+
+  it('imprime pendência do motor mesmo quando nenhum material foi emitido', () => {
+    const sections = buildReceiptMaterialSectionsHtml({
+      material_requirements: {
+        version: 1,
+        components: ['Fachete'],
+        warnings: ['Fachete: nenhuma linha foi emitida pelo motor de consumo.'],
+        items: [],
+      },
+      materials_sent: [],
+    });
+
+    expect(sections.requirementsHtml).toContain('Materiais necessários (cálculo)');
+    expect(sections.requirementsHtml).toContain('⚠ Fachete: nenhuma linha foi emitida');
+    expect(sections.sentHtml).toBe('');
   });
 });

@@ -106,6 +106,14 @@ describe('calculateStrapConsumptionCm — per-size por numeração (espelha o SQ
     );
     expect(cm).toBe(40);
   });
+
+  it('mapa per-size inteiramente zerado continua sendo explícito', () => {
+    const cm = calculateStrapConsumptionCm(
+      { consumption: 40, consumption_per_size: { '35': 0, '36': 0 } },
+      { grade: { '35': 1, '36': 1 }, quantity: 2, fichas: 1 },
+    );
+    expect(cm).toBe(0);
+  });
 });
 
 describe('calculateStrapConsumptionCm — valor por PAR (não por pé)', () => {
@@ -136,12 +144,12 @@ describe('resolveOrderStraps — merge item × ficha', () => {
     expect(merged[0].consumption).toBe(40); // ficha (item era 0)
   });
 
-  it('per-size do item só vence se tiver algum valor > 0', () => {
+  it('per-size do item vence mesmo quando todos os valores explícitos são zero', () => {
     const merged = resolveOrderStraps(
       [{ id: 1, label: 'T', color: 'X', consumption_per_size: { '35': 0 } }],
       [{ id: 1, label: 'T', color: 'X', consumption_per_size: { '35': 38 } }],
     );
-    expect(merged[0].consumption_per_size).toEqual({ '35': 38 }); // ficha (item todo 0)
+    expect(merged[0].consumption_per_size).toEqual({ '35': 0 });
   });
 
   it('tira só na ficha entra; tira extra só no item também entra (dedup por chave)', () => {

@@ -4,7 +4,7 @@
 import { useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
-import { CircleNotch as Loader2, PaperPlaneTilt, CheckCircle, Package, Truck } from '@phosphor-icons/react';
+import { CircleNotch as Loader2, PaperPlaneTilt, CheckCircle, Package, Truck, Warning } from '@phosphor-icons/react';
 import {
   useConsolidatedServiceOrders,
   useSendServiceOrder,
@@ -16,22 +16,30 @@ const fmtBRL = (v: number) => `R$ ${(v || 0).toLocaleString('pt-BR', { minimumFr
 const fmtNum = (v: number, d = 2) => (Number(v) || 0).toLocaleString('pt-BR', { maximumFractionDigits: d });
 
 function StatusBadge({ os }: { os: ConsolidatedOs }) {
-  const cls = os.status === 'Concluído'
+  const cls = os.status === 'Cancelado'
+    ? 'bg-muted text-muted-foreground border-border'
+    : os.status === 'Concluído'
     ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30'
     : os.sent
       ? 'bg-blue-500/10 text-blue-600 border-blue-500/30'
       : 'bg-amber-500/10 text-amber-600 border-amber-500/30';
-  const label = os.status === 'Concluído' ? 'Concluída' : os.sent ? 'Enviada' : 'Pendente';
+  const label = os.status === 'Cancelado'
+    ? 'Cancelada'
+    : os.status === 'Concluído'
+      ? 'Concluída'
+      : os.sent
+        ? 'Enviada'
+        : 'Pendente';
   return <span className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full border ${cls}`}>{label}</span>;
 }
 
 export default function ConsolidatedServiceOrders() {
-  const { data: orders = [], isLoading } = useConsolidatedServiceOrders();
+  const { data: orders = [], isLoading, isError, error, refetch } = useConsolidatedServiceOrders();
   const send = useSendServiceOrder();
   const deliver = useDeliverServiceOrderLine();
 
   const kpis = useMemo(() => {
-    const open = orders.filter(o => !o.sent && o.status !== 'Concluído');
+    const open = orders.filter(o => !o.sent && o.status !== 'Concluído' && o.status !== 'Cancelado');
     const meters = open.reduce((s, o) => s + o.total_meters, 0);
     const pendingLines = orders.reduce((s, o) => s + o.lines.filter(l => l.line_status === 'Pendente').length, 0);
     return {
@@ -45,12 +53,23 @@ export default function ConsolidatedServiceOrders() {
   if (isLoading) {
     return <div className="flex items-center justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>;
   }
+  if (isError) {
+    return (
+      <div role="alert" className="flex flex-col items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
+        <p className="flex items-start gap-2">
+          <Warning className="mt-0.5 h-4 w-4 shrink-0" />
+          <span><strong>Não foi possível carregar as OS consolidadas.</strong>{' '}{error instanceof Error ? error.message : 'Tente novamente.'}</span>
+        </p>
+        <Button type="button" variant="outline" size="sm" onClick={() => void refetch()}>Tentar novamente</Button>
+      </div>
+    );
+  }
   if (orders.length === 0) {
     return (
       <EmptyState
         icon={Package}
         title="Nenhuma OS consolidada ainda"
-        description="Quando uma demanda de terceirização for gerada (tira, OP×setor, avulso), ela entra na OS aberta do prestador aqui."
+        description="Quando uma demanda comum de terceirização for gerada (OP×setor ou avulsa), ela entra na OS aberta do prestador aqui. Produção de tiras fica na Central de Tiras."
       />
     );
   }
@@ -151,7 +170,7 @@ export default function ConsolidatedServiceOrders() {
                   A enviar: <b className="text-blue-600 dark:text-blue-400">{fmtNum(os.total_meters)} m</b> · {pendingLines.length} linha{pendingLines.length === 1 ? '' : 's'}
                 </span>
               )}
-              {!os.sent && os.status !== 'Concluído' && (
+              {!os.sent && os.status === 'Pendente' && (
                 <Button size="sm" className="h-8 gap-1.5"
                   disabled={send.isPending || os.line_count === 0}
                   onClick={() => send.mutate(os.id)}>

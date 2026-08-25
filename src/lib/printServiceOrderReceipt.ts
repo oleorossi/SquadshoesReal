@@ -1,6 +1,7 @@
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { applyPrintSandbox, safeUrlAttr } from '@/lib/htmlUtils';
+import { thumbUrl } from '@/lib/imageThumb';
 
 /**
  * Papel ÚNICO da Ordem de Serviço — "Modelo A" (decisão do dono, 01/08/2026).
@@ -8,7 +9,8 @@ import { applyPrintSandbox, safeUrlAttr } from '@/lib/htmlUtils';
  * Uma folha só acompanha os pares até o prestador e volta partida na tesoura:
  *
  *   identidade (OS + setor)  →  itens com foto e grade por numeração
- *   →  material que sai junto  →  linha ✂  →  CANHOTO de devolução
+ *   →  materiais calculados + materiais enviados  →  linha ✂
+ *   →  CANHOTO de devolução
  *
  * Substitui os DOIS documentos divergentes que existiam: o recibo A4 (chamado
  * só de ContractorReports) e a `printServiceOrderRemessa` (chamada da tela de
@@ -57,10 +59,108 @@ export interface ReceiptMaterialSent {
   meters?: number | null;
 }
 
+export interface ReceiptMaterialRequirementItem {
+  product_id?: string | null;
+  product_name?: string | null;
+  material: string;
+  color?: string | null;
+  quantity: number;
+  required?: number;
+  unit: string;
+  component?: string | null;
+  source?: string | null;
+  warning?: string | null;
+  warnings?: string[] | null;
+}
+
+/** Envelope principal do snapshot persistido em `service_orders`. */
+export interface ReceiptMaterialRequirements {
+  version: number;
+  calculated_at?: string | null;
+  basis?: string | Record<string, unknown> | null;
+  order_quantity?: number | null;
+  service_quantity?: number | null;
+  generated_for_quantity?: number | null;
+  scale?: number | null;
+  components?: string[] | null;
+  warnings?: string[] | null;
+  items: ReceiptMaterialRequirementItem[];
+}
+
+export type ReceiptMaterialRequirementsInput =
+  | ReceiptMaterialRequirements
+  | Record<string, unknown>
+  | Array<ReceiptMaterialRequirementItem | Record<string, unknown>>
+  | null
+  | undefined;
+
 /** Resolve a quantidade + unidade das duas formas aceitas. */
 function materialQty(m: ReceiptMaterialSent): { value: number; unit: string } {
   if (m.quantity != null) return { value: Number(m.quantity) || 0, unit: (m.unit || '').trim() };
   return { value: Number(m.meters) || 0, unit: m.unit?.trim() || 'm' };
+}
+
+const firstText = (...values: unknown[]) => {
+  const found = values.find((value) => typeof value === 'string' && value.trim());
+  return typeof found === 'string' ? found.trim() : '';
+};
+
+/** Normaliza o envelope v1 e formatos transitórios sem recalcular consumo. */
+export function normalizeMaterialRequirements(input: ReceiptMaterialRequirementsInput): ReceiptMaterialRequirements {
+  const envelope = !Array.isArray(input) && input && typeof input === 'object'
+    ? input as ReceiptMaterialRequirements
+    : null;
+  const rawItems = Array.isArray(input) ? input : Array.isArray(envelope?.items) ? envelope.items : [];
+  const items = rawItems.map((raw): ReceiptMaterialRequirementItem | null => {
+    const row = raw as ReceiptMaterialRequirementItem & Record<string, unknown>;
+    const material = firstText(row.material, row.product_name, row.name);
+    if (!material) return null;
+    const quantitySource = row.quantity ?? row.required ?? row.meters ?? 0;
+    const quantity = Number(quantitySource);
+    const warningList = Array.isArray(row.warnings)
+      ? row.warnings.filter((value): value is string => typeof value === 'string' && !!value.trim())
+      : [];
+    const warning = [...new Set([
+      firstText(row.warning),
+      firstText(row.consumption_warning),
+      firstText(row.conversion_warning),
+      ...warningList.map((value) => value.trim()),
+    ].filter(Boolean))].join(' · ') || null;
+    return {
+      product_id: firstText(row.product_id) || null,
+      material,
+      color: firstText(row.color) || null,
+      quantity: Number.isFinite(quantity) ? quantity : 0,
+      unit: firstText(row.unit, row.product_unit) || (row.meters != null ? 'm' : ''),
+      component: firstText(row.component, row.component_type) || null,
+      source: firstText(row.source) || null,
+      warning,
+    };
+  }).filter((item): item is ReceiptMaterialRequirementItem => item !== null);
+
+  const explicitComponents = Array.isArray(envelope?.components)
+    ? envelope.components.filter((value): value is string => typeof value === 'string' && !!value.trim())
+    : [];
+  const warnings = Array.isArray(envelope?.warnings)
+    ? [...new Set(envelope.warnings
+      .filter((value): value is string => typeof value === 'string' && !!value.trim())
+      .map((value) => value.trim()))]
+    : [];
+  const derivedComponents = [...new Set(items.map((item) => item.component).filter((value): value is string => !!value))];
+  return {
+    version: Number(envelope?.version) || 1,
+    calculated_at: envelope?.calculated_at || null,
+    basis: envelope?.basis ?? null,
+    order_quantity: envelope?.order_quantity == null ? null : Number(envelope.order_quantity),
+    service_quantity: envelope?.service_quantity == null ? null : Number(envelope.service_quantity),
+    generated_for_quantity: envelope?.generated_for_quantity == null
+      ? null
+      : Number(envelope.generated_for_quantity),
+    scale: envelope?.scale == null ? null : Number(envelope.scale),
+    components: explicitComponents.length > 0 ? explicitComponents : derivedComponents,
+    warnings,
+    items,
+  };
 }
 
 export interface ReceiptItem {
@@ -76,6 +176,24 @@ export interface ReceiptItem {
   size_breakdown?: Record<string, number> | null;
   /** URL da foto da referência. Passe já em miniatura (ver `imageThumb.ts`). */
   photo_url?: string | null;
+}
+
+export interface ReceiptPvItemRow {
+  id: string;
+  color?: string | null;
+  quantity?: number | null;
+  grade?: unknown;
+  reference_id?: string | null;
+  technical_sheets?: {
+    code?: string | null;
+    name?: string | null;
+    image_url?: string | null;
+  } | null;
+}
+
+export interface ReceiptPvItem extends ReceiptItem {
+  id: string;
+  label: string;
 }
 
 export interface ReceiptServiceOrder {
@@ -102,6 +220,8 @@ export interface ReceiptServiceOrder {
    */
   op_numbers?: string[] | null;
   client_name?: string | null;
+  /** Snapshot calculado. Nunca é fundido com a remessa física abaixo. */
+  material_requirements?: ReceiptMaterialRequirementsInput;
   materials_sent?: ReceiptMaterialSent[] | null;
 }
 
@@ -130,6 +250,7 @@ const SECTOR_LABEL: Record<string, string> = {
   corte_palmilha: 'Corte Palmilha',
   corte_forracao: 'Corte Forração',
   corte_cabedal: 'Corte Cabedal',
+  fachete: 'Fachete',
   silk: 'Silk',
   colagem: 'Colagem',
   montagem: 'Montagem',
@@ -140,7 +261,9 @@ const SECTOR_LABEL: Record<string, string> = {
 const fmtInt = (v: number | null | undefined) =>
   Number(v ?? 0).toLocaleString('pt-BR', { maximumFractionDigits: 0 });
 const fmtQty = (v: number | null | undefined) =>
-  Number(v ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+  // O snapshot do servidor preserva 6 casas. Arredondar a impressão em 2 fazia
+  // necessidades reais (ex.: 0,004 kg) parecerem zero no documento operacional.
+  Number(v ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 6 });
 const fmtDate = (iso: string | null | undefined) => {
   if (!iso) return '—';
   try {
@@ -153,6 +276,68 @@ const fmtDate = (iso: string | null | undefined) => {
 };
 const esc = (s: string | null | undefined) =>
   String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
+
+export interface ReceiptMaterialSectionsHtml {
+  requirementsHtml: string;
+  sentHtml: string;
+}
+
+/** HTML puro e testável das duas fontes. A separação é intencional: requisito
+ * calculado não prova que o material saiu, e remessa manual não muda o cálculo. */
+export function buildReceiptMaterialSectionsHtml(
+  order: Pick<ReceiptServiceOrder, 'material_requirements' | 'materials_sent'>,
+): ReceiptMaterialSectionsHtml {
+  const requirementSnapshot = normalizeMaterialRequirements(order.material_requirements);
+  const requirements = requirementSnapshot.items;
+  const itemWarningParts = requirements.flatMap((material) => (
+    material.warning?.split(' · ').map((warning) => warning.trim()).filter(Boolean) ?? []
+  ));
+  const standaloneWarnings = (requirementSnapshot.warnings || []).filter((warning) => (
+    !itemWarningParts.some((itemWarning) => warning.endsWith(itemWarning))
+  ));
+  const sent = (order.materials_sent || []).filter((material) => material.material?.trim());
+
+  const requirementsHtml = requirements.length > 0 || standaloneWarnings.length > 0 ? `
+    <section class="material-section requirements-section" data-material-source="requirements">
+      <div class="sectitle"><span>Materiais necessários (cálculo)</span><span class="hint">snapshot do servidor</span></div>
+      ${requirements.length > 0 ? `<div class="mats requirements">
+        ${requirements.map((material) => {
+          const details = [material.component, material.source].filter(Boolean).join(' · ');
+          return `
+          <div class="row${material.warning ? ' has-warning' : ''}">
+            <span class="calcmark">calc.</span>
+            <span class="nm">
+              ${esc(material.material)}${material.color ? ` · ${esc(material.color)}` : ''}
+              ${details ? `<small class="details">${esc(details)}</small>` : ''}
+              ${material.warning ? `<small class="warn">⚠ ${esc(material.warning)}</small>` : ''}
+            </span>
+            <span class="qt mono">${fmtQty(material.quantity)}${material.unit ? ` ${esc(material.unit)}` : ''}</span>
+          </div>`;
+        }).join('')}
+      </div>` : ''}
+      ${standaloneWarnings.length > 0 ? `<div class="material-warnings">
+        ${standaloneWarnings.map((warning) => `<p>⚠ ${esc(warning)}</p>`).join('')}
+      </div>` : ''}
+    </section>` : '';
+
+  const sentHtml = sent.length > 0 ? `
+    <section class="material-section sent-section" data-material-source="sent">
+      <div class="sectitle"><span>Materiais enviados</span><span class="hint">conferir na saída</span></div>
+      <div class="mats sent-materials">
+        ${sent.map((material) => {
+          const { value, unit } = materialQty(material);
+          return `
+          <div class="row">
+            <span class="box"></span>
+            <span class="nm">${esc(material.material)}${material.color ? ` · ${esc(material.color)}` : ''}</span>
+            <span class="qt mono">${fmtQty(value)}${unit ? ` ${esc(unit)}` : ''}</span>
+          </div>`;
+        }).join('')}
+      </div>
+    </section>` : '';
+
+  return { requirementsHtml, sentHtml };
+}
 
 /** Ordena numerações como NÚMERO ("9" antes de "10"), com fallback alfabético. */
 const sortSizes = (sizes: string[]) =>
@@ -203,6 +388,34 @@ export function expandBaseGrade(
     }
   }
   return out;
+}
+
+/** Converte itens do PV no formato do papel. `pairOverrides` é obrigatório no
+ * fluxo planejado parcial: a OS de 60 pares não pode reimprimir os 120 do item. */
+export function mapPvItemsForReceipt(
+  rows: ReceiptPvItemRow[],
+  pairOverrides?: ReadonlyMap<string, number>,
+): ReceiptPvItem[] {
+  return (rows || []).map((item) => {
+    const sheet = item.technical_sheets;
+    const code = sheet?.name || sheet?.code || '';
+    const pairs = pairOverrides?.has(item.id)
+      ? Number(pairOverrides.get(item.id)) || 0
+      : Number(item.quantity) || 0;
+    return {
+      id: item.id,
+      label: [code, item.color || '—'].filter(Boolean).join(' · '),
+      pairs,
+      ref_code: code || null,
+      ref_name: sheet?.name || null,
+      color: item.color || null,
+      size_breakdown: expandBaseGrade(
+        item.grade as Record<string, number> | null,
+        pairs,
+      ),
+      photo_url: sheet?.image_url ? thumbUrl(sheet.image_url, 80) || null : null,
+    };
+  }).filter((item) => item.pairs > 0);
 }
 
 /** Soma os breakdowns de vários itens numa única linha por numeração. */
@@ -334,7 +547,7 @@ export function printServiceOrderReceipt(
   const stubOnly = !!opts?.stubOnly;
   const stubTable = stubTableHtml(merged, stubOnly ? opts?.alreadyReturned : null);
 
-  const materials = (order.materials_sent || []).filter((m) => m.material?.trim());
+  const materialSections = buildReceiptMaterialSectionsHtml(order);
 
   const docTitle = stubOnly ? `Canhoto ${osNo}` : `OS ${osNo}`;
 
@@ -368,7 +581,7 @@ export function printServiceOrderReceipt(
     <div class="meta">
       <div><span class="k">Prestador</span><span class="v">${esc(contractorName)}</span></div>
       <div><span class="k">Envio</span><span class="v mono">${fmtDate(order.service_date)}</span></div>
-      <div><span class="k">Prazo</span><span class="v mono">${fmtDate(order.quoted_deadline)}</span></div>
+      <div><span class="k">Retorno até</span><span class="v mono">${fmtDate(order.quoted_deadline)}</span></div>
     </div>
     ${order.client_name ? `<div class="client">Cliente: <b>${esc(order.client_name)}</b></div>` : ''}`;
 
@@ -381,19 +594,8 @@ export function printServiceOrderReceipt(
       <div class="desc">${esc(order.description)}</div>
     ` : '')}
 
-    ${materials.length > 0 ? `
-      <div class="sectitle"><span>Material que sai junto</span><span class="hint">conferir na saída</span></div>
-      <div class="mats">
-        ${materials.map((m) => {
-          const { value, unit } = materialQty(m);
-          return `
-          <div class="row">
-            <span class="box"></span>
-            <span class="nm">${esc(m.material)}${m.color ? ` · ${esc(m.color)}` : ''}</span>
-            <span class="qt mono">${fmtQty(value)}${unit ? ` ${esc(unit)}` : ''}</span>
-          </div>`;
-        }).join('')}
-      </div>` : ''}
+    ${materialSections.requirementsHtml}
+    ${materialSections.sentHtml}
 
     ${order.notes ? `<div class="notes"><b>Obs.:</b> ${esc(order.notes)}</div>` : ''}
 
@@ -423,7 +625,7 @@ export function printServiceOrderReceipt(
   html, body { margin: 0; padding: 0; }
   body {
     font-family: 'Fira Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    color: #000; font-size: 10pt; line-height: 1.4;
+    color: #000; font-size: 10pt; line-height: 1.4; orphans: 3; widows: 3;
   }
   .mono { font-family: 'Fira Code', ui-monospace, 'SF Mono', monospace; font-variant-numeric: tabular-nums; }
   .os, .sector, .ref, .pairs, .totalbox .n, .sectitle, .idref,
@@ -504,24 +706,42 @@ export function printServiceOrderReceipt(
   .nograde { font-size: 9pt; color: #444; padding: 3px 0; }
   .desc { font-size: 11pt; padding: 4px 0; }
 
-  .mats { border: 1.5px solid #000; }
+  /* Materiais podem ocupar mais de uma página. O título acompanha a primeira
+     linha, cada item é atômico e o canhoto inteiro migra para a próxima página
+     quando o restante da folha não comporta sua altura. */
+  .material-section { break-inside: auto; page-break-inside: auto; }
+  .material-section > .sectitle { break-after: avoid-page; page-break-after: avoid; }
+  .mats { border: 1.5px solid #000; break-inside: auto; page-break-inside: auto; }
   .mats .row { display: flex; align-items: center; gap: 7px; padding: 3px 8px;
-               border-bottom: 1px solid #000; font-size: 10pt; }
+               border-bottom: 1px solid #000; font-size: 10pt;
+               break-inside: avoid; page-break-inside: avoid; }
   .mats .row:last-child { border-bottom: none; }
   .mats .box { width: 3.5mm; height: 3.5mm; border: 1.5px solid #000; flex: none; }
   .mats .nm { flex: 1; font-weight: 600; }
   .mats .qt { font-weight: 700; }
+  .mats.requirements .row { align-items: flex-start; padding-top: 4px; padding-bottom: 4px; }
+  .mats .calcmark { flex: none; border: 1px solid #000; padding: 1px 3px;
+                    font-family: 'Fira Code', ui-monospace, monospace; font-size: 6.5pt;
+                    font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+  .mats .details { display: block; margin-top: 1px; font-family: 'Fira Code', ui-monospace, monospace;
+                   font-size: 6.8pt; font-weight: 500; letter-spacing: .04em; text-transform: uppercase; }
+  .mats .warn { display: block; margin-top: 2px; font-size: 8pt; font-weight: 800; line-height: 1.2; }
+  .material-warnings { margin-top: 4px; border: 1.5px solid #000; padding: 4px 8px;
+                       font-size: 8.5pt; font-weight: 800; line-height: 1.25; }
+  .material-warnings p { margin: 0; }
+  .material-warnings p + p { margin-top: 3px; }
 
   .notes { margin-top: 8px; padding: 5px 9px; border-left: 3px solid #000;
            background: #f2f2f2; font-size: 9.5pt; white-space: pre-wrap; }
 
   /* ── Linha de corte: obrigatória, é o que separa o canhoto ── */
-  .cut { margin: 12px 0 10px; border-top: 2px dashed #000; text-align: center; }
+  .cut { margin: 12px 0 10px; border-top: 2px dashed #000; text-align: center;
+         break-after: avoid-page; page-break-after: avoid; }
   .cut span { position: relative; top: -6pt; background: #fff; padding: 0 8px;
               font-family: 'Fira Code', ui-monospace, monospace; font-size: 7.5pt;
               letter-spacing: .16em; text-transform: uppercase; }
 
-  .stub-sec { page-break-inside: avoid; }
+  .stub-sec { break-inside: avoid-page; page-break-inside: avoid; }
   .sign { display: grid; grid-template-columns: 1.6fr 1fr; gap: 16mm; margin-top: 10mm; }
   .sign .line { border-top: 1.5px solid #000; padding-top: 3px;
                 font-family: 'Fira Code', ui-monospace, monospace; font-size: 7.5pt;

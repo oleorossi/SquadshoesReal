@@ -89,17 +89,15 @@ export function osStatusBadgeVariant(s: string | null | undefined): 'default' | 
 }
 
 /**
- * Transições válidas entre estados canônicos. Espelha as regras já aplicadas em
- * `useUpdateServiceOrder` (não rebaixa Concluído sem passar por Cancelado) e no
- * trigger `tg_apply_service_order_return` (Pendente→Em Andamento→Concluído).
+ * Transições válidas entre estados canônicos. Os estados finais preservam a
+ * trilha física: reativação legítima de uma OS integrada cancelada é uma
+ * operação privada do writer de origem, não uma transição genérica da UI.
  */
 export const VALID_OS_TRANSITIONS: Record<OsStatus, OsStatus[]> = {
   [OS_STATUS.PENDENTE]: [OS_STATUS.EM_ANDAMENTO, OS_STATUS.CONCLUIDO, OS_STATUS.CANCELADO],
   [OS_STATUS.EM_ANDAMENTO]: [OS_STATUS.CONCLUIDO, OS_STATUS.CANCELADO],
-  // Concluído pode ser estornado (vira Cancelado), mas não volta direto pra execução.
-  [OS_STATUS.CONCLUIDO]: [OS_STATUS.CANCELADO],
-  // Cancelado pode ser reativado voltando pra Pendente.
-  [OS_STATUS.CANCELADO]: [OS_STATUS.PENDENTE],
+  [OS_STATUS.CONCLUIDO]: [],
+  [OS_STATUS.CANCELADO]: [],
 };
 
 /** True quando `from`→`to` (grafias cruas aceitas) é permitido. */

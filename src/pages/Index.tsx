@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo, useRef } from 'react';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { Package, GridFour as LayoutGrid, Bell, ClockCounterClockwise as History, Medal as Ribbon, ArrowsLeftRight as ArrowRightLeft, Stack as Layers } from '@phosphor-icons/react';
+import { Package, GridFour as LayoutGrid, Bell, ClockCounterClockwise as History, ArrowsLeftRight as ArrowRightLeft, Stack as Layers } from '@phosphor-icons/react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useIsAdmin } from '@/hooks/useUserManagement';
 import { Button } from '@/components/ui/button';
@@ -12,7 +12,6 @@ import { ReportTab } from '@/components/inventory/tabs/ReportTab';
 import { NotificationsTab } from '@/components/inventory/tabs/NotificationsTab';
 import { ConversionReportTab } from '@/components/inventory/tabs/ConversionReportTab';
 import AuditLogTab from '@/components/inventory/tabs/AuditLogTab';
- import StrapStockLogTab from '@/components/inventory/tabs/StrapStockLogTab';
  import StockHistory from './StockHistory';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import GroupOrganizationPanel from '@/components/groups/GroupOrganizationPanel';
@@ -36,7 +35,7 @@ const MATERIAL_CATEGORIES = [
 const MAIN_TABS = ['materials', 'organization', 'overview', 'alerts', 'conversion'] as const;
 
 // Admin-only tabs — removidas da barra principal
-const ADMIN_TABS = new Set(['audit', 'strap-stock']);
+const ADMIN_TABS = new Set(['audit']);
 
 
 export default function Index() {
@@ -45,12 +44,13 @@ export default function Index() {
   const isAdmin = useIsAdmin();
   const requestedTab = searchParams.get('tab');
 
-  // Redireciona tabs legadas "solados" → /solados (SolesHub). Mudança 18/05/2026:
-  // gestão de solados centralizada num único lugar; bookmarks/links antigos
-  // não morrem de imediato — viram redirect.
+  // Redireciona tabs legadas para seus hubs canônicos. Bookmarks/links antigos
+  // continuam funcionando sem manter uma segunda superfície operacional.
   useEffect(() => {
     if (requestedTab === 'solados') {
       navigate('/solados', { replace: true });
+    } else if (requestedTab === 'strap-stock') {
+      navigate('/tiras-artesanais?tab=historico-estoque', { replace: true });
     }
   }, [requestedTab, navigate]);
 
@@ -160,13 +160,6 @@ export default function Index() {
                 <History className="h-3.5 w-3.5" />
                 Auditoria
               </TabsTrigger>
-              <TabsTrigger
-                value="strap-stock"
-                className="min-w-[120px] gap-1.5 border border-transparent px-3 py-2 text-xs opacity-60 data-[state=active]:border-foreground/20 data-[state=active]:bg-background data-[state=active]:opacity-100"
-              >
-                <Ribbon className="h-3.5 w-3.5" />
-                Corte Tiras
-              </TabsTrigger>
             </>
           )}
         </TabsList>
@@ -245,9 +238,6 @@ export default function Index() {
             <>
               <TabsContent value="audit">
                 <AuditLogTab />
-              </TabsContent>
-              <TabsContent value="strap-stock">
-                <StrapStockLogTab />
               </TabsContent>
             </>
           )}

@@ -1,9 +1,11 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { isOsDone } from '@/lib/osStatusMachine';
+import { isOsCancelled, isOsDone, isValidOsTransition, normalizeOsStatus } from '@/lib/osStatusMachine';
 import { stripSearchNorm } from '@/lib/searchUtils';
 import { receiveServiceOrderFully } from '@/lib/serviceOrderStock';
+import { isStrapServiceOrder } from '@/lib/strapServiceOrderIdentity';
+import { isMissingPostgrestRelation } from '@/lib/postgrestErrors';
 
 export interface Contractor {
   id: string;
@@ -30,6 +32,46 @@ export interface MaterialSent {
   completed?: boolean;
 }
 
+export interface ServiceOrderMaterialRequirementItem {
+  product_id?: string | null;
+  product_name?: string | null;
+  material: string;
+  color?: string | null;
+  quantity: number;
+  required?: number;
+  unit: string;
+  component?: string | null;
+  source?: string | null;
+  warning?: string | null;
+  warnings?: string[] | null;
+}
+
+/** Snapshot principal persistido pelo servidor. Arrays antigos são normalizados
+ * para este envelope na leitura; aliases de item ficam a cargo da impressão. */
+export interface ServiceOrderMaterialRequirements {
+  version: number;
+  calculated_at?: string | null;
+  basis?: string | Record<string, unknown> | null;
+  order_quantity?: number | null;
+  service_quantity?: number | null;
+  generated_for_quantity?: number | null;
+  scale?: number | null;
+  components?: string[] | null;
+  warnings?: string[] | null;
+  items: ServiceOrderMaterialRequirementItem[];
+}
+
+const normalizeServiceOrderMaterialRequirements = (value: unknown): ServiceOrderMaterialRequirements => {
+  if (Array.isArray(value)) return { version: 1, items: value as ServiceOrderMaterialRequirementItem[] };
+  if (!value || typeof value !== 'object') return { version: 1, items: [] };
+  const snapshot = value as Partial<ServiceOrderMaterialRequirements>;
+  return {
+    ...snapshot,
+    version: Number(snapshot.version) || 1,
+    items: Array.isArray(snapshot.items) ? snapshot.items : [],
+  };
+};
+
 export interface ServiceOrder {
   id: string;
   contractor_id: string;
@@ -50,11 +92,12 @@ export interface ServiceOrder {
   receipt_generated_at: string | null;
   signed_photo_url: string | null;
   sale_order_id: string | null;
+  service_order_domain?: 'generic' | 'strap' | null;
   // Array com todos os PVs vinculados (preenchido pelo upsert_open_service_order
   // quando uma OS é agregada de múltiplos PVs). Primary sale_order_id pode
   // ficar null em agregações — usar o primeiro do array como fallback.
   linked_sale_order_ids?: string[] | null;
-  // Artisanal production fields
+  // Identidade legada/canônica usada somente para excluir Tiras deste dataset.
   artisanal_recipe_id?: string | null;
   /** Identidade operacional canônica detectada nas linhas da OS. */
   is_canonical_strap?: boolean;
@@ -71,6 +114,7 @@ export interface ServiceOrder {
   target_sector?: string | null;
   bottleneck_week?: string | null;
   order_id?: string | null;
+  related_order_id?: string | null;
   quoted_at?: string | null;
   quoted_deadline?: string | null;
   // Data real de entrega (ação rápida "Marcar como Entregue") — coluna criada
@@ -84,6 +128,19 @@ export interface ServiceOrder {
   source_sale_order_item_id?: string | null;
   source_terceirizacao_id?: string | null;
   source_item_key?: string | null;
+  /** Snapshots de capacidade/prazo usados quando a OS foi gerada. */
+  provider_capacity_pairs_per_day?: number | null;
+  return_before_sector?: string | null;
+  planning_anchor_sector?: string | null;
+  execution_days?: number | null;
+  queue_days?: number | null;
+  planning_source?: string | null;
+  planning_warning?: string | null;
+  /** Materiais calculados; não confundir com `materials_sent` (remessa física). */
+  material_requirements?: ServiceOrderMaterialRequirements | null;
+  /** Presença distingue o contêiner consolidado por linhas de uma OS física
+   * avulsa com rastreamento no cabeçalho. */
+  service_order_items?: Array<{ id: string }> | null;
   /**
    * Itens do PV que esta OS cobre (migration 20261103120000). Delas derivam as
    * ORDENS DE PRODUÇÃO da OS, resolvidas na leitura via `orders.sale_order_item_id`
@@ -96,6 +153,7 @@ export interface ServiceOrder {
   selected_sale_order_item_ids?: string[] | null;
   payment_due_date?: string | null;
   is_avulsa?: boolean | null;
+  canonical_strap_recipe_id?: string | null;
   /** OS dividida entre prestadores — paga por RECEBIMENTO, não pelo fluxo normal. */
   dispatch_tracked?: boolean | null;
   /** Soft-archive da triagem de OS órfãs (P0.3, 2026-07). Preenchida = fora das listas default. */
@@ -137,7 +195,7 @@ export function useServiceOrders() {
         // lidos do embed.
         const { data, error } = await supabase
           .from('service_orders')
-          .select('*, contractors(id, name, trade_name, payment_days)')
+          .select('*, contractors(id, name, trade_name, payment_days), service_order_items(id)')
           .order('created_at', { ascending: false })
           .range(from, from + PAGE - 1);
         if (error) throw error;
@@ -146,32 +204,50 @@ export function useServiceOrders() {
         if (data.length < PAGE) break;
       }
       const canonicalIds = new Set<string>();
-      for (let from = 0; ; from += PAGE) {
-        const { data, error } = await (supabase as any)
-          .from('v_strap_service_order_items_operational')
-          .select('service_order_id')
-          .order('service_order_id', { ascending: true })
-          .range(from, from + PAGE - 1);
-        if (error) throw error;
-        if (!data || data.length === 0) break;
-        data.forEach((row: { service_order_id?: string }) => { if (row.service_order_id) canonicalIds.add(row.service_order_id); });
-        if (data.length < PAGE) break;
+      const loadCanonicalIds = async (
+        view: string,
+        idColumn: 'id' | 'service_order_id',
+      ) => {
+        for (let from = 0; ; from += PAGE) {
+          const { data, error } = await (supabase as any)
+            .from(view)
+            .select(idColumn)
+            .order(idColumn, { ascending: true })
+            .range(from, from + PAGE - 1);
+          if (error) throw error;
+          if (!data || data.length === 0) break;
+          data.forEach((row: Record<string, string | undefined>) => {
+            const id = row[idColumn];
+            if (id) canonicalIds.add(id);
+          });
+          if (data.length < PAGE) break;
+        }
+      };
+      try {
+        await loadCanonicalIds('v_strap_service_orders', 'id');
+      } catch (error: unknown) {
+        if (!isMissingPostgrestRelation(error, 'v_strap_service_orders')) throw error;
+        // Compatibilidade de rollout: essa view operacional já existia antes
+        // da fronteira positiva v_strap_service_orders criada pela migration 099.
+        await loadCanonicalIds('v_strap_service_order_items_operational', 'service_order_id');
       }
-      return (all as unknown as ServiceOrder[]).map(o => ({
-        ...o,
-        materials_sent: Array.isArray(o.materials_sent) ? o.materials_sent : [],
-        ...((o.artisanal_recipe_id || canonicalIds.has(o.id)) ? { is_canonical_strap: true } : {}),
-      }));
+      return (all as unknown as ServiceOrder[])
+        .map(o => ({
+          ...o,
+          materials_sent: Array.isArray(o.materials_sent) ? o.materials_sent : [],
+          material_requirements: normalizeServiceOrderMaterialRequirements(o.material_requirements),
+          ...(canonicalIds.has(o.id) ? { is_canonical_strap: true } : {}),
+        }))
+        // Tiras possui operação, estoque, custódia e financeiro próprios. A
+        // relação interna continua em service_orders, mas nunca reaparece no
+        // dataset do menu genérico Terceirizados.
+        .filter(o => !isStrapServiceOrder(o));
     },
     // Sem staleTime próprio herdava os 60s globais e, com refetchOnMount ligado,
     // re-baixava a lista paginada inteira a cada volta pra tela. As mutations de OS
     // já invalidam ['service_orders'], então a correção por tempo é redundante.
     staleTime: 5 * 60 * 1000,
   });
-}
-
-export function isCanonicalStrapServiceOrder(order: Pick<ServiceOrder, 'artisanal_recipe_id' | 'is_canonical_strap'> | null | undefined) {
-  return Boolean(order?.is_canonical_strap || order?.artisanal_recipe_id);
 }
 
 /** Visão geral por OS (view v_service_order_overview): pagamento (AP) + saldo de
@@ -257,6 +333,16 @@ export function useServiceOrderOverview() {
   });
 }
 
+/** Ativar/inativar prestador muda a prontidão da ficha, a prévia do wizard e
+ * os diagnósticos, não apenas a lista de prestadores. */
+function invalidateContractorPlanningCaches(qc: ReturnType<typeof useQueryClient>) {
+  qc.invalidateQueries({ queryKey: ['contractors'] });
+  qc.invalidateQueries({ queryKey: ['reference_terceirizacoes'] });
+  qc.invalidateQueries({ queryKey: ['reference_terceirizacoes_active'] });
+  qc.invalidateQueries({ queryKey: ['pv_outsourceable_lines'] });
+  qc.invalidateQueries({ queryKey: ['service_order_generation_gaps'] });
+}
+
 export function useCreateContractor() {
   const qc = useQueryClient();
   return useMutation({
@@ -265,7 +351,7 @@ export function useCreateContractor() {
       if (error) throw error;
       return data;
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['contractors'] }); toast.success('Terceirizado cadastrado!'); },
+    onSuccess: () => { invalidateContractorPlanningCaches(qc); toast.success('Terceirizado cadastrado!'); },
     onError: (e: any) => toast.error(e.message),
   });
 }
@@ -277,7 +363,7 @@ export function useUpdateContractor() {
       const { error } = await supabase.from('contractors').update(stripSearchNorm(updates) as any).eq('id', id);
       if (error) throw error;
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['contractors'] }); toast.success('Terceirizado atualizado!'); },
+    onSuccess: () => { invalidateContractorPlanningCaches(qc); toast.success('Terceirizado atualizado!'); },
     onError: (e: any) => toast.error(e.message),
   });
 }
@@ -302,56 +388,7 @@ export function useDeleteContractor() {
       const { error } = await supabase.from('contractors').delete().eq('id', id);
       if (error) throw error;
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['contractors'] }); toast.success('Terceirizado removido!'); },
-    onError: (e: any) => toast.error(e.message),
-  });
-}
-
-/**
- * Cria OU agrega numa OS ABERTA do mesmo contractor+recipe+output_color
- * (status<>Concluído/Cancelado e stock_entry_done=false). Soma forOrder e
- * appenda sale_order_id em linked_sale_order_ids. Use quando a criação for
- * automática a partir de shortage de PV.
- */
-export function useUpsertOpenServiceOrder() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (p: {
-      contractor_id: string;
-      artisanal_recipe_id: string;
-      output_name: string;
-      output_color: string;
-      base_color?: string;
-      for_order_meters: number;
-      for_stock_meters: number;
-      total_meters: number;
-      base_product_name: string;
-      base_meters_send: number;
-      sale_order_id: string | null;
-      unit_price: number;
-    }) => {
-      if (!p.contractor_id || !p.artisanal_recipe_id) throw new Error('contractor + recipe obrigatórios.');
-      const { data: soId, error } = await (supabase as any).rpc('upsert_open_service_order', {
-        p_contractor_id: p.contractor_id,
-        p_artisanal_recipe_id: p.artisanal_recipe_id,
-        p_output_name: p.output_name,
-        p_output_color: p.output_color,
-        p_base_color: p.base_color || p.output_color,
-        p_for_order_meters: p.for_order_meters,
-        p_for_stock_meters: p.for_stock_meters,
-        p_total_meters: p.total_meters,
-        p_base_product_name: p.base_product_name,
-        p_base_meters_send: p.base_meters_send,
-        p_sale_order_id: p.sale_order_id,
-        p_unit_price: p.unit_price,
-      });
-      if (error) throw error;
-      return soId as string;
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['service_orders'] }); qc.invalidateQueries({ queryKey: ['service_order_overview'] });
-      toast.success('OS atualizada/criada — pedido vinculado.');
-    },
+    onSuccess: () => { invalidateContractorPlanningCaches(qc); toast.success('Terceirizado removido!'); },
     onError: (e: any) => toast.error(e.message),
   });
 }
@@ -366,7 +403,7 @@ export function useCreateServiceOrder() {
       if (error) throw error;
       return data;
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['service_orders'] }); qc.invalidateQueries({ queryKey: ['service_order_overview'] }); toast.success('Ordem de serviço criada!'); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['service_orders'] }); qc.invalidateQueries({ queryKey: ['pv_service_orders'] }); qc.invalidateQueries({ queryKey: ['service_order_overview'] }); toast.success('Ordem de serviço criada!'); },
     onError: (e: any) => toast.error(e.message),
   });
 }
@@ -411,22 +448,28 @@ export function useUpdateServiceOrder() {
         ...safe
       } = updates as any;
       if (safe.status === '') throw new Error('Status inválido.');
-      // Guarda de OS finalizada. Cobre TODAS as grafias de "concluída" ('Concluído',
-      // 'received', 'finalizado'...) via isOsDone — antes o check era `=== 'Concluído'`
-      // e vazava as OS finalizadas pelo fluxo de gargalos (auditoria 2026-07-02).
-      if (safe.status && safe.status !== 'Cancelado') {
+      // Estados terminais preservam o histórico físico. Reativação de uma OS
+      // cancelada, quando legítima, passa exclusivamente pelo writer integrado
+      // que valida a origem e decide entre reusar ou emitir uma nova linha.
+      if (safe.status) {
         const { data: current, error: currErr } = await supabase
           .from('service_orders').select('status, unit_price, total_value').eq('id', id).single();
         if (currErr) throw new Error(`Falha ao carregar OS: ${currErr.message}`);
+        const terminal = isOsDone(current?.status) || isOsCancelled(current?.status);
+        const statusChanged = normalizeOsStatus(safe.status) !== normalizeOsStatus(current?.status);
+        if (statusChanged && !isValidOsTransition(current?.status, safe.status)) {
+          throw new Error('Transição de status inválida. O fluxo da OS não pode voltar para uma etapa anterior.');
+        }
+        if (terminal && statusChanged) {
+          throw new Error('O status final da OS é imutável. Emita uma nova OS para refazer o serviço.');
+        }
         if (isOsDone(current?.status)) {
           // Editar valor de OS finalizada dessincroniza a conta a pagar (o trigger
           // só sincroniza AP 'pending'; se já foi paga, o valor pago diverge).
           const priceChanged =
             (safe.unit_price !== undefined && Math.abs(Number(safe.unit_price) - Number(current?.unit_price ?? 0)) > 0.005) ||
             (safe.total_value !== undefined && Math.abs(Number(safe.total_value) - Number(current?.total_value ?? 0)) > 0.005);
-          if (priceChanged) throw new Error('OS já finalizada — cancele e reemita para alterar valores (editar agora dessincronizaria a conta a pagar).');
-          // Rebaixar status de OS finalizada só pelo fluxo de Cancelar.
-          if (!isOsDone(safe.status)) throw new Error('OS já concluída. Use a opção Cancelar para reverter.');
+          if (priceChanged) throw new Error('OS já finalizada — emita uma nova OS para alterar valores (editar agora dessincronizaria a conta a pagar).');
         }
       }
       // Atomic claim when transitioning to Concluído: prevent double AP/stock debit
@@ -441,7 +484,7 @@ export function useUpdateServiceOrder() {
         throw new Error('OS já concluída ou cancelada — recarregue a página.');
       }
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['service_orders'] }); qc.invalidateQueries({ queryKey: ['service_order_overview'] }); toast.success('Ordem de serviço atualizada!'); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['service_orders'] }); qc.invalidateQueries({ queryKey: ['pv_service_orders'] }); qc.invalidateQueries({ queryKey: ['service_order_overview'] }); toast.success('Ordem de serviço atualizada!'); },
     onError: (e: any) => toast.error(e.message),
   });
 }
@@ -511,7 +554,7 @@ export function useDeleteServiceOrder() {
       const { error } = await supabase.from('service_orders').delete().eq('id', id);
       if (error) throw error;
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['service_orders'] }); qc.invalidateQueries({ queryKey: ['service_order_overview'] }); toast.success('Ordem de serviço removida!'); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['service_orders'] }); qc.invalidateQueries({ queryKey: ['pv_service_orders'] }); qc.invalidateQueries({ queryKey: ['service_order_overview'] }); toast.success('Ordem de serviço removida!'); },
     onError: (e: any) => toast.error(e.message),
   });
 }
@@ -552,6 +595,7 @@ export function useBulkReceiveServiceOrders() {
     },
     onSuccess: ({ ok, skipped, failed }) => {
       qc.invalidateQueries({ queryKey: ['service_orders'] });
+      qc.invalidateQueries({ queryKey: ['pv_service_orders'] });
       qc.invalidateQueries({ queryKey: ['service_order_overview'] });
       qc.invalidateQueries({ queryKey: ['accounts_payable'] });
       qc.invalidateQueries({ queryKey: ['v_contractor_metrics'] });
@@ -583,6 +627,7 @@ export function useArchiveServiceOrders() {
     },
     onSuccess: (n: number) => {
       qc.invalidateQueries({ queryKey: ['service_orders'] });
+      qc.invalidateQueries({ queryKey: ['pv_service_orders'] });
       qc.invalidateQueries({ queryKey: ['service_order_overview'] });
       toast.success(`${n} OS arquivada(s) — use "Mostrar arquivadas" pra revê-las.`);
     },

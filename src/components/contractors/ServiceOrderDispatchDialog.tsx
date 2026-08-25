@@ -10,7 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useContractors } from '@/hooks/useContractors';
-import { CircleNotch as Loader2, Truck, Package, Check } from '@phosphor-icons/react';
+import { CircleNotch as Loader2, Truck, Package, Check, Warning } from '@phosphor-icons/react';
 
 /**
  * Enviar OS terceirizada PRA RUA em PARCELAS (tranches). Complementa o retorno
@@ -55,7 +55,7 @@ export default function ServiceOrderDispatchDialog({ open, onOpenChange, service
   const qc = useQueryClient();
   const soId = serviceOrder?.id ?? null;
 
-  const { data, isLoading, refetch } = useQuery({
+  const { data, isLoading, isError, error: loadError, refetch } = useQuery({
     queryKey: ['so_dispatch_dialog', soId],
     enabled: open && !!soId,
     queryFn: async () => {
@@ -67,18 +67,29 @@ export default function ServiceOrderDispatchDialog({ open, onOpenChange, service
       if (balErr) throw balErr;
       if (dispErr) throw dispErr;
       if (retErr) throw retErr;
+      if (!bal) throw new Error('O saldo físico desta OS não foi encontrado.');
       return { balance: (bal ?? null) as BalanceRow | null, dispatches: (disp ?? []) as DispatchRow[], returns: (rets ?? []) as ReturnRow[] };
     },
   });
 
   const balance = data?.balance ?? null;
-  const ordered = Number(balance?.qty_sent ?? serviceOrder?.quantity ?? 0);
+  const ordered = Number(balance?.qty_sent ?? 0);
   const dispatched = Number(balance?.qty_dispatched ?? 0);
   const toDispatch = Math.max(0, Number(balance?.qty_to_dispatch ?? Math.max(0, ordered - dispatched)));
   const inField = Math.max(0, Number(balance?.qty_in_field ?? 0));
   const received = (balance?.qty_returned_good ?? 0) + (balance?.qty_returned_defect ?? 0) + (balance?.qty_loss ?? 0);
 
-  const { data: contractors = [] } = useContractors();
+  const {
+    data: contractors = [],
+    isLoading: loadingContractors,
+    isError: contractorsFailed,
+    error: contractorsError,
+    refetch: refetchContractors,
+  } = useContractors();
+  const loadFailed = isError || contractorsFailed;
+  const errorMessage = (isError ? loadError : contractorsError) instanceof Error
+    ? (isError ? loadError : contractorsError).message
+    : 'Não foi possível carregar o saldo físico e os prestadores desta OS.';
   const contractorName = (id?: string | null) => {
     const c = (contractors as any[]).find(x => x.id === id);
     return c ? (c.trade_name || c.name || 'Prestador') : null;
@@ -106,7 +117,7 @@ export default function ServiceOrderDispatchDialog({ open, onOpenChange, service
   }, [data]);
 
   const handleSave = async () => {
-    if (!soId || saving) return;
+    if (!soId || saving || loadFailed || !balance) return;
     if (!contractor) { toast.error('Selecione o prestador desta remessa.'); return; }
     if (qty <= 0) { toast.error('Informe ao menos 1 par pra enviar.'); return; }
     if (exceeds) { toast.error(`Envio excede o que falta (${toDispatch} pares a enviar).`); return; }
@@ -121,6 +132,9 @@ export default function ServiceOrderDispatchDialog({ open, onOpenChange, service
       toast.success(left > 0 ? `${qty} pares enviados — faltam ${left} pra enviar.` : `${qty} pares enviados — pedido todo na rua.`);
       ['service_orders', 'v_contractor_metrics', 'service_order_overview', 'so_dispatch_dialog', 'so_return_dialog']
         .forEach(k => qc.invalidateQueries({ queryKey: [k] }));
+      qc.invalidateQueries({ queryKey: ['pv_service_orders'] });
+      qc.invalidateQueries({ queryKey: ['consolidated_service_orders'] });
+      qc.invalidateQueries({ queryKey: ['v_contractor_history_orders'] });
       refetch();
     } catch (e: any) {
       toast.error(`Falha ao registrar envio: ${e?.message || 'erro desconhecido'}`);
@@ -136,8 +150,23 @@ export default function ServiceOrderDispatchDialog({ open, onOpenChange, service
           <DialogTitle>Enviar pra rua — OS {serviceOrder?.order_number ?? ''}</DialogTitle>
         </DialogHeader>
 
-        {isLoading ? (
+        {isLoading || loadingContractors ? (
           <div className="flex items-center justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+        ) : loadFailed ? (
+          <div role="alert" className="space-y-3 rounded-md border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
+            <p className="flex items-start gap-2">
+              <Warning className="mt-0.5 h-4 w-4 shrink-0" />
+              <span><strong>Envio bloqueado.</strong> {errorMessage}</span>
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => void Promise.all([refetch(), refetchContractors()])}
+            >
+              Tentar novamente
+            </Button>
+          </div>
         ) : (
           <div className="space-y-4">
             {serviceOrder?.contractorName && <Badge variant="outline">{serviceOrder.contractorName}</Badge>}
@@ -210,12 +239,12 @@ export default function ServiceOrderDispatchDialog({ open, onOpenChange, service
 
         <DialogFooter className="gap-2 sm:gap-2">
           {onReceive && (
-            <Button variant="outline" className="h-9 gap-1.5 mr-auto" onClick={() => { onOpenChange(false); onReceive(); }} disabled={inField <= 0}>
+            <Button variant="outline" className="h-9 gap-1.5 mr-auto" onClick={() => { onOpenChange(false); onReceive(); }} disabled={loadFailed || !balance || inField <= 0}>
               <Package className="h-4 w-4" /> Receber
             </Button>
           )}
           <Button variant="outline" className="h-9" onClick={() => onOpenChange(false)}>Fechar</Button>
-          <Button className="h-9 gap-1.5" onClick={handleSave} disabled={saving || isLoading || qty <= 0 || exceeds || !contractor}>
+          <Button className="h-9 gap-1.5" onClick={handleSave} disabled={saving || isLoading || loadingContractors || loadFailed || !balance || qty <= 0 || exceeds || !contractor}>
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Truck className="h-4 w-4" />} Enviar pra rua
           </Button>
         </DialogFooter>

@@ -30,6 +30,7 @@ const strapCutBlock = read('src/components/sale-orders/ArtisanalStrapRollCutBloc
 const pickingList = read('src/pages/PickingListPage.tsx');
 const hub = read('src/pages/ArtisanalStraps.tsx');
 const calculator = read('src/pages/StrapCalculator.tsx');
+const strapYield = read('src/lib/strapYield.ts');
 const legacyProductMigration = read('src/components/artisanal-straps/ArtisanalStrapLegacyProductMigrationDialog.tsx');
 const migrationControl = read('src/components/artisanal-straps/ArtisanalStrapMigrationControl.tsx');
 const migrationDialogs = read('src/components/artisanal-straps/ArtisanalStrapMigrationDialogs.tsx');
@@ -116,10 +117,22 @@ describe('Tiras artesanais — contrato do frontend canônico', () => {
     expect(contractors).not.toContain('Nova Receita Artesanal');
   });
 
-  it('detecta OS canônica pela identidade das linhas e remove ações legadas', () => {
-    expect(contractorHooks).toContain('v_strap_service_order_items_operational');
-    expect(contractors).toContain('isCanonicalStrapServiceOrder(o)');
-    expect(contractors).toContain('Abrir no Hub de Tiras');
+  it('retira toda OS de tira do dataset e das ações do menu genérico', () => {
+    expect(contractorHooks).toContain('v_strap_service_orders');
+    expect(contractorHooks).toContain('.filter(o => !isStrapServiceOrder(o))');
+    expect(contractors).not.toContain('isCanonicalStrapServiceOrder');
+    expect(contractors).not.toContain('Abrir no Hub de Tiras');
+    expect(contractors).not.toContain('artisanal_output_name');
+  });
+
+  it('abre a OS canônica diretamente na Central de Tiras sem confundir com lote', () => {
+    expect(hub).toContain("const focusedServiceOrderNumber = searchParams.get('q')?.trim() || null");
+    expect(hooks).toContain("queryKey: ['artisanal-strap-external-operations', normalizedFocus]");
+    expect(hooks).toContain("serviceItemsQuery.eq('service_order_number', normalizedFocus)");
+    expect(operations).toContain("document.getElementById('focused-strap-service-order')?.scrollIntoView");
+    expect(operations).toContain("id={focusedServiceOrderNumber ? 'focused-strap-service-order' : undefined}");
+    expect(operations).toContain('OS {focusedServiceOrderNumber} não possui linha operacional');
+    expect(hub).toContain("params.delete('q')");
   });
 
   it('separa RBAC administrativo e documentos/unidades operacionais', () => {
@@ -281,6 +294,8 @@ describe('Tiras artesanais — contrato do frontend canônico', () => {
     expect(calculator).not.toContain('perdaPercentual');
     expect(conversionEditor).not.toContain('loss_percentage');
     expect(conversionEditor).not.toContain('Perda percentual');
+    expect(strapYield).not.toContain('confirmedStrapYieldFromLossPercentage');
+    expect(strapYield).not.toContain('strapYieldLossPercentageFromConfirmed');
   });
 
   it('mantém a calculadora livre, temporária e independente das receitas persistidas', () => {
