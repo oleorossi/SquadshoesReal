@@ -7,6 +7,10 @@ const MIGRATION = readFileSync(resolve(
   ROOT,
   'supabase/migrations/20270101010900_sale_order_outbox_worker.sql',
 ), 'utf8');
+const CRON_SECRET_ACL_FIX = readFileSync(resolve(
+  ROOT,
+  'supabase/migrations/20270101012800_service_role_secret_key_rpc_acl.sql',
+), 'utf8');
 const WORKER = readFileSync(resolve(
   ROOT,
   'supabase/functions/process-sale-order-outbox/index.ts',
@@ -96,13 +100,26 @@ describe('sale-order outbox worker — contrato', () => {
     );
     expect(createSecretFunctionAt).toBeGreaterThanOrEqual(0);
     expect(revokeSecretFunctionAt).toBeGreaterThan(createSecretFunctionAt);
-    expect(MIGRATION).toContain("get_nfe_sync_cron_secret exige service_role");
-    expect(MIGRATION).toContain("WHERE name = 'nfe_sync_cron_secret'");
-    expect(MIGRATION).toMatch(
+    const fixedSecretFunction = CRON_SECRET_ACL_FIX.match(
+      /CREATE OR REPLACE FUNCTION public\.get_nfe_sync_cron_secret\(\)[\s\S]*?\$function\$;/,
+    )?.[0] || '';
+    expect(fixedSecretFunction).toContain("WHERE name = 'nfe_sync_cron_secret'");
+    expect(fixedSecretFunction).not.toContain('request.jwt.claim.role');
+    expect(CRON_SECRET_ACL_FIX).toMatch(
       /REVOKE ALL ON FUNCTION public\.get_nfe_sync_cron_secret\(\)[\s\S]*?FROM PUBLIC, anon, authenticated/,
     );
-    expect(MIGRATION).toMatch(
+    expect(CRON_SECRET_ACL_FIX).toMatch(
       /GRANT EXECUTE ON FUNCTION public\.get_nfe_sync_cron_secret\(\)[\s\S]*?TO service_role/,
+    );
+    expect(CRON_SECRET_ACL_FIX).toContain("SELECT 'cron_secret_service_role_acl'");
+    expect(CRON_SECRET_ACL_FIX).toContain('SET LOCAL ROLE service_role');
+    expect(CRON_SECRET_ACL_FIX).toContain('SET LOCAL ROLE authenticated');
+    expect(CRON_SECRET_ACL_FIX).toContain('SET LOCAL ROLE anon');
+    expect(CRON_SECRET_ACL_FIX).toContain(
+      'PERFORM public.get_nfe_sync_cron_secret()',
+    );
+    expect(CRON_SECRET_ACL_FIX).not.toMatch(
+      /SELECT\s+public\.get_nfe_sync_cron_secret\(\)/,
     );
     expect(MIGRATION).toContain("'sale-order-outbox'");
     expect(MIGRATION).toContain("'* * * * *'");

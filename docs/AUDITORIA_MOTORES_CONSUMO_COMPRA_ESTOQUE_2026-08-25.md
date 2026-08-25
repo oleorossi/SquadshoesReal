@@ -144,6 +144,35 @@ Function emissora e, por isso, **não faz parte da promoção**. Seu conteúdo �
 preservado como rascunho técnico, fora de `supabase/migrations`, para impedir que
 o workflow registre uma versão incompleta e nunca a reaplique.
 
+### Retificação após a primeira promoção
+
+A verificação operacional do primeiro deploy encontrou dois defeitos que os
+replays com a chave legada não reproduziam:
+
+- a chave moderna `sb_secret_*` assume o papel PostgreSQL `service_role`, mas não
+  preenche o GUC legado `request.jwt.claim.role`; por isso os workers e crons
+  fiscais eram recusados mesmo estando autenticados corretamente;
+- o trigger diferido da origem de compra de tiras validava a imagem `NEW` já
+  apagada durante a reconciliação, em vez do item que realmente sobreviveu no
+  estado final da transação.
+
+`20270101012800_service_role_secret_key_rpc_acl.sql` substitui essa suposição por
+uma fronteira única que reconhece o papel efetivo e mantém ACLs fechadas. A
+migration cobre os RPCs chamados diretamente e suas dependências transitivas,
+inclusive os triggers de estoque e comando de PV. Seu contrato testa os dois
+formatos de autenticação sem abrir execução para `PUBLIC` ou `anon`.
+
+`20270101012900_fix_deferred_strap_purchase_origin_final_state.sql` passa a
+validar somente o item atual que ainda existe ao fim da transação. Um tombstone
+apagado deixa de causar falso erro, enquanto uma origem de tira inválida que
+realmente sobrevive continua bloqueada.
+
+A auditoria também encontrou a Edge Function remota órfã `gc-probe-temp`, sem
+fonte no repositório e com autenticação desligada. Ela foi incorporada como
+tombstone versionado: não lê segredo, não chama provedor, responde `410` quando
+autenticada e agora exige JWT no gateway. Assim a superfície deixa de ser um
+proxy fiscal oculto sem depender de uma exclusão irreversível no painel.
+
 ## Correções da tela e do relatório
 
 - mapa de solados sempre aberto e no topo da área principal;
@@ -164,17 +193,19 @@ o workflow registre uma versão incompleta e nunca a reaplique.
 
 ## Sequência promovível
 
-As migrations formam uma única sequência linear `20270101010100` →
-`20270101012600`. A ordem é obrigatória: versões registradas no Supabase não são
+As migrations formam uma única sequência linear promovível `20270101010100` →
+`20270101012900`, com **127 deliberadamente ausente** porque permanece apenas no
+rascunho técnico. A ordem é obrigatória: versões registradas no Supabase não são
 reaplicadas pelo workflow. Em especial, 109 precede 117; 117→120 compõem os
 diagnósticos; 121 fecha OC genérica; 122 devolução; 123 relatório canônico; 124
-embalagem por PV; 125 estoque; 126 status fiscal monotônico.
+embalagem por PV; 125 estoque; 126 status fiscal monotônico; 128 corrige a
+fronteira `service_role`; 129 valida a origem de tiras pelo estado final.
 
 ## Validação final
 
-A candidata final foi validada em 25/08/2026 com:
+A candidata retificada foi validada em 25/08/2026 com:
 
-- **3.341 testes aprovados** em 340 arquivos; 8 testes de integração em 5
+- **3.353 testes aprovados** em 343 arquivos; 8 testes de integração em 5
   arquivos ficaram `skip` somente porque exigem o ambiente DB/CI explícito;
 - contratos focados adicionais verdes: 348/348 no recorte amplo, 91/91 após a
   limpeza de tipos, 78/78 na UI/OC, 86/86 em estoque e 42/42 após o freeze SQL;
@@ -183,11 +214,12 @@ A candidata final foi validada em 25/08/2026 com:
   `git diff --check` verdes;
 - parse `pglast` dos 26 arquivos SQL e replay lossless das migrations 101→126
   no Supabase de produção, em uma transação: **1.066 statements**, 18 gates e
-  `ROLLBACK` confirmado;
+  `ROLLBACK` confirmado; as migrations 128 e 129 também tiveram parse integral,
+  validação dos corpos PL/pgSQL e replay transacional isolado com `ROLLBACK`;
 - PV-00146 com três escopos e zero divergência de `effective_grade`; PV-00162
   com paridade de material, embalagem e tiras, inclusive delta zero entre o
   motor operacional e o relatório no recorte de OP;
-- preflight ESM das 17 Edge Functions e contratos de ordenação de deploy 2/2;
+- preflight ESM das 18 Edge Functions e contratos de ordenação de deploy 2/2;
 - revisão da cadeia `main → CI → banco → Edge/Vercel`, sem bloqueador P0/P1.
 
 Os 8 skips não foram tratados como evidência de banco. O replay transacional,

@@ -1,5 +1,12 @@
 project_id = "ssvxfoybzmjlypnipqzn"
 
+# Tombstone gerenciado do antigo probe fiscal manual. A versão remota legada
+# era verify_jwt=false e fazia proxy de metadados da ClickNotas sem autenticação.
+# O handler atual não acessa provedor/segredos e responde 410; o gateway também
+# exige JWT para impedir que chamadas anônimas cheguem ao runtime.
+[functions.gc-probe-temp]
+verify_jwt = true
+
 [functions.emit-nfe]
 verify_jwt = false
 
