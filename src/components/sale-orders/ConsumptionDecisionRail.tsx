@@ -281,7 +281,7 @@ export default function ConsumptionDecisionRail({
             disabled={loading}
           >
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-            Recalcular
+            Atualizar simulação
           </Button>
         )}
         <Button type="button" variant="outline" size="sm" className="flex-1 gap-1.5" onClick={onPrintPdf}>

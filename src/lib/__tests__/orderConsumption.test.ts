@@ -499,6 +499,28 @@ describe('orderConsumption — motor canônico', () => {
     for (const r of binos) expect(r.totalQuantity).toBeCloseTo(24 * 4, 6);
   });
 
+  it('deduplica product_id repetido no fallback de direct_components (PV-00162/NL03)', () => {
+    // A ficha viva tinha a mesma entrada ELÁSTICO 6MM, 20 cm/par, repetida 3×
+    // no JSON. O SQL usa v_dc_seen e calcula 24×20 = 480 cm; o TS somava as
+    // três cópias e mostrava 1.440 cm no relatório.
+    const ctx = buildContext();
+    ctx.allProducts.push({
+      id: 'p-elastico', name: 'ELÁSTICO 6MM', color: 'PRETO', group_id: 'g-comp',
+      quantity: 0, reserved_stock: 0, unit: 'cm', category: 'Componente',
+    } as any);
+    ctx.productGroups.push({
+      id: 'g-comp', name: 'COMPONENTES', dimensions_length: null,
+      dimensions_width: null, dimensions_unit: null,
+    } as any);
+    const duplicated = { product_id: 'p-elastico', quantity: 20, unit: 'cm' };
+    const sheet = { ...buildSheet(), direct_components: [duplicated, duplicated, duplicated] };
+
+    const rows = computeConsumptionForItems([buildItem({ technical_sheets: sheet })], ctx);
+    const elastico = rows.filter((r) => r.productIds?.includes('p-elastico'));
+    expect(elastico).toHaveLength(1);
+    expect(elastico[0].totalQuantity).toBe(24 * 20);
+  });
+
   it('solado fachetado gera linha Fachete (forração extra) convertida dm²→metro', () => {
     // Espelha o ramo de calculate_order_consumption (SQL). Solado is_fachetado
     // com fachete_lining_consumption_dm2 = 2 dm²/par em todas as numerações.

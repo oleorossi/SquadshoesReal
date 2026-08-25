@@ -345,7 +345,7 @@ export function buildMaterialConsumptionReportHtml({
     ${renderMaterialSections(rows)}
   </section>
   ${renderArtisanalStraps(artisanalStrapRows)}
-  <p class="footer-note">Fonte: pedido de venda, ficha técnica publicada, variante de material, grade e estoque líquido no momento da geração. Linhas com ▲ exigem correção cadastral antes de reserva, débito ou compra.</p>
+  <p class="footer-note">Fonte: pedido de venda, ficha técnica vigente, variante de material, grade e estoque líquido no momento da geração. Este relatório é uma simulação atual e pode diferir do snapshot histórico já congelado em uma OP. Linhas com ▲ exigem correção cadastral antes de reserva, débito ou compra.</p>
 </body>
 </html>`;
 }

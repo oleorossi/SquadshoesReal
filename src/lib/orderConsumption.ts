@@ -639,7 +639,20 @@ export async function fetchConsumptionContext(
 ): Promise<ConsumptionContext> {
   const unique = [...new Set(refIds.filter(Boolean))];
 
-  const [{ data: materials, error: materialsError }, { data: allProducts }, { data: productGroups }, { data: componentSheets }, { data: sheetStrapData }, { data: soleColorMappings }, { data: palmilhaColorMappings }, { data: liningColorMappings }, { data: sheetSoleGroups }, { data: componentColorMappings }, { data: materialVariants }, { data: componentColorDefaults }] = await Promise.all([
+  const [
+    { data: materials, error: materialsError },
+    { data: allProducts, error: allProductsError },
+    { data: productGroups, error: productGroupsError },
+    { data: componentSheets, error: componentSheetsError },
+    { data: sheetStrapData, error: sheetStrapDataError },
+    { data: soleColorMappings, error: soleColorMappingsError },
+    { data: palmilhaColorMappings, error: palmilhaColorMappingsError },
+    { data: liningColorMappings, error: liningColorMappingsError },
+    { data: sheetSoleGroups, error: sheetSoleGroupsError },
+    { data: componentColorMappings, error: componentColorMappingsError },
+    { data: materialVariants, error: materialVariantsError },
+    { data: componentColorDefaults, error: componentColorDefaultsError },
+  ] = await Promise.all([
     client
       .from('sheet_materials')
       // `material_variant_id`: NULL = linha compartilhada (todas as variantes);
@@ -684,7 +697,21 @@ export async function fetchConsumptionContext(
       .eq('active', true),
   ]);
 
-  if (materialsError) throw materialsError;
+  const contextError = [
+    materialsError,
+    allProductsError,
+    productGroupsError,
+    componentSheetsError,
+    sheetStrapDataError,
+    soleColorMappingsError,
+    palmilhaColorMappingsError,
+    liningColorMappingsError,
+    sheetSoleGroupsError,
+    componentColorMappingsError,
+    materialVariantsError,
+    componentColorDefaultsError,
+  ].find(Boolean);
+  if (contextError) throw contextError;
 
   // (sheet_id, cor do cabedal) → produto-solado específico
   const soleColorMap = new Map<string, string>();
@@ -2061,6 +2088,13 @@ export function computeConsumptionForItems(
       ? `Cor "${orderColor}" sem mapeamento em Componentes por Cor desta ficha — consumo caiu na lista geral e pode estar somando variantes de cor que não vão neste par. Cadastre a cor em Materiais → Componentes por Cor.`
       : undefined;
     const directProductIds = new Set<string>();
+    // O JSON legado pode repetir literalmente o mesmo produto (PV-00162/NL03
+    // tinha o ELÁSTICO 6MM três vezes). O SQL canônico ignora duplicatas do
+    // product_id ORIGINAL no fallback de direct_components, mas soma entradas
+    // ORIGINAIS distintas que uma regra global resolve para o mesmo SKU. Espelha
+    // `v_dc_seen`: marca só depois de quantidade válida e não aplica à lista
+    // explícita por cor, onde cada entrada é deliberada.
+    const seenFallbackDirectProductIds = new Set<string>();
     for (const dc of directComponents) {
       const pid = (dc as any)?.product_id;
       const qtyPerPair = Number((dc as any)?.quantity) || 0;
@@ -2068,6 +2102,10 @@ export function computeConsumptionForItems(
       // Produto já coberto pelo item-padrão do solado → dedup (F2-01, espelha
       // o v_covered_product_ids do SQL — o item-padrão é a fonte).
       if (stdCoveredProductIds.has(pid)) continue;
+      if (!usedPerColorComponents) {
+        if (seenFallbackDirectProductIds.has(pid)) continue;
+        seenFallbackDirectProductIds.add(pid);
+      }
       const prod = (allProducts || []).find((p: any) => p.id === pid);
       if (!prod) {
         // CONS-8 (auditoria 2026-09-25, caso a): o product_id fixado na ficha

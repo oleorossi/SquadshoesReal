@@ -613,16 +613,20 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
   };
   const fallbackAverageWarning = (missing: string[]): string =>
     `Tamanhos usando a média escalar da ficha (sem consumo por numeração): ${missing.join(', ')}`;
+  const zeroSizesWarning = (missing: string[]): string =>
+    `Tamanhos SEM consumo cadastrado — contribuíram ZERO ao cálculo: ${missing.join(', ')}`;
+  const sizeWarning = (missing: string[], scalar: number): string | undefined =>
+    missing.length === 0 ? undefined : (scalar > 0 ? fallbackAverageWarning(missing) : zeroSizesWarning(missing));
 
   const groupHasColor = (groupName: string, color: string): boolean => {
     if (!groupName || !color || color === '—') return false;
-    const normalizedColor = color.toLowerCase().trim();
+    const normalizedColor = normalizeColorKey(color);
     const group = (productGroups || []).find((g: any) => g.name === groupName);
     if (!group) return false;
     return (allProducts || []).some((p: any) => {
       if (p.group_id !== group.id) return false;
-      const pName = (p.name || '').toLowerCase();
-      const pColor = (p.color || '').toLowerCase();
+      const pName = normalizeColorKey(p.name);
+      const pColor = normalizeColorKey(p.color);
       if (pColor === normalizedColor || pName === normalizedColor) return true;
       const afterDelimiter = pName.includes(':') ? pName.split(':').pop()?.trim() : pName.includes('-') ? pName.split('-').pop()?.trim() : '';
       if (afterDelimiter && afterDelimiter === normalizedColor) return true;
@@ -834,8 +838,7 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
       if (isPrincipalLining && hasLiningSolePerSize) {
         const liningDm2 = calculateGradeBasedDm2(item, liningMatch.consumption, null, liningSolePerSize, soleProductId);
         liningTotal = liningWidthMissing ? liningDm2 : convertDm2ToLinearMeters(liningDm2, liningSheet);
-        const missing = sizesMissingFromSpec(item.grade, liningSolePerSize);
-        if (missing.length > 0 && liningMatch.consumption > 0) liningWarning = fallbackAverageWarning(missing);
+        liningWarning = sizeWarning(sizesMissingFromSpec(item.grade, liningSolePerSize), liningMatch.consumption);
       } else {
         liningTotal = calculateConsumptionWithUnit(item, liningMatch.consumption, liningSheet, 'metro', liningOverride, soleProductId).total;
       }
@@ -889,9 +892,7 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
         ? calculateGradeBasedDm2(item, insoleScalarConsumption, null, insoleSolePerSize, soleProductIdForInsole)
         : calculateGradeBasedDm2(item, insoleScalarConsumption, insoleSheet, undefined, soleProductIdForInsole);
       const insoleMissing = hasInsoleSolePerSize ? sizesMissingFromSpec(item.grade, insoleSolePerSize) : [];
-      const insoleWarning = (insoleMissing.length > 0 && insoleScalarConsumption > 0)
-        ? fallbackAverageWarning(insoleMissing)
-        : undefined;
+      const insoleWarning = sizeWarning(insoleMissing, insoleScalarConsumption);
       const groupPlateArea = calcGroupPlateAreaDm2(insoleGroup);
       // Área da placa: dimensões do GRUPO prevalecem; fallback = dimensões da
       // própria ficha de componente (mesma conta do convertDm2ToPlates).
@@ -963,8 +964,7 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
         if (hasInsoleLiningSolePerSize) {
           const forrDm2 = calculateGradeBasedDm2(item, insoleLiningCons, null, insoleLiningSolePerSize, soleProductIdForInsole);
           forrTotal = forrWidthMissing ? forrDm2 : convertDm2ToLinearMeters(forrDm2, forrSheet);
-          const missing = sizesMissingFromSpec(item.grade, insoleLiningSolePerSize);
-          if (missing.length > 0 && insoleLiningCons > 0) forrWarning = fallbackAverageWarning(missing);
+          forrWarning = sizeWarning(sizesMissingFromSpec(item.grade, insoleLiningSolePerSize), insoleLiningCons);
         } else {
           forrTotal = calculateConsumptionWithUnit(item, insoleLiningCons, forrSheet, 'metro', undefined, soleProductIdForInsole).total;
         }

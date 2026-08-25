@@ -10,11 +10,13 @@
  *
  * Duas regras load-bearing moram aqui:
  *
- *  1. **Item = balde de estoque** (`grupo + cor + unidade`), NÃO linha. O mesmo
- *     material aparece uma vez por APLICAÇÃO e as aplicações dividem o mesmo
- *     estoque: o consumo se soma e o estoque é avaliado UMA vez sobre o total
- *     (`available` é representante, nunca soma). Contar linha a linha
- *     inflava "N em falta".
+ *  1. **Item = balde de estoque**, NÃO linha. Quando o motor resolveu produtos
+ *     exatos, o balde é o conjunto de `productIds` + unidade; só linhas sem ID
+ *     caem no legado `grupo + cor + unidade`. O mesmo material pode aparecer
+ *     uma vez por APLICAÇÃO e essas aplicações dividem o mesmo estoque: o
+ *     consumo se soma e o estoque é avaliado UMA vez sobre o total
+ *     (`available` é representante, nunca soma). Contar linha a linha inflava
+ *     "N em falta"; colapsar produtos distintos do mesmo grupo inventava falta.
  *  2. **Solado é avaliado POR NUMERAÇÃO**, igual à matriz — não pelo total de
  *     pares. 540 pares com estoque 540 pode ter 4 números em falta e 4
  *     sobrando; o total esconderia isso.
@@ -81,7 +83,7 @@ export const rowShortfall = (r: ConsumptionRow): number => {
   return Math.max(0, r.totalQuantity - rowAvailable(r));
 };
 
-// ── Item = BALDE de estoque (grupo + cor + unidade) ────────────────────────
+// ── Item = BALDE de estoque (produto exato; fallback grupo + cor + unidade) ─
 export type ItemGroup = {
   key: string;
   componentType: string;
@@ -95,7 +97,14 @@ export type ItemGroup = {
   known: boolean;
 };
 
-export const itemKey = (r: ConsumptionRow) => `${r.groupName}||${r.color}||${r.productUnit}`;
+export const itemKey = (r: ConsumptionRow) => {
+  const productIds = [...new Set((r.productIds || []).map((id) => id.trim()).filter(Boolean))]
+    .sort();
+  if (productIds.length > 0) {
+    return `products||${productIds.join(',')}||${r.productUnit}`;
+  }
+  return `fallback||${r.groupName}||${r.color}||${r.productUnit}`;
+};
 
 export const aggregateItems = (rows: ConsumptionRow[]): ItemGroup[] => {
   const map = new Map<string, ItemGroup>();

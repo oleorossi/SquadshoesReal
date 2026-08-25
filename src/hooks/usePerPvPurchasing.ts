@@ -30,14 +30,15 @@ const untypedRpc = supabase as unknown as UntypedRpcClient;
  * 20260808120000.
  */
 
-/** Materiais necessários pra um conjunto de PVs (RPC compute_materials_per_pv). */
+/** Materiais necessários pra compra de um conjunto de PVs. A RPC é um wrapper
+ * do motor canônico que acrescenta netting de solado por grade e OCs abertas. */
 export function useMaterialsPerPv(pvIds: string[] | null | undefined) {
   const ids = (pvIds || []).filter(Boolean);
   return useQuery({
     queryKey: ['materials_per_pv', ids.slice().sort().join(',')],
     enabled: ids.length > 0,
     queryFn: async () => {
-      const { data, error } = await untypedRpc.rpc('compute_materials_per_pv', {
+      const { data, error } = await untypedRpc.rpc('compute_per_pv_purchase_needs', {
         p_pv_ids: ids,
       });
       if (error) throw error;
@@ -66,14 +67,11 @@ export function usePurchaseOrdersForPv(pvId: string | null | undefined) {
 
 export interface GeneratePerPvInput {
   pvIds: string[];
-  /** Números dos PVs ("PV-2026-00144") pra montar as notas automáticas. */
-  pvNumbers?: string[];
+  /** UUID estável da tentativa. Retry da mesma tentativa reutiliza o UUID; uma
+   *  nova compra deliberada recebe outro. */
+  requestId: string;
+  allowExistingOpenPurchases: boolean;
   drafts: DraftPurchaseOrder[];
-}
-
-function perPvNotes(pvNumbers: string[] | undefined, pvIds: string[]): string {
-  const labels = (pvNumbers && pvNumbers.length ? pvNumbers : pvIds).join(', ');
-  return `Gerado a partir de ${labels} (Compras por Pedido)`;
 }
 
 async function loadPerPvStrapIdentityGuard(drafts: DraftPurchaseOrder[]) {
@@ -128,15 +126,15 @@ async function loadPerPvStrapIdentityGuard(drafts: DraftPurchaseOrder[]) {
 }
 
 /**
- * Cria as OCs do canal per_pv — uma por draft (fornecedor + "Sem Fornecedor").
- * Cada OC recebe source_type='per_pv', source_pv_ids e idempotency_key
- * determinístico (anti-double-click via trigger de 30s).
+ * Cria as OCs do canal per_pv numa única RPC transacional. O banco pré-valida o
+ * lote inteiro, grava cabeçalhos + itens e mantém um recibo durável por requestId.
  */
 export function useGeneratePerPvPurchaseOrders() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ pvIds, pvNumbers, drafts }: GeneratePerPvInput) => {
+    mutationFn: async ({ pvIds, requestId, allowExistingOpenPurchases, drafts }: GeneratePerPvInput) => {
       if (pvIds.length === 0) throw new Error('Nenhum PV informado.');
+      if (!requestId) throw new Error('Identificador da tentativa indisponível; reabra a geração.');
       const submitted = drafts.filter((draft) => draft.items.length > 0);
       if (submitted.length === 0) throw new Error('Nenhum material a comprar para este(s) pedido(s).');
 
@@ -158,70 +156,49 @@ export function useGeneratePerPvPurchaseOrders() {
           if (!Number.isFinite(it.quantity) || it.quantity <= 0) {
             throw new Error(`Quantidade inválida em ${it.product_name}.`);
           }
-          if (!Number.isFinite(it.unit_price) || it.unit_price < 0) {
-            throw new Error(`Preço inválido em ${it.product_name}.`);
+          if (!Number.isFinite(it.unit_price) || it.unit_price <= 0) {
+            throw new Error(`Informe um preço maior que zero em ${it.product_name}. Nenhuma OC foi gerada.`);
           }
         }
       }
 
-      const notes = perPvNotes(pvNumbers, pvIds);
-      const sortedPvKey = pvIds.slice().sort().join(',');
-      const createdIds: string[] = [];
+      const rpcDrafts = valid.map((draft) => ({
+        supplier_id: draft.supplier_id,
+        items: draft.items.map((item) => ({
+          material_id: item.material_id,
+          quantity: item.quantity,
+          unit_price: item.unit_price,
+          unit: item.unit,
+          current_stock: item.stock_qty,
+          color: item.color ?? null,
+          grade: item.grade ?? null,
+        })),
+      }));
 
-      for (const d of valid) {
-        const total = d.items.reduce((s, i) => s + i.quantity * i.unit_price, 0);
-        if (!Number.isFinite(total) || total > 1e12) throw new Error('Total da OC fora de limite.');
-        const idemKey = `perpv::${sortedPvKey}::${d.supplier_id || 'none'}`;
+      const { data, error } = await untypedRpc.rpc('create_per_pv_purchase_orders_atomic', {
+        p_pv_ids: pvIds,
+        p_drafts: rpcDrafts,
+        p_request_id: requestId,
+        p_allow_existing_open: allowExistingOpenPurchases,
+      });
+      if (error) throw new Error(error.message || 'Não foi possível gerar as OCs por pedido.');
 
-        const { data: po, error } = await supabase
-          .from('purchase_orders')
-          .insert({
-            supplier_id: d.supplier_id,
-            supplier_name: d.supplier_name,
-            notes,
-            total_value: total,
-            auto_generated: false,
-            status: 'pending',
-            source_type: 'per_pv',
-            source_pv_ids: pvIds,
-            idempotency_key: idemKey,
-          })
-          .select()
-          .single();
-        if (error) {
-          if (error.code === '23505' && /idempotency/.test(error.message || '')) {
-            throw new Error(
-              'Estas OCs já foram geradas há menos de 30s para este(s) pedido(s). ' +
-              'Confira em "Compras deste PV" antes de gerar de novo.',
-            );
-          }
-          throw error;
-        }
-
-        const items = d.items.map((i) => ({
-          purchase_order_id: po.id,
-          product_id: i.material_id,
-          quantity: i.quantity,
-          suggested_quantity: i.quantity,
-          unit_price: i.unit_price,
-          unit: i.unit,
-          current_stock: i.stock_qty,
-          min_stock: 0,
-          max_stock: 0,
-          color: i.color ?? null,
-        }));
-        const { error: e2 } = await supabase.from('purchase_order_items').insert(items);
-        if (e2) {
-          // Compensating delete — não deixa OC órfã sem itens.
-          await supabase.from('purchase_orders').delete().eq('id', po.id).eq('status', 'pending');
-          throw e2;
-        }
-        createdIds.push(po.id as string);
+      const payload = (data && typeof data === 'object' ? data : {}) as {
+        created_ids?: unknown;
+        order_count?: unknown;
+        replayed?: unknown;
+      };
+      const createdIds = Array.isArray(payload.created_ids)
+        ? payload.created_ids.filter((id): id is string => typeof id === 'string' && id.length > 0)
+        : [];
+      if (createdIds.length === 0) {
+        throw new Error('O banco não devolveu as OCs geradas; nenhuma confirmação foi assumida.');
       }
 
       return {
         createdIds,
-        orderCount: createdIds.length,
+        orderCount: Number(payload.order_count) || createdIds.length,
+        replayed: payload.replayed === true,
         excludedStrapItemCount: filtered.excluded.length,
       };
     },
@@ -229,9 +206,10 @@ export function useGeneratePerPvPurchaseOrders() {
       qc.invalidateQueries({ queryKey: ['purchase_orders'] });
       qc.invalidateQueries({ queryKey: ['purchase_orders_per_pv'] });
       qc.invalidateQueries({ queryKey: ['purchase_order_items'] });
-      toast.success(
-        `${res.orderCount} ordem(ns) de compra gerada(s) para o(s) pedido(s).`,
-      );
+      qc.invalidateQueries({ queryKey: ['materials_per_pv'] });
+      toast.success(res.replayed
+        ? `${res.orderCount} ordem(ns) já haviam sido geradas nesta tentativa.`
+        : `${res.orderCount} ordem(ns) de compra gerada(s) para o(s) pedido(s).`);
       if (res.excludedStrapItemCount > 0) {
         toast.info(
           `${res.excludedStrapItemCount} item(ns) de tira não entrou(aram) nestas OCs e segue(m) no motor automático de tiras.`,

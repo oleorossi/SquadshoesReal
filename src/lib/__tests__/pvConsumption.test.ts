@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   fetchConsumptionContext: vi.fn(),
   computeConsumptionForItems: vi.fn(),
   annotateConsumptionAvailability: vi.fn(),
+  saleOrdersError: { current: null as { message: string } | null },
 }));
 
 vi.mock('@/integrations/supabase/client', () => ({
@@ -50,6 +51,7 @@ const unresolvedPreview = {
 describe('loadPvConsumption — preview canônica de tiras', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.saleOrdersError.current = null;
 
     mocks.from.mockImplementation((table: string) => ({
       select: vi.fn(() => ({
@@ -67,7 +69,7 @@ describe('loadPvConsumption — preview canônica de tiras', () => {
                 id: 'pv-1', order_number: 'PV-1', client_order_number: null,
                 packaging_mode: null,
               }],
-              error: null,
+              error: mocks.saleOrdersError.current,
             }),
       })),
     }));
@@ -99,5 +101,26 @@ describe('loadPvConsumption — preview canônica de tiras', () => {
       expect.objectContaining({ groupName: '11111111-1111-4111-8111-111111111111' }),
       expect.objectContaining({ groupName: 'PENDENTE', warning: 'Linha técnica não resolvida.' }),
     ]));
+  });
+
+  it('deduplica IDs na fronteira e chama a prévia de tiras uma única vez por PV', async () => {
+    await loadPvConsumption(['pv-1', 'pv-1', '  pv-1  ']);
+
+    expect(mocks.rpc).toHaveBeenCalledTimes(1);
+    expect(mocks.rpc).toHaveBeenCalledWith('preview_sale_order_strap_demand', {
+      p_sale_order_id: 'pv-1',
+    });
+    const previews = mocks.annotateConsumptionAvailability.mock.calls[0][2];
+    expect(previews).toHaveLength(2);
+  });
+
+  it('falha fechado quando o cabeçalho do PV não pode ser carregado', async () => {
+    mocks.saleOrdersError.current = { message: 'sale_orders indisponível' };
+
+    await expect(loadPvConsumption(['pv-1'])).rejects.toEqual({
+      message: 'sale_orders indisponível',
+    });
+    expect(mocks.fetchConsumptionContext).not.toHaveBeenCalled();
+    expect(mocks.computeConsumptionForItems).not.toHaveBeenCalled();
   });
 });

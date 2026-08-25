@@ -25,7 +25,7 @@ describe('Compras por Pedido — cutover estrutural de tiras', () => {
     expect(dialog).not.toContain('marque o produto como artesanal');
   });
 
-  it('revalida identidades no hook antes do primeiro INSERT e falha fechada', () => {
+  it('revalida identidades no hook antes da RPC transacional e falha fechada', () => {
     expect(hook).toContain("rpc('list_artisanal_strap_catalog'");
     expect(hook).toContain("select('id, group_id, is_artisanal')");
     expect(hook).toContain("select('id, is_artisanal_strap')");
@@ -34,7 +34,8 @@ describe('Compras por Pedido — cutover estrutural de tiras', () => {
     expect(hook).toContain('for (const d of valid)');
     expect(hook).toContain('Nenhuma OC foi gerada');
     expect(hook.indexOf('excludeStrapsFromPerPvDrafts(submitted, strapIdentityGuard)'))
-      .toBeLessThan(hook.indexOf("source_type: 'per_pv'"));
+      .toBeLessThan(hook.indexOf("rpc('create_per_pv_purchase_orders_atomic'"));
+    expect(hook).not.toContain(".from('purchase_orders')\n          .insert");
   });
 
   it('classifica somente por identidade estrutural, sem regex de nome ou SKU', () => {

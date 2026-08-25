@@ -74,22 +74,40 @@ describe('MaterialConsumptionView — tela buy-first', () => {
     // Antes existia só "falta" sem número; a coluna Falta é a novidade.
     expect(screen.getByRole('columnheader', { name: 'Falta' })).toBeInTheDocument();
     // (90−12) + (108−0) = 186 pares, ignorando sobra de outros números.
-    expect(screen.getByText('186')).toBeInTheDocument();
-    expect(screen.getByText(/em 2 nº/)).toBeInTheDocument();
+    const soles = screen.getByRole('region', { name: 'Solados por numeração' });
+    expect(within(soles).getByText(/186 par/)).toBeInTheDocument();
+    expect(within(soles).getByText(/Falta em 2 números/i)).toBeInTheDocument();
   });
 
-  it('abre a grade do solado com necessidade, estoque e falta por número', async () => {
-    const user = userEvent.setup();
+  it('mantém a grade do solado aberta no topo com necessidade, estoque e falta por número', () => {
     renderView();
-    expect(screen.queryByText('Numeração')).not.toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: /Abrir grade por numeração/i }));
-    const grade = screen.getByText('Numeração').closest('table')!;
+    const soles = screen.getByRole('region', { name: 'Solados por numeração' });
+    expect(within(soles).getByText(/Mapa de solados/i)).toBeInTheDocument();
+    const grade = within(soles).getByText('Numeração').closest('table')!;
     // O estoque por número era invisível antes (só no `title` da célula).
     expect(within(grade).getByText('Necessidade')).toBeInTheDocument();
-    expect(within(grade).getByText('Em estoque')).toBeInTheDocument();
+    expect(within(grade).getByText('Estoque útil')).toBeInTheDocument();
     expect(within(grade).getByText('Falta')).toBeInTheDocument();
     // 90 necessários, 12 em estoque, 78 faltando no 35.
     expect(within(grade).getByText('78')).toBeInTheDocument();
+  });
+
+  it('destaca solado não resolvido como cadastro incompleto, nunca como grade coberta', () => {
+    renderView({
+      rows: [row({
+        componentType: 'Solado',
+        groupName: 'Solado Ricardo Tratorado',
+        materialName: 'Solado',
+        productUnit: 'par',
+        totalQuantity: 0,
+        warning: 'Solado não resolve produto ativo no estoque — não será reservado nem debitado.',
+      })],
+    });
+
+    const soles = screen.getByRole('region', { name: 'Solados por numeração' });
+    expect(within(soles).getByText('Cadastro incompleto')).toBeInTheDocument();
+    expect(within(soles).getByText(/não será reservado nem debitado/i)).toBeInTheDocument();
+    expect(within(soles).queryByText('Grade coberta')).not.toBeInTheDocument();
   });
 
   it('o filtro "Em falta" esconde o que está coberto', async () => {
@@ -116,7 +134,7 @@ describe('MaterialConsumptionView — tela buy-first', () => {
     renderView();
     await user.type(screen.getByLabelText(/Buscar material/i), 'solado');
     expect(screen.getByText(/mostrando 1 de 5/)).toBeInTheDocument();
-    expect(within(screen.getByRole('table')).getByText('SOLADO 01')).toBeInTheDocument();
+    expect(within(screen.getByRole('region', { name: 'Solados por numeração' })).getByText('SOLADO 01')).toBeInTheDocument();
     expect(screen.queryByText('OURO LIGHT')).not.toBeInTheDocument();
   });
 

@@ -10,8 +10,6 @@ import {
   ArrowDown,
   Warning as WarningIcon,
   CheckCircle,
-  CaretRight,
-  CaretDown,
 } from '@phosphor-icons/react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { computeBaseMaterialTotal, BASE_MATERIAL_COMPONENTS, BASE_GROUP_PATTERN } from '@/lib/baseMaterialTotal';
@@ -61,9 +59,9 @@ import {
  *    dizer QUANTO — o comprador ia buscar em outra tela.
  *  - **Trilho de decisão** sticky (`ConsumptionDecisionRail`) com material base,
  *    itens em falta, maiores faltas e a ação primária "Gerar OC".
- *  - **Solado como linha expansível**: a grade abre mostrando necessidade,
- *    estoque e falta POR NÚMERO (antes a matriz mostrava só a necessidade, com o
- *    estoque escondido no `title` da célula).
+ *  - **Solado como mapa de compra prioritário**: a grade aparece aberta logo
+ *    após o resumo, mostrando necessidade, estoque e falta POR NÚMERO. Solado
+ *    não fica mais enterrado na ordenação nem depende de uma seta minúscula.
  *  - Os três banners âmbar viraram um cartão recolhível no trilho.
  *
  * O que NÃO mudou de propósito: a aritmética. Disponibilidade, falta, agregação
@@ -148,8 +146,8 @@ function SoleGradeDetail({ row }: { row: ConsumptionRow }) {
   }
 
   return (
-    <div className="overflow-x-auto px-3 py-2">
-      <table className="border-collapse text-xs">
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-max border-collapse text-xs">
         <thead>
           <tr>
             <th className="border border-border bg-muted/50 px-2 py-1 text-left text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
@@ -165,11 +163,11 @@ function SoleGradeDetail({ row }: { row: ConsumptionRow }) {
         <tbody>
           {([
             { label: 'Necessidade', get: (s: string) => Number(row.sizeBreakdown?.[s]) || 0 },
-            { label: 'Em estoque', get: (s: string) => Number(avail[s]) || 0 },
+            { label: 'Estoque útil', get: (s: string) => Number(avail[s]) || 0 },
             { label: 'Falta', get: (s: string) => Math.max(0, (Number(row.sizeBreakdown?.[s]) || 0) - (Number(avail[s]) || 0)) },
           ] as const).map(({ label, get }) => (
             <tr key={label}>
-              <th className="border border-border bg-muted/30 px-2 py-1 text-left text-[11px] font-semibold">
+              <th scope="row" className="border border-border bg-muted/30 px-2 py-1 text-left text-[11px] font-semibold">
                 {label}
               </th>
               {sizes.map((s) => {
@@ -194,6 +192,104 @@ function SoleGradeDetail({ row }: { row: ConsumptionRow }) {
   );
 }
 
+/**
+ * Solado é uma decisão de compra por grade, não mais uma linha genérica da
+ * tabela. O bloco fica acima da dobra e sempre aberto no estado inicial.
+ */
+function SoleCoveragePanel({ rows }: { rows: ConsumptionRow[] }) {
+  if (rows.length === 0) return null;
+
+  return (
+    <section
+      className="overflow-hidden rounded-lg border border-border bg-card"
+      aria-label="Solados por numeração"
+    >
+      <header className="flex flex-wrap items-end justify-between gap-3 border-b border-border bg-muted/40 px-4 py-3">
+        <div>
+          <p className="eyebrow">Prioridade de compra</p>
+          <h3 className="display mt-1 text-xl leading-none sm:text-2xl">Mapa de solados · grade por numeração</h3>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Necessidade, estoque aproveitável e quantidade a comprar em cada número.
+          </p>
+        </div>
+        <Badge variant="outline" className="font-mono tabular-nums">
+          {rows.length} {rows.length === 1 ? 'solado' : 'solados'}
+        </Badge>
+      </header>
+
+      <div className="divide-y divide-border">
+        {rows.map((row, index) => {
+          const known = rowKnown(row);
+          const shortage = rowShortfall(row);
+          const usefulStock = Math.max(0, row.totalQuantity - shortage);
+          const shortSizes = soleShortSizes(row);
+          const hasShortage = known && shortage > 0;
+          return (
+            <article
+              key={`${row.groupName}-${row.color}-${row.productIds?.join(',') || index}`}
+              className="px-4 py-3"
+            >
+              <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h4 className="text-sm font-bold text-foreground">{row.groupName}</h4>
+                    {row.color && row.color !== '—' && (
+                      <Badge variant="secondary" className="text-[10px]">{row.color}</Badge>
+                    )}
+                    {!known ? (
+                      <Badge variant="outline" className="border-amber-500/50 text-[10px] text-amber-700 dark:text-amber-400">
+                        Cadastro incompleto
+                      </Badge>
+                    ) : hasShortage ? (
+                      <Badge variant="destructive" className="text-[10px]">
+                        Falta em {shortSizes.length || 1} {shortSizes.length === 1 ? 'número' : 'números'}
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-[10px] text-green-700 dark:text-green-400">
+                        Grade coberta
+                      </Badge>
+                    )}
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">{row.materialName || 'Solado'}</p>
+                  {row.warning && (
+                    <p className="mt-1 max-w-2xl text-xs text-amber-700 dark:text-amber-400">
+                      {row.warning}
+                    </p>
+                  )}
+                </div>
+
+                <dl className="grid grid-cols-3 divide-x divide-border overflow-hidden rounded-md border border-border bg-background text-right">
+                  <div className="px-3 py-2">
+                    <dt className="eyebrow">Necessidade</dt>
+                    <dd className="mt-1 font-mono text-base font-bold tabular-nums">
+                      {formatQty(row.totalQuantity, row.productUnit)} {formatUnit(row.productUnit)}
+                    </dd>
+                  </div>
+                  <div className="px-3 py-2">
+                    <dt className="eyebrow">Estoque útil</dt>
+                    <dd className="mt-1 font-mono text-base font-bold tabular-nums">
+                      {known ? `${formatQty(usefulStock, row.productUnit)} ${formatUnit(row.productUnit)}` : '—'}
+                    </dd>
+                  </div>
+                  <div className="px-3 py-2">
+                    <dt className="eyebrow">Comprar</dt>
+                    <dd className={`mt-1 font-mono text-base font-bold tabular-nums ${
+                      !known ? 'text-muted-foreground' : hasShortage ? 'text-destructive' : 'text-green-700 dark:text-green-400'
+                    }`}>
+                      {known ? `${formatQty(shortage, row.productUnit)} ${formatUnit(row.productUnit)}` : '—'}
+                    </dd>
+                  </div>
+                </dl>
+              </div>
+              <SoleGradeDetail row={row} />
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 export default function MaterialConsumptionView({
   rows,
   artisanalStrapRows,
@@ -211,7 +307,6 @@ export default function MaterialConsumptionView({
   const [filter, setFilter] = useState<ConsumptionFilter>('all');
   const [napaOnly, setNapaOnly] = useState(false);
   const [search, setSearch] = useState('');
-  const [openSoles, setOpenSoles] = useState<Record<string, boolean>>({});
 
   const handleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -261,6 +356,15 @@ export default function MaterialConsumptionView({
     });
   }, [rows, search, filter, napaOnly, isShortRow]);
 
+  const visibleSoleRows = useMemo(
+    () => visibleRows.filter((row) => row.componentType === 'Solado'),
+    [visibleRows],
+  );
+  const visibleMaterialRows = useMemo(
+    () => visibleRows.filter((row) => row.componentType !== 'Solado'),
+    [visibleRows],
+  );
+
   const sortedRows = useMemo(() => {
     const canonical = (a: ConsumptionRow, b: ConsumptionRow) => {
       const t = COMPONENT_ORDER.indexOf(a.componentType as (typeof COMPONENT_ORDER)[number])
@@ -270,15 +374,15 @@ export default function MaterialConsumptionView({
         || a.materialName.localeCompare(b.materialName, 'pt-BR')
         || a.color.localeCompare(b.color, 'pt-BR');
     };
-    if (!sortKey) return [...visibleRows].sort(canonical);
+    if (!sortKey) return [...visibleMaterialRows].sort(canonical);
     const dir = sortDir === 'asc' ? 1 : -1;
-    return [...visibleRows].sort((a, b) => {
+    return [...visibleMaterialRows].sort((a, b) => {
       if (sortKey === 'totalQuantity') return (a.totalQuantity - b.totalQuantity) * dir;
       const aVal = (a[sortKey] || '').toLowerCase();
       const bVal = (b[sortKey] || '').toLowerCase();
       return aVal.localeCompare(bVal, 'pt-BR') * dir || canonical(a, b);
     });
-  }, [visibleRows, sortKey, sortDir]);
+  }, [visibleMaterialRows, sortKey, sortDir]);
 
   /**
    * Seções da tabela mestra. `groupBy` decide a SEGMENTAÇÃO e as colunas decidem
@@ -398,28 +502,12 @@ export default function MaterialConsumptionView({
     // Item curto (mesmo material em várias aplicações) não pode aparecer
     // coberto só porque ESTA linha cabe no estoque — o balde inteiro não cabe.
     const ok = known && short === 0 && !itemShort;
-    const isSole = row.componentType === 'Solado';
     const hasQuantityPreview = !(row.totalQuantity > 0) && Number(row.previewQuantity) > 0;
-    const soleKey = `${sectionKey}|${row.groupName}|${row.color}|${index}`;
-    const isOpen = !!openSoles[soleKey];
 
-    const main = (
+    return (
       <TableRow key={`${sectionKey}-${row.groupName}-${row.materialName}-${row.color}-${index}`}>
         <TableCell className={`font-medium ${!neutralStock && known && !ok ? 'border-l-2 border-red-500/60' : ''}`}>
           <div className="flex items-center gap-1.5">
-            {isSole && (
-              <button
-                type="button"
-                onClick={() => setOpenSoles((p) => ({ ...p, [soleKey]: !p[soleKey] }))}
-                aria-expanded={isOpen}
-                aria-label={isOpen ? 'Fechar grade por numeração' : 'Abrir grade por numeração'}
-                className="shrink-0 rounded-sm text-muted-foreground hover:text-foreground"
-              >
-                {isOpen
-                  ? <CaretDown className="h-3.5 w-3.5" aria-hidden="true" />
-                  : <CaretRight className="h-3.5 w-3.5" aria-hidden="true" />}
-              </button>
-            )}
             {row.widthMissing && (
               <TooltipProvider delayDuration={150}>
                 <Tooltip>
@@ -500,25 +588,12 @@ export default function MaterialConsumptionView({
             <span className="inline-flex items-center justify-end gap-1 font-mono font-bold tabular-nums text-red-600 dark:text-red-400">
               <WarningIcon weight="fill" className="h-3 w-3 shrink-0" aria-hidden="true" />
               {formatQty(short, row.productUnit)}
-              {isSole && soleShortSizes(row).length > 0 && (
-                <span className="ml-0.5 text-[10px] font-normal">em {soleShortSizes(row).length} nº</span>
-              )}
             </span>
           )}
         </TableCell>
         <TableCell className="text-center text-xs text-muted-foreground">{formatUnit(row.productUnit)}</TableCell>
       </TableRow>
     );
-
-    if (!isSole || !isOpen) return [main];
-    return [
-      main,
-      <TableRow key={`${soleKey}-grade`} className="border-0 hover:bg-transparent">
-        <TableCell colSpan={7} className="bg-muted/30 p-0">
-          <SoleGradeDetail row={row} />
-        </TableCell>
-      </TableRow>,
-    ];
   };
 
   const renderBand = (item: ItemGroup) => {
@@ -566,17 +641,15 @@ export default function MaterialConsumptionView({
   const visibleShortItems = countShort(visibleRows);
 
   return (
-    <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
-      <div className="min-w-0 space-y-3">
-        {/* Manifesto operacional: contexto + decisão no mesmo plano, sem
-            duplicar cartões soltos. O trilho à direita continua sendo a ação;
-            esta faixa explica a leitura antes da tabela. */}
-        <section className="grid overflow-hidden border-y-2 border-foreground bg-card sm:grid-cols-[minmax(0,1.5fr)_repeat(3,minmax(7rem,0.55fr))]" aria-label="Resumo operacional do consumo">
+    <div className="space-y-4">
+      {/* O resumo ocupa toda a largura; abaixo dele, o mapa de solados abre a
+          coluna principal enquanto o trilho mantém a ação de compra visível. */}
+      <section className="grid overflow-hidden border-y-2 border-foreground bg-card sm:grid-cols-[minmax(0,1.5fr)_repeat(3,minmax(7rem,0.55fr))]" aria-label="Resumo operacional do consumo">
           <div className="border-b border-border px-4 py-3 sm:border-b-0 sm:border-r">
-            <p className="eyebrow">Suprimentos · conferência do pedido</p>
+            <p className="eyebrow">Simulação atual · ficha e estoque agora</p>
             <h2 className="display mt-1 text-2xl leading-none sm:text-3xl">{title}</h2>
             <p className="mt-1.5 max-w-xl text-xs text-muted-foreground">
-              Necessidade é consumo bruto; falta já desconta o estoque líquido e orienta a reposição.
+              Recalcula a ficha vigente. Uma OP já congelada pode manter o planejamento histórico usado na reserva e na baixa.
             </p>
           </div>
           <dl className="border-r border-border px-3 py-3">
@@ -620,18 +693,27 @@ export default function MaterialConsumptionView({
             </dd>
             <dd className="mt-1 text-[10px] text-muted-foreground">cadastros a revisar</dd>
           </dl>
-        </section>
+      </section>
 
-        {orderHeaders && orderHeaders.length > 0 && (
-          <div className="flex flex-wrap gap-x-6 gap-y-1 rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm">
-            {orderHeaders.map((h, i) => (
-              <span key={`${h.order_number}-${i}`} className="text-foreground">
-                <span className="text-muted-foreground">Pedido:</span> <span className="font-medium">{h.order_number}</span>
-                {h.client_order_number && <span className="text-muted-foreground"> · Pedido Cliente: {h.client_order_number}</span>}
-              </span>
-            ))}
+      {orderHeaders && orderHeaders.length > 0 && (
+        <div className="flex flex-wrap gap-x-6 gap-y-1 rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm">
+          {orderHeaders.map((h, i) => (
+            <span key={`${h.order_number}-${i}`} className="text-foreground">
+              <span className="text-muted-foreground">Pedido:</span> <span className="font-medium">{h.order_number}</span>
+              {h.client_order_number && <span className="text-muted-foreground"> · Pedido Cliente: {h.client_order_number}</span>}
+            </span>
+          ))}
+        </div>
+      )}
+
+      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
+        <div className="min-w-0 space-y-3">
+          <SoleCoveragePanel rows={visibleSoleRows} />
+
+          <div>
+            <p className="eyebrow">Materiais gerais</p>
+            <h3 className="display mt-1 text-xl leading-none">Consumo e cobertura de estoque</h3>
           </div>
-        )}
 
         {/* ── Barra de controle: agrupar, buscar, totais ─────────────────── */}
         <div className="sticky top-0 z-10 flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border bg-background/95 py-2 backdrop-blur supports-[backdrop-filter]:bg-background/80">
@@ -688,9 +770,9 @@ export default function MaterialConsumptionView({
           <p className="py-8 text-center text-sm text-muted-foreground">
             Nenhuma linha {filter !== 'all' ? filterLabel[filter] : ''}{napaOnly ? ' de napa' : ''} {search ? `para “${search}”` : ''}.
           </p>
-        ) : (
+        ) : visibleMaterialRows.length > 0 ? (
           <div className="overflow-hidden overflow-x-auto rounded-lg border">
-            <Table className="[&_tbody_tr]:border-dashed [&_tbody_tr]:border-border/70 [&_td]:py-2">
+            <Table aria-label="Materiais gerais" className="[&_tbody_tr]:border-dashed [&_tbody_tr]:border-border/70 [&_td]:py-2">
               <TableHeader>
                 <TableRow className="bg-muted/50">
                   <TableHead aria-sort={sortKey === 'groupName' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}>
@@ -734,7 +816,7 @@ export default function MaterialConsumptionView({
                   const short = new Set(
                     sectionRows
                       .filter(isShortRow)
-                      .map((r) => (r.componentType === 'Solado' ? `sole||${r.groupName}||${r.color}` : itemKey(r))),
+                      .map(itemKey),
                   ).size;
                   const [secLabel, secFamily] = String(sectionKey).split(SECTION_SEP);
                   out.push(
@@ -757,23 +839,21 @@ export default function MaterialConsumptionView({
                     </TableRow>,
                   );
 
-                  // Dentro da seção: solado linha a linha (avaliado por numeração)
-                  // e o resto por balde de estoque, com faixa quando o mesmo
-                  // material aparece em mais de uma aplicação.
-                  const soleRows = sectionRows.filter((r) => r.componentType === 'Solado');
-                  const items = aggregateItems(sectionRows.filter((r) => r.componentType !== 'Solado'));
+                  // Dentro da seção: materiais por balde de estoque, com faixa
+                  // quando o mesmo produto aparece em mais de uma aplicação.
+                  // Solados ficam no mapa de grade dedicado, acima da tabela.
+                  const items = aggregateItems(sectionRows);
                   for (const item of items) {
                     const multi = item.rows.length > 1;
                     if (multi) out.push(renderBand(item));
-                    item.rows.forEach((row, i) => out.push(...renderRow(row, i, multi, sectionKey)));
+                    item.rows.forEach((row, i) => out.push(renderRow(row, i, multi, sectionKey)));
                   }
-                  soleRows.forEach((row, i) => out.push(...renderRow(row, i, false, sectionKey)));
                   return out;
                 })}
               </TableBody>
             </Table>
           </div>
-        )}
+        ) : null}
 
         {/* Bloco separado: tiras artesanais cortadas do rolo (vermelho) */}
         <ArtisanalStrapRollCutBlock rows={artisanalStrapRows} />
@@ -781,7 +861,7 @@ export default function MaterialConsumptionView({
         {extraSections}
       </div>
 
-      <ConsumptionDecisionRail
+        <ConsumptionDecisionRail
         baseTotal={baseTotal}
         shortCount={emFaltaCount}
         pendingCount={pendingCount}
@@ -798,7 +878,8 @@ export default function MaterialConsumptionView({
         onRecalcular={onRecalcular}
         onPrintPdf={handlePrintPdf}
         loading={loading}
-      />
+        />
+      </div>
     </div>
   );
 }

@@ -457,7 +457,7 @@ export default function SaleOrders() {
   // Produção/almoxarifado veem PVs pra contexto de produção, mas SEM valores
   // (preço unit, total, comissão). canSeeFinancialValues=false bloqueia colunas
   // e KPIs financeiros sem retirar a navegação.
-  const { canSeeFinancialValues, canAccessModule, roles } = useAccessControl();
+  const { canSeeFinancialValues, roles } = useAccessControl();
   // Espelha o gate do SaleOrderCommand: admin, gerente ou comercial, sempre
   // respeitando a ação granular `edit` da tela. Mostrar o lápis para um grant
   // somente-leitura permitiria iniciar uma mutação que a própria UI proibiu.
@@ -470,7 +470,9 @@ export default function SaleOrders() {
   const perm = useCan('/sales');
   const canEditPv = perm.canEdit
     && (isAdmin || roles.includes('gerente') || roles.includes('comercial'));
-  const canBuy = canAccessModule('financeiro');
+  // Espelha a policy de escrita de purchase_orders/items. Acesso de consulta ao
+  // módulo financeiro não concede autoridade para criar uma OC.
+  const canBuy = isAdmin || roles.includes('gerente');
 
   // Confirmação estruturada genérica (AlertDialog) — substitui os confirm()
   // nativos de ações de alto impacto da página.

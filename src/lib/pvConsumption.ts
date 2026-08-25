@@ -22,8 +22,12 @@ export type PvConsumptionResult = {
 /** Cache curto: o prefetch ao abrir o PV ainda vale quando o operador clica Consumo. */
 export const PV_CONSUMPTION_STALE_MS = 2 * 60 * 1000;
 
+export function normalizePvConsumptionIds(ids: string[]) {
+  return [...new Set(ids.map((id) => id.trim()).filter(Boolean))];
+}
+
 export function pvConsumptionQueryKey(ids: string[]) {
-  return ['pv-consumption', [...ids].sort().join(',')] as const;
+  return ['pv-consumption', normalizePvConsumptionIds(ids).sort().join(',')] as const;
 }
 
 /**
@@ -31,11 +35,15 @@ export function pvConsumptionQueryKey(ids: string[]) {
  * `?view=consumo`, o diálogo do PV e o prefetch ao abrir o detalhe.
  */
 export async function loadPvConsumption(ids: string[]): Promise<PvConsumptionResult> {
-  if (ids.length === 0) {
+  const uniqueIds = normalizePvConsumptionIds(ids);
+  if (uniqueIds.length === 0) {
     return { rows: [], artisanalStrapRows: [], orderHeaders: [] };
   }
 
-  const [{ data: items, error: itemsError }, { data: saleOrders }] = await Promise.all([
+  const [
+    { data: items, error: itemsError },
+    { data: saleOrders, error: saleOrdersError },
+  ] = await Promise.all([
     supabase
       .from('sale_order_items')
       .select(`
@@ -49,14 +57,15 @@ export async function loadPvConsumption(ids: string[]): Promise<PvConsumptionRes
         material_variant_id,
         technical_sheets(${TECHNICAL_SHEET_CONSUMPTION_COLUMNS})
       `)
-      .in('sale_order_id', ids),
+      .in('sale_order_id', uniqueIds),
     supabase
       .from('sale_orders')
       .select('id, order_number, client_order_number, packaging_mode')
-      .in('id', ids),
+      .in('id', uniqueIds),
   ]);
 
   if (itemsError) throw itemsError;
+  if (saleOrdersError) throw saleOrdersError;
 
   const orderHeaders: OrderHeader[] = (saleOrders || []).map((so: { order_number: string; client_order_number: string | null }) => ({
     order_number: so.order_number,
@@ -74,7 +83,7 @@ export async function loadPvConsumption(ids: string[]): Promise<PvConsumptionRes
   const refIds = [...new Set(items.map((i: { reference_id: string | null }) => i.reference_id).filter(Boolean))] as string[];
   const [ctx, previewResults] = await Promise.all([
     fetchConsumptionContext(refIds),
-    Promise.all(ids.map((saleOrderId) =>
+    Promise.all(uniqueIds.map((saleOrderId) =>
       (supabase as any).rpc('preview_sale_order_strap_demand', {
         p_sale_order_id: saleOrderId,
       }))),

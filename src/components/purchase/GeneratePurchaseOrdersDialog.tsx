@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState } from 'react';
+import { Fragment, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { computePurchaseBaseTotal } from '@/lib/baseMaterialTotal';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
@@ -27,6 +27,7 @@ import { effectiveConversionFactorStrict } from '@/lib/purchaseConversion';
 import { normalizeUnit } from '@/lib/unitConversion';
 import {
   buildPerPvPurchaseOrders,
+  collectOpenPurchaseWarnings,
   collectPvNeedWarnings,
   createPerPvStrapIdentityGuard,
   NO_SUPPLIER_LABEL,
@@ -93,6 +94,7 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
   // GUARD: aviso da RPC (ex.: largura/conversão faltante) bloqueia gerar — a OC
   // sairia comprando A MENOS. Override consciente pelo mesmo padrão da cor.
   const [overrideNeedWarnings, setOverrideNeedWarnings] = useState(false);
+  const [overrideOpenPurchases, setOverrideOpenPurchases] = useState(false);
   const needsQuery = useMaterialsPerPv(open ? pvIds : null);
   const productsQuery = useProducts();
   const groupsQuery = useGroups();
@@ -108,6 +110,9 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
   const isError = needsQuery.isError || identityUnavailable;
   const error = needsQuery.error || productsQuery.error || groupsQuery.error || strapCatalogQuery.error;
   const generate = useGeneratePerPvPurchaseOrders();
+  // Retry da mesma tentativa conserva o UUID e recebe o resultado idempotente
+  // do banco. Fechar/reabrir remonta o diálogo e cria uma compra deliberada nova.
+  const requestIdRef = useRef<string | null>(null);
   const qc = useQueryClient();
   // Cadastro 1-clique da cor faltante: resolve o grupo a partir do produto (material_id).
   const [createTarget, setCreateTarget] = useState<{
@@ -193,6 +198,10 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
   // único de tira artesanal existe pra acabar (spec §2.4). A mensagem já vem
   // pronta e acionável do banco; aqui só a exibimos.
   const needWarnings = useMemo(() => collectPvNeedWarnings(purchasableNeeds), [purchasableNeeds]);
+  const openPurchaseWarnings = useMemo(
+    () => collectOpenPurchaseWarnings(purchasableNeeds),
+    [purchasableNeeds],
+  );
   /** Bloqueio TOTAL: nada dessa linha entra na OC (needed_qty 0). */
   const blockedWarnings = useMemo(() => needWarnings.filter((w) => w.needed_qty <= 0), [needWarnings]);
 
@@ -241,6 +250,11 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
     [enrichedNeeds, netOfStock],
   );
   const summary = useMemo(() => summarizePerPvDrafts(drafts), [drafts]);
+  const invalidPriceItems = useMemo(
+    () => drafts.flatMap((draft) => draft.items.filter((item) =>
+      !Number.isFinite(item.unit_price) || item.unit_price <= 0)),
+    [drafts],
+  );
 
   // ── Material base (napa) — mesma leitura da faixa de Material base do Consumo ─
   // O grupo do produto é o que diz se a linha é napa; a RPC não manda essa
@@ -298,8 +312,22 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
       toast.error('Há materiais que não entram na compra — resolva o cadastro ou confirme o override.');
       return;
     }
+    if (invalidPriceItems.length > 0) {
+      toast.error('Cadastre preço maior que zero nos materiais indicados. Nenhuma OC foi gerada.');
+      return;
+    }
+    if (openPurchaseWarnings.length > 0 && !overrideOpenPurchases) {
+      toast.error('Há compras abertas para materiais deste pedido. Confira-as ou confirme que deseja comprar novamente.');
+      return;
+    }
     try {
-      const res = await generate.mutateAsync({ pvIds, pvNumbers, drafts });
+      requestIdRef.current ||= crypto.randomUUID();
+      const res = await generate.mutateAsync({
+        pvIds,
+        requestId: requestIdRef.current,
+        allowExistingOpenPurchases: overrideOpenPurchases,
+        drafts,
+      });
       onGenerated?.(res.createdIds);
       onOpenChange(false);
     } catch {
@@ -474,8 +502,8 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
               )}
               <div className="bg-card p-2.5">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Precisam atenção</p>
-                <p className={`text-xl font-bold tabular-nums leading-tight ${(summary.noSupplierItemCount + summary.colorMismatchCount + needWarnings.length) > 0 ? 'text-amber-600 dark:text-amber-500' : ''}`}>
-                  {summary.noSupplierItemCount + summary.colorMismatchCount + needWarnings.length}
+                <p className={`text-xl font-bold tabular-nums leading-tight ${(summary.noSupplierItemCount + summary.colorMismatchCount + needWarnings.length + openPurchaseWarnings.length) > 0 ? 'text-amber-600 dark:text-amber-500' : ''}`}>
+                  {summary.noSupplierItemCount + summary.colorMismatchCount + needWarnings.length + openPurchaseWarnings.length}
                 </p>
               </div>
             </div>
@@ -507,6 +535,38 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
                   numa única OC <strong>"{NO_SUPPLIER_LABEL}"</strong>. Cadastre o fornecedor do
                   produto pra direcionar automaticamente nas próximas vezes.
                 </span>
+              </div>
+            )}
+
+            {invalidPriceItems.length > 0 && (
+              <div className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>
+                  <strong>{invalidPriceItems.length} item(ns) sem preço válido.</strong>{' '}
+                  Cadastre preço maior que zero antes de gerar: {invalidPriceItems
+                    .map((item) => item.product_name)
+                    .join(', ')}. Nenhuma OC será gravada parcialmente.
+                </span>
+              </div>
+            )}
+
+            {openPurchaseWarnings.length > 0 && (
+              <div className="space-y-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-400">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <div>
+                    <strong>Já existem compras abertas para {openPurchaseWarnings.length} material(is).</strong>
+                    <ul className="mt-1 list-disc space-y-1 pl-4 text-xs">
+                      {openPurchaseWarnings.map((warning) => (
+                        <li key={`${warning.material_id}-${warning.message}`}>{warning.message}</li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+                <label className="flex cursor-pointer items-center gap-2 text-xs font-medium">
+                  <Checkbox checked={overrideOpenPurchases} onCheckedChange={(v) => setOverrideOpenPurchases(!!v)} />
+                  Gerar mesmo assim (conferi as OCs/ROPs abertas e esta compra é adicional)
+                </label>
               </div>
             )}
 
@@ -699,8 +759,8 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
             )}
             <Button
               onClick={handleGenerate}
-              disabled={isLoading || isError || generate.isPending || drafts.length === 0 || conversionWarnings.length > 0 || (summary.colorMismatchCount > 0 && !overrideColorMismatch) || (needWarnings.length > 0 && !overrideNeedWarnings)}
-              title={conversionWarnings.length > 0 ? 'Há materiais com conversão inválida' : summary.colorMismatchCount > 0 && !overrideColorMismatch ? 'Há itens com cor não cadastrada — cadastre a cor ou marque o override' : needWarnings.length > 0 && !overrideNeedWarnings ? 'Há materiais fora da compra por falta de cadastro — resolva ou marque o override' : undefined}
+              disabled={isLoading || isError || generate.isPending || drafts.length === 0 || invalidPriceItems.length > 0 || conversionWarnings.length > 0 || (openPurchaseWarnings.length > 0 && !overrideOpenPurchases) || (summary.colorMismatchCount > 0 && !overrideColorMismatch) || (needWarnings.length > 0 && !overrideNeedWarnings)}
+              title={invalidPriceItems.length > 0 ? 'Há materiais sem preço maior que zero' : openPurchaseWarnings.length > 0 && !overrideOpenPurchases ? 'Há OCs/ROPs abertas — confira ou confirme a compra adicional' : conversionWarnings.length > 0 ? 'Há materiais com conversão inválida' : summary.colorMismatchCount > 0 && !overrideColorMismatch ? 'Há itens com cor não cadastrada — cadastre a cor ou marque o override' : needWarnings.length > 0 && !overrideNeedWarnings ? 'Há materiais fora da compra por falta de cadastro — resolva ou marque o override' : undefined}
               className="gap-2"
             >
               {generate.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShoppingCart className="h-4 w-4" />}

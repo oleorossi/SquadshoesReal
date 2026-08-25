@@ -563,6 +563,91 @@ describe('calculateBomForOrders — placa da palmilha por número do solado (BOM
   });
 });
 
+describe('calculateBomForOrders — paridade de cor e specs incompletas', () => {
+  it('trata Café e CAFE como a mesma cor ao escolher o grupo principal', async () => {
+    const t = buildBomTables();
+    (t.orders[0] as any).color = 'Café';
+    Object.assign(t.technical_sheets[0] as any, {
+      upper_material: 'NAPA CAFE',
+      upper_consumption: 10,
+      components_accessories: [{
+        material: 'NAPA ALTERNATIVA',
+        consumption: 20,
+        mandatory: false,
+      }],
+    });
+    t.product_groups = [...(t.product_groups as any[]),
+      { id: 'g-cafe', name: 'NAPA CAFE', dimensions_length: null, dimensions_width: null, dimensions_unit: 'mm' },
+      { id: 'g-alt', name: 'NAPA ALTERNATIVA', dimensions_length: null, dimensions_width: null, dimensions_unit: 'mm' },
+    ];
+    // A alternativa tem mais SKUs para tornar o fallback antigo observável: sem
+    // remover o acento, `Café` não casava `CAFE` e o ranking escolhia este grupo.
+    t.products = [...(t.products as any[]),
+      { id: 'p-cafe', name: 'NAPA CAFE', color: 'CAFE', group_id: 'g-cafe', unit: 'm', quantity: 0 },
+      { id: 'p-alt-1', name: 'NAPA ALTERNATIVA PRETO', color: 'PRETO', group_id: 'g-alt', unit: 'm', quantity: 0 },
+      { id: 'p-alt-2', name: 'NAPA ALTERNATIVA BRANCO', color: 'BRANCO', group_id: 'g-alt', unit: 'm', quantity: 0 },
+    ];
+
+    mockDb.tables = t;
+    const rows = await calculateBomForOrders(['op1']);
+    const cabedal = rows.find((row) => row.componentType === 'Cabedal');
+
+    expect(cabedal?.groupName).toBe('NAPA CAFE');
+  });
+
+  it('avisa ZERO nas três aplicações quando a grade extrapola specs e o escalar é 0', async () => {
+    const t = withSole(buildBomTables());
+    Object.assign(t.technical_sheets[0] as any, {
+      lining_material: 'FORRO TESTE',
+      lining_consumption: 0,
+      insole_consumption: 0,
+      insole_has_lining: true,
+      insole_lining_consumption: 0,
+    });
+    (t.sale_order_items[0] as any).material_variant_id = 'variant-lining';
+    t.reference_material_variants = [{
+      id: 'variant-lining',
+      reference_id: 'ts1',
+      active: true,
+      lining_material_product_id: null,
+      lining_material_group_id: 'g-forro',
+      lining_consumption_override: null,
+      insole_material_product_id: null,
+      insole_material_group_id: null,
+      insole_consumption_override: null,
+      sole_material_product_id: null,
+      sole_consumption_override: null,
+      main_material_group_id: null,
+    }];
+    t.product_groups = [...(t.product_groups as any[]), {
+      id: 'g-forro', name: 'FORRO TESTE', dimensions_length: null, dimensions_width: null, dimensions_unit: 'mm',
+    }];
+    t.products = [...(t.products as any[]), {
+      id: 'p-forro', name: 'FORRO TESTE PRETO', color: 'PRETO', group_id: 'g-forro', unit: 'm', quantity: 0,
+    }];
+    // Só o nº 35 tem engenharia cadastrada; 36–38 precisam permanecer em zero,
+    // mas nunca de forma silenciosa na Lista de Separação.
+    t.sole_technical_specs = [{
+      sole_id: 'p-sole',
+      size: 35,
+      lining_consumption_dm2: 2,
+      insole_consumption_dm2: 4,
+      insole_lining_consumption_dm2: 3,
+    }];
+
+    mockDb.tables = t;
+    const rows = await calculateBomForOrders(['op1']);
+    const lining = rows.find((row) => row.materialName === 'Forração');
+    const insole = rows.find((row) => row.componentType === 'Palmilha');
+    const insoleLining = rows.find((row) => row.materialName === 'Forração Palmilha');
+
+    for (const row of [lining, insole, insoleLining]) {
+      expect(row?.totalQuantity).toBeGreaterThan(0);
+      expect(row?.warning).toMatch(/contribuíram ZERO.*36, 37, 38/);
+    }
+  });
+});
+
 describe('calculateBomForOrders — componente Fachete (BOM-5)', () => {
   it('solado fachetado emite Fachete pelo grupo fachete_material_group_id', async () => {
     const t = withSole(buildBomTables(), { is_fachetado: true, fachete_material_group_id: 'g-fach' });

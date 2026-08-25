@@ -13,6 +13,7 @@
  */
 
 import { roundUpToPurchaseMultiple } from '@/lib/purchaseMultiple';
+import { rateGradeToTotal } from '@/lib/gradeDistribution';
 
 /** Uma necessidade de material vinda da RPC compute_materials_per_pv. */
 export interface PvMaterialNeed {
@@ -56,6 +57,11 @@ export interface PvMaterialNeed {
    *  nas linhas de solado; demais materiais vêm null. Exibida na OC como no
    *  consumo de materiais. */
   grade?: Record<string, number> | null;
+  /** Falta líquida do solado por numeração, calculada contra stock_grade pela
+   *  RPC específica de compra. Quando netOfStock=true, esta é a grade da OC. */
+  shortage_grade?: Record<string, number> | null;
+  /** Há OC/ROP ainda aberta para o mesmo produto. Exige confirmação consciente. */
+  open_purchase_warning?: string | null;
   /** TRUE quando a cor pedida não tem produto cadastrado e o consumo caiu numa
    *  cor diferente (matched_by='color_mismatch'). GUARD: a OC marca a linha e
    *  bloqueia a geração até cadastrar a cor. */
@@ -94,6 +100,8 @@ export interface DraftPurchaseOrderItem {
   rounding_surplus?: number;
   /** Grade do solado por numeração (total de pares). Só em linhas de solado. */
   grade?: Record<string, number> | null;
+  /** Peso por numeração da falta líquida; usado só enquanto o draft é montado. */
+  shortage_grade?: Record<string, number> | null;
   /** Cor pedida sem produto cadastrado (caiu noutra cor). Bloqueia a OC. */
   color_mismatch?: boolean;
   /** Aviso acionável vindo da RPC (ver PvMaterialNeed.conversion_warning).
@@ -329,6 +337,7 @@ export function buildPerPvPurchaseOrders(
       // mantém o maior preço conhecido (mais conservador pra estimativa)
       existing.unit_price = Math.max(existing.unit_price, price);
       existing.grade = mergeGrade(existing.grade, n.grade);
+      existing.shortage_grade = mergeGrade(existing.shortage_grade, n.shortage_grade);
       existing.color_mismatch = !!existing.color_mismatch || !!n.color_mismatch;
       // Basta UM aviso pra linha estar comprometida — guarda o primeiro (a RPC
       // já agrega por (produto, cor), então na prática só há um).
@@ -353,6 +362,7 @@ export function buildPerPvPurchaseOrders(
         purchase_unit: n.purchase_unit ?? null,
         conversion_factor: Number(n.conversion_factor) > 0 ? Number(n.conversion_factor) : 1,
         grade: n.grade ?? null,
+        shortage_grade: n.shortage_grade ?? null,
         color_mismatch: !!n.color_mismatch,
         conversion_warning: n.conversion_warning ?? null,
         strap_variant_id: n.strap_variant_id ?? null,
@@ -403,6 +413,13 @@ export function buildPerPvPurchaseOrders(
       stock_qty: stockP,
       unit_price: priceP,
       quantity: qty,
+      // A grade persistida precisa fechar com a quantidade REAL da OC (falta
+      // líquida + múltiplo), não com a demanda bruta devolvida pela RPC. Sem
+      // este rateio o recebimento de solado trava em soma(grade) != quantity.
+      grade: rateGradeToTotal(
+        netOfStock && it.shortage_grade ? it.shortage_grade : it.grade,
+        qty,
+      ),
       rounding_surplus,
     });
   }
@@ -505,6 +522,29 @@ export function collectPvNeedWarnings(needs: PvMaterialNeed[]): PvNeedWarning[] 
     (a.needed_qty > 0 ? 1 : 0) - (b.needed_qty > 0 ? 1 : 0)
     || a.product_name.localeCompare(b.product_name, 'pt-BR'));
   return out;
+}
+
+/** OCs/ROPs abertas são um risco diferente de cadastro incompleto: o operador
+ *  pode prosseguir, mas precisa reconhecer conscientemente a compra já existente. */
+export function collectOpenPurchaseWarnings(needs: PvMaterialNeed[]): PvNeedWarning[] {
+  const seen = new Set<string>();
+  const out: PvNeedWarning[] = [];
+  for (const n of needs || []) {
+    const message = (n?.open_purchase_warning ?? '').trim();
+    if (!message) continue;
+    const key = `${n.material_id}::${message}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      material_id: n.material_id,
+      product_name: n.product_name,
+      color: (n.color ?? null) || null,
+      unit: n.unit || 'un',
+      needed_qty: round3(Number(n.needed_qty) || 0),
+      message,
+    });
+  }
+  return out.sort((a, b) => a.product_name.localeCompare(b.product_name, 'pt-BR'));
 }
 
 export interface PerPvDraftSummary {

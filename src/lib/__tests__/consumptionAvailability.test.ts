@@ -70,7 +70,7 @@ describe('solado — avaliado por numeração', () => {
   });
 });
 
-describe('item = balde de estoque (grupo + cor + unidade)', () => {
+describe('item = balde de estoque (produto exato; fallback grupo + cor + unidade)', () => {
   // Mesma napa, mesma cor, DUAS aplicações: dividem o mesmo estoque.
   const duasAplicacoes = [
     row({ materialName: 'Forração', componentType: 'Forração', totalQuantity: 2, available: 5 }),
@@ -97,6 +97,31 @@ describe('item = balde de estoque (grupo + cor + unidade)', () => {
     ]);
     expect(item.known).toBe(false);
     expect(itemShortfall(item)).toBe(0);
+  });
+
+  it('mantém produtos exatos distintos separados mesmo no mesmo grupo/cor/unidade', () => {
+    const produtosDistintos = [
+      row({ materialName: 'COLA FORTE', totalQuantity: 100, available: 100, productIds: ['p-cola-forte'] }),
+      row({ materialName: 'HOTMELT', totalQuantity: 100, available: 100, productIds: ['p-hotmelt'] }),
+    ];
+
+    const items = aggregateItems(produtosDistintos);
+    expect(items).toHaveLength(2);
+    expect(items.every((item) => itemShortfall(item) === 0)).toBe(true);
+    expect(countShort(produtosDistintos)).toBe(0);
+  });
+
+  it('continua compartilhando estoque entre aplicações do mesmo produto exato', () => {
+    const mesmoProduto = [
+      row({ materialName: 'Forração', totalQuantity: 2, available: 5, productIds: ['p-napa'] }),
+      row({ materialName: 'Forração Palmilha', totalQuantity: 4, available: 5, productIds: ['p-napa'] }),
+    ];
+
+    const [item] = aggregateItems(mesmoProduto);
+    expect(aggregateItems(mesmoProduto)).toHaveLength(1);
+    expect(item.total).toBe(6);
+    expect(item.available).toBe(5);
+    expect(itemShortfall(item)).toBe(1);
   });
 });
 

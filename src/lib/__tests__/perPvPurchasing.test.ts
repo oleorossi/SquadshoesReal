@@ -7,6 +7,7 @@ import {
   summarizePerPvDrafts,
   isPerPvPurchaseOrder,
   collectPvNeedWarnings,
+  collectOpenPurchaseWarnings,
   NO_SUPPLIER_LABEL,
   type PvMaterialNeed,
 } from '@/lib/perPvPurchasing';
@@ -35,12 +36,38 @@ const need = (over: Partial<PvMaterialNeed>): PvMaterialNeed => ({
 describe('grade do solado', () => {
   it('mescla a grade por numeração ao somar o mesmo solado+cor', () => {
     const drafts = buildPerPvPurchaseOrders([
-      need({ material_id: 'sol-01', product_name: '01', color: 'CARAMELO', unit: 'par', needed_qty: 1104, supplier_id: null, supplier_name: null, grade: { '34': 92, '36': 184 } }),
-      need({ material_id: 'sol-01', product_name: '01', color: 'CARAMELO', unit: 'par', needed_qty: 1104, supplier_id: null, supplier_name: null, grade: { '34': 92, '38': 100 } }),
+      need({ material_id: 'sol-01', product_name: '01', color: 'CARAMELO', unit: 'par', needed_qty: 276, supplier_id: null, supplier_name: null, grade: { '34': 92, '36': 184 } }),
+      need({ material_id: 'sol-01', product_name: '01', color: 'CARAMELO', unit: 'par', needed_qty: 192, supplier_id: null, supplier_name: null, grade: { '34': 92, '38': 100 } }),
     ]);
     const item = drafts[0].items.find((i) => i.material_id === 'sol-01')!;
-    expect(item.quantity).toBe(2208);
+    expect(item.quantity).toBe(468);
     expect(item.grade).toEqual({ '34': 184, '36': 184, '38': 100 });
+  });
+
+  it('usa a falta por numeração e fecha soma(grade) == quantity', () => {
+    const drafts = buildPerPvPurchaseOrders([
+      need({
+        material_id: 'sol-01', product_name: '01', color: 'CARAMELO', unit: 'par',
+        needed_qty: 100, stock_qty: 40, grade: { '34': 25, '35': 25, '36': 50 },
+        shortage_grade: { '34': 5, '35': 5, '36': 50 },
+      }),
+    ], { netOfStock: true });
+    const item = drafts[0].items[0];
+    expect(item.quantity).toBe(60);
+    expect(item.grade).toEqual({ '34': 5, '35': 5, '36': 50 });
+    expect(Object.values(item.grade || {}).reduce((sum, qty) => sum + qty, 0)).toBe(item.quantity);
+  });
+
+  it('rateia a grade também para o excedente do múltiplo de compra', () => {
+    const drafts = buildPerPvPurchaseOrders([
+      need({
+        material_id: 'sol-01', product_name: '01', color: 'CARAMELO', unit: 'par',
+        needed_qty: 42, purchase_multiple: 10, grade: { '34': 14, '35': 14, '36': 14 },
+      }),
+    ]);
+    const item = drafts[0].items[0];
+    expect(item.quantity).toBe(50);
+    expect(Object.values(item.grade || {}).reduce((sum, qty) => sum + qty, 0)).toBe(50);
   });
 
   it('material sem grade fica com grade null', () => {
@@ -381,5 +408,18 @@ describe('collectPvNeedWarnings', () => {
       need({ material_id: 'b', product_name: 'B', needed_qty: 0, conversion_warning: BLOCK }),
     ]);
     expect(warnings.map((w) => w.product_name)).toEqual(['B', 'A']);
+  });
+});
+
+describe('collectOpenPurchaseWarnings', () => {
+  it('mantém o aviso de OC/ROP separado dos erros de conversão e deduplica por produto', () => {
+    const warning = 'Já existe compra aberta para "COLA PVC" na OC OC-00188.';
+    const warnings = collectOpenPurchaseWarnings([
+      need({ material_id: 'cola', product_name: 'COLA PVC', open_purchase_warning: warning }),
+      need({ material_id: 'cola', product_name: 'COLA PVC', open_purchase_warning: warning }),
+      need({ material_id: 'napa', product_name: 'NAPA', open_purchase_warning: null }),
+    ]);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatchObject({ material_id: 'cola', message: warning });
   });
 });

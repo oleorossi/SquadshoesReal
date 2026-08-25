@@ -2,7 +2,12 @@ import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import MaterialConsumptionView from '@/components/sale-orders/MaterialConsumptionView';
 import UpperCutOutsourcingSection from '@/components/sale-orders/UpperCutOutsourcingSection';
-import { loadPvConsumption, pvConsumptionQueryKey, PV_CONSUMPTION_STALE_MS } from '@/lib/pvConsumption';
+import {
+  loadPvConsumption,
+  normalizePvConsumptionIds,
+  pvConsumptionQueryKey,
+  PV_CONSUMPTION_STALE_MS,
+} from '@/lib/pvConsumption';
 
 /**
  * Consumo de materiais de UM ou MAIS PVs. Roda o MOTOR CANÔNICO
@@ -28,7 +33,10 @@ type Props = {
 };
 
 export default function SummaryConsumptionPanel({ saleOrderIds, onGerarOC }: Props) {
-  const idsKey = useMemo(() => [...saleOrderIds].sort().join(','), [saleOrderIds]);
+  const idsKey = useMemo(
+    () => normalizePvConsumptionIds(saleOrderIds).sort().join(','),
+    [saleOrderIds],
+  );
   const ids = useMemo(() => (idsKey ? idsKey.split(',') : []), [idsKey]);
 
   const { data, isLoading, error, refetch } = useQuery({
@@ -42,7 +50,7 @@ export default function SummaryConsumptionPanel({ saleOrderIds, onGerarOC }: Pro
   const artisanalStrapRows = data?.artisanalStrapRows ?? [];
   const orderHeaders = data?.orderHeaders ?? [];
 
-  const singlePv = saleOrderIds.length === 1 ? saleOrderIds[0] : null;
+  const singlePv = ids.length === 1 ? ids[0] : null;
   const singlePvNumber = singlePv ? (orderHeaders[0]?.order_number ?? '') : '';
 
   return (
