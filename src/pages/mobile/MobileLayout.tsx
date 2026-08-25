@@ -1,9 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { useOnlineStatus } from '@/lib/mobile/networkStatus';
 import { countPendingOrders } from '@/lib/mobile/offlineQueue';
-import { installAutoSync, triggerSync } from '@/lib/mobile/syncEngine';
+import { installAutoSync, triggerSync, type SyncResult } from '@/lib/mobile/syncEngine';
 import { House, Plus, ClockClockwise, User } from '@phosphor-icons/react';
+import { useAuth } from '@/hooks/useAuth';
+import { useCan } from '@/hooks/useAccessControl';
+import { toast } from 'sonner';
 
 /**
  * Layout mobile-first: sem sidebar do desktop, status bar topo, bottom
@@ -23,15 +26,33 @@ import { House, Plus, ClockClockwise, User } from '@phosphor-icons/react';
 export default function MobileLayout() {
   const online = useOnlineStatus();
   const location = useLocation();
+  const { user } = useAuth();
+  const perm = useCan('/sales');
   const [pendingCount, setPendingCount] = useState(0);
+  const reportConfirmationOutcome = useCallback((result: SyncResult | null) => {
+    if (!result || (result.createdAsDraft === 0 && result.confirmationUnknown === 0)) return;
+    toast.warning(
+      `${result.createdAsDraft} PV(s) ficaram em Rascunho · ${result.confirmationUnknown} confirmação(ões) não verificadas`,
+      {
+        description: result.confirmationErrors
+          .slice(0, 2)
+          .map((entry) => `${entry.order_id || entry.client_request_id}: ${entry.error}`)
+          .join('\n'),
+        duration: 15000,
+      },
+    );
+  }, []);
 
   // Boot: instala auto-sync + conta pendentes. Não usamos polling: em aparelhos
   // móveis uma leitura IndexedDB a cada 5 s mantém a CPU acordada sem melhorar
   // a UI. A fila emite evento quando muda e a tela também atualiza ao voltar
   // ao foreground.
   useEffect(() => {
-    const cleanup = installAutoSync();
-    const refresh = async () => setPendingCount(await countPendingOrders());
+    if (!user?.id) return;
+    const cleanup = perm.canCreate
+      ? installAutoSync(user.id, reportConfirmationOutcome)
+      : () => {};
+    const refresh = async () => setPendingCount(await countPendingOrders(user.id));
     void refresh();
     const visibilityHandler = () => {
       if (document.visibilityState === 'visible') void refresh();
@@ -43,11 +64,11 @@ export default function MobileLayout() {
       window.removeEventListener('squad:pending-orders-changed', refresh);
       document.removeEventListener('visibilitychange', visibilityHandler);
     };
-  }, []);
+  }, [user?.id, perm.canCreate, reportConfirmationOutcome]);
 
   const tabs = [
     { to: '/m', icon: House, label: 'Início' },
-    { to: '/m/new', icon: Plus, label: 'Novo PV' },
+    ...(perm.canCreate ? [{ to: '/m/new', icon: Plus, label: 'Novo PV' }] : []),
     { to: '/m/pending', icon: ClockClockwise, label: 'Pendentes' },
     { to: '/m/profile', icon: User, label: 'Perfil' },
   ];
@@ -63,9 +84,12 @@ export default function MobileLayout() {
           <span className={`h-2 w-2 rounded-full ${online ? 'bg-emerald-500' : 'bg-amber-500'}`} />
           {online ? 'Online' : 'Offline'}
         </span>
-        {pendingCount > 0 && (
+        {pendingCount > 0 && perm.canCreate && user?.id && (
           <button
-            onClick={() => void triggerSync().then(async () => setPendingCount(await countPendingOrders()))}
+            onClick={() => void triggerSync(user.id).then(async (result) => {
+              reportConfirmationOutcome(result);
+              setPendingCount(await countPendingOrders(user.id));
+            })}
             className="text-amber-600 font-bold"
           >
             {pendingCount} pendente{pendingCount > 1 ? 's' : ''} · sync

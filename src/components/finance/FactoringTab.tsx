@@ -197,20 +197,34 @@ export default function FactoringTab() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      // First unlink any sale orders referencing this factoring config
-      const { error: unlinkErr } = await supabase
+      // PV é registro comercial/auditável: excluir uma configuração não pode
+      // reescrever pedidos históricos nem contornar expected_version. Quando
+      // houver vínculo, arquiva a configuração; sem vínculo, remove de fato.
+      const { count, error: refsError } = await supabase
         .from('sale_orders')
-        .update({ factoring_config_id: null } as any)
+        .select('id', { count: 'exact', head: true })
         .eq('factoring_config_id', id);
-      if (unlinkErr) throw unlinkErr;
+      if (refsError) throw refsError;
+
+      if ((count || 0) > 0) {
+        const { error } = await supabase
+          .from('factoring_config')
+          .update({ active: false, updated_at: new Date().toISOString() })
+          .eq('id', id);
+        if (error) throw error;
+        return { archived: true, linkedOrders: count || 0 };
+      }
 
       const { error } = await supabase.from('factoring_config').delete().eq('id', id);
       if (error) throw error;
+      return { archived: false, linkedOrders: 0 };
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       qc.invalidateQueries({ queryKey: ['factoring_config'] });
       qc.invalidateQueries({ queryKey: ['sale_orders'] });
-      toast.success('Factoring excluído! Pedidos vinculados foram desassociados.');
+      toast.success(result.archived
+        ? `Factoring arquivado; ${result.linkedOrders} pedido(s) histórico(s) mantiveram o vínculo.`
+        : 'Factoring excluído.');
     },
     onError: (e: Error) => toast.error(`Erro ao excluir factoring: ${e.message}`),
   });

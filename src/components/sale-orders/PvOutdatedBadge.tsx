@@ -70,24 +70,24 @@ const labelMap: Record<OutdatedStatus['status_label'], { text: string; tooltip: 
     text: 'Ficha/itens editados após reservar',
     tooltip:
       'A ficha técnica ou os itens deste PV foram editados depois que as reservas foram feitas. ' +
-      'As reservas são atualizadas ao salvar o PV/ficha ou via "Resync OPs". ' +
-      'Este aviso some sozinho na próxima varredura.',
+      'O sistema preservou as OPs e reservas existentes. Revise o impacto e use "Resync OPs" ' +
+      'somente se a alteração realmente deve substituir o plano atual.',
     severity: 'warn',
   },
   snapshot_outdated: {
     text: 'Ficha técnica alterada após produção iniciar',
     tooltip:
       'A ficha técnica foi modificada depois que esta OP entrou em produção. ' +
-      'O snapshot congelado em produção continua válido (audit trail), mas considere ' +
-      'rodar "Resync OPs" se a mudança foi corretiva.',
+      'O snapshot congelado continua válido para auditoria; qualquer correção após fato físico ' +
+      'deve ser compensatória, não um resync destrutivo.',
     severity: 'warn',
   },
   reservations_and_snapshot_outdated: {
     text: 'Ficha modificada — snapshot e reservas desatualizados',
     tooltip:
       'A ficha técnica foi editada após algumas OPs entrarem em produção. ' +
-      'As reservas pré-produção são atualizadas ao salvar o PV/ficha ou via "Resync OPs". ' +
-      'Pra OPs já em produção, considere "Resync OPs" se a mudança foi corretiva.',
+      'As OPs e reservas foram preservadas. Revise as pré-produção antes de um resync explícito; ' +
+      'nas OPs com fato físico, use movimento compensatório.',
     severity: 'warn',
   },
 };

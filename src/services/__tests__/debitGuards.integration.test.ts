@@ -1,8 +1,8 @@
 /**
  * Guard SQL da auditoria débito ficha×grade (specs/auditoria-debito-ficha-grade.md).
  *
- * Por padrão é SKIP (não roda no CI — as suítes de banco escrevem em produção).
- * Para executar: `bun run test:db` (ver src/test/dbGuards.ts).
+ * Por padrão é SKIP. No CI, roda apenas no job semanal contra o projeto
+ * Supabase isolado; localmente, use `bun run test:db` em ambiente descartável.
  *
  * Invoca `run_debit_guard_tests()` (migration
  * 20260915110000_audit-debito-ficha-grade-fixes.sql), que TRAVA os fixes da

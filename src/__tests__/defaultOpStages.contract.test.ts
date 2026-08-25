@@ -1,11 +1,26 @@
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const RESYNC = readFileSync(resolve(process.cwd(), 'src/lib/resyncOPs.ts'), 'utf8');
 const STAGE = readFileSync(
   resolve(process.cwd(), 'src/components/production/worksheet/stageOrder.ts'),
   'utf8',
+);
+const MIGRATIONS_DIR = resolve(process.cwd(), 'supabase/migrations');
+const RESYNC_MIGRATION = readdirSync(MIGRATIONS_DIR)
+  .filter((name) => /^\d{14}_.+\.sql$/.test(name))
+  .sort()
+  .reverse()
+  .find((name) => readFileSync(resolve(MIGRATIONS_DIR, name), 'utf8')
+    .includes('CREATE OR REPLACE FUNCTION public.resync_op_atomic'));
+const RESYNC_SQL = RESYNC_MIGRATION
+  ? readFileSync(resolve(MIGRATIONS_DIR, RESYNC_MIGRATION), 'utf8')
+  : '';
+const RESYNC_FALLBACK = RESYNC_SQL.match(/ARRAY\s*\[\s*'Corte Fibra'[\s\S]*?\]/)?.[0] ?? '';
+const RESYNC_FALLBACK_NAMES = Array.from(
+  RESYNC_FALLBACK.matchAll(/'([^']+)'/g),
+  (match) => match[1],
 );
 
 describe('rota canônica Corte Fibra', () => {
@@ -17,9 +32,24 @@ describe('rota canônica Corte Fibra', () => {
     expect(STAGE).toContain("'Expedição': 11");
   });
 
-  it('resync de ficha sem production_sectors usa a rota viva', () => {
-    expect(RESYNC).toContain("{ name: 'Corte Fibra', order: 1 }");
-    expect(RESYNC).toContain("{ name: 'Costura Palmilha', order: 3 }");
-    expect(RESYNC).toContain("{ name: 'Costura Cabedal', order: 4 }");
+  it('resync fino passa pelo comando do PV; o motor SQL usa a rota viva', () => {
+    expect(RESYNC).toContain('executeSaleOrderCommand');
+    expect(RESYNC).toContain("command: 'resync'");
+    expect(RESYNC).not.toContain("rpc('resync_op_atomic'");
+    expect(RESYNC).not.toContain("{ name: 'Corte Fibra'");
+    expect(RESYNC_MIGRATION, 'migration de resync_op_atomic ausente').toBeDefined();
+    expect(RESYNC_FALLBACK_NAMES).toEqual([
+      'Corte Fibra',
+      'Corte Forração',
+      'Costura Palmilha',
+      'Costura Cabedal',
+      'Aviamento',
+      'Silk',
+      'Colagem',
+      'Montagem',
+      'Solagem',
+      'Acabamento',
+      'Expedição',
+    ]);
   });
 });

@@ -341,6 +341,9 @@ function buildVolumeCountFields(
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
+  let standaloneHoldId: string | null = null;
+  let standaloneProviderNfeCalled = false;
+  let adminClientForStockCompensation: ReturnType<typeof createClient> | null = null;
   try {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
@@ -363,6 +366,7 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
+    adminClientForStockCompensation = adminClient;
     const { data: roles, error: rolesErr } = await adminClient
       .from("user_roles").select("role").eq("user_id", userId);
     if (rolesErr) {
@@ -371,6 +375,34 @@ Deno.serve(async (req) => {
     const allowed = roles?.some((r: { role: string }) => ["admin", "gerente", "nfe_operator"].includes(r.role));
     if (!allowed) {
       return new Response(JSON.stringify({ error: "Forbidden: apenas admin, gerente ou operador NF-e podem emitir NF-e" }), { status: 403, headers: corsHeaders });
+    }
+
+    // Se o usuário opera em modo granular (possui qualquer tela concedida), a
+    // role sozinha não basta: emissão exige /nfe + can_create. O mesmo gate é
+    // repetido na RPC de prepare, que é a fronteira transacional definitiva.
+    const { data: granularPermissions, error: permissionsErr } = await adminClient
+      .from("user_permissions")
+      .select("module, can_view, can_create")
+      .eq("user_id", userId);
+    if (permissionsErr) {
+      return new Response(JSON.stringify({ error: "Permission check failed" }), { status: 500, headers: corsHeaders });
+    }
+    const hasGranularAllowList = (granularPermissions || []).some(
+      (p: { can_view: boolean }) => p.can_view === true,
+    );
+    const canCreateNfe = (granularPermissions || []).some((p: {
+      module: string;
+      can_view: boolean;
+      can_create: boolean;
+    }) =>
+      p.can_view === true && (
+        p.module === "nfe" || (p.module === "/nfe" && p.can_create === true)
+      )
+    );
+    if (hasGranularAllowList && !canCreateNfe) {
+      return new Response(JSON.stringify({
+        error: "Forbidden: emissão exige permissão granular de criação em /nfe",
+      }), { status: 403, headers: corsHeaders });
     }
 
     const { sale_order_id, company_id, dry_run = false, first_due_date = null } = await req.json();
@@ -411,6 +443,7 @@ Deno.serve(async (req) => {
         error: "Pedido marcado como informal (sem NF-e). Para emitir, edite o pedido e desmarque \"Pedido informal\".",
       }), { status: 400, headers: corsHeaders });
     }
+    const isStandaloneOrder = order.is_standalone_nfe === true;
 
     const { data: existingActiveNfe } = await adminClient
       .from("nfe_emitidas")
@@ -618,6 +651,30 @@ Deno.serve(async (req) => {
         error: `Valor total do pedido (R$ ${orderTotalNum.toFixed(2)}) difere da soma dos itens (R$ ${sumItems.toFixed(2)}). Atualize o pedido antes de emitir a NF-e.`,
       }), { status: 400, headers: corsHeaders });
     }
+
+    // NF-e avulsa tem um contrato mais estrito que o preview fiscal legado:
+    // cliente/política/crédito, produto/NCM/unidade/preço, grade e estoque são
+    // revalidados no PostgreSQL com o JWT do operador. Nenhum service_role é
+    // usado para contornar a autorização pública desta etapa.
+    if (isStandaloneOrder) {
+      const { data: standalonePreflight, error: standalonePreflightErr } = await supabase.rpc(
+        "preflight_standalone_nfe_emission",
+        { p_sale_order_id: sale_order_id },
+      );
+      if (standalonePreflightErr) {
+        const forbidden = standalonePreflightErr.code === "42501";
+        return new Response(JSON.stringify({
+          error: standalonePreflightErr.message || "Falha no preflight da NF-e avulsa.",
+        }), { status: forbidden ? 403 : 500, headers: corsHeaders });
+      }
+      if (standalonePreflight?.ready !== true) {
+        return new Response(JSON.stringify({
+          error: "NF-e avulsa ainda não está pronta para emissão.",
+          blockers: standalonePreflight?.blockers || [],
+          preflight: standalonePreflight,
+        }), { status: 409, headers: corsHeaders });
+      }
+    }
     // Frete NÃO entra na NF (pedido Leonardo 2026-06-18): a NF, as duplicatas e a
     // conta a receber ficam SÓ com a mercadoria (sumItems). O frete é lançado
     // APENAS no financeiro, como despesa "Frete a pagar" — gerada pelo gatilho
@@ -650,6 +707,38 @@ Deno.serve(async (req) => {
 
     if (!fiscal.cnpj || !fiscal.inscricao_estadual || !fiscal.cep) {
       return new Response(JSON.stringify({ error: "Configuração fiscal incompleta: CNPJ, Inscrição Estadual e CEP do emitente são obrigatórios." }), { status: 400, headers: corsHeaders });
+    }
+
+    // Na emissão real da NF-e avulsa, a reserva precede QUALQUER acesso ao
+    // provedor (inclusive sincronizações auxiliares de cidade/cliente/produto).
+    // Assim, nenhum efeito remoto começa com estoque já indisponível para a
+    // venda. Dry-run permanece read-only e executa somente o preflight acima.
+    if (isStandaloneOrder && !isDryRun) {
+      // A chave nasce por execução da Edge. Um crash antes de haver resposta
+      // não faz replay transparente com chave nova: o índice de hold ativo
+      // bloqueia o retry até a compensação/sweep confirmar que não houve fato
+      // fiscal. É fail-safe contra emissão dupla, não conveniência de retry.
+      const attemptId = crypto.randomUUID();
+      const { data: prepared, error: prepareErr } = await supabase.rpc(
+        "prepare_standalone_nfe_stock_hold",
+        { p_sale_order_id: sale_order_id, p_attempt_id: attemptId },
+      );
+      if (prepareErr) {
+        const forbidden = prepareErr.code === "42501";
+        const conflict = ["23505", "40001"].includes(prepareErr.code || "");
+        return new Response(JSON.stringify({
+          error: prepareErr.message || "Falha ao reservar estoque da NF-e avulsa.",
+          conflict,
+        }), { status: forbidden ? 403 : conflict ? 409 : 500, headers: corsHeaders });
+      }
+      if (prepared?.ok !== true || !prepared?.hold_id) {
+        return new Response(JSON.stringify({
+          error: "Estoque/política mudou durante a preparação da NF-e avulsa.",
+          blockers: prepared?.blockers || [],
+          preflight: prepared?.preflight || null,
+        }), { status: 409, headers: corsHeaders });
+      }
+      standaloneHoldId = String(prepared.hold_id);
     }
 
     // ---------- Sync lazy: cliente no ClickNotas ----------
@@ -1712,6 +1801,12 @@ Deno.serve(async (req) => {
       const { data: claimRow, error: claimErr } = await adminClient
         .from("nfe_emitidas").insert(claimRecord).select("id").single();
       if (claimErr) {
+        if (standaloneHoldId) {
+          await adminClient.rpc("release_standalone_nfe_stock_hold", {
+            p_hold_id: standaloneHoldId,
+            p_reason: "Claim fiscal não criado; provedor não foi chamado",
+          });
+        }
         if ((claimErr as any)?.code === "23505") {
           return new Response(JSON.stringify({
             error: "Já existe uma emissão de NF-e em andamento para este pedido. Aguarde concluir ou cancele antes de re-emitir.",
@@ -1723,15 +1818,41 @@ Deno.serve(async (req) => {
         }), { status: 500, headers: corsHeaders });
       }
       if (!claimRow?.id) {
+        if (standaloneHoldId) {
+          await adminClient.rpc("release_standalone_nfe_stock_hold", {
+            p_hold_id: standaloneHoldId,
+            p_reason: "Claim fiscal sem id; provedor não foi chamado",
+          });
+        }
         return new Response(JSON.stringify({
           error: "Falha ao reservar a emissão da NF-e (sem id retornado). Tente novamente.",
         }), { status: 500, headers: corsHeaders });
       }
       claimId = claimRow.id as string;
+      if (standaloneHoldId) {
+        const { data: bound, error: bindErr } = await adminClient.rpc(
+          "bind_standalone_nfe_stock_hold",
+          { p_hold_id: standaloneHoldId, p_nfe_id: claimId },
+        );
+        if (bindErr || bound?.ok !== true) {
+          await adminClient.rpc("release_standalone_nfe_stock_hold", {
+            p_hold_id: standaloneHoldId,
+            p_reason: "Falha ao vincular hold ao claim; provedor não foi chamado",
+          });
+          await adminClient.from("nfe_emitidas")
+            .update({ status: "rejeitada", motivo_rejeicao: "Falha interna ao vincular reserva fiscal" })
+            .eq("id", claimId)
+            .eq("status", "processando");
+          return new Response(JSON.stringify({
+            error: bindErr?.message || "Falha ao vincular a reserva de estoque à NF-e.",
+          }), { status: 500, headers: corsHeaders });
+        }
+      }
     }
 
     let createResp;
     try {
+      standaloneProviderNfeCalled = isStandaloneOrder;
       createResp = await gcFetch("/notas_fiscais_produtos", {
         method: "POST",
         body: JSON.stringify(nfePayload),
@@ -1743,7 +1864,9 @@ Deno.serve(async (req) => {
       const nfeRecord: any = {
         sale_order_id,
         ref_nfe: ref,
-        status: "rejeitada",
+        // Timeout/erro de transporte é ambíguo: o ClickNotas pode ter aceitado
+        // o POST antes da conexão cair. Mantemos o hold e impedimos retry cego.
+        status: isStandaloneOrder ? "erro" : "rejeitada",
         valor_total: nfTotal,
         motivo_rejeicao: isTimeout
           ? `Timeout no ClickNotas (>30s). NF pode ter sido criada lá — confira no painel pelo número de PV antes de re-emitir (evita NF duplicada). Detalhe: ${errMsg}`
@@ -1755,6 +1878,12 @@ Deno.serve(async (req) => {
       if (resolvedCompanyId) nfeRecord.company_id = resolvedCompanyId;
       // UPDATE do claim (não insert) — a linha 'processando' já existe.
       await adminClient.from("nfe_emitidas").update(nfeRecord).eq("id", claimId);
+      if (standaloneHoldId) {
+        await adminClient.rpc("mark_standalone_nfe_stock_hold_reconciliation", {
+          p_hold_id: standaloneHoldId,
+          p_reason: `Resposta ambígua do ClickNotas: ${errMsg}`,
+        });
+      }
       return new Response(JSON.stringify({
         error: isTimeout
           ? "Timeout ao falar com ClickNotas. ATENÇÃO: A NF pode ter sido criada no painel deles. Confira antes de re-emitir pra evitar duplicata fiscal. Em caso de duplicata, cancele a antiga no painel ou use Sincronizar com ClickNotas."
@@ -1779,7 +1908,26 @@ Deno.serve(async (req) => {
       if (resolvedCompanyId) nfeRecord.company_id = resolvedCompanyId;
       // UPDATE do claim (não insert) — a linha 'processando' já existe.
       await adminClient.from("nfe_emitidas").update(nfeRecord).eq("id", claimId);
-      return new Response(JSON.stringify({ error: `Falha ao cadastrar NF-e no ClickNotas: ${msg}` }), { status: 422, headers: corsHeaders });
+      let stockReleaseWarning: string | null = null;
+      if (standaloneHoldId) {
+        const { data: released, error: releaseErr } = await adminClient.rpc(
+          "release_standalone_nfe_stock_hold",
+          {
+            p_hold_id: standaloneHoldId,
+            p_reason: `Cadastro fiscal rejeitado antes da autorização: ${String(msg).slice(0, 500)}`,
+          },
+        );
+        if (releaseErr || released?.ok !== true) {
+          stockReleaseWarning = releaseErr?.message || released?.code || "Falha ao liberar hold";
+        }
+      }
+      return new Response(JSON.stringify({
+        error: `Falha ao cadastrar NF-e no ClickNotas: ${msg}`,
+        ...(stockReleaseWarning ? {
+          reconciliation_needed: true,
+          stock_reconciliation_warning: stockReleaseWarning,
+        } : {}),
+      }), { status: 422, headers: corsHeaders });
     }
     const gcNfeId = String(createResp.json?.data?.dados || createResp.json?.data?.id);
 
@@ -1943,6 +2091,12 @@ Deno.serve(async (req) => {
       .from("nfe_emitidas").update(nfeRecord).eq("id", claimId).select().single();
 
     if (nfeErr) {
+      if (standaloneHoldId) {
+        await adminClient.rpc("mark_standalone_nfe_stock_hold_reconciliation", {
+          p_hold_id: standaloneHoldId,
+          p_reason: `Provedor respondeu, mas o resultado fiscal não foi persistido: ${nfeErr.message}`,
+        });
+      }
       const code = (nfeErr as any)?.code;
       if (code === "23505") {
         return new Response(JSON.stringify({
@@ -1958,6 +2112,34 @@ Deno.serve(async (req) => {
       }), { status: 500, headers: corsHeaders });
     }
 
+    let standaloneStockWarning: string | null = null;
+    if (standaloneHoldId && finalStatus === "autorizada") {
+      const { data: committed, error: commitErr } = await adminClient.rpc(
+        "commit_standalone_nfe_stock_hold",
+        { p_hold_id: standaloneHoldId, p_nfe_id: claimId },
+      );
+      if (commitErr || committed?.ok !== true) {
+        standaloneStockWarning = commitErr?.message || committed?.code
+          || "NF-e autorizada, mas a baixa de estoque ficou pendente de reconciliação.";
+        await adminClient.rpc("mark_standalone_nfe_stock_hold_reconciliation", {
+          p_hold_id: standaloneHoldId,
+          p_reason: standaloneStockWarning,
+        });
+      }
+    } else if (standaloneHoldId && finalStatus === "rejeitada") {
+      const { data: released, error: releaseErr } = await adminClient.rpc(
+        "release_standalone_nfe_stock_hold",
+        {
+          p_hold_id: standaloneHoldId,
+          p_reason: "NF-e rejeitada pela SEFAZ antes da autorização",
+        },
+      );
+      if (releaseErr || released?.ok !== true) {
+        standaloneStockWarning = releaseErr?.message || released?.code
+          || "Falha ao liberar o estoque da NF-e rejeitada.";
+      }
+    }
+
     // Faturamento MANUAL (pedido do usuário, 2026-06-13): a NF costuma ser emitida
     // DIAS ANTES da entrega, então emitir a NF NÃO deve avançar o PV pra 'Faturado'
     // automaticamente. Aqui só registramos o NÚMERO da NF no PV (rastreabilidade);
@@ -1966,18 +2148,26 @@ Deno.serve(async (req) => {
     // usuário acionar manualmente quando faturar de fato (dropdown de status do PV
     // em Pedidos de Venda: 'Em Produção' → 'Faturado').
     // (Antes, o auto-avanço também escondia OPs ainda em produção do picking.)
+    // Exceção canônica: NF-e AVULSA não tem OP. O commit transacional do hold
+    // acima marca esse PV como Faturado na mesma transação da baixa física.
     let arSyncWarning: string | null = null;
     if (finalStatus === "autorizada" && order.status !== "Faturado" && order.status !== "Cancelado") {
       const numeroNfe = nfe?.numero || (await gcFetch(`/notas_fiscais_produtos/${gcNfeId}`)).json?.data?.numero_nf || null;
-      if (numeroNfe) {
+      const saleOrderPatch: Record<string, string> = {};
+      if (numeroNfe) saleOrderPatch.nfe = String(numeroNfe);
+      // A Edge Function usa service_role e é a fronteira fiscal autorizada.
+      // Persistir aqui elimina o PATCH direto do browser e garante que a data
+      // das duplicatas só vire fato depois de uma NF efetivamente autorizada.
+      if (firstDueIso) saleOrderPatch.nfe_first_due_date = firstDueIso;
+      if (Object.keys(saleOrderPatch).length > 0) {
         const { error: soUpdErr } = await adminClient
           .from("sale_orders")
-          .update({ nfe: String(numeroNfe) }) // só o nº da NF; status NÃO muda
+          .update(saleOrderPatch) // status NÃO muda
           .eq("id", sale_order_id)
           .neq("status", "Cancelado");
         if (soUpdErr) {
-          arSyncWarning = `NF autorizada mas falhou ao registrar o número no PV: ${soUpdErr.message}.`;
-          console.warn("emit-nfe SO nfe-number update failed:", soUpdErr);
+          arSyncWarning = `NF autorizada mas falhou ao registrar seus metadados no PV: ${soUpdErr.message}.`;
+          console.warn("emit-nfe SO metadata update failed:", soUpdErr);
         }
       }
     }
@@ -1988,6 +2178,10 @@ Deno.serve(async (req) => {
       ambiente: ambienteRealStr || null,
       provider_response: { create: createResp.json, emit: emitResp.json },
       ...(arSyncWarning ? { ar_sync_warning: arSyncWarning } : {}),
+      ...(standaloneStockWarning ? {
+        stock_reconciliation_warning: standaloneStockWarning,
+        reconciliation_needed: true,
+      } : {}),
       ...(transmitWarning ? { transmit_warning: transmitWarning } : {}),
       ...(ambienteWarning ? { ambiente_warning: ambienteWarning } : {}),
     }), {
@@ -1997,6 +2191,36 @@ Deno.serve(async (req) => {
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : "Erro desconhecido";
     console.error("emit-nfe error:", error);
+    if (standaloneHoldId && adminClientForStockCompensation) {
+      if (standaloneProviderNfeCalled) {
+        await adminClientForStockCompensation.rpc(
+          "mark_standalone_nfe_stock_hold_reconciliation",
+          { p_hold_id: standaloneHoldId, p_reason: `Exceção após chamada fiscal: ${msg}` },
+        );
+      } else {
+        await adminClientForStockCompensation.rpc(
+          "release_standalone_nfe_stock_hold",
+          { p_hold_id: standaloneHoldId, p_reason: `Emissão abortada antes do provedor: ${msg}` },
+        );
+      }
+    }
     return new Response(JSON.stringify({ error: msg }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  } finally {
+    // Todo retorno antecipado depois do prepare (inclusive erro de validação
+    // auxiliar ou sincronização do catálogo ClickNotas) passa pelo finally.
+    // Se o POST fiscal ainda não começou, liberar é comprovadamente seguro.
+    if (standaloneHoldId && adminClientForStockCompensation && !standaloneProviderNfeCalled) {
+      try {
+        await adminClientForStockCompensation.rpc(
+          "release_standalone_nfe_stock_hold",
+          {
+            p_hold_id: standaloneHoldId,
+            p_reason: "Emissão encerrada antes de criar o documento no provedor",
+          },
+        );
+      } catch (releaseError) {
+        console.error("emit-nfe: falha na compensação final do hold:", releaseError);
+      }
+    }
   }
 });

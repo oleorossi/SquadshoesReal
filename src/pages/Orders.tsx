@@ -766,14 +766,10 @@ function getWeekOptions() {
         }
         const grade = order.grade && Object.keys(order.grade).length > 0 ? order.grade : null;
         // Reserve→Debit (Phase 1): cria reservas soft primeiro
-        const { error: debitErr } = await supabase.rpc('hybrid_debit_stock_for_order', {
-          p_reference_id: order.reference_id,
-          p_order_quantity: order.quantity,
-          p_color: order.color || '',
+        const { error: debitErr } = await (supabase.rpc as any)('initialize_order_material_reservations', {
           p_order_id: order.id,
-          p_order_grade: grade,
           p_force_soft: true,
-        } as any);
+        });
         if (debitErr) {
           await supabase.from('orders').update({ status: 'Rascunho', updated_at: new Date().toISOString() }).eq('id', order.id);
           toast.error(`Erro ao reservar estoque: ${debitErr.message}`);

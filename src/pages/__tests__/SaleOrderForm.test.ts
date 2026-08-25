@@ -1,6 +1,106 @@
 import { describe, expect, it } from 'vitest';
-import { buildCopySeedPayload, mapLoadedSaleOrderItem } from '../SaleOrderForm';
+import {
+  buildCopySeedPayload,
+  buildItemsPurchaseSignature,
+  buildSaleOrderEditorRevision,
+  clearSaleOrderDraft,
+  editorChangedDuringSave,
+  mapLoadedSaleOrderItem,
+  resolveSaleOrderMutationTarget,
+} from '../SaleOrderForm';
 import type { SaleOrderFormData, SaleOrderItemFormData } from '@/hooks/useSaleOrders';
+
+describe('contenções do estado do editor de PV', () => {
+  const form = {
+    client_name: 'Cliente',
+    status: 'Rascunho',
+    packaging_mode: 'colmeia',
+  } as SaleOrderFormData;
+  const item = {
+    reference_id: 'ref-1',
+    color: 'PRETO',
+    quantity: 10,
+    grade: { '37': 10 },
+    unit_price: 100,
+    material_variant_id: 'variant-1',
+  } as SaleOrderItemFormData;
+
+  it('invalida a assinatura de compra ao mudar variante de material ou embalagem', () => {
+    const base = buildItemsPurchaseSignature([item], 'colmeia');
+    expect(buildItemsPurchaseSignature([{ ...item, material_variant_id: 'variant-2' }], 'colmeia'))
+      .not.toBe(base);
+    expect(buildItemsPurchaseSignature([item], 'individual_master'))
+      .not.toBe(base);
+  });
+
+  it('detecta alterações por revisão completa do estado, inclusive seletores fora do DOM', () => {
+    const base = buildSaleOrderEditorRevision({
+      form,
+      items: [item],
+      selectedClientId: 'client-1',
+      packagingProductId: 'pack-1',
+      packagingQuantity: 10,
+    });
+    expect(buildSaleOrderEditorRevision({
+      form,
+      items: [item],
+      selectedClientId: 'client-1',
+      packagingProductId: 'pack-1',
+      packagingQuantity: 10,
+    })).toBe(base);
+    expect(buildSaleOrderEditorRevision({
+      form,
+      items: [item],
+      selectedClientId: 'client-2',
+      packagingProductId: 'pack-1',
+      packagingQuantity: 10,
+    })).not.toBe(base);
+  });
+
+  it('preserva dirty quando o usuário edita enquanto a mutation está em voo', () => {
+    const submittedRevision = buildSaleOrderEditorRevision({
+      form,
+      items: [item],
+      selectedClientId: 'client-1',
+      packagingProductId: 'pack-1',
+      packagingQuantity: 10,
+    });
+    const latestRevision = buildSaleOrderEditorRevision({
+      form: { ...form, notes: 'alterado depois do clique em salvar' },
+      items: [item],
+      selectedClientId: 'client-1',
+      packagingProductId: 'pack-1',
+      packagingQuantity: 10,
+    });
+
+    expect(editorChangedDuringSave(submittedRevision, latestRevision)).toBe(true);
+    expect(editorChangedDuringSave(submittedRevision, submittedRevision)).toBe(false);
+  });
+
+  it('continua um CREATE confirmado como UPDATE do mesmo PV', () => {
+    const continuation = {
+      id: 'pv-ja-criado',
+      orderVersion: 4,
+    };
+
+    expect(resolveSaleOrderMutationTarget(undefined, continuation)).toBe('pv-ja-criado');
+    expect(resolveSaleOrderMutationTarget('pv-da-rota', continuation)).toBe('pv-da-rota');
+    expect(resolveSaleOrderMutationTarget(undefined, null)).toBeNull();
+  });
+
+  it('limpa apenas o rascunho namespaced do usuário após criar', () => {
+    sessionStorage.setItem('sale_order_draft:vendedor-1', 'rascunho-1');
+    localStorage.setItem('sale_order_draft:vendedor-1', 'rascunho-1');
+    localStorage.setItem('sale_order_draft:vendedor-2', 'rascunho-2');
+
+    clearSaleOrderDraft('vendedor-1');
+
+    expect(sessionStorage.getItem('sale_order_draft:vendedor-1')).toBeNull();
+    expect(localStorage.getItem('sale_order_draft:vendedor-1')).toBeNull();
+    expect(localStorage.getItem('sale_order_draft:vendedor-2')).toBe('rascunho-2');
+    localStorage.removeItem('sale_order_draft:vendedor-2');
+  });
+});
 
 // Guard de regressão do incidente PV-00146: ao carregar os itens de um PV para
 // edição, o `id` de cada sale_order_item TEM que ser preservado — sem ele, o

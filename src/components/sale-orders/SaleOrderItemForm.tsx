@@ -1821,6 +1821,29 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
           )}
         </div>
 
+        {activeMaterialVariants.length === 0 && !!item.material_variant_id && !selectedMaterialVariant && (
+          <div className="flex flex-col gap-2 rounded-md border border-destructive/40 bg-destructive/5 p-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-xs font-bold text-destructive">Variante de material inativa</p>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">
+                Esta referência não possui outra variante ativa. Limpe o vínculo antigo para voltar ao material publicado na ficha.
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="shrink-0"
+              onClick={() => {
+                onUpdate(index, 'material_variant_id', null);
+                onUpdate(index, 'color', '');
+              }}
+            >
+              Usar material da ficha
+            </Button>
+          </div>
+        )}
+
         {/* Linha de decisão comercial: o operador enxerga a sequência fabril
             completa sem reabrir campos — referência → material → produção →
             preço. Além de reduzir erro, torna explícita a origem do preço. */}

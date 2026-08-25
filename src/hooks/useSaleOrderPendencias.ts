@@ -1,6 +1,12 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import {
+  executeSaleOrderCommand,
+  preflightSaleOrderCommand,
+  SaleOrderReadinessBlockedError,
+  type SaleOrderCommandAction,
+} from '@/lib/saleOrderCommand';
 
 /**
  * Pendências de lançamento do PV — fase 2 de
@@ -108,22 +114,38 @@ export function useRetryItemPromotion() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (itemId: string) => {
-      const { data, error } = await (supabase as any).rpc('retry_sale_order_item_promotion', {
-        p_item_id: itemId,
+      const { data: item, error } = await (supabase as any)
+        .from('sale_order_items')
+        .select('sale_order_id, sale_orders(status, order_version)')
+        .eq('id', itemId)
+        .single();
+      if (error || !item?.sale_order_id) throw error || new Error('Item/PV não encontrado');
+      const order = Array.isArray(item.sale_orders) ? item.sale_orders[0] : item.sale_orders;
+      if (!order) throw new Error('PV do item não encontrado');
+      const command: SaleOrderCommandAction = order.status === 'Em Produção' ? 'promote' : 'confirm';
+      const expectedOrderVersion = Number(order.order_version) || 0;
+      const preflight = await preflightSaleOrderCommand({
+        saleOrderId: item.sale_order_id,
+        command,
+        expectedOrderVersion,
       });
-      if (error) throw error;
-      return data as { ok: boolean; reason?: string; order_id?: string };
+      if (!preflight.ready) throw new SaleOrderReadinessBlockedError(preflight);
+      const receipt = await executeSaleOrderCommand<Record<string, any>>({
+        saleOrderId: item.sale_order_id,
+        command,
+        expectedOrderVersion,
+        idempotencyKey: `pv:${item.sale_order_id}:retry-item:${itemId}:${crypto.randomUUID()}`,
+        payload: {},
+      });
+      const orderIds = Array.isArray(receipt.result?.order_ids) ? receipt.result.order_ids : [];
+      return { ok: true, order_id: orderIds[0] as string | undefined };
     },
-    onSuccess: (res) => {
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['sale_order_pendencias'] });
       qc.invalidateQueries({ queryKey: ['orders'] });
       qc.invalidateQueries({ queryKey: ['order_stages'] });
       qc.invalidateQueries({ queryKey: ['material_reservations'] });
-      if (res?.ok) {
-        toast.success('OP gerada e reingressada no lote do pedido.');
-      } else {
-        toast.error(`Não foi possível gerar a OP: ${res?.reason ?? 'motivo desconhecido'}`);
-      }
+      toast.success('OP gerada e reingressada no lote do pedido.');
     },
     onError: (err: Error) => toast.error(`Erro: ${err.message}`),
   });

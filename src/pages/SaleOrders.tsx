@@ -51,7 +51,15 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { useSaleOrders, useSaleOrderAllItems, useCreateSaleOrder, useDeleteSaleOrder, useUpdateSaleOrderStatus, useResyncOPsFromSheets, useResyncOPsFromPV, useCommitPickingForSaleOrder, useRealtimeSaleOrders, SaleOrderFormData, SaleOrderItemFormData, PackagingMode, ORDER_TYPE_LABELS, DEFAULT_OP_STAGES, opStageOrder, listarTirasSemCor } from '@/hooks/useSaleOrders';
+import { useSaleOrders, useSaleOrderAllItems, useCreateSaleOrder, useDeleteSaleOrder, useUpdateSaleOrderStatus, useResyncOPsFromSheets, useResyncOPsFromPV, useCommitPickingForSaleOrder, useRealtimeSaleOrders, SaleOrderFormData, SaleOrderItemFormData, PackagingMode, ORDER_TYPE_LABELS } from '@/hooks/useSaleOrders';
+import { useCreateSaleOrderReadinessOverride } from '@/hooks/useSaleOrderCommand';
+import {
+  executeSaleOrderCommand,
+  preflightSaleOrderCommand,
+  SaleOrderReadinessBlockedError,
+  type SaleOrderCommandAction,
+  type SaleOrderCommandIssue,
+} from '@/lib/saleOrderCommand';
 import { useTechnicalSheetsLite } from '@/hooks/useTechnicalSheets';
 import { useClients, useEconomicGroups } from '@/hooks/useClients';
 import { supabase } from '@/integrations/supabase/client';
@@ -71,13 +79,11 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRepresentatives } from '@/hooks/useRepresentatives';
 import { printHtml, buildSaleOrderHtmlWithData, printSaleOrderPdf, fetchCompanySettings } from '@/lib/printOrder';
 import { printAllSectorsForSaleOrder } from '@/lib/printSaleOrderOPs';
-import { autoCreateSolePO, autoCreateSolePOFromShortfall } from '@/lib/soleAutoPO';
 import { buildThermalLabelsHtml, THERMAL_DEFAULT_DIMENSIONS } from '@/lib/printLabels';
 import { resolveSenderCnpj } from '@/lib/companySender';
 import { openPrintTab, printHtmlAsPdf } from '@/lib/printPdf';
 import { createPrintJob, setPrintJobStatus } from '@/lib/printJobs';
-import { todayISO, todayPlusDaysISO } from '@/lib/date';
-import { computeARSchedule } from '@/lib/saleOrderAR';
+import { todayISO } from '@/lib/date';
 import logoImg from '@/assets/logo-squad-shoes.jpg';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { TableSkeleton } from '@/components/layout/PageSkeleton';
@@ -86,7 +92,6 @@ import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
 import { normalizeForSearch, searchMatchesAllTerms, splitSearchTerms } from '@/lib/searchUtils';
 import { safeUrlAttr } from '@/lib/htmlUtils';
-import { warnPackagingDebit } from '@/lib/packagingDebitWarnings';
 import SalesOperationsRail, { SalesOperationsRailSkeleton } from '@/components/sale-orders/SalesOperationsRail';
 
 // TODOS os status canônicos do sale_orders (saleOrderStateMachine.ts).
@@ -329,7 +334,30 @@ export default function SaleOrders() {
   const { data: representatives = [] } = useRepresentatives();
   const createOrder = useCreateSaleOrder();
   const deleteOrder = useDeleteSaleOrder();
-  const updateStatus = useUpdateSaleOrderStatus();
+  const isAdmin = useIsAdmin();
+  const [readinessOverrideTarget, setReadinessOverrideTarget] = useState<null | {
+    id: string;
+    status: string;
+    command: SaleOrderCommandAction;
+    blockers: SaleOrderCommandIssue[];
+  }>(null);
+  const [readinessOverrideReason, setReadinessOverrideReason] = useState('');
+  const createReadinessOverride = useCreateSaleOrderReadinessOverride();
+  const updateStatus = useUpdateSaleOrderStatus({
+    onReadinessBlocked: (blocked, vars) => {
+      if (!isAdmin) {
+        toast.error(blocked.message);
+        return;
+      }
+      setReadinessOverrideReason('');
+      setReadinessOverrideTarget({
+        id: vars.id,
+        status: vars.status,
+        command: blocked.preflight.command,
+        blockers: blocked.preflight.blockers,
+      });
+    },
+  });
   // Qual PV está sendo promovido agora — alimenta o indicador da linha (req. 30).
   const statusPendingId = updateStatus.isPending
     ? (updateStatus.variables as { id?: string } | undefined)?.id ?? null
@@ -426,16 +454,13 @@ export default function SaleOrders() {
   // a queryKey ['user_roles', id] devolvendo string[], enquanto useUserRoles
   // devolve UserRole[]. Uma chave, dois formatos → includes('admin') dava false
   // pra admin de verdade. Usa o hook canônico.
-  const isAdmin = useIsAdmin();
   // Produção/almoxarifado veem PVs pra contexto de produção, mas SEM valores
   // (preço unit, total, comissão). canSeeFinancialValues=false bloqueia colunas
   // e KPIs financeiros sem retirar a navegação.
   const { canSeeFinancialValues, canAccessModule, roles } = useAccessControl();
-  // Espelha o gate do SERVIDOR (migration 20261231120300): a policy RESTRICTIVE
-  // de UPDATE em sale_orders só passa para admin ou comercial. A UI tem que dizer
-  // o MESMO — mostrar o lápis para quem o banco vai recusar troca um bug por
-  // outro: em vez de editar sem poder, o usuário abre o form, preenche e leva um
-  // erro de RLS no submit.
+  // Espelha o gate do SaleOrderCommand: admin, gerente ou comercial, sempre
+  // respeitando a ação granular `edit` da tela. Mostrar o lápis para um grant
+  // somente-leitura permitiria iniciar uma mutação que a própria UI proibiu.
   //
   // ⚠ Antes as duas portas de edição discordavam entre si: o lápis da linha não
   // tinha gate nenhum e o botão "Editar" do detalhe exigia isAdmin. A incoerência
@@ -443,7 +468,8 @@ export default function SaleOrders() {
   // Gate de permissões da tela de Pedidos (criar/excluir) — esconde ações de
   // usuários explicitamente restritos; admins/sem-grant continuam vendo tudo.
   const perm = useCan('/sales');
-  const canEditPv = isAdmin || (roles.includes('comercial') && perm.canEdit);
+  const canEditPv = perm.canEdit
+    && (isAdmin || roles.includes('gerente') || roles.includes('comercial'));
   const canBuy = canAccessModule('financeiro');
 
   // Confirmação estruturada genérica (AlertDialog) — substitui os confirm()
@@ -922,6 +948,10 @@ export default function SaleOrders() {
   };
 
   const handleBulkStatusChange = async (status: string, viabilityConfirmed = false) => {
+    if (!canEditPv) {
+      toast.error('Você não tem permissão para alterar o status de pedidos de venda.');
+      return;
+    }
     const ids = Array.from(selectedIds);
     // Pré-check só se o status alvo é Aprovado/Em Produção (estados que
     // disparam o pipeline produtivo). Cancelar/Rascunho não precisam de
@@ -1057,18 +1087,58 @@ export default function SaleOrders() {
     if (skipped > 0) toast.info(`${skipped} pedido(s) ignorado(s) — status não permite edição de entrega.`);
     if (editableIds.length === 0) return;
 
-    const { data: updated, error } = await supabase.from('sale_orders').update(updates)
-      .in('id', editableIds)
-      .not('status', 'in', '("Faturado","Finalizado s/ NF","Expedido","Cancelado","Concluído")')
-      .select('id');
-    if (error) {
-      toast.error(`Erro ao atualizar: ${error.message}`);
-      return;
+    // Um único PATCH direto não tinha expected_version, receipt nem
+    // rematerialização de PV ativo. O lote é intencionalmente serial: cada PV
+    // passa pelo mesmo command boundary da edição individual e falha isolado.
+    let updatedCount = 0;
+    const failures: string[] = [];
+    for (const orderId of editableIds) {
+      try {
+        const [{ data: header, error: headerError }, { data: items, error: itemsError }] = await Promise.all([
+          supabase.from('sale_orders').select('*').eq('id', orderId).single(),
+          supabase.from('sale_order_items').select('*').eq('sale_order_id', orderId).order('created_at'),
+        ]);
+        if (headerError || !header) throw headerError || new Error('PV não encontrado');
+        if (itemsError) throw itemsError;
+        if (!items?.length) throw new Error('PV sem itens não pode ser atualizado');
+        if (PROTECTED_STATUSES.includes(header.status)) {
+          throw new Error(`status mudou para ${header.status}`);
+        }
+
+        const expectedOrderVersion = Number((header as any).order_version) || 0;
+        const preflight = await preflightSaleOrderCommand({
+          saleOrderId: orderId,
+          command: 'update',
+          expectedOrderVersion,
+        });
+        if (!preflight.ready) throw new SaleOrderReadinessBlockedError(preflight);
+
+        await executeSaleOrderCommand({
+          saleOrderId: orderId,
+          command: 'update',
+          expectedOrderVersion,
+          idempotencyKey: `pv:${orderId}:bulk-delivery:${crypto.randomUUID()}`,
+          payload: {
+            header: { ...header, ...updates },
+            items,
+            teardown_op_ids: [],
+            cancel_op_ids: [],
+          },
+        });
+        updatedCount += 1;
+      } catch (error) {
+        const label = orders.find((order) => order.id === orderId)?.order_number || orderId.slice(0, 8);
+        failures.push(`${label}: ${error instanceof Error ? error.message : String(error)}`);
+      }
     }
-    const racedCount = editableIds.length - (updated?.length ?? 0);
-    if (racedCount > 0) toast.warning(`${racedCount} pedido(s) ignorado(s) — status mudou enquanto editava.`);
+    if (failures.length > 0) {
+      toast.warning(`${failures.length} pedido(s) não foram atualizados.`, {
+        description: failures.slice(0, 3).join('\n'),
+        duration: 12000,
+      });
+    }
     queryClient.invalidateQueries({ queryKey: ['sale_orders'] });
-    toast.success(`${updated?.length ?? 0} pedido(s) atualizado(s)`);
+    if (updatedCount > 0) toast.success(`${updatedCount} pedido(s) atualizado(s)`);
     setBulkMonth('');
     setBulkWeek('');
     setSelectedIds(new Set());
@@ -1554,6 +1624,10 @@ export default function SaleOrders() {
   };
 
   const handleBulkGenerateOPs = async (viabilityConfirmed = false) => {
+    if (!canEditPv) {
+      toast.error('Você não tem permissão para aprovar pedidos de venda.');
+      return;
+    }
     if (pendingOrders.length === 0) { toast.info('Nenhum rascunho para aprovar.'); return; }
 
     // Pré-check de viabilidade: bloqueia approval em massa de PVs com
@@ -1593,263 +1667,37 @@ export default function SaleOrders() {
     }
 
     setGeneratingOPs(true);
-    let ordersProcessed = 0, opsCreated = 0;
+    let ordersProcessed = 0;
+    let opsCreated = 0;
     const errors: string[] = [];
-    for (const order of pendingOrders) {
-      try {
-        // Achado D (auditoria 2026-07-01): mesmo guard da aprovação individual —
-        // tira com COR VAZIA em strap_colors gera consumo fantasma na OP. Checa
-        // ANTES do claim pra pular o PV sem deixá-lo meio-aprovado.
-        {
-          const { data: guardItems, error: guardErr } = await supabase
-            .from('sale_order_items')
-            .select('color, strap_colors, technical_sheets(name, code)')
-            .eq('sale_order_id', order.id);
-          if (guardErr) { errors.push(`${order.order_number}: falha ao validar tiras — ${guardErr.message}`); continue; }
-          const tirasSemCor = listarTirasSemCor(
-            (guardItems || []).map((it: any) => ({
-              strap_colors: it.strap_colors,
-              color: it.color,
-              reference_label: it.technical_sheets?.code || it.technical_sheets?.name || null,
-            })),
-          );
-          if (tirasSemCor.length > 0) {
-            errors.push(`${order.order_number}: tira sem COR definida (${tirasSemCor.slice(0, 3).join('; ')}) — defina a cor antes de aprovar.`);
-            continue;
-          }
+
+    // A aprovação em lote é apenas coordenação de chamadas seriais ao mesmo
+    // comando canônico usado na linha individual. Status, OPs, plano material,
+    // reservas, recibo e efeitos financeiros pertencem ao SaleOrderCommand.
+    try {
+      for (const order of pendingOrders) {
+        try {
+          const result = await updateStatus.mutateAsync({
+            id: order.id,
+            status: 'Aprovado',
+          });
+          ordersProcessed++;
+          opsCreated += Number(result?.ops_criadas) || 0;
+        } catch (error: unknown) {
+          const message = error instanceof Error ? error.message : String(error);
+          errors.push(`${order.order_number}: ${message}`);
         }
-
-        // Atomic claim: flip status to Aprovado FIRST so only one concurrent
-        // call (double-click, two browser tabs) wins the pipeline for this PV.
-        const { data: pvClaimed, error: pvClaimErr } = await supabase
-          .from('sale_orders')
-          .update({ status: 'Aprovado' })
-          .eq('id', order.id)
-          .in('status', ['Pendente', 'Rascunho'])
-          .select('id');
-        if (pvClaimErr) { errors.push(`${order.order_number}: ${pvClaimErr.message}`); continue; }
-        if (!pvClaimed || pvClaimed.length === 0) {
-          errors.push(`${order.order_number}: já aprovado ou status alterado — ignorado.`);
-          continue;
-        }
-
-        // AR idempotency: agora 1 PV pode ter N parcelas (uma row por parcela do
-        // payment_condition). Conta as ativas (não-cancelled) por installment_number
-        // e só insere o que falta — preservando rows recebidas ou já criadas em
-        // execuções anteriores.
-        const { data: existingBulkAR } = await supabase
-          .from('accounts_receivable')
-          .select('installment_number, status')
-          .eq('sale_order_id', order.id)
-          .neq('status', 'cancelled');
-        const existingNums = new Set((existingBulkAR ?? []).map((r) => r.installment_number ?? 1));
-        const bulkSchedule = computeARSchedule({
-          total: Number(order.total),
-          paymentCondition: order.payment_condition,
-          deliveryDeadline: order.delivery_deadline || todayPlusDaysISO(30),
-          isFactoring: false,
-          factoringReceivingDays: null,
-        });
-        // Parcelas em UM insert. Eram N idas ao servidor em serie — numa condicao
-        // 30/60/90 isso e 3 round-trips por PV, e a aprovacao em lote percorre
-        // PV a PV. A idempotencia nao muda: continua filtrando por
-        // installment_number ja existente ANTES de montar o lote.
-        const arFaltantes = bulkSchedule
-          .filter(inst => !existingNums.has(inst.installment_number))
-          .map(inst => ({
-            description: `PV ${order.order_number} - ${order.client_name}`
-              + (bulkSchedule.length > 1 ? ` (${inst.installment_number}/${bulkSchedule.length})` : ''),
-            client_name: order.client_name,
-            client_cnpj: order.client_cnpj || '',
-            sale_order_id: order.id,
-            category: 'venda',
-            due_date: inst.due_date,
-            amount: inst.amount,
-            amount_received: 0,
-            status: 'pending',
-            installment_number: inst.installment_number,
-            total_installments: inst.total_installments,
-            notes: order.payment_condition ? `Condição: ${order.payment_condition}` : '',
-          }));
-        if (arFaltantes.length > 0) {
-          const { error: arError } = await supabase.from('accounts_receivable').insert(arFaltantes as any);
-          if (arError) errors.push(`${order.order_number}: ${arError.message}`);
-        }
-        // ⚠ Era select('*'): trazia strap_colors, strap_sourcing e o snapshot
-        // comercial (jsonb pesados) que este laco NAO usa — ele so le id,
-        // reference_id, quantity, color, grade e fichas. Em PV de 9 itens isso
-        // e payload grande a toa, por PV, na aprovacao em lote.
-        const { data: pvItems } = await supabase
-          .from('sale_order_items')
-          .select('id, reference_id, quantity, color, grade, fichas')
-          .eq('sale_order_id', order.id);
-        if (pvItems && pvItems.length > 0) {
-          // O1 fix (audit PV 2026-06): o claim acima (status → 'Aprovado') dispara
-          // o trigger do banco que JÁ cria 1 OP por item + reserva soft. Refetch
-          // das OPs do PV e dedupe por sale_order_item_id (mesmo padrão de
-          // useUpdateSaleOrderStatus em useSaleOrders.ts) — sem isso o handler
-          // inseria uma SEGUNDA OP por item e debitava o estoque de novo.
-          const { data: existingBulkOps } = await supabase
-            .from('orders')
-            .select('id, sale_order_item_id')
-            .eq('sale_order_id', order.id)
-            .neq('status', 'Cancelada');
-          const existingItemOpIds = new Set(
-            (existingBulkOps || []).map((op: any) => op.sale_order_item_id).filter(Boolean)
-          );
-          const createdBulkOps: Array<{ id: string; reference_id: string; quantity: number }> = [];
-          let pvHadFailures = false;
-          const pkgMode = (order as any).packaging_mode || 'individual_amarrado';
-          for (const item of pvItems) {
-            if (!item.reference_id || existingItemOpIds.has(item.id)) continue;
-            const grade = item.grade as Record<string, number> | null;
-            const fichas = (item as any).fichas || 1;
-            const scaledGrade: Record<string, number> = {};
-            if (grade) {
-              for (const [size, qty] of Object.entries(grade)) {
-                const val = (Number(qty) || 0) * fichas;
-                if (val > 0) scaledGrade[size] = val;
-              }
-            }
-            const { data: createdOp, error: opError } = await supabase.from('orders').insert({ reference_id: item.reference_id, quantity: item.quantity, color: item.color || '', grade: Object.keys(scaledGrade).length > 0 ? scaledGrade : (grade || {}), sale_order_id: order.id, sale_order_item_id: item.id, notes: `Gerada automaticamente do ${order.order_number}`, status: 'Reservado' }).select('id, reference_id, quantity').single();
-            if (opError) { errors.push(`${order.order_number}: OP - ${opError.message}`); pvHadFailures = true; continue; }
-
-            let opHadCriticalFailure = false;
-            const { error: debitError } = await supabase.rpc('hybrid_debit_stock_for_order', { p_reference_id: item.reference_id, p_order_quantity: item.quantity, p_color: item.color || '', p_order_id: createdOp?.id || null, p_order_grade: Object.keys(scaledGrade).length > 0 ? scaledGrade : (grade || null), p_force_soft: true } as any);
-            if (debitError) { errors.push(`${order.order_number}: Estoque - ${debitError.message}`); opHadCriticalFailure = true; }
-
-            if (!opHadCriticalFailure) {
-              // FIX A3: process_order_stock_out removido — hybrid_debit_stock_for_order já cobre o BOM.
-
-              // Debit sole stock by grade — capture error and attempt auto-PO
-              if (Object.keys(scaledGrade).length > 0) {
-                const { error: soleError } = await supabase.rpc('debit_sole_stock_by_grade', {
-                  p_reference_id: item.reference_id,
-                  p_order_id: createdOp.id,
-                  p_color: item.color || '',
-                  p_order_grade: scaledGrade,
-                  p_force_soft: true,
-                } as any);
-                if (soleError) {
-                  errors.push(`${order.order_number}: Solado - ${soleError.message}`);
-                  try {
-                    const po = await autoCreateSolePO({
-                      referenceId: item.reference_id,
-                      orderId: createdOp.id,
-                      color: item.color || '',
-                      grade: scaledGrade,
-                      orderRef: order.order_number,
-                    });
-                    if (po) errors.push(`${order.order_number}: OC ${po.poNumber} ${po.accumulated ? 'acumulada' : 'criada'} (${po.supplierName}).`);
-                  } catch (_e) { /* logged */ }
-                } else {
-                  // Achado C (auditoria 2026-07-01): com p_force_soft=true o RPC não
-                  // erra por falta — a OC automática dispara do RESULTADO do débito
-                  // (déficit por numeração); o caminho por erro fica como fallback.
-                  try {
-                    const po = await autoCreateSolePOFromShortfall({
-                      orderId: createdOp.id,
-                      orderRef: order.order_number,
-                    });
-                    if (po) errors.push(`${order.order_number}: solado em falta (parcial) — OC ${po.poNumber} ${po.accumulated ? 'acumulada' : 'criada'} (${po.supplierName}).`);
-                  } catch (_e) { /* logged */ }
-                }
-              }
-              // A confirmação do PV já enfileirou as tiras no worker canônico.
-              // Criar a OP não reserva nem debita napa/tira diretamente.
-              // A configuração vem exclusivamente do tipo de solado. A RPC é
-              // reconciliável: trigger + caller não duplicam o débito.
-              const { data: pkgData, error: pkgError } = await supabase.rpc('debit_packaging_for_order', {
-                p_sale_order_id: order.id,
-                p_order_id: createdOp.id,
-                p_reference_id: item.reference_id,
-                p_order_quantity: item.quantity,
-                p_packaging_mode: pkgMode,
-                p_force_soft: false,
-              } as any);
-              if (pkgError) errors.push(`${order.order_number}: Embalagem - ${pkgError.message}`);
-              else warnPackagingDebit(pkgData, order.order_number);
-
-              createdBulkOps.push(createdOp);
-              opsCreated++;
-            } else {
-              // Critical debit failed — run restore chain for any partial debits before cancelling.
-              pvHadFailures = true;
-              try {
-                await supabase.rpc('release_order_reservations', { p_order_id: createdOp.id } as any);
-              } catch (_) { /* best-effort */ }
-              try {
-                await supabase.rpc('restore_sole_grade_for_order', { p_order_id: createdOp.id } as any);
-              } catch (_) { /* best-effort */ }
-              try {
-                await supabase.rpc('restore_product_stocks_for_order', { p_order_id: createdOp.id } as any);
-              } catch (_) { /* best-effort */ }
-              await supabase.from('orders')
-                .update({ status: 'Cancelada', notes: 'Cancelada — falha no débito em aprovação em massa' })
-                .eq('id', createdOp.id);
-            }
-          }
-          // Generate production stages only for successfully debited OPs
-          if (createdBulkOps.length > 0) {
-            const refIds = [...new Set(createdBulkOps.map(op => op.reference_id))];
-            const { data: sheetsData } = await supabase
-              .from('technical_sheets')
-              .select('id, production_sectors')
-              .in('id', refIds);
-            const sectorsMap = new Map<string, string[]>();
-            sheetsData?.forEach((s: any) => {
-              // O4 fix: fallback canônico vem de DEFAULT_OP_STAGES (useSaleOrders.ts,
-              // ordem do stageOrder.ts) — a lista legada local tinha 'Mesa' e omitia 'Costura'.
-              const sectors = Array.isArray(s.production_sectors) && s.production_sectors.length > 0
-                ? s.production_sectors.map((x: any) => String(x))
-                : DEFAULT_OP_STAGES.map(d => d.name);
-              sectorsMap.set(s.id, sectors);
-            });
-            for (const op of createdBulkOps) {
-              const sectorNames = sectorsMap.get(op.reference_id) || DEFAULT_OP_STAGES.map(d => d.name);
-              const rows = sectorNames.map((name: string, idx: number) => {
-                return {
-                  order_id: op.id, stage_name: name,
-                  stage_order: opStageOrder(name, idx), status: 'pendente',
-                  quantity_total: op.quantity, quantity_processed: 0,
-                };
-              });
-              await supabase.from('order_stages').insert(rows);
-            }
-          }
-          if (pvHadFailures) {
-            errors.push(`${order.order_number}: aprovação não concluída — corrija o estoque e reaprove.`);
-            // Restore stock and cancel the OPs that DID succeed so they don't remain as
-            // orphaned 'Reservado' OPs under a 'Pendente' PV, which would cause
-            // double-debit if the PV is re-approved.
-            if (createdBulkOps.length > 0) {
-              const successOpIds = createdBulkOps.map(op => op.id);
-              for (const op of createdBulkOps) {
-                try { await supabase.rpc('release_order_reservations', { p_order_id: op.id } as any); } catch (_) {}
-                try { await supabase.rpc('restore_sole_grade_for_order', { p_order_id: op.id } as any); } catch (_) {}
-                try { await supabase.rpc('restore_product_stocks_for_order', { p_order_id: op.id } as any); } catch (_) {}
-              }
-              await supabase.from('order_stages').delete().in('order_id', successOpIds);
-              await supabase.from('orders')
-                .update({ status: 'Cancelada', notes: 'Cancelada — aprovação em massa parcialmente falhou' })
-                .in('id', successOpIds);
-            }
-            // Revert the atomic claim to the original status — a Rascunho PV that
-            // fails approval must return to Rascunho, not be silently promoted to Pendente.
-            await supabase.from('sale_orders').update({ status: order.status }).eq('id', order.id);
-            continue;
-          }
-        }
-        ordersProcessed++;
-      } catch (err: any) { errors.push(`${order.order_number}: ${err.message}`); }
+      }
+    } finally {
+      setGeneratingOPs(false);
     }
-    setGeneratingOPs(false);
-    queryClient.invalidateQueries({ queryKey: ['sale_orders'] });
-    queryClient.invalidateQueries({ queryKey: ['orders'] });
-    queryClient.invalidateQueries({ queryKey: ['accounts_receivable'] });
-    queryClient.invalidateQueries({ queryKey: ['order_stages'] });
-    if (ordersProcessed > 0) toast.success(`${ordersProcessed} pedido(s) aprovado(s), ${opsCreated} OP(s) gerada(s) com etapas!`);
-    if (errors.length > 0) toast.warning(`Avisos: ${errors.slice(0, 3).join('; ')}`);
+
+    if (ordersProcessed > 0) {
+      toast.success(`${ordersProcessed} pedido(s) aprovado(s), ${opsCreated} OP(s) gerada(s) pelo comando canônico.`);
+    }
+    if (errors.length > 0) {
+      toast.warning(`Avisos: ${errors.slice(0, 3).join('; ')}`);
+    }
   };
 
   const handleExportSaleOrdersExcel = async (ordersToExport: typeof filteredOrders) => {
@@ -2077,7 +1925,7 @@ export default function SaleOrders() {
                   <span className="hidden sm:inline">Novo Pedido</span>
                 </Button>
               )}
-              <Button
+              {canEditPv && <Button
                 variant="outline"
                 size="sm"
                 // Confirmação com CONTAGEM antes de rodar. Esta é a ação mais cara
@@ -2112,7 +1960,7 @@ export default function SaleOrders() {
                 {pendingOrders.length > 0 && (
                   <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-xs">{pendingOrders.length}</Badge>
                 )}
-              </Button>
+              </Button>}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" size="sm" className="h-9 gap-2">
@@ -2136,7 +1984,7 @@ export default function SaleOrders() {
                         disabled={resyncOPs.isPending}
                         onSelect={() => setPendingConfirm({
                           title: 'Resincronizar OPs com as fichas?',
-                          description: 'Isso irá estornar e re-debitar o estoque de TODAS as OPs ativas com base nas fichas técnicas atualizadas.',
+                          description: 'Cada OP ativa será revalidada e resincronizada em uma transação isolada. OPs com fato físico ou erro permanecem intactas; o histórico não é reescrito.',
                           actionLabel: 'Resincronizar',
                           onConfirm: () => resyncOPs.mutate(),
                         })}
@@ -2579,7 +2427,7 @@ export default function SaleOrders() {
                             disparava DUAS orquestrações concorrentes sobre o mesmo
                             PV. Desabilita a coluna inteira, não só a linha: duas
                             promoções simultâneas disputam as mesmas linhas de estoque. */}
-                        <Select value={order.status} disabled={updateStatus.isPending} onValueChange={async (v) => {
+                        <Select value={order.status} disabled={!canEditPv || updateStatus.isPending} onValueChange={async (v) => {
                           try {
                             await updateStatus.mutateAsync({ id: order.id, status: v });
                           } catch (err: any) {
@@ -2734,13 +2582,13 @@ export default function SaleOrders() {
         onClear={sel.clear}
         itemLabel={sel.count === 1 ? 'PV selecionado' : 'PVs selecionados'}
         actions={[
-          { label: 'Aprovar', icon: <Check className="h-3.5 w-3.5" />, onClick: handleBulkApprove },
+          ...(canEditPv ? [{ label: 'Aprovar', icon: <Check className="h-3.5 w-3.5" />, onClick: handleBulkApprove }] : []),
           ...(canBuy ? [{ label: 'Gerar OCs', icon: <ShoppingCart className="h-3.5 w-3.5" />, variant: 'outline' as const, onClick: handleBulkPurchaseOrders }] : []),
           { label: 'Emitir NF-e', icon: <Receipt className="h-3.5 w-3.5" />, onClick: () => openBulkNfe('emit') },
-          { label: 'Cancelar', icon: <X className="h-3.5 w-3.5" />, variant: 'destructive', onClick: handleBulkCancel },
+          ...(canEditPv ? [{ label: 'Cancelar', icon: <X className="h-3.5 w-3.5" />, variant: 'destructive' as const, onClick: handleBulkCancel }] : []),
         ]}
         secondaryActions={[
-          { label: 'Alterar Status', icon: <ListChecks className="h-3.5 w-3.5" />, variant: 'outline', onClick: () => { setBulkStatusTarget(''); setBulkStatusOpen(true); } },
+          ...(canEditPv ? [{ label: 'Alterar Status', icon: <ListChecks className="h-3.5 w-3.5" />, variant: 'outline' as const, onClick: () => { setBulkStatusTarget(''); setBulkStatusOpen(true); } }] : []),
           { label: 'Pré-visualizar NF-e', icon: <Receipt className="h-3.5 w-3.5" />, variant: 'outline', onClick: () => openBulkNfe('preview') },
           { label: 'Consumo', icon: <BarChart3 className="h-3.5 w-3.5" />, variant: 'outline', onClick: handleBulkConsumption },
           { label: 'Visão Geral', icon: <LayoutDashboard className="h-3.5 w-3.5" />, variant: 'outline', onClick: () => setOverviewOpen(true) },
@@ -2939,9 +2787,9 @@ export default function SaleOrders() {
                   <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Ações de materiais e produção">
                   {isAdmin && (selectedOrder.status === 'Aprovado' || selectedOrder.status === 'Em Produção') && (
                     <Button variant="outline" size="sm" className="gap-2" disabled={resyncPVOPs.isPending} onClick={() => setPendingConfirm({
-                      title: 'Recriar as OPs deste pedido?',
-                      description: 'Isso irá excluir as OPs atuais e recriar com base nos itens atuais do pedido.',
-                      actionLabel: 'Recriar OPs',
+                      title: 'Resincronizar as OPs deste pedido?',
+                      description: 'Revalida ficha, plano e reservas de cada OP ativa em transação própria, preservando identidade e histórico. OP com fato físico não é reescrita.',
+                      actionLabel: 'Resincronizar OPs',
                       onConfirm: () => resyncPVOPs.mutate(selectedOrder.id),
                     })}>
                       {resyncPVOPs.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />} Resync OPs
@@ -3582,6 +3430,92 @@ export default function SaleOrders() {
       </Dialog>
 
       {/* Confirmação estruturada genérica (substitui confirm() nativo) */}
+      <Dialog
+        open={readinessOverrideTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !createReadinessOverride.isPending && !updateStatus.isPending) {
+            setReadinessOverrideTarget(null);
+            setReadinessOverrideReason('');
+          }
+        }}
+      >
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Override administrativo de prontidão</DialogTitle>
+            <DialogDescription>
+              Esta liberação não expira, fica vinculada à versão atual do PV e exige justificativa auditável.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3">
+              <p className="mb-2 text-sm font-semibold">Bloqueios encontrados</p>
+              <ul className="space-y-1 text-sm text-muted-foreground">
+                {(readinessOverrideTarget?.blockers || []).map((blocker, index) => (
+                  <li key={`${blocker.code}-${index}`}>
+                    <span className="font-mono text-xs text-foreground">{blocker.code}</span>
+                    {' — '}{blocker.message}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="readiness-override-reason">Justificativa obrigatória</Label>
+              <Textarea
+                id="readiness-override-reason"
+                value={readinessOverrideReason}
+                onChange={(event) => setReadinessOverrideReason(event.target.value)}
+                placeholder="Explique o motivo operacional e quem autorizou a exceção."
+                rows={4}
+                disabled={createReadinessOverride.isPending || updateStatus.isPending}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={createReadinessOverride.isPending || updateStatus.isPending}
+              onClick={() => setReadinessOverrideTarget(null)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              disabled={
+                readinessOverrideReason.trim().length < 10 ||
+                createReadinessOverride.isPending ||
+                updateStatus.isPending
+              }
+              onClick={async () => {
+                const target = readinessOverrideTarget;
+                if (!target) return;
+                try {
+                  const overrideId = await createReadinessOverride.mutateAsync({
+                    saleOrderId: target.id,
+                    command: target.command,
+                    justification: readinessOverrideReason,
+                  });
+                  await updateStatus.mutateAsync({
+                    id: target.id,
+                    status: target.status,
+                    override_id: overrideId,
+                  });
+                  setReadinessOverrideTarget(null);
+                  setReadinessOverrideReason('');
+                } catch {
+                  // As mutations exibem o erro e mantêm o diálogo aberto para correção.
+                }
+              }}
+            >
+              {(createReadinessOverride.isPending || updateStatus.isPending) && (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              )}
+              Registrar e executar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <AlertDialog open={pendingConfirm !== null} onOpenChange={(o) => { if (!o) setPendingConfirm(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>

@@ -1,47 +1,18 @@
 import { useQuery, useMutation, useQueryClient, UseQueryResult, QueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { resyncOPsForSheet } from '@/lib/resyncOPs';
 import { ensureTechnicalStrapLineIds } from '@/lib/technicalStrapLines';
 
 /**
- * Helper unificado: dispara resync (await) e invalida caches.
- * Substitui o padrão fire-and-forget que escondia erros nos onSuccess.
+ * Alterar uma ficha invalida o plano/snapshot por trigger do banco, mas NUNCA
+ * reescreve uma OP automaticamente. O operador revisa o impacto e, se a
+ * correção realmente deve valer, executa o resync administrativo transacional.
  */
-async function runResyncAndInvalidate(qc: QueryClient, sheetId: string) {
-  try {
-    const result = await resyncOPsForSheet(sheetId);
-    if (result.totalResyncedOPs > 0) {
-      qc.invalidateQueries({ queryKey: ['orders'] });
-      qc.invalidateQueries({ queryKey: ['order_stages'] });
-      qc.invalidateQueries({ queryKey: ['products'] });
-      qc.invalidateQueries({ queryKey: ['stock_movements'] });
-      qc.invalidateQueries({ queryKey: ['material_reservations'] });
-      toast.success(`${result.totalResyncedOPs} ${result.totalResyncedOPs === 1 ? 'OP resincronizada' : 'OPs resincronizadas'} automaticamente!`);
-    }
-    // Re-reserva de material: avisa SÓ quando houve mudança real, pra o operador
-    // saber que o estoque reservado das OPs abertas foi reeditado junto com a
-    // ficha (era o furo do PV-00145 — componente novo nunca reservado, e por
-    // isso nunca debitado na finalização).
-    const r = result.reservations;
-    if (r && (r.inseridas > 0 || r.atualizadas > 0 || r.canceladas > 0)) {
-      const partes = [
-        r.inseridas > 0 ? `${r.inseridas} reservada(s)` : null,
-        r.atualizadas > 0 ? `${r.atualizadas} ajustada(s)` : null,
-        r.canceladas > 0 ? `${r.canceladas} cancelada(s)` : null,
-      ].filter(Boolean);
-      toast.success(`Material das OPs abertas reeditado: ${partes.join(' · ')}`);
-    }
-    if (result.errors.length > 0) {
-      toast.warning(`${result.errors.length} ${result.errors.length === 1 ? 'erro' : 'erros'} no resync`, {
-        description: result.errors.slice(0, 3).join('\n'),
-      });
-    }
-  } catch (err: any) {
-    toast.warning('Mudança salva, mas o resync automático falhou.', {
-      description: err?.message,
-    });
-  }
+function invalidateSheetImpact(qc: QueryClient) {
+  qc.invalidateQueries({ queryKey: ['sale_orders'] });
+  qc.invalidateQueries({ queryKey: ['pv_outdated_status'] });
+  qc.invalidateQueries({ queryKey: ['sale-order-command-preflight'] });
+  qc.invalidateQueries({ queryKey: ['system-diag', 'pv-system'] });
 }
 
 export type OverheadHistoryEntry = {
@@ -478,10 +449,10 @@ export function useUpdateSheet() {
       }
       return id;
     },
-    onSuccess: async (sheetId) => {
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['technical_sheets'] });
-      toast.success('Ficha técnica atualizada!');
-      await runResyncAndInvalidate(qc, sheetId);
+      invalidateSheetImpact(qc);
+      toast.success('Ficha atualizada; OPs existentes foram preservadas e o impacto ficou sinalizado.');
     },
     onError: (err: Error) => {
       console.error('[useUpdateSheet] mutationFn falhou:', err);
@@ -569,10 +540,10 @@ export function useAddSheetMaterial() {
         .insert({ sheet_id: sheetId, ...data });
       if (error) throw error;
     },
-    onSuccess: async (_data, variables) => {
+    onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: ['sheet_materials', variables.sheetId] });
-      toast.success('Material adicionado!');
-      await runResyncAndInvalidate(qc, variables.sheetId);
+      invalidateSheetImpact(qc);
+      toast.success('Material adicionado; OPs existentes não foram alteradas automaticamente.');
     },
     onError: (err: Error) => toast.error(`Erro: ${err.message}`),
   });
@@ -586,10 +557,10 @@ export function useBulkAddSheetMaterials() {
       const { error } = await supabase.from('sheet_materials').insert(rows);
       if (error) throw error;
     },
-    onSuccess: async (_data, variables) => {
+    onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: ['sheet_materials', variables.sheetId] });
-      toast.success(`${variables.materials.length} materiais adicionados!`);
-      await runResyncAndInvalidate(qc, variables.sheetId);
+      invalidateSheetImpact(qc);
+      toast.success(`${variables.materials.length} materiais adicionados; OPs existentes foram preservadas.`);
     },
     onError: (err: Error) => toast.error(`Erro: ${err.message}`),
   });
@@ -605,10 +576,10 @@ export function useUpdateSheetMaterial(sheetId: string | null) {
         .eq('id', id);
       if (error) throw error;
     },
-    onSuccess: async () => {
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['sheet_materials', sheetId] });
-      toast.success('Material atualizado!');
-      if (sheetId) await runResyncAndInvalidate(qc, sheetId);
+      invalidateSheetImpact(qc);
+      toast.success('Material atualizado; OPs existentes não foram alteradas automaticamente.');
     },
     onError: (err: Error) => toast.error(`Erro: ${err.message}`),
   });
@@ -624,10 +595,10 @@ export function useDeleteSheetMaterial(sheetId: string | null) {
         .eq('id', id);
       if (error) throw error;
     },
-    onSuccess: async () => {
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['sheet_materials', sheetId] });
-      toast.success('Material removido!');
-      if (sheetId) await runResyncAndInvalidate(qc, sheetId);
+      invalidateSheetImpact(qc);
+      toast.success('Material removido; OPs existentes não foram alteradas automaticamente.');
     },
     onError: (err: Error) => toast.error(`Erro: ${err.message}`),
   });

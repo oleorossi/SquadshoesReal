@@ -2,9 +2,6 @@ import { useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { warnPackagingDebit } from '@/lib/packagingDebitWarnings';
-import { autoCreateSolePO, autoCreateSolePOFromShortfall } from '@/lib/soleAutoPO';
-import { ArtisanalMaterialPurchaseBlockedError, autoCreateMaterialPO } from '@/lib/materialAutoPO';
 import { syncFinancialRecordsCore } from '@/lib/financialSync';
 import { isValidStatusTransition } from '@/lib/saleOrderStateMachine';
 import { logAuditEvent } from '@/services/auditService';
@@ -12,16 +9,24 @@ import { recomputeMaterialGate } from '@/hooks/useMaterialGate';
 import { canonicalStageOrder } from '@/components/production/worksheet/stageOrder';
 import { pruneStrapSourcing } from '@/lib/strapSourcing';
 import { resolveGroupSuppliers } from '@/lib/groupSupplierResolution';
-import { convertReservadoOpsOnBilling } from '@/lib/billingReservationConvert';
 import { sanitizeSaleOrderHeaderDates } from '@/lib/billingWeek';
+import {
+  createSaleOrderCommand,
+  executeSaleOrderCommand,
+  preflightSaleOrderCommand,
+  SaleOrderReadinessBlockedError,
+  type SaleOrderCommandAction,
+} from '@/lib/saleOrderCommand';
+import { resyncOPRecords } from '@/lib/resyncOPs';
 
-// Setores default de uma OP — nomes CANÔNICOS ('Aviamento', não o legado 'Mesa';
-// inclui 'Costura' desde o PR 2). A numeração vem de CANONICAL_STAGE_ORDER
-// (stageOrder.ts), fonte única que espelha a SQL function canonical_stage_order.
+// Rota default viva de uma OP. Usa Corte Fibra (Corte Palmilha é só alias
+// histórico) e mantém as duas costuras independentes. A numeração vem de
+// CANONICAL_STAGE_ORDER, espelho da function SQL canonical_stage_order.
 export const DEFAULT_OP_STAGES = [
-  'Corte Palmilha',
+  'Corte Fibra',
   'Corte Forração',
-  'Costura',
+  'Costura Palmilha',
+  'Costura Cabedal',
   'Aviamento',
   'Silk',
   'Colagem',
@@ -691,16 +696,24 @@ export function useCreateSaleOrder() {
         grade: item.grade,
         ...buildExtraItemColumns(item),
       })) as any;
-      const { data: atomicResult, error } = await supabase.rpc('create_sale_order_atomic', {
-        p_header: insertData,
-        p_items: itemPayload,
-        p_client_request_id: insertData.client_request_id,
+      const createReceipt = await createSaleOrderCommand<{
+        order_id?: string;
+        item_ids?: string[];
+        idempotent_replay?: boolean;
+      }>({
+        header: insertData,
+        items: itemPayload,
+        clientRequestId: insertData.client_request_id,
+        idempotencyKey: `pv:create:${insertData.client_request_id}`,
       });
-      if (error) throw error;
 
-      const orderId = (atomicResult as { order_id?: string } | null)?.order_id;
+      const orderId = createReceipt.sale_order_id || createReceipt.result.order_id;
       if (!orderId) throw new Error('A criação atômica do pedido não retornou o identificador do PV.');
-      const data = { id: orderId };
+      const data = {
+        id: orderId,
+        receipt: createReceipt,
+        item_ids: createReceipt.result.item_ids || [],
+      };
 
       // A origem da tira e a intenção de terceirização já foram gravadas pela RPC
       // acima (fase 1b). ⚠ Ordem load-bearing preservada: `debit_strap_stock`
@@ -708,25 +721,33 @@ export function useCreateSaleOrder() {
       // `orders.sale_order_item_id`, e agora ele é gravado ANTES de qualquer
       // criação de OP por construção — está na mesma transação do item.
 
-      // Auto-sync financial records
-      await syncFinancialRecords(data.id);
+      // Financeiro e compras são efeitos duráveis do outbox transacional criado
+      // pelo command. O browser não os repete: queda de rede aqui não pode gerar
+      // parcelas/OCs duplicadas nem deixar o PV parcialmente reconciliado.
 
       // Audit trail: registra override manual de data de faturamento
       if (order.manual_billing_override) {
-        await logAuditEvent({
-          userId: null,
-          action: 'manual_billing_override_create',
-          resource: 'sale_order',
-          resourceId: data.id,
-          newData: {
-            delivery_deadline: order.delivery_deadline,
-            original_min_billing_date: order.original_min_billing_date,
-            reason: order.manual_override_reason,
-          },
-          ipAddress: null,
-          userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : null,
-          success: true,
-        });
+        try {
+          await logAuditEvent({
+            userId: null,
+            action: 'manual_billing_override_create',
+            resource: 'sale_order',
+            resourceId: data.id,
+            newData: {
+              delivery_deadline: order.delivery_deadline,
+              original_min_billing_date: order.original_min_billing_date,
+              reason: order.manual_override_reason,
+            },
+            ipAddress: null,
+            userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : null,
+            success: true,
+          });
+        } catch (error) {
+          console.error('[useCreateSaleOrder] auditoria pós-commit falhou:', error);
+          toast.warning('Pedido criado, mas a auditoria do ajuste de data precisa ser reconciliada.', {
+            duration: 10000,
+          });
+        }
       }
 
       return data;
@@ -754,95 +775,25 @@ interface PromotionEngineResult {
   sole_shortfall_order_ids: string[];
 }
 
-/**
- * Promove o PV pelo motor do banco: UMA ida e volta no lugar de até 85.
- *
- * O que continua no cliente, de propósito: a criação automática de OC
- * (`autoCreateSolePOFromShortfall`, `autoCreateMaterialPO`) é lógica TS já
- * testada e só roda quando há falta — caminho de exceção, zero chamada extra
- * quando está tudo em estoque.
- *
- * ⚠ LEVANTA em caso de erro, e isso é deliberado. Não existe mais caminho
- * alternativo: se o motor não roda, o PV NÃO pode mudar de status em silêncio —
- * seria pior que o bug original (status de produção sem uma única OP, e nada na
- * tela). Levantar aborta a mutation e o erro chega ao usuário.
- * Falha de item INDIVIDUAL é outra coisa: essa não levanta, vira pendência
- * registrada e os demais itens seguem (savepoint por item, dentro do banco).
- */
-async function runPromotionEngine(
-  saleOrderId: string,
-  targetStatus: 'Aprovado' | 'Em Produção',
-  soNumber: string,
-): Promise<PromotionEngineResult> {
-  const { data, error } = await (supabase as any).rpc('promote_sale_order_to_production', {
-    p_sale_order_id: saleOrderId,
-    p_target_status: targetStatus,
-  });
-  if (error) {
-    console.error('[promotionEngine] falhou:', error.message);
-    throw new Error(`Não foi possível gerar as OPs: ${error.message}`);
-  }
-
-  const res = data as PromotionEngineResult;
-
-  await handlePromotionPurchaseSideEffects(res, soNumber);
-  return res;
+interface UpdateSaleOrderStatusVars {
+  id: string;
+  status: string;
+  override_id?: string | null;
 }
 
-/**
- * Efeitos comerciais pós-promoção. Todas as falhas são best-effort e ficam
- * visíveis sem rejeitar a mutation: a OP/PV já podem ter sido confirmados no
- * servidor (especialmente no fluxo atômico de cancelar+editar).
- */
-async function handlePromotionPurchaseSideEffects(
-  res: PromotionEngineResult,
-  soNumber: string,
-): Promise<void> {
-  // Déficit de solado por numeração → OC automática, só nas OPs que realmente faltaram.
-  for (const opId of res.sole_shortfall_order_ids || []) {
-    try {
-      const po = await autoCreateSolePOFromShortfall({ orderId: opId, orderRef: soNumber });
-      if (po) {
-        toast.warning(
-          `Solado em falta (parcial) — OC ${po.poNumber} ${po.accumulated ? 'acumulada' : 'criada'} (${po.supplierName}).`,
-          { duration: 8000 },
-        );
-      }
-    } catch (e: any) {
-      console.error('[promotionEngine] OC de solado por déficit falhou:', e?.message);
-    }
-  }
-
-  // Falta de material → OC automática, uma por produto (dedup por product_id).
-  const vistos = new Set<string>();
-  for (const s of res.shortages || []) {
-    if (!s.product_id || vistos.has(s.product_id)) continue;
-    vistos.add(s.product_id);
-    try {
-      await autoCreateMaterialPO({
-        productId: s.product_id,
-        productName: s.product_name || 'Material',
-        shortageQty: Number(s.shortage) || 0,
-        orderRef: soNumber,
-      });
-    } catch (e: any) {
-      console.error('[promotionEngine] OC de material falhou:', e?.message);
-      if (e instanceof ArtisanalMaterialPurchaseBlockedError) {
-        toast.warning(e.message, { duration: 10000 });
-      }
-    }
-  }
-
-}
-
-export function useUpdateSaleOrderStatus() {
+export function useUpdateSaleOrderStatus(options?: {
+  onReadinessBlocked?: (
+    error: SaleOrderReadinessBlockedError,
+    vars: UpdateSaleOrderStatusVars,
+  ) => void;
+}) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, status }: { id: string; status: string }) => {
+    mutationFn: async ({ id, status, override_id }: UpdateSaleOrderStatusVars) => {
       // Validate transition before touching the DB
-      const { data: current, error: fetchError } = await supabase
+      const { data: current, error: fetchError } = await (supabase as any)
         .from('sale_orders')
-        .select('status')
+        .select('status, order_version, order_number')
         .eq('id', id)
         .single();
       if (fetchError) throw fetchError;
@@ -859,9 +810,15 @@ export function useUpdateSaleOrderStatus() {
       // de COR VAZIA — a OP nasceria com consumo fantasma (o débito de tira não
       // resolve produto sem cor). Guard ANTES do claim/RPC. Passou a valer pro
       // atalho porque a promoção direta agora debita tiras.
-      const isDirectPromotion =
-        status === 'Em Produção' && ['Rascunho', 'Pendente'].includes(currentStatus);
-      if (status === 'Aprovado' || isDirectPromotion) {
+      const saleOrderCommand: SaleOrderCommandAction =
+        status === 'Aprovado' && ['Rascunho', 'Pendente'].includes(currentStatus)
+          ? 'confirm'
+          : status === 'Em Produção' && ['Rascunho', 'Pendente', 'Aprovado'].includes(currentStatus)
+            ? 'promote'
+            : status === 'Cancelado' && currentStatus !== 'Cancelado'
+              ? 'cancel'
+              : 'transition';
+      if (saleOrderCommand === 'confirm' || saleOrderCommand === 'promote') {
         const { data: itemsGuard, error: itemsGuardErr } = await supabase
           .from('sale_order_items')
           .select('color, strap_colors, technical_sheets(name, code)')
@@ -883,523 +840,42 @@ export function useUpdateSaleOrderStatus() {
         }
       }
 
-      // Atalho Rascunho/Pendente → Em Produção: promoção ATÔMICA via RPC que
-      // reserva/debita material (mesma pipeline do Aprovado) ANTES de expor a OP
-      // em produção — corrige a auditoria #2 (OP em produção sem reserva/baixa).
-      // A RPC suprime o trigger e já marca o PV; por isso retornamos aqui, sem
-      // cair no update de status genérico nem no bloco de sync de OPs abaixo.
-      if (isDirectPromotion) {
-        const { data: promoteOut, error: promoteErr } = await (supabase as any).rpc(
-          'promote_sale_order_to_production',
-          { p_sale_order_id: id },
-        );
-        if (promoteErr) throw promoteErr;
+      // Toda transição pertence ao SaleOrderCommand. O navegador não altera
+      // sale_orders/orders nem reconcilia estoque por passos separados.
+      const expectedOrderVersion = Number((current as any).order_version) || 0;
+      const preflight = await preflightSaleOrderCommand({
+        saleOrderId: id,
+        command: saleOrderCommand,
+        expectedOrderVersion,
+        overrideId: override_id,
+        payload: saleOrderCommand === 'transition' ? { target_status: status } : {},
+      });
+      if (!preflight.ready) throw new SaleOrderReadinessBlockedError(preflight);
+      if (preflight.warnings.length > 0) {
+        toast.warning(`${preflight.warnings.length} aviso(s) de prontidão`, {
+          description: preflight.warnings.slice(0, 3).map((warning) => warning.message).join('\n'),
+          duration: 10000,
+        });
+      }
 
-        // Espelha o Aprovado: a RPC roda no servidor e não emite toast nem cria
-        // OC de solado — o front faz isso a partir do retorno por OP.
-        const promotedOps: any[] = Array.isArray((promoteOut as any)?.ops)
-          ? (promoteOut as any).ops
-          : [];
-        for (const op of promotedOps) {
-          if (op?.packaging) warnPackagingDebit(op.packaging);
-          if (op?.needs_pipeline && op?.op_id) {
-            try {
-              const po = await autoCreateSolePOFromShortfall({
-                orderId: op.op_id,
-                orderRef: String(op.op_id).slice(0, 8),
-              });
-              if (po) {
-                toast.warning(
-                  `Solado em falta (parcial) — OC ${po.poNumber} ${po.accumulated ? 'acumulada' : 'criada'} (${po.supplierName}) pra cobrir o déficit.`,
-                  { duration: 8000 },
-                );
-              }
-            } catch (poErr: any) {
-              console.error('Erro ao gerar OC de solado por déficit (promoção direta):', poErr?.message);
-            }
-          }
-        }
+      const receipt = await executeSaleOrderCommand<Record<string, any>>({
+        saleOrderId: id,
+        command: saleOrderCommand,
+        expectedOrderVersion,
+        idempotencyKey: `pv:${id}:${saleOrderCommand}:${crypto.randomUUID()}`,
+        payload: saleOrderCommand === 'transition' ? { target_status: status } : {},
+        overrideId: override_id,
+      });
 
-        // A promoção apenas reserva. A baixa física é feita, de forma atômica e
-        // proporcional, quando cada setor inicia a produção.
-
-        // Gate de material: as OPs acabaram de nascer/entrar em produção, então
-        // o início do Corte tem que refletir quando o material tem como chegar
-        // (auditoria Crítico #1). Silencioso — não pode derrubar a promoção.
+      const engineResult = saleOrderCommand === 'confirm' || saleOrderCommand === 'promote'
+        ? receipt.result as PromotionEngineResult
+        : null;
+      try {
         await recomputeMaterialGate([id]);
-
-        await syncFinancialRecords(id);
-        return;
+      } catch (error) {
+        console.error('[saleOrderCommand] material gate pós-commit falhou:', error);
+        toast.warning('Comando concluído, mas o indicador de materiais precisa ser recalculado.');
       }
-
-      // Require an authorized NF-e before marking as Expedido — without one,
-      // physical goods would leave the warehouse with no fiscal document.
-      if (status === 'Expedido') {
-        const { data: authNfe } = await supabase
-          .from('nfe_emitidas')
-          .select('id')
-          .eq('sale_order_id', id)
-          .eq('status', 'autorizada')
-          .limit(1);
-        if (!authNfe || authNfe.length === 0) {
-          throw new Error(
-            'Não é possível marcar como Expedido sem NF-e autorizada. Emita e autorize a NF-e antes de expedir.'
-          );
-        }
-      }
-
-      // Block cancellation when there is an authorized/processing NF-e — the
-      // fiscal document would become orphaned (FK ON DELETE SET NULL on
-      // nfe_emitidas.sale_order_id). User must cancel the NF-e first.
-      if (status === 'Cancelado') {
-        const { data: blockingNfe, error: blockingNfeErr } = await supabase
-          .from('nfe_emitidas')
-          .select('id, status, ref_nfe')
-          .eq('sale_order_id', id)
-          .in('status', ['autorizada', 'processando', 'cancelando']);
-        if (blockingNfeErr) throw new Error(`Falha ao verificar NF-e vinculadas: ${blockingNfeErr.message}`);
-        if (blockingNfe && blockingNfe.length > 0) {
-          const refs = blockingNfe.map((n: any) => n.ref_nfe || n.id).join(', ');
-          throw new Error(
-            `Não é possível cancelar: pedido tem NF-e ${blockingNfe[0].status} (${refs}). ` +
-            `Cancele a NF-e antes (até 24h após emissão) ou inutilize a numeração.`
-          );
-        }
-      }
-
-      // Atomic conditional update: predicate .eq('status', currentStatus) ensures
-      // only one concurrent call wins the transition. A second call (double-click,
-      // two browser tabs) would find the status already changed and get 0 rows back.
-      const { data: claimed, error } = await supabase
-        .from('sale_orders')
-        .update({ status })
-        .eq('id', id)
-        .eq('status', currentStatus)
-        .select('id');
-      if (error) throw error;
-      if (!claimed || claimed.length === 0) {
-        throw new Error('Status alterado simultaneamente por outro usuário — recarregue o pedido.');
-      }
-
-      // Quando sai de produção (volta para Aprovado, Pendente, etc.), reverter OPs
-      const NON_PRODUCTION_STATUSES = ['Pendente', 'Aprovado', 'Rascunho'];
-      if (NON_PRODUCTION_STATUSES.includes(status)) {
-        const { data: linkedOps, error: linkedOpsErr } = await supabase
-          .from('orders')
-          .select('id, status')
-          .eq('sale_order_id', id);
-        if (linkedOpsErr) throw new Error(`Falha ao carregar OPs: ${linkedOpsErr.message}`);
-
-        if (linkedOps && linkedOps.length > 0) {
-          const activeOps = linkedOps.filter(op => op.status === 'Em Produção');
-          if (activeOps.length > 0) {
-            const opIds = activeOps.map(op => op.id);
-            const { error: revertErr } = await supabase
-              .from('orders')
-              .update({ status: 'Reservado', updated_at: new Date().toISOString() })
-              .in('id', opIds);
-            if (revertErr) throw new Error(`Falha ao reverter OPs para Reservado: ${revertErr.message}`);
-          }
-        }
-      }
-
-      // REATIVAÇÃO DE PV CANCELADO (Cancelado → Rascunho):
-      // O cancelamento marca todas as OPs como 'Cancelada' e devolve o estoque.
-      // Pra "desfazer o cancelamento" voltamos as OPs pra 'Reservado' e re-criamos
-      // as reservas soft via hybrid_debit (p_force_soft=true). Se alguma reserva
-      // falhar (estoque insuficiente porque outro PV consumiu), a OP volta pra
-      // Cancelada e toast warna. O PV fica em Rascunho de qualquer jeito.
-      if (currentStatus === 'Cancelado' && status === 'Rascunho') {
-        const { data: cancelledOps } = await supabase
-          .from('orders')
-          .select('id, reference_id, quantity, color, grade, sale_order_item_id')
-          .eq('sale_order_id', id)
-          .eq('status', 'Cancelada');
-
-        if (cancelledOps && cancelledOps.length > 0) {
-          // Carrega strap_colors e packaging_mode (no PV ou item) pra re-reservar tira/embalagem
-          const { data: pvData } = await supabase
-            .from('sale_orders')
-            .select('packaging_mode')
-            .eq('id', id)
-            .single();
-          const itemIds = cancelledOps.map(o => o.sale_order_item_id).filter(Boolean);
-          const itemsMap = new Map<string, any>();
-          if (itemIds.length > 0) {
-            const { data: items } = await supabase
-              .from('sale_order_items')
-              .select('id, strap_colors')
-              .in('id', itemIds);
-            (items || []).forEach((it: any) => itemsMap.set(it.id, it));
-          }
-
-          const failedReactivations: string[] = [];
-          const opNumberById = new Map<string, string>();
-
-          for (const op of cancelledOps) {
-            // Tenta volver pra Reservado
-            const { error: reviveErr } = await supabase
-              .from('orders')
-              .update({ status: 'Reservado', updated_at: new Date().toISOString() })
-              .eq('id', op.id)
-              .eq('status', 'Cancelada');
-            if (reviveErr) {
-              failedReactivations.push(`OP ${(op as any).id.slice(0, 8)}: ${reviveErr.message}`);
-              continue;
-            }
-
-            const item = itemsMap.get(op.sale_order_item_id as any);
-            const grade = (op as any).grade && Object.keys((op as any).grade).length > 0 ? (op as any).grade : null;
-
-            // Re-soft-reserve materiais BOM
-            const { error: hybridErr } = await supabase.rpc('hybrid_debit_stock_for_order', {
-              p_reference_id: op.reference_id,
-              p_order_quantity: op.quantity,
-              p_color: op.color || '',
-              p_order_id: op.id,
-              p_order_grade: grade,
-              p_force_soft: true,
-            } as any);
-            if (hybridErr) {
-              await supabase.from('orders').update({ status: 'Cancelada', notes: `Reativação falhou: ${hybridErr.message}` }).eq('id', op.id);
-              failedReactivations.push(`OP ${(op as any).id.slice(0, 8)}: ${hybridErr.message}`);
-              continue;
-            }
-
-            // Re-soft-reserve solado por grade
-            if (grade) {
-              await supabase.rpc('debit_sole_stock_by_grade', {
-                p_reference_id: op.reference_id,
-                p_order_id: op.id,
-                p_color: op.color || '',
-                p_order_grade: grade,
-                p_force_soft: true,
-              } as any);
-            }
-
-            // Re-soft-reserve embalagem — PV volta pra Rascunho; débito real só acontece
-            // quando o PV for re-aprovado ou re-entrar em produção (caminhos hard acima).
-            await supabase.rpc('debit_packaging_for_order', {
-              p_sale_order_id: id,
-              p_order_id: op.id,
-              p_reference_id: op.reference_id,
-              p_order_quantity: op.quantity,
-              p_packaging_mode: (pvData as any)?.packaging_mode || 'colmeia',
-              p_force_soft: true,
-            } as any);
-
-            opNumberById.set(op.id, (op as any).order_number || op.id.slice(0, 8));
-          }
-
-          if (failedReactivations.length > 0) {
-            toast.warning(
-              `PV reativado mas ${failedReactivations.length} OP(s) não puderam re-reservar materiais (estoque insuficiente — foi consumido após o cancelamento). OPs ficaram canceladas: ${failedReactivations.slice(0, 3).join('; ')}${failedReactivations.length > 3 ? '…' : ''}`,
-              { duration: 12000 },
-            );
-          } else {
-            toast.success(`PV reativado — ${cancelledOps.length} OP(s) voltaram a Reservado com materiais re-reservados.`);
-          }
-        }
-      }
-
-      // Quando "Cancelado", cancelar OPs vinculadas e RESTAURAR ESTOQUE
-      if (status === 'Cancelado') {
-        // Revert the PV claim so the operator can retry if any post-claim step fails.
-        const revertPvClaim = async () => {
-          await supabase.from('sale_orders').update({ status: currentStatus }).eq('id', id).eq('status', 'Cancelado');
-        };
-
-        const { data: linkedOps, error: linkedOpsErr } = await supabase
-          .from('orders')
-          .select('id, status')
-          .eq('sale_order_id', id);
-        if (linkedOpsErr) {
-          await revertPvClaim();
-          throw new Error(`Falha ao carregar OPs vinculadas: ${linkedOpsErr.message}`);
-        }
-
-        if (linkedOps && linkedOps.length > 0) {
-          // Warn if any OP is Finalizado — that implies the PV was Faturado and a NF-e
-          // may already have been issued. The restore still runs (idempotent RPC), but the
-          // operator should cancel the NF-e before cancelling the PV to avoid ghost revenue.
-          const finalizadoOps = linkedOps.filter(op => op.status === 'Finalizado');
-          if (finalizadoOps.length > 0) {
-            toast.warning(
-              `Atenção: ${finalizadoOps.length} OP(s) já estão Finalizadas. ` +
-              'Cancele a NF-e correspondente antes de cancelar este PV para evitar inconsistência fiscal.',
-              { duration: 8000 },
-            );
-          }
-
-          // 1) Restaura estoque debitado por cada OP (release reservas + restore movimentos).
-          //    Reservas pode não existir em ambientes antigos — tolerado. Restore é obrigatório.
-          for (const op of linkedOps) {
-            if (op.status === 'Cancelada') continue;
-            // Rascunho OPs never had stock debited — skip restore to avoid spurious errors
-            const hadStock = !['Rascunho', 'Cancelada'].includes(op.status);
-            if (!hadStock) continue;
-            const { error: relErr } = await supabase.rpc('release_order_reservations', { p_order_id: op.id } as any);
-            if (relErr && !/does not exist|not found/i.test(relErr.message)) {
-              await revertPvClaim();
-              throw new Error(`Falha ao liberar reservas da OP ${op.id}: ${relErr.message}`);
-            }
-            // Sole grade per-size MUST be restored before product stocks — otherwise
-            // the conjugated bucket counters stay depleted and future orders see
-            // wrong availability per size.
-            const { error: soleErr } = await supabase.rpc('restore_sole_grade_for_order', { p_order_id: op.id } as any);
-            if (soleErr && !/does not exist|not found/i.test(soleErr.message)) {
-              await revertPvClaim();
-              throw new Error(`Falha ao restaurar grade do solado da OP ${op.id}: ${soleErr.message}`);
-            }
-            const { error: restoreErr } = await supabase.rpc('restore_product_stocks_for_order', { p_order_id: op.id } as any);
-            if (restoreErr) {
-              await revertPvClaim();
-              throw new Error(`Falha ao restaurar estoque da OP ${op.id} no cancelamento: ${restoreErr.message}`);
-            }
-          }
-
-          // 2) Marca OPs como Cancelada
-          const opIds = linkedOps.map(op => op.id);
-          const { error: cancelOpsErr } = await supabase
-            .from('orders')
-            .update({ status: 'Cancelada', updated_at: new Date().toISOString() })
-            .in('id', opIds);
-          if (cancelOpsErr) {
-            await revertPvClaim();
-            throw new Error(`Falha ao cancelar OPs vinculadas: ${cancelOpsErr.message}`);
-          }
-
-          // 2b) Limpa dados de produção das OPs. Filtra apenas OPs que não eram
-          // Cancelada ANTES desta transição para preservar o histórico de auditoria
-          // de OPs já canceladas anteriormente (production_consumptions é trilha de auditoria).
-          const newlyCancelledOpIds = linkedOps
-            .filter(op => op.status !== 'Cancelada')
-            .map(op => op.id);
-          if (newlyCancelledOpIds.length > 0) {
-            const { error: stagesDelErr } = await supabase.from('order_stages').delete().in('order_id', newlyCancelledOpIds);
-            if (stagesDelErr) { await revertPvClaim(); throw new Error(`Falha ao remover etapas: ${stagesDelErr.message}`); }
-            const { error: consDelErr } = await supabase.from('production_consumptions').delete().in('order_id', newlyCancelledOpIds);
-            if (consDelErr) { await revertPvClaim(); throw new Error(`Falha ao remover consumos: ${consDelErr.message}`); }
-            // O5: preserva histórico em material_reservations (status='cancelled')
-            // em vez de DELETE. Trigger AFTER UPDATE decrementa reserved_stock.
-            const { error: resCancelErr } = await supabase
-              .from('material_reservations')
-              .update({ status: 'cancelled', updated_at: new Date().toISOString() })
-              .in('order_id', newlyCancelledOpIds)
-              .in('status', ['reserved', 'partially_consumed']);
-            if (resCancelErr) { await revertPvClaim(); throw new Error(`Falha ao cancelar reservas: ${resCancelErr.message}`); }
-          }
-        }
-
-        // 3) Cancela MRP suggestions (preserva trilha de auditoria — O5).
-        await supabase.from('mrp_suggestions')
-          .update({ status: 'cancelled', updated_at: new Date().toISOString() })
-          .eq('sale_order_id', id)
-          .neq('status', 'cancelled');
-
-        // 3b) O1: Cancela OC e OS vinculadas (abertas/pendentes) — evita comprador
-        // receber material que ninguém mais precisa e terceirizado produzir tira órfã.
-        try {
-          // OCs: linked_sale_order_ids @> [id] e ainda não recebidas/canceladas
-          const { data: linkedPOs, error: linkedPOsErr } = await supabase
-            .from('purchase_orders')
-            .select('id, status, linked_sale_order_ids')
-            .contains('linked_sale_order_ids', [id])
-            .not('status', 'in', '(received,cancelled,closed)');
-          if (linkedPOsErr) throw linkedPOsErr;
-          const linkedPoIds = (linkedPOs || []).map((po: any) => po.id);
-          const { data: canonicalPoContributions, error: canonicalPoErr } = linkedPoIds.length > 0
-            ? await (supabase as any)
-              .from('purchase_demand_contributions')
-              .select('purchase_order_id')
-              .in('purchase_order_id', linkedPoIds)
-            : { data: [], error: null };
-          if (canonicalPoErr) throw canonicalPoErr;
-          const canonicalPoIds = new Set((canonicalPoContributions || [])
-            .map((row: any) => row.purchase_order_id)
-            .filter(Boolean));
-          const cancellablePOs = (linkedPOs || []).filter((po: any) => {
-            const pvIds = Array.isArray(po.linked_sale_order_ids) ? po.linked_sale_order_ids : [];
-            // O worker canônico remove somente a contribuição do PV. Documentos
-            // consolidados — canônicos ou legados — nunca são cancelados inteiros
-            // por uma única venda.
-            return !canonicalPoIds.has(po.id) && pvIds.length <= 1;
-          });
-          for (const po of cancellablePOs) {
-            const { error: poCancelErr } = await supabase.from('purchase_orders')
-              .update({ status: 'cancelled', notes: `Cancelada — PV vinculado cancelado`, updated_at: new Date().toISOString() })
-              .eq('id', po.id);
-            if (poCancelErr) throw poCancelErr;
-          }
-          // OSs: linked_sale_order_ids @> [id] OU sale_order_id = id, e não concluídas.
-          // ⚠ Grafias CANÔNICAS de service_orders.status: 'Pendente', 'Em Andamento',
-          // 'Concluído', 'Cancelado' (capitalizadas, com acento). A lista de exclusão
-          // espelha `tg_cancel_service_orders_on_pv_cancel` (mig 20260818120001):
-          // OS já finalizada/entregue NÃO é cancelada — trabalho feito é pagamento
-          // devido. As grafias minúsculas seguem na lista só como defesa de legado.
-          const { data: linkedSOs, error: linkedSOsErr } = await supabase
-            .from('service_orders')
-            .select('id, status, sale_order_id, linked_sale_order_ids, service_order_items(strap_batch_item_id)')
-            .or(`sale_order_id.eq.${id},linked_sale_order_ids.cs.{${id}}`)
-            .not('status', 'in', '("Concluído","concluido","concluida","received","finalizado","Finalizado","Cancelado","cancelado","cancelled")');
-          if (linkedSOsErr) throw linkedSOsErr;
-          const cancellableSOs = (linkedSOs || []).filter((so: any) => {
-            const pvIds = Array.isArray(so.linked_sale_order_ids) ? so.linked_sale_order_ids : [];
-            const isCanonicalStrap = (so.service_order_items || [])
-              .some((item: any) => Boolean(item.strap_batch_item_id));
-            return !isCanonicalStrap && pvIds.length <= 1;
-          });
-          for (const so of cancellableSOs) {
-            const { error: soCancelErr } = await supabase.from('service_orders')
-              .update({ status: 'Cancelado', notes: `Cancelada — PV vinculado cancelado`, updated_at: new Date().toISOString() })
-              .eq('id', so.id);
-            if (soCancelErr) throw soCancelErr;
-          }
-          if (cancellablePOs.length + cancellableSOs.length > 0) {
-            toast.warning(
-              `${cancellablePOs.length} OC(s) e ${cancellableSOs.length} OS(s) exclusivas do PV foram canceladas automaticamente.`,
-              { duration: 8000 },
-            );
-          }
-        } catch (cascadeErr: any) {
-          console.warn('Falha ao cancelar OC/OS vinculadas:', cascadeErr?.message);
-        }
-
-        // 4) Sincroniza contas a receber / financial_entries (cancela AR e remove ghost revenue).
-        // Wrapped in try/catch: if AR sync fails, the PV is already Cancelado and
-        // stock is already restored — retrying the entire mutation would fail the
-        // atomic claim. Surface as a warning so the operator can reconcile manually.
-        try {
-          await syncFinancialRecords(id);
-        } catch (finErr: any) {
-          console.error('syncFinancialRecords failed on PV cancel:', finErr);
-          toast.warning(
-            `Cancelamento concluído, mas sincronização financeira falhou: ${finErr.message}. ` +
-            'Verifique as contas a receber manualmente.',
-            { duration: 10000 },
-          );
-        }
-      }
-
-      // ─── Motor de promoção ────────────────────────────────────────────────
-      // UMA chamada faz o PV inteiro: cria OP, debita, gera estágios e MRP, com
-      // savepoint por item (`promote_sale_order_to_production`). Substituiu ~600
-      // linhas de orquestração no navegador — eram ~7 idas e voltas POR ITEM, em
-      // série, o que dava 20-35s de tela travada num PV de 12 itens.
-      let engineResult: PromotionEngineResult | null = null;
-      if (status === 'Aprovado' || status === 'Em Produção') {
-        const { data: soForEngine } = await supabase
-          .from('sale_orders').select('order_number').eq('id', id).single();
-        engineResult = await runPromotionEngine(
-          id, status as 'Aprovado' | 'Em Produção', soForEngine?.order_number || id,
-        );
-
-        // A promoção apenas reserva. A baixa física ocorre ao iniciar o setor.
-
-        // ⚠ Ordem load-bearing: DEPOIS das OCs automáticas que
-        // `runPromotionEngine` dispara. Reservar/comprar muda a falta, e o gate
-        // precisa enxergar o estoque já comprometido, não o de antes.
-        await recomputeMaterialGate([id]);
-      }
-
-      // Quando faturado OU finalizado sem NF, dar baixa em todas as OPs vinculadas
-      // (exceto canceladas). PV informal completa o ciclo via "Finalizado s/ NF".
-      if (status === 'Faturado' || status === 'Finalizado s/ NF') {
-        const { data: linkedOps, error: faturadoLinkedErr } = await supabase
-          .from('orders')
-          .select('id, status, order_number, notes')
-          .eq('sale_order_id', id)
-          .neq('status', 'Cancelada');
-        if (faturadoLinkedErr) throw new Error(`Falha ao carregar OPs vinculadas para faturamento: ${faturadoLinkedErr.message}`);
-
-        if (linkedOps && linkedOps.length > 0) {
-          // Warn when OPs that never went through Kanban are being force-finalized.
-          const reservadoOps = linkedOps.filter(op => op.status === 'Reservado');
-          if (reservadoOps.length > 0) {
-            toast.warning(
-              `${reservadoOps.length} OP(s) ainda em Reservado serão finalizadas automaticamente. ` +
-              'Verifique se a produção já foi concluída antes de faturar.',
-              { duration: 8000 },
-            );
-            // [1] Convert soft reservations to hard debits for Reservado OPs being
-            // force-finalized. Without this, reserved_stock stays permanently inflated
-            // for materials that were only soft-reserved (never converted by Kanban entry).
-            // C2 (auditoria) ABORTAVA o faturamento quando uma reserva não podia ser
-            // consumida (ex.: solado zerado), pra não faturar "sem lastro". Mudança
-            // pedida pelo usuário (PV-67, solado INFANTIL 25 zerado): falta de ESTOQUE
-            // não trava mais o faturamento — finaliza assim mesmo.
-            //
-            // Hoje `convert_reservation_to_out` NÃO erra por falta: debita o que há e
-            // deixa o saldo devendo (`partial_pending`), que a finalização preserva
-            // como `pending_reconciliation`. Então erro aqui é erro DE VERDADE
-            // (permissão/DB) e continua abortando — não mascarar falha real.
-            // O aviso do que ficou devendo sai DEPOIS de finalizar, lendo as
-            // pendências preservadas (abaixo) em vez de adivinhar pela mensagem.
-            await convertReservadoOpsOnBilling(reservadoOps);
-          }
-
-          const opIds = linkedOps.map(op => op.id);
-
-          const { error: opsError } = await supabase
-            .from('orders')
-            .update({ status: 'Finalizado' })
-            .in('id', opIds);
-          if (opsError) throw opsError;
-
-          // Baixa que ficou DEVENDO: a finalização preserva o saldo não debitado
-          // como `pending_reconciliation` (mig 20260925133000). Ler daí é a fonte
-          // de verdade — a mensagem de erro da RPC não serve mais pra isso, e
-          // anotar em `notes` deixava o furo invisível pra quem não abre a OP.
-          // A baixa compensatória fecha em /diagnostics → "Furos de baixa".
-          const { data: pendencias } = await supabase
-            .from('material_reservations')
-            .select('id, quantity_reserved, quantity_consumed')
-            .in('order_id', opIds)
-            .eq('status', 'pending_reconciliation');
-          if (pendencias && pendencias.length > 0) {
-            toast.warning(
-              `PV finalizado, MAS ${pendencias.length} baixa(s) ficaram devendo por falta de estoque — ` +
-              'reconcilie em Diagnósticos › Furos de baixa quando o material chegar.',
-              { duration: 15000 },
-            );
-          }
-
-          // Use complete_order_stages_bulk (Grupo 21) so quantity_processed is set
-          // to quantity_total — plain UPDATE misses this, breaking CapacityPlanning
-          // and OrderStagesPipeline ("0/N concluído" for Faturado orders).
-          const { data: openStages } = await supabase
-            .from('order_stages')
-            .select('order_id, stage_name')
-            .in('order_id', opIds)
-            .in('status', ['pendente', 'em_andamento']);
-          if (openStages && openStages.length > 0) {
-            const byOrder = new Map<string, string[]>();
-            for (const s of openStages) {
-              if (!byOrder.has(s.order_id)) byOrder.set(s.order_id, []);
-              byOrder.get(s.order_id)!.push(s.stage_name);
-            }
-            for (const [opId, stageNames] of byOrder) {
-              const { error: bulkErr } = await (supabase as any).rpc('complete_order_stages_bulk', {
-                p_order_id: opId,
-                p_stage_names: stageNames,
-              });
-              if (bulkErr) {
-                console.error(`complete_order_stages_bulk failed for OP ${opId}:`, bulkErr.message);
-                toast.warning(`OP ${opId.slice(0, 8)} finalizada mas etapas não atualizadas — execute resync manual.`);
-              }
-            }
-          }
-        }
-      }
-
-      // Ondas aposentadas (remodelagem 2026-07-12, specs/remodelagem-producao.md
-      // R9): a OP entra na fila do motor dinâmico automaticamente na criação
-      // (trigger tg_orders_sync_production_queue) — nada a fazer aqui.
-
-      // Auto-sync financial records
-      await syncFinancialRecords(id);
-
-      // Devolve o resumo do motor pro onSuccess montar o toast (requisito 31).
       return engineResult;
     },
     onSuccess: (engineResult, vars) => {
@@ -1423,7 +899,7 @@ export function useUpdateSaleOrderStatus() {
 
       // Requisito 31/32: o toast resume o que REALMENTE aconteceu — e nada do que
       // ele diz existe só nele; tudo está registrado na aba de pendências.
-      if (engineResult) {
+      if (engineResult && (vars.status === 'Aprovado' || vars.status === 'Em Produção')) {
         const falhas = engineResult.itens_falha?.length ?? 0;
         const partes = [`${engineResult.ops_criadas} OP(s) criada(s)`];
         if (falhas > 0) partes.push(`${falhas} item(ns) com falha`);
@@ -1449,14 +925,27 @@ export function useUpdateSaleOrderStatus() {
               : 'Status atualizado!';
       toast.success(msg);
     },
-    onError: (err: Error) => toast.error(`Erro: ${err.message}`),
+    onError: (err: Error, vars) => {
+      if (err instanceof SaleOrderReadinessBlockedError && options?.onReadinessBlocked) {
+        options.onReadinessBlocked(err, vars);
+        return;
+      }
+      toast.error(`Erro: ${err.message}`);
+    },
   });
 }
 
 export function useUpdateSaleOrder() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, order, items, client_id, representative_id, commission_value, packaging_product_id, packaging_quantity, cancel_op_ids }: { id: string; order: SaleOrderFormData; items: SaleOrderItemFormData[]; client_id?: string | null; representative_id?: string | null; commission_value?: number; packaging_product_id?: string | null; packaging_quantity?: number; cancel_op_ids?: string[] }) => {
+    mutationFn: async ({ id, order, items, client_id, representative_id, commission_value, packaging_product_id, packaging_quantity, cancel_op_ids, expected_order_version, idempotency_key }: { id: string; order: SaleOrderFormData; items: SaleOrderItemFormData[]; client_id?: string | null; representative_id?: string | null; commission_value?: number; packaging_product_id?: string | null; packaging_quantity?: number; cancel_op_ids?: string[]; expected_order_version?: number | null; idempotency_key?: string }) => {
+      const expectedOrderVersion = Number(expected_order_version);
+      if (!Number.isInteger(expectedOrderVersion) || expectedOrderVersion < 1) {
+        throw new Error('A revisão carregada do PV não está disponível. Recarregue antes de salvar.');
+      }
+      if (!idempotency_key?.trim()) {
+        throw new Error('A intenção idempotente da edição não foi informada.');
+      }
       const total = items.reduce((s, i) => s + (Number(i.unit_price) || 0) * (Number(i.quantity) || 0), 0);
       // Bug fix 20/05/2026 (PV-00122): mesma correção do useCreateSaleOrder —
       // valor_frete = totalPairs × shipping_rate, pra evitar divergência
@@ -1587,60 +1076,75 @@ export function useUpdateSaleOrder() {
         // setores" chega ao banco.
         ...buildExtraItemColumns(i),
       }));
-      // Strip status from p_header: status transitions must go through
-      // useUpdateSaleOrderStatus which enforces the state machine. Including
-      // status here would let the edit form bypass all status-change guards.
-      const { status: _discardedStatus, ...headerForRpc } = updateData as any;
-      const atomicCancelIds = [...new Set(cancel_op_ids || [])];
-      let rpcOut: any;
-      let atomicPromotionResult: PromotionEngineResult | null = null;
-      const writerArgs = {
-        p_order_id: id,
-        p_header: headerForRpc,
-        p_items: itemsPayload,
-        p_teardown_op_ids: existingOpIds,
+      // Billing e factoring pertencem ao mesmo intent/receipt da edição, mas
+      // ficam em subpatches com allow-list e RBAC próprios. Nunca entram no
+      // jsonb_populate_record do writer legado. Status continua exclusivo da
+      // máquina de estados.
+      const {
+        status: _discardedStatus,
+        billing_status: _discardedBillingStatus,
+        delivery_month,
+        delivery_week,
+        billing_week,
+        delivery_deadline,
+        manual_billing_override,
+        original_min_billing_date,
+        manual_override_reason,
+        is_factoring: _derivedIsFactoring,
+        factoring_config_id,
+        ...headerForRpc
+      } = updateData as any;
+      const billingPatch = {
+        delivery_month: delivery_month || null,
+        delivery_week: delivery_week || null,
+        billing_week: billing_week || null,
+        delivery_deadline: delivery_deadline || null,
+        manual_billing_override: Boolean(manual_billing_override),
+        original_min_billing_date: original_min_billing_date || null,
+        manual_override_reason: manual_override_reason || null,
       };
-      if (atomicCancelIds.length > 0) {
-        const atomicArgs = {
-          ...writerArgs,
-          p_cancel_op_ids: atomicCancelIds,
-        };
-        // UX fail-fast com paridade integral: o servidor executa o MESMO writer
-        // em subtransaction e o reverte pela sentinela. A chamada efetiva logo
-        // abaixo continua atômica e é a garantia contra drift concorrente.
-        const { error: preflightErr } = await (supabase as any).rpc(
-          'preflight_sale_order_atomic_op_cancel',
-          atomicArgs,
-        );
-        if (preflightErr) throw preflightErr;
-        const { data, error } = await (supabase as any).rpc(
-          'update_sale_order_with_atomic_op_cancel',
-          atomicArgs,
-        );
-        if (error) throw error;
-        rpcOut = data;
-        atomicPromotionResult = (data as any)?.promotion_result || null;
-      } else {
-        const { data, error } = await (supabase as any).rpc(
-          'update_sale_order_with_teardown',
-          writerArgs,
-        );
-        if (error) throw error;
-        rpcOut = data;
+      const factoringPatch = {
+        factoring_config_id: factoring_config_id || null,
+      };
+      const atomicCancelIds = [...new Set(cancel_op_ids || [])];
+      const preflight = await preflightSaleOrderCommand({
+        saleOrderId: id,
+        command: 'update',
+        expectedOrderVersion,
+        payload: {
+          billing_patch: billingPatch,
+          factoring_patch: factoringPatch,
+        },
+      });
+      if (!preflight.ready) {
+        throw new SaleOrderReadinessBlockedError(preflight);
+      }
+      if (preflight.warnings.length > 0) {
+        toast.warning(`${preflight.warnings.length} aviso(s) na edição do PV`, {
+          description: preflight.warnings.slice(0, 3).map((warning) => warning.message).join('\n'),
+          duration: 10000,
+        });
       }
 
-      // Terceirização planejada (Fase A): o RPC update_sale_order_atomic NÃO lista
-      // estas 2 colunas no UPDATE, então não as toca — um update direcionado é
-      // seguro (sem clobbering, diferente do caso strap_colors). O create persiste
-      // via spread; aqui cobrimos a edição.
-      {
-        const oc = (order as any).outsource_to_contractor_id || null;
-        const { error: outErr } = await supabase.from('sale_orders').update({
-          outsource_to_contractor_id: oc,
-          outsource_to_sector: oc ? ((order as any).outsource_to_sector || null) : null,
-        }).eq('id', id);
-        if (outErr) console.warn('[useUpdateSaleOrder] falha ao gravar terceirização do PV:', outErr.message);
-      }
+      // Cabeçalho, itens, desmontagem reversível, cancelamento administrativo
+      // de OPs e rematerialização do PV ativo pertencem ao mesmo commit. O
+      // navegador não chama mais nenhum writer interno em sequência.
+      const receipt = await executeSaleOrderCommand<Record<string, any>>({
+        saleOrderId: id,
+        command: 'update',
+        expectedOrderVersion,
+        idempotencyKey: `pv:${id}:update:${idempotency_key.trim()}`,
+        payload: {
+          header: headerForRpc,
+          items: itemsPayload,
+          teardown_op_ids: existingOpIds,
+          cancel_op_ids: atomicCancelIds,
+          billing_patch: billingPatch,
+          factoring_patch: factoringPatch,
+        },
+      });
+      const rpcOut = receipt.result;
+      const atomicPromotionResult = (rpcOut as any)?.promotion_result as PromotionEngineResult | null;
 
       const insertedIds: string[] = ((rpcOut as any)?.inserted_item_ids as string[] | undefined) || [];
       // Re-hydrate the same shape the older code returned so downstream MRP loop matches by index.
@@ -1671,15 +1175,7 @@ export function useUpdateSaleOrder() {
           .from('sale_orders').select('status, order_number').eq('id', id).single();
         const canon = (soCanon as any)?.status;
         if (canon === 'Aprovado' || canon === 'Em Produção') {
-          const res = atomicCancelIds.length > 0
-            ? atomicPromotionResult
-            : await runPromotionEngine(id, canon, (soCanon as any)?.order_number || id);
-          if (atomicCancelIds.length > 0 && res) {
-            await handlePromotionPurchaseSideEffects(
-              res,
-              (soCanon as any)?.order_number || id,
-            );
-          }
+          const res = atomicPromotionResult;
           if (!res) {
             toast.warning('Edição salva, mas o resumo da recriação das OPs não foi retornado. Confira as Pendências.', {
               duration: 12000,
@@ -1692,18 +1188,7 @@ export function useUpdateSaleOrder() {
         }
       }
 
-      // Auto-sync financial records after edit
-      try {
-        await syncFinancialRecords(id);
-      } catch (error) {
-        if (atomicCancelIds.length === 0) throw error;
-        console.error('[useUpdateSaleOrder] sync financeiro pós-commit falhou:', error);
-        toast.warning('Pedido e OPs foram salvos, mas a sincronização financeira precisa ser reprocessada.', {
-          duration: 10000,
-        });
-      }
-
-      return { id };
+      return { id, receipt };
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['sale_orders'] });
@@ -1809,186 +1294,32 @@ export function useOverrideSaleOrderItemStrapSourcing() {
 
 /**
  * Resync all active OPs from their technical sheets.
- * Reverses stock, deletes stages, recreates OPs with updated BOM and production sectors.
+ * Cada OP é processada pelo RPC transacional; não há estorno/DELETE no browser.
  */
 export function useResyncOPsFromSheets() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async () => {
-      // Get all active sale orders with OPs
-      const { data: activeOrders, error: soErr } = await supabase
-        .from('sale_orders')
-        .select('id, status')
-        .in('status', ['Aprovado', 'Em Produção']);
-      if (soErr) throw soErr;
-      if (!activeOrders || activeOrders.length === 0) throw new Error('Nenhum pedido ativo encontrado');
-
-      let totalResyncedOPs = 0;
-      const errors: string[] = [];
-
-      // Roteiros das fichas, buscados UMA vez. Antes era um select por OP dentro
-      // do laço (passo 9) — com ~58 OPs ativas, 58 consultas idênticas em série
-      // pra ler uma coluna de uma tabela de 53 linhas. A tabela inteira cabe numa
-      // consulta só. (auditoria PV 07/08/2026)
-      //
-      // ⚠ Só o SELECT saiu do laço. As 6 RPCs de estorno/débito continuam por OP,
-      // de propósito: a ordem canônica entre elas é load-bearing
-      // (release_order_reservations antes de tudo, pra não orfanar
-      // reservation_batches; restore_sole_grade antes de restore_product_stocks).
-      // Paralelizar ou reordenar aquilo corrompe estoque.
-      const { data: allSheets } = await supabase
-        .from('technical_sheets')
-        .select('id, production_sectors');
-      const sectorsBySheet = new Map<string, any>(
-        (allSheets || []).map((s: any) => [s.id, s.production_sectors]),
-      );
-
-      for (const so of activeOrders) {
-        try {
-          // Get existing OPs for this sale order
-          const { data: existingOPs } = await supabase
-            .from('orders')
-            .select('id, reference_id, quantity, status, color, grade, sale_order_id, sale_order_item_id')
-            .eq('sale_order_id', so.id)
-            .in('status', ['Reservado', 'Em Produção']);
-          
-          if (!existingOPs || existingOPs.length === 0) continue;
-
-          // Get sale_order_items to recover strap_colors
-          const { data: soItems } = await supabase
-            .from('sale_order_items')
-            .select('*')
-            .eq('sale_order_id', so.id);
-          const soItemsById = new Map((soItems || []).map(item => [item.id, item]));
-
-          for (const op of existingOPs) {
-            try {
-              const opStatus = op.status;
-
-              // 1. Reverse stock atomically via RPC (canonical order: reservations → sole → products).
-              //    release_order_reservations MUST run first to avoid orphaning reservation_batches.
-              const { error: relRestErr } = await (supabase as any).rpc('release_order_reservations', { p_order_id: op.id });
-              if (relRestErr && !/does not exist|not found/i.test(relRestErr.message)) {
-                throw new Error(`Falha ao liberar reservas da OP ${op.id}: ${relRestErr.message}`);
-              }
-              //    Restore conjugated sole buckets before product stocks — see useUpdateSaleOrder for rationale.
-              const { error: soleRestErr } = await (supabase as any).rpc('restore_sole_grade_for_order', { p_order_id: op.id });
-              if (soleRestErr && !/does not exist|not found/i.test(soleRestErr.message)) {
-                throw new Error(`Falha ao restaurar grade do solado da OP ${op.id}: ${soleRestErr.message}`);
-              }
-              const { error: restoreErr } = await (supabase as any).rpc('restore_product_stocks_for_order', { p_order_id: op.id });
-              if (restoreErr) throw new Error(`Falha ao estornar estoque da OP ${op.id}: ${restoreErr.message}`);
-
-              // 2. Delete old stages
-              await supabase.from('order_stages').delete().eq('order_id', op.id);
-
-              // 3. Delete old reservations
-              await supabase.from('material_reservations').delete().eq('order_id', op.id);
-
-              // 4. Delete old production consumptions
-              await supabase.from('production_consumptions').delete().eq('order_id', op.id);
-
-              // 5. Detach old stock movements
-              await supabase.from('stock_movements').update({ order_id: null }).eq('order_id', op.id);
-
-              // 6. Re-debit stock with current technical sheet
-              const opGrade = (op.grade as Record<string, number>) || {};
-              const { error: debitError } = await supabase.rpc('hybrid_debit_stock_for_order', {
-                p_reference_id: op.reference_id,
-                p_order_quantity: op.quantity,
-                p_color: op.color || '',
-                p_order_id: op.id,
-                p_order_grade: Object.keys(opGrade).length > 0 ? opGrade : null,
-                p_force_soft: true,
-              } as any);
-              if (debitError) {
-                console.error('Erro ao re-debitar estoque OP:', op.id, debitError.message);
-              }
-
-              // 7. Re-debit sole stock by grade
-              const grade = (op.grade as Record<string, number>) || {};
-              if (Object.keys(grade).length > 0) {
-                const { error: soleError } = await supabase.rpc('debit_sole_stock_by_grade', {
-                  p_reference_id: op.reference_id,
-                  p_order_id: op.id,
-                  p_color: op.color || '',
-                  p_order_grade: grade,
-                  p_force_soft: true,
-                } as any);
-                if (soleError) {
-                  console.error('Erro ao re-debitar solado:', op.id, soleError.message);
-                  try {
-                    const po = await autoCreateSolePO({
-                      referenceId: op.reference_id,
-                      orderId: op.id,
-                      color: op.color || '',
-                      grade,
-                      orderRef: (op as any).order_number || String(op.id).slice(0, 8),
-                    });
-                    if (po) toast.warning(`Solado insuficiente — OC ${po.poNumber} criada automaticamente (${po.supplierName}).`, { duration: 8000 });
-                  } catch (poErr) {
-                    console.error('Falha ao criar OC automática de solado:', poErr);
-                  }
-                } else {
-                  // Achado C: soft debit não erra por falta — OC automática vem do
-                  // RESULTADO (déficit por numeração), erro fica como fallback.
-                  try {
-                    const po = await autoCreateSolePOFromShortfall({
-                      orderId: op.id,
-                      orderRef: (op as any).order_number || String(op.id).slice(0, 8),
-                    });
-                    if (po) toast.warning(`Solado em falta (parcial) — OC ${po.poNumber} ${po.accumulated ? 'acumulada' : 'criada'} (${po.supplierName}) pra cobrir o déficit.`, { duration: 8000 });
-                  } catch (poErr) {
-                    console.error('Falha ao criar OC automática de solado (déficit):', poErr);
-                  }
-                }
-              }
-
-              // Tiras são reconciliadas exclusivamente pelo worker canônico do PV.
-              // Recriar/resincronizar uma OP nunca reserva nem debita napa.
-
-              // 8. Recreate stages from technical sheet
-              const DEFAULT_STAGES = DEFAULT_OP_STAGES;
-              const sheetSectors = sectorsBySheet.get(op.reference_id);
-              const sectorNames = (sheetSectors && Array.isArray(sheetSectors) && sheetSectors.length > 0)
-                ? sheetSectors.map((x: any) => String(x))
-                : DEFAULT_STAGES.map(s => s.name);
-              const rows = sectorNames.map((name: string, idx: number) => {
-                return {
-                  order_id: op.id,
-                  stage_name: name,
-                  stage_order: opStageOrder(name, idx),
-                  status: opStatus === 'Em Produção' ? 'pendente' : 'pendente',
-                  quantity_total: op.quantity,
-                  quantity_processed: 0,
-                };
-              });
-              const { error: stgInsErr } = await supabase.from('order_stages').insert(rows);
-                  if (stgInsErr) throw new Error(`Falha ao criar etapas da OP: ${stgInsErr.message}`);
-
-              totalResyncedOPs++;
-            } catch (opErr: any) {
-              errors.push(`OP ${op.id.substring(0, 8)}: ${opErr.message}`);
-            }
-          }
-        } catch (soError: any) {
-          errors.push(`PV ${so.id.substring(0, 8)}: ${soError.message}`);
-        }
-      }
-
-      return { totalResyncedOPs, errors };
+      const { data: ops, error: opsError } = await supabase
+        .from('orders')
+        .select('id, order_number, sale_order_id')
+        .in('status', ['Reservado', 'Em Produção']);
+      if (opsError) throw opsError;
+      if (!ops || ops.length === 0) throw new Error('Nenhuma OP ativa encontrada');
+      return resyncOPRecords(ops);
     },
     onSuccess: (result) => {
-      qc.invalidateQueries({ queryKey: ['sale_orders'] });
-      qc.invalidateQueries({ queryKey: ['orders'] });
-      qc.invalidateQueries({ queryKey: ['order_stages'] });
-      qc.invalidateQueries({ queryKey: ['products'] });
-      qc.invalidateQueries({ queryKey: ['stock_movements'] });
-      qc.invalidateQueries({ queryKey: ['material_reservations'] });
-      const msg = `${result.totalResyncedOPs} OPs resincronizadas com fichas técnicas atualizadas!`;
-      toast.success(msg);
+      [
+        ['sale_orders'], ['orders'], ['order_stages'], ['products'],
+        ['stock_movements'], ['material_reservations'], ['production_consumptions'],
+        ['sale-order-command-preflight'], ['system-diag', 'pv-system'],
+      ].forEach((queryKey) => qc.invalidateQueries({ queryKey }));
+      toast.success(`${result.totalResyncedOPs} OP(s) resincronizada(s) em transações isoladas.`);
       if (result.errors.length > 0) {
-        toast.warning(`${result.errors.length} ${result.errors.length === 1 ? 'erro' : 'erros'} durante resync`, { description: result.errors.slice(0, 3).join('\n') });
+        toast.warning(`${result.errors.length} OP(s) permaneceram intactas por erro`, {
+          description: result.errors.slice(0, 3).join('\n'),
+          duration: 10000,
+        });
       }
     },
     onError: (err: Error) => toast.error(`Erro na resincronização: ${err.message}`),
@@ -2004,7 +1335,8 @@ export function useResyncOPsFromSheets() {
 // audit existir). Soft delete elimina perda de dados por acidente de UI.
 //
 // Guards de NF-e ativa permanecem (impossível esconder PV com NF autorizada).
-// Pra apagar de vez (estornar estoque, cancelar AR, etc.) usa useHardDeleteSaleOrder.
+// Exclusão física foi retirada: cancelamento compensatório + soft delete
+// preservam ledger fiscal, financeiro, estoque e a trilha de auditoria.
 export function useDeleteSaleOrder() {
   const qc = useQueryClient();
   return useMutation({
@@ -2044,325 +1376,49 @@ export function useRestoreSaleOrder() {
   });
 }
 
-export function useHardDeleteSaleOrder() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (id: string) => {
-      // 0. Fiscal guard: a sale order with an authorized/processing NF-e cannot
-      // be deleted — once SEFAZ accepts the NF-e it is permanent and any
-      // cancellation must go through the dedicated cancel-nfe flow within 24h.
-      // Deleting the sale_order would orphan the NF-e (FK is ON DELETE SET NULL)
-      // and break audit trail for tax inspection.
-      const { data: blockingNfe, error: blockingNfeDelErr } = await supabase
-        .from('nfe_emitidas')
-        .select('id, status, ref_nfe')
-        .eq('sale_order_id', id)
-        .in('status', ['autorizada', 'processando', 'cancelando']);
-      if (blockingNfeDelErr) throw new Error(`Falha ao verificar NF-e vinculadas: ${blockingNfeDelErr.message}`);
-      if (blockingNfe && blockingNfe.length > 0) {
-        const refs = blockingNfe.map(n => n.ref_nfe || n.id).join(', ');
-        throw new Error(
-          `Não é possível excluir: pedido tem NF-e ${blockingNfe[0].status} (${refs}). ` +
-          `Cancele a NF-e antes (até 24h após emissão) ou inutilize a numeração.`,
-        );
-      }
-
-      // 1. Reverse stock and delete linked OPs FIRST — if stock restore fails, abort
-      //    before touching financial records so the retry doesn't find AR already cancelled.
-      const { data: linkedOPs, error: linkedOPsErr } = await supabase
-        .from('orders')
-        .select('id, status')
-        .eq('sale_order_id', id);
-      if (linkedOPsErr) throw new Error(`Falha ao carregar OPs vinculadas: ${linkedOPsErr.message}`);
-
-      if (linkedOPs && linkedOPs.length > 0) {
-        const opIds = linkedOPs.map(op => op.id);
-
-        for (const op of linkedOPs) {
-          // Rascunho and Cancelada OPs never had stock debited — skip restore
-          // to avoid spuriously inflating sole-grade buckets (restore_sole_grade
-          // is NOT idempotent: it always credits the OP's grade back).
-          const hadStock = !['Rascunho', 'Cancelada'].includes((op as any).status);
-          if (!hadStock) continue;
-          // release_order_reservations cleans reservation_batches (no FK CASCADE).
-          // Canonical order: release reservations → sole grade → product stocks.
-          const { error: relErr } = await (supabase as any).rpc('release_order_reservations', { p_order_id: op.id });
-          if (relErr && !/does not exist|not found/i.test(relErr.message)) {
-            throw new Error(`Falha ao liberar reservas da OP ${op.id}: ${relErr.message}`);
-          }
-          const { error: soleErr } = await (supabase as any).rpc('restore_sole_grade_for_order', { p_order_id: op.id });
-          if (soleErr && !/does not exist|not found/i.test(soleErr.message)) {
-            throw new Error(`Falha ao restaurar grade do solado da OP ${op.id}: ${soleErr.message}`);
-          }
-          const { error: restoreErr } = await (supabase as any).rpc('restore_product_stocks_for_order', { p_order_id: op.id });
-          if (restoreErr) throw new Error(`Falha ao estornar estoque da OP ${op.id}: ${restoreErr.message}`);
-        }
-
-        // Delete stages, consumptions, reservations
-        const { error: stgDelErr } = await supabase.from('order_stages').delete().in('order_id', opIds);
-        if (stgDelErr) throw new Error(`Falha ao remover etapas: ${stgDelErr.message}`);
-        const { error: cnsDelErr } = await supabase.from('production_consumptions').delete().in('order_id', opIds);
-        if (cnsDelErr) throw new Error(`Falha ao remover consumos: ${cnsDelErr.message}`);
-        const { error: resDelErr } = await supabase.from('material_reservations').delete().in('order_id', opIds);
-        if (resDelErr) throw new Error(`Falha ao remover reservas: ${resDelErr.message}`);
-
-        // Detach stock movements then delete OPs
-        const { error: movUpdErr } = await supabase.from('stock_movements').update({ order_id: null }).in('order_id', opIds);
-        if (movUpdErr) throw new Error(`Falha ao desvincular movimentos de estoque: ${movUpdErr.message}`);
-        const { error: opsDelErr } = await supabase.from('orders').delete().in('id', opIds);
-        if (opsDelErr) throw new Error(`Falha ao excluir OPs: ${opsDelErr.message}`);
-      }
-
-      // 2. Cancel linked financial records — after stock restore succeeds so a
-      //    retry after failure doesn't find AR already cancelled with stock still debited.
-      const { error: arCancelErr } = await supabase.from('accounts_receivable').update({ status: 'cancelled' }).eq('sale_order_id', id).neq('status', 'received');
-      if (arCancelErr) throw new Error(`Falha ao cancelar contas a receber: ${arCancelErr.message}`);
-      // Refuse to delete a PV whose revenue is already booked (SPED audit trail).
-      // cancel-nfe already guards the same invariant; this closes the direct-delete path.
-      const { count: bookedFeCount, error: bookedFeErr } = await supabase
-        .from('financial_entries')
-        .select('id', { count: 'exact', head: true })
-        .eq('reference_id', id)
-        .eq('reference_type', 'sale_order')
-        .in('status', ['posted', 'paid', 'reconciled', 'confirmed']);
-      if (bookedFeErr) throw new Error(`Falha ao verificar lançamentos financeiros: ${bookedFeErr.message}`);
-      if ((bookedFeCount ?? 0) > 0) {
-        throw new Error('PV tem lançamentos financeiros já confirmados — cancele a NF-e e o PV em vez de excluir.');
-      }
-      const { error: feDelErr } = await supabase.from('financial_entries').delete()
-        .eq('reference_id', id).eq('reference_type', 'sale_order')
-        .not('status', 'in', '(posted,paid,reconciled,confirmed)');
-      if (feDelErr) throw new Error(`Falha ao remover lançamentos financeiros: ${feDelErr.message}`);
-
-      // 3. Delete MRP suggestions and sale order items then the sale order
-      const { error: mrpDelErr } = await supabase.from('mrp_suggestions').delete().eq('sale_order_id', id);
-      if (mrpDelErr) throw new Error(`Falha ao remover sugestões MRP: ${mrpDelErr.message}`);
-      const { error: soiDelErr } = await supabase.from('sale_order_items').delete().eq('sale_order_id', id);
-      if (soiDelErr) throw new Error(`Falha ao remover itens do pedido: ${soiDelErr.message}`);
-      const { error } = await supabase.from('sale_orders').delete().eq('id', id);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['sale_orders'] });
-      qc.invalidateQueries({ queryKey: ['orders'] });
-      qc.invalidateQueries({ queryKey: ['order_stages'] });
-      qc.invalidateQueries({ queryKey: ['products'] });
-      qc.invalidateQueries({ queryKey: ['stock_movements'] });
-      qc.invalidateQueries({ queryKey: ['accounts_receivable'] });
-      qc.invalidateQueries({ queryKey: ['financial_entries'] });
-      qc.invalidateQueries({ queryKey: ['sale_order_items'] });
-      qc.invalidateQueries({ queryKey: ['sale_order_items_all'] });
-      qc.invalidateQueries({ queryKey: ['material_reservations'] });
-      qc.invalidateQueries({ queryKey: ['purchase_orders'] });
-      qc.invalidateQueries({ queryKey: ['production_consumptions'] });
-      toast.success('Pedido e OPs vinculadas excluídos com estorno de estoque!');
-    },
-    onError: (err: Error) => toast.error(`Erro: ${err.message}`),
-  });
-}
-
 // resyncOPsForSheet moved to src/lib/resyncOPs.ts
 export { resyncOPsForSheet } from '@/lib/resyncOPs';
 
 /**
  * Resync OPs for a single sale order from its current items.
- * Reverses stock, deletes old OPs, recreates from sale_order_items.
+ * Preserva as identidades das OPs e delega cada alteração ao RPC transacional.
  */
 export function useResyncOPsFromPV() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (saleOrderId: string) => {
-      const { data: so, error: soErr } = await supabase
-        .from('sale_orders')
-        .select('id, status, packaging_mode')
-        .eq('id', saleOrderId)
-        .single();
-      if (soErr || !so) throw new Error('Pedido não encontrado');
-      if (so.status !== 'Aprovado' && so.status !== 'Em Produção') {
-        throw new Error('Só é possível resincronizar pedidos Aprovados ou Em Produção');
-      }
-
-      // 1. Get current PV items
-      const { data: pvItems, error: itemsErr } = await supabase
-        .from('sale_order_items')
-        .select('*')
-        .eq('sale_order_id', saleOrderId);
-      if (itemsErr) throw itemsErr;
-      if (!pvItems || pvItems.length === 0) throw new Error('Pedido sem itens');
-
-      // 2. Get existing OPs
-      const { data: existingOPs } = await supabase
+      const { data: ops, error: opsError } = await supabase
         .from('orders')
-        .select('id, reference_id, quantity, status')
-        .eq('sale_order_id', saleOrderId);
-      const existingOpIds = (existingOPs || []).map(op => op.id);
+        .select('id, order_number, sale_order_id')
+        .eq('sale_order_id', saleOrderId)
+        .in('status', ['Reservado', 'Em Produção']);
+      if (opsError) throw opsError;
+      if (!ops || ops.length === 0) throw new Error('Pedido sem OP ativa para resincronizar');
 
-      // 3. Reverse stock atomically via RPC, then delete old OPs.
-      //    Canonical order: release_order_reservations → sole grade → product stocks.
-      if (existingOPs && existingOPs.length > 0) {
-        for (const op of existingOPs) {
-          // Rascunho and Cancelada OPs never had stock debited — skip restore
-          // to avoid spuriously inflating sole-grade buckets.
-          const hadStock = !['Rascunho', 'Cancelada'].includes((op as any).status);
-          if (!hadStock) continue;
-          const { error: relErr } = await (supabase as any).rpc('release_order_reservations', { p_order_id: op.id });
-          if (relErr && !/does not exist|not found/i.test(relErr.message)) {
-            throw new Error(`Falha ao liberar reservas da OP ${op.id}: ${relErr.message}`);
-          }
-          const { error: soleErr } = await (supabase as any).rpc('restore_sole_grade_for_order', { p_order_id: op.id });
-          if (soleErr && !/does not exist|not found/i.test(soleErr.message)) {
-            throw new Error(`Falha ao restaurar grade do solado da OP ${op.id}: ${soleErr.message}`);
-          }
-          const { error: restoreErr } = await (supabase as any).rpc('restore_product_stocks_for_order', { p_order_id: op.id });
-          if (restoreErr) throw new Error(`Falha ao estornar estoque da OP ${op.id}: ${restoreErr.message}`);
-        }
-        await supabase.from('order_stages').delete().in('order_id', existingOpIds);
-        await supabase.from('production_consumptions').delete().in('order_id', existingOpIds);
-        await supabase.from('material_reservations').delete().in('order_id', existingOpIds);
-        await supabase.from('stock_movements').update({ order_id: null }).in('order_id', existingOpIds);
-        await supabase.from('orders').delete().in('id', existingOpIds);
+      const summary = await resyncOPRecords(ops);
+      if (summary.totalResyncedOPs === 0 && summary.errors.length > 0) {
+        throw new Error(summary.errors.join('\n'));
       }
-
-      // 4. Recreate OPs from PV items
-      const opStatus = so.status === 'Em Produção' ? 'Em Produção' : 'Reservado';
-      let created = 0;
-      const DEFAULT_STAGES = DEFAULT_OP_STAGES;
-
-      for (const item of pvItems) {
-        if (!item.reference_id) continue;
-        const fichas = (item as any).fichas || 1;
-        const grade = item.grade as Record<string, number> | null;
-        const scaledGrade: Record<string, number> = {};
-        if (grade) {
-          for (const [size, qty] of Object.entries(grade)) {
-            const val = (Number(qty) || 0) * fichas;
-            if (val > 0) scaledGrade[size] = val;
-          }
-        }
-
-        const { data: newOp, error: opError } = await supabase.from('orders').insert({
-          reference_id: item.reference_id,
-          quantity: item.quantity,
-          color: item.color || '',
-          grade: Object.keys(scaledGrade).length > 0 ? scaledGrade : (grade || {}),
-          sale_order_id: saleOrderId,
-          sale_order_item_id: item.id,
-          notes: 'Resincronizada do PV',
-          status: opStatus,
-          item_observation: (item as any).observation || null,
-        }).select().single();
-        if (opError || !newOp) continue;
-
-        const { error: debitErr } = await supabase.rpc('hybrid_debit_stock_for_order', {
-          p_reference_id: item.reference_id,
-          p_order_quantity: item.quantity,
-          p_color: item.color || '',
-          p_order_id: newOp.id,
-          p_order_grade: Object.keys(scaledGrade).length > 0 ? scaledGrade : null,
-          p_force_soft: true,
-        } as any);
-        if (debitErr) {
-          const opNum = (newOp as any).order_number || newOp.id;
-          console.error(`Erro ao debitar estoque (resync) OP ${opNum}:`, debitErr.message);
-          toast.error(`Estoque — OP ${opNum}: ${debitErr.message}`);
-        }
-
-        if (Object.keys(scaledGrade).length > 0) {
-          const { error: soleDebitErr } = await supabase.rpc('debit_sole_stock_by_grade', {
-            p_reference_id: item.reference_id,
-            p_order_id: newOp.id,
-            p_color: item.color || '',
-            p_order_grade: scaledGrade,
-            p_force_soft: true,
-          } as any);
-          if (soleDebitErr) {
-            const opNum = (newOp as any).order_number || newOp.id;
-            console.error(`Erro ao debitar solado (resync) OP ${opNum}:`, soleDebitErr.message);
-            toast.error(`Solado — OP ${opNum}: ${soleDebitErr.message}`);
-            // Mirror useUpdateSaleOrder: attempt auto-PO so sole shortage is covered.
-            try {
-              const po = await autoCreateSolePO({
-                referenceId: item.reference_id,
-                orderId: newOp.id,
-                color: item.color || '',
-                grade: scaledGrade,
-                orderRef: (newOp as any).order_number || newOp.id,
-              });
-              if (po) toast.info(`OC de solado ${po.accumulated ? 'acumulada' : 'criada'}: ${po.poNumber} (${po.supplierName})`);
-            } catch (poErr: any) {
-              console.error('Erro ao criar OC de solado (resync):', poErr?.message);
-            }
-          } else {
-            // Achado C: soft debit não erra por falta — OC automática vem do
-            // RESULTADO (déficit por numeração), erro fica como fallback.
-            try {
-              const po = await autoCreateSolePOFromShortfall({
-                orderId: newOp.id,
-                orderRef: (newOp as any).order_number || newOp.id,
-              });
-              if (po) toast.info(`Solado em falta (parcial) — OC ${po.poNumber} ${po.accumulated ? 'acumulada' : 'criada'} (${po.supplierName}) pra cobrir o déficit.`);
-            } catch (poErr: any) {
-              console.error('Erro ao criar OC de solado por déficit (resync):', poErr?.message);
-            }
-          }
-        }
-
-        // Debit packaging (resync) — hard debit: OP entra ativa, embalagem sai agora
-        const { data: pkgDataResync, error: pkgErr } = await (supabase as any).rpc('debit_packaging_for_order', {
-          p_sale_order_id: saleOrderId,
-          p_order_id: newOp.id,
-          p_reference_id: item.reference_id,
-          p_order_quantity: item.quantity,
-          p_packaging_mode: so.packaging_mode || 'individual_amarrado',
-          p_force_soft: false,
-        });
-        if (pkgErr) console.error('Erro embalagem (resync):', pkgErr.message);
-        else warnPackagingDebit(pkgDataResync);
-
-        const { data: sheetData } = await supabase
-          .from('technical_sheets')
-          .select('production_sectors')
-          .eq('id', item.reference_id)
-          .single();
-        const sectorNames = (sheetData?.production_sectors && Array.isArray(sheetData.production_sectors) && sheetData.production_sectors.length > 0)
-          ? sheetData.production_sectors.map((x: any) => String(x))
-          : DEFAULT_STAGES.map(s => s.name);
-        const rows = sectorNames.map((name: string, idx: number) => {
-          return {
-            order_id: newOp.id, stage_name: name,
-            stage_order: opStageOrder(name, idx), status: 'pendente',
-            quantity_total: item.quantity, quantity_processed: 0,
-          };
-        });
-        const { error: stgInsErr } = await supabase.from('order_stages').insert(rows);
-        if (stgInsErr) {
-          // Falha ao criar etapas no resync: cleanup e continua com os
-          // demais itens em vez de abortar todo o resync.
-          console.error('Erro ao criar etapas (resync):', stgInsErr.message);
-          await (supabase.rpc as any)('release_order_reservations', { p_order_id: newOp.id });
-          await (supabase.rpc as any)('restore_sole_grade_for_order', { p_order_id: newOp.id });
-          await (supabase.rpc as any)('restore_product_stocks_for_order', { p_order_id: newOp.id });
-          await supabase.from('orders').update({
-            status: 'Cancelada',
-            notes: `Cancelada — falha ao criar etapas (resync): ${stgInsErr.message}`,
-          }).eq('id', newOp.id);
-          toast.error(`OP ${newOp.id.slice(0, 8)} cancelada — falha ao criar etapas: ${stgInsErr.message}`, { duration: 10000 });
-          continue;
-        }
-        created++;
-      }
-
-      return { created, deleted: existingOpIds.length };
+      return {
+        created: summary.totalResyncedOPs,
+        deleted: 0,
+        skipped: summary.skipped,
+        errors: summary.errors,
+      };
     },
     onSuccess: (result) => {
-      qc.invalidateQueries({ queryKey: ['sale_orders'] });
-      qc.invalidateQueries({ queryKey: ['orders'] });
-      qc.invalidateQueries({ queryKey: ['order_stages'] });
-      qc.invalidateQueries({ queryKey: ['products'] });
-      qc.invalidateQueries({ queryKey: ['stock_movements'] });
-      qc.invalidateQueries({ queryKey: ['material_reservations'] });
-      qc.invalidateQueries({ queryKey: ['production_consumptions'] });
-      toast.success(`OPs resincronizadas! ${result.deleted} ${result.deleted === 1 ? 'removida' : 'removidas'}, ${result.created} ${result.created === 1 ? 'recriada' : 'recriadas'}.`);
+      [
+        ['sale_orders'], ['orders'], ['order_stages'], ['products'],
+        ['stock_movements'], ['material_reservations'], ['production_consumptions'],
+        ['sale-order-command-preflight'], ['system-diag', 'pv-system'],
+      ].forEach((queryKey) => qc.invalidateQueries({ queryKey }));
+      toast.success(`${result.created} OP(s) resincronizada(s), sem apagar identidade ou histórico.`);
+      if (result.errors.length > 0) {
+        toast.warning(`${result.errors.length} OP(s) permaneceram intactas por erro`, {
+          description: result.errors.slice(0, 3).join('\n'),
+          duration: 10000,
+        });
+      }
     },
     onError: (err: Error) => toast.error(`Erro ao resincronizar: ${err.message}`),
   });

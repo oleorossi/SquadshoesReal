@@ -165,14 +165,10 @@ export function useCreateOrder() {
           throw new Error(cause);
         };
 
-        const { error: rpcError } = await supabase.rpc('hybrid_debit_stock_for_order', {
-          p_reference_id: form.reference_id,
-          p_order_quantity: form.quantity,
-          p_color: form.color || '',
+        const { error: rpcError } = await (supabase.rpc as any)('initialize_order_material_reservations', {
           p_order_id: data.id,
-          p_order_grade: form.grade && Object.keys(form.grade).length > 0 ? form.grade : null,
           p_force_soft: true,
-        } as never);
+        });
         if (rpcError) await cleanupOrphan(`Débito de estoque falhou: ${rpcError.message}`);
 
         // Debit sole stock by grade (per size)

@@ -33,6 +33,24 @@ export interface PriceLookup {
   context?: PriceListContext;
 }
 
+export interface ClientCommercialDefaults {
+  price_list_id: string | null;
+  payment_condition: string | null;
+  factoring_config_id: string | null;
+  modalidade_frete: string | null;
+  transport_company_id: string | null;
+  discount_pct: number;
+  credit_limit: number;
+  block_new_orders: boolean;
+  block_reason: string | null;
+  inherited_from: string;
+}
+
+export interface ClientSalesContext {
+  commercialDefaults: ClientCommercialDefaults;
+  priceLookup: PriceLookup;
+}
+
 export interface ResolvedPriceRule {
   price: number;
   tier: PriceTier;
@@ -49,19 +67,26 @@ export function evaluatePriceListValidity(
   return { effective: true };
 }
 
-export const fetchClientPriceList = async (clientId: string): Promise<PriceLookup> => {
+export const fetchClientPriceList = async (
+  clientId: string,
+  resolvedPriceListId?: string | null,
+): Promise<PriceLookup> => {
   const byRefColor = new Map<string, PriceTier[]>();
   const byRef = new Map<string, PriceTier[]>();
 
-  // 1. Busca price_list_id do cliente
-  const { data: client, error: clientError } = await supabase
-    .from('clients')
-    .select('price_list_id')
-    .eq('id', clientId)
-    .maybeSingle();
-  if (clientError) throw clientError;
-
-  const priceListId = (client as any)?.price_list_id;
+  // Chamadas isoladas preservam a leitura direta legada. O fluxo de PV passa
+  // o id já resolvido pela política comercial, que inclui herança do grupo
+  // econômico e não pode voltar silenciosamente para clients.price_list_id.
+  let priceListId = resolvedPriceListId;
+  if (resolvedPriceListId === undefined) {
+    const { data: client, error: clientError } = await supabase
+      .from('clients')
+      .select('price_list_id')
+      .eq('id', clientId)
+      .maybeSingle();
+    if (clientError) throw clientError;
+    priceListId = client?.price_list_id;
+  }
   if (!priceListId) return { byRefColor, byRef };
 
   // A atribuição ao cliente não basta: tabela inativa, futura ou vencida nunca
@@ -125,6 +150,28 @@ export const fetchClientPriceList = async (clientId: string): Promise<PriceLooku
   for (const arr of byRef.values()) arr.sort((a, b) => a.minQty - b.minQty);
   return { byRefColor, byRef, context };
 };
+
+/**
+ * Resolve, em uma única barreira fail-closed, as duas fontes comerciais usadas
+ * para autorizar um novo PV. Ausência de linha é tratada como falha de leitura:
+ * o cliente existe, portanto o RPC deve sempre devolver exatamente um contexto.
+ */
+export const fetchClientSalesContext = async (clientId: string): Promise<ClientSalesContext> => {
+  const commercialResult = await supabase
+    .rpc('get_client_commercial_defaults', { p_client_id: clientId });
+  if (commercialResult.error) throw commercialResult.error;
+  const commercialDefaults = commercialResult.data?.[0] as ClientCommercialDefaults | undefined;
+  if (!commercialDefaults) {
+    throw new Error('Não foi possível resolver a política comercial do cliente.');
+  }
+  const priceLookup = await fetchClientPriceList(clientId, commercialDefaults.price_list_id);
+  return { commercialDefaults, priceLookup };
+};
+
+export function clientCommercialBlockMessage(defaults: ClientCommercialDefaults): string {
+  return defaults.block_reason?.trim()
+    || 'Cliente ou grupo econômico bloqueado para novos pedidos.';
+}
 
 /** Escolhe o preço da MAIOR faixa cujo minQty <= quantidade. Abaixo de todas,
  *  usa a menor faixa (preço base). */

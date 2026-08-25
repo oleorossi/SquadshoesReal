@@ -25,3 +25,8 @@ verify_jwt = false
 # Bearer == service role key no handler — nunca roda anônima.
 [functions.sync-ar]
 verify_jwt = false
+
+# Consumidor da outbox de PV disparado pelo pg_cron sem JWT. O handler valida
+# X-Cron-Secret (vault nfe_sync_cron_secret) ou Bearer service-role.
+[functions.process-sale-order-outbox]
+verify_jwt = false

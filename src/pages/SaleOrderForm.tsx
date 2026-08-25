@@ -60,6 +60,11 @@ import {
   sameStrapSourcingSelection,
   strapSourcingErrorDetails,
 } from '@/lib/strapSourcingOverride';
+import {
+  clientCommercialBlockMessage,
+  fetchClientSalesContext,
+} from '@/lib/mobile/clientContext';
+import { SaleOrderCommandExecutionError } from '@/lib/saleOrderCommand';
 
 const emptyForm: SaleOrderFormData = {
   client_id: null,
@@ -96,6 +101,62 @@ const SALE_ORDER_DRAFT_KEY_PREFIX = 'sale_order_draft';
  */
 function saleOrderDraftKey(userId: string | null | undefined): string {
   return `${SALE_ORDER_DRAFT_KEY_PREFIX}:${userId ?? 'anonymous'}`;
+}
+
+export function clearSaleOrderDraft(userId: string | null | undefined): void {
+  const key = saleOrderDraftKey(userId);
+  try { sessionStorage.removeItem(key); } catch { /* storage indisponível */ }
+  try { localStorage.removeItem(key); } catch { /* storage indisponível */ }
+}
+
+export function buildItemsPurchaseSignature(
+  items: SaleOrderItemFormData[],
+  packagingMode: SaleOrderFormData['packaging_mode'],
+): string {
+  return JSON.stringify({
+    packaging_mode: packagingMode || null,
+    items: items.filter((item) => item.reference_id).map((item) => ({
+      r: item.reference_id,
+      q: item.quantity,
+      c: (item.color || '').trim().toUpperCase(),
+      g: item.grade || {},
+      mv: item.material_variant_id || null,
+      s: Array.isArray(item.strap_colors)
+        ? item.strap_colors.map((line) => ({ color: line?.color || '', color_id: line?.color_id || '' }))
+        : [],
+      so: item.strap_sourcing || {},
+    })).sort((left, right) => `${left.r}${left.c}${left.mv || ''}`.localeCompare(`${right.r}${right.c}${right.mv || ''}`)),
+  });
+}
+
+export function buildSaleOrderEditorRevision(input: {
+  form: SaleOrderFormData;
+  items: SaleOrderItemFormData[];
+  selectedClientId: string;
+  packagingProductId: string;
+  packagingQuantity: number;
+}): string {
+  return JSON.stringify(input);
+}
+
+export function editorChangedDuringSave(
+  submittedRevision: string,
+  latestRevision: string,
+): boolean {
+  return submittedRevision !== latestRevision;
+}
+
+export interface CreatedSaleOrderContinuation {
+  id: string;
+  orderVersion: number;
+}
+
+/** CREATE já confirmado com editor divergente deve continuar como UPDATE. */
+export function resolveSaleOrderMutationTarget(
+  routeOrderId: string | undefined,
+  continuation: CreatedSaleOrderContinuation | null,
+): string | null {
+  return routeOrderId || continuation?.id || null;
 }
 
 // Cópia parcial de itens (edição → novo PV): a edição grava o seed aqui e navega
@@ -292,7 +353,13 @@ export default function SaleOrderForm() {
   const navigate = useNavigate();
   const isEdit = !!id;
 
-  const { data: references = [], isLoading: referencesLoading } = useTechnicalSheets();
+  const {
+    data: references = [],
+    isLoading: referencesLoading,
+    isError: referencesFailed,
+    error: referencesError,
+    refetch: refetchReferences,
+  } = useTechnicalSheets();
   const { data: clients = [] } = useClients();
   const { data: representatives = [] } = useRepresentatives();
   const createOrder = useCreateSaleOrder();
@@ -399,6 +466,12 @@ export default function SaleOrderForm() {
   // Só é descartada após a RPC confirmar a criação, evitando PV duplicado em
   // timeout/resposta perdida.
   const clientRequestIdRef = useRef<string | null>(null);
+  // Se o usuário altera o editor no pequeno intervalo entre o clique e a
+  // confirmação do CREATE, o PV já existe no servidor. A próxima tentativa
+  // precisa atualizar ESSE PV (com expected_version), nunca repetir o CREATE
+  // com outra chave e gerar uma duplicata. A continuação também viaja no
+  // rascunho local para sobreviver a F5/fechamento da aba.
+  const createdOrderContinuationRef = useRef<CreatedSaleOrderContinuation | null>(null);
   // Ligado quando a tela nasce de uma cópia E já havia rascunho salvo. O caminho
   // do seed pula o prompt "Rascunho encontrado" (a cópia vence a tela), e sem
   // esta trava o auto-save de 5s gravaria o pedido copiado POR CIMA de um
@@ -421,6 +494,8 @@ export default function SaleOrderForm() {
   const [packagingProductId, setPackagingProductId] = useState<string>('');
   const [packagingQuantity, setPackagingQuantity] = useState<number>(0);
   const [loading, setLoading] = useState(isEdit || referencesLoading);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadAttempt, setLoadAttempt] = useState(0);
 
   // Pending draft detection: cargas anteriores salvaram um rascunho em
   // sessionStorage (saída pra /estoque) ou localStorage (auto-save).
@@ -433,6 +508,8 @@ export default function SaleOrderForm() {
     packagingQuantity: number;
     savedAt?: number;
     source: 'session' | 'local';
+    continuationOrderId?: string;
+    continuationOrderVersion?: number;
   }>(null);
 
   useEffect(() => {
@@ -484,6 +561,8 @@ export default function SaleOrderForm() {
           packagingQuantity: parsed.packagingQuantity ?? 0,
           savedAt: parsed.savedAt,
           source: sessionRaw ? 'session' : 'local',
+          continuationOrderId: parsed.continuationOrderId || undefined,
+          continuationOrderVersion: Number(parsed.continuationOrderVersion) || undefined,
         });
       }
     } catch { /* ignore corrupted draft */ }
@@ -504,7 +583,17 @@ export default function SaleOrderForm() {
       try {
         localStorage.setItem(
           draftKey,
-          JSON.stringify({ ownerId: user.id, form, items, selectedClientId, packagingProductId, packagingQuantity, savedAt: Date.now() }),
+          JSON.stringify({
+            ownerId: user.id,
+            form,
+            items,
+            selectedClientId,
+            packagingProductId,
+            packagingQuantity,
+            continuationOrderId: createdOrderContinuationRef.current?.id,
+            continuationOrderVersion: createdOrderContinuationRef.current?.orderVersion,
+            savedAt: Date.now(),
+          }),
         );
       } catch { /* ignore quota errors */ }
     }, 5_000);
@@ -513,11 +602,20 @@ export default function SaleOrderForm() {
 
   const restoreDraft = () => {
     if (!pendingDraft) return;
+    preserveExistingDraftRef.current = false;
     setForm(pendingDraft.form);
     setItems(pendingDraft.items);
     setSelectedClientId(pendingDraft.selectedClientId);
     setPackagingProductId(pendingDraft.packagingProductId);
     setPackagingQuantity(pendingDraft.packagingQuantity);
+    if (pendingDraft.continuationOrderId && pendingDraft.continuationOrderVersion) {
+      createdOrderContinuationRef.current = {
+        id: pendingDraft.continuationOrderId,
+        orderVersion: pendingDraft.continuationOrderVersion,
+      };
+      loadedOrderVersionRef.current = pendingDraft.continuationOrderVersion;
+      clientRequestIdRef.current = null;
+    }
     sessionStorage.removeItem(draftKey);
     localStorage.removeItem(draftKey);
     setPendingDraft(null);
@@ -525,6 +623,7 @@ export default function SaleOrderForm() {
   };
 
   const discardDraft = () => {
+    preserveExistingDraftRef.current = false;
     sessionStorage.removeItem(draftKey);
     localStorage.removeItem(draftKey);
     setPendingDraft(null);
@@ -534,7 +633,15 @@ export default function SaleOrderForm() {
   // Dispensar (Esc/X/clique fora) ≠ Descartar: fechar o dialog só esconde o
   // aviso — o rascunho continua no storage pra próxima visita. Apagar de vez
   // é SÓ pelo botão "Descartar" explícito.
-  const dismissDraftPrompt = () => setPendingDraft(null);
+  const dismissDraftPrompt = () => {
+    preserveExistingDraftRef.current = true;
+    setPendingDraft(null);
+    toast.info(
+      'O rascunho anterior foi preservado e continuará disponível na próxima visita a "Novo Pedido". ' +
+      'Esta sessão não será auto-salva; salve o pedido ao terminar.',
+      { duration: 10000 },
+    );
+  };
 
   useEffect(() => {
     if (!referencesLoading && !isEdit) {
@@ -542,6 +649,7 @@ export default function SaleOrderForm() {
     }
   }, [referencesLoading, isEdit]);
   const [checkingStock, setCheckingStock] = useState(false);
+  const [checkingReadiness, setCheckingReadiness] = useState(false);
   const [orderLoaded, setOrderLoaded] = useState(false);
 
   // Bug histórico: navegar de /sales/edit/A pra /sales/edit/B (via GlobalSearch)
@@ -555,8 +663,13 @@ export default function SaleOrderForm() {
     // pra evitar mexer no mount inicial.
     if (orderLoaded) {
       setOrderLoaded(false);
+      setLoadError(null);
       setForm(emptyForm);
       setItems([{ ...emptyItem }]);
+      editorBaselineReadyRef.current = false;
+      originalItemsSigRef.current = null;
+      originalDeadlineRef.current = null;
+      originalItemReferenceByIdRef.current.clear();
       originalStrapSourcingRef.current.clear();
       setStrapOverrideTarget(null);
       setSelectedClientId('');
@@ -575,23 +688,40 @@ export default function SaleOrderForm() {
   // Compra?") quando os itens que afetam COMPRA mudarem. Assinatura dos itens do
   // pedido carregado em edição, comparada no submit. Sem isto, qualquer edição
   // (data, obs, cliente) reabria o prompt de OC porque a falta de estoque persiste.
-  const itemsPurchaseSig = (its: SaleOrderItemFormData[]) => JSON.stringify(
-    its.filter(i => i.reference_id).map(i => ({
-      r: i.reference_id,
-      q: i.quantity,
-      c: (i.color || '').trim().toUpperCase(),
-      g: (i as any).grade || {},
-      s: Array.isArray((i as any).strap_colors)
-        ? (i as any).strap_colors.map((x: any) => ({ color: x?.color || '', color_id: x?.color_id || '' }))
-        : [],
-      so: (i as any).strap_sourcing || {},
-    })).sort((a, b) => (a.r + a.c).localeCompare(b.r + b.c)),
-  );
-  // Alterações não salvas. Alimentado por evento de DOM vindo do painel — ver a
-  // nota no <form> de SaleOrderFormPanel sobre por que snapshot não serve aqui.
-  // ⚠ `originalItemsSigRef` NÃO serve de baseline: ele cobre só os campos de
-  // COMPRA do item (itemsPurchaseSig), não o formulário.
+  // Alterações não salvas derivam da revisão completa do estado persistível.
+  // Isso cobre Selects Radix e mudanças programáticas legítimas que não emitem
+  // input/change. Na edição, a baseline só fica pronta depois de cabeçalho e
+  // itens carregarem juntos; portanto hidratação parcial nunca marca o PV sujo.
   const [hasUnsavedEdits, setHasUnsavedEdits] = useState(false);
+  const editorBaselineRevisionRef = useRef(buildSaleOrderEditorRevision({
+    form: emptyForm,
+    items: [{ ...emptyItem }],
+    selectedClientId: '',
+    packagingProductId: '',
+    packagingQuantity: 0,
+  }));
+  const editorBaselineReadyRef = useRef(!isEdit);
+  const currentEditorRevision = useMemo(() => buildSaleOrderEditorRevision({
+    form,
+    items,
+    selectedClientId,
+    packagingProductId,
+    packagingQuantity,
+  }), [form, items, selectedClientId, packagingProductId, packagingQuantity]);
+  // Atualizado durante o render (não num effect) para que o callback assíncrono
+  // da mutation sempre enxergue a revisão mais recente, inclusive se a resposta
+  // chegar antes de effects pendentes rodarem.
+  const latestEditorRevisionRef = useRef(currentEditorRevision);
+  latestEditorRevisionRef.current = currentEditorRevision;
+  const postSaveDivergedRef = useRef(false);
+  useEffect(() => {
+    if (!editorBaselineReadyRef.current) return;
+    if (postSaveDivergedRef.current) {
+      setHasUnsavedEdits(true);
+      return;
+    }
+    setHasUnsavedEdits(currentEditorRevision !== editorBaselineRevisionRef.current);
+  }, [currentEditorRevision]);
   const [pendingExit, setPendingExit] = useState<null | (() => void)>(null);
   // O mesmo diálogo serve pra Voltar/Cancelar e pra cópia, mas o texto genérico
   // ("descarta o que foi digitado") seria meia-verdade no fluxo de cópia: os
@@ -621,12 +751,18 @@ export default function SaleOrderForm() {
 
   const originalItemsSigRef = useRef<string | null>(null);
   const originalDeadlineRef = useRef<string | null>(null);
+  const originalItemReferenceByIdRef = useRef(new Map<string, string>());
+  // Versão observada junto do cabeçalho+itens. O save envia exatamente esta
+  // revisão ao command boundary; reler a versão só no clique esconderia uma
+  // edição concorrente feita em outra aba entre a carga e o submit.
+  const loadedOrderVersionRef = useRef<number | null>(null);
+  const updateCommandIntentRef = useRef<{ revision: string; id: string } | null>(null);
   useEffect(() => {
     if (isEdit && originalItemsSigRef.current === null && items.some(i => i.reference_id)) {
-      originalItemsSigRef.current = itemsPurchaseSig(items);
+      originalItemsSigRef.current = buildItemsPurchaseSignature(items, form.packaging_mode);
       originalDeadlineRef.current = form.delivery_deadline || '';
     }
-  }, [isEdit, items]);
+  }, [isEdit, items, form.packaging_mode]);
   const [capacityResult, setCapacityResult] = useState<CapacityCheckResult | null>(null);
   const [capacityDialogOpen, setCapacityDialogOpen] = useState(false);
   const [minBillingDialogOpen, setMinBillingDialogOpen] = useState(false);
@@ -746,20 +882,36 @@ export default function SaleOrderForm() {
   const handleSaveStateAndNavigate = useCallback(() => {
     sessionStorage.setItem(
       draftKey,
-      JSON.stringify({ ownerId: user?.id, ...draftStateRef.current, savedAt: Date.now() }),
+      JSON.stringify({
+        ownerId: user?.id,
+        ...draftStateRef.current,
+        continuationOrderId: createdOrderContinuationRef.current?.id,
+        continuationOrderVersion: createdOrderContinuationRef.current?.orderVersion,
+        savedAt: Date.now(),
+      }),
     );
     navigate('/estoque?returnTo=sale-order');
   }, [draftKey, navigate, user?.id]);
 
-  // Load existing order for edit (only once, after references are ready)
+  // Load existing order for edit. Cabeçalho e itens formam uma única revisão:
+  // qualquer erro deixa a tela fechada, sem formulário parcialmente hidratado.
   useEffect(() => {
-    if (!id || orderLoaded || referencesLoading) return;
+    if (!id || orderLoaded || referencesLoading || referencesFailed) return;
+    let cancelled = false;
     (async () => {
       setLoading(true);
-      const { data: order } = await supabase.from('sale_orders').select('*').eq('id', id).single();
-      if (!order) { toast.error('Pedido não encontrado'); navigate('/sales'); return; }
+      setLoadError(null);
+      const [headerResult, itemsResult] = await Promise.all([
+        supabase.from('sale_orders').select('*').eq('id', id).single(),
+        supabase.from('sale_order_items').select('*').eq('sale_order_id', id),
+      ]);
+      if (cancelled) return;
+      if (headerResult.error) throw new Error(`Cabeçalho: ${headerResult.error.message}`);
+      if (itemsResult.error) throw new Error(`Itens: ${itemsResult.error.message}`);
+      const order = headerResult.data;
+      if (!order) throw new Error('Pedido não encontrado.');
       const rep = representatives.find(r => r.name === order.representative);
-      setForm({
+      const nextForm: SaleOrderFormData = {
         client_id: (order as any).client_id || null,
         // Sem carregar company_id, reabrir o PV mostrava o emitente como matriz/
         // padrão e um novo save sobrescrevia a coluna com null. (PV-00140, 2026-06-16)
@@ -787,14 +939,17 @@ export default function SaleOrderForm() {
         // interno e (com o RPC já gravando a coluna) o save resetava pra false.
         nfe_external: (order as any).nfe_external === true,
         external_nfe_number: (order as any).external_nfe_number || '',
-      });
-      setPackagingProductId((order as any).packaging_product_id || '');
-      setPackagingQuantity((order as any).packaging_quantity || 0);
-      const client = clients.find(c => c.razao_social === order.client_name);
-      setSelectedClientId(client?.id || '');
-      const { data: orderItems } = await supabase.from('sale_order_items').select('*').eq('sale_order_id', id);
-      if (orderItems && orderItems.length > 0) {
-        const mapped = orderItems.map(i => mapLoadedSaleOrderItem(i, canonicalReferenceIdMap));
+        // Terceirização planejada faz parte do mesmo agregado do PV. Sem
+        // hidratar estes campos, reabrir e salvar apagava a escolha existente.
+        outsource_to_contractor_id: (order as any).outsource_to_contractor_id || null,
+        outsource_to_sector: (order as any).outsource_to_sector || null,
+      };
+      const nextPackagingProductId = order.packaging_product_id || '';
+      const nextPackagingQuantity = Number(order.packaging_quantity) || 0;
+      const nextClientId = String(order.client_id || '');
+      let nextItems: SaleOrderItemFormData[] = [{ ...emptyItem }];
+      if (itemsResult.data && itemsResult.data.length > 0) {
+        const mapped = itemsResult.data.map(i => mapLoadedSaleOrderItem(i, canonicalReferenceIdMap));
         // Sort items so that the same reference (and color) always appears together in editing
         const refLabel = (refId: string) => {
           const ref = (references as any[]).find(r => r.id === refId);
@@ -812,12 +967,39 @@ export default function SaleOrderForm() {
             lines: buildExtraItemColumns(item).strap_sourcing as NonNullable<SaleOrderItemFormData['strap_sourcing']>,
           }]];
         }));
-        setItems(mapped);
+        nextItems = mapped;
       }
+      originalItemsSigRef.current = buildItemsPurchaseSignature(nextItems, nextForm.packaging_mode);
+      originalDeadlineRef.current = nextForm.delivery_deadline || '';
+      originalItemReferenceByIdRef.current = new Map(nextItems.flatMap((item) =>
+        item.id ? [[item.id, item.reference_id] as const] : []));
+      editorBaselineRevisionRef.current = buildSaleOrderEditorRevision({
+        form: nextForm,
+        items: nextItems,
+        selectedClientId: nextClientId,
+        packagingProductId: nextPackagingProductId,
+        packagingQuantity: nextPackagingQuantity,
+      });
+      editorBaselineReadyRef.current = true;
+      loadedOrderVersionRef.current = Number((order as any).order_version) || 1;
+      setForm(nextForm);
+      setItems(nextItems);
+      setPackagingProductId(nextPackagingProductId);
+      setPackagingQuantity(nextPackagingQuantity);
+      setSelectedClientId(nextClientId);
+      setHasUnsavedEdits(false);
       setOrderLoaded(true);
       setLoading(false);
-    })();
-  }, [id, orderLoaded, referencesLoading, canonicalReferenceIdMap]);
+    })().catch((error: unknown) => {
+      if (cancelled) return;
+      const message = error instanceof Error ? error.message : String(error);
+      setLoadError(message);
+      setLoading(false);
+      setOrderLoaded(false);
+      editorBaselineReadyRef.current = false;
+    });
+    return () => { cancelled = true; };
+  }, [id, orderLoaded, referencesLoading, referencesFailed, canonicalReferenceIdMap, loadAttempt]);
 
   // Update representative match when reps load after order
   useEffect(() => {
@@ -830,13 +1012,6 @@ export default function SaleOrderForm() {
       if (rep) setForm(f => ({ ...f, representative: rep.id }));
     })();
   }, [representatives.length, orderLoaded]);
-
-  // Update client match when clients load after order
-  useEffect(() => {
-    if (!orderLoaded || selectedClientId) return;
-    const client = clients.find(c => c.razao_social === form.client_name);
-    if (client) setSelectedClientId(client.id);
-  }, [clients.length, orderLoaded]);
 
   const handleClientSelect = (clientId: string) => {
     setSelectedClientId(clientId);
@@ -1055,25 +1230,60 @@ export default function SaleOrderForm() {
    * pra permitir re-disparo após confirmação do CancelOpsAndEditDialog.
    */
   const dispatchMutation = (statusOverride?: string, cancelOpIds: string[] = []) => {
-    const f = formLatestRef.current;
-    const validItems = items.filter(i => i.reference_id).map(normalizeItemReference);
+    // Snapshot coerente do editor: callbacks de rede podem nascer em um render
+    // anterior, mas nunca devem reenviar itens/embalagem antigos.
+    const editorSnapshot = draftStateRef.current;
+    const f = editorSnapshot.form;
+    const validItems = editorSnapshot.items.filter(i => i.reference_id).map(normalizeItemReference);
     const total = validItems.reduce((s, i) => s + i.unit_price * i.quantity, 0);
     const rep = representatives.find(r => r.id === f.representative);
     const commission_value = rep ? total * (rep.commission_pct ?? 0) / 100 : 0;
     const orderData = { ...f, representative: rep?.name || f.representative };
     if (statusOverride) orderData.status = statusOverride;
-    const resolvedClientId = (f as any).client_id || selectedClientId || null;
+    const resolvedClientId = (f as any).client_id || editorSnapshot.selectedClientId || null;
+    // Snapshot exato associado à mutation. A revisão pode continuar mudando na
+    // tela enquanto a rede responde; o sucesso só limpa/navega se ainda for esta.
+    const submittedRevision = buildSaleOrderEditorRevision(editorSnapshot);
+    // Pedido avulso não passa por política/tabela/limite de um cadastro de
+    // cliente. Decisão 11.d: pode ser persistido somente como Rascunho.
+    if (!resolvedClientId) orderData.status = 'Rascunho';
 
     // A origem das tiras já foi escolhida por linha no formulário. Ao salvar,
     // trigger + fila canônicos fazem netting, lote e compra; não existe segundo
     // escritor de OC/OS no cliente.
     const isOverride = !!(f as any).manual_billing_override;
-    const handlePostSave = async (pvId: string | undefined) => {
+    const handlePostSave = async (pvId: string | undefined, persistedVersion?: number) => {
+      if (editorChangedDuringSave(submittedRevision, latestEditorRevisionRef.current)) {
+        if (!isEdit && pvId) {
+          const orderVersion = Number(persistedVersion) || 1;
+          createdOrderContinuationRef.current = { id: pvId, orderVersion };
+          loadedOrderVersionRef.current = orderVersion;
+          // CREATE já confirmado: repetir a chave só reproduziria o recibo;
+          // trocar a chave criaria um segundo PV. Daqui em diante é UPDATE.
+          clientRequestIdRef.current = null;
+        }
+        postSaveDivergedRef.current = true;
+        setHasUnsavedEdits(true);
+        toast.warning('A versão enviada foi salva, mas há alterações locais ainda não salvas.', {
+          description: pvId && !isEdit
+            ? 'Revise os campos e clique em Salvar novamente. A próxima gravação atualizará o mesmo PV, sem duplicá-lo.'
+            : 'Revise os campos e clique em Salvar novamente. Esta tela não será fechada.',
+          duration: 10000,
+        });
+        return;
+      }
+
       // Salvou: desarma a guarda. Sem isto o beforeunload continuaria disparando
       // depois do save, e os diálogos de pós-save (tiras, OS, costura) navegam
       // sozinhos — o usuário levaria um aviso de "alterações não salvas" logo
       // depois de o toast dizer que salvou.
+      postSaveDivergedRef.current = false;
+      createdOrderContinuationRef.current = null;
+      editorBaselineRevisionRef.current = submittedRevision;
+      editorBaselineReadyRef.current = true;
       setHasUnsavedEdits(false);
+      if (!isEdit) clientRequestIdRef.current = null;
+      if (!isEdit && !preserveExistingDraftRef.current) clearSaleOrderDraft(user?.id);
       // Salvou: a exclusão já foi aplicada no banco. Um "Desfazer" ainda aberto
       // restauraria os itens só na tela e daria a falsa impressão de que voltaram.
       toast.dismiss(PV_ITEM_DELETE_TOAST_ID);
@@ -1106,19 +1316,31 @@ export default function SaleOrderForm() {
       }
     };
 
-    if (isEdit) {
+    const effectiveOrderId = resolveSaleOrderMutationTarget(id, createdOrderContinuationRef.current);
+    if (effectiveOrderId) {
+      if (updateCommandIntentRef.current?.revision !== submittedRevision) {
+        updateCommandIntentRef.current = {
+          revision: submittedRevision,
+          id: crypto.randomUUID(),
+        };
+      }
       updateOrder.mutate({
-        id: id!,
+        id: effectiveOrderId,
         order: orderData,
         items: validItems,
         client_id: resolvedClientId,
         representative_id: f.representative || null,
         commission_value,
-        packaging_product_id: packagingProductId || null,
-        packaging_quantity: packagingQuantity,
+        packaging_product_id: editorSnapshot.packagingProductId || null,
+        packaging_quantity: editorSnapshot.packagingQuantity,
         cancel_op_ids: cancelOpIds,
+        expected_order_version: loadedOrderVersionRef.current,
+        idempotency_key: updateCommandIntentRef.current.id,
       } as any, {
-        onSuccess: () => {
+        onSuccess: (updated: { receipt?: { order_version?: number } } | undefined) => {
+          updateCommandIntentRef.current = null;
+          const persistedVersion = Number(updated?.receipt?.order_version) || 0;
+          if (persistedVersion > 0) loadedOrderVersionRef.current = persistedVersion;
           if (cancelOpIds.length > 0) {
             cancelOpsPreflightRunningRef.current = false;
             setCancelOpsPreflight({ isRunning: false, error: null });
@@ -1127,9 +1349,16 @@ export default function SaleOrderForm() {
               `${cancelOpIds.length} OP${cancelOpIds.length === 1 ? '' : 's'} cancelada${cancelOpIds.length === 1 ? '' : 's'} e edição salva atomicamente.`,
             );
           }
-          handlePostSave(id!);
+          handlePostSave(effectiveOrderId, persistedVersion);
         },
         onError: (error: unknown) => {
+          // O servidor fechou este receipt como failed: manter a mesma chave
+          // apenas repetiria a falha para sempre, mesmo após corrigir uma ficha
+          // ou integração que não altera order_version. Erro de transporte sem
+          // receipt preserva a chave para recuperar eventual commit ambíguo.
+          if (error instanceof SaleOrderCommandExecutionError) {
+            updateCommandIntentRef.current = null;
+          }
           if (cancelOpIds.length > 0) {
             const message = error instanceof Error
               ? error.message
@@ -1185,13 +1414,12 @@ export default function SaleOrderForm() {
         client_id: resolvedClientId,
         representative_id: f.representative || null,
         commission_value,
-        packaging_product_id: packagingProductId || null,
-        packaging_quantity: packagingQuantity,
+        packaging_product_id: editorSnapshot.packagingProductId || null,
+        packaging_quantity: editorSnapshot.packagingQuantity,
         client_request_id: clientRequestId,
       } as any, {
-        onSuccess: (created: { id?: string } | undefined) => {
-          clientRequestIdRef.current = null;
-          handlePostSave(created?.id);
+        onSuccess: (created: { id?: string; receipt?: { order_version?: number } } | undefined) => {
+          handlePostSave(created?.id, Number(created?.receipt?.order_version) || 1);
         },
       });
     }
@@ -1259,11 +1487,64 @@ export default function SaleOrderForm() {
     dispatchMutation(pendingOverride, ops.map((op) => op.id));
   };
 
+  const validateAuthoritativeSources = async (validItems: SaleOrderItemFormData[]): Promise<boolean> => {
+    const clientId = String(formLatestRef.current.client_id || selectedClientId || '');
+    setCheckingReadiness(true);
+    try {
+      if (clientId) {
+        const { commercialDefaults, priceLookup } = await fetchClientSalesContext(clientId);
+        if (!isEdit && commercialDefaults.block_new_orders) {
+          toast.error(clientCommercialBlockMessage(commercialDefaults), { duration: 9000 });
+          return false;
+        }
+        if (priceLookup.context && !priceLookup.context.effective) {
+          toast.error(
+            `A tabela de preços “${priceLookup.context.name}” não está vigente. Corrija o cadastro antes de salvar.`,
+            { duration: 9000 },
+          );
+          return false;
+        }
+      }
+
+      const referenceIds = [...new Set(validItems.map((item) => item.reference_id))];
+      const { data: sheets, error } = await supabase
+        .from('technical_sheets')
+        .select('id, status_ficha')
+        .in('id', referenceIds);
+      if (error) throw error;
+      const sheetById = new Map((sheets || []).map((sheet) => [sheet.id, sheet]));
+      const missing = referenceIds.find((referenceId) => !sheetById.has(referenceId));
+      if (missing) {
+        toast.error('Uma ficha técnica do pedido não pôde ser localizada. Recarregue a tela antes de salvar.');
+        return false;
+      }
+      const unpublishedChangedItem = validItems.find((item) => {
+        const originalReference = item.id ? originalItemReferenceByIdRef.current.get(item.id) : null;
+        const isNewSelection = !item.id || originalReference !== item.reference_id;
+        const status = String(sheetById.get(item.reference_id)?.status_ficha || '').toLowerCase();
+        return isNewSelection && status !== 'publicada';
+      });
+      if (unpublishedChangedItem) {
+        toast.error('Novos itens só podem usar uma ficha técnica publicada. Publique a referência e tente novamente.');
+        return false;
+      }
+      return true;
+    } catch (error: unknown) {
+      toast.error('Não foi possível validar política, tabela de preços e fichas técnicas.', {
+        description: error instanceof Error ? error.message : String(error),
+      });
+      return false;
+    } finally {
+      setCheckingReadiness(false);
+    }
+  };
+
   const handleSubmit = async (
     e: React.FormEvent,
     opts: SubmitOptions = {},
   ) => {
     e.preventDefault();
+    if (checkingReadiness) return;
     if ((isEdit && !perm.canEdit) || (!isEdit && !perm.canCreate)) {
       toast.error('Você não tem permissão para salvar pedidos de venda.');
       return;
@@ -1311,6 +1592,10 @@ export default function SaleOrderForm() {
       toast.error('Selecione qual factoring está antecipando este pedido.');
       return;
     }
+
+    // Política, tabela e fonte técnica são pré-condições, não avisos
+    // contornáveis. Se qualquer leitura falhar, nenhum writer é chamado.
+    if (!await validateAuthoritativeSources(validItems)) return;
 
     // 0) Em pedidos NOVOS com cliente cadastrado, valida limite de crédito.
     //    Permite seguir mediante confirmação, mas avisa explicitamente.
@@ -1422,7 +1707,8 @@ export default function SaleOrderForm() {
     // tiras) → não re-checa estoque/solado (prompt "gerar Ordem de Compra?"). Se a
     // data de faturamento também não mudou → salva direto (pula a capacidade tb).
     // Só itens OU data mudando é que volta a checar. Na dúvida, checa (seguro).
-    if (isEdit && originalItemsSigRef.current !== null && itemsPurchaseSig(items) === originalItemsSigRef.current) {
+    if (isEdit && originalItemsSigRef.current !== null
+        && buildItemsPurchaseSignature(items, f.packaging_mode) === originalItemsSigRef.current) {
       if (originalDeadlineRef.current !== null && (f.delivery_deadline || '') === originalDeadlineRef.current) {
         doSubmit();
         return;
@@ -1810,9 +2096,40 @@ export default function SaleOrderForm() {
     }, 100);
   };
 
-  if (loading) {
+  if (loading && !referencesFailed && !loadError) {
     return (
       <FormSkeleton blocks={3} fieldsPerBlock={4} />
+    );
+  }
+
+  if (referencesFailed) {
+    return (
+      <div className="mx-auto max-w-xl space-y-4 rounded-lg border border-destructive/40 bg-destructive/5 p-6">
+        <h1 className="text-lg font-bold">Não foi possível carregar as fichas técnicas</h1>
+        <p className="text-sm text-muted-foreground">
+          A criação e a edição ficam bloqueadas até a fonte técnica responder.
+          {referencesError instanceof Error ? ` ${referencesError.message}` : ''}
+        </p>
+        <div className="flex gap-2">
+          <Button onClick={() => void refetchReferences()}>Tentar novamente</Button>
+          <Button variant="outline" onClick={() => navigate('/sales')}>Voltar</Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (isEdit && loadError) {
+    return (
+      <div className="mx-auto max-w-xl space-y-4 rounded-lg border border-destructive/40 bg-destructive/5 p-6">
+        <h1 className="text-lg font-bold">Pedido não carregado</h1>
+        <p className="text-sm text-muted-foreground">
+          Cabeçalho e itens precisam carregar juntos antes da edição. {loadError}
+        </p>
+        <div className="flex gap-2">
+          <Button onClick={() => setLoadAttempt((attempt) => attempt + 1)}>Tentar novamente</Button>
+          <Button variant="outline" onClick={() => navigate('/sales')}>Voltar</Button>
+        </div>
+      </div>
     );
   }
 
@@ -1852,6 +2169,11 @@ export default function SaleOrderForm() {
           }
         />
 
+        <fieldset
+          disabled={createOrder.isPending || updateOrder.isPending || checkingReadiness || checkingStock || computingMinBilling}
+          className="m-0 min-w-0 border-0 p-0 disabled:cursor-wait"
+          aria-busy={createOrder.isPending || updateOrder.isPending || checkingReadiness || checkingStock || computingMinBilling}
+        >
         <SaleOrderFormPanel
           saleOrderId={isEdit ? id : null}
           form={form}
@@ -1866,10 +2188,12 @@ export default function SaleOrderForm() {
           onClientSelect={handleClientSelect}
           onSubmit={handleSubmit}
           onCancel={guardExit(() => navigate('/sales'))}
-          onUserEdit={() => setHasUnsavedEdits(true)}
-          isPending={createOrder.isPending || updateOrder.isPending || checkingStock || computingMinBilling}
+          onUserEdit={() => undefined}
+          isPending={createOrder.isPending || updateOrder.isPending || checkingReadiness || checkingStock || computingMinBilling}
           submitLabel={
-            computingMinBilling
+            checkingReadiness
+              ? 'Validando política e fichas...'
+              : computingMinBilling
               ? 'Calculando semana mínima...'
               : checkingStock
                 ? 'Verificando estoque...'
@@ -1886,6 +2210,7 @@ export default function SaleOrderForm() {
           computingMinBilling={computingLive}
           onColorIssueChange={handleColorIssueChange}
         />
+        </fieldset>
 
         {/* OS deste pedido (read-only) — geração fica em Terceirizados → Gerar OS por Pedido */}
         {isEdit && id && (

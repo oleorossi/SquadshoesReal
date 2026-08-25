@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { CircleNotch as Loader2, Plus, Trash as Trash2, FileText } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { useClients } from '@/hooks/useClients';
 import { useProducts } from '@/hooks/useProducts';
-import { useEmitStandaloneNfe, useCompanies, StandaloneNfeItem } from '@/hooks/useNfe';
+import { useCreateStandaloneNfeDraft, useCompanies, StandaloneNfeItem } from '@/hooks/useNfe';
 import { useAccessControl } from '@/hooks/useAccessControl';
 import { CurrencyInput } from '@/components/ui/currency-input';
 import { NumberInput } from '@/components/ui/number-input';
@@ -38,10 +38,14 @@ export default function StandaloneNfePanel() {
   const { data: clients = [] } = useClients();
   const { data: products = [] } = useProducts();
   const { data: companies = [] } = useCompanies();
-  const emit = useEmitStandaloneNfe();
+  const createDraft = useCreateStandaloneNfeDraft();
   const { isAdmin, roles } = useAccessControl();
 
-  const canEmit = isAdmin || roles.includes('gerente') || roles.includes('nfe_operator');
+  const canCreateDraft = isAdmin
+    || roles.includes('gerente')
+    || roles.includes('comercial')
+    || roles.includes('nfe_operator');
+  const clientRequestIdRef = useRef(crypto.randomUUID());
 
   const [clientId, setClientId] = useState('');
   const [companyId, setCompanyId] = useState('');
@@ -99,9 +103,9 @@ export default function StandaloneNfePanel() {
       .map(([s, q]) => `${s}:${q}`)
       .join(', ');
 
-  const handleEmit = async () => {
-    if (!canEmit) {
-      toast.error('Você não tem permissão para emitir NF-e.');
+  const handleCreateDraft = async () => {
+    if (!canCreateDraft) {
+      toast.error('Você não tem permissão para criar este rascunho.');
       return;
     }
     if (!clientId) {
@@ -126,13 +130,16 @@ export default function StandaloneNfePanel() {
         return;
       }
     }
-    await emit.mutateAsync({
+    await createDraft.mutateAsync({
       clientId,
       companyId: companyId || undefined,
       items: validItems.map(({ _key, ...rest }) => rest),
       notes: notes.trim() || undefined,
+      clientRequestId: clientRequestIdRef.current,
     });
-    // Reset
+    // O intent só gira após sucesso definitivo. Timeout/retry reaproveita a
+    // mesma chave e recebe o receipt original sem duplicar o PV.
+    clientRequestIdRef.current = crypto.randomUUID();
     setItems([emptyItem()]);
     setNotes('');
   };
@@ -140,9 +147,9 @@ export default function StandaloneNfePanel() {
   return (
     <div className="space-y-4">
       <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-400">
-        <strong>NF Avulsa</strong> — emite NF-e diretamente, sem PV de produção. Use para mercadorias
-        em estoque que vão sair sem passar por ondas de produção. Um PV "fantasma" é criado em
-        segundo plano (marcado <code>is_standalone_nfe=true</code>) só pra suportar o fluxo fiscal.
+        <strong>NF avulsa</strong> — primeiro cria um PV auditável em Rascunho, sem transmitir nada.
+        Cliente, política comercial e dados do produto precisam ser validados antes da emissão.
+        Use para mercadorias em estoque que não passam por ondas de produção.
       </div>
 
       <Card>
@@ -402,15 +409,15 @@ export default function StandaloneNfePanel() {
                 {total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
               </strong>
             </div>
-            <Button onClick={handleEmit} disabled={emit.isPending || !canEmit} className="gap-2">
-              {emit.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
-              Emitir NF Avulsa
+            <Button onClick={handleCreateDraft} disabled={createDraft.isPending || !canCreateDraft} className="gap-2">
+              {createDraft.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
+              Salvar rascunho
             </Button>
           </div>
-          {!canEmit && (
+          {!canCreateDraft && (
             <p className="text-xs text-muted-foreground">
-              Você não tem permissão para emitir NF-e. Solicite ao administrador o papel
-              <code className="mx-1">nfe_operator</code>.
+              Você não tem permissão para criar o rascunho. Solicite ao administrador um papel
+              Comercial, Gerência ou <code className="mx-1">nfe_operator</code>.
             </p>
           )}
         </CardContent>

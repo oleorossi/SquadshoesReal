@@ -60,6 +60,30 @@ Deno.serve(async (req) => {
     if (!allowed) {
       return new Response(JSON.stringify({ error: "Forbidden: apenas admin, gerente ou operador NF-e podem cancelar NF-e" }), { status: 403, headers: corsHeaders });
     }
+    const { data: granularPermissions, error: permissionsErr } = await adminClient
+      .from("user_permissions")
+      .select("module, can_view, can_edit")
+      .eq("user_id", userId);
+    if (permissionsErr) {
+      return new Response(JSON.stringify({ error: "Permission check failed" }), { status: 500, headers: corsHeaders });
+    }
+    const hasGranularAllowList = (granularPermissions || []).some(
+      (p: { can_view: boolean }) => p.can_view === true,
+    );
+    const canCancelNfe = (granularPermissions || []).some((p: {
+      module: string;
+      can_view: boolean;
+      can_edit: boolean;
+    }) =>
+      p.can_view === true && (
+        p.module === "nfe" || (p.module === "/nfe" && p.can_edit === true)
+      )
+    );
+    if (hasGranularAllowList && !canCancelNfe) {
+      return new Response(JSON.stringify({
+        error: "Forbidden: cancelamento exige permissão granular de edição em /nfe",
+      }), { status: 403, headers: corsHeaders });
+    }
 
     const { nfe_id, justificativa } = await req.json();
     if (!nfe_id) {
@@ -77,6 +101,36 @@ Deno.serve(async (req) => {
       .from("nfe_emitidas").select("*").eq("id", nfe_id).single();
     if (nfeErr || !nfe) {
       return new Response(JSON.stringify({ error: "NF-e não encontrada" }), { status: 404, headers: corsHeaders });
+    }
+    let standaloneOrder: { id: string; is_standalone_nfe: boolean } | null = null;
+    if (nfe.sale_order_id) {
+      const { data: saleOrder } = await adminClient
+        .from("sale_orders")
+        .select("id, is_standalone_nfe")
+        .eq("id", nfe.sale_order_id)
+        .maybeSingle();
+      standaloneOrder = saleOrder as typeof standaloneOrder;
+    }
+    const isStandaloneNfe = standaloneOrder?.is_standalone_nfe === true;
+
+    // Retry seguro depois de o provedor já ter confirmado o cancelamento: não
+    // chama o ClickNotas de novo; apenas conclui/reexecuta o estorno local.
+    if (nfe.status === "cancelada" && isStandaloneNfe) {
+      const { data: reversed, error: reverseErr } = await adminClient.rpc(
+        "reverse_standalone_nfe_stock_for_cancel",
+        { p_nfe_id: nfe_id },
+      );
+      if (reverseErr || reversed?.ok !== true) {
+        return new Response(JSON.stringify({
+          error: reverseErr?.message || reversed?.code || "Cancelamento fiscal confirmado, mas o estorno de estoque segue pendente.",
+          reconciliation_needed: true,
+        }), { status: 500, headers: corsHeaders });
+      }
+      return new Response(JSON.stringify({
+        success: true,
+        idempotent_replay: true,
+        stock_reversal: reversed,
+      }), { status: 200, headers: corsHeaders });
     }
     if (nfe.status !== "autorizada") {
       return new Response(JSON.stringify({ error: "Somente NF-e autorizadas podem ser canceladas" }), { status: 400, headers: corsHeaders });
@@ -107,6 +161,11 @@ Deno.serve(async (req) => {
     // 'cancelando' (lockado) e o registro retornado é a fonte da verdade.
     const dataEmissaoForCheck = (claimed[0] as any).data_emissao || nfe.data_emissao;
     if (!dataEmissaoForCheck) {
+      await adminClient.from("nfe_emitidas")
+        .update({ status: "autorizada" })
+        .eq("id", nfe_id)
+        .eq("status", "cancelando");
+      _claimedNfeId = null;
       return new Response(JSON.stringify({
         error: "NF-e sem data de emissão registrada — impossível verificar prazo de 24h. Sincronize o status da NF-e antes de tentar cancelar.",
       }), { status: 400, headers: corsHeaders });
@@ -120,12 +179,22 @@ Deno.serve(async (req) => {
       const normalized = /Z$|[+-]\d{2}:\d{2}$/.test(raw) ? raw : raw + "-03:00";
       const emittedAt = new Date(normalized).getTime();
       if (Number.isNaN(emittedAt)) {
+        await adminClient.from("nfe_emitidas")
+          .update({ status: "autorizada" })
+          .eq("id", nfe_id)
+          .eq("status", "cancelando");
+        _claimedNfeId = null;
         return new Response(JSON.stringify({
           error: "Data de emissão da NF-e inválida — impossível verificar prazo de 24h.",
         }), { status: 400, headers: corsHeaders });
       }
       const hoursSince = (Date.now() - emittedAt) / 36e5;
       if (hoursSince > 24) {
+        await adminClient.from("nfe_emitidas")
+          .update({ status: "autorizada" })
+          .eq("id", nfe_id)
+          .eq("status", "cancelando");
+        _claimedNfeId = null;
         return new Response(JSON.stringify({
           error: `Prazo de cancelamento expirado (NF emitida há ${hoursSince.toFixed(1)}h, limite é 24h). Use Carta de Correção (CC-e) se aplicável.`,
         }), { status: 400, headers: corsHeaders });
@@ -179,6 +248,18 @@ Deno.serve(async (req) => {
     if (updateErr) throw new Error(`Falha ao salvar cancelamento: ${updateErr.message}`);
 
     const cleanupWarnings: string[] = [];
+    let standaloneStockWarning: string | null = null;
+    if (success && isStandaloneNfe) {
+      const { data: reversed, error: reverseErr } = await adminClient.rpc(
+        "reverse_standalone_nfe_stock_for_cancel",
+        { p_nfe_id: nfe_id },
+      );
+      if (reverseErr || reversed?.ok !== true) {
+        standaloneStockWarning = reverseErr?.message || reversed?.code
+          || "Falha ao estornar estoque da NF-e avulsa cancelada.";
+        cleanupWarnings.push(`Estorno de estoque pendente: ${standaloneStockWarning}`);
+      }
+    }
     if (success && nfe.sale_order_id) {
       // Auditoria A3: ordem invertida — antes era AR cancel → estorno; agora
       // estorno PRIMEIRO. Razão: se estorno falhar (FK violation, conflict),
@@ -257,7 +338,9 @@ Deno.serve(async (req) => {
         .eq("sale_order_id", nfe.sale_order_id)
         .in("status", ["autorizada", "processando"])
         .neq("id", nfe_id);
-      const reopenStatus = (!otherActiveNfes || otherActiveNfes.length === 0) ? "Em Produção" : null;
+      const reopenStatus = (!otherActiveNfes || otherActiveNfes.length === 0)
+        ? (isStandaloneNfe ? "Rascunho" : "Em Produção")
+        : null;
 
       if (nfe.numero) {
         const soUpdate: any = { nfe: null };
@@ -279,6 +362,10 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({
       success,
       provider_response: providerData,
+      ...(standaloneStockWarning ? {
+        reconciliation_needed: true,
+        stock_reconciliation_warning: standaloneStockWarning,
+      } : {}),
       ...(cleanupWarnings.length > 0 ? { partial_cleanup_warning: cleanupWarnings.join("; ") } : {}),
     }), {
       status: success ? 200 : 422,

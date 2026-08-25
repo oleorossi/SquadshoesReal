@@ -2,12 +2,17 @@ import { describe, expect, it } from 'vitest';
 import {
   buildMobileSaleOrderItemsPayload,
   MOBILE_TECHNICAL_SHEET_SELECT,
+  mobileReferenceSizes,
   mobileFinishedStrapIdentityIssues,
+  mobileCommercialHeaderDefaults,
+  mobileConfirmationCommercialIssue,
   mobileMaterialSelectionIssues,
+  mobileOwnerSessionChanged,
   repriceMobileDraftItems,
   referencesWithMissingStrapSnapshot,
 } from '../MobileNewOrder';
 import type { PriceLookup } from '@/lib/mobile/clientContext';
+import type { MobileSaleOrderData } from '@/lib/mobile/offlineQueue';
 
 describe('referencesWithMissingStrapSnapshot', () => {
   const reference = {
@@ -93,6 +98,44 @@ describe('identidade comercial material no PV mobile', () => {
       material_variant_id: 'variant-1',
       color: 'PRETO',
     }], references, materialVariants, products, groups)).toEqual([]);
+  });
+
+  it('preserva o material da ficha como escolha válida quando ele não é duplicado por variante', () => {
+    const sheetReference = {
+      ...references[0],
+      upper_material_group_id: 'sheet-group',
+      upper_material: 'Napa da ficha',
+    };
+    const sheetProducts = [
+      ...products,
+      { id: 'sheet-product', group_id: 'sheet-group', color: 'CARAMELO', active: true },
+    ];
+    const sheetGroups = [...groups, { id: 'sheet-group', name: 'Napa da ficha' }];
+
+    expect(mobileMaterialSelectionIssues([{
+      reference_id: 'ref-1',
+      reference_name: 'BT01',
+      material_variant_id: null,
+      color: 'CARAMELO',
+      grade: { '37': 10 },
+      unit_price: 120,
+    }], [sheetReference], materialVariants, sheetProducts, sheetGroups)).toEqual([]);
+  });
+
+  it('não substitui a escolha da ficha por variante só porque ambas usam o mesmo grupo', () => {
+    const sheetReference = {
+      ...references[0],
+      upper_material_group_id: 'lining-group',
+      upper_material: 'Napa Soft da ficha',
+    };
+    expect(mobileMaterialSelectionIssues([{
+      reference_id: 'ref-1',
+      reference_name: 'BT01',
+      material_variant_id: null,
+      color: 'PRETO',
+      grade: { '37': 10 },
+      unit_price: 120,
+    }], [sheetReference], materialVariants, products, groups)).toEqual([]);
   });
 
   it('persiste material_variant_id e preço congelado no mesmo payload online/offline', () => {
@@ -193,6 +236,9 @@ describe('identidade comercial material no PV mobile', () => {
 
   it('carrega o preço-base da ficha e respeita tabela > variante > ficha', () => {
     expect(MOBILE_TECHNICAL_SHEET_SELECT).toContain('sale_price');
+    expect(MOBILE_TECHNICAL_SHEET_SELECT).toContain('status_ficha');
+    expect(MOBILE_TECHNICAL_SHEET_SELECT).toContain('sizes');
+    expect(MOBILE_TECHNICAL_SHEET_SELECT).toContain('upper_material_group_id');
     const lookup: PriceLookup = {
       byRefColor: new Map([['ref-1::PRETO', [
         { minQty: 1, price: 140 },
@@ -234,6 +280,16 @@ describe('identidade comercial material no PV mobile', () => {
     expect(pricedBySheet).toMatchObject({ unit_price: 160, unit_price_source: 'technical_sheet' });
   });
 
+  it('usa primeiro a faixa física publicada na ficha em vez da categoria genérica', () => {
+    expect(mobileReferenceSizes({
+      id: 'infantil-com-faixa',
+      name: 'I90',
+      sizes: '25-34',
+      status_ficha: 'publicada',
+      shoe_category: { name: 'Adulto' },
+    })).toEqual(['25', '26', '27', '28', '29', '30', '31', '32', '33', '34']);
+  });
+
   it('recalcula faixa automática pela grade sem sobrescrever preço manual', () => {
     const lookup: PriceLookup = {
       byRefColor: new Map(),
@@ -258,5 +314,46 @@ describe('identidade comercial material no PV mobile', () => {
       unit_price_source: 'manual',
     }], lookup, references, materialVariants)[0];
     expect(manual).toMatchObject({ unit_price: 137.5, unit_price_source: 'manual' });
+  });
+});
+
+describe('defaults comerciais no cabeçalho mobile', () => {
+  it('preenche condição, factoring e frete antes de criar o Rascunho', () => {
+    const defaults = mobileCommercialHeaderDefaults({
+      price_list_id: 'price-list-1',
+      payment_condition: '30/60',
+      factoring_config_id: 'factoring-1',
+      modalidade_frete: 'CIF',
+      transport_company_id: 'transport-1',
+      discount_pct: 0,
+      credit_limit: 0,
+      block_new_orders: false,
+      block_reason: null,
+      inherited_from: 'client',
+    });
+
+    expect(defaults).toEqual({
+      payment_condition: '30/60',
+      factoring_config_id: 'factoring-1',
+      modalidade_frete: 'CIF',
+      transport_company_id: 'transport-1',
+    });
+    expect(mobileConfirmationCommercialIssue({
+      payment_condition: '30/60',
+    } as MobileSaleOrderData)).toBeNull();
+  });
+
+  it('bloqueia somente a confirmação quando não há condição padrão', () => {
+    const defaults = mobileCommercialHeaderDefaults(null);
+    expect(mobileConfirmationCommercialIssue(defaults as MobileSaleOrderData))
+      .toContain('salvo em Rascunho');
+  });
+});
+
+describe('isolamento da sessão mobile por owner', () => {
+  it('detecta troca real de usuário para rotacionar client_request_id e zerar o editor', () => {
+    expect(mobileOwnerSessionChanged('vendedor-a', 'vendedor-b')).toBe(true);
+    expect(mobileOwnerSessionChanged('vendedor-a', 'vendedor-a')).toBe(false);
+    expect(mobileOwnerSessionChanged('', 'vendedor-a')).toBe(false);
   });
 });

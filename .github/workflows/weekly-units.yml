@@ -1,30 +1,33 @@
-name: Weekly Unit Conversion Tests
+name: Weekly PV System & Unit Tests
 
-# Roda os testes de conversão de unidades (cm↔m, dm², kg, etc.)
-# apenas uma vez por semana — segunda-feira às 06:00 UTC (03:00 BRT).
+# Roda conversões de unidade e a integração do sistema de pedidos
+# uma vez por semana — segunda-feira às 06:00 UTC (03:00 BRT).
 # Também pode ser disparado manualmente pela aba Actions.
 #
-# Inclui o guard de paridade SQL (consumptionService.parity.test.ts), que por
-# padrão fica em describe.skip sem RUN_DB_INTEGRATION=1 — sem isso ele nunca
-# rodava em lugar nenhum do CI (achado na revisão de bugs de 2026-07-01).
-# Requer secrets: SUPABASE_PROJECT_ID + SUPABASE_CI_DB_PASSWORD (senha do role
-# ci_parity — role dedicado de CI que só tem EXECUTE em
-# run_consumption_parity_tests(); NÃO é a senha do postgres).
+# Inclui os guards SQL, a paridade numérica TS×SQL e os contratos operacionais
+# de PV. As suítes escrevem fixtures: use um projeto Supabase EXCLUSIVO de CI.
+#
+# Secrets obrigatórios:
+#   SUPABASE_CI_URL               URL do projeto isolado de CI
+#   SUPABASE_CI_PROJECT_ID        project ref do mesmo ambiente isolado
+#   SUPABASE_CI_SERVICE_ROLE_KEY  service role desse projeto, nunca do browser
+# Preparo, sincronização de migrations e prova: docs/PV_SYSTEM_CI_SETUP.md
 on:
   schedule:
     - cron: "0 6 * * 1"
   workflow_dispatch:
 
+concurrency:
+  group: weekly-pv-system-integration
+  cancel-in-progress: false
+
 jobs:
   units:
-    name: Unit Conversion Suite
+    name: PV System Integration
     runs-on: ubuntu-latest
-    # Secrets mapeados em env porque o contexto `secrets` NÃO é aceito em
-    # `if:` de step — usá-lo lá invalida o arquivo inteiro e gera um run
-    # "failure 0s" a cada push em qualquer branch.
-    env:
-      SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
-      SUPABASE_CI_DB_PASSWORD: ${{ secrets.SUPABASE_CI_DB_PASSWORD }}
+    timeout-minutes: 20
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
 
@@ -43,17 +46,19 @@ jobs:
         # ⚠ -p tsconfig.app.json obrigatório: a raiz é solution file e não checa nada.
         run: bunx tsc -p tsconfig.app.json --noEmit
 
-      - name: SQL parity guard (calculate_order_consumption ↔ ..._by_grade)
-        if: env.SUPABASE_PROJECT_ID != '' && env.SUPABASE_CI_DB_PASSWORD != ''
+      - name: Supabase integration — no skipped/zero cases
         env:
-          RUN_DB_INTEGRATION: '1'
-          # Via pooler (Supavisor, session mode): o host direto
-          # db.<ref>.supabase.co só resolve IPv6 e os runners do GitHub
-          # não têm IPv6 de saída → "Network is unreachable".
-          PGHOST: aws-1-us-west-2.pooler.supabase.com
-          PGPORT: '5432'
-          PGUSER: ci_parity.${{ secrets.SUPABASE_PROJECT_ID }}
-          PGPASSWORD: ${{ secrets.SUPABASE_CI_DB_PASSWORD }}
-          PGDATABASE: postgres
-          PGSSLMODE: require
-        run: bunx vitest run src/services/__tests__/consumptionService.parity.test.ts
+          # Nomes consumidos hoje por src/test/dbGuards.ts e pela paridade TS×SQL.
+          # A service role existe apenas neste step do CI e nunca usa prefixo VITE_.
+          VITE_SUPABASE_URL: ${{ secrets.SUPABASE_CI_URL }}
+          SUPABASE_CI_PROJECT_ID: ${{ secrets.SUPABASE_CI_PROJECT_ID }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_CI_SERVICE_ROLE_KEY }}
+        run: bun scripts/run-pv-system-integration.mjs
+
+      - name: Upload PV system integration report
+        if: always() && hashFiles('reports/pv-system-integration.json') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: pv-system-integration
+          path: reports/pv-system-integration.json
+          if-no-files-found: error

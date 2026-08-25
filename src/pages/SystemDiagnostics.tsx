@@ -35,6 +35,40 @@ type DiagnosticItem = {
 
 type ConsistencyRow = { check_name: string; severity: string; item_count: number; sample: string | null };
 type ParityRow = { case_name: string; ok: boolean; message: string | null };
+type PvSystemDiagnosticRow = ConsistencyRow & { category: string };
+const pvSystemDiagnosticsClient = supabase as unknown as {
+  rpc(
+    functionName: 'get_sale_order_command_diagnostics',
+    args: { p_sale_order_id: null },
+  ): PromiseLike<{
+    data: PvSystemDiagnosticRow[] | null;
+    error: { message: string } | null;
+  }>;
+};
+
+const REQUIRED_PV_SYSTEM_SIGNALS = [
+  'command_receipts_in_progress_stale',
+  'material_plan_readiness_blocked',
+  'active_ops_outdated_plan',
+  'debit_delta_missing',
+  'unsafe_stock_debit_overloads',
+  'partial_promotion_enabled',
+  'sale_order_outbox_worker',
+  'sale_order_purchase_attention',
+  'consumption_parity_skipped',
+] as const;
+
+const PV_SYSTEM_SIGNAL_LABELS: Record<string, string> = {
+  command_receipts_in_progress_stale: 'Command receipts travados em processamento',
+  material_plan_readiness_blocked: 'Plano de materiais bloqueado por readiness',
+  active_ops_outdated_plan: 'OPs ativas com plano de materiais desatualizado',
+  debit_delta_missing: 'Falta de débito (esperado − debitado)',
+  unsafe_stock_debit_overloads: 'Resync/baixa: overloads inseguros com EXECUTE público',
+  partial_promotion_enabled: 'Promoção parcial habilitada',
+  sale_order_outbox_worker: 'Outbox de PV sem processamento durável',
+  sale_order_purchase_attention: 'Faltas de compra exigindo correção de cadastro',
+  consumption_parity_skipped: 'Paridade SQL sem execução comprovada',
+};
 /** Linha do debit_consistency_report() — esperado (ficha × grade) × debitado
  *  (stock_movements) por OP×produto, tolerância 1% + piso 0,01. */
 type DebitRow = {
@@ -76,7 +110,7 @@ export default function SystemDiagnostics() {
   // A aba mora na URL (contrato do lote L6): antes era <Tabs defaultValue>, então
   // F5 e o botão Voltar devolviam o usuário à primeira aba.
   const { value: abaUrl, setValue: setAbaUrl } = useUrlTabState({
-    values: ['diagnostics', 'schema', 'migrations', 'consumo'] as const,
+    values: ['diagnostics', 'schema', 'migrations', 'pedidos', 'consumo'] as const,
     defaultValue: 'diagnostics',
   });
   const [diag, setDiag] = useState<DiagnosticItem[]>([]);
@@ -221,6 +255,85 @@ export default function SystemDiagnostics() {
       const { data, error } = await supabase.rpc('check_schema_objects');
       if (error) throw error;
       return (data ?? []) as SchemaObject[];
+    },
+  });
+
+  const {
+    data: pvSystemChecks,
+    isLoading: pvSystemLoading,
+    isFetching: pvSystemFetching,
+    error: pvSystemError,
+    refetch: refetchPvSystem,
+  } = useQuery({
+    queryKey: ['system-diag', 'pv-system'],
+    enabled: abaUrl === 'pedidos',
+    staleTime: 30_000,
+    retry: false,
+    queryFn: async (): Promise<PvSystemDiagnosticRow[]> => {
+      const [diagRes, parityRes, outboxRes] = await Promise.all([
+        pvSystemDiagnosticsClient.rpc('get_sale_order_command_diagnostics', { p_sale_order_id: null }),
+        supabase.rpc('run_consumption_parity_tests'),
+        (supabase as any).rpc('get_sale_order_outbox_health'),
+      ]);
+
+      if (diagRes.error) throw diagRes.error;
+      if (outboxRes.error) throw outboxRes.error;
+
+      const diagnostics = ((diagRes.data ?? []) as PvSystemDiagnosticRow[]).map((row) => ({
+        ...row,
+        item_count: Number(row.item_count ?? 0),
+      }));
+      const parityRows = (parityRes.data ?? []) as ParityRow[];
+      const parityFailures = parityRows.filter((row) => !row.ok);
+      const parityUnavailable = Boolean(parityRes.error) || parityRows.length === 0;
+
+      diagnostics.push({
+        check_name: 'consumption_parity_skipped',
+        category: 'parity',
+        severity: parityUnavailable || parityFailures.length > 0 ? 'error' : 'info',
+        item_count: parityUnavailable ? 1 : parityFailures.length,
+        sample: parityRes.error
+          ? `RPC indisponível: ${parityRes.error.message}`
+          : parityRows.length === 0
+            ? 'run_consumption_parity_tests() devolveu 0 casos; zero casos não é verde.'
+            : parityFailures.length > 0
+              ? parityFailures.map((row) => row.case_name).join(', ')
+              : `${parityRows.length} caso(s) executado(s), todos aprovados.`,
+      });
+
+      const outbox = (outboxRes.data || {}) as {
+        pending?: number;
+        failed?: number;
+        dead_letter?: number;
+        attention_required?: number;
+        oldest_available_at?: string | null;
+        last_run?: { ran_at?: string; error?: string | null } | null;
+      };
+      const failedEvents = Number(outbox.failed || 0) + Number(outbox.dead_letter || 0);
+      const lastRunAt = outbox.last_run?.ran_at ? Date.parse(outbox.last_run.ran_at) : Number.NaN;
+      const workerStale = !Number.isFinite(lastRunAt) || Date.now() - lastRunAt > 5 * 60_000;
+      const oldestAt = outbox.oldest_available_at ? Date.parse(outbox.oldest_available_at) : Number.NaN;
+      const backlogStale = Number(outbox.pending || 0) > 0
+        && Number.isFinite(oldestAt)
+        && Date.now() - oldestAt > 10 * 60_000;
+      diagnostics.push({
+        check_name: 'sale_order_outbox_worker',
+        category: 'integration',
+        severity: failedEvents > 0 || workerStale || backlogStale ? 'error' : 'info',
+        item_count: failedEvents + (workerStale ? 1 : 0) + (backlogStale ? 1 : 0),
+        sample: `pending=${Number(outbox.pending || 0)} · failed=${Number(outbox.failed || 0)} · dead_letter=${Number(outbox.dead_letter || 0)} · última execução=${outbox.last_run?.ran_at || 'nunca'}${outbox.last_run?.error ? ` · ${outbox.last_run.error}` : ''}`,
+      });
+      diagnostics.push({
+        check_name: 'sale_order_purchase_attention',
+        category: 'purchase',
+        severity: Number(outbox.attention_required || 0) > 0 ? 'warning' : 'info',
+        item_count: Number(outbox.attention_required || 0),
+        sample: Number(outbox.attention_required || 0) > 0
+          ? 'Corrija fornecedor/cor/conversão ou material artesanal antes de comprar.'
+          : 'Nenhuma falta bloqueada por cadastro.',
+      });
+
+      return diagnostics;
     },
   });
 
@@ -394,6 +507,7 @@ export default function SystemDiagnostics() {
       schema: schemaObjects,
       migrationsCount: migrations?.length ?? 0,
       latestMigration: migrations?.[0]?.version ?? null,
+      pvSystem: pvSystemChecks ?? null,
     };
     await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
     toast.success('Diagnóstico copiado para a área de transferência');
@@ -447,6 +561,7 @@ export default function SystemDiagnostics() {
             { value: 'diagnostics', label: 'Diagnóstico', icon: Stethoscope },
             { value: 'schema', label: 'Schema', icon: Database },
             { value: 'migrations', label: 'Migrations', icon: FileCode },
+            { value: 'pedidos', label: 'Pedidos', icon: Stethoscope },
             { value: 'consumo', label: 'Consumo', icon: Database },
           ]}
         />
@@ -560,6 +675,105 @@ export default function SystemDiagnostics() {
                 </div>
               </ScrollArea>
           </Panel>
+        </TabsContent>
+
+        {/* PEDIDOS — sinais consolidados dos comandos PV → ficha → estoque. */}
+        <TabsContent value="pedidos" className="space-y-4">
+          {pvSystemError && (
+            <Alert variant="destructive">
+              <XCircle className="h-4 w-4" />
+              <AlertTitle>Diagnóstico dos pedidos indisponível</AlertTitle>
+              <AlertDescription>
+                {(pvSystemError as Error).message}. O painel não assume estado saudável quando o RPC não responde.
+              </AlertDescription>
+            </Alert>
+          )}
+
+          <Panel
+            eyebrow="PV · FICHA · ESTOQUE"
+            title="Saúde dos comandos de pedido"
+            subtitle="Receipts idempotentes, plano/readiness, ressincronização, delta de débito, grants e atomicidade da promoção. Fonte: get_sale_order_command_diagnostics(NULL) + run_consumption_parity_tests()."
+            actions={
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => refetchPvSystem()}
+                disabled={pvSystemFetching}
+              >
+                {pvSystemFetching
+                  ? <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  : <RefreshCw className="h-4 w-4 mr-2" />}
+                Atualizar
+              </Button>
+            }
+            bodyClassName="space-y-2"
+          >
+            {pvSystemLoading && (
+              <p className="text-sm text-muted-foreground">Consultando contratos vivos do fluxo de pedidos…</p>
+            )}
+
+            {!pvSystemLoading && !pvSystemError && (() => {
+              const rows = pvSystemChecks ?? [];
+              const present = new Set(rows.map((row) => row.check_name));
+              const missingSignals = REQUIRED_PV_SYSTEM_SIGNALS.filter((name) => !present.has(name));
+              const issueCount = rows.reduce((sum, row) => sum + Math.max(0, Number(row.item_count) || 0), 0);
+              const hasCriticalIssue = rows.some((row) => {
+                const severity = (row.severity || '').toLowerCase();
+                return Number(row.item_count) > 0
+                  && (severity.includes('error') || severity.includes('crit') || severity.includes('alto'));
+              });
+
+              return (
+                <>
+                  {rows.length === 0 && (
+                    <Alert variant="destructive">
+                      <XCircle className="h-4 w-4" />
+                      <AlertTitle>Zero sinais retornados</AlertTitle>
+                      <AlertDescription>Zero casos não é verde: confirme a migration e os grants do RPC.</AlertDescription>
+                    </Alert>
+                  )}
+                  {missingSignals.length > 0 && (
+                    <Alert variant="destructive">
+                      <XCircle className="h-4 w-4" />
+                      <AlertTitle>{missingSignals.length} sinal(is) obrigatório(s) ausente(s)</AlertTitle>
+                      <AlertDescription className="break-all">{missingSignals.join(', ')}</AlertDescription>
+                    </Alert>
+                  )}
+                  {rows.length > 0 && missingSignals.length === 0 && issueCount === 0 && (
+                    <div className="flex items-center gap-2 text-sm text-success">
+                      <CheckCircle2 className="h-4 w-4" /> Todos os contratos operacionais estão saudáveis.
+                    </div>
+                  )}
+                  {rows.length > 0 && issueCount > 0 && (
+                    <div className={`flex items-center gap-2 text-sm ${hasCriticalIssue ? 'text-destructive' : 'text-warning'}`}>
+                      {hasCriticalIssue
+                        ? <XCircle className="h-4 w-4" />
+                        : <AlertTriangle className="h-4 w-4" />}
+                      {issueCount} ocorrência(s) exigem atenção.
+                    </div>
+                  )}
+                  {rows.map((row) => (
+                    <CheckRow
+                      key={`${row.category}:${row.check_name}`}
+                      row={{
+                        ...row,
+                        check_name: PV_SYSTEM_SIGNAL_LABELS[row.check_name] ?? row.check_name,
+                      }}
+                    />
+                  ))}
+                </>
+              );
+            })()}
+          </Panel>
+
+          <Alert>
+            <Database className="h-4 w-4" />
+            <AlertTitle>Convenção do delta</AlertTitle>
+            <AlertDescription>
+              O relatório-base usa delta = debitado − esperado. Falta operacional é esperado − debitado &gt; 0;
+              excesso de débito deve aparecer separado e nunca ser rotulado como falta.
+            </AlertDescription>
+          </Alert>
         </TabsContent>
 
         {/* CONSUMO — guards de consistência + paridade do motor de consumo */}
@@ -956,7 +1170,8 @@ export default function SystemDiagnostics() {
                               </div>
                               <p className="text-xs text-muted-foreground mt-0.5">
                                 esperado {Number(r.esperado).toLocaleString('pt-BR')} {r.unit ?? ''} · debitado {Number(r.debitado).toLocaleString('pt-BR')} {r.unit ?? ''}
-                                {r.delta_pct != null ? ` · Δ ${Number(r.delta_pct).toLocaleString('pt-BR')}%` : ''}
+                                {` · Δ ${Number(r.delta).toLocaleString('pt-BR')} ${r.unit ?? ''}`}
+                                {r.delta_pct != null ? ` (${Number(r.delta_pct).toLocaleString('pt-BR')}%)` : ''}
                                 {r.obs ? ` · ${r.obs}` : ''}
                               </p>
                             </div>
@@ -1006,7 +1221,11 @@ export default function SystemDiagnostics() {
               <p className="text-sm text-muted-foreground">Rode a verificação acima para incluir os testes de paridade.</p>
             )}
             {parityChecks !== null && parityChecks.length === 0 && !consRunning && (
-              <p className="text-sm text-muted-foreground">Sem casos de paridade retornados.</p>
+              <Alert variant="destructive">
+                <XCircle className="h-4 w-4" />
+                <AlertTitle>Paridade não executada</AlertTitle>
+                <AlertDescription>run_consumption_parity_tests() devolveu 0 casos. Zero casos não é suíte verde.</AlertDescription>
+              </Alert>
             )}
             {(parityChecks ?? []).map((p, i) => (
               <div key={i} className="flex items-start gap-3 p-3 rounded-lg border border-border bg-muted/30">

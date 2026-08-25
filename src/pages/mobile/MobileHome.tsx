@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import { Plus, ClockClockwise, ChartBar } from '@phosphor-icons/react';
 import { supabase } from '@/integrations/supabase/client';
 import { countPendingOrders } from '@/lib/mobile/offlineQueue';
+import { useAuth } from '@/hooks/useAuth';
+import { useCan } from '@/hooks/useAccessControl';
 
 interface QuickStats {
   pendingOffline: number;
@@ -11,12 +13,13 @@ interface QuickStats {
 }
 
 export default function MobileHome() {
+  const { user } = useAuth();
+  const perm = useCan('/sales');
   const [stats, setStats] = useState<QuickStats | null>(null);
   const [userName, setUserName] = useState<string>('');
 
   useEffect(() => {
     (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
       const { data: profile } = await supabase
         .from('profiles')
@@ -39,7 +42,7 @@ export default function MobileHome() {
           .from('sale_orders')
           .select('id', { count: 'exact', head: true })
           .gte('created_at', firstOfMonthIso),
-        countPendingOrders(),
+        countPendingOrders(user.id),
       ]);
 
       setStats({
@@ -48,7 +51,7 @@ export default function MobileHome() {
         myOrdersMonth: monthRes.count ?? 0,
       });
     })();
-  }, []);
+  }, [user?.id]);
 
   return (
     <div className="p-4 space-y-4">
@@ -61,20 +64,26 @@ export default function MobileHome() {
       </div>
 
       {/* CTA principal: novo PV */}
-      <Link
-        to="/m/new"
-        className="block bg-primary text-primary-foreground rounded-lg p-6 active:opacity-80 transition-opacity"
-      >
-        <div className="flex items-center gap-3">
-          <div className="h-12 w-12 rounded-full bg-white/20 flex items-center justify-center">
-            <Plus className="h-6 w-6" weight="bold" />
+      {perm.canCreate ? (
+        <Link
+          to="/m/new"
+          className="block bg-primary text-primary-foreground rounded-lg p-6 active:opacity-80 transition-opacity"
+        >
+          <div className="flex items-center gap-3">
+            <div className="h-12 w-12 rounded-full bg-white/20 flex items-center justify-center">
+              <Plus className="h-6 w-6" weight="bold" />
+            </div>
+            <div>
+              <p className="text-base font-bold uppercase tracking-wide">Novo Pedido</p>
+              <p className="text-xs opacity-90">Cliente · Ref · Cor · Grade</p>
+            </div>
           </div>
-          <div>
-            <p className="text-base font-bold uppercase tracking-wide">Novo Pedido</p>
-            <p className="text-xs opacity-90">Cliente · Ref · Cor · Grade</p>
-          </div>
+        </Link>
+      ) : !perm.loading ? (
+        <div className="rounded-lg border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
+          Seu perfil pode consultar Vendas, mas não criar pedidos.
         </div>
-      </Link>
+      ) : null}
 
       {/* Stats grid */}
       <div className="grid grid-cols-2 gap-3">

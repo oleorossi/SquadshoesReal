@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { syncFinancialRecords } from '@/hooks/useSaleOrders';
+import { createSaleOrderCommand } from '@/lib/saleOrderCommand';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -302,12 +303,14 @@ export interface StandaloneNfePayload {
   companyId?: string;
   items: StandaloneNfeItem[];
   notes?: string;
+  clientRequestId: string;
 }
 
-// Cria PV is_standalone_nfe=true com items via product_id e dispara emit-nfe.
-// emit-nfe edge function já foi adaptada (commit b8b1...): lê de products
-// quando reference_id é NULL.
-export function useEmitStandaloneNfe() {
+// NF avulsa também respeita o command boundary: cria um PV auditável em
+// Rascunho e só poderá ser emitida depois da validação comercial/técnica.
+// O clientRequestId nasce na tela e sobrevive a timeout/retry, impedindo dois
+// rascunhos para a mesma intenção.
+export function useCreateStandaloneNfeDraft() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (payload: StandaloneNfePayload) => {
@@ -325,89 +328,63 @@ export function useEmitStandaloneNfe() {
       if (clientErr || !clientRow) throw new Error('Cliente não encontrado');
 
       const total = payload.items.reduce((s, i) => s + i.quantity * i.unit_price, 0);
-      const orderNumber = `NF-${new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14)}`;
-
-      const { data: so, error: soErr } = await supabase
-        .from('sale_orders')
-        .insert({
-          order_number: orderNumber,
-          client_order_number: orderNumber,
+      const receipt = await createSaleOrderCommand({
+        clientRequestId: payload.clientRequestId,
+        idempotencyKey: `pv:create:standalone-nfe:${payload.clientRequestId}`,
+        header: {
+          order_number: '',
+          client_order_number: `NF AVULSA ${payload.clientRequestId.slice(0, 8).toUpperCase()}`,
           client_id: clientRow.id,
           client_name: clientRow.razao_social,
           client_cnpj: clientRow.cnpj,
-          status: 'Faturado',
+          company_id: payload.companyId || null,
+          status: 'Rascunho',
           total,
           is_standalone_nfe: true,
           nfe_required: true,
-          notes: payload.notes || 'NF Avulsa — emitida diretamente sem PV de produção.',
-        } as any)
-        .select('id')
-        .single();
-      if (soErr || !so) throw new Error(`Erro ao criar PV avulso: ${soErr?.message}`);
-
-      const itemRows = payload.items.map(i => ({
-        sale_order_id: so.id,
-        product_id: i.product_id,
-        color: i.color || null,
-        quantity: i.quantity,
-        unit_price: i.unit_price,
-        grade: i.grade,
-        fichas: i.quantity,
-      }));
-      const { error: itemsErr } = await supabase.from('sale_order_items').insert(itemRows as any);
-      if (itemsErr) {
-        await supabase.from('sale_orders').delete().eq('id', so.id);
-        throw new Error(`Erro ao criar itens: ${itemsErr.message}`);
-      }
-
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.access_token) throw new Error('Sessão expirada. Faça login novamente.');
-
-      // Fetch direto: controle total sobre a leitura do body de erro.
-      const SUPABASE_URL = (import.meta as any).env?.VITE_SUPABASE_URL;
-      const SUPABASE_KEY = (import.meta as any).env?.VITE_SUPABASE_PUBLISHABLE_KEY;
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/emit-nfe`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`,
-          'apikey': SUPABASE_KEY,
+          notes: payload.notes || 'NF avulsa — rascunho aguardando validação antes da emissão.',
         },
-        body: JSON.stringify({ sale_order_id: so.id, company_id: payload.companyId }),
+        items: payload.items.map(i => ({
+          reference_id: null,
+          product_id: i.product_id,
+          color: i.color || null,
+          quantity: i.quantity,
+          unit_price: i.unit_price,
+          grade: i.grade,
+          fichas: i.quantity,
+        })),
       });
 
-      const txt = await res.text();
-      let nfeData: any = null;
-      try { nfeData = JSON.parse(txt); } catch { /* não-JSON */ }
-
-      if (!res.ok) {
-        const realMsg = nfeData?.error || nfeData?.message || txt || `HTTP ${res.status} ao emitir NF avulsa`;
-        console.error('[emit-nfe avulsa] HTTP', res.status, nfeData || txt);
-        throw new Error(typeof realMsg === 'string' ? realMsg : JSON.stringify(realMsg));
+      const { data: created, error: createdError } = await supabase
+        .from('sale_orders')
+        .select('id, order_number, status')
+        .eq('id', receipt.sale_order_id)
+        .single();
+      if (createdError || !created) {
+        throw new Error(
+          'Rascunho criado, mas não foi possível recarregar sua identificação. Consulte Pedidos de Venda.',
+        );
       }
-      if (nfeData?.error) throw new Error(String(nfeData.error));
-      return { sale_order_id: so.id, ...nfeData };
+      return {
+        sale_order_id: created.id,
+        order_number: created.order_number,
+        status: created.status,
+        replayed: receipt.replayed,
+      };
     },
-    onSuccess: async (data: { sale_order_id?: string }) => {
-      toast.success('NF Avulsa enviada para processamento!');
-      // Auditoria fiscal C2: reconhece receita + AR na autorização da NF avulsa
-      // (o gate em syncFinancialRecords só cria se a NF estiver autorizada).
-      // Antes, a NF avulsa criava PV 'Faturado' sem receita — mesmo gap do useEmitNfe.
-      if (data?.sale_order_id) {
-        try {
-          await syncFinancialRecords(data.sale_order_id);
-          qc.invalidateQueries({ queryKey: ['accounts_receivable'] });
-          qc.invalidateQueries({ queryKey: ['financial_entries'] });
-        } catch (e) {
-          console.error('[useEmitStandaloneNfe] reconhecimento de receita falhou:', e);
-        }
-      }
+    onSuccess: (data: { sale_order_id: string; order_number: string }) => {
+      toast.success(`${data.order_number} salvo como rascunho. Valide o pedido antes de emitir a NF-e.`, {
+        duration: 10000,
+        action: {
+          label: 'Abrir PV',
+          onClick: () => { window.location.href = `/sales?pv=${data.sale_order_id}`; },
+        },
+      });
     },
-    onError: (err: Error) => toast.error(`Erro ao emitir NF Avulsa: ${err.message}`),
+    onError: (err: Error) => toast.error(`Erro ao salvar rascunho de NF avulsa: ${err.message}`),
     onSettled: () => {
-      qc.invalidateQueries({ queryKey: ['nfe_emitidas'] });
-      qc.invalidateQueries({ queryKey: ['nfe_emitidas_all'] });
       qc.invalidateQueries({ queryKey: ['sale_orders'] });
+      qc.invalidateQueries({ queryKey: ['sale_order_items'] });
     },
   });
 }
@@ -630,16 +607,8 @@ export function useEmitNfe() {
       // syncFinancialRecords garante que só cria se a NF estiver 'autorizada' —
       // se ficou 'processando', não cria (espera a autorização via sync/cron).
       try {
-        // Faturamento antecipado: persiste a 1ª data escolhida no PV ANTES de
-        // gerar as contas a receber, pra que o computeARSchedule (dentro de
-        // syncFinancialRecords, que relê o PV) ancore as parcelas na mesma data
-        // das duplicatas da NF. Sem data escolhida, não toca a coluna.
-        if (variables.firstDueDate) {
-          await (supabase as any)
-            .from('sale_orders')
-            .update({ nfe_first_due_date: variables.firstDueDate })
-            .eq('id', variables.saleOrderId);
-        }
+        // A Edge Function persiste nfe_first_due_date junto da autorização,
+        // via service_role. O browser apenas relê o fato fiscal confirmado.
         await syncFinancialRecords(variables.saleOrderId);
         qc.invalidateQueries({ queryKey: ['accounts_receivable'] });
         qc.invalidateQueries({ queryKey: ['financial_entries'] });

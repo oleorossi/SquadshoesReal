@@ -1,8 +1,8 @@
 /**
  * Teste de integração TS → SQL real.
  *
- * Por padrão é SKIP (não roda no CI — esta suíte ESCREVE no banco). Para
- * executar: `bun run test:db` (ver src/test/dbGuards.ts).
+ * Por padrão é SKIP. No CI, roda apenas no job semanal contra o projeto
+ * Supabase isolado; localmente, use `bun run test:db` em ambiente descartável.
  *
  * Invoca a função PL/pgSQL `run_consumption_integration_tests()` (criada via
  * migration), que valida a hierarquia per-size → sole_spec → escalar diretamente
