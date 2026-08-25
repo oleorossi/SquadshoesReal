@@ -1,11 +1,36 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import type { Database } from '@/integrations/supabase/types';
 import { toast } from 'sonner';
 import { isOsCancelled, isOsDone, isValidOsTransition, normalizeOsStatus } from '@/lib/osStatusMachine';
 import { stripSearchNorm } from '@/lib/searchUtils';
 import { receiveServiceOrderFully } from '@/lib/serviceOrderStock';
 import { isStrapServiceOrder } from '@/lib/strapServiceOrderIdentity';
 import { isMissingPostgrestRelation } from '@/lib/postgrestErrors';
+import { narrowPostgrestClient } from '@/lib/narrowPostgrestClient';
+
+type ContractorInsert = Database['public']['Tables']['contractors']['Insert'];
+type ContractorUpdate = Database['public']['Tables']['contractors']['Update'];
+type ServiceOrderInsert = Database['public']['Tables']['service_orders']['Insert'];
+type ServiceOrderUpdate = Database['public']['Tables']['service_orders']['Update'];
+
+interface StrapServiceOrderIdRow {
+  id: string | null;
+}
+
+interface StrapServiceOrderOperationalIdRow {
+  service_order_id: string | null;
+}
+
+const schemaGapSupabase = narrowPostgrestClient(supabase);
+
+function errorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === 'object' && 'message' in error) {
+    return String((error as { message: unknown }).message);
+  }
+  return 'Erro desconhecido';
+}
 
 export interface Contractor {
   id: string;
@@ -118,8 +143,7 @@ export interface ServiceOrder {
   quoted_at?: string | null;
   quoted_deadline?: string | null;
   // Data real de entrega (ação rápida "Marcar como Entregue") — coluna criada
-  // pela migration 20260722180000_service-orders-delivered-at. Até regenerar o
-  // types.ts, updates desta coluna usam `(supabase as any)`.
+  // pela migration 20260722180000_service-orders-delivered-at.
   delivered_at?: string | null;
   // Terceirização integrada (gerada automaticamente a partir de um PV): vínculo
   // com o pedido de venda de origem. Diferente do legacy sale_order_id, não passa
@@ -185,7 +209,7 @@ export function useServiceOrders() {
       // volume de OS cresce ~300/mês — sem isso as OS antigas sumiam em silêncio
       // da lista/planejamento (auditoria 2026-07-02).
       const PAGE = 1000;
-      const all: any[] = [];
+      const all: ServiceOrder[] = [];
       for (let from = 0; ; from += PAGE) {
         // ⚠ PERF (2026-07-26): o embed era `contractors(*)` — a linha COMPLETA do
         // prestador (endereço, documentos, dados bancários, campos de busca…)
@@ -193,8 +217,8 @@ export function useServiceOrders() {
         // vinha centenas de vezes e sozinho dominava os 748 kB da resposta. Um grep
         // no repo inteiro mostra que só identificação e prazo financeiro são
         // lidos do embed.
-        const { data, error } = await supabase
-          .from('service_orders')
+        const { data, error } = await schemaGapSupabase
+          .from<ServiceOrder>('service_orders')
           .select('*, contractors(id, name, trade_name, payment_days), service_order_items(id)')
           .order('created_at', { ascending: false })
           .range(from, from + PAGE - 1);
@@ -204,34 +228,37 @@ export function useServiceOrders() {
         if (data.length < PAGE) break;
       }
       const canonicalIds = new Set<string>();
-      const loadCanonicalIds = async (
-        view: string,
-        idColumn: 'id' | 'service_order_id',
-      ) => {
+      const loadCanonicalIds = async (source: 'domain-view' | 'operational-fallback') => {
         for (let from = 0; ; from += PAGE) {
-          const { data, error } = await (supabase as any)
-            .from(view)
-            .select(idColumn)
-            .order(idColumn, { ascending: true })
-            .range(from, from + PAGE - 1);
+          const { data, error } = source === 'domain-view'
+            ? await schemaGapSupabase
+              .from<StrapServiceOrderIdRow>('v_strap_service_orders')
+              .select('id')
+              .order('id', { ascending: true })
+              .range(from, from + PAGE - 1)
+            : await schemaGapSupabase
+              .from<StrapServiceOrderOperationalIdRow>('v_strap_service_order_items_operational')
+              .select('service_order_id')
+              .order('service_order_id', { ascending: true })
+              .range(from, from + PAGE - 1);
           if (error) throw error;
           if (!data || data.length === 0) break;
-          data.forEach((row: Record<string, string | undefined>) => {
-            const id = row[idColumn];
+          data.forEach((row) => {
+            const id = 'id' in row ? row.id : row.service_order_id;
             if (id) canonicalIds.add(id);
           });
           if (data.length < PAGE) break;
         }
       };
       try {
-        await loadCanonicalIds('v_strap_service_orders', 'id');
+        await loadCanonicalIds('domain-view');
       } catch (error: unknown) {
         if (!isMissingPostgrestRelation(error, 'v_strap_service_orders')) throw error;
         // Compatibilidade de rollout: essa view operacional já existia antes
         // da fronteira positiva v_strap_service_orders criada pela migration 099.
-        await loadCanonicalIds('v_strap_service_order_items_operational', 'service_order_id');
+        await loadCanonicalIds('operational-fallback');
       }
-      return (all as unknown as ServiceOrder[])
+      return all
         .map(o => ({
           ...o,
           materials_sent: Array.isArray(o.materials_sent) ? o.materials_sent : [],
@@ -292,18 +319,22 @@ export function useServiceOrderOverview() {
       // em ~1.000 linhas no PostgREST e fazia lista e saldos cobrirem universos
       // diferentes.
       const PAGE = 1000;
-      const loadView = async (view: string) => {
+      const loadView = async (source: 'operational' | 'legacy') => {
         const rows: ServiceOrderOverview[] = [];
         for (let from = 0; ; from += PAGE) {
-          // View nova e fallback dinâmico entram no types.ts na próxima geração.
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const { data, error } = await (supabase as any)
-            .from(view)
-            .select('*')
-            .order('service_order_id', { ascending: true })
-            .range(from, from + PAGE - 1);
+          const { data, error } = source === 'operational'
+            ? await schemaGapSupabase
+              .from<ServiceOrderOverview>('v_service_order_operational')
+              .select('*')
+              .order('service_order_id', { ascending: true })
+              .range(from, from + PAGE - 1)
+            : await schemaGapSupabase
+              .from<ServiceOrderOverview>('v_service_order_overview')
+              .select('*')
+              .order('service_order_id', { ascending: true })
+              .range(from, from + PAGE - 1);
           if (error) throw error;
-          const page = (data ?? []) as unknown as ServiceOrderOverview[];
+          const page = data ?? [];
           rows.push(...page);
           if (page.length < PAGE) break;
         }
@@ -312,7 +343,7 @@ export function useServiceOrderOverview() {
 
       let rows: ServiceOrderOverview[];
       try {
-        rows = await loadView('v_service_order_operational');
+        rows = await loadView('operational');
       } catch (error: unknown) {
         // Durante os poucos segundos entre o deploy do frontend e a migration,
         // preserva a leitura antiga. Outros erros continuam visíveis.
@@ -322,7 +353,7 @@ export function useServiceOrderOverview() {
         const missingView = ['42P01', 'PGRST205'].includes(details.code || '')
           || /v_service_order_operational.*(does not exist|schema cache)/i.test(details.message || '');
         if (!missingView) throw error;
-        rows = await loadView('v_service_order_overview');
+        rows = await loadView('legacy');
       }
       const map = new Map<string, ServiceOrderOverview>();
       for (const row of rows) {
@@ -347,12 +378,13 @@ export function useCreateContractor() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (contractor: Partial<Contractor>) => {
-      const { data, error } = await supabase.from('contractors').insert(stripSearchNorm(contractor) as any).select().single();
+      const payload = stripSearchNorm(contractor) as unknown as ContractorInsert;
+      const { data, error } = await supabase.from('contractors').insert(payload).select().single();
       if (error) throw error;
       return data;
     },
     onSuccess: () => { invalidateContractorPlanningCaches(qc); toast.success('Terceirizado cadastrado!'); },
-    onError: (e: any) => toast.error(e.message),
+    onError: (error: unknown) => toast.error(errorMessage(error)),
   });
 }
 
@@ -360,11 +392,12 @@ export function useUpdateContractor() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, ...updates }: Partial<Contractor> & { id: string }) => {
-      const { error } = await supabase.from('contractors').update(stripSearchNorm(updates) as any).eq('id', id);
+      const payload = stripSearchNorm(updates) as ContractorUpdate;
+      const { error } = await supabase.from('contractors').update(payload).eq('id', id);
       if (error) throw error;
     },
     onSuccess: () => { invalidateContractorPlanningCaches(qc); toast.success('Terceirizado atualizado!'); },
-    onError: (e: any) => toast.error(e.message),
+    onError: (error: unknown) => toast.error(errorMessage(error)),
   });
 }
 
@@ -389,7 +422,7 @@ export function useDeleteContractor() {
       if (error) throw error;
     },
     onSuccess: () => { invalidateContractorPlanningCaches(qc); toast.success('Terceirizado removido!'); },
-    onError: (e: any) => toast.error(e.message),
+    onError: (error: unknown) => toast.error(errorMessage(error)),
   });
 }
 
@@ -399,12 +432,13 @@ export function useCreateServiceOrder() {
     mutationFn: async (order: Partial<ServiceOrder>) => {
       if (order.unit_price !== undefined && (!Number.isFinite(Number(order.unit_price)) || Number(order.unit_price) < 0)) throw new Error('Preço unitário deve ser um número não-negativo.');
       if (order.quantity !== undefined && (!Number.isFinite(Number(order.quantity)) || Number(order.quantity) <= 0)) throw new Error('Quantidade deve ser um número positivo.');
-      const { data, error } = await supabase.from('service_orders').insert(stripSearchNorm(order) as any).select().single();
+      const payload = stripSearchNorm(order) as unknown as ServiceOrderInsert;
+      const { data, error } = await supabase.from('service_orders').insert(payload).select().single();
       if (error) throw error;
       return data;
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['service_orders'] }); qc.invalidateQueries({ queryKey: ['pv_service_orders'] }); qc.invalidateQueries({ queryKey: ['service_order_overview'] }); toast.success('Ordem de serviço criada!'); },
-    onError: (e: any) => toast.error(e.message),
+    onError: (error: unknown) => toast.error(errorMessage(error)),
   });
 }
 
@@ -417,7 +451,7 @@ export function useContractorSectorRate(contractorId: string | null | undefined,
     enabled: !!contractorId && !!sector,
     staleTime: 60_000,
     queryFn: async (): Promise<number | null> => {
-      const { data, error } = await (supabase as any)
+      const { data, error } = await supabase
         .from('contractor_service_rates')
         .select('price_per_pair')
         .eq('contractor_id', contractorId)
@@ -439,14 +473,15 @@ export function useUpdateServiceOrder() {
       // Strip server-managed flags that gate deletion/stock guards so a user
       // cannot flip artisanal_stock_entry_done=false to bypass the useDeleteServiceOrder
       // guard that prevents deleting an OS whose stock entry was already committed.
+      const sanitizedUpdates = stripSearchNorm(updates);
       const {
         artisanal_stock_entry_done: _sed,
         receipt_generated_at: _rga,
         receipt_number: _rn,
         order_number: _on,
-        search_norm: _sn, // coluna GENERATED (mig 20260911180000) — write com ela = erro
-        ...safe
-      } = updates as any;
+        ...writableUpdates
+      } = sanitizedUpdates;
+      const safe = writableUpdates as unknown as ServiceOrderUpdate;
       if (safe.status === '') throw new Error('Status inválido.');
       // Estados terminais preservam o histórico físico. Reativação de uma OS
       // cancelada, quando legítima, passa exclusivamente pelo writer integrado
@@ -476,16 +511,16 @@ export function useUpdateServiceOrder() {
       // if two browser tabs save simultaneously from a stale 'Pendente' cache.
       let q = supabase.from('service_orders').update(safe).eq('id', id);
       if (safe.status === 'Concluído') {
-        q = (q as any).not('status', 'in', '("Concluído","Cancelado")');
+        q = q.not('status', 'in', '("Concluído","Cancelado")');
       }
-      const { data: rows, error } = await (q as any).select('id');
+      const { data: rows, error } = await q.select('id');
       if (error) throw error;
       if (safe.status === 'Concluído' && (!rows || rows.length === 0)) {
         throw new Error('OS já concluída ou cancelada — recarregue a página.');
       }
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['service_orders'] }); qc.invalidateQueries({ queryKey: ['pv_service_orders'] }); qc.invalidateQueries({ queryKey: ['service_order_overview'] }); toast.success('Ordem de serviço atualizada!'); },
-    onError: (e: any) => toast.error(e.message),
+    onError: (error: unknown) => toast.error(errorMessage(error)),
   });
 }
 
@@ -508,11 +543,9 @@ export function useDeleteServiceOrder() {
       // #10: Bloqueia exclusão quando há histórico de envio/retorno (pares na rua):
       // o FK ON DELETE CASCADE apagaria o ledger de dispatches/returns em silêncio,
       // perdendo a rastreabilidade dos pares em campo. Oriente a cancelar.
-      // (supabase as any): service_order_dispatches ainda não está no types.ts
-      // gerado (criada via migration MCP) — mesmo padrão do ServiceOrderDispatchDialog.
       const [dispRes, retRes] = await Promise.all([
-        (supabase as any).from('service_order_dispatches').select('id', { count: 'exact', head: true }).eq('service_order_id', id),
-        (supabase as any).from('service_order_returns').select('id', { count: 'exact', head: true }).eq('service_order_id', id),
+        supabase.from('service_order_dispatches').select('id', { count: 'exact', head: true }).eq('service_order_id', id),
+        supabase.from('service_order_returns').select('id', { count: 'exact', head: true }).eq('service_order_id', id),
       ]);
       if (dispRes.error) throw new Error(`Falha ao verificar envios da OS: ${dispRes.error.message}`);
       if (retRes.error) throw new Error(`Falha ao verificar retornos da OS: ${retRes.error.message}`);
@@ -525,8 +558,11 @@ export function useDeleteServiceOrder() {
       // #8: Bloqueia exclusão quando há materiais debitados e a OS não foi cancelada
       // (a exclusão não restitui o estoque). Cancele primeiro — o cancelamento estorna
       // os materiais — e então exclua.
-      const mats = Array.isArray(os?.materials_sent) ? (os!.materials_sent as any[]) : [];
-      const hasDebitedMaterials = mats.some(m => m && Number(m.meters) > 0);
+      const materialsSent = Array.isArray(os?.materials_sent) ? os.materials_sent : [];
+      const hasDebitedMaterials = materialsSent.some((material) => {
+        if (!material || typeof material !== 'object' || Array.isArray(material)) return false;
+        return Number(material.meters) > 0;
+      });
       if (hasDebitedMaterials && os?.status !== 'Cancelado') {
         throw new Error(
           'Não é possível excluir: esta OS tem materiais debitados do estoque. ' +
@@ -555,7 +591,7 @@ export function useDeleteServiceOrder() {
       if (error) throw error;
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['service_orders'] }); qc.invalidateQueries({ queryKey: ['pv_service_orders'] }); qc.invalidateQueries({ queryKey: ['service_order_overview'] }); toast.success('Ordem de serviço removida!'); },
-    onError: (e: any) => toast.error(e.message),
+    onError: (error: unknown) => toast.error(errorMessage(error)),
   });
 }
 
@@ -586,8 +622,8 @@ export function useBulkReceiveServiceOrders() {
           });
           if (noBalance) { skipped.push(o.order_number); continue; }
           ok++;
-        } catch (e: any) {
-          console.error('Receber em lote falhou na OS', o.order_number, e);
+        } catch (error: unknown) {
+          console.error('Receber em lote falhou na OS', o.order_number, error);
           failed.push(o.order_number);
         }
       }
@@ -605,7 +641,7 @@ export function useBulkReceiveServiceOrders() {
       if (failed.length > 0) parts.push(`falhou em: ${failed.join(', ')}`);
       (failed.length > 0 ? toast.warning : toast.success)(parts.join(' '));
     },
-    onError: (e: any) => toast.error(`Falha no recebimento em lote: ${e.message}`),
+    onError: (error: unknown) => toast.error(`Falha no recebimento em lote: ${errorMessage(error)}`),
   });
 }
 
@@ -618,7 +654,7 @@ export function useArchiveServiceOrders() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (ids: string[]) => {
-      const { error } = await (supabase as any)
+      const { error } = await supabase
         .from('service_orders')
         .update({ archived_at: new Date().toISOString() })
         .in('id', ids);
@@ -631,6 +667,6 @@ export function useArchiveServiceOrders() {
       qc.invalidateQueries({ queryKey: ['service_order_overview'] });
       toast.success(`${n} OS arquivada(s) — use "Mostrar arquivadas" pra revê-las.`);
     },
-    onError: (e: any) => toast.error(`Falha ao arquivar: ${e.message}`),
+    onError: (error: unknown) => toast.error(`Falha ao arquivar: ${errorMessage(error)}`),
   });
 }

@@ -71,7 +71,7 @@ describe('Busca global — isolamento por permissão de domínio', () => {
     expect(strapBlock).toContain(".from('v_strap_service_orders')");
     expect(strapBlock).toContain("isMissingPostgrestRelation(legacyError, 'v_strap_service_orders')");
     expect(strapBlock).toContain(".from('service_orders')");
-    expect(strapBlock).toContain('.filter((row: any) => isStrapServiceOrder(row))');
+    expect(strapBlock).toContain('.filter(row => isStrapServiceOrder(row))');
     expect(strapBlock).toContain('.or(legacySearchParts.join');
   });
 });

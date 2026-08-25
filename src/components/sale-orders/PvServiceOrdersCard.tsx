@@ -7,14 +7,38 @@ import { supabase } from '@/integrations/supabase/client';
 import { formatCurrency, cn } from '@/lib/utils';
 import { serviceOrderSectorLabel } from '@/lib/serviceOrderSectors';
 import { normalizeOsStatus, osStatusLabel, isOsDone, isOsCancelled } from '@/lib/osStatusMachine';
-import { isStrapServiceOrder } from '@/lib/strapServiceOrderIdentity';
+import { isStrapServiceOrder, type StrapServiceOrderIdentity } from '@/lib/strapServiceOrderIdentity';
+import { narrowPostgrestClient, narrowPostgrestRelation } from '@/lib/narrowPostgrestClient';
 import {
   attributeServiceOrderToPv,
   dedupeAndSortPvServiceOrders,
+  type PvServiceOrderHeaderRef,
   type PvServiceOrderLineRef,
   type PvServiceOrderOpRef,
   type PvServiceOrderSaleItemRef,
 } from '@/lib/pvServiceOrderAttribution';
+
+interface PvServiceOrderItemRow extends PvServiceOrderLineRef {
+  strap_variant_id?: string | null;
+  strap_recipe_id?: string | null;
+  strap_batch_item_id?: string | null;
+  sale_order_strap_demand_id?: string | null;
+  strap_stock_floor_contribution_id?: string | null;
+}
+
+interface PvServiceOrderHeaderRow extends PvServiceOrderHeaderRef, StrapServiceOrderIdentity {
+  status: string;
+  target_sector: string | null;
+  sector: string | null;
+  contractors: { name: string | null; trade_name: string | null } | null;
+}
+
+interface ServiceOrderIdRow {
+  id: string;
+}
+
+const schemaGapSupabase = narrowPostgrestClient(supabase);
+const serviceOrderItemsPostgrest = narrowPostgrestRelation<PvServiceOrderItemRow>(supabase);
 
 /**
  * Card read-only "Ordens de Serviço deste pedido" no detalhe do PV. Lista as OS
@@ -42,15 +66,15 @@ export function PvServiceOrdersCard({ saleOrderId }: { saleOrderId: string }) {
 
       const itemIds = (pvItems || []).map((item) => item.id);
       const orderIds = (pvOrders || []).map((order) => order.id);
-      const candidate = () => (supabase as any)
-        .from('service_orders')
+      const candidate = () => schemaGapSupabase
+        .from<ServiceOrderIdRow>('service_orders')
         .select('id')
         .is('archived_at', null);
 
       // Cada consulta cobre uma forma persistida de vínculo. Separá-las evita
       // uma URL `.or(...)` enorme e torna explícito que arrays usam overlap /
       // contains, não igualdade textual.
-      const candidateQueries: Array<PromiseLike<{ data: Array<{ id: string }> | null; error: any }>> = [
+      const candidateQueries = [
         candidate().or(`source_sale_order_id.eq.${saleOrderId},sale_order_id.eq.${saleOrderId}`),
         candidate().contains('linked_sale_order_ids', [saleOrderId]),
       ];
@@ -64,7 +88,7 @@ export function PvServiceOrdersCard({ saleOrderId }: { saleOrderId: string }) {
         ));
       }
 
-      const childCandidate = (supabase as any)
+      const childCandidate = serviceOrderItemsPostgrest
         .from('service_order_items')
         .select('service_order_id');
       const childCandidateQuery = orderIds.length > 0
@@ -76,12 +100,14 @@ export function PvServiceOrdersCard({ saleOrderId }: { saleOrderId: string }) {
         if (result.error) throw result.error;
       }
       const serviceOrderIds = Array.from(new Set(candidateResults.flatMap((result) => (
-        (result.data || []).map((row: any) => row.id || row.service_order_id).filter(Boolean)
+        (result.data || []).map((row) => (
+          'id' in row ? row.id : row.service_order_id
+        )).filter((id): id is string => Boolean(id))
       ))));
       if (serviceOrderIds.length === 0) return [];
 
-      const { data: headerRows, error: headerError } = await (supabase as any)
-        .from('service_orders')
+      const { data: headerRows, error: headerError } = await schemaGapSupabase
+        .from<PvServiceOrderHeaderRow>('service_orders')
         // O hint `orders!order_id` é obrigatório: service_orders possui mais de
         // uma relação com orders no schema exposto pelo PostgREST.
         .select(`
@@ -98,17 +124,17 @@ export function PvServiceOrdersCard({ saleOrderId }: { saleOrderId: string }) {
       if (headerError) throw headerError;
 
       const serviceOrders = dedupeAndSortPvServiceOrders(headerRows || []);
-      const selectedItemIds = Array.from(new Set(serviceOrders.flatMap((order: any) => [
+      const selectedItemIds = Array.from(new Set(serviceOrders.flatMap((order) => [
         order.source_sale_order_item_id,
         ...(order.selected_sale_order_item_ids || []),
-      ].filter(Boolean))));
-      const referencedOrderIds = Array.from(new Set(serviceOrders.flatMap((order: any) => [
+      ].filter((id): id is string => Boolean(id)))));
+      const referencedOrderIds = Array.from(new Set(serviceOrders.flatMap((order) => [
         order.order_id,
         order.related_order_id,
-      ].filter(Boolean))));
+      ].filter((id): id is string => Boolean(id)))));
 
       const [linesResult, selectedItemsResult, referencedOrdersResult] = await Promise.all([
-        (supabase as any)
+        serviceOrderItemsPostgrest
           .from('service_order_items')
           .select('id, service_order_id, sale_order_id, order_id, quantity, total_value, line_status, strap_variant_id, strap_recipe_id, strap_batch_item_id, sale_order_strap_demand_id, strap_stock_floor_contribution_id, orders!order_id(sale_order_id, order_number)')
           .in('service_order_id', serviceOrderIds),
@@ -136,26 +162,20 @@ export function PvServiceOrdersCard({ saleOrderId }: { saleOrderId: string }) {
       ]) ordersById.set(order.id, order);
       const allOrders = [...ordersById.values()];
       const linesByServiceOrder = new Map<string, PvServiceOrderLineRef[]>();
-      for (const line of (linesResult.data || []) as PvServiceOrderLineRef[]) {
+      for (const line of linesResult.data || []) {
         const current = linesByServiceOrder.get(line.service_order_id) || [];
         current.push(line);
         linesByServiceOrder.set(line.service_order_id, current);
       }
       const canonicalIds = new Set<string>();
-      for (const line of (linesResult.data || []) as Array<PvServiceOrderLineRef & {
-        strap_variant_id?: string | null;
-        strap_recipe_id?: string | null;
-        strap_batch_item_id?: string | null;
-        sale_order_strap_demand_id?: string | null;
-        strap_stock_floor_contribution_id?: string | null;
-      }>) {
+      for (const line of linesResult.data || []) {
         if (line.strap_variant_id || line.strap_recipe_id || line.strap_batch_item_id
           || line.sale_order_strap_demand_id || line.strap_stock_floor_contribution_id) {
           canonicalIds.add(line.service_order_id);
         }
       }
 
-      return serviceOrders.map((order: any) => ({
+      return serviceOrders.map((order) => ({
         ...order,
         is_canonical_strap: canonicalIds.has(order.id),
         pv_attribution: attributeServiceOrderToPv(
@@ -199,11 +219,11 @@ export function PvServiceOrdersCard({ saleOrderId }: { saleOrderId: string }) {
   };
 
   const totalAtivo = rows
-    .filter((r: any) => !isOsCancelled(normalizeOsStatus(r.status)) && r.pv_attribution.totalValue != null)
-    .reduce((s: number, r: any) => s + Number(r.pv_attribution.totalValue), 0);
-  const hasUnallocatedValues = rows.some((row: any) => row.pv_attribution.totalValue == null);
-  const hasGenericOrders = rows.some((row: any) => !isStrapServiceOrder(row));
-  const hasStrapOrders = rows.some((row: any) => isStrapServiceOrder(row));
+    .filter((r) => !isOsCancelled(normalizeOsStatus(r.status)) && r.pv_attribution.totalValue != null)
+    .reduce((sum, r) => sum + Number(r.pv_attribution.totalValue), 0);
+  const hasUnallocatedValues = rows.some((row) => row.pv_attribution.totalValue == null);
+  const hasGenericOrders = rows.some((row) => !isStrapServiceOrder(row));
+  const hasStrapOrders = rows.some((row) => isStrapServiceOrder(row));
 
   return (
     <div className="rounded-xl border border-border bg-card p-4 space-y-3">
@@ -243,7 +263,7 @@ export function PvServiceOrdersCard({ saleOrderId }: { saleOrderId: string }) {
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
-            {rows.map((r: any) => {
+            {rows.map((r) => {
               const contractor = r.contractors?.trade_name || r.contractors?.name || '—';
               const cancelled = isOsCancelled(normalizeOsStatus(r.status));
               const strapOrder = isStrapServiceOrder(r);

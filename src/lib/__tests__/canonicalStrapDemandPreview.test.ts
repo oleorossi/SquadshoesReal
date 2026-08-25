@@ -3,6 +3,7 @@ import {
   canonicalStrapCutRows,
   parseCanonicalStrapDemandPreview,
   replaceWithCanonicalStrapRows,
+  type CanonicalStrapConsumptionRow,
 } from '../canonicalStrapDemandPreview';
 
 const ctx = {
@@ -121,7 +122,11 @@ describe('preview canônica de tiras', () => {
       resolved: {},
     });
 
-    const rows = replaceWithCanonicalStrapRows([], ctx, [preview(), pending]) as any[];
+    const rows = replaceWithCanonicalStrapRows(
+      [],
+      ctx,
+      [preview(), pending],
+    ) as CanonicalStrapConsumptionRow[];
     expect(rows).toHaveLength(2);
     expect(rows).toEqual(expect.arrayContaining([
       expect.objectContaining({ strapVariantId: 'variant-soft' }),

@@ -39,7 +39,9 @@ describe('Tiras — fronteira própria fora de Terceirizados', () => {
   });
 
   it('filtra OS de tira antes de entregar o dataset ao menu genérico', () => {
-    expect(contractorHooks).toContain("loadCanonicalIds('v_strap_service_orders', 'id')");
+    expect(contractorHooks).toContain(".from<StrapServiceOrderIdRow>('v_strap_service_orders')");
+    expect(contractorHooks).toContain("await loadCanonicalIds('domain-view')");
+    expect(contractorHooks).toContain("await loadCanonicalIds('operational-fallback')");
     expect(contractorHooks).toContain('.filter(o => !isStrapServiceOrder(o))');
     expect(contractors).not.toContain('isCanonicalStrapServiceOrder');
     expect(contractors).not.toContain('artisanal_output_name');

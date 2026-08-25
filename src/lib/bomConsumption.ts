@@ -29,6 +29,7 @@ import {
   canonicalStrapCutRows,
   parseCanonicalStrapDemandPreview,
 } from '@/lib/canonicalStrapDemandPreview';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 export type ConsumptionRow = {
   componentType: string;
@@ -74,6 +75,36 @@ type CanonicalStrapNetDemandRow = {
   base_required_m?: number | null;
   status?: string | null;
 };
+
+/**
+ * Recorte local das relações canônicas de tiras. Elas são criadas por migration
+ * e podem ainda não constar no arquivo gerado em um checkout que antecede o
+ * deploy. O cast fica restrito a esta fronteira e mantém linha/argumentos da RPC
+ * tipados sem transformar o cliente inteiro em `any`.
+ */
+type CanonicalStrapDatabase = {
+  public: {
+    Tables: Record<never, never>;
+    Views: {
+      v_strap_demands_operational: {
+        Row: Record<string, unknown>;
+        Relationships: [];
+      };
+      v_strap_picking_operational: {
+        Row: Record<string, unknown>;
+        Relationships: [];
+      };
+    };
+    Functions: {
+      preview_sale_order_strap_demand: {
+        Args: { p_sale_order_id: string };
+        Returns: Record<string, unknown>[];
+      };
+    };
+  };
+};
+
+const canonicalStrapClient = supabase as unknown as SupabaseClient<CanonicalStrapDatabase>;
 
 export const COMPONENT_ORDER = [
   'Cabedal', 'Forração', 'Palmilha', 'Solado', 'Tiras', 'Químicos', 'Embalagem', 'Outros',
@@ -181,7 +212,7 @@ async function fetchCanonicalStrapNetDemands(
 ): Promise<Map<string, CanonicalStrapNetDemandRow>> {
   if (saleOrderItemIds.length === 0) return new Map();
 
-  const { data, error } = await (supabase as any)
+  const { data, error } = await canonicalStrapClient
     .from('v_strap_demands_operational')
     .select('id, origin_type, sale_order_item_id, technical_strap_line_id, strap_variant_id, recipe_id, base_product_id, source_mode, replenishment_required_m, base_required_m, status')
     .in('sale_order_item_id', saleOrderItemIds)
@@ -1317,7 +1348,7 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
   // não descontam toda a cobertura já comprometida.
   if (saleOrderItemIds.length > 0) {
     const [canonicalStrapsResult, netDemandById] = await Promise.all([
-      (supabase as any)
+      canonicalStrapClient
         .from('v_strap_picking_operational')
         .select('*')
         .in('sale_order_item_id', saleOrderItemIds)
@@ -1641,10 +1672,10 @@ export async function calculateArtisanalStrapRollCut(orderIds: string[]): Promis
   const selectedItemIdList = [...selectedItemIds] as string[];
   const [results, pickingResult, netDemandById] = await Promise.all([
     Promise.all(saleOrderIds.map((saleOrderId) =>
-      (supabase as any).rpc('preview_sale_order_strap_demand', {
+      canonicalStrapClient.rpc('preview_sale_order_strap_demand', {
         p_sale_order_id: saleOrderId,
       }))),
-    (supabase as any)
+    canonicalStrapClient
       .from('v_strap_picking_operational')
       .select('*')
       .in('sale_order_item_id', selectedItemIdList)

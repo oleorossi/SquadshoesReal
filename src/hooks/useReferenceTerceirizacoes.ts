@@ -341,7 +341,7 @@ export function useCancelTerceirizacaoOs() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (osId: string) => {
-      const { data: current, error: currentError } = await (supabase as any)
+      const { data: current, error: currentError } = await supabase
         .from('service_orders')
         .select('status')
         .eq('id', osId)
@@ -351,7 +351,7 @@ export function useCancelTerceirizacaoOs() {
         throw new Error('A OS já foi concluída ou cancelada. Recarregue o pedido.');
       }
 
-      const { data: rows, error } = await (supabase as any)
+      const { data: rows, error } = await supabase
         .from('service_orders')
         .update({ status: 'Cancelado' })
         .eq('id', osId)

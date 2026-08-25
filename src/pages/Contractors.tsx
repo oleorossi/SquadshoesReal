@@ -69,7 +69,7 @@ import { useAllGroupColors } from '@/hooks/useGroupColors';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { format, addDays } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
-import type { Tables } from '@/integrations/supabase/types';
+import type { Json, Tables } from '@/integrations/supabase/types';
 import { adjustStockSafe } from '@/lib/stockAdjustments';
 import { toast } from 'sonner';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
@@ -1079,13 +1079,14 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
       // banco fecha a OS somente depois de zerar o saldo real.
       await supabase
         .from('service_orders')
-        .update({ materials_sent: updatedMats as any })
+        // MaterialSent é serializável, mas não declara a index signature de Json.
+        .update({ materials_sent: updatedMats as unknown as Json })
         .eq('id', o.id);
       queryClient.invalidateQueries({ queryKey: ['service_orders'] });
-      setReturnDialogOs({ ...o, materials_sent: updatedMats } as any);
+      setReturnDialogOs({ ...o, materials_sent: updatedMats });
       return;
     } else {
-      updateOrder.mutate({ id: o.id, materials_sent: updatedMats } as any);
+      updateOrder.mutate({ id: o.id, materials_sent: updatedMats });
     }
   }, [updateOrder, queryClient, setReturnDialogOs]);
 
