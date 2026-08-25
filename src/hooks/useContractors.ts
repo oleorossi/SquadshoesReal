@@ -466,22 +466,50 @@ export function useContractorSectorRate(contractorId: string | null | undefined,
   });
 }
 
+/**
+ * Fronteira runtime do formulário de OS. O objeto exibido na tela também carrega
+ * embeds e campos derivados; enviá-lo inteiro faz o PostgREST tratar esses nomes
+ * como colunas e rejeitar o PATCH. Campos de planejamento, identidade e snapshots
+ * permanecem exclusivamente sob controle dos writers do banco.
+ */
+export function sanitizeServiceOrderUpdate(
+  updates: Partial<ServiceOrder>,
+): ServiceOrderUpdate {
+  const safe: ServiceOrderUpdate = {};
+  if (updates.contractor_id !== undefined) safe.contractor_id = updates.contractor_id;
+  if (updates.description !== undefined) safe.description = updates.description;
+  if (updates.service_date !== undefined) safe.service_date = updates.service_date;
+  if (updates.service_time !== undefined) safe.service_time = updates.service_time;
+  if (updates.quantity !== undefined) safe.quantity = updates.quantity;
+  if (updates.unit_price !== undefined) safe.unit_price = updates.unit_price;
+  if (updates.total_value !== undefined) safe.total_value = updates.total_value;
+  if (updates.status !== undefined) safe.status = updates.status;
+  if (updates.notes !== undefined) safe.notes = updates.notes;
+  if (updates.material_name !== undefined) safe.material_name = updates.material_name;
+  if (updates.material_meters !== undefined) safe.material_meters = updates.material_meters;
+  if (updates.material_color !== undefined) safe.material_color = updates.material_color;
+  if (updates.materials_sent !== undefined) {
+    safe.materials_sent = updates.materials_sent.map((material) => ({
+      material: material.material,
+      color: material.color,
+      meters: material.meters,
+      ...(material.completed !== undefined ? { completed: material.completed } : {}),
+    }));
+  }
+  if (updates.sale_order_id !== undefined) safe.sale_order_id = updates.sale_order_id;
+  if (updates.selected_sale_order_item_ids !== undefined) {
+    safe.selected_sale_order_item_ids = updates.selected_sale_order_item_ids;
+  }
+  if (updates.target_sector !== undefined) safe.target_sector = updates.target_sector;
+  if (updates.signed_photo_url !== undefined) safe.signed_photo_url = updates.signed_photo_url;
+  return safe;
+}
+
 export function useUpdateServiceOrder() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, ...updates }: Partial<ServiceOrder> & { id: string }) => {
-      // Strip server-managed flags that gate deletion/stock guards so a user
-      // cannot flip artisanal_stock_entry_done=false to bypass the useDeleteServiceOrder
-      // guard that prevents deleting an OS whose stock entry was already committed.
-      const sanitizedUpdates = stripSearchNorm(updates);
-      const {
-        artisanal_stock_entry_done: _sed,
-        receipt_generated_at: _rga,
-        receipt_number: _rn,
-        order_number: _on,
-        ...writableUpdates
-      } = sanitizedUpdates;
-      const safe = writableUpdates as unknown as ServiceOrderUpdate;
+      const safe = sanitizeServiceOrderUpdate(updates);
       if (safe.status === '') throw new Error('Status inválido.');
       // Estados terminais preservam o histórico físico. Reativação de uma OS
       // cancelada, quando legítima, passa exclusivamente pelo writer integrado

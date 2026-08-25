@@ -2,12 +2,33 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { guardDebitForOrder } from '@/lib/fichaDebitGuard';
+import { narrowPostgrestRelation } from '@/lib/narrowPostgrestClient';
+
+interface OrderReservationRow {
+  order_id: string | null;
+  products: {
+    name: string | null;
+    sku: string | null;
+    color: string | null;
+    unit: string | null;
+    category: string | null;
+  } | null;
+  orders: {
+    order_number: string | null;
+    references: { name: string | null } | null;
+  } | null;
+  [column: string]: unknown;
+}
+
+const orderReservationsRelation = narrowPostgrestRelation<OrderReservationRow>(supabase);
 
 export function useOrderReservations(orderId?: string) {
   return useQuery({
     queryKey: ['material_reservations', orderId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      // Fachada estreita: evita o limite de instanciação do select relacional
+      // sem abrir mão do formato que este hook devolve aos consumidores.
+      const { data, error } = await orderReservationsRelation
         .from('material_reservations')
         .select('*, products(name, sku, color, unit, category), orders(order_number, references(name))')
         .eq('order_id', orderId!)

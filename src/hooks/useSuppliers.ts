@@ -1,6 +1,9 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import type { Tables } from '@/integrations/supabase/types';
 import { toast } from 'sonner';
+
+type SupplierRow = Tables<'suppliers'>;
 
 export type Supplier = {
   id: string;
@@ -73,6 +76,70 @@ export type InvoiceItem = {
   created_at: string;
 };
 
+function normalizePaymentTerms(
+  value: SupplierRow['payment_terms_structured'],
+): Supplier['payment_terms_structured'] {
+  if (!Array.isArray(value)) return null;
+  const terms = value.flatMap((entry) => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return [];
+    const record = entry as Record<string, unknown>;
+    const days = Number(record.days);
+    const percentage = Number(record.percentage);
+    if (!Number.isFinite(days) || !Number.isFinite(percentage)) return [];
+    return [{ days, percentage }];
+  });
+  return terms.length > 0 ? terms : null;
+}
+
+function normalizeSupplierCategory(value: string | null): Supplier['supplier_category'] {
+  return value === 'materia_prima' || value === 'servico'
+    || value === 'embalagem' || value === 'outro'
+    ? value
+    : null;
+}
+
+function normalizeHomologationStatus(value: string | null): Supplier['homologation_status'] {
+  return value === 'ativo' || value === 'em_homologacao' || value === 'bloqueado'
+    ? value
+    : null;
+}
+
+export function normalizeSupplier(row: SupplierRow): Supplier {
+  return {
+    id: row.id,
+    name: row.name,
+    trade_name: row.trade_name ?? '',
+    cnpj: row.cnpj ?? '',
+    ie: row.ie ?? '',
+    contact_name: row.contact_name ?? '',
+    phone: row.phone ?? '',
+    email: row.email ?? '',
+    address: row.address ?? '',
+    city: row.city ?? '',
+    state: row.state ?? '',
+    zip_code: row.zip_code ?? '',
+    payment_terms: row.payment_terms ?? '',
+    payment_terms_structured: normalizePaymentTerms(row.payment_terms_structured),
+    lead_time_days: row.lead_time_days ?? 0,
+    notes: row.notes ?? '',
+    active: row.active,
+    is_own_manufacturing: row.is_own_manufacturing ?? false,
+    avg_lead_time_days: row.avg_lead_time_days,
+    on_time_rate: row.on_time_rate,
+    last_purchase_date: row.last_purchase_date,
+    min_order_quantity: row.min_order_quantity,
+    supplier_category: normalizeSupplierCategory(row.supplier_category),
+    homologation_status: normalizeHomologationStatus(row.homologation_status),
+    certifications: row.certifications,
+    quality_rating: row.quality_rating,
+    delivery_rating: row.delivery_rating,
+    price_rating: row.price_rating,
+    service_rating: row.service_rating,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  };
+}
+
 // ─── Suppliers ───
 export function useSuppliers(enabled = true) {
   return useQuery({
@@ -81,7 +148,7 @@ export function useSuppliers(enabled = true) {
     queryFn: async () => {
       const { data, error } = await supabase.from('suppliers').select('*').order('name');
       if (error) throw error;
-      return data as Supplier[];
+      return data.map(normalizeSupplier);
     },
   });
 }
