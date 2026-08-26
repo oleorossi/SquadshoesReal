@@ -66,6 +66,7 @@ const LABEL_SIZES = [
 ] as const;
 
 const LABEL_QUERY_PAGE_SIZE = 1000;
+type LabelStatusTab = 'producao' | 'imprimidos' | 'finalizados';
 
 async function fetchAllLabelPages<T>(
   load: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
@@ -350,6 +351,43 @@ export function summarizeSelectionLabelTypes(selectedGroups: { packagingMode: st
 }
 
 /**
+ * Seleção inicial do deep-link vindo do detalhe do PV.
+ *
+ * A URL já restringe a Central aos pedidos escolhidos. Exigir que o operador
+ * marque de novo os mesmos cards escondia todas as ações de impressão logo após
+ * ele clicar em "Etiqueta Individual". A seleção acontece uma vez por escopo
+ * de `sale_order`: limpar manualmente continua respeitado e não dispara de novo.
+ */
+// eslint-disable-next-line react-refresh/only-export-components
+export function getDeepLinkSelectionKeys(
+  saleOrderFilter: string,
+  groups: { groupKey: string }[],
+  initializedSaleOrderFilter: string,
+): string[] | null {
+  if (!saleOrderFilter || initializedSaleOrderFilter === saleOrderFilter || groups.length === 0) {
+    return null;
+  }
+  return groups.map(group => group.groupKey);
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function getSaleOrderFilters(searchParams: Pick<URLSearchParams, 'getAll'>): string[] {
+  return [...new Set(searchParams.getAll('sale_order').filter(Boolean))];
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function getDeepLinkStatusTab(
+  activeCount: number,
+  printedCount: number,
+  finishedCount: number,
+): LabelStatusTab | null {
+  if (activeCount > 0) return 'producao';
+  if (printedCount > 0) return 'imprimidos';
+  if (finishedCount > 0) return 'finalizados';
+  return null;
+}
+
+/**
  * Métricas da ficha de um item do PV. Pura — não depende do componente.
  *
  * A grade da FICHA é `sale_order_items.grade` (Σ = pares por ficha), NUNCA
@@ -586,7 +624,7 @@ function PrintHistoryTable() {
 
 export function LabelProductionTab() {
   const queryClient = useQueryClient();
-  const { data: allOrders = [] } = useQuery({
+  const { data: allOrders = [], isPending: ordersPending } = useQuery({
     queryKey: ['orders_for_labels_all'],
     queryFn: () => fetchAllLabelPages((from, to) => supabase
       .from('orders')
@@ -597,7 +635,7 @@ export function LabelProductionTab() {
     staleTime: 0,
     refetchOnMount: 'always',
   });
-  const { data: saleOrders = [] } = useQuery({
+  const { data: saleOrders = [], isPending: saleOrdersPending } = useQuery({
     queryKey: ['sale_orders_for_labels_v2'],
     queryFn: async () => {
       // Endereço/cidade/UF/transportadora vêm via JOIN — usados pra preencher
@@ -915,12 +953,13 @@ export function LabelProductionTab() {
 
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const initializedDeepLinkSelection = useRef('');
   const [labelSize, setLabelSize] = useState(`${THERMAL_LABEL_WIDTH_MM}x${THERMAL_LABEL_HEIGHT_MM}`);
   const [activeTab, setActiveTab] = useState('individual');
-  const [statusTab, setStatusTab] = useState<'producao' | 'imprimidos' | 'finalizados'>('producao');
+  const [statusTab, setStatusTab] = useState<LabelStatusTab>('producao');
 
   // Track which order IDs have been printed
-  const { data: printedOrderIds = new Set<string>() } = useQuery({
+  const { data: printedOrderIds = new Set<string>(), isPending: printedOrdersPending } = useQuery({
     queryKey: ['printed_order_ids'],
     queryFn: async () => {
       const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
@@ -1062,18 +1101,20 @@ export function LabelProductionTab() {
     !!o.sale_order_id && scheduledSaleOrderIds.has(o.sale_order_id),
   );
 
-  // Deep-link via querystring: /label-system?sale_order=<PV_ID> filtra a aba
-  // pra mostrar SÓ as OPs daquele pedido. Acionado pelo botão "Etiquetas"
-  // no detalhe do PV em /sales (19/05/2026, pedido user). Quando setado,
-  // o gating de wave é IGNORADO — operador quer ver as etiquetas do pedido
-  // mesmo que ainda não esteja em onda.
+  // Deep-link via querystring: um ou mais `sale_order=<PV_ID>` filtram a aba
+  // pra mostrar SÓ as OPs dos pedidos escolhidos. Acionado pelos atalhos de
+  // Etiqueta Individual em /sales. Quando setado, o gating de wave é IGNORADO
+  // — operador quer ver as etiquetas do pedido mesmo que ainda não esteja em
+  // onda. Parâmetro repetido mantém compatibilidade com o link singular antigo.
   const [searchParams, setSearchParams] = useSearchParams();
-  const saleOrderFilter = searchParams.get('sale_order') || '';
-  const filteredSaleOrder = saleOrderFilter
-    ? saleOrders.find((so: any) => so.id === saleOrderFilter)
-    : null;
-  if (saleOrderFilter) {
-    productionOrders = ordersWithResolvedColor.filter((o: any) => o.sale_order_id === saleOrderFilter);
+  const saleOrderFilters = getSaleOrderFilters(searchParams);
+  const saleOrderFilterKey = saleOrderFilters.join(',');
+  const filteredSaleOrders = saleOrderFilters.length > 0
+    ? saleOrders.filter((so: any) => saleOrderFilters.includes(so.id))
+    : [];
+  if (saleOrderFilters.length > 0) {
+    const filteredIds = new Set(saleOrderFilters);
+    productionOrders = ordersWithResolvedColor.filter((o: any) => filteredIds.has(o.sale_order_id));
   }
   const clearSaleOrderFilter = () => {
     const next = new URLSearchParams(searchParams);
@@ -1102,6 +1143,21 @@ export function LabelProductionTab() {
     !isCancelledOrDraftOrder(o.status)
     && (o.status === 'Finalizado' || finishedSaleOrderIds.has(o.sale_order_id))
   );
+  const labelScopeReady = !ordersPending && !saleOrdersPending && !printedOrdersPending;
+
+  // O deep-link pode apontar também para um PV já impresso ou finalizado. Abre
+  // a aba que realmente contém trabalho; do contrário a seleção automática
+  // receberia uma lista vazia e o botão continuaria parecendo ausente.
+  useEffect(() => {
+    if (!saleOrderFilterKey || !labelScopeReady) return;
+    const targetTab = getDeepLinkStatusTab(
+      activeOrders.length,
+      printedActiveOrders.length,
+      finishedOrders.length,
+    );
+    if (targetTab) setStatusTab(current => current === targetTab ? current : targetTab);
+  }, [activeOrders.length, finishedOrders.length, labelScopeReady, printedActiveOrders.length, saleOrderFilterKey]);
+
   const currentOrders = statusTab === 'producao' ? activeOrders : statusTab === 'imprimidos' ? printedActiveOrders : finishedOrders;
 
   // Available billing_weeks for the dropdown — collected from current orders'
@@ -1143,15 +1199,39 @@ export function LabelProductionTab() {
     });
   }, [currentOrders, periodFilter, billingWeekFilter, saleOrdersMap]);
 
-  const groupedRefs = groupOrdersByReference(periodFilteredOrders, saleOrdersMap, strapLookup, printMode === 'per_op');
-  const filtered = groupedRefs.filter((g) =>
+  const groupedRefs = useMemo(
+    () => groupOrdersByReference(periodFilteredOrders, saleOrdersMap, strapLookup, printMode === 'per_op'),
+    [periodFilteredOrders, printMode, saleOrdersMap, strapLookup],
+  );
+  const filtered = useMemo(() => groupedRefs.filter((g) =>
     // espaço ou "/" = refinamento AND (ex.: "stx alcineu")
     searchMatchesAllTerms(
       search,
       g.refName, g.refCode, g.clientName, g.economicGroupName, g.saleOrderNumber,
       g.clientOrderNumber, g.colors.join(' '), g.orderNumbers.join(' '), g.strapsLabel,
     )
-  );
+  ), [groupedRefs, search]);
+
+  // O atalho do detalhe do PV já define exatamente o escopo na URL. Seleciona
+  // os cards desse pedido assim que os dados chegam para que as ações de
+  // impressão — inclusive Etiqueta Individual — apareçam sem uma segunda
+  // seleção redundante. O ref impede que "Limpar" seja desfeito no render
+  // seguinte e é zerado ao sair do deep-link.
+  useEffect(() => {
+    if (!saleOrderFilterKey) {
+      initializedDeepLinkSelection.current = '';
+      return;
+    }
+    if (!labelScopeReady) return;
+    const keys = getDeepLinkSelectionKeys(
+      saleOrderFilterKey,
+      filtered,
+      initializedDeepLinkSelection.current,
+    );
+    if (!keys) return;
+    initializedDeepLinkSelection.current = saleOrderFilterKey;
+    setSelected(new Set(keys));
+  }, [filtered, labelScopeReady, saleOrderFilterKey]);
 
   const visibleSelectedGroups = filtered.filter(group => selected.has(group.groupKey));
   const selectedPairs = visibleSelectedGroups.reduce((sum, group) => sum + group.totalQty, 0);
@@ -2072,16 +2152,21 @@ export function LabelProductionTab() {
         </div>
       </div>
 
-      {/* Badge de filtro vindo do deep-link /label-system?sale_order=ID — quando
-          ativo, a tab mostra SÓ as OPs daquele PV. Botão X limpa e volta pra
-          listagem completa. (19/05/2026, pedido user pelo botão Etiquetas em /sales) */}
-      {saleOrderFilter && (
+      {/* Badge do deep-link /label-system?sale_order=ID. O parâmetro pode ser
+          repetido para vários PVs; o X limpa todo o escopo e volta à listagem. */}
+      {saleOrderFilters.length > 0 && (
         <div className="flex items-center gap-2 px-3 py-2 rounded-md border border-primary/30 bg-primary/5 text-sm">
           <Tag className="h-4 w-4 text-primary shrink-0" />
           <span className="text-foreground">
-            Filtrado por pedido <strong className="font-mono">{filteredSaleOrder?.order_number || saleOrderFilter.slice(0, 8)}</strong>
-            {filteredSaleOrder?.client_name && (
-              <span className="text-muted-foreground"> — {filteredSaleOrder.client_name}</span>
+            {saleOrderFilters.length === 1 ? (
+              <>
+                Filtrado por pedido <strong className="font-mono">{filteredSaleOrders[0]?.order_number || saleOrderFilters[0].slice(0, 8)}</strong>
+                {filteredSaleOrders[0]?.client_name && (
+                  <span className="text-muted-foreground"> — {filteredSaleOrders[0].client_name}</span>
+                )}
+              </>
+            ) : (
+              <>Filtrado por <strong>{saleOrderFilters.length} pedidos selecionados</strong></>
             )}
             <span className="ml-2 text-muted-foreground">
               ({productionOrders.length} OP{productionOrders.length === 1 ? '' : 's'})

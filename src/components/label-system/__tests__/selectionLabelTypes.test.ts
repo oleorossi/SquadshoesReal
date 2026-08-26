@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { summarizeSelectionLabelTypes } from '../LabelProductionTab';
+import {
+  getDeepLinkSelectionKeys,
+  getDeepLinkStatusTab,
+  getSaleOrderFilters,
+  summarizeSelectionLabelTypes,
+} from '../LabelProductionTab';
 
 const g = (packagingMode: string) => ({ packagingMode });
 
@@ -54,5 +59,39 @@ describe('summarizeSelectionLabelTypes', () => {
     const r = summarizeSelectionLabelTypes([g('modo_que_nao_existe')]);
     expect(r.thermal).toBe(true);
     expect(r.notes).toEqual([]);
+  });
+});
+
+describe('getDeepLinkSelectionKeys', () => {
+  const groups = [{ groupKey: 'pv|ref-a' }, { groupKey: 'pv|ref-b' }];
+
+  it('seleciona todas as referências quando o detalhe do PV abre a Central', () => {
+    expect(getDeepLinkSelectionKeys('pv-1', groups, '')).toEqual(['pv|ref-a', 'pv|ref-b']);
+  });
+
+  it('aguarda os dados do pedido antes de inicializar a seleção', () => {
+    expect(getDeepLinkSelectionKeys('pv-1', [], '')).toBeNull();
+  });
+
+  it('não refaz a seleção após o operador limpar manualmente', () => {
+    expect(getDeepLinkSelectionKeys('pv-1', groups, 'pv-1')).toBeNull();
+  });
+
+  it('não interfere no acesso normal à Central sem filtro de pedido', () => {
+    expect(getDeepLinkSelectionKeys('', groups, '')).toBeNull();
+  });
+});
+
+describe('deep-link de pedidos para etiquetagem', () => {
+  it('aceita múltiplos parâmetros e remove IDs repetidos', () => {
+    const params = new URLSearchParams('sale_order=pv-1&sale_order=pv-2&sale_order=pv-1');
+    expect(getSaleOrderFilters(params)).toEqual(['pv-1', 'pv-2']);
+  });
+
+  it('abre a primeira aba que realmente contém OPs do escopo', () => {
+    expect(getDeepLinkStatusTab(2, 3, 4)).toBe('producao');
+    expect(getDeepLinkStatusTab(0, 3, 4)).toBe('imprimidos');
+    expect(getDeepLinkStatusTab(0, 0, 4)).toBe('finalizados');
+    expect(getDeepLinkStatusTab(0, 0, 0)).toBeNull();
   });
 });
