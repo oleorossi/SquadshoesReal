@@ -17,8 +17,9 @@ import { EmptyState } from '@/components/ui/empty-state';
 
 interface ManualOverrideRow {
   id: string;
-  added_punch: string;
-  position: number;
+  added_punch: string | null;
+  position: number | null;
+  action?: 'add' | 'replace' | 'clear' | 'create';
   reason: string;
   created_at: string;
   created_by: string | null;
@@ -52,13 +53,13 @@ export function OverrideHistoryButton({ timeRecordId, label = 'Histórico' }: Pr
   const { data, isLoading } = useQuery({
     queryKey: ['time-record-overrides', timeRecordId],
     queryFn: async (): Promise<ManualOverrideRow[]> => {
-      const { data, error } = await (supabase as any)
+      const { data, error } = await supabase
         .from('time_record_manual_overrides')
         .select('*')
         .eq('time_record_id', timeRecordId)
         .order('created_at', { ascending: false });
       if (error) throw error;
-      return (data || []) as ManualOverrideRow[];
+      return (data || []) as unknown as ManualOverrideRow[];
     },
     staleTime: 30_000,
   });
@@ -103,7 +104,10 @@ export function OverrideHistoryButton({ timeRecordId, label = 'Histórico' }: Pr
                 <li key={row.id} className="px-4 py-3 space-y-1.5">
                   <div className="flex items-baseline justify-between gap-2">
                     <span className="text-sm font-mono tabular-nums font-bold text-foreground">
-                      + {row.added_punch}
+                      {row.action === 'clear' ? 'Dia limpo'
+                        : row.action === 'replace' ? 'Batidas substituídas'
+                        : row.action === 'create' ? 'Dia lançado manualmente'
+                        : `+ ${row.added_punch || 'ajuste'}`}
                     </span>
                     <span className="text-[11px] tabular-nums text-muted-foreground">
                       {fmtDt(row.created_at)}

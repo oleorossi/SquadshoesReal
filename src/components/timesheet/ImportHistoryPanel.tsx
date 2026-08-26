@@ -13,6 +13,16 @@ import {
   XCircle,
 } from '@phosphor-icons/react';
 import { toast } from 'sonner';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -20,7 +30,17 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { EmptyState } from '@/components/ui/empty-state';
 import { SearchInput } from '@/components/ui/search-input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { downloadImportFile, TimeImportLog, useTimeImportLogs } from '@/hooks/useTimeImportLogs';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  downloadImportFile,
+  TimeImportLog,
+  TimeImportQuarantineEntry,
+  useDismissTimeImportQuarantine,
+  useResolveTimeImportQuarantine,
+  useTimeImportLogs,
+  useTimeImportQuarantine,
+  useTimeImportQuarantineHistory,
+} from '@/hooks/useTimeImportLogs';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
 
 const fmtSize = (bytes?: number | null) => {
@@ -32,6 +52,14 @@ const fmtSize = (bytes?: number | null) => {
 
 const fmtDate = (iso: string) =>
   new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+
+const fmtDateOnly = (date: string) => date.split('-').reverse().join('/');
+
+const getErrorMessage = (error: unknown) => {
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === 'object' && 'message' in error) return String(error.message);
+  return 'erro desconhecido';
+};
 
 const fmtPeriod = (start: string | null, end: string | null) => {
   if (!start || !end) return 'Período não registrado';
@@ -79,9 +107,38 @@ const statusBadge = (status: TimeImportLog['status']) => {
   return <Badge variant="destructive" className="gap-1"><XCircle className="h-3 w-3" /> Erro</Badge>;
 };
 
+const coverageBadge = (log: TimeImportLog) => {
+  if (log.coverage_scope === 'all_employees') {
+    return <Badge variant="outline" className="border-success/30 bg-success/10 text-success">Quadro completo</Badge>;
+  }
+  if (log.coverage_scope === 'listed_employees') {
+    return <Badge variant="outline" className="border-warning/30 bg-warning/10 text-warning">Funcionários selecionados</Badge>;
+  }
+  return <Badge variant="secondary">Escopo legado não comprovado</Badge>;
+};
+
 export default function ImportHistoryPanel() {
   const { data: logs = [], isLoading, refetch, isFetching } = useTimeImportLogs();
+  const {
+    data: quarantine = [],
+    error: quarantineError,
+    isLoading: isLoadingQuarantine,
+    isFetching: isFetchingQuarantine,
+    refetch: refetchQuarantine,
+  } = useTimeImportQuarantine();
+  const {
+    data: quarantineHistory = [],
+    error: quarantineHistoryError,
+    isLoading: isLoadingQuarantineHistory,
+    isFetching: isFetchingQuarantineHistory,
+    refetch: refetchQuarantineHistory,
+  } = useTimeImportQuarantineHistory();
+  const resolveQuarantine = useResolveTimeImportQuarantine();
+  const dismissQuarantine = useDismissTimeImportQuarantine();
   const [selected, setSelected] = useState<TimeImportLog | null>(null);
+  const [resolutionTarget, setResolutionTarget] = useState<TimeImportQuarantineEntry | null>(null);
+  const [dismissTarget, setDismissTarget] = useState<TimeImportQuarantineEntry | null>(null);
+  const [dismissReason, setDismissReason] = useState('');
   const [search, setSearch] = useState('');
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
@@ -136,11 +193,187 @@ export default function ImportHistoryPanel() {
           <Badge variant="outline" className="h-8 gap-1.5 border-success/30 bg-success/10 px-3 text-success">
             <LockKey className="h-3.5 w-3.5" /> {availableFiles} de {logs.length} preservados
           </Badge>
-          <Button size="sm" variant="outline" className="h-8 gap-1.5" onClick={() => refetch()} disabled={isFetching}>
-            <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? 'animate-spin' : ''}`} /> Atualizar
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 gap-1.5"
+            onClick={() => {
+              void refetch();
+              void refetchQuarantine();
+              void refetchQuarantineHistory();
+            }}
+            disabled={isFetching || isFetchingQuarantine || isFetchingQuarantineHistory}
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${isFetching || isFetchingQuarantine || isFetchingQuarantineHistory ? 'animate-spin' : ''}`} /> Atualizar
           </Button>
         </div>
       </div>
+
+      <Card className={quarantine.length > 0 ? 'border-warning/40' : ''}>
+        <CardContent className="p-0">
+          <div className="flex flex-col gap-2 border-b border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 text-warning" />
+                <h4 className="text-sm font-semibold">Pendências de vínculo da importação</h4>
+                <Badge variant={quarantine.length > 0 ? 'outline' : 'secondary'} className={quarantine.length > 0 ? 'border-warning/30 bg-warning/10 text-warning' : ''}>
+                  {quarantine.length}
+                </Badge>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Matrículas sem cadastro vigente ficam fora do ponto e da folha até serem resolvidas.
+              </p>
+            </div>
+          </div>
+
+          {isLoadingQuarantine ? (
+            <div className="flex items-center justify-center gap-2 px-4 py-8 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" /> Carregando pendências…
+            </div>
+          ) : quarantineError ? (
+            <div className="flex flex-col gap-3 px-4 py-5 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-destructive">
+                Não foi possível carregar as pendências: {getErrorMessage(quarantineError)}
+              </p>
+              <Button size="sm" variant="outline" onClick={() => void refetchQuarantine()} disabled={isFetchingQuarantine}>
+                Tentar novamente
+              </Button>
+            </div>
+          ) : quarantine.length === 0 ? (
+            <div className="flex items-center gap-2 px-4 py-5 text-sm text-muted-foreground">
+              <CheckCircle2 className="h-4 w-4 text-success" /> Nenhuma matrícula aguarda vínculo.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Matrícula</TableHead>
+                    <TableHead>Funcionário informado</TableHead>
+                    <TableHead>Data</TableHead>
+                    <TableHead>Motivo</TableHead>
+                    <TableHead className="w-72 text-right">Ações</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {quarantine.map(entry => {
+                    const isResolving = resolveQuarantine.isPending && resolveQuarantine.variables === entry.id;
+                    const isDismissing = dismissQuarantine.isPending
+                      && dismissQuarantine.variables?.quarantineId === entry.id;
+                    return (
+                      <TableRow key={entry.id}>
+                        <TableCell className="whitespace-nowrap font-mono text-sm font-semibold">{entry.employee_external_id}</TableCell>
+                        <TableCell>
+                          <p className="font-medium">{entry.employee_name || 'Nome não informado'}</p>
+                          {entry.department && <p className="text-xs text-muted-foreground">{entry.department}</p>}
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap font-mono text-xs">{fmtDateOnly(entry.record_date)}</TableCell>
+                        <TableCell className="min-w-64 text-sm text-muted-foreground">{entry.reason}</TableCell>
+                        <TableCell>
+                          <div className="flex justify-end gap-1.5">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="gap-1.5"
+                            disabled={resolveQuarantine.isPending || dismissQuarantine.isPending}
+                            onClick={() => setResolutionTarget(entry)}
+                          >
+                            {isResolving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                            {isResolving ? 'Resolvendo…' : 'Tentar resolver'}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="gap-1.5 text-destructive hover:text-destructive"
+                            disabled={resolveQuarantine.isPending || dismissQuarantine.isPending}
+                            onClick={() => {
+                              setDismissReason('');
+                              setDismissTarget(entry);
+                            }}
+                          >
+                            {isDismissing && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                            {isDismissing ? 'Classificando…' : 'Não pertence ao quadro'}
+                          </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="p-0">
+          <div className="border-b border-border px-4 py-3">
+            <div className="flex items-center gap-2">
+              <ArchiveBox className="h-4 w-4 text-muted-foreground" />
+              <h4 className="text-sm font-semibold">Histórico de vínculos e classificações</h4>
+              <Badge variant="secondary">{quarantineHistory.length}</Badge>
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Decisões concluídas permanecem visíveis com data, resultado e justificativa.
+            </p>
+          </div>
+
+          {isLoadingQuarantineHistory ? (
+            <div className="flex items-center justify-center gap-2 px-4 py-6 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" /> Carregando histórico…
+            </div>
+          ) : quarantineHistoryError ? (
+            <div className="flex flex-col gap-3 px-4 py-5 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-destructive">
+                Não foi possível carregar o histórico: {getErrorMessage(quarantineHistoryError)}
+              </p>
+              <Button size="sm" variant="outline" onClick={() => void refetchQuarantineHistory()} disabled={isFetchingQuarantineHistory}>
+                Tentar novamente
+              </Button>
+            </div>
+          ) : quarantineHistory.length === 0 ? (
+            <div className="px-4 py-5 text-sm text-muted-foreground">Nenhuma decisão de vínculo foi concluída ainda.</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Matrícula</TableHead>
+                    <TableHead>Funcionário informado</TableHead>
+                    <TableHead>Data da batida</TableHead>
+                    <TableHead>Resultado</TableHead>
+                    <TableHead>Concluído em</TableHead>
+                    <TableHead>Justificativa</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {quarantineHistory.map(entry => (
+                    <TableRow key={entry.id}>
+                      <TableCell className="whitespace-nowrap font-mono text-sm font-semibold">{entry.employee_external_id}</TableCell>
+                      <TableCell>{entry.employee_name || 'Nome não informado'}</TableCell>
+                      <TableCell className="whitespace-nowrap font-mono text-xs">{fmtDateOnly(entry.record_date)}</TableCell>
+                      <TableCell>
+                        {entry.resolution_status === 'linked' ? (
+                          <Badge variant="outline" className="border-success/30 bg-success/10 text-success">Vinculada ao ponto</Badge>
+                        ) : (
+                          <Badge variant="outline" className="border-warning/30 bg-warning/10 text-warning">Fora do quadro</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap font-mono text-xs">
+                        {entry.resolved_at ? fmtDate(entry.resolved_at) : 'Não registrada'}
+                      </TableCell>
+                      <TableCell className="min-w-64 text-sm text-muted-foreground">
+                        {entry.resolution_reason || 'Vínculo canônico aplicado às batidas.'}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <SearchInput
         className="max-w-xl"
@@ -197,6 +430,7 @@ export default function ImportHistoryPanel() {
                         </p>
                         <div className="flex flex-wrap items-center gap-2">
                           {archiveBadge(log)}
+                          {coverageBadge(log)}
                           <span className="text-xs text-muted-foreground">{fmtSize(log.file_size_bytes)}</span>
                         </div>
                       </div>
@@ -207,7 +441,7 @@ export default function ImportHistoryPanel() {
                         {log.inserted_count + log.updated_count}
                         <span className="ml-1 text-xs text-muted-foreground">aplicados</span>
                       </p>
-                      {log.skipped_count > 0 && <p className="text-xs text-muted-foreground">{log.skipped_count} já existentes</p>}
+                      {log.skipped_count > 0 && <p className="text-xs text-muted-foreground">{log.skipped_count} ignorados no processamento</p>}
                     </TableCell>
                     <TableCell>{statusBadge(log.status)}</TableCell>
                     <TableCell>
@@ -235,6 +469,98 @@ export default function ImportHistoryPanel() {
           </div>
         </Card>
       )}
+
+      <AlertDialog
+        open={!!resolutionTarget}
+        onOpenChange={open => {
+          if (!open && !resolveQuarantine.isPending) setResolutionTarget(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Tentar resolver esta pendência?</AlertDialogTitle>
+            <AlertDialogDescription>
+              O sistema tentará localizar uma ficha vigente para a matrícula{' '}
+              <span className="font-mono font-semibold text-foreground">{resolutionTarget?.employee_external_id}</span>{' '}
+              e aplicar as batidas de {resolutionTarget ? fmtDateOnly(resolutionTarget.record_date) : ''}.
+              Se o vínculo ainda não existir, nada será alterado e a pendência continuará nesta lista.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={resolveQuarantine.isPending}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={!resolutionTarget || resolveQuarantine.isPending}
+              onClick={event => {
+                event.preventDefault();
+                if (!resolutionTarget) return;
+                resolveQuarantine.mutate(resolutionTarget.id, {
+                  onSuccess: () => setResolutionTarget(null),
+                });
+              }}
+            >
+              {resolveQuarantine.isPending && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
+              {resolveQuarantine.isPending ? 'Resolvendo…' : 'Confirmar tentativa'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={!!dismissTarget}
+        onOpenChange={open => {
+          if (!open && !dismissQuarantine.isPending) {
+            setDismissTarget(null);
+            setDismissReason('');
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Classificar como linha externa ao quadro?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Use somente para crachá de teste, terceiro ou pessoa sem vínculo vigente na data.
+              A linha não será apagada: arquivo, batidas, autoria e justificativa continuarão no histórico.
+              Se a matrícula possuir uma ficha vigente, o sistema recusará esta ação e exigirá o vínculo.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-1.5">
+            <label htmlFor="quarantine-dismiss-reason" className="text-sm font-medium">
+              Justificativa obrigatória
+            </label>
+            <Textarea
+              id="quarantine-dismiss-reason"
+              value={dismissReason}
+              onChange={event => setDismissReason(event.target.value)}
+              placeholder="Ex.: crachá de teste do equipamento"
+              rows={3}
+              autoFocus
+            />
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={dismissQuarantine.isPending}>Voltar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={!dismissTarget || dismissReason.trim().length < 4 || dismissQuarantine.isPending}
+              onClick={event => {
+                event.preventDefault();
+                if (!dismissTarget || dismissReason.trim().length < 4) return;
+                dismissQuarantine.mutate(
+                  { quarantineId: dismissTarget.id, reason: dismissReason },
+                  {
+                    onSuccess: () => {
+                      setDismissTarget(null);
+                      setDismissReason('');
+                    },
+                  },
+                );
+              }}
+            >
+              {dismissQuarantine.isPending && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
+              Preservar e classificar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Dialog open={!!selected} onOpenChange={open => !open && setSelected(null)}>
         <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
@@ -278,7 +604,7 @@ export default function ImportHistoryPanel() {
               {selected.status === 'partial' && (
                 <div className="rounded-md border border-warning/30 bg-warning/10 p-3 text-xs text-warning">
                   <p className="flex items-center gap-1.5 font-semibold"><AlertTriangle className="h-3.5 w-3.5" /> Importação parcial</p>
-                  <p className="mt-1">As linhas válidas foram aplicadas. Corrija apenas os itens descritos abaixo e importe novamente se necessário.</p>
+                  <p className="mt-1">As linhas válidas foram aplicadas. Para matrículas sem vínculo, corrija o cadastro em Pessoas e use “Tentar resolver” na lista de pendências.</p>
                 </div>
               )}
 

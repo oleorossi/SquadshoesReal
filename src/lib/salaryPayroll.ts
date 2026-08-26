@@ -31,7 +31,7 @@
 import { splitDayMinutes, PREMIUM_MULTIPLIER } from './hourlyPayroll';
 
 /** Versão persistida junto do snapshot da folha para auditoria histórica. */
-export const PAYROLL_RULE_VERSION = 'saldo-periodo-v1-2026-08-13';
+export const PAYROLL_RULE_VERSION = 'saldo-periodo-v2-2026-08-26';
 
 /** Divisor legado usado somente por callers diretos sem SalaryPolicy. */
 export const SALARY_DAY_DIVISOR = 30;
@@ -63,22 +63,35 @@ export function atrasoCapMinutes(
 // valores diferentes entre folha e relatório.
 const WORKS_DOW = ['works_sunday', 'works_monday', 'works_tuesday', 'works_wednesday', 'works_thursday', 'works_friday', 'works_saturday'] as const;
 
+/** Shape estrutural mínimo aceito pelo motor salarial. Mantém a lib independente
+ * dos hooks React e permite escalas parciais em relatórios/testes. */
+export type SalaryWorkSchedule = Partial<Record<(typeof WORKS_DOW)[number], boolean | null>> & {
+  entry_time?: string | null;
+  exit_time?: string | null;
+  lunch_start?: string | null;
+  lunch_end?: string | null;
+  saturday_entry?: string | null;
+  saturday_exit?: string | null;
+  overtime_multiplier?: number | null;
+};
+
 /** "08:30" → 510 minutos. Tolerante a nulos/vazios. */
-export function timeToMin(t: string): number {
+export function timeToMin(t?: string | null): number {
   const [h, m] = String(t || '0:0').split(':').map(Number);
   return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
 }
 
 /** Escala trabalha neste dia da semana? (0=dom … 6=sáb) */
-export function worksOnDow(sch: any, dow: number): boolean {
-  return !!(sch && sch[WORKS_DOW[dow]]);
+export function worksOnDow(sch: SalaryWorkSchedule | null | undefined, dow: number): boolean {
+  const key = WORKS_DOW[dow];
+  return !!(sch && key && sch[key]);
 }
 
 /** Jornada esperada do dia (min): saída − entrada − almoço. Ex.: 08–18 c/ 12–13 = 540 (9h).
  *  SÁBADO (dow=6): se a escala tem saturday_entry/saturday_exit, usa a jornada de sábado
  *  (normalmente mais curta, sem almoço) — senão um sábado de meio-período viraria falso
  *  atraso comparado à jornada de dia útil. Sem os campos de sábado, cai na jornada padrão. */
-export function expectedDayMinutes(sch: any, dow?: number): number {
+export function expectedDayMinutes(sch: SalaryWorkSchedule | null | undefined, dow?: number): number {
   if (!sch) return 0;
   if (dow === 6 && sch.saturday_entry && sch.saturday_exit) {
     return Math.max(0, timeToMin(sch.saturday_exit) - timeToMin(sch.saturday_entry));
@@ -125,6 +138,9 @@ export interface SalaryDayInput {
   /** Ausência JUSTIFICADA cobrindo o dia (férias/atestado/licença). Dia útil sem
    *  batida E excused=true → abonado (não conta falta nem desconta). */
   excused?: boolean;
+  /** Minutos de ausência remunerada PARCIAL. Só cobrem a defasagem entre a
+   *  jornada e as horas realmente trabalhadas; nunca geram hora extra. */
+  excusedMinutes?: number;
   /** Troca de dia / compensação (tabela workday_swaps): este dia é um DIA FLEX.
    *  Quando TRABALHADO, lê como dia útil NORMAL (fora da taxa de domingo/feriado;
    *  só o excedente vira crédito). Quando NÃO trabalhado (sem
@@ -159,6 +175,8 @@ export interface SalaryDayLedger {
   is_workday: boolean;
   expected_minutes: number;
   worked_minutes: number;
+  /** Parcela remunerada da ausência efetivamente usada para cobrir a jornada. */
+  excused_minutes?: number;
   raw_balance_minutes: number;
   raw_credit_minutes: number;
   raw_delay_minutes: number;
@@ -363,6 +381,7 @@ export function calculateSalaryPayroll(
       is_workday: d.isWorkday && d.expectedMinutes > 0,
       expected_minutes: d.isWorkday ? d.expectedMinutes : 0,
       worked_minutes: worked,
+      excused_minutes: 0,
       raw_balance_minutes: 0,
       raw_credit_minutes: 0,
       raw_delay_minutes: 0,
@@ -407,12 +426,36 @@ export function calculateSalaryPayroll(
     }
 
     if (isSchedWorkday) {
+      // Abono integral mantém compatibilidade com o contrato anterior. O abono
+      // parcial é limitado à DEFASAGEM real do dia: 2h de atestado + 8h
+      // trabalhadas numa jornada de 9h quitam apenas 1h, sem fabricar 1h de HE.
+      const excusedAvailable = d.excused
+        ? d.expectedMinutes
+        : Math.max(0, Number(d.excusedMinutes) || 0);
+      const excusedApplied = Math.min(
+        d.expectedMinutes,
+        Math.max(0, d.expectedMinutes - worked),
+        excusedAvailable,
+      );
+      ledger.excused_minutes = excusedApplied;
+
       if (worked === 0) {
         // Dia útil sem trabalho. Ausência JUSTIFICADA (férias/atestado/licença) é
         // abonada: não conta falta nem desconta. Senão, falta (desconta 1 valor-dia).
-        if (d.excused) {
+        if (excusedApplied >= d.expectedMinutes) {
           excusedDays++;
           ledger.status = 'excused';
+          dayLedger.push(ledger);
+          continue;
+        }
+        // Ausência parcial remunerada sem batida: desconta somente a parcela
+        // restante como minutos de atraso. Não pode virar falta integral.
+        if (excusedApplied > 0) {
+          expectedPresentMin += d.expectedMinutes - excusedApplied;
+          const late = d.expectedMinutes - excusedApplied;
+          ledger.status = 'debit';
+          ledger.raw_balance_minutes = -late;
+          ledger.raw_delay_minutes = late;
           dayLedger.push(ledger);
           continue;
         }
@@ -428,7 +471,7 @@ export function calculateSalaryPayroll(
       normalMin += sp.normal;
       premiumMin += sp.premium;
       expectedPresentMin += d.expectedMinutes;
-      const rawBal = worked - d.expectedMinutes;
+      const rawBal = worked - d.expectedMinutes + excusedApplied;
       const dayBal = Math.abs(rawBal) <= toleranceMin ? 0 : rawBal;
       ledger.raw_balance_minutes = dayBal;
       if (dayBal > 0) {
@@ -438,17 +481,14 @@ export function calculateSalaryPayroll(
       }
       // Atraso capado por-dia: policy = jornada esperada do dia (um dia inteiro atrasado
       // = 1 valor-dia = 1 falta); legado = teto 220/30. Um dia quase-vazio nunca custa
-      // mais que uma falta limpa. ATRASO JUSTIFICADO (spec req.10): dia marcado como
-      // ausência justificada (excused) NÃO desconta o atraso — o RH abonou.
-      else if (dayBal < 0 && !d.excused) {
+      // mais que uma falta limpa. Ausência integral elimina a defasagem; ausência
+      // parcial elimina somente os minutos remunerados informados pelo RH.
+      else if (dayBal < 0) {
         const cap = usePolicy ? d.expectedMinutes : atrasoCap;
         const late = Math.min(-dayBal, cap);
         ledger.status = 'debit';
         ledger.raw_balance_minutes = -late;
         ledger.raw_delay_minutes = late;
-      } else if (dayBal < 0 && d.excused) {
-        ledger.status = 'excused';
-        ledger.raw_balance_minutes = 0;
       } else {
         ledger.status = 'normal';
       }
@@ -624,7 +664,7 @@ export function getDaysInRange(from: string, to: string): { date: string; dow: n
  * menos os feriados. Base do desconto de falta/atraso (spec: salário ÷ dias úteis).
  * Sábado conta se a escala trabalha sábado; domingos e feriados nunca contam.
  */
-export function businessDaysInMonth(anyDateInMonth: string, schedule: any, holidaysSet: Set<string>): number {
+export function businessDaysInMonth(anyDateInMonth: string, schedule: SalaryWorkSchedule | null | undefined, holidaysSet: Set<string>): number {
   const [y, m] = String(anyDateInMonth || '').split('-').map(Number);
   if (!y || !m) return 0;
   const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
@@ -648,7 +688,7 @@ export interface PeriodFolhaInput {
   salary: number;
   from: string;
   to: string;
-  schedule: any;                          // work_schedule (entry/exit/lunch/works_*)
+  schedule: SalaryWorkSchedule | null;    // work_schedule (entry/exit/lunch/works_*)
   holidaysSet: Set<string>;               // feriados obrigatórios (crédito na taxa individual de feriado)
   /** Troca de dia (workday_swaps) — DIAS FLEX (work_date): lê como dia útil NORMAL
    *  quando trabalhado (não vira HE de fim de semana/feriado); neutro quando não
@@ -662,6 +702,9 @@ export interface PeriodFolhaInput {
   /** Datas (YYYY-MM-DD) cobertas por ausência JUSTIFICADA → dia útil sem batida vira
    *  abonado (não desconta falta). Default vazio = comportamento legado. */
   absenceDates?: Set<string>;
+  /** Minutos remunerados de ausência parcial por data. Somados à jornada
+   *  somente até cobrir a defasagem real, nunca para gerar HE. */
+  absenceMinutes?: Map<string, number>;
   advancesTotal?: number;
   periodDays?: number;                    // base proporcional (quinzena); undefined = mês cheio
   monthDays?: number;                     // dias do mês (28–31) → prorateia 1ª+2ª = salário exato
@@ -727,6 +770,7 @@ export function computePeriodFolha(inp: PeriodFolhaInput): SalaryPayrollResult {
       expectedMinutes: isWorkday ? expectedDayMinutes(inp.schedule, d.dow) : 0,
       punches: inp.punchesByDate.get(d.date) || [],
       excused: inp.absenceDates?.has(d.date) ?? false,
+      excusedMinutes: inp.absenceMinutes?.get(d.date) || 0,
       swapFlex: isSwap,
       covered: inp.coveredDates ? inp.coveredDates.has(d.date) : undefined,
     };

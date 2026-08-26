@@ -14,8 +14,8 @@ interface EmployeeComboboxProps {
   value: string;
   onChange: (employeeId: string) => void;
   employees: Employee[];
-  /** Saldo aberto (vales pendentes) por funcionário — exibido como badge no item. */
-  pendingByEmployee?: Map<string, number>;
+  /** Saldo de vales em aberto por funcionário — exibido como badge no item. */
+  openBalanceByEmployee?: Map<string, number>;
   placeholder?: string;
   className?: string;
 }
@@ -29,7 +29,7 @@ const roleLine = (e: Employee) =>
  * de vales no item, pra dar contexto antes de lançar um novo adiantamento.
  */
 export function EmployeeCombobox({
-  value, onChange, employees, pendingByEmployee, placeholder = 'Selecione o funcionário...', className,
+  value, onChange, employees, openBalanceByEmployee, placeholder = 'Selecione o funcionário...', className,
 }: EmployeeComboboxProps) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
@@ -82,7 +82,7 @@ export function EmployeeCombobox({
             </CommandEmpty>
             <CommandGroup heading={`Funcionários ativos (${filtered.length})`}>
               {filtered.map(e => {
-                const pending = pendingByEmployee?.get(e.id) ?? 0;
+                const openBalance = openBalanceByEmployee?.get(e.id) ?? 0;
                 return (
                   <CommandItem
                     key={e.id} value={e.id}
@@ -95,13 +95,13 @@ export function EmployeeCombobox({
                         <span className="truncate text-sm">{e.name}</span>
                         <span className="truncate text-xs text-muted-foreground">{roleLine(e)}</span>
                       </div>
-                      {pending > 0 && (
+                      {openBalance > 0 && (
                         <Badge
                           variant="outline"
                           className="shrink-0 gap-1 border-rose-500/20 bg-rose-500/10 text-[10px] font-medium tabular-nums text-rose-600"
                           title="Saldo de vales em aberto"
                         >
-                          {fmt(pending)}
+                          {fmt(openBalance)}
                         </Badge>
                       )}
                     </div>

@@ -35,6 +35,24 @@ function ledgerDay(
 }
 
 describe('timeBalanceReports — fechamento semanal', () => {
+  it('reduz a meta somente pelos minutos de abono parcial aplicados no ledger', () => {
+    const partial = {
+      ...ledgerDay('2026-06-01', 540, 0, 'debit'),
+      excused_minutes: 240,
+      raw_balance_minutes: -300,
+      raw_delay_minutes: 300,
+      payable_delay_minutes: 300,
+    };
+    const report = buildEmployeeTimeBalanceReport({
+      id: 'ana',
+      name: 'Ana',
+      ledger: [partial],
+    });
+
+    expect(report.totalExpectedMinutes).toBe(300);
+    expect(report.totalDeficitMinutes).toBe(300);
+  });
+
   it('compensa +40min e −1h dentro da semana e gera débito de 20min', () => {
     const report = buildEmployeeTimeBalanceReport({
       id: 'ana',

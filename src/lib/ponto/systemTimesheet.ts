@@ -92,6 +92,7 @@ export function groupTimeRecordsBySystemEmployee(
       record.employee_name,
       record.employee_external_id,
       {
+        employeeId: record.employee_id,
         recordDate: record.record_date,
         allowNameFallback: !record.employee_external_id,
       },

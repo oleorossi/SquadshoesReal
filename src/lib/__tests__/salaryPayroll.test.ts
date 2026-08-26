@@ -659,6 +659,62 @@ describe('computePeriodFolha — política canônica de HE/falta/atraso (2026-07
     expect(com.atraso_desconto).toBeCloseTo(0, 2);
   });
 
+  it('ausência parcial sem batida desconta somente a parcela não abonada', () => {
+    const r = computePeriodFolha({
+      salary: 2100,
+      from: '2026-05-04',
+      to: '2026-05-04',
+      ...base,
+      punchesByDate: new Map(),
+      absenceMinutes: new Map([['2026-05-04', 240]]), // 4h abonadas de uma jornada de 9h
+    });
+
+    expect(r.falta_days).toBe(0);
+    expect(r.excused_days).toBe(0);
+    expect(r.atraso_minutes).toBe(300);
+    expect(r.atraso_desconto).toBeCloseTo(5 * ((2100 / BD) / 9), 2);
+    expect(r.day_ledger?.[0]).toMatchObject({
+      status: 'debit',
+      excused_minutes: 240,
+      raw_delay_minutes: 300,
+    });
+  });
+
+  it('crédito parcial completa a jornada trabalhada sem fabricar hora extra', () => {
+    const sevenHours = new Map<string, string[]>([
+      ['2026-05-04', ['08:00', '12:00', '13:00', '16:00']],
+    ]);
+    const completed = computePeriodFolha({
+      salary: 2100,
+      from: '2026-05-04',
+      to: '2026-05-04',
+      ...base,
+      punchesByDate: sevenHours,
+      absenceMinutes: new Map([['2026-05-04', 120]]),
+      heNormalRate: 20,
+    });
+    expect(completed.atraso_minutes).toBe(0);
+    expect(completed.he_minutes).toBe(0);
+    expect(completed.day_ledger?.[0].excused_minutes).toBe(120);
+
+    const eightHours = new Map<string, string[]>([
+      ['2026-05-04', ['08:00', '12:00', '13:00', '17:00']],
+    ]);
+    const capped = computePeriodFolha({
+      salary: 2100,
+      from: '2026-05-04',
+      to: '2026-05-04',
+      ...base,
+      punchesByDate: eightHours,
+      absenceMinutes: new Map([['2026-05-04', 120]]),
+      heNormalRate: 20,
+    });
+    expect(capped.atraso_minutes).toBe(0);
+    expect(capped.he_minutes).toBe(0);
+    expect(capped.day_ledger?.[0].excused_minutes).toBe(60);
+    expect(capped.day_ledger?.[0].raw_credit_minutes).toBe(0);
+  });
+
   it('E5: sábado de meio-período usa a jornada de SÁBADO (sem falso atraso)', () => {
     // Escala que trabalha sábado 08:00–12:00 (4h). Sábado 02/05/2026 trabalhado 4h.
     const schSat = { ...SCHED, works_saturday: true, saturday_entry: '08:00:00', saturday_exit: '12:00:00' };

@@ -1,5 +1,19 @@
 import { supabase } from '@/integrations/supabase/client';
 
+function toStringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string')
+    : [];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function errorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback;
+}
+
 export type IssueType =
   | 'somente_uma_batida'
   | 'falta_saida_apos_almoco'
@@ -36,9 +50,8 @@ export interface PendingTimeRecord {
   issue_type: IssueType;
   has_manual_override: boolean;
   /**
-   * Mais de uma ficha de `employees` casou com este registro. Ver
-   * migration 20261226120000 — o `employee_id` é escolha por precedência
-   * (external_id > nome), não fato.
+   * Registro sem `employee_id` canônico. O frontend não escolhe uma pessoa por
+   * nome/crachá e não permite aplicar correção até o vínculo ser resolvido.
    */
   employee_match_ambiguous: boolean;
 }
@@ -64,7 +77,7 @@ export interface EmployeePendingSummary {
 
 export async function listEmployeePendingSummary(): Promise<EmployeePendingSummary[]> {
   const { data, error } = await supabase
-    .from('v_employee_pending_summary' as any)
+    .from('v_employee_pending_summary')
     .select('*')
     .order('pending_count', { ascending: false });
   if (error) throw error;
@@ -73,39 +86,39 @@ export async function listEmployeePendingSummary(): Promise<EmployeePendingSumma
 
 export async function listPendingTimeRecords(employeeId?: string): Promise<PendingTimeRecord[]> {
   let q = supabase
-    .from('v_pending_time_records' as any)
+    .from('v_pending_time_records')
     .select('*')
     .order('record_date', { ascending: false });
   if (employeeId) q = q.eq('employee_id', employeeId);
   const { data, error } = await q;
   if (error) throw error;
-  return ((data ?? []) as any[]).map((r) => ({
+  return (data ?? []).map((r) => ({
     ...r,
-    punches: Array.isArray(r.punches) ? r.punches : [],
-  })) as PendingTimeRecord[];
+    punches: toStringArray(r.punches),
+  })) as unknown as PendingTimeRecord[];
 }
 
 /**
- * Histórico de batidas do funcionário (por NOME — time_records não tem employee_id)
+ * Histórico de batidas do funcionário pela FK canônica
  * pra inferir o horário de saída típico. Janela recente; dias completos são filtrados
  * no cálculo (computeExitPattern). Usado pelas Pendências p/ pré-preencher a saída provável.
  */
 export async function listEmployeeExitHistory(
-  employeeName: string,
+  employeeId: string,
   sinceISO: string,
 ): Promise<{ record_date: string; punches: string[] }[]> {
-  if (!employeeName) return [];
+  if (!employeeId) return [];
   const { data, error } = await supabase
     .from('time_records')
     .select('record_date, punches')
-    .eq('employee_name', employeeName)
+    .eq('employee_id', employeeId)
     .gte('record_date', sinceISO)
     .order('record_date', { ascending: false })
     .limit(180);
   if (error) throw error;
-  return ((data ?? []) as any[]).map((r) => ({
+  return (data ?? []).map((r) => ({
     record_date: r.record_date,
-    punches: Array.isArray(r.punches) ? r.punches : [],
+    punches: toStringArray(r.punches),
   }));
 }
 
@@ -114,17 +127,17 @@ export async function applyManualPunchCompletion(args: {
   punchTime: string; // HH:MM
   reason?: string;
 }): Promise<{ success: boolean; new_punch_count: number; punches_after: string[] }> {
-  const { data, error } = await supabase.rpc('apply_manual_punch_completion' as any, {
+  const { data, error } = await supabase.rpc('apply_manual_punch_completion', {
     p_time_record_id: args.timeRecordId,
     p_punch_time:     args.punchTime + ':00', // HH:MM:SS
     p_reason:         args.reason ?? 'completed-by-rh',
   });
   if (error) throw error;
-  const r = data as any;
+  const result = isRecord(data) ? data : null;
   return {
-    success: Boolean(r?.success),
-    new_punch_count: Number(r?.new_punch_count ?? 0),
-    punches_after: Array.isArray(r?.punches_after) ? r.punches_after : [],
+    success: Boolean(result?.success),
+    new_punch_count: Number(result?.new_punch_count ?? 0),
+    punches_after: toStringArray(result?.punches_after),
   };
 }
 
@@ -167,6 +180,16 @@ export async function bulkApplyDefaultExit(args: {
   let failed = 0;
 
   for (const rec of pending) {
+    if (!rec.employee_id || rec.employee_match_ambiguous) {
+      skipped++;
+      results.push({
+        time_record_id: rec.time_record_id,
+        date: rec.record_date,
+        ok: false,
+        error: 'Registro sem vínculo canônico — corrija a matrícula/vigência antes do preenchimento.',
+      });
+      continue;
+    }
     // Define quais punches adicionar conforme o tipo
     const punchesToAdd: string[] = [];
     switch (rec.issue_type) {
@@ -197,9 +220,9 @@ export async function bulkApplyDefaultExit(args: {
       }
       processed++;
       results.push({ time_record_id: rec.time_record_id, date: rec.record_date, ok: true });
-    } catch (e: any) {
+    } catch (error: unknown) {
       failed++;
-      results.push({ time_record_id: rec.time_record_id, date: rec.record_date, ok: false, error: e?.message || 'Falha desconhecida' });
+      results.push({ time_record_id: rec.time_record_id, date: rec.record_date, ok: false, error: errorMessage(error, 'Falha desconhecida') });
     }
   }
 

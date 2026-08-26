@@ -3,7 +3,7 @@ import ManualEntryTab from '@/components/timesheet/ManualEntryTab';
 import ImportHistoryPanel from '@/components/timesheet/ImportHistoryPanel';
 import PendingTimeRecordsPanel from '@/components/timesheet/PendingTimeRecordsPanel';
 import EmployeeAbsences from './EmployeeAbsences';
-import { useState, useRef, useMemo, useEffect } from 'react';
+import { useState, useRef, useMemo, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Clock, Upload, Plus, Trash as Trash2, CircleNotch as Loader2, Calendar, Gear as Settings2, Warning as AlertTriangle, FileXls as FileSpreadsheet, CaretDown as ChevronDown, Sun, Moon, Coffee, CheckCircle as CheckCircle2, XCircle, MinusCircle, Printer, Users as Users2, CurrencyDollar as DollarSign, Link as Link2, Shield, FileText, Clipboard as ClipboardEdit, Alarm as AlarmClock, ClockCounterClockwise as History, Wallet, ArrowsLeftRight, FirstAid, Archive as ArchiveBox } from '@phosphor-icons/react';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
@@ -26,7 +26,7 @@ import {
   useTimeRecords, useImportTimeRecords, useTimesheetCoverage,
   useAllImportsDateRange,
   parseTimesheetXlsx, parseTimesheetTxt, calculateDaySummary, resolveTimesheetRecordDate,
-  WorkSchedule, Holiday, TimeRecord, ParsedEmployee, DaySummary,
+  WorkSchedule, Holiday, TimeRecord, ParsedEmployee, DaySummary, type TimesheetCoverageScope,
 } from '@/hooks/useTimesheet';
 import { useEmployees } from '@/hooks/useEmployees';
 import { useAbsences } from '@/hooks/useRH';
@@ -45,6 +45,7 @@ import { PeriodRangeFilter } from '@/components/hr/PeriodRangeFilter';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { usePendingTotal } from '@/hooks/useTimePendings';
 import { cn } from '@/lib/utils';
+import { createTimesheetImportBatchId } from '@/lib/timeControlFilters';
 
 const DAYS_PT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
@@ -498,18 +499,31 @@ function TimesheetRecordsTab() {
   const [parsing, setParsing] = useState(false);
   // Mantém o File original junto com o preview pra permitir arquivá-lo no
   // bucket timesheet-imports após confirmação da importação (PR Frente 2).
-  const [preview, setPreview] = useState<{ employees: ParsedEmployee[]; startDate: string; endDate: string; rawFile: File } | null>(null);
+  const [preview, setPreview] = useState<{
+    employees: ParsedEmployee[];
+    startDate: string;
+    endDate: string;
+    preSkipped: number;
+    batchId: string;
+    coverageScope: TimesheetCoverageScope | null;
+    requiresCoverageConfirmation: boolean;
+    coverageConfirmed: boolean;
+    rawFile: File;
+  } | null>(null);
   const [selectedEmployee, setSelectedEmployee] = useState<string>('');
   const [reportDialogOpen, setReportDialogOpen] = useState(false);
   const [, setRhSearchParams] = useSearchParams(); // navegar Ponto → Relatórios
-  const defaultSchedule: WorkSchedule = schedules.find(s => s.is_default) || schedules[0] || {
-    id: '', name: 'Default', entry_time: '08:00', lunch_start: '12:00', lunch_end: '13:00',
-    exit_time: '17:48', saturday_entry: '08:00', saturday_exit: '12:00', weekly_hours: 44,
-    overtime_multiplier: 1.5, night_overtime_multiplier: 1.7, holiday_multiplier: 1.5,
-    tolerance_minutes: 10, minimum_overtime_minutes: 0, is_default: true, created_at: '', updated_at: '',
-    works_sunday: false, works_monday: true, works_tuesday: true, works_wednesday: true,
-    works_thursday: true, works_friday: true, works_saturday: false,
-  };
+  const defaultSchedule: WorkSchedule = useMemo(
+    () => schedules.find(s => s.is_default) || schedules[0] || {
+      id: '', name: 'Default', entry_time: '08:00', lunch_start: '12:00', lunch_end: '13:00',
+      exit_time: '17:48', saturday_entry: '08:00', saturday_exit: '12:00', weekly_hours: 44,
+      overtime_multiplier: 1.5, night_overtime_multiplier: 1.7, holiday_multiplier: 1.5,
+      tolerance_minutes: 10, minimum_overtime_minutes: 0, is_default: true, created_at: '', updated_at: '',
+      works_sunday: false, works_monday: true, works_tuesday: true, works_wednesday: true,
+      works_thursday: true, works_friday: true, works_saturday: false,
+    },
+    [schedules],
+  );
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -528,7 +542,13 @@ function TimesheetRecordsTab() {
         isAGLClock = isTxt && head.length >= 2 && head[0] === 0xFF && head[1] === 0xFE;
       }
 
-      let result: { employees: ParsedEmployee[]; startDate: string; endDate: string };
+      let result: {
+        employees: ParsedEmployee[];
+        startDate: string;
+        endDate: string;
+        preSkipped: number;
+        requiresCoverageConfirmation: boolean;
+      };
       if (isAGLClock || isCsv || isJson) {
         const { parseTimeClockFile, groupPunchesByDay } = await import('@/lib/timeClockParser');
         const parsed = await parseTimeClockFile(file);
@@ -556,12 +576,20 @@ function TimesheetRecordsTab() {
           employees: Array.from(empMap.values()),
           startDate: parsed.dateRange.from,
           endDate: parsed.dateRange.to,
+          preSkipped: parsed.skippedRows,
+          // Estes formatos não carregam, de forma confiável, o intervalo
+          // solicitado na exportação. Min/max das batidas não prova domingos,
+          // feriados nem um dia interno sem qualquer marcação.
+          requiresCoverageConfirmation: true,
         };
-        toast.info(`Detectado formato ${parsed.format} — ${parsed.totalRows} batidas em ${parsed.employees.length} funcionários`);
+        toast.info(
+          `Detectado formato ${parsed.format} — ${parsed.punches.length} batidas válidas em ${parsed.employees.length} funcionários` +
+          `${parsed.skippedRows > 0 ? `; ${parsed.skippedRows} entrada(s) inválida(s) descartada(s)` : ''}`,
+        );
       } else if (isTxt) {
-        result = await parseTimesheetTxt(file);
+        result = { ...(await parseTimesheetTxt(file)), preSkipped: 0, requiresCoverageConfirmation: true };
       } else {
-        result = await parseTimesheetXlsx(file);
+        result = { ...(await parseTimesheetXlsx(file)), preSkipped: 0, requiresCoverageConfirmation: false };
       }
       const datedResult = {
         ...result,
@@ -573,17 +601,36 @@ function TimesheetRecordsTab() {
           })),
         })),
       };
-      setPreview({ ...datedResult, rawFile: file });
-      const matched = datedResult.employees.filter(emp => emp.records.some(record =>
-        !!findEmployeeMatch(employees, emp.name, emp.externalId, {
+      setPreview({
+        ...datedResult,
+        batchId: createTimesheetImportBatchId(datedResult.startDate, datedResult.endDate),
+        coverageScope: null,
+        coverageConfirmed: !datedResult.requiresCoverageConfirmation,
+        rawFile: file,
+      });
+      const employeesWithPunches = datedResult.employees.filter(emp =>
+        emp.records.some(record => record.punches.length > 0),
+      );
+      const employeesWithExternalId = employeesWithPunches.filter(emp => emp.externalId.trim().length > 0);
+      const missingExternalIdRows = employeesWithPunches.reduce(
+        (total, employee) => total + (employee.externalId.trim() ? 0 : employee.records.filter(record => record.punches.length > 0).length),
+        0,
+      );
+      const matched = employeesWithExternalId.filter(emp => emp.records.every(record =>
+        record.punches.length === 0 || !!findEmployeeMatch(employees, emp.name, emp.externalId, {
           recordDate: record.dateStr,
           allowNameFallback: false,
         }),
       )).length;
       const pending = datedResult.employees.reduce((sum, emp) => sum + emp.records.filter(r => r.punches.length % 2 === 1).length, 0);
-      toast.success(`${datedResult.employees.length} IDs encontrados, ${matched} vinculados pelo relógio${pending ? `; ${pending} dia(s) pendente(s)` : ''}`);
-    } catch (err: any) {
-      toast.error('Erro ao ler arquivo: ' + err.message);
+      toast.success(
+        `${employeesWithExternalId.length} matrícula(s) com batidas, ${matched} vinculada(s) em todas as datas` +
+        `${missingExternalIdRows ? `; ${missingExternalIdRows} dia(s) sem matrícula serão contabilizados como inválidos` : ''}` +
+        `${pending ? `; ${pending} dia(s) pendente(s)` : ''}`,
+      );
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'falha desconhecida';
+      toast.error('Erro ao ler arquivo: ' + message);
     } finally {
       setParsing(false);
       if (fileRef.current) fileRef.current.value = '';
@@ -592,6 +639,10 @@ function TimesheetRecordsTab() {
 
   const doImport = () => {
     if (!preview) return;
+    if (!preview.coverageScope) {
+      toast.error('Informe se o arquivo contém o quadro completo ou somente funcionários selecionados.');
+      return;
+    }
     const importStartDate = preview.startDate;
     const importEndDate = preview.endDate;
     importRecords.mutate({
@@ -600,6 +651,9 @@ function TimesheetRecordsTab() {
       employees: preview.employees,
       startDate: importStartDate,
       endDate: importEndDate,
+      preSkipped: preview.preSkipped,
+      batchId: preview.batchId,
+      coverageScope: preview.coverageScope,
       file: preview.rawFile,
     }, {
       onSuccess: () => {
@@ -608,30 +662,81 @@ function TimesheetRecordsTab() {
         setFilterStartDate(importStartDate);
         setFilterEndDate(importEndDate);
         setSelectedEmployee('__all__');
+        setPreview(null);
       }
     });
-    setPreview(null);
   };
 
-  // Aviso de matrícula não-casada (2026-06-02): o arquivo do relógio traz o
-  // cadastro INTEIRO (dezenas de matrículas, muitas ex-funcionários ou sem
-  // batida no período). NÃO bloquear o import por causa disso — antes o
-  // window.confirm floodava e impedia importar os ativos ("aparece importado
-  // mas não entra"). Agora importa SEMPRE; só AVISA (sem travar) sobre
-  // matrículas que TÊM horas e não casam com funcionário ativo — só essas
-  // perderiam horas na folha (as sem batida são irrelevantes).
+  // O backend importa os registros válidos atomicamente e preserva linhas sem
+  // vínculo em quarentena. Isso evita que um ex-funcionário bloqueie todo o
+  // arquivo sem permitir que suas horas entrem silenciosamente na folha.
   const handleImport = () => {
     if (!preview) return;
-    const unmatchedWithHours = preview.employees.filter(e =>
-      !findEmployeeMatch(employees, e.name, e.externalId, { allowNameFallback: false }) &&
-      Array.isArray(e.records) && e.records.some((r: any) => Array.isArray(r.punches) && r.punches.length > 0),
+    if (preview.requiresCoverageConfirmation && !preview.coverageConfirmed) {
+      toast.error('Confirme o período exato coberto pela exportação antes de importar.');
+      return;
+    }
+    if (!preview.coverageScope) {
+      toast.error('Informe se o arquivo contém o quadro completo ou somente funcionários selecionados.');
+      return;
+    }
+    const missingExternalIdRecordCount = preview.employees.reduce(
+      (total, employee) => total + (employee.externalId.trim() ? 0 : employee.records.filter(record => record.punches.length > 0).length),
+      0,
     );
-    if (unmatchedWithHours.length > 0) {
-      const list = unmatchedWithHours.map(e => `${e.name || '?'} (matr. ${e.externalId || '?'})`).join(', ');
+    const importableEmployees = preview.employees.filter(employee => employee.externalId.trim().length > 0);
+    const totalRecords = importableEmployees.reduce(
+      (total, employee) => total + employee.records.filter(record => record.punches.length > 0).length,
+      0,
+    );
+    if (totalRecords === 0) {
+      toast.error(
+        missingExternalIdRecordCount > 0
+          ? `O arquivo possui ${missingExternalIdRecordCount} dia(s) com batidas sem matrícula e nenhuma linha importável. Corrija a exportação do relógio.`
+          : 'O arquivo não possui batidas válidas para importar.',
+      );
+      return;
+    }
+    const unresolvedWithPunches = importableEmployees.filter(emp => emp.records.some(record => {
+      if (!Array.isArray(record.punches) || record.punches.length === 0) return false;
+      const recordDate = record.dateStr || resolveTimesheetRecordDate(record.day, preview.startDate, preview.endDate);
+      return !findEmployeeMatch(employees, emp.name, emp.externalId, {
+        recordDate,
+        allowNameFallback: false,
+      });
+    }));
+    const unresolvedRecordCount = unresolvedWithPunches.reduce(
+      (total, employee) => total + employee.records.filter(record => {
+        if (!Array.isArray(record.punches) || record.punches.length === 0) return false;
+        const recordDate = record.dateStr || resolveTimesheetRecordDate(record.day, preview.startDate, preview.endDate);
+        return !findEmployeeMatch(employees, employee.name, employee.externalId, {
+          recordDate,
+          allowNameFallback: false,
+        });
+      }).length,
+      0,
+    );
+    if (missingExternalIdRecordCount > 0) {
       toast.warning(
-        `${unmatchedWithHours.length} matrícula(s) com horas não casam com funcionário ativo e NÃO entram na folha: ${list}. ` +
-        `Cadastre a matrícula em Funcionários e reimporte se for o caso.`,
-        { duration: 12000 },
+        `${missingExternalIdRecordCount} dia(s) com batidas sem matrícula serão contabilizados como inválidos no protocolo; não entram na folha nem na quarentena.`,
+        { duration: 14000 },
+      );
+    }
+    if (preview.coverageScope === 'listed_employees') {
+      toast.warning(
+        'As batidas serão importadas, mas este arquivo filtrado não fecha a cobertura global do período e não cria faltas para pessoas ausentes da exportação.',
+        { duration: 14000 },
+      );
+    }
+    if (unresolvedWithPunches.length > 0) {
+      const list = unresolvedWithPunches.map(e => `${e.name || '?'} (matr. ${e.externalId || '?'})`).join(', ');
+      toast.warning(
+        unresolvedRecordCount >= totalRecords
+          ? `Todas as ${unresolvedRecordCount} linha(s) estão sem vínculo (${list}). ` +
+            'Nenhuma batida entrará na folha; o arquivo será preservado e as linhas ficarão em quarentena para correção.'
+          : `${unresolvedRecordCount} linha(s) sem vínculo (${list}) irão para quarentena; ` +
+            'somente as batidas válidas serão aplicadas.',
+        { duration: 14000 },
       );
     }
     doImport();
@@ -701,11 +806,14 @@ function TimesheetRecordsTab() {
   }), [employees, records, schedules, defaultSchedule, batchDateRange, coverage, holidayDates, swapWorkedSet, swapOffSet, absenceDatesByEmployee]);
   // Troca de dia: qualquer data de troca (work/off) prevalece sobre feriado — o dia
   // é lido pela regra flex (normal quando trabalhado, neutro quando não).
-  const isHolidayDate = (dateStr: string) =>
-    !swapWorkedSet.has(dateStr) && !swapOffSet.has(dateStr)
-    && (holidayDates.has(dateStr) || resolveHolidaysForPayrollRange(holidays, dateStr, dateStr).has(dateStr));
+  const isHolidayDate = useCallback(
+    (dateStr: string) =>
+      !swapWorkedSet.has(dateStr) && !swapOffSet.has(dateStr)
+      && (holidayDates.has(dateStr) || resolveHolidaysForPayrollRange(holidays, dateStr, dateStr).has(dateStr)),
+    [swapWorkedSet, swapOffSet, holidayDates, holidays],
+  );
 
-  const calcSummariesForEmployee = (empName: string) => {
+  const calcSummariesForEmployee = useCallback((empName: string): DaySummary[] => {
     const empRecords = employeeGroups.get(empName) || [];
     const recordMap = new Map<string, string[]>();
     empRecords.forEach(rec => {
@@ -718,11 +826,11 @@ function TimesheetRecordsTab() {
     const emp = employees.find(e =>
       e.name.toLowerCase().trim() === empName.toLowerCase().trim()
     );
-    const admissionDateStr = (emp as any)?.admission_date as string | null | undefined;
-    const terminationDateStr = (emp as any)?.termination_date as string | null | undefined;
+    const admissionDateStr = emp?.admission_date;
+    const terminationDateStr = emp?.termination_date;
     // Escala INDIVIDUAL do funcionário (fallback default) — antes usava sempre
     // a default, ignorando work_schedule_id.
-    const empSchedule = ((emp as any)?.work_schedule_id && schedules.find(s => s.id === (emp as any).work_schedule_id)) || defaultSchedule;
+    const empSchedule = (emp?.work_schedule_id && schedules.find(s => s.id === emp.work_schedule_id)) || defaultSchedule;
 
     // Generate all days in the date range
     if (!batchDateRange) {
@@ -765,13 +873,13 @@ function TimesheetRecordsTab() {
     }
 
     return allDays;
-  };
+  }, [employeeGroups, employees, schedules, defaultSchedule, batchDateRange, isHolidayDate, swapModeFor]);
 
   // Calculate summaries for selected employee
   const summaries = useMemo(() => {
     if (selectedEmployee === '__all__' || !selectedEmployee) return [];
     return calcSummariesForEmployee(selectedEmployee);
-  }, [selectedEmployee, employeeGroups, defaultSchedule, holidays, swapWorkedSet, swapOffSet, batchDateRange, employees]);
+  }, [selectedEmployee, calcSummariesForEmployee]);
 
   // Folha líquida do período de UM funcionário (a MESMA conta da aba Folha): monta os dias
   // da escala (esperado/feriado) + batidas e calcula HE líquida / atraso / falta.
@@ -787,10 +895,10 @@ function TimesheetRecordsTab() {
       salary, from, to,
       schedule: sch, holidaysSet: resolveHolidaysForPayrollRange(holidays, from, to), swapWorkedSet, swapOffSet, punchesByDate,
       // HE em R$/h por funcionário + regime — pra o Espelho/Ponto bater com a Folha (spec req.15).
-      payRegime: (String((emp as any)?.payment_type || 'mensalista').toLowerCase() as 'mensalista' | 'remoto' | 'diarista'),
-      dailyRate: Number((emp as any)?.daily_rate) || 0,
-      heNormalRate: Number((emp as any)?.he_normal_rate) || 0,
-      heSundayHolidayRate: Number((emp as any)?.he_sunday_holiday_rate) || 0,
+      payRegime: emp?.payment_type || 'mensalista',
+      dailyRate: Number(emp?.daily_rate) || 0,
+      heNormalRate: Number(emp?.he_normal_rate) || 0,
+      heSundayHolidayRate: Number(emp?.he_sunday_holiday_rate) || 0,
     });
   };
 
@@ -930,23 +1038,44 @@ function TimesheetRecordsTab() {
       </details>
 
       {preview && (() => {
-        const matchedEmployees = preview.employees.filter(emp =>
-          emp.records.some(record => findEmployeeMatch(employees, emp.name, emp.externalId, {
-            recordDate: record.dateStr || `${preview.startDate.slice(0, 7)}-${String(record.day).padStart(2, '0')}`,
-            allowNameFallback: false,
-          })),
+        const allEmployeesWithPunches = preview.employees.filter(emp =>
+          emp.records.some(record => Array.isArray(record.punches) && record.punches.length > 0),
         );
-        const unmatchedEmps = preview.employees.filter(emp => !matchedEmployees.includes(emp));
-        const matchedCount = matchedEmployees.length;
-        const totalRecords = preview.employees.reduce((s, e) => s + e.records.length, 0);
+        const invalidIdentityRecordCount = allEmployeesWithPunches.reduce(
+          (total, employee) => total + (employee.externalId.trim() ? 0 : employee.records.filter(record => record.punches.length > 0).length),
+          0,
+        );
+        const employeesWithPunches = allEmployeesWithPunches.filter(employee => employee.externalId.trim().length > 0);
+        const unmatchedEmps = employeesWithPunches.map(employee => ({
+          employee,
+          unresolvedRecords: employee.records.filter(record => {
+            if (!Array.isArray(record.punches) || record.punches.length === 0) return false;
+            const recordDate = record.dateStr || resolveTimesheetRecordDate(record.day, preview.startDate, preview.endDate);
+            return !findEmployeeMatch(employees, employee.name, employee.externalId, {
+              recordDate,
+              allowNameFallback: false,
+            });
+          }),
+        })).filter(entry => entry.unresolvedRecords.length > 0);
+        const matchedCount = employeesWithPunches.length - unmatchedEmps.length;
+        const unmatchedRecordCount = unmatchedEmps.reduce(
+          (sum, entry) => sum + entry.unresolvedRecords.length,
+          0,
+        );
+        const totalRecords = preview.employees.reduce(
+          (sum, employee) => sum + employee.records.filter(record => Array.isArray(record.punches) && record.punches.length > 0).length,
+          0,
+        );
+        const importableRecordCount = totalRecords - invalidIdentityRecordCount;
+        const preservedInvalidCount = preview.preSkipped + invalidIdentityRecordCount;
         // Range REAL de batidas (ignora placeholders punches=[]) — pra avisar
         // quando o arquivo do relógio termina antes do esperado. Causa nº1 de
         // "importei mas não entrou": a exportação do relógio não incluiu os dias
         // novos (o parser não trunca — confirmado; ele lê tudo que está no arquivo).
         const punchDates = preview.employees
           .flatMap(e => e.records)
-          .filter((r: any) => Array.isArray(r.punches) && r.punches.length > 0)
-          .map((r: any) => (r.dateStr as string) || '')
+          .filter(record => Array.isArray(record.punches) && record.punches.length > 0)
+          .map(record => record.dateStr || '')
           .filter(Boolean)
           .sort();
         const firstPunch = punchDates[0] || preview.startDate;
@@ -958,6 +1087,12 @@ function TimesheetRecordsTab() {
           (new Date(`${todayStr}T00:00:00`).getTime() - new Date(`${lastPunch}T00:00:00`).getTime()) / 86400000,
         );
         const staleFile = Number.isFinite(gapToToday) && gapToToday >= 3;
+        const coverageRangeInvalid = !/^\d{4}-\d{2}-\d{2}$/.test(preview.startDate)
+          || !/^\d{4}-\d{2}-\d{2}$/.test(preview.endDate)
+          || preview.startDate > preview.endDate
+          || preview.startDate > firstPunch
+          || preview.endDate < lastPunch
+          || (preview.requiresCoverageConfirmation && preview.endDate > todayStr);
         const fmtBR = (d: string) => (d && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d.split('-').reverse().join('/') : '—');
         return (
           <Card className="border-primary/30">
@@ -982,10 +1117,112 @@ function TimesheetRecordsTab() {
                     <span>
                       O dia mais recente do arquivo é <strong>{fmtBR(lastPunch)}</strong> (~{gapToToday} dias atrás).
                       Se você esperava dias mais novos, a exportação do relógio <strong>não os incluiu</strong> — refaça
-                      o download no relógio cobrindo o período correto e reimporte. O sistema só calcula a folha até
-                      o último dia com batida.
+                      o download no relógio cobrindo o período correto e reimporte. Nos formatos sem cabeçalho,
+                      a folha usa o intervalo exportado que você confirmar abaixo — não presume esse intervalo pela última batida.
                     </span>
                   </div>
+                )}
+              </div>
+              {preview.requiresCoverageConfirmation && (
+                <div className="space-y-3 rounded-md border border-primary/30 bg-primary/5 p-3">
+                  <div>
+                    <p className="text-sm font-semibold">Confirme o período coberto pela exportação</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Este formato informa somente os dias que possuem batidas. Declare exatamente o intervalo escolhido no relógio — inclusive domingos e feriados — para que uma lacuna real seja diferenciada de um arquivo incompleto.
+                    </p>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-1">
+                      <Label htmlFor="import-coverage-start">Início exportado</Label>
+                      <Input
+                        id="import-coverage-start"
+                        type="date"
+                        max={todayStr}
+                        value={preview.startDate}
+                        onChange={event => setPreview(current => current ? {
+                          ...current,
+                          startDate: event.target.value,
+                          batchId: createTimesheetImportBatchId(event.target.value, current.endDate),
+                          coverageConfirmed: false,
+                        } : current)}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="import-coverage-end">Fim exportado</Label>
+                      <Input
+                        id="import-coverage-end"
+                        type="date"
+                        max={todayStr}
+                        value={preview.endDate}
+                        onChange={event => setPreview(current => current ? {
+                          ...current,
+                          endDate: event.target.value,
+                          batchId: createTimesheetImportBatchId(current.startDate, event.target.value),
+                          coverageConfirmed: false,
+                        } : current)}
+                      />
+                    </div>
+                  </div>
+                  {coverageRangeInvalid && (
+                    <p role="alert" className="text-xs font-medium text-destructive">
+                      O período precisa conter todas as batidas do arquivo e não pode terminar no futuro.
+                    </p>
+                  )}
+                  <div className="flex flex-wrap justify-end gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        const selectedEnd = filterEndDate > todayStr ? todayStr : filterEndDate;
+                        setPreview(current => current ? {
+                          ...current,
+                          startDate: filterStartDate,
+                          endDate: selectedEnd,
+                          batchId: createTimesheetImportBatchId(filterStartDate, selectedEnd),
+                          coverageConfirmed: false,
+                        } : current);
+                      }}
+                    >
+                      Usar período selecionado na tela
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={coverageRangeInvalid}
+                      onClick={() => setPreview(current => current ? { ...current, coverageConfirmed: true } : current)}
+                    >
+                      {preview.coverageConfirmed ? 'Período confirmado' : 'Confirmar período coberto'}
+                    </Button>
+                  </div>
+                </div>
+              )}
+              <div className="space-y-2 rounded-md border border-border bg-muted/20 p-3">
+                <div>
+                  <p className="text-sm font-semibold">Quem foi incluído nesta exportação?</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Esta declaração define se a ausência de uma pessoa no arquivo pode ser avaliada como falta. Escolha conforme o filtro usado no relógio.
+                  </p>
+                </div>
+                <Select
+                  value={preview.coverageScope || undefined}
+                  onValueChange={value => setPreview(current => current ? {
+                    ...current,
+                    coverageScope: value as TimesheetCoverageScope,
+                  } : current)}
+                >
+                  <SelectTrigger aria-label="Escopo da exportação do ponto">
+                    <SelectValue placeholder="Selecione o escopo da exportação" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all_employees">Todo o quadro de funcionários</SelectItem>
+                    <SelectItem value="listed_employees">Somente funcionários selecionados</SelectItem>
+                  </SelectContent>
+                </Select>
+                {preview.coverageScope === 'listed_employees' && (
+                  <p className="text-xs font-medium text-warning">
+                    Arquivo filtrado: as batidas serão importadas, mas ele não fecha a cobertura global nem cria faltas para quem ficou fora da exportação.
+                  </p>
                 )}
               </div>
               {/* R11 (audit): badges substituem texto inline pra dar peso visual
@@ -1012,6 +1249,13 @@ function TimesheetRecordsTab() {
                   <span className="text-muted-foreground">Registros</span>
                   <span className="font-semibold tabular-nums">{totalRecords.toLocaleString('pt-BR')}</span>
                 </Badge>
+                {preservedInvalidCount > 0 && (
+                  <Badge className="gap-1.5 bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20 font-normal">
+                    <AlertTriangle className="h-3 w-3" />
+                    <span>Inválidos preservados no protocolo</span>
+                    <span className="font-semibold tabular-nums">{preservedInvalidCount.toLocaleString('pt-BR')}</span>
+                  </Badge>
+                )}
               </div>
 
               {unmatchedEmps.length > 0 && (
@@ -1025,16 +1269,16 @@ function TimesheetRecordsTab() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {unmatchedEmps.map(emp => (
-                        <TableRow key={emp.externalId || emp.name}>
+                      {unmatchedEmps.map(({ employee, unresolvedRecords }) => (
+                        <TableRow key={employee.externalId || employee.name}>
                           <TableCell className="text-sm py-1.5">
-                            {emp.name}
-                            {emp.externalId && <span className="text-muted-foreground ml-1 text-xs">(ID: {emp.externalId})</span>}
+                            {employee.name}
+                            {employee.externalId && <span className="text-muted-foreground ml-1 text-xs">(ID: {employee.externalId})</span>}
                           </TableCell>
                           <TableCell className="py-1.5 text-xs text-muted-foreground">
-                            Cadastre a matrícula do relógio no funcionário antes de importar.
+                            Será preservado em quarentena e não entrará na folha.
                           </TableCell>
-                          <TableCell className="text-right font-mono text-sm py-1.5">{emp.records.length}</TableCell>
+                          <TableCell className="text-right font-mono text-sm py-1.5">{unresolvedRecords.length}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -1045,7 +1289,19 @@ function TimesheetRecordsTab() {
               {unmatchedEmps.length === 0 && (
                 <p className="text-sm text-green-600 flex items-center gap-1.5">
                   <CheckCircle2 className="h-4 w-4" />
-                  Todos os funcionários foram vinculados automaticamente!
+                  Todas as matrículas preenchidas têm vínculo válido nas respectivas datas.
+                </p>
+              )}
+
+              {unmatchedEmps.length > 0 && (
+                <p className="text-xs font-medium text-amber-700 dark:text-amber-400">
+                  As linhas válidas serão importadas; {unmatchedRecordCount} linha(s) sem vínculo ficarão em quarentena para correção.
+                </p>
+              )}
+
+              {invalidIdentityRecordCount > 0 && (
+                <p className="text-xs font-medium text-amber-700 dark:text-amber-400">
+                  {invalidIdentityRecordCount} dia(s) com batidas sem matrícula serão preservados no arquivo e contabilizados como inválidos no protocolo. Eles não entram na folha nem na quarentena vinculável.
                 </p>
               )}
 
@@ -1054,9 +1310,22 @@ function TimesheetRecordsTab() {
               </p>
               <div className="flex gap-2 justify-end">
                 <Button size="sm" variant="outline" onClick={() => setPreview(null)}>Cancelar</Button>
-                <Button size="sm" onClick={handleImport} disabled={importRecords.isPending} className="gap-1.5">
+                <Button
+                  size="sm"
+                  onClick={handleImport}
+                  disabled={importRecords.isPending || importableRecordCount === 0 || coverageRangeInvalid
+                    || !preview.coverageScope
+                    || (preview.requiresCoverageConfirmation && !preview.coverageConfirmed)}
+                  className="gap-1.5"
+                >
                   {importRecords.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
-                  Confirmar Importação ({totalRecords} registros)
+                  {importableRecordCount === 0
+                    ? 'Sem matrícula válida para importar'
+                    : unmatchedRecordCount >= importableRecordCount
+                    ? `Arquivar ${unmatchedRecordCount} em quarentena`
+                    : unmatchedRecordCount > 0
+                    ? `Importar ${importableRecordCount - unmatchedRecordCount} válido(s) · ${unmatchedRecordCount} em quarentena`
+                    : `Confirmar Importação (${importableRecordCount} registros)`}
                 </Button>
               </div>
             </CardContent>

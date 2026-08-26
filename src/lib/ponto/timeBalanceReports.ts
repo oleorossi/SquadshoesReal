@@ -68,8 +68,12 @@ export interface EmployeeTimeBalanceReport {
 function effectiveExpectedMinutes(day: SalaryDayLedger): number {
   // Dia abonado ou sem cobertura não reduz a meta semanal. A folha já os marca
   // no ledger; o relatório apenas respeita essa decisão, sem recalcular batidas.
+  // No abono parcial, reduz somente os minutos efetivamente aplicados pelo motor.
   if (day.status === 'neutral' || day.status === 'excused') return 0;
-  return Math.max(0, Number(day.expected_minutes) || 0);
+  return Math.max(
+    0,
+    (Number(day.expected_minutes) || 0) - (Number(day.excused_minutes) || 0),
+  );
 }
 
 function effectiveWorkedMinutes(day: TimeBalanceDay): number {

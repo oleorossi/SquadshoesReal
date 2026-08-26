@@ -22,7 +22,8 @@ import { Paperclip, X, CircleNotch, Warning, CheckCircle } from '@phosphor-icons
 import { formatCurrency } from '@/lib/utils';
 import { formatDateBR } from '@/lib/dateOnly';
 import {
-  useRegisterPayrollPayment, PAYMENT_METHODS, type PaymentMethod,
+  useRegisterPayrollPayment, PAYMENT_METHODS, createPayrollPaymentIdempotencyKey,
+  type PaymentMethod,
 } from '@/hooks/usePayrollPayments';
 import { useAbrirFolhaProducao, type FolhaProducaoAberta } from '@/hooks/useFichaProducaoPagamento';
 
@@ -52,6 +53,7 @@ export function PagarProducaoDialog({
   const register = useRegisterPayrollPayment();
   const fileRef = useRef<HTMLInputElement>(null);
   const touched = useRef(false);
+  const idempotencyKey = useRef(createPayrollPaymentIdempotencyKey());
 
   const [folha, setFolha] = useState<FolhaProducaoAberta | null>(null);
   const [amount, setAmount] = useState(0);
@@ -64,6 +66,7 @@ export function PagarProducaoDialog({
   useEffect(() => {
     if (!open) return;
     touched.current = false;
+    idempotencyKey.current = createPayrollPaymentIdempotencyKey();
     setFolha(null); setAmount(0); setMethod('pix'); setPaidOn(todayISO());
     setReference(''); setNotes(''); setFile(null);
     if (fileRef.current) fileRef.current.value = '';
@@ -92,7 +95,9 @@ export function PagarProducaoDialog({
       reference,
       notes,
       file,
+      idempotencyKey: idempotencyKey.current,
     });
+    idempotencyKey.current = createPayrollPaymentIdempotencyKey();
     onPago?.();
     onOpenChange(false);
   }

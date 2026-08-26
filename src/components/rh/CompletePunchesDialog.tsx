@@ -23,7 +23,7 @@ export interface CompletePunchesDialogProps {
   pending: TimePending | null;
 }
 
-const HH_MM_RE = /^[0-2][0-9]:[0-5][0-9]$/;
+const HH_MM_RE = /^(?:[01][0-9]|2[0-3]):[0-5][0-9]$/;
 
 function toMinutes(hhmm: string): number | null {
   if (!HH_MM_RE.test(hhmm)) return null;
@@ -60,7 +60,7 @@ export function CompletePunchesDialog({ open, onOpenChange, pending }: CompleteP
 
   useEffect(() => {
     if (open && pending) {
-      setPunches([...pending.punches]);
+      setPunches(pending.punches.map(punch => punch.replace(/[*"]/g, '').slice(0, 5)));
       setReason('');
     }
   }, [open, pending]);
@@ -79,12 +79,13 @@ export function CompletePunchesDialog({ open, onOpenChange, pending }: CompleteP
   // e os alertas de dia vazio. O preenchimento por "média observada" foi
   // removido a pedido do RH: completar batidas usa o horário NORMAL da escala.
   const suggestion = pending?.suggestion ?? null;
+  const hasCanonicalEmployee = !!pending?.employee_id && !pending.employee_match_ambiguous;
 
   // Atalho "dia normal": preenche os 4 horários da escala oficial do funcionário
   // (entrada · saída almoço · retorno · saída) de uma vez, em vez de digitar
   // batida por batida. Caso mais comum de pendência (esqueceu de bater).
   const normalDay = suggestion?.pattern.schedule ?? null;
-  const canFillNormalDay = !!normalDay
+  const canFillNormalDay = hasCanonicalEmployee && !!normalDay
     && normalDay.length === 4
     && normalDay.every((p) => HH_MM_RE.test(p));
   const fillNormalDay = () => {
@@ -95,10 +96,10 @@ export function CompletePunchesDialog({ open, onOpenChange, pending }: CompleteP
     }
   };
 
-  const canSubmit = !!pending && diff.valid && reason.trim().length >= 4;
+  const canSubmit = !!pending && hasCanonicalEmployee && diff.valid && reason.trim().length >= 4;
 
   const handleSubmit = async () => {
-    if (!pending || !diff.valid) return;
+    if (!pending || !hasCanonicalEmployee || !diff.valid) return;
     await complete.mutateAsync({
       timeRecordId: pending.id,
       punches: punches.map((p) => p.trim()),
@@ -152,6 +153,24 @@ export function CompletePunchesDialog({ open, onOpenChange, pending }: CompleteP
             </div>
           )}
 
+          {pending && !hasCanonicalEmployee && (
+            <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs space-y-1.5">
+              <div className="flex items-center gap-1.5 font-semibold text-amber-700 dark:text-amber-400">
+                <AlertTriangle className="h-3.5 w-3.5" />
+                Registro sem vínculo canônico
+              </div>
+              <p className="text-[11px] leading-snug text-amber-800 dark:text-amber-300">
+                Corrija a matrícula e a vigência em Pessoas, volte à fila e use “Tentar vincular”.
+                Nenhuma batida pode ser atribuída por nome.
+              </p>
+              <Button asChild variant="outline" size="sm" className="h-7 gap-1 text-xs">
+                <Link to="/rh?tab=funcionarios" onClick={() => onOpenChange(false)}>
+                  <ArrowSquareOut className="h-3 w-3" /> Abrir Pessoas
+                </Link>
+              </Button>
+            </div>
+          )}
+
           {/* ─── Alerta: dia vazio sem cobertura ─── */}
           {pending && pending.punches.length === 0 && suggestion && !suggestion.is_absent_covered && (
             <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs space-y-1.5">
@@ -182,10 +201,10 @@ export function CompletePunchesDialog({ open, onOpenChange, pending }: CompleteP
             <div className="rounded-md border border-emerald-500/40 bg-emerald-500/10 p-3 text-xs">
               <div className="flex items-center gap-1.5 font-semibold text-emerald-700 dark:text-emerald-400">
                 <CheckCircle className="h-3.5 w-3.5" />
-                Dia já coberto por ausência justificada
+                Dia já coberto por ausência remunerada
               </div>
               <p className="text-emerald-800 dark:text-emerald-300 text-[11px] leading-snug mt-1">
-                A isenção já está aplicada no cálculo. Você não precisa completar batidas aqui —
+                O abono remunerado já está aplicado no cálculo. Você não precisa completar batidas aqui —
                 a menos que o funcionário tenha trabalhado mesmo assim.
               </p>
             </div>
@@ -209,7 +228,7 @@ export function CompletePunchesDialog({ open, onOpenChange, pending }: CompleteP
             <div className="flex items-center justify-between">
               <Label className="text-xs">Batidas (entrada/saída pareadas)</Label>
               <div className="flex items-center gap-2">
-                <Button type="button" variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={add}>
+                <Button type="button" variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={add} disabled={!hasCanonicalEmployee}>
                   <Plus className="h-3 w-3" /> Batida
                 </Button>
               </div>
@@ -234,11 +253,13 @@ export function CompletePunchesDialog({ open, onOpenChange, pending }: CompleteP
                         type="time"
                         value={p}
                         onChange={(e) => update(i, e.target.value)}
+                        disabled={!hasCanonicalEmployee}
                         className="h-8 text-xs font-mono"
                       />
                       <Button
                         type="button" variant="ghost" size="icon" className="h-7 w-7"
                         onClick={() => remove(i)} aria-label="Remover batida"
+                        disabled={!hasCanonicalEmployee}
                       >
                         <Trash className="h-3.5 w-3.5" />
                       </Button>

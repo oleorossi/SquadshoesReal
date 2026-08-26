@@ -22,7 +22,7 @@ import { useEmployees } from '@/hooks/useEmployees';
 import { useAbsences } from '@/hooks/useRH';
 import { useHolidays, useSwapSets, useTimesheetCoverage, useWorkSchedules } from '@/hooks/useTimesheet';
 import { fetchTimeRecordsInRange } from '@/lib/ponto/fetchTimeRecords';
-import { expandAbsenceDatesByEmployee, resolveHolidaysForPayrollRange } from '@/lib/ponto/periodDates';
+import { expandAbsenceCreditsByEmployee, resolveHolidaysForPayrollRange } from '@/lib/ponto/periodDates';
 import {
   buildEmployeeTimeBalanceReport,
   buildTimeBalanceReports,
@@ -257,8 +257,8 @@ export default function TimeBalanceReports() {
     () => resolveHolidaysForPayrollRange(holidays, appliedRange.from, appliedRange.to),
     [holidays, appliedRange],
   );
-  const absenceDatesByEmployee = useMemo(
-    () => expandAbsenceDatesByEmployee(absences, appliedRange.from, appliedRange.to),
+  const absenceCredits = useMemo(
+    () => expandAbsenceCreditsByEmployee(absences, appliedRange.from, appliedRange.to),
     [absences, appliedRange],
   );
   const employeeMap = useMemo(() => new Map(employees.map(employee => [employee.id, employee])), [employees]);
@@ -275,11 +275,13 @@ export default function TimeBalanceReports() {
       swapOffSet,
       timeRecords,
       advancesList: [],
-      absenceDatesByEmployee,
+      absenceDatesByEmployee: absenceCredits.fullDayDates,
+      absenceMinutesByEmployee: absenceCredits.partialMinutes,
       producaoRows: [],
       range: appliedRange,
       period,
       maxCovered: coverage?.maxCovered || null,
+      coveredDates: coverage?.coveredDates,
     });
     return calculated.rows.map(row => {
       const employee = employeeMap.get(row.id);
@@ -298,7 +300,7 @@ export default function TimeBalanceReports() {
         overtimeRateMissing: row.result.he_rate_missing,
       };
     });
-  }, [validRange, appliedRange, employees, schedules, defaultSchedule, holidaysSet, swapWorkedSet, swapOffSet, timeRecords, absenceDatesByEmployee, coverage?.maxCovered, employeeMap]);
+  }, [validRange, appliedRange, employees, schedules, defaultSchedule, holidaysSet, swapWorkedSet, swapOffSet, timeRecords, absenceCredits, coverage?.maxCovered, coverage?.coveredDates, employeeMap]);
 
   const reports = useMemo(() => buildTimeBalanceReports(reportInputs), [reportInputs]);
   const managementReports = useMemo(

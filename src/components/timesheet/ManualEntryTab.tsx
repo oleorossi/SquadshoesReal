@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -38,8 +39,27 @@ function addDays(date: Date, n: number): Date {
 }
 
 function toDateStr(d: Date) {
-  return d.toISOString().slice(0, 10);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
+
+function isEmploymentDate(employee: Employee, dateStr: string) {
+  return (!employee.admission_date || dateStr >= employee.admission_date)
+    && (!employee.termination_date || dateStr <= employee.termination_date);
+}
+
+interface ManualTimeRecordCommandResult {
+  error: { message: string } | null;
+}
+
+const manualTimeRecordClient = supabase as unknown as {
+  rpc: (name: 'upsert_manual_time_record', args: {
+    p_employee_id: string;
+    p_record_date: string;
+    p_punches: string[];
+    p_reason: string;
+    p_time_record_id: string | null;
+  }) => Promise<ManualTimeRecordCommandResult>;
+};
 
 function formatDateBR(dateStr: string) {
   return new Date(dateStr + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
@@ -115,6 +135,7 @@ export default function ManualEntryTab() {
   const [weekStart, setWeekStart] = useState<Date>(() => getMonday(new Date()));
   const [cellDialog, setCellDialog] = useState<CellDialogState | null>(null);
   const [newPunch, setNewPunch] = useState('');
+  const [manualReason, setManualReason] = useState('');
   const [saving, setSaving] = useState(false);
 
   const weekDates = useMemo(() => Array.from({ length: 6 }, (_, i) => toDateStr(addDays(weekStart, i))), [weekStart]);
@@ -125,12 +146,12 @@ export default function ManualEntryTab() {
   // salva aparecer na hora, independente do batch de origem.
   const { data: records = [], isLoading } = useTimeRecords(undefined, weekDates[0], weekEnd);
 
-  const defaultSchedule: WorkSchedule = schedules.find(s => s.is_default) || schedules[0] || {
+  const defaultSchedule = useMemo<WorkSchedule>(() => schedules.find(s => s.is_default) || schedules[0] || {
     id: '', name: 'Default', entry_time: '08:00', lunch_start: '12:00', lunch_end: '13:00',
     exit_time: '17:48', saturday_entry: '08:00', saturday_exit: '12:00', weekly_hours: 44,
     overtime_multiplier: 1.5, night_overtime_multiplier: 1.7, holiday_multiplier: 1.5,
     tolerance_minutes: 10, minimum_overtime_minutes: 0, is_default: true, works_sunday: false, works_monday: true, works_tuesday: true, works_wednesday: true, works_thursday: true, works_friday: true, works_saturday: true, created_at: '', updated_at: '',
-  };
+  }, [schedules]);
 
   // A correção sugerida precisa respeitar a escala contratada da pessoa. Usar
   // sempre a escala padrão preencheria incorretamente turnos diferentes.
@@ -166,10 +187,19 @@ export default function ManualEntryTab() {
   const goToCurrentWeek = () => setWeekStart(getMonday(new Date()));
 
   const openCell = useCallback((employee: Employee, dateStr: string) => {
+    if (!isEmploymentDate(employee, dateStr)) {
+      toast.error('Esta data está fora da vigência do vínculo do funcionário.');
+      return;
+    }
+    if (dateStr > toDateStr(new Date())) {
+      toast.error('Não é permitido lançar batidas em data futura.');
+      return;
+    }
     const existing = recordMap.get(`${employee.id}|${dateStr}`) || null;
     const { slots, slotManual, extras } = punchesToSlots(existing ? (existing.punches as string[]) : []);
     setCellDialog({ employeeId: employee.id, employeeName: employee.name, dateStr, existingRecord: existing, slots, slotManual, extras });
     setNewPunch('');
+    setManualReason('');
   }, [recordMap]);
 
   // Editar um slot marca-o como manual (verde) — é uma correção do usuário.
@@ -211,37 +241,31 @@ export default function ManualEntryTab() {
 
   const saveCell = async () => {
     if (!cellDialog) return;
+    if (manualReason.trim().length < 4) {
+      toast.error('Informe uma justificativa com pelo menos 4 caracteres.');
+      return;
+    }
     setSaving(true);
     try {
-      const { employeeId, employeeName, dateStr, existingRecord, slots, slotManual, extras } = cellDialog;
+      const { employeeId, dateStr, existingRecord, slots, slotManual, extras } = cellDialog;
       const punches = slotsToPunches(slots, slotManual, extras);
-      if (existingRecord) {
-        const { error } = await supabase
-          .from('time_records')
-          .update({ punches })
-          .eq('id', existingRecord.id);
-        if (error) throw error;
-      } else {
-        // external_id + depto do cadastro (quando casar por nome) → a folha
-        // casa de forma robusta por matrícula, não só por nome.
-        const reg = employees.find(e => e.id === employeeId);
-        const { error } = await supabase
-          .from('time_records')
-          .insert({
-            employee_name: employeeName,
-            employee_external_id: (reg as any)?.external_id ?? null,
-            department: (reg as any)?.department ?? '',
-            record_date: dateStr,
-            punches,
-            import_batch: `manual_${dateStr}`,
-          });
-        if (error) throw error;
-      }
+      if (!existingRecord && punches.length === 0) throw new Error('Adicione pelo menos uma batida.');
+      const { error } = await manualTimeRecordClient.rpc('upsert_manual_time_record', {
+        p_employee_id: employeeId,
+        p_record_date: dateStr,
+        p_punches: punches,
+        p_reason: manualReason.trim(),
+        p_time_record_id: existingRecord?.id || null,
+      });
+      if (error) throw new Error(error.message);
       toast.success('Registro salvo!');
       queryClient.invalidateQueries({ queryKey: ['time_records'] });
+      queryClient.invalidateQueries({ queryKey: ['v_time_pendings'] });
+      queryClient.invalidateQueries({ queryKey: ['pending-time-records'] });
+      queryClient.invalidateQueries({ queryKey: ['employee-pending-summary'] });
       setCellDialog(null);
-    } catch (err: any) {
-      toast.error(err.message || 'Erro ao salvar');
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao salvar');
     } finally {
       setSaving(false);
     }
@@ -250,13 +274,31 @@ export default function ManualEntryTab() {
   const clearCell = async (employeeId: string, dateStr: string) => {
     const rec = recordMap.get(`${employeeId}|${dateStr}`);
     if (!rec) return;
-    const { error } = await supabase
-      .from('time_records')
-      .update({ punches: [] })
-      .eq('id', rec.id);
-    if (error) { toast.error(error.message); return; }
-    toast.success('Registro limpo');
-    queryClient.invalidateQueries({ queryKey: ['time_records'] });
+    if (manualReason.trim().length < 4) {
+      toast.error('Informe uma justificativa com pelo menos 4 caracteres.');
+      return;
+    }
+    setSaving(true);
+    try {
+      const { error } = await manualTimeRecordClient.rpc('upsert_manual_time_record', {
+        p_employee_id: employeeId,
+        p_record_date: dateStr,
+        p_punches: [],
+        p_reason: manualReason.trim(),
+        p_time_record_id: rec.id,
+      });
+      if (error) throw new Error(error.message);
+      toast.success('Registro limpo');
+      queryClient.invalidateQueries({ queryKey: ['time_records'] });
+      queryClient.invalidateQueries({ queryKey: ['v_time_pendings'] });
+      queryClient.invalidateQueries({ queryKey: ['pending-time-records'] });
+      queryClient.invalidateQueries({ queryKey: ['employee-pending-summary'] });
+      setCellDialog(null);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Erro ao limpar o registro.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const weekLabel = `${formatDateBR(weekDates[0])} – ${formatDateBR(weekDates[5])}`;
@@ -359,18 +401,27 @@ export default function ManualEntryTab() {
                         const isToday = dateStr === toDateStr(new Date());
                         const hasManual = punches.some(isManualPunch);
                         const cleanPunches = punches.map(cleanPunch).sort();
+                        const withinEmployment = isEmploymentDate(employee, dateStr);
+                        const isFuture = dateStr > toDateStr(new Date());
+                        const canEdit = withinEmployment && !isFuture;
 
                         return (
                           <td
                             key={dateStr}
-                            className={`py-1 px-2 text-center cursor-pointer transition-colors align-top
+                            className={`py-1 px-2 text-center transition-colors align-top
                               ${isToday ? 'bg-primary/5' : ''}
                               ${isWeekend && !rec ? 'bg-muted/5 opacity-60' : ''}
-                              hover:bg-primary/10
+                              ${canEdit ? 'cursor-pointer hover:bg-primary/10' : 'cursor-not-allowed bg-muted/20 text-muted-foreground'}
                             `}
-                            onClick={() => openCell(employee, dateStr)}
+                            onClick={() => canEdit && openCell(employee, dateStr)}
+                            aria-disabled={!canEdit}
+                            title={!withinEmployment ? 'Data fora da vigência do vínculo' : isFuture ? 'Data futura' : undefined}
                           >
-                            {cleanPunches.length === 0 ? (
+                            {!withinEmployment ? (
+                              <div className="text-[10px] leading-tight py-1">Fora do vínculo</div>
+                            ) : isFuture ? (
+                              <div className="text-[10px] leading-tight py-1">Data futura</div>
+                            ) : cleanPunches.length === 0 ? (
                               <div className="text-muted-foreground text-xs py-1">—</div>
                             ) : (
                               <div className="space-y-0.5">
@@ -513,19 +564,31 @@ export default function ManualEntryTab() {
                 </div>
               </div>
 
+              <div className="space-y-1.5">
+                <Label htmlFor="manual-time-reason" className="text-xs">Justificativa obrigatória</Label>
+                <Textarea
+                  id="manual-time-reason"
+                  value={manualReason}
+                  onChange={event => setManualReason(event.target.value)}
+                  placeholder="Ex.: esquecimento confirmado com o responsável"
+                  rows={2}
+                />
+                <p className="text-[11px] text-muted-foreground">A justificativa e o antes/depois ficam na trilha de auditoria.</p>
+              </div>
+
               <div className="flex gap-2 justify-between">
                 <Button
                   variant="ghost"
                   size="sm"
                   className="gap-1 text-muted-foreground text-xs"
-                  onClick={() => { if (cellDialog) clearCell(cellDialog.employeeId, cellDialog.dateStr); setCellDialog(null); }}
-                  disabled={!cellDialog.existingRecord}
+                  onClick={() => { if (cellDialog) void clearCell(cellDialog.employeeId, cellDialog.dateStr); }}
+                  disabled={!cellDialog.existingRecord || saving || manualReason.trim().length < 4}
                 >
                   <Trash2 className="h-3.5 w-3.5" /> Limpar dia
                 </Button>
                 <div className="flex gap-2">
                   <Button variant="outline" size="sm" onClick={() => setCellDialog(null)}>Cancelar</Button>
-                  <Button size="sm" onClick={saveCell} disabled={saving} className="gap-1">
+                  <Button size="sm" onClick={saveCell} disabled={saving || manualReason.trim().length < 4} className="gap-1">
                     <Save className="h-3.5 w-3.5" /> {saving ? 'Salvando...' : 'Salvar'}
                   </Button>
                 </div>

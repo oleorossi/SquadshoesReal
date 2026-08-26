@@ -11,11 +11,39 @@ type HolidayRow = {
   is_working_day?: boolean | null;
 };
 
-type AbsenceRow = {
+export type AbsenceRow = {
   employee_id: string;
   start_date: string;
   end_date: string;
+  absence_type?: string | null;
+  /** Ausência remunerada. `false` nunca pode abonar a folha. */
+  paid?: boolean | null;
+  /** Compatibilidade com o cadastro legado de justificativas. */
+  justified?: boolean | null;
+  /** NULL = dia inteiro; valor positivo = quantidade de horas abonadas por dia. */
+  hours_per_day?: number | null;
 };
+
+export interface AbsenceCreditsByEmployee {
+  /** Ausências remuneradas de dia inteiro. */
+  fullDayDates: Map<string, Set<string>>;
+  /** Ausências remuneradas parciais, em minutos por data. */
+  partialMinutes: Map<string, Map<string, number>>;
+}
+
+const UNPAID_ABSENCE_TYPES = new Set(['falta_injustificada', 'suspensao']);
+
+function isPaidExcusedAbsence(absence: AbsenceRow): boolean {
+  const type = String(absence.absence_type || '').trim().toLowerCase();
+  // `paid`/`justified` surgiram depois da tabela original. Valores ausentes
+  // preservam o comportamento dos atestados legados. No cadastro moderno,
+  // `paid` é a fonte financeira e vence o `justified` legado (que pode continuar
+  // false em linhas criadas pela tela nova); nos legados sem `paid`, vale a flag
+  // antiga. Tipos intrinsecamente não remunerados nunca abonam.
+  if (UNPAID_ABSENCE_TYPES.has(type) || absence.paid === false) return false;
+  if (absence.paid === true) return true;
+  return absence.justified !== false;
+}
 
 /** Resolve os feriados efetivos do intervalo, expandindo os recorrentes por ano. */
 export function resolveHolidaysInRange(
@@ -77,23 +105,66 @@ export function resolveHolidaysForPayrollRange(
   );
 }
 
-/** Expande ausências que cruzam o intervalo em datas abonadas por funcionário. */
+/**
+ * Expande apenas ausências REMUNERADAS/JUSTIFICADAS que cruzam o intervalo.
+ *
+ * Dia inteiro e crédito parcial ficam separados para impedir que
+ * `hours_per_day=4`, por exemplo, quite uma jornada inteira de 9h. Ausências
+ * sobrepostas somam os minutos parciais; o motor salarial limita o crédito à
+ * defasagem real do dia, portanto o abono nunca cria hora extra artificial.
+ */
+export function expandAbsenceCreditsByEmployee(
+  absences: AbsenceRow[],
+  from: string,
+  to: string,
+): AbsenceCreditsByEmployee {
+  const fullDayDates = new Map<string, Set<string>>();
+  const partialMinutes = new Map<string, Map<string, number>>();
+  if (!from || !to || from > to) return { fullDayDates, partialMinutes };
+
+  for (const absence of absences || []) {
+    if (!absence.employee_id || !absence.start_date || !absence.end_date) continue;
+    if (!isPaidExcusedAbsence(absence)) continue;
+    const start = absence.start_date > from ? absence.start_date : from;
+    const end = absence.end_date < to ? absence.end_date : to;
+    if (start > end) continue;
+
+    const rawHours = absence.hours_per_day;
+    const isFullDay = rawHours == null;
+    const minutesPerDay = isFullDay ? 0 : Number(rawHours) * 60;
+    if (!isFullDay && (!Number.isFinite(minutesPerDay) || minutesPerDay <= 0)) continue;
+    const rangeDays = getDaysInRange(start, end);
+
+    if (isFullDay) {
+      const dates = fullDayDates.get(absence.employee_id) || new Set<string>();
+      for (const day of rangeDays) dates.add(day.date);
+      fullDayDates.set(absence.employee_id, dates);
+      // Um abono integral sempre vence eventuais linhas parciais sobrepostas.
+      const partial = partialMinutes.get(absence.employee_id);
+      if (partial) for (const day of rangeDays) partial.delete(day.date);
+      continue;
+    }
+
+    const dates = partialMinutes.get(absence.employee_id) || new Map<string, number>();
+    const fullDates = fullDayDates.get(absence.employee_id);
+    for (const day of rangeDays) {
+      if (fullDates?.has(day.date)) continue;
+      dates.set(day.date, (dates.get(day.date) || 0) + minutesPerDay);
+    }
+    if (dates.size > 0) partialMinutes.set(absence.employee_id, dates);
+  }
+  return { fullDayDates, partialMinutes };
+}
+
+/**
+ * Compatibilidade com consumidores que só entendem abono integral. Ausências
+ * não pagas e parciais são deliberadamente excluídas para nunca virarem um dia
+ * inteiro remunerado por aproximação.
+ */
 export function expandAbsenceDatesByEmployee(
   absences: AbsenceRow[],
   from: string,
   to: string,
 ): Map<string, Set<string>> {
-  const byEmployee = new Map<string, Set<string>>();
-  if (!from || !to || from > to) return byEmployee;
-
-  for (const absence of absences || []) {
-    if (!absence.employee_id || !absence.start_date || !absence.end_date) continue;
-    const start = absence.start_date > from ? absence.start_date : from;
-    const end = absence.end_date < to ? absence.end_date : to;
-    if (start > end) continue;
-    const dates = byEmployee.get(absence.employee_id) || new Set<string>();
-    for (const day of getDaysInRange(start, end)) dates.add(day.date);
-    byEmployee.set(absence.employee_id, dates);
-  }
-  return byEmployee;
+  return expandAbsenceCreditsByEmployee(absences, from, to).fullDayDates;
 }

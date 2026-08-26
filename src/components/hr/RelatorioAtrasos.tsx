@@ -8,11 +8,11 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useEmployees } from '@/hooks/useEmployees';
-import { useHolidays, useSwapSets, useWorkSchedules } from '@/hooks/useTimesheet';
+import { useHolidays, useSwapSets, useTimesheetCoverage, useWorkSchedules, type WorkSchedule } from '@/hooks/useTimesheet';
 import { useAbsences } from '@/hooks/useRH';
 import { computePeriodFolha, expectedDayMinutes } from '@/lib/salaryPayroll';
 import { fetchTimeRecordsInRange } from '@/lib/ponto/fetchTimeRecords';
-import { expandAbsenceDatesByEmployee, resolveHolidaysForPayrollRange } from '@/lib/ponto/periodDates';
+import { expandAbsenceCreditsByEmployee, resolveHolidaysForPayrollRange } from '@/lib/ponto/periodDates';
 import { Panel } from '@/components/ui/panel';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -21,6 +21,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { CircleNotch as Loader2, Clock, Timer, Users, CheckCircle, CalendarBlank, CaretRight, FilePdf } from '@phosphor-icons/react';
 import { printEmployeeAtraso, printAtrasoSummary } from '@/lib/atrasoReportPrint';
 import { employeeOverlapsEmploymentRange } from '@/lib/employeeEmployment';
+import { groupPayrollPunchesByEmployee } from '@/lib/payrollComparativo';
 
 const pad = (n: number) => String(n).padStart(2, '0');
 const todayISO = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
@@ -59,7 +60,7 @@ interface AtrasoRow {
   paidHeMin: number;
   /** Batidas por data (exatamente do relógio) — alimenta o calendário. */
   punchesByDate: Map<string, string[]>;
-  schedule: any;
+  schedule: WorkSchedule | null;
   /** Desconto já calculado pela folha para os atrasos do período. */
   atrasoDiscount: number;
 }
@@ -201,7 +202,7 @@ export default function RelatorioAtrasos() {
   const { data: employees = [] } = useEmployees();
   const { data: schedules = [] } = useWorkSchedules();
   const { data: holidaysList = [] } = useHolidays();
-  const defaultSchedule = useMemo(() => (schedules as any[]).find(s => s.is_default) || (schedules as any[])[0] || null, [schedules]);
+  const defaultSchedule = useMemo(() => schedules.find(s => s.is_default) || schedules[0] || null, [schedules]);
   const { swapWorkedSet, swapOffSet } = useSwapSets();
   // Chave de conteúdo (datas ordenadas), não .size — trocar uma data por outra de
   // mesma contagem precisa invalidar o cache do relatório.
@@ -216,67 +217,49 @@ export default function RelatorioAtrasos() {
   const [selected, setSelected] = useState<AtrasoRow | null>(null);
   const { from, to } = useMemo(() => periodRange(mode, cFrom, cTo), [mode, cFrom, cTo]);
   const holidaysSet = useMemo(
-    () => resolveHolidaysForPayrollRange(holidaysList as any[], from, to),
+    () => resolveHolidaysForPayrollRange(holidaysList, from, to),
     [holidaysList, from, to],
   );
   const { data: absences = [], isLoading: absencesLoading } = useAbsences({ from, to });
-  const absenceDatesByEmployee = useMemo(
-    () => expandAbsenceDatesByEmployee(absences, from, to),
+  const absenceCredits = useMemo(
+    () => expandAbsenceCreditsByEmployee(absences, from, to),
     [absences, from, to],
   );
   const holidayKey = useMemo(() => [...holidaysSet].sort().join(','), [holidaysSet]);
   const absenceKey = useMemo(
-    () => absences.map(a => `${a.employee_id}:${a.start_date}:${a.end_date}`).sort().join(','),
+    () => absences.map(a => `${a.employee_id}:${a.start_date}:${a.end_date}:${a.absence_type}:${a.paid}:${a.justified}:${a.hours_per_day ?? 'integral'}`).sort().join(','),
     [absences],
+  );
+  const { data: coverage, isLoading: coverageLoading } = useTimesheetCoverage(from, to);
+  const coverageKey = useMemo(
+    () => [...(coverage?.coveredDates || new Set<string>())].sort().join(','),
+    [coverage?.coveredDates],
   );
 
   const { data: rows = [], isLoading, isFetching } = useQuery({
-    queryKey: ['relatorio-atrasos', from, to, (employees as any[]).length, (schedules as any[]).length, holidayKey, absenceKey, swapKey],
-    enabled: !!from && !!to && from <= to && (employees as any[]).length > 0 && !absencesLoading,
+    queryKey: ['relatorio-atrasos', from, to, employees.length, schedules.length, holidayKey, absenceKey, swapKey, coverageKey],
+    enabled: !!from && !!to && from <= to && employees.length > 0 && !absencesLoading && !coverageLoading,
     staleTime: 60_000,
     queryFn: async (): Promise<AtrasoRow[]> => {
       // Batidas do período via fonte ÚNICA paginada (mesma da folha e do
       // comparativo/calendário) — motores do RH sincronizados.
       const recs = await fetchTimeRecordsInRange(from, to);
 
-      // Mapas de batida por matrícula/nome (mesma lógica da folha).
-      const byExternalId = new Map<string, Map<string, string[]>>();
-      const byExtIdName = new Map<string, Map<string, string[]>>();
-      const byName = new Map<string, Map<string, string[]>>();
-      const extIdNames = new Map<string, Set<string>>();
-      for (const r of recs) {
-        const punches: string[] = Array.isArray(r.punches) ? r.punches : [];
-        const nameKey = (r.employee_name || '').toLowerCase().trim();
-        if (r.employee_external_id) {
-          const k = String(r.employee_external_id);
-          if (!byExternalId.has(k)) byExternalId.set(k, new Map());
-          byExternalId.get(k)!.set(r.record_date, punches);
-          if (!extIdNames.has(k)) extIdNames.set(k, new Set());
-          if (nameKey) extIdNames.get(k)!.add(nameKey);
-          const kn = `${k}|${nameKey}`;
-          if (!byExtIdName.has(kn)) byExtIdName.set(kn, new Map());
-          byExtIdName.get(kn)!.set(r.record_date, punches);
-        }
-        if (nameKey) {
-          if (!byName.has(nameKey)) byName.set(nameKey, new Map());
-          byName.get(nameKey)!.set(r.record_date, punches);
-        }
+      const identity = groupPayrollPunchesByEmployee(employees, recs);
+      if (identity.conflicts.length > 0) {
+        console.warn('[RelatorioAtrasos] Registros duplicados conflitantes foram marcados como pendência:', identity.conflicts);
       }
 
       const out: AtrasoRow[] = [];
-      for (const emp of (employees as any[]).filter(e => employeeOverlapsEmploymentRange(e, from, to))) {
-        const extKey = emp.external_id ? String(emp.external_id) : '';
-        const nameKey = (emp.name || '').toLowerCase().trim();
-        const extShared = !!extKey && (extIdNames.get(extKey)?.size || 0) > 1;
-        const empPunches = (extKey ? byExtIdName.get(`${extKey}|${nameKey}`) : null)
-          || (!extShared && extKey ? byExternalId.get(extKey) : null)
-          || byName.get(nameKey)
-          || new Map<string, string[]>();
-        const sch = (emp.work_schedule_id && (schedules as any[]).find(s => s.id === emp.work_schedule_id)) || defaultSchedule;
+      for (const emp of employees.filter(e => employeeOverlapsEmploymentRange(e, from, to))) {
+        const empPunches = identity.byEmployee.get(emp.id) || new Map<string, string[]>();
+        const sch = (emp.work_schedule_id && schedules.find(s => s.id === emp.work_schedule_id)) || defaultSchedule;
         const res = computePeriodFolha({
           salary: Number(emp.salary) || 0, from, to, schedule: sch, holidaysSet, swapWorkedSet, swapOffSet,
           punchesByDate: empPunches,
-          absenceDates: absenceDatesByEmployee.get(emp.id),
+          absenceDates: absenceCredits.fullDayDates.get(emp.id),
+          absenceMinutes: absenceCredits.partialMinutes.get(emp.id),
+          coveredDates: coverage?.coveredDates,
           activeFrom: emp.admission_date || null, activeTo: emp.termination_date || null,
           payRegime: (String(emp.payment_type || 'mensalista').toLowerCase() as 'mensalista' | 'remoto' | 'diarista'),
           dailyRate: Number(emp.daily_rate) || 0,
@@ -351,7 +334,7 @@ export default function RelatorioAtrasos() {
           </Button>
         ) : undefined}
       >
-        {isLoading ? (
+        {isLoading || coverageLoading ? (
           <div className="flex items-center justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
         ) : rows.length === 0 ? (
           <EmptyState icon={CheckCircle} title="Nenhum atraso no período" description="Todos os funcionários cumpriram a jornada esperada nos dias com ponto registrado." />

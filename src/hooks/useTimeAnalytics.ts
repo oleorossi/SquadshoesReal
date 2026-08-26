@@ -27,7 +27,7 @@ interface TimeAnalyticsResult {
 export function useTimeAnalytics(params: TimeAnalyticsParams) {
   const { data: schedules = [] } = useWorkSchedules();
   const { data: holidays = [] } = useHolidays();
-  const { swapWorkedSet, swapOffSet, swapModeFor } = useSwapSets();
+  const { swapModeFor } = useSwapSets();
   const { data: records = [], isLoading: recordsLoading } = useTimeRecords(
     undefined,
     params.date_from,
@@ -47,12 +47,12 @@ export function useTimeAnalytics(params: TimeAnalyticsParams) {
     },
   });
 
-  const defaultSchedule: WorkSchedule = schedules.find(s => s.is_default) || schedules[0] || {
+  const defaultSchedule = useMemo<WorkSchedule>(() => schedules.find(s => s.is_default) || schedules[0] || {
     id: '', name: 'Default', entry_time: '08:00', lunch_start: '12:00', lunch_end: '13:00',
     exit_time: '17:48', saturday_entry: '08:00', saturday_exit: '12:00', weekly_hours: 44,
     overtime_multiplier: 1.5, night_overtime_multiplier: 1.7, holiday_multiplier: 1.5,
     tolerance_minutes: 10, minimum_overtime_minutes: 0, is_default: true, works_sunday: false, works_monday: true, works_tuesday: true, works_wednesday: true, works_thursday: true, works_friday: true, works_saturday: true, created_at: '', updated_at: '',
-  };
+  }, [schedules]);
 
   const analytics = useMemo<TimeAnalyticsResult>(() => {
     if (records.length === 0) {
@@ -70,6 +70,7 @@ export function useTimeAnalytics(params: TimeAnalyticsParams) {
     const employeeRecordGroups = new Map<string, typeof records>();
     records.forEach(record => {
       const emp = findEmployeeMatch(employees, record.employee_name, record.employee_external_id, {
+        employeeId: record.employee_id,
         linkedOnly: true, recordDate: record.record_date, allowNameFallback: false,
       });
       if (!emp) return;
@@ -90,9 +91,10 @@ export function useTimeAnalytics(params: TimeAnalyticsParams) {
       // Escala INDIVIDUAL do funcionário (fallback default) — KPIs do hub
       // divergiam das demais telas quando a escala não era a padrão.
       const empRec = findEmployeeMatch(employees, empRecords[0].employee_name, empRecords[0].employee_external_id, {
+        employeeId: empRecords[0].employee_id,
         linkedOnly: true, recordDate: empRecords[0].record_date, allowNameFallback: false,
       });
-      const empSchedule = ((empRec as any)?.work_schedule_id && schedules.find(s => s.id === (empRec as any).work_schedule_id)) || defaultSchedule;
+      const empSchedule = (empRec?.work_schedule_id && schedules.find(s => s.id === empRec.work_schedule_id)) || defaultSchedule;
       const punchesByDate = new Map<string, string[]>();
 
       empRecords.forEach(rec => {
@@ -144,7 +146,7 @@ export function useTimeAnalytics(params: TimeAnalyticsParams) {
       total_exceptions: exceptions.filter(e => e.status === 'pending').length,
       data_quality_score: Math.round(dataQualityScore * 10) / 10,
     };
-  }, [records, employees, holidays, swapWorkedSet, swapOffSet, swapModeFor, defaultSchedule, schedules, exceptions]);
+  }, [records, employees, holidays, swapModeFor, defaultSchedule, schedules, exceptions, params.date_from, params.date_to]);
 
   return { data: analytics, isLoading: recordsLoading };
 }

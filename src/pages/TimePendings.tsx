@@ -24,6 +24,7 @@ import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { cn } from '@/lib/utils';
 import {
   useTimePendings, useBulkApplySuggestions, isAutoResolvable,
+  useResolveTimeRecordIdentity,
   type TimePending, type Urgency,
 } from '@/hooks/useTimePendings';
 import { CompletePunchesDialog } from '@/components/rh/CompletePunchesDialog';
@@ -87,6 +88,7 @@ export default function TimePendingsPage() {
   const { data: pendings = [], isLoading } = useTimePendings({ onlyProblems: true });
   const { data: cutoff } = useBankHoursCutoff();
   const bulkApply = useBulkApplySuggestions();
+  const resolveIdentity = useResolveTimeRecordIdentity();
 
   // Filtros
   const [employeeFilter, setEmployeeFilter] = useState<string>('all');
@@ -349,6 +351,7 @@ export default function TimePendingsPage() {
                 {filtered.map((p) => {
                   const u = URGENCY_STYLE[p.urgency];
                   const resolvable = isAutoResolvable(p);
+                  const hasCanonicalEmployee = !!p.employee_id && !p.employee_match_ambiguous;
                   const s = p.suggestion;
                   return (
                     <TableRow
@@ -366,20 +369,19 @@ export default function TimePendingsPage() {
                           aria-label={`Selecionar ${p.employee_name} em ${p.record_date}`}
                         />
                       </TableCell>
-                      <TableCell className="text-xs font-medium cursor-pointer" onClick={() => setEditing(p)}>
+                      <TableCell className={cn('text-xs font-medium', hasCanonicalEmployee && 'cursor-pointer')} onClick={() => hasCanonicalEmployee && setEditing(p)}>
                         <div className="flex items-center gap-1">
                           <span>{p.employee_name}</span>
-                          {p.employee_match_ambiguous && (
+                          {!hasCanonicalEmployee && (
                             <Badge
                               variant="outline"
                               className="h-4 px-1 text-[9px] font-normal bg-amber-500/10 text-amber-700 border-amber-500/40 dark:text-amber-400"
                               title={
-                                'Mais de um cadastro casa com este ponto (mesmo nome ou mesmo crachá). ' +
-                                'O funcionário abaixo foi escolhido pelo crachá; confira em RH → Funcionários ' +
-                                'e unifique as fichas duplicadas.'
+                                'Nenhuma ficha vigente foi escolhida para esta linha. Corrija a matrícula/vigência ' +
+                                'em Pessoas e tente vincular novamente.'
                               }
                             >
-                              cadastro duplicado
+                              sem vínculo
                             </Badge>
                           )}
                         </div>
@@ -387,12 +389,12 @@ export default function TimePendingsPage() {
                           <div className="text-[10px] text-muted-foreground font-normal">{p.department}</div>
                         )}
                       </TableCell>
-                      <TableCell className="text-xs whitespace-nowrap cursor-pointer" onClick={() => setEditing(p)}>
+                      <TableCell className={cn('text-xs whitespace-nowrap', hasCanonicalEmployee && 'cursor-pointer')} onClick={() => hasCanonicalEmployee && setEditing(p)}>
                         <Calendar className="inline h-3 w-3 mr-1 text-muted-foreground" />
                         {formatDateBR(p.record_date)}
                         <span className="text-muted-foreground"> · {dowName(p.dow)}</span>
                       </TableCell>
-                      <TableCell className="text-xs font-mono tabular-nums cursor-pointer" onClick={() => setEditing(p)}>
+                      <TableCell className={cn('text-xs font-mono tabular-nums', hasCanonicalEmployee && 'cursor-pointer')} onClick={() => hasCanonicalEmployee && setEditing(p)}>
                         {p.punches.length === 0 ? (
                           <span className="text-muted-foreground italic">vazio</span>
                         ) : (
@@ -417,7 +419,7 @@ export default function TimePendingsPage() {
                           );
                         })()}
                       </TableCell>
-                      <TableCell className="text-xs font-mono tabular-nums cursor-pointer" onClick={() => setEditing(p)}>
+                      <TableCell className={cn('text-xs font-mono tabular-nums', hasCanonicalEmployee && 'cursor-pointer')} onClick={() => hasCanonicalEmployee && setEditing(p)}>
                         {s && s.source !== 'none' && s.suggested.length === 4 ? (
                           <div className="flex flex-col gap-0.5">
                             <span className="text-foreground">{s.suggested.join(' · ')}</span>
@@ -427,7 +429,7 @@ export default function TimePendingsPage() {
                               </Badge>
                               {s.is_absent_covered && (
                                 <Badge variant="outline" className="text-[9px] uppercase h-4 px-1 bg-emerald-500/10 text-emerald-700 border-emerald-500/30 dark:text-emerald-400">
-                                  ausência
+                                  ausência remunerada
                                 </Badge>
                               )}
                             </div>
@@ -436,12 +438,12 @@ export default function TimePendingsPage() {
                           <span className="text-muted-foreground italic text-[10px]">—</span>
                         )}
                       </TableCell>
-                      <TableCell className="cursor-pointer" onClick={() => setEditing(p)}>
+                      <TableCell className={cn(hasCanonicalEmployee && 'cursor-pointer')} onClick={() => hasCanonicalEmployee && setEditing(p)}>
                         <Badge variant="outline" className="text-[10px] uppercase">
                           {STATUS_LABEL[p.day_summary?.status] || p.day_summary?.status}
                         </Badge>
                       </TableCell>
-                      <TableCell className="cursor-pointer" onClick={() => setEditing(p)}>
+                      <TableCell className={cn(hasCanonicalEmployee && 'cursor-pointer')} onClick={() => hasCanonicalEmployee && setEditing(p)}>
                         <Badge variant="outline" className={cn('text-xs', u.cls)}>
                           {u.label}
                         </Badge>
@@ -451,10 +453,15 @@ export default function TimePendingsPage() {
                           variant={resolvable ? 'default' : 'outline'}
                           size="sm"
                           className="h-7 text-xs gap-1"
-                          onClick={(e) => { e.stopPropagation(); setEditing(p); }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (hasCanonicalEmployee) setEditing(p);
+                            else resolveIdentity.mutate(p.id);
+                          }}
+                          disabled={!hasCanonicalEmployee && resolveIdentity.isPending}
                         >
                           {resolvable ? <Lightning className="h-3 w-3" /> : <Pencil className="h-3 w-3" />}
-                          {resolvable ? 'Aplicar' : 'Completar'}
+                          {!hasCanonicalEmployee ? 'Tentar vincular' : resolvable ? 'Aplicar' : 'Completar'}
                         </Button>
                       </TableCell>
                     </TableRow>

@@ -50,8 +50,9 @@ export function namesMatch(left: string, right: string): boolean {
 
 /**
  * Find the best employee match from a list, using:
- * 1. external_id match (clock ID) — coligação explícita feita pelo gestor
- * 2. Fuzzy name match (fallback)
+ * 1. employee_id persistido pelo servidor
+ * 2. external_id match (clock ID) — coligação explícita feita pelo gestor
+ * 3. nome inequívoco e vigente (fallback exclusivo de lançamento legado/manual)
  *
  * Opts:
  *   - linkedOnly (default false): se true, o fallback por nome SÓ casa com
@@ -64,9 +65,29 @@ export function findEmployeeMatch(
   employees: Employee[],
   employeeName: string,
   externalId?: string | null,
-  opts: { linkedOnly?: boolean; recordDate?: string; allowNameFallback?: boolean } = {},
+  opts: {
+    linkedOnly?: boolean;
+    recordDate?: string;
+    allowNameFallback?: boolean;
+    employeeId?: string | null;
+  } = {},
 ): Employee | undefined {
-  // 1. ID do relógio é a única identidade válida para ponto/folha. O equipamento
+  const isEligible = (employee: Employee) => {
+    if (opts.recordDate) {
+      if (employee.admission_date && opts.recordDate < employee.admission_date) return false;
+      if (employee.termination_date && opts.recordDate > employee.termination_date) return false;
+    }
+    return !opts.linkedOnly || employee.active;
+  };
+
+  // 1. A FK persistida pelo servidor é a identidade mais forte. Se ela veio na
+  // linha, nunca tente "consertá-la" silenciosamente por matrícula ou nome.
+  if (opts.employeeId) {
+    const match = employees.find(employee => employee.id === opts.employeeId);
+    return match && isEligible(match) ? match : undefined;
+  }
+
+  // 2. ID do relógio é a única identidade válida para ponto/folha. O equipamento
   // recicla crachás, portanto a data do registro também participa da resolução.
   // Nunca caia para nome quando o arquivo trouxe um ID: um nome curto do relógio
   // não é uma chave financeira segura.
@@ -75,21 +96,21 @@ export function findEmployeeMatch(
       if (!e.external_id) return false;
       const ids = e.external_id.split(',').map(id => id.trim());
       if (!ids.includes(externalId.trim())) return false;
-      if (opts.recordDate) {
-        if (e.admission_date && opts.recordDate < e.admission_date) return false;
-        if (e.termination_date && opts.recordDate > e.termination_date) return false;
-      }
-      return !opts.linkedOnly || e.active;
+      return isEligible(e);
     });
     // Duas fichas vigentes para o mesmo ID é uma inconsistência: não escolha uma
     // arbitrariamente e não deixe que ela componha relatório ou folha.
     return matches.length === 1 ? matches[0] : undefined;
   }
 
-  // 2. Nome só é aceitável em lançamento manual sem identificação do relógio.
+  // 3. Nome só é aceitável em lançamento manual sem identificação do relógio.
+  // Mesmo nesse legado, a associação precisa ser inequívoca e vigente na data:
+  // escolher o primeiro nome "parecido" pode pagar/descontar a pessoa errada.
   if (opts.allowNameFallback === false) return undefined;
-  const candidates = opts.linkedOnly ? employees.filter(e => e.active) : employees;
-  return candidates.find((e) => namesMatch(employeeName, e.name));
+  const matches = employees.filter(employee =>
+    isEligible(employee) && namesMatch(employeeName, employee.name),
+  );
+  return matches.length === 1 ? matches[0] : undefined;
 }
 
 /**

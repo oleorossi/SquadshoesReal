@@ -9,11 +9,11 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useEmployees } from '@/hooks/useEmployees';
-import { useHolidays, useSwapSets, useTimesheetCoverage, useWorkSchedules } from '@/hooks/useTimesheet';
+import { useHolidays, useSwapSets, useTimesheetCoverage, useWorkSchedules, type WorkSchedule } from '@/hooks/useTimesheet';
 import { useAbsences } from '@/hooks/useRH';
 import { computePeriodFolha, expectedDayMinutes } from '@/lib/salaryPayroll';
 import { fetchTimeRecordsInRange } from '@/lib/ponto/fetchTimeRecords';
-import { expandAbsenceDatesByEmployee, resolveHolidaysForPayrollRange } from '@/lib/ponto/periodDates';
+import { expandAbsenceCreditsByEmployee, resolveHolidaysForPayrollRange } from '@/lib/ponto/periodDates';
 import { Panel } from '@/components/ui/panel';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -22,6 +22,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { CircleNotch as Loader2, UserMinus, CalendarX, Users, CheckCircle, CalendarBlank, CaretRight, Warning as AlertTriangle, FilePdf } from '@phosphor-icons/react';
 import { printRhReport, type RhCell } from '@/lib/printRhReport';
 import { employeeOverlapsEmploymentRange } from '@/lib/employeeEmployment';
+import { groupPayrollPunchesByEmployee } from '@/lib/payrollComparativo';
 
 const pad = (n: number) => String(n).padStart(2, '0');
 const todayISO = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
@@ -55,7 +56,7 @@ interface FaltaRow {
   days: string[];
   /** Batidas por data (do relógio) — alimenta o calendário (dias trabalhados). */
   punchesByDate: Map<string, string[]>;
-  schedule: any;
+  schedule: WorkSchedule | null;
   /** Desconto já calculado pela folha para as faltas do período. */
   faltaDiscount: number;
 }
@@ -185,7 +186,7 @@ export default function RelatorioFaltas() {
   const { data: employees = [] } = useEmployees();
   const { data: schedules = [] } = useWorkSchedules();
   const { data: holidaysList = [] } = useHolidays();
-  const defaultSchedule = useMemo(() => (schedules as any[]).find(s => s.is_default) || (schedules as any[])[0] || null, [schedules]);
+  const defaultSchedule = useMemo(() => schedules.find(s => s.is_default) || schedules[0] || null, [schedules]);
   const { swapWorkedSet, swapOffSet } = useSwapSets();
   // Chave de conteúdo (datas ordenadas), não .size — trocar uma data por outra de
   // mesma contagem precisa invalidar o cache do relatório.
@@ -200,86 +201,58 @@ export default function RelatorioFaltas() {
   const [selected, setSelected] = useState<FaltaRow | null>(null);
   const { from, to } = useMemo(() => periodRange(mode, cFrom, cTo), [mode, cFrom, cTo]);
   const holidaysSet = useMemo(
-    () => resolveHolidaysForPayrollRange(holidaysList as any[], from, to),
+    () => resolveHolidaysForPayrollRange(holidaysList, from, to),
     [holidaysList, from, to],
   );
   const { data: absences = [], isLoading: absencesLoading } = useAbsences({ from, to });
-  const absenceDatesByEmployee = useMemo(
-    () => expandAbsenceDatesByEmployee(absences, from, to),
+  const absenceCredits = useMemo(
+    () => expandAbsenceCreditsByEmployee(absences, from, to),
     [absences, from, to],
   );
   const holidayKey = useMemo(() => [...holidaysSet].sort().join(','), [holidaysSet]);
   const absenceKey = useMemo(
-    () => absences.map(a => `${a.employee_id}:${a.start_date}:${a.end_date}`).sort().join(','),
+    () => absences.map(a => `${a.employee_id}:${a.start_date}:${a.end_date}:${a.absence_type}:${a.paid}:${a.justified}:${a.hours_per_day ?? 'integral'}`).sort().join(','),
     [absences],
   );
 
   // Cobertura do relógio: até que dia o ponto foi de fato importado. FALTA só conta
   // em dia COBERTO (relógio lido). Dias após a última importação NÃO viram falta —
   // senão puxar um relatório além do arquivo importado marcaria falta de graça.
-  const { data: coverage } = useTimesheetCoverage(from, to);
+  const { data: coverage, isLoading: coverageLoading } = useTimesheetCoverage(from, to);
   const partial = !!(coverage?.maxCovered && coverage.maxCovered < to);
+  const coverageKey = useMemo(
+    () => [...(coverage?.coveredDates || new Set<string>())].sort().join(','),
+    [coverage?.coveredDates],
+  );
 
   const { data: rows = [], isLoading, isFetching } = useQuery({
-    queryKey: ['relatorio-faltas', from, to, (employees as any[]).length, (schedules as any[]).length, holidayKey, absenceKey, swapKey, coverage?.maxCovered ?? null, coverage?.count ?? 0],
-    enabled: !!from && !!to && from <= to && (employees as any[]).length > 0 && !absencesLoading,
+    queryKey: ['relatorio-faltas', from, to, employees.length, schedules.length, holidayKey, absenceKey, swapKey, coverageKey],
+    enabled: !!from && !!to && from <= to && employees.length > 0 && !absencesLoading && !coverageLoading,
     staleTime: 60_000,
     queryFn: async (): Promise<FaltaRow[]> => {
       // Batidas do período via fonte ÚNICA paginada (mesma da folha e do calendário).
       const recs = await fetchTimeRecordsInRange(from, to);
 
-      // Dias COBERTOS = datas em que o relógio foi lido (há batida real de ALGUÉM).
-      // Uma falta só vale em dia coberto: se o arquivo do relógio vai só até o dia
-      // 18 e o relatório é puxado até o 20, os dias 19–20 NÃO são falta (não foram
-      // importados) — senão marcaria falta como se o funcionário não tivesse ido.
-      const coveredDates = new Set<string>();
-      for (const r of recs) {
-        if (Array.isArray(r.punches) && r.punches.length > 0) coveredDates.add(r.record_date);
-      }
-
-      const byExternalId = new Map<string, Map<string, string[]>>();
-      const byExtIdName = new Map<string, Map<string, string[]>>();
-      const byName = new Map<string, Map<string, string[]>>();
-      const extIdNames = new Map<string, Set<string>>();
-      for (const r of recs) {
-        const punches: string[] = Array.isArray(r.punches) ? r.punches : [];
-        const nameKey = (r.employee_name || '').toLowerCase().trim();
-        if (r.employee_external_id) {
-          const k = String(r.employee_external_id);
-          if (!byExternalId.has(k)) byExternalId.set(k, new Map());
-          byExternalId.get(k)!.set(r.record_date, punches);
-          if (!extIdNames.has(k)) extIdNames.set(k, new Set());
-          if (nameKey) extIdNames.get(k)!.add(nameKey);
-          const kn = `${k}|${nameKey}`;
-          if (!byExtIdName.has(kn)) byExtIdName.set(kn, new Map());
-          byExtIdName.get(kn)!.set(r.record_date, punches);
-        }
-        if (nameKey) {
-          if (!byName.has(nameKey)) byName.set(nameKey, new Map());
-          byName.get(nameKey)!.set(r.record_date, punches);
-        }
+      const identity = groupPayrollPunchesByEmployee(employees, recs);
+      if (identity.conflicts.length > 0) {
+        console.warn('[RelatorioFaltas] Registros duplicados conflitantes foram marcados como pendência:', identity.conflicts);
       }
 
       const out: FaltaRow[] = [];
-      for (const emp of (employees as any[]).filter(e => employeeOverlapsEmploymentRange(e, from, to))) {
-        const extKey = emp.external_id ? String(emp.external_id) : '';
-        const nameKey = (emp.name || '').toLowerCase().trim();
-        const extShared = !!extKey && (extIdNames.get(extKey)?.size || 0) > 1;
-        const empPunches = (extKey ? byExtIdName.get(`${extKey}|${nameKey}`) : null)
-          || (!extShared && extKey ? byExternalId.get(extKey) : null)
-          || byName.get(nameKey)
-          || new Map<string, string[]>();
-        const sch = (emp.work_schedule_id && (schedules as any[]).find(s => s.id === emp.work_schedule_id)) || defaultSchedule;
+      for (const emp of employees.filter(e => employeeOverlapsEmploymentRange(e, from, to))) {
+        const empPunches = identity.byEmployee.get(emp.id) || new Map<string, string[]>();
+        const sch = (emp.work_schedule_id && schedules.find(s => s.id === emp.work_schedule_id)) || defaultSchedule;
         const res = computePeriodFolha({
           salary: Number(emp.salary) || 0, from, to, schedule: sch, holidaysSet, swapWorkedSet, swapOffSet,
           punchesByDate: empPunches,
-          absenceDates: absenceDatesByEmployee.get(emp.id),
+          absenceDates: absenceCredits.fullDayDates.get(emp.id),
+          absenceMinutes: absenceCredits.partialMinutes.get(emp.id),
           // Recorta por vínculo: quem foi admitido depois (ou demitido antes) não
           // pode gerar falta nos dias fora do contrato.
           activeFrom: emp.admission_date || null, activeTo: emp.termination_date || null,
           // Cobertura por-dia: falta só em dia lido pelo relógio (o motor já exclui
           // dias sem importação — lacuna ou além do arquivo).
-          coveredDates,
+          coveredDates: coverage?.coveredDates,
           payRegime: (String(emp.payment_type || 'mensalista').toLowerCase() as 'mensalista' | 'remoto' | 'diarista'),
           dailyRate: Number(emp.daily_rate) || 0,
         });
@@ -399,7 +372,7 @@ export default function RelatorioFaltas() {
         title="Resumo por funcionário"
         subtitle="Clique num funcionário para ver o calendário com os dias de falta"
       >
-        {isLoading ? (
+        {isLoading || coverageLoading ? (
           <div className="flex items-center justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
         ) : rows.length === 0 ? (
           <EmptyState icon={CheckCircle} title="Nenhuma falta no período" description="Todos os funcionários bateram ponto nos dias úteis cobertos pelo relógio." />

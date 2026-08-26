@@ -18,6 +18,9 @@ export interface PayrollSnapshotEmployee {
 export interface PayrollCalculationSnapshot {
   schema_version: 1;
   rule_version: string;
+  /** Revisão monotônica dos insumos do RH lidos neste cálculo. Ausente apenas
+   *  em folhas históricas anteriores ao gate de frescor. */
+  input_epoch?: number;
   calculated_at: string;
   period: { from: string; to: string };
   employee: PayrollSnapshotEmployee;
@@ -31,10 +34,12 @@ export function buildPayrollSnapshot(params: {
   employee: PayrollSnapshotEmployee;
   schedule: Record<string, unknown> | null;
   result: SalaryPayrollResult;
+  inputEpoch: number;
 }): PayrollCalculationSnapshot {
   return {
     schema_version: 1,
     rule_version: params.result.rule_version || PAYROLL_RULE_VERSION,
+    input_epoch: params.inputEpoch,
     calculated_at: new Date().toISOString(),
     period: { from: params.from, to: params.to },
     employee: params.employee,

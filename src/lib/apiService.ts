@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { OPEN_EMPLOYEE_ADVANCE_STATUSES } from "@/lib/employeeAdvances";
 
 export const apiService = {
   getDashboardNotifications: async () => {
@@ -60,7 +61,8 @@ export const apiService = {
       supabase
         .from('employee_advances')
         .select('id, amount')
-        .eq('status', 'pending')
+        .is('payroll_run_id', null)
+        .in('status', [...OPEN_EMPLOYEE_ADVANCE_STATUSES])
         .limit(20),
       supabase
         .from('orders')
@@ -89,7 +91,7 @@ export const apiService = {
     };
   },
 
-  getProductionData: async (_filters: any) => {
+  getProductionData: async (_filters: unknown) => {
     return {
       inventory: {
         materials: [
@@ -128,11 +130,11 @@ export const apiService = {
     };
   },
 
-  updateMaterial: async (_data: any) => {
+  updateMaterial: async (_data: unknown) => {
     return { success: true };
   },
 
-  createProductionOrder: async (_data: any) => {
+  createProductionOrder: async (_data: unknown) => {
     return { success: true };
   }
 };

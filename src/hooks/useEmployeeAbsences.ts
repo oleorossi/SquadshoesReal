@@ -12,6 +12,9 @@ export interface EmployeeAbsence {
   end_date: string;
   absence_type: AbsenceKind | string;
   justified: boolean | null;
+  paid: boolean | null;
+  /** NULL = dia inteiro; valor positivo = horas remuneradas de ausência por dia. */
+  hours_per_day: number | null;
   notes: string | null;
   document_url: string | null;
   created_at: string;
@@ -27,18 +30,26 @@ export const ABSENCE_LABEL: Record<string, string> = {
   outro: 'Outro',
 };
 
+function errorMessage(error: unknown): string | null {
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === 'object' && 'message' in error) {
+    return String(error.message);
+  }
+  return null;
+}
+
 export function useEmployeeAbsences(employeeId?: string | null) {
   return useQuery({
     queryKey: ['employee_absences', employeeId ?? '__all__'],
     queryFn: async () => {
-      let q = (supabase as any)
+      let q = supabase
         .from('employee_absences')
         .select('*, employees(name, department)')
         .order('start_date', { ascending: false });
       if (employeeId) q = q.eq('employee_id', employeeId);
       const { data, error } = await q;
       if (error) throw error;
-      return (data || []) as (EmployeeAbsence & { employees: { name: string; department: string } | null })[];
+      return (data || []) as unknown as (EmployeeAbsence & { employees: { name: string; department: string } | null })[];
     },
     staleTime: 60_000,
   });
@@ -66,7 +77,7 @@ export function useCreateAbsence() {
         input.end_date,
         'cadastrar a justificativa',
       );
-      const { data, error } = await (supabase as any)
+      const { data, error } = await supabase
         .from('employee_absences')
         .insert({
           employee_id: input.employee_id,
@@ -74,6 +85,10 @@ export function useCreateAbsence() {
           end_date: input.end_date,
           absence_type: input.absence_type,
           justified: true,
+          // Suspensão registra a ausência, mas nunca abona remuneração. Os
+          // demais tipos desta tela são cadastrados como justificativa paga.
+          paid: input.absence_type !== 'suspensao',
+          hours_per_day: null,
           notes: input.notes?.trim() || null,
         })
         .select()
@@ -81,16 +96,18 @@ export function useCreateAbsence() {
       if (error) throw new Error(error.message);
       return data as EmployeeAbsence;
     },
-    onSuccess: () => {
+    onSuccess: (absence) => {
       // ['employee_absences'] agora também atinge o useAbsences de useRH (key unificada,
       // D9) — é o que faz o abono chegar em RelatorioFaltas/Atrasos e no Espelho.
       qc.invalidateQueries({ queryKey: ['employee_absences'] });
       qc.invalidateQueries({ queryKey: ['v_time_pendings'] });
       qc.invalidateQueries({ queryKey: ['get_pending_count_by_employee'] });
-      toast.success('Ausência cadastrada — dias isentados do cálculo.');
+      toast.success(absence.paid === false
+        ? 'Ausência não remunerada cadastrada — sem abono na folha.'
+        : 'Ausência cadastrada — dias isentados do cálculo.');
     },
-    onError: (err: any) => {
-      toast.error(err?.message || 'Falha ao cadastrar ausência.');
+    onError: (err: unknown) => {
+      toast.error(errorMessage(err) || 'Falha ao cadastrar ausência.');
     },
   });
 }
@@ -99,7 +116,7 @@ export function useDeleteAbsence() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      const { data: absence, error: absenceError } = await (supabase as any)
+      const { data: absence, error: absenceError } = await supabase
         .from('employee_absences')
         .select('employee_id, start_date, end_date')
         .eq('id', id)
@@ -111,7 +128,7 @@ export function useDeleteAbsence() {
         absence.end_date,
         'remover a justificativa',
       );
-      const { error } = await (supabase as any).from('employee_absences').delete().eq('id', id);
+      const { error } = await supabase.from('employee_absences').delete().eq('id', id);
       if (error) throw new Error(error.message);
     },
     onSuccess: () => {
@@ -119,8 +136,8 @@ export function useDeleteAbsence() {
       qc.invalidateQueries({ queryKey: ['v_time_pendings'] });
       toast.success('Ausência removida — dias voltam a contar.');
     },
-    onError: (err: any) => {
-      toast.error(err?.message || 'Falha ao remover ausência.');
+    onError: (err: unknown) => {
+      toast.error(errorMessage(err) || 'Falha ao remover ausência.');
     },
   });
 }

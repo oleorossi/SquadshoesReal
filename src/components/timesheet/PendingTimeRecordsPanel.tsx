@@ -86,8 +86,8 @@ export default function PendingTimeRecordsPanel() {
       qc.invalidateQueries({ queryKey: ['bank_hours_balances'] });
       qc.invalidateQueries({ queryKey: ['punch_clock_day_calc'] });
       qc.invalidateQueries({ queryKey: ['punch_clock_week_calc'] });
-    } catch (e: any) {
-      toast.error('Erro ao aplicar padrão 18:00: ' + (e?.message || 'desconhecido'));
+    } catch (error: unknown) {
+      toast.error('Erro ao aplicar padrão 18:00: ' + (error instanceof Error ? error.message : 'desconhecido'));
     } finally {
       setBulkApplying(false);
     }
@@ -306,15 +306,19 @@ function EmployeeCard({
     return d.toISOString().slice(0, 10);
   }, []);
   const { data: history = [] } = useQuery({
-    queryKey: ['exit-history', emp.name, sinceISO],
-    queryFn: () => listEmployeeExitHistory(emp.name, sinceISO),
+    queryKey: ['exit-history', emp.employee_id, sinceISO],
+    queryFn: () => listEmployeeExitHistory(emp.employee_id, sinceISO),
     enabled: expanded,
     staleTime: 5 * 60_000,
   });
   const pattern = useMemo(() => computeExitPattern(history), [history]);
 
   // batida_extra já é calculada (última batida = saída) — não precisa sugestão.
-  const suggestibles = pendings.filter((p) => p.issue_type !== 'batida_extra');
+  const suggestibles = pendings.filter((p) =>
+    p.issue_type !== 'batida_extra'
+    && !!p.employee_id
+    && !p.employee_match_ambiguous,
+  );
   const [approvingAll, setApprovingAll] = useState(false);
   const approveAll = async () => {
     if (suggestibles.length === 0) return;
@@ -356,12 +360,11 @@ function EmployeeCard({
                   variant="outline"
                   className="h-4 shrink-0 border-amber-500/40 bg-amber-500/10 px-1 text-[9px] font-normal text-amber-700 dark:text-amber-400"
                   title={
-                    `${emp.ambiguous_match_count} pendência(s) casaram com mais de um cadastro ` +
-                    '(mesmo nome ou mesmo crachá). Foram atribuídas a este funcionário pelo crachá; ' +
-                    'unifique as fichas duplicadas em RH → Funcionários.'
+                    `${emp.ambiguous_match_count} pendência(s) estão sem vínculo canônico. ` +
+                    'Corrija a matrícula/vigência em Pessoas e resolva o vínculo antes de completar as batidas.'
                   }
                 >
-                  cadastro duplicado
+                  vínculo pendente
                 </Badge>
               )}
             </CardTitle>

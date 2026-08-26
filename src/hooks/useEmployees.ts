@@ -3,6 +3,24 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { stripSearchNorm } from '@/lib/searchUtils';
 import { normalizeEmployeeEmploymentState } from '@/lib/employeeEmployment';
+import {
+  type EmployeeAdvanceStatus,
+} from '@/lib/employeeAdvances';
+
+interface RhCommandRpcResult {
+  data: unknown;
+  error: { message: string } | null;
+}
+
+const rhCommandClient = supabase as unknown as {
+  rpc: (name: string, args: Record<string, unknown>) => Promise<RhCommandRpcResult>;
+};
+
+async function runRhCommand(name: string, args: Record<string, unknown>): Promise<unknown> {
+  const { data, error } = await rhCommandClient.rpc(name, args);
+  if (error) throw new Error(error.message);
+  return data;
+}
 
 export interface Employee {
   id: string;
@@ -60,7 +78,13 @@ export interface EmployeeAdvance {
   time: string;
   description: string;
   receipt_url: string;
-  status: string;
+  status: EmployeeAdvanceStatus;
+  payroll_run_id: string | null;
+  settled_at?: string | null;
+  settled_by?: string | null;
+  cancelled_at?: string | null;
+  cancelled_by?: string | null;
+  cancellation_reason?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -77,7 +101,34 @@ type EmployeePayKeys =
 type EmployeeForm =
   Omit<Employee, 'id' | 'created_at' | 'updated_at' | EmployeePayKeys> &
   Partial<Pick<Employee, EmployeePayKeys>>;
-type AdvanceForm = Omit<EmployeeAdvance, 'id' | 'created_at' | 'updated_at'>;
+type AdvanceForm = Omit<
+  EmployeeAdvance,
+  'id' | 'created_at' | 'updated_at' | 'status' | 'payroll_run_id'
+>;
+type CreateAdvanceInput = AdvanceForm & { idempotencyKey: string };
+
+interface AdvanceLookupResult {
+  data: {
+    id: string;
+    employee_id: string;
+    amount: number;
+    advance_date: string;
+    time: string;
+    description: string;
+    receipt_url: string;
+  } | null;
+  error: { message: string } | null;
+}
+
+const advanceLookupClient = supabase as unknown as {
+  from: (table: 'employee_advances') => {
+    select: (columns: string) => {
+      eq: (column: 'idempotency_key', value: string) => {
+        maybeSingle: () => Promise<AdvanceLookupResult>;
+      };
+    };
+  };
+};
 
 export function useEmployees() {
   return useQuery({
@@ -107,7 +158,7 @@ export function useAddEmployee() {
         throw new Error('Informe o ID do relógio de ponto para prestadores avaliados por batidas.');
       }
       const payload = normalizeEmployeeEmploymentState(stripSearchNorm(form));
-      const { error } = await supabase.from('employees').insert(payload as any);
+      const { error } = await supabase.from('employees').insert(payload);
       if (error) throw error;
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['employees'] }); toast.success('Funcionário cadastrado!'); },
@@ -121,7 +172,7 @@ export function useUpdateEmployee() {
     mutationFn: async ({ id, data }: { id: string; data: Partial<EmployeeForm> }) => {
       if (data.salary !== undefined && (!Number.isFinite(data.salary) || data.salary < 0)) throw new Error('Salário deve ser um número não-negativo.');
       const payload = normalizeEmployeeEmploymentState(stripSearchNorm(data));
-      const { error } = await supabase.from('employees').update(payload as any).eq('id', id);
+      const { error } = await supabase.from('employees').update(payload).eq('id', id);
       if (error) throw error;
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['employees'] }); toast.success('Funcionário atualizado!'); },
@@ -133,29 +184,9 @@ export function useDeleteEmployee() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      // time_records não tem employee_id (FK pra employees) — tabela linka
-      // por employee_external_id (matricula REP) e employee_name. Antes
-      // quebrava a query inteira; agora resolvemos external_id + name pra
-      // contar registros vinculados.
-      const empMeta = await supabase
-        .from('employees')
-        .select('external_id, name')
-        .eq('id', id)
-        .single();
-      const extId = (empMeta.data as any)?.external_id || null;
-      const empName = (empMeta.data as any)?.name || '';
-      let timeQ = supabase.from('time_records').select('id', { count: 'exact', head: true });
-      if (extId) {
-        timeQ = timeQ.or(`employee_external_id.eq.${extId},employee_name.ilike.${empName}`);
-      } else if (empName) {
-        timeQ = timeQ.ilike('employee_name', empName);
-      } else {
-        // Sem chaves pra match — assume 0 registros
-        timeQ = timeQ.eq('id', '00000000-0000-0000-0000-000000000000');
-      }
       const [advRes, timeRes] = await Promise.all([
         supabase.from('employee_advances').select('id', { count: 'exact', head: true }).eq('employee_id', id),
-        timeQ,
+        supabase.from('time_records').select('id', { count: 'exact', head: true }).eq('employee_id', id),
       ]);
       if (advRes.error) throw advRes.error;
       if (timeRes.error) throw timeRes.error;
@@ -198,49 +229,69 @@ export function useEmployeeAdvances(employeeId: string | null = null) {
 export function useAddAdvance() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (form: AdvanceForm) => {
-      if (!Number.isFinite((form as any).amount) || (form as any).amount <= 0) throw new Error('Valor do vale deve ser positivo.');
-      const { error } = await supabase.from('employee_advances').insert(form as any);
-      if (error) throw error;
+    mutationFn: async (form: CreateAdvanceInput) => {
+      if (!Number.isFinite(form.amount) || form.amount <= 0) throw new Error('Valor do vale deve ser positivo.');
+      if (!form.idempotencyKey) throw new Error('Não foi possível identificar esta tentativa de cadastro. Reabra o formulário.');
+      try {
+        await runRhCommand('create_employee_advance', {
+          p_employee_id: form.employee_id,
+          p_amount: form.amount,
+          p_advance_date: form.advance_date,
+          p_time: form.time,
+          p_description: form.description,
+          p_receipt_url: form.receipt_url,
+          p_idempotency_key: form.idempotencyKey,
+        });
+      } catch (commandError) {
+        // Se o COMMIT ocorreu e só a resposta se perdeu, a chave encontra a
+        // linha definitiva e transforma o retry em sucesso, sem duplicar valor.
+        const { data: committed, error: lookupError } = await advanceLookupClient
+          .from('employee_advances')
+          .select('id, employee_id, amount, advance_date, time, description, receipt_url')
+          .eq('idempotency_key', form.idempotencyKey)
+          .maybeSingle();
+        if (committed?.id
+          && committed.employee_id === form.employee_id
+          && Number(committed.amount) === Number(form.amount)
+          && committed.advance_date === form.advance_date
+          && (committed.time || '') === (form.time || '')
+          && (committed.description || '') === (form.description || '')
+          && (committed.receipt_url || '') === (form.receipt_url || '')) return;
+        if (lookupError) throw new Error(`Falha ao reconciliar o cadastro do vale: ${lookupError.message}`);
+        throw commandError;
+      }
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['employee_advances'] }); toast.success('Vale registrado!'); },
     onError: (e: Error) => toast.error(e.message),
   });
 }
 
-export function useDeleteAdvance() {
+export function useCancelAdvance() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (id: string) => {
-      const { data: adv, error: advErr } = await supabase.from('employee_advances').select('employee_id, advance_date').eq('id', id).single();
-      if (advErr) throw new Error(`Falha ao carregar vale: ${advErr.message}`);
-      const period = (adv.advance_date as string).slice(0, 7);
-      const { data: pr, error: prErr } = await (supabase as any).from('payroll_runs').select('id, status').eq('employee_id', adv.employee_id).eq('period', period).maybeSingle();
-      if (prErr) throw new Error(`Falha ao verificar folha de pagamento: ${prErr.message}`);
-      if (pr && pr.status !== 'rascunho') throw new Error(`Folha do período ${period} já ${pr.status === 'pago' ? 'paga' : 'aprovada'} — desfaça antes de remover o vale.`);
-      const { error } = await supabase.from('employee_advances').delete().eq('id', id);
-      if (error) throw error;
+    mutationFn: async ({ id, reason }: { id: string; reason: string }) => {
+      if (!reason.trim()) throw new Error('Informe o motivo do cancelamento.');
+      await runRhCommand('cancel_employee_advance', { p_id: id, p_reason: reason.trim() });
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['employee_advances'] }); toast.success('Vale removido!'); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['employee_advances'] }); toast.success('Vale cancelado com histórico preservado.'); },
     onError: (e: Error) => toast.error(e.message),
   });
 }
 
-/** Dá baixa (status='paid') ou reabre (status='pending') UM vale. "Dar baixa" =
- *  o valor já foi descontado na folha, então sai do saldo a abater. */
-export function useSetAdvanceStatus() {
+/** Marca UM vale como acertado fora da folha. `deducted` é server-owned e
+ *  `paid` continua sendo dinheiro entregue a descontar, portanto esta é a única
+ *  baixa manual exposta pelo frontend. */
+export function useMarkAdvanceExternallySettled() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, status }: { id: string; status: 'pending' | 'paid' }) => {
-      const { error } = await supabase
-        .from('employee_advances')
-        .update({ status, updated_at: new Date().toISOString() } as any)
-        .eq('id', id);
-      if (error) throw error;
+    mutationFn: async (id: string) => {
+      await runRhCommand('settle_employee_advance_external', { p_id: id });
     },
-    onSuccess: (_d, v) => {
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['employee_advances'] });
-      toast.success(v.status === 'paid' ? 'Vale baixado (já descontado em folha).' : 'Vale reaberto.');
+      qc.invalidateQueries({ queryKey: ['payroll_pending_advances'] });
+      qc.invalidateQueries({ queryKey: ['payroll-comp-advances'] });
+      toast.success('Baixa externa registrada. Este vale não será descontado na folha.');
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -254,35 +305,30 @@ export function periodDateRange(period: string): { from: string; before: string 
   return { from: `${period}-01`, before: `${next}-01` };
 }
 
-/** Dá baixa nos vales pendentes de um funcionário DENTRO do período liquidado.
+/** Dá baixa EXTERNA nos vales em aberto de um funcionário dentro do período.
  *
- *  O filtro de data é o ponto todo: a folha só desconta vale `pending` cujo
- *  `advance_date` cai no intervalo calculado (Payroll.tsx, query de `calculateAll`).
- *  Antes esta mutation marcava como `paid` TODOS os pendentes do funcionário, sem
- *  período — então um vale lançado para a competência seguinte era quitado hoje e
- *  nunca era descontado, porque a folha do mês seguinte procura `status='pending'`.
- *  Perda direta. (D15, auditoria RH 2026-07-29)
+ *  O filtro de data impede que a baixa externa de uma competência alcance vales
+ *  futuros. `pending` e `paid` são igualmente abertos; ambos passam a
+ *  `baixado_externo`, nunca a `deducted` (estado reservado ao servidor).
  *
  *  Retorna quantos foram baixados. */
-export function useSettleEmployeeAdvances() {
+export function useSettleEmployeeAdvancesExternally() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ employeeId, period }: { employeeId: string; period: string }) => {
       const { from, before } = periodDateRange(period);
-      const { data, error } = await supabase
-        .from('employee_advances')
-        .update({ status: 'paid', updated_at: new Date().toISOString() } as any)
-        .eq('employee_id', employeeId)
-        .eq('status', 'pending')
-        .gte('advance_date', from)
-        .lt('advance_date', before)
-        .select('id');
-      if (error) throw error;
-      return { baixados: (data || []).length, period };
+      const data = await runRhCommand('settle_employee_advances_external', {
+        p_employee_id: employeeId,
+        p_from: from,
+        p_before: before,
+      });
+      return { baixados: Number(data) || 0, period };
     },
     onSuccess: ({ baixados: n, period }) => {
       qc.invalidateQueries({ queryKey: ['employee_advances'] });
-      toast.success(`${n} ${n === 1 ? 'vale baixado' : 'vales baixados'} de ${period} (descontados em folha).`);
+      qc.invalidateQueries({ queryKey: ['payroll_pending_advances'] });
+      qc.invalidateQueries({ queryKey: ['payroll-comp-advances'] });
+      toast.success(`${n} ${n === 1 ? 'vale baixado fora da folha' : 'vales baixados fora da folha'} em ${period}. Não serão descontados na folha.`);
     },
     onError: (e: Error) => toast.error(e.message),
   });

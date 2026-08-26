@@ -1,24 +1,77 @@
 import { useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import type { Database } from '@/integrations/supabase/types';
+import type { Database, Json } from '@/integrations/supabase/types';
 import { toast } from 'sonner';
 // Motor único de ponto: base por-dia canônica (mesmos primitivos da folha).
 import { worksOnDow, expectedDayMinutes, splitDayMinutes } from '@/lib/ponto/pontoEngine';
-import { mergeImportedTimePunches } from '@/lib/ponto/systemTimesheet';
 import { createTimesheetImportBatchId } from '@/lib/timeControlFilters';
 
 type TimeImportLogInsert = Database['public']['Tables']['time_import_logs']['Insert'];
 type TimeImportLogUpdate = Database['public']['Tables']['time_import_logs']['Update'];
+type TimeRecordRow = Database['public']['Tables']['time_records']['Row'];
+type SpreadsheetRow = unknown[];
+
+interface ImportTimeRecordPayload {
+  employee_name: string;
+  employee_external_id: string;
+  department: string;
+  record_date: string;
+  punches: string[];
+  import_batch: string;
+}
 interface ArchiveRpcResult {
   inserted?: number;
   updated?: number;
   skipped?: number;
+  unmatched?: number;
+  total?: number;
 }
-interface RpcFailure {
-  code?: string;
-  details?: string;
-  message?: string;
+const TIMESHEET_ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+const TIMESHEET_PUNCH = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
+
+export function isValidTimesheetIsoDate(value: string): boolean {
+  if (!TIMESHEET_ISO_DATE.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
+export function isValidTimesheetPunch(value: string): boolean {
+  return TIMESHEET_PUNCH.test(value);
+}
+
+function addUtcDays(value: Date, days: number): Date {
+  const next = new Date(value.getTime());
+  next.setUTCDate(next.getUTCDate() + days);
+  return next;
+}
+
+function formatUtcDate(value: Date): string {
+  return value.toISOString().slice(0, 10);
+}
+
+export function formatSaoPauloDate(value: Date): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(value);
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find(item => item.type === type)?.value || '';
+  return `${part('year')}-${part('month')}-${part('day')}`;
+}
+
+export function capTimesheetCoverageEnd(
+  periodEnd: string,
+  requestedEnd: string,
+  archivedAt: string,
+  now = new Date(),
+): string | null {
+  const archived = new Date(archivedAt);
+  if (!isValidTimesheetIsoDate(periodEnd) || Number.isNaN(archived.getTime())) return null;
+  const cap = [periodEnd, requestedEnd, formatSaoPauloDate(archived), formatSaoPauloDate(now)]
+    .sort()[0];
+  return isValidTimesheetIsoDate(cap) ? cap : null;
 }
 
 // ── Types ──────────────────────────────────────────────
@@ -90,6 +143,7 @@ export interface WorkdaySwap {
 
 export interface TimeRecord {
   id: string;
+  employee_id: string | null;
   employee_name: string;
   employee_external_id: string;
   department: string;
@@ -106,21 +160,31 @@ export interface ParsedEmployee {
   records: { day: number; punches: string[]; dateStr?: string }[];
 }
 
+export type TimesheetCoverageScope = 'all_employees' | 'listed_employees';
+
 /** Resolve o dia exibido pelo relógio para uma data dentro do período importado. */
 export function resolveTimesheetRecordDate(day: number, startDate: string, endDate: string): string {
+  if (!Number.isInteger(day) || day < 1 || day > 31 || !isValidTimesheetIsoDate(startDate) || !isValidTimesheetIsoDate(endDate) || startDate > endDate) {
+    throw new Error('Período ou dia inválido no arquivo de ponto.');
+  }
   const [startYear, startMonth, startDay] = startDate.split('-').map(Number);
   const [endYear, endMonth] = endDate.split('-').map(Number);
+  let resolved: string;
   if (startYear === endYear && startMonth === endMonth) {
-    return `${startYear}-${String(startMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    resolved = `${startYear}-${String(startMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  } else if (day >= startDay) {
+    resolved = `${startYear}-${String(startMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  } else {
+    resolved = `${endYear}-${String(endMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
   }
-  if (day >= startDay) {
-    return `${startYear}-${String(startMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  if (!isValidTimesheetIsoDate(resolved) || resolved < startDate || resolved > endDate) {
+    throw new Error(`Dia ${day} fora do período ${startDate} a ${endDate}.`);
   }
-  return `${endYear}-${String(endMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  return resolved;
 }
 
 // ── Helper: read rows from either .xls or .xlsx ──────
-async function readSpreadsheetRows(file: File): Promise<any[][]> {
+async function readSpreadsheetRows(file: File): Promise<SpreadsheetRow[]> {
   // xlsx (~424KB) carregado sob demanda — não infla o chunk da rota de Ponto,
   // que importava a lib eager mesmo sem ninguém importar planilha. (auditoria perf)
   const XLSX = await import('xlsx');
@@ -132,8 +196,8 @@ async function readSpreadsheetRows(file: File): Promise<any[][]> {
     const wb = XLSX.read(new Uint8Array(buffer), { type: 'array' });
     const sheet = wb.Sheets[wb.SheetNames[0]];
     if (!sheet) throw new Error('Planilha vazia');
-    const raw: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
-    return raw.map(row => (row as any[]).map(c => c != null ? String(c) : ''));
+    const raw = XLSX.utils.sheet_to_json<SpreadsheetRow>(sheet, { header: 1, defval: '' });
+    return raw.map(row => row.map(c => c != null ? String(c) : ''));
   } catch (sheetJsErr) {
     // Fallback to ExcelJS only for true .xlsx files
     try {
@@ -142,9 +206,10 @@ async function readSpreadsheetRows(file: File): Promise<any[][]> {
       await workbook.xlsx.load(buffer);
       const sheet = workbook.worksheets[0];
       if (!sheet) throw new Error('Planilha vazia');
-      const rows: any[][] = [];
+      const rows: SpreadsheetRow[] = [];
       sheet.eachRow({ includeEmpty: true }, (row) => {
-        rows.push((row.values as any[] || []).slice(1).map(c => c != null ? String(c) : ''));
+        const values = Array.isArray(row.values) ? row.values : [];
+        rows.push(values.slice(1).map(c => c != null ? String(c) : ''));
       });
       return rows;
     } catch {
@@ -154,7 +219,7 @@ async function readSpreadsheetRows(file: File): Promise<any[][]> {
 }
 
 // ── XLSX / XLS Parsing ──────────────────────────────────────
-export function parseTimesheetRows(rows: any[][]): { employees: ParsedEmployee[]; startDate: string; endDate: string } {
+export function parseTimesheetRows(rows: SpreadsheetRow[]): { employees: ParsedEmployee[]; startDate: string; endDate: string } {
 
       // Find date range from header rows
       let startDate = '';
@@ -178,6 +243,10 @@ export function parseTimesheetRows(rows: any[][]): { employees: ParsedEmployee[]
           endDate = isoMatch[2];
           break;
         }
+      }
+
+      if (!isValidTimesheetIsoDate(startDate) || !isValidTimesheetIsoDate(endDate) || startDate > endDate) {
+        throw new Error('Período inválido ou ausente no cabeçalho da planilha de ponto.');
       }
 
       const employees: ParsedEmployee[] = [];
@@ -219,13 +288,15 @@ export function parseTimesheetRows(rows: any[][]): { employees: ParsedEmployee[]
 
           // Look for the next row that contains days (1-31)
           i++;
-          let daysRow: any[] = [];
+          let daysRow: SpreadsheetRow = [];
           let searchLimit = 0;
           while (i < rows.length && searchLimit < 10) {
             const current = rows[i] || [];
             const dayNumbers = current.filter(c => {
-              const n = parseInt(String(c), 10);
-              return !isNaN(n) && n >= 1 && n <= 31;
+              const raw = String(c ?? '').trim();
+              if (!/^\d{1,2}$/.test(raw)) return false;
+              const n = Number(raw);
+              return n >= 1 && n <= 31;
             });
             if (dayNumbers.length >= 3) {
               daysRow = current;
@@ -237,10 +308,25 @@ export function parseTimesheetRows(rows: any[][]): { employees: ParsedEmployee[]
           
           if (!daysRow.length) { i++; continue; }
 
-          const days: number[] = daysRow.map(cell => {
-            const n = parseInt(String(cell || ''), 10);
-            return (!isNaN(n) && n >= 1 && n <= 31) ? n : 0;
-          });
+          // Cada coluna carrega a data completa. Usar só o número do dia fundia,
+          // por exemplo, 21/out com 21/nov no mesmo arquivo.
+          const columnDates: Array<string | null> = Array(daysRow.length).fill(null);
+          let dateCursor = new Date(`${startDate}T00:00:00.000Z`);
+          const endCursor = new Date(`${endDate}T00:00:00.000Z`);
+          for (let column = 0; column < daysRow.length; column++) {
+            const raw = String(daysRow[column] ?? '').trim();
+            if (!/^\d{1,2}$/.test(raw)) continue;
+            const day = Number(raw);
+            if (day < 1 || day > 31) continue;
+            while (dateCursor <= endCursor && dateCursor.getUTCDate() !== day) {
+              dateCursor = addUtcDays(dateCursor, 1);
+            }
+            if (dateCursor > endCursor) {
+              throw new Error(`Dia ${day} do cabeçalho não cabe no período ${startDate} a ${endDate}.`);
+            }
+            columnDates[column] = formatUtcDate(dateCursor);
+            dateCursor = addUtcDays(dateCursor, 1);
+          }
 
           // Move past the days row; punch rows start on the next line.
           i++;
@@ -248,18 +334,19 @@ export function parseTimesheetRows(rows: any[][]): { employees: ParsedEmployee[]
 
           // Aggregate punches per day across multiple rows (some exports split
           // morning/afternoon shifts onto separate rows below the days header).
-          const recordMap = new Map<number, string[]>();
+          const recordMap = new Map<string, string[]>();
 
           // Helper: extract every HH:mm token regardless of delimiter (space, comma,
           // semicolon, slash, <br>, newline, tab — even single-space separated).
           const extractPunches = (raw: string): string[] => {
-            const matches = raw.match(/\d{1,2}:\d{2}(?::\d{2})?/g) || [];
-            return matches
-              .map(t => t.substring(0, 5))
-              .filter(t => {
-                const [h, m] = t.split(':').map(Number);
-                return h >= 0 && h <= 23 && m >= 0 && m <= 59;
-              });
+            const matches = Array.from(raw.matchAll(/(?<!\d)(\d{1,2}):(\d{2})(?::(\d{2}))?(?!\d)/g));
+            return matches.flatMap((match) => {
+              const hour = Number(match[1]);
+              const minute = Number(match[2]);
+              const second = match[3] == null ? 0 : Number(match[3]);
+              if (hour > 23 || minute > 59 || second > 59) return [];
+              return [`${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`];
+            });
           };
 
           // Read punches from the current row + any following rows that contain
@@ -292,23 +379,25 @@ export function parseTimesheetRows(rows: any[][]): { employees: ParsedEmployee[]
             }).length;
             if (punchRowIdx > i && dayLikeCount >= 5) break;
 
-            for (let c = 0; c < Math.min(days.length, pRow.length); c++) {
-              if (days[c] === 0) continue;
+            for (let c = 0; c < Math.min(columnDates.length, pRow.length); c++) {
+              const recordDate = columnDates[c];
+              if (!recordDate) continue;
               const cellVal = String(pRow[c] || '').trim();
               if (!cellVal) continue;
               const punches = extractPunches(cellVal);
               if (punches.length === 0) continue;
-              const existing = recordMap.get(days[c]) || [];
-              recordMap.set(days[c], [...existing, ...punches]);
+              const existing = recordMap.get(recordDate) || [];
+              recordMap.set(recordDate, [...existing, ...punches]);
             }
             punchRowIdx++;
           }
           i = punchRowIdx - 1;
 
           const records = Array.from(recordMap.entries())
-            .sort((a, b) => a[0] - b[0])
-            .map(([day, punches]) => ({
-              day,
+            .sort((a, b) => a[0].localeCompare(b[0]))
+            .map(([dateStr, punches]) => ({
+              day: Number(dateStr.slice(8, 10)),
+              dateStr,
               // Deduplicate identical punches and sort chronologically
               punches: Array.from(new Set(punches)).sort(),
             }));
@@ -484,8 +573,8 @@ export function parseTimesheetTxtContent(text: string): { employees: ParsedEmplo
             for (const field of delimited) {
               const trimmed = field.trim();
               // Date dd/MM/yyyy or dd-MM-yyyy
-              if (!dateStr && /^\d{2}[\/\-]\d{2}[\/\-]\d{4}$/.test(trimmed)) {
-                const [d, m, y] = trimmed.split(/[\/\-]/);
+              if (!dateStr && /^\d{2}[/-]\d{2}[/-]\d{4}$/.test(trimmed)) {
+                const [d, m, y] = trimmed.split(/[/-]/);
                 dateStr = `${y}-${m}-${d}`;
               }
               // Date yyyy-MM-dd
@@ -594,7 +683,11 @@ export function detectTxtEncodings(buf: ArrayBuffer): string[] {
   // Sem BOM: muitos 0x00 ⇒ UTF-16 sem BOM (endianness pela posição dos nulos).
   const n = Math.min(b.length, 4000);
   let odd = 0, even = 0;
-  for (let i = 0; i < n; i++) if (b[i] === 0) (i % 2 ? odd++ : even++);
+  for (let i = 0; i < n; i++) {
+    if (b[i] !== 0) continue;
+    if (i % 2) odd++;
+    else even++;
+  }
   if (odd + even > n * 0.15) return [odd >= even ? 'utf-16le' : 'utf-16be', 'utf-8'];
   return ['utf-8', 'iso-8859-1']; // texto comum (REP latin1, CSV, etc.)
 }
@@ -757,7 +850,7 @@ export function useAddWorkSchedule() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (form: Partial<WorkSchedule>) => {
-      const { error } = await supabase.from('work_schedules').insert(form as any);
+      const { error } = await supabase.from('work_schedules').insert(form);
       if (error) throw error;
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['work_schedules'] }); toast.success('Horário cadastrado!'); },
@@ -769,7 +862,7 @@ export function useUpdateWorkSchedule() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, data }: { id: string; data: Partial<WorkSchedule> }) => {
-      const { error } = await supabase.from('work_schedules').update(data as any).eq('id', id);
+      const { error } = await supabase.from('work_schedules').update(data).eq('id', id);
       if (error) throw error;
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['work_schedules'] }); toast.success('Horário atualizado!'); },
@@ -808,7 +901,7 @@ export function useAddHoliday() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (form: { name: string; holiday_date: string; recurring: boolean }) => {
-      const { error } = await supabase.from('holidays').insert(form as any);
+      const { error } = await supabase.from('holidays').insert(form);
       if (error) throw error;
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['holidays'] }); toast.success('Feriado cadastrado!'); },
@@ -829,13 +922,11 @@ export function useDeleteHoliday() {
 }
 
 // ── Trocas de dia / compensação (workday_swaps) ─────────────────────────────
-// A tabela ainda não está nos tipos gerados do Supabase → cast em `as any` nas
-// chamadas `.from('workday_swaps')` (mesmo padrão de outras tabelas novas).
 export function useWorkdaySwaps() {
   return useQuery({
     queryKey: ['workday_swaps'],
     queryFn: async () => {
-      const { data, error } = await (supabase.from('workday_swaps' as any) as any)
+      const { data, error } = await supabase.from('workday_swaps')
         .select('*').order('work_date');
       if (error) throw error;
       return (data || []) as WorkdaySwap[];
@@ -854,7 +945,7 @@ export function useAddWorkdaySwap() {
         name: form.name,
         notes: form.notes || null,
       };
-      const { error } = await (supabase.from('workday_swaps' as any) as any).insert(payload);
+      const { error } = await supabase.from('workday_swaps').insert(payload);
       if (error) throw error;
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['workday_swaps'] }); toast.success('Troca de dia cadastrada!'); },
@@ -866,7 +957,7 @@ export function useDeleteWorkdaySwap() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await (supabase.from('workday_swaps' as any) as any).delete().eq('id', id);
+      const { error } = await supabase.from('workday_swaps').delete().eq('id', id);
       if (error) throw error;
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['workday_swaps'] }); toast.success('Troca de dia removida!'); },
@@ -923,7 +1014,7 @@ export function useTimeRecords(batch?: string, startDate?: string, endDate?: str
       hasValidEnd ? endDate : null,
     ],
     queryFn: async () => {
-      const allRecords: any[] = [];
+      const allRecords: TimeRecordRow[] = [];
       const PAGE_SIZE = 1000;
       // Safety cap (PR 2026-05-28): 100 páginas × 1k = 100k records máx.
       // Em fábrica de calçado isso cobre ~5 anos de ponto pra 80 funcionários.
@@ -953,7 +1044,10 @@ export function useTimeRecords(batch?: string, startDate?: string, endDate?: str
         console.warn(`[useTimeRecords] atingiu MAX_PAGES (${MAX_PAGES}). Resultado truncado em ${allRecords.length} records. Refine os filtros.`);
       }
 
-      return allRecords as TimeRecord[];
+      return allRecords.map((record): TimeRecord => ({
+        ...record,
+        punches: Array.isArray(record.punches) ? record.punches.map(String) : [],
+      }));
     },
     enabled: hasAnyFilter,
     placeholderData: (previousData) => previousData,
@@ -962,50 +1056,100 @@ export function useTimeRecords(batch?: string, startDate?: string, endDate?: str
 }
 
 /**
- * Cobertura do ponto: dias que JÁ têm batida importada (1+ time_record) no range.
- * Decisão 2026-06-01: a folha NÃO pode contar dias ainda não baixados do relógio
- * como 0h (subpagaria). Este hook diz até onde foi importado — pro calendário e
- * pro clamp da folha. Robusto p/ os dados atuais (não depende de time_import_logs,
- * hoje vazia); um dia coberto = dia com ao menos uma batida.
+ * Cobertura do ponto: datas efetivamente abrangidas pelos arquivos preservados.
+ * A ausência de batida de UMA pessoa num dia coberto é falta/pendência; já uma
+ * data sem arquivo continua neutra. Usar o protocolo também cobre corretamente
+ * o fim de semana no final da quinzena e detecta lacunas internas. Batidas
+ * legadas continuam como fallback para períodos anteriores ao arquivo bruto.
  */
+export async function fetchTimesheetCoverage(from: string, to: string) {
+  if (!isValidTimesheetIsoDate(from) || !isValidTimesheetIsoDate(to) || from > to) {
+    throw new Error('Período inválido para consultar a cobertura do ponto.');
+  }
+  const covered = new Set<string>();
+  type CoverageLog = {
+    batch_id: string | null;
+    start_date: string | null;
+    end_date: string | null;
+    archived_at: string | null;
+    created_at: string;
+    archive_status: string | null;
+    status: string;
+    coverage_scope: TimesheetCoverageScope | null;
+  };
+  const { data: rawImportLogs, error: importLogsError } = await supabase
+    .from('time_import_logs')
+    .select('batch_id, start_date, end_date, archived_at, created_at, archive_status, status, coverage_scope')
+    .lte('start_date', to)
+    .gte('end_date', from);
+  if (importLogsError) throw importLogsError;
+  const importLogs = (rawImportLogs || []) as unknown as CoverageLog[];
+  const modernBatchIds = new Set(
+    importLogs.map(log => log.batch_id).filter((batchId): batchId is string => Boolean(batchId)),
+  );
+
+  for (const log of importLogs) {
+    // Só uma exportação explicitamente declarada como quadro completo prova
+    // ausência. Arquivo filtrado pode importar batidas, mas nunca fabricar falta
+    // para quem não estava incluído na exportação.
+    if (log.coverage_scope !== 'all_employees'
+      || log.archive_status !== 'available'
+      || !['success', 'partial'].includes(log.status)) continue;
+    const start = String(log.start_date || '') > from ? String(log.start_date) : from;
+    const end = capTimesheetCoverageEnd(
+      String(log.end_date || ''),
+      to,
+      String(log.archived_at || log.created_at || ''),
+    );
+    if (!end || !isValidTimesheetIsoDate(start) || start > end) continue;
+    for (
+      let cursor = new Date(`${start}T00:00:00.000Z`);
+      formatUtcDate(cursor) <= end;
+      cursor = addUtcDays(cursor, 1)
+    ) {
+      covered.add(formatUtcDate(cursor));
+    }
+  }
+
+  // Fallback histórico: antes do protocolo permanente, a única evidência de
+  // cobertura disponível é a existência de ao menos uma batida real no dia.
+  const PAGE = 1000;
+  let offset = 0;
+  while (true) {
+    const { data, error } = await supabase
+      .from('time_records')
+      .select('record_date, punches, import_batch')
+      .gte('record_date', from)
+      .lte('record_date', to)
+      .range(offset, offset + PAGE - 1);
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    for (const r of data as { record_date: string; punches: unknown; import_batch: string }[]) {
+      const batchId = String(r.import_batch || '');
+      // Lançamento manual prova somente aquela pessoa/data. E, quando existe
+      // protocolo moderno, a declaração de escopo daquele protocolo prevalece:
+      // não ressuscitar a cobertura pelo fallback de uma batida isolada.
+      if (batchId.startsWith('manual_') || modernBatchIds.has(batchId)) continue;
+      if (Array.isArray(r.punches) && r.punches.length > 0) covered.add(r.record_date);
+    }
+    if (data.length < PAGE) break;
+    offset += PAGE;
+  }
+  const dates = [...covered].sort();
+  return {
+    coveredDates: covered,
+    minCovered: dates[0] ?? null,
+    maxCovered: dates[dates.length - 1] ?? null,
+    count: dates.length,
+  };
+}
+
 export function useTimesheetCoverage(from?: string, to?: string) {
-  // Guard (2026-06-02): só consulta com datas VÁLIDAS (YYYY-MM-DD, mês 01-12).
-  // O <input type="month"> às vezes emite "2026-00" → "2026-00-01" quebrava a
-  // query com "date/time field value out of range".
   const validISO = (d?: string) => !!d && /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(d);
   return useQuery({
     queryKey: ['timesheet_coverage', from, to],
     enabled: validISO(from) && validISO(to),
-    queryFn: async () => {
-      const covered = new Set<string>();
-      const PAGE = 1000;
-      let offset = 0;
-      while (true) {
-        const { data, error } = await supabase
-          .from('time_records')
-          .select('record_date, punches')
-          .gte('record_date', from!)
-          .lte('record_date', to!)
-          .range(offset, offset + PAGE - 1);
-        if (error) throw error;
-        if (!data || data.length === 0) break;
-        // Só conta o dia como COBERTO se há batida real. Imports antigos podem
-        // conter placeholders punches=[]; contá-los avançaria o maxCovered sem
-        // ponto e desligaria a proteção anti-subpagamento da folha.
-        for (const r of data as { record_date: string; punches: unknown }[]) {
-          if (Array.isArray(r.punches) && r.punches.length > 0) covered.add(r.record_date);
-        }
-        if (data.length < PAGE) break;
-        offset += PAGE;
-      }
-      const dates = [...covered].sort();
-      return {
-        coveredDates: covered,
-        minCovered: dates[0] ?? null,
-        maxCovered: dates[dates.length - 1] ?? null,
-        count: dates.length,
-      };
-    },
+    queryFn: () => fetchTimesheetCoverage(from!, to!),
     staleTime: 30_000,
   });
 }
@@ -1016,7 +1160,7 @@ export function useImportBatches() {
     queryFn: async () => {
       const { data, error } = await supabase.rpc('get_distinct_batches');
       if (error) throw error;
-      return (data || []).map((r: any) => r.import_batch as string);
+      return (data || []).map(row => row.import_batch);
     },
     staleTime: 60_000,
   });
@@ -1049,15 +1193,33 @@ export function useImportTimeRecords() {
       employees: ParsedEmployee[];
       startDate: string;
       endDate: string;
+      /** Linhas inválidas descartadas pelo parser antes de montar os dias. */
+      preSkipped: number;
+      /** Identidade estável da tentativa enquanto a prévia permanecer aberta. */
+      batchId: string;
+      /** Declara se a exportação cobriu o quadro inteiro ou só pessoas filtradas. */
+      coverageScope: TimesheetCoverageScope;
       // O arquivo original é obrigatório: nenhuma batida é aplicada antes de
       // o binário estar preservado no arquivo permanente de auditoria.
       file: File;
     }) => {
       const { employees, startDate, endDate, file } = params;
-      if (!startDate || !endDate || !/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+      if (!['all_employees', 'listed_employees'].includes(params.coverageScope)) {
+        throw new Error('Informe se a exportação cobriu todo o quadro ou somente funcionários selecionados.');
+      }
+      const coveredEmployeeExternalIds = Array.from(new Set(
+        employees.map(employee => employee.externalId.trim()).filter(Boolean),
+      )).sort();
+      const parserSkipped = Number.isFinite(params.preSkipped)
+        ? Math.max(0, Math.trunc(params.preSkipped))
+        : 0;
+      if (!isValidTimesheetIsoDate(startDate) || !isValidTimesheetIsoDate(endDate) || startDate > endDate) {
         throw new Error('Datas inválidas detectadas no arquivo. Verifique o formato do arquivo de ponto.');
       }
-      const batchId = createTimesheetImportBatchId(startDate, endDate);
+      if (!params.batchId.startsWith(`${startDate}_${endDate}_`)) {
+        throw new Error('O protocolo da prévia não corresponde ao período confirmado. Reabra o arquivo.');
+      }
+      let batchId = params.batchId;
 
       // Resolve a (year, month) for a raw day number considering cross-month
       // periods. Bug-fix: a versão anterior usava sequência de iteração para
@@ -1069,31 +1231,49 @@ export function useImportTimeRecords() {
       // ao último mês. Funciona para single-month e cross-month.
       const resolveDate = (day: number): string => resolveTimesheetRecordDate(day, startDate, endDate);
 
-      const records: any[] = [];
+      const records: ImportTimeRecordPayload[] = [];
+      let missingExternalIdRows = 0;
       for (const emp of employees) {
         for (const rec of emp.records) {
           // Ausência de linha no arquivo não cria placeholder no banco. A grade,
           // a folha e os relatórios derivam a lacuna do cadastro + calendário.
           if (!Array.isArray(rec.punches) || rec.punches.length === 0) continue;
+          const externalId = emp.externalId.trim();
+          // A RPC exige a identidade emitida pelo relógio. Nome nunca substitui
+          // matrícula em cálculo financeiro: a linha fica contabilizada como
+          // inválida no protocolo e o arquivo original continua sendo a prova.
+          if (!externalId) {
+            missingExternalIdRows++;
+            continue;
+          }
           const dateStr = (rec.dateStr && /^\d{4}-\d{2}-\d{2}$/.test(rec.dateStr))
             ? rec.dateStr
             : resolveDate(rec.day);
+          if (!isValidTimesheetIsoDate(dateStr) || dateStr < startDate || dateStr > endDate) {
+            throw new Error(`Data inválida ou fora do período: ${dateStr || `dia ${rec.day}`}.`);
+          }
+          const punches = rec.punches.map(punch => String(punch).trim());
+          const invalidPunch = punches.find(punch => !isValidTimesheetPunch(punch));
+          if (invalidPunch) {
+            throw new Error(`Horário inválido no arquivo (${invalidPunch}). Use horários entre 00:00 e 23:59.`);
+          }
 
           records.push({
             employee_name: emp.name,
-            employee_external_id: emp.externalId,
+            employee_external_id: externalId,
             department: emp.department,
             record_date: dateStr,
-            punches: rec.punches,
+            punches,
             import_batch: batchId,
           });
         }
       }
+      const preSkipped = parserSkipped + missingExternalIdRows;
 
       // ── Step 1: dedup within the parsed batch ────────────────────────────
       // A chave operacional é o ID do relógio, não o nome curto exportado pelo
       // equipamento. Isso evita mesclar pessoas diferentes que compartilham nome.
-      const dedupMap = new Map<string, typeof records[0]>();
+      const dedupMap = new Map<string, ImportTimeRecordPayload>();
       for (const rec of records) {
         const key = `${rec.employee_external_id || `nome:${rec.employee_name}`}__${rec.record_date}`;
         if (dedupMap.has(key)) {
@@ -1105,176 +1285,197 @@ export function useImportTimeRecords() {
         }
       }
       const uniqueRecords = Array.from(dedupMap.values());
+      if (uniqueRecords.length === 0) {
+        throw new Error(
+          missingExternalIdRows > 0
+            ? `O arquivo contém ${missingExternalIdRows} dia(s) com batidas sem matrícula do relógio e nenhuma linha importável. Corrija a exportação antes de continuar.`
+            : 'O arquivo não contém nenhuma batida válida para importar.',
+        );
+      }
 
       // ── Step 2: cria o protocolo e arquiva o original ANTES das batidas ──
       // O log nasce primeiro para registrar inclusive tentativas cujo upload
       // falhe. Só depois de o Storage confirmar o arquivo o processamento segue.
       const safeName = file.name.replace(/[^\w.-]/g, '_').slice(0, 200) || 'arquivo-ponto';
-      const archivedFilePath = `${batchId}/${safeName}`;
       const archivedMime = file.type || 'application/octet-stream';
       const { data: authData, error: authError } = await supabase.auth.getUser();
       if (authError || !authData.user) {
         throw new Error('Sua sessão expirou. Entre novamente antes de importar o arquivo de ponto.');
       }
 
-      const { data: createdLog, error: createLogError } = await supabase
-        .from('time_import_logs')
-        .insert({
-          file_name: file.name,
-          file_path: archivedFilePath,
-          file_size_bytes: file.size,
-          mime_type: archivedMime,
-          archive_status: 'pending',
-          batch_id: batchId,
-          start_date: startDate,
-          end_date: endDate,
-          inserted_count: 0,
-          updated_count: 0,
-          skipped_count: 0,
-          error_count: 0,
-          total_rows: uniqueRecords.length,
-          status: 'processing',
-          imported_by: authData.user.id,
-          notes: 'Arquivo recebido; aguardando confirmação do armazenamento permanente.',
-        } as unknown as TimeImportLogInsert)
-        .select('id')
-        .single();
-      if (createLogError || !createdLog?.id) {
-        throw new Error(`A importação não foi iniciada porque o protocolo do arquivo não pôde ser criado: ${createLogError?.message || 'erro desconhecido'}`);
-      }
-      const importLogId = createdLog.id;
-
-      const { error: uploadError } = await supabase.storage
-        .from('timesheet-imports')
-        .upload(archivedFilePath, file, {
-          contentType: archivedMime,
-          upsert: false,
-        });
-      if (uploadError) {
-        await supabase
+      type RetryableImportLog = {
+        id: string;
+        file_name: string;
+        file_path: string | null;
+        file_size_bytes: number | null;
+        imported_by: string | null;
+        start_date: string | null;
+        end_date: string | null;
+        archive_status: string | null;
+        status: string;
+        coverage_scope: TimesheetCoverageScope | null;
+        covered_employee_external_ids: string[] | null;
+      };
+      const findProtocol = async (candidateBatchId: string): Promise<RetryableImportLog | null> => {
+        const { data, error } = await supabase
           .from('time_import_logs')
-          .update({
-            file_path: null,
-            archive_status: 'failed',
-            status: 'error',
-            error_count: 1,
-            error_messages: [{ row: 'arquivo', error: uploadError.message }],
-            notes: 'O arquivo não foi armazenado; nenhuma batida foi aplicada.',
-          } as unknown as TimeImportLogUpdate)
-          .eq('id', importLogId);
-        throw new Error(`A importação foi interrompida antes de alterar o ponto: não foi possível arquivar o arquivo original (${uploadError.message}).`);
+          .select('id, file_name, file_path, file_size_bytes, imported_by, start_date, end_date, archive_status, status, coverage_scope, covered_employee_external_ids')
+          .eq('batch_id', candidateBatchId)
+          .maybeSingle();
+        if (error) throw error;
+        return data as unknown as RetryableImportLog | null;
+      };
+
+      let protocol = await findProtocol(batchId);
+      // Falha definitiva de upload encerra aquele recibo. Uma nova tentativa
+      // recebe outra identidade; protocolos processando/concluídos são sempre
+      // reutilizados para recuperar respostas HTTP perdidas sem duplicar trilha.
+      if (protocol?.status === 'error' || protocol?.archive_status === 'failed') {
+        batchId = createTimesheetImportBatchId(startDate, endDate);
+        protocol = null;
       }
 
-      const { error: archiveConfirmationError } = await supabase
-        .from('time_import_logs')
-        .update({
-          archive_status: 'available',
-          archived_at: new Date().toISOString(),
-          notes: 'Original preservado; processando as batidas.',
-        } as unknown as TimeImportLogUpdate)
-        .eq('id', importLogId);
-      if (archiveConfirmationError) {
-        throw new Error(`O arquivo foi armazenado, mas a confirmação do histórico falhou. Nenhuma batida foi aplicada: ${archiveConfirmationError.message}`);
-      }
-
-      try {
-
-      // ── Step 3: envia TODAS as batidas do arquivo ────────────────────────
-      // O banco decide insert × update pela identidade do relógio + data.
-      // Filtrar chaves existentes aqui fazia a reimportação ignorar batidas
-      // novas do mesmo dia e mantinha o arquivo como fonte operacional.
-      const toInsert = uniqueRecords;
-      let skipped = 0;
-
-      // ── Step 5: insert new records.
-      // A RPC canônica insere as batidas e fecha o protocolo do arquivo na
-      // mesma transação. O fallback existe só para a pequena janela em que o
-      // frontend novo pode subir antes da migration no deploy.
-      let insertedCount = 0;
-      let updatedCount = 0;
-      let archiveRpcFinalized = false;
-      try {
-        const rpcClient = supabase as unknown as {
-          rpc: (name: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: RpcFailure | null }>;
-        };
-        const { data: rpcData, error: rpcErr } = await rpcClient.rpc(
-          'import_time_records_with_archive',
-          {
-            records: toInsert,
-            p_log_id: importLogId,
-            p_pre_skipped: skipped,
-          },
-        );
-        if (rpcErr) throw rpcErr;
-        // RPC retorna as contagens já consolidadas no histórico.
-        const result = rpcData as ArchiveRpcResult | null;
-        const ins = Number(result?.inserted);
-        const upd = Number(result?.updated);
-        const skp = Number(result?.skipped);
-        if (Number.isFinite(ins)) insertedCount = ins;
-        if (Number.isFinite(upd)) updatedCount = upd;
-        if (Number.isFinite(skp)) skipped = skp;
-        archiveRpcFinalized = true;
-      } catch (rpcError: unknown) {
-        // Common error codes for missing function: 42883 (function does not exist), PGRST202.
-        const rpcErr = rpcError as RpcFailure;
-        const code = rpcErr.code || rpcErr.details || '';
-        const msg = String(rpcErr.message || '');
-        const isMissing =
-          code === '42883' ||
-          code === 'PGRST202' ||
-          msg.includes('function') && msg.includes('does not exist');
-        if (!isMissing) throw rpcErr;
-        // Legacy fallback — pre-migration environments only. Também atualiza
-        // dias existentes e preserva batidas manuais, espelhando a RPC nova.
-        console.warn('[useTimesheet] import_time_records_with_archive RPC not available; falling back to chunked insert.');
-        for (const rec of toInsert) {
-          let existingQuery = supabase
-            .from('time_records')
-            .select('id, punches')
-            .eq('record_date', rec.record_date);
-          existingQuery = rec.employee_external_id
-            ? existingQuery.eq('employee_external_id', rec.employee_external_id)
-            : existingQuery.eq('employee_name', rec.employee_name);
-          const { data: existing, error: existingError } = await existingQuery.maybeSingle();
-          if (existingError) throw existingError;
-          if (existing) {
-            const { error } = await supabase
-              .from('time_records')
-              .update({
-                ...rec,
-                punches: mergeImportedTimePunches(existing.punches as string[], rec.punches),
-              })
-              .eq('id', existing.id);
-            if (error) throw error;
-            updatedCount++;
-          } else {
-            const { error } = await supabase.from('time_records').insert(rec);
-            if (error) throw error;
-            insertedCount++;
+      const archivedFilePath = `${batchId}/${safeName}`;
+      if (protocol) {
+        const sameFile = protocol.file_name === file.name
+          && protocol.file_path === archivedFilePath
+          && Number(protocol.file_size_bytes) === file.size
+          && protocol.imported_by === authData.user.id
+          && protocol.start_date === startDate
+          && protocol.end_date === endDate
+          && protocol.coverage_scope === params.coverageScope
+          && JSON.stringify((protocol.covered_employee_external_ids || []).slice().sort()) === JSON.stringify(coveredEmployeeExternalIds);
+        if (!sameFile) {
+          throw new Error('O protocolo desta prévia já pertence a outro arquivo ou período. Reabra o arquivo para gerar uma nova tentativa.');
+        }
+      } else {
+        const { data: rawCreatedLog, error: createLogError } = await supabase
+          .from('time_import_logs')
+          .insert({
+            file_name: file.name,
+            file_path: archivedFilePath,
+            file_size_bytes: file.size,
+            mime_type: archivedMime,
+            archive_status: 'pending',
+            batch_id: batchId,
+            start_date: startDate,
+            end_date: endDate,
+            coverage_scope: params.coverageScope,
+            covered_employee_external_ids: coveredEmployeeExternalIds,
+            inserted_count: 0,
+            updated_count: 0,
+            // O guard do protocolo exige resultado zerado no INSERT. A contagem
+            // do parser segue separada até a RPC atômica finalizar o log.
+            skipped_count: 0,
+            error_count: 0,
+            total_rows: uniqueRecords.length + preSkipped,
+            status: 'processing',
+            imported_by: authData.user.id,
+            notes: 'Arquivo recebido; aguardando confirmação do armazenamento permanente.',
+          } as unknown as TimeImportLogInsert)
+          .select('id, file_name, file_path, file_size_bytes, imported_by, start_date, end_date, archive_status, status, coverage_scope, covered_employee_external_ids')
+          .single();
+        const createdLog = rawCreatedLog as unknown as RetryableImportLog | null;
+        if (createLogError || !createdLog?.id) {
+          // Uma resposta perdida no INSERT pode chegar aqui como conflito. A
+          // leitura pela identidade estável distingue replay de colisão real.
+          protocol = await findProtocol(batchId);
+          if (!protocol) {
+            throw new Error(`A importação não foi iniciada porque o protocolo do arquivo não pôde ser criado: ${createLogError?.message || 'erro desconhecido'}`);
           }
+        } else {
+          protocol = createdLog as unknown as RetryableImportLog;
         }
       }
+      const importLogId = protocol.id;
 
-      // ── Step 6: fecha o protocolo somente após o processamento ─────────
-      if (!archiveRpcFinalized) {
-        const { error: finalizeLogError } = await supabase
+      if (protocol.archive_status === 'pending') {
+        const { error: uploadError } = await supabase.storage
+          .from('timesheet-imports')
+          .upload(archivedFilePath, file, {
+            contentType: archivedMime,
+            upsert: false,
+          });
+        if (uploadError) {
+          // Se o upload terminou no servidor e só a resposta se perdeu, o
+          // objeto já existe. Confirmamos por listagem exata antes de decidir
+          // que houve falha definitiva.
+          const { data: stored, error: listError } = await supabase.storage
+            .from('timesheet-imports')
+            .list(batchId, { search: safeName, limit: 100 });
+          const alreadyStored = !listError && (stored || []).some(item => item.name === safeName);
+          if (!alreadyStored) {
+            await supabase
+              .from('time_import_logs')
+              .update({
+                file_path: null,
+                archive_status: 'failed',
+                status: 'error',
+                error_count: 1,
+                error_messages: [{ row: 'arquivo', error: uploadError.message }],
+                notes: 'O arquivo não foi armazenado; nenhuma batida foi aplicada.',
+              } as unknown as TimeImportLogUpdate)
+              .eq('id', importLogId);
+            throw new Error(`A importação foi interrompida antes de alterar o ponto: não foi possível arquivar o arquivo original (${uploadError.message}).`);
+          }
+        }
+
+        const { error: archiveConfirmationError } = await supabase
           .from('time_import_logs')
           .update({
-            inserted_count: insertedCount,
-            updated_count: updatedCount,
-            skipped_count: skipped,
-            error_count: 0,
-            total_rows: uniqueRecords.length,
-            status: 'success',
-            error_messages: [],
-            notes: 'Arquivo original preservado e processamento concluído.',
+            archive_status: 'available',
+            notes: 'Original preservado; processando as batidas.',
           } as unknown as TimeImportLogUpdate)
           .eq('id', importLogId);
-        if (finalizeLogError) throw finalizeLogError;
+        if (archiveConfirmationError) {
+          throw new Error(`O arquivo foi armazenado, mas a confirmação do histórico falhou. Nenhuma batida foi aplicada: ${archiveConfirmationError.message}`);
+        }
+      } else if (protocol.archive_status !== 'available') {
+        throw new Error('O protocolo não possui um arquivo permanente disponível para processamento.');
       }
 
-      return { batchId, inserted: insertedCount, updated: updatedCount, skipped, archivedFilePath, endDate };
+      try {
+        // ── Step 3: envia TODAS as batidas do arquivo ──────────────────────
+        // O banco decide insert × update pela identidade do relógio + data.
+        // Filtrar chaves existentes aqui fazia a reimportação ignorar batidas
+        // novas do mesmo dia e mantinha o arquivo como fonte operacional.
+        const toInsert = uniqueRecords;
+        let skipped = preSkipped;
+
+        // A única escrita permitida é a RPC transacional canônica. O deploy
+        // aguarda as migrations do mesmo commit; fallback client-side criava
+        // importações parciais e contornava o protocolo permanente.
+        const rpcArgs = {
+            records: toInsert as unknown as Json,
+            p_log_id: importLogId,
+            p_pre_skipped: skipped,
+        };
+        let { data: rpcData, error: rpcError } = await supabase.rpc(
+          'import_time_records_with_archive', rpcArgs,
+        );
+        if (rpcError) {
+          // A RPC é idempotente pelo hash do comando. Repetir uma vez recupera
+          // o resultado quando o COMMIT ocorreu mas a resposta HTTP se perdeu.
+          const replay = await supabase.rpc('import_time_records_with_archive', rpcArgs);
+          rpcData = replay.data;
+          rpcError = replay.error;
+        }
+        if (rpcError) throw rpcError;
+        const result = rpcData as ArchiveRpcResult | null;
+        const insertedCount = Number.isFinite(Number(result?.inserted)) ? Number(result?.inserted) : 0;
+        const updatedCount = Number.isFinite(Number(result?.updated)) ? Number(result?.updated) : 0;
+        const unmatchedCount = Number.isFinite(Number(result?.unmatched)) ? Number(result?.unmatched) : 0;
+        if (Number.isFinite(Number(result?.skipped))) skipped = Number(result?.skipped);
+
+        return {
+          batchId,
+          inserted: insertedCount,
+          updated: updatedCount,
+          skipped,
+          unmatched: unmatchedCount,
+          archivedFilePath,
+          endDate,
+        };
       } catch (error: unknown) {
         const message = error instanceof Error
           ? error.message
@@ -1282,16 +1483,14 @@ export function useImportTimeRecords() {
         const { error: markError } = await supabase
           .from('time_import_logs')
           .update({
-            status: 'error',
-            error_count: 1,
             error_messages: [{ row: 'processamento', error: message }],
-            notes: 'O original permanece arquivado; confira o erro antes de tentar novamente.',
+            notes: 'O original permanece arquivado; processamento aguardando nova tentativa idempotente.',
           } as unknown as TimeImportLogUpdate)
           .eq('id', importLogId);
         if (markError) {
           console.warn('[useImportTimeRecords] arquivo preservado, mas o log de erro não pôde ser atualizado:', markError);
         }
-        throw new Error(`O arquivo original foi preservado, mas o processamento não foi concluído. Confira o histórico antes de repetir: ${message}`);
+        throw new Error(`O arquivo original foi preservado, mas o processamento não foi confirmado. Tente novamente nesta mesma prévia: ${message}`);
       }
     },
     onSuccess: (result) => {
@@ -1310,6 +1509,8 @@ export function useImportTimeRecords() {
       qc.invalidateQueries({ queryKey: ['time_records_batches'] });
       qc.invalidateQueries({ queryKey: ['time_records_full_range'] });
       qc.invalidateQueries({ queryKey: ['time_import_logs'] });
+      qc.invalidateQueries({ queryKey: ['timesheet_coverage'] });
+      qc.invalidateQueries({ queryKey: ['payroll-comp-records'] });
       qc.invalidateQueries({ queryKey: ['bank_hours_balances'] });
       qc.invalidateQueries({ queryKey: ['bank_hours_per_sector'] });
       qc.invalidateQueries({ queryKey: ['punch_clock_day_calc'] });
@@ -1317,7 +1518,19 @@ export function useImportTimeRecords() {
       const ate = result.endDate && /^\d{4}-\d{2}-\d{2}$/.test(result.endDate)
         ? result.endDate.split('-').reverse().join('/')
         : null;
-      if (result.inserted === 0) {
+      if (result.unmatched > 0) {
+        toast.warning(
+          `${result.inserted + result.updated} registro(s) válido(s) processado(s)${ate ? ` (até ${ate})` : ''}; ` +
+          `${result.unmatched} linha(s) sem vínculo foram preservadas em quarentena e não entraram na folha. ` +
+          'Corrija as matrículas/vigências antes do fechamento.',
+          { duration: 14000 },
+        );
+      } else if (result.inserted === 0 && result.updated > 0) {
+        toast.success(
+          `${result.updated} registro(s) existente(s) atualizado(s) pelo arquivo${ate ? ` (até ${ate})` : ''}.` +
+          `${result.archivedFilePath ? ' Arquivo arquivado.' : ''}`,
+        );
+      } else if (result.inserted === 0) {
         // Caso clássico de "importei mas não entrou": o arquivo só tem dias que
         // JÁ estavam no sistema. Aviso alto explicando que não há nada novo e
         // que a exportação do relógio provavelmente não incluiu os dias recentes.
@@ -1329,31 +1542,15 @@ export function useImportTimeRecords() {
         );
       } else if (result.skipped > 0) {
         toast.success(
-          `${result.inserted} registro(s) novo(s)${ate ? ` (até ${ate})` : ''}. ${result.skipped} já existiam e foram ignorados.${result.archivedFilePath ? ' Arquivo arquivado.' : ''}`
+          `${result.inserted} registro(s) novo(s)${result.updated > 0 ? ` e ${result.updated} atualizado(s)` : ''}` +
+          `${ate ? ` (até ${ate})` : ''}. ${result.skipped} ignorado(s).${result.archivedFilePath ? ' Arquivo arquivado.' : ''}`
         );
       } else {
-        toast.success(`${result.inserted} registro(s) importado(s)${ate ? ` (até ${ate})` : ''}!${result.archivedFilePath ? ' Arquivo arquivado.' : ''}`);
+        toast.success(
+          `${result.inserted} registro(s) novo(s)${result.updated > 0 ? ` e ${result.updated} atualizado(s)` : ''}` +
+          `${ate ? ` (até ${ate})` : ''}!${result.archivedFilePath ? ' Arquivo arquivado.' : ''}`,
+        );
       }
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-}
-
-export function useDeleteBatch() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (batch: string) => {
-      const { error } = await supabase.from('time_records').delete().eq('import_batch', batch);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['time_records'] });
-      qc.invalidateQueries({ queryKey: ['time_records_batches'] });
-      qc.invalidateQueries({ queryKey: ['time_records_full_range'] });
-      qc.invalidateQueries({ queryKey: ['bank_hours_balances'] });
-      qc.invalidateQueries({ queryKey: ['punch_clock_day_calc'] });
-      qc.invalidateQueries({ queryKey: ['punch_clock_week_calc'] });
-      toast.success('Importação removida!');
     },
     onError: (e: Error) => toast.error(e.message),
   });
