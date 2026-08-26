@@ -40,7 +40,6 @@ import { loadImageAsMonochrome, type MonoBitmap } from '@/lib/zplImage';
 import ZplPreviewDialog, { type ZplPreviewLabel } from './ZplPreviewDialog';
 import { openPrintTab, printHtmlAsPdf } from '@/lib/printPdf';
 import { confirmPrintJob, createPrintJob, PRINT_JOB_STATUS_LABELS, setPrintJobStatus } from '@/lib/printJobs';
-import { buildTemplateLabelsHtml } from '@/lib/templateLabels';
 import { buildHangtagBarcode } from '@/lib/labelIdentifiers';
 import { resolveLabelBoxCapacity, type SolePackagingCapacity } from '@/lib/labelBoxCapacity';
 import { DEFAULT_MANUFACTURER_NAME, DEFAULT_MANUFACTURER_CNPJ } from '@/lib/companySender';
@@ -48,7 +47,6 @@ import { cn } from '@/lib/utils';
 import { isCancelledOrDraftOrder } from '@/lib/orderStatus';
 import { packSaleOrderItem, packSaleOrderItemBySize } from '@/lib/boxPacking';
 import { toast } from 'sonner';
-import { useLabelTemplates, SQUAD_THERMAL_DEFAULT_ID, SQUAD_BOX_DEFAULT_ID } from '@/hooks/useLabelTemplates';
 import { useCompanies } from '@/hooks/useNfe';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { SearchInput } from '@/components/ui/search-input';
@@ -1006,15 +1004,6 @@ export function LabelProductionTab() {
   const [scannerCode, setScannerCode] = useState('');
   const [thermalMode, setThermalMode] = useState<'quantity' | 'ficha'>('quantity');
   const [printMode, setPrintMode] = useState<'batch' | 'per_op'>('batch');
-  const [selectedThermalTemplateId, setSelectedThermalTemplateId] = useState(SQUAD_THERMAL_DEFAULT_ID);
-  const [selectedBoxTemplateId, setSelectedBoxTemplateId] = useState(SQUAD_BOX_DEFAULT_ID);
-
-  const { templates: allLabelTemplates } = useLabelTemplates();
-  const thermalTemplates = useMemo(() => allLabelTemplates.filter(t => (t.category === 'thermal' || t.category === 'individual_box') && t.is_active), [allLabelTemplates]);
-  // O rótulo externo tem campos fiscais/expedição que não cabem no designer
-  // genérico. Até existir um schema específico, só o layout oficial é elegível.
-  const boxTemplates = useMemo(() => allLabelTemplates.filter(t => t.id === SQUAD_BOX_DEFAULT_ID && t.is_active), [allLabelTemplates]);
-  const usesCustomThermalTemplate = selectedThermalTemplateId !== SQUAD_THERMAL_DEFAULT_ID;
 
   // Strap label overrides — allows user to edit strap text per group for labels
   const [strapsLabelOverrides, setStrapsLabelOverrides] = useState<Record<string, string>>({});
@@ -1506,8 +1495,7 @@ export function LabelProductionTab() {
         return;
       }
       const orderIds = thermalGroups.flatMap(g => g.orders.map((o: any) => o.id));
-      const selectedTemplate = thermalTemplates.find(t => t.id === selectedThermalTemplateId);
-      const dimensions = selectedTemplate?.dimensions || { width: currentSize.width, height: currentSize.height };
+      const dimensions = { width: currentSize.width, height: currentSize.height };
       if (output === 'zpl') {
         // Uma foto por URL DISTINTA. Em 203 dpi a moldura de 20×22 mm dá
         // 160×176 dots; repetir esse bitmap em cada etiqueta poria 7,6 MB num
@@ -1544,7 +1532,6 @@ export function LabelProductionTab() {
           batchName: `Etiqueta Individual ZPL - ${new Date().toLocaleString('pt-BR')}`,
           totalLabels: zplLabels.length,
           orderIds,
-          templateId: selectedThermalTemplateId,
         });
         void jobIdZpl;
         queryClient.invalidateQueries({ queryKey: ['print_history'] });
@@ -1566,14 +1553,11 @@ export function LabelProductionTab() {
         return;
       }
 
-      const html = selectedTemplate && selectedTemplate.id !== SQUAD_THERMAL_DEFAULT_ID
-        ? buildTemplateLabelsHtml(selectedTemplate, labels)
-        : buildThermalLabelsHtml(labels, logoUrl, { width: dimensions.width, height: dimensions.height }, labelConfig, resolveSender().senderCnpj);
+      const html = buildThermalLabelsHtml(labels, logoUrl, { width: dimensions.width, height: dimensions.height }, labelConfig, resolveSender().senderCnpj);
       const jobId = await createPrintJob({
         batchName: `Etiqueta Individual - ${new Date().toLocaleString('pt-BR')}`,
         totalLabels: labels.length,
         orderIds,
-        templateId: selectedThermalTemplateId,
       });
       queryClient.invalidateQueries({ queryKey: ['print_history'] });
       setPrintRequest({
@@ -2098,7 +2082,6 @@ export function LabelProductionTab() {
         batchName: `Rótulos Caixa - ${new Date().toLocaleString('pt-BR')}`,
         totalLabels: boxItems.length,
         orderIds,
-        templateId: selectedBoxTemplateId,
       });
       setPrintRequest({ html, jobId });
       queryClient.invalidateQueries({ queryKey: ['print_history'] });
@@ -2221,73 +2204,50 @@ export function LabelProductionTab() {
                 <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
                   <Barcode className="h-3 w-3" /> Caixa Individual (Térmica)
                 </h4>
-                <div className="space-y-2">
-                  <Label className="text-xs font-semibold">Template Ativo</Label>
-                  <Select value={selectedThermalTemplateId} onValueChange={setSelectedThermalTemplateId}>
-                    <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {thermalTemplates.map(t => (
-                        <SelectItem key={t.id} value={t.id}>
-                          {t.name} ({t.dimensions.width}×{t.dimensions.height}mm)
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                {usesCustomThermalTemplate ? (
-                  <p className="text-xs text-muted-foreground rounded-md border p-3">
-                    Dimensões, campos, posições e estilos vêm do template customizado. Edite-os na aba Templates.
+                <div className="rounded-md border border-primary/20 bg-primary/5 p-3">
+                  <p className="text-xs font-semibold text-foreground">Padrão operacional Squad</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    O desenho é protegido. Somente tamanho, margem de segurança e campos previstos abaixo podem ser ajustados.
                   </p>
-                ) : (
-                  <>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label className="text-xs">Tamanho da Etiqueta</Label>
-                        <Select value={labelSize} onValueChange={setLabelSize}>
-                          <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            {LABEL_SIZES.map(s => (<SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between gap-2">
-                          <Label className="text-xs">Margem extra (%)</Label>
-                          <span className="text-xs font-mono text-muted-foreground">{labelConfig.marginPct}%</span>
-                        </div>
-                        <Slider value={[labelConfig.marginPct]} onValueChange={([v]) => setLabelConfig({ ...labelConfig, marginPct: v })} min={0} max={20} step={1} className="py-2" />
-                        <p className="text-xs text-muted-foreground">
-                          0% usa a área segura de {currentSize.width - THERMAL_SAFE_EDGE_MM * 2} × {currentSize.height - THERMAL_SAFE_EDGE_MM * 2} mm, centralizada no papel físico de {currentSize.width} × {currentSize.height} mm. Padrão da caixa individual: {THERMAL_LABEL_WIDTH_MM} × {THERMAL_LABEL_HEIGHT_MM} mm — não usar o rolo 2 × 50 × 30 da etiquetagem cliente.
-                        </p>
-                      </div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-xs">Tamanho da Etiqueta</Label>
+                    <Select value={labelSize} onValueChange={setLabelSize}>
+                      <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {LABEL_SIZES.map(s => (<SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <Label className="text-xs">Margem extra (%)</Label>
+                      <span className="text-xs font-mono text-muted-foreground">{labelConfig.marginPct}%</span>
                     </div>
-                    <div className="grid grid-cols-2 gap-x-6 gap-y-2">
-                      {Object.entries({ showImage: 'Imagem', showBarcode: 'Cód. Barras', showCode: 'Cód. Interno', showMaterial: 'Material', showCategory: 'Categoria', showPedido: 'Pedido', showSize: 'Tamanho' }).map(([key, label]) => (
-                        <div key={key} className="flex items-center gap-2">
-                          <Checkbox id={`check-${key}`} checked={(labelConfig as any)[key]} onCheckedChange={(v) => setLabelConfig({ ...labelConfig, [key]: !!v })} />
-                          <Label htmlFor={`check-${key}`} className="text-xs cursor-pointer">{label}</Label>
-                        </div>
-                      ))}
+                    <Slider value={[labelConfig.marginPct]} onValueChange={([v]) => setLabelConfig({ ...labelConfig, marginPct: v })} min={0} max={20} step={1} className="py-2" />
+                    <p className="text-xs text-muted-foreground">
+                      0% usa a área segura de {currentSize.width - THERMAL_SAFE_EDGE_MM * 2} × {currentSize.height - THERMAL_SAFE_EDGE_MM * 2} mm, centralizada no papel físico de {currentSize.width} × {currentSize.height} mm. Padrão da caixa individual: {THERMAL_LABEL_WIDTH_MM} × {THERMAL_LABEL_HEIGHT_MM} mm.
+                      Esta mídia operacional não é o rolo 2 × 50 × 30 mm usado no Gerador padrão.
+                    </p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+                  {Object.entries({ showImage: 'Imagem', showBarcode: 'Cód. Barras', showCode: 'Cód. Interno', showMaterial: 'Material', showCategory: 'Categoria', showPedido: 'Pedido', showSize: 'Tamanho' }).map(([key, label]) => (
+                    <div key={key} className="flex items-center gap-2">
+                      <Checkbox id={`check-${key}`} checked={(labelConfig as any)[key]} onCheckedChange={(v) => setLabelConfig({ ...labelConfig, [key]: !!v })} />
+                      <Label htmlFor={`check-${key}`} className="text-xs cursor-pointer">{label}</Label>
                     </div>
-                  </>
-                )}
+                  ))}
+                </div>
               </div>
               <div className="space-y-4 md:border-l md:pl-8">
                 <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
                   <BoxIcon className="h-3 w-3" /> Rótulo Caixa (Master)
                 </h4>
-                <div className="space-y-2">
-                  <Label className="text-xs font-semibold">Template Ativo</Label>
-                  <Select value={selectedBoxTemplateId} onValueChange={setSelectedBoxTemplateId}>
-                    <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {boxTemplates.map(t => (
-                        <SelectItem key={t.id} value={t.id}>
-                          {t.name} ({t.dimensions.width}×{t.dimensions.height}mm)
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                <div className="rounded-md border border-primary/20 bg-primary/5 p-3">
+                  <p className="text-xs font-semibold text-foreground">Padrão logístico Squad · 192 × 132 mm</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Layout protegido para preservar NF, cliente, grade e volumes.</p>
                 </div>
                 <p className="text-xs text-muted-foreground">
                   Grade e fichas vêm do item do PV; capacidade vem do grupo do solado. Esses valores não são ajustáveis na impressão.
@@ -2412,7 +2372,7 @@ export function LabelProductionTab() {
                       </Select>
                     </div>
                     <span className="text-xs text-muted-foreground truncate max-w-[200px]">
-                      Template: {thermalTemplates.find(t => t.id === selectedThermalTemplateId)?.name || 'Padrão'}
+                      Padrão operacional Squad
                     </span>
                   </div>
                 )}
@@ -2453,7 +2413,7 @@ export function LabelProductionTab() {
                       </Button>
                     </div>
                     <span className="text-xs text-muted-foreground truncate max-w-[200px]">
-                      Template: {boxTemplates.find(t => t.id === selectedBoxTemplateId)?.name || 'Padrão'}
+                      Padrão logístico Squad
                     </span>
                   </div>
                 )}

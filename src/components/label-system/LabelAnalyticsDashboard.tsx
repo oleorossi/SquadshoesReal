@@ -18,6 +18,7 @@ interface AnalyticsJob {
 function jobType(name: string | null): string {
   const value = (name || '').toLowerCase();
   if (value.includes('hangtag')) return 'Hangtag';
+  if (value.includes('embalagem individual')) return 'Embalagem individual';
   if (value.includes('caixa')) return 'Caixa externa';
   if (value.includes('térmica') || value.includes('termica')) return 'Térmica';
   return 'Outros';

@@ -2,7 +2,7 @@ import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { Navigate } from 'react-router-dom';
 import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { HubTabsList } from '@/components/layout/HubTabs';
-import { Tag, Printer, Gear as Settings2, ChartBar as BarChart3, PencilLine as PenLine, Checks, FilePdf } from '@phosphor-icons/react';
+import { Tag, Printer, ChartBar as BarChart3, PencilLine as PenLine, Checks, FilePdf } from '@phosphor-icons/react';
 import { LabelTemplatesTab } from '@/components/label-system/LabelTemplatesTab';
 import { LabelProductionTab } from '@/components/label-system/LabelProductionTab';
 import { PrintDashboardTab } from '@/components/label-system/PrintDashboardTab';
@@ -27,14 +27,14 @@ export default function LabelSystem() {
       <EditorialPageHeader
         sectionLabel="SISTEMA · ETIQUETAS"
         title="Central de Etiquetagem"
-        description="Prepare, confira e acompanhe as impressões vinculadas à produção em um único fluxo."
+        description="Prepare etiquetas da produção e amostras padronizadas para a L42PRO em um único fluxo."
       />
 
       <div className="grid overflow-hidden rounded-lg border border-border bg-card sm:grid-cols-2 xl:grid-cols-4" aria-label="Fluxo operacional da etiquetagem">
         {[
           { step: '01', title: 'Preparar', description: 'Selecione OPs da fábrica ou lance uma etiqueta avulsa.', icon: Tag },
-          { step: '02', title: 'Conferir', description: 'Revise referência, cor, grade, quantidade e modelo ativo.', icon: Checks },
-          { step: '03', title: 'Gerar', description: 'Monte o PDF sem alterar o padrão cadastrado da etiqueta.', icon: FilePdf },
+          { step: '02', title: 'Conferir', description: 'Revise referência, cor, material, grade e quantidade.', icon: Checks },
+          { step: '03', title: 'Gerar', description: 'Monte o PDF no padrão físico correto para cada operação.', icon: FilePdf },
           { step: '04', title: 'Confirmar', description: 'Registre a impressão física e mantenha a fila rastreável.', icon: Printer },
         ].map(item => (
           <div key={item.step} className="flex min-h-24 gap-3 border-border p-4 sm:[&:nth-child(even)]:border-l xl:border-l xl:first:border-l-0">
@@ -55,9 +55,9 @@ export default function LabelSystem() {
           tabs={[
             { value: 'production', label: 'Produção', icon: Tag, group: 'Operação' },
             { value: 'manual', label: 'Lançamento avulso', icon: PenLine, group: 'Operação' },
+            { value: 'templates', label: 'Gerador padrão', icon: FilePdf, group: 'Operação' },
             { value: 'dashboard', label: 'Fila e conferência', icon: Printer, group: 'Controle' },
             { value: 'analytics', label: 'Indicadores', icon: BarChart3, group: 'Controle' },
-            { value: 'templates', label: 'Modelos', icon: Settings2, group: 'Configuração' },
           ]}
           ariaLabel="Áreas da central de etiquetagem"
         />
