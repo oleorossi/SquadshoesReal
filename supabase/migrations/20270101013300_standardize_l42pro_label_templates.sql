@@ -1,3 +1,4 @@
+-- Versão 13300 reservada após detectar migrations concorrentes 13100/13200.
 -- Desativa o designer livre e torna os dois padrões L42PRO imutáveis para
 -- usuários da aplicação. Registros legados são preservados para auditoria.
 
