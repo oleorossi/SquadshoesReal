@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 // Motor único de ponto: base por-dia canônica (mesmos primitivos da folha).
 import { worksOnDow, expectedDayMinutes, splitDayMinutes } from '@/lib/ponto/pontoEngine';
 import { mergeImportedTimePunches } from '@/lib/ponto/systemTimesheet';
+import { createTimesheetImportBatchId } from '@/lib/timeControlFilters';
 
 type TimeImportLogInsert = Database['public']['Tables']['time_import_logs']['Insert'];
 type TimeImportLogUpdate = Database['public']['Tables']['time_import_logs']['Update'];
@@ -1056,7 +1057,7 @@ export function useImportTimeRecords() {
       if (!startDate || !endDate || !/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
         throw new Error('Datas inválidas detectadas no arquivo. Verifique o formato do arquivo de ponto.');
       }
-      const batchId = `${startDate}_${endDate}_${Date.now()}`;
+      const batchId = createTimesheetImportBatchId(startDate, endDate);
 
       // Resolve a (year, month) for a raw day number considering cross-month
       // periods. Bug-fix: a versão anterior usava sequência de iteração para

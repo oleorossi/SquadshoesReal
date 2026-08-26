@@ -6,6 +6,7 @@ const ROOT = resolve(__dirname, '../..');
 const read = (path: string) => readFileSync(resolve(ROOT, path), 'utf8');
 
 const MIGRATION = read('supabase/migrations/20270101003400_timesheet_import_archive_permanent.sql');
+const BATCH_TEXT_MIGRATION = read('supabase/migrations/20270101013000_corrigir_batch_importacao_ponto_texto.sql');
 const SYSTEM_SOURCE_MIGRATION = read('supabase/migrations/20270101004200_ponto_base_interna_incremental.sql');
 const IMPORT_HOOK = read('src/hooks/useTimesheet.ts');
 const HISTORY_HOOK = read('src/hooks/useTimeImportLogs.ts');
@@ -13,6 +14,16 @@ const HISTORY_PANEL = read('src/components/timesheet/ImportHistoryPanel.tsx');
 const PAGE = read('src/pages/Timesheet.tsx');
 
 describe('arquivo permanente das importações do relógio de ponto', () => {
+  it('mantém o mesmo lote textual nas batidas, no protocolo e no arquivo', () => {
+    expect(IMPORT_HOOK).toContain('createTimesheetImportBatchId(startDate, endDate)');
+    expect(IMPORT_HOOK).toContain('import_batch: batchId');
+    expect(IMPORT_HOOK).toContain('batch_id: batchId');
+    expect(IMPORT_HOOK).toContain('`${batchId}/${safeName}`');
+    expect(BATCH_TEXT_MIGRATION).toMatch(/ALTER COLUMN batch_id TYPE text\s+USING batch_id::text/);
+    expect(BATCH_TEXT_MIGRATION).toContain('WHERE tr.import_batch = tif.batch_id');
+    expect(BATCH_TEXT_MIGRATION).toContain('WITH (security_invoker = true)');
+  });
+
   it('exige o original arquivado antes de aplicar qualquer batida', () => {
     const uploadPosition = IMPORT_HOOK.indexOf(".from('timesheet-imports')");
     const importPosition = IMPORT_HOOK.indexOf("'import_time_records_with_archive'");
