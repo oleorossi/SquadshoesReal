@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 const ROOT = resolve(__dirname, '../..');
 const read = (path: string) => readFileSync(resolve(ROOT, path), 'utf8');
 
-const migration = read('supabase/migrations/20270101013050_standardize_l42pro_label_templates.sql');
+const migration = read('supabase/migrations/20270101013300_standardize_l42pro_label_templates.sql');
 const generatorTab = read('src/components/label-system/LabelTemplatesTab.tsx');
 const productionTab = read('src/components/label-system/LabelProductionTab.tsx');
 const analytics = read('src/components/label-system/LabelAnalyticsDashboard.tsx');
