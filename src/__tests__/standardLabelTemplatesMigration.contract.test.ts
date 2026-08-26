@@ -30,7 +30,7 @@ describe('Etiquetas L42PRO · contrato de modelos padronizados', () => {
   it('remove escrita do cliente, preserva a leitura do histórico e pode recriar a policy', () => {
     expect(migration).toContain('ALTER TABLE public.label_templates ENABLE ROW LEVEL SECURITY');
     expect(migration).toContain('REVOKE ALL PRIVILEGES ON TABLE public.label_templates FROM PUBLIC, anon');
-    expect(migration).toMatch(/REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER\s+ON TABLE public\.label_templates\s+FROM authenticated/);
+    expect(migration).toContain('REVOKE ALL PRIVILEGES ON TABLE public.label_templates FROM authenticated');
     expect(migration).toContain('GRANT SELECT ON TABLE public.label_templates TO authenticated');
     expect(migration).toContain('DROP POLICY IF EXISTS "Approved users can view standard label templates"');
     for (const historicalPolicy of [
@@ -45,6 +45,7 @@ describe('Etiquetas L42PRO · contrato de modelos padronizados', () => {
     expect(migration).toContain("FROM pg_policies");
     expect(migration).toContain("cmd IN ('SELECT', 'ALL')");
     expect(migration).toContain('Política de leitura concorrente encontrada em label_templates');
+    expect(migration).toContain("has_table_privilege('authenticated', 'public.label_templates', 'MAINTAIN')");
     expect(migration).toContain("IF v_standard_count <> 2 THEN");
     expect(migration).not.toMatch(/USING\s*\([^;]*system_key IS NOT NULL/is);
   });

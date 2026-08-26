@@ -214,9 +214,7 @@ DROP POLICY IF EXISTS "Approved users can view standard label templates" ON publ
 ALTER TABLE public.label_templates ENABLE ROW LEVEL SECURITY;
 
 REVOKE ALL PRIVILEGES ON TABLE public.label_templates FROM PUBLIC, anon;
-REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER
-  ON TABLE public.label_templates
-  FROM authenticated;
+REVOKE ALL PRIVILEGES ON TABLE public.label_templates FROM authenticated;
 GRANT SELECT ON TABLE public.label_templates TO authenticated;
 
 CREATE POLICY "Approved users can view standard label templates"
@@ -269,6 +267,10 @@ BEGIN
      OR has_table_privilege('authenticated', 'public.label_templates', 'INSERT')
      OR has_table_privilege('authenticated', 'public.label_templates', 'UPDATE')
      OR has_table_privilege('authenticated', 'public.label_templates', 'DELETE')
+     OR has_table_privilege('authenticated', 'public.label_templates', 'TRUNCATE')
+     OR has_table_privilege('authenticated', 'public.label_templates', 'REFERENCES')
+     OR has_table_privilege('authenticated', 'public.label_templates', 'TRIGGER')
+     OR has_table_privilege('authenticated', 'public.label_templates', 'MAINTAIN')
      OR NOT has_table_privilege('authenticated', 'public.label_templates', 'SELECT') THEN
     RAISE EXCEPTION 'label_templates: privilégios finais divergentes do contrato somente leitura';
   END IF;
