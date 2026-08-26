@@ -1,4 +1,5 @@
--- Versão 13300 reservada após detectar migrations concorrentes 13100/13200.
+-- Versão 13050 escolhida entre a última remota 13000 e as migrations
+-- concorrentes 13100/13200, preservando a ordem futura do ledger.
 -- Desativa o designer livre e torna os dois padrões L42PRO imutáveis para
 -- usuários da aplicação. Registros legados são preservados para auditoria.
 
