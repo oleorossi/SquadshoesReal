@@ -5,6 +5,9 @@
 -- 134. Nenhum consumidor financeiro/operacional pode voltar a escolher uma
 -- pessoa por crachá ou nome, sobretudo quando o crachá foi reciclado.
 
+-- Garante que identidade, ACLs, triggers e auditoria mudem juntos no db push.
+BEGIN;
+
 -- Papel não reativa uma conta bloqueada. Este helper é compartilhado pelas
 -- policies/RPCs do sistema inteiro; exigir `profiles.approved` aqui fecha também
 -- tokens antigos de usuários cujo papel RH/admin foi preservado para auditoria.
@@ -1601,3 +1604,5 @@ BEGIN
   END IF;
 END;
 $migration_check$;
+
+COMMIT;

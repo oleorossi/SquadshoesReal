@@ -9,6 +9,10 @@
 -- `paid` permanece apenas por compatibilidade com os seis registros legados; o
 -- frontend novo cria pending. Nenhum dado histórico é reclassificado aqui.
 
+-- O Supabase CLI não envolve automaticamente a migration inteira em uma única
+-- transação. Preserve o contrato financeiro como uma promoção atômica.
+BEGIN;
+
 ALTER TABLE public.employee_advances
   ADD COLUMN IF NOT EXISTS created_by uuid,
   ADD COLUMN IF NOT EXISTS idempotency_key uuid,
@@ -1761,3 +1765,5 @@ BEGIN
   END IF;
 END
 $migration_check$;
+
+COMMIT;

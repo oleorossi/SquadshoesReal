@@ -6,6 +6,11 @@
 -- de identidade por crachá que nunca entrou no histórico remoto, preservando antes
 -- a trilha de correções manuais das 68 duplicidades existentes.
 
+-- O Supabase CLI executa os statements da migration separadamente. O bloco
+-- explícito é necessário tanto para os LOCK TABLE abaixo quanto para impedir
+-- que uma falha deixe apenas parte das fronteiras de integridade aplicada.
+BEGIN;
+
 -- A view depende dos tipos que serão normalizados abaixo.
 DROP VIEW IF EXISTS public.v_time_import_archive;
 
@@ -293,6 +298,10 @@ $fn$;
 -- Recupera no histórico os arquivos que já estavam preservados no Storage. As
 -- contagens de processamento antigas não podem ser reconstruídas com segurança;
 -- por isso o estado é partial e a observação é explícita.
+-- Desative primeiro o guard, inclusive em uma retomada após deploy interrompido:
+-- o backfill usa estados históricos que protocolos novos não podem informar.
+DROP TRIGGER IF EXISTS trg_guard_time_import_archive_immutability ON public.time_import_logs;
+
 INSERT INTO public.time_import_logs (
   file_name, file_path, file_size_bytes, mime_type, batch_id,
   start_date, end_date, inserted_count, updated_count, skipped_count,
@@ -334,7 +343,6 @@ WHERE o.bucket_id = 'timesheet-imports'
 
 -- O backfill acima precisa rodar antes de o INSERT passar pelo guard de autoria
 -- do browser. A partir daqui, todo protocolo novo nasce pelo fluxo autenticado.
-DROP TRIGGER IF EXISTS trg_guard_time_import_archive_immutability ON public.time_import_logs;
 CREATE TRIGGER trg_guard_time_import_archive_immutability
 BEFORE INSERT OR UPDATE OR DELETE ON public.time_import_logs
 FOR EACH ROW EXECUTE FUNCTION public.guard_time_import_archive_immutability();
@@ -1323,3 +1331,5 @@ BEGIN
   END IF;
 END
 $migration_check$;
+
+COMMIT;

@@ -7,8 +7,16 @@ const read = (path: string) => readFileSync(resolve(ROOT, path), 'utf8');
 
 const POINT = read('supabase/migrations/20270101013400_integridade_importacao_ponto.sql');
 const PAYROLL = read('supabase/migrations/20270101013500_integridade_adiantamentos_folha_pagamentos.sql');
+const IDENTITY = read('supabase/migrations/20270101013600_identidade_canonica_pendencias_ponto.sql');
 
 describe('integridade transacional do ponto e da folha', () => {
+  it('promove cada fronteira de RH em uma transação explícita no db push', () => {
+    for (const migration of [POINT, PAYROLL, IDENTITY]) {
+      expect(migration).toMatch(/\nBEGIN;\n/);
+      expect(migration.trimEnd()).toMatch(/COMMIT;$/);
+    }
+  });
+
   it('normaliza o protocolo vivo e preserva autoria após excluir conta', () => {
     expect(POINT).toMatch(/ALTER COLUMN imported_by TYPE uuid/);
     expect(POINT).toMatch(/ALTER COLUMN start_date TYPE date/);
@@ -41,8 +49,11 @@ describe('integridade transacional do ponto e da folha', () => {
   });
 
   it('faz importação one-shot, interna e com quarentena para matrícula órfã', () => {
+    const disabledGuard = POINT.indexOf('DROP TRIGGER IF EXISTS trg_guard_time_import_archive_immutability');
     const archiveBackfill = POINT.indexOf('INSERT INTO public.time_import_logs');
     const guardedInsert = POINT.indexOf('BEFORE INSERT OR UPDATE OR DELETE ON public.time_import_logs');
+    expect(disabledGuard).toBeGreaterThan(-1);
+    expect(archiveBackfill).toBeGreaterThan(disabledGuard);
     expect(archiveBackfill).toBeGreaterThan(-1);
     expect(guardedInsert).toBeGreaterThan(archiveBackfill);
     expect(POINT).toContain("current_setting('app.timesheet_import_authorized', true)");
