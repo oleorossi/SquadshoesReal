@@ -46,7 +46,11 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { checkSoleAvailability, SoleAvailabilityResult } from '@/lib/soleAvailability';
 import { SolePurchaseConfirmDialog } from '@/components/sale-orders/SolePurchaseConfirmDialog';
-import { enrichMaterialShortages, MaterialAvailabilityResult } from '@/lib/materialAvailability';
+import {
+  enrichMaterialShortages,
+  MaterialAvailabilityResult,
+  RawMaterialAvailability,
+} from '@/lib/materialAvailability';
 import { MaterialPurchaseConfirmDialog } from '@/components/sale-orders/MaterialPurchaseConfirmDialog';
 import { checkSectorCapacity, CapacityCheckResult } from '@/lib/sectorCapacity';
 import { SectorOverloadDialog } from '@/components/sale-orders/SectorOverloadDialog';
@@ -1753,12 +1757,11 @@ export default function SaleOrderForm() {
     // normais em vez de a falta virar save direto.
     const continueAfterStockCheck = async () => {
       try {
-        // Collect all insufficient materials
-        // Passa color + grade do item do PV pra cada shortage. A função
-        // enrichMaterialShortages decide se mantém esses campos (solados →
-        // agrupa por cor/grade) ou descarta (forros/tiras → agrega por
-        // product_id apenas).
-        const rawShortages: Array<{ product_id: string; product_name: string; required: number; available: number; referenceLabel: string; color?: string | null; grade?: Record<string, number> | null }> = [];
+        // Colete TODAS as contribuições antes de decidir se há falta. Cada RPC
+        // recebe só um item e compara contra o mesmo estoque; filtrar aqui por
+        // `mat.sufficient` perderia faltas agregadas (ex.: 3 × 17 kg > 29 kg,
+        // embora cada uma das três respostas isoladas diga "suficiente").
+        const rawAvailability: RawMaterialAvailability[] = [];
         const validItemsList = validItems;
         let resultIdx = 0;
         for (const result of stockResults) {
@@ -1768,20 +1771,17 @@ export default function SaleOrderForm() {
           const itemGrade = (sourceItem as any)?.grade ?? null;
           const itemColor = result.value.color || null;
           for (const mat of result.value.availability) {
-            if (!mat.sufficient) {
-              rawShortages.push({
-                product_id: mat.product_id,
-                product_name: mat.product_name,
-                required: mat.required,
-                available: mat.available,
-                referenceLabel: `${result.value.refLabel} (${itemColor || 'sem cor'})`,
-                color: itemColor,
-                grade: itemGrade,
-              });
-            }
+            rawAvailability.push({
+              product_id: mat.product_id || null,
+              product_name: mat.product_name,
+              required: mat.required,
+              available: mat.available,
+              referenceLabel: `${result.value.refLabel} (${itemColor || 'sem cor'})`,
+              color: itemColor,
+              grade: itemGrade,
+            });
           }
         }
-
         // TIRAS são tratadas EXCLUSIVAMENTE pela fila canônica após o save. Remove
         // tiras desta prévia porque elas seguem outro planejamento operacional.
         // Exclui: (a) product_id nulo = tira de cor nova sem produto (check_stock_availability
@@ -1795,11 +1795,11 @@ export default function SaleOrderForm() {
         }
         const STRAP_GROUP_RE = /tira|el[aá]stic|tran[çc]/i;
 
-        let materialShortages = rawShortages.filter((s) => s.product_id != null);
-        if (rawShortages.length > 0) {
+        let materialAvailability = rawAvailability.filter((s) => s.product_id != null);
+        if (rawAvailability.length > 0) {
           // Enriquece solados: substitui cor do sapato pela cor real cadastrada do solado
           // (check_stock_availability não retorna cor do solado). E identifica tiras pra excluir.
-          const productIds = [...new Set(rawShortages.map((s) => s.product_id).filter(Boolean))];
+          const productIds = [...new Set(rawAvailability.map((s) => s.product_id).filter(Boolean))];
           const { data: prodMeta } = await supabase
             .from('products')
             .select('id, category, color, group_id, product_groups(name)')
@@ -1810,21 +1810,24 @@ export default function SaleOrderForm() {
                 strapGroupIds.has(String(p.group_id)) || STRAP_GROUP_RE.test(p.product_groups?.name || ''))
               .map((p: any) => p.id as string)
           );
-          materialShortages = materialShortages.filter((s) => !strapProductIds.has(s.product_id));
+          materialAvailability = materialAvailability.filter((s) => !strapProductIds.has(s.product_id));
 
           const soleColor = new Map(
             (prodMeta || [])
               .filter((p: any) => p.category === 'Solado' && p.color)
               .map((p: any) => [p.id, p.color as string])
           );
-          for (const s of materialShortages) {
+          for (const s of materialAvailability) {
             const realColor = soleColor.get(s.product_id);
             if (realColor) s.color = realColor;
           }
         }
 
-        if (materialShortages.length > 0) {
-          const enriched = await enrichMaterialShortages(materialShortages);
+        if (materialAvailability.length > 0) {
+          // O enriquecimento conhece a categoria do produto: mantém solados
+          // separados por cor/grade e só então colapsa as cores dos materiais
+          // comuns, comparando o consumo total contra o estoque uma única vez.
+          const enriched = await enrichMaterialShortages(materialAvailability);
           if (enriched.shortages.length > 0) {
             setMaterialResult(enriched);
             setMaterialDialogOpen(true);

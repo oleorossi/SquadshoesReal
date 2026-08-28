@@ -59,18 +59,128 @@ export interface MaterialAvailabilityResult {
   minPurchaseDateISO: string | null;
 }
 
-interface RawShortage {
-  product_id: string;
+export interface RawMaterialAvailability {
+  product_id: string | null;
   product_name: string;
   required: number;
   available: number;
   referenceLabel: string;
+  /** Todas as referências que compartilham o mesmo estoque. `referenceLabel`
+   *  segue aceito para chamadas unitárias. */
+  referenceLabels?: string[];
   /** Cor solicitada — propagar do item do PV pra que solados sejam comprados
    *  com a cor correta. Materiais agregados (forro genérico, etc.) deixam null. */
   color?: string | null;
   /** Grade do item do PV (quantidade por tamanho). Quando enviado, é somado
    *  por (product_id, color) na agregação. Solados precisam disso pra OC. */
   grade?: Record<string, number> | null;
+}
+
+export interface AggregatedMaterialAvailability {
+  product_id: string;
+  product_name: string;
+  color: string | null;
+  required: number;
+  available: number;
+  referenceLabels: string[];
+  grade: Record<string, number> | null;
+}
+
+interface AggregatedMaterialAvailabilityInternal {
+  product_id: string;
+  product_name: string;
+  required: number;
+  available: number;
+  color: string | null;
+  referenceLabels: Set<string>;
+  grade: Record<string, number> | null;
+}
+
+/**
+ * Soma as respostas por balde físico de estoque antes de decidir se há falta.
+ * Solados preservam (produto, cor, grade); materiais comuns compartilham o
+ * estoque do produto entre todas as cores do PV e descartam a grade.
+ *
+ * O RPC recebe um item por chamada e compara cada um contra o MESMO saldo.
+ * Portanto, o disponível entra uma única vez (menor snapshot em caso de
+ * respostas concorrentes), enquanto todo o consumo é somado.
+ */
+export function aggregateMaterialAvailability(
+  availability: RawMaterialAvailability[],
+  categoryByProductId: ReadonlyMap<string, string | null | undefined>,
+): AggregatedMaterialAvailability[] {
+  const byProductAndColor = new Map<string, AggregatedMaterialAvailabilityInternal>();
+
+  for (const row of availability) {
+    if (!row.product_id) continue;
+    const color = row.color ?? null;
+    const key = `${row.product_id}::${color || ''}`;
+    const parsedRequired = Number(row.required);
+    const parsedAvailable = Number(row.available);
+    const required = Number.isFinite(parsedRequired) ? parsedRequired : 0;
+    const available = Number.isFinite(parsedAvailable) ? parsedAvailable : 0;
+    const references = row.referenceLabels?.length
+      ? row.referenceLabels
+      : [row.referenceLabel];
+    const existing = byProductAndColor.get(key);
+
+    if (existing) {
+      existing.required += required;
+      existing.available = Math.min(existing.available, available);
+      references.filter(Boolean).forEach((label) => existing.referenceLabels.add(label));
+      if (row.grade) {
+        existing.grade = existing.grade || {};
+        for (const [size, qty] of Object.entries(row.grade)) {
+          existing.grade[size] = (existing.grade[size] || 0) + Number(qty || 0);
+        }
+      }
+      continue;
+    }
+
+    byProductAndColor.set(key, {
+      product_id: row.product_id,
+      product_name: row.product_name,
+      required,
+      available,
+      referenceLabels: new Set(references.filter(Boolean)),
+      color,
+      grade: row.grade ? { ...row.grade } : null,
+    });
+  }
+
+  const final = new Map<string, AggregatedMaterialAvailabilityInternal>();
+  for (const need of byProductAndColor.values()) {
+    const isSole = (categoryByProductId.get(need.product_id) || '')
+      .toLowerCase()
+      .includes('solado');
+    const key = isSole
+      ? `${need.product_id}::${need.color || ''}`
+      : need.product_id;
+    const existing = final.get(key);
+    if (existing) {
+      existing.required += need.required;
+      existing.available = Math.min(existing.available, need.available);
+      need.referenceLabels.forEach((label) => existing.referenceLabels.add(label));
+      if (isSole && need.grade) {
+        existing.grade = existing.grade || {};
+        for (const [size, qty] of Object.entries(need.grade)) {
+          existing.grade[size] = (existing.grade[size] || 0) + Number(qty || 0);
+        }
+      }
+      continue;
+    }
+    final.set(key, {
+      ...need,
+      color: isSole ? need.color : null,
+      referenceLabels: new Set(need.referenceLabels),
+      grade: isSole && need.grade ? { ...need.grade } : null,
+    });
+  }
+
+  return [...final.values()].map((need) => ({
+    ...need,
+    referenceLabels: [...need.referenceLabels],
+  }));
 }
 
 type ProductRow = {
@@ -134,53 +244,17 @@ function scaleGradeToTotal(
  * Enrich raw stock shortages with supplier, lead time, MOQ and unit info, mirroring
  * the sole-availability logic so the same UX can be reused for general materials.
  */
-export async function enrichMaterialShortages(rawShortages: RawShortage[]): Promise<MaterialAvailabilityResult> {
-  if (rawShortages.length === 0) {
+export async function enrichMaterialShortages(rawAvailability: RawMaterialAvailability[]): Promise<MaterialAvailabilityResult> {
+  if (rawAvailability.length === 0) {
     return { shortages: [], maxLeadTimeDays: 0, minPurchaseDateISO: null };
   }
 
-  // Aggregate by (product_id, color). Solados precisam de linhas separadas
-  // por cor (NATURAL vs PRETO vs CARAMELO viram 3 itens na OC). Materiais sem
-  // cor (color=null) usam chave "<product_id>::" e seguem agregando por produto.
-  // Grade é unida somando os valores por tamanho.
-  const aggKey = (productId: string, color: string | null | undefined) =>
-    `${productId}::${color || ''}`;
-  const aggregated = new Map<string, {
-    product_id: string;
-    product_name: string;
-    color: string | null;
-    required: number;
-    available: number;
-    references: Set<string>;
-    grade: Record<string, number> | null;
-  }>();
-  for (const s of rawShortages) {
-    const key = aggKey(s.product_id, s.color ?? null);
-    const existing = aggregated.get(key);
-    if (existing) {
-      existing.required += s.required;
-      existing.available = Math.min(existing.available, s.available);
-      existing.references.add(s.referenceLabel);
-      if (s.grade) {
-        existing.grade = existing.grade || {};
-        for (const [size, qty] of Object.entries(s.grade)) {
-          existing.grade[size] = (existing.grade[size] || 0) + Number(qty);
-        }
-      }
-    } else {
-      aggregated.set(key, {
-        product_id: s.product_id,
-        product_name: s.product_name,
-        color: s.color ?? null,
-        required: s.required,
-        available: s.available,
-        references: new Set([s.referenceLabel]),
-        grade: s.grade ? { ...s.grade } : null,
-      });
-    }
+  const productIds = [...new Set(
+    rawAvailability.map((row) => row.product_id).filter(Boolean),
+  )] as string[];
+  if (productIds.length === 0) {
+    return { shortages: [], maxLeadTimeDays: 0, minPurchaseDateISO: null };
   }
-
-  const productIds = [...new Set([...aggregated.values()].map(v => v.product_id))];
   const { data: products, error: productsError } = await supabase
     .from('products')
     .select('id, name, sku, unit, quantity, reserved_stock, unit_price, supplier_id, supplier_lead_time_days, lead_time_days, sole_moq, min_stock, max_stock, is_artisanal, purchase_unit, purchase_order_unit, conversion_rate, category')
@@ -198,55 +272,12 @@ export async function enrichMaterialShortages(rawShortages: RawShortage[]): Prom
   let maxLeadTime = 0;
   const shortages: MaterialShortage[] = [];
   const productById = new Map(rows.map(p => [p.id, p]));
-
-  // Segundo passe: pra products que NÃO são solados (forros, tiras, cola etc.),
-  // colapsa as cores num único shortage por product_id e descarta grade. Solados
-  // mantêm a separação por cor pra OC do fornecedor mostrar matriz de tamanhos.
-  const collapsedByProduct = new Map<string, typeof aggregated>();
-  for (const [, need] of aggregated.entries()) {
-    const product = productById.get(need.product_id);
-    const isSole = (product?.category || '').toLowerCase().includes('solado');
-    if (isSole) continue; // mantém entry original com cor
-    // Cria/atualiza um buckets colapsado por product_id apenas
-    if (!collapsedByProduct.has(need.product_id)) {
-      collapsedByProduct.set(need.product_id, new Map());
-    }
-    const bucket = collapsedByProduct.get(need.product_id)!;
-    const k = need.product_id;
-    const existing = bucket.get(k);
-    if (existing) {
-      existing.required += need.required;
-      existing.available = Math.min(existing.available, need.available);
-      need.references.forEach(r => existing.references.add(r));
-    } else {
-      bucket.set(k, {
-        product_id: need.product_id,
-        product_name: need.product_name,
-        color: null,
-        required: need.required,
-        available: need.available,
-        references: new Set(need.references),
-        grade: null,
-      });
-    }
-  }
-  // Substitui entradas não-solado por suas versões colapsadas
-  for (const [productId, bucket] of collapsedByProduct.entries()) {
-    // Remove todas as entries antigas com esse product_id (várias cores)
-    for (const key of [...aggregated.keys()]) {
-      if (aggregated.get(key)!.product_id === productId) {
-        aggregated.delete(key);
-      }
-    }
-    // Adiciona a versão colapsada
-    for (const [, collapsed] of bucket.entries()) {
-      aggregated.set(`${productId}::`, collapsed);
-    }
-  }
+  const categoryByProductId = new Map(rows.map((product) => [product.id, product.category]));
+  const aggregated = aggregateMaterialAvailability(rawAvailability, categoryByProductId);
 
   // Agora itera por (product_id, color) — pode ter múltiplos shortages do mesmo
   // produto se cores diferentes foram solicitadas (solados, principalmente).
-  for (const need of aggregated.values()) {
+  for (const need of aggregated) {
     const product = productById.get(need.product_id);
     if (!product) continue;
 
@@ -321,7 +352,7 @@ export async function enrichMaterialShortages(rawShortages: RawShortage[]): Prom
       // 0 e 1 a quantidade sai inteira e multiplicar o preço mesmo assim
       // faturaria a OC por um fator solto.
       purchase_unit_price: Number(product.unit_price ?? 0) * (conversionRate > 1 ? conversionRate : 1),
-      reference_labels: [...need.references],
+      reference_labels: need.referenceLabels,
       color: need.color,
       grade: scaledGrade,
     });

@@ -59,6 +59,19 @@ describe('consumo de solado tem uma tela só', () => {
     expect(existsSync(resolve(ROOT, 'src/hooks/useSoleStandardItems.ts'))).toBe(false);
   });
 
+  it('a ficha herda itens padrão do grupo sem copiá-los para o BOM', () => {
+    const src = read('src/pages/TechnicalSheets.tsx');
+
+    // ITEM vive em sole_group_standard_items e é resolvido pelo motor de
+    // consumo. Copiar qualquer uma das fontes abaixo para sheet_materials
+    // congela cadastro e unidade — foi assim que 23,33 g virou 23,33 kg.
+    expect(src).not.toMatch(
+      /\.from\(\s*['"](?:sole_group_standard_items|sole_standard_materials|sole_standard_items_consumption)['"]\s*\)/,
+    );
+    expect(src).not.toContain(".eq('is_standard_sole_item', true)");
+    expect(src).not.toContain('autoFillStandardItemsFromSole');
+  });
+
   it('a página do produto e a de fichas não voltam a montar o editor de solado', () => {
     for (const rel of ['src/pages/ProductDetail.tsx', 'src/pages/ComponentSheets.tsx']) {
       expect(read(rel), `${rel} voltou a montar SoleTechnicalDetails`).not.toContain('SoleTechnicalDetails');

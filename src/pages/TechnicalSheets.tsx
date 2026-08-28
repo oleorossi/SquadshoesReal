@@ -1315,7 +1315,6 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
    const addComponentColorRow = useAddComponentColorRow();
    const updateComponentColorRow = useUpdateComponentColorRow();
    const deleteComponentColorRow = useDeleteComponentColorRow();
-    const bulkAddMaterials = useBulkAddSheetMaterials();
     const [isSoleFachetado, setIsSoleFachetado] = useState(false);
  
   const { data: componentSheets = [] } = useComponentSheets();
@@ -1754,153 +1753,6 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
       toast.error("Erro ao puxar dados do solado: " + err.message);
     }
   };
-
-   /**
-    * Auto-fills standard sole items (glue, thread, EVA, etc) into the BOM
-    * based on the selected sole product.
-    */
-   const autoFillStandardItemsFromSole = async (soleProductId: string) => {
-     try {
-       // Resolve o solado (pra obter group_id e sole_classification)
-       const soleProd = (products as any[]).find(p => p.id === soleProductId);
-       const soleGroupId = soleProd?.group_id;
-       const soleClass = soleProd?.sole_classification as 'tradicional' | 'palmilha_pronta' | 'conjugado' | undefined;
-
-       // CAMINHO NOVO (Fase 1+ reformulação): sole_standard_materials POR GRUPO
-       // com filtro applies_to vs sole_classification. Tem prioridade sobre
-       // os caminhos legacy abaixo.
-       let standardByGroup: any[] = [];
-       if (soleGroupId) {
-         const { data } = await (supabase as any)
-           .from('sole_standard_materials')
-           .select('material_product_id, consumption_per_pair, unit_override, applies_to, notes, products!material_product_id(group_id, color, unit)')
-           .eq('sole_group_id', soleGroupId);
-         standardByGroup = (data || []).filter((row: any) => {
-           const a = row.applies_to;
-           if (a === 'any') return true;
-           if (!soleClass) return false;
-           if (a === 'palmilha_cortada') return soleClass === 'tradicional' || soleClass === 'conjugado';
-           if (a === 'palmilha_pronta') return soleClass === 'palmilha_pronta';
-           return false;
-         });
-       }
-
-       // Mantém legacy: 1) sole_standard_items_consumption (por tamanho)
-       const { data: standardCons, error: consError } = await supabase
-         .from('sole_standard_items_consumption')
-         .select('standard_item_id, size, consumption, unit')
-         .eq('sole_product_id', soleProductId);
-       if (consError) throw consError;
-
-       // 2) Items globais marcados como `is_standard_sole_item` (cola, linha,
-       // EVA, etc. que sempre entram). BUG 19/05/2026: query antiga incluía
-       // `category.eq.Solado,category.eq.Componente` no .or() — isso despejava
-       // TODOS os solados e componentes do estoque no BOM da nova ficha
-       // (centenas de produtos), o que não fazia sentido nenhum.
-       // Critério correto: só items explicitamente marcados como "padrão global".
-       // BUG 02/08/2026: a flag estava marcada em 7 SOLADOS (não em cola/linha),
-       // e o loop abaixo despejava os 7 no BOM de toda ficha nova a 1 par/par —
-       // 56 linhas em 8 fichas, inflando custeio e MRP. O solado da referência
-       // vem de `technical_sheets.sole_group_id`, nunca de linha de BOM, então
-       // filtramos a categoria aqui além do CHECK do banco
-       // (chk_standard_sole_item_not_a_sole, mig 20261102120000).
-      const { data: globalStandardItems, error: globalError } = await supabase.from('products')
-        .select('id, name, group_id, unit_price, unit, category')
-        .eq('is_standard_sole_item', true)
-        .eq('active', true)
-        .not('category', 'ilike', '%solado%')
-        .not('category', 'ilike', 'sola');
-
-       if (globalError) throw globalError;
-
-       if (
-         standardByGroup.length === 0 &&
-         (!standardCons || standardCons.length === 0) &&
-         (!globalStandardItems || globalStandardItems.length === 0)
-       ) {
-         return;
-       }
-
-       const newMaterials: any[] = [];
-       const existingProductIds = new Set(sheetMaterials.map((m: any) => m.product_id));
-
-       // NOVO CAMINHO: insere os materiais padrão do grupo (por par)
-       for (const row of standardByGroup) {
-         const pid = row.material_product_id;
-         if (existingProductIds.has(pid)) continue;
-         newMaterials.push({
-           product_id: pid,
-           group_id: row.products?.group_id,
-           quantity_per_unit: Number(row.consumption_per_pair) || 0,
-           consumption_per_size: {},
-           color: row.products?.color || '',
-           notes: row.notes || `Padrão do solado (${row.applies_to === 'any' ? 'sempre' : row.applies_to})`,
-           sizes: form.sizes,
-         });
-         existingProductIds.add(pid);
-       }
-
-       // Process specific sole standard items first
-       if (standardCons && standardCons.length > 0) {
-         const itemsMap = new Map<string, { unit: string; bySize: Record<string, number> }>();
-         standardCons.forEach(c => {
-           const entry = itemsMap.get(c.standard_item_id) || { unit: c.unit, bySize: {} };
-           entry.bySize[String(c.size)] = Number(c.consumption);
-           itemsMap.set(c.standard_item_id, entry);
-         });
-
-         for (const [productId, info] of itemsMap.entries()) {
-           if (existingProductIds.has(productId)) continue;
-           const prod = (products as any[]).find(p => p.id === productId);
-           if (!prod) continue;
-
-           const avg = Object.values(info.bySize).reduce((a, b) => a + b, 0) / Object.values(info.bySize).length;
-           newMaterials.push({
-             product_id: productId,
-             group_id: prod.group_id,
-             quantity_per_unit: Number(avg.toFixed(4)),
-             consumption_per_size: info.bySize,
-             color: prod.color || '',
-             notes: 'Item padrão do solado',
-             sizes: form.sizes
-           });
-           existingProductIds.add(productId);
-         }
-       }
-
-       // Process global standard items (fixed consumption 1 or based on category)
-       if (globalStandardItems && globalStandardItems.length > 0) {
-         globalStandardItems.forEach(item => {
-           if (existingProductIds.has(item.id)) return;
-           newMaterials.push({
-             product_id: item.id,
-             group_id: item.group_id,
-             quantity_per_unit: 1, // Default to 1 unit
-             consumption_per_size: {},
-             color: '',
-             notes: 'Item padrão global',
-             sizes: form.sizes
-           });
-           existingProductIds.add(item.id);
-         });
-       }
-
-         if (newMaterials.length > 0) {
-           bulkAddMaterials.mutate({ sheetId: sheet.id, materials: newMaterials });
-           const fromNew = standardByGroup.length;
-           const fromLegacy = newMaterials.length - fromNew;
-           if (fromNew > 0 && fromLegacy === 0) {
-             toast.success(`${fromNew} ${fromNew === 1 ? 'material padrão do solado adicionado' : 'materiais padrão do solado adicionados'} ao BOM.`);
-           } else if (fromNew > 0 && fromLegacy > 0) {
-             toast.success(`${fromNew} do cadastro do solado + ${fromLegacy} legados adicionados ao BOM.`);
-           } else {
-             toast.success(`${newMaterials.length} ${newMaterials.length === 1 ? 'item padrão adicionado' : 'itens padrão adicionados'} ao BOM.`);
-           }
-         }
-     } catch (err: any) {
-       console.error("Error auto-filling standard items:", err);
-     }
-   };
 
    /**
     * Puxa a grade do solado (yield_per_size do component_sheet do solado)
@@ -2509,8 +2361,11 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
 
                      // Auto-fill lining/insole specs from sole technical specs
                      autoFillFromSoleSpecs(productId);
-                     // Auto-fill standard items like glue/EVA/thread
-                     autoFillStandardItemsFromSole(productId);
+                     // Cola, linha, EVA e os demais itens padrão permanecem
+                     // vinculados ao grupo do solado em
+                     // `sole_group_standard_items`. O motor de consumo herda
+                     // esse cadastro ao vivo; copiá-lo para `sheet_materials`
+                     // congela valores e unidades no BOM da referência.
                    } else {
                      setIsSoleFachetado(false);
                    }
