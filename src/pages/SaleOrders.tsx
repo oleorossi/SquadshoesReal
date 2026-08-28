@@ -27,6 +27,8 @@ import PurchaseOrdersForPvCard from '@/components/purchase/PurchaseOrdersForPvCa
 import { PvOutdatedBadge } from '@/components/sale-orders/PvOutdatedBadge';
 import { RevertInvoiceButton } from '@/components/sale-orders/RevertInvoiceButton';
 import SummaryConsumptionPanel from '@/components/sale-orders/SummaryConsumptionPanel';
+import type { SaleOrderReadinessCorrectionTarget } from '@/components/sale-orders/SaleOrderReadinessCorrectionDialog';
+const SaleOrderReadinessCorrectionDialog = lazy(() => import('@/components/sale-orders/SaleOrderReadinessCorrectionDialog'));
 const SaleOrdersOverviewDialog = lazy(() => import('@/components/sale-orders/SaleOrdersOverviewDialog'));
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { Button } from '@/components/ui/button';
@@ -50,13 +52,10 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useSaleOrders, useSaleOrderAllItems, useCreateSaleOrder, useDeleteSaleOrder, useUpdateSaleOrderStatus, useResyncOPsFromSheets, useResyncOPsFromPV, useCommitPickingForSaleOrder, useRealtimeSaleOrders, SaleOrderFormData, SaleOrderItemFormData, PackagingMode, ORDER_TYPE_LABELS } from '@/hooks/useSaleOrders';
-import { useCreateSaleOrderReadinessOverride } from '@/hooks/useSaleOrderCommand';
 import {
   executeSaleOrderCommand,
   preflightSaleOrderCommand,
   SaleOrderReadinessBlockedError,
-  type SaleOrderCommandAction,
-  type SaleOrderCommandIssue,
 } from '@/lib/saleOrderCommand';
 import { useTechnicalSheetsLite } from '@/hooks/useTechnicalSheets';
 import { useClients, useEconomicGroups } from '@/hooks/useClients';
@@ -332,26 +331,22 @@ export default function SaleOrders() {
   const createOrder = useCreateSaleOrder();
   const deleteOrder = useDeleteSaleOrder();
   const isAdmin = useIsAdmin();
-  const [readinessOverrideTarget, setReadinessOverrideTarget] = useState<null | {
-    id: string;
-    status: string;
-    command: SaleOrderCommandAction;
-    blockers: SaleOrderCommandIssue[];
-  }>(null);
-  const [readinessOverrideReason, setReadinessOverrideReason] = useState('');
-  const createReadinessOverride = useCreateSaleOrderReadinessOverride();
+  // Geração em lote pode encontrar mais de um PV bloqueado. A fila preserva
+  // todos eles em vez de deixar o último erro sobrescrever os anteriores.
+  const [readinessCorrectionTargets, setReadinessCorrectionTargets] = useState<SaleOrderReadinessCorrectionTarget[]>([]);
+  const readinessCorrectionTarget = readinessCorrectionTargets[0] || null;
   const updateStatus = useUpdateSaleOrderStatus({
     onReadinessBlocked: (blocked, vars) => {
-      if (!isAdmin) {
-        toast.error(blocked.message);
-        return;
-      }
-      setReadinessOverrideReason('');
-      setReadinessOverrideTarget({
+      const nextTarget: SaleOrderReadinessCorrectionTarget = {
         id: vars.id,
+        orderNumber: orders.find((order) => order.id === vars.id)?.order_number || null,
         status: vars.status,
-        command: blocked.preflight.command,
-        blockers: blocked.preflight.blockers,
+        preflight: blocked.preflight,
+      };
+      setReadinessCorrectionTargets((current) => {
+        const existingIndex = current.findIndex((target) => target.id === vars.id);
+        if (existingIndex < 0) return [...current, nextTarget];
+        return current.map((target, index) => index === existingIndex ? nextTarget : target);
       });
     },
   });
@@ -2266,7 +2261,11 @@ export default function SaleOrders() {
                           try {
                             await updateStatus.mutateAsync({ id: order.id, status: v });
                           } catch (err: any) {
-                            toast.error(`Erro ao atualizar status: ${err.message}`);
+                            // Readiness já abriu a janela estruturada com os itens;
+                            // repetir a mesma falha em toast só encobre o conteúdo.
+                            if (!(err instanceof SaleOrderReadinessBlockedError)) {
+                              toast.error(`Erro ao atualizar status: ${err.message}`);
+                            }
                           }
                         }}>
                           <SelectTrigger aria-label={`Status do pedido ${order.order_number}: ${order.status}. Alterar`} className="h-7 w-[130px] text-xs border-0 bg-transparent p-0 shadow-none hover:ring-1 hover:ring-border [&>svg]:hidden disabled:opacity-60">
@@ -3282,92 +3281,36 @@ export default function SaleOrders() {
         </DialogContent>
       </Dialog>
 
-      {/* Confirmação estruturada genérica (substitui confirm() nativo) */}
-      <Dialog
-        open={readinessOverrideTarget !== null}
-        onOpenChange={(open) => {
-          if (!open && !createReadinessOverride.isPending && !updateStatus.isPending) {
-            setReadinessOverrideTarget(null);
-            setReadinessOverrideReason('');
-          }
-        }}
-      >
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Override administrativo de prontidão</DialogTitle>
-            <DialogDescription>
-              Esta liberação não expira, fica vinculada à versão atual do PV e exige justificativa auditável.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3">
-              <p className="mb-2 text-sm font-semibold">Bloqueios encontrados</p>
-              <ul className="space-y-1 text-sm text-muted-foreground">
-                {(readinessOverrideTarget?.blockers || []).map((blocker, index) => (
-                  <li key={`${blocker.code}-${index}`}>
-                    <span className="font-mono text-xs text-foreground">{blocker.code}</span>
-                    {' — '}{blocker.message}
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="readiness-override-reason">Justificativa obrigatória</Label>
-              <Textarea
-                id="readiness-override-reason"
-                value={readinessOverrideReason}
-                onChange={(event) => setReadinessOverrideReason(event.target.value)}
-                placeholder="Explique o motivo operacional e quem autorizou a exceção."
-                rows={4}
-                disabled={createReadinessOverride.isPending || updateStatus.isPending}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={createReadinessOverride.isPending || updateStatus.isPending}
-              onClick={() => setReadinessOverrideTarget(null)}
-            >
-              Cancelar
-            </Button>
-            <Button
-              type="button"
-              disabled={
-                readinessOverrideReason.trim().length < 10 ||
-                createReadinessOverride.isPending ||
-                updateStatus.isPending
+      {readinessCorrectionTarget && (
+        <Suspense fallback={null}>
+          <SaleOrderReadinessCorrectionDialog
+            target={readinessCorrectionTarget}
+            isAdmin={isAdmin}
+            statusChangePending={updateStatus.isPending}
+            onClose={() => setReadinessCorrectionTargets((current) => current.slice(1))}
+            onEditOrder={() => {
+              const target = readinessCorrectionTarget;
+              if (!target) return;
+              setReadinessCorrectionTargets((current) => current.filter((item) => item.id !== target.id));
+              navigate(`/sales/edit/${target.id}`);
+            }}
+            onRetry={async (overrideId) => {
+              const target = readinessCorrectionTarget;
+              if (!target) return;
+              try {
+                await updateStatus.mutateAsync({
+                  id: target.id,
+                  status: target.status,
+                  override_id: overrideId || null,
+                });
+                setReadinessCorrectionTargets((current) => current.filter((item) => item.id !== target.id));
+              } catch {
+                // onReadinessBlocked atualiza o mesmo alvo com o preflight novo.
               }
-              onClick={async () => {
-                const target = readinessOverrideTarget;
-                if (!target) return;
-                try {
-                  const overrideId = await createReadinessOverride.mutateAsync({
-                    saleOrderId: target.id,
-                    command: target.command,
-                    justification: readinessOverrideReason,
-                  });
-                  await updateStatus.mutateAsync({
-                    id: target.id,
-                    status: target.status,
-                    override_id: overrideId,
-                  });
-                  setReadinessOverrideTarget(null);
-                  setReadinessOverrideReason('');
-                } catch {
-                  // As mutations exibem o erro e mantêm o diálogo aberto para correção.
-                }
-              }}
-            >
-              {(createReadinessOverride.isPending || updateStatus.isPending) && (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              )}
-              Registrar e executar
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            }}
+          />
+        </Suspense>
+      )}
 
       <AlertDialog open={pendingConfirm !== null} onOpenChange={(o) => { if (!o) setPendingConfirm(null); }}>
         <AlertDialogContent>

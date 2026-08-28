@@ -22,6 +22,31 @@ describe('saleOrderCommand', () => {
     expect(readiness.warnings).toEqual([]);
   });
 
+  it('preserva a identidade e os detalhes usados pela janela de correção', () => {
+    const readiness = normalizeSaleOrderReadiness({
+      ready: false,
+      blockers: [{
+        code: 'material_color_not_registered',
+        message: 'Cor ausente',
+        item_id: 'item-1',
+        reference_id: 'ref-1',
+        overridable: true,
+        details: { component: 'Palmilha', color: 'ROSADO', product_id: 'product-1' },
+      }],
+    });
+
+    expect(readiness.blockers[0]).toEqual(expect.objectContaining({
+      item_id: 'item-1',
+      reference_id: 'ref-1',
+      overrideable: true,
+      details: {
+        component: 'Palmilha',
+        color: 'ROSADO',
+        product_id: 'product-1',
+      },
+    }));
+  });
+
   it('mantém ready explícito do servidor e completa identidade do preflight', () => {
     const preflight = normalizeSaleOrderCommandPreflight(
       { ready: true, blockers: [], order_version: 3 },
