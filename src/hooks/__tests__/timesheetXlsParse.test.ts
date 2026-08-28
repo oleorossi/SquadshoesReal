@@ -33,6 +33,18 @@ describe('parseTimesheetRows — KP1028 RegistroPresença.xls', () => {
     expect(result.employees[1]).toMatchObject({ externalId: '3', name: 'sem batidas', records: [] });
   });
 
+  it('preserva o último funcionário sem batidas quando o arquivo termina na linha dos dias', () => {
+    const result = parseTimesheetRows([
+      ['Data de presença:01/08/2026~15/08/2026'],
+      ['IDUsuário:', '', '44', 'Nome:', 'quesia', 'Dep.:', 'DEP1'],
+      ['', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15'],
+    ]);
+
+    expect(result.employees).toEqual([
+      { externalId: '44', name: 'quesia', department: 'DEP1', records: [] },
+    ]);
+  });
+
   it('atribui os dias corretamente ao cruzar julho e agosto', () => {
     expect(resolveTimesheetRecordDate(16, '2026-07-16', '2026-08-07')).toBe('2026-07-16');
     expect(resolveTimesheetRecordDate(31, '2026-07-16', '2026-08-07')).toBe('2026-07-31');

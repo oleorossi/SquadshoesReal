@@ -329,8 +329,10 @@ export function parseTimesheetRows(rows: SpreadsheetRow[]): { employees: ParsedE
           }
 
           // Move past the days row; punch rows start on the next line.
+          // O KP1028 pode encerrar o .xls imediatamente após a linha dos dias
+          // quando o último funcionário não teve batidas. Nesse caso ainda
+          // precisamos emitir sua identidade para preservar a cobertura do quadro.
           i++;
-          if (i >= rows.length) break;
 
           // Aggregate punches per day across multiple rows (some exports split
           // morning/afternoon shifts onto separate rows below the days header).
