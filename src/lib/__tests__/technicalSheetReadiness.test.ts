@@ -62,6 +62,13 @@ describe('evaluateTechnicalSheetReadiness', () => {
     expect(validada.find((stage) => stage.key === 'identity')?.issues).toContain('NCM válido');
   });
 
+  it('não exige preço da ficha quando tabela do cliente ou variante podem ser a fonte comercial', () => {
+    const stages = evaluateTechnicalSheetReadiness({ ...completeSheet, sale_price: 0 }, readyAudit);
+
+    expect(stages.every((stage) => stage.ready)).toBe(true);
+    expect(stages.flatMap((stage) => stage.issues)).not.toContain('preço-base comercial');
+  });
+
   it('manda Liberação para Identificação (status mora lá, não em Precificação)', () => {
     const stages = evaluateTechnicalSheetReadiness({ ...completeSheet, status_ficha: 'rascunho' }, readyAudit);
     expect(stages.find((stage) => stage.key === 'release')?.tab).toBe('id');

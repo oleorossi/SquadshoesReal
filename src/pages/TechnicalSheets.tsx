@@ -937,13 +937,13 @@ function QuickCreateForm({ onCreated, onCancel }: { onCreated: (id: string) => v
   const { data: shoeCategories = [] } = useShoeCategories();
   const shoeCategoryOptions = shoeCategories.length > 0 ? shoeCategories : SHOE_CATEGORIES;
   // Form reformulado em 2026-05: agora inclui campos essenciais (descrição,
-  // coleção, status da ficha) pra reduzir asymmetry com edit. Removido
+  // coleção, preço-base, status da ficha) pra reduzir asymmetry com edit. Removido
   // 'gender' — campo morto sem uso em business logic. Layout em 2 seções
   // (Identidade + Especificações) com Cancelar visível no rodapé.
   const [form, setForm] = useState({
     name: '', brand: '', model: '', code: '', shoe_category: '',
     sizes: '33-41', status: 'Ativo',
-    collection: '', description: '',
+    collection: '', description: '', sale_price: 0,
     images: [] as string[],
   });
   const [uploading, setUploading] = useState(false);
@@ -1085,6 +1085,24 @@ function QuickCreateForm({ onCreated, onCancel }: { onCreated: (id: string) => v
         <div>
           <Label htmlFor="qc-collection" className="text-xs">Coleção (opcional)</Label>
           <Input id="qc-collection" value={form.collection} onChange={e => setForm(f => ({ ...f, collection: e.target.value }))} className="mt-1 h-9" placeholder="Ex: Verão 2026" />
+        </div>
+
+        <div>
+          <Label htmlFor="qc-sale-price" className="text-xs">Preço-base comercial (R$/par)</Label>
+          <NumberInput
+            id="qc-sale-price"
+            value={form.sale_price}
+            onChange={v => setForm(f => ({ ...f, sale_price: v }))}
+            className="mt-1 h-9"
+            min={0}
+            step="0.01"
+            decimals={2}
+            unit="R$"
+            placeholder="0,00"
+          />
+          <p className={cn('mt-1 text-xs', form.sale_price > 0 ? 'text-muted-foreground' : 'text-warning')}>
+            Tabela do cliente ou preço próprio da variante prevalecem. Sem nenhuma base positiva, o pedido será bloqueado.
+          </p>
         </div>
 
         <div>
@@ -4061,12 +4079,58 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
           <div className="rounded-lg border bg-muted/20 px-4 py-2.5 flex items-center gap-3">
             <DollarSign className="h-4 w-4 text-primary shrink-0" />
             <div>
-              <div className="text-sm font-bold">Preço de Custo</div>
+              <div className="text-sm font-bold">Custos e preço comercial</div>
               <div className="text-xs text-muted-foreground">
-                Rollup de material (BOM) + mão de obra + overhead. Defina preço de venda e margem por canal.
+                Cadastre o preço-base da referência e acompanhe material (BOM), mão de obra e overhead.
               </div>
             </div>
           </div>
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                <DollarSign className="h-4 w-4 text-primary" /> Preço-base comercial da referência
+              </CardTitle>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Valor padrão por par usado quando o cliente não tem tabela de preço e a variante não possui preço próprio.
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="max-w-sm">
+                <Label htmlFor={`sheet-sale-price-${sheet.id}`} className="text-xs text-muted-foreground">
+                  Preço-base comercial (R$/par)
+                </Label>
+                <NumberInput
+                  id={`sheet-sale-price-${sheet.id}`}
+                  value={form.sale_price || 0}
+                  onChange={v => updateField('sale_price', v)}
+                  className="mt-1 h-9"
+                  min={0}
+                  step="0.01"
+                  decimals={2}
+                  unit="R$"
+                  placeholder="0,00"
+                />
+              </div>
+              <div className={cn(
+                'rounded-md border px-3 py-2.5 text-xs leading-relaxed flex items-start gap-2',
+                Number(form.sale_price) > 0
+                  ? 'border-success/30 bg-success/10 text-success'
+                  : 'border-warning/30 bg-warning/10 text-warning',
+              )}>
+                {Number(form.sale_price) > 0
+                  ? <Check className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  : <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />}
+                <span>
+                  {Number(form.sale_price) > 0
+                    ? 'Preço-base informado; tabela do cliente ou variante continuam tendo prioridade.'
+                    : 'Sem preço-base: pedidos sem tabela do cliente ou preço próprio da variante serão bloqueados no lançamento.'}
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Prioridade no pedido: tabela do cliente → variante de material → preço-base da referência.
+              </p>
+            </CardContent>
+          </Card>
           <CostsTab sheetId={sheet.id} form={form} groups={groups || []} />
         </TabsContent>
 
