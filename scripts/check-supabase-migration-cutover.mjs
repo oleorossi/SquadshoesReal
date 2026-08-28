@@ -7,11 +7,12 @@ import { fileURLToPath } from 'node:url';
 
 export const CUTOVER_VERSION = '20270101009300';
 
-// Lista de versões locais após resolver a colisão 09100 -> 09150. O hash usa
-// somente as versões ordenadas, separadas por "\n" e sem newline final.
+// Lista de versões locais após resolver a colisão 09100 -> 09150 e versionar o
+// marcador remoto 20260828111941. O hash usa somente as versões ordenadas,
+// separadas por "\n" e sem newline final.
 export const LOCAL_LEGACY_BASELINE = Object.freeze({
-  count: 1480,
-  sha256: '2733d2a64fecaadb239ed5ad17b8bd2046c1eb2106fb485c7b65aca1f08b0460',
+  count: 1481,
+  sha256: '00b74f578312ad04cc249b8322746633aa47b2a8069d7a2a2512ff2f646ca749',
 });
 
 // Histórico vivo de produção, incluindo os três reparos do worker de Tiras
