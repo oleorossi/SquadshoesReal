@@ -22,6 +22,8 @@ const saleOrderItemForm = read('src/components/sale-orders/SaleOrderItemForm.tsx
 const standaloneServiceOrder = read('src/components/contractors/ServiceOrderFormDialog.tsx');
 const dispatchDialog = read('src/components/contractors/ServiceOrderDispatchDialog.tsx');
 const returnDialog = read('src/components/contractors/ServiceOrderReturnDialog.tsx');
+const osCycleOverview = read('src/components/contractors/OsCycleOverview.tsx');
+const osStatusIndicators = read('src/components/contractors/OsStatusIndicators.tsx');
 const serviceFocus = read('src/lib/contractorServiceFocus.ts');
 const primaryServicesMigration = read('supabase/migrations/20270101004600_priorizar_costura_cabedal_e_aviamento_nas_os.sql');
 
@@ -266,5 +268,24 @@ describe('Terceirizados — contrato visual e organizacional do módulo', () => 
     expect(primaryServicesMigration).toContain("('mesa',           'Aviamento',           'Aviamento'");
     expect(primaryServicesMigration).toContain("WHEN 'costura'        THEN ARRAY['costura cabedal', 'costura']");
     expect(primaryServicesMigration).toContain("WHEN 'mesa'           THEN ARRAY['aviamento', 'mesa']");
+  });
+
+  it('une ficha, ciclo físico e recibo na operação diária da OS', () => {
+    expect(contractors).toContain('OsCycleOverview');
+    expect(osCycleOverview).toContain('Ciclo da ordem de serviço');
+    expect(osCycleOverview).toContain('Material enviado');
+    expect(osCycleOverview).toContain('Já foi');
+    expect(osCycleOverview).toContain('Já voltou');
+    expect(osStatusIndicators).toContain('export function OsCycleLine');
+    expect(contractors).toContain('OsCycleLine');
+    expect(contractors).toContain('SignedReceiptUploadDialog');
+    expect(contractors).toContain('Anexar recibo assinado');
+    expect(contractors).toContain('Recibo aberto para o prestador assinar e mandar de volta.');
+    expect(contractors).toContain('markAsReceived={false}');
+    expect(dispatchDialog).toContain('Kit de material da ficha');
+    expect(dispatchDialog).toContain('buildDispatchMaterialKit');
+    expect(dispatchDialog).toContain('onDispatched');
+    expect(serviceOrderWizard).toContain('OPs da ficha já vêm marcadas');
+    expect(serviceOrderWizard).toContain('autoSelectedForPvRef');
   });
 });

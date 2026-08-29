@@ -14,7 +14,7 @@ import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { useCan } from '@/hooks/useAccessControl';
-import { CircleNotch as Loader2, Plus, MagnifyingGlass as Search, PencilSimple as Pencil, Trash as Trash2, FileText, Handshake, Printer, X, Check, CaretUpDown as ChevronsUpDown, Upload, CheckCircle as CheckCircle2, Circle, ClipboardText as ClipboardList, CurrencyDollar as DollarSign, Clock, Users, Package, Warning as AlertTriangle, WarningCircle as AlertCircle, CalendarBlank as Calendar, LockKey as Lock, ClockCounterClockwise, ChartLineUp, FileArrowDown as FileDown, Funnel, Truck, DotsThreeVertical as MoreVertical, Archive, List as ListIcon, SquaresFour, IdentificationCard, PhoneCall } from '@phosphor-icons/react';
+import { CircleNotch as Loader2, Plus, MagnifyingGlass as Search, PencilSimple as Pencil, Trash as Trash2, FileText, Handshake, Printer, X, Check, CaretUpDown as ChevronsUpDown, Upload, CheckCircle as CheckCircle2, Circle, ClipboardText as ClipboardList, CurrencyDollar as DollarSign, Clock, Users, Package, Warning as AlertTriangle, WarningCircle as AlertCircle, CalendarBlank as Calendar, LockKey as Lock, ClockCounterClockwise, ChartLineUp, FileArrowDown as FileDown, Funnel, Truck, DotsThreeVertical as MoreVertical, Archive, List as ListIcon, SquaresFour, IdentificationCard, PhoneCall, Camera, Receipt } from '@phosphor-icons/react';
 import { SECTOR_LABEL, SectorKey } from '@/hooks/useSectorBottlenecks';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -48,7 +48,10 @@ import {
 } from '@/hooks/useContractors';
 import { SERVICE_ORDER_SECTORS } from '@/lib/serviceOrderSectors';
 import { opNumberByPvItem, opNumbersForServiceOrder, type OpRefWithReference } from '@/lib/serviceOrderOps';
-import { OsPaymentBadge, OsBalanceLine, OsWorkflowRail } from '@/components/contractors/OsStatusIndicators';
+import { OsPaymentBadge, OsBalanceLine, OsWorkflowRail, OsCycleLine } from '@/components/contractors/OsStatusIndicators';
+import { OsCycleOverview } from '@/components/contractors/OsCycleOverview';
+import { SignedReceiptUploadDialog } from '@/components/contractors/SignedReceiptUploadDialog';
+import { summarizeOsCycle } from '@/lib/serviceOrderCockpit';
 import { resolveServiceOrderWorkflow } from '@/lib/serviceOrderWorkflow';
 import {
   OS_DONE_STATUSES, OS_CANCELLED_STATUSES, OS_PENDING_STATUSES, OS_STATUS,
@@ -267,6 +270,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
   }, []);
   const [historyContractor, setHistoryContractor] = useState<Contractor | null>(null);
   const [ratesContractor, setRatesContractor] = useState<Contractor | null>(null);
+  const [receiptDialogOs, setReceiptDialogOs] = useState<ServiceOrder | null>(null);
   const [contractorDialog, setContractorDialog] = useState(false);
   const [orderDialog, setOrderDialog] = useState(false);
   const [standaloneOsOpen, setStandaloneOsOpen] = useState(false);
@@ -437,6 +441,35 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
       : undefined;
     return mapPvItemsForReceipt(data as unknown as ReceiptPvItemRow[], overrides);
   }, []);
+
+  const printOs = useCallback(async (
+    o: ServiceOrder,
+    materialsOverride?: Array<{ material?: string | null; color?: string | null; meters?: number | null; quantity?: number | null; unit?: string | null }>,
+  ) => {
+    const so = (saleOrders as SaleOrderLookup[]).find((saleOrder) => linkedSaleOrderIdsOf(o).includes(saleOrder.id));
+    const items = await fetchReceiptItemsForOs(o);
+    printServiceOrderReceipt(
+      {
+        order_number: o.order_number,
+        target_sector: o.target_sector || null,
+        description: o.description || '',
+        service_date: o.service_date || '',
+        quoted_deadline: o.quoted_deadline || null,
+        quantity: Number(o.quantity || 0),
+        notes: o.notes || '',
+        material_requirements: o.material_requirements,
+        materials_sent: (materialsOverride && materialsOverride.length > 0
+          ? materialsOverride
+          : getMaterials(o)) as MaterialSent[],
+        sale_order_number: so?.order_number || null,
+        client_order_number: so?.client_order_number || null,
+        op_numbers: opNumbersOf(o),
+        client_name: so?.client_name || null,
+      },
+      contractors.find((contractor) => contractor.id === o.contractor_id),
+      { items },
+    );
+  }, [saleOrders, linkedSaleOrderIdsOf, fetchReceiptItemsForOs, opNumbersOf, contractors]);
 
   // Ao carregar os itens do PV: pré-marca a seleção GRAVADA na OS; sem registro
   // (OS anterior à migration 20261103120000 ou criada fora do atalho do PV),
@@ -677,6 +710,18 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
     return { count, value };
   }, [orders, osOverview]);
 
+  const osCycleTotals = useMemo(() => summarizeOsCycle(orders.map((order) => ({
+    archivedAt: order.archived_at,
+    status: order.status,
+    quantity: order.quantity,
+    totalValue: order.total_value,
+    dispatchTracked: order.dispatch_tracked,
+    signedPhotoUrl: order.signed_photo_url,
+    materialsSent: order.materials_sent,
+    selectedItemIds: order.selected_sale_order_item_ids,
+    overview: osOverview?.get(order.id) ?? null,
+  }))), [orders, osOverview]);
+
   // Faixa de prazo UNIFICADA do card (substitui as 2 exibições que existiam:
   // a da seção de gargalo + a do rodapé). Uma só, colorida pela urgência.
   const renderDeadlineBand = (o: ServiceOrder) => {
@@ -754,6 +799,11 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
             <DollarSign className="h-3 w-3" /> Ver financeiro
           </Button>
         )}
+        {workflow.qtyDispatched > 0 && (
+          <Button size="sm" variant="outline" className="h-9 gap-1 px-2.5 text-xs" onClick={() => void printOs(o)} aria-label={`Imprimir recibo da OS ${o.order_number}`}>
+            <Printer className="h-3 w-3" /> Recibo
+          </Button>
+        )}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon" className="h-9 w-9" aria-label={`Mais ações da OS ${o.order_number}`}><MoreVertical className="h-4 w-4" /></Button>
@@ -780,36 +830,19 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                 mas 385 das 386 OS têm essa coluna como string VAZIA (falsy) —
                 o item de menu nunca aparecia. Quem identifica a OS é o
                 order_number, que sempre existe. */}
-            <DropdownMenuItem onClick={async () => {
-              const so = (saleOrders as SaleOrderLookup[]).find(s => linkedSaleOrderIdsOf(o).includes(s.id));
-              // Itens do papel: buscados sob demanda (o dialog só carrega os do
-              // PV aberto). Só saem os que a OS realmente cobre — sem a seleção
-              // gravada isso imprimiria as 3 cores do pedido com o total de
-              // pares de uma. OS antiga (sem registro) segue no papel curto,
-              // caindo no texto da descrição que ela já tem.
-              const items = await fetchReceiptItemsForOs(o);
-              printServiceOrderReceipt(
-                {
-                  order_number: o.order_number,
-                  target_sector: o.target_sector || null,
-                  description: o.description || '',
-                  service_date: o.service_date || '',
-                  quoted_deadline: o.quoted_deadline || null,
-                  quantity: Number(o.quantity || 0),
-                  notes: o.notes || '',
-                  material_requirements: o.material_requirements,
-                  materials_sent: getMaterials(o),
-                  sale_order_number: so?.order_number || null,
-                  client_order_number: so?.client_order_number || null,
-                  op_numbers: opNumbersOf(o),
-                  client_name: so?.client_name || null,
-                },
-                contractors.find(c => c.id === o.contractor_id),
-                { items },
-              );
-            }}>
+            <DropdownMenuItem onClick={() => void printOs(o)}>
               <Printer className="mr-2 h-3.5 w-3.5" /> Imprimir OS
             </DropdownMenuItem>
+            {workflow.qtyDispatched > 0 && !o.signed_photo_url && (
+              <DropdownMenuItem onClick={() => setReceiptDialogOs(o)}>
+                <Camera className="mr-2 h-3.5 w-3.5" /> Anexar recibo assinado
+              </DropdownMenuItem>
+            )}
+            {o.signed_photo_url && (
+              <DropdownMenuItem disabled>
+                <Receipt className="mr-2 h-3.5 w-3.5" /> Recibo assinado
+              </DropdownMenuItem>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
@@ -860,6 +893,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
           <div className="min-w-0">
             <OsPaymentBadge ov={osOverview?.get(o.id)} osStatus={o.status} expectsPayable={Number(o.contractors?.payment_days ?? 30) < 999} />
             {!isContainer && <OsBalanceLine ov={osOverview?.get(o.id)} />}
+            {!isContainer && <OsCycleLine order={o} ov={osOverview?.get(o.id)} />}
           </div>
           {renderOsActions(o)}
         </div>
@@ -1344,7 +1378,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
             <ContractorSectionHeader
               eyebrow="OPERAÇÃO · EXPEDIÇÃO EXTERNA"
               title="Controle de saída e retorno"
-              description="Acompanhe o que precisa sair, o material em campo, a conferência do retorno e o reflexo financeiro de cada OS."
+              description="Da ficha técnica ao recibo assinado: gere a OS, envie o material, controle o que já foi e o que já voltou."
               actions={<span className="rounded-full border border-border bg-card px-3 py-1 font-mono text-xs tabular-nums text-muted-foreground">{statusChipCounts.active ?? 0} OS ativas</span>}
             />
             <ContractorOperationsOverview
@@ -1359,6 +1393,15 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
               totalValue={stats.totalValue}
               activeContractors={stats.activeContractors}
               totalContractors={contractors.length}
+              onFilter={(filter) => {
+                setOrderSearch('');
+                setShowArchivedOs(false);
+                clearOsReportFilters();
+                setStatusFilter(filter);
+              }}
+            />
+            <OsCycleOverview
+              totals={osCycleTotals}
               onFilter={(filter) => {
                 setOrderSearch('');
                 setShowArchivedOs(false);
@@ -1662,6 +1705,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                             <div className="flex min-w-0 flex-col gap-0.5">
                               <OsPaymentBadge ov={osOverview?.get(o.id)} osStatus={o.status} orderNumber={o.order_number} expectsPayable={Number(o.contractors?.payment_days ?? 30) < 999} />
                               {!isContainer && <OsBalanceLine ov={osOverview?.get(o.id)} />}
+                              {!isContainer && <OsCycleLine order={o} ov={osOverview?.get(o.id)} />}
                             </div>
                             {renderOsActions(o)}
                           </div>
@@ -1739,6 +1783,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                               <div className="flex flex-col gap-0.5">
                                 <OsPaymentBadge ov={osOverview?.get(o.id)} osStatus={o.status} orderNumber={o.order_number} expectsPayable={Number(o.contractors?.payment_days ?? 30) < 999} />
                                 {!isContainer && <OsBalanceLine ov={osOverview?.get(o.id)} />}
+                                {!isContainer && <OsCycleLine order={o} ov={osOverview?.get(o.id)} />}
                               </div>
                             </TableCell>
                             <TableCell className="text-right" onClick={e => e.stopPropagation()}>{renderOsActions(o)}</TableCell>
@@ -2495,8 +2540,25 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
           description: dispatchDialogOs.description,
           contractorName: dispatchDialogOs.contractors?.name ?? null,
           contractorId: dispatchDialogOs.contractor_id ?? null,
+          material_requirements: dispatchDialogOs.material_requirements,
+          materials_sent: dispatchDialogOs.materials_sent,
         } : null}
         onReceive={() => { if (dispatchDialogOs) setReturnDialogOs(dispatchDialogOs); }}
+        onDispatched={({ materials }) => {
+          if (!dispatchDialogOs) return;
+          toast.info('Recibo aberto para o prestador assinar e mandar de volta.');
+          void printOs(dispatchDialogOs, materials);
+        }}
+      />
+
+      <SignedReceiptUploadDialog
+        open={!!receiptDialogOs}
+        onOpenChange={(open) => { if (!open) setReceiptDialogOs(null); }}
+        serviceOrderId={receiptDialogOs?.id ?? null}
+        orderLabel={receiptDialogOs ? `OS ${receiptDialogOs.order_number}` : undefined}
+        contractorName={receiptDialogOs?.contractors?.name}
+        markAsReceived={false}
+        onSuccess={() => setReceiptDialogOs(null)}
       />
 
       <ContractorHistoryDialog

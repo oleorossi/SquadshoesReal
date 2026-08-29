@@ -10,7 +10,13 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useContractors } from '@/hooks/useContractors';
+import type { ServiceOrderMaterialRequirements } from '@/hooks/useContractors';
 import { CircleNotch as Loader2, Truck, Package, Check, Warning } from '@phosphor-icons/react';
+import {
+  buildDispatchMaterialKit,
+  toPersistedMaterialsSent,
+  type CockpitMaterialSent,
+} from '@/lib/serviceOrderCockpit';
 
 /**
  * Enviar OS terceirizada PRA RUA em PARCELAS (tranches). Complementa o retorno
@@ -41,6 +47,8 @@ export interface DispatchDialogServiceOrder {
   description?: string | null;
   contractorName?: string | null;
   contractorId?: string | null;  // prestador padrão da OS (default do envio)
+  material_requirements?: ServiceOrderMaterialRequirements | null;
+  materials_sent?: CockpitMaterialSent[] | null;
 }
 
 interface Props {
@@ -49,9 +57,11 @@ interface Props {
   serviceOrder: DispatchDialogServiceOrder | null;
   /** Pedido pra abrir o recebimento (o caller controla o ServiceOrderReturnDialog). */
   onReceive?: () => void;
+  /** Depois do envio: o caller imprime o recibo com o kit confirmado. */
+  onDispatched?: (payload: { qty: number; materials: CockpitMaterialSent[] }) => void;
 }
 
-export default function ServiceOrderDispatchDialog({ open, onOpenChange, serviceOrder, onReceive }: Props) {
+export default function ServiceOrderDispatchDialog({ open, onOpenChange, serviceOrder, onReceive, onDispatched }: Props) {
   const qc = useQueryClient();
   const soId = serviceOrder?.id ?? null;
 
@@ -99,12 +109,27 @@ export default function ServiceOrderDispatchDialog({ open, onOpenChange, service
   const [notes, setNotes] = useState('');
   const [contractor, setContractor] = useState<string>('');
   const [saving, setSaving] = useState(false);
+  const [kit, setKit] = useState<CockpitMaterialSent[]>([]);
+  const kitLocked = (serviceOrder?.materials_sent || []).some((material) => (material.material || '').trim() && Number(material.meters || material.quantity || 0) > 0);
 
   // Default: manda o que falta pro prestador padrão da OS (1 clique).
   useEffect(() => {
-    if (open) { setQty(toDispatch); setNotes(''); setContractor(serviceOrder?.contractorId || ''); }
-
+    if (open) {
+      setQty(toDispatch);
+      setNotes('');
+      setContractor(serviceOrder?.contractorId || '');
+    }
   }, [open, toDispatch, serviceOrder?.contractorId]);
+
+  useEffect(() => {
+    if (!open) return;
+    setKit(buildDispatchMaterialKit({
+      requirements: serviceOrder?.material_requirements,
+      existingSent: serviceOrder?.materials_sent,
+      dispatchQty: qty,
+      orderQty: Number(serviceOrder?.quantity || qty || 0),
+    }));
+  }, [open, qty, serviceOrder?.material_requirements, serviceOrder?.materials_sent, serviceOrder?.quantity]);
 
   const exceeds = qty > toDispatch;
   const fmtDate = useMemo(() => (s: string) => new Date(s).toLocaleDateString('pt-BR'), []);
@@ -123,11 +148,19 @@ export default function ServiceOrderDispatchDialog({ open, onOpenChange, service
     if (exceeds) { toast.error(`Envio excede o que falta (${toDispatch} pares a enviar).`); return; }
     setSaving(true);
     try {
+      const materials = toPersistedMaterialsSent(kit);
       const { error } = await (supabase as any).from('service_order_dispatches').insert({
         service_order_id: soId, qty_dispatched: qty, notes: notes.trim() || null,
         contractor_id: contractor || null,
       });
       if (error) throw error;
+      if (!kitLocked && materials.length > 0) {
+        const { error: matErr } = await (supabase as any)
+          .from('service_orders')
+          .update({ materials_sent: materials })
+          .eq('id', soId);
+        if (matErr) throw matErr;
+      }
       const left = toDispatch - qty;
       toast.success(left > 0 ? `${qty} pares enviados — faltam ${left} pra enviar.` : `${qty} pares enviados — pedido todo na rua.`);
       ['service_orders', 'v_contractor_metrics', 'service_order_overview', 'so_dispatch_dialog', 'so_return_dialog']
@@ -135,6 +168,7 @@ export default function ServiceOrderDispatchDialog({ open, onOpenChange, service
       qc.invalidateQueries({ queryKey: ['pv_service_orders'] });
       qc.invalidateQueries({ queryKey: ['consolidated_service_orders'] });
       qc.invalidateQueries({ queryKey: ['v_contractor_history_orders'] });
+      onDispatched?.({ qty, materials });
       refetch();
     } catch (e: any) {
       toast.error(`Falha ao registrar envio: ${e?.message || 'erro desconhecido'}`);
@@ -214,6 +248,49 @@ export default function ServiceOrderDispatchDialog({ open, onOpenChange, service
             <Textarea value={notes} onChange={e => setNotes(e.target.value)} rows={1} placeholder="Observação da remessa (opcional)" className="min-h-9" />
             {exceeds && <p className="text-xs text-red-600">Envio ({qty}) maior que o que falta enviar ({toDispatch}).</p>}
             {toDispatch === 0 && <p className="text-xs text-muted-foreground">Pedido todo enviado. Use <strong>Receber</strong> conforme a banca devolve.</p>}
+
+            <div className="rounded-md border border-border p-2.5 space-y-2">
+              <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                <Package className="h-3.5 w-3.5" /> Kit de material da ficha
+              </p>
+              {kit.length === 0 ? (
+                <p className="text-[11px] text-muted-foreground">
+                  Esta OS ainda não tem snapshot de materiais. O recibo sai com os pares; a quantidade de material pode ser lançada depois.
+                </p>
+              ) : (
+                <div className="space-y-1.5">
+                  {kit.map((material, index) => (
+                    <div key={`${material.material}-${index}`} className="flex items-center gap-2">
+                      <span className="min-w-0 flex-1 truncate text-xs">
+                        {material.material}{material.color ? ` · ${material.color}` : ''}
+                      </span>
+                      <NumberInput
+                        value={Number(material.quantity ?? material.meters) || 0}
+                        onChange={(value) => {
+                          if (kitLocked) return;
+                          setKit((current) => current.map((row, rowIndex) => (
+                            rowIndex === index
+                              ? { ...row, quantity: value, meters: value }
+                              : row
+                          )));
+                        }}
+                        min={0}
+                        step="0.01"
+                        disabled={kitLocked}
+                        className="h-8 w-[92px] text-xs"
+                        aria-label={`Quantidade de ${material.material || 'material'}`}
+                      />
+                      <span className="w-8 shrink-0 text-[10px] text-muted-foreground">{material.unit || 'm'}</span>
+                    </div>
+                  ))}
+                  <p className="text-[11px] text-muted-foreground">
+                    {kitLocked
+                      ? 'Remessa já documentada nesta OS — conferir no recibo.'
+                      : 'Quantidade proporcional aos pares desta saída. Confira antes de imprimir o recibo.'}
+                  </p>
+                </div>
+              )}
+            </div>
 
             {/* Checklist de movimentos */}
             {timeline.length > 0 && (

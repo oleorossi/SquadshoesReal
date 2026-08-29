@@ -3,11 +3,17 @@ import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import {
   CheckCircle as CheckCircle2, CurrencyDollar as DollarSign, Package,
-  Warning as AlertTriangle, ArrowRight, Circle,
+  Warning as AlertTriangle, ArrowRight, Circle, PaperPlaneTilt, ArrowUUpLeft, Receipt,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { isOsCancelled, isOsDone } from '@/lib/osStatusMachine';
 import { resolveServiceOrderWorkflow } from '@/lib/serviceOrderWorkflow';
+import {
+  resolveOsCycleBalance,
+  resolveOsReceiptState,
+  summarizeMaterialsSent,
+  type CockpitMaterialSent,
+} from '@/lib/serviceOrderCockpit';
 import type { ServiceOrder, ServiceOrderOverview } from '@/hooks/useContractors';
 
 /**
@@ -161,6 +167,63 @@ export function OsBalanceLine({ ov }: { ov?: ServiceOrderOverview }) {
               title="Perda no prestador + sucata: a OS não entrega essa quantidade sem repor material">
           <AlertTriangle className="h-3 w-3" />
           {short} a repor
+        </span>
+      )}
+    </span>
+  );
+}
+
+/** Sempre visível: o que já foi, o que já voltou, o material da remessa e o recibo. */
+export function OsCycleLine({
+  order,
+  ov,
+}: {
+  order: Pick<ServiceOrder, 'quantity' | 'dispatch_tracked' | 'signed_photo_url' | 'materials_sent'>;
+  ov?: ServiceOrderOverview;
+}) {
+  const balance = resolveOsCycleBalance({
+    quantity: order.quantity,
+    dispatchTracked: order.dispatch_tracked,
+    qtyDispatched: ov?.qty_dispatched,
+    qtySent: ov?.qty_sent,
+    qtyInField: ov?.qty_in_field,
+    qtyToDispatch: ov?.qty_to_dispatch,
+    qtyReturnedGood: ov?.qty_returned_good,
+    qtyReturnedDefect: ov?.qty_returned_defect,
+    qtyLoss: ov?.qty_loss,
+  });
+  const materials = summarizeMaterialsSent(order.materials_sent as CockpitMaterialSent[] | null);
+  const receipt = resolveOsReceiptState({
+    signedPhotoUrl: order.signed_photo_url,
+    sentPairs: balance.sent,
+  });
+
+  return (
+    <span className="inline-flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[11px] text-muted-foreground">
+      <span className="inline-flex items-center gap-1" title="Pares enviados ao prestador">
+        <PaperPlaneTilt className="h-3 w-3" />
+        Enviado {balance.sent.toLocaleString('pt-BR')}
+      </span>
+      <span className="inline-flex items-center gap-1" title="Pares que já voltaram (bom + defeito + perda)">
+        <ArrowUUpLeft className="h-3 w-3" />
+        Voltou {balance.returned.toLocaleString('pt-BR')}
+      </span>
+      {balance.inField > 0 && (
+        <span className="inline-flex items-center gap-1 text-amber-700 dark:text-amber-400">
+          {balance.inField.toLocaleString('pt-BR')} na rua
+        </span>
+      )}
+      <span className="inline-flex items-center gap-1" title="Quantidade de material documentada na remessa">
+        <Package className="h-3 w-3" />
+        {materials.label}
+      </span>
+      {receipt !== 'none' && (
+        <span className={cn(
+          'inline-flex items-center gap-1',
+          receipt === 'signed' ? 'text-green-700 dark:text-green-400' : 'text-amber-700 dark:text-amber-400',
+        )}>
+          <Receipt className="h-3 w-3" />
+          {receipt === 'signed' ? 'Recibo assinado' : 'Recibo pendente'}
         </span>
       )}
     </span>

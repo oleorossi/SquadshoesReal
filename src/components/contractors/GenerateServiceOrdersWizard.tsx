@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowRight, CaretDown, CheckCircle, CurrencyDollar, Handshake,
   Needle, Package, PaperPlaneTilt, Path, Scissors, Storefront, Warning,
@@ -128,6 +128,7 @@ export function GenerateServiceOrdersWizard({
   const [dirtyRateOriginByKey, setDirtyRateOriginByKey] = useState<Record<string, string>>({});
   const [openSectors, setOpenSectors] = useState<Record<string, boolean>>({});
   const [showOtherServices, setShowOtherServices] = useState(false);
+  const autoSelectedForPvRef = useRef<string | null>(null);
 
   const {
     data: lines = [],
@@ -148,6 +149,7 @@ export function GenerateServiceOrdersWizard({
     setDirtyRateOriginByKey({});
     setOpenSectors({});
     setShowOtherServices(false);
+    autoSelectedForPvRef.current = null;
   }, [open, initialSaleOrderId]);
 
   useEffect(() => {
@@ -282,6 +284,24 @@ export function GenerateServiceOrdersWizard({
     && !!line.default_terceirizacao_id
     && !!line.default_contractor_id;
   const qtyOf = (line: OutsourceableLine) => qtyByKey[keyOf(line)] ?? line.quantity;
+
+  // A ficha já diz o que sai: Costura de cabedal e Aviamento elegíveis entram
+  // marcados. O operador só desmarca o que fica interno. Outros serviços
+  // continuam opt-in porque ficam recolhidos.
+  useEffect(() => {
+    if (!open || step !== 1 || !saleOrderId || !lines.length) return;
+    if (autoSelectedForPvRef.current === saleOrderId) return;
+    autoSelectedForPvRef.current = saleOrderId;
+    const eligibleKeys = lines
+      .filter((line) => {
+        if (!isEligible(line)) return false;
+        const focus = getContractorServiceFocus(line.sector, line.sector_label);
+        return focus === 'costura_cabedal' || focus === 'aviamento';
+      })
+      .map(keyOf);
+    if (eligibleKeys.length === 0) return;
+    setSelectedKeys(new Set(eligibleKeys));
+  }, [open, step, saleOrderId, lines]);
 
   const toggleOp = (line: OutsourceableLine) => {
     if (!isEligible(line)) return;
@@ -758,7 +778,7 @@ export function GenerateServiceOrdersWizard({
                           <Scissors className="h-3.5 w-3.5" /> Rota principal
                         </p>
                         <p className="mt-1 text-sm font-semibold">Costura de cabedal e Aviamento primeiro</p>
-                        <p className="text-[11px] text-muted-foreground">Selecione as OPs, confira o prestador da ficha e ajuste a tarifa por par quando necessário.</p>
+                        <p className="text-[11px] text-muted-foreground">OPs da ficha já vêm marcadas. Confira o prestador e a tarifa por par; desmarque o que fica interno.</p>
                       </div>
                       <Badge variant="outline" className="w-fit border-primary/25 bg-card font-mono text-[10px] text-primary">
                         {primaryGroups.reduce((sum, group) => sum + group.lines.filter(isEligible).length, 0)} OPs na rota
