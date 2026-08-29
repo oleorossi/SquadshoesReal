@@ -258,19 +258,19 @@ export function useUpdateNoteTask() {
 export function useDuplicateNoteTask() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, note_id }: { id: string; note_id: string | null }) => {
+    mutationFn: async ({ id }: { id: string }) => {
       const { data, error } = await supabase.rpc(
         'duplicate_note_task' as never,
         { p_task_id: id } as never,
       );
       if (error) throw error;
       if (typeof data !== 'string' || !data) throw new Error('A tarefa foi duplicada, mas o novo identificador não foi retornado.');
-      return { id: data, note_id };
+      return { id: data };
     },
-    onSuccess: async ({ note_id }) => {
+    onSuccess: async () => {
       await Promise.all([
         qc.invalidateQueries({ queryKey: ['all_note_tasks'] }),
-        note_id ? qc.invalidateQueries({ queryKey: ['note_tasks', note_id] }) : Promise.resolve(),
+        qc.invalidateQueries({ queryKey: ['note_tasks'] }),
       ]);
       toast.success('Tarefa duplicada');
     },

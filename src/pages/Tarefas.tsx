@@ -1,4 +1,4 @@
-import { useId, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
 import {
   CalendarBlank, CaretRight as ChevronRight, CircleHalf,
   CircleNotch as Loader2, Kanban, ListChecks, MagnifyingGlass as Search,
@@ -52,6 +52,7 @@ export default function Tarefas() {
   const deleteTask = useDeleteNoteTask();
   const duplicateTask = useDuplicateNoteTask();
   const perm = useCan('/tarefas');
+  const calendarNow = useCalendarNow();
 
   const [view, setView] = useState<ViewMode>(() => {
     try {
@@ -70,7 +71,7 @@ export default function Tarefas() {
   };
 
   const topLevel = useMemo(() => tasks.filter(task => !task.parent_task_id), [tasks]);
-  const headlineCounts = useMemo(() => countTaskScopes(topLevel), [topLevel]);
+  const headlineCounts = useMemo(() => countTaskScopes(topLevel, calendarNow), [topLevel, calendarNow]);
   const subtaskProgress = useMemo(() => {
     const progress = new Map<string, SubtaskProgress>();
     for (const task of tasks) {
@@ -100,10 +101,10 @@ export default function Tarefas() {
     );
   }), [topLevel, search, tagFilter]);
 
-  const scopeCounts = useMemo(() => countTaskScopes(searched), [searched]);
+  const scopeCounts = useMemo(() => countTaskScopes(searched, calendarNow), [searched, calendarNow]);
   const scopedTasks = useMemo(
-    () => searched.filter(task => matchesTaskScope(task, scope)),
-    [searched, scope],
+    () => searched.filter(task => matchesTaskScope(task, scope, calendarNow)),
+    [searched, scope, calendarNow],
   );
   const selectedTask = useMemo(
     () => tasks.find(task => task.id === selectedTaskId) || null,
@@ -135,7 +136,7 @@ export default function Tarefas() {
 
   const duplicate = (task: NoteTaskWithNote) => {
     if (!perm.canCreate || duplicateTask.isPending) return;
-    duplicateTask.mutate({ id: task.id, note_id: task.note_id }, {
+    duplicateTask.mutate({ id: task.id }, {
       onSuccess: result => setSelectedTaskId(result.id),
     });
   };
@@ -216,7 +217,7 @@ export default function Tarefas() {
                 emptyTitle={emptyTitleForScope(scope)}
                 emptyDescription={emptyDescriptionForScope(scope)}
               >
-                <TodoListView tasks={scopedTasks} scope={scope} {...rowActions} />
+                <TodoListView tasks={scopedTasks} scope={scope} now={calendarNow} {...rowActions} />
               </TaskContentState>
             </section>
           </div>
@@ -248,7 +249,7 @@ export default function Tarefas() {
                   onChangePriority={rowActions.onChangePriority}
                 />
               ) : (
-                <AgendaView tasks={searched} {...rowActions} />
+                <AgendaView tasks={searched} now={calendarNow} {...rowActions} />
               )}
             </TaskContentState>
           </section>
@@ -358,15 +359,16 @@ interface RowActions {
   onDelete: (task: NoteTaskWithNote) => void;
 }
 
-function TodoListView({ tasks, scope, ...rowActions }: {
+function TodoListView({ tasks, scope, now, ...rowActions }: {
   tasks: NoteTaskWithNote[];
   scope: TaskScope;
+  now: Date;
 } & RowActions) {
   if (scope === 'done') {
     const completed = [...tasks].sort((a, b) => (b.completed_at || '').localeCompare(a.completed_at || ''));
     return <TaskSection label="Concluídas" tasks={completed} defaultOpen {...rowActions} />;
   }
-  const buckets = bucketTasksByDate(tasks);
+  const buckets = bucketTasksByDate(tasks, now);
   return (
     <div>
       <TaskSection label="Atrasadas" tone="overdue" tasks={buckets.overdue} defaultOpen {...rowActions} />
@@ -378,11 +380,11 @@ function TodoListView({ tasks, scope, ...rowActions }: {
   );
 }
 
-function AgendaView({ tasks, ...rowActions }: { tasks: NoteTaskWithNote[] } & RowActions) {
+function AgendaView({ tasks, now, ...rowActions }: { tasks: NoteTaskWithNote[]; now: Date } & RowActions) {
   const open = tasks.filter(task => !task.done);
   const done = tasks.filter(task => task.done)
     .sort((a, b) => (b.completed_at || '').localeCompare(a.completed_at || ''));
-  const buckets = bucketTasksByDate(open);
+  const buckets = bucketTasksByDate(open, now);
   return (
     <div>
       <TaskSection label="Atrasadas" tone="overdue" tasks={buckets.overdue} defaultOpen {...rowActions} />
@@ -585,3 +587,20 @@ const PRIORITY_DOT_BORDER: Record<NoteTaskPriority, string> = {
   media: 'border-amber-500',
   baixa: 'border-muted-foreground',
 };
+
+function useCalendarNow() {
+  const [calendarNow, setCalendarNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const now = new Date();
+    const nextDay = new Date(now);
+    nextDay.setHours(24, 0, 1, 0);
+    const timeout = window.setTimeout(
+      () => setCalendarNow(new Date()),
+      nextDay.getTime() - now.getTime(),
+    );
+    return () => window.clearTimeout(timeout);
+  }, [calendarNow]);
+
+  return calendarNow;
+}

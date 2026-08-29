@@ -26,7 +26,7 @@ export function TaskQuickCapture({ canCreate }: TaskQuickCaptureProps) {
 
   useEffect(() => {
     const focusCapture = (event: KeyboardEvent) => {
-      if (!canCreate || event.key.toLowerCase() !== 'n' || event.metaKey || event.ctrlKey || event.altKey) return;
+      if (!canCreate || event.key.toLowerCase() !== 'n' || !event.shiftKey || event.metaKey || event.ctrlKey || event.altKey) return;
       const target = event.target as HTMLElement | null;
       if (target?.matches('input, textarea, select, [contenteditable="true"]')) return;
       event.preventDefault();
@@ -136,7 +136,7 @@ export function TaskQuickCapture({ canCreate }: TaskQuickCaptureProps) {
             />
           </div>
           <span className="text-[11px] text-muted-foreground">
-            Enter salva · Shift+Enter quebra linha · <kbd className="font-mono">N</kbd> foca aqui
+            Enter salva · Shift+Enter quebra linha · <kbd className="font-mono">Shift+N</kbd> foca aqui
           </span>
           <div className="flex-1" />
           {lineCount > 1 && <span className="text-xs font-medium tabular-nums">{lineCount} tarefas</span>}

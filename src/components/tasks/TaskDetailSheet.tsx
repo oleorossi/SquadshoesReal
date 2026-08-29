@@ -50,11 +50,44 @@ export function TaskDetailSheet({ task, subtasks, duplicatePending, onDuplicate,
   const [newSubtask, setNewSubtask] = useState('');
   const titleSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const descriptionSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingTitleSave = useRef<{ id: string; note_id: string | null; text: string } | null>(null);
+  const pendingDescriptionSave = useRef<{ id: string; note_id: string | null; description: string } | null>(null);
+
+  const flushTitleSave = () => {
+    if (titleSaveTimer.current) clearTimeout(titleSaveTimer.current);
+    titleSaveTimer.current = null;
+    const pending = pendingTitleSave.current;
+    pendingTitleSave.current = null;
+    if (pending && perm.canEdit) {
+      updateTask.mutate({
+        id: pending.id,
+        note_id: pending.note_id,
+        data: { text: pending.text },
+      });
+    }
+  };
+
+  const flushDescriptionSave = () => {
+    if (descriptionSaveTimer.current) clearTimeout(descriptionSaveTimer.current);
+    descriptionSaveTimer.current = null;
+    const pending = pendingDescriptionSave.current;
+    pendingDescriptionSave.current = null;
+    if (pending && perm.canEdit) {
+      updateTask.mutate({
+        id: pending.id,
+        note_id: pending.note_id,
+        data: { description: pending.description },
+      });
+    }
+  };
+
+  const flushPendingSaves = () => {
+    flushTitleSave();
+    flushDescriptionSave();
+  };
 
   // Reset dos drafts quando troca de tarefa
   useEffect(() => {
-    if (titleSaveTimer.current) clearTimeout(titleSaveTimer.current);
-    if (descriptionSaveTimer.current) clearTimeout(descriptionSaveTimer.current);
     if (task) {
       setDraftTitle(task.text);
       setDraftDescription(task.description || '');
@@ -62,6 +95,7 @@ export function TaskDetailSheet({ task, subtasks, duplicatePending, onDuplicate,
       setTagInput('');
       setNewSubtask('');
     }
+    return flushPendingSaves;
   }, [task?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!task) return null;
@@ -71,12 +105,30 @@ export function TaskDetailSheet({ task, subtasks, duplicatePending, onDuplicate,
 
   const scheduleTitleSave = (text: string) => {
     if (titleSaveTimer.current) clearTimeout(titleSaveTimer.current);
-    titleSaveTimer.current = setTimeout(() => save({ text }), 700);
+    const pending = { id: task.id, note_id: task.note_id, text };
+    pendingTitleSave.current = pending;
+    titleSaveTimer.current = setTimeout(() => {
+      if (pendingTitleSave.current !== pending) return;
+      pendingTitleSave.current = null;
+      titleSaveTimer.current = null;
+      updateTask.mutate({ id: pending.id, note_id: pending.note_id, data: { text: pending.text } });
+    }, 700);
   };
 
   const scheduleDescriptionSave = (description: string) => {
     if (descriptionSaveTimer.current) clearTimeout(descriptionSaveTimer.current);
-    descriptionSaveTimer.current = setTimeout(() => save({ description }), 700);
+    const pending = { id: task.id, note_id: task.note_id, description };
+    pendingDescriptionSave.current = pending;
+    descriptionSaveTimer.current = setTimeout(() => {
+      if (pendingDescriptionSave.current !== pending) return;
+      pendingDescriptionSave.current = null;
+      descriptionSaveTimer.current = null;
+      updateTask.mutate({
+        id: pending.id,
+        note_id: pending.note_id,
+        data: { description: pending.description },
+      });
+    }, 700);
   };
 
   const addTag = () => {
@@ -89,6 +141,7 @@ export function TaskDetailSheet({ task, subtasks, duplicatePending, onDuplicate,
     save({ tags: (task.tags || []).filter(t => t !== tag) });
 
   const addSubtask = () => {
+    if (!perm.canCreate) return;
     const text = newSubtask.trim();
     if (!text) return;
     // Subtarefas nascem com note_id NULL — só existem dentro do pai
@@ -101,7 +154,12 @@ export function TaskDetailSheet({ task, subtasks, duplicatePending, onDuplicate,
   const doneSubtasks = subtasks.filter(s => s.done).length;
 
   return (
-    <Sheet open={!!task} onOpenChange={(open) => { if (!open) onClose(); }}>
+    <Sheet open={!!task} onOpenChange={(open) => {
+      if (!open) {
+        flushPendingSaves();
+        onClose();
+      }
+    }}>
       <SheetContent side="right" className="w-full sm:max-w-xl flex flex-col gap-0 p-0">
         <SheetHeader className="px-6 pt-6 pb-4 border-b border-foreground/10 space-y-3">
           <SheetDescription className="sr-only">Detalhe da tarefa</SheetDescription>
@@ -119,10 +177,19 @@ export function TaskDetailSheet({ task, subtasks, duplicatePending, onDuplicate,
                 value={draftTitle}
                 disabled={!perm.canEdit}
                 onChange={e => {
-                  setDraftTitle(e.target.value);
-                  if (e.target.value.trim()) scheduleTitleSave(e.target.value.trim());
+                  const nextTitle = e.target.value;
+                  setDraftTitle(nextTitle);
+                  if (nextTitle.trim()) {
+                    scheduleTitleSave(nextTitle.trim());
+                  } else {
+                    if (titleSaveTimer.current) clearTimeout(titleSaveTimer.current);
+                    titleSaveTimer.current = null;
+                    pendingTitleSave.current = null;
+                  }
                 }}
+                onBlur={flushTitleSave}
                 placeholder="Título da tarefa"
+                aria-label="Título da tarefa"
                 rows={1}
                 className={cn(
                   'min-h-0 resize-none border-0 px-0 py-1 text-lg font-bold leading-snug focus-visible:ring-0 bg-transparent',
@@ -244,21 +311,23 @@ export function TaskDetailSheet({ task, subtasks, duplicatePending, onDuplicate,
                   setDraftDescription(e.target.value);
                   scheduleDescriptionSave(e.target.value);
                 }}
+                onBlur={flushDescriptionSave}
                 placeholder={'Detalhe a tarefa em markdown…\n\n- listas\n- [ ] checklists\n- **negrito**, links, tabelas'}
+                aria-label="Descrição da tarefa"
                 className="min-h-[140px] font-mono text-sm leading-relaxed bg-foreground/[0.02]"
               />
             ) : (
               <div
-                className="min-h-[60px] rounded-sm px-3 py-2 bg-foreground/[0.015] cursor-text hover:bg-foreground/[0.03] transition-colors"
-                onClick={() => { if (perm.canEdit) setDescMode('edit'); }}
-                onKeyDown={event => {
-                  if (perm.canEdit && (event.key === 'Enter' || event.key === ' ')) {
-                    event.preventDefault();
+                className={cn(
+                  'min-h-[60px] rounded-sm bg-foreground/[0.015] px-3 py-2 transition-colors',
+                  perm.canEdit && 'cursor-text hover:bg-foreground/[0.03]',
+                )}
+                onClick={event => {
+                  const target = event.target as HTMLElement;
+                  if (perm.canEdit && !target.closest('a, button, input, textarea, select')) {
                     setDescMode('edit');
                   }
                 }}
-                role={perm.canEdit ? 'button' : undefined}
-                tabIndex={perm.canEdit ? 0 : undefined}
                 title={perm.canEdit ? 'Clique pra editar' : undefined}
               >
                 <article className="note-markdown prose-sm max-w-none">
@@ -289,13 +358,14 @@ export function TaskDetailSheet({ task, subtasks, duplicatePending, onDuplicate,
                   key={sub.id}
                   subtask={sub}
                   canEdit={perm.canEdit}
+                  canDelete={perm.canDelete}
                   onToggle={() => updateTask.mutate({ id: sub.id, note_id: sub.note_id, data: { done: !sub.done } })}
                   onChangeText={(t) => updateTask.mutate({ id: sub.id, note_id: sub.note_id, data: { text: t } })}
                   onDelete={() => deleteTask.mutate({ id: sub.id, note_id: sub.note_id })}
                 />
               ))}
             </div>
-            {perm.canEdit && (
+            {perm.canCreate && (
             <div className="flex items-center gap-2 mt-2">
               <Input
                 value={newSubtask}
@@ -355,9 +425,10 @@ export function TaskDetailSheet({ task, subtasks, duplicatePending, onDuplicate,
   );
 }
 
-function SubtaskRow({ subtask, canEdit, onToggle, onChangeText, onDelete }: {
+function SubtaskRow({ subtask, canEdit, canDelete, onToggle, onChangeText, onDelete }: {
   subtask: NoteTask;
   canEdit: boolean;
+  canDelete: boolean;
   onToggle: () => void;
   onChangeText: (t: string) => void;
   onDelete: () => void;
@@ -402,7 +473,7 @@ function SubtaskRow({ subtask, canEdit, onToggle, onChangeText, onDelete }: {
           </button>
         )}
       </div>
-      {canEdit && <button
+      {canDelete && <button
         type="button"
         onClick={onDelete}
         className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-within:opacity-100 text-muted-foreground hover:text-destructive transition-opacity shrink-0"
