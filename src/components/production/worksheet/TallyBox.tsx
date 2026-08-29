@@ -96,6 +96,25 @@ export const TallyBox = ({ count, pairsPerCard = 12, totalUnits, unit = 'pares',
   // no fim da linha (melhoria estética 2026-06-30, aprovada). Facilita marcar
   // à caneta sem perder a conta no turno.
   const cols = rawCols >= 10 ? Math.floor(rawCols / 10) * 10 : rawCols;
+  // ── Largura RÍGIDA da linha (2026-08-29) ──
+  // `cols` sai de ROW_WIDTH_PX, uma CONSTANTE: a linha não reflui com a largura
+  // que realmente tem. Sob o zoom do auto-fit ela é apenas desenhada maior e
+  // vaza da folha, sem nada denunciar. Declarando o que ela exige, o
+  // PaginatedSheet (growCeilingFor) para de crescer antes disso.
+  //
+  // Some, para uma linha CHEIA: as caixinhas, os respiros dentro de cada dezena,
+  // as divisórias entre dezenas (paddingRight 2× + marginRight 1× + borda 2px) e
+  // o acumulado "← N" no fim (paddingLeft 3× + o próprio texto).
+  const decadeCount = Math.max(1, Math.ceil(cols / 10));
+  const accumFontPx = size === 'sm' ? 8 : 9;
+  const accumTextPx = (String(count).length + 2) * 0.62 * accumFontPx;
+  const rigidWidthPx = Math.ceil(
+    cols * boxPx
+    + (cols - decadeCount) * gapPx
+    + (decadeCount - 1) * (gapPx * 3 + 2)
+    + gapPx * 3 + accumTextPx
+    + 4, // folga: o teto tem que errar para o lado seguro
+  );
   const rows: number[][] = [];
   for (let i = 0; i < count; i += cols) {
     rows.push(
@@ -118,6 +137,7 @@ export const TallyBox = ({ count, pairsPerCard = 12, totalUnits, unit = 'pares',
           (atômica), então a quebra nunca parte um quadrado. */}
       <div
         className={cn('border-t border-black', size === 'sm' ? 'pt-1' : 'pt-2')}
+        data-rigid-width={rigidWidthPx}
         style={{ display: 'flex', flexDirection: 'column', gap: gapPx }}
       >
         {rows.map((row, ri) => {
