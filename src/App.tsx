@@ -107,14 +107,15 @@ const ClientLabeling = lazy(() => import("./pages/ClientLabeling"));
 const PurchasePlanning = lazy(() => import("./pages/PurchasePlanning"));
 const PricingCalculator = lazy(() => import("./pages/PricingCalculator"));
 const PCPHub = lazy(() => import("./pages/PCPHub"));
-// Remodelagem Produção 2026-07-12 (specs/remodelagem-producao.md): 7 itens
-// diretos no lugar do hub de 14 abas. PCPHub virou só o redirect legado.
+// Remodelagem Produção 2026-07-12 (specs/remodelagem-producao.md): rotas
+// diretas no lugar do hub de 14 abas. PCPHub virou só o redirect legado.
 const ProducaoPlanejamento = lazy(() => import("./pages/ProducaoPlanejamento"));
 const ProducaoKanban = lazy(() => import("./pages/ProducaoKanban"));
 const ProducaoKanbanGestao = lazy(() => import("./pages/ProducaoKanbanGestao"));
 const ProducaoEstouro = lazy(() => import("./pages/ProducaoEstouro"));
 const ProducaoSetoresConfig = lazy(() => import("./pages/ProducaoSetoresConfig"));
 const ProducaoApontamento = lazy(() => import("./pages/Setores"));
+const CalculadoraGrade = lazy(() => import("./pages/CalculadoraGrade"));
 const ProducaoAnalises = lazy(() => import("./pages/ProducaoAnalises"));
 const ProdutividadeModelos = lazy(() => import("./pages/ProdutividadeModelos"));
 const ProntaEntrega = lazy(() => import("./pages/ProntaEntrega"));
@@ -816,7 +817,7 @@ const router = createBrowserRouter([
           </Suspense>
         ),
       },
-      // ── Produção remodelada (2026-07-12): 7 itens diretos ──────────────────
+      // ── Produção remodelada (2026-07-12): rotas diretas ────────────────────
       {
         path: "producao/planejamento",
         element: <ProducaoPlanejamento />,
@@ -836,6 +837,10 @@ const router = createBrowserRouter([
       {
         path: "producao/apontamento",
         element: <ProducaoApontamento />,
+      },
+      {
+        path: "producao/calculadora-grade",
+        element: <CalculadoraGrade />,
       },
       {
         path: "producao/analises",

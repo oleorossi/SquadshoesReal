@@ -85,6 +85,7 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/producao/estouro': 'producao',
   '/producao/setores': 'producao',
   '/producao/apontamento': 'producao',
+  '/producao/calculadora-grade': 'producao',
   '/producao/analises': 'producao',
   '/producao/produtividade': 'producao',
   '/relatorios/diario-producao': 'reports',

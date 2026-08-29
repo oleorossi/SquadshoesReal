@@ -65,6 +65,7 @@ export const navigationCatalog: NavigationResource[] = [
   { path: '/producao/estouro', label: 'Estouro de Produção', group: 'Produção', icon: AlertTriangle, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/ProducaoEstouro') },
   { path: '/producao/setores', label: 'Setores', group: 'Produção', icon: Factory, surfaces: ['command'] /* configuração global do motor, não entrada diária */, preload: () => import('@/pages/ProducaoSetoresConfig') },
   { path: '/producao/apontamento', label: 'Apontamento', group: 'Produção', icon: ListChecks, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/Setores') },
+  { path: '/producao/calculadora-grade', label: 'Calculadora Grade', group: 'Produção', icon: Calculator, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/CalculadoraGrade') },
   { path: '/imprimir-fichas', label: 'Imprimir Fichas', group: 'Produção', icon: Printer, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/PrintWorkSheets') },
   { path: '/producao/analises', label: 'Análises', group: 'Produção', icon: BarChart3, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/ProducaoAnalises') },
   { path: '/producao/produtividade', label: 'Produtividade por Modelo', group: 'Produção', icon: Gauge, surfaces: ['command', 'hub-shortcut'], preload: () => import('@/pages/ProdutividadeModelos') },
@@ -182,7 +183,7 @@ const menuGroupsDeclarados: NavigationGroup[] = [
   },
   {
     label: 'Produção', icon: Factory,
-    items: [resource('/producao/planejamento'), resource('/producao/kanban'), resource('/producao/estouro'), resource('/producao/setores'), resource('/producao/apontamento'), resource('/imprimir-fichas'), resource('/producao/analises')],
+    items: [resource('/producao/planejamento'), resource('/producao/kanban'), resource('/producao/estouro'), resource('/producao/setores'), resource('/producao/apontamento'), resource('/producao/calculadora-grade'), resource('/imprimir-fichas'), resource('/producao/analises')],
   },
   {
     label: 'Estoque', icon: Package,

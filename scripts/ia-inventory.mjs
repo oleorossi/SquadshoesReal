@@ -575,15 +575,15 @@ const ROLES_QUE_VEEM_TUDO = new Set(['admin', 'gerente', 'consulta']);
 /**
  * Exceções ao limite, decididas pelo dono — não são dívida esquecida.
  *
- * Produção: as 6 telas do grupo (Planejamento, Kanban, Estouro, Apontamento,
- * Imprimir Fichas, Análises) são todas de uso diário do chão de fábrica. O uso
+ * Produção: as 7 telas do grupo (Planejamento, Kanban, Estouro, Apontamento,
+ * Calculadora Grade, Imprimir Fichas, Análises) são todas de uso diário do chão de fábrica. O uso
  * real do banco confirma: todas são views sobre tabelas com atividade na
  * semana. Tirar qualquer uma da barra empurraria trabalho diário pra busca.
  * Decisão de 30/07/2026 — o limite existe pra evitar catálogo, não pra
  * esconder ferramenta que a pessoa abre todo dia.
  */
 const LIMITE_DISPENSADO = new Map([
-  ['Produção', 'as 6 telas são de uso diário do chão de fábrica (dono, 30/07/2026)'],
+  ['Produção', 'as 7 telas são de uso diário do chão de fábrica (dono, 29/08/2026)'],
 ]);
 const groupOverflow = (() => {
   const pior = new Map();
