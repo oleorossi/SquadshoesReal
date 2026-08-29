@@ -14,9 +14,15 @@
  *
  * Operador deve usar esses valores como REFERÊNCIA, não como cálculo
  * oficial — contabilidade ainda precisa fazer o cálculo formal.
+ *
+ * 2026-08-29: quadro PJ. Caminho default zera férias, 13º, aviso, FGTS,
+ * multa e o total. Fórmulas CLT só rodam com contractKind: 'clt'.
  */
 
+import { isQuadroPj, type ContractKind } from './payrollContract';
+
 export interface SeveranceBreakdown {
+  aplicavel: boolean;
   saldoSalario: number;
   decimoTerceiroProporcional: number;
   feriasVencidas: number;
@@ -70,14 +76,36 @@ export function calculateSeverance(params: {
   salary: number;
   admissionDate: string; // YYYY-MM-DD
   terminationDate: string; // YYYY-MM-DD
+  /** Default segue QUADRO_PJ. Passe 'clt' só para auditar a fórmula antiga. */
+  contractKind?: ContractKind;
 }): SeveranceBreakdown | null {
-  const { salary, admissionDate, terminationDate } = params;
+  const { salary, admissionDate, terminationDate, contractKind } = params;
   if (!salary || salary <= 0 || !admissionDate || !terminationDate) return null;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(admissionDate) || !/^\d{4}-\d{2}-\d{2}$/.test(terminationDate)) return null;
 
   const admission = new Date(admissionDate + 'T12:00:00');
   const termination = new Date(terminationDate + 'T12:00:00');
   if (termination < admission) return null;
+
+  if (isQuadroPj(contractKind)) {
+    return {
+      aplicavel: false,
+      saldoSalario: 0,
+      decimoTerceiroProporcional: 0,
+      feriasVencidas: 0,
+      feriasProporcionais: 0,
+      avisoPrevioIndenizado: 0,
+      multaFgts: 0,
+      total: 0,
+      diasMesDemissao: termination.getDate(),
+      mesesAnoAtual: 0,
+      mesesAquisitivoAtual: 0,
+      diasAviso: 0,
+      anosCompletos: 0,
+      mesesTrabalhadosTotal: 0,
+      fgtsDepositadoEstimado: 0,
+    };
+  }
 
   // 1. SALDO DE SALÁRIO — dias trabalhados no mês da demissão / 30 × salário
   //    (usa a data REAL de saída, não a projetada do aviso).
@@ -130,6 +158,7 @@ export function calculateSeverance(params: {
               + feriasProporcionais + avisoPrevioIndenizado + multaFgts;
 
   return {
+    aplicavel: true,
     saldoSalario,
     decimoTerceiroProporcional,
     feriasVencidas,
