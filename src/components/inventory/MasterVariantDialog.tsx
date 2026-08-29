@@ -26,6 +26,7 @@ import { Product, ProductFormData, UNITS, LOCATIONS } from '@/types/inventory';
 import { useAddProduct, useProducts } from '@/hooks/useProducts';
 import { findDuplicate, type DuplicateHit } from '@/lib/duplicateDetection';
 import { adjustStockSafe } from '@/lib/stockAdjustments';
+import { configureProductGrades } from '@/lib/stockCommand';
 import { DuplicateSuggestion } from './DuplicateSuggestion';
 import { useGroups } from '@/hooks/useGroups';
 import { useSuppliers } from '@/hooks/useSuppliers';

@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const SQL = readFileSync(
-  resolve(__dirname, '../../supabase/migrations/20270101006000_explicit-footwear-material-families.sql'),
+  resolve(__dirname, '../../supabase/migrations/20270101006100_explicit-footwear-material-families.sql'),
   'utf8',
 );
 

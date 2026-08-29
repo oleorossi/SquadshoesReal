@@ -30,6 +30,7 @@ import { useSuppliers } from '@/hooks/useSuppliers';
 import { useQueryClient } from '@tanstack/react-query';
 import { sectorOfGroup, SECTOR_OPTIONS } from '@/lib/categoryFromGroup';
 import { ColorsMultiSelect } from '@/components/references/ColorsMultiSelect';
+import { createProductsWithStock } from '@/lib/stockCommand';
 
 interface Props {
   open: boolean;
@@ -324,18 +325,19 @@ export function QuickFamilyDialog({ open, onOpenChange, defaultGroupId }: Props)
         dimensions_unit: resolvedGroup.dimensions_unit || 'mm',
       }));
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data: createdProducts, error: productError } = await (supabase as any)
-        .from('products')
-        .insert(rows)
-        .select('id, name');
-
-      if (productError) {
-        if (productError.code === '23505') {
+      const created = await createProductsWithStock(rows.map((row) => ({
+        ...row,
+        quantity: 0,
+        reason: 'Cadastro rapido de variante sem saldo inicial',
+      })));
+      if (!created.success) {
+        const code = created.errors?.[0]?.error;
+        if (code === 'SKU_ALREADY_EXISTS') {
           throw new Error('Um SKU ou uma cor foi cadastrado por outra operação. Tente novamente para recalcular os sufixos.');
         }
-        throw new Error('Falha ao criar produtos: ' + productError.message);
+        throw new Error('Falha ao criar produtos: ' + (code || 'erro desconhecido'));
       }
+      const createdProducts = created.results ?? [];
       productBatchCompleted = true;
 
       toast.success((createdProducts?.length || 0) + ' variante(s) criada(s) no grupo "' + familyName + '"');
