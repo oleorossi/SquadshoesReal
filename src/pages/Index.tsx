@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo, useRef } from 'react';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { Package, GridFour as LayoutGrid, Bell, ClockCounterClockwise as History, ArrowsLeftRight as ArrowRightLeft, Stack as Layers } from '@phosphor-icons/react';
+import { Package, GridFour as LayoutGrid, Bell, ClockCounterClockwise as History, Medal as Ribbon, ArrowsLeftRight as ArrowRightLeft, Stack as Layers } from '@phosphor-icons/react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useIsAdmin } from '@/hooks/useUserManagement';
 import { Button } from '@/components/ui/button';
@@ -159,6 +159,13 @@ export default function Index() {
               >
                 <History className="h-3.5 w-3.5" />
                 Auditoria
+              </TabsTrigger>
+              <TabsTrigger
+                value="strap-stock"
+                className="min-w-[120px] gap-1.5 border border-transparent px-3 py-2 text-xs opacity-60 data-[state=active]:border-foreground/20 data-[state=active]:bg-background data-[state=active]:opacity-100"
+              >
+                <Ribbon className="h-3.5 w-3.5" />
+                Corte Tiras
               </TabsTrigger>
             </>
           )}

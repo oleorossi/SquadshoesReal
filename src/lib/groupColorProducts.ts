@@ -128,12 +128,9 @@ export async function createGroupColorProduct(spec: GroupColorSpec): Promise<Cre
   // A primeira cor de um grupo-folha ainda não tem produto-modelo. Dimensões e
   // setor vêm do grupo, mas a unidade-base precisa ser uma escolha explícita:
   // nunca inferimos estoque a partir da unidade técnica de consumo.
-  const defaultUnit = String(last?.unit || explicitStockUnit).trim();
-  const purchaseUnit = last?.purchase_unit || defaultUnit;
-  const productionUnit = last?.production_unit || defaultUnit;
-  const purchaseOrderUnit = last?.purchase_order_unit || defaultUnit;
-  const consumptionUnit = last?.consumption_unit || defaultUnit;
-  const conversionRate = purchaseUnit === defaultUnit
+  const stockUnit = String(last?.unit || explicitStockUnit).trim();
+  const purchaseUnit = last?.purchase_unit || stockUnit;
+  const conversionRate = purchaseUnit === stockUnit
     ? 1
     : Number(last?.conversion_rate) > 0 ? Number(last?.conversion_rate) : 1;
 
@@ -142,8 +139,8 @@ export async function createGroupColorProduct(spec: GroupColorSpec): Promise<Cre
     sku: finalSku,
     category: sectorOfGroup(group) || (last?.category || '').trim() || sectorOfGroup({ name: spec.groupName } as any),
     color,
-    unit: defaultUnit,
-    consumption_unit: consumptionUnit,
+    unit: stockUnit,
+    consumption_unit: last?.consumption_unit || stockUnit,
     unit_price: last?.unit_price || 0,
     technical_name: last?.technical_name || '',
     supplier_id: last?.supplier_id || null,
@@ -153,14 +150,15 @@ export async function createGroupColorProduct(spec: GroupColorSpec): Promise<Cre
     max_stock: last?.max_stock || 0,
     safety_stock: last?.safety_stock || 0,
     purchase_unit: purchaseUnit,
-    production_unit: productionUnit,
+    production_unit: last?.production_unit || stockUnit,
     conversion_rate: conversionRate,
-    purchase_order_unit: purchaseOrderUnit,
+    purchase_order_unit: last?.purchase_order_unit || purchaseUnit,
     min_order_quantity: last?.min_order_quantity || 0,
     lead_time_days: last?.lead_time_days || 0,
     calculation_method: last?.calculation_method || 'weight',
     price_wholesale: last?.price_wholesale || 0,
     price_retail: last?.price_retail || 0,
+    quantity: 0,
     group_id: spec.groupId,
     active: true,
     image_url: '',

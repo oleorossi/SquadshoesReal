@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { packBlocks, PAGE_CAPACITY_PX, BLOCK_GAP_PX, PRINT_INFLATE } from '../PaginatedSheet';
+import {
+  packBlocks, PAGE_CAPACITY_PX, BLOCK_GAP_PX, PRINT_INFLATE,
+  chooseAutoFitScale, growCeilingFor, PAGE_CONTENT_WIDTH_PX,
+} from '../PaginatedSheet';
+import { A4_CONTENT_WIDTH_PX } from '../adaptiveFont';
 
 // Capacidade/gap redondos pra facilitar a leitura dos casos.
 const CAP = 1000;
@@ -154,5 +158,110 @@ describe('packBlocks — paginação explícita das fichas', () => {
     expect(PAGE_CAPACITY_PX).toBeGreaterThan(950);
     expect(PAGE_CAPACITY_PX).toBeLessThan(1100);
     expect(BLOCK_GAP_PX).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * Lado que CRESCE do auto-fit (2026-08-29).
+ *
+ * A regra da casa manda usar "a MAIOR fonte que couber na moldura", e até aqui
+ * o auto-fit só sabia encolher: ficha que fechava no meio da folha saía com
+ * fonte de folha cheia e o resto em branco. O que estes testes travam não é o
+ * crescimento em si — é o que ele NÃO pode fazer.
+ */
+describe('chooseAutoFitScale — encolher e crescer', () => {
+  const opts = (extra: Record<string, unknown> = {}) => ({
+    capacity: CAP, gap: GAP, ...extra,
+  });
+
+  it('cresce até encher quando sobra folha', () => {
+    // 1 bloco de 400 numa página de 1000: com a previsão de impressão e a folga
+    // de crescimento ainda sobra muito espaço → cresce até o teto duro.
+    const { scale, pages } = chooseAutoFitScale([400], opts());
+    expect(scale).toBeGreaterThan(1);
+    expect(pages).toHaveLength(1);
+  });
+
+  it('NÃO cresce quando a folha já está cheia', () => {
+    // Regressão: crescer um bloco ALÉM da capacidade o transforma em página
+    // `flow` com spanned 2 — mesmos índices, mesma "composição", o dobro de
+    // folhas. A assinatura tem que enxergar isso.
+    const { scale, pages } = chooseAutoFitScale([CAP / PRINT_INFLATE - 1], opts());
+    expect(scale).toBe(1);
+    expect(pages.reduce((a, p) => a + p.spanned, 0)).toBe(1);
+  });
+
+  it('crescer NUNCA muda quem está em qual folha', () => {
+    // Sem essa trava, crescer empurra o 2º bloco pra folha seguinte e "compra"
+    // corpo de letra deixando MAIS branco pra trás (medido no PV-00167).
+    const heights = [300, 300, 120];
+    const antes = chooseAutoFitScale(heights, opts({ maxScale: 1 })).pages.map(p => p.blockIdxs);
+    const depois = chooseAutoFitScale(heights, opts()).pages.map(p => p.blockIdxs);
+    expect(depois).toEqual(antes);
+  });
+
+  it('crescer NUNCA acrescenta folha', () => {
+    for (const hs of [[400], [300, 300], [200, 200, 200], [450, 300, 90], [700, 120]]) {
+      const base = chooseAutoFitScale(hs, opts({ maxScale: 1 }));
+      const grown = chooseAutoFitScale(hs, opts());
+      const total = (r: { pages: Array<{ spanned: number }> }) =>
+        r.pages.reduce((a, p) => a + p.spanned, 0);
+      expect(total(grown)).toBe(total(base));
+      expect(grown.scale).toBeGreaterThanOrEqual(1);
+    }
+  });
+
+  it('a largura rígida trava o crescimento (Controle de Fichas não reflui)', () => {
+    // Uma linha que exige 707px de 733 disponíveis só tolera ~×1,03.
+    const teto = growCeilingFor([707]);
+    const { scale } = chooseAutoFitScale([400], opts({ maxScale: teto }));
+    expect(scale).toBeLessThanOrEqual(teto + 1e-9);
+    expect(scale).toBeGreaterThan(1);
+    expect(scale).toBeLessThan(1.06);
+  });
+
+  it('bloco maior que a folha (flow) não cresce — só ganharia folha', () => {
+    const { scale } = chooseAutoFitScale([CAP * 2], opts());
+    expect(scale).toBe(1);
+  });
+
+  it('encolher continua tendo precedência e só age se elimina uma folha', () => {
+    // 2 blocos que somam pouco mais que a página: encolher tira a 2ª folha.
+    const h = (CAP / PRINT_INFLATE) * 0.53;
+    const { scale, pages } = chooseAutoFitScale([h, h], opts());
+    expect(scale).toBeLessThan(1);
+    expect(pages).toHaveLength(1);
+  });
+
+  it('o piso do conteúdo impede o encolhimento quando a grade já está no mínimo', () => {
+    // Mesmo caso do teste anterior, mas com a grade já no piso tipográfico
+    // (minScale 1): a folha extra é gasta em vez de espremer o número da grade
+    // — decisão do dono 31/07/2026, legibilidade vence densidade.
+    const h = (CAP / PRINT_INFLATE) * 0.53;
+    const { scale, pages } = chooseAutoFitScale([h, h], opts({ minScale: 1 }));
+    expect(pages).toHaveLength(2);
+    expect(scale).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe('growCeilingFor — teto do crescimento vindo da largura', () => {
+  it('sem bloco rígido, não há razão de largura para parar antes', () => {
+    expect(growCeilingFor([])).toBeGreaterThan(1);
+    expect(growCeilingFor([0, 0])).toBeGreaterThan(1);
+  });
+
+  it('manda o bloco MAIS exigente', () => {
+    expect(growCeilingFor([300, 707, 120])).toBeCloseTo(growCeilingFor([707]), 6);
+  });
+
+  it('bloco que já ocupa a largura inteira não deixa crescer nada', () => {
+    expect(growCeilingFor([PAGE_CONTENT_WIDTH_PX])).toBeCloseTo(1, 6);
+    expect(growCeilingFor([PAGE_CONTENT_WIDTH_PX * 2])).toBe(1);
+  });
+
+  it('a largura de conteúdo bate com a que o adaptiveFont usa para a grade', () => {
+    // Duas constantes para a mesma coluna de 194mm; divergirem faria a decisão
+    // "cabe ao lado da grade" e o teto do auto-fit medirem réguas diferentes.
+    expect(Math.floor(PAGE_CONTENT_WIDTH_PX)).toBe(A4_CONTENT_WIDTH_PX);
   });
 });

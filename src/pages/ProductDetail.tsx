@@ -1323,16 +1323,16 @@ function StockMovementForm({ product, type }: { product: Product, type: 'in' | '
        // products.quantity — qualquer débito de OP que tivesse acontecido no
        // meio-tempo era apagado sem erro nenhum. A RPC lê sob FOR UPDATE e
        // ainda barra saída avulsa que comeria material reservado pra OP.
-       const previousQty = Number(product.quantity) || 0;
-       const result = await adjustStockSafe({
-         productId: product.id,
-         expectedPrevious: previousQty,
-         newQty: type === 'in' ? previousQty + quantity : previousQty - quantity,
-         reason: description || (type === 'in' ? 'Entrada manual' : 'Saída manual'),
-         lotNumber: lotNumber || null,
-         occurredAt: new Date(date).toISOString(),
-         responsible: finalResponsible,
-         enforceReserved: type === 'out',
+       // RPC posterior à última geração dos tipos do Supabase.
+       // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       const { data, error: rpcErr } = await (supabase as any).rpc('move_stock_delta', {
+         p_product_id: product.id,
+         p_type: type,
+         p_qty: quantity,
+         p_description: description || null,
+         p_lot_number: lotNumber || null,
+         p_created_at: new Date(date).toISOString(),
+         p_responsible: finalResponsible,
        });
        if (!result.success) throw new Error(result.errorMessage || 'Falha ao registrar o movimento');
 

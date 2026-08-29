@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { PencilSimple as Pencil, Palette, FloppyDisk as Save, Package, Plus, MagnifyingGlass as Search, Ruler, CircleNotch as Loader2, Flask as FlaskConical, Stack as Layers, X, LinkSimple as Link2, ArrowRight, Check, Warning as AlertTriangle, ArrowsLeftRight, Rows, Info, Factory, SquaresFour, Scissors } from '@phosphor-icons/react';
+import { PencilSimple as Pencil, Palette, FloppyDisk as Save, Package, Plus, MagnifyingGlass as Search, Ruler, CircleNotch as Loader2, Flask as FlaskConical, Stack as Layers, X, LinkSimple as Link2, ArrowRight, Check, Warning as AlertTriangle, ArrowsLeftRight, Rows, Info, Factory, SquaresFour } from '@phosphor-icons/react';
 import { ProductGroup, useUpdateGroup, useGroups } from '@/hooks/useGroups';
 import { useProducts } from '@/hooks/useProducts';
 import GroupColorsTab from './GroupColorsTab';
@@ -554,6 +554,36 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
     [allGroups, parentGroupId],
   );
 
+  const affectedProductsCount = useMemo(() => {
+    if (!isContainer) return products.length;
+    return allProducts.filter((product) => product.group_id && descendantIds.has(product.group_id)).length;
+  }, [allProducts, descendantIds, isContainer, products.length]);
+
+  const familyOptions = useMemo(
+    () => groupsWithDepth.filter((candidate) => {
+      if (candidate.id === group.id || descendantIds.has(candidate.id) || candidate.parent_group_id) return false;
+      if (sectorOfGroup(candidate) !== sector) return false;
+      const childCount = childrenByParent.get(candidate.id)?.length || 0;
+      return candidate.is_family === true || childCount > 0 || candidate.id === parentGroupId;
+    }),
+    [childrenByParent, descendantIds, group.id, groupsWithDepth, parentGroupId, sector],
+  );
+
+  const linkableChildren = useMemo(
+    () => availableToLinkAsChild.filter((candidate) => (
+      !candidate.parent_group_id
+      && candidate.is_family !== true
+      && sectorOfGroup(candidate) === sector
+      && (childrenByParent.get(candidate.id)?.length || 0) === 0
+    )),
+    [availableToLinkAsChild, childrenByParent, sector],
+  );
+
+  const selectedFamily = useMemo(
+    () => (parentGroupId ? allGroups.find((candidate) => candidate.id === parentGroupId) ?? null : null),
+    [allGroups, parentGroupId],
+  );
+
   // ── Embalagem: o estado saiu daqui em 02/08/2026 junto com a edição.
   // A aba `packaging` agora só aponta pra Embalagens → Configuração por Solado
   // (`SolePackagingPanel`), que grava direto em `product_groups`.
@@ -575,7 +605,6 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
     setIsFamilyPersisted(group.is_family === true || childrenGroups.length > 0);
     setUnitWeightKg(group.unit_weight_kg || 0);
     setPurchaseMultiple((group as any).purchase_multiple || 0);
-    setIsArtisanalStrap(group.is_artisanal_strap === true);
     setActiveTab('general');
     // A hidratação pertence à abertura/troca do cadastro. Mudanças nas queries
     // de filhos ou itens não podem apagar campos ainda não salvos.
@@ -929,32 +958,13 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                     </CardContent>
                   </Card>
 
-                  {show.artisanal && !isArtisanalStrap && (
+                  {show.artisanal && (
                     <div className="flex flex-col gap-3 border border-foreground/15 bg-muted/20 p-4 sm:flex-row sm:items-center sm:justify-between">
                       <div className="flex items-start gap-3">
                         <FlaskConical className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
                         <div><p className="text-sm font-medium">Tiras artesanais</p><p className="mt-1 text-xs text-muted-foreground">Receita, cor, rendimento e produto acabado têm cadastro canônico próprio.</p></div>
                       </div>
-                      <Button type="button" variant="outline" onClick={() => { onOpenChange(false); navigate(`/tiras-artesanais?tab=cadastro&editor=1&mode=create&origin=grupos&purpose=stock_variant&baseGroupId=${encodeURIComponent(group.id)}`); }}>Abrir cadastro de tiras</Button>
-                    </div>
-                  )}
-
-                  {!isContainer && (
-                    <div className="flex items-start gap-3 border border-foreground/15 bg-muted/20 p-4">
-                      <Checkbox
-                        id="edit-is-artisanal-strap"
-                        checked={isArtisanalStrap}
-                        onCheckedChange={(value) => setIsArtisanalStrap(value === true)}
-                      />
-                      <div className="min-w-0">
-                        <Label htmlFor="edit-is-artisanal-strap" className="cursor-pointer text-sm font-medium">
-                          Tira acabada (Hub)
-                        </Label>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          Marque quando este grupo é o produto final da tira (chata, overlock, strass, meia cana), não a napa de onde ela é cortada. Desliga a ficha de componente automática. A identidade operacional continua por UUID — o nome não decide.
-                        </p>
-                      </div>
-                      <Scissors className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                      <Button type="button" variant="outline" onClick={() => { onOpenChange(false); navigate(`/tiras-artesanais?tab=cadastro&editor=1&mode=create&origin=grupos&baseGroupId=${encodeURIComponent(group.id)}`); }}>Abrir cadastro de tiras</Button>
                     </div>
                   )}
 

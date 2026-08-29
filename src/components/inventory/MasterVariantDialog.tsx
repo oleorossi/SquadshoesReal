@@ -36,7 +36,6 @@ import { toast } from 'sonner';
 import { SoleSizeConjugationsEditor } from './SoleSizeConjugationsEditor';
 import { ColorsMultiSelect } from '@/components/references/ColorsMultiSelect';
 import { sectorOfGroup } from '@/lib/categoryFromGroup';
-import { configureProductGrades } from '@/lib/stockCommand';
 
 const ALL_SIZES = Array.from({ length: 22 }, (_, i) => 20 + i); // 20–41
 const CALC_METHODS: Array<'weight' | 'meter' | 'unit'> = ['weight', 'meter', 'unit'];

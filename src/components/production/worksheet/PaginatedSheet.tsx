@@ -56,6 +56,10 @@ export const HEADER_BAND_MM = 8;
 /** Respiro vertical entre blocos empacotados na mesma página. */
 export const BLOCK_GAP_MM = 2;
 
+/** Largura útil da coluna de conteúdo (210mm − 2×8mm de padding lateral).
+ *  É contra ela que `growCeilingFor` decide o teto do crescimento. */
+export const PAGE_CONTENT_WIDTH_PX = (210 - 2 * PAGE_PAD_X_MM) * MM_TO_PX;
+
 export const PAGE_CAPACITY_PX =
   (PAGE_HEIGHT_MM - PAGE_PAD_TOP_MM - PAGE_PAD_BOTTOM_MM - HEADER_BAND_MM) * MM_TO_PX;
 export const BLOCK_GAP_PX = BLOCK_GAP_MM * MM_TO_PX;
@@ -85,6 +89,32 @@ export const PRINT_INFLATE = 1.06;
 const AUTO_FIT_FLOOR = 0.80;
 /** Passo da busca do fator de escala. */
 const AUTO_FIT_STEP = 0.01;
+/* ── Lado que CRESCE (2026-08-29) ──
+ * O auto-fit só sabia ENCOLHER, e só quando isso eliminava uma folha. Ficha que
+ * fechava no meio da página saía com fonte de página cheia e o resto em branco —
+ * o oposto da regra da casa ("a MAIOR fonte que couber na moldura; sobrou
+ * espaço = fonte pequena demais", CLAUDE.md). Agora, quando sobra folha, ele
+ * procura a MAIOR escala ≥ 1 que caiba, sob três travas:
+ *
+ *   1. a COMPOSIÇÃO das folhas não pode mudar. Sem isso, crescer empurra um
+ *      card para a folha seguinte e "compra" corpo de letra deixando MAIS
+ *      branco para trás — medido no PV-00167 antes desta trava existir.
+ *   2. `growCeilingFor`: nenhum bloco de geometria fixa (o Controle de Fichas,
+ *      a grade quando divide a linha com a foto) pode vazar da folha. Eles
+ *      declaram a largura que exigem em `data-rigid-width`.
+ *   3. o teto duro abaixo, mais uma folga de segurança — crescer REFLUI texto,
+ *      então a altura não sobe linear como no lado que encolhe.
+ *
+ * ⚠ Medido no Corte Forração: a trava que manda na prática é a 2, e o teto real
+ * fica em ~×1,04 por causa do Controle de Fichas (30 caixinhas por linha, de uma
+ * constante que não reflui). Fazê-lo refluir NÃO destrava nada: com menos
+ * largura ele cai para 20 por linha, 144 fichas viram 8 linhas em vez de 5, e
+ * cada cor engorda mais do que o crescimento devolve. */
+const AUTO_FIT_CEIL = 1.25;
+/** Folga aplicada só ao CRESCER: aumentar a fonte reflui texto (mais quebras de
+ *  linha), então a altura real fica ACIMA da previsão linear. Encolher não tem
+ *  esse risco — menos quebras, altura sempre ≤ previsão. */
+const GROW_SAFETY = 1.03;
 
 export interface PackedPage {
   /** Índices dos blocos desta página, em ordem. */
@@ -181,6 +211,95 @@ export function packBlocks(
   return pages;
 }
 
+/**
+ * Teto do crescimento imposto pela LARGURA.
+ *
+ * Sob `zoom: s` a largura local disponível vira `contentWidth / s`, mas um bloco
+ * cuja geometria sai de constante (o Controle de Fichas monta as colunas a
+ * partir de `ROW_WIDTH_PX`) NÃO reflui: ele só é desenhado `s×` mais largo e
+ * vaza da folha, em silêncio. Cada bloco desses declara em `data-rigid-width` a
+ * largura que exige; o crescimento para antes de furar a mais exigente.
+ *
+ * Sem nenhum bloco rígido, devolve o teto duro (não há razão de largura para
+ * parar antes).
+ */
+export function growCeilingFor(
+  rigidWidths: ReadonlyArray<number>,
+  contentWidth: number = PAGE_CONTENT_WIDTH_PX,
+): number {
+  const widest = rigidWidths.reduce((m, w) => (Number.isFinite(w) && w > m ? w : m), 0);
+  if (widest <= 0) return AUTO_FIT_CEIL;
+  return Math.max(1, contentWidth / widest);
+}
+
+/**
+ * Escolhe a escala do auto-fit e a paginação que sai dela.
+ *
+ * Pura e exportada para teste: as duas direções são decisões de produto
+ * (densidade × legibilidade) e viviam escondidas dentro de um `useMemo`.
+ *
+ * Ordem: tenta ENCOLHER (só vale se elimina uma folha), depois CRESCER (só vale
+ * se não muda a composição das folhas). Nunca faz as duas.
+ */
+export function chooseAutoFitScale(
+  heights: ReadonlyArray<number>,
+  opts: {
+    capacity?: number;
+    gap?: number;
+    keepPrev?: boolean[];
+    keepNext?: boolean[];
+    /** Piso vindo do CONTEÚDO (`floorSafeScale`). O efetivo é o mais restritivo. */
+    minScale?: number;
+    /** Teto vindo da LARGURA (`growCeilingFor`). */
+    maxScale?: number;
+  } = {},
+): { scale: number; pages: PackedPage[] } {
+  const capacity = opts.capacity ?? PAGE_CAPACITY_PX;
+  const gap = opts.gap ?? BLOCK_GAP_PX;
+  const pack = (s: number, safety: number) =>
+    packBlocks(
+      heights.map(h => h * s * PRINT_INFLATE * safety),
+      capacity, gap, opts.keepPrev, opts.keepNext,
+    );
+  const base = pack(1, 1);
+  const baseTotal = base.reduce((a, p) => a + p.spanned, 0);
+
+  // ── encolher: só quando de fato tira uma folha (comportamento de 2026-06-19) ──
+  if (baseTotal >= 2 && !base[base.length - 1].flow) {
+    const floor = Math.max(AUTO_FIT_FLOOR, opts.minScale ?? 0);
+    for (let s = 1 - AUTO_FIT_STEP; s >= floor - 1e-9; s -= AUTO_FIT_STEP) {
+      const p = pack(s, 1);
+      if (p.reduce((a, q) => a + q.spanned, 0) <= baseTotal - 1) {
+        return { scale: +s.toFixed(2), pages: p };
+      }
+    }
+  }
+
+  // ── crescer: enche a folha sem mexer em quem está em qual folha ──
+  // Bloco `flow` (maior que uma página inteira) fica de fora: ele já é
+  // fragmentado pelo browser e crescer só acrescenta folha.
+  const ceiling = Math.min(AUTO_FIT_CEIL, opts.maxScale ?? AUTO_FIT_CEIL);
+  if (ceiling > 1 && !base.some(p => p.flow)) {
+    // A assinatura precisa incluir `spanned`/`flow`, não só quem está em qual
+    // folha: um bloco que cresce ALÉM da capacidade vira página `flow` com
+    // spanned 2 mantendo os mesmos índices — a composição "não mudaria" e o
+    // maço dobraria de folhas em silêncio. (Pego pelo teste "NÃO cresce quando
+    // a folha já está cheia" antes de sair daqui.)
+    const signature = (ps: PackedPage[]) =>
+      ps.map(p => `${p.blockIdxs.join(',')}:${p.spanned}${p.flow ? 'f' : ''}`).join('|');
+    const baseSig = signature(base);
+    let best: { scale: number; pages: PackedPage[] } = { scale: 1, pages: base };
+    for (let s = 1 + AUTO_FIT_STEP; s <= ceiling + 1e-9; s += AUTO_FIT_STEP) {
+      const p = pack(s, GROW_SAFETY);
+      if (signature(p) !== baseSig) break;
+      if (p.reduce((a, q) => a + q.spanned, 0) !== baseTotal) break;
+      best = { scale: +s.toFixed(2), pages: p };
+    }
+    return best;
+  }
+  return { scale: 1, pages: base };
+}
+
 /** Bloco da ficha: nó cru, ou envelopado com flags de empacotamento. */
 export type SheetBlock =
   | React.ReactNode
@@ -212,6 +331,9 @@ export const PaginatedSheet = ({ sectorLabel, blocks, pageStyle, minScale }: Pag
   const keepFlags = blocks.map(b => (isWrappedBlock(b) ? !!b.keepWithPrev : false));
   const keepNextFlags = blocks.map(b => (isWrappedBlock(b) ? !!b.keepWithNext : false));
   const [heights, setHeights] = useState<number[]>([]);
+  /** Largura que cada bloco EXIGE e não sabe refluir (`data-rigid-width`).
+   *  Alimenta o teto do lado que cresce — ver growCeilingFor. */
+  const [rigidWidths, setRigidWidths] = useState<number[]>([]);
   const wrapperEls = useRef(new Map<number, HTMLDivElement>());
   const roRef = useRef<ResizeObserver | null>(null);
   // Fator de zoom corrente do auto-fit (escolhido pelo useMemo). A medição NUNCA
@@ -226,16 +348,30 @@ export const PaginatedSheet = ({ sectorLabel, blocks, pageStyle, minScale }: Pag
     // re-medir o DOM zoomado realimentaria o auto-fit em loop infinito (#185).
     if ((scaleRef.current || 1) !== 1) return;
     const next: number[] = [];
+    const nextW: number[] = [];
     for (let i = 0; i < blocks.length; i++) {
       const el = wrapperEls.current.get(i);
       if (!el) return; // render incompleto — espera o próximo ciclo
       // ceil do retângulo sub-pixel: offsetHeight arredonda pra BAIXO e o
       // erro acumulado de ~10 blocos chegava a vários px — derramava no print.
       next[i] = Math.ceil(el.getBoundingClientRect().height);
+      // Largura rígida é DECLARADA pelo componente (não medida): quem tem
+      // geometria de constante sabe quanto exige, e medir o DOM não distingue
+      // "ocupa 660px" de "precisa de 660px".
+      let w = 0;
+      el.querySelectorAll<HTMLElement>('[data-rigid-width]').forEach(node => {
+        const v = Number(node.dataset.rigidWidth);
+        if (Number.isFinite(v) && v > w) w = v;
+      });
+      nextW[i] = w;
     }
     setHeights(prev => {
       if (prev.length === next.length && prev.every((v, i) => Math.abs(v - next[i]) < 1.5)) return prev;
       return next;
+    });
+    setRigidWidths(prev => {
+      if (prev.length === nextW.length && prev.every((v, i) => v === nextW[i])) return prev;
+      return nextW;
     });
   }, [blocks.length]);
 
@@ -249,6 +385,7 @@ export const PaginatedSheet = ({ sectorLabel, blocks, pageStyle, minScale }: Pag
       prevSigRef.current = blockSig;
       scaleRef.current = 1;
       setHeights([]);
+      setRigidWidths([]);
     }
   });
 
@@ -302,44 +439,18 @@ export const PaginatedSheet = ({ sectorLabel, blocks, pageStyle, minScale }: Pag
       // pelo useLayoutEffect antes do paint.
       return { pages: [{ blockIdxs: blocks.map((_, i) => i), flow: true, spanned: 1, startPage: 1 }], scale: 1 };
     }
-    // Empacota prevendo a altura de IMPRESSÃO (medida × PRINT_INFLATE) — a
-    // impressão rende ~3-4% mais alto que a tela; sem isso a página cheia
-    // derrama numa folha em branco (ex.: ACABAMENTO 1/2 do PDF de 2026-06-19).
-    const packHeights = heights.map(h => h * PRINT_INFLATE);
-    const base = packBlocks(packHeights, PAGE_CAPACITY_PX, BLOCK_GAP_PX, keepFlags, keepNextFlags);
-    const baseTotal = base.reduce((s, p) => s + p.spanned, 0);
-    // Auto-fit: busca o MAIOR fator de escala (≥ AUTO_FIT_FLOOR) que faça a
-    // ficha caber em uma página a menos. Só encolhe quando realmente remove uma
-    // folha — senão mantém escala 1. (Sem gate de % da última página desde
-    // 2026-06-19: tenta sempre; o piso é o único limite.)
-    if (baseTotal >= 2) {
-      const last = base[base.length - 1];
-      // Bloco "flow" (maior que 1 página) não é candidato — não dá pra
-      // empacotar junto reduzindo só um pouco.
-      if (!last.flow) {
-        // Tenta SEMPRE remover ≥1 página encolhendo dentro do piso (−20%). O
-        // "t <= target" garante que só encolhe quando de fato tira uma folha;
-        // se nem no piso couber em menos páginas, mantém escala 1 (não encolhe
-        // à toa). O gate antigo de <15% da última página foi removido em
-        // 2026-06-19 (deixava passar última-página meia-cheia).
-        const target = baseTotal - 1;
-        // Piso EFETIVO: o global (densidade) OU o do conteúdo (legibilidade),
-        // o que for mais restritivo. Num bucket denso o `minScale` chega a 1,0
-        // e o auto-fit simplesmente não encolhe — a ficha ganha uma folha em
-        // vez de números ilegíveis.
-        const effectiveFloor = Math.max(AUTO_FIT_FLOOR, minScale ?? 0);
-        for (let s = 1 - AUTO_FIT_STEP; s >= effectiveFloor - 1e-9; s -= AUTO_FIT_STEP) {
-          // mesma previsão de impressão (× PRINT_INFLATE) que a base
-          const scaled = heights.map(h => h * s * PRINT_INFLATE);
-          const p = packBlocks(scaled, PAGE_CAPACITY_PX, BLOCK_GAP_PX, keepFlags, keepNextFlags);
-          const t = p.reduce((a, q) => a + q.spanned, 0);
-          if (t <= target) return { pages: p, scale: +s.toFixed(2) };
-        }
-      }
-    }
-    return { pages: base, scale: 1 };
+    // A previsão de impressão (× PRINT_INFLATE), o piso vindo do conteúdo e o
+    // teto vindo da largura moram todos em chooseAutoFitScale — pura e testada.
+    return chooseAutoFitScale(heights, {
+      capacity: PAGE_CAPACITY_PX,
+      gap: BLOCK_GAP_PX,
+      keepPrev: keepFlags,
+      keepNext: keepNextFlags,
+      minScale,
+      maxScale: growCeilingFor(rigidWidths),
+    });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, heights, blocks.length]);
+  }, [ready, heights, rigidWidths, blocks.length]);
   // Propaga o zoom escolhido pra medição normalizar à escala 1 (sem loop).
   scaleRef.current = scale;
   const totalPages = pages.reduce((s, p) => s + p.spanned, 0);
