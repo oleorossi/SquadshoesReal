@@ -144,13 +144,15 @@ describe('timeBalanceReports — fechamento semanal', () => {
     const reports = buildTimeBalanceReports([
       { id: 'extra', name: 'Extra', paymentType: 'mensalista', ledger: [ledgerDay('2026-06-01', 480, 540)] },
       { id: 'debito', name: 'Débito', paymentType: 'mensalista', ledger: [ledgerDay('2026-06-01', 480, 420)] },
+      { id: 'zerado', name: 'Zerado', paymentType: 'mensalista', ledger: [ledgerDay('2026-06-01', 480, 480)] },
       { id: 'remoto', name: 'Remoto', paymentType: 'remoto', ledger: [ledgerDay('2026-06-01', 480, 0)] },
       { id: 'producao', name: 'Produção', paymentType: 'producao', ledger: [ledgerDay('2026-06-01', 480, 0)] },
     ]);
 
-    expect(reports.map(report => report.id)).toEqual(['debito', 'extra']);
+    expect(reports.map(report => report.id)).toEqual(['debito', 'extra', 'zerado']);
     expect(reportsForKind(reports, 'overtime').map(report => report.id)).toEqual(['extra']);
     expect(reportsForKind(reports, 'deficit').map(report => report.id)).toEqual(['debito']);
+    expect(reportsForKind(reports, 'all').map(report => report.id)).toEqual(['debito', 'extra', 'zerado']);
   });
 });
 

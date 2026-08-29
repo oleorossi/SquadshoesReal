@@ -1,7 +1,7 @@
 import type { SalaryDayLedger, SalaryDayLedgerStatus } from '@/lib/salaryPayroll';
 import { getISOWeekKey, getWeekMonday, getWeekSunday } from '@/lib/weeklyTimeCalculation';
 
-export type TimeBalanceReportKind = 'overtime' | 'deficit';
+export type TimeBalanceReportKind = 'overtime' | 'deficit' | 'all';
 
 export interface TimeBalanceEmployeeInput {
   id: string;
@@ -187,6 +187,7 @@ export function reportsForKind(
   reports: EmployeeTimeBalanceReport[],
   kind: TimeBalanceReportKind,
 ): EmployeeTimeBalanceReport[] {
+  if (kind === 'all') return reports;
   return reports.filter(report => kind === 'overtime'
     ? report.totalOvertimeMinutes > 0
     : report.totalDeficitMinutes > 0);
