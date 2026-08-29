@@ -7,6 +7,10 @@ interface CreatePrintJobInput {
   totalLabels: number;
   orderIds?: string[];
   templateId?: string | null;
+  /** Reimpressões mantêm o vínculo de auditoria sem tirar a OP da fila ativa. */
+  marksOrdersAsPrinted?: boolean;
+  /** ZPL já nasce renderizado no navegador; PDF começa pendente no servidor. */
+  initialStatus?: Extract<PrintJobStatus, 'pending' | 'generated'>;
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -21,8 +25,9 @@ export async function createPrintJob(input: CreatePrintJobInput): Promise<string
     .insert({
       batch_name: input.batchName,
       total_labels: input.totalLabels,
-      status: 'pending',
+      status: input.initialStatus || 'pending',
       order_ids: input.orderIds || [],
+      marks_orders_as_printed: input.marksOrdersAsPrinted ?? true,
       template_id: templateId,
       user_id: user.id,
     })
@@ -43,6 +48,11 @@ export async function confirmPrintJob(id: string): Promise<void> {
 
 export function isPhysicallyConfirmed(status: string | null | undefined): boolean {
   return status === 'confirmed';
+}
+
+/** Jobs legados (sem o campo) preservam a semântica histórica de impressão total. */
+export function shouldPrintJobMarkOrdersAsPrinted(value: boolean | null | undefined): boolean {
+  return value !== false;
 }
 
 export const PRINT_JOB_STATUS_LABELS: Record<string, string> = {
