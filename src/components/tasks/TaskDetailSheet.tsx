@@ -311,6 +311,7 @@ export function TaskDetailSheet({ task, subtasks, duplicatePending, onDuplicate,
                 className="h-8 gap-1"
                 onClick={addSubtask}
                 disabled={!newSubtask.trim() || createTask.isPending}
+                aria-label="Adicionar subtarefa"
               >
                 {createTask.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
               </Button>
@@ -364,7 +365,7 @@ function SubtaskRow({ subtask, canEdit, onToggle, onChangeText, onDelete }: {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(subtask.text);
   return (
-    <div className={cn('group flex items-center gap-2.5 py-2', subtask.done && 'opacity-50')}>
+    <div className={cn('group flex items-center gap-2.5 py-2', subtask.done && 'bg-muted/20')}>
       <Checkbox
         checked={subtask.done}
         disabled={!canEdit}
@@ -372,7 +373,7 @@ function SubtaskRow({ subtask, canEdit, onToggle, onChangeText, onDelete }: {
         className="h-4 w-4 shrink-0 rounded-full border-2"
         aria-label={subtask.done ? 'Desmarcar subtarefa' : 'Concluir subtarefa'}
       />
-      <div className="flex-1 min-w-0 cursor-pointer" onClick={() => canEdit && !subtask.done && setEditing(true)}>
+      <div className="min-w-0 flex-1">
         {editing ? (
           <Input
             value={draft}
@@ -387,12 +388,18 @@ function SubtaskRow({ subtask, canEdit, onToggle, onChangeText, onDelete }: {
             className="h-7 text-sm py-0 px-2"
           />
         ) : (
-          <p className={cn(
-            'text-sm leading-snug break-words',
-            subtask.done ? 'line-through text-muted-foreground' : 'text-foreground',
-          )}>
+          <button
+            type="button"
+            disabled={!canEdit || subtask.done}
+            onClick={() => setEditing(true)}
+            className={cn(
+              'block w-full break-words text-left text-sm leading-snug disabled:cursor-default',
+              subtask.done ? 'line-through text-muted-foreground' : 'text-foreground',
+            )}
+            aria-label={`Editar subtarefa: ${subtask.text}`}
+          >
             {subtask.text}
-          </p>
+          </button>
         )}
       </div>
       {canEdit && <button

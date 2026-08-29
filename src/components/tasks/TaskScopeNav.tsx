@@ -27,7 +27,7 @@ interface TaskScopeNavProps {
 
 export function TaskScopeNav({ scope, counts, onChange }: TaskScopeNavProps) {
   return (
-    <aside className="border-[1.5px] border-foreground/15 bg-card md:sticky md:top-4">
+    <aside className="min-w-0 max-w-full overflow-hidden border-[1.5px] border-foreground/15 bg-card md:sticky md:top-4">
       <div className="border-b-[1.5px] border-foreground/15 px-3 py-3">
         <p className="ed-eyebrow text-muted-foreground">Pulso do turno</p>
         <div className="mt-3 grid grid-cols-3 gap-0 divide-x divide-foreground/10">

@@ -196,11 +196,11 @@ export default function Tarefas() {
         {view === 'lista' ? (
           <div className="grid items-start gap-4 md:grid-cols-[220px_minmax(0,1fr)]">
             <TaskScopeNav scope={scope} counts={scopeCounts} onChange={setScope} />
-            <main className="min-w-0 space-y-4">
+            <section className="min-w-0 space-y-4" aria-labelledby="task-list-title">
               <div className="flex items-start justify-between gap-4 border-b border-foreground/15 pb-3">
                 <div>
                   <p className="ed-eyebrow text-muted-foreground">Minha lista</p>
-                  <h2 className="mt-1 text-xl font-semibold">{SCOPE_COPY[scope].title}</h2>
+                  <h2 id="task-list-title" className="mt-1 text-xl font-semibold">{SCOPE_COPY[scope].title}</h2>
                   <p className="mt-1 text-sm text-muted-foreground">{SCOPE_COPY[scope].description}</p>
                 </div>
                 <span className="font-mono text-xs tabular-nums text-muted-foreground">{scopedTasks.length}</span>
@@ -218,10 +218,10 @@ export default function Tarefas() {
               >
                 <TodoListView tasks={scopedTasks} scope={scope} {...rowActions} />
               </TaskContentState>
-            </main>
+            </section>
           </div>
         ) : (
-          <main className="space-y-4">
+          <section className="space-y-4" aria-label="Tarefas">
             <TaskQuickCapture canCreate={perm.canCreate} />
             <TaskContentState
               isLoading={isLoading}
@@ -251,7 +251,7 @@ export default function Tarefas() {
                 <AgendaView tasks={searched} {...rowActions} />
               )}
             </TaskContentState>
-          </main>
+          </section>
         )}
       </div>
 
@@ -289,7 +289,7 @@ function TaskToolbar({
 }: TaskToolbarProps) {
   return (
     <div className="flex flex-wrap items-center gap-2 border-b border-foreground/10 pb-3">
-      <div className="flex items-center gap-1 border border-foreground/15 p-0.5" aria-label="Visualização das tarefas">
+      <div className="flex items-center gap-1 border border-foreground/15 p-0.5" role="group" aria-label="Visualização das tarefas">
         {([
           { key: 'lista' as const, label: 'Lista', icon: Rows },
           { key: 'agenda' as const, label: 'Agenda', icon: CalendarBlank },
@@ -315,12 +315,13 @@ function TaskToolbar({
         placeholder="Buscar tarefa, descrição, nota ou tag…"
         resultCount={resultCount}
         totalCount={totalCount}
+        hideHint
         className="min-w-[220px] flex-1 sm:max-w-sm"
         inputClassName="h-9 text-sm"
       />
       {allTags.length > 0 && (
         <Select value={tagFilter} onValueChange={onTagFilterChange}>
-          <SelectTrigger className="h-9 w-40 gap-1.5 text-xs">
+          <SelectTrigger className="h-9 w-40 gap-1.5 text-xs" aria-label="Filtrar por tag">
             <TagIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
             <SelectValue />
           </SelectTrigger>

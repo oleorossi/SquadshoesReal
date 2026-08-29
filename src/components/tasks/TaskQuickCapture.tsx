@@ -70,7 +70,18 @@ export function TaskQuickCapture({ canCreate }: TaskQuickCaptureProps) {
   return (
     <section className="border-[1.5px] border-foreground/15 bg-card" aria-label="Captura rápida de tarefas">
       <div className="flex items-start gap-2 p-2.5">
-        <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center border border-primary/25 bg-primary/5 text-primary" aria-hidden="true">
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          className="mt-0.5 h-9 w-9 shrink-0 border-primary/25 bg-primary/5 text-primary sm:hidden"
+          onClick={handleAdd}
+          disabled={lineCount === 0 || bulkCreate.isPending}
+          aria-label={lineCount > 1 ? `Adicionar ${lineCount} tarefas` : 'Adicionar tarefa'}
+        >
+          {bulkCreate.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" weight="bold" />}
+        </Button>
+        <div className="mt-0.5 hidden h-9 w-9 shrink-0 items-center justify-center border border-primary/25 bg-primary/5 text-primary sm:flex" aria-hidden="true">
           <Plus className="h-4 w-4" weight="bold" />
         </div>
         <label className="sr-only" htmlFor="task-quick-capture">Nova tarefa</label>
@@ -94,12 +105,12 @@ export function TaskQuickCapture({ canCreate }: TaskQuickCaptureProps) {
         <Button
           type="button"
           size="sm"
-          className="h-9 shrink-0 gap-1.5"
+          className="hidden h-9 shrink-0 gap-1.5 sm:inline-flex"
           onClick={handleAdd}
           disabled={lineCount === 0 || bulkCreate.isPending}
         >
           {bulkCreate.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-          <span className="hidden sm:inline">{lineCount > 1 ? `Adicionar ${lineCount}` : 'Adicionar'}</span>
+          <span>{lineCount > 1 ? `Adicionar ${lineCount}` : 'Adicionar'}</span>
         </Button>
       </div>
 
