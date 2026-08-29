@@ -9,6 +9,7 @@ import {
   TrendDown,
   TrendUp,
   User,
+  Users,
   Warning,
 } from '@phosphor-icons/react';
 import { Badge } from '@/components/ui/badge';
@@ -18,6 +19,7 @@ import { Panel } from '@/components/ui/panel';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import { PeriodRangeFilter } from '@/components/hr/PeriodRangeFilter';
 import { TableSkeleton } from '@/components/layout/PageSkeleton';
+import { EmployeeBalanceCalendar } from '@/components/hr/EmployeeBalanceCalendar';
 import { useEmployees } from '@/hooks/useEmployees';
 import { useAbsences } from '@/hooks/useRH';
 import { useHolidays, useSwapSets, useTimesheetCoverage, useWorkSchedules } from '@/hooks/useTimesheet';
@@ -28,16 +30,11 @@ import {
   buildTimeBalanceReports,
   formatBalanceMinutes,
   reportsForKind,
-  type EmployeeTimeBalanceReport,
-  type TimeBalanceDay,
   type TimeBalanceReportKind,
-  type TimeBalanceWeek,
 } from '@/lib/ponto/timeBalanceReports';
 import { computeComparativoRows } from '@/lib/payrollComparativo';
 import { printTimeBalanceManagementReport, printTimeBalanceReports } from '@/lib/printTimeBalanceReports';
 import { cn } from '@/lib/utils';
-
-const DAY_LABELS = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
 
 function isoDate(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
@@ -63,175 +60,9 @@ function periodLabel(from: string, to: string): string {
   return `${from.split('-').reverse().join('/')} a ${to.split('-').reverse().join('/')}`;
 }
 
-function shortDate(date: string): string {
-  return date ? `${date.slice(8, 10)}/${date.slice(5, 7)}` : '—';
-}
-
-function daySlot(dayOfWeek: number): number {
-  return dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-}
-
-function formatBRL(value: number): string {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value || 0);
-}
-
-function balanceOutcome(minutes: number): { label: string; className: string } {
-  if (minutes > 0) return { label: 'Horas extras a pagar', className: 'text-success' };
-  if (minutes < 0) return { label: 'Débito de horas', className: 'text-destructive' };
-  return { label: 'Horas compensadas', className: 'text-foreground' };
-}
-
-function dayBalanceLabel(day: TimeBalanceDay): string {
-  if (day.status === 'pending') return 'Batida pendente';
-  if (day.status === 'excused') return 'Abonado';
-  if (day.status === 'neutral') return 'Folga';
-  return formatBalanceMinutes(day.balanceMinutes);
-}
-
-function dayPunchesLabel(day: TimeBalanceDay): string {
-  if (day.punches.length === 0) return 'Sem batidas';
-  if (day.punches.length <= 2) return day.punches.join(' · ');
-  return `${day.punches[0]} → ${day.punches[day.punches.length - 1]}`;
-}
-
-function BalanceDayCell({ day }: { day?: TimeBalanceDay }) {
-  if (!day) return <div className="min-h-28 border-l border-t border-border/60 bg-muted/10" aria-hidden="true" />;
-  const isPending = day.status === 'pending';
-  const isPositive = !isPending && day.balanceMinutes > 0;
-  const isNegative = !isPending && day.balanceMinutes < 0;
-  return (
-    <div
-      className={cn(
-        'min-h-28 border-l border-t border-border/60 p-2.5 transition-colors',
-        isPositive && 'bg-success/5',
-        isNegative && 'bg-destructive/5',
-        isPending && 'bg-warning/10',
-        !isPositive && !isNegative && !isPending && 'bg-muted/20',
-      )}
-      title={day.punches.join(' · ') || undefined}
-    >
-      <div className="flex items-start justify-between gap-2">
-        <span className="font-mono text-[11px] font-semibold text-muted-foreground">{shortDate(day.date)}</span>
-        {day.isHoliday && <span className="text-[10px] font-semibold text-warning">FER.</span>}
-      </div>
-      <p className="mt-2 truncate font-mono text-[11px] text-foreground">{dayPunchesLabel(day)}</p>
-      <p className="mt-1 text-[10px] tabular-nums text-muted-foreground">
-        {formatBalanceMinutes(day.workedMinutes, false)} / {formatBalanceMinutes(day.expectedMinutes, false)}
-      </p>
-      <p className={cn(
-        'mt-2 text-xs font-bold tabular-nums',
-        isPositive && 'text-success',
-        isNegative && 'text-destructive',
-        isPending && 'text-warning',
-        !isPositive && !isNegative && !isPending && 'text-muted-foreground',
-      )}>
-        {dayBalanceLabel(day)}
-      </p>
-    </div>
-  );
-}
-
-function WeekSummaryCell({ week }: { week: TimeBalanceWeek }) {
-  const target = Math.max(1, week.expectedMinutes);
-  const fulfilled = Math.min(100, Math.round((week.workedMinutes / target) * 100));
-  return (
-    <div className="min-h-28 border-t border-border/60 bg-muted/35 p-3">
-      <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-        {shortDate(week.startDate)}–{shortDate(week.endDate)}
-      </p>
-      <p className="mt-2 text-xs font-semibold tabular-nums text-foreground">
-        {formatBalanceMinutes(week.workedMinutes, false)} de {formatBalanceMinutes(week.expectedMinutes, false)}
-      </p>
-      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-border/70" aria-hidden="true">
-        <div
-          className={cn('h-full rounded-full', week.deficitMinutes > 0 ? 'bg-destructive' : 'bg-success')}
-          style={{ width: `${fulfilled}%` }}
-        />
-      </div>
-      <p className={cn(
-        'mt-2 font-mono text-sm font-bold tabular-nums',
-        week.balanceMinutes > 0 ? 'text-success' : week.balanceMinutes < 0 ? 'text-destructive' : 'text-foreground',
-      )}>
-        {formatBalanceMinutes(week.balanceMinutes)}
-      </p>
-      {week.hasPendingPunches && <p className="mt-1 text-[10px] font-semibold text-warning">Há batida incompleta</p>}
-    </div>
-  );
-}
-
-function EmployeeBalanceCalendar({ report, kind }: { report: EmployeeTimeBalanceReport; kind: TimeBalanceReportKind }) {
-  const mainMinutes = kind === 'overtime' ? report.totalOvertimeMinutes : -report.totalDeficitMinutes;
-  const mainWeeks = kind === 'overtime' ? report.overtimeWeeks : report.deficitWeeks;
-  const outcome = balanceOutcome(report.finalPayableBalanceMinutes);
-  return (
-    <Panel
-      eyebrow={kind === 'overtime' ? 'CRÉDITO SEMANAL' : 'ABAIXO DA META SEMANAL'}
-      title={report.name}
-      subtitle={`${report.department} · ${mainWeeks} ${mainWeeks === 1 ? 'semana' : 'semanas'} no relatório`}
-      actions={
-        <Badge variant="outline" className={cn(
-          'font-mono text-xs tabular-nums',
-          kind === 'overtime'
-            ? 'border-success/30 bg-success/10 text-success'
-            : 'border-destructive/30 bg-destructive/10 text-destructive',
-        )}>
-          {formatBalanceMinutes(mainMinutes)}
-        </Badge>
-      }
-      flush
-    >
-      <div className="overflow-x-auto">
-        <div className="min-w-[940px]">
-          <div className="grid grid-cols-[160px_repeat(7,minmax(104px,1fr))] border-b border-border bg-muted/20">
-            <div className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Fechamento semanal</div>
-            {DAY_LABELS.map(label => <div key={label} className="border-l border-border/60 px-2 py-2 text-center text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{label}</div>)}
-          </div>
-          {report.weeks.map(week => {
-            const slots = Array.from<TimeBalanceDay | undefined>({ length: 7 });
-            for (const day of week.days) slots[daySlot(day.dayOfWeek)] = day;
-            return (
-              <div key={week.key} className="grid grid-cols-[160px_repeat(7,minmax(104px,1fr))]">
-                <WeekSummaryCell week={week} />
-                {slots.map((day, index) => <BalanceDayCell key={day?.date || `${week.key}-${index}`} day={day} />)}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-      <div className="grid border-t border-border sm:grid-cols-2 xl:grid-cols-4">
-        <div className="border-b border-border px-4 py-3 sm:border-r xl:border-b-0">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Pendências de horas</p>
-          <p className="mt-1 font-mono text-lg font-bold tabular-nums text-destructive">{formatBalanceMinutes(-report.totalRawDebitMinutes)}</p>
-        </div>
-        <div className="border-b border-border px-4 py-3 xl:border-b-0 xl:border-r">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Horas extras</p>
-          <p className="mt-1 font-mono text-lg font-bold tabular-nums text-success">{formatBalanceMinutes(report.totalRawCreditMinutes)}</p>
-        </div>
-        <div className="border-b border-border px-4 py-3 sm:border-b-0 sm:border-r">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Resultado final</p>
-          <p className={cn('mt-1 font-mono text-lg font-bold tabular-nums', outcome.className)}>{formatBalanceMinutes(report.finalPayableBalanceMinutes)}</p>
-          <p className={cn('mt-0.5 text-[10px] font-semibold', outcome.className)}>{outcome.label}</p>
-        </div>
-        <div className="px-4 py-3">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Valor de HE a pagar</p>
-          <p className="mt-1 font-mono text-lg font-bold tabular-nums text-foreground">{formatBRL(report.overtimeValue)}</p>
-          <p className="mt-0.5 text-[10px] text-muted-foreground">{formatBalanceMinutes(report.totalPayableOvertimeMinutes, false)} após compensação</p>
-        </div>
-      </div>
-      <div className="flex flex-wrap gap-x-5 gap-y-1 border-t border-border px-4 py-3 text-[11px] text-muted-foreground">
-        <span><strong className="text-foreground">Célula:</strong> batidas · trabalhado/meta · saldo diário</span>
-        <span><strong className="text-foreground">Semana:</strong> créditos e débitos se compensam somente dentro dela</span>
-        <span><strong className="text-foreground">Resultado final:</strong> mesma compensação do período usada pela folha</span>
-        {report.pendingPunchDays > 0 && <span className="font-semibold text-warning">{report.pendingPunchDays} {report.pendingPunchDays === 1 ? 'dia com batida pendente' : 'dias com batida pendente'}</span>}
-        {report.overtimeRateMissing && <span className="font-semibold text-warning">Taxa de hora extra não cadastrada</span>}
-      </div>
-    </Panel>
-  );
-}
-
 export default function TimeBalanceReports() {
   const [range, setRange] = useState(monthBounds);
-  const [kind, setKind] = useState<TimeBalanceReportKind>('overtime');
+  const [kind, setKind] = useState<TimeBalanceReportKind>('all');
   const [scope, setScope] = useState('all');
   const appliedRange = useDebouncedValue(range, 350);
   const validRange = !!appliedRange.from && !!appliedRange.to && appliedRange.from <= appliedRange.to;
@@ -312,11 +143,11 @@ export default function TimeBalanceReports() {
 
   const overtimeReports = useMemo(() => reportsForKind(reports, 'overtime'), [reports]);
   const deficitReports = useMemo(() => reportsForKind(reports, 'deficit'), [reports]);
-  const eligibleReports = kind === 'overtime' ? overtimeReports : deficitReports;
+  const eligibleReports = reportsForKind(reports, kind);
   const deficitEnabled = deficitReports.length > 0;
 
   useEffect(() => {
-    if (kind === 'deficit' && !deficitEnabled) setKind('overtime');
+    if (kind === 'deficit' && !deficitEnabled) setKind('all');
   }, [kind, deficitEnabled]);
   useEffect(() => {
     if (scope !== 'all' && !eligibleReports.some(report => report.id === scope)) setScope('all');
@@ -325,14 +156,16 @@ export default function TimeBalanceReports() {
   const visibleReports = scope === 'all'
     ? eligibleReports
     : eligibleReports.filter(report => report.id === scope);
-  const totalMinutes = eligibleReports.reduce(
-    (sum, report) => sum + (kind === 'overtime' ? report.totalOvertimeMinutes : report.totalDeficitMinutes),
-    0,
-  );
-  const totalWeeks = eligibleReports.reduce(
-    (sum, report) => sum + (kind === 'overtime' ? report.overtimeWeeks : report.deficitWeeks),
-    0,
-  );
+  const totalMinutes = eligibleReports.reduce((sum, report) => {
+    if (kind === 'overtime') return sum + report.totalOvertimeMinutes;
+    if (kind === 'deficit') return sum + report.totalDeficitMinutes;
+    return sum + report.finalPayableBalanceMinutes;
+  }, 0);
+  const totalWeeks = eligibleReports.reduce((sum, report) => {
+    if (kind === 'overtime') return sum + report.overtimeWeeks;
+    if (kind === 'deficit') return sum + report.deficitWeeks;
+    return sum + report.weeks.length;
+  }, 0);
   const title = periodLabel(appliedRange.from, appliedRange.to);
   const loading = employeesLoading || schedulesLoading || coverageLoading || recordsLoading;
 
@@ -348,7 +181,29 @@ export default function TimeBalanceReports() {
 
   return (
     <div className="space-y-4 page-enter">
-      <div className="grid gap-3 lg:grid-cols-2">
+      <div className="grid gap-3 lg:grid-cols-3">
+        <button
+          type="button"
+          aria-pressed={kind === 'all'}
+          onClick={() => setKind('all')}
+          className={cn(
+            'group flex min-h-24 items-center gap-4 rounded-lg border p-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+            kind === 'all' ? 'border-foreground/30 bg-muted/40' : 'border-border bg-card hover:bg-muted/30',
+          )}
+        >
+          <span className={cn('flex h-11 w-11 shrink-0 items-center justify-center rounded-lg', kind === 'all' ? 'bg-foreground text-background' : 'bg-muted text-muted-foreground')}>
+            <Users className="h-5 w-5" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="flex items-center gap-2 text-sm font-bold text-foreground">
+              Quadro completo
+              <Badge variant="outline" className="h-5 font-mono text-[10px] tabular-nums">{reports.length}</Badge>
+            </span>
+            <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">Todos os mensalistas com jornada no período, mesmo sem hora extra ou pendência.</span>
+          </span>
+          {kind === 'all' && <CheckCircle className="h-5 w-5 shrink-0 text-foreground" weight="fill" />}
+        </button>
+
         <button
           type="button"
           aria-pressed={kind === 'overtime'}
@@ -402,7 +257,7 @@ export default function TimeBalanceReports() {
 
       <PeriodRangeFilter value={range} onChange={setRange} label="Período do ponto" />
 
-      {coverage && coverage.count === 0 && (
+      {coverage && coverage.count === 0 && timeRecords.length === 0 && (
         <div className="flex items-center gap-2 rounded-lg border border-warning/40 bg-warning/10 p-3 text-xs text-warning">
           <Warning className="h-4 w-4 shrink-0" />
           Nenhuma batida do relógio foi importada para este período. Importe o arquivo na aba Ponto para habilitar os relatórios.
@@ -411,10 +266,12 @@ export default function TimeBalanceReports() {
 
       <Panel
         eyebrow="RELÓGIO DE PONTO · FECHAMENTO SEMANAL"
-        title={kind === 'overtime' ? 'Relatório de horas extras' : 'Relatório de pendências'}
+        title={kind === 'overtime' ? 'Relatório de horas extras' : kind === 'deficit' ? 'Relatório de pendências' : 'Espelho de ponto'}
         subtitle={kind === 'overtime'
           ? 'Horas acima da jornada depois da compensação dentro de cada semana.'
-          : 'Aparecem apenas funcionários cuja semana ficou abaixo da jornada mínima.'}
+          : kind === 'deficit'
+            ? 'Aparecem apenas funcionários cuja semana ficou abaixo da jornada mínima.'
+            : 'Lista o quadro mensalista importado no período, com saldo zerado, extra ou pendência.'}
         actions={<Badge variant="outline" className="hidden font-mono text-[10px] tabular-nums sm:inline-flex">{title}</Badge>}
       >
         <div className="grid gap-3 lg:grid-cols-[minmax(260px,1fr)_auto] lg:items-end">
@@ -461,10 +318,10 @@ export default function TimeBalanceReports() {
             <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Semanas</p>
             <p className="mt-1 font-mono text-lg font-bold tabular-nums text-foreground">{totalWeeks}</p>
           </div>
-          <div className={cn('rounded-md px-3 py-2', kind === 'overtime' ? 'bg-success/10' : 'bg-destructive/10')}>
-            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{kind === 'overtime' ? 'Total de horas extras' : 'Total em débito'}</p>
-            <p className={cn('mt-1 font-mono text-lg font-bold tabular-nums', kind === 'overtime' ? 'text-success' : 'text-destructive')}>
-              {formatBalanceMinutes(kind === 'overtime' ? totalMinutes : -totalMinutes)}
+          <div className={cn('rounded-md px-3 py-2', kind === 'overtime' ? 'bg-success/10' : kind === 'deficit' ? 'bg-destructive/10' : 'bg-muted/35')}>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{kind === 'overtime' ? 'Total de horas extras' : kind === 'deficit' ? 'Total em débito' : 'Saldo líquido'}</p>
+            <p className={cn('mt-1 font-mono text-lg font-bold tabular-nums', kind === 'overtime' ? 'text-success' : kind === 'deficit' ? 'text-destructive' : 'text-foreground')}>
+              {formatBalanceMinutes(kind === 'deficit' ? -totalMinutes : totalMinutes)}
             </p>
           </div>
         </div>
@@ -476,10 +333,12 @@ export default function TimeBalanceReports() {
         <Panel>
           <EmptyState
             icon={kind === 'overtime' ? Clock : CalendarBlank}
-            title={kind === 'overtime' ? 'Nenhuma hora extra neste período' : 'Nenhuma pendência semanal'}
+            title={kind === 'overtime' ? 'Nenhuma hora extra neste período' : kind === 'deficit' ? 'Nenhuma pendência semanal' : 'Nenhum funcionário no período'}
             description={kind === 'overtime'
               ? 'Nenhum funcionário fechou uma semana acima da jornada mínima nas batidas importadas.'
-              : 'Todos os funcionários atingiram a jornada mínima semanal no período selecionado.'}
+              : kind === 'deficit'
+                ? 'Todos os funcionários atingiram a jornada mínima semanal no período selecionado.'
+                : 'Não há mensalista com jornada ou batida neste intervalo. Confira o cadastro e a importação do ponto.'}
             size="sm"
           />
         </Panel>
