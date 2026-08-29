@@ -5,7 +5,7 @@ import remarkGfm from 'remark-gfm';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import {
-  Plus, X, Eye, Code, File as FileIcon, Tag as TagIcon,
+  Plus, X, Eye, Code, Copy, File as FileIcon, Tag as TagIcon,
   CircleNotch as Loader2, Circle,
 } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
@@ -30,9 +30,11 @@ import {
  * Título e descrição (markdown) com auto-save debounced; status, prioridade,
  * vencimento e tags salvam na hora; subtarefas como checklist com progresso.
  */
-export function TaskDetailSheet({ task, subtasks, onClose }: {
+export function TaskDetailSheet({ task, subtasks, duplicatePending, onDuplicate, onClose }: {
   task: NoteTaskWithNote | null;
   subtasks: NoteTask[];
+  duplicatePending?: boolean;
+  onDuplicate?: () => void;
   onClose: () => void;
 }) {
   const updateTask = useUpdateNoteTask();
@@ -46,14 +48,17 @@ export function TaskDetailSheet({ task, subtasks, onClose }: {
   const [descMode, setDescMode] = useState<'edit' | 'preview'>('preview');
   const [tagInput, setTagInput] = useState('');
   const [newSubtask, setNewSubtask] = useState('');
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const titleSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const descriptionSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Reset dos drafts quando troca de tarefa
   useEffect(() => {
+    if (titleSaveTimer.current) clearTimeout(titleSaveTimer.current);
+    if (descriptionSaveTimer.current) clearTimeout(descriptionSaveTimer.current);
     if (task) {
       setDraftTitle(task.text);
       setDraftDescription(task.description || '');
-      setDescMode(task.description ? 'preview' : 'edit');
+      setDescMode(task.description || !perm.canEdit ? 'preview' : 'edit');
       setTagInput('');
       setNewSubtask('');
     }
@@ -62,11 +67,16 @@ export function TaskDetailSheet({ task, subtasks, onClose }: {
   if (!task) return null;
 
   const save = (data: Parameters<typeof updateTask.mutate>[0]['data']) =>
-    updateTask.mutate({ id: task.id, note_id: task.note_id, data });
+    perm.canEdit && updateTask.mutate({ id: task.id, note_id: task.note_id, data });
 
-  const scheduleSave = (data: Parameters<typeof updateTask.mutate>[0]['data']) => {
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => save(data), 700);
+  const scheduleTitleSave = (text: string) => {
+    if (titleSaveTimer.current) clearTimeout(titleSaveTimer.current);
+    titleSaveTimer.current = setTimeout(() => save({ text }), 700);
+  };
+
+  const scheduleDescriptionSave = (description: string) => {
+    if (descriptionSaveTimer.current) clearTimeout(descriptionSaveTimer.current);
+    descriptionSaveTimer.current = setTimeout(() => save({ description }), 700);
   };
 
   const addTag = () => {
@@ -99,6 +109,7 @@ export function TaskDetailSheet({ task, subtasks, onClose }: {
           <div className="flex items-start gap-3">
             <Checkbox
               checked={task.done}
+              disabled={!perm.canEdit}
               onCheckedChange={() => save({ done: !task.done })}
               className="h-5 w-5 mt-1.5 shrink-0 rounded-full border-2"
               aria-label={task.done ? 'Desmarcar tarefa' : 'Marcar como concluída'}
@@ -106,9 +117,10 @@ export function TaskDetailSheet({ task, subtasks, onClose }: {
             <SheetTitle className="flex-1 min-w-0">
               <Textarea
                 value={draftTitle}
+                disabled={!perm.canEdit}
                 onChange={e => {
                   setDraftTitle(e.target.value);
-                  if (e.target.value.trim()) scheduleSave({ text: e.target.value.trim() });
+                  if (e.target.value.trim()) scheduleTitleSave(e.target.value.trim());
                 }}
                 placeholder="Título da tarefa"
                 rows={1}
@@ -122,7 +134,7 @@ export function TaskDetailSheet({ task, subtasks, onClose }: {
 
           {/* Metadados: status / prioridade / vencimento */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-            <Select value={task.status} onValueChange={v => save({ status: v as NoteTaskStatus })}>
+            <Select disabled={!perm.canEdit} value={task.status} onValueChange={v => save({ status: v as NoteTaskStatus })}>
               <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="todo">○ {STATUS_LABEL.todo}</SelectItem>
@@ -130,7 +142,7 @@ export function TaskDetailSheet({ task, subtasks, onClose }: {
                 <SelectItem value="done">● {STATUS_LABEL.done}</SelectItem>
               </SelectContent>
             </Select>
-            <Select value={task.priority} onValueChange={v => save({ priority: v as NoteTaskPriority })}>
+            <Select disabled={!perm.canEdit} value={task.priority} onValueChange={v => save({ priority: v as NoteTaskPriority })}>
               <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="alta"><span className="inline-flex items-center gap-1.5"><Circle weight="fill" className="h-3 w-3 text-red-600 dark:text-red-400" aria-hidden /> Alta</span></SelectItem>
@@ -138,7 +150,7 @@ export function TaskDetailSheet({ task, subtasks, onClose }: {
                 <SelectItem value="baixa"><span className="inline-flex items-center gap-1.5"><Circle className="h-3 w-3 text-muted-foreground" aria-hidden /> Baixa</span></SelectItem>
               </SelectContent>
             </Select>
-            <DueDatePicker value={task.due_date} onChange={due => save({ due_date: due })} />
+            <DueDatePicker disabled={!perm.canEdit} value={task.due_date} onChange={due => save({ due_date: due })} />
           </div>
 
           {/* Tags */}
@@ -149,29 +161,33 @@ export function TaskDetailSheet({ task, subtasks, onClose }: {
                 className="inline-flex items-center gap-1 h-6 px-2 rounded-sm border border-border bg-muted/40 text-[11px] text-muted-foreground"
               >
                 <TagIcon className="h-3 w-3" />{tag}
-                <button
-                  type="button"
-                  onClick={() => removeTag(tag)}
-                  className="hover:text-destructive transition-colors"
-                  aria-label={`Remover tag ${tag}`}
-                >
-                  <X className="h-3 w-3" />
-                </button>
+                {perm.canEdit && (
+                  <button
+                    type="button"
+                    onClick={() => removeTag(tag)}
+                    className="hover:text-destructive transition-colors"
+                    aria-label={`Remover tag ${tag}`}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                )}
               </span>
             ))}
-            <Input
-              value={tagInput}
-              onChange={e => setTagInput(e.target.value)}
-              onKeyDown={e => {
-                if (e.key === 'Enter' && tagInput.trim()) { e.preventDefault(); addTag(); }
-                else if (e.key === 'Backspace' && !tagInput && (task.tags || []).length > 0) {
-                  removeTag(task.tags[task.tags.length - 1]);
-                }
-              }}
-              onBlur={() => { if (tagInput.trim()) addTag(); }}
-              placeholder="+ tag"
-              className="h-6 w-24 text-[11px] px-2 border-dashed"
-            />
+            {perm.canEdit && (
+              <Input
+                value={tagInput}
+                onChange={e => setTagInput(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && tagInput.trim()) { e.preventDefault(); addTag(); }
+                  else if (e.key === 'Backspace' && !tagInput && (task.tags || []).length > 0) {
+                    removeTag(task.tags[task.tags.length - 1]);
+                  }
+                }}
+                onBlur={() => { if (tagInput.trim()) addTag(); }}
+                placeholder="+ tag"
+                className="h-6 w-24 text-[11px] px-2 border-dashed"
+              />
+            )}
           </div>
 
           {task.notes?.title && (
@@ -192,16 +208,18 @@ export function TaskDetailSheet({ task, subtasks, onClose }: {
               <span className="ed-eyebrow text-muted-foreground">Descrição</span>
               <div className="flex-1" />
               <div className="flex items-center gap-0.5 border border-foreground/10 rounded-sm p-0.5">
-                <button
-                  type="button"
-                  onClick={() => setDescMode('edit')}
-                  className={cn(
-                    'px-2 py-0.5 rounded-sm text-[10px] font-bold uppercase tracking-wider inline-flex items-center gap-1 transition-colors',
-                    descMode === 'edit' ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground',
-                  )}
-                >
-                  <Code className="h-3 w-3" /> Editar
-                </button>
+                {perm.canEdit && (
+                  <button
+                    type="button"
+                    onClick={() => setDescMode('edit')}
+                    className={cn(
+                      'px-2 py-0.5 rounded-sm text-[10px] font-bold uppercase tracking-wider inline-flex items-center gap-1 transition-colors',
+                      descMode === 'edit' ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground',
+                    )}
+                  >
+                    <Code className="h-3 w-3" /> Editar
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => setDescMode('preview')}
@@ -219,12 +237,12 @@ export function TaskDetailSheet({ task, subtasks, onClose }: {
                 </span>
               )}
             </div>
-            {descMode === 'edit' ? (
+            {descMode === 'edit' && perm.canEdit ? (
               <Textarea
                 value={draftDescription}
                 onChange={e => {
                   setDraftDescription(e.target.value);
-                  scheduleSave({ description: e.target.value });
+                  scheduleDescriptionSave(e.target.value);
                 }}
                 placeholder={'Detalhe a tarefa em markdown…\n\n- listas\n- [ ] checklists\n- **negrito**, links, tabelas'}
                 className="min-h-[140px] font-mono text-sm leading-relaxed bg-foreground/[0.02]"
@@ -232,13 +250,20 @@ export function TaskDetailSheet({ task, subtasks, onClose }: {
             ) : (
               <div
                 className="min-h-[60px] rounded-sm px-3 py-2 bg-foreground/[0.015] cursor-text hover:bg-foreground/[0.03] transition-colors"
-                onClick={() => setDescMode('edit')}
-                role="button"
-                title="Clique pra editar"
+                onClick={() => { if (perm.canEdit) setDescMode('edit'); }}
+                onKeyDown={event => {
+                  if (perm.canEdit && (event.key === 'Enter' || event.key === ' ')) {
+                    event.preventDefault();
+                    setDescMode('edit');
+                  }
+                }}
+                role={perm.canEdit ? 'button' : undefined}
+                tabIndex={perm.canEdit ? 0 : undefined}
+                title={perm.canEdit ? 'Clique pra editar' : undefined}
               >
                 <article className="note-markdown prose-sm max-w-none">
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                    {draftDescription || '*Sem descrição. Clique pra escrever.*'}
+                    {draftDescription || (perm.canEdit ? '*Sem descrição. Clique pra escrever.*' : '*Sem descrição.*')}
                   </ReactMarkdown>
                 </article>
               </div>
@@ -263,6 +288,7 @@ export function TaskDetailSheet({ task, subtasks, onClose }: {
                 <SubtaskRow
                   key={sub.id}
                   subtask={sub}
+                  canEdit={perm.canEdit}
                   onToggle={() => updateTask.mutate({ id: sub.id, note_id: sub.note_id, data: { done: !sub.done } })}
                   onChangeText={(t) => updateTask.mutate({ id: sub.id, note_id: sub.note_id, data: { text: t } })}
                   onDelete={() => deleteTask.mutate({ id: sub.id, note_id: sub.note_id })}
@@ -300,6 +326,19 @@ export function TaskDetailSheet({ task, subtasks, onClose }: {
             <span>· Concluída {format(new Date(task.completed_at), 'dd MMM yyyy', { locale: ptBR })}</span>
           )}
           <div className="flex-1" />
+          {perm.canCreate && onDuplicate && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 gap-1.5"
+              onClick={onDuplicate}
+              disabled={duplicatePending}
+            >
+              {duplicatePending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Copy className="h-3.5 w-3.5" />}
+              {duplicatePending ? 'Duplicando…' : 'Duplicar'}
+            </Button>
+          )}
           {perm.canDelete && (
           <DeleteConfirmButton
             onConfirm={() => { deleteTask.mutate({ id: task.id, note_id: task.note_id }); onClose(); }}
@@ -315,25 +354,25 @@ export function TaskDetailSheet({ task, subtasks, onClose }: {
   );
 }
 
-function SubtaskRow({ subtask, onToggle, onChangeText, onDelete }: {
+function SubtaskRow({ subtask, canEdit, onToggle, onChangeText, onDelete }: {
   subtask: NoteTask;
+  canEdit: boolean;
   onToggle: () => void;
   onChangeText: (t: string) => void;
   onDelete: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(subtask.text);
-  const perm = useCan('/tarefas');
-
   return (
     <div className={cn('group flex items-center gap-2.5 py-2', subtask.done && 'opacity-50')}>
       <Checkbox
         checked={subtask.done}
+        disabled={!canEdit}
         onCheckedChange={onToggle}
         className="h-4 w-4 shrink-0 rounded-full border-2"
         aria-label={subtask.done ? 'Desmarcar subtarefa' : 'Concluir subtarefa'}
       />
-      <div className="flex-1 min-w-0 cursor-pointer" onClick={() => !subtask.done && setEditing(true)}>
+      <div className="flex-1 min-w-0 cursor-pointer" onClick={() => canEdit && !subtask.done && setEditing(true)}>
         {editing ? (
           <Input
             value={draft}
@@ -356,7 +395,7 @@ function SubtaskRow({ subtask, onToggle, onChangeText, onDelete }: {
           </p>
         )}
       </div>
-      {perm.canEdit && <button
+      {canEdit && <button
         type="button"
         onClick={onDelete}
         className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-within:opacity-100 text-muted-foreground hover:text-destructive transition-opacity shrink-0"

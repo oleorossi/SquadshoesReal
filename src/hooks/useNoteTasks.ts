@@ -184,6 +184,31 @@ export type UpdateNoteTaskData = Partial<Pick<NoteTask,
   'text' | 'priority' | 'done' | 'status' | 'description' | 'due_date' | 'tags'
 >>;
 
+/**
+ * Espelha no cache a sincronização done <-> status feita por
+ * tg_note_tasks_touch. Mantém o checkbox instantâneo sem esperar o refetch.
+ */
+export function applyTaskUpdate<T extends NoteTask>(task: T, data: UpdateNoteTaskData): T {
+  const next = { ...task, ...data } as T;
+
+  if (data.status !== undefined) {
+    next.done = data.status === 'done';
+  } else if (data.done !== undefined) {
+    next.status = data.done ? 'done' : task.status === 'done' ? 'todo' : task.status;
+  }
+
+  if (data.status !== undefined || data.done !== undefined) {
+    next.completed_at = next.done ? task.completed_at || new Date().toISOString() : null;
+  }
+  next.updated_at = new Date().toISOString();
+  return next;
+}
+
+function updateTaskInList<T extends NoteTask>(tasks: T[] | undefined, id: string, data: UpdateNoteTaskData) {
+  if (!tasks) return tasks;
+  return sortTasks(tasks.map(task => task.id === id ? applyTaskUpdate(task, data) : task));
+}
+
 export function useUpdateNoteTask() {
   const qc = useQueryClient();
   return useMutation({
@@ -196,13 +221,62 @@ export function useUpdateNoteTask() {
       if (payload.tags) payload.tags = normalizeTags(payload.tags);
       const { error } = await (supabase as any).from('note_tasks').update(payload).eq('id', id);
       if (error) throw error;
-      return { id, note_id };
+      return { id, note_id, data };
     },
-    onSuccess: ({ note_id }) => {
-      if (note_id) qc.invalidateQueries({ queryKey: ['note_tasks', note_id] });
+    onMutate: async ({ id, note_id, data }) => {
+      await qc.cancelQueries({ queryKey: ['all_note_tasks'] });
+      if (note_id) await qc.cancelQueries({ queryKey: ['note_tasks', note_id] });
+
+      const previousAll = qc.getQueryData<NoteTaskWithNote[]>(['all_note_tasks']);
+      const previousNote = note_id
+        ? qc.getQueryData<NoteTask[]>(['note_tasks', note_id])
+        : undefined;
+
+      qc.setQueryData<NoteTaskWithNote[]>(['all_note_tasks'], current =>
+        updateTaskInList(current, id, data));
+      if (note_id) {
+        qc.setQueryData<NoteTask[]>(['note_tasks', note_id], current =>
+          updateTaskInList(current, id, data));
+      }
+      return { previousAll, previousNote, note_id };
+    },
+    onError: (e: any, _variables, context) => {
+      if (context?.previousAll) qc.setQueryData(['all_note_tasks'], context.previousAll);
+      if (context?.note_id && context.previousNote) {
+        qc.setQueryData(['note_tasks', context.note_id], context.previousNote);
+      }
+      toast.error(e.message || 'Erro ao atualizar tarefa');
+    },
+    onSettled: (_result, _error, variables) => {
+      if (variables.note_id) qc.invalidateQueries({ queryKey: ['note_tasks', variables.note_id] });
       qc.invalidateQueries({ queryKey: ['all_note_tasks'] });
     },
-    onError: (e: any) => toast.error(e.message || 'Erro ao atualizar tarefa'),
+  });
+}
+
+/** Duplica a tarefa e suas subtarefas por RPC atômica. */
+export function useDuplicateNoteTask() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, note_id }: { id: string; note_id: string | null }) => {
+      const { data, error } = await supabase.rpc(
+        'duplicate_note_task' as never,
+        { p_task_id: id } as never,
+      );
+      if (error) throw error;
+      if (typeof data !== 'string' || !data) throw new Error('A tarefa foi duplicada, mas o novo identificador não foi retornado.');
+      return { id: data, note_id };
+    },
+    onSuccess: async ({ note_id }) => {
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['all_note_tasks'] }),
+        note_id ? qc.invalidateQueries({ queryKey: ['note_tasks', note_id] }) : Promise.resolve(),
+      ]);
+      toast.success('Tarefa duplicada');
+    },
+    onError: (error: unknown) => toast.error(
+      error instanceof Error ? error.message : 'Erro ao duplicar tarefa',
+    ),
   });
 }
 
