@@ -240,7 +240,7 @@ export function useUpdateNoteTask() {
       }
       return { previousAll, previousNote, note_id };
     },
-    onError: (e: any, _variables, context) => {
+    onError: (e: Error, _variables, context) => {
       if (context?.previousAll) qc.setQueryData(['all_note_tasks'], context.previousAll);
       if (context?.note_id && context.previousNote) {
         qc.setQueryData(['note_tasks', context.note_id], context.previousNote);
