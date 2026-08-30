@@ -7,11 +7,17 @@ import type {
 } from '@/hooks/useArtisanalStraps';
 import { ArtisanalStrapConversionEditor } from '../ArtisanalStrapConversionEditor';
 
+HTMLElement.prototype.hasPointerCapture ??= () => false;
+HTMLElement.prototype.setPointerCapture ??= () => {};
+HTMLElement.prototype.releasePointerCapture ??= () => {};
+HTMLElement.prototype.scrollIntoView ??= () => {};
+
 const mutations = vi.hoisted(() => ({
   approveWidth: vi.fn(),
   confirmConversion: vi.fn(),
   reuseLegacy: vi.fn(),
   saveConversion: vi.fn(),
+  saveMaterialConversions: vi.fn(),
   saveWidth: vi.fn(),
 }));
 
@@ -24,14 +30,27 @@ vi.mock('@/hooks/useArtisanalStraps', () => ({
     isPending: false,
     mutateAsync: mutations.confirmConversion,
   }),
+  useSaveArtisanalStrapMaterialConversions: () => ({
+    isPending: false,
+    mutateAsync: mutations.saveMaterialConversions,
+  }),
   useStrapBaseGroupCandidates: (enabled: boolean) => ({
-    data: enabled ? [{
-      id: 'base-1',
-      name: 'NAPA SOFT',
-      usable_width_mm: 1370,
-      has_approved_width_profile: false,
-      linear_sku_count: 43,
-    }] : [],
+    data: enabled ? [
+      {
+        id: 'base-1',
+        name: 'NAPA SOFT',
+        usable_width_mm: 1370,
+        has_approved_width_profile: false,
+        linear_sku_count: 43,
+      },
+      {
+        id: 'base-2',
+        name: 'NAPA SUDANI',
+        usable_width_mm: 1200,
+        has_approved_width_profile: true,
+        linear_sku_count: 18,
+      },
+    ] : [],
     isLoading: false,
     isError: false,
   }),
@@ -62,6 +81,11 @@ const capabilities: ArtisanalStrapCapabilities = {
   can_see_financial_values: true,
 };
 
+const draftOnlyCapabilities: ArtisanalStrapCapabilities = {
+  ...capabilities,
+  approve_strap_recipe: false,
+};
+
 const emptyCatalog: ArtisanalStrapCatalog = {
   types: [],
   measures: [],
@@ -87,7 +111,10 @@ const catalogWithoutWidth: ArtisanalStrapCatalog = {
     finished_width_mm: 8,
     active: true,
   }],
-  groups: [{ id: 'base-1', name: 'NAPA SOFT' }],
+  groups: [
+    { id: 'base-1', name: 'NAPA SOFT' },
+    { id: 'base-2', name: 'NAPA SUDANI' },
+  ],
 };
 
 const catalogWithApprovedWidth: ArtisanalStrapCatalog = {
@@ -98,6 +125,45 @@ const catalogWithApprovedWidth: ArtisanalStrapCatalog = {
     version: 2,
     usable_width_mm: 1370,
     status: 'approved',
+  }, {
+    id: 'width-profile-sudani',
+    base_group_id: 'base-2',
+    version: 1,
+    usable_width_mm: 1200,
+    status: 'approved',
+  }],
+};
+
+const catalogWithConfiguredMaterial: ArtisanalStrapCatalog = {
+  ...catalogWithApprovedWidth,
+  recipes: [{
+    id: 'recipe-approved',
+    measure_id: 'measure-1',
+    base_group_id: 'base-1',
+    base_width_profile_id: 'width-profile-approved',
+    version: 1,
+    usable_base_width_mm_snapshot: 1370,
+    cut_band_width_mm: 18,
+    theoretical_yield_m_per_m: 76,
+    confirmed_yield_m_per_m: 68,
+    executor_type: 'factory',
+    default_contractor_id: null,
+    transformation_cost_per_m: 0,
+    status: 'approved',
+  }, {
+    id: 'recipe-archived',
+    measure_id: 'measure-1',
+    base_group_id: 'base-2',
+    base_width_profile_id: 'width-profile-sudani',
+    version: 1,
+    usable_base_width_mm_snapshot: 1200,
+    cut_band_width_mm: 20,
+    theoretical_yield_m_per_m: 60,
+    confirmed_yield_m_per_m: 55,
+    executor_type: 'factory',
+    default_contractor_id: null,
+    transformation_cost_per_m: 0,
+    status: 'archived',
   }],
 };
 
@@ -129,6 +195,11 @@ describe('ArtisanalStrapConversionEditor', () => {
     mutations.confirmConversion.mockReset().mockResolvedValue({ recipe_id: 'recipe-confirmed', status: 'approved' });
     mutations.reuseLegacy.mockReset().mockResolvedValue({ recipe_id: 'recipe-reused' });
     mutations.saveConversion.mockReset().mockResolvedValue({ recipe_id: 'recipe-1' });
+    mutations.saveMaterialConversions.mockReset().mockResolvedValue({
+      type_id: 'type-1',
+      measure_id: 'measure-1',
+      conversions: [{ base_group_id: 'base-1', recipe_id: 'recipe-1' }],
+    });
     mutations.saveWidth.mockReset().mockResolvedValue('width-profile-1');
   });
 
@@ -144,7 +215,8 @@ describe('ArtisanalStrapConversionEditor', () => {
       />,
     );
 
-    expect(screen.getByRole('heading', { name: 'Cadastrar tipo e material' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Cadastrar tipo e materiais' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Adicionar outro material' })).toBeDisabled();
     expect(screen.getByText(/Nenhuma cor é gravada aqui/i)).toBeInTheDocument();
     expect(screen.queryByText(/Cor canônica/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Produto e estoque/i)).not.toBeInTheDocument();
@@ -175,17 +247,22 @@ describe('ArtisanalStrapConversionEditor', () => {
     await user.type(screen.getByLabelText(/Rendimento real/i), '68');
     await user.click(screen.getByRole('button', { name: /Confirmar rendimento e salvar/i }));
 
-    await waitFor(() => expect(mutations.confirmConversion).toHaveBeenCalledWith(expect.objectContaining({
+    await waitFor(() => expect(mutations.saveMaterialConversions).toHaveBeenCalledWith(expect.objectContaining({
+      confirm: true,
       payload: expect.objectContaining({
-        recipe: expect.objectContaining({
-          cut_band_width_mm: 18,
-          confirmed_yield_m_per_m: 68,
-        }),
+        materials: [expect.objectContaining({
+          base_group_id: 'base-1',
+          recipe: expect.objectContaining({
+            cut_band_width_mm: 18,
+            confirmed_yield_m_per_m: 68,
+          }),
+        })],
       }),
     })));
     expect(mutations.saveWidth).not.toHaveBeenCalled();
     expect(mutations.approveWidth).not.toHaveBeenCalled();
     expect(mutations.saveConversion).not.toHaveBeenCalled();
+    expect(mutations.confirmConversion).not.toHaveBeenCalled();
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
@@ -212,9 +289,11 @@ describe('ArtisanalStrapConversionEditor', () => {
     await user.type(screen.getByLabelText(/Rendimento real/i), '68');
     await user.click(screen.getByRole('button', { name: /Confirmar rendimento e salvar/i }));
 
-    await waitFor(() => expect(mutations.confirmConversion).toHaveBeenCalledWith(expect.objectContaining({
+    await waitFor(() => expect(mutations.saveMaterialConversions).toHaveBeenCalledWith(expect.objectContaining({
       payload: expect.objectContaining({
-        recipe: expect.objectContaining({ base_width_profile_id: 'width-profile-approved' }),
+        materials: [expect.objectContaining({
+          recipe: expect.objectContaining({ base_width_profile_id: 'width-profile-approved' }),
+        })],
       }),
     })));
     expect(mutations.saveWidth).not.toHaveBeenCalled();
@@ -243,11 +322,154 @@ describe('ArtisanalStrapConversionEditor', () => {
 
     await user.click(screen.getByRole('button', { name: /Confirmar rendimento e salvar/i }));
 
-    await waitFor(() => expect(mutations.confirmConversion).toHaveBeenCalledTimes(1));
-    const recipePayload = mutations.confirmConversion.mock.calls[0][0].payload.recipe;
+    await waitFor(() => expect(mutations.saveMaterialConversions).toHaveBeenCalledTimes(1));
+    const recipePayload = mutations.saveMaterialConversions.mock.calls[0][0].payload.materials[0].recipe;
     expect(recipePayload.confirmed_yield_m_per_m).toBe(68);
     expect(recipePayload).not.toHaveProperty('loss_percentage');
     expect(recipePayload).not.toHaveProperty('waste_pct');
+  });
+
+  it('confirma vários materiais da mesma tira com rendimentos independentes', async () => {
+    const user = userEvent.setup();
+    const onOpenChange = vi.fn();
+    render(
+      <ArtisanalStrapConversionEditor
+        open
+        onOpenChange={onOpenChange}
+        catalog={catalogWithApprovedWidth}
+        capabilities={capabilities}
+        mode="create"
+        origin="hub"
+        measureId="measure-1"
+      />,
+    );
+
+    await user.click(screen.getByLabelText(/Material possível/i));
+    await user.click(screen.getByRole('option', { name: /NAPA SOFT/i }));
+    await user.type(screen.getByLabelText(/Largura da banda/i), '18');
+    await user.type(screen.getByLabelText(/Rendimento real confirmado/i), '68');
+
+    await user.click(screen.getByRole('button', { name: 'Adicionar outro material' }));
+    const materialSelects = screen.getAllByLabelText(/Material possível/i);
+    await user.click(materialSelects[1]);
+    await user.click(screen.getByRole('option', { name: /NAPA SUDANI/i }));
+    const cutBandInputs = screen.getAllByLabelText(/Largura da banda/i);
+    const yieldInputs = screen.getAllByLabelText(/Rendimento real confirmado/i);
+    await user.type(cutBandInputs[1], '20');
+    await user.type(yieldInputs[1], '55');
+
+    await user.click(screen.getByRole('button', { name: 'Confirmar 2 rendimentos e salvar' }));
+
+    await waitFor(() => expect(mutations.saveMaterialConversions).toHaveBeenCalledWith({
+      reason: 'Cadastro inicial da conversão',
+      confirm: true,
+      payload: {
+        type: { id: 'type-1' },
+        measure: { id: 'measure-1' },
+        materials: [{
+          base_group_id: 'base-1',
+          recipe: {
+            base_width_profile_id: 'width-profile-approved',
+            cut_band_width_mm: 18,
+            confirmed_yield_m_per_m: 68,
+            executor_type: 'factory',
+            default_contractor_id: null,
+            transformation_cost_per_m: 0,
+          },
+        }, {
+          base_group_id: 'base-2',
+          recipe: {
+            base_width_profile_id: 'width-profile-sudani',
+            cut_band_width_mm: 20,
+            confirmed_yield_m_per_m: 55,
+            executor_type: 'factory',
+            default_contractor_id: null,
+            transformation_cost_per_m: 0,
+          },
+        }],
+      },
+    }));
+    expect(mutations.saveMaterialConversions).toHaveBeenCalledTimes(1);
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it('valida todos os materiais antes de iniciar o salvamento do lote', async () => {
+    const user = userEvent.setup();
+    const onOpenChange = vi.fn();
+    render(
+      <ArtisanalStrapConversionEditor
+        open
+        onOpenChange={onOpenChange}
+        catalog={catalogWithApprovedWidth}
+        capabilities={capabilities}
+        mode="create"
+        origin="hub"
+        measureId="measure-1"
+      />,
+    );
+
+    await user.click(screen.getByLabelText(/Material possível/i));
+    await user.click(screen.getByRole('option', { name: /NAPA SOFT/i }));
+    await user.type(screen.getByLabelText(/Largura da banda/i), '18');
+    await user.type(screen.getByLabelText(/Rendimento real confirmado/i), '68');
+    await user.click(screen.getByRole('button', { name: 'Adicionar outro material' }));
+    await user.click(screen.getAllByLabelText(/Material possível/i)[1]);
+    await user.click(screen.getByRole('option', { name: /NAPA SUDANI/i }));
+
+    await user.click(screen.getByRole('button', { name: 'Confirmar 2 rendimentos e salvar' }));
+
+    expect(await screen.findByText(/NAPA SUDANI: o rendimento confirmado/i)).toBeInTheDocument();
+    expect(mutations.saveMaterialConversions).not.toHaveBeenCalled();
+    expect(onOpenChange).not.toHaveBeenCalledWith(false);
+  });
+
+  it('impede recadastrar material atual, mas libera associação já arquivada', async () => {
+    const user = userEvent.setup();
+    render(
+      <ArtisanalStrapConversionEditor
+        open
+        onOpenChange={vi.fn()}
+        catalog={catalogWithConfiguredMaterial}
+        capabilities={capabilities}
+        mode="create"
+        origin="hub"
+        measureId="measure-1"
+      />,
+    );
+
+    await user.click(screen.getByLabelText(/Material possível/i));
+
+    expect(screen.getByRole('option', { name: /NAPA SOFT · já cadastrado/i }))
+      .toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByRole('option', { name: /NAPA SUDANI/i }))
+      .not.toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('salva todas as linhas como rascunho quando o usuário não pode aprovar', async () => {
+    const user = userEvent.setup();
+    const onOpenChange = vi.fn();
+    render(
+      <ArtisanalStrapConversionEditor
+        open
+        onOpenChange={onOpenChange}
+        catalog={{ ...catalogWithApprovedWidth, capabilities: draftOnlyCapabilities }}
+        capabilities={draftOnlyCapabilities}
+        mode="create"
+        origin="hub"
+        measureId="measure-1"
+        baseGroupId="base-1"
+      />,
+    );
+
+    await user.type(screen.getByLabelText(/Largura da banda/i), '18');
+    await user.type(screen.getByLabelText(/Rendimento real confirmado/i), '68');
+    await user.click(screen.getByRole('button', { name: 'Salvar conversão' }));
+
+    await waitFor(() => expect(mutations.saveMaterialConversions).toHaveBeenCalledWith(
+      expect.objectContaining({ confirm: false }),
+    ));
+    expect(mutations.confirmConversion).not.toHaveBeenCalled();
+    expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
   it('reaproveita uma receita anterior com dados herdados e exige a largura útil faltante', async () => {
@@ -296,6 +518,7 @@ describe('ArtisanalStrapConversionEditor', () => {
     expect(mutations.saveWidth).not.toHaveBeenCalled();
     expect(mutations.approveWidth).not.toHaveBeenCalled();
     expect(mutations.saveConversion).not.toHaveBeenCalled();
+    expect(mutations.saveMaterialConversions).not.toHaveBeenCalled();
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 });

@@ -347,6 +347,23 @@ export interface SaveArtisanalStrapConversionResult {
   recipe_id: string;
 }
 
+export type SaveArtisanalStrapMaterialConversionInput = Pick<
+  SaveArtisanalStrapConversionPayload,
+  'base_group_id' | 'recipe'
+>;
+
+export interface SaveArtisanalStrapMaterialConversionsPayload {
+  type: SaveArtisanalStrapConversionPayload['type'];
+  measure: SaveArtisanalStrapConversionPayload['measure'];
+  materials: SaveArtisanalStrapMaterialConversionInput[];
+}
+
+export interface SaveArtisanalStrapMaterialConversionsResult {
+  type_id: string;
+  measure_id: string;
+  conversions: SaveArtisanalStrapConversionResult[];
+}
+
 export interface ConfirmArtisanalStrapMaterialConversionResult
   extends SaveArtisanalStrapConversionResult {
   status: 'approved';
@@ -2464,6 +2481,45 @@ export function useConfirmArtisanalStrapMaterialConversion() {
       }
       const message = error instanceof Error ? error.message : null;
       toast.error(message || 'Não foi possível confirmar o rendimento.');
+    },
+  });
+}
+
+export function useSaveArtisanalStrapMaterialConversions() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ payload, reason, confirm }: {
+      payload: SaveArtisanalStrapMaterialConversionsPayload;
+      reason: string;
+      confirm: boolean;
+    }) => {
+      const { data, error } = await untypedSupabase.rpc(
+        'save_artisanal_strap_material_conversions',
+        {
+          p_payload: payload,
+          p_reason: reason,
+          p_confirm: confirm,
+        },
+      );
+      if (error) throw error;
+      return data as SaveArtisanalStrapMaterialConversionsResult;
+    },
+    onSuccess: (data, { confirm }) => {
+      invalidateArtisanalStraps(queryClient);
+      queryClient.invalidateQueries({ queryKey: ['strap-base-group-candidates'] });
+      const count = data.conversions.length;
+      toast.success(confirm
+        ? `${count} ${count === 1 ? 'rendimento confirmado' : 'rendimentos confirmados'} para todas as cores.`
+        : `${count} ${count === 1 ? 'conversão salva' : 'conversões salvas'} como rascunho.`);
+    },
+    onError: (error: unknown, { confirm }) => {
+      if (error && typeof error === 'object') {
+        (error as Record<string, unknown>)._handled = true;
+      }
+      const message = error instanceof Error ? error.message : null;
+      toast.error(message || (confirm
+        ? 'Não foi possível confirmar os rendimentos.'
+        : 'Não foi possível salvar as conversões.'));
     },
   });
 }
