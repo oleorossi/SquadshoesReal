@@ -107,6 +107,50 @@ export function useUpsertReadyStock() {
   });
 }
 
+type ReadyStockSetInput = ReadyStockDeltaInput & { id?: string };
+
+export function useSetReadyStockGrade() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (items: ReadyStockSetInput[]) => {
+      const operations: ReadyStockOperation[] = [];
+      for (const item of items) {
+        if (item.id) {
+          operations.push({
+            action: 'set',
+            id: item.id,
+            quantity: item.quantity,
+            expected_quantity: item.expectedQuantity ?? await currentReadyStockQuantity(item),
+            location: item.location ?? null,
+            notes: item.notes ?? null,
+            reason: 'Definição de grade na pronta-entrega',
+          });
+        } else {
+          operations.push({
+            action: 'delta',
+            reference_id: item.reference_id,
+            material_variant_id: item.material_variant_id ?? null,
+            color: item.color,
+            size: item.size,
+            delta: item.quantity,
+            expected_quantity: item.expectedQuantity ?? 0,
+            location: item.location ?? null,
+            notes: item.notes ?? null,
+            reason: 'Definição de grade na pronta-entrega',
+          });
+        }
+      }
+      const result = await mutateReadyStock(operations);
+      assertReadyStockCommand(result);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['ready_stock'] });
+      toast.success('Grade definida no estoque.');
+    },
+    onError: (err: Error) => toast.error(`Erro: ${err.message}`),
+  });
+}
+
 export function useBatchUpsertReadyStock() {
   const qc = useQueryClient();
   return useMutation({
@@ -126,8 +170,6 @@ export function useBatchUpsertReadyStock() {
         notes: item.notes ?? null,
         reason: 'Lançamento manual em lote na pronta-entrega',
       }));
-      // Uma chamada = uma transação. Sai o rollback compensatório do cliente,
-      // que podia falhar no meio e deixar somente parte da grade aplicada.
       const result = await mutateReadyStock(operations);
       assertReadyStockCommand(result);
     },
