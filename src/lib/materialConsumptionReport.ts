@@ -31,6 +31,11 @@ export interface MaterialConsumptionReportInput {
   orderHeaders?: MaterialConsumptionReportOrderHeader[];
   /** Injetável para teste: o documento precisa ser determinístico. */
   generatedAt?: Date;
+  /**
+   * `coverage` (padrão) = o que comprar depois do estoque.
+   * `total` = necessidade bruta do pedido, estoque ignorado.
+   */
+  mode?: 'coverage' | 'total';
 }
 
 const FONT_LINK = 'https://fonts.googleapis.com/css2?family=Anton&family=Fira+Sans:wght@400;500;600;700;800&family=Fira+Code:wght@400;500;600;700&display=swap';
@@ -61,49 +66,70 @@ const renderScope = (orderHeaders?: MaterialConsumptionReportOrderHeader[]): str
   </div>`;
 };
 
-const renderBaseNeed = (rows: ConsumptionRow[]): string => {
+const mCell = (qty: number): string =>
+  qty > 0 ? `${formatQty(qty, 'm')} m` : '<span class="muted">—</span>';
+
+const renderBaseNeed = (rows: ConsumptionRow[], totalMode: boolean): string => {
   const { families, pendingStraps } = buildBuyList(rows);
   if (!families.length && !pendingStraps.length) return '';
 
-  const familyRows = families.flatMap((family) => family.colors.map((color, index) => `
-    <tr>
-      <td>${index === 0 ? `<strong>${escapeHtml(family.napa)}</strong>` : ''}</td>
-      <td>${escapeHtml(color.color || '—')}</td>
-      <td class="num">${color.cabedal > 0 ? `${formatQty(color.cabedal, 'm')} m` : '—'}</td>
-      <td class="num">${color.forracao > 0 ? `${formatQty(color.forracao, 'm')} m` : '—'}</td>
-      <td class="num">${color.tira > 0 ? `${formatQty(color.tira, 'm')} m` : '—'}</td>
-      <td class="num strong">${formatQty(color.qty, 'm')} m</td>
-      <td class="status-cell">${color.pending > 0 ? `<span class="flag warning">${color.pending} cadastro${color.pending === 1 ? '' : 's'}</span>` : '<span class="muted">—</span>'}</td>
-    </tr>
-  `));
+  const familyBlocks = families.map((family) => `
+    <article class="napa-family">
+      <header class="napa-family-head">
+        <span class="napa-family-name">${escapeHtml(family.napa)}</span>
+        <span class="napa-family-meta">${family.colors.length} cor${family.colors.length === 1 ? '' : 'es'}</span>
+        <span class="napa-family-qty">${formatQty(family.total, 'm')} m</span>
+      </header>
+      <table class="report-table napa-table">
+        <thead><tr>
+          <th>Cor</th>
+          <th class="num">Cabedal</th>
+          <th class="num">Forração</th>
+          <th class="num">Tira</th>
+          <th class="num">Total</th>
+          ${totalMode ? '' : '<th>Situação</th>'}
+        </tr></thead>
+        <tbody>${family.colors.map((color) => `
+          <tr>
+            <td>${escapeHtml(color.color || '—')}</td>
+            <td class="num app-qty">${mCell(color.cabedal)}</td>
+            <td class="num app-qty">${mCell(color.forracao)}</td>
+            <td class="num app-qty">${color.tira > 0 ? `${formatQty(color.tira, 'm')} m<small>prod. interna</small>` : '<span class="muted">—</span>'}</td>
+            <td class="num strong">${formatQty(color.qty, 'm')} m</td>
+            ${totalMode ? '' : `<td class="status-cell">${color.pending > 0 ? `<span class="flag warning">${color.pending} cadastro${color.pending === 1 ? '' : 's'}</span>` : '<span class="muted">—</span>'}</td>`}
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </article>`).join('');
 
-  const pendingRows = pendingStraps.map((pending) => `
-    <tr class="pending-row">
-      <td><strong>${escapeHtml(pending.napa)}</strong></td>
-      <td>${escapeHtml(pending.color || '—')} · ${escapeHtml(pending.tira)}</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num">${formatQty(pending.tiraM, 'm')} m de tira</td>
-      <td class="num">—</td>
-      <td class="status-cell"><span class="flag warning">rendimento pendente</span></td>
-    </tr>
-  `);
+  const pendingBlock = pendingStraps.length ? `
+    <table class="report-table" style="margin-top:8px">
+      <thead><tr><th>Família</th><th>Cor / tira</th><th class="num">Tira pendente</th><th>Situação</th></tr></thead>
+      <tbody>${pendingStraps.map((pending) => `
+        <tr class="pending-row">
+          <td><strong>${escapeHtml(pending.napa)}</strong></td>
+          <td>${escapeHtml(pending.color || '—')} · ${escapeHtml(pending.tira)}</td>
+          <td class="num">${formatQty(pending.tiraM, 'm')} m de tira</td>
+          <td class="status-cell"><span class="flag warning">rendimento pendente</span></td>
+        </tr>`).join('')}
+      </tbody>
+    </table>` : '';
 
   return `
     <section class="report-section priority-section">
       <div class="section-heading">
         <span class="section-number">01</span>
-        <div><p class="section-kicker">Separação prioritária</p><h2>Necessidade de napa</h2></div>
-        <p class="section-note">Cabedal, forração e tira da mesma cor somam o metro de napa — tira artesanal já convertida.</p>
+        <div><p class="section-kicker">Material base</p><h2>Necessidade de napa</h2></div>
+        <p class="section-note">${totalMode
+          ? 'Estoque ignorado. Cabedal, forração e tira da mesma cor somam o metro de napa do pedido.'
+          : 'Cabedal, forração e tira da mesma cor somam o metro de napa — tira artesanal já convertida.'}</p>
       </div>
-      <table class="report-table">
-        <thead><tr><th>Família</th><th>Cor</th><th class="num">Cabedal</th><th class="num">Forração</th><th class="num">Tira</th><th class="num">Total</th><th>Situação</th></tr></thead>
-        <tbody>${familyRows.join('')}${pendingRows.join('')}</tbody>
-      </table>
+      ${familyBlocks}
+      ${pendingBlock}
     </section>`;
 };
 
-const renderSoleGrade = (row: ConsumptionRow): string => {
+const renderSoleGrade = (row: ConsumptionRow, totalMode: boolean): string => {
   const breakdown = row.sizeBreakdown || {};
   const sizes = Object.keys(breakdown).sort((a, b) => sizeSortKey(a) - sizeSortKey(b));
   if (!sizes.length) return '';
@@ -123,8 +149,8 @@ const renderSoleGrade = (row: ConsumptionRow): string => {
       <thead><tr><th>Grade</th>${sizes.map((size) => `<th class="grade-num">${escapeHtml(size)}</th>`).join('')}</tr></thead>
       <tbody>
         <tr><th>Necessidade</th>${renderCells(breakdown)}</tr>
-        <tr><th>Estoque</th>${renderCells(available)}</tr>
-        <tr><th>Falta</th>${renderCells(missing, true)}</tr>
+        ${totalMode ? '' : `<tr><th>Estoque</th>${renderCells(available)}</tr>
+        <tr><th>Falta</th>${renderCells(missing, true)}</tr>`}
       </tbody>
     </table>
   </div>`;
@@ -142,13 +168,14 @@ const reportRowAvailable = (row: ConsumptionRow): number => {
   return Math.max(0, (Number(row.totalQuantity) || 0) - rowShortfall(row));
 };
 
-const renderMaterialSections = (rows: ConsumptionRow[]): string => {
+const renderMaterialSections = (rows: ConsumptionRow[], totalMode: boolean): string => {
   const sectionMap = new Map<string, string[]>();
   const append = (componentType: string, html: string) => {
     const current = sectionMap.get(componentType) || [];
     current.push(html);
     sectionMap.set(componentType, current);
   };
+  const colCount = totalMode ? 5 : 7;
 
   const nonSole = aggregateItems(rows.filter((row) => row.componentType !== 'Solado'))
     .sort((a, b) => componentIndex(a.componentType) - componentIndex(b.componentType)
@@ -157,7 +184,7 @@ const renderMaterialSections = (rows: ConsumptionRow[]): string => {
 
   for (const item of nonSole) {
     const converted = item.rows.length > 0 && item.rows.every(isConvertedInternalStrap);
-    const short = converted ? 0 : itemShortfall(item);
+    const short = totalMode || converted ? 0 : itemShortfall(item);
     const previewQuantity = item.rows.reduce(
       (total, row) => total + Math.max(0, Number(row.previewQuantity) || 0),
       0,
@@ -175,18 +202,22 @@ const renderMaterialSections = (rows: ConsumptionRow[]): string => {
         .filter(Boolean)
         .join(' + ')
       : '';
-    const faltaHtml = converted
-      ? `<span class="muted">prod. interna${napaNote ? `<small>${escapeHtml(napaNote)}</small>` : ''}</span>`
-      : item.known && short > 0
-        ? formatQty(short, item.productUnit)
-        : '—';
+    const coverageCells = totalMode ? '' : `
+      <td class="num">${converted || !item.known ? '—' : formatQty(item.available, item.productUnit)}</td>
+      <td class="num${short > 0 ? ' shortage' : ''}">${converted
+        ? `<span class="muted">prod. interna${napaNote ? `<small>${escapeHtml(napaNote)}</small>` : ''}</span>`
+        : item.known && short > 0
+          ? formatQty(short, item.productUnit)
+          : '—'}</td>`;
+    const convertedNote = converted
+      ? `<div class="qty-preview">prod. interna${napaNote ? ` · ${escapeHtml(napaNote)}` : ''}</div>`
+      : '';
     append(item.componentType, `<tr class="material-row${short > 0 ? ' is-short' : ''}${!item.known ? ' is-pending' : ''}">
-      <td><strong>${escapeHtml(item.groupName)}</strong>${warnings.length ? `<div class="row-warning">▲ ${escapeHtml(warnings.join(' · '))}</div>` : ''}</td>
+      <td><strong>${escapeHtml(item.groupName)}</strong>${warnings.length ? `<div class="row-warning">▲ ${escapeHtml(warnings.join(' · '))}</div>` : ''}${totalMode ? convertedNote : ''}</td>
       <td>${escapeHtml(applications.join(' + ') || item.groupName)}</td>
       <td>${escapeHtml(item.color || '—')}</td>
       <td class="num strong">${needHtml}</td>
-      <td class="num">${converted || !item.known ? '—' : formatQty(item.available, item.productUnit)}</td>
-      <td class="num${short > 0 ? ' shortage' : ''}">${faltaHtml}</td>
+      ${coverageCells}
       <td class="unit">${escapeHtml(formatUnit(item.productUnit))}</td>
     </tr>`);
   }
@@ -194,29 +225,35 @@ const renderMaterialSections = (rows: ConsumptionRow[]): string => {
   const soles = rows.filter((row) => row.componentType === 'Solado')
     .sort((a, b) => a.groupName.localeCompare(b.groupName, 'pt-BR') || a.color.localeCompare(b.color, 'pt-BR'));
   for (const row of soles) {
-    const short = rowShortfall(row);
+    const short = totalMode ? 0 : rowShortfall(row);
     const known = rowKnown(row);
     const usefulStock = reportRowAvailable(row);
     const shortSizes = soleShortSizes(row);
+    const coverageCells = totalMode ? '' : `
+      <td class="num">${known ? formatQty(usefulStock, row.productUnit) : '—'}</td>
+      <td class="num${short > 0 ? ' shortage' : ''}">${known && short > 0 ? `${formatQty(short, row.productUnit)}${shortSizes.length ? `<small>${shortSizes.length} nº</small>` : ''}` : '—'}</td>`;
     append('Solado', `<tr class="material-row${short > 0 ? ' is-short' : ''}${!known ? ' is-pending' : ''}">
       <td><strong>${escapeHtml(row.groupName)}</strong>${row.warning ? `<div class="row-warning">▲ ${escapeHtml(row.warning)}</div>` : ''}</td>
       <td>${escapeHtml(row.materialName || 'Solado')}</td>
       <td>${escapeHtml(row.color || '—')}</td>
       <td class="num strong">${formatQty(row.totalQuantity, row.productUnit)}</td>
-      <td class="num">${known ? formatQty(usefulStock, row.productUnit) : '—'}</td>
-      <td class="num${short > 0 ? ' shortage' : ''}">${known && short > 0 ? `${formatQty(short, row.productUnit)}${shortSizes.length ? `<small>${shortSizes.length} nº</small>` : ''}` : '—'}</td>
+      ${coverageCells}
       <td class="unit">${escapeHtml(formatUnit(row.productUnit))}</td>
     </tr>
-    <tr class="grade-row"><td colspan="7">${renderSoleGrade(row)}</td></tr>`);
+    <tr class="grade-row"><td colspan="${colCount}">${renderSoleGrade(row, totalMode)}</td></tr>`);
   }
+
+  const head = totalMode
+    ? '<tr><th>Grupo</th><th>Aplicação</th><th>Cor</th><th class="num">Necessidade</th><th>Un.</th></tr>'
+    : '<tr><th>Grupo</th><th>Aplicação</th><th>Cor</th><th class="num">Necessidade</th><th class="num">Estoque</th><th class="num">Falta</th><th>Un.</th></tr>';
 
   return Array.from(sectionMap.entries())
     .sort(([a], [b]) => componentIndex(a) - componentIndex(b))
     .map(([componentType, materialRows]) => `
       <div class="component-block">
         <div class="component-heading"><span>${escapeHtml(componentType)}</span><span>${materialRows.filter((row) => row.includes('class="material-row')).length} linha(s)</span></div>
-        <table class="report-table materials-table">
-          <thead><tr><th>Grupo</th><th>Aplicação</th><th>Cor</th><th class="num">Necessidade</th><th class="num">Estoque</th><th class="num">Falta</th><th>Un.</th></tr></thead>
+        <table class="report-table materials-table${totalMode ? ' total-mode' : ''}">
+          <thead>${head}</thead>
           <tbody>${materialRows.join('')}</tbody>
         </table>
       </div>`)
@@ -254,7 +291,9 @@ export function buildMaterialConsumptionReportHtml({
   title,
   orderHeaders,
   generatedAt = new Date(),
+  mode = 'coverage',
 }: MaterialConsumptionReportInput): string {
+  const totalMode = mode === 'total';
   const baseTotal = computeBaseMaterialTotal(rows);
   const shortCount = countShort(rows);
   const pendingCount = countPending(rows);
@@ -268,6 +307,24 @@ export function buildMaterialConsumptionReportHtml({
     <li><span>${escapeHtml(shortfall.label)}${shortfall.color && shortfall.color !== '—' ? ` · ${escapeHtml(shortfall.color)}` : ''}</span><strong>${formatQty(shortfall.qty, shortfall.unit)} ${escapeHtml(formatUnit(shortfall.unit))}</strong></li>
   `).join('')}</ol>` : '<p class="all-covered">Estoque cobre todos os itens conhecidos.</p>';
   const generatedLabel = generatedAt.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+  const modeBanner = totalMode
+    ? '<p class="mode-banner">Consumo total · estoque ignorado · necessidade bruta do pedido</p>'
+    : '';
+  const reading = totalMode
+    ? 'Este documento ignora o estoque. Os números são o consumo bruto da ficha para realizar o pedido. Tira artesanal com receita conferida entra como metro de napa — o motor não compra metro de tira.'
+    : '“Necessidade” é consumo bruto. “Falta” já desconta o estoque líquido e é o número usado para decidir reposição. Tira artesanal com receita conferida entra como metro de napa — o motor não compra metro de tira.';
+  const manifest = totalMode
+    ? `<div class="manifest manifest-total" aria-label="Resumo do consumo total">
+    <div><dl><dt>Necessidade de material base</dt><dd>${baseTotal ? `${formatQty(baseTotal.total, 'm')} m` : '—'}</dd></dl><small>napa direta + conversões confirmadas</small></div>
+    <div><dl><dt>Pendências</dt><dd>${pendingCount}</dd></dl><small>cadastro a revisar</small></div>
+    <div><dl><dt>Escopo calculado</dt><dd>${rows.length} linha${rows.length === 1 ? '' : 's'}</dd></dl><small>ficha técnica + grade + variante do PV</small></div>
+  </div>`
+    : `<div class="manifest" aria-label="Resumo da decisão">
+    <div><dl><dt>Necessidade de material base</dt><dd>${baseTotal ? `${formatQty(baseTotal.total, 'm')} m` : '—'}</dd></dl><small>napa direta + conversões confirmadas</small></div>
+    <div><dl><dt>Itens em falta</dt><dd class="shortage">${shortCount}</dd></dl><small>estoque líquido</small></div>
+    <div><dl><dt>Pendências</dt><dd>${pendingCount}</dd></dl><small>cadastro a revisar</small></div>
+    <div><dl><dt>Escopo calculado</dt><dd>${rows.length} linha${rows.length === 1 ? '' : 's'}</dd></dl><small>ficha técnica + grade + variante do PV</small></div>
+  </div>`;
 
   return `<!doctype html>
 <html lang="pt-BR">
@@ -285,13 +342,15 @@ export function buildMaterialConsumptionReportHtml({
     html, body { margin:0; padding:0; color:var(--ink); background:white; }
     body { font: 9.2pt/1.32 'Fira Sans', Arial, sans-serif; }
     h1, h2, p { margin:0; }
-    .mono, .num, .unit, .section-number, .manifest dd { font-family:'Fira Code', ui-monospace, monospace; font-variant-numeric:tabular-nums; }
+    .mono, .num, .unit, .section-number, .manifest dd, .napa-family-qty { font-family:'Fira Code', ui-monospace, monospace; font-variant-numeric:tabular-nums; }
     .masthead { border-top:4px solid var(--ink); border-bottom:1px solid var(--ink); padding:7px 0 8px; display:flex; align-items:flex-end; justify-content:space-between; gap:16px; }
-    .brandline, .section-kicker, .manifest dt, .scope-label { font-size:7.2pt; font-weight:700; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); }
+    .brandline, .section-kicker, .manifest dt, .scope-label, .mode-banner { font-size:7.2pt; font-weight:700; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); }
     h1 { margin-top:3px; font-family:'Anton','Arial Narrow',Impact,sans-serif; font-size:24pt; line-height:.94; font-weight:400; text-transform:uppercase; letter-spacing:.01em; }
     .doc-meta { text-align:right; color:var(--muted); font-size:7.8pt; white-space:nowrap; }
     .doc-meta strong { display:block; color:var(--ink); font-family:'Fira Code',monospace; font-size:8.5pt; }
+    .mode-banner { margin:6px 0 0; padding:4px 8px; border:1px solid var(--ink); background:var(--ink); color:white; letter-spacing:.16em; }
     .manifest { display:grid; grid-template-columns:1.4fr .8fr .8fr 1.6fr; border-bottom:2px solid var(--ink); background:var(--paper); }
+    .manifest-total { grid-template-columns:1.6fr .8fr 1.4fr; }
     .manifest > div { min-height:53px; padding:8px 9px; border-right:1px solid var(--line); }
     .manifest > div:last-child { border-right:0; }
     .manifest dl { margin:0; }
@@ -309,10 +368,17 @@ export function buildMaterialConsumptionReportHtml({
     .section-number { color:var(--accent); font-size:12pt; font-weight:700; }
     .section-heading h2 { font-family:'Anton','Arial Narrow',Impact,sans-serif; font-size:15pt; line-height:1; font-weight:400; text-transform:uppercase; }
     .section-note { color:var(--muted); font-size:7.6pt; text-align:right; }
+    .napa-family { margin-top:8px; border:1px solid var(--ink); break-inside:avoid; }
+    .napa-family-head { display:flex; align-items:baseline; gap:10px; padding:6px 8px; background:var(--ink); color:white; }
+    .napa-family-name { font-family:'Anton','Arial Narrow',Impact,sans-serif; font-size:13pt; line-height:1; letter-spacing:.02em; text-transform:uppercase; }
+    .napa-family-meta { margin-left:auto; color:#ccc8c1; font-size:7.2pt; letter-spacing:.08em; text-transform:uppercase; }
+    .napa-family-qty { font-size:13pt; font-weight:700; }
+    .napa-table th:nth-child(1) { width:22%; }
+    .napa-table .app-qty small { display:block; color:var(--muted); font-size:6.4pt; font-weight:500; }
     .report-table { width:100%; border-collapse:collapse; table-layout:fixed; }
     .report-table thead { display:table-header-group; }
     .report-table th { padding:4px 5px; border-top:1px solid var(--ink); border-bottom:1px solid var(--ink); background:var(--soft); color:var(--muted); font-size:7pt; font-weight:700; letter-spacing:.08em; text-align:left; text-transform:uppercase; }
-    .report-table td { padding:4px 5px; border-bottom:1px solid var(--line); vertical-align:top; overflow-wrap:anywhere; }
+    .report-table td { padding:5px 6px; border-bottom:1px solid var(--line); vertical-align:top; overflow-wrap:anywhere; }
     .report-table .num { text-align:right; white-space:nowrap; }
     .report-table .unit { width:34px; text-align:center; color:var(--muted); }
     .report-table .strong { font-weight:700; }
@@ -333,6 +399,7 @@ export function buildMaterialConsumptionReportHtml({
     .materials-table th:nth-child(1) { width:22%; } .materials-table th:nth-child(2) { width:24%; }
     .materials-table th:nth-child(3) { width:13%; } .materials-table th:nth-child(4), .materials-table th:nth-child(5), .materials-table th:nth-child(6) { width:11%; }
     .materials-table th:nth-child(7) { width:8%; text-align:center; }
+    .materials-table.total-mode th:nth-child(4) { width:22%; } .materials-table.total-mode th:nth-child(5) { width:10%; text-align:center; }
     .grade-row td { padding:0 5px 6px 5px; border-bottom:1px solid var(--ink); }
     .sole-grade { padding:4px 0 0 22%; }
     .sole-grade table { width:100%; border-collapse:collapse; font-size:7.2pt; table-layout:fixed; }
@@ -347,39 +414,39 @@ export function buildMaterialConsumptionReportHtml({
     .shortfall-list strong { color:var(--accent); font-family:'Fira Code',monospace; white-space:nowrap; }
     .all-covered { color:var(--ok); font-weight:700; }
     .footer-note { margin-top:10px; padding-top:5px; border-top:1px solid var(--ink); color:var(--muted); font-size:6.8pt; }
-    tr, .decision-box { break-inside:avoid; }
+    tr, .decision-box, .napa-family { break-inside:avoid; }
     @media print { a { color:inherit; text-decoration:none; } }
   </style>
 </head>
 <body>
   <header class="masthead">
-    <div><p class="brandline">Squad Shoes · suprimentos industriais</p><h1>${escapeHtml(title)}</h1></div>
+    <div><p class="brandline">Squad Shoes · suprimentos industriais</p><h1>${escapeHtml(title)}</h1>${modeBanner}</div>
     <p class="doc-meta">Documento operacional<strong>${escapeHtml(generatedLabel)}</strong></p>
   </header>
 
-  <div class="manifest" aria-label="Resumo da decisão">
-    <div><dl><dt>Necessidade de material base</dt><dd>${baseTotal ? `${formatQty(baseTotal.total, 'm')} m` : '—'}</dd></dl><small>napa direta + conversões confirmadas</small></div>
-    <div><dl><dt>Itens em falta</dt><dd class="shortage">${shortCount}</dd></dl><small>estoque líquido</small></div>
-    <div><dl><dt>Pendências</dt><dd>${pendingCount}</dd></dl><small>cadastro a revisar</small></div>
-    <div><dl><dt>Escopo calculado</dt><dd>${rows.length} linha${rows.length === 1 ? '' : 's'}</dd></dl><small>ficha técnica + grade + variante do PV</small></div>
-  </div>
+  ${manifest}
   ${renderScope(orderHeaders)}
   <div class="totals-strip"><strong>Necessidade total</strong>${totalStrip}</div>
-  <div class="decision-grid">
-    <div class="decision-box"><h3>Leitura correta</h3><p>“Necessidade” é consumo bruto. “Falta” já desconta o estoque líquido e é o número usado para decidir reposição. Tira artesanal com receita conferida entra como metro de napa — o motor não compra metro de tira.</p></div>
+  ${totalMode ? `<div class="decision-box" style="margin-top:8px"><h3>Leitura correta</h3><p>${reading}</p></div>` : `<div class="decision-grid">
+    <div class="decision-box"><h3>Leitura correta</h3><p>${reading}</p></div>
     <div class="decision-box"><h3>Maiores faltas</h3>${shortfallList}</div>
-  </div>
-  ${renderBaseNeed(rows)}
+  </div>`}
+  ${renderBaseNeed(rows, totalMode)}
   <section class="report-section">
     <div class="section-heading">
       <span class="section-number">02</span>
       <div><p class="section-kicker">Conferência completa</p><h2>Materiais por setor</h2></div>
-      <p class="section-note">A falta de solado é calculada por numeração; os demais itens usam o balde grupo + cor + unidade.</p>
+      <p class="section-note">${totalMode
+        ? 'Somente a necessidade do pedido. Tira interna aparece com o equivalente em napa.'
+        : 'A falta de solado é calculada por numeração; os demais itens usam o balde grupo + cor + unidade.'}</p>
     </div>
-    ${renderMaterialSections(rows)}
+    ${renderMaterialSections(rows, totalMode)}
   </section>
   ${renderArtisanalStraps(artisanalStrapRows)}
-  <p class="footer-note">Fonte: pedido de venda, ficha técnica vigente, variante de material, grade e estoque líquido no momento da geração. Este relatório é uma simulação atual e pode diferir do snapshot histórico já congelado em uma OP. Linhas com ▲ exigem correção cadastral antes de reserva, débito ou compra.</p>
+  <p class="footer-note">${totalMode
+    ? 'Fonte: pedido de venda, ficha técnica vigente, variante de material e grade. Estoque líquido foi ignorado neste documento. Linhas com ▲ exigem correção cadastral antes de reserva, débito ou compra.'
+    : 'Fonte: pedido de venda, ficha técnica vigente, variante de material, grade e estoque líquido no momento da geração. Este relatório é uma simulação atual e pode diferir do snapshot histórico já congelado em uma OP. Linhas com ▲ exigem correção cadastral antes de reserva, débito ou compra.'}</p>
 </body>
 </html>`;
 }
+

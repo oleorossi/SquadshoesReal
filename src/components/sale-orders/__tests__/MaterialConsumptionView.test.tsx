@@ -335,4 +335,19 @@ describe('MaterialConsumptionView — tela buy-first', () => {
     expect(within(breakdown).getByText('prod. interna')).toBeInTheDocument();
     expect(screen.queryByText('EVA 3MM')).not.toBeInTheDocument();
   });
+
+  it('Consumo total esconde estoque e falta e mantém a necessidade do pedido', async () => {
+    const user = userEvent.setup();
+    renderView();
+    expect(screen.getByRole('columnheader', { name: 'Falta' })).toBeInTheDocument();
+
+    await user.click(screen.getAllByRole('button', { name: 'Consumo total' })[0]);
+    expect(screen.queryByRole('columnheader', { name: 'Falta' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'Em estoque' })).not.toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Necessidade' })).toBeInTheDocument();
+    expect(screen.getAllByText(/Estoque ignorado/i).length).toBeGreaterThan(0);
+    expect(screen.queryByRole('button', { name: 'Ver itens em falta' })).not.toBeInTheDocument();
+    expect(within(screen.getByRole('region', { name: 'Solados por numeração' })).queryByText('Estoque útil')).not.toBeInTheDocument();
+    expect(screen.getByText('OURO LIGHT')).toBeInTheDocument();
+  });
 });

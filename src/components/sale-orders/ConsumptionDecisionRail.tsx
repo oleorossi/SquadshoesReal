@@ -54,6 +54,9 @@ type Props = {
   /** Família de napa selecionada no filtro de material base. */
   selectedBaseFamily?: string | null;
   onSelectBaseFamily?: (name: string | null) => void;
+  /** Necessidade bruta do pedido, estoque ignorado. */
+  grossNeed?: boolean;
+  onGrossNeedChange?: (v: boolean) => void;
   /** Ação primária: abre a geração de OC do(s) PV(s). Omitida ⇒ botão não aparece. */
   onGerarOC?: () => void;
   onRecalcular?: () => void;
@@ -76,6 +79,8 @@ export default function ConsumptionDecisionRail({
   onNapaOnlyChange,
   selectedBaseFamily = null,
   onSelectBaseFamily,
+  grossNeed = false,
+  onGrossNeedChange,
   onGerarOC,
   onRecalcular,
   onPrintPdf,
@@ -121,7 +126,9 @@ export default function ConsumptionDecisionRail({
               </div>
             )}
             <p className="mt-1 text-[11px] text-muted-foreground">
-              consumo bruto · tiras convertidas + napa cortada direto
+              {grossNeed
+                ? 'consumo bruto do pedido · estoque ignorado'
+                : 'consumo bruto · tiras convertidas + napa cortada direto'}
             </p>
             {baseTotal.skipped > 0 && (
               <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">
@@ -137,6 +144,7 @@ export default function ConsumptionDecisionRail({
         )}
       </div>
 
+      {!grossNeed && (
       <button
         type="button"
         onClick={() => onFilterChange(filter === 'short' ? 'all' : 'short')}
@@ -162,8 +170,20 @@ export default function ConsumptionDecisionRail({
           de {totalItems} {totalItems === 1 ? 'item' : 'itens'} · comparado ao estoque líquido
         </p>
       </button>
+      )}
 
-      {onGerarOC && (
+        <Button
+          type="button"
+          variant={grossNeed ? 'default' : 'outline'}
+          size="sm"
+          aria-pressed={grossNeed}
+          className="w-full gap-1.5"
+          onClick={() => onGrossNeedChange?.(!grossNeed)}
+        >
+          Consumo total
+        </Button>
+
+      {onGerarOC && !grossNeed && (
         <Button type="button" className="w-full gap-2" onClick={onGerarOC}>
           <ShoppingCart className="h-4 w-4" />
           Gerar OC deste consumo
@@ -171,7 +191,7 @@ export default function ConsumptionDecisionRail({
       )}
 
       {/* ── Maiores faltas: responde "quanto pedir" sem ler a tabela ──── */}
-      {topShort.length > 0 && (
+      {!grossNeed && topShort.length > 0 && (
         <div className="rounded-lg border border-border bg-card p-3">
           <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
             Maiores faltas
@@ -304,7 +324,7 @@ export default function ConsumptionDecisionRail({
           </Button>
         )}
         <Button type="button" variant="outline" size="sm" className="flex-1 gap-1.5" onClick={onPrintPdf}>
-          <FileText className="h-4 w-4" /> Gerar PDF
+          <FileText className="h-4 w-4" /> {grossNeed ? 'PDF consumo total' : 'Gerar PDF'}
         </Button>
       </div>
     </aside>

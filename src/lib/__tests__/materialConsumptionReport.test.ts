@@ -140,4 +140,50 @@ describe('materialConsumptionReport', () => {
     expect(html).toContain('20,04 m');
     expect(html).toContain('40,25 m');
   });
+
+  it('no modo consumo total ignora estoque e agrupa napa por família e cor', () => {
+    const html = buildMaterialConsumptionReportHtml({
+      title: 'Consumo total — PV-00168',
+      generatedAt: new Date('2026-08-30T15:11:00-03:00'),
+      mode: 'total',
+      artisanalStrapRows: [],
+      rows: [
+        row({
+          componentType: 'Forração Palmilha',
+          groupName: 'NAPA SOFT',
+          materialName: 'Forração Palmilha',
+          color: 'NEW WHISKY',
+          productUnit: 'm',
+          totalQuantity: 20.21,
+          available: 0,
+          productIds: ['napa-new-whisky'],
+        }),
+        row({
+          componentType: 'Tiras',
+          groupName: 'TIRA OVERLOCK 5 mm · NAPA SOFT · NEW WHISKY',
+          materialName: 'Produção interna',
+          color: 'NEW WHISKY',
+          productUnit: 'm',
+          totalQuantity: 1402.8,
+          available: 0,
+          productIds: ['tira-overlock-new-whisky'],
+          baseProductId: 'napa-new-whisky',
+          artisanal: { baseName: 'NAPA SOFT', baseQty: 20.04, yieldPerMeter: 70 },
+        }),
+      ],
+    });
+
+    expect(html).toContain('Consumo total · estoque ignorado');
+    expect(html).toContain('napa-family-name');
+    expect(html).toContain('NAPA SOFT');
+    expect(html).toContain('NEW WHISKY');
+    expect(html).toContain('20,21 m');
+    expect(html).toContain('20,04 m');
+    expect(html).toContain('40,25 m');
+    expect(html).not.toContain('Itens em falta');
+    expect(html).not.toContain('Maiores faltas');
+    expect(html).not.toContain('>Estoque<');
+    expect(html).not.toContain('>Falta<');
+    expect(html).toContain('Necessidade');
+  });
 });

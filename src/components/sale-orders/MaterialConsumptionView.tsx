@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback, type ReactNode } from 'react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { SearchInput } from '@/components/ui/search-input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
@@ -10,6 +11,7 @@ import {
   ArrowDown,
   Warning as WarningIcon,
   CheckCircle,
+  ListNumbers,
 } from '@phosphor-icons/react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { computeBaseMaterialTotal } from '@/lib/baseMaterialTotal';
@@ -129,7 +131,7 @@ const STATUS_SECTIONS = ['Em falta', 'Cadastro incompleto', 'Coberto pelo estoqu
  * estoque no `title` da célula — quem precisava saber o quanto comprar de cada
  * número não tinha o dado na tela.
  */
-function SoleGradeDetail({ row }: { row: ConsumptionRow }) {
+function SoleGradeDetail({ row, grossNeed = false }: { row: ConsumptionRow; grossNeed?: boolean }) {
   const sizes = useMemo(
     () => Object.keys(row.sizeBreakdown || {}).sort((a, b) => sizeSortKey(a) - sizeSortKey(b)),
     [row.sizeBreakdown],
@@ -166,8 +168,10 @@ function SoleGradeDetail({ row }: { row: ConsumptionRow }) {
         <tbody>
           {([
             { label: 'Necessidade', get: (s: string) => Number(row.sizeBreakdown?.[s]) || 0 },
-            { label: 'Estoque útil', get: (s: string) => Number(avail[s]) || 0 },
-            { label: 'Falta', get: (s: string) => Math.max(0, (Number(row.sizeBreakdown?.[s]) || 0) - (Number(avail[s]) || 0)) },
+            ...(!grossNeed ? [
+              { label: 'Estoque útil', get: (s: string) => Number(avail[s]) || 0 },
+              { label: 'Falta', get: (s: string) => Math.max(0, (Number(row.sizeBreakdown?.[s]) || 0) - (Number(avail[s]) || 0)) },
+            ] as const : []),
           ] as const).map(({ label, get }) => (
             <tr key={label}>
               <th scope="row" className="border border-border bg-muted/30 px-2 py-1 text-left text-[11px] font-semibold">
@@ -199,7 +203,7 @@ function SoleGradeDetail({ row }: { row: ConsumptionRow }) {
  * Solado é uma decisão de compra por grade, não mais uma linha genérica da
  * tabela. O bloco fica acima da dobra e sempre aberto no estado inicial.
  */
-function SoleCoveragePanel({ rows }: { rows: ConsumptionRow[] }) {
+function SoleCoveragePanel({ rows, grossNeed = false }: { rows: ConsumptionRow[]; grossNeed?: boolean }) {
   if (rows.length === 0) return null;
 
   return (
@@ -209,11 +213,12 @@ function SoleCoveragePanel({ rows }: { rows: ConsumptionRow[] }) {
     >
       <header className="flex flex-wrap items-end justify-between gap-3 border-b border-border bg-muted/40 px-4 py-3">
         <div>
-          <p className="eyebrow">Prioridade de compra</p>
+          <p className="eyebrow">{grossNeed ? 'Necessidade do pedido' : 'Prioridade de compra'}</p>
           <h3 className="display mt-1 text-xl leading-none sm:text-2xl">Mapa de solados · grade por numeração</h3>
           <p className="mt-1 text-xs text-muted-foreground">
-            Necessidade, estoque aproveitável e quantidade a comprar em cada número.
-            Este mapa permanece visível ao filtrar os materiais gerais.
+            {grossNeed
+              ? 'Quantidade necessária em cada número, sem descontar estoque.'
+              : 'Necessidade, estoque aproveitável e quantidade a comprar em cada número. Este mapa permanece visível ao filtrar os materiais gerais.'}
           </p>
         </div>
         <Badge variant="outline" className="font-mono tabular-nums">
@@ -240,19 +245,19 @@ function SoleCoveragePanel({ rows }: { rows: ConsumptionRow[] }) {
                     {row.color && row.color !== '—' && (
                       <Badge variant="secondary" className="text-[10px]">{row.color}</Badge>
                     )}
-                    {!known ? (
+                    {!grossNeed && !known ? (
                       <Badge variant="outline" className="border-amber-500/50 text-[10px] text-amber-700 dark:text-amber-400">
                         Cadastro incompleto
                       </Badge>
-                    ) : hasShortage ? (
+                    ) : !grossNeed && hasShortage ? (
                       <Badge variant="destructive" className="text-[10px]">
                         Falta em {shortSizes.length || 1} {shortSizes.length === 1 ? 'número' : 'números'}
                       </Badge>
-                    ) : (
+                    ) : !grossNeed ? (
                       <Badge variant="outline" className="text-[10px] text-green-700 dark:text-green-400">
                         Grade coberta
                       </Badge>
-                    )}
+                    ) : null}
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground">{row.materialName || 'Solado'}</p>
                   {row.warning && (
@@ -262,13 +267,15 @@ function SoleCoveragePanel({ rows }: { rows: ConsumptionRow[] }) {
                   )}
                 </div>
 
-                <dl className="grid grid-cols-3 divide-x divide-border overflow-hidden rounded-md border border-border bg-background text-right">
+                <dl className={`grid divide-x divide-border overflow-hidden rounded-md border border-border bg-background text-right ${grossNeed ? 'grid-cols-1' : 'grid-cols-3'}`}>
                   <div className="px-3 py-2">
                     <dt className="eyebrow">Necessidade</dt>
                     <dd className="mt-1 font-mono text-base font-bold tabular-nums">
                       {formatQty(row.totalQuantity, row.productUnit)} {formatUnit(row.productUnit)}
                     </dd>
                   </div>
+                  {!grossNeed && (
+                    <>
                   <div className="px-3 py-2">
                     <dt className="eyebrow">Estoque útil</dt>
                     <dd className="mt-1 font-mono text-base font-bold tabular-nums">
@@ -283,9 +290,11 @@ function SoleCoveragePanel({ rows }: { rows: ConsumptionRow[] }) {
                       {known ? `${formatQty(shortage, row.productUnit)} ${formatUnit(row.productUnit)}` : '—'}
                     </dd>
                   </div>
+                    </>
+                  )}
                 </dl>
               </div>
-              <SoleGradeDetail row={row} />
+              <SoleGradeDetail row={row} grossNeed={grossNeed} />
             </article>
           );
         })}
@@ -313,6 +322,7 @@ export default function MaterialConsumptionView({
   const [napaOnly, setNapaOnly] = useState(false);
   const [search, setSearch] = useState('');
   const [baseFamily, setBaseFamily] = useState<string | null>(null);
+  const [grossNeed, setGrossNeed] = useState(false);
 
   const buyList = useMemo(() => buildBuyList(rows), [rows]);
 
@@ -527,17 +537,21 @@ export default function MaterialConsumptionView({
 
   const handlePrintPdf = useCallback(() => {
     const target = openPrintTab();
+    const reportTitle = grossNeed
+      ? title.replace(/consumo de materiais/i, 'Consumo total')
+      : title;
     const html = buildMaterialConsumptionReportHtml({
       rows,
       artisanalStrapRows,
-      title,
+      title: reportTitle,
       orderHeaders,
+      mode: grossNeed ? 'total' : 'coverage',
     });
     void printHtmlAsPdf(html, {
-      filename: materialConsumptionReportFilename(title),
+      filename: materialConsumptionReportFilename(reportTitle),
       target,
     });
-  }, [rows, title, artisanalStrapRows, orderHeaders]);
+  }, [rows, title, artisanalStrapRows, orderHeaders, grossNeed]);
 
   if (loading) {
     return (
@@ -549,6 +563,8 @@ export default function MaterialConsumptionView({
   if (rows.length === 0) {
     return <p className="py-8 text-center text-muted-foreground">{emptyMessage}</p>;
   }
+
+  const colCount = grossNeed ? 5 : 7;
 
   // ── Render de uma linha da tabela mestra ────────────────────────────────
   const renderRow = (row: ConsumptionRow, index: number, neutralStock: boolean, sectionKey: string) => {
@@ -564,7 +580,7 @@ export default function MaterialConsumptionView({
 
     return (
       <TableRow key={`${sectionKey}-${row.groupName}-${row.materialName}-${row.color}-${index}`}>
-        <TableCell className={`font-medium ${!neutralStock && !converted && known && !ok ? 'border-l-2 border-red-500/60' : ''}`}>
+        <TableCell className={`font-medium ${!grossNeed && !neutralStock && !converted && known && !ok ? 'border-l-2 border-red-500/60' : ''}`}>
           <div className="flex items-center gap-1.5">
             {row.widthMissing && (
               <TooltipProvider delayDuration={150}>
@@ -624,6 +640,8 @@ export default function MaterialConsumptionView({
             )
           )}
         </TableCell>
+        {!grossNeed && (
+          <>
         <TableCell
           className="text-right"
           aria-label={
@@ -657,6 +675,8 @@ export default function MaterialConsumptionView({
             </span>
           )}
         </TableCell>
+          </>
+        )}
         <TableCell className="text-center text-xs text-muted-foreground">{formatUnit(row.productUnit)}</TableCell>
       </TableRow>
     );
@@ -667,18 +687,18 @@ export default function MaterialConsumptionView({
     const ok = item.known && short === 0;
     return (
       <TableRow key={`band-${item.key}`} className="border-0 hover:bg-transparent">
-        <TableCell colSpan={7} className="p-0">
-          <div className={`flex flex-wrap items-baseline gap-x-3 gap-y-1 border-y px-3 py-2 ${item.known ? 'border-green-600/25 bg-green-500/5' : 'border-amber-600/25 bg-amber-500/5'}`}>
-            <span className={`text-[11px] font-bold uppercase tracking-wider ${item.known ? 'text-green-700 dark:text-green-400' : 'text-amber-700 dark:text-amber-400'}`}>
+        <TableCell colSpan={colCount} className="p-0">
+          <div className={`flex flex-wrap items-baseline gap-x-3 gap-y-1 border-y px-3 py-2 ${grossNeed ? 'border-border bg-muted/30' : item.known ? 'border-green-600/25 bg-green-500/5' : 'border-amber-600/25 bg-amber-500/5'}`}>
+            <span className={`text-[11px] font-bold uppercase tracking-wider ${grossNeed ? 'text-foreground' : item.known ? 'text-green-700 dark:text-green-400' : 'text-amber-700 dark:text-amber-400'}`}>
               Total do item · {item.groupName}
             </span>
-            <span className={`font-mono text-lg font-bold tabular-nums ${item.known ? 'text-green-700 dark:text-green-400' : 'text-amber-700 dark:text-amber-400'}`}>
+            <span className={`font-mono text-lg font-bold tabular-nums ${grossNeed ? 'text-foreground' : item.known ? 'text-green-700 dark:text-green-400' : 'text-amber-700 dark:text-amber-400'}`}>
               {formatQty(item.total, item.productUnit)}<span className="ml-0.5 text-xs font-semibold">{formatUnit(item.productUnit)}</span>
             </span>
             <span className="font-mono text-[11px] text-muted-foreground">
               = {item.rows.map((r) => `${formatQty(r.totalQuantity, r.productUnit)} ${r.materialName || 'aplicação'}`).join(' + ')}
             </span>
-            {!item.known ? (
+            {!grossNeed && (!item.known ? (
               <span className="ml-auto text-[11px] text-amber-600 dark:text-amber-400">estoque não comparável — cadastro incompleto</span>
             ) : ok ? (
               <span className="ml-auto inline-flex items-center gap-1 text-[11px]">
@@ -692,7 +712,7 @@ export default function MaterialConsumptionView({
                 <span className="text-muted-foreground">em estoque {formatQty(item.available, item.productUnit)} {formatUnit(item.productUnit)} ·</span>
                 <span className="font-medium text-red-600 dark:text-red-400">faltam {formatQty(short, item.productUnit)} {formatUnit(item.productUnit)}</span>
               </span>
-            )}
+            ))}
           </div>
         </TableCell>
       </TableRow>
@@ -701,7 +721,7 @@ export default function MaterialConsumptionView({
 
   const renderApplicationBand = (split: BuyListColor, key: string) => (
     <TableRow key={`app-${key}`} className="border-0 hover:bg-transparent">
-      <TableCell colSpan={7} className="p-0">
+      <TableCell colSpan={colCount} className="p-0">
         <div
           className="flex flex-wrap items-baseline gap-x-5 gap-y-1 border-b border-border bg-muted/30 px-3 py-2"
           aria-label={`Consumo por aplicação em ${split.color}`}
@@ -772,6 +792,9 @@ export default function MaterialConsumptionView({
           <dl className="border-r border-border px-3 py-3">
             <dt className="eyebrow">Em falta</dt>
             <dd className="mt-1">
+              {grossNeed ? (
+                <span className="font-mono text-xl font-bold leading-none tabular-nums text-muted-foreground">—</span>
+              ) : (
               <button
                 type="button"
                 onClick={() => setFilter((f) => f === 'short' ? 'all' : 'short')}
@@ -783,8 +806,9 @@ export default function MaterialConsumptionView({
               >
                 {emFaltaCount}
               </button>
+              )}
             </dd>
-            <dd className="mt-1 text-[10px] text-muted-foreground">itens para repor</dd>
+            <dd className="mt-1 text-[10px] text-muted-foreground">{grossNeed ? 'estoque ignorado' : 'itens para repor'}</dd>
           </dl>
           <dl className="px-3 py-3">
             <dt className="eyebrow">Pendências</dt>
@@ -805,6 +829,31 @@ export default function MaterialConsumptionView({
           </dl>
       </section>
 
+      <div className="flex flex-wrap items-center gap-3">
+        <Button
+          type="button"
+          variant={grossNeed ? 'default' : 'outline'}
+          size="sm"
+          aria-pressed={grossNeed}
+          onClick={() => {
+            setGrossNeed((current) => {
+              const next = !current;
+              if (next) setFilter('all');
+              return next;
+            });
+          }}
+          className="gap-1.5"
+        >
+          <ListNumbers className="h-4 w-4" weight="bold" aria-hidden="true" />
+          Consumo total
+        </Button>
+        <p className="text-xs text-muted-foreground">
+          {grossNeed
+            ? 'Estoque ignorado — só a quantidade necessária para realizar o pedido.'
+            : 'Compara com o estoque líquido para decidir o que comprar. Consumo total mostra a necessidade bruta.'}
+        </p>
+      </div>
+
       {orderHeaders && orderHeaders.length > 0 && (
         <div className="flex flex-wrap gap-x-6 gap-y-1 rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm">
           {orderHeaders.map((h, i) => (
@@ -818,7 +867,7 @@ export default function MaterialConsumptionView({
 
       <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
         <div className="min-w-0 space-y-3">
-          <SoleCoveragePanel rows={visibleSoleRows} />
+          <SoleCoveragePanel rows={visibleSoleRows} grossNeed={grossNeed} />
 
           <div>
             <p className="eyebrow">Materiais gerais</p>
@@ -919,8 +968,12 @@ export default function MaterialConsumptionView({
                   <TableHead aria-sort={sortKey === 'totalQuantity' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}>
                     <button type="button" className="flex w-full select-none items-center justify-end hover:text-foreground" onClick={() => handleSort('totalQuantity')}>Necessidade <SortIcon col="totalQuantity" /></button>
                   </TableHead>
+                  {!grossNeed && (
+                    <>
                   <TableHead className="w-32 text-right">Em estoque</TableHead>
                   <TableHead className="w-32 text-right">Falta</TableHead>
+                    </>
+                  )}
                   <TableHead aria-sort={sortKey === 'productUnit' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined} className="w-20">
                     <button type="button" className="flex w-full select-none items-center justify-center hover:text-foreground" onClick={() => handleSort('productUnit')}>Un <SortIcon col="productUnit" /></button>
                   </TableHead>
@@ -958,7 +1011,7 @@ export default function MaterialConsumptionView({
                   })();
                   out.push(
                     <TableRow key={`sec-${sectionKey}`} className="border-0 hover:bg-transparent">
-                      <TableCell colSpan={7} className="border-y border-border bg-muted/60 py-1.5">
+                      <TableCell colSpan={colCount} className="border-y border-border bg-muted/60 py-1.5">
                         <div className="flex flex-wrap items-baseline justify-between gap-2">
                           <span className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-foreground">
                             <span aria-hidden="true" className="inline-block h-3.5 w-[3px] rounded-sm bg-primary" />
@@ -1016,6 +1069,11 @@ export default function MaterialConsumptionView({
         onNapaOnlyChange={setNapaOnly}
         selectedBaseFamily={baseFamily}
         onSelectBaseFamily={selectBaseFamily}
+        grossNeed={grossNeed}
+        onGrossNeedChange={(value) => {
+          setGrossNeed(value);
+          if (value) setFilter('all');
+        }}
         onGerarOC={onGerarOC}
         onRecalcular={onRecalcular}
         onPrintPdf={handlePrintPdf}
