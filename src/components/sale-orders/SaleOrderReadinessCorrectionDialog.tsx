@@ -537,9 +537,12 @@ export default function SaleOrderReadinessCorrectionDialog({
                   {model.agnosticColorIssues.length > 0 && (
                     <Alert className="border-primary/30 bg-primary/5">
                       <CheckCircle className="h-4 w-4 text-primary" weight="fill" />
-                      <AlertTitle>Material sem variação de cor</AlertTitle>
+                      <AlertTitle>Fibra da palmilha não varia por cor</AlertTitle>
                       <AlertDescription>
-                        {model.agnosticColorIssues.length} {model.agnosticColorIssues.length === 1 ? 'aviso aponta' : 'avisos apontam'} um grupo agnóstico a cor. Nenhum produto colorido deve ser criado; a validação corrigida remove o falso bloqueio ao tentar novamente.
+                        A placa/fibra é o suporte. A cor entra no forro que a reveste — não cadastre variante de cor neste grupo.
+                        {isAdmin && canSaveAndRetry
+                          ? ' Valide de novo: o motor resolve pelo grupo, não pela cor do pedido.'
+                          : ' Nenhum produto colorido deve ser criado neste grupo.'}
                       </AlertDescription>
                     </Alert>
                   )}

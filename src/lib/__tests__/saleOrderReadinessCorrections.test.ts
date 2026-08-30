@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { buildSaleOrderReadinessCorrectionModel } from '@/lib/saleOrderReadinessCorrections';
+import {
+  buildSaleOrderReadinessCorrectionModel,
+  isInsoleFiberColorAgnostic,
+} from '@/lib/saleOrderReadinessCorrections';
 import type { SaleOrderCommandIssue } from '@/lib/saleOrderCommand';
 
 const referenceId = 'dee92bd6-643d-4651-818e-f2a75cfabf13';
@@ -164,6 +167,51 @@ describe('saleOrderReadinessCorrections', () => {
     expect(model.canOverrideAll).toBe(true);
   });
 
+  it('trata componente Palmilha como fibra mesmo sem a flag — a cor entra no forro', () => {
+    const issues = items.map((item) => issue(
+      'material_color_not_registered',
+      item.id,
+      { product_id: productId, color: item.color, component: 'Palmilha' },
+      true,
+    ));
+
+    const model = buildSaleOrderReadinessCorrectionModel({
+      issues,
+      items,
+      sheets,
+      products,
+      groups: [{ id: groupId, name: 'PLACA 1.0 EVA', is_color_agnostic: false }],
+    });
+
+    expect(model.colorCorrections).toEqual([]);
+    expect(model.agnosticColorIssues).toHaveLength(3);
+  });
+
+  it('continua pedindo cadastro de cor para Forração Palmilha', () => {
+    const liningIssues = items.slice(0, 1).map((item) => issue(
+      'material_color_not_registered',
+      item.id,
+      { product_id: productId, color: item.color, component: 'Forração Palmilha' },
+      true,
+    ));
+
+    const model = buildSaleOrderReadinessCorrectionModel({
+      issues: liningIssues,
+      items: items.slice(0, 1),
+      sheets,
+      products,
+      groups: [{ id: groupId, name: 'NAPA FORRO', is_color_agnostic: false }],
+    });
+
+    expect(model.agnosticColorIssues).toEqual([]);
+    expect(model.colorCorrections).toEqual([
+      expect.objectContaining({
+        color: 'NEW WHISKY',
+        component: 'Forração Palmilha',
+      }),
+    ]);
+  });
+
   it('não inventa preço-base para corrigir valores inválidos do próprio item', () => {
     const invalidItems = [
       { ...items[0], unit_price: 0 },
@@ -219,5 +267,15 @@ describe('saleOrderReadinessCorrections', () => {
       expect.objectContaining({ issue: expect.objectContaining({ code: 'client_missing' }) }),
     ]);
     expect(model.unsupportedIssues).toHaveLength(1);
+  });
+});
+
+describe('isInsoleFiberColorAgnostic', () => {
+  it('reconhece fibra/placa e recusa forro', () => {
+    expect(isInsoleFiberColorAgnostic('Palmilha', { name: 'PALMILHA', is_color_agnostic: false })).toBe(true);
+    expect(isInsoleFiberColorAgnostic('Fibra', { name: 'FIBRA DE PALMILHA', is_color_agnostic: false })).toBe(true);
+    expect(isInsoleFiberColorAgnostic('Palmilha', { name: 'PLACA 1.0 EVA', is_color_agnostic: false })).toBe(true);
+    expect(isInsoleFiberColorAgnostic('Forração Palmilha', { name: 'NAPA FORRO', is_color_agnostic: false })).toBe(false);
+    expect(isInsoleFiberColorAgnostic('Palmilha', { name: 'PALMILHA', is_color_agnostic: true })).toBe(true);
   });
 });

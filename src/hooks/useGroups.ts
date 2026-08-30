@@ -83,6 +83,8 @@ export function useAddGroup() {
       dimensions_unit?: string | null;
       parent_group_id?: string | null;
       is_family?: boolean;
+      /** Palmilha (fibra/placa) e cola: cor não faz parte da identidade. */
+      is_color_agnostic?: boolean;
       pairs_per_box_individual?: number | null;
       pairs_per_box_master?: number | null;
       pairs_per_box_colmeia?: number | null;
