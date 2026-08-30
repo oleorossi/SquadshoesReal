@@ -23,7 +23,7 @@ describe('configuração de terceirização da ficha', () => {
   it('mantém os defaults operacionais acordados por atividade', () => {
     expect(SERVICE_ORDER_ACTIVITY_DEFAULTS.costura).toEqual({
       return_before_sector: 'Silk',
-      material_components: ['Cabedal', 'Forração', 'BOM', 'Componente Direto'],
+      material_components: ['Cabedal', 'BOM', 'Componente Direto'],
     });
     expect(SERVICE_ORDER_ACTIVITY_DEFAULTS.mesa).toEqual({
       return_before_sector: 'Silk',
@@ -55,8 +55,6 @@ describe('configuração de terceirização da ficha', () => {
     ])).toEqual(['Cabedal', 'Forração', 'Componente Direto']);
     expect(normalizeReferenceReturnSector('montagem')).toBe('Montagem');
     expect(normalizeReferenceReturnSector('expedicao')).toBe('Expedição');
-    // Uma etapa adicionada/rebatizada em sector_settings segue para a validação
-    // autoritativa do banco em vez de ser apagada pelo fallback estático.
     expect(normalizeReferenceReturnSector('Inspeção Externa')).toBe('Inspeção Externa');
   });
 

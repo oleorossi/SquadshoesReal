@@ -1,6 +1,10 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import {
+  rankServiceOrderCandidates,
+  type QueuePullFilter,
+} from '@/lib/serviceOrderStageQueue';
 
 /**
  * Geração de OS de terceirização por Pedido → Serviço → OP.
@@ -52,6 +56,20 @@ export interface OutsourceableLine {
   planning_config_issue?: string | null;
   already_has_os: boolean;
   existing_os_status: string | null;
+  /** Filtro que puxou esta linha na fila (prazo / estoque). */
+  queue_pull?: QueuePullFilter;
+}
+
+function decorateOutsourceableLines(rows: OutsourceableLine[]): OutsourceableLine[] {
+  return rankServiceOrderCandidates(rows.map((line) => ({
+    id: `${line.order_id}::${line.sector}`,
+    sector: line.sector,
+    billingDate: line.required_return_date || line.recommended_send_date,
+    source: line,
+  }))).map((item) => ({
+    ...item.source,
+    queue_pull: item.pull,
+  }));
 }
 
 /** Linhas terceirizáveis de um PV, uma por (OP × setor). */
@@ -64,7 +82,7 @@ export function usePvOutsourceableLines(saleOrderId: string | null) {
         p_sale_order_id: saleOrderId,
       });
       if (error) throw error;
-      return (data || []) as OutsourceableLine[];
+      return decorateOutsourceableLines((data || []) as OutsourceableLine[]);
     },
     staleTime: 30_000,
   });
