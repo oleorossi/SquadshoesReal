@@ -1,6 +1,9 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { fetchCanonicalConsumptionReport } from '@/lib/canonicalConsumptionReport';
+import { materializeCanonicalConsumptionByScope } from '@/lib/canonicalConsumptionByScope';
+import type { ConsumptionRow } from '@/lib/consumptionRows';
 import {
   rankServiceOrderCandidates,
   type QueuePullFilter,
@@ -60,11 +63,15 @@ export interface OutsourceableLine {
   queue_pull?: QueuePullFilter;
 }
 
-function decorateOutsourceableLines(rows: OutsourceableLine[]): OutsourceableLine[] {
+export function decorateOutsourceableLines(
+  rows: OutsourceableLine[],
+  kitRowsByOrder?: Map<string, ConsumptionRow[]>,
+): OutsourceableLine[] {
   return rankServiceOrderCandidates(rows.map((line) => ({
     id: `${line.order_id}::${line.sector}`,
     sector: line.sector,
     billingDate: line.required_return_date || line.recommended_send_date,
+    kitRows: kitRowsByOrder?.get(line.order_id),
     source: line,
   }))).map((item) => ({
     ...item.source,
@@ -82,7 +89,19 @@ export function usePvOutsourceableLines(saleOrderId: string | null) {
         p_sale_order_id: saleOrderId,
       });
       if (error) throw error;
-      return decorateOutsourceableLines((data || []) as OutsourceableLine[]);
+      const lines = (data || []) as OutsourceableLine[];
+      const orderIds = [...new Set(lines.map((line) => line.order_id).filter(Boolean))];
+      if (orderIds.length === 0) return decorateOutsourceableLines(lines);
+
+      try {
+        const report = await fetchCanonicalConsumptionReport({ orderIds });
+        const kitRowsByOrder = await materializeCanonicalConsumptionByScope(report);
+        return decorateOutsourceableLines(lines, kitRowsByOrder);
+      } catch {
+        // Consumo é anotação da fila. Falha não bloqueia o assistente:
+        // as linhas seguem e o chip cai no fallback só-prazo.
+        return decorateOutsourceableLines(lines);
+      }
     },
     staleTime: 30_000,
   });
