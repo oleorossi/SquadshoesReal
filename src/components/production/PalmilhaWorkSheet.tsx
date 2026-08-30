@@ -71,6 +71,23 @@ interface Props {
  * cortar"); qualquer OP "cortar" rebaixa o grupo pro fluxo normal de corte.
  * O Controle de Fichas (tally) renderiza SEMPRE (6º passe, 2026-06-12).
  */
+/**
+ * Numerações que a grade de um grupo REALMENTE renderiza.
+ *
+ * Fonte única de propósito: o `minScale` que a ficha passa ao `PaginatedSheet`
+ * tem de sair da MESMA lista que a tabela desenha. Enquanto eram duas contas,
+ * esta ficha derivava o piso de `Object.keys(grade)` — que inclui numeração
+ * zerada e ignora as que só existem na curva-base — e o auto-fit ganhava
+ * autorização para encolher abaixo do piso tipográfico (ou desperdiçava folha,
+ * conforme o cadastro). Ver `worksheet/adaptiveFont.floorSafeScale`.
+ */
+export function palmilhaGroupSizes(
+  allSizes: ReadonlyArray<string>,
+  group: Pick<PalmilhaGroup, 'grade' | 'baseGrade'>,
+): string[] {
+  return allSizes.filter(s => (group.grade[s] ?? 0) > 0 || (group.baseGrade?.[s] ?? 0) > 0);
+}
+
 export const PalmilhaWorkSheet = ({ groups, allSizes, pairsPerCard = 12, sizeBand, sectorLabel }: Props) => {
   // Modelo 'lote' (rodada 1, 20/08/2026). A chave e o setor CANONICO —
   // a ficha se intitula "Corte de Placa de Fibra", mas o setor e 'Corte Palmilha'.
@@ -172,9 +189,7 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, pairsPerCard = 12, sizeBan
             // grade — qualquer tamanho com valor > 0 em pelo menos um
             // deles entra. Reduz colunas vazias e economiza largura
             // horizontal (especialmente importante em fichas com 3+ cores).
-            const groupSizes = allSizes.filter(s =>
-              (group.grade[s] ?? 0) > 0 || (group.baseGrade?.[s] ?? 0) > 0
-            );
+            const groupSizes = palmilhaGroupSizes(allSizes, group);
             // Fontes adaptativas pela qtd de colunas (2026-06-12) — grades
             // densas (mista infantil+adulto) cortavam com fonte fixa.
             const ft = gradeTableFont(groupSizes);
@@ -477,6 +492,6 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, pairsPerCard = 12, sizeBan
   // Sem isto o AUTO_FIT_FLOOR global (0.80) encolhia por cima de fontes que já
   // estavam no piso. Decisão do dono 31/07/2026: legibilidade vence densidade.
   const minScale = groups.reduce((mx, g) => Math.max(mx,
-    floorSafeScale(gradeTableFont(Object.keys(g.grade || {})))), 0);
+    floorSafeScale(gradeTableFont(palmilhaGroupSizes(allSizes, g)))), 0);
   return <PaginatedSheet sectorLabel={sectorLabel || 'Corte de Placa de Fibra'} blocks={blocks} minScale={minScale} />;
 };
