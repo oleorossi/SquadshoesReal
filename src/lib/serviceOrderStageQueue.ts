@@ -1,9 +1,6 @@
 import {
   countPending,
   countShort,
-  itemIsShort,
-  itemShortfall,
-  rowIsShort,
   rowKnown,
   rowShortfall,
 } from '@/lib/consumptionAvailability';
@@ -23,7 +20,7 @@ import {
  *    Costura de cabedal = Cabedal + Forração + BOM + Componente Direto.
  *    Solado, palmilha, embalagem e tira artesanal não entram na prioridade.
  *
- * Chip diz qual filtro puxou a linha. Cadastro incompleto fica neutro.
+ * Sem linhas de consumo anotadas, a fila usa só o prazo (não inventa falta).
  */
 
 export type StageKitStatus = 'ready' | 'short' | 'unknown' | 'empty';
@@ -112,12 +109,7 @@ export function assessStageKitStock(
   const shortCount = countShort(kit);
   const pendingCount = countPending(kit);
   const comparable = kit.filter(rowKnown);
-  const shortfall = kit.reduce((sum, row) => {
-    if (row.componentType === 'Solado') return sum + rowShortfall(row);
-    return sum;
-  }, 0) + kit
-    .filter((row) => row.componentType !== 'Solado')
-    .reduce((sum, row) => sum + (rowIsShort(row) ? rowShortfall(row) : 0), 0);
+  const shortfall = kit.reduce((sum, row) => sum + rowShortfall(row), 0);
 
   if (comparable.length === 0) {
     return { status: 'unknown', components, shortCount: 0, pendingCount, shortfall: 0 };
@@ -134,8 +126,10 @@ export function assessStageKitStock(
 export function queuePullFilter(
   billingDate: string | null | undefined,
   kit: StageKitStatus,
+  kitProvided = true,
 ): QueuePullFilter {
   const hasDeadline = Boolean(billingDate && String(billingDate).trim());
+  if (!kitProvided) return 'prazo';
   if (kit === 'unknown' || kit === 'empty') return 'cadastro';
   if (kit === 'ready' && hasDeadline) return 'ambos';
   if (kit === 'ready') return 'estoque';
@@ -158,6 +152,7 @@ export interface RankedStageQueueItem<T = unknown> {
   sector: string;
   billingDate: string | null;
   kit: StageKitAssessment;
+  kitProvided: boolean;
   pull: QueuePullFilter;
   source: T;
 }
@@ -168,11 +163,22 @@ function billingSortValue(iso: string | null | undefined): number {
   return Number.isFinite(parsed) ? parsed : Number.POSITIVE_INFINITY;
 }
 
+function emptyAssessment(sector: string): StageKitAssessment {
+  return {
+    status: 'empty',
+    components: stageKitComponents(sector),
+    shortCount: 0,
+    pendingCount: 0,
+    shortfall: 0,
+  };
+}
+
 export function rankServiceOrderCandidates<T>(
   candidates: readonly StageQueueCandidate<T>[],
 ): RankedStageQueueItem<T>[] {
   return candidates
     .map((candidate) => {
+      const kitProvided = candidate.kitStatus != null || candidate.kitRows != null;
       const kit = candidate.kitStatus
         ? {
             status: candidate.kitStatus,
@@ -181,13 +187,16 @@ export function rankServiceOrderCandidates<T>(
             pendingCount: candidate.kitStatus === 'unknown' ? 1 : 0,
             shortfall: 0,
           }
-        : assessStageKitStock(candidate.kitRows || [], candidate.sector);
+        : candidate.kitRows
+          ? assessStageKitStock(candidate.kitRows, candidate.sector)
+          : emptyAssessment(candidate.sector);
       return {
         id: candidate.id,
         sector: candidate.sector,
         billingDate: candidate.billingDate || null,
         kit,
-        pull: queuePullFilter(candidate.billingDate, kit.status),
+        kitProvided,
+        pull: queuePullFilter(candidate.billingDate, kit.status, kitProvided),
         source: candidate.source,
       };
     })
@@ -231,6 +240,3 @@ export function summarizeStageQueue(
   }
   return { total: ranked.length, ready, short, unknown, byPull };
 }
-
-/** Evita import morto se o tree-shake do teste não puxar os helpers de item. */
-export const _kitItemHelpers = { itemIsShort, itemShortfall };
