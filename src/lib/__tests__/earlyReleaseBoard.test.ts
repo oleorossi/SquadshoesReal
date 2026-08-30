@@ -24,40 +24,49 @@ const sheet = {
   requires_cutting: true,
 };
 
-const op = (over: Partial<{ id: string; qty: number; color: string; due: string; so: string }>) => ({
+const op = (over: Partial<{
+  id: string; qty: number; color: string; due: string; so: string;
+  pv: string; client: string; ref: string; name: string;
+}>) => ({
   order_id: over.id ?? 'op-1',
   order_number: over.id ?? 'OP-1',
-  reference_id: 'ref-5001',
-  reference_name: '5001',
+  reference_id: over.ref ?? 'ref-5001',
+  reference_name: over.name ?? '5001',
   photo_url: null,
   color: over.color ?? 'Preto',
   quantity: over.qty ?? 200,
   planned_delivery: over.due ?? '2026-09-30',
   sale_order_id: over.so ?? 'so-1',
-  sale_order_number: 'PV-1',
+  sale_order_number: over.pv ?? 'PV-1',
+  client_order_number: over.client ?? 'OC-77',
 });
 
 describe('buildEarlyReleaseBoard', () => {
-  it('agrega pares da mesma referência e antecipa Aviamento/Cabedal na cascata', () => {
+  it('agrupa por referência + cor e destaca PV e pedido do cliente', () => {
     const board = buildEarlyReleaseBoard({
-      ops: [op({ id: 'a', qty: 200 }), op({ id: 'b', qty: 400, color: 'Nude', so: 'so-2' })],
+      ops: [
+        op({ id: 'a', qty: 200, pv: 'PV-1', client: 'OC-77' }),
+        op({ id: 'b', qty: 100, so: 'so-2', pv: 'PV-2', client: 'OC-88' }),
+        op({ id: 'c', qty: 400, color: 'Nude', so: 'so-3', pv: 'PV-3', client: '' }),
+      ],
       schedule: [],
       sheetMap: new Map([['ref-5001', sheet]]),
       offsets: { mesa: 5, costura_cabedal: 5 },
     });
-    expect(board.rows).toHaveLength(1);
-    const row = board.rows[0];
-    expect(row.pairs).toBe(600);
-    expect(row.opCount).toBe(2);
-    expect(row.pvCount).toBe(2);
-    expect(row.colors).toEqual(['Preto', 'Nude']);
-    expect(row.source).toBe('cascata');
-    expect(row.daysAhead).toBeGreaterThan(0);
-    const avi = row.lanes.find((l) => l.key === 'aviamento')!;
-    const cortes = row.lanes.find((l) => l.key === 'cortes')!;
-    expect(avi.start).toBeTruthy();
-    expect(cortes.start).toBeTruthy();
-    expect(avi.start! < cortes.start!).toBe(true);
+    expect(board.rows).toHaveLength(2);
+    const preto = board.rows.find((r) => r.color === 'Preto')!;
+    const nude = board.rows.find((r) => r.color === 'Nude')!;
+    expect(preto.pairs).toBe(300);
+    expect(preto.opCount).toBe(2);
+    expect(preto.pvNumbers).toEqual(['PV-1', 'PV-2']);
+    expect(preto.clientOrderNumbers).toEqual(['OC-77', 'OC-88']);
+    expect(nude.pairs).toBe(400);
+    expect(nude.pvNumbers).toEqual(['PV-3']);
+    expect(nude.clientOrderNumbers).toEqual([]);
+    expect(board.totals.pairs).toBe(700);
+    expect(board.totals.references).toBe(1);
+    expect(preto.source).toBe('cascata');
+    expect(preto.daysAhead).toBeGreaterThan(0);
   });
 
   it('prefere a agenda do motor quando ela existe', () => {
