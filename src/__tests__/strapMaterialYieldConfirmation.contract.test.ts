@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 const ROOT = resolve(__dirname, '../..');
 const read = (path: string) => readFileSync(resolve(ROOT, path), 'utf8');
 const migration = read('supabase/migrations/20270101008800_confirmar-rendimento-tira-por-material.sql');
-const batchMigration = read('supabase/migrations/20270101014700_cadastrar_multiplos_materiais_tira.sql');
+const batchMigration = read('supabase/migrations/20270101014550_cadastrar_multiplos_materiais_tira.sql');
 const pluralWriter = batchMigration.slice(
   batchMigration.indexOf('CREATE OR REPLACE FUNCTION public.save_artisanal_strap_material_conversions'),
   batchMigration.indexOf(

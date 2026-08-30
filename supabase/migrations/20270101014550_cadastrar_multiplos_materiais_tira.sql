@@ -1,5 +1,7 @@
 -- Cadastro atomico e concorrente-seguro de varios materiais possiveis para
 -- uma mesma tira.
+-- O sufixo 14550 mantem esta migration depois da 14500 ja publicada e antes
+-- da proxima migration 14600 reservada no fluxo de desenvolvimento.
 --
 -- Familia e medida sao compartilhadas pelo lote. Cada material continua usando
 -- o writer canonico singular, preservando versionamento, largura fisica,
