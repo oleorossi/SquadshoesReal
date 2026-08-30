@@ -147,6 +147,9 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
         dimensions_unit: !isFamilyCreation && form.dimensions_width ? 'mm' : null,
         parent_group_id: form.parent_group_id || null,
         is_family: isFamilyCreation,
+        // Fibra/placa da palmilha e cola não variam por cor. A cor da palmilha
+        // entra no forro (setor Forração da Palmilha).
+        is_color_agnostic: form.sector === 'Palmilha' || form.sector === 'Cola / Químico',
         // Embalagem NÃO entra: grupo de solado nasce sem caixa e a configuração
         // dos 3 modos é feita em Embalagens → Configuração por Solado.
       });

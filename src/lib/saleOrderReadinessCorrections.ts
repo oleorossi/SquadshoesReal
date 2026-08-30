@@ -84,6 +84,21 @@ const normalizeColor = (value: string) => value
   .trim()
   .toUpperCase();
 
+/** Fibra/placa da palmilha: a cor entra no forro, não neste grupo.
+ *  Forração Palmilha continua pedindo cadastro de cor. */
+export function isInsoleFiberColorAgnostic(
+  component: string | null | undefined,
+  group: Pick<ReadinessProductGroup, 'is_color_agnostic' | 'name'> | null,
+): boolean {
+  if (group?.is_color_agnostic === true) return true;
+  const label = `${component || ''} ${group?.name || ''}`
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+  if (/(forr|revest|lining|napa)/.test(label)) return false;
+  return /(^|\s)palmilha(\s|$)/.test(label) || /fibra/.test(label) || /placa/.test(label);
+}
+
 export const readinessIssueTitle = (issue: SaleOrderCommandIssue): string => {
   if (issue.code === 'item_price_missing') return 'Preço do item ausente';
   if (issue.code === 'material_color_not_registered') return 'Cor de material não cadastrada';
@@ -206,7 +221,7 @@ export function buildSaleOrderReadinessCorrectionModel(input: {
         unsupportedIssues.push(line);
         continue;
       }
-      if (group.is_color_agnostic === true) {
+      if (isInsoleFiberColorAgnostic(line.component, group)) {
         agnosticColorIssues.push(line);
         continue;
       }

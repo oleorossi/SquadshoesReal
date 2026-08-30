@@ -139,7 +139,7 @@ describe('SaleOrderReadinessCorrectionDialog', () => {
     expect(screen.getByText('OFF WHITE')).toBeInTheDocument();
     expect(screen.getByText('ROSADO')).toBeInTheDocument();
     expect(screen.getAllByText('1.728 pares')).toHaveLength(3);
-    expect(screen.getByText(/3 avisos apontam um grupo agnóstico a cor/)).toBeInTheDocument();
+    expect(screen.getByText(/A placa\/fibra é o suporte/)).toBeInTheDocument();
     expect(screen.getByText('1 pendência exige edição completa')).toBeInTheDocument();
     expect(screen.getByText(/As pendências sem editor rápido devem ser corrigidas/)).toBeInTheDocument();
     expect(screen.queryByText('Liberar como exceção administrativa')).not.toBeInTheDocument();

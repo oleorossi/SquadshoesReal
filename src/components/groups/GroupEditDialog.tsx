@@ -852,7 +852,9 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                           {[
                             { value: 'variant', title: 'Varia por cor', text: 'Cada cor é um SKU com saldo e custo próprios.' },
                             { value: 'bom-source', title: 'Origina cores no BOM', text: 'Além de variar, oferece suas cores às referências.' },
-                            { value: 'agnostic', title: 'Cor não se aplica', text: 'Consumo e débito resolvem apenas pelo grupo.' },
+                            { value: 'agnostic', title: 'Cor não se aplica', text: sector === 'Palmilha'
+                              ? 'A fibra/placa é o suporte. A cor entra no forro que a reveste.'
+                              : 'Consumo e débito resolvem apenas pelo grupo.' },
                           ].map((option) => {
                             const disabled = option.value === 'bom-source' && !show.bomColorSource;
                             const selected = colorBehavior === option.value;
@@ -1244,7 +1246,11 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                     <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
                     <div>
                       <p className="text-xs font-semibold">Cor não se aplica a este grupo</p>
-                      <p className="mt-0.5 text-[11px] text-muted-foreground">Os SKUs continuam na aba Itens, mas não são tratados como variantes de cor no consumo.</p>
+                      <p className="mt-0.5 text-[11px] text-muted-foreground">
+                        {sector === 'Palmilha'
+                          ? 'A fibra/placa é o suporte. A variação de cor fica no forro que a reveste.'
+                          : 'Os SKUs continuam na aba Itens, mas não são tratados como variantes de cor no consumo.'}
+                      </p>
                     </div>
                   </div>
                   <Button type="button" size="sm" variant="outline" onClick={() => setActiveTab('general')}>Alterar regra</Button>
