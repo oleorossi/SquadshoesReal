@@ -212,6 +212,26 @@ export function packBlocks(
 }
 
 /**
+ * Converte a largura que um bloco DECLARA (na régua dele) para a largura que
+ * ele exige na régua da PÁGINA.
+ *
+ * O componente sabe quanto precisa, mas não sabe onde foi pendurado: a mesma
+ * linha do Controle de Fichas vive solta na coluna da A4 no Corte Forração e
+ * dentro de um `flow-card` com padding e borda na Solagem e na Palmilha, onde
+ * sobram ~714 dos 733px. Como `growCeilingFor` compara contra a PÁGINA, o recuo
+ * até a borda do bloco entra na conta — senão o zoom é autorizado além do ponto
+ * em que a linha passa da borda do card e come a margem de segurança.
+ */
+export function rigidWidthOnPage(
+  declaredPx: number,
+  blockWidthPx: number,
+  nodeWidthPx: number,
+): number {
+  if (!Number.isFinite(declaredPx) || declaredPx <= 0) return 0;
+  return declaredPx + Math.max(0, blockWidthPx - nodeWidthPx);
+}
+
+/**
  * Teto do crescimento imposto pela LARGURA.
  *
  * Sob `zoom: s` a largura local disponível vira `contentWidth / s`, mas um bloco
@@ -358,10 +378,19 @@ export const PaginatedSheet = ({ sectorLabel, blocks, pageStyle, minScale }: Pag
       // Largura rígida é DECLARADA pelo componente (não medida): quem tem
       // geometria de constante sabe quanto exige, e medir o DOM não distingue
       // "ocupa 660px" de "precisa de 660px".
+      //
+      // ⚠ O componente declara o que exige NA RÉGUA DELE, e ele pode estar
+      // dentro de um card com padding e borda (Solagem, Palmilha): ali sobram
+      // ~714px dos 733 da página. O teto do crescimento é comparado contra a
+      // PÁGINA, então o recuo até a borda do bloco entra na conta — senão o
+      // zoom é autorizado além do ponto em que a linha passa da borda do card.
+      const blockWidth = el.getBoundingClientRect().width;
       let w = 0;
       el.querySelectorAll<HTMLElement>('[data-rigid-width]').forEach(node => {
-        const v = Number(node.dataset.rigidWidth);
-        if (Number.isFinite(v) && v > w) w = v;
+        const need = rigidWidthOnPage(
+          Number(node.dataset.rigidWidth), blockWidth, node.getBoundingClientRect().width,
+        );
+        if (need > w) w = need;
       });
       nextW[i] = w;
     }
