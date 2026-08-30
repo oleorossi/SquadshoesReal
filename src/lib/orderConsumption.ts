@@ -22,6 +22,7 @@ import {
   resolvePinnedSoleProductIdByColor,
   type SoleColorRule,
 } from '@/lib/soleColorResolution';
+import { isLeftoverCabedalExtra, leftoverCabedalDisplayName } from '@/lib/cabedalLeftover';
 
 /**
  * Oráculo TypeScript legado de consumo de materiais.
@@ -1463,10 +1464,13 @@ export function computeConsumptionForItems(
         ? mandMat.consumption_per_size
         : null;
       const { total: mandTotal } = calculateConsumptionWithUnit(item, mandConsumption, mandSheet, 'metro', mandOverride);
+      const leftoverExtra = isLeftoverCabedalExtra(mandMat, sheet);
       addConsumptionRow(consumptionMap, {
         componentType: 'Cabedal',
         groupName: mandMat.material,
-        materialName: pinnedProd?.name || mandMat.label || 'Material Fixo',
+        materialName: leftoverExtra
+          ? leftoverCabedalDisplayName({ ...mandMat, product_name: pinnedProd?.name || mandMat.product_name })
+          : (pinnedProd?.name || mandMat.label || 'Material Fixo'),
         productUnit: 'metro',
         color: orderColor,
         totalQuantity: mandTotal,

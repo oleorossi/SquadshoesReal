@@ -37,6 +37,7 @@ import { useKnifeFacasDefault } from '@/hooks/useKnifeFacasDefault';
 import { pmgLabelForSize } from '@/lib/aviamentoSizeRanges';
 import { useAviamentoPmgDefault } from '@/hooks/useAviamentoPmgDefault';
 import { getUpperWorkEligibility, requiresUpperCut } from '@/lib/upperCutEligibility';
+import { listLeftoverCabedalLabels } from '@/lib/cabedalLeftover';
 
 /**
  * CSS do modo CARTÃO (aprovado pelo dono 31/07/2026 — "Opção B, 3 colunas").
@@ -2283,6 +2284,10 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
           requiresLiningCut,
           requiresUpperCut: needsUpperCut,
           requiresUpperSewing,
+          leftoverNapas: listLeftoverCabedalLabels(
+            (sheetById.get(sheetId) as any)?.components_accessories,
+            sheetById.get(sheetId) as any,
+          ),
           aviamentoSteps: aviamentoStepsByRef.get(sheetId) || [],
           lotInfo: lotTotal > 1 ? { number: lotNum, total: lotTotal } : undefined,
         });
@@ -2295,6 +2300,17 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
       cg.requiresLiningCut = cg.requiresLiningCut === true || requiresLiningCut;
       cg.requiresUpperCut = cg.requiresUpperCut === true || needsUpperCut;
       cg.requiresUpperSewing = cg.requiresUpperSewing === true || requiresUpperSewing;
+      {
+        const leftoverNames = listLeftoverCabedalLabels(
+          (sheetById.get(sheetId) as any)?.components_accessories,
+          sheetById.get(sheetId) as any,
+        );
+        if (leftoverNames.length) {
+          const existing = new Set(cg.leftoverNapas || []);
+          leftoverNames.forEach((name) => existing.add(name));
+          cg.leftoverNapas = Array.from(existing);
+        }
+      }
       // OR do alerta de fachetado entre as OPs (2026-06-12): no agrupamento
       // por REFERÊNCIA (Aviamento), solados DISTINTOS caem na mesma cor — se
       // qualquer OP resolve solado fachetado, o alerta tem que aparecer
