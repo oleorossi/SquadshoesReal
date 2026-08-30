@@ -59,6 +59,7 @@ export const navigationCatalog: NavigationResource[] = [
 
   // Produção
   { path: '/producao/planejamento', label: 'Planejamento', group: 'Produção', icon: ClipboardCheck, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/ProducaoPlanejamento') },
+  { path: '/producao/antecipacao', label: 'Antecipação', group: 'Produção', icon: Clock, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/ProducaoAntecipacao') },
   // Mantém o path concedível histórico para não invalidar permissões por item;
   // a rota redireciona imediatamente para a Central em Modo Gestão.
   { path: '/producao/kanban', label: 'Modo Gestão', group: 'Produção', icon: Kanban, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/ProducaoKanban') },
@@ -183,7 +184,7 @@ const menuGroupsDeclarados: NavigationGroup[] = [
   },
   {
     label: 'Produção', icon: Factory,
-    items: [resource('/producao/planejamento'), resource('/producao/kanban'), resource('/producao/estouro'), resource('/producao/setores'), resource('/producao/apontamento'), resource('/producao/calculadora-grade'), resource('/imprimir-fichas'), resource('/producao/analises')],
+    items: [resource('/producao/planejamento'), resource('/producao/antecipacao'), resource('/producao/kanban'), resource('/producao/estouro'), resource('/producao/setores'), resource('/producao/apontamento'), resource('/producao/calculadora-grade'), resource('/imprimir-fichas'), resource('/producao/analises')],
   },
   {
     label: 'Estoque', icon: Package,

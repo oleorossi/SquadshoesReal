@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { Card, CardContent } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
@@ -12,6 +13,7 @@ import {
   Users,
   ArrowsCounterClockwise as RefreshCw,
   Info,
+  Clock,
 } from '@phosphor-icons/react';
 import {
   useSectorSettings, useUpdateSectorSetting, useRecomputeSchedule,
@@ -83,15 +85,23 @@ export default function ProducaoSetoresConfig() {
         title="Setores"
         description="Regra global do motor: fluxo, capacidade e regras por setor. Ficha técnica preenchida sobrepõe por referência; salvar recalcula todas as OPs abertas na hora."
         actions={
-          <Button
-            variant="outline"
-            className="h-9 gap-2"
-            onClick={() => recompute.mutate()}
-            disabled={recompute.isPending}
-          >
-            <RefreshCw className={`h-4 w-4 ${recompute.isPending ? 'animate-spin' : ''}`} />
-            Recalcular fila
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" className="h-9 gap-2" asChild>
+              <Link to="/producao/antecipacao">
+                <Clock className="h-4 w-4" />
+                Antecipação
+              </Link>
+            </Button>
+            <Button
+              variant="outline"
+              className="h-9 gap-2"
+              onClick={() => recompute.mutate()}
+              disabled={recompute.isPending}
+            >
+              <RefreshCw className={`h-4 w-4 ${recompute.isPending ? 'animate-spin' : ''}`} />
+              Recalcular fila
+            </Button>
+          </div>
         }
       />
 
