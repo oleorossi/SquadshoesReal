@@ -4,11 +4,14 @@ import {
   countPending,
   countShort,
   itemShortfall,
+  isConvertedInternalStrap,
   rowIsShort,
   rowKnown,
   rowShortfall,
   soleShortSizes,
+  toPurchaseDecisionRows,
   topShortfalls,
+  unitTotals,
 } from '../consumptionAvailability';
 import type { ConsumptionRow } from '../consumptionRows';
 
@@ -177,5 +180,59 @@ describe('topShortfalls', () => {
     expect(top[0].qty).toBe(198);
     // O que está coberto não aparece.
     expect(top.some((t) => t.label === 'NAPA SOFT')).toBe(false);
+  });
+});
+
+describe('tira artesanal — o motor consome napa, não metro de tira', () => {
+  const napa = row({
+    componentType: 'Forração Palmilha',
+    groupName: 'NAPA SOFT',
+    materialName: 'Forração Palmilha',
+    color: 'NEW WHISKY',
+    productUnit: 'm',
+    totalQuantity: 20.21,
+    available: 0,
+    productIds: ['napa-new-whisky'],
+  });
+  const tira = row({
+    componentType: 'Tiras',
+    groupName: 'TIRA OVERLOCK 5 mm · NAPA SOFT · NEW WHISKY',
+    materialName: 'Produção interna',
+    color: 'NEW WHISKY',
+    productUnit: 'm',
+    totalQuantity: 1402.8,
+    available: 0,
+    productIds: ['tira-overlock-new-whisky'],
+    baseProductId: 'napa-new-whisky',
+    artisanal: { baseName: 'NAPA SOFT', baseQty: 20.04, yieldPerMeter: 70 },
+  });
+
+  it('não trata os metros de tira como falta de compra', () => {
+    expect(isConvertedInternalStrap(tira)).toBe(true);
+    expect(rowIsShort(tira)).toBe(false);
+    expect(rowShortfall(tira)).toBe(0);
+  });
+
+  it('soma o equivalente em napa no balde que o motor realmente baixa', () => {
+    const purchase = toPurchaseDecisionRows([napa, tira]);
+    expect(purchase.some((r) => r.componentType === 'Tiras')).toBe(false);
+    const [item] = aggregateItems(purchase);
+    expect(item.groupName).toBe('NAPA SOFT');
+    expect(item.total).toBeCloseTo(40.25, 2);
+    expect(itemShortfall(item)).toBeCloseTo(40.25, 2);
+  });
+
+  it('some da lista de maiores faltas como 1.402 m de tira', () => {
+    const top = topShortfalls([napa, tira], 5);
+    expect(top.some((entry) => entry.qty > 1000)).toBe(false);
+    expect(top[0].label).toBe('NAPA SOFT');
+    expect(top[0].qty).toBeCloseTo(40.25, 2);
+    expect(top[0].unit).toBe('m');
+  });
+
+  it('o total em metros do PDF/tela casa com o material base, não com a tira', () => {
+    const totals = unitTotals([napa, tira]);
+    expect(totals.get('m')).toBeCloseTo(40.25, 2);
+    expect(countShort([napa, tira])).toBe(1);
   });
 });

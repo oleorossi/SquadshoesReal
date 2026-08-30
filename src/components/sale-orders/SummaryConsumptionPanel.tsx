@@ -30,9 +30,11 @@ type Props = {
   saleOrderIds: string[];
   /** Ação primária da tela (Gerar OC). Omitida ⇒ o botão não aparece. */
   onGerarOC?: () => void;
+  /** Diálogo em tela cheia: some o título duplicado do herói. */
+  embedded?: boolean;
 };
 
-export default function SummaryConsumptionPanel({ saleOrderIds, onGerarOC }: Props) {
+export default function SummaryConsumptionPanel({ saleOrderIds, onGerarOC, embedded = false }: Props) {
   const idsKey = useMemo(
     () => normalizePvConsumptionIds(saleOrderIds).sort().join(','),
     [saleOrderIds],
@@ -74,6 +76,7 @@ export default function SummaryConsumptionPanel({ saleOrderIds, onGerarOC }: Pro
           ? <UpperCutOutsourcingSection saleOrderId={singlePv} orderNumber={singlePvNumber} />
           : null
       }
+      embedded={embedded}
     />
   );
 }

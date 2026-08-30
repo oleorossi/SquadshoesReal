@@ -4,12 +4,14 @@ import {
   aggregateItems,
   countPending,
   countShort,
+  isConvertedInternalStrap,
   itemShortfall,
   rowAvailable,
   rowKnown,
   rowShortfall,
   soleShortSizes,
   topShortfalls,
+  unitTotals,
 } from '@/lib/consumptionAvailability';
 import { formatQty, formatUnit } from '@/lib/consumptionFormat';
 import { COMPONENT_ORDER, type ConsumptionRow } from '@/lib/consumptionRows';
@@ -148,7 +150,8 @@ const renderMaterialSections = (rows: ConsumptionRow[]): string => {
       || a.color.localeCompare(b.color, 'pt-BR'));
 
   for (const item of nonSole) {
-    const short = itemShortfall(item);
+    const converted = item.rows.length > 0 && item.rows.every(isConvertedInternalStrap);
+    const short = converted ? 0 : itemShortfall(item);
     const previewQuantity = item.rows.reduce(
       (total, row) => total + Math.max(0, Number(row.previewQuantity) || 0),
       0,
@@ -158,13 +161,26 @@ const renderMaterialSections = (rows: ConsumptionRow[]): string => {
       : formatQty(item.total, item.productUnit);
     const applications = Array.from(new Set(item.rows.map((row) => row.materialName).filter(Boolean)));
     const warnings = Array.from(new Set(item.rows.flatMap((row) => row.warning ? [row.warning] : [])));
+    const napaNote = converted
+      ? item.rows
+        .map((row) => row.artisanal
+          ? `${formatQty(row.artisanal.baseQty, 'm')} m ${row.artisanal.baseName}`
+          : '')
+        .filter(Boolean)
+        .join(' + ')
+      : '';
+    const faltaHtml = converted
+      ? `<span class="muted">prod. interna${napaNote ? `<small>${escapeHtml(napaNote)}</small>` : ''}</span>`
+      : item.known && short > 0
+        ? formatQty(short, item.productUnit)
+        : '—';
     append(item.componentType, `<tr class="material-row${short > 0 ? ' is-short' : ''}${!item.known ? ' is-pending' : ''}">
       <td><strong>${escapeHtml(item.groupName)}</strong>${warnings.length ? `<div class="row-warning">▲ ${escapeHtml(warnings.join(' · '))}</div>` : ''}</td>
       <td>${escapeHtml(applications.join(' + ') || item.groupName)}</td>
       <td>${escapeHtml(item.color || '—')}</td>
       <td class="num strong">${needHtml}</td>
-      <td class="num">${item.known ? formatQty(item.available, item.productUnit) : '—'}</td>
-      <td class="num${short > 0 ? ' shortage' : ''}">${item.known && short > 0 ? formatQty(short, item.productUnit) : '—'}</td>
+      <td class="num">${converted || !item.known ? '—' : formatQty(item.available, item.productUnit)}</td>
+      <td class="num${short > 0 ? ' shortage' : ''}">${faltaHtml}</td>
       <td class="unit">${escapeHtml(formatUnit(item.productUnit))}</td>
     </tr>`);
   }
@@ -237,8 +253,7 @@ export function buildMaterialConsumptionReportHtml({
   const shortCount = countShort(rows);
   const pendingCount = countPending(rows);
   const majorShortfalls = topShortfalls(rows, 5);
-  const totalsByUnit = new Map<string, number>();
-  for (const row of rows) totalsByUnit.set(row.productUnit, (totalsByUnit.get(row.productUnit) || 0) + row.totalQuantity);
+  const totalsByUnit = unitTotals(rows);
 
   const totalStrip = Array.from(totalsByUnit.entries()).filter(([, total]) => total > 0).map(([unit, total]) => `
     <span><strong>${formatQty(total, unit)}</strong> ${escapeHtml(formatUnit(unit))}</span>
@@ -345,7 +360,7 @@ export function buildMaterialConsumptionReportHtml({
   ${renderScope(orderHeaders)}
   <div class="totals-strip"><strong>Necessidade total</strong>${totalStrip}</div>
   <div class="decision-grid">
-    <div class="decision-box"><h3>Leitura correta</h3><p>“Necessidade” é consumo bruto. “Falta” já desconta o estoque líquido e é o número usado para decidir reposição.</p></div>
+    <div class="decision-box"><h3>Leitura correta</h3><p>“Necessidade” é consumo bruto. “Falta” já desconta o estoque líquido e é o número usado para decidir reposição. Tira artesanal com receita conferida entra como metro de napa — o motor não compra metro de tira.</p></div>
     <div class="decision-box"><h3>Maiores faltas</h3>${shortfallList}</div>
   </div>
   ${renderBaseNeed(rows)}

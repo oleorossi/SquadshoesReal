@@ -240,4 +240,43 @@ describe('MaterialConsumptionView — tela buy-first', () => {
     expect(screen.getByText('prévia calculada pela ficha')).toBeInTheDocument();
     expect(screen.queryByText(/faltam 17,25/i)).not.toBeInTheDocument();
   });
+
+  it('tira artesanal conferida não entra como falta de 1.402 m — o motor compra napa', () => {
+    renderView({
+      rows: [
+        row({
+          componentType: 'Forração Palmilha',
+          groupName: 'NAPA SOFT',
+          materialName: 'Forração Palmilha',
+          color: 'NEW WHISKY',
+          totalQuantity: 20.21,
+          available: 0,
+          productIds: ['napa-new-whisky'],
+        }),
+        row({
+          componentType: 'Tiras',
+          groupName: 'TIRA OVERLOCK 5 mm · NAPA SOFT · NEW WHISKY',
+          materialName: 'Produção interna',
+          color: 'NEW WHISKY',
+          totalQuantity: 1402.8,
+          available: 0,
+          productIds: ['tira-overlock-new-whisky'],
+          baseProductId: 'napa-new-whisky',
+          artisanal: { baseName: 'NAPA SOFT', baseQty: 20.04, yieldPerMeter: 70 },
+        }),
+      ],
+    });
+
+    expect(screen.getByText('prod. interna')).toBeInTheDocument();
+    expect(screen.getByText('1.402,80')).toBeInTheDocument();
+    const faltaCard = screen.getByRole('button', { name: 'Ver itens em falta' });
+    expect(within(faltaCard).getByText('1')).toBeInTheDocument();
+    expect(screen.getAllByText(/40,25/).length).toBeGreaterThan(0);
+  });
+
+  it('no diálogo não repete o título do chrome no herói', () => {
+    renderView({ embedded: true });
+    expect(screen.queryByRole('heading', { name: /Consumo de Materiais — PV-00151/i })).not.toBeInTheDocument();
+    expect(screen.getByText('Necessidade de material base')).toBeInTheDocument();
+  });
 });

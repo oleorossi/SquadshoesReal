@@ -27,6 +27,7 @@ import {
   aggregateItems,
   countPending,
   countShort,
+  isConvertedInternalStrap,
   itemIsShort,
   itemKey,
   itemShortfall,
@@ -35,7 +36,9 @@ import {
   rowKnown,
   rowShortfall,
   soleShortSizes,
+  toPurchaseDecisionRows,
   topShortfalls,
+  unitTotals,
   type ItemGroup,
 } from '@/lib/consumptionAvailability';
 
@@ -91,6 +94,12 @@ type Props = {
    * o trilho tem 18rem e esses blocos têm select e tabela.
    */
   extraSections?: ReactNode;
+  /**
+   * Dentro do diálogo em tela cheia o título já está no chrome. O herói
+   * fica só com os números — senão "Consumo de materiais" aparece duas vezes
+   * e empurra o mapa de solados pra baixo da dobra.
+   */
+  embedded?: boolean;
 };
 
 // Separador interno da chave de seção composta cor|família (agrupamento por Cor).
@@ -301,6 +310,7 @@ export default function MaterialConsumptionView({
   onGerarOC,
   emptyMessage = 'Nenhum consumo de material encontrado.',
   extraSections,
+  embedded = false,
 }: Props) {
   const [sortKey, setSortKey] = useState<SortKey | null>(null);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
@@ -330,7 +340,9 @@ export default function MaterialConsumptionView({
   // TODAS as linhas do item curto, senão a soma na tela não fecha com o motivo.
   const shortItemKeys = useMemo(() => {
     const s = new Set<string>();
-    for (const it of aggregateItems(rows.filter((r) => r.componentType !== 'Solado'))) {
+    for (const it of aggregateItems(
+      toPurchaseDecisionRows(rows.filter((r) => r.componentType !== 'Solado')),
+    )) {
       if (itemIsShort(it)) s.add(it.key);
     }
     return s;
@@ -351,7 +363,7 @@ export default function MaterialConsumptionView({
       switch (filter) {
         case 'short': return isShortRow(r);
         case 'pending': return isPendingRow(r);
-        case 'ok': return !isPendingRow(r) && !isShortRow(r);
+        case 'ok': return !isPendingRow(r) && !isShortRow(r) && !isConvertedInternalStrap(r);
         default: return true;
       }
     });
@@ -451,11 +463,7 @@ export default function MaterialConsumptionView({
     return out;
   }, [sortedRows, groupBy, isShortRow]);
 
-  const totalsByUnit = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const row of visibleRows) map.set(row.productUnit, (map.get(row.productUnit) || 0) + row.totalQuantity);
-    return map;
-  }, [visibleRows]);
+  const totalsByUnit = useMemo(() => unitTotals(visibleRows), [visibleRows]);
 
   // ── Números do trilho (sempre sobre TODAS as linhas, não sobre o filtro) ──
   const baseTotal = useMemo(() => computeBaseMaterialTotal(rows), [rows]);
@@ -464,7 +472,7 @@ export default function MaterialConsumptionView({
   const topShort = useMemo(() => topShortfalls(rows, 5), [rows]);
   const napaCount = useMemo(() => rows.filter(isBuyListRow).length, [rows]);
   const okCount = useMemo(
-    () => rows.filter((r) => !isPendingRow(r) && !isShortRow(r)).length,
+    () => rows.filter((r) => !isPendingRow(r) && !isShortRow(r) && !isConvertedInternalStrap(r)).length,
     [rows, isShortRow],
   );
   const pendingReasons = useMemo(() => ({
@@ -500,18 +508,19 @@ export default function MaterialConsumptionView({
 
   // ── Render de uma linha da tabela mestra ────────────────────────────────
   const renderRow = (row: ConsumptionRow, index: number, neutralStock: boolean, sectionKey: string) => {
+    const converted = isConvertedInternalStrap(row);
     const known = rowKnown(row);
     const avail = rowAvailable(row);
     const short = rowShortfall(row);
     const itemShort = isShortRow(row);
     // Item curto (mesmo material em várias aplicações) não pode aparecer
     // coberto só porque ESTA linha cabe no estoque — o balde inteiro não cabe.
-    const ok = known && short === 0 && !itemShort;
+    const ok = !converted && known && short === 0 && !itemShort;
     const hasQuantityPreview = !(row.totalQuantity > 0) && Number(row.previewQuantity) > 0;
 
     return (
       <TableRow key={`${sectionKey}-${row.groupName}-${row.materialName}-${row.color}-${index}`}>
-        <TableCell className={`font-medium ${!neutralStock && known && !ok ? 'border-l-2 border-red-500/60' : ''}`}>
+        <TableCell className={`font-medium ${!neutralStock && !converted && known && !ok ? 'border-l-2 border-red-500/60' : ''}`}>
           <div className="flex items-center gap-1.5">
             {row.widthMissing && (
               <TooltipProvider delayDuration={150}>
@@ -573,9 +582,15 @@ export default function MaterialConsumptionView({
         </TableCell>
         <TableCell
           className="text-right"
-          aria-label={neutralStock ? 'total do item na faixa acima' : !known ? 'cadastro incompleto' : ok ? 'em estoque' : 'em falta'}
+          aria-label={
+            converted ? 'produção interna — o motor consome napa'
+              : neutralStock ? 'total do item na faixa acima'
+              : !known ? 'cadastro incompleto'
+              : ok ? 'em estoque'
+              : 'em falta'
+          }
         >
-          {neutralStock || !known ? (
+          {converted || neutralStock || !known ? (
             <span className="text-muted-foreground">—</span>
           ) : (
             <span className="inline-flex items-center justify-end gap-1">
@@ -587,7 +602,9 @@ export default function MaterialConsumptionView({
           )}
         </TableCell>
         <TableCell className="text-right">
-          {neutralStock || !known || short === 0 ? (
+          {converted ? (
+            <span className="text-[11px] font-medium text-muted-foreground">prod. interna</span>
+          ) : neutralStock || !known || short === 0 ? (
             <span className="text-muted-foreground">—</span>
           ) : (
             <span className="inline-flex items-center justify-end gap-1 font-mono font-bold tabular-nums text-red-600 dark:text-red-400">
@@ -649,14 +666,23 @@ export default function MaterialConsumptionView({
     <div className="space-y-4">
       {/* O resumo ocupa toda a largura; abaixo dele, o mapa de solados abre a
           coluna principal enquanto o trilho mantém a ação de compra visível. */}
-      <section className="grid overflow-hidden border-y-2 border-foreground bg-card sm:grid-cols-[minmax(0,1.5fr)_repeat(3,minmax(7rem,0.55fr))]" aria-label="Resumo operacional do consumo">
-          <div className="border-b border-border px-4 py-3 sm:border-b-0 sm:border-r">
-            <p className="eyebrow">Simulação atual · ficha e estoque agora</p>
-            <h2 className="display mt-1 text-2xl leading-none sm:text-3xl">{title}</h2>
-            <p className="mt-1.5 max-w-xl text-xs text-muted-foreground">
-              Recalcula a ficha vigente. Uma OP já congelada pode manter o planejamento histórico usado na reserva e na baixa.
-            </p>
-          </div>
+      <section
+        className={`grid overflow-hidden border-y-2 border-foreground bg-card ${
+          embedded
+            ? 'sm:grid-cols-3'
+            : 'sm:grid-cols-[minmax(0,1.5fr)_repeat(3,minmax(7rem,0.55fr))]'
+        }`}
+        aria-label="Resumo operacional do consumo"
+      >
+          {!embedded && (
+            <div className="border-b border-border px-4 py-3 sm:border-b-0 sm:border-r">
+              <p className="eyebrow">Simulação atual · ficha e estoque agora</p>
+              <h2 className="display mt-1 text-2xl leading-none sm:text-3xl">{title}</h2>
+              <p className="mt-1.5 max-w-xl text-xs text-muted-foreground">
+                Recalcula a ficha vigente. Uma OP já congelada pode manter o planejamento histórico usado na reserva e na baixa.
+              </p>
+            </div>
+          )}
           <dl className="border-r border-border px-3 py-3">
             <dt className="eyebrow">Material base</dt>
             <dd className="mt-1 font-mono text-xl font-bold leading-none tabular-nums">

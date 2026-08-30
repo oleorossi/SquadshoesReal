@@ -94,4 +94,43 @@ describe('materialConsumptionReport', () => {
     expect(materialConsumptionReportFilename('Consumo de Materiais — PV-00157'))
       .toBe('consumo-de-materiais-pv-00157');
   });
+
+  it('não publica metro de tira artesanal como falta de compra nem no total em m', () => {
+    const html = buildMaterialConsumptionReportHtml({
+      title: 'Consumo de Materiais — PV-00168',
+      generatedAt: new Date('2026-08-30T15:11:00-03:00'),
+      artisanalStrapRows: [],
+      rows: [
+        row({
+          componentType: 'Forração Palmilha',
+          groupName: 'NAPA SOFT',
+          materialName: 'Forração Palmilha',
+          color: 'NEW WHISKY',
+          productUnit: 'm',
+          totalQuantity: 20.21,
+          available: 0,
+          productIds: ['napa-new-whisky'],
+        }),
+        row({
+          componentType: 'Tiras',
+          groupName: 'TIRA OVERLOCK 5 mm · NAPA SOFT · NEW WHISKY',
+          materialName: 'Produção interna',
+          color: 'NEW WHISKY',
+          productUnit: 'm',
+          totalQuantity: 1402.8,
+          available: 0,
+          productIds: ['tira-overlock-new-whisky'],
+          baseProductId: 'napa-new-whisky',
+          artisanal: { baseName: 'NAPA SOFT', baseQty: 20.04, yieldPerMeter: 70 },
+        }),
+      ],
+    });
+
+    expect(html).toContain('prod. interna');
+    expect(html).toContain('20,04 m NAPA SOFT');
+    expect(html).not.toContain('class="num shortage">1.402,80');
+    expect(html).toMatch(/<div class="totals-strip">[\s\S]*?40,25[\s\S]*?<\/div>/);
+    expect(html).not.toMatch(/<div class="totals-strip">[\s\S]*?1\.402,80[\s\S]*?<\/div>/);
+    expect(html).toContain('metro de napa');
+  });
 });
