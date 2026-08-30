@@ -32,6 +32,62 @@ const issue = (
 });
 
 describe('saleOrderReadinessCorrections', () => {
+  it('agrupa a pendência industrial uma vez em cada referência afetada', () => {
+    const sp131Id = 'reference-sp131';
+    const m100Id = 'reference-m100';
+    const referenceItems = [
+      { id: 'sp131-tamara', reference_id: sp131Id, color: 'TÂMARA', quantity: 420, unit_price: 19.9 },
+      { id: 'sp131-champagne', reference_id: sp131Id, color: 'CHAMPAGNE', quantity: 420, unit_price: 19.9 },
+      { id: 'm100-new-whisky', reference_id: m100Id, color: 'NEW WHISKY', quantity: 420, unit_price: 19.9 },
+    ];
+    const industrialIssues: SaleOrderCommandIssue[] = referenceItems.map((item, index) => ({
+      code: 'technical_sheet_missing_insole_material',
+      message: 'Ficha técnica reprovada na auditoria industrial: missing_insole_material',
+      // O segundo item cobre o fallback para envelopes antigos sem `scope`.
+      scope: index === 1 ? null : 'technical_sheet',
+      item_id: item.id,
+      reference_id: item.reference_id,
+      overrideable: true,
+      details: {},
+    }));
+
+    const model = buildSaleOrderReadinessCorrectionModel({
+      issues: industrialIssues,
+      items: referenceItems,
+      sheets: [
+        { id: sp131Id, code: 'SP131', name: 'SP131' },
+        { id: m100Id, code: 'M100', name: 'M100' },
+      ],
+      products: [],
+      groups: [],
+    });
+
+    expect(model.referenceGroups.map((group) => ({
+      reference: group.sheet?.code,
+      colors: group.items.map((item) => item.color),
+      issues: group.issues.map((line) => ({ code: line.issue.code, title: line.title })),
+    }))).toEqual([
+      {
+        reference: 'SP131',
+        colors: ['TÂMARA', 'CHAMPAGNE'],
+        issues: [{
+          code: 'technical_sheet_missing_insole_material',
+          title: 'Grupo da palmilha',
+        }],
+      },
+      {
+        reference: 'M100',
+        colors: ['NEW WHISKY'],
+        issues: [{
+          code: 'technical_sheet_missing_insole_material',
+          title: 'Grupo da palmilha',
+        }],
+      },
+    ]);
+    expect(model.itemGroups).toEqual([]);
+    expect(model.unsupportedIssues).toHaveLength(2);
+  });
+
   it('identifica cada item e reserva preço ausente para a edição do próprio PV', () => {
     const affectedItems = [{ ...items[0], unit_price: 0 }, items[1], items[2]];
     const issues = affectedItems.flatMap((item, index) => [
@@ -134,6 +190,8 @@ describe('saleOrderReadinessCorrections', () => {
       'item-2',
       'item-3',
     ]);
+    expect(model.referenceGroups).toEqual([]);
+    expect(model.itemGroups).toHaveLength(3);
     expect(model.colorCorrections).toEqual([]);
     expect(model.canOverrideAll).toBe(false);
   });

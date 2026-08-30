@@ -1,8 +1,9 @@
-import { Footprints, ImageSquare as ImagePlus, Package, Stack as Layers, Trash } from '@phosphor-icons/react';
+import { Footprints, ImageSquare as ImagePlus, Package, Stack as Layers, Trash, Warning } from '@phosphor-icons/react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { SignedImage } from '@/components/ui/signed-image';
+import type { TechnicalSheetAuditGap } from '@/lib/technicalSheetAudit';
 import { cn } from '@/lib/utils';
 
 export interface TechnicalSheetGridItem {
@@ -24,6 +25,7 @@ interface MaterialVariantSummary {
 interface Props {
   sheets: TechnicalSheetGridItem[];
   materialVariantsBySheet?: ReadonlyMap<string, readonly MaterialVariantSummary[]>;
+  auditGapsBySheet?: ReadonlyMap<string, readonly TechnicalSheetAuditGap[]>;
   canDelete: boolean;
   onOpenSheet: (id: string) => void;
   onEditImage: (sheet: TechnicalSheetGridItem) => void;
@@ -79,6 +81,7 @@ function SheetThumbnail({ sheet }: { sheet: TechnicalSheetGridItem }) {
 export function TechnicalSheetCardGrid({
   sheets,
   materialVariantsBySheet,
+  auditGapsBySheet,
   canDelete,
   onOpenSheet,
   onEditImage,
@@ -89,6 +92,9 @@ export function TechnicalSheetCardGrid({
       {sheets.map(sheet => {
         const status = sheet.status_ficha || 'rascunho';
         const variants = materialVariantsBySheet?.get(sheet.id) || [];
+        const auditGaps = auditGapsBySheet?.get(sheet.id) || [];
+        const auditGapLabels = auditGaps.map(gap => gap.label).join(' • ');
+        const hasCriticalAuditGap = auditGaps.some(gap => gap.severity === 'critical');
 
         return (
           <article
@@ -120,6 +126,35 @@ export function TechnicalSheetCardGrid({
               </div>
 
               <div className="flex flex-1 flex-col space-y-1.5 p-2 sm:p-2.5">
+                {auditGaps.length > 0 && (
+                  <div
+                    className={cn(
+                      'rounded-sm border p-1.5',
+                      hasCriticalAuditGap
+                        ? 'border-destructive/30 bg-destructive/5'
+                        : 'border-warning/30 bg-warning/10',
+                    )}
+                    aria-label={`${auditGaps.length} ${auditGaps.length === 1 ? 'pendência' : 'pendências'}: ${auditGapLabels}`}
+                  >
+                    <Badge
+                      variant={hasCriticalAuditGap ? 'destructive-soft' : 'warning-soft'}
+                      className="gap-1 px-1.5 py-0 text-[9px]"
+                    >
+                      <Warning className="h-3 w-3 shrink-0" weight="fill" />
+                      {auditGaps.length} {auditGaps.length === 1 ? 'pendência' : 'pendências'}
+                    </Badge>
+                    <p
+                      className={cn(
+                        'mt-1 line-clamp-2 text-[9px] font-medium leading-tight sm:text-[10px]',
+                        hasCriticalAuditGap ? 'text-destructive' : 'text-warning',
+                      )}
+                      title={auditGapLabels}
+                    >
+                      {auditGapLabels}
+                    </p>
+                  </div>
+                )}
+
                 <div className="min-h-8">
                   {sheet.code && (
                     <p className="truncate font-mono text-[9px] text-muted-foreground sm:text-[10px]" title={`Código interno: ${sheet.code}`}>

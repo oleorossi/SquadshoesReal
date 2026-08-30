@@ -1,11 +1,13 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import SaleOrderReadinessCorrectionDialog, {
   type SaleOrderReadinessCorrectionTarget,
 } from './SaleOrderReadinessCorrectionDialog';
 
 const referenceId = 'dee92bd6-643d-4651-818e-f2a75cfabf13';
+const secondReferenceId = 'bf957376-73c7-4622-aa17-37e311765455';
 const groupId = '449bbeea-a38a-4526-afe2-2793a305ee2f';
 const productId = 'caa8afb2-edd9-49b3-ae08-cc43c74f20a3';
 
@@ -111,6 +113,7 @@ describe('SaleOrderReadinessCorrectionDialog', () => {
       { id: 'item-2', reference_id: referenceId, color: 'OFF WHITE', quantity: 1728, unit_price: 19.9 },
       { id: 'item-3', reference_id: referenceId, color: 'ROSADO', quantity: 1728, unit_price: 19.9 },
     ];
+    mocks.tableData.technical_sheets = [{ id: referenceId, code: 'NL02', name: 'NL01' }];
   });
 
   it('não transforma preço ausente no item em alteração global da ficha', async () => {
@@ -223,5 +226,60 @@ describe('SaleOrderReadinessCorrectionDialog', () => {
     expect(screen.getByText('Cliente obrigatório não informado.')).toBeInTheDocument();
     expect(screen.queryByText('Sem código')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /tentar novamente/i })).not.toBeInTheDocument();
+  });
+
+  it('mostra a pendência técnica uma vez em cada referência, sem duplicar pelas cores', async () => {
+    const technicalItems = [
+      { id: 'item-1', reference_id: referenceId, color: 'TÂMARA', quantity: 420, unit_price: 19.9 },
+      { id: 'item-2', reference_id: referenceId, color: 'CHAMPAGNE', quantity: 420, unit_price: 19.9 },
+      { id: 'item-3', reference_id: secondReferenceId, color: 'NEW WHISKY', quantity: 420, unit_price: 19.9 },
+    ];
+    mocks.tableData.sale_order_items = technicalItems;
+    mocks.tableData.technical_sheets = [
+      { id: referenceId, code: null, name: 'SP131' },
+      { id: secondReferenceId, code: null, name: 'M100' },
+    ];
+    const technicalBlockers = technicalItems.map((item) => ({
+      code: 'technical_sheet_missing_insole_material',
+      scope: 'technical_sheet',
+      message: 'Ficha técnica reprovada na auditoria industrial: missing_insole_material',
+      item_id: item.id,
+      reference_id: item.reference_id,
+      overrideable: true,
+    }));
+    const technicalTarget: SaleOrderReadinessCorrectionTarget = {
+      ...target,
+      preflight: {
+        ...target.preflight,
+        blockers: technicalBlockers,
+      },
+    };
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={queryClient}>
+          <SaleOrderReadinessCorrectionDialog
+            target={technicalTarget}
+            isAdmin
+            statusChangePending={false}
+            onClose={vi.fn()}
+            onEditOrder={vi.fn()}
+            onRetry={mocks.onRetry}
+          />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('2 referências para revisar')).toBeInTheDocument();
+    expect(screen.getByText('2 referências pendentes')).toBeInTheDocument();
+    expect(screen.getAllByText('Sem código · SP131')).toHaveLength(1);
+    expect(screen.getAllByText('Sem código · M100')).toHaveLength(1);
+    expect(screen.getAllByText('Grupo da palmilha')).toHaveLength(2);
+    expect(screen.getByText('840 pares')).toBeInTheDocument();
+    expect(screen.getAllByText('420 pares')).toHaveLength(4);
+    expect(screen.getAllByRole('link', { name: 'Abrir ficha técnica desta referência' })).toHaveLength(2);
+    expect(screen.getByText('2 pendências exigem edição completa')).toBeInTheDocument();
+    expect(screen.queryByText(/missing_insole_material/)).not.toBeInTheDocument();
   });
 });

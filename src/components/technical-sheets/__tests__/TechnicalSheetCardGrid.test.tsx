@@ -1,6 +1,7 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
+import type { TechnicalSheetAuditGap } from '@/lib/technicalSheetAudit';
 import { TechnicalSheetCardGrid, type TechnicalSheetGridItem } from '../TechnicalSheetCardGrid';
 
 vi.mock('@/components/ui/signed-image', () => ({
@@ -84,5 +85,44 @@ describe('TechnicalSheetCardGrid', () => {
     renderGrid({ item: { ...sheet, images: [] } });
 
     expect(screen.getByRole('img', { name: 'Sem imagem para NL04' })).toHaveClass('aspect-video');
+  });
+
+  it('mostra as pendências da auditoria na referência correspondente', () => {
+    const secondSheet: TechnicalSheetGridItem = {
+      ...sheet,
+      id: 'sheet-2',
+      name: 'M100',
+      code: 'M100-INT',
+    };
+    const gapsBySheet = new Map<string, readonly TechnicalSheetAuditGap[]>([
+      ['sheet-1', [
+        { key: 'missing_insole_material', label: 'Grupo da palmilha', severity: 'critical' },
+        { key: 'missing_production_sectors', label: 'Setores de produção não configurados', severity: 'critical' },
+      ]],
+      ['sheet-2', [
+        { key: 'missing_sole_color_mapping', label: 'Cores do solado', severity: 'warn' },
+      ]],
+    ]);
+
+    render(
+      <TechnicalSheetCardGrid
+        sheets={[sheet, secondSheet]}
+        auditGapsBySheet={gapsBySheet}
+        canDelete={false}
+        onOpenSheet={vi.fn()}
+        onEditImage={vi.fn()}
+        onDeleteSheet={vi.fn()}
+      />,
+    );
+
+    const firstCard = screen.getByRole('button', { name: 'Abrir ficha técnica NL04' });
+    expect(within(firstCard).getByText('2 pendências')).toBeInTheDocument();
+    expect(within(firstCard).getByText('Grupo da palmilha • Setores de produção não configurados')).toBeInTheDocument();
+    expect(within(firstCard).queryByText('Cores do solado')).not.toBeInTheDocument();
+
+    const secondCard = screen.getByRole('button', { name: 'Abrir ficha técnica M100' });
+    expect(within(secondCard).getByText('1 pendência')).toBeInTheDocument();
+    expect(within(secondCard).getByText('Cores do solado')).toBeInTheDocument();
+    expect(within(secondCard).queryByText('Grupo da palmilha')).not.toBeInTheDocument();
   });
 });

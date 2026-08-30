@@ -997,11 +997,23 @@ export default function SaleOrders() {
       }
     }
     const failed = results.filter(r => r.status === 'rejected').length;
+    const readinessBlocked = results.filter(
+      (result): result is PromiseRejectedResult =>
+        result.status === 'rejected'
+        && result.reason instanceof SaleOrderReadinessBlockedError,
+    ).length;
+    const otherFailures = failed - readinessBlocked;
+    const updated = ids.length - failed;
     setSelectedIds(new Set());
     if (failed === 0) {
       toast.success(`${ids.length} pedido(s) atualizado(s) para "${status}"`);
     } else {
-      toast.error(`${ids.length - failed} atualizado(s), ${failed} falha(s).`);
+      const summary = [`${updated} atualizado(s)`];
+      if (readinessBlocked > 0) summary.push(`${readinessBlocked} aguardam correção`);
+      if (otherFailures > 0) summary.push(`${otherFailures} falha(s)`);
+      const message = `${summary.join(' · ')}.`;
+      if (otherFailures > 0) toast.error(message);
+      else toast.warning(message);
     }
   };
 
@@ -1488,6 +1500,7 @@ export default function SaleOrders() {
     setGeneratingOPs(true);
     let ordersProcessed = 0;
     let opsCreated = 0;
+    let readinessBlockedCount = 0;
     const errors: string[] = [];
 
     // A aprovação em lote é apenas coordenação de chamadas seriais ao mesmo
@@ -1503,6 +1516,10 @@ export default function SaleOrders() {
           ordersProcessed++;
           opsCreated += Number(result?.ops_criadas) || 0;
         } catch (error: unknown) {
+          if (error instanceof SaleOrderReadinessBlockedError) {
+            readinessBlockedCount += 1;
+            continue;
+          }
           const message = error instanceof Error ? error.message : String(error);
           errors.push(`${order.order_number}: ${message}`);
         }
@@ -1514,8 +1531,13 @@ export default function SaleOrders() {
     if (ordersProcessed > 0) {
       toast.success(`${ordersProcessed} pedido(s) aprovado(s), ${opsCreated} OP(s) gerada(s) pelo comando canônico.`);
     }
-    if (errors.length > 0) {
-      toast.warning(`Avisos: ${errors.slice(0, 3).join('; ')}`);
+    if (readinessBlockedCount > 0 || errors.length > 0) {
+      const summary: string[] = [];
+      if (readinessBlockedCount > 0) summary.push(`${readinessBlockedCount} aguardam correção`);
+      if (errors.length > 0) summary.push(`${errors.length} outra(s) falha(s)`);
+      toast.warning(summary.join(' · '), errors.length > 0 ? {
+        description: errors.slice(0, 3).join('; '),
+      } : undefined);
     }
   };
 
@@ -2603,7 +2625,11 @@ export default function SaleOrders() {
                         try {
                           await updateStatus.mutateAsync({ id: selectedOrder.id, status: 'Aprovado' });
                         } catch (error: any) {
-                          toast.error(`Erro ao aprovar: ${error?.message || error}`);
+                          // O guard de prontidão já abriu a correção estruturada;
+                          // repetir a mensagem completa em toast encobre o modal.
+                          if (!(error instanceof SaleOrderReadinessBlockedError)) {
+                            toast.error(`Erro ao aprovar: ${error?.message || error}`);
+                          }
                           return;
                         }
                         toast.success(`Pedido ${selectedOrder.order_number} aprovado.`);

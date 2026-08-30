@@ -66,6 +66,9 @@ export function useUpsertSoleColorMapping() {
     },
     onSuccess: (_, vars) => {
       qc.invalidateQueries({ queryKey: ['sole_color_mappings', vars.sheetId] });
+      qc.invalidateQueries({ queryKey: ['sheets_audit'] });
+      qc.invalidateQueries({ queryKey: ['sheets_audit_summary'] });
+      qc.invalidateQueries({ queryKey: ['technical_sheet_audit', vars.sheetId] });
     },
     onError: (err: any) => {
       toast.error(`Erro ao salvar mapeamento: ${err.message}`);

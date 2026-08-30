@@ -5,6 +5,7 @@ import {
   useMemo,
   useState,
 } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowSquareOut as ExternalLink,
@@ -24,11 +25,13 @@ import type { ProductFormData } from '@/types/inventory';
 import type { SaleOrderCommandPreflight } from '@/lib/saleOrderCommand';
 import {
   buildSaleOrderReadinessCorrectionModel,
+  type ReadinessIssueLine,
   type ReadinessMaterialProduct,
   type ReadinessProductGroup,
   type ReadinessSaleOrderItem,
   type ReadinessTechnicalSheet,
 } from '@/lib/saleOrderReadinessCorrections';
+import { getTechnicalSheetAuditGapForIssueCode } from '@/lib/technicalSheetAudit';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -156,7 +159,34 @@ function issueDescription(issue: SaleOrderCommandPreflight['blockers'][number]):
     const color = detailText(issue.details?.color) || 'cor do item';
     return `${component}: o grupo de “${product}” não encontrou a cor ${color}.`;
   }
+  const auditGap = getTechnicalSheetAuditGapForIssueCode(issue.code);
+  if (auditGap) {
+    return `Esta pendência pertence à referência. Corrija “${auditGap.label}” na ficha técnica.`;
+  }
   return issue.message;
+}
+
+const issueScopeLabel = (line: ReadinessIssueLine) => (
+  line.issue.scope === 'technical_sheet' || line.issue.code.startsWith('technical_sheet_')
+    ? 'Ficha técnica'
+    : line.issue.code
+);
+
+function IssueDetails({ line }: { line: ReadinessIssueLine }) {
+  return (
+    <div className="flex gap-3 px-4 py-3">
+      <Warning className="mt-0.5 h-4 w-4 shrink-0 text-destructive" weight="fill" />
+      <div className="min-w-0 space-y-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="text-sm font-semibold">{line.title}</p>
+          <span className="font-mono text-[10px] text-muted-foreground">{issueScopeLabel(line)}</span>
+        </div>
+        <p className="text-sm leading-relaxed text-muted-foreground">
+          {issueDescription(line.issue)}
+        </p>
+      </div>
+    </div>
+  );
 }
 
 export default function SaleOrderReadinessCorrectionDialog({
@@ -218,7 +248,17 @@ export default function SaleOrderReadinessCorrectionDialog({
   const canSaveAndRetry = model.unsupportedIssues.length === 0
     && allMaterialColorsRegistered;
   const actionableCount = model.colorCorrections.length;
-  const issueCount = target?.preflight.blockers.length || 0;
+  const issueCount = model.referenceGroups.reduce((total, group) => total + group.issues.length, 0)
+    + model.itemGroups.reduce((total, group) => total + group.issues.length, 0)
+    + model.generalIssues.length;
+  const reviewScopeText = [
+    model.referenceGroups.length > 0
+      ? `${model.referenceGroups.length} ${model.referenceGroups.length === 1 ? 'referência' : 'referências'}`
+      : null,
+    model.itemGroups.length > 0
+      ? `${model.itemGroups.length} ${model.itemGroups.length === 1 ? 'item' : 'itens'}`
+      : null,
+  ].filter(Boolean).join(' e ');
   const requiresFullOrderEdit = !contextQuery.isLoading
     && model.unsupportedIssues.length > 0;
 
@@ -293,13 +333,19 @@ export default function SaleOrderReadinessCorrectionDialog({
               <Badge variant="outline" className="font-mono text-[11px] uppercase tracking-wider">
                 {target?.orderNumber || 'Pedido de venda'}
               </Badge>
-              <Badge variant="destructive">{issueCount} {issueCount === 1 ? 'bloqueio' : 'bloqueios'}</Badge>
+              <Badge variant="destructive">
+                {model.referenceGroups.length > 0 && model.itemGroups.length === 0 && model.generalIssues.length === 0
+                  ? `${model.referenceGroups.length} ${model.referenceGroups.length === 1 ? 'referência pendente' : 'referências pendentes'}`
+                  : `${issueCount} ${issueCount === 1 ? 'bloqueio' : 'bloqueios'}`}
+              </Badge>
             </div>
             <DialogTitle className="font-display text-xl sm:text-2xl">Corrigir prontidão do pedido</DialogTitle>
             <DialogDescription>
-              {requiresFullOrderEdit
-                ? 'Veja a referência, a cor e a quantidade de cada item com problema. As pendências sem editor rápido devem ser corrigidas em “Abrir pedido completo”.'
-                : 'Veja a referência, a cor e a quantidade de cada item com problema. Corrija à direita e valide novamente sem sair desta tela.'}
+              {requiresFullOrderEdit && model.referenceGroups.length > 0
+                ? 'As pendências da ficha aparecem uma vez em cada referência. Abra a ficha indicada para corrigir a engenharia; problemas próprios do item continuam em “Abrir pedido completo”.'
+                : requiresFullOrderEdit
+                  ? 'Veja a referência, a cor e a quantidade de cada item com problema. As pendências sem editor rápido devem ser corrigidas em “Abrir pedido completo”.'
+                  : 'Veja cada referência e item afetado. Corrija à direita e valide novamente sem sair desta tela.'}
             </DialogDescription>
           </DialogHeader>
 
@@ -335,16 +381,66 @@ export default function SaleOrderReadinessCorrectionDialog({
                   <div className="flex items-end justify-between gap-3">
                     <div>
                       <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">
-                        {model.itemGroups.length > 0 ? 'Itens afetados' : 'Escopo do bloqueio'}
+                        {model.referenceGroups.length > 0
+                          ? 'Referências afetadas'
+                          : model.itemGroups.length > 0 ? 'Itens afetados' : 'Escopo do bloqueio'}
                       </p>
                       <h3 id="readiness-items-title" className="font-display text-lg">
-                        {model.itemGroups.length > 0
-                          ? `${model.itemGroups.length} ${model.itemGroups.length === 1 ? 'item para revisar' : 'itens para revisar'}`
+                        {reviewScopeText
+                          ? `${reviewScopeText} para revisar`
                           : `${model.generalIssues.length} ${model.generalIssues.length === 1 ? 'pendência do pedido' : 'pendências do pedido'}`}
                       </h3>
                     </div>
                     <Package className="h-5 w-5 text-muted-foreground" />
                   </div>
+
+                  {model.referenceGroups.map((group, index) => {
+                    const totalPairs = group.items.reduce((total, item) => total + (Number(item.quantity) || 0), 0);
+                    return (
+                      <article key={group.key} className="overflow-hidden rounded-lg border border-destructive/30 bg-card shadow-sm">
+                        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border bg-destructive/5 px-4 py-3">
+                          <div className="min-w-0">
+                            <p className="font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-destructive">
+                              Referência {String(index + 1).padStart(2, '0')}
+                            </p>
+                            <p className="truncate font-display text-base font-semibold">
+                              {group.sheet?.code || 'Sem código'} · {group.sheet?.name || 'Referência não encontrada'}
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap items-center justify-end gap-1.5 text-xs">
+                            <Badge variant="secondary">
+                              {group.items.length} {group.items.length === 1 ? 'item' : 'itens'}
+                            </Badge>
+                            <Badge variant="outline" className="font-mono">{formatPairs(totalPairs)} pares</Badge>
+                          </div>
+                        </div>
+
+                        {group.items.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5 border-b border-border px-4 py-2.5">
+                            {group.items.map((item) => (
+                              <Badge key={item.id} variant="outline" className="gap-1.5 font-normal">
+                                <span>{item.color || 'Sem cor'}</span>
+                                <span className="font-mono text-muted-foreground">{formatPairs(item.quantity)} pares</span>
+                              </Badge>
+                            ))}
+                          </div>
+                        )}
+
+                        <div className="divide-y divide-border">
+                          {group.issues.map((line) => <IssueDetails key={line.key} line={line} />)}
+                        </div>
+
+                        <div className="border-t border-border bg-muted/10 px-4 py-2.5">
+                          <Button asChild variant="outline" size="sm" className="w-full sm:w-auto">
+                            <Link to={`/fichas-tecnicas?ref=${encodeURIComponent(group.referenceId)}`}>
+                              <ExternalLink className="h-4 w-4" />
+                              Abrir ficha técnica desta referência
+                            </Link>
+                          </Button>
+                        </div>
+                      </article>
+                    );
+                  })}
 
                   {model.itemGroups.map((group, index) => (
                     <article key={group.key} className="overflow-hidden rounded-lg border border-border bg-card shadow-sm">
@@ -367,20 +463,7 @@ export default function SaleOrderReadinessCorrectionDialog({
                         )}
                       </div>
                       <div className="divide-y divide-border">
-                        {group.issues.map((line) => (
-                          <div key={line.key} className="flex gap-3 px-4 py-3">
-                            <Warning className="mt-0.5 h-4 w-4 shrink-0 text-destructive" weight="fill" />
-                            <div className="min-w-0 space-y-1">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <p className="text-sm font-semibold">{line.title}</p>
-                                <span className="font-mono text-[10px] text-muted-foreground">{line.issue.code}</span>
-                              </div>
-                              <p className="text-sm leading-relaxed text-muted-foreground">
-                                {issueDescription(line.issue)}
-                              </p>
-                            </div>
-                          </div>
-                        ))}
+                        {group.issues.map((line) => <IssueDetails key={line.key} line={line} />)}
                       </div>
                     </article>
                   ))}
@@ -394,18 +477,7 @@ export default function SaleOrderReadinessCorrectionDialog({
                         <p className="font-display text-base font-semibold">Pendências gerais do PV</p>
                       </div>
                       <div className="divide-y divide-border">
-                        {model.generalIssues.map((line) => (
-                          <div key={line.key} className="flex gap-3 px-4 py-3">
-                            <Warning className="mt-0.5 h-4 w-4 shrink-0 text-destructive" weight="fill" />
-                            <div className="min-w-0 space-y-1">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <p className="text-sm font-semibold">{line.title}</p>
-                                <span className="font-mono text-[10px] text-muted-foreground">{line.issue.code}</span>
-                              </div>
-                              <p className="text-sm leading-relaxed text-muted-foreground">{issueDescription(line.issue)}</p>
-                            </div>
-                          </div>
-                        ))}
+                        {model.generalIssues.map((line) => <IssueDetails key={line.key} line={line} />)}
                       </div>
                     </article>
                   )}
@@ -482,7 +554,9 @@ export default function SaleOrderReadinessCorrectionDialog({
                           : 'pendências exigem edição completa'}
                       </AlertTitle>
                       <AlertDescription>
-                        Os itens estão identificados à esquerda. Abra o pedido para corrigir os campos ainda sem editor rápido.
+                        {model.referenceGroups.length > 0
+                          ? 'Cada pendência de ficha está identificada na referência correta. Use “Abrir ficha técnica desta referência”; para preço ou outro dado do item, abra o pedido completo.'
+                          : 'Os itens estão identificados à esquerda. Abra o pedido para corrigir os campos ainda sem editor rápido.'}
                       </AlertDescription>
                     </Alert>
                   )}

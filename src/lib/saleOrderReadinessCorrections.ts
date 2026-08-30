@@ -1,4 +1,5 @@
 import type { SaleOrderCommandIssue } from '@/lib/saleOrderCommand';
+import { getTechnicalSheetAuditGapForIssueCode } from '@/lib/technicalSheetAudit';
 
 export interface ReadinessSaleOrderItem {
   id: string;
@@ -44,6 +45,14 @@ export interface ReadinessItemGroup {
   issues: ReadinessIssueLine[];
 }
 
+export interface ReadinessReferenceGroup {
+  key: string;
+  referenceId: string;
+  sheet: ReadinessTechnicalSheet | null;
+  items: ReadinessSaleOrderItem[];
+  issues: ReadinessIssueLine[];
+}
+
 export interface ReadinessColorCorrection {
   key: string;
   group: ReadinessProductGroup;
@@ -54,6 +63,7 @@ export interface ReadinessColorCorrection {
 }
 
 export interface SaleOrderReadinessCorrectionModel {
+  referenceGroups: ReadinessReferenceGroup[];
   itemGroups: ReadinessItemGroup[];
   generalIssues: ReadinessIssueLine[];
   colorCorrections: ReadinessColorCorrection[];
@@ -77,8 +87,14 @@ const normalizeColor = (value: string) => value
 export const readinessIssueTitle = (issue: SaleOrderCommandIssue): string => {
   if (issue.code === 'item_price_missing') return 'Preço do item ausente';
   if (issue.code === 'material_color_not_registered') return 'Cor de material não cadastrada';
+  const auditGap = getTechnicalSheetAuditGapForIssueCode(issue.code);
+  if (auditGap) return auditGap.label;
   return 'Pendência obrigatória do pedido';
 };
+
+const isTechnicalSheetIssue = (issue: SaleOrderCommandIssue): boolean => (
+  issue.scope === 'technical_sheet' || issue.code.startsWith('technical_sheet_')
+);
 
 export function buildSaleOrderReadinessCorrectionModel(input: {
   issues: SaleOrderCommandIssue[];
@@ -106,9 +122,49 @@ export function buildSaleOrderReadinessCorrectionModel(input: {
     };
   });
 
+  const itemsByReference = new Map<string, ReadinessSaleOrderItem[]>();
+  for (const item of input.items) {
+    if (!item.reference_id) continue;
+    const referenceItems = itemsByReference.get(item.reference_id);
+    if (referenceItems) referenceItems.push(item);
+    else itemsByReference.set(item.reference_id, [item]);
+  }
+
+  const referenceGrouped = new Map<string, ReadinessReferenceGroup>();
+  const referenceIssueKeys = new Set<string>();
   const grouped = new Map<string, ReadinessItemGroup>();
   const generalIssues: ReadinessIssueLine[] = [];
+  const correctionLines: ReadinessIssueLine[] = [];
   for (const line of lines) {
+    if (isTechnicalSheetIssue(line.issue)) {
+      const referenceId = line.issue.reference_id || line.item?.reference_id || null;
+      if (!referenceId) {
+        generalIssues.push(line);
+        correctionLines.push(line);
+        continue;
+      }
+
+      const dedupeKey = `${referenceId}:${line.issue.code}`;
+      if (referenceIssueKeys.has(dedupeKey)) continue;
+      referenceIssueKeys.add(dedupeKey);
+      correctionLines.push(line);
+
+      const current = referenceGrouped.get(referenceId);
+      if (current) {
+        current.issues.push(line);
+      } else {
+        referenceGrouped.set(referenceId, {
+          key: referenceId,
+          referenceId,
+          sheet: line.sheet,
+          items: itemsByReference.get(referenceId) || [],
+          issues: [line],
+        });
+      }
+      continue;
+    }
+
+    correctionLines.push(line);
     if (!line.issue.item_id && !line.item) {
       generalIssues.push(line);
       continue;
@@ -131,7 +187,7 @@ export function buildSaleOrderReadinessCorrectionModel(input: {
   const agnosticColorIssues: ReadinessIssueLine[] = [];
   const unsupportedIssues: ReadinessIssueLine[] = [];
 
-  for (const line of lines) {
+  for (const line of correctionLines) {
     const { issue, item } = line;
     if (issue.code === 'item_price_missing') {
       // Desde a migration 143, este blocker significa exclusivamente que o
@@ -179,6 +235,7 @@ export function buildSaleOrderReadinessCorrectionModel(input: {
   }
 
   return {
+    referenceGroups: [...referenceGrouped.values()],
     itemGroups: [...grouped.values()],
     generalIssues,
     colorCorrections: [...colorByGroupAndColor.values()],

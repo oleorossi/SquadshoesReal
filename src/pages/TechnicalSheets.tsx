@@ -51,7 +51,7 @@ import ComponentSheets from '@/pages/ComponentSheets';
 import { VersionsTab } from '@/components/technical-sheets/VersionsTab';
 import { TechnicalReferencePanel } from '@/components/technical-sheets/TechnicalReferencePanel';
 import { NonFiniteDevWatcher } from '@/components/technical-sheets/NonFiniteDevWatcher';
-import { SheetsAuditButton } from '@/components/technical-sheets/SheetsAuditPanel';
+import { SheetsAuditButton, useSheetsAudit } from '@/components/technical-sheets/SheetsAuditPanel';
 import { CatalogModelsPanel } from '@/components/technical-sheets/CatalogModelsPanel';
 import { TechnicalSheetCardGrid, type TechnicalSheetGridItem } from '@/components/technical-sheets/TechnicalSheetCardGrid';
 import { TechnicalSheetRetirementDialog } from '@/components/technical-sheets/TechnicalSheetRetirementDialog';
@@ -96,6 +96,7 @@ import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { EmptyState } from '@/components/ui/empty-state';
 import { SearchInput } from '@/components/ui/search-input';
 import { normalizeForSearch, searchMatchesAllTerms } from '@/lib/searchUtils';
+import { getTechnicalSheetAuditGaps } from '@/lib/technicalSheetAudit';
 import { Link as Link2, Info } from '@phosphor-icons/react';
 import { SoleSizeConjugationsEditor } from '@/components/inventory/SoleSizeConjugationsEditor';
 import { ComponentGroupSelect, GroupMaterialSelect, SoleClassificationBadge, SoleProductSelect, DirectComponentSelect, NcmInlineEditor } from '@/components/technical-sheets/sheetSelectors';
@@ -199,6 +200,13 @@ function suggestedConsumptionSector(category?: string | null): string {
 export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {}) {
   const { data: sheets = [], isLoading } = useTechnicalSheets();
   const { data: stock = [] } = useReadyStock();
+  const sheetsAuditQuery = useSheetsAudit();
+  const auditBySheetId = useMemo(() => new Map(
+    (sheetsAuditQuery.data || []).map((row) => [row.id, row]),
+  ), [sheetsAuditQuery.data]);
+  const auditGapsBySheet = useMemo(() => new Map(
+    (sheetsAuditQuery.data || []).map((row) => [row.id, getTechnicalSheetAuditGaps(row)]),
+  ), [sheetsAuditQuery.data]);
   // Map sheet_id -> array de variantes de material ativas. Usado pra exibir
   // badge na lista de fichas indicando que tem opções de material extra.
   const { data: materialVariantsBySheet } = useAllActiveReferenceMaterialVariants();
@@ -676,7 +684,11 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
                       key={sheet.id}
                       fallbackTitle="Não foi possível abrir esta Ficha Técnica"
                     >
-                      <SheetCompleteness sheet={sheet} />
+                      <SheetCompleteness
+                        sheet={sheet}
+                        audit={auditBySheetId.get(sheet.id)}
+                        auditLoaded={sheetsAuditQuery.isSuccess}
+                      />
                       <VariantOverviewHeader sheet={sheet} />
                       <Card>
                         <CardContent className="p-4 sm:p-6">
@@ -719,6 +731,7 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
             <TechnicalSheetCardGrid
               sheets={filteredSheets}
               materialVariantsBySheet={materialVariantsBySheet}
+              auditGapsBySheet={auditGapsBySheet}
               canDelete={perm.isAdmin}
               onOpenSheet={setExpandedId}
               onEditImage={setImageDialogSheet}
@@ -737,17 +750,39 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
               <div className="divide-y divide-border">
                 {[...filteredSheets]
                   .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'pt-BR'))
-                  .map(sheet => (
-                    <button
-                      key={sheet.id}
-                      type="button"
-                      className="flex min-h-10 w-full items-center px-3 py-2 text-left text-sm font-semibold transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:px-4"
-                      aria-label={`Abrir ficha técnica ${sheet.name}`}
-                      onClick={() => setExpandedId(sheet.id)}
-                    >
-                      <span className="truncate" title={sheet.name}>{sheet.name}</span>
-                    </button>
-                  ))}
+                  .map(sheet => {
+                    const gaps = auditGapsBySheet.get(sheet.id) || [];
+                    const gapLabels = gaps.map((gap) => gap.label).join(', ');
+                    const hasCriticalGap = gaps.some((gap) => gap.severity === 'critical');
+                    return (
+                      <button
+                        key={sheet.id}
+                        type="button"
+                        className={cn(
+                          'flex min-h-10 w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm font-semibold transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:px-4',
+                          gaps.length > 0 && (hasCriticalGap ? 'bg-destructive/5' : 'bg-warning/5'),
+                        )}
+                        aria-label={`Abrir ficha técnica ${sheet.name}${gaps.length > 0 ? `. ${gaps.length} ${gaps.length === 1 ? 'pendência' : 'pendências'}: ${gapLabels}` : ''}`}
+                        onClick={() => setExpandedId(sheet.id)}
+                      >
+                        <span className="min-w-0 truncate" title={sheet.name}>{sheet.name}</span>
+                        {gaps.length > 0 && (
+                          <span className={cn(
+                            'flex min-w-0 shrink items-center justify-end gap-2',
+                            hasCriticalGap ? 'text-destructive' : 'text-warning',
+                          )}>
+                            <AlertTriangle className="h-3.5 w-3.5 shrink-0" weight="fill" />
+                            <span className="shrink-0 text-xs">
+                              {gaps.length} {gaps.length === 1 ? 'pendência' : 'pendências'}
+                            </span>
+                            <span className="hidden max-w-[360px] truncate text-xs font-normal text-muted-foreground md:inline" title={gapLabels}>
+                              {gapLabels}
+                            </span>
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
               </div>
             </div>
           )
@@ -1185,9 +1220,20 @@ function QuickCreateForm({ onCreated, onCancel }: { onCreated: (id: string) => v
 }
 
 /* ===== Completeness Indicator ===== */
-function SheetCompleteness({ sheet }: { sheet: any }) {
+function SheetCompleteness({
+  sheet,
+  audit,
+  auditLoaded,
+}: {
+  sheet: any;
+  audit?: TechnicalSheetAuditSignals | null;
+  auditLoaded: boolean;
+}) {
   const stageIcons = { identity: Tag, engineering: Wrench, stock: Package, production: Factory, release: Check };
-  const checks = evaluateTechnicalSheetReadiness(sheet).map((stage) => ({
+  const checks = evaluateTechnicalSheetReadiness(
+    sheet,
+    auditLoaded ? (audit || {}) : undefined,
+  ).map((stage) => ({
     label: stage.label,
     ok: stage.ready,
     icon: stageIcons[stage.key],
@@ -1298,7 +1344,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
   const activeTabGuidance = tabGuidance[abaAtiva] ?? tabGuidance.id;
   const queryClient = useQueryClient();
   const updateSheet = useUpdateSheet();
-  const { data: sheetAudit } = useQuery({
+  const { data: sheetAudit, isSuccess: sheetAuditLoaded } = useQuery({
     queryKey: ['technical_sheet_audit', sheet.id],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -2000,6 +2046,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
       <TechnicalSheetReadinessRail
         sheet={{ ...sheet, ...form, production_sectors: sheet.production_sectors }}
         audit={sheetAudit || undefined}
+        auditLoaded={sheetAuditLoaded}
         onSelectTab={setAbaAtiva}
       />
 

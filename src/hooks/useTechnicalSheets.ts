@@ -10,11 +10,21 @@ import { invalidateProductionCaches } from '@/hooks/useProductionTransitions';
  * reescreve uma OP automaticamente. O operador revisa o impacto e, se a
  * correção realmente deve valer, executa o resync administrativo transacional.
  */
+function invalidateSheetAudit(qc: QueryClient) {
+  // A auditoria industrial alimenta os badges do catálogo e a régua da
+  // própria referência. Sem invalidar essas chaves, a pendência continuava
+  // visível por até um minuto depois de o usuário corrigi-la na ficha.
+  qc.invalidateQueries({ queryKey: ['sheets_audit'] });
+  qc.invalidateQueries({ queryKey: ['sheets_audit_summary'] });
+  qc.invalidateQueries({ queryKey: ['technical_sheet_audit'] });
+}
+
 function invalidateSheetImpact(qc: QueryClient) {
   qc.invalidateQueries({ queryKey: ['sale_orders'] });
   qc.invalidateQueries({ queryKey: ['pv_outdated_status'] });
   qc.invalidateQueries({ queryKey: ['sale-order-command-preflight'] });
   qc.invalidateQueries({ queryKey: ['system-diag', 'pv-system'] });
+  invalidateSheetAudit(qc);
 }
 
 export type OverheadHistoryEntry = {
@@ -439,7 +449,11 @@ export function useAddSheet() {
       if (error) throw error;
       return data;
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['technical_sheets'] }); toast.success('Ficha técnica criada!'); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['technical_sheets'] });
+      invalidateSheetAudit(qc);
+      toast.success('Ficha técnica criada!');
+    },
     onError: (err: Error) => toast.error(`Erro: ${err.message}`),
   });
 }
@@ -901,6 +915,7 @@ export function useCloneSheet() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['technical_sheets'] });
+      invalidateSheetAudit(qc);
       toast.success('Ficha copiada com sucesso!');
     },
     onError: (err: Error) => toast.error(`Erro ao copiar ficha: ${err.message}`),
